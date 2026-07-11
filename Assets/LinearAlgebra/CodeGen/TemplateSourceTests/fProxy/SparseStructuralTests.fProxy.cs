@@ -178,14 +178,14 @@ public class fProxySparseStructuralTests
             var diag = arena.fProxyMat(BR, BR);
             var off = arena.fProxyMat(BR, BR);
 
-            // Symmetric diagonal blocks + one upper off-diagonal block.
+            // Symmetric diagonal blocks + one lower off-diagonal block.
             diag[0, 0] = (fProxy)4; diag[0, 1] = (fProxy)1;
             diag[1, 0] = (fProxy)1; diag[1, 1] = (fProxy)5;
             FillBlock(ref off, 0, 1, (fProxy)1);
 
             builder.AddBlock(0, 0, in diag);
             builder.AddBlock(1, 1, in diag);
-            builder.AddBlock(0, 1, in off);
+            builder.AddBlock(1, 0, in off);
 
             var A = builder.ToBSRSymmetric(ref arena);
             var At = BSR.transpose(in A, ref arena);

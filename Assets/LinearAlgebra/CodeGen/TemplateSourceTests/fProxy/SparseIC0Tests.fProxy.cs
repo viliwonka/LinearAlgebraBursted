@@ -14,7 +14,8 @@ using Unity.Mathematics;
 //   (b) preconditioned CG with IC(0) converges, matches the true solution, and needs fewer
 //       iterations than block-Jacobi on the standard Laplacian / random-SPD galleries
 //       (same >=10% margin convention as SSORTests);
-//   (c) Symmetric-storage input mirrors to full and produces the same preconditioner;
+//   (c) Symmetric-storage input is consumed zero-copy (no mirror) and produces the same
+//       preconditioner as full storage;
 //   (d) M^-1 is symmetric: dot(u, M^-1 v) == dot(v, M^-1 u).
 // Correctness cases run inside a [BurstCompile] IJob; guard cases run on the managed thread
 // with Assert.Throws (same split as SSORTests / SparseBSRTests).
@@ -160,7 +161,7 @@ public class fProxySparseIC0Tests
         {
             var arena = new Arena(Allocator.Persistent);
 
-            // Build the same SPD matrix twice: full storage and symmetric (upper) storage.
+            // Build the same SPD matrix twice: full storage and symmetric (lower) storage.
             const int nb = 4, BR = 2;
             var full = BuildBlockTridiag(ref arena, nb, BR);
 
@@ -176,7 +177,7 @@ public class fProxySparseIC0Tests
             for (int i = 0; i < nb; i++)
             {
                 builder.AddBlock(i, i, in diag);
-                if (i + 1 < nb) builder.AddBlock(i, i + 1, in off);   // upper triangle only
+                if (i + 1 < nb) builder.AddBlock(i + 1, i, in off);   // lower triangle only
             }
             var sym = builder.ToBSRSymmetric(ref arena);
 

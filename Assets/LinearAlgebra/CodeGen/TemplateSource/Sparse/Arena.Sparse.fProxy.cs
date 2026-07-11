@@ -99,7 +99,7 @@ namespace LinearAlgebra
         /// Materializes A^T as its own compressed BSR (O(nnz)): every stored block at (blockRow,
         /// blockCol) becomes a block at (blockCol, blockRow), transposed in place, then
         /// re-compressed via <see cref="fProxyBSRBuilder"/>. If A.Symmetric, returns A itself
-        /// unchanged (transposing symmetric upper-block storage is a no-op).
+        /// unchanged (transposing symmetric lower-block storage is a no-op).
         /// </summary>
         public unsafe fProxyBSR fProxyBSRTranspose(in fProxyBSR A)
         {
@@ -136,9 +136,9 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// One-time mirror of a SYMMETRIC-storage (upper-block-triangle-only) BSR into an
+        /// One-time mirror of a SYMMETRIC-storage (lower-block-triangle-only) BSR into an
         /// equivalent FULL-storage BSR: every stored block K at (bi,bj) is kept at (bi,bj), and
-        /// if bi != bj its transpose is ALSO materialized at (bj,bi) -- the implicit lower block
+        /// if bi != bj its transpose is ALSO materialized at (bj,bi) -- the implicit upper block
         /// <see cref="fProxyBSR.ToDense"/> already computes on the fly. O(nnzb*BR*BC), one-time
         /// copy. If A is already full storage (Symmetric == false), returns A unchanged -- no copy.
         /// </summary>
@@ -200,9 +200,9 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Builds a block incomplete-Cholesky IC(0) preconditioner from A (must be square SPD
-        /// with every diagonal block stored; Symmetric-storage pays a one-time mirror-to-full
-        /// pass). See <see cref="fProxyIC0"/> for the breakdown/diagonal-shift contract.
-        /// Arena-owned: disposed with the arena.
+        /// with every diagonal block stored; Symmetric-storage A is consumed zero-copy -- its
+        /// stored lower-block pattern IS the IC(0) pattern). See <see cref="fProxyIC0"/> for the
+        /// breakdown/diagonal-shift contract. Arena-owned: disposed with the arena.
         /// </summary>
         public fProxyIC0 fProxyIC0(in fProxyBSR A)
         {

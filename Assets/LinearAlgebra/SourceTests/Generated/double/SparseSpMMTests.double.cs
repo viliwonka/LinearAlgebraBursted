@@ -19,7 +19,7 @@ using Unity.Jobs;
 //     scalar bsrMatVec*/bsrMatVecSym* counterpart's exact accumulation order per row (same pairing
 //     where the scalar kernel pairs, same tail) -- asserted BIT-IDENTICAL (Assert.AreEqual on the
 //     double-cast values), not just within tolerance. Swept over b in {1,2,3,4,6} (specialized) +
-//     b=5 (general fallback), both storage modes (full + symmetric-upper), a rectangular-block
+//     b=5 (general fallback), both storage modes (full + symmetric-lower), a rectangular-block
 //     case (always the general fallback), and k in {1,3,8} (single row / mid / LOBPCG-scale).
 // (b) LOBPCG results unchanged: since SpMM is row-for-row bit-identical to the OLD per-row-Apply
 //     ApplyBlock it replaced, LOBPCG's whole trajectory (iterations, eigenvalues, eigenvectors)
@@ -89,6 +89,8 @@ public class doubleSparseSpMMTests
             return Blas.dot(M, M, true);   // M^T M -- symmetric by construction
         }
 
+        // Off-diagonal blocks stored LOWER (blockCol <= blockRow), as ToBSRSymmetric now requires;
+        // dense is derived via A.ToDense (side-agnostic), so only the stored position matters.
         static doubleBSR BuildRandomSymmetric(ref Arena arena, int b, uint seedBase)
         {
             var builder = arena.doubleBSRBuilder(4, 4, b, b);
@@ -96,9 +98,9 @@ public class doubleSparseSpMMTests
             builder.AddBlock(1, 1, SymDiagBlock(ref arena, b, seedBase + 2u));
             builder.AddBlock(2, 2, SymDiagBlock(ref arena, b, seedBase + 3u));
             builder.AddBlock(3, 3, SymDiagBlock(ref arena, b, seedBase + 4u));
-            builder.AddBlock(0, 1, arena.doubleRandomMat(b, b, (double)(-1f), (double)1f, seedBase + 5u));
-            builder.AddBlock(1, 3, arena.doubleRandomMat(b, b, (double)(-1f), (double)1f, seedBase + 6u));
-            builder.AddBlock(0, 3, arena.doubleRandomMat(b, b, (double)(-1f), (double)1f, seedBase + 7u));
+            builder.AddBlock(1, 0, arena.doubleRandomMat(b, b, (double)(-1f), (double)1f, seedBase + 5u));
+            builder.AddBlock(3, 1, arena.doubleRandomMat(b, b, (double)(-1f), (double)1f, seedBase + 6u));
+            builder.AddBlock(3, 0, arena.doubleRandomMat(b, b, (double)(-1f), (double)1f, seedBase + 7u));
             return builder.ToBSRSymmetric(ref arena);
         }
 

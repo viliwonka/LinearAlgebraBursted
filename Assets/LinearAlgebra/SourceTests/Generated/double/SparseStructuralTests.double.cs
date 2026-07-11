@@ -182,14 +182,14 @@ public class doubleSparseStructuralTests
             var diag = arena.doubleMat(BR, BR);
             var off = arena.doubleMat(BR, BR);
 
-            // Symmetric diagonal blocks + one upper off-diagonal block.
+            // Symmetric diagonal blocks + one lower off-diagonal block.
             diag[0, 0] = (double)4; diag[0, 1] = (double)1;
             diag[1, 0] = (double)1; diag[1, 1] = (double)5;
             FillBlock(ref off, 0, 1, (double)1);
 
             builder.AddBlock(0, 0, in diag);
             builder.AddBlock(1, 1, in diag);
-            builder.AddBlock(0, 1, in off);
+            builder.AddBlock(1, 0, in off);
 
             var A = builder.ToBSRSymmetric(ref arena);
             var At = BSR.transpose(in A, ref arena);

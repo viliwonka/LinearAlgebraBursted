@@ -213,8 +213,8 @@ public class fProxyKrylovRound2Tests
             builder.AddBlock(1, 1, SpdBlock(ref arena, b, 70202));
             builder.AddBlock(2, 2, SpdBlock(ref arena, b, 70203));
             builder.AddBlock(3, 3, SpdBlock(ref arena, b, 70204));
-            builder.AddBlock(0, 1, arena.fProxyRandomMat(b, b, -1f, 1f, 70205));  // upper off-diagonals
-            builder.AddBlock(1, 3, arena.fProxyRandomMat(b, b, -1f, 1f, 70206));
+            builder.AddBlock(1, 0, arena.fProxyRandomMat(b, b, -1f, 1f, 70205));  // lower off-diagonals
+            builder.AddBlock(3, 1, arena.fProxyRandomMat(b, b, -1f, 1f, 70206));
             var A = builder.ToBSRSymmetric(ref arena);
             var x = arena.fProxyRandomVec(dim, -1f, 1f, 70210);
             CheckApplyDotExact(new fProxyBSROperator(in A), in x, ref arena);
@@ -354,19 +354,22 @@ public class fProxyKrylovRound2Tests
             return builder.ToBSR(ref arena);                                          // row4: empty
         }
 
-        // Symmetric (upper-triangle) 5x5-block grid: SPD diagonal at every block-row plus upper
-        // off-diagonals giving rows with 4, 3, 2 stored blocks.
+        // Symmetric (lower-triangle) 5x5-block grid: SPD diagonal at every block-row plus lower
+        // off-diagonals giving rows with 4, 3, 2 stored blocks. Reflected about the block-grid's
+        // anti-diagonal (row',col') = (4-col, 4-row) relative to the pre-flip upper-canonical
+        // layout, so the row-degree profile (4,3,2 stored blocks) is preserved, just on rows
+        // (4,3,2) instead of (0,1,2).
         static fProxyBSR BuildSymMultiBlock(ref Arena arena, int b, uint seed)
         {
             var builder = arena.fProxyBSRBuilder(5, 5, b, b, 16);
             for (int i = 0; i < 5; i++)
                 builder.AddBlock(i, i, SpdBlock(ref arena, b, seed + (uint)i + 1u));
-            builder.AddBlock(0, 1, arena.fProxyRandomMat(b, b, -1f, 1f, seed + 11u));  // row0: diag + 3
-            builder.AddBlock(0, 2, arena.fProxyRandomMat(b, b, -1f, 1f, seed + 12u));
-            builder.AddBlock(0, 4, arena.fProxyRandomMat(b, b, -1f, 1f, seed + 13u));
-            builder.AddBlock(1, 3, arena.fProxyRandomMat(b, b, -1f, 1f, seed + 14u));  // row1: diag + 2
-            builder.AddBlock(1, 4, arena.fProxyRandomMat(b, b, -1f, 1f, seed + 15u));
-            builder.AddBlock(2, 3, arena.fProxyRandomMat(b, b, -1f, 1f, seed + 16u));  // row2: diag + 1
+            builder.AddBlock(4, 3, arena.fProxyRandomMat(b, b, -1f, 1f, seed + 11u));  // row4: diag + 3
+            builder.AddBlock(4, 2, arena.fProxyRandomMat(b, b, -1f, 1f, seed + 12u));
+            builder.AddBlock(4, 0, arena.fProxyRandomMat(b, b, -1f, 1f, seed + 13u));
+            builder.AddBlock(3, 1, arena.fProxyRandomMat(b, b, -1f, 1f, seed + 14u));  // row3: diag + 2
+            builder.AddBlock(3, 0, arena.fProxyRandomMat(b, b, -1f, 1f, seed + 15u));
+            builder.AddBlock(2, 1, arena.fProxyRandomMat(b, b, -1f, 1f, seed + 16u));  // row2: diag + 1
             return builder.ToBSRSymmetric(ref arena);
         }
 

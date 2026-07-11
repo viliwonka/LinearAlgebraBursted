@@ -41,7 +41,7 @@ namespace LinearAlgebra.Sparse
 
             if (A.Symmetric)
             {
-                // Upper-block symmetric storage represents A == Aᵀ; the stored pattern and block
+                // Lower-block symmetric storage represents A == Aᵀ; the stored pattern and block
                 // contents are already canonical, so transpose == identical copy.
                 unsafe
                 {

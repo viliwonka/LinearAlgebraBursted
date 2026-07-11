@@ -302,3 +302,9 @@ SSOR mirrors to full; ILU0/Blas.Triangular unaffected. Options: (a) cross-refere
 sites (cheap, recommended); (b) flip symmetric BSR to lower storage (breaking, touches symmetric
 spMV/builder/mirror); accepting both halves in ToBSRSymmetric was already design-rejected
 ("don't mask caller bugs"). RULED 2026-07-11: owner wants this FIXED (deferred to TODO, not immediate); confirm approach (doc cross-ref vs storage flip) when picked up.
+
+RESOLVED 2026-07-12: option (b) — `ToBSRSymmetric` now canonicalizes LOWER (rejects upper-triangle
+triplets), matching CHO/CHOP/fProxyIC0. spMV/spMM/MirrorToFull/transpose were already side-neutral
+(no code change); `fProxyIC0` gets a real win, its symmetric-storage input is now consumed
+zero-copy (no mirror-to-full pass) since the stored lower pattern IS the IC(0) pattern. See
+Assets/LinearAlgebra/CodeGen/TemplateSource/Sparse/DEVLOG.md for the rationale.

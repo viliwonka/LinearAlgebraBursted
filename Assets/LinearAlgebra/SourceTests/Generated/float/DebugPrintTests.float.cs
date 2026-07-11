@@ -70,13 +70,13 @@ public class floatDebugPrintTests
         return b.ToBSR(ref arena);
     }
 
-    // Symmetric upper-block-triangle 2x2 grid of 1x1 blocks. Stored blocks: (0,0)=5, (0,1)=3,
-    // (1,1)=7; the mirror block (1,0) is NOT stored. Dense form is [[5 3][3 7]].
+    // Symmetric lower-block-triangle 2x2 grid of 1x1 blocks. Stored blocks: (0,0)=5, (1,0)=3,
+    // (1,1)=7; the mirror block (0,1) is NOT stored. Dense form is [[5 3][3 7]].
     static floatBSR BuildSymmetric(ref Arena arena)
     {
         var b = arena.floatBSRBuilder(2, 2, 1, 1);
         b.AddValue(0, 0, (float)5);
-        b.AddValue(0, 1, (float)3);
+        b.AddValue(1, 0, (float)3);
         b.AddValue(1, 1, (float)7);
         return b.ToBSRSymmetric(ref arena);
     }
@@ -96,18 +96,18 @@ public class floatDebugPrintTests
         arena.Dispose();
     }
 
-    // Symmetric storage's triplet CSV shows ONLY the stored upper blocks -- it does NOT mirror the
-    // (1,0) block back in (unlike ToText/ToDense, which do).
+    // Symmetric storage's triplet CSV shows ONLY the stored lower blocks -- it does NOT mirror the
+    // (0,1) block back in (unlike ToText/ToDense, which do).
     [Test]
-    public void SparseToCsvSymmetricShowsOnlyStoredUpperBlocks()
+    public void SparseToCsvSymmetricShowsOnlyStoredLowerBlocks()
     {
         var arena = new Arena(Allocator.Persistent);
 
         var S = BuildSymmetric(ref arena);
         string csv = Print.ToCsv(in S);
 
-        Assert.AreEqual("blockRow,blockCol,v0\n0,0,5\n0,1,3\n1,1,7\n", csv);
-        Assert.IsFalse(csv.Contains("\n1,0,"));   // the mirrored lower block is never emitted
+        Assert.AreEqual("blockRow,blockCol,v0\n0,0,5\n1,0,3\n1,1,7\n", csv);
+        Assert.IsFalse(csv.Contains("\n0,1,"));   // the mirrored upper block is never emitted
 
         arena.Dispose();
     }
@@ -179,7 +179,7 @@ public class floatDebugPrintTests
         var arena = new Arena(Allocator.Persistent);
 
         var S = BuildSymmetric(ref arena);
-        Assert.DoesNotThrow(() => Print.Spy(in S));   // exercises the upper->lower mirror display path
+        Assert.DoesNotThrow(() => Print.Spy(in S));   // exercises the lower->upper mirror display path
         Assert.DoesNotThrow(() => Print.Log(in S));
 
         arena.Dispose();

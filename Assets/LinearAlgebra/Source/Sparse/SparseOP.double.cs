@@ -171,7 +171,7 @@ namespace LinearAlgebra.Sparse
         /// allocation. Feeds an AᵀA-Jacobi (column-equilibration) least-squares preconditioner
         /// (see <see cref="doubleColScaledOperator{TInner}"/> / <c>Blas.buildJacobiScale</c>).
         ///
-        /// NOT supported for Symmetric (upper-block-triangle-only) storage: the implicit lower
+        /// NOT supported for Symmetric (lower-block-triangle-only) storage: the implicit upper
         /// blocks are not materialized, so a single pass would under-count every column -- throws
         /// in that case. Jacobi-LS preconditioning targets rectangular / non-symmetric least
         /// squares, where Symmetric is false.
@@ -181,7 +181,7 @@ namespace LinearAlgebra.Sparse
             if (d2.N != A.N_Cols)
                 throw new ArgumentException("columnNormsSquared: d2.N must equal A.N_Cols");
             if (A.Symmetric)
-                throw new ArgumentException("columnNormsSquared: not supported for Symmetric (upper-block-only) storage -- the implicit lower blocks would be under-counted");
+                throw new ArgumentException("columnNormsSquared: not supported for Symmetric (lower-block-only) storage -- the implicit upper blocks would be under-counted");
 
             int BR = A.BR, BC = A.BC;
             int blockSize = BR * BC;
@@ -221,7 +221,7 @@ namespace LinearAlgebra.Sparse
         {
             if (A.Symmetric)
             {
-                // A == A^T for symmetric upper-block storage -- forward straight to spMV. Its guards
+                // A == A^T for symmetric lower-block storage -- forward straight to spMV. Its guards
                 // (Assume.SameDim(A.N_Cols, x.N), y.N != A.M_Rows) are equivalent to spMVT's own
                 // (Assume.SameDim(A.M_Rows, x.N), y.N != A.N_Cols) here because Symmetric implies
                 // A.M_Rows == A.N_Cols.
@@ -286,7 +286,7 @@ namespace LinearAlgebra.Sparse
         /// Rows solved in ascending order; each row's off-diagonal contribution is a b x b matvec
         /// against already-solved earlier rows, the diagonal solve is Jacobi's explicit block
         /// inverse (no per-row factorization). FULL-storage BSR only (Q4 ruling) -- throws on
-        /// Symmetric (upper-block-triangle-only) storage; mirror it first via
+        /// Symmetric (lower-block-triangle-only) storage; mirror it first via
         /// <see cref="Arena.doubleBSRMirrorToFull"/>. diagScale=1 is the plain (unscaled)
         /// Gauss-Seidel forward sweep; <see cref="doubleSSOR"/> drives this with diagScale=Omega.
         /// y must not alias r (same "read the full row before any row's write" reasoning as
@@ -297,7 +297,7 @@ namespace LinearAlgebra.Sparse
             if (A.BlockRows != A.BlockCols || A.BR != A.BC)
                 throw new ArgumentException("sweepLower: A must be square (BlockRows==BlockCols, BR==BC)");
             if (A.Symmetric)
-                throw new ArgumentException("sweepLower: A must be full-storage BSR (Symmetric upper-block-triangle storage is not supported here -- mirror it first via Arena.doubleBSRMirrorToFull)");
+                throw new ArgumentException("sweepLower: A must be full-storage BSR (Symmetric lower-block-triangle storage is not supported here -- mirror it first via Arena.doubleBSRMirrorToFull)");
             if (Jacobi.BlockRows != A.BlockRows || Jacobi.BR != A.BR)
                 throw new ArgumentException("sweepLower: Jacobi must be built from A (BlockRows/BR mismatch)");
             if (r.N != A.M_Rows)
@@ -343,7 +343,7 @@ namespace LinearAlgebra.Sparse
             if (A.BlockRows != A.BlockCols || A.BR != A.BC)
                 throw new ArgumentException("sweepUpper: A must be square (BlockRows==BlockCols, BR==BC)");
             if (A.Symmetric)
-                throw new ArgumentException("sweepUpper: A must be full-storage BSR (Symmetric upper-block-triangle storage is not supported here -- mirror it first via Arena.doubleBSRMirrorToFull)");
+                throw new ArgumentException("sweepUpper: A must be full-storage BSR (Symmetric lower-block-triangle storage is not supported here -- mirror it first via Arena.doubleBSRMirrorToFull)");
             if (Jacobi.BlockRows != A.BlockRows || Jacobi.BR != A.BR)
                 throw new ArgumentException("sweepUpper: Jacobi must be built from A (BlockRows/BR mismatch)");
             if (r.N != A.M_Rows)

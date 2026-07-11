@@ -7,8 +7,8 @@ Vectors stay dense — no sparse vector type.
 ## Storage & assembly
 
 - **`floatBSR`** — `RowPtr`/`ColInd`/`Values` (flat, row-major per block). `Symmetric = true` stores
-  only the upper block-triangle (requires square blocks and grid) — halves memory. `ToDense(ref
-  arena)` materializes it (mirroring implicit lower blocks when symmetric).
+  only the lower block-triangle (requires square blocks and grid) — halves memory. `ToDense(ref
+  arena)` materializes it (mirroring implicit upper blocks when symmetric).
 - **`floatBSRBuilder`** — COO-of-blocks assembly: `AddBlock(br, bc, block)` / `AddValue(row, col, v)`,
   then `ToBSR(ref arena)` / `ToBSRSymmetric(ref arena)`. **Duplicate triplets at the same
   (blockRow, blockCol) are summed on compression** — the standard sparse-assembly contract, so you
@@ -60,8 +60,8 @@ Ryzen 9 9950X3D, single-thread Burst, median of 9.
 | float | 3.66 | 0.09 | ~40× |
 | double | 15.02 | 0.37 | ~40× |
 
-Symmetric storage (upper blocks only) is a **memory** win — ½ the footprint at ~break-even spMV
-throughput, since each stored upper block still does two block-multiplies.
+Symmetric storage (lower blocks only) is a **memory** win — ½ the footprint at ~break-even spMV
+throughput, since each stored lower block still does two block-multiplies.
 
 **Block-Jacobi PCG vs. plain CG, same BSR system** (`Benchmarks/PCGBenchmark.cs`; block-tridiagonal
 SPD system, b=3, nb=256, N=768, K=40 fixed iterations, tol=0):

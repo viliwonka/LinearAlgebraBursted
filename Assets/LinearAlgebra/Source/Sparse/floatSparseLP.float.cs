@@ -297,7 +297,7 @@ namespace LinearAlgebra.Sparse
         /// from the stored blocks in one O(nnz) pass (no AᵀA, no transpose-matvecs). The row dual of
         /// <see cref="columnNormsSquared"/> (which gives Σ_i A[i,j]²). Feeds the interior-point normal
         /// Jacobi diagonal diag(A diag(w) Aᵀ). Written into the caller's out (length A.M_Rows), no alloc.
-        /// NOT supported for Symmetric (upper-block-only) storage -- the implicit lower blocks would be
+        /// NOT supported for Symmetric (lower-block-only) storage -- the implicit upper blocks would be
         /// under-counted.
         /// </summary>
         public static void rowSquaredWeighted(in floatBSR A, in floatN w, ref floatN outv)
@@ -307,7 +307,7 @@ namespace LinearAlgebra.Sparse
             if (outv.N != A.M_Rows)
                 throw new ArgumentException("rowSquaredWeighted: outv.N must equal A.M_Rows");
             if (A.Symmetric)
-                throw new ArgumentException("rowSquaredWeighted: not supported for Symmetric (upper-block-only) storage");
+                throw new ArgumentException("rowSquaredWeighted: not supported for Symmetric (lower-block-only) storage");
 
             int BR = A.BR, BC = A.BC, blockSize = BR * BC;
 

@@ -80,14 +80,14 @@ namespace LinearAlgebra.Internal
             }
         }
 
-        // Symmetric BR x BR block-CSR matvec: y = A * x where A is stored as its UPPER block-
-        // triangle only (ColInd >= blockRow for every stored block) and the strictly-lower triangle
+        // Symmetric BR x BR block-CSR matvec: y = A * x where A is stored as its LOWER block-
+        // triangle only (ColInd <= blockRow for every stored block) and the strictly-upper triangle
         // is IMPLICIT (block (bj,bi) == transpose of stored block (bi,bj)). y must already be zeroed
         // by the caller (accumulates into y). For each stored block K at (bi,bj):
         //   - diagonal (bi==bj): y_i += K * x_j   (once -- K is used as the full BR x BR block as
         //     given, no packing/half-storage assumption; see fProxyBSR.Symmetric doc)
-        //   - off-diagonal (bi<bj, guaranteed since only the upper triangle is stored): y_i += K * x_j
-        //     AND y_j += K^T * x_i (the implicit mirrored lower block)
+        //   - off-diagonal (bi>bj, guaranteed since only the lower triangle is stored): y_i += K * x_j
+        //     AND y_j += K^T * x_i (the implicit mirrored upper block)
         // Single-threaded caller (IJob.Run, no parallel-for) -> the y_j scatter write from an
         // off-diagonal block is race-free, matching every other kernel in this file. Correctness-
         // first fallback -- BSR.spMV routes here for symmetric matrices whose BR is not one
@@ -123,7 +123,7 @@ namespace LinearAlgebra.Internal
 
                     if (bi != bj)
                     {
-                        // y_j += K^T * x_i  (the implicit mirrored lower block)
+                        // y_j += K^T * x_i  (the implicit mirrored upper block)
                         int yBaseJ = bj * BR;
                         int xBaseI = bi * BR;
                         for (int c = 0; c < BR; c++)
@@ -401,7 +401,7 @@ namespace LinearAlgebra.Internal
             }
         }
 
-        // ---- bsrMatVecSym: y = A * x, symmetric upper-block-triangle storage, square block b --
+        // ---- bsrMatVecSym: y = A * x, symmetric lower-block-triangle storage, square block b --
         //
         // Each specialization is the fused pair of the corresponding bsrMatVecB{b} row-pass
         // (y_i += K * x_j, always) and bsrMatVecTB{b} column-pass (y_j += K^T * x_i, only when
@@ -804,7 +804,7 @@ namespace LinearAlgebra.Internal
             }
         }
 
-        // ---- bsrMatMatSym: AV[rv,:] += A * V[rv,:], symmetric upper-block-triangle storage -----
+        // ---- bsrMatMatSym: AV[rv,:] += A * V[rv,:], symmetric lower-block-triangle storage -----
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void bsrMatMatSym([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] fProxy* values,
@@ -1172,7 +1172,7 @@ namespace LinearAlgebra.Internal
         }
 
         // =====================================================================================
-        // Block forward/back substitution over FULL-storage BSR (Symmetric upper-block-triangle
+        // Block forward/back substitution over FULL-storage BSR (Symmetric lower-block-triangle
         // storage is rejected at the BSR.sweepLower/sweepUpper dispatch -- see
         // fProxyBSRMirrorToFull for the one-time mirror-to-full path). Sequential across
         // block-rows by construction (that IS the math of a triangular solve, not a deficiency --

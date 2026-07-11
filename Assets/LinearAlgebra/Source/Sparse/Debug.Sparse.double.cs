@@ -18,7 +18,7 @@ namespace LinearAlgebra
         // Scans ColInd[RowPtr[row]..RowPtr[row+1)) for `col`. ColInd is ascending within a row
         // (see doubleBSR.cs), so this early-exits once it passes col instead of scanning the whole
         // row. Used both directly (non-symmetric) and with (row,col) swapped to mirror the stored
-        // upper block-triangle into the lower triangle for Symmetric matrices.
+        // lower block-triangle into the upper triangle for Symmetric matrices.
         static bool BsrBlockStored(in doubleBSR m, int row, int col)
         {
             int start = m.RowPtr[row];
@@ -37,8 +37,8 @@ namespace LinearAlgebra
         // duplicate const across the float/double partials.
 
         // Appends the header + block-sparsity grid ('X' stored / '.' absent) into str. One char per
-        // block; for Symmetric matrices (only the upper block-triangle is stored, see doubleBSR.cs)
-        // the lower triangle is mirrored in the DISPLAY only -- storage itself is untouched. Caps
+        // block; for Symmetric matrices (only the lower block-triangle is stored, see doubleBSR.cs)
+        // the upper triangle is mirrored in the DISPLAY only -- storage itself is untouched. Caps
         // against the FixedString4096Bytes budget and appends "..." instead of overflowing. Returns
         // true if the grid was truncated (caller can skip anything more expensive after that).
         static bool AppendBsrSpyGrid(in doubleBSR m, ref FixedString4096Bytes str)
@@ -73,8 +73,8 @@ namespace LinearAlgebra
                 for (int bc = 0; bc < nb; bc++)
                 {
                     bool present;
-                    if (m.Symmetric && br > bc)
-                        present = BsrBlockStored(in m, bc, br); // mirror: (bc,br) is the stored upper block
+                    if (m.Symmetric && br < bc)
+                        present = BsrBlockStored(in m, bc, br); // mirror: (bc,br) is the stored lower block
                     else
                         present = BsrBlockStored(in m, br, bc);
 
@@ -96,8 +96,8 @@ namespace LinearAlgebra
         /// <summary>
         /// MATLAB-style block sparsity grid: one char per BR x BC block ('X' stored, '.' absent),
         /// with a header giving M_Rows x N_Cols, block size BR x BC, block grid BlockRows x
-        /// BlockCols, Nnzb and block density. Symmetric matrices (upper-block-triangle-only
-        /// storage) are mirrored into the lower triangle for the display.
+        /// BlockCols, Nnzb and block density. Symmetric matrices (lower-block-triangle-only
+        /// storage) are mirrored into the upper triangle for the display.
         /// </summary>
         public static void Spy(in doubleBSR m)
         {

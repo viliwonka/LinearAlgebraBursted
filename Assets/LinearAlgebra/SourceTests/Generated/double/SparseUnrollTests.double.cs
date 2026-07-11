@@ -19,7 +19,7 @@ using Unity.Jobs;
 // cases that must still fall back to the general kernel: a non-specialized square size (b=5) and
 // a rectangular block (BR != BC, which never dispatches to a specialized kernel regardless of
 // size). Symmetric-storage cases (bsrMatVecSymB{b}) reuse the same recipe but on a GENUINELY
-// symmetric matrix: ToBSRSymmetric now requires symmetric diagonal blocks (the lower triangle is
+// symmetric matrix: ToBSRSymmetric now requires symmetric diagonal blocks (the upper triangle is
 // stored implicitly as the transpose), so the diagonal blocks are built as M^T M. That makes the
 // dense expansion truly symmetric, which lets the spMVT check compare against an INDEPENDENT
 // transpose-matvec of the dense (DenseTransMatVec) rather than tautologically re-using spMV's own
@@ -114,13 +114,13 @@ public class doubleSparseUnrollTests
             return Blas.dot(M, M, true);   // M^T M
         }
 
-        // 4x4 block grid of b x b blocks, SYMMETRIC (upper-triangle-only) storage: a SYMMETRIC
+        // 4x4 block grid of b x b blocks, SYMMETRIC (lower-triangle-only) storage: a SYMMETRIC
         // diagonal block at every grid position (exercises bsrMatVecSymB{b}'s bi==bj branch) plus
-        // three off-diagonal pairs, including two that both mirror into block-row 3 (exercises
-        // bi!=bj scatter writes landing in the same y-range from different stored blocks). Diagonal
-        // blocks are M^T M so the represented matrix is genuinely symmetric (required by
-        // ToBSRSymmetric); off-diagonal blocks stay arbitrary (their transpose fills the lower
-        // triangle).
+        // three off-diagonal pairs, exercising bi!=bj scatter writes from multiple stored blocks
+        // sharing a block-row. Diagonal blocks are M^T M so the represented matrix is genuinely
+        // symmetric (required by ToBSRSymmetric); off-diagonal blocks stay arbitrary (their
+        // transpose fills the upper triangle). dense is derived via A.ToDense (side-agnostic), so
+        // only the stored (row, col) POSITION matters here, not which triangle "K" nominally lives in.
         static doubleBSR BuildRandomSymmetric(ref Arena arena, int b, uint seedBase)
         {
             var builder = arena.doubleBSRBuilder(4, 4, b, b);
@@ -128,9 +128,9 @@ public class doubleSparseUnrollTests
             builder.AddBlock(1, 1, SymDiagBlock(ref arena, b, seedBase + 2u));
             builder.AddBlock(2, 2, SymDiagBlock(ref arena, b, seedBase + 3u));
             builder.AddBlock(3, 3, SymDiagBlock(ref arena, b, seedBase + 4u));
-            builder.AddBlock(0, 1, arena.doubleRandomMat(b, b, (double)(-1f), (double)1f, seedBase + 5u));
-            builder.AddBlock(1, 3, arena.doubleRandomMat(b, b, (double)(-1f), (double)1f, seedBase + 6u));
-            builder.AddBlock(0, 3, arena.doubleRandomMat(b, b, (double)(-1f), (double)1f, seedBase + 7u));
+            builder.AddBlock(1, 0, arena.doubleRandomMat(b, b, (double)(-1f), (double)1f, seedBase + 5u));
+            builder.AddBlock(3, 1, arena.doubleRandomMat(b, b, (double)(-1f), (double)1f, seedBase + 6u));
+            builder.AddBlock(3, 0, arena.doubleRandomMat(b, b, (double)(-1f), (double)1f, seedBase + 7u));
             return builder.ToBSRSymmetric(ref arena);
         }
 

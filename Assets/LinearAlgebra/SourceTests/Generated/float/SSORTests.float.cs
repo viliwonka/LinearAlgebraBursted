@@ -395,7 +395,6 @@ public class floatSSORTests
                     if ((i + j) % 2 == 0)
                     {
                         var off = arena.floatRandomMat(b, b, -0.2f, 0.2f, (uint)(931000 + i * 10 + j));
-                        symBuilder.AddBlock(i, j, in off);
                         fullBuilder.AddBlock(i, j, in off);
 
                         var offT = arena.floatMat(b, b);
@@ -403,6 +402,7 @@ public class floatSSORTests
                             for (int cc = 0; cc < b; cc++)
                                 offT[rr, cc] = off[cc, rr];
                         fullBuilder.AddBlock(j, i, in offT);
+                        symBuilder.AddBlock(j, i, in offT);   // lower triangle stored now
                     }
 
             var Asym = symBuilder.ToBSRSymmetric(ref arena);

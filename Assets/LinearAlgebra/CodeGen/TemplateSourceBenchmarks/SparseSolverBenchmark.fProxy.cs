@@ -399,7 +399,7 @@ namespace LinearAlgebra.Benchmarks
 
         // Same recipe as BuildBlockSPDFProxy (identical rng sequence), but assembles TWO block-CSR encodings
         // of the SAME dense SPD matrix side by side: `full` (every stored block, incl. the explicit mirrored
-        // lower block) and `sym` (upper-triangle + diagonal ONLY, via ToBSRSymmetric). Used by Section 0b to
+        // upper block) and `sym` (lower-triangle + diagonal ONLY, via ToBSRSymmetric). Used by Section 0b to
         // isolate the symmetric-storage spMV win on a byte-for-byte identical matrix.
         static void BuildBlockSPDPairFProxy(ref Arena arena, int nb, float density, uint seed,
                                             out fProxyMxN dense, out fProxyBSR full, out fProxyBSR sym)
@@ -440,7 +440,6 @@ namespace LinearAlgebra.Benchmarks
                         block[r, c] = rng.NextFProxy(-offScale, offScale);
 
                 fullBuilder.AddBlock(bi, bj, in block);
-                symBuilder.AddBlock(bi, bj, in block);   // upper only -- sym never sees the mirror
                 for (int r = 0; r < BR; r++)
                     for (int c = 0; c < BR; c++)
                         dense[bi * BR + r, bj * BR + c] = block[r, c];
@@ -450,7 +449,8 @@ namespace LinearAlgebra.Benchmarks
                     for (int c = 0; c < BR; c++)
                         blockT[r, c] = block[c, r];
 
-                fullBuilder.AddBlock(bj, bi, in blockT); // mirrored lower block -- FULL storage only
+                fullBuilder.AddBlock(bj, bi, in blockT); // mirrored upper block -- FULL storage only
+                symBuilder.AddBlock(bj, bi, in blockT);  // lower only -- sym never sees the mirror
                 for (int r = 0; r < BR; r++)
                     for (int c = 0; c < BR; c++)
                         dense[bj * BR + r, bi * BR + c] = blockT[r, c];
@@ -644,7 +644,7 @@ namespace LinearAlgebra.Benchmarks
 
         // ==== Section 0b: symmetric-storage spMV vs full-storage spMV on the SAME SPD matrix ============
         //
-        // Isolates the symmetric-storage half of the Milestone-A story: upper-triangle-only storage
+        // Isolates the symmetric-storage half of the Milestone-A story: lower-triangle-only storage
         // (ToBSRSymmetric) vs full block-CSR, on the identical matrix (BuildBlockSPDPairFProxy pins the rng
         // so `full` and `sym` encode byte-for-byte the same SPD system). bsrMatVecSym touches half as many
         // STORED blocks as bsrMatVec's full traversal -- expected ~2x at denser fill, less at sparse fill.

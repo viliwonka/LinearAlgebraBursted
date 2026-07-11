@@ -181,21 +181,21 @@ namespace LinearAlgebra.Sparse
         public unsafe fProxyBSR ToBSR(ref Arena arena) => ToBSRCore(ref arena, symmetric: false);
 
         /// <summary>
-        /// Same as ToBSR, but builds SYMMETRIC upper-block storage (see fProxyBSR.Symmetric / spec
+        /// Same as ToBSR, but builds SYMMETRIC lower-block storage (see fProxyBSR.Symmetric / spec
         /// §2.3): requires BR==BC and BlockRows==BlockCols, and requires every accumulated triplet's
-        /// blockCol >= blockRow (upper triangle + diagonal only). A lower-triangle triplet
-        /// (blockCol < blockRow) throws immediately -- we do NOT silently fold it into its transpose
+        /// blockCol &lt;= blockRow (lower triangle + diagonal only). An upper-triangle triplet
+        /// (blockCol > blockRow) throws immediately -- we do NOT silently fold it into its transpose
         /// position, because that would mask caller bugs (e.g. accidentally adding both A_ij and A_ji
         /// for what the caller believes is a symmetric matrix, when they actually differ). Callers
         /// building a symmetric matrix must AddBlock/AddValue only at (blockRow, blockCol) with
-        /// blockCol >= blockRow.
+        /// blockCol &lt;= blockRow.
         ///
-        /// Each stored DIAGONAL block must itself be symmetric (block[r,c] == block[c,r]). Upper-block
-        /// storage represents the implicit lower block (bj,bi) as block(bi,bj)^T, so the matrix is
+        /// Each stored DIAGONAL block must itself be symmetric (block[r,c] == block[c,r]). Lower-block
+        /// storage represents the implicit upper block (bj,bi) as block(bi,bj)^T, so the matrix is
         /// symmetric ONLY IF the diagonal blocks are -- and spMVT forwards to spMV assuming A==A^T, so
         /// a non-symmetric diagonal block would silently make spMVT return A*x, not A^T*x. A
         /// non-symmetric diagonal block therefore throws (same "don't mask caller bugs" stance as the
-        /// lower-triangle guard). The check is on the duplicate-SUMMED diagonal block, so a symmetric
+        /// upper-triangle guard). The check is on the duplicate-SUMMED diagonal block, so a symmetric
         /// block assembled from several AddBlock/AddValue contributions is accepted.
         /// </summary>
         public unsafe fProxyBSR ToBSRSymmetric(ref Arena arena)
@@ -205,8 +205,8 @@ namespace LinearAlgebra.Sparse
 
             int n = TripletCount;
             for (int t = 0; t < n; t++)
-                if (_state->triBlockCol[t] < _state->triBlockRow[t])
-                    throw new ArgumentException("ToBSRSymmetric: found a lower-triangle triplet (blockCol < blockRow); symmetric build only accepts blocks with blockCol >= blockRow (upper triangle + diagonal). Add the block at its transpose position (blockRow<->blockCol swapped) instead, or use ToBSR() for full storage.");
+                if (_state->triBlockCol[t] > _state->triBlockRow[t])
+                    throw new ArgumentException("ToBSRSymmetric: found an upper-triangle triplet (blockCol > blockRow); symmetric build only accepts blocks with blockCol <= blockRow (lower triangle + diagonal). Add the block at its transpose position (blockRow<->blockCol swapped) instead, or use ToBSR() for full storage.");
 
             var bsm = ToBSRCore(ref arena, symmetric: true);
 
@@ -228,7 +228,7 @@ namespace LinearAlgebra.Sparse
                             fProxy b = bsm.Values[off + c * BC + r];
                             fProxy tolAbs = (fProxy)8 * Consts.fProxyZeroThreshold * ((fProxy)1 + math.abs(a) + math.abs(b));
                             if (math.abs(a - b) > tolAbs)
-                                throw new ArgumentException("ToBSRSymmetric: a diagonal block is not symmetric (block[r,c] != block[c,r]). Symmetric upper-block storage stores the lower triangle implicitly as the transpose, so diagonal blocks must be symmetric; symmetrize the block (e.g. (K+K^T)/2), or use ToBSR() for full storage.");
+                                throw new ArgumentException("ToBSRSymmetric: a diagonal block is not symmetric (block[r,c] != block[c,r]). Symmetric lower-block storage stores the upper triangle implicitly as the transpose, so diagonal blocks must be symmetric; symmetrize the block (e.g. (K+K^T)/2), or use ToBSR() for full storage.");
                         }
                 }
             }

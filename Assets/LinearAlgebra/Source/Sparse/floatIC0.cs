@@ -20,9 +20,11 @@ namespace LinearAlgebra.Sparse
     /// shift that succeeded in <see cref="Shift"/> (0 = clean factorization). Throws if the
     /// largest shift still breaks down — the matrix is likely not SPD.
     ///
-    /// FULL-storage BSR only: a Symmetric-storage A pays a one-time mirror-to-full copy at
-    /// construction (same policy as <see cref="floatSSOR"/>). A must store every diagonal block.
-    /// Composed entirely of arena-tracked pieces — no record table of its own, no Dispose().
+    /// Symmetric-storage A needs NO mirror: its stored lower-block pattern (diagonal included) IS
+    /// exactly the pattern IC(0) factorizes, so a symmetric-storage A is consumed directly,
+    /// zero-copy. Full-storage A is accepted too (only its lower blocks are read). A must store
+    /// every diagonal block. Composed entirely of arena-tracked pieces — no record table of its
+    /// own, no Dispose().
     /// </summary>
     public readonly struct floatIC0 : IfloatPreconditioner
     {
@@ -45,7 +47,10 @@ namespace LinearAlgebra.Sparse
             if (a.BlockRows != a.BlockCols || a.BR != a.BC)
                 throw new ArgumentException("floatIC0: A must be square (BlockRows==BlockCols, BR==BC)");
 
-            var A = a.Symmetric ? arena.floatBSRMirrorToFull(in a) : a;
+            // No mirror needed either way: full-storage A's lower blocks are read directly below,
+            // and symmetric-storage A already stores exactly the lower-block pattern (diagonal
+            // included) -- the same filter (col <= i) below passes every stored block of either.
+            var A = a;
 
             int nb = A.BlockRows;
             int BR = A.BR;

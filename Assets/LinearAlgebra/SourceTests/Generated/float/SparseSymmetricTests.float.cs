@@ -11,10 +11,10 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// Symmetric upper-block-triangle storage test suite for floatBSR (BSR). Milestone A: prove that
-// a matrix stored as its upper block-triangle ONLY (floatBSR.Symmetric == true, built via
+// Symmetric lower-block-triangle storage test suite for floatBSR (BSR). Milestone A: prove that
+// a matrix stored as its lower block-triangle ONLY (floatBSR.Symmetric == true, built via
 // floatBSRBuilder.ToBSRSymmetric) behaves identically to the SAME matrix stored FULLY (every
-// block, incl. the explicit mirrored lower blocks, built via ToBSR). Every correctness case
+// block, incl. the explicit mirrored upper blocks, built via ToBSR). Every correctness case
 // assembles the SAME logical SPD matrix in BOTH storage forms plus a dense reference, and
 // cross-checks spMV / spMVT / ToDense / the solvers between them.
 //
@@ -128,7 +128,7 @@ public class floatSparseSymmetricTests
 
         // Off-diagonal pair (bi < bj), small random block K:
         //   - full storage: AddBlock(bi,bj,K) AND AddBlock(bj,bi,K^T) (explicit mirror)
-        //   - symmetric storage: AddBlock(bi,bj,K) ONLY (mirror is implicit)
+        //   - symmetric storage: AddBlock(bj,bi,K^T) ONLY (mirror is implicit; lower triangle stored)
         //   - dense reference: both dense[bi,bj]=K and dense[bj,bi]=K^T so it stays truly symmetric
         // offScale is kept small so the assembled matrix stays SPD by diagonal dominance.
         static void AddOffDiag(ref Arena arena, int bi, int bj, int BR, uint seed,
@@ -144,7 +144,7 @@ public class floatSparseSymmetricTests
                     blockT[r, c] = block[c, r];
             full.AddBlock(bj, bi, in blockT);
 
-            sym.AddBlock(bi, bj, in block);
+            sym.AddBlock(bj, bi, in blockT);
 
             int ib = bi * BR, jb = bj * BR;
             for (int r = 0; r < BR; r++)
@@ -189,7 +189,7 @@ public class floatSparseSymmetricTests
             AssertVecEq(in ySymT, in yFullT2, Tol());
 
             // ---- ToDense ----
-            var dSym  = sym.ToDense(ref arena);   // mirrors upper blocks into the lower triangle
+            var dSym  = sym.ToDense(ref arena);   // mirrors lower blocks into the upper triangle
             var dFull = full.ToDense(ref arena);
             AssertMatEq(in dSym, in dFull, Tol());
             AssertMatEq(in dSym, in dense, Tol());   // both agree with the tracked reference
@@ -514,8 +514,8 @@ public class floatSparseSymmetricTests
             arena.Dispose();
         }
 
-        // Block-Jacobi on a symmetric BSR: the diagonal block (col==row) is the FIRST stored entry
-        // in a symmetric row range (upper-triangle storage => ColInd ascending, >= row), so the
+        // Block-Jacobi on a symmetric BSR: the diagonal block (col==row) is the LAST stored entry
+        // in a symmetric row range (lower-triangle storage => ColInd ascending, <= row), so the
         // preconditioner's diagonal lookup must succeed WITHOUT special-casing -- this is the
         // specific "not broken by symmetric storage" claim Milestone A asked to verify.
         void PcgBlockJacobiSymMatchesFull()
@@ -526,7 +526,7 @@ public class floatSparseSymmetricTests
             var b = arena.floatRandomVec(dim, (float)(-1f), (float)1f, 52000u);
 
             // Both preconditioners must construct without throwing (diagonal blocks ARE present in
-            // symmetric upper storage).
+            // symmetric lower storage).
             var mSym  = arena.floatBlockJacobi(in sym);
             var mFull = arena.floatBlockJacobi(in full);
 
@@ -600,28 +600,28 @@ public class floatSparseSymmetricTests
     // A1 guard / exception cases (managed thread; Assert.Throws can't run inside Burst)
     // ================================================================================
 
-    // ToBSRSymmetric rejects a lower-triangle triplet (blockCol < blockRow): building a symmetric
-    // matrix must only add blocks at (br, bc) with bc >= br, otherwise the caller has (probably)
+    // ToBSRSymmetric rejects an upper-triangle triplet (blockCol > blockRow): building a symmetric
+    // matrix must only add blocks at (br, bc) with bc <= br, otherwise the caller has (probably)
     // a bug and we refuse to silently fold it into the transpose position.
     [Test]
-    public void ToBSRSymmetric_LowerTriangleTriplet_Throws()
+    public void ToBSRSymmetric_UpperTriangleTriplet_Throws()
     {
         var arena = new Arena(Allocator.Persistent);
         try
         {
             const int BR = 2;
             var builder = arena.floatBSRBuilder(2, 2, BR, BR, 1);
-            builder.AddBlock(1, 0, arena.floatRandomMat(BR, BR, (float)(-1f), (float)1f, 60001)); // bc < br
+            builder.AddBlock(0, 1, arena.floatRandomMat(BR, BR, (float)(-1f), (float)1f, 60001)); // bc > br
             Assert.Throws<ArgumentException>(() => builder.ToBSRSymmetric(ref arena));
         }
         finally { arena.Dispose(); }
     }
 
-    // ToBSRSymmetric rejects a NON-SYMMETRIC diagonal block: upper-block storage represents the
-    // implicit lower block (bj,bi) as block(bi,bj)^T, so the matrix is symmetric only if each
+    // ToBSRSymmetric rejects a NON-SYMMETRIC diagonal block: lower-block storage represents the
+    // implicit upper block (bj,bi) as block(bi,bj)^T, so the matrix is symmetric only if each
     // diagonal block is -- and spMVT forwards to spMV assuming A==A^T, so a non-symmetric diagonal
     // block would silently make spMVT return A*x. The build must refuse it (same stance as the
-    // lower-triangle guard). Uses a 1x1 block grid so a single non-symmetric diagonal block is the
+    // upper-triangle guard). Uses a 1x1 block grid so a single non-symmetric diagonal block is the
     // only thing under test.
     [Test]
     public void ToBSRSymmetric_NonSymmetricDiagonalBlock_Throws()

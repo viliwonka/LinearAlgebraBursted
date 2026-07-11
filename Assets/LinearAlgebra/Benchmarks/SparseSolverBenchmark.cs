@@ -187,7 +187,7 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine("block grid): ~7% / ~33% of blocks nonzero, always including every diagonal block.");
             sb.AppendLine("Section 0 first isolates the pure per-iteration operator cost (dense GEMV vs sparse");
             sb.AppendLine("spMV) that dominates every solver -- the cleanest dense-vs-sparse signal. Section 0b");
-            sb.AppendLine("goes one level deeper: symmetric upper-block storage (Symmetric=true, ToBSRSymmetric)");
+            sb.AppendLine("goes one level deeper: symmetric lower-block storage (Symmetric=true, ToBSRSymmetric)");
             sb.AppendLine("vs full block-CSR storage on the IDENTICAL SPD matrix -- bsrMatVecSym touches half as");
             sb.AppendLine("many stored blocks as the full traversal, so this isolates that ~2x memory/FLOP win.");
             sb.AppendLine("Section 1x is a dedicated N=1024 CG-only case at b=4 (256 blocks of 4x4, an unrolled");

@@ -1,6 +1,22 @@
 # DEVLOG — Sparse
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## fProxyBSRBuilder.cs / fProxyBSR.cs / fProxyIC0.cs (triangle-trust unification)
+- 2026-07-12 | Coherence-audit P.2 (owner-ruled 2026-07-11): flipped `ToBSRSymmetric` from
+  upper-block canonical to LOWER-block canonical, so the whole library trusts the lower triangle
+  for symmetric matrices, dense and sparse alike. Why lower, not upper: dense row-major
+  Cholesky/CHO/CHOP are lower-optimal (the inner dot products run over two contiguous ROWS) and
+  cannot flip without a real perf loss, so the dense side was fixed; sparse symmetric spMV/spMM
+  (`bsrMatVecSym*`, `bsrMatMatSym*`) were already side-neutral (per stored off-diagonal block: one
+  gather + one transpose-scatter, no ordering assumption beyond `bi != bj`) -- confirmed by
+  re-reading every kernel while doing this change, none needed a code fix, comments only.
+  `fProxyIC0` gets a real win from the flip: its factor pattern IS A's lower block pattern, so a
+  symmetric-storage SPD input is now consumed with ZERO mirror (previously paid a full 2×Nnzb
+  mirror-to-full copy in `Arena.fProxyBSRMirrorToFull`, then read only the lower half of it back
+  out). ILU0/SSOR still mirror to full (they genuinely need both triangles row-ordered). Every
+  test/benchmark symmetric-authoring site (`ToBSRSymmetric` callers) was flipped to lower triplets
+  in the same pass.
+
 ## fProxyBSRBuilder.cs
 - 2026-07-11 | Use-after-free bug fix: the arena's `fProxyBSRBuilder(...)` factory registers a
   VALUE COPY of the builder struct in its own tracking list so it can dispose it later.

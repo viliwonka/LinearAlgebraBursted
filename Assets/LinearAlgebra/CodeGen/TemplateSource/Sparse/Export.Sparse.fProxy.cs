@@ -34,7 +34,7 @@ namespace LinearAlgebra
         /// ...,v(BR*BC-1)" with the block's values flattened row-major (matching Values' own
         /// layout -- see fProxyBSR.cs). Avoids needing an Arena (unlike ToText's ToDense route) by
         /// reading RowPtr/ColInd/Values directly. For Symmetric matrices this reflects exactly
-        /// what is stored (the upper block-triangle only), not a mirrored dense expansion.
+        /// what is stored (the lower block-triangle only), not a mirrored dense expansion.
         /// </summary>
         public static string ToCsv(in fProxyBSR m)
         {

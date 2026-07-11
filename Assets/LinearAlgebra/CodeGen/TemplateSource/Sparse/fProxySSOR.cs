@@ -24,7 +24,7 @@ namespace LinearAlgebra.Sparse
     ///
     /// FULL-storage BSR only: a Symmetric-storage A pays a one-time mirror-to-full copy at
     /// construction (<see cref="Arena.fProxyBSRMirrorToFull"/>) -- the sweeps need row-ordered
-    /// access to BOTH triangles, which upper-only storage cannot give without a column-order
+    /// access to BOTH triangles, which lower-only storage cannot give without a column-order
     /// scatter. Composed entirely of already arena-tracked pieces (A, Jacobi, and the
     /// ScaledD/scratch vectors below are all fProxyN/fProxyBSR/fProxyBlockJacobi) -- no record
     /// table of its own, no Dispose(): the arena that built it owns every buffer.

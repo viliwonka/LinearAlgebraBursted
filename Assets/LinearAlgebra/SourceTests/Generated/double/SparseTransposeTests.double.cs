@@ -180,7 +180,7 @@ public class doubleSparseTransposeTests
 
         // ---- 3. symmetric BSR: transpose is a value-identical no-op ----
         //
-        // For symmetric upper-block storage A == A^T by construction, so doubleBSRTranspose returns
+        // For symmetric lower-block storage A == A^T by construction, so doubleBSRTranspose returns
         // A itself unchanged (no redundant materialized copy). The primary contract is numerical:
         // spMV(AT, x) == spMV(A, x) for any x. The structural asserts (same Nnzb / BlockRows /
         // Symmetric flag) are a cheap confirmation that no needless rebuild happened.
@@ -205,9 +205,9 @@ public class doubleSparseTransposeTests
                 s.AddBlock(i, i, in Di);
             }
 
-            // Two upper off-diagonal blocks (blockCol > blockRow, as ToBSRSymmetric requires).
-            s.AddBlock(0, 1, arena.doubleRandomMat(BR, BR, -0.2f, 0.2f, 74100));
-            s.AddBlock(1, 2, arena.doubleRandomMat(BR, BR, -0.2f, 0.2f, 74101));
+            // Two lower off-diagonal blocks (blockCol < blockRow, as ToBSRSymmetric requires).
+            s.AddBlock(1, 0, arena.doubleRandomMat(BR, BR, -0.2f, 0.2f, 74100));
+            s.AddBlock(2, 1, arena.doubleRandomMat(BR, BR, -0.2f, 0.2f, 74101));
 
             var A = s.ToBSRSymmetric(ref arena);
             Assert.IsTrue(A.Symmetric);

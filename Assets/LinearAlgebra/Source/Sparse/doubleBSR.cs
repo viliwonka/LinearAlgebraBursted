@@ -20,7 +20,7 @@ namespace LinearAlgebra.Sparse
     /// in ascending ColInd (enables transpose-SpMV and future binary-search block lookup).
     ///
     /// Logical scalar dims: M_Rows = BlockRows*BR, N_Cols = BlockCols*BC. Rectangular blocks
-    /// (BR != BC) are supported. Set Symmetric=true to opt into upper-block-triangle-only
+    /// (BR != BC) are supported. Set Symmetric=true to opt into lower-block-triangle-only
     /// storage (halves memory and single-threaded matvec FLOPs for symmetric matrices) --
     /// requires BR==BC and a square block grid (BlockRows==BlockCols).
     ///
@@ -39,7 +39,7 @@ namespace LinearAlgebra.Sparse
         public int BR;         // rows per block
         public int BC;         // cols per block
 
-        public bool Symmetric;  // true => only the upper block-triangle (ColInd >= blockRow) is stored
+        public bool Symmetric;  // true => only the lower block-triangle (ColInd <= blockRow) is stored
 
         // Generation stamp captured from the record's slot at construction time (0/unused on the
         // standalone path); packed into existing struct padding, so struct size is unchanged.
