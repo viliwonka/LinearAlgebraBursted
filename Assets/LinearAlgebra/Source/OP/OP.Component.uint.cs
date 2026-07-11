@@ -6,6 +6,7 @@ using System;
 using System.Runtime.CompilerServices;
 
 using Unity.Burst;
+using Unity.Collections.LowLevel.Unsafe;
 using LinearAlgebra.Internal;
 
 
@@ -14,6 +15,24 @@ namespace LinearAlgebra
     /// <summary>
     /// </summary>
     public static partial class uintComp {
+
+        /// <summary>Sets every component to zero.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void zeroInPlace<T>(this T place) where T : unmanaged, IUnsafeuintArray {
+
+            unsafe {
+                UnsafeUtility.MemClear(place.Data.Ptr, (long)place.Data.Length * sizeof(uint));
+            }
+        }
+
+        /// <summary>Sets every component to <paramref name="s"/>.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void fillInPlace<T>(this T place, uint s) where T : unmanaged, IUnsafeuintArray {
+
+            unsafe {
+                UnsafeOP.fill(place.Data.Ptr, place.Data.Length, s);
+            }
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void addInPlace<T>(this T place, uint s) where T : unmanaged, IUnsafeuintArray {

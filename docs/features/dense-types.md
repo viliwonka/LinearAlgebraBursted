@@ -54,13 +54,23 @@ Allocator.Temp)`-style construction outside an arena) behind one indexer surface
 
 - Indexers: linear `this[int]` / `this[System.Index]` (from-end supported), and for matrices
   `this[int r, int c]` (bounds-checked only under `ENABLE_UNITY_COLLECTIONS_CHECKS`).
-- Fields: `floatMxN.M_Rows`, `.N_Cols`, `.Length`, `.IsSquare`.
+- Fields: `floatMxN.M_Rows`, `.N_Cols`, `.Length`, `.IsSquare`. Both vectors and matrices expose
+  `.IsCreated` (false for `default` and after `Dispose()`, like any native container).
 - Operators: `+ - * / %` (unary, scalar, and component-wise) and comparators (`< > <= >= == !=`,
   returning `boolN`/`boolMxN`) are all **allocating** — each is sugar over a `TempCopy()` plus the
   matching `Comp`/`UnsafeBoolOP` kernel. For a hot loop, call the `*InPlace` methods directly on a
   buffer you own instead (see [comp-elementwise](comp-elementwise.md)).
 - `Copy()`/`TempCopy()`/`Dispose()` — only valid on arena-tracked instances (standalone instances
-  dispose their own `UnsafeList` directly).
+  dispose their own `UnsafeList` directly). For a job-safe standalone copy use the copy constructor:
+  `new floatMxN(in orig, Allocator.Temp)` / `new floatN(in orig, Allocator.Temp)`.
+- `CopyTo`/`CopyFrom` — into/from a same-shape vector or matrix, or a `NativeArray<float>`
+  (row-major for matrices, lengths must match).
+- **NativeArray views** — `new floatN(array)` and `new floatMxN(rows, cols, array)` wrap an existing
+  `NativeArray<float>`'s memory with no copy and no ownership: reads/writes go straight to the
+  array, `Dispose()` releases nothing, and the view is only valid while the array is alive. The
+  view does not carry the array's job-safety handle — the caller owns the aliasing discipline.
+  This is the zero-copy bridge for keeping game state in `NativeArray`s while solving in place
+  through library types.
 
 ## The two-tier model: authoring vs compute
 

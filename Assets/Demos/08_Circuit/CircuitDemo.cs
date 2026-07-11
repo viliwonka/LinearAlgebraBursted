@@ -174,14 +174,15 @@ namespace LinearAlgebraDemos
             int nu = Voltages.Length;
 
             var b = new floatN(nu, Allocator.Temp);
-            var x = new floatN(nu, Allocator.Temp);
             for (int i = 0; i < NodeCount; i++)
-            {
                 b[i] = CapOverH * Voltages[i];
-                x[i] = Voltages[i];   // warm start
-            }
             b[NodeCount] = VSource;   // v_src constraint rhs
             b[NodeCount + 1] = 0f;    // v_gnd constraint rhs
+
+            // x is a zero-copy VIEW over Voltages: the previous frame's solution is the
+            // warm start as-is, and BiCGStab writes the new voltages straight back --
+            // no boundary copies in either direction.
+            var x = new floatN(Voltages);
 
             var op = new floatBSROperator(in A);
             var r = new floatN(nu, Allocator.Temp);
@@ -197,11 +198,10 @@ namespace LinearAlgebraDemos
                                               ref pHat, ref sHat,
                                               400, 1e-6f);
 
-            for (int i = 0; i < nu; i++) Voltages[i] = x[i];
             Out[0] = info.iterations;
             Out[1] = info ? 1f : 0f;
             Out[2] = (float)info.rnorm;
-            Out[3] = x[NodeCount];   // lambda_src = current through the source
+            Out[3] = Voltages[NodeCount];   // lambda_src = current through the source
         }
     }
 }

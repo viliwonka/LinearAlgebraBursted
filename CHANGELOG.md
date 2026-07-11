@@ -11,6 +11,12 @@ between minor versions.
 
 ### Added
 
+- **NativeArray interop**: zero-copy view constructors (`new floatN(array)`,
+  `new floatMxN(rows, cols, array)`) over an existing `NativeArray`'s memory, plus
+  `CopyTo`/`CopyFrom(NativeArray)` overloads; all element dtypes.
+- `IsCreated` on every vector/matrix type (false for `default` and after `Dispose()`).
+- `zeroInPlace()` / `fillInPlace(s)` component ops for vectors AND matrices, float through
+  integer dtypes.
 - **Linear programming (`LP`)**: dense simplex, a bounded-variable revised simplex (default) and
   dual simplex over an LU-factored basis, Mehrotra primal-dual interior point, and a matrix-free
   interior-point variant over a sparse (BSR) constraint matrix.

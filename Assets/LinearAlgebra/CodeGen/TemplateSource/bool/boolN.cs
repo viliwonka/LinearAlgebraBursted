@@ -50,6 +50,33 @@ namespace LinearAlgebra
         // callers must only call this on an arena-backed instance.
         private unsafe Arena OwnerArena => new Arena(_rec->Owner);
 
+        /// <summary>True while this vector has a live allocation (arena-tracked or standalone,
+        /// including views); false for default(boolN) and after Dispose().</summary>
+        public unsafe bool IsCreated
+        {
+            get
+            {
+                if (_rec == null) return _inlineData.IsCreated;
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                if (!ChunkedRecordTable<boolVecRecord>.IsAliveFast(_rec)) return false;
+#endif
+                return _rec->Data.IsCreated;
+            }
+        }
+
+        /// <summary>
+        /// Creates a standalone VIEW over <paramref name="viewOf"/>'s memory -- no copy, no
+        /// ownership. Element reads/writes go straight to the array. Valid only while the source
+        /// array is alive; Dispose() releases nothing (the array keeps ownership). The view is
+        /// outside the job-safety system: it does not carry the array's safety handle, so the
+        /// caller owns the aliasing/race discipline.
+        /// </summary>
+        public unsafe boolN(NativeArray<bool> viewOf)
+        {
+            _rec = null;
+            _inlineData = new UnsafeList<bool>((bool*)viewOf.GetUnsafePtr(), viewOf.Length);
+        }
+
         /// <summary>
         /// Creates a copy of vector with new allocation
         /// </summary>
@@ -113,6 +140,24 @@ namespace LinearAlgebra
                 throw new System.InvalidOperationException("Copy()/TempCopy() require an arena-backed matrix/vector; use new <T>(in this, allocator) for a standalone copy.");
 
             return OwnerArena.boolTempVec(in this);
+        }
+
+        /// <summary>Copies every component into <paramref name="dst"/> (lengths must match).</summary>
+        public unsafe void CopyTo(NativeArray<bool> dst)
+        {
+            if (this.N != dst.Length)
+                throw new ArgumentException("CopyTo: dst.Length must equal N");
+
+            UnsafeUtility.MemCpy(dst.GetUnsafePtr(), Data.Ptr, (long)N * sizeof(bool));
+        }
+
+        /// <summary>Copies every component from <paramref name="src"/> (lengths must match).</summary>
+        public unsafe void CopyFrom(NativeArray<bool> src)
+        {
+            if (this.N != src.Length)
+                throw new ArgumentException("CopyFrom: src.Length must equal N");
+
+            UnsafeUtility.MemCpy(Data.Ptr, src.GetUnsafeReadOnlyPtr(), (long)N * sizeof(bool));
         }
 
         public unsafe void Dispose() {

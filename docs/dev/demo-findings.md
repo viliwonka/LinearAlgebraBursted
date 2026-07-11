@@ -5,6 +5,14 @@ only, all math inside `[BurstCompile]` jobs within a frame budget, MonoBehaviour
 interop. Per-demo notes on what was awkward, wrong, or annoying. Written while coding, from
 docs first (README → docs/features/*) the way a new user would.
 
+> **Status 2026-07-12 (owner-approved fixes shipped):** #3b (NativeArray bridge: view ctors +
+> CopyTo/CopyFrom(NativeArray)), #3c (IsCreated), and the matrix zeroInPlace/fillInPlace gap
+> (Demo 5) are FIXED — all dtypes, tested (BridgeFillTests/BoolBridgeTests), documented in
+> dense-types.md/comp-elementwise.md/CHANGELOG. The truss and circuit demos now consume
+> IsCreated and a solve-through-view respectively. Still open: warm-struct RunByRef doc/API
+> story (ties into coherence P.1), pcg convenience-overload job trap, control.md fProxyLQRState
+> leak, LOBPCG penalty-pinning doc warning, LP.lad tau hybrid overload.
+
 ## Cross-cutting (found before any demo compiled)
 
 1. **`docs/features/control.md` leaks template names into a user-facing doc**: lines 10-13

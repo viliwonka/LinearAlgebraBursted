@@ -19,7 +19,8 @@ Not all methods/functions are written here. Many of the mentioned are inplace wi
   - `add` / `sub`,
   - `mul` / `div` / `mod`,
   - `addScaled`,
-  - `clamp`
+  - `clamp`,
+  - `zero` / `fill(s)` (also on int/uint/long/short)
 
 - **Functions:** 
   - `abs`, 

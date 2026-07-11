@@ -1,6 +1,14 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## OP.Component / UtilityOP
+- 2026-07-12 | Generic zeroInPlace<T>/fillInPlace<T> added to the Comp families (born from the
+  demo stress test: no way to zero/fill a matrix, and mulInPlace(A, 0) is a NaN propagator).
+  UtilityOP.cs's older zeroInPlace(in fProxyN) is now a redundant special case — kept only
+  because its deletion wasn't explicitly approved; fold it away on the next owner OK (no
+  callers in-repo; overload resolution prefers it for direct floatComp.zeroInPlace(vec) calls,
+  same behavior either way).
+
 ## CHO
 - 2026-07-11 | Right-looking Cholesky chosen over left-looking: left-looking's hot loop is a dot-product reduction over already-computed columns, which stays scalar under strict FloatMode (loop-carried accumulator); right-looking's rank-1 update is a set of unit-stride row axpys, which vectorizes. (was CHO.fProxy.cs:43)
 

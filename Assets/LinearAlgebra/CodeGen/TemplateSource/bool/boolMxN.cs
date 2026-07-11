@@ -51,6 +51,42 @@ namespace LinearAlgebra
 
         public bool IsSquare => M_Rows == N_Cols;
 
+        /// <summary>True while this matrix has a live allocation (arena-tracked or standalone,
+        /// including views); false for default(boolMxN) and after Dispose().</summary>
+        public unsafe bool IsCreated
+        {
+            get
+            {
+                if (_rec == null) return _inlineData.IsCreated;
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                if (!ChunkedRecordTable<boolMatRecord>.IsAliveFast(_rec) || ChunkedRecordTable<boolMatRecord>.GenerationFast(_rec) != _gen)
+                    return false;
+#endif
+                return _rec->Data.IsCreated;
+            }
+        }
+
+        /// <summary>
+        /// Creates a standalone VIEW over <paramref name="viewOf"/>'s memory as a row-major
+        /// M_rows x N_cols matrix (viewOf.Length must equal M_rows*N_cols) -- no copy, no
+        /// ownership. Element reads/writes go straight to the array. Valid only while the source
+        /// array is alive; Dispose() releases nothing (the array keeps ownership). The view is
+        /// outside the job-safety system: it does not carry the array's safety handle, so the
+        /// caller owns the aliasing/race discipline.
+        /// </summary>
+        public unsafe boolMxN(int M_rows, int N_cols, NativeArray<bool> viewOf)
+        {
+            if (M_rows * N_cols != viewOf.Length)
+                throw new ArgumentException("boolMxN view: viewOf.Length must equal M_rows * N_cols");
+
+            _rec = null;
+            _gen = 0; // standalone (non-arena): never read (AssertRecordValid short-circuits on _rec == null)
+            M_Rows = M_rows;
+            N_Cols = N_cols;
+            Length = viewOf.Length;
+            _inlineData = new UnsafeList<bool>((bool*)viewOf.GetUnsafePtr(), viewOf.Length);
+        }
+
         public unsafe boolMxN(int M_rows, int N_cols, Allocator allocator, bool uninit = false)
         {
             _rec = null;
@@ -146,6 +182,42 @@ namespace LinearAlgebra
                 throw new System.InvalidOperationException("Copy()/TempCopy() require an arena-backed matrix/vector; use new <T>(in this, allocator) for a standalone copy.");
 
             return OwnerArena.boolTempMat(in this);
+        }
+
+        /// <summary>Copies every element into <paramref name="mat"/> (dimensions must match).</summary>
+        public void CopyTo(in boolMxN mat)
+        {
+            if (M_Rows != mat.M_Rows || N_Cols != mat.N_Cols)
+                throw new ArgumentException("CopyTo: dimensions do not match!");
+
+            mat.Data.CopyFrom(Data);
+        }
+
+        /// <summary>Copies every element from <paramref name="mat"/> (dimensions must match).</summary>
+        public void CopyFrom(in boolMxN mat)
+        {
+            if (M_Rows != mat.M_Rows || N_Cols != mat.N_Cols)
+                throw new ArgumentException("CopyFrom: dimensions do not match!");
+
+            Data.CopyFrom(mat.Data);
+        }
+
+        /// <summary>Copies every element (row-major) into <paramref name="dst"/> (dst.Length must equal M_Rows*N_Cols).</summary>
+        public unsafe void CopyTo(NativeArray<bool> dst)
+        {
+            if (Length != dst.Length)
+                throw new ArgumentException("CopyTo: dst.Length must equal M_Rows * N_Cols");
+
+            UnsafeUtility.MemCpy(dst.GetUnsafePtr(), Data.Ptr, (long)Length * sizeof(bool));
+        }
+
+        /// <summary>Copies every element (row-major) from <paramref name="src"/> (src.Length must equal M_Rows*N_Cols).</summary>
+        public unsafe void CopyFrom(NativeArray<bool> src)
+        {
+            if (Length != src.Length)
+                throw new ArgumentException("CopyFrom: src.Length must equal M_Rows * N_Cols");
+
+            UnsafeUtility.MemCpy(Data.Ptr, src.GetUnsafeReadOnlyPtr(), (long)Length * sizeof(bool));
         }
 
         public unsafe void Dispose()

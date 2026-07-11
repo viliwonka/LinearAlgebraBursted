@@ -1011,6 +1011,14 @@ namespace LinearAlgebra.Internal
                 target[i] *= s;
         }
 
+        // target[i] = s
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void fill([NoAlias] double* target, int n, double s)
+        {
+            for (int i = 0; i < n; i++)
+                target[i] = s;
+        }
+
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void scalDiv([NoAlias] double* target, int n, double s)
         {

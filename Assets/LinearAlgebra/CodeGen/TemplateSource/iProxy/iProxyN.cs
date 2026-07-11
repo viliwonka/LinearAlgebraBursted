@@ -52,6 +52,33 @@ namespace LinearAlgebra
         // callers must only call this on an arena-backed instance.
         private unsafe Arena OwnerArena => new Arena(_rec->Owner);
 
+        /// <summary>True while this vector has a live allocation (arena-tracked or standalone,
+        /// including views); false for default(iProxyN) and after Dispose().</summary>
+        public unsafe bool IsCreated
+        {
+            get
+            {
+                if (_rec == null) return _inlineData.IsCreated;
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                if (!ChunkedRecordTable<iProxyVecRecord>.IsAliveFast(_rec)) return false;
+#endif
+                return _rec->Data.IsCreated;
+            }
+        }
+
+        /// <summary>
+        /// Creates a standalone VIEW over <paramref name="viewOf"/>'s memory -- no copy, no
+        /// ownership. Element reads/writes go straight to the array. Valid only while the source
+        /// array is alive; Dispose() releases nothing (the array keeps ownership). The view is
+        /// outside the job-safety system: it does not carry the array's safety handle, so the
+        /// caller owns the aliasing/race discipline.
+        /// </summary>
+        public unsafe iProxyN(NativeArray<iProxy> viewOf)
+        {
+            _rec = null;
+            _inlineData = new UnsafeList<iProxy>((iProxy*)viewOf.GetUnsafePtr(), viewOf.Length);
+        }
+
         /// <summary>
         /// Creates a new standalone (non-arena) vector with its own allocation.
         /// </summary>
@@ -150,6 +177,24 @@ namespace LinearAlgebra
                 throw new ArgumentException("CopyFrom: dimensions do not match!");
 
             Data.CopyFrom(vec.Data);
+        }
+
+        /// <summary>Copies every component into <paramref name="dst"/> (lengths must match).</summary>
+        public unsafe void CopyTo(NativeArray<iProxy> dst)
+        {
+            if (this.N != dst.Length)
+                throw new ArgumentException("CopyTo: dst.Length must equal N");
+
+            UnsafeUtility.MemCpy(dst.GetUnsafePtr(), Data.Ptr, (long)N * sizeof(iProxy));
+        }
+
+        /// <summary>Copies every component from <paramref name="src"/> (lengths must match).</summary>
+        public unsafe void CopyFrom(NativeArray<iProxy> src)
+        {
+            if (this.N != src.Length)
+                throw new ArgumentException("CopyFrom: src.Length must equal N");
+
+            UnsafeUtility.MemCpy(Data.Ptr, src.GetUnsafeReadOnlyPtr(), (long)N * sizeof(iProxy));
         }
 
         public unsafe void Dispose() {

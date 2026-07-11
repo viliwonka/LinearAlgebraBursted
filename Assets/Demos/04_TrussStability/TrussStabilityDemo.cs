@@ -59,7 +59,6 @@ namespace LinearAlgebraDemos
         float builtEA;
         bool[] builtBraces;
         NativeArray<float> outStats;   // [0] iterations, [1] converged
-        bool haveResults;
         float frameMs;
 
         void OnEnable()
@@ -146,14 +145,13 @@ namespace LinearAlgebraDemos
             frameMs = (float)sw.Elapsed.TotalMilliseconds;
 
             cache = job.Cache;
-            lambda = cache.lambda;
+            lambda = cache.lambda;   // default until the first Update -> lambda.IsCreated gates readers
             modes = cache.X;
-            haveResults = true;
         }
 
         void OnDrawGizmos()
         {
-            if (!Application.isPlaying || !built || !haveResults) return;
+            if (!Application.isPlaying || !built || !lambda.IsCreated) return;
 
             float wob = modeAmplitude * math.sin(6f * Time.time);
             Vector3 P(int node)
@@ -178,7 +176,7 @@ namespace LinearAlgebraDemos
             GUILayout.BeginArea(new Rect(10, 10, 420, 260), GUI.skin.box);
             GUILayout.Label($"Truss stability — LOBPCG k={K} over {N}-dof BSR, {frameMs:F2} ms/frame");
             GUILayout.Label($"iters: {outStats[0]:F0} (warm)   converged: {outStats[1] == 1f}");
-            if (built && haveResults)
+            if (built && lambda.IsCreated)
             {
                 GUILayout.Label($"lambda = [{lambda[0]:F3}, {lambda[1]:F3}, {lambda[2]:F3}, {lambda[3]:F3}]");
                 bool unstable = lambda[0] < 0.05f * stiffnessEA;
@@ -194,7 +192,7 @@ namespace LinearAlgebraDemos
             for (int i = 0; i < Braces.Length; i++)
                 braceOn[i] = GUILayout.Toggle(braceOn[i], $"{Braces[i].x}-{Braces[i].y}");
             GUILayout.EndHorizontal();
-            shownMode = (int)LabeledSlider($"mode {shownMode} (lambda={((built && haveResults) ? lambda[shownMode] : 0f):F3})", shownMode, 0, 3.49f);
+            shownMode = (int)LabeledSlider($"mode {shownMode} (lambda={((built && lambda.IsCreated) ? lambda[shownMode] : 0f):F3})", shownMode, 0, 3.49f);
             stiffnessEA = LabeledSlider($"EA {stiffnessEA:F1}", stiffnessEA, 0.5f, 20f);
             GUILayout.EndArea();
         }

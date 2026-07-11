@@ -248,6 +248,14 @@ namespace LinearAlgebra.Internal
                 target[i] *= s;
         }
 
+        // target[i] = s
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void fill([NoAlias] iProxy* target, int n, iProxy s)
+        {
+            for (int i = 0; i < n; i++)
+                target[i] = s;
+        }
+
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void scalDiv([NoAlias] iProxy* target, int n, iProxy s)
         {

@@ -2,6 +2,7 @@ using System;
 using System.Runtime.CompilerServices;
 
 using Unity.Burst;
+using Unity.Collections.LowLevel.Unsafe;
 using LinearAlgebra.Internal;
 
 //alsoExpand[uint]// component-wise arithmetic/bitwise ops. Unary negation (and anything relying
@@ -13,6 +14,24 @@ namespace LinearAlgebra
     /// <summary>
     /// </summary>
     public static partial class iProxyComp {
+
+        /// <summary>Sets every component to zero.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void zeroInPlace<T>(this T place) where T : unmanaged, IUnsafeiProxyArray {
+
+            unsafe {
+                UnsafeUtility.MemClear(place.Data.Ptr, (long)place.Data.Length * sizeof(iProxy));
+            }
+        }
+
+        /// <summary>Sets every component to <paramref name="s"/>.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void fillInPlace<T>(this T place, iProxy s) where T : unmanaged, IUnsafeiProxyArray {
+
+            unsafe {
+                UnsafeOP.fill(place.Data.Ptr, place.Data.Length, s);
+            }
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void addInPlace<T>(this T place, iProxy s) where T : unmanaged, IUnsafeiProxyArray {
