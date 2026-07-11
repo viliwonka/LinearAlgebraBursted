@@ -301,4 +301,4 @@ blocks throw). One user, two opposite halves to remember. Eigen.symmetric* verif
 SSOR mirrors to full; ILU0/Blas.Triangular unaffected. Options: (a) cross-reference docs at both
 sites (cheap, recommended); (b) flip symmetric BSR to lower storage (breaking, touches symmetric
 spMV/builder/mirror); accepting both halves in ToBSRSymmetric was already design-rejected
-("don't mask caller bugs"). NOT ruled on by the owner yet.
+("don't mask caller bugs"). RULED 2026-07-11: owner wants this FIXED (deferred to TODO, not immediate); confirm approach (doc cross-ref vs storage flip) when picked up.
