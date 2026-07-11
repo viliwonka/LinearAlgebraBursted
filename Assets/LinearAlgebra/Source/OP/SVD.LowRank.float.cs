@@ -10,7 +10,7 @@ using Unity.Mathematics;
 using LinearAlgebra.Internal;
 
 using Random = Unity.Mathematics.Random;
-using static LinearAlgebra.floatOpHelpers;
+using static LinearAlgebra.Internal.Helpers;
 
 namespace LinearAlgebra
 {

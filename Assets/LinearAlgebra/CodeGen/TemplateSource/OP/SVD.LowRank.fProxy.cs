@@ -6,7 +6,7 @@ using Unity.Mathematics;
 using LinearAlgebra.Internal;
 
 using Random = Unity.Mathematics.Random;
-using static LinearAlgebra.fProxyOpHelpers;
+using static LinearAlgebra.Internal.Helpers;
 
 namespace LinearAlgebra
 {

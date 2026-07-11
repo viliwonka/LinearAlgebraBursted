@@ -5,7 +5,7 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 using LinearAlgebra.Internal;
-using static LinearAlgebra.fProxyOpHelpers;
+using static LinearAlgebra.Internal.Helpers;
 
 namespace LinearAlgebra
 {

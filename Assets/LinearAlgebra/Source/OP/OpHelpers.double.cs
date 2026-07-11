@@ -5,10 +5,10 @@
 using System.Runtime.CompilerServices;
 using Unity.Mathematics;
 
-namespace LinearAlgebra
+namespace LinearAlgebra.Internal
 {
     // Scalar helpers shared by the Householder/QL/bidiagonal kernels (QR, LQ, Bidiag, SVD, Eigen).
-    internal static class doubleOpHelpers
+    internal static partial class Helpers
     {
         // |a| with the sign of b (Fortran SIGN / C99 copysign, NR convention): b >= 0 -> +|a|,
         // INCLUDING b == 0. Deliberately not math.sign-based: math.sign(0) == 0, which would zero
