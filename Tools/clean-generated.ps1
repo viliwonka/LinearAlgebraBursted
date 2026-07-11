@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Deletes ALL codegen output (Source/Generated, SourceTests/Generated) so the next
+  Deletes ALL codegen output (Source, SourceTests/Generated) so the next
   regen.ps1 run rebuilds it from scratch.
 
 .DESCRIPTION
@@ -29,16 +29,22 @@ $ErrorActionPreference = "Stop"
 . "$PSScriptRoot\_unity-common.ps1"
 
 $root = Get-ProjectRoot
+# Source\ IS the generated tree (the UPM package root); only package.json and the asmdef (and
+# their .meta files) are hand-placed there, so cleaning = delete everything else under it.
+$sourceRoot = Join-Path $root "Assets\LinearAlgebra\Source"
+$sourceKeep = @("package.json", "package.json.meta",
+                "BurstLinearAlgebra.asmdef", "BurstLinearAlgebra.asmdef.meta")
 $targets = @(
-  (Join-Path $root "Assets\LinearAlgebra\Source\Generated"),
-  (Join-Path $root "Assets\LinearAlgebra\SourceTests\Generated")
+  @{ Dir = $sourceRoot;                                                Keep = $sourceKeep },
+  @{ Dir = (Join-Path $root "Assets\LinearAlgebra\SourceTests\Generated"); Keep = @() }
 )
 
 $total = 0
-foreach ($dir in $targets) {
+foreach ($t in $targets) {
+  $dir = $t.Dir
   if (-not (Test-Path $dir)) { continue }
   # Delete CONTENTS, not the folder itself, so its own .meta (and Unity's GUID for it) survives.
-  $items = Get-ChildItem -Path $dir -Force
+  $items = Get-ChildItem -Path $dir -Force | Where-Object { $t.Keep -notcontains $_.Name }
   $total += $items.Count
   if ($WhatIf) {
     Write-Host "Would delete $($items.Count) item(s) under $dir"

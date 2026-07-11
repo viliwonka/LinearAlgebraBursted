@@ -5,7 +5,7 @@
 
 .DESCRIPTION
   Scans the SHIPPED surfaces only:
-    - Assets/LinearAlgebra/Source/Generated  (generated library code, in the UPM package)
+    - Assets/LinearAlgebra/Source  (generated library code = the UPM package root)
     - docs/features                          (public feature docs)
     - README.md, CHANGELOG.md
 
@@ -29,7 +29,7 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 
 $targets = @(
-  (Join-Path $root "Assets\LinearAlgebra\Source\Generated"),
+  (Join-Path $root "Assets\LinearAlgebra\Source"),
   (Join-Path $root "docs\features"),
   (Join-Path $root "README.md"),
   (Join-Path $root "CHANGELOG.md")

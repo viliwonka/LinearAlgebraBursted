@@ -279,3 +279,17 @@ skimming autocomplete, even though each individual instance is small.
   identical shape (linear `int`/`System.Index` access, from-end support, all four `(r,c)` int/Index
   combinations for MxN), and comparator operators (`<`,`>`,`<=`,`>=`,`==`,`!=`) named/shaped
   identically with the same commutative-overload trick across families.
+
+---
+
+## Parked for ruling (added 2026-07-11 after the cleanup arc)
+
+### P.1 Warm-state structs are self-managed while all scratch caches are arena-backed
+`fProxyLPCache` (LP.Cache.fProxy.cs), `LPBasis` (LP.Info.cs), and `fProxyLQRState`
+(Control.fProxy.cs) use `new X(n, m, allocator)` + manual `.Dispose()` — every other workspace
+struct (all 17 `*Cache` types) is created via `arena.fProxyXCache(...)` and dies with the arena.
+An LP/LQR warm-solve user must remember to Dispose or leak; the arena exists to remove exactly
+that footgun. Proposed resolution: add arena factories (`arena.fProxyLPCache(n, m)`,
+`arena.fProxyLQRState(...)`, `arena.LPBasis(...)`) allocating the internal buffers from the arena,
+keep the ctor+Dispose overloads for compatibility. Note `LPBasis` is type-agnostic like
+Pivot/Indices (which are also ctor-based — precedent either way). NOT ruled on by the owner yet.

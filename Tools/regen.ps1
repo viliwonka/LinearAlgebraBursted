@@ -7,7 +7,7 @@
   (Tools/CodegenBootstrap) that compiles the REAL generator files
   (Assets/LinearAlgebra/CodeGen/{GenUtils,TemplateConverter}.cs - not copies)
   and runs them the same way the project's two [Generator] wrappers do
-  (TemplateSource -> Source/Generated, TemplateSourceTests -> SourceTests/
+  (TemplateSource -> Source, TemplateSourceTests -> SourceTests/
   Generated), writing files with the same logic UnityCodeGen's
   ScriptFileGenerator uses (skip-if-byte-identical, UTF-8 no BOM). Crucially
   this does NOT require the project to already compile, so it can regenerate

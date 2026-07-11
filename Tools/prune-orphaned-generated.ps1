@@ -105,7 +105,7 @@ function Get-ExpectedPaths($templateRoot, $generatedRoot) {
 }
 
 $pairs = @(
-  @{ Template = (Join-Path $root "Assets\LinearAlgebra\CodeGen\TemplateSource");           Generated = (Join-Path $root "Assets\LinearAlgebra\Source\Generated") },
+  @{ Template = (Join-Path $root "Assets\LinearAlgebra\CodeGen\TemplateSource");           Generated = (Join-Path $root "Assets\LinearAlgebra\Source") },
   @{ Template = (Join-Path $root "Assets\LinearAlgebra\CodeGen\TemplateSourceTests");      Generated = (Join-Path $root "Assets\LinearAlgebra\SourceTests\Generated") },
   @{ Template = (Join-Path $root "Assets\LinearAlgebra\CodeGen\TemplateSourceBenchmarks"); Generated = (Join-Path $root "Assets\LinearAlgebra\Benchmarks\Generated") }
 )

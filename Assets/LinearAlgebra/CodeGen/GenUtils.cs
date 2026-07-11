@@ -54,7 +54,7 @@ namespace LinearAlgebra.CodeGen
         public const string sourceTestsTemplateFolder = "Assets/LinearAlgebra/CodeGen/TemplateSourceTests/";
         public const string sourceBenchmarksTemplateFolder = "Assets/LinearAlgebra/CodeGen/TemplateSourceBenchmarks/";
 
-        public const string generatedFolder = "Assets/LinearAlgebra/Source/Generated/";
+        public const string generatedFolder = "Assets/LinearAlgebra/Source/";  // package root IS the generated tree (only package.json + asmdef are hand-placed)
         public const string generatedTestsFolder = "Assets/LinearAlgebra/SourceTests/Generated/";
         public const string generatedBenchmarksFolder = "Assets/LinearAlgebra/Benchmarks/Generated/";
 
