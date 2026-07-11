@@ -1,0 +1,28 @@
+{
+    "name": "LinearAlgebraDemos.Tests",
+    "rootNamespace": "",
+    "references": [
+        "LinearAlgebraDemos",
+        "BurstLinearAlgebra",
+        "Unity.Burst",
+        "Unity.Collections",
+        "Unity.Mathematics",
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": false,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": true,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
