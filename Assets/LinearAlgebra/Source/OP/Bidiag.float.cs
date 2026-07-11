@@ -9,6 +9,7 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 using LinearAlgebra.Internal;
+using static LinearAlgebra.floatOpHelpers;
 
 namespace LinearAlgebra
 {
@@ -18,9 +19,6 @@ namespace LinearAlgebra
     /// </summary>
     public static partial class Bidiag
     {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static float sign(float x) => x < 0 ? (float)(-1) : (float)1;
-
         // Build a Householder reflector from COLUMN k of matrix M (rows k..M_Rows-1).
         // Stores result in u[k..M_Rows-1]; entries u[0..k-1] are not accessed.
         // Convention: H = I - u*uᵀ with ||u||² = 2, matching QR.genHouseholder.
@@ -36,7 +34,7 @@ namespace LinearAlgebra
             {
                 for (int r = k; r < M.M_Rows; r++)
                     u[r] = u[r] / xNorm;
-                u[k] = u[k] + sign(u[k]);
+                u[k] = u[k] + copysign((float)1, u[k]);
                 float div = math.sqrt(math.abs(u[k]));
                 for (int r = k; r < M.M_Rows; r++)
                     u[r] = u[r] / div;
@@ -63,7 +61,7 @@ namespace LinearAlgebra
             {
                 for (int c = colStart; c < n; c++)
                     v[c] = v[c] / xNorm;
-                v[colStart] = v[colStart] + sign(v[colStart]);
+                v[colStart] = v[colStart] + copysign((float)1, v[colStart]);
                 float div = math.sqrt(math.abs(v[colStart]));
                 for (int c = colStart; c < n; c++)
                     v[c] = v[c] / div;

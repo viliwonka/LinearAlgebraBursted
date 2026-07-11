@@ -9,6 +9,7 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 using LinearAlgebra.Internal;
+using static LinearAlgebra.floatOpHelpers;
 
 namespace LinearAlgebra
 {
@@ -24,12 +25,6 @@ namespace LinearAlgebra
         //                              AND fastest for repeated large-N use. solveInPlace's cache
         //                              overload only ever touches cache.u/cache.w — its fused kernel
         //                              never forms Q, so the blocked-WY buffers are unused there.
-
-        // internal (not private): shared with QRCP.decompInPlace/solveInPlace, which live in a
-        // separate class after the QR/QRCP split but reuse the same Householder kernels.
-        internal static float sign(float x) {
-            return x < 0 ? -1 : 1;
-        }
 
         // zeroThreshold is the ABSOLUTE column-norm below which a column is treated as zero. Callers
         // pass a SCALE-RELATIVE value (Consts.floatZeroThreshold * matrix magnitude) so QR is
@@ -48,7 +43,7 @@ namespace LinearAlgebra
                 for (int r = k; r < u.N; r++)
                     u[r] = u[r] / xNorm;
 
-                u[k] = u[k] + sign(u[k]);
+                u[k] = u[k] + copysign((float)1, u[k]);
 
                 var div = math.sqrt(math.abs(u[k]));
                 for (int r = k; r < u.N; r++) {

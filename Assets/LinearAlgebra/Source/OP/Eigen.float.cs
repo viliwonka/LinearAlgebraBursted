@@ -10,6 +10,7 @@ using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 using LinearAlgebra.Internal;
 using LinearAlgebra.Sparse;
+using static LinearAlgebra.floatOpHelpers;
 
 namespace LinearAlgebra
 {
@@ -1089,20 +1090,6 @@ namespace LinearAlgebra
                                               ref floatMxN V)
             => decompInPlace(ref A, ref eigenvalues, ref V, 30, Consts.floatZeroThreshold);
 #pragma warning restore 618
-
-        // copysign: magnitude of a with the sign of b (b >= 0 -> +|a|). EISPACK SIGN(a,b).
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static float copysign(float a, float b) => b >= (float)0 ? math.abs(a) : -math.abs(a);
-
-        // sqrt(a^2 + b^2) computed so neither square overflows/underflows prematurely.
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static float pythag(float a, float b)
-        {
-            float aa = math.abs(a), ab = math.abs(b);
-            if (aa > ab) { float r = ab / aa; return aa * math.sqrt((float)1 + r * r); }
-            if (ab == (float)0) return (float)0;
-            { float r = aa / ab; return ab * math.sqrt((float)1 + r * r); }
-        }
 
         /// <summary>
         /// All eigenVALUES of a SYMMETRIC real matrix, via Householder tridiagonalization followed by

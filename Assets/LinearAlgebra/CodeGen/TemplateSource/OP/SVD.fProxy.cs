@@ -5,6 +5,7 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 using LinearAlgebra.Internal;
+using static LinearAlgebra.fProxyOpHelpers;
 
 namespace LinearAlgebra
 {
@@ -137,20 +138,6 @@ namespace LinearAlgebra
         /// <summary>values (workspace) with default maxIterations (Consts.sweepBudget(A.N_Cols)) and tolerance (Consts.fProxyZeroThreshold).</summary>
         public static SVDInfo values(in fProxyMxN A, ref fProxyN S, ref fProxySVDValuesCache ws)
             => values(in A, ref S, ref ws, Consts.sweepBudget(A.N_Cols), Consts.fProxyZeroThreshold);
-
-        // pythag(a,b) = sqrt(a^2 + b^2) without destructive under/overflow.
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static fProxy svdPythag(fProxy a, fProxy b)
-        {
-            fProxy aa = math.abs(a), ab = math.abs(b);
-            if (aa > ab) { fProxy r = ab / aa; return aa * math.sqrt((fProxy)1 + r * r); }
-            if (ab == (fProxy)0) return (fProxy)0;
-            { fProxy r = aa / ab; return ab * math.sqrt((fProxy)1 + r * r); }
-        }
-
-        // magnitude of a with the sign of b (NR SIGN; b >= 0 -> +|a|).
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static fProxy svdSign(fProxy a, fProxy b) => b >= (fProxy)0 ? math.abs(a) : -math.abs(a);
 
         // sqrt(a^2 + b^2 + a*b) (a,b >= 0), an upper bound on the spectral norm of a 2x2 upper-
         // bidiagonal block, scaled to avoid overflow (mirrors lanbpro's FUDGE*sqrt(a^2+b^2+a*b)
@@ -436,7 +423,7 @@ namespace LinearAlgebra
                             e[i] = c * e[i];
                             if (math.abs(f) <= thresh) break;
                             fProxy g = d[i];
-                            fProxy h = svdPythag(f, g);
+                            fProxy h = pythag(f, g);
                             d[i] = h;
                             h = (fProxy)1 / h;
                             c = g * h;
@@ -473,8 +460,8 @@ namespace LinearAlgebra
                     fProxy g2 = e[nm];
                     fProxy h2 = e[k];
                     fProxy f2 = ((yy - zz) * (yy + zz) + (g2 - h2) * (g2 + h2)) / ((fProxy)2 * h2 * yy);
-                    g2 = svdPythag(f2, (fProxy)1);
-                    f2 = ((x - zz) * (x + zz) + h2 * ((yy / (f2 + svdSign(g2, f2))) - h2)) / x;
+                    g2 = pythag(f2, (fProxy)1);
+                    f2 = ((x - zz) * (x + zz) + h2 * ((yy / (f2 + copysign(g2, f2))) - h2)) / x;
 
                     // Implicit QR sweep: chase the bulge l..k-1, rotating V (right) and U (left).
                     fProxy c2 = (fProxy)1, s2 = (fProxy)1;
@@ -485,7 +472,7 @@ namespace LinearAlgebra
                         yy = d[i];
                         h2 = s2 * g2;
                         g2 = c2 * g2;
-                        fProxy zr = svdPythag(f2, h2);
+                        fProxy zr = pythag(f2, h2);
                         e[j] = zr;
                         c2 = f2 / zr;
                         s2 = h2 / zr;
@@ -495,7 +482,7 @@ namespace LinearAlgebra
                         yy *= c2;
                         // V columns j,i = Vt rows j,i
                         UnsafeOP.jacobiRotate(vtp + (long)j * n, vtp + (long)i * n, c2, -s2, n);
-                        zr = svdPythag(f2, h2);
+                        zr = pythag(f2, h2);
                         d[j] = zr;
                         if (zr != (fProxy)0)
                         {
@@ -620,7 +607,7 @@ namespace LinearAlgebra
                             e[i] = c * e[i];
                             if (math.abs(f) <= thresh) break;
                             fProxy g = d[i];
-                            fProxy h = svdPythag(f, g);
+                            fProxy h = pythag(f, g);
                             d[i] = h;
                             h = (fProxy)1 / h;
                             c = g * h;
@@ -650,8 +637,8 @@ namespace LinearAlgebra
                     fProxy g2 = e[nm];
                     fProxy h2 = e[k];
                     fProxy f2 = ((yy - zz) * (yy + zz) + (g2 - h2) * (g2 + h2)) / ((fProxy)2 * h2 * yy);
-                    g2 = svdPythag(f2, (fProxy)1);
-                    f2 = ((x - zz) * (x + zz) + h2 * ((yy / (f2 + svdSign(g2, f2))) - h2)) / x;
+                    g2 = pythag(f2, (fProxy)1);
+                    f2 = ((x - zz) * (x + zz) + h2 * ((yy / (f2 + copysign(g2, f2))) - h2)) / x;
 
                     fProxy c2 = (fProxy)1, s2 = (fProxy)1;
                     for (int j = l; j <= nm; j++)
@@ -661,7 +648,7 @@ namespace LinearAlgebra
                         yy = d[i];
                         h2 = s2 * g2;
                         g2 = c2 * g2;
-                        fProxy zr = svdPythag(f2, h2);
+                        fProxy zr = pythag(f2, h2);
                         e[j] = zr;
                         c2 = f2 / zr;
                         s2 = h2 / zr;
@@ -669,7 +656,7 @@ namespace LinearAlgebra
                         g2 = g2 * c2 - x * s2;
                         h2 = yy * s2;
                         yy *= c2;
-                        zr = svdPythag(f2, h2);
+                        zr = pythag(f2, h2);
                         d[j] = zr;
                         if (zr != (fProxy)0)
                         {

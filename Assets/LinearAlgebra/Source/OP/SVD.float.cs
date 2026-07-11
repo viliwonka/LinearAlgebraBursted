@@ -9,6 +9,7 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 using LinearAlgebra.Internal;
+using static LinearAlgebra.floatOpHelpers;
 
 namespace LinearAlgebra
 {
@@ -141,20 +142,6 @@ namespace LinearAlgebra
         /// <summary>values (workspace) with default maxIterations (Consts.sweepBudget(A.N_Cols)) and tolerance (Consts.floatZeroThreshold).</summary>
         public static SVDInfo values(in floatMxN A, ref floatN S, ref floatSVDValuesCache ws)
             => values(in A, ref S, ref ws, Consts.sweepBudget(A.N_Cols), Consts.floatZeroThreshold);
-
-        // pythag(a,b) = sqrt(a^2 + b^2) without destructive under/overflow.
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static float svdPythag(float a, float b)
-        {
-            float aa = math.abs(a), ab = math.abs(b);
-            if (aa > ab) { float r = ab / aa; return aa * math.sqrt((float)1 + r * r); }
-            if (ab == (float)0) return (float)0;
-            { float r = aa / ab; return ab * math.sqrt((float)1 + r * r); }
-        }
-
-        // magnitude of a with the sign of b (NR SIGN; b >= 0 -> +|a|).
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static float svdSign(float a, float b) => b >= (float)0 ? math.abs(a) : -math.abs(a);
 
         // sqrt(a^2 + b^2 + a*b) (a,b >= 0), an upper bound on the spectral norm of a 2x2 upper-
         // bidiagonal block, scaled to avoid overflow (mirrors lanbpro's FUDGE*sqrt(a^2+b^2+a*b)
@@ -440,7 +427,7 @@ namespace LinearAlgebra
                             e[i] = c * e[i];
                             if (math.abs(f) <= thresh) break;
                             float g = d[i];
-                            float h = svdPythag(f, g);
+                            float h = pythag(f, g);
                             d[i] = h;
                             h = (float)1 / h;
                             c = g * h;
@@ -477,8 +464,8 @@ namespace LinearAlgebra
                     float g2 = e[nm];
                     float h2 = e[k];
                     float f2 = ((yy - zz) * (yy + zz) + (g2 - h2) * (g2 + h2)) / ((float)2 * h2 * yy);
-                    g2 = svdPythag(f2, (float)1);
-                    f2 = ((x - zz) * (x + zz) + h2 * ((yy / (f2 + svdSign(g2, f2))) - h2)) / x;
+                    g2 = pythag(f2, (float)1);
+                    f2 = ((x - zz) * (x + zz) + h2 * ((yy / (f2 + copysign(g2, f2))) - h2)) / x;
 
                     // Implicit QR sweep: chase the bulge l..k-1, rotating V (right) and U (left).
                     float c2 = (float)1, s2 = (float)1;
@@ -489,7 +476,7 @@ namespace LinearAlgebra
                         yy = d[i];
                         h2 = s2 * g2;
                         g2 = c2 * g2;
-                        float zr = svdPythag(f2, h2);
+                        float zr = pythag(f2, h2);
                         e[j] = zr;
                         c2 = f2 / zr;
                         s2 = h2 / zr;
@@ -499,7 +486,7 @@ namespace LinearAlgebra
                         yy *= c2;
                         // V columns j,i = Vt rows j,i
                         UnsafeOP.jacobiRotate(vtp + (long)j * n, vtp + (long)i * n, c2, -s2, n);
-                        zr = svdPythag(f2, h2);
+                        zr = pythag(f2, h2);
                         d[j] = zr;
                         if (zr != (float)0)
                         {
@@ -624,7 +611,7 @@ namespace LinearAlgebra
                             e[i] = c * e[i];
                             if (math.abs(f) <= thresh) break;
                             float g = d[i];
-                            float h = svdPythag(f, g);
+                            float h = pythag(f, g);
                             d[i] = h;
                             h = (float)1 / h;
                             c = g * h;
@@ -654,8 +641,8 @@ namespace LinearAlgebra
                     float g2 = e[nm];
                     float h2 = e[k];
                     float f2 = ((yy - zz) * (yy + zz) + (g2 - h2) * (g2 + h2)) / ((float)2 * h2 * yy);
-                    g2 = svdPythag(f2, (float)1);
-                    f2 = ((x - zz) * (x + zz) + h2 * ((yy / (f2 + svdSign(g2, f2))) - h2)) / x;
+                    g2 = pythag(f2, (float)1);
+                    f2 = ((x - zz) * (x + zz) + h2 * ((yy / (f2 + copysign(g2, f2))) - h2)) / x;
 
                     float c2 = (float)1, s2 = (float)1;
                     for (int j = l; j <= nm; j++)
@@ -665,7 +652,7 @@ namespace LinearAlgebra
                         yy = d[i];
                         h2 = s2 * g2;
                         g2 = c2 * g2;
-                        float zr = svdPythag(f2, h2);
+                        float zr = pythag(f2, h2);
                         e[j] = zr;
                         c2 = f2 / zr;
                         s2 = h2 / zr;
@@ -673,7 +660,7 @@ namespace LinearAlgebra
                         g2 = g2 * c2 - x * s2;
                         h2 = yy * s2;
                         yy *= c2;
-                        zr = svdPythag(f2, h2);
+                        zr = pythag(f2, h2);
                         d[j] = zr;
                         if (zr != (float)0)
                         {

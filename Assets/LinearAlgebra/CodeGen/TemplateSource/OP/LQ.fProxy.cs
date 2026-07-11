@@ -5,13 +5,11 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 using LinearAlgebra.Internal;
+using static LinearAlgebra.fProxyOpHelpers;
 
 namespace LinearAlgebra
 {
     public static partial class LQ {
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static fProxy sign(fProxy x) => x < 0 ? (fProxy)(-1) : (fProxy)1;
 
         // Build a Householder reflector from ROW `row` of matrix M, columns colStart..N_Cols-1.
         // Stores result in v[colStart..N_Cols-1]; entries v[0..colStart-1] are not accessed.
@@ -31,7 +29,7 @@ namespace LinearAlgebra
             {
                 for (int c = colStart; c < n; c++)
                     v[c] = v[c] / xNorm;
-                v[colStart] = v[colStart] + sign(v[colStart]);
+                v[colStart] = v[colStart] + copysign((fProxy)1, v[colStart]);
                 fProxy div = math.sqrt(math.abs(v[colStart]));
                 for (int c = colStart; c < n; c++)
                     v[c] = v[c] / div;

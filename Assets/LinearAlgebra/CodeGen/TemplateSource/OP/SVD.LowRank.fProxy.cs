@@ -6,6 +6,7 @@ using Unity.Mathematics;
 using LinearAlgebra.Internal;
 
 using Random = Unity.Mathematics.Random;
+using static LinearAlgebra.fProxyOpHelpers;
 
 namespace LinearAlgebra
 {
@@ -193,8 +194,8 @@ namespace LinearAlgebra
                                 fProxy intermediate = ws.alpha[i] * nu_ptr[i] + ws.beta[i] * nu_j_ip1
                                                     - ws.beta[j - 1] * mu_ptr[i];
                                 fProxy signI = (intermediate >= (fProxy)0) ? (fProxy)1 : (fProxy)(-1);
-                                fProxy Tu = eps1 * (svdPythag(ws.alpha[j], ws.beta[j - 1])
-                                                  + svdPythag(ws.alpha[i], ws.beta[i]))
+                                fProxy Tu = eps1 * (pythag(ws.alpha[j], ws.beta[j - 1])
+                                                  + pythag(ws.alpha[i], ws.beta[i]))
                                           + eps1 * anorm;
                                 mu_ptr[i] = (intermediate + signI * Tu) / ws.alpha[j];
                             }
@@ -304,8 +305,8 @@ namespace LinearAlgebra
                                                     - ws.alpha[j] * nu_j_i;
                                 fProxy signI = (intermediate >= (fProxy)0) ? (fProxy)1 : (fProxy)(-1);
                                 fProxy beta_im1_T = (i > 0) ? ws.beta[i - 1] : (fProxy)0;
-                                fProxy Tv = eps1 * (svdPythag(ws.alpha[j], ws.beta[j])
-                                                  + svdPythag(ws.alpha[i], beta_im1_T))
+                                fProxy Tv = eps1 * (pythag(ws.alpha[j], ws.beta[j])
+                                                  + pythag(ws.alpha[i], beta_im1_T))
                                           + eps1 * anorm;
                                 nu_ptr[i] = (intermediate + signI * Tv) / ws.beta[j];
                             }
