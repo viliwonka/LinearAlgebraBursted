@@ -293,3 +293,12 @@ that footgun. Proposed resolution: add arena factories (`arena.fProxyLPCache(n, 
 `arena.fProxyLQRState(...)`, `arena.LPBasis(...)`) allocating the internal buffers from the arena,
 keep the ctor+Dispose overloads for compatibility. Note `LPBasis` is type-agnostic like
 Pivot/Indices (which are also ctor-based — precedent either way). NOT ruled on by the owner yet.
+
+### P.2 Triangle-trust convention splits dense-vs-sparse (added 2026-07-11)
+Dense SPD family (CHO, CHOP) and sparse fProxyIC0 read the LOWER triangle (upper ignored,
+LAPACK 'L' convention); symmetric BSR storage (ToBSRSymmetric) canonicalizes UPPER (lower-triangle
+blocks throw). One user, two opposite halves to remember. Eigen.symmetric* verifies both halves;
+SSOR mirrors to full; ILU0/Blas.Triangular unaffected. Options: (a) cross-reference docs at both
+sites (cheap, recommended); (b) flip symmetric BSR to lower storage (breaking, touches symmetric
+spMV/builder/mirror); accepting both halves in ToBSRSymmetric was already design-rejected
+("don't mask caller bugs"). NOT ruled on by the owner yet.
