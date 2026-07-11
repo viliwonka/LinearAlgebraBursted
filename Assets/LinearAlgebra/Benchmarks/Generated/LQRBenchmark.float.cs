@@ -29,14 +29,18 @@ namespace LinearAlgebra.Benchmarks
     public struct LqrColdSdaJobFloat : IJob
     {
         public floatMxN A, B, Q, R, K;
+        public int reps;    // identical solves per Execute; per-solve time = job time / reps
         public NativeArray<int> itersOut;
         public NativeArray<int> statusOut;
 
         public void Execute()
         {
-            var info = Control.lqr(in A, in B, in Q, in R, ref K);
-            itersOut[0] = info.iterations;
-            statusOut[0] = (int)info.status;
+            for (int r = 0; r < reps; r++)
+            {
+                var info = Control.lqr(in A, in B, in Q, in R, ref K);
+                itersOut[0] = info.iterations;
+                statusOut[0] = (int)info.status;
+            }
         }
     }
 
@@ -44,17 +48,21 @@ namespace LinearAlgebra.Benchmarks
     public struct LqrColdRecursionJobFloat : IJob
     {
         public floatMxN A, B, Q, R, K;
+        public int reps;
         public NativeArray<int> itersOut;
         public NativeArray<int> statusOut;
 
         public void Execute()
         {
-            var state = new floatLQRState(A.M_Rows, Allocator.Temp);   // S starts zero-filled
-            state.populated = true;                                    // forces the plain-recursion branch, cold-started
-            var info = Control.lqr(in A, in B, in Q, in R, ref K, ref state);
-            itersOut[0] = info.iterations;
-            statusOut[0] = (int)info.status;
-            state.Dispose();
+            for (int r = 0; r < reps; r++)
+            {
+                var state = new floatLQRState(A.M_Rows, Allocator.Temp);   // S starts zero-filled
+                state.populated = true;                                    // forces the plain-recursion branch, cold-started
+                var info = Control.lqr(in A, in B, in Q, in R, ref K, ref state);
+                itersOut[0] = info.iterations;
+                statusOut[0] = (int)info.status;
+                state.Dispose();
+            }
         }
     }
 
@@ -62,19 +70,23 @@ namespace LinearAlgebra.Benchmarks
     public struct LqrWarmJobFloat : IJob
     {
         public floatMxN Aperturbed, B, Q, R, K;
-        public floatMxN Sprev;   // pre-perturbation converged S; re-seeded into a fresh state each Execute
+        public floatMxN Sprev;   // pre-perturbation converged S; re-seeded into a fresh state each rep
+        public int reps;
         public NativeArray<int> itersOut;
         public NativeArray<int> statusOut;
 
         public void Execute()
         {
-            var state = new floatLQRState(Aperturbed.M_Rows, Allocator.Temp);
-            state.S.Data.CopyFrom(Sprev.Data);
-            state.populated = true;
-            var info = Control.lqr(in Aperturbed, in B, in Q, in R, ref K, ref state);
-            itersOut[0] = info.iterations;
-            statusOut[0] = (int)info.status;
-            state.Dispose();
+            for (int r = 0; r < reps; r++)
+            {
+                var state = new floatLQRState(Aperturbed.M_Rows, Allocator.Temp);
+                state.S.Data.CopyFrom(Sprev.Data);
+                state.populated = true;
+                var info = Control.lqr(in Aperturbed, in B, in Q, in R, ref K, ref state);
+                itersOut[0] = info.iterations;
+                statusOut[0] = (int)info.status;
+                state.Dispose();
+            }
         }
     }
 
@@ -82,16 +94,24 @@ namespace LinearAlgebra.Benchmarks
     {
         // Trivially stabilizable random instance (already stable, so any n/m/seed combination is a
         // valid LQR instance without needing a controllability check): diagonal in [0.2,0.4), off-
-        // diagonal in [-0.05,0.05) keeps the Gershgorin bound comfortably under 1 up to n=12. Q=I, R=I.
-        static void BuildInstanceFloat(int n, int m, uint seed, in Arena arena,
+        // diagonal magnitude scaled 0.2/n so the Gershgorin bound stays under ~0.6 at EVERY n (the
+        // former fixed +-0.05 was only stable to n~12; at n=128 it produced unstable, likely
+        // unstabilizable instances). At n=4 this reproduces the original +-0.05 exactly. Q=I, R=I.
+        static void BuildInstanceFloat(int n, int m, uint seed, bool nearMarginal, in Arena arena,
                                         out floatMxN A, out floatMxN B, out floatMxN Q, out floatMxN R)
         {
             var rng = new Unity.Mathematics.Random(seed);
+            // nearMarginal: diagonal in [0.90,0.98) pushes the spectrum toward the unit circle -- the
+            // regime where the plain recursion's LINEAR convergence rate collapses and SDA's quadratic
+            // convergence is supposed to earn its keep. Off-diagonal shrunk with it to stay stable.
+            float off = (float)((nearMarginal ? 0.02 : 0.2) / n);
 
             A = arena.floatMat(n, n);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
-                    A[i, j] = (i == j) ? rng.NextFloat(0.2f, 0.4f) : rng.NextFloat(-0.05f, 0.05f);
+                    A[i, j] = (i == j)
+                        ? (nearMarginal ? rng.NextFloat(0.90f, 0.98f) : rng.NextFloat(0.2f, 0.4f))
+                        : rng.NextFloat(-1f, 1f) * off;
 
             B = arena.floatMat(n, m);
             for (int i = 0; i < n; i++)
@@ -105,42 +125,42 @@ namespace LinearAlgebra.Benchmarks
             for (int i = 0; i < m; i++) R[i, i] = (float)1;
         }
 
-        static string ColdSdaFloat(int n, int m, uint seed)
+        static string ColdSdaFloat(int n, int m, int reps, uint seed, bool nearMarginal = false)
         {
             var arena = new Arena(Allocator.Persistent);
-            BuildInstanceFloat(n, m, seed, in arena, out var A, out var B, out var Q, out var R);
+            BuildInstanceFloat(n, m, seed, nearMarginal, in arena, out var A, out var B, out var Q, out var R);
             var K = arena.floatMat(m, n);
 
             var itersOut = new NativeArray<int>(1, Allocator.Persistent);
             var statusOut = new NativeArray<int>(1, Allocator.Persistent);
-            var job = new LqrColdSdaJobFloat { A = A, B = B, Q = Q, R = R, K = K, itersOut = itersOut, statusOut = statusOut };
+            var job = new LqrColdSdaJobFloat { A = A, B = B, Q = Q, R = R, K = K, reps = reps, itersOut = itersOut, statusOut = statusOut };
             var stat = Bench.Time(() => job.Run());
-            string row = LQRBenchmarkFmt.Row("float", "cold-SDA", n, m, stat, itersOut[0], statusOut[0]);
+            string row = LQRBenchmarkFmt.Row("float", nearMarginal ? "cold-SDA(marg)" : "cold-SDA", n, m, reps, stat, itersOut[0], statusOut[0]);
 
             itersOut.Dispose(); statusOut.Dispose(); arena.Dispose();
             return row;
         }
 
-        static string ColdRecursionFloat(int n, int m, uint seed)
+        static string ColdRecursionFloat(int n, int m, int reps, uint seed, bool nearMarginal = false)
         {
             var arena = new Arena(Allocator.Persistent);
-            BuildInstanceFloat(n, m, seed, in arena, out var A, out var B, out var Q, out var R);
+            BuildInstanceFloat(n, m, seed, nearMarginal, in arena, out var A, out var B, out var Q, out var R);
             var K = arena.floatMat(m, n);
 
             var itersOut = new NativeArray<int>(1, Allocator.Persistent);
             var statusOut = new NativeArray<int>(1, Allocator.Persistent);
-            var job = new LqrColdRecursionJobFloat { A = A, B = B, Q = Q, R = R, K = K, itersOut = itersOut, statusOut = statusOut };
+            var job = new LqrColdRecursionJobFloat { A = A, B = B, Q = Q, R = R, K = K, reps = reps, itersOut = itersOut, statusOut = statusOut };
             var stat = Bench.Time(() => job.Run());
-            string row = LQRBenchmarkFmt.Row("float", "cold-recursion", n, m, stat, itersOut[0], statusOut[0]);
+            string row = LQRBenchmarkFmt.Row("float", nearMarginal ? "cold-rec(marg)" : "cold-recursion", n, m, reps, stat, itersOut[0], statusOut[0]);
 
             itersOut.Dispose(); statusOut.Dispose(); arena.Dispose();
             return row;
         }
 
-        static string WarmFloat(int n, int m, uint seed)
+        static string WarmFloat(int n, int m, int reps, uint seed, bool nearMarginal = false)
         {
             var arena = new Arena(Allocator.Persistent);
-            BuildInstanceFloat(n, m, seed, in arena, out var A, out var B, out var Q, out var R);
+            BuildInstanceFloat(n, m, seed, nearMarginal, in arena, out var A, out var B, out var Q, out var R);
             var K = arena.floatMat(m, n);
 
             // untimed setup (managed thread -- Control.lqr is plain Burst-compatible code, just not
@@ -164,9 +184,9 @@ namespace LinearAlgebra.Benchmarks
 
             var itersOut = new NativeArray<int>(1, Allocator.Persistent);
             var statusOut = new NativeArray<int>(1, Allocator.Persistent);
-            var job = new LqrWarmJobFloat { Aperturbed = Aperturbed, B = B, Q = Q, R = R, K = K, Sprev = Sprev, itersOut = itersOut, statusOut = statusOut };
+            var job = new LqrWarmJobFloat { Aperturbed = Aperturbed, B = B, Q = Q, R = R, K = K, Sprev = Sprev, reps = reps, itersOut = itersOut, statusOut = statusOut };
             var stat = Bench.Time(() => job.Run());
-            string row = LQRBenchmarkFmt.Row("float", "warm(1e-3 pert)", n, m, stat, itersOut[0], statusOut[0]);
+            string row = LQRBenchmarkFmt.Row("float", nearMarginal ? "warm(marg)" : "warm(1e-3 pert)", n, m, reps, stat, itersOut[0], statusOut[0]);
 
             itersOut.Dispose(); statusOut.Dispose(); arena.Dispose();
             return row;
