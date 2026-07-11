@@ -2,10 +2,11 @@
 //   Generated from Assets/LinearAlgebra/CodeGen/TemplateSource/Analysis/Analysis.iProxy.cs
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
+
 namespace LinearAlgebra
 {
-    // Structural predicates for the SIGNED integer family (int/short/long -- uint is
-    // deliberately excluded from this surface). Exact-equality integer predicates: integer
+    // Structural predicates for the integer family (int/short/long/uint).
+    // Exact-equality integer predicates: integer
     // arithmetic has no rounding error, so there is no epsilon-taking overload here (unlike
     // float/double Analysis's isIdentity/isSymmetric/isDiagonal/isUpperTriangular/
     // isLowerTriangular, which offer both a bare and an epsilon-taking form).

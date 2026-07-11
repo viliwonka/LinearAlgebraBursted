@@ -17,7 +17,7 @@ using Unity.Jobs;
 // isLowerTriangular. The integer surface is EXACT-EQUALITY only -- there is NO epsilon/tolerance
 // overload (integers have no roundoff), so unlike fProxyAnalysisTests there are no *Epsilon
 // variants here. All square-only predicates must return false (NOT throw) for a non-square matrix.
-public class longAnalysisTests
+public class uintAnalysisTests
 {
     [BurstCompile(CompileSynchronously = true)]
     public struct AnalysisTestJob : IJob
@@ -65,21 +65,21 @@ public class longAnalysisTests
         // All-zero vector -> isZero true; a single nonzero entry -> false.
         void ZeroVector(ref Arena arena)
         {
-            var v = arena.longVec(5, (long)0);
+            var v = arena.uintVec(5, (uint)0);
             Assert.IsTrue(Analysis.isZero(in v));
 
-            v[3] = (long)7;
+            v[3] = (uint)7;
             Assert.IsFalse(Analysis.isZero(in v));
         }
 
         // All-zero matrix -> isZero true; a single nonzero entry -> false (and it is NOT identity).
         void ZeroMatrix(ref Arena arena)
         {
-            var A = arena.longMat(3, 3, (long)0);
+            var A = arena.uintMat(3, 3, (uint)0);
             Assert.IsTrue(Analysis.isZero(in A));
             Assert.IsFalse(Analysis.isIdentity(in A)); // all-zero is not identity
 
-            A[1, 2] = (long)1;
+            A[1, 2] = (uint)1;
             Assert.IsFalse(Analysis.isZero(in A));
             Assert.IsFalse(Analysis.isIdentity(in A));
         }
@@ -87,7 +87,7 @@ public class longAnalysisTests
         // Genuine identity -> isIdentity, isSymmetric, isDiagonal all true; also not zero.
         void Identity(ref Arena arena)
         {
-            var A = arena.longIdentityMat(4);
+            var A = arena.uintIdentityMat(4);
             Assert.IsTrue(Analysis.isIdentity(in A));
             Assert.IsTrue(Analysis.isSymmetric(in A));
             Assert.IsTrue(Analysis.isDiagonal(in A));
@@ -98,14 +98,14 @@ public class longAnalysisTests
         // and a changed diagonal value breaks isIdentity while STILL being diagonal + symmetric.
         void IdentityNegatives(ref Arena arena)
         {
-            var A = arena.longIdentityMat(4);
-            A[0, 1] = (long)1; // exactly one off-diagonal entry
+            var A = arena.uintIdentityMat(4);
+            A[0, 1] = (uint)1; // exactly one off-diagonal entry
             Assert.IsFalse(Analysis.isIdentity(in A));
             Assert.IsFalse(Analysis.isDiagonal(in A));
             Assert.IsFalse(Analysis.isSymmetric(in A)); // A[0,1]=1 but A[1,0]=0
 
-            var B = arena.longIdentityMat(4);
-            B[2, 2] = (long)5; // diagonal value != 1
+            var B = arena.uintIdentityMat(4);
+            B[2, 2] = (uint)5; // diagonal value != 1
             Assert.IsFalse(Analysis.isIdentity(in B));
             Assert.IsTrue(Analysis.isDiagonal(in B));   // still diagonal
             Assert.IsTrue(Analysis.isSymmetric(in B));  // still symmetric
@@ -114,16 +114,16 @@ public class longAnalysisTests
         // Symmetric 3x3 {{1,2,3},{2,4,5},{3,5,6}} -> isSymmetric true; break one entry -> false.
         void Symmetric(ref Arena arena)
         {
-            var A = arena.longMat(3, 3);
-            A[0, 0] = (long)1; A[0, 1] = (long)2; A[0, 2] = (long)3;
-            A[1, 0] = (long)2; A[1, 1] = (long)4; A[1, 2] = (long)5;
-            A[2, 0] = (long)3; A[2, 1] = (long)5; A[2, 2] = (long)6;
+            var A = arena.uintMat(3, 3);
+            A[0, 0] = (uint)1; A[0, 1] = (uint)2; A[0, 2] = (uint)3;
+            A[1, 0] = (uint)2; A[1, 1] = (uint)4; A[1, 2] = (uint)5;
+            A[2, 0] = (uint)3; A[2, 1] = (uint)5; A[2, 2] = (uint)6;
 
             Assert.IsTrue(Analysis.isSymmetric(in A));
             Assert.IsFalse(Analysis.isDiagonal(in A)); // has off-diagonal nonzeros
             Assert.IsFalse(Analysis.isIdentity(in A));
 
-            A[0, 1] = (long)9; // now A[0,1]=9 != A[1,0]=2
+            A[0, 1] = (uint)9; // now A[0,1]=9 != A[1,0]=2
             Assert.IsFalse(Analysis.isSymmetric(in A));
         }
 
@@ -131,14 +131,14 @@ public class longAnalysisTests
         // one off-diagonal nonzero -> isDiagonal false.
         void Diagonal(ref Arena arena)
         {
-            var A = arena.longMat(3, 3, (long)0);
-            A[0, 0] = (long)1; A[1, 1] = (long)2; A[2, 2] = (long)3;
+            var A = arena.uintMat(3, 3, (uint)0);
+            A[0, 0] = (uint)1; A[1, 1] = (uint)2; A[2, 2] = (uint)3;
 
             Assert.IsTrue(Analysis.isDiagonal(in A));
             Assert.IsTrue(Analysis.isSymmetric(in A));
             Assert.IsFalse(Analysis.isIdentity(in A));
 
-            A[0, 2] = (long)7;
+            A[0, 2] = (uint)7;
             Assert.IsFalse(Analysis.isDiagonal(in A));
         }
 
@@ -147,16 +147,16 @@ public class longAnalysisTests
         // nonzero entry breaks it.
         void UpperTriangular(ref Arena arena)
         {
-            var A = arena.longMat(3, 3, (long)0);
-            A[0, 0] = (long)1; A[0, 1] = (long)2; A[0, 2] = (long)3;
-            A[1, 1] = (long)4; A[1, 2] = (long)5;
-            A[2, 2] = (long)6;
+            var A = arena.uintMat(3, 3, (uint)0);
+            A[0, 0] = (uint)1; A[0, 1] = (uint)2; A[0, 2] = (uint)3;
+            A[1, 1] = (uint)4; A[1, 2] = (uint)5;
+            A[2, 2] = (uint)6;
 
             Assert.IsTrue(Analysis.isUpperTriangular(in A));
             Assert.IsFalse(Analysis.isLowerTriangular(in A));
             Assert.IsFalse(Analysis.isDiagonal(in A));
 
-            A[1, 0] = (long)7; // exactly one below-diagonal entry
+            A[1, 0] = (uint)7; // exactly one below-diagonal entry
             Assert.IsFalse(Analysis.isUpperTriangular(in A));
         }
 
@@ -165,16 +165,16 @@ public class longAnalysisTests
         // nonzero entry breaks it.
         void LowerTriangular(ref Arena arena)
         {
-            var A = arena.longMat(3, 3, (long)0);
-            A[0, 0] = (long)1;
-            A[1, 0] = (long)2; A[1, 1] = (long)3;
-            A[2, 0] = (long)4; A[2, 1] = (long)5; A[2, 2] = (long)6;
+            var A = arena.uintMat(3, 3, (uint)0);
+            A[0, 0] = (uint)1;
+            A[1, 0] = (uint)2; A[1, 1] = (uint)3;
+            A[2, 0] = (uint)4; A[2, 1] = (uint)5; A[2, 2] = (uint)6;
 
             Assert.IsTrue(Analysis.isLowerTriangular(in A));
             Assert.IsFalse(Analysis.isUpperTriangular(in A));
             Assert.IsFalse(Analysis.isDiagonal(in A));
 
-            A[0, 2] = (long)7; // exactly one above-diagonal entry
+            A[0, 2] = (uint)7; // exactly one above-diagonal entry
             Assert.IsFalse(Analysis.isLowerTriangular(in A));
         }
 
@@ -182,8 +182,8 @@ public class longAnalysisTests
         // the leading square block looks identity-like/triangular-like.
         void NonSquare(ref Arena arena)
         {
-            var A = arena.longMat(2, 3, (long)0);
-            A[0, 0] = (long)1; A[1, 1] = (long)1; // identity-looking leading block
+            var A = arena.uintMat(2, 3, (uint)0);
+            A[0, 0] = (uint)1; A[1, 1] = (uint)1; // identity-looking leading block
 
             Assert.IsFalse(Analysis.isIdentity(in A));
             Assert.IsFalse(Analysis.isSymmetric(in A));
@@ -192,7 +192,7 @@ public class longAnalysisTests
             Assert.IsFalse(Analysis.isLowerTriangular(in A));
 
             // isZero still works dimension-agnostically on the flat data.
-            var Z = arena.longMat(2, 3, (long)0);
+            var Z = arena.uintMat(2, 3, (uint)0);
             Assert.IsTrue(Analysis.isZero(in Z));
         }
     }

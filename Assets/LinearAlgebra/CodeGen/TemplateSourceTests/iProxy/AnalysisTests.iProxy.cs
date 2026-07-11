@@ -7,7 +7,9 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 
-// Tests for the integer Analysis structural-predicate surface (int / short / long):
+//alsoExpand[uint]// mirrors the source surface's uint expansion; values here are all non-negative.
+
+// Tests for the integer Analysis structural-predicate surface (int / short / long / uint):
 // isZero (vector + matrix), isIdentity, isSymmetric, isDiagonal, isUpperTriangular,
 // isLowerTriangular. The integer surface is EXACT-EQUALITY only -- there is NO epsilon/tolerance
 // overload (integers have no roundoff), so unlike fProxyAnalysisTests there are no *Epsilon
@@ -63,7 +65,7 @@ public class iProxyAnalysisTests
             var v = arena.iProxyVec(5, (iProxy)0);
             Assert.IsTrue(Analysis.isZero(in v));
 
-            v[3] = (iProxy)(-7);
+            v[3] = (iProxy)7;
             Assert.IsFalse(Analysis.isZero(in v));
         }
 

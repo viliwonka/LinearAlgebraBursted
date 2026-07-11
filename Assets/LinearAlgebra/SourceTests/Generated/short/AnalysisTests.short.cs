@@ -11,7 +11,8 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 
-// Tests for the integer Analysis structural-predicate surface (int / short / long):
+
+// Tests for the integer Analysis structural-predicate surface (int / short / long / uint):
 // isZero (vector + matrix), isIdentity, isSymmetric, isDiagonal, isUpperTriangular,
 // isLowerTriangular. The integer surface is EXACT-EQUALITY only -- there is NO epsilon/tolerance
 // overload (integers have no roundoff), so unlike fProxyAnalysisTests there are no *Epsilon
@@ -67,7 +68,7 @@ public class shortAnalysisTests
             var v = arena.shortVec(5, (short)0);
             Assert.IsTrue(Analysis.isZero(in v));
 
-            v[3] = (short)(-7);
+            v[3] = (short)7;
             Assert.IsFalse(Analysis.isZero(in v));
         }
 
