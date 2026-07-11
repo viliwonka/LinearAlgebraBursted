@@ -30,7 +30,7 @@ namespace LinearAlgebra
             {
                 for (int r = k; r < M.M_Rows; r++)
                     u[r] = u[r] / xNorm;
-                u[k] = u[k] + copysign((fProxy)1, u[k]);
+                u[k] = u[k] + signOrOne(u[k]);
                 fProxy div = math.sqrt(math.abs(u[k]));
                 for (int r = k; r < M.M_Rows; r++)
                     u[r] = u[r] / div;
@@ -57,7 +57,7 @@ namespace LinearAlgebra
             {
                 for (int c = colStart; c < n; c++)
                     v[c] = v[c] / xNorm;
-                v[colStart] = v[colStart] + copysign((fProxy)1, v[colStart]);
+                v[colStart] = v[colStart] + signOrOne(v[colStart]);
                 fProxy div = math.sqrt(math.abs(v[colStart]));
                 for (int c = colStart; c < n; c++)
                     v[c] = v[c] / div;

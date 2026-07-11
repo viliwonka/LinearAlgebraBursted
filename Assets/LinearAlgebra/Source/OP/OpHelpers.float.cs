@@ -17,6 +17,11 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static float copysign(float a, float b) => b >= (float)0 ? math.abs(a) : -math.abs(a);
 
+        // +1 or -1 with the sign of x, zero -> +1 (the Householder sign choice). Same zero
+        // convention as copysign above; a direct branch, no abs.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float signOrOne(float x) => x < (float)0 ? (float)(-1) : (float)1;
+
         // sqrt(a^2 + b^2) without destructive underflow/overflow (NR pythag).
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static float pythag(float a, float b)

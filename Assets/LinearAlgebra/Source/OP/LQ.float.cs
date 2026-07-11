@@ -33,7 +33,7 @@ namespace LinearAlgebra
             {
                 for (int c = colStart; c < n; c++)
                     v[c] = v[c] / xNorm;
-                v[colStart] = v[colStart] + copysign((float)1, v[colStart]);
+                v[colStart] = v[colStart] + signOrOne(v[colStart]);
                 float div = math.sqrt(math.abs(v[colStart]));
                 for (int c = colStart; c < n; c++)
                     v[c] = v[c] / div;

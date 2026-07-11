@@ -39,7 +39,7 @@ namespace LinearAlgebra
                 for (int r = k; r < u.N; r++)
                     u[r] = u[r] / xNorm;
 
-                u[k] = u[k] + copysign((fProxy)1, u[k]);
+                u[k] = u[k] + signOrOne(u[k]);
 
                 var div = math.sqrt(math.abs(u[k]));
                 for (int r = k; r < u.N; r++) {
