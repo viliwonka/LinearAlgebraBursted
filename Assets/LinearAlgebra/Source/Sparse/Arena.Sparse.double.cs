@@ -201,5 +201,17 @@ namespace LinearAlgebra
             Arena self = this;
             return new doubleSSOR(in A, ref self);
         }
+
+        /// <summary>
+        /// Builds a block incomplete-Cholesky IC(0) preconditioner from A (must be square SPD
+        /// with every diagonal block stored; Symmetric-storage pays a one-time mirror-to-full
+        /// pass). See <see cref="doubleIC0"/> for the breakdown/diagonal-shift contract.
+        /// Arena-owned: disposed with the arena.
+        /// </summary>
+        public doubleIC0 doubleIC0(in doubleBSR A)
+        {
+            Arena self = this;
+            return new doubleIC0(in A, ref self);
+        }
     }
 }
