@@ -10,6 +10,8 @@ using Unity.Jobs;
 using Unity.Mathematics;
 
 using LinearAlgebra;
+using LinearAlgebra.Gallery;
+using LinearAlgebra.Sparse;
 
 namespace LinearAlgebra.Benchmarks
 {
@@ -29,8 +31,135 @@ namespace LinearAlgebra.Benchmarks
         public void Execute() => infoOut[0] = Eigen.lobpcg(in A, ref ws, k, tol, maxIter);
     }
 
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct LobpcgBsrNoneJobFloat : IJob
+    {
+        public floatBSR A;
+        public floatLOBPCGCache ws;
+        public int k, maxIter;
+        public float tol;
+        public NativeArray<LOBPCGInfo> infoOut;
+        public void Execute()
+        {
+            // Cold start every timed run: an all-zero X makes lobpcg re-seed deterministically
+            // (otherwise the reused workspace warm-starts already-converged and times a no-op).
+            for (int i = 0; i < ws.X.M_Rows; i++)
+                for (int c = 0; c < ws.X.N_Cols; c++)
+                    ws.X[i, c] = (float)0;
+            infoOut[0] = Eigen.lobpcg(new floatBSROperator(in A), ref ws, k, tol, maxIter);
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct LobpcgBsrJacobiJobFloat : IJob
+    {
+        public floatBSR A;
+        public floatBlockJacobi M;
+        public floatLOBPCGCache ws;
+        public int k, maxIter;
+        public float tol;
+        public NativeArray<LOBPCGInfo> infoOut;
+        public void Execute()
+        {
+            // Cold start every timed run: an all-zero X makes lobpcg re-seed deterministically
+            // (otherwise the reused workspace warm-starts already-converged and times a no-op).
+            for (int i = 0; i < ws.X.M_Rows; i++)
+                for (int c = 0; c < ws.X.N_Cols; c++)
+                    ws.X[i, c] = (float)0;
+            infoOut[0] = Eigen.lobpcg(new floatBSROperator(in A), in M, ref ws, k, tol, maxIter);
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct LobpcgBsrSsorJobFloat : IJob
+    {
+        public floatBSR A;
+        public floatSSOR M;
+        public floatLOBPCGCache ws;
+        public int k, maxIter;
+        public float tol;
+        public NativeArray<LOBPCGInfo> infoOut;
+        public void Execute()
+        {
+            // Cold start every timed run: an all-zero X makes lobpcg re-seed deterministically
+            // (otherwise the reused workspace warm-starts already-converged and times a no-op).
+            for (int i = 0; i < ws.X.M_Rows; i++)
+                for (int c = 0; c < ws.X.N_Cols; c++)
+                    ws.X[i, c] = (float)0;
+            infoOut[0] = Eigen.lobpcg(new floatBSROperator(in A), in M, ref ws, k, tol, maxIter);
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct LobpcgBsrIc0JobFloat : IJob
+    {
+        public floatBSR A;
+        public floatIC0 M;
+        public floatLOBPCGCache ws;
+        public int k, maxIter;
+        public float tol;
+        public NativeArray<LOBPCGInfo> infoOut;
+        public void Execute()
+        {
+            // Cold start every timed run: an all-zero X makes lobpcg re-seed deterministically
+            // (otherwise the reused workspace warm-starts already-converged and times a no-op).
+            for (int i = 0; i < ws.X.M_Rows; i++)
+                for (int c = 0; c < ws.X.N_Cols; c++)
+                    ws.X[i, c] = (float)0;
+            infoOut[0] = Eigen.lobpcg(new floatBSROperator(in A), in M, ref ws, k, tol, maxIter);
+        }
+    }
+
     public static partial class LOBPCGBenchmark
     {
+        // Preconditioner face-off for the k smallest eigenpairs over sparse BSR systems:
+        // solve-to-tolerance wall-clock + iteration count, none/Jacobi/SSOR/IC0.
+        static string BenchSparsePrecondFloat(bool laplacian, int p1, int p2, float density, uint seed, int k)
+        {
+            const string fmt = "{0,-7} {1,-6} {2,-12} {3,11:F4} {4,11:F4} {5,7} {6,10} {7,14:E3}";
+            var arena = new Arena(Allocator.Persistent);
+            var A = laplacian ? arena.floatLaplacian2D(p1, p2)
+                              : arena.floatRandomSparseSPD(p1, p2, (float)density, seed);
+            int n = A.M_Rows;
+            float tol = Consts.floatSqrtEps;
+            int maxIter = 500;
+            var ws = arena.floatLOBPCGCache(n, k);
+            var infoOut = new NativeArray<LOBPCGInfo>(1, Allocator.Persistent);
+            var sb = new StringBuilder();
+
+            var jN = new LobpcgBsrNoneJobFloat { A = A, ws = ws, k = k, maxIter = maxIter, tol = tol, infoOut = infoOut };
+            var sN = Bench.Time(() => jN.Run());
+            var iN = infoOut[0];
+            sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
+                "float", n, "none", sN.Median, sN.Min, iN.iterations, iN.converged, iN.maxResidual));
+
+            var mJ = arena.floatBlockJacobi(in A);
+            var jJ = new LobpcgBsrJacobiJobFloat { A = A, M = mJ, ws = ws, k = k, maxIter = maxIter, tol = tol, infoOut = infoOut };
+            var sJ = Bench.Time(() => jJ.Run());
+            var iJ = infoOut[0];
+            sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
+                "float", n, "Jacobi", sJ.Median, sJ.Min, iJ.iterations, iJ.converged, iJ.maxResidual));
+
+            var mS = arena.floatSSOR(in A);
+            var jS = new LobpcgBsrSsorJobFloat { A = A, M = mS, ws = ws, k = k, maxIter = maxIter, tol = tol, infoOut = infoOut };
+            var sS = Bench.Time(() => jS.Run());
+            var iS = infoOut[0];
+            sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
+                "float", n, "SSOR", sS.Median, sS.Min, iS.iterations, iS.converged, iS.maxResidual));
+
+            var mI = arena.floatIC0(in A);
+            var jI = new LobpcgBsrIc0JobFloat { A = A, M = mI, ws = ws, k = k, maxIter = maxIter, tol = tol, infoOut = infoOut };
+            var sI = Bench.Time(() => jI.Run());
+            var iI = infoOut[0];
+            sb.Append(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
+                "float", n, "IC0", sI.Median, sI.Min, iI.iterations, iI.converged, iI.maxResidual));
+
+            infoOut.Dispose();
+            arena.Dispose();
+            return sb.ToString();
+        }
+
         static string BenchFloat(int N, int K, int maxIter)
         {
             var arena = new Arena(Allocator.Persistent);
