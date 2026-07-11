@@ -1,5 +1,3 @@
-#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS
-
 using Unity.Burst;
 using System.Runtime.CompilerServices;
 namespace LinearAlgebra

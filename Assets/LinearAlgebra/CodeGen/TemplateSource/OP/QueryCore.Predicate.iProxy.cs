@@ -1,5 +1,3 @@
-#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS
-
 namespace LinearAlgebra
 {
     // Internal generic bodies for Query's integer Group-A predicate ops. The public Query surface

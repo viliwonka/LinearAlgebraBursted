@@ -1,5 +1,3 @@
-#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS 
-
 using System;
 using Unity.Collections.LowLevel.Unsafe;
 using System.Runtime.CompilerServices;

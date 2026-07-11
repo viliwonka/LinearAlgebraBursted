@@ -3,7 +3,6 @@
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
 //singularFile//
-#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS 
 
 using Unity.Mathematics;
 using System.Runtime.CompilerServices;

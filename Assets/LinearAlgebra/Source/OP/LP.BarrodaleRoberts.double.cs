@@ -2,8 +2,6 @@
 //   Generated from Assets/LinearAlgebra/CodeGen/TemplateSource/OP/LP.BarrodaleRoberts.fProxy.cs
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
-#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS
-
 using System;
 
 using Unity.Collections;

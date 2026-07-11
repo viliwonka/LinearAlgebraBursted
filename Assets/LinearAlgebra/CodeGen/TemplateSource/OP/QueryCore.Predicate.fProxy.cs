@@ -1,5 +1,3 @@
-#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS
-
 namespace LinearAlgebra
 {
     // Internal generic bodies for Query's Group-A flat/scalar predicate ops (findFirst, count,

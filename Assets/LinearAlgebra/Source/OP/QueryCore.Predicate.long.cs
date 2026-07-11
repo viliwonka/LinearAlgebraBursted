@@ -2,8 +2,6 @@
 //   Generated from Assets/LinearAlgebra/CodeGen/TemplateSource/OP/QueryCore.Predicate.iProxy.cs
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
-#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS
-
 namespace LinearAlgebra
 {
     // Internal generic bodies for Query's integer Group-A predicate ops. The public Query surface

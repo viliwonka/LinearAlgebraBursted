@@ -2,8 +2,6 @@
 //   Generated from Assets/LinearAlgebra/CodeGen/TemplateSource/Analysis/Analysis.iProxy.cs
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
-#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS
-
 namespace LinearAlgebra
 {
     // Structural predicates for the SIGNED integer family (int/short/long -- uint is
