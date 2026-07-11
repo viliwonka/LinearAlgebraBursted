@@ -5,9 +5,9 @@ using Unity.Mathematics;
 
 namespace LinearAlgebra
 {
-    // QueryOP.Predicate: predicate-filtered and score-based query operators.
+    // Query.Predicate: predicate-filtered and score-based query operators.
     // Extends Query (partial class). Reuses RowScore/ColScore,
-    // IsBetterForNearest, and WorstScoreForNearest from QueryOP.double.cs.
+    // IsBetterForNearest, and WorstScoreForNearest from Query.double.cs.
     //
     // Groups:
     //   A — Flat / scalar predicate ops (generic T + P): findFirst, count, any, all, findAll.
@@ -101,7 +101,7 @@ namespace LinearAlgebra
             where P : struct, IdoubleRowPredicate
         {
             if (idx.N < A.M_Rows)
-                throw new System.ArgumentException("QueryOP.whichRows: idx.N must be >= A.M_Rows");
+                throw new System.ArgumentException("Query.whichRows: idx.N must be >= A.M_Rows");
             int c = 0;
             for (int r = 0; r < A.M_Rows; r++)
                 if (pred.Test(in A, r)) idx[c++] = r;
@@ -130,7 +130,7 @@ namespace LinearAlgebra
             where P : struct, IdoubleColPredicate
         {
             if (idx.N < A.N_Cols)
-                throw new System.ArgumentException("QueryOP.whichColumns: idx.N must be >= A.N_Cols");
+                throw new System.ArgumentException("Query.whichColumns: idx.N must be >= A.N_Cols");
             int c = 0;
             for (int col = 0; col < A.N_Cols; col++)
                 if (pred.Test(in A, col)) idx[c++] = col;
@@ -155,9 +155,9 @@ namespace LinearAlgebra
             where P : struct, IdoubleRowPredicate
         {
             if (A.M_Rows == 0)
-                throw new System.InvalidOperationException("QueryOP.nearestRowWhere: matrix has no rows");
+                throw new System.InvalidOperationException("Query.nearestRowWhere: matrix has no rows");
             if (q.N != A.N_Cols)
-                throw new System.ArgumentException("QueryOP.nearestRowWhere: q.N must equal A.N_Cols");
+                throw new System.ArgumentException("Query.nearestRowWhere: q.N must equal A.N_Cols");
 
             double best = doubleQueryCore.WorstScoreForNearest(m);
             int bestIdx = -1;
@@ -186,11 +186,11 @@ namespace LinearAlgebra
         {
             if (A.M_Rows == 0 || k <= 0) return 0;
             if (q.N != A.N_Cols)
-                throw new System.ArgumentException("QueryOP.kNearestRowsWhere: q.N must equal A.N_Cols");
+                throw new System.ArgumentException("Query.kNearestRowsWhere: q.N must equal A.N_Cols");
             if (idx.N < k)
-                throw new System.ArgumentException("QueryOP.kNearestRowsWhere: idx.N must be >= k");
+                throw new System.ArgumentException("Query.kNearestRowsWhere: idx.N must be >= k");
             if (scores.N < k)
-                throw new System.ArgumentException("QueryOP.kNearestRowsWhere: scores.N must be >= k");
+                throw new System.ArgumentException("Query.kNearestRowsWhere: scores.N must be >= k");
 
             int clampedK = math.min(k, A.M_Rows);
             bool sim = m == Metric.Cosine || m == Metric.Dot;
@@ -230,9 +230,9 @@ namespace LinearAlgebra
             where P : struct, IdoubleColPredicate
         {
             if (A.N_Cols == 0)
-                throw new System.InvalidOperationException("QueryOP.nearestColumnWhere: matrix has no columns");
+                throw new System.InvalidOperationException("Query.nearestColumnWhere: matrix has no columns");
             if (q.N != A.M_Rows)
-                throw new System.ArgumentException("QueryOP.nearestColumnWhere: q.N must equal A.M_Rows");
+                throw new System.ArgumentException("Query.nearestColumnWhere: q.N must equal A.M_Rows");
 
             double best = doubleQueryCore.WorstScoreForNearest(m);
             int bestIdx = -1;
@@ -261,11 +261,11 @@ namespace LinearAlgebra
         {
             if (A.N_Cols == 0 || k <= 0) return 0;
             if (q.N != A.M_Rows)
-                throw new System.ArgumentException("QueryOP.kNearestColumnsWhere: q.N must equal A.M_Rows");
+                throw new System.ArgumentException("Query.kNearestColumnsWhere: q.N must equal A.M_Rows");
             if (idx.N < k)
-                throw new System.ArgumentException("QueryOP.kNearestColumnsWhere: idx.N must be >= k");
+                throw new System.ArgumentException("Query.kNearestColumnsWhere: idx.N must be >= k");
             if (scores.N < k)
-                throw new System.ArgumentException("QueryOP.kNearestColumnsWhere: scores.N must be >= k");
+                throw new System.ArgumentException("Query.kNearestColumnsWhere: scores.N must be >= k");
 
             int clampedK = math.min(k, A.N_Cols);
             bool sim = m == Metric.Cosine || m == Metric.Dot;
@@ -307,7 +307,7 @@ namespace LinearAlgebra
             where S : struct, IdoubleRowScore
         {
             if (A.M_Rows == 0)
-                throw new System.InvalidOperationException("QueryOP.argMaxRowBy: matrix has no rows");
+                throw new System.InvalidOperationException("Query.argMaxRowBy: matrix has no rows");
 
             double best = double.MinValue;
             int bestIdx = 0;
@@ -328,7 +328,7 @@ namespace LinearAlgebra
             where S : struct, IdoubleRowScore
         {
             if (A.M_Rows == 0)
-                throw new System.InvalidOperationException("QueryOP.argMinRowBy: matrix has no rows");
+                throw new System.InvalidOperationException("Query.argMinRowBy: matrix has no rows");
 
             double best = double.MaxValue;
             int bestIdx = 0;
@@ -353,9 +353,9 @@ namespace LinearAlgebra
         {
             if (A.M_Rows == 0 || k <= 0) return 0;
             if (idx.N < k)
-                throw new System.ArgumentException("QueryOP.topKRowsBy: idx.N must be >= k");
+                throw new System.ArgumentException("Query.topKRowsBy: idx.N must be >= k");
             if (scores.N < k)
-                throw new System.ArgumentException("QueryOP.topKRowsBy: scores.N must be >= k");
+                throw new System.ArgumentException("Query.topKRowsBy: scores.N must be >= k");
 
             int clampedK = math.min(k, A.M_Rows);
             int count = 0;
@@ -391,7 +391,7 @@ namespace LinearAlgebra
             where S : struct, IdoubleColScore
         {
             if (A.N_Cols == 0)
-                throw new System.InvalidOperationException("QueryOP.argMaxColBy: matrix has no columns");
+                throw new System.InvalidOperationException("Query.argMaxColBy: matrix has no columns");
 
             double best = double.MinValue;
             int bestIdx = 0;
@@ -412,7 +412,7 @@ namespace LinearAlgebra
             where S : struct, IdoubleColScore
         {
             if (A.N_Cols == 0)
-                throw new System.InvalidOperationException("QueryOP.argMinColBy: matrix has no columns");
+                throw new System.InvalidOperationException("Query.argMinColBy: matrix has no columns");
 
             double best = double.MaxValue;
             int bestIdx = 0;
@@ -437,9 +437,9 @@ namespace LinearAlgebra
         {
             if (A.N_Cols == 0 || k <= 0) return 0;
             if (idx.N < k)
-                throw new System.ArgumentException("QueryOP.topKColsBy: idx.N must be >= k");
+                throw new System.ArgumentException("Query.topKColsBy: idx.N must be >= k");
             if (scores.N < k)
-                throw new System.ArgumentException("QueryOP.topKColsBy: scores.N must be >= k");
+                throw new System.ArgumentException("Query.topKColsBy: scores.N must be >= k");
 
             int clampedK = math.min(k, A.N_Cols);
             int count = 0;

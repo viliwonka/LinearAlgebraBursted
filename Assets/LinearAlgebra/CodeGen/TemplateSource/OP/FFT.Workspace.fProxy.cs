@@ -20,7 +20,7 @@ namespace LinearAlgebra
     ///
     /// The full-circle table (twReFull/twImFull, length n) is required by the auto-dispatch
     /// radix-4 paths inside fft/ifft: radix-4 twiddles reach index 3n/4, past the half-table
-    /// boundary. Bandwidth tradeoff: full table uses ~2× twiddle memory (~16 MB at N=1M for
+    /// boundary. Bandwidth tradeoff: full table uses ~2× twiddle memory (~8 MB at N=1M for
     /// float), offset by halving the number of full-array passes (log4(N) vs log2(N) passes).
     /// </summary>
     public struct fProxyFFTCache

@@ -1,7 +1,7 @@
 //singularFile//
 namespace LinearAlgebra
 {
-    // Norm selector for QueryOP.argMaxRowNorm / argMaxColNorm.
+    // Norm selector for Query.argMaxRowNorm / argMaxColNorm.
     // L1 = sum of absolute values (Manhattan magnitude).
     // L2 = Euclidean length (sqrt of sum of squares).
     // Linf = max absolute value (Chebyshev magnitude).

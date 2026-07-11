@@ -174,8 +174,9 @@ namespace LinearAlgebra
         /// A (m x n, m >= n) is NOT modified. On output U (m x n) has orthonormal columns (left
         /// singular vectors), S (length n) the singular values (non-negative, DESCENDING), and V
         /// (n x n, NOT transposed) the right singular vectors. Returns true on convergence; false if
-        /// the bidiagonal QR hit maxIter (outputs then undefined). Allocates an n x n + 2*n Temp
-        /// workspace (plus whatever Bidiag.decomp uses). For m &lt; n, transpose A and swap U/V.
+        /// the bidiagonal QR hit maxIter (outputs then undefined). Allocates Temp workspace: an
+        /// n x n matrix, an n x m and an n x n transpose buffer, and two length-n vectors (plus
+        /// whatever Bidiag.decomp uses). For m &lt; n, transpose A and swap U/V.
         /// </summary>
         public static SVDInfo thin(in fProxyMxN A, ref fProxyMxN U, ref fProxyN S, ref fProxyMxN V,
                                    int maxIter, fProxy eps)

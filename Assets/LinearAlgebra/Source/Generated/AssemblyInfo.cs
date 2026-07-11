@@ -7,3 +7,6 @@ using System.Runtime.CompilerServices;
 // the same way ArenaLayoutTests.cs already exercises Arena's public surface. Does not affect any
 // other consumer of this assembly (InternalsVisibleTo grants visibility only to the named assembly).
 [assembly: InternalsVisibleTo("BurstLinearAlgebra.Tests")]
+// The template-side twin of the grant above: the template test assembly compiles the same test
+// sources against THIS assembly (e.g. ChooseMarkerTests exercising the internal ChooseMarkerDemo).
+[assembly: InternalsVisibleTo("BurstLinearAlgebra.TemplateSource.Tests-firstpass")]

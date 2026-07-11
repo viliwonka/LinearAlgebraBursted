@@ -4,7 +4,7 @@ namespace LinearAlgebra
     /// A linear operator y = A x, abstracted behind a generic struct constraint: solvers are
     /// generic over <c>TOp : struct, IdoubleLinearOperator</c>, so each Apply compiles to a direct
     /// call (no virtual dispatch). Lets Krylov solvers (CG, PCG, MINRES, BiCGSTAB, CGLS, LSQR --
-    /// see <c>Solvers</c>) be written ONCE and reused over both dense
+    /// see <c>Krylov</c>) be written ONCE and reused over both dense
     /// (<see cref="doubleDenseOperator"/>) and block-sparse
     /// (<c>LinearAlgebra.Sparse.doubleBSROperator</c>) matrices without duplicating the solver
     /// loop.

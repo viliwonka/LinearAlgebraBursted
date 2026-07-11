@@ -35,7 +35,7 @@ namespace LinearAlgebra
             where T : unmanaged, IUnsafefProxyArray
         {
             if (x.Data.Length == 0)
-                throw new System.InvalidOperationException("QueryOP.argMaxAbs: empty input");
+                throw new System.InvalidOperationException("Query.argMaxAbs: empty input");
 
             fProxy best = math.abs(x.Data[0]);
             int bestIdx = 0;
@@ -56,7 +56,7 @@ namespace LinearAlgebra
             where T : unmanaged, IUnsafefProxyArray
         {
             if (x.Data.Length == 0)
-                throw new System.InvalidOperationException("QueryOP.argMinAbs: empty input");
+                throw new System.InvalidOperationException("Query.argMinAbs: empty input");
 
             fProxy best = math.abs(x.Data[0]);
             int bestIdx = 0;
@@ -82,11 +82,11 @@ namespace LinearAlgebra
         public static int rowArgMin(in fProxyMxN A, ref Indices colIndexPerRow, ref fProxyN valPerRow)
         {
             if (A.M_Rows == 0 || A.N_Cols == 0)
-                throw new System.InvalidOperationException("QueryOP.rowArgMin: empty matrix");
+                throw new System.InvalidOperationException("Query.rowArgMin: empty matrix");
             if (colIndexPerRow.N != A.M_Rows)
-                throw new System.ArgumentException("QueryOP.rowArgMin: colIndexPerRow.N must equal A.M_Rows");
+                throw new System.ArgumentException("Query.rowArgMin: colIndexPerRow.N must equal A.M_Rows");
             if (valPerRow.N != A.M_Rows)
-                throw new System.ArgumentException("QueryOP.rowArgMin: valPerRow.N must equal A.M_Rows");
+                throw new System.ArgumentException("Query.rowArgMin: valPerRow.N must equal A.M_Rows");
 
             for (int r = 0; r < A.M_Rows; r++)
             {
@@ -104,9 +104,9 @@ namespace LinearAlgebra
         public static int rowArgMin(in fProxyMxN A, ref Indices colIndexPerRow)
         {
             if (A.M_Rows == 0 || A.N_Cols == 0)
-                throw new System.InvalidOperationException("QueryOP.rowArgMin: empty matrix");
+                throw new System.InvalidOperationException("Query.rowArgMin: empty matrix");
             if (colIndexPerRow.N != A.M_Rows)
-                throw new System.ArgumentException("QueryOP.rowArgMin: colIndexPerRow.N must equal A.M_Rows");
+                throw new System.ArgumentException("Query.rowArgMin: colIndexPerRow.N must equal A.M_Rows");
 
             for (int r = 0; r < A.M_Rows; r++)
             {
@@ -127,11 +127,11 @@ namespace LinearAlgebra
         public static int rowArgMax(in fProxyMxN A, ref Indices colIndexPerRow, ref fProxyN valPerRow)
         {
             if (A.M_Rows == 0 || A.N_Cols == 0)
-                throw new System.InvalidOperationException("QueryOP.rowArgMax: empty matrix");
+                throw new System.InvalidOperationException("Query.rowArgMax: empty matrix");
             if (colIndexPerRow.N != A.M_Rows)
-                throw new System.ArgumentException("QueryOP.rowArgMax: colIndexPerRow.N must equal A.M_Rows");
+                throw new System.ArgumentException("Query.rowArgMax: colIndexPerRow.N must equal A.M_Rows");
             if (valPerRow.N != A.M_Rows)
-                throw new System.ArgumentException("QueryOP.rowArgMax: valPerRow.N must equal A.M_Rows");
+                throw new System.ArgumentException("Query.rowArgMax: valPerRow.N must equal A.M_Rows");
 
             for (int r = 0; r < A.M_Rows; r++)
             {
@@ -149,9 +149,9 @@ namespace LinearAlgebra
         public static int rowArgMax(in fProxyMxN A, ref Indices colIndexPerRow)
         {
             if (A.M_Rows == 0 || A.N_Cols == 0)
-                throw new System.InvalidOperationException("QueryOP.rowArgMax: empty matrix");
+                throw new System.InvalidOperationException("Query.rowArgMax: empty matrix");
             if (colIndexPerRow.N != A.M_Rows)
-                throw new System.ArgumentException("QueryOP.rowArgMax: colIndexPerRow.N must equal A.M_Rows");
+                throw new System.ArgumentException("Query.rowArgMax: colIndexPerRow.N must equal A.M_Rows");
 
             for (int r = 0; r < A.M_Rows; r++)
             {
@@ -172,11 +172,11 @@ namespace LinearAlgebra
         public static int colArgMin(in fProxyMxN A, ref Indices rowIndexPerCol, ref fProxyN valPerCol)
         {
             if (A.M_Rows == 0 || A.N_Cols == 0)
-                throw new System.InvalidOperationException("QueryOP.colArgMin: empty matrix");
+                throw new System.InvalidOperationException("Query.colArgMin: empty matrix");
             if (rowIndexPerCol.N != A.N_Cols)
-                throw new System.ArgumentException("QueryOP.colArgMin: rowIndexPerCol.N must equal A.N_Cols");
+                throw new System.ArgumentException("Query.colArgMin: rowIndexPerCol.N must equal A.N_Cols");
             if (valPerCol.N != A.N_Cols)
-                throw new System.ArgumentException("QueryOP.colArgMin: valPerCol.N must equal A.N_Cols");
+                throw new System.ArgumentException("Query.colArgMin: valPerCol.N must equal A.N_Cols");
 
             for (int c = 0; c < A.N_Cols; c++)
             {
@@ -194,9 +194,9 @@ namespace LinearAlgebra
         public static int colArgMin(in fProxyMxN A, ref Indices rowIndexPerCol)
         {
             if (A.M_Rows == 0 || A.N_Cols == 0)
-                throw new System.InvalidOperationException("QueryOP.colArgMin: empty matrix");
+                throw new System.InvalidOperationException("Query.colArgMin: empty matrix");
             if (rowIndexPerCol.N != A.N_Cols)
-                throw new System.ArgumentException("QueryOP.colArgMin: rowIndexPerCol.N must equal A.N_Cols");
+                throw new System.ArgumentException("Query.colArgMin: rowIndexPerCol.N must equal A.N_Cols");
 
             for (int c = 0; c < A.N_Cols; c++)
             {
@@ -217,11 +217,11 @@ namespace LinearAlgebra
         public static int colArgMax(in fProxyMxN A, ref Indices rowIndexPerCol, ref fProxyN valPerCol)
         {
             if (A.M_Rows == 0 || A.N_Cols == 0)
-                throw new System.InvalidOperationException("QueryOP.colArgMax: empty matrix");
+                throw new System.InvalidOperationException("Query.colArgMax: empty matrix");
             if (rowIndexPerCol.N != A.N_Cols)
-                throw new System.ArgumentException("QueryOP.colArgMax: rowIndexPerCol.N must equal A.N_Cols");
+                throw new System.ArgumentException("Query.colArgMax: rowIndexPerCol.N must equal A.N_Cols");
             if (valPerCol.N != A.N_Cols)
-                throw new System.ArgumentException("QueryOP.colArgMax: valPerCol.N must equal A.N_Cols");
+                throw new System.ArgumentException("Query.colArgMax: valPerCol.N must equal A.N_Cols");
 
             for (int c = 0; c < A.N_Cols; c++)
             {
@@ -239,9 +239,9 @@ namespace LinearAlgebra
         public static int colArgMax(in fProxyMxN A, ref Indices rowIndexPerCol)
         {
             if (A.M_Rows == 0 || A.N_Cols == 0)
-                throw new System.InvalidOperationException("QueryOP.colArgMax: empty matrix");
+                throw new System.InvalidOperationException("Query.colArgMax: empty matrix");
             if (rowIndexPerCol.N != A.N_Cols)
-                throw new System.ArgumentException("QueryOP.colArgMax: rowIndexPerCol.N must equal A.N_Cols");
+                throw new System.ArgumentException("Query.colArgMax: rowIndexPerCol.N must equal A.N_Cols");
 
             for (int c = 0; c < A.N_Cols; c++)
             {
@@ -266,7 +266,7 @@ namespace LinearAlgebra
         public static int argMaxRowNorm(in fProxyMxN A, Norm n)
         {
             if (A.M_Rows == 0 || A.N_Cols == 0)
-                throw new System.InvalidOperationException("QueryOP.argMaxRowNorm: empty matrix");
+                throw new System.InvalidOperationException("Query.argMaxRowNorm: empty matrix");
 
             int bestRow = 0;
             fProxy bestNorm = (fProxy)0;
@@ -311,7 +311,7 @@ namespace LinearAlgebra
         public static int argMaxColNorm(in fProxyMxN A, Norm n)
         {
             if (A.M_Rows == 0 || A.N_Cols == 0)
-                throw new System.InvalidOperationException("QueryOP.argMaxColNorm: empty matrix");
+                throw new System.InvalidOperationException("Query.argMaxColNorm: empty matrix");
 
             int bestCol = 0;
             fProxy bestNorm = (fProxy)0;
@@ -473,9 +473,9 @@ namespace LinearAlgebra
         public static void distancesToRow(in fProxyMxN A, in fProxyN q, Metric m, ref fProxyN dest)
         {
             if (q.N != A.N_Cols)
-                throw new System.ArgumentException("QueryOP.distancesToRow: q.N must equal A.N_Cols");
+                throw new System.ArgumentException("Query.distancesToRow: q.N must equal A.N_Cols");
             if (dest.N != A.M_Rows)
-                throw new System.ArgumentException("QueryOP.distancesToRow: dest.N must equal A.M_Rows");
+                throw new System.ArgumentException("Query.distancesToRow: dest.N must equal A.M_Rows");
 
             for (int r = 0; r < A.M_Rows; r++)
                 dest[r] = RowScore(in A, r, in q, m);
@@ -489,9 +489,9 @@ namespace LinearAlgebra
         public static void distancesToColumn(in fProxyMxN A, in fProxyN q, Metric m, ref fProxyN dest)
         {
             if (q.N != A.M_Rows)
-                throw new System.ArgumentException("QueryOP.distancesToColumn: q.N must equal A.M_Rows");
+                throw new System.ArgumentException("Query.distancesToColumn: q.N must equal A.M_Rows");
             if (dest.N != A.N_Cols)
-                throw new System.ArgumentException("QueryOP.distancesToColumn: dest.N must equal A.N_Cols");
+                throw new System.ArgumentException("Query.distancesToColumn: dest.N must equal A.N_Cols");
 
             for (int c = 0; c < A.N_Cols; c++)
                 dest[c] = ColScore(in A, c, in q, m);
@@ -508,9 +508,9 @@ namespace LinearAlgebra
         public static void nearestRow(in fProxyMxN A, in fProxyN q, Metric m, out int index, out fProxy score)
         {
             if (A.M_Rows == 0)
-                throw new System.InvalidOperationException("QueryOP.nearestRow: matrix has no rows");
+                throw new System.InvalidOperationException("Query.nearestRow: matrix has no rows");
             if (q.N != A.N_Cols)
-                throw new System.ArgumentException("QueryOP.nearestRow: q.N must equal A.N_Cols");
+                throw new System.ArgumentException("Query.nearestRow: q.N must equal A.N_Cols");
 
             fProxy best = fProxyQueryCore.WorstScoreForNearest(m);
             int bestIdx = 0;
@@ -530,9 +530,9 @@ namespace LinearAlgebra
         public static void nearestColumn(in fProxyMxN A, in fProxyN q, Metric m, out int index, out fProxy score)
         {
             if (A.N_Cols == 0)
-                throw new System.InvalidOperationException("QueryOP.nearestColumn: matrix has no columns");
+                throw new System.InvalidOperationException("Query.nearestColumn: matrix has no columns");
             if (q.N != A.M_Rows)
-                throw new System.ArgumentException("QueryOP.nearestColumn: q.N must equal A.M_Rows");
+                throw new System.ArgumentException("Query.nearestColumn: q.N must equal A.M_Rows");
 
             fProxy best = fProxyQueryCore.WorstScoreForNearest(m);
             int bestIdx = 0;
@@ -556,9 +556,9 @@ namespace LinearAlgebra
         public static void farthestRow(in fProxyMxN A, in fProxyN q, Metric m, out int index, out fProxy score)
         {
             if (A.M_Rows == 0)
-                throw new System.InvalidOperationException("QueryOP.farthestRow: matrix has no rows");
+                throw new System.InvalidOperationException("Query.farthestRow: matrix has no rows");
             if (q.N != A.N_Cols)
-                throw new System.ArgumentException("QueryOP.farthestRow: q.N must equal A.N_Cols");
+                throw new System.ArgumentException("Query.farthestRow: q.N must equal A.N_Cols");
 
             fProxy worst = fProxyQueryCore.WorstScoreForFarthest(m);
             int worstIdx = 0;
@@ -578,9 +578,9 @@ namespace LinearAlgebra
         public static void farthestColumn(in fProxyMxN A, in fProxyN q, Metric m, out int index, out fProxy score)
         {
             if (A.N_Cols == 0)
-                throw new System.InvalidOperationException("QueryOP.farthestColumn: matrix has no columns");
+                throw new System.InvalidOperationException("Query.farthestColumn: matrix has no columns");
             if (q.N != A.M_Rows)
-                throw new System.ArgumentException("QueryOP.farthestColumn: q.N must equal A.M_Rows");
+                throw new System.ArgumentException("Query.farthestColumn: q.N must equal A.M_Rows");
 
             fProxy worst = fProxyQueryCore.WorstScoreForFarthest(m);
             int worstIdx = 0;
@@ -604,7 +604,7 @@ namespace LinearAlgebra
         public static int countWithinRadius(in fProxyMxN A, in fProxyN q, fProxy r, Metric m)
         {
             if (q.N != A.N_Cols)
-                throw new System.ArgumentException("QueryOP.countWithinRadius: q.N must equal A.N_Cols");
+                throw new System.ArgumentException("Query.countWithinRadius: q.N must equal A.N_Cols");
 
             bool sim = fProxyQueryCore.IsSimilarityMetric(m);
             int count = 0;
@@ -623,7 +623,7 @@ namespace LinearAlgebra
         public static int countWithinColumnRadius(in fProxyMxN A, in fProxyN q, fProxy r, Metric m)
         {
             if (q.N != A.M_Rows)
-                throw new System.ArgumentException("QueryOP.countWithinColumnRadius: q.N must equal A.M_Rows");
+                throw new System.ArgumentException("Query.countWithinColumnRadius: q.N must equal A.M_Rows");
 
             bool sim = fProxyQueryCore.IsSimilarityMetric(m);
             int count = 0;
@@ -647,11 +647,11 @@ namespace LinearAlgebra
         {
             if (A.M_Rows == 0 || k <= 0) return 0;
             if (q.N != A.N_Cols)
-                throw new System.ArgumentException("QueryOP.kNearestRows: q.N must equal A.N_Cols");
+                throw new System.ArgumentException("Query.kNearestRows: q.N must equal A.N_Cols");
             if (idx.N < k)
-                throw new System.ArgumentException("QueryOP.kNearestRows: idx.N must be >= k");
+                throw new System.ArgumentException("Query.kNearestRows: idx.N must be >= k");
             if (scores.N < k)
-                throw new System.ArgumentException("QueryOP.kNearestRows: scores.N must be >= k");
+                throw new System.ArgumentException("Query.kNearestRows: scores.N must be >= k");
 
             int clampedK = math.min(k, A.M_Rows);
             bool sim = m == Metric.Cosine || m == Metric.Dot;
@@ -688,11 +688,11 @@ namespace LinearAlgebra
         {
             if (A.N_Cols == 0 || k <= 0) return 0;
             if (q.N != A.M_Rows)
-                throw new System.ArgumentException("QueryOP.kNearestColumns: q.N must equal A.M_Rows");
+                throw new System.ArgumentException("Query.kNearestColumns: q.N must equal A.M_Rows");
             if (idx.N < k)
-                throw new System.ArgumentException("QueryOP.kNearestColumns: idx.N must be >= k");
+                throw new System.ArgumentException("Query.kNearestColumns: idx.N must be >= k");
             if (scores.N < k)
-                throw new System.ArgumentException("QueryOP.kNearestColumns: scores.N must be >= k");
+                throw new System.ArgumentException("Query.kNearestColumns: scores.N must be >= k");
 
             int clampedK = math.min(k, A.N_Cols);
             bool sim = m == Metric.Cosine || m == Metric.Dot;
@@ -729,11 +729,11 @@ namespace LinearAlgebra
         {
             if (A.M_Rows == 0 || k <= 0) return 0;
             if (q.N != A.N_Cols)
-                throw new System.ArgumentException("QueryOP.kFarthestRows: q.N must equal A.N_Cols");
+                throw new System.ArgumentException("Query.kFarthestRows: q.N must equal A.N_Cols");
             if (idx.N < k)
-                throw new System.ArgumentException("QueryOP.kFarthestRows: idx.N must be >= k");
+                throw new System.ArgumentException("Query.kFarthestRows: idx.N must be >= k");
             if (scores.N < k)
-                throw new System.ArgumentException("QueryOP.kFarthestRows: scores.N must be >= k");
+                throw new System.ArgumentException("Query.kFarthestRows: scores.N must be >= k");
 
             int clampedK = math.min(k, A.M_Rows);
             bool sim = m == Metric.Cosine || m == Metric.Dot;
@@ -770,11 +770,11 @@ namespace LinearAlgebra
         {
             if (A.N_Cols == 0 || k <= 0) return 0;
             if (q.N != A.M_Rows)
-                throw new System.ArgumentException("QueryOP.kFarthestColumns: q.N must equal A.M_Rows");
+                throw new System.ArgumentException("Query.kFarthestColumns: q.N must equal A.M_Rows");
             if (idx.N < k)
-                throw new System.ArgumentException("QueryOP.kFarthestColumns: idx.N must be >= k");
+                throw new System.ArgumentException("Query.kFarthestColumns: idx.N must be >= k");
             if (scores.N < k)
-                throw new System.ArgumentException("QueryOP.kFarthestColumns: scores.N must be >= k");
+                throw new System.ArgumentException("Query.kFarthestColumns: scores.N must be >= k");
 
             int clampedK = math.min(k, A.N_Cols);
             bool sim = m == Metric.Cosine || m == Metric.Dot;
@@ -812,9 +812,9 @@ namespace LinearAlgebra
         public static int rowsWithinRadius(in fProxyMxN A, in fProxyN q, fProxy r, Metric m, ref Indices idx)
         {
             if (q.N != A.N_Cols)
-                throw new System.ArgumentException("QueryOP.rowsWithinRadius: q.N must equal A.N_Cols");
+                throw new System.ArgumentException("Query.rowsWithinRadius: q.N must equal A.N_Cols");
             if (idx.N < A.M_Rows)
-                throw new System.ArgumentException("QueryOP.rowsWithinRadius: idx.N must be >= A.M_Rows (worst case)");
+                throw new System.ArgumentException("Query.rowsWithinRadius: idx.N must be >= A.M_Rows (worst case)");
 
             bool sim = m == Metric.Cosine || m == Metric.Dot;
             int count = 0;
@@ -834,9 +834,9 @@ namespace LinearAlgebra
         public static int columnsWithinRadius(in fProxyMxN A, in fProxyN q, fProxy r, Metric m, ref Indices idx)
         {
             if (q.N != A.M_Rows)
-                throw new System.ArgumentException("QueryOP.columnsWithinRadius: q.N must equal A.M_Rows");
+                throw new System.ArgumentException("Query.columnsWithinRadius: q.N must equal A.M_Rows");
             if (idx.N < A.N_Cols)
-                throw new System.ArgumentException("QueryOP.columnsWithinRadius: idx.N must be >= A.N_Cols (worst case)");
+                throw new System.ArgumentException("Query.columnsWithinRadius: idx.N must be >= A.N_Cols (worst case)");
 
             bool sim = m == Metric.Cosine || m == Metric.Dot;
             int count = 0;
@@ -859,7 +859,7 @@ namespace LinearAlgebra
             where T : unmanaged, IUnsafefProxyArray
         {
             if (idx.N < x.Data.Length)
-                throw new System.ArgumentException("QueryOP.nonzero: idx.N must be >= x.Data.Length (worst case)");
+                throw new System.ArgumentException("Query.nonzero: idx.N must be >= x.Data.Length (worst case)");
 
             int count = 0;
             for (int i = 0; i < x.Data.Length; i++)

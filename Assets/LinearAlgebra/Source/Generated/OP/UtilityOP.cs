@@ -1,13 +1,13 @@
-#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS 
+#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS
 
 using Unity.Collections.LowLevel.Unsafe;
 //singularFile//
 
 namespace LinearAlgebra
 {
-    public static partial class fProxyComp {
+    
+    public static partial class floatComp {
 
-        
         public static void zeroInPlace(in floatN vec) {
 
             unsafe
@@ -16,7 +16,11 @@ namespace LinearAlgebra
                 UnsafeUtility.MemClear(vec.Data.Ptr, vec.N * sizeOf);
             }
         }
-        
+
+    }
+    
+    public static partial class doubleComp {
+
         public static void zeroInPlace(in doubleN vec) {
 
             unsafe
@@ -25,7 +29,7 @@ namespace LinearAlgebra
                 UnsafeUtility.MemClear(vec.Data.Ptr, vec.N * sizeOf);
             }
         }
-        
 
     }
+    
 }
