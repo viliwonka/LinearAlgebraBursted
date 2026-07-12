@@ -100,6 +100,73 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   updateFixed), which genuinely needs and gets zero-Temp-alloc treatment since Kss is fixed-shape
   for the state's whole lifetime.
 
+## Kalman.UKF
+- 2026-07-12 | NEW feature (UKF, next increment after the linear/EKF Kalman filter). Algorithm
+  reference: FilterPy (rlabbe/filterpy, MIT) -- MerweScaledSigmaPoints.sigma_points/_compute_weights
+  and UnscentedKalmanFilter.predict/update, fetched and verified line-by-line. ukfPredict/ukfUpdate
+  reuse the SAME IfProxyKFModel/IfProxyKFMeasurement functors ekfPredict/ekfUpdate use, calling ONLY
+  F/H -- JacobianF/JacobianH are never read, which is the whole point of the unscented transform
+  (no linearization at all, not even an approximate one).
+- 2026-07-12 | FLOAT-RISK FINDING, deviation from FilterPy's cited default: Van der Merwe's classic
+  write-up (and FilterPy's docstring) recommends alpha ~1e-3. Measured in the float32 numpy
+  prototype (CV tracker, UKF vs the exact linear-KF oracle -- sigma points are exact for a LINEAR
+  F/H, the strongest correctness check available): alpha=1e-3 gives max|x diff|=0.86 (catastrophic
+  -- worse than useless) and max|P diff|=5.8, vs alpha=1.0 giving 1.9e-6/2.0e-6 (both essentially at
+  the float32 precision floor for this problem's scale). Root cause: n+lambda = alpha²(n+kappa)
+  shrinks the sigma-point spread by alpha while lambda/(n+lambda) (and every other weight, which is
+  ∝ 1/(n+lambda)) grows by roughly 1/alpha² -- at alpha=1e-3 the weights reach ~±1e6 (see the
+  concrete numbers in the fProxyUKFCache DEVLOG entry) and the covariance recombination becomes a
+  weighted sum of near-identical numbers with huge opposite-signed weights, i.e. textbook
+  catastrophic cancellation. This library's DEFAULT is alpha=1, beta=2, kappa=0 instead --
+  confirmed (same harness) that UKF then tracks a nonlinear pendulum AS WELL AS OR BETTER than EKF
+  in both precisions (double: EKF 0.00718 vs UKF 0.00713; float: EKF 0.00718 vs UKF 0.00579 --
+  UKF actually wins in float, matching the "UKF should track as well or better" acceptance bar).
+  Double precision also improves under the new default (3.6e-15 vs 4.7e-9 relative agreement with
+  the linear-KF oracle at alpha=1e-3), so this is not purely a float32-only trade. A caller can
+  still construct <see cref="fProxyUKFCache"/> with an explicit smaller alpha via the 4-arg
+  constructor; the algorithm remains correct there (validated: alpha=0.1 and 0.05 both keep P
+  exactly symmetric and PSD, min eigenvalue ~4e-4, over 2000 steps in both precisions despite
+  Wc[0] reaching -96 / -396) -- just with markedly less numerical margin, which is now a documented,
+  deliberate caller choice rather than a silent trap.
+- 2026-07-12 | GenerateSigmaPoints regenerates sigma points FRESH at the start of BOTH ukfPredict
+  and ukfUpdate -- a deliberate deviation from FilterPy's UnscentedKalmanFilter, which reuses
+  predict()'s propagated `sigmas_f` directly inside update() (a documented perf shortcut in
+  FilterPy's own code, not part of Van der Merwe's original algorithm). Reasoning: this library's
+  own Kalman.update already supports being called more than once per predict (multi-sensor fusion
+  between predicts); reusing stale sigma points across a second ukfUpdate call in the same pattern
+  would silently under-represent the covariance change the first update just made. Regenerating
+  costs one extra O(n³) Cholesky per ukfUpdate call, and is mathematically IDENTICAL to FilterPy's
+  result in the common case (update immediately follows predict, nothing else in between).
+- 2026-07-12 | Permutation-aware sigma-point scatter: CHOP factors Pᵀ·Σ·P = L·Lᵀ (P the pivot
+  permutation, Σ the state covariance -- disambiguated from CHOP's own P-for-permutation in
+  comments as "the permutation"), so L's COLUMNS are in PIVOTED order, not the original state-index
+  order. The Van der Merwe spread vector for column k is therefore built by SCATTERING L's column
+  through the permutation (v[Piv[i]] = L[i,k]·scale), not read off directly -- verified in the
+  Python prototype's own pivoted-Cholesky emulation (which deliberately pivots, unlike numpy's
+  plain `cholesky`, specifically to exercise this scatter logic before it was ported to C#).
+  Getting this backwards (reading L[k,i] or skipping the permutation) would silently produce a
+  valid-LOOKING but WRONG sigma spread for any P that actually pivots (i.e. essentially always,
+  since CHOP pivots greedily by largest remaining diagonal even for well-conditioned input).
+
+## Kalman.UKFCache
+- 2026-07-12 | Chose a SEPARATE fProxyUKFCache over folding sigma-point buffers into fProxyKFState
+  (the spec's other offered option): keeps the linear/EKF/fixed-gain paths (which never need sigma
+  points) free of (2n+1)-sized memory, mirrors the house Cache convention (fProxyCHOPCache,
+  fProxySVDThinCache) of a workspace struct paired with -- not merged into -- the data it operates
+  on, and lets a caller reconfigure alpha/beta/kappa (a UKF-only concept) without touching
+  fProxyKFState's own constructor arity.
+- 2026-07-12 | Nests CHOP's own fProxyCHOPCache (`chopWs`) rather than calling CHOP.decomp's
+  convenience (non-workspace) overload, which allocates an n x n Allocator.Temp buffer internally
+  every call -- caught by re-reading CHOP.decomp's own source after first wiring GenerateSigmaPoints
+  to the convenience overload, which would have silently broken the "ukfPredict is zero-Temp-alloc"
+  claim. `bt` (CHOP's solve-side scratch) is deliberately left uncreated -- sigma-point generation
+  only ever calls `decomp`, never `decompSolve`.
+- 2026-07-12 | See the concrete alpha=1e-3 default-negative-Wc[0] numbers this defaults choice
+  avoids: n=2, alpha=1e-3, beta=2, kappa=0 gives lambda=-1.999998, Wm[0]=Wc[0]≈-1e6, every other
+  weight ≈+2.5e5 (computed in the float32 prototype). alpha=1 (this library's default) instead
+  gives lambda=0=kappa, Wm[0]=0, Wc[0]=2 -- non-negative for the default case, though a caller-
+  chosen alpha&lt;1 can still drive Wc[0] negative (by design; see Kalman.UKF's own DEVLOG entry).
+
 ## Kalman.State
 - 2026-07-12 | Scratch fields (xNext/Bu/AP/APAt/At/J/yFast) are `public`, not `internal`, matching
   the house Cache/State convention (fProxyCHOPCache, fProxyLQRState both use public fields) rather
