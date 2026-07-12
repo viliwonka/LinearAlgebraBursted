@@ -10,10 +10,9 @@ Design doc: [spec-debug-print.md](../dev/spec-debug-print.md).
   spot-checking a value mid-algorithm, not for dumping large matrices.
 - `Print.Spy(in floatMxN m[, float absThreshold = 0.01f])` — an ASCII sparsity grid (`X`/space).
 - Every solver/eigensolver diagnostics struct — `DirectSolveInfo`, `RankInfo`, `SolveInfo`,
-  `LstsqInfo` (see [solvers.md](solvers.md)), `EigenSolveInfo`, `LanczosInfo` (see
+  `LstsqInfo` (see [solvers.md](solvers.md)), `EigenSolveInfo`, `LanczosInfo`, `LOBPCGInfo` (see
   [eigen.md](eigen.md#diagnostics-structs)) — has a matching `Print.Log(in <Struct>)`: a Burst-safe
-  compact summary, e.g. `DirectSolveInfo(Success)`, never allocates. `LOBPCGInfo` doesn't have one
-  yet as of this writing but is expected to follow the same convention.
+  compact summary, e.g. `DirectSolveInfo(Success)`, never allocates.
 - `boolN`/`boolMxN` overloads, and [sparse](sparse-bsr.md) equivalents: `Print.Spy(in floatBSR m)`
   (one character per block, mirrors symmetric storage for display) and `Print.Log(in floatBSR m)`.
 

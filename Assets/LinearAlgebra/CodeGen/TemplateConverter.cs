@@ -551,7 +551,7 @@ namespace LinearAlgebra.CodeGen {
             if (allTypes) {
 
                 types = GenUtils.floatTypes.Concat(GenUtils.intTypes).Concat(GenUtils.boolTypes).ToArray();
-                capsTypes = GenUtils.capsFloatTypes.Concat(GenUtils.capsIntTypes).Concat(GenUtils.boolTypes).ToArray();
+                capsTypes = GenUtils.capsFloatTypes.Concat(GenUtils.capsIntTypes).Concat(GenUtils.capsBoolTypes).ToArray();
                 proxy = GenUtils.fProxy; //fProxy is used as a proxy for all types, including int :)
                 capsProxy = GenUtils.cFProxy;
             }

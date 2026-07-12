@@ -80,7 +80,8 @@ if (-not (Test-Path $Results)) {
   exit 1
 }
 
-[xml]$xml = Get-Content $Results
+# File.ReadAllText, not Get-Content: PS 5.1 misdecodes BOM-less UTF-8 (test messages can carry non-ASCII).
+[xml]$xml = [System.IO.File]::ReadAllText($Results)
 $run = $xml."test-run"
 Write-Host ("Result={0} total={1} passed={2} failed={3} skipped={4} duration={5}s" -f `
   $run.result, $run.total, $run.passed, $run.failed, $run.skipped, $run.duration)

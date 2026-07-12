@@ -86,7 +86,10 @@ if ($Unity) {
 # Report what changed under version control.
 Push-Location $root
 try {
-  $changed = @(git status --porcelain -- "Assets/LinearAlgebra/Source" "Assets/LinearAlgebra/SourceTests" "Assets/LinearAlgebra/CodeGen" "Assets/LinearAlgebra/Benchmarks/Generated" 2>$null)
+  # Codegen OUTPUT trees only (CodegenBootstrap writes Source, SourceTests/Generated,
+  # Benchmarks/Generated). The CodeGen template tree is INPUT: uncommitted template edits there
+  # are not generated-file drift and must not fail -Check.
+  $changed = @(git status --porcelain -- "Assets/LinearAlgebra/Source" "Assets/LinearAlgebra/SourceTests/Generated" "Assets/LinearAlgebra/Benchmarks/Generated" 2>$null)
 } finally { Pop-Location }
 
 if ($changed.Count -eq 0) {

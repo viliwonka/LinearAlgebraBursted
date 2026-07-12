@@ -88,7 +88,8 @@ if ($written) {
   $Results = $written.Matches[0].Groups[1].Value.Trim()
   if (Test-Path $Results) {
     Write-Host ""
-    Get-Content $Results
+    # File.ReadAllText, not Get-Content: PS 5.1 misdecodes BOM-less UTF-8 (results are written UTF-8 no BOM).
+    [System.IO.File]::ReadAllText($Results)
     exit 0
   }
 }

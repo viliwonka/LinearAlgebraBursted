@@ -82,6 +82,24 @@ size 64 but the real gates are 128/512), and **arena leaks in tests**.
 | 21 | [tests-f-s-v](21-tests-f-s-v.md) | 19 | 5 | 0/3/2 |
 | 22 | [benchmarks](22-benchmarks.md) | 24 | 7 (1 uncertain) | 0/0/8 |
 
+## Non-template sweep (second pass, same day)
+
+Codegen infrastructure, Tools scripts, hand-written tests/benchmarks, demos, and
+user-facing docs (fact-checked against the API, prose untouched). 26 confirmed
+(1 high, 5 medium, 20 low), 1 refuted. The high + all mediums were fixed the same
+day: TemplateConverter caps-bool token (latent), regen.ps1 -Check scope,
+benchmark/run-tests Get-Content UTF-8 decode, control.md/decompositions.md
+placeholder type names, print-export.md stale LOBPCGInfo claim.
+
+| # | Report | Files | Confirmed | H/M/L (non-refuted) |
+|---|---|---|---|---|
+| 23 | [codegen-infra](23-codegen-infra.md) | 6 | 3 | 0/1/2 |
+| 24 | [tools-scripts](24-tools-scripts.md) | 8 | 5 | 0/2/3 |
+| 25 | [bench-handwritten](25-bench-handwritten.md) | 27 | 3 | 0/0/3 |
+| 26 | [tests-handwritten](26-tests-handwritten.md) | 11 | 3 | 0/0/3 |
+| 27 | [demos](27-demos.md) | 9 | 4 (1 refuted) | 0/0/4 |
+| 28 | [docs-userfacing](28-docs-userfacing.md) | 19 | 8 | 1/2/5 |
+
 Low-severity findings (69) are mostly doc/comment contradictions and comment-policy
 violations; see each report. Fixes should be made in the templates and regenerated
 (`Tools/regen.ps1`), never in `Assets/LinearAlgebra/Source`.

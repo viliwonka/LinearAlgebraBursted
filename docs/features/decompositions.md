@@ -33,7 +33,7 @@ gain caps out around 1.3–1.4× (bounded by `matMatDot`'s own ~70 GFLOP/s ceili
   - **QR's three scratch tiers** (all producing bit-identical results, cheapest to richest): (1) the
     fully-allocating overload — convenience, `Allocator.Temp` scratch, gets the blocked path; (2) the
     raw `ref u[, ref w]` overloads — level-2 minimal scratch, always unblocked, no cache struct
-    needed; (3) `ref fProxyQRCache cache` — zero-alloc AND blocked, carrying `u`/`w` plus the five
+    needed; (3) `ref floatQRCache cache` — zero-alloc AND blocked, carrying `u`/`w` plus the five
     compact-WY panel buffers (`Vpanel`/`Tbuf`/`Wbuf`/`tcolBuf`/`VfullBuf`). `QR.solveInPlace`'s cache
     overload only threads `u`/`w` from the cache (it never forms Q, so the blocked-WY buffers are
     dead weight for it) — its win over the allocating overload is purely the eliminated per-call
