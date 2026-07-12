@@ -1,6 +1,15 @@
 # DEVLOG — Interfaces
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## ResidualFunction.fProxy.cs
+- 2026-07-12 | NEW file: IfProxyResidualFunction/IfProxyResidualJacobian (Optimize.nlsSolve),
+  IfProxyRobustLoss + fProxyL2Loss/fProxyHuberLoss/fProxyCauchyLoss/fProxyTukeyLoss (shared,
+  standalone -- designed for a FUTURE linear-IRLS facade to reuse, not just NLS), and
+  IfProxyCurveModel (Optimize.curveFit). Full provenance/validation history is in OP/DEVLOG.md's NLS
+  section (the interfaces themselves carry no algorithm, just the functor shape).
+  IfProxyResidualJacobian extends IfProxyResidualFunction (adds Jacobian) mirroring
+  IfProxyScalarDerivativeFunction's own relationship to IfProxyScalarFunction just above.
+
 ## LinearOperator.fProxy.cs
 - 2026-07-11 | `IfProxyLinearOperator.ApplyDot`'s doc comment used to spend most of its length on a
   fusion-attempt post-mortem (Krylov R2, docs/draft-spec-krylov-optimization.md): an earlier

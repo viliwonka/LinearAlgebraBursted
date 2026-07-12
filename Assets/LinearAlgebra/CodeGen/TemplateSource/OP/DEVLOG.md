@@ -1,6 +1,152 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## NLS
+- 2026-07-12 | NEW feature: nonlinear least squares via Levenberg-Marquardt with Nielsen damping
+  (Optimize.nlsSolve / Optimize.curveFit). Algorithm reference: Madsen, Nielsen & Tingleff, "Methods
+  for Non-Linear Least Squares Problems" (2nd ed., 2004), Algorithm 3.16 -- the gain-ratio damping
+  update and the convergence structure (step-size test on the PROPOSED step, before it is evaluated
+  against the objective). Math.NET Numerics' LevenbergMarquardtMinimizer.cs (MIT) was read as an
+  independent C# structural reference; MINPACK (netlib, permissive) was read for STRUCTURE only, not
+  transcribed line-by-line (the Marquardt column-norm-floored-at-running-max diag scaling is its
+  well-known convention, not ported code) -- per the owner's provenance ruling this is the "provenance
+  line + DEVLOG" bucket, not the "MINPACK acknowledgment in Third Party Notices.md" bucket. Robust-loss
+  row rescaling (nlsApplyRobustScale) IS verified line-by-line against the installed scipy source
+  (optimize/_lsq/least_squares.py's huber/cauchy + common.py's scale_for_robust_loss_function,
+  BSD-3): z=(f/scale)^2, rho[0] scaled by scale^2, rho[2] divided by scale^2, rho[1] untouched;
+  J_scale=sqrt(max(rho[1]+2*rho[2]*f^2, EPS)), f*=rho[1]/J_scale, J scaled per row -- confirmed byte-
+  for-byte against scipy 1.17 rather than trusting the task's own sketch. Tukey biweight has NO scipy
+  precedent (scipy ships no redescending loss, deliberately) -- its Rho/RhoPrime/RhoPrime2 were
+  independently derived from the standard robust-statistics biweight identities (rho(r) = c²/6·(1-
+  (1-(r/c)²)³) for |r|<=c else c²/6), then re-expressed in terms of s=r² under this library's rho(s)
+  convention (0.5·Σrho(s_i) = the standard M-estimator total cost) -- see the from-scratch numpy
+  prototype (scratchpad, not shipped) for the full re-derivation before this file was written.
+- 2026-07-12 | Validation (numpy/scipy prototype, both precisions): (a) exponential-decay and sine
+  fits matched scipy.optimize.least_squares(method='lm') to ~1e-8..1e-10 relative across 3-4 starts
+  each. (b) NIST StRD Misra1a AND Chwirut2 (fetched fresh from the live NIST page -- an earlier hand-
+  transcribed Chwirut2 table turned out wrong, see below) matched certified params to ~1e-6..1e-8
+  relative in double precision from both prescribed starting points; Chwirut2 (not Misra1a -- see the
+  scale-disparity entry a few entries below) is the one that also cleanly converges in float32, and
+  is the one this library ships as its literal NIST test. (c) a parameter the model never references (exactly
+  zero Jacobian column) stays EXACTLY at its initial value regardless of that value's magnitude
+  (tested 0, 7.3, -1e6) while the other parameters converge normally -- no blow-up. (d) Huber/Cauchy/
+  Tukey all recovered the true linear/exponential fit under 6/50-point gross-outlier contamination
+  where plain L2 was visibly pulled off (e.g. linear fit relerr 0.89 for L2 vs 0.01-0.03 for the
+  robust losses). (e) float32 rerun of (a)/(d) with the SAME relative-tolerance design reproduced
+  the double-precision qualitative results (robust losses still beat L2 by the same margin), no
+  precision-specific failure found. (f) numeric (forward AND central) vs analytic Jacobian converged
+  to the same point (~1e-11 relative) in the same iteration count.
+- 2026-07-12 | BUG FOUND AND FIXED during prototyping: an early engine design checked the step-size
+  convergence test only AFTER an accepted step, mirroring a first guess at the M-N-T structure. On
+  NIST Misra1a (b2 ~5.5e-4, a badly parameter-scaled start) this spiralled once residual/gradient
+  reductions hit the float64 noise floor: each rejected trial produced a SMALLER step as mu grew, but
+  the step was never actually re-checked against stepTol until AFTER an acceptance that never came,
+  so mu escalated to the hard ceiling and the solve reported FailedLinearSolve despite already sitting
+  at the certified optimum (params matched cert to 1e-8 well before the failure). Root cause: Madsen/
+  Nielsen/Tingleff's own Algorithm 3.16 checks ||h|| <= eps2*(||x||+eps2) on the PROPOSED h, every
+  iteration, BEFORE evaluating F(x+h) -- not only after acceptance. Re-reading the reference pseudocode
+  and fixing the check order resolved it (verified: Misra1a now reports Converged/SmallStep, never
+  FailedLinearSolve, from both prescribed starts). nlsSolveStep/the outer loop in NLS.fProxy.cs follow
+  this corrected order; don't move the step check back to a post-accept-only position.
+- 2026-07-12 | SECOND BUG FOUND AND FIXED (float32-only, caught by the float32 rerun of the NIST
+  case): the Marquardt diag floor was first written as `dFloor = Consts.fProxySqrtEps * LInf(J0)`
+  (scale-relative to the WHOLE Jacobian, deliberately not `max(1, LInf(J0))` -- the Kalman SDA bug is
+  the same failure MODE, assuming an O(1) problem scale). That version still broke in float32 on NIST
+  Misra1a specifically: b1's column norm (~0.16) and b2's column norm (~7e5) differ by ~1e6x, and
+  sqrt(floatEps)~3.45e-4 times the LARGER column's norm floors b1's own legitimate ~0.16 column norm
+  up to ~107 -- destroying its real gradient signal and reporting false-Converged at iteration 0
+  (this did NOT happen in double: sqrt(doubleEps)~1.5e-8 is small enough relative to a 1e6x ratio
+  that it stayed below 0.16). Root cause: ANY floor scaled by the WHOLE matrix's own magnitude
+  cross-contaminates columns of genuinely different natural scale.
+- 2026-07-13 | THIRD BUG FOUND AND FIXED (all precisions -- reported by the test suite as
+  FlatParameterNoBlowup failing everywhere: float got 3.294179E+13, double got 8.54560688875843E+30,
+  both "expected 0"). The second fix above (a plain `dFloor = Consts.fProxyEpsilon`, no matrix-scale
+  multiplier) was itself insufficient: it was validated only against `np.linalg.lstsq` (SVD-based) in
+  the numpy prototype, which does NOT reproduce this library's actual QR.solveInPlace (Householder).
+  Root-caused with a FAITHFUL Python port of genHouseholder + solveInPlace's fused kernel (including
+  the near-zero-column fallback `u[k]=sqrt(2)`), which reproduced the exact reported failure
+  (h[flat]=5e29 at iteration 0) -- then confirmed byte-for-byte in a standalone dotnet harness with
+  the SAME faithful port transcribed to C#: reinstating the plain-epsilon floor there reproduces
+  8.545607E+30 (double) / 3.295198E+13 (float), matching the reported values to 4-6 significant
+  figures. Mechanism: flooring a flat column's d_j at machine epsilon makes its augmented-system
+  regularization entry sqrt(mu)*d_j fall BELOW QR's own zero-threshold
+  (Consts.ZeroThreshold*LInf(Aaug)) for that column. genHouseholder's near-zero fallback sets ONLY
+  u[k]=sqrt(2) and leaves the REST of u (including the regularization row itself, which is the
+  column's ONLY nonzero entry) unchanged -- this fallback is correct for a column that is zero
+  EVERYWHERE (the ordinary un-augmented QR case it was written for), but produces an inconsistent
+  reflector when the column has exactly one small-but-nonzero entry (the augmented case): applying it
+  leaves R's diagonal for that column proportional to mu*dFloor² (quadratically tiny), so
+  back-substitution divides whatever roundoff has accumulated in the transformed RHS by a near-zero
+  number and the flat parameter's step explodes. A larger CONSTANT floor does not fix this on its
+  own either (tried 1e-6·LInf(J) through 2·LInf(J) in the harness): the required floor to clear QR's
+  threshold scales with 1/sqrt(mu), and mu shrinks across iterations as the solve converges, so any
+  FIXED floor value can eventually fall short again later in the same solve.
+  FINAL FIX (nlsUpdateScale, NLS.fProxy.cs): stopped trying to pick a floor VALUE at all for flat
+  columns. Instead, each iteration, first find maxRealColNorm (the largest column norm among columns
+  ABOVE flatThresh = Consts.fProxyEpsilon, an ABSOLUTE per-type constant, never scaled by the
+  matrix -- this is unchanged from the second fix and still correctly leaves Misra1a's b1, ~0.16, far
+  above it and untouched). A column AT OR BELOW flatThresh (colnorm effectively zero -- the residual
+  structurally does not depend on that parameter) is then floored at maxRealColNorm itself, not a
+  small constant: this makes its regularization entry sqrt(mu)*d_flat EXACTLY EQUAL to the
+  MOST-regularized real column's own entry, so it tracks mu's shrinkage in lockstep with the real
+  columns and stays proportionally safe relative to QR's threshold for as long as the real columns'
+  own regularization does (which is the normal, expected LM regime -- once real-column regularization
+  itself becomes negligible relative to J, mu is deep into "trust the linearization" territory and the
+  algorithm is behaving as intended). Matches the coordinator's candidate 1 (MINPACK's zero-column
+  convention, generalized from a literal "1" to "the max column norm across J" for scale-independence)
+  -- candidate 3 (explicit freeze/exclude) was not needed once the right floor TARGET was identified.
+  Re-verified end-to-end in the dotnet harness with the FAITHFUL Householder QR (not a normal-equations
+  or lstsq stand-in): all 9 shipped NLS test cases pass in both precisions, the Misra1a cross-
+  contamination re-check (same scale-disparity case as the second bug) still reports the same benign
+  SmallStep-at-iteration-0 (finite, unmoved, NOT a false convergence) rather than any blow-up or
+  wrong-answer convergence, and reverting nlsUpdateScale to the flawed plain-epsilon version
+  reproduces the FlatParameterNoBlowup failure with the reported magnitudes almost exactly (negative
+  control). Same "no matrix-scale multiplier" reasoning still applies to the gradient-convergence
+  reference scale (gnorm0 is the SCALED gradient's own value at the start, not a hardcoded constant).
+- 2026-07-12 | Misra1a's ~1e6x b1/b2 scale disparity is ALSO why it was dropped in favor of Chwirut2
+  as this library's single shipped NIST literal test: even with the dFloor fix above, Misra1a's own
+  Marquardt mu0 heuristic (tau·max(d_i²), i.e. dominated by whichever parameter has the LARGEST
+  column norm) over-damps the SMALLER-scaled parameter by a factor of roughly the scale ratio
+  SQUARED. In float32 this makes the very first proposed step so tiny that adding it to p[0]=500
+  is a float32 no-op (500+1.4e-6 rounds back to exactly 500 at ~7 significant digits) -- every trial
+  is honestly rejected (rho_gain measures exactly 0, not negative or NaN) until the step-size test
+  legitimately fires (SmallStep), from BOTH of NIST's own prescribed starting points. This is a real,
+  explainable float32 precision limit for THIS problem's specific scale disparity, not an engine
+  defect (no NaN, no crash, no silent non-convergence) -- but it makes a flaky/uninformative shipped
+  test. Chwirut2's three parameters (~0.17, ~0.005, ~0.012, within ~30x of each other) have no such
+  disparity and converge cleanly in BOTH precisions from its own NIST-prescribed start1 (double
+  relerr ~8e-8, float32 relerr ~5e-3, both via genuine multi-iteration LM progress) -- this is the
+  literal dataset TemplateSourceTests/fProxy/NLSTests.fProxy.cs actually ships.
+- 2026-07-12 | Redescending-loss starting-point caveat (Tukey): if EVERY residual at the starting
+  point exceeds the loss's Scale, RhoPrime is exactly 0 everywhere, the weighted gradient is exactly
+  0, and the solve reports false-Converged at iteration 0 -- reproduced with Tukey(scale=0.3) from a
+  poor exponential-fit start where every residual exceeded 0.3. This is inherent to ANY redescending
+  M-estimator (not an engine bug) -- scipy's own least_squares ships no redescending loss for the
+  same reason. Choose Scale comfortably larger than the expected residual spread at the start point,
+  or warm-start from an fProxyHuberLoss/plain fit first.
+- 2026-07-12 | Scoping decision: no analytic-Jacobian + robust-loss combination overload in v1 (the
+  task brief's own bullets frame robust loss as an addition to the DEFAULT numeric-Jacobian path, and
+  curveFit is explicitly numeric-only) -- kept deliberately, not an oversight. This also sidesteps a
+  genuine C# landmine verified via a standalone dotnet repro before committing to the final overload
+  ladder: two generic methods differing ONLY by a type-parameter CONSTRAINT (TF : IfProxyResidualFunction
+  vs TF : IfProxyResidualJacobian) collide as CS0111 the moment their VALUE-parameter lists also
+  match -- constraints are invisible to C# overload-signature uniqueness (same rule the naming-style-
+  guide's "Split vs merge safety" section documents for merged classes). The numeric-only ladder's
+  terse "just f, p, m" tier is therefore the ONE overload of that exact shape in the whole class
+  (numeric is the default); the analytic ladder's shortest tier is the 6-param
+  (f, p, m, gradTol, stepTol, maxIter) form, which the numeric ladder deliberately never offers (its
+  own 6-param slot would collide) -- a caller wanting default tolerances on the analytic path passes
+  Consts.fProxySqrtEps / Consts.fProxyEpsilon / 200 explicitly rather than getting a same-shaped terse
+  overload. Compile-checked end-to-end (both precisions, all overload families, curveFit plain +
+  weighted) via a standalone dotnet console project with API-compatible stub types before this file
+  was written, not just reasoned about.
+- 2026-07-12 | Convergence bookkeeping (cost, gain ratio, gradient/step norms) accumulates in
+  `double` even in the float template -- same idiom as Optimize.ladIRLS's own `double dx=0,xn=0`
+  convergence accumulator -- while J, r, h, d, mu (the actual factorized system QR.solveInPlace
+  consumes) stay genuinely fProxy-precision. Confirmed this split doesn't mask a real float32 issue:
+  the float32 prototype rerun with the SAME engine logic (native-dtype d/J/r/h, double-accumulated
+  convergence tests) reproduced the double-precision qualitative results across every scenario.
+
 ## MPC / MPC.State
 - 2026-07-12 | NEW feature: linear MPC over the standard batch/dense condensing (Borrelli-Bemporad-
   Morari, "Predictive Control for Linear and Hybrid Systems", ch. 2). acados/HPIPM (BSD-2) and TinyMPC
