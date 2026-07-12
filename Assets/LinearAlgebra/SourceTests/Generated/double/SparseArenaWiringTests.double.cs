@@ -14,7 +14,7 @@ using Unity.Mathematics;
 // ARENA-LEVEL wiring tests for the SPARSE family (doubleBSR / doubleBlockJacobi) after the
 // ChunkedRecordTable migration. Mirrors the dense house set
 // (ArenaWiringTests.double.cs) but adapted to the sparse contract, whose seams differ from the
-// dense types in three load-bearing ways the coder flagged:
+// dense types in three load-bearing ways:
 //
 //   * doubleBSR / doubleBlockJacobi have NO Copy()/TempCopy() -- there is no copy-round-trip case.
 //   * doubleBlockJacobi is a READONLY struct: its Dispose() CANNOT null _rec afterward, so a
@@ -350,8 +350,7 @@ public class doubleSparseArenaWiringTests
     // doubleBlockJacobi is a READONLY struct, so Dispose() CANNOT null _rec afterward. Consequence:
     // even a SAME-COPY second Dispose() re-enters the arena-tracked branch (_rec still non-null) and
     // throws from the table's double-Free guard -- it does NOT degrade to the safe no-op that
-    // doubleN/doubleBSR's mutable Dispose() gives. This is the coder's flagged behavioral
-    // divergence; pin it distinctly.
+    // doubleN/doubleBSR's mutable Dispose() gives. Pin this divergence distinctly.
     [Test]
     public void SameInstanceDoubleDispose_BlockJacobi_Throws()
     {

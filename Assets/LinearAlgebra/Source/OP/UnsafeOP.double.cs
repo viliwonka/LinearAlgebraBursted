@@ -718,9 +718,7 @@ namespace LinearAlgebra.Internal
         //   G     pb×pb scratch for the Gram matrix VᵀV.
         //
         // Two passes rather than pb²/2 direct dot products:
-        //   1) G = VᵀV via a GEMM-shaped unit-stride loop (t outer, i middle, j INNER unit-stride) —
-        //      reaches GEMM throughput. The naive per-(k,i) dot form (t as the reduction axis, stride
-        //      Vld between consecutive t) does NOT vectorise and was measured far slower.
+        //   1) G = VᵀV via a GEMM-shaped unit-stride loop (t outer, i middle, j INNER unit-stride).
         //   2) The T recursion reads G's entries instead of recomputing dots — O(pb³/6), negligible.
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void formT([NoAlias] double* Vp, int Vld, int rows, int pb, [NoAlias] double* T, [NoAlias] double* tcol, [NoAlias] double* G)

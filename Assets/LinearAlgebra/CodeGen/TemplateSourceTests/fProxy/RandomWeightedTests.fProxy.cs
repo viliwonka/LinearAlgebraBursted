@@ -11,7 +11,7 @@ using Unity.Mathematics;
 using Random = Unity.Mathematics.Random;
 
 // Tests for the weighted discrete picker (Rand.weightedPick / weightedPickInPlace).
-// One template expands to Rand / Rand, so statistics use loose tolerances
+// One template expands to a float and a double build, so statistics use loose tolerances
 // that hold for both precisions; the underlying uniform stream is float-valued for both, so a
 // fixed seed makes every count deterministic.
 //

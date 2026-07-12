@@ -27,10 +27,7 @@ namespace LinearAlgebra
         // limitation. This is garbage-in for every method below that derives from sum/mean
         // (mean, variance, stdDev, varianceSample, stdDevSample all inherit it for the `long`
         // variant). int/short can NEVER trigger this regardless of vector length, since `long`
-        // fully covers the maximum possible total for those two narrower types by construction
-        // (see StatsTests.long.cs's SumAccumulatorOwnOverflow, which pins this contrast: the
-        // same 2-element/MaxValue-filled input is correct-and-widened for int/short but silently
-        // wraps for long).
+        // fully covers the maximum possible total for those two narrower types by construction.
         public static long sum<T>(in T x) where T : unmanaged, IUnsafelongArray {
 
             if (x.Data.Length == 0)

@@ -120,7 +120,7 @@ public class fProxySparseILU0Tests
             var xI = arena.fProxyVec(n);
             var infoIlu = Krylov.pbiCGStab(in A, in M, in b, ref xI, maxIter, tol);
             Assert.IsTrue(infoIlu.Solved);
-            Assert.IsTrue(infoIlu.iterations <= infoPlain.iterations);
+            Assert.IsTrue((double)infoIlu.iterations <= (double)infoPlain.iterations * 0.9);
 
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(math.abs(xI[i] - xTrue[i]) < Tol() * ((fProxy)1 + math.abs(xTrue[i])));

@@ -40,9 +40,7 @@ namespace LinearAlgebra.Benchmarks
 
     // Compact-form transposed solve: LU.decompInPlace + LU.decompSolveTransA -- the getrs(trans='T')
     // counterpart of LuSolveJobFloat above (which uses the split L/U form; the compact form is the
-    // one decompSolveTransA is promoted on, see LU.float.cs). Both are axpy-shaped triangular passes
-    // in their own direction, so this should run at roughly the same speed as the forward LU row --
-    // any large gap would mean the right-looking TransA formulation isn't vectorising as intended.
+    // one decompSolveTransA is promoted on, see LU.float.cs).
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct LuSolveTransAJobFloat : IJob
     {

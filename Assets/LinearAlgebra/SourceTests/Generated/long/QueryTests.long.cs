@@ -700,7 +700,7 @@ public class longQueryTests
         }
 
         // ---------------------------------------------------------------------
-        // MinValue EDGE — the iAbs() off-by-one fix (review's HIGH finding).
+        // MinValue EDGE — iAbs() saturates |long.MinValue| to long.MaxValue.
         // ---------------------------------------------------------------------
 
         void MinValueEdge()

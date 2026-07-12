@@ -25,9 +25,10 @@ namespace LinearAlgebra.Benchmarks
         public doubleMxN centroids;           // k x D
         public Indices assignment;            // length N
         public doubleKMeansCache ws;
+        public int K;
 
         public void Execute() =>
-            KMeans.fit(in X, 16, 12345u, 10, KMeansInit.Uniform,
+            KMeans.fit(in X, K, 12345u, 10, KMeansInit.Uniform,
                                  ref centroids, ref assignment, out double _, out int _, ref ws);
     }
 
@@ -46,7 +47,7 @@ namespace LinearAlgebra.Benchmarks
                 for (int c = 0; c < D; c++)
                     X[r, c] = rng.NextDouble(-1f, 1f);
 
-            var job = new KMeansJobDouble { X = X, centroids = centroids, assignment = assignment, ws = ws };
+            var job = new KMeansJobDouble { X = X, centroids = centroids, assignment = assignment, ws = ws, K = K };
             var stat = Bench.Time(() => job.Run());
 
             arena.Dispose();

@@ -117,8 +117,7 @@ namespace LinearAlgebra
             // would collide across them (CS0102; see QR_BLOCK / CHOL_BLOCK).
             const int LU_BLOCK = 32;
 
-            // Size gate: measured crossover, not the naive 4*LU_BLOCK — the panel/TRSM/GEMM bookkeeping
-            // isn't amortised until ~8 panels wide. Below this, the plain per-column sweep is used
+            // Size gate for the blocked path. Below this, the plain per-column sweep is used
             // unchanged.
             const int LU_BLOCK_MIN_N = Consts.floatLuBlockMinN;   // float/double split (see Consts); default 8*LU_BLOCK
 

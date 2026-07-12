@@ -215,7 +215,6 @@ namespace LinearAlgebra
                         bool reorthTriggerU = (j > 0) && (mumax > delta || forceReorth);
                         if (reorthTriggerU)
                         {
-                            // FUTURE: windowing (compute_int strategy 0) to reorth vs subset only.
                             // Iterated classical GS vs ALL previous û_0..û_{j-1} ("twice is enough",
                             // Kahan/Parlett; lanbpro reorth.m): sweep, and keep sweeping only WHILE the
                             // norm still drops by more than γ (so the vector is not yet orthogonal),

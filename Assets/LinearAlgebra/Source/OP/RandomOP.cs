@@ -23,8 +23,6 @@ namespace LinearAlgebra
         /// in place using Fisher–Yates (Knuth): for i = N−1 downto 1, swap p[i] with p[j]
         /// where j = NextInt(0, i+1). <see cref="Pivot.Swap"/> keeps the parity/Sign field
         /// correct automatically.
-        /// A separate loop from <see cref="shuffleInPlace"/> is intentional: Pivot.Swap tracks
-        /// the permutation parity via its swap counter, which plain index swapping cannot do.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void randomPermutationInPlace(ref Pivot p, ref Random rng)

@@ -49,6 +49,11 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
     passing the arena anywhere.
   (was Arena.cs:538-599)
 
+## Arena.fProxy.cs / Arena.iProxy.cs
+- 2026-07-12 | fProxyMat(dim)/iProxyMat(dim) forward to the (rows, cols) overload so the matrix is
+  tracked in fProxyMatRecords/iProxyMatRecords: an earlier direct `new fProxyMxN(...)` here was
+  untracked and leaked on Dispose. (was Arena.fProxy.cs:131-132, Arena.iProxy.cs:137-138)
+
 ## ChunkedRecordTable.cs
 - 2026-07-11 | Chunk-sizing rationale: the first chunk holds 8 slots, each subsequent chunk
   doubles the previous chunk's capacity (8, 16, 32, 64, ...). This keeps a small arena

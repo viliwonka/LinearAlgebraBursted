@@ -234,13 +234,8 @@ namespace LinearAlgebra
                 // Column-strided read: T[i,enter] is a fixed COLUMN scanned over varying rows i, stride
                 // n in this row-major tableau (the reference Fortran's own wa(i,in) would have been
                 // unit-stride under Fortran's column-major convention -- this port's row-major storage
-                // inverts that). Left AS-IS: this collection pass costs O(m) and runs once per
-                // entering-column choice (<= iters times total, NOT once per fold -- see below), so its
-                // total cost is O(m * iters), asymptotically dominated by the O(m*n^2) BRPivot
-                // elimination sweep below for any n > 1. A from-scratch column-major shadow of T would
-                // also have to stay in sync across every BRPivot row update (itself row-major/unit-
-                // stride for good reason -- see BRPivot's own comment), doubling that update's cost to
-                // fix a strictly smaller-order term; not worth it here.
+                // inverts that). This collection pass runs once per entering-column choice (<= iters
+                // times total, NOT once per fold -- see below).
                 int nCand = 0;
                 for (int i = kl; i < m; i++)
                 {

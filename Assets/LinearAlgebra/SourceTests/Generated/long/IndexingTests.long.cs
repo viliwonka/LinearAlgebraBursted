@@ -181,6 +181,8 @@ public class longIndexingTests {
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
                 Assert.IsTrue(mat[r, c] == (long)(r * c * 2));
+
+            arena.Dispose();
         }
     }
 

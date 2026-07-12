@@ -3,6 +3,7 @@
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
 using System;
+using Unity.Collections;
 using Unity.Mathematics;
 using LinearAlgebra;
 
@@ -125,14 +126,17 @@ namespace LinearAlgebra.Gallery
                 throw new ArgumentException("floatKMS: n must be >= 1");
 
             var A = arena.floatMat(n, true);
+
+            // Toeplitz: rho^|i-j| repeats along anti-diagonals, so precompute rho^0..rho^(n-1) once.
+            var pow = new floatN(n, Allocator.Temp, false);
+            pow[0] = (float)1;
+            for (int k = 1; k < n; k++) pow[k] = pow[k - 1] * rho;
+
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
-                {
-                    int e = math.abs(i - j);
-                    float r = (float)1;
-                    for (int k = 0; k < e; k++) r *= rho;
-                    A[i, j] = r;
-                }
+                    A[i, j] = pow[math.abs(i - j)];
+
+            pow.Dispose();
             return A;
         }
 

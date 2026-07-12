@@ -181,6 +181,8 @@ public class intIndexingTests {
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
                 Assert.IsTrue(mat[r, c] == (int)(r * c * 2));
+
+            arena.Dispose();
         }
     }
 

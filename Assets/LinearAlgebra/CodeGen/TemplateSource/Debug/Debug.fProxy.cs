@@ -33,7 +33,7 @@ namespace LinearAlgebra
                 if (element >= 0)
                     str.Append('+');
 
-                if (i == a.N - 1)
+                if (i == end - 1)
                     elementString = $"{element:G3}";
                 else
                     elementString = $"{element:G3}, ";

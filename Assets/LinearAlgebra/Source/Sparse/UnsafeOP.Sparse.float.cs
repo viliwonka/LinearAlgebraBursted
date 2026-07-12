@@ -1084,10 +1084,6 @@ namespace LinearAlgebra.Internal
             }
         }
 
-        // ApplyDot has no fused kernel family here -- a folded "Dot" variant was tried and measured
-        // slower than composing spMV + Blas.dot(x,y); see BSR.spMVDot's doc comment
-        // (SparseOP.float.cs) and the Sparse DEVLOG.
-
         // =====================================================================================
         // floatBlockJacobi.Apply specialization: z = DInv * r, one dense b x b matvec per
         // block-row (DInv holds one explicit inverse block per block-row, no stored-block loop

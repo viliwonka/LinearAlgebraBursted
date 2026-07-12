@@ -700,7 +700,7 @@ public class intQueryTests
         }
 
         // ---------------------------------------------------------------------
-        // MinValue EDGE — the iAbs() off-by-one fix (review's HIGH finding).
+        // MinValue EDGE — iAbs() saturates |int.MinValue| to int.MaxValue.
         // ---------------------------------------------------------------------
 
         void MinValueEdge()

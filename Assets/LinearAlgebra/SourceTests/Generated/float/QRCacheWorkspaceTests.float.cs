@@ -14,9 +14,10 @@ using Unity.Jobs;
 // solveInPlace, ref floatQRCache). The cache overloads run the SAME kernels as the allocating
 // wrappers — bit-identical results — but source their scratch from a caller-owned workspace instead
 // of Allocator.Temp. decomp/decompInPlace engage the level-3 BLOCKED (compact-WY) kernel once
-// N_Cols >= 2*QR_BLOCK (= 64), so equivalence is checked both BELOW and AT/ABOVE that gate.
-// solveInPlace's fused kernel never forms Q, so its cache overload only ever touches cache.u/cache.w;
-// the five blocked-WY buffers stay unused there (an asymmetry the guard tests below pin down).
+// N_Cols >= Consts.floatQrBlockMinN=128 / doubleQrBlockMinN=512, so equivalence is checked both
+// BELOW and AT/ABOVE that per-type gate. solveInPlace's fused kernel never forms Q, so its cache
+// overload only ever touches cache.u/cache.w; the five blocked-WY buffers stay unused there (an
+// asymmetry the guard tests below pin down).
 public class floatQRCacheWorkspaceTests
 {
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -24,16 +25,17 @@ public class floatQRCacheWorkspaceTests
     {
         public enum TestType
         {
-            DecompCacheBelowSmall,   // N_Cols = 16  (< 64, unblocked fallback)
-            DecompCacheBelow40,      // N_Cols = 40  (< 64, unblocked fallback)
-            DecompCacheGate,         // N_Cols = 64  (== 2*QR_BLOCK, blocked kernel)
-            DecompCacheAbove,        // N_Cols = 96  (> 64, blocked, non-aligned last panel)
-            DecompCacheTall,         // M > N, N_Cols = 72 (blocked, tall)
-            DecompPreservingCache,   // A-preserving decomp(in A, ...) cache overload, blocked
+            DecompCacheBelowSmall,   // N_Cols = 16  (unblocked fallback)
+            DecompCacheBelow40,      // N_Cols = 40  (unblocked fallback)
+            DecompCacheGate,         // N_Cols = 64  (still below the real per-type gate, unblocked)
+            DecompCacheAbove,        // N_Cols = 96  (still below the real per-type gate, unblocked)
+            DecompCacheTall,         // M > N, N_Cols = 72 (still below the real per-type gate, unblocked)
+            DecompCacheBlockedLarge, // N_Cols = 512 (>= doubleQrBlockMinN, blocked kernel for BOTH types)
+            DecompPreservingCache,   // A-preserving decomp(in A, ...) cache overload, N_Cols = 80 (unblocked)
             SolveCacheSquareSmall,   // square solve, dim 16
-            SolveCacheSquareLarge,   // square solve, dim 80 (> gate, but solve never blocks)
+            SolveCacheSquareLarge,   // square solve, dim 80 (solve never blocks regardless of gate)
             SolveCacheTall,          // overdetermined consistent solve, 24 x 16
-            WorkspaceReuse,          // one cache reused across decomp + solve, several iterations
+            WorkspaceReuse,          // one cache reused across decomp + solve, several iterations (N_Cols = 96, unblocked)
         }
 
         public TestType Type;
@@ -58,6 +60,7 @@ public class floatQRCacheWorkspaceTests
                 case TestType.DecompCacheGate:        DecompCacheEquiv(64, 64, 60817); break;
                 case TestType.DecompCacheAbove:       DecompCacheEquiv(96, 96, 41903); break;
                 case TestType.DecompCacheTall:        DecompCacheEquiv(100, 72, 33417); break;
+                case TestType.DecompCacheBlockedLarge: DecompCacheEquiv(576, 512, 512545); break;
                 case TestType.DecompPreservingCache:  DecompPreservingCacheEquiv(96, 80, 88123); break;
                 case TestType.SolveCacheSquareSmall:  SolveCacheEquiv(16, 16, 51237); break;
                 case TestType.SolveCacheSquareLarge:  SolveCacheEquiv(80, 80, 20990); break;
@@ -76,7 +79,7 @@ public class floatQRCacheWorkspaceTests
             for (int d = 0; d < n; d++)   // boost leading diagonal for conditioning
                 A[d, d] += (float)5f;
 
-            // allocating reference (routes through the blocked core once n >= 64)
+            // allocating reference (routes through the blocked core once N_Cols clears the per-type gate)
             var Qa = A.Copy();
             var Ra = arena.floatMat(n);
             QR.decompInPlace(ref Qa, ref Ra);
@@ -100,7 +103,7 @@ public class floatQRCacheWorkspaceTests
         }
 
         // A-preserving decomp(in A, ref Q, ref R, ref cache): A must be untouched, and Q/R must match
-        // the allocating decomp(in A, ref Q, ref R) bit-for-bit (blocked size to exercise the WY buffers).
+        // the allocating decomp(in A, ref Q, ref R) bit-for-bit.
         void DecompPreservingCacheEquiv(int m, int n, uint seed)
         {
             var arena = new Arena(Allocator.Persistent);
@@ -171,8 +174,9 @@ public class floatQRCacheWorkspaceTests
         }
 
         // Reuse ONE cache across several consecutive decomp AND solve calls with fresh random matrices:
-        // each result must match a fresh allocating call, proving no stale state leaks through the
-        // blocked-WY buffers across reuse. Size >= 64 columns so those buffers are actually exercised.
+        // each result must match a fresh allocating call, proving no stale state leaks across reuse.
+        // N_Cols = 96 stays on the unblocked fallback for both types; DecompCacheBlockedLarge above
+        // covers the blocked-WY buffers' bit-identity on a single call.
         void WorkspaceReuse()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -186,7 +190,7 @@ public class floatQRCacheWorkspaceTests
                 for (int d = 0; d < n; d++)
                     A0[d, d] += (float)5f;
 
-                // decompInPlace: allocating reference vs reused cache (blocked kernel)
+                // decompInPlace: allocating reference vs reused cache
                 var Qa = A0.Copy();
                 var Ra = arena.floatMat(n);
                 QR.decompInPlace(ref Qa, ref Ra);

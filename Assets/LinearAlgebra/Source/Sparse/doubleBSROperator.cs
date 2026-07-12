@@ -72,8 +72,7 @@ namespace LinearAlgebra.Sparse
                 BSR.spMVT(in A, in x, ref y);
         }
 
-        // Forwards to BSR.spMVDot, which composes (spMV then a plain dot) -- see that method's doc
-        // comment for why a genuinely-fused kernel was tried and measured slower.
+        // Forwards to BSR.spMVDot, which composes (spMV then a plain dot).
         public double ApplyDot(in doubleN x, ref doubleN y) => BSR.spMVDot(in A, in x, ref y);
 
         // Forwards to BSR.spMM, which streams A's stored blocks once for all `rows` row-vectors.

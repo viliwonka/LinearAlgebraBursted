@@ -696,7 +696,7 @@ public class iProxyQueryTests
         }
 
         // ---------------------------------------------------------------------
-        // MinValue EDGE — the iAbs() off-by-one fix (review's HIGH finding).
+        // MinValue EDGE — iAbs() saturates |iProxy.MinValue| to iProxy.MaxValue.
         // ---------------------------------------------------------------------
 
         void MinValueEdge()

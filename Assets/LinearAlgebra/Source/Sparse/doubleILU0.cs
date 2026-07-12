@@ -79,7 +79,7 @@ namespace LinearAlgebra.Sparse
             {
                 CopyValues(in A, in Fm, shift);
                 if (FactorizeInPlace(in Fm, diagMax)) { ok = true; break; }
-                shift = shift == (double)0 ? (double)1e-3f * diagMax : shift * (double)10;
+                shift = shift == (double)0 ? (double)1e-3 * diagMax : shift * (double)10;
             }
             if (!ok)
                 throw new ArgumentException("doubleILU0: factorization broke down at every diagonal shift — pivot blocks numerically singular");

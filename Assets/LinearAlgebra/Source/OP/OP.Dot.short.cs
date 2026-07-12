@@ -96,9 +96,7 @@ namespace LinearAlgebra
                 if (result.Data.Ptr == y.Data.Ptr)
                     throw new ArgumentException("dot: result must not alias y");
 
-                // vecMatDot accumulates (+=), so the destination must start zeroed.
-                UnsafeUtility.MemClear(result.Data.Ptr, (long)result.Data.Length * UnsafeUtility.SizeOf<short>());
-
+                // vecMatDot zeroes the destination itself before accumulating.
                 UnsafeOP.vecMatDot(y.Data.Ptr, A.Data.Ptr, result.Data.Ptr, A.M_Rows, A.N_Cols);
             }
         }

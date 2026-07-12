@@ -242,6 +242,18 @@ namespace LinearAlgebra
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
+
+            // Replicate the ref-workspace overload's dimension checks BEFORE allocating ws.W, so a
+            // caller error can't leak the Temp allocation.
+            if (m < n)
+                throw new ArgumentException("Bidiag.decomp: A must have m >= n");
+            if (U.M_Rows != m || U.N_Cols != n)
+                throw new ArgumentException("Bidiag.decomp: U must be m x n");
+            if (B.M_Rows != n || B.N_Cols != n)
+                throw new ArgumentException("Bidiag.decomp: B must be n x n");
+            if (V.M_Rows != n || V.N_Cols != n)
+                throw new ArgumentException("Bidiag.decomp: V must be n x n");
+
             var ws = new floatBidiagCache
             {
                 W = new floatMxN(m, n, Allocator.Temp, true),
@@ -331,6 +343,16 @@ namespace LinearAlgebra
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
+
+            // Replicate the ref-workspace overload's dimension checks BEFORE allocating ws.W, so a
+            // caller error can't leak the Temp allocation.
+            if (m < n)
+                throw new ArgumentException("Bidiag.values: A must have m >= n");
+            if (d.N != n)
+                throw new ArgumentException("Bidiag.values: d.N must equal A.N_Cols");
+            if (e.N != n)
+                throw new ArgumentException("Bidiag.values: e.N must equal A.N_Cols");
+
             var ws = new floatBidiagCache
             {
                 W = new floatMxN(m, n, Allocator.Temp, true),

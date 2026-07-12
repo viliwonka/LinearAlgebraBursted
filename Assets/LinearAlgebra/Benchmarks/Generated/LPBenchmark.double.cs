@@ -61,12 +61,7 @@ namespace LinearAlgebra.Benchmarks
         {
             var info = LP.lad(in A, in b, ref x, out double obj, method, 0);
             // Honest L1 residual: RECOMPUTE sum_i |A x - b| from the RETURNED x rather than reporting
-            // LPInfo.objective/obj, which equals the true residual ONLY at a converged optimum. A
-            // not-quite-converged float solve (or a genuinely non-Optimal status) can report an internal
-            // objective BELOW the true residual -- impossible for a real sum-of-absolute-values -- which
-            // silently misled the benchmark table (observed: m=192 float revised printed 4.37 vs a true
-            // residual of 104.08). This also means a non-Optimal row now shows a LARGE honest residual
-            // instead of a falsely-small one -- the failure becomes visible instead of hidden.
+            // LPInfo.objective/obj, which equals the true residual ONLY at a converged optimum.
             double residual = 0;
             for (int i = 0; i < A.M_Rows; i++)
             {
@@ -176,11 +171,8 @@ namespace LinearAlgebra.Benchmarks
     }
 
     // Small Burst-native matvec (Ax) for RHS construction (Sections 1, 5 both build b = A x0 + slack
-    // this way) -- called via .Run() as one-off setup, NOT inside Bench.Time. Moved out of a plain
-    // managed Blas.dot(A, x0) call (interpreted Mono, O(mn)) into this job for the same reason the
-    // solves themselves moved: at n=384 (m=192), that is 73728 multiply-adds Mono-interpreted on every
-    // report generation, which the coordinator's sanity-scan explicitly called out ("managed matvecs for
-    // residual columns"). Not part of the timed measurement, so it doesn't affect any row's numbers.
+    // this way) -- called via .Run() as one-off setup, NOT inside Bench.Time. Not part of the timed
+    // measurement, so it doesn't affect any row's numbers.
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct LpRhsMatVecJobDouble : IJob
     {
@@ -610,9 +602,9 @@ namespace LinearAlgebra.Benchmarks
         // appends ONE extra row: a duplicate of row 0 with sense >= and rhs b0+10. Row 0 demands
         // A0.x <= b0; the new row demands A0.x >= b0+10 -- those two can never hold simultaneously
         // regardless of every other row/variable, so the augmented LP is infeasible by construction with
-        // no subtler failure mode to get wrong (the same robust recipe the review that requested this
-        // section specified). All four backends attempt the SAME augmented instance; the STATUS column
-        // (not objective -- see InfeasRow's doc comment) shows which ones actually certify Infeasible.
+        // no subtler failure mode to get wrong. All four backends attempt the SAME augmented instance;
+        // the STATUS column (not objective -- see InfeasRow's doc comment) shows which ones actually
+        // certify Infeasible.
         static void SectionInfeasibleDouble(StringBuilder sb)
         {
             sb.AppendLine();

@@ -176,9 +176,9 @@ public class intDotOperationTests
             for (int j = 0; j < matLen; j++)
             {
                 if (i == j)
-                    Assert.IsTrue(C[i, j] == (int)1f);
+                    Assert.IsTrue(D[i, j] == (int)1f);
                 else
-                    Assert.IsTrue(C[i, j] == (int)0f);
+                    Assert.IsTrue(D[i, j] == (int)0f);
             }
 
             arena.Dispose();
@@ -220,7 +220,36 @@ public class intDotOperationTests
 
         public void MatMatDotNonSquare()
         {
+            var arena = new Arena(Allocator.Persistent);
 
+            int M = 8;
+            int K = 24;
+            int N = 16;
+
+            intMxN Id = arena.intIdentityMat(K);
+            intMxN R = arena.intRandomMat(K, N, -100, +100);
+
+            intMxN C = Blas.dot(Id, R);
+
+            Assert.AreEqual(K, C.M_Rows);
+            Assert.AreEqual(N, C.N_Cols);
+
+            for (int i = 0; i < K; i++)
+            for (int j = 0; j < N; j++)
+                Assert.IsTrue(C[i, j] == R[i, j]);
+
+            intMxN R2 = arena.intRandomMat(M, K, -100, +100);
+
+            intMxN D = Blas.dot(R2, Id);
+
+            Assert.AreEqual(M, D.M_Rows);
+            Assert.AreEqual(K, D.N_Cols);
+
+            for (int i = 0; i < M; i++)
+            for (int j = 0; j < K; j++)
+                Assert.IsTrue(D[i, j] == R2[i, j]);
+
+            arena.Dispose();
         }
 
         public void OuterDot()

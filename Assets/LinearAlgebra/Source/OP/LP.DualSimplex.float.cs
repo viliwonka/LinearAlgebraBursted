@@ -521,12 +521,8 @@ namespace LinearAlgebra
                 // ---- apply accumulated bound flips (BFRT) with ONE extra FTRAN of the summed columns ----
                 //
                 // The inner `flipRHS[i] += delta * M[i, j]` read is column-strided too (M[i,j] at stride
-                // N over i, fixed j), but LEFT AS-IS deliberately: flipCount is normally small (a handful
-                // of boxed nonbasics absorbed per iteration, not O(N)), so its cost is O(flipCount * m),
-                // already far below the O(mN) PRICE passes this file's other column-strided loops were.
-                // Routing it through a dense Mmul(M, deltaVec, ..., m, N) GEMV (deltaVec sparse, nonzero
-                // only at flipCols) would touch all N columns unconditionally -- a regression whenever
-                // flipCount << N, the common case -- for a loop that was never the O(mN) bottleneck.
+                // N over i, fixed j); flip application costs O(flipCount * m) (flipCount is normally a
+                // handful of boxed nonbasics absorbed per iteration, not O(N)).
                 if (flipCount > 0)
                 {
                     for (int i = 0; i < m; i++) flipRHS[i] = (float)0;

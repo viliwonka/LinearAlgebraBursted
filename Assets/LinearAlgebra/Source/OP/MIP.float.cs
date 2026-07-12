@@ -323,6 +323,14 @@ namespace LinearAlgebra
 
             while (true)
             {
+                // Budget check happens BEFORE solving a new node (not after), so the node whose solve
+                // just exhausted the budget still runs its own branch/prune/incumbent-install logic.
+                if ((maxNodes > 0 && nodes >= maxNodes) || (maxIter > 0 && totalLpIter >= maxIter))
+                {
+                    status = (maxNodes > 0 && nodes >= maxNodes) ? MIPStatus.NodeLimit : MIPStatus.MaxIterations;
+                    break;
+                }
+
                 nodes++;
 
                 // Domain propagation: tighten integer bounds to a fixpoint from the ORIGINAL rows
@@ -364,12 +372,6 @@ namespace LinearAlgebra
                     }
                 }
                 havePending = false;
-
-                if ((maxNodes > 0 && nodes >= maxNodes) || (maxIter > 0 && totalLpIter >= maxIter))
-                {
-                    status = (maxNodes > 0 && nodes >= maxNodes) ? MIPStatus.NodeLimit : MIPStatus.MaxIterations;
-                    break;
-                }
 
                 // Gap limit: dualBound peeked cheaply as min(current plunge frontier, best-bound heap
                 // root) -- same quantity the final drain below folds into MIPInfo.dualBound, just

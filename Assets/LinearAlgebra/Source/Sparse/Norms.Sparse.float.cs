@@ -2,6 +2,7 @@
 //   Generated from Assets/LinearAlgebra/CodeGen/TemplateSource/Sparse/Norms.Sparse.fProxy.cs
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
+using System;
 using LinearAlgebra.Internal;
 using LinearAlgebra.Sparse;
 
@@ -12,9 +13,15 @@ namespace LinearAlgebra
         /// <summary>
         /// Entrywise L1 norm of a BSR matrix: Σ|aᵢⱼ| over the STORED entries. Implicit (absent)
         /// blocks contribute 0, so this equals the dense entrywise L1 of the expanded matrix.
+        ///
+        /// NOT supported for Symmetric (lower-block-triangle-only) storage: the implicit upper
+        /// blocks are not materialized, so a single pass would under-count off-diagonals -- throws
+        /// in that case.
         /// </summary>
         public static float L1(in floatBSR A)
         {
+            if (A.Symmetric)
+                throw new ArgumentException("L1: not supported for Symmetric (lower-block-only) storage -- the implicit upper blocks would be under-counted");
             unsafe { return UnsafeOP.sumAbs(A.Values.Ptr, A.Values.Length); }
         }
 
@@ -33,9 +40,15 @@ namespace LinearAlgebra
         /// <summary>
         /// Frobenius (entrywise L2) norm of a BSR matrix: sqrt(Σ aᵢⱼ²) over the STORED entries —
         /// exact, since implicit zeros contribute nothing.
+        ///
+        /// NOT supported for Symmetric (lower-block-triangle-only) storage: the implicit upper
+        /// blocks are not materialized, so a single pass would under-count off-diagonals -- throws
+        /// in that case.
         /// </summary>
         public static float L2(in floatBSR A)
         {
+            if (A.Symmetric)
+                throw new ArgumentException("L2: not supported for Symmetric (lower-block-only) storage -- the implicit upper blocks would be under-counted");
             unsafe
             {
                 var vals = A.Values;

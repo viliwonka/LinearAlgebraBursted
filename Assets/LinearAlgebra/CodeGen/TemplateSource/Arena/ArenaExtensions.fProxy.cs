@@ -149,7 +149,7 @@ namespace LinearAlgebra
             return fProxyRandomMat(ref arena, M_rows, N_cols, -1, 1, seed);
         }
 
-        // constructs diagonal matrix with scalar s on diagonal
+        // constructs diagonal matrix with random diagonal entries in [min, max]
         public static fProxyMxN fProxyRandomDiagonalMat(this ref Arena arena, int N, fProxy min, fProxy max, uint seed = 65792)
         {
             var matrix = arena.fProxyMat(N, N);
@@ -236,9 +236,14 @@ namespace LinearAlgebra
 
             // Compute the outer product of v
             fProxy vTv = Blas.dot(v, v);
-            
+
+            // Degenerate (zero / near-zero) v -> identity transform; matrix is already I. NaN-safe
+            // (!(vTv > t) is true for NaN); avoids 2/0 = Inf poisoning the matrix.
+            if (!(vTv > Consts.fProxyZeroThreshold))
+                return matrix;
+
             fProxy scaleFactor = 2 / vTv;
-            
+
             // Rank 1 update
             for (int i = 0; i < M; i++)
             {

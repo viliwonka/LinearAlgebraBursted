@@ -83,6 +83,9 @@ public class floatSpecialConstructorsTests {
                 case TestType.RandomMat:
                     RandomMat();
                     break;
+                case TestType.RandomRangeMat:
+                    RandomRangeMat();
+                    break;
                 case TestType.RotationMat:
                     RotationMat();
                     break;
@@ -198,6 +201,8 @@ public class floatSpecialConstructorsTests {
 
             for(int i = 0; i < m.Length; i++)
                 Assert.IsTrue(m[i] == (float)i);
+
+            arena.Dispose();
         }
 
         public void IndexOneMat()
@@ -208,6 +213,7 @@ public class floatSpecialConstructorsTests {
             for (int i = 0; i < m.Length; i++)
                 Assert.IsTrue(m[i] == (float)i + 1);
 
+            arena.Dispose();
         }
 
         public void IdentityMat()
@@ -301,13 +307,13 @@ public class floatSpecialConstructorsTests {
             Assert.IsFalse(Analysis.isIdentity(in m, 0.00001f));
             
             var mTm = Blas.dot(m, m, true);
-            Analysis.isIdentity(in mTm, 0.00001f);
+            Assert.IsTrue(Analysis.isIdentity(in mTm, 0.00001f));
 
             m = arena.floatRotationMat(2, 0, 1, math.PI/4f);
 
             Assert.IsTrue(math.abs((float)0.70710678118654752440084436210485d - m[0, 0]) < 0.00001f);
             Assert.IsTrue(math.abs((float)0.70710678118654752440084436210485d - m[1, 1]) < 0.00001f);
-            Assert.IsTrue(-math.abs((float)0.70710678118654752440084436210485d - m[0, 1]) < 0.00001f);
+            Assert.IsTrue(math.abs((float)(-0.70710678118654752440084436210485d) - m[0, 1]) < 0.00001f);
             Assert.IsTrue(math.abs((float)0.70710678118654752440084436210485d - m[1, 0]) < 0.00001f);
 
             arena.Dispose();
@@ -322,7 +328,7 @@ public class floatSpecialConstructorsTests {
             Assert.IsFalse(Analysis.isIdentity(in m, 0.00001f));
 
             var mTm = Blas.dot(m, m, true);
-            Analysis.isIdentity(in mTm, 0.00001f);
+            Assert.IsTrue(Analysis.isIdentity(in mTm, 0.00001f));
 
             m = arena.floatPermutationMat(2, 0, 1);
 
@@ -344,7 +350,7 @@ public class floatSpecialConstructorsTests {
             Assert.IsFalse(Analysis.isIdentity(in m, 0.00001f));
 
             var mTm = Blas.dot(m, m, true);
-            Analysis.isIdentity(in mTm, 0.00001f);
+            Assert.IsTrue(Analysis.isIdentity(in mTm, 0.00001f));
 
             v = arena.floatBasisVec(2, 0);
             m = arena.floatHouseholderMat(2, v);

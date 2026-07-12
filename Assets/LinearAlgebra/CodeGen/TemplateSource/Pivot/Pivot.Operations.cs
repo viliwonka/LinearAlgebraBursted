@@ -120,8 +120,11 @@ namespace LinearAlgebra {
         /// <summary>Applies the inverse pivot to vector v; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyInverseVec(ref fProxyN v) {
 
+            if (v.N != this.N)
+                throw new System.ArgumentException("Vector and pivot must have same dimension");
+
             Pivot tempPivot = InverseCopy();
-            
+
             ApplyVecInPlace(ref v, ref tempPivot);
 
             tempPivot.Dispose();
@@ -130,20 +133,26 @@ namespace LinearAlgebra {
         /// <summary>Applies the inverse pivot to rows of matrix A; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyInverseRow(ref fProxyMxN A) {
 
+            if (A.M_Rows != this.N)
+                throw new System.ArgumentException("Matrix rows and pivot must have same dimension");
+
             Pivot tempPivot = InverseCopy();
 
             ApplyRowInPlace(ref A, ref tempPivot);
-            
+
             tempPivot.Dispose();
         }
 
         /// <summary>Applies the inverse pivot to columns of matrix A; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyInverseColumn(ref fProxyMxN A) {
 
+            if (A.N_Cols != this.N)
+                throw new System.ArgumentException("Matrix columns and pivot must have same dimension");
+
             Pivot tempPivot = InverseCopy();
-            
+
             ApplyColumnInPlace(ref A, ref tempPivot);
-            
+
             tempPivot.Dispose();
         }
         //-copyReplaceAll

@@ -185,9 +185,9 @@ namespace LinearAlgebra.Benchmarks
         }
     }
 
-    // ---- transpose-optimized sparse CGLS/LSQR jobs (Milestone B): use a materialized Aᵀ so ApplyT runs
-    //      as a forward spMV over Aᵀ instead of the cache-unfriendly on-the-fly spMVT. Aᵀ is built ONCE
-    //      outside the timed region (a real solve builds it once and reuses it every iteration). --------
+    // ---- transpose-optimized sparse CGLS/LSQR jobs: use a materialized Aᵀ so ApplyT runs as a forward
+    //      spMV over Aᵀ instead of the cache-unfriendly on-the-fly spMVT. Aᵀ is built ONCE outside the
+    //      timed region (a real solve builds it once and reuses it every iteration). ------------------
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct CglsSparseTJobDouble : IJob
@@ -648,7 +648,7 @@ namespace LinearAlgebra.Benchmarks
 
         // ==== Section 0b: symmetric-storage spMV vs full-storage spMV on the SAME SPD matrix ============
         //
-        // Isolates the symmetric-storage half of the Milestone-A story: lower-triangle-only storage
+        // Isolates the symmetric-storage cost: lower-triangle-only storage
         // (ToBSRSymmetric) vs full block-CSR, on the identical matrix (BuildBlockSPDPairDouble pins the rng
         // so `full` and `sym` encode byte-for-byte the same SPD system). bsrMatVecSym touches half as many
         // STORED blocks as bsrMatVec's full traversal -- expected ~2x at denser fill, less at sparse fill.
@@ -844,7 +844,7 @@ namespace LinearAlgebra.Benchmarks
             var lsqrSparseStat = Bench.Time(() => lsqrSparseJob.Run());
             sb.AppendLine(SparseSolverFmt.Row("double", nRef, density, "LSQR-sparse-" + tag, lsqrSparseStat, ResidualLS(in dense, in xLS, in b)));
 
-            // Milestone B: transpose-optimized variants -- Aᵀ materialized ONCE (outside timing), ApplyT
+            // Transpose-optimized variants -- Aᵀ materialized ONCE (outside timing), ApplyT
             // becomes a forward spMV over Aᵀ. Compare "sparseT" rows against the "sparse" rows above.
             var AT = arena.doubleBSRTranspose(in sparse);
 

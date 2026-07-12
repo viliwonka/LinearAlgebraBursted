@@ -461,6 +461,53 @@ namespace LinearAlgebra
             }
         }
 
+        // ||q||^2, needed by the Cosine branch of RowScore/ColScore. Callers that score q against
+        // every row/column of A compute this ONCE (below) and pass it through the normQ overloads,
+        // instead of each RowScore/ColScore call re-summing it.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static float QueryNormSq(in floatN q)
+        {
+            float s = (float)0;
+            for (int i = 0; i < q.N; i++) s += q[i] * q[i];
+            return s;
+        }
+
+        /// <summary>Same as <see cref="RowScore"/>, but Cosine uses the caller-supplied ||q||^2
+        /// (from <see cref="QueryNormSq"/>) instead of resumming it. normQ is ignored for every
+        /// other metric.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static float RowScore(in floatMxN A, int r, in floatN q, Metric m, float normQ)
+        {
+            if (m != Metric.Cosine) return RowScore(in A, r, in q, m);
+
+            int nCols = A.N_Cols;
+            float dot = (float)0, normA = (float)0;
+            for (int c = 0; c < nCols; c++)
+            {
+                dot   += A[r, c] * q[c];
+                normA += A[r, c] * A[r, c];
+            }
+            float denom = math.sqrt(normA * normQ);
+            return denom > (float)0 ? dot / denom : (float)0;
+        }
+
+        /// <summary>Column analog of the normQ overload of <see cref="RowScore"/>.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static float ColScore(in floatMxN A, int col, in floatN q, Metric m, float normQ)
+        {
+            if (m != Metric.Cosine) return ColScore(in A, col, in q, m);
+
+            int mRows = A.M_Rows;
+            float dot = (float)0, normA = (float)0;
+            for (int r = 0; r < mRows; r++)
+            {
+                dot   += A[r, col] * q[r];
+                normA += A[r, col] * A[r, col];
+            }
+            float denom = math.sqrt(normA * normQ);
+            return denom > (float)0 ? dot / denom : (float)0;
+        }
+
         // Metric direction helpers (IsSimilarityMetric / WorstScoreForNearest / WorstScoreForFarthest /
         // IsBetterForNearest / IsBetterForFarthest) live in floatQueryCore: they take no float
         // parameter (or return float), so in the merged float+double `Query` partial they would
@@ -479,8 +526,9 @@ namespace LinearAlgebra
             if (dest.N != A.M_Rows)
                 throw new System.ArgumentException("Query.distancesToRow: dest.N must equal A.M_Rows");
 
+            float normQ = m == Metric.Cosine ? QueryNormSq(in q) : (float)0;
             for (int r = 0; r < A.M_Rows; r++)
-                dest[r] = RowScore(in A, r, in q, m);
+                dest[r] = RowScore(in A, r, in q, m, normQ);
         }
 
         /// <summary>
@@ -495,8 +543,9 @@ namespace LinearAlgebra
             if (dest.N != A.N_Cols)
                 throw new System.ArgumentException("Query.distancesToColumn: dest.N must equal A.N_Cols");
 
+            float normQ = m == Metric.Cosine ? QueryNormSq(in q) : (float)0;
             for (int c = 0; c < A.N_Cols; c++)
-                dest[c] = ColScore(in A, c, in q, m);
+                dest[c] = ColScore(in A, c, in q, m, normQ);
         }
 
         // ---- nearestRow / nearestColumn ----------------------------------------
@@ -516,9 +565,10 @@ namespace LinearAlgebra
 
             float best = floatQueryCore.WorstScoreForNearest(m);
             int bestIdx = 0;
+            float normQ = m == Metric.Cosine ? QueryNormSq(in q) : (float)0;
             for (int r = 0; r < A.M_Rows; r++)
             {
-                float s = RowScore(in A, r, in q, m);
+                float s = RowScore(in A, r, in q, m, normQ);
                 if (floatQueryCore.IsBetterForNearest(s, best, m)) { best = s; bestIdx = r; }
             }
             index = bestIdx;
@@ -538,9 +588,10 @@ namespace LinearAlgebra
 
             float best = floatQueryCore.WorstScoreForNearest(m);
             int bestIdx = 0;
+            float normQ = m == Metric.Cosine ? QueryNormSq(in q) : (float)0;
             for (int c = 0; c < A.N_Cols; c++)
             {
-                float s = ColScore(in A, c, in q, m);
+                float s = ColScore(in A, c, in q, m, normQ);
                 if (floatQueryCore.IsBetterForNearest(s, best, m)) { best = s; bestIdx = c; }
             }
             index = bestIdx;
@@ -564,9 +615,10 @@ namespace LinearAlgebra
 
             float worst = floatQueryCore.WorstScoreForFarthest(m);
             int worstIdx = 0;
+            float normQ = m == Metric.Cosine ? QueryNormSq(in q) : (float)0;
             for (int r = 0; r < A.M_Rows; r++)
             {
-                float s = RowScore(in A, r, in q, m);
+                float s = RowScore(in A, r, in q, m, normQ);
                 if (floatQueryCore.IsBetterForFarthest(s, worst, m)) { worst = s; worstIdx = r; }
             }
             index = worstIdx;
@@ -586,9 +638,10 @@ namespace LinearAlgebra
 
             float worst = floatQueryCore.WorstScoreForFarthest(m);
             int worstIdx = 0;
+            float normQ = m == Metric.Cosine ? QueryNormSq(in q) : (float)0;
             for (int c = 0; c < A.N_Cols; c++)
             {
-                float s = ColScore(in A, c, in q, m);
+                float s = ColScore(in A, c, in q, m, normQ);
                 if (floatQueryCore.IsBetterForFarthest(s, worst, m)) { worst = s; worstIdx = c; }
             }
             index = worstIdx;
@@ -610,9 +663,10 @@ namespace LinearAlgebra
 
             bool sim = floatQueryCore.IsSimilarityMetric(m);
             int count = 0;
+            float normQ = m == Metric.Cosine ? QueryNormSq(in q) : (float)0;
             for (int row = 0; row < A.M_Rows; row++)
             {
-                float s = RowScore(in A, row, in q, m);
+                float s = RowScore(in A, row, in q, m, normQ);
                 if (sim ? s >= r : s <= r) count++;
             }
             return count;
@@ -629,9 +683,10 @@ namespace LinearAlgebra
 
             bool sim = floatQueryCore.IsSimilarityMetric(m);
             int count = 0;
+            float normQ = m == Metric.Cosine ? QueryNormSq(in q) : (float)0;
             for (int c = 0; c < A.N_Cols; c++)
             {
-                float s = ColScore(in A, c, in q, m);
+                float s = ColScore(in A, c, in q, m, normQ);
                 if (sim ? s >= r : s <= r) count++;
             }
             return count;
@@ -658,10 +713,11 @@ namespace LinearAlgebra
             int clampedK = math.min(k, A.M_Rows);
             bool sim = m == Metric.Cosine || m == Metric.Dot;
             int count = 0;
+            float normQ = m == Metric.Cosine ? QueryNormSq(in q) : (float)0;
 
             for (int r = 0; r < A.M_Rows; r++)
             {
-                float s = Query.RowScore(in A, r, in q, m);
+                float s = Query.RowScore(in A, r, in q, m, normQ);
                 if (count < clampedK)
                 {
                     int ins = count;
@@ -699,10 +755,11 @@ namespace LinearAlgebra
             int clampedK = math.min(k, A.N_Cols);
             bool sim = m == Metric.Cosine || m == Metric.Dot;
             int count = 0;
+            float normQ = m == Metric.Cosine ? QueryNormSq(in q) : (float)0;
 
             for (int c = 0; c < A.N_Cols; c++)
             {
-                float s = Query.ColScore(in A, c, in q, m);
+                float s = Query.ColScore(in A, c, in q, m, normQ);
                 if (count < clampedK)
                 {
                     int ins = count;
@@ -740,10 +797,11 @@ namespace LinearAlgebra
             int clampedK = math.min(k, A.M_Rows);
             bool sim = m == Metric.Cosine || m == Metric.Dot;
             int count = 0;
+            float normQ = m == Metric.Cosine ? QueryNormSq(in q) : (float)0;
 
             for (int r = 0; r < A.M_Rows; r++)
             {
-                float s = Query.RowScore(in A, r, in q, m);
+                float s = Query.RowScore(in A, r, in q, m, normQ);
                 if (count < clampedK)
                 {
                     int ins = count;
@@ -781,10 +839,11 @@ namespace LinearAlgebra
             int clampedK = math.min(k, A.N_Cols);
             bool sim = m == Metric.Cosine || m == Metric.Dot;
             int count = 0;
+            float normQ = m == Metric.Cosine ? QueryNormSq(in q) : (float)0;
 
             for (int c = 0; c < A.N_Cols; c++)
             {
-                float s = Query.ColScore(in A, c, in q, m);
+                float s = Query.ColScore(in A, c, in q, m, normQ);
                 if (count < clampedK)
                 {
                     int ins = count;
@@ -820,9 +879,10 @@ namespace LinearAlgebra
 
             bool sim = m == Metric.Cosine || m == Metric.Dot;
             int count = 0;
+            float normQ = m == Metric.Cosine ? QueryNormSq(in q) : (float)0;
             for (int row = 0; row < A.M_Rows; row++)
             {
-                float s = Query.RowScore(in A, row, in q, m);
+                float s = Query.RowScore(in A, row, in q, m, normQ);
                 if (sim ? s >= r : s <= r) idx[count++] = row;
             }
             return count;
@@ -842,9 +902,10 @@ namespace LinearAlgebra
 
             bool sim = m == Metric.Cosine || m == Metric.Dot;
             int count = 0;
+            float normQ = m == Metric.Cosine ? QueryNormSq(in q) : (float)0;
             for (int c = 0; c < A.N_Cols; c++)
             {
-                float s = Query.ColScore(in A, c, in q, m);
+                float s = Query.ColScore(in A, c, in q, m, normQ);
                 if (sim ? s >= r : s <= r) idx[count++] = c;
             }
             return count;

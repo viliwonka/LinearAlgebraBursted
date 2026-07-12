@@ -94,9 +94,7 @@ namespace LinearAlgebra.Benchmarks
     {
         // Trivially stabilizable random instance (already stable, so any n/m/seed combination is a
         // valid LQR instance without needing a controllability check): diagonal in [0.2,0.4), off-
-        // diagonal magnitude scaled 0.2/n so the Gershgorin bound stays under ~0.6 at EVERY n (the
-        // former fixed +-0.05 was only stable to n~12; at n=128 it produced unstable, likely
-        // unstabilizable instances). At n=4 this reproduces the original +-0.05 exactly. Q=I, R=I.
+        // diagonal magnitude scaled 0.2/n so the Gershgorin bound stays under ~0.6 at EVERY n. Q=I, R=I.
         static void BuildInstanceFProxy(int n, int m, uint seed, bool nearMarginal, in Arena arena,
                                         out fProxyMxN A, out fProxyMxN B, out fProxyMxN Q, out fProxyMxN R)
         {

@@ -8,12 +8,8 @@ using LinearAlgebra;
 using NUnit.Framework;
 using Unity.Collections;
 
-// Regression tests (from PR #1's ideas):
-//  - addInPlace(place, from) must mutate `place` (place += from), NOT `from`. The internal compAdd
-//    operands were reversed, so the method used to mutate the wrong operand — masked end-to-end
-//    only because the + operators also called it backwards.
-//  - the isPersistent / isTemp pool checks, used to assert ops don't move a persistent
-//    buffer into the temp pool.
+// Asserts *InPlace(place, from) mutates `place` (place += from etc.), leaves `from` unchanged, and
+// never moves a persistent buffer into the temp pool (checked via isPersistent / isTemp).
 // Managed [Test] (arena on a normal C# thread) — reads the arena's debug pool checks.
 public class floatInPlaceOpTests
 {

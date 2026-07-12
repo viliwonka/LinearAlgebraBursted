@@ -115,7 +115,8 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Allocates a randomized-SVD workspace with the default oversample (10) — matches the
-        /// randomized convenience overloads (oversample 10, powerIters 2, maxIterations 75).
+        /// randomized convenience overloads (oversample 10, powerIters 2, maxIterations
+        /// Consts.sweepBudget(l)).
         /// </summary>
         public static fProxySVDRandomizedCache fProxySVDRandomizedCache(this ref Arena arena, int m, int n, int k)
             => arena.fProxySVDRandomizedCache(m, n, k, 10);

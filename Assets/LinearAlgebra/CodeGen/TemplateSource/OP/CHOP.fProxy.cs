@@ -104,8 +104,7 @@ namespace LinearAlgebra
             // would collide across them (CS0102; see CHO's CHOL_BLOCK).
             const int CHOLP_BLOCK = 32;
 
-            // Size gate: measured crossover, higher than plain CHO's gate since the panel phase here
-            // is heavier (see the blocked path below).
+            // Size gate for the blocked path below.
             const int CHOLP_BLOCK_MIN_N = Consts.fProxyCholPivotBlockMinN;
 
             if (n < CHOLP_BLOCK_MIN_N) {
@@ -195,9 +194,9 @@ namespace LinearAlgebra
             }
 
             // ---- blocked (level-3) path — LAPACK-style right-looking PSTRF ----
-            // Port of Lucas/Higham dpstrf.f (upper-triangular branch). Unlike CHO/LU, pivot selection
-            // needs the largest remaining diagonal over the FULL trailing range at every column, not
-            // just the panel, so the panel can't defer everything to one end-of-panel update:
+            // Unlike CHO/LU, pivot selection needs the largest remaining diagonal over the FULL
+            // trailing range at every column, not just the panel, so the panel can't defer everything
+            // to one end-of-panel update:
             //   (a) CHEAP: `dot[i]` accumulates, per block, each finished panel row's contribution to
             //       row i's diagonal; `W[i,i] - dot[i]` gives the exact Schur-complement diagonal, used
             //       only for pivot search.
@@ -205,14 +204,6 @@ namespace LinearAlgebra
             //       every earlier-in-block finished row (unit-stride axpys) before use, since a pivot
             //       from deep in the trailing block was never touched by earlier updates.
             // The trailing block is updated once per panel via UnsafeOP.syrkUpperSub.
-            //
-            // Two deviations from a literal port: Ukk is read straight from the pivot search's maxDiag
-            // (provably identical to re-deriving it, skips redundant work), and this port always
-            // searches for a pivot rather than reusing LAPACK's precomputed first-column pivot. Also,
-            // distinguishing rank-deficient from indefinite (this library's RankInfo, beyond LAPACK's
-            // single INFO=1) requires W accurate before the off-diagonal scan, so the rare branch that
-            // trips the tolerance check first flushes this block's pending columns [j0,k) via the same
-            // syrkUpperSub kernel, scoped narrower.
             unsafe {
                 fProxy* wp = W.Data.Ptr;
 

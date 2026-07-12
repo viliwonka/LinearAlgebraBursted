@@ -42,10 +42,10 @@ public class doubleCHOTests
             BlockedRoundTrip400,
             BlockedNotSPD,
             BlockedAliasing,
-            // Solver API rework (commit 2): CHO.solveInPlace's exit factor is a valid decompSolve
-            // input, bit-identical to a fresh decomp + decompSolve on the same original A.
+            // CHO.solveInPlace's exit factor is a valid decompSolve input, bit-identical to a fresh
+            // decomp + decompSolve on the same original A.
             SolveInPlaceExitIsUsableFactor,
-            // Commit 2.5 (2a): driver short-circuit purity -- non-PD input leaves b_to_x untouched.
+            // Driver short-circuit purity: non-PD input leaves b_to_x untouched.
             SolveInPlaceShortCircuitPurity,
         }
 

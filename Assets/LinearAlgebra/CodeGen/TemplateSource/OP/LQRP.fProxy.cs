@@ -323,10 +323,11 @@ namespace LinearAlgebra
         /// to avoid a separate Q buffer (Q reuses A_to_Q's storage). Always reports Success (no failure
         /// mode; read the numerical rank off L's diagonal, or use a solve overload for a RankInfo).
         ///
-        /// Unlike QRCP.decompInPlace (allocation-free), this internally allocates one m × n Allocator.Temp
-        /// copy: the wide row-Householder Q reconstruction is not alias-safe against its own reflector
-        /// store, so A is copied to scratch, factored there, and Q written back over A_to_Q. LQRP targets
-        /// small matrices (see the class remarks), where that copy is negligible.
+        /// Unlike <see cref="QRCP.decompInPlace(ref fProxyMxN, ref fProxyMxN, ref Pivot, ref fProxyN)"/>, which
+        /// needs no full m × n copy (only O(n) scratch), this internally allocates one m × n
+        /// Allocator.Temp copy: the wide row-Householder Q reconstruction is not alias-safe against its own
+        /// reflector store, so A is copied to scratch, factored there, and Q written back over A_to_Q. LQRP
+        /// targets small matrices (see the class remarks), where that copy is negligible.
         /// </summary>
         /// <param name="A_to_Q">On entry A (m × n, m ≤ n); on exit the row-orthonormal factor Q.</param>
         /// <param name="L">Output m × m lower-triangular factor (caller-allocated, m × m).</param>

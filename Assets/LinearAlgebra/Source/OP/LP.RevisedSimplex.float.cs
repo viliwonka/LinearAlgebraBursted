@@ -440,10 +440,9 @@ namespace LinearAlgebra
             return info;
         }
 
-        // Warm-start overload -- added for LPMethod.DualSimplex's HiGHS-style composition
-        // (LP.DualSimplex.float.cs hands its terminal basis to this primal core as a cleanup pass once
-        // real bounds are restored). Non-breaking: the fresh-start overload above now simply builds the
-        // all-logical basis/status and forwards here, so its behavior and public surface are unchanged.
+        // Warm-start overload: the fresh-start overload above builds the all-logical basis/status and
+        // forwards here. LP.DualSimplex.float.cs also hands its own terminal basis to this core as a
+        // cleanup pass once real bounds are restored.
         //
         // `basis`/`status` (sized m / N) must already describe a VALID assignment -- every nonbasic
         // sitting exactly on one of its (current) bounds -- but need not be feasible or all-logical; the

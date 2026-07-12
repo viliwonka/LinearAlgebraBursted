@@ -280,7 +280,12 @@ public class fProxySVDTests
             var T = arena.fProxyMat(m, n);
             var rng = new Unity.Mathematics.Random(0x7A0A0006u);
             BuildRandSvd(ref rng, m, n, in sigma, ref T);   // T (15×6), its transpose is the 6×15 wide W
-            CheckThinKnown(in T, in sigma, m, n, ref arena);
+
+            var W = arena.fProxyMat(rows, cols);            // build the actual WIDE matrix
+            Blas.trans(in T, ref W);
+
+            var TFromW = Blas.trans(W);                     // the documented route: thin(in trans(W))
+            CheckThinKnown(in TFromW, in sigma, m, n, ref arena);
             arena.Dispose();
         }
 

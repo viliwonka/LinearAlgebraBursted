@@ -32,7 +32,7 @@ namespace LinearAlgebra
         // notice ("...\n") never overflows the buffer. It is inlined (not a const field) to avoid a
         // duplicate const across the float/double partials.
 
-        // Appends the header + block-sparsity grid ('X' stored / '.' absent) into str. One char per
+        // Appends the header + block-sparsity grid ('X' stored / ' ' absent) into str. One char per
         // block; for Symmetric matrices (only the lower block-triangle is stored, see fProxyBSR.cs)
         // the upper triangle is mirrored in the DISPLAY only -- storage itself is untouched. Caps
         // against the FixedString4096Bytes budget and appends "..." instead of overflowing. Returns
@@ -90,7 +90,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// MATLAB-style block sparsity grid: one char per BR x BC block ('X' stored, '.' absent),
+        /// MATLAB-style block sparsity grid: one char per BR x BC block ('X' stored, ' ' absent),
         /// with a header giving M_Rows x N_Cols, block size BR x BC, block grid BlockRows x
         /// BlockCols, Nnzb and block density. Symmetric matrices (lower-block-triangle-only
         /// storage) are mirrored into the upper triangle for the display.

@@ -91,7 +91,8 @@ namespace LinearAlgebra
         }
 
         // y = A x, PLUS dot(x, y) computed as part of the same call. Composes a plain matVecDot pass
-        // with a separate vecDot pass rather than a single fused kernel.
+        // with a separate vecDot pass rather than a single fused kernel. Requires A square (the
+        // trailing dot(x, y) needs x.N == y.N).
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static fProxy dotSelf(in fProxyMxN A, in fProxyN x, ref fProxyN y)
         {
@@ -99,6 +100,9 @@ namespace LinearAlgebra
 
             if (y.N != A.M_Rows)
                 throw new ArgumentException("dotSelf: y.N must equal A.M_Rows");
+
+            if (!A.IsSquare)
+                throw new ArgumentException("dotSelf: A must be square");
 
             unsafe
             {
@@ -126,9 +130,7 @@ namespace LinearAlgebra
                 if (result.Data.Ptr == y.Data.Ptr)
                     throw new ArgumentException("dot: result must not alias y");
 
-                // vecMatDot accumulates (+=), so the destination must start zeroed.
-                UnsafeUtility.MemClear(result.Data.Ptr, (long)result.Data.Length * UnsafeUtility.SizeOf<fProxy>());
-
+                // vecMatDot zeroes the destination itself before accumulating.
                 UnsafeOP.vecMatDot(y.Data.Ptr, A.Data.Ptr, result.Data.Ptr, A.M_Rows, A.N_Cols);
             }
         }
@@ -254,13 +256,8 @@ namespace LinearAlgebra
             if(matrix.IsSquare == false)
                 throw new ArgumentException("Blas.householderInPlace: Matrix must be square");
 
-            if(matrix.M_Rows < matrix.N_Cols)
-                throw new ArgumentException("Blas.householderInPlace: Matrix must be square or tall (more or equal rows than cols)");
-
-            var maxDim = math.max(matrix.M_Rows, matrix.N_Cols);
-
-            if(u.N < maxDim)
-                throw new ArgumentException("Blas.householderInPlace: Vector must be at least as long as the largest dimension of the matrix");
+            if(u.N < matrix.N_Cols)
+                throw new ArgumentException("Blas.householderInPlace: Vector must be at least as long as the matrix dimension");
 
             fProxy vTv = dot(u, u);
 
@@ -271,13 +268,15 @@ namespace LinearAlgebra
 
             fProxy scaleFactor = 2 / vTv;
 
-            for (int i = 0; i < matrix.M_Rows; i++)
+            for (int j = 0; j < matrix.N_Cols; j++)
             {
-                for (int j = 0; j < matrix.N_Cols; j++)
-                {
-                    fProxy vvT_element = scaleFactor * u[i] * u[j];
-                    matrix[i, j] -= vvT_element;
-                }
+                fProxy proj = 0;
+                for (int i = 0; i < matrix.M_Rows; i++)
+                    proj += u[i] * matrix[i, j];
+
+                fProxy scaledProj = scaleFactor * proj;
+                for (int i = 0; i < matrix.M_Rows; i++)
+                    matrix[i, j] -= u[i] * scaledProj;
             }
         }
     }

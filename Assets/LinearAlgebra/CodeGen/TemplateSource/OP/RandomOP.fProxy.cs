@@ -168,7 +168,8 @@ namespace LinearAlgebra
         /// Fills <paramref name="dest"/> with <c>dest.N</c> independent weighted picks
         /// (with replacement) drawn from <paramref name="weights"/>, using the same
         /// validation/throw contract as <see cref="weightedPick"/> (checked once up front,
-        /// even when <c>dest.N == 0</c>). Zero-alloc; O(N + k) where k = dest.N.
+        /// even when <c>dest.N == 0</c>). Zero-alloc; O(N·k) where k = dest.N (each pick is
+        /// an independent O(N) scan over the cumulative weights).
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void weightedPickInPlace(in fProxyN weights, ref Indices dest, ref Random rng)
@@ -508,9 +509,7 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Returns one Gaussian variate; the cached-spare path (see class summary) does not
-        /// advance rng. <c>math.sincos</c> is not used here because its <c>out</c>-parameter
-        /// overload is not available via the type-proxy template mechanism; <c>math.sin</c> and
-        /// <c>math.cos</c> are called separately instead.
+        /// advance rng.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public fProxy Next(ref Random rng)

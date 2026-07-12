@@ -128,8 +128,7 @@ namespace LinearAlgebra
         #region MATRIX
         public fProxyMxN fProxyMat(int dim, bool uninit = false)
         {
-            // forward to the (rows, cols) overload so the matrix is TRACKED in fProxyMatRecords —
-            // the direct `new fProxyMxN(...)` here was untracked and leaked on Dispose. NOT
+            // forward to the (rows, cols) overload so the matrix is TRACKED in fProxyMatRecords. NOT
             // guarded here (pure forwarding wrapper) -- the (rows, cols) overload below is the
             // terminal call that actually touches a record table, so IT holds the guard (and the
             // null check); guarding both would nest EnterMutation() on the same thread and trip
@@ -202,7 +201,7 @@ namespace LinearAlgebra
 #endif
         }
 
-        internal fProxyMxN fProxyTempMat(int M_rows, int M_cols, bool uninit = false)
+        internal fProxyMxN fProxyTempMat(int M_rows, int N_cols, bool uninit = false)
         {
             if (_core == null)
                 throw new System.InvalidOperationException("Arena.fProxyVec/fProxyMat: arena is not initialized (default or disposed).");
@@ -215,7 +214,7 @@ namespace LinearAlgebra
                 rec->Owner = _core;
                 rec->Table = &_core->fProxyTempMatRecords;
                 rec->SelfIndex = slot;
-                return new fProxyMxN(M_rows, M_cols, rec, Allocator, uninit);
+                return new fProxyMxN(M_rows, N_cols, rec, Allocator, uninit);
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
             }
             finally { _core->ExitMutation(); }
@@ -250,24 +249,32 @@ namespace LinearAlgebra
         //     READ-ONLY: not guarded (element reads are out of scope -- see the threading-contract
         //     doc on Arena's class comment).
         public bool isPersistent(in fProxyN v) {
+            if (_core == null)
+                throw new System.InvalidOperationException("Arena.isPersistent: arena is not initialized (default or disposed).");
             for (int i = 0; i < _core->fProxyVecRecords.Count; i++)
                 if (_core->fProxyVecRecords.IsAlive(i) && _core->fProxyVecRecords.Resolve(i)->Data.Ptr == v.Data.Ptr)
                     return true;
             return false;
         }
         public bool isTemp(in fProxyN v) {
+            if (_core == null)
+                throw new System.InvalidOperationException("Arena.isTemp: arena is not initialized (default or disposed).");
             for (int i = 0; i < _core->fProxyTempVecRecords.Count; i++)
                 if (_core->fProxyTempVecRecords.IsAlive(i) && _core->fProxyTempVecRecords.Resolve(i)->Data.Ptr == v.Data.Ptr)
                     return true;
             return false;
         }
         public bool isPersistent(in fProxyMxN m) {
+            if (_core == null)
+                throw new System.InvalidOperationException("Arena.isPersistent: arena is not initialized (default or disposed).");
             for (int i = 0; i < _core->fProxyMatRecords.Count; i++)
                 if (_core->fProxyMatRecords.IsAlive(i) && _core->fProxyMatRecords.Resolve(i)->Data.Ptr == m.Data.Ptr)
                     return true;
             return false;
         }
         public bool isTemp(in fProxyMxN m) {
+            if (_core == null)
+                throw new System.InvalidOperationException("Arena.isTemp: arena is not initialized (default or disposed).");
             for (int i = 0; i < _core->fProxyTempMatRecords.Count; i++)
                 if (_core->fProxyTempMatRecords.IsAlive(i) && _core->fProxyTempMatRecords.Resolve(i)->Data.Ptr == m.Data.Ptr)
                     return true;

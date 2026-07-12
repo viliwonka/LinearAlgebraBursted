@@ -623,9 +623,7 @@ public class fProxyPCATests
     [Test]
     public void SvdTruncatedWideThrows()
     {
-        // The coder confirmed svdTruncated is NOT shape-free; pcaSVDTruncated adds the n>=p guard, so
-        // it throws on wide data just like pcaSVD/pcaRandomized (there is deliberately NO "truncated
-        // works on wide data" test).
+        // pcaSVDTruncated requires n >= p; it throws on wide data (p > n) just like pcaSVD/pcaRandomized.
         var arena = new Arena(Allocator.Persistent);
         var X = arena.fProxyMat(3, 5);
         Assert.Throws<ArgumentException>(() => PCA.fitSvdTruncated(ref arena, in X, 2));

@@ -379,14 +379,8 @@ public class floatCompMathTests
 
             x.remapInPlace(oldMin, oldMax, newMin, newMax);
 
-            // CORRECT semantics per the wrapper's parameter names / doc: map x from [oldMin,oldMax]
-            // onto [newMin,newMax]. Unity's math.remap takes the VALUE as its LAST argument:
-            //   remap(srcStart, srcEnd, dstStart, dstEnd, value).
-            // NOTE: this asserts the intended behaviour and currently FAILS - the kernel
-            // (UnsafeMathOP.remap) calls math.remap(x, oldMin, oldMax, newMin, newMax), i.e. it
-            // passes the value FIRST, so the arguments are rotated and the result is wrong. See the
-            // agent report: this is a genuine argument-order bug in the production kernel, not a
-            // test defect. The oracle here is the correct value the kernel should produce.
+            // Maps x from [oldMin,oldMax] onto [newMin,newMax]. Unity's math.remap takes the VALUE
+            // as its LAST argument: remap(srcStart, srcEnd, dstStart, dstEnd, value).
             for (int i = 0; i < n; i++)
                 AssertClose(x[i], math.remap(oldMin, oldMax, newMin, newMax, x0[i]));
         }

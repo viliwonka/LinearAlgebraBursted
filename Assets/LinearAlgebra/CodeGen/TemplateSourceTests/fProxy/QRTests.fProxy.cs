@@ -43,14 +43,17 @@ public class fProxyQRTests
             QRDecompPermutation,
             QRDecompZero,
             QRDecompRankDeficient,
-            // Blocked path (N_Cols >= 2*QR_BLOCK = 64) with a LAST panel that is NARROWER than
-            // QR_BLOCK (=32): N_Cols >= 64 and NOT a multiple of 32. Tall (M_Rows >= N_Cols).
+            // Blocked path (N_Cols >= Consts.floatQrBlockMinN=128 / doubleQrBlockMinN=512) with a
+            // LAST panel that is NARROWER than QR_BLOCK (=32): N_Cols NOT a multiple of 32. Tall
+            // (M_Rows >= N_Cols). Only QRDecompBlockedNonAligned_1100x545 (N_Cols=545) clears the
+            // double gate; the smaller shapes below stay on the unblocked fallback for both types.
             QRDecompBlockedNonAligned_200x100,
             QRDecompBlockedNonAligned_130x65,
             QRDecompBlockedNonAligned_150x70,
             QRDecompBlockedNonAligned_200x127,
             QRDecompBlockedNonAligned_160x96,
             QRDecompBlockedNonAligned_256x150,
+            QRDecompBlockedNonAligned_1100x545,
             // Solver API rework (commit 2) coverage.
             QRDecompPreservesA,
             QRUninitXContract,
@@ -111,6 +114,9 @@ public class fProxyQRTests
                     break;
                 case TestType.QRDecompBlockedNonAligned_256x150:
                     QRDecompBlockedNonAligned(256, 150, 700150);
+                    break;
+                case TestType.QRDecompBlockedNonAligned_1100x545:
+                    QRDecompBlockedNonAligned(1100, 545, 700545);
                     break;
                 case TestType.QRDecompPreservesA:
                     QRDecompPreservesA();
@@ -315,12 +321,12 @@ public class fProxyQRTests
             arena.Dispose();
         }
 
-        // Exercises the BLOCKED QR path (engaged when N_Cols >= 2*QR_BLOCK = 64) at column counts
-        // that are NOT multiples of the block width QR_BLOCK (=32), so the trailing panel is
-        // narrower than a full block (n mod 32 != 0). The aligned suite (64/128/.../512/1024) never
-        // hits this "short last panel" branch. Tall shapes (M_Rows >= N_Cols) with a boosted diagonal
-        // to stay well-conditioned/full-rank, matching the solver tests. AssertQR verifies all three
-        // invariants: A ≈ Q*R (reconstruction), QᵀQ ≈ I (orthonormal columns), R upper-triangular.
+        // Exercises the BLOCKED QR path (engaged per-type when N_Cols >= Consts.floatQrBlockMinN=128
+        // / doubleQrBlockMinN=512) at column counts that are NOT multiples of the block width
+        // QR_BLOCK (=32), so the trailing panel is narrower than a full block (n mod 32 != 0).
+        // Tall shapes (M_Rows >= N_Cols) with a boosted diagonal to stay well-conditioned/full-rank,
+        // matching the solver tests. AssertQR verifies all three invariants: A ≈ Q*R (reconstruction),
+        // QᵀQ ≈ I (orthonormal columns), R upper-triangular.
         void QRDecompBlockedNonAligned(int m, int n, uint seed)
         {
             var arena = new Arena(Allocator.Persistent);
@@ -435,17 +441,18 @@ public class fProxyQRTests
             arena.Dispose();
         }
 
-        // (2f-i) Blocked-path A-preservation: QR.decomp at N_Cols >= 2*QR_BLOCK = 64 engages the
-        // level-3 blocked (compact-WY GEMM trailing-update) path; it still must not modify A. Uses a
-        // tall well-conditioned 96x64 shape (matching QRDecompBlockedNonAligned's construction). The
-        // existing QRDecompPreservesA only reaches the unblocked path (12x6).
+        // Blocked-path A-preservation: QR.decomp at N_Cols >= Consts.floatQrBlockMinN=128 /
+        // doubleQrBlockMinN=512 engages the level-3 blocked (compact-WY GEMM trailing-update) path;
+        // it still must not modify A. Uses a tall well-conditioned 576x512 shape (clears the double
+        // gate too, matching QRDecompBlockedNonAligned's construction). The existing QRDecompPreservesA
+        // only reaches the unblocked path (12x6).
         void QRDecompPreservesABlocked()
         {
             var arena = new Arena(Allocator.Persistent);
 
-            int m = 96, n = 64;
-            var random = new Unity.Mathematics.Random(960640);
-            var A = arena.fProxyRandomMat(m, n, -5f, 5f, 960640);
+            int m = 576, n = 512;
+            var random = new Unity.Mathematics.Random(576512);
+            var A = arena.fProxyRandomMat(m, n, -5f, 5f, 576512);
             for (int d = 0; d < n; d++)
                 A[d, d] += 5.1f + 10f * random.NextFProxy();
 

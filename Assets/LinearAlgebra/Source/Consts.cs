@@ -23,16 +23,14 @@ namespace LinearAlgebra {
         public const double doubleEpsilon = 2.220446049250313e-16;  // machine epsilon, 2^-52
         public const double doubleSqrtEps = 1.4901161193847656e-8;  // sqrt(doubleEpsilon): best localization of a smooth minimum
 
-        // Row-count gate for LQ's blocked (compact-WY) vs unblocked kernel. Cache-dependent; measured
-        // per dtype, pinned conservatively (err high) since a too-low gate can regress on a weaker cache.
+        // Row-count gate for LQ's blocked (compact-WY) vs unblocked kernel: below it, unblocked runs;
+        // at/above it, blocked runs. Cache-dependent, so pinned per dtype.
         public const int floatLqBlockMinM  = 256;
         public const int doubleLqBlockMinM = 512;
 
-        // Per-type level-3 blocking gates for the other factorizations, measured per dtype from a
-        // blocked-vs-unblocked sweep (same convention as the LQ gate above). QR/QRCP gate on N_Cols
-        // (column panels); Cholesky/LU gate on the matrix side n/m. float/double ordering is not
-        // universal, so each is measured independently rather than derived. The fProxy* placeholders
-        // above carry the template-compile default.
+        // Per-type level-3 blocking gates for the other factorizations (same convention as the LQ gate
+        // above). QR/QRCP gate on N_Cols (column panels); Cholesky/LU gate on the matrix side n/m. The
+        // fProxy* placeholders above carry the template-compile default.
         public const int floatQrBlockMinN    = 128;
         public const int doubleQrBlockMinN   = 512;
         public const int floatQrcpBlockMinN  = 64;
@@ -42,7 +40,7 @@ namespace LinearAlgebra {
         public const int floatLuBlockMinN    = 256;
         public const int doubleLuBlockMinN   = 128;
 
-        // Pivoted Cholesky (CHOP, xPSTRF) blocked-path gate; measured, same convention as the gates above.
+        // Pivoted Cholesky (CHOP, xPSTRF) blocked-path gate; same convention as the gates above.
         public const int floatCholPivotBlockMinN  = 512;
         public const int doubleCholPivotBlockMinN = 512;
 

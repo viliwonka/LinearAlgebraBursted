@@ -210,13 +210,14 @@ namespace LinearAlgebra
         public void ApplyBlock(in floatMxN Vrows, ref floatMxN AVrows, int rows)
         {
             int cols = Vrows.N_Cols;
+            int outCols = Inner.Rows;
             var rin = new floatN(cols, Unity.Collections.Allocator.Temp, false);
-            var rout = new floatN(cols, Unity.Collections.Allocator.Temp, false);
+            var rout = new floatN(outCols, Unity.Collections.Allocator.Temp, false);
             for (int i = 0; i < rows; i++)
             {
                 for (int c = 0; c < cols; c++) rin[c] = Vrows[i, c];
                 Apply(in rin, ref rout);
-                for (int c = 0; c < cols; c++) AVrows[i, c] = rout[c];
+                for (int c = 0; c < outCols; c++) AVrows[i, c] = rout[c];
             }
             rout.Dispose();
             rin.Dispose();

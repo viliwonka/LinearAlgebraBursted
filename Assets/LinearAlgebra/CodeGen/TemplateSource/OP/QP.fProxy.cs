@@ -538,9 +538,7 @@ namespace LinearAlgebra
         // per-column no-op, not just an optimization. Z's seed is the TRAILING identity block instead
         // (column j = e_{k+j}), and every reflector index d < k <= k+j, so u_d's support (rows >= d)
         // ALWAYS includes row k+j -- H_d is generally NOT a no-op on any column of Z, for any d. The
-        // column restriction would therefore silently skip real work (caught by the Stage-1 KKT-oracle
-        // check at k=2, n=8: k=1 has only one reflector at d=0, whose "columns >= 0" restriction never
-        // actually excludes anything, so the bug is invisible there). ApplyReflectorFullWidth below is
+        // column restriction would therefore silently skip real work. ApplyReflectorFullWidth below is
         // the same rank-1 update with that restriction removed -- full column width every step.
         internal static void FormNullSpaceBasis(ref fProxyMxN AWT, ref fProxyMxN Z, ref fProxyN u, ref fProxyN w, int k)
         {
@@ -758,15 +756,14 @@ namespace LinearAlgebra
             int budget = maxIter > 0 ? maxIter : 50 * T + 200;
             int degenCap = 3 * math.max(n, 1);
             int degenCount = 0;
-            // Anti-cycling hardening: HiGHS-style deterministic bound perturbation (the exact pattern --
-            // and lesson -- of LP.DualSimplexCore's own cost perturbation, see that file's header
-            // comment) REPLACES the earlier Bland-style seam. Once a run of alpha=0 (degenerate) steps
-            // reaches degenCap, usePerturbation switches the ratio test (both call sites below) from
-            // the TRUE L/U to a lazily-built, SLIGHTLY WIDENED pair (BuildPerturbedBounds -- perturbedL
-            // <= L <= U <= perturbedU always, so nothing feasible under the true bounds ever becomes
-            // infeasible), which breaks the EXACT ties that cause a zero-length step in the first
-            // place. The multiplier sign check just below (the "optimality decision") never reads L/U
-            // at all -- it depends only on g = Qx+c and the working-set geometry (see this file's
+            // Anti-cycling hardening: HiGHS-style deterministic bound perturbation. Once a run of
+            // alpha=0 (degenerate) steps reaches degenCap, usePerturbation switches the ratio test
+            // (both call sites below) from the TRUE L/U to a lazily-built, SLIGHTLY WIDENED pair
+            // (BuildPerturbedBounds -- perturbedL <= L <= U <= perturbedU always, so nothing
+            // feasible under the true bounds ever becomes infeasible), which breaks the EXACT
+            // ties that cause a zero-length step in the first place. The multiplier sign check just
+            // below (the "optimality decision") never reads L/U at all -- it depends only on
+            // g = Qx+c and the working-set geometry (see this file's
             // "unified row/bound representation" header note) -- so it is, structurally, already
             // "deciding on ORIGINAL data" without needing a Bland-style special case. What perturbation
             // CAN leave behind is a perturbation-sized drift in x itself (it took a step to a
@@ -871,9 +868,7 @@ namespace LinearAlgebra
                     // several genuinely different blockers would look "tied" and the wrong (overstepping)
                     // one could win, corrupting feasibility. Scale-invariant fix: run the ratio test on
                     // p/pInf (alpha then O(1)-scaled regardless of p's raw magnitude) and convert back
-                    // (alpha_original = alpha_hat / pInf) -- caught by the LP-limit oracle test (Q=0
-                    // forces EVERY step through this exact path, since the reduced Hessian is then
-                    // identically singular every iteration).
+                    // (alpha_original = alpha_hat / pInf).
                     pScale = (fProxy)math.max(pInf, 1e-30);
                     thetaSelf = zeroCurv ? INF : pScale;
 
@@ -1240,9 +1235,8 @@ namespace LinearAlgebra
         // regularized/zero-curvature path where p can be enormous (~1/delta): WITHOUT this rescaling,
         // alpha would come out correspondingly tiny and feasTol's Harris tie-window below (calibrated
         // for an O(1) alpha) would be far too coarse relative to the true spacing between distinct
-        // blocking points, corrupting the winner choice -- see qpActiveSetCore's call site comment
-        // (caught by the LP-limit oracle test, Q=0 forces every step through exactly this path). The
-        // caller un-rescales the returned alpha (alpha_original = alpha / pScale) and thetaSelf must
+        // blocking points, corrupting the winner choice -- see qpActiveSetCore's call site comment.
+        // The caller un-rescales the returned alpha (alpha_original = alpha / pScale) and thetaSelf must
         // already be pre-scaled by the SAME pScale (INF is its own rescale, unaffected). Rows with
         // |d_t| <= pivTol, or whose relevant bound is the +-1e29 unbounded sentinel, can never block and
         // are skipped. winnerRow is -1 (no block within thetaSelf) or the winning row, tie-broken by

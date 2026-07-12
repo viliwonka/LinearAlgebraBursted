@@ -700,7 +700,7 @@ public class shortQueryTests
         }
 
         // ---------------------------------------------------------------------
-        // MinValue EDGE — the iAbs() off-by-one fix (review's HIGH finding).
+        // MinValue EDGE — iAbs() saturates |short.MinValue| to short.MaxValue.
         // ---------------------------------------------------------------------
 
         void MinValueEdge()

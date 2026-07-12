@@ -69,9 +69,8 @@ namespace LinearAlgebra
                 // the same name would collide across them (CS0102; see QR_BLOCK).
                 const int CHOL_BLOCK = 32;
 
-                // Size gate: measured crossover, not the naive 2*CHOL_BLOCK — the panel/TRSM/SYRK
-                // bookkeeping isn't amortised until ~8 panels wide. A shared float/double threshold
-                // uses the slower type's crossover.
+                // Size gate for the blocked path. A shared float/double threshold uses the slower
+                // type's crossover.
                 const int CHOL_BLOCK_MIN_N = Consts.doubleCholBlockMinN;   // float/double split (see Consts); default 8*CHOL_BLOCK
 
                 if (n < CHOL_BLOCK_MIN_N)

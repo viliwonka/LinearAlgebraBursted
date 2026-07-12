@@ -79,6 +79,9 @@ public class fProxySpecialConstructorsTests {
                 case TestType.RandomMat:
                     RandomMat();
                     break;
+                case TestType.RandomRangeMat:
+                    RandomRangeMat();
+                    break;
                 case TestType.RotationMat:
                     RotationMat();
                     break;
@@ -194,6 +197,8 @@ public class fProxySpecialConstructorsTests {
 
             for(int i = 0; i < m.Length; i++)
                 Assert.IsTrue(m[i] == (fProxy)i);
+
+            arena.Dispose();
         }
 
         public void IndexOneMat()
@@ -204,6 +209,7 @@ public class fProxySpecialConstructorsTests {
             for (int i = 0; i < m.Length; i++)
                 Assert.IsTrue(m[i] == (fProxy)i + 1);
 
+            arena.Dispose();
         }
 
         public void IdentityMat()
@@ -297,13 +303,13 @@ public class fProxySpecialConstructorsTests {
             Assert.IsFalse(Analysis.isIdentity(in m, 0.00001f));
             
             var mTm = Blas.dot(m, m, true);
-            Analysis.isIdentity(in mTm, 0.00001f);
+            Assert.IsTrue(Analysis.isIdentity(in mTm, 0.00001f));
 
             m = arena.fProxyRotationMat(2, 0, 1, math.PI/4f);
 
             Assert.IsTrue(math.abs((fProxy)0.70710678118654752440084436210485d - m[0, 0]) < 0.00001f);
             Assert.IsTrue(math.abs((fProxy)0.70710678118654752440084436210485d - m[1, 1]) < 0.00001f);
-            Assert.IsTrue(-math.abs((fProxy)0.70710678118654752440084436210485d - m[0, 1]) < 0.00001f);
+            Assert.IsTrue(math.abs((fProxy)(-0.70710678118654752440084436210485d) - m[0, 1]) < 0.00001f);
             Assert.IsTrue(math.abs((fProxy)0.70710678118654752440084436210485d - m[1, 0]) < 0.00001f);
 
             arena.Dispose();
@@ -318,7 +324,7 @@ public class fProxySpecialConstructorsTests {
             Assert.IsFalse(Analysis.isIdentity(in m, 0.00001f));
 
             var mTm = Blas.dot(m, m, true);
-            Analysis.isIdentity(in mTm, 0.00001f);
+            Assert.IsTrue(Analysis.isIdentity(in mTm, 0.00001f));
 
             m = arena.fProxyPermutationMat(2, 0, 1);
 
@@ -340,7 +346,7 @@ public class fProxySpecialConstructorsTests {
             Assert.IsFalse(Analysis.isIdentity(in m, 0.00001f));
 
             var mTm = Blas.dot(m, m, true);
-            Analysis.isIdentity(in mTm, 0.00001f);
+            Assert.IsTrue(Analysis.isIdentity(in mTm, 0.00001f));
 
             v = arena.fProxyBasisVec(2, 0);
             m = arena.fProxyHouseholderMat(2, v);

@@ -22,8 +22,7 @@ namespace LinearAlgebra
     ///
     /// The full-circle table (twReFull/twImFull, length n) is required by the auto-dispatch
     /// radix-4 paths inside fft/ifft: radix-4 twiddles reach index 3n/4, past the half-table
-    /// boundary. Bandwidth tradeoff: full table uses ~2× twiddle memory (~8 MB at N=1M for
-    /// float), offset by halving the number of full-array passes (log4(N) vs log2(N) passes).
+    /// boundary.
     /// </summary>
     public struct floatFFTCache
     {
@@ -204,7 +203,7 @@ namespace LinearAlgebra
         public static void rfft(in floatN real, ref floatN re, ref floatN im, in floatFFTCache ws)
         {
             int n = real.N;
-            RequireFftWorkspace(in ws, n, "rfft");
+            RequireRadix4Workspace(in ws, n, "rfft");
 
             if (!IsPow2(n))
                 throw new ArgumentException("rfft: length must be a power of two");
@@ -298,7 +297,7 @@ namespace LinearAlgebra
             if (real.N != N)
                 throw new ArgumentException("irfft: real.N must equal 2*(re.N-1)");
 
-            RequireFftWorkspace(in ws, N, "irfft");
+            RequireRadix4Workspace(in ws, N, "irfft");
 
             unsafe
             {

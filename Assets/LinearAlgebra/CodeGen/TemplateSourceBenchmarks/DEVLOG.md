@@ -1,7 +1,40 @@
 # DEVLOG — TemplateSourceBenchmarks
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## KMeansBenchmark
+- 2026-07-12 | KMeansJobFProxy.Execute() called KMeans.fit with a hardcoded literal 16 while
+  BenchFProxy sizes the centroids/workspace buffers from parameter K -- harmless only because the
+  sole caller always passes K=16 (audit release-scan-2026-07-12/22-benchmarks finding 8, UNCERTAIN).
+  Added a `K` field to the job and passed it through instead of the literal, so the requested cluster
+  count and the buffer sizes are driven by one value. (was KMeansBenchmark.fProxy.cs:26)
+
+## SparseSolverBenchmark
+- 2026-07-12 | Dropped "Milestone B"/"Milestone-A" internal phase tags from three comments (the
+  transpose-optimized CGLS/LSQR job banner, the Section 0b symmetric-vs-full spMV banner, and the
+  Section-with-transpose-rows comment); kept the contracts (Aᵀ materialized once outside timing so
+  ApplyT runs as a forward spMV; symmetric lower-triangle storage vs full block-CSR on the identical
+  matrix). (was SparseSolverBenchmark.fProxy.cs:184, 647, 843)
+
+## DirectSolveBenchmark
+- 2026-07-12 | LuSolveTransAJobFProxy's comment dropped a perf-verdict/expectation clause ("this
+  should run at roughly the same speed as the forward LU row -- any large gap would mean the
+  right-looking TransA formulation isn't vectorising as intended"); kept the contract identifying
+  the job as the getrs(trans='T') counterpart of LuSolveJobFProxy. (was
+  DirectSolveBenchmark.fProxy.cs:39-41)
+
 ## LargeSparseBenchmark
+- 2026-07-12 | Stripped remaining ticket tags and budget-bookkeeping narration missed by the previous
+  pass (audit release-scan-2026-07-12/22-benchmarks finding 5): "Krylov R3"/"Krylov R3b" round labels
+  on the SpCgJobFProxy/SpPcgJobFProxy tol-field comment, the SpPcgSSORJobFProxy comment, the LOBPCG
+  Bench.Time wiring comment, and the SSOR-preconditioner-axis comment (also dropped its
+  LobpcgAcceptsSSORPreconditioner test-name reference and "hypothesis under test" narration);
+  BenchKrylovFProxy's comment dropped the "spMV x50 row DELETED... Q7 budget ruling" bookkeeping and
+  the stale BenchPrecondConvergenceFProxy reference (that method was inlined, never renamed back in
+  the comment); BenchStencilFProxy's comment dropped the "spec: BR=4/1.5% fill..." citation and the
+  "gained PCG-SSOR... PAID FOR by dropping N=5120... Q7 budget ruling" history; BenchLobpcgFProxy's
+  comment dropped the "Krylov R3b budget trade (spec §3b, disclosed)... DROPPED... pay for" narration.
+  All now state only what each row set measures. (was LargeSparseBenchmark.fProxy.cs:25, 42, 73-81,
+  90-97, 131-140, 238-242, 322-328)
 - 2026-07-11 | Dropped all `docs/draft-spec-krylov-optimization.md` citations (round labels R3/R3b)
   across the file's header and section comments: the "iters+status makes breakdown-guard early-exits
   visible" hygiene note, the SpCgJobFProxy/SpPcgJobFProxy `tol`-field-reuse comment, the LOBPCG
@@ -12,7 +45,22 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   and the fact that fProxySSOR routes through the generic `lobpcg<TOp,TPre>` core via
   fProxyBSROperator rather than a dedicated overload.
 
+## LQRBenchmark
+- 2026-07-12 | BuildInstanceFProxy's construction comment dropped its development history (the former
+  fixed +-0.05 off-diagonal magnitude was only stable to n~12; at n=128 it produced unstable, likely
+  unstabilizable instances; at n=4 the current 0.2/n scaling reproduces the original +-0.05 exactly).
+  Kept the current contract (diagonal range, off-diagonal scaled 0.2/n, Gershgorin bound stays under
+  ~0.6 at every n). (was LQRBenchmark.fProxy.cs:95-99)
+
 ## LPBenchmark
+- 2026-07-12 | Trimmed three more comments to contract-only (audit release-scan-2026-07-12/22-benchmarks
+  findings 1-3): the LadJobFProxy residual-recompute comment dropped its bug-postmortem clause (a
+  not-quite-converged solve can report LPInfo.objective BELOW the true L1 residual, observed once as
+  m=192 float revised printing 4.37 vs a true residual of 104.08, silently misleading the table); the
+  LpRhsMatVecJobFProxy comment dropped the "coordinator's sanity-scan" workflow reference and the
+  73728-multiply-add Mono-interpreted rationale; the SectionInfeasibleFProxy comment dropped the
+  "(the same robust recipe the review that requested this section specified)" reviewer-provenance
+  parenthetical. (was LPBenchmark.fProxy.cs:59-65, 174-179, 608-610)
 - 2026-07-11 | Trimmed the killed-run anecdote from the per-job reporting-outputs comment. Full story:
   the report used to harvest objective/iters/status via a SEPARATE plain managed call to LP.solve/LP.lad
   before ever timing the Burst job -- i.e. every row solved the SAME problem TWICE, once fully

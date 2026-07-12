@@ -6,8 +6,7 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 
-// Regression test for the `scalar - matrix` sign bug (integer matrices): the operator delegated to
-// `rhs - lhs`, which negates the result since subtraction is not commutative.
+// scalar - matrix must equal s - A[i,j] elementwise (subtraction is not commutative).
 public class iProxyScalarMatrixOpTests
 {
     [BurstCompile(CompileSynchronously = true)]

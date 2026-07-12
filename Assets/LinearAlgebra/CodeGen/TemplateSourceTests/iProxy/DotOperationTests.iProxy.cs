@@ -172,9 +172,9 @@ public class iProxyDotOperationTests
             for (int j = 0; j < matLen; j++)
             {
                 if (i == j)
-                    Assert.IsTrue(C[i, j] == (iProxy)1f);
+                    Assert.IsTrue(D[i, j] == (iProxy)1f);
                 else
-                    Assert.IsTrue(C[i, j] == (iProxy)0f);
+                    Assert.IsTrue(D[i, j] == (iProxy)0f);
             }
 
             arena.Dispose();
@@ -216,7 +216,36 @@ public class iProxyDotOperationTests
 
         public void MatMatDotNonSquare()
         {
+            var arena = new Arena(Allocator.Persistent);
 
+            int M = 8;
+            int K = 24;
+            int N = 16;
+
+            iProxyMxN Id = arena.iProxyIdentityMat(K);
+            iProxyMxN R = arena.iProxyRandomMat(K, N, -100, +100);
+
+            iProxyMxN C = Blas.dot(Id, R);
+
+            Assert.AreEqual(K, C.M_Rows);
+            Assert.AreEqual(N, C.N_Cols);
+
+            for (int i = 0; i < K; i++)
+            for (int j = 0; j < N; j++)
+                Assert.IsTrue(C[i, j] == R[i, j]);
+
+            iProxyMxN R2 = arena.iProxyRandomMat(M, K, -100, +100);
+
+            iProxyMxN D = Blas.dot(R2, Id);
+
+            Assert.AreEqual(M, D.M_Rows);
+            Assert.AreEqual(K, D.N_Cols);
+
+            for (int i = 0; i < M; i++)
+            for (int j = 0; j < K; j++)
+                Assert.IsTrue(D[i, j] == R2[i, j]);
+
+            arena.Dispose();
         }
 
         public void OuterDot()

@@ -150,12 +150,11 @@ namespace LinearAlgebra
             int numActive = kWork;
             bool haveP = false;
 
-            // Freeze (lock) a pair only at a fraction of tolerance; convergence is still DECLARED at tolerance via
-            // allWithinTol below. Locking is destructive -- once a pair is frozen, the remaining active
-            // pairs are confined B-orthogonal to it (W/P are deflated against all X), and the best
-            // residual achievable under that confinement is ~0.87x the frozen pair's lock residual. So
-            // lock with margin (0.087*tolerance induced floor) instead of at tolerance, which would leave later
-            // pairs stuck just above tolerance. See the (d1) re-deflation block below.
+            // Freeze (lock) a pair only at a fraction of tolerance (lockTol = 0.1*tolerance);
+            // convergence is still DECLARED at tolerance via allWithinTol below. Locking is
+            // destructive -- once a pair is frozen, the remaining active pairs are confined
+            // B-orthogonal to it (W/P are deflated against all X) -- so locking with margin avoids
+            // leaving later pairs stuck just above tolerance. See the (d1) re-deflation block below.
             float lockTol = tolerance * (float)0.1;
 
             for (int iter = 0; iter < maxIterations; iter++)
@@ -349,11 +348,11 @@ namespace LinearAlgebra
                 B.ApplyBlock(in ws.X, ref ws.BX, numActive);
 
                 // Same fix for AP/BP: P is reformed EVERY iteration from a combination of the
-                // CURRENT W and the OLD P (chained iteration to iteration, just like AX used to
-                // be), and -- unlike AX, which only feeds the residual/convergence check -- an
-                // inaccurate AP corrupts next iteration's [X,W,P] Gram/H directly (H's P-columns
-                // are dot(*, AP)), a much more direct route to visibly wrong Ritz values. BP is
-                // refreshed for the SAME reason -- it feeds the next iteration's B-Gram directly.
+                // CURRENT W and the OLD P (chained iteration to iteration), and -- unlike AX,
+                // which only feeds the residual/convergence check -- an inaccurate AP corrupts
+                // next iteration's [X,W,P] Gram/H directly (H's P-columns are dot(*, AP)), a much
+                // more direct route to visibly wrong Ritz values. BP is refreshed for the SAME
+                // reason -- it feeds the next iteration's B-Gram directly.
                 A.ApplyBlock(in ws.P, ref ws.AP, numActive);
                 B.ApplyBlock(in ws.P, ref ws.BP, numActive);
 
@@ -701,7 +700,7 @@ namespace LinearAlgebra
         // Aliasing guard: every scratch buffer in the workspace must be distinct -- same rationale
         // as cg<TOp>'s guard (elementwise updates below don't self-check aliasing). A local
         // loop-based check (mirrors Krylov.RequireDistinctBuffers) rather than a hand-expanded OR
-        // chain: 25 buffers -> 300 pairs, impractical to hand-write/review. Includes the O(k)-scale
+        // chain: 23 buffers -> 253 pairs, impractical to hand-write/review. Includes the O(k)-scale
         // Rayleigh-Ritz scratch (Gram/H/L/Atrans/Y/C) alongside the O(n)-scale buffers -- all six
         // live simultaneously within a single TryRayleighRitz call (Gram/H built together, L
         // factored from Gram, Atrans formed from H/L, Y from Atrans, C from Y/L), so an aliased
@@ -711,7 +710,7 @@ namespace LinearAlgebra
         // simultaneously with the buffers it is combined against.
         static unsafe void RequireDistinctBuffers(in floatLOBPCGCache ws)
         {
-            const int count = 25;
+            const int count = 23;
             long* ptrs = stackalloc long[count];
             ptrs[0] = (long)ws.X.Data.Ptr;
             ptrs[1] = (long)ws.AX.Data.Ptr;
@@ -721,23 +720,21 @@ namespace LinearAlgebra
             ptrs[5] = (long)ws.AP.Data.Ptr;
             ptrs[6] = (long)ws.R.Data.Ptr;
             ptrs[7] = (long)ws.Xnext.Data.Ptr;
-            ptrs[8] = (long)ws.AXnext.Data.Ptr;
-            ptrs[9] = (long)ws.Pnext.Data.Ptr;
-            ptrs[10] = (long)ws.APnext.Data.Ptr;
-            ptrs[11] = (long)ws.lambda.Data.Ptr;
-            ptrs[12] = (long)ws.residual.Data.Ptr;
-            ptrs[13] = (long)ws.rowIn.Data.Ptr;
-            ptrs[14] = (long)ws.rowOut.Data.Ptr;
-            ptrs[15] = (long)ws.Gram.Data.Ptr;
-            ptrs[16] = (long)ws.H.Data.Ptr;
-            ptrs[17] = (long)ws.L.Data.Ptr;
-            ptrs[18] = (long)ws.Atrans.Data.Ptr;
-            ptrs[19] = (long)ws.Y.Data.Ptr;
-            ptrs[20] = (long)ws.C.Data.Ptr;
-            ptrs[21] = (long)ws.BX.Data.Ptr;
-            ptrs[22] = (long)ws.BW.Data.Ptr;
-            ptrs[23] = (long)ws.BP.Data.Ptr;
-            ptrs[24] = (long)ws.rowAux.Data.Ptr;
+            ptrs[8] = (long)ws.Pnext.Data.Ptr;
+            ptrs[9] = (long)ws.lambda.Data.Ptr;
+            ptrs[10] = (long)ws.residual.Data.Ptr;
+            ptrs[11] = (long)ws.rowIn.Data.Ptr;
+            ptrs[12] = (long)ws.rowOut.Data.Ptr;
+            ptrs[13] = (long)ws.Gram.Data.Ptr;
+            ptrs[14] = (long)ws.H.Data.Ptr;
+            ptrs[15] = (long)ws.L.Data.Ptr;
+            ptrs[16] = (long)ws.Atrans.Data.Ptr;
+            ptrs[17] = (long)ws.Y.Data.Ptr;
+            ptrs[18] = (long)ws.C.Data.Ptr;
+            ptrs[19] = (long)ws.BX.Data.Ptr;
+            ptrs[20] = (long)ws.BW.Data.Ptr;
+            ptrs[21] = (long)ws.BP.Data.Ptr;
+            ptrs[22] = (long)ws.rowAux.Data.Ptr;
 
             for (int i = 0; i < count; i++)
                 for (int j = i + 1; j < count; j++)

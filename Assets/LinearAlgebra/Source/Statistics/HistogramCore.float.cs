@@ -139,7 +139,7 @@ namespace LinearAlgebra
         // -------------------------------------------------------------------------
 
         /// <summary>
-        /// Computes the probability density estimate over [<paramref name="lo"/>, <paramref name="hi"/>)
+        /// Computes the probability density estimate over [<paramref name="lo"/>, <paramref name="hi"/>]
         /// and writes it into <paramref name="dest"/>.
         /// K = <c>dest.N</c>; K >= 1 and hi > lo and non-empty data required.
         /// <para>Formula: <c>dest[b] = count_b / (N * w)</c>, where N = data.Length and
@@ -180,7 +180,7 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Computes the empirical cumulative distribution function (CDF) over
-        /// [<paramref name="lo"/>, <paramref name="hi"/>), normalized over in-range samples only,
+        /// [<paramref name="lo"/>, <paramref name="hi"/>], normalized over in-range samples only,
         /// and writes it into <paramref name="dest"/>.
         /// K = <c>dest.N</c>; K >= 1 and hi > lo required.
         /// <para>Formula: <c>dest[b] = (Σ_{i &lt;= b} count_i) / inRangeTotal</c>, monotone

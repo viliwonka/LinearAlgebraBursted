@@ -8,7 +8,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// Krylov Round-3 new surfaces:
+// SSOR preconditioner test coverage:
 //   (a) BSR.sweepLower/sweepUpper vs a dense LU solve on the EXPANDED (block-diagonal +
 //       strictly-block-triangular, diagonal pre-divided by diagScale) matrix -- b in
 //       {1,2,3,4,6} (unrolled) plus b=5 (general runtime-BR fallback), both diagScale=1 (plain

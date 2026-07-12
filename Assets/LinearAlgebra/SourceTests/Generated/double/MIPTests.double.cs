@@ -51,19 +51,18 @@ public class doubleMIPTests
 
             // ==== extra coverage (not in the required oracle list) ====
             GeneralIntBounds,   // integer var xl=3,xu=10 (nonzero-xl shift path): min -x s.t. x<=7.5 -> x=7, obj -7
-            NodeLimitNoIncumbent, // Gomory with maxNodes=1 -> NodeLimit, nodes==1, obj=+inf, dualBound finite (~-41.25)
-            IterLimitNoIncumbent, // Gomory with maxIter=1  -> MaxIterations, nodes==1, obj=+inf, dualBound finite
+            NodeLimitPartialResult, // Gomory with maxNodes=1 -> NodeLimit, nodes==1, sound feasible incumbent, dualBound finite (~-41.25)
+            IterLimitPartialResult, // Gomory with maxIter=1  -> MaxIterations, nodes==1, same partial-result contract
 
             // ==== (f) STAGE 3 verification: pseudocost + reliability branching + best-bound queue with
             //         plunging replaces stage 2's most-fractional/pure-DFS search. The node count on the
             //         harder instances must NOT increase vs the stage-2 baselines (this IS the feature --
-            //         hard-assert nodes <= baseline). Baselines were measured on both stages directly (by
-            //         reverting to the stage-2 commit, running a throwaway diagnostic, then restoring).
-            //         lpIterations is deliberately NOT asserted: on tiny instances pseudocost never becomes
-            //         "reliable" within the few nodes explored, so it strong-branches nearly every candidate
-            //         and total iterations can RISE even as node count falls -- an expected, documented
-            //         tradeoff. Also: the single-threaded, RNG-free search must be bit-for-bit deterministic
-            //         across repeated calls (determinism story). ====
+            //         hard-assert nodes <= baseline; see each case for its baseline). lpIterations is
+            //         deliberately NOT asserted: on tiny instances pseudocost never becomes "reliable"
+            //         within the few nodes explored, so it strong-branches nearly every candidate and total
+            //         iterations can RISE even as node count falls -- an expected, documented tradeoff.
+            //         Also: the single-threaded, RNG-free search must be bit-for-bit deterministic across
+            //         repeated calls (determinism story). ====
             Stage3NodesKnapsack6,    // stage2 = stage3 = 1 node (tie): assert nodes <= 1, both dtypes
             Stage3NodesGomoryWolsey, // stage2 = stage3 = 7 nodes (lpIter 9 -> 27, NOT asserted): nodes <= 7
             Stage3NodesBranchy12,    // random n=12/m=6 seed 424242: stage2 267 -> stage3 241 nodes, obj 6
@@ -97,11 +96,11 @@ public class doubleMIPTests
             Stage4DeterminismStein9,   // rounding-heuristic + propagation path: two solves bit-for-bit identical
             Stage4DeterminismGapLimit, // two identical GapLimit-triggering solves identical (DOUBLE-ONLY)
 
-            // -- integrality classification at large magnitude (third-review regression) --
-            LargeMagnitudeIntegrality, // LP vertex fractional at ~7.5e5: the former RELATIVE integrality
-                                       //   tol (1e-6*max(1,|x|) > 0.5 past |x|~5e5) declared the fractional
-                                       //   root Optimal; fixed to HiGHS's absolute tolerance.
-                                       //   DOUBLE-ONLY (float LP precision at this data scale).
+            // -- integrality classification at large magnitude --
+            LargeMagnitudeIntegrality, // LP vertex fractional at ~7.5e5: a RELATIVE integrality tolerance
+                                       //   (1e-6*max(1,|x|) > 0.5 past |x|~5e5) would misclassify this
+                                       //   fractional root as Optimal; MIP.solve must use HiGHS's absolute
+                                       //   tolerance instead. DOUBLE-ONLY (float LP precision at this data scale).
         }
 
         public TestType Type;
@@ -123,8 +122,8 @@ public class doubleMIPTests
                 case TestType.UnboundedRoot: UnboundedRoot(); break;
                 case TestType.EnumCrossCheck: EnumCrossCheck(); break;
                 case TestType.GeneralIntBounds: GeneralIntBounds(); break;
-                case TestType.NodeLimitNoIncumbent: NodeLimitNoIncumbent(); break;
-                case TestType.IterLimitNoIncumbent: IterLimitNoIncumbent(); break;
+                case TestType.NodeLimitPartialResult: NodeLimitPartialResult(); break;
+                case TestType.IterLimitPartialResult: IterLimitPartialResult(); break;
                 case TestType.Stage3NodesKnapsack6: Stage3NodesKnapsack6(); break;
                 case TestType.Stage3NodesGomoryWolsey: Stage3NodesGomoryWolsey(); break;
                 case TestType.Stage3NodesBranchy12: Stage3NodesBranchy12(); break;
@@ -527,10 +526,12 @@ public class doubleMIPTests
             senses.Dispose(); integ.Dispose(); arena.Dispose();
         }
 
-        // maxNodes = 1 on the Gomory instance (whose root LP is fractional, so no incumbent exists after
-        // node 1): the budget is exhausted right after the root -> NodeLimit, nodes == 1, no incumbent
-        // (objective == +inf), but a SOUND finite dual bound (the root LP value ~ -41.25, never NaN).
-        void NodeLimitNoIncumbent()
+        // maxNodes = 1 on the Gomory instance (whose root LP is fractional): the budget is exhausted
+        // right after the root -> NodeLimit, nodes == 1. The root still finishes its own node work
+        // before the limit fires, so its rounding heuristic installs a sound integer-feasible
+        // incumbent (finite objective >= dualBound, x feasible), and the dual bound stays SOUND and
+        // finite (the root LP value ~ -41.25, never NaN).
+        void NodeLimitPartialResult()
         {
             var arena = new Arena(Allocator.Persistent);
             var A = arena.doubleMat(2, 2);
@@ -550,18 +551,33 @@ public class doubleMIPTests
             AssertTrue(info.status == MIPStatus.NodeLimit);
             AssertNodes(info, 1);
             AssertTrue(info.nodes <= 1);                        // nodes <= maxNodes
-            AssertTrue(info.objective == double.PositiveInfinity);   // no incumbent yet
-            AssertTrue(obj == double.PositiveInfinity);
             AssertTrue(math.isfinite(info.dualBound) && !math.isnan(info.dualBound));   // sound, finite bound
             AssertCloseD(info.dualBound, -41.25, 1e-2);         // the fractional root LP value
+            AssertPartialIncumbent(in info, obj, x);
 
             senses.Dispose(); integ.Dispose(); arena.Dispose();
         }
 
+        // Shared partial-result incumbent checks for the limit tests: the root's rounding heuristic
+        // installs an incumbent before the limit fires, and it must be a SOUND point -- finite
+        // objective mirrored in the out param, primal >= dual bound, x integral and feasible for the
+        // Gomory rows (x1+x2 <= 6, 9x1+5x2 <= 45), objective == c.x.
+        void AssertPartialIncumbent(in MIPInfo info, double obj, in doubleN x)
+        {
+            AssertTrue(math.isfinite(info.objective) && !math.isnan(info.objective));
+            AssertTrue(obj == info.objective);
+            AssertTrue(info.objective >= info.dualBound - 1e-6);
+            AssertClose(x[0], math.round(x[0]), (double)1e-4);
+            AssertClose(x[1], math.round(x[1]), (double)1e-4);
+            AssertTrue((double)x[0] + (double)x[1] <= 6.0 + 1e-4);
+            AssertTrue(9.0 * (double)x[0] + 5.0 * (double)x[1] <= 45.0 + 1e-3);
+            AssertCloseD(-8.0 * (double)x[0] - 5.0 * (double)x[1], info.objective, 1e-3);
+        }
+
         // maxIter = 1 on the Gomory instance: the root LP fully solves (its own budget is unlimited) using
         // several pivots, then the cumulative-LP-iteration budget is already exceeded -> MaxIterations
-        // after node 1, same no-incumbent partial-result contract as NodeLimitNoIncumbent.
-        void IterLimitNoIncumbent()
+        // after node 1, same partial-result contract as NodeLimitPartialResult.
+        void IterLimitPartialResult()
         {
             var arena = new Arena(Allocator.Persistent);
             var A = arena.doubleMat(2, 2);
@@ -580,9 +596,9 @@ public class doubleMIPTests
 
             AssertTrue(info.status == MIPStatus.MaxIterations);
             AssertNodes(info, 1);
-            AssertTrue(info.objective == double.PositiveInfinity);   // no incumbent yet
             AssertTrue(math.isfinite(info.dualBound) && !math.isnan(info.dualBound));
             AssertCloseD(info.dualBound, -41.25, 1e-2);
+            AssertPartialIncumbent(in info, obj, x);
 
             senses.Dispose(); integ.Dispose(); arena.Dispose();
         }
@@ -833,8 +849,7 @@ public class doubleMIPTests
         // rows 0-34 covering triples (>= 1), row 35 the all-vars "at least 7 of 15" cut (>= 7). Proven
         // optimum 9 (double solves it in 275 nodes / 4307 LP iterations). DOUBLE-ONLY: measured empirically,
         // the FLOAT search does NOT converge -- it diverges past the node cap (float roundoff at this size
-        // multiplies branching), same float-baseline rationale as P0033/Stage3NodesBranchy12. (The brief
-        // reported float stein15 finishing in ~261 nodes; that did not reproduce on the shipped code.)
+        // multiplies branching), same float-baseline rationale as P0033/Stage3NodesBranchy12.
         void Stein15()
         {
             int cases = 1;
@@ -947,7 +962,7 @@ public class doubleMIPTests
         // nodes in DOUBLE now (stage 3 measured 7 -> propagation fathoms 2), and 7 nodes in FLOAT (float
         // roundoff changes the branching sequence, so propagation's fathoms land differently -- still no
         // increase over the stage-3 baseline of 7). Deterministic single-threaded search -> the exact count
-        // is a hard invariant per dtype. (The brief reported 5 for both; only double reproduced it.)
+        // is a hard invariant per dtype.
         void Stage4NodesGomoryWolsey()
         {
             var arena = new Arena(Allocator.Persistent);

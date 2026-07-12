@@ -156,7 +156,7 @@ namespace LinearAlgebra
         }
         
 
-        // constructs diagonal matrix with scalar s on diagonal
+        // constructs diagonal matrix with random diagonal entries in [min, max]
         // NOTE: min/max are cast to int for NextInt - for uint, bounds above int.MaxValue are unsupported (the cast wraps).
         public static longMxN longRandomDiagonalMat(this ref Arena arena, int N, long min, long max, uint seed = 65792)
         {

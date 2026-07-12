@@ -118,7 +118,7 @@ namespace LinearAlgebra
         public static DirectSolveInfo decompInPlace(ref floatMxN A_to_Q, ref floatMxN R, ref floatN u, ref floatN w)
         {
             if (A_to_Q.M_Rows < A_to_Q.N_Cols)
-                throw new ArgumentException("QR.decompInPlace: Matrix R must be square or tall (more or equal rows than cols)");
+                throw new ArgumentException("QR.decompInPlace: Matrix A_to_Q must be square or tall (more or equal rows than cols)");
 
             if (u.N != A_to_Q.M_Rows)
                 throw new ArgumentException("QR.decompInPlace: scratch vector u.N must equal A_to_Q.M_Rows");
@@ -277,8 +277,7 @@ namespace LinearAlgebra
                 UnsafeOP.formT(Vp, pb, rows, pb, T, tcol, Wmat);
 
                 // (4) trailing block update on cols [p0+pb, n): C -= V*(Tᵀ*(Vᵀ*C)). One untiled
-                //     GEMM call per panel — UnsafeOP.wyVtC/wySubVW already reach full GEMM
-                //     throughput (~70 GFLOP/s, matched matMatDot) at this width without tiling.
+                //     GEMM call per panel.
                 int cStart = p0 + pb;
                 int cw = n - cStart;
                 if (cw > 0)
@@ -414,7 +413,7 @@ namespace LinearAlgebra
             const int QR_BLOCK = 32;
 
             if (A_to_Q.M_Rows < A_to_Q.N_Cols)
-                throw new ArgumentException("QR.decompInPlace: Matrix R must be square or tall (more or equal rows than cols)");
+                throw new ArgumentException("QR.decompInPlace: Matrix A_to_Q must be square or tall (more or equal rows than cols)");
 
             if (A_to_Q.N_Cols < Consts.floatQrBlockMinN)   // float/double split (see Consts); default 2*QR_BLOCK
             {
@@ -464,7 +463,7 @@ namespace LinearAlgebra
             const int QR_BLOCK = 32;
 
             if (A_to_Q.M_Rows < A_to_Q.N_Cols)
-                throw new ArgumentException("QR.decompInPlace: Matrix R must be square or tall (more or equal rows than cols)");
+                throw new ArgumentException("QR.decompInPlace: Matrix A_to_Q must be square or tall (more or equal rows than cols)");
 
             bool blocked = A_to_Q.N_Cols >= Consts.floatQrBlockMinN;   // float/double split (see Consts)
             RequireQRWorkspace(in cache, A_to_Q.M_Rows, A_to_Q.N_Cols, blocked);

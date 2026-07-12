@@ -185,7 +185,7 @@ namespace LinearAlgebra
         {
             // Panel width for the blocked (level-3 / compact-WY) factorization path. A method-local
             // const (not a class field) — LQ is a partial class shared by the float/double generated
-            // files, so a class-level const of the same name would collide (CS0102). Matches QR_BLOCK.
+            // files, so a class-level const of the same name would collide (CS0102).
             const int LQ_BLOCK = 64;
 
             int m = W.M_Rows;

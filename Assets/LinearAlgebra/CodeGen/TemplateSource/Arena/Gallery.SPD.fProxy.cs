@@ -1,4 +1,5 @@
 using System;
+using Unity.Collections;
 using Unity.Mathematics;
 using LinearAlgebra;
 
@@ -121,14 +122,17 @@ namespace LinearAlgebra.Gallery
                 throw new ArgumentException("fProxyKMS: n must be >= 1");
 
             var A = arena.fProxyMat(n, true);
+
+            // Toeplitz: rho^|i-j| repeats along anti-diagonals, so precompute rho^0..rho^(n-1) once.
+            var pow = new fProxyN(n, Allocator.Temp, false);
+            pow[0] = (fProxy)1;
+            for (int k = 1; k < n; k++) pow[k] = pow[k - 1] * rho;
+
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
-                {
-                    int e = math.abs(i - j);
-                    fProxy r = (fProxy)1;
-                    for (int k = 0; k < e; k++) r *= rho;
-                    A[i, j] = r;
-                }
+                    A[i, j] = pow[math.abs(i - j)];
+
+            pow.Dispose();
             return A;
         }
 

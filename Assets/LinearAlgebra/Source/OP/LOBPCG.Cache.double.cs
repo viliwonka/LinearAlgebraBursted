@@ -31,12 +31,8 @@ namespace LinearAlgebra
                 throw new ArgumentException("LOBPCG: workspace R must be k x n (use Arena.doubleLOBPCGCache(n, k))");
             if (ws.Xnext.M_Rows != k || ws.Xnext.N_Cols != n)
                 throw new ArgumentException("LOBPCG: workspace Xnext must be k x n (use Arena.doubleLOBPCGCache(n, k))");
-            if (ws.AXnext.M_Rows != k || ws.AXnext.N_Cols != n)
-                throw new ArgumentException("LOBPCG: workspace AXnext must be k x n (use Arena.doubleLOBPCGCache(n, k))");
             if (ws.Pnext.M_Rows != k || ws.Pnext.N_Cols != n)
                 throw new ArgumentException("LOBPCG: workspace Pnext must be k x n (use Arena.doubleLOBPCGCache(n, k))");
-            if (ws.APnext.M_Rows != k || ws.APnext.N_Cols != n)
-                throw new ArgumentException("LOBPCG: workspace APnext must be k x n (use Arena.doubleLOBPCGCache(n, k))");
 
             if (ws.BX.M_Rows != k || ws.BX.N_Cols != n)
                 throw new ArgumentException("LOBPCG: workspace BX must be k x n (use Arena.doubleLOBPCGCache(n, k))");
@@ -107,22 +103,18 @@ namespace LinearAlgebra
         public doubleMxN P;
 
         /// <summary>k x n. A applied to each row of <see cref="P"/>; recomputed via a FRESH
-        /// <c>A.Apply</c> every iteration for the active rows, same rationale as <see cref="AX"/>
-        /// (this one mattered even more in practice -- an inaccurate AP fed directly into the
-        /// NEXT iteration's Rayleigh-Ritz energy matrix, not just the residual check).</summary>
+        /// <c>A.Apply</c> every iteration for the active rows, same rationale as <see cref="AX"/>.</summary>
         public doubleMxN AP;
 
         /// <summary>k x n. Raw (unpreconditioned) residuals A x - lambda x for the active rows;
         /// scratch feeding the preconditioner Apply that produces <see cref="W"/>.</summary>
         public doubleMxN R;
 
-        /// <summary>k x n each. <see cref="Xnext"/>/<see cref="Pnext"/> are the ping-pong
-        /// destination buffers for the new X/P block computed each iteration (the combination
-        /// reads the CURRENT X/W/P, so it cannot safely write in place) -- swapped into
-        /// <see cref="X"/>/<see cref="P"/> at the end of every iteration (a cheap struct-handle
-        /// swap, not a buffer copy). <c>AXnext</c>/<c>APnext</c> are allocated but UNUSED; do not
-        /// rely on their contents.</summary>
-        public doubleMxN Xnext, AXnext, Pnext, APnext;
+        /// <summary>k x n each. Ping-pong destination buffers for the new X/P block computed each
+        /// iteration (the combination reads the CURRENT X/W/P, so it cannot safely write in place)
+        /// -- swapped into <see cref="X"/>/<see cref="P"/> at the end of every iteration (a cheap
+        /// struct-handle swap, not a buffer copy).</summary>
+        public doubleMxN Xnext, Pnext;
 
         /// <summary>k x n each. GENERALIZED-eigenproblem B-images of <see cref="X"/>/<see cref="W"/>/
         /// <see cref="P"/> (B applied row-wise) -- see the <c>LOBPCG</c> class doc comment's
@@ -188,9 +180,7 @@ namespace LinearAlgebra
                 AP = arena.doubleMat(k, n),
                 R = arena.doubleMat(k, n),
                 Xnext = arena.doubleMat(k, n),
-                AXnext = arena.doubleMat(k, n),
                 Pnext = arena.doubleMat(k, n),
-                APnext = arena.doubleMat(k, n),
                 BX = arena.doubleMat(k, n),
                 BW = arena.doubleMat(k, n),
                 BP = arena.doubleMat(k, n),

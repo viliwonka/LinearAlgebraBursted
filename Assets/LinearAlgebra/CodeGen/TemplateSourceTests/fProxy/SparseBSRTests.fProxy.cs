@@ -72,10 +72,8 @@ public class fProxySparseBSRTests
                     dense[br * BR + r, bc * BC + c] = block[r, c];
         }
 
-        // Reference y = Aᵀ·x computed directly from the dense expansion's elements.
-        //
-        // Dangling-arena-pointer history: see ToDense_TransposeReference_Works below. Kept as a
-        // hand-rolled reference anyway since it's cheaper and has no dependence on Blas.trans.
+        // Reference y = Aᵀ·x computed directly from the dense expansion's elements. Kept as a
+        // hand-rolled reference since it's cheaper and has no dependence on Blas.trans.
         static void DenseTransMatVec(in fProxyMxN dense, in fProxyN x, ref fProxyN y)
         {
             for (int j = 0; j < dense.N_Cols; j++)
@@ -380,14 +378,12 @@ public class fProxySparseBSRTests
             return builder.ToBSR(ref arena);
         }
 
-        // ---- 8. growth past capacityHint then arena.Dispose() (the crash) + correctness ------
+        // ---- 8. growth past capacityHint then arena.Dispose(), plus correctness ---------------
         //
-        // Regression for the fixed use-after-free: a builder created with the default
-        // capacityHint=8 is grown to 225 triplets (15x15 dense, 1x1 blocks) via AddValue,
-        // forcing ~5 UnsafeList reallocations. Pre-fix, arena.Dispose() below double-freed the
-        // stale pre-growth buffer held by the arena's tracked copy (native crash, an access
-        // violation). Post-fix this must dispose cleanly. Correctness after all those
-        // reallocations is asserted BOTH ways: ToDense == dense reference, and spMV == dense dot.
+        // A builder created with the default capacityHint=8 is grown to 225 triplets (15x15
+        // dense, 1x1 blocks) via AddValue, forcing ~5 UnsafeList reallocations. arena.Dispose()
+        // below must dispose cleanly. Correctness after all those reallocations is asserted BOTH
+        // ways: ToDense == dense reference, and spMV == dense dot.
         void GrowthThenDispose()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -561,22 +557,11 @@ public class fProxySparseBSRTests
     public void EmptyBSRRoundTripTest()
         => new SparseBSRTestJob { Type = SparseBSRTestJob.TestType.EmptyBSRRoundTrip }.Run();
 
-    // ---- Regression test: ToDense/ToBSR dangling-arena-pointer bug (fixed) ----------------
-    //
-    // fProxyBSR.ToDense and fProxyBSRBuilder.ToBSR used to take `in Arena arena`, but both call a
-    // MUTATING arena allocator method internally (arena.fProxyMat / arena.fProxyBSR). Since those
-    // Arena methods aren't `readonly`, calling them through an `in Arena` parameter forced the C#
-    // compiler to make a defensive copy of the arena, and the allocated result's internal arena
-    // pointer captured the address of that dead stack temporary -- a use-after-scope bug. Reading
-    // elements off the result was fine (the Values buffer is a real, independent allocation), but
-    // any op that allocates through the result's own arena pointer -- e.g.
-    // Blas.trans(dense).fProxyTempMat -- dereferenced the dangling pointer and threw
-    // "allocator handle is not valid" under Burst. This broke the spec's own recommended
-    // validation recipe: BSR.spMVT(A,x) vs Blas.dot(Blas.trans(ToDense(A)), x).
-    //
-    // Fixed by changing both signatures to `ref Arena arena` (matching how ArenaExtensions
-    // factory methods take `this ref Arena`, not `this in Arena`, for the same reason). This test
-    // is the regression check that the trans(ToDense(...)) recipe now works end to end.
+    // fProxyBSR.ToDense and fProxyBSRBuilder.ToBSR take `ref Arena arena` (matching how
+    // ArenaExtensions factory methods take `this ref Arena`, not `this in Arena`) so the result's
+    // internal arena pointer stays valid to allocate through. This test checks that the
+    // trans(ToDense(...)) recipe -- BSR.spMVT(A,x) vs Blas.dot(Blas.trans(ToDense(A)), x) --
+    // works end to end.
     [Test]
     public void ToDense_TransposeReference_Works()
     {
@@ -587,7 +572,6 @@ public class fProxySparseBSRTests
             var dense = A.ToDense(ref arena);
             var x = arena.fProxyRandomVec(A.M_Rows, (fProxy)(-1f), (fProxy)1f, 12321);
 
-            // Used to throw "allocator handle is not valid" (dangling arena pointer); now fixed.
             var yRef = Blas.dot(Blas.trans(dense), x);
 
             var y = arena.fProxyVec(A.N_Cols);
@@ -597,13 +581,13 @@ public class fProxySparseBSRTests
         finally { arena.Dispose(); }
     }
 
-    // ---- growth regression (managed thread): Clear() then Dispose() must not double-dispose --
+    // ---- Clear() then Dispose() must not double-dispose (managed thread) ------------------
     //
     // A builder grown past capacityHint (225 AddValue on a 15x15 1x1-block grid, ~5 UnsafeList
     // reallocations) is disposed via arena.Clear() and then arena.Dispose() (whose own trailing
-    // Clear() pass runs again). Pre-fix this double-freed the arena's stale tracked copy; post-
-    // fix the builder's Dispose() is idempotent via its _state null-guard, so the sequence is
-    // safe. Runs on the managed thread so Assert.DoesNotThrow can wrap the dispose sequence.
+    // Clear() pass runs again). The builder's Dispose() is idempotent via its _state null-guard,
+    // so the sequence is safe. Runs on the managed thread so Assert.DoesNotThrow can wrap the
+    // dispose sequence.
     [Test]
     public void GrowthClearThenDispose_NoDoubleDispose()
     {

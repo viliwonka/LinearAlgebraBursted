@@ -30,6 +30,8 @@ public class floatInitTest
             arena.Clear();
 
             Assert.AreEqual(0, arena.AllocationsCount);
+
+            arena.Dispose();
         }
     }
 

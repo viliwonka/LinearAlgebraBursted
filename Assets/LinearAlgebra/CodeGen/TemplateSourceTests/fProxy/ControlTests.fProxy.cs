@@ -8,11 +8,10 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// BASIC smoke tests for Control.lqr / Control.lqrSchedule -- written by the coder agent alongside the
-// implementation. The FULL test battery (literature
-// vectors, SDA-vs-oracle cross-check, property-based stability/PSD checks, warm-path perturbation
-// convergence, redundant-actuator rank flagging, determinism) is the test-writer agent's job; this file
-// only checks that a known tiny instance solves, statuses fire (Converged/Diverged), and throws throw.
+// BASIC smoke tests for Control.lqr / Control.lqrSchedule: a known tiny instance solves, statuses fire
+// (Converged/Diverged), and throws throw. Literature vectors, SDA-vs-oracle cross-checks, property-based
+// stability/PSD checks, warm-path perturbation convergence, redundant-actuator rank flagging, and
+// determinism are covered by the full battery elsewhere.
 public class fProxyControlTests
 {
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]

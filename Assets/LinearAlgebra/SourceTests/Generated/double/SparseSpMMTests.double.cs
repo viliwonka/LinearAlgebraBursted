@@ -11,8 +11,8 @@ using Unity.Collections;
 using Unity.Jobs;
 
 // BSR SpMM -- BSR.spMM / doubleBSROperator.
-// ApplyBlock now streams the matrix once and applies to k row-vectors together instead of looping
-// k scalar BSR.spMV calls through two Allocator.Temp vectors.
+// doubleBSROperator.ApplyBlock streams the matrix once and applies to k row-vectors together
+// (instead of k separate scalar BSR.spMV calls through two Allocator.Temp vectors).
 //
 // (a) Oracle: SpMM output must equal k separate BSR.spMV calls, ROW BY ROW. Every
 //     bsrMatMat*/bsrMatMatSym* kernel (UnsafeOP.Sparse.double.cs) is documented to preserve its
@@ -21,10 +21,9 @@ using Unity.Jobs;
 //     double-cast values), not just within tolerance. Swept over b in {1,2,3,4,6} (specialized) +
 //     b=5 (general fallback), both storage modes (full + symmetric-lower), a rectangular-block
 //     case (always the general fallback), and k in {1,3,8} (single row / mid / LOBPCG-scale).
-// (b) LOBPCG results unchanged: since SpMM is row-for-row bit-identical to the OLD per-row-Apply
-//     ApplyBlock it replaced, LOBPCG's whole trajectory (iterations, eigenvalues, eigenvectors)
-//     must be bit-identical too -- checked directly against an in-test replica of the OLD
-//     ApplyBlock (no need to check out pre-change history).
+// (b) LOBPCG results: since SpMM is row-for-row bit-identical to a per-row-Apply loop, LOBPCG's
+//     whole trajectory (iterations, eigenvalues, eigenvectors) must be bit-identical too --
+//     checked directly against an in-test scalar-loop reference operator.
 public class doubleSparseSpMMTests
 {
     [BurstCompile(CompileSynchronously = true)]

@@ -18,9 +18,11 @@ namespace LinearAlgebra
     //     subject to  Aᵢ·x  {≤, =, ≥}  bᵢ    (per-row sense in `senses`)
     //                 x ≥ 0
     //
-    // Two backends reach the same optimal vertex on a bounded, feasible problem (see LPMethod):
-    //   * Simplex       -- two-phase dense tableau, Bland's anti-cycling rule (this file).
-    //   * InteriorPoint -- Mehrotra predictor-corrector (LP.InteriorPoint.double.cs).
+    // All four backends reach the same optimal vertex on a bounded, feasible problem (see LPMethod):
+    //   * Simplex        -- two-phase dense tableau, Bland's anti-cycling rule (this file).
+    //   * InteriorPoint  -- Mehrotra predictor-corrector (LP.InteriorPoint.double.cs).
+    //   * RevisedSimplex -- bounded-variable primal revised simplex (LP.RevisedSimplex.double.cs).
+    //   * DualSimplex    -- bounded-variable dual revised simplex (LP.DualSimplex.double.cs).
     //
     // L1 regression (least absolute deviation) is the flagship application: minimize ‖Ax − b‖₁ over a
     // FREE x is exactly an LP once each residual is split into a +/− pair (see `lad`). A fast,

@@ -26,15 +26,9 @@ namespace LinearAlgebra.Benchmarks
     // early on a breakdown guard and look "faster" while doing strictly less work; iters+status makes
     // that visible instead of silently masquerading as speed.
 
-    // Krylov R3: SpCgJobDouble/SpPcgJobDouble grew a `tol` field (replacing the hardcoded `0f`
-    // argument) so the SAME job types serve both the
-    // fixed-K/tol=0 throughput rows below (every existing call site omits `tol`, leaving it at
-    // its struct default 0 -- byte-identical behavior to the old hardcoded literal) and the new
-    // iterations-to-CONVERGENCE comparison (BenchPrecondConvergenceDouble), which sets a real
-    // tol/maxIter. No new job type needed for that reuse. SpmvJobDouble (a standalone spMV
-    // throughput row, uninformative once CG/PCG rows already show spMV's ~60-95%-of-cost share)
-    // was DELETED, not left unused, to pay for the new PCG-SSOR row this round adds -- see
-    // BenchKrylovDouble's own comment.
+    // SpCgJobDouble/SpPcgJobDouble's `tol` field serves both the fixed-K/tol=0 throughput rows
+    // (default 0 runs the full K budget) and the iterations-to-convergence rows, which set a
+    // real tol/maxIter.
     [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
     public struct SpCgJobDouble : IJob { public doubleBSR A; public doubleN b, x, r, p, Ap; public int K; public double tol; public NativeArray<double> outInfo;
         public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.cg(in A, in b, ref x, ref r, ref p, ref Ap, K, tol); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
@@ -43,8 +37,8 @@ namespace LinearAlgebra.Benchmarks
     public struct SpPcgJobDouble : IJob { public doubleBSR A; public doubleBlockJacobi M; public doubleN b, x, r, p, Ap, z; public int K; public double tol; public NativeArray<double> outInfo;
         public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, tol); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
 
-    // Krylov R3: SSOR twin of SpPcgJobDouble (same reuse for fixed-K throughput and
-    // convergence-comparison rows).
+    // SSOR twin of SpPcgJobDouble (same reuse for fixed-K throughput and convergence-comparison
+    // rows).
     [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
     public struct SpPcgSSORJobDouble : IJob { public doubleBSR A; public doubleSSOR M; public doubleN b, x, r, p, Ap, z; public int K; public double tol; public NativeArray<double> outInfo;
         public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, tol); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
@@ -75,14 +69,13 @@ namespace LinearAlgebra.Benchmarks
         public void Execute() { var info = Eigen.lanczos(in A, ref ws, ref vals, steps); outInfo[0] = info.produced; outInfo[1] = info.Solved ? 1 : 0; outInfo[2] = 0; } }
 
     // LOBPCG smallest-k eigenpairs. outInfo = [status, iterations, converged, maxResidual, orthoErr].
-    // Krylov R3b: these jobs are now wired through
-    // Bench.Time (1 warmup + 4 timed .Run() calls on the SAME captured `ws`) to add a wall-clock
-    // column to the LOBPCG report -- lobpcg only reseeds ws.X when it is all-zero (its own
-    // warm-start contract), so re-running the SAME ws without resetting X would warm-start every
-    // timed sample from the PREVIOUS sample's converged eigenvectors and measure ~0 iterations
-    // from the 2nd run on. Zeroing X at the top of every Execute() forces the SAME deterministic
-    // reseed (lobpcg's own fixed-seed 0x9E3779B1u fill) on every sample -- a fair, reproducible,
-    // cold-start measurement each time, mirroring the x[i]=0 reset every Krylov job above already does.
+    // Timed via Bench.Time (1 warmup + 4 timed .Run() calls on the SAME captured `ws`). lobpcg only
+    // reseeds ws.X when it is all-zero (its own warm-start contract), so re-running the SAME ws
+    // without resetting X would warm-start every timed sample from the PREVIOUS sample's converged
+    // eigenvectors and measure ~0 iterations from the 2nd run on. Zeroing X at the top of every
+    // Execute() forces the SAME deterministic reseed (lobpcg's own fixed-seed 0x9E3779B1u fill) on
+    // every sample -- a fair, reproducible, cold-start measurement each time, mirroring the x[i]=0
+    // reset every Krylov job above already does.
     [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
     public struct SpLobpcgJobDouble : IJob { public doubleBSR A; public doubleLOBPCGCache ws; public int k; public double tol; public int maxIter; public NativeArray<double> outInfo;
         public void Execute() { for (int i = 0; i < ws.X.M_Rows; i++) for (int c = 0; c < ws.X.N_Cols; c++) ws.X[i, c] = (double)0; var info = Eigen.lobpcg(in A, ref ws, k, tol, maxIter); LobpcgReport.WriteDouble(in info, in ws, k, outInfo); } }
@@ -91,14 +84,9 @@ namespace LinearAlgebra.Benchmarks
     public struct SpLobpcgPrecJobDouble : IJob { public doubleBSR A; public doubleBlockJacobi M; public doubleLOBPCGCache ws; public int k; public double tol; public int maxIter; public NativeArray<double> outInfo;
         public void Execute() { for (int i = 0; i < ws.X.M_Rows; i++) for (int c = 0; c < ws.X.N_Cols; c++) ws.X[i, c] = (double)0; var info = Eigen.lobpcg(in A, in M, ref ws, k, tol, maxIter); LobpcgReport.WriteDouble(in info, in ws, k, outInfo); } }
 
-    // Krylov R3b: SSOR preconditioner axis for LOBPCG (doubleSSOR drops into TPre unchanged,
-    // verified by the LobpcgAcceptsSSORPreconditioner test). Hypothesis under test: LOBPCG's
-    // per-iteration cost is dominated by Rayleigh-Ritz work, so SSOR's iteration cut might win
-    // wall-clock even though its OWN apply is 2-4x block-Jacobi's -- unlike plain PCG, where that
-    // apply-cost multiple was decisive. Only
-    // doubleBlockJacobi got a dedicated `lobpcg(in doubleBSR, in TPre, ...)` overload -- doubleSSOR
-    // goes through the generic `lobpcg<TOp,TPre>` core via doubleBSROperator, same as the
-    // LobpcgAcceptsSSORPreconditioner test does.
+    // SSOR preconditioner axis for LOBPCG. Only doubleBlockJacobi has a dedicated
+    // `lobpcg(in doubleBSR, in TPre, ...)` overload -- doubleSSOR goes through the generic
+    // `lobpcg<TOp,TPre>` core via doubleBSROperator.
     [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
     public struct SpLobpcgSSORJobDouble : IJob { public doubleBSR A; public doubleSSOR M; public doubleLOBPCGCache ws; public int k; public double tol; public int maxIter; public NativeArray<double> outInfo;
         public void Execute() { for (int i = 0; i < ws.X.M_Rows; i++) for (int c = 0; c < ws.X.N_Cols; c++) ws.X[i, c] = (double)0; var info = Eigen.lobpcg(new doubleBSROperator(in A), in M, ref ws, k, tol, maxIter); LobpcgReport.WriteDouble(in info, in ws, k, outInfo); } }
@@ -132,16 +120,12 @@ namespace LinearAlgebra.Benchmarks
             return math.sqrt(num) / math.sqrt(math.max(den, 1e-30));
         }
 
-        // Krylov R3: the PCG rows grow a preconditioner
-        // axis (none/CG, block-Jacobi, SSOR). "none" is CG itself (algebraically PCG with M=I,
-        // same recurrence) rather than a redundant literal PCG-identity row. The fixed-K/tol=0
-        // rows below measure per-ITERATION wall-clock cost (every solver runs the full K budget,
-        // so iters is uninformative there by design); the SEPARATE "@tol" rows at the end of the
-        // largest N (BenchPrecondConvergenceDouble inline below) run to a REAL tolerance and are
-        // where SSOR's iteration-count win is actually visible -- see that block's own comment.
-        // spMV x50 (a standalone throughput row, uninformative once CG/PCG already show spMV's
-        // ~60-95%-of-cost share -- spec's own number) was DELETED to pay for the new PCG-SSOR row
-        // (Q7 budget ruling: cut redundancy, don't grow the report unboundedly).
+        // The PCG rows carry a preconditioner axis (none/CG, block-Jacobi, SSOR). "none" is CG
+        // itself (algebraically PCG with M=I, same recurrence) rather than a redundant literal
+        // PCG-identity row. The fixed-K/tol=0 rows below measure per-ITERATION wall-clock cost
+        // (every solver runs the full K budget, so iters is uninformative there by design); the
+        // SEPARATE "@tol" rows at the end of the largest N run to a REAL tolerance and are where
+        // SSOR's iteration-count win is actually visible.
         static void BenchKrylovDouble(StringBuilder sb, int BR, int[] Ns, double density, int K)
         {
             var oi = new NativeArray<double>(2, Allocator.Persistent);
@@ -232,18 +216,12 @@ namespace LinearAlgebra.Benchmarks
 
         // b=1 (scalar BSR) stencil section: doubleLaplacian2D(1, N) collapses the generator's
         // x-neighbor coupling (grid width 1), leaving a genuine SCALAR tridiagonal SPD system
-        // (diag=4, off-diag=-1, nnz ~= 3N) -- the low-fill, b=1 regime where R1's vector-op fusion
-        // is the largest fraction of per-iteration traffic (spec: BR=4/1.5% fill spMV moves ~6.7MB
-        // vs ~0.5MB of vector sweeps per matvec; a scalar/low-fill stencil inverts that ratio).
-        // Only the SPD-compatible solvers run here (CG/PCG-Jacobi/PCG-SSOR/MINRES) -- BiCGStab
-        // needs a non-symmetric operator and CGLS/LSQR/LSMR need a rectangular one, neither of
-        // which this generator produces.
-        //
-        // Krylov R3: gained PCG-SSOR (fixed-K row + the "@tol" convergence-comparison rows at the
-        // largest N, same reasoning as BenchKrylovDouble's own comment) -- PAID FOR by dropping
-        // N=5120 from this section's Ns (caller now passes a single-element array): net row count
-        // for the fixed-K table goes from 3 solvers x 2 Ns to 4 solvers x 1 N, i.e. DOWN despite
-        // adding a whole new preconditioner (Q7 budget ruling).
+        // (diag=4, off-diag=-1, nnz ~= 3N) -- the low-fill, b=1 regime where vector-op fusion is
+        // the largest fraction of per-iteration traffic. Only the SPD-compatible solvers run here
+        // (CG/PCG-Jacobi/PCG-SSOR/MINRES) -- BiCGStab needs a non-symmetric operator and
+        // CGLS/LSQR/LSMR need a rectangular one, neither of which this generator produces. PCG-SSOR
+        // carries both the fixed-K row and the "@tol" convergence-comparison row at the largest N,
+        // same reasoning as BenchKrylovDouble's own comment.
         static void BenchStencilDouble(StringBuilder sb, int[] Ns, int K)
         {
             var oi = new NativeArray<double>(2, Allocator.Persistent);
@@ -323,11 +301,8 @@ namespace LinearAlgebra.Benchmarks
             }
         }
 
-        // Krylov R3b budget trade (spec §3b, disclosed): the "none"+guard row is DROPPED here to
-        // pay for the new "SSOR"+guard=0 row -- row count per grid/dtype stays at 4. The dropped
-        // combination isn't lost information: none/guard0 -> blockJac/guard0 -> blockJac/guardG
-        // still shows both levers (precond alone, then precond+guard stacking); "guard alone" (the
-        // dropped point) was never this round's question. Every row now also carries wall-clock
+        // Rows: none/guard0 -> blockJac/guard0 -> SSOR/guard0 -> blockJac/guardG, showing both
+        // levers (precond alone, then precond+guard stacking). Every row carries wall-clock
         // (Bench.Time, 1 warmup + 4 timed) alongside iterations -- see SpLobpcgJobDouble's comment
         // for why ws.X must be re-zeroed every Execute() for that to be a fair repeated measurement.
         static void BenchLobpcgDouble(StringBuilder sb, int[] eigGrids, int lobpcgK, int lobpcgGuard, int lobpcgMaxIter)

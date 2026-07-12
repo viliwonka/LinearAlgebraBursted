@@ -443,6 +443,12 @@ public class fProxyConjugateGradientTests
     }
 
     [Test]
+    public void SingularConsistentTest()
+    {
+        new ConjugateGradientTestJob() { Type = ConjugateGradientTestJob.TestType.SingularConsistent }.Run();
+    }
+
+    [Test]
     public void AlreadyConvergedTest()
     {
         new ConjugateGradientTestJob() { Type = ConjugateGradientTestJob.TestType.AlreadyConverged }.Run();

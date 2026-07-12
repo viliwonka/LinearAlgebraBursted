@@ -103,27 +103,14 @@ public class floatQRCPDowndateTests
         //    instances). We assert the invariants that hold unconditionally, PLUS — for n=16 ONLY,
         //    see below — the exact, no-permutation property.
         //
-        //    ORCHESTRATOR DIAGNOSIS (mutation-testing found no test pinned "no spurious Kahan
-        //    permutation" on float; a naive fix asserting P==identity for the WHOLE n×theta grid was
-        //    tried and FAILED at n=32/64 with the classic ill-conditioned theta — root-caused via a
-        //    managed exact-recompute oracle comparison, run in-place in this exact test, BEFORE
-        //    concluding anything): at n=32/64 with theta≈0.285π, the trailing column norms genuinely
-        //    COLLAPSE by the late pivot steps (diagNorm1 measured at ~1e-9 -> ~1e-19 -> exactly 0
-        //    across consecutive steps in one trace) — this is the well-known Kahan/RRQR pathology
-        //    (column pivoting's rank-revealing guarantee degrades once the trailing block decays into
-        //    pure rounding noise), NOT a downdate defect: the exact-recompute ORACLE was run
-        //    side-by-side on the identical input and picks a DIFFERENT column than production right
-        //    at this same collapse point too (neither stays at the naive "identity" answer once both
-        //    are effectively measuring noise). Widening the pivot-tie tolerance 2x had ZERO effect on
-        //    the outcome (confirming this isn't a marginal boundary the tolerance is supposed to
-        //    absorb), and — tellingly — adding an unrelated diagnostic Debug.Log call inside the
-        //    pivot-selection loop was enough to flip which type failed, with no logic change at all.
-        //    That fragility is itself the signature of a right-at-the-edge-of-representable-precision
-        //    tie-break, not a reproducible bug: a genuine defect wouldn't flip under an unrelated
-        //    compiler-visible perturbation. n=16 never reaches this collapse (verified: zero
+        //    At n=32/64 with theta≈0.285π, the trailing column norms genuinely COLLAPSE by the late
+        //    pivot steps (diagNorm1 measured at ~1e-9 -> ~1e-19 -> exactly 0 across consecutive steps)
+        //    — the well-known Kahan/RRQR pathology (column pivoting's rank-revealing guarantee
+        //    degrades once the trailing block decays into pure rounding noise), NOT a downdate
+        //    defect: an exact-recompute oracle run on the identical input picks a DIFFERENT column
+        //    than production at this same collapse point too. n=16 never reaches this collapse (zero
         //    divergence from identity, and from the oracle, across all 4 thetas), so the exact
-        //    no-permutation pin below is scoped to n=16, where it's a genuine, stable invariant and
-        //    still exercises the same tie-tolerance logic the mutation-testing gap was about.
+        //    no-permutation pin below is scoped to n=16, where it is a genuine, stable invariant.
         void KahanSweep()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -320,16 +307,9 @@ public class floatQRCPDowndateTests
         //    benign in isolation, yet the trailing norm decays by ~cond^-1 (many orders) cumulatively
         //    over the run. Tier P only (full rank, just ill-conditioned).
         //
-        //    ORCHESTRATOR VERIFICATION (this session, temporary instrumentation, since removed per
-        //    OQ-D2 — production must not carry a guard-fire counter): on THIS exact construction
-        //    (float, cond≈673, n=128), the real cumulative guard fired 1 time where a naive per-step
-        //    guard (dropping the (v1/v2)² factor entirely) fired 0 times — confirming the mechanism
-        //    activates on realistic ill-conditioned input and is not vacuous.
-        //
-        //    KNOWN, DISCLOSED LIMITATION (found by an adversarial mutation-testing review pass): with
-        //    the cumulative check deliberately broken back to a naive per-step check (or its threshold
-        //    weakened ~1e6x), NO test in this file — including this one — goes red. The reason is
-        //    structural, not a testing oversight to "just try harder" on: Tier P invariants
+        //    KNOWN, DISCLOSED LIMITATION: with the cumulative check broken back to a naive per-step
+        //    check (or its threshold weakened ~1e6x), NO test in this file — including this one — goes
+        //    red. The reason is structural, not a testing oversight to "just try harder" on: Tier P invariants
         //    (reconstruction / orthonormality / monotone diagonal / rank-from-R) are mathematically
         //    satisfied by ANY valid column-pivoting choice, so they cannot distinguish a CORRECT pivot
         //    decision from a merely-DIFFERENT-but-still-valid one — the ONLY observable a downdating
@@ -342,11 +322,9 @@ public class floatQRCPDowndateTests
         //    margin Tier E itself requires to call an input "forced" — back-of-envelope, that error is
         //    bounded by O(k·eps) over k benign (non-tripping) steps, i.e. ~k·1.2e-7 for float, so
         //    closing a ~2.8e-3 gap this way needs k on the order of 10^4, far beyond a "keep runtimes
-        //    sane" problem size (checked via that bound, not merely assumed). The correctness evidence
-        //    instead rests on: (a) an independent numerics review confirming the guard formula is a
-        //    faithful, algebraically-verified LAPACK dlaqps/dgeqp3 transcription (not just "tests pass"), and
-        //    (b) the empirical firing counts above. A bulletproof automated Tier-E regression test for
-        //    this ONE mechanism remains a valid, scoped follow-up, not a blocker resolved here.
+        //    sane" problem size (checked via that bound, not merely assumed). Correctness instead rests
+        //    on the guard formula being a faithful, algebraically-verified LAPACK dlaqps/dgeqp3
+        //    transcription. A dedicated Tier-E regression test for this ONE guard remains open coverage.
         void GradualDecay()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -542,9 +520,9 @@ public class floatQRCPDowndateTests
         //    columns scaled by geometrically distinct factors 8^j). We assert the oracle certifies it
         //    as separated (so the case genuinely exercises Tier E — a construction that turned out NOT
         //    separated would silently degrade to Tier P), and ProdAndOracle asserts the downdated
-        //    production output is bit-identical (Pivot AND Q AND R) to the exact-recompute oracle. This
-        //    is the direct, isolated answer to OQ-D1: on a forced pivot sequence, downdating changes
-        //    nothing downstream of the pivot choice, so the factors match to the last bit.
+        //    production output is bit-identical (Pivot AND Q AND R) to the exact-recompute oracle. On a
+        //    forced pivot sequence, downdating changes nothing downstream of the pivot choice, so the
+        //    factors match to the last bit.
         void TierEDistinctMagnitudes()
         {
             var arena = new Arena(Allocator.Persistent);

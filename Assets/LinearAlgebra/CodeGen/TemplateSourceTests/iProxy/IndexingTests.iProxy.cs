@@ -177,6 +177,8 @@ public class iProxyIndexingTests {
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
                 Assert.IsTrue(mat[r, c] == (iProxy)(r * c * 2));
+
+            arena.Dispose();
         }
     }
 

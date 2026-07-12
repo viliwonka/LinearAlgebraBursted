@@ -154,9 +154,9 @@ namespace LinearAlgebra.Sparse
         }
 
         // y = A x, plus dot(x, y) computed as part of the same call. Composes a plain spMV, then
-        // one Blas.dot(x,y) pass (a fused kernel was tried and measured slower -- see the Sparse
-        // DEVLOG). Non-square (Rows != Cols) can't pair x[i] with y[i] at all -- Blas.dot below
-        // throws in that case, same as a caller doing Apply then Blas.dot(x,y) by hand would get.
+        // one Blas.dot(x,y) pass. Non-square (Rows != Cols) can't pair x[i] with y[i] at all --
+        // Blas.dot below throws in that case, same as a caller doing Apply then Blas.dot(x,y) by
+        // hand would get.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static double spMVDot(in doubleBSR A, in doubleN x, ref doubleN y)
         {

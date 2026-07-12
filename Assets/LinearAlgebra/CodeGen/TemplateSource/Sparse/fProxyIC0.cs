@@ -114,7 +114,7 @@ namespace LinearAlgebra.Sparse
             {
                 CopyLowerFromA(in A, in Lm, shift);
                 if (FactorizeInPlace(in Lm, diagMax)) { ok = true; break; }
-                shift = shift == (fProxy)0 ? (fProxy)1e-3f * diagMax : shift * (fProxy)10;
+                shift = shift == (fProxy)0 ? (fProxy)1e-3 * diagMax : shift * (fProxy)10;
             }
             if (!ok)
                 throw new ArgumentException("fProxyIC0: factorization broke down at every diagonal shift — is A symmetric positive definite?");

@@ -5,6 +5,7 @@
 using Unity.Mathematics;
 using System.Runtime.CompilerServices;
 using Unity.Burst;
+using Unity.Collections.LowLevel.Unsafe;
 
 
 namespace LinearAlgebra.Internal
@@ -110,12 +111,17 @@ namespace LinearAlgebra.Internal
         {
             // mat = m x n
             // y = inVec = m
-            // x = outVec = n, needs to be initialized to zero
-            for (int c = 0; c < n; c++)
+            // x = outVec = n
+            // x = y^T * mat
+            // Zero result first, then accumulate row-wise so mat[baseIdx + c] is unit-stride in c.
+            UnsafeUtility.MemClear(x, (long)n * UnsafeUtility.SizeOf<int>());
+            for (int r = 0; r < m; r++)
             {
-                for (int r = 0; r < m; r++)
+                int yr = y[r];
+                int baseIdx = r * n;
+                for (int c = 0; c < n; c++)
                 {
-                    x[c] += (int)(mat[r * n + c] * y[r]);
+                    x[c] += (int)(mat[baseIdx + c] * yr);
                 }
             }
         }

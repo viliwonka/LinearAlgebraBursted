@@ -39,10 +39,10 @@ namespace LinearAlgebra
         public static double L2Range(in doubleN a, int start, int end)
         {
             if (start >= end)
-                throw new ArgumentException("Norms.L2: start must be less than end");
+                throw new ArgumentException("Norms.L2Range: start must be less than end");
 
             if (start < 0 || end > a.Data.Length)
-                throw new ArgumentOutOfRangeException("Norms.L2: start and end must be within bounds of vector");
+                throw new ArgumentOutOfRangeException("Norms.L2Range: start and end must be within bounds of vector");
 
             unsafe
             {

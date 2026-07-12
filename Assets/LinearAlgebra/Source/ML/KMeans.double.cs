@@ -350,8 +350,7 @@ namespace LinearAlgebra.ML
 
         // k-means++ seeding.
         // Incremental D2Weights (O(k·N·D)) — after adding centroid ci, update
-        // D2Weights[n] = min(D2Weights[n], dist(xn, ci)) instead of recomputing from
-        // scratch (which was O(k²·N·D)).
+        // D2Weights[n] = min(D2Weights[n], dist(xn, ci)).
         // All-identical-point fallback: uniform random when total weight == 0.
         static void SeedKMeansPlusPlus(
             in doubleMxN X, int N, int D, int k,

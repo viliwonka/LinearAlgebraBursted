@@ -10,7 +10,7 @@ using Unity.Mathematics;
 // ARENA-LEVEL wiring tests for the SPARSE family (fProxyBSR / fProxyBlockJacobi) after the
 // ChunkedRecordTable migration. Mirrors the dense house set
 // (ArenaWiringTests.fProxy.cs) but adapted to the sparse contract, whose seams differ from the
-// dense types in three load-bearing ways the coder flagged:
+// dense types in three load-bearing ways:
 //
 //   * fProxyBSR / fProxyBlockJacobi have NO Copy()/TempCopy() -- there is no copy-round-trip case.
 //   * fProxyBlockJacobi is a READONLY struct: its Dispose() CANNOT null _rec afterward, so a
@@ -346,8 +346,7 @@ public class fProxySparseArenaWiringTests
     // fProxyBlockJacobi is a READONLY struct, so Dispose() CANNOT null _rec afterward. Consequence:
     // even a SAME-COPY second Dispose() re-enters the arena-tracked branch (_rec still non-null) and
     // throws from the table's double-Free guard -- it does NOT degrade to the safe no-op that
-    // fProxyN/fProxyBSR's mutable Dispose() gives. This is the coder's flagged behavioral
-    // divergence; pin it distinctly.
+    // fProxyN/fProxyBSR's mutable Dispose() gives. Pin this divergence distinctly.
     [Test]
     public void SameInstanceDoubleDispose_BlockJacobi_Throws()
     {

@@ -274,8 +274,8 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Disposes every PERSISTENT-pool allocation (leaves temp pools alone -- see
-        /// <see cref="ClearTempCore"/>). Split out of <see cref="Clear"/> as an UNGUARDED core so
+        /// Disposes every PERSISTENT-pool allocation, then also disposes the temp pool via
+        /// <see cref="ClearTempCore"/>. Split out of <see cref="Clear"/> as an UNGUARDED core so
         /// that <see cref="Clear"/>, <see cref="Dispose"/> can each acquire the concurrency guard
         /// exactly ONCE and then call this directly, instead of one guarded method calling
         /// another and tripping the tripwire on itself (see <c>_busy</c>'s doc for why reentrancy

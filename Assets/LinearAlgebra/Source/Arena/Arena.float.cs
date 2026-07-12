@@ -132,8 +132,7 @@ namespace LinearAlgebra
         #region MATRIX
         public floatMxN floatMat(int dim, bool uninit = false)
         {
-            // forward to the (rows, cols) overload so the matrix is TRACKED in floatMatRecords —
-            // the direct `new floatMxN(...)` here was untracked and leaked on Dispose. NOT
+            // forward to the (rows, cols) overload so the matrix is TRACKED in floatMatRecords. NOT
             // guarded here (pure forwarding wrapper) -- the (rows, cols) overload below is the
             // terminal call that actually touches a record table, so IT holds the guard (and the
             // null check); guarding both would nest EnterMutation() on the same thread and trip
@@ -206,7 +205,7 @@ namespace LinearAlgebra
 #endif
         }
 
-        internal floatMxN floatTempMat(int M_rows, int M_cols, bool uninit = false)
+        internal floatMxN floatTempMat(int M_rows, int N_cols, bool uninit = false)
         {
             if (_core == null)
                 throw new System.InvalidOperationException("Arena.floatVec/floatMat: arena is not initialized (default or disposed).");
@@ -219,7 +218,7 @@ namespace LinearAlgebra
                 rec->Owner = _core;
                 rec->Table = &_core->floatTempMatRecords;
                 rec->SelfIndex = slot;
-                return new floatMxN(M_rows, M_cols, rec, Allocator, uninit);
+                return new floatMxN(M_rows, N_cols, rec, Allocator, uninit);
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
             }
             finally { _core->ExitMutation(); }
@@ -254,24 +253,32 @@ namespace LinearAlgebra
         //     READ-ONLY: not guarded (element reads are out of scope -- see the threading-contract
         //     doc on Arena's class comment).
         public bool isPersistent(in floatN v) {
+            if (_core == null)
+                throw new System.InvalidOperationException("Arena.isPersistent: arena is not initialized (default or disposed).");
             for (int i = 0; i < _core->floatVecRecords.Count; i++)
                 if (_core->floatVecRecords.IsAlive(i) && _core->floatVecRecords.Resolve(i)->Data.Ptr == v.Data.Ptr)
                     return true;
             return false;
         }
         public bool isTemp(in floatN v) {
+            if (_core == null)
+                throw new System.InvalidOperationException("Arena.isTemp: arena is not initialized (default or disposed).");
             for (int i = 0; i < _core->floatTempVecRecords.Count; i++)
                 if (_core->floatTempVecRecords.IsAlive(i) && _core->floatTempVecRecords.Resolve(i)->Data.Ptr == v.Data.Ptr)
                     return true;
             return false;
         }
         public bool isPersistent(in floatMxN m) {
+            if (_core == null)
+                throw new System.InvalidOperationException("Arena.isPersistent: arena is not initialized (default or disposed).");
             for (int i = 0; i < _core->floatMatRecords.Count; i++)
                 if (_core->floatMatRecords.IsAlive(i) && _core->floatMatRecords.Resolve(i)->Data.Ptr == m.Data.Ptr)
                     return true;
             return false;
         }
         public bool isTemp(in floatMxN m) {
+            if (_core == null)
+                throw new System.InvalidOperationException("Arena.isTemp: arena is not initialized (default or disposed).");
             for (int i = 0; i < _core->floatTempMatRecords.Count; i++)
                 if (_core->floatTempMatRecords.IsAlive(i) && _core->floatTempMatRecords.Resolve(i)->Data.Ptr == m.Data.Ptr)
                     return true;

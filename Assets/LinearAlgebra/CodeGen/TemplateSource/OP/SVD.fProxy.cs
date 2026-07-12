@@ -44,7 +44,7 @@ namespace LinearAlgebra
             var eVec = new fProxyN(n, Allocator.Temp, false);
 
             Bidiag.values(in A, ref dVec, ref eVec);
-            bool ok = bidiagonalQRValues(ref dVec, ref eVec, n, maxIterations, out int sweeps, out int convergedCount);
+            bool ok = bidiagonalQRValues(ref dVec, ref eVec, n, maxIterations, tolerance, out int sweeps, out int convergedCount);
 
             if (ok)
             {
@@ -106,7 +106,7 @@ namespace LinearAlgebra
             var eVec = ws.eVec;
 
             Bidiag.values(in A, ref dVec, ref eVec, ref ws.BidiagWs);
-            bool ok = bidiagonalQRValues(ref dVec, ref eVec, n, maxIterations, out int sweeps, out int convergedCount);
+            bool ok = bidiagonalQRValues(ref dVec, ref eVec, n, maxIterations, tolerance, out int sweeps, out int convergedCount);
 
             if (ok)
             {
@@ -213,7 +213,7 @@ namespace LinearAlgebra
                     for (int j = 0; j < n; j++)
                         Vt[j, i] = V[i, j];
 
-                ok = bidiagonalQR(ref Ut, ref dVec, ref eVec, ref Vt, m, n, maxIterations, out sweeps, out convergedCount);
+                ok = bidiagonalQR(ref Ut, ref dVec, ref eVec, ref Vt, m, n, maxIterations, tolerance, out sweeps, out convergedCount);
 
                 if (ok)
                 {
@@ -319,7 +319,7 @@ namespace LinearAlgebra
                     for (int j = 0; j < n; j++)
                         Vt[j, i] = V[i, j];
 
-                ok = bidiagonalQR(ref Ut, ref dVec, ref eVec, ref Vt, m, n, maxIterations, out sweeps, out convergedCount);
+                ok = bidiagonalQR(ref Ut, ref dVec, ref eVec, ref Vt, m, n, maxIterations, tolerance, out sweeps, out convergedCount);
 
                 if (ok)
                 {
@@ -374,7 +374,7 @@ namespace LinearAlgebra
         // e[0]=0); accumulates left rotations into Ut (n x m) ROWS and right into Vt (n x n) ROWS — the
         // TRANSPOSES of U/V, so each rotation touches contiguous rows (SIMD via jacobiRotate). NR's
         // Givens convention a'=c*a+s*b, b'=c*b-s*a equals jacobiRotate(a,b,c,-s) (Golub-Reinsch /
-        // Numerical Recipes svdcmp). Deflation threshold is machine-eps relative to the GLOBAL scale
+        // Numerical Recipes svdcmp). Deflation threshold is `tolerance` relative to the GLOBAL scale
         // anorm (not local |d|+|e|) — needed for FLOAT to converge on clustered/zero singular values
         // (same lesson as the symmetric eigen QL). Returns false if a value fails to converge within
         // maxIterations. `sweeps` (out) is the MAXIMUM number of QR sweeps consumed by any single value
@@ -382,7 +382,7 @@ namespace LinearAlgebra
         // budget); `convergedCount` (out) is how many values had already converged when the loop
         // stopped (== n on a true return) — both feed SVDInfo at the call site.
         static unsafe bool bidiagonalQR(ref fProxyMxN Ut, ref fProxyN d, ref fProxyN e, ref fProxyMxN Vt,
-                                        int m, int n, int maxIterations, out int sweeps, out int convergedCount)
+                                        int m, int n, int maxIterations, fProxy tolerance, out int sweeps, out int convergedCount)
         {
             fProxy* utp = Ut.Data.Ptr;
             fProxy* vtp = Vt.Data.Ptr;
@@ -393,7 +393,7 @@ namespace LinearAlgebra
                 fProxy t = math.abs(d[i]) + math.abs(e[i]);
                 if (t > anorm) anorm = t;
             }
-            fProxy thresh = Consts.fProxyEpsilon * anorm;
+            fProxy thresh = tolerance * anorm;
 
             sweeps = 0;
             convergedCount = 0;
@@ -531,7 +531,9 @@ namespace LinearAlgebra
                 Vt[i, i] = (fProxy)1;
             }
 
-            bool ok = bidiagonalQR(ref Ut, ref d, ref e, ref Vt, p, p, maxIterations, out sweeps, out convergedCount);
+            // No tolerance parameter of its own: fixed eps-relative deflation, matching this
+            // function's pre-existing (unparameterized) behavior.
+            bool ok = bidiagonalQR(ref Ut, ref d, ref e, ref Vt, p, p, maxIterations, Consts.fProxyEpsilon, out sweeps, out convergedCount);
             if (!ok) return false;
 
             // Transpose Ut→P and Vt→Q (thin's transpose-back-to-column-form step).
@@ -569,7 +571,7 @@ namespace LinearAlgebra
         // the cheap path when only singular values are wanted. On convergence d[k] is made
         // non-negative (no V column to flip). Returns false on non-convergence within maxIterations sweeps.
         // `sweeps`/`convergedCount` follow the same convention as bidiagonalQR's out params.
-        static bool bidiagonalQRValues(ref fProxyN d, ref fProxyN e, int n, int maxIterations,
+        static bool bidiagonalQRValues(ref fProxyN d, ref fProxyN e, int n, int maxIterations, fProxy tolerance,
                                        out int sweeps, out int convergedCount)
         {
             fProxy anorm = (fProxy)0;
@@ -578,7 +580,7 @@ namespace LinearAlgebra
                 fProxy t = math.abs(d[i]) + math.abs(e[i]);
                 if (t > anorm) anorm = t;
             }
-            fProxy thresh = Consts.fProxyEpsilon * anorm;
+            fProxy thresh = tolerance * anorm;
 
             sweeps = 0;
             convergedCount = 0;

@@ -133,8 +133,7 @@ namespace LinearAlgebra
         #region MATRIX
         public shortMxN shortMat(int dim, bool uninit = false)
         {
-            // forward to the (rows, cols) overload so the matrix is TRACKED in shortMatRecords —
-            // the direct `new shortMxN(...)` here was untracked and leaked on Dispose. NOT
+            // forward to the (rows, cols) overload so the matrix is TRACKED in shortMatRecords. NOT
             // guarded here (pure forwarding wrapper) -- the (rows, cols) overload below is the
             // terminal call that actually touches a record table, so IT holds the guard (and the
             // null check); guarding both would nest EnterMutation() on the same thread and trip
@@ -207,7 +206,7 @@ namespace LinearAlgebra
 #endif
         }
 
-        internal shortMxN shortTempMat(int M_rows, int M_cols, bool uninit = false)
+        internal shortMxN shortTempMat(int M_rows, int N_cols, bool uninit = false)
         {
             if (_core == null)
                 throw new System.InvalidOperationException("Arena.shortVec/shortMat: arena is not initialized (default or disposed).");
@@ -220,7 +219,7 @@ namespace LinearAlgebra
                 rec->Owner = _core;
                 rec->Table = &_core->shortTempMatRecords;
                 rec->SelfIndex = slot;
-                return new shortMxN(M_rows, M_cols, rec, Allocator, uninit);
+                return new shortMxN(M_rows, N_cols, rec, Allocator, uninit);
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
             }
             finally { _core->ExitMutation(); }
@@ -252,24 +251,32 @@ namespace LinearAlgebra
         // READ-ONLY: not guarded (element reads are out of scope -- see the threading-contract doc
         // on Arena's class comment).
         public bool isPersistent(in shortN v) {
+            if (_core == null)
+                throw new System.InvalidOperationException("Arena.isPersistent: arena is not initialized (default or disposed).");
             for (int i = 0; i < _core->shortVecRecords.Count; i++)
                 if (_core->shortVecRecords.IsAlive(i) && _core->shortVecRecords.Resolve(i)->Data.Ptr == v.Data.Ptr)
                     return true;
             return false;
         }
         public bool isTemp(in shortN v) {
+            if (_core == null)
+                throw new System.InvalidOperationException("Arena.isTemp: arena is not initialized (default or disposed).");
             for (int i = 0; i < _core->shortTempVecRecords.Count; i++)
                 if (_core->shortTempVecRecords.IsAlive(i) && _core->shortTempVecRecords.Resolve(i)->Data.Ptr == v.Data.Ptr)
                     return true;
             return false;
         }
         public bool isPersistent(in shortMxN m) {
+            if (_core == null)
+                throw new System.InvalidOperationException("Arena.isPersistent: arena is not initialized (default or disposed).");
             for (int i = 0; i < _core->shortMatRecords.Count; i++)
                 if (_core->shortMatRecords.IsAlive(i) && _core->shortMatRecords.Resolve(i)->Data.Ptr == m.Data.Ptr)
                     return true;
             return false;
         }
         public bool isTemp(in shortMxN m) {
+            if (_core == null)
+                throw new System.InvalidOperationException("Arena.isTemp: arena is not initialized (default or disposed).");
             for (int i = 0; i < _core->shortTempMatRecords.Count; i++)
                 if (_core->shortTempMatRecords.IsAlive(i) && _core->shortTempMatRecords.Resolve(i)->Data.Ptr == m.Data.Ptr)
                     return true;

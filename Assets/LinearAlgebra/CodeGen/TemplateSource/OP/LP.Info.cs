@@ -25,14 +25,14 @@ namespace LinearAlgebra
         GreaterEqual = 1,
     }
 
-    /// <summary>Which backend <see cref="LP.solve"/> uses. Both reach the same optimal vertex on a
+    /// <summary>Which backend <see cref="LP.solve"/> uses. All reach the same optimal vertex on a
     /// bounded, feasible LP; they differ in cost profile and in the kind of point they converge to
     /// (a vertex vs an interior point rounded to one). Type-agnostic (CS0102), same reason as
     /// <see cref="ConstraintSense"/>.</summary>
     public enum LPMethod
     {
         /// <summary>Two-phase dense tableau simplex with Bland's anti-cycling rule. Exact vertex
-        /// solution, fully deterministic, robust at modest dense sizes. Default.</summary>
+        /// solution, fully deterministic, robust at modest dense sizes.</summary>
         Simplex = 0,
 
         /// <summary>Mehrotra primal-dual interior point. Polynomial, scales to larger/denser LPs,
@@ -42,7 +42,7 @@ namespace LinearAlgebra
         /// <summary>Bounded-variable PRIMAL revised simplex over an LU-factored basis (HiGHS-lineage):
         /// FTRAN/BTRAN + a product-form-of-the-inverse eta file replace the tableau's O(mn) per-pivot
         /// update. Exact vertex solution like <see cref="Simplex"/>, with native bounded variables and
-        /// periodic refactorization instead of tableau error accumulation.</summary>
+        /// periodic refactorization instead of tableau error accumulation. Default.</summary>
         RevisedSimplex = 2,
 
         /// <summary>Bounded-variable DUAL revised simplex (HiGHS-lineage): dual steepest-edge pricing

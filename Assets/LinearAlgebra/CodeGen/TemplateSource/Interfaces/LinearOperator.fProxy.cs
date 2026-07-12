@@ -206,13 +206,14 @@ namespace LinearAlgebra
         public void ApplyBlock(in fProxyMxN Vrows, ref fProxyMxN AVrows, int rows)
         {
             int cols = Vrows.N_Cols;
+            int outCols = Inner.Rows;
             var rin = new fProxyN(cols, Unity.Collections.Allocator.Temp, false);
-            var rout = new fProxyN(cols, Unity.Collections.Allocator.Temp, false);
+            var rout = new fProxyN(outCols, Unity.Collections.Allocator.Temp, false);
             for (int i = 0; i < rows; i++)
             {
                 for (int c = 0; c < cols; c++) rin[c] = Vrows[i, c];
                 Apply(in rin, ref rout);
-                for (int c = 0; c < cols; c++) AVrows[i, c] = rout[c];
+                for (int c = 0; c < outCols; c++) AVrows[i, c] = rout[c];
             }
             rout.Dispose();
             rin.Dispose();
