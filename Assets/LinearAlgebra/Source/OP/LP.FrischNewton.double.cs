@@ -16,6 +16,10 @@ namespace LinearAlgebra
     public static partial class LP
     {
         // ============================================================================================
+        // LICENSE: code pending permission -- the original (`rq_fnm`/`lp_fnm`, R quantreg lineage) is
+        // GPL (>= 2); relicensing permission has been requested from the authors. Do not redistribute
+        // this file until resolved. See "Third Party Notices.md" in the package root.
+        //
         // Frisch-Newton exact LAD / quantile-regression solver (Portnoy & Koenker 1997, "The Gaussian
         // Hare and the Laplacian Tortoise"). Port of Daniel Morillo & Roger Koenker's `rq_fnm` /
         // `lp_fnm`. A structure-exploiting primal-dual interior point on the LAD DUAL, working

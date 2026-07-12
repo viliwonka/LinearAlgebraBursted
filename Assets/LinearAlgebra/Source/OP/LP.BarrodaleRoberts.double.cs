@@ -15,6 +15,10 @@ namespace LinearAlgebra
     public static partial class LP
     {
         // ============================================================================================
+        // LICENSE: code pending permission -- the original (`rqbr.f`, R quantreg) is GPL (>= 2);
+        // relicensing permission has been requested from the authors. Do not redistribute this file
+        // until resolved. See "Third Party Notices.md" in the package root.
+        //
         // Barrodale-Roberts specialized-simplex EXACT least-absolute-deviation (L1) / quantile-
         // regression solver. Port of the Koenker-d'Orey Fortran `rqbr` (R `quantreg` package,
         // src/rqbr.f), itself derived from Barrodale & Roberts 1973 ("An improved algorithm for
