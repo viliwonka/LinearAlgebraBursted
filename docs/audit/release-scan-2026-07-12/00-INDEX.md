@@ -100,6 +100,26 @@ placeholder type names, print-export.md stale LOBPCGInfo claim.
 | 27 | [demos](27-demos.md) | 9 | 4 (1 refuted) | 0/0/4 |
 | 28 | [docs-userfacing](28-docs-userfacing.md) | 19 | 8 | 1/2/5 |
 
+## Post-scan code sweep (third pass, same day)
+
+Everything shipped after the main audit: the Kalman family (KF/EKF/UKF/LQG),
+condensed MPC + the QP warm-start seam, NLS/curve fitting, their tests, demos
+09-11, and the new benchmark harnesses. 15 findings, 10 confirmed (2 high),
+5 refuted. All confirmed findings fixed the same day. The MPC high (prestabilized
+input-bound rows off by one block) led, via the equivalence-oracle test written
+for the fix, to a second latent defect (Hessian missing the R cross-coupling term
+in prestabilized mode) — both fixed through one shared affine map, with a
+discriminating prestab-vs-raw equivalence test added to the suite.
+
+| # | Report | Files | Confirmed | H/M/L (non-refuted) |
+|---|---|---|---|---|
+| 29 | [kalman-family](29-kalman-family.md) | 8 | 1 | 0/0/1 |
+| 30 | [mpc-qpseam](30-mpc-qpseam.md) | 4 | 2 | 1/0/1 |
+| 31 | [nls](31-nls.md) | 3 | 2 | 0/0/2 |
+| 32 | [new-tests](32-new-tests.md) | 4 | 1 (2 refuted) | 0/0/1 |
+| 33 | [new-demos](33-new-demos.md) | 6 | 2 (2 refuted) | 1/0/1 |
+| 34 | [new-benchmarks](34-new-benchmarks.md) | 4 | 2 (1 refuted) | 0/0/2 |
+
 Low-severity findings (69) are mostly doc/comment contradictions and comment-policy
 violations; see each report. Fixes should be made in the templates and regenerated
 (`Tools/regen.ps1`), never in `Assets/LinearAlgebra/Source`.

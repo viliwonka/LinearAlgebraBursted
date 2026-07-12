@@ -425,9 +425,9 @@ public class doubleNLSTests
             arena.Dispose();
         }
 
-        // Calls curveFit 30 times in a row on the same small dataset: exercises the internal
-        // Allocator.Temp scratch's allocate/dispose cycle repeatedly (a leaked buffer would be
-        // caught by Unity's collections checks well before iteration 30).
+        // Calls curveFit 30 times in a row on the same small dataset: repeated-call state
+        // stability, not leak detection (the scratch is Allocator.Temp, whose leaks are not
+        // reliably caught by Unity's collections checks inside a Burst job).
         void RepeatedCallsNoLeak()
         {
             var arena = new Arena(Allocator.Persistent);

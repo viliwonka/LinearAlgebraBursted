@@ -38,8 +38,12 @@ namespace LinearAlgebra
         // epsilon test (never scaled by the matrix's own magnitude) is required here, and why the
         // flat-column floor is the max REAL column norm rather than a small constant. d must be
         // pre-zeroed before the first call so that call also seeds D from J's own initial column
-        // norms.
-        private static void nlsUpdateScale(ref doubleN d, in doubleMxN J, double flatThresh)
+        // norms. colNorms is scratch sized to J.N_Cols (caches each column norm so the flat-floor
+        // pass does not recompute it). Returns the max real (above-flatThresh) column norm seen this
+        // call; 0 means every column is at-or-below flatThresh, so d was left unchanged by this call
+        // -- on the very first call (d still all-zero) the caller must treat that as already
+        // stationary rather than dividing by a zero scale.
+        private static double nlsUpdateScale(ref doubleN d, in doubleMxN J, double flatThresh, ref doubleN colNorms)
         {
             int m = J.M_Rows, n = J.N_Cols;
 
@@ -49,17 +53,18 @@ namespace LinearAlgebra
                 double s = (double)0;
                 for (int i = 0; i < m; i++) { double v = J[i, j]; s += v * v; }
                 double cn = math.sqrt(s);
+                colNorms[j] = cn;
                 if (cn > flatThresh && cn > maxRealColNorm) maxRealColNorm = cn;
             }
 
             for (int j = 0; j < n; j++)
             {
-                double s = (double)0;
-                for (int i = 0; i < m; i++) { double v = J[i, j]; s += v * v; }
-                double cn = math.sqrt(s);
+                double cn = colNorms[j];
                 double effective = cn <= flatThresh ? maxRealColNorm : cn;
                 if (effective > d[j]) d[j] = effective;
             }
+
+            return maxRealColNorm;
         }
 
         private static double nlsMaxD2(in doubleN d)
@@ -230,6 +235,7 @@ namespace LinearAlgebra
             var rs = new doubleN(m, Allocator.Temp, true);
             var Js = new doubleMxN(m, n, Allocator.Temp, true);
             var d = new doubleN(n, Allocator.Temp);
+            var colNorms = new doubleN(n, Allocator.Temp, true);
             var g = new doubleN(n, Allocator.Temp, true);
             var h = new doubleN(n, Allocator.Temp, true);
             var Aaug = new doubleMxN(m + n, n, Allocator.Temp, true);
@@ -246,31 +252,32 @@ namespace LinearAlgebra
             nlsNumericJacobian(ref f, in p, in r, ref J, jacobianMode, epsfcn, ref pPert, ref rPert, ref rPert2);
 
             double cost = nlsCostRobust(in r, in loss);
-            double LInfJ0 = Norms.LInf(in J);
 
             NLSStatus status;
             int it = 0;
             double gnorm;
 
-            if (!(LInfJ0 > (double)0))
+            // flatThresh classifies a column as flat/negligible -- NOT Consts.doubleSqrtEps *
+            // LInfJ0 (a threshold scaled by the WHOLE Jacobian's magnitude cross-contaminates
+            // columns of genuinely different natural scale: a parameter with a small-but-real
+            // derivative gets misclassified as flat and floored up to another parameter's much
+            // larger scale, destroying its own gradient signal; found empirically on a NIST StRD
+            // case whose two parameters' sensitivities differ by ~1e6x). A plain per-type epsilon
+            // (no matrix-scale multiplier) only classifies a column as flat when it is actually
+            // at-or-below machine precision for ITS OWN norm -- see nlsUpdateScale for what a
+            // flat column is floored TO (not this threshold itself).
+            double flatThresh = Consts.doubleEpsilon;
+            double maxRealColNorm0 = nlsUpdateScale(ref d, in J, flatThresh, ref colNorms);
+
+            if (maxRealColNorm0 <= (double)0)
             {
-                // Jacobian identically zero at the start: already stationary, nothing to move.
+                // Every column is at-or-below flatThresh (includes the literal-zero Jacobian): d is
+                // left all-zero and unusable as a scale -- already stationary, nothing to move.
                 status = NLSStatus.Converged;
                 gnorm = 0;
             }
             else
             {
-                // flatThresh classifies a column as flat/negligible -- NOT Consts.doubleSqrtEps *
-                // LInfJ0 (a threshold scaled by the WHOLE Jacobian's magnitude cross-contaminates
-                // columns of genuinely different natural scale: a parameter with a small-but-real
-                // derivative gets misclassified as flat and floored up to another parameter's much
-                // larger scale, destroying its own gradient signal; found empirically on a NIST StRD
-                // case whose two parameters' sensitivities differ by ~1e6x). A plain per-type epsilon
-                // (no matrix-scale multiplier) only classifies a column as flat when it is actually
-                // at-or-below machine precision for ITS OWN norm -- see nlsUpdateScale for what a
-                // flat column is floored TO (not this threshold itself).
-                double flatThresh = Consts.doubleEpsilon;
-                nlsUpdateScale(ref d, in J, flatThresh);
                 nlsApplyRobustScale(in r, in J, ref rs, ref Js, in loss);
                 Blas.dot(in rs, in Js, ref g);
 
@@ -314,7 +321,7 @@ namespace LinearAlgebra
                         cost = costNew;
 
                         nlsNumericJacobian(ref f, in p, in r, ref J, jacobianMode, epsfcn, ref pPert, ref rPert, ref rPert2);
-                        nlsUpdateScale(ref d, in J, flatThresh);
+                        nlsUpdateScale(ref d, in J, flatThresh, ref colNorms);
                         nlsApplyRobustScale(in r, in J, ref rs, ref Js, in loss);
                         Blas.dot(in rs, in Js, ref g);
 
@@ -350,7 +357,7 @@ namespace LinearAlgebra
             rPert2.Dispose(); rPert.Dispose(); pPert.Dispose();
             rTrial.Dispose(); pTrial.Dispose();
             w.Dispose(); u.Dispose(); baug.Dispose(); Aaug.Dispose();
-            h.Dispose(); g.Dispose(); d.Dispose(); Js.Dispose(); rs.Dispose(); J.Dispose(); r.Dispose();
+            h.Dispose(); g.Dispose(); colNorms.Dispose(); d.Dispose(); Js.Dispose(); rs.Dispose(); J.Dispose(); r.Dispose();
 
             return new NLSInfo { status = status, iterations = it, objective = cost, residualNorm = rnorm, gradientNorm = gnorm };
         }
@@ -369,6 +376,7 @@ namespace LinearAlgebra
             var r = new doubleN(m, Allocator.Temp, true);
             var J = new doubleMxN(m, n, Allocator.Temp, true);
             var d = new doubleN(n, Allocator.Temp);
+            var colNorms = new doubleN(n, Allocator.Temp, true);
             var g = new doubleN(n, Allocator.Temp, true);
             var h = new doubleN(n, Allocator.Temp, true);
             var Aaug = new doubleMxN(m + n, n, Allocator.Temp, true);
@@ -382,30 +390,32 @@ namespace LinearAlgebra
             f.Jacobian(in p, ref J);
 
             double cost = nlsCost(in r);
-            double LInfJ0 = Norms.LInf(in J);
 
             NLSStatus status;
             int it = 0;
             double gnorm;
 
-            if (!(LInfJ0 > (double)0))
+            // flatThresh classifies a column as flat/negligible -- NOT Consts.doubleSqrtEps *
+            // LInfJ0 (a threshold scaled by the WHOLE Jacobian's magnitude cross-contaminates
+            // columns of genuinely different natural scale: a parameter with a small-but-real
+            // derivative gets misclassified as flat and floored up to another parameter's much
+            // larger scale, destroying its own gradient signal; found empirically on a NIST StRD
+            // case whose two parameters' sensitivities differ by ~1e6x). A plain per-type epsilon
+            // (no matrix-scale multiplier) only classifies a column as flat when it is actually
+            // at-or-below machine precision for ITS OWN norm -- see nlsUpdateScale for what a
+            // flat column is floored TO (not this threshold itself).
+            double flatThresh = Consts.doubleEpsilon;
+            double maxRealColNorm0 = nlsUpdateScale(ref d, in J, flatThresh, ref colNorms);
+
+            if (maxRealColNorm0 <= (double)0)
             {
+                // Every column is at-or-below flatThresh (includes the literal-zero Jacobian): d is
+                // left all-zero and unusable as a scale -- already stationary, nothing to move.
                 status = NLSStatus.Converged;
                 gnorm = 0;
             }
             else
             {
-                // flatThresh classifies a column as flat/negligible -- NOT Consts.doubleSqrtEps *
-                // LInfJ0 (a threshold scaled by the WHOLE Jacobian's magnitude cross-contaminates
-                // columns of genuinely different natural scale: a parameter with a small-but-real
-                // derivative gets misclassified as flat and floored up to another parameter's much
-                // larger scale, destroying its own gradient signal; found empirically on a NIST StRD
-                // case whose two parameters' sensitivities differ by ~1e6x). A plain per-type epsilon
-                // (no matrix-scale multiplier) only classifies a column as flat when it is actually
-                // at-or-below machine precision for ITS OWN norm -- see nlsUpdateScale for what a
-                // flat column is floored TO (not this threshold itself).
-                double flatThresh = Consts.doubleEpsilon;
-                nlsUpdateScale(ref d, in J, flatThresh);
                 Blas.dot(in r, in J, ref g);
 
                 double gnorm0 = nlsScaledGradNorm(in g, in d);
@@ -448,7 +458,7 @@ namespace LinearAlgebra
                         cost = costNew;
 
                         f.Jacobian(in p, ref J);
-                        nlsUpdateScale(ref d, in J, flatThresh);
+                        nlsUpdateScale(ref d, in J, flatThresh, ref colNorms);
                         Blas.dot(in r, in J, ref g);
 
                         double factor = math.max(1.0 / 3.0, 1.0 - (2.0 * rhoGain - 1.0) * (2.0 * rhoGain - 1.0) * (2.0 * rhoGain - 1.0));
@@ -482,7 +492,7 @@ namespace LinearAlgebra
 
             rTrial.Dispose(); pTrial.Dispose();
             w.Dispose(); u.Dispose(); baug.Dispose(); Aaug.Dispose();
-            h.Dispose(); g.Dispose(); d.Dispose(); J.Dispose(); r.Dispose();
+            h.Dispose(); g.Dispose(); colNorms.Dispose(); d.Dispose(); J.Dispose(); r.Dispose();
 
             return new NLSInfo { status = status, iterations = it, objective = cost, residualNorm = rnorm, gradientNorm = gnorm };
         }

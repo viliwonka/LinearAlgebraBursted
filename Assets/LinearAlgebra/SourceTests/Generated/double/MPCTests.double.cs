@@ -52,6 +52,7 @@ public class doubleMPCTests
             SoftRowUnavoidableMinimalViolation,
             WarmStartChurnBound,
             WarmIterationsBeatCold,
+            PrestabBindingBoundMatchesNonPrestab,
         }
 
         public TestType Type;
@@ -68,6 +69,7 @@ public class doubleMPCTests
                 case TestType.SoftRowUnavoidableMinimalViolation: SoftRowUnavoidableMinimalViolation(); break;
                 case TestType.WarmStartChurnBound: WarmStartChurnBound(); break;
                 case TestType.WarmIterationsBeatCold: WarmIterationsBeatCold(); break;
+                case TestType.PrestabBindingBoundMatchesNonPrestab: PrestabBindingBoundMatchesNonPrestab(); break;
             }
         }
 
@@ -276,6 +278,57 @@ public class doubleMPCTests
 
             u0c.Dispose(); mpcCold.Dispose(); xAtTarget.Dispose();
             x.Dispose(); reference.Dispose(); u0.Dispose(); mpcWarm.Dispose();
+            A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); uLo.Dispose(); uHi.Dispose();
+        }
+
+        // ============================ (e) prestabilization correctness ============================
+
+        // Regression test for a post-ship audit finding (2026-07-12, OP/DEVLOG.md): the prestabilized
+        // input-bound rows used the WRONG Phi/Gamma block (x_{k+1}'s coefficients instead of x_k's), and
+        // a second, related defect applied R naively to v instead of correctly expanding u_k^T R u_k
+        // under u_k = -Kstab x_k + v_k. Both are fixed the same way: prestabilization is a PURE change
+        // of coordinates, so it must reproduce the IDENTICAL physical answer as solving the SAME
+        // (A,B,Q,R,uLo,uHi) problem without it -- x0=(3,1.9) is the SAME binding scenario as
+        // SaturatedMatchesOracle (u0 saturates at uLo=-2), reused here as the discriminating case: the
+        // ORIGINAL (buggy) row assembly returned u0 far outside [-2,2] on this exact scenario (verified
+        // in the design's numpy prototype before this fix), so both assertions below would have failed
+        // it.
+        void PrestabBindingBoundMatchesNonPrestab()
+        {
+            var A = Mat2(1, 1, 0, 1); var B = ColVec2(0, 1); var Q = Eye(2); var R = R1(1);
+            var uLo = Vec1((double)(-2)); var uHi = Vec1((double)2);
+
+            var Kstab = new doubleMxN(1, 2, Allocator.Temp);
+            var lqrInfo = Control.lqr(in A, in B, in Q, in R, ref Kstab);
+            AssertTrue(lqrInfo.status == LQRStatus.Converged);
+
+            var mpcPlain = new doubleMPCState(2, 1, 8, Allocator.Temp, in A, in B, in Q, in R, in uLo, in uHi);
+            var mpcPrestab = new doubleMPCState(2, 1, 8, Allocator.Temp, in A, in B, in Q, in R, in uLo, in uHi,
+                                                default, default, default, default(doubleN), (double)0, (double)0, in Kstab);
+
+            var x0 = Vec2(3, (double)1.9);
+            var reference = new doubleN(2, Allocator.Temp);   // zero-initialized: track to the origin
+            var u0Plain = new doubleN(1, Allocator.Temp, true);
+            var u0Prestab = new doubleN(1, Allocator.Temp, true);
+
+            var infoPlain = MPC.solve(ref mpcPlain, in x0, in reference, ref u0Plain);
+            var infoPrestab = MPC.solve(ref mpcPrestab, in x0, in reference, ref u0Prestab);
+            AssertTrue(infoPlain.status == MPCStatus.Optimal || infoPlain.status == MPCStatus.MaxIterations);
+            AssertTrue(infoPrestab.status == MPCStatus.Optimal || infoPrestab.status == MPCStatus.MaxIterations);
+
+            // (i) reconstruct u0 = -Kstab*x0 + v0 INDEPENDENTLY (reading mpcPrestab.Kstab/z directly,
+            // not trusting MPC.solve's own internal ExtractU0 conversion) and check it respects the
+            // physical input bound -- the off-by-one bug placed this wildly outside [-2,2].
+            double uRecon = -(mpcPrestab.Kstab[0, 0] * x0[0] + mpcPrestab.Kstab[0, 1] * x0[1]) + mpcPrestab.z[0];
+            AssertClose(uRecon, u0Prestab[0], OracleU0Tol());
+            AssertTrue(uRecon >= uLo[0] - OracleU0Tol() && uRecon <= uHi[0] + OracleU0Tol());
+
+            // (ii) same physical problem, different coordinates -- must agree to tight tolerance.
+            AssertClose(u0Prestab[0], u0Plain[0], OracleU0Tol());
+            AssertClose(u0Prestab[0], (double)(-2.0), OracleU0Tol());   // both saturate at uLo, per the prototype
+
+            x0.Dispose(); reference.Dispose(); u0Plain.Dispose(); u0Prestab.Dispose();
+            mpcPlain.Dispose(); mpcPrestab.Dispose(); Kstab.Dispose();
             A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); uLo.Dispose(); uHi.Dispose();
         }
 

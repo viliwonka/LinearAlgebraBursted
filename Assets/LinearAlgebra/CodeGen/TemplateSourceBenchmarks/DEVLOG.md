@@ -73,3 +73,16 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   LPBenchmarkFmt.InfeasRow. Also dropped dangling `docs/spec-revised-simplex.md stages 1+2` (Section 1
   banner) and `docs/spec-lpbasis-persistence.md acceptance item 5` (Section 6 banner) citations.
   (was LPBenchmark.fProxy.cs:24-35, 253, 310)
+
+## KalmanBenchmark
+- 2026-07-12 | Section 4's drift-safety comment (EkfCycleFProxy) was arithmetically wrong and
+  cited the wrong regime: it claimed NonlinearSteps kept the cumulative step count "well inside"
+  KalmanTests.fProxy.cs's 80-step EKF acceptance test, but NonlinearSteps=100 already exceeds 80
+  per Execute() and Bench.Time's 1 warmup + 4 timed calls on the same persistent state push the
+  true cumulative to ~500 -- and that acceptance test tracks a real noisy trajectory with seeded
+  P, not this zero-measurement self-simulation, so it never validated this regime anyway. Rewrote
+  the comment with the actual bound (~500 cumulative) and the real reason boundedness holds here:
+  Smeas = H P Hᵀ + R stays positive as long as R > 0, independent of how far the self-simulated
+  state/covariance drift, so the Cholesky-based innovation solve does not trip
+  InnovationSolveFailed on this model. Noted it applies identically to UkfCycleFProxy, which had
+  no drift note at all.

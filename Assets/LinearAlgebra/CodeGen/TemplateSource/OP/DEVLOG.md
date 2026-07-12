@@ -2,6 +2,17 @@
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
 ## NLS
+- 2026-07-12 | Release-scan fix (FOURTH bug, all precisions): the all-columns-flat degenerate
+  case (0 < LInf(J) <= flatThresh, i.e. every column norm at-or-below flatThresh) left
+  maxRealColNorm at 0 and d entirely zero, since the whole-Jacobian stationary guard only
+  checked LInfJ0 > 0. nlsScaledGradNorm then divided by d[j]=0 (inf/NaN gradientNorm) and
+  mu=1e-3*nlsMaxD2(d)=0 removed all damping. nlsUpdateScale now returns maxRealColNorm; both
+  cores gate the initial stationary branch on that return being 0 (not on LInfJ0 > 0), which
+  exactly matches nlsUpdateScale's own per-column flat classifier instead of approximating it
+  via the whole matrix's LInf norm. Folded into the same change: nlsUpdateScale used to
+  compute every column's squared-sum twice per call (once for maxRealColNorm, once for the
+  floor pass); it now caches each column's norm in a scratch buffer (colNorms) and computes
+  each column once.
 - 2026-07-12 | NEW feature: nonlinear least squares via Levenberg-Marquardt with Nielsen damping
   (Optimize.nlsSolve / Optimize.curveFit). Algorithm reference: Madsen, Nielsen & Tingleff, "Methods
   for Non-Linear Least Squares Problems" (2nd ed., 2004), Algorithm 3.16 -- the gain-ratio damping
@@ -148,6 +159,47 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   convergence tests) reproduced the double-precision qualitative results across every scenario.
 
 ## MPC / MPC.State
+- 2026-07-12 | AUDIT POSTMORTEM (release-scan-2026-07-12/30-mpc-qpseam.md): confirmed HIGH --
+  prestabilized input-bound rows read Phi/Gamma BLOCK k (x_{k+1}'s coefficients) instead of block
+  k-1 (x_k's coefficients) when expressing u_k = -Kstab x_k + v_k, mis-constraining every stage's
+  physical input and breaking the warm-start guess's feasible-by-construction property (the guess's
+  own v_k = u_k + Kstab*x_k, evaluated with the CORRECT x_k, could not satisfy a row written against
+  x_{k+1}). Root cause confirmed by direct read of MPC.State.fProxy.cs's row-assembly loop against
+  the file's own Phi/Gamma block-k=x_{k+1} convention. FIX validated in a numpy prototype BEFORE
+  editing the template (scratchpad/mpc-proto/mpc_prestab_bugfix.py): the audited off-by-one alone
+  (block k -> block k-1, x_0=x0 identity for k=0) drove a deliberately-saturating case's u0 from
+  -4.567 (outside [-2,2]) to -2.0 (respects the bound) -- but STILL disagreed with a fresh solve of
+  the identical non-prestabilized problem by 0.198, which should be ~0 (prestabilization is a pure
+  change of coordinates). Root-caused a SECOND, previously unaudited defect while chasing that
+  residual: the condensed Hessian applied R naively to v (Rbar block-diagonal on v_k) instead of
+  correctly expanding u_k^T R u_k with u_k = -Kstab x_k + v_k, silently dropping the -Kstab*x_k
+  cross-coupling from the cost entirely. Fixed both together via one shared affine map, built once at
+  construction and consumed by BOTH the rows and the cost so they cannot drift apart again: u_k =
+  M_row_k @ V + c_k (c_k = -KPhiPre_row_k @ x0), M/KPhiPre built from block (k-1) (identity/Kstab
+  directly for k=0); H_UU += M^T Rbar M (replacing the naive per-block R add for hasPrestab only);
+  new persistent field Rcross = -2 M^T Rbar KPhiPre, applied as `c[0:nu] += Rcross @ x0` every solve
+  call (MPC.fProxy.cs's BuildGradient). Extended prototype (mpc_prestab_full_fix.py) confirms the
+  FULLY corrected version matches the non-prestabilized reference to ~1e-8 to ~3e-8 across binding,
+  inactive, and random x0 -- vs 0.198-0.68 with only the row fix and no cost fix. Added
+  PrestabBindingBoundMatchesNonPrestab to MPCTests.fProxy.cs (x0=(3,1.9), the SAME saturating case as
+  SaturatedMatchesOracle) asserting both properties the coordinator specified: (i) u0 reconstructed
+  independently from the state's own public Kstab/z fields respects the physical bound, (ii) matches
+  a fresh non-prestabilized solve of the identical (A,B,Q,R,uLo,uHi) problem to tight tolerance --
+  discriminates against BOTH the original off-by-one and the newly-found cost defect (verified by
+  mentally/numerically reintroducing each).
+- 2026-07-12 | AUDIT POSTMORTEM, low finding (same scan): MPC.solve's Fallback comment claimed
+  state.z/wstatus are left untouched on "Infeasible/Unbounded", but QP.qpActiveSetCoreWarm only
+  short-circuits before touching either on Infeasible -- on Unbounded (defensive-only, should not
+  happen for MPC's genuinely PD H given R PD, but not structurally impossible) it runs the full
+  active-set loop (which can mutate x = state.z via prior accepted steps) and unconditionally persists
+  wstatus. Fixed by capturing u0out from the pre-solve warm-start guess BEFORE calling
+  qpActiveSetCoreWarm (not re-derived from state.z afterward), so the "returns the shifted previous
+  plan's first input" contract holds regardless of which failure status fires; state.uPlan/populated
+  were already never written on this path (no change needed there). state.wstatus may still be
+  perturbed on the (unreachable-in-practice) Unbounded path -- left as documented behavior rather than
+  short-circuited in the QP seam itself, since RepairWorkingSet already re-validates every entry
+  against the next frame's own state regardless, making a stale/perturbed persisted entry harmless.
+  MPCStatus.Fallback's XML doc corrected to match (was overclaiming the same "both statuses" guarantee).
 - 2026-07-12 | NEW feature: linear MPC over the standard batch/dense condensing (Borrelli-Bemporad-
   Morari, "Predictive Control for Linear and Hybrid Systems", ch. 2). acados/HPIPM (BSD-2) and TinyMPC
   (MIT) condensing routines were read for PRODUCT SHAPE reference only (decision-vector layout, the
@@ -246,6 +298,10 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
 - 2026-07-11 | SDA recurrences implemented (Chiang-Fan-Lin Algorithm 2.1, no-cross-term/nonsingular-R case): A0=A, G0=BR⁻¹Bᵀ, H0=Q, A_{k+1}=Ak(I+GkHk)⁻¹Ak, G_{k+1}=Gk+AkGk(I+HkGk)⁻¹Akᵀ, H_{k+1}=Hk+Akᵀ(I+HkGk)⁻¹HkAk, Hk→S. The (I+GH)/(I+HG) solves are nonsymmetric n×n via LU (compact in-place + multi-RHS decompSolve), not Cholesky; G0=BR⁻¹Bᵀ is built via CHOP on R (not a bare inverse) so a semidefinite R degrades gracefully there too. (was Control.fProxy.cs:10-40, :164)
 
 ## Kalman
+- 2026-07-12 | Release-scan perf fix: UpdateCore's Xt = Smeas^-1 * (H P) recomputed H*P via a
+  fresh GEMM even though PHt = P Hᵀ (already computed for Smeas, still live) equals (H P)ᵀ
+  exactly since P is symmetric at every call site. Xt is now Blas.trans(in PHt, ref Xt) --
+  O(m·n) instead of O(m·n²), same result.
 - 2026-07-12 | Bug found by the test suite (float only): SteadyStateGainVsOracle got a Kss ~98%
   relatively wrong (0.9765909 vs the 2e-3 float tolerance); FixedPathMatchesConverged missed its
   tracking bound by 0.109 downstream of the same bad gain. Root-caused with a float32 numpy harness

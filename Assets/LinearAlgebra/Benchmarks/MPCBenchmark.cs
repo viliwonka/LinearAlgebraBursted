@@ -102,7 +102,7 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine("always the honest MPCInfo fields -- a budget-limited solve is visible, not masked.");
             sb.AppendLine();
 
-            sb.AppendLine("--- 1. Warm steady-state per-frame cost [fProxy] ---");
+            sb.AppendLine("--- 1. Warm steady-state per-frame cost ---");
             sb.AppendLine(MPCBenchmarkFmt.Header());
             for (int i = 0; i < MPCBenchmarkFmt.Sizes.Length; i++)
             {
@@ -118,7 +118,7 @@ namespace LinearAlgebra.Benchmarks
             }
 
             sb.AppendLine();
-            sb.AppendLine("--- 2. Cold solve cost (fresh warm-start carry every call) [fProxy] ---");
+            sb.AppendLine("--- 2. Cold solve cost (fresh warm-start carry every call) ---");
             sb.AppendLine(MPCBenchmarkFmt.Header());
             for (int i = 0; i < MPCBenchmarkFmt.Sizes.Length; i++)
             {
@@ -134,7 +134,7 @@ namespace LinearAlgebra.Benchmarks
             }
 
             sb.AppendLine();
-            sb.AppendLine("--- 3. fProxyMPCState construction cost (one-shot) [fProxy] ---");
+            sb.AppendLine("--- 3. fProxyMPCState construction cost (one-shot) ---");
             sb.AppendLine(MPCBenchmarkFmt.ConstructionHeader());
             for (int i = 0; i < MPCBenchmarkFmt.Sizes.Length; i++)
             {

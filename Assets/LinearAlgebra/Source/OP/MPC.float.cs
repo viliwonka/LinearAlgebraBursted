@@ -26,8 +26,12 @@ namespace LinearAlgebra
     //
     // Failure contract: on anything other than QPStatus.Optimal/MaxIterations (should not happen for a
     // well-posed problem -- defensive only), MPC.solve returns the shifted PREVIOUS plan's first input
-    // (already sitting in state.z, since qpActiveSetCoreWarm leaves it untouched on Infeasible) rather
-    // than propagating a QP failure into the caller's control loop.
+    // rather than propagating a QP failure into the caller's control loop. That value is captured
+    // (ExtractU0) BEFORE the QP call, not re-derived from state.z afterward: qpActiveSetCoreWarm leaves
+    // state.z/state.wstatus untouched on QPStatus.Infeasible (it short-circuits before either is
+    // touched), but NOT on QPStatus.Unbounded (state.z can hold a partial iterate and state.wstatus is
+    // always persisted on that path) -- capturing the guess's own u0 up front makes the fallback
+    // contract hold for BOTH statuses without depending on that distinction.
     // ================================================================================================
     public static partial class MPC
     {
@@ -58,6 +62,11 @@ namespace LinearAlgebra
                 throw new ArgumentException("MPC.solve: reference.N must equal n (constant setpoint) or N*n (per-stage trajectory)");
 
             BuildWarmStartGuess(ref s, in x0);
+            // Captured BEFORE the QP call (see this file's header comment): the ONLY value the Fallback
+            // path is allowed to trust, since qpActiveSetCoreWarm's "leave state untouched" guarantee
+            // does not extend to QPStatus.Unbounded.
+            ExtractU0(in s, in x0, ref u0out);
+
             BuildGradient(ref s, in x0, in reference);
             BuildGeneralRHS(ref s, in x0);
 
@@ -68,7 +77,7 @@ namespace LinearAlgebra
             MPCInfo info;
             if (qpInfo.status == QPStatus.Optimal || qpInfo.status == QPStatus.MaxIterations)
             {
-                ExtractU0(in s, in x0, ref u0out);
+                ExtractU0(in s, in x0, ref u0out);   // overwrite the pre-solve guess with the real solved value
                 RecoverPhysicalUPlan(ref s, in x0);
                 s.populated = true;
 
@@ -88,12 +97,12 @@ namespace LinearAlgebra
             }
             else
             {
-                // Fallback (defensive-only, see this file's header comment): s.z still holds the
-                // shifted/clipped guess built above (qpActiveSetCoreWarm does not modify it on
-                // Infeasible/Unbounded) -- extract u0 from THAT, and leave s.uPlan/s.wstatus/s.populated
-                // untouched so the next frame retries from the last known-good state.
-                ExtractU0(in s, in x0, ref u0out);
-
+                // Fallback (defensive-only, see this file's header comment): u0out already holds the
+                // shifted/clipped guess's own first input, captured above before this call could mutate
+                // anything. s.uPlan/s.populated are left untouched either way (never written on this
+                // path) so the next frame retries from the last known-good plan; s.wstatus may have been
+                // perturbed by qpActiveSetCoreWarm on Unbounded (not on Infeasible), which is harmless --
+                // RepairWorkingSet re-validates every entry against the next frame's own x0 regardless.
                 info = new MPCInfo
                 {
                     status = MPCStatus.Fallback,
@@ -220,7 +229,9 @@ namespace LinearAlgebra
         // (reusing s.xTrajScratch as scratch -- its warm-start-guess content from BuildWarmStartGuess is
         // no longer needed once that method returns), a deltaU adjustment on c[0:m] from the LAST applied
         // input (s.uPlan's own block 0, still the OLD value here -- RecoverPhysicalUPlan has not run yet
-        // this call), and the soft-row L1 weight into c[nu:nz].
+        // this call), a prestabilization correction (Rcross @ x0, see floatMPCState's file header --
+        // the u_k^T R u_k cost term's x0-dependent part under the u_k = -Kstab x_k + v_k substitution),
+        // and the soft-row L1 weight into c[nu:nz].
         static void BuildGradient(ref floatMPCState s, in floatN x0, in floatN reference)
         {
             int n = s.n, m = s.m, N = s.N, nu = s.nu, Nn = N * n;
@@ -236,6 +247,16 @@ namespace LinearAlgebra
                 float sum = (float)0;
                 for (int col = 0; col < Nn; col++) sum += s.GtQbar[row, col] * s.xTrajScratch[col];
                 s.cScratch[row] = (float)2 * sum;
+            }
+
+            if (s.hasPrestab)
+            {
+                for (int row = 0; row < nu; row++)
+                {
+                    float sum = (float)0;
+                    for (int p = 0; p < n; p++) sum += s.Rcross[row, p] * x0[p];
+                    s.cScratch[row] += sum;
+                }
             }
 
             if (s.hasDeltaU)

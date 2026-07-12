@@ -96,7 +96,7 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine("of skipping analytic Jacobians entirely, at both a tiny and a drone-like state size.");
             sb.AppendLine();
 
-            sb.AppendLine("--- 1. Linear predict+update, full covariance path [fProxy] ---");
+            sb.AppendLine("--- 1. Linear predict+update, full covariance path ---");
             sb.AppendLine(KalmanBenchmarkFmt.Header());
             for (int i = 0; i < KalmanBenchmarkFmt.Sizes.Length; i++)
             {
@@ -110,7 +110,7 @@ namespace LinearAlgebra.Benchmarks
             }
 
             sb.AppendLine();
-            sb.AppendLine("--- 2. predictFixed+updateFixed (steady-state gain, no covariance math) [fProxy] ---");
+            sb.AppendLine("--- 2. predictFixed+updateFixed (steady-state gain, no covariance math) ---");
             sb.AppendLine(KalmanBenchmarkFmt.Header());
             for (int i = 0; i < KalmanBenchmarkFmt.Sizes.Length; i++)
             {
@@ -124,7 +124,7 @@ namespace LinearAlgebra.Benchmarks
             }
 
             sb.AppendLine();
-            sb.AppendLine("--- 3. steadyStateGain: one-shot cost [fProxy] ---");
+            sb.AppendLine("--- 3. steadyStateGain: one-shot cost ---");
             sb.AppendLine(LQRBenchmarkFmt.Header());
             for (int i = 0; i < KalmanBenchmarkFmt.Sizes.Length; i++)
             {
@@ -138,7 +138,7 @@ namespace LinearAlgebra.Benchmarks
             }
 
             sb.AppendLine();
-            sb.AppendLine("--- 4. EKF vs UKF: pendulum (n=2,m=1) and a synthetic ring model (n=12,m=6, drone-scale) [fProxy] ---");
+            sb.AppendLine("--- 4. EKF vs UKF: pendulum (n=2,m=1) and a synthetic ring model (n=12,m=6, drone-scale) ---");
             sb.AppendLine(KalmanBenchmarkFmt.Header());
             sb.AppendLine(EkfCycleFloat(KalmanBenchmarkFmt.NonlinearSteps));
             sb.AppendLine(UkfCycleFloat(KalmanBenchmarkFmt.NonlinearSteps));

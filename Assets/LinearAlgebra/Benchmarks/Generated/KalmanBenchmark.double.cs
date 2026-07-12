@@ -370,9 +370,14 @@ namespace LinearAlgebra.Benchmarks
         // NonlinearSteps is far shorter than Sections 1-2's per-row steps -- the pendulum's own
         // forward-Euler self-simulation (ekfPredict/ukfPredict driving x via model.F every step, with no
         // independent ground truth to correct against) has a slow secular amplitude drift typical of
-        // explicit Euler on an oscillatory system; NonlinearSteps keeps the cumulative step count (across
-        // Bench.Time's own repeated job.Run() calls on this persistent state) well inside the range
-        // KalmanTests.double.cs's own 80-step EKF acceptance test already exercises.
+        // explicit Euler on an oscillatory system. NonlinearSteps=100 per Execute(), and Bench.Time's own
+        // 1 warmup + 4 timed calls run on this SAME persistent state, so the cumulative step count is
+        // ~500 per benchmark run -- past KalmanTests.double.cs's own 80-step EKF acceptance test (which
+        // exercises a different regime anyway: real tracking + noisy measurements + seeded P, vs this
+        // zero-measurement self-simulation). Smeas = H P Hᵀ + R stays positive as long as R > 0
+        // regardless of state/covariance magnitude, so the drift does not by itself trip the
+        // Cholesky-based innovation solve into InnovationSolveFailed here. Applies identically to
+        // UkfCycleDouble below.
         static string EkfCycleDouble(int steps)
         {
             var model = new PendulumModelDouble { dt = (double)0.05, gOverL = (double)4 };

@@ -23,9 +23,12 @@ namespace LinearAlgebra
 
         /// <summary>The condensed QP reported <see cref="QPStatus.Infeasible"/> or
         /// <see cref="QPStatus.Unbounded"/> this frame (should not happen for a well-posed problem --
-        /// defensive-only). <c>u0out</c> is the shifted PREVIOUS plan's first input instead (documented
-        /// fallback contract, never garbage); the working set and warm-start carry are left unchanged
-        /// so the next frame retries from the last known-good state.</summary>
+        /// defensive-only). <c>u0out</c> is the shifted PREVIOUS plan's first input instead (captured
+        /// before the QP call, never garbage). The carried plan (<c>uPlan</c>) is always left unchanged
+        /// on this path; the persisted working set is left unchanged too on
+        /// <see cref="QPStatus.Infeasible"/> but MAY be perturbed by the QP's own last attempted
+        /// iterate on <see cref="QPStatus.Unbounded"/> -- harmless, since the next frame's warm-start
+        /// repair re-validates every entry against that frame's own state regardless.</summary>
         Fallback = 2,
     }
 

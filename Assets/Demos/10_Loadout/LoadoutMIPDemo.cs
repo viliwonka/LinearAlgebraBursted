@@ -66,9 +66,9 @@ namespace LinearAlgebraDemos
 
             weightCapacity = LabeledSlider($"Weight cap {weightCapacity:F0}", weightCapacity, 1f, 40f);
             energyBudget = LabeledSlider($"Energy budget {energyBudget:F0}", energyBudget, 1f, 20f);
-            maxWeapons = (int)LabeledSlider($"Max weapons {maxWeapons}", maxWeapons, 0, 6);
+            maxWeapons = (int)LabeledSlider($"Max weapons {maxWeapons}", maxWeapons, 0, 6.49f);
             int mi = Mathf.Clamp(mandatoryItemIndex, 0, ItemCount - 1);
-            mandatoryItemIndex = Mathf.Clamp((int)LabeledSlider($"Mandatory: {ItemNames[mi]}", mandatoryItemIndex, 0, ItemCount - 1), 0, ItemCount - 1);
+            mandatoryItemIndex = Mathf.Clamp((int)LabeledSlider($"Mandatory: {ItemNames[mi]}", mandatoryItemIndex, 0, ItemCount - 1 + 0.49f), 0, ItemCount - 1);
             maxNodes = (int)LabeledSlider($"Max nodes {(maxNodes == 0 ? "unlimited" : maxNodes.ToString())}", maxNodes, 0, 500);
             relGap = LabeledSlider($"Rel gap {relGap:P1}", relGap, 0f, 0.2f);
 

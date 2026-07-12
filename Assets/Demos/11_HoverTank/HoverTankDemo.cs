@@ -204,7 +204,9 @@ namespace LinearAlgebraDemos
             float dt = Time.fixedDeltaTime;
             rb.mass = hullMass;   // keep the real body in sync with the slider used by the linearization
 
-            if (target == null && autoOrbitTarget)
+            // autoTargetGO is only created when target started null (BuildScene); a target
+            // assigned in the inspector and destroyed later at runtime leaves autoTargetGO null too.
+            if (target == null && autoOrbitTarget && autoTargetGO != null)
             {
                 orbitAngle += orbitSpeed * dt;
                 autoTargetGO.transform.position = orbitCenter + new Vector3(

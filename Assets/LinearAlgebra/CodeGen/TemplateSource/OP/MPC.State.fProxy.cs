@@ -34,11 +34,22 @@ namespace LinearAlgebra
     // v_k and condensing the CLOSED LOOP (A - B Kstab instead of A) keeps Phi/Gamma bounded even when the
     // raw A is unstable and rho(A)^N would otherwise blow up Phi/Gamma (and hence H's condition number)
     // at a long horizon in float32. Use it when rho(A)^N is large relative to the horizon (an unstable
-    // plant with N large enough that A^N would already be enormous). Hard input bounds become GENERAL
-    // rows under prestabilization (u_k depends on the predicted state, which depends on z) rather than a
-    // box on z directly -- see the general-row assembly below. Combining prestabilization with the
-    // deltaU penalty is NOT supported in v1 (both couple u_k to the state/previous input in ways that
-    // would otherwise have to be composed together; throws at construction).
+    // plant with N large enough that A^N would already be enormous). Prestabilization is a PURE change of
+    // coordinates -- the physical solution (u_0..u_{N-1}, the predicted trajectory) is IDENTICAL to
+    // solving the same (A,B,Q,R,uLo,uHi) problem without it; only the QP's own decision vector and
+    // conditioning differ. Getting this equivalence exactly right requires two things, both handled
+    // uniformly via the affine map u_k = M_row_k @ V + c_k (c_k = -KPhiPre_row_k @ x0, built once at
+    // construction from Phi/Gamma BLOCK (k-1) -- that block's own convention is x_{(k-1)+1} = x_k, i.e.
+    // stage k's state, NOT block k which is x_{k+1}; k=0 uses x_0 = x0 exactly, no V-coupling at all):
+    //   1. Hard input bounds become GENERAL rows (lo/hi on u_k, expressed via M/KPhiPre) rather than a
+    //      box on z directly, since u_k depends on the predicted state, which depends on V.
+    //   2. The u_k^T R u_k cost term is NOT simply Rbar-on-v (that silently drops the -Kstab*x_k cross-
+    //      coupling) -- it expands to M^T Rbar M added to H_UU, plus a per-call gradient correction
+    //      (Rcross @ x0, Rcross = -2 M^T Rbar KPhiPre, fixed at construction).
+    // Both consume the SAME M/KPhiPre built once here, so the row assembly and the cost correction can
+    // never drift apart under a future edit. Combining prestabilization with the deltaU penalty is NOT
+    // supported in v1 (both couple u_k to the state/previous input in ways that would otherwise have to
+    // be composed together; throws at construction).
     // ================================================================================================
     public partial struct fProxyMPCState
     {
@@ -141,6 +152,13 @@ namespace LinearAlgebra
         /// <summary>Prestabilization gain, m x n. <see cref="fProxyMxN.IsCreated"/> false if disabled.</summary>
         public fProxyMxN Kstab;
 
+        /// <summary>Prestabilization-only gradient correction, nu x n: the physical input is an affine
+        /// map of (x0, V) under prestabilization (u_k = -Kstab x_k + v_k), so the u_k^T R u_k cost term
+        /// contributes a per-call linear term on top of the usual tracking gradient -- added as
+        /// <c>Rcross @ x0</c> every <see cref="MPC.solve"/> call (see <see cref="MPC.fProxy.cs"/>'s
+        /// BuildGradient). <see cref="fProxyMxN.IsCreated"/> false if not prestabilized.</summary>
+        public fProxyMxN Rcross;
+
         /// <summary>DeltaU penalty weight, m x m. <see cref="fProxyMxN.IsCreated"/> false if disabled.</summary>
         public fProxyMxN S;
 
@@ -209,6 +227,7 @@ namespace LinearAlgebra
             if (uHi.Data.IsCreated) uHi.Dispose();
             if (Kinf.Data.IsCreated) Kinf.Dispose();
             if (Kstab.Data.IsCreated) Kstab.Dispose();
+            if (Rcross.Data.IsCreated) Rcross.Dispose();
             if (S.Data.IsCreated) S.Dispose();
             if (C.Data.IsCreated) C.Dispose();
             if (d.Data.IsCreated) d.Dispose();
@@ -410,11 +429,78 @@ namespace LinearAlgebra
             QGamma.Dispose();
             lqrState.Dispose();   // Pterm (if auto) is no longer needed past this point
 
-            // Rbar (block-diagonal R repeated N times)
-            for (int k = 0; k < N; k++)
+            // Rbar (block-diagonal R repeated N times): for the PLAIN (non-prestabilized) case u_k ==
+            // v_k, so this is simply added block-diagonally. For the PRESTABILIZED case, the physical
+            // input is an AFFINE function of V (u_k = M_row_k @ V + c_k, c_k = -KPhiPre_row_k @ x0 --
+            // built below), so the u_k^T R u_k cost term expands to M^T Rbar M (a genuinely different,
+            // non-block-diagonal matrix) plus a per-call gradient correction (Rcross) -- naive Rbar-on-v
+            // silently drops the -Kstab*x_k cross-coupling entirely (see OP/DEVLOG.md).
+            fProxyMxN M = default, KPhiPre = default;
+            Rcross = default;   // unconditional -- the hasPrestab branch below overwrites it; struct
+                                 // definite-assignment requires every field set on every path
+            if (!hasPrestab)
+            {
+                for (int k = 0; k < N; k++)
+                    for (int i = 0; i < m; i++)
+                        for (int j = 0; j < m; j++)
+                            H_UU[k * m + i, k * m + j] += R[i, j];
+            }
+            else
+            {
+                // u_k = M_row_k @ V + c_k, c_k = -KPhiPre_row_k @ x0. Row block 0: x_0 = x0 EXACTLY (no
+                // V-coupling at all -- M stays identity there, KPhiPre = Kstab directly). Row block
+                // k >= 1: x_k = Phi/Gamma BLOCK (k-1) (that block's own convention is x_{(k-1)+1} = x_k
+                // -- see this file's header) -- using block k instead (x_{k+1}) is the off-by-one this
+                // file's DEVLOG documents fixing.
+                M = new fProxyMxN(nu, nu, Allocator.Temp);   // zero-initialized
+                for (int i = 0; i < nu; i++) M[i, i] = (fProxy)1;
+                KPhiPre = new fProxyMxN(nu, n, Allocator.Temp);   // zero-initialized
+
                 for (int i = 0; i < m; i++)
-                    for (int j = 0; j < m; j++)
-                        H_UU[k * m + i, k * m + j] += R[i, j];
+                    for (int q = 0; q < n; q++)
+                        KPhiPre[i, q] = Kstab[i, q];
+
+                for (int k = 1; k < N; k++)
+                {
+                    for (int i = 0; i < m; i++)
+                    {
+                        for (int col = 0; col < nu; col++)
+                        {
+                            fProxy sum = (fProxy)0;
+                            for (int p = 0; p < n; p++) sum += Kstab[i, p] * Gamma[(k - 1) * n + p, col];
+                            M[k * m + i, col] -= sum;
+                        }
+                        for (int q = 0; q < n; q++)
+                        {
+                            fProxy sum = (fProxy)0;
+                            for (int p = 0; p < n; p++) sum += Kstab[i, p] * Phi[(k - 1) * n + p, q];
+                            KPhiPre[k * m + i, q] = sum;
+                        }
+                    }
+                }
+
+                var RbarM = new fProxyMxN(nu, nu, Allocator.Temp);   // zero-initialized
+                for (int k = 0; k < N; k++)
+                    for (int i = 0; i < m; i++)
+                        for (int j = 0; j < m; j++)
+                            RbarM[k * m + i, k * m + j] = R[i, j];
+
+                var MtRbar = new fProxyMxN(nu, nu, Allocator.Temp);
+                Blas.dot(in M, in RbarM, ref MtRbar, transposeA: true);   // M^T @ Rbar
+                var MtRbarM = new fProxyMxN(nu, nu, Allocator.Temp);
+                Blas.dot(in MtRbar, in M, ref MtRbarM);                   // M^T @ Rbar @ M
+                for (int i = 0; i < nu; i++)
+                    for (int j = 0; j < nu; j++)
+                        H_UU[i, j] += MtRbarM[i, j];
+
+                Rcross = new fProxyMxN(nu, n, allocator);
+                Blas.dot(in MtRbar, in KPhiPre, ref Rcross);              // M^T @ Rbar @ KPhiPre
+                for (int i = 0; i < nu; i++)
+                    for (int j = 0; j < n; j++)
+                        Rcross[i, j] = (fProxy)(-2) * Rcross[i, j];
+
+                MtRbarM.Dispose(); MtRbar.Dispose(); RbarM.Dispose();
+            }
 
             // deltaU blocks (tridiagonal in the input blocks) -- see this file's header comment
             if (hasDeltaU)
@@ -484,47 +570,32 @@ namespace LinearAlgebra
             }
             if (hasPrestab)
             {
+                // Reuses M/KPhiPre built above (Rbar section): u_k = M_row_k @ V + c_k,
+                // c_k = -KPhiPre_row_k @ x0 -- the SAME affine map the cost correction uses, so the row
+                // and the cost agree on stage k's physical input by construction (no re-derivation, no
+                // chance of the two drifting apart under a future edit).
                 for (int k = 0; k < N; k++)
                 {
                     for (int i = 0; i < m; i++)
                     {
-                        // upper: u_k[i] <= uHi[i]
-                        for (int col = 0; col < nu; col++)
-                        {
-                            fProxy sum = (fProxy)0;
-                            for (int p = 0; p < n; p++) sum += -Kstab[i, p] * Gamma[k * n + p, col];
-                            Arows[rowIdx, col] = sum;
-                        }
-                        Arows[rowIdx, k * m + i] += (fProxy)1;
-                        for (int q = 0; q < n; q++)
-                        {
-                            fProxy sum = (fProxy)0;
-                            for (int p = 0; p < n; p++) sum += -Kstab[i, p] * Phi[k * n + p, q];
-                            qCoupling[rowIdx, q] = sum;
-                        }
+                        int row = k * m + i;
+
+                        // upper: u_k[i] <= uHi[i]  =>  M_row @ V <= uHi[i] + KPhiPre_row @ x0
+                        for (int col = 0; col < nu; col++) Arows[rowIdx, col] = M[row, col];
+                        for (int q = 0; q < n; q++) qCoupling[rowIdx, q] = -KPhiPre[row, q];
                         rowConstRHS[rowIdx] = uHi[i];
                         senses[rowIdx] = ConstraintSense.LessEqual;
                         rowIdx++;
 
-                        // lower: -u_k[i] <= -uLo[i]
-                        for (int col = 0; col < nu; col++)
-                        {
-                            fProxy sum = (fProxy)0;
-                            for (int p = 0; p < n; p++) sum += Kstab[i, p] * Gamma[k * n + p, col];
-                            Arows[rowIdx, col] = sum;
-                        }
-                        Arows[rowIdx, k * m + i] -= (fProxy)1;
-                        for (int q = 0; q < n; q++)
-                        {
-                            fProxy sum = (fProxy)0;
-                            for (int p = 0; p < n; p++) sum += Kstab[i, p] * Phi[k * n + p, q];
-                            qCoupling[rowIdx, q] = sum;
-                        }
+                        // lower: -u_k[i] <= -uLo[i]  =>  -M_row @ V <= -uLo[i] + KPhiPre_row @ x0
+                        for (int col = 0; col < nu; col++) Arows[rowIdx, col] = -M[row, col];
+                        for (int q = 0; q < n; q++) qCoupling[rowIdx, q] = KPhiPre[row, q];
                         rowConstRHS[rowIdx] = -uLo[i];
                         senses[rowIdx] = ConstraintSense.LessEqual;
                         rowIdx++;
                     }
                 }
+                KPhiPre.Dispose(); M.Dispose();
             }
 
             // ---- box bounds ----

@@ -72,9 +72,11 @@ namespace LinearAlgebra
             KFStatus status;
             if (rinfo.Solved)
             {
-                // Xt := Smeas^-1 * (H P) = Kᵀ  (solve, never an explicit Smeas inverse)
+                // Xt := Smeas^-1 * (H P) = Kᵀ  (solve, never an explicit Smeas inverse). H P =
+                // (P Hᵀ)ᵀ = PHtᵀ since P is symmetric, so reuse the already-computed PHt instead
+                // of a second H*P GEMM.
                 var Xt = new floatMxN(m, n, Allocator.Temp);
-                Blas.dot(in H, in s.P, ref Xt);
+                Blas.trans(in PHt, ref Xt);
                 CHOP.decompSolve(ref L, in Piv, rinfo.rank, ref Xt);
 
                 var K = new floatMxN(n, m, Allocator.Temp);
