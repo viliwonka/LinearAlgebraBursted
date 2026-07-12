@@ -6,9 +6,10 @@
   Default: drives the converter directly via a small .NET console host
   (Tools/CodegenBootstrap) that compiles the REAL generator files
   (Assets/LinearAlgebra/CodeGen/{GenUtils,TemplateConverter}.cs - not copies)
-  and runs them the same way the project's two [Generator] wrappers do
+  and runs them the same way the project's three [Generator] wrappers do
   (TemplateSource -> Source, TemplateSourceTests -> SourceTests/
-  Generated), writing files with the same logic UnityCodeGen's
+  Generated, TemplateSourceBenchmarks -> Benchmarks/Generated), writing
+  files with the same logic UnityCodeGen's
   ScriptFileGenerator uses (skip-if-byte-identical, UTF-8 no BOM). Crucially
   this does NOT require the project to already compile, so it can regenerate
   correctly even right after a generated type was renamed/moved/deleted and

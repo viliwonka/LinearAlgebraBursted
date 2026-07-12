@@ -41,6 +41,7 @@ namespace LinearAlgebraDemos
         NativeArray<byte> pinned;
         NativeArray<float> outStats;   // [0] pcg iters, [1] converged, [2] rnorm
         float frameMs;
+        readonly Stopwatch sw = new Stopwatch();
 
         int NodeCount => gridWidth * gridHeight;
 
@@ -141,7 +142,7 @@ namespace LinearAlgebraDemos
                 WindZ = windZ, H = H,
             };
 
-            var sw = Stopwatch.StartNew();
+            sw.Restart();
             job.Run();
             sw.Stop();
             frameMs = (float)sw.Elapsed.TotalMilliseconds;

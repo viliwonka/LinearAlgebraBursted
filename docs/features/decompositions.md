@@ -6,8 +6,8 @@ preserved), `decompInPlace` (factor into the input's own storage, input destroye
 destructive). Each also has a zero-alloc
 `ref`-workspace overload plus an allocating convenience wrapper; several route their allocating
 overload through a blocked (level-3, compact-WY/SYRK/GETRF-style) core above a measured size
-crossover — see [level3-blocking-guide](../dev/level3-blocking-guide.md) for how that's done and why the
-gain caps out around 1.3–1.4× (bounded by `matMatDot`'s own ~70 GFLOP/s ceiling, see [la-primitives.md](la-primitives.md)).
+crossover — the gain caps out around 1.3–1.4× (bounded by `matMatDot`'s own ~70 GFLOP/s ceiling, see
+[la-primitives.md](la-primitives.md)).
 
 - **`LU.decomp(in A, ref L, ref U, ref Pivot P)`** — partial-pivoting LU, `PA = LU`, A preserved.
   Blocked (GETRF-style: panel factor + TRSM + one GEMM trailing update) above `n ≥ 256`. Also
@@ -47,8 +47,8 @@ gain caps out around 1.3–1.4× (bounded by `matMatDot`'s own ~70 GFLOP/s ceili
   also only reads A.
 - **`Bidiag.decomp(in A, ref U, ref B, ref V, ref ws)`** / **`Bidiag.values(in A, ref d, ref e, ref
   ws)`** — Golub-Kahan-Householder reduction; feeds [svd.md](svd.md)'s `SVD.thin`/`SVD.values`. Not
-  yet raised to level-3 (tracked in [level3-blocking-guide](../dev/level3-blocking-guide.md) as GEBRD, the
-  hardest of this family to block — interleaved left/right reflectors).
+  yet raised to level-3 (GEBRD is the hardest of this family to block — interleaved left/right
+  reflectors).
 
 ## Performance
 

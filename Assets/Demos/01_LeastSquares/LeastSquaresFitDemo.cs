@@ -32,6 +32,7 @@ namespace LinearAlgebraDemos
         NativeArray<float> stats;    // [0] rms residual, [1] solve success flag
         float solveMs;
         uint frame;
+        readonly Stopwatch sw = new Stopwatch();
 
         void OnEnable()
         {
@@ -68,7 +69,7 @@ namespace LinearAlgebraDemos
                 Seed = 1u + frame++,
             };
 
-            var sw = Stopwatch.StartNew();
+            sw.Restart();
             job.Run();
             sw.Stop();
             solveMs = (float)sw.Elapsed.TotalMilliseconds;

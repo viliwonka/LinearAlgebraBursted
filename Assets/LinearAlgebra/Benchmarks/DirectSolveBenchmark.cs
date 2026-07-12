@@ -3,7 +3,8 @@ using System.Text;
 namespace LinearAlgebra.Benchmarks
 {
     // The end-to-end "solve Ax=b" entry points, as opposed to decompositions.md's factorization-only
-    // benchmarks: LU.decompSolve, CHO.decomp+decompSolve, QR.solveInPlace (square). Each Execute copies a
+    // benchmarks: LU.decompSolve, LU.decompInPlace+decompSolveTransA, CHO.decomp+decompSolve,
+    // QR.solveInPlace (square). Each Execute copies a
     // pristine source into the working buffers (factorization/solve destroys them), so every timed
     // sample does identical work. solvers.md notes the triangular-solve step itself is O(n^2), dominated
     // by the O(n^3) factorization in every case here — these numbers are effectively the factorization

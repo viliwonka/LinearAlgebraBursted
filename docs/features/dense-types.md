@@ -3,8 +3,7 @@
 `floatN`/`floatMxN` and their `double`/`int`/`short`/`long`/`uint`/`bool` counterparts are the
 library's vector and matrix types. Matrices are row-major (`Data[r*N_Cols+c]`) — the opposite of
 `Unity.Mathematics`' column-major layout, so any conversion between the two is a transpose, not a
-reinterpret-cast; see [spec-interop.md](../dev/spec-interop.md)'s "Row-major ↔ column-major" section for
-the full correctness argument.
+reinterpret-cast.
 
 ## Arena
 
@@ -44,8 +43,7 @@ disposed) from more than one thread/job concurrently. Concretely:
 Don't share one `Arena` across concurrently-running jobs/threads — under
 `ENABLE_UNITY_COLLECTIONS_CHECKS`, a violation throws instead of corrupting memory; in a player
 build without checks it's silent corruption, so the contract above still needs to be followed by
-construction (one arena per concurrent job). See [rfc-memory-model.md](../dev/rfc-memory-model.md)
-for the detection mechanism.
+construction (one arena per concurrent job).
 
 ## Vectors & matrices
 

@@ -1,8 +1,11 @@
 namespace LinearAlgebra.Benchmarks
 {
-    // Default -executeMethod entry point (see Tools/benchmark.ps1). Runs every kernel section into one
-    // combined report (TestResults/benchmark-all.txt). For an A/B run of a single kernel, target that
-    // kernel's own Run instead, e.g. LinearAlgebra.Benchmarks.QRBenchmark.Run.
+    // Default -executeMethod entry point (see Tools/benchmark.ps1). Runs every throughput kernel
+    // section into one combined report (TestResults/benchmark-all.txt). For an A/B run of a single
+    // kernel, target that kernel's own Run instead, e.g. LinearAlgebra.Benchmarks.QRBenchmark.Run.
+    // The SVD accuracy comparison (thin/truncated/randomized vs a known SVD) is standalone via
+    // LinearAlgebra.Benchmarks.SvdComparisonBenchmark.Run (benchmark-svd-compare.txt), not included
+    // here.
     //
     // Reading the report: GFLOP/s should stay roughly flat across N for a cache-friendly kernel; a
     // sharp drop at large N is a cache cliff. float ~2x double on the same kernel means the inner loop

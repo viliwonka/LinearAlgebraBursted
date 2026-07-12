@@ -52,6 +52,7 @@ namespace LinearAlgebraDemos
         float[] lastProfits = new float[Products];
         float solveMs;
         int coldFrames, warmFrames;
+        readonly Stopwatch sw = new Stopwatch();
 
         void OnEnable()
         {
@@ -103,7 +104,7 @@ namespace LinearAlgebraDemos
                 Senses = senses, Basis = basis, Cache = cache, Out = outStats,
             };
 
-            var sw = Stopwatch.StartNew();
+            sw.Restart();
             IJobExtensions.RunByRef(ref job);
             sw.Stop();
             solveMs = (float)sw.Elapsed.TotalMilliseconds;

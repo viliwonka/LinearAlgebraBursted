@@ -1,8 +1,7 @@
 # Query
 
 `Query` (bare, de-genericized class). Search and selection over the rows/columns of a matrix, or
-flat over a vector. Full design rationale: [spec-query.md](../dev/spec-query.md) and
-[spec-predicate-queries.md](../dev/spec-predicate-queries.md).
+flat over a vector.
 
 - **Enums** — `Metric{Manhattan, Euclidean, SqEuclidean, Chebyshev, Cosine, Dot}` (Cosine/Dot are
   similarities — higher is nearer; the rest are distances — lower is nearer); `Norm{L1, L2, Linf}`.

@@ -132,6 +132,10 @@ namespace LinearAlgebra.Benchmarks
     //     Roberts vs Frisch-Newton crossover the literature (Portnoy & Koenker 1997) predicts around
     //     m in [1e3,1e4].
     //
+    //   Section 3 (sparse LAD): the same L1 fit over a tall block-sparse (BSR) design, solved by the
+    //     matrix-free interior point (never forms the m x m normal matrix), vs the dense LP.lad
+    //     baseline where it still fits. Same core drives sparse LP.solve, so it is representative.
+    //
     //   Section 4 (dense covering LP): min cᵀx s.t. A x >= b, x >= 0 with A,b,c >= 0 by construction --
     //     deliberately DUAL-FAVORABLE: every nonneg cost column is already dual-feasible at the
     //     all-logical start (y=0 -> d_j=c_j>=0), so dual simplex needs no phase 1 at all, while every row
@@ -146,6 +150,11 @@ namespace LinearAlgebra.Benchmarks
     //     Infeasible; interior point has no exact infeasibility certificate (that needs a homogeneous
     //     self-dual embedding -- see LP.InteriorPoint.fProxy.cs's own doc comment) and is EXPECTED to
     //     exhaust MaxIterations instead -- the table reports that honestly rather than masking it.
+    //
+    //   Section 6 (warm re-solve chain): 1 cold seed + K=16 rhs-perturbed re-solves on the same
+    //     instance (docs/spec-lpbasis-persistence.md) -- cold every time vs ref LPBasis vs ref
+    //     LPBasis + LP cache (factor/weight persistence); identical perturbation sequence per mode,
+    //     so warmIters and objective are directly comparable.
     //
     // Every solve runs inside a [BurstCompile] IJob; timing is IJob.Run() (native code, not Mono).
     // Hand-written harness half. The timed IJobs and the per-section build+measure methods are code-

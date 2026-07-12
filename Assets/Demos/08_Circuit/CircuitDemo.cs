@@ -41,6 +41,7 @@ namespace LinearAlgebraDemos
         NativeArray<float> voltages;   // previous node voltages (+2 aux)
         NativeArray<float> outStats;   // [0] iters, [1] converged, [2] rnorm, [3] source current
         float frameMs;
+        readonly Stopwatch sw = new Stopwatch();
 
         void OnEnable()
         {
@@ -114,7 +115,7 @@ namespace LinearAlgebraDemos
                 VSource = vSrc,
             };
 
-            var sw = Stopwatch.StartNew();
+            sw.Restart();
             job.Run();
             sw.Stop();
             frameMs = (float)sw.Elapsed.TotalMilliseconds;

@@ -35,6 +35,7 @@ namespace LinearAlgebraDemos
         NativeArray<float> state;      // [p, v, theta, omega]
         NativeArray<float> outStats;   // [0] u, [1] lqr iters, [2] converged, [3] residual
         float frameMs;
+        readonly Stopwatch sw = new Stopwatch();
 
         void OnEnable()
         {
@@ -65,7 +66,7 @@ namespace LinearAlgebraDemos
                 Dt = SimDt, Steps = Substeps,
             };
 
-            var sw = Stopwatch.StartNew();
+            sw.Restart();
             IJobExtensions.RunByRef(ref job);
             sw.Stop();
             frameMs = (float)sw.Elapsed.TotalMilliseconds;
@@ -89,10 +90,11 @@ namespace LinearAlgebraDemos
             Gizmos.DrawLine(cart, tip);
             Gizmos.DrawSphere(tip, 0.09f);
 
-            // control force arrow
+            // control force arrow, normalized so it stays full-scale at saturation regardless
+            // of the maxForce slider
             Gizmos.color = Color.red;
             float u = outStats[0];
-            Gizmos.DrawLine(cart, cart + new Vector3(u / 30f, 0f, 0f));
+            Gizmos.DrawLine(cart, cart + new Vector3(u / maxForce, 0f, 0f));
         }
 
         void OnGUI()

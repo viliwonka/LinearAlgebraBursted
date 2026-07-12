@@ -37,6 +37,7 @@ namespace LinearAlgebraDemos
         NativeArray<float> outStats;   // [0] f1, [1] f2, [2] iters, [3] converged
         NativeArray<float> wind;       // [0] horizontal force
         float frameMs;
+        readonly Stopwatch sw = new Stopwatch();
 
         void OnEnable()
         {
@@ -74,7 +75,7 @@ namespace LinearAlgebraDemos
                 Dt = SimDt, Steps = Substeps,
             };
 
-            var sw = Stopwatch.StartNew();
+            sw.Restart();
             IJobExtensions.RunByRef(ref job);
             sw.Stop();
             frameMs = (float)sw.Elapsed.TotalMilliseconds;

@@ -189,7 +189,7 @@ namespace LinearAlgebra.CodeGen {
             }
 
             if (infinityGuard == 0)
-                Debug.LogError($"Infinity guard triggered, copyReplace syntax is bad: {filePathDebug}");
+                Debug.LogError($"Infinity guard triggered, copyReplaceFill syntax is bad: {filePathDebug}");
 
             return targetSource;
         }
@@ -248,7 +248,7 @@ namespace LinearAlgebra.CodeGen {
             }
 
             if (infinityGuard == 0)
-                Debug.LogError($"Infinity guard triggered, copyReplace syntax is bad: {filePathDebug}");
+                Debug.LogError($"Infinity guard triggered, copyReplaceAll syntax is bad: {filePathDebug}");
 
             return targetSource;
         }

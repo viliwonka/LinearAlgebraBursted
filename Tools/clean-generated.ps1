@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
-  Deletes ALL codegen output (Source, SourceTests/Generated) so the next
-  regen.ps1 run rebuilds it from scratch.
+  Deletes ALL codegen output (Source, SourceTests/Generated, Benchmarks/Generated)
+  so the next regen.ps1 run rebuilds it from scratch.
 
 .DESCRIPTION
   Codegen (TemplateConverter) overwrites generated files at predictable paths but
@@ -15,7 +15,7 @@
   patching them (as opposed to a full clean) is error-prone — a file can look stale
   by one heuristic while still being the CURRENT definition of a class other code
   depends on. A full clean removes that ambiguity entirely: delete everything under
-  the two Generated/ trees, then regen.ps1 rebuilds all of it fresh from templates.
+  the three Generated/ trees, then regen.ps1 rebuilds all of it fresh from templates.
 
   Run this whenever a rename/move/delete touches CodeGen/TemplateSource or
   CodeGen/TemplateSourceTests, before the next regen.ps1 (or just use regen-and-test.ps1
@@ -36,7 +36,8 @@ $sourceKeep = @("package.json", "package.json.meta",
                 "BurstLinearAlgebra.asmdef", "BurstLinearAlgebra.asmdef.meta")
 $targets = @(
   @{ Dir = $sourceRoot;                                                Keep = $sourceKeep },
-  @{ Dir = (Join-Path $root "Assets\LinearAlgebra\SourceTests\Generated"); Keep = @() }
+  @{ Dir = (Join-Path $root "Assets\LinearAlgebra\SourceTests\Generated"); Keep = @() },
+  @{ Dir = (Join-Path $root "Assets\LinearAlgebra\Benchmarks\Generated"); Keep = @() }
 )
 
 $total = 0

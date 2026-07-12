@@ -85,7 +85,7 @@ Benchmarked on a Ryzen 9 9950X3D (pinned to a non-V-Cache core), single-threaded
 | `QR.solveInPlace` QR least squares | 2048×512, float | 31.2 ms |
 | `QRCP.solveInPlace` pivoted QR, least squares | 2048×512, float | 36.2 ms |
 | `LQ.minNormSolve` LQ, underdetermined system | 512×1024, float | 12.3 ms |
-| `Krylov.cg` CG, iterative SPD solver, dense | 1024×1024, double; dense BSR (4×4 blocks, 7% fill), 40 iterations | 15.05 ms |
+| `Krylov.cg` CG, iterative SPD solver, dense | 1024×1024, double; dense storage of the same 7%-fill SPD matrix, 40 iterations | 15.05 ms |
 | `Krylov.cg` CG, iterative SPD solver, sparse | 1024×1024, double; sparse BSR (4×4 blocks, 7% fill), 40 iterations | 0.37 ms |
 | `Eigen.symmetricInPlace` Symmetric eigen decomp  | 1024×1024, float, values + vectors | 420.3 ms |
 | `Eigen.valuesSymmetricInPlace` Symmetric eigen, values only | 1024×1024, float | 161.9 ms |

@@ -36,6 +36,7 @@ namespace LinearAlgebraDemos
         NativeArray<float> state;      // [x, th1, th2, vx, w1, w2]
         NativeArray<float> outStats;   // [0] u, [1] iters, [2] converged, [3] choOk
         float frameMs;
+        readonly Stopwatch sw = new Stopwatch();
 
         void OnEnable()
         {
@@ -62,7 +63,7 @@ namespace LinearAlgebraDemos
                 MaxForce = maxForce, Dt = SimDt, Steps = Substeps,
             };
 
-            var sw = Stopwatch.StartNew();
+            sw.Restart();
             IJobExtensions.RunByRef(ref job);
             sw.Stop();
             frameMs = (float)sw.Elapsed.TotalMilliseconds;
@@ -183,30 +184,23 @@ namespace LinearAlgebraDemos
                 for (int i = 0; i < 6; i++) u -= K[0, i] * State[i];
                 u = math.clamp(u, -MaxForce, MaxForce);
 
-                var z = new NativeArray<float>(6, Allocator.Temp);
-                var k1 = new NativeArray<float>(6, Allocator.Temp);
-                var k2 = new NativeArray<float>(6, Allocator.Temp);
-                var k3 = new NativeArray<float>(6, Allocator.Temp);
-                var k4 = new NativeArray<float>(6, Allocator.Temp);
-                for (int i = 0; i < 6; i++) z[i] = State[i];
+                // 6-state as a stack float3x2 (c0 = [x,th1,th2], c1 = [vx,w1,w2]) so the RK4
+                // substep itself allocates nothing; only Deriv's 3x3 CHO solve needs Temp buffers.
+                float3x2 z = new float3x2(new float3(State[0], State[1], State[2]),
+                                           new float3(State[3], State[4], State[5]));
+                float3x2 k1 = Deriv(z, u);
+                float3x2 k2 = Deriv(Blend(z, k1, 0.5f * Dt), u);
+                float3x2 k3 = Deriv(Blend(z, k2, 0.5f * Dt), u);
+                float3x2 k4 = Deriv(Blend(z, k3, Dt), u);
+                z += Dt / 6f * (k1 + 2f * k2 + 2f * k3 + k4);
 
-                Deriv(z, u, k1);
-                Deriv(Blend(z, k1, 0.5f * Dt), u, k2);
-                Deriv(Blend(z, k2, 0.5f * Dt), u, k3);
-                Deriv(Blend(z, k3, Dt), u, k4);
-
-                for (int i = 0; i < 6; i++)
-                    State[i] += Dt / 6f * (k1[i] + 2f * k2[i] + 2f * k3[i] + k4[i]);
+                State[0] = z.c0.x; State[1] = z.c0.y; State[2] = z.c0.z;
+                State[3] = z.c1.x; State[4] = z.c1.y; State[5] = z.c1.z;
             }
             Out[0] = u;
         }
 
-        static NativeArray<float> Blend(NativeArray<float> z, NativeArray<float> k, float h)
-        {
-            var o = new NativeArray<float>(6, Allocator.Temp);
-            for (int i = 0; i < 6; i++) o[i] = z[i] + h * k[i];
-            return o;
-        }
+        static float3x2 Blend(float3x2 z, float3x2 k, float h) => z + h * k;
 
         void FillMass(ref floatMxN M, float c1, float c2, float c12)
         {
@@ -218,9 +212,9 @@ namespace LinearAlgebraDemos
             M[2, 2] = M2 * L2 * L2;
         }
 
-        void Deriv(NativeArray<float> z, float u, NativeArray<float> dz)
+        float3x2 Deriv(float3x2 z, float u)
         {
-            float t1 = z[1], t2 = z[2], w1 = z[4], w2 = z[5];
+            float t1 = z.c0.y, t2 = z.c0.z, w1 = z.c1.y, w2 = z.c1.z;
             float s1 = math.sin(t1);
             float s2 = math.sin(t2);
             float c1 = math.cos(t1), c2 = math.cos(t2);
@@ -236,8 +230,8 @@ namespace LinearAlgebraDemos
 
             CHO.solveInPlace(ref M, ref rhs);   // rhs -> qdd
 
-            dz[0] = z[3]; dz[1] = w1; dz[2] = w2;
-            dz[3] = rhs[0]; dz[4] = rhs[1]; dz[5] = rhs[2];
+            // derivative of the position group [x,th1,th2] is the velocity group [vx,w1,w2].
+            return new float3x2(z.c1, new float3(rhs[0], rhs[1], rhs[2]));
         }
     }
 }

@@ -60,6 +60,8 @@ namespace LinearAlgebraDemos
         bool[] builtBraces;
         NativeArray<float> outStats;   // [0] iterations, [1] converged
         float frameMs;
+        readonly Stopwatch sw = new Stopwatch();
+        GUIStyle stabilityLabelStyle;   // lazily built once; only its textColor is mutated per frame
 
         void OnEnable()
         {
@@ -139,7 +141,7 @@ namespace LinearAlgebraDemos
                 K = K,
             };
 
-            var sw = Stopwatch.StartNew();
+            sw.Restart();
             IJobExtensions.RunByRef(ref job);
             sw.Stop();
             frameMs = (float)sw.Elapsed.TotalMilliseconds;
@@ -180,11 +182,11 @@ namespace LinearAlgebraDemos
             {
                 GUILayout.Label($"lambda = [{lambda[0]:F3}, {lambda[1]:F3}, {lambda[2]:F3}, {lambda[3]:F3}]");
                 bool unstable = lambda[0] < 0.05f * stiffnessEA;
-                var style = new GUIStyle(GUI.skin.label);
-                style.normal.textColor = unstable ? Color.red : Color.green;
+                if (stabilityLabelStyle == null) stabilityLabelStyle = new GUIStyle(GUI.skin.label);
+                stabilityLabelStyle.normal.textColor = unstable ? Color.red : Color.green;
                 GUILayout.Label(unstable
                     ? "lambda1 ≈ 0 — near-mechanism, structure is UNSTABLE"
-                    : "structure is stiff (no soft modes)", style);
+                    : "structure is stiff (no soft modes)", stabilityLabelStyle);
             }
 
             GUILayout.Label("Diagonal braces:");

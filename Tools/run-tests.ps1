@@ -86,6 +86,11 @@ $run = $xml."test-run"
 Write-Host ("Result={0} total={1} passed={2} failed={3} skipped={4} duration={5}s" -f `
   $run.result, $run.total, $run.passed, $run.failed, $run.skipped, $run.duration)
 
+if ([int]$run.total -eq 0) {
+  Write-Host "`nFAIL: 0 tests matched (result=$($run.result)). Check -Filter for a typo."
+  exit 1
+}
+
 if ($run.result -eq "Passed") { exit 0 }
 
 # Print the failing test names and messages to make CI/agent output actionable.

@@ -8,9 +8,9 @@ using UnityCodeGen;
 namespace CodegenBootstrap
 {
     // Headless equivalent of Unity's "-executeMethod UnityCodeGen.UnityCodeGenUtility.Generate":
-    // runs the project's two [Generator] wrappers (TemplateSourceGenerator,
-    // TemplateSourceTestsGenerator) without needing Unity (and therefore without needing the
-    // project to already compile). Each wrapper is just
+    // runs the project's three [Generator] wrappers (TemplateSourceGenerator,
+    // TemplateSourceTestsGenerator, TemplateSourceBenchmarksGenerator) without needing Unity
+    // (and therefore without needing the project to already compile). Each wrapper is just
     //   context.OverrideFolderPath(<outputBase>); new TemplateConverter().Execute(context, <sourceFolder>);
     // so that's reproduced directly here (folders taken straight from GenUtils, the same constants
     // the wrappers use), and the codeList it produces is written to disk by WriteScriptsFromContext,
