@@ -52,6 +52,13 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
 - 2026-07-11 | UpdateActiveBlock deliberately does not mirror-combine AX/AP (or BX/BP) the way an earlier version did: the caller always immediately recomputes them via a fresh Apply right after the call returns, so the mirror-combine's result was always discarded — pure wasted work (extra O(3k^2 n) multiply-adds per iteration). Don't reintroduce it. (was LOBPCG.fProxy.cs:1163-1169 pre-edit)
 
 ## LP.BarrodaleRoberts
+- 2026-07-12 | LICENSE: this file (and LP.FrischNewton) is a port of GPL(>=2) quantreg code
+  (rqbr.f); owner is requesting relicensing permission from Koenker et al. (see the pending-
+  permission section in Source/Third Party Notices.md — package must not be redistributed until
+  resolved). A complete, suite-green CLEAN-ROOM replacement pair (papers/pyfixest-MIT provenance)
+  exists at commit bdfd9ec (reverted by 101f8c9): correct at every test/benchmark size, but first-cut
+  1.1-3x slower (BR float m>=4096: anti-cycling misfire, 115 iters) — restore + run the planned
+  optimization round (Sherman-Morrison basis updates, pointer/fused loops) if permission is denied.
 - 2026-07-12 | Ratio-test candidate collection pass (column-strided T[i,enter] read) left as-is
   deliberately: it costs O(m) per entering-column choice, so O(m*iters) total, asymptotically
   dominated by the O(m*n^2) BRPivot elimination sweep for any n > 1. A from-scratch column-major

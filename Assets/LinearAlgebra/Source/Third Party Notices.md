@@ -3,6 +3,22 @@
 This package contains algorithm implementations ported from or derived from the
 following third-party projects.
 
+## quantreg (R package) — relicensing permission pending
+
+The exact LAD / quantile-regression solvers `LP.ladBR` (Barrodale-Roberts
+specialized simplex) and `LP.ladFN` (Frisch-Newton interior point) are ports of
+code by Roger Koenker and co-authors: `rqbr.f` (Koenker & d'Orey) and
+`rq_fnm`/`lp_fnm` (Morillo, Koenker; MATLAB translation by Paul Eilers), as
+distributed with the R quantreg package.
+
+- Project: https://cran.r-project.org/package=quantreg
+- Upstream license: GPL (>= 2)
+- Status: permission to distribute these two derived implementations under this
+  package's MIT license has been requested from the authors. Until that is
+  resolved, this package must not be redistributed. (Precedent: the authors
+  granted the same permission to QuantileRegressions.jl in 2015 and to
+  quantreg-cpp.)
+
 ## HiGHS
 
 The LP solvers (revised primal simplex, dual simplex), the QP active-set solver,
