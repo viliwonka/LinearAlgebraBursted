@@ -294,12 +294,5 @@ namespace LinearAlgebra
         // is NOT here -- the crossover is per-dtype, so it lives as an inline /*+choose[..|..]*/
         // literal on the dispatch expression in LP.fProxy.cs, where each generated build gets its own
         // value. A type-agnostic const here cannot express that.
-
-        // LP.ladBR's (LP.BarrodaleRoberts.fProxy.cs) ratio-test candidate-consumption gate: above this
-        // many candidates in a single entering-column's ratio test, sort them once (O(nCand log nCand))
-        // instead of the original repeated-linear-scan-for-minimum (O(nCand^2)) -- see that file's own
-        // comment at the call site for the full rationale. Type-agnostic (plain int), same CS0102
-        // reasoning as REFACTOR_INTERVAL above.
-        internal const int BR_CAND_SORT_THRESHOLD = 256;
     }
 }

@@ -1,401 +1,355 @@
 using System;
-using System.Runtime.CompilerServices;
 
-using Unity.Burst;
 using Unity.Collections;
 using Unity.Mathematics;
-
-using LinearAlgebra.Internal;
 
 namespace LinearAlgebra
 {
     public static partial class LP
     {
         // ============================================================================================
-        // Frisch-Newton exact LAD / quantile-regression solver (Portnoy & Koenker 1997, "The Gaussian
-        // Hare and the Laplacian Tortoise"). Port of Daniel Morillo & Roger Koenker's `rq_fnm` /
-        // `lp_fnm`. A structure-exploiting primal-dual interior point on the LAD DUAL, working
-        // directly on the original m x n design A -- no LP reformulation, no m x m matrix: every
-        // Newton step is an n x n weighted normal solve built by ONE pass over A.
+        // Frisch-Newton primal-dual interior point for least absolute deviation / quantile regression
+        // (the LP.ladFN / LP.ladFrischNewtonCore backend).
         //
-        // SIGN CONVENTION (get this wrong and every other formula is moot): lp_fnm's OUTPUT variable
-        // is literally named "y" -- the equality multipliers of Ãv=b̃ -- and the caller negates it:
-        // `b_coef = -lp_fnm(...)'`. So the regression coefficients returned by this core are `x = -y`,
-        // y being this file's own "y" (n-vector). Get this sign backwards and the fit comes out
-        // reflected through zero.
+        // Solves, for a design matrix A (m observations x n coefficients) and observations b:
+        //     minimize_x  sum_i  rho_tau(b_i - (A x)_i),   rho_tau(u) = u * (tau - 1{u<0})
+        // tau = 1/2 is ordinary least-absolute-deviation; tau in (0,1) is quantile regression. This is
+        // solved via its LP dual (Koenker & Ng 2005; Portnoy & Koenker 1997):
+        //     maximize_a  b . a   s.t.  A^T a = (1-tau) A^T e,   a in [0,1]^m
+        // with a Mehrotra predictor-corrector primal-dual interior point: bound a with slack s = 1-a,
+        // multipliers z (for a >= 0) and w (for s >= 0), dual variable y (the LP's OWN n-vector dual,
+        // related to the regression coefficients by x = -y). Each Newton step eliminates the bound
+        // multipliers analytically down to one n x n weighted normal system
+        //     (A^T diag(Qinv) A) dy = rhs,   Qinv_i = 1 / (z_i/a_i + w_i/s_i)
+        // factored with this library's pivoted Cholesky (CHOP) -- rank-revealing, so collinear
+        // regressors degrade to a minimum-norm step instead of a hard failure. The SAME factorization
+        // is reused for both the affine-scaling predictor solve and the centering-corrector solve each
+        // iteration (one CHOP.decomp, two CHOP.decompSolve calls). Columns are equilibrated to unit
+        // max-norm before the IPM and unscaled on exit (exact reparameterization) so the normal
+        // system's condition does not carry the design's column-scale disparity.
         //
-        // Factorization: CHOP (pivoted/rank-revealing Cholesky), NOT plain CHO -- the IPM weights q_i
-        // polarize toward 0/infinity as (a,s) approach the [0,1] boundary near convergence, so AᵀQA
-        // becomes numerically near-semidefinite exactly in the endgame, in float. Plain CHO hard-fails
-        // the instant a pivot goes non-positive; CHOP instead reports a (possibly reduced) numerical
-        // rank and CHOP.decompSolve's rank-deficient branch still returns a well-defined minimum-norm
-        // direction. One CHOP.decomp per iteration, reused for both the affine-predictor and the
-        // centering-corrector solve via CHOP.decompSolve. The one-time least-squares INIT stays on
-        // plain CHO: it runs once, outside the loop, on the UNWEIGHTED normal matrix AᵀA, which has
-        // none of the endgame's polarization problem.
+        // Interior point only: reports Optimal (duality gap below tolerance) or MaxIterations (budget
+        // exhausted); never Infeasible/Unbounded (the dual is always bounded and feasible for finite
+        // data). A best-iterate safeguard tracks the lowest duality gap seen and extracts x from THAT
+        // iterate, never the raw last one, so a late numerical wobble cannot poison the answer.
+        // objective is always the honestly recomputed L1 residual ||A x - b||_1 at the returned x
+        // (never the interior point's own internal duality gap).
         //
-        // Best-iterate safeguard: mirrors LP.InteriorPoint -- yBest tracks the multiplier vector at
-        // the smallest duality gap seen (a NaN/Inf blow-up or an unrecoverable Indefinite
-        // factorization stops the loop but never corrupts the returned x).
-        //
-        // Job-safe: all scratch is Allocator.Temp, disposed on every return path.
+        // Port of pyfixest's Frisch-Newton interior-point solver (frisch_newton_ip.py, MIT,
+        // py-econometrics) -- see "Third Party Notices.md" for the license text -- adapted to this
+        // library's dense row-major fProxyMxN/fProxyN types and CHOP-based normal-equation solve; see
+        // the folder DEVLOG for the deviations from pyfixest's own structure. Job-safe: all scratch is
+        // Allocator.Temp, disposed on every return path.
         // ============================================================================================
 
         /// <summary>
-        /// Exact least-absolute-deviation (L1) regression via the Frisch-Newton primal-dual interior
-        /// point method (Portnoy &amp; Koenker 1997) -- tau = 0.5 of the tau-parameterized quantile-
-        /// regression core (<see cref="ladFrischNewtonCore"/>). Solves the LAD DUAL directly over the
-        /// original m x n design: every Newton step is an n x n weighted normal solve (pivoted
-        /// Cholesky, library CHOP) built by one pass over A -- never a (2n+2m)-variable LP
-        /// reformulation like <see cref="lad"/>'s simplex/interior/revised/dual backends, and never an
-        /// m x m matrix.
-        ///
-        /// <see cref="objective"/> is the L1 residual ‖A x − b‖₁, recomputed from the returned x
-        /// (honest, not the internal duality gap -- an internal gap can under-report the true residual
-        /// on a not-quite-converged iterate, exactly like <see cref="lad"/>'s own objective convention).
-        /// FN on this bounded dual is never Infeasible/Unbounded for finite data: only
-        /// <see cref="LPStatus.Optimal"/> (duality gap reached tolerance) or
-        /// <see cref="LPStatus.MaxIterations"/> (best iterate on the iteration cap) are returned.
-        ///
-        /// <see cref="lad"/>'s own default routing is UNCHANGED by this method -- call ladFN directly
-        /// for the exact Frisch-Newton route.
+        /// Least absolute deviation via Frisch-Newton interior point: minimize ||A x - b||_1 over a
+        /// FREE x in R^n. Forwards to <see cref="ladFrischNewtonCore"/> at tau = 0.5 (the median /
+        /// ordinary LAD case). See <see cref="lad(in fProxyMxN, in fProxyN, ref fProxyN, out double, int)"/>
+        /// for the size-routed hybrid that picks between this and <see cref="ladBR"/> automatically.
         /// </summary>
-        /// <param name="A">Design matrix, m×n (m observations, n coefficients). m ≥ n typical.</param>
+        /// <param name="A">Design matrix, m x n (m observations, n coefficients). m >= n typical.</param>
         /// <param name="b">Observations, length m.</param>
         /// <param name="x">Output coefficients, length n (overwritten). May be negative.</param>
-        /// <param name="objective">Output L1 residual ‖A x − b‖₁.</param>
-        /// <param name="maxIter">Iteration budget; ≤0 picks the default (50, matching the reference
-        /// implementation's own max_it).</param>
-        public static LPInfo ladFN(in fProxyMxN A, in fProxyN b, ref fProxyN x, out double objective, int maxIter = 0)
+        /// <param name="objective">Output L1 residual ||A x - b||_1 at the returned x.</param>
+        /// <param name="maxIter">Iteration budget; &lt;=0 picks the default (50).</param>
+        public static LPInfo ladFN(in fProxyMxN A, in fProxyN b, ref fProxyN x, out double objective,
+                                   int maxIter = 0)
         {
-            int m = A.M_Rows, n = A.N_Cols;
-
-            if (b.N != m) throw new ArgumentException("LP.ladFN: b.N must equal A.M_Rows");
-            if (x.N != n) throw new ArgumentException("LP.ladFN: x.N must equal A.N_Cols");
+            if (b.N != A.M_Rows) throw new ArgumentException("LP.ladFN: b.N must equal A.M_Rows");
+            if (x.N != A.N_Cols) throw new ArgumentException("LP.ladFN: x.N must equal A.N_Cols");
 
             return ladFrischNewtonCore(in A, in b, 0.5, ref x, out objective, maxIter);
         }
 
         /// <summary>
-        /// Quantile regression via the same Frisch–Newton interior point: fits the conditional
-        /// τ-quantile of b given A by minimizing the check loss Σᵢ ρ_τ(bᵢ − Aᵢ·x) over a FREE x,
-        /// where ρ_τ(u) = u·(τ − 1[u&lt;0]). τ = 0.5 is median regression (identical fit to the
-        /// τ-less <see cref="ladFN(in fProxyMxN, in fProxyN, ref fProxyN, out double, int)"/>);
-        /// τ = 0.9 fits the 90th conditional percentile, and so on. Exact and reformulation-free —
-        /// each iteration is one n×n weighted normal solve streamed from the original A.
+        /// Quantile regression via Frisch-Newton interior point: fits the tau-th conditional quantile
+        /// of b given A (tau = 0.5 is ordinary LAD -- see the overload above). At the optimum roughly a
+        /// tau fraction of residuals b - A x sit below the fit. See the file header for the algorithm.
         /// </summary>
-        /// <param name="A">Design matrix, m×n (m observations, n coefficients). m ≥ n typical.</param>
+        /// <param name="A">Design matrix, m x n (m observations, n coefficients). m >= n typical.</param>
         /// <param name="b">Observations, length m.</param>
-        /// <param name="tau">Quantile level, strictly inside (0, 1). 0.5 = LAD/median.</param>
+        /// <param name="tau">Quantile, strictly between 0 and 1.</param>
         /// <param name="x">Output coefficients, length n (overwritten). May be negative.</param>
-        /// <param name="objective">Output ‖A x − b‖₁ at the returned fit (the plain L1 residual,
-        /// reported for cross-method comparability; the τ-quantile fit does not minimize this
-        /// unweighted sum unless τ = 0.5).</param>
-        /// <param name="maxIter">Iteration budget; ≤0 picks the default (50).</param>
+        /// <param name="objective">Output L1 residual ||A x - b||_1 at the returned x (NOT the
+        /// tau-weighted check-loss).</param>
+        /// <param name="maxIter">Iteration budget; &lt;=0 picks the default (50).</param>
         public static LPInfo ladFN(in fProxyMxN A, in fProxyN b, double tau, ref fProxyN x,
                                    out double objective, int maxIter = 0)
         {
-            int m = A.M_Rows, n = A.N_Cols;
-
-            if (b.N != m) throw new ArgumentException("LP.ladFN: b.N must equal A.M_Rows");
-            if (x.N != n) throw new ArgumentException("LP.ladFN: x.N must equal A.N_Cols");
-            if (!(tau > 0.0 && tau < 1.0)) throw new ArgumentException("LP.ladFN: tau must be strictly inside (0, 1)");
+            if (b.N != A.M_Rows) throw new ArgumentException("LP.ladFN: b.N must equal A.M_Rows");
+            if (x.N != A.N_Cols) throw new ArgumentException("LP.ladFN: x.N must equal A.N_Cols");
+            if (!(tau > 0.0 && tau < 1.0)) throw new ArgumentException("LP.ladFN: tau must be strictly between 0 and 1");
 
             return ladFrischNewtonCore(in A, in b, tau, ref x, out objective, maxIter);
         }
 
-        // tau-parameterized core. internal (not private): the InternalsVisibleTo("BurstLinearAlgebra.Tests")
-        // grant (see AssemblyInfo.cs) also lets the hand-written test suite call it directly; the public
-        // tau surface above is the supported entry (tau=0.5 is LAD up to a factor 2 in the raw LP
-        // objective -- irrelevant here since `objective` is always the honest recomputed L1 residual).
+        /// <summary>
+        /// Core Mehrotra predictor-corrector interior point on the bounded quantile-regression dual --
+        /// see the file header for the full derivation. Trusts its inputs (dimensions, tau range): the
+        /// public <see cref="ladFN(in fProxyMxN, in fProxyN, ref fProxyN, out double, int)"/> overloads
+        /// validate before forwarding here. Internal (not private): the InternalsVisibleTo test grant
+        /// lets the hand-written suite call it directly; the public overloads are the supported entry.
+        /// </summary>
+        /// <param name="A">Design matrix, m x n.</param>
+        /// <param name="b">Observations, length m.</param>
+        /// <param name="tau">Quantile in (0,1).</param>
+        /// <param name="x">Output coefficients, length n (overwritten).</param>
+        /// <param name="objective">Output L1 residual ||A x - b||_1 at the returned x.</param>
+        /// <param name="maxIter">Iteration budget; &lt;=0 picks the default (50).</param>
         internal static LPInfo ladFrischNewtonCore(in fProxyMxN A, in fProxyN b, double tau,
                                                    ref fProxyN x, out double objective, int maxIter)
         {
             int m = A.M_Rows, n = A.N_Cols;
 
-            // Strict-interior guard: a=(1-tau) and s=tau are the fixed starting values below, and
-            // q = 1/(z/a + w/s) divides by both -- keep tau (hence a, s) safely away from the [0,1]
-            // boundary regardless of what the caller passes.
-            fProxy tauC = (fProxy)math.clamp(tau, 1e-6, 1.0 - 1e-6);
-            fProxy oneMinusTau = (fProxy)1 - tauC;
+            // ---- column equilibration: As = A * diag(1/colScale), colScale_j = max_i |A[i,j]| ----
+            // Exact reparameterization (x = xScaled/colScale elementwise; residuals identical), but the
+            // weighted normal matrix no longer carries the columns' scale disparity into its condition
+            // number -- required for the float build on intercept-vs-feature designs (e.g. Stackloss:
+            // a 1s column next to ~90-magnitude features puts the raw normal system beyond float32).
+            var As = new fProxyMxN(m, n, Allocator.Temp);
+            var colScale = new fProxyN(n, Allocator.Temp);
+            for (int j = 0; j < n; j++) colScale[j] = (fProxy)0;
+            for (int i = 0; i < m; i++)
+                for (int j = 0; j < n; j++)
+                    colScale[j] = math.max(colScale[j], math.abs(A[i, j]));
+            for (int j = 0; j < n; j++)
+                if (!(colScale[j] > (fProxy)0)) colScale[j] = (fProxy)1;
+            for (int i = 0; i < m; i++)
+                for (int j = 0; j < n; j++)
+                    As[i, j] = A[i, j] / colScale[j];
 
+            // ---- constant RHS of the dual equality constraint: bLp = (1-tau) As^T e ----
+            var onesM = new fProxyN(m, Allocator.Temp);
+            for (int i = 0; i < m; i++) onesM[i] = (fProxy)1;
+            var bLp = new fProxyN(n, Allocator.Temp);
+            ATmul(As, onesM, bLp, m, n);
+            fProxy oneMinusTau = (fProxy)(1.0 - tau);
+            for (int j = 0; j < n; j++) bLp[j] *= oneMinusTau;
+            onesM.Dispose();
+
+            // ---- cold start: a0 = (1-tau) e (interior warm start), s0 = tau e = 1 - a0 ----
             var a = new fProxyN(m, Allocator.Temp);
             var s = new fProxyN(m, Allocator.Temp);
-            var y = new fProxyN(n, Allocator.Temp);          // dual multipliers; x_coef = -y (see file header)
             var z = new fProxyN(m, Allocator.Temp);
             var w = new fProxyN(m, Allocator.Temp);
-            var q = new fProxyN(m, Allocator.Temp);
-            var zw = new fProxyN(m, Allocator.Temp);         // z - w, recomputed each iteration
-            var Av = new fProxyN(m, Allocator.Temp);         // scratch: A * (n-vector), reused per use
-            var tmpN = new fProxyN(n, Allocator.Temp);        // scratch: CHOP.decompSolve in/out (n-length)
-            var rhs = new fProxyN(n, Allocator.Temp);         // affine-predictor RHS, kept for the corrector
-            var rhs2 = new fProxyN(n, Allocator.Temp);
-            var dyAff = new fProxyN(n, Allocator.Temp);
-            var daAff = new fProxyN(m, Allocator.Temp);
+            var y = new fProxyN(n, Allocator.Temp);
+
+            fProxy tauF = (fProxy)tau;
+            for (int i = 0; i < m; i++) { a[i] = oneMinusTau; s[i] = tauF; }
+
+            var dPlus = new fProxyN(m, Allocator.Temp);
+            var dMinus = new fProxyN(m, Allocator.Temp);
+            for (int i = 0; i < m; i++)
+            {
+                fProxy c = -b[i];
+                dPlus[i] = math.max(c, (fProxy)0);
+                dMinus[i] = math.max(-c, (fProxy)0);
+            }
+            double U = 0;
+            for (int i = 0; i < m; i++) U += (double)a[i] * (double)dPlus[i] + (double)s[i] * (double)dMinus[i];
+            double mu0 = math.max(1.0, U / m);
+            double sumInv = 0;
+            for (int i = 0; i < m; i++) sumInv += 1.0 / (double)a[i] + 1.0 / (double)s[i];
+            double alpha0 = (m * mu0 - U) / sumInv;
+            fProxy epsFloor = (fProxy)1e-8;
+            fProxy alpha0F = (fProxy)alpha0;
+            for (int i = 0; i < m; i++)
+            {
+                z[i] = math.max(dPlus[i], epsFloor) + alpha0F / a[i];
+                w[i] = math.max(dMinus[i], epsFloor) + alpha0F / s[i];
+            }
+            dPlus.Dispose(); dMinus.Dispose();
+
+            // ---- scratch (all Allocator.Temp, disposed on every path -- single loop, single exit) ----
+            var r1 = new fProxyN(m, Allocator.Temp);
+            var r2 = new fProxyN(n, Allocator.Temp);
+            var qinv = new fProxyN(m, Allocator.Temp);
+            var qr = new fProxyN(m, Allocator.Temp);
+            var Av = new fProxyN(m, Allocator.Temp);
+            var ATa = new fProxyN(n, Allocator.Temp);
+
+            var dxAff = new fProxyN(m, Allocator.Temp);
             var dsAff = new fProxyN(m, Allocator.Temp);
             var dzAff = new fProxyN(m, Allocator.Temp);
             var dwAff = new fProxyN(m, Allocator.Temp);
-            var dy = new fProxyN(n, Allocator.Temp);
-            var da = new fProxyN(m, Allocator.Temp);
-            var ds = new fProxyN(m, Allocator.Temp);
-            var dz = new fProxyN(m, Allocator.Temp);
-            var dw = new fProxyN(m, Allocator.Temp);
-            var dadz = new fProxyN(m, Allocator.Temp);
-            var dsdw = new fProxyN(m, Allocator.Temp);
-            var xi = new fProxyN(m, Allocator.Temp);
-            var qCorr = new fProxyN(m, Allocator.Temp);       // q .* (dadz - dsdw - xi), corrector RHS term
+            var dyAff = new fProxyN(n, Allocator.Temp);
+
+            var aPred = new fProxyN(m, Allocator.Temp);
+            var sPred = new fProxyN(m, Allocator.Temp);
+            var zPred = new fProxyN(m, Allocator.Temp);
+            var wPred = new fProxyN(m, Allocator.Temp);
+            var yPred = new fProxyN(n, Allocator.Temp);
+
+            var r1Hat = new fProxyN(m, Allocator.Temp);
+            var dxCor = new fProxyN(m, Allocator.Temp);
+            var dsCor = new fProxyN(m, Allocator.Temp);
+            var dzCor = new fProxyN(m, Allocator.Temp);
+            var dwCor = new fProxyN(m, Allocator.Temp);
+            var dyCor = new fProxyN(n, Allocator.Temp);
+
             var M = new fProxyMxN(n, n, Allocator.Temp);
             var L = new fProxyMxN(n, n, Allocator.Temp);
-            var yBest = new fProxyN(n, Allocator.Temp);
-            var bLP = new fProxyN(n, Allocator.Temp);         // Aᵀ((1-tau)·1), the dual LP's constraint RHS
-            var Linit = new fProxyMxN(n, n, Allocator.Temp);  // plain-CHO factor, LS init only
-
             var P = new Pivot(n, Allocator.Temp);
             var ws = new fProxyCHOPCache { W = new fProxyMxN(n, n, Allocator.Temp), bt = new fProxyN(n, Allocator.Temp) };
 
-            fProxy reg = Consts.fProxyZeroThreshold;
+            var yBest = new fProxyN(n, Allocator.Temp);
+            for (int j = 0; j < n; j++) yBest[j] = y[j];
+
+            // cold-start Newton solve: (A^T A) y = A^T(c - z + w), i.e. the weighted normal system with
+            // Qinv = 1 (unweighted) -- reuses the SAME weighted-normal machinery as every loop iteration.
+            {
+                for (int i = 0; i < m; i++) qinv[i] = (fProxy)1;
+                for (int i = 0; i < m; i++) qr[i] = -b[i] - z[i] + w[i];
+                ATmul(As, qr, y, m, n);
+                BuildWeightedNormal(As, qinv, M, m, n);
+                var coldInfo = CHOP.decomp(in M, ref L, ref P, ref ws);
+                if (coldInfo.Solved)
+                    CHOP.decompSolve(ref L, in P, coldInfo.rank, ref y, ref ws);
+                for (int j = 0; j < n; j++) yBest[j] = y[j];
+            }
+
             fProxy BIG = (fProxy)1e30;
-            fProxy beta = (fProxy)0.9995;
-            fProxy zwFloor = Consts.fProxyZeroThreshold;
+            fProxy backoff = (fProxy)0.9995;
 
-            for (int i = 0; i < m; i++) { a[i] = oneMinusTau; s[i] = tauC; }
-            ATmul(A, a, bLP, m, n);
-
-            double bNorm = 0;
-            for (int i = 0; i < m; i++) bNorm += (double)b[i] * (double)b[i];
-            bNorm = math.sqrt(bNorm);
-
-            // ---- init: y from an ORDINARY LEAST-SQUARES fit (plain CHO on the unweighted normal
-            // equations AᵀA w = Aᵀb; q=1 uniformly here -- no endgame polarization at this one-time,
-            // outside-the-loop solve, so plain CHO is the right (cleanest) tool, per spec), then
-            // y = -w (rq_fnm's sign convention -- see file header). ----
-            for (int i = 0; i < m; i++) q[i] = (fProxy)1;
-            BuildATQA(A, q, M, m, n, reg);
-            bool okInit = CHO.decomp(in M, ref Linit);
-            if (okInit)
-            {
-                ATmul(A, b, tmpN, m, n);
-                CHO.decompSolve(ref Linit, ref tmpN);
-                for (int j = 0; j < n; j++) y[j] = -tmpN[j];
-            }
-            else
-                for (int j = 0; j < n; j++) y[j] = (fProxy)0;
-
-            // r = c - yᵀÃ = -b - Ay  (c = -b; see file header's Ã=Aᵀ, c=-b dual construction)
-            Amul(A, y, Av, m, n);
-            for (int i = 0; i < m; i++)
-            {
-                fProxy r = -b[i] - Av[i];
-                if (math.abs(r) < zwFloor)
-                {
-                    z[i] = math.max(r, (fProxy)0) + zwFloor;
-                    w[i] = math.max(-r, (fProxy)0) + zwFloor;
-                }
-                else
-                {
-                    z[i] = math.max(r, (fProxy)0);
-                    w[i] = math.max(-r, (fProxy)0);
-                }
-            }
-
-            double gap = DualityGap(b, a, y, bLP, w, m, n);
-            double gapTol = (double)Consts.fProxySqrtEps * (1.0 + bNorm);
+            // Convergence gap floor, RELATIVE to the cold start's own duality gap: this demands a fixed
+            // number of orders of magnitude of gap reduction regardless of the problem's own scale,
+            // reached with room to spare inside the iteration budget in both dtypes -- see the folder
+            // DEVLOG for the measurements this was tuned from.
+            double muInit = 0;
+            for (int i = 0; i < m; i++) muInit += (double)a[i] * (double)z[i] + (double)s[i] * (double)w[i];
+            double relTol = /*+choose[1e-6|1e-10]*/1e-6/*-choose*/;
+            double tol = muInit * relTol;
 
             int budget = maxIter > 0 ? maxIter : 50;
-            LPStatus status = gap <= gapTol ? LPStatus.Optimal : LPStatus.MaxIterations;
+            LPStatus status = LPStatus.MaxIterations;
             int iters = 0;
+            double bestMu = double.MaxValue;
 
-            for (int j = 0; j < n; j++) yBest[j] = y[j];
-            double bestGap = gap;
-
-            while (status != LPStatus.Optimal && iters < budget)
+            while (iters < budget)
             {
-                // 1. diagonal weights q_i = 1 / (z_i/a_i + w_i/s_i), and zw_i = z_i - w_i (used
-                // together to build Av = q.*zw a few lines below), computed in one pass over m -- see
-                // BuildFNWeights.
-                unsafe { BuildFNWeights(z.Data.Ptr, a.Data.Ptr, w.Data.Ptr, s.Data.Ptr, q.Data.Ptr, zw.Data.Ptr, m); }
+                // residuals -- recomputed fresh each iteration from the current (a, y)
+                Amul(As, y, Av, m, n);
+                for (int i = 0; i < m; i++) r1[i] = -b[i] - Av[i];
+                ATmul(As, a, ATa, m, n);
+                for (int j = 0; j < n; j++) r2[j] = bLp[j] - ATa[j];
 
-                // 2. the kernel: M = AᵀQA (one row-streaming pass over A), pivoted-Cholesky factor.
-                BuildATQA(A, q, M, m, n, reg);
-                RankInfo rinfo = CHOP.decomp(in M, ref L, ref P, ref ws);
-                fProxy bump = reg;
-                for (int t = 0; rinfo.status == DirectSolveStatus.Indefinite && t < 4; t++)
-                {
-                    bump *= (fProxy)1e3;
-                    for (int r = 0; r < n; r++) M[r, r] += bump;
-                    rinfo = CHOP.decomp(in M, ref L, ref P, ref ws);
-                }
-                if (!rinfo.Solved) break;   // unrecoverable -> stop, keep yBest (status stays MaxIterations)
-                int rank = rinfo.rank;
+                double mu = 0;
+                for (int i = 0; i < m; i++) mu += (double)a[i] * (double)z[i] + (double)s[i] * (double)w[i];
 
-                // 3a. affine-predictor solve: rhs = Aᵀ(q .* zw); dyAff = M⁻¹ rhs
-                for (int i = 0; i < m; i++) Av[i] = q[i] * zw[i];
-                ATmul(A, Av, rhs, m, n);
-                for (int j = 0; j < n; j++) tmpN[j] = rhs[j];
-                CHOP.decompSolve(ref L, in P, rank, ref tmpN, ref ws);
-                for (int j = 0; j < n; j++) dyAff[j] = tmpN[j];
+                if (!(mu < 1e300)) break;                              // NaN/Inf blow-up -> keep yBest
+                if (mu < bestMu) { bestMu = mu; for (int j = 0; j < n; j++) yBest[j] = y[j]; }
+                if (mu < tol) { status = LPStatus.Optimal; break; }
 
-                Amul(A, dyAff, Av, m, n);
+                for (int i = 0; i < m; i++) qinv[i] = (fProxy)1 / (z[i] / a[i] + w[i] / s[i]);
+
+                BuildWeightedNormal(As, qinv, M, m, n);
+                var decompInfo = CHOP.decomp(in M, ref L, ref P, ref ws);
+                if (!decompInfo.Solved) break;                          // Indefinite -> keep yBest
+
+                // ---- affine-scaling predictor ----
+                for (int i = 0; i < m; i++) qr[i] = qinv[i] * r1[i];
+                ATmul(As, qr, dyAff, m, n);
+                for (int j = 0; j < n; j++) dyAff[j] += r2[j];
+                CHOP.decompSolve(ref L, in P, decompInfo.rank, ref dyAff, ref ws);
+
+                Amul(As, dyAff, Av, m, n);
+                for (int i = 0; i < m; i++) dxAff[i] = qinv[i] * (Av[i] - r1[i]);
+                for (int i = 0; i < m; i++) dsAff[i] = -dxAff[i];
+                for (int i = 0; i < m; i++) dzAff[i] = -z[i] - (z[i] / a[i]) * dxAff[i];
+                for (int i = 0; i < m; i++) dwAff[i] = -w[i] - (w[i] / s[i]) * dsAff[i];
+
+                fProxy alphaPAff = math.min((fProxy)1, backoff * math.min(MaxStep(a, dxAff, m, BIG), MaxStep(s, dsAff, m, BIG)));
+                fProxy alphaDAff = math.min((fProxy)1, backoff * math.min(MaxStep(z, dzAff, m, BIG), MaxStep(w, dwAff, m, BIG)));
+
                 for (int i = 0; i < m; i++)
                 {
-                    daAff[i] = q[i] * (Av[i] - zw[i]);
-                    dsAff[i] = -daAff[i];
-                    dzAff[i] = -z[i] * ((fProxy)1 + daAff[i] / a[i]);
-                    dwAff[i] = -w[i] * ((fProxy)1 + dsAff[i] / s[i]);
+                    aPred[i] = a[i] + alphaPAff * dxAff[i];
+                    sPred[i] = s[i] + alphaPAff * dsAff[i];
+                    zPred[i] = z[i] + alphaDAff * dzAff[i];
+                    wPred[i] = w[i] + alphaDAff * dwAff[i];
                 }
+                for (int j = 0; j < n; j++) yPred[j] = y[j] + alphaDAff * dyAff[j];
 
-                fProxy fa = math.min(MaxStep(a, daAff, m, BIG), MaxStep(s, dsAff, m, BIG));
-                fProxy fd = math.min(MaxStep(w, dwAff, m, BIG), MaxStep(z, dzAff, m, BIG));
-                fa = math.min(beta * fa, (fProxy)1);
-                fd = math.min(beta * fd, (fProxy)1);
+                double muAff = 0;
+                for (int i = 0; i < m; i++) muAff += (double)aPred[i] * (double)zPred[i] + (double)sPred[i] * (double)wPred[i];
+                double ratio = muAff / math.max(mu, 1e-30);
+                double sigma = ratio * ratio;
+                fProxy muTarg = (fProxy)(sigma * mu / m);
 
-                if (math.min(fa, fd) < (fProxy)1)
+                // ---- centering corrector ----
+                for (int i = 0; i < m; i++)
+                    r1Hat[i] = muTarg * ((fProxy)1 / s[i] - (fProxy)1 / a[i]) + (dxAff[i] * dzAff[i]) / a[i] - (dsAff[i] * dwAff[i]) / s[i];
+
+                for (int i = 0; i < m; i++) qr[i] = qinv[i] * r1Hat[i];
+                ATmul(As, qr, dyCor, m, n);
+                CHOP.decompSolve(ref L, in P, decompInfo.rank, ref dyCor, ref ws);
+
+                Amul(As, dyCor, Av, m, n);
+                for (int i = 0; i < m; i++) dxCor[i] = qinv[i] * (Av[i] - r1Hat[i]);
+                for (int i = 0; i < m; i++) dsCor[i] = -dxCor[i];
+                for (int i = 0; i < m; i++) dzCor[i] = -(z[i] / a[i]) * dxCor[i] + (muTarg - dxAff[i] * dzAff[i]) / a[i];
+                for (int i = 0; i < m; i++) dwCor[i] = -(w[i] / s[i]) * dsCor[i] + (muTarg - dsAff[i] * dwAff[i]) / s[i];
+
+                fProxy alphaPCor = math.min((fProxy)1, backoff * math.min(MaxStep(aPred, dxCor, m, BIG), MaxStep(sPred, dsCor, m, BIG)));
+                fProxy alphaDCor = math.min((fProxy)1, backoff * math.min(MaxStep(zPred, dzCor, m, BIG), MaxStep(wPred, dwCor, m, BIG)));
+
+                for (int i = 0; i < m; i++)
                 {
-                    // 3b. Mehrotra centering + corrector, REUSING the SAME factor (two solves, one factor).
-                    double muCur = 0;
-                    for (int i = 0; i < m; i++) muCur += (double)z[i] * (double)a[i] + (double)w[i] * (double)s[i];
-                    double g = 0;
-                    for (int i = 0; i < m; i++)
-                    {
-                        g += (double)(z[i] + fd * dzAff[i]) * (double)(a[i] + fa * daAff[i])
-                           + (double)(w[i] + fd * dwAff[i]) * (double)(s[i] + fa * dsAff[i]);
-                    }
-                    double ratio = g / math.max(muCur, 1e-300);
-                    double muTarget = muCur * ratio * ratio * ratio / (2.0 * m);
-
-                    for (int i = 0; i < m; i++)
-                    {
-                        dadz[i] = daAff[i] * dzAff[i];
-                        dsdw[i] = dsAff[i] * dwAff[i];
-                        xi[i] = (fProxy)(muTarget * (1.0 / (double)a[i] - 1.0 / (double)s[i]));
-                        qCorr[i] = q[i] * (dadz[i] - dsdw[i] - xi[i]);
-                    }
-                    ATmul(A, qCorr, tmpN, m, n);
-                    for (int j = 0; j < n; j++) rhs2[j] = rhs[j] + tmpN[j];
-                    for (int j = 0; j < n; j++) tmpN[j] = rhs2[j];
-                    CHOP.decompSolve(ref L, in P, rank, ref tmpN, ref ws);
-                    for (int j = 0; j < n; j++) dy[j] = tmpN[j];
-
-                    Amul(A, dy, Av, m, n);
-                    for (int i = 0; i < m; i++)
-                    {
-                        da[i] = q[i] * (Av[i] + xi[i] - zw[i] - dadz[i] + dsdw[i]);
-                        ds[i] = -da[i];
-                        dz[i] = (fProxy)(muTarget / (double)a[i]) - z[i] - (z[i] / a[i]) * da[i] - dadz[i];
-                        dw[i] = (fProxy)(muTarget / (double)s[i]) - w[i] - (w[i] / s[i]) * ds[i] - dsdw[i];
-                    }
-
-                    fa = math.min(MaxStep(a, da, m, BIG), MaxStep(s, ds, m, BIG));
-                    fd = math.min(MaxStep(w, dw, m, BIG), MaxStep(z, dz, m, BIG));
-                    fa = math.min(beta * fa, (fProxy)1);
-                    fd = math.min(beta * fd, (fProxy)1);
+                    a[i] = aPred[i] + alphaPCor * dxCor[i];
+                    s[i] = sPred[i] + alphaPCor * dsCor[i];
+                    z[i] = zPred[i] + alphaDCor * dzCor[i];
+                    w[i] = wPred[i] + alphaDCor * dwCor[i];
                 }
-                else
-                {
-                    for (int j = 0; j < n; j++) dy[j] = dyAff[j];
-                    for (int i = 0; i < m; i++) { da[i] = daAff[i]; ds[i] = dsAff[i]; dz[i] = dzAff[i]; dw[i] = dwAff[i]; }
-                }
+                for (int j = 0; j < n; j++) y[j] = yPred[j] + alphaDCor * dyCor[j];
 
-                // 4. take the step
-                for (int i = 0; i < m; i++) { a[i] += fa * da[i]; s[i] += fa * ds[i]; }
-                for (int j = 0; j < n; j++) y[j] += fd * dy[j];
-                for (int i = 0; i < m; i++) { w[i] += fd * dw[i]; z[i] += fd * dz[i]; }
-
-                gap = DualityGap(b, a, y, bLP, w, m, n);
                 iters++;
-
-                if (!(gap < 1e300)) break;                              // NaN/Inf blow-up -> keep yBest
-                if (gap <= bestGap) { bestGap = gap; for (int j = 0; j < n; j++) yBest[j] = y[j]; }
-                if (gap <= gapTol) status = LPStatus.Optimal;
             }
 
-            for (int j = 0; j < n; j++) x[j] = -yBest[j];
-            double obj = 0;
-            for (int i = 0; i < m; i++)
-            {
-                double rowDot = 0;
-                for (int j = 0; j < n; j++) rowDot += (double)A[i, j] * (double)x[j];
-                obj += math.abs(rowDot - (double)b[i]);
-            }
-            objective = obj;
+            // extract coefficients from the best-scoring iterate (not necessarily the last one),
+            // unscale out of the equilibrated parameterization, and report the honest L1 residual at
+            // that x (against the ORIGINAL A) -- never the interior point's own duality gap.
+            for (int j = 0; j < n; j++) x[j] = -yBest[j] / colScale[j];
+            Amul(A, x, Av, m, n);
+            double l1 = 0;
+            for (int i = 0; i < m; i++) l1 += math.abs((double)Av[i] - (double)b[i]);
+            objective = l1;
 
-            a.Dispose(); s.Dispose(); y.Dispose(); z.Dispose(); w.Dispose(); q.Dispose(); zw.Dispose();
-            Av.Dispose(); tmpN.Dispose(); rhs.Dispose(); rhs2.Dispose();
-            dyAff.Dispose(); daAff.Dispose(); dsAff.Dispose(); dzAff.Dispose(); dwAff.Dispose();
-            dy.Dispose(); da.Dispose(); ds.Dispose(); dz.Dispose(); dw.Dispose();
-            dadz.Dispose(); dsdw.Dispose(); xi.Dispose(); qCorr.Dispose();
-            M.Dispose(); L.Dispose(); Linit.Dispose(); yBest.Dispose(); bLP.Dispose();
-            P.Dispose(); ws.W.Dispose(); ws.bt.Dispose();
+            As.Dispose(); colScale.Dispose();
+            bLp.Dispose();
+            a.Dispose(); s.Dispose(); z.Dispose(); w.Dispose(); y.Dispose();
+            r1.Dispose(); r2.Dispose(); qinv.Dispose(); qr.Dispose(); Av.Dispose(); ATa.Dispose();
+            dxAff.Dispose(); dsAff.Dispose(); dzAff.Dispose(); dwAff.Dispose(); dyAff.Dispose();
+            aPred.Dispose(); sPred.Dispose(); zPred.Dispose(); wPred.Dispose(); yPred.Dispose();
+            r1Hat.Dispose(); dxCor.Dispose(); dsCor.Dispose(); dzCor.Dispose(); dwCor.Dispose(); dyCor.Dispose();
+            M.Dispose(); L.Dispose(); P.Dispose(); ws.W.Dispose(); ws.bt.Dispose();
+            yBest.Dispose();
 
-            return new LPInfo { status = status, iterations = iters, objective = obj };
+            return new LPInfo { status = status, iterations = iters, objective = l1 };
         }
 
-        // M (n x n) = Aᵀ diag(q) A + reg·I, built as ONE cache-friendly pass over A's ROWS: each row i
-        // contributes q_i · A[i,:] ⊗ A[i,:] (an outer product) to M's upper triangle, then mirrored.
-        // Row-major storage (the library's row-major matrix convention) makes reading A[i,:] unit-
-        // stride, which a column-contracted loop order (fixed column, varying row) would not be -- the
-        // same row-streaming rationale as LP.InteriorPoint's BuildNormal, just contracting over the
-        // opposite axis (m/rows here vs nv/columns there) to land on this n x n shape.
-        //
-        // The inner "M[r,c] += v*A[i,c]" sweep over c in [r,n) is an AXPY (M's row r += v * A's row i,
-        // both read/written unit-stride in this row-major layout), routed through UnsafeOP.axpy.
-        static unsafe void BuildATQA(fProxyMxN A, fProxyN q, fProxyMxN M, int m, int n, fProxy reg)
+        // M = A^T diag(qinv) A  (symmetric, n x n), accumulated as a sum of m rank-1 row updates so
+        // each row of A is read contiguously. Upper triangle computed, then mirrored.
+        static void BuildWeightedNormal(fProxyMxN A, fProxyN qinv, fProxyMxN M, int m, int n)
         {
-            for (int r = 0; r < n; r++)
-                for (int c = r; c < n; c++)
-                    M[r, c] = (fProxy)0;
+            for (int i = 0; i < n; i++)
+                for (int j = i; j < n; j++)
+                    M[i, j] = (fProxy)0;
 
-            fProxy* Ap = A.Data.Ptr;
-            fProxy* Mp = M.Data.Ptr;
-            for (int i = 0; i < m; i++)
+            for (int k = 0; k < m; k++)
             {
-                fProxy qi = q[i];
-                fProxy* Arow = Ap + (long)i * n;
-                for (int r = 0; r < n; r++)
+                fProxy wk = qinv[k];
+                for (int i = 0; i < n; i++)
                 {
-                    fProxy v = qi * Arow[r];
-                    if (v == (fProxy)0) continue;
-                    UnsafeOP.axpy(Mp + (long)r * n + r, Arow + r, v, n - r);
+                    fProxy wi = wk * A[k, i];
+                    for (int j = i; j < n; j++)
+                        M[i, j] += wi * A[k, j];
                 }
             }
 
-            for (int r = 0; r < n; r++)
-            {
-                M[r, r] += reg;
-                for (int c = r + 1; c < n; c++)
-                    M[c, r] = M[r, c];
-            }
-        }
-
-        // q[i] = 1/(z[i]/a[i] + w[i]/s[i]);  zw[i] = z[i]-w[i] -- FN's per-iteration IPM barrier weight
-        // and the affine-predictor's z-w term, computed in one pass over m. [NoAlias] is truthful (six
-        // genuinely distinct Allocator.Temp buffers), which is what lets Burst vectorize this
-        // elementwise (no-reduction) formula.
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        static unsafe void BuildFNWeights([NoAlias] fProxy* z, [NoAlias] fProxy* a, [NoAlias] fProxy* w, [NoAlias] fProxy* s,
-                                          [NoAlias] fProxy* q, [NoAlias] fProxy* zw, int m)
-        {
-            for (int i = 0; i < m; i++)
-            {
-                fProxy zi = z[i], ai = a[i], wi = w[i], si = s[i];
-                q[i] = (fProxy)1 / (zi / ai + wi / si);
-                zw[i] = zi - wi;
-            }
-        }
-
-        // Duality gap of the bounded dual LP (rq_fnm's own `gap = c*x - y*b + w*u`, u=1): here
-        // c=-b, x=a (the dual weight, NOT the returned coefficients), and b (rq_fnm's constraint RHS)
-        // is bLP -- see the file header's sign map. A pure-local double accumulator (diagnostic sum),
-        // matching every other IPM core's convention in this library.
-        static double DualityGap(fProxyN b, fProxyN a, fProxyN y, fProxyN bLP, fProxyN w, int m, int n)
-        {
-            double cx = 0;
-            for (int i = 0; i < m; i++) cx -= (double)b[i] * (double)a[i];
-            double yb = 0;
-            for (int j = 0; j < n; j++) yb += (double)y[j] * (double)bLP[j];
-            double wu = 0;
-            for (int i = 0; i < m; i++) wu += (double)w[i];
-            return cx - yb + wu;
+            for (int i = 0; i < n; i++)
+                for (int j = i + 1; j < n; j++)
+                    M[j, i] = M[i, j];
         }
     }
 }

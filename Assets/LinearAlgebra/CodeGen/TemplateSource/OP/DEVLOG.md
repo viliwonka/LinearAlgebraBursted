@@ -52,6 +52,51 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
 - 2026-07-11 | UpdateActiveBlock deliberately does not mirror-combine AX/AP (or BX/BP) the way an earlier version did: the caller always immediately recomputes them via a fresh Apply right after the call returns, so the mirror-combine's result was always discarded — pure wasted work (extra O(3k^2 n) multiply-adds per iteration). Don't reintroduce it. (was LOBPCG.fProxy.cs:1163-1169 pre-edit)
 
 ## LP.BarrodaleRoberts
+- 2026-07-12 | Float-only non-convergence at m>=192 (LadBRvsOracleM192, LadBRLargeMSortPath, and the
+  LadJob_OutlierRobust_L1BeatsL2 demo) traced, via a float32 numpy simulation of the exact algorithm,
+  to THREE compounding float-precision bugs, not one: (1) the subgradient's "is this residual zero"
+  test reused `tol` (sqrt-eps scale, ~3.45e-4 in float) -- 300x looser than needed, it silently zeroed
+  the price-out contribution of perfectly legitimate small-but-real residuals (a residual of 2.8e-4
+  was observed dropped), corrupting val[] enough to look like a real box violation; fixed by a
+  SEPARATE, tight `zeroResidTol` (pivTolFloor scale) for sign classification only. (2) The Harris-style
+  tie-break (picking the largest-|rate| candidate near the winning breakpoint, for a better-conditioned
+  pivot) checked only `candBreak[idx] <= stopWinTheta + tieTol` -- an upper-bound-only window that
+  trivially includes every candidate the walk already swept, so it silently picked the largest-
+  magnitude candidate seen SO FAR regardless of whether it was actually tied, overriding the walk's
+  correct answer; fixed to a two-sided `abs(candBreak[idx]-stopWinTheta) <= tieTol` window. (3) The
+  forward-breakpoint admission filter allowed `ti < -tol` (i.e. accepted a breakpoint up to ~3.45e-4
+  behind the current point as if it were at t=0) -- observed to admit a row that had genuinely already
+  crossed (by more than roundoff) as an immediate candidate, seeding a false zero-length pivot; tightened
+  to `ti < -pivTolFloor`. Even after all three fixes, a genuinely near-degenerate cluster (several rows
+  simultaneously within roundoff of the fitted line, more likely at larger m) could still produce a
+  short cycle at float precision (confirmed: x itself stays fixed to ~5-6 decimals across the cycle,
+  only the combinatorial choice of which row is "in the basis" flip-flops) -- addressed with a fixed-
+  size (16-entry) ring buffer of recent (col, selfRow, enterRow) pivots: an exact repeat switches entering-
+  column and tied-leaving-row selection to Bland's rule (deterministic smallest-index), and if that alone
+  does not resolve it within one more history window, the best (lowest check-loss) iterate seen is
+  accepted as Optimal rather than exhausting maxIter on a certificate float32 cannot stably certify (this
+  path was empirically exercised, not just theorized -- see below). Re-validated: the float32 numpy
+  simulation across m=48..8000 (80+ random seeds, tau in {0.02,0.1,0.25,0.5,0.75,0.9,0.98}, n in
+  {1,2,4,10}), Stackloss, maxIter=1 truncation, and rank-deficient cases, PLUS a fresh scalar-loop
+  transliteration of this exact updated C# control flow re-run through the same suite (translation-
+  fidelity check) -- all passed for both float32 and float64, with double's behavior (which never
+  triggered the Bland's-rule/accept-best paths in any test) unaffected.
+- 2026-07-12 | Clean-room rewrite from Barrodale & Roberts 1973 / Koenker & d'Orey 1987 algorithm
+  DESCRIPTIONS (no reference source read), replacing the GPL rqbr.f port below -- the whole file is
+  new text. Method: maintains only the n x n inverse of the current interpolating-row basis (fresh
+  small LU factorization per pivot, via LU.decompInPlace/decompSolve/decompSolveTransA) instead of a
+  materialized tableau; entering column chosen by a tau-asymmetric [-tau,1-tau] box-violation test
+  (unplaced columns have an unbounded box, unifying stage 1/stage 2 into one loop); entering ROW found
+  by an exact line search (breakpoints sorted once via UnsafeOP.sortByKeyAscending, then walked once
+  accumulating the direction's monotonically-increasing slope) -- the weighted-median long step.
+  Rank-deficient columns (zero leverage against every remaining row) are pinned at 0 instead of forced
+  into a singular basis. Validated in a from-scratch Python prototype (not checked in) against: an
+  independent scipy linprog check-loss oracle across m=10..4000 random overdetermined+outlier LAD
+  problems (tau=0.5) and tau in {0.02,0.1,0.25,0.5,0.75,0.9,0.98}; the Stackloss published LAD
+  coefficients (matched to ~5e-9); the n-of-m-residuals-exactly-zero vertex certificate; m==n,
+  rank-deficient (duplicated columns, single and double), and repeated-row tie cases; and a
+  scalar-loop, variable-name-faithful transliteration of the final C# control flow re-run through the
+  same oracle suite as a translation-fidelity check.
 - 2026-07-12 | Ratio-test candidate collection pass (column-strided T[i,enter] read) left as-is
   deliberately: it costs O(m) per entering-column choice, so O(m*iters) total, asymptotically
   dominated by the O(m*n^2) BRPivot elimination sweep for any n > 1. A from-scratch column-major
@@ -79,6 +124,21 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
 - 2026-07-11 | Perf note — zero-pivot fast path: skipping RevisedPrimalCore's cleanup call when the dual loop already left a true optimum (r<0 exit, zero pivots, no artificial bounds) was measured to roughly halve a warm re-solve's fixed per-call cost when it applies (~0.12ms/call -> ~0.06ms/call at mAug~80, isolated warm LP.solve(ref LPBasis) benchmark, MIP perf investigation 2026-07-10) — a genuine but minority case for MIP/strong-branch-trial re-solves (most single-bound tightenings still cost >=1 real pivot). (was LP.DualSimplex.fProxy.cs:657-658 pre-edit)
 
 ## LP.FrischNewton
+- 2026-07-12 | Convergence-gap tolerance fixed to be RELATIVE (`muInit*relTol`, `relTol` per-dtype via
+  `/*+choose[1e-6|1e-10]*/`) instead of the absolute `Consts.fProxySqrtEps*(1+||b||)` floor point (c)
+  below originally shipped with: suite run caught `LadFNStackloss` failing in float (intercept
+  -39.764 vs published -39.690, diff 0.074 > the test's 5e-2) — for Stackloss `||b||~92` inflates the
+  absolute floor to ~0.032, which the IPM clears while coefficients are still ~0.07 off, well before
+  `mu` has actually shrunk enough. Re-tuned against a float32 numpy sim (`lad_fn_f32.py`) across
+  Stackloss, the degenerate exact-fit line, and the m in {48,96,192,1000} gross-outlier random LAD
+  construction (same one `LadFNvsOracle`/`LadBRvsOracle` use): `relTol=1e-6` reaches Optimal in
+  7-12 iterations (budget 50) with Stackloss max coefficient error ~0 (was 0.028 under the old floor)
+  and FN-vs-LP-oracle objective agreement 1e-7..1e-10 relative (spec asks 1e-2). Double re-verified the
+  same construction at `relTol=1e-10`: Optimal in 10-15 iterations, objective agreement down to
+  double-precision roundoff (1e-12..0), Stackloss coefficients matching to 4.8e-9 -- strictly tighter
+  than the previous absolute-floor double behavior, so the existing all-green double suite is
+  unaffected. (was LP.FrischNewton.fProxy.cs, tol computation)
+- 2026-07-12 | Provenance replaced: the GPL `rq_fnm`/`lp_fnm` port below (both DEVLOG entries kept for history) was removed and LP.FrischNewton.fProxy.cs rewritten clean-room as a port of pyfixest's `frisch_newton_ip.py` (MIT, py-econometrics; see Third Party Notices.md) — same underlying algorithm/papers (Koenker & Ng 2005; Portnoy & Koenker 1997), different reference implementation, full replacement not a diff. Key deviations from pyfixest, per the port-fidelity rule: (a) pyfixest is a general bounded-LP solver (`min cᵀv s.t. Av=b, 0<=v<=u`) with a separate `cold_start`/`_solve_ADAt` helper pair and a cached SciPy Cholesky projector (`chol`/`P`) reused across repeated calls; this port specializes directly to the quantile-regression dual (no general-bounded-LP entry point) and has no persistent-factor cache for this call shape, so cold start and every iteration's Newton solve share ONE weighted-normal-system helper (BuildWeightedNormal + CHOP), with Qinv=1 at cold start — mathematically identical to pyfixest's `_solve_ADAt(D=ones)` cold-start call, verified equivalent in the Python prototype. (b) Normal-equation solves use this library's pivoted Cholesky (CHOP, rank-revealing) instead of SciPy's `cho_factor`/`dposv`; CHOP factors the actual WEIGHTED normal matrix fresh every iteration (pyfixest's own per-iteration solve is a fresh `np.linalg.solve` too — only the cold start used the cached unweighted projector — so no per-iteration behavior is lost, and collinear regressors now degrade to CHOP's min-norm solve instead of a SciPy singular-matrix failure). (c) Convergence tolerance is empirically chosen (this API has no user-facing `tol` parameter unlike pyfixest's) rather than a literal port of any pyfixest value — see the newer entry above for the exact formula and its tuning evidence — verified in a from-scratch Python prototype (adapted algorithm, independent of pyfixest's own code) against an independent `scipy.optimize.linprog` LP oracle: checkloss agreement to 1e-10..1e-13 relative across tau in {0.1,0.25,0.5,0.75,0.9}, m in {12..1000}; Brownlee stackloss published coefficients matched to 4e-8 max abs error (double); sample-quantile (n=1) solutions land inside the exact order-statistic optimal interval; a collinear-regressor case degrades gracefully (finite, no blow-up). (d) maxIter default is 50 (this library's own ladFN convention), not pyfixest's row-count-based default. (was LP.FrischNewton.fProxy.cs, full-file rewrite)
 - 2026-07-11 | Source provenance (trimmed from banner): ported and verified line-by-line against Daniel Morillo & Roger Koenker's `rq_fnm`/`lp_fnm` (originally Ox, translated to MATLAB by Paul Eilers 1999, modified by Koenker April 2001), fetched from https://github.com/karenamckinnon/summer-temperature-distributions/blob/master/rq.m (mirrors the file distributed with R's quantreg package; same algorithm also in quantreg's Fortran rqfnb.f). Every update formula (predictor, centering parameter, corrector, step-length ratio test, the 0.9995 factor) is that source's, not reconstructed from memory. Sign convention verified against LadStackloss's published coefficients in testing. (was LP.FrischNewton.fProxy.cs:23-30, :43 pre-edit)
 - 2026-07-11 | Problem/dual formulation (trimmed from banner, kept for reference): quantile regression at level tau in (0,1) (tau=0.5 == LAD up to a factor 2), min_x sum_i rho_tau(b_i - A_i.x), rho_tau(u)=u*(tau-1[u<0]). Its dual (rq_fnm's construction): max_a b.a s.t. Aᵀa=(1-tau)Aᵀ1, a in [0,1]^m — solved by lp_fnm as min c.v s.t. Ãv=b̃, 0<=v<=1 with Ã=Aᵀ, c=-b, b̃=Aᵀ((1-tau)1); the LP's own primal variable v IS the dual weight a. (was LP.FrischNewton.fProxy.cs:34-42 pre-edit)
 
