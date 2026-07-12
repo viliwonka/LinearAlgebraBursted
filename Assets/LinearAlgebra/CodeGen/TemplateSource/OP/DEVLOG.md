@@ -1,6 +1,76 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## MPC / MPC.State
+- 2026-07-12 | NEW feature: linear MPC over the standard batch/dense condensing (Borrelli-Bemporad-
+  Morari, "Predictive Control for Linear and Hybrid Systems", ch. 2). acados/HPIPM (BSD-2) and TinyMPC
+  (MIT) condensing routines were read for PRODUCT SHAPE reference only (decision-vector layout, the
+  general idea of a fixed-at-construction condensed Hessian) -- no source line from either was
+  transcribed; the actual Phi/Gamma/H assembly here is an original derivation verified against a from-
+  scratch numpy/scipy prototype (scratchpad, not shipped) before this file was written. Soft-row exact
+  penalty follows Kerrigan & Maciejowski, "Soft Constraints and Exact Penalty Functions in Model
+  Predictive Control" (2000). qpOASES's MANUAL/thesis (warm-start strategy framing, Ferreau/Bock/Diehl
+  2008) was read; qpOASES's SOURCE (LGPL) was not. DAQP (MIT) was read for active-set warm-start
+  mechanics only.
+- 2026-07-12 | Validation (numpy/scipy prototype, double integrator A=[[1,1],[0,1]], B=[[0],[1]],
+  Q=I2, R=1 throughout): (a) unconstrained condensed MPC's u0 matched Control-style infinite-horizon
+  LQR to ~1e-13 (double) / ~1.6e-7 (float32) across N in {1,3,10,30} -- a stationary DARE terminal cost
+  makes ANY horizon reproduce the infinite-horizon law exactly, the correctness anchor. (b) input-
+  saturated case matched scipy.optimize.minimize(method='trust-constr') on the identical condensed QP
+  to ~1.6e-5 (its own convergence floor), independently cross-checked against a 3^n box-active-set
+  brute-force enumeration. (c) soft wall: inactive case matched the unconstrained solution to ~5e-10;
+  active-but-avoidable (input saturates but the wall itself is never touched) matched a hard-constrained
+  trust-constr solve to ~1.6e-7 with zero slack, INSENSITIVE to rho1 across [0.5, 200] (all agreed to
+  ~1e-7) -- the library's chosen default (rho1=1e3) sits well inside this margin; active-and-unavoidable
+  (a double integrator's control has a one-step lag onto position, so the FIRST predicted stage's
+  position is fixed by x0 alone) reproduced a hand-derived minimal-violation closed form exactly
+  (0.3 then 0.6 over two stages). (d) receding-horizon active-set churn: [3,3,3,2,1,0,0,...,0] over 40
+  frames -- collapses to 0 after frame 5, matching the "0-3 after the first" expectation. (f)
+  prestabilization: rho(A)=1.2, N=40 raw condensing reached cond(H)~2.4e9 (float32-risky, though not yet
+  NaN/inf) vs prestabilized cond(H_cl)~3.2 -- confirms the conditioning-insurance framing, not a
+  strict correctness requirement at this rho/N.
+- 2026-07-12 | Prestabilization (u_k = -Kstab x_k + v_k, condense the closed loop A-B*Kstab) turns hard
+  input bounds into GENERAL rows (2*N*m of them) instead of a box on the decision vector, since u_k's
+  bound becomes state-dependent (state depends on v through Gamma_cl) -- verified analytically that
+  forward-simulating the warm-start guess with the REAL (A,B) and u_k, then deriving v_k = u_k +
+  Kstab@x_k from that SAME trajectory, reproduces exactly the closed-loop condensing's own implied
+  trajectory (x_{k+1} = A x_k + B u_k = (A-B Kstab) x_k + B v_k by construction). Combining
+  prestabilization with the deltaU penalty is NOT supported in v1 (deltaU would need to couple to the
+  state through the SAME substitution, compounding both derivations) -- throws at construction rather
+  than silently dropping one feature. QR up/downdate for the per-iteration re-factorization was
+  evidence-gated OUT of scope per the task brief; qpActiveSetCoreWarm re-factorizes the working set from
+  scratch every pivot, same as qpActiveSetCore, fine warm at the target sizes (d <= 160).
+- 2026-07-12 | Constructor overload ladder: deltaU-only and prestabilization-only convenience overloads
+  were NOT added -- both would need an extra fProxyMxN-typed parameter (S / Kstab) in the exact same
+  position as the "explicit terminal P" overload's own P parameter, a genuine C# overload-signature
+  collision (parameter names never participate in overload resolution). Verified this is a real
+  constructor-only distinction (methods can't disambiguate on names) via a standalone dotnet repro
+  before writing the constructor ladder. Reach the full (17-parameter) constructor directly for those
+  two features, passing `default` for the unused optional matrix params.
+- 2026-07-12 | H (the condensed QP Hessian) is explicitly re-symmetrized via Control.SymmetrizeInPlace
+  (reused directly, not reimplemented) after assembly -- Gamma^T Qbar Gamma accumulates through
+  Blas.dot's own summation order, which can leave a tiny roundoff asymmetry even though the true
+  mathematical result is exactly symmetric whenever Q/R/P/S are.
+
+## QP
+- 2026-07-12 | Warm-start seam for MPC: qpActiveSetCore's loop body (the add/drop iteration, the
+  perturbation-anticycling cleanup pass, and final diagnostics) was factored out, UNCHANGED, into a new
+  internal qpActiveSetLoop(wstatus, ...) that neither seeds nor disposes `wstatus`/`L`/`U` -- the two
+  entry points (qpActiveSetCore's existing seed-from-point behavior, kept byte-for-byte, and the new
+  qpActiveSetCoreWarm) differ ONLY in how `wstatus` is seeded and who owns it afterward. Existing QP
+  test suite is untouched by this refactor (qpActiveSetCore's own observable behavior did not change --
+  same validation, same SeedWorkingSet call, same loop, same disposal, just relocated across two
+  methods instead of one).
+- 2026-07-12 | RepairWorkingSet (SeedWorkingSet's warm sibling): re-admits a PREVIOUS solve's
+  ActiveLower/ActiveUpper row only if it is STILL tight (within feasTol) at the CURRENT x, on the SAME
+  side it was active on before -- a row that drifted off its bound between frames is dropped rather than
+  forced, since the active-set loop's invariant (A_W x = b_W at the start of every iteration) requires
+  genuine tightness, not "was tight last time". Considered just re-running SeedWorkingSet fresh every
+  warm call instead (simpler) and rejected it: SeedWorkingSet has no memory of the PRIOR working set at
+  all, so it cannot report a meaningful workingSetChanges diagnostic, and (for a soft/general row that
+  drifts slightly rather than snapping exactly to a new bound) would rediscover less of the previous
+  optimal active set than a repair-first pass does.
+
 ## OP.Component / UtilityOP
 - 2026-07-12 | UtilityOP.cs deleted (owner-approved): its zeroInPlace(in fProxyN) became a
   redundant special case of the generic below; no callers existed.

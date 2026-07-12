@@ -665,6 +665,11 @@ namespace LinearAlgebra
         // this working set is treated as converged instead -- not Unbounded, since the objective does
         // not in fact decrease without bound there. Verified against Nocedal & Wright, Numerical
         // Optimization (2nd ed.), section 16.5 ("Active-Set Methods for Indefinite QP").
+        //
+        // Warm-start seam: qpActiveSetCoreWarm below is the SAME loop (qpActiveSetLoop, factored out
+        // of this method) seeded from a caller-persisted working-set status array instead of always
+        // deriving one fresh from x0 (see qpActiveSetCoreWarm's own doc comment) -- the entry MPC.solve
+        // uses. qpActiveSetCore's own behavior (seed-from-point every call) is unchanged.
         // ============================================================================================
 
         /// <summary>
@@ -710,7 +715,6 @@ namespace LinearAlgebra
             if (xu.N != n) throw new ArgumentException("QP.qpActiveSetCore: xu.N must equal Q.M_Rows");
             if (x.N != n) throw new ArgumentException("QP.qpActiveSetCore: x.N must equal Q.M_Rows");
 
-            float INF = (float)1e30;
             float normInfQ = Norms.LInf(in Q);
             float normInfA = Norms.LInf(in A);
             // Q-space tolerance (curvature / regularization-delta / descent-direction checks) -- same
@@ -756,6 +760,122 @@ namespace LinearAlgebra
             var wstatus = new NativeArray<byte>(T, Allocator.Temp);   // zero-init -> every row Inactive
             SeedWorkingSet(in A, in L, in U, m, n, T, in x, in Ax0, wstatus, feasTol, zeroThresholdAW);
             Ax0.Dispose();
+
+            var info = qpActiveSetLoop(in Q, in c, in A, m, n, T, in L, in U, wstatus, ref x, maxIter,
+                                       normInfQ, zeroThreshold, zeroThresholdAW, feasTol, pivTol, dualTol,
+                                       out objective);
+
+            wstatus.Dispose(); L.Dispose(); U.Dispose();
+            return info;
+        }
+
+        /// <summary>
+        /// Warm-started sibling of <see cref="qpActiveSetCore"/>, for a caller (<see cref="MPC"/>) that
+        /// maintains its OWN persistent working-set status array across repeated solves of a slowly-
+        /// changing problem (same Q/A/xl/xu; only c and the feasible <paramref name="x"/> differ call to
+        /// call). Same feasible-<paramref name="x"/>-on-entry / phase-1-free contract as
+        /// <see cref="qpActiveSetCore"/> (validated identically; <see cref="QPStatus.Infeasible"/> on
+        /// failure, <paramref name="wstatusPersist"/> left untouched in that case -- there is no
+        /// meaningful working set to report).
+        ///
+        /// <paramref name="wstatusPersist"/> (length <c>A.M_Rows + Q.M_Rows</c>, one
+        /// <see cref="WorkingSetStatus"/> byte per unified row -- see <see cref="qpActiveSetCore"/>'s
+        /// file-header comment) is seeded via <see cref="RepairWorkingSet"/> instead of
+        /// <see cref="SeedWorkingSet"/>: entries that no longer sit tight at the given <paramref name="x"/>
+        /// are dropped rather than failing (graceful repair -- a shifted/re-linearized warm start is not
+        /// exactly on the same manifold the previous solve left it on). The terminal working set is
+        /// written back into <paramref name="wstatusPersist"/> on every non-<see cref="QPStatus.Infeasible"/>
+        /// return. <paramref name="workingSetChanges"/> counts how many of the T rows differ between
+        /// <paramref name="wstatusPersist"/>'s ENTRY and EXIT contents (0 on <see cref="QPStatus.Infeasible"/>)
+        /// -- a cheap warm-start health metric (a well warm-started solve changes very few rows per call).
+        /// </summary>
+        /// <param name="wstatusPersist">Caller-owned, length <c>A.M_Rows + Q.M_Rows</c>. In/out.</param>
+        /// <param name="workingSetChanges">Output only. Rows whose status changed this call.</param>
+        internal static QPInfo qpActiveSetCoreWarm(in floatMxN Q, in floatN c, in floatMxN A, in floatN b,
+                                                   in NativeArray<ConstraintSense> senses,
+                                                   in floatN xl, in floatN xu,
+                                                   ref floatN x, out double objective, int maxIter,
+                                                   NativeArray<byte> wstatusPersist, out int workingSetChanges)
+        {
+            int n = Q.M_Rows, m = A.M_Rows, T = m + n;
+
+            if (!Q.IsSquare) throw new ArgumentException("QP.qpActiveSetCoreWarm: Q must be square");
+            if (A.N_Cols != n) throw new ArgumentException("QP.qpActiveSetCoreWarm: A.N_Cols must equal Q.M_Rows");
+            if (b.N != m) throw new ArgumentException("QP.qpActiveSetCoreWarm: b.N must equal A.M_Rows");
+            if (c.N != n) throw new ArgumentException("QP.qpActiveSetCoreWarm: c.N must equal Q.M_Rows");
+            if (senses.Length != m) throw new ArgumentException("QP.qpActiveSetCoreWarm: senses.Length must equal A.M_Rows");
+            if (xl.N != n) throw new ArgumentException("QP.qpActiveSetCoreWarm: xl.N must equal Q.M_Rows");
+            if (xu.N != n) throw new ArgumentException("QP.qpActiveSetCoreWarm: xu.N must equal Q.M_Rows");
+            if (x.N != n) throw new ArgumentException("QP.qpActiveSetCoreWarm: x.N must equal Q.M_Rows");
+            if (wstatusPersist.Length != T) throw new ArgumentException("QP.qpActiveSetCoreWarm: wstatusPersist.Length must equal A.M_Rows + Q.M_Rows");
+
+            float normInfQ = Norms.LInf(in Q);
+            float normInfA = Norms.LInf(in A);
+            float zeroThreshold = Consts.floatZeroThreshold * math.max(normInfQ, (float)1);
+            float zeroThresholdAW = Consts.floatZeroThreshold * math.max(normInfA, (float)1);
+            float feasTol = (float)(math.max(math.sqrt((double)Consts.floatEpsilon), 1e-7)) * math.max((float)1, normInfA);
+            float pivTol = math.max(Consts.floatZeroThreshold, (float)1e-9);
+            float dualTol = feasTol;
+
+            var L = new floatN(T, Allocator.Temp, true);
+            var U = new floatN(T, Allocator.Temp, true);
+            BuildRowBounds(in b, in senses, in xl, in xu, m, n, ref L, ref U);
+
+            var Ax0 = new floatN(math.max(m, 1), Allocator.Temp, true);
+            if (m > 0) Blas.dot(in A, in x, ref Ax0);
+            bool feasible = true;
+            double worstViol = 0;
+            for (int t = 0; t < T; t++)
+            {
+                double act = t < m ? (double)Ax0[t] : (double)x[t - m];
+                double lo = (double)L[t] - (double)feasTol, hi = (double)U[t] + (double)feasTol;
+                if (act < lo) { feasible = false; worstViol = math.max(worstViol, lo - act); }
+                else if (act > hi) { feasible = false; worstViol = math.max(worstViol, act - hi); }
+            }
+
+            if (!feasible)
+            {
+                Ax0.Dispose(); L.Dispose(); U.Dispose();
+                var Qxi = new floatN(n, Allocator.Temp, true);
+                Blas.dot(in Q, in x, ref Qxi);
+                double objInfeas = 0;
+                for (int i = 0; i < n; i++) objInfeas += 0.5 * (double)x[i] * (double)Qxi[i] + (double)c[i] * (double)x[i];
+                Qxi.Dispose();
+                objective = objInfeas;
+                workingSetChanges = 0;
+                return new QPInfo { status = QPStatus.Infeasible, iterations = 0, objective = objInfeas, stationarityResidual = 0, feasibilityResidual = worstViol };
+            }
+
+            var wstatus = new NativeArray<byte>(T, Allocator.Temp);
+            RepairWorkingSet(in A, in L, in U, m, n, T, in x, in Ax0, wstatusPersist, wstatus, feasTol, zeroThresholdAW);
+            Ax0.Dispose();
+
+            var info = qpActiveSetLoop(in Q, in c, in A, m, n, T, in L, in U, wstatus, ref x, maxIter,
+                                       normInfQ, zeroThreshold, zeroThresholdAW, feasTol, pivTol, dualTol,
+                                       out objective);
+
+            int changes = 0;
+            for (int t = 0; t < T; t++) if (wstatusPersist[t] != wstatus[t]) changes++;
+            workingSetChanges = changes;
+            wstatusPersist.CopyFrom(wstatus);
+
+            wstatus.Dispose(); L.Dispose(); U.Dispose();
+            return info;
+        }
+
+        // The shared active-set add/drop LOOP (algorithm steps 1-5), factored out of qpActiveSetCore so
+        // qpActiveSetCoreWarm (persistent working-set seed, see its own doc comment) reuses it byte-for-
+        // byte -- ONLY how `wstatus` is seeded on entry differs between the two callers. `wstatus` must
+        // already be seeded (SeedWorkingSet or RepairWorkingSet) and is mutated in place; neither
+        // `wstatus` nor `L`/`U` are disposed here -- the caller owns them.
+        internal static QPInfo qpActiveSetLoop(in floatMxN Q, in floatN c, in floatMxN A,
+                                               int m, int n, int T, in floatN L, in floatN U,
+                                               NativeArray<byte> wstatus, ref floatN x, int maxIter,
+                                               float normInfQ, float zeroThreshold, float zeroThresholdAW,
+                                               float feasTol, float pivTol, float dualTol,
+                                               out double objective)
+        {
+            float INF = (float)1e30;
 
             int budget = maxIter > 0 ? maxIter : 50 * T + 200;
             int degenCap = 3 * math.max(n, 1);
@@ -1053,7 +1173,8 @@ namespace LinearAlgebra
                 Axf.Dispose();
             }
 
-            wstatus.Dispose(); L.Dispose(); U.Dispose();
+            // wstatus/L/U are NOT disposed here -- qpActiveSetCore/qpActiveSetCoreWarm own them (the
+            // warm caller still needs to read the final wstatus after this method returns).
 
             var Qxo = new floatN(n, Allocator.Temp, true);
             Blas.dot(in Q, in x, ref Qxo);
@@ -1130,6 +1251,56 @@ namespace LinearAlgebra
             for (int t = 0; t < T; t++)
                 if (L[t] == U[t])
                     TryAddToWorkingSet(in A, in L, in U, m, n, T, wstatus, t, WorkingSetStatus.Equality, zeroThresholdAW);
+
+            for (int t = 0; t < T; t++)
+            {
+                if (wstatus[t] != (byte)WorkingSetStatus.Inactive) continue;
+                double act = t < m ? (double)Ax0[t] : (double)x0[t - m];
+                bool atLower = (double)L[t] > -1e29 && math.abs(act - (double)L[t]) <= (double)feasTol;
+                bool atUpper = (double)U[t] < 1e29 && math.abs(act - (double)U[t]) <= (double)feasTol;
+                if (atLower)
+                    TryAddToWorkingSet(in A, in L, in U, m, n, T, wstatus, t, WorkingSetStatus.ActiveLower, zeroThresholdAW);
+                else if (atUpper)
+                    TryAddToWorkingSet(in A, in L, in U, m, n, T, wstatus, t, WorkingSetStatus.ActiveUpper, zeroThresholdAW);
+            }
+        }
+
+        // Warm-start sibling of SeedWorkingSet, used by qpActiveSetCoreWarm: seeds `wstatus` from a
+        // PREVIOUS solve's terminal statuses (`wstatusPrev`) instead of deriving one fresh. Pass 1 is
+        // identical to SeedWorkingSet's (permanent equality rows, data-structural -- independent of
+        // wstatusPrev or x0). Pass 2 re-admits a previously ActiveLower/ActiveUpper row ONLY if it is
+        // STILL tight (within feasTol) on that SAME side at the CURRENT x0 -- a row that drifted off its
+        // bound (the new frame's shifted/re-linearized x0 no longer touches it) is dropped rather than
+        // failing, since the active-set loop's invariant (A_W x = b_W at the start of every iteration)
+        // requires every working-set row to be genuinely tight at x0, not merely "was tight before".
+        // Pass 3 is identical to SeedWorkingSet's pass 2 (claim any row not yet claimed above that is
+        // newly tight at x0, on whichever side) -- this picks up e.g. a newly input-saturated bound the
+        // warm start's own shift-and-clip made tight for the first time. wstatus must be
+        // caller-allocated, length T; every entry is (re)written. wstatusPrev is read-only.
+        internal static void RepairWorkingSet(in floatMxN A, in floatN L, in floatN U, int m, int n, int T,
+                                              in floatN x0, in floatN Ax0, NativeArray<byte> wstatusPrev,
+                                              NativeArray<byte> wstatus, float feasTol, float zeroThresholdAW)
+        {
+            for (int t = 0; t < T; t++) wstatus[t] = (byte)WorkingSetStatus.Inactive;
+
+            for (int t = 0; t < T; t++)
+                if (L[t] == U[t])
+                    TryAddToWorkingSet(in A, in L, in U, m, n, T, wstatus, t, WorkingSetStatus.Equality, zeroThresholdAW);
+
+            for (int t = 0; t < T; t++)
+            {
+                if (wstatus[t] != (byte)WorkingSetStatus.Inactive) continue;
+                var prevSt = (WorkingSetStatus)wstatusPrev[t];
+                if (prevSt != WorkingSetStatus.ActiveLower && prevSt != WorkingSetStatus.ActiveUpper) continue;
+
+                double act = t < m ? (double)Ax0[t] : (double)x0[t - m];
+                bool stillTight = prevSt == WorkingSetStatus.ActiveLower
+                    ? ((double)L[t] > -1e29 && math.abs(act - (double)L[t]) <= (double)feasTol)
+                    : ((double)U[t] < 1e29 && math.abs(act - (double)U[t]) <= (double)feasTol);
+
+                if (stillTight)
+                    TryAddToWorkingSet(in A, in L, in U, m, n, T, wstatus, t, prevSt, zeroThresholdAW);
+            }
 
             for (int t = 0; t < T; t++)
             {

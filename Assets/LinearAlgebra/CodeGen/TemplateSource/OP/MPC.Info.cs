@@ -1,0 +1,117 @@
+//singularFile//
+using Unity.Collections;
+
+namespace LinearAlgebra
+{
+    /// <summary>
+    /// Terminal state of an <see cref="MPC.solve"/> call, carried by <see cref="MPCInfo"/>.
+    /// Type-agnostic (no fProxy) on purpose -- lives in a non-templated file so codegen does not emit
+    /// a duplicate definition into both the float and double partials (CS0102), exactly like
+    /// <see cref="QPStatus"/>/<see cref="LPStatus"/>.
+    /// </summary>
+    public enum MPCStatus
+    {
+        /// <summary>The condensed QP reached a proven optimum this frame; <c>u0out</c> is the receding-
+        /// horizon optimal first input.</summary>
+        Optimal = 0,
+
+        /// <summary>The condensed QP's iteration budget was exhausted before an optimality certificate
+        /// was reached; <c>u0out</c> is the last FEASIBLE iterate's first input (still applied -- not a
+        /// fallback), matching <see cref="QPStatus.MaxIterations"/>'s own "last feasible iterate"
+        /// contract.</summary>
+        MaxIterations = 1,
+
+        /// <summary>The condensed QP reported <see cref="QPStatus.Infeasible"/> or
+        /// <see cref="QPStatus.Unbounded"/> this frame (should not happen for a well-posed problem --
+        /// defensive-only). <c>u0out</c> is the shifted PREVIOUS plan's first input instead (documented
+        /// fallback contract, never garbage); the working set and warm-start carry are left unchanged
+        /// so the next frame retries from the last known-good state.</summary>
+        Fallback = 2,
+    }
+
+    /// <summary>
+    /// Burst-safe enum-to-name helper for <see cref="MPCStatus"/>, used by
+    /// <see cref="MPCInfo.ToFixedString"/>.
+    /// </summary>
+    public static class MPCStatusExtensions
+    {
+        public static FixedString32Bytes Name(this MPCStatus s)
+        {
+            switch (s)
+            {
+                case MPCStatus.Optimal: return "Optimal";
+                case MPCStatus.MaxIterations: return "MaxIterations";
+                case MPCStatus.Fallback: return "Fallback";
+                default: return "Unknown";
+            }
+        }
+    }
+
+    /// <summary>
+    /// Result of an <see cref="MPC.solve"/> call. Implicit <c>bool</c> conversion == <see cref="Solved"/>,
+    /// matching <see cref="QPInfo"/>/<see cref="LPInfo"/>.
+    /// </summary>
+    public struct MPCInfo
+    {
+        /// <summary>Why the solve stopped -- see <see cref="MPCStatus"/>.</summary>
+        public MPCStatus status;
+
+        /// <summary>Condensed QP active-set iterations this frame (0 on <see cref="MPCStatus.Fallback"/>
+        /// -- the QP was never usefully iterated).</summary>
+        public int iterations;
+
+        /// <summary>How many of the condensed working set's rows changed status this frame (0 on
+        /// <see cref="MPCStatus.Fallback"/>) -- a warm-start health metric: a well warm-started receding-
+        /// horizon run stays small (0-3) after the first frame; a persistently large value means the
+        /// warm start is not tracking (aggressive disturbances, too-short a horizon, or a badly tuned
+        /// problem).</summary>
+        public int activeSetChanges;
+
+        /// <summary>Largest soft-row slack value (<c>max(0, C x_k - d)</c> at the worst stage) in the
+        /// returned plan. 0 when no soft rows are configured, or when every soft row is inactive along
+        /// the plan. Meaningless (left at its last value) on <see cref="MPCStatus.Fallback"/>.</summary>
+        public double maxSlackViolation;
+
+        /// <summary>Condensed QP objective value at the returned plan. <c>double.PositiveInfinity</c> on
+        /// <see cref="MPCStatus.Fallback"/> (no optimization actually ran).</summary>
+        public double objective;
+
+        /// <summary>True iff <see cref="status"/> is <see cref="MPCStatus.Optimal"/> or
+        /// <see cref="MPCStatus.MaxIterations"/> -- either way <c>u0out</c> is this frame's OWN
+        /// optimized (not a stale fallback) receding-horizon input.</summary>
+        public bool Solved => status == MPCStatus.Optimal || status == MPCStatus.MaxIterations;
+
+        /// <summary>Implicit success test, so <c>if (MPC.solve(...))</c> reads as "did this frame
+        /// actually optimize" (as opposed to falling back to the shifted previous plan).</summary>
+        public static implicit operator bool(MPCInfo info) => info.Solved;
+
+        /// <summary>Burst-safe compact summary, e.g. <c>MPCInfo(Optimal, iters=2, asChanges=1, obj=3.4E+00)</c>.
+        /// Never allocates managed memory.</summary>
+        public FixedString128Bytes ToFixedString()
+        {
+            FixedString128Bytes str = "MPCInfo(";
+            str.Append(status.Name());
+            FixedString128Bytes tail = $", iters={iterations}, asChanges={activeSetChanges}, obj={objective:G4})";
+            str.Append(tail);
+            return str;
+        }
+
+        /// <summary>Managed wrapper -- do not call from inside a [BurstCompile] job.</summary>
+        public override string ToString() => ToFixedString().ToString();
+    }
+
+    // Type-agnostic tuning constants for MPC.fProxy.cs / MPC.State.fProxy.cs; live here (singularFile)
+    // to avoid a duplicate-member collision across the float/double generated fragments, same reasoning
+    // as LP.Info.cs's REFACTOR_INTERVAL / MIP.Info.cs's ABS_GAP.
+    public static partial class MPC
+    {
+        // Default soft-row exact-penalty weights (Kerrigan & Maciejowski 2000) when a caller enables
+        // soft rows without specifying rho1/rho2 explicitly. rho1 (the L1/linear weight) need only
+        // exceed the corresponding hard-constraint multiplier for the exact-penalty property to hold;
+        // rho2 (the quadratic weight) adds strict convexity without affecting exactness. These are a
+        // generically-safe default for cost matrices at O(1) scale, not a tuned value for any specific
+        // plant -- a caller with differently-scaled Q/R should pass explicit rho1/rho2.
+        internal const double DEFAULT_RHO1 = 1e3;
+        internal const double DEFAULT_RHO2 = 1.0;
+    }
+}
