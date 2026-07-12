@@ -97,7 +97,7 @@ public class floatLPTests
             LadBRVertexProperty,// >= n residuals are EXACTLY ~0 at the BR optimum (the vertex property ladFN cannot certify)
             LadBRDegenerateExactFit, // exact-fit data (b=A*x_true, no noise): finite, Optimal/MaxIter, residual ~0
             LadBRMaxIterOneCase, // maxIter=1 -> MaxIterations with a finite usable partial iterate (no NaN/leak)
-            LadBRLargeMSortPath, // m=1000 -> large-candidate coverage of BR's sorted ratio-test walk
+            LadBRLargeMSortPath, // m=1000 (> BR_CAND_SORT_THRESHOLD=256) -> the sort-based ratio-test fast path
         }
 
         public TestType Type;
@@ -1636,10 +1636,11 @@ public class floatLPTests
             arena.Dispose();
         }
 
-        // Large-m correctness of BR's sorted ratio-test candidate walk (LP.BarrodaleRoberts.float.cs,
-        // UnsafeOP.sortByKeyAscending). Every other BR test tops out at m<=192; this is the only test
-        // that drives a stage-2 pivot's candidate count into the hundreds (m=1000, n=4), so it is the
-        // large-candidate coverage for that path. Same random + gross-outlier construction as
+        // Large-m correctness of the SORT-BASED ratio-test fast path (LP.BarrodaleRoberts.float.cs's
+        // nCand > BR_CAND_SORT_THRESHOLD branch, UnsafeOP.sortByKeyAscending). Every other BR test tops
+        // out at m<=192, well UNDER the 256 gate, so they all take the original selection-scan path; this
+        // is the only test that drives m large enough (1000, n=4) that a stage-2 pivot's candidate count
+        // exceeds 256 and the heapsort path fires. Same random + gross-outlier construction as
         // LadBRvsOracle (and LPBenchmark's SectionLad): A random in [-1,1], b = A*xt + small noise, a +5
         // outlier every 10th row -> the outlier-dominated L1 optimum is a well-separated vertex.
         //

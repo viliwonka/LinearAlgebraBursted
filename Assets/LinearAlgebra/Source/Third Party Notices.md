@@ -36,39 +36,3 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
-
-## pyfixest
-
-The Frisch-Newton interior-point LAD / quantile-regression solver (`LP.ladFN`,
-`LP.ladFrischNewtonCore`) is a C# port derived from pyfixest's Frisch-Newton
-interior-point solver, adapted to this library's dense row-major types and
-Cholesky (CHOP) normal-equation solve. The algorithm follows Koenker & Ng,
-"A Frisch-Newton Algorithm for Sparse Quantile Regression" (2005) and
-Portnoy & Koenker, "The Gaussian Hare and the Laplacian Tortoise" (1997).
-
-- Project: https://github.com/py-econometrics/pyfixest
-- License: MIT
-
-```
-MIT License
-
-Copyright (c) 2022 pyfixest authors
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```

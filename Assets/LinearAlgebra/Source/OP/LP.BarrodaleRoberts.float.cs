@@ -12,528 +12,416 @@ using LinearAlgebra.Internal;
 
 namespace LinearAlgebra
 {
-    // ================================================================================================
-    // Barrodale-Roberts primal simplex for L1 (least-absolute-deviation) / quantile regression.
-    //
-    // Implemented from the algorithm DESCRIPTIONS in Barrodale & Roberts 1973 ("An improved algorithm
-    // for discrete l1 linear approximation", SIAM J. Numer. Anal. 10(5) 839-848) and Koenker & d'Orey
-    // 1987 ("Computing Regression Quantiles", Appl. Statist. 36) -- clean-room: no reference source
-    // code was read. See this folder's DEVLOG.md for the derivation and validation history.
-    //
-    // Problem:  minimize sum_i rho_tau(b_i - A_i.x)  over a FREE x, rho_tau(r) = tau*r (r>=0) or
-    // (tau-1)*r (r<0). Convex piecewise-linear in x. A vertex interpolates n of the m rows exactly
-    // (index set S, |S| = n, B = A[S,:] invertible); this file maintains only B's inverse (via a
-    // fresh small LU factorization each iteration -- n is a coefficient count, always small) rather
-    // than a materialized m x (something) tableau, and reconstructs whatever a pivot needs from it.
-    //
-    // Stage 1 (colRow[j] < 0 for some j): places one structural column per row, growing S from empty
-    // to n. Stage 2: S is full; each pivot replaces one interpolated row with another. Both stages run
-    // through the SAME loop -- an unplaced column's optimality "box" is unbounded (any nonzero
-    // gradient is a violator), a placed column's box is [-tau, 1-tau]; whichever column violates its
-    // box the most enters next, so stage 1 finishes naturally before stage 2 without a separate path.
-    //
-    // Entering column's ROW is chosen by an exact line search along the pivot direction: candidate
-    // breakpoints (rows whose residual would cross zero) are sorted once and walked once, accumulating
-    // the direction's slope (which only ever increases, by convexity) until it reaches zero -- the
-    // walk can pass through many candidates in a single pivot (the "weighted-median long step" that is
-    // this algorithm's namesake speedup). Rank-deficient columns (zero leverage against every
-    // remaining row) are detected and pinned at 0 rather than forced into a singular basis.
-    //
-    // Job-safe: all scratch is Allocator.Temp, disposed on every return path.
-    // ================================================================================================
     public static partial class LP
     {
+        // ============================================================================================
+        // Barrodale-Roberts specialized-simplex EXACT least-absolute-deviation (L1) / quantile-
+        // regression solver. Port of the Koenker-d'Orey Fortran `rqbr` (R `quantreg` package,
+        // src/rqbr.f), itself derived from Barrodale & Roberts 1973 ("An improved algorithm for
+        // discrete l1 linear approximation", SIAM J. Numer. Anal. 10(5), 839-848). The second
+        // reformulation-free exact LAD engine (LP.ladBR), alongside Frisch-Newton (LP.ladFN,
+        // LP.FrischNewton.float.cs).
+        //
+        // This file implements the core simplex only -- rqbr's confidence-interval machinery and its
+        // tau-path continuation are not ported (unreachable in LP.ladBR's fixed-tau, CIs-off mode).
+        //
+        // Deviations from the literal reference: (1) uses this library's own simplex ratio/pivot
+        // tolerance (LP.float.cs's RatioTest) instead of rqbr's tighter toler=eps^(2/3); (2) on
+        // "premature end" (ift=2), extracts the last-vertex structural solution instead of leaving x
+        // untouched, matching LPStatus.Unbounded's own contract; (3) the "solution may be nonunique"
+        // warning (ift=1) is not surfaced, since LPStatus has no such state; (4) diagnostic-only
+        // reference outputs are dropped -- objective is honestly recomputed from the returned x.
+        //
+        // Algorithm shape: stage 1 pivots one structural variable into each of n rows so the fit
+        // interpolates those n points exactly (a vertex property ladFN's interior point can only
+        // approach); stage 2 runs a reduced-cost simplex that folds many residuals' sign changes into
+        // a single entering-column choice, giving ~O(n) iterations regardless of m. x is extracted
+        // from whatever rows are resolved at exit (Optimal, Unbounded, or a maxIter cutoff), so
+        // MaxIterations always returns a well-defined, finite partial iterate.
+        //
+        // Job-safe: all scratch is Allocator.Temp, disposed on every return path.
+        // ============================================================================================
+
         /// <summary>
-        /// Least absolute deviation (L1 regression): minimize ||A x - b||_1 over a FREE x, via the
-        /// Barrodale-Roberts specialized primal simplex (tau = 0.5). Reaches an EXACT VERTEX (n of the
-        /// m residuals are exactly zero -- see <see cref="LPInfo"/>). See
-        /// <see cref="lad(in floatMxN, in floatN, ref floatN, out double, int)"/> for the
-        /// size-routed hybrid default, and
-        /// <see cref="ladFN(in floatMxN, in floatN, ref floatN, out double, int)"/> for the
-        /// interior-point alternative.
+        /// Exact least-absolute-deviation (L1) regression via the Barrodale-Roberts specialized
+        /// simplex (Barrodale &amp; Roberts 1973; the Koenker-d'Orey <c>rqbr</c> core). The second
+        /// reformulation-free exact LAD engine in this library, alongside
+        /// <see cref="ladFN(in floatMxN, in floatN, ref floatN, out double, int)"/>: a primal
+        /// simplex worked directly on an m x n condensed tableau of the original design (no
+        /// 2n+2m-variable LP reformulation), converging to an EXACT VERTEX -- at the optimum, n of
+        /// the m residuals are exactly zero, a certificate ladFN's interior-point path only
+        /// approaches. Iteration count is ~O(n)
+        /// regardless of m (the weighted-median long step folds many residual sign-changes into a
+        /// single entering-column choice) -- BR is competitive with or faster than ladFN at small-to-
+        /// moderate m, ladFN wins at large m (Portnoy &amp; Koenker 1997's crossover).
+        ///
+        /// <see cref="objective"/> is the L1 residual ‖A x - b‖₁, recomputed from the returned x
+        /// (honest, matching every other LAD entry point's convention -- never the reference's own
+        /// internal running sum). <see cref="LP.lad"/>'s own default routing is UNCHANGED by this
+        /// method -- call ladBR directly for the exact Barrodale-Roberts route.
         /// </summary>
-        /// <param name="A">Design matrix, m x n (m observations, n coefficients).</param>
+        /// <param name="A">Design matrix, m×n (m observations, n coefficients). m ≥ n typical.</param>
         /// <param name="b">Observations, length m.</param>
         /// <param name="x">Output coefficients, length n (overwritten). May be negative.</param>
-        /// <param name="objective">Output L1 residual ||A x - b||_1, recomputed from the returned x.</param>
-        /// <param name="maxIter">Pivot budget; &lt;=0 picks 10n+100 (stage 1 alone needs n pivots).</param>
-        public static LPInfo ladBR(in floatMxN A, in floatN b, ref floatN x, out double objective,
-                                   int maxIter = 0)
+        /// <param name="objective">Output L1 residual ‖A x − b‖₁.</param>
+        /// <param name="maxIter">Iteration budget; ≤0 picks a size-based default (10n+100 -- stage 1
+        /// alone always needs n rounds, so unlike ladFN's fixed cap this must scale with n).</param>
+        public static LPInfo ladBR(in floatMxN A, in floatN b, ref floatN x, out double objective, int maxIter = 0)
         {
-            if (b.N != A.M_Rows) throw new ArgumentException("LP.ladBR: b.N must equal A.M_Rows");
-            if (x.N != A.N_Cols) throw new ArgumentException("LP.ladBR: x.N must equal A.N_Cols");
+            int m = A.M_Rows, n = A.N_Cols;
+
+            if (b.N != m) throw new ArgumentException("LP.ladBR: b.N must equal A.M_Rows");
+            if (x.N != n) throw new ArgumentException("LP.ladBR: x.N must equal A.N_Cols");
 
             return ladBarrodaleRobertsCore(in A, in b, 0.5, ref x, out objective, maxIter);
         }
 
         /// <summary>
-        /// Quantile regression at level <paramref name="tau"/>: minimize the tau check-loss
-        /// sum rho_tau(b - A x) over a FREE x, via the Barrodale-Roberts primal simplex generalized
-        /// per Koenker &amp; d'Orey 1987 (asymmetric [tau-1, tau] reduced-cost bounds in place of the
-        /// classical LAD's symmetric [-0.5, 0.5]). tau = 0.5 reproduces <see cref="ladBR(in floatMxN, in floatN, ref floatN, out double, int)"/>.
+        /// Quantile regression via the same Barrodale-Roberts specialized simplex: fits the
+        /// conditional τ-quantile of b given A by minimizing the check loss
+        /// Σᵢ ρ_τ(bᵢ − Aᵢ·x) over a FREE x, where ρ_τ(u) = u·(τ − 1[u&lt;0]). τ = 0.5 is median
+        /// regression (identical fit to the τ-less
+        /// <see cref="ladBR(in floatMxN, in floatN, ref floatN, out double, int)"/>). Exact and
+        /// reformulation-free, same vertex-exact / O(n)-iteration behavior as the τ=0.5 overload.
         /// </summary>
-        /// <param name="A">Design matrix, m x n (m observations, n coefficients).</param>
+        /// <param name="A">Design matrix, m×n (m observations, n coefficients). m ≥ n typical.</param>
         /// <param name="b">Observations, length m.</param>
-        /// <param name="tau">Quantile level, strictly between 0 and 1.</param>
+        /// <param name="tau">Quantile level, strictly inside (0, 1). 0.5 = LAD/median.</param>
         /// <param name="x">Output coefficients, length n (overwritten). May be negative.</param>
-        /// <param name="objective">Output L1 residual ||A x - b||_1, recomputed from the returned x
-        /// (NOT the tau check-loss -- an honest, tau-independent diagnostic, matching every other LAD
-        /// entry point in this file).</param>
-        /// <param name="maxIter">Pivot budget; &lt;=0 picks 10n+100.</param>
+        /// <param name="objective">Output ‖A x − b‖₁ at the returned fit (the plain L1 residual,
+        /// reported for cross-method comparability; the τ-quantile fit does not minimize this
+        /// unweighted sum unless τ = 0.5 -- same convention as ladFN's tau overload).</param>
+        /// <param name="maxIter">Iteration budget; ≤0 picks the size-based default (10n+100).</param>
         public static LPInfo ladBR(in floatMxN A, in floatN b, double tau, ref floatN x,
                                    out double objective, int maxIter = 0)
         {
-            if (b.N != A.M_Rows) throw new ArgumentException("LP.ladBR: b.N must equal A.M_Rows");
-            if (x.N != A.N_Cols) throw new ArgumentException("LP.ladBR: x.N must equal A.N_Cols");
-            if (tau <= 0.0 || tau >= 1.0) throw new ArgumentException("LP.ladBR: tau must be strictly between 0 and 1");
+            int m = A.M_Rows, n = A.N_Cols;
+
+            if (b.N != m) throw new ArgumentException("LP.ladBR: b.N must equal A.M_Rows");
+            if (x.N != n) throw new ArgumentException("LP.ladBR: x.N must equal A.N_Cols");
+            if (!(tau > 0.0 && tau < 1.0)) throw new ArgumentException("LP.ladBR: tau must be strictly inside (0, 1)");
 
             return ladBarrodaleRobertsCore(in A, in b, tau, ref x, out objective, maxIter);
         }
 
-        /// <summary>
-        /// Core Barrodale-Roberts solve. Assumes dimensions/tau already validated by the public
-        /// overloads above; internal (not private) so the InternalsVisibleTo test grant can call it
-        /// directly. <paramref name="maxIter"/> &lt;=0 picks 10n+100.
-        ///
-        /// Status contract: <see cref="LPStatus.Optimal"/> on reaching the box-optimality certificate
-        /// OR (rare, near-degenerate data only) on accepting the best iterate found after persistent
-        /// cycling was detected and an anti-cycling escalation (Bland's rule, then a widened residual-
-        /// zero threshold) failed to resolve it within one more history window -- the combinatorial
-        /// vertex identity can be ambiguous at a given dtype's precision even though the solution
-        /// itself is stable; <see cref="LPStatus.MaxIterations"/> if the pivot budget is exhausted
-        /// first; <see cref="LPStatus.Unbounded"/> only on a genuinely degenerate pivot direction with
-        /// no stopping row (should not occur for a well-posed problem). <paramref name="x"/> is a
-        /// finite, well-defined iterate on EVERY exit path, including
-        /// <see cref="LPStatus.MaxIterations"/>; unresolved coefficients (stage 1 incomplete, or
-        /// detected rank-deficient) keep 0. <paramref name="objective"/> is always the honest
-        /// ||A x - b||_1 at the returned x, independent of <paramref name="tau"/>.
-        /// </summary>
+        // tau-parameterized core. internal (not private), mirroring ladFrischNewtonCore's own
+        // visibility rationale (see that file's header) -- the public tau surface above is the
+        // supported entry.
         internal static LPInfo ladBarrodaleRobertsCore(in floatMxN A, in floatN b, double tau,
-                                                       ref floatN x, out double objective, int maxIter)
+                                                        ref floatN x, out double objective, int maxIter)
         {
             int m = A.M_Rows, n = A.N_Cols;
-            if (maxIter <= 0) maxIter = 10 * n + 100;
 
-            float tauF = (float)tau;
-            float oneMinusTau = (float)1 - tauF;
-            // tol: the LOOSE optimality margin (box-violation / stopping-slope slack). pivTolFloor:
-            // TIGHT "is this raw value zero" floor (nonzero-rate / nonzero-pivot detection).
-            // zeroResidTol starts at pivTolFloor and is kept SEPARATE from tol for classifying a
-            // residual's sign -- using tol there was measured to zero out legitimate small-but-real
-            // residuals (in float, tol's sqrt-eps scale is ~300x looser than a residual step actually
-            // needs), corrupting the price-out sum; see this file's DEVLOG entry.
-            float tol = (float)math.max(math.sqrt((double)Consts.floatEpsilon), 1e-7);
-            float pivTolFloor = math.max(Consts.floatZeroThreshold, (float)1e-9);
-            float zeroResidTol = pivTolFloor;
-
-            var colRow = new NativeArray<int>(n, Allocator.Temp);      // coefficient -> row, or -1
-            for (int j = 0; j < n; j++) colRow[j] = -1;
-            var rowUsed = new NativeArray<bool>(m, Allocator.Temp);    // row currently interpolated?
-            var redundant = new NativeArray<bool>(n, Allocator.Temp);  // rank-deficient, pinned at 0
-            var placedCols = new NativeArray<int>(n, Allocator.Temp);  // gathered each iteration
-            var srows = new NativeArray<int>(n, Allocator.Temp);       // srows[a] = colRow[placedCols[a]]
-
-            var g = new floatN(n, Allocator.Temp);
-            var val = new floatN(n, Allocator.Temp);
-            var adjustedG = new floatN(n, Allocator.Temp);
-            var R = new floatN(m, Allocator.Temp);
-            var tcol = new floatN(m, Allocator.Temp);
-            var candBreak = new floatN(m, Allocator.Temp);
+            var T = new floatMxN(m, n, Allocator.Temp);
+            var rhs = new floatN(m, Allocator.Temp);
+            var cost = new floatN(n, Allocator.Temp);
+            var rowTag = new NativeArray<int>(m, Allocator.Temp);
+            var colTag = new NativeArray<int>(n, Allocator.Temp);
             var candRow = new NativeArray<int>(m, Allocator.Temp);
+            var candRatio = new floatN(m, Allocator.Temp);
 
-            // Anti-cycling: a fixed-size ring of the last HIST (col, selfRow, enterRow) pivots.
-            // Committing a pivot identical to one already in the ring means a short cycle is being
-            // revisited (confirmed to occur at float precision on genuinely near-degenerate data --
-            // several rows simultaneously within roundoff of the fitted line -- see DEVLOG); switch to
-            // Bland's rule (deterministic smallest-index selection, both entering column and tied
-            // leaving row) from that point on. bestX/bestChk track the lowest check-loss iterate seen;
-            // if Bland's rule alone does not resolve the cycle within one more history window, the
-            // combinatorial vertex identity is ambiguous at this precision but the SOLUTION is not (x
-            // stays essentially fixed across such cycles) -- accept the best iterate rather than grind
-            // to MaxIterations on a certificate this precision cannot stably certify.
-            const int HIST = 16;
-            var histCol = new NativeArray<int>(HIST, Allocator.Temp);
-            var histSelf = new NativeArray<int>(HIST, Allocator.Temp);
-            var histEnter = new NativeArray<int>(HIST, Allocator.Temp);
-            for (int h = 0; h < HIST; h++) { histCol[h] = -1; histSelf[h] = -1; histEnter[h] = -1; }
-            int histPos = 0;
-            bool useBland = false;
-            int cyclingSince = -1;
-            var bestX = new floatN(n, Allocator.Temp);
-            double bestChk = 0;
-            bool haveBest = false;
-            bool acceptedBest = false;
-
-            for (int j = 0; j < n; j++) x[j] = (float)0;
-
-            LPStatus status = LPStatus.MaxIterations;
-            int iters = 0;
-
-            while (iters < maxIter)
+            // ---- setup (rqbr's "23019" loop): copy A/b into the working tableau, tag row i with its
+            // observation index n+i+1 (1-based semantics kept for the tag VALUES throughout, matching
+            // the reference exactly, regardless of this port's 0-based array indexing), then normalize
+            // every row to a nonnegative rhs (negating the whole row -- data AND tag -- when it
+            // isn't). idxcf is always 0 in this port (no tau-path/CI), so rqbr's n3 perturbation column
+            // (wa(i,n3) = tnew*a(i,idxcf)) is always zero and n1==n2 always -- both collapse into the
+            // single `rhs` column here (see file header). ----
+            for (int i = 0; i < m; i++)
             {
-                int k = 0;
-                for (int j = 0; j < n; j++)
-                    if (colRow[j] >= 0) { placedCols[k] = j; srows[k] = colRow[j]; k++; }
-
-                floatMxN Bmat = default;
-                Pivot piv = default;
-                bool haveFactor = false;
-
-                if (k > 0)
+                for (int j = 0; j < n; j++) T[i, j] = A[i, j];
+                rhs[i] = b[i];
+                rowTag[i] = n + i + 1;
+                if (rhs[i] < (float)0)
                 {
-                    Bmat = new floatMxN(k, k, Allocator.Temp);
-                    for (int a = 0; a < k; a++)
-                        for (int c = 0; c < k; c++)
-                            Bmat[a, c] = A[srows[a], placedCols[c]];
-
-                    piv = new Pivot(k, Allocator.Temp);
-                    var luInfo = LU.decompInPlace(ref Bmat, ref piv);
-                    if (luInfo.status == DirectSolveStatus.Singular)
-                    {
-                        // Should not occur: redundant-column detection below keeps every placed
-                        // column linearly independent of the others. Defensive fallback only.
-                        status = LPStatus.Unbounded;
-                        Bmat.Dispose(); piv.Dispose();
-                        break;
-                    }
-                    haveFactor = true;
-
-                    var rhs = new floatN(k, Allocator.Temp);
-                    for (int a = 0; a < k; a++) rhs[a] = b[srows[a]];
-                    LU.decompSolve(ref Bmat, in piv, ref rhs);
-                    for (int a = 0; a < k; a++) x[placedCols[a]] = rhs[a];
-                    rhs.Dispose();
+                    for (int j = 0; j < n; j++) T[i, j] = -T[i, j];
+                    rhs[i] = -rhs[i];
+                    rowTag[i] = -rowTag[i];
                 }
-                for (int j = 0; j < n; j++) if (colRow[j] < 0) x[j] = (float)0;
-
-                for (int j = 0; j < n; j++) g[j] = (float)0;
-                double chk = 0;
-                for (int i = 0; i < m; i++)
-                {
-                    if (rowUsed[i]) continue;
-                    float dot = (float)0;
-                    for (int j = 0; j < n; j++) dot += A[i, j] * x[j];
-                    float r = b[i] - dot;
-                    R[i] = r;
-                    chk += r >= (float)0 ? tau * (double)r : (tau - 1.0) * (double)r;
-                    float sg = r > zeroResidTol ? tauF : (r < -zeroResidTol ? tauF - (float)1 : (float)0);
-                    if (sg != (float)0)
-                        for (int j = 0; j < n; j++) g[j] += A[i, j] * sg;
-                }
-
-                if (!haveBest || chk < bestChk)
-                {
-                    haveBest = true;
-                    bestChk = chk;
-                    for (int j = 0; j < n; j++) bestX[j] = x[j];
-                }
-
-                for (int j = 0; j < n; j++) val[j] = (float)0;
-                if (k > 0)
-                {
-                    var gp = new floatN(k, Allocator.Temp);
-                    for (int a = 0; a < k; a++) gp[a] = g[placedCols[a]];
-                    LU.decompSolveTransA(ref Bmat, in piv, ref gp);
-                    for (int a = 0; a < k; a++) val[placedCols[a]] = gp[a];
-                    gp.Dispose();
-                }
-
-                for (int j = 0; j < n; j++)
-                {
-                    if (colRow[j] >= 0) { adjustedG[j] = (float)0; continue; }
-                    float adj = g[j];
-                    for (int a = 0; a < k; a++) adj -= A[srows[a], j] * val[placedCols[a]];
-                    adjustedG[j] = adj;
-                }
-
-                int bestCol = -1;
-                float bestViol = tol;
-                int bestDir = 0;
-                for (int j = 0; j < n; j++)
-                {
-                    if (redundant[j]) continue;
-                    if (colRow[j] < 0)
-                    {
-                        float v = math.abs(adjustedG[j]);
-                        if (v > bestViol)
-                        {
-                            bestViol = v; bestCol = j; bestDir = adjustedG[j] > (float)0 ? -1 : 1;
-                            if (useBland) break;   // ascending j -> first hit is smallest index
-                        }
-                    }
-                    else
-                    {
-                        float lo = -tauF, hi = oneMinusTau;
-                        float vv = val[j];
-                        if (vv < lo - tol)
-                        {
-                            float v = lo - vv;
-                            if (v > bestViol) { bestViol = v; bestCol = j; bestDir = 1; if (useBland) break; }
-                        }
-                        else if (vv > hi + tol)
-                        {
-                            float v = vv - hi;
-                            if (v > bestViol) { bestViol = v; bestCol = j; bestDir = -1; if (useBland) break; }
-                        }
-                    }
-                }
-
-                if (bestCol < 0)
-                {
-                    int redundantCount = 0;
-                    for (int j = 0; j < n; j++) if (redundant[j]) redundantCount++;
-                    if (k == n - redundantCount)
-                    {
-                        status = LPStatus.Optimal;
-                        if (haveFactor) { Bmat.Dispose(); piv.Dispose(); }
-                        break;
-                    }
-                    // S incomplete but nothing strictly violates -- force-place the least-marginal
-                    // unplaced column so stage 1 can still complete.
-                    float best = (float)(-1);
-                    int bc = -1;
-                    for (int j = 0; j < n; j++)
-                    {
-                        if (colRow[j] >= 0 || redundant[j]) continue;
-                        float v = math.abs(adjustedG[j]);
-                        if (v > best) { best = v; bc = j; }
-                    }
-                    bestCol = bc;
-                    bestDir = adjustedG[bc] <= (float)0 ? 1 : -1;
-                }
-
-                int col = bestCol;
-                int dir = bestDir;
-                bool placingNew = colRow[col] < 0;
-                int selfRow = placingNew ? -1 : colRow[col];
-
-                float initSlope;
-                if (placingNew)
-                {
-                    if (k > 0)
-                    {
-                        var scolVals = new floatN(k, Allocator.Temp);
-                        for (int a = 0; a < k; a++) scolVals[a] = A[srows[a], col];
-                        LU.decompSolve(ref Bmat, in piv, ref scolVals);
-                        for (int i = 0; i < m; i++)
-                        {
-                            if (rowUsed[i]) continue;
-                            float proj = (float)0;
-                            for (int a = 0; a < k; a++) proj += A[i, placedCols[a]] * scolVals[a];
-                            tcol[i] = A[i, col] - proj;
-                        }
-                        scolVals.Dispose();
-                    }
-                    else
-                    {
-                        for (int i = 0; i < m; i++) if (!rowUsed[i]) tcol[i] = A[i, col];
-                    }
-                    initSlope = dir * adjustedG[col];
-                }
-                else
-                {
-                    int slot = -1;
-                    for (int a = 0; a < k; a++) if (placedCols[a] == col) { slot = a; break; }
-
-                    var e = new floatN(k, Allocator.Temp);
-                    for (int a = 0; a < k; a++) e[a] = a == slot ? (float)1 : (float)0;
-                    LU.decompSolve(ref Bmat, in piv, ref e);
-                    for (int i = 0; i < m; i++)
-                    {
-                        if (rowUsed[i]) continue;
-                        float tv = (float)0;
-                        for (int a = 0; a < k; a++) tv += A[i, placedCols[a]] * e[a];
-                        tcol[i] = tv;
-                    }
-                    e.Dispose();
-                    initSlope = dir == 1 ? (val[col] + tauF) : (-(val[col]) + oneMinusTau);
-                }
-
-                int nCand = 0;
-                for (int i = 0; i < m; i++)
-                {
-                    if (rowUsed[i]) continue;
-                    float rate = dir * tcol[i];
-                    if (math.abs(rate) <= pivTolFloor) continue;
-                    float ti = -R[i] / rate;
-                    // Tight floor (not the loose optimality-margin tol) admitting a "just barely
-                    // negative" breakpoint as an immediate (t=0) candidate: a row already slightly
-                    // past the crossing (by more than roundoff) is NOT a legitimate candidate, and
-                    // admitting it under too generous a slack was observed to seed exactly the
-                    // near-degenerate reversals this file's anti-cycling machinery has to correct for.
-                    if (ti < -pivTolFloor) continue;
-                    candBreak[nCand] = math.max(ti, (float)0);
-                    candRow[nCand] = i;
-                    nCand++;
-                }
-
-                int enterRow = -1;
-                if (nCand == 0)
-                {
-                    if (placingNew)
-                    {
-                        int forceRow = -1;
-                        float forceMag = (float)0;
-                        for (int i = 0; i < m; i++)
-                        {
-                            if (rowUsed[i]) continue;
-                            float mag = math.abs(tcol[i]);
-                            if (mag > forceMag) { forceMag = mag; forceRow = i; }
-                        }
-                        if (forceRow >= 0 && forceMag > pivTolFloor)
-                        {
-                            enterRow = forceRow;
-                        }
-                        else
-                        {
-                            redundant[col] = true;
-                            if (haveFactor) { Bmat.Dispose(); piv.Dispose(); }
-                            iters++;
-                            continue;
-                        }
-                    }
-                    else
-                    {
-                        status = LPStatus.Unbounded;
-                        if (haveFactor) { Bmat.Dispose(); piv.Dispose(); }
-                        break;
-                    }
-                }
-                else
-                {
-                    unsafe
-                    {
-                        UnsafeOP.sortByKeyAscending((float*)candBreak.Data.Ptr,
-                                                    (int*)candRow.GetUnsafePtr(), nCand);
-                    }
-
-                    float cum = initSlope;
-                    float stopWinTheta = (float)0;
-                    for (int idx = 0; idx < nCand; idx++)
-                    {
-                        int row = candRow[idx];
-                        float rate = dir * tcol[row];
-                        cum += math.abs(rate);
-                        if (cum >= -tol) { enterRow = row; stopWinTheta = candBreak[idx]; break; }
-                    }
-                    if (enterRow < 0)
-                    {
-                        status = LPStatus.Unbounded;
-                        if (haveFactor) { Bmat.Dispose(); piv.Dispose(); }
-                        break;
-                    }
-
-                    // Harris-style tie-break (mirrors LP.RevisedSimplex's ratio-test pattern): among
-                    // all candidates numerically tied with the winning breakpoint (TWO-SIDED window --
-                    // an upper-bound-only check trivially includes every candidate already swept by
-                    // the walk above and silently picks the largest-magnitude one seen so far,
-                    // regardless of whether it is actually tied), pick the one with LARGEST |rate| for
-                    // a better-conditioned pivot. Under Bland's-rule fallback, smallest ROW INDEX
-                    // instead (deterministic, anti-cycling).
-                    float tieTol = tol * ((float)1 + math.abs(stopWinTheta));
-                    if (useBland)
-                    {
-                        int bestRow = enterRow;
-                        for (int idx = 0; idx < nCand; idx++)
-                        {
-                            int row = candRow[idx];
-                            if (math.abs(candBreak[idx] - stopWinTheta) <= tieTol && row < bestRow) bestRow = row;
-                        }
-                        enterRow = bestRow;
-                    }
-                    else
-                    {
-                        float bestMag = (float)0;
-                        int bestRow = enterRow;
-                        for (int idx = 0; idx < nCand; idx++)
-                        {
-                            int row = candRow[idx];
-                            if (math.abs(candBreak[idx] - stopWinTheta) <= tieTol)
-                            {
-                                float mag = math.abs(dir * tcol[row]);
-                                if (mag > bestMag) { bestMag = mag; bestRow = row; }
-                            }
-                        }
-                        enterRow = bestRow;
-                    }
-                }
-
-                bool repeated = false;
-                for (int h = 0; h < HIST; h++)
-                    if (histCol[h] == col && histSelf[h] == selfRow && histEnter[h] == enterRow) { repeated = true; break; }
-                if (repeated)
-                {
-                    if (!useBland) { useBland = true; cyclingSince = iters; }
-                    else if (zeroResidTol < tol) zeroResidTol = math.min(zeroResidTol * (float)10, tol);
-                }
-                histCol[histPos] = col; histSelf[histPos] = selfRow; histEnter[histPos] = enterRow;
-                histPos = (histPos + 1) % HIST;
-
-                if (useBland && cyclingSince >= 0 && iters - cyclingSince > 6 * HIST)
-                {
-                    for (int j = 0; j < n; j++) x[j] = bestX[j];
-                    status = LPStatus.Optimal;
-                    acceptedBest = true;
-                    if (haveFactor) { Bmat.Dispose(); piv.Dispose(); }
-                    break;
-                }
-
-                if (!placingNew) rowUsed[selfRow] = false;
-                rowUsed[enterRow] = true;
-                colRow[col] = enterRow;
-
-                if (haveFactor) { Bmat.Dispose(); piv.Dispose(); }
-                iters++;
             }
 
-            // Final extraction -- guarantees x matches colRow's LATEST state even when the loop
-            // above exited via the maxIter budget right after applying its last pivot. Skipped when
-            // the anti-cycling fallback already wrote the accepted best-seen iterate into x directly
-            // (colRow's final state there is just wherever the still-cycling walk last landed, not
-            // the accepted answer).
-            if (!acceptedBest)
+            // ---- setup (rqbr's "23035" loop): cost[j] = cost0[j] + costT[j]*tau, the tau-dependent
+            // reduced-cost row (rqbr's wa(m1,*) after its own do23048 recombination). cost0/costT
+            // (rqbr's wa(m2,*)/wa(m3,*)) are transient locals here -- this port's single fixed-tau pass
+            // never re-derives cost[] from them again after this point (that only happens on rqbr's
+            // tau-PATH continuation, not ported -- see file header), so there is nothing to gain from
+            // persisting them as maintained rows. aux below reads the ALREADY row-negated T (matching
+            // the reference's own setup order: row negation happens in the loop above, THIS loop reads
+            // its result), and aux*sign(rowTag) recovers the ORIGINAL (pre-negation) A[i,j] -- the
+            // negation and the sign-undo cancel, which is why costT[j] below equals 2x the ORIGINAL
+            // column sum. ----
+            for (int j = 0; j < n; j++)
             {
-                int k = 0;
-                for (int j = 0; j < n; j++)
-                    if (colRow[j] >= 0) { placedCols[k] = j; srows[k] = colRow[j]; k++; }
-
-                if (k > 0)
+                colTag[j] = j + 1;
+                double costConst = 0, costT = 0;
+                for (int i = 0; i < m; i++)
                 {
-                    var Bmat2 = new floatMxN(k, k, Allocator.Temp);
-                    for (int a = 0; a < k; a++)
-                        for (int c = 0; c < k; c++)
-                            Bmat2[a, c] = A[srows[a], placedCols[c]];
-
-                    var piv2 = new Pivot(k, Allocator.Temp);
-                    var luInfo2 = LU.decompInPlace(ref Bmat2, ref piv2);
-                    if (luInfo2.status == DirectSolveStatus.Success)
-                    {
-                        var rhs2 = new floatN(k, Allocator.Temp);
-                        for (int a = 0; a < k; a++) rhs2[a] = b[srows[a]];
-                        LU.decompSolve(ref Bmat2, in piv2, ref rhs2);
-                        for (int a = 0; a < k; a++) x[placedCols[a]] = rhs2[a];
-                        rhs2.Dispose();
-                    }
-                    Bmat2.Dispose(); piv2.Dispose();
+                    double aux = (double)T[i, j];
+                    if (rowTag[i] < 0) { costConst += 2.0 * aux; costT -= aux; }
+                    else costT += aux;
                 }
-                for (int j = 0; j < n; j++) if (colRow[j] < 0) x[j] = (float)0;
+                costT *= 2.0;
+                cost[j] = (float)(costConst + costT * tau);
+            }
+
+            // Pivot/ratio tolerance -- see deviation 1 in the file header (this library's own
+            // established convention, not the reference's literal eps^(2/3)).
+            float pivTol = math.max(Consts.floatZeroThreshold, (float)1e-9);
+
+            int kr = 0, kl = 0, kount = 0, iters = 0;
+            bool stage = true;
+            LPStatus status = LPStatus.Optimal;
+            int budget = maxIter > 0 ? maxIter : 10 * n + 100;
+
+            while (true)
+            {
+                if (iters >= budget) { status = LPStatus.MaxIterations; break; }
+
+                int enter = -1;
+                if (stage)
+                {
+                    // ---- stage 1 entering-column selection (label 30): among still-eligible columns
+                    // (|colTag[j]| <= n -- i.e. not yet resolved) in [kr,n), the one with the largest
+                    // |cost|. ----
+                    float best = (float)(-1);
+                    for (int j = kr; j < n; j++)
+                    {
+                        if (math.abs(colTag[j]) <= n)
+                        {
+                            float d = math.abs(cost[j]);
+                            if (d > best) { best = d; enter = j; }
+                        }
+                    }
+                    if (enter < 0) { status = LPStatus.MaxIterations; break; }   // defensive; loop invariant precludes this
+                    if (cost[enter] < (float)0)
+                    {
+                        for (int i = 0; i < m; i++) T[i, enter] = -T[i, enter];
+                        cost[enter] = -cost[enter];
+                        colTag[enter] = -colTag[enter];
+                    }
+                }
+                else
+                {
+                    // ---- stage 2 entering-column selection (label 23055): full reduced-cost search
+                    // over [kr,n) with the "-2" free-variable folding trick (x is UNRESTRICTED in
+                    // sign, so a column whose reduced cost sits in (-2,0) is not yet competitive but
+                    // isn't excluded outright -- its FOLDED value -d-2 re-enters the max search). ----
+                    float BIG = (float)1e30;
+                    float best = -BIG;
+                    for (int j = kr; j < n; j++)
+                    {
+                        float d = cost[j];
+                        if (d < (float)0)
+                        {
+                            if (d > (float)(-2)) continue;
+                            d = -d - (float)2;
+                        }
+                        if (d > best) { best = d; enter = j; }
+                    }
+                    if (best <= pivTol) break;    // stage-2 optimal (label 23054) -- status stays Optimal
+                    if (cost[enter] <= (float)0)
+                    {
+                        for (int i = 0; i < m; i++) T[i, enter] = -T[i, enter];
+                        cost[enter] = -cost[enter] - (float)2;
+                        colTag[enter] = -colTag[enter];
+                    }
+                }
+
+                iters++;
+
+                // ---- ratio test + weighted-median long step (labels 23072/23079/10): collect every
+                // candidate row in [kl,m) with a positive entry in the entering column, then repeatedly
+                // take the SMALLEST remaining ratio -- either it's the true pivot point
+                // (cost[enter] - 2*pivot <= pivTol) or it's a breakpoint the objective still improves
+                // past, in which case that row is FOLDED (negated in place) and the search continues
+                // among the rest, all within this ONE entering-column choice. ----
+                // Column-strided read: T[i,enter] is a fixed COLUMN scanned over varying rows i, stride
+                // n in this row-major tableau (the reference Fortran's own wa(i,in) would have been
+                // unit-stride under Fortran's column-major convention -- this port's row-major storage
+                // inverts that). This collection pass runs once per entering-column choice (<= iters
+                // times total, NOT once per fold -- see below).
+                int nCand = 0;
+                for (int i = kl; i < m; i++)
+                {
+                    float d = T[i, enter];
+                    if (d > pivTol) { candRow[nCand] = i; candRatio[nCand] = rhs[i] / d; nCand++; }
+                }
+
+                // Candidate consumption: process candidates in ASCENDING ratio order until the terminal
+                // pivot test fires; every non-terminal candidate FOLDS (see TryPivotOrFold) and the scan
+                // continues. `iters` only counts real PIVOTS (incremented above, once per entering-
+                // column choice), not folds -- so a single entering-column choice can fold arbitrarily
+                // many of the nCand candidates before landing on its pivot, and the flat, size-
+                // independent iters count BR is known for (~O(n) pivots regardless of m) can hide an
+                // unbounded amount of fold work behind it.
+                //
+                // The ORIGINAL algorithm (kept below, UNCHANGED, for nCand <= CandSortThreshold) finds
+                // this order via an O(nCand^2) selection sort, which becomes the dominant cost at large
+                // m. Above BR_CAND_SORT_THRESHOLD, sort the candidates ONCE (UnsafeOP.sortByKeyAscending,
+                // O(nCand log nCand) heapsort) and walk them in a single linear pass instead -- same
+                // visitation order as the original whenever ratios are distinct.
+                int leave = -1;
+                if (nCand > BR_CAND_SORT_THRESHOLD)
+                {
+                    unsafe { UnsafeOP.sortByKeyAscending(candRatio.Data.Ptr, (int*)NativeArrayUnsafeUtility.GetUnsafePtr(candRow), nCand); }
+                    for (int p = 0; p < nCand; p++)
+                    {
+                        int cand = candRow[p];
+                        if (TryPivotOrFold(T, rhs, cost, rowTag, n, kr, enter, cand, pivTol)) { leave = cand; break; }
+                    }
+                }
+                else
+                {
+                    while (nCand > 0)
+                    {
+                        int pick = 0;
+                        float minRatio = candRatio[0];
+                        for (int k = 1; k < nCand; k++) if (candRatio[k] < minRatio) { minRatio = candRatio[k]; pick = k; }
+                        int cand = candRow[pick];
+                        candRow[pick] = candRow[nCand - 1]; candRatio[pick] = candRatio[nCand - 1]; nCand--;
+
+                        if (TryPivotOrFold(T, rhs, cost, rowTag, n, kr, enter, cand, pivTol)) { leave = cand; break; }
+                    }
+                }
+
+                if (leave < 0)
+                {
+                    if (stage)
+                    {
+                        // ---- degenerate column exchange (label 23081): no candidate row at all for
+                        // this entering column -- swap it directly into position kr without a real
+                        // pivot (that coefficient never gets a row assigned; x[.] stays 0 for it). ----
+                        for (int i = 0; i < m; i++) { float tmp = T[i, kr]; T[i, kr] = T[i, enter]; T[i, enter] = tmp; }
+                        float tc = cost[kr]; cost[kr] = cost[enter]; cost[enter] = tc;
+                        int ttag = colTag[kr]; colTag[kr] = colTag[enter]; colTag[enter] = ttag;
+                        kr++;
+                    }
+                    else
+                    {
+                        // ---- label 23047 (rqbr's ift=2, "premature end -- possible conditioning
+                        // problem"): see file header deviation 2 for the LPStatus.Unbounded mapping and
+                        // why x is still extracted below rather than discarded. ----
+                        status = LPStatus.Unbounded;
+                        break;
+                    }
+                }
+                else
+                {
+                    // ---- the actual pivot (label 10) ----
+                    BRPivot(T, rhs, cost, rowTag, colTag, m, n, kr, leave, enter);
+                    kount++;
+                    if (stage)
+                    {
+                        if (leave != kount - 1)
+                        {
+                            for (int j = kr; j < n; j++) { float tmp = T[leave, j]; T[leave, j] = T[kount - 1, j]; T[kount - 1, j] = tmp; }
+                            float tr = rhs[leave]; rhs[leave] = rhs[kount - 1]; rhs[kount - 1] = tr;
+                            int trg = rowTag[leave]; rowTag[leave] = rowTag[kount - 1]; rowTag[kount - 1] = trg;
+                        }
+                        kl++;
+                    }
+                }
+
+                if (stage && kount + kr == n) stage = false;   // stage 1 complete -> stage 2 (labels 23057/23052)
+            }
+
+            // ---- extract solution (label 80's x(k) formula, generalized to run at ANY exit point:
+            // rows [0,kl) are exactly the ones a structural variable has been resolved into so far --
+            // a full n of them on Optimal/Unbounded (stage 1 always finishes before stage 2 can run),
+            // fewer on a maxIter cutoff mid-stage-1, in which case every unresolved x[j] simply keeps
+            // its zero-initialized value. ----
+            for (int j = 0; j < n; j++) x[j] = (float)0;
+            for (int i = 0; i < kl; i++)
+            {
+                int k = math.abs(rowTag[i]) - 1;
+                float sgn = rowTag[i] < 0 ? -(float)1 : (float)1;
+                x[k] = rhs[i] * sgn;
             }
 
             double obj = 0;
             for (int i = 0; i < m; i++)
             {
-                float dot = (float)0;
-                for (int j = 0; j < n; j++) dot += A[i, j] * x[j];
-                obj += math.abs((double)(b[i] - dot));
+                double rowDot = 0;
+                for (int j = 0; j < n; j++) rowDot += (double)A[i, j] * (double)x[j];
+                obj += math.abs(rowDot - (double)b[i]);
             }
             objective = obj;
 
-            colRow.Dispose(); rowUsed.Dispose(); redundant.Dispose(); placedCols.Dispose(); srows.Dispose();
-            g.Dispose(); val.Dispose(); adjustedG.Dispose(); R.Dispose(); tcol.Dispose();
-            candBreak.Dispose(); candRow.Dispose();
-            histCol.Dispose(); histSelf.Dispose(); histEnter.Dispose(); bestX.Dispose();
+            T.Dispose(); rhs.Dispose(); cost.Dispose();
+            rowTag.Dispose(); colTag.Dispose(); candRow.Dispose(); candRatio.Dispose();
 
             return new LPInfo { status = status, iterations = iters, objective = obj };
+        }
+
+        // Processes ONE ratio-test candidate row `cand` for the current entering column: either it is
+        // the terminal pivot (the reduced-cost budget cost[enter] has dropped to the pivot threshold,
+        // label 10's own test) and the caller should stop and pivot there (returns true), or it is a
+        // breakpoint the objective still improves past and gets FOLDED in place -- negated across
+        // columns [kr,n), its rhs, and its tag, and its contribution debited from cost[enter] -- so the
+        // scan can continue (returns false). Factored out so the small-nCand (linear-scan) and
+        // large-nCand (pre-sorted) candidate-consumption paths above share this ONE definition of what
+        // "process a candidate" means, rather than the fold logic being duplicated between them.
+        static bool TryPivotOrFold(floatMxN T, floatN rhs, floatN cost, NativeArray<int> rowTag,
+                                   int n, int kr, int enter, int cand, float pivTol)
+        {
+            float pivot = T[cand, enter];
+            if (cost[enter] - pivot - pivot <= pivTol) return true;   // label 10's own test -- this row leaves
+
+            // fold (label 23094): pass THROUGH this breakpoint without pivoting -- negate row `cand`
+            // in place (columns [kr,n) AND rhs AND its tag), and debit its contribution from the
+            // entering column's remaining reduced-cost budget.
+            for (int j = kr; j < n; j++)
+            {
+                float d = T[cand, j];
+                cost[j] -= d + d;
+                T[cand, j] = -d;
+            }
+            float dr = rhs[cand];
+            rhs[cand] = -dr;
+            rowTag[cand] = -rowTag[cand];
+            return false;
+        }
+
+        // Gauss-Jordan pivot at (leave, enter) -- rqbr's label 10, shared by both stages. Normalizes
+        // row `leave` (excluding column `enter`), eliminates column `enter` from every OTHER row
+        // (observation rows and the cost row), then swaps the leaving row's tag with the entering
+        // column's tag. Column `enter` is a bookkeeping column with its own -d/pivot formula (not the
+        // neighbor update), so the elimination is split into the exact ranges [kr,enter) and
+        // (enter,n), routed through UnsafeOP.scalDiv/axpy for vectorization -- bit-identical to a
+        // branchy per-column loop.
+        static unsafe void BRPivot(floatMxN T, floatN rhs, floatN cost, NativeArray<int> rowTag, NativeArray<int> colTag,
+                            int m, int n, int kr, int leave, int enter)
+        {
+            float pivot = T[leave, enter];
+            float* Tp = T.Data.Ptr;
+            float* leaveRow = Tp + (long)leave * n;
+            int lenLo = enter - kr;        // [kr, enter)
+            int lenHi = n - enter - 1;     // (enter, n)
+
+            if (lenLo > 0) UnsafeOP.scalDiv(leaveRow + kr, lenLo, pivot);
+            if (lenHi > 0) UnsafeOP.scalDiv(leaveRow + enter + 1, lenHi, pivot);
+            rhs[leave] /= pivot;
+
+            for (int i = 0; i < m; i++)
+            {
+                if (i == leave) continue;
+                float* rowI = Tp + (long)i * n;
+                float d = rowI[enter];
+                if (lenLo > 0) UnsafeOP.axpy(rowI + kr, leaveRow + kr, -d, lenLo);
+                if (lenHi > 0) UnsafeOP.axpy(rowI + enter + 1, leaveRow + enter + 1, -d, lenHi);
+                rhs[i] -= d * rhs[leave];
+                rowI[enter] = -d / pivot;
+            }
+
+            float dCost = cost[enter];
+            float* costP = cost.Data.Ptr;
+            if (lenLo > 0) UnsafeOP.axpy(costP + kr, leaveRow + kr, -dCost, lenLo);
+            if (lenHi > 0) UnsafeOP.axpy(costP + enter + 1, leaveRow + enter + 1, -dCost, lenHi);
+            cost[enter] = -dCost / pivot;
+
+            T[leave, enter] = (float)1 / pivot;
+
+            int tmp = rowTag[leave]; rowTag[leave] = colTag[enter]; colTag[enter] = tmp;
         }
     }
 }
