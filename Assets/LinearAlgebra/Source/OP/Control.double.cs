@@ -70,7 +70,9 @@ namespace LinearAlgebra
 
         // ---- scalar control math (double locals only -- never stored back into double) ----
 
-        static double FrobeniusNorm(in doubleMxN M)
+        // internal (not private): reused by Kalman.double.cs's steadyStateGain to data-scale the
+        // filter DARE before handing it to SDACore (see that method's own comment for why).
+        internal static double FrobeniusNorm(in doubleMxN M)
         {
             double s = 0;
             unsafe
@@ -98,7 +100,10 @@ namespace LinearAlgebra
         static double BlowupThreshold(in doubleMxN Q, in doubleMxN R) =>
             BLOWUP_FACTOR * (1.0 + FrobeniusNorm(in Q) + FrobeniusNorm(in R));
 
-        static void SymmetrizeInPlace(ref doubleMxN M)
+        // internal (not private): reused by Kalman.double.cs's PredictCovarianceCore/UpdateCore --
+        // the Joseph-form covariance update needs the exact same symmetrize-after-roundoff hygiene
+        // as every SDA/Riccati step here, so it is not reimplemented a second time.
+        internal static void SymmetrizeInPlace(ref doubleMxN M)
         {
             int n = M.M_Rows;
             for (int i = 0; i < n; i++)
@@ -488,6 +493,36 @@ namespace LinearAlgebra
             Sk.Dispose(); Snext.Dispose(); Kstep.Dispose();
 
             return new LQRInfo { iterations = steps, residual = residual, status = status, rankDeficientControl = rankDeficient };
+        }
+
+        /// <summary>
+        /// Linear-Quadratic-Gaussian convenience: solves the control DARE (via <see cref="lqr"/>)
+        /// and the filter DARE (via <see cref="Kalman.steadyStateGain"/>) for the SAME dynamics A --
+        /// both are the same SDA (structure-preserving doubling) engine, the filter side reached
+        /// through the LQR/KF duality mapping (see Kalman.double.cs's file header). The separation
+        /// principle means Klqr and Kkf can be designed independently and combined (estimate with
+        /// Kkf, then feed the estimate to u=-Klqr·x̂) -- this call does not couple them beyond solving
+        /// both from the same A.
+        /// </summary>
+        /// <param name="A">Dynamics, n x n (shared by both DAREs).</param>
+        /// <param name="B">Control input, n x p.</param>
+        /// <param name="H">Measurement matrix, m x n.</param>
+        /// <param name="Qlqr">LQR state cost, n x n.</param>
+        /// <param name="Rlqr">LQR control cost, p x p.</param>
+        /// <param name="Qkf">Filter process noise covariance, n x n.</param>
+        /// <param name="Rkf">Filter measurement noise covariance, m x m.</param>
+        /// <param name="Klqr">Output LQR feedback gain, p x n.</param>
+        /// <param name="Kkf">Output steady-state Kalman gain, n x m.</param>
+        /// <param name="maxIterations">SDA doubling-step budget for BOTH solves; &lt;=0 picks the
+        /// library default.</param>
+        public static LQGInfo lqg(in doubleMxN A, in doubleMxN B, in doubleMxN H,
+                                  in doubleMxN Qlqr, in doubleMxN Rlqr,
+                                  in doubleMxN Qkf, in doubleMxN Rkf,
+                                  ref doubleMxN Klqr, ref doubleMxN Kkf, int maxIterations = 0)
+        {
+            var lqrInfo = lqr(in A, in B, in Qlqr, in Rlqr, ref Klqr, maxIterations);
+            var kfInfo = Kalman.steadyStateGain(in A, in H, in Qkf, in Rkf, ref Kkf, maxIterations);
+            return new LQGInfo { lqrInfo = lqrInfo, kfInfo = kfInfo };
         }
     }
 

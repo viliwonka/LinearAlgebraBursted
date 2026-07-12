@@ -20,7 +20,97 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
 - 2026-07-12 | LU_BLOCK_MIN_N size gate is a measured crossover, not the naive 4*LU_BLOCK — the panel/TRSM/GEMM bookkeeping isn't amortised until ~8 panels wide. (was LU.fProxy.cs:116)
 
 ## Control
+- 2026-07-12 | lqg() added: convenience solving BOTH the LQR control DARE (existing lqr) and the
+  KF filter DARE (new Kalman.steadyStateGain) from the same A, returning a thin LQGInfo pair. Zero
+  new Riccati math -- both calls reuse Control.SDACore, the filter side via the LQR/KF duality
+  mapping (Kalman.fProxy.cs's file header). SymmetrizeInPlace widened private -> internal (no
+  behavior change) so Kalman's PredictCovarianceCore/UpdateCore reuse the exact same
+  symmetrize-after-roundoff hygiene instead of a second copy of the loop.
+
 - 2026-07-11 | SDA recurrences implemented (Chiang-Fan-Lin Algorithm 2.1, no-cross-term/nonsingular-R case): A0=A, G0=BR⁻¹Bᵀ, H0=Q, A_{k+1}=Ak(I+GkHk)⁻¹Ak, G_{k+1}=Gk+AkGk(I+HkGk)⁻¹Akᵀ, H_{k+1}=Hk+Akᵀ(I+HkGk)⁻¹HkAk, Hk→S. The (I+GH)/(I+HG) solves are nonsymmetric n×n via LU (compact in-place + multi-RHS decompSolve), not Cholesky; G0=BR⁻¹Bᵀ is built via CHOP on R (not a bare inverse) so a semidefinite R degrades gracefully there too. (was Control.fProxy.cs:10-40, :164)
+
+## Kalman
+- 2026-07-12 | Bug found by the test suite (float only): SteadyStateGainVsOracle got a Kss ~98%
+  relatively wrong (0.9765909 vs the 2e-3 float tolerance); FixedPathMatchesConverged missed its
+  tracking bound by 0.109 downstream of the same bad gain. Root-caused with a float32 numpy harness
+  transliterating Control.SDACore and the test's own OracleGain literally on the test's exact CV
+  system (A=[[1,1],[0,1]], H=[[1,0]], Q=diag(1e-4,1e-4), R=[[0.05]]): SDACore's convergence test
+  (residual = diffNorm / max(1.0, ‖Hk‖)) reported Converged after ONE doubling step in float
+  (residual 2.644e-4, just under Consts.floatSqrtEps=3.4527e-4) while the true fixed point needs
+  ~8 steps (confirmed independently by both the double-precision SDA run and the test's own
+  fixed-point oracle, which agree with each other to ~1e-16/2e-7). The `max(1.0, ...)` floor is a
+  reasonable absolute backstop for LQR's typically-O(1) cost weights, but Kalman process/
+  measurement covariances are routinely << 1 (here ‖Q‖+‖R‖ ~ 0.05), so the floor turns the
+  RELATIVE tolerance into an ABSOLUTE one at roughly the SAME scale as the quantities being
+  tracked -- one tiny absolute step off Sigma0=Q satisfies it immediately, before the recursion
+  has moved at all. Fixed in steadyStateGain (not in Control.SDACore itself, to avoid touching the
+  shared LQR cold-solve path and its own test suite): jointly rescale Q/R by
+  1/max(‖Q‖+‖R‖, Consts.fProxyZeroThreshold) before the SDA call and unscale Sigma after -- proven
+  exactly invariant for Kss (scaling Q and R by the same c scales Sigma by c, leaving
+  Sigma Hᵀ(H Sigma Hᵀ+R)⁻¹ unchanged), confirmed in the float32 harness: relImplCorrect
+  0.9765909 -> 3.385e-7, iterations 1 -> 6, while the wrong-orientation discrimination margin
+  (relOraclePair/relImplWrong ~3.57) is untouched. Also confirmed harmless for double (already
+  exact, scaling doesn't change the converged answer, iteration count unchanged at 8).
+  Control.FrobeniusNorm widened private -> internal for this (no behavior change).
+- 2026-07-12 | NEW feature. Algorithm reference: FilterPy (rlabbe/filterpy, MIT) -- predict/update
+  equations (x=Ax+Bu, P=APAᵀ+Q; y=z-Hx, S=HPHᵀ+R, K=PHᵀS⁻¹, x+=Ky, Joseph-form
+  P=(I-KH)P(I-KH)ᵀ+KRKᵀ) fetched and verified line-by-line against kalman_filter.py/EKF.py.
+  Interface-shape reference: mherb/kalman (MIT) -- separate propagation/measurement function plus
+  a separate Jacobian, not one fused updateJacobians() call. FORBIDDEN sources (per owner ruling,
+  not used): MathNet.Filtering Kalman (LGPL despite MIT-labeled repo), TinyEKF historical
+  snapshots (LGPL then).
+- 2026-07-12 | K is never formed via an explicit S inverse anywhere in this file: every gain
+  computation (UpdateCore, steadyStateGain) solves the TRANSPOSED system S·Kᵀ = (PHᵀ)ᵀ = HP via
+  CHOP (pivoted Cholesky), so a rank-deficient S degrades to a minimum-norm K instead of a hard
+  failure or a divide-by-near-zero.
+- 2026-07-12 | steadyStateGain's SDA-duality mapping (Ã=Aᵀ, B̃=Hᵀ, S↔Σ) was validated against an
+  INDEPENDENT ground truth before this file was written (Python prototype, plain fixed-point
+  iteration of the KF predicted-covariance Riccati equation from Σ0=Q, no SDA/doubling involved):
+  agreement to ~1e-16 relative Frobenius norm on a 2-state CV tracker, AND against a THIRD
+  independent path (the actual predict/update Joseph-form recursion iterated to steady state,
+  gain extracted from its last update call) to ~1e-16. A deliberately-wrong mapping (forgetting
+  the A transpose, i.e. Ã=A instead of Aᵀ) was also run and diverges from ground truth by ~1e-2
+  relative -- confirms the test is actually discriminating, not passing by coincidence.
+- 2026-07-12 | EKF interface choice: analytic Jacobian REQUIRED on IfProxyKFModel/
+  IfProxyKFMeasurement (JacobianF/JacobianH), no numeric-differentiation fallback baked into the
+  interface itself. A wrapper-functor design (an fProxyNumericKFModel<TInner> auto-computing the
+  Jacobian for a Jacobian-less inner model) was considered and rejected: it needs a nested generic
+  struct implementing IfProxyKFModel while itself being generic over another IfProxyKFModel-minus-
+  Jacobian shape, which has no precedent elsewhere in this codebase's struct-functor family
+  (IfProxyLinearOperator's wrappers like fProxyColScaledOperator wrap ONE inner operator of the
+  SAME interface, not a different, smaller interface) and adds a layer of generic indirection for
+  a case (no analytic Jacobian available) that is the exception, not the rule. Shipped instead:
+  Kalman.numericJacobianF/numericJacobianH, plain central-difference helpers a user calls FROM
+  INSIDE their own JacobianF/JacobianH when hand-differentiating is impractical -- same
+  "provide the primitive, not a forced wrapper" shape as QRCP's tol3z reuse of Consts.fProxySqrtEps.
+- 2026-07-12 | fProxyKFState's own scratch is genuinely zero-Allocator.Temp for predict/ekfPredict/
+  predictFixed/updateFixed (every intermediate is a pre-allocated field, sized once at n or n x n
+  at construction). The general update()/ekfUpdate<TMeas> path does NOT extend this to its
+  measurement-shaped intermediates (Hᵀ, PHᵀ, S, the CHOP factor, K) -- these are per-call
+  Allocator.Temp, sized to that call's actual H.M_Rows, deliberately mirroring
+  Control.RiccatiStep's own R+BᵀSB solve (also per-call Temp, also variably shaped). Considered and
+  rejected: pre-allocating update()'s scratch at fProxyKFState.MMax and reinterpreting a smaller
+  logical sub-block of it per call -- the library's dot/CHOP primitives all validate EXACT
+  dimension equality (no stride/logical-sub-size concept anywhere), so this would need either
+  mutating fProxyMxN.M_Rows/N_Cols post-construction (undocumented elsewhere, and fProxyMxN.Length
+  is a readonly field that would then disagree with M_Rows*N_Cols) or a raw NativeArray-view
+  reinterpretation via NativeArrayUnsafeUtility (safety-handle bookkeeping for no proven benefit --
+  a per-call CHOP factorization is O(m³), already far more expensive than one Temp bump-allocator
+  vector/matrix allocation). MMax is used only by the fixed-gain fast path (predictFixed/
+  updateFixed), which genuinely needs and gets zero-Temp-alloc treatment since Kss is fixed-shape
+  for the state's whole lifetime.
+
+## Kalman.State
+- 2026-07-12 | Scratch fields (xNext/Bu/AP/APAt/At/J/yFast) are `public`, not `internal`, matching
+  the house Cache/State convention (fProxyCHOPCache, fProxyLQRState both use public fields) rather
+  than hiding them -- these are workspace buffers, not encapsulated implementation state.
+
+## Kalman.Info
+- 2026-07-12 | KFStatus has only two members (Ok / InnovationSolveFailed) because CHOP.decomp on
+  the innovation covariance S = HPHᵀ+R has only two outcomes worth distinguishing here:
+  Success/RankDeficient (both usable -- S is generically PSD whenever P is, so RankDeficient is
+  expected on a redundant/collinear sensor row, not an error) collapse to Ok, and Indefinite (S
+  numerically broken) is the only real failure.
 
 ## FFT.Workspace
 - 2026-07-12 | Full-circle twiddle table bandwidth tradeoff: uses ~2x twiddle memory (~8 MB at N=1M for float) versus the half-table, offset by halving the number of full-array passes (log4(N) vs log2(N) passes). (was FFT.Workspace.fProxy.cs:21)

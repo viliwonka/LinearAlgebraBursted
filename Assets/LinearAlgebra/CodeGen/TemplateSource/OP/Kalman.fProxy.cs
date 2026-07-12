@@ -1,0 +1,480 @@
+using System;
+
+using Unity.Collections;
+using Unity.Mathematics;
+
+namespace LinearAlgebra
+{
+    // ================================================================================================
+    // Discrete-time Kalman filter (predict/update), its steady-state fixed-gain fast path, and the
+    // Extended Kalman Filter (EKF) generalization over user-supplied nonlinear struct-functors.
+    //
+    // Algorithm reference: FilterPy (rlabbe/filterpy, MIT) -- predict x=Ax+Bu, P=APAᵀ+Q; update
+    // y=z-Hx, S=HPHᵀ+R, K=PHᵀS⁻¹, x+=Ky, JOSEPH FORM P=(I-KH)P(I-KH)ᵀ+KRKᵀ (never the naive
+    // P=(I-KH)P -- the classic float32 divergence source). Interface shape (propagation/measurement
+    // function + a separate required Jacobian) follows mherb/kalman (MIT).
+    //
+    // K is NEVER formed via an explicit S inverse: UpdateCore solves the TRANSPOSED system
+    // S·Kᵀ = (PHᵀ)ᵀ = HP via CHOP (pivoted Cholesky), so a rank-deficient S degrades to a usable
+    // minimum-norm K instead of hard-failing.
+    //
+    // steadyStateGain reuses Control's own SDA (structure-preserving doubling) DARE engine under the
+    // LQR/KF DARE DUALITY: the filter's predicted-covariance DARE
+    //     Σ = AΣAᵀ + Q - AΣHᵀ(HΣHᵀ+R)⁻¹HΣAᵀ
+    // is exactly Control's LQR DARE S = Q + ÃᵀSÃ - ÃᵀSB̃(R+B̃ᵀSB̃)⁻¹B̃ᵀSÃ under Ã=Aᵀ, B̃=Hᵀ (S↔Σ) --
+    // i.e. Control.SDACore(Aᵀ, Hᵀ, Q, R, ...) IS this filter's steady-state Riccati solve. No second
+    // Riccati implementation exists in this file.
+    // ================================================================================================
+    public static partial class Kalman
+    {
+        // ---- shared cores (single source of truth for the math; every public entry point below
+        // computes its own xNext/innovation, then hands off here) ----
+
+        // P_next = Aeff * P * Aeffᵀ + Q, symmetrized, written into s.P. Aeff is A for the linear
+        // predict() family and the freshly-evaluated Jacobian J for ekfPredict.
+        static void PredictCovarianceCore(ref fProxyKFState s, in fProxyMxN Aeff, in fProxyMxN Q)
+        {
+            Blas.dot(in Aeff, in s.P, ref s.AP);
+            Blas.trans(in Aeff, ref s.At);
+            Blas.dot(in s.AP, in s.At, ref s.APAt);
+            s.APAt.addInPlace(Q);
+            Control.SymmetrizeInPlace(ref s.APAt);
+            s.P.Data.CopyFrom(s.APAt.Data);
+        }
+
+        // Given H (m x n, literal for update() or a freshly-evaluated Jacobian for ekfUpdate) and the
+        // ALREADY-COMPUTED innovation y (m), runs the Joseph-form update: K = PHᵀS⁻¹ (via CHOP on the
+        // transposed system, never an explicit inverse), x += Ky,
+        // P = (I-KH)P(I-KH)ᵀ + KRKᵀ, symmetrized. On S = HPHᵀ+R not even PSD (Indefinite -- a
+        // numerically broken P or R), s.x/s.P are left UNCHANGED and KFStatus.InnovationSolveFailed
+        // is reported.
+        static KFInfo UpdateCore(ref fProxyKFState s, in fProxyMxN H, in fProxyN y, in fProxyMxN R)
+        {
+            int n = s.N, m = H.M_Rows;
+            double innovationNorm = math.sqrt((double)Blas.dot(y, y));
+
+            var Ht = new fProxyMxN(n, m, Allocator.Temp);
+            Blas.trans(in H, ref Ht);
+            var PHt = new fProxyMxN(n, m, Allocator.Temp);
+            Blas.dot(in s.P, in Ht, ref PHt);
+            var Smeas = new fProxyMxN(m, m, Allocator.Temp);
+            Blas.dot(in H, in PHt, ref Smeas);
+            Smeas.addInPlace(R);
+
+            var L = new fProxyMxN(m, m, Allocator.Temp);
+            var Piv = new Pivot(m, Allocator.Temp);
+            var rinfo = CHOP.decomp(in Smeas, ref L, ref Piv);
+
+            KFStatus status;
+            if (rinfo.Solved)
+            {
+                // Xt := Smeas^-1 * (H P) = Kᵀ  (solve, never an explicit Smeas inverse)
+                var Xt = new fProxyMxN(m, n, Allocator.Temp);
+                Blas.dot(in H, in s.P, ref Xt);
+                CHOP.decompSolve(ref L, in Piv, rinfo.rank, ref Xt);
+
+                var K = new fProxyMxN(n, m, Allocator.Temp);
+                Blas.trans(in Xt, ref K);
+
+                Blas.dot(in K, in y, ref s.xNext);           // xNext = K y
+                s.x.addScaledInPlace((fProxy)1, s.xNext);    // x += K y
+
+                var IKH = new fProxyMxN(n, n, Allocator.Temp);
+                Blas.dot(in K, in H, ref IKH);                // IKH := K H
+                IKH.mulInPlace((fProxy)(-1));                 // IKH := -K H
+                for (int i = 0; i < n; i++) IKH[i, i] += (fProxy)1;   // IKH := I - K H
+
+                var IKHt = new fProxyMxN(n, n, Allocator.Temp);
+                Blas.trans(in IKH, ref IKHt);
+
+                Blas.dot(in IKH, in s.P, ref s.At);          // reuse At: (I-KH) P
+                Blas.dot(in s.At, in IKHt, ref s.APAt);       // term1 = (I-KH) P (I-KH)ᵀ, -> APAt
+
+                var KR = new fProxyMxN(n, m, Allocator.Temp);
+                Blas.dot(in K, in R, ref KR);
+                Blas.dot(in KR, in Xt, ref s.AP);             // term2 = K R Kᵀ (Xt == Kᵀ), -> AP
+
+                s.APAt.addInPlace(s.AP);                      // APAt := term1 + term2
+                Control.SymmetrizeInPlace(ref s.APAt);
+                s.P.Data.CopyFrom(s.APAt.Data);
+
+                status = KFStatus.Ok;
+
+                Xt.Dispose(); K.Dispose(); IKH.Dispose(); IKHt.Dispose(); KR.Dispose();
+            }
+            else
+            {
+                status = KFStatus.InnovationSolveFailed;
+            }
+
+            L.Dispose(); Piv.Dispose(); Smeas.Dispose(); PHt.Dispose(); Ht.Dispose();
+
+            return new KFInfo { status = status, innovationNorm = innovationNorm };
+        }
+
+        // ---- linear predict/update ----
+
+        /// <summary>
+        /// x = Ax + Bu; P = APAᵀ + Q (symmetrized). Zero <c>Allocator.Temp</c> use -- every
+        /// intermediate is a field of <paramref name="s"/>.
+        /// </summary>
+        /// <param name="s">Must be constructed via <c>new fProxyKFState(n, mMax, allocator)</c>.</param>
+        /// <param name="A">Dynamics, n x n.</param>
+        /// <param name="B">Control input, n x p.</param>
+        /// <param name="u">Control vector, length p.</param>
+        /// <param name="Q">Process noise covariance, n x n.</param>
+        public static void predict(ref fProxyKFState s, in fProxyMxN A, in fProxyMxN B, in fProxyN u, in fProxyMxN Q)
+        {
+            if (!s.IsCreated)
+                throw new ArgumentException("Kalman.predict: state must be constructed via new fProxyKFState(n, mMax, allocator)");
+            if (!A.IsSquare || A.M_Rows != s.N)
+                throw new ArgumentException("Kalman.predict: A must be n x n");
+            if (!Q.IsSquare || Q.M_Rows != s.N)
+                throw new ArgumentException("Kalman.predict: Q must be n x n");
+            if (B.M_Rows != s.N)
+                throw new ArgumentException("Kalman.predict: B.M_Rows must equal state dimension");
+            if (u.N != B.N_Cols)
+                throw new ArgumentException("Kalman.predict: u.N must equal B.N_Cols");
+
+            Blas.dot(in A, in s.x, ref s.xNext);
+            Blas.dot(in B, in u, ref s.Bu);
+            s.xNext.addScaledInPlace((fProxy)1, s.Bu);
+
+            PredictCovarianceCore(ref s, in A, in Q);
+            s.x.Data.CopyFrom(s.xNext.Data);
+        }
+
+        /// <summary>Autonomous overload (no control input): x = Ax; P = APAᵀ + Q.</summary>
+        public static void predict(ref fProxyKFState s, in fProxyMxN A, in fProxyMxN Q)
+        {
+            if (!s.IsCreated)
+                throw new ArgumentException("Kalman.predict: state must be constructed via new fProxyKFState(n, mMax, allocator)");
+            if (!A.IsSquare || A.M_Rows != s.N)
+                throw new ArgumentException("Kalman.predict: A must be n x n");
+            if (!Q.IsSquare || Q.M_Rows != s.N)
+                throw new ArgumentException("Kalman.predict: Q must be n x n");
+
+            Blas.dot(in A, in s.x, ref s.xNext);
+            PredictCovarianceCore(ref s, in A, in Q);
+            s.x.Data.CopyFrom(s.xNext.Data);
+        }
+
+        /// <summary>
+        /// Innovation y = z - Hx; Joseph-form covariance update (see <see cref="UpdateCore"/>).
+        /// Allocates small <c>Allocator.Temp</c> scratch sized to <c>H.M_Rows</c> (arbitrary per call
+        /// -- not bounded by <see cref="fProxyKFState.MMax"/>; use
+        /// <see cref="updateFixed"/> for a zero-Temp-alloc fast path at a fixed measurement size).
+        /// </summary>
+        /// <param name="H">Measurement matrix, m x n.</param>
+        /// <param name="R">Measurement noise covariance, m x m.</param>
+        /// <param name="z">Measurement, length m.</param>
+        public static KFInfo update(ref fProxyKFState s, in fProxyMxN H, in fProxyMxN R, in fProxyN z)
+        {
+            if (!s.IsCreated)
+                throw new ArgumentException("Kalman.update: state must be constructed via new fProxyKFState(n, mMax, allocator)");
+            if (H.N_Cols != s.N)
+                throw new ArgumentException("Kalman.update: H.N_Cols must equal state dimension");
+            int m = H.M_Rows;
+            if (!R.IsSquare || R.M_Rows != m)
+                throw new ArgumentException("Kalman.update: R must be m x m (m = H.M_Rows)");
+            if (z.N != m)
+                throw new ArgumentException("Kalman.update: z.N must equal H.M_Rows");
+
+            var Hx = new fProxyN(m, Allocator.Temp);
+            Blas.dot(in H, in s.x, ref Hx);
+            var y = new fProxyN(m, Allocator.Temp);
+            y.Data.CopyFrom(z.Data);
+            y.addScaledInPlace((fProxy)(-1), Hx);
+            Hx.Dispose();
+
+            var info = UpdateCore(ref s, in H, in y, in R);
+            y.Dispose();
+            return info;
+        }
+
+        // ---- steady-state (fixed) gain ----
+
+        /// <summary>
+        /// Steady-state Kalman gain Kss (n x m) via the LQR/KF DARE duality: solves the filter's
+        /// predicted-covariance DARE Σ = AΣAᵀ + Q - AΣHᵀ(HΣHᵀ+R)⁻¹HΣAᵀ by reusing
+        /// <see cref="Control.SDACore"/> under Ã=Aᵀ, B̃=Hᵀ (S↔Σ), then extracts
+        /// Kss = ΣHᵀ(HΣHᵀ+R)⁻¹ via CHOP on the transposed system (never an explicit inverse). Q/R are
+        /// jointly rescaled to unit data-norm before the SDA solve and Σ is unscaled after -- Kss
+        /// itself is exactly invariant to this, so results are unaffected by Q/R's absolute magnitude
+        /// (process/measurement covariances are routinely &lt;&lt; 1, unlike LQR's typically-O(1) cost
+        /// weights). Pair with <see cref="predictFixed(ref fProxyKFState, in fProxyMxN, in fProxyN, in fProxyMxN)"/> /
+        /// <see cref="updateFixed"/> for a filter that skips covariance propagation entirely.
+        /// </summary>
+        /// <param name="A">Dynamics, n x n.</param>
+        /// <param name="H">Measurement matrix, m x n.</param>
+        /// <param name="Q">Process noise covariance, n x n.</param>
+        /// <param name="R">Measurement noise covariance, m x m.</param>
+        /// <param name="Kss">Output steady-state gain, n x m (overwritten only if the solve does not
+        /// report <see cref="LQRStatus.Diverged"/>).</param>
+        /// <param name="maxIterations">SDA doubling-step budget; &lt;=0 picks the library default.</param>
+        public static LQRInfo steadyStateGain(in fProxyMxN A, in fProxyMxN H, in fProxyMxN Q, in fProxyMxN R,
+                                              ref fProxyMxN Kss, int maxIterations = 0)
+        {
+            if (!A.IsSquare)
+                throw new ArgumentException("Kalman.steadyStateGain: A must be square");
+            int n = A.M_Rows;
+            if (H.N_Cols != n)
+                throw new ArgumentException("Kalman.steadyStateGain: H.N_Cols must equal A's dimension");
+            int m = H.M_Rows;
+            if (!Q.IsSquare || Q.M_Rows != n)
+                throw new ArgumentException("Kalman.steadyStateGain: Q must be n x n");
+            if (!R.IsSquare || R.M_Rows != m)
+                throw new ArgumentException("Kalman.steadyStateGain: R must be m x m");
+            if (Kss.M_Rows != n || Kss.N_Cols != m)
+                throw new ArgumentException("Kalman.steadyStateGain: Kss must be n x m");
+
+            var At = new fProxyMxN(n, n, Allocator.Temp);
+            Blas.trans(in A, ref At);
+            var Ht = new fProxyMxN(n, m, Allocator.Temp);
+            Blas.trans(in H, ref Ht);
+
+            // Scale Q/R by a common positive factor before the SDA solve. Kss is EXACTLY invariant
+            // under jointly scaling Q and R by the same c (scaling both by c scales Sigma by c too,
+            // leaving Sigma Hᵀ(H Sigma Hᵀ+R)⁻¹ unchanged -- the optimal gain only depends on the
+            // RELATIVE process/measurement noise magnitude). SDACore's own convergence test compares
+            // the absolute doubling step against max(1, ‖Hk‖), a floor tuned for LQR's typically-O(1)
+            // cost matrices; Kalman process/measurement covariances are routinely << 1, which trips
+            // that floor into a premature Converged read in float (one tiny absolute step against a
+            // still-near-zero Hk satisfies the tolerance long before the recursion has actually
+            // reached the fixed point). Rescaling so the problem's own data sits near unit scale
+            // restores the floor's intended meaning; Sigma is unscaled back right after the solve.
+            double dataNorm = Control.FrobeniusNorm(in Q) + Control.FrobeniusNorm(in R);
+            fProxy scale = (fProxy)(1.0 / math.max(dataNorm, (double)Consts.fProxyZeroThreshold));
+            fProxy invScale = (fProxy)1 / scale;
+
+            var Qs = new fProxyMxN(n, n, Allocator.Temp);
+            Qs.Data.CopyFrom(Q.Data);
+            Qs.mulInPlace(scale);
+            var Rs = new fProxyMxN(m, m, Allocator.Temp);
+            Rs.Data.CopyFrom(R.Data);
+            Rs.mulInPlace(scale);
+
+            var Sigma = new fProxyMxN(n, n, Allocator.Temp);
+            var info = Control.SDACore(in At, in Ht, in Qs, in Rs, ref Sigma, maxIterations);
+            Sigma.mulInPlace(invScale);
+            Qs.Dispose(); Rs.Dispose();
+
+            if (info.status != LQRStatus.Diverged)
+            {
+                var SigHt = new fProxyMxN(n, m, Allocator.Temp);
+                Blas.dot(in Sigma, in Ht, ref SigHt);
+                var Smeas = new fProxyMxN(m, m, Allocator.Temp);
+                Blas.dot(in H, in SigHt, ref Smeas);
+                Smeas.addInPlace(R);
+
+                var L = new fProxyMxN(m, m, Allocator.Temp);
+                var Piv = new Pivot(m, Allocator.Temp);
+                var rinfo = CHOP.decomp(in Smeas, ref L, ref Piv);
+                if (rinfo.Solved)
+                {
+                    var Xt = new fProxyMxN(m, n, Allocator.Temp);
+                    Blas.dot(in H, in Sigma, ref Xt);                      // Xt := H Sigma
+                    CHOP.decompSolve(ref L, in Piv, rinfo.rank, ref Xt);   // Xt := Smeas^-1 (H Sigma) = Kssᵀ
+                    Blas.trans(in Xt, ref Kss);
+                    Xt.Dispose();
+                }
+                else
+                {
+                    info.status = LQRStatus.Diverged;
+                }
+                L.Dispose(); Piv.Dispose(); Smeas.Dispose(); SigHt.Dispose();
+            }
+
+            At.Dispose(); Ht.Dispose(); Sigma.Dispose();
+            return info;
+        }
+
+        /// <summary>Fixed-gain fast path: x = Ax + Bu. No covariance math (~2 GEMVs); zero
+        /// <c>Allocator.Temp</c> use. Pair with <see cref="updateFixed"/> once
+        /// <see cref="steadyStateGain"/> has produced a converged Kss -- P is never tracked or read
+        /// on this path.</summary>
+        public static void predictFixed(ref fProxyKFState s, in fProxyMxN A, in fProxyMxN B, in fProxyN u)
+        {
+            if (!s.IsCreated)
+                throw new ArgumentException("Kalman.predictFixed: state must be constructed via new fProxyKFState(n, mMax, allocator)");
+            if (!A.IsSquare || A.M_Rows != s.N)
+                throw new ArgumentException("Kalman.predictFixed: A must be n x n");
+            if (B.M_Rows != s.N)
+                throw new ArgumentException("Kalman.predictFixed: B.M_Rows must equal state dimension");
+            if (u.N != B.N_Cols)
+                throw new ArgumentException("Kalman.predictFixed: u.N must equal B.N_Cols");
+
+            Blas.dot(in A, in s.x, ref s.xNext);
+            Blas.dot(in B, in u, ref s.Bu);
+            s.xNext.addScaledInPlace((fProxy)1, s.Bu);
+            s.x.Data.CopyFrom(s.xNext.Data);
+        }
+
+        /// <summary>Autonomous overload of <see cref="predictFixed(ref fProxyKFState, in fProxyMxN, in fProxyMxN, in fProxyN)"/>: x = Ax.</summary>
+        public static void predictFixed(ref fProxyKFState s, in fProxyMxN A)
+        {
+            if (!s.IsCreated)
+                throw new ArgumentException("Kalman.predictFixed: state must be constructed via new fProxyKFState(n, mMax, allocator)");
+            if (!A.IsSquare || A.M_Rows != s.N)
+                throw new ArgumentException("Kalman.predictFixed: A must be n x n");
+
+            Blas.dot(in A, in s.x, ref s.xNext);
+            s.x.Data.CopyFrom(s.xNext.Data);
+        }
+
+        /// <summary>
+        /// Fixed-gain fast path: x += Kss (z - Hx). No covariance math, zero <c>Allocator.Temp</c>
+        /// use. <paramref name="H"/> and <paramref name="z"/> must be sized to exactly
+        /// <see cref="fProxyKFState.MMax"/> (the dimension <paramref name="s"/> was constructed for);
+        /// use <see cref="update"/> for an arbitrary per-call measurement dimension.
+        /// </summary>
+        /// <param name="Kss">Steady-state gain, n x MMax (see <see cref="steadyStateGain"/>).</param>
+        /// <param name="H">Measurement matrix, MMax x n.</param>
+        /// <param name="z">Measurement, length MMax.</param>
+        public static void updateFixed(ref fProxyKFState s, in fProxyMxN Kss, in fProxyMxN H, in fProxyN z)
+        {
+            if (!s.IsCreated)
+                throw new ArgumentException("Kalman.updateFixed: state must be constructed via new fProxyKFState(n, mMax, allocator)");
+            int n = s.N, m = s.MMax;
+            if (H.M_Rows != m || H.N_Cols != n)
+                throw new ArgumentException("Kalman.updateFixed: H must be MMax x n");
+            if (Kss.M_Rows != n || Kss.N_Cols != m)
+                throw new ArgumentException("Kalman.updateFixed: Kss must be n x MMax");
+            if (z.N != m)
+                throw new ArgumentException("Kalman.updateFixed: z.N must equal MMax");
+
+            Blas.dot(in H, in s.x, ref s.yFast);      // yFast := H x
+            s.yFast.mulInPlace((fProxy)(-1));          // yFast := -H x
+            s.yFast.addInPlace(z);                     // yFast := z - H x
+            Blas.dot(in Kss, in s.yFast, ref s.xNext); // xNext := Kss y
+            s.x.addScaledInPlace((fProxy)1, s.xNext);
+        }
+
+        // ---- EKF ----
+
+        /// <summary>
+        /// EKF predict: xNext = model.F(x, u); J = model.JacobianF(x, u); P = J P Jᵀ + Q
+        /// (symmetrized). Same <see cref="PredictCovarianceCore"/> as the linear <c>predict</c> --
+        /// only the propagation matrix (a Jacobian instead of a literal A) differs.
+        /// </summary>
+        public static void ekfPredict<TModel>(ref fProxyKFState s, in TModel model, in fProxyN u, in fProxyMxN Q)
+            where TModel : struct, IfProxyKFModel
+        {
+            if (!s.IsCreated)
+                throw new ArgumentException("Kalman.ekfPredict: state must be constructed via new fProxyKFState(n, mMax, allocator)");
+            if (!Q.IsSquare || Q.M_Rows != s.N)
+                throw new ArgumentException("Kalman.ekfPredict: Q must be n x n");
+
+            model.F(in s.x, in u, ref s.xNext);
+            model.JacobianF(in s.x, in u, ref s.J);
+            PredictCovarianceCore(ref s, in s.J, in Q);
+            s.x.Data.CopyFrom(s.xNext.Data);
+        }
+
+        /// <summary>
+        /// EKF update: zPred = meas.H(x); y = z - zPred; H = meas.JacobianH(x); then the same
+        /// Joseph-form <see cref="UpdateCore"/> as the linear <c>update</c>. Allocates small
+        /// <c>Allocator.Temp</c> scratch sized to <c>z.N</c> (the measurement Jacobian, arbitrary
+        /// shape per call).
+        /// </summary>
+        /// <param name="R">Measurement noise covariance, m x m (m = z.N).</param>
+        public static KFInfo ekfUpdate<TMeas>(ref fProxyKFState s, in TMeas meas, in fProxyMxN R, in fProxyN z)
+            where TMeas : struct, IfProxyKFMeasurement
+        {
+            if (!s.IsCreated)
+                throw new ArgumentException("Kalman.ekfUpdate: state must be constructed via new fProxyKFState(n, mMax, allocator)");
+            int m = z.N;
+            if (!R.IsSquare || R.M_Rows != m)
+                throw new ArgumentException("Kalman.ekfUpdate: R must be m x m (m = z.N)");
+
+            var zPred = new fProxyN(m, Allocator.Temp);
+            meas.H(in s.x, ref zPred);
+            var y = new fProxyN(m, Allocator.Temp);
+            y.Data.CopyFrom(z.Data);
+            y.addScaledInPlace((fProxy)(-1), zPred);
+            zPred.Dispose();
+
+            var Hjac = new fProxyMxN(m, s.N, Allocator.Temp);
+            meas.JacobianH(in s.x, ref Hjac);
+
+            var info = UpdateCore(ref s, in Hjac, in y, in R);
+            Hjac.Dispose();
+            y.Dispose();
+            return info;
+        }
+
+        // ---- numeric Jacobian helper (for a model too awkward to differentiate by hand) ----
+
+        /// <summary>Central-difference Jacobian of <paramref name="model"/>.F at (x, u): J[:,k] =
+        /// (F(x+eps·e_k,u) - F(x-eps·e_k,u)) / (2·eps). Call from inside a
+        /// <see cref="IfProxyKFModel.JacobianF"/> implementation. J must be n x n.</summary>
+        public static void numericJacobianF<TModel>(in TModel model, in fProxyN x, in fProxyN u, ref fProxyMxN J, fProxy eps)
+            where TModel : struct, IfProxyKFModel
+        {
+            int n = x.N;
+            if (!J.IsSquare || J.M_Rows != n)
+                throw new ArgumentException("Kalman.numericJacobianF: J must be n x n");
+
+            var xp = new fProxyN(n, Allocator.Temp);
+            var xm = new fProxyN(n, Allocator.Temp);
+            var fp = new fProxyN(n, Allocator.Temp);
+            var fm = new fProxyN(n, Allocator.Temp);
+
+            for (int k = 0; k < n; k++)
+            {
+                xp.Data.CopyFrom(x.Data);
+                xm.Data.CopyFrom(x.Data);
+                xp[k] += eps;
+                xm[k] -= eps;
+                model.F(in xp, in u, ref fp);
+                model.F(in xm, in u, ref fm);
+                for (int i = 0; i < n; i++)
+                    J[i, k] = (fp[i] - fm[i]) / ((fProxy)2 * eps);
+            }
+
+            xp.Dispose(); xm.Dispose(); fp.Dispose(); fm.Dispose();
+        }
+
+        /// <summary>Overload of <see cref="numericJacobianF{TModel}(in TModel, in fProxyN, in fProxyN, ref fProxyMxN, fProxy)"/>
+        /// using <see cref="Consts.fProxySqrtEps"/> as the finite-difference step.</summary>
+        public static void numericJacobianF<TModel>(in TModel model, in fProxyN x, in fProxyN u, ref fProxyMxN J)
+            where TModel : struct, IfProxyKFModel
+            => numericJacobianF(in model, in x, in u, ref J, Consts.fProxySqrtEps);
+
+        /// <summary>Central-difference Jacobian of <paramref name="meas"/>.H at x: J[:,k] =
+        /// (H(x+eps·e_k) - H(x-eps·e_k)) / (2·eps). Call from inside a
+        /// <see cref="IfProxyKFMeasurement.JacobianH"/> implementation. J must be m x n (m = J.M_Rows).</summary>
+        public static void numericJacobianH<TMeas>(in TMeas meas, in fProxyN x, ref fProxyMxN J, fProxy eps)
+            where TMeas : struct, IfProxyKFMeasurement
+        {
+            int n = x.N, m = J.M_Rows;
+            if (J.N_Cols != n)
+                throw new ArgumentException("Kalman.numericJacobianH: J.N_Cols must equal x.N");
+
+            var xp = new fProxyN(n, Allocator.Temp);
+            var xm = new fProxyN(n, Allocator.Temp);
+            var hp = new fProxyN(m, Allocator.Temp);
+            var hm = new fProxyN(m, Allocator.Temp);
+
+            for (int k = 0; k < n; k++)
+            {
+                xp.Data.CopyFrom(x.Data);
+                xm.Data.CopyFrom(x.Data);
+                xp[k] += eps;
+                xm[k] -= eps;
+                meas.H(in xp, ref hp);
+                meas.H(in xm, ref hm);
+                for (int i = 0; i < m; i++)
+                    J[i, k] = (hp[i] - hm[i]) / ((fProxy)2 * eps);
+            }
+
+            xp.Dispose(); xm.Dispose(); hp.Dispose(); hm.Dispose();
+        }
+
+        /// <summary>Overload of <see cref="numericJacobianH{TMeas}(in TMeas, in fProxyN, ref fProxyMxN, fProxy)"/>
+        /// using <see cref="Consts.fProxySqrtEps"/> as the finite-difference step.</summary>
+        public static void numericJacobianH<TMeas>(in TMeas meas, in fProxyN x, ref fProxyMxN J)
+            where TMeas : struct, IfProxyKFMeasurement
+            => numericJacobianH(in meas, in x, ref J, Consts.fProxySqrtEps);
+    }
+}

@@ -97,6 +97,44 @@ namespace LinearAlgebra
         public override string ToString() => ToFixedString().ToString();
     }
 
+    /// <summary>
+    /// Result of <see cref="Control.lqg"/>: the two independent DARE solves it runs, one per gain.
+    /// Type-agnostic (CS0102), same reasoning as <see cref="LQRInfo"/>. Deliberately a thin pair
+    /// rather than a merged/averaged diagnostic -- the two Riccati solves are unrelated problems
+    /// (control cost vs. process/measurement noise) that only happen to share A and the SDA engine.
+    /// </summary>
+    public struct LQGInfo
+    {
+        /// <summary>Terminal state of the LQR (control) DARE solve.</summary>
+        public LQRInfo lqrInfo;
+
+        /// <summary>Terminal state of the filter (Kalman) DARE solve.</summary>
+        public LQRInfo kfInfo;
+
+        /// <summary>True iff BOTH solves converged.</summary>
+        public bool Solved => lqrInfo.Solved && kfInfo.Solved;
+
+        /// <summary>Implicit success test, so <c>if (Control.lqg(...))</c> reads as "did both converge".</summary>
+        public static implicit operator bool(LQGInfo info) => info.Solved;
+
+        /// <summary>Burst-safe compact summary, e.g. <c>LQGInfo(lqr=Converged/iters=14, kf=Converged/iters=9)</c>.
+        /// Never allocates managed memory.</summary>
+        public FixedString128Bytes ToFixedString()
+        {
+            FixedString128Bytes str = "LQGInfo(lqr=";
+            str.Append(lqrInfo.status.Name());
+            FixedString128Bytes mid = $"/iters={lqrInfo.iterations}, kf=";
+            str.Append(mid);
+            str.Append(kfInfo.status.Name());
+            FixedString128Bytes tail = $"/iters={kfInfo.iterations})";
+            str.Append(tail);
+            return str;
+        }
+
+        /// <summary>Managed wrapper -- do not call from inside a [BurstCompile] job.</summary>
+        public override string ToString() => ToFixedString().ToString();
+    }
+
     // Type-agnostic tuning constants for Control.lqr/.lqrSchedule (Control.fProxy.cs); live here
     // (singularFile) to avoid a duplicate-member collision across the float/double generated
     // fragments, same reasoning as LP.Info.cs's REFACTOR_INTERVAL / MIP.Info.cs's ABS_GAP etc.
