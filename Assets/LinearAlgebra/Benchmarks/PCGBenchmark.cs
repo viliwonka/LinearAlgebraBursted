@@ -48,6 +48,15 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine(BenchPrecondRandomFloat(120, 3, 0.30f, 0xC003Du));
             sb.AppendLine(BenchPrecondRandomDouble(120, 3, 0.30f, 0xC003Du));
             sb.AppendLine();
+
+            sb.AppendLine("=== BlockJacobi build cost (ctor only, block-tridiagonal SPD) ===");
+            sb.AppendLine(string.Format("{0,-7} {1,-6} {2,-3} {3,11} {4,11}",
+                "dtype", "N", "b", "med(ms)", "min(ms)"));
+            sb.AppendLine(BenchJacobiBuildFloat(3, 4096));
+            sb.AppendLine(BenchJacobiBuildDouble(3, 4096));
+            sb.AppendLine(BenchJacobiBuildFloat(4, 2048));
+            sb.AppendLine(BenchJacobiBuildDouble(4, 2048));
+            sb.AppendLine();
         }
     }
 }

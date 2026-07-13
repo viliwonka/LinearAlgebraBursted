@@ -211,6 +211,34 @@ namespace LinearAlgebra.Benchmarks
             return math.sqrt(num) / math.sqrt(math.max(den, 1e-30));
         }
 
+        [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+        public struct JacobiBuildJobDouble : IJob
+        {
+            public doubleBSR A;
+
+            public void Execute()
+            {
+                var M = new doubleBlockJacobi(in A, Allocator.Temp, out PreconditionerInfo info);
+                M.Dispose();
+            }
+        }
+
+        // Build-cost row: times ONLY the BlockJacobi construction (per-diagonal-block LU inversion)
+        // over the block-tridiagonal system — the allocator-traffic-sensitive path.
+        static string BenchJacobiBuildDouble(int BR, int NB)
+        {
+            const string fmt = "{0,-7} {1,-6} {2,-3} {3,11:F4} {4,11:F4}";
+            var arena = new Arena(Allocator.Persistent);
+            BuildTridiagBlockSPDDouble(ref arena, NB, BR, out var A, out int n);
+
+            var job = new JacobiBuildJobDouble { A = A };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
+                "double", n, BR, stat.Median, stat.Min);
+        }
+
         static string BenchDouble(int BR, int NB, int K)
         {
             const string fmt = "{0,-7} {1,-6} {2,-12} {3,11:F4} {4,11:F4} {5,14:E3}";

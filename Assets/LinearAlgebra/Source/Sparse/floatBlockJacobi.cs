@@ -5,6 +5,7 @@
 using System;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
+using Unity.Mathematics;
 using LinearAlgebra;
 using LinearAlgebra.Internal;
 
@@ -114,6 +115,12 @@ namespace LinearAlgebra.Sparse
             var dinv = new UnsafeList<float>(BlockRows * blockLen, allocator, NativeArrayOptions.ClearMemory);
             dinv.Resize(BlockRows * blockLen, NativeArrayOptions.ClearMemory);
 
+            // Stack scratch for the BR <= 16 fast path (Gauss-Jordan needs the working block +
+            // the growing inverse). stackalloc'd ONCE, never inside the loop; 2 x 2 KB at the
+            // BR = 16 double worst case.
+            float* Mwork = stackalloc float[16 * 16];
+            float* Inv = stackalloc float[16 * 16];
+
             for (int i = 0; i < BlockRows; i++)
             {
                 // Blocks within a block-row are stored in ascending ColInd (BSR invariant) --
@@ -133,9 +140,29 @@ namespace LinearAlgebra.Sparse
                     throw new ArgumentException("floatBlockJacobi: missing diagonal block in A");
                 }
 
-                // Copy the diagonal block into scratch (LU factorization is destructive).
-                var Dcopy = new floatMxN(BR, BR, Allocator.Temp, true);
                 int srcOff = found * blockLen;
+                int dstOff = i * blockLen;
+
+                if (BR <= 16)
+                {
+                    // Fast path: zero-alloc Gauss-Jordan inversion on the stack scratch.
+                    for (int t = 0; t < blockLen; t++)
+                        Mwork[t] = A.Values[srcOff + t];
+
+                    if (!InvertBlock(Mwork, Inv, BR))
+                    {
+                        dinv.Dispose();
+                        info = new PreconditionerInfo { status = DirectSolveStatus.Singular, shift = 0, attempts = 1 };
+                        return;
+                    }
+
+                    for (int t = 0; t < blockLen; t++)
+                        dinv[dstOff + t] = Inv[t];
+                    continue;
+                }
+
+                // General path (BR > 16): LU on Temp scratch, unit-vector column solves.
+                var Dcopy = new floatMxN(BR, BR, Allocator.Temp, true);
                 for (int r = 0; r < BR; r++)
                     for (int c = 0; c < BR; c++)
                         Dcopy[r, c] = A.Values[srcOff + r * BR + c];
@@ -154,7 +181,6 @@ namespace LinearAlgebra.Sparse
                 }
 
                 // Column-by-column solve against unit vectors -> the explicit BR x BR inverse.
-                int dstOff = i * blockLen;
                 var col = new floatN(BR, Allocator.Temp, true);
                 for (int c = 0; c < BR; c++)
                 {
@@ -174,6 +200,59 @@ namespace LinearAlgebra.Sparse
 
             _inlineDInv = dinv;
             info = new PreconditionerInfo { status = DirectSolveStatus.Success, shift = 0, attempts = 1 };
+        }
+
+        // In-place Gauss-Jordan inverse with partial pivoting: M (n x n row-major, DESTROYED) ->
+        // Inv. Returns false on a numerically zero pivot (NaN-safe, the library's usual pivot
+        // idiom). M and Inv are distinct stack buffers.
+        static unsafe bool InvertBlock(float* M, float* Inv, int n)
+        {
+            for (int r = 0; r < n; r++)
+                for (int c = 0; c < n; c++)
+                    Inv[r * n + c] = (r == c) ? (float)1 : (float)0;
+
+            for (int c = 0; c < n; c++)
+            {
+                int piv = c;
+                float best = math.abs(M[c * n + c]);
+                for (int r = c + 1; r < n; r++)
+                {
+                    float av = math.abs(M[r * n + c]);
+                    if (av > best) { best = av; piv = r; }
+                }
+                if (!(best > (float)0))
+                    return false;
+
+                if (piv != c)
+                {
+                    for (int t = 0; t < n; t++)
+                    {
+                        float tm = M[piv * n + t]; M[piv * n + t] = M[c * n + t]; M[c * n + t] = tm;
+                        float ti = Inv[piv * n + t]; Inv[piv * n + t] = Inv[c * n + t]; Inv[c * n + t] = ti;
+                    }
+                }
+
+                float invD = (float)1 / M[c * n + c];
+                for (int t = 0; t < n; t++)
+                {
+                    M[c * n + t] *= invD;
+                    Inv[c * n + t] *= invD;
+                }
+
+                for (int r = 0; r < n; r++)
+                {
+                    if (r == c) continue;
+                    float f = M[r * n + c];
+                    if (f == (float)0) continue;
+                    for (int t = 0; t < n; t++)
+                    {
+                        M[r * n + t] -= f * M[c * n + t];
+                        Inv[r * n + t] -= f * Inv[c * n + t];
+                    }
+                }
+            }
+
+            return true;
         }
 
         /// <summary>
