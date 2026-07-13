@@ -114,7 +114,7 @@ namespace LinearAlgebra
                 var rng = new Random(seed == 0 ? 0x9E3779B1u : seed);
                 double* v0 = VL_ptr;  // VL[0,:] at offset 0 (contiguous n-vector)
                 for (int i = 0; i < n; i++)
-                    v0[i] = (double)(rng.NextFloat() * 2f - 1f);
+                    v0[i] = (double)(rng.NextDouble() * 2.0 - 1.0);   // full-precision seed for the double variant
                 double seedNorm2 = UnsafeOP.vecDot(v0, v0, n);
                 if (seedNorm2 > (double)0)
                     UnsafeOP.scalMul(v0, n, (double)1 / math.sqrt(seedNorm2));
@@ -139,7 +139,7 @@ namespace LinearAlgebra
                     double eps1     = (double)50 * eps;                           // 100*eps/2
                     double delta    = math.sqrt(eps / (double)p);                 // semiorthogonality trigger
                     double gamma    = (double)1 / math.sqrt((double)2);           // ELR ratio (1/√2)
-                    double epsFloor = (double)1.5f * eps;                         // reset level for orthogonalized ω
+                    double epsFloor = (double)1.5 * eps;                          // reset level for orthogonalized ω
                     double anorm    = (double)0;                                  // running ‖A‖₂ estimate (order-of-mag)
                     bool forceReorth = false;                                     // interlock: force next half-step reorth
 
@@ -183,7 +183,7 @@ namespace LinearAlgebra
 
                         // anorm update (monotone running max; feeds T perturbation only).
                         // svdAnormBlock keeps lanbpro's α·β cross term so ‖A‖ is not underestimated.
-                        anorm = math.max(anorm, (double)1.01f * svdAnormBlock(ws.alpha[j], j > 0 ? ws.beta[j - 1] : (double)0));
+                        anorm = math.max(anorm, (double)1.01 * svdAnormBlock(ws.alpha[j], j > 0 ? ws.beta[j - 1] : (double)0));
 
                         // μ-recurrence — estimate ⟨û_j, û_i⟩ for i = 0..j-1 (in-place safe).
                         // Convention: ν_j(i+1) for i=j-1 uses self-term ν_j(j)=1 (v̂_j is unit norm).
@@ -290,7 +290,7 @@ namespace LinearAlgebra
                         }
 
                         // anorm update (post-ELR; α·β cross term retained — see the U-side anorm update above).
-                        anorm = math.max(anorm, (double)1.01f * svdAnormBlock(ws.alpha[j], ws.beta[j]));
+                        anorm = math.max(anorm, (double)1.01 * svdAnormBlock(ws.alpha[j], ws.beta[j]));
 
                         // ν-recurrence — estimate ⟨v̂_{j+1}, v̂_i⟩ for i = 0..j (in-place safe).
                         // Convention: ν_j(i) for i==j uses self-term ν_j(j)=1 (v̂_j is unit norm).

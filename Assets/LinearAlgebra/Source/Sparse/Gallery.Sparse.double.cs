@@ -26,7 +26,7 @@ namespace LinearAlgebra.Gallery
         // Off-diagonal block entries are drawn from [-OffScale, OffScale]; diagonal blocks are made
         // strongly enough dominant (per-row, exactly) that the matrix is guaranteed SPD / invertible
         // regardless of the random draw. See doubleRandomSparseSPD.
-        const float doubleSparseOffScale = 0.3f;
+        const double doubleSparseOffScale = 0.3;
 
         /// <summary>
         /// Random symmetric positive-definite block-sparse matrix (blockRows·BR square). Each diagonal
@@ -71,7 +71,7 @@ namespace LinearAlgebra.Gallery
                     for (int r = 0; r < BR; r++)
                         for (int c = 0; c < BR; c++)
                         {
-                            double v = (double)rng.NextFloat(-doubleSparseOffScale, doubleSparseOffScale);
+                            double v = (double)rng.NextDouble(-doubleSparseOffScale, doubleSparseOffScale);
                             blk[r, c]  = v;
                             blkT[c, r] = v;
                         }
@@ -143,7 +143,7 @@ namespace LinearAlgebra.Gallery
                     if (j == i && i < diagCount) continue; // diagonal handled below
                     for (int r = 0; r < BR; r++)
                         for (int c = 0; c < BR; c++)
-                            blk[r, c] = (double)rng.NextFloat(-doubleSparseOffScale, doubleSparseOffScale);
+                            blk[r, c] = (double)rng.NextDouble(-doubleSparseOffScale, doubleSparseOffScale);
                     builder.AddBlock(i, j, in blk);
                     offBound[i] += blockRowBound;
                 }

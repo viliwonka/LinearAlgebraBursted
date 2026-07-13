@@ -24,7 +24,7 @@ namespace LinearAlgebra
     /// be orthonormalized -- e.g. k &gt; n -- or a non-finite residual leaked into the loop), in
     /// which case X/lambda are undefined.
     ///
-    /// Type-agnostic (no fProxy prefix) on purpose, matching <see cref="EigenSolveInfo"/> /
+    /// Type-agnostic (no per-precision prefix) on purpose, matching <see cref="EigenSolveInfo"/> /
     /// <see cref="LanczosInfo"/> / <see cref="SolveInfo"/>: it lives in a non-templated file so
     /// codegen does not emit a duplicate definition into both the float and double partials
     /// (CS0102).

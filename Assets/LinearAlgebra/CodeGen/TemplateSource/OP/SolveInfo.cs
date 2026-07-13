@@ -228,11 +228,9 @@ namespace LinearAlgebra
 
     /// <summary>
     /// Result of a RANK-REVEALING direct solver or decomposition call -- QRCP
-    /// (<see cref="QRCP.solveInPlace(ref fProxyMxN, ref fProxyN, ref fProxyN, ref fProxyMxN, ref Pivot, ref fProxyN, fProxy)"/>)
-    /// and pivoted Cholesky (<see cref="CHOP.decomp(in fProxyMxN, ref fProxyMxN, ref Pivot, ref fProxyCHOPCache)"/> /
-    /// <see cref="CHOP.decompSolve(ref fProxyMxN, in Pivot, int, ref fProxyN, ref fProxyCHOPCache)"/>), AND of the
-    /// SVD-backed rank-revealing calls (<see cref="SVD.pinvSolve(ref fProxyMxN, in fProxyN, ref fProxyN, fProxy, int)"/>,
-    /// <c>SVD.nullspaceBasis</c>, <c>SVD.rangeBasis</c>).
+    /// (<c>QRCP.solveInPlace</c>) and pivoted Cholesky (<c>CHOP.decomp</c> /
+    /// <c>CHOP.decompSolve</c>), AND of the SVD-backed rank-revealing calls
+    /// (<c>SVD.pinvSolve</c>, <c>SVD.nullspaceBasis</c>, <c>SVD.rangeBasis</c>).
     /// Unlike <see cref="DirectSolveInfo"/>, a rank-deficient input is NOT a hard failure here: both
     /// algorithms still produce a usable (least-squares / minimum-norm) result when the detected
     /// rank is below the full dimension, so <see cref="Solved"/> is true for
