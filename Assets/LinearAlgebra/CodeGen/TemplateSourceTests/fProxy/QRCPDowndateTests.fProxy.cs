@@ -41,10 +41,11 @@ using Unity.Mathematics;
 // throwaway test scaffolding: its reflector step delegates to the SAME public vectorised kernel
 // production uses (LinearAlgebra.Internal.UnsafeOP.axpy) and its reflector-vector build calls the
 // SAME public Norms.L2Range, mirroring QR.genHouseholder / QR.applyReflectorRight bit-for-bit (see
-// OracleGenHouseholder / OracleApplyReflectorRight — those QR kernels are `internal`, and this
-// TEMPLATE file also compiles in the raw TemplateSource.Tests assembly which lacks the
-// InternalsVisibleTo grant the generated test assembly has, so a bit-identical replica over public
-// primitives is used instead of calling them directly). The ONLY thing that differs between the
+// OracleGenHouseholder / OracleApplyReflectorRight — those QR kernels are `internal`, reachable here
+// via the InternalsVisibleTo grants on both BurstLinearAlgebra.Tests and
+// BurstLinearAlgebra.TemplateSource.Tests-firstpass (TemplateSource/AssemblyInfo.cs); a bit-identical
+// replica over public primitives is used instead of calling them directly so the oracle stays
+// independent of the kernel under test). The ONLY thing that differs between the
 // oracle and production is the norm-tracking strategy that feeds pivot choice.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 public class fProxyQRCPDowndateTests
@@ -913,9 +914,10 @@ public class fProxyQRCPDowndateTests
         }
 
         // Faithful, bit-identical replicas of production's Householder kernels (QR.genHouseholder /
-        // QR.applyReflectorRight), needed only because those are `internal` and this TEMPLATE test
-        // file also compiles in the raw TemplateSource.Tests assembly, which lacks the
-        // InternalsVisibleTo grant the GENERATED test assembly has. Bit-identity is preserved by
+        // QR.applyReflectorRight); those are `internal`, reachable here via the InternalsVisibleTo
+        // grants on both BurstLinearAlgebra.Tests and BurstLinearAlgebra.TemplateSource.Tests-firstpass
+        // (TemplateSource/AssemblyInfo.cs), but a replica is used anyway so the oracle stays independent
+        // of the kernel under test. Bit-identity is preserved by
         // NOT reimplementing the numeric core: the reflector-apply delegates to the SAME public
         // vectorised kernel production uses (LinearAlgebra.Internal.UnsafeOP.axpy), and the
         // reflector-vector build calls the SAME public Norms.L2Range and mirrors the exact scalar

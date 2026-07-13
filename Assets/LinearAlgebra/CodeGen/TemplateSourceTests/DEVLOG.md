@@ -15,6 +15,51 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   implementation handoff. QPActiveSetTests.cs / QPSolveTests.cs / LadFrischNewtonQuantileTests.cs
   are candidates for the same conversion.
 
+## QPActiveSetTests
+- 2026-07-13 | Converted from the hand-written SourceTests/QPActiveSetTests.cs (hand-duplicated
+  float/double halves, one job struct per dtype per case) into this fProxy template, following
+  QPEqpTests.fProxy.cs's conversion precedent. Tolerances that differed between the float/double
+  halves (HS21/35/52/76 objective and componentwise-x tolerances; the brute-force feasibility-check
+  and objective-agreement tolerances; the LP-limit and Degenerate tolerances) became
+  /*+choose[...]*/ markers; literal problem data (Q/c/A/b/xl/xu, random-draw ranges) was identical
+  between halves value-for-value and needed no marker. Header dropped internal "Stage 2"/
+  "draft-spec-qp.md" labels and the (now-false) "HAND-WRITTEN because InternalsVisibleTo can't reach
+  firstpass" framing -- see the QPSolveTests entry below for the fuller InternalsVisibleTo
+  correction, which also applies here.
+
+## QPSolveTests
+- 2026-07-13 | Converted from the hand-written SourceTests/QPSolveTests.cs into this fProxy template,
+  same conversion pattern as QPEqpTests.fProxy.cs / QPActiveSetTests.fProxy.cs. The three
+  validation-throw tests (Solve_AsymmetricQ_Throws / Solve_DimensionMismatch_Throws /
+  Solve_LowerAboveUpper_Throws) were DOUBLE-ONLY in the original hand-written suite (no float half
+  existed at all -- the validation logic under test doesn't depend on precision); preserved exactly
+  as double-only via `//+skipFor[float]` rather than adding new float coverage. The ill-conditioned
+  stress cases (criterion 5) used genuinely different case data per precision (condition up to ~1e6
+  at float, ~1e12 at double -- not just a shared tolerance): merged into one IllConditionedCases()
+  source with the maxEig value itself behind a choose marker per case, preserving all 3+3 original
+  (n, seed, maxEig) triples. Every other float-vs-double tolerance pair (facade HS21/35/52/76,
+  NoBounds, IllConditioned residual tolerances, HeavyDegeneracy) became a choose marker. Also
+  corrected the false "InternalsVisibleTo cannot reach the firstpass assembly" claim in this file's
+  own header and in three other places that repeated the same folklore QPEqpTests' conversion had
+  already disproven: QP.fProxy.cs's eqpSolve doc comment, LPTests.fProxy.cs's tau-sanity NOTE, and
+  QRCPDowndateTests.fProxy.cs's two oracle-provenance comments. True mechanism in all four: the
+  InternalsVisibleTo grants on BOTH BurstLinearAlgebra.Tests and
+  BurstLinearAlgebra.TemplateSource.Tests-firstpass (TemplateSource/AssemblyInfo.cs). Dropped the
+  header's measured-tolerance aside ("Empirically feas landed ~1e-6 (float) / ~1e-13 (double) and
+  stationarity ~1e-8..1e-4 relative to maxEig") per the comment-contracts-only policy; kept the
+  tolerance-scaling RULE itself (feasibilityResidual ~ machine precision regardless of conditioning,
+  stationarityResidual scales with relTol * maxEig).
+
+## LadFrischNewtonQuantileTests
+- 2026-07-13 | Converted from the hand-written SourceTests/LadFrischNewtonQuantileTests.cs into this
+  fProxy template. The original header's own justification for staying hand-written -- "InternalsVisibleTo
+  only reaches the generated BurstLinearAlgebra.Tests assembly, NOT this template's firstpass
+  compile-check assembly" -- was the same false claim QPEqpTests' conversion had already disproven,
+  so the premise for keeping this file hand-written no longer held either. TauHalfMatchesCore's six
+  tolerances (objFN-vs-objCore, x-vs-xCore componentwise, intercept, slope, L1 residual) differed
+  float-vs-double and became choose markers; TauQuarterResidualSign was already fully symmetric
+  (same seed, same ranges, same +/-20%*m tolerance in both halves) and merged with no markers at all.
+
 ## FullStatsTests
 - 2026-07-13 | Header history relocated: the median/quartile/IQR path was previously untested;
   the n==2 case used to read out of bounds (copy[-1]) before the fix its test now pins. The

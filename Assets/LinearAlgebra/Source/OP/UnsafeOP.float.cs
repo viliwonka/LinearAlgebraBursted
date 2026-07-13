@@ -363,11 +363,22 @@ namespace LinearAlgebra.Internal
         // read as n x m here. The MR row-values for a fixed p are CONTIGUOUS
         // (matA[p*m + i .. i+MR-1]) — an even better load pattern than matMatDot's per-row strided
         // reads. Same determinism argument and same MR/NR-shared-across-types constraint as above.
+        // All three pointers must be distinct; the aliased Aᵀ·A shape (Blas.dot(A, A,
+        // transposeA: true), isOrthogonal, covariance) goes through matAtA below instead.
         [MethodImpl(MethodImplOptions.NoInlining)]
-        // All three pointers must be distinct — callers with an aliased Aᵀ·A shape (Blas.dot(A, A,
-        // transposeA: true), isOrthogonal, covariance) copy one input to Temp first (O(n²) copy
-        // against the O(n³) product), keeping the [NoAlias] promise intact.
         public static void matMatDotTransA([NoAlias] float* matA, [NoAlias] float* matB, [NoAlias] float* matC, int m, int n, int k)
+            => matMatDotTransACore(matA, matB, matC, m, n, k);
+
+        // C = Aᵀ·A (SYRK shape, m x m output): the single input parameter is used for both operand
+        // roles, so the alias relationship is exact — no [NoAlias] lie and no defensive copy.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void matAtA([NoAlias] float* matA, [NoAlias] float* matC, int m, int n)
+            => matMatDotTransACore(matA, matA, matC, m, n, m);
+
+        // Shared tiled body — inlined into both entry points above so their parameter attributes
+        // apply to the loads/stores directly.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static void matMatDotTransACore(float* matA, float* matB, float* matC, int m, int n, int k)
         {
             // matA = m x n, but treated as n x m due to transposition
             // matB = n x k
@@ -465,8 +476,9 @@ namespace LinearAlgebra.Internal
         // Plain (untiled) Aᵀ·B restricted to an explicit row/column sub-range — the transposed-A
         // mirror of matMatDotRange, same rationale (remainder coverage + whole-matrix small-size
         // fallback with zero seam risk).
+        // matA/matB may be the same pointer here (the matAtA route) — only matC keeps [NoAlias].
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static void matMatDotTransARange([NoAlias] float* matA, [NoAlias] float* matB, [NoAlias] float* matC,
+        static void matMatDotTransARange(float* matA, float* matB, [NoAlias] float* matC,
                                           int rowStart, int rowEnd, int m, int n, int k, int colStart, int colEnd)
         {
             for (int r = rowStart; r < rowEnd; r++)

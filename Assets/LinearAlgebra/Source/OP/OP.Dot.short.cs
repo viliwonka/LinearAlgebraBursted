@@ -144,16 +144,18 @@ namespace LinearAlgebra
                 // matMatDot / matMatDotTransA accumulate (+=), so c must start zeroed.
                 UnsafeUtility.MemClear(c.Data.Ptr, (long)c.Data.Length * UnsafeUtility.SizeOf<short>());
 
-                if (a.Data.Ptr == b.Data.Ptr)
+                if (a.Data.Ptr == b.Data.Ptr && transposeA)
                 {
-                    // A·A / Aᵀ·A: the GEMM kernels promise [NoAlias] on every pointer, so feed
-                    // them a Temp copy of b — an O(n²) copy against the O(n³) product.
+                    // Aᵀ·A: dedicated SYRK-shape kernel — one input pointer, no copy.
+                    UnsafeOP.matAtA(a.Data.Ptr, c.Data.Ptr, m, n);
+                }
+                else if (a.Data.Ptr == b.Data.Ptr)
+                {
+                    // A·A: matMatDot promises [NoAlias] on every pointer and has no single-input
+                    // twin, so feed it a Temp copy of b — an O(n²) copy against the O(n³) product.
                     var bCopy = new shortMxN(b.M_Rows, b.N_Cols, Unity.Collections.Allocator.Temp, true);
                     bCopy.Data.CopyFrom(b.Data);
-                    if (transposeA)
-                        UnsafeOP.matMatDotTransA(a.Data.Ptr, bCopy.Data.Ptr, c.Data.Ptr, m, n, k);
-                    else
-                        UnsafeOP.matMatDot(a.Data.Ptr, bCopy.Data.Ptr, c.Data.Ptr, m, n, k);
+                    UnsafeOP.matMatDot(a.Data.Ptr, bCopy.Data.Ptr, c.Data.Ptr, m, n, k);
                     bCopy.Dispose();
                 }
                 else if (transposeA)

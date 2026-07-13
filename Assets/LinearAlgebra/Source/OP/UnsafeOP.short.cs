@@ -160,8 +160,20 @@ namespace LinearAlgebra.Internal
             }
         }
 
+        // All three pointers must be distinct; the aliased Aᵀ·A shape goes through matAtA below.
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void matMatDotTransA([NoAlias] short* matA, [NoAlias] short* matB, [NoAlias] short* matC, int m, int n, int k)
+            => matMatDotTransACore(matA, matB, matC, m, n, k);
+
+        // C = Aᵀ·A (SYRK shape, m x m output): the single input parameter is used for both operand
+        // roles, so the alias relationship is exact — no [NoAlias] lie and no defensive copy.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void matAtA([NoAlias] short* matA, [NoAlias] short* matC, int m, int n)
+            => matMatDotTransACore(matA, matA, matC, m, n, m);
+
+        // Shared body — inlined into both entry points above so their parameter attributes apply.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static void matMatDotTransACore(short* matA, short* matB, short* matC, int m, int n, int k)
         {
             // matA = m x n, but treated as n x m due to transposition
             // matB = n x k

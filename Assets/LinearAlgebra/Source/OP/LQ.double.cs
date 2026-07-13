@@ -593,6 +593,90 @@ namespace LinearAlgebra
             return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }
 
+        /// <summary>
+        /// Minimum-2-norm solution of the underdetermined system A x = b (m ≤ n, A full row rank),
+        /// factoring A IN PLACE — the fastest min-norm path: skips the O(mn) working copy
+        /// minNormSolve pays to preserve A. Steps: (1) A = L Q factored into A's own storage
+        /// (row-reflectors); (2) forward-solve L y = b; (3) x = Qᵀ y applied from the reflectors.
+        /// Allocates L and y from Allocator.Temp. Always reports Success (PRECONDITION: A has full
+        /// row rank; not detected here).
+        /// </summary>
+        /// <param name="A">m × n coefficient matrix (m ≤ n, full row rank). DESTROYED — exits as
+        /// reflector scratch, contents undefined for the caller.</param>
+        /// <param name="b">Right-hand side vector, length m. Not modified.</param>
+        /// <param name="x">Output only; prior contents ignored; safe to allocate with uninit: true.
+        /// Solution (min-2-norm), length n. Must not alias b.</param>
+        public static DirectSolveInfo minNormSolveInPlace(ref doubleMxN A, in doubleN b, ref doubleN x)
+        {
+            int m = A.M_Rows;
+            int n = A.N_Cols;
+
+            if (m > n)
+                throw new ArgumentException("LQ.minNormSolveInPlace: A must be wide or square (M_Rows <= N_Cols)");
+            if (b.N != m)
+                throw new ArgumentException("LQ.minNormSolveInPlace: b.N must equal A.M_Rows");
+            if (x.N != n)
+                throw new ArgumentException("LQ.minNormSolveInPlace: x.N must equal A.N_Cols");
+
+            if (m == 0 || n == 0)
+                return new DirectSolveInfo { status = DirectSolveStatus.Success };
+
+            // Factor A into L + stored row-reflectors in A's OWN storage; Q is never reconstructed.
+            var L = new doubleMxN(m, m, Allocator.Temp, false);
+            var v = new doubleN(n, Allocator.Temp, false);
+            double zeroThreshold = Consts.doubleZeroThreshold * Norms.LInf(in A);
+            lqFactorInPlace(ref A, ref L, ref v, zeroThreshold);
+
+            // Forward-solve L y = b (y starts as a copy of b; triLower is in-place).
+            var y = new doubleN(m, Allocator.Temp, false);
+            y.Data.CopyFrom(b.Data);
+            Blas.triLower(ref L, ref y);
+
+            // x = Qᵀ y, applied directly from A's reflectors.
+            applyQtFromReflectors(ref A, ref y, ref x);
+
+            y.Dispose();
+            v.Dispose();
+            L.Dispose();
+
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
+        }
+
+        /// <summary>
+        /// minNormSolveInPlace using a reusable workspace (Arena.doubleLQMinNormCache(m, n)) —
+        /// zero-alloc end to end. Semantics identical to the allocating in-place overload
+        /// (A DESTROYED; the cache's W buffer is unused on this path).
+        /// </summary>
+        public static DirectSolveInfo minNormSolveInPlace(ref doubleMxN A, in doubleN b, ref doubleN x, ref doubleLQMinNormCache ws)
+        {
+            int m = A.M_Rows;
+            int n = A.N_Cols;
+
+            if (m > n)
+                throw new ArgumentException("LQ.minNormSolveInPlace: A must be wide or square (M_Rows <= N_Cols)");
+            if (b.N != m)
+                throw new ArgumentException("LQ.minNormSolveInPlace: b.N must equal A.M_Rows");
+            if (x.N != n)
+                throw new ArgumentException("LQ.minNormSolveInPlace: x.N must equal A.N_Cols");
+            RequireLQMinNormSolveWorkspace(in ws, m, n);
+
+            if (m == 0 || n == 0)
+                return new DirectSolveInfo { status = DirectSolveStatus.Success };
+
+            var v = ws.LQWs.v;
+            var L = ws.L;
+            var Qnull = default(doubleMxN);
+            double zeroThreshold = Consts.doubleZeroThreshold * Norms.LInf(in A);
+            lqKernel(ref A, ref L, ref Qnull, ref v, zeroThreshold, reconstructQ: false);
+
+            var y = ws.y;
+            y.Data.CopyFrom(b.Data);
+            Blas.triLower(ref L, ref y);
+            applyQtFromReflectors(ref A, ref y, ref x);
+
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
+        }
+
         // ---- multi-RHS form: minimum-norm solve for a whole matrix of right-hand sides ----
 
         // X = Qᵀ Y (multi-RHS) from the stored row-reflectors in W, WITHOUT forming the dense Q. Each
@@ -690,6 +774,55 @@ namespace LinearAlgebra
             v.Dispose();
             L.Dispose();
             W.Dispose();
+
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
+        }
+
+        /// <summary>
+        /// Multi-RHS minimum-2-norm solve A X = B (m ≤ n, A full row rank), factoring A IN PLACE —
+        /// each RHS a COLUMN of B (m x k), each solution a column of X (n x k). Skips the O(mn)
+        /// working copy the A-preserving overload pays. Allocates L and Y from Allocator.Temp.
+        /// Always reports Success (PRECONDITION: full row rank).
+        /// </summary>
+        /// <param name="A">m × n coefficient matrix (m ≤ n, full row rank). DESTROYED — exits as
+        /// reflector scratch, contents undefined for the caller.</param>
+        /// <param name="B">Right-hand sides (m x k). Not modified.</param>
+        /// <param name="X">Output only; prior contents ignored. Solution (n x k). Must not alias B.</param>
+        public static DirectSolveInfo minNormSolveInPlace(ref doubleMxN A, in doubleMxN B, ref doubleMxN X)
+        {
+            int m = A.M_Rows;
+            int n = A.N_Cols;
+            int k = B.N_Cols;
+
+            if (m > n)
+                throw new ArgumentException("LQ.minNormSolveInPlace: A must be wide or square (M_Rows <= N_Cols)");
+            if (B.M_Rows != m)
+                throw new ArgumentException("LQ.minNormSolveInPlace: B.M_Rows must equal A.M_Rows");
+            if (X.M_Rows != n)
+                throw new ArgumentException("LQ.minNormSolveInPlace: X.M_Rows must equal A.N_Cols");
+            if (X.N_Cols != k)
+                throw new ArgumentException("LQ.minNormSolveInPlace: X.N_Cols must equal B.N_Cols");
+
+            if (m == 0 || n == 0)
+                return new DirectSolveInfo { status = DirectSolveStatus.Success };
+
+            // Factor A into L + stored row-reflectors in A's OWN storage; Q is never reconstructed.
+            var L = new doubleMxN(m, m, Allocator.Temp, false);
+            var v = new doubleN(n, Allocator.Temp, false);
+            double zeroThreshold = Consts.doubleZeroThreshold * Norms.LInf(in A);
+            lqFactorInPlace(ref A, ref L, ref v, zeroThreshold);
+
+            // Forward-solve L Y = B (Y starts as a copy of B; triLower is in-place).
+            var Y = new doubleMxN(m, k, Allocator.Temp, false);
+            Y.Data.CopyFrom(B.Data);
+            Blas.triLower(ref L, ref Y);
+
+            // X = Qᵀ Y, applied directly from A's reflectors.
+            applyQtFromReflectors(ref A, ref Y, ref X);
+
+            Y.Dispose();
+            v.Dispose();
+            L.Dispose();
 
             return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }

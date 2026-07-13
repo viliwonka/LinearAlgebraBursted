@@ -237,14 +237,10 @@ namespace LinearAlgebra
         {
             fProxyMxN B = new fProxyMxN(A.N_Cols, A.N_Cols, Unity.Collections.Allocator.Temp);
 
-            // B = A^T * A. The GEMM kernel promises [NoAlias] on every pointer, so the second
-            // A goes in as a Temp copy (O(n²) copy against the O(n³) product).
-            var Acopy = new fProxyMxN(A.M_Rows, A.N_Cols, Unity.Collections.Allocator.Temp, true);
-            Acopy.Data.CopyFrom(A.Data);
+            // B = A^T * A via the dedicated single-input SYRK-shape kernel.
             unsafe {
-                UnsafeOP.matMatDotTransA(A.Data.Ptr, Acopy.Data.Ptr, B.Data.Ptr, A.N_Cols, A.M_Rows, B.N_Cols);
+                UnsafeOP.matAtA(A.Data.Ptr, B.Data.Ptr, A.N_Cols, A.M_Rows);
             }
-            Acopy.Dispose();
 
             bool valid = true;
 

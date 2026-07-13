@@ -77,11 +77,10 @@ public class fProxyLPTests
             LadFNvsOracleM192,  // ...m=192
             LadFNStackloss,     // Brownlee stack-loss LAD via FN (published coeffs)
             LadFNDegenerateExactFit, // exact-fit data (b=A*x_true, no noise): finite, residual ~0
-            // NOTE: the tau-sanity tests (spec item 3) call the INTERNAL ladFrischNewtonCore (tau!=0.5
-            // has no public entry). The InternalsVisibleTo grant only reaches the GENERATED
-            // "BurstLinearAlgebra.Tests" assembly, NOT this template's "-firstpass" compile-check
-            // assembly, so those live in the hand-written SourceTests/LadFrischNewtonQuantileTests.cs
-            // (same convention as QRCPDowndateTests' note / ChunkedRecordTableTests.cs).
+            // NOTE: the tau-sanity tests call the INTERNAL ladFrischNewtonCore directly (tau!=0.5 has
+            // no public entry) -- reachable via the InternalsVisibleTo grants on both
+            // BurstLinearAlgebra.Tests and BurstLinearAlgebra.TemplateSource.Tests-firstpass
+            // (TemplateSource/AssemblyInfo.cs). They live in LadFrischNewtonQuantileTests.fProxy.cs.
 
             // ==== LP.ladBR / ladBarrodaleRobertsCore. BR is a specialized primal simplex converging to
             // an EXACT VERTEX (n residuals exactly zero), so its optima match the exact-vertex

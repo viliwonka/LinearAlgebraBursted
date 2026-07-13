@@ -31,6 +31,12 @@ namespace LinearAlgebra.Benchmarks
             foreach (var n in Bench.Sizes) sb.AppendLine(BenchTransAFloat(n, Flops(n)));
             foreach (var n in Bench.Sizes) sb.AppendLine(BenchTransADouble(n, Flops(n)));
             sb.AppendLine();
+
+            sb.AppendLine("=== GEMM-AtA: dense C = A^T * A (matAtA single-input kernel) ===");
+            sb.AppendLine(Bench.Header());
+            foreach (var n in Bench.Sizes) sb.AppendLine(BenchAtAFloat(n, Flops(n)));
+            foreach (var n in Bench.Sizes) sb.AppendLine(BenchAtADouble(n, Flops(n)));
+            sb.AppendLine();
         }
     }
 }

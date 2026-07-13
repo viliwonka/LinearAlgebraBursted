@@ -182,24 +182,21 @@ namespace LinearAlgebra.Sparse
         }
 
         // X = X · Minv for BR x BR row-major blocks at the given offsets.
-        static void BlockMulRight(Unity.Collections.LowLevel.Unsafe.UnsafeList<fProxy> v, int xOff, int mOff, int BR)
+        static unsafe void BlockMulRight(Unity.Collections.LowLevel.Unsafe.UnsafeList<fProxy> v, int xOff, int mOff, int BR)
         {
+            // Row buffer stackalloc'd ONCE (stackalloc frees at return, not loop exit).
+            fProxy* tmp = stackalloc fProxy[16];
             for (int r = 0; r < BR; r++)
             {
-                // one row of X times Minv, buffered on the stack via locals
-                unsafe
+                for (int c = 0; c < BR; c++)
                 {
-                    fProxy* tmp = stackalloc fProxy[16];
-                    for (int c = 0; c < BR; c++)
-                    {
-                        fProxy sum = 0;
-                        for (int t = 0; t < BR; t++)
-                            sum += v[xOff + r * BR + t] * v[mOff + t * BR + c];
-                        tmp[c] = sum;
-                    }
-                    for (int c = 0; c < BR; c++)
-                        v[xOff + r * BR + c] = tmp[c];
+                    fProxy sum = 0;
+                    for (int t = 0; t < BR; t++)
+                        sum += v[xOff + r * BR + t] * v[mOff + t * BR + c];
+                    tmp[c] = sum;
                 }
+                for (int c = 0; c < BR; c++)
+                    v[xOff + r * BR + c] = tmp[c];
             }
         }
 

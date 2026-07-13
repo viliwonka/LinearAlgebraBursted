@@ -272,9 +272,10 @@ namespace LinearAlgebra
         ///
         /// A FIXED working set (algorithm steps 2-3 only). INTERNAL: the public surface for QP is
         /// <c>QP.solve</c>; this is the reusable EQP kernel entry a future inequality active-set loop
-        /// would call once the active set is pinned down for a given iteration. Hand-written tests
-        /// reach this via InternalsVisibleTo (BurstLinearAlgebra.Tests, see AssemblyInfo.cs), the same
-        /// route as LP.ladFrischNewtonCore / LadFrischNewtonQuantileTests.cs.
+        /// would call once the active set is pinned down for a given iteration. Tests reach this via
+        /// the InternalsVisibleTo grants on both BurstLinearAlgebra.Tests and
+        /// BurstLinearAlgebra.TemplateSource.Tests-firstpass (AssemblyInfo.cs), the same route
+        /// QPEqpTests.float.cs and LP.ladFrischNewtonCore use.
         /// </summary>
         /// <param name="Q">Symmetric PSD Hessian, n x n. Only referenced via matrix products (Qx,
         /// ZᵀQZ) -- not verified to be exactly symmetric in storage (both triangles are read).</param>
