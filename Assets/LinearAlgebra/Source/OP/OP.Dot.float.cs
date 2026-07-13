@@ -245,16 +245,25 @@ namespace LinearAlgebra
                 if (c.Data.Ptr == a.Data.Ptr || c.Data.Ptr == b.Data.Ptr)
                     throw new ArgumentException("dot: destination must not alias an input");
 
-                // matAAt / matMatDotTransB accumulate (+=), so c must start zeroed.
-                UnsafeUtility.MemClear(c.Data.Ptr, (long)c.Data.Length * UnsafeUtility.SizeOf<float>());
-
                 if (a.Data.Ptr == b.Data.Ptr)
                 {
-                    // A·Aᵀ: dedicated SYRK-shape kernel — one input pointer, no copy.
+                    // A·Aᵀ: dedicated SYRK-shape kernel (upper + mirror, ~half the FLOPs) — one
+                    // input pointer, no copy. Best route for both element types.
+                    UnsafeUtility.MemClear(c.Data.Ptr, (long)c.Data.Length * UnsafeUtility.SizeOf<float>());
                     UnsafeOP.matAAt(a.Data.Ptr, c.Data.Ptr, m, n);
+                    return;
                 }
-                else
-                    UnsafeOP.matMatDotTransB(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, m, n, k);
+
+                
+                // float: materialize Bᵀ (staged transpose) and run the broadcast GEMM — measured
+                // at-or-faster than the row-dot TransB kernel at every size, because the row-dot
+                // kernel's width-4 accumulator chains are half of AVX2's float width.
+                var Bt = new floatMxN(b.N_Cols, b.M_Rows, Unity.Collections.Allocator.Temp, true);
+                trans(in b, ref Bt);
+                dot(in a, in Bt, ref c);
+                Bt.Dispose();
+                
+                
             }
         }
 

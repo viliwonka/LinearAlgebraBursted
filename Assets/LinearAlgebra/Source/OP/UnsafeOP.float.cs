@@ -252,11 +252,13 @@ namespace LinearAlgebra.Internal
         // the same `c += a*b` expression as the fallback. Tiling only interleaves independent
         // accumulator chains across the MR*NR block — it never splits an individual element's
         // k-reduction — so results are bit-identical to the fallback at every tile size and SIMD width.
-        // (This determinism rule is also why there is no cache-level k-panel blocking.)
+        // The packed large-size route below preserves the same chain by SEEDING its microkernel
+        // accumulators from C (each element's reduction continues across k-panels in the same
+        // p-ascending order), so it too is bit-identical at every panel size.
         //
         // Tile constants are method-local: a class-level const would collide across the generated
         // float/double partial-class files (CS0102). MR=8, NR=16 (16 AVX2 accumulator vectors, the
-        // edge before register spilling) is used for both types and every size, no size gate.
+        // edge before register spilling) is used for both types and every size.
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void matMatDot([NoAlias] float* matA, [NoAlias] float* matB, [NoAlias] float* matC, int m, int n, int k)
         {
@@ -264,6 +266,26 @@ namespace LinearAlgebra.Internal
             // matB = n x k
             // matC = outMat = m x k, needs to be initialized to zero (this kernel ACCUMULATES, +=)
 
+            // Products whose working set spills L3 go through the packed (cache-blocked) route:
+            // operands are copied into panel buffers once, so the inner kernel never re-streams
+            // from DRAM. Below the gate the pack copies cost more than the locality buys (the
+            // measured crossover is ~24 MB total working set); the gate is byte-scaled so float
+            // and double switch at the same cache pressure. Results are bit-identical between
+            // the two routes at every size.
+            if (((long)m * n + (long)n * k + (long)m * k) * sizeof(float) >= (24L << 20)
+                && m >= 8 && k >= 16)
+            {
+                matMatDotPacked(matA, matB, matC, m, n, k);
+                return;
+            }
+
+            matMatDotUnpacked(matA, matB, matC, m, n, k);
+        }
+
+        // Direct register-tiled route (no packing) — optimal while the working set is cache-resident.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void matMatDotUnpacked([NoAlias] float* matA, [NoAlias] float* matB, [NoAlias] float* matC, int m, int n, int k)
+        {
             const int MR = 8;
             const int NR = 16;
 
@@ -352,29 +374,192 @@ namespace LinearAlgebra.Internal
 
                 // Remainder columns [kTiles, k) for these MR rows: same p-ascending order, plain fallback.
                 if (kTiles < k)
-                    matMatDotRange(matA, matB, matC, i, i + MR, n, k, kTiles, k);
+                    matMatDotRange(matA, matB, matC, i, i + MR, n, k, kTiles, k, 0, n);
             }
 
             // Remainder rows [mTiles, m) — and, when m < MR, the WHOLE matrix (mTiles == 0 routes
             // every row through here): plain fallback, zero seam risk vs the tiled bulk above.
             if (mTiles < m)
-                matMatDotRange(matA, matB, matC, mTiles, m, n, k, 0, k);
+                matMatDotRange(matA, matB, matC, mTiles, m, n, k, 0, k, 0, n);
         }
 
-        // Plain (untiled) GEMM restricted to an explicit row/column sub-range, in the SAME
-        // p-ascending accumulation order as matMatDot's tiled bulk above (this literally IS the
-        // pre-tiling kernel, just row/col-bounded) — used both for the remainder rows/cols the
-        // MR x NR tiling doesn't evenly cover, and as the whole-matrix path for matrices smaller than
-        // one tile (mTiles==0 or kTiles==0 routes every row/col through here), so there is zero risk
-        // of a seam between the tiled and fallback regions, and small matrices provably do not regress
-        // (they take exactly the pre-existing kernel).
+        // Packed (BLIS-style cache-blocked) GEMM: the contraction dimension is processed in KC-wide
+        // panels; per panel, B is packed into NR-column strips and A into MR-row strips, so the
+        // microkernel reads BOTH operands as contiguous 64-byte-aligned streams and the panels stay
+        // L2-resident across the whole sweep instead of re-streaming from DRAM. C is loaded/stored
+        // once per (tile, panel) — O(mk·n/KC) traffic, amortized to noise by KC.
+        //
+        // Determinism: the microkernel SEEDS its accumulators from C, so every element's reduction
+        // is one continuous p-ascending chain across all panels — bit-identical to the unpacked
+        // route at every KC/MC. Edge rows/columns run the original-layout fallback per panel,
+        // continuing the same per-element chain.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void matMatDotPacked([NoAlias] float* matA, [NoAlias] float* matB, [NoAlias] float* matC, int m, int n, int k)
+        {
+            const int MR = 8;
+            const int NR = 16;
+            const int KC = 256;   // contraction panel length (strip bytes stay L1-friendly)
+            const int MC = 128;   // A-panel rows per pack (MC x KC panel is L2-resident)
+
+            int mTiles = (m / MR) * MR;
+            int kTiles = (k / NR) * NR;
+            int bStrips = kTiles / NR;
+
+            float* Apack = (float*)UnsafeUtility.Malloc((long)MC * KC * sizeof(float), 64, Allocator.Temp);
+            float* Bpack = bStrips > 0
+                ? (float*)UnsafeUtility.Malloc((long)KC * kTiles * sizeof(float), 64, Allocator.Temp)
+                : null;
+
+            for (int pc = 0; pc < n; pc += KC)
+            {
+                int kcLen = KC; if (pc + kcLen > n) kcLen = n - pc;
+
+                // Pack the B panel: strip u holds columns [u*NR, u*NR + NR), p-major —
+                // BpackStrip[p*NR + v] = B[pc+p, u*NR + v].
+                for (int u = 0; u < bStrips; u++)
+                {
+                    float* dst = Bpack + (long)u * kcLen * NR;
+                    float* src = matB + (long)pc * k + u * NR;
+                    for (int p = 0; p < kcLen; p++)
+                    {
+                        float* srow = src + (long)p * k;
+                        float* drow = dst + p * NR;
+                        for (int v = 0; v < NR; v++) drow[v] = srow[v];
+                    }
+                }
+
+                for (int ic = 0; ic < mTiles; ic += MC)
+                {
+                    int mcLen = MC; if (ic + mcLen > mTiles) mcLen = mTiles - ic;
+                    int aStrips = mcLen / MR;
+
+                    // Pack the A panel: strip s holds rows [ic + s*MR, +MR), p-major —
+                    // ApackStrip[p*MR + t] = A[ic + s*MR + t, pc + p].
+                    for (int s = 0; s < aStrips; s++)
+                    {
+                        float* dst = Apack + (long)s * kcLen * MR;
+                        for (int t = 0; t < MR; t++)
+                        {
+                            float* arow = matA + (long)(ic + s * MR + t) * n + pc;
+                            for (int p = 0; p < kcLen; p++)
+                                dst[p * MR + t] = arow[p];
+                        }
+                    }
+
+                    // B strip outer (stays L1-resident), A strips inner (stream from the L2 panel).
+                    for (int u = 0; u < bStrips; u++)
+                    {
+                        float* bStrip = Bpack + (long)u * kcLen * NR;
+                        for (int s = 0; s < aStrips; s++)
+                        {
+                            float* aStrip = Apack + (long)s * kcLen * MR;
+                            float* cTile = matC + (long)(ic + s * MR) * k + u * NR;
+                            gemmMicroKernel(aStrip, bStrip, cTile, k, kcLen);
+                        }
+                    }
+                }
+
+                // Edge columns [kTiles, k) over the tiled rows, then edge rows [mTiles, m) over all
+                // columns — original-layout fallback restricted to this panel's p-range.
+                if (kTiles < k)
+                    matMatDotRange(matA, matB, matC, 0, mTiles, n, k, kTiles, k, pc, pc + kcLen);
+                if (mTiles < m)
+                    matMatDotRange(matA, matB, matC, mTiles, m, n, k, 0, k, pc, pc + kcLen);
+            }
+
+            if (Bpack != null) UnsafeUtility.Free(Bpack, Allocator.Temp);
+            UnsafeUtility.Free(Apack, Allocator.Temp);
+        }
+
+        // Seeded 8x16 microkernel over packed strips: identical FMA block and per-element order as
+        // the unpacked tile, but accumulators START from C's current values so the reduction chain
+        // continues across k-panels (see matMatDotPacked's determinism note). aStrip is p-major
+        // MR-wide, bStrip is p-major NR-wide; cTile has row stride ldc.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void gemmMicroKernel([NoAlias] float* aStrip, [NoAlias] float* bStrip, [NoAlias] float* cTile, int ldc, int kcLen)
+        {
+            float* Crow0 = cTile + 0L * ldc;
+            float* Crow1 = cTile + 1L * ldc;
+            float* Crow2 = cTile + 2L * ldc;
+            float* Crow3 = cTile + 3L * ldc;
+            float* Crow4 = cTile + 4L * ldc;
+            float* Crow5 = cTile + 5L * ldc;
+            float* Crow6 = cTile + 6L * ldc;
+            float* Crow7 = cTile + 7L * ldc;
+
+            float c000 = Crow0[0], c001 = Crow0[1], c002 = Crow0[2], c003 = Crow0[3], c004 = Crow0[4], c005 = Crow0[5], c006 = Crow0[6], c007 = Crow0[7], c008 = Crow0[8], c009 = Crow0[9], c010 = Crow0[10], c011 = Crow0[11], c012 = Crow0[12], c013 = Crow0[13], c014 = Crow0[14], c015 = Crow0[15];
+            float c100 = Crow1[0], c101 = Crow1[1], c102 = Crow1[2], c103 = Crow1[3], c104 = Crow1[4], c105 = Crow1[5], c106 = Crow1[6], c107 = Crow1[7], c108 = Crow1[8], c109 = Crow1[9], c110 = Crow1[10], c111 = Crow1[11], c112 = Crow1[12], c113 = Crow1[13], c114 = Crow1[14], c115 = Crow1[15];
+            float c200 = Crow2[0], c201 = Crow2[1], c202 = Crow2[2], c203 = Crow2[3], c204 = Crow2[4], c205 = Crow2[5], c206 = Crow2[6], c207 = Crow2[7], c208 = Crow2[8], c209 = Crow2[9], c210 = Crow2[10], c211 = Crow2[11], c212 = Crow2[12], c213 = Crow2[13], c214 = Crow2[14], c215 = Crow2[15];
+            float c300 = Crow3[0], c301 = Crow3[1], c302 = Crow3[2], c303 = Crow3[3], c304 = Crow3[4], c305 = Crow3[5], c306 = Crow3[6], c307 = Crow3[7], c308 = Crow3[8], c309 = Crow3[9], c310 = Crow3[10], c311 = Crow3[11], c312 = Crow3[12], c313 = Crow3[13], c314 = Crow3[14], c315 = Crow3[15];
+            float c400 = Crow4[0], c401 = Crow4[1], c402 = Crow4[2], c403 = Crow4[3], c404 = Crow4[4], c405 = Crow4[5], c406 = Crow4[6], c407 = Crow4[7], c408 = Crow4[8], c409 = Crow4[9], c410 = Crow4[10], c411 = Crow4[11], c412 = Crow4[12], c413 = Crow4[13], c414 = Crow4[14], c415 = Crow4[15];
+            float c500 = Crow5[0], c501 = Crow5[1], c502 = Crow5[2], c503 = Crow5[3], c504 = Crow5[4], c505 = Crow5[5], c506 = Crow5[6], c507 = Crow5[7], c508 = Crow5[8], c509 = Crow5[9], c510 = Crow5[10], c511 = Crow5[11], c512 = Crow5[12], c513 = Crow5[13], c514 = Crow5[14], c515 = Crow5[15];
+            float c600 = Crow6[0], c601 = Crow6[1], c602 = Crow6[2], c603 = Crow6[3], c604 = Crow6[4], c605 = Crow6[5], c606 = Crow6[6], c607 = Crow6[7], c608 = Crow6[8], c609 = Crow6[9], c610 = Crow6[10], c611 = Crow6[11], c612 = Crow6[12], c613 = Crow6[13], c614 = Crow6[14], c615 = Crow6[15];
+            float c700 = Crow7[0], c701 = Crow7[1], c702 = Crow7[2], c703 = Crow7[3], c704 = Crow7[4], c705 = Crow7[5], c706 = Crow7[6], c707 = Crow7[7], c708 = Crow7[8], c709 = Crow7[9], c710 = Crow7[10], c711 = Crow7[11], c712 = Crow7[12], c713 = Crow7[13], c714 = Crow7[14], c715 = Crow7[15];
+
+            for (int p = 0; p < kcLen; p++)
+            {
+                float* ap = aStrip + p * 8;
+                float a0 = ap[0];
+                float a1 = ap[1];
+                float a2 = ap[2];
+                float a3 = ap[3];
+                float a4 = ap[4];
+                float a5 = ap[5];
+                float a6 = ap[6];
+                float a7 = ap[7];
+
+                float* bp = bStrip + p * 16;
+                float b0 = bp[0];
+                float b1 = bp[1];
+                float b2 = bp[2];
+                float b3 = bp[3];
+                float b4 = bp[4];
+                float b5 = bp[5];
+                float b6 = bp[6];
+                float b7 = bp[7];
+                float b8 = bp[8];
+                float b9 = bp[9];
+                float b10 = bp[10];
+                float b11 = bp[11];
+                float b12 = bp[12];
+                float b13 = bp[13];
+                float b14 = bp[14];
+                float b15 = bp[15];
+
+                c000 += a0 * b0; c001 += a0 * b1; c002 += a0 * b2; c003 += a0 * b3; c004 += a0 * b4; c005 += a0 * b5; c006 += a0 * b6; c007 += a0 * b7; c008 += a0 * b8; c009 += a0 * b9; c010 += a0 * b10; c011 += a0 * b11; c012 += a0 * b12; c013 += a0 * b13; c014 += a0 * b14; c015 += a0 * b15;
+                c100 += a1 * b0; c101 += a1 * b1; c102 += a1 * b2; c103 += a1 * b3; c104 += a1 * b4; c105 += a1 * b5; c106 += a1 * b6; c107 += a1 * b7; c108 += a1 * b8; c109 += a1 * b9; c110 += a1 * b10; c111 += a1 * b11; c112 += a1 * b12; c113 += a1 * b13; c114 += a1 * b14; c115 += a1 * b15;
+                c200 += a2 * b0; c201 += a2 * b1; c202 += a2 * b2; c203 += a2 * b3; c204 += a2 * b4; c205 += a2 * b5; c206 += a2 * b6; c207 += a2 * b7; c208 += a2 * b8; c209 += a2 * b9; c210 += a2 * b10; c211 += a2 * b11; c212 += a2 * b12; c213 += a2 * b13; c214 += a2 * b14; c215 += a2 * b15;
+                c300 += a3 * b0; c301 += a3 * b1; c302 += a3 * b2; c303 += a3 * b3; c304 += a3 * b4; c305 += a3 * b5; c306 += a3 * b6; c307 += a3 * b7; c308 += a3 * b8; c309 += a3 * b9; c310 += a3 * b10; c311 += a3 * b11; c312 += a3 * b12; c313 += a3 * b13; c314 += a3 * b14; c315 += a3 * b15;
+                c400 += a4 * b0; c401 += a4 * b1; c402 += a4 * b2; c403 += a4 * b3; c404 += a4 * b4; c405 += a4 * b5; c406 += a4 * b6; c407 += a4 * b7; c408 += a4 * b8; c409 += a4 * b9; c410 += a4 * b10; c411 += a4 * b11; c412 += a4 * b12; c413 += a4 * b13; c414 += a4 * b14; c415 += a4 * b15;
+                c500 += a5 * b0; c501 += a5 * b1; c502 += a5 * b2; c503 += a5 * b3; c504 += a5 * b4; c505 += a5 * b5; c506 += a5 * b6; c507 += a5 * b7; c508 += a5 * b8; c509 += a5 * b9; c510 += a5 * b10; c511 += a5 * b11; c512 += a5 * b12; c513 += a5 * b13; c514 += a5 * b14; c515 += a5 * b15;
+                c600 += a6 * b0; c601 += a6 * b1; c602 += a6 * b2; c603 += a6 * b3; c604 += a6 * b4; c605 += a6 * b5; c606 += a6 * b6; c607 += a6 * b7; c608 += a6 * b8; c609 += a6 * b9; c610 += a6 * b10; c611 += a6 * b11; c612 += a6 * b12; c613 += a6 * b13; c614 += a6 * b14; c615 += a6 * b15;
+                c700 += a7 * b0; c701 += a7 * b1; c702 += a7 * b2; c703 += a7 * b3; c704 += a7 * b4; c705 += a7 * b5; c706 += a7 * b6; c707 += a7 * b7; c708 += a7 * b8; c709 += a7 * b9; c710 += a7 * b10; c711 += a7 * b11; c712 += a7 * b12; c713 += a7 * b13; c714 += a7 * b14; c715 += a7 * b15;
+            }
+
+            Crow0[0] = c000; Crow0[1] = c001; Crow0[2] = c002; Crow0[3] = c003; Crow0[4] = c004; Crow0[5] = c005; Crow0[6] = c006; Crow0[7] = c007; Crow0[8] = c008; Crow0[9] = c009; Crow0[10] = c010; Crow0[11] = c011; Crow0[12] = c012; Crow0[13] = c013; Crow0[14] = c014; Crow0[15] = c015;
+            Crow1[0] = c100; Crow1[1] = c101; Crow1[2] = c102; Crow1[3] = c103; Crow1[4] = c104; Crow1[5] = c105; Crow1[6] = c106; Crow1[7] = c107; Crow1[8] = c108; Crow1[9] = c109; Crow1[10] = c110; Crow1[11] = c111; Crow1[12] = c112; Crow1[13] = c113; Crow1[14] = c114; Crow1[15] = c115;
+            Crow2[0] = c200; Crow2[1] = c201; Crow2[2] = c202; Crow2[3] = c203; Crow2[4] = c204; Crow2[5] = c205; Crow2[6] = c206; Crow2[7] = c207; Crow2[8] = c208; Crow2[9] = c209; Crow2[10] = c210; Crow2[11] = c211; Crow2[12] = c212; Crow2[13] = c213; Crow2[14] = c214; Crow2[15] = c215;
+            Crow3[0] = c300; Crow3[1] = c301; Crow3[2] = c302; Crow3[3] = c303; Crow3[4] = c304; Crow3[5] = c305; Crow3[6] = c306; Crow3[7] = c307; Crow3[8] = c308; Crow3[9] = c309; Crow3[10] = c310; Crow3[11] = c311; Crow3[12] = c312; Crow3[13] = c313; Crow3[14] = c314; Crow3[15] = c315;
+            Crow4[0] = c400; Crow4[1] = c401; Crow4[2] = c402; Crow4[3] = c403; Crow4[4] = c404; Crow4[5] = c405; Crow4[6] = c406; Crow4[7] = c407; Crow4[8] = c408; Crow4[9] = c409; Crow4[10] = c410; Crow4[11] = c411; Crow4[12] = c412; Crow4[13] = c413; Crow4[14] = c414; Crow4[15] = c415;
+            Crow5[0] = c500; Crow5[1] = c501; Crow5[2] = c502; Crow5[3] = c503; Crow5[4] = c504; Crow5[5] = c505; Crow5[6] = c506; Crow5[7] = c507; Crow5[8] = c508; Crow5[9] = c509; Crow5[10] = c510; Crow5[11] = c511; Crow5[12] = c512; Crow5[13] = c513; Crow5[14] = c514; Crow5[15] = c515;
+            Crow6[0] = c600; Crow6[1] = c601; Crow6[2] = c602; Crow6[3] = c603; Crow6[4] = c604; Crow6[5] = c605; Crow6[6] = c606; Crow6[7] = c607; Crow6[8] = c608; Crow6[9] = c609; Crow6[10] = c610; Crow6[11] = c611; Crow6[12] = c612; Crow6[13] = c613; Crow6[14] = c614; Crow6[15] = c615;
+            Crow7[0] = c700; Crow7[1] = c701; Crow7[2] = c702; Crow7[3] = c703; Crow7[4] = c704; Crow7[5] = c705; Crow7[6] = c706; Crow7[7] = c707; Crow7[8] = c708; Crow7[9] = c709; Crow7[10] = c710; Crow7[11] = c711; Crow7[12] = c712; Crow7[13] = c713; Crow7[14] = c714; Crow7[15] = c715;
+        }
+
+        // Plain (untiled) GEMM restricted to an explicit row/column/contraction sub-range, in the
+        // SAME p-ascending accumulation order as matMatDot's tiled bulk above (this literally IS the
+        // pre-tiling kernel, just bounded) — used for the remainder rows/cols the MR x NR tiling
+        // doesn't evenly cover (per k-panel on the packed route), and as the whole-matrix path for
+        // matrices smaller than one tile, so there is zero risk of a seam between the tiled and
+        // fallback regions, and small matrices provably do not regress.
         [MethodImpl(MethodImplOptions.NoInlining)]
         static void matMatDotRange([NoAlias] float* matA, [NoAlias] float* matB, [NoAlias] float* matC,
-                                    int rowStart, int rowEnd, int n, int k, int colStart, int colEnd)
+                                    int rowStart, int rowEnd, int n, int k, int colStart, int colEnd,
+                                    int pStart, int pEnd)
         {
             for (int r = rowStart; r < rowEnd; r++)
             {
-                for (int nCols = 0; nCols < n; nCols++)
+                for (int nCols = pStart; nCols < pEnd; nCols++)
                 {
                     float temp = matA[r * n + nCols];
                     for (int kCols = colStart; kCols < colEnd; kCols++)

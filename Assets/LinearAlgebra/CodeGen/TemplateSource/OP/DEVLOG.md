@@ -1,6 +1,23 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## UnsafeOP packed (cache-blocked) GEMM
+- 2026-07-13 | BLIS-style packed route added to matMatDot (KC=256/MC=128 panels, MR/NR strips,
+  seeded microkernel so every element's reduction stays ONE p-ascending chain across panels —
+  bit-identical to the unpacked route, pinned by DotSymTests.PackedMatchesUnpackedBitExactly).
+  MEASUREMENT SURPRISE on the 9950X3D (bench pinned to the 32 MB-L3 CCD): packing only pays once
+  the working set spills L3 — float 2048 unpacked sags to 58.7 GF/s, packed holds 82.7 (1.41x);
+  double 2048 1.27x — but BELOW that the pack copies + per-panel C reloads are a pure loss
+  (float 512 +33%!). First gate ((m+k)*n >= 128k elements) was far too low; final gate is
+  ~24 MB total working set, byte-scaled. Expect the crossover ~3x higher on the V-cache CCD and
+  lower on small-L3 consumer CPUs. Broader lesson: the unpacked kernel is NOT bandwidth-bound
+  on big caches at <= 1024 — it sits at ~85-90 GF/s float, load-port/issue-bound under Strict
+  (no FMA contraction) — so cache blocking is a big-N/small-cache lever, not a general one.
+- 2026-07-13 | dot(transposeB) route split PER DTYPE (skipFor): float materializes Bᵀ (staged
+  trans) + broadcast GEMM (row-dot TransB kernel is half of AVX2's float width; viaTrans measured
+  at-or-faster at every size, and this un-regresses KMeans float); double keeps the row-dot
+  kernel (wins at every size, e.g. 2x at 128). Aliased A·Aᵀ keeps matAAt for both dtypes.
+
 ## UnsafeOP TransB kernel family (matMatDotTransB / matAAt / matMatDotTransBSym)
 - 2026-07-13 | First cut used TWO fProxy4 chains per output pair (vecDot's idiom) over a 2x4 pair
   tile: 16 accumulators + 12 transient loads spilled registers and LOST to the trans+dot route it

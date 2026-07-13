@@ -26,6 +26,14 @@ namespace LinearAlgebra.Benchmarks
             foreach (var n in Bench.Sizes) sb.AppendLine(BenchDouble(n, Flops(n)));
             sb.AppendLine();
 
+            // Above Bench.Sizes' top: where the packed (cache-blocked) route earns its keep.
+            int[] largeSizes = { 1536, 2048 };
+            sb.AppendLine("=== GEMM-large: dense C = A * B, beyond-L2 sizes (packed route) ===");
+            sb.AppendLine(Bench.Header());
+            foreach (var n in largeSizes) sb.AppendLine(BenchFloat(n, Flops(n)));
+            foreach (var n in largeSizes) sb.AppendLine(BenchDouble(n, Flops(n)));
+            sb.AppendLine();
+
             sb.AppendLine("=== GEMM-TransA: dense C = A^T * B (covariance / compact-WY shape) ===");
             sb.AppendLine(Bench.Header());
             foreach (var n in Bench.Sizes) sb.AppendLine(BenchTransAFloat(n, Flops(n)));

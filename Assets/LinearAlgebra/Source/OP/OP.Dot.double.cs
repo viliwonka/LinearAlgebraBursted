@@ -245,16 +245,22 @@ namespace LinearAlgebra
                 if (c.Data.Ptr == a.Data.Ptr || c.Data.Ptr == b.Data.Ptr)
                     throw new ArgumentException("dot: destination must not alias an input");
 
-                // matAAt / matMatDotTransB accumulate (+=), so c must start zeroed.
-                UnsafeUtility.MemClear(c.Data.Ptr, (long)c.Data.Length * UnsafeUtility.SizeOf<double>());
-
                 if (a.Data.Ptr == b.Data.Ptr)
                 {
-                    // A·Aᵀ: dedicated SYRK-shape kernel — one input pointer, no copy.
+                    // A·Aᵀ: dedicated SYRK-shape kernel (upper + mirror, ~half the FLOPs) — one
+                    // input pointer, no copy. Best route for both element types.
+                    UnsafeUtility.MemClear(c.Data.Ptr, (long)c.Data.Length * UnsafeUtility.SizeOf<double>());
                     UnsafeOP.matAAt(a.Data.Ptr, c.Data.Ptr, m, n);
+                    return;
                 }
-                else
-                    UnsafeOP.matMatDotTransB(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, m, n, k);
+
+                
+                
+                // double: the row-dot TransB kernel wins at every size (width-4 chains are already
+                // full AVX2 double width; the trans + dot route pays the transpose for no gain).
+                UnsafeUtility.MemClear(c.Data.Ptr, (long)c.Data.Length * UnsafeUtility.SizeOf<double>());
+                UnsafeOP.matMatDotTransB(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, m, n, k);
+                
             }
         }
 

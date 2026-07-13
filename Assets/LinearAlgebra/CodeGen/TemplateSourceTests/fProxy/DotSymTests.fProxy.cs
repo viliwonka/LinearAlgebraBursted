@@ -1,6 +1,7 @@
 using System;
 
 using LinearAlgebra;
+using LinearAlgebra.Internal;
 using NUnit.Framework;
 using Unity.Burst;
 using Unity.Collections;
@@ -27,6 +28,7 @@ public class fProxyDotSymTests
             AAtMatchesDistinctBufferKernel,
             DotSymTMatchesFullKernel_Tiled,
             DotSymTMatchesFullKernel_Small,
+            PackedMatchesUnpackedBitExactly,
         }
 
         public TestType Type;
@@ -44,6 +46,7 @@ public class fProxyDotSymTests
                 case TestType.AAtMatchesDistinctBufferKernel: AAtMatchesDistinctBufferKernel(); break;
                 case TestType.DotSymTMatchesFullKernel_Tiled: DotSymTMatchesFullKernel(41, 23, 74001); break;
                 case TestType.DotSymTMatchesFullKernel_Small: DotSymTMatchesFullKernel(3, 6, 74002); break;
+                case TestType.PackedMatchesUnpackedBitExactly: PackedMatchesUnpackedBitExactlyCase(); break;
             }
         }
 
@@ -173,6 +176,35 @@ public class fProxyDotSymTests
             for (int r = 0; r < rows; r++)
                 for (int c = 0; c < r; c++)
                     Assert.IsTrue(C[r, c] == C[c, r]);
+
+            arena.Dispose();
+        }
+
+        // The packed (cache-blocked) GEMM route must be BIT-IDENTICAL to the direct tiled route:
+        // the seeded-accumulator design keeps every element's reduction one p-ascending chain
+        // regardless of panel size. Sizes sit above the packed gate with ragged edges on every
+        // dimension (m, k not tile multiples; n not a panel multiple).
+        void PackedMatchesUnpackedBitExactlyCase()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 251, n = 300, kk = 251;
+            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 77001);
+            var B = arena.fProxyRandomMat(n, kk, -1f, 1f, 77002);
+
+            var Cpacked = arena.fProxyMat(m, kk);
+            Blas.dot(in A, in B, ref Cpacked);   // above the gate: packed route
+
+            var Cdirect = arena.fProxyMat(m, kk);
+            Cdirect.zeroInPlace();
+            unsafe
+            {
+                UnsafeOP.matMatDotUnpacked(A.Data.Ptr, B.Data.Ptr, Cdirect.Data.Ptr, m, n, kk);
+            }
+
+            for (int r = 0; r < m; r++)
+                for (int c = 0; c < kk; c++)
+                    Assert.IsTrue(Cpacked[r, c] == Cdirect[r, c]);
 
             arena.Dispose();
         }

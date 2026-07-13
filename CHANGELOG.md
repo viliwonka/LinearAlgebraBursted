@@ -105,6 +105,10 @@ between minor versions.
   bitwise from previous versions at equal seeds.
 - `Blas.trans` and the symmetric-product mirror passes are cache-blocked (results unchanged —
   pure copy reordering).
+- GEMM cache-blocks (packed operand panels) once the product's working set exceeds ~24 MB —
+  about 1.3–1.4× at 2048×2048 — with bit-identical results to the direct route at every size.
+- The `transposeB` matrix product picks its kernel per element type (float: transpose-and-GEMM;
+  double: direct transposed-read kernel) — whichever measured faster for that type.
 
 ## [0.1.0] — 2026-07-03
 
