@@ -203,6 +203,39 @@ namespace LinearAlgebra
             }
         }
 
+        /// <summary>
+        /// C = Aᵀ·B for products that are symmetric BY CONSTRUCTION (B = Q·A with symmetric Q —
+        /// the ΓᵀQΓ / ZᵀQZ / MᵀRM shapes). Computes the upper triangle and mirrors it, so it runs
+        /// ~2x faster than <c>dot(..., transposeA: true)</c> and the output is exactly symmetric.
+        /// CALLER CONTRACT: the true product must be symmetric — asymmetric inputs get a
+        /// symmetrized wrong answer. Requires a.N_Cols == b.N_Cols (square C); destination must
+        /// not alias an input. C is overwritten.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void dotSym(in floatMxN a, in floatMxN b, ref floatMxN c)
+        {
+            Assume.SameDim(a.M_Rows, b.M_Rows);
+            if (a.N_Cols != b.N_Cols)
+                throw new ArgumentException("dotSym: a.N_Cols must equal b.N_Cols (square result)");
+
+            int m = a.N_Cols, n = a.M_Rows, k = b.N_Cols;
+            if (c.M_Rows != m || c.N_Cols != k)
+                throw new ArgumentException("dotSym: destination must be m x m");
+
+            unsafe
+            {
+                if (c.Data.Ptr == a.Data.Ptr || c.Data.Ptr == b.Data.Ptr)
+                    throw new ArgumentException("dotSym: destination must not alias an input");
+
+                UnsafeUtility.MemClear(c.Data.Ptr, (long)c.Data.Length * UnsafeUtility.SizeOf<float>());
+
+                if (a.Data.Ptr == b.Data.Ptr)
+                    UnsafeOP.matAtA(a.Data.Ptr, c.Data.Ptr, m, n);
+                else
+                    UnsafeOP.matMatDotTransASym(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, m, n, k);
+            }
+        }
+
         // Row-limited mat*mat for block operator applies (LOBPCG): C[0:rows,:] = a[0:rows,:] · b,
         // i.e. only the first `rows` rows of a are read and only the first `rows` rows of c are
         // written. c's remaining rows [rows, c.M_Rows) are left UNTOUCHED -- callers (e.g. LOBPCG)

@@ -427,7 +427,7 @@ namespace LinearAlgebra
             }
 
             var H_UU = new floatMxN(nu, nu, Allocator.Temp);
-            Blas.dot(in Gamma, in QGamma, ref H_UU, transposeA: true);
+            Blas.dotSym(in Gamma, in QGamma, ref H_UU);   // Γᵀ(Q̄Γ), symmetric since Q̄ is
             GtQbar = new floatMxN(nu, N * n, allocator);
             Blas.trans(in QGamma, ref GtQbar);
             QGamma.Dispose();

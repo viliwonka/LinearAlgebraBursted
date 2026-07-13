@@ -596,7 +596,7 @@ namespace LinearAlgebra
             int nz = y.N;
 
             Blas.dot(in Q, in Z, ref QZ);
-            Blas.dot(in Z, in QZ, ref Hz, transposeA: true);
+            Blas.dotSym(in Z, in QZ, ref Hz);   // Zᵀ(QZ), symmetric since Q is
 
             for (int j = 0; j < nz; j++) y[j] = -gz[j];
             var info = CHO.solveInPlace(ref Hz, ref y);
@@ -610,7 +610,7 @@ namespace LinearAlgebra
                 // CHO.decompInPlace leaves a failed factor PARTIALLY overwritten (documented
                 // "destroyed on failure"); rebuild H_Z cleanly from the still-intact Z/QZ before
                 // adding the regularizer, rather than trying to patch the partial factor in place.
-                Blas.dot(in Z, in QZ, ref Hz, transposeA: true);
+                Blas.dotSym(in Z, in QZ, ref Hz);   // Zᵀ(QZ), symmetric since Q is
                 for (int j = 0; j < nz; j++) Hz[j, j] += delta;
 
                 for (int j = 0; j < nz; j++) y[j] = -gz[j];

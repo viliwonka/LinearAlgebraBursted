@@ -365,18 +365,28 @@ namespace LinearAlgebra.Internal
         // transposeA: true), isOrthogonal, covariance) goes through matAtA below instead.
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void matMatDotTransA([NoAlias] fProxy* matA, [NoAlias] fProxy* matB, [NoAlias] fProxy* matC, int m, int n, int k)
-            => matMatDotTransACore(matA, matB, matC, m, n, k);
+            => matMatDotTransACore(matA, matB, matC, m, n, k, symUpper: false);
 
         // C = Aᵀ·A (SYRK shape, m x m output): the single input parameter is used for both operand
         // roles, so the alias relationship is exact — no [NoAlias] lie and no defensive copy.
+        // Exploits symmetry: computes the upper triangle, mirrors the lower (~2x fewer FLOPs).
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void matAtA([NoAlias] fProxy* matA, [NoAlias] fProxy* matC, int m, int n)
-            => matMatDotTransACore(matA, matA, matC, m, n, m);
+            => matMatDotTransACore(matA, matA, matC, m, n, m, symUpper: true);
 
-        // Shared tiled body — inlined into both entry points above so their parameter attributes
-        // apply to the loads/stores directly.
+        // C = Aᵀ·B where the result is symmetric BY CALLER CONTRACT (B = Q·A with symmetric Q —
+        // the ΓᵀQΓ / ZᵀQZ shapes). Computes the upper triangle, mirrors the lower. Requires k == m.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void matMatDotTransASym([NoAlias] fProxy* matA, [NoAlias] fProxy* matB, [NoAlias] fProxy* matC, int m, int n, int k)
+            => matMatDotTransACore(matA, matB, matC, m, n, k, symUpper: true);
+
+        // Shared tiled body — inlined into the entry points above so their parameter attributes
+        // apply to the loads/stores directly and the symUpper flag constant-folds per entry.
+        // symUpper: skip register tiles strictly below the diagonal, then mirror the computed
+        // upper triangle into the lower (requires k == m; every upper element is provably
+        // computed — skipped tiles satisfy c <= j+NR-1 < i <= r, i.e. strictly lower).
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static void matMatDotTransACore(fProxy* matA, fProxy* matB, fProxy* matC, int m, int n, int k)
+        static void matMatDotTransACore(fProxy* matA, fProxy* matB, fProxy* matC, int m, int n, int k, bool symUpper)
         {
             // matA = m x n, but treated as n x m due to transposition
             // matB = n x k
@@ -392,6 +402,8 @@ namespace LinearAlgebra.Internal
             {
                 for (int j = 0; j < kTiles; j += NR)
                 {
+                    if (symUpper && j + NR <= i) continue;   // tile strictly below the diagonal
+
                     fProxy c000 = 0f, c001 = 0f, c002 = 0f, c003 = 0f, c004 = 0f, c005 = 0f, c006 = 0f, c007 = 0f, c008 = 0f, c009 = 0f, c010 = 0f, c011 = 0f, c012 = 0f, c013 = 0f, c014 = 0f, c015 = 0f;
                     fProxy c100 = 0f, c101 = 0f, c102 = 0f, c103 = 0f, c104 = 0f, c105 = 0f, c106 = 0f, c107 = 0f, c108 = 0f, c109 = 0f, c110 = 0f, c111 = 0f, c112 = 0f, c113 = 0f, c114 = 0f, c115 = 0f;
                     fProxy c200 = 0f, c201 = 0f, c202 = 0f, c203 = 0f, c204 = 0f, c205 = 0f, c206 = 0f, c207 = 0f, c208 = 0f, c209 = 0f, c210 = 0f, c211 = 0f, c212 = 0f, c213 = 0f, c214 = 0f, c215 = 0f;
@@ -469,6 +481,14 @@ namespace LinearAlgebra.Internal
             // seam risk vs the tiled bulk above.
             if (mTiles < m)
                 matMatDotTransARange(matA, matB, matC, mTiles, m, m, n, k, 0, k);
+
+            if (symUpper)
+            {
+                // Mirror the computed upper triangle into the lower (k == m by contract).
+                for (int r = 1; r < m; r++)
+                    for (int c = 0; c < r; c++)
+                        matC[(long)r * k + c] = matC[(long)c * k + r];
+            }
         }
 
         // Plain (untiled) Aᵀ·B restricted to an explicit row/column sub-range — the transposed-A

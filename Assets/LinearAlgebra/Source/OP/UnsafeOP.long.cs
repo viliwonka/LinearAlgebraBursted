@@ -163,17 +163,19 @@ namespace LinearAlgebra.Internal
         // All three pointers must be distinct; the aliased Aᵀ·A shape goes through matAtA below.
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void matMatDotTransA([NoAlias] long* matA, [NoAlias] long* matB, [NoAlias] long* matC, int m, int n, int k)
-            => matMatDotTransACore(matA, matB, matC, m, n, k);
+            => matMatDotTransACore(matA, matB, matC, m, n, k, symUpper: false);
 
         // C = Aᵀ·A (SYRK shape, m x m output): the single input parameter is used for both operand
         // roles, so the alias relationship is exact — no [NoAlias] lie and no defensive copy.
+        // Exploits symmetry: computes the upper triangle, mirrors the lower (~2x fewer FLOPs).
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void matAtA([NoAlias] long* matA, [NoAlias] long* matC, int m, int n)
-            => matMatDotTransACore(matA, matA, matC, m, n, m);
+            => matMatDotTransACore(matA, matA, matC, m, n, m, symUpper: true);
 
-        // Shared body — inlined into both entry points above so their parameter attributes apply.
+        // Shared body — inlined into both entry points above so their parameter attributes apply
+        // and the symUpper flag constant-folds per entry.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static void matMatDotTransACore(long* matA, long* matB, long* matC, int m, int n, int k)
+        static void matMatDotTransACore(long* matA, long* matB, long* matC, int m, int n, int k, bool symUpper)
         {
             // matA = m x n, but treated as n x m due to transposition
             // matB = n x k
@@ -183,11 +185,19 @@ namespace LinearAlgebra.Internal
                 for (int nCols = 0; nCols < n; nCols++)
                 {
                     long temp = matA[nCols * m + r];
-                    for (int kCols = 0; kCols < k; kCols++)
+                    for (int kCols = symUpper ? r : 0; kCols < k; kCols++)
                     {
                         matC[r * k + kCols] += (long)(temp * matB[nCols * k + kCols]);
                     }
                 }
+            }
+
+            if (symUpper)
+            {
+                // Mirror the computed upper triangle into the lower (k == m by contract).
+                for (int r = 1; r < m; r++)
+                    for (int c = 0; c < r; c++)
+                        matC[r * k + c] = matC[c * k + r];
             }
         }
 
