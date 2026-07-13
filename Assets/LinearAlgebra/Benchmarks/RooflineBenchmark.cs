@@ -1,7 +1,8 @@
-using System.Text;
+﻿using System.Text;
 
 using Unity.Burst;
 using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
 using Unity.Mathematics;
 
@@ -106,7 +107,7 @@ namespace LinearAlgebra.Benchmarks
         }
     }
 
-    static class RooflineWideKernels
+    static partial class RooflineWideKernels
     {
         [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public static float ChainsV256(int steps, float scale, float bias, bool fma)
@@ -228,6 +229,110 @@ namespace LinearAlgebra.Benchmarks
         }
     }
 
+    // Real-kernel-shape probe: dot product (the library's width-4 reduction family) — the
+    // current Blas.dot route vs a hand-rolled v256 version at the same Strict semantics
+    // (separate mul + add, fixed chain tree). Reps batched so tiny sizes are measurable;
+    // results accumulated so nothing dead-code-eliminates.
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    struct RooflineDotLibFloatJob : IJob
+    {
+        public floatN A;
+        public floatN B;
+        public int Reps;
+        public NativeArray<float> Result;
+
+        public void Execute()
+        {
+            float acc = 0f;
+            for (int r = 0; r < Reps; r++)
+                acc += Blas.dot(A, B);
+            Result[0] = acc;
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    struct RooflineDotLibDoubleJob : IJob
+    {
+        public doubleN A;
+        public doubleN B;
+        public int Reps;
+        public NativeArray<double> Result;
+
+        public void Execute()
+        {
+            double acc = 0.0;
+            for (int r = 0; r < Reps; r++)
+                acc += Blas.dot(A, B);
+            Result[0] = acc;
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    unsafe struct RooflineDotV256Job : IJob
+    {
+        [ReadOnly] public NativeArray<float> A;
+        [ReadOnly] public NativeArray<float> B;
+        public int Reps;
+        public NativeArray<float> Result;
+
+        public void Execute()
+        {
+            if (!Unity.Burst.Intrinsics.X86.Avx.IsAvxSupported)
+            {
+                Result[0] = 0f;
+                return;
+            }
+
+            float acc = 0f;
+            for (int r = 0; r < Reps; r++)
+                acc += RooflineWideKernels.DotV256((float*)A.GetUnsafeReadOnlyPtr(),
+                                                   (float*)B.GetUnsafeReadOnlyPtr(), A.Length);
+            Result[0] = acc;
+        }
+    }
+
+    static partial class RooflineWideKernels
+    {
+        // v256 dot: 4 independent 8-lane accumulator chains (32 lane-chains total), separate
+        // mul + add (the library's Strict semantics — no FMA, no reassociation), fixed
+        // reduction tree, ascending scalar tail.
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+        public static unsafe float DotV256(float* a, float* b, int n)
+        {
+            var pa = (Unity.Burst.Intrinsics.v256*)a;
+            var pb = (Unity.Burst.Intrinsics.v256*)b;
+            int nO = n >> 3;
+
+            var acc0 = Unity.Burst.Intrinsics.X86.Avx.mm256_setzero_ps();
+            var acc1 = Unity.Burst.Intrinsics.X86.Avx.mm256_setzero_ps();
+            var acc2 = Unity.Burst.Intrinsics.X86.Avx.mm256_setzero_ps();
+            var acc3 = Unity.Burst.Intrinsics.X86.Avx.mm256_setzero_ps();
+
+            int o = 0;
+            for (; o + 4 <= nO; o += 4)
+            {
+                acc0 = Unity.Burst.Intrinsics.X86.Avx.mm256_add_ps(acc0, Unity.Burst.Intrinsics.X86.Avx.mm256_mul_ps(pa[o],     pb[o]));
+                acc1 = Unity.Burst.Intrinsics.X86.Avx.mm256_add_ps(acc1, Unity.Burst.Intrinsics.X86.Avx.mm256_mul_ps(pa[o + 1], pb[o + 1]));
+                acc2 = Unity.Burst.Intrinsics.X86.Avx.mm256_add_ps(acc2, Unity.Burst.Intrinsics.X86.Avx.mm256_mul_ps(pa[o + 2], pb[o + 2]));
+                acc3 = Unity.Burst.Intrinsics.X86.Avx.mm256_add_ps(acc3, Unity.Burst.Intrinsics.X86.Avx.mm256_mul_ps(pa[o + 3], pb[o + 3]));
+            }
+            for (; o < nO; o++)
+                acc0 = Unity.Burst.Intrinsics.X86.Avx.mm256_add_ps(acc0, Unity.Burst.Intrinsics.X86.Avx.mm256_mul_ps(pa[o], pb[o]));
+
+            var acc = Unity.Burst.Intrinsics.X86.Avx.mm256_add_ps(
+                          Unity.Burst.Intrinsics.X86.Avx.mm256_add_ps(acc0, acc1),
+                          Unity.Burst.Intrinsics.X86.Avx.mm256_add_ps(acc2, acc3));
+            var lo = Unity.Burst.Intrinsics.X86.Avx.mm256_castps256_ps128(acc);
+            var hi = Unity.Burst.Intrinsics.X86.Avx.mm256_extractf128_ps(acc, 1);
+            var q = Unity.Burst.Intrinsics.X86.Sse.add_ps(lo, hi);
+            float s = (q.Float0 + q.Float1) + (q.Float2 + q.Float3);
+
+            for (int i = nO << 3; i < n; i++)
+                s += a[i] * b[i];
+            return s;
+        }
+    }
+
     public static partial class RooflineBenchmark
     {
         // N column below = millions (of scalar flops for A/B, of elements for C).
@@ -252,6 +357,56 @@ namespace LinearAlgebra.Benchmarks
             }
             res.Dispose();
             return Bench.Row("float", millionFlops, stat, (double)millionFlops * 1e6);
+        }
+
+        // Dot-shape rows: N column = THOUSANDS of elements; reps batched to ~8M elements
+        // processed per timed sample regardless of N.
+        static readonly int[] DotKElems = { 1, 4, 16, 64, 256, 1024, 4096 };
+
+        static int DotReps(int n) => math.max(1, 8388608 / n);
+
+        static string BenchDotLibFloat(int kElems)
+        {
+            int n = kElems * 1024;
+            int reps = DotReps(n);
+            var A = new floatN(n, Allocator.Persistent);
+            var B = new floatN(n, Allocator.Persistent);
+            A.fillInPlace(0.001f);
+            B.fillInPlace(0.001f);
+            var res = new NativeArray<float>(1, Allocator.Persistent);
+            var job = new RooflineDotLibFloatJob { A = A, B = B, Reps = reps, Result = res };
+            var stat = Bench.Time(() => job.Run());
+            res.Dispose(); A.Dispose(); B.Dispose();
+            return Bench.Row("float", kElems, stat, 2.0 * n * reps);
+        }
+
+        static string BenchDotLibDouble(int kElems)
+        {
+            int n = kElems * 1024;
+            int reps = DotReps(n);
+            var A = new doubleN(n, Allocator.Persistent);
+            var B = new doubleN(n, Allocator.Persistent);
+            A.fillInPlace(0.001);
+            B.fillInPlace(0.001);
+            var res = new NativeArray<double>(1, Allocator.Persistent);
+            var job = new RooflineDotLibDoubleJob { A = A, B = B, Reps = reps, Result = res };
+            var stat = Bench.Time(() => job.Run());
+            res.Dispose(); A.Dispose(); B.Dispose();
+            return Bench.Row("double", kElems, stat, 2.0 * n * reps);
+        }
+
+        static string BenchDotV256(int kElems)
+        {
+            int n = kElems * 1024;
+            int reps = DotReps(n);
+            var A = new NativeArray<float>(n, Allocator.Persistent);
+            var B = new NativeArray<float>(n, Allocator.Persistent);
+            for (int i = 0; i < n; i++) { A[i] = 0.001f; B[i] = 0.001f; }
+            var res = new NativeArray<float>(1, Allocator.Persistent);
+            var job = new RooflineDotV256Job { A = A, B = B, Reps = reps, Result = res };
+            var stat = Bench.Time(() => job.Run());
+            res.Dispose(); A.Dispose(); B.Dispose();
+            return Bench.Row("float", kElems, stat, 2.0 * n * reps);
         }
 
         static string BenchComputeV256(int millionFlops, bool fma)
@@ -332,6 +487,17 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine("=== Roofline G: compute-bound, explicit AVX v256 intrinsics — 8 chains, mm256_fmadd ===");
             sb.AppendLine(Bench.Header());
             foreach (var m in Millions) sb.AppendLine(BenchComputeV256(m, fma: true));
+            sb.AppendLine();
+
+            sb.AppendLine("=== Roofline H: dot product, library route (Blas.dot, width-4 two-chain kernel; N = THOUSANDS of elements, ~8M processed per sample) ===");
+            sb.AppendLine(Bench.Header());
+            foreach (var k in DotKElems) sb.AppendLine(BenchDotLibFloat(k));
+            foreach (var k in DotKElems) sb.AppendLine(BenchDotLibDouble(k));
+            sb.AppendLine();
+
+            sb.AppendLine("=== Roofline I: dot product, v256 intrinsics (4x 8-lane chains, same Strict semantics; float) ===");
+            sb.AppendLine(Bench.Header());
+            foreach (var k in DotKElems) sb.AppendLine(BenchDotV256(k));
             sb.AppendLine();
         }
     }
