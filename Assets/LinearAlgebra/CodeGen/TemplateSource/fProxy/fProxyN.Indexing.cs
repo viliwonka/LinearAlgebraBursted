@@ -10,13 +10,26 @@ namespace LinearAlgebra
         public ref fProxy this[int index]
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => ref Data.ElementAt(index);
+            get
+            {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                Assume.IndexInsideBounds(Data.Length, index);
+#endif
+                return ref Data.ElementAt(index);
+            }
         }
 
         public ref fProxy this[System.Index index]
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => ref Data.ElementAt(index.IsFromEnd ? Data.Length - index.Value : index.Value);
+            get
+            {
+                var i = index.IsFromEnd ? Data.Length - index.Value : index.Value;
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                Assume.IndexInsideBounds(Data.Length, i);
+#endif
+                return ref Data.ElementAt(i);
+            }
         }
     }
 }

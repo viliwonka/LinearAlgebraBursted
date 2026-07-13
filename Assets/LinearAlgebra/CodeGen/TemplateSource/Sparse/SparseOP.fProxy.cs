@@ -95,6 +95,8 @@ namespace LinearAlgebra.Sparse
                 throw new ArgumentException("spMM: Vrows.N_Cols must equal A.N_Cols");
             if (AVrows.N_Cols != A.M_Rows)
                 throw new ArgumentException("spMM: AVrows.N_Cols must equal A.M_Rows");
+            if (rows < 0 || rows > Vrows.M_Rows || rows > AVrows.M_Rows)
+                throw new ArgumentException("spMM: rows must be within Vrows.M_Rows and AVrows.M_Rows");
 
             unsafe
             {

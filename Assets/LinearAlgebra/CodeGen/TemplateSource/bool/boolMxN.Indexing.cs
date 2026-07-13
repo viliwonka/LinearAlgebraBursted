@@ -11,13 +11,26 @@ namespace LinearAlgebra
         public ref bool this[int index]
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => ref Data.ElementAt(index);
+            get
+            {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                Assume.IndexInsideBounds(Data.Length, index);
+#endif
+                return ref Data.ElementAt(index);
+            }
         }
 
         public ref bool this[System.Index index]
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => ref Data.ElementAt(index.IsFromEnd ? Data.Length - index.Value : index.Value);
+            get
+            {
+                var i = index.IsFromEnd ? Data.Length - index.Value : index.Value;
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                Assume.IndexInsideBounds(Data.Length, i);
+#endif
+                return ref Data.ElementAt(i);
+            }
         }
 
         public ref bool this[int r, int c]

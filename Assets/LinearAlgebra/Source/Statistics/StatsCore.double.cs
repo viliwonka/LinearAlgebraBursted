@@ -307,6 +307,8 @@ namespace LinearAlgebra
 
         public static void rowMean(in doubleMxN A, ref doubleN dest)
         {
+            if (A.M_Rows == 0 || A.N_Cols == 0)
+                throw new System.InvalidOperationException("Cannot compute statistics of an empty matrix.");
             rowSum(in A, ref dest);
             doubleComp.divInPlace(dest, A.N_Cols);
         }
@@ -320,6 +322,8 @@ namespace LinearAlgebra
 
         public static void colMean(in doubleMxN A, ref doubleN dest)
         {
+            if (A.M_Rows == 0 || A.N_Cols == 0)
+                throw new System.InvalidOperationException("Cannot compute statistics of an empty matrix.");
             colSum(in A, ref dest);
             doubleComp.divInPlace(dest, A.M_Rows);
         }
@@ -617,6 +621,9 @@ namespace LinearAlgebra
         {
             int N = A.N_Cols;
             int M = A.M_Rows;
+
+            if (C.M_Rows != N || C.N_Cols != N)
+                throw new System.ArgumentException("covarianceInto: C must be N_Cols x N_Cols");
 
             // Guard: M < 2 makes 1/(M−1) = 1/0 = Inf, and 0·Inf = NaN-fills every cell.
             // Zero-fill C and return gracefully — the wrappers (covariance / correlation /

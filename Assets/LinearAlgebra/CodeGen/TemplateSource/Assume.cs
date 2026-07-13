@@ -17,6 +17,12 @@ namespace LinearAlgebra
                 throw new ArgumentException("Index out of bounds");
         }
 
+        internal static void IndexInsideBounds(int length, int index)
+        {
+            if (index < 0 || index >= length)
+                throw new ArgumentException("Index out of bounds");
+        }
+
         internal static void SameDim(in boolN a, in boolN b)
         {
             if (a.N != b.N)

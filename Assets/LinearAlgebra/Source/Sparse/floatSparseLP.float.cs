@@ -112,6 +112,8 @@ namespace LinearAlgebra
 
         public void Apply(in floatN r, ref floatN z)
         {
+            if (z.N != r.N || InvDiag.N != r.N)
+                throw new ArgumentException("floatNormalJacobi.Apply: r, z and InvDiag lengths must match");
             for (int i = 0; i < r.N; i++) z[i] = r[i] * InvDiag[i];
         }
     }

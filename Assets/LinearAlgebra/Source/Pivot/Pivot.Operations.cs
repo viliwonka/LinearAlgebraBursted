@@ -23,6 +23,9 @@ namespace LinearAlgebra {
         /// <summary>Applies pivot to vector v in-place; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyVecInPlace(ref floatN v, ref Pivot pivot) {
 
+            if (v.N != pivot.N)
+                throw new System.ArgumentException("Vector and pivot must have same dimension");
+
             for (int fromR = 0; fromR < pivot.N; fromR++) {
 
                 int toR = pivot.indices[fromR];
@@ -43,6 +46,9 @@ namespace LinearAlgebra {
         /// <summary>Applies pivot to rows of matrix A in-place; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyRowInPlace(ref floatMxN A, ref Pivot pivot) {
 
+            if (A.M_Rows != pivot.N)
+                throw new System.ArgumentException("Matrix rows and pivot must have same dimension");
+
             for (int fromR = 0; fromR < pivot.N; fromR++) {
 
                 int toR = pivot.indices[fromR];
@@ -62,6 +68,9 @@ namespace LinearAlgebra {
 
         /// <summary>Applies pivot to columns of matrix A in-place; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyColumnInPlace(ref floatMxN A, ref Pivot pivot) {
+
+            if (A.N_Cols != pivot.N)
+                throw new System.ArgumentException("Matrix columns and pivot must have same dimension");
 
             for (int fromR = 0; fromR < pivot.N; fromR++) {
 
@@ -164,6 +173,9 @@ namespace LinearAlgebra {
         /// <summary>Applies pivot to vector v in-place; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyVecInPlace(ref doubleN v, ref Pivot pivot) {
 
+            if (v.N != pivot.N)
+                throw new System.ArgumentException("Vector and pivot must have same dimension");
+
             for (int fromR = 0; fromR < pivot.N; fromR++) {
 
                 int toR = pivot.indices[fromR];
@@ -184,6 +196,9 @@ namespace LinearAlgebra {
         /// <summary>Applies pivot to rows of matrix A in-place; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyRowInPlace(ref doubleMxN A, ref Pivot pivot) {
 
+            if (A.M_Rows != pivot.N)
+                throw new System.ArgumentException("Matrix rows and pivot must have same dimension");
+
             for (int fromR = 0; fromR < pivot.N; fromR++) {
 
                 int toR = pivot.indices[fromR];
@@ -203,6 +218,9 @@ namespace LinearAlgebra {
 
         /// <summary>Applies pivot to columns of matrix A in-place; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyColumnInPlace(ref doubleMxN A, ref Pivot pivot) {
+
+            if (A.N_Cols != pivot.N)
+                throw new System.ArgumentException("Matrix columns and pivot must have same dimension");
 
             for (int fromR = 0; fromR < pivot.N; fromR++) {
 
@@ -305,6 +323,9 @@ namespace LinearAlgebra {
         /// <summary>Applies pivot to vector v in-place; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyVecInPlace(ref intN v, ref Pivot pivot) {
 
+            if (v.N != pivot.N)
+                throw new System.ArgumentException("Vector and pivot must have same dimension");
+
             for (int fromR = 0; fromR < pivot.N; fromR++) {
 
                 int toR = pivot.indices[fromR];
@@ -325,6 +346,9 @@ namespace LinearAlgebra {
         /// <summary>Applies pivot to rows of matrix A in-place; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyRowInPlace(ref intMxN A, ref Pivot pivot) {
 
+            if (A.M_Rows != pivot.N)
+                throw new System.ArgumentException("Matrix rows and pivot must have same dimension");
+
             for (int fromR = 0; fromR < pivot.N; fromR++) {
 
                 int toR = pivot.indices[fromR];
@@ -344,6 +368,9 @@ namespace LinearAlgebra {
 
         /// <summary>Applies pivot to columns of matrix A in-place; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyColumnInPlace(ref intMxN A, ref Pivot pivot) {
+
+            if (A.N_Cols != pivot.N)
+                throw new System.ArgumentException("Matrix columns and pivot must have same dimension");
 
             for (int fromR = 0; fromR < pivot.N; fromR++) {
 
@@ -446,6 +473,9 @@ namespace LinearAlgebra {
         /// <summary>Applies pivot to vector v in-place; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyVecInPlace(ref shortN v, ref Pivot pivot) {
 
+            if (v.N != pivot.N)
+                throw new System.ArgumentException("Vector and pivot must have same dimension");
+
             for (int fromR = 0; fromR < pivot.N; fromR++) {
 
                 int toR = pivot.indices[fromR];
@@ -466,6 +496,9 @@ namespace LinearAlgebra {
         /// <summary>Applies pivot to rows of matrix A in-place; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyRowInPlace(ref shortMxN A, ref Pivot pivot) {
 
+            if (A.M_Rows != pivot.N)
+                throw new System.ArgumentException("Matrix rows and pivot must have same dimension");
+
             for (int fromR = 0; fromR < pivot.N; fromR++) {
 
                 int toR = pivot.indices[fromR];
@@ -485,6 +518,9 @@ namespace LinearAlgebra {
 
         /// <summary>Applies pivot to columns of matrix A in-place; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyColumnInPlace(ref shortMxN A, ref Pivot pivot) {
+
+            if (A.N_Cols != pivot.N)
+                throw new System.ArgumentException("Matrix columns and pivot must have same dimension");
 
             for (int fromR = 0; fromR < pivot.N; fromR++) {
 
@@ -587,6 +623,9 @@ namespace LinearAlgebra {
         /// <summary>Applies pivot to vector v in-place; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyVecInPlace(ref longN v, ref Pivot pivot) {
 
+            if (v.N != pivot.N)
+                throw new System.ArgumentException("Vector and pivot must have same dimension");
+
             for (int fromR = 0; fromR < pivot.N; fromR++) {
 
                 int toR = pivot.indices[fromR];
@@ -607,6 +646,9 @@ namespace LinearAlgebra {
         /// <summary>Applies pivot to rows of matrix A in-place; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyRowInPlace(ref longMxN A, ref Pivot pivot) {
 
+            if (A.M_Rows != pivot.N)
+                throw new System.ArgumentException("Matrix rows and pivot must have same dimension");
+
             for (int fromR = 0; fromR < pivot.N; fromR++) {
 
                 int toR = pivot.indices[fromR];
@@ -626,6 +668,9 @@ namespace LinearAlgebra {
 
         /// <summary>Applies pivot to columns of matrix A in-place; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyColumnInPlace(ref longMxN A, ref Pivot pivot) {
+
+            if (A.N_Cols != pivot.N)
+                throw new System.ArgumentException("Matrix columns and pivot must have same dimension");
 
             for (int fromR = 0; fromR < pivot.N; fromR++) {
 
@@ -728,6 +773,9 @@ namespace LinearAlgebra {
         /// <summary>Applies pivot to vector v in-place; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyVecInPlace(ref boolN v, ref Pivot pivot) {
 
+            if (v.N != pivot.N)
+                throw new System.ArgumentException("Vector and pivot must have same dimension");
+
             for (int fromR = 0; fromR < pivot.N; fromR++) {
 
                 int toR = pivot.indices[fromR];
@@ -748,6 +796,9 @@ namespace LinearAlgebra {
         /// <summary>Applies pivot to rows of matrix A in-place; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyRowInPlace(ref boolMxN A, ref Pivot pivot) {
 
+            if (A.M_Rows != pivot.N)
+                throw new System.ArgumentException("Matrix rows and pivot must have same dimension");
+
             for (int fromR = 0; fromR < pivot.N; fromR++) {
 
                 int toR = pivot.indices[fromR];
@@ -767,6 +818,9 @@ namespace LinearAlgebra {
 
         /// <summary>Applies pivot to columns of matrix A in-place; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyColumnInPlace(ref boolMxN A, ref Pivot pivot) {
+
+            if (A.N_Cols != pivot.N)
+                throw new System.ArgumentException("Matrix columns and pivot must have same dimension");
 
             for (int fromR = 0; fromR < pivot.N; fromR++) {
 

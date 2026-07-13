@@ -93,6 +93,8 @@ namespace LinearAlgebra.Realtime
         {
             if (dest.N != _features)
                 throw new ArgumentException("RollingWindow.GetSample: dest length must equal Features");
+            if (i < 0 || i >= _count)
+                throw new ArgumentException("RollingWindow.GetSample: sample index must be within Count");
 
             int row = RingRow(i);
             for (int c = 0; c < _features; c++)

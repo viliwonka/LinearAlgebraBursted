@@ -55,7 +55,7 @@ namespace LinearAlgebra
             if (count == 0) return arena.Indices(0);
             var idx = arena.Indices(count);
             int written = 0;
-            for (int i = 0; i < x.Data.Length; i++)
+            for (int i = 0; i < x.Data.Length && written < idx.N; i++)
             {
                 long v = x.Data[i];
                 long av = v < (long)0 ? (v == long.MinValue ? long.MaxValue : (long)(-v)) : v;
@@ -76,7 +76,7 @@ namespace LinearAlgebra
             var idx = arena.Indices(count);
             bool sim = m == Metric.Dot;
             int written = 0;
-            for (int row = 0; row < A.M_Rows; row++)
+            for (int row = 0; row < A.M_Rows && written < idx.N; row++)
             {
                 long s = Query.RowScore(in A, row, in q, m);
                 if (sim ? s >= r : s <= r) idx[written++] = row;
@@ -92,7 +92,7 @@ namespace LinearAlgebra
             var idx = arena.Indices(count);
             bool sim = m == Metric.Dot;
             int written = 0;
-            for (int c = 0; c < A.N_Cols; c++)
+            for (int c = 0; c < A.N_Cols && written < idx.N; c++)
             {
                 long s = Query.ColScore(in A, c, in q, m);
                 if (sim ? s >= r : s <= r) idx[written++] = c;

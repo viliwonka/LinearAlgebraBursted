@@ -19,6 +19,9 @@ namespace LinearAlgebra {
         /// <summary>Applies pivot to vector v in-place; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyVecInPlace(ref fProxyN v, ref Pivot pivot) {
 
+            if (v.N != pivot.N)
+                throw new System.ArgumentException("Vector and pivot must have same dimension");
+
             for (int fromR = 0; fromR < pivot.N; fromR++) {
 
                 int toR = pivot.indices[fromR];
@@ -39,6 +42,9 @@ namespace LinearAlgebra {
         /// <summary>Applies pivot to rows of matrix A in-place; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyRowInPlace(ref fProxyMxN A, ref Pivot pivot) {
 
+            if (A.M_Rows != pivot.N)
+                throw new System.ArgumentException("Matrix rows and pivot must have same dimension");
+
             for (int fromR = 0; fromR < pivot.N; fromR++) {
 
                 int toR = pivot.indices[fromR];
@@ -58,6 +64,9 @@ namespace LinearAlgebra {
 
         /// <summary>Applies pivot to columns of matrix A in-place; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyColumnInPlace(ref fProxyMxN A, ref Pivot pivot) {
+
+            if (A.N_Cols != pivot.N)
+                throw new System.ArgumentException("Matrix columns and pivot must have same dimension");
 
             for (int fromR = 0; fromR < pivot.N; fromR++) {
 

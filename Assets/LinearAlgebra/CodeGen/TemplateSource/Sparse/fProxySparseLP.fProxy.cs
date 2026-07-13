@@ -108,6 +108,8 @@ namespace LinearAlgebra
 
         public void Apply(in fProxyN r, ref fProxyN z)
         {
+            if (z.N != r.N || InvDiag.N != r.N)
+                throw new ArgumentException("fProxyNormalJacobi.Apply: r, z and InvDiag lengths must match");
             for (int i = 0; i < r.N; i++) z[i] = r[i] * InvDiag[i];
         }
     }

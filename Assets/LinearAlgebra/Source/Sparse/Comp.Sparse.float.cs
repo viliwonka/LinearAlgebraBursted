@@ -54,11 +54,14 @@ namespace LinearAlgebra.Sparse
     public static partial class BSR
     {
         /// <summary>
-        /// True iff A and B have the same block grid (BlockRows/BlockCols/BR/BC) and identical
-        /// block placements (RowPtr and ColInd match element-for-element). Values are not compared.
+        /// True iff A and B use the same storage form (Symmetric flag), the same block grid
+        /// (BlockRows/BlockCols/BR/BC) and identical block placements (RowPtr and ColInd match
+        /// element-for-element). Values are not compared.
         /// </summary>
         public static bool samePattern(in floatBSR A, in floatBSR B)
         {
+            if (A.Symmetric != B.Symmetric)
+                return false;
             if (A.BlockRows != B.BlockRows || A.BlockCols != B.BlockCols ||
                 A.BR != B.BR || A.BC != B.BC || A.Nnzb != B.Nnzb)
                 return false;
