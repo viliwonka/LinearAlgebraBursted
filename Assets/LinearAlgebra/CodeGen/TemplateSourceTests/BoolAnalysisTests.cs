@@ -64,12 +64,26 @@ public class BoolAnalysisTests
             int dim = 4;
             boolMxN m = arena.boolMat(dim, dim);
 
-            Assert.IsFalse(Analysis.isDiagonal(m));
-            
+            // All-false square matrix: no off-diagonal trues -> diagonal.
+            Assert.IsTrue(Analysis.isDiagonal(m));
+
+            // Diagonal values are free (any mix of true/false stays diagonal).
             for (int i = 0; i < dim; i++)
                 m[i, i] = true;
-
             Assert.IsTrue(Analysis.isDiagonal(m));
+
+            m[2, 2] = false;
+            Assert.IsTrue(Analysis.isDiagonal(m));
+
+            // One off-diagonal true breaks it.
+            m[0, 1] = true;
+            Assert.IsFalse(Analysis.isDiagonal(m));
+            m[0, 1] = false;
+
+            // Non-square is never diagonal, even with an identity-like pattern.
+            boolMxN rect = arena.boolMat(2, 3);
+            rect[0, 0] = true; rect[1, 1] = true;
+            Assert.IsFalse(Analysis.isDiagonal(rect));
         }
 
         void IsAllSame(ref Arena arena)

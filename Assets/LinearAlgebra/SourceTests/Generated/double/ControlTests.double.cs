@@ -65,7 +65,7 @@ public class doubleControlTests
 
                     var er = new doubleN(2, Allocator.Temp);
                     var ei = new doubleN(2, Allocator.Temp);
-                    Eigen.valuesQR(ref Acl, ref er, ref ei);
+                    Eigen.valuesQRInPlace(ref Acl, ref er, ref ei);
                     double maxMag = 0;
                     for (int i = 0; i < 2; i++)
                     {

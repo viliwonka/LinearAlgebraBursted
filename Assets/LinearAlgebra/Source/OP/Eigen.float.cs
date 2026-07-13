@@ -1607,23 +1607,23 @@ namespace LinearAlgebra
         /// eigenvalue converged within maxIterPerRoot iterations, MaxIterations if the iteration
         /// limit was hit (outputs then undefined). Does not allocate.
         /// </summary>
-        public static unsafe EigenInfo valuesQR(ref floatMxN A, ref floatN eigenvaluesReal,
+        public static unsafe EigenInfo valuesQRInPlace(ref floatMxN A, ref floatN eigenvaluesReal,
                                                 ref floatN eigenvaluesImag, int maxIterPerRoot)
         {
             if (!A.IsSquare)
-                throw new ArgumentException("Eigen.valuesQR: A must be square");
+                throw new ArgumentException("Eigen.valuesQRInPlace: A must be square");
 
             int n = A.N_Cols;
             float* ap = A.Data.Ptr;   // row r starts at ap + (long)r * n (square: stride = n)
 
             if (eigenvaluesReal.N != n)
-                throw new ArgumentException("Eigen.valuesQR: eigenvaluesReal.N must equal A dimension");
+                throw new ArgumentException("Eigen.valuesQRInPlace: eigenvaluesReal.N must equal A dimension");
 
             if (eigenvaluesImag.N != n)
-                throw new ArgumentException("Eigen.valuesQR: eigenvaluesImag.N must equal A dimension");
+                throw new ArgumentException("Eigen.valuesQRInPlace: eigenvaluesImag.N must equal A dimension");
 
             if (maxIterPerRoot < 1)
-                throw new ArgumentException("Eigen.valuesQR: maxIterPerRoot must be >= 1");
+                throw new ArgumentException("Eigen.valuesQRInPlace: maxIterPerRoot must be >= 1");
 
             if (n == 0)
                 return new EigenInfo { status = IterativeSolveStatus.Converged, sweeps = 0, converged = 0 };
@@ -1892,9 +1892,9 @@ namespace LinearAlgebra
             return new EigenInfo { status = IterativeSolveStatus.Converged, sweeps = sweeps, converged = convergedCount };
         }
 
-        /// <summary>valuesQR with default maxIterPerRoot (Consts.sweepBudget(A.N_Cols); the EISPACK hqr limit was flat 30).</summary>
-        public static EigenInfo valuesQR(ref floatMxN A, ref floatN eigenvaluesReal,
+        /// <summary>valuesQRInPlace with default maxIterPerRoot (Consts.sweepBudget(A.N_Cols); the EISPACK hqr limit was flat 30).</summary>
+        public static EigenInfo valuesQRInPlace(ref floatMxN A, ref floatN eigenvaluesReal,
                                          ref floatN eigenvaluesImag)
-            => valuesQR(ref A, ref eigenvaluesReal, ref eigenvaluesImag, Consts.sweepBudget(A.N_Cols));
+            => valuesQRInPlace(ref A, ref eigenvaluesReal, ref eigenvaluesImag, Consts.sweepBudget(A.N_Cols));
     }
 }

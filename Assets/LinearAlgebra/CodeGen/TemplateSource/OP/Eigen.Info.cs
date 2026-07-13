@@ -78,7 +78,7 @@ namespace LinearAlgebra
 
     /// <summary>
     /// Result of a dense eigensolve (<c>Eigen.symmetricInPlace</c> / <c>Eigen.valuesSymmetricInPlace</c> /
-    /// <c>Eigen.valuesQR</c> / <c>Eigen.decompInPlace</c>), returned by value. Implicitly converts to
+    /// <c>Eigen.valuesQRInPlace</c> / <c>Eigen.decompInPlace</c>), returned by value. Implicitly converts to
     /// <c>bool</c> (== <see cref="Solved"/>) for use in <c>if (...)</c>:
     /// <code>
     ///   if (Eigen.symmetricInPlace(ref A, ref eigenvalues, ref V)) { ... }   // implicit bool

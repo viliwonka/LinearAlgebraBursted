@@ -65,7 +65,7 @@ public class floatControlTests
 
                     var er = new floatN(2, Allocator.Temp);
                     var ei = new floatN(2, Allocator.Temp);
-                    Eigen.valuesQR(ref Acl, ref er, ref ei);
+                    Eigen.valuesQRInPlace(ref Acl, ref er, ref ei);
                     float maxMag = 0;
                     for (int i = 0; i < 2; i++)
                     {

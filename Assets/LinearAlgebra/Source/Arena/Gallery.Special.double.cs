@@ -13,7 +13,7 @@ namespace LinearAlgebra.Gallery
     /// plus the number-theoretic / combinatorial / additional-structured set (Cauchy, GCD, Redheffer,
     /// Magic, Rosser, Parter, Prolate, Grcar, Lotkin — sections 13-21 below).
     /// Batch B of the Literature Gallery (Batch A: Gallery.SPD.double.cs).
-    /// Targets: Eigen.decompInPlace, Eigen.valuesQR, SVD, QR/QRCP, least-squares, FFT cross-check, det.
+    /// Targets: Eigen.decompInPlace, Eigen.valuesQRInPlace, SVD, QR/QRCP, least-squares, FFT cross-check, det.
     /// Opt in via <c>using LinearAlgebra.Gallery;</c> then call e.g. <c>arena.doubleFrank(n)</c>.
     /// </summary>
     public static partial class doubleGallery

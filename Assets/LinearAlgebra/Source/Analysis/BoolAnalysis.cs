@@ -10,14 +10,20 @@ namespace LinearAlgebra
     [BurstCompile]
     public static partial class Analysis {
         
-        public static bool isDiagonal(in boolMxN bm, bool compare = true)
+        /// <summary>
+        /// Returns true if bm is square and every off-diagonal element is false.
+        /// Diagonal elements may be true or false.
+        /// </summary>
+        public static bool isDiagonal(in boolMxN bm)
         {
-            compare = !compare;
+            if (bm.M_Rows != bm.N_Cols)
+                return false;
+
             for (int i = 0; i < bm.M_Rows; i++)
             {
                 for (int j = 0; j < bm.N_Cols; j++)
                 {
-                    if ((bm[i, j] == (i == j)) == compare)
+                    if (i != j && bm[i, j])
                         return false;
                 }
             }

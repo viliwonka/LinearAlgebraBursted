@@ -206,7 +206,7 @@ namespace LinearAlgebra
 
             iProxyN vec = a.TempCopy();
 
-            iProxyComp.mulInPlace(b, vec);
+            iProxyComp.mulInPlace(vec, b);
 
             return vec;
         }

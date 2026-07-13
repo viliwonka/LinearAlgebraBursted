@@ -142,7 +142,7 @@ namespace LinearAlgebra
 
             doubleMxN matrix = lhs.TempCopy();
 
-            doubleComp.mulInPlace(rhs, matrix);
+            doubleComp.mulInPlace(matrix, rhs);
 
             return matrix;
         }

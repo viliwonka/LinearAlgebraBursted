@@ -138,7 +138,7 @@ namespace LinearAlgebra
 
             fProxyMxN matrix = lhs.TempCopy();
 
-            fProxyComp.mulInPlace(rhs, matrix);
+            fProxyComp.mulInPlace(matrix, rhs);
 
             return matrix;
         }

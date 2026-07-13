@@ -666,7 +666,7 @@ public class fProxySolverBatteryTests
         }
 
         // =====================================================================
-        // Non-symmetric eigen (QR algorithm) — valuesQR.
+        // Non-symmetric eigen (QR algorithm) — valuesQRInPlace.
         // =====================================================================
 
         // Frank(4): all eigenvalues real (imag ≈ 0) and positive (≈ {7.31, 2.07, 0.48, 0.137}).
@@ -680,7 +680,7 @@ public class fProxySolverBatteryTests
             var Fc = F.Copy();
             var re = arena.fProxyVec(n);
             var im = arena.fProxyVec(n);
-            AssertTrue(Eigen.valuesQR(ref Fc, ref re, ref im));
+            AssertTrue(Eigen.valuesQRInPlace(ref Fc, ref re, ref im));
 
             for (int i = 0; i < n; i++)
             {
@@ -692,7 +692,7 @@ public class fProxySolverBatteryTests
         }
 
         // Companion of (x−1)(x−2)(x−3) = x³ − 6x² + 11x − 6 ⇒ coeffs {−6, 11, −6}.
-        // valuesQR returns the roots {3, 2, 1} (descending, real).
+        // valuesQRInPlace returns the roots {3, 2, 1} (descending, real).
         void EigenQRCompanion()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -703,7 +703,7 @@ public class fProxySolverBatteryTests
 
             var re = arena.fProxyVec(3);
             var im = arena.fProxyVec(3);
-            AssertTrue(Eigen.valuesQR(ref C, ref re, ref im));
+            AssertTrue(Eigen.valuesQRInPlace(ref C, ref re, ref im));
 
             fProxy tol = (fProxy)1E-2;
             AssertClose(re[0], (fProxy)3, tol);

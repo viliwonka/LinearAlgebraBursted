@@ -13,7 +13,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// Tests for the general (non-symmetric) QR eigenvalue algorithm: Eigen.valuesQR
+// Tests for the general (non-symmetric) QR eigenvalue algorithm: Eigen.valuesQRInPlace
 // (Hessenberg reduction + Francis double-shift QR -> real Schur form; eigenvalues as real/imag
 // component arrays, sorted by (real, then imag) descending).
 //
@@ -37,7 +37,7 @@ public class doubleEigenQRTests
             var A = arena.doubleRandomMat(6, 6, -2f, 2f, 12345);
             var re = arena.doubleVec(6);
             var im = arena.doubleVec(6);
-            Eigen.valuesQR(ref A, ref re, ref im);
+            Eigen.valuesQRInPlace(ref A, ref re, ref im);
             arena.Dispose();
         }
     }
@@ -94,7 +94,7 @@ public class doubleEigenQRTests
 
             var re = arena.doubleVec(n);
             var im = arena.doubleVec(n);
-            bool ok = Eigen.valuesQR(ref A, ref re, ref im);
+            bool ok = Eigen.valuesQRInPlace(ref A, ref re, ref im);
             RecordEq(ok ? 1 : 0, 1);
 
             double tol = (double)1E-4f;
@@ -119,7 +119,7 @@ public class doubleEigenQRTests
 
             var re = arena.doubleVec(n);
             var im = arena.doubleVec(n);
-            bool ok = Eigen.valuesQR(ref A, ref re, ref im);
+            bool ok = Eigen.valuesQRInPlace(ref A, ref re, ref im);
             RecordEq(ok ? 1 : 0, 1);
 
             double tol = (double)1E-3f;
@@ -144,7 +144,7 @@ public class doubleEigenQRTests
 
             var re = arena.doubleVec(n);
             var im = arena.doubleVec(n);
-            bool ok = Eigen.valuesQR(ref A, ref re, ref im);
+            bool ok = Eigen.valuesQRInPlace(ref A, ref re, ref im);
             RecordEq(ok ? 1 : 0, 1);
 
             // companion eigenproblems are mildly stiff; scale-relative tolerance.
@@ -168,7 +168,7 @@ public class doubleEigenQRTests
 
             var re = arena.doubleVec(n);
             var im = arena.doubleVec(n);
-            bool ok = Eigen.valuesQR(ref A, ref re, ref im);
+            bool ok = Eigen.valuesQRInPlace(ref A, ref re, ref im);
             RecordEq(ok ? 1 : 0, 1);
 
             double tol = (double)1E-5f;
@@ -194,7 +194,7 @@ public class doubleEigenQRTests
 
             var re = arena.doubleVec(n);
             var im = arena.doubleVec(n);
-            bool ok = Eigen.valuesQR(ref A, ref re, ref im);
+            bool ok = Eigen.valuesQRInPlace(ref A, ref re, ref im);
             RecordEq(ok ? 1 : 0, 1);
 
             double tol = (double)1E-4f;
@@ -218,7 +218,7 @@ public class doubleEigenQRTests
 
             var re = arena.doubleVec(n);
             var im = arena.doubleVec(n);
-            bool ok = Eigen.valuesQR(ref A, ref re, ref im);
+            bool ok = Eigen.valuesQRInPlace(ref A, ref re, ref im);
             RecordEq(ok ? 1 : 0, 1);
 
             double tol = (double)1E-4f;
@@ -230,7 +230,7 @@ public class doubleEigenQRTests
             arena.Dispose();
         }
 
-        // Random symmetric matrix: all eigenvalues real; cross-check valuesQR against the
+        // Random symmetric matrix: all eigenvalues real; cross-check valuesQRInPlace against the
         // symmetric Jacobi decompInPlace (both sorted descending by value).
         void SymmetricCrossCheckJacobi()
         {
@@ -252,7 +252,7 @@ public class doubleEigenQRTests
 
                 var re = arena.doubleVec(n);
                 var im = arena.doubleVec(n);
-                bool ok = Eigen.valuesQR(ref Aqr, ref re, ref im);
+                bool ok = Eigen.valuesQRInPlace(ref Aqr, ref re, ref im);
                 RecordEq(ok ? 1 : 0, 1);
 
                 var jac = arena.doubleVec(n);
@@ -288,7 +288,7 @@ public class doubleEigenQRTests
 
                 var re = arena.doubleVec(n);
                 var im = arena.doubleVec(n);
-                bool ok = Eigen.valuesQR(ref A, ref re, ref im);
+                bool ok = Eigen.valuesQRInPlace(ref A, ref re, ref im);
                 RecordEq(ok ? 1 : 0, 1);
 
                 double sumRe = 0, sumIm = 0;
@@ -321,7 +321,7 @@ public class doubleEigenQRTests
 
                 var re = arena.doubleVec(n);
                 var im = arena.doubleVec(n);
-                bool ok = Eigen.valuesQR(ref A, ref re, ref im);
+                bool ok = Eigen.valuesQRInPlace(ref A, ref re, ref im);
                 RecordEq(ok ? 1 : 0, 1);
                 for (int i = 0; i < n; i++)
                 {
@@ -338,7 +338,7 @@ public class doubleEigenQRTests
 
                 var re = arena.doubleVec(n);
                 var im = arena.doubleVec(n);
-                bool ok = Eigen.valuesQR(ref A, ref re, ref im);
+                bool ok = Eigen.valuesQRInPlace(ref A, ref re, ref im);
                 RecordEq(ok ? 1 : 0, 1);
                 for (int i = 0; i < n; i++)
                 {
@@ -361,13 +361,13 @@ public class doubleEigenQRTests
             int n = 5;
             var A = arena.doubleFrank(n);
 
-            // trace must be read before valuesQR destroys A.
+            // trace must be read before valuesQRInPlace destroys A.
             double trace = 0;
             for (int i = 0; i < n; i++) trace += A[i, i];
 
             var re = arena.doubleVec(n);
             var im = arena.doubleVec(n);
-            bool ok = Eigen.valuesQR(ref A, ref re, ref im);
+            bool ok = Eigen.valuesQRInPlace(ref A, ref re, ref im);
             RecordEq(ok ? 1 : 0, 1);
 
             double tol = (double)1E-2f;
@@ -409,7 +409,7 @@ public class doubleEigenQRTests
 
             var re = arena.doubleVec(n);
             var im = arena.doubleVec(n);
-            bool ok = Eigen.valuesQR(ref A, ref re, ref im);
+            bool ok = Eigen.valuesQRInPlace(ref A, ref re, ref im);
             RecordEq(ok ? 1 : 0, 1);
 
             // Same scale-relative tolerance rationale as CompanionKnownRoots (mildly stiff).

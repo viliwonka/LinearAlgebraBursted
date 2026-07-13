@@ -226,7 +226,7 @@ namespace LinearAlgebra.Internal
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void compMul([NoAlias] int* from, [NoAlias] int* target, int n)
+        public static void compMul([NoAlias] int* target, [NoAlias] int* from, int n)
         {
             for (int i = 0; i < n; i++)
                 target[i] *= from[i];

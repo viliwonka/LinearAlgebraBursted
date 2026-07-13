@@ -980,7 +980,7 @@ namespace LinearAlgebra.Internal
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void compMul([NoAlias] fProxy* from, [NoAlias] fProxy* target, int n)
+        public static void compMul([NoAlias] fProxy* target, [NoAlias] fProxy* from, int n)
         {
             for (int i = 0; i < n; i++)
                 target[i] *= from[i];

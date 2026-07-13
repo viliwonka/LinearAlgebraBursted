@@ -200,7 +200,7 @@ namespace LinearAlgebra
 
             iProxyMxN matrix = lhs.TempCopy();
 
-            iProxyComp.mulInPlace(rhs, matrix);
+            iProxyComp.mulInPlace(matrix, rhs);
 
             return matrix;
         }

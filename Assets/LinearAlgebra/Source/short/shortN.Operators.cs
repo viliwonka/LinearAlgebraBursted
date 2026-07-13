@@ -207,7 +207,7 @@ namespace LinearAlgebra
 
             shortN vec = a.TempCopy();
 
-            shortComp.mulInPlace(b, vec);
+            shortComp.mulInPlace(vec, b);
 
             return vec;
         }

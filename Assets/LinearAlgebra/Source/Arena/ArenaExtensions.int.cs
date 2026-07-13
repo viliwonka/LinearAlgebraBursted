@@ -73,9 +73,11 @@ namespace LinearAlgebra
             // Generate.linspace convention: a single sample returns {start}.
             if (N == 1) { vec[0] = start; return vec; }
 
-            float scale = 1 / (float)(N - 1);
+            // Interpolate in double: exact for every int/uint value and for long magnitudes
+            // up to 2^53 (float's 24-bit mantissa corrupts interior values).
+            double scale = 1.0 / (N - 1);
             for(int i = 0; i < N; i++) {
-                vec[i] = (int)math.lerp((int)start, (int)end, i * scale);
+                vec[i] = (int)math.lerp((double)start, (double)end, i * scale);
             }
             // Pin endpoints exactly (the lerp at the last index lands ~1 ulp short of end,
             // which can truncate to the wrong integer).

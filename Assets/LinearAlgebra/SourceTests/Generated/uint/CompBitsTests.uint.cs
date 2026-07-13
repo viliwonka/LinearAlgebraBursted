@@ -23,6 +23,7 @@ public class uintCompBitsTests
             Ceilpow2,
             RolRorRoundTrip,
             RolRorKnownValues,
+            ScalarShiftedByVector,
         }
 
         public TestType Type;
@@ -39,6 +40,7 @@ public class uintCompBitsTests
                     case TestType.Ceilpow2: Ceilpow2Test(ref arena); break;
                     case TestType.RolRorRoundTrip: RolRorRoundTripTest(ref arena); break;
                     case TestType.RolRorKnownValues: RolRorKnownValuesTest(ref arena); break;
+                    case TestType.ScalarShiftedByVector: ScalarShiftedByVectorTest(ref arena); break;
                     default: throw new NotImplementedException();
                 }
             }
@@ -238,6 +240,33 @@ public class uintCompBitsTests
             uintN s = v.Copy();
             s.rorInPlace(1);
             Assert.IsTrue(s[0] == msb); // ror(1, 1) wraps around to the MSB-only pattern
+        }
+
+        private void ScalarShiftedByVectorTest(ref Arena arena)
+        {
+            // bitwiseLeftShiftInPlace(value, vec) computes vec[i] = value << vec[i] at the TYPE'S
+            // OWN width. Width-2 is the regression case: for long that is a shift of 62, which a
+            // 32-bit evaluation (count masked mod 32, result truncated) gets silently wrong.
+            int width = Width;
+
+            uintN v = arena.uintVec(2);
+            v[0] = 1;
+            v[1] = (uint)(width - 2);
+
+            uintComp.bitwiseLeftShiftInPlace((uint)1, v);
+            Assert.IsTrue(v[0] == (uint)2);   // 1 << 1
+            // 1 << (width-2): top-bit-minus-one pattern of the type's own width.
+            Assert.IsTrue(v[1] == 0x40000000u);
+
+            // Right shift of the MSB-only pattern: arithmetic (sign-filling) for signed types,
+            // logical for uint - both at the type's own width.
+            uintN w = arena.uintVec(2);
+            w[0] = 1;
+            w[1] = (uint)(width - 2);
+
+            uintComp.bitwiseRightShiftInPlace(Msb, w);
+            Assert.IsTrue(w[0] == 0x40000000u);
+            Assert.IsTrue(w[1] == 2u);
         }
     }
 

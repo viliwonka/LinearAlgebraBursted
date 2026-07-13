@@ -147,7 +147,7 @@ namespace LinearAlgebra
 
             floatN vec = a.TempCopy();
 
-            floatComp.mulInPlace(b, vec);
+            floatComp.mulInPlace(vec, b);
 
             return vec;
         }

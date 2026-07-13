@@ -66,5 +66,41 @@ public class intInitTest
     {
         new InitMatrixTestJob().Run();
     }
-    
+
+    [BurstCompile(CompileSynchronously = true)]
+    public struct LinVecExactTestJob : IJob
+    {
+        public void Execute()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            try
+            {
+                // Small exact ramp: (end-start) divisible by (N-1), so every element is exact.
+                intN v = arena.intLinVec(5, 0, 8);
+                for (int i = 0; i < 5; i++)
+                    Assert.IsTrue(v[i] == (int)(2 * i));
+
+                // Large-endpoint ramp: interior values need more mantissa bits than float has
+                // (regression: interpolating in float corrupted interior values; the long variant
+                // was off by up to ~2^38). Endpoint chosen per type so end/4 is exact.
+                int bigEnd = (1 << 28) + 4;
+                intN w = arena.intLinVec(5, 0, bigEnd);
+                long step = (long)bigEnd / 4;
+                for (int i = 0; i < 5; i++)
+                    Assert.IsTrue((long)w[i] == i * step);
+
+                // Single-sample convention: returns {start}.
+                intN s = arena.intLinVec(1, 3, 9);
+                Assert.IsTrue(s[0] == (int)3);
+            }
+            finally { arena.Dispose(); }
+        }
+    }
+
+    [Test]
+    public void LinVecExactPass()
+    {
+        new LinVecExactTestJob().Run();
+    }
+
 }

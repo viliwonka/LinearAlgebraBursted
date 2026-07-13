@@ -476,10 +476,10 @@ public class fProxyControlLQRTests
         static fProxy SpectralRadius(in fProxyMxN M)
         {
             int n = M.M_Rows;
-            var C = new fProxyMxN(in M, Allocator.Temp);   // valuesQR is destructive
+            var C = new fProxyMxN(in M, Allocator.Temp);   // valuesQRInPlace is destructive
             var er = new fProxyN(n, Allocator.Temp);
             var ei = new fProxyN(n, Allocator.Temp);
-            Eigen.valuesQR(ref C, ref er, ref ei);
+            Eigen.valuesQRInPlace(ref C, ref er, ref ei);
             fProxy mx = 0;
             for (int i = 0; i < n; i++)
             {
@@ -502,14 +502,14 @@ public class fProxyControlLQRTests
             return sr;
         }
 
-        // Minimum eigenvalue of a symmetric matrix (real spectrum) via valuesQR.
+        // Minimum eigenvalue of a symmetric matrix (real spectrum) via valuesQRInPlace.
         static fProxy MinEig(in fProxyMxN M)
         {
             int n = M.M_Rows;
             var C = new fProxyMxN(in M, Allocator.Temp);
             var er = new fProxyN(n, Allocator.Temp);
             var ei = new fProxyN(n, Allocator.Temp);
-            Eigen.valuesQR(ref C, ref er, ref ei);
+            Eigen.valuesQRInPlace(ref C, ref er, ref ei);
             fProxy mn = er[0];
             for (int i = 1; i < n; i++) if (er[i] < mn) mn = er[i];
             C.Dispose(); er.Dispose(); ei.Dispose();

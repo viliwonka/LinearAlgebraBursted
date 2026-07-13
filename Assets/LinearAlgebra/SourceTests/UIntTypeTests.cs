@@ -754,15 +754,11 @@ public class UIntTypeTests
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(a[i] == 10u);
 
-            // NOTE: the buffer (T,T) mulInPlace overload mutates its SECOND operand
-            // (kernel compMul(from, target) does target *= from) - this is the convention the
-            // component-wise operator* relies on. So mulInPlace(a, b) computes b *= a, leaving a
-            // unchanged. (Asymmetric with add/subInPlace, which mutate the first operand.)
-            uintComp.mulInPlace(a, b); // b *= a -> 40 ; a stays 10
+            uintComp.mulInPlace(a, b); // a *= b -> 40, b unchanged (same convention as add/sub)
             for (int i = 0; i < n; i++)
             {
-                Assert.IsTrue(b[i] == 40u);
-                Assert.IsTrue(a[i] == 10u);
+                Assert.IsTrue(a[i] == 40u);
+                Assert.IsTrue(b[i] == 4u);
             }
 
             arena.Dispose();

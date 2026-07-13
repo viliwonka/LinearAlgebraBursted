@@ -226,7 +226,7 @@ namespace LinearAlgebra.Internal
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void compMul([NoAlias] long* from, [NoAlias] long* target, int n)
+        public static void compMul([NoAlias] long* target, [NoAlias] long* from, int n)
         {
             for (int i = 0; i < n; i++)
                 target[i] *= from[i];
@@ -326,13 +326,13 @@ namespace LinearAlgebra.Internal
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void bitwiseLeftShift(int value, [NoAlias] long* TargetWShift, int n) {
+        public static void bitwiseLeftShift(long value, [NoAlias] long* TargetWShift, int n) {
             for (int i = 0; i < n; i++)
                 TargetWShift[i] = (long)(value << (int)TargetWShift[i]);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void bitwiseRightShift(int value, [NoAlias] long* TargetWShift, int n) {
+        public static void bitwiseRightShift(long value, [NoAlias] long* TargetWShift, int n) {
             for (int i = 0; i < n; i++)
                 TargetWShift[i] = (long)(value >> (int)TargetWShift[i]);
         }

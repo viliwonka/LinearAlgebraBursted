@@ -201,7 +201,7 @@ namespace LinearAlgebra
 
             intMxN matrix = lhs.TempCopy();
 
-            intComp.mulInPlace(rhs, matrix);
+            intComp.mulInPlace(matrix, rhs);
 
             return matrix;
         }

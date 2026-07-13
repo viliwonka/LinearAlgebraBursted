@@ -106,10 +106,10 @@ namespace LinearAlgebra
         // (T,T) buffer-pairwise overload of mulInPlace, matching addInPlace/subInPlace's existing pattern
         // of overloading a single name across a scalar (T, uint) and a buffer (T, T) form.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void mulInPlace<T>(this T from, T to) where T : unmanaged, IUnsafeuintArray
+        public static void mulInPlace<T>(this T target, T from) where T : unmanaged, IUnsafeuintArray
         {
             unsafe {
-                UnsafeOP.compMul(from.Data.Ptr, to.Data.Ptr, from.Data.Length);
+                UnsafeOP.compMul(target.Data.Ptr, from.Data.Ptr, target.Data.Length);
             }
         }
 
@@ -203,7 +203,7 @@ namespace LinearAlgebra
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void bitwiseLeftShiftInPlace<T>(int valueToBeShifted, T a) where T : unmanaged, IUnsafeuintArray {
+        public static void bitwiseLeftShiftInPlace<T>(uint valueToBeShifted, T a) where T : unmanaged, IUnsafeuintArray {
             unsafe {
                 UnsafeOP.bitwiseLeftShift(valueToBeShifted, a.Data.Ptr, a.Data.Length);
             }
@@ -217,7 +217,7 @@ namespace LinearAlgebra
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void bitwiseRightShiftInPlace<T>(int valueToBeShifted, T a) where T : unmanaged, IUnsafeuintArray {
+        public static void bitwiseRightShiftInPlace<T>(uint valueToBeShifted, T a) where T : unmanaged, IUnsafeuintArray {
             unsafe {
                 UnsafeOP.bitwiseRightShift(valueToBeShifted, a.Data.Ptr, a.Data.Length);
             }

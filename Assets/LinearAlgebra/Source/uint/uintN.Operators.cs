@@ -198,7 +198,7 @@ namespace LinearAlgebra
 
             uintN vec = a.TempCopy();
 
-            uintComp.mulInPlace(b, vec);
+            uintComp.mulInPlace(vec, b);
 
             return vec;
         }

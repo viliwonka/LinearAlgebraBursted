@@ -75,7 +75,7 @@ namespace LinearAlgebra.Benchmarks
             for (int r = 0; r < n; r++)
                 for (int c = 0; c < n; c++)
                     A[r, c] = Src[r, c];
-            Eigen.valuesQR(ref A, ref Re, ref Im, 100);
+            Eigen.valuesQRInPlace(ref A, ref Re, ref Im, 100);
         }
     }
 

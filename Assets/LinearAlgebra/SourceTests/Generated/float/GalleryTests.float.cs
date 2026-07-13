@@ -17,10 +17,10 @@ using Unity.Mathematics;
 // Property + algorithm-exercise tests for the famous-test-matrix gallery.
 // Each case pins a generator against its DOCUMENTED closed form (determinant, eigenvalues, definiteness,
 // FFT cross-check) rather than a self-consistency check, then a few cases feed the generators into the
-// existing solvers (CG, Eigen.valuesQR) as honest inputs.
+// existing solvers (CG, Eigen.valuesQRInPlace) as honest inputs.
 //
 // Verification reuses the library's own ops (Analysis.determinant, Cholesky, Eigen.decompInPlace /
-// Eigen.valuesQR, FFT.fft). Tolerances are per-precision: they scale with Consts.floatSqrtEps
+// Eigen.valuesQRInPlace, FFT.fft). Tolerances are per-precision: they scale with Consts.floatSqrtEps
 // (float ≈ 3.45e-4, double ≈ 1.49e-8) so the SAME expression is loose for float and tight for double,
 // matching the LiteratureTests / RandomMatrixTests idiom. Ill-conditioned generators (Hilbert, Frank,
 // Pascal at larger n, Moler) use small n and generous multiples; exact-in-float properties (Hadamard
@@ -339,7 +339,7 @@ public class floatGalleryTests
         }
 
         // Frank: upper Hessenberg, det = 1, eigenvalues real + positive. n=3 entries exact; det at n=4;
-        // Eigen.valuesQR at n=4 returns all-real all-positive.
+        // Eigen.valuesQRInPlace at n=4 returns all-real all-positive.
         void FrankProps()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -354,11 +354,11 @@ public class floatGalleryTests
             var F4 = arena.floatFrank(4);
             AssertClose(Determinant(in F4), (float)1, (float)0.05);
 
-            // Eigen.valuesQR: all real (imag ≈ 0) and positive (Frank4 ≈ {7.31, 2.07, 0.48, 0.137})
+            // Eigen.valuesQRInPlace: all real (imag ≈ 0) and positive (Frank4 ≈ {7.31, 2.07, 0.48, 0.137})
             var Fc = F4.Copy();
             var re = arena.floatVec(4);
             var im = arena.floatVec(4);
-            AssertTrue(Eigen.valuesQR(ref Fc, ref re, ref im));
+            AssertTrue(Eigen.valuesQRInPlace(ref Fc, ref re, ref im));
             for (int i = 0; i < 4; i++)
             {
                 AssertClose(im[i], (float)0, (float)1E-2);   // real spectrum
@@ -390,7 +390,7 @@ public class floatGalleryTests
         }
 
         // Companion of (x−1)(x−2)(x−3) = x³ − 6x² + 11x − 6 ⇒ coeffs {−6, 11, −6} (coeffs[k] = coeff of xᵏ).
-        // Eigen.valuesQR returns the roots {3,2,1} (descending, real).
+        // Eigen.valuesQRInPlace returns the roots {3,2,1} (descending, real).
         void CompanionEig()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -401,7 +401,7 @@ public class floatGalleryTests
 
             var re = arena.floatVec(3);
             var im = arena.floatVec(3);
-            AssertTrue(Eigen.valuesQR(ref C, ref re, ref im));
+            AssertTrue(Eigen.valuesQRInPlace(ref C, ref re, ref im));
 
             float tol = (float)1E-2;
             AssertClose(re[0], (float)3, tol);
@@ -466,7 +466,7 @@ public class floatGalleryTests
             var Cc = C.Copy();
             var evRe = arena.floatVec(n);
             var evIm = arena.floatVec(n);
-            AssertTrue(Eigen.valuesQR(ref Cc, ref evRe, ref evIm));
+            AssertTrue(Eigen.valuesQRInPlace(ref Cc, ref evRe, ref evIm));
 
             // DFT of c via the library FFT (in place ⇒ copy the real part, zero imag)
             var fRe = c.Copy();
@@ -506,7 +506,7 @@ public class floatGalleryTests
             var Tc = T.Copy();
             var re = arena.floatVec(n);
             var im = arena.floatVec(n);
-            AssertTrue(Eigen.valuesQR(ref Tc, ref re, ref im));
+            AssertTrue(Eigen.valuesQRInPlace(ref Tc, ref re, ref im));
             for (int i = 0; i < n; i++)
             {
                 AssertClose(re[i], (float)1, (float)1E-3);

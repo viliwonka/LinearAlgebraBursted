@@ -123,10 +123,10 @@ namespace LinearAlgebra
         // (T,T) buffer-pairwise overload of mulInPlace, matching addInPlace/subInPlace's existing pattern
         // of overloading a single name across a scalar (T, float) and a buffer (T, T) form.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void mulInPlace<T>(this T from, T to) where T : unmanaged, IUnsafefloatArray
+        public static void mulInPlace<T>(this T target, T from) where T : unmanaged, IUnsafefloatArray
         {
             unsafe {
-                UnsafeOP.compMul(from.Data.Ptr, to.Data.Ptr, from.Data.Length);
+                UnsafeOP.compMul(target.Data.Ptr, from.Data.Ptr, target.Data.Length);
             }
         }
 

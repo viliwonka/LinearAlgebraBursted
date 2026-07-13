@@ -23,6 +23,7 @@ public class intCompBitsTests
             Ceilpow2,
             RolRorRoundTrip,
             RolRorKnownValues,
+            ScalarShiftedByVector,
         }
 
         public TestType Type;
@@ -39,6 +40,7 @@ public class intCompBitsTests
                     case TestType.Ceilpow2: Ceilpow2Test(ref arena); break;
                     case TestType.RolRorRoundTrip: RolRorRoundTripTest(ref arena); break;
                     case TestType.RolRorKnownValues: RolRorKnownValuesTest(ref arena); break;
+                    case TestType.ScalarShiftedByVector: ScalarShiftedByVectorTest(ref arena); break;
                     default: throw new NotImplementedException();
                 }
             }
@@ -249,6 +251,33 @@ public class intCompBitsTests
             intN s = v.Copy();
             s.rorInPlace(1);
             Assert.IsTrue(s[0] == msb); // ror(1, 1) wraps around to the MSB-only pattern
+        }
+
+        private void ScalarShiftedByVectorTest(ref Arena arena)
+        {
+            // bitwiseLeftShiftInPlace(value, vec) computes vec[i] = value << vec[i] at the TYPE'S
+            // OWN width. Width-2 is the regression case: for long that is a shift of 62, which a
+            // 32-bit evaluation (count masked mod 32, result truncated) gets silently wrong.
+            int width = Width;
+
+            intN v = arena.intVec(2);
+            v[0] = 1;
+            v[1] = (int)(width - 2);
+
+            intComp.bitwiseLeftShiftInPlace((int)1, v);
+            Assert.IsTrue(v[0] == (int)2);   // 1 << 1
+            // 1 << (width-2): top-bit-minus-one pattern of the type's own width.
+            Assert.IsTrue(v[1] == 0x40000000);
+
+            // Right shift of the MSB-only pattern: arithmetic (sign-filling) for signed types,
+            // logical for uint - both at the type's own width.
+            intN w = arena.intVec(2);
+            w[0] = 1;
+            w[1] = (int)(width - 2);
+
+            intComp.bitwiseRightShiftInPlace(Msb, w);
+            Assert.IsTrue(w[0] == unchecked((int)0xC0000000));
+            Assert.IsTrue(w[1] == -2);
         }
     }
 

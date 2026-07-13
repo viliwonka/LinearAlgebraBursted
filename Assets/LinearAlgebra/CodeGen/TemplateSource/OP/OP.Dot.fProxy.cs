@@ -196,6 +196,8 @@ namespace LinearAlgebra
             Assume.SameDim(a.N_Cols, b.M_Rows);
             if (c.N_Cols != b.N_Cols)
                 throw new ArgumentException("dotRows: destination cols must equal b.N_Cols");
+            if (rows < 0 || rows > a.M_Rows || rows > c.M_Rows)
+                throw new ArgumentException("dotRows: rows must be within a.M_Rows and c.M_Rows");
 
             int nn = a.N_Cols, kk = b.N_Cols;
             unsafe

@@ -289,6 +289,7 @@ namespace LinearAlgebra.Sparse
             }
 
             // Backward (upper): z_i = U_ii^{-1} (z_i - sum_{j>i} U_ij z_j).
+            fProxy* w = stackalloc fProxy[16];   // stackalloc'd ONCE (stackalloc frees at return, not loop exit)
             for (int i = nb - 1; i >= 0; i--)
             {
                 int s = rowPtr[i], e = rowPtr[i + 1];
@@ -310,7 +311,6 @@ namespace LinearAlgebra.Sparse
                 }
 
                 int dOff = diagIdx * blockLen;
-                fProxy* w = stackalloc fProxy[16];
                 for (int lr = 0; lr < BR; lr++)
                 {
                     fProxy sum = 0;

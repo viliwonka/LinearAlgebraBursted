@@ -57,7 +57,7 @@ namespace LinearAlgebra {
         // exhaust it. Floored at 75 (the library's original flat constant) so tiny problems keep
         // the same sane minimum they always had. `n` is whatever per-value dimension is actually
         // being iterated at each call site (the full matrix side for thin/values/valuesSymmetricInPlace/
-        // symmetric/valuesQR; the smaller reduced-problem size for the GKL truncated/randomized SVD
+        // symmetric/valuesQRInPlace; the smaller reduced-problem size for the GKL truncated/randomized SVD
         // routes) -- see each call site. This is a pathological-input BACKSTOP, not a target:
         // legitimate inputs should converge in a small fraction of it. Explicit maxIter/maxSweeps
         // arguments are never affected by this -- only the convenience overloads' hardcoded
