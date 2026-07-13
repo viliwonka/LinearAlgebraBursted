@@ -70,6 +70,11 @@ between minor versions.
   empty axis like every other statistic.
 - `Krylov.pbiCGStab`'s parameterless overload defaults its iteration budget to `A.M_Rows`
   (was `2*A.M_Rows`), matching the rest of the square-solver family.
+- `SVD.values`/`SVD.thin` honor their `tol` parameter (deflation was previously hardcoded to
+  `eps·‖A‖`); the default threshold is looser than the old hardcoded value, so default-path sweep
+  counts can differ.
+- `MIP` node/iteration limits return the best incumbent found by the rounding heuristic from the
+  last node (previously reported `+inf` as if nothing feasible had been seen).
 
 - LU gains a blocked level-3 `decompInPlace` path; pivoted Cholesky (`CHOP`) gains a blocked
   level-3 factorization.
