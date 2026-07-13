@@ -27,6 +27,15 @@ namespace LinearAlgebra.CodeGen
         //concrete type name ("uint", "short") or the `u` tag (matches any UNSIGNED concrete type).
         //Used to wrap signed-only code (unary minus, negative literals) that would fail to compile
         //once an unsigned type joins an iProxy file's rotation.
+        //+emitFor[tag,...] ... -emitFor are BLOCK markers, the INVERSE of skipFor, for per-type
+        //bodies that CANNOT compile inside the template assembly (e.g. intrinsics that type-check
+        //for only one generated type, or an alternate body whose locals would collide with the
+        //primary body's): every body line is hidden behind a leading '//!' so the template
+        //compiles only the primary body; for a generated type matching a bracket entry the block
+        //is emitted with the '//!' prefixes stripped, for every other type the whole block is
+        //dropped. Same tag grammar and block rules as skipFor (markers alone on their lines, no
+        //nesting). Pair it with a skipFor on the primary body: skipFor[X] primary + emitFor[X]
+        //alternate gives type X the alternate and everyone else the primary.
         //alsoExpand[type,...]// is a per-FILE opt-in FLAG (single line, no closing marker - mirrors
         //singularFile// below): it appends the listed concrete type(s) - which must be pre-registered
         //in extraIntTypes - to THIS iProxy file's normal int/short/long expansion set, without
@@ -87,6 +96,10 @@ namespace LinearAlgebra.CodeGen
         // TemplateConverter.SkipForReplace/SkipForTagMatches.
         public const string skipForMarkerStart = "//+skipFor";
         public const string skipForMarkerEnd = "//-skipFor";
+
+        public const string emitForMarkerStart = "//+emitFor";
+        public const string emitForMarkerEnd = "//-emitFor";
+        public const string emitForLinePrefix = "//!";
 
         // Concrete type names the `u` tag in a //+skipFor[...] bracket matches. Add "ushort"/"byte"
         // here (and to extraIntTypes below) when those land.

@@ -22,6 +22,12 @@ namespace LinearAlgebra.Internal
         // FloatMode.Default (reduction vectorization needs to reorder floating-point operations, which
         // Strict forbids). Reinterpret loads are unaligned (rows/vectors are element-aligned only) --
         // Burst emits unaligned loads; an intrinsic rewrite must too. No FMA under Strict by design.
+        //
+        // vecDot/vecDotRange FLOAT runs on floatW (8 AVX lanes) with TWO floatW accumulator
+        // chains — the tree is 2x8 chains with floatW.HSum's fixed halves-first fold, a new
+        // frozen contract as of the width rework. DOUBLE keeps the float4 body verbatim
+        // (double4 already fills the 256-bit register; routing it through the wide wrapper
+        // only added per-call overhead).
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static float sumAbs([NoAlias] float* a, int n)
@@ -88,20 +94,44 @@ namespace LinearAlgebra.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static float vecDot([NoAlias] float* vA, [NoAlias] float* vB, int n) {
 
-            var pa = (float4*)vA;
-            var pb = (float4*)vB;
-            int nQ = n >> 2;
-            float4 acc0 = default, acc1 = default;
-            int q = 0;
-            for (; q + 2 <= nQ; q += 2)
+            int i = 0;
+            float head = 0;
+
+            
+            // float-only 8-lane main tier (two floatW chains), folded into head; the width-4
+            // tier below then sees at most one quad.
             {
-                acc0 += pa[q]     * pb[q];
-                acc1 += pa[q + 1] * pb[q + 1];
+                int nW = n / floatW.Width;
+                floatW acc0 = default, acc1 = default;
+                int q = 0;
+                for (; q + 2 <= nW; q += 2)
+                {
+                    acc0 += floatW.Load(vA, q)     * floatW.Load(vB, q);
+                    acc1 += floatW.Load(vA, q + 1) * floatW.Load(vB, q + 1);
+                }
+                if (q < nW) acc0 += floatW.Load(vA, q) * floatW.Load(vB, q);
+                head = floatW.HSum(acc0 + acc1);
+                i = nW * floatW.Width;
             }
-            if (q < nQ) acc0 += pa[q] * pb[q];
-            float4 acc = acc0 + acc1;
-            float s = (acc.x + acc.y) + (acc.z + acc.w);
-            for (int i = nQ << 2; i < n; i++)
+            
+
+            // width-4 tier, SHARED: for double this is the main loop (i enters at 0; two
+            // float4 chains — the frozen double tree); for float it covers remainders 4..7.
+            float4 qacc0 = default, qacc1 = default;
+            for (; i + 8 <= n; i += 8)
+            {
+                qacc0 += *(float4*)(vA + i)     * *(float4*)(vB + i);
+                qacc1 += *(float4*)(vA + i + 4) * *(float4*)(vB + i + 4);
+            }
+            if (i + 4 <= n)
+            {
+                qacc0 += *(float4*)(vA + i) * *(float4*)(vB + i);
+                i += 4;
+            }
+            float4 qacc = qacc0 + qacc1;
+            float s = head + ((qacc.x + qacc.y) + (qacc.z + qacc.w));
+
+            for (; i < n; i++)
                 s += vA[i] * vB[i];
             return s;
         }
@@ -111,21 +141,43 @@ namespace LinearAlgebra.Internal
         {
             // Base the vector pointers at `start` (element-aligned only, fine for unaligned loads).
             int n = end - start;
-            var pa = (float4*)(vA + start);
-            var pb = (float4*)(vB + start);
-            int nQ = n >> 2;
-            float4 acc0 = default, acc1 = default;
-            int q = 0;
-            for (; q + 2 <= nQ; q += 2)
+            float* a = vA + start;
+            float* b = vB + start;
+            int i = 0;
+            float head = 0;
+
+            
             {
-                acc0 += pa[q]     * pb[q];
-                acc1 += pa[q + 1] * pb[q + 1];
+                int nW = n / floatW.Width;
+                floatW acc0 = default, acc1 = default;
+                int q = 0;
+                for (; q + 2 <= nW; q += 2)
+                {
+                    acc0 += floatW.Load(a, q)     * floatW.Load(b, q);
+                    acc1 += floatW.Load(a, q + 1) * floatW.Load(b, q + 1);
+                }
+                if (q < nW) acc0 += floatW.Load(a, q) * floatW.Load(b, q);
+                head = floatW.HSum(acc0 + acc1);
+                i = nW * floatW.Width;
             }
-            if (q < nQ) acc0 += pa[q] * pb[q];
-            float4 acc = acc0 + acc1;
-            float s = (acc.x + acc.y) + (acc.z + acc.w);
-            for (int i = start + (nQ << 2); i < end; i++)
-                s += vA[i] * vB[i];
+            
+
+            float4 qacc0 = default, qacc1 = default;
+            for (; i + 8 <= n; i += 8)
+            {
+                qacc0 += *(float4*)(a + i)     * *(float4*)(b + i);
+                qacc1 += *(float4*)(a + i + 4) * *(float4*)(b + i + 4);
+            }
+            if (i + 4 <= n)
+            {
+                qacc0 += *(float4*)(a + i) * *(float4*)(b + i);
+                i += 4;
+            }
+            float4 qacc = qacc0 + qacc1;
+            float s = head + ((qacc.x + qacc.y) + (qacc.z + qacc.w));
+
+            for (; i < n; i++)
+                s += a[i] * b[i];
             return s;
         }
 
@@ -1272,26 +1324,64 @@ namespace LinearAlgebra.Internal
         // plain update kernel followed by a separate vecDot(y,y,n) -- see call sites for which
         // fusions are bit-identical vs rounding-only (reciprocal-multiply replacing a division).
 
-        // y += a*x ; return dot(y,y). Bit-identical to axpy(y,x,a,n) then vecDot(y,y,n).
+        // y += a*x ; return dot(y,y). Bit-identical to axpy(y,x,a,n) then vecDot(y,y,n)
+        // (float's reduction tree follows vecDot's floatW tree; double keeps the float4 tree).
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static float axpyNormSq([NoAlias] float* y, [NoAlias] float* x, float a, int n)
         {
-            var py = (float4*)y;
-            var px = (float4*)x;
-            int nQ = n >> 2;
-            float4 acc0 = default, acc1 = default;
-            int q = 0;
-            for (; q + 2 <= nQ; q += 2)
+            int i = 0;
+            float head = 0;
+
+            
+            // float-only 8-lane main tier; the shared width-4 tier below then sees < 8 elements.
             {
-                py[q] += a * px[q];
-                acc0 += py[q] * py[q];
-                py[q + 1] += a * px[q + 1];
-                acc1 += py[q + 1] * py[q + 1];
+                floatW va = floatW.Splat(a);
+                int nW = n / floatW.Width;
+                floatW acc0 = default, acc1 = default;
+                int q = 0;
+                for (; q + 2 <= nW; q += 2)
+                {
+                    floatW y0 = floatW.Load(y, q) + va * floatW.Load(x, q);
+                    floatW.Store(y, q, y0);
+                    acc0 += y0 * y0;
+                    floatW y1 = floatW.Load(y, q + 1) + va * floatW.Load(x, q + 1);
+                    floatW.Store(y, q + 1, y1);
+                    acc1 += y1 * y1;
+                }
+                if (q < nW)
+                {
+                    floatW y0 = floatW.Load(y, q) + va * floatW.Load(x, q);
+                    floatW.Store(y, q, y0);
+                    acc0 += y0 * y0;
+                }
+                head = floatW.HSum(acc0 + acc1);
+                i = nW * floatW.Width;
             }
-            if (q < nQ) { py[q] += a * px[q]; acc0 += py[q] * py[q]; }
-            float4 acc = acc0 + acc1;
-            float s = (acc.x + acc.y) + (acc.z + acc.w);
-            for (int i = nQ << 2; i < n; i++)
+            
+
+            // width-4 tier, SHARED: double's main loop / float's remainder (mirrors vecDot's
+            // tree — the bit-identical-to-composition contract).
+            float4 qacc0 = default, qacc1 = default;
+            for (; i + 8 <= n; i += 8)
+            {
+                float4 y0 = *(float4*)(y + i) + a * *(float4*)(x + i);
+                *(float4*)(y + i) = y0;
+                qacc0 += y0 * y0;
+                float4 y1 = *(float4*)(y + i + 4) + a * *(float4*)(x + i + 4);
+                *(float4*)(y + i + 4) = y1;
+                qacc1 += y1 * y1;
+            }
+            if (i + 4 <= n)
+            {
+                float4 y0 = *(float4*)(y + i) + a * *(float4*)(x + i);
+                *(float4*)(y + i) = y0;
+                qacc0 += y0 * y0;
+                i += 4;
+            }
+            float4 qacc = qacc0 + qacc1;
+            float s = head + ((qacc.x + qacc.y) + (qacc.z + qacc.w));
+
+            for (; i < n; i++)
             {
                 y[i] += a * x[i];
                 s += y[i] * y[i];
@@ -1299,26 +1389,61 @@ namespace LinearAlgebra.Internal
             return s;
         }
 
-        // y = a*y + x ; return dot(y,y). Bit-identical to aypx(y,x,a,n) then vecDot(y,y,n).
+        // y = a*y + x ; return dot(y,y). Bit-identical to aypx(y,x,a,n) then vecDot(y,y,n)
+        // (float's reduction tree follows vecDot's floatW tree; double keeps the float4 tree).
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static float xpayNormSq([NoAlias] float* y, [NoAlias] float* x, float a, int n)
         {
-            var py = (float4*)y;
-            var px = (float4*)x;
-            int nQ = n >> 2;
-            float4 acc0 = default, acc1 = default;
-            int q = 0;
-            for (; q + 2 <= nQ; q += 2)
+            int i = 0;
+            float head = 0;
+
+            
             {
-                py[q] = a * py[q] + px[q];
-                acc0 += py[q] * py[q];
-                py[q + 1] = a * py[q + 1] + px[q + 1];
-                acc1 += py[q + 1] * py[q + 1];
+                floatW va = floatW.Splat(a);
+                int nW = n / floatW.Width;
+                floatW acc0 = default, acc1 = default;
+                int q = 0;
+                for (; q + 2 <= nW; q += 2)
+                {
+                    floatW y0 = va * floatW.Load(y, q) + floatW.Load(x, q);
+                    floatW.Store(y, q, y0);
+                    acc0 += y0 * y0;
+                    floatW y1 = va * floatW.Load(y, q + 1) + floatW.Load(x, q + 1);
+                    floatW.Store(y, q + 1, y1);
+                    acc1 += y1 * y1;
+                }
+                if (q < nW)
+                {
+                    floatW y0 = va * floatW.Load(y, q) + floatW.Load(x, q);
+                    floatW.Store(y, q, y0);
+                    acc0 += y0 * y0;
+                }
+                head = floatW.HSum(acc0 + acc1);
+                i = nW * floatW.Width;
             }
-            if (q < nQ) { py[q] = a * py[q] + px[q]; acc0 += py[q] * py[q]; }
-            float4 acc = acc0 + acc1;
-            float s = (acc.x + acc.y) + (acc.z + acc.w);
-            for (int i = nQ << 2; i < n; i++)
+            
+
+            float4 qacc0 = default, qacc1 = default;
+            for (; i + 8 <= n; i += 8)
+            {
+                float4 y0 = a * *(float4*)(y + i) + *(float4*)(x + i);
+                *(float4*)(y + i) = y0;
+                qacc0 += y0 * y0;
+                float4 y1 = a * *(float4*)(y + i + 4) + *(float4*)(x + i + 4);
+                *(float4*)(y + i + 4) = y1;
+                qacc1 += y1 * y1;
+            }
+            if (i + 4 <= n)
+            {
+                float4 y0 = a * *(float4*)(y + i) + *(float4*)(x + i);
+                *(float4*)(y + i) = y0;
+                qacc0 += y0 * y0;
+                i += 4;
+            }
+            float4 qacc = qacc0 + qacc1;
+            float s = head + ((qacc.x + qacc.y) + (qacc.z + qacc.w));
+
+            for (; i < n; i++)
             {
                 y[i] = a * y[i] + x[i];
                 s += y[i] * y[i];
@@ -1331,29 +1456,64 @@ namespace LinearAlgebra.Internal
         // RECTANGULAR: x/p have length A.Cols, r/q have length A.Rows, which differ in general) --
         // this is two loops, not one shared-index loop, but the second (r) loop still folds the
         // trailing reduction into the update pass, eliminating the separate vecDot(r,r) traversal.
-        // Bit-identical to axpy(x,p,a,nx); axpy(r,q,-a,nr); vecDot(r,r,nr).
+        // Bit-identical to axpy(x,p,a,nx); axpy(r,q,-a,nr); vecDot(r,r,nr)
+        // (float's reduction tree follows vecDot's floatW tree; double keeps the float4 tree).
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static float updateXR([NoAlias] float* x, [NoAlias] float* p, int nx, [NoAlias] float* r, [NoAlias] float* q, float a, int nr)
         {
-            for (int i = 0; i < nx; i++)
-                x[i] += a * p[i];
+            for (int ix = 0; ix < nx; ix++)
+                x[ix] += a * p[ix];
 
-            var pr = (float4*)r;
-            var pq = (float4*)q;
-            int nQ = nr >> 2;
-            float4 acc0 = default, acc1 = default;
-            int i4 = 0;
-            for (; i4 + 2 <= nQ; i4 += 2)
+            int i = 0;
+            float head = 0;
+
+            
             {
-                pr[i4] -= a * pq[i4];
-                acc0 += pr[i4] * pr[i4];
-                pr[i4 + 1] -= a * pq[i4 + 1];
-                acc1 += pr[i4 + 1] * pr[i4 + 1];
+                floatW va = floatW.Splat(a);
+                int nW = nr / floatW.Width;
+                floatW acc0 = default, acc1 = default;
+                int qw = 0;
+                for (; qw + 2 <= nW; qw += 2)
+                {
+                    floatW r0 = floatW.Load(r, qw) - va * floatW.Load(q, qw);
+                    floatW.Store(r, qw, r0);
+                    acc0 += r0 * r0;
+                    floatW r1 = floatW.Load(r, qw + 1) - va * floatW.Load(q, qw + 1);
+                    floatW.Store(r, qw + 1, r1);
+                    acc1 += r1 * r1;
+                }
+                if (qw < nW)
+                {
+                    floatW r0 = floatW.Load(r, qw) - va * floatW.Load(q, qw);
+                    floatW.Store(r, qw, r0);
+                    acc0 += r0 * r0;
+                }
+                head = floatW.HSum(acc0 + acc1);
+                i = nW * floatW.Width;
             }
-            if (i4 < nQ) { pr[i4] -= a * pq[i4]; acc0 += pr[i4] * pr[i4]; }
-            float4 acc = acc0 + acc1;
-            float s = (acc.x + acc.y) + (acc.z + acc.w);
-            for (int i = nQ << 2; i < nr; i++)
+            
+
+            float4 qacc0 = default, qacc1 = default;
+            for (; i + 8 <= nr; i += 8)
+            {
+                float4 r0 = *(float4*)(r + i) - a * *(float4*)(q + i);
+                *(float4*)(r + i) = r0;
+                qacc0 += r0 * r0;
+                float4 r1 = *(float4*)(r + i + 4) - a * *(float4*)(q + i + 4);
+                *(float4*)(r + i + 4) = r1;
+                qacc1 += r1 * r1;
+            }
+            if (i + 4 <= nr)
+            {
+                float4 r0 = *(float4*)(r + i) - a * *(float4*)(q + i);
+                *(float4*)(r + i) = r0;
+                qacc0 += r0 * r0;
+                i += 4;
+            }
+            float4 qacc = qacc0 + qacc1;
+            float s = head + ((qacc.x + qacc.y) + (qacc.z + qacc.w));
+
+            for (; i < nr; i++)
             {
                 r[i] -= a * q[i];
                 s += r[i] * r[i];

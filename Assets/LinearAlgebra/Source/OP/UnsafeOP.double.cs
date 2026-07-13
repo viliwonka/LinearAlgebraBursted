@@ -22,6 +22,12 @@ namespace LinearAlgebra.Internal
         // FloatMode.Default (reduction vectorization needs to reorder floating-point operations, which
         // Strict forbids). Reinterpret loads are unaligned (rows/vectors are element-aligned only) --
         // Burst emits unaligned loads; an intrinsic rewrite must too. No FMA under Strict by design.
+        //
+        // vecDot/vecDotRange FLOAT runs on doubleW (8 AVX lanes) with TWO doubleW accumulator
+        // chains — the tree is 2x8 chains with doubleW.HSum's fixed halves-first fold, a new
+        // frozen contract as of the width rework. DOUBLE keeps the double4 body verbatim
+        // (double4 already fills the 256-bit register; routing it through the wide wrapper
+        // only added per-call overhead).
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static double sumAbs([NoAlias] double* a, int n)
@@ -88,20 +94,28 @@ namespace LinearAlgebra.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static double vecDot([NoAlias] double* vA, [NoAlias] double* vB, int n) {
 
-            var pa = (double4*)vA;
-            var pb = (double4*)vB;
-            int nQ = n >> 2;
-            double4 acc0 = default, acc1 = default;
-            int q = 0;
-            for (; q + 2 <= nQ; q += 2)
+            int i = 0;
+            double head = 0;
+
+            
+
+            // width-4 tier, SHARED: for double this is the main loop (i enters at 0; two
+            // double4 chains — the frozen double tree); for float it covers remainders 4..7.
+            double4 qacc0 = default, qacc1 = default;
+            for (; i + 8 <= n; i += 8)
             {
-                acc0 += pa[q]     * pb[q];
-                acc1 += pa[q + 1] * pb[q + 1];
+                qacc0 += *(double4*)(vA + i)     * *(double4*)(vB + i);
+                qacc1 += *(double4*)(vA + i + 4) * *(double4*)(vB + i + 4);
             }
-            if (q < nQ) acc0 += pa[q] * pb[q];
-            double4 acc = acc0 + acc1;
-            double s = (acc.x + acc.y) + (acc.z + acc.w);
-            for (int i = nQ << 2; i < n; i++)
+            if (i + 4 <= n)
+            {
+                qacc0 += *(double4*)(vA + i) * *(double4*)(vB + i);
+                i += 4;
+            }
+            double4 qacc = qacc0 + qacc1;
+            double s = head + ((qacc.x + qacc.y) + (qacc.z + qacc.w));
+
+            for (; i < n; i++)
                 s += vA[i] * vB[i];
             return s;
         }
@@ -111,21 +125,29 @@ namespace LinearAlgebra.Internal
         {
             // Base the vector pointers at `start` (element-aligned only, fine for unaligned loads).
             int n = end - start;
-            var pa = (double4*)(vA + start);
-            var pb = (double4*)(vB + start);
-            int nQ = n >> 2;
-            double4 acc0 = default, acc1 = default;
-            int q = 0;
-            for (; q + 2 <= nQ; q += 2)
+            double* a = vA + start;
+            double* b = vB + start;
+            int i = 0;
+            double head = 0;
+
+            
+
+            double4 qacc0 = default, qacc1 = default;
+            for (; i + 8 <= n; i += 8)
             {
-                acc0 += pa[q]     * pb[q];
-                acc1 += pa[q + 1] * pb[q + 1];
+                qacc0 += *(double4*)(a + i)     * *(double4*)(b + i);
+                qacc1 += *(double4*)(a + i + 4) * *(double4*)(b + i + 4);
             }
-            if (q < nQ) acc0 += pa[q] * pb[q];
-            double4 acc = acc0 + acc1;
-            double s = (acc.x + acc.y) + (acc.z + acc.w);
-            for (int i = start + (nQ << 2); i < end; i++)
-                s += vA[i] * vB[i];
+            if (i + 4 <= n)
+            {
+                qacc0 += *(double4*)(a + i) * *(double4*)(b + i);
+                i += 4;
+            }
+            double4 qacc = qacc0 + qacc1;
+            double s = head + ((qacc.x + qacc.y) + (qacc.z + qacc.w));
+
+            for (; i < n; i++)
+                s += a[i] * b[i];
             return s;
         }
 
@@ -1272,26 +1294,39 @@ namespace LinearAlgebra.Internal
         // plain update kernel followed by a separate vecDot(y,y,n) -- see call sites for which
         // fusions are bit-identical vs rounding-only (reciprocal-multiply replacing a division).
 
-        // y += a*x ; return dot(y,y). Bit-identical to axpy(y,x,a,n) then vecDot(y,y,n).
+        // y += a*x ; return dot(y,y). Bit-identical to axpy(y,x,a,n) then vecDot(y,y,n)
+        // (float's reduction tree follows vecDot's doubleW tree; double keeps the double4 tree).
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static double axpyNormSq([NoAlias] double* y, [NoAlias] double* x, double a, int n)
         {
-            var py = (double4*)y;
-            var px = (double4*)x;
-            int nQ = n >> 2;
-            double4 acc0 = default, acc1 = default;
-            int q = 0;
-            for (; q + 2 <= nQ; q += 2)
+            int i = 0;
+            double head = 0;
+
+            
+
+            // width-4 tier, SHARED: double's main loop / float's remainder (mirrors vecDot's
+            // tree — the bit-identical-to-composition contract).
+            double4 qacc0 = default, qacc1 = default;
+            for (; i + 8 <= n; i += 8)
             {
-                py[q] += a * px[q];
-                acc0 += py[q] * py[q];
-                py[q + 1] += a * px[q + 1];
-                acc1 += py[q + 1] * py[q + 1];
+                double4 y0 = *(double4*)(y + i) + a * *(double4*)(x + i);
+                *(double4*)(y + i) = y0;
+                qacc0 += y0 * y0;
+                double4 y1 = *(double4*)(y + i + 4) + a * *(double4*)(x + i + 4);
+                *(double4*)(y + i + 4) = y1;
+                qacc1 += y1 * y1;
             }
-            if (q < nQ) { py[q] += a * px[q]; acc0 += py[q] * py[q]; }
-            double4 acc = acc0 + acc1;
-            double s = (acc.x + acc.y) + (acc.z + acc.w);
-            for (int i = nQ << 2; i < n; i++)
+            if (i + 4 <= n)
+            {
+                double4 y0 = *(double4*)(y + i) + a * *(double4*)(x + i);
+                *(double4*)(y + i) = y0;
+                qacc0 += y0 * y0;
+                i += 4;
+            }
+            double4 qacc = qacc0 + qacc1;
+            double s = head + ((qacc.x + qacc.y) + (qacc.z + qacc.w));
+
+            for (; i < n; i++)
             {
                 y[i] += a * x[i];
                 s += y[i] * y[i];
@@ -1299,26 +1334,37 @@ namespace LinearAlgebra.Internal
             return s;
         }
 
-        // y = a*y + x ; return dot(y,y). Bit-identical to aypx(y,x,a,n) then vecDot(y,y,n).
+        // y = a*y + x ; return dot(y,y). Bit-identical to aypx(y,x,a,n) then vecDot(y,y,n)
+        // (float's reduction tree follows vecDot's doubleW tree; double keeps the double4 tree).
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static double xpayNormSq([NoAlias] double* y, [NoAlias] double* x, double a, int n)
         {
-            var py = (double4*)y;
-            var px = (double4*)x;
-            int nQ = n >> 2;
-            double4 acc0 = default, acc1 = default;
-            int q = 0;
-            for (; q + 2 <= nQ; q += 2)
+            int i = 0;
+            double head = 0;
+
+            
+
+            double4 qacc0 = default, qacc1 = default;
+            for (; i + 8 <= n; i += 8)
             {
-                py[q] = a * py[q] + px[q];
-                acc0 += py[q] * py[q];
-                py[q + 1] = a * py[q + 1] + px[q + 1];
-                acc1 += py[q + 1] * py[q + 1];
+                double4 y0 = a * *(double4*)(y + i) + *(double4*)(x + i);
+                *(double4*)(y + i) = y0;
+                qacc0 += y0 * y0;
+                double4 y1 = a * *(double4*)(y + i + 4) + *(double4*)(x + i + 4);
+                *(double4*)(y + i + 4) = y1;
+                qacc1 += y1 * y1;
             }
-            if (q < nQ) { py[q] = a * py[q] + px[q]; acc0 += py[q] * py[q]; }
-            double4 acc = acc0 + acc1;
-            double s = (acc.x + acc.y) + (acc.z + acc.w);
-            for (int i = nQ << 2; i < n; i++)
+            if (i + 4 <= n)
+            {
+                double4 y0 = a * *(double4*)(y + i) + *(double4*)(x + i);
+                *(double4*)(y + i) = y0;
+                qacc0 += y0 * y0;
+                i += 4;
+            }
+            double4 qacc = qacc0 + qacc1;
+            double s = head + ((qacc.x + qacc.y) + (qacc.z + qacc.w));
+
+            for (; i < n; i++)
             {
                 y[i] = a * y[i] + x[i];
                 s += y[i] * y[i];
@@ -1331,29 +1377,40 @@ namespace LinearAlgebra.Internal
         // RECTANGULAR: x/p have length A.Cols, r/q have length A.Rows, which differ in general) --
         // this is two loops, not one shared-index loop, but the second (r) loop still folds the
         // trailing reduction into the update pass, eliminating the separate vecDot(r,r) traversal.
-        // Bit-identical to axpy(x,p,a,nx); axpy(r,q,-a,nr); vecDot(r,r,nr).
+        // Bit-identical to axpy(x,p,a,nx); axpy(r,q,-a,nr); vecDot(r,r,nr)
+        // (float's reduction tree follows vecDot's doubleW tree; double keeps the double4 tree).
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static double updateXR([NoAlias] double* x, [NoAlias] double* p, int nx, [NoAlias] double* r, [NoAlias] double* q, double a, int nr)
         {
-            for (int i = 0; i < nx; i++)
-                x[i] += a * p[i];
+            for (int ix = 0; ix < nx; ix++)
+                x[ix] += a * p[ix];
 
-            var pr = (double4*)r;
-            var pq = (double4*)q;
-            int nQ = nr >> 2;
-            double4 acc0 = default, acc1 = default;
-            int i4 = 0;
-            for (; i4 + 2 <= nQ; i4 += 2)
+            int i = 0;
+            double head = 0;
+
+            
+
+            double4 qacc0 = default, qacc1 = default;
+            for (; i + 8 <= nr; i += 8)
             {
-                pr[i4] -= a * pq[i4];
-                acc0 += pr[i4] * pr[i4];
-                pr[i4 + 1] -= a * pq[i4 + 1];
-                acc1 += pr[i4 + 1] * pr[i4 + 1];
+                double4 r0 = *(double4*)(r + i) - a * *(double4*)(q + i);
+                *(double4*)(r + i) = r0;
+                qacc0 += r0 * r0;
+                double4 r1 = *(double4*)(r + i + 4) - a * *(double4*)(q + i + 4);
+                *(double4*)(r + i + 4) = r1;
+                qacc1 += r1 * r1;
             }
-            if (i4 < nQ) { pr[i4] -= a * pq[i4]; acc0 += pr[i4] * pr[i4]; }
-            double4 acc = acc0 + acc1;
-            double s = (acc.x + acc.y) + (acc.z + acc.w);
-            for (int i = nQ << 2; i < nr; i++)
+            if (i + 4 <= nr)
+            {
+                double4 r0 = *(double4*)(r + i) - a * *(double4*)(q + i);
+                *(double4*)(r + i) = r0;
+                qacc0 += r0 * r0;
+                i += 4;
+            }
+            double4 qacc = qacc0 + qacc1;
+            double s = head + ((qacc.x + qacc.y) + (qacc.z + qacc.w));
+
+            for (; i < nr; i++)
             {
                 r[i] -= a * q[i];
                 s += r[i] * r[i];

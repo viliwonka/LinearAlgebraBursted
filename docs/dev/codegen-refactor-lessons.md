@@ -169,3 +169,20 @@ purpose. Companion to `docs/dev/naming-style-guide.md` (the conventions these mi
   a block is dead code just because it's excluded from what ships. See `Consts.cs`'s
   `fProxyZeroThreshold`/`fProxyEpsilon`/`fProxySqrtEps` (other template files reference these by
   name at raw-template-compile time).
+- **`//+emitFor[tags]` exists precisely because of the rule above**: when one generated type
+  needs a body that CANNOT compile in the template assembly (intrinsics that only type-check for
+  one dtype, or an alternate body whose locals would collide with the primary body's in the same
+  method scope), hide it behind `//+emitFor[type]` with every body line prefixed `//!` — the
+  template compiles only the primary (skipFor-wrapped) body; codegen strips the `//!` prefixes
+  for matching types and drops the block for everyone else. Trade-off to remember: emitFor
+  bodies get NO template-time type checking — typos surface only when the generated output
+  compiles. Pattern: `//+skipFor[X]` primary body + `//+emitFor[X]` alternate body. First user:
+  `UnsafeOP.vecDot` (float runs on `fProxyW`/AVX, double keeps its original `fProxy4` body).
+- **Template tests RUN the template-compiled code — a `choose` placeholder must make the
+  template variant CORRECT, not merely compile.** The `fProxy*Tests` classes in the suite are
+  the template assembly's own tests executing against the 4-byte float-backed `fProxy` stub.
+  `fProxyW.Width`'s placeholder was first written as `4` (the double value): every wide load
+  then advanced 4 floats while processing 8 — overlapping loads, double-counted sums, and ~500
+  suite failures that looked like a broken kernel while both GENERATED files were perfect.
+  Rule: for skipFor/emitFor dtype splits, the template-compiled primary body runs under the
+  float-sized stub, so its choose placeholders must be the FLOAT values.

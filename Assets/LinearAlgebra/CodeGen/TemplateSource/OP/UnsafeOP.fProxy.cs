@@ -20,6 +20,12 @@ namespace LinearAlgebra.Internal
         // FloatMode.Default (reduction vectorization needs to reorder floating-point operations, which
         // Strict forbids). Reinterpret loads are unaligned (rows/vectors are element-aligned only) --
         // Burst emits unaligned loads; an intrinsic rewrite must too. No FMA under Strict by design.
+        //
+        // vecDot/vecDotRange FLOAT runs on fProxyW (8 AVX lanes) with TWO fProxyW accumulator
+        // chains — the tree is 2x8 chains with fProxyW.HSum's fixed halves-first fold, a new
+        // frozen contract as of the width rework. DOUBLE keeps the fProxy4 body verbatim
+        // (double4 already fills the 256-bit register; routing it through the wide wrapper
+        // only added per-call overhead).
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static fProxy sumAbs([NoAlias] fProxy* a, int n)
@@ -86,20 +92,44 @@ namespace LinearAlgebra.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static fProxy vecDot([NoAlias] fProxy* vA, [NoAlias] fProxy* vB, int n) {
 
-            var pa = (fProxy4*)vA;
-            var pb = (fProxy4*)vB;
-            int nQ = n >> 2;
-            fProxy4 acc0 = default, acc1 = default;
-            int q = 0;
-            for (; q + 2 <= nQ; q += 2)
+            int i = 0;
+            fProxy head = 0;
+
+            //+skipFor[double]
+            // float-only 8-lane main tier (two fProxyW chains), folded into head; the width-4
+            // tier below then sees at most one quad.
             {
-                acc0 += pa[q]     * pb[q];
-                acc1 += pa[q + 1] * pb[q + 1];
+                int nW = n / fProxyW.Width;
+                fProxyW acc0 = default, acc1 = default;
+                int q = 0;
+                for (; q + 2 <= nW; q += 2)
+                {
+                    acc0 += fProxyW.Load(vA, q)     * fProxyW.Load(vB, q);
+                    acc1 += fProxyW.Load(vA, q + 1) * fProxyW.Load(vB, q + 1);
+                }
+                if (q < nW) acc0 += fProxyW.Load(vA, q) * fProxyW.Load(vB, q);
+                head = fProxyW.HSum(acc0 + acc1);
+                i = nW * fProxyW.Width;
             }
-            if (q < nQ) acc0 += pa[q] * pb[q];
-            fProxy4 acc = acc0 + acc1;
-            fProxy s = (acc.x + acc.y) + (acc.z + acc.w);
-            for (int i = nQ << 2; i < n; i++)
+            //-skipFor
+
+            // width-4 tier, SHARED: for double this is the main loop (i enters at 0; two
+            // fProxy4 chains — the frozen double tree); for float it covers remainders 4..7.
+            fProxy4 qacc0 = default, qacc1 = default;
+            for (; i + 8 <= n; i += 8)
+            {
+                qacc0 += *(fProxy4*)(vA + i)     * *(fProxy4*)(vB + i);
+                qacc1 += *(fProxy4*)(vA + i + 4) * *(fProxy4*)(vB + i + 4);
+            }
+            if (i + 4 <= n)
+            {
+                qacc0 += *(fProxy4*)(vA + i) * *(fProxy4*)(vB + i);
+                i += 4;
+            }
+            fProxy4 qacc = qacc0 + qacc1;
+            fProxy s = head + ((qacc.x + qacc.y) + (qacc.z + qacc.w));
+
+            for (; i < n; i++)
                 s += vA[i] * vB[i];
             return s;
         }
@@ -109,21 +139,43 @@ namespace LinearAlgebra.Internal
         {
             // Base the vector pointers at `start` (element-aligned only, fine for unaligned loads).
             int n = end - start;
-            var pa = (fProxy4*)(vA + start);
-            var pb = (fProxy4*)(vB + start);
-            int nQ = n >> 2;
-            fProxy4 acc0 = default, acc1 = default;
-            int q = 0;
-            for (; q + 2 <= nQ; q += 2)
+            fProxy* a = vA + start;
+            fProxy* b = vB + start;
+            int i = 0;
+            fProxy head = 0;
+
+            //+skipFor[double]
             {
-                acc0 += pa[q]     * pb[q];
-                acc1 += pa[q + 1] * pb[q + 1];
+                int nW = n / fProxyW.Width;
+                fProxyW acc0 = default, acc1 = default;
+                int q = 0;
+                for (; q + 2 <= nW; q += 2)
+                {
+                    acc0 += fProxyW.Load(a, q)     * fProxyW.Load(b, q);
+                    acc1 += fProxyW.Load(a, q + 1) * fProxyW.Load(b, q + 1);
+                }
+                if (q < nW) acc0 += fProxyW.Load(a, q) * fProxyW.Load(b, q);
+                head = fProxyW.HSum(acc0 + acc1);
+                i = nW * fProxyW.Width;
             }
-            if (q < nQ) acc0 += pa[q] * pb[q];
-            fProxy4 acc = acc0 + acc1;
-            fProxy s = (acc.x + acc.y) + (acc.z + acc.w);
-            for (int i = start + (nQ << 2); i < end; i++)
-                s += vA[i] * vB[i];
+            //-skipFor
+
+            fProxy4 qacc0 = default, qacc1 = default;
+            for (; i + 8 <= n; i += 8)
+            {
+                qacc0 += *(fProxy4*)(a + i)     * *(fProxy4*)(b + i);
+                qacc1 += *(fProxy4*)(a + i + 4) * *(fProxy4*)(b + i + 4);
+            }
+            if (i + 4 <= n)
+            {
+                qacc0 += *(fProxy4*)(a + i) * *(fProxy4*)(b + i);
+                i += 4;
+            }
+            fProxy4 qacc = qacc0 + qacc1;
+            fProxy s = head + ((qacc.x + qacc.y) + (qacc.z + qacc.w));
+
+            for (; i < n; i++)
+                s += a[i] * b[i];
             return s;
         }
 
@@ -1270,26 +1322,64 @@ namespace LinearAlgebra.Internal
         // plain update kernel followed by a separate vecDot(y,y,n) -- see call sites for which
         // fusions are bit-identical vs rounding-only (reciprocal-multiply replacing a division).
 
-        // y += a*x ; return dot(y,y). Bit-identical to axpy(y,x,a,n) then vecDot(y,y,n).
+        // y += a*x ; return dot(y,y). Bit-identical to axpy(y,x,a,n) then vecDot(y,y,n)
+        // (float's reduction tree follows vecDot's fProxyW tree; double keeps the fProxy4 tree).
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static fProxy axpyNormSq([NoAlias] fProxy* y, [NoAlias] fProxy* x, fProxy a, int n)
         {
-            var py = (fProxy4*)y;
-            var px = (fProxy4*)x;
-            int nQ = n >> 2;
-            fProxy4 acc0 = default, acc1 = default;
-            int q = 0;
-            for (; q + 2 <= nQ; q += 2)
+            int i = 0;
+            fProxy head = 0;
+
+            //+skipFor[double]
+            // float-only 8-lane main tier; the shared width-4 tier below then sees < 8 elements.
             {
-                py[q] += a * px[q];
-                acc0 += py[q] * py[q];
-                py[q + 1] += a * px[q + 1];
-                acc1 += py[q + 1] * py[q + 1];
+                fProxyW va = fProxyW.Splat(a);
+                int nW = n / fProxyW.Width;
+                fProxyW acc0 = default, acc1 = default;
+                int q = 0;
+                for (; q + 2 <= nW; q += 2)
+                {
+                    fProxyW y0 = fProxyW.Load(y, q) + va * fProxyW.Load(x, q);
+                    fProxyW.Store(y, q, y0);
+                    acc0 += y0 * y0;
+                    fProxyW y1 = fProxyW.Load(y, q + 1) + va * fProxyW.Load(x, q + 1);
+                    fProxyW.Store(y, q + 1, y1);
+                    acc1 += y1 * y1;
+                }
+                if (q < nW)
+                {
+                    fProxyW y0 = fProxyW.Load(y, q) + va * fProxyW.Load(x, q);
+                    fProxyW.Store(y, q, y0);
+                    acc0 += y0 * y0;
+                }
+                head = fProxyW.HSum(acc0 + acc1);
+                i = nW * fProxyW.Width;
             }
-            if (q < nQ) { py[q] += a * px[q]; acc0 += py[q] * py[q]; }
-            fProxy4 acc = acc0 + acc1;
-            fProxy s = (acc.x + acc.y) + (acc.z + acc.w);
-            for (int i = nQ << 2; i < n; i++)
+            //-skipFor
+
+            // width-4 tier, SHARED: double's main loop / float's remainder (mirrors vecDot's
+            // tree — the bit-identical-to-composition contract).
+            fProxy4 qacc0 = default, qacc1 = default;
+            for (; i + 8 <= n; i += 8)
+            {
+                fProxy4 y0 = *(fProxy4*)(y + i) + a * *(fProxy4*)(x + i);
+                *(fProxy4*)(y + i) = y0;
+                qacc0 += y0 * y0;
+                fProxy4 y1 = *(fProxy4*)(y + i + 4) + a * *(fProxy4*)(x + i + 4);
+                *(fProxy4*)(y + i + 4) = y1;
+                qacc1 += y1 * y1;
+            }
+            if (i + 4 <= n)
+            {
+                fProxy4 y0 = *(fProxy4*)(y + i) + a * *(fProxy4*)(x + i);
+                *(fProxy4*)(y + i) = y0;
+                qacc0 += y0 * y0;
+                i += 4;
+            }
+            fProxy4 qacc = qacc0 + qacc1;
+            fProxy s = head + ((qacc.x + qacc.y) + (qacc.z + qacc.w));
+
+            for (; i < n; i++)
             {
                 y[i] += a * x[i];
                 s += y[i] * y[i];
@@ -1297,26 +1387,61 @@ namespace LinearAlgebra.Internal
             return s;
         }
 
-        // y = a*y + x ; return dot(y,y). Bit-identical to aypx(y,x,a,n) then vecDot(y,y,n).
+        // y = a*y + x ; return dot(y,y). Bit-identical to aypx(y,x,a,n) then vecDot(y,y,n)
+        // (float's reduction tree follows vecDot's fProxyW tree; double keeps the fProxy4 tree).
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static fProxy xpayNormSq([NoAlias] fProxy* y, [NoAlias] fProxy* x, fProxy a, int n)
         {
-            var py = (fProxy4*)y;
-            var px = (fProxy4*)x;
-            int nQ = n >> 2;
-            fProxy4 acc0 = default, acc1 = default;
-            int q = 0;
-            for (; q + 2 <= nQ; q += 2)
+            int i = 0;
+            fProxy head = 0;
+
+            //+skipFor[double]
             {
-                py[q] = a * py[q] + px[q];
-                acc0 += py[q] * py[q];
-                py[q + 1] = a * py[q + 1] + px[q + 1];
-                acc1 += py[q + 1] * py[q + 1];
+                fProxyW va = fProxyW.Splat(a);
+                int nW = n / fProxyW.Width;
+                fProxyW acc0 = default, acc1 = default;
+                int q = 0;
+                for (; q + 2 <= nW; q += 2)
+                {
+                    fProxyW y0 = va * fProxyW.Load(y, q) + fProxyW.Load(x, q);
+                    fProxyW.Store(y, q, y0);
+                    acc0 += y0 * y0;
+                    fProxyW y1 = va * fProxyW.Load(y, q + 1) + fProxyW.Load(x, q + 1);
+                    fProxyW.Store(y, q + 1, y1);
+                    acc1 += y1 * y1;
+                }
+                if (q < nW)
+                {
+                    fProxyW y0 = va * fProxyW.Load(y, q) + fProxyW.Load(x, q);
+                    fProxyW.Store(y, q, y0);
+                    acc0 += y0 * y0;
+                }
+                head = fProxyW.HSum(acc0 + acc1);
+                i = nW * fProxyW.Width;
             }
-            if (q < nQ) { py[q] = a * py[q] + px[q]; acc0 += py[q] * py[q]; }
-            fProxy4 acc = acc0 + acc1;
-            fProxy s = (acc.x + acc.y) + (acc.z + acc.w);
-            for (int i = nQ << 2; i < n; i++)
+            //-skipFor
+
+            fProxy4 qacc0 = default, qacc1 = default;
+            for (; i + 8 <= n; i += 8)
+            {
+                fProxy4 y0 = a * *(fProxy4*)(y + i) + *(fProxy4*)(x + i);
+                *(fProxy4*)(y + i) = y0;
+                qacc0 += y0 * y0;
+                fProxy4 y1 = a * *(fProxy4*)(y + i + 4) + *(fProxy4*)(x + i + 4);
+                *(fProxy4*)(y + i + 4) = y1;
+                qacc1 += y1 * y1;
+            }
+            if (i + 4 <= n)
+            {
+                fProxy4 y0 = a * *(fProxy4*)(y + i) + *(fProxy4*)(x + i);
+                *(fProxy4*)(y + i) = y0;
+                qacc0 += y0 * y0;
+                i += 4;
+            }
+            fProxy4 qacc = qacc0 + qacc1;
+            fProxy s = head + ((qacc.x + qacc.y) + (qacc.z + qacc.w));
+
+            for (; i < n; i++)
             {
                 y[i] = a * y[i] + x[i];
                 s += y[i] * y[i];
@@ -1329,29 +1454,64 @@ namespace LinearAlgebra.Internal
         // RECTANGULAR: x/p have length A.Cols, r/q have length A.Rows, which differ in general) --
         // this is two loops, not one shared-index loop, but the second (r) loop still folds the
         // trailing reduction into the update pass, eliminating the separate vecDot(r,r) traversal.
-        // Bit-identical to axpy(x,p,a,nx); axpy(r,q,-a,nr); vecDot(r,r,nr).
+        // Bit-identical to axpy(x,p,a,nx); axpy(r,q,-a,nr); vecDot(r,r,nr)
+        // (float's reduction tree follows vecDot's fProxyW tree; double keeps the fProxy4 tree).
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static fProxy updateXR([NoAlias] fProxy* x, [NoAlias] fProxy* p, int nx, [NoAlias] fProxy* r, [NoAlias] fProxy* q, fProxy a, int nr)
         {
-            for (int i = 0; i < nx; i++)
-                x[i] += a * p[i];
+            for (int ix = 0; ix < nx; ix++)
+                x[ix] += a * p[ix];
 
-            var pr = (fProxy4*)r;
-            var pq = (fProxy4*)q;
-            int nQ = nr >> 2;
-            fProxy4 acc0 = default, acc1 = default;
-            int i4 = 0;
-            for (; i4 + 2 <= nQ; i4 += 2)
+            int i = 0;
+            fProxy head = 0;
+
+            //+skipFor[double]
             {
-                pr[i4] -= a * pq[i4];
-                acc0 += pr[i4] * pr[i4];
-                pr[i4 + 1] -= a * pq[i4 + 1];
-                acc1 += pr[i4 + 1] * pr[i4 + 1];
+                fProxyW va = fProxyW.Splat(a);
+                int nW = nr / fProxyW.Width;
+                fProxyW acc0 = default, acc1 = default;
+                int qw = 0;
+                for (; qw + 2 <= nW; qw += 2)
+                {
+                    fProxyW r0 = fProxyW.Load(r, qw) - va * fProxyW.Load(q, qw);
+                    fProxyW.Store(r, qw, r0);
+                    acc0 += r0 * r0;
+                    fProxyW r1 = fProxyW.Load(r, qw + 1) - va * fProxyW.Load(q, qw + 1);
+                    fProxyW.Store(r, qw + 1, r1);
+                    acc1 += r1 * r1;
+                }
+                if (qw < nW)
+                {
+                    fProxyW r0 = fProxyW.Load(r, qw) - va * fProxyW.Load(q, qw);
+                    fProxyW.Store(r, qw, r0);
+                    acc0 += r0 * r0;
+                }
+                head = fProxyW.HSum(acc0 + acc1);
+                i = nW * fProxyW.Width;
             }
-            if (i4 < nQ) { pr[i4] -= a * pq[i4]; acc0 += pr[i4] * pr[i4]; }
-            fProxy4 acc = acc0 + acc1;
-            fProxy s = (acc.x + acc.y) + (acc.z + acc.w);
-            for (int i = nQ << 2; i < nr; i++)
+            //-skipFor
+
+            fProxy4 qacc0 = default, qacc1 = default;
+            for (; i + 8 <= nr; i += 8)
+            {
+                fProxy4 r0 = *(fProxy4*)(r + i) - a * *(fProxy4*)(q + i);
+                *(fProxy4*)(r + i) = r0;
+                qacc0 += r0 * r0;
+                fProxy4 r1 = *(fProxy4*)(r + i + 4) - a * *(fProxy4*)(q + i + 4);
+                *(fProxy4*)(r + i + 4) = r1;
+                qacc1 += r1 * r1;
+            }
+            if (i + 4 <= nr)
+            {
+                fProxy4 r0 = *(fProxy4*)(r + i) - a * *(fProxy4*)(q + i);
+                *(fProxy4*)(r + i) = r0;
+                qacc0 += r0 * r0;
+                i += 4;
+            }
+            fProxy4 qacc = qacc0 + qacc1;
+            fProxy s = head + ((qacc.x + qacc.y) + (qacc.z + qacc.w));
+
+            for (; i < nr; i++)
             {
                 r[i] -= a * q[i];
                 s += r[i] * r[i];

@@ -97,6 +97,7 @@ namespace LinearAlgebra.CodeGen {
                     // runs HERE, per generated type, on a per-iteration copy of sourceCode (mirrors
                     // ChooseReplace's placement, for the same reason).
                     var perTypeSource = SkipForReplace(sourceCode, typeStr, relativePath);
+                    perTypeSource = EmitForReplace(perTypeSource, typeStr, relativePath);
 
                     var targetSource = perTypeSource.Replace(proxy, typeStr);
                     targetSource = targetSource.Replace(capsProxy, capsTypeStr);
@@ -518,6 +519,101 @@ namespace LinearAlgebra.CodeGen {
             if (tag == "u")
                 return System.Array.IndexOf(GenUtils.unsignedTypeNames, typeStr) >= 0;
             return tag == typeStr;
+        }
+
+        // //+emitFor[tag,...] ... //-emitFor : the INVERSE of skipFor, for per-type bodies that
+        // cannot compile inside the template assembly. Body lines are hidden behind a leading
+        // '//!' prefix; for a generated type matching a bracket entry the block is emitted with
+        // the prefixes stripped, for every other type the whole block is dropped. Same tag
+        // grammar (SkipForTagMatches) and block rules as skipFor (markers alone on their lines,
+        // no nesting). Runs PER GENERATED TYPE, right after SkipForReplace.
+        string EmitForReplace(string sourceCode, string typeStr, string filePathDebug) {
+
+            int infinityGuard = 200;
+
+            while (sourceCode.Contains(GenUtils.emitForMarkerStart) && infinityGuard > 0) {
+
+                int startIndex = sourceCode.IndexOf(GenUtils.emitForMarkerStart);
+
+                int bracketStart = sourceCode.IndexOf('[', startIndex);
+                if (bracketStart < 0) {
+                    Debug.LogError($"emitFor marker missing '[tags]': {filePathDebug}");
+                    break;
+                }
+                int bracketEnd = sourceCode.IndexOf(']', bracketStart);
+                if (bracketEnd < 0) {
+                    Debug.LogError($"emitFor marker missing closing ']': {filePathDebug}");
+                    break;
+                }
+
+                if (!MarkerAloneOnLine(sourceCode, startIndex, bracketEnd + 1)) {
+                    Debug.LogError($"emitFor marker must be alone on its line ('//+emitFor[...]' with only whitespace around it): {filePathDebug}");
+                    break;
+                }
+
+                int endMarkerIndex = sourceCode.IndexOf(GenUtils.emitForMarkerEnd, bracketEnd);
+                if (endMarkerIndex < 0) {
+                    Debug.LogError($"emitFor marker missing matching '//-emitFor': {filePathDebug}");
+                    break;
+                }
+
+                int nestedStart = sourceCode.IndexOf(GenUtils.emitForMarkerStart, startIndex + GenUtils.emitForMarkerStart.Length);
+                if (nestedStart >= 0 && nestedStart < endMarkerIndex) {
+                    Debug.LogError($"Nested //+emitFor not supported (opened again before the matching '//-emitFor'): {filePathDebug}");
+                    break;
+                }
+
+                if (!MarkerAloneOnLine(sourceCode, endMarkerIndex, endMarkerIndex + GenUtils.emitForMarkerEnd.Length)) {
+                    Debug.LogError($"emitFor marker must be alone on its line ('//-emitFor' with only whitespace around it): {filePathDebug}");
+                    break;
+                }
+
+                int endIndex = endMarkerIndex + GenUtils.emitForMarkerEnd.Length;
+
+                string[] tags = sourceCode.Substring(bracketStart + 1, bracketEnd - bracketStart - 1).Split(',');
+
+                bool emit = false;
+                foreach (var rawTag in tags) {
+                    if (SkipForTagMatches(rawTag.Trim(), typeStr)) {
+                        emit = true;
+                        break;
+                    }
+                }
+
+                if (!emit) {
+                    // Not this type: drop the marker lines AND the hidden body they wrap.
+                    sourceCode = sourceCode.Remove(startIndex, endIndex - startIndex);
+                }
+                else {
+                    // Matching type: replace the whole block with the body, stripping the first
+                    // '//!' from every body line (only when it is the line's first non-whitespace
+                    // content — anything else is a template-author error and is left visible so
+                    // the generated compile flags it).
+                    string body = sourceCode.Substring(bracketEnd + 1, endMarkerIndex - (bracketEnd + 1));
+                    var lines = body.Split('\n');
+                    var sb = new System.Text.StringBuilder(body.Length);
+                    for (int li = 0; li < lines.Length; li++) {
+                        string line = lines[li];
+                        int p = line.IndexOf(GenUtils.emitForLinePrefix);
+                        if (p >= 0 && line.Substring(0, p).Trim().Length == 0)
+                            line = line.Remove(p, GenUtils.emitForLinePrefix.Length);
+                        sb.Append(line);
+                        if (li < lines.Length - 1) sb.Append('\n');
+                    }
+                    sourceCode = sourceCode.Remove(startIndex, endIndex - startIndex)
+                                           .Insert(startIndex, sb.ToString());
+                }
+
+                --infinityGuard;
+            }
+
+            if (infinityGuard == 0)
+                Debug.LogError($"Infinity guard triggered, emitFor syntax is bad: {filePathDebug}");
+
+            if (sourceCode.Contains(GenUtils.emitForMarkerEnd))
+                Debug.LogError($"Unmatched '//-emitFor' with no opening '//+emitFor[...]': {filePathDebug}");
+
+            return sourceCode;
         }
 
         // True if source[start..end) has nothing but whitespace between it and both of its line's

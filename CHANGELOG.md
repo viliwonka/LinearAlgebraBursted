@@ -107,6 +107,12 @@ between minor versions.
   pure copy reordering).
 - GEMM cache-blocks (packed operand panels) once the product's working set exceeds ~24 MB —
   about 1.3–1.4× at 2048×2048 — with bit-identical results to the direct route at every size.
+- **Breaking — float numeric change**: float dot products (`Blas.dot` on vectors and everything
+  built on it) now reduce through 8-lane AVX accumulator chains — roughly 2× faster while
+  operands are cache-resident. Float results differ from previous versions at the usual
+  floating-point-summation-order level; double results are unchanged (up to the sign of an
+  all-zero reduction). Results remain deterministic and identical across instruction sets
+  (the non-AVX fallback uses the same summation tree).
 - The `transposeB` matrix product picks its kernel per element type (float: transpose-and-GEMM;
   double: direct transposed-read kernel) — whichever measured faster for that type.
 

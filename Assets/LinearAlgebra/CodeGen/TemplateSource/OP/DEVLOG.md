@@ -1,6 +1,66 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## fProxyW: the three-tier conversion pattern (canonical recipe)
+- 2026-07-14 | Every float width conversion follows one shape (user design, refined to a SINGLE
+  marker): hoist `int i = 0; fProxy head = 0;`, then
+    (1) `//+skipFor[double]` float-only W-wide main tier — folds into `head`, advances `i`;
+    (2) SHARED width-4 two-chain tier — for double this IS its original main loop (i enters at
+        0, identical chain assignment and fold), for float it covers the <8 remainder;
+    (3) SHARED scalar tail; `s = head + quadFold` then tail appends.
+  No emitFor, no duplicated double body (emitFor remains for genuinely-different bodies, e.g.
+  fProxyW's own AVX-vs-double4 ops). Accepted nit: double's fold gains a leading `0 +`, which
+  flips the SIGN OF ZERO when an entire reduction is −0 (e.g. dot against a zero vector with
+  negative signs) — behaviorally invisible (−0 == +0, guards use >), noted on the CHANGELOG's
+  "double unchanged" claim. Reduction tree = frozen contract; fused kernels mirror vecDot's
+  shape exactly (bit-identical-to-composition). Converted: vecDot, vecDotRange, axpyNormSq,
+  xpayNormSq, updateXR.
+
+## fProxyW (WideOP) + float width rework, stage 1: vecDot
+- 2026-07-14 | fProxyW added: 8 float lanes via Burst AVX intrinsics (v256) / 4 double lanes,
+  32-byte v256 storage for both, lane-tree-identical non-AVX fallback (correctness path).
+  vecDot/vecDotRange FLOAT moved onto it: 44-45 → 82-84 GFLOP/s cache-resident (roofline H,
+  1K-64K elems; converges to bandwidth at DRAM sizes). Float's summation tree changed (2x8
+  chains, halves-first fold) — new frozen contract, CHANGELOG'd.
+- 2026-07-14 | DOUBLE was first routed through fProxyW too ("one template body") and REGRESSED
+  ~19 ns/call (1K-elem dot 45 → 32 GFLOP/s): double4 is already full width, so the v256↔double4
+  reinterpret wrapper only added per-call overhead. Double now keeps its original fProxy4 body
+  verbatim via the new //+emitFor[double] codegen marker (bit-identical trivially). Rule for
+  the rest of the rework: fProxyW is a FLOAT-side lever; leave double bodies alone.
+- 2026-07-14 | Dot-shape ceiling context: ~90 GFLOP/s is the LOAD-PORT limit for two-operand
+  streaming reductions (2 loads per mul+add), not the 120 register-chain ceiling — do not
+  chase the gap.
+- 2026-07-14 | TRAP (cost one full suite run, ~500 failures): fProxyW.Width's choose
+  placeholder was 4 — but the template assembly's own tests RUN template code against the
+  float-backed stub, so wide loads advanced 4 floats while processing 8. Placeholders in
+  dtype-split code must be the FLOAT values (see codegen-refactor-lessons.md). Both generated
+  files were correct the whole time; the bit-identity fallout that was real: xpayNormSq /
+  updateXR (the CG fused kernels) pin "bit-identical to axpy+vecDot" — converted their float
+  reductions to the fProxyW tree in the same pass (they inherit the width win too).
+
+## LP.Sparse float IPM: stall-quality envelope (open robustness item)
+- 2026-07-14 | Exposed by the float width rework (not caused by it): the float sparse IPM's
+  outer tolerance (100·eps) is unreachable in float on unscaled real data — stackloss LAD
+  always exits MaxIterations at a rounding-dependent objective (measured 2%..117% above the
+  optimum across float summation-tree variants; double converges Optimal). Shipped: float
+  inner pcgTol tightened sqrtEps → sqrtEps/10 via choose (measured stall 44.4 → 43.0 on
+  stackloss; double untouched), and LPTests.SparseLadStackloss's 8% band made double-only
+  (float asserts a wide sanity envelope — never below the optimum, never > 3x). Real-fix
+  candidates for a robustness pass: column equilibration in the standard-form operator
+  (stackloss columns span ~1..~90), inexact-Newton forcing terms (inner tol ∝ μ), and a
+  float-realistic outer tolerance with honest status reporting.
+
+## LOBPCG float: spurious-Ritz collapse by over-iteration (open robustness item)
+- 2026-07-14 | Surfaced by the float width rework's tree change but NOT caused by it: on the
+  truss demos' penalty-conditioned pencil (penalty 1e3 vs O(1) eigenvalues of interest), float
+  LOBPCG iterated past the DEFAULT tolerance collapses its basis and reports spurious near-zero
+  Ritz values as Converged (measured, 8-dof braced square, true λ1 = 1.198: tol=1e-4 → λ1 ≈ 1e-6
+  "Converged"; tol=1e-6 → both eigenvalues exactly 0; default tol → correct at every penalty
+  30..1000). TIGHTER tolerance makes it WORSE — the failure is orthogonality-budget exhaustion,
+  not insufficient convergence. Demos now use the default tolerance (comments point here).
+  BACKLOG: a guard inside lobpcg (Gram conditioning check, or residual-vs-Ritz-scale sanity)
+  so basis collapse reports Indefinite/Breakdown instead of Converged-with-garbage.
+
 ## UnsafeOP packed (cache-blocked) GEMM
 - 2026-07-13 | BLIS-style packed route added to matMatDot (KC=256/MC=128 panels, MR/NR strips,
   seeded microkernel so every element's reduction stays ONE p-ascending chain across panels —

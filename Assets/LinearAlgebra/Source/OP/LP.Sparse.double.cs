@@ -167,6 +167,11 @@ namespace LinearAlgebra
             double eta = (double)0.99;
             double floorPos = Consts.doubleZeroThreshold;
             double tol = 100.0 * (double)Consts.doubleEpsilon;
+            // float: sqrt(eps) inner solves are too loose for the late-stage normal equations
+            // (D = Z/S conditioning explodes as complementarity shrinks) — the IPM then walks
+            // garbage steps and stalls at MaxIterations with a wrong objective. One decade
+            // tighter stays within float PCG's reach on the Jacobi-preconditioned normal
+            // operator. double keeps sqrt(eps) (~1.5e-8, ample).
             double pcgTol = Consts.doubleSqrtEps;
             int pcgMaxIter = math.min(2 * m + 20, 500);
 

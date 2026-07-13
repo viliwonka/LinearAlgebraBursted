@@ -221,7 +221,11 @@ namespace LinearAlgebraDemos
 
         public void Execute()
         {
-            LOBPCGInfo info = Eigen.lobpcg(in Op, in Precond, ref Cache, K, 1e-4f, 200);
+            // Default tolerance on purpose: float LOBPCG on this penalty-conditioned pencil
+            // collapses to spurious near-zero Ritz values when iterated past the default
+            // (measured: tol=1e-4 reports lambda1 ~ 1e-6 as Converged where the true smallest
+            // eigenvalue is ~1.2). The default stops before the basis degrades.
+            LOBPCGInfo info = Eigen.lobpcg(in Op, in Precond, ref Cache, K);
             Out[0] = info.iterations;
             Out[1] = info ? 1f : 0f;
         }

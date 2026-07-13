@@ -239,7 +239,10 @@ namespace LinearAlgebraDemos
 
         public void Execute()
         {
-            LOBPCGInfo info = Eigen.lobpcg(in A, in B, in Precond, ref Cache, K, 1e-4f, 1000);
+            // Default tolerance on purpose — same spurious-Ritz-collapse rationale as
+            // TrussStabilityDemo.TrussEigenJob (float LOBPCG on a penalty-conditioned pencil
+            // degrades past the default tolerance).
+            LOBPCGInfo info = Eigen.lobpcg(in A, in B, in Precond, ref Cache, K);
             Out[0] = info.iterations;
             Out[1] = info ? 1f : 0f;
             Out[2] = (float)info.maxResidual;
