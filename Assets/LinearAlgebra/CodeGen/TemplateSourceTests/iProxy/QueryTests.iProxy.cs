@@ -910,7 +910,7 @@ public class iProxyQueryTests
     [Test] public void ArenaWrappersTest()               => RunJob(TestJob.TestType.ArenaWrappers);
 
     // -------------------------------------------------------------------------
-    // Managed-throw guards (main thread): float-only norms/metrics rejected (spec P2/P6),
+    // Managed-throw guards (main thread): float-only norms/metrics rejected,
     // plus dimension-mismatch contracts.
     // -------------------------------------------------------------------------
 

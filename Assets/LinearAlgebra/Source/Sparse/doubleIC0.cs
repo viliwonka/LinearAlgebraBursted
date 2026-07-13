@@ -41,12 +41,12 @@ namespace LinearAlgebra.Sparse
         /// Factorizes A's lower block pattern in place of the copy it allocates from the arena.
         /// Throws if A is not square (BlockRows==BlockCols, BR==BC), if a diagonal block is
         /// absent, or if the factorization still breaks down at the largest diagonal shift.
-        /// Use the out-info overload to receive the outcome as a <see cref="DirectSolveInfo"/>
+        /// Use the out-info overload to receive the outcome as a <see cref="PreconditionerInfo"/>
         /// instead of an exception.
         /// </summary>
         public doubleIC0(in doubleBSR a, ref Arena arena)
         {
-            this = new doubleIC0(in a, ref arena, out DirectSolveInfo info);
+            this = new doubleIC0(in a, ref arena, out PreconditionerInfo info);
             if (!info.Solved)
                 throw new ArgumentException("doubleIC0: factorization broke down at every diagonal shift — is A symmetric positive definite?");
         }
@@ -54,9 +54,10 @@ namespace LinearAlgebra.Sparse
         /// <summary>
         /// Non-throwing build: info.status is Success, or NotPositiveDefinite when the
         /// factorization broke down at every diagonal shift (the preconditioner is then unusable —
-        /// do not Apply). Caller-contract violations (non-square, missing diagonal block) still throw.
+        /// do not Apply); info also carries the rescuing shift and the attempts consumed.
+        /// Caller-contract violations (non-square, missing diagonal block) still throw.
         /// </summary>
-        public doubleIC0(in doubleBSR a, ref Arena arena, out DirectSolveInfo info)
+        public doubleIC0(in doubleBSR a, ref Arena arena, out PreconditionerInfo info)
         {
             if (a.BlockRows != a.BlockCols || a.BR != a.BC)
                 throw new ArgumentException("doubleIC0: A must be square (BlockRows==BlockCols, BR==BC)");
@@ -128,15 +129,22 @@ namespace LinearAlgebra.Sparse
             // ---- factorize, escalating the diagonal shift on breakdown ----
             double shift = 0;
             bool ok = false;
+            int attempts = 0;
             for (int attempt = 0; attempt < 6; attempt++)
             {
+                attempts = attempt + 1;
                 CopyLowerFromA(in A, in Lm, shift);
                 if (FactorizeInPlace(in Lm, diagMax)) { ok = true; break; }
                 shift = shift == (double)0 ? (double)1e-3 * diagMax : shift * (double)10;
             }
             L = Lm;
             Shift = shift;
-            info = new DirectSolveInfo { status = ok ? DirectSolveStatus.Success : DirectSolveStatus.NotPositiveDefinite };
+            info = new PreconditionerInfo
+            {
+                status = ok ? DirectSolveStatus.Success : DirectSolveStatus.NotPositiveDefinite,
+                shift = (double)shift,
+                attempts = attempts,
+            };
         }
 
         // Refills L's values from A's lower blocks, adding `shift` to the diagonal entries.

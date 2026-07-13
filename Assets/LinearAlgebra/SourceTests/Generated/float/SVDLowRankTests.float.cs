@@ -42,7 +42,7 @@ public class floatSVDLowRankTests
             GklFlatCliffTrunc_70x25,         // Σ=[100,80,60,1e-3,…], k=3, p=9<25
             GklOneSmallTrunc_50x20,          // Σ=[1,…,1,1e-4] (κ=1e4), k=3 inside flat top, full Krylov
             GklClusterProjector_50x24,       // cluster Σ=[10,10,10,…], k=3 → rank-3 PROJECTOR matches oracle
-            // --- partial reorthogonalization (de74c48): partial≡full + no ghost singular values ---
+            // --- partial reorthogonalization: partial≡full + no ghost singular values ---
             PartialVsFull_Geometric_80x30,   // partialReorth true vs false on geometric Σ, both Eckart-Young
             PartialVsFull_FlatCliff_70x25,   // partialReorth true vs false on flat-then-cliff Σ
             NoGhost_Geometric_80x30,         // every returned σ (partial) matches SOME true σ (k=3,4,5)
@@ -584,7 +584,7 @@ public class floatSVDLowRankTests
         // Test 5: rank-3 matrix, k=5. The tail σ (indices 3,4) should be near-zero;
         // the algorithm handles rank-deficiency gracefully (correct top-r, tiny tail).
         // Whether converged is true/false depends on floating-point; we check OUTPUT quality.
-        // Also exercises FIX 2 (alpha-breakdown betaLast=0) when it triggers.
+        // Also exercises the alpha-breakdown (betaLast=0) handling when it triggers.
         void GklConvergedFalse_RankDeficient()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -620,7 +620,7 @@ public class floatSVDLowRankTests
 
         // Test 6: oversample=0 → p=k=3 (NO extra Lanczos steps). For any non-trivial
         // large matrix, betaLast·|U[p-1,t]| / σ₀ ≫ 8·√ε → converged=false.
-        // Directly exercises FIX 1's residual check (the path that was computing V instead of U).
+        // Directly exercises the converged-residual check (the path that reads U, not V).
         void GklConvergedFalse_TooFewSteps()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -808,7 +808,7 @@ public class floatSVDLowRankTests
         }
 
         // ====================================================================================
-        // PARTIAL REORTHOGONALIZATION (de74c48). The bool partialReorth on the core overload
+        // PARTIAL REORTHOGONALIZATION. The bool partialReorth on the core overload
         // selects the ω-recurrence/ELR path (true, default) vs the original full-DGKS path
         // (false). Both must return the EXACT top-k triplets with no spurious ("ghost")
         // singular values and orthonormal factors. All matrices below use genuine p < n

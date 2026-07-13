@@ -300,8 +300,8 @@ namespace LinearAlgebra
         /// constant, few-microsecond latency -- the common low-observation-count case); FN's fixed
         /// ~10-iteration n×n normal solve wins once m grows large enough that BR's per-pivot sweep over
         /// m rows dominates. The crossover is a measured, re-tunable, PER-DTYPE value (see the comment
-        /// on the dispatch expression below for the benchmark it was set from), not
-        /// a fixed property of either algorithm. Call <see cref="ladBR"/> / <see cref="ladFN"/> directly
+        /// on the dispatch expression below), not a fixed property of either algorithm. Call
+        /// <see cref="ladBR"/> / <see cref="ladFN"/> directly
         /// to bypass this routing and force one engine regardless of size. Use the <see cref="LPMethod"/>
         /// overload to route through the general LP backends instead (the classic split-variable
         /// reformulation; exact but far slower than either hybrid route -- retained mainly as

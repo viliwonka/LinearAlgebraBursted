@@ -8,9 +8,8 @@ using LinearAlgebra;
 using NUnit.Framework;
 using Unity.Collections;
 
-// Regression test: vector Copy() must be PERSISTENT (survives ClearTemp) and TempCopy() must be
-// TEMP (cleared by ClearTemp). Previously both routed to the temp pool, so Copy() returned a
-// vector that ClearTemp would free out from under the caller (use-after-dispose).
+// Regression guard: vector Copy() must be PERSISTENT (survives ClearTemp) and TempCopy() must be
+// TEMP (cleared by ClearTemp).
 // Managed [Test] (arena on a normal C# thread) so we can read the arena's allocation counters.
 public class doubleVectorCopyTests
 {

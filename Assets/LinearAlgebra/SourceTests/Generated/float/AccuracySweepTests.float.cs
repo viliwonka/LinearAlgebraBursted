@@ -33,7 +33,7 @@ using UnityEngine;
 //   That is exactly why an ill-conditioned input (Hilbert, κ≫1/ε; Lehmer, κ~n²) must STILL show a
 //   tiny reconstruction residual — a "large" residual there would be a real accuracy regression,
 //   not a conditioning artifact. So we assert c·n·ε bounds and additionally LOG a cheap κ proxy
-//   (max/min factor-diagonal ratio) per case so a reviewer can see the input really was ill-cond.
+//   (max/min factor-diagonal ratio) per case to confirm the input really is ill-conditioned.
 //
 //   The forward solve error IS κ-amplified, so for the solve round-trips we log ‖x−x_true‖/‖x_true‖
 //   for the record but only HARD-assert the κ-independent quantities (residual + normwise backward
@@ -167,7 +167,7 @@ public class floatAccuracySweepTests
             // blocked and unblocked forms lose orthogonality to ~2e-6 (see the logged r1≈r2 for
             // QR_Hilbert_256). That is a property of the INPUT (its trailing columns are pure rounding
             // noise), not a defect of blocking — and this reference comparison is what proves it, instead
-            // of a fixed tiny bound that would false-fail exactly as the spec warned.
+            // of a fixed tiny bound that would false-fail on this exact input.
             AssertLE(recon, math.max(ReconBound(n), 16.0 * reconRef));
             AssertLE(orth,  math.max(ReconBound(n), 16.0 * orthRef));
 

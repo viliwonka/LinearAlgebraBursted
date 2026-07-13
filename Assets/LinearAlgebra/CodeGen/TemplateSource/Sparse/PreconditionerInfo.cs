@@ -1,0 +1,51 @@
+//singularFile//
+using Unity.Collections;
+
+namespace LinearAlgebra.Sparse
+{
+    /// <summary>
+    /// Result of building a sparse preconditioner (BlockJacobi / ILU0 / IC0, any precision),
+    /// returned via the builders' <c>out</c> parameter. Implicitly converts to <c>bool</c>
+    /// (== <see cref="Solved"/>) like every other *Info struct in this library.
+    ///
+    /// Reuses <see cref="DirectSolveStatus"/> (a preconditioner build IS a block/incomplete
+    /// factorization): Success; Singular (a BlockJacobi diagonal block could not be inverted, or
+    /// ILU0 broke down at every diagonal shift); NotPositiveDefinite (IC0 broke down at every
+    /// diagonal shift). On any non-Success status the preconditioner is unusable — do not Apply.
+    /// </summary>
+    public struct PreconditionerInfo
+    {
+        /// <summary>Why the build stopped -- see <see cref="DirectSolveStatus"/>.</summary>
+        public DirectSolveStatus status;
+
+        /// <summary>Diagonal shift that made the factorization succeed; 0 for a clean first pass.
+        /// Always 0 for BlockJacobi (it has no shift retry). Widened to <c>double</c> regardless
+        /// of the build's precision, matching the *Info convention.</summary>
+        public double shift;
+
+        /// <summary>Factorization attempts consumed (1 = clean first pass; ILU0/IC0 escalate the
+        /// diagonal shift for up to 6 attempts; BlockJacobi is always 1).</summary>
+        public int attempts;
+
+        /// <summary>True iff the build completed (<c>status == DirectSolveStatus.Success</c>).</summary>
+        public bool Solved => status == DirectSolveStatus.Success;
+
+        /// <summary>Implicit success test, so <c>if (info)</c> reads the same way every other
+        /// *Info struct in this library does.</summary>
+        public static implicit operator bool(PreconditionerInfo i) => i.status == DirectSolveStatus.Success;
+
+        /// <summary>Burst-safe compact summary, e.g. <c>PreconditionerInfo(Success, shift=0,
+        /// attempts=1)</c>. Never allocates managed memory.</summary>
+        public FixedString128Bytes ToFixedString()
+        {
+            FixedString128Bytes str = "PreconditionerInfo(";
+            str.Append(status.Name());
+            FixedString128Bytes tail = $", shift={shift:G3}, attempts={attempts})";
+            str.Append(tail);
+            return str;
+        }
+
+        /// <summary>Managed wrapper -- do not call from inside a [BurstCompile] job.</summary>
+        public override string ToString() => ToFixedString().ToString();
+    }
+}

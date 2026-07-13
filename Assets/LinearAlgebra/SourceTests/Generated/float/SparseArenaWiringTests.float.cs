@@ -389,8 +389,8 @@ public class floatSparseArenaWiringTests
         finally { arena.Dispose(); }
     }
 
-    // ---- Generational-overlay guard tests (Stage E; ENABLE_UNITY_COLLECTIONS_CHECKS-only) -----------
-    // Stage E added a checks-gated "generational overlay" to the arena-tracked structs' data getters:
+    // ---- Generational-overlay guard tests (ENABLE_UNITY_COLLECTIONS_CHECKS-only) -----------
+    // A checks-gated "generational overlay" on the arena-tracked structs' data getters:
     // reading through a STALE handle -- one whose slot was Disposed or arena.Clear()'d, or (option (c)
     // only) freed and then RECYCLED by an unrelated fresh allocation -- throws InvalidOperationException
     // instead of silently returning a dead/garbage buffer. floatBSR is option (c): its

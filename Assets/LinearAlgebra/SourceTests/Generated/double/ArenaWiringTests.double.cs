@@ -129,7 +129,7 @@ public class doubleArenaWiringTests
         // temp pool recycles its slots rather than leaking a fresh one per cycle.
         //
         // NOTE: the stronger "the temp record tables' ChunkCount does not GROW between cycles" check
-        // wanted by the spec is not expressible here: ArenaCore is reached only through Arena's
+        // is not expressible here: ArenaCore is reached only through Arena's
         // PRIVATE _core field, so even with InternalsVisibleTo a test cannot read
         // _core->doubleTempVecRecords.ChunkCount. ChunkedRecordTableTests.FreeListRecyclingDoesNot-
         // GrowDirectory already pins the underlying "recycle does not grow the directory" invariant

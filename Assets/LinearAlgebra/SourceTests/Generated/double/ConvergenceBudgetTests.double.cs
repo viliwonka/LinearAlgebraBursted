@@ -21,7 +21,7 @@ using Random = Unity.Mathematics.Random;
 // max(75, 6n) default keeps a real safety margin at every tested size.
 //
 // The O(n^3) matrix construction and the solves run inside a [BurstCompile] IJob (n goes up to
-// 1024 here -- managed execution of this battery is ~50x slower); the job reports
+// 1024 here, far too slow under managed execution); the job reports
 // {Solved, sweeps, budget, converged} through an int buffer and the managed side does the
 // asserts so failure messages stay readable.
 public class doubleConvergenceBudgetTests

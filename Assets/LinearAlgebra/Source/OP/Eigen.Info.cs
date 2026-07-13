@@ -61,8 +61,8 @@ namespace LinearAlgebra
         /// Same value as the implicit bool conversion; use whichever reads better.</summary>
         public bool Solved => status == IterativeSolveStatus.Converged;
 
-        /// <summary>Same as <see cref="Solved"/>, so <c>if (solve(...))</c> / <c>bool ok = solve(...)</c>
-        /// keep compiling after the return type changed from bool to this struct.</summary>
+        /// <summary>Implicit bool conversion (== <see cref="Solved"/>) so <c>if (solve(...))</c> /
+        /// <c>bool ok = solve(...)</c> compiles against this struct.</summary>
         public static implicit operator bool(EigenSolveInfo i) => i.status == IterativeSolveStatus.Converged;
 
         /// <summary>Burst-safe compact summary, e.g. <c>EigenSolveInfo(Converged, iters=12,
@@ -129,9 +129,8 @@ namespace LinearAlgebra
         /// whichever reads better.</summary>
         public bool Solved => status == IterativeSolveStatus.Converged;
 
-        /// <summary>Implicit success test, so <c>if (Eigen.symmetricInPlace(...))</c> / <c>bool ok =
-        /// Eigen.symmetricInPlace(...)</c> keep compiling after the return type changed from bool to this
-        /// struct.</summary>
+        /// <summary>Implicit bool conversion (== <see cref="Solved"/>) so <c>if (Eigen.symmetricInPlace(...))</c>
+        /// / <c>bool ok = Eigen.symmetricInPlace(...)</c> compiles against this struct.</summary>
         public static implicit operator bool(EigenInfo i) => i.status == IterativeSolveStatus.Converged;
 
         /// <summary>Burst-safe compact summary, e.g. <c>EigenInfo(Converged, sweeps=3, converged=64)</c>.
@@ -182,8 +181,8 @@ namespace LinearAlgebra
         /// (<c>status == IterativeSolveStatus.Converged</c>).</summary>
         public bool Solved => status == IterativeSolveStatus.Converged;
 
-        /// <summary>Same as <see cref="Solved"/>, so <c>if (lanczos(...))</c> keeps compiling after
-        /// the return type changed from bool to this struct.</summary>
+        /// <summary>Implicit bool conversion (== <see cref="Solved"/>) so <c>if (lanczos(...))</c>
+        /// compiles against this struct.</summary>
         public static implicit operator bool(LanczosInfo i) => i.status == IterativeSolveStatus.Converged;
 
         /// <summary>Burst-safe compact summary, e.g. <c>LanczosInfo(Converged, produced=20)</c>.

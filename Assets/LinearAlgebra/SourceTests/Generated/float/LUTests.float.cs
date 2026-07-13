@@ -46,11 +46,11 @@ public class floatLUTests
             // decompInPlace's OWN blocked (level-3) path vs decomp's blocked path: full equivalence
             // (identical pivots + factors aligned through the pivot). Panel-boundary + one-past sizes.
             LUBlockedDecompInPlaceEquivalence,
-            // Solver API rework (commit 2) coverage: safe decomp/decompNoPivot preserve A, and
+            // Safe decomp/decompNoPivot preserve A, and
             // solveInPlace's exit factor is a valid decompSolve input (bit-identical to fresh decomp).
             LUDecompVariantsPreserveA,
             LUSolveInPlaceExitIsUsableFactor,
-            // Commit 2.5 hardening: solveInPlace driver short-circuit purity (singular input leaves
+            // Hardening: solveInPlace driver short-circuit purity (singular input leaves
             // b_to_x bit-identical) + blocked-path (dim=256) A-preservation.
             LUSolveInPlaceShortCircuitPurity,
             LUDecompPreservesABlocked,
@@ -382,7 +382,7 @@ public class floatLUTests
             arena.Dispose();
         }
 
-        // Stage-3 direct-solve-status coverage: a singular matrix must report
+        // Direct-solve-status coverage: a singular matrix must report
         // DirectSolveStatus.Singular (not just a falsy implicit-bool) from all three LU
         // decomposition entry points, and DirectSolveInfo.Solved must be false.
         public void LUDecompSingularStatus()
@@ -1020,7 +1020,7 @@ public class floatLUTests
         }
 
         // ================================================================================
-        // Solver API rework (commit 2): safe decomp/decompNoPivot preserve A; solveInPlace's exit
+        // Safe decomp/decompNoPivot preserve A; solveInPlace's exit
         // factor is a usable decompSolve input.
         // ================================================================================
 

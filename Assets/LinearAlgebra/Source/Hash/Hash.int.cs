@@ -22,13 +22,9 @@ namespace LinearAlgebra
             unsafe { return hash((byte*)v.Data.Ptr, v.Data.Length * sizeof(int), seed); }
         }
 
-        // See the identical note in Hash.fProxy.cs: `uintN` cannot be hand-written directly here
-        // (it does not exist as a real type in TemplateSource's own standalone compile - it is a
-        // codegen OUTPUT of this very file's own int/short/long/uint rotation), so the dest type is
-        // always spelled via the real `intN` placeholder token but immediately CHOSEN to the fixed
-        // literal "uintN" for every one of this file's 4 generated slots (int/short/long/uint) - this
-        // keeps int-sourced/short-sourced/long-sourced rowHashes/colHashes correctly returning a uint
-        // buffer instead of accidentally tracking A's own element type.
+        // Row/col hash dest here is always uint (all 4 generated slots: int/short/long/uint), not
+        // A's own element type; see Hash/DEVLOG.md and the matching note in Hash.fProxy.cs for why
+        // it's spelled via a choose marker instead of a real type.
 
         /// <summary>
         /// Writes one xxHash32 value per row of <paramref name="A"/> into <paramref name="dest"/> -

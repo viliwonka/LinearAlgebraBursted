@@ -362,10 +362,9 @@ public class fProxySparseBSRTests
         // The builder is created with the DEFAULT capacityHint (8) -- deliberately NOT sized to
         // the pattern -- so assembling all N*N cells forces the three internal UnsafeLists to
         // reallocate repeatedly (8 -> 16 -> 32 -> ... , ~doubling each time). For N=15 that is
-        // 225 triplets, i.e. five reallocations past the initial capacity. This is exactly the
-        // growth path that used to leave the arena's tracked value-copy of the builder pointing
-        // at a freed pre-growth buffer (double-free / use-after-free on dispose). Values come
-        // from `refDense`; the caller keeps `refDense` as the independent dense reference.
+        // 225 triplets, i.e. five reallocations past the initial capacity -- this is the growth
+        // path the regression tests pin. Values come from `refDense`; the caller keeps `refDense`
+        // as the independent dense reference.
         static fProxyBSR BuildDenseGrown(ref Arena arena, in fProxyMxN refDense, out int tripletCount)
         {
             int N = refDense.M_Rows;
@@ -541,8 +540,8 @@ public class fProxySparseBSRTests
     public void OneByOneBlocksTest()
         => new SparseBSRTestJob { Type = SparseBSRTestJob.TestType.OneByOneBlocks }.Run();
 
-    // Regression: builder grown far past capacityHint (default 8), then arena.Dispose() --
-    // used to double-free / use-after-free the arena's stale tracked copy (native crash).
+    // Regression guard: builder grown far past capacityHint (default 8), then arena.Dispose() --
+    // this is the growth path the regression tests pin.
     [Test]
     public void GrowthThenDisposeTest()
         => new SparseBSRTestJob { Type = SparseBSRTestJob.TestType.GrowthThenDispose }.Run();

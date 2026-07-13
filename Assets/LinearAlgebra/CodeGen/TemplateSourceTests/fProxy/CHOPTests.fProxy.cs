@@ -33,10 +33,10 @@ public class fProxyCHOPTests
             Rank1Outer,
             SingleElement,
             OutOfRangeLeastSquares,
-            // Solver API rework (commit 2): CHOP.solveInPlace's exit (A_to_L) is a valid decompSolve
+            // CHOP.solveInPlace's exit (A_to_L) is a valid decompSolve
             // input, bit-identical to a fresh decomp + decompSolve on the same original A.
             SolveInPlaceExitIsUsableFactor,
-            // Commit 2.5 (2a): driver short-circuit purity -- indefinite input leaves b_to_x untouched.
+            // Driver short-circuit purity: indefinite input leaves b_to_x untouched.
             SolveInPlaceShortCircuitPurity,
             // ---- blocked (level-3) PSTRF path, exercised at the REAL size gate (Consts.*CholPivotBlockMinN
             // = 512; CHOLP_BLOCK = 32). Sizes 544 (= 17*32, panel-boundary) and 545 (ragged last panel)
@@ -273,7 +273,7 @@ public class fProxyCHOPTests
             arena.Dispose();
         }
 
-        // Stage-3 direct-solve-status coverage: an indefinite matrix must report
+        // Direct-solve-status coverage: an indefinite matrix must report
         // DirectSolveStatus.Indefinite (not just a falsy implicit-bool) from
         // CHOP.decomp, and RankInfo.Solved must be false.
         void IndefiniteStatus()
@@ -434,7 +434,7 @@ public class fProxyCHOPTests
             arena.Dispose();
         }
 
-        // Solver API rework (commit 2): CHOP.solveInPlace's exit (A_to_L, P) must be a valid
+        // CHOP.solveInPlace's exit (A_to_L, P) must be a valid
         // decompSolve input -- solving a SECOND right-hand side through it (with the SAME detected
         // rank) must be bit-identical to a completely independent decomp + decompSolve on the same
         // original matrix. Covers both full-rank and rank-deficient A.
@@ -485,7 +485,7 @@ public class fProxyCHOPTests
             arena.Dispose();
         }
 
-        // Commit 2.5 (2a): driver short-circuit purity. CHOP.solveInPlace on an INDEFINITE matrix
+        // Driver short-circuit purity: CHOP.solveInPlace on an INDEFINITE matrix
         // must (a) return the Indefinite failure status and (b) leave b_to_x BIT-IDENTICAL to its
         // pre-call snapshot. Guards the `if (!decompInfo.Solved) return decompInfo;` early return:
         // without it, decompSolve would run on a garbage/partial factor and corrupt b.

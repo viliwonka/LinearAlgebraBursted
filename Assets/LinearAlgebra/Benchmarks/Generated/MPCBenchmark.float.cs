@@ -42,7 +42,6 @@ namespace LinearAlgebra.Benchmarks
         public NativeArray<int> itersOut;
         public NativeArray<int> changesOut;
         public NativeArray<int> statusOut;
-        public NativeArray<double> objOut;
 
         public void Execute()
         {
@@ -50,7 +49,6 @@ namespace LinearAlgebra.Benchmarks
             itersOut[0] = info.iterations;
             changesOut[0] = info.activeSetChanges;
             statusOut[0] = (int)info.status;
-            objOut[0] = info.objective;
 
             Blas.dot(in A, in x, ref xNext);
             Blas.dot(in B, in u0, ref Bu);
@@ -70,7 +68,6 @@ namespace LinearAlgebra.Benchmarks
         public NativeArray<int> itersOut;
         public NativeArray<int> changesOut;
         public NativeArray<int> statusOut;
-        public NativeArray<double> objOut;
 
         public void Execute()
         {
@@ -88,7 +85,6 @@ namespace LinearAlgebra.Benchmarks
                 itersOut[0] = info.iterations;
                 changesOut[0] = info.activeSetChanges;
                 statusOut[0] = (int)info.status;
-                objOut[0] = info.objective;
             }
         }
     }
@@ -180,11 +176,10 @@ namespace LinearAlgebra.Benchmarks
             var itersOut = new NativeArray<int>(1, Allocator.Persistent);
             var changesOut = new NativeArray<int>(1, Allocator.Persistent);
             var statusOut = new NativeArray<int>(1, Allocator.Persistent);
-            var objOut = new NativeArray<double>(1, Allocator.Persistent);
             var job = new MpcWarmFrameJobFloat
             {
                 s = s, A = A, B = B, x = x, u0 = u0, reference = reference, xNext = xNext, Bu = Bu,
-                itersOut = itersOut, changesOut = changesOut, statusOut = statusOut, objOut = objOut,
+                itersOut = itersOut, changesOut = changesOut, statusOut = statusOut,
             };
 
             // Untimed: burn off the cold-start + active-set-churn transient before any timed call.
@@ -194,7 +189,7 @@ namespace LinearAlgebra.Benchmarks
             string row = MPCBenchmarkFmt.Row("float", softWall ? "warm+wall" : "warm-box", N, n, m, 1, stat,
                                              itersOut[0], changesOut[0], statusOut[0]);
 
-            itersOut.Dispose(); changesOut.Dispose(); statusOut.Dispose(); objOut.Dispose();
+            itersOut.Dispose(); changesOut.Dispose(); statusOut.Dispose();
             s.Dispose(); arena.Dispose();
             return row;
         }
@@ -216,17 +211,16 @@ namespace LinearAlgebra.Benchmarks
             var itersOut = new NativeArray<int>(1, Allocator.Persistent);
             var changesOut = new NativeArray<int>(1, Allocator.Persistent);
             var statusOut = new NativeArray<int>(1, Allocator.Persistent);
-            var objOut = new NativeArray<double>(1, Allocator.Persistent);
             var job = new MpcColdJobFloat
             {
                 s = s, x0 = x0, reference = reference, u0 = u0, reps = reps,
-                itersOut = itersOut, changesOut = changesOut, statusOut = statusOut, objOut = objOut,
+                itersOut = itersOut, changesOut = changesOut, statusOut = statusOut,
             };
             var stat = Bench.Time(() => job.Run());
             string row = MPCBenchmarkFmt.Row("float", softWall ? "cold+wall" : "cold-box", N, n, m, reps, stat,
                                              itersOut[0], changesOut[0], statusOut[0]);
 
-            itersOut.Dispose(); changesOut.Dispose(); statusOut.Dispose(); objOut.Dispose();
+            itersOut.Dispose(); changesOut.Dispose(); statusOut.Dispose();
             s.Dispose(); arena.Dispose();
             return row;
         }

@@ -141,8 +141,8 @@ namespace LinearAlgebra
     public static partial class Control
     {
         // SDA (cold infinite-horizon) doubling-step cap -- quadratic convergence means legitimate
-        // stabilizable/detectable instances reach machine-precision-class residuals in ~10-25 steps
-        // (spec estimate); 50 is a generous margin, not a target.
+        // stabilizable/detectable instances reach machine-precision-class residuals in ~10-25 steps;
+        // 50 is a generous margin, not a target.
         internal const int SDA_MAX_ITER = 50;
 
         // Warm-start (plain Riccati recursion, linear-ish convergence from an already-close S) and

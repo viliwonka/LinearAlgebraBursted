@@ -914,7 +914,7 @@ namespace LinearAlgebra
         /// <param name="A">On entry A (must be symmetric); destroyed; contents undefined after
         /// return (driven to approximately diagonal internally, but that is not a documented
         /// usable factor -- read <paramref name="eigenvalues"/> instead).</param>
-        [System.Obsolete("Prefer Eigen.symmetricInPlace (Householder tridiagonal + QL, ~30x faster) for symmetric eigenpairs, or Eigen.valuesSymmetricInPlace for eigenvalues only. This cyclic-Jacobi solver is retained for reference.", false)]
+        [System.Obsolete("Prefer Eigen.symmetricInPlace (Householder tridiagonal + QL) for symmetric eigenpairs, or Eigen.valuesSymmetricInPlace for eigenvalues only. This cyclic-Jacobi solver is retained for reference.", false)]
         public static EigenInfo decompInPlace(ref floatMxN A, ref floatN eigenvalues,
                                               ref floatMxN V, int maxSweeps, float tol)
         {
@@ -1074,7 +1074,7 @@ namespace LinearAlgebra
         // self-referential obsolete warning (618) on the forwarding calls.
 #pragma warning disable 618
         /// <summary>decompInPlace with default tol (Consts.floatZeroThreshold).</summary>
-        [System.Obsolete("Prefer Eigen.symmetricInPlace (Householder tridiagonal + QL, ~30x faster) for symmetric eigenpairs, or Eigen.valuesSymmetricInPlace for eigenvalues only. This cyclic-Jacobi solver is retained for reference.", false)]
+        [System.Obsolete("Prefer Eigen.symmetricInPlace (Householder tridiagonal + QL) for symmetric eigenpairs, or Eigen.valuesSymmetricInPlace for eigenvalues only. This cyclic-Jacobi solver is retained for reference.", false)]
         public static EigenInfo decompInPlace(ref floatMxN A, ref floatN eigenvalues,
                                               ref floatMxN V, int maxSweeps)
             => decompInPlace(ref A, ref eigenvalues, ref V, maxSweeps, Consts.floatZeroThreshold);
@@ -1085,7 +1085,7 @@ namespace LinearAlgebra
         /// fundamentally different iteration unit from the per-value QR/QL sweeps the LAPACK dbdsqr
         /// scaling targets; classical Jacobi converges in a small constant number of sweeps essentially
         /// independent of n. Also deprecated/reference-only.</summary>
-        [System.Obsolete("Prefer Eigen.symmetricInPlace (Householder tridiagonal + QL, ~30x faster) for symmetric eigenpairs, or Eigen.valuesSymmetricInPlace for eigenvalues only. This cyclic-Jacobi solver is retained for reference.", false)]
+        [System.Obsolete("Prefer Eigen.symmetricInPlace (Householder tridiagonal + QL) for symmetric eigenpairs, or Eigen.valuesSymmetricInPlace for eigenvalues only. This cyclic-Jacobi solver is retained for reference.", false)]
         public static EigenInfo decompInPlace(ref floatMxN A, ref floatN eigenvalues,
                                               ref floatMxN V)
             => decompInPlace(ref A, ref eigenvalues, ref V, 30, Consts.floatZeroThreshold);

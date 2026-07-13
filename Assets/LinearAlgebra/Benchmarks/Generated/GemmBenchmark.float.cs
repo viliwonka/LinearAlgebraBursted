@@ -27,6 +27,16 @@ namespace LinearAlgebra.Benchmarks
         public void Execute() => Blas.dot(in A, in B, ref C);
     }
 
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct GemmTransAJobFloat : IJob
+    {
+        public floatMxN A;
+        public floatMxN B;
+        public floatMxN C;
+
+        public void Execute() => Blas.dot(in A, in B, ref C, transposeA: true);
+    }
+
     public static partial class GemmBenchmark
     {
         static string BenchFloat(int n, double flops)
@@ -45,6 +55,28 @@ namespace LinearAlgebra.Benchmarks
                 }
 
             var job = new GemmJobFloat { A = A, B = B, C = C };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.Row("float", n, stat, flops);
+        }
+
+        static string BenchTransAFloat(int n, double flops)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.floatMat(n, n);
+            var B = arena.floatMat(n, n);
+            var C = arena.floatMat(n, n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                {
+                    A[i, j] = rng.NextFloat(-1f, 1f);
+                    B[i, j] = rng.NextFloat(-1f, 1f);
+                }
+
+            var job = new GemmTransAJobFloat { A = A, B = B, C = C };
             var stat = Bench.Time(() => job.Run());
 
             arena.Dispose();

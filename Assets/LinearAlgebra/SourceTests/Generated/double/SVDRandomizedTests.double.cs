@@ -227,8 +227,8 @@ public class doubleSVDRandomizedTests
 
             // RELATIVE accuracy of every recovered σ_t vs the PRESCRIBED value. With q=2 and oversample
             // 10 a correct rSVD recovers a ρ=0.7 spectrum's top-8 to well under 5%. Record the worst.
-            // Measured worst relative error for this case (q=2, oversample 10) is < 1e-4; the 2% bound
-            // keeps a wide margin for seed/platform variation while still catching a real regression.
+            // The 2% bound keeps a wide margin for seed/platform variation while still catching a
+            // real regression.
             double relTol = (double)0.02f;
             double worst = (double)0;
             int worstIdx = 0;
@@ -282,8 +282,7 @@ public class doubleSVDRandomizedTests
             double optF = (double)math.sqrt(opt2);
             // ratio errF/optF must be ≥ 1 (can't beat Eckart-Young) and ≤ 1.25 for a correct rSVD.
             double ratio = errF / (optF + (double)1E-9f);
-            // Measured ratio ≈ 1.0000001 (essentially the Eckart-Young optimum); 1.05 catches any real
-            // suboptimality while tolerating rounding and seed variation.
+            // 1.05 catches any real suboptimality while tolerating rounding and seed variation.
             if (!(ratio <= (double)1.05f)) Record(errF, optF, ratio);
             Assert.IsTrue(ratio <= (double)1.05f);
 
@@ -323,8 +322,7 @@ public class doubleSVDRandomizedTests
                 err2 += math.abs(Sk2[t] - sigma[t]) / sigma[t];
             }
             // q=2 must be at least as accurate (allow tiny float slack). Monotone HMT behavior.
-            // Measured (slow ρ=0.92): q=0 summed-rel-error ≈ 0.19 (float)/0.29 (double), q=2 ≈ 6e-5/1.6e-4
-            // → dramatic, monotone improvement. Require q=2 to be at least as accurate as q=0.
+            // Require q=2 to be at least as accurate as q=0.
             bool improved = err2 <= err0 + (double)1E-4f;
             if (!improved) Record(err2, err0, err2 - err0);
             Assert.IsTrue(improved);

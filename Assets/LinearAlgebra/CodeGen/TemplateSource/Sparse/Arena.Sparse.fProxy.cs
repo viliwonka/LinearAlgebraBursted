@@ -100,7 +100,7 @@ namespace LinearAlgebra
         /// build outcome (see the fProxyBlockJacobi out-info constructor). On failure the returned
         /// struct is unusable and no arena record is retained.
         /// </summary>
-        public fProxyBlockJacobi fProxyBlockJacobi(in fProxyBSR A, out DirectSolveInfo info)
+        public fProxyBlockJacobi fProxyBlockJacobi(in fProxyBSR A, out PreconditionerInfo info)
         {
             if (_core == null)
                 throw new System.InvalidOperationException("Arena.fProxyBSR/fProxyBSRBuilder/fProxyBlockJacobi: arena is not initialized (default or disposed).");
@@ -240,7 +240,7 @@ namespace LinearAlgebra
 
         /// <summary>Non-throwing twin of <see cref="fProxyIC0(in fProxyBSR)"/>: info carries the
         /// build outcome (Success, or NotPositiveDefinite on factorization breakdown).</summary>
-        public fProxyIC0 fProxyIC0(in fProxyBSR A, out DirectSolveInfo info)
+        public fProxyIC0 fProxyIC0(in fProxyBSR A, out PreconditionerInfo info)
         {
             Arena self = this;
             return new fProxyIC0(in A, ref self, out info);
@@ -260,7 +260,7 @@ namespace LinearAlgebra
 
         /// <summary>Non-throwing twin of <see cref="fProxyILU0(in fProxyBSR)"/>: info carries the
         /// build outcome (Success, or Singular on factorization breakdown).</summary>
-        public fProxyILU0 fProxyILU0(in fProxyBSR A, out DirectSolveInfo info)
+        public fProxyILU0 fProxyILU0(in fProxyBSR A, out PreconditionerInfo info)
         {
             Arena self = this;
             return new fProxyILU0(in A, ref self, out info);

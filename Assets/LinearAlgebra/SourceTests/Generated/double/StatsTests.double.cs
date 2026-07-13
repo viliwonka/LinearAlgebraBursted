@@ -107,9 +107,8 @@ public class doubleStatsTests
             }
         }
 
-        // Guard: covarianceInto must degrade gracefully when M_Rows < 2.
-        // Previously 1/(M-1) = 1/0 = Inf and 0*Inf = NaN filled every cell; the guard now
-        // zero-fills the N×N output and returns. Build a 1-row matrix (M=1, N=3), poison the
+        // Guard: covarianceInto must degrade gracefully when M_Rows < 2 -- zero-fills the N×N
+        // output and returns rather than dividing by zero. Build a 1-row matrix (M=1, N=3), poison the
         // 3×3 destination, run covarianceInto, and assert every cell is EXACTLY 0 and not NaN.
         void CovarianceIntoSingleRowZeroFill()
         {
@@ -272,7 +271,7 @@ public class doubleStatsTests
             arena.Dispose();
         }
 
-        // Case 2: Single-element vector {3}: variance==0 (bug-fix), stdDev==0
+        // Case 2: Single-element vector {3}: variance==0, stdDev==0
         void SingleElementVariance()
         {
             var arena = new Arena(Allocator.Persistent);

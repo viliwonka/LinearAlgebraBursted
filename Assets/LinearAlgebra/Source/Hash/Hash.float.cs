@@ -41,10 +41,8 @@ namespace LinearAlgebra
             unsafe { return hash((byte*)v.Data.Ptr, v.Data.Length * sizeof(float), seed); }
         }
 
-        // The row/col hash dest is always a uint buffer regardless of A's element type. "uintN"/
-        // "uintMxN" are codegen outputs (the iProxy token is always chosen as uint here, the same for
-        // both float and double), not types that exist in TemplateSource's own standalone compile, so
-        // they are emitted via the choose marker rather than hand-written.
+        // The row/col hash dest is always a uint buffer regardless of A's element type; see
+        // Hash/DEVLOG.md for why it's spelled via a choose marker instead of a real type.
 
         /// <summary>
         /// Writes one xxHash32 value per row of <paramref name="A"/> into <paramref name="dest"/> -

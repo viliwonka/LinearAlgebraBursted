@@ -18,7 +18,7 @@ using Unity.Mathematics;
 //   3 — Search: distancesToRow/Column, nearest/farthest, kNearest/kFarthest, within-radius/count,
 //       for each Metric; the similarity direction flip (Cosine/Dot -> nearest=MAX) is the key check.
 //   4 — Value/mask: findValue, nonzero/countNonzero, Analysis.whichTrue/countTrue.
-//   Symmetry — a column op on A equals the row op on transpose(A) (spec P1).
+//   Symmetry — a column op on A equals the row op on transpose(A).
 //   Arena wrappers — each allocating wrapper matches the zero-alloc primitive.
 //
 // Burst-compatible computational tests live in TestJob; managed-throw guards and the
@@ -708,7 +708,7 @@ public class fProxyQueryTests
         }
 
         // ---------------------------------------------------------------------
-        // SYMMETRY (spec P1): a column op on A == the row op on transpose(A).
+        // SYMMETRY: a column op on A == the row op on transpose(A).
         // ---------------------------------------------------------------------
 
         void Symmetry()
@@ -797,7 +797,7 @@ public class fProxyQueryTests
             arena.Dispose();
         }
 
-        // Arena k-wrappers must CLAMP k to the matrix dimension (review's CRITICAL regression):
+        // Arena k-wrappers must CLAMP k to the matrix dimension:
         // calling with k > M_Rows / N_Cols returns count == min(k, dim) with NO exception, and
         // the result matches a brute-force top-/bottom-k.
         void ArenaKWrapperClamp()
@@ -1128,7 +1128,7 @@ public class fProxyQueryTests
     // Indices type: out-of-range indexer access throws ArgumentOutOfRangeException.
     // -------------------------------------------------------------------------
 
-    // decodeIndex guards against a non-positive nCols (Fix 6): nCols <= 0 -> ArgumentException.
+    // decodeIndex guards against a non-positive nCols: nCols <= 0 -> ArgumentException.
     [Test]
     public void DecodeIndexGuardThrows()
     {

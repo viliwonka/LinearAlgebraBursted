@@ -32,10 +32,10 @@ namespace LinearAlgebra
     /// </summary>
     internal unsafe partial struct ArenaCore
     {
-        // ---- concurrency guards: an Arena is single-threaded by contract, but nothing previously
-        // enforced that -- these two mechanisms make a violation detectable instead of silently
-        // corrupting the record tables. Both live HERE, inside the heap-Malloc'd ArenaCore, rather
-        // than as fields on the pointer-sized Arena handle struct -- see Arena/DEVLOG.md for why.
+        // ---- concurrency guards: an Arena is single-threaded by contract; these two mechanisms
+        // make a violation detectable instead of silently corrupting the record tables. Both live
+        // HERE, inside the heap-Malloc'd ArenaCore, rather than as fields on the pointer-sized
+        // Arena handle struct -- see Arena/DEVLOG.md for why.
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
         /// <summary>Dispose-lifetime safety handle, checked at the top of every guarded mutating
         /// entry point below. Created once in <see cref="Init"/>, released once in

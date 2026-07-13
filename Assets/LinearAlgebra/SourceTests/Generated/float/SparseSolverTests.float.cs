@@ -504,7 +504,7 @@ public class floatSparseSolverTests
         //
         // The preconditioned inner product <r,z> must stay positive for PCG to be well-defined.
         // floatNegatePreconditioner deliberately returns z = -r, so rzold = <r,-r> = -||r||^2 < 0
-        // -- the pcg `if (!(rzold > 0)) return false;` guard (added this pass) must catch it and
+        // -- the pcg `if (!(rzold > 0)) return false;` guard must catch it and
         // return false, rather than looping with a wrong-signed alpha/beta (silent divergence /
         // NaN). A itself is a genuine SPD system so the failure is attributable to the
         // preconditioner, not the operator.
@@ -821,8 +821,8 @@ public class floatSparseSolverTests
         // a regression that dropped the initial-residual subtraction (r = b - A*x0 silently
         // becoming r = b) would pass all of them. These four seed x with the ALREADY-converged
         // solution and re-solve with maxIter=1: each solver computes r = b - A*x from the
-        // CALLER-supplied x and checks it against tolerance in its PRE-LOOP check (minres ~L595,
-        // biCGStab ~L797, cgls ~L999, lsqr ~L1175 of Krylov.float.cs), so an already-converged x
+        // CALLER-supplied x and checks it against tolerance in its own pre-loop residual check
+        // (Krylov.float.cs), so an already-converged x
         // must report true WITHOUT spending the single iteration -- and x must come back unchanged.
         // Mirrors the CG/PCG WarmStart test above.
         // =================================================================================
@@ -1533,7 +1533,7 @@ public class floatSparseSolverTests
             AssertClose(rnorm, math.sqrt(acc), tol);
         }
 
-        // STAGE 2: the square solvers (cg/pcg/minres/biCGStab/cgne) now RETURN an SolveInfo
+        // The square solvers (cg/pcg/minres/biCGStab/cgne) RETURN an SolveInfo
         // whose rnorm is filled from each solver's already-tracked residual -- cg/pcg/cgne a live
         // ‖r‖ (√ of the dot they already form for the convergence test), minres its phibar (the
         // MINRES identity), biCGStab its running ‖r‖ -- never a fresh matvec. Pin that free rnorm
@@ -1877,7 +1877,7 @@ public class floatSparseSolverTests
             builder.AddBlock(1, 1, arena.floatMat(BR, BR));   // all-zero diagonal block: singular
             var A = builder.ToBSR(ref arena);
 
-            var M = arena.floatBlockJacobi(in A, out DirectSolveInfo info);
+            var M = arena.floatBlockJacobi(in A, out PreconditionerInfo info);
             Assert.IsFalse(info.Solved);
 
             Assert.Throws<ArgumentException>(() => arena.floatBlockJacobi(in A));
@@ -1897,12 +1897,15 @@ public class floatSparseSolverTests
             builder.AddBlock(1, 1, arena.floatDiagonalMat(BR, (float)9));
             var A = builder.ToBSR(ref arena);
 
-            var mJ = arena.floatBlockJacobi(in A, out DirectSolveInfo infoJ);
+            var mJ = arena.floatBlockJacobi(in A, out PreconditionerInfo infoJ);
             Assert.IsTrue(infoJ.Solved);
-            var mI = arena.floatIC0(in A, out DirectSolveInfo infoI);
+            Assert.IsTrue(infoJ.attempts == 1);
+            var mI = arena.floatIC0(in A, out PreconditionerInfo infoI);
             Assert.IsTrue(infoI.Solved);
-            var mL = arena.floatILU0(in A, out DirectSolveInfo infoL);
+            Assert.IsTrue(infoI.shift == 0.0);   // clean SPD build: no rescue shift
+            var mL = arena.floatILU0(in A, out PreconditionerInfo infoL);
             Assert.IsTrue(infoL.Solved);
+            Assert.IsTrue(infoL.attempts == 1);
 
             // The successfully-built Jacobi is usable: z = M^-1 r on the 4x4 system.
             var r = arena.floatVec(2 * BR, (float)1);

@@ -8,14 +8,12 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 
-// Regression suite for a historical Arena dangling-pointer bug (labeled FM2 in project history, hence
-// the "FM2" tags on individual cases below): Arena used to capture its identity by raw address, so a
-// compiler-inserted defensive copy of an `in Arena` parameter (forced whenever a non-readonly
-// allocator method like doubleVec/doubleMat is called through it) could leave the returned struct
-// pointing at a dead stack frame once the helper returned. Fixed by making Arena a
-// thin handle around a heap-allocated ArenaCore*, so every copy resolves to the same live core. These
-// tests reproduce the exact mechanism (allocate via an `in Arena` helper, use the result after the
-// helper's frame has returned) inside a [BurstCompile] IJob, since that's where the crash manifested.
+// Regression suite: allocating through an `in Arena` parameter forces a compiler-inserted
+// defensive copy (whenever a non-readonly allocator method like doubleVec/doubleMat is called
+// through it); the returned struct's Arena handle must still resolve to a live core after the
+// helper's frame has returned. These tests reproduce that exact mechanism (allocate via an
+// `in Arena` helper, use the result after the helper's frame has returned) inside a
+// [BurstCompile] IJob.
 public class doubleArenaHandleTests
 {
     [BurstCompile(CompileSynchronously = true)]
@@ -33,7 +31,7 @@ public class doubleArenaHandleTests
         // Allocate a vector through an `in Arena` parameter. `arena.doubleVec(...)` is a NON-readonly
         // instance call on the `in` parameter, so the compiler must defensively copy `arena` before
         // the call. Under the old Arena*-capture design the returned vector's arena pointer would
-        // capture the address of that now-dead defensive copy once this method returns (FM2).
+        // capture the address of that now-dead defensive copy once this method returns.
         static doubleN AllocateVecViaInArena(in Arena arena, int n)
             => arena.doubleVec(n, (double)0);
 
@@ -130,17 +128,17 @@ public class doubleArenaHandleTests
         }
     }
 
-    // FM2: `in Arena` parameter -> defensive copy -> returned vector's handle must still be live.
+    // `in Arena` parameter -> defensive copy -> returned vector's handle must still be live.
     [Test]
     public void InArenaParameter_Vector_DefensiveCopyDoesNotDangle()
         => new InArenaDanglingTestJob { Type = InArenaDanglingTestJob.TestType.Vector }.Run();
 
-    // FM2, matrix path (doubleMat / doubleMxN.Copy()).
+    // Matrix path (doubleMat / doubleMxN.Copy()): same in-Arena defensive-copy guard.
     [Test]
     public void InArenaParameter_Matrix_DefensiveCopyDoesNotDangle()
         => new InArenaDanglingTestJob { Type = InArenaDanglingTestJob.TestType.Matrix }.Run();
 
-    // FM2 through two nested `in Arena` hops (two defensive-copy sites) -- maximally robust.
+    // Two nested `in Arena` hops (two defensive-copy sites) -- maximally robust guard.
     [Test]
     public void InArenaParameter_TwoHops_DefensiveCopyDoesNotDangle()
         => new InArenaDanglingTestJob { Type = InArenaDanglingTestJob.TestType.TwoHopVector }.Run();

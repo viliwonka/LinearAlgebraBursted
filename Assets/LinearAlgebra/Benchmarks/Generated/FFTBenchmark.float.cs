@@ -75,6 +75,8 @@ namespace LinearAlgebra.Benchmarks
 
         // Builds the workspace from scratch (the cos/sin table build, Burst-compiled) then runs one
         // transform — the true one-shot cost of the table path, vs the reuse rows that build once.
+        // The in-job Persistent arena is deliberate: its alloc/free is part of the one-shot cost
+        // this row measures.
         public void Execute()
         {
             var a = new Arena(Allocator.Persistent);

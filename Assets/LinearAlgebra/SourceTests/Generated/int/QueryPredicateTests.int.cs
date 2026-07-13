@@ -51,7 +51,7 @@ public class intQueryPredicateTests
         }
 
         // ---------------------------------------------------------------------
-        // GROUP A — FLAT / SCALAR PREDICATE OPS (T1, integer)
+        // GROUP A — FLAT / SCALAR PREDICATE OPS (integer)
         // ---------------------------------------------------------------------
 
         void GroupAScalar()

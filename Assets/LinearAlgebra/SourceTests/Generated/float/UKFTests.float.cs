@@ -52,12 +52,8 @@ public class floatUKFTests
         }
 
         // ---- per-dtype tolerances (loose for float, tight for double) ----
-        // Calibrated from a float32/float64 numpy prototype mirroring this exact algorithm (permutation-
-        // aware pivoted-Cholesky sigma-point scatter, fresh regeneration each call, CHOP-transposed-
-        // system gain) on the SAME CV system: measured max|x diff|~1.9e-6 / max|P diff|~2.0e-6 (float),
-        // ~3.6e-15 / ~2.4e-15 (double) against the exact linear-KF oracle over 60 steps. Both tolerances
-        // below carry a large safety margin over those measured values (unlike the steadyStateGain
-        // tolerance episode, which was calibrated too tight against a since-fixed bug).
+        // Both tolerances below carry a large margin over the prototype-measured error, in both
+        // precisions.
         static float XAgreeTol() => 1e-2f;
         static float PAgreeTol() => 1e-2f;
         static float EkfThetaTol() => 0.1f;   // same bar as KalmanTests' EKF test

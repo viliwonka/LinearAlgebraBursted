@@ -8,8 +8,8 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// FULL test battery for Control.lqr / Control.lqr(warm) / Control.lqrSchedule. The coder's smoke
-// tests live in ControlTests.fProxy.cs; this file is the
+// FULL test battery for Control.lqr / Control.lqr(warm) / Control.lqrSchedule. Basic smoke
+// coverage lives in ControlTests.fProxy.cs; this file is the
 // exhaustive battery: published literature gains, SDA-vs-recursion cross-check, S-symmetric-PSD +
 // closed-loop-stability properties, warm-path perturbation reconvergence, general-m schedule vs a
 // hand-computed Riccati step, unstabilizable divergence, semidefinite-R rank flagging, determinism.
@@ -27,7 +27,7 @@ public class fProxyControlLQRTests
     {
         public enum TestType
         {
-            // 1. literature vectors (two, per spec): a published dlqr instance + a hand-derivable scalar case
+            // 1. literature vectors (two): a published dlqr instance + a hand-derivable scalar case
             LiteratureDoubleIntegrator,
             LiteratureScalarAnalytic,
             // 2. SDA cold solve == the plain Riccati recursion run to convergence, + DARE residual on S
@@ -107,7 +107,7 @@ public class fProxyControlLQRTests
 
         // Scalar system a=2, b=1, q=1, r=1. Scalar DARE s = q + a²s·r/(r+b²s) -> s²-4s-1=0 -> s = 2+√5,
         // and K = b·s·a/(r+b²s) = 2s/(1+s) = (1+√5)/2 (the golden ratio). Both exact, hand-derived (the
-        // "quadratic formula solvable in the test" second literature vector the spec allows).
+        // "quadratic formula solvable in the test" second literature vector).
         void LiteratureScalarAnalytic()
         {
             double sqrt5 = math.sqrt(5.0);
@@ -128,11 +128,11 @@ public class fProxyControlLQRTests
         }
 
         // ============ 2. SDA (cold lqr) == plain Riccati recursion to convergence + DARE residual ============
-        // Random stabilizable instances over the spec's grid n∈{2,4,8,12}, m∈{1,2,4}. For each: cold lqr
+        // Random stabilizable instances over the grid n∈{2,4,8,12}, m∈{1,2,4}. For each: cold lqr
         // gives K_sda and (via the warm state) S_sda; a public-kernel recursion from S0=0 gives the oracle
         // S/K; assert both match (rel Frobenius). Also assert S_sda solves the DARE (residual ~ 0). Any
-        // pathological random draw whose cold solve doesn't converge is SKIPPED, not asserted on (per the
-        // task's stabilizability guard) -- a tested-count floor keeps the case non-vacuous.
+        // pathological random draw whose cold solve doesn't converge is SKIPPED, not asserted on --
+        // a tested-count floor keeps the case non-vacuous.
         void SdaMatchesRecursionOracle()
         {
             var rng = new Unity.Mathematics.Random(0xA53Cu);
@@ -229,8 +229,8 @@ public class fProxyControlLQRTests
         // ============ 4. warm path: 1e-3 A-perturbation reconverges fast to the cold-of-perturbed K ============
         // Base = double integrator (deterministic). Cold solve populates the state; perturb A[0,1] by 1e-3
         // relative; warm re-solve must Converge in a small iteration count and land on a fresh cold solve
-        // of the perturbed system (measured warm ~2 float / ~8 double, cold-recursion ~7/~13 -- generous
-        // absolute bound, since warm-vs-cold step counts are code-path-sensitive, not exactly pinnable).
+        // of the perturbed system (a generous absolute iteration bound, since warm-vs-cold step counts
+        // are code-path-sensitive, not exactly pinnable).
         void WarmPerturbation()
         {
             var A = Mat2(1, 1, 0, 1);

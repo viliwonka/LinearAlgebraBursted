@@ -8,13 +8,14 @@ namespace LinearAlgebra.Sparse
 {
     /// <summary>
     /// COO-of-blocks assembly builder for fProxyBSR. Accumulates (blockRow, blockCol, BR x BC
-    /// block) triplets in growable allocator-backed lists; call ToBSR(arena) ONCE to sort and
+    /// block) triplets in growable allocator-backed lists; call ToBSR(arena) to sort and
     /// compress into block-CSR. Duplicate triplets at the same (blockRow, blockCol) are summed
     /// on compression -- this is the "sparse matrix is a graph" editable phase (add/remove a
     /// node = add/remove triplets).
     ///
-    /// Editing the pattern after compression is out of scope for Phase 1 -- go back through the
-    /// builder (re-stamping VALUES on a fixed pattern without a rebuild is a later phase).
+    /// Editing the topology after compression means going back through the builder and calling
+    /// ToBSR again. Re-stamping VALUES on a fixed pattern without a topology rebuild is a
+    /// separate, supported path: BuildAssemblyCache + Refill (fProxyBSRAssembly.fProxy.cs).
     ///
     /// The growable triplet state lives behind a single heap-allocated State* shared by every
     /// value-copy of this struct (Malloc'd once in the constructor, Free'd once in Dispose), so
@@ -172,11 +173,7 @@ namespace LinearAlgebra.Sparse
         /// blockCol), and builds the compressed fProxyBSR (RowPtr/ColInd/Values). Counting-sort
         /// by block-row + insertion-sort by block-col within each row bucket: deterministic,
         /// O(nnz + sum of row-degree^2) -- fine for the one-time assembly-to-compressed
-        /// transition this represents (see the type doc re: Phase 1 pattern-edit scope).
-        ///
-        /// Kept as `ref Arena` for API stability, but this is no longer load-bearing -- see the
-        /// matching comment on fProxyBSR.ToDense: Arena is now a thin copyable handle to a
-        /// heap-allocated ArenaCore, so `in Arena` would resolve correctly here too.
+        /// transition this represents.
         /// </summary>
         public unsafe fProxyBSR ToBSR(ref Arena arena) => ToBSRCore(ref arena, symmetric: false);
 

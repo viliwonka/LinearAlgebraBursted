@@ -158,8 +158,8 @@ namespace LinearAlgebra
         /// (Bidiag.decomp) followed by the implicit-shift bidiagonal QR (Golub-Reinsch).
         /// A (m x n, m >= n) is NOT modified. On output U (m x n) has orthonormal columns (left
         /// singular vectors), S (length n) the singular values (non-negative, DESCENDING), and V
-        /// (n x n, NOT transposed) the right singular vectors. Returns true on convergence; false if
-        /// the bidiagonal QR hit maxIter (outputs then undefined). Allocates Temp workspace: an
+        /// (n x n, NOT transposed) the right singular vectors. Returns an <see cref="SVDInfo"/>
+        /// (implicit-bool == Converged); on MaxIterations the outputs are undefined. Allocates Temp workspace: an
         /// n x n matrix, an n x m and an n x n transpose buffer, and two length-n vectors (plus
         /// whatever Bidiag.decomp uses). For m &lt; n, transpose A and swap U/V.
         /// </summary>
@@ -200,7 +200,7 @@ namespace LinearAlgebra
 
             // Transpose U (m x n) -> Ut (n x m) and V (n x n) -> Vt (n x n) so the bidiagonal QR's
             // plane rotations hit CONTIGUOUS rows (unit-stride, SIMD via UnsafeOP.jacobiRotate)
-            // instead of strided columns — the same trick that vectorized Eigen.symmetricInPlace.
+            // instead of strided columns.
             bool ok;
             int sweeps, convergedCount;
             {
@@ -375,8 +375,8 @@ namespace LinearAlgebra
         // TRANSPOSES of U/V, so each rotation touches contiguous rows (SIMD via jacobiRotate). NR's
         // Givens convention a'=c*a+s*b, b'=c*b-s*a equals jacobiRotate(a,b,c,-s) (Golub-Reinsch /
         // Numerical Recipes svdcmp). Deflation threshold is `tol` relative to the GLOBAL scale
-        // anorm (not local |d|+|e|) — needed for FLOAT to converge on clustered/zero singular values
-        // (same lesson as the symmetric eigen QL). Returns false if a value fails to converge within
+        // anorm (not local |d|+|e|) — needed for FLOAT to converge on clustered/zero singular values.
+        // Returns false if a value fails to converge within
         // maxIter. `sweeps` (out) is the MAXIMUM number of QR sweeps consumed by any single value
         // (0 if every value deflated immediately; == maxIter on a false return, the exhausted
         // budget); `convergedCount` (out) is how many values had already converged when the loop

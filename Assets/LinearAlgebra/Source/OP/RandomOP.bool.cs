@@ -26,8 +26,8 @@ namespace LinearAlgebra
         /// <c>dest.N</c> steps. Throws if <paramref name="p"/> is outside [0, 1].
         /// <para><b>Float-resolution note:</b> <c>rng.NextFloat()</c> has ~1.19e-7 resolution
         /// (float ULP at 1). For p within ~1e-7 of 0 or 1, individual draws may lose fidelity:
-        /// p = 1e-8f behaves as all-false; p = 1 - 1e-8f behaves as all-true. Use double if
-        /// exact fidelity near the boundaries is required.</para>
+        /// p = 1e-8f behaves as all-false; p = 1 - 1e-8f behaves as all-true. Draw doubles and
+        /// threshold manually if exact fidelity near the boundaries is required.</para>
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void nextBernoulliInPlace(ref Random rng, ref boolN dest, float p)

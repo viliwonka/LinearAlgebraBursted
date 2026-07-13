@@ -29,42 +29,42 @@ namespace LinearAlgebra.Benchmarks
     // SpCgJobDouble/SpPcgJobDouble's `tol` field serves both the fixed-K/tol=0 throughput rows
     // (default 0 runs the full K budget) and the iterations-to-convergence rows, which set a
     // real tol/maxIter.
-    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SpCgJobDouble : IJob { public doubleBSR A; public doubleN b, x, r, p, Ap; public int K; public double tol; public NativeArray<double> outInfo;
         public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.cg(in A, in b, ref x, ref r, ref p, ref Ap, K, tol); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
 
-    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SpPcgJobDouble : IJob { public doubleBSR A; public doubleBlockJacobi M; public doubleN b, x, r, p, Ap, z; public int K; public double tol; public NativeArray<double> outInfo;
         public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, tol); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
 
     // SSOR twin of SpPcgJobDouble (same reuse for fixed-K throughput and convergence-comparison
     // rows).
-    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SpPcgSSORJobDouble : IJob { public doubleBSR A; public doubleSSOR M; public doubleN b, x, r, p, Ap, z; public int K; public double tol; public NativeArray<double> outInfo;
         public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, tol); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
 
-    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SpMinresJobDouble : IJob { public doubleBSR A; public doubleN b, x, y, r1, r2, v, w, w1, w2; public int K; public NativeArray<double> outInfo;
         public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, K, 0f); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
 
-    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SpBicgJobDouble : IJob { public doubleBSR A; public doubleN b, x, r, rHat0, p, v, t; public int K; public NativeArray<double> outInfo;
         public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.biCGStab(in A, in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, K, 0f); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
 
-    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SpCglsJobDouble : IJob { public doubleBSR A; public doubleN b, x, r, s, p, q; public int K; public NativeArray<double> outInfo;
         public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, K, 0f); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
 
-    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SpLsqrJobDouble : IJob { public doubleBSR A; public doubleN b, x, u, v, w, tmpM, tmpN; public int K; public NativeArray<double> outInfo;
         public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, K, 0f); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
 
-    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SpLsmrJobDouble : IJob { public doubleBSR A; public doubleN b, x, u, v, h, hbar, tmpM, tmpN; public int K; public NativeArray<double> outInfo;
         public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.lsmr(in A, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, K, 0f); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
 
     // Eigen job writes [produced, solved, 0] into outInfo (reference-backed, visible after Run).
-    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SpLanczosJobDouble : IJob { public doubleBSR A; public doubleLanczosCache ws; public doubleN vals; public int steps; public NativeArray<double> outInfo;
         public void Execute() { var info = Eigen.lanczos(in A, ref ws, ref vals, steps); outInfo[0] = info.produced; outInfo[1] = info.Solved ? 1 : 0; outInfo[2] = 0; } }
 
@@ -76,18 +76,18 @@ namespace LinearAlgebra.Benchmarks
     // Execute() forces the SAME deterministic reseed (lobpcg's own fixed-seed 0x9E3779B1u fill) on
     // every sample -- a fair, reproducible, cold-start measurement each time, mirroring the x[i]=0
     // reset every Krylov job above already does.
-    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SpLobpcgJobDouble : IJob { public doubleBSR A; public doubleLOBPCGCache ws; public int k; public double tol; public int maxIter; public NativeArray<double> outInfo;
         public void Execute() { for (int i = 0; i < ws.X.M_Rows; i++) for (int c = 0; c < ws.X.N_Cols; c++) ws.X[i, c] = (double)0; var info = Eigen.lobpcg(in A, ref ws, k, tol, maxIter); LobpcgReport.WriteDouble(in info, in ws, k, outInfo); } }
 
-    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SpLobpcgPrecJobDouble : IJob { public doubleBSR A; public doubleBlockJacobi M; public doubleLOBPCGCache ws; public int k; public double tol; public int maxIter; public NativeArray<double> outInfo;
         public void Execute() { for (int i = 0; i < ws.X.M_Rows; i++) for (int c = 0; c < ws.X.N_Cols; c++) ws.X[i, c] = (double)0; var info = Eigen.lobpcg(in A, in M, ref ws, k, tol, maxIter); LobpcgReport.WriteDouble(in info, in ws, k, outInfo); } }
 
     // SSOR preconditioner axis for LOBPCG. Only doubleBlockJacobi has a dedicated
     // `lobpcg(in doubleBSR, in TPre, ...)` overload -- doubleSSOR goes through the generic
     // `lobpcg<TOp,TPre>` core via doubleBSROperator.
-    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SpLobpcgSSORJobDouble : IJob { public doubleBSR A; public doubleSSOR M; public doubleLOBPCGCache ws; public int k; public double tol; public int maxIter; public NativeArray<double> outInfo;
         public void Execute() { for (int i = 0; i < ws.X.M_Rows; i++) for (int c = 0; c < ws.X.N_Cols; c++) ws.X[i, c] = (double)0; var info = Eigen.lobpcg(new doubleBSROperator(in A), in M, ref ws, k, tol, maxIter); LobpcgReport.WriteDouble(in info, in ws, k, outInfo); } }
 

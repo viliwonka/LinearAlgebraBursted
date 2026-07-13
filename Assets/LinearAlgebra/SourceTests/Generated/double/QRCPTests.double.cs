@@ -42,7 +42,7 @@ public class doubleQRCPTests
             AllZero,
             ZeroColumnMiddle,
             DuplicateColumns,
-            // Solver API rework (commit 2) coverage.
+            // decomp/decompInPlace A-preservation coverage.
             DecompPreservesA,
         }
 
@@ -356,7 +356,7 @@ public class doubleQRCPTests
             arena.Dispose();
         }
 
-        // Solver API rework (commit 2): QRCP.decomp must not modify A. Checksum (position-weighted
+        // QRCP.decomp must not modify A. Checksum (position-weighted
         // sum, so a permutation or a single altered entry both trip it) before/after the call.
         void DecompPreservesA()
         {
@@ -512,8 +512,8 @@ public class doubleQRCPTests
             OneByOne,               // (7) 1x1 system: x == b/a (projection formula)
             AutoSentinel,           // (8) relTol=-1 == default overload == explicit default tol
             KnownValueRegression,   // (9) hand-computable rank-deficient basic solution
-            RankInfoStatus,         // (10) Stage-3: RankInfo.status/rank/Solved on rank-deficient A
-            NoCopyEquivalenceFullRank,      // (11) commit-2: no-copy solveInPlace == copying-then-solveInPlace
+            RankInfoStatus,         // (10) RankInfo.status/rank/Solved on rank-deficient A
+            NoCopyEquivalenceFullRank,      // (11) no-copy solveInPlace == copying-then-solveInPlace
             NoCopyEquivalenceRankDeficient, // (12) same, rank-deficient A
             BlockedFusedSolve,              // (13) large n (>= 2*QRCP_BLOCK): fused blocked solve == QR-LS
             MinNormRankDeficientTall,       // (14) COD: min-norm == SVD pinv, genuinely below the basic solution
@@ -916,7 +916,7 @@ public class doubleQRCPTests
             arena.Dispose();
         }
 
-        // (10) Stage-3 direct-solve-status coverage: on a rank-deficient A (exact linear
+        // (10) Direct-solve-status coverage: on a rank-deficient A (exact linear
         // dependency, true rank 3 of 4), QRCP.solveInPlace must return a RankInfo with
         // status == RankDeficient, rank == the detected reduced rank, and Solved == true (a
         // rank-deficient basic solution is still usable) -- distinct from a hard failure.

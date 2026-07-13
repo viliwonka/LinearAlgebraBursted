@@ -12,14 +12,16 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// Tests for MIP.solve -- LP-based branch & bound over the dual simplex.
-// Grows by stage: (a)-(e) STAGE 2 (most-fractional DFS), (f) STAGE 3 (pseudocost + best-bound queue),
-// (g) STAGE 4 (activity-based propagation, rounding heuristic, absGap/relGap gap limits + MIPLIB
-// stein/p0033 known-answer oracles). Templated (double) so codegen emits a float and a double build; per the draft spec
-// "test float only on tiny instances, double is the serious dtype", the exhaustive-enumeration
-// cross-check (EnumCrossCheck) uses a per-dtype codegen choose-marker to run 2 tiny instances in
-// float and 7 (up to n=5) in double. Every numeric assertion routes through the Fail[0..3] diagnostic
-// slots (flag / got / expected-or-limit / diff-or-extra) exactly like LPTests.double.cs.
+// Tests for MIP.solve -- LP-based branch & bound over the dual simplex. Coverage: (a)-(e) 0/1
+// knapsack/assignment/textbook-IP/infeasible-unbounded/exhaustive-enumeration cases against
+// most-fractional DFS branching; (f) pseudocost + reliability branching with a best-bound queue
+// and plunging; (g) activity-based domain propagation, a rounding heuristic, absGap/relGap gap
+// limits, and MIPLIB stein/p0033 known-answer oracles. Templated (double) so codegen emits a
+// float and a double build; float only runs tiny instances (double is the numerically serious
+// dtype), so the exhaustive-enumeration cross-check (EnumCrossCheck) uses a per-dtype codegen
+// choose-marker to run 2 tiny instances in float and 7 (up to n=5) in double. Every numeric
+// assertion routes through the Fail[0..3] diagnostic slots (flag / got / expected-or-limit /
+// diff-or-extra) exactly like LPTests.double.cs.
 public class doubleMIPTests
 {
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -54,9 +56,9 @@ public class doubleMIPTests
             NodeLimitPartialResult, // Gomory with maxNodes=1 -> NodeLimit, nodes==1, sound feasible incumbent, dualBound finite (~-41.25)
             IterLimitPartialResult, // Gomory with maxIter=1  -> MaxIterations, nodes==1, same partial-result contract
 
-            // ==== (f) STAGE 3 verification: pseudocost + reliability branching + best-bound queue with
-            //         plunging replaces stage 2's most-fractional/pure-DFS search. The node count on the
-            //         harder instances must NOT increase vs the stage-2 baselines (this IS the feature --
+            // ==== (f) pseudocost + reliability branching + best-bound queue with
+            //         plunging replaces most-fractional/pure-DFS search. The node count on the
+            //         harder instances must NOT increase vs the DFS baselines (this IS the feature --
             //         hard-assert nodes <= baseline; see each case for its baseline). lpIterations is
             //         deliberately NOT asserted: on tiny instances pseudocost never becomes "reliable"
             //         within the few nodes explored, so it strong-branches nearly every candidate and total
@@ -71,7 +73,7 @@ public class doubleMIPTests
             Stage3Determinism,       // two back-to-back GomoryWolsey solves -> identical nodes/iter/obj/bound/x
             Stage3DeterminismBranchy12, // same determinism check on the big branchy n=12 search (DOUBLE-ONLY)
 
-            // ==== (g) STAGE 4 verification: activity-based domain propagation at every node, a rounding
+            // ==== (g) activity-based domain propagation at every node, a rounding
             //         heuristic, and absGap/relGap gap limits make MIPStatus.GapLimit reachable. ====
 
             // -- MIPLIB tiny known-answer instances (the "stein/p0033" standard set) --
@@ -603,7 +605,7 @@ public class doubleMIPTests
             senses.Dispose(); integ.Dispose(); arena.Dispose();
         }
 
-        // ==== (f) STAGE 3 node-count regression + determinism ====
+        // ==== (f) pseudocost/reliability-branching node-count regression + determinism ====
 
         // Knapsack6 (same instance as Knapsack6() above). Stage 2 and stage 3 both solve it at a single
         // node (the LP relaxation is already integer-optimal here), so this is a tie -- assert nodes <= 1,
@@ -657,22 +659,21 @@ public class doubleMIPTests
 
             AssertTrue(info.status == MIPStatus.Optimal);
             AssertCloseD(obj, -40.0, 1e-3);
-            AssertNodesLE(info, 7);   // stage-2 baseline = 7 nodes; stage 3 must not exceed it
+            AssertNodesLE(info, 7);   // must not regress past the prior branching strategy's node count
 
             senses.Dispose(); integ.Dispose(); arena.Dispose();
         }
 
         // Random "branchy" MIP on the integer box [0,3]^12, n=12, m=6, seed 424242 -- built with the
         // EXACT RNG call sequence of RunEnumCase (integer A/b/c around a random feasible integer x*, so
-        // always feasible + bounded). Measured baselines (double): stage 2 = 267 nodes / obj 6; stage 3 =
-        // 241 nodes / obj 6 (same optimum, FEWER nodes -- the pseudocost/reliability payoff, and direct
-        // proof that the branching sequence differs from stage-2 most-fractional, satisfying (a) and (c)).
+        // always feasible + bounded). Node count must not regress vs the prior (most-fractional DFS)
+        // branching strategy, at the same optimum.
         //
-        // DOUBLE-ONLY: the stage-2 FLOAT run on this exact instance returned an anomalous nodes=0 (nodes is
-        // incremented unconditionally before the first LP solve, so 0 is structurally impossible from a
-        // real search -- a pre-existing float robustness quirk, NOT a stage-3 change; stage-3's own float
-        // run was clean at 244 nodes). With no trustworthy stage-2 float baseline, the float case runs 0
-        // iterations (a no-op pass), per this file's "float only on tiny instances" convention.
+        // DOUBLE-ONLY: float's structurally-impossible nodes=0 result on this exact instance (nodes is
+        // incremented unconditionally before the first LP solve, so 0 is never a real search's count --
+        // a pre-existing float robustness quirk) leaves no trustworthy float baseline to compare against,
+        // so the float case runs 0 iterations (a no-op pass), per this file's "float only on tiny
+        // instances" convention.
         void Stage3NodesBranchy12()
         {
             int cases = 1;
@@ -688,7 +689,7 @@ public class doubleMIPTests
                 AssertTrue(info.status == MIPStatus.Optimal);
                 AssertCloseD(info.objective, 6.0, 1e-6);
                 AssertCloseD(obj, 6.0, 1e-6);
-                AssertNodesLE(info, 267);   // stage-2 baseline = 267 nodes; stage 3 measured 241
+                AssertNodesLE(info, 267);   // must not regress past the prior branching strategy's node count
 
                 senses.Dispose(); integ.Dispose(); arena.Dispose();
             }
@@ -796,7 +797,7 @@ public class doubleMIPTests
             xstar.Dispose();
         }
 
-        // ==== (g) STAGE 4: MIPLIB known-answer oracles, propagation, gap limits, determinism ====
+        // ==== (g) MIPLIB known-answer oracles, propagation, gap limits, determinism ====
 
         // Sets a coefficient-1 covering triple in row r of A (the stein set-covering rows).
         void SetTriple(doubleMxN A, int r, int i, int j, int k)
@@ -891,7 +892,7 @@ public class doubleMIPTests
         // rows (the literature's 16th "ZBESTROW" all-zero bookkeeping row is omitted -- mathematically
         // equivalent). Proven optimum 3089. DOUBLE-ONLY (see enum comment: float finds 3089 but cannot prove
         // optimality within a sane node budget). Generous maxNodes guards a runaway; Optimal proves the cap
-        // was not the stopping reason (double explores ~447 nodes).
+        // was not the stopping reason.
         void P0033()
         {
             int cases = 1;
@@ -987,11 +988,11 @@ public class doubleMIPTests
             senses.Dispose(); integ.Dispose(); arena.Dispose();
         }
 
-        // Propagation node-count drop on the big branchy search: stage 3 = 241 nodes, stage 4 = 218, and
-        // with doubleLPCache's persisted DSE weights (same optimum, but pricing at a warm-started
-        // non-logical basis now uses the caller's carried terminal weights instead of the w=1
-        // approximation, changing which variable a node picks to branch on) it is 199. Verified stable
-        // across repeated runs, not a per-launch nondeterminism artifact. DOUBLE-ONLY (same
+        // Propagation, plus doubleLPCache's persisted DSE weights (same optimum, but pricing at a
+        // warm-started non-logical basis now uses the caller's carried terminal weights instead of
+        // the w=1 approximation, changing which variable a node picks to branch on), drop the node
+        // count on the big branchy search vs the pre-propagation baseline. Verified stable across
+        // repeated runs, not a per-launch nondeterminism artifact. DOUBLE-ONLY (same
         // instance/rationale as Stage3NodesBranchy12).
         void Stage4NodesBranchy12()
         {
@@ -1007,7 +1008,7 @@ public class doubleMIPTests
 
                 AssertTrue(info.status == MIPStatus.Optimal);
                 AssertCloseD(info.objective, 6.0, 1e-6);
-                AssertNodes(info, 199);   // stage3 241 -> stage4(pre-cache) 218 -> stage4(doubleLPCache) 199
+                AssertNodes(info, 199);   // exact node count under propagation + persisted-DSE-weight warm pricing
 
                 senses.Dispose(); integ.Dispose(); arena.Dispose();
             }

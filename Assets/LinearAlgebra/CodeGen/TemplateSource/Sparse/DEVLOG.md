@@ -1,6 +1,15 @@
 # DEVLOG — Sparse
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## fProxyBSRBuilder.cs
+- 2026-07-13 | Type doc and ToBSR's doc both called value-restamping-on-a-fixed-pattern "a later
+  phase"/"Phase 1 pattern-edit scope" — stale: BuildAssemblyCache + Refill
+  (fProxyBSRAssembly.fProxy.cs) already ship exactly that per-frame reuse path. Rewrote both
+  docs to point at BuildAssemblyCache/Refill instead. Also dropped the "this is no longer
+  load-bearing" ref-vs-in Arena history from ToBSR's doc (Arena is a thin copyable handle; see
+  the SparseBSRTests DEVLOG entry in TemplateSourceTests/DEVLOG.md for the underlying
+  bug/fix). (was fProxyBSRBuilder.cs:16-17, 175, 177-179)
+
 ## fProxyBSRBuilder.cs / fProxyBSR.cs / fProxyIC0.cs (triangle-trust unification)
 - 2026-07-12 | Coherence-audit P.2 (owner-ruled 2026-07-11): flipped `ToBSRSymmetric` from
   upper-block canonical to LOWER-block canonical, so the whole library trusts the lower triangle

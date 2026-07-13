@@ -462,10 +462,10 @@ public class floatCompMathTests
             }
         }
 
-        // ---- absDiff/sqrDiff: componentwise |a-b| / (a-b)^2 (renamed from the kernel's old
-        //      distance/distancesq names - these are NOT whole-vector Euclidean distances, each index
-        //      is an independent scalar difference). Oracle computed directly, not via math.distance/
-        //      math.distancesq, so the test doesn't just re-assert the kernel's own implementation. ----
+        // ---- absDiff/sqrDiff: componentwise |a-b| / (a-b)^2 - these are NOT whole-vector Euclidean
+        //      distances, each index is an independent scalar difference. Oracle computed directly,
+        //      not via math.distance/math.distancesq, so the test doesn't just re-assert the kernel's
+        //      own implementation. ----
 
         private void AbsDiffTest(ref Arena arena)
         {
@@ -509,8 +509,7 @@ public class floatCompMathTests
             floatN s = arena.floatVec(n);
             floatN c = arena.floatVec(n);
 
-            x.sincos(s, c); // x UNCHANGED; s <- sin(x), c <- cos(x). Renamed from sincosInPlace -
-                            // review flagged the InPlace suffix as misleading since x isn't mutated.
+            x.sincos(s, c); // x is NOT mutated; s <- sin(x), c <- cos(x).
 
             for (int i = 0; i < n; i++)
             {

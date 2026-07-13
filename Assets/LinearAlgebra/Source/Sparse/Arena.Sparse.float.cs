@@ -104,7 +104,7 @@ namespace LinearAlgebra
         /// build outcome (see the floatBlockJacobi out-info constructor). On failure the returned
         /// struct is unusable and no arena record is retained.
         /// </summary>
-        public floatBlockJacobi floatBlockJacobi(in floatBSR A, out DirectSolveInfo info)
+        public floatBlockJacobi floatBlockJacobi(in floatBSR A, out PreconditionerInfo info)
         {
             if (_core == null)
                 throw new System.InvalidOperationException("Arena.floatBSR/floatBSRBuilder/floatBlockJacobi: arena is not initialized (default or disposed).");
@@ -244,7 +244,7 @@ namespace LinearAlgebra
 
         /// <summary>Non-throwing twin of <see cref="floatIC0(in floatBSR)"/>: info carries the
         /// build outcome (Success, or NotPositiveDefinite on factorization breakdown).</summary>
-        public floatIC0 floatIC0(in floatBSR A, out DirectSolveInfo info)
+        public floatIC0 floatIC0(in floatBSR A, out PreconditionerInfo info)
         {
             Arena self = this;
             return new floatIC0(in A, ref self, out info);
@@ -264,7 +264,7 @@ namespace LinearAlgebra
 
         /// <summary>Non-throwing twin of <see cref="floatILU0(in floatBSR)"/>: info carries the
         /// build outcome (Success, or Singular on factorization breakdown).</summary>
-        public floatILU0 floatILU0(in floatBSR A, out DirectSolveInfo info)
+        public floatILU0 floatILU0(in floatBSR A, out PreconditionerInfo info)
         {
             Arena self = this;
             return new floatILU0(in A, ref self, out info);

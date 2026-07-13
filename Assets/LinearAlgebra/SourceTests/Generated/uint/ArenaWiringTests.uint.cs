@@ -363,8 +363,8 @@ public class uintArenaWiringTests
         finally { m.Dispose(); }
     }
 
-    // ---- Generational-overlay guard tests (Stage E; ENABLE_UNITY_COLLECTIONS_CHECKS-only) -----------
-    // Stage E added a checks-gated "generational overlay" to the arena-tracked structs' Data getter:
+    // ---- Generational-overlay guard tests (ENABLE_UNITY_COLLECTIONS_CHECKS-only) -----------
+    // A checks-gated "generational overlay" on the arena-tracked structs' Data getter:
     // reading through a STALE handle -- one whose slot was Disposed / arena.Clear()'d / ClearTemp()'d,
     // or (option (c) only) freed and then RECYCLED by an unrelated fresh allocation -- throws
     // InvalidOperationException instead of silently returning a dead/garbage buffer. uintN is

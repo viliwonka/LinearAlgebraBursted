@@ -13,8 +13,8 @@ using Unity.Mathematics;
 //
 // (c) drift-firing: an ill-conditioned float instance (Moler matrix, deep tolerance) where the
 //     tracked residual claims convergence while the true residual has not actually met tolerance
-//     -- proven directly against an in-test replica of the PRE-R6a cg loop (same Blas kernels,
-//     just without the verify block), so this does not depend on git history. The guarded
+//     -- proven directly against an in-test replica of the cg loop WITHOUT verify-at-exit (same
+//     Blas kernels, just without the verify block). The guarded
 //     (production) solver must still report HONEST convergence on the same instance.
 // (d) healthy-solve path: on a well-conditioned instance (no drift), verify-at-exit costs exactly
 //     one extra Apply and does not change the returned solution (x is never touched by the verify
@@ -59,8 +59,8 @@ public class fProxyKrylovVerifyAtExitTests
         public void ApplyBlock(in fProxyMxN Vrows, ref fProxyMxN AVrows, int rows) => throw new NotSupportedException();
     }
 
-    // The EXACT pre-R6a cg<TOp> loop (same Blas.dot/Blas.updateXR kernels the real cg uses),
-    // minus the verify-at-exit block -- an independent "before" oracle without touching git.
+    // The EXACT cg<TOp> loop minus the verify-at-exit block (same Blas.dot/Blas.updateXR kernels
+    // the real cg uses) -- an independent "before" oracle for verify-at-exit's effect.
     static SolveInfo UnguardedCg<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
                                        ref fProxyN r, ref fProxyN p, ref fProxyN Ap,
                                        int maxIter, fProxy tol)
@@ -93,7 +93,7 @@ public class fProxyKrylovVerifyAtExitTests
             fProxy alpha = rsold / pAp;
             fProxy rsnew = Blas.updateXR(alpha, p, ref x, Ap, ref r);
 
-            if (rsnew <= threshold)   // NO verify -- the pre-R6a behavior
+            if (rsnew <= threshold)   // NO verify -- claims convergence on the tracked residual alone
                 return new SolveInfo { rnorm = (double)math.sqrt(rsnew), iterations = k + 1, status = IterativeSolveStatus.Converged };
 
             fProxy beta = rsnew / rsold;
@@ -110,16 +110,13 @@ public class fProxyKrylovVerifyAtExitTests
     //     guarded Krylov.cg must not repeat that mistake.
     // ==============================================================================
 
-    // n/alpha/tol found by first prototyping the recurrence in a throwaway dotnet console app
-    // (naive scalar dot order), then confirmed/retuned directly against this library's actual
-    // Blas.dot/Blas.updateXR kernels (a 2x-accumulator SIMD fold -- a DIFFERENT, still
-    // deterministic summation order that shifts exactly where the drift crosses the tolerance
-    // boundary) via a throwaway diagnostic sweep run through Unity, since the two orders don't
-    // land on the same iteration/margin. float's ~7-digit precision lets the recursive residual
-    // drift past the true one at this tolerance/problem-size combination AND still recover to
-    // honest convergence a handful of iterations later; double's ~16 digits don't lie at this
-    // size, so requireLie gates the "must have lied" assertion to the float build only -- the
-    // guarded solver's honesty check below is unconditional and holds for both dtypes.
+    // n/alpha/tol are tuned to this library's actual Blas.dot/Blas.updateXR kernels (a
+    // 2x-accumulator SIMD fold, a deterministic summation order). float's ~7-digit precision lets
+    // the recursive residual drift past the true one at this tolerance/problem-size combination
+    // AND still recover to honest convergence a handful of iterations later; double's ~16 digits
+    // don't lie at this size, so requireLie gates the "must have lied" assertion to the float
+    // build only -- the guarded solver's honesty check below is unconditional and holds for both
+    // dtypes.
     [Test]
     public void VerifyAtExitCatchesOptimisticDriftOnIllConditionedMoler()
     {
@@ -166,7 +163,7 @@ public class fProxyKrylovVerifyAtExitTests
         Assert.LessOrEqual((double)trueRsG, (double)threshold,
             "guarded solver must report HONEST convergence (true residual within tolerance)");
 
-        // The reported rnorm on the Converged path is the VERIFIED true residual (R6a contract).
+        // The reported rnorm on the Converged path is the VERIFIED true residual (verify-at-exit contract).
         Assert.AreEqual((double)math.sqrt(trueRsG), infoG.rnorm, 1e-6 * (1.0 + infoG.rnorm));
 
         arena.Dispose();
@@ -174,7 +171,7 @@ public class fProxyKrylovVerifyAtExitTests
 
     // ==============================================================================
     // (d) healthy-solve path: verify-at-exit adds exactly one extra Apply and does not change the
-    //     solution vs the pre-R6a behavior (x is never touched by the verify block).
+    //     solution vs a plain cg loop with no verify block (x is never touched by the verify block).
     // ==============================================================================
 
     [Test]
@@ -220,10 +217,10 @@ public class fProxyKrylovVerifyAtExitTests
     // ==============================================================================
     // Lighter wiring-sanity checks for pcg/cgls/cgne: confirm each still converges and its
     // Converged-path rnorm is HONEST (matches an independently-recomputed fresh residual), i.e.
-    // the verify block compiles and returns the right value for every R6a-covered solver, not
-    // just cg. Well-conditioned instances (no drift-firing construction needed here -- that
-    // burden is carried by the cg test above; R6a's code path is identical in shape across all
-    // four solvers).
+    // the verify block compiles and returns the right value for every verify-at-exit-covered
+    // solver, not just cg. Well-conditioned instances (no drift-firing construction needed here --
+    // that burden is carried by the cg test above; verify-at-exit's code path is identical in
+    // shape across all four solvers).
     // ==============================================================================
 
     [Test]

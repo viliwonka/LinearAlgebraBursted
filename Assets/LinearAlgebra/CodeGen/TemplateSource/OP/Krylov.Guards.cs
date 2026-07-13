@@ -4,11 +4,7 @@ using System;
 
 namespace LinearAlgebra
 {
-    // Type-agnostic Krylov helpers. This lives in a //singularFile// partial (emitted ONCE,
-    // NOT multiplied into float/double) because RequireDistinctBuffers has no fProxy in its
-    // signature: if it were declared in the multiplying Krylov.fProxy.cs template it would be
-    // copied identically into both Krylov.float.cs and Krylov.double.cs -- two definitions of
-    // the same member in the same partial class -> CS0111.
+    // Type-agnostic Krylov helpers (singular partial -- not float/double multiplied).
     public static partial class Krylov
     {
         /// <summary>

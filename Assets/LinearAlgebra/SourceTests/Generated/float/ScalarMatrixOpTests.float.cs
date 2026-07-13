@@ -11,10 +11,9 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// Regression tests for review-found bugs:
-//  - `scalar - matrix` returned `matrix - scalar` (negated) because subtraction was wrongly
-//    treated as commutative (operator delegated to `rhs - lhs`).
-//  - `normalizeLP` summed pow(x,p) without abs -> NaN for negative entries with non-even p.
+// scalar - matrix must equal s - A[i,j] elementwise (subtraction is not commutative).
+// normalizeLP must sum pow(|x|,p) (abs), not pow(x,p), so negative entries with non-even p
+// don't produce NaN.
 public class floatScalarMatrixOpTests
 {
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -44,7 +43,7 @@ public class floatScalarMatrixOpTests
             }
         }
 
-        // 0 / M is a valid operation (= 0 where M != 0); it must NOT throw (review fix D).
+        // 0 / M is a valid operation (= 0 where M != 0); it must NOT throw.
         void ZeroDivMatrix()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -53,7 +52,7 @@ public class floatScalarMatrixOpTests
             A[0, 0] = (float)1; A[0, 1] = (float)2;
             A[1, 0] = (float)4; A[1, 1] = (float)5;
 
-            floatMxN R = (float)0 / A;   // pre-fix this threw DivideByZeroException
+            floatMxN R = (float)0 / A;   // must not throw DivideByZeroException
 
             AssertClose(R[0, 0], (float)0, (float)1E-6);
             AssertClose(R[0, 1], (float)0, (float)1E-6);

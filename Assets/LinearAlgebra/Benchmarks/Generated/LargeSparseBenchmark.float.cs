@@ -29,42 +29,42 @@ namespace LinearAlgebra.Benchmarks
     // SpCgJobFloat/SpPcgJobFloat's `tol` field serves both the fixed-K/tol=0 throughput rows
     // (default 0 runs the full K budget) and the iterations-to-convergence rows, which set a
     // real tol/maxIter.
-    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SpCgJobFloat : IJob { public floatBSR A; public floatN b, x, r, p, Ap; public int K; public float tol; public NativeArray<double> outInfo;
         public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.cg(in A, in b, ref x, ref r, ref p, ref Ap, K, tol); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
 
-    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SpPcgJobFloat : IJob { public floatBSR A; public floatBlockJacobi M; public floatN b, x, r, p, Ap, z; public int K; public float tol; public NativeArray<double> outInfo;
         public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, tol); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
 
     // SSOR twin of SpPcgJobFloat (same reuse for fixed-K throughput and convergence-comparison
     // rows).
-    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SpPcgSSORJobFloat : IJob { public floatBSR A; public floatSSOR M; public floatN b, x, r, p, Ap, z; public int K; public float tol; public NativeArray<double> outInfo;
         public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, tol); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
 
-    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SpMinresJobFloat : IJob { public floatBSR A; public floatN b, x, y, r1, r2, v, w, w1, w2; public int K; public NativeArray<double> outInfo;
         public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, K, 0f); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
 
-    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SpBicgJobFloat : IJob { public floatBSR A; public floatN b, x, r, rHat0, p, v, t; public int K; public NativeArray<double> outInfo;
         public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.biCGStab(in A, in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, K, 0f); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
 
-    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SpCglsJobFloat : IJob { public floatBSR A; public floatN b, x, r, s, p, q; public int K; public NativeArray<double> outInfo;
         public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, K, 0f); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
 
-    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SpLsqrJobFloat : IJob { public floatBSR A; public floatN b, x, u, v, w, tmpM, tmpN; public int K; public NativeArray<double> outInfo;
         public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, K, 0f); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
 
-    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SpLsmrJobFloat : IJob { public floatBSR A; public floatN b, x, u, v, h, hbar, tmpM, tmpN; public int K; public NativeArray<double> outInfo;
         public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.lsmr(in A, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, K, 0f); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
 
     // Eigen job writes [produced, solved, 0] into outInfo (reference-backed, visible after Run).
-    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SpLanczosJobFloat : IJob { public floatBSR A; public floatLanczosCache ws; public floatN vals; public int steps; public NativeArray<double> outInfo;
         public void Execute() { var info = Eigen.lanczos(in A, ref ws, ref vals, steps); outInfo[0] = info.produced; outInfo[1] = info.Solved ? 1 : 0; outInfo[2] = 0; } }
 
@@ -76,18 +76,18 @@ namespace LinearAlgebra.Benchmarks
     // Execute() forces the SAME deterministic reseed (lobpcg's own fixed-seed 0x9E3779B1u fill) on
     // every sample -- a fair, reproducible, cold-start measurement each time, mirroring the x[i]=0
     // reset every Krylov job above already does.
-    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SpLobpcgJobFloat : IJob { public floatBSR A; public floatLOBPCGCache ws; public int k; public float tol; public int maxIter; public NativeArray<double> outInfo;
         public void Execute() { for (int i = 0; i < ws.X.M_Rows; i++) for (int c = 0; c < ws.X.N_Cols; c++) ws.X[i, c] = (float)0; var info = Eigen.lobpcg(in A, ref ws, k, tol, maxIter); LobpcgReport.WriteFloat(in info, in ws, k, outInfo); } }
 
-    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SpLobpcgPrecJobFloat : IJob { public floatBSR A; public floatBlockJacobi M; public floatLOBPCGCache ws; public int k; public float tol; public int maxIter; public NativeArray<double> outInfo;
         public void Execute() { for (int i = 0; i < ws.X.M_Rows; i++) for (int c = 0; c < ws.X.N_Cols; c++) ws.X[i, c] = (float)0; var info = Eigen.lobpcg(in A, in M, ref ws, k, tol, maxIter); LobpcgReport.WriteFloat(in info, in ws, k, outInfo); } }
 
     // SSOR preconditioner axis for LOBPCG. Only floatBlockJacobi has a dedicated
     // `lobpcg(in floatBSR, in TPre, ...)` overload -- floatSSOR goes through the generic
     // `lobpcg<TOp,TPre>` core via floatBSROperator.
-    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SpLobpcgSSORJobFloat : IJob { public floatBSR A; public floatSSOR M; public floatLOBPCGCache ws; public int k; public float tol; public int maxIter; public NativeArray<double> outInfo;
         public void Execute() { for (int i = 0; i < ws.X.M_Rows; i++) for (int c = 0; c < ws.X.N_Cols; c++) ws.X[i, c] = (float)0; var info = Eigen.lobpcg(new floatBSROperator(in A), in M, ref ws, k, tol, maxIter); LobpcgReport.WriteFloat(in info, in ws, k, outInfo); } }
 

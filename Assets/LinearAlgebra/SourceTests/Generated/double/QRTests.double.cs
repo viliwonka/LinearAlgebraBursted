@@ -40,10 +40,10 @@ public class doubleQRTests
             QRDecompBlockedNonAligned_160x96,
             QRDecompBlockedNonAligned_256x150,
             QRDecompBlockedNonAligned_1100x545,
-            // Solver API rework (commit 2) coverage.
+            // A-preservation and uninit-x-contract coverage.
             QRDecompPreservesA,
             QRUninitXContract,
-            // Commit 2.5 (2f-i): QR.decomp A-preservation at the BLOCKED-path scale (N_Cols >= 64).
+            // QR.decomp A-preservation at the BLOCKED-path scale (N_Cols >= 64).
             QRDecompPreservesABlocked,
         }
 
@@ -332,7 +332,7 @@ public class doubleQRTests
             arena.Dispose();
         }
 
-        // Solver API rework (commit 2): QR.decomp must not modify A. Checksum (position-weighted
+        // QR.decomp must not modify A. Checksum (position-weighted
         // sum, so a permutation or a single altered entry both trip it) before/after the call.
         void QRDecompPreservesA()
         {
@@ -1099,7 +1099,7 @@ public class doubleQRTests
             // Mid m (256 <= m < 512): the per-type gate split — float takes the BLOCKED core here,
             // double stays UNBLOCKED. Guards that both routes agree at the size where they diverge.
             ResidualCheckMidBlocked,
-            // Solver API rework (commit 2): uninit-x contract.
+            // Uninit-x contract.
             UninitXContract,
         }
 

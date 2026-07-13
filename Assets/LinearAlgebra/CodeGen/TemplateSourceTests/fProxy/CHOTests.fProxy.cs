@@ -172,8 +172,7 @@ public class fProxyCHOTests
             var b = arena.fProxyRandomVec(dim, -1f, 1f, 4242);
             var bOrig = b.Copy();
 
-            // factor + solve, as the explicit two-call composition (choleskySolve(in A, ref L, ref b)
-            // was deleted -- it was a 2-line composition in disguise); b is overwritten with x.
+            // factor + solve, as the explicit two-call composition; b is overwritten with x.
             DirectSolveInfo info = CHO.decomp(in A, ref L);
             if (info.Solved) info = CHO.decompSolve(ref L, ref b);
             bool ok = info.Solved;
@@ -210,7 +209,7 @@ public class fProxyCHOTests
             arena.Dispose();
         }
 
-        // Solver API rework (commit 2): CHO.solveInPlace's exit (A_to_L) must be a valid decompSolve
+        // CHO.solveInPlace's exit (A_to_L) must be a valid decompSolve
         // input -- solving a SECOND right-hand side through it must be bit-identical to a completely
         // independent decomp + decompSolve on the same original matrix.
         void SolveInPlaceExitIsUsableFactor()
@@ -246,7 +245,7 @@ public class fProxyCHOTests
             arena.Dispose();
         }
 
-        // Commit 2.5 (2a): driver short-circuit purity. CHO.solveInPlace on a NON-PD matrix must
+        // Driver short-circuit purity: CHO.solveInPlace on a NON-PD matrix must
         // (a) return the NotPositiveDefinite failure status and (b) leave b_to_x BIT-IDENTICAL to its
         // pre-call snapshot. Guards the `if (!info.Solved) return info;` early return in the fused
         // POSV driver: without it, decompSolve would run on a garbage/partial factor and corrupt b.
@@ -378,7 +377,7 @@ public class fProxyCHOTests
             arena.Dispose();
         }
 
-        // Stage-3 direct-solve-status coverage: a non-PD matrix must report
+        // Direct-solve-status coverage: a non-PD matrix must report
         // DirectSolveStatus.NotPositiveDefinite (not just a falsy implicit-bool) from both
         // decomp and the factor-and-solve composition.
         void NotSPDStatus()

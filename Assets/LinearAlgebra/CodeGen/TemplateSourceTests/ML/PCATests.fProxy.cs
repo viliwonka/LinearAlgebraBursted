@@ -23,7 +23,7 @@ using Unity.Mathematics;
 //        components axis-aligned (identity).
 //   VarianceRatioAndOrder    — #3 explainedVarianceRatio sums to ~1 (full routes), ev[0] is the max,
 //        ev descending.
-//   CorrelationDegenerate    — #4 the fable-caught trap: a constant column ⇒ scale=1, a zero
+//   CorrelationDegenerate    — #4 a constant column ⇒ scale=1, a zero
 //        eigen-axis on that feature, totalVariance == #non-degenerate, and BOTH correlation routes
 //        still AGREE on explainedVariance (regression guard on the inline-R fix).
 //   TopKExactMatchesFull     — #5a pcaSVDTruncated(k) top-k == first k of pcaSVD (tight, up to sign),
@@ -121,7 +121,7 @@ public class fProxyPCATests
 
             // components agree up to the fixed sign — magnitude compare, ONLY on well-separated
             // columns (degenerate/near-tie columns carry route-dependent rotation the sign rule
-            // cannot fix; the spec says keep vector comparisons off those).
+            // cannot fix; keep vector comparisons off those).
             fProxy ctol = (fProxy)100 * Consts.fProxySqrtEps;
             for (int c = 0; c < p; c++)
             {
@@ -203,7 +203,7 @@ public class fProxyPCATests
         }
 
         // =====================================================================
-        // #4 — correlation degenerate feature (the fable-caught trap). A constant
+        // #4 — correlation degenerate feature. A constant
         //      (zero-variance) column: scale==1, an isolated ZERO eigen-axis pinned
         //      to that feature (its component ≈ e_j), totalVariance == #non-degenerate,
         //      and pcaCovariance(Correlation) STILL AGREES with pcaSVD(Correlation) on
@@ -528,7 +528,7 @@ public class fProxyPCATests
 
         // Is component c's eigenvalue separated from BOTH neighbors by a comfortable relative gap?
         // Vector comparisons only run where this holds (a near-tie leaves the eigenbasis rotation
-        // route-/precision-dependent — no sign rule fixes that, per the spec).
+        // route-/precision-dependent — no sign rule fixes that).
         bool WellSeparated(in fProxyN ev, int c, int count)
         {
             fProxy vc = math.abs(ev[c]);

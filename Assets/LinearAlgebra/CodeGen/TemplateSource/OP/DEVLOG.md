@@ -7,6 +7,13 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   rename back. maxSweeps kept where the algorithm genuinely counts Jacobi sweeps. Rule recorded
   in docs/dev/naming-style-guide.md.
 
+## Krylov.Guards.cs
+- 2026-07-13 | //singularFile// on this partial is load-bearing, not a style choice:
+  RequireDistinctBuffers has no fProxy token in its signature, so if it were declared inside the
+  multiplying Krylov.fProxy.cs template it would be copied identically into both the generated
+  Krylov.float.cs and Krylov.double.cs fragments of the same partial class -- two definitions of
+  the same member -> CS0111. (was Krylov.Guards.cs:7-11)
+
 ## Krylov.PBiCGStab
 - 2026-07-13 | Parameterless BSR overload's default iteration budget changed 2*A.M_Rows → A.M_Rows
   to match the unpreconditioned biCGStab twin and the rest of the square-solver family (release-scan
@@ -475,6 +482,11 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
 - 2026-07-12 | Full-circle twiddle table bandwidth tradeoff: uses ~2x twiddle memory (~8 MB at N=1M for float) versus the half-table, offset by halving the number of full-array passes (log4(N) vs log2(N) passes). (was FFT.Workspace.fProxy.cs:21)
 
 ## Eigen
+- 2026-07-13 | Dropped the unsourced "~30x faster" multiplier from the three cyclic-Jacobi
+  [Obsolete] messages (decompInPlace, valuesJacobi-style overloads); kept "Prefer
+  Eigen.symmetricInPlace / Eigen.valuesSymmetricInPlace" guidance. Measured multiplier (no
+  regression test pins it): Householder-tridiagonal + QL is roughly ~30x faster than cyclic-Jacobi
+  for symmetric eigenpairs at this library's benchmarked sizes. (was Eigen.fProxy.cs:913, 1073, 1084)
 - 2026-07-11 | Eigen.fProxy.cs doc trims (power/inverse-power iteration, Lanczos, cyclic-Jacobi decompInPlace) removed forwarder-architecture narration and an internal spec pointer (docs/dev/spec-svd-eigen-convergence.md) explaining why decompInPlace's sweep-budget constant isn't scaled by Consts.sweepBudget (its "sweep" is a full-matrix Jacobi sweep, a different iteration unit from LAPACK dbdsqr's per-value QR/QL sweeps). No perf verdicts lost -- purely doc-comment condensation. (was Eigen.fProxy.cs:16, :215, :533, :1140 pre-edit line numbers)
 
 ## Krylov
@@ -619,6 +631,13 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
 - 2026-07-11 | tol3z codebase-consistency note + retired-buffer history (moved from comment): tol3z is Consts.fProxySqrtEps directly — Consts.cs already defines it as the precise, type-correct sqrt(Consts.fProxyEpsilon), and every other caller in this codebase (Eigen/LOBPCG/Krylov/SVD.LowRank) references it the same way rather than recomputing math.sqrt(Consts.fProxyEpsilon) at runtime. Separately: the current guard-triggered re-sum (writes straight into vn1, no separate colNorm2 buffer) replaced an old exact-recompute-every-step buffer, now fully retired. The batched row-major re-sum is a deliberate widening from LAPACK's own per-column selective recompute: this codebase is row-major, so a single column's exact norm is a strided reduction — the same shape the ORIGINAL always-exact QRCP avoided by summing all trailing columns per row instead of one column at a time — so reusing that batched sweep when ANY column trips the guard is simpler, no more expensive (the sweep touches every trailing column per row regardless of how many needed it), and strictly more accurate for the columns that didn't strictly need re-summing. (was QRCP.fProxy.cs:124 and :129)
 - 2026-07-11 | Blocked panel core 8-step walkthrough (moved from section header): per panel step k (panel-local, the pivot lands on global column/row d = rk = p0+k): 1) pivot by max vn1 over trailing columns; the full-column swap in A carries each column's already-written R prefix with it (R is extracted from A's upper triangle at the end), so no separate R swap is needed — only vn1/vn2/P and the k filled F rows are swapped. 2) bring ONLY the pivot column up to date wrt the k prior reflectors (A[:,d] −= V·F[k,·]ᵀ). 3) generate the Householder reflector. 4) take R[d,d] from it and store the reflector. 5) ONE combined pass acc = uᵀ·A over the panel width: acc's reflector-column entries are the compact-WY aux (uₖᵀuᵢ), its trailing entries are the direct term of F's new column. 6) F's new column = direct − F·aux (correction). 7) bring row rk of the trailing part up to date (it becomes R and feeds the norm downdate). 8) downdate vn1 with the same guarded formula as the unblocked core (dlaqps returns KB for the same reason this panel is cut short on a guard trip). (was QRCP.fProxy.cs:377, spec ticket docs/dev/spec-qrcp-blocked.md)
 - 2026-07-11 | minNormSolveInPlace (COD) full derivation (moved from section header): QRCP gives A·P = Q·R with R = [R11 R12; 0 ~0] (R11 r×r upper-tri, full rank; the trailing (n-r) diagonal below tol). Writing x = P·y (P a permutation, so ‖x‖ = ‖y‖) and c = Qᵀb = [c1; c2], the residual is ‖R y − c‖² = ‖[R11 R12]·y − c1‖² + ‖c2‖². The second term is fixed, so every least-squares x satisfies M·y = c1 where M = [R11 R12] (r×n, full ROW rank r); among those, min ‖x‖ = min ‖y‖. LQ-factor the SHORT-WIDE M = L̃·Qz (L̃ r×r lower-tri, invertible; Qz r×n, orthonormal rows). Then M y = c1 ⇔ Qz y = L̃⁻¹c1 =: w, and the minimum-norm y with Qz y = w is y = Qzᵀ w (Qz has orthonormal rows). So the whole solve is: 1) QRCP factor (fused: b ← Qᵀb), read rank r off R's diagonal; 2) r == n (full column rank): basic IS min-norm — reuse solveInPlaceFinish, no COD; 3) r < n: LQ-compress M = R's top r×n block → L̃ + Qz-reflectors; forward-solve L̃ w = c1 (c1 = b[0..r), already Qᵀb); x = Qzᵀ w straight from the reflectors; un-permute x[P[j]]. Why the top-right block R12 matters: the BASIC (truncated) solution zeros the free variables in the pivoted column ordering, which is NOT minimum-norm for rank-deficient A, because R12 couples the free columns back into the leading ones (min ‖x‖ wants a nonzero free part that R12 can use to shrink the pivoted part). LQRP (the transpose-dual, wide side) has the SAME need: there the coupling lives in the below-diagonal block L21, and its basic solution is minimum-norm only for a CONSISTENT b — an inconsistent rank-deficient LS needs LQRP.minNormSolveInPlace, which QR-least-squares-solves the m×r block [L11; L21] (the transpose-dual of the LQ compress here). (was QRCP.fProxy.cs:1067)
+
+## SVD
+- 2026-07-13 | thin transposes U/V so bidiagonal QR rotations hit contiguous rows (same
+  vectorization approach as Eigen.symmetricInPlace). (was SVD.fProxy.cs:203)
+- 2026-07-13 | bidiagonalQR's deflation threshold is relative to the GLOBAL anorm, not local
+  |d|+|e| — float needs this on clustered/zero singular values (same finding as the symmetric
+  eigen QL). (was SVD.fProxy.cs:379)
 
 ## SVD.LowRank
 - 2026-07-12 | Reorth windowing idea (moved from comment): a possible future optimization is

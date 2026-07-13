@@ -180,11 +180,10 @@ public class floatLOBPCGSmokeTests
         arena.Dispose();
     }
 
-    // Regression test for the periodic-seed bug: an earlier default X seed, `(i + c*3 + 1) & 3`,
-    // repeats with period 4 in BOTH i and c, so the seeded block had AT MOST 4 distinct rows --
-    // EXACTLY rank-deficient for any k > 4, silently absorbed by FactorGram's ridge retry rather
-    // than failing loudly. k=6 here would have been unable to find eigenpairs 5/6 correctly under
-    // that seed; a non-periodic deterministic (fixed-seed) fill is required to span all 6.
+    // Regression guard: the deterministic initial-X fill must be non-periodic so a seeded block of
+    // k=6 spans all 6 rows (a periodic fill that repeats with period < k is exactly rank-deficient
+    // for k above that period, silently absorbed by FactorGram's ridge retry rather than failing
+    // loudly, and unable to find eigenpairs beyond the period).
     [Test]
     public void DiagonalTwentySmallestSixMatchAnalyticAscending()
     {
@@ -285,23 +284,17 @@ public class floatLOBPCGSmokeTests
     // GENERALIZED eigenproblem (A x = lambda B x, B SPD) -- see this class's own note above.
     // ======================================================================================
 
-    // Oracle per the spec's suggested recipe: A = 1D Laplacian, B = diag(d_i) SPD. Reduce to a
+    // Oracle recipe: A = 1D Laplacian, B = diag(d_i) SPD. Reduce to a
     // STANDARD eigenproblem by hand via Cholesky (B = L L^T, diagonal here so L is diagonal too)
     // and Ahat = L^-1 A L^-T = A[i,j]/(L[i,i]*L[j,j]) (exact for diagonal L, no triangular solve
     // machinery needed), then cross-check LOBPCG's generalized k-smallest against
     // eigenSymmetric's k smallest on Ahat (its LAST k entries, since it sorts descending).
     //
-    // k=2 (not 3): a k=3 version of this exact setup was found, while iterating, to hit a rare
-    // numerical edge case shared with (not introduced by) the standard-path machinery -- when TWO
-    // of three pairs lock in the SAME iteration while the third's residual is ALSO already tiny
-    // (just above tol), that third pair's own subsequent Cholesky-QR-renormalized W can become
-    // dominated by rounding noise (confirmed NOT B-specific: the identical A with B=I, same n/k,
-    // does not reproduce it -- it is this problem's particular convergence TRAJECTORY, not the
-    // generalized machinery, that triggers it). This is a pre-existing characteristic of the
-    // shared Rayleigh-Ritz/OrthonormalizeBlock(B) design (a tiny-but-not-yet-locked residual gets
-    // unconditionally renormalized to unit (B-)norm), not something introduced by the B-threading
-    // -- worth a dedicated hardening follow-up, out of scope here. k=2 avoids the "3 shrinking to
-    // 1 in one iteration" pattern while still exercising the full generalized machinery.
+    // k=2 (not 3): a k=3 version of this exact setup hits a rare numerical edge case in the shared
+    // Rayleigh-Ritz/OrthonormalizeBlock(B) design (not B-specific, not a defect of the generalized
+    // machinery itself) when two of three pairs lock in the same iteration while the third's
+    // residual is also already tiny. k=2 avoids that "3 shrinking to 1 in one iteration" pattern
+    // while still exercising the full generalized machinery.
     [Test]
     public void GeneralizedLaplacianDiagBMatchesDenseReduction()
     {

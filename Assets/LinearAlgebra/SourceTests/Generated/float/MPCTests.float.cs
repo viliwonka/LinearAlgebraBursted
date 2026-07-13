@@ -283,16 +283,10 @@ public class floatMPCTests
 
         // ============================ (e) prestabilization correctness ============================
 
-        // Regression test for a post-ship audit finding (2026-07-12, OP/DEVLOG.md): the prestabilized
-        // input-bound rows used the WRONG Phi/Gamma block (x_{k+1}'s coefficients instead of x_k's), and
-        // a second, related defect applied R naively to v instead of correctly expanding u_k^T R u_k
-        // under u_k = -Kstab x_k + v_k. Both are fixed the same way: prestabilization is a PURE change
-        // of coordinates, so it must reproduce the IDENTICAL physical answer as solving the SAME
-        // (A,B,Q,R,uLo,uHi) problem without it -- x0=(3,1.9) is the SAME binding scenario as
-        // SaturatedMatchesOracle (u0 saturates at uLo=-2), reused here as the discriminating case: the
-        // ORIGINAL (buggy) row assembly returned u0 far outside [-2,2] on this exact scenario (verified
-        // in the design's numpy prototype before this fix), so both assertions below would have failed
-        // it.
+        // Prestabilization is a PURE change of coordinates, so it must reproduce the IDENTICAL
+        // physical answer as solving the SAME (A,B,Q,R,uLo,uHi) problem without it. x0=(3,1.9) is
+        // the SAME binding scenario as SaturatedMatchesOracle (u0 saturates at uLo=-2), reused here
+        // as the discriminating case.
         void PrestabBindingBoundMatchesNonPrestab()
         {
             var A = Mat2(1, 1, 0, 1); var B = ColVec2(0, 1); var Q = Eye(2); var R = R1(1);

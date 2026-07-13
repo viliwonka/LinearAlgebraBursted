@@ -167,10 +167,16 @@ namespace LinearAlgebra.Benchmarks
 
             for (int i = 0; i < NB; i++)
             {
+                // Diagonal block must be SYMMETRIC (mirror the noise) or the assembled matrix
+                // is not actually SPD and the residual column loses its meaning.
                 var Di = arena.doubleMat(BR, BR);
                 for (int r = 0; r < BR; r++)
-                    for (int c = 0; c < BR; c++)
-                        Di[r, c] = (r == c ? BR * 8f : 0f) + rng.NextFloat(-0.1f, 0.1f);
+                    for (int c = r; c < BR; c++)
+                    {
+                        double v = (r == c ? BR * 8f : 0f) + rng.NextFloat(-0.1f, 0.1f);
+                        Di[r, c] = v;
+                        Di[c, r] = v;
+                    }
                 builder.AddBlock(i, i, in Di);
 
                 if (i > 0)

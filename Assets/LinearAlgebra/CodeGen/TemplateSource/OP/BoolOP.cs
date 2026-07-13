@@ -5,7 +5,6 @@ using LinearAlgebra.Internal;
 
 namespace LinearAlgebra
 {
-    [BurstCompile]
     /// <summary>
     /// In-place boolean-buffer logic ops (notInPlace/orInPlace/andInPlace/xorInPlace/equalsInPlace/
     /// notEqualsInPlace), buffer×buffer and buffer×scalar. The pure counterparts are the operator

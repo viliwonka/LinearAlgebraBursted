@@ -190,7 +190,7 @@ public class floatConjugateGradientTests
             Assert.IsTrue(ok);
 
             // Cholesky solve on the same system (b overwritten with x), as the explicit two-call
-            // composition (choleskySolve(in A, ref L, ref b) was deleted).
+            // composition.
             var bChol = b.Copy();
             var L = arena.floatMat(dim, dim);
             DirectSolveInfo cholInfo = CHO.decomp(in A, ref L);

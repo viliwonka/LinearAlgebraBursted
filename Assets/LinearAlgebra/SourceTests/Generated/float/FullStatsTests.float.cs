@@ -11,9 +11,9 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// Tests for the previously-untested median / quartile / IQR path of
-// StatsOP.meanMinMaxRange_medianIQRstdDevVariance, including the n==2 case that used to read
-// out of bounds (copy[-1]). Quartiles use the linear-interpolation percentile (numpy 'linear').
+// Tests for the median / quartile / IQR path of
+// Stats.meanMinMaxRange_medianIQRstdDevVariance, including the n==2 regression case (must not
+// read out of bounds). Quartiles use the linear-interpolation percentile (numpy 'linear').
 public class floatFullStatsTests
 {
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]

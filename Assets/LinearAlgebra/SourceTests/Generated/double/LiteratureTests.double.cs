@@ -13,9 +13,8 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// Literature test vectors with KNOWN closed-form results / documented failure modes.
-// See memory note literature-test-vectors. Each case pins an algorithm against an independent
-// reference value rather than a self-consistency check.
+// Literature test vectors with KNOWN closed-form results / documented failure modes. Each case
+// pins an algorithm against an independent reference value rather than a self-consistency check.
 public class doubleLiteratureTests
 {
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]

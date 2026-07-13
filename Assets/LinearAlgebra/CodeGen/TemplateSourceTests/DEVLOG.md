@@ -1,7 +1,32 @@
 # DEVLOG — TemplateSourceTests
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## ConvergenceBudgetTests
+- 2026-07-13 | Relocated the measured figure from the header: managed (non-Burst) execution of
+  this battery measured ~50x slower than the Burst job path, which is why the O(n^3) work runs
+  inside [BurstCompile] IJobs. (was ConvergenceBudgetTests.fProxy.cs:20)
+
+## QPEqpTests
+- 2026-07-13 | Converted from the hand-written SourceTests/QPEqpTests.cs (hand-duplicated
+  float/double halves) into this fProxy template; the "InternalsVisibleTo cannot reach the
+  firstpass assembly" folklore repeated in several hand-written test headers was verified FALSE
+  against the compiled assemblies (the grant exists and fProxyChooseMarkerTests already used it).
+  Header's spec provenance: the oracle follows docs/dev/draft-spec-qp.md Stage 1 plus the
+  implementation handoff. QPActiveSetTests.cs / QPSolveTests.cs / LadFrischNewtonQuantileTests.cs
+  are candidates for the same conversion.
+
+## FullStatsTests
+- 2026-07-13 | Header history relocated: the median/quartile/IQR path was previously untested;
+  the n==2 case used to read out of bounds (copy[-1]) before the fix its test now pins. The
+  facade was StatsOP at the time (renamed Stats). (was FullStatsTests.fProxy.cs:10-12)
+
 ## ArenaHandleTests
+- 2026-07-13 | The 2026-07-11 relocation (below) shortened the file header but left it still
+  narrating history and still tagging four individual cases "FM2"/"FM2:" (lines 7-8 header, 32,
+  129, 134, 139) -- the full postmortem already lives in the entry below, so these added nothing.
+  Reworded the header to a plain present-tense contract (in-Arena defensive copy must not dangle)
+  and dropped all four inline "FM2" tags, keeping each case's contract sentence. (was
+  ArenaHandleTests.fProxy.cs:7-8, 32, 129, 134, 139)
 - 2026-07-11 | Relocated the "THE OLD BUG (FM2) / THE FIX" postmortem from the file header. Full
   account: Arena used to be a plain struct holding all its mutable tracking state inline, and every
   math struct captured arena identity by RAW ADDRESS (`Arena* _arenaPtr`, set via
@@ -62,6 +87,18 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   the stale pre-growth buffer held by the arena's tracked copy. (was SparseBSRTests.fProxy.cs:387-389)
 
 ## MIPTests
+- 2026-07-13 | Dropped the "STAGE 2/3/4 (" banner labels from the file header and the (f)/(g)
+  section banners (both the enum-region banners and the method-region "==== (f)/(g) ... ===="
+  banners) -- reworded to describe the feature under test (pseudocost/reliability branching +
+  best-bound queue; activity-based propagation + rounding heuristic + gap limits) instead of the
+  internal stage number. Also dropped the "per the draft spec" qualifier from the header (the
+  float-tiny/double-serious rule is stated directly). Trimmed three measured-baseline comments to
+  their asserted bound only: Stage3NodesBranchy12's header and its two AssertNodesLE call-site
+  comments (were "stage2 267 -> stage3 241 nodes"), P0033's "double explores ~447 nodes" aside,
+  and Stage4NodesBranchy12's header + AssertNodes call-site comment (were "stage3 241 ->
+  stage4(pre-cache) 218 -> stage4(fProxyLPCache) 199" -- the exact node-count history for this
+  case is already recorded in this file's 2026-07-11 entry below). (was MIPTests.fProxy.cs:12-14,
+  53, 70, 602, 658, 665-673, 689, 795, 890-891, 987-992, 1007)
 - 2026-07-12 | Dropped "(third-review regression)" reviewer-workflow tag from the LargeMagnitudeIntegrality
   enum comment (kept the contract: MIP.solve must classify this fractional root via an absolute, not
   relative, integrality tolerance). Dropped the "Baselines were measured on both stages directly (by
@@ -82,6 +119,8 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   (both internal-only, not shipped). (was MIPTests.fProxy.cs:11, 73, 972-981)
 
 ## QRCPDowndateTests
+- 2026-07-13 | Reworded "reported out via Counts for the orchestrator" to "for the managed
+  driver" (residue of the ORCHESTRATOR-narration cleanup). (was QRCPDowndateTests.fProxy.cs:1034)
 - 2026-07-12 | Dropped "ORCHESTRATOR DIAGNOSIS" / "ORCHESTRATOR VERIFICATION" / "adversarial
   mutation-testing review pass" agent-workflow narration and the OQ-D1/OQ-D2 ticket references from
   KahanSweep's header, GradualDecay's KNOWN, DISCLOSED LIMITATION comment, and TierEDistinctMagnitudes'
@@ -106,6 +145,13 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   (was QRCPDowndateTests.fProxy.cs:14, 341-342, 625)
 
 ## PCATests
+- 2026-07-13 | Dropped two "per the spec" / "the spec says" qualifiers (WellSeparated's doc and
+  the well-separated-columns comment in the vector-agreement check) -- the surrounding sentence
+  already states the rule (route-/precision-dependent rotation on near-tie columns has no sign-rule
+  fix, so vector comparisons are skipped there). Dropped "the fable-caught trap" agent-name
+  reference from CorrelationDegenerate's two comments (file header list + section banner) -- kept
+  the contract: a constant column must not spuriously add a unit eigenvalue on the Correlation
+  route. (was ML/PCATests.fProxy.cs:26, 124, 206, 531)
 - 2026-07-12 | Dropped agent-workflow narration from SvdTruncatedWideThrows's comment ("The coder
   confirmed..."). Full account: svdTruncated is NOT shape-free; pcaSVDTruncated adds the n>=p guard so
   it throws on wide data (p>n) just like pcaSVD/pcaRandomized. Deliberately no "truncated works on wide
@@ -115,6 +161,15 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   (was ML/PCATests.fProxy.cs:18)
 
 ## QueryTests / QueryPredicateTests (fProxy / iProxy)
+- 2026-07-13 | Dropped the remaining internal spec-ticket labels the 2026-07-11 cleanup missed:
+  "(review's CRITICAL regression)" and "(Fix 6)" in QueryTests.fProxy.cs; "(spec P1)" (x2, header
+  + SYMMETRY banner) in both QueryTests.fProxy.cs and QueryPredicateTests.fProxy.cs; the T1-T5/
+  AC#3/AC#4 group-banner labels throughout QueryPredicateTests.fProxy.cs; "(spec P2/P6)" in
+  iProxy/QueryTests.iProxy.cs; "(T1, integer)" in iProxy/QueryPredicateTests.iProxy.cs. These came
+  from docs/dev/spec-query.md / spec-predicate-queries.md's T1-T5/AC#/P-n taxonomy. The surrounding
+  prose already names each group/check, so no rewording was needed beyond deleting the
+  parenthetical. (was QueryTests.fProxy.cs:21, 711, 800, 1131; QueryPredicateTests.fProxy.cs:22,
+  123, 187, 251, 288, 352, 387, 440, 560; QueryTests.iProxy.cs:913; QueryPredicateTests.iProxy.cs:50)
 - 2026-07-12 | Dropped the "(review's HIGH finding)" reviewer-note reference from the MinValue-edge
   section banner in iProxy QueryTests. iAbs() on iProxy.MinValue saturates to iProxy.MaxValue (an
   off-by-one on the |MinValue| case, since MinValue has no positive counterpart in two's complement);
@@ -127,6 +182,13 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   the line was deleted outright rather than reworded.
 
 ## ControlTests / ControlLQRTests
+- 2026-07-13 | ControlLQRTests: reworded "The coder's smoke tests live in ControlTests.fProxy.cs"
+  to "Basic smoke coverage lives in ControlTests.fProxy.cs" (the mirrored agent-workflow reference
+  in ControlTests' own header was cleaned 2026-07-12; this side was missed). Dropped four "per
+  spec"/"the spec allows"/"the spec's grid"/"the task's stabilizability guard" qualifiers -- the
+  surrounding sentence already states the rule in each case. Dropped the measured warm/cold
+  iteration-count aside from WarmPerturbation's comment (assertion is a generous absolute bound,
+  not the measured numbers). (was ControlLQRTests.fProxy.cs:11, 30, 110-111, 131, 134-135, 232)
 - 2026-07-12 | Dropped agent-workflow narration from ControlTests' file header ("written by the coder
   agent alongside the implementation" / "is the test-writer agent's job"). Kept the substance: this file
   is basic smoke coverage (known tiny instance solves, statuses fire, throws throw), not the full battery
@@ -135,6 +197,40 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
 - 2026-07-11 | Dropped dangling `docs/spec-lqr.md` citations (and the "per that spec's binding rules" /
   "'Tests' section items 1-7" internal labels) from both file headers. The surrounding prose already
   describes what each file covers (smoke tests vs. the full battery) without needing the spec.
+
+## CompMathTests
+- 2026-07-13 | Dropped "(renamed from the kernel's old distance/distancesq names ...)" and
+  "Renamed from sincosInPlace - review flagged the InPlace suffix as misleading ..." rename-history
+  asides. Kept the contracts: absDiff/sqrDiff are componentwise, not whole-vector Euclidean
+  distances; sincos does not mutate x. (was CompMathTests.fProxy.cs:461-464, 508-509)
+
+## CHOTests / ConjugateGradientTests
+- 2026-07-13 | Dropped "(choleskySolve(in A, ref L, ref b) was deleted -- it was a 2-line
+  composition in disguise)" from both files' Cholesky-solve comments. Kept the contract: factor +
+  solve as the explicit two-call composition, b overwritten with x. (was CHOTests.fProxy.cs:175-176,
+  ConjugateGradientTests.fProxy.cs:188-189)
+
+## UKFTests
+- 2026-07-13 | Dropped the tolerance-calibration narration ("Calibrated from a float32/float64
+  numpy prototype ... measured max|x diff|~1.9e-6 ... unlike the steadyStateGain tolerance
+  episode, which was calibrated too tight against a since-fixed bug"). Kept only the contract:
+  both tolerances carry a large margin over the prototype-measured error, in both precisions.
+  (was UKFTests.fProxy.cs:51-56)
+
+## SVDRandomizedTests
+- 2026-07-13 | Dropped three "Measured ..." asides (worst relative error < 1e-4 for the q=2/
+  oversample-10 case; ratio ≈ 1.0000001; q=0 vs q=2 summed-rel-error 0.19/0.29 vs 6e-5/1.6e-4).
+  Kept the resulting bound in each test (2% rel tol; 1.05 ratio; q=2 <= q=0 monotone check). (was
+  SVDRandomizedTests.fProxy.cs:226, 281, 322)
+
+## CHOTests / CHOPTests / LUTests / QRCPTests
+- 2026-07-13 | Dropped the remaining "Solver API rework (commit 2)" / "Commit 2.5 (2a)"
+  commit-ticket refs from method-body and enum-case comments (the 07-12 pass only caught the
+  enum-comment copies in CHOTests) and the "Stage-3 direct-solve-status coverage" internal stage
+  label from all four files. Contracts kept in place (decompSolve-exit reusability, driver
+  short-circuit purity, DirectSolveStatus/RankInfo coverage on non-PD/indefinite/singular/
+  rank-deficient input). (was CHOTests.fProxy.cs:213, 249, 381; CHOPTests.fProxy.cs:36, 39, 276,
+  437, 488; LUTests.fProxy.cs:45, 49, 381, 1019; QRCPTests.fProxy.cs:41, 355, 511-512, 915)
 
 ## CHOTests
 - 2026-07-12 | Dropped the "Solver API rework (commit 2)" and "Commit 2.5 (2a)" commit-ticket references
@@ -149,12 +245,88 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   arena-tracked structs' Data getter throws InvalidOperationException on a stale handle instead of
   silently returning a dead/garbage buffer. (was ArenaWiringTests.fProxy.cs:370-371)
 
+## QRTests / SVDTests
+- 2026-07-13 | Dropped the remaining "Solver API rework (commit 2)" / "Commit 2.5 (2f-i)" /
+  "Commit 2.5 SVD coverage restoration" commit-ticket references (4 sites in QRTests, 6 in
+  SVDTests) and the "Ported from the deleted Jacobi-oracle" / "Ported from the deleted
+  SVDSingleColumn" / "Ported from the deleted SVDNonConvergence" porting-history framings (3
+  sites in SVDTests) -- reworded to name the coverage directly (A-preservation, uninit-x
+  contract, independent-algorithm cross-check, known-value oracle, non-convergence regression
+  guard). Contracts kept in place. (was QRTests.fProxy.cs:39, 42, 331, 1098; SVDTests.fProxy.cs:
+  51, 53, 340, 379, 538, 565, 593)
+
+## SparseArenaWiringTests / ArenaWiringTests (iProxy / bool) -- generational-overlay section
+- 2026-07-13 | Dropped the remaining "Stage E" stage labels from the generational-overlay
+  guard-tests section banners in the three siblings the 2026-07-12 fProxy-dense cleanup missed
+  (SparseArenaWiringTests.fProxy.cs, ArenaWiringTests.iProxy.cs, ArenaWiringTests.bool.cs). Kept
+  the contract: a checks-gated "generational overlay" on the arena-tracked structs' data getters
+  throws InvalidOperationException on a stale handle instead of silently returning a dead/garbage
+  buffer. (was SparseArenaWiringTests.fProxy.cs:388-389; ArenaWiringTests.iProxy.cs:366-367;
+  ArenaWiringTests.bool.cs:341-342)
+
+## SVDLowRankTests
+- 2026-07-13 | Dropped commit hash de74c48 (x2) and the "FIX 1"/"FIX 2" labels; FIX 1 = the
+  converged-residual check once computed V instead of U, FIX 2 = alpha-breakdown betaLast=0
+  handling. Contracts kept in place (partial reorthogonalization semantics; what each test
+  exercises). (was SVDLowRankTests.fProxy.cs:41, 583, 619, 807)
+
+## MPCTests
+- 2026-07-13 | Dropped the "post-ship audit finding (2026-07-12, OP/DEVLOG.md)" citation and the
+  duplicated bug postmortem (prestabilized input-bound rows read the wrong Phi/Gamma block; R
+  applied naively to v instead of expanding u_k^T R u_k) from PrestabBindingBoundMatchesNonPrestab's
+  comment -- the full postmortem already lives in OP/DEVLOG.md's "## MPC / MPC.State" entry. Kept
+  the regression contract: prestabilization is a pure change of coordinates, so it must reproduce
+  the identical physical answer as the non-prestabilized solve of the same problem. (was
+  MPCTests.fProxy.cs:282-291)
+
 ## GalleryTests / GalleryPhase2Tests
 - 2026-07-11 | Dropped dangling `docs/dev/spec-gallery.md` citations from both file headers.
   GalleryPhase2Tests kept its other parenthetical (the production template file name
   Gallery.Phase2.fProxy.cs), which is a real in-repo reference, not an internal-only doc.
 
+## LiteratureTests
+- 2026-07-13 | Dropped "See memory note literature-test-vectors" -- pointed at the agent's private
+  memory file, meaningless to a human reader of the repo. The rest of the header already states
+  the file's contract (known closed-form results, independent reference values). (was
+  LiteratureTests.fProxy.cs:13)
+
+## VectorCopyTests
+- 2026-07-13 | Dropped the "Previously both routed to the temp pool, so Copy() returned a vector
+  that ClearTemp would free out from under the caller (use-after-dispose)" postmortem. Kept the
+  contract: Copy() must be PERSISTENT, TempCopy() must be TEMP. (was VectorCopyTests.fProxy.cs:7-9)
+
+## StatsTests
+- 2026-07-13 | Dropped "Previously 1/(M-1) = 1/0 = Inf and 0*Inf = NaN filled every cell" from
+  covarianceInto's M_Rows<2 guard test, and "(bug-fix)" from SingleElementVariance's comment. Kept
+  the contracts: covarianceInto zero-fills for M<2; single-element variance/stdDev are exactly 0.
+  (was StatsTests.fProxy.cs:107-109, 271)
+
+## BoolIndexingTests
+- 2026-07-13 | Dropped "previously dereferenced a null arena core (the old _arenaPtr field, now
+  the _arena handle's _core)" from MatrixCopyNullArenaGuard's comment. Kept the contract: copying
+  a standalone (null-arena) matrix with the default allocator must fall back to Allocator.Temp
+  without crashing. (was BoolIndexingTests.cs:172-174)
+
+## SparseBSRTests
+- 2026-07-13 | Dropped the remaining "used to leave the arena's tracked value-copy... (double-free
+  / use-after-free on dispose)" / "used to double-free / use-after-free... (native crash)" history
+  framing that survived the 2026-07-12 relocation pass in BuildDenseGrown's and
+  GrowthThenDisposeTest's comments -- the DEVLOG entry above already tells the same story. Kept
+  "this is the growth path the regression tests pin." (was SparseBSRTests.fProxy.cs:366-368, 544-545)
+
 ## KrylovFusedKernelTests / KrylovRound2Tests / KrylovVerifyAtExitTests / SSORTests / SparseSpMMTests / LargeSparseBenchmark
+- 2026-07-13 | Dropped the remaining "R6a"/"pre-R6a" ticket-code tags throughout
+  KrylovVerifyAtExitTests (7 sites: header, UnguardedCg's doc, the no-verify branch comment, the
+  rnorm-contract comment, the healthy-path section banner, and the pcg/cgls/cgne wiring-check
+  banner) and the "R1 review caught" tag in KrylovFusedKernelTests' rectangular-updateXR comment
+  -- all reworded to name the invariant directly (verify-at-exit / the shared-loop-bound
+  regression) instead of the round/review label. Also trimmed
+  VerifyAtExitCatchesOptimisticDriftOnIllConditionedMoler's debugging-methodology narration
+  ("prototyping the recurrence in a throwaway dotnet console app ... via a throwaway diagnostic
+  sweep run through Unity") down to the resulting contract: n/alpha/tol are tuned to this
+  library's actual Krylov kernels, float lies at this size and double does not, hence the
+  requireLie choose-gate. (was KrylovVerifyAtExitTests.fProxy.cs:16, 62, 96, 113-122, 169, 177,
+  223, 225; KrylovFusedKernelTests.fProxy.cs:147-148)
 - 2026-07-12 | SSORTests: dropped the "Krylov Round-3" preamble from the file header too (a later pass
   judged the bare round label still read as an internal stage marker, superseding the 2026-07-11 call
   below to keep it there); replaced with a plain "SSOR preconditioner test coverage:" lead-in for the
@@ -172,8 +344,26 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   said (SparseSpMMTests' "before" oracle comment, LargeSparseBenchmark's SSOR-preconditioner-for-LOBPCG
   comment). Also dropped a vague "(spec §3b/task brief)" aside in the same LargeSparseBenchmark comment.
 
+## SparseSolverTests
+- 2026-07-13 | Dropped the "STAGE 2:" banner tag from the rnorm-contract section comment, the
+  "(added this pass)" workflow tag from the pcg rzold>0 guard comment, and the hardcoded
+  "minres ~L595, biCGStab ~L797, cgls ~L999, lsqr ~L1175 of Krylov.fProxy.cs" line-number
+  references in the warm-start section banner (replaced with "its own pre-loop residual check" --
+  line numbers in a sibling template rot the moment either file is edited). (was
+  SparseSolverTests.fProxy.cs:503, 820-821, 1532)
+
 ## SparseSpMMTests
 - (see combined Krylov entry above)
+
+## AccuracySweepTests
+- 2026-07-13 | Reworded "so a reviewer can see the input really was ill-cond" to "to confirm the
+  input really is ill-conditioned" (reviewer-address language), and dropped "exactly as the spec
+  warned" from the QR_Hilbert reference-comparison comment (the sentence already states why a
+  fixed tiny bound would false-fail on this input). (was AccuracySweepTests.fProxy.cs:32, 166)
+
+## ArenaWiringTests (fProxy) -- temp-recycling section
+- 2026-07-13 | Dropped "wanted by the spec" from TempRecyclingCycles' NOTE comment; the sentence
+  already states the stronger check it's contrasting with. (was ArenaWiringTests.fProxy.cs:127-128)
 
 ## UnsafeSortTests
 - 2026-07-11 | Dropped the dangling `docs/spec-shipped-feature.md pillar 3` citation; kept the quoted
@@ -182,6 +372,21 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   just a pointer. (was UnsafeSortTests.fProxy.cs:15)
 
 ## LOBPCGSmokeTests
+- 2026-07-13 | Dropped the periodic-initial-X-seed bug history from the k=6 seeding test's
+  comment (an earlier default seed `(i+c*3+1)&3` repeated with period 4 in both i and c, so the
+  seeded block had at most 4 distinct rows -- exactly rank-deficient for k>4, silently absorbed by
+  FactorGram's ridge retry rather than failing loudly) -- kept the contract: the fill must be
+  non-periodic to span all 6 rows. Dropped the debugging narrative ("found, while iterating, to
+  hit...") and the "worth a dedicated hardening follow-up, out of scope here" open TODO from the
+  k=2-not-3 comment on GeneralizedLaplacianDiagBMatchesDenseReduction -- kept the contract: a k=3
+  version of this setup hits a rare numerical edge case in the shared Rayleigh-Ritz/
+  OrthonormalizeBlock(B) design (not B-specific) when two of three pairs lock in the same
+  iteration while the third's residual is also already tiny; k=2 avoids that pattern. Follow-up
+  idea (dedicated hardening test for the k=3 case) belongs on the regressions-todo tracker, not in
+  this comment. (was LOBPCGSmokeTests.fProxy.cs:179-183, 290-300)
+- 2026-07-13 | Dropped "per the spec's suggested recipe" from the buckling-oracle comment header
+  -- the recipe itself is stated in full in the following sentences. (was
+  LOBPCGSmokeTests.fProxy.cs:284)
 - 2026-07-12 | Dropped agent-workflow narration from the file header ("written by the coder agent
   purely to sanity-check the algorithm while iterating", quoted task-brief language, "left for the
   independent test-writer agent" x2, "the coder's OWN scratch smoke tests"). Kept the substance: this
@@ -200,6 +405,17 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   only because the + operators also called it backwards. (was InPlaceOpTests.fProxy.cs:7-10)
 
 ## LPTests
+- 2026-07-13 | Dropped the remaining "per the spec"/"the spec's ..."/"stage-1 test gap in the
+  original spec" qualifiers (DegenerateDuplicatedRows, LadFNvsOracle x2, LadBRvsOracle,
+  LadBRStackloss, LadBRLargeMSortPath's second literature-vector skip, LadBRKnownAnswer) -- each
+  surrounding sentence already states the tolerance/rule directly. Dropped the "Observed margins are
+  wide (2026-07-09): double warm 1 / cold 19, float warm 2 / cold 16" measured-baseline aside
+  (assertion is `warm < cold`, unconditionally). Trimmed RevisedDenseCovering's "Reproduces a bug
+  the benchmark caught" postmortem to a plain regression-guard statement, and
+  LadBRLargeMSortPath's "verified via instrumentation" methodology narration down to the resulting
+  fact (at m=1000 float, only LP.lad(RevisedSimplex) returns MaxIterations). (was
+  LPTests.fProxy.cs:910, 1018-1019, 1123-1124, 1416, 1459, 1482, 1512, 1526, 1541-1542, 1568,
+  1652-1653)
 - 2026-07-11 | Dropped twelve dangling internal-doc citations across this file: repeated
   `docs/spec-revised-simplex.md` "stage 1"/"stage 2" labels on the RevisedSimplex/DualSimplex section
   headers (both the TestType enum comments and the method-body section banners), `docs/draft-spec-mip.md
@@ -211,6 +427,13 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   "Tests section (6 items)" label on the Barrodale-Roberts section. All replaced with self-contained
   prose (no doc paths, no acceptance-item numbers) or removed outright where purely redundant with the
   surrounding sentence.
+
+## ScalarMatrixOpTests (fProxy)
+- 2026-07-13 | Dropped the "review-found bugs" header (scalar-matrix used to delegate to
+  rhs-lhs and negate; 0/A used to throw DivideByZeroException pre-guard) and the "(review fix D)"
+  / "pre-fix" tags -- the iProxy twin had this same postmortem dropped 2026-07-12, this file was
+  missed. Kept the contracts: scalar - matrix must equal s - A[i,j] elementwise; normalizeLP must
+  sum pow(|x|,p) not pow(x,p); 0/A must not throw. (was ScalarMatrixOpTests.fProxy.cs:10-13, 43, 52)
 
 ## ScalarMatrixOpTests (iProxy)
 - 2026-07-12 | Dropped the bug-postmortem file header ("the operator delegated to `rhs - lhs`, which

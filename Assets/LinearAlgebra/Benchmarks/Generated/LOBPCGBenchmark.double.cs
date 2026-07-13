@@ -28,7 +28,16 @@ namespace LinearAlgebra.Benchmarks
         public double tol;
         public NativeArray<LOBPCGInfo> infoOut; // length 1
 
-        public void Execute() => infoOut[0] = Eigen.lobpcg(in A, ref ws, k, tol, maxIter);
+        public void Execute()
+        {
+            // Cold start every timed run (same as the BSR jobs below): an all-zero X makes lobpcg
+            // re-seed deterministically instead of warm-starting from the previous sample's
+            // converged block and timing a no-op.
+            for (int i = 0; i < ws.X.M_Rows; i++)
+                for (int c = 0; c < ws.X.N_Cols; c++)
+                    ws.X[i, c] = (double)0;
+            infoOut[0] = Eigen.lobpcg(in A, ref ws, k, tol, maxIter);
+        }
     }
 
 

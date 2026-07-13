@@ -19,7 +19,7 @@ using Unity.Mathematics;
 //       unmasked ops, and the AlwaysFalse -> index == -1 + WorstScoreForNearest(m) sentinel.
 //   D — Score-based selection: argMaxRowBy / argMinRowBy / topKRowsBy + column twins, cross-checked
 //       against argMaxRowNorm / argMaxColNorm (Norm.L2 argmax is monotone under sqrt).
-//   Symmetry — a column op on A equals the row op on transpose(A) (spec P1).
+//   Symmetry — a column op on A equals the row op on transpose(A).
 //
 // Burst-compatible computational tests live in TestJob; managed-throw guards are plain [Test]
 // methods on the main thread. Functor structs are NESTED in the outer class so the generated
@@ -120,7 +120,7 @@ public class fProxyQueryPredicateTests
         }
 
         // ---------------------------------------------------------------------
-        // GROUP A — FLAT / SCALAR PREDICATE OPS (T1)
+        // GROUP A — FLAT / SCALAR PREDICATE OPS
         // ---------------------------------------------------------------------
 
         void GroupAScalar()
@@ -184,7 +184,7 @@ public class fProxyQueryPredicateTests
         }
 
         // ---------------------------------------------------------------------
-        // GROUP B — ROW / COLUMN FILTER (T2)
+        // GROUP B — ROW / COLUMN FILTER
         // ---------------------------------------------------------------------
 
         void GroupBFilter()
@@ -248,7 +248,7 @@ public class fProxyQueryPredicateTests
         }
 
         // ---------------------------------------------------------------------
-        // GROUP C — MASKED NEAREST: the headline correctness check (T3).
+        // GROUP C — MASKED NEAREST: the headline correctness check.
         // ---------------------------------------------------------------------
 
         void MaskedNearest()
@@ -285,7 +285,7 @@ public class fProxyQueryPredicateTests
         }
 
         // ---------------------------------------------------------------------
-        // GROUP C — ALL-PASS EQUIVALENCE (AC#3/AC#4) + AlwaysFalse sentinel.
+        // GROUP C — ALL-PASS EQUIVALENCE + AlwaysFalse sentinel.
         // ---------------------------------------------------------------------
 
         void AllPassEquivalence()
@@ -349,7 +349,7 @@ public class fProxyQueryPredicateTests
         }
 
         // ---------------------------------------------------------------------
-        // GROUP C — k <= 0 / empty matrix returns 0 without throwing (T5 partial).
+        // GROUP C — k <= 0 / empty matrix returns 0 without throwing.
         // ---------------------------------------------------------------------
 
         void EmptyAndZeroK()
@@ -384,7 +384,7 @@ public class fProxyQueryPredicateTests
         }
 
         // ---------------------------------------------------------------------
-        // GROUP D — SCORE-BASED SELECTION (T4)
+        // GROUP D — SCORE-BASED SELECTION
         // ---------------------------------------------------------------------
 
         void GroupDScore()
@@ -437,7 +437,7 @@ public class fProxyQueryPredicateTests
         }
 
         // ---------------------------------------------------------------------
-        // SYMMETRY (spec P1): a column op on A == the row op on transpose(A).
+        // SYMMETRY: a column op on A == the row op on transpose(A).
         // ---------------------------------------------------------------------
 
         void Symmetry()
@@ -557,7 +557,7 @@ public class fProxyQueryPredicateTests
 
     // -------------------------------------------------------------------------
     // Managed-throw guards (main thread): undersized Indices, empty matrices,
-    // and query-length mismatches (T5).
+    // and query-length mismatches.
     // -------------------------------------------------------------------------
 
     [Test]

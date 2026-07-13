@@ -1031,7 +1031,7 @@ public class fProxyQRCPDowndateTests
     // gets Tier P invariants. Seeds the oracle certifies as well-separated at every step ALSO get
     // Tier E (pivot sequence + bit-identical Q/R). Some seeds get an injected exact / near rank
     // deficiency. Loops many seeds inside ONE Execute for speed (mirrors ReconstructRandomTall's
-    // style). The Tier-E-eligible count is reported out via Counts for the orchestrator.
+    // style). The Tier-E-eligible count is reported out via Counts for the managed driver.
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct FuzzJob : IJob
     {

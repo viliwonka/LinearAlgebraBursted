@@ -20,7 +20,8 @@ namespace LinearAlgebra
         /// <summary>y = A x. y must be distinct from x (see each implementation's aliasing guard).</summary>
         void Apply(in fProxyN x, ref fProxyN y);
 
-        /// <summary>y = Aᵀ x. y must be distinct from x. Needed by CGLS/LSQR/BiCGSTAB (Phase 3).</summary>
+        /// <summary>y = Aᵀ x. y must be distinct from x. Needed by transpose-using solvers
+        /// (CGLS/LSQR/LSMR) and residual audits; biCGStab is transpose-free and never calls this.</summary>
         void ApplyT(in fProxyN x, ref fProxyN y);
 
         /// <summary>

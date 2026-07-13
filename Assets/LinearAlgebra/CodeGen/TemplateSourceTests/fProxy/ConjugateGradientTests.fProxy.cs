@@ -186,7 +186,7 @@ public class fProxyConjugateGradientTests
             Assert.IsTrue(ok);
 
             // Cholesky solve on the same system (b overwritten with x), as the explicit two-call
-            // composition (choleskySolve(in A, ref L, ref b) was deleted).
+            // composition.
             var bChol = b.Copy();
             var L = arena.fProxyMat(dim, dim);
             DirectSolveInfo cholInfo = CHO.decomp(in A, ref L);

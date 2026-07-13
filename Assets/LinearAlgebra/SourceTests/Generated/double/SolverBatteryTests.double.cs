@@ -21,7 +21,7 @@ using Unity.Mathematics;
 // (decompose-then-rebuild), or a residual norm (solve-then-verify A x ≈ b). Tests are grouped BY
 // SOLVER so each solver is exercised across multiple regimes.
 //
-// Verification reuses the library's own ops (Cholesky, LU, QR/QRCP, SVD, Eigen, MatrixMetrics).
+// Verification reuses the library's own ops (Cholesky, LU, QR/QRCP, SVD, Eigen, Analysis).
 // Tolerances are per-precision: they scale with Consts.doubleSqrtEps (float ≈ 3.45e-4, double ≈ 1.49e-8)
 // so the SAME expression is loose for float and tight for double, matching the GalleryTests idiom.
 // The tightest near-degenerate facts (Rosser spectrum, cond(Hilbert), Lauchli pinv accuracy) are
@@ -764,7 +764,7 @@ public class doubleSolverBatteryTests
         }
 
         // =====================================================================
-        // Condition number (MatrixMetrics.cond).
+        // Condition number (Analysis.cond).
         // =====================================================================
 
         // Hadamard cond = 1 (orthogonal up to scale); Hilbert cond grows fast: cond(H₃) ≈ 524.06.

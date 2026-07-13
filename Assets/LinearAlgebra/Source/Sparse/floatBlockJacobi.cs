@@ -83,11 +83,11 @@ namespace LinearAlgebra.Sparse
         /// Builds the preconditioner from A's diagonal blocks. A must be square
         /// (BlockRows==BlockCols, BR==BC). Throws ArgumentException if a diagonal block is
         /// missing from the stored pattern or is singular. Use the out-info overload to receive
-        /// the singular-block outcome as a <see cref="DirectSolveInfo"/> instead of an exception.
+        /// the singular-block outcome as a <see cref="PreconditionerInfo"/> instead of an exception.
         /// </summary>
         public unsafe floatBlockJacobi(in floatBSR A, Allocator allocator)
         {
-            this = new floatBlockJacobi(in A, allocator, out DirectSolveInfo info);
+            this = new floatBlockJacobi(in A, allocator, out PreconditionerInfo info);
             if (!info.Solved)
                 throw new ArgumentException("floatBlockJacobi: diagonal block is singular");
         }
@@ -95,10 +95,11 @@ namespace LinearAlgebra.Sparse
         /// <summary>
         /// Non-throwing build: info carries the per-block LU's own status — Success, or the
         /// failing block's status (Singular) when a diagonal block cannot be inverted (the
-        /// preconditioner is then unusable — do not Apply). Caller-contract violations
-        /// (non-square, missing diagonal block) still throw.
+        /// preconditioner is then unusable — do not Apply). shift is always 0 and attempts 1
+        /// (BlockJacobi has no shift retry). Caller-contract violations (non-square, missing
+        /// diagonal block) still throw.
         /// </summary>
-        public unsafe floatBlockJacobi(in floatBSR A, Allocator allocator, out DirectSolveInfo info)
+        public unsafe floatBlockJacobi(in floatBSR A, Allocator allocator, out PreconditionerInfo info)
         {
             _rec = null;
             _inlineDInv = default;
@@ -147,7 +148,8 @@ namespace LinearAlgebra.Sparse
                     P.Dispose();
                     Dcopy.Dispose();
                     dinv.Dispose();
-                    info = luInfo;   // propagate the failing block's LU status
+                    // propagate the failing block's LU status
+                    info = new PreconditionerInfo { status = luInfo.status, shift = 0, attempts = 1 };
                     return;
                 }
 
@@ -171,7 +173,7 @@ namespace LinearAlgebra.Sparse
             }
 
             _inlineDInv = dinv;
-            info = new DirectSolveInfo { status = DirectSolveStatus.Success };
+            info = new PreconditionerInfo { status = DirectSolveStatus.Success, shift = 0, attempts = 1 };
         }
 
         /// <summary>
@@ -193,7 +195,7 @@ namespace LinearAlgebra.Sparse
 
         /// <summary>Arena-tracked twin of the non-throwing build. On failure the struct stays
         /// standalone-default and the record is NOT adopted — the caller frees the slot.</summary>
-        internal unsafe floatBlockJacobi(in floatBSR A, floatBlockJacobiRecord* rec, Allocator allocator, out DirectSolveInfo info) : this(in A, allocator, out info)
+        internal unsafe floatBlockJacobi(in floatBSR A, floatBlockJacobiRecord* rec, Allocator allocator, out PreconditionerInfo info) : this(in A, allocator, out info)
         {
             if (!info.Solved)
                 return;

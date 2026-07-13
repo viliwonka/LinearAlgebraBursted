@@ -122,12 +122,7 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Allocates a cache using this library's default Van der Merwe hyperparameters: alpha=1,
-        /// beta=2, kappa=0. Van der Merwe's own write-up recommends a much smaller alpha (often
-        /// 1e-3), but that shrinks the sigma-point spread by the SAME factor while the
-        /// recombination weights grow by its inverse SQUARED -- measured (float32 prototype) to
-        /// produce catastrophic cancellation in this library's precision range (a 1e-3 tracking
-        /// error against an exact linear-KF oracle blew up to ~1 with alpha=1e-3, vs ~1e-6 with
-        /// alpha=1). alpha=1 also happens to make lambda=kappa for kappa=0, keeping <c>Wc[0]</c>
+        /// beta=2, kappa=0. alpha=1 makes lambda=kappa for kappa=0, keeping <c>Wc[0]</c>
         /// non-negative for the DEFAULT case (see <see cref="Wc"/>'s own doc for why that matters)
         /// -- a caller who explicitly passes a smaller alpha via the other constructor still gets a
         /// correct, symmetrized result, just with less numerical margin.

@@ -25,6 +25,12 @@ namespace LinearAlgebra.Benchmarks
             foreach (var n in Bench.Sizes) sb.AppendLine(BenchFloat(n, Flops(n)));
             foreach (var n in Bench.Sizes) sb.AppendLine(BenchDouble(n, Flops(n)));
             sb.AppendLine();
+
+            sb.AppendLine("=== GEMM-TransA: dense C = A^T * B (covariance / compact-WY shape) ===");
+            sb.AppendLine(Bench.Header());
+            foreach (var n in Bench.Sizes) sb.AppendLine(BenchTransAFloat(n, Flops(n)));
+            foreach (var n in Bench.Sizes) sb.AppendLine(BenchTransADouble(n, Flops(n)));
+            sb.AppendLine();
         }
     }
 }

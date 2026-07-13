@@ -11,12 +11,9 @@ namespace LinearAlgebra
     // partial-merge into this SAME `Hash` class, so this kernel lives here once instead of
     // colliding as CS0111/CS0101 across merged fragments.
     //
-    // NOTE FOR EDITORS: this file must never contain the literal proxy-token substrings that name
-    // the sibling per-type files (spelled out here only as "fP" + "roxy" / "iP" + "roxy" to avoid
-    // tripping the codegen parser's own trigger words) - either one appearing anywhere in this
-    // file's text, even in a comment, flips TemplateConverter's singular-file detection and this
-    // file would silently get copy-mangled once per int-family type. Refer to the sibling files by
-    // description ("the float/double file", "the int-family file") instead of by name.
+    // Codegen hazard: this file must never contain the sibling per-type files' proxy-token name
+    // spellings -- see Hash/DEVLOG.md. Refer to the sibling files by description ("the
+    // float/double file", "the int-family file") instead of by name.
     //
     // Algorithm: xxHash32 (Yann Collet, public domain); non-cryptographic. No output-compatibility
     // requirement with Unity.Mathematics' math.hash or any other xxHash32 implementation -- only

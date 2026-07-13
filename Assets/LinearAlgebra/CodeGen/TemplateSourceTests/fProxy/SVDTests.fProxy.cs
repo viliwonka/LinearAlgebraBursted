@@ -48,9 +48,9 @@ public class fProxySVDTests
             ThinKnownWideViaTranspose_6x15,
             ThinGalleryHilbert_8,
             ThinGalleryKahan_12,
-            // Solver API rework (commit 2): uninit-x contract.
+            // Uninit-x contract.
             PinvSolveUninitXContract,
-            // Commit 2.5 SVD coverage restoration:
+            // SVD coverage:
             //  2b  independent-algorithm cross-check (σ_i^2 == eig(AᵀA)_i) + Frobenius identity.
             CrossCheckEigenSquare8,
             CrossCheckEigenTall12x8,
@@ -337,7 +337,7 @@ public class fProxySVDTests
             arena.Dispose();
         }
 
-        // Solver API rework (commit 2): SVD.pinvSolve must treat x as OUTPUT ONLY -- prior garbage
+        // SVD.pinvSolve must treat x as OUTPUT ONLY -- prior garbage
         // (here, NaN sentinels) must not survive into the result.
         void PinvSolveUninitXContract()
         {
@@ -376,7 +376,7 @@ public class fProxySVDTests
         }
 
         // ================================================================================
-        // Commit 2.5 SVD coverage restoration (replaces oracle role of the deleted Jacobi SVD).
+        // SVD coverage: independent-algorithm cross-checks and known-value oracles.
         // ================================================================================
 
         // (2b) Independent-algorithm cross-check. The singular values from Golub-Kahan (SVD.values)
@@ -535,7 +535,7 @@ public class fProxySVDTests
             }
         }
 
-        // (2d) Ported from the deleted Jacobi-oracle SVDKnown2x2, now against Golub-Kahan SVD.thin.
+        // (2d) Known-value oracle against Golub-Kahan SVD.thin.
         // A = [[3,0],[4,5]] -> singular values sqrt(45)≈6.7082039, sqrt(5)≈2.2360680 (descending).
         void Known2x2GolubKahan()
         {
@@ -562,7 +562,7 @@ public class fProxySVDTests
             arena.Dispose();
         }
 
-        // (2d) Ported from the deleted SVDSingleColumn. 5x1 column [1,2,3,4,5]: single singular value
+        // (2d) Known-value oracle. 5x1 column [1,2,3,4,5]: single singular value
         // = column 2-norm = sqrt(55)≈7.4161985 (m=5 >= n=1 satisfies thin's requirement).
         void SingleColumn5x1()
         {
@@ -590,7 +590,7 @@ public class fProxySVDTests
             arena.Dispose();
         }
 
-        // (2d) Ported from the deleted SVDNonConvergence, adapted to the CURRENT Golub-Kahan
+        // (2d) Non-convergence regression guard, against the CURRENT Golub-Kahan
         // implementation. maxIter=1 cannot isolate an 8x8 bidiagonal block in a single per-value
         // iteration, so the bidiagonal QR genuinely returns false (non-convergent). In the current
         // impl, S is written ONLY inside `if (ok)`, so on non-convergence S retains its (zero) pre-fill

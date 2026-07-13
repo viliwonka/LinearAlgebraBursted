@@ -911,8 +911,8 @@ public class doubleLPTests
         // degenerate at the optimal vertex): Wyndor Glass with row 2 (2x2<=12) repeated as row 3, row 3
         // shifted down to row 4 (3x1+2x2<=18). Feasible region and optimum are UNCHANGED by the
         // redundant duplicate (2,6), Z=36 -- both revised-simplex backends must still terminate (no
-        // cycling) at the right objective. Flagged as a stage-1 test gap in the original spec; closed
-        // here for both RevisedSimplex and DualSimplex in one test.
+        // cycling) at the right objective. Closed here for both RevisedSimplex and DualSimplex in
+        // one test.
         void DegenerateDuplicatedRows()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -1019,9 +1019,9 @@ public class doubleLPTests
         // Small dense covering LP (min cx s.t. Ax>=b, x>=0; A,b,c>0, n=m=6) -- the SAME shape as the LP
         // benchmark's Section 6 (dense covering LP, dual-favorable): EVERY row starts primal-infeasible
         // at the all-logical basis (xB=b>0 but the >= logicals' bounds are (-INF,0]), simultaneously, all
-        // in the SAME direction. Reproduces a bug the benchmark caught: RevisedSimplex returned Optimal
-        // with 0 iterations and objective 0 on every Section-6 instance while tableau/interior/dual all
-        // agreed on the true optimum -- a silent phase-1 bail, not a precision issue. Cross-checks the
+        // in the SAME direction. Regression guard: RevisedSimplex must not return Optimal with 0
+        // iterations and objective 0 on this shape -- tableau/interior/dual all agree on the true
+        // optimum, so a silent phase-1 bail is wrong, not a precision issue. Cross-checks the
         // objective against LPMethod.Simplex (the trusted baseline) rather than a hand-derived value,
         // since the random construction doesn't have a closed-form optimum.
         void RevisedDenseCovering()
@@ -1124,8 +1124,7 @@ public class doubleLPTests
             AssertCloseD(obj2, objC, relTol * (1.0 + math.abs(objC)));
 
             // (b) the warm start pivots STRICTLY FEWER times than the cold rebuild. Record the observed
-            //     counts (got=warm, limit=cold) in the diagnostics slots on failure. Observed margins are
-            //     wide (2026-07-09): double warm 1 / cold 19, float warm 2 / cold 16.
+            //     counts (got=warm, limit=cold) in the diagnostics slots on failure.
             if (!(info2.iterations < infoC.iterations) && Fail[0] == (double)0)
             { Fail[0] = (double)1; Fail[1] = (double)info2.iterations; Fail[2] = (double)infoC.iterations; Fail[3] = (double)0; }
             Assert.IsTrue(info2.iterations < infoC.iterations);
@@ -1417,7 +1416,7 @@ public class doubleLPTests
             var infoO = LP.lad(in A, in b, ref xo, out double objO, LPMethod.RevisedSimplex);
 
             AssertTrue(infoO.status == LPStatus.Optimal);
-            // double reaches the spec's 1e-6 rel; float loosened to 1e-2. FN is an INTERIOR POINT with
+            // double reaches 1e-6 rel; float loosened to 1e-2. FN is an INTERIOR POINT with
             // a duality-gap floor of Consts.doubleSqrtEps*(1+||b||) (float ~3.45e-4), so its L1 residual
             // sits a hair ABOVE the exact simplex oracle's -- an absolute suboptimality that grows with
             // ||b|| (more rows + the +5 gross outliers), exceeding a 1e-3 RELATIVE bound in float at
@@ -1460,7 +1459,7 @@ public class doubleLPTests
 
             var info = LP.ladFN(in A, in b, ref x, out double obj);
 
-            // no NaN/Inf blow-up (the "no division blowups" the spec's item 4 demands)
+            // no NaN/Inf blow-up (no division blowups)
             AssertTrue(math.isfinite(x[0]) && math.isfinite(x[1]) && math.isfinite((double)obj));
             // FN on a bounded dual is only ever Optimal or MaxIterations, never Infeasible/Unbounded.
             AssertTrue(info.status == LPStatus.Optimal || info.status == LPStatus.MaxIterations);
@@ -1483,7 +1482,7 @@ public class doubleLPTests
         // overdetermined + gross-outlier construction LadFNvsOracle uses (A random in [-1,1],
         // b = A*xt + small noise, a +5 gross outlier every 10th row; n=4). Anchoring both exact engines
         // (BR, revised-simplex oracle) and the interior-point one (FN) to the oracle's honest ‖Ax-b‖₁
-        // is the three-way agreement the spec's item 1 asks for -- BR being exact-vertex should match
+        // is a three-way agreement -- BR being exact-vertex should match
         // the oracle even more tightly than FN does. Same 1e-6/1e-2 rel split (per FN-test precedent).
         void LadBRvsOracle(int m)
         {
@@ -1513,7 +1512,7 @@ public class doubleLPTests
             AssertTrue(infoBR.status == LPStatus.Optimal);
             AssertTrue(infoO.status == LPStatus.Optimal);
 
-            // double reaches the spec's 1e-6 rel; float loosened to 1e-2 (roundoff compounds differently
+            // double reaches 1e-6 rel; float loosened to 1e-2 (roundoff compounds differently
             // across BR's Gauss-Jordan tableau pivots, the oracle's LU-factored revised simplex, and FN's
             // interior point -- same float-vs-exact-backend loosening rationale as LadFNvsOracle, whose
             // own FN-vs-oracle bound this reuses verbatim).
@@ -1527,7 +1526,7 @@ public class doubleLPTests
         // Item 2. Brownlee stack-loss known-answer (the same literature vector + 5e-2 tolerance as
         // LadStackloss / LadFNStackloss), solved via the Barrodale-Roberts route. BR being exact-vertex
         // lands far inside 5e-2 in double; the bound is kept identical to the other two LAD engines'
-        // literature tests for cross-comparability (per the spec's item-2 wording).
+        // literature tests for cross-comparability.
         void LadBRStackloss()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -1542,9 +1541,9 @@ public class doubleLPTests
             AssertClose(x[2], (double)0.57391304, (double)5e-2);       // Water.Temp
             AssertClose(x[3], (double)(-0.06086957), (double)5e-2);    // Acid.Conc.
 
-            // Item 3 (a SECOND, BR-specific literature vector) is DELIBERATELY SKIPPED: it is conditional
-            // per the spec ("A second literature vector BR-specific IF the fetched source ships a worked
-            // example"), and the fetched Barrodale-Roberts source -- R quantreg's rqbr.f Fortran and its
+            // A second, BR-specific literature vector is DELIBERATELY SKIPPED, conditional on the
+            // fetched source shipping a worked example: the fetched Barrodale-Roberts source -- R
+            // quantreg's rqbr.f Fortran and its
             // rq.fit.br R wrapper (see LP.BarrodaleRoberts.double.cs's header) -- ships NO worked numeric
             // example / test data with the algorithm itself. No other citable, externally-verifiable
             // LAD/L1 published-coefficient dataset is encoded here rather than fabricate a "known answer";
@@ -1569,7 +1568,7 @@ public class doubleLPTests
             var info = LP.ladBR(in A, in b, ref x, out double obj);
             AssertTrue(info.status == LPStatus.Optimal);
 
-            // Tight per-dtype "exactly zero" band: 1e-6 in double (the spec-verified value on Stackloss);
+            // Tight per-dtype "exactly zero" band: 1e-6 in double;
             // 1e-2 in float, since the exact vertex is reached only to float's ~1e-7 relative precision
             // AMPLIFIED by BR's Gauss-Jordan elimination over an intercept-dominated (|x0|~40) basis, so
             // the interpolated residuals land at a few 1e-3 -- comfortably inside 1e-2, comfortably above
@@ -1653,8 +1652,8 @@ public class doubleLPTests
         // (as LadBRvsOracle does at m<=192). At m=1000 the LAD reformulation the revised simplex solves
         // has ~2(n+m) ~ 2008 variables, and in FLOAT that revised simplex hits its iteration budget and
         // returns MaxIterations (a pre-existing large-m float limitation of that backend, NOT of BR):
-        // verified via instrumentation -- at m=1000 float, LP.ladBR returns Optimal and LP.ladFN returns
-        // Optimal, only LP.lad(RevisedSimplex) returns MaxIterations. BR (the feature under test) is
+        // at m=1000 float, LP.ladBR returns Optimal and LP.ladFN returns Optimal, only
+        // LP.lad(RevisedSimplex) returns MaxIterations. BR (the feature under test) is
         // correct; anchoring to a backend that itself doesn't converge here would be a false failure.
         void LadBRLargeMSortPath()
         {

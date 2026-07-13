@@ -4,8 +4,11 @@
   comments or public docs.
 
 .DESCRIPTION
-  Scans the SHIPPED surfaces only:
+  Scans the SHIPPED surfaces plus all generated code (templates are covered transitively —
+  run after regen so Generated reflects them):
     - Assets/LinearAlgebra/Source  (generated library code = the UPM package root)
+    - Assets/LinearAlgebra/SourceTests/Generated   (generated tests)
+    - Assets/LinearAlgebra/Benchmarks/Generated    (generated benchmarks)
     - docs/features                          (public feature docs)
     - README.md, CHANGELOG.md
 
@@ -30,6 +33,8 @@ $root = Split-Path -Parent $PSScriptRoot
 
 $targets = @(
   (Join-Path $root "Assets\LinearAlgebra\Source"),
+  (Join-Path $root "Assets\LinearAlgebra\SourceTests\Generated"),
+  (Join-Path $root "Assets\LinearAlgebra\Benchmarks\Generated"),
   (Join-Path $root "docs\features"),
   (Join-Path $root "README.md"),
   (Join-Path $root "CHANGELOG.md")
@@ -40,10 +45,13 @@ $targets = @(
 # Barrodale-Roberts algorithm's own lowercase "stage 2" terminology.
 $patterns = @(
   @{ label = "internal spec path";  rx = 'docs[/\\](dev[/\\]|draft-spec-|spec-|research-)|draft-spec-[a-z-]+\.md|rfc-[a-z-]+\.md' },
-  @{ label = "ticket/round code";   rx = '\bOQ-\d+\b|\bKrylov R\d+[a-z]?\b|\(R\d+[a-z]?[/,)]|STAGE \d+ \(|\bFM\d\b|failure mode \d'; cs = $true },
-  @{ label = "dev history";         rx = 'an earlier version|used to (be|have|repeatedly)|previously (we|the)|was (wrongly|renamed|removed) |old (field|version|shared gates)|pre-change code path' },
-  @{ label = "agent/workflow ref";  rx = "coder('s)? (final )?report|test-writer|third-review|mini-spec|per the spec\b" },
-  @{ label = "commit provenance";   rx = '\b(commit|see) [0-9a-f]{7,10}\b' }
+  # Round codes are letter-suffixed (R6a) -- requiring the suffix keeps code like `(R2, Id)` clean.
+  @{ label = "ticket/round code";   rx = '\bOQ-\d+\b|\bKrylov R\d+[a-z]?\b|\(R\d+[a-z][/,)]|STAGE \d+ \(|\bFM\d\b|failure mode \d|\bPRE-R\d+[a-z]?\b'; cs = $true },
+  # "previously computed/row/Active..." is algorithmic prose, not history -- match only narration forms.
+  @{ label = "dev history";         rx = 'an earlier version|used to (be|have|repeatedly)|previously (we|the|both|1/|dereferenced|returned)|was (wrongly|renamed|removed) |old (field|version|shared gates)|pre-change code path|no longer load-bearing|changed from \w+ to (bool|this)|\(spec estimate\)|a later phase' },
+  @{ label = "agent/workflow ref";  rx = "coder('s)? (final )?report|test-writer|third-review|mini-spec|per the spec\b|fable-caught|the orchestrator|review's CRITICAL|adversarial review" },
+  @{ label = "commit provenance";   rx = '\b(commit|see) [0-9a-f]{7,10}\b|\bcommit 2(\.5)?\b' },
+  @{ label = "perf verdict";        rx = '~?\d+(\.\d+)?x (faster|slower)|measured \(float32' }
 )
 
 # Deliberate markdown links into docs/dev (e.g. "[rfc-memory-model.md](../dev/rfc-memory-model.md)")
@@ -64,6 +72,8 @@ foreach ($target in $targets) {
       $lineNo++
       if ($f.Extension -eq ".md" -and $line -match $mdLinkExempt) { continue }
       foreach ($p in $patterns) {
+        # A changelog describes changes by definition -- past-tense phrasing there is not a leak.
+        if ($f.Name -eq "CHANGELOG.md" -and $p.label -eq "dev history") { continue }
         $isMatch = if ($p.cs) { $line -cmatch $p.rx } else { $line -imatch $p.rx }
         if ($isMatch) {
           $rel = $f.FullName.Substring($root.Length + 1)
