@@ -15,24 +15,6 @@ using UnityEngine.TestTools;
 
 public class floatQRTests
 {
-    [BurstCompile(CompileSynchronously = true)]
-    public struct AssemblyTestJob : IJob
-    {
-        public void Execute()
-        {
-            var arena = new Arena(Allocator.Persistent);
-
-            int dim = 16;
-
-            var Q = arena.floatRandomMat(dim*2, dim);
-            var R = arena.floatMat(dim);
-
-            QR.decompInPlace(ref Q, ref R);
-
-            arena.Dispose();
-        }
-    }
-
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {

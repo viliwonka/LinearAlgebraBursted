@@ -20,40 +20,6 @@ using Unity.Mathematics;
 // (rank 0) and rank-1 outer product (rank 1).
 public class floatCHOPTests
 {
-    [BurstCompile(CompileSynchronously = true)]
-    public struct AssemblyTestJob : IJob
-    {
-        public void Execute()
-        {
-            var arena = new Arena(Allocator.Persistent);
-
-            var B = arena.floatRandomMat(6, 4);
-            var A = Gram(in arena, in B);
-            var L = arena.floatMat(6);
-            var P = new Pivot(6, Allocator.Persistent);
-
-            CHOP.decomp(in A, ref L, ref P);
-
-            P.Dispose();
-            arena.Dispose();
-        }
-
-        static floatMxN Gram(in Arena arena, in floatMxN B)
-        {
-            int n = B.M_Rows, r = B.N_Cols;
-            var A = arena.floatMat(n, n);
-            for (int i = 0; i < n; i++)
-                for (int j = 0; j < n; j++)
-                {
-                    float s = 0;
-                    for (int k = 0; k < r; k++)
-                        s += B[i, k] * B[j, k];
-                    A[i, j] = s;
-                }
-            return A;
-        }
-    }
-
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {

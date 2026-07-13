@@ -102,12 +102,18 @@ public class longDotOperationTests
             int inVecLen = 20;
             int outVecLen = 5;
 
+            // A[i,j] = i+1 against an all-ones x: b[i] must be exactly (i+1) * inVecLen.
             longN x = arena.longVec(inVecLen, 1);
-            longMxN A = arena.longRandomMat(outVecLen, inVecLen, -100, +100);
+            longMxN A = arena.longMat(outVecLen, inVecLen);
+            for (int i = 0; i < outVecLen; i++)
+                for (int j = 0; j < inVecLen; j++)
+                    A[i, j] = (long)(i + 1);
 
             longN b = Blas.dot(A, x);
 
             Assert.AreEqual(outVecLen, b.N);
+            for (int i = 0; i < outVecLen; i++)
+                Assert.IsTrue(b[i] == (long)((i + 1) * inVecLen));
 
             arena.Dispose();
         }
@@ -191,12 +197,18 @@ public class longDotOperationTests
             int inVecLen = 64;
             int outVecLen = 16;
 
+            // A[i,j] = i+1 against an all-ones x: b[i] must be exactly (i+1) * inVecLen.
             longN x = arena.longVec(inVecLen, 1);
-            longMxN A = arena.longRandomMat(outVecLen, inVecLen, -100, +100);
+            longMxN A = arena.longMat(outVecLen, inVecLen);
+            for (int i = 0; i < outVecLen; i++)
+                for (int j = 0; j < inVecLen; j++)
+                    A[i, j] = (long)(i + 1);
 
             longN b = Blas.dot(A, x);
 
             Assert.AreEqual(outVecLen, b.N);
+            for (int i = 0; i < outVecLen; i++)
+                Assert.IsTrue(b[i] == (long)((i + 1) * inVecLen));
 
             arena.Dispose();
         }

@@ -27,25 +27,6 @@ using Unity.Mathematics;
 //    column pivoting fails to reveal rank precisely because it never pivots.)
 public class doubleQRCPTests
 {
-    // Burst-compile smoke test.
-    [BurstCompile(CompileSynchronously = true)]
-    public struct AssemblyTestJob : IJob
-    {
-        public void Execute()
-        {
-            var arena = new Arena(Allocator.Persistent);
-
-            var Q = arena.doubleRandomMat(12, 6);
-            var R = arena.doubleMat(6);
-            var P = new Pivot(6, Allocator.Persistent);
-
-            QRCP.decompInPlace(ref Q, ref R, ref P);
-
-            P.Dispose();
-            arena.Dispose();
-        }
-    }
-
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {

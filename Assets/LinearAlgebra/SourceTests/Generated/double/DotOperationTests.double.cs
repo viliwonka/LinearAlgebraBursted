@@ -102,12 +102,18 @@ public class doubleDotOperationTests
             int inVecLen = 20;
             int outVecLen = 5;
 
+            // A[i,j] = i+1 against an all-ones x: b[i] must be exactly (i+1) * inVecLen.
             doubleN x = arena.doubleVec(inVecLen, 1f);
-            doubleMxN A = arena.doubleRandomMat(outVecLen, inVecLen, -0.01f, 0.01f);
+            doubleMxN A = arena.doubleMat(outVecLen, inVecLen);
+            for (int i = 0; i < outVecLen; i++)
+                for (int j = 0; j < inVecLen; j++)
+                    A[i, j] = (double)(i + 1);
 
             doubleN b = Blas.dot(A, x);
 
             Assert.AreEqual(outVecLen, b.N);
+            for (int i = 0; i < outVecLen; i++)
+                Assert.IsTrue(b[i] == (double)((i + 1) * inVecLen));
 
             arena.Dispose();
         }
@@ -191,12 +197,19 @@ public class doubleDotOperationTests
             int inVecLen = 64;
             int outVecLen = 16;
 
+            // A[i,j] = i+1 against an all-ones x: b[i] must be exactly (i+1) * inVecLen
+            // (small integers: exact in float, so == comparison is safe).
             doubleN x = arena.doubleVec(inVecLen, 1f);
-            doubleMxN A = arena.doubleRandomMat(outVecLen, inVecLen, -0.01f, 0.01f);
+            doubleMxN A = arena.doubleMat(outVecLen, inVecLen);
+            for (int i = 0; i < outVecLen; i++)
+                for (int j = 0; j < inVecLen; j++)
+                    A[i, j] = (double)(i + 1);
 
             doubleN b = Blas.dot(A, x);
 
             Assert.AreEqual(outVecLen, b.N);
+            for (int i = 0; i < outVecLen; i++)
+                Assert.IsTrue(b[i] == (double)((i + 1) * inVecLen));
 
             arena.Dispose();
         }

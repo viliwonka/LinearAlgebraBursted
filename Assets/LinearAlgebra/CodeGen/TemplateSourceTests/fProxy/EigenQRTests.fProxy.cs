@@ -24,20 +24,6 @@ using Unity.Mathematics;
 //  - Random general: sum of eigenvalues == trace, imaginary parts sum to 0 (conjugate pairs cancel).
 public class fProxyEigenQRTests
 {
-    [BurstCompile(CompileSynchronously = true)]
-    public struct AssemblyTestJob : IJob
-    {
-        public void Execute()
-        {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyRandomMat(6, 6, -2f, 2f, 12345);
-            var re = arena.fProxyVec(6);
-            var im = arena.fProxyVec(6);
-            Eigen.valuesQRInPlace(ref A, ref re, ref im);
-            arena.Dispose();
-        }
-    }
-
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {

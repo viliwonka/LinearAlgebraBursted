@@ -663,6 +663,12 @@ public class doubleCHOTests
     }
 
     [Test]
+    public void NotSPDStatusTest()
+    {
+        new CHOTestJob() { Type = CHOTestJob.TestType.NotSPDStatus }.Run();
+    }
+
+    [Test]
     public void CrossCheckLUTest()
     {
         new CHOTestJob() { Type = CHOTestJob.TestType.CrossCheckLU }.Run();

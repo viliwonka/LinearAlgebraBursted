@@ -26,26 +26,6 @@ using Unity.Mathematics;
 //    pin both against the SVD pseudoinverse oracle.
 public class doubleLQRPTests
 {
-    // Burst-compile smoke test.
-    [BurstCompile(CompileSynchronously = true)]
-    public struct AssemblyTestJob : IJob
-    {
-        public void Execute()
-        {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.doubleRandomMat(6, 12);
-            var L = arena.doubleMat(6, 6);
-            var Q = arena.doubleMat(6, 12);
-            var P = new Pivot(6, Allocator.Persistent);
-
-            LQRP.decomp(in A, ref L, ref Q, ref P);
-
-            P.Dispose();
-            arena.Dispose();
-        }
-    }
-
     // ────────────────────────────────────────────────────────────────────────────────
     // DECOMPOSITION: LQRP.decomp — row-pivoted rank-revealing LQ.
     // ────────────────────────────────────────────────────────────────────────────────
