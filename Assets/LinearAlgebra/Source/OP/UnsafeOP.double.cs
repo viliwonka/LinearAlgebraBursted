@@ -32,19 +32,26 @@ namespace LinearAlgebra.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static double sumAbs([NoAlias] double* a, int n)
         {
-            var pa = (double4*)a;
-            int nQ = n >> 2;
-            double4 acc0 = default, acc1 = default;
-            int q = 0;
-            for (; q + 2 <= nQ; q += 2)
+            int i = 0;
+            double head = 0;
+
+            
+
+            double4 qacc0 = default, qacc1 = default;
+            for (; i + 8 <= n; i += 8)
             {
-                acc0 += doubleM.abs(pa[q]);
-                acc1 += doubleM.abs(pa[q + 1]);
+                qacc0 += doubleM.abs(*(double4*)(a + i));
+                qacc1 += doubleM.abs(*(double4*)(a + i + 4));
             }
-            if (q < nQ) acc0 += doubleM.abs(pa[q]);
-            double4 acc = acc0 + acc1;
-            double s = (acc.x + acc.y) + (acc.z + acc.w);
-            for (int i = nQ << 2; i < n; i++)
+            if (i + 4 <= n)
+            {
+                qacc0 += doubleM.abs(*(double4*)(a + i));
+                i += 4;
+            }
+            double4 qacc = qacc0 + qacc1;
+            double s = head + ((qacc.x + qacc.y) + (qacc.z + qacc.w));
+
+            for (; i < n; i++)
                 s += math.abs(a[i]);
             return s;
         }
@@ -52,19 +59,26 @@ namespace LinearAlgebra.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static double sum([NoAlias] double* a, int n)
         {
-            var pa = (double4*)a;
-            int nQ = n >> 2;
-            double4 acc0 = default, acc1 = default;
-            int q = 0;
-            for (; q + 2 <= nQ; q += 2)
+            int i = 0;
+            double head = 0;
+
+            
+
+            double4 qacc0 = default, qacc1 = default;
+            for (; i + 8 <= n; i += 8)
             {
-                acc0 += pa[q];
-                acc1 += pa[q + 1];
+                qacc0 += *(double4*)(a + i);
+                qacc1 += *(double4*)(a + i + 4);
             }
-            if (q < nQ) acc0 += pa[q];
-            double4 acc = acc0 + acc1;
-            double s = (acc.x + acc.y) + (acc.z + acc.w);
-            for (int i = nQ << 2; i < n; i++)
+            if (i + 4 <= n)
+            {
+                qacc0 += *(double4*)(a + i);
+                i += 4;
+            }
+            double4 qacc = qacc0 + qacc1;
+            double s = head + ((qacc.x + qacc.y) + (qacc.z + qacc.w));
+
+            for (; i < n; i++)
                 s += a[i];
             return s;
         }
@@ -73,20 +87,28 @@ namespace LinearAlgebra.Internal
         public static double maxAbs([NoAlias] double* a, int n)
         {
             // max is exact (no rounding), so accumulator/lane order changes nothing but NaN propagation,
-            // which is still identical on every machine. Accumulators seed at 0 == the old max=0 (abs>=0).
-            var pa = (double4*)a;
-            int nQ = n >> 2;
-            double4 acc0 = default, acc1 = default;
-            int q = 0;
-            for (; q + 2 <= nQ; q += 2)
+            // which is still identical on every machine. Accumulators seed at 0 == the old max=0 (abs>=0),
+            // so the shared zero-seeded head is neutral for max as well.
+            int i = 0;
+            double head = 0;
+
+            
+
+            double4 qacc0 = default, qacc1 = default;
+            for (; i + 8 <= n; i += 8)
             {
-                acc0 = doubleM.max(acc0, doubleM.abs(pa[q]));
-                acc1 = doubleM.max(acc1, doubleM.abs(pa[q + 1]));
+                qacc0 = doubleM.max(qacc0, doubleM.abs(*(double4*)(a + i)));
+                qacc1 = doubleM.max(qacc1, doubleM.abs(*(double4*)(a + i + 4)));
             }
-            if (q < nQ) acc0 = doubleM.max(acc0, doubleM.abs(pa[q]));
-            double4 acc = doubleM.max(acc0, acc1);
-            double m = math.max(math.max(acc.x, acc.y), math.max(acc.z, acc.w));
-            for (int i = nQ << 2; i < n; i++)
+            if (i + 4 <= n)
+            {
+                qacc0 = doubleM.max(qacc0, doubleM.abs(*(double4*)(a + i)));
+                i += 4;
+            }
+            double4 qacc = doubleM.max(qacc0, qacc1);
+            double m = math.max(head, math.max(math.max(qacc.x, qacc.y), math.max(qacc.z, qacc.w)));
+
+            for (; i < n; i++)
                 m = math.max(m, math.abs(a[i]));
             return m;
         }
@@ -173,33 +195,35 @@ namespace LinearAlgebra.Internal
             // y += mat * x
             //
             // Each row is a dot product (reduction). A single running accumulator is a serial FP-add
-            // dependency chain that strict-FloatMode Burst cannot split into SIMD lanes on its own, so
-            // this kernel uses two explicit, independent width-4 SIMD accumulators (double4 ->
-            // float4/double4: eight lane-chains advancing in parallel). The per-lane summation order
-            // is fixed by the source, so results stay deterministic: the balanced (x+y)+(z+w) fold
-            // matches the old scalar (s0+s1)+(s2+s3) exactly (same lanes, same order) -> bit-identical
-            // result. Scalar multi-accumulator source (s0..s3) does NOT get Burst to emit this; the
-            // vector type + reinterpret load does. (n%4 tail handled scalar.) Frozen fold: acc0+acc1
-            // then (x+y)+(z+w).
-            var xp = (double4*)x;
-            int nQ = n >> 2;      // number of full width-4 blocks
-            int tail = nQ << 2;   // first index of the scalar n%4 tail
+            // dependency chain that strict-FloatMode Burst cannot split into SIMD lanes on its own,
+            // so each row uses explicit independent accumulator chains with a source-fixed summation
+            // tree (the frozen numeric contract): the standard tiered shape — float-only 8-lane main
+            // tier, shared width-4 two-chain tier (double's main loop), shared scalar tail —
+            // identical to vecDot's tree per row.
             for (int r = 0; r < m; r++)
             {
-                int baseIdx = r * n;
-                var mp = (double4*)(mat + baseIdx);
-                double4 acc0 = default, acc1 = default;
-                int q = 0;
-                for (; q + 2 <= nQ; q += 2)
+                double* row = mat + (long)r * n;
+                int i = 0;
+                double head = 0;
+
+                
+
+                double4 qacc0 = default, qacc1 = default;
+                for (; i + 8 <= n; i += 8)
                 {
-                    acc0 += mp[q]     * xp[q];
-                    acc1 += mp[q + 1] * xp[q + 1];
+                    qacc0 += *(double4*)(row + i)     * *(double4*)(x + i);
+                    qacc1 += *(double4*)(row + i + 4) * *(double4*)(x + i + 4);
                 }
-                if (q < nQ) acc0 += mp[q] * xp[q];
-                double4 acc = acc0 + acc1;
-                double sum = (acc.x + acc.y) + (acc.z + acc.w);
-                for (int c = tail; c < n; c++)
-                    sum += mat[baseIdx + c] * x[c];
+                if (i + 4 <= n)
+                {
+                    qacc0 += *(double4*)(row + i) * *(double4*)(x + i);
+                    i += 4;
+                }
+                double4 qacc = qacc0 + qacc1;
+                double sum = head + ((qacc.x + qacc.y) + (qacc.z + qacc.w));
+
+                for (; i < n; i++)
+                    sum += row[i] * x[i];
                 y[r] += sum;
             }
         }

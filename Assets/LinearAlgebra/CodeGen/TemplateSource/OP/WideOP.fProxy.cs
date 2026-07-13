@@ -132,6 +132,63 @@ namespace LinearAlgebra.Internal
             //-skipFor
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static fProxyW Abs(fProxyW a)
+        {
+            //+skipFor[double]
+            if (X86.Avx.IsAvxSupported)
+                return new fProxyW { v = X86.Avx.mm256_and_ps(a.v, X86.Avx.mm256_set1_ps(math.asfloat(0x7FFFFFFF))) };
+            return new fProxyW { v = new v256(
+                math.abs(a.v.Float0), math.abs(a.v.Float1), math.abs(a.v.Float2), math.abs(a.v.Float3),
+                math.abs(a.v.Float4), math.abs(a.v.Float5), math.abs(a.v.Float6), math.abs(a.v.Float7)) };
+            //-skipFor
+            //+emitFor[double]
+            //!fProxy4 av = UnsafeUtility.As<v256, fProxy4>(ref a.v);
+            //!fProxy4 r = fProxyM.abs(av);
+            //!return new fProxyW { v = UnsafeUtility.As<fProxy4, v256>(ref r) };
+            //-emitFor
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static fProxyW Max(fProxyW a, fProxyW b)
+        {
+            //+skipFor[double]
+            if (X86.Avx.IsAvxSupported)
+                return new fProxyW { v = X86.Avx.mm256_max_ps(a.v, b.v) };
+            return new fProxyW { v = new v256(
+                math.max(a.v.Float0, b.v.Float0), math.max(a.v.Float1, b.v.Float1),
+                math.max(a.v.Float2, b.v.Float2), math.max(a.v.Float3, b.v.Float3),
+                math.max(a.v.Float4, b.v.Float4), math.max(a.v.Float5, b.v.Float5),
+                math.max(a.v.Float6, b.v.Float6), math.max(a.v.Float7, b.v.Float7)) };
+            //-skipFor
+            //+emitFor[double]
+            //!fProxy4 av = UnsafeUtility.As<v256, fProxy4>(ref a.v);
+            //!fProxy4 bv = UnsafeUtility.As<v256, fProxy4>(ref b.v);
+            //!fProxy4 r = fProxyM.max(av, bv);
+            //!return new fProxyW { v = UnsafeUtility.As<fProxy4, v256>(ref r) };
+            //-emitFor
+        }
+
+        // Fixed max-fold companion to HSum (max is exact, so the order only matters for a
+        // consistent NaN story — kept fixed anyway).
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static fProxy HMax(fProxyW a)
+        {
+            //+skipFor[double]
+            {
+                fProxy h0 = math.max(a.v.Float0, a.v.Float4);
+                fProxy h1 = math.max(a.v.Float1, a.v.Float5);
+                fProxy h2 = math.max(a.v.Float2, a.v.Float6);
+                fProxy h3 = math.max(a.v.Float3, a.v.Float7);
+                return math.max(math.max(h0, h1), math.max(h2, h3));
+            }
+            //-skipFor
+            //+emitFor[double]
+            //!fProxy4 av = UnsafeUtility.As<v256, fProxy4>(ref a.v);
+            //!return math.max(math.max(av.x, av.y), math.max(av.z, av.w));
+            //-emitFor
+        }
+
         // Fixed fold — part of every consuming kernel's frozen numeric contract: opposite
         // halves pair first (lane l + lane l+W/2), then the balanced width-4 tree.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

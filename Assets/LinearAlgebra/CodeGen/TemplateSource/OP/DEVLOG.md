@@ -1,6 +1,18 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## fProxyW stage 2: matVecDot + sum/sumAbs/maxAbs
+- 2026-07-14 | GEMV (matVecDot) float on the tiered pattern: 43.7 → 73.6 GFLOP/s at 1024
+  (3.07 → 1.82 ms), 1.6-1.7x at 256-1024, measured before ambient machine load contaminated
+  later runs (double control rows drifted +9% across runs — re-verify the small-row gate
+  threshold on an idle machine). n=64 rows REGRESSED under the ungated W-tier (0.0150 →
+  0.0221 ms: per-row fold overhead vs only 4 loop iterations), so the float W-tier gates at
+  row length >= 128; below it the shared width-4 tier is exactly the pre-rework kernel.
+  sum/sumAbs/maxAbs converted on the same pattern (L1 norm float 1024: 41.6 → 61.0 GF/s);
+  fProxyW gained Abs/Max/HMax. vecMatDot left alone — it is a scalar map Burst already
+  auto-vectorizes at full width. NOTE (user ruling): old-vs-new bit identity is NOT a
+  constraint pre-release; internal same-build contracts (fused == composed) still hold.
+
 ## fProxyW: the three-tier conversion pattern (canonical recipe)
 - 2026-07-14 | Every float width conversion follows one shape (user design, refined to a SINGLE
   marker): hoist `int i = 0; fProxy head = 0;`, then

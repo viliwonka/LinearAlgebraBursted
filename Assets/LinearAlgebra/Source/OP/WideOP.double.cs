@@ -97,6 +97,41 @@ namespace LinearAlgebra.Internal
             
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static doubleW Abs(doubleW a)
+        {
+            
+            
+            double4 av = UnsafeUtility.As<v256, double4>(ref a.v);
+            double4 r = doubleM.abs(av);
+            return new doubleW { v = UnsafeUtility.As<double4, v256>(ref r) };
+            
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static doubleW Max(doubleW a, doubleW b)
+        {
+            
+            
+            double4 av = UnsafeUtility.As<v256, double4>(ref a.v);
+            double4 bv = UnsafeUtility.As<v256, double4>(ref b.v);
+            double4 r = doubleM.max(av, bv);
+            return new doubleW { v = UnsafeUtility.As<double4, v256>(ref r) };
+            
+        }
+
+        // Fixed max-fold companion to HSum (max is exact, so the order only matters for a
+        // consistent NaN story — kept fixed anyway).
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static double HMax(doubleW a)
+        {
+            
+            
+            double4 av = UnsafeUtility.As<v256, double4>(ref a.v);
+            return math.max(math.max(av.x, av.y), math.max(av.z, av.w));
+            
+        }
+
         // Fixed fold — part of every consuming kernel's frozen numeric contract: opposite
         // halves pair first (lane l + lane l+W/2), then the balanced width-4 tree.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

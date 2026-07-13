@@ -112,6 +112,51 @@ namespace LinearAlgebra.Internal
             
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static floatW Abs(floatW a)
+        {
+            
+            if (X86.Avx.IsAvxSupported)
+                return new floatW { v = X86.Avx.mm256_and_ps(a.v, X86.Avx.mm256_set1_ps(math.asfloat(0x7FFFFFFF))) };
+            return new floatW { v = new v256(
+                math.abs(a.v.Float0), math.abs(a.v.Float1), math.abs(a.v.Float2), math.abs(a.v.Float3),
+                math.abs(a.v.Float4), math.abs(a.v.Float5), math.abs(a.v.Float6), math.abs(a.v.Float7)) };
+            
+            
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static floatW Max(floatW a, floatW b)
+        {
+            
+            if (X86.Avx.IsAvxSupported)
+                return new floatW { v = X86.Avx.mm256_max_ps(a.v, b.v) };
+            return new floatW { v = new v256(
+                math.max(a.v.Float0, b.v.Float0), math.max(a.v.Float1, b.v.Float1),
+                math.max(a.v.Float2, b.v.Float2), math.max(a.v.Float3, b.v.Float3),
+                math.max(a.v.Float4, b.v.Float4), math.max(a.v.Float5, b.v.Float5),
+                math.max(a.v.Float6, b.v.Float6), math.max(a.v.Float7, b.v.Float7)) };
+            
+            
+        }
+
+        // Fixed max-fold companion to HSum (max is exact, so the order only matters for a
+        // consistent NaN story — kept fixed anyway).
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float HMax(floatW a)
+        {
+            
+            {
+                float h0 = math.max(a.v.Float0, a.v.Float4);
+                float h1 = math.max(a.v.Float1, a.v.Float5);
+                float h2 = math.max(a.v.Float2, a.v.Float6);
+                float h3 = math.max(a.v.Float3, a.v.Float7);
+                return math.max(math.max(h0, h1), math.max(h2, h3));
+            }
+            
+            
+        }
+
         // Fixed fold — part of every consuming kernel's frozen numeric contract: opposite
         // halves pair first (lane l + lane l+W/2), then the balanced width-4 tree.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

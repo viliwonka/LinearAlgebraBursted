@@ -32,19 +32,40 @@ namespace LinearAlgebra.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static float sumAbs([NoAlias] float* a, int n)
         {
-            var pa = (float4*)a;
-            int nQ = n >> 2;
-            float4 acc0 = default, acc1 = default;
-            int q = 0;
-            for (; q + 2 <= nQ; q += 2)
+            int i = 0;
+            float head = 0;
+
+            
             {
-                acc0 += floatM.abs(pa[q]);
-                acc1 += floatM.abs(pa[q + 1]);
+                int nW = n / floatW.Width;
+                floatW acc0 = default, acc1 = default;
+                int q = 0;
+                for (; q + 2 <= nW; q += 2)
+                {
+                    acc0 += floatW.Abs(floatW.Load(a, q));
+                    acc1 += floatW.Abs(floatW.Load(a, q + 1));
+                }
+                if (q < nW) acc0 += floatW.Abs(floatW.Load(a, q));
+                head = floatW.HSum(acc0 + acc1);
+                i = nW * floatW.Width;
             }
-            if (q < nQ) acc0 += floatM.abs(pa[q]);
-            float4 acc = acc0 + acc1;
-            float s = (acc.x + acc.y) + (acc.z + acc.w);
-            for (int i = nQ << 2; i < n; i++)
+            
+
+            float4 qacc0 = default, qacc1 = default;
+            for (; i + 8 <= n; i += 8)
+            {
+                qacc0 += floatM.abs(*(float4*)(a + i));
+                qacc1 += floatM.abs(*(float4*)(a + i + 4));
+            }
+            if (i + 4 <= n)
+            {
+                qacc0 += floatM.abs(*(float4*)(a + i));
+                i += 4;
+            }
+            float4 qacc = qacc0 + qacc1;
+            float s = head + ((qacc.x + qacc.y) + (qacc.z + qacc.w));
+
+            for (; i < n; i++)
                 s += math.abs(a[i]);
             return s;
         }
@@ -52,19 +73,40 @@ namespace LinearAlgebra.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static float sum([NoAlias] float* a, int n)
         {
-            var pa = (float4*)a;
-            int nQ = n >> 2;
-            float4 acc0 = default, acc1 = default;
-            int q = 0;
-            for (; q + 2 <= nQ; q += 2)
+            int i = 0;
+            float head = 0;
+
+            
             {
-                acc0 += pa[q];
-                acc1 += pa[q + 1];
+                int nW = n / floatW.Width;
+                floatW acc0 = default, acc1 = default;
+                int q = 0;
+                for (; q + 2 <= nW; q += 2)
+                {
+                    acc0 += floatW.Load(a, q);
+                    acc1 += floatW.Load(a, q + 1);
+                }
+                if (q < nW) acc0 += floatW.Load(a, q);
+                head = floatW.HSum(acc0 + acc1);
+                i = nW * floatW.Width;
             }
-            if (q < nQ) acc0 += pa[q];
-            float4 acc = acc0 + acc1;
-            float s = (acc.x + acc.y) + (acc.z + acc.w);
-            for (int i = nQ << 2; i < n; i++)
+            
+
+            float4 qacc0 = default, qacc1 = default;
+            for (; i + 8 <= n; i += 8)
+            {
+                qacc0 += *(float4*)(a + i);
+                qacc1 += *(float4*)(a + i + 4);
+            }
+            if (i + 4 <= n)
+            {
+                qacc0 += *(float4*)(a + i);
+                i += 4;
+            }
+            float4 qacc = qacc0 + qacc1;
+            float s = head + ((qacc.x + qacc.y) + (qacc.z + qacc.w));
+
+            for (; i < n; i++)
                 s += a[i];
             return s;
         }
@@ -73,20 +115,42 @@ namespace LinearAlgebra.Internal
         public static float maxAbs([NoAlias] float* a, int n)
         {
             // max is exact (no rounding), so accumulator/lane order changes nothing but NaN propagation,
-            // which is still identical on every machine. Accumulators seed at 0 == the old max=0 (abs>=0).
-            var pa = (float4*)a;
-            int nQ = n >> 2;
-            float4 acc0 = default, acc1 = default;
-            int q = 0;
-            for (; q + 2 <= nQ; q += 2)
+            // which is still identical on every machine. Accumulators seed at 0 == the old max=0 (abs>=0),
+            // so the shared zero-seeded head is neutral for max as well.
+            int i = 0;
+            float head = 0;
+
+            
             {
-                acc0 = floatM.max(acc0, floatM.abs(pa[q]));
-                acc1 = floatM.max(acc1, floatM.abs(pa[q + 1]));
+                int nW = n / floatW.Width;
+                floatW acc0 = default, acc1 = default;
+                int q = 0;
+                for (; q + 2 <= nW; q += 2)
+                {
+                    acc0 = floatW.Max(acc0, floatW.Abs(floatW.Load(a, q)));
+                    acc1 = floatW.Max(acc1, floatW.Abs(floatW.Load(a, q + 1)));
+                }
+                if (q < nW) acc0 = floatW.Max(acc0, floatW.Abs(floatW.Load(a, q)));
+                head = floatW.HMax(floatW.Max(acc0, acc1));
+                i = nW * floatW.Width;
             }
-            if (q < nQ) acc0 = floatM.max(acc0, floatM.abs(pa[q]));
-            float4 acc = floatM.max(acc0, acc1);
-            float m = math.max(math.max(acc.x, acc.y), math.max(acc.z, acc.w));
-            for (int i = nQ << 2; i < n; i++)
+            
+
+            float4 qacc0 = default, qacc1 = default;
+            for (; i + 8 <= n; i += 8)
+            {
+                qacc0 = floatM.max(qacc0, floatM.abs(*(float4*)(a + i)));
+                qacc1 = floatM.max(qacc1, floatM.abs(*(float4*)(a + i + 4)));
+            }
+            if (i + 4 <= n)
+            {
+                qacc0 = floatM.max(qacc0, floatM.abs(*(float4*)(a + i)));
+                i += 4;
+            }
+            float4 qacc = floatM.max(qacc0, qacc1);
+            float m = math.max(head, math.max(math.max(qacc.x, qacc.y), math.max(qacc.z, qacc.w)));
+
+            for (; i < n; i++)
                 m = math.max(m, math.abs(a[i]));
             return m;
         }
@@ -203,33 +267,53 @@ namespace LinearAlgebra.Internal
             // y += mat * x
             //
             // Each row is a dot product (reduction). A single running accumulator is a serial FP-add
-            // dependency chain that strict-FloatMode Burst cannot split into SIMD lanes on its own, so
-            // this kernel uses two explicit, independent width-4 SIMD accumulators (float4 ->
-            // float4/double4: eight lane-chains advancing in parallel). The per-lane summation order
-            // is fixed by the source, so results stay deterministic: the balanced (x+y)+(z+w) fold
-            // matches the old scalar (s0+s1)+(s2+s3) exactly (same lanes, same order) -> bit-identical
-            // result. Scalar multi-accumulator source (s0..s3) does NOT get Burst to emit this; the
-            // vector type + reinterpret load does. (n%4 tail handled scalar.) Frozen fold: acc0+acc1
-            // then (x+y)+(z+w).
-            var xp = (float4*)x;
-            int nQ = n >> 2;      // number of full width-4 blocks
-            int tail = nQ << 2;   // first index of the scalar n%4 tail
+            // dependency chain that strict-FloatMode Burst cannot split into SIMD lanes on its own,
+            // so each row uses explicit independent accumulator chains with a source-fixed summation
+            // tree (the frozen numeric contract): the standard tiered shape — float-only 8-lane main
+            // tier, shared width-4 two-chain tier (double's main loop), shared scalar tail —
+            // identical to vecDot's tree per row.
             for (int r = 0; r < m; r++)
             {
-                int baseIdx = r * n;
-                var mp = (float4*)(mat + baseIdx);
-                float4 acc0 = default, acc1 = default;
-                int q = 0;
-                for (; q + 2 <= nQ; q += 2)
+                float* row = mat + (long)r * n;
+                int i = 0;
+                float head = 0;
+
+                
+                // Small rows skip the 8-lane tier entirely (measured: at n=64 its per-row fold
+                // overhead LOSES to the width-4 loop; from n=128 it wins ~1.4-1.7x) — below the
+                // gate the shared width-4 tier below is exactly the pre-rework kernel.
+                if (n >= 128)
                 {
-                    acc0 += mp[q]     * xp[q];
-                    acc1 += mp[q + 1] * xp[q + 1];
+                    int nW = n / floatW.Width;
+                    floatW acc0 = default, acc1 = default;
+                    int q = 0;
+                    for (; q + 2 <= nW; q += 2)
+                    {
+                        acc0 += floatW.Load(row, q)     * floatW.Load(x, q);
+                        acc1 += floatW.Load(row, q + 1) * floatW.Load(x, q + 1);
+                    }
+                    if (q < nW) acc0 += floatW.Load(row, q) * floatW.Load(x, q);
+                    head = floatW.HSum(acc0 + acc1);
+                    i = nW * floatW.Width;
                 }
-                if (q < nQ) acc0 += mp[q] * xp[q];
-                float4 acc = acc0 + acc1;
-                float sum = (acc.x + acc.y) + (acc.z + acc.w);
-                for (int c = tail; c < n; c++)
-                    sum += mat[baseIdx + c] * x[c];
+                
+
+                float4 qacc0 = default, qacc1 = default;
+                for (; i + 8 <= n; i += 8)
+                {
+                    qacc0 += *(float4*)(row + i)     * *(float4*)(x + i);
+                    qacc1 += *(float4*)(row + i + 4) * *(float4*)(x + i + 4);
+                }
+                if (i + 4 <= n)
+                {
+                    qacc0 += *(float4*)(row + i) * *(float4*)(x + i);
+                    i += 4;
+                }
+                float4 qacc = qacc0 + qacc1;
+                float sum = head + ((qacc.x + qacc.y) + (qacc.z + qacc.w));
+
+                for (; i < n; i++)
+                    sum += row[i] * x[i];
                 y[r] += sum;
             }
         }
