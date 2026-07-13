@@ -25,7 +25,7 @@ namespace LinearAlgebra
         /// <summary>State covariance, n x n.</summary>
         public doubleMxN P;
 
-        // ---- predict()/ekfPredict()/predictFixed() scratch: n or n x n, reused every call.
+        // ---- predict/update-family scratch: n or n x n, reused every call.
         // Public (not internal), matching the house Cache/State convention (doubleCHOPCache,
         // doubleLQRState) -- these are workspace buffers, not hidden implementation state. ----
         public doubleN xNext;

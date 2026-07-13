@@ -14,7 +14,6 @@ namespace LinearAlgebra.ML
     public struct doubleKMeansCache
     {
         public doubleMxN Gram;           // N x k  GEMM output X*C^T, patched to scores in-place
-        public doubleMxN Ct;             // D x k  transposed centroids (refreshed each iteration)
         public doubleN   PointNormSq;    // N      ||x_n||^2 constant (computed once before loop)
         public doubleN   CentNormSq;     // k      ||c_j||^2 (recomputed each iteration)
         public Indices   PrevAssignment; // N      cluster labels from previous iter (early-exit)
@@ -39,7 +38,6 @@ namespace LinearAlgebra
             return new LinearAlgebra.ML.doubleKMeansCache
             {
                 Gram           = arena.doubleMat(N, k),
-                Ct             = arena.doubleMat(D, k),
                 PointNormSq    = arena.doubleVec(N),
                 CentNormSq     = arena.doubleVec(k),
                 PrevAssignment = arena.Indices(N),

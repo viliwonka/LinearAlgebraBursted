@@ -70,9 +70,6 @@ namespace LinearAlgebra.ML
             if (ws.Gram.M_Rows != N || ws.Gram.N_Cols != k)
                 throw new ArgumentException(
                     "KMeans.fit: ws.Gram must be N×k");
-            if (ws.Ct.M_Rows != D || ws.Ct.N_Cols != k)
-                throw new ArgumentException(
-                    "KMeans.fit: ws.Ct must be D×k");
             if (ws.PointNormSq.N != N)
                 throw new ArgumentException(
                     "KMeans.fit: ws.PointNormSq.N must equal N");
@@ -137,11 +134,9 @@ namespace LinearAlgebra.ML
                     ws.CentNormSq[j] = s;
                 }
 
-                // Transpose centroids (k×D) -> ws.Ct (D×k)
-                Blas.trans(in centroids, ref ws.Ct);
-
-                // GEMM: ws.Gram = X * ws.Ct  (N×k); dot zero-clears before accumulating.
-                Blas.dot(in X, in ws.Ct, ref ws.Gram);
+                // GEMM: ws.Gram = X * centroidsᵀ (N×k), read through the TransB kernel — no
+                // materialized transpose; dot zero-clears before accumulating.
+                Blas.dot(in X, in centroids, ref ws.Gram, transposeA: false, transposeB: true);
 
                 // Patch Gram in-place: score[n,j] = cn[j] - 2*G[n,j]
                 //   pn[n] omitted (constant over j — no effect on argmin).
@@ -230,7 +225,7 @@ namespace LinearAlgebra.ML
             // updated in the last iteration's divide step but assignment/Gram still reflect the
             // pre-update centroids, so recompute them here for consistency. The convergence
             // path skips this — Gram/inertia are already valid, avoiding a redundant O(N·D·k)
-            // GEMM + transpose.
+            // GEMM.
             if (!converged)
             {
                 for (int j = 0; j < k; j++)
@@ -239,8 +234,7 @@ namespace LinearAlgebra.ML
                     for (int f = 0; f < D; f++) { fProxy v = centroids[j, f]; s += v * v; }
                     ws.CentNormSq[j] = s;
                 }
-                Blas.trans(in centroids, ref ws.Ct);
-                Blas.dot(in X, in ws.Ct, ref ws.Gram);
+                Blas.dot(in X, in centroids, ref ws.Gram, transposeA: false, transposeB: true);
                 for (int n = 0; n < N; n++)
                     for (int j = 0; j < k; j++)
                         ws.Gram[n, j] = ws.CentNormSq[j] - (fProxy)2 * ws.Gram[n, j];

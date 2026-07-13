@@ -124,17 +124,21 @@ namespace LinearAlgebra
                 for (int i = 0; i < n; i++) cache.xPred[i] += w * cache.Y[k, i];
             }
 
-            for (int i = 0; i < n; i++)
-                for (int j = 0; j < n; j++)
-                    cache.Pacc[i, j] = 0;
+            // Pacc = Σ Wc[k]·d_k·d_kᵀ as ONE symmetric GEMM instead of npts rank-1 scalar updates:
+            // D = Y − 1·xPredᵀ (overwrites Y — its propagated points are fully consumed above),
+            // WD = Wc-row-scaled D (reuses X — its sigma points are fully consumed above), then
+            // Pacc = (WD)ᵀ·D, symmetric by construction (dotSym zero-clears Pacc itself).
             for (int k = 0; k < npts; k++)
             {
-                for (int i = 0; i < n; i++) cache.diff[i] = cache.Y[k, i] - cache.xPred[i];
                 fProxy w = cache.Wc[k];
                 for (int i = 0; i < n; i++)
-                    for (int j = 0; j < n; j++)
-                        cache.Pacc[i, j] += w * cache.diff[i] * cache.diff[j];
+                {
+                    fProxy d = cache.Y[k, i] - cache.xPred[i];
+                    cache.Y[k, i] = d;
+                    cache.X[k, i] = w * d;
+                }
             }
+            Blas.dotSym(in cache.X, in cache.Y, ref cache.Pacc);
             cache.Pacc.addInPlace(Q);
             Control.SymmetrizeInPlace(ref cache.Pacc);
 
@@ -191,25 +195,29 @@ namespace LinearAlgebra
 
             var Pzz = new fProxyMxN(m, m, Allocator.Temp);
             var Pxz = new fProxyMxN(n, m, Allocator.Temp);
-            for (int i = 0; i < m; i++) for (int j = 0; j < m; j++) Pzz[i, j] = 0;
-            for (int i = 0; i < n; i++) for (int j = 0; j < m; j++) Pxz[i, j] = 0;
 
-            var dz = new fProxyN(m, Allocator.Temp);
+            // Pzz = Σ Wc·dz·dzᵀ and Pxz = Σ Wc·dx·dzᵀ as GEMMs instead of npts rank-1 scalar
+            // updates: dX = X − 1·xᵀ (overwrites X — its sigma points are fully consumed by the
+            // measurement loop above), dZ = Z − 1·zPredᵀ (in place), WdZ = Wc-row-scaled dZ.
+            // Pzz = dZᵀ·(WdZ) is symmetric by construction; Pxz = dXᵀ·(WdZ). Both dot forms
+            // zero-clear their destination.
+            var WdZ = new fProxyMxN(npts, m, Allocator.Temp);
             for (int k = 0; k < npts; k++)
             {
-                for (int i = 0; i < n; i++) cache.diff[i] = cache.X[k, i] - s.x[i];
-                for (int j = 0; j < m; j++) dz[j] = Z[k, j] - zPred[j];
                 fProxy w = cache.Wc[k];
-                for (int i = 0; i < m; i++)
-                    for (int j = 0; j < m; j++)
-                        Pzz[i, j] += w * dz[i] * dz[j];
-                for (int i = 0; i < n; i++)
-                    for (int j = 0; j < m; j++)
-                        Pxz[i, j] += w * cache.diff[i] * dz[j];
+                for (int i = 0; i < n; i++) cache.X[k, i] -= s.x[i];
+                for (int j = 0; j < m; j++)
+                {
+                    fProxy d = Z[k, j] - zPred[j];
+                    Z[k, j] = d;
+                    WdZ[k, j] = w * d;
+                }
             }
+            Blas.dotSym(in Z, in WdZ, ref Pzz);
+            Blas.dot(in cache.X, in WdZ, ref Pxz, transposeA: true);
+            WdZ.Dispose();
             Pzz.addInPlace(R);
             Control.SymmetrizeInPlace(ref Pzz);
-            dz.Dispose();
 
             var y = new fProxyN(m, Allocator.Temp);
             y.Data.CopyFrom(z.Data);
@@ -228,10 +236,8 @@ namespace LinearAlgebra
             {
                 CHOP.decompSolve(ref L, in Piv, rinfo.rank, ref Pxzt);   // Pxzt := Pzz^-1 Pxzᵀ = Kᵀ
 
-                var K = new fProxyMxN(n, m, Allocator.Temp);
-                Blas.trans(in Pxzt, ref K);
                 var Ky = new fProxyN(n, Allocator.Temp);
-                Blas.dot(in K, in y, ref Ky);
+                Blas.dot(in y, in Pxzt, ref Ky);   // Ky = Pxztᵀ y = K y (K never materialized)
                 s.x.addScaledInPlace((fProxy)1, Ky);
 
                 var PxzK = new fProxyMxN(n, n, Allocator.Temp);
@@ -241,7 +247,7 @@ namespace LinearAlgebra
 
                 status = KFStatus.Ok;
 
-                K.Dispose(); Ky.Dispose(); PxzK.Dispose();
+                Ky.Dispose(); PxzK.Dispose();
             }
             else
             {

@@ -50,6 +50,10 @@ between minor versions.
   overloads (status + rescuing diagonal shift + attempts); failed arena builds release their slot.
 - `Equals`/`GetHashCode` (buffer-handle identity) on every vector/matrix type, removing the
   CS0660/CS0661 warning pair for consumers of the `==`/`!=` element-wise operators.
+- `Blas.dot(a, b, ref c, transposeA, transposeB)`: `A·Bᵀ` (and `Aᵀ·Bᵀ`) without materializing
+  the transpose — `dot(A, A, …, transposeB: true)` routes through a dedicated symmetric `A·Aᵀ`
+  kernel. `Blas.dotSym` gains a `dotSymT` sibling for symmetric-by-construction `A·Bᵀ` products
+  (upper triangle + mirror, ~2× and exactly symmetric output).
 
 ### Changed
 
@@ -91,6 +95,14 @@ between minor versions.
   (triangular solves); `determinant`/`logDeterminant` moved onto `Analysis`.
 - Sparse debug print (`Print.Spy` on a BSR matrix): absent blocks now render as spaces instead of
   dots, for readability on larger grids.
+- **Breaking**: the k-means workspace no longer carries a `Ct` (transposed-centroids) buffer — the
+  assignment GEMM reads centroids through the transposed-B kernel directly.
+- Kalman/EKF/UKF steps drop several per-call transpose temporaries (`Hᵀ`, `K`, `(I−KH)ᵀ`) in favor
+  of transposed-operand GEMM forms, and the UKF sigma-point covariance recombinations are now
+  GEMMs instead of scalar rank-1 loops; results are equal up to floating-point summation order.
+- `Rand.spdInPlace` output is now exactly symmetric by construction (mirrored triangle instead of
+  a post-hoc averaging pass); `Rand`-generated matrices and k-means/Kalman results may differ
+  bitwise from previous versions at equal seeds.
 
 ## [0.1.0] — 2026-07-03
 

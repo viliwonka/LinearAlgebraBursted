@@ -21,7 +21,7 @@ namespace LinearAlgebra
         /// <summary>State covariance, n x n.</summary>
         public fProxyMxN P;
 
-        // ---- predict()/ekfPredict()/predictFixed() scratch: n or n x n, reused every call.
+        // ---- predict/update-family scratch: n or n x n, reused every call.
         // Public (not internal), matching the house Cache/State convention (fProxyCHOPCache,
         // fProxyLQRState) -- these are workspace buffers, not hidden implementation state. ----
         public fProxyN xNext;

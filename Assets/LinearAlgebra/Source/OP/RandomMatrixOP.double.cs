@@ -202,7 +202,7 @@ namespace LinearAlgebra
         /// floating-point asymmetry introduced by finite-precision matrix multiplication.
         /// The condition number satisfies κ(A) ≤ maxEig/minEig.
         ///
-        /// Temp scratch: Q (n×n) and Qᵀ (n×n) — both disposed before return.
+        /// Temp scratch: Q (n×n) and QΛ (n×n) — both disposed before return.
         /// Throws if dest is not square, <c>0 &lt; minEig ≤ maxEig</c> is violated, or either
         /// eigenvalue bound is non-finite (±Inf or NaN would otherwise silently produce NaN matrices).
         /// </summary>
@@ -222,38 +222,24 @@ namespace LinearAlgebra
 
             // Allocate after validation
             var Q  = new doubleMxN(n, n, Allocator.Temp);
-            var Qt = new doubleMxN(n, n, Allocator.Temp);
+            var QL = new doubleMxN(n, n, Allocator.Temp);
 
             // Draw a Haar-uniform orthogonal Q
             orthogonalInPlace(ref rng, ref Q);
 
-            // Qt = Qᵀ — must be computed BEFORE we scale Q's columns (otherwise Qt = (QΛ)ᵀ = ΛQᵀ)
-            Blas.trans(in Q, ref Qt);
-
-            // Scale column i of Q by λᵢ ~ Uniform(minEig, maxEig) → QΛ in-place
+            // QL = Q with column i scaled by λᵢ ~ Uniform(minEig, maxEig)  (QL = QΛ)
             for (int i = 0; i < n; i++)
             {
                 double lambda = rng.NextDouble(minEig, maxEig);
                 for (int r = 0; r < n; r++)
-                    Q[r, i] *= lambda;
+                    QL[r, i] = Q[r, i] * lambda;
             }
 
-            // dest = QΛ · Qᵀ  (= Q_orig · Λ · Q_origᵀ)
-            Blas.dot(in Q, in Qt, ref dest);
+            // dest = QΛ · Qᵀ — symmetric by construction; dotSymT computes the upper triangle
+            // and mirrors it, so dest is EXACTLY symmetric (no averaging pass needed).
+            Blas.dotSymT(in QL, in Q, ref dest);
 
-            // Enforce exact symmetry: dest ← (dest + destᵀ) / 2
-            // Operates only on the upper-triangle pairs to avoid redundant work.
-            for (int r = 0; r < n; r++)
-            {
-                for (int c = r + 1; c < n; c++)
-                {
-                    double avg = (dest[r, c] + dest[c, r]) * (double)0.5;
-                    dest[r, c] = avg;
-                    dest[c, r] = avg;
-                }
-            }
-
-            Qt.Dispose();
+            QL.Dispose();
             Q.Dispose();
         }
 
@@ -274,7 +260,7 @@ namespace LinearAlgebra
         /// For a symmetric or SPD matrix with controlled condition number, use
         /// <see cref="spdInPlace"/> with minEig=1, maxEig=cond instead.
         ///
-        /// Temp scratch: U (m×m), V (n×n), Vᵀ (n×n), UΣ (m×n) — all disposed before return.
+        /// Temp scratch: U (m×m), V (n×n), UΣ (m×n) — all disposed before return.
         /// Throws if <paramref name="cond"/> &lt; 1, is NaN, or is infinite (non-finite values
         /// would otherwise silently propagate NaN/Inf through the singular-value power computation).
         /// </summary>
@@ -293,12 +279,9 @@ namespace LinearAlgebra
             var U = new doubleMxN(m, m, Allocator.Temp);
             orthogonalInPlace(ref rng, ref U);
 
-            // V: n×n Haar-uniform orthogonal (independent of U), then Vᵀ
+            // V: n×n Haar-uniform orthogonal (independent of U)
             var V  = new doubleMxN(n, n, Allocator.Temp);
-            var Vt = new doubleMxN(n, n, Allocator.Temp);
             orthogonalInPlace(ref rng, ref V);
-            Blas.trans(in V, ref Vt);
-            V.Dispose();
 
             // Build UΣ (m×n): column i of U scaled by σᵢ; remaining columns zero.
             var US = new doubleMxN(m, n, Allocator.Temp);
@@ -325,11 +308,11 @@ namespace LinearAlgebra
                     US[r, i] = U[r, i] * sigma;
             }
 
-            // dest = UΣ · Vᵀ
-            Blas.dot(in US, in Vt, ref dest);
+            // dest = UΣ · Vᵀ (V read through the TransB kernel — no materialized transpose)
+            Blas.dot(in US, in V, ref dest, transposeA: false, transposeB: true);
 
             US.Dispose();
-            Vt.Dispose();
+            V.Dispose();
             U.Dispose();
         }
 

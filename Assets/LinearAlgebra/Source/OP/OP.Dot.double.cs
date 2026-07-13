@@ -203,10 +203,65 @@ namespace LinearAlgebra
             }
         }
 
+        // ref-dest primitive with both transpose flags. transposeB reads b as its transpose
+        // WITHOUT materializing it: C = A·Bᵀ contracts a.N_Cols against b.N_Cols, so both operands
+        // stream row-contiguous (use this instead of Blas.trans + dot). Guard: c must not alias an
+        // input. No defaults on the flags — that would make 3-argument calls ambiguous against the
+        // transposeA-only overload above.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void dot(in doubleMxN a, in doubleMxN b, ref doubleMxN c, bool transposeA, bool transposeB)
+        {
+            if (!transposeB)
+            {
+                dot(in a, in b, ref c, transposeA);
+                return;
+            }
+
+            if (transposeA)
+            {
+                // Aᵀ·Bᵀ = (B·A)ᵀ — rare shape, no dedicated kernel: compute B·A into Temp scratch,
+                // then transpose into c. Inputs are fully consumed before c is written, so c may
+                // alias a or b here.
+                Assume.SameDim(b.N_Cols, a.M_Rows);
+                if (c.M_Rows != a.N_Cols || c.N_Cols != b.M_Rows)
+                    throw new ArgumentException("dot: destination must be m x k");
+
+                var tmp = new doubleMxN(b.M_Rows, a.N_Cols, Unity.Collections.Allocator.Temp, true);
+                dot(in b, in a, ref tmp);
+                trans(in tmp, ref c);
+                tmp.Dispose();
+                return;
+            }
+
+            // C = A·Bᵀ contracts a.N_Cols against b.N_Cols.
+            Assume.SameDim(a.N_Cols, b.N_Cols);
+
+            int m = a.M_Rows, n = a.N_Cols, k = b.M_Rows;
+            if (c.M_Rows != m || c.N_Cols != k)
+                throw new ArgumentException("dot: destination must be m x k");
+
+            unsafe
+            {
+                if (c.Data.Ptr == a.Data.Ptr || c.Data.Ptr == b.Data.Ptr)
+                    throw new ArgumentException("dot: destination must not alias an input");
+
+                // matAAt / matMatDotTransB accumulate (+=), so c must start zeroed.
+                UnsafeUtility.MemClear(c.Data.Ptr, (long)c.Data.Length * UnsafeUtility.SizeOf<double>());
+
+                if (a.Data.Ptr == b.Data.Ptr)
+                {
+                    // A·Aᵀ: dedicated SYRK-shape kernel — one input pointer, no copy.
+                    UnsafeOP.matAAt(a.Data.Ptr, c.Data.Ptr, m, n);
+                }
+                else
+                    UnsafeOP.matMatDotTransB(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, m, n, k);
+            }
+        }
+
         /// <summary>
         /// C = Aᵀ·B for products that are symmetric BY CONSTRUCTION (B = Q·A with symmetric Q —
-        /// the ΓᵀQΓ / ZᵀQZ / MᵀRM shapes). Computes the upper triangle and mirrors it, so it runs
-        /// ~2x faster than <c>dot(..., transposeA: true)</c> and the output is exactly symmetric.
+        /// the ΓᵀQΓ / ZᵀQZ / MᵀRM shapes). Computes only the upper triangle and mirrors it (half
+        /// the FLOPs of <c>dot(..., transposeA: true)</c>); the output is exactly symmetric.
         /// CALLER CONTRACT: the true product must be symmetric — asymmetric inputs get a
         /// symmetrized wrong answer. Requires a.N_Cols == b.N_Cols (square C); destination must
         /// not alias an input. C is overwritten.
@@ -233,6 +288,40 @@ namespace LinearAlgebra
                     UnsafeOP.matAtA(a.Data.Ptr, c.Data.Ptr, m, n);
                 else
                     UnsafeOP.matMatDotTransASym(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, m, n, k);
+            }
+        }
+
+        /// <summary>
+        /// C = A·Bᵀ for products that are symmetric BY CONSTRUCTION (A = B·S with symmetric S —
+        /// the (F P)·Fᵀ / (I−KH)P·(I−KH)ᵀ shapes). B is read as its transpose without being
+        /// materialized. Computes only the upper triangle and mirrors it (half the FLOPs of
+        /// <c>dot(..., transposeA: false, transposeB: true)</c>); the output is exactly symmetric.
+        /// CALLER CONTRACT: the true product must be symmetric — asymmetric inputs get a
+        /// symmetrized wrong answer. Requires a.M_Rows == b.M_Rows (square C) and
+        /// a.N_Cols == b.N_Cols; destination must not alias an input. C is overwritten.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void dotSymT(in doubleMxN a, in doubleMxN b, ref doubleMxN c)
+        {
+            Assume.SameDim(a.N_Cols, b.N_Cols);
+            if (a.M_Rows != b.M_Rows)
+                throw new ArgumentException("dotSymT: a.M_Rows must equal b.M_Rows (square result)");
+
+            int m = a.M_Rows, n = a.N_Cols, k = b.M_Rows;
+            if (c.M_Rows != m || c.N_Cols != k)
+                throw new ArgumentException("dotSymT: destination must be m x m");
+
+            unsafe
+            {
+                if (c.Data.Ptr == a.Data.Ptr || c.Data.Ptr == b.Data.Ptr)
+                    throw new ArgumentException("dotSymT: destination must not alias an input");
+
+                UnsafeUtility.MemClear(c.Data.Ptr, (long)c.Data.Length * UnsafeUtility.SizeOf<double>());
+
+                if (a.Data.Ptr == b.Data.Ptr)
+                    UnsafeOP.matAAt(a.Data.Ptr, c.Data.Ptr, m, n);
+                else
+                    UnsafeOP.matMatDotTransBSym(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, m, n, k);
             }
         }
 

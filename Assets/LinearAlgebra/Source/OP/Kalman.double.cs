@@ -39,8 +39,7 @@ namespace LinearAlgebra
         static void PredictCovarianceCore(ref doubleKFState s, in doubleMxN Aeff, in doubleMxN Q)
         {
             Blas.dot(in Aeff, in s.P, ref s.AP);
-            Blas.trans(in Aeff, ref s.At);
-            Blas.dot(in s.AP, in s.At, ref s.APAt);
+            Blas.dotSymT(in s.AP, in Aeff, ref s.APAt);   // (Aeff P)·Aeffᵀ, symmetric since P is
             s.APAt.addInPlace(Q);
             Control.SymmetrizeInPlace(ref s.APAt);
             s.P.Data.CopyFrom(s.APAt.Data);
@@ -57,10 +56,8 @@ namespace LinearAlgebra
             int n = s.N, m = H.M_Rows;
             double innovationNorm = math.sqrt((double)Blas.dot(y, y));
 
-            var Ht = new doubleMxN(n, m, Allocator.Temp);
-            Blas.trans(in H, ref Ht);
             var PHt = new doubleMxN(n, m, Allocator.Temp);
-            Blas.dot(in s.P, in Ht, ref PHt);
+            Blas.dot(in s.P, in H, ref PHt, transposeA: false, transposeB: true);   // P Hᵀ
             var Smeas = new doubleMxN(m, m, Allocator.Temp);
             Blas.dot(in H, in PHt, ref Smeas);
             Smeas.addInPlace(R);
@@ -79,25 +76,21 @@ namespace LinearAlgebra
                 Blas.trans(in PHt, ref Xt);
                 CHOP.decompSolve(ref L, in Piv, rinfo.rank, ref Xt);
 
-                var K = new doubleMxN(n, m, Allocator.Temp);
-                Blas.trans(in Xt, ref K);
-
-                Blas.dot(in K, in y, ref s.xNext);           // xNext = K y
+                // K = Xtᵀ is never materialized: every consumer below reads it through Xt
+                // (transposed dot forms), saving an n x m Temp and a strided transpose.
+                Blas.dot(in y, in Xt, ref s.xNext);          // xNext = Xtᵀ y = K y
                 s.x.addScaledInPlace((double)1, s.xNext);    // x += K y
 
                 var IKH = new doubleMxN(n, n, Allocator.Temp);
-                Blas.dot(in K, in H, ref IKH);                // IKH := K H
+                Blas.dot(in Xt, in H, ref IKH, transposeA: true);   // IKH := Xtᵀ H = K H
                 IKH.mulInPlace((double)(-1));                 // IKH := -K H
                 for (int i = 0; i < n; i++) IKH[i, i] += (double)1;   // IKH := I - K H
 
-                var IKHt = new doubleMxN(n, n, Allocator.Temp);
-                Blas.trans(in IKH, ref IKHt);
-
                 Blas.dot(in IKH, in s.P, ref s.At);          // reuse At: (I-KH) P
-                Blas.dot(in s.At, in IKHt, ref s.APAt);       // term1 = (I-KH) P (I-KH)ᵀ, -> APAt
+                Blas.dotSymT(in s.At, in IKH, ref s.APAt);   // term1 = (I-KH) P (I-KH)ᵀ, symmetric since P is
 
                 var KR = new doubleMxN(n, m, Allocator.Temp);
-                Blas.dot(in K, in R, ref KR);
+                Blas.dot(in Xt, in R, ref KR, transposeA: true);   // KR := Xtᵀ R = K R
                 Blas.dot(in KR, in Xt, ref s.AP);             // term2 = K R Kᵀ (Xt == Kᵀ), -> AP
 
                 s.APAt.addInPlace(s.AP);                      // APAt := term1 + term2
@@ -106,14 +99,14 @@ namespace LinearAlgebra
 
                 status = KFStatus.Ok;
 
-                Xt.Dispose(); K.Dispose(); IKH.Dispose(); IKHt.Dispose(); KR.Dispose();
+                Xt.Dispose(); IKH.Dispose(); KR.Dispose();
             }
             else
             {
                 status = KFStatus.InnovationSolveFailed;
             }
 
-            L.Dispose(); Piv.Dispose(); Smeas.Dispose(); PHt.Dispose(); Ht.Dispose();
+            L.Dispose(); Piv.Dispose(); Smeas.Dispose(); PHt.Dispose();
 
             return new KFInfo { status = status, innovationNorm = innovationNorm };
         }

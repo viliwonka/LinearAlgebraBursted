@@ -10,7 +10,6 @@ namespace LinearAlgebra.ML
     public struct fProxyKMeansCache
     {
         public fProxyMxN Gram;           // N x k  GEMM output X*C^T, patched to scores in-place
-        public fProxyMxN Ct;             // D x k  transposed centroids (refreshed each iteration)
         public fProxyN   PointNormSq;    // N      ||x_n||^2 constant (computed once before loop)
         public fProxyN   CentNormSq;     // k      ||c_j||^2 (recomputed each iteration)
         public Indices   PrevAssignment; // N      cluster labels from previous iter (early-exit)
@@ -35,7 +34,6 @@ namespace LinearAlgebra
             return new LinearAlgebra.ML.fProxyKMeansCache
             {
                 Gram           = arena.fProxyMat(N, k),
-                Ct             = arena.fProxyMat(D, k),
                 PointNormSq    = arena.fProxyVec(N),
                 CentNormSq     = arena.fProxyVec(k),
                 PrevAssignment = arena.Indices(N),

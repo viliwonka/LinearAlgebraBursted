@@ -1,6 +1,28 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## UnsafeOP TransB kernel family (matMatDotTransB / matAAt / matMatDotTransBSym)
+- 2026-07-13 | First cut used TWO fProxy4 chains per output pair (vecDot's idiom) over a 2x4 pair
+  tile: 16 accumulators + 12 transient loads spilled registers and LOST to the trans+dot route it
+  was meant to replace (float 1024: 49.2 ms vs 31.7). Rewritten to ONE chain per pair (8
+  accumulators + 6 transients, inside the 16-register budget): float 1024 28.7 ms, double 42.5 vs
+  54.2 viaTrans; double 128 is 2x (0.061 vs 0.124). Don't re-add the second chain. Only float N=64
+  still marginally favors viaTrans (0.0086 vs 0.0072 ms) — not worth size-gated routing.
+- 2026-07-13 | matAAt (A·Aᵀ upper+mirror): 143 GFLOP/s-effective float / 105 double at 1024 —
+  on par with matAtA despite the dot-product formulation, because symmetry halves the work and
+  both row streams are unit-stride. No trans+matAtA fallback route needed.
+
+## Kalman / Kalman.UKF TransB + GEMM reroutes
+- 2026-07-13 | predict: APAᵀ now Blas.dotSymT(AP, Aeff) — s.At no longer written by predict (still
+  UpdateCore's (I-KH)P scratch). update: P·Hᵀ via dot(transposeB) (Ht temp deleted); K = Xtᵀ never
+  materialized — K·y via vecMat dot(y, Xt), K·H and K·R via dot(Xt, ·, transposeA: true), IKHt temp
+  deleted in favor of dotSymT((I-KH)P, IKH). ukfUpdate: same K elimination via dot(y, Pxzt).
+- 2026-07-13 | UKF sigma recombinations GEMM-ified: predict's Σ Wc·d·dᵀ = (WD)ᵀ·D via dotSym
+  (D overwrites Y, WD reuses X — both fully consumed by the propagation loop); update's
+  Pzz/Pxz via dotSym(dZ, WdZ) + dot(dX, WdZ, transposeA) (dX overwrites X, dZ overwrites Z,
+  one npts x m WdZ Temp, dz vector deleted). Results are bitwise different from the scalar
+  rank-1 loops (different summation order), suite-validated.
+
 ## Parameter naming (library-wide)
 - 2026-07-13 | Short tuning-param names ruled canon: maxIterations → maxIter, tolerance → tol,
   relativeTolerance → relTol, library-wide. REVERSES the earlier long-name rename pass — do not

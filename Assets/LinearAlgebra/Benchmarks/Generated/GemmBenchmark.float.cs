@@ -46,8 +46,107 @@ namespace LinearAlgebra.Benchmarks
         public void Execute() => Blas.dot(in A, in A, ref C, transposeA: true);
     }
 
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct GemmTransBJobFloat : IJob
+    {
+        public floatMxN A;
+        public floatMxN B;
+        public floatMxN C;
+
+        public void Execute() => Blas.dot(in A, in B, ref C, transposeA: false, transposeB: true);
+    }
+
+    // Baseline route the TransB kernel replaces: materialize Bᵀ (Temp alloc + strided transpose),
+    // then plain GEMM.
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct GemmTransBViaTransJobFloat : IJob
+    {
+        public floatMxN A;
+        public floatMxN B;
+        public floatMxN C;
+
+        public void Execute()
+        {
+            var Bt = new floatMxN(B.N_Cols, B.M_Rows, Allocator.Temp, true);
+            Blas.trans(in B, ref Bt);
+            Blas.dot(in A, in Bt, ref C);
+            Bt.Dispose();
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct GemmAAtJobFloat : IJob
+    {
+        public floatMxN A;
+        public floatMxN C;
+
+        public void Execute() => Blas.dot(in A, in A, ref C, transposeA: false, transposeB: true);
+    }
+
     public static partial class GemmBenchmark
     {
+        static string BenchTransBFloat(int n, double flops)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.floatMat(n, n);
+            var B = arena.floatMat(n, n);
+            var C = arena.floatMat(n, n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                {
+                    A[i, j] = rng.NextFloat(-1f, 1f);
+                    B[i, j] = rng.NextFloat(-1f, 1f);
+                }
+
+            var job = new GemmTransBJobFloat { A = A, B = B, C = C };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.Row("float", n, stat, flops);
+        }
+
+        static string BenchTransBViaTransFloat(int n, double flops)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.floatMat(n, n);
+            var B = arena.floatMat(n, n);
+            var C = arena.floatMat(n, n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                {
+                    A[i, j] = rng.NextFloat(-1f, 1f);
+                    B[i, j] = rng.NextFloat(-1f, 1f);
+                }
+
+            var job = new GemmTransBViaTransJobFloat { A = A, B = B, C = C };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.Row("float", n, stat, flops);
+        }
+
+        static string BenchAAtFloat(int n, double flops)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.floatMat(n, n);
+            var C = arena.floatMat(n, n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                    A[i, j] = rng.NextFloat(-1f, 1f);
+
+            var job = new GemmAAtJobFloat { A = A, C = C };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.Row("float", n, stat, flops);
+        }
+
         static string BenchAtAFloat(int n, double flops)
         {
             var arena = new Arena(Allocator.Persistent);

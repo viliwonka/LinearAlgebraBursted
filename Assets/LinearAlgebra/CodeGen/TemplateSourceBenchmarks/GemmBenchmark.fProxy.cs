@@ -42,8 +42,107 @@ namespace LinearAlgebra.Benchmarks
         public void Execute() => Blas.dot(in A, in A, ref C, transposeA: true);
     }
 
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct GemmTransBJobFProxy : IJob
+    {
+        public fProxyMxN A;
+        public fProxyMxN B;
+        public fProxyMxN C;
+
+        public void Execute() => Blas.dot(in A, in B, ref C, transposeA: false, transposeB: true);
+    }
+
+    // Baseline route the TransB kernel replaces: materialize Bᵀ (Temp alloc + strided transpose),
+    // then plain GEMM.
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct GemmTransBViaTransJobFProxy : IJob
+    {
+        public fProxyMxN A;
+        public fProxyMxN B;
+        public fProxyMxN C;
+
+        public void Execute()
+        {
+            var Bt = new fProxyMxN(B.N_Cols, B.M_Rows, Allocator.Temp, true);
+            Blas.trans(in B, ref Bt);
+            Blas.dot(in A, in Bt, ref C);
+            Bt.Dispose();
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct GemmAAtJobFProxy : IJob
+    {
+        public fProxyMxN A;
+        public fProxyMxN C;
+
+        public void Execute() => Blas.dot(in A, in A, ref C, transposeA: false, transposeB: true);
+    }
+
     public static partial class GemmBenchmark
     {
+        static string BenchTransBFProxy(int n, double flops)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.fProxyMat(n, n);
+            var B = arena.fProxyMat(n, n);
+            var C = arena.fProxyMat(n, n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                {
+                    A[i, j] = rng.NextFProxy(-1f, 1f);
+                    B[i, j] = rng.NextFProxy(-1f, 1f);
+                }
+
+            var job = new GemmTransBJobFProxy { A = A, B = B, C = C };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.Row("fProxy", n, stat, flops);
+        }
+
+        static string BenchTransBViaTransFProxy(int n, double flops)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.fProxyMat(n, n);
+            var B = arena.fProxyMat(n, n);
+            var C = arena.fProxyMat(n, n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                {
+                    A[i, j] = rng.NextFProxy(-1f, 1f);
+                    B[i, j] = rng.NextFProxy(-1f, 1f);
+                }
+
+            var job = new GemmTransBViaTransJobFProxy { A = A, B = B, C = C };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.Row("fProxy", n, stat, flops);
+        }
+
+        static string BenchAAtFProxy(int n, double flops)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.fProxyMat(n, n);
+            var C = arena.fProxyMat(n, n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                    A[i, j] = rng.NextFProxy(-1f, 1f);
+
+            var job = new GemmAAtJobFProxy { A = A, C = C };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.Row("fProxy", n, stat, flops);
+        }
+
         static string BenchAtAFProxy(int n, double flops)
         {
             var arena = new Arena(Allocator.Persistent);

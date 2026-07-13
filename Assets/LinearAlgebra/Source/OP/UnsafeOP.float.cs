@@ -514,6 +514,156 @@ namespace LinearAlgebra.Internal
             }
         }
 
+        // C = A·Bᵀ (matB stored k x n, read as its transpose). Row-major A·Bᵀ makes every C[i,j] a
+        // dot product of two CONTIGUOUS rows (A row i · B row j) — both operands stream unit-stride,
+        // so unlike matMatDot/matMatDotTransA there is no strided read anywhere. Each output element
+        // gets ONE float4 accumulator chain (fixed horizontal-sum order, ascending scalar tail),
+        // batched over a 2x4 block of (A row, B row) pairs: 8 accumulators + 6 transient loads stays
+        // inside the 16-register budget (a second chain per pair measured SLOWER — it spills).
+        //
+        // Determinism: each C[i,j]'s reduction schedule (quads ascending in one chain, fixed hsum,
+        // ascending tail) is identical in the tiled bulk and the fallback below — results are
+        // bit-identical between the two at every size.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void matMatDotTransB([NoAlias] float* matA, [NoAlias] float* matB, [NoAlias] float* matC, int m, int n, int k)
+            => matMatDotTransBCore(matA, matB, matC, m, n, k, symUpper: false);
+
+        // C = A·Aᵀ (SYRK shape, m x m output): the single input parameter is used for both operand
+        // roles, so the alias relationship is exact — no [NoAlias] lie and no defensive copy.
+        // Exploits symmetry: computes the upper triangle, mirrors the lower (~2x fewer FLOPs).
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void matAAt([NoAlias] float* matA, [NoAlias] float* matC, int m, int n)
+            => matMatDotTransBCore(matA, matA, matC, m, n, m, symUpper: true);
+
+        // C = A·Bᵀ where the result is symmetric BY CALLER CONTRACT (A = B·S with symmetric S —
+        // the (F P)·Fᵀ / (I-KH)P·(I-KH)ᵀ shapes). Computes the upper triangle, mirrors the lower.
+        // Requires k == m.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void matMatDotTransBSym([NoAlias] float* matA, [NoAlias] float* matB, [NoAlias] float* matC, int m, int n, int k)
+            => matMatDotTransBCore(matA, matB, matC, m, n, k, symUpper: true);
+
+        // Shared tiled body — inlined into the entry points above so their parameter attributes
+        // apply to the loads/stores directly and the symUpper flag constant-folds per entry.
+        // symUpper: skip register tiles strictly below the diagonal, then mirror the computed
+        // upper triangle into the lower (requires k == m; every upper element is provably
+        // computed — skipped tiles satisfy c <= j+NR-1 < i <= r, i.e. strictly lower).
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static void matMatDotTransBCore(float* matA, float* matB, float* matC, int m, int n, int k, bool symUpper)
+        {
+            // matA = m x n
+            // matB = k x n, read as its transpose
+            // matC = outMat = m x k, needs to be initialized to zero (this kernel ACCUMULATES, +=)
+
+            const int MR = 2;
+            const int NR = 4;
+
+            int mTiles = (m / MR) * MR;
+            int kTiles = (k / NR) * NR;
+            int nQ = n >> 2;
+
+            for (int i = 0; i < mTiles; i += MR)
+            {
+                float* Arow0 = matA + (long)(i + 0) * n;
+                float* Arow1 = matA + (long)(i + 1) * n;
+                var pa0 = (float4*)Arow0;
+                var pa1 = (float4*)Arow1;
+
+                for (int j = 0; j < kTiles; j += NR)
+                {
+                    if (symUpper && j + NR <= i) continue;   // tile strictly below the diagonal
+
+                    float* Brow0 = matB + (long)(j + 0) * n;
+                    float* Brow1 = matB + (long)(j + 1) * n;
+                    float* Brow2 = matB + (long)(j + 2) * n;
+                    float* Brow3 = matB + (long)(j + 3) * n;
+                    var pb0 = (float4*)Brow0;
+                    var pb1 = (float4*)Brow1;
+                    var pb2 = (float4*)Brow2;
+                    var pb3 = (float4*)Brow3;
+
+                    float4 c00 = default, c01 = default, c02 = default, c03 = default;
+                    float4 c10 = default, c11 = default, c12 = default, c13 = default;
+
+                    for (int q = 0; q < nQ; q++)
+                    {
+                        float4 a0 = pa0[q];
+                        float4 a1 = pa1[q];
+                        float4 b0 = pb0[q];
+                        float4 b1 = pb1[q];
+                        float4 b2 = pb2[q];
+                        float4 b3 = pb3[q];
+
+                        c00 += a0 * b0; c01 += a0 * b1; c02 += a0 * b2; c03 += a0 * b3;
+                        c10 += a1 * b0; c11 += a1 * b1; c12 += a1 * b2; c13 += a1 * b3;
+                    }
+
+                    float* Crow0 = matC + (long)(i + 0) * k + j;
+                    float* Crow1 = matC + (long)(i + 1) * k + j;
+                    Crow0[0] += rowDotFinish(c00, Arow0, Brow0, n);
+                    Crow0[1] += rowDotFinish(c01, Arow0, Brow1, n);
+                    Crow0[2] += rowDotFinish(c02, Arow0, Brow2, n);
+                    Crow0[3] += rowDotFinish(c03, Arow0, Brow3, n);
+                    Crow1[0] += rowDotFinish(c10, Arow1, Brow0, n);
+                    Crow1[1] += rowDotFinish(c11, Arow1, Brow1, n);
+                    Crow1[2] += rowDotFinish(c12, Arow1, Brow2, n);
+                    Crow1[3] += rowDotFinish(c13, Arow1, Brow3, n);
+                }
+
+                // Remainder columns [kTiles, k) for these MR rows: same per-pair schedule, plain fallback.
+                if (kTiles < k)
+                    matMatDotTransBRange(matA, matB, matC, i, i + MR, n, k, kTiles, k);
+            }
+
+            // Remainder rows [mTiles, m) — and, when m < MR, the WHOLE matrix: plain fallback, zero
+            // seam risk vs the tiled bulk above.
+            if (mTiles < m)
+                matMatDotTransBRange(matA, matB, matC, mTiles, m, n, k, 0, k);
+
+            if (symUpper)
+            {
+                // Mirror the computed upper triangle into the lower (k == m by contract).
+                for (int r = 1; r < m; r++)
+                    for (int c = 0; c < r; c++)
+                        matC[(long)r * k + c] = matC[(long)c * k + r];
+            }
+        }
+
+        // Completes one C[i,j] reduction: horizontal sum in a fixed order, then the scalar tail
+        // [n & ~3, n) ascending.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static float rowDotFinish(float4 acc, float* rowA, float* rowB, int n)
+        {
+            float s = (acc.x + acc.y) + (acc.z + acc.w);
+            for (int i = (n >> 2) << 2; i < n; i++)
+                s += rowA[i] * rowB[i];
+            return s;
+        }
+
+        // Plain (untiled) A·Bᵀ restricted to an explicit row/column sub-range — same rationale as
+        // matMatDotRange (remainder coverage + whole-matrix small-size fallback), same per-pair
+        // reduction schedule as the tiled bulk so there is no seam.
+        // matA/matB may be the same pointer here (the matAAt route) — only matC keeps [NoAlias].
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void matMatDotTransBRange(float* matA, float* matB, [NoAlias] float* matC,
+                                          int rowStart, int rowEnd, int n, int k, int colStart, int colEnd)
+        {
+            int nQ = n >> 2;
+            for (int r = rowStart; r < rowEnd; r++)
+            {
+                float* Arow = matA + (long)r * n;
+                var pa = (float4*)Arow;
+                for (int c = colStart; c < colEnd; c++)
+                {
+                    float* Brow = matB + (long)c * n;
+                    var pb = (float4*)Brow;
+                    float4 acc = default;
+                    for (int q = 0; q < nQ; q++)
+                        acc += pa[q] * pb[q];
+                    matC[(long)r * k + c] += rowDotFinish(acc, Arow, Brow, n);
+                }
+            }
+        }
+
         // Row-wise forward substitution ("TRSM", lower-triangular panel solve, applied one row at a
         // time): for every row t of B, solve L11 * B[t,:]ᵀ = B[t,:]ᵀ_old for B[t,:] IN PLACE, where
         // L11 is the jb x jb lower-triangular block at leading dimension Lld (row-major,

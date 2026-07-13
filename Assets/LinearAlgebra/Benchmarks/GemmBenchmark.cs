@@ -37,6 +37,28 @@ namespace LinearAlgebra.Benchmarks
             foreach (var n in Bench.Sizes) sb.AppendLine(BenchAtAFloat(n, Flops(n)));
             foreach (var n in Bench.Sizes) sb.AppendLine(BenchAtADouble(n, Flops(n)));
             sb.AppendLine();
+
+            // TransB sections add small sizes: the Kalman/KMeans shapes this kernel serves live
+            // at small n, and the trans+dot comparison needs the crossover visible.
+            int[] tbSizes = { 16, 32, 64, 128, 256, 512, 1024 };
+
+            sb.AppendLine("=== GEMM-TransB: dense C = A * B^T (Kalman P*H^T / KMeans X*C^T shape) ===");
+            sb.AppendLine(Bench.Header());
+            foreach (var n in tbSizes) sb.AppendLine(BenchTransBFloat(n, Flops(n)));
+            foreach (var n in tbSizes) sb.AppendLine(BenchTransBDouble(n, Flops(n)));
+            sb.AppendLine();
+
+            sb.AppendLine("=== GEMM-TransB-viaTrans: C = A * trans(B) (the Blas.trans + dot route TransB replaces) ===");
+            sb.AppendLine(Bench.Header());
+            foreach (var n in tbSizes) sb.AppendLine(BenchTransBViaTransFloat(n, Flops(n)));
+            foreach (var n in tbSizes) sb.AppendLine(BenchTransBViaTransDouble(n, Flops(n)));
+            sb.AppendLine();
+
+            sb.AppendLine("=== GEMM-AAt: dense C = A * A^T (matAAt single-input kernel) ===");
+            sb.AppendLine(Bench.Header());
+            foreach (var n in tbSizes) sb.AppendLine(BenchAAtFloat(n, Flops(n)));
+            foreach (var n in tbSizes) sb.AppendLine(BenchAAtDouble(n, Flops(n)));
+            sb.AppendLine();
         }
     }
 }
