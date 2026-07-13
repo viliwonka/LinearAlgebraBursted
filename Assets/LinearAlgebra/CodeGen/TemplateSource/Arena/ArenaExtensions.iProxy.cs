@@ -39,7 +39,7 @@ namespace LinearAlgebra
             var vec = arena.iProxyVec(N);
 
             if(index < 0 || index >= N)
-                throw new System.ArgumentOutOfRangeException("BasisVector: Index out of bounds");
+                throw new System.ArgumentOutOfRangeException("iProxyBasisVec: Index out of bounds");
 
             vec[index] = (iProxy)1;
 
@@ -206,10 +206,10 @@ namespace LinearAlgebra
             var matrix = arena.iProxyIdentityMat(M);
 
             if (M < 2)
-                throw new System.ArgumentException("PermutationMatrix: Matrix must be at least 2x2");
+                throw new System.ArgumentException("iProxyPermutationMat: Matrix must be at least 2x2");
 
             if (i < 0 || i >= M || j < 0 || j >= M)
-                throw new System.ArgumentOutOfRangeException("PermutationMatrix: Index out of bounds");
+                throw new System.ArgumentOutOfRangeException("iProxyPermutationMat: Index out of bounds");
 
             if (i == j)
             {

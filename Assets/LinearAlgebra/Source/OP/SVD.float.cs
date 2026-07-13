@@ -27,7 +27,7 @@ namespace LinearAlgebra
         /// Converged) carrying the bidiagonal QR's convergence status; on MaxIterations S is
         /// unwritten. Allocates an O(mn) Temp workspace.
         /// </summary>
-        public static SVDInfo values(in floatMxN A, ref floatN S, int maxIterations, float tolerance)
+        public static SVDInfo values(in floatMxN A, ref floatN S, int maxIter, float tol)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -36,10 +36,10 @@ namespace LinearAlgebra
                 throw new ArgumentException("values: A must have m >= n (more rows than columns)");
             if (S.N != n)
                 throw new ArgumentException("values: S.N must equal A.N_Cols");
-            if (maxIterations < 1)
-                throw new ArgumentException("values: maxIterations must be >= 1");
-            if (tolerance <= (float)0)
-                throw new ArgumentException("values: tolerance must be > 0");
+            if (maxIter < 1)
+                throw new ArgumentException("values: maxIter must be >= 1");
+            if (tol <= (float)0)
+                throw new ArgumentException("values: tol must be > 0");
 
             if (n == 0)
                 return new SVDInfo { status = IterativeSolveStatus.Converged, sweeps = 0, converged = 0 };
@@ -48,7 +48,7 @@ namespace LinearAlgebra
             var eVec = new floatN(n, Allocator.Temp, false);
 
             Bidiag.values(in A, ref dVec, ref eVec);
-            bool ok = bidiagonalQRValues(ref dVec, ref eVec, n, maxIterations, tolerance, out int sweeps, out int convergedCount);
+            bool ok = bidiagonalQRValues(ref dVec, ref eVec, n, maxIter, tol, out int sweeps, out int convergedCount);
 
             if (ok)
             {
@@ -79,7 +79,7 @@ namespace LinearAlgebra
             };
         }
 
-        /// <summary>values with default maxIterations (Consts.sweepBudget(A.N_Cols)) and tolerance (Consts.floatZeroThreshold).</summary>
+        /// <summary>values with default maxIter (Consts.sweepBudget(A.N_Cols)) and tol (Consts.floatZeroThreshold).</summary>
         public static SVDInfo values(in floatMxN A, ref floatN S)
             => values(in A, ref S, Consts.sweepBudget(A.N_Cols), Consts.floatZeroThreshold);
 
@@ -88,7 +88,7 @@ namespace LinearAlgebra
         /// Semantics identical to the allocating overload; see that one for full documentation.
         /// </summary>
         public static SVDInfo values(in floatMxN A, ref floatN S, ref floatSVDValuesCache ws,
-                                     int maxIterations, float tolerance)
+                                     int maxIter, float tol)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -97,10 +97,10 @@ namespace LinearAlgebra
                 throw new ArgumentException("values: A must have m >= n (more rows than columns)");
             if (S.N != n)
                 throw new ArgumentException("values: S.N must equal A.N_Cols");
-            if (maxIterations < 1)
-                throw new ArgumentException("values: maxIterations must be >= 1");
-            if (tolerance <= (float)0)
-                throw new ArgumentException("values: tolerance must be > 0");
+            if (maxIter < 1)
+                throw new ArgumentException("values: maxIter must be >= 1");
+            if (tol <= (float)0)
+                throw new ArgumentException("values: tol must be > 0");
             RequireSvdValuesWorkspace(in ws, n);
 
             if (n == 0)
@@ -110,7 +110,7 @@ namespace LinearAlgebra
             var eVec = ws.eVec;
 
             Bidiag.values(in A, ref dVec, ref eVec, ref ws.BidiagWs);
-            bool ok = bidiagonalQRValues(ref dVec, ref eVec, n, maxIterations, tolerance, out int sweeps, out int convergedCount);
+            bool ok = bidiagonalQRValues(ref dVec, ref eVec, n, maxIter, tol, out int sweeps, out int convergedCount);
 
             if (ok)
             {
@@ -139,7 +139,7 @@ namespace LinearAlgebra
             };
         }
 
-        /// <summary>values (workspace) with default maxIterations (Consts.sweepBudget(A.N_Cols)) and tolerance (Consts.floatZeroThreshold).</summary>
+        /// <summary>values (workspace) with default maxIter (Consts.sweepBudget(A.N_Cols)) and tol (Consts.floatZeroThreshold).</summary>
         public static SVDInfo values(in floatMxN A, ref floatN S, ref floatSVDValuesCache ws)
             => values(in A, ref S, ref ws, Consts.sweepBudget(A.N_Cols), Consts.floatZeroThreshold);
 
@@ -163,12 +163,12 @@ namespace LinearAlgebra
         /// A (m x n, m >= n) is NOT modified. On output U (m x n) has orthonormal columns (left
         /// singular vectors), S (length n) the singular values (non-negative, DESCENDING), and V
         /// (n x n, NOT transposed) the right singular vectors. Returns true on convergence; false if
-        /// the bidiagonal QR hit maxIterations (outputs then undefined). Allocates Temp workspace: an
+        /// the bidiagonal QR hit maxIter (outputs then undefined). Allocates Temp workspace: an
         /// n x n matrix, an n x m and an n x n transpose buffer, and two length-n vectors (plus
         /// whatever Bidiag.decomp uses). For m &lt; n, transpose A and swap U/V.
         /// </summary>
         public static SVDInfo thin(in floatMxN A, ref floatMxN U, ref floatN S, ref floatMxN V,
-                                   int maxIterations, float tolerance)
+                                   int maxIter, float tol)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -181,10 +181,10 @@ namespace LinearAlgebra
                 throw new ArgumentException("thin: S.N must equal A.N_Cols");
             if (!V.IsSquare || V.M_Rows != n)
                 throw new ArgumentException("thin: V must be square with side equal to A.N_Cols");
-            if (maxIterations < 1)
-                throw new ArgumentException("thin: maxIterations must be >= 1");
-            if (tolerance <= (float)0)
-                throw new ArgumentException("thin: tolerance must be > 0");
+            if (maxIter < 1)
+                throw new ArgumentException("thin: maxIter must be >= 1");
+            if (tol <= (float)0)
+                throw new ArgumentException("thin: tol must be > 0");
 
             if (n == 0)
                 return new SVDInfo { status = IterativeSolveStatus.Converged, sweeps = 0, converged = 0 };
@@ -217,7 +217,7 @@ namespace LinearAlgebra
                     for (int j = 0; j < n; j++)
                         Vt[j, i] = V[i, j];
 
-                ok = bidiagonalQR(ref Ut, ref dVec, ref eVec, ref Vt, m, n, maxIterations, tolerance, out sweeps, out convergedCount);
+                ok = bidiagonalQR(ref Ut, ref dVec, ref eVec, ref Vt, m, n, maxIter, tol, out sweeps, out convergedCount);
 
                 if (ok)
                 {
@@ -262,12 +262,12 @@ namespace LinearAlgebra
             };
         }
 
-        /// <summary>thin with default tolerance (Consts.floatZeroThreshold).</summary>
+        /// <summary>thin with default tol (Consts.floatZeroThreshold).</summary>
         public static SVDInfo thin(in floatMxN A, ref floatMxN U, ref floatN S, ref floatMxN V,
-                                   int maxIterations)
-            => thin(in A, ref U, ref S, ref V, maxIterations, Consts.floatZeroThreshold);
+                                   int maxIter)
+            => thin(in A, ref U, ref S, ref V, maxIter, Consts.floatZeroThreshold);
 
-        /// <summary>thin with default maxIterations (Consts.sweepBudget(A.N_Cols)) and tolerance (Consts.floatZeroThreshold).</summary>
+        /// <summary>thin with default maxIter (Consts.sweepBudget(A.N_Cols)) and tol (Consts.floatZeroThreshold).</summary>
         public static SVDInfo thin(in floatMxN A, ref floatMxN U, ref floatN S, ref floatMxN V)
             => thin(in A, ref U, ref S, ref V, Consts.sweepBudget(A.N_Cols), Consts.floatZeroThreshold);
 
@@ -277,7 +277,7 @@ namespace LinearAlgebra
         /// identical to the allocating overload; see that one for full documentation.
         /// </summary>
         public static SVDInfo thin(in floatMxN A, ref floatMxN U, ref floatN S, ref floatMxN V,
-                                   ref floatSVDThinCache ws, int maxIterations, float tolerance)
+                                   ref floatSVDThinCache ws, int maxIter, float tol)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -290,10 +290,10 @@ namespace LinearAlgebra
                 throw new ArgumentException("thin: S.N must equal A.N_Cols");
             if (!V.IsSquare || V.M_Rows != n)
                 throw new ArgumentException("thin: V must be square with side equal to A.N_Cols");
-            if (maxIterations < 1)
-                throw new ArgumentException("thin: maxIterations must be >= 1");
-            if (tolerance <= (float)0)
-                throw new ArgumentException("thin: tolerance must be > 0");
+            if (maxIter < 1)
+                throw new ArgumentException("thin: maxIter must be >= 1");
+            if (tol <= (float)0)
+                throw new ArgumentException("thin: tol must be > 0");
             RequireSvdThinWorkspace(in ws, m, n);
 
             if (n == 0)
@@ -323,7 +323,7 @@ namespace LinearAlgebra
                     for (int j = 0; j < n; j++)
                         Vt[j, i] = V[i, j];
 
-                ok = bidiagonalQR(ref Ut, ref dVec, ref eVec, ref Vt, m, n, maxIterations, tolerance, out sweeps, out convergedCount);
+                ok = bidiagonalQR(ref Ut, ref dVec, ref eVec, ref Vt, m, n, maxIter, tol, out sweeps, out convergedCount);
 
                 if (ok)
                 {
@@ -364,12 +364,12 @@ namespace LinearAlgebra
             };
         }
 
-        /// <summary>thin (workspace) with default tolerance (Consts.floatZeroThreshold).</summary>
+        /// <summary>thin (workspace) with default tol (Consts.floatZeroThreshold).</summary>
         public static SVDInfo thin(in floatMxN A, ref floatMxN U, ref floatN S, ref floatMxN V,
-                                   ref floatSVDThinCache ws, int maxIterations)
-            => thin(in A, ref U, ref S, ref V, ref ws, maxIterations, Consts.floatZeroThreshold);
+                                   ref floatSVDThinCache ws, int maxIter)
+            => thin(in A, ref U, ref S, ref V, ref ws, maxIter, Consts.floatZeroThreshold);
 
-        /// <summary>thin (workspace) with default maxIterations (Consts.sweepBudget(A.N_Cols)) and tolerance (Consts.floatZeroThreshold).</summary>
+        /// <summary>thin (workspace) with default maxIter (Consts.sweepBudget(A.N_Cols)) and tol (Consts.floatZeroThreshold).</summary>
         public static SVDInfo thin(in floatMxN A, ref floatMxN U, ref floatN S, ref floatMxN V,
                                    ref floatSVDThinCache ws)
             => thin(in A, ref U, ref S, ref V, ref ws, Consts.sweepBudget(A.N_Cols), Consts.floatZeroThreshold);
@@ -378,15 +378,15 @@ namespace LinearAlgebra
         // e[0]=0); accumulates left rotations into Ut (n x m) ROWS and right into Vt (n x n) ROWS — the
         // TRANSPOSES of U/V, so each rotation touches contiguous rows (SIMD via jacobiRotate). NR's
         // Givens convention a'=c*a+s*b, b'=c*b-s*a equals jacobiRotate(a,b,c,-s) (Golub-Reinsch /
-        // Numerical Recipes svdcmp). Deflation threshold is `tolerance` relative to the GLOBAL scale
+        // Numerical Recipes svdcmp). Deflation threshold is `tol` relative to the GLOBAL scale
         // anorm (not local |d|+|e|) — needed for FLOAT to converge on clustered/zero singular values
         // (same lesson as the symmetric eigen QL). Returns false if a value fails to converge within
-        // maxIterations. `sweeps` (out) is the MAXIMUM number of QR sweeps consumed by any single value
-        // (0 if every value deflated immediately; == maxIterations on a false return, the exhausted
+        // maxIter. `sweeps` (out) is the MAXIMUM number of QR sweeps consumed by any single value
+        // (0 if every value deflated immediately; == maxIter on a false return, the exhausted
         // budget); `convergedCount` (out) is how many values had already converged when the loop
         // stopped (== n on a true return) — both feed SVDInfo at the call site.
         static unsafe bool bidiagonalQR(ref floatMxN Ut, ref floatN d, ref floatN e, ref floatMxN Vt,
-                                        int m, int n, int maxIterations, float tolerance, out int sweeps, out int convergedCount)
+                                        int m, int n, int maxIter, float tol, out int sweeps, out int convergedCount)
         {
             float* utp = Ut.Data.Ptr;
             float* vtp = Vt.Data.Ptr;
@@ -397,14 +397,14 @@ namespace LinearAlgebra
                 float t = math.abs(d[i]) + math.abs(e[i]);
                 if (t > anorm) anorm = t;
             }
-            float thresh = tolerance * anorm;
+            float thresh = tol * anorm;
 
             sweeps = 0;
             convergedCount = 0;
 
             for (int k = n - 1; k >= 0; k--)
             {
-                for (int its = 0; its < maxIterations; its++)
+                for (int its = 0; its < maxIter; its++)
                 {
                     bool flag = true;
                     int l;
@@ -451,9 +451,9 @@ namespace LinearAlgebra
                         break;
                     }
 
-                    if (its == maxIterations - 1)
+                    if (its == maxIter - 1)
                     {
-                        sweeps = maxIterations;
+                        sweeps = maxIter;
                         return false;
                     }
 
@@ -516,7 +516,7 @@ namespace LinearAlgebra
         // transpose back, then descending selection sort carrying columns). Returns bidiagonalQR's flag;
         // `sweeps`/`convergedCount` are threaded straight through from bidiagonalQR (see its doc comment).
         static bool bidiagonalSvdFromDE(ref floatN d, ref floatN e, ref floatMxN Ut, ref floatMxN Vt,
-                                        ref floatMxN P, ref floatN S, ref floatMxN Q, int p, int maxIterations,
+                                        ref floatMxN P, ref floatN S, ref floatMxN Q, int p, int maxIter,
                                         out int sweeps, out int convergedCount)
         {
             if (p == 0) { sweeps = 0; convergedCount = 0; return true; }
@@ -535,9 +535,9 @@ namespace LinearAlgebra
                 Vt[i, i] = (float)1;
             }
 
-            // No tolerance parameter of its own: fixed eps-relative deflation, matching this
+            // No tol parameter of its own: fixed eps-relative deflation, matching this
             // function's pre-existing (unparameterized) behavior.
-            bool ok = bidiagonalQR(ref Ut, ref d, ref e, ref Vt, p, p, maxIterations, Consts.floatEpsilon, out sweeps, out convergedCount);
+            bool ok = bidiagonalQR(ref Ut, ref d, ref e, ref Vt, p, p, maxIter, Consts.floatEpsilon, out sweeps, out convergedCount);
             if (!ok) return false;
 
             // Transpose Ut→P and Vt→Q (thin's transpose-back-to-column-form step).
@@ -573,9 +573,9 @@ namespace LinearAlgebra
         // superdiagonal e with e[0]=0). Identical scalar recurrence to bidiagonalQR, but it does NOT
         // accumulate any plane rotations (no U/V), so the inner sweeps are pure O(n) work on d/e —
         // the cheap path when only singular values are wanted. On convergence d[k] is made
-        // non-negative (no V column to flip). Returns false on non-convergence within maxIterations sweeps.
+        // non-negative (no V column to flip). Returns false on non-convergence within maxIter sweeps.
         // `sweeps`/`convergedCount` follow the same convention as bidiagonalQR's out params.
-        static bool bidiagonalQRValues(ref floatN d, ref floatN e, int n, int maxIterations, float tolerance,
+        static bool bidiagonalQRValues(ref floatN d, ref floatN e, int n, int maxIter, float tol,
                                        out int sweeps, out int convergedCount)
         {
             float anorm = (float)0;
@@ -584,14 +584,14 @@ namespace LinearAlgebra
                 float t = math.abs(d[i]) + math.abs(e[i]);
                 if (t > anorm) anorm = t;
             }
-            float thresh = tolerance * anorm;
+            float thresh = tol * anorm;
 
             sweeps = 0;
             convergedCount = 0;
 
             for (int k = n - 1; k >= 0; k--)
             {
-                for (int its = 0; its < maxIterations; its++)
+                for (int its = 0; its < maxIter; its++)
                 {
                     bool flag = true;
                     int l;
@@ -631,9 +631,9 @@ namespace LinearAlgebra
                         break;
                     }
 
-                    if (its == maxIterations - 1)
+                    if (its == maxIter - 1)
                     {
-                        sweeps = maxIterations;
+                        sweeps = maxIter;
                         return false;
                     }
 

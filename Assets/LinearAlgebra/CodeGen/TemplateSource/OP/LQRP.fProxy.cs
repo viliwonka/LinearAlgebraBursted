@@ -421,9 +421,9 @@ namespace LinearAlgebra
         /// remarks; for an inconsistent rank-deficient LS use minNormSolveInPlace). Row-pivoted LQ
         /// (P·A = L·Q) exposes the numerical
         /// row rank r: the L diagonal is non-increasing, so r = count of leading entries with
-        /// |L[i,i]| &gt; tol, where tol = relativeTolerance · |L[0,0]| and relativeTolerance defaults to
-        /// max(m,n) · Consts.fProxyZeroThreshold (matching SVD.pinvSolve / MatrixMetrics.rank). A
-        /// negative relativeTolerance is an "auto" sentinel that selects that same default.
+        /// |L[i,i]| &gt; tol, where tol = relTol · |L[0,0]| and relTol defaults to
+        /// max(m,n) · Consts.fProxyZeroThreshold (matching SVD.pinvSolve / Analysis.rank). A
+        /// negative relTol is an "auto" sentinel that selects that same default.
         ///
         /// The reduced system L w = P·b is forward-solved on its leading r×r block (divide-safe by
         /// construction: every used L diagonal exceeds tol); the remaining (m-r) dependent equations are
@@ -445,12 +445,12 @@ namespace LinearAlgebra
         /// <param name="L">Scratch: m × m (receives the lower-triangular factor; consumed).</param>
         /// <param name="P">Scratch: row Pivot of size m (reset internally).</param>
         /// <param name="v">Scratch: length EXACTLY n (Householder + reduced-RHS workspace).</param>
-        /// <param name="relativeTolerance">Rank threshold ratio; tol = relativeTolerance · |L[0,0]|. Negative = auto default.</param>
+        /// <param name="relTol">Rank threshold ratio; tol = relTol · |L[0,0]|. Negative = auto default.</param>
         /// <returns>Status Success (r == m, full row rank) or RankDeficient (r &lt; m, still a usable
         /// basic solution); rank = detected r. See <see cref="RankInfo.Solved"/>.</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static RankInfo solveInPlace(ref fProxyMxN A, ref fProxyN b, ref fProxyN x,
-                                            ref fProxyMxN L, ref Pivot P, ref fProxyN v, fProxy relativeTolerance)
+                                            ref fProxyMxN L, ref Pivot P, ref fProxyN v, fProxy relTol)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -468,10 +468,10 @@ namespace LinearAlgebra
             if (v.N != n)
                 throw new ArgumentException("LQRP.solveInPlace: v.N must equal A.N_Cols");
 
-            // Negative relativeTolerance → library-standard rank threshold (same default as SVD.pinvSolve /
-            // MatrixMetrics.rank). Also keeps tol >= 0, so a stray negative can't inflate rank.
-            if (relativeTolerance < (fProxy)0)
-                relativeTolerance = (fProxy)(math.max(m, n)) * Consts.fProxyZeroThreshold;
+            // Negative relTol → library-standard rank threshold (same default as SVD.pinvSolve /
+            // Analysis.rank). Also keeps tol >= 0, so a stray negative can't inflate rank.
+            if (relTol < (fProxy)0)
+                relTol = (fProxy)(math.max(m, n)) * Consts.fProxyZeroThreshold;
 
             if (n == 0)
                 return new RankInfo { status = DirectSolveStatus.Success, rank = 0 };
@@ -482,8 +482,8 @@ namespace LinearAlgebra
             var Qnull = default(fProxyMxN);
             lqrpKernel(ref A, ref L, ref Qnull, ref P, ref v, zeroThreshold, reconstructQ: false);
 
-            // --- rank from L's non-increasing |diagonal| (tol = relativeTolerance·|L[0,0]|; NaN/zero L[0,0] → 0) ---
-            fProxy tol = relativeTolerance * math.abs(L[0, 0]);
+            // --- rank from L's non-increasing |diagonal| (tol = relTol·|L[0,0]|; NaN/zero L[0,0] → 0) ---
+            fProxy tol = relTol * math.abs(L[0, 0]);
             int rank = 0;
             for (int i = 0; i < m; i++)
             {
@@ -532,7 +532,7 @@ namespace LinearAlgebra
 
         /// <summary>
         /// solveInPlace with the default rank tolerance (max(m,n) · Consts.fProxyZeroThreshold,
-        /// matching SVD.pinvSolve / MatrixMetrics.rank). See the primitive for full semantics.
+        /// matching SVD.pinvSolve / Analysis.rank). See the primitive for full semantics.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static RankInfo solveInPlace(ref fProxyMxN A, ref fProxyN b, ref fProxyN x,
@@ -547,7 +547,7 @@ namespace LinearAlgebra
         /// in hot loops to avoid repeated Temp allocs.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static RankInfo solveInPlace(ref fProxyMxN A, ref fProxyN b, ref fProxyN x, fProxy relativeTolerance)
+        public static RankInfo solveInPlace(ref fProxyMxN A, ref fProxyN b, ref fProxyN x, fProxy relTol)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -564,7 +564,7 @@ namespace LinearAlgebra
             var L = new fProxyMxN(m, m, Allocator.Temp, false);
             var P = new Pivot(m, Allocator.Temp);
             var v = new fProxyN(n, Allocator.Temp, false);
-            var info = solveInPlace(ref A, ref b, ref x, ref L, ref P, ref v, relativeTolerance);
+            var info = solveInPlace(ref A, ref b, ref x, ref L, ref P, ref v, relTol);
             v.Dispose();
             P.Dispose();
             L.Dispose();
@@ -657,8 +657,8 @@ namespace LinearAlgebra
         ///
         /// DESTRUCTIVE FAST PATH (like solveInPlace): factors A's own buffer in place (reflectors, no Q).
         /// On return A is DESTROYED (stored reflectors + L's sub-diagonal); b is NOT modified. Numerical
-        /// rank r is read from L's non-increasing diagonal (tol = relativeTolerance·|L[0,0]|; negative relativeTolerance
-        /// auto-selects max(m,n)·Consts.fProxyZeroThreshold, matching SVD.pinvSolve / MatrixMetrics.rank).
+        /// rank r is read from L's non-increasing diagonal (tol = relTol·|L[0,0]|; negative relTol
+        /// auto-selects max(m,n)·Consts.fProxyZeroThreshold, matching SVD.pinvSolve / Analysis.rank).
         /// </summary>
         /// <param name="A">On entry A (m × n, m ≤ n); DESTROYED on exit (reflectors, NOT a factor — use decomp for L/Q).</param>
         /// <param name="b">Right-hand side, length m. Read-only (not modified). Must not alias x.</param>
@@ -666,12 +666,12 @@ namespace LinearAlgebra
         /// <param name="L">Scratch: m × m (receives the lower-triangular factor; consumed).</param>
         /// <param name="P">Scratch: row Pivot of size m (reset internally).</param>
         /// <param name="v">Scratch: length EXACTLY n (Householder workspace).</param>
-        /// <param name="relativeTolerance">Rank threshold ratio; tol = relativeTolerance·|L[0,0]|. Negative = auto default.</param>
+        /// <param name="relTol">Rank threshold ratio; tol = relTol·|L[0,0]|. Negative = auto default.</param>
         /// <returns>Status Success (r == m) or RankDeficient (r &lt; m, still a usable minimum-norm
         /// solution); rank = detected r. See <see cref="RankInfo.Solved"/>.</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static RankInfo minNormSolveInPlace(ref fProxyMxN A, ref fProxyN b, ref fProxyN x,
-                                                   ref fProxyMxN L, ref Pivot P, ref fProxyN v, fProxy relativeTolerance)
+                                                   ref fProxyMxN L, ref Pivot P, ref fProxyN v, fProxy relTol)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -689,8 +689,8 @@ namespace LinearAlgebra
             if (v.N != n)
                 throw new ArgumentException("LQRP.minNormSolveInPlace: v.N must equal A.N_Cols");
 
-            if (relativeTolerance < (fProxy)0)
-                relativeTolerance = (fProxy)(math.max(m, n)) * Consts.fProxyZeroThreshold;
+            if (relTol < (fProxy)0)
+                relTol = (fProxy)(math.max(m, n)) * Consts.fProxyZeroThreshold;
 
             if (n == 0)
                 return new RankInfo { status = DirectSolveStatus.Success, rank = 0 };
@@ -701,8 +701,8 @@ namespace LinearAlgebra
             var Qnull = default(fProxyMxN);
             lqrpKernel(ref A, ref L, ref Qnull, ref P, ref v, zeroThreshold, reconstructQ: false);
 
-            // Rank from L's non-increasing |diagonal| (tol = relativeTolerance·|L[0,0]|; NaN/zero L[0,0] → 0).
-            fProxy tol = relativeTolerance * math.abs(L[0, 0]);
+            // Rank from L's non-increasing |diagonal| (tol = relTol·|L[0,0]|; NaN/zero L[0,0] → 0).
+            fProxy tol = relTol * math.abs(L[0, 0]);
             int r = 0;
             for (int i = 0; i < m; i++)
             {
@@ -726,7 +726,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>minNormSolveInPlace with the default rank tolerance (max(m,n)·Consts.fProxyZeroThreshold,
-        /// matching SVD.pinvSolve / MatrixMetrics.rank). See the primitive for full semantics.</summary>
+        /// matching SVD.pinvSolve / Analysis.rank). See the primitive for full semantics.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static RankInfo minNormSolveInPlace(ref fProxyMxN A, ref fProxyN b, ref fProxyN x,
                                                    ref fProxyMxN L, ref Pivot P, ref fProxyN v)
@@ -740,7 +740,7 @@ namespace LinearAlgebra
         /// hot loops to avoid repeated Temp allocs.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static RankInfo minNormSolveInPlace(ref fProxyMxN A, ref fProxyN b, ref fProxyN x, fProxy relativeTolerance)
+        public static RankInfo minNormSolveInPlace(ref fProxyMxN A, ref fProxyN b, ref fProxyN x, fProxy relTol)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -756,7 +756,7 @@ namespace LinearAlgebra
             var L = new fProxyMxN(m, m, Allocator.Temp, false);
             var P = new Pivot(m, Allocator.Temp);
             var v = new fProxyN(n, Allocator.Temp, false);
-            var info = minNormSolveInPlace(ref A, ref b, ref x, ref L, ref P, ref v, relativeTolerance);
+            var info = minNormSolveInPlace(ref A, ref b, ref x, ref L, ref P, ref v, relTol);
             v.Dispose();
             P.Dispose();
             L.Dispose();
@@ -829,7 +829,7 @@ namespace LinearAlgebra
         /// <param name="P">Scratch: row Pivot of size m (reset internally).</param>
         /// <param name="v">Scratch: length EXACTLY n.</param>
         public static unsafe RankInfo solveInPlace(ref fProxyMxN A, ref fProxyMxN B, ref fProxyMxN X,
-                                                   ref fProxyMxN L, ref Pivot P, ref fProxyN v, fProxy relativeTolerance)
+                                                   ref fProxyMxN L, ref Pivot P, ref fProxyN v, fProxy relTol)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -850,8 +850,8 @@ namespace LinearAlgebra
             if (v.N != n)
                 throw new ArgumentException("LQRP.solveInPlace: v.N must equal A.N_Cols");
 
-            if (relativeTolerance < (fProxy)0)
-                relativeTolerance = (fProxy)(math.max(m, n)) * Consts.fProxyZeroThreshold;
+            if (relTol < (fProxy)0)
+                relTol = (fProxy)(math.max(m, n)) * Consts.fProxyZeroThreshold;
 
             if (n == 0)
                 return new RankInfo { status = DirectSolveStatus.Success, rank = 0 };
@@ -860,7 +860,7 @@ namespace LinearAlgebra
             var Qnull = default(fProxyMxN);
             lqrpKernel(ref A, ref L, ref Qnull, ref P, ref v, zeroThreshold, reconstructQ: false);
 
-            fProxy tol = relativeTolerance * math.abs(L[0, 0]);
+            fProxy tol = relTol * math.abs(L[0, 0]);
             int r = 0;
             for (int i = 0; i < m; i++)
             {
@@ -907,7 +907,7 @@ namespace LinearAlgebra
 
         /// <summary>Allocating multi-RHS basic convenience: allocates L (m×m), P (m) and v (n) from
         /// Allocator.Temp. DESTROYS A (B preserved). Use the scratch overload in hot loops.</summary>
-        public static RankInfo solveInPlace(ref fProxyMxN A, ref fProxyMxN B, ref fProxyMxN X, fProxy relativeTolerance)
+        public static RankInfo solveInPlace(ref fProxyMxN A, ref fProxyMxN B, ref fProxyMxN X, fProxy relTol)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -924,7 +924,7 @@ namespace LinearAlgebra
             var L = new fProxyMxN(m, m, Allocator.Temp, false);
             var P = new Pivot(m, Allocator.Temp);
             var v = new fProxyN(n, Allocator.Temp, false);
-            var info = solveInPlace(ref A, ref B, ref X, ref L, ref P, ref v, relativeTolerance);
+            var info = solveInPlace(ref A, ref B, ref X, ref L, ref P, ref v, relTol);
             v.Dispose();
             P.Dispose();
             L.Dispose();
@@ -951,7 +951,7 @@ namespace LinearAlgebra
         /// <param name="P">Scratch: row Pivot of size m (reset internally).</param>
         /// <param name="v">Scratch: length EXACTLY n.</param>
         public static unsafe RankInfo minNormSolveInPlace(ref fProxyMxN A, ref fProxyMxN B, ref fProxyMxN X,
-                                                          ref fProxyMxN L, ref Pivot P, ref fProxyN v, fProxy relativeTolerance)
+                                                          ref fProxyMxN L, ref Pivot P, ref fProxyN v, fProxy relTol)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -972,8 +972,8 @@ namespace LinearAlgebra
             if (v.N != n)
                 throw new ArgumentException("LQRP.minNormSolveInPlace: v.N must equal A.N_Cols");
 
-            if (relativeTolerance < (fProxy)0)
-                relativeTolerance = (fProxy)(math.max(m, n)) * Consts.fProxyZeroThreshold;
+            if (relTol < (fProxy)0)
+                relTol = (fProxy)(math.max(m, n)) * Consts.fProxyZeroThreshold;
 
             if (n == 0)
                 return new RankInfo { status = DirectSolveStatus.Success, rank = 0 };
@@ -982,7 +982,7 @@ namespace LinearAlgebra
             var Qnull = default(fProxyMxN);
             lqrpKernel(ref A, ref L, ref Qnull, ref P, ref v, zeroThreshold, reconstructQ: false);
 
-            fProxy tol = relativeTolerance * math.abs(L[0, 0]);
+            fProxy tol = relTol * math.abs(L[0, 0]);
             int r = 0;
             for (int i = 0; i < m; i++)
             {
@@ -1019,7 +1019,7 @@ namespace LinearAlgebra
 
         /// <summary>Allocating multi-RHS min-norm convenience: allocates L (m×m), P (m) and v (n) from
         /// Allocator.Temp. DESTROYS A (B preserved). Use the scratch overload in hot loops.</summary>
-        public static RankInfo minNormSolveInPlace(ref fProxyMxN A, ref fProxyMxN B, ref fProxyMxN X, fProxy relativeTolerance)
+        public static RankInfo minNormSolveInPlace(ref fProxyMxN A, ref fProxyMxN B, ref fProxyMxN X, fProxy relTol)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -1036,7 +1036,7 @@ namespace LinearAlgebra
             var L = new fProxyMxN(m, m, Allocator.Temp, false);
             var P = new Pivot(m, Allocator.Temp);
             var v = new fProxyN(n, Allocator.Temp, false);
-            var info = minNormSolveInPlace(ref A, ref B, ref X, ref L, ref P, ref v, relativeTolerance);
+            var info = minNormSolveInPlace(ref A, ref B, ref X, ref L, ref P, ref v, relTol);
             v.Dispose();
             P.Dispose();
             L.Dispose();
@@ -1061,7 +1061,7 @@ namespace LinearAlgebra
         /// <param name="B">Right-hand sides (m x k). Preserved. Must not alias X.</param>
         /// <param name="X">Output only; prior contents ignored. Minimum-norm solution (n x k).</param>
         public static unsafe RankInfo minNormDecompSolve(ref fProxyMxN L, ref fProxyMxN Q, in Pivot P,
-                                                         ref fProxyMxN B, ref fProxyMxN X, fProxy relativeTolerance)
+                                                         ref fProxyMxN B, ref fProxyMxN X, fProxy relTol)
         {
             int m = Q.M_Rows;
             int n = Q.N_Cols;
@@ -1080,13 +1080,13 @@ namespace LinearAlgebra
             if (P.N != m)
                 throw new ArgumentException("LQRP.minNormDecompSolve: P.N must equal Q.M_Rows");
 
-            if (relativeTolerance < (fProxy)0)
-                relativeTolerance = (fProxy)(math.max(m, n)) * Consts.fProxyZeroThreshold;
+            if (relTol < (fProxy)0)
+                relTol = (fProxy)(math.max(m, n)) * Consts.fProxyZeroThreshold;
 
             if (n == 0)
                 return new RankInfo { status = DirectSolveStatus.Success, rank = 0 };
 
-            fProxy tol = relativeTolerance * math.abs(L[0, 0]);
+            fProxy tol = relTol * math.abs(L[0, 0]);
             int r = 0;
             for (int i = 0; i < m; i++)
             {
@@ -1164,7 +1164,7 @@ namespace LinearAlgebra
         /// <param name="B">Right-hand sides (m x k). Preserved. Must not alias X.</param>
         /// <param name="X">Output only; prior contents ignored. Solution (n x k).</param>
         public static unsafe RankInfo decompSolve(ref fProxyMxN L, ref fProxyMxN Q, in Pivot P,
-                                                  ref fProxyMxN B, ref fProxyMxN X, fProxy relativeTolerance)
+                                                  ref fProxyMxN B, ref fProxyMxN X, fProxy relTol)
         {
             int m = Q.M_Rows;
             int n = Q.N_Cols;
@@ -1183,13 +1183,13 @@ namespace LinearAlgebra
             if (P.N != m)
                 throw new ArgumentException("LQRP.decompSolve: P.N must equal Q.M_Rows");
 
-            if (relativeTolerance < (fProxy)0)
-                relativeTolerance = (fProxy)(math.max(m, n)) * Consts.fProxyZeroThreshold;
+            if (relTol < (fProxy)0)
+                relTol = (fProxy)(math.max(m, n)) * Consts.fProxyZeroThreshold;
 
             if (n == 0)
                 return new RankInfo { status = DirectSolveStatus.Success, rank = 0 };
 
-            fProxy tol = relativeTolerance * math.abs(L[0, 0]);
+            fProxy tol = relTol * math.abs(L[0, 0]);
             int r = 0;
             for (int i = 0; i < m; i++)
             {
@@ -1234,7 +1234,7 @@ namespace LinearAlgebra
         /// consistent b — else use minNormDecompSolve). Wraps b/x as single-column blocks and delegates.
         /// </summary>
         public static RankInfo decompSolve(ref fProxyMxN L, ref fProxyMxN Q, in Pivot P,
-                                           ref fProxyN b, ref fProxyN x, fProxy relativeTolerance)
+                                           ref fProxyN b, ref fProxyN x, fProxy relTol)
         {
             int m = Q.M_Rows;
             int n = Q.N_Cols;
@@ -1247,7 +1247,7 @@ namespace LinearAlgebra
             var B = new fProxyMxN(m, 1, Allocator.Temp, true);
             var X = new fProxyMxN(n, 1, Allocator.Temp, true);
             for (int i = 0; i < m; i++) B[i, 0] = b[i];
-            var info = decompSolve(ref L, ref Q, in P, ref B, ref X, relativeTolerance);
+            var info = decompSolve(ref L, ref Q, in P, ref B, ref X, relTol);
             for (int j = 0; j < n; j++) x[j] = X[j, 0];
             X.Dispose();
             B.Dispose();
@@ -1269,7 +1269,7 @@ namespace LinearAlgebra
         /// minimum-norm solution. Wraps b/x as single-column blocks and delegates to the block COD solve.
         /// </summary>
         public static RankInfo minNormDecompSolve(ref fProxyMxN L, ref fProxyMxN Q, in Pivot P,
-                                                  ref fProxyN b, ref fProxyN x, fProxy relativeTolerance)
+                                                  ref fProxyN b, ref fProxyN x, fProxy relTol)
         {
             int m = Q.M_Rows;
             int n = Q.N_Cols;
@@ -1282,7 +1282,7 @@ namespace LinearAlgebra
             var B = new fProxyMxN(m, 1, Allocator.Temp, true);
             var X = new fProxyMxN(n, 1, Allocator.Temp, true);
             for (int i = 0; i < m; i++) B[i, 0] = b[i];
-            var info = minNormDecompSolve(ref L, ref Q, in P, ref B, ref X, relativeTolerance);
+            var info = minNormDecompSolve(ref L, ref Q, in P, ref B, ref X, relTol);
             for (int j = 0; j < n; j++) x[j] = X[j, 0];
             X.Dispose();
             B.Dispose();

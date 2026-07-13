@@ -15,7 +15,7 @@ namespace LinearAlgebra
     /// solver for the small (&lt;= 3k) Rayleigh-Ritz sub-problem and
     /// <see cref="CHO.decomp(in fProxyMxN, ref fProxyMxN)"/> for orthogonalization.
     ///
-    /// <b>Locking:</b> once a pair's relative residual meets <c>tolerance</c> it is locked (frozen, no
+    /// <b>Locking:</b> once a pair's relative residual meets <c>tol</c> it is locked (frozen, no
     /// further matvec/preconditioner/Rayleigh-Ritz) and deflated out of the active subspace. Locked
     /// pairs stay in the output X.
     ///
@@ -35,7 +35,7 @@ namespace LinearAlgebra
     /// allocated once via <c>Arena.fProxyLOBPCGCache(n, k)</c> and reused across calls.
     ///
     /// <b>Convergence:</b> per-pair 2-norm relative residual ||A x_i - lambda_i B x_i|| /
-    /// max(|lambda_i|, 1) &lt;= tolerance. Returns a <see cref="LOBPCGInfo"/>
+    /// max(|lambda_i|, 1) &lt;= tol. Returns a <see cref="LOBPCGInfo"/>
     /// (Converged/MaxIterations/Breakdown).
     ///
     /// <b>Output order:</b> eigenvalues/eigenvectors are returned ASCENDING (index 0 = smallest) --
@@ -59,7 +59,7 @@ namespace LinearAlgebra
         /// the all-zero block is seeded deterministically first.
         /// </summary>
         public static LOBPCGInfo lobpcg<TOp, TBOp, TPre>(in TOp A, in TBOp B, in TPre M, ref fProxyLOBPCGCache ws,
-                                                          int k, fProxy tolerance, int maxIterations)
+                                                          int k, fProxy tol, int maxIter)
             where TOp : struct, IfProxyLinearOperator
             where TBOp : struct, IfProxyLinearOperator
             where TPre : struct, IfProxyPreconditioner
@@ -88,11 +88,11 @@ namespace LinearAlgebra
             if (k < 1 || k > kWork)
                 throw new ArgumentException("LOBPCG: k must be in [1, cache block size] (allocate fProxyLOBPCGCache(n, k + guard) to use guard vectors)");
 
-            if (maxIterations < 1)
-                throw new ArgumentException("LOBPCG: maxIterations must be >= 1");
+            if (maxIter < 1)
+                throw new ArgumentException("LOBPCG: maxIter must be >= 1");
 
-            if (tolerance <= (fProxy)0)
-                throw new ArgumentException("LOBPCG: tolerance must be > 0");
+            if (tol <= (fProxy)0)
+                throw new ArgumentException("LOBPCG: tol must be > 0");
 
             RequireLOBPCGWorkspace(in ws, n, kWork);
             RequireDistinctBuffers(in ws);
@@ -151,9 +151,9 @@ namespace LinearAlgebra
             // destructive -- once a pair is frozen, the remaining active pairs are confined
             // B-orthogonal to it (W/P are deflated against all X) -- so locking with margin avoids
             // leaving later pairs stuck just above tolerance. See the (d1) re-deflation block below.
-            fProxy lockTol = tolerance * (fProxy)0.1;
+            fProxy lockTol = tol * (fProxy)0.1;
 
-            for (int iter = 0; iter < maxIterations; iter++)
+            for (int iter = 0; iter < maxIter; iter++)
             {
                 // ---- residual + lock newly converged pairs (scan back-to-front so a swap-in
                 //      from the back is still checked) ----
@@ -185,7 +185,7 @@ namespace LinearAlgebra
 
                     // Convergence is measured at tolerance (this drives the honest exit below); a pair need
                     // not be locked to count as converged.
-                    if (!(rnorm <= tolerance * scale)) allWithinTol = false;
+                    if (!(rnorm <= tol * scale)) allWithinTol = false;
 
                     if (rnorm <= lockTol * scale)
                     {
@@ -223,7 +223,7 @@ namespace LinearAlgebra
                 // W/Rayleigh-Ritz work pass; THIS iteration only ran the residual check before finding
                 // everyone converged, so it contributes no additional work -- matches SolveInfo's
                 // "0 when converged before the first step" convention.
-                bool converged = (kWork == k) ? allWithinTol : WantedWithinTol(in ws, kWork, k, tolerance);
+                bool converged = (kWork == k) ? allWithinTol : WantedWithinTol(in ws, kWork, k, tol);
                 if (converged)
                 {
                     SortAscending(ref ws, kWork);
@@ -356,17 +356,17 @@ namespace LinearAlgebra
             }
 
             SortAscending(ref ws, kWork);
-            return new LOBPCGInfo { iterations = maxIterations, converged = ConvergedWithinTol(in ws, k, tolerance), maxResidual = MaxRelResidual(in ws, k), status = IterativeSolveStatus.MaxIterations };
+            return new LOBPCGInfo { iterations = maxIter, converged = ConvergedWithinTol(in ws, k, tol), maxResidual = MaxRelResidual(in ws, k), status = IterativeSolveStatus.MaxIterations };
         }
 
-        /// <summary>lobpcg (generalized, preconditioned) with default maxIterations (1000).</summary>
-        public static LOBPCGInfo lobpcg<TOp, TBOp, TPre>(in TOp A, in TBOp B, in TPre M, ref fProxyLOBPCGCache ws, int k, fProxy tolerance)
+        /// <summary>lobpcg (generalized, preconditioned) with default maxIter (1000).</summary>
+        public static LOBPCGInfo lobpcg<TOp, TBOp, TPre>(in TOp A, in TBOp B, in TPre M, ref fProxyLOBPCGCache ws, int k, fProxy tol)
             where TOp : struct, IfProxyLinearOperator
             where TBOp : struct, IfProxyLinearOperator
             where TPre : struct, IfProxyPreconditioner
-            => lobpcg(in A, in B, in M, ref ws, k, tolerance, 1000);
+            => lobpcg(in A, in B, in M, ref ws, k, tol, 1000);
 
-        /// <summary>lobpcg (generalized, preconditioned) with default tolerance (Consts.fProxySqrtEps) and maxIterations (1000).</summary>
+        /// <summary>lobpcg (generalized, preconditioned) with default tol (Consts.fProxySqrtEps) and maxIter (1000).</summary>
         public static LOBPCGInfo lobpcg<TOp, TBOp, TPre>(in TOp A, in TBOp B, in TPre M, ref fProxyLOBPCGCache ws, int k)
             where TOp : struct, IfProxyLinearOperator
             where TBOp : struct, IfProxyLinearOperator
@@ -380,18 +380,18 @@ namespace LinearAlgebra
         /// pre-generalization algorithm bit-for-bit (identity's Apply is an exact bit-copy) rather
         /// than requiring a hand-duplicated standard-only implementation.
         /// </summary>
-        public static LOBPCGInfo lobpcg<TOp, TPre>(in TOp A, in TPre M, ref fProxyLOBPCGCache ws, int k, fProxy tolerance, int maxIterations)
+        public static LOBPCGInfo lobpcg<TOp, TPre>(in TOp A, in TPre M, ref fProxyLOBPCGCache ws, int k, fProxy tol, int maxIter)
             where TOp : struct, IfProxyLinearOperator
             where TPre : struct, IfProxyPreconditioner
-            => lobpcg(in A, new fProxyIdentityOperator(A.Rows), in M, ref ws, k, tolerance, maxIterations);
+            => lobpcg(in A, new fProxyIdentityOperator(A.Rows), in M, ref ws, k, tol, maxIter);
 
-        /// <summary>lobpcg (preconditioned) with default maxIterations (1000).</summary>
-        public static LOBPCGInfo lobpcg<TOp, TPre>(in TOp A, in TPre M, ref fProxyLOBPCGCache ws, int k, fProxy tolerance)
+        /// <summary>lobpcg (preconditioned) with default maxIter (1000).</summary>
+        public static LOBPCGInfo lobpcg<TOp, TPre>(in TOp A, in TPre M, ref fProxyLOBPCGCache ws, int k, fProxy tol)
             where TOp : struct, IfProxyLinearOperator
             where TPre : struct, IfProxyPreconditioner
-            => lobpcg(in A, in M, ref ws, k, tolerance, 1000);
+            => lobpcg(in A, in M, ref ws, k, tol, 1000);
 
-        /// <summary>lobpcg (preconditioned) with default tolerance (Consts.fProxySqrtEps) and maxIterations (1000).</summary>
+        /// <summary>lobpcg (preconditioned) with default tol (Consts.fProxySqrtEps) and maxIter (1000).</summary>
         public static LOBPCGInfo lobpcg<TOp, TPre>(in TOp A, in TPre M, ref fProxyLOBPCGCache ws, int k)
             where TOp : struct, IfProxyLinearOperator
             where TPre : struct, IfProxyPreconditioner
@@ -406,40 +406,40 @@ namespace LinearAlgebra
         /// forwarder" pattern already used everywhere else in this file for dense/BSR wrapping,
         /// just applied one level further).
         /// </summary>
-        public static LOBPCGInfo lobpcg<TOp>(in TOp A, ref fProxyLOBPCGCache ws, int k, fProxy tolerance, int maxIterations)
+        public static LOBPCGInfo lobpcg<TOp>(in TOp A, ref fProxyLOBPCGCache ws, int k, fProxy tol, int maxIter)
             where TOp : struct, IfProxyLinearOperator
-            => lobpcg(in A, new fProxyIdentityPreconditioner(), ref ws, k, tolerance, maxIterations);
+            => lobpcg(in A, new fProxyIdentityPreconditioner(), ref ws, k, tol, maxIter);
 
-        /// <summary>lobpcg (unpreconditioned) with default maxIterations (1000).</summary>
-        public static LOBPCGInfo lobpcg<TOp>(in TOp A, ref fProxyLOBPCGCache ws, int k, fProxy tolerance)
+        /// <summary>lobpcg (unpreconditioned) with default maxIter (1000).</summary>
+        public static LOBPCGInfo lobpcg<TOp>(in TOp A, ref fProxyLOBPCGCache ws, int k, fProxy tol)
             where TOp : struct, IfProxyLinearOperator
-            => lobpcg(in A, ref ws, k, tolerance, 1000);
+            => lobpcg(in A, ref ws, k, tol, 1000);
 
-        /// <summary>lobpcg (unpreconditioned) with default tolerance (Consts.fProxySqrtEps) and maxIterations (1000).</summary>
+        /// <summary>lobpcg (unpreconditioned) with default tol (Consts.fProxySqrtEps) and maxIter (1000).</summary>
         public static LOBPCGInfo lobpcg<TOp>(in TOp A, ref fProxyLOBPCGCache ws, int k)
             where TOp : struct, IfProxyLinearOperator
             => lobpcg(in A, ref ws, k, Consts.fProxySqrtEps, 1000);
 
         // NOTE: there is deliberately NO standalone `lobpcg<TOp,TBOp>(in TOp A, in TBOp B, ref ws,
-        // int k, fProxy tolerance, int maxIterations)` unpreconditioned-generic-generalized convenience overload:
+        // int k, fProxy tol, int maxIter)` unpreconditioned-generic-generalized convenience overload:
         // it would collide (CS0111) with `lobpcg<TOp,TPre>` above, since generic constraints don't
         // participate in overload matching. Callers with custom TOp/TBOp structs call the
         // 3-type-param core directly with an explicit identity preconditioner:
-        // <c>lobpcg(in A, in B, new fProxyIdentityPreconditioner(), ref ws, k, tolerance, maxIterations)</c>.
+        // <c>lobpcg(in A, in B, new fProxyIdentityPreconditioner(), ref ws, k, tol, maxIter)</c>.
         // The CONCRETE (dense/BSR) unpreconditioned-generalized overloads below are unaffected.
 
         /// <summary>
         /// LOBPCG over a dense <see cref="fProxyMxN"/> -- zero-alloc primitive, unpreconditioned.
         /// Forwards into <see cref="lobpcg{TOp}"/> via <see cref="fProxyDenseOperator"/>.
         /// </summary>
-        public static LOBPCGInfo lobpcg(in fProxyMxN A, ref fProxyLOBPCGCache ws, int k, fProxy tolerance, int maxIterations)
-            => lobpcg(new fProxyDenseOperator(in A), ref ws, k, tolerance, maxIterations);
+        public static LOBPCGInfo lobpcg(in fProxyMxN A, ref fProxyLOBPCGCache ws, int k, fProxy tol, int maxIter)
+            => lobpcg(new fProxyDenseOperator(in A), ref ws, k, tol, maxIter);
 
-        /// <summary>lobpcg over a dense matrix with default maxIterations (1000).</summary>
-        public static LOBPCGInfo lobpcg(in fProxyMxN A, ref fProxyLOBPCGCache ws, int k, fProxy tolerance)
-            => lobpcg(in A, ref ws, k, tolerance, 1000);
+        /// <summary>lobpcg over a dense matrix with default maxIter (1000).</summary>
+        public static LOBPCGInfo lobpcg(in fProxyMxN A, ref fProxyLOBPCGCache ws, int k, fProxy tol)
+            => lobpcg(in A, ref ws, k, tol, 1000);
 
-        /// <summary>lobpcg over a dense matrix with default tolerance (Consts.fProxySqrtEps) and maxIterations (1000).</summary>
+        /// <summary>lobpcg over a dense matrix with default tol (Consts.fProxySqrtEps) and maxIter (1000).</summary>
         public static LOBPCGInfo lobpcg(in fProxyMxN A, ref fProxyLOBPCGCache ws, int k)
             => lobpcg(in A, ref ws, k, Consts.fProxySqrtEps, 1000);
 
@@ -452,14 +452,14 @@ namespace LinearAlgebra
         /// unaffected). See the class doc comment's "Buckling mapping" note for the canonical
         /// A=K_G/B=K_E truss-buckling usage.
         /// </summary>
-        public static LOBPCGInfo lobpcg(in fProxyMxN A, in fProxyMxN B, ref fProxyLOBPCGCache ws, int k, fProxy tolerance, int maxIterations)
-            => lobpcg(new fProxyDenseOperator(in A), new fProxyDenseOperator(in B), new fProxyIdentityPreconditioner(), ref ws, k, tolerance, maxIterations);
+        public static LOBPCGInfo lobpcg(in fProxyMxN A, in fProxyMxN B, ref fProxyLOBPCGCache ws, int k, fProxy tol, int maxIter)
+            => lobpcg(new fProxyDenseOperator(in A), new fProxyDenseOperator(in B), new fProxyIdentityPreconditioner(), ref ws, k, tol, maxIter);
 
-        /// <summary>lobpcg (generalized) over a dense pencil with default maxIterations (1000).</summary>
-        public static LOBPCGInfo lobpcg(in fProxyMxN A, in fProxyMxN B, ref fProxyLOBPCGCache ws, int k, fProxy tolerance)
-            => lobpcg(in A, in B, ref ws, k, tolerance, 1000);
+        /// <summary>lobpcg (generalized) over a dense pencil with default maxIter (1000).</summary>
+        public static LOBPCGInfo lobpcg(in fProxyMxN A, in fProxyMxN B, ref fProxyLOBPCGCache ws, int k, fProxy tol)
+            => lobpcg(in A, in B, ref ws, k, tol, 1000);
 
-        /// <summary>lobpcg (generalized) over a dense pencil with default tolerance (Consts.fProxySqrtEps) and maxIterations (1000).</summary>
+        /// <summary>lobpcg (generalized) over a dense pencil with default tol (Consts.fProxySqrtEps) and maxIter (1000).</summary>
         public static LOBPCGInfo lobpcg(in fProxyMxN A, in fProxyMxN B, ref fProxyLOBPCGCache ws, int k)
             => lobpcg(in A, in B, ref ws, k, Consts.fProxySqrtEps, 1000);
 
@@ -472,15 +472,15 @@ namespace LinearAlgebra
         /// arena-convenience wrapper in this library (e.g. <see cref="Eigen.lanczosVectors{TOp}"/>).
         /// </summary>
         public static fProxyN lobpcg(ref Arena arena, in fProxyMxN A, int k, out fProxyMxN eigenvectors,
-                                      out LOBPCGInfo info, fProxy tolerance, int maxIterations)
+                                      out LOBPCGInfo info, fProxy tol, int maxIter)
         {
             var ws = arena.fProxyLOBPCGCache(A.M_Rows, k);
-            info = lobpcg(in A, ref ws, k, tolerance, maxIterations);
+            info = lobpcg(in A, ref ws, k, tol, maxIter);
             eigenvectors = ws.X;
             return ws.lambda;
         }
 
-        /// <summary>lobpcg (allocating) over a dense matrix with default tolerance/maxIterations.</summary>
+        /// <summary>lobpcg (allocating) over a dense matrix with default tol/maxIter.</summary>
         public static fProxyN lobpcg(ref Arena arena, in fProxyMxN A, int k, out fProxyMxN eigenvectors, out LOBPCGInfo info)
             => lobpcg(ref arena, in A, k, out eigenvectors, out info, Consts.fProxySqrtEps, 1000);
 
@@ -494,11 +494,11 @@ namespace LinearAlgebra
         /// k x n block (ascending-sorted); the returned values are a fresh length-k vector.
         /// </summary>
         public static fProxyN lobpcg(ref Arena arena, in fProxyMxN A, int k, int guard, out fProxyMxN eigenvectors,
-                                      out LOBPCGInfo info, fProxy tolerance, int maxIterations)
+                                      out LOBPCGInfo info, fProxy tol, int maxIter)
         {
             if (guard < 0) throw new ArgumentException("LOBPCG: guard must be >= 0");
             var ws = arena.fProxyLOBPCGCache(A.M_Rows, k + guard);
-            info = lobpcg(in A, ref ws, k, tolerance, maxIterations);
+            info = lobpcg(in A, ref ws, k, tol, maxIter);
             eigenvectors = ws.X;
             eigenvectors.M_Rows = k;                       // leading k rows are the k smallest (SortAscending ran)
             var vals = arena.fProxyVec(k);
@@ -506,7 +506,7 @@ namespace LinearAlgebra
             return vals;
         }
 
-        /// <summary>lobpcg (allocating, guard vectors) over a dense matrix with default tolerance/maxIterations.</summary>
+        /// <summary>lobpcg (allocating, guard vectors) over a dense matrix with default tol/maxIter.</summary>
         public static fProxyN lobpcg(ref Arena arena, in fProxyMxN A, int k, int guard, out fProxyMxN eigenvectors, out LOBPCGInfo info)
             => lobpcg(ref arena, in A, k, guard, out eigenvectors, out info, Consts.fProxySqrtEps, 1000);
 
@@ -515,15 +515,15 @@ namespace LinearAlgebra
         /// standard dense overload's doc comment for the buffer-ownership contract.
         /// </summary>
         public static fProxyN lobpcg(ref Arena arena, in fProxyMxN A, in fProxyMxN B, int k, out fProxyMxN eigenvectors,
-                                      out LOBPCGInfo info, fProxy tolerance, int maxIterations)
+                                      out LOBPCGInfo info, fProxy tol, int maxIter)
         {
             var ws = arena.fProxyLOBPCGCache(A.M_Rows, k);
-            info = lobpcg(in A, in B, ref ws, k, tolerance, maxIterations);
+            info = lobpcg(in A, in B, ref ws, k, tol, maxIter);
             eigenvectors = ws.X;
             return ws.lambda;
         }
 
-        /// <summary>lobpcg (allocating, generalized) over a dense pencil with default tolerance/maxIterations.</summary>
+        /// <summary>lobpcg (allocating, generalized) over a dense pencil with default tol/maxIter.</summary>
         public static fProxyN lobpcg(ref Arena arena, in fProxyMxN A, in fProxyMxN B, int k, out fProxyMxN eigenvectors, out LOBPCGInfo info)
             => lobpcg(ref arena, in A, in B, k, out eigenvectors, out info, Consts.fProxySqrtEps, 1000);
 
@@ -531,14 +531,14 @@ namespace LinearAlgebra
         /// LOBPCG over a block-sparse (BSR) matrix -- zero-alloc primitive, unpreconditioned.
         /// Forwards into <see cref="lobpcg{TOp}"/> via <c>fProxyBSROperator</c>.
         /// </summary>
-        public static LOBPCGInfo lobpcg(in fProxyBSR A, ref fProxyLOBPCGCache ws, int k, fProxy tolerance, int maxIterations)
-            => lobpcg(new fProxyBSROperator(in A), ref ws, k, tolerance, maxIterations);
+        public static LOBPCGInfo lobpcg(in fProxyBSR A, ref fProxyLOBPCGCache ws, int k, fProxy tol, int maxIter)
+            => lobpcg(new fProxyBSROperator(in A), ref ws, k, tol, maxIter);
 
-        /// <summary>lobpcg over a BSR matrix with default maxIterations (1000).</summary>
-        public static LOBPCGInfo lobpcg(in fProxyBSR A, ref fProxyLOBPCGCache ws, int k, fProxy tolerance)
-            => lobpcg(in A, ref ws, k, tolerance, 1000);
+        /// <summary>lobpcg over a BSR matrix with default maxIter (1000).</summary>
+        public static LOBPCGInfo lobpcg(in fProxyBSR A, ref fProxyLOBPCGCache ws, int k, fProxy tol)
+            => lobpcg(in A, ref ws, k, tol, 1000);
 
-        /// <summary>lobpcg over a BSR matrix with default tolerance (Consts.fProxySqrtEps) and maxIterations (1000).</summary>
+        /// <summary>lobpcg over a BSR matrix with default tol (Consts.fProxySqrtEps) and maxIter (1000).</summary>
         public static LOBPCGInfo lobpcg(in fProxyBSR A, ref fProxyLOBPCGCache ws, int k)
             => lobpcg(in A, ref ws, k, Consts.fProxySqrtEps, 1000);
 
@@ -550,28 +550,28 @@ namespace LinearAlgebra
         /// overload's NOTE for why there is no generic unpreconditioned-generalized rung to route
         /// through here.
         /// </summary>
-        public static LOBPCGInfo lobpcg(in fProxyBSR A, in fProxyBSR B, ref fProxyLOBPCGCache ws, int k, fProxy tolerance, int maxIterations)
-            => lobpcg(new fProxyBSROperator(in A), new fProxyBSROperator(in B), new fProxyIdentityPreconditioner(), ref ws, k, tolerance, maxIterations);
+        public static LOBPCGInfo lobpcg(in fProxyBSR A, in fProxyBSR B, ref fProxyLOBPCGCache ws, int k, fProxy tol, int maxIter)
+            => lobpcg(new fProxyBSROperator(in A), new fProxyBSROperator(in B), new fProxyIdentityPreconditioner(), ref ws, k, tol, maxIter);
 
-        /// <summary>lobpcg (generalized) over a BSR pencil with default maxIterations (1000).</summary>
-        public static LOBPCGInfo lobpcg(in fProxyBSR A, in fProxyBSR B, ref fProxyLOBPCGCache ws, int k, fProxy tolerance)
-            => lobpcg(in A, in B, ref ws, k, tolerance, 1000);
+        /// <summary>lobpcg (generalized) over a BSR pencil with default maxIter (1000).</summary>
+        public static LOBPCGInfo lobpcg(in fProxyBSR A, in fProxyBSR B, ref fProxyLOBPCGCache ws, int k, fProxy tol)
+            => lobpcg(in A, in B, ref ws, k, tol, 1000);
 
-        /// <summary>lobpcg (generalized) over a BSR pencil with default tolerance (Consts.fProxySqrtEps) and maxIterations (1000).</summary>
+        /// <summary>lobpcg (generalized) over a BSR pencil with default tol (Consts.fProxySqrtEps) and maxIter (1000).</summary>
         public static LOBPCGInfo lobpcg(in fProxyBSR A, in fProxyBSR B, ref fProxyLOBPCGCache ws, int k)
             => lobpcg(in A, in B, ref ws, k, Consts.fProxySqrtEps, 1000);
 
         /// <summary>lobpcg (allocating) over a BSR matrix. See the dense overload's doc comment.</summary>
         public static fProxyN lobpcg(ref Arena arena, in fProxyBSR A, int k, out fProxyMxN eigenvectors,
-                                      out LOBPCGInfo info, fProxy tolerance, int maxIterations)
+                                      out LOBPCGInfo info, fProxy tol, int maxIter)
         {
             var ws = arena.fProxyLOBPCGCache(A.M_Rows, k);
-            info = lobpcg(in A, ref ws, k, tolerance, maxIterations);
+            info = lobpcg(in A, ref ws, k, tol, maxIter);
             eigenvectors = ws.X;
             return ws.lambda;
         }
 
-        /// <summary>lobpcg (allocating) over a BSR matrix with default tolerance/maxIterations.</summary>
+        /// <summary>lobpcg (allocating) over a BSR matrix with default tol/maxIter.</summary>
         public static fProxyN lobpcg(ref Arena arena, in fProxyBSR A, int k, out fProxyMxN eigenvectors, out LOBPCGInfo info)
             => lobpcg(ref arena, in A, k, out eigenvectors, out info, Consts.fProxySqrtEps, 1000);
 
@@ -583,11 +583,11 @@ namespace LinearAlgebra
         /// Laplacian -- see <c>fProxyGallery.fProxyLaplacian2D</c>).
         /// </summary>
         public static fProxyN lobpcg(ref Arena arena, in fProxyBSR A, int k, int guard, out fProxyMxN eigenvectors,
-                                      out LOBPCGInfo info, fProxy tolerance, int maxIterations)
+                                      out LOBPCGInfo info, fProxy tol, int maxIter)
         {
             if (guard < 0) throw new ArgumentException("LOBPCG: guard must be >= 0");
             var ws = arena.fProxyLOBPCGCache(A.M_Rows, k + guard);
-            info = lobpcg(in A, ref ws, k, tolerance, maxIterations);
+            info = lobpcg(in A, ref ws, k, tol, maxIter);
             eigenvectors = ws.X;
             eigenvectors.M_Rows = k;
             var vals = arena.fProxyVec(k);
@@ -595,7 +595,7 @@ namespace LinearAlgebra
             return vals;
         }
 
-        /// <summary>lobpcg (allocating, guard vectors) over a BSR matrix with default tolerance/maxIterations.</summary>
+        /// <summary>lobpcg (allocating, guard vectors) over a BSR matrix with default tol/maxIter.</summary>
         public static fProxyN lobpcg(ref Arena arena, in fProxyBSR A, int k, int guard, out fProxyMxN eigenvectors, out LOBPCGInfo info)
             => lobpcg(ref arena, in A, k, guard, out eigenvectors, out info, Consts.fProxySqrtEps, 1000);
 
@@ -604,15 +604,15 @@ namespace LinearAlgebra
         /// the standard BSR overload's doc comment for the buffer-ownership contract.
         /// </summary>
         public static fProxyN lobpcg(ref Arena arena, in fProxyBSR A, in fProxyBSR B, int k, out fProxyMxN eigenvectors,
-                                      out LOBPCGInfo info, fProxy tolerance, int maxIterations)
+                                      out LOBPCGInfo info, fProxy tol, int maxIter)
         {
             var ws = arena.fProxyLOBPCGCache(A.M_Rows, k);
-            info = lobpcg(in A, in B, ref ws, k, tolerance, maxIterations);
+            info = lobpcg(in A, in B, ref ws, k, tol, maxIter);
             eigenvectors = ws.X;
             return ws.lambda;
         }
 
-        /// <summary>lobpcg (allocating, generalized) over a BSR pencil with default tolerance/maxIterations.</summary>
+        /// <summary>lobpcg (allocating, generalized) over a BSR pencil with default tol/maxIter.</summary>
         public static fProxyN lobpcg(ref Arena arena, in fProxyBSR A, in fProxyBSR B, int k, out fProxyMxN eigenvectors, out LOBPCGInfo info)
             => lobpcg(ref arena, in A, in B, k, out eigenvectors, out info, Consts.fProxySqrtEps, 1000);
 
@@ -620,19 +620,19 @@ namespace LinearAlgebra
         /// LOBPCG over a block-sparse (BSR) matrix with its matching block-Jacobi preconditioner --
         /// zero-alloc primitive. Forwards into <see cref="lobpcg{TOp,TPre}"/> via
         /// <c>fProxyBSROperator</c>/<c>fProxyBlockJacobi</c>. This is the preconditioned entry point
-        /// the sparse-BSM eigensolver roadmap calls out (matvec + block-Jacobi, matching how
+        /// the sparse-BSR eigensolver roadmap calls out (matvec + block-Jacobi, matching how
         /// <see cref="Krylov.pcg(in fProxyBSR, in fProxyBlockJacobi, in fProxyN, ref fProxyN)"/>
         /// consumes it).
         /// </summary>
         public static LOBPCGInfo lobpcg(in fProxyBSR A, in fProxyBlockJacobi M, ref fProxyLOBPCGCache ws,
-                                         int k, fProxy tolerance, int maxIterations)
-            => lobpcg(new fProxyBSROperator(in A), in M, ref ws, k, tolerance, maxIterations);
+                                         int k, fProxy tol, int maxIter)
+            => lobpcg(new fProxyBSROperator(in A), in M, ref ws, k, tol, maxIter);
 
-        /// <summary>lobpcg (BSR + block-Jacobi) with default maxIterations (1000).</summary>
-        public static LOBPCGInfo lobpcg(in fProxyBSR A, in fProxyBlockJacobi M, ref fProxyLOBPCGCache ws, int k, fProxy tolerance)
-            => lobpcg(in A, in M, ref ws, k, tolerance, 1000);
+        /// <summary>lobpcg (BSR + block-Jacobi) with default maxIter (1000).</summary>
+        public static LOBPCGInfo lobpcg(in fProxyBSR A, in fProxyBlockJacobi M, ref fProxyLOBPCGCache ws, int k, fProxy tol)
+            => lobpcg(in A, in M, ref ws, k, tol, 1000);
 
-        /// <summary>lobpcg (BSR + block-Jacobi) with default tolerance (Consts.fProxySqrtEps) and maxIterations (1000).</summary>
+        /// <summary>lobpcg (BSR + block-Jacobi) with default tol (Consts.fProxySqrtEps) and maxIter (1000).</summary>
         public static LOBPCGInfo lobpcg(in fProxyBSR A, in fProxyBlockJacobi M, ref fProxyLOBPCGCache ws, int k)
             => lobpcg(in A, in M, ref ws, k, Consts.fProxySqrtEps, 1000);
 
@@ -645,28 +645,28 @@ namespace LinearAlgebra
         /// enter M's construction or Apply.
         /// </summary>
         public static LOBPCGInfo lobpcg(in fProxyBSR A, in fProxyBSR B, in fProxyBlockJacobi M, ref fProxyLOBPCGCache ws,
-                                         int k, fProxy tolerance, int maxIterations)
-            => lobpcg(new fProxyBSROperator(in A), new fProxyBSROperator(in B), in M, ref ws, k, tolerance, maxIterations);
+                                         int k, fProxy tol, int maxIter)
+            => lobpcg(new fProxyBSROperator(in A), new fProxyBSROperator(in B), in M, ref ws, k, tol, maxIter);
 
-        /// <summary>lobpcg (generalized, BSR + block-Jacobi) with default maxIterations (1000).</summary>
-        public static LOBPCGInfo lobpcg(in fProxyBSR A, in fProxyBSR B, in fProxyBlockJacobi M, ref fProxyLOBPCGCache ws, int k, fProxy tolerance)
-            => lobpcg(in A, in B, in M, ref ws, k, tolerance, 1000);
+        /// <summary>lobpcg (generalized, BSR + block-Jacobi) with default maxIter (1000).</summary>
+        public static LOBPCGInfo lobpcg(in fProxyBSR A, in fProxyBSR B, in fProxyBlockJacobi M, ref fProxyLOBPCGCache ws, int k, fProxy tol)
+            => lobpcg(in A, in B, in M, ref ws, k, tol, 1000);
 
-        /// <summary>lobpcg (generalized, BSR + block-Jacobi) with default tolerance (Consts.fProxySqrtEps) and maxIterations (1000).</summary>
+        /// <summary>lobpcg (generalized, BSR + block-Jacobi) with default tol (Consts.fProxySqrtEps) and maxIter (1000).</summary>
         public static LOBPCGInfo lobpcg(in fProxyBSR A, in fProxyBSR B, in fProxyBlockJacobi M, ref fProxyLOBPCGCache ws, int k)
             => lobpcg(in A, in B, in M, ref ws, k, Consts.fProxySqrtEps, 1000);
 
         /// <summary>lobpcg (allocating) over a BSR matrix with block-Jacobi. See the dense overload's doc comment.</summary>
         public static fProxyN lobpcg(ref Arena arena, in fProxyBSR A, in fProxyBlockJacobi M, int k,
-                                      out fProxyMxN eigenvectors, out LOBPCGInfo info, fProxy tolerance, int maxIterations)
+                                      out fProxyMxN eigenvectors, out LOBPCGInfo info, fProxy tol, int maxIter)
         {
             var ws = arena.fProxyLOBPCGCache(A.M_Rows, k);
-            info = lobpcg(in A, in M, ref ws, k, tolerance, maxIterations);
+            info = lobpcg(in A, in M, ref ws, k, tol, maxIter);
             eigenvectors = ws.X;
             return ws.lambda;
         }
 
-        /// <summary>lobpcg (allocating) over a BSR matrix with block-Jacobi and default tolerance/maxIterations.</summary>
+        /// <summary>lobpcg (allocating) over a BSR matrix with block-Jacobi and default tol/maxIter.</summary>
         public static fProxyN lobpcg(ref Arena arena, in fProxyBSR A, in fProxyBlockJacobi M, int k,
                                       out fProxyMxN eigenvectors, out LOBPCGInfo info)
             => lobpcg(ref arena, in A, in M, k, out eigenvectors, out info, Consts.fProxySqrtEps, 1000);
@@ -676,15 +676,15 @@ namespace LinearAlgebra
         /// allocating. See the standard BSR+block-Jacobi overload's doc comment.
         /// </summary>
         public static fProxyN lobpcg(ref Arena arena, in fProxyBSR A, in fProxyBSR B, in fProxyBlockJacobi M, int k,
-                                      out fProxyMxN eigenvectors, out LOBPCGInfo info, fProxy tolerance, int maxIterations)
+                                      out fProxyMxN eigenvectors, out LOBPCGInfo info, fProxy tol, int maxIter)
         {
             var ws = arena.fProxyLOBPCGCache(A.M_Rows, k);
-            info = lobpcg(in A, in B, in M, ref ws, k, tolerance, maxIterations);
+            info = lobpcg(in A, in B, in M, ref ws, k, tol, maxIter);
             eigenvectors = ws.X;
             return ws.lambda;
         }
 
-        /// <summary>lobpcg (allocating, generalized) over a BSR pencil with block-Jacobi and default tolerance/maxIterations.</summary>
+        /// <summary>lobpcg (allocating, generalized) over a BSR pencil with block-Jacobi and default tol/maxIter.</summary>
         public static fProxyN lobpcg(ref Arena arena, in fProxyBSR A, in fProxyBSR B, in fProxyBlockJacobi M, int k,
                                       out fProxyMxN eigenvectors, out LOBPCGInfo info)
             => lobpcg(ref arena, in A, in B, in M, k, out eigenvectors, out info, Consts.fProxySqrtEps, 1000);
@@ -1252,7 +1252,7 @@ namespace LinearAlgebra
         // no row ordering is assumed. kWork is tiny (<= a few dozen) so the O(kWork^2) rank scan is
         // negligible. Only ever called when kWork > k; the kWork == k path uses allWithinTol inline and
         // stays bit-identical to the pre-guard implementation.
-        static bool WantedWithinTol(in fProxyLOBPCGCache ws, int kWork, int k, fProxy tolerance)
+        static bool WantedWithinTol(in fProxyLOBPCGCache ws, int kWork, int k, fProxy tol)
         {
             for (int i = 0; i < kWork; i++)
             {
@@ -1263,7 +1263,7 @@ namespace LinearAlgebra
 
                 fProxy scale = math.abs(ws.lambda[i]);
                 if (scale < (fProxy)1) scale = (fProxy)1;
-                if (!(ws.residual[i] <= tolerance * scale)) return false;   // NaN-safe (!(NaN<=x) == true)
+                if (!(ws.residual[i] <= tol * scale)) return false;   // NaN-safe (!(NaN<=x) == true)
             }
             return true;
         }
@@ -1272,14 +1272,14 @@ namespace LinearAlgebra
         // On a non-converged exit, k - numActive would count only pairs frozen to lockTol (= 0.1*tolerance) and
         // undercount pairs that reached tolerance but were never locked -- so report this instead. residual[] is
         // populated for all k here (active pairs from the last scan, locked pairs frozen at lock time).
-        static int ConvergedWithinTol(in fProxyLOBPCGCache ws, int k, fProxy tolerance)
+        static int ConvergedWithinTol(in fProxyLOBPCGCache ws, int k, fProxy tol)
         {
             int c = 0;
             for (int i = 0; i < k; i++)
             {
                 fProxy scale = math.abs(ws.lambda[i]);
                 if (scale < (fProxy)1) scale = (fProxy)1;
-                if (ws.residual[i] <= tolerance * scale) c++;
+                if (ws.residual[i] <= tol * scale) c++;
             }
             return c;
         }

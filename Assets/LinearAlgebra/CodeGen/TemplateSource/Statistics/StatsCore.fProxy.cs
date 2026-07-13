@@ -263,7 +263,7 @@ namespace LinearAlgebra
         public static void rowSum(in fProxyMxN A, ref fProxyN dest)
         {
             if (dest.N != A.M_Rows)
-                throw new System.ArgumentException("StatsOP.rowSum: dest.N must equal A.M_Rows");
+                throw new System.ArgumentException("Stats.rowSum: dest.N must equal A.M_Rows");
 
             for (int r = 0; r < A.M_Rows; r++)
             {
@@ -284,7 +284,7 @@ namespace LinearAlgebra
         public static void colSum(in fProxyMxN A, ref fProxyN dest)
         {
             if (dest.N != A.N_Cols)
-                throw new System.ArgumentException("StatsOP.colSum: dest.N must equal A.N_Cols");
+                throw new System.ArgumentException("Stats.colSum: dest.N must equal A.N_Cols");
 
             for (int c = 0; c < A.N_Cols; c++)
                 dest[c] = 0f;
@@ -336,7 +336,7 @@ namespace LinearAlgebra
             if (A.M_Rows == 0 || A.N_Cols == 0)
                 throw new System.InvalidOperationException("Cannot compute statistics of an empty matrix.");
             if (dest.N != A.M_Rows)
-                throw new System.ArgumentException("StatsOP.rowMin: dest.N must equal A.M_Rows");
+                throw new System.ArgumentException("Stats.rowMin: dest.N must equal A.M_Rows");
 
             for (int r = 0; r < A.M_Rows; r++)
             {
@@ -359,7 +359,7 @@ namespace LinearAlgebra
             if (A.M_Rows == 0 || A.N_Cols == 0)
                 throw new System.InvalidOperationException("Cannot compute statistics of an empty matrix.");
             if (dest.N != A.M_Rows)
-                throw new System.ArgumentException("StatsOP.rowMax: dest.N must equal A.M_Rows");
+                throw new System.ArgumentException("Stats.rowMax: dest.N must equal A.M_Rows");
 
             for (int r = 0; r < A.M_Rows; r++)
             {
@@ -382,7 +382,7 @@ namespace LinearAlgebra
             if (A.M_Rows == 0 || A.N_Cols == 0)
                 throw new System.InvalidOperationException("Cannot compute statistics of an empty matrix.");
             if (dest.N != A.N_Cols)
-                throw new System.ArgumentException("StatsOP.colMin: dest.N must equal A.N_Cols");
+                throw new System.ArgumentException("Stats.colMin: dest.N must equal A.N_Cols");
 
             for (int c = 0; c < A.N_Cols; c++)
                 dest[c] = A[0, c];
@@ -404,7 +404,7 @@ namespace LinearAlgebra
             if (A.M_Rows == 0 || A.N_Cols == 0)
                 throw new System.InvalidOperationException("Cannot compute statistics of an empty matrix.");
             if (dest.N != A.N_Cols)
-                throw new System.ArgumentException("StatsOP.colMax: dest.N must equal A.N_Cols");
+                throw new System.ArgumentException("Stats.colMax: dest.N must equal A.N_Cols");
 
             for (int c = 0; c < A.N_Cols; c++)
                 dest[c] = A[0, c];
@@ -428,7 +428,7 @@ namespace LinearAlgebra
             if (A.M_Rows == 0 || A.N_Cols == 0)
                 throw new System.InvalidOperationException("Cannot compute statistics of an empty matrix.");
             if (dest.N != A.M_Rows)
-                throw new System.ArgumentException("StatsOP.rowVariance: dest.N must equal A.M_Rows");
+                throw new System.ArgumentException("Stats.rowVariance: dest.N must equal A.M_Rows");
 
             for (int r = 0; r < A.M_Rows; r++)
             {
@@ -463,7 +463,7 @@ namespace LinearAlgebra
             if (A.M_Rows == 0 || A.N_Cols == 0)
                 throw new System.InvalidOperationException("Cannot compute statistics of an empty matrix.");
             if (dest.N != A.N_Cols)
-                throw new System.ArgumentException("StatsOP.colVariance: dest.N must equal A.N_Cols");
+                throw new System.ArgumentException("Stats.colVariance: dest.N must equal A.N_Cols");
 
             // column means in a self-disposing local temp (zero-initialised; freed on return).
             var means = new fProxyN(A.N_Cols, Allocator.Temp);
@@ -525,7 +525,7 @@ namespace LinearAlgebra
         public static void rowNormL1(in fProxyMxN A, ref fProxyN dest)
         {
             if (dest.N != A.M_Rows)
-                throw new System.ArgumentException("StatsOP.rowNormL1: dest.N must equal A.M_Rows");
+                throw new System.ArgumentException("Stats.rowNormL1: dest.N must equal A.M_Rows");
 
             for (int r = 0; r < A.M_Rows; r++)
             {
@@ -546,7 +546,7 @@ namespace LinearAlgebra
         public static void rowNormL2(in fProxyMxN A, ref fProxyN dest)
         {
             if (dest.N != A.M_Rows)
-                throw new System.ArgumentException("StatsOP.rowNormL2: dest.N must equal A.M_Rows");
+                throw new System.ArgumentException("Stats.rowNormL2: dest.N must equal A.M_Rows");
 
             for (int r = 0; r < A.M_Rows; r++)
             {
@@ -567,7 +567,7 @@ namespace LinearAlgebra
         public static void colNormL1(in fProxyMxN A, ref fProxyN dest)
         {
             if (dest.N != A.N_Cols)
-                throw new System.ArgumentException("StatsOP.colNormL1: dest.N must equal A.N_Cols");
+                throw new System.ArgumentException("Stats.colNormL1: dest.N must equal A.N_Cols");
 
             for (int c = 0; c < A.N_Cols; c++)
                 dest[c] = 0f;
@@ -587,7 +587,7 @@ namespace LinearAlgebra
         public static void colNormL2(in fProxyMxN A, ref fProxyN dest)
         {
             if (dest.N != A.N_Cols)
-                throw new System.ArgumentException("StatsOP.colNormL2: dest.N must equal A.N_Cols");
+                throw new System.ArgumentException("Stats.colNormL2: dest.N must equal A.N_Cols");
 
             for (int c = 0; c < A.N_Cols; c++)
                 dest[c] = 0f;

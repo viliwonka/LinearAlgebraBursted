@@ -181,10 +181,10 @@ namespace LinearAlgebra.Internal
 
         
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void signFlip([NoAlias] long* target, [NoAlias] long* from, int n) {
+        public static void signFlipInPlace([NoAlias] long* target, int n) {
 
             for (int i = 0; i < n; i++)
-                target[i] = (long)(-from[i]);
+                target[i] = (long)(-target[i]);
         }
         
 

@@ -104,7 +104,10 @@ namespace LinearAlgebra.Internal
 {
     public static unsafe partial class UnsafeSelectOP
     {
-        public static void selectdouble([NoAlias] double* a, [NoAlias] double* b, [NoAlias] bool* c, double* target, int n)
+        // a/b carry no [NoAlias]: the public select contract allows target to alias either input
+        // (elementwise, each index reads before it writes). c is a different element type and
+        // cannot alias the double pointers through the public API.
+        public static void selectdouble(double* a, double* b, [NoAlias] bool* c, double* target, int n)
         {
             for (int i = 0; i < n; i++)
                 target[i] = c[i] ? b[i] : a[i];

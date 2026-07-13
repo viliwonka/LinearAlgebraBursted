@@ -57,7 +57,9 @@ namespace LinearAlgebra.Internal
 {
     public static unsafe partial class UnsafeSelectOP
     {
-        public static void selectBool([NoAlias] bool* a, [NoAlias] bool* b, [NoAlias] bool* c, bool* target, int n)
+        // No [NoAlias] anywhere: every pointer here is bool*, and the public select contract
+        // allows target to alias an input (elementwise, each index reads before it writes).
+        public static void selectBool(bool* a, bool* b, bool* c, bool* target, int n)
         {
             for (int i = 0; i < n; i++)
                 target[i] = c[i] ? b[i] : a[i];

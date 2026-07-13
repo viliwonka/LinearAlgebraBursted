@@ -54,7 +54,7 @@ namespace LinearAlgebra
         public static boolN operator !=(bool lhs, in boolN rhs) => rhs != lhs;
         #endregion
 
-        #region UNITARY OPERATIONS
+        #region UNARY OPERATIONS
         public static boolN operator !(in boolN lhs) {
 
             var vec = lhs.TempCopy();

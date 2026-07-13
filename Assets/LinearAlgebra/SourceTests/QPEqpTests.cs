@@ -112,9 +112,8 @@ public class QPEqpTests
                         L[i, j] = rng.NextFloat(-1f, 1f);
                 Blas.dot(in L, in L, ref Q, transposeA: true);   // Q = LᵀL, symmetric PSD, rank r
 
-                var Acopy = A; var bcopy = b;                    // minNormSolve does not modify A/b
                 var xf = arena.floatVec(n);
-                LQ.minNormSolve(ref Acopy, ref bcopy, ref xf);   // min-norm feasible point = kernel's start
+                LQ.minNormSolve(in A, in b, ref xf);             // min-norm feasible point = kernel's start
                 // Target a DIFFERENT feasible optimum xt = xf + w, w in null(A_W), so the null-space step
                 // is nontrivial and the regularized-Cholesky path actually runs. A_W has orthonormal rows,
                 // so the null projector is w = r - A_Wᵀ(A_W r) for a random r. Setting c = -Q xt makes xt
@@ -286,9 +285,8 @@ public class QPEqpTests
                         L[i, j] = rng.NextDouble(-1.0, 1.0);
                 Blas.dot(in L, in L, ref Q, transposeA: true);
 
-                var Acopy = A; var bcopy = b;
                 var xf = arena.doubleVec(n);
-                LQ.minNormSolve(ref Acopy, ref bcopy, ref xf);   // min-norm feasible point = kernel's start
+                LQ.minNormSolve(in A, in b, ref xf);             // min-norm feasible point = kernel's start
                 // Target a different feasible optimum xt = xf + (I - A_Wᵀ A_W) r (see float job).
                 var rr = arena.doubleVec(n);
                 for (int i = 0; i < n; i++) rr[i] = rng.NextDouble(-1.0, 1.0);

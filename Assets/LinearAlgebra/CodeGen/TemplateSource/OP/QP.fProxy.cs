@@ -261,7 +261,7 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Solve the EQUALITY-constrained QP  min ½xᵀQx + cᵀx  s.t. A_W x = b_W  EXACTLY, from
-        /// scratch: reaches a feasible point via <see cref="LQ.minNormSolve(ref fProxyMxN, ref fProxyN, ref fProxyN)"/>
+        /// scratch: reaches a feasible point via <see cref="LQ.minNormSolve(in fProxyMxN, in fProxyN, ref fProxyN)"/>
         /// (A_W is k x n, k &lt;= n, independent rows -- exactly the "wide, full row rank"
         /// underdetermined system that targets), then takes ONE exact null-space Newton step -- see
         /// <see cref="eqpNullSpaceStep"/> and this file's header comment for why one step suffices.
@@ -286,12 +286,7 @@ namespace LinearAlgebra
         internal static QPInfo eqpSolve(in fProxyMxN Q, in fProxyN c, in fProxyMxN A_W, in fProxyN b_W,
                                         ref fProxyN x, ref fProxyN lambda)
         {
-            // LQ.minNormSolve does not modify its A/b arguments (they are copied into its own working
-            // buffers internally) -- a local struct copy (same handle, zero-cost) is enough to satisfy
-            // its `ref` parameters from our `in` ones.
-            var A_W_rw = A_W;
-            var b_W_rw = b_W;
-            LQ.minNormSolve(ref A_W_rw, ref b_W_rw, ref x);
+            LQ.minNormSolve(in A_W, in b_W, ref x);
 
             return eqpNullSpaceStep(in Q, in c, in A_W, in b_W, ref x, ref lambda);
         }

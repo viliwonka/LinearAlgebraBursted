@@ -63,7 +63,7 @@ public class fProxyKrylovVerifyAtExitTests
     // minus the verify-at-exit block -- an independent "before" oracle without touching git.
     static SolveInfo UnguardedCg<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
                                        ref fProxyN r, ref fProxyN p, ref fProxyN Ap,
-                                       int maxIterations, fProxy tolerance)
+                                       int maxIter, fProxy tol)
         where TOp : struct, IfProxyLinearOperator
     {
         fProxy bb = Blas.dot(b, b);
@@ -79,12 +79,12 @@ public class fProxyKrylovVerifyAtExitTests
         p.Data.CopyFrom(r.Data);
 
         fProxy rsold = Blas.dot(r, r);
-        fProxy threshold = tolerance * tolerance * bb;
+        fProxy threshold = tol * tol * bb;
 
         if (rsold <= threshold)
             return new SolveInfo { rnorm = (double)math.sqrt(rsold), iterations = 0, status = IterativeSolveStatus.Converged };
 
-        for (int k = 0; k < maxIterations; k++)
+        for (int k = 0; k < maxIter; k++)
         {
             fProxy pAp = A.ApplyDot(in p, ref Ap);
             if (!(pAp > (fProxy)0))
@@ -101,7 +101,7 @@ public class fProxyKrylovVerifyAtExitTests
             rsold = rsnew;
         }
 
-        return new SolveInfo { rnorm = (double)math.sqrt(rsold), iterations = maxIterations, status = IterativeSolveStatus.MaxIterations };
+        return new SolveInfo { rnorm = (double)math.sqrt(rsold), iterations = maxIter, status = IterativeSolveStatus.MaxIterations };
     }
 
     // ==============================================================================

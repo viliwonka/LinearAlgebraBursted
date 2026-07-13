@@ -38,7 +38,7 @@ namespace LinearAlgebra
             var vec = arena.intVec(N);
 
             if(index < 0 || index >= N)
-                throw new System.ArgumentOutOfRangeException("BasisVector: Index out of bounds");
+                throw new System.ArgumentOutOfRangeException("intBasisVec: Index out of bounds");
 
             vec[index] = (int)1;
 
@@ -205,10 +205,10 @@ namespace LinearAlgebra
             var matrix = arena.intIdentityMat(M);
 
             if (M < 2)
-                throw new System.ArgumentException("PermutationMatrix: Matrix must be at least 2x2");
+                throw new System.ArgumentException("intPermutationMat: Matrix must be at least 2x2");
 
             if (i < 0 || i >= M || j < 0 || j >= M)
-                throw new System.ArgumentOutOfRangeException("PermutationMatrix: Index out of bounds");
+                throw new System.ArgumentOutOfRangeException("intPermutationMat: Index out of bounds");
 
             if (i == j)
             {

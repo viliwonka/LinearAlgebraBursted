@@ -12,7 +12,7 @@ namespace LinearAlgebra
     public static partial class SVD {
 
         // Fundamental-subspace bases from the SVD A = U diag(S) Vᵀ. With a numerical rank r =
-        // #{ S[j] > tol } (tol = relativeTolerance * S[0]; relativeTolerance < 0 -> auto = max(m,n)*eps), the trailing
+        // #{ S[j] > tol } (tol = relTol * S[0]; relTol < 0 -> auto = max(m,n)*eps), the trailing
         // right-singular vectors span the NULLSPACE and the leading left-singular vectors span the
         // RANGE (column space). A is m x n with m >= n (the same precondition as thin); the
         // wide m < n case needs the orthogonal complement of a thin factor and is left for later.
@@ -28,8 +28,8 @@ namespace LinearAlgebra
         /// caller-allocated) receive those vectors (orthonormal); dim = n - <c>info.rank</c>.
         /// Remaining columns of basis are left untouched.
         ///
-        /// relativeTolerance &lt; 0 selects the auto tolerance max(m, n) * Consts.doubleZeroThreshold; a singular
-        /// value S[j] &lt;= relativeTolerance * S[0] counts as zero. A is NOT modified. Returns a
+        /// relTol &lt; 0 selects the auto tolerance max(m, n) * Consts.doubleZeroThreshold; a singular
+        /// value S[j] &lt;= relTol * S[0] counts as zero. A is NOT modified. Returns a
         /// <see cref="RankInfo"/> (implicit-bool == Solved): <c>status</c> is
         /// <see cref="DirectSolveStatus.NotConverged"/> if the inner SVD did not converge (basis
         /// untouched), else <see cref="DirectSolveStatus.Success"/>/<see cref="DirectSolveStatus.RankDeficient"/>
@@ -39,7 +39,7 @@ namespace LinearAlgebra
         /// with Arena.doubleSVDFullCache(m, n).
         /// </summary>
         public static RankInfo nullspaceBasis(in doubleMxN A, ref doubleMxN basis, ref doubleSVDFullCache ws,
-                                         double relativeTolerance, int maxIterations)
+                                         double relTol, int maxIter)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -48,20 +48,20 @@ namespace LinearAlgebra
                 throw new ArgumentException("nullspaceBasis: A must have m >= n (more rows than columns)");
             if (basis.M_Rows != n || basis.N_Cols != n)
                 throw new ArgumentException("nullspaceBasis: basis must be n x n");
-            if (maxIterations < 1)
-                throw new ArgumentException("nullspaceBasis: maxIterations must be >= 1");
+            if (maxIter < 1)
+                throw new ArgumentException("nullspaceBasis: maxIter must be >= 1");
             RequireSvdFullWorkspace(in ws, m, n);
 
             if (n == 0)
                 return new RankInfo { status = DirectSolveStatus.Success, rank = 0 };
 
-            SVDInfo svdInfo = thin(in A, ref ws.U, ref ws.S, ref ws.V, maxIterations);
+            SVDInfo svdInfo = thin(in A, ref ws.U, ref ws.S, ref ws.V, maxIter);
             if (!svdInfo)
                 return new RankInfo { status = DirectSolveStatus.NotConverged, rank = 0 };
 
-            if (relativeTolerance < (double)0)
-                relativeTolerance = (double)math.max(m, n) * Consts.doubleZeroThreshold;
-            double tol = relativeTolerance * ws.S[0];
+            if (relTol < (double)0)
+                relTol = (double)math.max(m, n) * Consts.doubleZeroThreshold;
+            double tol = relTol * ws.S[0];
 
             // S is descending, so the negligible singular values are the trailing ones; compact their
             // V-columns to the front of basis.
@@ -79,12 +79,12 @@ namespace LinearAlgebra
             return new RankInfo { status = rank == n ? DirectSolveStatus.Success : DirectSolveStatus.RankDeficient, rank = rank };
         }
 
-        /// <summary>nullspaceBasis (ref workspace) with default maxIterations (Consts.sweepBudget(A.N_Cols)).</summary>
+        /// <summary>nullspaceBasis (ref workspace) with default maxIter (Consts.sweepBudget(A.N_Cols)).</summary>
         public static RankInfo nullspaceBasis(in doubleMxN A, ref doubleMxN basis, ref doubleSVDFullCache ws,
-                                         double relativeTolerance)
-            => nullspaceBasis(in A, ref basis, ref ws, relativeTolerance, Consts.sweepBudget(A.N_Cols));
+                                         double relTol)
+            => nullspaceBasis(in A, ref basis, ref ws, relTol, Consts.sweepBudget(A.N_Cols));
 
-        /// <summary>nullspaceBasis (ref workspace) with auto tolerance (relativeTolerance = -1) and default maxIterations (Consts.sweepBudget(A.N_Cols)).</summary>
+        /// <summary>nullspaceBasis (ref workspace) with auto tolerance (relTol = -1) and default maxIter (Consts.sweepBudget(A.N_Cols)).</summary>
         public static RankInfo nullspaceBasis(in doubleMxN A, ref doubleMxN basis, ref doubleSVDFullCache ws)
             => nullspaceBasis(in A, ref basis, ref ws, (double)(-1), Consts.sweepBudget(A.N_Cols));
 
@@ -93,7 +93,7 @@ namespace LinearAlgebra
         /// See the ref-workspace overload for semantics.
         /// </summary>
         public static RankInfo nullspaceBasis(in doubleMxN A, ref doubleMxN basis,
-                                         double relativeTolerance, int maxIterations)
+                                         double relTol, int maxIter)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -103,14 +103,14 @@ namespace LinearAlgebra
                 S = A.doubleTempVec(n),
                 V = A.doubleTempMat(n, n)
             };
-            return nullspaceBasis(in A, ref basis, ref ws, relativeTolerance, maxIterations);
+            return nullspaceBasis(in A, ref basis, ref ws, relTol, maxIter);
         }
 
-        /// <summary>nullspaceBasis (allocating) with default maxIterations (Consts.sweepBudget(A.N_Cols)).</summary>
-        public static RankInfo nullspaceBasis(in doubleMxN A, ref doubleMxN basis, double relativeTolerance)
-            => nullspaceBasis(in A, ref basis, relativeTolerance, Consts.sweepBudget(A.N_Cols));
+        /// <summary>nullspaceBasis (allocating) with default maxIter (Consts.sweepBudget(A.N_Cols)).</summary>
+        public static RankInfo nullspaceBasis(in doubleMxN A, ref doubleMxN basis, double relTol)
+            => nullspaceBasis(in A, ref basis, relTol, Consts.sweepBudget(A.N_Cols));
 
-        /// <summary>nullspaceBasis (allocating) with auto tolerance (relativeTolerance = -1) and default maxIterations (Consts.sweepBudget(A.N_Cols)).</summary>
+        /// <summary>nullspaceBasis (allocating) with auto tolerance (relTol = -1) and default maxIter (Consts.sweepBudget(A.N_Cols)).</summary>
         public static RankInfo nullspaceBasis(in doubleMxN A, ref doubleMxN basis)
             => nullspaceBasis(in A, ref basis, (double)(-1), Consts.sweepBudget(A.N_Cols));
 
@@ -126,7 +126,7 @@ namespace LinearAlgebra
         /// is full-SVD scratch reused across calls; size it with Arena.doubleSVDFullCache(m, n).
         /// </summary>
         public static RankInfo rangeBasis(in doubleMxN A, ref doubleMxN basis, ref doubleSVDFullCache ws,
-                                     double relativeTolerance, int maxIterations)
+                                     double relTol, int maxIter)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -135,20 +135,20 @@ namespace LinearAlgebra
                 throw new ArgumentException("rangeBasis: A must have m >= n (more rows than columns)");
             if (basis.M_Rows != m || basis.N_Cols != n)
                 throw new ArgumentException("rangeBasis: basis must be m x n");
-            if (maxIterations < 1)
-                throw new ArgumentException("rangeBasis: maxIterations must be >= 1");
+            if (maxIter < 1)
+                throw new ArgumentException("rangeBasis: maxIter must be >= 1");
             RequireSvdFullWorkspace(in ws, m, n);
 
             if (n == 0)
                 return new RankInfo { status = DirectSolveStatus.Success, rank = 0 };
 
-            SVDInfo svdInfo = thin(in A, ref ws.U, ref ws.S, ref ws.V, maxIterations);
+            SVDInfo svdInfo = thin(in A, ref ws.U, ref ws.S, ref ws.V, maxIter);
             if (!svdInfo)
                 return new RankInfo { status = DirectSolveStatus.NotConverged, rank = 0 };
 
-            if (relativeTolerance < (double)0)
-                relativeTolerance = (double)math.max(m, n) * Consts.doubleZeroThreshold;
-            double tol = relativeTolerance * ws.S[0];
+            if (relTol < (double)0)
+                relTol = (double)math.max(m, n) * Consts.doubleZeroThreshold;
+            double tol = relTol * ws.S[0];
 
             // S is descending, so the significant singular values are the leading ones (columns
             // 0..rank-1 of U already in place).
@@ -165,12 +165,12 @@ namespace LinearAlgebra
             return new RankInfo { status = rank == n ? DirectSolveStatus.Success : DirectSolveStatus.RankDeficient, rank = rank };
         }
 
-        /// <summary>rangeBasis (ref workspace) with default maxIterations (Consts.sweepBudget(A.N_Cols)).</summary>
+        /// <summary>rangeBasis (ref workspace) with default maxIter (Consts.sweepBudget(A.N_Cols)).</summary>
         public static RankInfo rangeBasis(in doubleMxN A, ref doubleMxN basis, ref doubleSVDFullCache ws,
-                                     double relativeTolerance)
-            => rangeBasis(in A, ref basis, ref ws, relativeTolerance, Consts.sweepBudget(A.N_Cols));
+                                     double relTol)
+            => rangeBasis(in A, ref basis, ref ws, relTol, Consts.sweepBudget(A.N_Cols));
 
-        /// <summary>rangeBasis (ref workspace) with auto tolerance (relativeTolerance = -1) and default maxIterations (Consts.sweepBudget(A.N_Cols)).</summary>
+        /// <summary>rangeBasis (ref workspace) with auto tolerance (relTol = -1) and default maxIter (Consts.sweepBudget(A.N_Cols)).</summary>
         public static RankInfo rangeBasis(in doubleMxN A, ref doubleMxN basis, ref doubleSVDFullCache ws)
             => rangeBasis(in A, ref basis, ref ws, (double)(-1), Consts.sweepBudget(A.N_Cols));
 
@@ -179,7 +179,7 @@ namespace LinearAlgebra
         /// See the ref-workspace overload for semantics.
         /// </summary>
         public static RankInfo rangeBasis(in doubleMxN A, ref doubleMxN basis,
-                                     double relativeTolerance, int maxIterations)
+                                     double relTol, int maxIter)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -189,14 +189,14 @@ namespace LinearAlgebra
                 S = A.doubleTempVec(n),
                 V = A.doubleTempMat(n, n)
             };
-            return rangeBasis(in A, ref basis, ref ws, relativeTolerance, maxIterations);
+            return rangeBasis(in A, ref basis, ref ws, relTol, maxIter);
         }
 
-        /// <summary>rangeBasis (allocating) with default maxIterations (Consts.sweepBudget(A.N_Cols)).</summary>
-        public static RankInfo rangeBasis(in doubleMxN A, ref doubleMxN basis, double relativeTolerance)
-            => rangeBasis(in A, ref basis, relativeTolerance, Consts.sweepBudget(A.N_Cols));
+        /// <summary>rangeBasis (allocating) with default maxIter (Consts.sweepBudget(A.N_Cols)).</summary>
+        public static RankInfo rangeBasis(in doubleMxN A, ref doubleMxN basis, double relTol)
+            => rangeBasis(in A, ref basis, relTol, Consts.sweepBudget(A.N_Cols));
 
-        /// <summary>rangeBasis (allocating) with auto tolerance (relativeTolerance = -1) and default maxIterations (Consts.sweepBudget(A.N_Cols)).</summary>
+        /// <summary>rangeBasis (allocating) with auto tolerance (relTol = -1) and default maxIter (Consts.sweepBudget(A.N_Cols)).</summary>
         public static RankInfo rangeBasis(in doubleMxN A, ref doubleMxN basis)
             => rangeBasis(in A, ref basis, (double)(-1), Consts.sweepBudget(A.N_Cols));
     }

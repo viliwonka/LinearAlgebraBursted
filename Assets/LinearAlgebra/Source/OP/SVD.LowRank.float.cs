@@ -62,7 +62,7 @@ namespace LinearAlgebra
         /// Arena.floatSVDTruncatedCache(m, n, k, oversample) using the SAME k and oversample.
         /// </summary>
         public static SVDInfo truncated(in floatMxN A, ref floatMxN Uk, ref floatN Sk, ref floatMxN Vk,
-                                        int k, int oversample, uint seed, int maxIterations,
+                                        int k, int oversample, uint seed, int maxIter,
                                         bool partialReorth, ref floatSVDTruncatedCache ws)
         {
             int m = A.M_Rows;
@@ -80,8 +80,8 @@ namespace LinearAlgebra
                 throw new ArgumentException("truncated: Sk must have length k");
             if (Vk.M_Rows != n || Vk.N_Cols != k)
                 throw new ArgumentException("truncated: Vk must be n x k");
-            if (maxIterations < 1)
-                throw new ArgumentException("truncated: maxIterations must be >= 1");
+            if (maxIter < 1)
+                throw new ArgumentException("truncated: maxIter must be >= 1");
 
             int p = math.min(k + oversample, n);
             RequireSvdTruncatedWorkspace(in ws, m, n, p, "truncated");
@@ -447,7 +447,7 @@ namespace LinearAlgebra
 
             // --- Inner SVD of the tiny p×p bidiagonal ---
             bool innerOk = bidiagonalSvdFromDE(ref ws.dB, ref ws.eB, ref ws.UtB, ref ws.VtB,
-                                     ref ws.BsvdWs.U, ref ws.BsvdWs.S, ref ws.BsvdWs.V, p, maxIterations,
+                                     ref ws.BsvdWs.U, ref ws.BsvdWs.S, ref ws.BsvdWs.V, p, maxIter,
                                      out int innerSweeps, out int innerConverged);
             if (!innerOk)
                 return new SVDInfo { status = IterativeSolveStatus.MaxIterations, sweeps = innerSweeps, converged = innerConverged };
@@ -521,18 +521,18 @@ namespace LinearAlgebra
 
         /// <summary>truncated (ref workspace) with default partialReorth=true.</summary>
         public static SVDInfo truncated(in floatMxN A, ref floatMxN Uk, ref floatN Sk, ref floatMxN Vk,
-                                        int k, int oversample, uint seed, int maxIterations,
+                                        int k, int oversample, uint seed, int maxIter,
                                         ref floatSVDTruncatedCache ws)
-            => truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, maxIterations, true, ref ws);
+            => truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, maxIter, true, ref ws);
 
-        /// <summary>truncated (ref workspace) with default maxIterations (Consts.sweepBudget(p), p = min(k+oversample, A.N_Cols)) and partialReorth=true.</summary>
+        /// <summary>truncated (ref workspace) with default maxIter (Consts.sweepBudget(p), p = min(k+oversample, A.N_Cols)) and partialReorth=true.</summary>
         public static SVDInfo truncated(in floatMxN A, ref floatMxN Uk, ref floatN Sk, ref floatMxN Vk,
                                         int k, int oversample, uint seed,
                                         ref floatSVDTruncatedCache ws)
             => truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed,
                          Consts.sweepBudget(math.min(k + oversample, A.N_Cols)), true, ref ws);
 
-        /// <summary>truncated (ref workspace) with default seed, default maxIterations (Consts.sweepBudget(p)) and partialReorth=true.</summary>
+        /// <summary>truncated (ref workspace) with default seed, default maxIter (Consts.sweepBudget(p)) and partialReorth=true.</summary>
         public static SVDInfo truncated(in floatMxN A, ref floatMxN Uk, ref floatN Sk, ref floatMxN Vk,
                                         int k, int oversample,
                                         ref floatSVDTruncatedCache ws)
@@ -541,7 +541,7 @@ namespace LinearAlgebra
 
         /// <summary>
         /// truncated (ref workspace) with generous default Krylov width p = min(n, max(2k, k+12)),
-        /// default maxIterations (Consts.sweepBudget(p)) and partialReorth=true.
+        /// default maxIter (Consts.sweepBudget(p)) and partialReorth=true.
         /// Pass a workspace from Arena.floatSVDTruncatedCache(m, n, k) (no oversample overload)
         /// which uses the same generous formula.
         /// </summary>
@@ -551,11 +551,11 @@ namespace LinearAlgebra
                          Consts.sweepBudget(math.min(A.N_Cols, math.max(2 * k, k + 12))), true, ref ws);
 
         /// <summary>
-        /// truncated allocating all scratch from A's arena (explicit oversample/seed/maxIterations/partialReorth).
+        /// truncated allocating all scratch from A's arena (explicit oversample/seed/maxIter/partialReorth).
         /// See the ref-workspace overload for semantics.
         /// </summary>
         public static SVDInfo truncated(in floatMxN A, ref floatMxN Uk, ref floatN Sk, ref floatMxN Vk,
-                                        int k, int oversample, uint seed, int maxIterations, bool partialReorth)
+                                        int k, int oversample, uint seed, int maxIter, bool partialReorth)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -583,16 +583,16 @@ namespace LinearAlgebra
                 mu    = A.floatTempVec(p + 1),
                 nu    = A.floatTempVec(p + 1)
             };
-            return truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, maxIterations, partialReorth, ref ws);
+            return truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, maxIter, partialReorth, ref ws);
         }
 
         /// <summary>
-        /// truncated allocating all scratch from A's arena (explicit oversample/seed/maxIterations),
+        /// truncated allocating all scratch from A's arena (explicit oversample/seed/maxIter),
         /// with default partialReorth=true.
         /// See the ref-workspace overload for semantics.
         /// </summary>
         public static SVDInfo truncated(in floatMxN A, ref floatMxN Uk, ref floatN Sk, ref floatMxN Vk,
-                                        int k, int oversample, uint seed, int maxIterations)
+                                        int k, int oversample, uint seed, int maxIter)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -620,12 +620,12 @@ namespace LinearAlgebra
                 mu    = A.floatTempVec(p + 1),
                 nu    = A.floatTempVec(p + 1)
             };
-            return truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, maxIterations, true, ref ws);
+            return truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, maxIter, true, ref ws);
         }
 
         /// <summary>
         /// truncated (allocating) with generous default Krylov width p = min(n, max(2k, k+12)),
-        /// default seed (0x9E3779B1u), default maxIterations (Consts.sweepBudget(p)), and default
+        /// default seed (0x9E3779B1u), default maxIter (Consts.sweepBudget(p)), and default
         /// partialReorth=true.
         /// </summary>
         public static SVDInfo truncated(in floatMxN A, ref floatMxN Uk, ref floatN Sk, ref floatMxN Vk,
@@ -671,7 +671,7 @@ namespace LinearAlgebra
         /// Arena.floatSVDFullCache(m, n).
         /// </summary>
         public static SVDInfo lowRankApprox(in floatMxN A, ref floatMxN Ak, int k,
-                                         ref floatSVDFullCache ws, int maxIterations)
+                                         ref floatSVDFullCache ws, int maxIter)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -682,8 +682,8 @@ namespace LinearAlgebra
                 throw new ArgumentException("lowRankApprox: k must be in [0, A.N_Cols]");
             if (Ak.M_Rows != m || Ak.N_Cols != n)
                 throw new ArgumentException("lowRankApprox: Ak must be m x n");
-            if (maxIterations < 1)
-                throw new ArgumentException("lowRankApprox: maxIterations must be >= 1");
+            if (maxIter < 1)
+                throw new ArgumentException("lowRankApprox: maxIter must be >= 1");
             RequireSvdFullWorkspace(in ws, m, n);
 
             // Ak starts at zero (rank 0); also the correct result for k == 0 / empty A.
@@ -694,7 +694,7 @@ namespace LinearAlgebra
             if (n == 0 || k == 0)
                 return new SVDInfo { status = IterativeSolveStatus.Converged, sweeps = 0, converged = 0 };
 
-            SVDInfo info = thin(in A, ref ws.U, ref ws.S, ref ws.V, maxIterations);
+            SVDInfo info = thin(in A, ref ws.U, ref ws.S, ref ws.V, maxIter);
             if (!info)
                 return info;
 
@@ -713,7 +713,7 @@ namespace LinearAlgebra
             return info;
         }
 
-        /// <summary>lowRankApprox (ref workspace) with default maxIterations (Consts.sweepBudget(A.N_Cols)).</summary>
+        /// <summary>lowRankApprox (ref workspace) with default maxIter (Consts.sweepBudget(A.N_Cols)).</summary>
         public static SVDInfo lowRankApprox(in floatMxN A, ref floatMxN Ak, int k,
                                          ref floatSVDFullCache ws)
             => lowRankApprox(in A, ref Ak, k, ref ws, Consts.sweepBudget(A.N_Cols));
@@ -722,7 +722,7 @@ namespace LinearAlgebra
         /// lowRankApprox allocating its full-SVD scratch from A's arena.
         /// See the ref-workspace overload for semantics.
         /// </summary>
-        public static SVDInfo lowRankApprox(in floatMxN A, ref floatMxN Ak, int k, int maxIterations)
+        public static SVDInfo lowRankApprox(in floatMxN A, ref floatMxN Ak, int k, int maxIter)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -732,10 +732,10 @@ namespace LinearAlgebra
                 S = A.floatTempVec(n),
                 V = A.floatTempMat(n, n)
             };
-            return lowRankApprox(in A, ref Ak, k, ref ws, maxIterations);
+            return lowRankApprox(in A, ref Ak, k, ref ws, maxIter);
         }
 
-        /// <summary>lowRankApprox (allocating) with default maxIterations (Consts.sweepBudget(A.N_Cols)).</summary>
+        /// <summary>lowRankApprox (allocating) with default maxIter (Consts.sweepBudget(A.N_Cols)).</summary>
         public static SVDInfo lowRankApprox(in floatMxN A, ref floatMxN Ak, int k)
             => lowRankApprox(in A, ref Ak, k, Consts.sweepBudget(A.N_Cols));
     }

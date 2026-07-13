@@ -517,7 +517,7 @@ public class fProxyLQRPTests
             // reference: LQ.minNormSolve (min-norm; does not modify A)
             var Alq = A.Copy();
             var xRef = arena.fProxyVec(n);
-            LQ.minNormSolve(ref Alq, ref b, ref xRef);
+            LQ.minNormSolve(in Alq, in b, ref xRef);
 
             fProxy tol = (fProxy)Consts.fProxySqrtEps * (fProxy)10;
             for (int k = 0; k < n; k++)

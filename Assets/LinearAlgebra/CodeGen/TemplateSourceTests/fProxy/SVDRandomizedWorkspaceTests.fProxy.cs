@@ -18,7 +18,7 @@ using Unity.Jobs;
 //   (b) REUSE       — ONE workspace reused across two different (same-shape) inputs; the 2nd result
 //                     equals a fresh allocating call.
 //   (c) MIS-SIZED   — a workspace sized for the wrong dimension throws ArgumentException (managed).
-public class fProxySvdRandomizedWorkspaceTests
+public class fProxySVDRandomizedWorkspaceTests
 {
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct WorkspaceJob : IJob

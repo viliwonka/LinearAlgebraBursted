@@ -76,7 +76,7 @@ namespace LinearAlgebra.Benchmarks
         public floatN b;       // length m; not modified (copied internally)
         public floatN x;       // length n, min-norm solution
 
-        public void Execute() => LQ.minNormSolve(ref A, ref b, ref x);
+        public void Execute() => LQ.minNormSolve(in A, in b, ref x);
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]

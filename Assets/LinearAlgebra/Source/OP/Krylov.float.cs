@@ -35,7 +35,7 @@ namespace LinearAlgebra
         /// </summary>
         public static SolveInfo cg<TOp>(in TOp A, in floatN b, ref floatN x,
                                    ref floatN r, ref floatN p, ref floatN Ap,
-                                   int maxIterations, float tolerance)
+                                   int maxIter, float tol)
             where TOp : struct, IfloatLinearOperator
         {
             if (A.Rows != A.Cols)
@@ -56,8 +56,8 @@ namespace LinearAlgebra
             if (Ap.N != A.Rows)
                 throw new ArgumentException("cg: Ap.N must equal A.Rows");
 
-            if (maxIterations < 1)
-                throw new ArgumentException("cg: maxIterations must be >= 1");
+            if (maxIter < 1)
+                throw new ArgumentException("cg: maxIter must be >= 1");
 
             // Aliasing guard: the loop below mixes plain elementwise scratch updates
             // (addScaledInPlace/scaleAddInPlace) with reads of "old" values, and those primitives do
@@ -95,12 +95,12 @@ namespace LinearAlgebra
             p.Data.CopyFrom(r.Data);
 
             float rsold = Blas.dot(r, r);
-            float threshold = tolerance * tolerance * bb;
+            float threshold = tol * tol * bb;
 
             if (rsold <= threshold)
                 return MakeSolveInfo(IterativeSolveStatus.Converged, 0, math.sqrt(rsold));
 
-            for (int k = 0; k < maxIterations; k++)
+            for (int k = 0; k < maxIter; k++)
             {
                 // Ap = A p ; pAp = dot(p, Ap) via ApplyDot (see IfloatLinearOperator.ApplyDot).
                 float pAp = A.ApplyDot(in p, ref Ap);
@@ -135,7 +135,7 @@ namespace LinearAlgebra
                 rsold = rsnew;
             }
 
-            return MakeSolveInfo(IterativeSolveStatus.MaxIterations, maxIterations, math.sqrt(rsold));
+            return MakeSolveInfo(IterativeSolveStatus.MaxIterations, maxIter, math.sqrt(rsold));
         }
 
         /// <summary>
@@ -145,9 +145,9 @@ namespace LinearAlgebra
         /// </summary>
         public static SolveInfo cg(in floatMxN A, in floatN b, ref floatN x,
                                              ref floatN r, ref floatN p, ref floatN Ap,
-                                             int maxIterations, float tolerance)
+                                             int maxIter, float tol)
         {
-            return cg(new floatDenseOperator(in A), in b, ref x, ref r, ref p, ref Ap, maxIterations, tolerance);
+            return cg(new floatDenseOperator(in A), in b, ref x, ref r, ref p, ref Ap, maxIter, tol);
         }
 
         /// <summary>
@@ -155,16 +155,16 @@ namespace LinearAlgebra
         /// the zero-alloc primitive. x is overwritten with the solution on convergence.
         /// </summary>
         public static SolveInfo cg(in floatMxN A, in floatN b, ref floatN x,
-                                             int maxIterations, float tolerance)
+                                             int maxIter, float tol)
         {
             floatN r  = b.floatTempVec(A.M_Rows);
             floatN p  = b.floatTempVec(A.M_Rows);
             floatN Ap = b.floatTempVec(A.M_Rows);
-            return cg(in A, in b, ref x, ref r, ref p, ref Ap, maxIterations, tolerance);
+            return cg(in A, in b, ref x, ref r, ref p, ref Ap, maxIter, tol);
         }
 
         /// <summary>
-        /// Conjugate Gradient solver with default maxIterations (A.M_Rows) and tolerance
+        /// Conjugate Gradient solver with default maxIter (A.M_Rows) and tol
         /// (Consts.floatSqrtEps). x is overwritten with the solution on convergence.
         /// </summary>
         public static SolveInfo cg(in floatMxN A, in floatN b, ref floatN x)
@@ -179,9 +179,9 @@ namespace LinearAlgebra
         /// </summary>
         public static SolveInfo cg(in floatBSR A, in floatN b, ref floatN x,
                                              ref floatN r, ref floatN p, ref floatN Ap,
-                                             int maxIterations, float tolerance)
+                                             int maxIter, float tol)
         {
-            return cg(new floatBSROperator(in A), in b, ref x, ref r, ref p, ref Ap, maxIterations, tolerance);
+            return cg(new floatBSROperator(in A), in b, ref x, ref r, ref p, ref Ap, maxIter, tol);
         }
 
         /// <summary>
@@ -189,17 +189,17 @@ namespace LinearAlgebra
         /// scratch vectors from the arena and calls the zero-alloc primitive.
         /// </summary>
         public static SolveInfo cg(in floatBSR A, in floatN b, ref floatN x,
-                                             int maxIterations, float tolerance)
+                                             int maxIter, float tol)
         {
             floatN r  = b.floatTempVec(A.M_Rows);
             floatN p  = b.floatTempVec(A.M_Rows);
             floatN Ap = b.floatTempVec(A.M_Rows);
-            return cg(in A, in b, ref x, ref r, ref p, ref Ap, maxIterations, tolerance);
+            return cg(in A, in b, ref x, ref r, ref p, ref Ap, maxIter, tol);
         }
 
         /// <summary>
         /// Conjugate Gradient solver over a block-sparse (BSR) SPD matrix, with default
-        /// maxIterations (A.M_Rows) and tolerance (Consts.floatSqrtEps).
+        /// maxIter (A.M_Rows) and tol (Consts.floatSqrtEps).
         /// </summary>
         public static SolveInfo cg(in floatBSR A, in floatN b, ref floatN x)
         {
@@ -214,7 +214,7 @@ namespace LinearAlgebra
         ///
         /// Caller provides x (initial guess, overwritten with solution — warm-startable) and four
         /// scratch vectors r, p, Ap, z (all length A.Rows). The convergence test compares the
-        /// TRUE (unpreconditioned) residual ||r||² against tolerance²·||b||² — the same criterion
+        /// TRUE (unpreconditioned) residual ||r||² against tol²·||b||² — the same criterion
         /// as <see cref="cg{TOp}"/> — so iteration counts between cg and pcg on the same system are
         /// directly comparable. Returns a <see cref="SolveInfo"/> — see that struct for the
         /// implicit-bool/status/undefined-x contract. Breakdown on non-positive curvature
@@ -222,7 +222,7 @@ namespace LinearAlgebra
         /// </summary>
         public static SolveInfo pcg<TOp, TPre>(in TOp A, in TPre M, in floatN b, ref floatN x,
                                           ref floatN r, ref floatN p, ref floatN Ap, ref floatN z,
-                                          int maxIterations, float tolerance)
+                                          int maxIter, float tol)
             where TOp : struct, IfloatLinearOperator
             where TPre : struct, IfloatPreconditioner
         {
@@ -247,8 +247,8 @@ namespace LinearAlgebra
             if (z.N != A.Rows)
                 throw new ArgumentException("pcg: z.N must equal A.Rows");
 
-            if (maxIterations < 1)
-                throw new ArgumentException("pcg: maxIterations must be >= 1");
+            if (maxIter < 1)
+                throw new ArgumentException("pcg: maxIter must be >= 1");
 
             // Aliasing guard -- see the matching comment in cg<TOp>. z joins the set here since
             // PCG additionally mixes p/r into the preconditioned residual via M.Apply / axpy.
@@ -277,7 +277,7 @@ namespace LinearAlgebra
             r.Data.CopyFrom(b.Data);
             r.addScaledInPlace((float)(-1), Ap);
 
-            float threshold = tolerance * tolerance * bb;
+            float threshold = tol * tol * bb;
 
             // rr tracks ‖r‖² of the CURRENT residual across the whole solve -- it is exactly the
             // quantity the convergence test already needs, so reporting rnorm = √rr is free.
@@ -298,7 +298,7 @@ namespace LinearAlgebra
             if (!(rzold > (float)0))
                 return MakeSolveInfo(IterativeSolveStatus.Breakdown, 0, math.sqrt(rr));
 
-            for (int k = 0; k < maxIterations; k++)
+            for (int k = 0; k < maxIter; k++)
             {
                 // Ap = A p ; pAp = dot(p, Ap) via ApplyDot (see IfloatLinearOperator.ApplyDot).
                 float pAp = A.ApplyDot(in p, ref Ap);
@@ -337,7 +337,7 @@ namespace LinearAlgebra
                 rzold = rznew;
             }
 
-            return MakeSolveInfo(IterativeSolveStatus.MaxIterations, maxIterations, math.sqrt(rr));
+            return MakeSolveInfo(IterativeSolveStatus.MaxIterations, maxIter, math.sqrt(rr));
         }
 
         /// <summary>
@@ -345,7 +345,7 @@ namespace LinearAlgebra
         /// arena and calls the zero-alloc primitive.
         /// </summary>
         public static SolveInfo pcg<TOp, TPre>(in TOp A, in TPre M, in floatN b, ref floatN x,
-                                          int maxIterations, float tolerance)
+                                          int maxIter, float tol)
             where TOp : struct, IfloatLinearOperator
             where TPre : struct, IfloatPreconditioner
         {
@@ -353,12 +353,12 @@ namespace LinearAlgebra
             floatN p  = b.floatTempVec(A.Rows);
             floatN Ap = b.floatTempVec(A.Rows);
             floatN z  = b.floatTempVec(A.Rows);
-            return pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIterations, tolerance);
+            return pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
         }
 
         /// <summary>
-        /// Preconditioned Conjugate Gradient solver with default maxIterations (A.Rows) and
-        /// tolerance (Consts.floatSqrtEps).
+        /// Preconditioned Conjugate Gradient solver with default maxIter (A.Rows) and
+        /// tol (Consts.floatSqrtEps).
         /// </summary>
         public static SolveInfo pcg<TOp, TPre>(in TOp A, in TPre M, in floatN b, ref floatN x)
             where TOp : struct, IfloatLinearOperator
@@ -374,9 +374,9 @@ namespace LinearAlgebra
         /// </summary>
         public static SolveInfo pcg(in floatBSR A, in floatBlockJacobi M, in floatN b, ref floatN x,
                                ref floatN r, ref floatN p, ref floatN Ap, ref floatN z,
-                               int maxIterations, float tolerance)
+                               int maxIter, float tol)
         {
-            return pcg(new floatBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIterations, tolerance);
+            return pcg(new floatBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
         }
 
         /// <summary>
@@ -384,18 +384,18 @@ namespace LinearAlgebra
         /// scratch vectors from the arena and calls the zero-alloc primitive.
         /// </summary>
         public static SolveInfo pcg(in floatBSR A, in floatBlockJacobi M, in floatN b, ref floatN x,
-                               int maxIterations, float tolerance)
+                               int maxIter, float tol)
         {
             floatN r  = b.floatTempVec(A.M_Rows);
             floatN p  = b.floatTempVec(A.M_Rows);
             floatN Ap = b.floatTempVec(A.M_Rows);
             floatN z  = b.floatTempVec(A.M_Rows);
-            return pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIterations, tolerance);
+            return pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
         }
 
         /// <summary>
         /// Block-Jacobi Preconditioned Conjugate Gradient over a BSR SPD matrix, with default
-        /// maxIterations (A.M_Rows) and tolerance (Consts.floatSqrtEps).
+        /// maxIter (A.M_Rows) and tol (Consts.floatSqrtEps).
         /// </summary>
         public static SolveInfo pcg(in floatBSR A, in floatBlockJacobi M, in floatN b, ref floatN x)
         {
@@ -410,9 +410,9 @@ namespace LinearAlgebra
         /// </summary>
         public static SolveInfo pcg(in floatBSR A, in floatSSOR M, in floatN b, ref floatN x,
                                ref floatN r, ref floatN p, ref floatN Ap, ref floatN z,
-                               int maxIterations, float tolerance)
+                               int maxIter, float tol)
         {
-            return pcg(new floatBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIterations, tolerance);
+            return pcg(new floatBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
         }
 
         /// <summary>
@@ -420,18 +420,18 @@ namespace LinearAlgebra
         /// vectors from the arena and calls the zero-alloc primitive.
         /// </summary>
         public static SolveInfo pcg(in floatBSR A, in floatSSOR M, in floatN b, ref floatN x,
-                               int maxIterations, float tolerance)
+                               int maxIter, float tol)
         {
             floatN r  = b.floatTempVec(A.M_Rows);
             floatN p  = b.floatTempVec(A.M_Rows);
             floatN Ap = b.floatTempVec(A.M_Rows);
             floatN z  = b.floatTempVec(A.M_Rows);
-            return pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIterations, tolerance);
+            return pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
         }
 
         /// <summary>
         /// SSOR Preconditioned Conjugate Gradient over a BSR SPD matrix, with default
-        /// maxIterations (A.M_Rows) and tolerance (Consts.floatSqrtEps).
+        /// maxIter (A.M_Rows) and tol (Consts.floatSqrtEps).
         /// </summary>
         public static SolveInfo pcg(in floatBSR A, in floatSSOR M, in floatN b, ref floatN x)
         {
@@ -446,9 +446,9 @@ namespace LinearAlgebra
         /// </summary>
         public static SolveInfo pcg(in floatBSR A, in floatIC0 M, in floatN b, ref floatN x,
                                ref floatN r, ref floatN p, ref floatN Ap, ref floatN z,
-                               int maxIterations, float tolerance)
+                               int maxIter, float tol)
         {
-            return pcg(new floatBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIterations, tolerance);
+            return pcg(new floatBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
         }
 
         /// <summary>
@@ -456,18 +456,18 @@ namespace LinearAlgebra
         /// vectors from the arena and calls the zero-alloc primitive.
         /// </summary>
         public static SolveInfo pcg(in floatBSR A, in floatIC0 M, in floatN b, ref floatN x,
-                               int maxIterations, float tolerance)
+                               int maxIter, float tol)
         {
             floatN r  = b.floatTempVec(A.M_Rows);
             floatN p  = b.floatTempVec(A.M_Rows);
             floatN Ap = b.floatTempVec(A.M_Rows);
             floatN z  = b.floatTempVec(A.M_Rows);
-            return pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIterations, tolerance);
+            return pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
         }
 
         /// <summary>
         /// IC(0) Preconditioned Conjugate Gradient over a BSR SPD matrix, with default
-        /// maxIterations (A.M_Rows) and tolerance (Consts.floatSqrtEps).
+        /// maxIter (A.M_Rows) and tol (Consts.floatSqrtEps).
         /// </summary>
         public static SolveInfo pcg(in floatBSR A, in floatIC0 M, in floatN b, ref floatN x)
         {
@@ -499,7 +499,7 @@ namespace LinearAlgebra
         public static SolveInfo minres<TOp>(in TOp A, in floatN b, ref floatN x,
                                        ref floatN y, ref floatN r1, ref floatN r2, ref floatN v,
                                        ref floatN w, ref floatN w1, ref floatN w2,
-                                       int maxIterations, float tolerance)
+                                       int maxIter, float tol)
             where TOp : struct, IfloatLinearOperator
         {
             if (A.Rows != A.Cols)
@@ -515,8 +515,8 @@ namespace LinearAlgebra
             if (w1.N != A.Rows) throw new ArgumentException("minres: w1.N must equal A.Rows");
             if (w2.N != A.Rows) throw new ArgumentException("minres: w2.N must equal A.Rows");
 
-            if (maxIterations < 1)
-                throw new ArgumentException("minres: maxIterations must be >= 1");
+            if (maxIter < 1)
+                throw new ArgumentException("minres: maxIter must be >= 1");
 
             unsafe
             {
@@ -541,7 +541,7 @@ namespace LinearAlgebra
             r1.addScaledInPlace((float)(-1), y);           // r1 = b - A x
 
             float beta1 = math.sqrt(Blas.dot(r1, r1));
-            float threshold = tolerance * tolerance * bb;
+            float threshold = tol * tol * bb;
 
             if (beta1 * beta1 <= threshold)
                 return MakeSolveInfo(IterativeSolveStatus.Converged, 0, beta1);
@@ -560,7 +560,7 @@ namespace LinearAlgebra
             float sn = (float)0;
             float gammaFloor = Consts.floatEpsilon;
 
-            for (int k = 0; k < maxIterations; k++)
+            for (int k = 0; k < maxIter; k++)
             {
                 // ---- Lanczos step: extend the tridiagonalization by one vector ----
                 // v = r2 / beta, one pass (Blas.scaledCopy with a = 1/beta, i.e. reciprocal-multiply
@@ -619,7 +619,7 @@ namespace LinearAlgebra
                     return MakeSolveInfo(IterativeSolveStatus.Breakdown, k + 1, phibar);
             }
 
-            return MakeSolveInfo(IterativeSolveStatus.MaxIterations, maxIterations, phibar);
+            return MakeSolveInfo(IterativeSolveStatus.MaxIterations, maxIter, phibar);
         }
 
         /// <summary>
@@ -630,13 +630,13 @@ namespace LinearAlgebra
         public static SolveInfo minres(in floatMxN A, in floatN b, ref floatN x,
                                   ref floatN y, ref floatN r1, ref floatN r2, ref floatN v,
                                   ref floatN w, ref floatN w1, ref floatN w2,
-                                  int maxIterations, float tolerance)
+                                  int maxIter, float tol)
         {
-            return minres(new floatDenseOperator(in A), in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, maxIterations, tolerance);
+            return minres(new floatDenseOperator(in A), in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, maxIter, tol);
         }
 
         /// <summary>MINRES over a dense matrix -- allocates seven scratch vectors from the arena.</summary>
-        public static SolveInfo minres(in floatMxN A, in floatN b, ref floatN x, int maxIterations, float tolerance)
+        public static SolveInfo minres(in floatMxN A, in floatN b, ref floatN x, int maxIter, float tol)
         {
             floatN y  = b.floatTempVec(A.M_Rows);
             floatN r1 = b.floatTempVec(A.M_Rows);
@@ -645,10 +645,10 @@ namespace LinearAlgebra
             floatN w  = b.floatTempVec(A.M_Rows);
             floatN w1 = b.floatTempVec(A.M_Rows);
             floatN w2 = b.floatTempVec(A.M_Rows);
-            return minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, maxIterations, tolerance);
+            return minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, maxIter, tol);
         }
 
-        /// <summary>MINRES over a dense matrix with default maxIterations (A.M_Rows) and tolerance (Consts.floatSqrtEps).</summary>
+        /// <summary>MINRES over a dense matrix with default maxIter (A.M_Rows) and tol (Consts.floatSqrtEps).</summary>
         public static SolveInfo minres(in floatMxN A, in floatN b, ref floatN x)
         {
             return minres(in A, in b, ref x, A.M_Rows, Consts.floatSqrtEps);
@@ -661,13 +661,13 @@ namespace LinearAlgebra
         public static SolveInfo minres(in floatBSR A, in floatN b, ref floatN x,
                                   ref floatN y, ref floatN r1, ref floatN r2, ref floatN v,
                                   ref floatN w, ref floatN w1, ref floatN w2,
-                                  int maxIterations, float tolerance)
+                                  int maxIter, float tol)
         {
-            return minres(new floatBSROperator(in A), in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, maxIterations, tolerance);
+            return minres(new floatBSROperator(in A), in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, maxIter, tol);
         }
 
         /// <summary>MINRES over a BSR matrix -- allocates seven scratch vectors from the arena.</summary>
-        public static SolveInfo minres(in floatBSR A, in floatN b, ref floatN x, int maxIterations, float tolerance)
+        public static SolveInfo minres(in floatBSR A, in floatN b, ref floatN x, int maxIter, float tol)
         {
             floatN y  = b.floatTempVec(A.M_Rows);
             floatN r1 = b.floatTempVec(A.M_Rows);
@@ -676,10 +676,10 @@ namespace LinearAlgebra
             floatN w  = b.floatTempVec(A.M_Rows);
             floatN w1 = b.floatTempVec(A.M_Rows);
             floatN w2 = b.floatTempVec(A.M_Rows);
-            return minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, maxIterations, tolerance);
+            return minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, maxIter, tol);
         }
 
-        /// <summary>MINRES over a BSR matrix with default maxIterations (A.M_Rows) and tolerance (Consts.floatSqrtEps).</summary>
+        /// <summary>MINRES over a BSR matrix with default maxIter (A.M_Rows) and tol (Consts.floatSqrtEps).</summary>
         public static SolveInfo minres(in floatBSR A, in floatN b, ref floatN x)
         {
             return minres(in A, in b, ref x, A.M_Rows, Consts.floatSqrtEps);
@@ -703,7 +703,7 @@ namespace LinearAlgebra
         /// </summary>
         public static SolveInfo biCGStab<TOp>(in TOp A, in floatN b, ref floatN x,
                                          ref floatN r, ref floatN rHat0, ref floatN p, ref floatN v, ref floatN t,
-                                         int maxIterations, float tolerance)
+                                         int maxIter, float tol)
             where TOp : struct, IfloatLinearOperator
         {
             if (A.Rows != A.Cols)
@@ -717,8 +717,8 @@ namespace LinearAlgebra
             if (v.N != A.Rows) throw new ArgumentException("biCGStab: v.N must equal A.Rows");
             if (t.N != A.Rows) throw new ArgumentException("biCGStab: t.N must equal A.Rows");
 
-            if (maxIterations < 1)
-                throw new ArgumentException("biCGStab: maxIterations must be >= 1");
+            if (maxIter < 1)
+                throw new ArgumentException("biCGStab: maxIter must be >= 1");
 
             unsafe
             {
@@ -742,7 +742,7 @@ namespace LinearAlgebra
             r.Data.CopyFrom(b.Data);
             r.addScaledInPlace((float)(-1), v);
 
-            float threshold = tolerance * tolerance * bb;
+            float threshold = tol * tol * bb;
 
             // rr tracks ‖current residual‖²; ss the ‖half-step residual s‖². Both are already
             // computed for the convergence tests, so every exit reports rnorm from a held value.
@@ -757,7 +757,7 @@ namespace LinearAlgebra
 
             float rho = (float)1, alpha = (float)1, omega = (float)1;
 
-            for (int k = 0; k < maxIterations; k++)
+            for (int k = 0; k < maxIter; k++)
             {
                 float rhoNew = Blas.dot(rHat0, r);
 
@@ -817,7 +817,7 @@ namespace LinearAlgebra
                 rho = rhoNew;
             }
 
-            return MakeSolveInfo(IterativeSolveStatus.MaxIterations, maxIterations, math.sqrt(rr));
+            return MakeSolveInfo(IterativeSolveStatus.MaxIterations, maxIter, math.sqrt(rr));
         }
 
         /// <summary>
@@ -826,23 +826,23 @@ namespace LinearAlgebra
         /// </summary>
         public static SolveInfo biCGStab(in floatMxN A, in floatN b, ref floatN x,
                                     ref floatN r, ref floatN rHat0, ref floatN p, ref floatN v, ref floatN t,
-                                    int maxIterations, float tolerance)
+                                    int maxIter, float tol)
         {
-            return biCGStab(new floatDenseOperator(in A), in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, maxIterations, tolerance);
+            return biCGStab(new floatDenseOperator(in A), in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, maxIter, tol);
         }
 
         /// <summary>BiCGSTAB over a dense matrix -- allocates five scratch vectors from the arena.</summary>
-        public static SolveInfo biCGStab(in floatMxN A, in floatN b, ref floatN x, int maxIterations, float tolerance)
+        public static SolveInfo biCGStab(in floatMxN A, in floatN b, ref floatN x, int maxIter, float tol)
         {
             floatN r     = b.floatTempVec(A.M_Rows);
             floatN rHat0 = b.floatTempVec(A.M_Rows);
             floatN p     = b.floatTempVec(A.M_Rows);
             floatN v     = b.floatTempVec(A.M_Rows);
             floatN t     = b.floatTempVec(A.M_Rows);
-            return biCGStab(in A, in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, maxIterations, tolerance);
+            return biCGStab(in A, in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, maxIter, tol);
         }
 
-        /// <summary>BiCGSTAB over a dense matrix with default maxIterations (A.M_Rows) and tolerance (Consts.floatSqrtEps).</summary>
+        /// <summary>BiCGSTAB over a dense matrix with default maxIter (A.M_Rows) and tol (Consts.floatSqrtEps).</summary>
         public static SolveInfo biCGStab(in floatMxN A, in floatN b, ref floatN x)
         {
             return biCGStab(in A, in b, ref x, A.M_Rows, Consts.floatSqrtEps);
@@ -854,23 +854,23 @@ namespace LinearAlgebra
         /// </summary>
         public static SolveInfo biCGStab(in floatBSR A, in floatN b, ref floatN x,
                                     ref floatN r, ref floatN rHat0, ref floatN p, ref floatN v, ref floatN t,
-                                    int maxIterations, float tolerance)
+                                    int maxIter, float tol)
         {
-            return biCGStab(new floatBSROperator(in A), in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, maxIterations, tolerance);
+            return biCGStab(new floatBSROperator(in A), in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, maxIter, tol);
         }
 
         /// <summary>BiCGSTAB over a BSR matrix -- allocates five scratch vectors from the arena.</summary>
-        public static SolveInfo biCGStab(in floatBSR A, in floatN b, ref floatN x, int maxIterations, float tolerance)
+        public static SolveInfo biCGStab(in floatBSR A, in floatN b, ref floatN x, int maxIter, float tol)
         {
             floatN r     = b.floatTempVec(A.M_Rows);
             floatN rHat0 = b.floatTempVec(A.M_Rows);
             floatN p     = b.floatTempVec(A.M_Rows);
             floatN v     = b.floatTempVec(A.M_Rows);
             floatN t     = b.floatTempVec(A.M_Rows);
-            return biCGStab(in A, in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, maxIterations, tolerance);
+            return biCGStab(in A, in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, maxIter, tol);
         }
 
-        /// <summary>BiCGSTAB over a BSR matrix with default maxIterations (A.M_Rows) and tolerance (Consts.floatSqrtEps).</summary>
+        /// <summary>BiCGSTAB over a BSR matrix with default maxIter (A.M_Rows) and tol (Consts.floatSqrtEps).</summary>
         public static SolveInfo biCGStab(in floatBSR A, in floatN b, ref floatN x)
         {
             return biCGStab(in A, in b, ref x, A.M_Rows, Consts.floatSqrtEps);
@@ -931,7 +931,7 @@ namespace LinearAlgebra
         ///
         /// Caller provides x (initial guess, length A.Cols -- overwritten with solution, WARM-
         /// STARTABLE) and four scratch vectors: r, q (length A.Rows) and s, p (length A.Cols).
-        /// Converges when ‖Aᵀr‖ &lt;= tolerance*‖Aᵀb‖. For a CONSISTENT system (b in range(A)) this
+        /// Converges when ‖Aᵀr‖ &lt;= tol*‖Aᵀb‖. For a CONSISTENT system (b in range(A)) this
         /// drives r itself to zero; for an INCONSISTENT system it converges to the least-squares
         /// solution with ‖Aᵀr‖≈0 and ‖r‖ generally nonzero.
         ///
@@ -947,7 +947,7 @@ namespace LinearAlgebra
         /// </summary>
         public static LstsqInfo cgls<TOp>(in TOp A, in floatN b, ref floatN x,
                                      ref floatN r, ref floatN s, ref floatN p, ref floatN q,
-                                     int maxIterations, float tolerance, float damp)
+                                     int maxIter, float tol, float damp)
             where TOp : struct, IfloatLinearOperator
         {
             if (b.N != A.Rows) throw new ArgumentException("cgls: b.N must equal A.Rows");
@@ -957,8 +957,8 @@ namespace LinearAlgebra
             if (s.N != A.Cols) throw new ArgumentException("cgls: s.N must equal A.Cols");
             if (p.N != A.Cols) throw new ArgumentException("cgls: p.N must equal A.Cols");
 
-            if (maxIterations < 1)
-                throw new ArgumentException("cgls: maxIterations must be >= 1");
+            if (maxIter < 1)
+                throw new ArgumentException("cgls: maxIter must be >= 1");
 
             unsafe
             {
@@ -983,7 +983,7 @@ namespace LinearAlgebra
                 return new LstsqInfo { rnorm = math.sqrt(Blas.dot(b, b)), Arnorm = (float)0, xnorm = (float)0, iterations = 0, status = IterativeSolveStatus.Converged };
             }
 
-            float threshold = tolerance * tolerance * atbSq;
+            float threshold = tol * tol * atbSq;
 
             // r = b - A x
             A.Apply(in x, ref q);                          // q = A x (temp use of q)
@@ -1004,7 +1004,7 @@ namespace LinearAlgebra
 
             p.Data.CopyFrom(s.Data);
 
-            for (int k = 0; k < maxIterations; k++)
+            for (int k = 0; k < maxIter; k++)
             {
                 A.Apply(in p, ref q);                       // q = A p
 
@@ -1053,7 +1053,7 @@ namespace LinearAlgebra
                 gamma = gammaNew;
             }
 
-            return CglsInfo(IterativeSolveStatus.MaxIterations, maxIterations, gamma, in r, in x);
+            return CglsInfo(IterativeSolveStatus.MaxIterations, maxIter, gamma, in r, in x);
         }
 
         /// <summary>Assemble a CGLS <see cref="LstsqInfo"/> from live state: rnorm = ‖r‖
@@ -1072,9 +1072,9 @@ namespace LinearAlgebra
         /// <summary>Undamped CGLS (damp = 0): plain least-squares. Forwards to the damped core.</summary>
         public static LstsqInfo cgls<TOp>(in TOp A, in floatN b, ref floatN x,
                                      ref floatN r, ref floatN s, ref floatN p, ref floatN q,
-                                     int maxIterations, float tolerance)
+                                     int maxIter, float tol)
             where TOp : struct, IfloatLinearOperator
-            => cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance, (float)0);
+            => cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, maxIter, tol, (float)0);
 
         /// <summary>
         /// CGLS over a dense <see cref="floatMxN"/> (possibly rectangular) -- zero-alloc
@@ -1082,35 +1082,35 @@ namespace LinearAlgebra
         /// </summary>
         public static LstsqInfo cgls(in floatMxN A, in floatN b, ref floatN x,
                                 ref floatN r, ref floatN s, ref floatN p, ref floatN q,
-                                int maxIterations, float tolerance)
+                                int maxIter, float tol)
         {
-            return cgls(new floatDenseOperator(in A), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
+            return cgls(new floatDenseOperator(in A), in b, ref x, ref r, ref s, ref p, ref q, maxIter, tol);
         }
 
         /// <summary>CGLS over a dense matrix -- allocates four scratch vectors from the arena.</summary>
-        public static LstsqInfo cgls(in floatMxN A, in floatN b, ref floatN x, int maxIterations, float tolerance)
+        public static LstsqInfo cgls(in floatMxN A, in floatN b, ref floatN x, int maxIter, float tol)
         {
             floatN r = b.floatTempVec(A.M_Rows);
             floatN s = b.floatTempVec(A.N_Cols);
             floatN p = b.floatTempVec(A.N_Cols);
             floatN q = b.floatTempVec(A.M_Rows);
-            return cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
+            return cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, maxIter, tol);
         }
 
         /// <summary>
         /// Damped (Tikhonov) CGLS over a dense matrix -- minimizes ‖Ax-b‖² + damp²‖x‖². Allocates
         /// four scratch vectors from the arena. damp == 0 reproduces the plain least-squares solve.
         /// </summary>
-        public static LstsqInfo cgls(in floatMxN A, in floatN b, ref floatN x, int maxIterations, float tolerance, float damp)
+        public static LstsqInfo cgls(in floatMxN A, in floatN b, ref floatN x, int maxIter, float tol, float damp)
         {
             floatN r = b.floatTempVec(A.M_Rows);
             floatN s = b.floatTempVec(A.N_Cols);
             floatN p = b.floatTempVec(A.N_Cols);
             floatN q = b.floatTempVec(A.M_Rows);
-            return cgls(new floatDenseOperator(in A), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance, damp);
+            return cgls(new floatDenseOperator(in A), in b, ref x, ref r, ref s, ref p, ref q, maxIter, tol, damp);
         }
 
-        /// <summary>CGLS over a dense matrix with default maxIterations (A.N_Cols) and tolerance (Consts.floatSqrtEps).</summary>
+        /// <summary>CGLS over a dense matrix with default maxIter (A.N_Cols) and tol (Consts.floatSqrtEps).</summary>
         public static LstsqInfo cgls(in floatMxN A, in floatN b, ref floatN x)
         {
             return cgls(in A, in b, ref x, A.N_Cols, Consts.floatSqrtEps);
@@ -1124,9 +1124,9 @@ namespace LinearAlgebra
         /// </summary>
         public static LstsqInfo cgls(in floatBSR A, in floatN b, ref floatN x,
                                 ref floatN r, ref floatN s, ref floatN p, ref floatN q,
-                                int maxIterations, float tolerance)
+                                int maxIter, float tol)
         {
-            return cgls(new floatBSROperator(in A), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
+            return cgls(new floatBSROperator(in A), in b, ref x, ref r, ref s, ref p, ref q, maxIter, tol);
         }
 
         /// <summary>
@@ -1142,9 +1142,9 @@ namespace LinearAlgebra
         /// </summary>
         public static LstsqInfo cgls(in floatBSR A, in floatBSR AT, in floatN b, ref floatN x,
                                 ref floatN r, ref floatN s, ref floatN p, ref floatN q,
-                                int maxIterations, float tolerance)
+                                int maxIter, float tol)
         {
-            return cgls(new floatBSROperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
+            return cgls(new floatBSROperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIter, tol);
         }
 
         /// <summary>
@@ -1157,14 +1157,14 @@ namespace LinearAlgebra
         /// <see cref="cgls(in floatBSR, in floatBSR, in floatN, ref floatN, ref floatN, ref floatN, ref floatN, int, float)"/>
         /// overload above with your own scratch vectors.
         /// </summary>
-        public static LstsqInfo cgls(in floatBSR A, in floatN b, ref floatN x, int maxIterations, float tolerance)
+        public static LstsqInfo cgls(in floatBSR A, in floatN b, ref floatN x, int maxIter, float tol)
         {
             floatN r = b.floatTempVec(A.M_Rows);
             floatN s = b.floatTempVec(A.N_Cols);
             floatN p = b.floatTempVec(A.N_Cols);
             floatN q = b.floatTempVec(A.M_Rows);
             floatBSR AT = b.floatBSRTranspose(in A);
-            return cgls(new floatBSROperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
+            return cgls(new floatBSROperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIter, tol);
         }
 
         /// <summary>
@@ -1172,17 +1172,17 @@ namespace LinearAlgebra
         /// scratch vectors AND materializes A^T once (see the undamped allocating overload). damp == 0
         /// reproduces the plain least-squares solve.
         /// </summary>
-        public static LstsqInfo cgls(in floatBSR A, in floatN b, ref floatN x, int maxIterations, float tolerance, float damp)
+        public static LstsqInfo cgls(in floatBSR A, in floatN b, ref floatN x, int maxIter, float tol, float damp)
         {
             floatN r = b.floatTempVec(A.M_Rows);
             floatN s = b.floatTempVec(A.N_Cols);
             floatN p = b.floatTempVec(A.N_Cols);
             floatN q = b.floatTempVec(A.M_Rows);
             floatBSR AT = b.floatBSRTranspose(in A);
-            return cgls(new floatBSROperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance, damp);
+            return cgls(new floatBSROperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIter, tol, damp);
         }
 
-        /// <summary>CGLS over a BSR matrix with default maxIterations (A.N_Cols) and tolerance (Consts.floatSqrtEps).</summary>
+        /// <summary>CGLS over a BSR matrix with default maxIter (A.N_Cols) and tol (Consts.floatSqrtEps).</summary>
         public static LstsqInfo cgls(in floatBSR A, in floatN b, ref floatN x)
         {
             return cgls(in A, in b, ref x, A.N_Cols, Consts.floatSqrtEps);
@@ -1199,7 +1199,7 @@ namespace LinearAlgebra
         ///
         /// Caller provides x (initial guess, length A.Cols -- overwritten with solution, WARM-
         /// STARTABLE) and five scratch vectors: u, tmpM (length A.Rows) and v, w, tmpN (length
-        /// A.Cols). Converges when ‖Aᵀr‖ &lt;= tolerance*‖Aᵀb‖ (same contract as cgls).
+        /// A.Cols). Converges when ‖Aᵀr‖ &lt;= tol*‖Aᵀb‖ (same contract as cgls).
         ///
         /// <paramref name="damp"/> (&gt;= 0) applies Tikhonov regularization: minimizes
         /// ‖Ax-b‖² + damp²‖x‖² (damp == 0 is BIT-IDENTICAL to the plain solve).
@@ -1215,7 +1215,7 @@ namespace LinearAlgebra
         public static LstsqInfo lsqr<TOp>(in TOp A, in floatN b, ref floatN x,
                                      ref floatN u, ref floatN v, ref floatN w,
                                      ref floatN tmpM, ref floatN tmpN,
-                                     int maxIterations, float tolerance, float damp)
+                                     int maxIter, float tol, float damp)
             where TOp : struct, IfloatLinearOperator
         {
             if (b.N != A.Rows) throw new ArgumentException("lsqr: b.N must equal A.Rows");
@@ -1226,8 +1226,8 @@ namespace LinearAlgebra
             if (w.N != A.Cols) throw new ArgumentException("lsqr: w.N must equal A.Cols");
             if (tmpN.N != A.Cols) throw new ArgumentException("lsqr: tmpN.N must equal A.Cols");
 
-            if (maxIterations < 1)
-                throw new ArgumentException("lsqr: maxIterations must be >= 1");
+            if (maxIter < 1)
+                throw new ArgumentException("lsqr: maxIter must be >= 1");
 
             unsafe
             {
@@ -1249,7 +1249,7 @@ namespace LinearAlgebra
                 return LstsqInfoTracked(IterativeSolveStatus.Converged, 0, math.sqrt(Blas.dot(b, b)), (float)0, (float)0, in x);
             }
 
-            float threshold = tolerance * tolerance * atbSq;
+            float threshold = tol * tol * atbSq;
 
             // u = b - A x ; beta = ||u||
             A.Apply(in x, ref tmpM);
@@ -1294,7 +1294,7 @@ namespace LinearAlgebra
 
             w.Data.CopyFrom(v.Data);
 
-            for (int k = 0; k < maxIterations; k++)
+            for (int k = 0; k < maxIter; k++)
             {
                 // ---- bidiagonalization step (Golub-Kahan) ----
                 // u = A v - alpha u ; beta = ||u||, fused (Blas.xpayNormSq) into one pass over u.
@@ -1348,7 +1348,7 @@ namespace LinearAlgebra
                     return LstsqInfoTracked(IterativeSolveStatus.Breakdown, k + 1, math.sqrt(sumPsiSq + phibar * phibar), arnorm, damp, in x);
             }
 
-            return LstsqInfoTracked(IterativeSolveStatus.MaxIterations, maxIterations, math.sqrt(sumPsiSq + phibar * phibar), arnorm, damp, in x);
+            return LstsqInfoTracked(IterativeSolveStatus.MaxIterations, maxIter, math.sqrt(sumPsiSq + phibar * phibar), arnorm, damp, in x);
         }
 
         /// <summary>Assemble an <see cref="LstsqInfo"/> from a solver's tracked residual and
@@ -1378,9 +1378,9 @@ namespace LinearAlgebra
         public static LstsqInfo lsqr<TOp>(in TOp A, in floatN b, ref floatN x,
                                      ref floatN u, ref floatN v, ref floatN w,
                                      ref floatN tmpM, ref floatN tmpN,
-                                     int maxIterations, float tolerance)
+                                     int maxIter, float tol)
             where TOp : struct, IfloatLinearOperator
-            => lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance, (float)0);
+            => lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIter, tol, (float)0);
 
         /// <summary>
         /// LSQR over a dense <see cref="floatMxN"/> (possibly rectangular) -- zero-alloc
@@ -1389,37 +1389,37 @@ namespace LinearAlgebra
         public static LstsqInfo lsqr(in floatMxN A, in floatN b, ref floatN x,
                                 ref floatN u, ref floatN v, ref floatN w,
                                 ref floatN tmpM, ref floatN tmpN,
-                                int maxIterations, float tolerance)
+                                int maxIter, float tol)
         {
-            return lsqr(new floatDenseOperator(in A), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
+            return lsqr(new floatDenseOperator(in A), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIter, tol);
         }
 
         /// <summary>LSQR over a dense matrix -- allocates five scratch vectors from the arena.</summary>
-        public static LstsqInfo lsqr(in floatMxN A, in floatN b, ref floatN x, int maxIterations, float tolerance)
+        public static LstsqInfo lsqr(in floatMxN A, in floatN b, ref floatN x, int maxIter, float tol)
         {
             floatN u    = b.floatTempVec(A.M_Rows);
             floatN v    = b.floatTempVec(A.N_Cols);
             floatN w    = b.floatTempVec(A.N_Cols);
             floatN tmpM = b.floatTempVec(A.M_Rows);
             floatN tmpN = b.floatTempVec(A.N_Cols);
-            return lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
+            return lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIter, tol);
         }
 
         /// <summary>
         /// Damped (Tikhonov) LSQR over a dense matrix -- minimizes ‖Ax-b‖² + damp²‖x‖². Allocates
         /// five scratch vectors from the arena. damp == 0 reproduces the plain least-squares solve.
         /// </summary>
-        public static LstsqInfo lsqr(in floatMxN A, in floatN b, ref floatN x, int maxIterations, float tolerance, float damp)
+        public static LstsqInfo lsqr(in floatMxN A, in floatN b, ref floatN x, int maxIter, float tol, float damp)
         {
             floatN u    = b.floatTempVec(A.M_Rows);
             floatN v    = b.floatTempVec(A.N_Cols);
             floatN w    = b.floatTempVec(A.N_Cols);
             floatN tmpM = b.floatTempVec(A.M_Rows);
             floatN tmpN = b.floatTempVec(A.N_Cols);
-            return lsqr(new floatDenseOperator(in A), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance, damp);
+            return lsqr(new floatDenseOperator(in A), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIter, tol, damp);
         }
 
-        /// <summary>LSQR over a dense matrix with default maxIterations (A.N_Cols) and tolerance (Consts.floatSqrtEps).</summary>
+        /// <summary>LSQR over a dense matrix with default maxIter (A.N_Cols) and tol (Consts.floatSqrtEps).</summary>
         public static LstsqInfo lsqr(in floatMxN A, in floatN b, ref floatN x)
         {
             return lsqr(in A, in b, ref x, A.N_Cols, Consts.floatSqrtEps);
@@ -1435,9 +1435,9 @@ namespace LinearAlgebra
         public static LstsqInfo lsqr(in floatBSR A, in floatN b, ref floatN x,
                                 ref floatN u, ref floatN v, ref floatN w,
                                 ref floatN tmpM, ref floatN tmpN,
-                                int maxIterations, float tolerance)
+                                int maxIter, float tol)
         {
-            return lsqr(new floatBSROperator(in A), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
+            return lsqr(new floatBSROperator(in A), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIter, tol);
         }
 
         /// <summary>
@@ -1454,9 +1454,9 @@ namespace LinearAlgebra
         public static LstsqInfo lsqr(in floatBSR A, in floatBSR AT, in floatN b, ref floatN x,
                                 ref floatN u, ref floatN v, ref floatN w,
                                 ref floatN tmpM, ref floatN tmpN,
-                                int maxIterations, float tolerance)
+                                int maxIter, float tol)
         {
-            return lsqr(new floatBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
+            return lsqr(new floatBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIter, tol);
         }
 
         /// <summary>
@@ -1469,7 +1469,7 @@ namespace LinearAlgebra
         /// <see cref="lsqr(in floatBSR, in floatBSR, in floatN, ref floatN, ref floatN, ref floatN, ref floatN, ref floatN, int, float)"/>
         /// overload above with your own scratch vectors.
         /// </summary>
-        public static LstsqInfo lsqr(in floatBSR A, in floatN b, ref floatN x, int maxIterations, float tolerance)
+        public static LstsqInfo lsqr(in floatBSR A, in floatN b, ref floatN x, int maxIter, float tol)
         {
             floatN u    = b.floatTempVec(A.M_Rows);
             floatN v    = b.floatTempVec(A.N_Cols);
@@ -1477,7 +1477,7 @@ namespace LinearAlgebra
             floatN tmpM = b.floatTempVec(A.M_Rows);
             floatN tmpN = b.floatTempVec(A.N_Cols);
             floatBSR AT = b.floatBSRTranspose(in A);
-            return lsqr(new floatBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
+            return lsqr(new floatBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIter, tol);
         }
 
         /// <summary>
@@ -1485,7 +1485,7 @@ namespace LinearAlgebra
         /// scratch vectors AND materializes A^T once (see the undamped allocating overload). damp == 0
         /// reproduces the plain least-squares solve.
         /// </summary>
-        public static LstsqInfo lsqr(in floatBSR A, in floatN b, ref floatN x, int maxIterations, float tolerance, float damp)
+        public static LstsqInfo lsqr(in floatBSR A, in floatN b, ref floatN x, int maxIter, float tol, float damp)
         {
             floatN u    = b.floatTempVec(A.M_Rows);
             floatN v    = b.floatTempVec(A.N_Cols);
@@ -1493,10 +1493,10 @@ namespace LinearAlgebra
             floatN tmpM = b.floatTempVec(A.M_Rows);
             floatN tmpN = b.floatTempVec(A.N_Cols);
             floatBSR AT = b.floatBSRTranspose(in A);
-            return lsqr(new floatBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance, damp);
+            return lsqr(new floatBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIter, tol, damp);
         }
 
-        /// <summary>LSQR over a BSR matrix with default maxIterations (A.N_Cols) and tolerance (Consts.floatSqrtEps).</summary>
+        /// <summary>LSQR over a BSR matrix with default maxIter (A.N_Cols) and tol (Consts.floatSqrtEps).</summary>
         public static LstsqInfo lsqr(in floatBSR A, in floatN b, ref floatN x)
         {
             return lsqr(in A, in b, ref x, A.N_Cols, Consts.floatSqrtEps);
@@ -1515,7 +1515,7 @@ namespace LinearAlgebra
         /// Caller provides x (initial guess, length A.Cols -- overwritten with solution, WARM-
         /// STARTABLE) and six scratch vectors: u, tmpM (length A.Rows) and v, h, hbar, tmpN (length
         /// A.Cols) -- one more than LSQR, since LSMR carries both the Golub-Kahan search direction h
-        /// and the MINRES-folded direction hbar. Converges when ‖Aᵀr‖ &lt;= tolerance*‖Aᵀb‖ (same
+        /// and the MINRES-folded direction hbar. Converges when ‖Aᵀr‖ &lt;= tol*‖Aᵀb‖ (same
         /// contract as cgls/lsqr).
         ///
         /// <paramref name="damp"/> (&gt;= 0) applies Tikhonov regularization: minimizes
@@ -1533,7 +1533,7 @@ namespace LinearAlgebra
         public static LstsqInfo lsmr<TOp>(in TOp A, in floatN b, ref floatN x,
                                      ref floatN u, ref floatN v, ref floatN h,
                                      ref floatN hbar, ref floatN tmpM, ref floatN tmpN,
-                                     int maxIterations, float tolerance, float damp)
+                                     int maxIter, float tol, float damp)
             where TOp : struct, IfloatLinearOperator
         {
             if (b.N != A.Rows) throw new ArgumentException("lsmr: b.N must equal A.Rows");
@@ -1545,8 +1545,8 @@ namespace LinearAlgebra
             if (hbar.N != A.Cols) throw new ArgumentException("lsmr: hbar.N must equal A.Cols");
             if (tmpN.N != A.Cols) throw new ArgumentException("lsmr: tmpN.N must equal A.Cols");
 
-            if (maxIterations < 1)
-                throw new ArgumentException("lsmr: maxIterations must be >= 1");
+            if (maxIter < 1)
+                throw new ArgumentException("lsmr: maxIter must be >= 1");
 
             unsafe
             {
@@ -1568,7 +1568,7 @@ namespace LinearAlgebra
                 return LstsqInfoTracked(IterativeSolveStatus.Converged, 0, math.sqrt(Blas.dot(b, b)), (float)0, (float)0, in x);
             }
 
-            float threshold = tolerance * tolerance * atbSq;
+            float threshold = tol * tol * atbSq;
 
             // u = b - A x ; beta = ||u||   (warm-startable: bidiagonalization of the residual)
             A.Apply(in x, ref tmpM);
@@ -1621,7 +1621,7 @@ namespace LinearAlgebra
             float dnorm = (float)0;   // accumulates betacheck^2
             float normr = beta;
 
-            for (int k = 0; k < maxIterations; k++)
+            for (int k = 0; k < maxIter; k++)
             {
                 // ---- bidiagonalization step (Golub-Kahan) ----
                 // u = A v - alpha u ; beta = ||u||, fused (Blas.xpayNormSq) into one pass over u.
@@ -1706,16 +1706,16 @@ namespace LinearAlgebra
                     return LstsqInfoTracked(IterativeSolveStatus.Breakdown, k + 1, normr, math.abs(zetabar), damp, in x);
             }
 
-            return LstsqInfoTracked(IterativeSolveStatus.MaxIterations, maxIterations, normr, math.abs(zetabar), damp, in x);
+            return LstsqInfoTracked(IterativeSolveStatus.MaxIterations, maxIter, normr, math.abs(zetabar), damp, in x);
         }
 
         /// <summary>Undamped LSMR (damp = 0): plain least-squares. Forwards to the damped core.</summary>
         public static LstsqInfo lsmr<TOp>(in TOp A, in floatN b, ref floatN x,
                                      ref floatN u, ref floatN v, ref floatN h,
                                      ref floatN hbar, ref floatN tmpM, ref floatN tmpN,
-                                     int maxIterations, float tolerance)
+                                     int maxIter, float tol)
             where TOp : struct, IfloatLinearOperator
-            => lsmr(in A, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance, (float)0);
+            => lsmr(in A, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIter, tol, (float)0);
 
         /// <summary>
         /// LSMR over a dense <see cref="floatMxN"/> (possibly rectangular) -- zero-alloc
@@ -1724,13 +1724,13 @@ namespace LinearAlgebra
         public static LstsqInfo lsmr(in floatMxN A, in floatN b, ref floatN x,
                                 ref floatN u, ref floatN v, ref floatN h,
                                 ref floatN hbar, ref floatN tmpM, ref floatN tmpN,
-                                int maxIterations, float tolerance)
+                                int maxIter, float tol)
         {
-            return lsmr(new floatDenseOperator(in A), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
+            return lsmr(new floatDenseOperator(in A), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIter, tol);
         }
 
         /// <summary>LSMR over a dense matrix -- allocates six scratch vectors from the arena.</summary>
-        public static LstsqInfo lsmr(in floatMxN A, in floatN b, ref floatN x, int maxIterations, float tolerance)
+        public static LstsqInfo lsmr(in floatMxN A, in floatN b, ref floatN x, int maxIter, float tol)
         {
             floatN u    = b.floatTempVec(A.M_Rows);
             floatN v    = b.floatTempVec(A.N_Cols);
@@ -1738,14 +1738,14 @@ namespace LinearAlgebra
             floatN hbar = b.floatTempVec(A.N_Cols);
             floatN tmpM = b.floatTempVec(A.M_Rows);
             floatN tmpN = b.floatTempVec(A.N_Cols);
-            return lsmr(in A, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
+            return lsmr(in A, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIter, tol);
         }
 
         /// <summary>
         /// Damped (Tikhonov) LSMR over a dense matrix -- minimizes ‖Ax-b‖² + damp²‖x‖². Allocates
         /// six scratch vectors from the arena. damp == 0 reproduces the plain least-squares solve.
         /// </summary>
-        public static LstsqInfo lsmr(in floatMxN A, in floatN b, ref floatN x, int maxIterations, float tolerance, float damp)
+        public static LstsqInfo lsmr(in floatMxN A, in floatN b, ref floatN x, int maxIter, float tol, float damp)
         {
             floatN u    = b.floatTempVec(A.M_Rows);
             floatN v    = b.floatTempVec(A.N_Cols);
@@ -1753,10 +1753,10 @@ namespace LinearAlgebra
             floatN hbar = b.floatTempVec(A.N_Cols);
             floatN tmpM = b.floatTempVec(A.M_Rows);
             floatN tmpN = b.floatTempVec(A.N_Cols);
-            return lsmr(new floatDenseOperator(in A), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance, damp);
+            return lsmr(new floatDenseOperator(in A), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIter, tol, damp);
         }
 
-        /// <summary>LSMR over a dense matrix with default maxIterations (A.N_Cols) and tolerance (Consts.floatSqrtEps).</summary>
+        /// <summary>LSMR over a dense matrix with default maxIter (A.N_Cols) and tol (Consts.floatSqrtEps).</summary>
         public static LstsqInfo lsmr(in floatMxN A, in floatN b, ref floatN x)
         {
             return lsmr(in A, in b, ref x, A.N_Cols, Consts.floatSqrtEps);
@@ -1771,9 +1771,9 @@ namespace LinearAlgebra
         public static LstsqInfo lsmr(in floatBSR A, in floatN b, ref floatN x,
                                 ref floatN u, ref floatN v, ref floatN h,
                                 ref floatN hbar, ref floatN tmpM, ref floatN tmpN,
-                                int maxIterations, float tolerance)
+                                int maxIter, float tol)
         {
-            return lsmr(new floatBSROperator(in A), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
+            return lsmr(new floatBSROperator(in A), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIter, tol);
         }
 
         /// <summary>
@@ -1787,9 +1787,9 @@ namespace LinearAlgebra
         public static LstsqInfo lsmr(in floatBSR A, in floatBSR AT, in floatN b, ref floatN x,
                                 ref floatN u, ref floatN v, ref floatN h,
                                 ref floatN hbar, ref floatN tmpM, ref floatN tmpN,
-                                int maxIterations, float tolerance)
+                                int maxIter, float tol)
         {
-            return lsmr(new floatBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
+            return lsmr(new floatBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIter, tol);
         }
 
         /// <summary>
@@ -1799,7 +1799,7 @@ namespace LinearAlgebra
         /// spMV(A^T, x). For a build-free zero-alloc path, build A^T yourself once and call the
         /// zero-alloc AT overload above with your own scratch vectors.
         /// </summary>
-        public static LstsqInfo lsmr(in floatBSR A, in floatN b, ref floatN x, int maxIterations, float tolerance)
+        public static LstsqInfo lsmr(in floatBSR A, in floatN b, ref floatN x, int maxIter, float tol)
         {
             floatN u    = b.floatTempVec(A.M_Rows);
             floatN v    = b.floatTempVec(A.N_Cols);
@@ -1808,7 +1808,7 @@ namespace LinearAlgebra
             floatN tmpM = b.floatTempVec(A.M_Rows);
             floatN tmpN = b.floatTempVec(A.N_Cols);
             floatBSR AT = b.floatBSRTranspose(in A);
-            return lsmr(new floatBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
+            return lsmr(new floatBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIter, tol);
         }
 
         /// <summary>
@@ -1816,7 +1816,7 @@ namespace LinearAlgebra
         /// scratch vectors AND materializes A^T once (see the undamped allocating overload). damp == 0
         /// reproduces the plain least-squares solve.
         /// </summary>
-        public static LstsqInfo lsmr(in floatBSR A, in floatN b, ref floatN x, int maxIterations, float tolerance, float damp)
+        public static LstsqInfo lsmr(in floatBSR A, in floatN b, ref floatN x, int maxIter, float tol, float damp)
         {
             floatN u    = b.floatTempVec(A.M_Rows);
             floatN v    = b.floatTempVec(A.N_Cols);
@@ -1825,10 +1825,10 @@ namespace LinearAlgebra
             floatN tmpM = b.floatTempVec(A.M_Rows);
             floatN tmpN = b.floatTempVec(A.N_Cols);
             floatBSR AT = b.floatBSRTranspose(in A);
-            return lsmr(new floatBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance, damp);
+            return lsmr(new floatBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIter, tol, damp);
         }
 
-        /// <summary>LSMR over a BSR matrix with default maxIterations (A.N_Cols) and tolerance (Consts.floatSqrtEps).</summary>
+        /// <summary>LSMR over a BSR matrix with default maxIter (A.N_Cols) and tol (Consts.floatSqrtEps).</summary>
         public static LstsqInfo lsmr(in floatBSR A, in floatN b, ref floatN x)
         {
             return lsmr(in A, in b, ref x, A.N_Cols, Consts.floatSqrtEps);
@@ -1876,7 +1876,7 @@ namespace LinearAlgebra
 
         // ---- CGLS + Jacobi ----
         /// <summary>CGLS with an AᵀA-Jacobi column-equilibration preconditioner over a dense matrix.</summary>
-        public static LstsqInfo cglsJacobi(in floatMxN A, in floatN b, ref floatN x, int maxIterations, float tolerance)
+        public static LstsqInfo cglsJacobi(in floatMxN A, in floatN b, ref floatN x, int maxIter, float tol)
         {
             int m = A.M_Rows, n = A.N_Cols;
             floatN d = b.floatTempVec(n), d2 = b.floatTempVec(n), scratch = b.floatTempVec(n);
@@ -1886,16 +1886,16 @@ namespace LinearAlgebra
 
             for (int j = 0; j < n; j++) x[j] = (float)0;                 // cold start (change of variable)
             floatN r = b.floatTempVec(m), s = b.floatTempVec(n), p = b.floatTempVec(n), q = b.floatTempVec(m);
-            var solveInfo = cgls(op, in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
+            var solveInfo = cgls(op, in b, ref x, ref r, ref s, ref p, ref q, maxIter, tol);
             return JacobiFinish(new floatDenseOperator(in A), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref r, ref s);
         }
 
-        /// <summary>CGLS + Jacobi (dense), default maxIterations (A.N_Cols) / tolerance (Consts.floatSqrtEps).</summary>
+        /// <summary>CGLS + Jacobi (dense), default maxIter (A.N_Cols) / tol (Consts.floatSqrtEps).</summary>
         public static LstsqInfo cglsJacobi(in floatMxN A, in floatN b, ref floatN x)
             => cglsJacobi(in A, in b, ref x, A.N_Cols, Consts.floatSqrtEps);
 
         /// <summary>CGLS with an AᵀA-Jacobi preconditioner over a BSR matrix (materializes Aᵀ once).</summary>
-        public static LstsqInfo cglsJacobi(in floatBSR A, in floatN b, ref floatN x, int maxIterations, float tolerance)
+        public static LstsqInfo cglsJacobi(in floatBSR A, in floatN b, ref floatN x, int maxIter, float tol)
         {
             int m = A.M_Rows, n = A.N_Cols;
             floatN d = b.floatTempVec(n), d2 = b.floatTempVec(n), scratch = b.floatTempVec(n);
@@ -1906,17 +1906,17 @@ namespace LinearAlgebra
 
             for (int j = 0; j < n; j++) x[j] = (float)0;
             floatN r = b.floatTempVec(m), s = b.floatTempVec(n), p = b.floatTempVec(n), q = b.floatTempVec(m);
-            var solveInfo = cgls(op, in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
+            var solveInfo = cgls(op, in b, ref x, ref r, ref s, ref p, ref q, maxIter, tol);
             return JacobiFinish(new floatBSROperator(in A, in AT), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref r, ref s);
         }
 
-        /// <summary>CGLS + Jacobi (BSR), default maxIterations (A.N_Cols) / tolerance (Consts.floatSqrtEps).</summary>
+        /// <summary>CGLS + Jacobi (BSR), default maxIter (A.N_Cols) / tol (Consts.floatSqrtEps).</summary>
         public static LstsqInfo cglsJacobi(in floatBSR A, in floatN b, ref floatN x)
             => cglsJacobi(in A, in b, ref x, A.N_Cols, Consts.floatSqrtEps);
 
         // ---- LSQR + Jacobi ----
         /// <summary>LSQR with an AᵀA-Jacobi column-equilibration preconditioner over a dense matrix.</summary>
-        public static LstsqInfo lsqrJacobi(in floatMxN A, in floatN b, ref floatN x, int maxIterations, float tolerance)
+        public static LstsqInfo lsqrJacobi(in floatMxN A, in floatN b, ref floatN x, int maxIter, float tol)
         {
             int m = A.M_Rows, n = A.N_Cols;
             floatN d = b.floatTempVec(n), d2 = b.floatTempVec(n), scratch = b.floatTempVec(n);
@@ -1926,16 +1926,16 @@ namespace LinearAlgebra
 
             for (int j = 0; j < n; j++) x[j] = (float)0;
             floatN u = b.floatTempVec(m), v = b.floatTempVec(n), w = b.floatTempVec(n), tmpM = b.floatTempVec(m), tmpN = b.floatTempVec(n);
-            var solveInfo = lsqr(op, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
+            var solveInfo = lsqr(op, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIter, tol);
             return JacobiFinish(new floatDenseOperator(in A), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref u, ref v);
         }
 
-        /// <summary>LSQR + Jacobi (dense), default maxIterations (A.N_Cols) / tolerance (Consts.floatSqrtEps).</summary>
+        /// <summary>LSQR + Jacobi (dense), default maxIter (A.N_Cols) / tol (Consts.floatSqrtEps).</summary>
         public static LstsqInfo lsqrJacobi(in floatMxN A, in floatN b, ref floatN x)
             => lsqrJacobi(in A, in b, ref x, A.N_Cols, Consts.floatSqrtEps);
 
         /// <summary>LSQR with an AᵀA-Jacobi preconditioner over a BSR matrix (materializes Aᵀ once).</summary>
-        public static LstsqInfo lsqrJacobi(in floatBSR A, in floatN b, ref floatN x, int maxIterations, float tolerance)
+        public static LstsqInfo lsqrJacobi(in floatBSR A, in floatN b, ref floatN x, int maxIter, float tol)
         {
             int m = A.M_Rows, n = A.N_Cols;
             floatN d = b.floatTempVec(n), d2 = b.floatTempVec(n), scratch = b.floatTempVec(n);
@@ -1946,17 +1946,17 @@ namespace LinearAlgebra
 
             for (int j = 0; j < n; j++) x[j] = (float)0;
             floatN u = b.floatTempVec(m), v = b.floatTempVec(n), w = b.floatTempVec(n), tmpM = b.floatTempVec(m), tmpN = b.floatTempVec(n);
-            var solveInfo = lsqr(op, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
+            var solveInfo = lsqr(op, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIter, tol);
             return JacobiFinish(new floatBSROperator(in A, in AT), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref u, ref v);
         }
 
-        /// <summary>LSQR + Jacobi (BSR), default maxIterations (A.N_Cols) / tolerance (Consts.floatSqrtEps).</summary>
+        /// <summary>LSQR + Jacobi (BSR), default maxIter (A.N_Cols) / tol (Consts.floatSqrtEps).</summary>
         public static LstsqInfo lsqrJacobi(in floatBSR A, in floatN b, ref floatN x)
             => lsqrJacobi(in A, in b, ref x, A.N_Cols, Consts.floatSqrtEps);
 
         // ---- LSMR + Jacobi ----
         /// <summary>LSMR with an AᵀA-Jacobi column-equilibration preconditioner over a dense matrix.</summary>
-        public static LstsqInfo lsmrJacobi(in floatMxN A, in floatN b, ref floatN x, int maxIterations, float tolerance)
+        public static LstsqInfo lsmrJacobi(in floatMxN A, in floatN b, ref floatN x, int maxIter, float tol)
         {
             int m = A.M_Rows, n = A.N_Cols;
             floatN d = b.floatTempVec(n), d2 = b.floatTempVec(n), scratch = b.floatTempVec(n);
@@ -1966,16 +1966,16 @@ namespace LinearAlgebra
 
             for (int j = 0; j < n; j++) x[j] = (float)0;
             floatN u = b.floatTempVec(m), v = b.floatTempVec(n), h = b.floatTempVec(n), hbar = b.floatTempVec(n), tmpM = b.floatTempVec(m), tmpN = b.floatTempVec(n);
-            var solveInfo = lsmr(op, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
+            var solveInfo = lsmr(op, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIter, tol);
             return JacobiFinish(new floatDenseOperator(in A), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref u, ref v);
         }
 
-        /// <summary>LSMR + Jacobi (dense), default maxIterations (A.N_Cols) / tolerance (Consts.floatSqrtEps).</summary>
+        /// <summary>LSMR + Jacobi (dense), default maxIter (A.N_Cols) / tol (Consts.floatSqrtEps).</summary>
         public static LstsqInfo lsmrJacobi(in floatMxN A, in floatN b, ref floatN x)
             => lsmrJacobi(in A, in b, ref x, A.N_Cols, Consts.floatSqrtEps);
 
         /// <summary>LSMR with an AᵀA-Jacobi preconditioner over a BSR matrix (materializes Aᵀ once).</summary>
-        public static LstsqInfo lsmrJacobi(in floatBSR A, in floatN b, ref floatN x, int maxIterations, float tolerance)
+        public static LstsqInfo lsmrJacobi(in floatBSR A, in floatN b, ref floatN x, int maxIter, float tol)
         {
             int m = A.M_Rows, n = A.N_Cols;
             floatN d = b.floatTempVec(n), d2 = b.floatTempVec(n), scratch = b.floatTempVec(n);
@@ -1986,11 +1986,11 @@ namespace LinearAlgebra
 
             for (int j = 0; j < n; j++) x[j] = (float)0;
             floatN u = b.floatTempVec(m), v = b.floatTempVec(n), h = b.floatTempVec(n), hbar = b.floatTempVec(n), tmpM = b.floatTempVec(m), tmpN = b.floatTempVec(n);
-            var solveInfo = lsmr(op, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
+            var solveInfo = lsmr(op, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIter, tol);
             return JacobiFinish(new floatBSROperator(in A, in AT), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref u, ref v);
         }
 
-        /// <summary>LSMR + Jacobi (BSR), default maxIterations (A.N_Cols) / tolerance (Consts.floatSqrtEps).</summary>
+        /// <summary>LSMR + Jacobi (BSR), default maxIter (A.N_Cols) / tol (Consts.floatSqrtEps).</summary>
         public static LstsqInfo lsmrJacobi(in floatBSR A, in floatN b, ref floatN x)
             => lsmrJacobi(in A, in b, ref x, A.N_Cols, Consts.floatSqrtEps);
 
@@ -2004,8 +2004,8 @@ namespace LinearAlgebra
         ///
         /// Caller provides x (initial guess, length A.Cols -- overwritten, warm-startable) and four
         /// scratch vectors: r, q (length A.Rows) and p, tmpN (length A.Cols). Converges when
-        /// ‖b - A x‖ &lt;= tolerance*‖b‖. For an INCONSISTENT system (b not in range(A)) the residual
-        /// cannot reach zero -- CGNE then runs to maxIterations and reports MaxIterations; use
+        /// ‖b - A x‖ &lt;= tol*‖b‖. For an INCONSISTENT system (b not in range(A)) the residual
+        /// cannot reach zero -- CGNE then runs to maxIter and reports MaxIterations; use
         /// cgls/lsqr/lsmr for least-squares instead.
         ///
         /// Returns a <see cref="SolveInfo"/> (rnorm = ‖b-Ax‖) — see that struct for the
@@ -2015,7 +2015,7 @@ namespace LinearAlgebra
         /// </summary>
         public static SolveInfo cgne<TOp>(in TOp A, in floatN b, ref floatN x,
                                      ref floatN r, ref floatN p, ref floatN q, ref floatN tmpN,
-                                     int maxIterations, float tolerance)
+                                     int maxIter, float tol)
             where TOp : struct, IfloatLinearOperator
         {
             if (b.N != A.Rows) throw new ArgumentException("cgne: b.N must equal A.Rows");
@@ -2025,8 +2025,8 @@ namespace LinearAlgebra
             if (p.N != A.Cols) throw new ArgumentException("cgne: p.N must equal A.Cols");
             if (tmpN.N != A.Cols) throw new ArgumentException("cgne: tmpN.N must equal A.Cols");
 
-            if (maxIterations < 1)
-                throw new ArgumentException("cgne: maxIterations must be >= 1");
+            if (maxIter < 1)
+                throw new ArgumentException("cgne: maxIter must be >= 1");
 
             unsafe
             {
@@ -2036,7 +2036,7 @@ namespace LinearAlgebra
                 RequireDistinctBuffers("cgne: r/p/q/tmpN/x/b must be distinct", ptrs, 6);
             }
 
-            // Fixed scale reference for the relative tolerance, independent of x0 (mirrors cg's bb).
+            // Fixed scale reference for the relative tol, independent of x0 (mirrors cg's bb).
             float bb = Blas.dot(b, b);
 
             if (bb == (float)0)
@@ -2047,7 +2047,7 @@ namespace LinearAlgebra
                 return MakeSolveInfo(IterativeSolveStatus.Converged, 0, (float)0);
             }
 
-            float threshold = tolerance * tolerance * bb;
+            float threshold = tol * tol * bb;
 
             // r = b - A x
             A.Apply(in x, ref q);                          // q = A x (temp use of q)
@@ -2062,7 +2062,7 @@ namespace LinearAlgebra
             // p = A^T r
             A.ApplyT(in r, ref p);
 
-            for (int k = 0; k < maxIterations; k++)
+            for (int k = 0; k < maxIter; k++)
             {
                 float pp = Blas.dot(p, p);
 
@@ -2098,7 +2098,7 @@ namespace LinearAlgebra
                 rr = rrNew;
             }
 
-            return MakeSolveInfo(IterativeSolveStatus.MaxIterations, maxIterations, math.sqrt(rr));
+            return MakeSolveInfo(IterativeSolveStatus.MaxIterations, maxIter, math.sqrt(rr));
         }
 
         /// <summary>
@@ -2107,22 +2107,22 @@ namespace LinearAlgebra
         /// </summary>
         public static SolveInfo cgne(in floatMxN A, in floatN b, ref floatN x,
                                 ref floatN r, ref floatN p, ref floatN q, ref floatN tmpN,
-                                int maxIterations, float tolerance)
+                                int maxIter, float tol)
         {
-            return cgne(new floatDenseOperator(in A), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIterations, tolerance);
+            return cgne(new floatDenseOperator(in A), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIter, tol);
         }
 
         /// <summary>CGNE over a dense matrix -- allocates four scratch vectors from the arena.</summary>
-        public static SolveInfo cgne(in floatMxN A, in floatN b, ref floatN x, int maxIterations, float tolerance)
+        public static SolveInfo cgne(in floatMxN A, in floatN b, ref floatN x, int maxIter, float tol)
         {
             floatN r    = b.floatTempVec(A.M_Rows);
             floatN p    = b.floatTempVec(A.N_Cols);
             floatN q    = b.floatTempVec(A.M_Rows);
             floatN tmpN = b.floatTempVec(A.N_Cols);
-            return cgne(in A, in b, ref x, ref r, ref p, ref q, ref tmpN, maxIterations, tolerance);
+            return cgne(in A, in b, ref x, ref r, ref p, ref q, ref tmpN, maxIter, tol);
         }
 
-        /// <summary>CGNE over a dense matrix with default maxIterations (A.N_Cols) and tolerance (Consts.floatSqrtEps).</summary>
+        /// <summary>CGNE over a dense matrix with default maxIter (A.N_Cols) and tol (Consts.floatSqrtEps).</summary>
         public static SolveInfo cgne(in floatMxN A, in floatN b, ref floatN x)
         {
             return cgne(in A, in b, ref x, A.N_Cols, Consts.floatSqrtEps);
@@ -2135,9 +2135,9 @@ namespace LinearAlgebra
         /// </summary>
         public static SolveInfo cgne(in floatBSR A, in floatN b, ref floatN x,
                                 ref floatN r, ref floatN p, ref floatN q, ref floatN tmpN,
-                                int maxIterations, float tolerance)
+                                int maxIter, float tol)
         {
-            return cgne(new floatBSROperator(in A), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIterations, tolerance);
+            return cgne(new floatBSROperator(in A), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIter, tol);
         }
 
         /// <summary>
@@ -2148,9 +2148,9 @@ namespace LinearAlgebra
         /// </summary>
         public static SolveInfo cgne(in floatBSR A, in floatBSR AT, in floatN b, ref floatN x,
                                 ref floatN r, ref floatN p, ref floatN q, ref floatN tmpN,
-                                int maxIterations, float tolerance)
+                                int maxIter, float tol)
         {
-            return cgne(new floatBSROperator(in A, in AT), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIterations, tolerance);
+            return cgne(new floatBSROperator(in A, in AT), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIter, tol);
         }
 
         /// <summary>
@@ -2160,17 +2160,17 @@ namespace LinearAlgebra
         /// spMV(A^T, x). For a build-free zero-alloc path, build A^T yourself once and call the
         /// caller-AT overload above.
         /// </summary>
-        public static SolveInfo cgne(in floatBSR A, in floatN b, ref floatN x, int maxIterations, float tolerance)
+        public static SolveInfo cgne(in floatBSR A, in floatN b, ref floatN x, int maxIter, float tol)
         {
             floatN r    = b.floatTempVec(A.M_Rows);
             floatN p    = b.floatTempVec(A.N_Cols);
             floatN q    = b.floatTempVec(A.M_Rows);
             floatN tmpN = b.floatTempVec(A.N_Cols);
             floatBSR AT = b.floatBSRTranspose(in A);
-            return cgne(new floatBSROperator(in A, in AT), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIterations, tolerance);
+            return cgne(new floatBSROperator(in A, in AT), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIter, tol);
         }
 
-        /// <summary>CGNE over a BSR matrix with default maxIterations (A.N_Cols) and tolerance (Consts.floatSqrtEps).</summary>
+        /// <summary>CGNE over a BSR matrix with default maxIter (A.N_Cols) and tol (Consts.floatSqrtEps).</summary>
         public static SolveInfo cgne(in floatBSR A, in floatN b, ref floatN x)
         {
             return cgne(in A, in b, ref x, A.N_Cols, Consts.floatSqrtEps);

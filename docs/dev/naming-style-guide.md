@@ -7,7 +7,7 @@ reviewer agent to check changes against, not just for humans. Terse on purpose. 
 
 ## Method naming
 - **camelCase**, with one sub-rule: a **leading** acronym is lowercased (`fft`) because camelCase
-  needs a lowercase first letter; a **trailing/mid** acronym stays LOUD (`valuesQR`, `normalizeL2`).
+  needs a lowercase first letter; a **trailing/mid** acronym stays LOUD (`valuesQRInPlace`, `normalizeL2`).
 - **Bare methods on algorithm classes, no class-name echo**: the class names the algorithm
   (`LU`, `CHO`, `QR`, `QRCP`, `SVD`, `Eigen`, `PCA`, `Bidiag`), the method names the operation —
   `SVD.thin`, not `SVD.svdThin`; `CHO.decomp`, not `Cholesky.choleskyDecomposition`;
@@ -41,8 +41,11 @@ reviewer agent to check changes against, not just for humans. Terse on purpose. 
   "destroyed; contents undefined after return" (e.g. `QR.solveInPlace`'s `A`, `b`).
 - **Output-only params** (direct-solver `x`/similar) are uninit-safe: "output only; prior contents
   ignored; safe to allocate with `uninit: true`."
-- In-place suffix is **`Inpl`** for elementwise/arithmetic ops, not `Inplace` (e.g. `mulInpl`, not
-  `mulInplace`) — distinct from the spelled-out `InPlace` token, which carries TWO documented senses
+- **Common tuning params use the SHORT names**: `maxIter`, `tol`, `relTol` (ruled 2026-07-13;
+  reverses the earlier long-name pass that had standardized `maxIterations`/`tolerance` — do not
+  rename back). `maxSweeps` stays where the algorithm genuinely counts Jacobi sweeps.
+- In-place suffix is the spelled-out **`InPlace`** everywhere — elementwise/arithmetic ops included
+  (`mulInPlace`, `signFlipInPlace`). The token carries TWO documented senses
   (both read as "operates in your storage", but the direction of "your storage" differs):
   1. **Solver sense** — input storage is consumed as the workspace (`LU.decompInPlace`,
      `QR.solveInPlace`): a `ref` param enters holding real data and exits either destroyed (scratch)
@@ -230,7 +233,7 @@ Every decomposition/algorithm that allocates scratch should offer BOTH:
 - A workspace-overload's test suite verifies **equivalence** to the allocating overload (same
   inputs → same outputs within a small precision tolerance), reuse-across-calls (no stale state),
   mis-sized-workspace throw guards, and `Arena` factory field-sizing — see any `*WorkspaceTests.
-  fProxy.cs` file for the template (`SVDWorkspaceTests`, `SvdThinValuesWorkspaceTests`,
+  fProxy.cs` file for the template (`SVDWorkspaceTests`, `SVDThinValuesWorkspaceTests`,
   `LQWorkspaceTests`).
 - A test in a multiplying template file (`.fProxy.cs`/`.iProxy.cs`) that needs a DIFFERENT expected
   value per generated type must use the SAME per-type mechanism the code under test uses (e.g.

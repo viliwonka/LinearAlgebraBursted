@@ -28,7 +28,7 @@ namespace LinearAlgebra
         /// as v[i] = 1 + (i &amp; 3), then normalized before iterating.
         ///
         /// Convergence criterion: the infinity norm of the residual r = A*v - lambda*v
-        /// satisfies r &lt;= tolerance * max(1, |lambda|). Returns an <see cref="EigenSolveInfo"/>
+        /// satisfies r &lt;= tol * max(1, |lambda|). Returns an <see cref="EigenSolveInfo"/>
         /// (implicit-bool == Converged); power iteration has no Breakdown status -- only Converged or
         /// MaxIterations.
         ///
@@ -40,7 +40,7 @@ namespace LinearAlgebra
         /// allocate.
         /// </summary>
         public static EigenSolveInfo powerIteration<TOp>(in TOp A, ref doubleN v, ref doubleN w,
-                                               out double lambda, double tolerance, int maxIterations)
+                                               out double lambda, double tol, int maxIter)
             where TOp : struct, IdoubleLinearOperator
         {
             if (A.Rows != A.Cols)
@@ -57,11 +57,11 @@ namespace LinearAlgebra
                     throw new ArgumentException("powerIteration: w must not alias v");
             }
 
-            if (maxIterations < 1)
-                throw new ArgumentException("powerIteration: maxIterations must be >= 1");
+            if (maxIter < 1)
+                throw new ArgumentException("powerIteration: maxIter must be >= 1");
 
-            if (tolerance <= (double)0)
-                throw new ArgumentException("powerIteration: tolerance must be > 0");
+            if (tol <= (double)0)
+                throw new ArgumentException("powerIteration: tol must be > 0");
 
             int n = A.Rows;
 
@@ -86,7 +86,7 @@ namespace LinearAlgebra
 
             lambda = (double)0;
 
-            for (int iter = 0; iter < maxIterations; iter++) {
+            for (int iter = 0; iter < maxIter; iter++) {
 
                 // Step 1: w = A * v (no allocation — the operator's own Apply, e.g. a manual
                 // matvec for dense or spMV for a BSR)
@@ -109,7 +109,7 @@ namespace LinearAlgebra
                 double scale = math.abs(lambda);
                 if (scale < (double)1)
                     scale = (double)1;
-                if (residual <= tolerance * scale)
+                if (residual <= tol * scale)
                     return new EigenSolveInfo { iterations = iter + 1, residual = (double)residual, status = IterativeSolveStatus.Converged };
 
                 // Step 5: compute ||w||_2; handle exact null-space case
@@ -147,9 +147,9 @@ namespace LinearAlgebra
             if (finalScale < (double)1)
                 finalScale = (double)1;
 
-            bool finalOk = finalResidual <= tolerance * finalScale;
+            bool finalOk = finalResidual <= tol * finalScale;
             return new EigenSolveInfo {
-                iterations = maxIterations,
+                iterations = maxIter,
                 residual = (double)finalResidual,
                 status = finalOk ? IterativeSolveStatus.Converged : IterativeSolveStatus.MaxIterations
             };
@@ -162,17 +162,17 @@ namespace LinearAlgebra
         /// algorithm documentation (deterministic seeding, convergence criterion, notes).
         /// </summary>
         public static EigenSolveInfo powerIteration(in doubleMxN A, ref doubleN v, ref doubleN w,
-                                          out double lambda, double tolerance, int maxIterations)
+                                          out double lambda, double tol, int maxIter)
         {
-            return powerIteration(new doubleDenseOperator(in A), ref v, ref w, out lambda, tolerance, maxIterations);
+            return powerIteration(new doubleDenseOperator(in A), ref v, ref w, out lambda, tol, maxIter);
         }
 
-        /// <summary>powerIteration with default maxIterations (1000).</summary>
+        /// <summary>powerIteration with default maxIter (1000).</summary>
         public static EigenSolveInfo powerIteration(in doubleMxN A, ref doubleN v, ref doubleN w,
-                                          out double lambda, double tolerance)
-            => powerIteration(in A, ref v, ref w, out lambda, tolerance, 1000);
+                                          out double lambda, double tol)
+            => powerIteration(in A, ref v, ref w, out lambda, tol, 1000);
 
-        /// <summary>powerIteration with default tolerance (Consts.doubleZeroThreshold) and maxIterations (1000).</summary>
+        /// <summary>powerIteration with default tol (Consts.doubleZeroThreshold) and maxIter (1000).</summary>
         public static EigenSolveInfo powerIteration(in doubleMxN A, ref doubleN v, ref doubleN w,
                                           out double lambda)
             => powerIteration(in A, ref v, ref w, out lambda, Consts.doubleZeroThreshold, 1000);
@@ -184,19 +184,19 @@ namespace LinearAlgebra
         /// Forwards into <see cref="powerIteration{TOp}"/> via <c>doubleBSROperator</c>.
         /// </summary>
         public static EigenSolveInfo powerIteration(in doubleBSR A, ref doubleN v, ref doubleN w,
-                                          out double lambda, double tolerance, int maxIterations)
+                                          out double lambda, double tol, int maxIter)
         {
-            return powerIteration(new doubleBSROperator(in A), ref v, ref w, out lambda, tolerance, maxIterations);
+            return powerIteration(new doubleBSROperator(in A), ref v, ref w, out lambda, tol, maxIter);
         }
 
-        /// <summary>powerIteration over a block-sparse (BSR) matrix with default maxIterations (1000).</summary>
+        /// <summary>powerIteration over a block-sparse (BSR) matrix with default maxIter (1000).</summary>
         public static EigenSolveInfo powerIteration(in doubleBSR A, ref doubleN v, ref doubleN w,
-                                          out double lambda, double tolerance)
-            => powerIteration(in A, ref v, ref w, out lambda, tolerance, 1000);
+                                          out double lambda, double tol)
+            => powerIteration(in A, ref v, ref w, out lambda, tol, 1000);
 
         /// <summary>
-        /// powerIteration over a block-sparse (BSR) matrix with default tolerance
-        /// (Consts.doubleZeroThreshold) and maxIterations (1000).
+        /// powerIteration over a block-sparse (BSR) matrix with default tol
+        /// (Consts.doubleZeroThreshold) and maxIter (1000).
         /// </summary>
         public static EigenSolveInfo powerIteration(in doubleBSR A, ref doubleN v, ref doubleN w,
                                           out double lambda)
@@ -226,16 +226,16 @@ namespace LinearAlgebra
         /// Rayleigh quotient v^T A v / v^T v (recomputed via A.Apply, not carried over from CG).
         ///
         /// Convergence (checked once per outer iteration, OR'd): (1) the eigenvector settles -- the
-        /// infinity norm of v_new - v_old is &lt;= tolerance, sign-aligned against v_old first; or (2) the
-        /// Rayleigh quotient stabilizes -- |lambda_new - lambda_old| &lt;= tolerance * max(1, |lambda_new|).
+        /// infinity norm of v_new - v_old is &lt;= tol, sign-aligned against v_old first; or (2) the
+        /// Rayleigh quotient stabilizes -- |lambda_new - lambda_old| &lt;= tol * max(1, |lambda_new|).
         /// Returns Converged, MaxIterations, or Breakdown if the inner CG solve fails. On
         /// Converged/MaxIterations, residual is ‖Av-λv‖∞; on Breakdown, residual is
         /// <see cref="double.NaN"/> and lambda is 0 -- only read v/lambda when Solved.
         ///
-        /// GOTCHA: pick tolerance no tighter than (and ideally a small multiple of) cgTolerance. Every outer
+        /// GOTCHA: pick tol no tighter than (and ideally a small multiple of) cgTolerance. Every outer
         /// iteration's v/y comes from a FRESH CG solve accurate only to ~cgTolerance, so consecutive
-        /// eigenpair estimates stop improving once that noise floor is reached; a tighter tolerance may never
-        /// be satisfied and spins to maxIterations reporting MaxIterations even though the estimate is
+        /// eigenpair estimates stop improving once that noise floor is reached; a tighter tol may never
+        /// be satisfied and spins to maxIter reporting MaxIterations even though the estimate is
         /// already as good as cgTolerance allows.
         ///
         /// SEEDING CAVEAT: if the target smallest eigenvector is (near-)orthogonal to the default seed
@@ -247,7 +247,7 @@ namespace LinearAlgebra
         public static EigenSolveInfo inversePowerIteration<TOp>(in TOp A, ref doubleN v, ref doubleN y,
                                                       ref doubleN r, ref doubleN p, ref doubleN Ap,
                                                       out double lambda,
-                                                      double tolerance, int maxIterations, int cgMaxIterations, double cgTolerance)
+                                                      double tol, int maxIter, int cgMaxIterations, double cgTolerance)
             where TOp : struct, IdoubleLinearOperator
         {
             if (A.Rows != A.Cols)
@@ -270,11 +270,11 @@ namespace LinearAlgebra
             if (Ap.N != n)
                 throw new ArgumentException("inversePowerIteration: Ap.N must equal A.Rows");
 
-            if (maxIterations < 1)
-                throw new ArgumentException("inversePowerIteration: maxIterations must be >= 1");
+            if (maxIter < 1)
+                throw new ArgumentException("inversePowerIteration: maxIter must be >= 1");
 
-            if (tolerance <= (double)0)
-                throw new ArgumentException("inversePowerIteration: tolerance must be > 0");
+            if (tol <= (double)0)
+                throw new ArgumentException("inversePowerIteration: tol must be > 0");
 
             // Aliasing guard: v/y/r/p/Ap must all be distinct buffers -- same rationale as
             // cg<TOp>'s guard (the loop below, and cg's own loop, mix elementwise scratch updates
@@ -312,7 +312,7 @@ namespace LinearAlgebra
             lambda = (double)0;
             double lambdaPrev = double.NaN;   // sentinel: no previous estimate yet (NaN-safe compare below)
 
-            for (int iter = 0; iter < maxIterations; iter++) {
+            for (int iter = 0; iter < maxIter; iter++) {
 
                 // Step 1: solve A y = v via CG (reuses r/p/Ap as CG's own scratch every outer
                 // iteration -- zero additional allocation). A false return means CG broke down
@@ -372,7 +372,7 @@ namespace LinearAlgebra
                 if (lambdaScale < (double)1) lambdaScale = (double)1;
                 double lambdaChange = math.abs(lambda - lambdaPrev);   // NaN on iter 0 -> false below
 
-                if (vecDiff <= tolerance || lambdaChange <= tolerance * lambdaScale)
+                if (vecDiff <= tol || lambdaChange <= tol * lambdaScale)
                     return new EigenSolveInfo {
                         iterations = iter + 1,
                         residual = InversePowerResidual(in Ap, in v, lambda, n),
@@ -383,7 +383,7 @@ namespace LinearAlgebra
             }
 
             return new EigenSolveInfo {
-                iterations = maxIterations,
+                iterations = maxIter,
                 residual = InversePowerResidual(in Ap, in v, lambda, n),
                 status = IterativeSolveStatus.MaxIterations
             };
@@ -412,16 +412,16 @@ namespace LinearAlgebra
         public static EigenSolveInfo inversePowerIteration(in doubleMxN A, ref doubleN v, ref doubleN y,
                                                  ref doubleN r, ref doubleN p, ref doubleN Ap,
                                                  out double lambda,
-                                                 double tolerance, int maxIterations, int cgMaxIterations, double cgTolerance)
+                                                 double tol, int maxIter, int cgMaxIterations, double cgTolerance)
         {
-            return inversePowerIteration(new doubleDenseOperator(in A), ref v, ref y, ref r, ref p, ref Ap, out lambda, tolerance, maxIterations, cgMaxIterations, cgTolerance);
+            return inversePowerIteration(new doubleDenseOperator(in A), ref v, ref y, ref r, ref p, ref Ap, out lambda, tol, maxIter, cgMaxIterations, cgTolerance);
         }
 
         /// <summary>inversePowerIteration with default cgMaxIterations (A.M_Rows) and cgTolerance (Consts.doubleSqrtEps).</summary>
         public static EigenSolveInfo inversePowerIteration(in doubleMxN A, ref doubleN v, ref doubleN y,
                                                  ref doubleN r, ref doubleN p, ref doubleN Ap,
-                                                 out double lambda, double tolerance, int maxIterations)
-            => inversePowerIteration(in A, ref v, ref y, ref r, ref p, ref Ap, out lambda, tolerance, maxIterations, A.M_Rows, Consts.doubleSqrtEps);
+                                                 out double lambda, double tol, int maxIter)
+            => inversePowerIteration(in A, ref v, ref y, ref r, ref p, ref Ap, out lambda, tol, maxIter, A.M_Rows, Consts.doubleSqrtEps);
 
         /// <summary>
         /// Inverse power iteration over a dense SPD matrix -- allocates the inner-solve scratch
@@ -430,22 +430,22 @@ namespace LinearAlgebra
         /// allocation.
         /// </summary>
         public static EigenSolveInfo inversePowerIteration(in doubleMxN A, ref doubleN v, out double lambda,
-                                                 double tolerance, int maxIterations, int cgMaxIterations, double cgTolerance)
+                                                 double tol, int maxIter, int cgMaxIterations, double cgTolerance)
         {
             doubleN y  = v.doubleTempVec(A.M_Rows);
             doubleN r  = v.doubleTempVec(A.M_Rows);
             doubleN p  = v.doubleTempVec(A.M_Rows);
             doubleN Ap = v.doubleTempVec(A.M_Rows);
-            return inversePowerIteration(in A, ref v, ref y, ref r, ref p, ref Ap, out lambda, tolerance, maxIterations, cgMaxIterations, cgTolerance);
+            return inversePowerIteration(in A, ref v, ref y, ref r, ref p, ref Ap, out lambda, tol, maxIter, cgMaxIterations, cgTolerance);
         }
 
         /// <summary>
-        /// inversePowerIteration (allocating) with default tolerance (10 * Consts.doubleSqrtEps),
-        /// maxIterations (1000), cgMaxIterations (A.M_Rows) and cgTolerance (Consts.doubleSqrtEps). tolerance defaults to
+        /// inversePowerIteration (allocating) with default tol (10 * Consts.doubleSqrtEps),
+        /// maxIter (1000), cgMaxIterations (A.M_Rows) and cgTolerance (Consts.doubleSqrtEps). tol defaults to
         /// a multiple of cgTolerance (NOT the much tighter Consts.doubleZeroThreshold) on purpose: the
         /// outer convergence checks compare CONSECUTIVE eigenpair estimates, each derived from its
-        /// own fresh CG solve accurate only to ~cgTolerance -- an outer tolerance tighter than that noise
-        /// floor could spin to maxIterations without ever detecting convergence (the residual genuinely
+        /// own fresh CG solve accurate only to ~cgTolerance -- an outer tol tighter than that noise
+        /// floor could spin to maxIter without ever detecting convergence (the residual genuinely
         /// bottoms out around cgTolerance, it does not keep shrinking with more outer iterations).
         /// </summary>
         public static EigenSolveInfo inversePowerIteration(in doubleMxN A, ref doubleN v, out double lambda)
@@ -460,35 +460,35 @@ namespace LinearAlgebra
         public static EigenSolveInfo inversePowerIteration(in doubleBSR A, ref doubleN v, ref doubleN y,
                                                  ref doubleN r, ref doubleN p, ref doubleN Ap,
                                                  out double lambda,
-                                                 double tolerance, int maxIterations, int cgMaxIterations, double cgTolerance)
+                                                 double tol, int maxIter, int cgMaxIterations, double cgTolerance)
         {
-            return inversePowerIteration(new doubleBSROperator(in A), ref v, ref y, ref r, ref p, ref Ap, out lambda, tolerance, maxIterations, cgMaxIterations, cgTolerance);
+            return inversePowerIteration(new doubleBSROperator(in A), ref v, ref y, ref r, ref p, ref Ap, out lambda, tol, maxIter, cgMaxIterations, cgTolerance);
         }
 
         /// <summary>inversePowerIteration over a BSR matrix with default cgMaxIterations (A.M_Rows) and cgTolerance (Consts.doubleSqrtEps).</summary>
         public static EigenSolveInfo inversePowerIteration(in doubleBSR A, ref doubleN v, ref doubleN y,
                                                  ref doubleN r, ref doubleN p, ref doubleN Ap,
-                                                 out double lambda, double tolerance, int maxIterations)
-            => inversePowerIteration(in A, ref v, ref y, ref r, ref p, ref Ap, out lambda, tolerance, maxIterations, A.M_Rows, Consts.doubleSqrtEps);
+                                                 out double lambda, double tol, int maxIter)
+            => inversePowerIteration(in A, ref v, ref y, ref r, ref p, ref Ap, out lambda, tol, maxIter, A.M_Rows, Consts.doubleSqrtEps);
 
         /// <summary>
         /// Inverse power iteration over a BSR SPD matrix -- allocates the inner-solve scratch from
         /// the arena that <paramref name="v"/> carries and calls the zero-alloc primitive.
         /// </summary>
         public static EigenSolveInfo inversePowerIteration(in doubleBSR A, ref doubleN v, out double lambda,
-                                                 double tolerance, int maxIterations, int cgMaxIterations, double cgTolerance)
+                                                 double tol, int maxIter, int cgMaxIterations, double cgTolerance)
         {
             doubleN y  = v.doubleTempVec(A.M_Rows);
             doubleN r  = v.doubleTempVec(A.M_Rows);
             doubleN p  = v.doubleTempVec(A.M_Rows);
             doubleN Ap = v.doubleTempVec(A.M_Rows);
-            return inversePowerIteration(in A, ref v, ref y, ref r, ref p, ref Ap, out lambda, tolerance, maxIterations, cgMaxIterations, cgTolerance);
+            return inversePowerIteration(in A, ref v, ref y, ref r, ref p, ref Ap, out lambda, tol, maxIter, cgMaxIterations, cgTolerance);
         }
 
         /// <summary>
-        /// inversePowerIteration (allocating) over a BSR matrix with default tolerance
-        /// (10 * Consts.doubleSqrtEps), maxIterations (1000), cgMaxIterations (A.M_Rows) and cgTolerance
-        /// (Consts.doubleSqrtEps). See the dense overload's doc comment for why tolerance defaults to a
+        /// inversePowerIteration (allocating) over a BSR matrix with default tol
+        /// (10 * Consts.doubleSqrtEps), maxIter (1000), cgMaxIterations (A.M_Rows) and cgTolerance
+        /// (Consts.doubleSqrtEps). See the dense overload's doc comment for why tol defaults to a
         /// multiple of cgTolerance rather than the much tighter Consts.doubleZeroThreshold.
         /// </summary>
         public static EigenSolveInfo inversePowerIteration(in doubleBSR A, ref doubleN v, out double lambda)
@@ -916,7 +916,7 @@ namespace LinearAlgebra
         /// usable factor -- read <paramref name="eigenvalues"/> instead).</param>
         [System.Obsolete("Prefer Eigen.symmetricInPlace (Householder tridiagonal + QL, ~30x faster) for symmetric eigenpairs, or Eigen.valuesSymmetricInPlace for eigenvalues only. This cyclic-Jacobi solver is retained for reference.", false)]
         public static EigenInfo decompInPlace(ref doubleMxN A, ref doubleN eigenvalues,
-                                              ref doubleMxN V, int maxSweeps, double tolerance)
+                                              ref doubleMxN V, int maxSweeps, double tol)
         {
             if (!A.IsSquare)
                 throw new ArgumentException("Eigen.decompInPlace: A must be square");
@@ -932,8 +932,8 @@ namespace LinearAlgebra
             if (maxSweeps < 1)
                 throw new ArgumentException("Eigen.decompInPlace: maxSweeps must be >= 1");
 
-            if (tolerance <= (double)0)
-                throw new ArgumentException("Eigen.decompInPlace: tolerance must be > 0");
+            if (tol <= (double)0)
+                throw new ArgumentException("Eigen.decompInPlace: tol must be > 0");
 
             // Symmetry guard: check that A is symmetric within relative tolerance
             for (int i = 0; i < n; i++) {
@@ -942,7 +942,7 @@ namespace LinearAlgebra
                     double aji = A[j, i];
                     double diff = math.abs(aij - aji);
                     double relScale = (double)1 + math.abs(aij) + math.abs(aji);
-                    if (diff > tolerance * relScale)
+                    if (diff > tol * relScale)
                         throw new ArgumentException("Eigen.decompInPlace: Matrix must be symmetric");
                 }
             }
@@ -972,7 +972,7 @@ namespace LinearAlgebra
                             continue;
 
                         // Skip when off-diagonal is negligible relative to the diagonal
-                        if (math.abs(apq) <= tolerance * (double)0.5 * (math.abs(A[p, p]) + math.abs(A[q, q])))
+                        if (math.abs(apq) <= tol * (double)0.5 * (math.abs(A[p, p]) + math.abs(A[q, q])))
                             continue;
 
                         // Compute rotation angle: theta = (A[q,q] - A[p,p]) / (2 * A[p,q])
@@ -1073,13 +1073,13 @@ namespace LinearAlgebra
         // The default-argument overloads forward to the deprecated primitive; suppress the
         // self-referential obsolete warning (618) on the forwarding calls.
 #pragma warning disable 618
-        /// <summary>decompInPlace with default tolerance (Consts.doubleZeroThreshold).</summary>
+        /// <summary>decompInPlace with default tol (Consts.doubleZeroThreshold).</summary>
         [System.Obsolete("Prefer Eigen.symmetricInPlace (Householder tridiagonal + QL, ~30x faster) for symmetric eigenpairs, or Eigen.valuesSymmetricInPlace for eigenvalues only. This cyclic-Jacobi solver is retained for reference.", false)]
         public static EigenInfo decompInPlace(ref doubleMxN A, ref doubleN eigenvalues,
                                               ref doubleMxN V, int maxSweeps)
             => decompInPlace(ref A, ref eigenvalues, ref V, maxSweeps, Consts.doubleZeroThreshold);
 
-        /// <summary>decompInPlace with default maxSweeps (30) and tolerance (Consts.doubleZeroThreshold). NOTE:
+        /// <summary>decompInPlace with default maxSweeps (30) and tol (Consts.doubleZeroThreshold). NOTE:
         /// this constant is NOT scaled by Consts.sweepBudget like the other Eigen/SVD defaults --
         /// decompInPlace's "sweep" is a FULL-MATRIX Jacobi sweep (O(n^2) rotations each), a
         /// fundamentally different iteration unit from the per-value QR/QL sweeps the LAPACK dbdsqr
@@ -1104,7 +1104,7 @@ namespace LinearAlgebra
         /// maxIterPerEig for some eigenvalue (outputs then undefined). Does not allocate
         /// beyond three length-n Temp scratch vectors.
         /// </summary>
-        public static EigenInfo valuesSymmetricInPlace(ref doubleMxN A, ref doubleN eigenvalues, int maxIterPerEig, double tolerance,
+        public static EigenInfo valuesSymmetricInPlace(ref doubleMxN A, ref doubleN eigenvalues, int maxIterPerEig, double tol,
                                                  ref doubleEigenSymCache ws)
         {
             if (!A.IsSquare)
@@ -1118,8 +1118,8 @@ namespace LinearAlgebra
             if (maxIterPerEig < 1)
                 throw new ArgumentException("Eigen.valuesSymmetricInPlace: maxIterPerEig must be >= 1");
 
-            if (tolerance <= (double)0)
-                throw new ArgumentException("Eigen.valuesSymmetricInPlace: tolerance must be > 0");
+            if (tol <= (double)0)
+                throw new ArgumentException("Eigen.valuesSymmetricInPlace: tol must be > 0");
 
             // Symmetry guard (same as decompInPlace). The reduction reads the full symmetric
             // matrix (the gemv uses whole rows), so both triangles must agree.
@@ -1129,7 +1129,7 @@ namespace LinearAlgebra
                     double aij = A[i, j], aji = A[j, i];
                     double diff = math.abs(aij - aji);
                     double relScale = (double)1 + math.abs(aij) + math.abs(aji);
-                    if (diff > tolerance * relScale)
+                    if (diff > tol * relScale)
                         throw new ArgumentException("Eigen.valuesSymmetricInPlace: Matrix must be symmetric");
                 }
 
@@ -1228,7 +1228,7 @@ namespace LinearAlgebra
             // Global tridiagonal scale. The deflation test below is floored by this so a cluster of
             // ZERO eigenvalues can still deflate: there the local |d[m]|+|d[m+1]| collapses to ~0, but
             // the sub-diagonal noise floor is set by the GLOBAL scale, so a purely local threshold
-            // never triggers in float and QL spins to maxIterations (the rank-deficient values case).
+            // never triggers in float and QL spins to maxIter (the rank-deficient values case).
             double anorm = math.abs(eigenvalues[0]) + math.abs(eVec[0]);
             for (int i = 1; i < n; i++)
             {
@@ -1304,7 +1304,7 @@ namespace LinearAlgebra
             return new EigenInfo { status = IterativeSolveStatus.Converged, sweeps = sweeps, converged = convergedCount };
         }
 
-        /// <summary>valuesSymmetricInPlace (ref workspace) with default maxIterPerEig (Consts.sweepBudget(A.M_Rows)) and tolerance (Consts.doubleZeroThreshold).</summary>
+        /// <summary>valuesSymmetricInPlace (ref workspace) with default maxIterPerEig (Consts.sweepBudget(A.M_Rows)) and tol (Consts.doubleZeroThreshold).</summary>
         public static EigenInfo valuesSymmetricInPlace(ref doubleMxN A, ref doubleN eigenvalues, ref doubleEigenSymCache ws)
             => valuesSymmetricInPlace(ref A, ref eigenvalues, Consts.sweepBudget(A.M_Rows), Consts.doubleZeroThreshold, ref ws);
 
@@ -1312,7 +1312,7 @@ namespace LinearAlgebra
         /// valuesSymmetricInPlace allocating its tridiagonalization scratch (three length-n vectors) from
         /// Allocator.Temp. See the ref-workspace overload for semantics. A is overwritten (destroyed).
         /// </summary>
-        public static EigenInfo valuesSymmetricInPlace(ref doubleMxN A, ref doubleN eigenvalues, int maxIterPerEig, double tolerance)
+        public static EigenInfo valuesSymmetricInPlace(ref doubleMxN A, ref doubleN eigenvalues, int maxIterPerEig, double tol)
         {
             int n = A.M_Rows;
             var ws = new doubleEigenSymCache
@@ -1321,14 +1321,14 @@ namespace LinearAlgebra
                 vVec = new doubleN(n, Allocator.Temp, false),
                 pVec = new doubleN(n, Allocator.Temp, false)
             };
-            EigenInfo info = valuesSymmetricInPlace(ref A, ref eigenvalues, maxIterPerEig, tolerance, ref ws);
+            EigenInfo info = valuesSymmetricInPlace(ref A, ref eigenvalues, maxIterPerEig, tol, ref ws);
             ws.eVec.Dispose();
             ws.vVec.Dispose();
             ws.pVec.Dispose();
             return info;
         }
 
-        /// <summary>valuesSymmetricInPlace with default maxIterPerEig (Consts.sweepBudget(A.M_Rows)) and tolerance (Consts.doubleZeroThreshold).</summary>
+        /// <summary>valuesSymmetricInPlace with default maxIterPerEig (Consts.sweepBudget(A.M_Rows)) and tol (Consts.doubleZeroThreshold).</summary>
         public static EigenInfo valuesSymmetricInPlace(ref doubleMxN A, ref doubleN eigenvalues)
             => valuesSymmetricInPlace(ref A, ref eigenvalues, Consts.sweepBudget(A.M_Rows), Consts.doubleZeroThreshold);
 
@@ -1346,7 +1346,7 @@ namespace LinearAlgebra
         /// undefined). Allocates three length-n Temp scratch vectors.
         /// </summary>
         public static EigenInfo symmetricInPlace(ref doubleMxN A, ref doubleN eigenvalues, ref doubleMxN V,
-                                          int maxIterPerEig, double tolerance)
+                                          int maxIterPerEig, double tol)
         {
             if (!A.IsSquare)
                 throw new ArgumentException("Eigen.symmetricInPlace: A must be square");
@@ -1362,8 +1362,8 @@ namespace LinearAlgebra
             if (maxIterPerEig < 1)
                 throw new ArgumentException("Eigen.symmetricInPlace: maxIterPerEig must be >= 1");
 
-            if (tolerance <= (double)0)
-                throw new ArgumentException("Eigen.symmetricInPlace: tolerance must be > 0");
+            if (tol <= (double)0)
+                throw new ArgumentException("Eigen.symmetricInPlace: tol must be > 0");
 
             for (int i = 0; i < n; i++)
                 for (int j = i + 1; j < n; j++)
@@ -1371,7 +1371,7 @@ namespace LinearAlgebra
                     double aij = A[i, j], aji = A[j, i];
                     double diff = math.abs(aij - aji);
                     double relScale = (double)1 + math.abs(aij) + math.abs(aji);
-                    if (diff > tolerance * relScale)
+                    if (diff > tol * relScale)
                         throw new ArgumentException("Eigen.symmetricInPlace: Matrix must be symmetric");
                 }
 
@@ -1475,7 +1475,7 @@ namespace LinearAlgebra
                 for (int i = 0; i < n; i++) eigenvalues[i] = ap[(long)i * n + i];
 
                 // Global tridiagonal scale (see valuesSymmetricInPlace): floors the deflation threshold
-                // so clustered zero eigenvalues still deflate instead of spinning QL to maxIterations.
+                // so clustered zero eigenvalues still deflate instead of spinning QL to maxIter.
                 double anorm = math.abs(eigenvalues[0]) + math.abs(eVec[0]);
                 for (int i = 1; i < n; i++)
                 {
@@ -1582,7 +1582,7 @@ namespace LinearAlgebra
             return new EigenInfo { status = IterativeSolveStatus.Converged, sweeps = sweepsLocal, converged = convergedLocal };
         }
 
-        /// <summary>symmetric with default maxIterPerEig (Consts.sweepBudget(A.M_Rows)) and tolerance (Consts.doubleZeroThreshold).</summary>
+        /// <summary>symmetric with default maxIterPerEig (Consts.sweepBudget(A.M_Rows)) and tol (Consts.doubleZeroThreshold).</summary>
         public static EigenInfo symmetricInPlace(ref doubleMxN A, ref doubleN eigenvalues, ref doubleMxN V)
             => symmetricInPlace(ref A, ref eigenvalues, ref V, Consts.sweepBudget(A.M_Rows), Consts.doubleZeroThreshold);
 

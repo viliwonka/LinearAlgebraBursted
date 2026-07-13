@@ -20,7 +20,7 @@ namespace LinearAlgebra
         public static SolveInfo pbiCGStab<TOp, TPre>(in TOp A, in TPre M, in doubleN b, ref doubleN x,
                                          ref doubleN r, ref doubleN rHat0, ref doubleN p, ref doubleN v, ref doubleN t,
                                          ref doubleN pHat, ref doubleN sHat,
-                                         int maxIterations, double tolerance)
+                                         int maxIter, double tol)
             where TOp : struct, IdoubleLinearOperator
             where TPre : struct, IdoublePreconditioner
         {
@@ -29,8 +29,8 @@ namespace LinearAlgebra
             if (b.N != A.Rows || x.N != A.Rows || r.N != A.Rows || rHat0.N != A.Rows ||
                 p.N != A.Rows || v.N != A.Rows || t.N != A.Rows || pHat.N != A.Rows || sHat.N != A.Rows)
                 throw new ArgumentException("pbiCGStab: all vectors must have length A.Rows");
-            if (maxIterations < 1)
-                throw new ArgumentException("pbiCGStab: maxIterations must be >= 1");
+            if (maxIter < 1)
+                throw new ArgumentException("pbiCGStab: maxIter must be >= 1");
 
             unsafe
             {
@@ -52,7 +52,7 @@ namespace LinearAlgebra
             r.Data.CopyFrom(b.Data);
             r.addScaledInPlace((double)(-1), v);
 
-            double threshold = tolerance * tolerance * bb;
+            double threshold = tol * tol * bb;
             double rr = Blas.dot(r, r);
             if (rr <= threshold)
                 return MakeSolveInfo(IterativeSolveStatus.Converged, 0, math.sqrt(rr));
@@ -62,7 +62,7 @@ namespace LinearAlgebra
 
             double rho = (double)1, alpha = (double)1, omega = (double)1;
 
-            for (int k = 0; k < maxIterations; k++)
+            for (int k = 0; k < maxIter; k++)
             {
                 double rhoNew = Blas.dot(rHat0, r);
                 if (rhoNew == (double)0 || math.isnan(rhoNew))
@@ -109,7 +109,7 @@ namespace LinearAlgebra
                 rho = rhoNew;
             }
 
-            return MakeSolveInfo(IterativeSolveStatus.MaxIterations, maxIterations, math.sqrt(rr));
+            return MakeSolveInfo(IterativeSolveStatus.MaxIterations, maxIter, math.sqrt(rr));
         }
 
         /// <summary>
@@ -117,7 +117,7 @@ namespace LinearAlgebra
         /// <see cref="pbiCGStab{TOp,TPre}"/> via <c>doubleBSROperator</c>.
         /// </summary>
         public static SolveInfo pbiCGStab(in doubleBSR A, in doubleILU0 M, in doubleN b, ref doubleN x,
-                               int maxIterations, double tolerance)
+                               int maxIter, double tol)
         {
             doubleN r     = b.doubleTempVec(A.M_Rows);
             doubleN rHat0 = b.doubleTempVec(A.M_Rows);
@@ -128,14 +128,14 @@ namespace LinearAlgebra
             doubleN sHat  = b.doubleTempVec(A.M_Rows);
             return pbiCGStab(new doubleBSROperator(in A), in M, in b, ref x,
                              ref r, ref rHat0, ref p, ref v, ref t, ref pHat, ref sHat,
-                             maxIterations, tolerance);
+                             maxIter, tol);
         }
 
-        /// <summary>ILU(0) BiCGSTAB over BSR with default maxIterations (2*A.M_Rows) and tolerance
+        /// <summary>ILU(0) BiCGSTAB over BSR with default maxIter (A.M_Rows) and tolerance
         /// (Consts.doubleSqrtEps).</summary>
         public static SolveInfo pbiCGStab(in doubleBSR A, in doubleILU0 M, in doubleN b, ref doubleN x)
         {
-            return pbiCGStab(in A, in M, in b, ref x, 2 * A.M_Rows, Consts.doubleSqrtEps);
+            return pbiCGStab(in A, in M, in b, ref x, A.M_Rows, Consts.doubleSqrtEps);
         }
     }
 }

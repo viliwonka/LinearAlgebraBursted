@@ -15,7 +15,7 @@ namespace LinearAlgebra
         /// so both report the same messages, and the allocating one fails before sizing temps).
         /// </summary>
         static void RequireRandomizedArgs(int m, int n, int k, int oversample, int powerIters,
-                                          in doubleMxN Uk, in doubleN Sk, in doubleMxN Vk, int maxIterations)
+                                          in doubleMxN Uk, in doubleN Sk, in doubleMxN Vk, int maxIter)
         {
             if (m < n)
                 throw new ArgumentException("randomized: A must have m >= n (more rows than columns)");
@@ -31,8 +31,8 @@ namespace LinearAlgebra
                 throw new ArgumentException("randomized: Sk must have length k");
             if (Vk.M_Rows != n || Vk.N_Cols != k)
                 throw new ArgumentException("randomized: Vk must be n x k");
-            if (maxIterations < 1)
-                throw new ArgumentException("randomized: maxIterations must be >= 1");
+            if (maxIter < 1)
+                throw new ArgumentException("randomized: maxIter must be >= 1");
         }
 
         /// <summary>Throws unless <paramref name="ws"/> matches Arena.doubleSVDRandomizedCache(m, n, k, oversample) sizing (sketch width l = min(k+oversample, n)).</summary>
@@ -119,7 +119,7 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Allocates a randomized-SVD workspace with the default oversample (10) — matches the
-        /// randomized convenience overloads (oversample 10, powerIters 2, maxIterations
+        /// randomized convenience overloads (oversample 10, powerIters 2, maxIter
         /// Consts.sweepBudget(l)).
         /// </summary>
         public static doubleSVDRandomizedCache doubleSVDRandomizedCache(this ref Arena arena, int m, int n, int k)

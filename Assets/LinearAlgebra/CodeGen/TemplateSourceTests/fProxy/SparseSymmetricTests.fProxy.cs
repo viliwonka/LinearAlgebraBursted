@@ -452,7 +452,7 @@ public class fProxySparseSymmetricTests
         // A2 solver-wiring cases (BR=3 dense multi-block SPD system)
         // ================================================================================
 
-        // maxIterations = 4*dim: CG's finite-termination (<=dim iters) only holds in EXACT
+        // maxIter = 4*dim: CG's finite-termination (<=dim iters) only holds in EXACT
         // arithmetic, floating point on an ill-conditioned system can need more (same 4n cap the
         // sibling solver tests use).
 

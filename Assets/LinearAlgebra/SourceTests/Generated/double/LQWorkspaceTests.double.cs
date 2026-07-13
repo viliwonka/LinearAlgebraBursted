@@ -83,12 +83,12 @@ public class doubleLQWorkspaceTests
 
             var Aa = A0.Copy();
             var xa = arena.doubleVec(n);
-            LQ.minNormSolve(ref Aa, ref b, ref xa);
+            LQ.minNormSolve(in Aa, in b, ref xa);
 
             var Ab = A0.Copy();
             var xb = arena.doubleVec(n);
             var ws = arena.doubleLQMinNormCache(m, n);
-            LQ.minNormSolve(ref Ab, ref b, ref xb, ref ws);
+            LQ.minNormSolve(in Ab, in b, ref xb, ref ws);
 
             Assert.IsTrue(Analysis.isZero(xa - xb, Tol()));
 
@@ -130,11 +130,11 @@ public class doubleLQWorkspaceTests
 
                 var Asa = A0.Copy();
                 var xa = arena.doubleVec(n);
-                LQ.minNormSolve(ref Asa, ref b, ref xa);
+                LQ.minNormSolve(in Asa, in b, ref xa);
 
                 var Asw = A0.Copy();
                 var xw = arena.doubleVec(n);
-                LQ.minNormSolve(ref Asw, ref b, ref xw, ref solveWs);
+                LQ.minNormSolve(in Asw, in b, ref xw, ref solveWs);
 
                 Assert.IsTrue(Analysis.isZero(xa - xw, Tol()));
             }
@@ -196,7 +196,7 @@ public class doubleLQWorkspaceTests
             var x = arena.doubleVec(8);
             var ws = arena.doubleLQMinNormCache(4, 8);
             ws.L = arena.doubleMat(3, 3);   // wrong: must be m x m = 4 x 4
-            Assert.Throws<ArgumentException>(() => LQ.minNormSolve(ref A, ref b, ref x, ref ws));
+            Assert.Throws<ArgumentException>(() => LQ.minNormSolve(in A, in b, ref x, ref ws));
         }
         finally { arena.Dispose(); }
     }

@@ -521,7 +521,7 @@ public class floatLQRPTests
             // reference: LQ.minNormSolve (min-norm; does not modify A)
             var Alq = A.Copy();
             var xRef = arena.floatVec(n);
-            LQ.minNormSolve(ref Alq, ref b, ref xRef);
+            LQ.minNormSolve(in Alq, in b, ref xRef);
 
             float tol = (float)Consts.floatSqrtEps * (float)10;
             for (int k = 0; k < n; k++)

@@ -217,9 +217,9 @@ namespace LinearAlgebra
         /// <param name="R">Measurement noise covariance, m x m.</param>
         /// <param name="Kss">Output steady-state gain, n x m (overwritten only if the solve does not
         /// report <see cref="LQRStatus.Diverged"/>).</param>
-        /// <param name="maxIterations">SDA doubling-step budget; &lt;=0 picks the library default.</param>
+        /// <param name="maxIter">SDA doubling-step budget; &lt;=0 picks the library default.</param>
         public static LQRInfo steadyStateGain(in doubleMxN A, in doubleMxN H, in doubleMxN Q, in doubleMxN R,
-                                              ref doubleMxN Kss, int maxIterations = 0)
+                                              ref doubleMxN Kss, int maxIter = 0)
         {
             if (!A.IsSquare)
                 throw new ArgumentException("Kalman.steadyStateGain: A must be square");
@@ -261,7 +261,7 @@ namespace LinearAlgebra
             Rs.mulInPlace(scale);
 
             var Sigma = new doubleMxN(n, n, Allocator.Temp);
-            var info = Control.SDACore(in At, in Ht, in Qs, in Rs, ref Sigma, maxIterations);
+            var info = Control.SDACore(in At, in Ht, in Qs, in Rs, ref Sigma, maxIter);
             Sigma.mulInPlace(invScale);
             Qs.Dispose(); Rs.Dispose();
 

@@ -34,7 +34,7 @@ namespace LinearAlgebra
             var vec = arena.fProxyVec(N);
 
             if(index < 0 || index >= N)
-                throw new System.ArgumentOutOfRangeException("BasisVector: Index out of bounds");
+                throw new System.ArgumentOutOfRangeException("fProxyBasisVec: Index out of bounds");
 
             vec[index] = 1f;
 
@@ -180,10 +180,10 @@ namespace LinearAlgebra
             var matrix = arena.fProxyIdentityMat(M);
 
             if (M < 2)
-                throw new System.ArgumentException("RotationMatrix: Matrix must be at least 2x2");
+                throw new System.ArgumentException("fProxyRotationMat: Matrix must be at least 2x2");
 
             if(i < 0 || i >= M || j < 0 || j >= M)
-                throw new System.ArgumentOutOfRangeException("RotationMatrix: Index out of bounds");
+                throw new System.ArgumentOutOfRangeException("fProxyRotationMat: Index out of bounds");
 
             if(i == j) {
                 return matrix;
@@ -205,10 +205,10 @@ namespace LinearAlgebra
             var matrix = arena.fProxyIdentityMat(M);
 
             if (M < 2)
-                throw new System.ArgumentException("PermutationMatrix: Matrix must be at least 2x2");
+                throw new System.ArgumentException("fProxyPermutationMat: Matrix must be at least 2x2");
 
             if (i < 0 || i >= M || j < 0 || j >= M)
-                throw new System.ArgumentOutOfRangeException("PermutationMatrix: Index out of bounds");
+                throw new System.ArgumentOutOfRangeException("fProxyPermutationMat: Index out of bounds");
 
             if (i == j)
             {
@@ -226,11 +226,11 @@ namespace LinearAlgebra
         public static fProxyMxN fProxyHouseholderMat(this ref Arena arena, int M, in fProxyN v)
         {
             if(M < 2)
-                throw new System.ArgumentException("HouseholderMatrix: Matrix must be at least 2x2");
+                throw new System.ArgumentException("fProxyHouseholderMat: Matrix must be at least 2x2");
 
             // Compute the Householder matrix: H = I - 2 * vvT / (vTv)
             if (v.N != M)
-                throw new System.ArgumentException("HouseholderMatrix: Vector length must match matrix dimension.");
+                throw new System.ArgumentException("fProxyHouseholderMat: Vector length must match matrix dimension.");
 
             var matrix = arena.fProxyIdentityMat(M);
 
@@ -261,7 +261,7 @@ namespace LinearAlgebra
         public static fProxyMxN fProxyHilbertMat(this ref Arena arena, int M)
         {
             if (M < 2)
-                throw new System.ArgumentException("HilbertMatrix: Matrix must be at least 2x2");
+                throw new System.ArgumentException("fProxyHilbertMat: Matrix must be at least 2x2");
 
             var hilbert = arena.fProxyMat(M, true);
 

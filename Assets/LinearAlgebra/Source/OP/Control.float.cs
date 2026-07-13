@@ -175,7 +175,7 @@ namespace LinearAlgebra
         // R directly, since R+BᵀSB is generically full rank whenever B has full column rank, even for a
         // rank-deficient R.
         internal static LQRInfo SDACore(in floatMxN A, in floatMxN B, in floatMxN Q, in floatMxN R,
-                                        ref floatMxN S, int maxIterations)
+                                        ref floatMxN S, int maxIter)
         {
             int n = A.M_Rows, m = B.N_Cols;
 
@@ -208,7 +208,7 @@ namespace LinearAlgebra
 
                 double blowup = BlowupThreshold(in Q, in R);
                 double tol = (double)Consts.floatSqrtEps;
-                int budget = maxIterations > 0 ? maxIterations : SDA_MAX_ITER;
+                int budget = maxIter > 0 ? maxIter : SDA_MAX_ITER;
 
                 var GH = new floatMxN(n, n, Allocator.Temp);
                 var HG = new floatMxN(n, n, Allocator.Temp);
@@ -285,9 +285,9 @@ namespace LinearAlgebra
         // produce K -- shared by the plain cold overload (lqr) and the warm-state overload's cold
         // fallback (lqr with a not-yet-populated floatLQRState).
         static LQRInfo SolveCold(in floatMxN A, in floatMxN B, in floatMxN Q, in floatMxN R,
-                                 ref floatMxN K, ref floatMxN S, int maxIterations)
+                                 ref floatMxN K, ref floatMxN S, int maxIter)
         {
-            var info = SDACore(in A, in B, in Q, in R, ref S, maxIterations);
+            var info = SDACore(in A, in B, in Q, in R, ref S, maxIter);
 
             var Snext = new floatMxN(A.M_Rows, A.M_Rows, Allocator.Temp);
             var kinfo = RiccatiStep(in A, in B, in Q, in R, in S, ref Snext, ref K);
@@ -305,9 +305,9 @@ namespace LinearAlgebra
         // call at the converged S produces the authoritative K (same "finalize once" shape as
         // SolveCold, so mid-recursion K's -- one step behind their own S -- never leak out).
         // Sresult is written whenever status != Diverged (last-iterate convention); untouched on
-        // Diverged. internal (not private): exposed for direct testing with a large maxIterations.
+        // Diverged. internal (not private): exposed for direct testing with a large maxIter.
         internal static LQRInfo RiccatiIterate(in floatMxN A, in floatMxN B, in floatMxN Q, in floatMxN R,
-                                               in floatMxN S0, ref floatMxN Sresult, ref floatMxN K, int maxIterations)
+                                               in floatMxN S0, ref floatMxN Sresult, ref floatMxN K, int maxIter)
         {
             var Scur = new floatMxN(in S0, Allocator.Temp);
             var Snext = new floatMxN(A.M_Rows, A.M_Rows, Allocator.Temp);
@@ -315,7 +315,7 @@ namespace LinearAlgebra
 
             double tol = (double)Consts.floatSqrtEps;
             double blowup = BlowupThreshold(in Q, in R);
-            int budget = maxIterations > 0 ? maxIterations : WARM_MAX_ITER;
+            int budget = maxIter > 0 ? maxIter : WARM_MAX_ITER;
 
             int iters = 0;
             LQRStatus status = LQRStatus.MaxIterations;
@@ -374,16 +374,16 @@ namespace LinearAlgebra
         /// <param name="R">Control cost, m x m (assumed symmetric PSD; not numerically validated --
         /// only its diagonal's finiteness/non-negativity is checked).</param>
         /// <param name="K">Output feedback gain, m x n (overwritten).</param>
-        /// <param name="maxIterations">SDA doubling-step budget; &lt;=0 picks the library default (50).</param>
+        /// <param name="maxIter">SDA doubling-step budget; &lt;=0 picks the library default (50).</param>
         public static LQRInfo lqr(in floatMxN A, in floatMxN B, in floatMxN Q, in floatMxN R,
-                                  ref floatMxN K, int maxIterations = 0)
+                                  ref floatMxN K, int maxIter = 0)
         {
             ValidateLQRDims(in A, in B, in Q, in R, "Control.lqr", out int n, out int m);
             if (K.M_Rows != m || K.N_Cols != n)
                 throw new ArgumentException("Control.lqr: K must be m x n");
 
             var S = new floatMxN(n, n, Allocator.Temp);
-            var info = SolveCold(in A, in B, in Q, in R, ref K, ref S, maxIterations);
+            var info = SolveCold(in A, in B, in Q, in R, ref K, ref S, maxIter);
             S.Dispose();
             return info;
         }
@@ -402,10 +402,10 @@ namespace LinearAlgebra
         /// <param name="state">Must be constructed via <c>new floatLQRState(n, allocator)</c> before
         /// the first call (job-safe: this overload never allocates). Dimension mismatch against A/Q
         /// throws.</param>
-        /// <param name="maxIterations">Iteration budget for whichever path runs (SDA if cold, the plain
+        /// <param name="maxIter">Iteration budget for whichever path runs (SDA if cold, the plain
         /// recursion if warm); &lt;=0 picks that path's own library default (50 cold / 500 warm).</param>
         public static LQRInfo lqr(in floatMxN A, in floatMxN B, in floatMxN Q, in floatMxN R,
-                                  ref floatMxN K, ref floatLQRState state, int maxIterations = 0)
+                                  ref floatMxN K, ref floatLQRState state, int maxIter = 0)
         {
             ValidateLQRDims(in A, in B, in Q, in R, "Control.lqr", out int n, out int m);
             if (K.M_Rows != m || K.N_Cols != n)
@@ -420,7 +420,7 @@ namespace LinearAlgebra
             if (state.populated)
             {
                 var Snew = new floatMxN(n, n, Allocator.Temp);
-                info = RiccatiIterate(in A, in B, in Q, in R, in state.S, ref Snew, ref K, maxIterations);
+                info = RiccatiIterate(in A, in B, in Q, in R, in state.S, ref Snew, ref K, maxIter);
                 if (info.status == LQRStatus.Converged)
                     state.S.Data.CopyFrom(Snew.Data);
                 Snew.Dispose();
@@ -428,7 +428,7 @@ namespace LinearAlgebra
             else
             {
                 var Scold = new floatMxN(n, n, Allocator.Temp);
-                info = SolveCold(in A, in B, in Q, in R, ref K, ref Scold, maxIterations);
+                info = SolveCold(in A, in B, in Q, in R, ref K, ref Scold, maxIter);
                 if (info.status == LQRStatus.Converged)
                     state.S.Data.CopyFrom(Scold.Data);
                 Scold.Dispose();
@@ -513,15 +513,15 @@ namespace LinearAlgebra
         /// <param name="Rkf">Filter measurement noise covariance, m x m.</param>
         /// <param name="Klqr">Output LQR feedback gain, p x n.</param>
         /// <param name="Kkf">Output steady-state Kalman gain, n x m.</param>
-        /// <param name="maxIterations">SDA doubling-step budget for BOTH solves; &lt;=0 picks the
+        /// <param name="maxIter">SDA doubling-step budget for BOTH solves; &lt;=0 picks the
         /// library default.</param>
         public static LQGInfo lqg(in floatMxN A, in floatMxN B, in floatMxN H,
                                   in floatMxN Qlqr, in floatMxN Rlqr,
                                   in floatMxN Qkf, in floatMxN Rkf,
-                                  ref floatMxN Klqr, ref floatMxN Kkf, int maxIterations = 0)
+                                  ref floatMxN Klqr, ref floatMxN Kkf, int maxIter = 0)
         {
-            var lqrInfo = lqr(in A, in B, in Qlqr, in Rlqr, ref Klqr, maxIterations);
-            var kfInfo = Kalman.steadyStateGain(in A, in H, in Qkf, in Rkf, ref Kkf, maxIterations);
+            var lqrInfo = lqr(in A, in B, in Qlqr, in Rlqr, ref Klqr, maxIter);
+            var kfInfo = Kalman.steadyStateGain(in A, in H, in Qkf, in Rkf, ref Kkf, maxIter);
             return new LQGInfo { lqrInfo = lqrInfo, kfInfo = kfInfo };
         }
     }

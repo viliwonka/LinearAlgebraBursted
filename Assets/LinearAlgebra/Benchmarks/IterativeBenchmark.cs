@@ -6,7 +6,7 @@ using System.Text;
 namespace LinearAlgebra.Benchmarks
 {
     // Conjugate Gradient solver for dense SPD systems. The cost per iteration is one dense GEMV
-    // (A·p) plus vector ops — all O(n²). With maxIterations = 100 and tolerance = 0 every timed
+    // (A·p) plus vector ops — all O(n²). With maxIter = 100 and tol = 0 every timed
     // sample runs exactly 100 iterations for a deterministic, representative measurement.
     //
     // SPD construction: A = MᵀM + I (M random n×n in [-1,1]). This is guaranteed SPD (all

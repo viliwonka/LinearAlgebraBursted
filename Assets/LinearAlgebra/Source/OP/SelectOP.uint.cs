@@ -103,7 +103,10 @@ namespace LinearAlgebra.Internal
 {
     public static unsafe partial class UnsafeSelectOP
     {
-        public static void selectuint([NoAlias] uint* a, [NoAlias] uint* b, [NoAlias] bool* c, uint* target, int n)
+        // a/b carry no [NoAlias]: the public select contract allows target to alias either input
+        // (elementwise, each index reads before it writes). c is a different element type and
+        // cannot alias the uint pointers through the public API.
+        public static void selectuint(uint* a, uint* b, [NoAlias] bool* c, uint* target, int n)
         {
             for (int i = 0; i < n; i++)
                 target[i] = c[i] ? b[i] : a[i];

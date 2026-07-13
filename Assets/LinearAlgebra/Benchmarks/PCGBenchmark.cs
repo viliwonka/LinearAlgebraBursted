@@ -8,7 +8,7 @@ namespace LinearAlgebra.Benchmarks
     // SPD matrix (block size BR, a common 1D FEM/heat-equation stencil): diagonally-dominant diagonal
     // blocks + small symmetric off-diagonal coupling to the immediate neighbor block only, so it is
     // genuinely sparse (nnzb = 3*nb-2) without needing SparseSolverBenchmark's randomized block-pattern
-    // machinery. maxIterations is FIXED with tolerance=0 (mirrors SparseSolverBenchmark's convention),
+    // machinery. maxIter is FIXED with tol=0 (mirrors SparseSolverBenchmark's convention),
     // so every timed sample runs exactly K iterations — deterministic timing; the residual column shows
     // convergence, not just speed. Plain cg (unpreconditioned) on the SAME system is included alongside
     // for a direct preconditioning-overhead-vs-iteration-savings comparison.

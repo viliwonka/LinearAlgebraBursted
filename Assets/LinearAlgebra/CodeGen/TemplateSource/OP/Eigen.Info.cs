@@ -9,9 +9,9 @@ namespace LinearAlgebra
     /// <c>out fProxy lambda</c>. Implicitly converts to <c>bool</c> (== <see cref="Solved"/>) for use
     /// in <c>if (...)</c>:
     /// <code>
-    ///   if (Eigen.powerIteration(in A, ref v, ref w, out var lambda, tolerance, maxIterations)) { ... }
+    ///   if (Eigen.powerIteration(in A, ref v, ref w, out var lambda, tol, maxIter)) { ... }
     ///   bool ok = Eigen.inversePowerIteration(in A, ref v, out var lambda);
-    ///   var info = Eigen.powerIteration(in A, ref v, ref w, out var lambda, tolerance, maxIterations);
+    ///   var info = Eigen.powerIteration(in A, ref v, ref w, out var lambda, tol, maxIter);
     ///   if (info.Solved) Debug.Log(info.iterations);
     /// </code>
     ///
@@ -41,7 +41,7 @@ namespace LinearAlgebra
         /// <summary>Outer iterations actually performed (a Breakdown return counts only iterations
         /// that ran to completion before the breakdown, so it can be <c>0</c>). Do NOT infer success
         /// from this count alone -- powerIteration's post-loop check can return Converged with
-        /// <c>iterations == maxIterations</c> (the same value a MaxIterations return carries); always read
+        /// <c>iterations == maxIter</c> (the same value a MaxIterations return carries); always read
         /// <see cref="status"/>.</summary>
         public int iterations;
 

@@ -16,7 +16,7 @@ namespace LinearAlgebra
         public static SolveInfo pbiCGStab<TOp, TPre>(in TOp A, in TPre M, in fProxyN b, ref fProxyN x,
                                          ref fProxyN r, ref fProxyN rHat0, ref fProxyN p, ref fProxyN v, ref fProxyN t,
                                          ref fProxyN pHat, ref fProxyN sHat,
-                                         int maxIterations, fProxy tolerance)
+                                         int maxIter, fProxy tol)
             where TOp : struct, IfProxyLinearOperator
             where TPre : struct, IfProxyPreconditioner
         {
@@ -25,8 +25,8 @@ namespace LinearAlgebra
             if (b.N != A.Rows || x.N != A.Rows || r.N != A.Rows || rHat0.N != A.Rows ||
                 p.N != A.Rows || v.N != A.Rows || t.N != A.Rows || pHat.N != A.Rows || sHat.N != A.Rows)
                 throw new ArgumentException("pbiCGStab: all vectors must have length A.Rows");
-            if (maxIterations < 1)
-                throw new ArgumentException("pbiCGStab: maxIterations must be >= 1");
+            if (maxIter < 1)
+                throw new ArgumentException("pbiCGStab: maxIter must be >= 1");
 
             unsafe
             {
@@ -48,7 +48,7 @@ namespace LinearAlgebra
             r.Data.CopyFrom(b.Data);
             r.addScaledInPlace((fProxy)(-1), v);
 
-            fProxy threshold = tolerance * tolerance * bb;
+            fProxy threshold = tol * tol * bb;
             fProxy rr = Blas.dot(r, r);
             if (rr <= threshold)
                 return MakeSolveInfo(IterativeSolveStatus.Converged, 0, math.sqrt(rr));
@@ -58,7 +58,7 @@ namespace LinearAlgebra
 
             fProxy rho = (fProxy)1, alpha = (fProxy)1, omega = (fProxy)1;
 
-            for (int k = 0; k < maxIterations; k++)
+            for (int k = 0; k < maxIter; k++)
             {
                 fProxy rhoNew = Blas.dot(rHat0, r);
                 if (rhoNew == (fProxy)0 || math.isnan(rhoNew))
@@ -105,7 +105,7 @@ namespace LinearAlgebra
                 rho = rhoNew;
             }
 
-            return MakeSolveInfo(IterativeSolveStatus.MaxIterations, maxIterations, math.sqrt(rr));
+            return MakeSolveInfo(IterativeSolveStatus.MaxIterations, maxIter, math.sqrt(rr));
         }
 
         /// <summary>
@@ -113,7 +113,7 @@ namespace LinearAlgebra
         /// <see cref="pbiCGStab{TOp,TPre}"/> via <c>fProxyBSROperator</c>.
         /// </summary>
         public static SolveInfo pbiCGStab(in fProxyBSR A, in fProxyILU0 M, in fProxyN b, ref fProxyN x,
-                               int maxIterations, fProxy tolerance)
+                               int maxIter, fProxy tol)
         {
             fProxyN r     = b.fProxyTempVec(A.M_Rows);
             fProxyN rHat0 = b.fProxyTempVec(A.M_Rows);
@@ -124,14 +124,14 @@ namespace LinearAlgebra
             fProxyN sHat  = b.fProxyTempVec(A.M_Rows);
             return pbiCGStab(new fProxyBSROperator(in A), in M, in b, ref x,
                              ref r, ref rHat0, ref p, ref v, ref t, ref pHat, ref sHat,
-                             maxIterations, tolerance);
+                             maxIter, tol);
         }
 
-        /// <summary>ILU(0) BiCGSTAB over BSR with default maxIterations (2*A.M_Rows) and tolerance
+        /// <summary>ILU(0) BiCGSTAB over BSR with default maxIter (A.M_Rows) and tolerance
         /// (Consts.fProxySqrtEps).</summary>
         public static SolveInfo pbiCGStab(in fProxyBSR A, in fProxyILU0 M, in fProxyN b, ref fProxyN x)
         {
-            return pbiCGStab(in A, in M, in b, ref x, 2 * A.M_Rows, Consts.fProxySqrtEps);
+            return pbiCGStab(in A, in M, in b, ref x, A.M_Rows, Consts.fProxySqrtEps);
         }
     }
 }

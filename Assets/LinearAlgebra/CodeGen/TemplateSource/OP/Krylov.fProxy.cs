@@ -31,7 +31,7 @@ namespace LinearAlgebra
         /// </summary>
         public static SolveInfo cg<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
                                    ref fProxyN r, ref fProxyN p, ref fProxyN Ap,
-                                   int maxIterations, fProxy tolerance)
+                                   int maxIter, fProxy tol)
             where TOp : struct, IfProxyLinearOperator
         {
             if (A.Rows != A.Cols)
@@ -52,8 +52,8 @@ namespace LinearAlgebra
             if (Ap.N != A.Rows)
                 throw new ArgumentException("cg: Ap.N must equal A.Rows");
 
-            if (maxIterations < 1)
-                throw new ArgumentException("cg: maxIterations must be >= 1");
+            if (maxIter < 1)
+                throw new ArgumentException("cg: maxIter must be >= 1");
 
             // Aliasing guard: the loop below mixes plain elementwise scratch updates
             // (addScaledInPlace/scaleAddInPlace) with reads of "old" values, and those primitives do
@@ -91,12 +91,12 @@ namespace LinearAlgebra
             p.Data.CopyFrom(r.Data);
 
             fProxy rsold = Blas.dot(r, r);
-            fProxy threshold = tolerance * tolerance * bb;
+            fProxy threshold = tol * tol * bb;
 
             if (rsold <= threshold)
                 return MakeSolveInfo(IterativeSolveStatus.Converged, 0, math.sqrt(rsold));
 
-            for (int k = 0; k < maxIterations; k++)
+            for (int k = 0; k < maxIter; k++)
             {
                 // Ap = A p ; pAp = dot(p, Ap) via ApplyDot (see IfProxyLinearOperator.ApplyDot).
                 fProxy pAp = A.ApplyDot(in p, ref Ap);
@@ -131,7 +131,7 @@ namespace LinearAlgebra
                 rsold = rsnew;
             }
 
-            return MakeSolveInfo(IterativeSolveStatus.MaxIterations, maxIterations, math.sqrt(rsold));
+            return MakeSolveInfo(IterativeSolveStatus.MaxIterations, maxIter, math.sqrt(rsold));
         }
 
         /// <summary>
@@ -141,9 +141,9 @@ namespace LinearAlgebra
         /// </summary>
         public static SolveInfo cg(in fProxyMxN A, in fProxyN b, ref fProxyN x,
                                              ref fProxyN r, ref fProxyN p, ref fProxyN Ap,
-                                             int maxIterations, fProxy tolerance)
+                                             int maxIter, fProxy tol)
         {
-            return cg(new fProxyDenseOperator(in A), in b, ref x, ref r, ref p, ref Ap, maxIterations, tolerance);
+            return cg(new fProxyDenseOperator(in A), in b, ref x, ref r, ref p, ref Ap, maxIter, tol);
         }
 
         /// <summary>
@@ -151,16 +151,16 @@ namespace LinearAlgebra
         /// the zero-alloc primitive. x is overwritten with the solution on convergence.
         /// </summary>
         public static SolveInfo cg(in fProxyMxN A, in fProxyN b, ref fProxyN x,
-                                             int maxIterations, fProxy tolerance)
+                                             int maxIter, fProxy tol)
         {
             fProxyN r  = b.fProxyTempVec(A.M_Rows);
             fProxyN p  = b.fProxyTempVec(A.M_Rows);
             fProxyN Ap = b.fProxyTempVec(A.M_Rows);
-            return cg(in A, in b, ref x, ref r, ref p, ref Ap, maxIterations, tolerance);
+            return cg(in A, in b, ref x, ref r, ref p, ref Ap, maxIter, tol);
         }
 
         /// <summary>
-        /// Conjugate Gradient solver with default maxIterations (A.M_Rows) and tolerance
+        /// Conjugate Gradient solver with default maxIter (A.M_Rows) and tol
         /// (Consts.fProxySqrtEps). x is overwritten with the solution on convergence.
         /// </summary>
         public static SolveInfo cg(in fProxyMxN A, in fProxyN b, ref fProxyN x)
@@ -175,9 +175,9 @@ namespace LinearAlgebra
         /// </summary>
         public static SolveInfo cg(in fProxyBSR A, in fProxyN b, ref fProxyN x,
                                              ref fProxyN r, ref fProxyN p, ref fProxyN Ap,
-                                             int maxIterations, fProxy tolerance)
+                                             int maxIter, fProxy tol)
         {
-            return cg(new fProxyBSROperator(in A), in b, ref x, ref r, ref p, ref Ap, maxIterations, tolerance);
+            return cg(new fProxyBSROperator(in A), in b, ref x, ref r, ref p, ref Ap, maxIter, tol);
         }
 
         /// <summary>
@@ -185,17 +185,17 @@ namespace LinearAlgebra
         /// scratch vectors from the arena and calls the zero-alloc primitive.
         /// </summary>
         public static SolveInfo cg(in fProxyBSR A, in fProxyN b, ref fProxyN x,
-                                             int maxIterations, fProxy tolerance)
+                                             int maxIter, fProxy tol)
         {
             fProxyN r  = b.fProxyTempVec(A.M_Rows);
             fProxyN p  = b.fProxyTempVec(A.M_Rows);
             fProxyN Ap = b.fProxyTempVec(A.M_Rows);
-            return cg(in A, in b, ref x, ref r, ref p, ref Ap, maxIterations, tolerance);
+            return cg(in A, in b, ref x, ref r, ref p, ref Ap, maxIter, tol);
         }
 
         /// <summary>
         /// Conjugate Gradient solver over a block-sparse (BSR) SPD matrix, with default
-        /// maxIterations (A.M_Rows) and tolerance (Consts.fProxySqrtEps).
+        /// maxIter (A.M_Rows) and tol (Consts.fProxySqrtEps).
         /// </summary>
         public static SolveInfo cg(in fProxyBSR A, in fProxyN b, ref fProxyN x)
         {
@@ -210,7 +210,7 @@ namespace LinearAlgebra
         ///
         /// Caller provides x (initial guess, overwritten with solution — warm-startable) and four
         /// scratch vectors r, p, Ap, z (all length A.Rows). The convergence test compares the
-        /// TRUE (unpreconditioned) residual ||r||² against tolerance²·||b||² — the same criterion
+        /// TRUE (unpreconditioned) residual ||r||² against tol²·||b||² — the same criterion
         /// as <see cref="cg{TOp}"/> — so iteration counts between cg and pcg on the same system are
         /// directly comparable. Returns a <see cref="SolveInfo"/> — see that struct for the
         /// implicit-bool/status/undefined-x contract. Breakdown on non-positive curvature
@@ -218,7 +218,7 @@ namespace LinearAlgebra
         /// </summary>
         public static SolveInfo pcg<TOp, TPre>(in TOp A, in TPre M, in fProxyN b, ref fProxyN x,
                                           ref fProxyN r, ref fProxyN p, ref fProxyN Ap, ref fProxyN z,
-                                          int maxIterations, fProxy tolerance)
+                                          int maxIter, fProxy tol)
             where TOp : struct, IfProxyLinearOperator
             where TPre : struct, IfProxyPreconditioner
         {
@@ -243,8 +243,8 @@ namespace LinearAlgebra
             if (z.N != A.Rows)
                 throw new ArgumentException("pcg: z.N must equal A.Rows");
 
-            if (maxIterations < 1)
-                throw new ArgumentException("pcg: maxIterations must be >= 1");
+            if (maxIter < 1)
+                throw new ArgumentException("pcg: maxIter must be >= 1");
 
             // Aliasing guard -- see the matching comment in cg<TOp>. z joins the set here since
             // PCG additionally mixes p/r into the preconditioned residual via M.Apply / axpy.
@@ -273,7 +273,7 @@ namespace LinearAlgebra
             r.Data.CopyFrom(b.Data);
             r.addScaledInPlace((fProxy)(-1), Ap);
 
-            fProxy threshold = tolerance * tolerance * bb;
+            fProxy threshold = tol * tol * bb;
 
             // rr tracks ‖r‖² of the CURRENT residual across the whole solve -- it is exactly the
             // quantity the convergence test already needs, so reporting rnorm = √rr is free.
@@ -294,7 +294,7 @@ namespace LinearAlgebra
             if (!(rzold > (fProxy)0))
                 return MakeSolveInfo(IterativeSolveStatus.Breakdown, 0, math.sqrt(rr));
 
-            for (int k = 0; k < maxIterations; k++)
+            for (int k = 0; k < maxIter; k++)
             {
                 // Ap = A p ; pAp = dot(p, Ap) via ApplyDot (see IfProxyLinearOperator.ApplyDot).
                 fProxy pAp = A.ApplyDot(in p, ref Ap);
@@ -333,7 +333,7 @@ namespace LinearAlgebra
                 rzold = rznew;
             }
 
-            return MakeSolveInfo(IterativeSolveStatus.MaxIterations, maxIterations, math.sqrt(rr));
+            return MakeSolveInfo(IterativeSolveStatus.MaxIterations, maxIter, math.sqrt(rr));
         }
 
         /// <summary>
@@ -341,7 +341,7 @@ namespace LinearAlgebra
         /// arena and calls the zero-alloc primitive.
         /// </summary>
         public static SolveInfo pcg<TOp, TPre>(in TOp A, in TPre M, in fProxyN b, ref fProxyN x,
-                                          int maxIterations, fProxy tolerance)
+                                          int maxIter, fProxy tol)
             where TOp : struct, IfProxyLinearOperator
             where TPre : struct, IfProxyPreconditioner
         {
@@ -349,12 +349,12 @@ namespace LinearAlgebra
             fProxyN p  = b.fProxyTempVec(A.Rows);
             fProxyN Ap = b.fProxyTempVec(A.Rows);
             fProxyN z  = b.fProxyTempVec(A.Rows);
-            return pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIterations, tolerance);
+            return pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
         }
 
         /// <summary>
-        /// Preconditioned Conjugate Gradient solver with default maxIterations (A.Rows) and
-        /// tolerance (Consts.fProxySqrtEps).
+        /// Preconditioned Conjugate Gradient solver with default maxIter (A.Rows) and
+        /// tol (Consts.fProxySqrtEps).
         /// </summary>
         public static SolveInfo pcg<TOp, TPre>(in TOp A, in TPre M, in fProxyN b, ref fProxyN x)
             where TOp : struct, IfProxyLinearOperator
@@ -370,9 +370,9 @@ namespace LinearAlgebra
         /// </summary>
         public static SolveInfo pcg(in fProxyBSR A, in fProxyBlockJacobi M, in fProxyN b, ref fProxyN x,
                                ref fProxyN r, ref fProxyN p, ref fProxyN Ap, ref fProxyN z,
-                               int maxIterations, fProxy tolerance)
+                               int maxIter, fProxy tol)
         {
-            return pcg(new fProxyBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIterations, tolerance);
+            return pcg(new fProxyBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
         }
 
         /// <summary>
@@ -380,18 +380,18 @@ namespace LinearAlgebra
         /// scratch vectors from the arena and calls the zero-alloc primitive.
         /// </summary>
         public static SolveInfo pcg(in fProxyBSR A, in fProxyBlockJacobi M, in fProxyN b, ref fProxyN x,
-                               int maxIterations, fProxy tolerance)
+                               int maxIter, fProxy tol)
         {
             fProxyN r  = b.fProxyTempVec(A.M_Rows);
             fProxyN p  = b.fProxyTempVec(A.M_Rows);
             fProxyN Ap = b.fProxyTempVec(A.M_Rows);
             fProxyN z  = b.fProxyTempVec(A.M_Rows);
-            return pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIterations, tolerance);
+            return pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
         }
 
         /// <summary>
         /// Block-Jacobi Preconditioned Conjugate Gradient over a BSR SPD matrix, with default
-        /// maxIterations (A.M_Rows) and tolerance (Consts.fProxySqrtEps).
+        /// maxIter (A.M_Rows) and tol (Consts.fProxySqrtEps).
         /// </summary>
         public static SolveInfo pcg(in fProxyBSR A, in fProxyBlockJacobi M, in fProxyN b, ref fProxyN x)
         {
@@ -406,9 +406,9 @@ namespace LinearAlgebra
         /// </summary>
         public static SolveInfo pcg(in fProxyBSR A, in fProxySSOR M, in fProxyN b, ref fProxyN x,
                                ref fProxyN r, ref fProxyN p, ref fProxyN Ap, ref fProxyN z,
-                               int maxIterations, fProxy tolerance)
+                               int maxIter, fProxy tol)
         {
-            return pcg(new fProxyBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIterations, tolerance);
+            return pcg(new fProxyBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
         }
 
         /// <summary>
@@ -416,18 +416,18 @@ namespace LinearAlgebra
         /// vectors from the arena and calls the zero-alloc primitive.
         /// </summary>
         public static SolveInfo pcg(in fProxyBSR A, in fProxySSOR M, in fProxyN b, ref fProxyN x,
-                               int maxIterations, fProxy tolerance)
+                               int maxIter, fProxy tol)
         {
             fProxyN r  = b.fProxyTempVec(A.M_Rows);
             fProxyN p  = b.fProxyTempVec(A.M_Rows);
             fProxyN Ap = b.fProxyTempVec(A.M_Rows);
             fProxyN z  = b.fProxyTempVec(A.M_Rows);
-            return pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIterations, tolerance);
+            return pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
         }
 
         /// <summary>
         /// SSOR Preconditioned Conjugate Gradient over a BSR SPD matrix, with default
-        /// maxIterations (A.M_Rows) and tolerance (Consts.fProxySqrtEps).
+        /// maxIter (A.M_Rows) and tol (Consts.fProxySqrtEps).
         /// </summary>
         public static SolveInfo pcg(in fProxyBSR A, in fProxySSOR M, in fProxyN b, ref fProxyN x)
         {
@@ -442,9 +442,9 @@ namespace LinearAlgebra
         /// </summary>
         public static SolveInfo pcg(in fProxyBSR A, in fProxyIC0 M, in fProxyN b, ref fProxyN x,
                                ref fProxyN r, ref fProxyN p, ref fProxyN Ap, ref fProxyN z,
-                               int maxIterations, fProxy tolerance)
+                               int maxIter, fProxy tol)
         {
-            return pcg(new fProxyBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIterations, tolerance);
+            return pcg(new fProxyBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
         }
 
         /// <summary>
@@ -452,18 +452,18 @@ namespace LinearAlgebra
         /// vectors from the arena and calls the zero-alloc primitive.
         /// </summary>
         public static SolveInfo pcg(in fProxyBSR A, in fProxyIC0 M, in fProxyN b, ref fProxyN x,
-                               int maxIterations, fProxy tolerance)
+                               int maxIter, fProxy tol)
         {
             fProxyN r  = b.fProxyTempVec(A.M_Rows);
             fProxyN p  = b.fProxyTempVec(A.M_Rows);
             fProxyN Ap = b.fProxyTempVec(A.M_Rows);
             fProxyN z  = b.fProxyTempVec(A.M_Rows);
-            return pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIterations, tolerance);
+            return pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
         }
 
         /// <summary>
         /// IC(0) Preconditioned Conjugate Gradient over a BSR SPD matrix, with default
-        /// maxIterations (A.M_Rows) and tolerance (Consts.fProxySqrtEps).
+        /// maxIter (A.M_Rows) and tol (Consts.fProxySqrtEps).
         /// </summary>
         public static SolveInfo pcg(in fProxyBSR A, in fProxyIC0 M, in fProxyN b, ref fProxyN x)
         {
@@ -495,7 +495,7 @@ namespace LinearAlgebra
         public static SolveInfo minres<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
                                        ref fProxyN y, ref fProxyN r1, ref fProxyN r2, ref fProxyN v,
                                        ref fProxyN w, ref fProxyN w1, ref fProxyN w2,
-                                       int maxIterations, fProxy tolerance)
+                                       int maxIter, fProxy tol)
             where TOp : struct, IfProxyLinearOperator
         {
             if (A.Rows != A.Cols)
@@ -511,8 +511,8 @@ namespace LinearAlgebra
             if (w1.N != A.Rows) throw new ArgumentException("minres: w1.N must equal A.Rows");
             if (w2.N != A.Rows) throw new ArgumentException("minres: w2.N must equal A.Rows");
 
-            if (maxIterations < 1)
-                throw new ArgumentException("minres: maxIterations must be >= 1");
+            if (maxIter < 1)
+                throw new ArgumentException("minres: maxIter must be >= 1");
 
             unsafe
             {
@@ -537,7 +537,7 @@ namespace LinearAlgebra
             r1.addScaledInPlace((fProxy)(-1), y);           // r1 = b - A x
 
             fProxy beta1 = math.sqrt(Blas.dot(r1, r1));
-            fProxy threshold = tolerance * tolerance * bb;
+            fProxy threshold = tol * tol * bb;
 
             if (beta1 * beta1 <= threshold)
                 return MakeSolveInfo(IterativeSolveStatus.Converged, 0, beta1);
@@ -556,7 +556,7 @@ namespace LinearAlgebra
             fProxy sn = (fProxy)0;
             fProxy gammaFloor = Consts.fProxyEpsilon;
 
-            for (int k = 0; k < maxIterations; k++)
+            for (int k = 0; k < maxIter; k++)
             {
                 // ---- Lanczos step: extend the tridiagonalization by one vector ----
                 // v = r2 / beta, one pass (Blas.scaledCopy with a = 1/beta, i.e. reciprocal-multiply
@@ -615,7 +615,7 @@ namespace LinearAlgebra
                     return MakeSolveInfo(IterativeSolveStatus.Breakdown, k + 1, phibar);
             }
 
-            return MakeSolveInfo(IterativeSolveStatus.MaxIterations, maxIterations, phibar);
+            return MakeSolveInfo(IterativeSolveStatus.MaxIterations, maxIter, phibar);
         }
 
         /// <summary>
@@ -626,13 +626,13 @@ namespace LinearAlgebra
         public static SolveInfo minres(in fProxyMxN A, in fProxyN b, ref fProxyN x,
                                   ref fProxyN y, ref fProxyN r1, ref fProxyN r2, ref fProxyN v,
                                   ref fProxyN w, ref fProxyN w1, ref fProxyN w2,
-                                  int maxIterations, fProxy tolerance)
+                                  int maxIter, fProxy tol)
         {
-            return minres(new fProxyDenseOperator(in A), in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, maxIterations, tolerance);
+            return minres(new fProxyDenseOperator(in A), in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, maxIter, tol);
         }
 
         /// <summary>MINRES over a dense matrix -- allocates seven scratch vectors from the arena.</summary>
-        public static SolveInfo minres(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
+        public static SolveInfo minres(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol)
         {
             fProxyN y  = b.fProxyTempVec(A.M_Rows);
             fProxyN r1 = b.fProxyTempVec(A.M_Rows);
@@ -641,10 +641,10 @@ namespace LinearAlgebra
             fProxyN w  = b.fProxyTempVec(A.M_Rows);
             fProxyN w1 = b.fProxyTempVec(A.M_Rows);
             fProxyN w2 = b.fProxyTempVec(A.M_Rows);
-            return minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, maxIterations, tolerance);
+            return minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, maxIter, tol);
         }
 
-        /// <summary>MINRES over a dense matrix with default maxIterations (A.M_Rows) and tolerance (Consts.fProxySqrtEps).</summary>
+        /// <summary>MINRES over a dense matrix with default maxIter (A.M_Rows) and tol (Consts.fProxySqrtEps).</summary>
         public static SolveInfo minres(in fProxyMxN A, in fProxyN b, ref fProxyN x)
         {
             return minres(in A, in b, ref x, A.M_Rows, Consts.fProxySqrtEps);
@@ -657,13 +657,13 @@ namespace LinearAlgebra
         public static SolveInfo minres(in fProxyBSR A, in fProxyN b, ref fProxyN x,
                                   ref fProxyN y, ref fProxyN r1, ref fProxyN r2, ref fProxyN v,
                                   ref fProxyN w, ref fProxyN w1, ref fProxyN w2,
-                                  int maxIterations, fProxy tolerance)
+                                  int maxIter, fProxy tol)
         {
-            return minres(new fProxyBSROperator(in A), in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, maxIterations, tolerance);
+            return minres(new fProxyBSROperator(in A), in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, maxIter, tol);
         }
 
         /// <summary>MINRES over a BSR matrix -- allocates seven scratch vectors from the arena.</summary>
-        public static SolveInfo minres(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
+        public static SolveInfo minres(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol)
         {
             fProxyN y  = b.fProxyTempVec(A.M_Rows);
             fProxyN r1 = b.fProxyTempVec(A.M_Rows);
@@ -672,10 +672,10 @@ namespace LinearAlgebra
             fProxyN w  = b.fProxyTempVec(A.M_Rows);
             fProxyN w1 = b.fProxyTempVec(A.M_Rows);
             fProxyN w2 = b.fProxyTempVec(A.M_Rows);
-            return minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, maxIterations, tolerance);
+            return minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, maxIter, tol);
         }
 
-        /// <summary>MINRES over a BSR matrix with default maxIterations (A.M_Rows) and tolerance (Consts.fProxySqrtEps).</summary>
+        /// <summary>MINRES over a BSR matrix with default maxIter (A.M_Rows) and tol (Consts.fProxySqrtEps).</summary>
         public static SolveInfo minres(in fProxyBSR A, in fProxyN b, ref fProxyN x)
         {
             return minres(in A, in b, ref x, A.M_Rows, Consts.fProxySqrtEps);
@@ -699,7 +699,7 @@ namespace LinearAlgebra
         /// </summary>
         public static SolveInfo biCGStab<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
                                          ref fProxyN r, ref fProxyN rHat0, ref fProxyN p, ref fProxyN v, ref fProxyN t,
-                                         int maxIterations, fProxy tolerance)
+                                         int maxIter, fProxy tol)
             where TOp : struct, IfProxyLinearOperator
         {
             if (A.Rows != A.Cols)
@@ -713,8 +713,8 @@ namespace LinearAlgebra
             if (v.N != A.Rows) throw new ArgumentException("biCGStab: v.N must equal A.Rows");
             if (t.N != A.Rows) throw new ArgumentException("biCGStab: t.N must equal A.Rows");
 
-            if (maxIterations < 1)
-                throw new ArgumentException("biCGStab: maxIterations must be >= 1");
+            if (maxIter < 1)
+                throw new ArgumentException("biCGStab: maxIter must be >= 1");
 
             unsafe
             {
@@ -738,7 +738,7 @@ namespace LinearAlgebra
             r.Data.CopyFrom(b.Data);
             r.addScaledInPlace((fProxy)(-1), v);
 
-            fProxy threshold = tolerance * tolerance * bb;
+            fProxy threshold = tol * tol * bb;
 
             // rr tracks ‖current residual‖²; ss the ‖half-step residual s‖². Both are already
             // computed for the convergence tests, so every exit reports rnorm from a held value.
@@ -753,7 +753,7 @@ namespace LinearAlgebra
 
             fProxy rho = (fProxy)1, alpha = (fProxy)1, omega = (fProxy)1;
 
-            for (int k = 0; k < maxIterations; k++)
+            for (int k = 0; k < maxIter; k++)
             {
                 fProxy rhoNew = Blas.dot(rHat0, r);
 
@@ -813,7 +813,7 @@ namespace LinearAlgebra
                 rho = rhoNew;
             }
 
-            return MakeSolveInfo(IterativeSolveStatus.MaxIterations, maxIterations, math.sqrt(rr));
+            return MakeSolveInfo(IterativeSolveStatus.MaxIterations, maxIter, math.sqrt(rr));
         }
 
         /// <summary>
@@ -822,23 +822,23 @@ namespace LinearAlgebra
         /// </summary>
         public static SolveInfo biCGStab(in fProxyMxN A, in fProxyN b, ref fProxyN x,
                                     ref fProxyN r, ref fProxyN rHat0, ref fProxyN p, ref fProxyN v, ref fProxyN t,
-                                    int maxIterations, fProxy tolerance)
+                                    int maxIter, fProxy tol)
         {
-            return biCGStab(new fProxyDenseOperator(in A), in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, maxIterations, tolerance);
+            return biCGStab(new fProxyDenseOperator(in A), in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, maxIter, tol);
         }
 
         /// <summary>BiCGSTAB over a dense matrix -- allocates five scratch vectors from the arena.</summary>
-        public static SolveInfo biCGStab(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
+        public static SolveInfo biCGStab(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol)
         {
             fProxyN r     = b.fProxyTempVec(A.M_Rows);
             fProxyN rHat0 = b.fProxyTempVec(A.M_Rows);
             fProxyN p     = b.fProxyTempVec(A.M_Rows);
             fProxyN v     = b.fProxyTempVec(A.M_Rows);
             fProxyN t     = b.fProxyTempVec(A.M_Rows);
-            return biCGStab(in A, in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, maxIterations, tolerance);
+            return biCGStab(in A, in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, maxIter, tol);
         }
 
-        /// <summary>BiCGSTAB over a dense matrix with default maxIterations (A.M_Rows) and tolerance (Consts.fProxySqrtEps).</summary>
+        /// <summary>BiCGSTAB over a dense matrix with default maxIter (A.M_Rows) and tol (Consts.fProxySqrtEps).</summary>
         public static SolveInfo biCGStab(in fProxyMxN A, in fProxyN b, ref fProxyN x)
         {
             return biCGStab(in A, in b, ref x, A.M_Rows, Consts.fProxySqrtEps);
@@ -850,23 +850,23 @@ namespace LinearAlgebra
         /// </summary>
         public static SolveInfo biCGStab(in fProxyBSR A, in fProxyN b, ref fProxyN x,
                                     ref fProxyN r, ref fProxyN rHat0, ref fProxyN p, ref fProxyN v, ref fProxyN t,
-                                    int maxIterations, fProxy tolerance)
+                                    int maxIter, fProxy tol)
         {
-            return biCGStab(new fProxyBSROperator(in A), in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, maxIterations, tolerance);
+            return biCGStab(new fProxyBSROperator(in A), in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, maxIter, tol);
         }
 
         /// <summary>BiCGSTAB over a BSR matrix -- allocates five scratch vectors from the arena.</summary>
-        public static SolveInfo biCGStab(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
+        public static SolveInfo biCGStab(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol)
         {
             fProxyN r     = b.fProxyTempVec(A.M_Rows);
             fProxyN rHat0 = b.fProxyTempVec(A.M_Rows);
             fProxyN p     = b.fProxyTempVec(A.M_Rows);
             fProxyN v     = b.fProxyTempVec(A.M_Rows);
             fProxyN t     = b.fProxyTempVec(A.M_Rows);
-            return biCGStab(in A, in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, maxIterations, tolerance);
+            return biCGStab(in A, in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, maxIter, tol);
         }
 
-        /// <summary>BiCGSTAB over a BSR matrix with default maxIterations (A.M_Rows) and tolerance (Consts.fProxySqrtEps).</summary>
+        /// <summary>BiCGSTAB over a BSR matrix with default maxIter (A.M_Rows) and tol (Consts.fProxySqrtEps).</summary>
         public static SolveInfo biCGStab(in fProxyBSR A, in fProxyN b, ref fProxyN x)
         {
             return biCGStab(in A, in b, ref x, A.M_Rows, Consts.fProxySqrtEps);
@@ -927,7 +927,7 @@ namespace LinearAlgebra
         ///
         /// Caller provides x (initial guess, length A.Cols -- overwritten with solution, WARM-
         /// STARTABLE) and four scratch vectors: r, q (length A.Rows) and s, p (length A.Cols).
-        /// Converges when ‖Aᵀr‖ &lt;= tolerance*‖Aᵀb‖. For a CONSISTENT system (b in range(A)) this
+        /// Converges when ‖Aᵀr‖ &lt;= tol*‖Aᵀb‖. For a CONSISTENT system (b in range(A)) this
         /// drives r itself to zero; for an INCONSISTENT system it converges to the least-squares
         /// solution with ‖Aᵀr‖≈0 and ‖r‖ generally nonzero.
         ///
@@ -943,7 +943,7 @@ namespace LinearAlgebra
         /// </summary>
         public static LstsqInfo cgls<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
                                      ref fProxyN r, ref fProxyN s, ref fProxyN p, ref fProxyN q,
-                                     int maxIterations, fProxy tolerance, fProxy damp)
+                                     int maxIter, fProxy tol, fProxy damp)
             where TOp : struct, IfProxyLinearOperator
         {
             if (b.N != A.Rows) throw new ArgumentException("cgls: b.N must equal A.Rows");
@@ -953,8 +953,8 @@ namespace LinearAlgebra
             if (s.N != A.Cols) throw new ArgumentException("cgls: s.N must equal A.Cols");
             if (p.N != A.Cols) throw new ArgumentException("cgls: p.N must equal A.Cols");
 
-            if (maxIterations < 1)
-                throw new ArgumentException("cgls: maxIterations must be >= 1");
+            if (maxIter < 1)
+                throw new ArgumentException("cgls: maxIter must be >= 1");
 
             unsafe
             {
@@ -979,7 +979,7 @@ namespace LinearAlgebra
                 return new LstsqInfo { rnorm = math.sqrt(Blas.dot(b, b)), Arnorm = (fProxy)0, xnorm = (fProxy)0, iterations = 0, status = IterativeSolveStatus.Converged };
             }
 
-            fProxy threshold = tolerance * tolerance * atbSq;
+            fProxy threshold = tol * tol * atbSq;
 
             // r = b - A x
             A.Apply(in x, ref q);                          // q = A x (temp use of q)
@@ -1000,7 +1000,7 @@ namespace LinearAlgebra
 
             p.Data.CopyFrom(s.Data);
 
-            for (int k = 0; k < maxIterations; k++)
+            for (int k = 0; k < maxIter; k++)
             {
                 A.Apply(in p, ref q);                       // q = A p
 
@@ -1049,7 +1049,7 @@ namespace LinearAlgebra
                 gamma = gammaNew;
             }
 
-            return CglsInfo(IterativeSolveStatus.MaxIterations, maxIterations, gamma, in r, in x);
+            return CglsInfo(IterativeSolveStatus.MaxIterations, maxIter, gamma, in r, in x);
         }
 
         /// <summary>Assemble a CGLS <see cref="LstsqInfo"/> from live state: rnorm = ‖r‖
@@ -1068,9 +1068,9 @@ namespace LinearAlgebra
         /// <summary>Undamped CGLS (damp = 0): plain least-squares. Forwards to the damped core.</summary>
         public static LstsqInfo cgls<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
                                      ref fProxyN r, ref fProxyN s, ref fProxyN p, ref fProxyN q,
-                                     int maxIterations, fProxy tolerance)
+                                     int maxIter, fProxy tol)
             where TOp : struct, IfProxyLinearOperator
-            => cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance, (fProxy)0);
+            => cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, maxIter, tol, (fProxy)0);
 
         /// <summary>
         /// CGLS over a dense <see cref="fProxyMxN"/> (possibly rectangular) -- zero-alloc
@@ -1078,35 +1078,35 @@ namespace LinearAlgebra
         /// </summary>
         public static LstsqInfo cgls(in fProxyMxN A, in fProxyN b, ref fProxyN x,
                                 ref fProxyN r, ref fProxyN s, ref fProxyN p, ref fProxyN q,
-                                int maxIterations, fProxy tolerance)
+                                int maxIter, fProxy tol)
         {
-            return cgls(new fProxyDenseOperator(in A), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
+            return cgls(new fProxyDenseOperator(in A), in b, ref x, ref r, ref s, ref p, ref q, maxIter, tol);
         }
 
         /// <summary>CGLS over a dense matrix -- allocates four scratch vectors from the arena.</summary>
-        public static LstsqInfo cgls(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
+        public static LstsqInfo cgls(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol)
         {
             fProxyN r = b.fProxyTempVec(A.M_Rows);
             fProxyN s = b.fProxyTempVec(A.N_Cols);
             fProxyN p = b.fProxyTempVec(A.N_Cols);
             fProxyN q = b.fProxyTempVec(A.M_Rows);
-            return cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
+            return cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, maxIter, tol);
         }
 
         /// <summary>
         /// Damped (Tikhonov) CGLS over a dense matrix -- minimizes ‖Ax-b‖² + damp²‖x‖². Allocates
         /// four scratch vectors from the arena. damp == 0 reproduces the plain least-squares solve.
         /// </summary>
-        public static LstsqInfo cgls(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance, fProxy damp)
+        public static LstsqInfo cgls(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol, fProxy damp)
         {
             fProxyN r = b.fProxyTempVec(A.M_Rows);
             fProxyN s = b.fProxyTempVec(A.N_Cols);
             fProxyN p = b.fProxyTempVec(A.N_Cols);
             fProxyN q = b.fProxyTempVec(A.M_Rows);
-            return cgls(new fProxyDenseOperator(in A), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance, damp);
+            return cgls(new fProxyDenseOperator(in A), in b, ref x, ref r, ref s, ref p, ref q, maxIter, tol, damp);
         }
 
-        /// <summary>CGLS over a dense matrix with default maxIterations (A.N_Cols) and tolerance (Consts.fProxySqrtEps).</summary>
+        /// <summary>CGLS over a dense matrix with default maxIter (A.N_Cols) and tol (Consts.fProxySqrtEps).</summary>
         public static LstsqInfo cgls(in fProxyMxN A, in fProxyN b, ref fProxyN x)
         {
             return cgls(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
@@ -1120,9 +1120,9 @@ namespace LinearAlgebra
         /// </summary>
         public static LstsqInfo cgls(in fProxyBSR A, in fProxyN b, ref fProxyN x,
                                 ref fProxyN r, ref fProxyN s, ref fProxyN p, ref fProxyN q,
-                                int maxIterations, fProxy tolerance)
+                                int maxIter, fProxy tol)
         {
-            return cgls(new fProxyBSROperator(in A), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
+            return cgls(new fProxyBSROperator(in A), in b, ref x, ref r, ref s, ref p, ref q, maxIter, tol);
         }
 
         /// <summary>
@@ -1138,9 +1138,9 @@ namespace LinearAlgebra
         /// </summary>
         public static LstsqInfo cgls(in fProxyBSR A, in fProxyBSR AT, in fProxyN b, ref fProxyN x,
                                 ref fProxyN r, ref fProxyN s, ref fProxyN p, ref fProxyN q,
-                                int maxIterations, fProxy tolerance)
+                                int maxIter, fProxy tol)
         {
-            return cgls(new fProxyBSROperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
+            return cgls(new fProxyBSROperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIter, tol);
         }
 
         /// <summary>
@@ -1153,14 +1153,14 @@ namespace LinearAlgebra
         /// <see cref="cgls(in fProxyBSR, in fProxyBSR, in fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, int, fProxy)"/>
         /// overload above with your own scratch vectors.
         /// </summary>
-        public static LstsqInfo cgls(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
+        public static LstsqInfo cgls(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol)
         {
             fProxyN r = b.fProxyTempVec(A.M_Rows);
             fProxyN s = b.fProxyTempVec(A.N_Cols);
             fProxyN p = b.fProxyTempVec(A.N_Cols);
             fProxyN q = b.fProxyTempVec(A.M_Rows);
             fProxyBSR AT = b.fProxyBSRTranspose(in A);
-            return cgls(new fProxyBSROperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
+            return cgls(new fProxyBSROperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIter, tol);
         }
 
         /// <summary>
@@ -1168,17 +1168,17 @@ namespace LinearAlgebra
         /// scratch vectors AND materializes A^T once (see the undamped allocating overload). damp == 0
         /// reproduces the plain least-squares solve.
         /// </summary>
-        public static LstsqInfo cgls(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance, fProxy damp)
+        public static LstsqInfo cgls(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol, fProxy damp)
         {
             fProxyN r = b.fProxyTempVec(A.M_Rows);
             fProxyN s = b.fProxyTempVec(A.N_Cols);
             fProxyN p = b.fProxyTempVec(A.N_Cols);
             fProxyN q = b.fProxyTempVec(A.M_Rows);
             fProxyBSR AT = b.fProxyBSRTranspose(in A);
-            return cgls(new fProxyBSROperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance, damp);
+            return cgls(new fProxyBSROperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIter, tol, damp);
         }
 
-        /// <summary>CGLS over a BSR matrix with default maxIterations (A.N_Cols) and tolerance (Consts.fProxySqrtEps).</summary>
+        /// <summary>CGLS over a BSR matrix with default maxIter (A.N_Cols) and tol (Consts.fProxySqrtEps).</summary>
         public static LstsqInfo cgls(in fProxyBSR A, in fProxyN b, ref fProxyN x)
         {
             return cgls(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
@@ -1195,7 +1195,7 @@ namespace LinearAlgebra
         ///
         /// Caller provides x (initial guess, length A.Cols -- overwritten with solution, WARM-
         /// STARTABLE) and five scratch vectors: u, tmpM (length A.Rows) and v, w, tmpN (length
-        /// A.Cols). Converges when ‖Aᵀr‖ &lt;= tolerance*‖Aᵀb‖ (same contract as cgls).
+        /// A.Cols). Converges when ‖Aᵀr‖ &lt;= tol*‖Aᵀb‖ (same contract as cgls).
         ///
         /// <paramref name="damp"/> (&gt;= 0) applies Tikhonov regularization: minimizes
         /// ‖Ax-b‖² + damp²‖x‖² (damp == 0 is BIT-IDENTICAL to the plain solve).
@@ -1211,7 +1211,7 @@ namespace LinearAlgebra
         public static LstsqInfo lsqr<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
                                      ref fProxyN u, ref fProxyN v, ref fProxyN w,
                                      ref fProxyN tmpM, ref fProxyN tmpN,
-                                     int maxIterations, fProxy tolerance, fProxy damp)
+                                     int maxIter, fProxy tol, fProxy damp)
             where TOp : struct, IfProxyLinearOperator
         {
             if (b.N != A.Rows) throw new ArgumentException("lsqr: b.N must equal A.Rows");
@@ -1222,8 +1222,8 @@ namespace LinearAlgebra
             if (w.N != A.Cols) throw new ArgumentException("lsqr: w.N must equal A.Cols");
             if (tmpN.N != A.Cols) throw new ArgumentException("lsqr: tmpN.N must equal A.Cols");
 
-            if (maxIterations < 1)
-                throw new ArgumentException("lsqr: maxIterations must be >= 1");
+            if (maxIter < 1)
+                throw new ArgumentException("lsqr: maxIter must be >= 1");
 
             unsafe
             {
@@ -1245,7 +1245,7 @@ namespace LinearAlgebra
                 return LstsqInfoTracked(IterativeSolveStatus.Converged, 0, math.sqrt(Blas.dot(b, b)), (fProxy)0, (fProxy)0, in x);
             }
 
-            fProxy threshold = tolerance * tolerance * atbSq;
+            fProxy threshold = tol * tol * atbSq;
 
             // u = b - A x ; beta = ||u||
             A.Apply(in x, ref tmpM);
@@ -1290,7 +1290,7 @@ namespace LinearAlgebra
 
             w.Data.CopyFrom(v.Data);
 
-            for (int k = 0; k < maxIterations; k++)
+            for (int k = 0; k < maxIter; k++)
             {
                 // ---- bidiagonalization step (Golub-Kahan) ----
                 // u = A v - alpha u ; beta = ||u||, fused (Blas.xpayNormSq) into one pass over u.
@@ -1344,7 +1344,7 @@ namespace LinearAlgebra
                     return LstsqInfoTracked(IterativeSolveStatus.Breakdown, k + 1, math.sqrt(sumPsiSq + phibar * phibar), arnorm, damp, in x);
             }
 
-            return LstsqInfoTracked(IterativeSolveStatus.MaxIterations, maxIterations, math.sqrt(sumPsiSq + phibar * phibar), arnorm, damp, in x);
+            return LstsqInfoTracked(IterativeSolveStatus.MaxIterations, maxIter, math.sqrt(sumPsiSq + phibar * phibar), arnorm, damp, in x);
         }
 
         /// <summary>Assemble an <see cref="LstsqInfo"/> from a solver's tracked residual and
@@ -1374,9 +1374,9 @@ namespace LinearAlgebra
         public static LstsqInfo lsqr<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
                                      ref fProxyN u, ref fProxyN v, ref fProxyN w,
                                      ref fProxyN tmpM, ref fProxyN tmpN,
-                                     int maxIterations, fProxy tolerance)
+                                     int maxIter, fProxy tol)
             where TOp : struct, IfProxyLinearOperator
-            => lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance, (fProxy)0);
+            => lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIter, tol, (fProxy)0);
 
         /// <summary>
         /// LSQR over a dense <see cref="fProxyMxN"/> (possibly rectangular) -- zero-alloc
@@ -1385,37 +1385,37 @@ namespace LinearAlgebra
         public static LstsqInfo lsqr(in fProxyMxN A, in fProxyN b, ref fProxyN x,
                                 ref fProxyN u, ref fProxyN v, ref fProxyN w,
                                 ref fProxyN tmpM, ref fProxyN tmpN,
-                                int maxIterations, fProxy tolerance)
+                                int maxIter, fProxy tol)
         {
-            return lsqr(new fProxyDenseOperator(in A), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
+            return lsqr(new fProxyDenseOperator(in A), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIter, tol);
         }
 
         /// <summary>LSQR over a dense matrix -- allocates five scratch vectors from the arena.</summary>
-        public static LstsqInfo lsqr(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
+        public static LstsqInfo lsqr(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol)
         {
             fProxyN u    = b.fProxyTempVec(A.M_Rows);
             fProxyN v    = b.fProxyTempVec(A.N_Cols);
             fProxyN w    = b.fProxyTempVec(A.N_Cols);
             fProxyN tmpM = b.fProxyTempVec(A.M_Rows);
             fProxyN tmpN = b.fProxyTempVec(A.N_Cols);
-            return lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
+            return lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIter, tol);
         }
 
         /// <summary>
         /// Damped (Tikhonov) LSQR over a dense matrix -- minimizes ‖Ax-b‖² + damp²‖x‖². Allocates
         /// five scratch vectors from the arena. damp == 0 reproduces the plain least-squares solve.
         /// </summary>
-        public static LstsqInfo lsqr(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance, fProxy damp)
+        public static LstsqInfo lsqr(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol, fProxy damp)
         {
             fProxyN u    = b.fProxyTempVec(A.M_Rows);
             fProxyN v    = b.fProxyTempVec(A.N_Cols);
             fProxyN w    = b.fProxyTempVec(A.N_Cols);
             fProxyN tmpM = b.fProxyTempVec(A.M_Rows);
             fProxyN tmpN = b.fProxyTempVec(A.N_Cols);
-            return lsqr(new fProxyDenseOperator(in A), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance, damp);
+            return lsqr(new fProxyDenseOperator(in A), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIter, tol, damp);
         }
 
-        /// <summary>LSQR over a dense matrix with default maxIterations (A.N_Cols) and tolerance (Consts.fProxySqrtEps).</summary>
+        /// <summary>LSQR over a dense matrix with default maxIter (A.N_Cols) and tol (Consts.fProxySqrtEps).</summary>
         public static LstsqInfo lsqr(in fProxyMxN A, in fProxyN b, ref fProxyN x)
         {
             return lsqr(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
@@ -1431,9 +1431,9 @@ namespace LinearAlgebra
         public static LstsqInfo lsqr(in fProxyBSR A, in fProxyN b, ref fProxyN x,
                                 ref fProxyN u, ref fProxyN v, ref fProxyN w,
                                 ref fProxyN tmpM, ref fProxyN tmpN,
-                                int maxIterations, fProxy tolerance)
+                                int maxIter, fProxy tol)
         {
-            return lsqr(new fProxyBSROperator(in A), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
+            return lsqr(new fProxyBSROperator(in A), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIter, tol);
         }
 
         /// <summary>
@@ -1450,9 +1450,9 @@ namespace LinearAlgebra
         public static LstsqInfo lsqr(in fProxyBSR A, in fProxyBSR AT, in fProxyN b, ref fProxyN x,
                                 ref fProxyN u, ref fProxyN v, ref fProxyN w,
                                 ref fProxyN tmpM, ref fProxyN tmpN,
-                                int maxIterations, fProxy tolerance)
+                                int maxIter, fProxy tol)
         {
-            return lsqr(new fProxyBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
+            return lsqr(new fProxyBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIter, tol);
         }
 
         /// <summary>
@@ -1465,7 +1465,7 @@ namespace LinearAlgebra
         /// <see cref="lsqr(in fProxyBSR, in fProxyBSR, in fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, int, fProxy)"/>
         /// overload above with your own scratch vectors.
         /// </summary>
-        public static LstsqInfo lsqr(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
+        public static LstsqInfo lsqr(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol)
         {
             fProxyN u    = b.fProxyTempVec(A.M_Rows);
             fProxyN v    = b.fProxyTempVec(A.N_Cols);
@@ -1473,7 +1473,7 @@ namespace LinearAlgebra
             fProxyN tmpM = b.fProxyTempVec(A.M_Rows);
             fProxyN tmpN = b.fProxyTempVec(A.N_Cols);
             fProxyBSR AT = b.fProxyBSRTranspose(in A);
-            return lsqr(new fProxyBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
+            return lsqr(new fProxyBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIter, tol);
         }
 
         /// <summary>
@@ -1481,7 +1481,7 @@ namespace LinearAlgebra
         /// scratch vectors AND materializes A^T once (see the undamped allocating overload). damp == 0
         /// reproduces the plain least-squares solve.
         /// </summary>
-        public static LstsqInfo lsqr(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance, fProxy damp)
+        public static LstsqInfo lsqr(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol, fProxy damp)
         {
             fProxyN u    = b.fProxyTempVec(A.M_Rows);
             fProxyN v    = b.fProxyTempVec(A.N_Cols);
@@ -1489,10 +1489,10 @@ namespace LinearAlgebra
             fProxyN tmpM = b.fProxyTempVec(A.M_Rows);
             fProxyN tmpN = b.fProxyTempVec(A.N_Cols);
             fProxyBSR AT = b.fProxyBSRTranspose(in A);
-            return lsqr(new fProxyBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance, damp);
+            return lsqr(new fProxyBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIter, tol, damp);
         }
 
-        /// <summary>LSQR over a BSR matrix with default maxIterations (A.N_Cols) and tolerance (Consts.fProxySqrtEps).</summary>
+        /// <summary>LSQR over a BSR matrix with default maxIter (A.N_Cols) and tol (Consts.fProxySqrtEps).</summary>
         public static LstsqInfo lsqr(in fProxyBSR A, in fProxyN b, ref fProxyN x)
         {
             return lsqr(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
@@ -1511,7 +1511,7 @@ namespace LinearAlgebra
         /// Caller provides x (initial guess, length A.Cols -- overwritten with solution, WARM-
         /// STARTABLE) and six scratch vectors: u, tmpM (length A.Rows) and v, h, hbar, tmpN (length
         /// A.Cols) -- one more than LSQR, since LSMR carries both the Golub-Kahan search direction h
-        /// and the MINRES-folded direction hbar. Converges when ‖Aᵀr‖ &lt;= tolerance*‖Aᵀb‖ (same
+        /// and the MINRES-folded direction hbar. Converges when ‖Aᵀr‖ &lt;= tol*‖Aᵀb‖ (same
         /// contract as cgls/lsqr).
         ///
         /// <paramref name="damp"/> (&gt;= 0) applies Tikhonov regularization: minimizes
@@ -1529,7 +1529,7 @@ namespace LinearAlgebra
         public static LstsqInfo lsmr<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
                                      ref fProxyN u, ref fProxyN v, ref fProxyN h,
                                      ref fProxyN hbar, ref fProxyN tmpM, ref fProxyN tmpN,
-                                     int maxIterations, fProxy tolerance, fProxy damp)
+                                     int maxIter, fProxy tol, fProxy damp)
             where TOp : struct, IfProxyLinearOperator
         {
             if (b.N != A.Rows) throw new ArgumentException("lsmr: b.N must equal A.Rows");
@@ -1541,8 +1541,8 @@ namespace LinearAlgebra
             if (hbar.N != A.Cols) throw new ArgumentException("lsmr: hbar.N must equal A.Cols");
             if (tmpN.N != A.Cols) throw new ArgumentException("lsmr: tmpN.N must equal A.Cols");
 
-            if (maxIterations < 1)
-                throw new ArgumentException("lsmr: maxIterations must be >= 1");
+            if (maxIter < 1)
+                throw new ArgumentException("lsmr: maxIter must be >= 1");
 
             unsafe
             {
@@ -1564,7 +1564,7 @@ namespace LinearAlgebra
                 return LstsqInfoTracked(IterativeSolveStatus.Converged, 0, math.sqrt(Blas.dot(b, b)), (fProxy)0, (fProxy)0, in x);
             }
 
-            fProxy threshold = tolerance * tolerance * atbSq;
+            fProxy threshold = tol * tol * atbSq;
 
             // u = b - A x ; beta = ||u||   (warm-startable: bidiagonalization of the residual)
             A.Apply(in x, ref tmpM);
@@ -1617,7 +1617,7 @@ namespace LinearAlgebra
             fProxy dnorm = (fProxy)0;   // accumulates betacheck^2
             fProxy normr = beta;
 
-            for (int k = 0; k < maxIterations; k++)
+            for (int k = 0; k < maxIter; k++)
             {
                 // ---- bidiagonalization step (Golub-Kahan) ----
                 // u = A v - alpha u ; beta = ||u||, fused (Blas.xpayNormSq) into one pass over u.
@@ -1702,16 +1702,16 @@ namespace LinearAlgebra
                     return LstsqInfoTracked(IterativeSolveStatus.Breakdown, k + 1, normr, math.abs(zetabar), damp, in x);
             }
 
-            return LstsqInfoTracked(IterativeSolveStatus.MaxIterations, maxIterations, normr, math.abs(zetabar), damp, in x);
+            return LstsqInfoTracked(IterativeSolveStatus.MaxIterations, maxIter, normr, math.abs(zetabar), damp, in x);
         }
 
         /// <summary>Undamped LSMR (damp = 0): plain least-squares. Forwards to the damped core.</summary>
         public static LstsqInfo lsmr<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
                                      ref fProxyN u, ref fProxyN v, ref fProxyN h,
                                      ref fProxyN hbar, ref fProxyN tmpM, ref fProxyN tmpN,
-                                     int maxIterations, fProxy tolerance)
+                                     int maxIter, fProxy tol)
             where TOp : struct, IfProxyLinearOperator
-            => lsmr(in A, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance, (fProxy)0);
+            => lsmr(in A, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIter, tol, (fProxy)0);
 
         /// <summary>
         /// LSMR over a dense <see cref="fProxyMxN"/> (possibly rectangular) -- zero-alloc
@@ -1720,13 +1720,13 @@ namespace LinearAlgebra
         public static LstsqInfo lsmr(in fProxyMxN A, in fProxyN b, ref fProxyN x,
                                 ref fProxyN u, ref fProxyN v, ref fProxyN h,
                                 ref fProxyN hbar, ref fProxyN tmpM, ref fProxyN tmpN,
-                                int maxIterations, fProxy tolerance)
+                                int maxIter, fProxy tol)
         {
-            return lsmr(new fProxyDenseOperator(in A), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
+            return lsmr(new fProxyDenseOperator(in A), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIter, tol);
         }
 
         /// <summary>LSMR over a dense matrix -- allocates six scratch vectors from the arena.</summary>
-        public static LstsqInfo lsmr(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
+        public static LstsqInfo lsmr(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol)
         {
             fProxyN u    = b.fProxyTempVec(A.M_Rows);
             fProxyN v    = b.fProxyTempVec(A.N_Cols);
@@ -1734,14 +1734,14 @@ namespace LinearAlgebra
             fProxyN hbar = b.fProxyTempVec(A.N_Cols);
             fProxyN tmpM = b.fProxyTempVec(A.M_Rows);
             fProxyN tmpN = b.fProxyTempVec(A.N_Cols);
-            return lsmr(in A, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
+            return lsmr(in A, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIter, tol);
         }
 
         /// <summary>
         /// Damped (Tikhonov) LSMR over a dense matrix -- minimizes ‖Ax-b‖² + damp²‖x‖². Allocates
         /// six scratch vectors from the arena. damp == 0 reproduces the plain least-squares solve.
         /// </summary>
-        public static LstsqInfo lsmr(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance, fProxy damp)
+        public static LstsqInfo lsmr(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol, fProxy damp)
         {
             fProxyN u    = b.fProxyTempVec(A.M_Rows);
             fProxyN v    = b.fProxyTempVec(A.N_Cols);
@@ -1749,10 +1749,10 @@ namespace LinearAlgebra
             fProxyN hbar = b.fProxyTempVec(A.N_Cols);
             fProxyN tmpM = b.fProxyTempVec(A.M_Rows);
             fProxyN tmpN = b.fProxyTempVec(A.N_Cols);
-            return lsmr(new fProxyDenseOperator(in A), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance, damp);
+            return lsmr(new fProxyDenseOperator(in A), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIter, tol, damp);
         }
 
-        /// <summary>LSMR over a dense matrix with default maxIterations (A.N_Cols) and tolerance (Consts.fProxySqrtEps).</summary>
+        /// <summary>LSMR over a dense matrix with default maxIter (A.N_Cols) and tol (Consts.fProxySqrtEps).</summary>
         public static LstsqInfo lsmr(in fProxyMxN A, in fProxyN b, ref fProxyN x)
         {
             return lsmr(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
@@ -1767,9 +1767,9 @@ namespace LinearAlgebra
         public static LstsqInfo lsmr(in fProxyBSR A, in fProxyN b, ref fProxyN x,
                                 ref fProxyN u, ref fProxyN v, ref fProxyN h,
                                 ref fProxyN hbar, ref fProxyN tmpM, ref fProxyN tmpN,
-                                int maxIterations, fProxy tolerance)
+                                int maxIter, fProxy tol)
         {
-            return lsmr(new fProxyBSROperator(in A), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
+            return lsmr(new fProxyBSROperator(in A), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIter, tol);
         }
 
         /// <summary>
@@ -1783,9 +1783,9 @@ namespace LinearAlgebra
         public static LstsqInfo lsmr(in fProxyBSR A, in fProxyBSR AT, in fProxyN b, ref fProxyN x,
                                 ref fProxyN u, ref fProxyN v, ref fProxyN h,
                                 ref fProxyN hbar, ref fProxyN tmpM, ref fProxyN tmpN,
-                                int maxIterations, fProxy tolerance)
+                                int maxIter, fProxy tol)
         {
-            return lsmr(new fProxyBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
+            return lsmr(new fProxyBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIter, tol);
         }
 
         /// <summary>
@@ -1795,7 +1795,7 @@ namespace LinearAlgebra
         /// spMV(A^T, x). For a build-free zero-alloc path, build A^T yourself once and call the
         /// zero-alloc AT overload above with your own scratch vectors.
         /// </summary>
-        public static LstsqInfo lsmr(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
+        public static LstsqInfo lsmr(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol)
         {
             fProxyN u    = b.fProxyTempVec(A.M_Rows);
             fProxyN v    = b.fProxyTempVec(A.N_Cols);
@@ -1804,7 +1804,7 @@ namespace LinearAlgebra
             fProxyN tmpM = b.fProxyTempVec(A.M_Rows);
             fProxyN tmpN = b.fProxyTempVec(A.N_Cols);
             fProxyBSR AT = b.fProxyBSRTranspose(in A);
-            return lsmr(new fProxyBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
+            return lsmr(new fProxyBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIter, tol);
         }
 
         /// <summary>
@@ -1812,7 +1812,7 @@ namespace LinearAlgebra
         /// scratch vectors AND materializes A^T once (see the undamped allocating overload). damp == 0
         /// reproduces the plain least-squares solve.
         /// </summary>
-        public static LstsqInfo lsmr(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance, fProxy damp)
+        public static LstsqInfo lsmr(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol, fProxy damp)
         {
             fProxyN u    = b.fProxyTempVec(A.M_Rows);
             fProxyN v    = b.fProxyTempVec(A.N_Cols);
@@ -1821,10 +1821,10 @@ namespace LinearAlgebra
             fProxyN tmpM = b.fProxyTempVec(A.M_Rows);
             fProxyN tmpN = b.fProxyTempVec(A.N_Cols);
             fProxyBSR AT = b.fProxyBSRTranspose(in A);
-            return lsmr(new fProxyBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance, damp);
+            return lsmr(new fProxyBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIter, tol, damp);
         }
 
-        /// <summary>LSMR over a BSR matrix with default maxIterations (A.N_Cols) and tolerance (Consts.fProxySqrtEps).</summary>
+        /// <summary>LSMR over a BSR matrix with default maxIter (A.N_Cols) and tol (Consts.fProxySqrtEps).</summary>
         public static LstsqInfo lsmr(in fProxyBSR A, in fProxyN b, ref fProxyN x)
         {
             return lsmr(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
@@ -1872,7 +1872,7 @@ namespace LinearAlgebra
 
         // ---- CGLS + Jacobi ----
         /// <summary>CGLS with an AᵀA-Jacobi column-equilibration preconditioner over a dense matrix.</summary>
-        public static LstsqInfo cglsJacobi(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
+        public static LstsqInfo cglsJacobi(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol)
         {
             int m = A.M_Rows, n = A.N_Cols;
             fProxyN d = b.fProxyTempVec(n), d2 = b.fProxyTempVec(n), scratch = b.fProxyTempVec(n);
@@ -1882,16 +1882,16 @@ namespace LinearAlgebra
 
             for (int j = 0; j < n; j++) x[j] = (fProxy)0;                 // cold start (change of variable)
             fProxyN r = b.fProxyTempVec(m), s = b.fProxyTempVec(n), p = b.fProxyTempVec(n), q = b.fProxyTempVec(m);
-            var solveInfo = cgls(op, in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
+            var solveInfo = cgls(op, in b, ref x, ref r, ref s, ref p, ref q, maxIter, tol);
             return JacobiFinish(new fProxyDenseOperator(in A), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref r, ref s);
         }
 
-        /// <summary>CGLS + Jacobi (dense), default maxIterations (A.N_Cols) / tolerance (Consts.fProxySqrtEps).</summary>
+        /// <summary>CGLS + Jacobi (dense), default maxIter (A.N_Cols) / tol (Consts.fProxySqrtEps).</summary>
         public static LstsqInfo cglsJacobi(in fProxyMxN A, in fProxyN b, ref fProxyN x)
             => cglsJacobi(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
 
         /// <summary>CGLS with an AᵀA-Jacobi preconditioner over a BSR matrix (materializes Aᵀ once).</summary>
-        public static LstsqInfo cglsJacobi(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
+        public static LstsqInfo cglsJacobi(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol)
         {
             int m = A.M_Rows, n = A.N_Cols;
             fProxyN d = b.fProxyTempVec(n), d2 = b.fProxyTempVec(n), scratch = b.fProxyTempVec(n);
@@ -1902,17 +1902,17 @@ namespace LinearAlgebra
 
             for (int j = 0; j < n; j++) x[j] = (fProxy)0;
             fProxyN r = b.fProxyTempVec(m), s = b.fProxyTempVec(n), p = b.fProxyTempVec(n), q = b.fProxyTempVec(m);
-            var solveInfo = cgls(op, in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
+            var solveInfo = cgls(op, in b, ref x, ref r, ref s, ref p, ref q, maxIter, tol);
             return JacobiFinish(new fProxyBSROperator(in A, in AT), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref r, ref s);
         }
 
-        /// <summary>CGLS + Jacobi (BSR), default maxIterations (A.N_Cols) / tolerance (Consts.fProxySqrtEps).</summary>
+        /// <summary>CGLS + Jacobi (BSR), default maxIter (A.N_Cols) / tol (Consts.fProxySqrtEps).</summary>
         public static LstsqInfo cglsJacobi(in fProxyBSR A, in fProxyN b, ref fProxyN x)
             => cglsJacobi(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
 
         // ---- LSQR + Jacobi ----
         /// <summary>LSQR with an AᵀA-Jacobi column-equilibration preconditioner over a dense matrix.</summary>
-        public static LstsqInfo lsqrJacobi(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
+        public static LstsqInfo lsqrJacobi(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol)
         {
             int m = A.M_Rows, n = A.N_Cols;
             fProxyN d = b.fProxyTempVec(n), d2 = b.fProxyTempVec(n), scratch = b.fProxyTempVec(n);
@@ -1922,16 +1922,16 @@ namespace LinearAlgebra
 
             for (int j = 0; j < n; j++) x[j] = (fProxy)0;
             fProxyN u = b.fProxyTempVec(m), v = b.fProxyTempVec(n), w = b.fProxyTempVec(n), tmpM = b.fProxyTempVec(m), tmpN = b.fProxyTempVec(n);
-            var solveInfo = lsqr(op, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
+            var solveInfo = lsqr(op, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIter, tol);
             return JacobiFinish(new fProxyDenseOperator(in A), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref u, ref v);
         }
 
-        /// <summary>LSQR + Jacobi (dense), default maxIterations (A.N_Cols) / tolerance (Consts.fProxySqrtEps).</summary>
+        /// <summary>LSQR + Jacobi (dense), default maxIter (A.N_Cols) / tol (Consts.fProxySqrtEps).</summary>
         public static LstsqInfo lsqrJacobi(in fProxyMxN A, in fProxyN b, ref fProxyN x)
             => lsqrJacobi(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
 
         /// <summary>LSQR with an AᵀA-Jacobi preconditioner over a BSR matrix (materializes Aᵀ once).</summary>
-        public static LstsqInfo lsqrJacobi(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
+        public static LstsqInfo lsqrJacobi(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol)
         {
             int m = A.M_Rows, n = A.N_Cols;
             fProxyN d = b.fProxyTempVec(n), d2 = b.fProxyTempVec(n), scratch = b.fProxyTempVec(n);
@@ -1942,17 +1942,17 @@ namespace LinearAlgebra
 
             for (int j = 0; j < n; j++) x[j] = (fProxy)0;
             fProxyN u = b.fProxyTempVec(m), v = b.fProxyTempVec(n), w = b.fProxyTempVec(n), tmpM = b.fProxyTempVec(m), tmpN = b.fProxyTempVec(n);
-            var solveInfo = lsqr(op, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
+            var solveInfo = lsqr(op, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIter, tol);
             return JacobiFinish(new fProxyBSROperator(in A, in AT), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref u, ref v);
         }
 
-        /// <summary>LSQR + Jacobi (BSR), default maxIterations (A.N_Cols) / tolerance (Consts.fProxySqrtEps).</summary>
+        /// <summary>LSQR + Jacobi (BSR), default maxIter (A.N_Cols) / tol (Consts.fProxySqrtEps).</summary>
         public static LstsqInfo lsqrJacobi(in fProxyBSR A, in fProxyN b, ref fProxyN x)
             => lsqrJacobi(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
 
         // ---- LSMR + Jacobi ----
         /// <summary>LSMR with an AᵀA-Jacobi column-equilibration preconditioner over a dense matrix.</summary>
-        public static LstsqInfo lsmrJacobi(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
+        public static LstsqInfo lsmrJacobi(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol)
         {
             int m = A.M_Rows, n = A.N_Cols;
             fProxyN d = b.fProxyTempVec(n), d2 = b.fProxyTempVec(n), scratch = b.fProxyTempVec(n);
@@ -1962,16 +1962,16 @@ namespace LinearAlgebra
 
             for (int j = 0; j < n; j++) x[j] = (fProxy)0;
             fProxyN u = b.fProxyTempVec(m), v = b.fProxyTempVec(n), h = b.fProxyTempVec(n), hbar = b.fProxyTempVec(n), tmpM = b.fProxyTempVec(m), tmpN = b.fProxyTempVec(n);
-            var solveInfo = lsmr(op, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
+            var solveInfo = lsmr(op, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIter, tol);
             return JacobiFinish(new fProxyDenseOperator(in A), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref u, ref v);
         }
 
-        /// <summary>LSMR + Jacobi (dense), default maxIterations (A.N_Cols) / tolerance (Consts.fProxySqrtEps).</summary>
+        /// <summary>LSMR + Jacobi (dense), default maxIter (A.N_Cols) / tol (Consts.fProxySqrtEps).</summary>
         public static LstsqInfo lsmrJacobi(in fProxyMxN A, in fProxyN b, ref fProxyN x)
             => lsmrJacobi(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
 
         /// <summary>LSMR with an AᵀA-Jacobi preconditioner over a BSR matrix (materializes Aᵀ once).</summary>
-        public static LstsqInfo lsmrJacobi(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
+        public static LstsqInfo lsmrJacobi(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol)
         {
             int m = A.M_Rows, n = A.N_Cols;
             fProxyN d = b.fProxyTempVec(n), d2 = b.fProxyTempVec(n), scratch = b.fProxyTempVec(n);
@@ -1982,11 +1982,11 @@ namespace LinearAlgebra
 
             for (int j = 0; j < n; j++) x[j] = (fProxy)0;
             fProxyN u = b.fProxyTempVec(m), v = b.fProxyTempVec(n), h = b.fProxyTempVec(n), hbar = b.fProxyTempVec(n), tmpM = b.fProxyTempVec(m), tmpN = b.fProxyTempVec(n);
-            var solveInfo = lsmr(op, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
+            var solveInfo = lsmr(op, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIter, tol);
             return JacobiFinish(new fProxyBSROperator(in A, in AT), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref u, ref v);
         }
 
-        /// <summary>LSMR + Jacobi (BSR), default maxIterations (A.N_Cols) / tolerance (Consts.fProxySqrtEps).</summary>
+        /// <summary>LSMR + Jacobi (BSR), default maxIter (A.N_Cols) / tol (Consts.fProxySqrtEps).</summary>
         public static LstsqInfo lsmrJacobi(in fProxyBSR A, in fProxyN b, ref fProxyN x)
             => lsmrJacobi(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
 
@@ -2000,8 +2000,8 @@ namespace LinearAlgebra
         ///
         /// Caller provides x (initial guess, length A.Cols -- overwritten, warm-startable) and four
         /// scratch vectors: r, q (length A.Rows) and p, tmpN (length A.Cols). Converges when
-        /// ‖b - A x‖ &lt;= tolerance*‖b‖. For an INCONSISTENT system (b not in range(A)) the residual
-        /// cannot reach zero -- CGNE then runs to maxIterations and reports MaxIterations; use
+        /// ‖b - A x‖ &lt;= tol*‖b‖. For an INCONSISTENT system (b not in range(A)) the residual
+        /// cannot reach zero -- CGNE then runs to maxIter and reports MaxIterations; use
         /// cgls/lsqr/lsmr for least-squares instead.
         ///
         /// Returns a <see cref="SolveInfo"/> (rnorm = ‖b-Ax‖) — see that struct for the
@@ -2011,7 +2011,7 @@ namespace LinearAlgebra
         /// </summary>
         public static SolveInfo cgne<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
                                      ref fProxyN r, ref fProxyN p, ref fProxyN q, ref fProxyN tmpN,
-                                     int maxIterations, fProxy tolerance)
+                                     int maxIter, fProxy tol)
             where TOp : struct, IfProxyLinearOperator
         {
             if (b.N != A.Rows) throw new ArgumentException("cgne: b.N must equal A.Rows");
@@ -2021,8 +2021,8 @@ namespace LinearAlgebra
             if (p.N != A.Cols) throw new ArgumentException("cgne: p.N must equal A.Cols");
             if (tmpN.N != A.Cols) throw new ArgumentException("cgne: tmpN.N must equal A.Cols");
 
-            if (maxIterations < 1)
-                throw new ArgumentException("cgne: maxIterations must be >= 1");
+            if (maxIter < 1)
+                throw new ArgumentException("cgne: maxIter must be >= 1");
 
             unsafe
             {
@@ -2032,7 +2032,7 @@ namespace LinearAlgebra
                 RequireDistinctBuffers("cgne: r/p/q/tmpN/x/b must be distinct", ptrs, 6);
             }
 
-            // Fixed scale reference for the relative tolerance, independent of x0 (mirrors cg's bb).
+            // Fixed scale reference for the relative tol, independent of x0 (mirrors cg's bb).
             fProxy bb = Blas.dot(b, b);
 
             if (bb == (fProxy)0)
@@ -2043,7 +2043,7 @@ namespace LinearAlgebra
                 return MakeSolveInfo(IterativeSolveStatus.Converged, 0, (fProxy)0);
             }
 
-            fProxy threshold = tolerance * tolerance * bb;
+            fProxy threshold = tol * tol * bb;
 
             // r = b - A x
             A.Apply(in x, ref q);                          // q = A x (temp use of q)
@@ -2058,7 +2058,7 @@ namespace LinearAlgebra
             // p = A^T r
             A.ApplyT(in r, ref p);
 
-            for (int k = 0; k < maxIterations; k++)
+            for (int k = 0; k < maxIter; k++)
             {
                 fProxy pp = Blas.dot(p, p);
 
@@ -2094,7 +2094,7 @@ namespace LinearAlgebra
                 rr = rrNew;
             }
 
-            return MakeSolveInfo(IterativeSolveStatus.MaxIterations, maxIterations, math.sqrt(rr));
+            return MakeSolveInfo(IterativeSolveStatus.MaxIterations, maxIter, math.sqrt(rr));
         }
 
         /// <summary>
@@ -2103,22 +2103,22 @@ namespace LinearAlgebra
         /// </summary>
         public static SolveInfo cgne(in fProxyMxN A, in fProxyN b, ref fProxyN x,
                                 ref fProxyN r, ref fProxyN p, ref fProxyN q, ref fProxyN tmpN,
-                                int maxIterations, fProxy tolerance)
+                                int maxIter, fProxy tol)
         {
-            return cgne(new fProxyDenseOperator(in A), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIterations, tolerance);
+            return cgne(new fProxyDenseOperator(in A), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIter, tol);
         }
 
         /// <summary>CGNE over a dense matrix -- allocates four scratch vectors from the arena.</summary>
-        public static SolveInfo cgne(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
+        public static SolveInfo cgne(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol)
         {
             fProxyN r    = b.fProxyTempVec(A.M_Rows);
             fProxyN p    = b.fProxyTempVec(A.N_Cols);
             fProxyN q    = b.fProxyTempVec(A.M_Rows);
             fProxyN tmpN = b.fProxyTempVec(A.N_Cols);
-            return cgne(in A, in b, ref x, ref r, ref p, ref q, ref tmpN, maxIterations, tolerance);
+            return cgne(in A, in b, ref x, ref r, ref p, ref q, ref tmpN, maxIter, tol);
         }
 
-        /// <summary>CGNE over a dense matrix with default maxIterations (A.N_Cols) and tolerance (Consts.fProxySqrtEps).</summary>
+        /// <summary>CGNE over a dense matrix with default maxIter (A.N_Cols) and tol (Consts.fProxySqrtEps).</summary>
         public static SolveInfo cgne(in fProxyMxN A, in fProxyN b, ref fProxyN x)
         {
             return cgne(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
@@ -2131,9 +2131,9 @@ namespace LinearAlgebra
         /// </summary>
         public static SolveInfo cgne(in fProxyBSR A, in fProxyN b, ref fProxyN x,
                                 ref fProxyN r, ref fProxyN p, ref fProxyN q, ref fProxyN tmpN,
-                                int maxIterations, fProxy tolerance)
+                                int maxIter, fProxy tol)
         {
-            return cgne(new fProxyBSROperator(in A), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIterations, tolerance);
+            return cgne(new fProxyBSROperator(in A), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIter, tol);
         }
 
         /// <summary>
@@ -2144,9 +2144,9 @@ namespace LinearAlgebra
         /// </summary>
         public static SolveInfo cgne(in fProxyBSR A, in fProxyBSR AT, in fProxyN b, ref fProxyN x,
                                 ref fProxyN r, ref fProxyN p, ref fProxyN q, ref fProxyN tmpN,
-                                int maxIterations, fProxy tolerance)
+                                int maxIter, fProxy tol)
         {
-            return cgne(new fProxyBSROperator(in A, in AT), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIterations, tolerance);
+            return cgne(new fProxyBSROperator(in A, in AT), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIter, tol);
         }
 
         /// <summary>
@@ -2156,17 +2156,17 @@ namespace LinearAlgebra
         /// spMV(A^T, x). For a build-free zero-alloc path, build A^T yourself once and call the
         /// caller-AT overload above.
         /// </summary>
-        public static SolveInfo cgne(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
+        public static SolveInfo cgne(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol)
         {
             fProxyN r    = b.fProxyTempVec(A.M_Rows);
             fProxyN p    = b.fProxyTempVec(A.N_Cols);
             fProxyN q    = b.fProxyTempVec(A.M_Rows);
             fProxyN tmpN = b.fProxyTempVec(A.N_Cols);
             fProxyBSR AT = b.fProxyBSRTranspose(in A);
-            return cgne(new fProxyBSROperator(in A, in AT), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIterations, tolerance);
+            return cgne(new fProxyBSROperator(in A, in AT), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIter, tol);
         }
 
-        /// <summary>CGNE over a BSR matrix with default maxIterations (A.N_Cols) and tolerance (Consts.fProxySqrtEps).</summary>
+        /// <summary>CGNE over a BSR matrix with default maxIter (A.N_Cols) and tol (Consts.fProxySqrtEps).</summary>
         public static SolveInfo cgne(in fProxyBSR A, in fProxyN b, ref fProxyN x)
         {
             return cgne(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);

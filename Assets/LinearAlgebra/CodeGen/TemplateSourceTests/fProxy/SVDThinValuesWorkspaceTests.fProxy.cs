@@ -10,7 +10,7 @@ using Unity.Jobs;
 // (thin(...,ref fProxySVDThinCache) / values(...,ref fProxySVDValuesCache)) must produce results
 // identical to the allocating wrappers (they run the SAME kernel), and a mis-sized/reused workspace
 // must behave correctly (throw on bad size, produce identical results across repeated reuse).
-public class fProxySvdThinValuesWorkspaceTests
+public class fProxySVDThinValuesWorkspaceTests
 {
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct WorkspaceEquivJob : IJob

@@ -182,10 +182,10 @@ namespace LinearAlgebra.Internal
 
         //+skipFor[u]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void signFlip([NoAlias] iProxy* target, [NoAlias] iProxy* from, int n) {
+        public static void signFlipInPlace([NoAlias] iProxy* target, int n) {
 
             for (int i = 0; i < n; i++)
-                target[i] = (iProxy)(-from[i]);
+                target[i] = (iProxy)(-target[i]);
         }
         //-skipFor
 

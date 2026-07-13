@@ -10,8 +10,8 @@ using Unity.Jobs;
 using Unity.Mathematics;
 
 // Tests for QueryOP Phase 2 (the iProxy integer subset: int/short/long): the integer-exact
-// search & selection ops. One template expands to
-// intQuery_OP / shortQuery_OP / longQuery_OP, so every literal must be exact AND safe for the
+// search & selection ops. One template expands to overloaded methods on the single (shared)
+// Query class, one overload per int/short/long, so every literal must be exact AND safe for the
 // TIGHTEST type (short): coordinates kept small so Manhattan/Chebyshev differences fit the
 // type, and SqEuclidean/Dot accumulations fit short.MaxValue = 32767. Type extremes use the
 // proxy constants iProxy.MinValue / iProxy.MaxValue (which expand per type).

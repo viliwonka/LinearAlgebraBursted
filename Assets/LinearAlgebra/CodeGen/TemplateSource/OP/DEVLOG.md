@@ -1,6 +1,26 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Parameter naming (library-wide)
+- 2026-07-13 | Short tuning-param names ruled canon: maxIterations → maxIter, tolerance → tol,
+  relativeTolerance → relTol, library-wide. REVERSES the earlier long-name rename pass — do not
+  rename back. maxSweeps kept where the algorithm genuinely counts Jacobi sweeps. Rule recorded
+  in docs/dev/naming-style-guide.md.
+
+## Krylov.PBiCGStab
+- 2026-07-13 | Parameterless BSR overload's default iteration budget changed 2*A.M_Rows → A.M_Rows
+  to match the unpreconditioned biCGStab twin and the rest of the square-solver family (release-scan
+  N14 finding: undocumented sibling inconsistency; no measured rationale existed for the 2x).
+
+## UnsafeOP / UnsafeBoolOP / SelectOP aliasing policy
+- 2026-07-13 | [NoAlias] made truthful (release-scan D3 ruling): write-aliasing wrappers now call
+  dedicated single-pointer in-place kernels (signFlipInPlace; UnsafeBoolOP notInPlace/orInPlace/
+  andInPlace/xorInPlace/equalsInPlace/notEqualsInPlace — the unused copy-form bool kernels were
+  deleted); matMatDotTransA/matMatDotTransARange dropped [NoAlias] from their read-only A/B inputs
+  because Aᵀ·A callers (Blas.dot(A, A, transposeA: true), isOrthogonal, covariance) legitimately
+  pass the same pointer twice; Select kernels dropped [NoAlias] from the aliasable value inputs
+  (dest may alias a or b by contract).
+
 ## NLS
 - 2026-07-12 | Release-scan fix (FOURTH bug, all precisions): the all-columns-flat degenerate
   case (0 < LInf(J) <= flatThresh, i.e. every column norm at-or-below flatThresh) left

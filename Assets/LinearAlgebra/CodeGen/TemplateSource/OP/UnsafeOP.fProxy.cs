@@ -362,7 +362,10 @@ namespace LinearAlgebra.Internal
         // (matA[p*m + i .. i+MR-1]) — an even better load pattern than matMatDot's per-row strided
         // reads. Same determinism argument and same MR/NR-shared-across-types constraint as above.
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void matMatDotTransA([NoAlias] fProxy* matA, [NoAlias] fProxy* matB, [NoAlias] fProxy* matC, int m, int n, int k)
+        // matA/matB are read-only and MAY alias each other (Aᵀ·A callers: Blas.dot(A, A,
+        // transposeA: true), isOrthogonal, covariance) — only matC keeps [NoAlias]; the public
+        // wrapper rejects matC aliasing an input.
+        public static void matMatDotTransA(fProxy* matA, fProxy* matB, [NoAlias] fProxy* matC, int m, int n, int k)
         {
             // matA = m x n, but treated as n x m due to transposition
             // matB = n x k
@@ -461,7 +464,7 @@ namespace LinearAlgebra.Internal
         // mirror of matMatDotRange, same rationale (remainder coverage + whole-matrix small-size
         // fallback with zero seam risk).
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static void matMatDotTransARange([NoAlias] fProxy* matA, [NoAlias] fProxy* matB, [NoAlias] fProxy* matC,
+        static void matMatDotTransARange(fProxy* matA, fProxy* matB, [NoAlias] fProxy* matC,
                                           int rowStart, int rowEnd, int m, int n, int k, int colStart, int colEnd)
         {
             for (int r = rowStart; r < rowEnd; r++)
@@ -755,10 +758,10 @@ namespace LinearAlgebra.Internal
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void signFlip([NoAlias] fProxy* target, [NoAlias] fProxy* from, int n) {
+        public static void signFlipInPlace([NoAlias] fProxy* target, int n) {
 
             for (int i = 0; i < n; i++)
-                target[i] = -from[i];
+                target[i] = -target[i];
         }
         
         [MethodImpl(MethodImplOptions.NoInlining)]

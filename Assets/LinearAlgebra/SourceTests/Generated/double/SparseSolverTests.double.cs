@@ -820,7 +820,7 @@ public class doubleSparseSolverTests
         // Every OTHER Phase-3 test starts from a zero-initialized x, so b - A*x0 == b always --
         // a regression that dropped the initial-residual subtraction (r = b - A*x0 silently
         // becoming r = b) would pass all of them. These four seed x with the ALREADY-converged
-        // solution and re-solve with maxIterations=1: each solver computes r = b - A*x from the
+        // solution and re-solve with maxIter=1: each solver computes r = b - A*x from the
         // CALLER-supplied x and checks it against tolerance in its PRE-LOOP check (minres ~L595,
         // biCGStab ~L797, cgls ~L999, lsqr ~L1175 of Krylov.double.cs), so an already-converged x
         // must report true WITHOUT spending the single iteration -- and x must come back unchanged.

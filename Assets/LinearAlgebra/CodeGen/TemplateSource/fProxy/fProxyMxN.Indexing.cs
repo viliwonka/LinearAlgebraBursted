@@ -89,5 +89,13 @@ namespace LinearAlgebra
             }
         }
 
+        /// <summary>Handle identity: true iff both views wrap the SAME buffer. NOT elementwise —
+        /// use the == operator for an elementwise mask.</summary>
+        public override unsafe bool Equals(object obj) =>
+            obj is fProxyMxN other && Data.Ptr == other.Data.Ptr && Data.Length == other.Data.Length;
+
+        public override unsafe int GetHashCode() =>
+            unchecked(((int)(long)Data.Ptr * 397) ^ Data.Length);
+
     }
 }

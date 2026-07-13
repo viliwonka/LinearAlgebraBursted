@@ -387,7 +387,7 @@ public class floatMultiRHSSolveTests
             var B = MakeX(ref arena, m, k);   // any RHS (A full row rank ⇒ consistent)
 
             var X = arena.floatMat(n, k);
-            LQ.minNormSolve(ref A, ref B, ref X);
+            LQ.minNormSolve(in A, in B, ref X);
 
             CheckResidual(ref arena, in A, in X, in B, (float)200);   // A·X ≈ B
 
@@ -395,7 +395,7 @@ public class floatMultiRHSSolveTests
             {
                 var bc = GetCol(ref arena, in B, c);
                 var xc = arena.floatVec(n);
-                LQ.minNormSolve(ref A, ref bc, ref xc);   // A not modified
+                LQ.minNormSolve(in A, in bc, ref xc);   // A not modified
                 CheckColClose(in X, c, in xc, Band(in A, (float)200));
             }
 

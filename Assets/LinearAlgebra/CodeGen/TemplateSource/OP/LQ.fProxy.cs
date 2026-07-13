@@ -508,7 +508,7 @@ namespace LinearAlgebra
         // Always reports DirectSolveStatus.Success — the factorization has no failure mode and this
         // solve does not itself detect rank deficiency in A (PRECONDITION: A has full row rank).
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static DirectSolveInfo minNormSolve(ref fProxyMxN A, ref fProxyN b, ref fProxyN x)
+        public static DirectSolveInfo minNormSolve(in fProxyMxN A, in fProxyN b, ref fProxyN x)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -554,7 +554,7 @@ namespace LinearAlgebra
         /// </summary>
         // Always reports DirectSolveStatus.Success — see the allocating overload.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static DirectSolveInfo minNormSolve(ref fProxyMxN A, ref fProxyN b, ref fProxyN x, ref fProxyLQMinNormCache ws)
+        public static DirectSolveInfo minNormSolve(in fProxyMxN A, in fProxyN b, ref fProxyN x, ref fProxyLQMinNormCache ws)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -648,7 +648,7 @@ namespace LinearAlgebra
         /// <param name="A">m × n coefficient matrix (m ≤ n, full row rank). Not modified.</param>
         /// <param name="B">Right-hand sides (m x k). Not modified.</param>
         /// <param name="X">Output only; prior contents ignored. Solution (n x k). Must not alias B.</param>
-        public static DirectSolveInfo minNormSolve(ref fProxyMxN A, ref fProxyMxN B, ref fProxyMxN X)
+        public static DirectSolveInfo minNormSolve(in fProxyMxN A, in fProxyMxN B, ref fProxyMxN X)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;

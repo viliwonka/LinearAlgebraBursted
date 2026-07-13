@@ -12,7 +12,7 @@ namespace LinearAlgebra
     /// value; an implicit <c>bool</c> conversion (== <see cref="Solved"/>) means the same
     /// success-test call shape used by every other iterative solver in this library compiles:
     /// <code>
-    ///   if (Eigen.lobpcg(in A, ref ws, k, tolerance, maxIterations)) { ... }
+    ///   if (Eigen.lobpcg(in A, ref ws, k, tol, maxIter)) { ... }
     ///   var info = Eigen.lobpcg(in A, in M, ref ws, k);
     ///   if (info.Solved) Debug.Log(info.converged);
     /// </code>

@@ -156,7 +156,7 @@ namespace LinearAlgebra
         public static void signFlipInPlace<T>(this T a) where T : unmanaged, IUnsafeshortArray
         {
             unsafe {
-                UnsafeOP.signFlip(a.Data.Ptr, a.Data.Ptr, a.Data.Length);
+                UnsafeOP.signFlipInPlace(a.Data.Ptr, a.Data.Length);
             }
         }
         

@@ -32,7 +32,7 @@ namespace LinearAlgebra
         public double xnorm;
 
         /// <summary>Iterations actually performed (0 when the solver converged before the first
-        /// bidiagonalization/CG step; equals maxIterations when it ran out).</summary>
+        /// bidiagonalization/CG step; equals maxIter when it ran out).</summary>
         public int iterations;
 
         /// <summary>Why the solve stopped -- see <see cref="IterativeSolveStatus"/>.</summary>
@@ -82,7 +82,7 @@ namespace LinearAlgebra
         public double rnorm;
 
         /// <summary>Iterations actually performed (0 when converged before the first step; equals
-        /// maxIterations when it ran out).</summary>
+        /// maxIter when it ran out).</summary>
         public int iterations;
 
         /// <summary>Why the solve stopped -- see <see cref="IterativeSolveStatus"/>.</summary>

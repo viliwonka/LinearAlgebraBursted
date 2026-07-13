@@ -28,7 +28,7 @@ namespace LinearAlgebra
 #endif
         }
 
-        public boolN boolTempVec(int N, bool uninit = false)
+        internal boolN boolTempVec(int N, bool uninit = false)
         {
             if (_core == null)
                 throw new System.InvalidOperationException("Arena.boolVec/boolMat: arena is not initialized (default or disposed).");
@@ -132,7 +132,7 @@ namespace LinearAlgebra
 #endif
         }
 
-        public boolMxN boolTempMat(int M_rows, int N_cols, bool uninit = false)
+        internal boolMxN boolTempMat(int M_rows, int N_cols, bool uninit = false)
         {
             if (_core == null)
                 throw new System.InvalidOperationException("Arena.boolVec/boolMat: arena is not initialized (default or disposed).");
@@ -152,7 +152,7 @@ namespace LinearAlgebra
 #endif
         }
 
-        public boolMxN boolTempMat(in boolMxN mat)
+        internal boolMxN boolTempMat(in boolMxN mat)
         {
             if (_core == null)
                 throw new System.InvalidOperationException("Arena.boolVec/boolMat: arena is not initialized (default or disposed).");

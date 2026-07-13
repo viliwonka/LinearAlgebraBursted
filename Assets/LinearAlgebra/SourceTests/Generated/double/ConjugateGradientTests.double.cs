@@ -203,7 +203,7 @@ public class doubleConjugateGradientTests
             arena.Dispose();
         }
 
-        // The caller-scratch primitive and the explicit maxIterations/tolerance
+        // The caller-scratch primitive and the explicit maxIter/tol
         // overload must produce the same solution as the defaults overload.
         void OverloadsAgree()
         {
@@ -219,7 +219,7 @@ public class doubleConjugateGradientTests
             bool okDef = Krylov.cg(in A, in b, ref xDef);
             Assert.IsTrue(okDef);
 
-            // Explicit maxIterations/tolerance overload.
+            // Explicit maxIter/tol overload.
             var xExpl = arena.doubleVec(dim);
             bool okExpl = Krylov.cg(in A, in b, ref xExpl, dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okExpl);

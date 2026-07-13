@@ -1138,7 +1138,7 @@ public class floatQRTests
             Blas.dot(in A, in xTrue, ref b);
             // solve
             var x = arena.floatVec(n);
-            LQ.minNormSolve(ref A, ref b, ref x);
+            LQ.minNormSolve(in A, in b, ref x);
             AssertClose(in x, in xTrue, 1E-4f);
             arena.Dispose();
         }
@@ -1154,7 +1154,7 @@ public class floatQRTests
             var b = arena.floatVec(m);
             Blas.dot(in A, in xTrue, ref b);
             var x = arena.floatVec(n);
-            LQ.minNormSolve(ref A, ref b, ref x);
+            LQ.minNormSolve(in A, in b, ref x);
             AssertClose(in x, in xTrue, 1E-4f);
             arena.Dispose();
         }
@@ -1170,7 +1170,7 @@ public class floatQRTests
             var b = arena.floatVec(m);
             Blas.dot(in A, in xTrue, ref b);
             var x = arena.floatVec(n);
-            LQ.minNormSolve(ref A, ref b, ref x);
+            LQ.minNormSolve(in A, in b, ref x);
             AssertClose(in x, in xTrue, 1E-4f);
             arena.Dispose();
         }
@@ -1183,7 +1183,7 @@ public class floatQRTests
             var A = arena.floatRandomMat(m, n, -2f, 2f, 77777);
             var b = arena.floatRandomVec(m, -1f, 1f, 88888);
             var x = arena.floatVec(n);
-            LQ.minNormSolve(ref A, ref b, ref x);
+            LQ.minNormSolve(in A, in b, ref x);
             // residual = A x - b
             var Ax   = arena.floatVec(m);
             Blas.dot(in A, in x, ref Ax);
@@ -1212,7 +1212,7 @@ public class floatQRTests
                 A[d, d] += (float)20f;
             var b = arena.floatRandomVec(m, -1f, 1f, 141414);
             var x = arena.floatVec(n);
-            LQ.minNormSolve(ref A, ref b, ref x);
+            LQ.minNormSolve(in A, in b, ref x);
             var Ax = arena.floatVec(m);
             Blas.dot(in A, in x, ref Ax);
             Ax.subInPlace(b);
@@ -1241,7 +1241,7 @@ public class floatQRTests
                 A[d, d] += (float)20f;
             var b = arena.floatRandomVec(m, -1f, 1f, 181920);
             var x = arena.floatVec(n);
-            LQ.minNormSolve(ref A, ref b, ref x);
+            LQ.minNormSolve(in A, in b, ref x);
             var Ax = arena.floatVec(m);
             Blas.dot(in A, in x, ref Ax);
             Ax.subInPlace(b);
@@ -1270,7 +1270,7 @@ public class floatQRTests
             var x = arena.floatVec(n);
             for (int i = 0; i < n; i++) x[i] = float.NaN;
 
-            LQ.minNormSolve(ref A, ref b, ref x);
+            LQ.minNormSolve(in A, in b, ref x);
 
             Assert.IsFalse(Analysis.isAnyNan(in x));
 

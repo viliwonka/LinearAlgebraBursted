@@ -67,7 +67,7 @@ public class doubleKrylovVerifyAtExitTests
     // minus the verify-at-exit block -- an independent "before" oracle without touching git.
     static SolveInfo UnguardedCg<TOp>(in TOp A, in doubleN b, ref doubleN x,
                                        ref doubleN r, ref doubleN p, ref doubleN Ap,
-                                       int maxIterations, double tolerance)
+                                       int maxIter, double tol)
         where TOp : struct, IdoubleLinearOperator
     {
         double bb = Blas.dot(b, b);
@@ -83,12 +83,12 @@ public class doubleKrylovVerifyAtExitTests
         p.Data.CopyFrom(r.Data);
 
         double rsold = Blas.dot(r, r);
-        double threshold = tolerance * tolerance * bb;
+        double threshold = tol * tol * bb;
 
         if (rsold <= threshold)
             return new SolveInfo { rnorm = (double)math.sqrt(rsold), iterations = 0, status = IterativeSolveStatus.Converged };
 
-        for (int k = 0; k < maxIterations; k++)
+        for (int k = 0; k < maxIter; k++)
         {
             double pAp = A.ApplyDot(in p, ref Ap);
             if (!(pAp > (double)0))
@@ -105,7 +105,7 @@ public class doubleKrylovVerifyAtExitTests
             rsold = rsnew;
         }
 
-        return new SolveInfo { rnorm = (double)math.sqrt(rsold), iterations = maxIterations, status = IterativeSolveStatus.MaxIterations };
+        return new SolveInfo { rnorm = (double)math.sqrt(rsold), iterations = maxIter, status = IterativeSolveStatus.MaxIterations };
     }
 
     // ==============================================================================

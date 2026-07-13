@@ -24,7 +24,7 @@ namespace LinearAlgebra
         /// <summary>A = -A over the stored entries (pattern-preserving).</summary>
         public static void signFlipInPlace(this in doubleBSR A)
         {
-            unsafe { UnsafeOP.signFlip(A.Values.Ptr, A.Values.Ptr, A.Values.Length); }
+            unsafe { UnsafeOP.signFlipInPlace(A.Values.Ptr, A.Values.Length); }
         }
 
         /// <summary>A = |A| over the stored entries (pattern-preserving).</summary>

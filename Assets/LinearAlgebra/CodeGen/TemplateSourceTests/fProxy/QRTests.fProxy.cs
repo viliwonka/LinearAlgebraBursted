@@ -1134,7 +1134,7 @@ public class fProxyQRTests
             Blas.dot(in A, in xTrue, ref b);
             // solve
             var x = arena.fProxyVec(n);
-            LQ.minNormSolve(ref A, ref b, ref x);
+            LQ.minNormSolve(in A, in b, ref x);
             AssertClose(in x, in xTrue, 1E-4f);
             arena.Dispose();
         }
@@ -1150,7 +1150,7 @@ public class fProxyQRTests
             var b = arena.fProxyVec(m);
             Blas.dot(in A, in xTrue, ref b);
             var x = arena.fProxyVec(n);
-            LQ.minNormSolve(ref A, ref b, ref x);
+            LQ.minNormSolve(in A, in b, ref x);
             AssertClose(in x, in xTrue, 1E-4f);
             arena.Dispose();
         }
@@ -1166,7 +1166,7 @@ public class fProxyQRTests
             var b = arena.fProxyVec(m);
             Blas.dot(in A, in xTrue, ref b);
             var x = arena.fProxyVec(n);
-            LQ.minNormSolve(ref A, ref b, ref x);
+            LQ.minNormSolve(in A, in b, ref x);
             AssertClose(in x, in xTrue, 1E-4f);
             arena.Dispose();
         }
@@ -1179,7 +1179,7 @@ public class fProxyQRTests
             var A = arena.fProxyRandomMat(m, n, -2f, 2f, 77777);
             var b = arena.fProxyRandomVec(m, -1f, 1f, 88888);
             var x = arena.fProxyVec(n);
-            LQ.minNormSolve(ref A, ref b, ref x);
+            LQ.minNormSolve(in A, in b, ref x);
             // residual = A x - b
             var Ax   = arena.fProxyVec(m);
             Blas.dot(in A, in x, ref Ax);
@@ -1208,7 +1208,7 @@ public class fProxyQRTests
                 A[d, d] += (fProxy)20f;
             var b = arena.fProxyRandomVec(m, -1f, 1f, 141414);
             var x = arena.fProxyVec(n);
-            LQ.minNormSolve(ref A, ref b, ref x);
+            LQ.minNormSolve(in A, in b, ref x);
             var Ax = arena.fProxyVec(m);
             Blas.dot(in A, in x, ref Ax);
             Ax.subInPlace(b);
@@ -1237,7 +1237,7 @@ public class fProxyQRTests
                 A[d, d] += (fProxy)20f;
             var b = arena.fProxyRandomVec(m, -1f, 1f, 181920);
             var x = arena.fProxyVec(n);
-            LQ.minNormSolve(ref A, ref b, ref x);
+            LQ.minNormSolve(in A, in b, ref x);
             var Ax = arena.fProxyVec(m);
             Blas.dot(in A, in x, ref Ax);
             Ax.subInPlace(b);
@@ -1266,7 +1266,7 @@ public class fProxyQRTests
             var x = arena.fProxyVec(n);
             for (int i = 0; i < n; i++) x[i] = fProxy.NaN;
 
-            LQ.minNormSolve(ref A, ref b, ref x);
+            LQ.minNormSolve(in A, in b, ref x);
 
             Assert.IsFalse(Analysis.isAnyNan(in x));
 

@@ -24,7 +24,7 @@ namespace LinearAlgebra
         /// as v[i] = 1 + (i &amp; 3), then normalized before iterating.
         ///
         /// Convergence criterion: the infinity norm of the residual r = A*v - lambda*v
-        /// satisfies r &lt;= tolerance * max(1, |lambda|). Returns an <see cref="EigenSolveInfo"/>
+        /// satisfies r &lt;= tol * max(1, |lambda|). Returns an <see cref="EigenSolveInfo"/>
         /// (implicit-bool == Converged); power iteration has no Breakdown status -- only Converged or
         /// MaxIterations.
         ///
@@ -36,7 +36,7 @@ namespace LinearAlgebra
         /// allocate.
         /// </summary>
         public static EigenSolveInfo powerIteration<TOp>(in TOp A, ref fProxyN v, ref fProxyN w,
-                                               out fProxy lambda, fProxy tolerance, int maxIterations)
+                                               out fProxy lambda, fProxy tol, int maxIter)
             where TOp : struct, IfProxyLinearOperator
         {
             if (A.Rows != A.Cols)
@@ -53,11 +53,11 @@ namespace LinearAlgebra
                     throw new ArgumentException("powerIteration: w must not alias v");
             }
 
-            if (maxIterations < 1)
-                throw new ArgumentException("powerIteration: maxIterations must be >= 1");
+            if (maxIter < 1)
+                throw new ArgumentException("powerIteration: maxIter must be >= 1");
 
-            if (tolerance <= (fProxy)0)
-                throw new ArgumentException("powerIteration: tolerance must be > 0");
+            if (tol <= (fProxy)0)
+                throw new ArgumentException("powerIteration: tol must be > 0");
 
             int n = A.Rows;
 
@@ -82,7 +82,7 @@ namespace LinearAlgebra
 
             lambda = (fProxy)0;
 
-            for (int iter = 0; iter < maxIterations; iter++) {
+            for (int iter = 0; iter < maxIter; iter++) {
 
                 // Step 1: w = A * v (no allocation — the operator's own Apply, e.g. a manual
                 // matvec for dense or spMV for a BSR)
@@ -105,7 +105,7 @@ namespace LinearAlgebra
                 fProxy scale = math.abs(lambda);
                 if (scale < (fProxy)1)
                     scale = (fProxy)1;
-                if (residual <= tolerance * scale)
+                if (residual <= tol * scale)
                     return new EigenSolveInfo { iterations = iter + 1, residual = (double)residual, status = IterativeSolveStatus.Converged };
 
                 // Step 5: compute ||w||_2; handle exact null-space case
@@ -143,9 +143,9 @@ namespace LinearAlgebra
             if (finalScale < (fProxy)1)
                 finalScale = (fProxy)1;
 
-            bool finalOk = finalResidual <= tolerance * finalScale;
+            bool finalOk = finalResidual <= tol * finalScale;
             return new EigenSolveInfo {
-                iterations = maxIterations,
+                iterations = maxIter,
                 residual = (double)finalResidual,
                 status = finalOk ? IterativeSolveStatus.Converged : IterativeSolveStatus.MaxIterations
             };
@@ -158,17 +158,17 @@ namespace LinearAlgebra
         /// algorithm documentation (deterministic seeding, convergence criterion, notes).
         /// </summary>
         public static EigenSolveInfo powerIteration(in fProxyMxN A, ref fProxyN v, ref fProxyN w,
-                                          out fProxy lambda, fProxy tolerance, int maxIterations)
+                                          out fProxy lambda, fProxy tol, int maxIter)
         {
-            return powerIteration(new fProxyDenseOperator(in A), ref v, ref w, out lambda, tolerance, maxIterations);
+            return powerIteration(new fProxyDenseOperator(in A), ref v, ref w, out lambda, tol, maxIter);
         }
 
-        /// <summary>powerIteration with default maxIterations (1000).</summary>
+        /// <summary>powerIteration with default maxIter (1000).</summary>
         public static EigenSolveInfo powerIteration(in fProxyMxN A, ref fProxyN v, ref fProxyN w,
-                                          out fProxy lambda, fProxy tolerance)
-            => powerIteration(in A, ref v, ref w, out lambda, tolerance, 1000);
+                                          out fProxy lambda, fProxy tol)
+            => powerIteration(in A, ref v, ref w, out lambda, tol, 1000);
 
-        /// <summary>powerIteration with default tolerance (Consts.fProxyZeroThreshold) and maxIterations (1000).</summary>
+        /// <summary>powerIteration with default tol (Consts.fProxyZeroThreshold) and maxIter (1000).</summary>
         public static EigenSolveInfo powerIteration(in fProxyMxN A, ref fProxyN v, ref fProxyN w,
                                           out fProxy lambda)
             => powerIteration(in A, ref v, ref w, out lambda, Consts.fProxyZeroThreshold, 1000);
@@ -180,19 +180,19 @@ namespace LinearAlgebra
         /// Forwards into <see cref="powerIteration{TOp}"/> via <c>fProxyBSROperator</c>.
         /// </summary>
         public static EigenSolveInfo powerIteration(in fProxyBSR A, ref fProxyN v, ref fProxyN w,
-                                          out fProxy lambda, fProxy tolerance, int maxIterations)
+                                          out fProxy lambda, fProxy tol, int maxIter)
         {
-            return powerIteration(new fProxyBSROperator(in A), ref v, ref w, out lambda, tolerance, maxIterations);
+            return powerIteration(new fProxyBSROperator(in A), ref v, ref w, out lambda, tol, maxIter);
         }
 
-        /// <summary>powerIteration over a block-sparse (BSR) matrix with default maxIterations (1000).</summary>
+        /// <summary>powerIteration over a block-sparse (BSR) matrix with default maxIter (1000).</summary>
         public static EigenSolveInfo powerIteration(in fProxyBSR A, ref fProxyN v, ref fProxyN w,
-                                          out fProxy lambda, fProxy tolerance)
-            => powerIteration(in A, ref v, ref w, out lambda, tolerance, 1000);
+                                          out fProxy lambda, fProxy tol)
+            => powerIteration(in A, ref v, ref w, out lambda, tol, 1000);
 
         /// <summary>
-        /// powerIteration over a block-sparse (BSR) matrix with default tolerance
-        /// (Consts.fProxyZeroThreshold) and maxIterations (1000).
+        /// powerIteration over a block-sparse (BSR) matrix with default tol
+        /// (Consts.fProxyZeroThreshold) and maxIter (1000).
         /// </summary>
         public static EigenSolveInfo powerIteration(in fProxyBSR A, ref fProxyN v, ref fProxyN w,
                                           out fProxy lambda)
@@ -222,16 +222,16 @@ namespace LinearAlgebra
         /// Rayleigh quotient v^T A v / v^T v (recomputed via A.Apply, not carried over from CG).
         ///
         /// Convergence (checked once per outer iteration, OR'd): (1) the eigenvector settles -- the
-        /// infinity norm of v_new - v_old is &lt;= tolerance, sign-aligned against v_old first; or (2) the
-        /// Rayleigh quotient stabilizes -- |lambda_new - lambda_old| &lt;= tolerance * max(1, |lambda_new|).
+        /// infinity norm of v_new - v_old is &lt;= tol, sign-aligned against v_old first; or (2) the
+        /// Rayleigh quotient stabilizes -- |lambda_new - lambda_old| &lt;= tol * max(1, |lambda_new|).
         /// Returns Converged, MaxIterations, or Breakdown if the inner CG solve fails. On
         /// Converged/MaxIterations, residual is ‖Av-λv‖∞; on Breakdown, residual is
         /// <see cref="double.NaN"/> and lambda is 0 -- only read v/lambda when Solved.
         ///
-        /// GOTCHA: pick tolerance no tighter than (and ideally a small multiple of) cgTolerance. Every outer
+        /// GOTCHA: pick tol no tighter than (and ideally a small multiple of) cgTolerance. Every outer
         /// iteration's v/y comes from a FRESH CG solve accurate only to ~cgTolerance, so consecutive
-        /// eigenpair estimates stop improving once that noise floor is reached; a tighter tolerance may never
-        /// be satisfied and spins to maxIterations reporting MaxIterations even though the estimate is
+        /// eigenpair estimates stop improving once that noise floor is reached; a tighter tol may never
+        /// be satisfied and spins to maxIter reporting MaxIterations even though the estimate is
         /// already as good as cgTolerance allows.
         ///
         /// SEEDING CAVEAT: if the target smallest eigenvector is (near-)orthogonal to the default seed
@@ -243,7 +243,7 @@ namespace LinearAlgebra
         public static EigenSolveInfo inversePowerIteration<TOp>(in TOp A, ref fProxyN v, ref fProxyN y,
                                                       ref fProxyN r, ref fProxyN p, ref fProxyN Ap,
                                                       out fProxy lambda,
-                                                      fProxy tolerance, int maxIterations, int cgMaxIterations, fProxy cgTolerance)
+                                                      fProxy tol, int maxIter, int cgMaxIterations, fProxy cgTolerance)
             where TOp : struct, IfProxyLinearOperator
         {
             if (A.Rows != A.Cols)
@@ -266,11 +266,11 @@ namespace LinearAlgebra
             if (Ap.N != n)
                 throw new ArgumentException("inversePowerIteration: Ap.N must equal A.Rows");
 
-            if (maxIterations < 1)
-                throw new ArgumentException("inversePowerIteration: maxIterations must be >= 1");
+            if (maxIter < 1)
+                throw new ArgumentException("inversePowerIteration: maxIter must be >= 1");
 
-            if (tolerance <= (fProxy)0)
-                throw new ArgumentException("inversePowerIteration: tolerance must be > 0");
+            if (tol <= (fProxy)0)
+                throw new ArgumentException("inversePowerIteration: tol must be > 0");
 
             // Aliasing guard: v/y/r/p/Ap must all be distinct buffers -- same rationale as
             // cg<TOp>'s guard (the loop below, and cg's own loop, mix elementwise scratch updates
@@ -308,7 +308,7 @@ namespace LinearAlgebra
             lambda = (fProxy)0;
             fProxy lambdaPrev = fProxy.NaN;   // sentinel: no previous estimate yet (NaN-safe compare below)
 
-            for (int iter = 0; iter < maxIterations; iter++) {
+            for (int iter = 0; iter < maxIter; iter++) {
 
                 // Step 1: solve A y = v via CG (reuses r/p/Ap as CG's own scratch every outer
                 // iteration -- zero additional allocation). A false return means CG broke down
@@ -368,7 +368,7 @@ namespace LinearAlgebra
                 if (lambdaScale < (fProxy)1) lambdaScale = (fProxy)1;
                 fProxy lambdaChange = math.abs(lambda - lambdaPrev);   // NaN on iter 0 -> false below
 
-                if (vecDiff <= tolerance || lambdaChange <= tolerance * lambdaScale)
+                if (vecDiff <= tol || lambdaChange <= tol * lambdaScale)
                     return new EigenSolveInfo {
                         iterations = iter + 1,
                         residual = InversePowerResidual(in Ap, in v, lambda, n),
@@ -379,7 +379,7 @@ namespace LinearAlgebra
             }
 
             return new EigenSolveInfo {
-                iterations = maxIterations,
+                iterations = maxIter,
                 residual = InversePowerResidual(in Ap, in v, lambda, n),
                 status = IterativeSolveStatus.MaxIterations
             };
@@ -408,16 +408,16 @@ namespace LinearAlgebra
         public static EigenSolveInfo inversePowerIteration(in fProxyMxN A, ref fProxyN v, ref fProxyN y,
                                                  ref fProxyN r, ref fProxyN p, ref fProxyN Ap,
                                                  out fProxy lambda,
-                                                 fProxy tolerance, int maxIterations, int cgMaxIterations, fProxy cgTolerance)
+                                                 fProxy tol, int maxIter, int cgMaxIterations, fProxy cgTolerance)
         {
-            return inversePowerIteration(new fProxyDenseOperator(in A), ref v, ref y, ref r, ref p, ref Ap, out lambda, tolerance, maxIterations, cgMaxIterations, cgTolerance);
+            return inversePowerIteration(new fProxyDenseOperator(in A), ref v, ref y, ref r, ref p, ref Ap, out lambda, tol, maxIter, cgMaxIterations, cgTolerance);
         }
 
         /// <summary>inversePowerIteration with default cgMaxIterations (A.M_Rows) and cgTolerance (Consts.fProxySqrtEps).</summary>
         public static EigenSolveInfo inversePowerIteration(in fProxyMxN A, ref fProxyN v, ref fProxyN y,
                                                  ref fProxyN r, ref fProxyN p, ref fProxyN Ap,
-                                                 out fProxy lambda, fProxy tolerance, int maxIterations)
-            => inversePowerIteration(in A, ref v, ref y, ref r, ref p, ref Ap, out lambda, tolerance, maxIterations, A.M_Rows, Consts.fProxySqrtEps);
+                                                 out fProxy lambda, fProxy tol, int maxIter)
+            => inversePowerIteration(in A, ref v, ref y, ref r, ref p, ref Ap, out lambda, tol, maxIter, A.M_Rows, Consts.fProxySqrtEps);
 
         /// <summary>
         /// Inverse power iteration over a dense SPD matrix -- allocates the inner-solve scratch
@@ -426,22 +426,22 @@ namespace LinearAlgebra
         /// allocation.
         /// </summary>
         public static EigenSolveInfo inversePowerIteration(in fProxyMxN A, ref fProxyN v, out fProxy lambda,
-                                                 fProxy tolerance, int maxIterations, int cgMaxIterations, fProxy cgTolerance)
+                                                 fProxy tol, int maxIter, int cgMaxIterations, fProxy cgTolerance)
         {
             fProxyN y  = v.fProxyTempVec(A.M_Rows);
             fProxyN r  = v.fProxyTempVec(A.M_Rows);
             fProxyN p  = v.fProxyTempVec(A.M_Rows);
             fProxyN Ap = v.fProxyTempVec(A.M_Rows);
-            return inversePowerIteration(in A, ref v, ref y, ref r, ref p, ref Ap, out lambda, tolerance, maxIterations, cgMaxIterations, cgTolerance);
+            return inversePowerIteration(in A, ref v, ref y, ref r, ref p, ref Ap, out lambda, tol, maxIter, cgMaxIterations, cgTolerance);
         }
 
         /// <summary>
-        /// inversePowerIteration (allocating) with default tolerance (10 * Consts.fProxySqrtEps),
-        /// maxIterations (1000), cgMaxIterations (A.M_Rows) and cgTolerance (Consts.fProxySqrtEps). tolerance defaults to
+        /// inversePowerIteration (allocating) with default tol (10 * Consts.fProxySqrtEps),
+        /// maxIter (1000), cgMaxIterations (A.M_Rows) and cgTolerance (Consts.fProxySqrtEps). tol defaults to
         /// a multiple of cgTolerance (NOT the much tighter Consts.fProxyZeroThreshold) on purpose: the
         /// outer convergence checks compare CONSECUTIVE eigenpair estimates, each derived from its
-        /// own fresh CG solve accurate only to ~cgTolerance -- an outer tolerance tighter than that noise
-        /// floor could spin to maxIterations without ever detecting convergence (the residual genuinely
+        /// own fresh CG solve accurate only to ~cgTolerance -- an outer tol tighter than that noise
+        /// floor could spin to maxIter without ever detecting convergence (the residual genuinely
         /// bottoms out around cgTolerance, it does not keep shrinking with more outer iterations).
         /// </summary>
         public static EigenSolveInfo inversePowerIteration(in fProxyMxN A, ref fProxyN v, out fProxy lambda)
@@ -456,35 +456,35 @@ namespace LinearAlgebra
         public static EigenSolveInfo inversePowerIteration(in fProxyBSR A, ref fProxyN v, ref fProxyN y,
                                                  ref fProxyN r, ref fProxyN p, ref fProxyN Ap,
                                                  out fProxy lambda,
-                                                 fProxy tolerance, int maxIterations, int cgMaxIterations, fProxy cgTolerance)
+                                                 fProxy tol, int maxIter, int cgMaxIterations, fProxy cgTolerance)
         {
-            return inversePowerIteration(new fProxyBSROperator(in A), ref v, ref y, ref r, ref p, ref Ap, out lambda, tolerance, maxIterations, cgMaxIterations, cgTolerance);
+            return inversePowerIteration(new fProxyBSROperator(in A), ref v, ref y, ref r, ref p, ref Ap, out lambda, tol, maxIter, cgMaxIterations, cgTolerance);
         }
 
         /// <summary>inversePowerIteration over a BSR matrix with default cgMaxIterations (A.M_Rows) and cgTolerance (Consts.fProxySqrtEps).</summary>
         public static EigenSolveInfo inversePowerIteration(in fProxyBSR A, ref fProxyN v, ref fProxyN y,
                                                  ref fProxyN r, ref fProxyN p, ref fProxyN Ap,
-                                                 out fProxy lambda, fProxy tolerance, int maxIterations)
-            => inversePowerIteration(in A, ref v, ref y, ref r, ref p, ref Ap, out lambda, tolerance, maxIterations, A.M_Rows, Consts.fProxySqrtEps);
+                                                 out fProxy lambda, fProxy tol, int maxIter)
+            => inversePowerIteration(in A, ref v, ref y, ref r, ref p, ref Ap, out lambda, tol, maxIter, A.M_Rows, Consts.fProxySqrtEps);
 
         /// <summary>
         /// Inverse power iteration over a BSR SPD matrix -- allocates the inner-solve scratch from
         /// the arena that <paramref name="v"/> carries and calls the zero-alloc primitive.
         /// </summary>
         public static EigenSolveInfo inversePowerIteration(in fProxyBSR A, ref fProxyN v, out fProxy lambda,
-                                                 fProxy tolerance, int maxIterations, int cgMaxIterations, fProxy cgTolerance)
+                                                 fProxy tol, int maxIter, int cgMaxIterations, fProxy cgTolerance)
         {
             fProxyN y  = v.fProxyTempVec(A.M_Rows);
             fProxyN r  = v.fProxyTempVec(A.M_Rows);
             fProxyN p  = v.fProxyTempVec(A.M_Rows);
             fProxyN Ap = v.fProxyTempVec(A.M_Rows);
-            return inversePowerIteration(in A, ref v, ref y, ref r, ref p, ref Ap, out lambda, tolerance, maxIterations, cgMaxIterations, cgTolerance);
+            return inversePowerIteration(in A, ref v, ref y, ref r, ref p, ref Ap, out lambda, tol, maxIter, cgMaxIterations, cgTolerance);
         }
 
         /// <summary>
-        /// inversePowerIteration (allocating) over a BSR matrix with default tolerance
-        /// (10 * Consts.fProxySqrtEps), maxIterations (1000), cgMaxIterations (A.M_Rows) and cgTolerance
-        /// (Consts.fProxySqrtEps). See the dense overload's doc comment for why tolerance defaults to a
+        /// inversePowerIteration (allocating) over a BSR matrix with default tol
+        /// (10 * Consts.fProxySqrtEps), maxIter (1000), cgMaxIterations (A.M_Rows) and cgTolerance
+        /// (Consts.fProxySqrtEps). See the dense overload's doc comment for why tol defaults to a
         /// multiple of cgTolerance rather than the much tighter Consts.fProxyZeroThreshold.
         /// </summary>
         public static EigenSolveInfo inversePowerIteration(in fProxyBSR A, ref fProxyN v, out fProxy lambda)
@@ -912,7 +912,7 @@ namespace LinearAlgebra
         /// usable factor -- read <paramref name="eigenvalues"/> instead).</param>
         [System.Obsolete("Prefer Eigen.symmetricInPlace (Householder tridiagonal + QL, ~30x faster) for symmetric eigenpairs, or Eigen.valuesSymmetricInPlace for eigenvalues only. This cyclic-Jacobi solver is retained for reference.", false)]
         public static EigenInfo decompInPlace(ref fProxyMxN A, ref fProxyN eigenvalues,
-                                              ref fProxyMxN V, int maxSweeps, fProxy tolerance)
+                                              ref fProxyMxN V, int maxSweeps, fProxy tol)
         {
             if (!A.IsSquare)
                 throw new ArgumentException("Eigen.decompInPlace: A must be square");
@@ -928,8 +928,8 @@ namespace LinearAlgebra
             if (maxSweeps < 1)
                 throw new ArgumentException("Eigen.decompInPlace: maxSweeps must be >= 1");
 
-            if (tolerance <= (fProxy)0)
-                throw new ArgumentException("Eigen.decompInPlace: tolerance must be > 0");
+            if (tol <= (fProxy)0)
+                throw new ArgumentException("Eigen.decompInPlace: tol must be > 0");
 
             // Symmetry guard: check that A is symmetric within relative tolerance
             for (int i = 0; i < n; i++) {
@@ -938,7 +938,7 @@ namespace LinearAlgebra
                     fProxy aji = A[j, i];
                     fProxy diff = math.abs(aij - aji);
                     fProxy relScale = (fProxy)1 + math.abs(aij) + math.abs(aji);
-                    if (diff > tolerance * relScale)
+                    if (diff > tol * relScale)
                         throw new ArgumentException("Eigen.decompInPlace: Matrix must be symmetric");
                 }
             }
@@ -968,7 +968,7 @@ namespace LinearAlgebra
                             continue;
 
                         // Skip when off-diagonal is negligible relative to the diagonal
-                        if (math.abs(apq) <= tolerance * (fProxy)0.5 * (math.abs(A[p, p]) + math.abs(A[q, q])))
+                        if (math.abs(apq) <= tol * (fProxy)0.5 * (math.abs(A[p, p]) + math.abs(A[q, q])))
                             continue;
 
                         // Compute rotation angle: theta = (A[q,q] - A[p,p]) / (2 * A[p,q])
@@ -1069,13 +1069,13 @@ namespace LinearAlgebra
         // The default-argument overloads forward to the deprecated primitive; suppress the
         // self-referential obsolete warning (618) on the forwarding calls.
 #pragma warning disable 618
-        /// <summary>decompInPlace with default tolerance (Consts.fProxyZeroThreshold).</summary>
+        /// <summary>decompInPlace with default tol (Consts.fProxyZeroThreshold).</summary>
         [System.Obsolete("Prefer Eigen.symmetricInPlace (Householder tridiagonal + QL, ~30x faster) for symmetric eigenpairs, or Eigen.valuesSymmetricInPlace for eigenvalues only. This cyclic-Jacobi solver is retained for reference.", false)]
         public static EigenInfo decompInPlace(ref fProxyMxN A, ref fProxyN eigenvalues,
                                               ref fProxyMxN V, int maxSweeps)
             => decompInPlace(ref A, ref eigenvalues, ref V, maxSweeps, Consts.fProxyZeroThreshold);
 
-        /// <summary>decompInPlace with default maxSweeps (30) and tolerance (Consts.fProxyZeroThreshold). NOTE:
+        /// <summary>decompInPlace with default maxSweeps (30) and tol (Consts.fProxyZeroThreshold). NOTE:
         /// this constant is NOT scaled by Consts.sweepBudget like the other Eigen/SVD defaults --
         /// decompInPlace's "sweep" is a FULL-MATRIX Jacobi sweep (O(n^2) rotations each), a
         /// fundamentally different iteration unit from the per-value QR/QL sweeps the LAPACK dbdsqr
@@ -1100,7 +1100,7 @@ namespace LinearAlgebra
         /// maxIterPerEig for some eigenvalue (outputs then undefined). Does not allocate
         /// beyond three length-n Temp scratch vectors.
         /// </summary>
-        public static EigenInfo valuesSymmetricInPlace(ref fProxyMxN A, ref fProxyN eigenvalues, int maxIterPerEig, fProxy tolerance,
+        public static EigenInfo valuesSymmetricInPlace(ref fProxyMxN A, ref fProxyN eigenvalues, int maxIterPerEig, fProxy tol,
                                                  ref fProxyEigenSymCache ws)
         {
             if (!A.IsSquare)
@@ -1114,8 +1114,8 @@ namespace LinearAlgebra
             if (maxIterPerEig < 1)
                 throw new ArgumentException("Eigen.valuesSymmetricInPlace: maxIterPerEig must be >= 1");
 
-            if (tolerance <= (fProxy)0)
-                throw new ArgumentException("Eigen.valuesSymmetricInPlace: tolerance must be > 0");
+            if (tol <= (fProxy)0)
+                throw new ArgumentException("Eigen.valuesSymmetricInPlace: tol must be > 0");
 
             // Symmetry guard (same as decompInPlace). The reduction reads the full symmetric
             // matrix (the gemv uses whole rows), so both triangles must agree.
@@ -1125,7 +1125,7 @@ namespace LinearAlgebra
                     fProxy aij = A[i, j], aji = A[j, i];
                     fProxy diff = math.abs(aij - aji);
                     fProxy relScale = (fProxy)1 + math.abs(aij) + math.abs(aji);
-                    if (diff > tolerance * relScale)
+                    if (diff > tol * relScale)
                         throw new ArgumentException("Eigen.valuesSymmetricInPlace: Matrix must be symmetric");
                 }
 
@@ -1224,7 +1224,7 @@ namespace LinearAlgebra
             // Global tridiagonal scale. The deflation test below is floored by this so a cluster of
             // ZERO eigenvalues can still deflate: there the local |d[m]|+|d[m+1]| collapses to ~0, but
             // the sub-diagonal noise floor is set by the GLOBAL scale, so a purely local threshold
-            // never triggers in float and QL spins to maxIterations (the rank-deficient values case).
+            // never triggers in float and QL spins to maxIter (the rank-deficient values case).
             fProxy anorm = math.abs(eigenvalues[0]) + math.abs(eVec[0]);
             for (int i = 1; i < n; i++)
             {
@@ -1300,7 +1300,7 @@ namespace LinearAlgebra
             return new EigenInfo { status = IterativeSolveStatus.Converged, sweeps = sweeps, converged = convergedCount };
         }
 
-        /// <summary>valuesSymmetricInPlace (ref workspace) with default maxIterPerEig (Consts.sweepBudget(A.M_Rows)) and tolerance (Consts.fProxyZeroThreshold).</summary>
+        /// <summary>valuesSymmetricInPlace (ref workspace) with default maxIterPerEig (Consts.sweepBudget(A.M_Rows)) and tol (Consts.fProxyZeroThreshold).</summary>
         public static EigenInfo valuesSymmetricInPlace(ref fProxyMxN A, ref fProxyN eigenvalues, ref fProxyEigenSymCache ws)
             => valuesSymmetricInPlace(ref A, ref eigenvalues, Consts.sweepBudget(A.M_Rows), Consts.fProxyZeroThreshold, ref ws);
 
@@ -1308,7 +1308,7 @@ namespace LinearAlgebra
         /// valuesSymmetricInPlace allocating its tridiagonalization scratch (three length-n vectors) from
         /// Allocator.Temp. See the ref-workspace overload for semantics. A is overwritten (destroyed).
         /// </summary>
-        public static EigenInfo valuesSymmetricInPlace(ref fProxyMxN A, ref fProxyN eigenvalues, int maxIterPerEig, fProxy tolerance)
+        public static EigenInfo valuesSymmetricInPlace(ref fProxyMxN A, ref fProxyN eigenvalues, int maxIterPerEig, fProxy tol)
         {
             int n = A.M_Rows;
             var ws = new fProxyEigenSymCache
@@ -1317,14 +1317,14 @@ namespace LinearAlgebra
                 vVec = new fProxyN(n, Allocator.Temp, false),
                 pVec = new fProxyN(n, Allocator.Temp, false)
             };
-            EigenInfo info = valuesSymmetricInPlace(ref A, ref eigenvalues, maxIterPerEig, tolerance, ref ws);
+            EigenInfo info = valuesSymmetricInPlace(ref A, ref eigenvalues, maxIterPerEig, tol, ref ws);
             ws.eVec.Dispose();
             ws.vVec.Dispose();
             ws.pVec.Dispose();
             return info;
         }
 
-        /// <summary>valuesSymmetricInPlace with default maxIterPerEig (Consts.sweepBudget(A.M_Rows)) and tolerance (Consts.fProxyZeroThreshold).</summary>
+        /// <summary>valuesSymmetricInPlace with default maxIterPerEig (Consts.sweepBudget(A.M_Rows)) and tol (Consts.fProxyZeroThreshold).</summary>
         public static EigenInfo valuesSymmetricInPlace(ref fProxyMxN A, ref fProxyN eigenvalues)
             => valuesSymmetricInPlace(ref A, ref eigenvalues, Consts.sweepBudget(A.M_Rows), Consts.fProxyZeroThreshold);
 
@@ -1342,7 +1342,7 @@ namespace LinearAlgebra
         /// undefined). Allocates three length-n Temp scratch vectors.
         /// </summary>
         public static EigenInfo symmetricInPlace(ref fProxyMxN A, ref fProxyN eigenvalues, ref fProxyMxN V,
-                                          int maxIterPerEig, fProxy tolerance)
+                                          int maxIterPerEig, fProxy tol)
         {
             if (!A.IsSquare)
                 throw new ArgumentException("Eigen.symmetricInPlace: A must be square");
@@ -1358,8 +1358,8 @@ namespace LinearAlgebra
             if (maxIterPerEig < 1)
                 throw new ArgumentException("Eigen.symmetricInPlace: maxIterPerEig must be >= 1");
 
-            if (tolerance <= (fProxy)0)
-                throw new ArgumentException("Eigen.symmetricInPlace: tolerance must be > 0");
+            if (tol <= (fProxy)0)
+                throw new ArgumentException("Eigen.symmetricInPlace: tol must be > 0");
 
             for (int i = 0; i < n; i++)
                 for (int j = i + 1; j < n; j++)
@@ -1367,7 +1367,7 @@ namespace LinearAlgebra
                     fProxy aij = A[i, j], aji = A[j, i];
                     fProxy diff = math.abs(aij - aji);
                     fProxy relScale = (fProxy)1 + math.abs(aij) + math.abs(aji);
-                    if (diff > tolerance * relScale)
+                    if (diff > tol * relScale)
                         throw new ArgumentException("Eigen.symmetricInPlace: Matrix must be symmetric");
                 }
 
@@ -1471,7 +1471,7 @@ namespace LinearAlgebra
                 for (int i = 0; i < n; i++) eigenvalues[i] = ap[(long)i * n + i];
 
                 // Global tridiagonal scale (see valuesSymmetricInPlace): floors the deflation threshold
-                // so clustered zero eigenvalues still deflate instead of spinning QL to maxIterations.
+                // so clustered zero eigenvalues still deflate instead of spinning QL to maxIter.
                 fProxy anorm = math.abs(eigenvalues[0]) + math.abs(eVec[0]);
                 for (int i = 1; i < n; i++)
                 {
@@ -1578,7 +1578,7 @@ namespace LinearAlgebra
             return new EigenInfo { status = IterativeSolveStatus.Converged, sweeps = sweepsLocal, converged = convergedLocal };
         }
 
-        /// <summary>symmetric with default maxIterPerEig (Consts.sweepBudget(A.M_Rows)) and tolerance (Consts.fProxyZeroThreshold).</summary>
+        /// <summary>symmetric with default maxIterPerEig (Consts.sweepBudget(A.M_Rows)) and tol (Consts.fProxyZeroThreshold).</summary>
         public static EigenInfo symmetricInPlace(ref fProxyMxN A, ref fProxyN eigenvalues, ref fProxyMxN V)
             => symmetricInPlace(ref A, ref eigenvalues, ref V, Consts.sweepBudget(A.M_Rows), Consts.fProxyZeroThreshold);
 

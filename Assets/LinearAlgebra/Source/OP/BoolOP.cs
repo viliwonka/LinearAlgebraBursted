@@ -21,7 +21,7 @@ namespace LinearAlgebra
         public static void notInPlace<T>(this T a) where T : unmanaged, IUnsafeBoolArray
         {
             unsafe {
-                UnsafeBoolOP.not(a.Data.Ptr, a.Data.Ptr, a.Data.Length);
+                UnsafeBoolOP.notInPlace(a.Data.Ptr, a.Data.Length);
             }
         }
         
@@ -30,7 +30,7 @@ namespace LinearAlgebra
         {
             unsafe
             {
-                UnsafeBoolOP.or(a.Data.Ptr, b.Data.Ptr, a.Data.Ptr, a.Data.Length);
+                UnsafeBoolOP.orInPlace(a.Data.Ptr, b.Data.Ptr, a.Data.Length);
             }
         }
 
@@ -39,7 +39,7 @@ namespace LinearAlgebra
         {
             unsafe
             {
-                UnsafeBoolOP.or(a.Data.Ptr, a.Data.Ptr, a.Data.Length, b);
+                UnsafeBoolOP.orInPlace(a.Data.Ptr, a.Data.Length, b);
             }
         }
 
@@ -48,7 +48,7 @@ namespace LinearAlgebra
         {
             unsafe
             {
-                UnsafeBoolOP.and(a.Data.Ptr, b.Data.Ptr, a.Data.Ptr, a.Data.Length);
+                UnsafeBoolOP.andInPlace(a.Data.Ptr, b.Data.Ptr, a.Data.Length);
             }
         }
 
@@ -57,7 +57,7 @@ namespace LinearAlgebra
         {
             unsafe
             {
-                UnsafeBoolOP.and(a.Data.Ptr, a.Data.Ptr, a.Data.Length, b);
+                UnsafeBoolOP.andInPlace(a.Data.Ptr, a.Data.Length, b);
             }
         }
 
@@ -66,7 +66,7 @@ namespace LinearAlgebra
         {
             unsafe
             {
-                UnsafeBoolOP.xor(a.Data.Ptr, b.Data.Ptr, a.Data.Ptr, a.Data.Length);
+                UnsafeBoolOP.xorInPlace(a.Data.Ptr, b.Data.Ptr, a.Data.Length);
             }
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -74,7 +74,7 @@ namespace LinearAlgebra
         {
             unsafe
             {
-                UnsafeBoolOP.xor(a.Data.Ptr, a.Data.Ptr, a.Data.Length, b);
+                UnsafeBoolOP.xorInPlace(a.Data.Ptr, a.Data.Length, b);
             }
         }
 
@@ -83,7 +83,7 @@ namespace LinearAlgebra
         {
             unsafe
             {
-                UnsafeBoolOP.equals(a.Data.Ptr, b.Data.Ptr, a.Data.Ptr, a.Data.Length);
+                UnsafeBoolOP.equalsInPlace(a.Data.Ptr, b.Data.Ptr, a.Data.Length);
             }
         }
 
@@ -92,7 +92,7 @@ namespace LinearAlgebra
         {
             unsafe
             {
-                UnsafeBoolOP.equals(a.Data.Ptr, a.Data.Ptr, a.Data.Length, b);
+                UnsafeBoolOP.equalsInPlace(a.Data.Ptr, a.Data.Length, b);
             }
         }
 
@@ -101,7 +101,7 @@ namespace LinearAlgebra
         {
             unsafe
             {
-                UnsafeBoolOP.notEquals(a.Data.Ptr, b.Data.Ptr, a.Data.Ptr, a.Data.Length);
+                UnsafeBoolOP.notEqualsInPlace(a.Data.Ptr, b.Data.Ptr, a.Data.Length);
             }
         }
     }

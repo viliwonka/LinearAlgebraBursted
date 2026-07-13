@@ -154,7 +154,7 @@ namespace LinearAlgebra.Benchmarks
     //   (b) dense-vs-sparse solve RESULTS must agree numerically -- the residual column is exactly
     //       that cross-check (always computed from the DENSE reference matrix/rhs).
     //
-    // maxIterations is FIXED with tolerance=0, so every sample runs exactly K iterations -- deterministic
+    // maxIter is FIXED with tol=0, so every sample runs exactly K iterations -- deterministic
     // timing, mirroring IterativeBenchmark.cs's convention. Reporting the residual alongside the timing
     // shows both "how fast" and "how converged" (not just one or the other).
     //
@@ -180,8 +180,8 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine("b=3 blocks. Because both encode the IDENTICAL matrix, (a) dense-vs-sparse time is");
             sb.AppendLine("directly comparable (same math, only storage/traversal differs), and (b) dense-vs-");
             sb.AppendLine("sparse SOLUTIONS must agree numerically -- the residual column is that cross-check,");
-            sb.AppendLine("always computed from the DENSE reference matrix. maxIterations is FIXED with");
-            sb.AppendLine("tolerance=0, so every sample runs exactly K iterations (deterministic timing,");
+            sb.AppendLine("always computed from the DENSE reference matrix. maxIter is FIXED with");
+            sb.AppendLine("tol=0, so every sample runs exactly K iterations (deterministic timing,");
             sb.AppendLine("mirroring IterativeBenchmark.cs); residual after K iterations shows how converged");
             sb.AppendLine("(not just how fast) each path is. Block density is at the BLOCK level (nb x nb");
             sb.AppendLine("block grid): ~7% / ~33% of blocks nonzero, always including every diagonal block.");

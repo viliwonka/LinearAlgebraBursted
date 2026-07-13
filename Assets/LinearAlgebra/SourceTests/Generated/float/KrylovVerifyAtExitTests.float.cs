@@ -67,7 +67,7 @@ public class floatKrylovVerifyAtExitTests
     // minus the verify-at-exit block -- an independent "before" oracle without touching git.
     static SolveInfo UnguardedCg<TOp>(in TOp A, in floatN b, ref floatN x,
                                        ref floatN r, ref floatN p, ref floatN Ap,
-                                       int maxIterations, float tolerance)
+                                       int maxIter, float tol)
         where TOp : struct, IfloatLinearOperator
     {
         float bb = Blas.dot(b, b);
@@ -83,12 +83,12 @@ public class floatKrylovVerifyAtExitTests
         p.Data.CopyFrom(r.Data);
 
         float rsold = Blas.dot(r, r);
-        float threshold = tolerance * tolerance * bb;
+        float threshold = tol * tol * bb;
 
         if (rsold <= threshold)
             return new SolveInfo { rnorm = (double)math.sqrt(rsold), iterations = 0, status = IterativeSolveStatus.Converged };
 
-        for (int k = 0; k < maxIterations; k++)
+        for (int k = 0; k < maxIter; k++)
         {
             float pAp = A.ApplyDot(in p, ref Ap);
             if (!(pAp > (float)0))
@@ -105,7 +105,7 @@ public class floatKrylovVerifyAtExitTests
             rsold = rsnew;
         }
 
-        return new SolveInfo { rnorm = (double)math.sqrt(rsold), iterations = maxIterations, status = IterativeSolveStatus.MaxIterations };
+        return new SolveInfo { rnorm = (double)math.sqrt(rsold), iterations = maxIter, status = IterativeSolveStatus.MaxIterations };
     }
 
     // ==============================================================================

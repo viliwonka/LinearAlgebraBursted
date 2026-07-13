@@ -102,7 +102,7 @@ namespace LinearAlgebra
 
             int m = U.M_Rows;
 
-            if (P.N != m) throw new System.ArgumentException("pivot size must equal matrix dimension");
+            if (P.N != m) throw new System.ArgumentException("LU.decomp: pivot size must equal matrix dimension");
 
             P.Reset();
 
@@ -325,7 +325,7 @@ namespace LinearAlgebra
 
             int m = A_to_LU.M_Rows;
 
-            if (P.N != m) throw new System.ArgumentException("pivot size must equal matrix dimension");
+            if (P.N != m) throw new System.ArgumentException("LU.decompInPlace: pivot size must equal matrix dimension");
 
             P.Reset();
 
@@ -613,7 +613,7 @@ namespace LinearAlgebra
             int m = A_to_LU.M_Rows;
 
             if (P.N != m)
-                throw new System.ArgumentException("pivot size must equal matrix dimension");
+                throw new System.ArgumentException("LU.solveInPlace: pivot size must equal matrix dimension");
 
             if (b_to_x.N != m)
                 throw new System.ArgumentException("solveInPlace: b_to_x.N must equal A_to_LU.M_Rows");
@@ -693,7 +693,7 @@ namespace LinearAlgebra
             int m = A_to_LU.M_Rows;
 
             if (P.N != m)
-                throw new System.ArgumentException("pivot size must equal matrix dimension");
+                throw new System.ArgumentException("LU.solveInPlace: pivot size must equal matrix dimension");
 
             if (B_to_X.M_Rows != m)
                 throw new System.ArgumentException("solveInPlace: B_to_X.M_Rows must equal A_to_LU.M_Rows");
@@ -795,7 +795,7 @@ namespace LinearAlgebra
             int m = A_to_LU.M_Rows;
 
             if (P.N != m)
-                throw new System.ArgumentException("pivot size must equal matrix dimension");
+                throw new System.ArgumentException("LU.solveInPlaceTransA: pivot size must equal matrix dimension");
 
             if (b_to_x.N != m)
                 throw new System.ArgumentException("solveInPlaceTransA: b_to_x.N must equal A_to_LU.M_Rows");
@@ -823,7 +823,7 @@ namespace LinearAlgebra
             int m = A_to_LU.M_Rows;
 
             if (P.N != m)
-                throw new System.ArgumentException("pivot size must equal matrix dimension");
+                throw new System.ArgumentException("LU.solveInPlaceTransA: pivot size must equal matrix dimension");
 
             if (B_to_X.M_Rows != m)
                 throw new System.ArgumentException("solveInPlaceTransA: B_to_X.M_Rows must equal A_to_LU.M_Rows");

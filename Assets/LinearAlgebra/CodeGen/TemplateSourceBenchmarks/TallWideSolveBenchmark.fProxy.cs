@@ -72,7 +72,7 @@ namespace LinearAlgebra.Benchmarks
         public fProxyN b;       // length m; not modified (copied internally)
         public fProxyN x;       // length n, min-norm solution
 
-        public void Execute() => LQ.minNormSolve(ref A, ref b, ref x);
+        public void Execute() => LQ.minNormSolve(in A, in b, ref x);
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
