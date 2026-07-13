@@ -79,8 +79,8 @@ Benchmarked on a Ryzen 9 9950X3D (pinned to a non-V-Cache core), single-threaded
 
 | Algorithm | Case | Results |
 |---|---|---|
-| `LU.solveInPlace` LU | 1024×1024, float | 15.3 ms |
-| `CHO.solveInPlace` Cholesky | 1024×1024, float | 12.1 ms |
+| `LU.decomp` + `LU.decompSolve` LU | 1024×1024, float | 15.3 ms |
+| `CHO.decomp` + `CHO.decompSolve` Cholesky | 1024×1024, float | 12.1 ms |
 | `QR.solveInPlace` QR | 1024×1024, float | 36.3 ms |
 | `QR.solveInPlace` QR least squares | 2048×512, float | 31.2 ms |
 | `QRCP.solveInPlace` pivoted QR, least squares | 2048×512, float | 36.2 ms |

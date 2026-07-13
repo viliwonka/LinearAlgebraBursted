@@ -10,17 +10,20 @@ crossover — the gain caps out around 1.3–1.4× (bounded by `matMatDot`'s own
 [la-primitives.md](la-primitives.md)).
 
 - **`LU.decomp(in A, ref L, ref U, ref Pivot P)`** — partial-pivoting LU, `PA = LU`, A preserved.
-  Blocked (GETRF-style: panel factor + TRSM + one GEMM trailing update) above `n ≥ 256`. Also
+  Blocked (GETRF-style: panel factor + TRSM + one GEMM trailing update) above `n ≥ 256` float /
+  `n ≥ 128` double. Also
   `LU.decompInPlace(ref A_to_LU, ref Pivot P)` (compact in-place form), `LU.decompSolve`/
   `LU.solveInPlace`. (`determinant`/`logDeterminant` are scalar characterizations and live on
   [`Analysis`](la-primitives.md).)
 - **`CHO.decomp(in A, ref L)`** — `A = LLᵀ`, SPD, A preserved. Blocked (POTRF: panel + TRSM + SYRK
-  trailing update) above `n ≥ 256`. Also `CHO.decompInPlace(ref A_to_L)`, `CHO.decompSolve`,
-  `CHO.solveInPlace`. **`CHOP.decomp(in A, ref L, ref Pivot P, ref ws)`** — rank-revealing
-  (xPSTRF-style) pivoted Cholesky, upper-triangle-only working storage, unblocked by design; returns
+  trailing update) above `n ≥ 1024` float / `n ≥ 512` double. Also `CHO.decompInPlace(ref A_to_L)`,
+  `CHO.decompSolve`, `CHO.solveInPlace`. **`CHOP.decomp(in A, ref L, ref Pivot P, ref ws)`** —
+  rank-revealing (xPSTRF-style) pivoted Cholesky, upper-triangle-only working storage, blocked
+  (level-3, right-looking PSTRF with 32-wide panels) above `n ≥ 512`; returns
   `RankInfo`. Also `CHOP.decompSolve`/`CHOP.solveInPlace`.
 - **`QR.decomp(in A, ref Q, ref R[, ref u[, ref w]])`** — Householder QR, A preserved (one memcpy into
-  Q). The fully-allocating overload is blocked (compact-WY) above `N_Cols ≥ 64`; the `ref u`/`ref w`
+  Q). The fully-allocating overload is blocked (compact-WY) above `N_Cols ≥ 128` float /
+  `N_Cols ≥ 512` double; the `ref u`/`ref w`
   zero-alloc overloads stay unblocked. `QR.decompInPlace` is the same kernel factoring A's own storage
   in place. `QR.decompSolve(ref Q, ref R, ref b, ref x)` solves from existing factors (b preserved).
   `QR.solveInPlace(ref A, ref b, ref x[, ref u])` is the fused one-shot kernel: it streams Qᵀb without
@@ -43,8 +46,8 @@ crossover — the gain caps out around 1.3–1.4× (bounded by `matMatDot`'s own
 - **`LQ.decomp(in A, ref L, ref Q[, ref ws])`** — direct row-Householder (GELQF-style, not
   transpose-to-QR), A preserved (read-only; the safety is free, not bought). The allocating overload
   blocks above `m ≥ 512` (a measured, not derived, crossover — LQ's fold step is reduction-shaped, so
-  the double-precision crossover trails float's). `LQ.minNormSolve(ref A, ref b, ref x[, ref ws])`
-  also only reads A.
+  the double-precision crossover trails float's). `LQ.minNormSolve(in A, in b, ref x[, ref ws])`
+  also only reads A and b.
 - **`Bidiag.decomp(in A, ref U, ref B, ref V, ref ws)`** / **`Bidiag.values(in A, ref d, ref e, ref
   ws)`** — Golub-Kahan-Householder reduction; feeds [svd.md](svd.md)'s `SVD.thin`/`SVD.values`. Not
   yet raised to level-3 (GEBRD is the hardest of this family to block — interleaved left/right

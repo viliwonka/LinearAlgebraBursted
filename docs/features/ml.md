@@ -6,7 +6,7 @@ Namespace `LinearAlgebra.ML`.
 
 Accelerated Lloyd's algorithm. Squared-Euclidean only; empty clusters reseed to the farthest point.
 
-`fit(in X, int k, uint seed, int maxIterations, KMeansInit init, ref centroids, ref assignment,
+`fit(in X, int k, uint seed, int maxIter, KMeansInit init, ref centroids, ref assignment,
 out inertia, out iters, ref ws)`.
 
 ## PCA

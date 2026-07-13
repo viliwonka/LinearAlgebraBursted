@@ -12,9 +12,9 @@
 - `Eigen.decompInPlace` (cyclic two-sided Jacobi) is `[Obsolete]` — Jacobi's column-oriented rotations
   resist SIMD; kept only because it has superior relative accuracy on graded spectra, and as a
   cross-check oracle for the Householder path.
-- **`Eigen.valuesQR(ref A, ref eigenvaluesReal, ref eigenvaluesImag, ...)`** — non-symmetric, Francis
-  double-shift QR on an upper-Hessenberg reduction (elmhes+hqr). Values only; complex-conjugate pairs
-  are represented as real/imag arrays (no complex type), via 2×2 Schur blocks.
+- **`Eigen.valuesQRInPlace(ref A, ref eigenvaluesReal, ref eigenvaluesImag, ...)`** — non-symmetric,
+  Francis double-shift QR on an upper-Hessenberg reduction (elmhes+hqr). Values only; `A` destroyed;
+  complex-conjugate pairs are represented as real/imag arrays (no complex type), via 2×2 Schur blocks.
 
 ## Matrix-free (sparse-capable)
 
@@ -29,7 +29,7 @@ Generic `<TOp> where TOp : struct, IfloatLinearOperator`, with thin dense (`floa
   Lanczos tridiagonalization + `Eigen.valuesSymmetricInPlace` on the result → Ritz **values**.
   **`lanczosVectors<TOp>(...)`** — same tridiagonalization, then forms Ritz **vectors** too (not
   zero-alloc — allocates 3 Temp vectors internally via `Eigen.symmetricInPlace`).
-- **`Eigen.lobpcg<TOp[,TPre]>(in A[, in M], ref ws, int k, float tolerance, int maxIterations)`** — blocked
+- **`Eigen.lobpcg<TOp[,TPre]>(in A[, in M], ref ws, int k, float tol, int maxIter)`** — blocked
   Locally Optimal Block Preconditioned Conjugate Gradient: the `k` SMALLEST eigenpairs of a symmetric
   operator, via deflation-based locking (a converged pair is frozen and projected out of the active
   subspace) and a small dense Rayleigh-Ritz sub-problem solved with `Eigen.symmetricInPlace` (a 3-block
@@ -49,7 +49,7 @@ fit for; the dense small-scale case is still better served by `Eigen.symmetricIn
 **Generalized pencil form** — `lobpcg` also solves `A·x = λ·B·x` with B SPD: every overload has a
 `+B` twin (generic operator, dense, BSR, BSR+block-Jacobi) that B-orthonormalizes the basis and
 returns B-orthonormal eigenvectors, ascending. `B = I` forwarders are bit-identical to the standard
-path. The buckling recipe (documented with a worked sample in the class doc): for
+path. The buckling recipe: for
 `K_E·φ + λ·K_G·φ = 0` put the SPD elastic stiffness `K_E` in the **B slot** and the (typically
 indefinite) geometric stiffness `K_G` in the A slot; the returned ascending `μ[0]` (most negative)
 gives the smallest positive critical load as `λ_cr = −1/μ[0]`.
@@ -63,6 +63,7 @@ eigensolver enum):
 | Struct | Fields | Used by |
 |---|---|---|
 | `EigenSolveInfo` | `iterations`, `residual` (double, `‖Av-λv‖`), `status` | `powerIteration`, `inversePowerIteration` |
+| `EigenInfo` | `sweeps`, `converged`, `status` | `symmetricInPlace`, `valuesSymmetricInPlace`, `valuesQRInPlace`, `decompInPlace` |
 | `LanczosInfo` | `produced` (≤ `steps`, less only on early breakdown), `status` | `lanczos`, `lanczosVectors` |
 | `LOBPCGInfo` | `iterations`, `converged` (0..k pairs locked), `maxResidual` (double, worst-case relative residual over all k pairs), `status` | `Eigen.lobpcg` |
 
@@ -92,6 +93,6 @@ met early):
 
 (`converged`/`maxResidual` show the fixed 50-iteration budget makes real but incomplete progress on
 this well-conditioned test matrix — the point of this benchmark is the per-iteration cost, not a
-convergence demonstration; a real caller would set a reachable `tolerance` instead.)
+convergence demonstration; a real caller would set a reachable `tol` instead.)
 
 `powerIteration`/`inversePowerIteration`/`lanczos`/`lanczosVectors` — still not benchmarked.

@@ -20,13 +20,19 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   N14 finding: undocumented sibling inconsistency; no measured rationale existed for the 2x).
 
 ## UnsafeOP / UnsafeBoolOP / SelectOP aliasing policy
+- 2026-07-13 | Revised after A/B benchmarking (maintainer: don't drop [NoAlias] from hot kernels
+  without proof). GEMM-TransA benchmark, double N=1024, median of 4: with [NoAlias] 41.6 ms; without
+  43.0/43.7 ms across two runs (~3-5% hint; float flat; double-512 inverted — within machine noise
+  but never favoring the drop). FINAL POLICY: matMatDotTransA/Range KEEP [NoAlias] on all pointers;
+  the aliased Aᵀ·A / A·A call shapes (Blas.dot(A, A[, transposeA: true]), isOrthogonal, covariance)
+  are handled at the WRAPPER by copying one input to Temp (O(n²) copy vs the O(n³) product). Select
+  kernels stay without [NoAlias] on a/b: dest-aliasing is a tested public contract
+  (SelectRefTests VecAliasDest) and the loop is elementwise memory-bound, so copy-on-alias would
+  cost more than any vectorization delta.
 - 2026-07-13 | [NoAlias] made truthful (release-scan D3 ruling): write-aliasing wrappers now call
   dedicated single-pointer in-place kernels (signFlipInPlace; UnsafeBoolOP notInPlace/orInPlace/
   andInPlace/xorInPlace/equalsInPlace/notEqualsInPlace — the unused copy-form bool kernels were
-  deleted); matMatDotTransA/matMatDotTransARange dropped [NoAlias] from their read-only A/B inputs
-  because Aᵀ·A callers (Blas.dot(A, A, transposeA: true), isOrthogonal, covariance) legitimately
-  pass the same pointer twice; Select kernels dropped [NoAlias] from the aliasable value inputs
-  (dest may alias a or b by contract).
+  deleted).
 
 ## NLS
 - 2026-07-12 | Release-scan fix (FOURTH bug, all precisions): the all-columns-flat degenerate

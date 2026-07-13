@@ -24,9 +24,9 @@ rng)`, `randomPermutationInPlace(ref Pivot, ref rng)`, `shuffleInPlace(ref Indic
 `multivariateNormalInPlace(ref rng, in cholL, in mean, ref dest)` (+ row-batch
 `multivariateNormalRowsInPlace`) — caller factors Σ once via `CHO.decomp`, then
 draws as many samples as needed. Property-matrix generators (all validate before allocating Temp
-scratch): `randomOrthogonalInPlace` (Haar-uniform, Mezzadri sign-fixed QR),
-`randomSpdInPlace(..., minEig, maxEig)`, `randomMatrixWithConditionInPlace(..., cond)`,
-`randomMatrixWithRankInPlace(..., rank)`, `randomStochasticInPlace`.
+scratch): `Rand.orthogonalInPlace` (Haar-uniform, Mezzadri sign-fixed QR),
+`Rand.spdInPlace(..., minEig, maxEig)`, `Rand.conditionedInPlace(..., cond)`,
+`Rand.withRankInPlace(..., rank)`, `Rand.stochasticInPlace`.
 
 ## Performance
 

@@ -241,10 +241,14 @@ namespace LinearAlgebra
         {
             floatMxN B = new floatMxN(A.N_Cols, A.N_Cols, Unity.Collections.Allocator.Temp);
 
-            // B = A^T * A
+            // B = A^T * A. The GEMM kernel promises [NoAlias] on every pointer, so the second
+            // A goes in as a Temp copy (O(n²) copy against the O(n³) product).
+            var Acopy = new floatMxN(A.M_Rows, A.N_Cols, Unity.Collections.Allocator.Temp, true);
+            Acopy.Data.CopyFrom(A.Data);
             unsafe {
-                UnsafeOP.matMatDotTransA(A.Data.Ptr, A.Data.Ptr, B.Data.Ptr, A.N_Cols, A.M_Rows, B.N_Cols);
+                UnsafeOP.matMatDotTransA(A.Data.Ptr, Acopy.Data.Ptr, B.Data.Ptr, A.N_Cols, A.M_Rows, B.N_Cols);
             }
+            Acopy.Dispose();
 
             bool valid = true;
 

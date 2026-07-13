@@ -40,8 +40,36 @@ between minor versions.
   pivoted Cholesky, QR, QRCP, LQ, SVD) — factor once, solve a whole block of right-hand sides.
 - Transposed LU solves (`decompSolveTransA` / `solveInPlaceTransA`).
 - BSR random sparse gallery generators for large-scale sparse benchmarking.
+- **Kalman filtering (`Kalman`)**: linear predict/update with a steady-state gain option, extended
+  (EKF) via user Jacobian functors, and unscented (UKF, Van der Merwe scaled sigma points).
+- **Model-predictive control (`MPC.solve`)**: condensed linear MPC with box/soft constraints over
+  the warm-started active-set QP, with a persistent per-horizon state for per-frame re-solves.
+- **Nonlinear least squares (`Optimize.nlsSolve` / `Optimize.curveFit`)**: Levenberg-Marquardt
+  with Nielsen damping and optional robust losses (Huber, Cauchy, Tukey).
+- Non-throwing preconditioner builds: `BlockJacobi`/`ILU0`/`IC0` gain `out PreconditionerInfo`
+  overloads (status + rescuing diagonal shift + attempts); failed arena builds release their slot.
+- `Equals`/`GetHashCode` (buffer-handle identity) on every vector/matrix type, removing the
+  CS0660/CS0661 warning pair for consumers of the `==`/`!=` element-wise operators.
 
 ### Changed
+
+- **Breaking — short tuning-parameter names**: `maxIterations` → `maxIter`, `tolerance` → `tol`,
+  `relativeTolerance` → `relTol` on every public API.
+- **Breaking**: `Eigen.valuesQR` → `Eigen.valuesQRInPlace` (it destroys `A`; the suffix now says so).
+- **Breaking — behavior**: the buffer×buffer `mulInPlace(a, b)` now multiplies INTO its receiver
+  (`a *= b`, `b` untouched), matching `addInPlace`/`subInPlace`/`divInPlace`; it previously mutated
+  its second argument. The `*` operators are unaffected.
+- **Breaking**: `LQ.minNormSolve` takes `in A, in b` (it never modified them); bool `Analysis.isDiagonal`
+  now tests true diagonality (off-diagonal all-false, square required) instead of the identity
+  pattern, and its undocumented `compare` parameter is gone.
+- Integer correctness: scalar-shifted-by-vector bit shifts compute at the element type's own width
+  (`long` shifts past 31 were truncated); `LinVec` interpolates in double (`long`/large-`int` ramps
+  had float-resolution interior values).
+- `Analysis.cond` / `Blas.matrixL2` return NaN and `Analysis.rank` throws when the underlying SVD
+  fails to converge (previously they read an unwritten buffer); `rowMean`/`colMean` throw on an
+  empty axis like every other statistic.
+- `Krylov.pbiCGStab`'s parameterless overload defaults its iteration budget to `A.M_Rows`
+  (was `2*A.M_Rows`), matching the rest of the square-solver family.
 
 - LU gains a blocked level-3 `decompInPlace` path; pivoted Cholesky (`CHOP`) gains a blocked
   level-3 factorization.

@@ -67,7 +67,7 @@ exact GKL route beats the randomized sketch:
 | `SVD.truncated` | 17.57 | 18.36 |
 | `SVD.randomized` (oversample=10, powerIters=2) | 29.47 | 35.83 |
 
-The default `maxIterations` scales with the problem: `Consts.sweepBudget(n) = max(75, 6·n)`
+The default `maxIter` scales with the problem: `Consts.sweepBudget(n) = max(75, 6·n)`
 (LAPACK dbdsqr's MAXITR=6 per-value heuristic with a small-n backstop). On this
 benchmark's deeply graded spectrum (σᵢ = 100·0.95^i, tail ≈4×10⁻¹² at n=512) even
 double precision converges comfortably inside that default — verified by an internal

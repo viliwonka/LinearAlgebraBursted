@@ -3,8 +3,7 @@
 The direct (non-iterative) solve entry points live on the factorization classes themselves — each of
 the decompositions in [decompositions.md](decompositions.md) exposes its own
 `decompSolve`/`solveInPlace`, following the shared `decomp`/`decompInPlace`/`decompSolve`/`solveInPlace`
-token grid (see [naming-style-guide](../dev/naming-style-guide.md) and
-[spec-solver-api-rework](../dev/spec-solver-api-rework.md)). They are built on the triangular-solve
+token grid. They are built on the triangular-solve
 primitives, which live on [`Blas`](la-primitives.md) as the substitution counterpart to its GEMM/GEMV kernels.
 Iterative and least-squares solvers live on `Krylov` and are covered in
 [least-squares.md](least-squares.md); this page is the direct (non-iterative) family plus the
@@ -82,11 +81,13 @@ true` reads as "solved") so `if (solve(...))` call shapes keep compiling:
 | Struct | Fields | Used by |
 |---|---|---|
 | `DirectSolveInfo` | `status : DirectSolveStatus` | LU, CHO, un-pivoted QR/LQ, triangular solves — no rank concept |
-| `RankInfo` | `status`, `rank` | QRCP (`solveInPlace`), CHOP |
+| `RankInfo` | `status`, `rank` | QRCP (`solveInPlace`), CHOP, and the SVD-backed rank-revealing calls (`pinvSolve`, `pseudoInverse`, `nullspaceBasis`, `rangeBasis`) |
 | `SolveInfo` | `rnorm`, `iterations`, `status : IterativeSolveStatus` | square iterative solvers (`cg`/`pcg`/`minres`/`biCGStab`/`cgne`) |
 | `LstsqInfo` | `rnorm`, `Arnorm`, `xnorm`, `iterations`, `status` | least-squares Krylov solvers (`cgls`/`lsqr`/`lsmr`) |
 
-`DirectSolveStatus`: `Success, Singular, NotPositiveDefinite, Indefinite, RankDeficient`.
+`DirectSolveStatus`: `Success, Singular, NotPositiveDefinite, Indefinite, RankDeficient,
+NotConverged` (the last reported by the SVD-backed rank-revealing calls when the SVD fails to
+converge — see [svd.md](svd.md)).
 `IterativeSolveStatus`: `Converged, MaxIterations, Breakdown`. All diagnostic fields come from numbers
 each solver already tracks internally (residual norms, iteration counts) — never an extra matvec
 just to fill in a struct.

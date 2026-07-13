@@ -13,6 +13,7 @@
 - `Count`, `Capacity`, `Features`, `IsFull`, `IsEmpty`, indexer `this[int i, int f]`, `GetSample`,
   `Clear()`.
 
-This is deliberately the only piece of the "realtime" design surface that's built. Frame-amortized
-solvers, resumable iterative state (CG/PCG stepping across frames), online covariance/PCA, and a
-Kalman filter are still unsettled design, not implemented.
+Kalman filtering (linear KF, EKF, UKF) is implemented separately on `Kalman` — see
+[control.md](control.md). The rest of the "realtime" design surface — frame-amortized solvers,
+resumable iterative state (CG/PCG stepping across frames), online covariance/PCA — is still
+unsettled design, not implemented.

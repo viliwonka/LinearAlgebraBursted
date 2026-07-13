@@ -1,8 +1,7 @@
 # Sparse — Block Sparse Matrix (BSR)
 
 `LinearAlgebra.Sparse`. A uniform grid of `BlockRows × BlockCols` dense blocks (each `BR × BC`),
-stored block-CSR. Design rationale and full API: [spec-sparse-bsm.md](../dev/spec-sparse-bsm.md).
-Vectors stay dense — no sparse vector type.
+stored block-CSR. Vectors stay dense — no sparse vector type.
 
 ## Storage & assembly
 

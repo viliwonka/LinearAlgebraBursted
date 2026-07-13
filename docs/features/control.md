@@ -4,10 +4,10 @@ Infinite- and finite-horizon discrete linear-quadratic regulator: for `x_{k+1} =
 finds the feedback gain `K` minimizing `Σ(xᵀQx + uᵀRu)` under `u = -Kx`, by solving the discrete
 algebraic Riccati equation (DARE).
 
-- **`Control.lqr(in A, in B, in Q, in R, ref K[, maxIterations])`** — cold solve via SDA
+- **`Control.lqr(in A, in B, in Q, in R, ref K[, maxIter])`** — cold solve via SDA
   (structure-preserving doubling, quadratic convergence, ~10-25 steps typically). `A`/`Q` are `n×n`,
   `B` is `n×m`, `R` is `m×m`, `K` (output) is `m×n`.
-- **`Control.lqr(in A, in B, in Q, in R, ref K, ref floatLQRState state[, maxIterations])`** —
+- **`Control.lqr(in A, in B, in Q, in R, ref K, ref floatLQRState state[, maxIter])`** —
   warm-started: reuses the carried Riccati solution `S` across calls, converging in a handful of
   cheap iterations for a slightly-changed `A`/`B` (the per-frame re-linearization case) instead of a
   fresh cold SDA solve. `state` must be constructed via `new floatLQRState(n, allocator)` (double
