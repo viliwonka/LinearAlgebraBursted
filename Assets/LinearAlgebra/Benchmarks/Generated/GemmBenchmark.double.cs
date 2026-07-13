@@ -83,6 +83,15 @@ namespace LinearAlgebra.Benchmarks
         public void Execute() => Blas.dot(in A, in A, ref C, transposeA: false, transposeB: true);
     }
 
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct TransJobDouble : IJob
+    {
+        public doubleMxN A;
+        public doubleMxN T;
+
+        public void Execute() => Blas.trans(in A, ref T);
+    }
+
     public static partial class GemmBenchmark
     {
         static string BenchTransBDouble(int n, double flops)
@@ -127,6 +136,24 @@ namespace LinearAlgebra.Benchmarks
 
             arena.Dispose();
             return Bench.Row("double", n, stat, flops);
+        }
+
+        static string BenchTransDouble(int n, double elems)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.doubleMat(n, n);
+            var T = arena.doubleMat(n, n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                    A[i, j] = rng.NextDouble(-1f, 1f);
+
+            var job = new TransJobDouble { A = A, T = T };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.Row("double", n, stat, elems);
         }
 
         static string BenchAAtDouble(int n, double flops)

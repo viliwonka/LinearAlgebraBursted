@@ -103,6 +103,8 @@ between minor versions.
 - `Rand.spdInPlace` output is now exactly symmetric by construction (mirrored triangle instead of
   a post-hoc averaging pass); `Rand`-generated matrices and k-means/Kalman results may differ
   bitwise from previous versions at equal seeds.
+- `Blas.trans` and the symmetric-product mirror passes are cache-blocked (results unchanged —
+  pure copy reordering).
 
 ## [0.1.0] — 2026-07-03
 

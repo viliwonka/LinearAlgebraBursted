@@ -200,6 +200,13 @@ namespace LinearAlgebra.Internal
             }
         }
 
+        // Cache-blocked transpose, STAGED through a stack tile: A is read row-contiguous into the
+        // tile buffer, then B is written row-contiguous out of it, so neither matrix is ever
+        // accessed at a large stride. (A direct two-loop tile with strided writes thrashes L1 at
+        // power-of-two sizes: a 2-4 KB write stride maps a whole tile column into one or two
+        // cache sets.) Pure permutation — every element is copied exactly once, so results are
+        // identical to a naive row/column loop at every size. Stack use: TB*TB elements (2 KB
+        // double), allocated once per call.
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void matTrans([NoAlias] fProxy* matA, [NoAlias] fProxy* matB, int m, int n)
         {
@@ -207,10 +214,30 @@ namespace LinearAlgebra.Internal
 
             // matA = m x n, in
             // matB = n x m, out
-            for(int r = 0; r < m; r++)
-            for(int c = 0; c < n; c++)
+            const int TB = 16;
+            fProxy* buf = stackalloc fProxy[TB * TB];
+
+            for (int rb = 0; rb < m; rb += TB)
             {
-                matB[c * m + r] = matA[r * n + c];
+                int rEnd = rb + TB; if (rEnd > m) rEnd = m;
+                for (int cb = 0; cb < n; cb += TB)
+                {
+                    int cEnd = cb + TB; if (cEnd > n) cEnd = n;
+
+                    for (int r = rb; r < rEnd; r++)
+                    {
+                        fProxy* Arow = matA + (long)r * n;
+                        for (int c = cb; c < cEnd; c++)
+                            buf[(c - cb) * TB + (r - rb)] = Arow[c];
+                    }
+                    for (int c = cb; c < cEnd; c++)
+                    {
+                        fProxy* Brow = matB + (long)c * m + rb;
+                        fProxy* bufRow = buf + (c - cb) * TB;
+                        for (int r = 0; r < rEnd - rb; r++)
+                            Brow[r] = bufRow[r];
+                    }
+                }
             }
         }
 
@@ -484,10 +511,52 @@ namespace LinearAlgebra.Internal
 
             if (symUpper)
             {
-                // Mirror the computed upper triangle into the lower (k == m by contract).
-                for (int r = 1; r < m; r++)
-                    for (int c = 0; c < r; c++)
-                        matC[(long)r * k + c] = matC[(long)c * k + r];
+                // Mirror the computed upper triangle into the lower (k == m by contract). Pure
+                // copy of final values either way — results are identical to a naive mirror.
+                if (m <= 64)
+                {
+                    // Whole matrix is L1-resident: the plain mirror cannot thrash, and small
+                    // solves (Riccati/Kalman scale) must not pay the staging buffer's per-call
+                    // zero-init.
+                    for (int r = 1; r < m; r++)
+                        for (int c = 0; c < r; c++)
+                            matC[(long)r * k + c] = matC[(long)c * k + r];
+                }
+                else
+                {
+                    // Large matrix: tiled and STAGED through a stack buffer like matTrans (the
+                    // source tile is read row-contiguous into the buffer, the destination tile
+                    // written row-contiguous out of it — no large-stride access on either side;
+                    // a plain strided mirror way-thrashes L1 at power-of-two sizes). Source
+                    // reads touch only the upper triangle (never mirror-written), so staging a
+                    // diagonal tile reads some not-yet-final lower entries into the buffer but
+                    // the c < r write guard never uses them.
+                    const int TBm = 16;
+                    fProxy* mbuf = stackalloc fProxy[TBm * TBm];
+                    for (int rb = 0; rb < m; rb += TBm)
+                    {
+                        int rEnd = rb + TBm; if (rEnd > m) rEnd = m;
+                        for (int cb = 0; cb <= rb; cb += TBm)
+                        {
+                            int cEnd = cb + TBm; if (cEnd > m) cEnd = m;
+
+                            for (int c = cb; c < cEnd; c++)
+                            {
+                                fProxy* Crow = matC + (long)c * k;
+                                for (int r = rb; r < rEnd; r++)
+                                    mbuf[(r - rb) * TBm + (c - cb)] = Crow[r];
+                            }
+                            for (int r = rb; r < rEnd; r++)
+                            {
+                                int ce = cEnd < r ? cEnd : r;   // strictly-lower only (c < r)
+                                fProxy* Crow = matC + (long)r * k;
+                                fProxy* bufRow = mbuf + (long)(r - rb) * TBm;
+                                for (int c = cb; c < ce; c++)
+                                    Crow[c] = bufRow[c - cb];
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -619,10 +688,52 @@ namespace LinearAlgebra.Internal
 
             if (symUpper)
             {
-                // Mirror the computed upper triangle into the lower (k == m by contract).
-                for (int r = 1; r < m; r++)
-                    for (int c = 0; c < r; c++)
-                        matC[(long)r * k + c] = matC[(long)c * k + r];
+                // Mirror the computed upper triangle into the lower (k == m by contract). Pure
+                // copy of final values either way — results are identical to a naive mirror.
+                if (m <= 64)
+                {
+                    // Whole matrix is L1-resident: the plain mirror cannot thrash, and small
+                    // solves (Riccati/Kalman scale) must not pay the staging buffer's per-call
+                    // zero-init.
+                    for (int r = 1; r < m; r++)
+                        for (int c = 0; c < r; c++)
+                            matC[(long)r * k + c] = matC[(long)c * k + r];
+                }
+                else
+                {
+                    // Large matrix: tiled and STAGED through a stack buffer like matTrans (the
+                    // source tile is read row-contiguous into the buffer, the destination tile
+                    // written row-contiguous out of it — no large-stride access on either side;
+                    // a plain strided mirror way-thrashes L1 at power-of-two sizes). Source
+                    // reads touch only the upper triangle (never mirror-written), so staging a
+                    // diagonal tile reads some not-yet-final lower entries into the buffer but
+                    // the c < r write guard never uses them.
+                    const int TBm = 16;
+                    fProxy* mbuf = stackalloc fProxy[TBm * TBm];
+                    for (int rb = 0; rb < m; rb += TBm)
+                    {
+                        int rEnd = rb + TBm; if (rEnd > m) rEnd = m;
+                        for (int cb = 0; cb <= rb; cb += TBm)
+                        {
+                            int cEnd = cb + TBm; if (cEnd > m) cEnd = m;
+
+                            for (int c = cb; c < cEnd; c++)
+                            {
+                                fProxy* Crow = matC + (long)c * k;
+                                for (int r = rb; r < rEnd; r++)
+                                    mbuf[(r - rb) * TBm + (c - cb)] = Crow[r];
+                            }
+                            for (int r = rb; r < rEnd; r++)
+                            {
+                                int ce = cEnd < r ? cEnd : r;   // strictly-lower only (c < r)
+                                fProxy* Crow = matC + (long)r * k;
+                                fProxy* bufRow = mbuf + (long)(r - rb) * TBm;
+                                for (int c = cb; c < ce; c++)
+                                    Crow[c] = bufRow[c - cb];
+                            }
+                        }
+                    }
+                }
             }
         }
 

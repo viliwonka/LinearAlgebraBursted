@@ -130,7 +130,7 @@ namespace LinearAlgebra
             Blas.dot(in S, in B, ref SB);                          // SB = S*B
 
             var Rbar = new doubleMxN(m, m, Allocator.Temp);
-            Blas.dot(in B, in SB, ref Rbar, transposeA: true);     // Rbar = BᵀSB
+            Blas.dotSym(in B, in SB, ref Rbar);                    // Rbar = Bᵀ(SB), symmetric since S is
             for (int i = 0; i < m; i++)
                 for (int j = 0; j < m; j++)
                     Rbar[i, j] += R[i, j];                         // Rbar = R + BᵀSB
@@ -152,9 +152,9 @@ namespace LinearAlgebra
                 var SA = new doubleMxN(n, n, Allocator.Temp);
                 Blas.dot(in S, in A, ref SA);                      // SA = S*A
                 var AtSA = new doubleMxN(n, n, Allocator.Temp);
-                Blas.dot(in A, in SA, ref AtSA, transposeA: true); // AtSA = AᵀSA
+                Blas.dotSym(in A, in SA, ref AtSA);                // AtSA = Aᵀ(SA), symmetric since S is
                 var BSATK = new doubleMxN(n, n, Allocator.Temp);
-                Blas.dot(in BSA, in K, ref BSATK, transposeA: true); // BSATK = BSAᵀK = AᵀSB*K
+                Blas.dotSym(in BSA, in K, ref BSATK);              // BSAᵀK = BSAᵀ R̄⁻¹ BSA, symmetric since R̄ is
 
                 for (int i = 0; i < n; i++)
                     for (int j = 0; j < n; j++)
@@ -246,7 +246,7 @@ namespace LinearAlgebra
 
                     Blas.dot(in Hk, in Ak, ref X3);
                     LU.decompSolve(ref HG, in P2, ref X3);              // X3 = (I+HkGk)⁻¹(HkAk), reuses HG/P2
-                    Blas.dot(in Ak, in X3, ref HkNext, transposeA: true); // Akᵀ X3
+                    Blas.dotSym(in Ak, in X3, ref HkNext);              // Akᵀ X3, symmetric (SymmetrizeInPlace below)
                     for (int i = 0; i < n; i++)
                         for (int j = 0; j < n; j++)
                             HkNext[i, j] += Hk[i, j];                   // H_{k+1} = Hk + Akᵀ(I+HkGk)⁻¹HkAk

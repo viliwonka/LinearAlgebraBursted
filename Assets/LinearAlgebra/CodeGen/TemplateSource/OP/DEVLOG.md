@@ -12,6 +12,34 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   on par with matAtA despite the dot-product formulation, because symmetry halves the work and
   both row streams are unit-stride. No trans+matAtA fallback route needed.
 
+## Control symmetric-GEMM reroutes (RiccatiStep / SDACore)
+- 2026-07-13 | Riccati/SDA symmetric products moved to dotSym (missed by the first symmetric-GEMM
+  pass, which covered QP/MPC only): RiccatiStep's Bᵀ(SB), Aᵀ(SA), BSAᵀK (= BSAᵀR̄⁻¹BSA) and
+  SDACore's AkᵀX3 H-update. AkᵀX3 is symmetric only in exact arithmetic (X3 exits an LU solve);
+  the mirror picks the upper triangle's roundoff where the full kernel produced O(eps) asymmetry
+  that SymmetrizeInPlace then averaged — the existing post-add SymmetrizeInPlace is kept.
+  SDACore's GkNext = (AkGk)·X2 does NOT fit either sym kernel form (neither operand of the
+  symmetric product is materialized transposed) — left on the full kernel deliberately.
+
+## UnsafeOP matTrans + symmetric-mirror cache blocking
+- 2026-07-13 | Plain TB=32 blocking (strided writes kept inside the tile) was a TRAP: at
+  power-of-two sizes the 2-4 KB stride maps a whole tile column into 1-2 L1 sets and way-thrashes
+  — blocked matTrans measured 0.21 Gelem/s at float 1024, WORSE than naive. Fix: stage every tile
+  through a TB=16 stackalloc buffer (read side row-contiguous into buf, write side row-contiguous
+  out of buf; neither matrix ever strides). Never ship a plain two-loop blocked transpose again —
+  measure at power-of-two N specifically. Same staging applied to the symUpper mirror passes in
+  matMatDotTransACore/matMatDotTransBCore (their blocked-unstaged version did already beat the
+  naive mirror: AtA float 1024 15.9→14.2 ms). All pure permutations: bit-identical results.
+  Benchmark instruments: new "Trans" section (Gelem/s) + the viaTrans/AtA/AAt rows.
+- 2026-07-13 | Staged mirror needed a SMALL-MATRIX BYPASS (m <= 64: plain mirror, no buffer):
+  a uniform staged path regressed gamedev-scale LQR 5-18% (n=4-12 Riccati steps) — at those
+  sizes the whole matrix is L1-resident (thrash impossible) and the stackalloc buffer's
+  per-call localsinit zero-fill dominates. Iteration counts unchanged either way. General
+  rule: any stackalloc-staged kernel path needs a small-size bypass or the small callers pay
+  the buffer for nothing. Also: below one register tile (m < 8) the symUpper tile-skip never
+  fires — dotSym at tiny sizes is full compute + mirror, i.e. pure overhead vs plain dot, so
+  small-n callers only keep dotSym for the exact-symmetry contract, not for speed.
+
 ## Kalman / Kalman.UKF TransB + GEMM reroutes
 - 2026-07-13 | predict: APAᵀ now Blas.dotSymT(AP, Aeff) — s.At no longer written by predict (still
   UpdateCore's (I-KH)P scratch). update: P·Hᵀ via dot(transposeB) (Ht temp deleted); K = Xtᵀ never

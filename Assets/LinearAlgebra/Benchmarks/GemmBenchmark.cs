@@ -59,6 +59,14 @@ namespace LinearAlgebra.Benchmarks
             foreach (var n in tbSizes) sb.AppendLine(BenchAAtFloat(n, Flops(n)));
             foreach (var n in tbSizes) sb.AppendLine(BenchAAtDouble(n, Flops(n)));
             sb.AppendLine();
+
+            // Transpose moves N^2 elements and does zero flops; the flop column is fed N^2 so it
+            // reads as Gelem/s (element throughput), not GFLOP/s.
+            sb.AppendLine("=== Trans: T = A^T (element throughput; last column is Gelem/s) ===");
+            sb.AppendLine(Bench.Header());
+            foreach (var n in tbSizes) sb.AppendLine(BenchTransFloat(n, 1.0 * n * n));
+            foreach (var n in tbSizes) sb.AppendLine(BenchTransDouble(n, 1.0 * n * n));
+            sb.AppendLine();
         }
     }
 }

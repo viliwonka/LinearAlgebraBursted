@@ -79,6 +79,15 @@ namespace LinearAlgebra.Benchmarks
         public void Execute() => Blas.dot(in A, in A, ref C, transposeA: false, transposeB: true);
     }
 
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct TransJobFProxy : IJob
+    {
+        public fProxyMxN A;
+        public fProxyMxN T;
+
+        public void Execute() => Blas.trans(in A, ref T);
+    }
+
     public static partial class GemmBenchmark
     {
         static string BenchTransBFProxy(int n, double flops)
@@ -123,6 +132,24 @@ namespace LinearAlgebra.Benchmarks
 
             arena.Dispose();
             return Bench.Row("fProxy", n, stat, flops);
+        }
+
+        static string BenchTransFProxy(int n, double elems)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.fProxyMat(n, n);
+            var T = arena.fProxyMat(n, n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                    A[i, j] = rng.NextFProxy(-1f, 1f);
+
+            var job = new TransJobFProxy { A = A, T = T };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.Row("fProxy", n, stat, elems);
         }
 
         static string BenchAAtFProxy(int n, double flops)
