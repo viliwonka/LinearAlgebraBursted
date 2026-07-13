@@ -25,7 +25,7 @@ namespace LinearAlgebra
     [BurstCompile]
     public struct doubleFullStats
     {
-        public double count;
+        public int count;
         public double mean;
         public double min;
         public double max;
@@ -37,7 +37,7 @@ namespace LinearAlgebra
         public double q1;
         public double q3;
 
-        public doubleFullStats(double count, double mean, double min, double max, double range, double median, double stdDev, double variance, double iqr, double q1, double q3)
+        public doubleFullStats(int count, double mean, double min, double max, double range, double median, double stdDev, double variance, double iqr, double q1, double q3)
         {
             this.count = count;
             this.mean = mean;

@@ -707,8 +707,9 @@ public class doubleSVDTests
             var A = arena.doubleHadamard(n);
             var S = arena.doubleVec(n);
 
-            int k = SVD.singularValues(in A, ref S);
-            AssertClose((double)k, (double)n, 1E-6f);
+            var info = SVD.singularValues(in A, ref S);
+            Assert.IsTrue(info.Solved);
+            AssertClose((double)S.N, (double)n, 1E-6f);
 
             Assert.IsFalse(Analysis.isAnyNan(in S));
 

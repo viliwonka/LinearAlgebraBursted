@@ -62,7 +62,7 @@ namespace LinearAlgebra
         public static implicit operator bool(LOBPCGInfo i) => i.status == IterativeSolveStatus.Converged;
 
         /// <summary>Burst-safe compact summary, e.g. <c>LOBPCGInfo(Converged, iters=12,
-        /// converged=4/4, maxResidual=1.23E-08)</c>. Never allocates managed memory.</summary>
+        /// converged=4, maxResidual=1.23E-08)</c>. Never allocates managed memory.</summary>
         public FixedString128Bytes ToFixedString()
         {
             FixedString128Bytes str = "LOBPCGInfo(";

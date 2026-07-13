@@ -100,6 +100,34 @@ namespace LinearAlgebra
         }
 
         /// <summary>
+        /// Non-throwing twin of <see cref="doubleBlockJacobi(in doubleBSR)"/>: info carries the
+        /// build outcome (see the doubleBlockJacobi out-info constructor). On failure the returned
+        /// struct is unusable and no arena record is retained.
+        /// </summary>
+        public doubleBlockJacobi doubleBlockJacobi(in doubleBSR A, out DirectSolveInfo info)
+        {
+            if (_core == null)
+                throw new System.InvalidOperationException("Arena.doubleBSR/doubleBSRBuilder/doubleBlockJacobi: arena is not initialized (default or disposed).");
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            _core->EnterMutation();
+            try
+            {
+#endif
+                doubleBlockJacobiRecord* rec = _core->doubleBlockJacobiRecords.Allocate(out int slot);
+                rec->Owner = _core;
+                rec->Table = &_core->doubleBlockJacobiRecords;
+                rec->SelfIndex = slot;
+                var M = new doubleBlockJacobi(in A, rec, Allocator, out info);
+                if (!info.Solved)
+                    _core->doubleBlockJacobiRecords.Free(slot);
+                return M;
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            }
+            finally { _core->ExitMutation(); }
+#endif
+        }
+
+        /// <summary>
         /// Materializes A^T as its own compressed BSR (O(nnz)): every stored block at (blockRow,
         /// blockCol) becomes a block at (blockCol, blockRow), transposed in place, then
         /// re-compressed via <see cref="doubleBSRBuilder"/>. If A.Symmetric, returns A itself
@@ -214,6 +242,14 @@ namespace LinearAlgebra
             return new doubleIC0(in A, ref self);
         }
 
+        /// <summary>Non-throwing twin of <see cref="doubleIC0(in doubleBSR)"/>: info carries the
+        /// build outcome (Success, or NotPositiveDefinite on factorization breakdown).</summary>
+        public doubleIC0 doubleIC0(in doubleBSR A, out DirectSolveInfo info)
+        {
+            Arena self = this;
+            return new doubleIC0(in A, ref self, out info);
+        }
+
         /// <summary>
         /// Builds a block incomplete-LU ILU(0) preconditioner from A (square, every diagonal
         /// block stored) — the nonsymmetric sibling of <see cref="doubleIC0"/>, for
@@ -224,6 +260,14 @@ namespace LinearAlgebra
         {
             Arena self = this;
             return new doubleILU0(in A, ref self);
+        }
+
+        /// <summary>Non-throwing twin of <see cref="doubleILU0(in doubleBSR)"/>: info carries the
+        /// build outcome (Success, or Singular on factorization breakdown).</summary>
+        public doubleILU0 doubleILU0(in doubleBSR A, out DirectSolveInfo info)
+        {
+            Arena self = this;
+            return new doubleILU0(in A, ref self, out info);
         }
     }
 }

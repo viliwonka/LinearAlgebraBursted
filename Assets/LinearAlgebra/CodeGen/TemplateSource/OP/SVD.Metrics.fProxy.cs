@@ -12,9 +12,10 @@ namespace LinearAlgebra
         /// sorted in descending order. A is NOT modified — for wide A its transpose is decomposed,
         /// since A and Aᵀ share the same singular values. Uses the fast values-only Golub-Kahan path
         /// (values), which needs no orthogonal factors. Allocates SVD scratch from A's arena.
-        /// Returns k (= S.N). Shared by matrixL2 / cond / rank.
+        /// Returns the inner bidiagonal QR's <see cref="SVDInfo"/> (implicit bool == Converged);
+        /// on MaxIterations S is unwritten. Shared by matrixL2 / cond / rank.
         /// </summary>
-        public static int singularValues(in fProxyMxN A, ref fProxyN S)
+        public static SVDInfo singularValues(in fProxyMxN A, ref fProxyN S)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -24,19 +25,17 @@ namespace LinearAlgebra
                 throw new ArgumentException("singularValues: S.N must equal min(A.M_Rows, A.N_Cols)");
 
             if (k == 0)
-                return 0;
+                return new SVDInfo { status = IterativeSolveStatus.Converged, sweeps = 0, converged = 0 };
 
             if (m >= n) {
                 // values takes A as input (not modified) — no copy needed.
-                values(in A, ref S);
+                return values(in A, ref S);
             }
             else {
                 // Wide: decompose Aᵀ (n x m, tall); same singular values as A.
                 fProxyMxN At = Blas.trans(A);
-                values(in At, ref S);
+                return values(in At, ref S);
             }
-
-            return k;
         }
     }
 }

@@ -78,9 +78,23 @@ namespace LinearAlgebra.Sparse
         /// <summary>
         /// Builds the preconditioner from A's diagonal blocks. A must be square
         /// (BlockRows==BlockCols, BR==BC). Throws ArgumentException if a diagonal block is
-        /// missing from the stored pattern or is singular.
+        /// missing from the stored pattern or is singular. Use the out-info overload to receive
+        /// the singular-block outcome as a <see cref="DirectSolveInfo"/> instead of an exception.
         /// </summary>
         public unsafe fProxyBlockJacobi(in fProxyBSR A, Allocator allocator)
+        {
+            this = new fProxyBlockJacobi(in A, allocator, out DirectSolveInfo info);
+            if (!info.Solved)
+                throw new ArgumentException("fProxyBlockJacobi: diagonal block is singular");
+        }
+
+        /// <summary>
+        /// Non-throwing build: info carries the per-block LU's own status — Success, or the
+        /// failing block's status (Singular) when a diagonal block cannot be inverted (the
+        /// preconditioner is then unusable — do not Apply). Caller-contract violations
+        /// (non-square, missing diagonal block) still throw.
+        /// </summary>
+        public unsafe fProxyBlockJacobi(in fProxyBSR A, Allocator allocator, out DirectSolveInfo info)
         {
             _rec = null;
             _inlineDInv = default;
@@ -122,14 +136,15 @@ namespace LinearAlgebra.Sparse
                         Dcopy[r, c] = A.Values[srcOff + r * BR + c];
 
                 var P = new Pivot(BR, Allocator.Temp);
-                bool ok = LU.decompInPlace(ref Dcopy, ref P);
+                var luInfo = LU.decompInPlace(ref Dcopy, ref P);
 
-                if (!ok)
+                if (!luInfo)
                 {
                     P.Dispose();
                     Dcopy.Dispose();
                     dinv.Dispose();
-                    throw new ArgumentException("fProxyBlockJacobi: diagonal block is singular");
+                    info = luInfo;   // propagate the failing block's LU status
+                    return;
                 }
 
                 // Column-by-column solve against unit vectors -> the explicit BR x BR inverse.
@@ -152,6 +167,7 @@ namespace LinearAlgebra.Sparse
             }
 
             _inlineDInv = dinv;
+            info = new DirectSolveInfo { status = DirectSolveStatus.Success };
         }
 
         /// <summary>
@@ -166,6 +182,17 @@ namespace LinearAlgebra.Sparse
         /// </summary>
         internal unsafe fProxyBlockJacobi(in fProxyBSR A, fProxyBlockJacobiRecord* rec, Allocator allocator) : this(in A, allocator)
         {
+            rec->DInv = _inlineDInv;
+            _inlineDInv = default;
+            _rec = rec;
+        }
+
+        /// <summary>Arena-tracked twin of the non-throwing build. On failure the struct stays
+        /// standalone-default and the record is NOT adopted — the caller frees the slot.</summary>
+        internal unsafe fProxyBlockJacobi(in fProxyBSR A, fProxyBlockJacobiRecord* rec, Allocator allocator, out DirectSolveInfo info) : this(in A, allocator, out info)
+        {
+            if (!info.Solved)
+                return;
             rec->DInv = _inlineDInv;
             _inlineDInv = default;
             _rec = rec;

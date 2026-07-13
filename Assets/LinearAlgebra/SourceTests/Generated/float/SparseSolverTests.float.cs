@@ -1863,6 +1863,57 @@ public class floatSparseSolverTests
         finally { arena.Dispose(); }
     }
 
+    // Numerical breakdown reporting: the out-info overloads return a DirectSolveInfo instead of
+    // throwing; the info-less conveniences keep throwing for the same condition.
+    [Test]
+    public void BlockJacobi_SingularDiagonalBlock_StatusAndThrow()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            const int BR = 2;
+            var builder = arena.floatBSRBuilder(2, 2, BR, BR, 2);
+            builder.AddBlock(0, 0, arena.floatDiagonalMat(BR, (float)4));
+            builder.AddBlock(1, 1, arena.floatMat(BR, BR));   // all-zero diagonal block: singular
+            var A = builder.ToBSR(ref arena);
+
+            var M = arena.floatBlockJacobi(in A, out DirectSolveInfo info);
+            Assert.IsFalse(info.Solved);
+
+            Assert.Throws<ArgumentException>(() => arena.floatBlockJacobi(in A));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    [Test]
+    public void Preconditioner_StatusOverloads_SuccessPath()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            const int BR = 2;
+            var builder = arena.floatBSRBuilder(2, 2, BR, BR, 2);
+            builder.AddBlock(0, 0, arena.floatDiagonalMat(BR, (float)4));
+            builder.AddBlock(1, 1, arena.floatDiagonalMat(BR, (float)9));
+            var A = builder.ToBSR(ref arena);
+
+            var mJ = arena.floatBlockJacobi(in A, out DirectSolveInfo infoJ);
+            Assert.IsTrue(infoJ.Solved);
+            var mI = arena.floatIC0(in A, out DirectSolveInfo infoI);
+            Assert.IsTrue(infoI.Solved);
+            var mL = arena.floatILU0(in A, out DirectSolveInfo infoL);
+            Assert.IsTrue(infoL.Solved);
+
+            // The successfully-built Jacobi is usable: z = M^-1 r on the 4x4 system.
+            var r = arena.floatVec(2 * BR, (float)1);
+            var z = arena.floatVec(2 * BR);
+            mJ.Apply(in r, ref z);
+            Assert.IsTrue(math.abs((float)(z[0] - (float)0.25)) < 1e-6f);
+            Assert.IsTrue(math.abs((float)(z[2 * BR - 1] - (float)(1.0 / 9.0))) < 1e-6f);
+        }
+        finally { arena.Dispose(); }
+    }
+
     [Test]
     public void BlockJacobi_NonSquareBSR_Throws()
     {

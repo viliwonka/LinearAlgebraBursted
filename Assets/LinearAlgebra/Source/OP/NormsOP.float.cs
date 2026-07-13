@@ -216,7 +216,8 @@ namespace LinearAlgebra
         }
 
         // Induced 2-norm (spectral norm) ‖A‖₂ = σ_max(A), the largest singular value. Runs a
-        // one-sided Jacobi SVD on a copy (A is not modified); allocates SVD scratch from A's arena.
+        // values-only SVD on a copy (A is not modified); allocates SVD scratch from A's arena.
+        // Returns NaN when the SVD fails to converge.
         public static float matrixL2(in floatMxN A)
         {
             int k = math.min(A.M_Rows, A.N_Cols);
@@ -224,7 +225,8 @@ namespace LinearAlgebra
                 return (float)0;
 
             floatN S = A.floatTempVec(k);
-            SVD.singularValues(in A, ref S);
+            if (!SVD.singularValues(in A, ref S))
+                return float.NaN;   // bidiagonal QR did not converge; S is unwritten
             return S[0];   // singular values are sorted descending -> σ_max
         }
     }

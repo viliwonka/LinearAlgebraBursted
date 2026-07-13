@@ -96,6 +96,34 @@ namespace LinearAlgebra
         }
 
         /// <summary>
+        /// Non-throwing twin of <see cref="fProxyBlockJacobi(in fProxyBSR)"/>: info carries the
+        /// build outcome (see the fProxyBlockJacobi out-info constructor). On failure the returned
+        /// struct is unusable and no arena record is retained.
+        /// </summary>
+        public fProxyBlockJacobi fProxyBlockJacobi(in fProxyBSR A, out DirectSolveInfo info)
+        {
+            if (_core == null)
+                throw new System.InvalidOperationException("Arena.fProxyBSR/fProxyBSRBuilder/fProxyBlockJacobi: arena is not initialized (default or disposed).");
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            _core->EnterMutation();
+            try
+            {
+#endif
+                fProxyBlockJacobiRecord* rec = _core->fProxyBlockJacobiRecords.Allocate(out int slot);
+                rec->Owner = _core;
+                rec->Table = &_core->fProxyBlockJacobiRecords;
+                rec->SelfIndex = slot;
+                var M = new fProxyBlockJacobi(in A, rec, Allocator, out info);
+                if (!info.Solved)
+                    _core->fProxyBlockJacobiRecords.Free(slot);
+                return M;
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            }
+            finally { _core->ExitMutation(); }
+#endif
+        }
+
+        /// <summary>
         /// Materializes A^T as its own compressed BSR (O(nnz)): every stored block at (blockRow,
         /// blockCol) becomes a block at (blockCol, blockRow), transposed in place, then
         /// re-compressed via <see cref="fProxyBSRBuilder"/>. If A.Symmetric, returns A itself
@@ -210,6 +238,14 @@ namespace LinearAlgebra
             return new fProxyIC0(in A, ref self);
         }
 
+        /// <summary>Non-throwing twin of <see cref="fProxyIC0(in fProxyBSR)"/>: info carries the
+        /// build outcome (Success, or NotPositiveDefinite on factorization breakdown).</summary>
+        public fProxyIC0 fProxyIC0(in fProxyBSR A, out DirectSolveInfo info)
+        {
+            Arena self = this;
+            return new fProxyIC0(in A, ref self, out info);
+        }
+
         /// <summary>
         /// Builds a block incomplete-LU ILU(0) preconditioner from A (square, every diagonal
         /// block stored) — the nonsymmetric sibling of <see cref="fProxyIC0"/>, for
@@ -220,6 +256,14 @@ namespace LinearAlgebra
         {
             Arena self = this;
             return new fProxyILU0(in A, ref self);
+        }
+
+        /// <summary>Non-throwing twin of <see cref="fProxyILU0(in fProxyBSR)"/>: info carries the
+        /// build outcome (Success, or Singular on factorization breakdown).</summary>
+        public fProxyILU0 fProxyILU0(in fProxyBSR A, out DirectSolveInfo info)
+        {
+            Arena self = this;
+            return new fProxyILU0(in A, ref self, out info);
         }
     }
 }

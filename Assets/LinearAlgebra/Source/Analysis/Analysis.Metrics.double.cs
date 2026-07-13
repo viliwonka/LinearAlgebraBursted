@@ -30,8 +30,9 @@ namespace LinearAlgebra
 
         /// <summary>
         /// 2-norm condition number κ₂(A) = σ_max / σ_min (any shape, via SVD). Returns positive
-        /// infinity when A is singular / rank-deficient (σ_min == 0). Allocates SVD scratch;
-        /// A is not modified. κ₂ ≈ 1 means well-conditioned; large κ₂ means ill-conditioned.
+        /// infinity when A is singular / rank-deficient (σ_min == 0), and NaN when the SVD
+        /// fails to converge. Allocates SVD scratch; A is not modified. κ₂ ≈ 1 means
+        /// well-conditioned; large κ₂ means ill-conditioned.
         /// </summary>
         public static double cond(in doubleMxN A)
         {
@@ -40,7 +41,8 @@ namespace LinearAlgebra
                 return (double)0;
 
             doubleN S = A.doubleTempVec(k);
-            SVD.singularValues(in A, ref S);
+            if (!SVD.singularValues(in A, ref S))
+                return double.NaN;           // bidiagonal QR did not converge; S is unwritten
 
             double sMin = S[k - 1];          // singular values are descending
             if (!(sMin > (double)0))         // NaN-safe: singular -> infinite condition number
@@ -52,7 +54,8 @@ namespace LinearAlgebra
         /// <summary>
         /// Numerical rank: the number of singular values greater than relTol * σ_max (any shape,
         /// via SVD). relTol &lt; 0 selects the automatic tolerance max(m, n) * Consts.doubleZeroThreshold
-        /// (matching pinvSolve). Allocates SVD scratch; A is not modified.
+        /// (matching pinvSolve). Allocates SVD scratch; A is not modified. Throws
+        /// InvalidOperationException if the SVD fails to converge (rank has no honest sentinel value).
         /// </summary>
         public static int rank(in doubleMxN A, double relTol)
         {
@@ -63,7 +66,8 @@ namespace LinearAlgebra
                 return 0;
 
             doubleN S = A.doubleTempVec(k);
-            SVD.singularValues(in A, ref S);
+            if (!SVD.singularValues(in A, ref S))
+                throw new InvalidOperationException("rank: SVD did not converge");
 
             if (S[0] == (double)0)
                 return 0;

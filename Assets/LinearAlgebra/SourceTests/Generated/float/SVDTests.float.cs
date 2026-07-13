@@ -707,8 +707,9 @@ public class floatSVDTests
             var A = arena.floatHadamard(n);
             var S = arena.floatVec(n);
 
-            int k = SVD.singularValues(in A, ref S);
-            AssertClose((float)k, (float)n, 1E-6f);
+            var info = SVD.singularValues(in A, ref S);
+            Assert.IsTrue(info.Solved);
+            AssertClose((float)S.N, (float)n, 1E-6f);
 
             Assert.IsFalse(Analysis.isAnyNan(in S));
 

@@ -703,8 +703,9 @@ public class fProxySVDTests
             var A = arena.fProxyHadamard(n);
             var S = arena.fProxyVec(n);
 
-            int k = SVD.singularValues(in A, ref S);
-            AssertClose((fProxy)k, (fProxy)n, 1E-6f);
+            var info = SVD.singularValues(in A, ref S);
+            Assert.IsTrue(info.Solved);
+            AssertClose((fProxy)S.N, (fProxy)n, 1E-6f);
 
             Assert.IsFalse(Analysis.isAnyNan(in S));
 

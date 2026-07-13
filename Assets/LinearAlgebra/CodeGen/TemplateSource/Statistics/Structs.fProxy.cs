@@ -21,7 +21,7 @@ namespace LinearAlgebra
     [BurstCompile]
     public struct fProxyFullStats
     {
-        public fProxy count;
+        public int count;
         public fProxy mean;
         public fProxy min;
         public fProxy max;
@@ -33,7 +33,7 @@ namespace LinearAlgebra
         public fProxy q1;
         public fProxy q3;
 
-        public fProxyFullStats(fProxy count, fProxy mean, fProxy min, fProxy max, fProxy range, fProxy median, fProxy stdDev, fProxy variance, fProxy iqr, fProxy q1, fProxy q3)
+        public fProxyFullStats(int count, fProxy mean, fProxy min, fProxy max, fProxy range, fProxy median, fProxy stdDev, fProxy variance, fProxy iqr, fProxy q1, fProxy q3)
         {
             this.count = count;
             this.mean = mean;

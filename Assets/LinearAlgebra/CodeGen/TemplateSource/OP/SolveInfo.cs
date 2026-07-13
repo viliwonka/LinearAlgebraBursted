@@ -196,8 +196,10 @@ namespace LinearAlgebra
         /// On MaxIterations this equals the budget that was exhausted.</summary>
         public int sweeps;
 
-        /// <summary>Count of singular values that had already converged when the solve stopped
-        /// (0..n). Equals n iff <see cref="status"/> is Converged.</summary>
+        /// <summary>Count of singular values that had already converged when the solve stopped,
+        /// relative to the problem the QR pass actually iterated: the full n for
+        /// <c>thin</c>/<c>values</c>, the reduced panel size for <c>truncated</c>/<c>randomized</c>.
+        /// Equals that problem size iff <see cref="status"/> is Converged.</summary>
         public int converged;
 
         /// <summary>True iff every singular value converged (<c>status ==
