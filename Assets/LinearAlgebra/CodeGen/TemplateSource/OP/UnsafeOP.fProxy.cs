@@ -831,54 +831,7 @@ namespace LinearAlgebra.Internal
                 matMatDotTransARange(matA, matB, matC, mTiles, m, m, n, k, 0, k);
 
             if (symUpper)
-            {
-                // Mirror the computed upper triangle into the lower (k == m by contract). Pure
-                // copy of final values either way — results are identical to a naive mirror.
-                if (m <= 64)
-                {
-                    // Whole matrix is L1-resident: the plain mirror cannot thrash, and small
-                    // solves (Riccati/Kalman scale) must not pay the staging buffer's per-call
-                    // zero-init.
-                    for (int r = 1; r < m; r++)
-                        for (int c = 0; c < r; c++)
-                            matC[(long)r * k + c] = matC[(long)c * k + r];
-                }
-                else
-                {
-                    // Large matrix: tiled and STAGED through a stack buffer like matTrans (the
-                    // source tile is read row-contiguous into the buffer, the destination tile
-                    // written row-contiguous out of it — no large-stride access on either side;
-                    // a plain strided mirror way-thrashes L1 at power-of-two sizes). Source
-                    // reads touch only the upper triangle (never mirror-written), so staging a
-                    // diagonal tile reads some not-yet-final lower entries into the buffer but
-                    // the c < r write guard never uses them.
-                    const int TBm = 16;
-                    fProxy* mbuf = stackalloc fProxy[TBm * TBm];
-                    for (int rb = 0; rb < m; rb += TBm)
-                    {
-                        int rEnd = rb + TBm; if (rEnd > m) rEnd = m;
-                        for (int cb = 0; cb <= rb; cb += TBm)
-                        {
-                            int cEnd = cb + TBm; if (cEnd > m) cEnd = m;
-
-                            for (int c = cb; c < cEnd; c++)
-                            {
-                                fProxy* Crow = matC + (long)c * k;
-                                for (int r = rb; r < rEnd; r++)
-                                    mbuf[(r - rb) * TBm + (c - cb)] = Crow[r];
-                            }
-                            for (int r = rb; r < rEnd; r++)
-                            {
-                                int ce = cEnd < r ? cEnd : r;   // strictly-lower only (c < r)
-                                fProxy* Crow = matC + (long)r * k;
-                                fProxy* bufRow = mbuf + (long)(r - rb) * TBm;
-                                for (int c = cb; c < ce; c++)
-                                    Crow[c] = bufRow[c - cb];
-                            }
-                        }
-                    }
-                }
-            }
+                mirrorLowerFromUpper(matC, m, k);
         }
 
         // Plain (untiled) Aᵀ·B restricted to an explicit row/column sub-range — the transposed-A
@@ -914,24 +867,137 @@ namespace LinearAlgebra.Internal
         // bit-identical between the two at every size.
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void matMatDotTransB([NoAlias] fProxy* matA, [NoAlias] fProxy* matB, [NoAlias] fProxy* matC, int m, int n, int k)
-            => matMatDotTransBCore(matA, matB, matC, m, n, k, symUpper: false);
+            => /*+choose[matMatDotTransBCoreW|matMatDotTransBCore]*/matMatDotTransBCoreW/*-choose*/(matA, matB, matC, m, n, k, symUpper: false);
 
         // C = A·Aᵀ (SYRK shape, m x m output): the single input parameter is used for both operand
         // roles, so the alias relationship is exact — no [NoAlias] lie and no defensive copy.
         // Exploits symmetry: computes the upper triangle, mirrors the lower (~2x fewer FLOPs).
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void matAAt([NoAlias] fProxy* matA, [NoAlias] fProxy* matC, int m, int n)
-            => matMatDotTransBCore(matA, matA, matC, m, n, m, symUpper: true);
+            => /*+choose[matMatDotTransBCoreW|matMatDotTransBCore]*/matMatDotTransBCoreW/*-choose*/(matA, matA, matC, m, n, m, symUpper: true);
 
         // C = A·Bᵀ where the result is symmetric BY CALLER CONTRACT (A = B·S with symmetric S —
         // the (F P)·Fᵀ / (I-KH)P·(I-KH)ᵀ shapes). Computes the upper triangle, mirrors the lower.
         // Requires k == m.
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void matMatDotTransBSym([NoAlias] fProxy* matA, [NoAlias] fProxy* matB, [NoAlias] fProxy* matC, int m, int n, int k)
-            => matMatDotTransBCore(matA, matB, matC, m, n, k, symUpper: true);
+            => /*+choose[matMatDotTransBCoreW|matMatDotTransBCore]*/matMatDotTransBCoreW/*-choose*/(matA, matB, matC, m, n, k, symUpper: true);
 
-        // Shared tiled body — inlined into the entry points above so their parameter attributes
-        // apply to the loads/stores directly and the symUpper flag constant-folds per entry.
+        //+skipFor[double]
+        // Float-only 8-lane variant of matMatDotTransBCore (double's width-4 chains already
+        // fill the register; float's doubled lanes need the wide type): same 2x4 (A row, B row)
+        // pair tile, ONE fProxyW accumulator chain per pair (8 accumulators + 6 transient loads
+        // inside the register budget), per-pair finish = fProxyW.HSum + the standard width-4
+        // quad + ascending scalar tail — the same tiered reduction tree as vecDot's, applied
+        // per output element. Fallback and tiled paths share the per-pair schedule exactly.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static void matMatDotTransBCoreW(fProxy* matA, fProxy* matB, fProxy* matC, int m, int n, int k, bool symUpper)
+        {
+            const int MR = 2;
+            const int NR = 4;
+
+            int mTiles = (m / MR) * MR;
+            int kTiles = (k / NR) * NR;
+            int nW = n / fProxyW.Width;
+
+            for (int i = 0; i < mTiles; i += MR)
+            {
+                fProxy* Arow0 = matA + (long)(i + 0) * n;
+                fProxy* Arow1 = matA + (long)(i + 1) * n;
+
+                for (int j = 0; j < kTiles; j += NR)
+                {
+                    if (symUpper && j + NR <= i) continue;   // tile strictly below the diagonal
+
+                    fProxy* Brow0 = matB + (long)(j + 0) * n;
+                    fProxy* Brow1 = matB + (long)(j + 1) * n;
+                    fProxy* Brow2 = matB + (long)(j + 2) * n;
+                    fProxy* Brow3 = matB + (long)(j + 3) * n;
+
+                    fProxyW c00 = default, c01 = default, c02 = default, c03 = default;
+                    fProxyW c10 = default, c11 = default, c12 = default, c13 = default;
+
+                    for (int q = 0; q < nW; q++)
+                    {
+                        fProxyW a0 = fProxyW.Load(Arow0, q);
+                        fProxyW a1 = fProxyW.Load(Arow1, q);
+                        fProxyW b0 = fProxyW.Load(Brow0, q);
+                        fProxyW b1 = fProxyW.Load(Brow1, q);
+                        fProxyW b2 = fProxyW.Load(Brow2, q);
+                        fProxyW b3 = fProxyW.Load(Brow3, q);
+
+                        c00 += a0 * b0; c01 += a0 * b1; c02 += a0 * b2; c03 += a0 * b3;
+                        c10 += a1 * b0; c11 += a1 * b1; c12 += a1 * b2; c13 += a1 * b3;
+                    }
+
+                    fProxy* Crow0 = matC + (long)(i + 0) * k + j;
+                    fProxy* Crow1 = matC + (long)(i + 1) * k + j;
+                    Crow0[0] += rowDotFinishW(c00, Arow0, Brow0, n);
+                    Crow0[1] += rowDotFinishW(c01, Arow0, Brow1, n);
+                    Crow0[2] += rowDotFinishW(c02, Arow0, Brow2, n);
+                    Crow0[3] += rowDotFinishW(c03, Arow0, Brow3, n);
+                    Crow1[0] += rowDotFinishW(c10, Arow1, Brow0, n);
+                    Crow1[1] += rowDotFinishW(c11, Arow1, Brow1, n);
+                    Crow1[2] += rowDotFinishW(c12, Arow1, Brow2, n);
+                    Crow1[3] += rowDotFinishW(c13, Arow1, Brow3, n);
+                }
+
+                if (kTiles < k)
+                    matMatDotTransBRangeW(matA, matB, matC, i, i + MR, n, k, kTiles, k);
+            }
+
+            if (mTiles < m)
+                matMatDotTransBRangeW(matA, matB, matC, mTiles, m, n, k, 0, k);
+
+            if (symUpper)
+                mirrorLowerFromUpper(matC, m, k);
+        }
+
+        // Completes one wide C[i,j] reduction: fProxyW.HSum, then the standard width-4 quad,
+        // then the ascending scalar tail.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static fProxy rowDotFinishW(fProxyW acc, fProxy* rowA, fProxy* rowB, int n)
+        {
+            fProxy s = fProxyW.HSum(acc);
+            int i = (n / fProxyW.Width) * fProxyW.Width;
+            if (i + 4 <= n)
+            {
+                fProxy4 mq = *(fProxy4*)(rowA + i) * *(fProxy4*)(rowB + i);
+                s += (mq.x + mq.y) + (mq.z + mq.w);
+                i += 4;
+            }
+            for (; i < n; i++)
+                s += rowA[i] * rowB[i];
+            return s;
+        }
+
+        // Untiled wide A·Bᵀ over an explicit sub-range — remainder coverage + whole-matrix
+        // small-size fallback, same per-pair schedule as the tiled bulk (no seam).
+        // matA/matB may be the same pointer here (the matAAt route) — only matC keeps [NoAlias].
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void matMatDotTransBRangeW(fProxy* matA, fProxy* matB, [NoAlias] fProxy* matC,
+                                           int rowStart, int rowEnd, int n, int k, int colStart, int colEnd)
+        {
+            int nW = n / fProxyW.Width;
+            for (int r = rowStart; r < rowEnd; r++)
+            {
+                fProxy* Arow = matA + (long)r * n;
+                for (int c = colStart; c < colEnd; c++)
+                {
+                    fProxy* Brow = matB + (long)c * n;
+                    fProxyW acc = default;
+                    for (int q = 0; q < nW; q++)
+                        acc += fProxyW.Load(Arow, q) * fProxyW.Load(Brow, q);
+                    matC[(long)r * k + c] += rowDotFinishW(acc, Arow, Brow, n);
+                }
+            }
+        }
+        //-skipFor
+
+        //+skipFor[float]
+        // Shared tiled body (double route — float goes through matMatDotTransBCoreW above) —
+        // inlined into the entry points so their parameter attributes apply to the loads/stores
+        // directly and the symUpper flag constant-folds per entry.
         // symUpper: skip register tiles strictly below the diagonal, then mirror the computed
         // upper triangle into the lower (requires k == m; every upper element is provably
         // computed — skipped tiles satisfy c <= j+NR-1 < i <= r, i.e. strictly lower).
@@ -1008,54 +1074,7 @@ namespace LinearAlgebra.Internal
                 matMatDotTransBRange(matA, matB, matC, mTiles, m, n, k, 0, k);
 
             if (symUpper)
-            {
-                // Mirror the computed upper triangle into the lower (k == m by contract). Pure
-                // copy of final values either way — results are identical to a naive mirror.
-                if (m <= 64)
-                {
-                    // Whole matrix is L1-resident: the plain mirror cannot thrash, and small
-                    // solves (Riccati/Kalman scale) must not pay the staging buffer's per-call
-                    // zero-init.
-                    for (int r = 1; r < m; r++)
-                        for (int c = 0; c < r; c++)
-                            matC[(long)r * k + c] = matC[(long)c * k + r];
-                }
-                else
-                {
-                    // Large matrix: tiled and STAGED through a stack buffer like matTrans (the
-                    // source tile is read row-contiguous into the buffer, the destination tile
-                    // written row-contiguous out of it — no large-stride access on either side;
-                    // a plain strided mirror way-thrashes L1 at power-of-two sizes). Source
-                    // reads touch only the upper triangle (never mirror-written), so staging a
-                    // diagonal tile reads some not-yet-final lower entries into the buffer but
-                    // the c < r write guard never uses them.
-                    const int TBm = 16;
-                    fProxy* mbuf = stackalloc fProxy[TBm * TBm];
-                    for (int rb = 0; rb < m; rb += TBm)
-                    {
-                        int rEnd = rb + TBm; if (rEnd > m) rEnd = m;
-                        for (int cb = 0; cb <= rb; cb += TBm)
-                        {
-                            int cEnd = cb + TBm; if (cEnd > m) cEnd = m;
-
-                            for (int c = cb; c < cEnd; c++)
-                            {
-                                fProxy* Crow = matC + (long)c * k;
-                                for (int r = rb; r < rEnd; r++)
-                                    mbuf[(r - rb) * TBm + (c - cb)] = Crow[r];
-                            }
-                            for (int r = rb; r < rEnd; r++)
-                            {
-                                int ce = cEnd < r ? cEnd : r;   // strictly-lower only (c < r)
-                                fProxy* Crow = matC + (long)r * k;
-                                fProxy* bufRow = mbuf + (long)(r - rb) * TBm;
-                                for (int c = cb; c < ce; c++)
-                                    Crow[c] = bufRow[c - cb];
-                            }
-                        }
-                    }
-                }
-            }
+                mirrorLowerFromUpper(matC, m, k);
         }
 
         // Completes one C[i,j] reduction: horizontal sum in a fixed order, then the scalar tail
@@ -1068,7 +1087,59 @@ namespace LinearAlgebra.Internal
                 s += rowA[i] * rowB[i];
             return s;
         }
+        //-skipFor
 
+        // Mirror the computed upper triangle into the lower (k == m by the sym kernels'
+        // contract). Pure copy of final values — results are identical to a naive mirror.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void mirrorLowerFromUpper([NoAlias] fProxy* matC, int m, int k)
+        {
+            if (m <= 64)
+            {
+                // Whole matrix is L1-resident: the plain mirror cannot thrash, and small
+                // solves (Riccati/Kalman scale) must not pay the staging buffer's per-call
+                // zero-init.
+                for (int r = 1; r < m; r++)
+                    for (int c = 0; c < r; c++)
+                        matC[(long)r * k + c] = matC[(long)c * k + r];
+                return;
+            }
+
+            // Large matrix: tiled and STAGED through a stack buffer like matTrans (the source
+            // tile is read row-contiguous into the buffer, the destination tile written
+            // row-contiguous out of it — no large-stride access on either side; a plain strided
+            // mirror way-thrashes L1 at power-of-two sizes). Source reads touch only the upper
+            // triangle (never mirror-written), so staging a diagonal tile reads some
+            // not-yet-final lower entries into the buffer but the c < r write guard never uses
+            // them.
+            const int TBm = 16;
+            fProxy* mbuf = stackalloc fProxy[TBm * TBm];
+            for (int rb = 0; rb < m; rb += TBm)
+            {
+                int rEnd = rb + TBm; if (rEnd > m) rEnd = m;
+                for (int cb = 0; cb <= rb; cb += TBm)
+                {
+                    int cEnd = cb + TBm; if (cEnd > m) cEnd = m;
+
+                    for (int c = cb; c < cEnd; c++)
+                    {
+                        fProxy* Crow = matC + (long)c * k;
+                        for (int r = rb; r < rEnd; r++)
+                            mbuf[(r - rb) * TBm + (c - cb)] = Crow[r];
+                    }
+                    for (int r = rb; r < rEnd; r++)
+                    {
+                        int ce = cEnd < r ? cEnd : r;   // strictly-lower only (c < r)
+                        fProxy* Crow = matC + (long)r * k;
+                        fProxy* bufRow = mbuf + (long)(r - rb) * TBm;
+                        for (int c = cb; c < ce; c++)
+                            Crow[c] = bufRow[c - cb];
+                    }
+                }
+            }
+        }
+
+        //+skipFor[float]
         // Plain (untiled) A·Bᵀ restricted to an explicit row/column sub-range — same rationale as
         // matMatDotRange (remainder coverage + whole-matrix small-size fallback), same per-pair
         // reduction schedule as the tiled bulk so there is no seam.
@@ -1093,6 +1164,7 @@ namespace LinearAlgebra.Internal
                 }
             }
         }
+        //-skipFor
 
         // Row-wise forward substitution ("TRSM", lower-triangular panel solve, applied one row at a
         // time): for every row t of B, solve L11 * B[t,:]ᵀ = B[t,:]ᵀ_old for B[t,:] IN PLACE, where

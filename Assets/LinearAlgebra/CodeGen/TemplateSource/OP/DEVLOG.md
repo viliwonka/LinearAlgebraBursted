@@ -1,6 +1,17 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## fProxyW stage 2b: TransB row-dot family on the wide core
+- 2026-07-14 | matMatDotTransBCoreW (float-only, choose-routed at the three entries; the
+  original core is now double-only via skipFor[float]): same 2x4 pair tile, one fProxyW
+  accumulator per pair. Float A·Bᵀ 1024: 29.2 → 17.2 ms (125-136 GF/s — now the FASTEST GEMM
+  shape in the library, beating plain matMatDot's ~77-90); float A·Aᵀ 1024: 14.4 → 9.0 ms
+  (237-253 GF/s-effective). Beats the trans+dot route at EVERY size, so the wrapper's
+  per-dtype viaTrans split (added earlier the same day) is REMOVED — unified kernel dispatch
+  again. dotSymT float (Kalman covariance shapes) inherits the win. The mirror pass is now the
+  shared mirrorLowerFromUpper helper (three cores use it). Same-run A/B, so valid despite
+  ambient machine load (double control rows steady).
+
 ## fProxyW stage 2: matVecDot + sum/sumAbs/maxAbs
 - 2026-07-14 | GEMV (matVecDot) float on the tiered pattern: 43.7 → 73.6 GFLOP/s at 1024
   (3.07 → 1.82 ms), 1.6-1.7x at 256-1024, measured before ambient machine load contaminated

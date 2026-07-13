@@ -743,54 +743,7 @@ namespace LinearAlgebra.Internal
                 matMatDotTransARange(matA, matB, matC, mTiles, m, m, n, k, 0, k);
 
             if (symUpper)
-            {
-                // Mirror the computed upper triangle into the lower (k == m by contract). Pure
-                // copy of final values either way — results are identical to a naive mirror.
-                if (m <= 64)
-                {
-                    // Whole matrix is L1-resident: the plain mirror cannot thrash, and small
-                    // solves (Riccati/Kalman scale) must not pay the staging buffer's per-call
-                    // zero-init.
-                    for (int r = 1; r < m; r++)
-                        for (int c = 0; c < r; c++)
-                            matC[(long)r * k + c] = matC[(long)c * k + r];
-                }
-                else
-                {
-                    // Large matrix: tiled and STAGED through a stack buffer like matTrans (the
-                    // source tile is read row-contiguous into the buffer, the destination tile
-                    // written row-contiguous out of it — no large-stride access on either side;
-                    // a plain strided mirror way-thrashes L1 at power-of-two sizes). Source
-                    // reads touch only the upper triangle (never mirror-written), so staging a
-                    // diagonal tile reads some not-yet-final lower entries into the buffer but
-                    // the c < r write guard never uses them.
-                    const int TBm = 16;
-                    double* mbuf = stackalloc double[TBm * TBm];
-                    for (int rb = 0; rb < m; rb += TBm)
-                    {
-                        int rEnd = rb + TBm; if (rEnd > m) rEnd = m;
-                        for (int cb = 0; cb <= rb; cb += TBm)
-                        {
-                            int cEnd = cb + TBm; if (cEnd > m) cEnd = m;
-
-                            for (int c = cb; c < cEnd; c++)
-                            {
-                                double* Crow = matC + (long)c * k;
-                                for (int r = rb; r < rEnd; r++)
-                                    mbuf[(r - rb) * TBm + (c - cb)] = Crow[r];
-                            }
-                            for (int r = rb; r < rEnd; r++)
-                            {
-                                int ce = cEnd < r ? cEnd : r;   // strictly-lower only (c < r)
-                                double* Crow = matC + (long)r * k;
-                                double* bufRow = mbuf + (long)(r - rb) * TBm;
-                                for (int c = cb; c < ce; c++)
-                                    Crow[c] = bufRow[c - cb];
-                            }
-                        }
-                    }
-                }
-            }
+                mirrorLowerFromUpper(matC, m, k);
         }
 
         // Plain (untiled) Aᵀ·B restricted to an explicit row/column sub-range — the transposed-A
@@ -842,8 +795,12 @@ namespace LinearAlgebra.Internal
         public static void matMatDotTransBSym([NoAlias] double* matA, [NoAlias] double* matB, [NoAlias] double* matC, int m, int n, int k)
             => matMatDotTransBCore(matA, matB, matC, m, n, k, symUpper: true);
 
-        // Shared tiled body — inlined into the entry points above so their parameter attributes
-        // apply to the loads/stores directly and the symUpper flag constant-folds per entry.
+        
+
+        
+        // Shared tiled body (double route — float goes through matMatDotTransBCoreW above) —
+        // inlined into the entry points so their parameter attributes apply to the loads/stores
+        // directly and the symUpper flag constant-folds per entry.
         // symUpper: skip register tiles strictly below the diagonal, then mirror the computed
         // upper triangle into the lower (requires k == m; every upper element is provably
         // computed — skipped tiles satisfy c <= j+NR-1 < i <= r, i.e. strictly lower).
@@ -920,54 +877,7 @@ namespace LinearAlgebra.Internal
                 matMatDotTransBRange(matA, matB, matC, mTiles, m, n, k, 0, k);
 
             if (symUpper)
-            {
-                // Mirror the computed upper triangle into the lower (k == m by contract). Pure
-                // copy of final values either way — results are identical to a naive mirror.
-                if (m <= 64)
-                {
-                    // Whole matrix is L1-resident: the plain mirror cannot thrash, and small
-                    // solves (Riccati/Kalman scale) must not pay the staging buffer's per-call
-                    // zero-init.
-                    for (int r = 1; r < m; r++)
-                        for (int c = 0; c < r; c++)
-                            matC[(long)r * k + c] = matC[(long)c * k + r];
-                }
-                else
-                {
-                    // Large matrix: tiled and STAGED through a stack buffer like matTrans (the
-                    // source tile is read row-contiguous into the buffer, the destination tile
-                    // written row-contiguous out of it — no large-stride access on either side;
-                    // a plain strided mirror way-thrashes L1 at power-of-two sizes). Source
-                    // reads touch only the upper triangle (never mirror-written), so staging a
-                    // diagonal tile reads some not-yet-final lower entries into the buffer but
-                    // the c < r write guard never uses them.
-                    const int TBm = 16;
-                    double* mbuf = stackalloc double[TBm * TBm];
-                    for (int rb = 0; rb < m; rb += TBm)
-                    {
-                        int rEnd = rb + TBm; if (rEnd > m) rEnd = m;
-                        for (int cb = 0; cb <= rb; cb += TBm)
-                        {
-                            int cEnd = cb + TBm; if (cEnd > m) cEnd = m;
-
-                            for (int c = cb; c < cEnd; c++)
-                            {
-                                double* Crow = matC + (long)c * k;
-                                for (int r = rb; r < rEnd; r++)
-                                    mbuf[(r - rb) * TBm + (c - cb)] = Crow[r];
-                            }
-                            for (int r = rb; r < rEnd; r++)
-                            {
-                                int ce = cEnd < r ? cEnd : r;   // strictly-lower only (c < r)
-                                double* Crow = matC + (long)r * k;
-                                double* bufRow = mbuf + (long)(r - rb) * TBm;
-                                for (int c = cb; c < ce; c++)
-                                    Crow[c] = bufRow[c - cb];
-                            }
-                        }
-                    }
-                }
-            }
+                mirrorLowerFromUpper(matC, m, k);
         }
 
         // Completes one C[i,j] reduction: horizontal sum in a fixed order, then the scalar tail
@@ -980,7 +890,59 @@ namespace LinearAlgebra.Internal
                 s += rowA[i] * rowB[i];
             return s;
         }
+        
 
+        // Mirror the computed upper triangle into the lower (k == m by the sym kernels'
+        // contract). Pure copy of final values — results are identical to a naive mirror.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void mirrorLowerFromUpper([NoAlias] double* matC, int m, int k)
+        {
+            if (m <= 64)
+            {
+                // Whole matrix is L1-resident: the plain mirror cannot thrash, and small
+                // solves (Riccati/Kalman scale) must not pay the staging buffer's per-call
+                // zero-init.
+                for (int r = 1; r < m; r++)
+                    for (int c = 0; c < r; c++)
+                        matC[(long)r * k + c] = matC[(long)c * k + r];
+                return;
+            }
+
+            // Large matrix: tiled and STAGED through a stack buffer like matTrans (the source
+            // tile is read row-contiguous into the buffer, the destination tile written
+            // row-contiguous out of it — no large-stride access on either side; a plain strided
+            // mirror way-thrashes L1 at power-of-two sizes). Source reads touch only the upper
+            // triangle (never mirror-written), so staging a diagonal tile reads some
+            // not-yet-final lower entries into the buffer but the c < r write guard never uses
+            // them.
+            const int TBm = 16;
+            double* mbuf = stackalloc double[TBm * TBm];
+            for (int rb = 0; rb < m; rb += TBm)
+            {
+                int rEnd = rb + TBm; if (rEnd > m) rEnd = m;
+                for (int cb = 0; cb <= rb; cb += TBm)
+                {
+                    int cEnd = cb + TBm; if (cEnd > m) cEnd = m;
+
+                    for (int c = cb; c < cEnd; c++)
+                    {
+                        double* Crow = matC + (long)c * k;
+                        for (int r = rb; r < rEnd; r++)
+                            mbuf[(r - rb) * TBm + (c - cb)] = Crow[r];
+                    }
+                    for (int r = rb; r < rEnd; r++)
+                    {
+                        int ce = cEnd < r ? cEnd : r;   // strictly-lower only (c < r)
+                        double* Crow = matC + (long)r * k;
+                        double* bufRow = mbuf + (long)(r - rb) * TBm;
+                        for (int c = cb; c < ce; c++)
+                            Crow[c] = bufRow[c - cb];
+                    }
+                }
+            }
+        }
+
+        
         // Plain (untiled) A·Bᵀ restricted to an explicit row/column sub-range — same rationale as
         // matMatDotRange (remainder coverage + whole-matrix small-size fallback), same per-pair
         // reduction schedule as the tiled bulk so there is no seam.
@@ -1005,6 +967,7 @@ namespace LinearAlgebra.Internal
                 }
             }
         }
+        
 
         // Row-wise forward substitution ("TRSM", lower-triangular panel solve, applied one row at a
         // time): for every row t of B, solve L11 * B[t,:]ᵀ = B[t,:]ᵀ_old for B[t,:] IN PLACE, where

@@ -833,54 +833,7 @@ namespace LinearAlgebra.Internal
                 matMatDotTransARange(matA, matB, matC, mTiles, m, m, n, k, 0, k);
 
             if (symUpper)
-            {
-                // Mirror the computed upper triangle into the lower (k == m by contract). Pure
-                // copy of final values either way — results are identical to a naive mirror.
-                if (m <= 64)
-                {
-                    // Whole matrix is L1-resident: the plain mirror cannot thrash, and small
-                    // solves (Riccati/Kalman scale) must not pay the staging buffer's per-call
-                    // zero-init.
-                    for (int r = 1; r < m; r++)
-                        for (int c = 0; c < r; c++)
-                            matC[(long)r * k + c] = matC[(long)c * k + r];
-                }
-                else
-                {
-                    // Large matrix: tiled and STAGED through a stack buffer like matTrans (the
-                    // source tile is read row-contiguous into the buffer, the destination tile
-                    // written row-contiguous out of it — no large-stride access on either side;
-                    // a plain strided mirror way-thrashes L1 at power-of-two sizes). Source
-                    // reads touch only the upper triangle (never mirror-written), so staging a
-                    // diagonal tile reads some not-yet-final lower entries into the buffer but
-                    // the c < r write guard never uses them.
-                    const int TBm = 16;
-                    float* mbuf = stackalloc float[TBm * TBm];
-                    for (int rb = 0; rb < m; rb += TBm)
-                    {
-                        int rEnd = rb + TBm; if (rEnd > m) rEnd = m;
-                        for (int cb = 0; cb <= rb; cb += TBm)
-                        {
-                            int cEnd = cb + TBm; if (cEnd > m) cEnd = m;
-
-                            for (int c = cb; c < cEnd; c++)
-                            {
-                                float* Crow = matC + (long)c * k;
-                                for (int r = rb; r < rEnd; r++)
-                                    mbuf[(r - rb) * TBm + (c - cb)] = Crow[r];
-                            }
-                            for (int r = rb; r < rEnd; r++)
-                            {
-                                int ce = cEnd < r ? cEnd : r;   // strictly-lower only (c < r)
-                                float* Crow = matC + (long)r * k;
-                                float* bufRow = mbuf + (long)(r - rb) * TBm;
-                                for (int c = cb; c < ce; c++)
-                                    Crow[c] = bufRow[c - cb];
-                            }
-                        }
-                    }
-                }
-            }
+                mirrorLowerFromUpper(matC, m, k);
         }
 
         // Plain (untiled) Aᵀ·B restricted to an explicit row/column sub-range — the transposed-A
@@ -916,47 +869,43 @@ namespace LinearAlgebra.Internal
         // bit-identical between the two at every size.
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void matMatDotTransB([NoAlias] float* matA, [NoAlias] float* matB, [NoAlias] float* matC, int m, int n, int k)
-            => matMatDotTransBCore(matA, matB, matC, m, n, k, symUpper: false);
+            => matMatDotTransBCoreW(matA, matB, matC, m, n, k, symUpper: false);
 
         // C = A·Aᵀ (SYRK shape, m x m output): the single input parameter is used for both operand
         // roles, so the alias relationship is exact — no [NoAlias] lie and no defensive copy.
         // Exploits symmetry: computes the upper triangle, mirrors the lower (~2x fewer FLOPs).
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void matAAt([NoAlias] float* matA, [NoAlias] float* matC, int m, int n)
-            => matMatDotTransBCore(matA, matA, matC, m, n, m, symUpper: true);
+            => matMatDotTransBCoreW(matA, matA, matC, m, n, m, symUpper: true);
 
         // C = A·Bᵀ where the result is symmetric BY CALLER CONTRACT (A = B·S with symmetric S —
         // the (F P)·Fᵀ / (I-KH)P·(I-KH)ᵀ shapes). Computes the upper triangle, mirrors the lower.
         // Requires k == m.
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void matMatDotTransBSym([NoAlias] float* matA, [NoAlias] float* matB, [NoAlias] float* matC, int m, int n, int k)
-            => matMatDotTransBCore(matA, matB, matC, m, n, k, symUpper: true);
+            => matMatDotTransBCoreW(matA, matB, matC, m, n, k, symUpper: true);
 
-        // Shared tiled body — inlined into the entry points above so their parameter attributes
-        // apply to the loads/stores directly and the symUpper flag constant-folds per entry.
-        // symUpper: skip register tiles strictly below the diagonal, then mirror the computed
-        // upper triangle into the lower (requires k == m; every upper element is provably
-        // computed — skipped tiles satisfy c <= j+NR-1 < i <= r, i.e. strictly lower).
+        
+        // Float-only 8-lane variant of matMatDotTransBCore (double's width-4 chains already
+        // fill the register; float's doubled lanes need the wide type): same 2x4 (A row, B row)
+        // pair tile, ONE floatW accumulator chain per pair (8 accumulators + 6 transient loads
+        // inside the register budget), per-pair finish = floatW.HSum + the standard width-4
+        // quad + ascending scalar tail — the same tiered reduction tree as vecDot's, applied
+        // per output element. Fallback and tiled paths share the per-pair schedule exactly.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static void matMatDotTransBCore(float* matA, float* matB, float* matC, int m, int n, int k, bool symUpper)
+        static void matMatDotTransBCoreW(float* matA, float* matB, float* matC, int m, int n, int k, bool symUpper)
         {
-            // matA = m x n
-            // matB = k x n, read as its transpose
-            // matC = outMat = m x k, needs to be initialized to zero (this kernel ACCUMULATES, +=)
-
             const int MR = 2;
             const int NR = 4;
 
             int mTiles = (m / MR) * MR;
             int kTiles = (k / NR) * NR;
-            int nQ = n >> 2;
+            int nW = n / floatW.Width;
 
             for (int i = 0; i < mTiles; i += MR)
             {
                 float* Arow0 = matA + (long)(i + 0) * n;
                 float* Arow1 = matA + (long)(i + 1) * n;
-                var pa0 = (float4*)Arow0;
-                var pa1 = (float4*)Arow1;
 
                 for (int j = 0; j < kTiles; j += NR)
                 {
@@ -966,22 +915,18 @@ namespace LinearAlgebra.Internal
                     float* Brow1 = matB + (long)(j + 1) * n;
                     float* Brow2 = matB + (long)(j + 2) * n;
                     float* Brow3 = matB + (long)(j + 3) * n;
-                    var pb0 = (float4*)Brow0;
-                    var pb1 = (float4*)Brow1;
-                    var pb2 = (float4*)Brow2;
-                    var pb3 = (float4*)Brow3;
 
-                    float4 c00 = default, c01 = default, c02 = default, c03 = default;
-                    float4 c10 = default, c11 = default, c12 = default, c13 = default;
+                    floatW c00 = default, c01 = default, c02 = default, c03 = default;
+                    floatW c10 = default, c11 = default, c12 = default, c13 = default;
 
-                    for (int q = 0; q < nQ; q++)
+                    for (int q = 0; q < nW; q++)
                     {
-                        float4 a0 = pa0[q];
-                        float4 a1 = pa1[q];
-                        float4 b0 = pb0[q];
-                        float4 b1 = pb1[q];
-                        float4 b2 = pb2[q];
-                        float4 b3 = pb3[q];
+                        floatW a0 = floatW.Load(Arow0, q);
+                        floatW a1 = floatW.Load(Arow1, q);
+                        floatW b0 = floatW.Load(Brow0, q);
+                        floatW b1 = floatW.Load(Brow1, q);
+                        floatW b2 = floatW.Load(Brow2, q);
+                        floatW b3 = floatW.Load(Brow3, q);
 
                         c00 += a0 * b0; c01 += a0 * b1; c02 += a0 * b2; c03 += a0 * b3;
                         c10 += a1 * b0; c11 += a1 * b1; c12 += a1 * b2; c13 += a1 * b3;
@@ -989,112 +934,121 @@ namespace LinearAlgebra.Internal
 
                     float* Crow0 = matC + (long)(i + 0) * k + j;
                     float* Crow1 = matC + (long)(i + 1) * k + j;
-                    Crow0[0] += rowDotFinish(c00, Arow0, Brow0, n);
-                    Crow0[1] += rowDotFinish(c01, Arow0, Brow1, n);
-                    Crow0[2] += rowDotFinish(c02, Arow0, Brow2, n);
-                    Crow0[3] += rowDotFinish(c03, Arow0, Brow3, n);
-                    Crow1[0] += rowDotFinish(c10, Arow1, Brow0, n);
-                    Crow1[1] += rowDotFinish(c11, Arow1, Brow1, n);
-                    Crow1[2] += rowDotFinish(c12, Arow1, Brow2, n);
-                    Crow1[3] += rowDotFinish(c13, Arow1, Brow3, n);
+                    Crow0[0] += rowDotFinishW(c00, Arow0, Brow0, n);
+                    Crow0[1] += rowDotFinishW(c01, Arow0, Brow1, n);
+                    Crow0[2] += rowDotFinishW(c02, Arow0, Brow2, n);
+                    Crow0[3] += rowDotFinishW(c03, Arow0, Brow3, n);
+                    Crow1[0] += rowDotFinishW(c10, Arow1, Brow0, n);
+                    Crow1[1] += rowDotFinishW(c11, Arow1, Brow1, n);
+                    Crow1[2] += rowDotFinishW(c12, Arow1, Brow2, n);
+                    Crow1[3] += rowDotFinishW(c13, Arow1, Brow3, n);
                 }
 
-                // Remainder columns [kTiles, k) for these MR rows: same per-pair schedule, plain fallback.
                 if (kTiles < k)
-                    matMatDotTransBRange(matA, matB, matC, i, i + MR, n, k, kTiles, k);
+                    matMatDotTransBRangeW(matA, matB, matC, i, i + MR, n, k, kTiles, k);
             }
 
-            // Remainder rows [mTiles, m) — and, when m < MR, the WHOLE matrix: plain fallback, zero
-            // seam risk vs the tiled bulk above.
             if (mTiles < m)
-                matMatDotTransBRange(matA, matB, matC, mTiles, m, n, k, 0, k);
+                matMatDotTransBRangeW(matA, matB, matC, mTiles, m, n, k, 0, k);
 
             if (symUpper)
-            {
-                // Mirror the computed upper triangle into the lower (k == m by contract). Pure
-                // copy of final values either way — results are identical to a naive mirror.
-                if (m <= 64)
-                {
-                    // Whole matrix is L1-resident: the plain mirror cannot thrash, and small
-                    // solves (Riccati/Kalman scale) must not pay the staging buffer's per-call
-                    // zero-init.
-                    for (int r = 1; r < m; r++)
-                        for (int c = 0; c < r; c++)
-                            matC[(long)r * k + c] = matC[(long)c * k + r];
-                }
-                else
-                {
-                    // Large matrix: tiled and STAGED through a stack buffer like matTrans (the
-                    // source tile is read row-contiguous into the buffer, the destination tile
-                    // written row-contiguous out of it — no large-stride access on either side;
-                    // a plain strided mirror way-thrashes L1 at power-of-two sizes). Source
-                    // reads touch only the upper triangle (never mirror-written), so staging a
-                    // diagonal tile reads some not-yet-final lower entries into the buffer but
-                    // the c < r write guard never uses them.
-                    const int TBm = 16;
-                    float* mbuf = stackalloc float[TBm * TBm];
-                    for (int rb = 0; rb < m; rb += TBm)
-                    {
-                        int rEnd = rb + TBm; if (rEnd > m) rEnd = m;
-                        for (int cb = 0; cb <= rb; cb += TBm)
-                        {
-                            int cEnd = cb + TBm; if (cEnd > m) cEnd = m;
+                mirrorLowerFromUpper(matC, m, k);
+        }
 
-                            for (int c = cb; c < cEnd; c++)
-                            {
-                                float* Crow = matC + (long)c * k;
-                                for (int r = rb; r < rEnd; r++)
-                                    mbuf[(r - rb) * TBm + (c - cb)] = Crow[r];
-                            }
-                            for (int r = rb; r < rEnd; r++)
-                            {
-                                int ce = cEnd < r ? cEnd : r;   // strictly-lower only (c < r)
-                                float* Crow = matC + (long)r * k;
-                                float* bufRow = mbuf + (long)(r - rb) * TBm;
-                                for (int c = cb; c < ce; c++)
-                                    Crow[c] = bufRow[c - cb];
-                            }
-                        }
+        // Completes one wide C[i,j] reduction: floatW.HSum, then the standard width-4 quad,
+        // then the ascending scalar tail.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static float rowDotFinishW(floatW acc, float* rowA, float* rowB, int n)
+        {
+            float s = floatW.HSum(acc);
+            int i = (n / floatW.Width) * floatW.Width;
+            if (i + 4 <= n)
+            {
+                float4 mq = *(float4*)(rowA + i) * *(float4*)(rowB + i);
+                s += (mq.x + mq.y) + (mq.z + mq.w);
+                i += 4;
+            }
+            for (; i < n; i++)
+                s += rowA[i] * rowB[i];
+            return s;
+        }
+
+        // Untiled wide A·Bᵀ over an explicit sub-range — remainder coverage + whole-matrix
+        // small-size fallback, same per-pair schedule as the tiled bulk (no seam).
+        // matA/matB may be the same pointer here (the matAAt route) — only matC keeps [NoAlias].
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void matMatDotTransBRangeW(float* matA, float* matB, [NoAlias] float* matC,
+                                           int rowStart, int rowEnd, int n, int k, int colStart, int colEnd)
+        {
+            int nW = n / floatW.Width;
+            for (int r = rowStart; r < rowEnd; r++)
+            {
+                float* Arow = matA + (long)r * n;
+                for (int c = colStart; c < colEnd; c++)
+                {
+                    float* Brow = matB + (long)c * n;
+                    floatW acc = default;
+                    for (int q = 0; q < nW; q++)
+                        acc += floatW.Load(Arow, q) * floatW.Load(Brow, q);
+                    matC[(long)r * k + c] += rowDotFinishW(acc, Arow, Brow, n);
+                }
+            }
+        }
+        
+
+        
+
+        // Mirror the computed upper triangle into the lower (k == m by the sym kernels'
+        // contract). Pure copy of final values — results are identical to a naive mirror.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void mirrorLowerFromUpper([NoAlias] float* matC, int m, int k)
+        {
+            if (m <= 64)
+            {
+                // Whole matrix is L1-resident: the plain mirror cannot thrash, and small
+                // solves (Riccati/Kalman scale) must not pay the staging buffer's per-call
+                // zero-init.
+                for (int r = 1; r < m; r++)
+                    for (int c = 0; c < r; c++)
+                        matC[(long)r * k + c] = matC[(long)c * k + r];
+                return;
+            }
+
+            // Large matrix: tiled and STAGED through a stack buffer like matTrans (the source
+            // tile is read row-contiguous into the buffer, the destination tile written
+            // row-contiguous out of it — no large-stride access on either side; a plain strided
+            // mirror way-thrashes L1 at power-of-two sizes). Source reads touch only the upper
+            // triangle (never mirror-written), so staging a diagonal tile reads some
+            // not-yet-final lower entries into the buffer but the c < r write guard never uses
+            // them.
+            const int TBm = 16;
+            float* mbuf = stackalloc float[TBm * TBm];
+            for (int rb = 0; rb < m; rb += TBm)
+            {
+                int rEnd = rb + TBm; if (rEnd > m) rEnd = m;
+                for (int cb = 0; cb <= rb; cb += TBm)
+                {
+                    int cEnd = cb + TBm; if (cEnd > m) cEnd = m;
+
+                    for (int c = cb; c < cEnd; c++)
+                    {
+                        float* Crow = matC + (long)c * k;
+                        for (int r = rb; r < rEnd; r++)
+                            mbuf[(r - rb) * TBm + (c - cb)] = Crow[r];
+                    }
+                    for (int r = rb; r < rEnd; r++)
+                    {
+                        int ce = cEnd < r ? cEnd : r;   // strictly-lower only (c < r)
+                        float* Crow = matC + (long)r * k;
+                        float* bufRow = mbuf + (long)(r - rb) * TBm;
+                        for (int c = cb; c < ce; c++)
+                            Crow[c] = bufRow[c - cb];
                     }
                 }
             }
         }
 
-        // Completes one C[i,j] reduction: horizontal sum in a fixed order, then the scalar tail
-        // [n & ~3, n) ascending.
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static float rowDotFinish(float4 acc, float* rowA, float* rowB, int n)
-        {
-            float s = (acc.x + acc.y) + (acc.z + acc.w);
-            for (int i = (n >> 2) << 2; i < n; i++)
-                s += rowA[i] * rowB[i];
-            return s;
-        }
-
-        // Plain (untiled) A·Bᵀ restricted to an explicit row/column sub-range — same rationale as
-        // matMatDotRange (remainder coverage + whole-matrix small-size fallback), same per-pair
-        // reduction schedule as the tiled bulk so there is no seam.
-        // matA/matB may be the same pointer here (the matAAt route) — only matC keeps [NoAlias].
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        static void matMatDotTransBRange(float* matA, float* matB, [NoAlias] float* matC,
-                                          int rowStart, int rowEnd, int n, int k, int colStart, int colEnd)
-        {
-            int nQ = n >> 2;
-            for (int r = rowStart; r < rowEnd; r++)
-            {
-                float* Arow = matA + (long)r * n;
-                var pa = (float4*)Arow;
-                for (int c = colStart; c < colEnd; c++)
-                {
-                    float* Brow = matB + (long)c * n;
-                    var pb = (float4*)Brow;
-                    float4 acc = default;
-                    for (int q = 0; q < nQ; q++)
-                        acc += pa[q] * pb[q];
-                    matC[(long)r * k + c] += rowDotFinish(acc, Arow, Brow, n);
-                }
-            }
-        }
+        
 
         // Row-wise forward substitution ("TRSM", lower-triangular panel solve, applied one row at a
         // time): for every row t of B, solve L11 * B[t,:]ᵀ = B[t,:]ᵀ_old for B[t,:] IN PLACE, where

@@ -113,8 +113,9 @@ between minor versions.
   floating-point-summation-order level; double results are unchanged (up to the sign of an
   all-zero reduction). Results remain deterministic and identical across instruction sets
   (the non-AVX fallback uses the same summation tree).
-- The `transposeB` matrix product picks its kernel per element type (float: transpose-and-GEMM;
-  double: direct transposed-read kernel) — whichever measured faster for that type.
+- The `transposeB` matrix products and float dot/GEMV/norm reductions run on full-register-width
+  (8-lane AVX) accumulators with lane-identical fallbacks — float `A·Bᵀ` about 1.5×, float
+  symmetric `A·Aᵀ` about 1.6×, float GEMV about 1.7× at mid-to-large sizes; double unchanged.
 
 ## [0.1.0] — 2026-07-03
 

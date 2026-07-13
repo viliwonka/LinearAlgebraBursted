@@ -241,30 +241,18 @@ namespace LinearAlgebra
                 if (c.Data.Ptr == a.Data.Ptr || c.Data.Ptr == b.Data.Ptr)
                     throw new ArgumentException("dot: destination must not alias an input");
 
+                // matAAt / matMatDotTransB accumulate (+=), so c must start zeroed. Both dtypes
+                // run the full-register-width row-dot kernels (float through the 8-lane core).
+                UnsafeUtility.MemClear(c.Data.Ptr, (long)c.Data.Length * UnsafeUtility.SizeOf<fProxy>());
+
                 if (a.Data.Ptr == b.Data.Ptr)
                 {
                     // A·Aᵀ: dedicated SYRK-shape kernel (upper + mirror, ~half the FLOPs) — one
-                    // input pointer, no copy. Best route for both element types.
-                    UnsafeUtility.MemClear(c.Data.Ptr, (long)c.Data.Length * UnsafeUtility.SizeOf<fProxy>());
+                    // input pointer, no copy.
                     UnsafeOP.matAAt(a.Data.Ptr, c.Data.Ptr, m, n);
-                    return;
                 }
-
-                //+skipFor[double]
-                // float: materialize Bᵀ (staged transpose) and run the broadcast GEMM — measured
-                // at-or-faster than the row-dot TransB kernel at every size, because the row-dot
-                // kernel's width-4 accumulator chains are half of AVX2's float width.
-                var Bt = new fProxyMxN(b.N_Cols, b.M_Rows, Unity.Collections.Allocator.Temp, true);
-                trans(in b, ref Bt);
-                dot(in a, in Bt, ref c);
-                Bt.Dispose();
-                //-skipFor
-                //+skipFor[float]
-                // double: the row-dot TransB kernel wins at every size (width-4 chains are already
-                // full AVX2 double width; the trans + dot route pays the transpose for no gain).
-                UnsafeUtility.MemClear(c.Data.Ptr, (long)c.Data.Length * UnsafeUtility.SizeOf<fProxy>());
-                UnsafeOP.matMatDotTransB(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, m, n, k);
-                //-skipFor
+                else
+                    UnsafeOP.matMatDotTransB(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, m, n, k);
             }
         }
 
