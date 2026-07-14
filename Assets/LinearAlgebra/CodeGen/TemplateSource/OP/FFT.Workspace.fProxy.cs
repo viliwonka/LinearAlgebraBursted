@@ -42,6 +42,14 @@ namespace LinearAlgebra
         // pow-4 radix-4 sub-transforms of the mixed-radix / rfft / irfft paths (same tableN).
         public fProxyN sw1re, sw1im;
         public int swLen;
+
+        // Contiguous combine-twiddle table for the mixed-radix radix-2 combine (Step 3 of
+        // FftCoreRadix4Mixed): cw1re[k] = T_n[k*(n/size)], cw1im[k] = ... for k = 0..size/2-1,
+        // where `size` is the single mixed-transform size this n produces (n itself when n = 2·4^k,
+        // or n/2 via the rfft/irfft inner FFT when n = 4^k). Gathering the strided combine twiddle
+        // into a contiguous run lets the radix-2 combine wide-load twiddles and E/O data together.
+        // For the combineStep==1 case these fields simply alias twReFull/twImFull (already contiguous).
+        public fProxyN cw1re, cw1im;
     }
 
     public static partial class ArenaExtensions
@@ -145,6 +153,30 @@ namespace LinearAlgebra
                 }
             }
 
+            // Combine-twiddle table for the mixed-radix radix-2 combine (Step 3). This n triggers the
+            // mixed path at exactly one size/step:
+            //   n = 2·4^k (P odd)  → fft/ifft mixed at size = n,   combineStep = 1  (already contiguous)
+            //   n = 4^k    (P even) → rfft/irfft inner mixed at size = n/2, combineStep = 2  (strided)
+            // The step-1 layout is the first n/2 entries of the full-circle table — share the buffer,
+            // no copy. The step-2 layout is gathered into a contiguous length-n/4 run.
+            fProxyN cw1re, cw1im;
+            if ((P & 1) == 0)
+            {
+                int cwLen = n >> 2;   // n/4 = mixed inner M for n = 4^k (>= 1 since n >= 4 here)
+                cw1re = arena.fProxyVec(cwLen, uninit: true);
+                cw1im = arena.fProxyVec(cwLen, uninit: true);
+                for (int k = 0; k < cwLen; k++)
+                {
+                    cw1re[k] = twReFull[2 * k];
+                    cw1im[k] = twImFull[2 * k];
+                }
+            }
+            else
+            {
+                cw1re = twReFull;   // combineStep == 1: full-circle table is already the combine table
+                cw1im = twImFull;
+            }
+
             return new fProxyFFTCache
             {
                 twReFull = twReFull,
@@ -155,6 +187,7 @@ namespace LinearAlgebra
                 visited  = visited,
                 sw1re = sw1re, sw1im = sw1im,
                 swLen = swLen,
+                cw1re = cw1re, cw1im = cw1im,
             };
         }
     }
@@ -204,6 +237,8 @@ namespace LinearAlgebra
             var twImFull    = ws.twImFull;
             var sw1re       = ws.sw1re;
             var sw1im       = ws.sw1im;
+            var cw1re       = ws.cw1re;
+            var cw1im       = ws.cw1im;
             if (IsPowerOf4(n))
             {
                 FftCoreRadix4(ref re, ref im, ref twReFull, ref twImFull, ref sw1re, ref sw1im, n, false);
@@ -211,7 +246,7 @@ namespace LinearAlgebra
             else if ((n & (n - 1)) == 0)   // power-of-2, not power-of-4 → 2·4^k mixed-radix path
             {
                 var visitedScratch = ws.visited;
-                FftCoreRadix4Mixed(ref re, ref im, ref twReFull, ref twImFull, ref sw1re, ref sw1im, visitedScratch, n, false);
+                FftCoreRadix4Mixed(ref re, ref im, ref twReFull, ref twImFull, ref sw1re, ref sw1im, ref cw1re, ref cw1im, visitedScratch, n, false);
             }
             else
             {
@@ -234,6 +269,8 @@ namespace LinearAlgebra
             var twImFull    = ws.twImFull;
             var sw1re       = ws.sw1re;
             var sw1im       = ws.sw1im;
+            var cw1re       = ws.cw1re;
+            var cw1im       = ws.cw1im;
             if (IsPowerOf4(n))
             {
                 FftCoreRadix4(ref re, ref im, ref twReFull, ref twImFull, ref sw1re, ref sw1im, n, true);
@@ -241,7 +278,7 @@ namespace LinearAlgebra
             else if ((n & (n - 1)) == 0)   // power-of-2, not power-of-4 → 2·4^k mixed-radix path
             {
                 var visitedScratch = ws.visited;
-                FftCoreRadix4Mixed(ref re, ref im, ref twReFull, ref twImFull, ref sw1re, ref sw1im, visitedScratch, n, true);
+                FftCoreRadix4Mixed(ref re, ref im, ref twReFull, ref twImFull, ref sw1re, ref sw1im, ref cw1re, ref cw1im, visitedScratch, n, true);
             }
             else
             {
@@ -302,11 +339,13 @@ namespace LinearAlgebra
             var twImFull = ws.twImFull;
             var sw1re    = ws.sw1re;
             var sw1im    = ws.sw1im;
+            var cw1re    = ws.cw1re;
+            var cw1im    = ws.cw1im;
             var visitedScratch = ws.visited;
             if (IsPowerOf4(M))
                 FftCoreRadix4(ref cz, ref sz, ref twReFull, ref twImFull, ref sw1re, ref sw1im, ws.n, false);
             else
-                FftCoreRadix4Mixed(ref cz, ref sz, ref twReFull, ref twImFull, ref sw1re, ref sw1im, visitedScratch, ws.n, false);
+                FftCoreRadix4Mixed(ref cz, ref sz, ref twReFull, ref twImFull, ref sw1re, ref sw1im, ref cw1re, ref cw1im, visitedScratch, ws.n, false);
 
             // Step 3: Unpack. DC and Nyquist are always real for a real input.
             re[0] = cz[0] + sz[0];
@@ -380,6 +419,8 @@ namespace LinearAlgebra
             var twImFull = ws.twImFull;
             var sw1re    = ws.sw1re;
             var sw1im    = ws.sw1im;
+            var cw1re    = ws.cw1re;
+            var cw1im    = ws.cw1im;
             for (int k = 1; k < M; k++)
             {
                 int kr = M - k;
@@ -412,7 +453,7 @@ namespace LinearAlgebra
             if (IsPowerOf4(M))
                 FftCoreRadix4(ref cz, ref sz, ref twReFull, ref twImFull, ref sw1re, ref sw1im, ws.n, true);
             else
-                FftCoreRadix4Mixed(ref cz, ref sz, ref twReFull, ref twImFull, ref sw1re, ref sw1im, visitedScratch, ws.n, true);
+                FftCoreRadix4Mixed(ref cz, ref sz, ref twReFull, ref twImFull, ref sw1re, ref sw1im, ref cw1re, ref cw1im, visitedScratch, ws.n, true);
 
             // Deinterleave: real[2j] = even[j], real[2j+1] = odd[j].
             for (int j = 0; j < M; j++)
@@ -623,6 +664,7 @@ namespace LinearAlgebra
         static unsafe void FftCoreRadix4Mixed(ref fProxyN re, ref fProxyN im,
                                               ref fProxyN twReFull, ref fProxyN twImFull,
                                               ref fProxyN sw1re, ref fProxyN sw1im,
+                                              ref fProxyN cw1re, ref fProxyN cw1im,
                                               fProxyN visited,
                                               int tableN, bool inverse)
         {
@@ -679,23 +721,37 @@ namespace LinearAlgebra
             FftCoreRadix4Slice(rePtr,     imPtr,     twrPtr, twiPtr, s1rPtr, s1iPtr, M, tableN);
             FftCoreRadix4Slice(rePtr + M, imPtr + M, twrPtr, twiPtr, s1rPtr, s1iPtr, M, tableN);
 
-            // Step 3: Radix-2 DIT combine.
-            // W_size^k = T_tableN[k*(tableN/size)].
-            // X[k]   = E[k] + W_size^k * O[k]
-            // X[k+M] = E[k] - W_size^k * O[k]
-            int combineStep = tableN / size;
-            for (int k = 0; k < M; k++)
+            // Step 3: Radix-2 DIT combine (wide + scalar hybrid).
+            //   X[k]   = E[k] + W_size^k * O[k]
+            //   X[k+M] = E[k] - W_size^k * O[k]
+            // The combine twiddle W_size^k = T_tableN[k*(tableN/size)] is pre-gathered contiguously
+            // into cw1r/cw1i (ws.cw1re/cw1im) so k indexes it directly: Width consecutive k give
+            // contiguous wide loads of the twiddles AND the E/O data (re[k],im[k],re[M+k],im[M+k]).
+            // The scalar tail handles the M < Width remainder (M is a power of 4, so no partial
+            // wide iteration once M >= Width). Bit-identical to the scalar combine per element.
+            fProxy* cw1r = cw1re.Data.Ptr;
+            fProxy* cw1i = cw1im.Data.Ptr;
+            int Wc = fProxyW.Width;
+            int k = 0;
+            for (; k + Wc <= M; k += Wc)
             {
-                fProxy wr = twReFull[k * combineStep];
-                fProxy wi = twImFull[k * combineStep];
-                fProxy er  = re[k],     ei  = im[k];
-                fProxy or_ = re[M + k], oi_ = im[M + k];
+                fProxyW wr = fProxyW.Load(cw1r + k, 0), wi = fProxyW.Load(cw1i + k, 0);
+                fProxyW er  = fProxyW.Load(rePtr + k, 0),     ei  = fProxyW.Load(imPtr + k, 0);
+                fProxyW or_ = fProxyW.Load(rePtr + M + k, 0), oi_ = fProxyW.Load(imPtr + M + k, 0);
+                fProxyW tr  = wr * or_ - wi * oi_;
+                fProxyW ti  = wr * oi_ + wi * or_;
+                fProxyW.Store(rePtr + k, 0,     er + tr); fProxyW.Store(imPtr + k, 0,     ei + ti);
+                fProxyW.Store(rePtr + M + k, 0, er - tr); fProxyW.Store(imPtr + M + k, 0, ei - ti);
+            }
+            for (; k < M; k++)
+            {
+                fProxy wr = cw1r[k], wi = cw1i[k];
+                fProxy er  = rePtr[k],     ei  = imPtr[k];
+                fProxy or_ = rePtr[M + k], oi_ = imPtr[M + k];
                 fProxy tr  = wr * or_ - wi * oi_;
                 fProxy ti  = wr * oi_ + wi * or_;
-                re[k]     = er + tr;
-                im[k]     = ei + ti;
-                re[M + k] = er - tr;
-                im[M + k] = ei - ti;
+                rePtr[k]     = er + tr; imPtr[k]     = ei + ti;
+                rePtr[M + k] = er - tr; imPtr[M + k] = ei - ti;
             }
 
             if (inverse)

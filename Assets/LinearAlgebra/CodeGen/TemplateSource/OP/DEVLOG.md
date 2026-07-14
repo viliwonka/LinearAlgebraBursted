@@ -814,6 +814,21 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   numerically broken) is the only real failure.
 
 ## FFT.Workspace
+- 2026-07-15 | SIMD'd the last scalar loop: the radix-2 DIT combine (Step 3 of FftCoreRadix4Mixed).
+  The combine reads E/O data (re[k],im[k],re[M+k],im[M+k]) contiguously in k but the twiddle
+  W_size^k = twReFull[k*combineStep] was strided, forcing a scalar loop. Fix mirrors the sw1 trick
+  one level up: gather the combine twiddle into a contiguous per-workspace table cw1re/cw1im so k
+  indexes it directly, then wide-load twiddles + all four data streams (fProxyW), scalar tail for
+  M<Width (M is a power of 4, so no partial wide iteration once M>=Width). A given n triggers mixed
+  at exactly ONE (size,step): n=2·4^k → fft/ifft at size=n step=1 (already contiguous → cw1 aliases
+  twReFull, no copy); n=4^k → rfft/irfft inner mixed at size=n/2 step=2 (gathered, length n/4). So
+  one cw1 table per workspace suffices; both dispatch paths pass ws.cw1re/cw1im. Measured (quiet PC,
+  A/B new-vs-baseline, pure-radix-4 fft(ws) rows as the unchanged thermal anchor): rfft(ws)/irfft(ws)
+  ~1.15-1.24× faster across float+double, all sizes, remarkably flat (float 1M 1.18×, 256K 1.19×;
+  double 1M 1.24×, 256K 1.15×); mixed fft(ws) (2·4^k, top-level combine a bigger fraction) corroborates
+  ~1.19-1.29× but noisier (baseline hit thermal spikes at double 16K/1M). Pure-radix-4 (pow-4) paths
+  unchanged — no combine. This was the last scalar butterfly loop; the whole transform is now wide.
+  Suite 6228/6228.
 - 2026-07-14 | Extended the sw1 wide radix-4 butterfly to the rfft/irfft/mixed sub-transforms.
   Previously only the top-level pow-4 fft/ifft used the wide (fProxyW) butterfly; the mixed-radix
   (2·4^k) path and the rfft/irfft inner M-point FFTs ran the SCALAR FftCoreRadix4Ptr. Unified: made
