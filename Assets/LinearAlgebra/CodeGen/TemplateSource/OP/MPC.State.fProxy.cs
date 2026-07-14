@@ -2,6 +2,7 @@ using System;
 
 using Unity.Collections;
 using Unity.Mathematics;
+using LinearAlgebra.Internal;
 
 namespace LinearAlgebra
 {
@@ -479,27 +480,38 @@ namespace LinearAlgebra
                     }
                 }
 
-                var RbarM = new fProxyMxN(nu, nu, Allocator.Temp);   // zero-initialized
-                for (int k = 0; k < N; k++)
-                    for (int i = 0; i < m; i++)
-                        for (int j = 0; j < m; j++)
-                            RbarM[k * m + i, k * m + j] = R[i, j];
+                // Rbar is block-diagonal (N copies of R), so RbarM = Rbar @ M is formed blockwise —
+                // row block k is R (m x m) times M's row block k, one unit-stride axpy per (i,p) —
+                // instead of materializing the dense nu x nu Rbar and paying a full GEMM against it.
+                // M^T Rbar M is symmetric by construction, so it comes from the symmetric kernel
+                // (half the GEMM); M^T Rbar = (Rbar M)^T (Rbar symmetric) feeds Rcross directly.
+                var RM = new fProxyMxN(nu, nu, Allocator.Temp);   // zero-initialized
+                unsafe
+                {
+                    fProxy* Mp = M.Data.Ptr;
+                    fProxy* RMp = RM.Data.Ptr;
+                    for (int k = 0; k < N; k++)
+                        for (int i = 0; i < m; i++)
+                        {
+                            fProxy* dst = RMp + (long)(k * m + i) * nu;
+                            for (int p = 0; p < m; p++)
+                                UnsafeOP.axpy(dst, Mp + (long)(k * m + p) * nu, R[i, p], nu);
+                        }
+                }
 
-                var MtRbar = new fProxyMxN(nu, nu, Allocator.Temp);
-                Blas.dot(in M, in RbarM, ref MtRbar, transposeA: true);   // M^T @ Rbar
                 var MtRbarM = new fProxyMxN(nu, nu, Allocator.Temp);
-                Blas.dot(in MtRbar, in M, ref MtRbarM);                   // M^T @ Rbar @ M
+                Blas.dotSym(in M, in RM, ref MtRbarM);                    // M^T @ (Rbar M), symmetric
                 for (int i = 0; i < nu; i++)
                     for (int j = 0; j < nu; j++)
                         H_UU[i, j] += MtRbarM[i, j];
 
                 Rcross = new fProxyMxN(nu, n, allocator);
-                Blas.dot(in MtRbar, in KPhiPre, ref Rcross);              // M^T @ Rbar @ KPhiPre
+                Blas.dot(in RM, in KPhiPre, ref Rcross, transposeA: true); // (Rbar M)^T @ KPhiPre = M^T Rbar KPhiPre
                 for (int i = 0; i < nu; i++)
                     for (int j = 0; j < n; j++)
                         Rcross[i, j] = (fProxy)(-2) * Rcross[i, j];
 
-                MtRbarM.Dispose(); MtRbar.Dispose(); RbarM.Dispose();
+                MtRbarM.Dispose(); RM.Dispose();
             }
 
             // deltaU blocks (tridiagonal in the input blocks) -- see this file's header comment
