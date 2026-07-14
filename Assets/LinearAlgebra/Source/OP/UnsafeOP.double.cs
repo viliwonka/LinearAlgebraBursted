@@ -328,6 +328,8 @@ namespace LinearAlgebra.Internal
             matMatDotUnpacked(matA, matB, matC, m, n, k);
         }
 
+        
+
         // Direct register-tiled route (no packing) — optimal while the working set is cache-resident.
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void matMatDotUnpacked([NoAlias] double* matA, [NoAlias] double* matB, [NoAlias] double* matC, int m, int n, int k)
@@ -517,6 +519,7 @@ namespace LinearAlgebra.Internal
             UnsafeUtility.Free(Apack, Allocator.Temp);
         }
 
+
         // Seeded 8x16 microkernel over packed strips: identical FMA block and per-element order as
         // the unpacked tile, but accumulators START from C's current values so the reduction chain
         // continues across k-panels (see matMatDotPacked's determinism note). aStrip is p-major
@@ -639,6 +642,8 @@ namespace LinearAlgebra.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void matMatDotTransASym([NoAlias] double* matA, [NoAlias] double* matB, [NoAlias] double* matC, int m, int n, int k)
             => matMatDotTransACore(matA, matB, matC, m, n, k, symUpper: true);
+
+        
 
         // Shared tiled body — inlined into the entry points above so their parameter attributes
         // apply to the loads/stores directly and the symUpper flag constant-folds per entry.

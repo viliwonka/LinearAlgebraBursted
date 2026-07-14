@@ -415,8 +415,84 @@ namespace LinearAlgebra.Internal
                 return;
             }
 
-            matMatDotUnpacked(matA, matB, matC, m, n, k);
+            matMatDotUnpackedW(matA, matB, matC, m, n, k);
         }
+
+        
+        // Float-only 8-lane broadcast tile: the same 8x16 register tile as matMatDotUnpacked,
+        // holding each row's 16 column-slots as two floatW vectors (16 wide accumulators — the
+        // register budget) with A values broadcast via Splat. Every C element remains ONE
+        // p-ascending accumulation chain, so results are bit-identical to matMatDotUnpacked
+        // and to the matMatDotRange fallback at every size.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void matMatDotUnpackedW([NoAlias] float* matA, [NoAlias] float* matB, [NoAlias] float* matC, int m, int n, int k)
+        {
+            const int MR = 8;
+            const int NR = 16;   // 2 * floatW.Width
+
+            int mTiles = (m / MR) * MR;
+            int kTiles = (k / NR) * NR;
+
+            for (int i = 0; i < mTiles; i += MR)
+            {
+                float* Arow0 = matA + (long)(i + 0) * n;
+                float* Arow1 = matA + (long)(i + 1) * n;
+                float* Arow2 = matA + (long)(i + 2) * n;
+                float* Arow3 = matA + (long)(i + 3) * n;
+                float* Arow4 = matA + (long)(i + 4) * n;
+                float* Arow5 = matA + (long)(i + 5) * n;
+                float* Arow6 = matA + (long)(i + 6) * n;
+                float* Arow7 = matA + (long)(i + 7) * n;
+
+                for (int j = 0; j < kTiles; j += NR)
+                {
+                    floatW c00 = default, c01 = default;
+                    floatW c10 = default, c11 = default;
+                    floatW c20 = default, c21 = default;
+                    floatW c30 = default, c31 = default;
+                    floatW c40 = default, c41 = default;
+                    floatW c50 = default, c51 = default;
+                    floatW c60 = default, c61 = default;
+                    floatW c70 = default, c71 = default;
+
+                    for (int p = 0; p < n; p++)
+                    {
+                        float* Brow = matB + (long)p * k + j;
+                        floatW b0 = floatW.Load(Brow, 0);
+                        floatW b1 = floatW.Load(Brow, 1);
+
+                        floatW av;
+                        av = floatW.Splat(Arow0[p]); c00 += av * b0; c01 += av * b1;
+                        av = floatW.Splat(Arow1[p]); c10 += av * b0; c11 += av * b1;
+                        av = floatW.Splat(Arow2[p]); c20 += av * b0; c21 += av * b1;
+                        av = floatW.Splat(Arow3[p]); c30 += av * b0; c31 += av * b1;
+                        av = floatW.Splat(Arow4[p]); c40 += av * b0; c41 += av * b1;
+                        av = floatW.Splat(Arow5[p]); c50 += av * b0; c51 += av * b1;
+                        av = floatW.Splat(Arow6[p]); c60 += av * b0; c61 += av * b1;
+                        av = floatW.Splat(Arow7[p]); c70 += av * b0; c71 += av * b1;
+                    }
+
+                    float* Crow;
+                    Crow = matC + (long)(i + 0) * k + j; floatW.Store(Crow, 0, floatW.Load(Crow, 0) + c00); floatW.Store(Crow, 1, floatW.Load(Crow, 1) + c01);
+                    Crow = matC + (long)(i + 1) * k + j; floatW.Store(Crow, 0, floatW.Load(Crow, 0) + c10); floatW.Store(Crow, 1, floatW.Load(Crow, 1) + c11);
+                    Crow = matC + (long)(i + 2) * k + j; floatW.Store(Crow, 0, floatW.Load(Crow, 0) + c20); floatW.Store(Crow, 1, floatW.Load(Crow, 1) + c21);
+                    Crow = matC + (long)(i + 3) * k + j; floatW.Store(Crow, 0, floatW.Load(Crow, 0) + c30); floatW.Store(Crow, 1, floatW.Load(Crow, 1) + c31);
+                    Crow = matC + (long)(i + 4) * k + j; floatW.Store(Crow, 0, floatW.Load(Crow, 0) + c40); floatW.Store(Crow, 1, floatW.Load(Crow, 1) + c41);
+                    Crow = matC + (long)(i + 5) * k + j; floatW.Store(Crow, 0, floatW.Load(Crow, 0) + c50); floatW.Store(Crow, 1, floatW.Load(Crow, 1) + c51);
+                    Crow = matC + (long)(i + 6) * k + j; floatW.Store(Crow, 0, floatW.Load(Crow, 0) + c60); floatW.Store(Crow, 1, floatW.Load(Crow, 1) + c61);
+                    Crow = matC + (long)(i + 7) * k + j; floatW.Store(Crow, 0, floatW.Load(Crow, 0) + c70); floatW.Store(Crow, 1, floatW.Load(Crow, 1) + c71);
+                }
+
+                // Remainder columns [kTiles, k) for these MR rows: same p-ascending order, plain fallback.
+                if (kTiles < k)
+                    matMatDotRange(matA, matB, matC, i, i + MR, n, k, kTiles, k, 0, n);
+            }
+
+            // Remainder rows [mTiles, m) — and, when m < MR, the WHOLE matrix: plain fallback.
+            if (mTiles < m)
+                matMatDotRange(matA, matB, matC, mTiles, m, n, k, 0, k, 0, n);
+        }
+        
 
         // Direct register-tiled route (no packing) — optimal while the working set is cache-resident.
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -607,6 +683,7 @@ namespace LinearAlgebra.Internal
             UnsafeUtility.Free(Apack, Allocator.Temp);
         }
 
+
         // Seeded 8x16 microkernel over packed strips: identical FMA block and per-element order as
         // the unpacked tile, but accumulators START from C's current values so the reduction chain
         // continues across k-panels (see matMatDotPacked's determinism note). aStrip is p-major
@@ -715,20 +792,92 @@ namespace LinearAlgebra.Internal
         // transposeA: true), isOrthogonal, covariance) goes through matAtA below instead.
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void matMatDotTransA([NoAlias] float* matA, [NoAlias] float* matB, [NoAlias] float* matC, int m, int n, int k)
-            => matMatDotTransACore(matA, matB, matC, m, n, k, symUpper: false);
+            => matMatDotTransACoreW(matA, matB, matC, m, n, k, symUpper: false);
 
         // C = Aᵀ·A (SYRK shape, m x m output): the single input parameter is used for both operand
         // roles, so the alias relationship is exact — no [NoAlias] lie and no defensive copy.
         // Exploits symmetry: computes the upper triangle, mirrors the lower (~2x fewer FLOPs).
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void matAtA([NoAlias] float* matA, [NoAlias] float* matC, int m, int n)
-            => matMatDotTransACore(matA, matA, matC, m, n, m, symUpper: true);
+            => matMatDotTransACoreW(matA, matA, matC, m, n, m, symUpper: true);
 
         // C = Aᵀ·B where the result is symmetric BY CALLER CONTRACT (B = Q·A with symmetric Q —
         // the ΓᵀQΓ / ZᵀQZ shapes). Computes the upper triangle, mirrors the lower. Requires k == m.
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void matMatDotTransASym([NoAlias] float* matA, [NoAlias] float* matB, [NoAlias] float* matC, int m, int n, int k)
-            => matMatDotTransACore(matA, matB, matC, m, n, k, symUpper: true);
+            => matMatDotTransACoreW(matA, matB, matC, m, n, k, symUpper: true);
+
+        
+        // Float-only 8-lane variant of matMatDotTransACore: same tile, A's 8 per-row
+        // coefficients read from their CONTIGUOUS transposed layout (matA[p*m + i .. i+7]) and
+        // broadcast via Splat. Every C element remains one p-ascending chain — bit-identical to
+        // matMatDotTransACore and the matMatDotTransARange fallback.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static void matMatDotTransACoreW(float* matA, float* matB, float* matC, int m, int n, int k, bool symUpper)
+        {
+            const int MR = 8;
+            const int NR = 16;   // 2 * floatW.Width
+
+            int mTiles = (m / MR) * MR;
+            int kTiles = (k / NR) * NR;
+
+            for (int i = 0; i < mTiles; i += MR)
+            {
+                for (int j = 0; j < kTiles; j += NR)
+                {
+                    if (symUpper && j + NR <= i) continue;   // tile strictly below the diagonal
+
+                    floatW c00 = default, c01 = default;
+                    floatW c10 = default, c11 = default;
+                    floatW c20 = default, c21 = default;
+                    floatW c30 = default, c31 = default;
+                    floatW c40 = default, c41 = default;
+                    floatW c50 = default, c51 = default;
+                    floatW c60 = default, c61 = default;
+                    floatW c70 = default, c71 = default;
+
+                    for (int p = 0; p < n; p++)
+                    {
+                        float* Ap = matA + (long)p * m + i;
+                        float* Brow = matB + (long)p * k + j;
+                        floatW b0 = floatW.Load(Brow, 0);
+                        floatW b1 = floatW.Load(Brow, 1);
+
+                        floatW av;
+                        av = floatW.Splat(Ap[0]); c00 += av * b0; c01 += av * b1;
+                        av = floatW.Splat(Ap[1]); c10 += av * b0; c11 += av * b1;
+                        av = floatW.Splat(Ap[2]); c20 += av * b0; c21 += av * b1;
+                        av = floatW.Splat(Ap[3]); c30 += av * b0; c31 += av * b1;
+                        av = floatW.Splat(Ap[4]); c40 += av * b0; c41 += av * b1;
+                        av = floatW.Splat(Ap[5]); c50 += av * b0; c51 += av * b1;
+                        av = floatW.Splat(Ap[6]); c60 += av * b0; c61 += av * b1;
+                        av = floatW.Splat(Ap[7]); c70 += av * b0; c71 += av * b1;
+                    }
+
+                    float* Crow;
+                    Crow = matC + (long)(i + 0) * k + j; floatW.Store(Crow, 0, floatW.Load(Crow, 0) + c00); floatW.Store(Crow, 1, floatW.Load(Crow, 1) + c01);
+                    Crow = matC + (long)(i + 1) * k + j; floatW.Store(Crow, 0, floatW.Load(Crow, 0) + c10); floatW.Store(Crow, 1, floatW.Load(Crow, 1) + c11);
+                    Crow = matC + (long)(i + 2) * k + j; floatW.Store(Crow, 0, floatW.Load(Crow, 0) + c20); floatW.Store(Crow, 1, floatW.Load(Crow, 1) + c21);
+                    Crow = matC + (long)(i + 3) * k + j; floatW.Store(Crow, 0, floatW.Load(Crow, 0) + c30); floatW.Store(Crow, 1, floatW.Load(Crow, 1) + c31);
+                    Crow = matC + (long)(i + 4) * k + j; floatW.Store(Crow, 0, floatW.Load(Crow, 0) + c40); floatW.Store(Crow, 1, floatW.Load(Crow, 1) + c41);
+                    Crow = matC + (long)(i + 5) * k + j; floatW.Store(Crow, 0, floatW.Load(Crow, 0) + c50); floatW.Store(Crow, 1, floatW.Load(Crow, 1) + c51);
+                    Crow = matC + (long)(i + 6) * k + j; floatW.Store(Crow, 0, floatW.Load(Crow, 0) + c60); floatW.Store(Crow, 1, floatW.Load(Crow, 1) + c61);
+                    Crow = matC + (long)(i + 7) * k + j; floatW.Store(Crow, 0, floatW.Load(Crow, 0) + c70); floatW.Store(Crow, 1, floatW.Load(Crow, 1) + c71);
+                }
+
+                // Remainder columns [kTiles, k) for these MR rows: same p-ascending order, plain fallback.
+                if (kTiles < k)
+                    matMatDotTransARange(matA, matB, matC, i, i + MR, m, n, k, kTiles, k);
+            }
+
+            // Remainder rows [mTiles, m) — and, when m < MR, the WHOLE matrix: plain fallback.
+            if (mTiles < m)
+                matMatDotTransARange(matA, matB, matC, mTiles, m, m, n, k, 0, k);
+
+            if (symUpper)
+                mirrorLowerFromUpper(matC, m, k);
+        }
+        
 
         // Shared tiled body — inlined into the entry points above so their parameter attributes
         // apply to the loads/stores directly and the symUpper flag constant-folds per entry.

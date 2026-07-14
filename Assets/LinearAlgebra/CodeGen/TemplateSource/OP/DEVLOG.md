@@ -1,6 +1,24 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## fProxyW stage 2c: broadcast GEMM tiles (matMatDot / TransA / AtA) on wide accumulators
+- 2026-07-14 | User ruling: no wrapper-level transpose routing ("just rewrite the critical
+  path") — a briefly-added staged-transpose detour in Blas.dot/dotSym was reverted the same
+  hour. The honest rewrite: matMatDotUnpackedW / matMatDotTransACoreW hold the 8x16 tile as
+  two fProxyW per row with Splat broadcasts — BIT-IDENTICAL to the scalar tiles (one
+  p-ascending chain per element), so no numeric change at all. Float: plain GEMM 90 → 110-114
+  GF/s at 128-512 (1024: 28.0 → 24.0), TransA 88 → 103-115 (1024: 27.5 → 24.9), AtA
+  151 → 174-204 GF/s-eff (512: 1.61 → 1.31 ms); n=64 improved too (no small-size gate
+  needed). Double: unchanged, keeps the scalar tiles via choose-routing.
+- 2026-07-14 | OPEN MYSTERY (reverted, do not retry blind): the same W treatment applied to
+  the PACKED microkernel (gemmMicroKernelW + float gate lowered to 6 MB) collapsed to
+  34 GF/s — HALF the scalar packed path's 84 and slower than unpacked — despite being
+  structurally identical to the unpacked W tile that runs at 114. Suspects: NoInlining +
+  v256 ABI at the microkernel boundary, or alias/codegen interaction with the pack buffers.
+  Needs a Burst-inspector session; the packed path stays on the scalar microkernel and the
+  24 MB gate. Float 512-1024 keeps ~10-20% headroom vs the transpose-detour reference
+  (118/106 GF/s) for that session to reclaim.
+
 ## fProxyW stage 2b: TransB row-dot family on the wide core
 - 2026-07-14 | matMatDotTransBCoreW (float-only, choose-routed at the three entries; the
   original core is now double-only via skipFor[float]): same 2x4 pair tile, one fProxyW

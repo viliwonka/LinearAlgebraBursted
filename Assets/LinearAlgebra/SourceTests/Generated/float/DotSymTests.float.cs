@@ -186,13 +186,17 @@ public class floatDotSymTests
 
         // The packed (cache-blocked) GEMM route must be BIT-IDENTICAL to the direct tiled route:
         // the seeded-accumulator design keeps every element's reduction one p-ascending chain
-        // regardless of panel size. Sizes sit above the packed gate with ragged edges on every
-        // dimension (m, k not tile multiples; n not a panel multiple).
+        // regardless of panel size. Sizes sit above the ~24 MB packed working-set gate (which
+        // lands at a different N per element size — float additionally routes sub-gate sizes
+        // through the wide TransB core, so only above-gate sizes reach matMatDot at all) with
+        // ragged edges on every dimension (m, k not tile multiples; n not a panel multiple).
         void PackedMatchesUnpackedBitExactlyCase()
         {
             var arena = new Arena(Allocator.Persistent);
 
-            int m = 251, n = 300, kk = 251;
+            int m = 1451;
+            int n = 1480;
+            int kk = m;
             var A = arena.floatRandomMat(m, n, -1f, 1f, 77001);
             var B = arena.floatRandomMat(n, kk, -1f, 1f, 77002);
 
