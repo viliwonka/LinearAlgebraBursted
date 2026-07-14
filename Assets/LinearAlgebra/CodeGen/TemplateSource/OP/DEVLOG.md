@@ -29,6 +29,13 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   GF/s at 128-512 (1024: 28.0 → 24.0), TransA 88 → 103-115 (1024: 27.5 → 24.9), AtA
   151 → 174-204 GF/s-eff (512: 1.61 → 1.31 ms); n=64 improved too (no small-size gate
   needed). Double: unchanged, keeps the scalar tiles via choose-routing.
+- 2026-07-14 | Blocked-gate retune sweep post-axpy4 (idle machine, one-notch-lower A/B on
+  every gate; ~1% ambient drift measured via unchanged-route control rows): doubleQr
+  512→256 (−19% at 256), doubleQrcp 512→256 (−7%), CholPivot float+double 512→256
+  (−12%/−9%), floatLu 256→128 (−3.5%). Ties (kept prior value): floatQr@64, doubleLu@64,
+  doubleChol@256 (0.3775 vs 0.3774 — that IS the crossover). floatChol was retuned to 512
+  the same day already. The axpy4 trailing-update fusion moved the level-3 crossovers down,
+  most strongly for double.
 - 2026-07-14 | 6x16 SEEDED-W TILE TRIED AND REJECTED — falsifies the register-pressure
   hypothesis below. A full packed driver (MR=6, MC=126) + seeded 6x16 W microkernel
   (12 accums + 2 B + 1 broadcast = 15 ymm, comfortably inside the 16-register file)

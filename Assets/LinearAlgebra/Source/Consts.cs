@@ -32,17 +32,17 @@ namespace LinearAlgebra {
         // above). QR/QRCP gate on N_Cols (column panels); Cholesky/LU gate on the matrix side n/m. The
         // fProxy* placeholders above carry the template-compile default.
         public const int floatQrBlockMinN    = 128;
-        public const int doubleQrBlockMinN   = 512;
+        public const int doubleQrBlockMinN   = 256;
         public const int floatQrcpBlockMinN  = 64;
-        public const int doubleQrcpBlockMinN = 512;
+        public const int doubleQrcpBlockMinN = 256;
         public const int floatCholBlockMinN  = 512;
         public const int doubleCholBlockMinN = 512;
-        public const int floatLuBlockMinN    = 256;
+        public const int floatLuBlockMinN    = 128;
         public const int doubleLuBlockMinN   = 128;
 
         // Pivoted Cholesky (CHOP, xPSTRF) blocked-path gate; same convention as the gates above.
-        public const int floatCholPivotBlockMinN  = 512;
-        public const int doubleCholPivotBlockMinN = 512;
+        public const int floatCholPivotBlockMinN  = 256;
+        public const int doubleCholPivotBlockMinN = 256;
 
         // Default PER-VALUE sweep/iteration budget for the SVD/Eigen QR-type diagonalizations
         // (bidiagonal QR, tridiagonal QL, Hessenberg QR) -- LAPACK dbdsqr's scaling (MAXITR=6,
