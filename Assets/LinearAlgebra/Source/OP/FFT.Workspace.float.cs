@@ -40,14 +40,13 @@ namespace LinearAlgebra
         public floatN visited;    // length n:   cycle-following scratch for FftCoreRadix4Mixed
                                    //             (stores 0/1 flags via float; [0,size) used per call)
 
-        
         // Contiguous per-stage twiddle tables for the wide (floatW) radix-4 butterfly: stages
-        // with quarter-stride q >= floatW.Width, concatenated in stage order (total length swLen).
-        // sw2/sw3 hold W^2/W^3 tabulated directly so the wide path is bit-for-bit the scalar one.
-        // Built only for a power-of-4 n (the wide-dispatched fft/ifft path); empty otherwise.
+        // with quarter-stride q >= floatW.Width (8 float / 4 double lanes), concatenated in stage
+        // order (total length swLen). sw2/sw3 hold W^2/W^3 tabulated directly so the wide path is
+        // bit-for-bit the scalar one. Built only for a power-of-4 n (the wide-dispatched fft/ifft
+        // path); empty otherwise.
         public floatN sw1re, sw1im, sw2re, sw2im, sw3re, sw3im;
         public int swLen;
-        
     }
 
     public static partial class ArenaExtensions
@@ -97,7 +96,6 @@ namespace LinearAlgebra
             var sz      = arena.floatVec(half, uninit: true);
             var visited = arena.floatVec(n,    uninit: true);
 
-            
             // Wide-butterfly stage twiddles: only for a power-of-4 n (the wide-dispatched path).
             // n is already a power of two here, so power-of-4 == no odd bit-pair set.
             bool pow4 = (n & unchecked((int)0xAAAAAAAA)) == 0;
@@ -130,7 +128,6 @@ namespace LinearAlgebra
                     off += qq;
                 }
             }
-            
 
             return new floatFFTCache
             {
@@ -142,12 +139,10 @@ namespace LinearAlgebra
                 cz       = cz,
                 sz       = sz,
                 visited  = visited,
-                
                 sw1re = sw1re, sw1im = sw1im,
                 sw2re = sw2re, sw2im = sw2im,
                 sw3re = sw3re, sw3im = sw3im,
                 swLen = swLen,
-                
             };
         }
     }
@@ -195,10 +190,7 @@ namespace LinearAlgebra
 
             if (IsPowerOf4(n))
             {
-                
                 FftCoreRadix4Wide(ref re, ref im, in ws, false);
-                
-                
             }
             else if ((n & (n - 1)) == 0)   // power-of-2, not power-of-4 → 2·4^k mixed-radix path
             {
@@ -226,10 +218,7 @@ namespace LinearAlgebra
 
             if (IsPowerOf4(n))
             {
-                
                 FftCoreRadix4Wide(ref re, ref im, in ws, true);
-                
-                
             }
             else if ((n & (n - 1)) == 0)   // power-of-2, not power-of-4 → 2·4^k mixed-radix path
             {
@@ -495,11 +484,10 @@ namespace LinearAlgebra
             }
         }
 
-        
-        // Float-only wide (floatW, 8 lanes) radix-4 DIT for a top-level power-of-4 transform whose
-        // size equals the workspace size (ws.n). Digit-reversal, then per-stage butterflies:
-        // stages with quarter-stride q >= floatW.Width vectorize across j (8 consecutive j give
-        // contiguous 8-wide re/im loads and reads of the precomputed contiguous stage twiddles
+        // Wide (floatW, 8 float / 4 double lanes) radix-4 DIT for a top-level power-of-4 transform
+        // whose size equals the workspace size (ws.n). Digit-reversal, then per-stage butterflies:
+        // stages with quarter-stride q >= floatW.Width vectorize across j (Width consecutive j give
+        // contiguous wide re/im loads and reads of the precomputed contiguous stage twiddles
         // ws.sw*), stages with q < Width run scalar from the full-circle table. Every lane performs
         // the exact scalar butterfly with the same tabulated twiddles, so output matches
         // FftCoreRadix4 to the last bit per element.
@@ -545,7 +533,7 @@ namespace LinearAlgebra
 
                 if (q >= W)
                 {
-                    // Wide stage: q is a multiple of W (powers of 4 >= 16 divide 8), so no j tail.
+                    // Wide stage: q (a power of 4, >= W) is a multiple of W, so no j tail.
                     for (int base_ = 0; base_ < n; base_ += len)
                     {
                         for (int j = 0; j < q; j += W)
@@ -628,7 +616,6 @@ namespace LinearAlgebra
                 }
             }
         }
-        
 
         // Outer radix-4 DIT core: permutation + conjugate trick + pointer kernel + inverse scale.
         // Transform size is re.N (must be a power of 4, caller guarantees).
