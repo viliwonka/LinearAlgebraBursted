@@ -533,14 +533,25 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   mathematical result is exactly symmetric whenever Q/R/P/S are.
 
 ## QP
+- 2026-07-14 | QP v2 stage 2c: DIFF-REPAIR replaces the all-or-nothing reuse. Instead of
+  reuse-exact-or-full-rebuild, qpActiveSetCoreWarmPersistent now UP/DOWNDATES the persisted factor by
+  only the rows that changed: ComputeTargetStatus gives the desired set for x0 (RepairWorkingSet's
+  three-pass tightness logic, no factor build), the diff vs the persisted set is counted, and if it fits
+  the dead-reflector budget (deadCount+numDrops < DeadCap) and is small (numDrops+numAdds <= DeadCap) we
+  drop the no-longer-tight columns (high-to-low so shifts don't invalidate lower indices; DropFromFactor
+  + UpdateReducedOnDrop) then add the newly-tight ones (TryAddToFactor + UpdateReducedOnAdd, rank-reject
+  → Inactive). Large diff / first solve / budget-exhausting diff → full rebuild (resets the budget).
+  Zero diff (steady state) = no work = the same reuse as before, so the measured steady-state warm win is
+  unchanged (warm-box −25/−34% float, −46/−55% double; warm+wall −58/−74%); the diff-repair's extra
+  benefit is on TRANSIENT ticks (working set moving a few rows), which the steady-state benchmark burns
+  off — the win there is structural (incremental O(diff·n²) vs a full O(n²·nz) rebuild). Correctness
+  still pinned by MPCTests.WarmPersistentMatchesColdEachFrame (its x0=(5,0) tight-bound trajectory
+  saturates then desaturates → exercises real per-tick diffs, cross-checked vs cold QP.solve every
+  frame). WarmSetUnchanged removed (subsumed by the zero-diff case).
 - 2026-07-14 | QP v2 stage 2b SHIPPED: CROSS-TICK persistence for the MPC warm path
   (qpActiveSetCoreWarmPersistent). fProxyMPCState now OWNS the working-set factorization (qpFactor) and
-  reduced space (qpReduced), carried across solves. Reuse fast-path: WarmSetUnchanged tests whether the
-  repaired working set for the new x0 would EXACTLY equal the previous terminal set (every active row
-  still tight on its side, no inactive row newly tight — the rank guard is irrelevant, the identical
-  rows over the same A were already accepted). If so, reuse wsf/red wholesale, skipping RepairWorkingSet
-  AND the O(nz²·nz_free) reduced-space rebuild the loop's first iteration otherwise pays; else rebuild
-  from scratch (= the non-persistent warm path). ⚠️ JOB-COPY TRAP (cost most of a debugging pass): the
+  reduced space (qpReduced), carried across solves. First cut was reuse-exact-or-rebuild (superseded by
+  the diff-repair entry above). ⚠️ JOB-COPY TRAP (cost most of a debugging pass): the
   wsf/red native BUFFERS survive an IJob.Run()/Schedule by-value copy of the owning state, but their
   PLAIN scalar fields (k, reflCount, deadCount, opCount, rotCount, stale, changeCount, factorValid) do
   NOT — so cross-tick reuse silently never fired through the benchmark's per-frame job.Run() (correct,

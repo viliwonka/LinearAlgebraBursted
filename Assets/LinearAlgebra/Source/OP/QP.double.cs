@@ -888,11 +888,12 @@ namespace LinearAlgebra
         /// Cross-tick-persistent warm sibling of <see cref="qpActiveSetCoreWarm"/>, for
         /// <see cref="MPC"/>: the working-set factorization (<paramref name="wsf"/>) AND the reduced
         /// space (<paramref name="red"/>) are CALLER-OWNED and carried ACROSS solves (same fixed
-        /// <paramref name="Q"/>/<paramref name="A"/>). When the tick's working set is unchanged from the
-        /// previous solve -- the MPC steady-state common case -- the persisted factorization + reduced
-        /// space are reused DIRECTLY, skipping the O(n²·nz) rebuild that every from-scratch warm solve
-        /// pays. When it changed, the factorization is rebuilt from scratch (identical to
-        /// <see cref="qpActiveSetCoreWarm"/>, into the persistent buffers).
+        /// <paramref name="Q"/>/<paramref name="A"/>). Each tick the persisted factorization is
+        /// UP/DOWNDATED to the new working set by only the rows that changed (drop the no-longer-tight,
+        /// add the newly-tight -- a handful in a warm loop, the steady-state case being zero = pure
+        /// reuse), skipping the O(n²·nz) rebuild every from-scratch warm solve pays. A large diff, a
+        /// first solve, or a diff that would exhaust the dead-reflector budget falls back to a full
+        /// rebuild (identical to <see cref="qpActiveSetCoreWarm"/>, into the persistent buffers).
         ///
         /// <paramref name="qpMeta"/> (length 8, native-backed) carries the SCALAR factorization metadata
         /// across ticks: [0]=factorValid, [1..5]=wsf.k/reflCount/rotCount/opCount/deadCount, [6]=red.stale,
@@ -966,21 +967,63 @@ namespace LinearAlgebra
 
             var wstatus = new NativeArray<byte>(T, Allocator.Temp);
 
-            // Reuse the persisted factorization iff the repaired working set would be IDENTICAL to the
-            // previous solve's: every previously-active row still tight on its side, and no inactive row
-            // newly tight (the rank guard cannot change the outcome -- the exact same rows over the same
-            // A were already accepted last tick). Otherwise rebuild from scratch into the persistent
-            // buffers, exactly as the non-persistent warm path does.
-            bool reuse = factorValid && WarmSetUnchanged(in L, in U, m, n, T, in x, in Ax0, wstatusPersist, feasTol);
-            if (reuse)
+            // Repair the persisted factorization to this tick's working set by UP/DOWNDATING only the
+            // rows that changed, not rebuilding from scratch. ComputeTargetStatus gives the desired set
+            // for the new x0 (same tightness rules as RepairWorkingSet); the diff against the persisted
+            // set (wstatusPersist) is a handful of rows in a warm loop -- drop the ones no longer wanted,
+            // add the newly-tight ones, both through the same kernels the active-set loop uses. A big
+            // diff (or a first solve, or one that would overflow the dead-reflector budget) falls back to
+            // a full rebuild. A zero diff (steady state) does no work at all -- pure reuse.
+            ComputeTargetStatus(in L, in U, m, n, T, in x, in Ax0, wstatusPersist, wstatus, feasTol);
+
+            int numDrops = 0, numAdds = 0;
+            for (int t = 0; t < T; t++)
             {
-                wstatus.CopyFrom(wstatusPersist);   // wsf/red already match this set -- nothing to rebuild
+                if (wstatus[t] == wstatusPersist[t]) continue;
+                if (wstatusPersist[t] != (byte)WorkingSetStatus.Inactive) numDrops++;
+                if (wstatus[t] != (byte)WorkingSetStatus.Inactive) numAdds++;
             }
-            else
+
+            // Incremental only while it both stays within the dead-reflector budget (drops append dead
+            // entries + Givens rotations; the loop's DeadCap invariant must hold) and is actually smaller
+            // than a rebuild. Otherwise rebuild from scratch (which also resets the dead budget).
+            bool incremental = factorValid
+                               && wsf.deadCount + numDrops < doubleQPFactorState.DeadCap
+                               && numDrops + numAdds <= doubleQPFactorState.DeadCap;
+
+            if (!incremental)
             {
                 wsf.k = 0; wsf.reflCount = 0; wsf.rotCount = 0; wsf.opCount = 0; wsf.deadCount = 0;
                 RepairWorkingSet(in A, in L, in U, m, n, T, in x, in Ax0, wstatusPersist, wstatus, ref wsf, feasTol, zeroThresholdAW);
                 red.stale = true;
+            }
+            else
+            {
+                // Phase A -- drops, highest column first so a drop's left-shift never moves a
+                // not-yet-visited lower column. No DeadCap refactor here (the guard above reserved the
+                // budget). Reduced space rides along unless it is already stale (then the loop rebuilds).
+                for (int kk = wsf.k - 1; kk >= 0; kk--)
+                {
+                    int t = wsf.rowOfCol[kk];
+                    if (wstatus[t] != wstatusPersist[t])
+                    {
+                        DropFromFactor(kk, ref wsf);
+                        if (!red.stale) UpdateReducedOnDrop(in Q, ref wsf, ref red);
+                    }
+                }
+                // Phase B -- adds (newly tight, or a bound that flipped side). A rank-rejected candidate
+                // falls back to Inactive, exactly as RepairWorkingSet's own guard does.
+                for (int t = 0; t < T; t++)
+                {
+                    if (wstatus[t] == (byte)WorkingSetStatus.Inactive) continue;
+                    if (wstatus[t] == wstatusPersist[t]) continue;   // unchanged row, already in the factor
+                    var st = (WorkingSetStatus)wstatus[t];
+                    if (TryAddToFactor(in A, m, n, t, st, ref wsf, zeroThresholdAW))
+                    {
+                        if (!red.stale) UpdateReducedOnAdd(ref wsf, ref red);
+                    }
+                    else wstatus[t] = (byte)WorkingSetStatus.Inactive;
+                }
             }
             Ax0.Dispose();
 
@@ -1005,34 +1048,42 @@ namespace LinearAlgebra
             return info;
         }
 
-        // True iff the repaired working set for the current x0 would EXACTLY equal wstatusPrev: every
-        // active row (ActiveLower/ActiveUpper) still tight on its own side within feasTol, no inactive
-        // row newly tight on either side, and every equality row (L==U) still marked Equality. Mirrors
-        // RepairWorkingSet's tightness tests WITHOUT building the factor -- the rank guard is irrelevant
-        // (the identical rows over the same A were already accepted). Lets the persistent warm path skip
-        // the rebuild when the working set has not moved.
-        internal static bool WarmSetUnchanged(in doubleN L, in doubleN U, int m, int n, int T,
-                                              in doubleN x0, in doubleN Ax0, NativeArray<byte> wstatusPrev, double feasTol)
+        // The desired working set for the current x0, written into `wstatus` -- RepairWorkingSet's own
+        // three-pass tightness logic (equality rows; previously-active rows still tight on their side;
+        // then any newly-tight row) WITHOUT building the factorization. The persistent warm path diffs
+        // this against the persisted set to decide which rows to up/downdate. The rank guard is applied
+        // separately (when the diff's adds actually run), so a row here may still be rejected as
+        // dependent there -- exactly as RepairWorkingSet's own TryAddToFactor gate would reject it.
+        internal static void ComputeTargetStatus(in doubleN L, in doubleN U, int m, int n, int T,
+                                                 in doubleN x0, in doubleN Ax0, NativeArray<byte> wstatusPrev,
+                                                 NativeArray<byte> wstatus, double feasTol)
         {
+            for (int t = 0; t < T; t++) wstatus[t] = (byte)WorkingSetStatus.Inactive;
+
+            for (int t = 0; t < T; t++)
+                if (L[t] == U[t]) wstatus[t] = (byte)WorkingSetStatus.Equality;
+
             for (int t = 0; t < T; t++)
             {
+                if (wstatus[t] != (byte)WorkingSetStatus.Inactive) continue;
+                var prev = (WorkingSetStatus)wstatusPrev[t];
+                if (prev != WorkingSetStatus.ActiveLower && prev != WorkingSetStatus.ActiveUpper) continue;
                 double act = t < m ? (double)Ax0[t] : (double)x0[t - m];
-                var st = (WorkingSetStatus)wstatusPrev[t];
+                bool still = prev == WorkingSetStatus.ActiveLower
+                    ? ((double)L[t] > -1e29 && math.abs(act - (double)L[t]) <= (double)feasTol)
+                    : ((double)U[t] < 1e29 && math.abs(act - (double)U[t]) <= (double)feasTol);
+                if (still) wstatus[t] = (byte)prev;
+            }
 
-                if (L[t] == U[t])
-                {
-                    if (st != WorkingSetStatus.Equality) return false;
-                    continue;
-                }
-
+            for (int t = 0; t < T; t++)
+            {
+                if (wstatus[t] != (byte)WorkingSetStatus.Inactive) continue;
+                double act = t < m ? (double)Ax0[t] : (double)x0[t - m];
                 bool atLower = (double)L[t] > -1e29 && math.abs(act - (double)L[t]) <= (double)feasTol;
                 bool atUpper = (double)U[t] < 1e29 && math.abs(act - (double)U[t]) <= (double)feasTol;
-
-                if (st == WorkingSetStatus.ActiveLower)      { if (!atLower) return false; }
-                else if (st == WorkingSetStatus.ActiveUpper) { if (!atUpper) return false; }
-                else                                         { if (atLower || atUpper) return false; }   // Inactive must stay off both bounds
+                if (atLower) wstatus[t] = (byte)WorkingSetStatus.ActiveLower;
+                else if (atUpper) wstatus[t] = (byte)WorkingSetStatus.ActiveUpper;
             }
-            return true;
         }
 
         // The shared active-set add/drop LOOP (algorithm steps 1-5), factored out of qpActiveSetCore so
