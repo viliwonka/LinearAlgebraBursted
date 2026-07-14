@@ -40,12 +40,11 @@ namespace LinearAlgebra
         public floatN visited;    // length n:   cycle-following scratch for FftCoreRadix4Mixed
                                    //             (stores 0/1 flags via float; [0,size) used per call)
 
-        // Contiguous per-stage twiddle tables for the wide (floatW) radix-4 butterfly: stages
+        // Contiguous per-stage W^1 twiddle table for the wide (floatW) radix-4 butterfly: stages
         // with quarter-stride q >= floatW.Width (8 float / 4 double lanes), concatenated in stage
-        // order (total length swLen). sw2/sw3 hold W^2/W^3 tabulated directly so the wide path is
-        // bit-for-bit the scalar one. Built only for a power-of-4 n (the wide-dispatched fft/ifft
-        // path); empty otherwise.
-        public floatN sw1re, sw1im, sw2re, sw2im, sw3re, sw3im;
+        // order (total length swLen). W^2 and W^3 are derived from W^1 in-register (W^2=W^1·W^1,
+        // W^3=W^1·W^2), so only W^1 is stored. Built only for a power-of-4 n; empty otherwise.
+        public floatN sw1re, sw1im;
         public int swLen;
     }
 
@@ -125,10 +124,6 @@ namespace LinearAlgebra
             int swAlloc = swLen > 0 ? swLen : 1;
             var sw1re = arena.floatVec(swAlloc, uninit: true);
             var sw1im = arena.floatVec(swAlloc, uninit: true);
-            var sw2re = arena.floatVec(swAlloc, uninit: true);
-            var sw2im = arena.floatVec(swAlloc, uninit: true);
-            var sw3re = arena.floatVec(swAlloc, uninit: true);
-            var sw3im = arena.floatVec(swAlloc, uninit: true);
             if (pow4)
             {
                 int off = 0;
@@ -139,10 +134,8 @@ namespace LinearAlgebra
                     int step = n / len;
                     for (int j = 0; j < qq; j++)
                     {
-                        int t1 = j * step, t2 = t1 + t1, t3 = t2 + t1;
+                        int t1 = j * step;
                         sw1re[off + j] = twReFull[t1]; sw1im[off + j] = twImFull[t1];
-                        sw2re[off + j] = twReFull[t2]; sw2im[off + j] = twImFull[t2];
-                        sw3re[off + j] = twReFull[t3]; sw3im[off + j] = twImFull[t3];
                     }
                     off += qq;
                 }
@@ -159,8 +152,6 @@ namespace LinearAlgebra
                 sz       = sz,
                 visited  = visited,
                 sw1re = sw1re, sw1im = sw1im,
-                sw2re = sw2re, sw2im = sw2im,
-                sw3re = sw3re, sw3im = sw3im,
                 swLen = swLen,
             };
         }
@@ -539,8 +530,6 @@ namespace LinearAlgebra
             float* twr = ws.twReFull.Data.Ptr;
             float* twi = ws.twImFull.Data.Ptr;
             float* s1r = ws.sw1re.Data.Ptr; float* s1i = ws.sw1im.Data.Ptr;
-            float* s2r = ws.sw2re.Data.Ptr; float* s2i = ws.sw2im.Data.Ptr;
-            float* s3r = ws.sw3re.Data.Ptr; float* s3i = ws.sw3im.Data.Ptr;
 
             int W = floatW.Width;
             int stageOff = 0;
@@ -561,17 +550,19 @@ namespace LinearAlgebra
 
                             floatW Are = floatW.Load(rp + i0, 0), Aim = floatW.Load(ip + i0, 0);
 
+                            // W^1 loaded; W^2 = W^1·W^1, W^3 = W^1·W^2 derived in-register.
                             floatW w1r = floatW.Load(s1r + stageOff + j, 0), w1i = floatW.Load(s1i + stageOff + j, 0);
+                            floatW w2r = w1r * w1r - w1i * w1i, w2i = w1r * w1i + w1i * w1r;
+                            floatW w3r = w1r * w2r - w1i * w2i, w3i = w1r * w2i + w1i * w2r;
+
                             floatW x1r = floatW.Load(rp + i1, 0), x1i = floatW.Load(ip + i1, 0);
                             floatW Bre = w1r * x1r - w1i * x1i;
                             floatW Bim = w1r * x1i + w1i * x1r;
 
-                            floatW w2r = floatW.Load(s2r + stageOff + j, 0), w2i = floatW.Load(s2i + stageOff + j, 0);
                             floatW x2r = floatW.Load(rp + i2, 0), x2i = floatW.Load(ip + i2, 0);
                             floatW Cre = w2r * x2r - w2i * x2i;
                             floatW Cim = w2r * x2i + w2i * x2r;
 
-                            floatW w3r = floatW.Load(s3r + stageOff + j, 0), w3i = floatW.Load(s3i + stageOff + j, 0);
                             floatW x3r = floatW.Load(rp + i3, 0), x3i = floatW.Load(ip + i3, 0);
                             floatW Dre = w3r * x3r - w3i * x3i;
                             floatW Dim = w3r * x3i + w3i * x3r;

@@ -814,6 +814,14 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   numerically broken) is the only real failure.
 
 ## FFT.Workspace
+- 2026-07-14 | sw* halving: store only the W^1 stage table (sw1re/sw1im), derive W^2=W^1·W^1 and
+  W^3=W^1·W^2 in-register in the wide butterfly. Drops sw2/sw3 (4 of 6 arrays) → workspace
+  −5.6 MB at N=1M float (−11 MB double), 28.4→22.8 MB. Perf-NEUTRAL: the 2 extra complex-mults
+  per butterfly are absorbed because the wide butterfly is load/bandwidth-bound — 4 fewer twiddle
+  streams offset the compute (measured 262144 float 1.67 vs 1.66, 1M double 8.2 vs 8.4, both in
+  noise; 65536 float row is erratic across runs, ignore). No longer bit-identical to the scalar
+  butterfly (derived W^2/W^3 differ ~2 ulp from tabulated), but TableFftVsRecurrence's 1e-3 tests
+  pass; suite 6228. Remaining sw1 ≈ 2N/3 floats.
 - 2026-07-14 | Deterministic twiddle-table build: replaced the per-entry math.cos/math.sin loop
   in fProxyFFTCache with root-of-unity generation using only +,-,*,sqrt. The table is W_N^m =
   exp(-2πi·m/n); built from binary generator roots B_k = exp(-2πi·2^k/n) via stable unit-circle
