@@ -1332,11 +1332,14 @@ public class fProxyFFTTests
         {
             var arena = new Arena(Allocator.Persistent);
             var ws = arena.fProxyFFTCache(nn);
+            // float table is float-precision (~1 ulp of the cast); double table is ~machine
+            // precision (O(log n) mults deep). Pin each to its achievable accuracy.
+            fProxy tol = (fProxy)/*+choose[1E-6f|1E-12]*/1E-6f/*-choose*/;
             for (int m = 0; m < nn; m++)
             {
                 double ang = -2.0 * System.Math.PI * m / nn;
-                AssertClose(ws.twReFull[m], (fProxy)math.cos(ang), (fProxy)1E-6f);
-                AssertClose(ws.twImFull[m], (fProxy)math.sin(ang), (fProxy)1E-6f);
+                AssertClose(ws.twReFull[m], (fProxy)math.cos(ang), tol);
+                AssertClose(ws.twImFull[m], (fProxy)math.sin(ang), tol);
             }
             arena.Dispose();
         }

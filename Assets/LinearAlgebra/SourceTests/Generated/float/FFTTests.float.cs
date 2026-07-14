@@ -1336,11 +1336,14 @@ public class floatFFTTests
         {
             var arena = new Arena(Allocator.Persistent);
             var ws = arena.floatFFTCache(nn);
+            // float table is float-precision (~1 ulp of the cast); double table is ~machine
+            // precision (O(log n) mults deep). Pin each to its achievable accuracy.
+            float tol = (float)1E-6f;
             for (int m = 0; m < nn; m++)
             {
                 double ang = -2.0 * System.Math.PI * m / nn;
-                AssertClose(ws.twReFull[m], (float)math.cos(ang), (float)1E-6f);
-                AssertClose(ws.twImFull[m], (float)math.sin(ang), (float)1E-6f);
+                AssertClose(ws.twReFull[m], (float)math.cos(ang), tol);
+                AssertClose(ws.twImFull[m], (float)math.sin(ang), tol);
             }
             arena.Dispose();
         }
