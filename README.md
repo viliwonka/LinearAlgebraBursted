@@ -79,22 +79,22 @@ Benchmarked on a Ryzen 9 9950X3D (pinned to a non-V-Cache core), single-threaded
 
 | Algorithm | Case | Results |
 |---|---|---|
-| `LU.decomp` + `LU.decompSolve` LU | 1024×1024, float | 15.3 ms |
-| `CHO.decomp` + `CHO.decompSolve` Cholesky | 1024×1024, float | 12.1 ms |
-| `QR.solveInPlace` QR | 1024×1024, float | 36.3 ms |
-| `QR.solveInPlace` QR least squares | 2048×512, float | 31.2 ms |
-| `QRCP.solveInPlace` pivoted QR, least squares | 2048×512, float | 36.2 ms |
-| `LQ.minNormSolve` LQ, underdetermined system | 512×1024, float | 12.3 ms |
-| `Krylov.cg` CG, iterative SPD solver, dense | 1024×1024, double; dense storage of the same 7%-fill SPD matrix, 40 iterations | 15.05 ms |
-| `Krylov.cg` CG, iterative SPD solver, sparse | 1024×1024, double; sparse BSR (4×4 blocks, 7% fill), 40 iterations | 0.37 ms |
-| `Eigen.symmetricInPlace` Symmetric eigen decomp  | 1024×1024, float, values + vectors | 420.3 ms |
-| `Eigen.valuesSymmetricInPlace` Symmetric eigen, values only | 1024×1024, float | 161.9 ms |
-| `Eigen.lobpcg` Smallest eigenpairs, SPD solver | 512×512, k=4, float, 50 iterations | 84.3 ms (1.7 ms/iter) |
+| `LU.decomp` + `LU.decompSolve` LU | 1024×1024, float | 12.2 ms |
+| `CHO.decomp` + `CHO.decompSolve` Cholesky | 1024×1024, float | 7.5 ms |
+| `QR.solveInPlace` QR | 1024×1024, float | 34.9 ms |
+| `QR.solveInPlace` QR least squares | 2048×512, float | 29.8 ms |
+| `QRCP.solveInPlace` pivoted QR, least squares | 2048×512, float | 32.5 ms |
+| `LQ.minNormSolve` LQ, underdetermined system | 512×1024, float | 8.9 ms |
+| `Krylov.cg` CG, iterative SPD solver, dense | 1024×1024, double; dense storage of the same 7%-fill SPD matrix, 40 iterations | 2.4 ms |
+| `Krylov.cg` CG, iterative SPD solver, sparse | 1024×1024, double; sparse BSR (4×4 blocks, 7% fill), 40 iterations | 0.36 ms |
+| `Eigen.symmetricInPlace` Symmetric eigen decomp  | 1024×1024, float, values + vectors | 168.8 ms |
+| `Eigen.valuesSymmetricInPlace` Symmetric eigen, values only | 1024×1024, float | 63.3 ms |
+| `Eigen.lobpcg` Smallest eigenpairs, SPD solver | 512×512, k=4, float, 50 iterations | 33.6 ms (0.67 ms/iter) |
 | `SVD.thin` full SVD | 2048×512, float | 186.8 ms |
 | `SVD.truncated` truncated SVD w/ top-k only | 2048×512, k=21, float | 17.6 ms |
 | `SVD.randomized` randomized SVD w/ top-k only  | 2048×512, k=21, float | 29.5 ms |
-| `FFT.fft` FFT  | N = 1,048,576, float | 23.5 ms |
-|`FFT.rfft` Real FFT | N = 1,048,576, float | 18.3 ms |
+| `FFT.fft` FFT  | N = 1,048,576, float | 24.4 ms |
+|`FFT.rfft` Real FFT | N = 1,048,576, float | 17.9 ms |
 
 ## Features
 
