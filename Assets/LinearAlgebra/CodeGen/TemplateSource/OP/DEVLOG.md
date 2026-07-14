@@ -814,6 +814,19 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   numerically broken) is the only real failure.
 
 ## FFT.Workspace
+- 2026-07-14 | Extended the sw1 wide radix-4 butterfly to the rfft/irfft/mixed sub-transforms.
+  Previously only the top-level pow-4 fft/ifft used the wide (fProxyW) butterfly; the mixed-radix
+  (2·4^k) path and the rfft/irfft inner M-point FFTs ran the SCALAR FftCoreRadix4Ptr. Unified: made
+  FftCoreRadix4Ptr the hybrid wide+scalar kernel (q>=Width wide via s1r/s1i, q<Width scalar), threaded
+  sw1re/sw1im through FftCoreRadix4Slice/FftCoreRadix4/FftCoreRadix4Mixed, and deleted the standalone
+  FftCoreRadix4Wide (fft/ifft pow-4 now route through FftCoreRadix4 → same wide path, one butterfly
+  copy instead of two). Sub-transforms share the SAME sw1 table: size-M sub-FFTs share tableN=n, so
+  stage q needs step=n/(4q) and stageOff layout identical to the top level — no second table. Build
+  gate changed from `pow4 && qq<n` to `4*qq<=n` (drop pow4) so non-pow-4 workspaces also fill sw1
+  (largest stage over all sub-transforms has 4q<=n). Measured (thermal-normalized rfft(ws)/fft(ws),
+  since fft(ws) pow-4 is unchanged and cancels per-run thermal drift; raw A/B was unusable — PC not
+  quiet, unchanged fft(ws) anchor swung 1.1-1.5× between runs): rfft(ws) ~1.3-1.6× faster
+  (float 1M 1.45×, float 256K 1.27×, double 1M 1.59×, double 256K 1.34×). Suite 6228/6228.
 - 2026-07-14 | Build ~13x faster via recursive-doubling twiddle fill. Replaced the per-entry
   bit-decomposition (O(n·log n): each W^m an independent product of log n generators) with a
   doubling fill (W^0=1, then W^(2^k+j)=W^j·B_k for j<2^k — one complex-mult per entry, O(n) total).
