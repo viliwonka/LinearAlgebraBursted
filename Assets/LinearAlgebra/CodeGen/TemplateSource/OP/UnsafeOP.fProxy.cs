@@ -1328,10 +1328,44 @@ namespace LinearAlgebra.Internal
         // (row, column) pair (which would keep the unblocked sweep's O(n^2) call count).
         // [NoAlias] is truthful: L11 (rows [j0,j0+jb)) and
         // B (rows [rStart,n), rStart=j0+jb) are disjoint row ranges of the same underlying L matrix.
+        // Rows are mutually independent, so groups of fProxyW.Width rows solve simultaneously —
+        // one lane per row — through a small contiguous tile (tile column k = the group's row
+        // values at panel column k). The lane chain is exactly the scalar row's chain (k
+        // ascending from B[t,p], then the same division), so results are bit-identical to the
+        // scalar remainder path below at every width.
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void trsmLowerPanel([NoAlias] fProxy* L11, int Lld, [NoAlias] fProxy* B, int Bld, int nrows, int jb)
         {
-            for (int t = 0; t < nrows; t++)
+            int t = 0;
+
+            const int W = fProxyW.Width;
+            fProxy* tile = stackalloc fProxy[jb * W];
+
+            for (; t + W <= nrows; t += W)
+            {
+                for (int l = 0; l < W; l++)
+                {
+                    fProxy* Brow = B + (long)(t + l) * Bld;
+                    for (int k = 0; k < jb; k++) tile[k * W + l] = Brow[k];
+                }
+
+                for (int p = 0; p < jb; p++)
+                {
+                    fProxyW v = fProxyW.Load(tile, p);
+                    fProxy* L11row = L11 + (long)p * Lld;
+                    for (int k = 0; k < p; k++)
+                        v -= fProxyW.Splat(L11row[k]) * fProxyW.Load(tile, k);
+                    fProxyW.Store(tile, p, v / fProxyW.Splat(L11row[p]));
+                }
+
+                for (int l = 0; l < W; l++)
+                {
+                    fProxy* Brow = B + (long)(t + l) * Bld;
+                    for (int k = 0; k < jb; k++) Brow[k] = tile[k * W + l];
+                }
+            }
+
+            for (; t < nrows; t++)
             {
                 fProxy* Brow = B + (long)t * Bld;
                 for (int p = 0; p < jb; p++)

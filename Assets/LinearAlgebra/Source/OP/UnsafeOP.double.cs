@@ -987,10 +987,44 @@ namespace LinearAlgebra.Internal
         // (row, column) pair (which would keep the unblocked sweep's O(n^2) call count).
         // [NoAlias] is truthful: L11 (rows [j0,j0+jb)) and
         // B (rows [rStart,n), rStart=j0+jb) are disjoint row ranges of the same underlying L matrix.
+        // Rows are mutually independent, so groups of doubleW.Width rows solve simultaneously —
+        // one lane per row — through a small contiguous tile (tile column k = the group's row
+        // values at panel column k). The lane chain is exactly the scalar row's chain (k
+        // ascending from B[t,p], then the same division), so results are bit-identical to the
+        // scalar remainder path below at every width.
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void trsmLowerPanel([NoAlias] double* L11, int Lld, [NoAlias] double* B, int Bld, int nrows, int jb)
         {
-            for (int t = 0; t < nrows; t++)
+            int t = 0;
+
+            const int W = doubleW.Width;
+            double* tile = stackalloc double[jb * W];
+
+            for (; t + W <= nrows; t += W)
+            {
+                for (int l = 0; l < W; l++)
+                {
+                    double* Brow = B + (long)(t + l) * Bld;
+                    for (int k = 0; k < jb; k++) tile[k * W + l] = Brow[k];
+                }
+
+                for (int p = 0; p < jb; p++)
+                {
+                    doubleW v = doubleW.Load(tile, p);
+                    double* L11row = L11 + (long)p * Lld;
+                    for (int k = 0; k < p; k++)
+                        v -= doubleW.Splat(L11row[k]) * doubleW.Load(tile, k);
+                    doubleW.Store(tile, p, v / doubleW.Splat(L11row[p]));
+                }
+
+                for (int l = 0; l < W; l++)
+                {
+                    double* Brow = B + (long)(t + l) * Bld;
+                    for (int k = 0; k < jb; k++) Brow[k] = tile[k * W + l];
+                }
+            }
+
+            for (; t < nrows; t++)
             {
                 double* Brow = B + (long)t * Bld;
                 for (int p = 0; p < jb; p++)

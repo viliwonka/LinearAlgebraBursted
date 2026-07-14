@@ -29,6 +29,21 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   GF/s at 128-512 (1024: 28.0 → 24.0), TransA 88 → 103-115 (1024: 27.5 → 24.9), AtA
   151 → 174-204 GF/s-eff (512: 1.61 → 1.31 ms); n=64 improved too (no small-size gate
   needed). Double: unchanged, keeps the scalar tiles via choose-routing.
+- 2026-07-14 | trsmLowerPanel rewritten on fProxyW (both dtypes: 8 float / 4 double lanes),
+  bit-identical: rows are independent, so Width rows solve simultaneously through a
+  contiguous tile — per column p, one broadcast-FMA chain over k<p (no per-row short
+  reductions, no horizontal ops), then one wide division; each lane replays the scalar
+  row's exact chain. Blocked CHO (idle-machine A/B, unblocked control rows flat): float
+  512 1.635→1.147 ms (−30%), float 1024 8.78→6.80 (−23%, 52.6 GF/s — CHO now beats LU),
+  double 512 −21%, double 1024 −12%. The old "TRSM ≈5% of time" note was wrong — the
+  dot-form solve was ~9% of flops at a fraction of SYRK throughput ⇒ ~25-30% of wall.
+  fProxyW gained operator/ (mm256_div_ps + lane fallback; template fProxy4 stub too).
+  CODEGEN NOTE: this kernel's accumulator IS seeded from memory and compiles clean — the
+  seeded-W byte-rotation pathology (see the 6x16 entry) needs MANY live seeded
+  accumulators, not one. TESTS: CHO Blocked* cases were sized 256-400 for the ORIGINAL
+  256 gate and silently stopped reaching the blocked core when the gate moved to 512 —
+  resized to 512/545/576/600 (545/600 = ragged last panel + wide-kernel scalar-remainder
+  seam). Check test sizes whenever a gate moves up.
 - 2026-07-14 | CHOP blocked-path optimization pass, bit-identical outputs (~10% at 1024,
   ~4-10% at 512, ~6% at 256, both dtypes): (1) contiguous diagRaw mirror for the pivot
   search — reading W[i,i] directly is a stride-(n+1) scan over the full trailing range

@@ -98,6 +98,20 @@ namespace LinearAlgebra.Internal
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static doubleW operator /(doubleW a, doubleW b)
+        {
+            
+            
+            {
+                double4 av = UnsafeUtility.As<v256, double4>(ref a.v);
+                double4 bv = UnsafeUtility.As<v256, double4>(ref b.v);
+                double4 r = av / bv;
+                return new doubleW { v = UnsafeUtility.As<double4, v256>(ref r) };
+            }
+            
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static doubleW Abs(doubleW a)
         {
             

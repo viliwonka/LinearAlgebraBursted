@@ -27,15 +27,16 @@ public class fProxyCHOTests
             GalleryGCD,
             GalleryFiedlerRejects,
             // Blocked (level-3 / TRSM+SYRK trailing-update) path, engaged when
-            // n >= CHOL_BLOCK_MIN_N = 8*CHOL_BLOCK = 256 (a measured crossover, not the naive
-            // 2*CHOL_BLOCK — see the size-gate comment at the call site). The rest of the suite above
-            // tops out at dim=12, so these are the ONLY tests that reach the blocked core. 300 and 400
-            // are NOT multiples of CHOL_BLOCK=32, so their last panel is narrower than a full block
-            // (300 % 32 = 12, 400 % 32 = 16); 256 and 320 are aligned.
-            BlockedRoundTrip256,
-            BlockedRoundTrip300,
-            BlockedRoundTrip320,
-            BlockedRoundTrip400,
+            // n >= CHOL_BLOCK_MIN_N (a measured per-dtype crossover — see Consts.fProxyCholBlockMinN;
+            // 512 for both dtypes as of the post-axpy4 retune). The rest of the suite above tops out
+            // at dim=12, so these are the ONLY tests that reach the blocked core. 545 and 600 are NOT
+            // multiples of CHOL_BLOCK=32, so their last panel is narrower than a full block
+            // (545 % 32 = 1, 600 % 32 = 24) and their TRSM row counts land on the wide kernel's
+            // scalar-remainder seam; 512 and 576 are aligned.
+            BlockedRoundTrip512,
+            BlockedRoundTrip545,
+            BlockedRoundTrip576,
+            BlockedRoundTrip600,
             BlockedNotSPD,
             BlockedAliasing,
             // CHO.solveInPlace's exit factor is a valid decompSolve input, bit-identical to a fresh
@@ -94,17 +95,17 @@ public class fProxyCHOTests
                 case TestType.GalleryFiedlerRejects:
                     GalleryFiedlerRejects();
                     break;
-                case TestType.BlockedRoundTrip256:
-                    BlockedRoundTripAt(256, 2560001);
+                case TestType.BlockedRoundTrip512:
+                    BlockedRoundTripAt(512, 2560001);
                     break;
-                case TestType.BlockedRoundTrip300:
-                    BlockedRoundTripAt(300, 3000001);
+                case TestType.BlockedRoundTrip545:
+                    BlockedRoundTripAt(545, 3000001);
                     break;
-                case TestType.BlockedRoundTrip320:
-                    BlockedRoundTripAt(320, 3200001);
+                case TestType.BlockedRoundTrip576:
+                    BlockedRoundTripAt(576, 3200001);
                     break;
-                case TestType.BlockedRoundTrip400:
-                    BlockedRoundTripAt(400, 4000001);
+                case TestType.BlockedRoundTrip600:
+                    BlockedRoundTripAt(600, 4000001);
                     break;
                 case TestType.BlockedNotSPD:
                     BlockedNotSPD();
@@ -587,9 +588,9 @@ public class fProxyCHOTests
         {
             var arena = new Arena(Allocator.Persistent);
 
-            int dim = 300;
+            int dim = 545;
             var A = BuildSPD(ref arena, dim, 555555);
-            A[260, 260] = -1000000f;
+            A[520, 520] = -1000000f;
 
             var L = arena.fProxyMat(dim, dim);
 
@@ -605,7 +606,7 @@ public class fProxyCHOTests
         {
             var arena = new Arena(Allocator.Persistent);
 
-            int dim = 288;
+            int dim = 544;
             var A = BuildSPD(ref arena, dim, 909090);
             var Aorig = A.Copy();
 
@@ -700,27 +701,27 @@ public class fProxyCHOTests
     }
 
     [Test]
-    public void BlockedRoundTrip256Test()
+    public void BlockedRoundTrip512Test()
     {
-        new CHOTestJob() { Type = CHOTestJob.TestType.BlockedRoundTrip256 }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.BlockedRoundTrip512 }.Run();
     }
 
     [Test]
-    public void BlockedRoundTrip300Test()
+    public void BlockedRoundTrip545Test()
     {
-        new CHOTestJob() { Type = CHOTestJob.TestType.BlockedRoundTrip300 }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.BlockedRoundTrip545 }.Run();
     }
 
     [Test]
-    public void BlockedRoundTrip320Test()
+    public void BlockedRoundTrip576Test()
     {
-        new CHOTestJob() { Type = CHOTestJob.TestType.BlockedRoundTrip320 }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.BlockedRoundTrip576 }.Run();
     }
 
     [Test]
-    public void BlockedRoundTrip400Test()
+    public void BlockedRoundTrip600Test()
     {
-        new CHOTestJob() { Type = CHOTestJob.TestType.BlockedRoundTrip400 }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.BlockedRoundTrip600 }.Run();
     }
 
     [Test]

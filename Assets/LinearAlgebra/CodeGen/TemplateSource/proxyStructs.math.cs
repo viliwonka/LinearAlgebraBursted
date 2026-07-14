@@ -83,6 +83,8 @@ namespace LinearAlgebra.mathProxies
             => new fProxy4 { x = a.x * b.x, y = a.y * b.y, z = a.z * b.z, w = a.w * b.w };
         public static fProxy4 operator -(fProxy4 a, fProxy4 b)
             => new fProxy4 { x = a.x - b.x, y = a.y - b.y, z = a.z - b.z, w = a.w - b.w };
+        public static fProxy4 operator /(fProxy4 a, fProxy4 b)
+            => new fProxy4 { x = a.x / b.x, y = a.y / b.y, z = a.z / b.z, w = a.w / b.w };
 
         // Scalar-broadcast * so templates can write `a * vec4Load` (the fused Krylov-kernel
         // pattern) -- real float4/double4 already support this natively; the stub just needs to

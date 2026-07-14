@@ -113,6 +113,21 @@ namespace LinearAlgebra.Internal
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static floatW operator /(floatW a, floatW b)
+        {
+            
+            if (X86.Avx.IsAvxSupported)
+                return new floatW { v = X86.Avx.mm256_div_ps(a.v, b.v) };
+            return new floatW { v = new v256(
+                a.v.Float0 / b.v.Float0, a.v.Float1 / b.v.Float1,
+                a.v.Float2 / b.v.Float2, a.v.Float3 / b.v.Float3,
+                a.v.Float4 / b.v.Float4, a.v.Float5 / b.v.Float5,
+                a.v.Float6 / b.v.Float6, a.v.Float7 / b.v.Float7) };
+            
+            
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static floatW Abs(floatW a)
         {
             

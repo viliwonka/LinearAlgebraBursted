@@ -133,6 +133,28 @@ namespace LinearAlgebra.Internal
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static fProxyW operator /(fProxyW a, fProxyW b)
+        {
+            //+skipFor[double]
+            if (X86.Avx.IsAvxSupported)
+                return new fProxyW { v = X86.Avx.mm256_div_ps(a.v, b.v) };
+            return new fProxyW { v = new v256(
+                a.v.Float0 / b.v.Float0, a.v.Float1 / b.v.Float1,
+                a.v.Float2 / b.v.Float2, a.v.Float3 / b.v.Float3,
+                a.v.Float4 / b.v.Float4, a.v.Float5 / b.v.Float5,
+                a.v.Float6 / b.v.Float6, a.v.Float7 / b.v.Float7) };
+            //-skipFor
+            //+skipFor[float]
+            {
+                fProxy4 av = UnsafeUtility.As<v256, fProxy4>(ref a.v);
+                fProxy4 bv = UnsafeUtility.As<v256, fProxy4>(ref b.v);
+                fProxy4 r = av / bv;
+                return new fProxyW { v = UnsafeUtility.As<fProxy4, v256>(ref r) };
+            }
+            //-skipFor
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static fProxyW Abs(fProxyW a)
         {
             //+skipFor[double]
