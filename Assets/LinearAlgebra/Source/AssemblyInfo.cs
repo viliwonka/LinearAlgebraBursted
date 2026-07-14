@@ -9,3 +9,7 @@ using System.Runtime.CompilerServices;
 // The template-side twin of the grant above: the template test assembly compiles the same test
 // sources against THIS assembly (e.g. ChooseMarkerTests exercising the internal ChooseMarkerDemo).
 [assembly: InternalsVisibleTo("BurstLinearAlgebra.TemplateSource.Tests-firstpass")]
+// Benchmark assemblies (generated + template firstpass twin): QPBenchmark's core-isolating section
+// calls the internal QP.qpActiveSetCore directly to time the active-set loop without phase 1.
+[assembly: InternalsVisibleTo("BurstLinearAlgebra.Benchmarks")]
+[assembly: InternalsVisibleTo("BurstLinearAlgebra.TemplateSourceBenchmarks-firstpass")]

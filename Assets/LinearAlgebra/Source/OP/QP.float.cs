@@ -624,8 +624,9 @@ namespace LinearAlgebra
         // The INEQUALITY-constrained active-set LOOP -- algorithm steps 1-5 minus phase 1. This
         // stage's entry point, qpActiveSetCore, takes a CALLER-SUPPLIED feasible x0 and validates it
         // rather than manufacturing one. Built on the PERSISTENT working-set factorization (the
-        // up/downdated QR of A_Wᵀ -- TryAddToFactor / DropFromFactor / ApplyFactorQtForward /
-        // FormNullSpaceBasisFromFactor, see that section below) plus SolveReducedNewtonStep, rather
+        // up/downdated QR of A_Wᵀ -- TryAddToFactor / DropFromFactor / ApplyFactorQtForward, see that
+        // section below) and the PERSISTENT reduced space (Z / QZ / H_Z up/downdated alongside it --
+        // see the "PERSISTENT REDUCED SPACE" section), rather
         // than through eqpSolve/eqpNullSpaceStep (which batch-factor per call), since the ratio test
         // must see the step p BEFORE it is applied, to know how far it is safe to go (and possibly not
         // apply it at all).
@@ -696,10 +697,15 @@ namespace LinearAlgebra
         /// <param name="objective">Output 1/2 xᵀQx + cᵀx at the returned x, computed fresh regardless
         /// of status (matches <see cref="LP.solve"/>'s convention).</param>
         /// <param name="maxIter">Pivot budget; &lt;= 0 picks a size-based default.</param>
+        /// <param name="useIncrementalReduced">When true (the default), the loop maintains the
+        /// persistent reduced-space buffers (Z / QZ / H_Z) incrementally across add/drop changes; when
+        /// false it recomputes them from scratch every iteration (the pre-update behavior, kept as an
+        /// A/B and correctness-diffing seam -- see the "PERSISTENT REDUCED SPACE" section).</param>
         internal static QPInfo qpActiveSetCore(in floatMxN Q, in floatN c, in floatMxN A, in floatN b,
                                                in NativeArray<ConstraintSense> senses,
                                                in floatN xl, in floatN xu,
-                                               ref floatN x, out double objective, int maxIter)
+                                               ref floatN x, out double objective, int maxIter,
+                                               bool useIncrementalReduced = true)
         {
             int n = Q.M_Rows, m = A.M_Rows, T = m + n;
 
@@ -759,10 +765,15 @@ namespace LinearAlgebra
             SeedWorkingSet(in A, in L, in U, m, n, T, in x, in Ax0, wstatus, ref wsf, feasTol, zeroThresholdAW);
             Ax0.Dispose();
 
-            var info = qpActiveSetLoop(in Q, in c, in A, m, n, T, in L, in U, wstatus, ref wsf, ref x, maxIter,
+            // The reduced buffers are n x n at capacity -- only allocate them when the incremental
+            // path will actually use them (the batch path runs off per-iteration Temp buffers).
+            var red = useIncrementalReduced ? floatQPReducedState.Create(n) : default;
+            var info = qpActiveSetLoop(in Q, in c, in A, m, n, T, in L, in U, wstatus, ref wsf, ref red,
+                                       useIncrementalReduced, ref x, maxIter,
                                        normInfQ, zeroThreshold, zeroThresholdAW, feasTol, pivTol, dualTol,
                                        out objective);
 
+            if (useIncrementalReduced) red.Dispose();
             wsf.Dispose();
             wstatus.Dispose(); L.Dispose(); U.Dispose();
             return info;
@@ -790,11 +801,17 @@ namespace LinearAlgebra
         /// </summary>
         /// <param name="wstatusPersist">Caller-owned, length <c>A.M_Rows + Q.M_Rows</c>. In/out.</param>
         /// <param name="workingSetChanges">Output only. Rows whose status changed this call.</param>
+        /// <param name="useIncrementalReduced">Defaults to FALSE here (the OPPOSITE of the cold
+        /// <see cref="qpActiveSetCore"/>): a well warm-started tick changes very few rows, so the
+        /// incremental reduced-space maintenance (which only amortizes over MANY per-solve iterations,
+        /// and does not yet persist ACROSS ticks) would pay its setup with no iterations to earn it
+        /// back. The from-scratch reduced solve is faster for the near-single-shot warm case.</param>
         internal static QPInfo qpActiveSetCoreWarm(in floatMxN Q, in floatN c, in floatMxN A, in floatN b,
                                                    in NativeArray<ConstraintSense> senses,
                                                    in floatN xl, in floatN xu,
                                                    ref floatN x, out double objective, int maxIter,
-                                                   NativeArray<byte> wstatusPersist, out int workingSetChanges)
+                                                   NativeArray<byte> wstatusPersist, out int workingSetChanges,
+                                                   bool useIncrementalReduced = false)
         {
             int n = Q.M_Rows, m = A.M_Rows, T = m + n;
 
@@ -850,9 +867,12 @@ namespace LinearAlgebra
             RepairWorkingSet(in A, in L, in U, m, n, T, in x, in Ax0, wstatusPersist, wstatus, ref wsf, feasTol, zeroThresholdAW);
             Ax0.Dispose();
 
-            var info = qpActiveSetLoop(in Q, in c, in A, m, n, T, in L, in U, wstatus, ref wsf, ref x, maxIter,
+            var red = useIncrementalReduced ? floatQPReducedState.Create(n) : default;
+            var info = qpActiveSetLoop(in Q, in c, in A, m, n, T, in L, in U, wstatus, ref wsf, ref red,
+                                       useIncrementalReduced, ref x, maxIter,
                                        normInfQ, zeroThreshold, zeroThresholdAW, feasTol, pivTol, dualTol,
                                        out objective);
+            if (useIncrementalReduced) red.Dispose();
             wsf.Dispose();
 
             int changes = 0;
@@ -869,11 +889,15 @@ namespace LinearAlgebra
         // byte -- ONLY how `wstatus` is seeded on entry differs between the two callers. `wstatus` must
         // already be seeded (SeedWorkingSet or RepairWorkingSet) and is mutated in place; `wsf` must
         // hold the matching factorization of that working set (the seeding functions build both
-        // together) and is up/downdated in place here. Neither `wstatus`/`L`/`U` nor `wsf` are
+        // together) and is up/downdated in place here. `red` (freshly created by the caller, i.e.
+        // stale) holds the persistent reduced-space buffers, maintained here when
+        // `useIncrementalReduced` (see the "PERSISTENT REDUCED SPACE" section; false = recompute from
+        // scratch every iteration, the A/B seam). Neither `wstatus`/`L`/`U` nor `wsf`/`red` are
         // disposed here -- the caller owns them.
         internal static QPInfo qpActiveSetLoop(in floatMxN Q, in floatN c, in floatMxN A,
                                                int m, int n, int T, in floatN L, in floatN U,
                                                NativeArray<byte> wstatus, ref floatQPFactorState wsf,
+                                               ref floatQPReducedState red, bool useIncrementalReduced,
                                                ref floatN x, int maxIter,
                                                float normInfQ, float zeroThreshold, float zeroThresholdAW,
                                                float feasTol, float pivTol, float dualTol,
@@ -928,7 +952,7 @@ namespace LinearAlgebra
                 bool haveNullSpace = nz > 0;
                 floatN gz = default, y = default, p = default;
                 floatMxN Z = default, QZ = default, Hz = default;
-                bool regularized = false, haveP = false;
+                bool regularized = false, haveP = false, haveBatchBufs = false;
                 double pInf = 0, pNormSq = 0, gp = 0;
                 QPStatus? exitStatus = null;
 
@@ -936,25 +960,51 @@ namespace LinearAlgebra
                 {
                     gz = new floatN(nz, Allocator.Temp, true);
                     for (int j = 0; j < nz; j++) gz[j] = g[k + j];
-                    Z = new floatMxN(n, nz, Allocator.Temp, true);
-                    FormNullSpaceBasisFromFactor(ref wsf, ref Z);
-                    QZ = new floatMxN(n, nz, Allocator.Temp, true);
-                    Hz = new floatMxN(nz, nz, Allocator.Temp, true);
                     y = new floatN(nz, Allocator.Temp, true);
 
-                    var choInfo = SolveReducedNewtonStep(in Q, ref Z, ref QZ, ref Hz, ref gz, ref y, normInfQ, out regularized);
+                    DirectSolveInfo choInfo;
+                    if (useIncrementalReduced)
+                    {
+                        // The reduced buffers (Z / QZ / H_Z) are PERSISTENT, up/downdated at every
+                        // add/drop below; rebuilt from scratch only when stale (first use / refactor
+                        // event) or after RebuildCap incremental changes (roundoff-drift bound).
+                        if (red.stale || red.changeCount >= floatQPReducedState.RebuildCap)
+                            RebuildReduced(in Q, ref wsf, ref red);
+                        choInfo = SolveReducedNewtonStepCached(ref red, nz, ref gz, ref y, normInfQ, out regularized);
+                    }
+                    else
+                    {
+                        Z = new floatMxN(n, nz, Allocator.Temp, true);
+                        FormNullSpaceBasisFromFactor(ref wsf, ref Z);
+                        QZ = new floatMxN(n, nz, Allocator.Temp, true);
+                        Hz = new floatMxN(nz, nz, Allocator.Temp, true);
+                        haveBatchBufs = true;
+                        choInfo = SolveReducedNewtonStep(in Q, ref Z, ref QZ, ref Hz, ref gz, ref y, normInfQ, out regularized);
+                    }
+
                     if (!choInfo.Solved)
                     {
-                        // Stage 1's own hard-failure bail (the regularized retry ITSELF failed --
-                        // "should never happen for genuinely PSD Q", see SolveReducedNewtonStep's doc
-                        // comment): unconditional Unbounded, same as stage 1.
+                        // Hard-failure bail (the regularized retry ITSELF failed -- "should never
+                        // happen for genuinely PSD Q", see SolveReducedNewtonStep's doc comment):
+                        // unconditional Unbounded.
                         exitStatus = QPStatus.Unbounded;
                     }
                     else
                     {
                         p = new floatN(n, Allocator.Temp, true);
                         haveP = true;
-                        Blas.dot(in Z, in y, ref p);
+                        if (useIncrementalReduced)
+                        {
+                            // p = Z·y over the live n x nz block of the persistent basis
+                            for (int i = 0; i < n; i++)
+                            {
+                                float acc = (float)0;
+                                for (int j = 0; j < nz; j++) acc += red.Z[i, j] * y[j];
+                                p[i] = acc;
+                            }
+                        }
+                        else
+                            Blas.dot(in Z, in y, ref p);
                         for (int i = 0; i < n; i++) { double pi = (double)p[i]; pInf = math.max(pInf, math.abs(pi)); pNormSq += pi * pi; }
                         for (int j = 0; j < nz; j++) gp += (double)gz[j] * (double)y[j];
                     }
@@ -1062,6 +1112,9 @@ namespace LinearAlgebra
                             if (TryAddToFactor(in A, m, n, tryRow, cand, ref wsf, zeroThresholdAW))
                             {
                                 wstatus[tryRow] = (byte)cand;
+                                // only the ACCEPTED add updates the reduced buffers -- a rejected
+                                // (dependent) candidate leaves the factorization untouched too
+                                if (useIncrementalReduced) UpdateReducedOnAdd(ref wsf, ref red);
                                 break;
                             }
                             excluded[tryRow] = true;
@@ -1101,7 +1154,14 @@ namespace LinearAlgebra
                         wstatus[wsf.rowOfCol[worstCol]] = (byte)WorkingSetStatus.Inactive;
                         DropFromFactor(worstCol, ref wsf);
                         if (wsf.deadCount >= floatQPFactorState.DeadCap)
+                        {
                             RefactorWorkingSet(in A, m, n, T, wstatus, ref wsf, zeroThresholdAW);
+                            // the rebuilt log reorders the working-set columns -- the reduced frame
+                            // moves with them, so the buffers must be rebuilt, not updated
+                            if (useIncrementalReduced) red.stale = true;
+                        }
+                        else if (useIncrementalReduced)
+                            UpdateReducedOnDrop(in Q, ref wsf, ref red);
                         iterations++;
                     }
 
@@ -1112,7 +1172,9 @@ namespace LinearAlgebra
                 if (haveNullSpace)
                 {
                     if (haveP) p.Dispose();
-                    y.Dispose(); Hz.Dispose(); QZ.Dispose(); Z.Dispose(); gz.Dispose();
+                    y.Dispose();
+                    if (haveBatchBufs) { Hz.Dispose(); QZ.Dispose(); Z.Dispose(); }
+                    gz.Dispose();
                 }
                 g.Dispose(); Qx.Dispose();
                 if (haveRatioBufs) { Ax.Dispose(); Ap.Dispose(); excluded.Dispose(); }
@@ -1600,6 +1662,220 @@ namespace LinearAlgebra
             }
         }
 
+        // ============================================================================================
+        // The PERSISTENT REDUCED SPACE -- Z (null-space basis), QZ = Q·Z, and H_Z = ZᵀQZ maintained
+        // ACROSS active-set changes alongside the factorization log above, so the two O(n²·nz)
+        // per-iteration terms (basis formation + the Q·Z product) become O(n·nz) up/downdates.
+        // chol(H_Z) is still computed from scratch each iteration (SolveReducedNewtonStepCached) --
+        // an add transforms H_Z by a DENSE orthogonal congruence whose Cholesky re-triangularization
+        // costs as much as the from-scratch factor, so caching the factor buys nothing.
+        //
+        // Frame: the buffers live in the SAME column frame FormNullSpaceBasisFromFactor produces
+        // (column j = Q̂·e_{k+j}), so they can be validated column-for-column against a fresh rebuild.
+        //   * ADD: the new reflector H = I - u·uᵀ (u supported on rows >= k_old) restricts to the old
+        //     null-space frame as the size-nz reflection Ĥ = I - û·ûᵀ, û = u's tail (read straight
+        //     from the reflector store). Z·Ĥ and (QZ)·Ĥ are rank-1 updates -- Q is never re-multiplied,
+        //     since Q·(Z·Ĥ) = (QZ)·Ĥ -- and Ĥ·H_Z·Ĥ is a symmetric rank-2 update. The direction
+        //     leaving the null space is exactly local column 0 (the added constraint's normal component
+        //     in null(A_W)): delete it. O(n·nz) total.
+        //   * DROP: the drop's Givens rotations mix coordinates < k only, so the old Z columns survive
+        //     verbatim; ONE new column z = Q̂·e_k enters at the front (FormNullSpaceColumn) and H_Z is
+        //     bordered by its row/column. The single GEMV q = Q·z is the only O(n²) term.
+        //   * Staleness: RefactorWorkingSet reorders the working-set columns (the reduced frame moves
+        //     with them), and incremental updates accumulate roundoff -- `stale` (set at creation and
+        //     on refactor events) and `changeCount >= RebuildCap` both send the next reduced solve
+        //     through RebuildReduced, a from-scratch rebuild into the same persistent buffers.
+        //
+        // The state struct (floatQPReducedState, Create/Dispose) lives at namespace level below, next
+        // to floatQPFactorState, for the same dtype-collision reason.
+        // ============================================================================================
+
+        // Rebuild Z / QZ / H_Z from scratch off the current factorization log into the persistent
+        // buffers (live blocks at the leading corner) and clear the staleness counters. Amortized-rare
+        // (once per RebuildCap changes / refactor event / first use), so it goes through exact-size
+        // temporaries and the vectorised Blas kernels rather than capacity-strided hand loops.
+        internal static void RebuildReduced(in floatMxN Q, ref floatQPFactorState s, ref floatQPReducedState red)
+        {
+            int n = s.n, k = s.k, nz = n - k;
+            red.stale = false;
+            red.changeCount = 0;
+            if (nz <= 0) return;
+
+            var Zt = new floatMxN(n, nz, Allocator.Temp, true);
+            FormNullSpaceBasisFromFactor(ref s, ref Zt);
+            var QZt = new floatMxN(n, nz, Allocator.Temp, true);
+            Blas.dot(in Q, in Zt, ref QZt);
+            var Hzt = new floatMxN(nz, nz, Allocator.Temp, true);
+            Blas.dotSym(in Zt, in QZt, ref Hzt);   // Zᵀ(QZ), symmetric since Q is
+
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < nz; j++) { red.Z[i, j] = Zt[i, j]; red.QZ[i, j] = QZt[i, j]; }
+            for (int i = 0; i < nz; i++)
+                for (int j = 0; j < nz; j++) red.Hz[i, j] = Hzt[i, j];
+
+            Hzt.Dispose(); QZt.Dispose(); Zt.Dispose();
+        }
+
+        // col <- Q̂·e_seedRow: the one-column form of FormNullSpaceBasisFromFactor (same reverse sweep;
+        // reflectors are their own transpose, rotations apply transposed). col must be length n and is
+        // fully overwritten.
+        internal static void FormNullSpaceColumn(ref floatQPFactorState s, int seedRow, ref floatN col)
+        {
+            int n = s.n;
+            for (int i = 0; i < n; i++) col[i] = (float)0;
+            col[seedRow] = (float)1;
+
+            for (int op = s.opCount - 1; op >= 0; op--)
+            {
+                if (s.opType[op] == 0)
+                {
+                    int rc = s.opArg[op];
+                    int d = s.reflStart[rc];
+                    float dot = (float)0;
+                    for (int r = d; r < n; r++) dot += s.V[r, rc] * col[r];
+                    for (int r = d; r < n; r++) col[r] -= s.V[r, rc] * dot;
+                }
+                else
+                {
+                    int gi = s.opArg[op];
+                    int i = s.rotRow[gi];
+                    float cc = s.rotC[gi], sn = s.rotS[gi];
+                    float t1 = col[i], t2 = col[i + 1];
+                    col[i] = cc * t1 - sn * t2;
+                    col[i + 1] = sn * t1 + cc * t2;
+                }
+            }
+        }
+
+        // Reduced-space update for an ACCEPTED add -- call immediately after TryAddToFactor returned
+        // true (s.k already incremented): applies the new reflector's null-space restriction
+        // Ĥ = I - û·ûᵀ to Z / QZ / H_Z and deletes local column 0 (see the section header for the
+        // algebra). No-op when stale (the next reduced solve rebuilds anyway).
+        internal static void UpdateReducedOnAdd(ref floatQPFactorState s, ref floatQPReducedState red)
+        {
+            if (red.stale) return;
+            int n = s.n;
+            int kOld = s.k - 1;
+            int nzOld = n - kOld;
+            int nzNew = nzOld - 1;
+            int rc = s.reflCount - 1;
+
+            for (int j = 0; j < nzOld; j++) red.u[j] = s.V[kOld + j, rc];   // û: the reflector's tail
+
+            // zv = Z·û, qzv = (QZ)·û over the live n x nzOld blocks
+            for (int i = 0; i < n; i++)
+            {
+                float acc1 = (float)0, acc2 = (float)0;
+                for (int j = 0; j < nzOld; j++)
+                {
+                    float uj = red.u[j];
+                    acc1 += red.Z[i, j] * uj;
+                    acc2 += red.QZ[i, j] * uj;
+                }
+                red.zv[i] = acc1; red.qzv[i] = acc2;
+            }
+
+            // Z·Ĥ and (QZ)·Ĥ with local column 0 deleted, fused into one left-shifting pass
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < nzNew; j++)
+                {
+                    float uj = red.u[j + 1];
+                    red.Z[i, j] = red.Z[i, j + 1] - red.zv[i] * uj;
+                    red.QZ[i, j] = red.QZ[i, j + 1] - red.qzv[i] * uj;
+                }
+
+            // Ĥ·H_Z·Ĥ = H_Z - û·rᵀ - r·ûᵀ with r = H_Z·û - ½(ûᵀH_Z·û)·û (symmetric rank-2), row/col 0
+            // deleted -- fused into one up-left-shifting pass. zv is reused for p = H_Z·û, then r.
+            float beta = (float)0;
+            for (int i = 0; i < nzOld; i++)
+            {
+                float acc = (float)0;
+                for (int j = 0; j < nzOld; j++) acc += red.Hz[i, j] * red.u[j];
+                red.zv[i] = acc;
+            }
+            for (int i = 0; i < nzOld; i++) beta += red.u[i] * red.zv[i];
+            for (int i = 0; i < nzOld; i++) red.zv[i] -= (float)0.5 * beta * red.u[i];
+
+            for (int i = 0; i < nzNew; i++)
+                for (int j = 0; j < nzNew; j++)
+                    red.Hz[i, j] = red.Hz[i + 1, j + 1] - red.u[i + 1] * red.zv[j + 1] - red.zv[i + 1] * red.u[j + 1];
+
+            red.changeCount++;
+        }
+
+        // Reduced-space update for a drop -- call immediately after DropFromFactor (s.k already
+        // decremented), and only when NO refactor followed it: the old columns survive verbatim (the
+        // drop's rotations mix coordinates < k only), one new column z = Q̂·e_k is prepended to Z / QZ,
+        // and H_Z is bordered by its new row/column (see the section header). No-op when stale.
+        internal static void UpdateReducedOnDrop(in floatMxN Q, ref floatQPFactorState s, ref floatQPReducedState red)
+        {
+            if (red.stale) return;
+            int n = s.n, kNew = s.k;
+            int nzOld = n - kNew - 1;
+            int nzNew = nzOld + 1;
+
+            FormNullSpaceColumn(ref s, kNew, ref red.zv);   // z_new
+            Blas.dot(in Q, in red.zv, ref red.qzv);         // q_new = Q·z_new -- the drop's only O(n²) term
+
+            for (int i = 0; i < n; i++)
+                for (int j = nzOld - 1; j >= 0; j--)
+                {
+                    red.Z[i, j + 1] = red.Z[i, j];
+                    red.QZ[i, j + 1] = red.QZ[i, j];
+                }
+            for (int i = 0; i < n; i++) { red.Z[i, 0] = red.zv[i]; red.QZ[i, 0] = red.qzv[i]; }
+
+            for (int i = nzOld - 1; i >= 0; i--)
+                for (int j = nzOld - 1; j >= 0; j--)
+                    red.Hz[i + 1, j + 1] = red.Hz[i, j];
+
+            float diag = (float)0;
+            for (int i = 0; i < n; i++) diag += red.zv[i] * red.qzv[i];
+            red.Hz[0, 0] = diag;
+            for (int j = 1; j < nzNew; j++)
+            {
+                float w = (float)0;
+                for (int i = 0; i < n; i++) w += red.zv[i] * red.QZ[i, j];
+                red.Hz[0, j] = w;
+                red.Hz[j, 0] = w;
+            }
+
+            red.changeCount++;
+        }
+
+        // Cached-H_Z sibling of SolveReducedNewtonStep: solves H_Z y = -gz off the PERSISTENT reduced
+        // buffers (the live nz x nz block of red.Hz), copying into exact-size scratch to factor so the
+        // cached H_Z is never destroyed -- the regularized retry's "rebuild cleanly before adding the
+        // shift" is then just a second copy. Same retry semantics and threshold as
+        // SolveReducedNewtonStep.
+        internal static DirectSolveInfo SolveReducedNewtonStepCached(ref floatQPReducedState red, int nz,
+                                                                     ref floatN gz, ref floatN y, float normInfQ, out bool regularized)
+        {
+            var Hs = new floatMxN(nz, nz, Allocator.Temp, true);
+            for (int i = 0; i < nz; i++)
+                for (int j = 0; j < nz; j++) Hs[i, j] = red.Hz[i, j];
+
+            for (int j = 0; j < nz; j++) y[j] = -gz[j];
+            var info = CHO.solveInPlace(ref Hs, ref y);
+
+            regularized = false;
+            if (!info.Solved)
+            {
+                regularized = true;
+                float delta = math.sqrt(Consts.floatEpsilon) * math.max(normInfQ, (float)1);
+
+                for (int i = 0; i < nz; i++)
+                    for (int j = 0; j < nz; j++) Hs[i, j] = red.Hz[i, j];
+                for (int j = 0; j < nz; j++) Hs[j, j] += delta;
+
+                for (int j = 0; j < nz; j++) y[j] = -gz[j];
+                info = CHO.solveInPlace(ref Hs, ref y);
+            }
+
+            Hs.Dispose();
+            return info;
+        }
+
         // Harris-shaped two-pass ratio test over INACTIVE rows (the SHAPE of LP.RevisedSimplex's
         // HarrisRatioTest, not its code: x is ALREADY feasible for every row here
         // (not just W), so there is no "healing an infeasible basic variable" case to handle, unlike
@@ -1738,6 +2014,49 @@ namespace LinearAlgebra
             opType.Dispose(); opArg.Dispose();
             rotRow.Dispose(); rotC.Dispose(); rotS.Dispose();
             vCol.Dispose(); uRefl.Dispose(); wApply.Dispose();
+        }
+    }
+
+    // Persistent reduced-space state for QP's active-set machinery: Z (null-space basis), QZ = Q·Z,
+    // and H_Z = ZᵀQZ over the live null space -- see the "PERSISTENT REDUCED SPACE" section in QP.
+    // Buffers are n x n at capacity with the live n x nz (Z, QZ) / nz x nz (Hz) blocks at the leading
+    // corner, nz = n - k. Starts stale: the first reduced solve rebuilds. Lives at namespace level for
+    // the same dtype-collision reason as floatQPFactorState (proxy-free-signature members cannot live
+    // on the shared partial QP class).
+    internal struct floatQPReducedState
+    {
+        // Incremental changes allowed before a from-scratch rebuild (roundoff-drift bound).
+        public const int RebuildCap = 16;
+
+        public floatMxN Z;          // null-space basis, live block n x nz
+        public floatMxN QZ;         // Q·Z, live block n x nz
+        public floatMxN Hz;         // ZᵀQZ, live block nz x nz
+        public floatN u, zv, qzv;   // scratch, length n (reflector tail / Z·û then H_Z·û,r / QZ·û)
+        public bool stale;           // set at creation and on refactor events; next reduced solve rebuilds
+        public int changeCount;      // incremental updates since the last rebuild
+        public int n;
+
+        public static floatQPReducedState Create(int n)
+        {
+            return new floatQPReducedState
+            {
+                n = n,
+                stale = true,
+                // uninit: the live leading blocks are always fully written (RebuildReduced / the
+                // up/downdate kernels) before any read; the dead tail is never touched.
+                Z = new floatMxN(n, n, Allocator.Temp, true),
+                QZ = new floatMxN(n, n, Allocator.Temp, true),
+                Hz = new floatMxN(n, n, Allocator.Temp, true),
+                u = new floatN(n, Allocator.Temp, true),
+                zv = new floatN(n, Allocator.Temp, true),
+                qzv = new floatN(n, Allocator.Temp, true),
+            };
+        }
+
+        public void Dispose()
+        {
+            Z.Dispose(); QZ.Dispose(); Hz.Dispose();
+            u.Dispose(); zv.Dispose(); qzv.Dispose();
         }
     }
 }

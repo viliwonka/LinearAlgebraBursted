@@ -23,6 +23,18 @@ using Unity.Mathematics;
 // optimum is interior, forcing 12 consecutive drops -- more than fProxyQPFactorState.DeadCap (8), so at
 // least one RefactorWorkingSet fallback runs inside the loop; it also passes through k = 0 (empty
 // working set) before converging.
+//
+// The PERSISTENT REDUCED SPACE (fProxyQPReducedState + QP.RebuildReduced / UpdateReducedOnAdd /
+// UpdateReducedOnDrop / FormNullSpaceColumn / SolveReducedNewtonStepCached) gets its own battery below:
+//   * IncrementalReduced -- after every add/drop (run under the loop's own rebuild policy), the
+//     incrementally-maintained Z / QZ / H_Z must match a fresh FormNullSpaceBasisFromFactor + Q·Z +
+//     ZᵀQZ column for column (the buffers live in the log's own frame, so agreement is entrywise, not
+//     just up to an orthogonal mix); covers the RebuildCap and DeadCap-refactor rebuild triggers and
+//     the k = 0 (nz = n) edge.
+//   * CachedRetry -- a PSD-not-PD Q whose null space overlaps span(Z) forces the regularized retry;
+//     the cached H_Z must come through the failed factor byte-identical.
+//   * FallbackEquivalence -- qpActiveSetCore with useIncrementalReduced true vs false on the same
+//     strictly convex instances must agree on status/objective/x (VALUES, not iteration paths).
 public class fProxyQPFactorStateTests
 {
     // ================================================================================================
@@ -231,9 +243,301 @@ public class fProxyQPFactorStateTests
         }
     }
 
+    // ================================================================================================
+    // Reduced-space maintenance: after EVERY add/drop (run under the loop's own protocol -- rebuild
+    // when stale or past RebuildCap, refactor + stale at DeadCap), the persistent Z / QZ / H_Z must
+    // match a fresh rebuild entrywise. The opening script pins the INCREMENTAL algebra directly (no
+    // rebuild triggers fire); the churn loop then crosses both rebuild triggers and drives k to 0
+    // (nz = n, the empty-working-set frame).
+    // ================================================================================================
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct IncrementalReducedJob : IJob
+    {
+        public NativeArray<double> Fail;
+
+        // the loop's own rebuild policy, applied before every reduced-buffer read
+        static void Sync(in fProxyMxN Q, ref fProxyQPFactorState s, ref fProxyQPReducedState red)
+        {
+            if (red.stale || red.changeCount >= fProxyQPReducedState.RebuildCap)
+                QP.RebuildReduced(in Q, ref s, ref red);
+        }
+
+        void VerifyReduced(in fProxyMxN Q, ref fProxyQPFactorState s, ref fProxyQPReducedState red,
+                           int baseId, double tol)
+        {
+            int n = s.n, k = s.k, nz = n - k;
+            if (nz <= 0) return;
+
+            var Zf = new fProxyMxN(n, nz, Allocator.Temp, true);
+            QP.FormNullSpaceBasisFromFactor(ref s, ref Zf);
+            var QZf = new fProxyMxN(n, nz, Allocator.Temp, true);
+            Blas.dot(in Q, in Zf, ref QZf);
+            var Hzf = new fProxyMxN(nz, nz, Allocator.Temp, true);
+            Blas.dotSym(in Zf, in QZf, ref Hzf);
+
+            double devZ = 0, devQZ = 0, devHz = 0;
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < nz; j++)
+                {
+                    devZ = math.max(devZ, math.abs((double)(red.Z[i, j] - Zf[i, j])));
+                    devQZ = math.max(devQZ, math.abs((double)(red.QZ[i, j] - QZf[i, j])));
+                }
+            for (int i = 0; i < nz; i++)
+                for (int j = 0; j < nz; j++)
+                    devHz = math.max(devHz, math.abs((double)(red.Hz[i, j] - Hzf[i, j])));
+
+            H.AssertLE(Fail, baseId + 0, devZ, tol);
+            H.AssertLE(Fail, baseId + 1, devQZ, tol);
+            H.AssertLE(Fail, baseId + 2, devHz, tol);
+
+            Hzf.Dispose(); QZf.Dispose(); Zf.Dispose();
+        }
+
+        void AddU(in fProxyMxN A, int m, int n, int t, WorkingSetStatus st, NativeArray<byte> statusByT,
+                  ref fProxyQPFactorState s, ref fProxyQPReducedState red, fProxy thr, int id)
+        {
+            H.AssertTrue(Fail, id, QP.TryAddToFactor(in A, m, n, t, st, ref s, thr));
+            statusByT[t] = (byte)st;
+            QP.UpdateReducedOnAdd(ref s, ref red);
+        }
+
+        void DropU(in fProxyMxN Q, in fProxyMxN A, int m, int n, int T, int col, NativeArray<byte> statusByT,
+                   ref fProxyQPFactorState s, ref fProxyQPReducedState red, fProxy thr)
+        {
+            statusByT[s.rowOfCol[col]] = (byte)WorkingSetStatus.Inactive;
+            QP.DropFromFactor(col, ref s);
+            if (s.deadCount >= fProxyQPFactorState.DeadCap)
+            {
+                QP.RefactorWorkingSet(in A, m, n, T, statusByT, ref s, thr);
+                red.stale = true;
+            }
+            else
+                QP.UpdateReducedOnDrop(in Q, ref s, ref red);
+        }
+
+        public void Execute()
+        {
+            const int n = 6, m = 3;
+            const int T = m + n;
+            double tol = /*+choose[5e-4|1e-11]*/5e-4/*-choose*/;
+
+            var A = new fProxyMxN(m, n, Allocator.Temp);
+            A[0, 0] = 1f; A[0, 1] = 2f; A[0, 3] = -1f; A[0, 4] = 0.5f;
+            A[1, 1] = 1f; A[1, 2] = -1f; A[1, 3] = 2f; A[1, 5] = 1f;
+            A[2, 0] = 3f; A[2, 2] = 1f; A[2, 4] = 2f; A[2, 5] = -1f;
+
+            // symmetric, diagonally dominant (PD) test Hessian
+            var Q = new fProxyMxN(n, n, Allocator.Temp);
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                    Q[i, j] = i == j ? (fProxy)4 : (fProxy)1 / (fProxy)(1 + math.abs(i - j));
+
+            var statusByT = new NativeArray<byte>(T, Allocator.Temp);
+            var s = fProxyQPFactorState.Create(n);
+            var red = fProxyQPReducedState.Create(n);
+            fProxy thr = Consts.fProxyZeroThreshold * math.max(Norms.LInf(in A), (fProxy)1);
+
+            // seed 3 columns while stale (mimics SeedWorkingSet), then the first-use rebuild
+            AddU(in A, m, n, 0, WorkingSetStatus.ActiveLower, statusByT, ref s, ref red, thr, 1);
+            AddU(in A, m, n, 1, WorkingSetStatus.ActiveUpper, statusByT, ref s, ref red, thr, 2);
+            AddU(in A, m, n, m + 2, WorkingSetStatus.ActiveLower, statusByT, ref s, ref red, thr, 3);
+            Sync(in Q, ref s, ref red);
+            VerifyReduced(in Q, ref s, ref red, 10, tol);
+
+            // pure-incremental phase: no rebuild trigger fires anywhere below (changeCount stays under
+            // RebuildCap, deadCount under DeadCap), so every verify pins the update algebra itself
+            AddU(in A, m, n, 2, WorkingSetStatus.ActiveLower, statusByT, ref s, ref red, thr, 4);
+            VerifyReduced(in Q, ref s, ref red, 20, tol);
+
+            DropU(in Q, in A, m, n, T, 1, statusByT, ref s, ref red, thr);       // middle column
+            VerifyReduced(in Q, ref s, ref red, 30, tol);
+
+            AddU(in A, m, n, m + 0, WorkingSetStatus.ActiveLower, statusByT, ref s, ref red, thr, 5);
+            VerifyReduced(in Q, ref s, ref red, 40, tol);
+
+            DropU(in Q, in A, m, n, T, 0, statusByT, ref s, ref red, thr);       // first column
+            VerifyReduced(in Q, ref s, ref red, 50, tol);
+
+            DropU(in Q, in A, m, n, T, s.k - 1, statusByT, ref s, ref red, thr); // last column (no rotations)
+            VerifyReduced(in Q, ref s, ref red, 60, tol);
+
+            while (s.k > 0)                                                       // down to the empty set
+                DropU(in Q, in A, m, n, T, 0, statusByT, ref s, ref red, thr);
+            H.AssertTrue(Fail, 6, s.k == 0);
+            VerifyReduced(in Q, ref s, ref red, 70, tol);                         // nz = n: full-frame edge
+
+            // churn: add/drop cycles from the empty set -- crosses RebuildCap (adds+drops both count)
+            // AND DeadCap (refactor + stale), so both rebuild triggers run under the loop's policy
+            for (int cycle = 0; cycle < 12; cycle++)
+            {
+                int t = (cycle & 1) == 0 ? 0 : m + 1;
+                Sync(in Q, ref s, ref red);
+                if (QP.TryAddToFactor(in A, m, n, t, WorkingSetStatus.ActiveLower, ref s, thr))
+                {
+                    statusByT[t] = (byte)WorkingSetStatus.ActiveLower;
+                    QP.UpdateReducedOnAdd(ref s, ref red);
+                }
+                Sync(in Q, ref s, ref red);
+                VerifyReduced(in Q, ref s, ref red, 80, tol);
+
+                DropU(in Q, in A, m, n, T, 0, statusByT, ref s, ref red, thr);
+                Sync(in Q, ref s, ref red);
+                VerifyReduced(in Q, ref s, ref red, 90, tol);
+            }
+
+            red.Dispose();
+            s.Dispose();
+            statusByT.Dispose();
+            Q.Dispose();
+            A.Dispose();
+        }
+    }
+
+    // ================================================================================================
+    // Regularized retry off the CACHED H_Z: Q PSD but rank-deficient with null(Q) inside span(Z), so
+    // the first Cholesky must break down and the retry must succeed -- with the cached H_Z coming
+    // through byte-identical (the factor only ever runs on scratch).
+    // ================================================================================================
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct CachedRetryJob : IJob
+    {
+        public NativeArray<double> Fail;
+
+        public void Execute()
+        {
+            const int n = 4, m = 1;
+
+            var A = new fProxyMxN(m, n, Allocator.Temp);
+            A[0, 0] = 1f; A[0, 1] = 1f; A[0, 2] = 1f; A[0, 3] = 1f;   // never added -- bound row only
+
+            var Q = new fProxyMxN(n, n, Allocator.Temp);   // PSD rank 2: null(Q) = span(e2, e3)
+            Q[0, 0] = 1f; Q[1, 1] = 1f;
+
+            var s = fProxyQPFactorState.Create(n);
+            var red = fProxyQPReducedState.Create(n);
+            fProxy thr = Consts.fProxyZeroThreshold;
+
+            // working set = {x0 at lower}: Z spans coords 1..3, H_Z = diag(1, 0, 0) -- exactly singular
+            H.AssertTrue(Fail, 1, QP.TryAddToFactor(in A, m, n, m + 0, WorkingSetStatus.ActiveLower, ref s, thr));
+            QP.RebuildReduced(in Q, ref s, ref red);
+
+            int nz = n - s.k;
+            var gz = new fProxyN(nz, Allocator.Temp, false);
+            gz[0] = (fProxy)1; gz[1] = (fProxy)0.5; gz[2] = (fProxy)(-0.25);
+            var y = new fProxyN(nz, Allocator.Temp, false);
+
+            var snap = new fProxyMxN(nz, nz, Allocator.Temp, true);
+            for (int i = 0; i < nz; i++)
+                for (int j = 0; j < nz; j++) snap[i, j] = red.Hz[i, j];
+
+            var info = QP.SolveReducedNewtonStepCached(ref red, nz, ref gz, ref y, (fProxy)1, out bool regularized);
+            H.AssertTrue(Fail, 2, info.Solved);
+            H.AssertTrue(Fail, 3, regularized);
+
+            double devHz = 0;
+            for (int i = 0; i < nz; i++)
+                for (int j = 0; j < nz; j++)
+                    devHz = math.max(devHz, math.abs((double)(red.Hz[i, j] - snap[i, j])));
+            H.AssertLE(Fail, 4, devHz, 0.0);   // cached H_Z untouched, bit for bit
+
+            double gp = 0;
+            for (int j = 0; j < nz; j++) gp += (double)y[j] * (double)gz[j];
+            H.AssertLE(Fail, 5, gp, 0.0);      // regularized system is PD, so y is a descent direction
+
+            snap.Dispose(); y.Dispose(); gz.Dispose();
+            red.Dispose(); s.Dispose();
+            Q.Dispose(); A.Dispose();
+        }
+    }
+
+    // ================================================================================================
+    // A/B equivalence of the two reduced-space paths: qpActiveSetCore with useIncrementalReduced
+    // true vs false must agree on status, objective, and (strictly convex -> unique minimizer) x --
+    // values, not iteration paths. Instance 1 starts at a fully tight corner (drop-heavy); instance 2
+    // pushes against the upper box and a general row (mixed adds/drops).
+    // ================================================================================================
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct FallbackEquivalenceJob : IJob
+    {
+        public NativeArray<double> Fail;
+
+        void SolveBoth(in fProxyMxN Q, in fProxyN c, in fProxyMxN A, in fProxyN b,
+                       NativeArray<ConstraintSense> senses, in fProxyN xl, in fProxyN xu,
+                       int baseId, double tol)
+        {
+            int n = Q.M_Rows;
+            var xInc = new fProxyN(n, Allocator.Temp);   // zero-init: x0 = 0 (feasible by construction)
+            var xBat = new fProxyN(n, Allocator.Temp);
+
+            var infoInc = QP.qpActiveSetCore(in Q, in c, in A, in b, senses, in xl, in xu, ref xInc, out double objInc, 0, true);
+            var infoBat = QP.qpActiveSetCore(in Q, in c, in A, in b, senses, in xl, in xu, ref xBat, out double objBat, 0, false);
+
+            H.AssertTrue(Fail, baseId + 0, infoInc.status == QPStatus.Optimal);
+            H.AssertTrue(Fail, baseId + 1, infoBat.status == QPStatus.Optimal);
+            H.AssertLE(Fail, baseId + 2, math.abs(objInc - objBat), tol);
+            double devX = 0;
+            for (int i = 0; i < n; i++) devX = math.max(devX, math.abs((double)(xInc[i] - xBat[i])));
+            H.AssertLE(Fail, baseId + 3, devX, tol);
+
+            xBat.Dispose(); xInc.Dispose();
+        }
+
+        public void Execute()
+        {
+            double tol = /*+choose[2e-3|1e-8]*/2e-3/*-choose*/;
+
+            {   // instance 1: n = 8, corner start, interior-leaning optimum
+                const int n = 8, m = 2;
+                var Q = new fProxyMxN(n, n, Allocator.Temp);
+                for (int i = 0; i < n; i++)
+                    for (int j = 0; j < n; j++) Q[i, j] = i == j ? (fProxy)3 : (fProxy)0.25;
+                var c = new fProxyN(n, Allocator.Temp, false);
+                for (int i = 0; i < n; i++) c[i] = (fProxy)(-1.0 - 0.1 * i);
+                var A = new fProxyMxN(m, n, Allocator.Temp);
+                for (int j = 0; j < n; j++) { A[0, j] = 1f; if ((j & 1) == 0) A[1, j] = 1f; }
+                var b = new fProxyN(m, Allocator.Temp, false);
+                b[0] = (fProxy)2.5; b[1] = (fProxy)1.2;
+                var senses = new NativeArray<ConstraintSense>(m, Allocator.Temp);
+                for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;   // (default enum is Equal)
+                var xl = new fProxyN(n, Allocator.Temp);                            // 0
+                var xu = new fProxyN(n, Allocator.Temp, false);
+                for (int i = 0; i < n; i++) xu[i] = (fProxy)2;
+
+                SolveBoth(in Q, in c, in A, in b, senses, in xl, in xu, 10, tol);
+
+                xu.Dispose(); xl.Dispose(); senses.Dispose(); b.Dispose(); A.Dispose(); c.Dispose(); Q.Dispose();
+            }
+
+            {   // instance 2: n = 10, steep costs against the upper box + a tight sum row
+                const int n = 10, m = 2;
+                var Q = new fProxyMxN(n, n, Allocator.Temp);
+                for (int i = 0; i < n; i++)
+                    for (int j = 0; j < n; j++) Q[i, j] = i == j ? (fProxy)2 : (fProxy)0.1;
+                var c = new fProxyN(n, Allocator.Temp, false);
+                for (int i = 0; i < n; i++) c[i] = (fProxy)(-4.0 + 0.3 * i);
+                var A = new fProxyMxN(m, n, Allocator.Temp);
+                for (int j = 0; j < n; j++) { A[0, j] = 1f; A[1, j] = (fProxy)(0.2 * (j + 1)); }
+                var b = new fProxyN(m, Allocator.Temp, false);
+                b[0] = (fProxy)4; b[1] = (fProxy)6;
+                var senses = new NativeArray<ConstraintSense>(m, Allocator.Temp);
+                for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;   // (default enum is Equal)
+                var xl = new fProxyN(n, Allocator.Temp);                            // 0
+                var xu = new fProxyN(n, Allocator.Temp, false);
+                for (int i = 0; i < n; i++) xu[i] = (fProxy)1;
+
+                SolveBoth(in Q, in c, in A, in b, senses, in xl, in xu, 20, tol);
+
+                xu.Dispose(); xl.Dispose(); senses.Dispose(); b.Dispose(); A.Dispose(); c.Dispose(); Q.Dispose();
+            }
+        }
+    }
+
     [Test] public void UpDownDate() => H.Run(fail => new UpDownDateJob { Fail = fail }.Run());
     [Test] public void DependentAdd() => H.Run(fail => new DependentAddJob { Fail = fail }.Run());
     [Test] public void CornerToInterior() => H.Run(fail => new CornerToInteriorJob { Fail = fail }.Run());
+    [Test] public void IncrementalReduced() => H.Run(fail => new IncrementalReducedJob { Fail = fail }.Run());
+    [Test] public void CachedRetry() => H.Run(fail => new CachedRetryJob { Fail = fail }.Run());
+    [Test] public void FallbackEquivalence() => H.Run(fail => new FallbackEquivalenceJob { Fail = fail }.Run());
 
     // ---- shared test-side helpers (Fail[]-array Burst diagnostic pattern, see QPEqpTests.fProxy.cs) ----
     static class H

@@ -35,6 +35,19 @@ namespace LinearAlgebra.Benchmarks
                 dtype, n, m, st.Median, st.Min, iters, kkt, StatusName((QPStatus)status), obj);
     }
 
+    // Formatter for Section 2 (the loop-isolating core benchmark: an extra `reduced` column naming the
+    // incremental-vs-batch variant, and no KKT column -- correctness is Section 1's / the test suite's
+    // job; this section is purely the stage-2 A/B timing gate).
+    public static class QPCoreLoopFmt
+    {
+        public static string Header() => string.Format("{0,-7} {1,-6} {2,-6} {3,-6} {4,11} {5,11} {6,7} {7,10} {8,14}",
+            "dtype", "reduced", "n", "m", "med(ms)", "min(ms)", "iters", "status", "objective");
+
+        public static string Row(string dtype, string reduced, int n, int m, Bench.Stat st, int iters, int status, double obj) =>
+            string.Format(CultureInfo.InvariantCulture, "{0,-7} {1,-6} {2,-6} {3,-6} {4,11:F4} {5,11:F4} {6,7} {7,10} {8,14:E4}",
+                dtype, reduced, n, m, st.Median, st.Min, iters, QPBenchmarkFmt.StatusName((QPStatus)status), obj);
+    }
+
     // ================================================================================================
     // Convex quadratic programming benchmark (docs/draft-spec-qp.md stage 3).
     //
@@ -68,10 +81,15 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine("exercises phase 1 (LP-powered feasible start) as well as the active-set loop. KKT resid is an");
             sb.AppendLine("HONEST, freshly-recomputed proxy (exact primal feasibility + box-only projected-gradient");
             sb.AppendLine("stationarity) using only public data -- see QpSolveJobFProxy's own comment for scope.");
+            sb.AppendLine("Section 2: the active-set loop ALONE (qpActiveSetCore from a supplied feasible x0, no");
+            sb.AppendLine("phase-1 LP), timed with the incremental reduced space vs from-scratch every iteration --");
+            sb.AppendLine("the stage-2 up/downdate A/B gate, undiluted by phase 1. iters must match between rows.");
             sb.AppendLine();
 
             SectionSolveFloat(sb);
             SectionSolveDouble(sb);
+            SectionCoreLoopFloat(sb);
+            SectionCoreLoopDouble(sb);
         }
     }
 }

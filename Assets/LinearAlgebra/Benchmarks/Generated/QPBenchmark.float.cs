@@ -45,9 +45,9 @@ namespace LinearAlgebra.Benchmarks
             statusOut[0] = (int)info.status;
 
             // Honest KKT-ish residual, recomputed FRESH from the returned x using only PUBLIC data --
-            // this job cannot reach qpActiveSetCore's internal working-set machinery (InternalsVisibleTo
-            // is granted to the Tests assembly only, not this Benchmarks one) to recover exact
-            // constraint multipliers for active GENERAL rows, so this deliberately combines two
+            // deliberately NOT via qpActiveSetCore's internal working-set machinery (which could
+            // recover exact constraint multipliers for active GENERAL rows): this row measures the
+            // public facade, so its residual sticks to what a facade USER could verify, combining two
             // independently-checkable pieces rather than trusting QPInfo's own (already-fresh, but
             // internal-only-verifiable) residual fields:
             //   * feasViol -- EXACT, full primal feasibility: max violation of A x {sense} b over every
@@ -92,8 +92,99 @@ namespace LinearAlgebra.Benchmarks
         }
     }
 
+    // Loop-isolating job: calls the INTERNAL qpActiveSetCore directly from a caller-supplied feasible
+    // x0 (no phase-1 LP), so the timed region is JUST the active-set loop -- the part stage 2's
+    // reduced-space up/downdate speeds up, undiluted by the phase-1 fraction Section 1 also pays. The
+    // reduced-space path is selected by useIncrementalReduced, so the two rows (incremental vs
+    // from-scratch) time the SAME solve two ways: this is the stage-2 A/B GO/NO-GO gate.
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct QpCoreLoopJobFloat : IJob
+    {
+        public floatMxN Q;
+        public floatN c;
+        public floatMxN A;
+        public floatN b;
+        public NativeArray<ConstraintSense> senses;
+        public floatN xl, xu;
+        public floatN x0;        // feasible start (read-only source; copied per rep)
+        public floatN x;         // working solution (overwritten from x0 each Execute)
+        public int maxIter;
+        public bool useIncrementalReduced;
+        public NativeArray<double> objOut;
+        public NativeArray<int> itersOut;
+        public NativeArray<int> statusOut;
+        public void Execute()
+        {
+            for (int i = 0; i < x.N; i++) x[i] = x0[i];
+            var info = QP.qpActiveSetCore(in Q, in c, in A, in b, in senses, in xl, in xu, ref x,
+                                          out double obj, maxIter, useIncrementalReduced);
+            objOut[0] = obj;
+            itersOut[0] = info.iterations;
+            statusOut[0] = (int)info.status;
+        }
+    }
+
     public static partial class QPBenchmark
     {
+        // ==== Section 2: qpActiveSetCore loop only (no phase 1), incremental vs from-scratch reduced ====
+        // Same random SPD QP construction as Section 1, but timed through the INTERNAL core from a
+        // pre-built feasible x0 -- isolating the active-set loop stage 2 accelerates. Two rows per size
+        // (useIncrementalReduced true/false); iters must match between them (values, not paths).
+        static void SectionCoreLoopFloat(StringBuilder sb)
+        {
+            sb.AppendLine();
+            sb.AppendLine("--- 2. qpActiveSetCore loop only (no phase 1), feasible x0 supplied, incremental vs " +
+                          "from-scratch reduced space [float] ---");
+            sb.AppendLine(QPCoreLoopFmt.Header());
+
+            foreach (var n in QPBenchmarkFmt.SizesN)
+            {
+                int m = n / 2;
+                var arena = new Arena(Allocator.Persistent);
+                var rng = new Random((uint)(n * 2654435761u + 97));
+
+                var Q = arena.floatMat(n, n);
+                Rand.spdInPlace(ref rng, ref Q, (float)1, (float)10);
+                var c = arena.floatRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5));
+
+                var A = arena.floatRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11));
+                var x0 = arena.floatRandomVec(n, (float)0.2, (float)0.8, (uint)(n * 104729 + 7));
+                var Ax0 = arena.floatVec(m);
+                Blas.dot(in A, in x0, ref Ax0);
+                var b = arena.floatVec(m);
+                var slackRng = new Random((uint)(n * 1299709 + 3));
+                for (int i = 0; i < m; i++) b[i] = Ax0[i] + slackRng.NextFloat((float)0.1, (float)1);
+                var senses = new NativeArray<ConstraintSense>(m, Allocator.Persistent);
+                for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
+
+                var xl = arena.floatVec(n);                 // 0
+                var xu = arena.floatVec(n, (float)3);       // 3
+
+                var objOut = new NativeArray<double>(1, Allocator.Persistent);
+                var itersOut = new NativeArray<int>(1, Allocator.Persistent);
+                var statusOut = new NativeArray<int>(1, Allocator.Persistent);
+                var x = arena.floatVec(n);
+
+                for (int variant = 0; variant < 2; variant++)
+                {
+                    bool inc = variant == 0;
+                    var job = new QpCoreLoopJobFloat
+                    {
+                        Q = Q, c = c, A = A, b = b, senses = senses, xl = xl, xu = xu, x0 = x0, x = x,
+                        maxIter = 0, useIncrementalReduced = inc,
+                        objOut = objOut, itersOut = itersOut, statusOut = statusOut,
+                    };
+                    var stat = Bench.Time(() => job.Run());
+                    sb.AppendLine(QPCoreLoopFmt.Row("float", inc ? "incr" : "batch", n, m, stat,
+                                                    itersOut[0], statusOut[0], objOut[0]));
+                }
+
+                objOut.Dispose(); itersOut.Dispose(); statusOut.Dispose();
+                senses.Dispose();
+                arena.Dispose();
+            }
+        }
+
         // ==== Section 1: QP.solve, random SPD QP -- FULL public facade, no caller-supplied start ====
         // (m = n/2 LessEqual rows, A >= 0, b = A x0 + slack so x0 is comfortably feasible, box bounds
         // [0,3], Q symmetric PSD with a modest condition number via Rand.spdInPlace(1,10)). Every row

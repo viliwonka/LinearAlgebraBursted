@@ -533,6 +533,33 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   mathematical result is exactly symmetric whenever Q/R/P/S are.
 
 ## QP
+- 2026-07-14 | QP v2 stage 2 SHIPPED: persistent up/downdated REDUCED SPACE (fProxyQPReducedState:
+  Z, QZ = Q·Z, H_Z = ZᵀQZ carried alongside the stage-1 log). Kills the two O(n²·nz) per-iteration
+  terms (FormNullSpaceBasis + the fresh Q·Z). Option (b) from docs/dev/draft-spec-qp-qr-updowndate.md
+  — maintain Z/QZ/H_Z EXPLICITLY, recompute chol(H_Z) from scratch each iter; NOT a
+  Gill-Golub-Murray-Saunders Cholesky updowndate (an add is a dense size-nz Householder congruence
+  whose re-triangularization is O(nz³), no cheaper than the from-scratch factor). ADD: the new
+  reflector restricts to the old null-space frame as Ĥ = I−ûûᵀ (û = reflector tail, read for free,
+  ûᵀû=2); Z·Ĥ and (QZ)·Ĥ are rank-1, Q is NEVER re-multiplied (Q(ZĤ)=(QZ)Ĥ), Ĥ·H_Z·Ĥ is sym rank-2;
+  the leaving direction is exactly local column 0 → delete it. DROP: Givens mix coords <k only so the
+  old Z columns survive verbatim; one new column Q̂·e_k prepends (FormNullSpaceColumn) and H_Z borders,
+  q_new=Q·z_new is the drop's only O(n²). Staleness: RefactorWorkingSet (DeadCap) reorders the frame →
+  rebuild; RebuildCap=16 incremental changes → rebuild (roundoff bound). useIncrementalReduced flag on
+  qpActiveSetLoop keeps the from-scratch path (SolveReducedNewtonStep) as an A/B + correctness seam;
+  reduced buffers only allocated when the flag is set. A/B on a NEW loop-isolating QPBenchmark section
+  (qpActiveSetCore from a supplied x0, no phase-1): incr vs batch −11/−12/−33% float, −12/−24/−48%
+  double at n=16/64/192 (iters byte-identical, objectives match) — grows with n, comfortably >10% at
+  n≥64 → GO. Full facade (Section 1) at n=192 ≈ half the stage-1 baseline (float 135.9→67.7ms). COLD
+  path (qpActiveSetCore, QP.solve) defaults incremental; WARM path (qpActiveSetCoreWarm, MPC) defaults
+  BATCH — a warm tick changes ~0 rows (MPC steady-state iters=0), so incremental maintenance never
+  amortizes intra-call (cross-tick persistence is a future stage); an early incremental-warm default
+  regressed the MPC headline 20-43% (per-solve n×n red alloc + copy-back with no iterations to earn it)
+  before the flip. Dtype-collision trap avoided (RebuildCap/Create/Dispose on the dtype-named struct,
+  same as stage 1's DeadCap). Test: fProxyQPFactorStateTests.IncrementalReduced (entrywise Z/QZ/H_Z vs
+  fresh rebuild after every add/drop, across both rebuild triggers + the k=0 edge), CachedRetry
+  (regularized retry off cached H_Z, byte-identical), FallbackEquivalence (incr vs batch agree
+  status/obj/x — VALUES not paths). Trap while writing that test: ConstraintSense.LessEqual = −1, so a
+  zero-init senses array is all Equal → x0=0 reads Infeasible; set senses explicitly.
 - 2026-07-14 | QP v2 stage 1 SHIPPED: persistent up/downdated QR of A_Wᵀ (fProxyQPFactorState: op-log
   Q̂ᵀ = Householder reflectors + Givens rotations in creation order; hybrid store per
   docs/dev/draft-spec-qp-qr-updowndate.md option (a)). Replaces the per-iteration from-scratch

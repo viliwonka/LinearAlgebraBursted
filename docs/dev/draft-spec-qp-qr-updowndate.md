@@ -1,9 +1,13 @@
 # QP v2: factorization up/downdating in the active-set loop (draft spec)
 
-Status: STAGE 1 SHIPPED 2026-07-14 (hybrid store, option (a); also converted
-SeedWorkingSet/RepairWorkingSet + the per-add trial factor to incremental — see
-`TemplateSource/OP/DEVLOG.md` under "QP"). Stage 2 remains measure-gated below.
-Target: `TemplateSource/OP/QP.fProxy.cs`.
+Status: STAGE 1 + STAGE 2 SHIPPED 2026-07-14. Stage 1 = hybrid-store op-log QR (option (a)).
+Stage 2 = explicit persistent Z/QZ/H_Z up/downdate (option (b); GGMS/Goldfarb-Idnani Cholesky
+update NOT done — an add's congruence re-triangularization is O(nz³)). Measured GO on a
+loop-isolating QPBenchmark section: incr vs batch −11..−33% (float) / −12..−48% (double) at
+n=16/64/192, growing with n; full facade at n=192 ≈ half the stage-1 baseline. COLD core defaults
+incremental, WARM/MPC core defaults batch (a warm tick changes ~0 rows, so intra-call maintenance
+never amortizes; cross-tick persistence is a future stage). See `TemplateSource/OP/DEVLOG.md`
+under "QP". Target: `TemplateSource/OP/QP.fProxy.cs`.
 
 ## Problem
 
