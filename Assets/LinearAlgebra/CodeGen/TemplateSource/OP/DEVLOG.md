@@ -2,6 +2,10 @@
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
 ## axpy4: quad-stream panel updates for the blocked factorizations
+- 2026-07-14 | vecMatDot (xᵀA — simplex PRICE, transposed GEMV) moved onto axpy4 (four matrix
+  rows per output pass, r-ascending per element = bit-identical): float 41→69 GF/s at n=64,
+  57→82 at 128, 69→85 at 256, +18% at 512; double +19-56% at 64-256. 1024 rows flat — the
+  streamed matrix is the bandwidth wall there, quad-streaming can't help a one-touch stream.
 - 2026-07-14 | The blocked factorization trailing updates (CHO syrkLowerSub, CHOP
   syrkUpperSub, QR/LQ wyVtC/wySubVW/lqYeqCVt, pivoted-LU's inlined row update) all had the
   same shape: one axpy pass over the output row per panel column — vectorized but bound by

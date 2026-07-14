@@ -323,17 +323,18 @@ namespace LinearAlgebra.Internal
             // y = inVec = m
             // x = outVec = n
             // x = y^T * mat
-            // Zero result first, then accumulate row-wise so mat[baseIdx + c] is unit-stride in c.
+            // Zero result first, then accumulate row-wise so the mat walk is unit-stride;
+            // one x pass carries four rows (axpy4), r-ascending per element.
             UnsafeUtility.MemClear(x, (long)n * UnsafeUtility.SizeOf<fProxy>());
-            for (int r = 0; r < m; r++)
+            int r = 0;
+            for (; r + 4 <= m; r += 4)
             {
-                fProxy yr = y[r];
-                int baseIdx = r * n;
-                for (int c = 0; c < n; c++)
-                {
-                    x[c] += yr * mat[baseIdx + c];
-                }
+                fProxy* row0 = mat + (long)r * n;
+                axpy4(x, row0, row0 + n, row0 + 2 * n, row0 + 3 * n,
+                      y[r], y[r + 1], y[r + 2], y[r + 3], n);
             }
+            for (; r < m; r++)
+                axpy(x, mat + (long)r * n, y[r], n);
         }
 
         // Cache-blocked transpose, STAGED through a stack tile: A is read row-contiguous into the
