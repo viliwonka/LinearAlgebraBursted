@@ -41,7 +41,7 @@ namespace LinearAlgebra {
         public const int doubleQrBlockMinN   = 512;
         public const int floatQrcpBlockMinN  = 64;
         public const int doubleQrcpBlockMinN = 512;
-        public const int floatCholBlockMinN  = 1024;
+        public const int floatCholBlockMinN  = 512;
         public const int doubleCholBlockMinN = 512;
         public const int floatLuBlockMinN    = 256;
         public const int doubleLuBlockMinN   = 128;
