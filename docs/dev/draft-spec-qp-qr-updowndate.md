@@ -1,7 +1,9 @@
 # QP v2: factorization up/downdating in the active-set loop (draft spec)
 
-Status: APPROVED direction (maintainer 2026-07-14: "I love the sound of QP v2 QR
-up/downdate, yes"), not yet started. Target: `TemplateSource/OP/QP.fProxy.cs`.
+Status: STAGE 1 SHIPPED 2026-07-14 (hybrid store, option (a); also converted
+SeedWorkingSet/RepairWorkingSet + the per-add trial factor to incremental — see
+`TemplateSource/OP/DEVLOG.md` under "QP"). Stage 2 remains measure-gated below.
+Target: `TemplateSource/OP/QP.fProxy.cs`.
 
 ## Problem
 

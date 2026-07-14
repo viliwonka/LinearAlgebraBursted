@@ -475,10 +475,10 @@ namespace LinearAlgebra
         // scratch of length >= AWT.N_Cols (= k). Reuses QR's per-step primitives (QR.genHouseholder /
         // QR.applyReflectorRight, both `internal`) -- not a re-derivation of the Householder math.
         //
-        // Always re-factors A_Wᵀ from scratch (no incremental update) -- dense target sizes make an
-        // O(n²k) re-factor per change cheap enough. If an incremental version is ever needed, the QRCP
-        // downdating machinery is the natural donor (it already removes a column from a QR factor
-        // without refactoring; an add/drop of a working-set constraint is a column add/drop on A_Wᵀ).
+        // A one-shot BATCH factor: used by the fixed-working-set EQP path (eqpNullSpaceStep), which
+        // factors exactly once per call. The inequality active-set loop does NOT use this -- it
+        // maintains a persistent, up/downdated factorization across add/drop changes instead (see the
+        // "PERSISTENT WORKING-SET FACTORIZATION" section below).
         internal static void FactorWorkingSetTranspose(ref doubleMxN AWT, ref doubleMxN R, ref doubleN u, ref doubleN w, double zeroThreshold)
         {
             int n = AWT.M_Rows;
@@ -623,11 +623,12 @@ namespace LinearAlgebra
         // ============================================================================================
         // The INEQUALITY-constrained active-set LOOP -- algorithm steps 1-5 minus phase 1. This
         // stage's entry point, qpActiveSetCore, takes a CALLER-SUPPLIED feasible x0 and validates it
-        // rather than manufacturing one. Built directly on the constituent kernel functions above
-        // (FactorWorkingSetTranspose / ApplyWorkingSetQtForward / FormNullSpaceBasis /
-        // SolveReducedNewtonStep, all still `internal static`, UNCHANGED) instead of through
-        // eqpSolve/eqpNullSpaceStep, since the ratio test must see the step p BEFORE it is applied, to
-        // know how far it is safe to go (and possibly not apply it at all).
+        // rather than manufacturing one. Built on the PERSISTENT working-set factorization (the
+        // up/downdated QR of A_Wᵀ -- TryAddToFactor / DropFromFactor / ApplyFactorQtForward /
+        // FormNullSpaceBasisFromFactor, see that section below) plus SolveReducedNewtonStep, rather
+        // than through eqpSolve/eqpNullSpaceStep (which batch-factor per call), since the ratio test
+        // must see the step p BEFORE it is applied, to know how far it is safe to go (and possibly not
+        // apply it at all).
         //
         // Problem solved:
         //
@@ -644,11 +645,11 @@ namespace LinearAlgebra
         // recovery A_Wᵀlambda = g) -- one uniform "lambda >= 0" test works for every row without an
         // ActiveLower/ActiveUpper case split.
         //
-        // Working-set rank guard: A_W's rows must stay independent. TryAddToWorkingSet tests a
-        // candidate row by tentatively appending it as the last column of a from-scratch QR and
-        // checking |R[k,k]| against a scale-relative threshold. A row found dependent is left Inactive
-        // -- since it is then a linear combination of rows already in W, its activity gradient
-        // (row).p is exactly 0 for any p in null(A_W), so excluding it costs nothing.
+        // Working-set rank guard: A_W's rows must stay independent. TryAddToFactor tests a candidate
+        // row by transforming its column through the current Q̂ᵀ and checking the tail norm (exactly
+        // the would-be |R[k,k]|) against a scale-relative threshold. A row found dependent is left
+        // Inactive -- since it is then a linear combination of rows already in W, its activity
+        // gradient (row).p is exactly 0 for any p in null(A_W), so excluding it costs nothing.
         //
         // Unbounded detection: declared exactly when all four hold:
         //   1. regularized      -- SolveReducedNewtonStep's Cholesky retry fired (H_Z numerically
@@ -754,13 +755,15 @@ namespace LinearAlgebra
             }
 
             var wstatus = new NativeArray<byte>(T, Allocator.Temp);   // zero-init -> every row Inactive
-            SeedWorkingSet(in A, in L, in U, m, n, T, in x, in Ax0, wstatus, feasTol, zeroThresholdAW);
+            var wsf = doubleQPFactorState.Create(n);
+            SeedWorkingSet(in A, in L, in U, m, n, T, in x, in Ax0, wstatus, ref wsf, feasTol, zeroThresholdAW);
             Ax0.Dispose();
 
-            var info = qpActiveSetLoop(in Q, in c, in A, m, n, T, in L, in U, wstatus, ref x, maxIter,
+            var info = qpActiveSetLoop(in Q, in c, in A, m, n, T, in L, in U, wstatus, ref wsf, ref x, maxIter,
                                        normInfQ, zeroThreshold, zeroThresholdAW, feasTol, pivTol, dualTol,
                                        out objective);
 
+            wsf.Dispose();
             wstatus.Dispose(); L.Dispose(); U.Dispose();
             return info;
         }
@@ -843,12 +846,14 @@ namespace LinearAlgebra
             }
 
             var wstatus = new NativeArray<byte>(T, Allocator.Temp);
-            RepairWorkingSet(in A, in L, in U, m, n, T, in x, in Ax0, wstatusPersist, wstatus, feasTol, zeroThresholdAW);
+            var wsf = doubleQPFactorState.Create(n);
+            RepairWorkingSet(in A, in L, in U, m, n, T, in x, in Ax0, wstatusPersist, wstatus, ref wsf, feasTol, zeroThresholdAW);
             Ax0.Dispose();
 
-            var info = qpActiveSetLoop(in Q, in c, in A, m, n, T, in L, in U, wstatus, ref x, maxIter,
+            var info = qpActiveSetLoop(in Q, in c, in A, m, n, T, in L, in U, wstatus, ref wsf, ref x, maxIter,
                                        normInfQ, zeroThreshold, zeroThresholdAW, feasTol, pivTol, dualTol,
                                        out objective);
+            wsf.Dispose();
 
             int changes = 0;
             for (int t = 0; t < T; t++) if (wstatusPersist[t] != wstatus[t]) changes++;
@@ -862,11 +867,14 @@ namespace LinearAlgebra
         // The shared active-set add/drop LOOP (algorithm steps 1-5), factored out of qpActiveSetCore so
         // qpActiveSetCoreWarm (persistent working-set seed, see its own doc comment) reuses it byte-for-
         // byte -- ONLY how `wstatus` is seeded on entry differs between the two callers. `wstatus` must
-        // already be seeded (SeedWorkingSet or RepairWorkingSet) and is mutated in place; neither
-        // `wstatus` nor `L`/`U` are disposed here -- the caller owns them.
+        // already be seeded (SeedWorkingSet or RepairWorkingSet) and is mutated in place; `wsf` must
+        // hold the matching factorization of that working set (the seeding functions build both
+        // together) and is up/downdated in place here. Neither `wstatus`/`L`/`U` nor `wsf` are
+        // disposed here -- the caller owns them.
         internal static QPInfo qpActiveSetLoop(in doubleMxN Q, in doubleN c, in doubleMxN A,
                                                int m, int n, int T, in doubleN L, in doubleN U,
-                                               NativeArray<byte> wstatus, ref doubleN x, int maxIter,
+                                               NativeArray<byte> wstatus, ref doubleQPFactorState wsf,
+                                               ref doubleN x, int maxIter,
                                                double normInfQ, double zeroThreshold, double zeroThresholdAW,
                                                double feasTol, double pivTol, double dualTol,
                                                out double objective)
@@ -904,22 +912,17 @@ namespace LinearAlgebra
                 var curL = usePerturbation ? perturbedL : L;
                 var curU = usePerturbation ? perturbedU : U;
 
-                // ---- factor the CURRENT working set from scratch (v1 judgment: no incremental
-                // update, see this file's Stage-1 header comment on FactorWorkingSetTranspose) ----
-                var rowOfCol = new NativeArray<int>(math.max(n, 1), Allocator.Temp);
-                int k = AssembleWorkingSetTranspose(in A, in L, in U, m, n, T, wstatus, -1, WorkingSetStatus.Inactive, rowOfCol, out var AWT, out var bW);
+                // ---- the working-set factorization is PERSISTENT: seeded before the loop, then
+                // up/downdated at every add/drop (see the persistent-factorization section below) --
+                // nothing to refactor here ----
+                int k = wsf.k;
                 int nz = n - k;
-
-                var R = new doubleMxN(k, k, Allocator.Temp);
-                var u = new doubleN(n, Allocator.Temp, true);
-                var w = new doubleN(math.max(k, math.max(nz, 1)), Allocator.Temp, true);
-                FactorWorkingSetTranspose(ref AWT, ref R, ref u, ref w, zeroThresholdAW);
 
                 var Qx = new doubleN(n, Allocator.Temp, true);
                 var g = new doubleN(n, Allocator.Temp, true);
                 Blas.dot(in Q, in x, ref Qx);
                 for (int i = 0; i < n; i++) g[i] = Qx[i] + c[i];
-                ApplyWorkingSetQtForward(ref AWT, ref g, ref u, k);
+                ApplyFactorQtForward(ref wsf, ref g);
 
                 // ---- compute the null-space Newton step p ----
                 bool haveNullSpace = nz > 0;
@@ -934,7 +937,7 @@ namespace LinearAlgebra
                     gz = new doubleN(nz, Allocator.Temp, true);
                     for (int j = 0; j < nz; j++) gz[j] = g[k + j];
                     Z = new doubleMxN(n, nz, Allocator.Temp, true);
-                    FormNullSpaceBasis(ref AWT, ref Z, ref u, ref w, k);
+                    FormNullSpaceBasisFromFactor(ref wsf, ref Z);
                     QZ = new doubleMxN(n, nz, Allocator.Temp, true);
                     Hz = new doubleMxN(nz, nz, Allocator.Temp, true);
                     y = new doubleN(nz, Allocator.Temp, true);
@@ -1056,8 +1059,11 @@ namespace LinearAlgebra
                         while (guardAttempts < 8)
                         {
                             var cand = tryUpper ? WorkingSetStatus.ActiveUpper : WorkingSetStatus.ActiveLower;
-                            if (TryAddToWorkingSet(in A, in L, in U, m, n, T, wstatus, tryRow, cand, zeroThresholdAW))
+                            if (TryAddToFactor(in A, m, n, tryRow, cand, ref wsf, zeroThresholdAW))
+                            {
+                                wstatus[tryRow] = (byte)cand;
                                 break;
+                            }
                             excluded[tryRow] = true;
                             guardAttempts++;
                             RatioTest(in curL, in curU, m, n, T, wstatus, excluded, in Ax, in Ap, in x, in p, pScale, thetaSelf, feasTol, pivTol, out _, out int nextRow, out bool nextUpper);
@@ -1072,7 +1078,7 @@ namespace LinearAlgebra
                     // ---- multiplier recovery + sign check ----
                     var lamBuf = new doubleN(math.max(k, 1), Allocator.Temp, true);
                     for (int i = 0; i < k; i++) lamBuf[i] = g[i];
-                    if (k > 0) Blas.triUpper(ref R, ref lamBuf);
+                    if (k > 0) SolveFactorRUpper(ref wsf, ref lamBuf);
 
                     // Dantzig pricing (most-negative multiplier) unconditionally -- no Bland-style
                     // tie-break needed here: this decision never reads L/U at all (see the
@@ -1082,7 +1088,7 @@ namespace LinearAlgebra
                     int worstCol = -1; double worstLam = -dualTol;
                     for (int kk = 0; kk < k; kk++)
                     {
-                        int t = rowOfCol[kk];
+                        int t = wsf.rowOfCol[kk];
                         var st = (WorkingSetStatus)wstatus[t];
                         if (st == WorkingSetStatus.Equality) continue;   // no sign constraint -- never a drop candidate
                         double lam = lamBuf[kk];
@@ -1090,7 +1096,14 @@ namespace LinearAlgebra
                     }
 
                     if (worstCol < 0) exitStatus = QPStatus.Optimal;
-                    else { wstatus[rowOfCol[worstCol]] = (byte)WorkingSetStatus.Inactive; iterations++; }
+                    else
+                    {
+                        wstatus[wsf.rowOfCol[worstCol]] = (byte)WorkingSetStatus.Inactive;
+                        DropFromFactor(worstCol, ref wsf);
+                        if (wsf.deadCount >= doubleQPFactorState.DeadCap)
+                            RefactorWorkingSet(in A, m, n, T, wstatus, ref wsf, zeroThresholdAW);
+                        iterations++;
+                    }
 
                     lamBuf.Dispose();
                 }
@@ -1101,7 +1114,7 @@ namespace LinearAlgebra
                     if (haveP) p.Dispose();
                     y.Dispose(); Hz.Dispose(); QZ.Dispose(); Z.Dispose(); gz.Dispose();
                 }
-                g.Dispose(); Qx.Dispose(); w.Dispose(); u.Dispose(); R.Dispose(); AWT.Dispose(); bW.Dispose(); rowOfCol.Dispose();
+                g.Dispose(); Qx.Dispose();
                 if (haveRatioBufs) { Ax.Dispose(); Ap.Dispose(); excluded.Dispose(); }
 
                 if (exitStatus.HasValue) { status = exitStatus.Value; break; }
@@ -1113,7 +1126,7 @@ namespace LinearAlgebra
             if (perturbationEverUsed && status == QPStatus.Optimal)
             {
                 var rowOfColC = new NativeArray<int>(math.max(n, 1), Allocator.Temp);
-                int kC = AssembleWorkingSetTranspose(in A, in L, in U, m, n, T, wstatus, -1, WorkingSetStatus.Inactive, rowOfColC, out var AWTc, out var bWc);
+                int kC = AssembleWorkingSetTranspose(in A, in L, in U, m, n, T, wstatus, rowOfColC, out var AWTc, out var bWc);
                 if (kC > 0)
                 {
                     var A_Wc = new doubleMxN(kC, n, Allocator.Temp, true);
@@ -1134,26 +1147,20 @@ namespace LinearAlgebra
             }
             if (havePerturbedBuffers) { perturbedL.Dispose(); perturbedU.Dispose(); }
 
-            // ---- final diagnostics (fresh, matching LP.solve's "recompute from original data") ----
+            // ---- final diagnostics (fresh gradient at the final x; the persistent factorization is
+            // still exactly the terminal working set's -- neither the perturbation cleanup above nor
+            // anything after the last add/drop has touched wstatus or wsf) ----
             double stationarity = 0;
             if (status == QPStatus.Optimal)
             {
-                var rowOfColF = new NativeArray<int>(math.max(n, 1), Allocator.Temp);
-                int kf = AssembleWorkingSetTranspose(in A, in L, in U, m, n, T, wstatus, -1, WorkingSetStatus.Inactive, rowOfColF, out var AWTf, out var bWf);
-                int nzf = n - kf;
-                var Rf = new doubleMxN(kf, kf, Allocator.Temp);
-                var uf = new doubleN(n, Allocator.Temp, true);
-                var wf = new doubleN(math.max(kf, math.max(nzf, 1)), Allocator.Temp, true);
-                FactorWorkingSetTranspose(ref AWTf, ref Rf, ref uf, ref wf, zeroThresholdAW);
-
                 var Qxf = new doubleN(n, Allocator.Temp, true);
                 var gf = new doubleN(n, Allocator.Temp, true);
                 Blas.dot(in Q, in x, ref Qxf);
                 for (int i = 0; i < n; i++) gf[i] = Qxf[i] + c[i];
-                ApplyWorkingSetQtForward(ref AWTf, ref gf, ref uf, kf);
-                for (int j = kf; j < n; j++) stationarity = math.max(stationarity, math.abs((double)gf[j]));
+                ApplyFactorQtForward(ref wsf, ref gf);
+                for (int j = wsf.k; j < n; j++) stationarity = math.max(stationarity, math.abs((double)gf[j]));
 
-                gf.Dispose(); Qxf.Dispose(); wf.Dispose(); uf.Dispose(); Rf.Dispose(); AWTf.Dispose(); bWf.Dispose(); rowOfColF.Dispose();
+                gf.Dispose(); Qxf.Dispose();
             }
 
             double feasibilityResidual = 0;
@@ -1231,22 +1238,25 @@ namespace LinearAlgebra
             }
         }
 
-        // Seeds the working set from x0's tight constraints. Pass 1: every equality row (L_t == U_t --
-        // general Equal-sense rows AND fixed bounds xl[j]==xu[j]) is permanently in W, added via the
-        // SAME rank guard as everything else (a redundant/duplicated equality is simply left Inactive;
-        // see TryAddToWorkingSet's doc comment for why that is safe, not a lost constraint). Pass 2:
-        // every remaining row tight at
+        // Seeds the working set from x0's tight constraints, building the persistent factorization
+        // (`wsf`, freshly created by the caller) alongside wstatus one incremental add at a time.
+        // Pass 1: every equality row (L_t == U_t -- general Equal-sense rows AND fixed bounds
+        // xl[j]==xu[j]) is permanently in W, added via the SAME rank guard as everything else (a
+        // redundant/duplicated equality is simply left Inactive; see TryAddToFactor's doc comment for
+        // why that is safe, not a lost constraint). Pass 2: every remaining row tight at
         // x0 within feasTol (general row or bound) is added as ActiveLower/ActiveUpper, independence-
         // guarded the same way. wstatus must be caller-allocated, length T; every entry is (re)written.
         internal static void SeedWorkingSet(in doubleMxN A, in doubleN L, in doubleN U, int m, int n, int T,
                                             in doubleN x0, in doubleN Ax0, NativeArray<byte> wstatus,
+                                            ref doubleQPFactorState wsf,
                                             double feasTol, double zeroThresholdAW)
         {
             for (int t = 0; t < T; t++) wstatus[t] = (byte)WorkingSetStatus.Inactive;
 
             for (int t = 0; t < T; t++)
                 if (L[t] == U[t])
-                    TryAddToWorkingSet(in A, in L, in U, m, n, T, wstatus, t, WorkingSetStatus.Equality, zeroThresholdAW);
+                    if (TryAddToFactor(in A, m, n, t, WorkingSetStatus.Equality, ref wsf, zeroThresholdAW))
+                        wstatus[t] = (byte)WorkingSetStatus.Equality;
 
             for (int t = 0; t < T; t++)
             {
@@ -1255,9 +1265,15 @@ namespace LinearAlgebra
                 bool atLower = (double)L[t] > -1e29 && math.abs(act - (double)L[t]) <= (double)feasTol;
                 bool atUpper = (double)U[t] < 1e29 && math.abs(act - (double)U[t]) <= (double)feasTol;
                 if (atLower)
-                    TryAddToWorkingSet(in A, in L, in U, m, n, T, wstatus, t, WorkingSetStatus.ActiveLower, zeroThresholdAW);
+                {
+                    if (TryAddToFactor(in A, m, n, t, WorkingSetStatus.ActiveLower, ref wsf, zeroThresholdAW))
+                        wstatus[t] = (byte)WorkingSetStatus.ActiveLower;
+                }
                 else if (atUpper)
-                    TryAddToWorkingSet(in A, in L, in U, m, n, T, wstatus, t, WorkingSetStatus.ActiveUpper, zeroThresholdAW);
+                {
+                    if (TryAddToFactor(in A, m, n, t, WorkingSetStatus.ActiveUpper, ref wsf, zeroThresholdAW))
+                        wstatus[t] = (byte)WorkingSetStatus.ActiveUpper;
+                }
             }
         }
 
@@ -1275,13 +1291,15 @@ namespace LinearAlgebra
         // caller-allocated, length T; every entry is (re)written. wstatusPrev is read-only.
         internal static void RepairWorkingSet(in doubleMxN A, in doubleN L, in doubleN U, int m, int n, int T,
                                               in doubleN x0, in doubleN Ax0, NativeArray<byte> wstatusPrev,
-                                              NativeArray<byte> wstatus, double feasTol, double zeroThresholdAW)
+                                              NativeArray<byte> wstatus, ref doubleQPFactorState wsf,
+                                              double feasTol, double zeroThresholdAW)
         {
             for (int t = 0; t < T; t++) wstatus[t] = (byte)WorkingSetStatus.Inactive;
 
             for (int t = 0; t < T; t++)
                 if (L[t] == U[t])
-                    TryAddToWorkingSet(in A, in L, in U, m, n, T, wstatus, t, WorkingSetStatus.Equality, zeroThresholdAW);
+                    if (TryAddToFactor(in A, m, n, t, WorkingSetStatus.Equality, ref wsf, zeroThresholdAW))
+                        wstatus[t] = (byte)WorkingSetStatus.Equality;
 
             for (int t = 0; t < T; t++)
             {
@@ -1295,7 +1313,8 @@ namespace LinearAlgebra
                     : ((double)U[t] < 1e29 && math.abs(act - (double)U[t]) <= (double)feasTol);
 
                 if (stillTight)
-                    TryAddToWorkingSet(in A, in L, in U, m, n, T, wstatus, t, prevSt, zeroThresholdAW);
+                    if (TryAddToFactor(in A, m, n, t, prevSt, ref wsf, zeroThresholdAW))
+                        wstatus[t] = (byte)prevSt;
             }
 
             for (int t = 0; t < T; t++)
@@ -1305,29 +1324,32 @@ namespace LinearAlgebra
                 bool atLower = (double)L[t] > -1e29 && math.abs(act - (double)L[t]) <= (double)feasTol;
                 bool atUpper = (double)U[t] < 1e29 && math.abs(act - (double)U[t]) <= (double)feasTol;
                 if (atLower)
-                    TryAddToWorkingSet(in A, in L, in U, m, n, T, wstatus, t, WorkingSetStatus.ActiveLower, zeroThresholdAW);
+                {
+                    if (TryAddToFactor(in A, m, n, t, WorkingSetStatus.ActiveLower, ref wsf, zeroThresholdAW))
+                        wstatus[t] = (byte)WorkingSetStatus.ActiveLower;
+                }
                 else if (atUpper)
-                    TryAddToWorkingSet(in A, in L, in U, m, n, T, wstatus, t, WorkingSetStatus.ActiveUpper, zeroThresholdAW);
+                {
+                    if (TryAddToFactor(in A, m, n, t, WorkingSetStatus.ActiveUpper, ref wsf, zeroThresholdAW))
+                        wstatus[t] = (byte)WorkingSetStatus.ActiveUpper;
+                }
             }
         }
 
         // Assembles A_Wᵀ (AWT, n x k) and b_W (bW, length k) from wstatus, in ascending row-index order
         // (t = 0..T-1, skipping Inactive rows), sign-oriented per WorkingSetStatus (ActiveLower/Equality:
-        // +row; ActiveUpper: -row -- see qpActiveSetCore's file-header comment). If extraT >= 0, ONE
-        // more column is appended AFTER all of wstatus's active rows for row extraT with status
-        // extraStatus -- WITHOUT reading or writing wstatus[extraT] itself (a pure query: the caller
-        // decides whether to commit it, see TryAddToWorkingSet). rowOfCol (caller-allocated, length >= n)
-        // is filled with the row index t that produced each column (rowOfCol[kk] = t); only the first
-        // (returned) k entries are meaningful. AWT/bW are allocated fresh (Allocator.Temp, uninit) at
-        // EXACTLY the returned k -- no reshape/view capability exists for doubleMxN (see this file's
-        // header comment on why per-iteration re-assembly, not incremental update, is v1's design).
+        // +row; ActiveUpper: -row -- see qpActiveSetCore's file-header comment). rowOfCol
+        // (caller-allocated, length >= n) is filled with the row index t that produced each column
+        // (rowOfCol[kk] = t); only the first (returned) k entries are meaningful. AWT/bW are allocated
+        // fresh (Allocator.Temp, uninit) at EXACTLY the returned k. Used by the one-shot passes that
+        // want a batch factor (the perturbation cleanup's eqpSolve) -- the active-set loop itself works
+        // off the persistent factorization instead (see the persistent-factorization section above).
         internal static int AssembleWorkingSetTranspose(in doubleMxN A, in doubleN L, in doubleN U, int m, int n, int T,
-                                                         NativeArray<byte> wstatus, int extraT, WorkingSetStatus extraStatus,
+                                                         NativeArray<byte> wstatus,
                                                          NativeArray<int> rowOfCol, out doubleMxN AWT, out doubleN bW)
         {
             int k = 0;
             for (int t = 0; t < T; t++) if (wstatus[t] != (byte)WorkingSetStatus.Inactive) k++;
-            if (extraT >= 0) k++;
 
             AWT = new doubleMxN(n, k, Allocator.Temp, true);
             bW = new doubleN(k, Allocator.Temp, true);
@@ -1339,12 +1361,6 @@ namespace LinearAlgebra
                 if (st == WorkingSetStatus.Inactive) continue;
                 WriteWorkingSetColumn(in A, in L, in U, m, n, t, st, ref AWT, ref bW, kk);
                 rowOfCol[kk] = t;
-                kk++;
-            }
-            if (extraT >= 0)
-            {
-                WriteWorkingSetColumn(in A, in L, in U, m, n, extraT, extraStatus, ref AWT, ref bW, kk);
-                rowOfCol[kk] = extraT;
                 kk++;
             }
             return k;
@@ -1368,31 +1384,220 @@ namespace LinearAlgebra
             bW[col] = sign > (double)0 ? L[t] : -U[t];
         }
 
-        // Tests whether adding candidate row t (oriented per candStatus) to the CURRENT wstatus keeps
-        // A_W's rows independent, via a throwaway trial factor (AssembleWorkingSetTranspose's extraT
-        // path places the candidate as the LAST Householder column regardless of its own row index, so
-        // R[k-1,k-1] is exactly its component orthogonal to everything already accepted -- see this
-        // file's header comment). On success, COMMITS (sets wstatus[t] = candStatus) and returns true;
-        // on failure, leaves wstatus untouched and returns false. Used by SeedWorkingSet and by the main
-        // loop's blocking-constraint add.
-        internal static bool TryAddToWorkingSet(in doubleMxN A, in doubleN L, in doubleN U, int m, int n, int T,
-                                                NativeArray<byte> wstatus, int t, WorkingSetStatus candStatus,
-                                                double zeroThresholdAW)
+        // ============================================================================================
+        // The PERSISTENT WORKING-SET FACTORIZATION -- the QR of A_Wᵀ maintained ACROSS active-set
+        // changes by up/downdating instead of a from-scratch refactor per change.
+        //
+        // Representation: A_Wᵀ (n x k) = Q̂·[R; 0], with Q̂ᵀ held as an ordered LOG of operations --
+        // Householder reflectors (adds) interleaved with Givens rotations (drops) in creation order.
+        // Applying Q̂ᵀ to a vector replays the log forward; forming Z = Q̂·[0; I] replays it in reverse
+        // with each entry transposed (a reflector is its own transpose; a rotation transposes to its
+        // inverse). A dropped column's reflector stays in the log as a DEAD entry -- still part of Q̂,
+        // no longer tied to a live column.
+        //
+        //   * ADD (TryAddToFactor): transform the candidate column by the whole log, rank-test its
+        //     tail norm against zeroThresholdAW (the same dependent-candidate rejection the
+        //     from-scratch trial factor performed -- the tail norm IS |R[k,k]|), then ONE new
+        //     Householder reflector. O(n·k) per add instead of the O(n·k²) trial refactor.
+        //   * DROP (DropFromFactor): R's columns right of the dropped one shift left (upper
+        //     Hessenberg); k-1-j Givens rotations restore triangularity and join the log. O(k²).
+        //   * Every DeadCap-th drop triggers RefactorWorkingSet (a full rebuild, resetting the log to
+        //     exactly k live reflectors), bounding the log's size and the capacities
+        //     doubleQPFactorState.Create allocates: reflectors <= n + DeadCap, rotations <=
+        //     DeadCap·(n-1). The refactor cost O(nk²) amortizes to O(nk²/DeadCap) per drop.
+        //
+        // The state struct itself (doubleQPFactorState, with Create/Dispose) lives at namespace level
+        // below this class: its creation members are dtype-specific there, whereas on the SHARED
+        // partial QP class a proxy-free signature would collide between the generated dtypes.
+        //
+        // Literature: Gill, Golub, Murray & Saunders (1974), "Methods for modifying matrix
+        // factorizations"; Nocedal & Wright §16.5 (updating working-set factorizations).
+        // ============================================================================================
+
+        // Rebuild the factorization from scratch over wstatus's active rows (ascending t), resetting
+        // the log to exactly k live reflectors. A row whose column fails the rank test during the
+        // rebuild (numerically dependent on the rows accepted before it) is set Inactive in wstatus --
+        // the same exclusion rule the add path enforces (a dependent row's activity gradient is 0 for
+        // any step in null(A_W), so excluding it costs nothing; see this file's header comment).
+        internal static void RefactorWorkingSet(in doubleMxN A, int m, int n, int T, NativeArray<byte> wstatus,
+                                                ref doubleQPFactorState s, double zeroThresholdAW)
         {
-            var rowOfCol = new NativeArray<int>(math.max(n, 1), Allocator.Temp);
-            int k = AssembleWorkingSetTranspose(in A, in L, in U, m, n, T, wstatus, t, candStatus, rowOfCol, out var AWT, out var bW);
+            s.k = 0; s.reflCount = 0; s.rotCount = 0; s.opCount = 0; s.deadCount = 0;
+            for (int t = 0; t < T; t++)
+            {
+                var st = (WorkingSetStatus)wstatus[t];
+                if (st == WorkingSetStatus.Inactive) continue;
+                if (!TryAddToFactor(in A, m, n, t, st, ref s, zeroThresholdAW))
+                    wstatus[t] = (byte)WorkingSetStatus.Inactive;
+            }
+        }
 
-            var R = new doubleMxN(k, k, Allocator.Temp);
-            var u = new doubleN(n, Allocator.Temp, true);
-            var w = new doubleN(math.max(k, 1), Allocator.Temp, true);
-            FactorWorkingSetTranspose(ref AWT, ref R, ref u, ref w, zeroThresholdAW);
+        // v <- Q̂ᵀv: replay the op log forward. On exit v[0..k) = Q1ᵀv and v[k..n) = Zᵀv -- the same
+        // both-halves-at-once contract as ApplyWorkingSetQtForward.
+        internal static void ApplyFactorQtForward(ref doubleQPFactorState s, ref doubleN v)
+        {
+            int n = s.n;
+            for (int op = 0; op < s.opCount; op++)
+            {
+                if (s.opType[op] == 0)
+                {
+                    int col = s.opArg[op];
+                    int d = s.reflStart[col];
+                    double dot = (double)0;
+                    for (int r = d; r < n; r++) dot += s.V[r, col] * v[r];
+                    for (int r = d; r < n; r++) v[r] -= s.V[r, col] * dot;
+                }
+                else
+                {
+                    int gi = s.opArg[op];
+                    int i = s.rotRow[gi];
+                    double cc = s.rotC[gi], sn = s.rotS[gi];
+                    double t1 = v[i], t2 = v[i + 1];
+                    v[i] = cc * t1 + sn * t2;
+                    v[i + 1] = cc * t2 - sn * t1;
+                }
+            }
+        }
 
-            bool ok = math.abs(R[k - 1, k - 1]) > zeroThresholdAW;
+        // Try to append unified row t (oriented per candStatus) as working-set column k: transform the
+        // column by the current Q̂ᵀ, rank-test the tail norm against zeroThresholdAW, and on success
+        // append one Householder reflector (QR.genHouseholder's math on the staged vector) plus R's new
+        // column. Returns false with the state UNTOUCHED on a dependent candidate. Does NOT write
+        // wstatus -- the caller commits the status byte itself.
+        internal static bool TryAddToFactor(in doubleMxN A, int m, int n, int t, WorkingSetStatus candStatus,
+                                            ref doubleQPFactorState s, double zeroThresholdAW)
+        {
+            int k = s.k;
 
-            w.Dispose(); u.Dispose(); R.Dispose(); AWT.Dispose(); bW.Dispose(); rowOfCol.Dispose();
+            // candidate column of A_Wᵀ -- WriteWorkingSetColumn's sign orientation, vector form
+            double sign = candStatus == WorkingSetStatus.ActiveUpper ? (double)(-1) : (double)1;
+            if (t < m)
+                for (int i = 0; i < n; i++) s.vCol[i] = sign * A[t, i];
+            else
+            {
+                for (int i = 0; i < n; i++) s.vCol[i] = (double)0;
+                s.vCol[t - m] = sign;
+            }
 
-            if (ok) wstatus[t] = (byte)candStatus;
-            return ok;
+            ApplyFactorQtForward(ref s, ref s.vCol);
+
+            double xNorm = Norms.L2Range(in s.vCol, k, n);
+            if (math.abs(xNorm) <= zeroThresholdAW)
+                return false;
+
+            for (int r = k; r < n; r++) s.uRefl[r] = s.vCol[r] / xNorm;
+            s.uRefl[k] = s.uRefl[k] + Helpers.signOrOne(s.uRefl[k]);
+            double div = math.sqrt(math.abs(s.uRefl[k]));
+            for (int r = k; r < n; r++) s.uRefl[r] = s.uRefl[r] / div;
+
+            double dot = (double)0;
+            for (int r = k; r < n; r++) dot += s.uRefl[r] * s.vCol[r];
+
+            for (int i = 0; i < k; i++) s.R[i, k] = s.vCol[i];
+            s.R[k, k] = s.vCol[k] - s.uRefl[k] * dot;
+
+            int col = s.reflCount;
+            for (int r = k; r < n; r++) s.V[r, col] = s.uRefl[r];
+            s.reflStart[col] = k;
+            s.opType[s.opCount] = 0;
+            s.opArg[s.opCount] = col;
+            s.opCount++;
+            s.reflCount++;
+            s.rowOfCol[k] = t;
+            s.k = k + 1;
+            return true;
+        }
+
+        // Remove working-set column `col`: shift R's later columns (and rowOfCol) one left, restore
+        // triangularity with Givens rotations appended to the log. The dropped column's reflector
+        // stays as a dead log entry. The caller updates wstatus itself and MUST call RefactorWorkingSet
+        // once deadCount reaches doubleQPFactorState.DeadCap (the log-capacity contract -- see Create).
+        internal static void DropFromFactor(int col, ref doubleQPFactorState s)
+        {
+            int k = s.k;
+
+            for (int c = col; c < k - 1; c++)
+            {
+                for (int r = 0; r <= c + 1; r++)
+                    s.R[r, c] = s.R[r, c + 1];
+                s.rowOfCol[c] = s.rowOfCol[c + 1];
+            }
+
+            // the shift leaves columns col..k-2 upper Hessenberg; zero each subdiagonal entry
+            for (int i = col; i < k - 1; i++)
+            {
+                double a = s.R[i, i], bsub = s.R[i + 1, i];
+                if (bsub == (double)0) continue;   // already triangular here -- no rotation needed
+                double r2 = Helpers.pythag(a, bsub);
+                double cc = a / r2, sn = bsub / r2;
+                s.R[i, i] = r2;
+                s.R[i + 1, i] = (double)0;
+                for (int c2 = i + 1; c2 < k - 1; c2++)
+                {
+                    double t1 = s.R[i, c2], t2 = s.R[i + 1, c2];
+                    s.R[i, c2] = cc * t1 + sn * t2;
+                    s.R[i + 1, c2] = cc * t2 - sn * t1;
+                }
+                int gi = s.rotCount;
+                s.rotRow[gi] = i; s.rotC[gi] = cc; s.rotS[gi] = sn;
+                s.opType[s.opCount] = 1;
+                s.opArg[s.opCount] = gi;
+                s.opCount++;
+                s.rotCount++;
+            }
+
+            s.k = k - 1;
+            s.deadCount++;
+        }
+
+        // Z (n x (n-k)) <- Q̂·[0; I]: FormNullSpaceBasis's reverse sweep generalized to the op log --
+        // reflectors applied full-width (see FormNullSpaceBasis's doc comment for why the column
+        // restriction is invalid here), rotations applied TRANSPOSED. Z must be caller-allocated
+        // n x (n-k) and is fully overwritten.
+        internal static void FormNullSpaceBasisFromFactor(ref doubleQPFactorState s, ref doubleMxN Z)
+        {
+            int n = s.n, k = s.k, nz = Z.N_Cols;
+
+            unsafe { UnsafeUtility.MemClear(Z.Data.Ptr, (long)Z.Data.Length * UnsafeUtility.SizeOf<double>()); }
+            for (int j = 0; j < nz; j++)
+                Z[k + j, j] = (double)1;
+
+            for (int op = s.opCount - 1; op >= 0; op--)
+            {
+                if (s.opType[op] == 0)
+                {
+                    int col = s.opArg[op];
+                    int d = s.reflStart[col];
+                    for (int r = d; r < n; r++) s.uRefl[r] = s.V[r, col];
+                    ApplyReflectorFullWidth(ref Z, ref s.uRefl, ref s.wApply, d);
+                }
+                else
+                {
+                    int gi = s.opArg[op];
+                    int i = s.rotRow[gi];
+                    double cc = s.rotC[gi], sn = s.rotS[gi];
+                    for (int c2 = 0; c2 < nz; c2++)
+                    {
+                        double t1 = Z[i, c2], t2 = Z[i + 1, c2];
+                        Z[i, c2] = cc * t1 - sn * t2;
+                        Z[i + 1, c2] = sn * t1 + cc * t2;
+                    }
+                }
+            }
+        }
+
+        // Back-substitution lam <- R⁻¹·lam over the LEADING k x k triangle of the persistent R buffer
+        // (whose leading dimension is n, so Blas.triUpper's square-matrix contract does not apply).
+        // lam holds the right-hand side on entry (length >= k; entries [k..) untouched).
+        internal static void SolveFactorRUpper(ref doubleQPFactorState s, ref doubleN lam)
+        {
+            int k = s.k;
+            for (int i = k - 1; i >= 0; i--)
+            {
+                double acc = lam[i];
+                for (int c = i + 1; c < k; c++) acc -= s.R[i, c] * lam[c];
+                lam[i] = acc / s.R[i, i];
+            }
         }
 
         // Harris-shaped two-pass ratio test over INACTIVE rows (the SHAPE of LP.RevisedSimplex's
@@ -1476,6 +1681,63 @@ namespace LinearAlgebra
                 alpha = thetaRelaxed; winnerRow = -1; winnerUpper = false; return;
             }
             alpha = winnerExact; winnerRow = winner; winnerUpper = winnerUp;
+        }
+    }
+
+    // Persistent working-set QR factorization state for QP's active-set machinery -- see the
+    // "PERSISTENT WORKING-SET FACTORIZATION" section in QP. Created by Create (all buffers
+    // Allocator.Temp, capacities fixed at creation for n variables), disposed by Dispose; the
+    // capacity invariants are maintained by QP.DropFromFactor's RefactorWorkingSet contract.
+    internal struct doubleQPFactorState
+    {
+        // Drops allowed between full refactors; also sizes Create's log capacities.
+        public const int DeadCap = 8;
+
+        public doubleMxN V;                 // reflector store, n x (n + DeadCap); column r holds reflector r's vector on rows [reflStart[r], n)
+        public doubleMxN R;                 // n x n buffer; the leading k x k upper triangle is R
+        public NativeArray<int> reflStart;  // per reflector: first row of its support
+        public NativeArray<int> rowOfCol;   // unified row index t behind working-set column kk (length n; first k entries live)
+        public NativeArray<byte> opType;    // the op log: 0 = reflector, 1 = rotation, in application order
+        public NativeArray<int> opArg;      // log entry's index into the reflector store / rotation arrays
+        public NativeArray<int> rotRow;     // rotation g acts on rows (rotRow[g], rotRow[g]+1)
+        public doubleN rotC, rotS;          // rotation g's cosine / sine
+        public doubleN vCol, uRefl, wApply; // scratch (candidate column / staged reflector / apply accumulator), all length n
+        public int n;                       // variable count (row dimension of A_Wᵀ)
+        public int k;                       // live working-set size (columns of R)
+        public int reflCount;               // log reflectors, live + dead (= k + deadCount)
+        public int rotCount;                // log rotations
+        public int opCount;                 // total log entries (= reflCount + rotCount)
+        public int deadCount;               // reflectors of since-dropped columns still in the log
+
+        public static doubleQPFactorState Create(int n)
+        {
+            int reflCap = n + DeadCap;
+            int rotCap = DeadCap * math.max(n, 1);
+            return new doubleQPFactorState
+            {
+                n = n,
+                V = new doubleMxN(n, reflCap, Allocator.Temp, true),
+                R = new doubleMxN(n, n, Allocator.Temp, true),
+                reflStart = new NativeArray<int>(reflCap, Allocator.Temp),
+                rowOfCol = new NativeArray<int>(math.max(n, 1), Allocator.Temp),
+                opType = new NativeArray<byte>(reflCap + rotCap, Allocator.Temp),
+                opArg = new NativeArray<int>(reflCap + rotCap, Allocator.Temp),
+                rotRow = new NativeArray<int>(rotCap, Allocator.Temp),
+                rotC = new doubleN(rotCap, Allocator.Temp, false),
+                rotS = new doubleN(rotCap, Allocator.Temp, false),
+                vCol = new doubleN(n, Allocator.Temp, false),
+                uRefl = new doubleN(n, Allocator.Temp, false),
+                wApply = new doubleN(n, Allocator.Temp, false),
+            };
+        }
+
+        public void Dispose()
+        {
+            V.Dispose(); R.Dispose();
+            reflStart.Dispose(); rowOfCol.Dispose();
+            opType.Dispose(); opArg.Dispose();
+            rotRow.Dispose(); rotC.Dispose(); rotS.Dispose();
+            vCol.Dispose(); uRefl.Dispose(); wApply.Dispose();
         }
     }
 }

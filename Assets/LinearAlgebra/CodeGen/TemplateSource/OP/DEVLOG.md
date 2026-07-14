@@ -533,6 +533,26 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   mathematical result is exactly symmetric whenever Q/R/P/S are.
 
 ## QP
+- 2026-07-14 | QP v2 stage 1 SHIPPED: persistent up/downdated QR of A_Wᵀ (fProxyQPFactorState: op-log
+  Q̂ᵀ = Householder reflectors + Givens rotations in creation order; hybrid store per
+  docs/dev/draft-spec-qp-qr-updowndate.md option (a)). Replaces the per-iteration from-scratch
+  refactor AND the O(nk²) trial factor per candidate add (TryAddToWorkingSet deleted; add rank-test =
+  transformed tail norm, same threshold, identical decision). SeedWorkingSet/RepairWorkingSet build
+  the factor incrementally too — the old per-candidate trial factors made seeding O(Σ nk²) ≈ O(nk³/3)
+  at an LP-vertex start (~n tight rows), which dominated cold solves. Drop = R column shift + k-1-j
+  rotations appended to the log; dead reflectors stay in Q̂; full refactor every DeadCap=8 drops keeps
+  the log bounded (reflectors ≤ n+8, rotations ≤ 8(n-1)) and is also the defensive re-rank-guard
+  (a row going numerically dependent during rebuild is set Inactive, same exclusion rule).
+  Final stationarity diagnostics reuse the live factor (the old block refactored once more).
+  Pure-add sequences are arithmetic-identical to the old batch factor (per-column reflector
+  application order matches applyReflectorRightCols exactly); iteration paths diverge only after the
+  first drop (rotations) or mid-loop add (column order = creation order, no longer ascending-t) —
+  acceptance is KKT/oracle values per the spec, and the whole HS/brute-force/LP-limit battery passes
+  unchanged. Dtype-collision trap hit on the way: consts/factories with proxy-free signatures on the
+  SHARED partial QP class (FactorDeadCap, CreateFactorState(int)) collide between generated
+  float/double partials — moved onto the dtype-named struct (DeadCap, Create, Dispose).
+  Stage 2 (reduced-Hessian Cholesky border/downdate) remains measure-gated per the spec: H_Z
+  formation (QZ = Q·Z, O(n²nz)) is now the dominant per-iteration cost.
 - 2026-07-12 | Warm-start seam for MPC: qpActiveSetCore's loop body (the add/drop iteration, the
   perturbation-anticycling cleanup pass, and final diagnostics) was factored out, UNCHANGED, into a new
   internal qpActiveSetLoop(wstatus, ...) that neither seeds nor disposes `wstatus`/`L`/`U` -- the two
