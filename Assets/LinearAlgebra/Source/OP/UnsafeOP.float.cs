@@ -395,7 +395,9 @@ namespace LinearAlgebra.Internal
         //
         // Tile constants are method-local: a class-level const would collide across the generated
         // float/double partial-class files (CS0102). MR=8, NR=16 (16 AVX2 accumulator vectors, the
-        // edge before register spilling) is used for both types and every size.
+        // edge before register spilling) is used for both types and every size. The packed
+        // microkernel is deliberately SCALAR: seeding wide-vector accumulators from C breaks the
+        // Burst codegen at any tile height (see DEVLOG).
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void matMatDot([NoAlias] float* matA, [NoAlias] float* matB, [NoAlias] float* matC, int m, int n, int k)
         {
@@ -607,7 +609,7 @@ namespace LinearAlgebra.Internal
         // route at every KC/MC. Edge rows/columns run the original-layout fallback per panel,
         // continuing the same per-element chain.
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static void matMatDotPacked([NoAlias] float* matA, [NoAlias] float* matB, [NoAlias] float* matC, int m, int n, int k)
+        public static void matMatDotPacked([NoAlias] float* matA, [NoAlias] float* matB, [NoAlias] float* matC, int m, int n, int k)
         {
             const int MR = 8;
             const int NR = 16;
@@ -683,7 +685,6 @@ namespace LinearAlgebra.Internal
             if (Bpack != null) UnsafeUtility.Free(Bpack, Allocator.Temp);
             UnsafeUtility.Free(Apack, Allocator.Temp);
         }
-
 
         // Seeded 8x16 microkernel over packed strips: identical FMA block and per-element order as
         // the unpacked tile, but accumulators START from C's current values so the reduction chain

@@ -96,6 +96,23 @@ namespace LinearAlgebra.Benchmarks
         }
     }
 
+    // Same-run control for the packed route: the packed driver called directly, bypassing
+    // matMatDot's working-set gate, so the pack-copy overhead below the gate stays visible.
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public unsafe struct GemmPackedJobFProxy : IJob
+    {
+        public fProxyMxN A;
+        public fProxyMxN B;
+        public fProxyMxN C;
+
+        public void Execute()
+        {
+            Unity.Collections.LowLevel.Unsafe.UnsafeUtility.MemClear(
+                C.Data.Ptr, (long)C.Data.Length * Unity.Collections.LowLevel.Unsafe.UnsafeUtility.SizeOf<fProxy>());
+            LinearAlgebra.Internal.UnsafeOP.matMatDotPacked(A.Data.Ptr, B.Data.Ptr, C.Data.Ptr, A.M_Rows, A.N_Cols, B.N_Cols);
+        }
+    }
+
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TransJobFProxy : IJob
     {
@@ -167,6 +184,28 @@ namespace LinearAlgebra.Benchmarks
                 }
 
             var job = new GemmScalarTileJobFProxy { A = A, B = B, C = C };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.Row("fProxy", n, stat, flops);
+        }
+
+        static string BenchPackedFProxy(int n, double flops)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.fProxyMat(n, n);
+            var B = arena.fProxyMat(n, n);
+            var C = arena.fProxyMat(n, n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                {
+                    A[i, j] = rng.NextFProxy(-1f, 1f);
+                    B[i, j] = rng.NextFProxy(-1f, 1f);
+                }
+
+            var job = new GemmPackedJobFProxy { A = A, B = B, C = C };
             var stat = Bench.Time(() => job.Run());
 
             arena.Dispose();

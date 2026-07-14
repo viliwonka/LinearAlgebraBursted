@@ -40,6 +40,16 @@ namespace LinearAlgebra.Benchmarks
             foreach (var n in largeSizes) sb.AppendLine(BenchDouble(n, Flops(n)));
             sb.AppendLine();
 
+            // Packed route with the working-set gate bypassed: sub-gate sizes show the pack-copy
+            // overhead losing to the direct route (compare against the plain GEMM section above),
+            // above-gate sizes match the default route. Documents the gate crossover every run.
+            int[] packedSizes = { 512, 1024, 1536, 2048 };
+            sb.AppendLine("=== GEMM-packed-direct: matMatDotPacked, gate bypassed ===");
+            sb.AppendLine(Bench.Header());
+            foreach (var n in packedSizes) sb.AppendLine(BenchPackedFloat(n, Flops(n)));
+            foreach (var n in packedSizes) sb.AppendLine(BenchPackedDouble(n, Flops(n)));
+            sb.AppendLine();
+
             sb.AppendLine("=== GEMM-TransA: dense C = A^T * B (covariance / compact-WY shape) ===");
             sb.AppendLine(Bench.Header());
             foreach (var n in Bench.Sizes) sb.AppendLine(BenchTransAFloat(n, Flops(n)));

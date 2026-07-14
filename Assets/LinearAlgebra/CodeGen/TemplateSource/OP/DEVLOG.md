@@ -29,7 +29,23 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   GF/s at 128-512 (1024: 28.0 → 24.0), TransA 88 → 103-115 (1024: 27.5 → 24.9), AtA
   151 → 174-204 GF/s-eff (512: 1.61 → 1.31 ms); n=64 improved too (no small-size gate
   needed). Double: unchanged, keeps the scalar tiles via choose-routing.
-- 2026-07-14 | MYSTERY SOLVED at the assembly level (headless Burst disasm via bcl.exe —
+- 2026-07-14 | 6x16 SEEDED-W TILE TRIED AND REJECTED — falsifies the register-pressure
+  hypothesis below. A full packed driver (MR=6, MC=126) + seeded 6x16 W microkernel
+  (12 accums + 2 B + 1 broadcast = 15 ymm, comfortably inside the 16-register file)
+  measured 29.4-29.6 GF/s at 512-2048 vs the scalar packed kernel's 81.9-84.4 in the same
+  run — the SAME collapse as the seeded 8x16 W (34). Disasm shows the identical pathology
+  at 15 live vectors: accumulators in stack slots, vperm2i128 + vpalignr-by-1-byte
+  rotations around every add, plus vpextrb/vpinsrb single-byte traffic (41 vpalignr /
+  29 vperm2i128 / 32 vpextrb vs 12 vmulps + 12 vaddps). So the trigger is SEEDING wide
+  accumulators from C at all, not how many are live: zero-init W tiles (matMatDotUnpackedW,
+  matMatDotTransBRangeW) compile clean, seeded W tiles of ANY height collapse, seeded
+  SCALAR tiles SLP clean. Zero-init + add-C-at-writeback is not a legal fix (different
+  per-element summation tree, breaks the packed==unpacked bit contract). Scalar packed at
+  82-84 GF/s already sits at the float SLP ceiling, so there is nothing to win — do NOT
+  retry seeded wide microkernels until a Burst/LLVM upgrade changes the codegen; re-test
+  with the disasm recipe first. Experiment code removed; a permanent GEMM-packed-direct
+  benchmark section (gate bypassed, 512-2048) documents the pack-overhead crossover.
+- 2026-07-14 | Mystery root-caused at the assembly level (headless Burst disasm via bcl.exe —
   recipe in docs/dev/burst-disasm-recipe.md). The seeded W microkernel's p-loop compiles to
   160 instructions vs the scalar microkernel's 76 for identical arithmetic (16 vmulps +
   16 vaddps + 8 vbroadcastss): LLVM chains the 16 seed-loaded v256 accumulators through

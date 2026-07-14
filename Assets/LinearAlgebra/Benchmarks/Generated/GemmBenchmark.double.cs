@@ -100,6 +100,23 @@ namespace LinearAlgebra.Benchmarks
         }
     }
 
+    // Same-run control for the packed route: the packed driver called directly, bypassing
+    // matMatDot's working-set gate, so the pack-copy overhead below the gate stays visible.
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public unsafe struct GemmPackedJobDouble : IJob
+    {
+        public doubleMxN A;
+        public doubleMxN B;
+        public doubleMxN C;
+
+        public void Execute()
+        {
+            Unity.Collections.LowLevel.Unsafe.UnsafeUtility.MemClear(
+                C.Data.Ptr, (long)C.Data.Length * Unity.Collections.LowLevel.Unsafe.UnsafeUtility.SizeOf<double>());
+            LinearAlgebra.Internal.UnsafeOP.matMatDotPacked(A.Data.Ptr, B.Data.Ptr, C.Data.Ptr, A.M_Rows, A.N_Cols, B.N_Cols);
+        }
+    }
+
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TransJobDouble : IJob
     {
@@ -171,6 +188,28 @@ namespace LinearAlgebra.Benchmarks
                 }
 
             var job = new GemmScalarTileJobDouble { A = A, B = B, C = C };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.Row("double", n, stat, flops);
+        }
+
+        static string BenchPackedDouble(int n, double flops)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.doubleMat(n, n);
+            var B = arena.doubleMat(n, n);
+            var C = arena.doubleMat(n, n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                {
+                    A[i, j] = rng.NextDouble(-1f, 1f);
+                    B[i, j] = rng.NextDouble(-1f, 1f);
+                }
+
+            var job = new GemmPackedJobDouble { A = A, B = B, C = C };
             var stat = Bench.Time(() => job.Run());
 
             arena.Dispose();
