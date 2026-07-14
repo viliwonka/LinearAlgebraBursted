@@ -50,6 +50,7 @@ public class doubleFFTTests
             KnownAnalytics,
             RoundTripLargeN,
             WorkspaceReuse,
+            TwiddleTableAccuracy,
         }
 
         public TestType Type;
@@ -88,6 +89,7 @@ public class doubleFFTTests
                 case TestType.KnownAnalytics: KnownAnalytics(); break;
                 case TestType.RoundTripLargeN: RoundTripLargeN(); break;
                 case TestType.WorkspaceReuse: WorkspaceReuse(); break;
+                case TestType.TwiddleTableAccuracy: TwiddleTableAccuracy(); break;
             }
         }
 
@@ -1320,6 +1322,35 @@ public class doubleFFTTests
             WorkspaceReuseOneSize(128, 55003u);   // 2·4^3 mixed (inner M=64 radix-4 for rfft)
         }
 
+        // The deterministic (sqrt + complex-mul) twiddle builder must match the direct double-
+        // precision cos/sin table it replaced, to near machine precision after the double cast.
+        void TwiddleTableAccuracy()
+        {
+            TwiddleTableAccuracyOneSize(2);
+            TwiddleTableAccuracyOneSize(8);
+            TwiddleTableAccuracyOneSize(4096);
+            TwiddleTableAccuracyOneSize(65536);
+        }
+
+        void TwiddleTableAccuracyOneSize(int nn)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var ws = arena.doubleFFTCache(nn);
+            int half = nn >> 1;
+            for (int m = 0; m < nn; m++)
+            {
+                double ang = -2.0 * System.Math.PI * m / nn;
+                AssertClose(ws.twReFull[m], (double)math.cos(ang), (double)1E-6f);
+                AssertClose(ws.twImFull[m], (double)math.sin(ang), (double)1E-6f);
+                if (m < half)
+                {
+                    AssertClose(ws.twRe[m], (double)math.cos(ang), (double)1E-6f);
+                    AssertClose(ws.twIm[m], (double)math.sin(ang), (double)1E-6f);
+                }
+            }
+            arena.Dispose();
+        }
+
         void AssertClose(double a, double b, double precision)
         {
             double diff = math.abs(a - b);
@@ -1385,6 +1416,7 @@ public class doubleFFTTests
     [Test] public void KnownAnalyticsTest() => RunJob(TestJob.TestType.KnownAnalytics);
     [Test] public void RoundTripLargeNTest() => RunJob(TestJob.TestType.RoundTripLargeN);
     [Test] public void WorkspaceReuseTest() => RunJob(TestJob.TestType.WorkspaceReuse);
+    [Test] public void TwiddleTableAccuracyTest() => RunJob(TestJob.TestType.TwiddleTableAccuracy);
 
     // ---- Managed throw tests (guard paths) ----
 

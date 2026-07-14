@@ -46,6 +46,7 @@ public class fProxyFFTTests
             KnownAnalytics,
             RoundTripLargeN,
             WorkspaceReuse,
+            TwiddleTableAccuracy,
         }
 
         public TestType Type;
@@ -84,6 +85,7 @@ public class fProxyFFTTests
                 case TestType.KnownAnalytics: KnownAnalytics(); break;
                 case TestType.RoundTripLargeN: RoundTripLargeN(); break;
                 case TestType.WorkspaceReuse: WorkspaceReuse(); break;
+                case TestType.TwiddleTableAccuracy: TwiddleTableAccuracy(); break;
             }
         }
 
@@ -1316,6 +1318,35 @@ public class fProxyFFTTests
             WorkspaceReuseOneSize(128, 55003u);   // 2·4^3 mixed (inner M=64 radix-4 for rfft)
         }
 
+        // The deterministic (sqrt + complex-mul) twiddle builder must match the direct double-
+        // precision cos/sin table it replaced, to near machine precision after the fProxy cast.
+        void TwiddleTableAccuracy()
+        {
+            TwiddleTableAccuracyOneSize(2);
+            TwiddleTableAccuracyOneSize(8);
+            TwiddleTableAccuracyOneSize(4096);
+            TwiddleTableAccuracyOneSize(65536);
+        }
+
+        void TwiddleTableAccuracyOneSize(int nn)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var ws = arena.fProxyFFTCache(nn);
+            int half = nn >> 1;
+            for (int m = 0; m < nn; m++)
+            {
+                double ang = -2.0 * System.Math.PI * m / nn;
+                AssertClose(ws.twReFull[m], (fProxy)math.cos(ang), (fProxy)1E-6f);
+                AssertClose(ws.twImFull[m], (fProxy)math.sin(ang), (fProxy)1E-6f);
+                if (m < half)
+                {
+                    AssertClose(ws.twRe[m], (fProxy)math.cos(ang), (fProxy)1E-6f);
+                    AssertClose(ws.twIm[m], (fProxy)math.sin(ang), (fProxy)1E-6f);
+                }
+            }
+            arena.Dispose();
+        }
+
         void AssertClose(fProxy a, fProxy b, fProxy precision)
         {
             fProxy diff = math.abs(a - b);
@@ -1381,6 +1412,7 @@ public class fProxyFFTTests
     [Test] public void KnownAnalyticsTest() => RunJob(TestJob.TestType.KnownAnalytics);
     [Test] public void RoundTripLargeNTest() => RunJob(TestJob.TestType.RoundTripLargeN);
     [Test] public void WorkspaceReuseTest() => RunJob(TestJob.TestType.WorkspaceReuse);
+    [Test] public void TwiddleTableAccuracyTest() => RunJob(TestJob.TestType.TwiddleTableAccuracy);
 
     // ---- Managed throw tests (guard paths) ----
 

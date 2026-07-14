@@ -60,7 +60,7 @@ namespace LinearAlgebra
         /// outside a hot loop and pass it to the table overloads. One table serves fft/ifft of length
         /// exactly n and rfft/irfft of real signal length exactly n.
         /// </summary>
-        public static doubleFFTCache doubleFFTCache(this ref Arena arena, int n)
+        public static unsafe doubleFFTCache doubleFFTCache(this ref Arena arena, int n)
         {
             if (n < 2 || (n & (n - 1)) != 0)
                 throw new ArgumentException("doubleFFTCache: n must be a power of two and >= 2");
@@ -71,21 +71,40 @@ namespace LinearAlgebra
             var twReFull = arena.doubleVec(n);
             var twImFull = arena.doubleVec(n);
 
-            // Build at double precision for accuracy; direct per-entry cos/sin, no recurrence drift.
-            double twoPiOverN = -2.0 * System.Math.PI / n;
-            for (int j = 0; j < half; j++)
+            // Twiddle table = Nth roots of unity W_N^m = exp(-2πi·m/n), generated at double precision
+            // with only +,-,*,sqrt (cross-arch deterministic under FloatMode.Strict; no sin/cos). The
+            // binary generator roots B_k = exp(-2πi·2^k/n) come from stable unit-circle half-angle
+            // square roots; each W_N^m is the product of B_k over m's set bits, then cast to double.
+            int P = 0;
+            for (int t = n; t > 1; t >>= 1) P++;   // log2(n)
+            double* bkr = stackalloc double[32];
+            double* bki = stackalloc double[32];
+            bkr[P - 1] = -1.0; bki[P - 1] = 0.0;                    // B_{P-1} = exp(-πi)
+            if (P >= 2) { bkr[P - 2] = 0.0; bki[P - 2] = -1.0; }    // B_{P-2} = exp(-πi/2)
+            for (int k = P - 3; k >= 0; k--)
             {
-                double ang = twoPiOverN * j;
-                twRe[j] = (double)math.cos(ang);
-                twIm[j] = (double)math.sin(ang);
+                double a = bkr[k + 1];                    // cos(angle_{k+1})
+                double c = math.sqrt((1.0 + a) * 0.5);    // cos(angle_k), angle_k = angle_{k+1}/2
+                bkr[k] = c;
+                bki[k] = bki[k + 1] / (2.0 * c);          // -sin(angle_k), cancellation-free
             }
-
-            // Full-circle table: same angle formula, extended to m = 0..n-1.
             for (int m = 0; m < n; m++)
             {
-                double ang = twoPiOverN * m;
-                twReFull[m] = (double)math.cos(ang);
-                twImFull[m] = (double)math.sin(ang);
+                double cr = 1.0, ci = 0.0;                // W^0
+                int mm = m, k = 0;
+                while (mm != 0)
+                {
+                    if ((mm & 1) != 0)
+                    {
+                        double nr = cr * bkr[k] - ci * bki[k];
+                        ci = cr * bki[k] + ci * bkr[k];
+                        cr = nr;
+                    }
+                    mm >>= 1; k++;
+                }
+                twReFull[m] = (double)cr;
+                twImFull[m] = (double)ci;
+                if (m < half) { twRe[m] = (double)cr; twIm[m] = (double)ci; }
             }
 
             // Scratch buffers — persistent in this arena (disposed with the arena).

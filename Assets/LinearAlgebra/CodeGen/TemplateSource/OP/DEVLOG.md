@@ -814,6 +814,23 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   numerically broken) is the only real failure.
 
 ## FFT.Workspace
+- 2026-07-14 | Deterministic twiddle-table build: replaced the per-entry math.cos/math.sin loop
+  in fProxyFFTCache with root-of-unity generation using only +,-,*,sqrt. The table is W_N^m =
+  exp(-2πi·m/n); built from binary generator roots B_k = exp(-2πi·2^k/n) via stable unit-circle
+  half-angle square roots (c=sqrt((1+a)/2), s=b/(2c) — cancellation-free), each W_N^m the product
+  of B_k over m's set bits (bit-decomposition, ≤log2(n) mults/entry so error is O(log N·ε),
+  bounded — NOT the O(N) drift of a linear recurrence, the drift the direct-cos/sin table
+  originally avoided). WHY: sqrt is IEEE correctly-rounded (bit-identical cross-arch), and +/-/*
+  don't reassociate under FloatMode.Strict, so the whole build is cross-arch deterministic —
+  unlike math.sin/cos, which Burst only guarantees identical under FloatMode.Deterministic
+  (opt-in, 64-bit only). This closes the FFT's only non-deterministic step: under Strict the
+  workspace fft/ifft/rfft/irfft path (build + butterfly, all +/-/*/sqrt) is now cross-arch
+  reproducible. (The no-workspace recurrence path and dft still call cos/sin.) Built at double
+  precision for both dtypes, cast to fProxy (float table rounded once from a double-accurate
+  table — same as the old design). Verified: TwiddleTableAccuracy test asserts <1e-6 vs
+  math.cos/sin at n=2/8/4096/65536, float+double; all FFT round-trip/vs-recurrence/vs-DFT tests
+  pass (suite 6228). Build cost unchanged (~41 ms at N=1M float, same as the cos/sin build); the
+  timed reuse transform is untouched. Uses stackalloc → factory is now `unsafe`.
 - 2026-07-14 | Wide (fProxyW) radix-4 butterfly for the workspace fft/ifft power-of-4 path
   (FftCoreRadix4Wide), BOTH dtypes — float8 and double4. Vectorizes across the inner j loop for
   stages with quarter-stride q >= fProxyW.Width (8 float / 4 double): Width consecutive j give
