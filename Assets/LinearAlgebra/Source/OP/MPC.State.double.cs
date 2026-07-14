@@ -207,6 +207,27 @@ namespace LinearAlgebra
         /// (Phi x0 - reference) buffer once the guess is built.</summary>
         public doubleN xTrajScratch;
 
+        /// <summary>Persistent condensed-QP working-set QR factorization, carried across solves so a
+        /// steady-state tick (unchanged working set) reuses it instead of refactoring -- see
+        /// <see cref="QP.qpActiveSetCoreWarmPersistent"/>. Sized for n = <see cref="nz"/>. INTERNAL (the
+        /// field type is an internal solver detail); the public surface is <see cref="MPC.solve"/>.</summary>
+        internal doubleQPFactorState qpFactor;
+
+        /// <summary>Persistent condensed-QP reduced space (Z / QZ / H_Z), carried across solves so a
+        /// steady-state tick skips the O(nz²·(nz_free)) reduced-space rebuild. Sized for n =
+        /// <see cref="nz"/>. INTERNAL, see <see cref="qpFactor"/>.</summary>
+        internal doubleQPReducedState qpReduced;
+
+        /// <summary>Native-backed persistence of the scalar factorization metadata that the
+        /// <see cref="qpFactor"/>/<see cref="qpReduced"/> STRUCTS carry as plain fields (k, reflCount,
+        /// stale, changeCount, ...): those plain fields do NOT survive an <c>IJob.Run()</c>/<c>Schedule</c>
+        /// by-value copy of this state, but the factorization's native BUFFERS do -- so
+        /// <see cref="QP.qpActiveSetCoreWarmPersistent"/> rehydrates the counters from here at the start of
+        /// every solve and writes them back at the end, making cross-tick reuse work through the job path.
+        /// Length 8: [0]=factorValid, [1..5]=k/reflCount/rotCount/opCount/deadCount, [6]=stale,
+        /// [7]=changeCount. Initialized to "no factor yet" (factorValid=0, stale=1).</summary>
+        internal NativeArray<int> qpMeta;
+
         /// <summary>True once every buffer is allocated (regardless of content validity).</summary>
         public bool IsCreated => z.Data.IsCreated;
 
@@ -242,6 +263,9 @@ namespace LinearAlgebra
             if (bScratch.Data.IsCreated) bScratch.Dispose();
             if (uPlan.Data.IsCreated) uPlan.Dispose();
             if (xTrajScratch.Data.IsCreated) xTrajScratch.Dispose();
+            if (qpFactor.V.Data.IsCreated) qpFactor.Dispose();
+            if (qpReduced.Z.Data.IsCreated) qpReduced.Dispose();
+            if (qpMeta.IsCreated) qpMeta.Dispose();
         }
 
         // ================================================================================================
@@ -643,6 +667,13 @@ namespace LinearAlgebra
             bScratch = new doubleN(nGeneral, allocator);
             uPlan = new doubleN(nu, allocator);
             xTrajScratch = new doubleN(N * n, allocator);
+            // Persistent condensed-QP factorization + reduced space (n = nz), carried across ticks by
+            // QP.qpActiveSetCoreWarmPersistent. qpMeta[0]=factorValid stays 0, qpMeta[6]=stale=1 until the
+            // first solve fills them (native-backed so the scalar metadata survives job by-value copies).
+            qpFactor = doubleQPFactorState.Create(nz, allocator);
+            qpReduced = doubleQPReducedState.Create(nz, allocator);
+            qpMeta = new NativeArray<int>(8, allocator);
+            qpMeta[6] = 1;   // stale
         }
 
         /// <summary>Convenience overload: no terminal-P override, no deltaU, no soft rows, no

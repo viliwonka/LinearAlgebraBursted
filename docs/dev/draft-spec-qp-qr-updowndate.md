@@ -5,9 +5,12 @@ Stage 2 = explicit persistent Z/QZ/H_Z up/downdate (option (b); GGMS/Goldfarb-Id
 update NOT done — an add's congruence re-triangularization is O(nz³)). Measured GO on a
 loop-isolating QPBenchmark section: incr vs batch −11..−33% (float) / −12..−48% (double) at
 n=16/64/192, growing with n; full facade at n=192 ≈ half the stage-1 baseline. COLD core defaults
-incremental, WARM/MPC core defaults batch (a warm tick changes ~0 rows, so intra-call maintenance
-never amortizes; cross-tick persistence is a future stage). See `TemplateSource/OP/DEVLOG.md`
-under "QP". Target: `TemplateSource/OP/QP.fProxy.cs`.
+incremental, WARM/MPC core defaults batch for a SINGLE solve. Stage 2b (also shipped 2026-07-14) adds
+CROSS-TICK persistence for MPC: fProxyMPCState carries the factorization + reduced space across ticks
+and reuses them wholesale when the working set is unchanged (qpActiveSetCoreWarmPersistent) — warm
+steady-state per-frame cost −25..−34% (float) / −46..−55% (double) box, −58..−74% with active general
+rows. See `TemplateSource/OP/DEVLOG.md` under "QP" (incl. the IJob-copy metadata trap and the future
+incremental-diff-repair extension). Target: `TemplateSource/OP/QP.fProxy.cs`.
 
 ## Problem
 

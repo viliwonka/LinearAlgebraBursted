@@ -533,6 +533,28 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   mathematical result is exactly symmetric whenever Q/R/P/S are.
 
 ## QP
+- 2026-07-14 | QP v2 stage 2b SHIPPED: CROSS-TICK persistence for the MPC warm path
+  (qpActiveSetCoreWarmPersistent). fProxyMPCState now OWNS the working-set factorization (qpFactor) and
+  reduced space (qpReduced), carried across solves. Reuse fast-path: WarmSetUnchanged tests whether the
+  repaired working set for the new x0 would EXACTLY equal the previous terminal set (every active row
+  still tight on its side, no inactive row newly tight — the rank guard is irrelevant, the identical
+  rows over the same A were already accepted). If so, reuse wsf/red wholesale, skipping RepairWorkingSet
+  AND the O(nz²·nz_free) reduced-space rebuild the loop's first iteration otherwise pays; else rebuild
+  from scratch (= the non-persistent warm path). ⚠️ JOB-COPY TRAP (cost most of a debugging pass): the
+  wsf/red native BUFFERS survive an IJob.Run()/Schedule by-value copy of the owning state, but their
+  PLAIN scalar fields (k, reflCount, deadCount, opCount, rotCount, stale, changeCount, factorValid) do
+  NOT — so cross-tick reuse silently never fired through the benchmark's per-frame job.Run() (correct,
+  since the rebuild path resets those counters, but +30-40% from paying incremental overhead with no
+  reuse). Fix: MPCState carries a native-backed qpMeta[8] holding exactly those scalars;
+  qpActiveSetCoreWarmPersistent rehydrates them on entry and writes them back on exit. Measured on the
+  MPC warm steady-state benchmark (per-frame, via job.Run()): warm-box −25/−34% float, −46/−55% double
+  at (40,12,4)/(30,24,8); warm+wall (active general rows → nontrivial reduced space) −58/−66% float,
+  −68/−74% double. Correctness pinned by MPCTests.WarmPersistentMatchesColdEachFrame (every frame's warm
+  solution cross-checked against an independent cold QP.solve of the identical condensed data).
+  Allocator param added to both Create methods (Temp cold / Persistent for MPC). FUTURE: an incremental
+  DIFF-repair (up/downdate the persisted factor by only the few changed rows) would extend the win to
+  transient ticks where the working set moves by a few rows; the current fast-path is all-or-nothing
+  (exact-match reuse else full rebuild).
 - 2026-07-14 | QP v2 stage 2 SHIPPED: persistent up/downdated REDUCED SPACE (fProxyQPReducedState:
   Z, QZ = Q·Z, H_Z = ZᵀQZ carried alongside the stage-1 log). Kills the two O(n²·nz) per-iteration
   terms (FormNullSpaceBasis + the fresh Q·Z). Option (b) from docs/dev/draft-spec-qp-qr-updowndate.md

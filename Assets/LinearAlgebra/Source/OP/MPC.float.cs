@@ -12,11 +12,13 @@ namespace LinearAlgebra
     // ================================================================================================
     // Linear model predictive control: MPC.solve re-solves the condensed QP floatMPCState precomputed
     // (see that file's own header comment for the condensing math) every frame, from the CURRENT
-    // measured state and reference, and returns the receding-horizon FIRST input. Warm-starts BOTH the
-    // active-set working set (QP.qpActiveSetCoreWarm, persisted in state.wstatus) and the QP's own
-    // feasible starting point (a shift-forward of the last plan, tail-filled via the cached LQR gain,
-    // and clipped to the hard input bounds -- feasible by construction, so the phase-1-skipping QP seam
-    // applies directly, no feasibility search needed every frame).
+    // measured state and reference, and returns the receding-horizon FIRST input. Warm-starts the
+    // active-set working set AND its factorization (QP.qpActiveSetCoreWarmPersistent, all carried in
+    // state.wstatus/qpFactor/qpReduced -- a steady-state tick whose working set has not moved reuses the
+    // whole factorization + reduced space instead of rebuilding it), plus the QP's own feasible starting
+    // point (a shift-forward of the last plan, tail-filled via the cached LQR gain, and clipped to the
+    // hard input bounds -- feasible by construction, so the phase-1-skipping QP seam applies directly,
+    // no feasibility search needed every frame).
     //
     // Tracking: the reference enters only the condensed gradient (never the Hessian) -- see
     // BuildGradient. DeltaU penalty (if configured) adds one more gradient term from the last applied
@@ -70,9 +72,10 @@ namespace LinearAlgebra
             BuildGradient(ref s, in x0, in reference);
             BuildGeneralRHS(ref s, in x0);
 
-            var qpInfo = QP.qpActiveSetCoreWarm(in s.H, in s.cScratch, in s.Arows, in s.bScratch, in s.senses,
-                                                in s.xl, in s.xu, ref s.z, out double objective, maxIter,
-                                                s.wstatus, out int changes);
+            var qpInfo = QP.qpActiveSetCoreWarmPersistent(in s.H, in s.cScratch, in s.Arows, in s.bScratch, in s.senses,
+                                                          in s.xl, in s.xu, ref s.z, out double objective, maxIter,
+                                                          s.wstatus, out int changes,
+                                                          ref s.qpFactor, ref s.qpReduced, s.qpMeta);
 
             MPCInfo info;
             if (qpInfo.status == QPStatus.Optimal || qpInfo.status == QPStatus.MaxIterations)

@@ -52,6 +52,7 @@ public class doubleMPCTests
             SoftRowUnavoidableMinimalViolation,
             WarmStartChurnBound,
             WarmIterationsBeatCold,
+            WarmPersistentMatchesColdEachFrame,
             PrestabBindingBoundMatchesNonPrestab,
         }
 
@@ -69,6 +70,7 @@ public class doubleMPCTests
                 case TestType.SoftRowUnavoidableMinimalViolation: SoftRowUnavoidableMinimalViolation(); break;
                 case TestType.WarmStartChurnBound: WarmStartChurnBound(); break;
                 case TestType.WarmIterationsBeatCold: WarmIterationsBeatCold(); break;
+                case TestType.WarmPersistentMatchesColdEachFrame: WarmPersistentMatchesColdEachFrame(); break;
                 case TestType.PrestabBindingBoundMatchesNonPrestab: PrestabBindingBoundMatchesNonPrestab(); break;
             }
         }
@@ -278,6 +280,53 @@ public class doubleMPCTests
 
             u0c.Dispose(); mpcCold.Dispose(); xAtTarget.Dispose();
             x.Dispose(); reference.Dispose(); u0.Dispose(); mpcWarm.Dispose();
+            A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); uLo.Dispose(); uHi.Dispose();
+        }
+
+        // The persistent warm path (MPC.solve carries qpFactor/qpReduced across ticks, reusing them
+        // whole when the working set has not moved) must land on the SAME optimum a from-scratch COLD
+        // solve of the IDENTICAL condensed QP finds -- EVERY frame, across both the steady-state reuse
+        // ticks and the working-set-changing (rebuild) ticks. The condensed Hessian is PD (R > 0), so
+        // the minimizer is unique: cross-tick reuse cannot silently drift the answer. x0=(5,0) with a
+        // tight [-0.5,0.5] input bound saturates early (working-set churn) then relaxes to steady state
+        // -- exercising both code paths in one run.
+        void WarmPersistentMatchesColdEachFrame()
+        {
+            var A = Mat2(1, 1, 0, 1); var B = ColVec2(0, 1); var Q = Eye(2); var R = R1(1);
+            var uLo = Vec1((double)(-0.5)); var uHi = Vec1((double)0.5);
+            var mpc = new doubleMPCState(2, 1, 8, Allocator.Temp, in A, in B, in Q, in R, in uLo, in uHi);
+
+            var x = Vec2(5, 0);
+            var reference = new doubleN(2, Allocator.Temp);   // track to the origin
+            var u0 = new doubleN(1, Allocator.Temp, true);
+
+            int nz = mpc.nz;
+            var xCold = new doubleN(nz, Allocator.Temp, true);
+            double objTol = 1e-7;
+            double zTol = 1e-5;
+
+            for (int f = 0; f < 16; f++)
+            {
+                var info = MPC.solve(ref mpc, in x, in reference, ref u0);
+                AssertTrue(info.status == MPCStatus.Optimal || info.status == MPCStatus.MaxIterations);
+
+                // Independently COLD-solve the same condensed QP MPC just warm-solved: its gradient and
+                // general RHS are still in cScratch/bScratch, the warm solution in z. Same optimum since
+                // H is PD -- pins that the persistent reuse produced the true minimizer this frame.
+                for (int i = 0; i < nz; i++) xCold[i] = (double)0;
+                var coldInfo = QP.solve(in mpc.H, in mpc.cScratch, in mpc.Arows, in mpc.bScratch, in mpc.senses,
+                                        in mpc.xl, in mpc.xu, ref xCold, out double objCold, 0);
+                AssertTrue(coldInfo.status == QPStatus.Optimal);
+                AssertCloseD(info.objective, objCold, objTol);
+                for (int i = 0; i < nz; i++) AssertClose(mpc.z[i], xCold[i], zTol);
+
+                double x0n = x[0] + x[1];
+                double x1n = x[1] + u0[0];
+                x[0] = x0n; x[1] = x1n;
+            }
+
+            xCold.Dispose();
+            x.Dispose(); reference.Dispose(); u0.Dispose(); mpc.Dispose();
             A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); uLo.Dispose(); uHi.Dispose();
         }
 

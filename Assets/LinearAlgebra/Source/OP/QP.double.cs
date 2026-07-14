@@ -884,6 +884,157 @@ namespace LinearAlgebra
             return info;
         }
 
+        /// <summary>
+        /// Cross-tick-persistent warm sibling of <see cref="qpActiveSetCoreWarm"/>, for
+        /// <see cref="MPC"/>: the working-set factorization (<paramref name="wsf"/>) AND the reduced
+        /// space (<paramref name="red"/>) are CALLER-OWNED and carried ACROSS solves (same fixed
+        /// <paramref name="Q"/>/<paramref name="A"/>). When the tick's working set is unchanged from the
+        /// previous solve -- the MPC steady-state common case -- the persisted factorization + reduced
+        /// space are reused DIRECTLY, skipping the O(n²·nz) rebuild that every from-scratch warm solve
+        /// pays. When it changed, the factorization is rebuilt from scratch (identical to
+        /// <see cref="qpActiveSetCoreWarm"/>, into the persistent buffers).
+        ///
+        /// <paramref name="qpMeta"/> (length 8, native-backed) carries the SCALAR factorization metadata
+        /// across ticks: [0]=factorValid, [1..5]=wsf.k/reflCount/rotCount/opCount/deadCount, [6]=red.stale,
+        /// [7]=red.changeCount. It exists because those live on <paramref name="wsf"/>/<paramref name="red"/>
+        /// as PLAIN fields that do NOT survive a job-struct by-value copy, whereas their native buffers
+        /// (and this array) do -- so the counters are rehydrated from here on entry and written back on
+        /// exit. The reduced space is maintained incrementally (this path only pays off with it on).
+        /// </summary>
+        internal static QPInfo qpActiveSetCoreWarmPersistent(in doubleMxN Q, in doubleN c, in doubleMxN A, in doubleN b,
+                                                             in NativeArray<ConstraintSense> senses,
+                                                             in doubleN xl, in doubleN xu,
+                                                             ref doubleN x, out double objective, int maxIter,
+                                                             NativeArray<byte> wstatusPersist, out int workingSetChanges,
+                                                             ref doubleQPFactorState wsf, ref doubleQPReducedState red,
+                                                             NativeArray<int> qpMeta)
+        {
+            // Rehydrate the scalar factorization state from its native-backed store (the wsf/red native
+            // buffers survive a job copy of the owning state, but these plain-int fields do not).
+            bool factorValid = qpMeta[0] != 0;
+            wsf.k = qpMeta[1]; wsf.reflCount = qpMeta[2]; wsf.rotCount = qpMeta[3];
+            wsf.opCount = qpMeta[4]; wsf.deadCount = qpMeta[5];
+            red.stale = qpMeta[6] != 0; red.changeCount = qpMeta[7];
+            int n = Q.M_Rows, m = A.M_Rows, T = m + n;
+
+            if (!Q.IsSquare) throw new ArgumentException("QP.qpActiveSetCoreWarmPersistent: Q must be square");
+            if (A.N_Cols != n) throw new ArgumentException("QP.qpActiveSetCoreWarmPersistent: A.N_Cols must equal Q.M_Rows");
+            if (b.N != m) throw new ArgumentException("QP.qpActiveSetCoreWarmPersistent: b.N must equal A.M_Rows");
+            if (c.N != n) throw new ArgumentException("QP.qpActiveSetCoreWarmPersistent: c.N must equal Q.M_Rows");
+            if (senses.Length != m) throw new ArgumentException("QP.qpActiveSetCoreWarmPersistent: senses.Length must equal A.M_Rows");
+            if (xl.N != n) throw new ArgumentException("QP.qpActiveSetCoreWarmPersistent: xl.N must equal Q.M_Rows");
+            if (xu.N != n) throw new ArgumentException("QP.qpActiveSetCoreWarmPersistent: xu.N must equal Q.M_Rows");
+            if (x.N != n) throw new ArgumentException("QP.qpActiveSetCoreWarmPersistent: x.N must equal Q.M_Rows");
+            if (wstatusPersist.Length != T) throw new ArgumentException("QP.qpActiveSetCoreWarmPersistent: wstatusPersist.Length must equal A.M_Rows + Q.M_Rows");
+
+            double normInfQ = Norms.LInf(in Q);
+            double normInfA = Norms.LInf(in A);
+            double zeroThreshold = Consts.doubleZeroThreshold * math.max(normInfQ, (double)1);
+            double zeroThresholdAW = Consts.doubleZeroThreshold * math.max(normInfA, (double)1);
+            double feasTol = (double)(math.max(math.sqrt((double)Consts.doubleEpsilon), 1e-7)) * math.max((double)1, normInfA);
+            double pivTol = math.max(Consts.doubleZeroThreshold, (double)1e-9);
+            double dualTol = feasTol;
+
+            var L = new doubleN(T, Allocator.Temp, true);
+            var U = new doubleN(T, Allocator.Temp, true);
+            BuildRowBounds(in b, in senses, in xl, in xu, m, n, ref L, ref U);
+
+            var Ax0 = new doubleN(math.max(m, 1), Allocator.Temp, true);
+            if (m > 0) Blas.dot(in A, in x, ref Ax0);
+            bool feasible = true;
+            double worstViol = 0;
+            for (int t = 0; t < T; t++)
+            {
+                double act = t < m ? (double)Ax0[t] : (double)x[t - m];
+                double lo = (double)L[t] - (double)feasTol, hi = (double)U[t] + (double)feasTol;
+                if (act < lo) { feasible = false; worstViol = math.max(worstViol, lo - act); }
+                else if (act > hi) { feasible = false; worstViol = math.max(worstViol, act - hi); }
+            }
+
+            if (!feasible)
+            {
+                Ax0.Dispose(); L.Dispose(); U.Dispose();
+                var Qxi = new doubleN(n, Allocator.Temp, true);
+                Blas.dot(in Q, in x, ref Qxi);
+                double objInfeas = 0;
+                for (int i = 0; i < n; i++) objInfeas += 0.5 * (double)x[i] * (double)Qxi[i] + (double)c[i] * (double)x[i];
+                Qxi.Dispose();
+                objective = objInfeas;
+                workingSetChanges = 0;
+                return new QPInfo { status = QPStatus.Infeasible, iterations = 0, objective = objInfeas, stationarityResidual = 0, feasibilityResidual = worstViol };
+            }
+
+            var wstatus = new NativeArray<byte>(T, Allocator.Temp);
+
+            // Reuse the persisted factorization iff the repaired working set would be IDENTICAL to the
+            // previous solve's: every previously-active row still tight on its side, and no inactive row
+            // newly tight (the rank guard cannot change the outcome -- the exact same rows over the same
+            // A were already accepted last tick). Otherwise rebuild from scratch into the persistent
+            // buffers, exactly as the non-persistent warm path does.
+            bool reuse = factorValid && WarmSetUnchanged(in L, in U, m, n, T, in x, in Ax0, wstatusPersist, feasTol);
+            if (reuse)
+            {
+                wstatus.CopyFrom(wstatusPersist);   // wsf/red already match this set -- nothing to rebuild
+            }
+            else
+            {
+                wsf.k = 0; wsf.reflCount = 0; wsf.rotCount = 0; wsf.opCount = 0; wsf.deadCount = 0;
+                RepairWorkingSet(in A, in L, in U, m, n, T, in x, in Ax0, wstatusPersist, wstatus, ref wsf, feasTol, zeroThresholdAW);
+                red.stale = true;
+            }
+            Ax0.Dispose();
+
+            var info = qpActiveSetLoop(in Q, in c, in A, m, n, T, in L, in U, wstatus, ref wsf, ref red,
+                                       true, ref x, maxIter,
+                                       normInfQ, zeroThreshold, zeroThresholdAW, feasTol, pivTol, dualTol,
+                                       out objective);
+
+            // Persist the scalar factorization state back for the next tick (the native buffers already
+            // hold the terminal factorization; only these counters need to survive a job copy).
+            qpMeta[0] = 1;   // factorValid
+            qpMeta[1] = wsf.k; qpMeta[2] = wsf.reflCount; qpMeta[3] = wsf.rotCount;
+            qpMeta[4] = wsf.opCount; qpMeta[5] = wsf.deadCount;
+            qpMeta[6] = red.stale ? 1 : 0; qpMeta[7] = red.changeCount;
+
+            int changes = 0;
+            for (int t = 0; t < T; t++) if (wstatusPersist[t] != wstatus[t]) changes++;
+            workingSetChanges = changes;
+            wstatusPersist.CopyFrom(wstatus);
+
+            wstatus.Dispose(); L.Dispose(); U.Dispose();
+            return info;
+        }
+
+        // True iff the repaired working set for the current x0 would EXACTLY equal wstatusPrev: every
+        // active row (ActiveLower/ActiveUpper) still tight on its own side within feasTol, no inactive
+        // row newly tight on either side, and every equality row (L==U) still marked Equality. Mirrors
+        // RepairWorkingSet's tightness tests WITHOUT building the factor -- the rank guard is irrelevant
+        // (the identical rows over the same A were already accepted). Lets the persistent warm path skip
+        // the rebuild when the working set has not moved.
+        internal static bool WarmSetUnchanged(in doubleN L, in doubleN U, int m, int n, int T,
+                                              in doubleN x0, in doubleN Ax0, NativeArray<byte> wstatusPrev, double feasTol)
+        {
+            for (int t = 0; t < T; t++)
+            {
+                double act = t < m ? (double)Ax0[t] : (double)x0[t - m];
+                var st = (WorkingSetStatus)wstatusPrev[t];
+
+                if (L[t] == U[t])
+                {
+                    if (st != WorkingSetStatus.Equality) return false;
+                    continue;
+                }
+
+                bool atLower = (double)L[t] > -1e29 && math.abs(act - (double)L[t]) <= (double)feasTol;
+                bool atUpper = (double)U[t] < 1e29 && math.abs(act - (double)U[t]) <= (double)feasTol;
+
+                if (st == WorkingSetStatus.ActiveLower)      { if (!atLower) return false; }
+                else if (st == WorkingSetStatus.ActiveUpper) { if (!atUpper) return false; }
+                else                                         { if (atLower || atUpper) return false; }   // Inactive must stay off both bounds
+            }
+            return true;
+        }
+
         // The shared active-set add/drop LOOP (algorithm steps 1-5), factored out of qpActiveSetCore so
         // qpActiveSetCoreWarm (persistent working-set seed, see its own doc comment) reuses it byte-for-
         // byte -- ONLY how `wstatus` is seeded on entry differs between the two callers. `wstatus` must
@@ -1985,25 +2136,27 @@ namespace LinearAlgebra
         public int opCount;                 // total log entries (= reflCount + rotCount)
         public int deadCount;               // reflectors of since-dropped columns still in the log
 
-        public static doubleQPFactorState Create(int n)
+        // alloc defaults to Temp (the per-solve cold path); MPC passes Allocator.Persistent to carry
+        // the factorization across warm-start ticks (see MPC.State).
+        public static doubleQPFactorState Create(int n, Allocator alloc = Allocator.Temp)
         {
             int reflCap = n + DeadCap;
             int rotCap = DeadCap * math.max(n, 1);
             return new doubleQPFactorState
             {
                 n = n,
-                V = new doubleMxN(n, reflCap, Allocator.Temp, true),
-                R = new doubleMxN(n, n, Allocator.Temp, true),
-                reflStart = new NativeArray<int>(reflCap, Allocator.Temp),
-                rowOfCol = new NativeArray<int>(math.max(n, 1), Allocator.Temp),
-                opType = new NativeArray<byte>(reflCap + rotCap, Allocator.Temp),
-                opArg = new NativeArray<int>(reflCap + rotCap, Allocator.Temp),
-                rotRow = new NativeArray<int>(rotCap, Allocator.Temp),
-                rotC = new doubleN(rotCap, Allocator.Temp, false),
-                rotS = new doubleN(rotCap, Allocator.Temp, false),
-                vCol = new doubleN(n, Allocator.Temp, false),
-                uRefl = new doubleN(n, Allocator.Temp, false),
-                wApply = new doubleN(n, Allocator.Temp, false),
+                V = new doubleMxN(n, reflCap, alloc, true),
+                R = new doubleMxN(n, n, alloc, true),
+                reflStart = new NativeArray<int>(reflCap, alloc),
+                rowOfCol = new NativeArray<int>(math.max(n, 1), alloc),
+                opType = new NativeArray<byte>(reflCap + rotCap, alloc),
+                opArg = new NativeArray<int>(reflCap + rotCap, alloc),
+                rotRow = new NativeArray<int>(rotCap, alloc),
+                rotC = new doubleN(rotCap, alloc, false),
+                rotS = new doubleN(rotCap, alloc, false),
+                vCol = new doubleN(n, alloc, false),
+                uRefl = new doubleN(n, alloc, false),
+                wApply = new doubleN(n, alloc, false),
             };
         }
 
@@ -2036,7 +2189,9 @@ namespace LinearAlgebra
         public int changeCount;      // incremental updates since the last rebuild
         public int n;
 
-        public static doubleQPReducedState Create(int n)
+        // alloc defaults to Temp (per-solve cold path); MPC passes Allocator.Persistent to carry the
+        // reduced space across warm-start ticks (see MPC.State).
+        public static doubleQPReducedState Create(int n, Allocator alloc = Allocator.Temp)
         {
             return new doubleQPReducedState
             {
@@ -2044,12 +2199,12 @@ namespace LinearAlgebra
                 stale = true,
                 // uninit: the live leading blocks are always fully written (RebuildReduced / the
                 // up/downdate kernels) before any read; the dead tail is never touched.
-                Z = new doubleMxN(n, n, Allocator.Temp, true),
-                QZ = new doubleMxN(n, n, Allocator.Temp, true),
-                Hz = new doubleMxN(n, n, Allocator.Temp, true),
-                u = new doubleN(n, Allocator.Temp, true),
-                zv = new doubleN(n, Allocator.Temp, true),
-                qzv = new doubleN(n, Allocator.Temp, true),
+                Z = new doubleMxN(n, n, alloc, true),
+                QZ = new doubleMxN(n, n, alloc, true),
+                Hz = new doubleMxN(n, n, alloc, true),
+                u = new doubleN(n, alloc, true),
+                zv = new doubleN(n, alloc, true),
+                qzv = new doubleN(n, alloc, true),
             };
         }
 
