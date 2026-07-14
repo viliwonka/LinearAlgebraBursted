@@ -814,6 +814,26 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   numerically broken) is the only real failure.
 
 ## FFT.Workspace
+- 2026-07-14 | Wide (fProxyW/float8) radix-4 butterfly for the workspace fft/ifft power-of-4
+  path (FftCoreRadix4Wide). Vectorizes across the inner j loop for stages with quarter-stride
+  q >= 8: 8 consecutive j give contiguous 8-wide re/im loads/stores and reads of precomputed
+  contiguous per-stage twiddles (ws.sw1/2/3 re+im, W^1/W^2/W^3 tabulated directly so every lane
+  reproduces the scalar butterfly bit-for-bit — TableFftVsRecurrence's relTol tests pass). Stages
+  q<8 (only q=1,4) stay scalar; q>=16 powers of 4 are all multiples of 8 so no j-tail. FLOAT ONLY
+  (skipFor[double] + the fft/ifft dispatch routes double to the scalar FftCoreRadix4); double
+  regressed through fProxyW in the vecDot campaign, and the win here is float-lane-count driven.
+  Measured fft(ws) float, scalar baseline → wide, stable across 2 runs each: 64K 0.556→0.373
+  = 1.49x, 256K 2.80→1.65 = 1.70x, 1M ~14-17→6.6 = raw ~2.1-2.5x. HONEST CAVEAT: the unchanged
+  double(ws) scalar control swings 21.7→30-32 ms at 1M across identical-code runs (the 1M
+  butterfly self-throttles — it's the largest/last size, box heats mid-run), and the wide runs
+  happened to land cool (double-control 21.7) while baseline runs ran hot (30-32). Normalizing
+  by the same-run double control: 64K stays 1.49x (controls matched within 3%), 256K ~1.5x,
+  1M ~1.75x. So the defensible read is ~1.5x mid-range rising to ~1.75-2x at 1M, thermal-limited
+  above 256K on this box — the 64K 1.49x is the cleanest figure. Speedup GROWS with N
+  (butterfly-dependency-bound, not bandwidth-bound as first feared). Cost: sw* tables add ~2N
+  floats (~8 MB at N=1M) to the float workspace, on top of the full-circle table. NOT applied to rfft/irfft (their inner sub-FFT runs
+  at size M<n via the mixed path, where the top-level stage tables don't match) — future work:
+  per-(size,tableN) stage tables, or derive W^2/W^3 from W^1 in-register to halve sw* memory.
 - 2026-07-12 | Full-circle twiddle table bandwidth tradeoff: uses ~2x twiddle memory (~8 MB at N=1M for float) versus the half-table, offset by halving the number of full-array passes (log4(N) vs log2(N) passes). (was FFT.Workspace.fProxy.cs:21)
 
 ## Eigen

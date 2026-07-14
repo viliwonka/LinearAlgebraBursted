@@ -8,6 +8,7 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
+using LinearAlgebra.Internal;   // doubleW (8-lane AVX helper) for the wide radix-4 butterfly
 
 namespace LinearAlgebra
 {
@@ -38,6 +39,8 @@ namespace LinearAlgebra
         public doubleN sz;         // length n/2: odd-sample  packing scratch for rfft/irfft
         public doubleN visited;    // length n:   cycle-following scratch for FftCoreRadix4Mixed
                                    //             (stores 0/1 flags via double; [0,size) used per call)
+
+        
     }
 
     public static partial class ArenaExtensions
@@ -87,6 +90,8 @@ namespace LinearAlgebra
             var sz      = arena.doubleVec(half, uninit: true);
             var visited = arena.doubleVec(n,    uninit: true);
 
+            
+
             return new doubleFFTCache
             {
                 twRe     = twRe,
@@ -97,6 +102,7 @@ namespace LinearAlgebra
                 cz       = cz,
                 sz       = sz,
                 visited  = visited,
+                
             };
         }
     }
@@ -144,9 +150,12 @@ namespace LinearAlgebra
 
             if (IsPowerOf4(n))
             {
+                
+                
                 var twReFull = ws.twReFull;
                 var twImFull = ws.twImFull;
                 FftCoreRadix4(ref re, ref im, ref twReFull, ref twImFull, n, false);
+                
             }
             else if ((n & (n - 1)) == 0)   // power-of-2, not power-of-4 → 2·4^k mixed-radix path
             {
@@ -174,9 +183,12 @@ namespace LinearAlgebra
 
             if (IsPowerOf4(n))
             {
+                
+                
                 var twReFull = ws.twReFull;
                 var twImFull = ws.twImFull;
                 FftCoreRadix4(ref re, ref im, ref twReFull, ref twImFull, n, true);
+                
             }
             else if ((n & (n - 1)) == 0)   // power-of-2, not power-of-4 → 2·4^k mixed-radix path
             {
@@ -441,6 +453,8 @@ namespace LinearAlgebra
                 }
             }
         }
+
+        
 
         // Outer radix-4 DIT core: permutation + conjugate trick + pointer kernel + inverse scale.
         // Transform size is re.N (must be a power of 4, caller guarantees).

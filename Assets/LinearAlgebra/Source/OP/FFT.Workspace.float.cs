@@ -8,6 +8,7 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
+using LinearAlgebra.Internal;   // floatW (8-lane AVX helper) for the wide radix-4 butterfly
 
 namespace LinearAlgebra
 {
@@ -38,6 +39,15 @@ namespace LinearAlgebra
         public floatN sz;         // length n/2: odd-sample  packing scratch for rfft/irfft
         public floatN visited;    // length n:   cycle-following scratch for FftCoreRadix4Mixed
                                    //             (stores 0/1 flags via float; [0,size) used per call)
+
+        
+        // Contiguous per-stage twiddle tables for the wide (floatW) radix-4 butterfly: stages
+        // with quarter-stride q >= floatW.Width, concatenated in stage order (total length swLen).
+        // sw2/sw3 hold W^2/W^3 tabulated directly so the wide path is bit-for-bit the scalar one.
+        // Built only for a power-of-4 n (the wide-dispatched fft/ifft path); empty otherwise.
+        public floatN sw1re, sw1im, sw2re, sw2im, sw3re, sw3im;
+        public int swLen;
+        
     }
 
     public static partial class ArenaExtensions
@@ -87,6 +97,41 @@ namespace LinearAlgebra
             var sz      = arena.floatVec(half, uninit: true);
             var visited = arena.floatVec(n,    uninit: true);
 
+            
+            // Wide-butterfly stage twiddles: only for a power-of-4 n (the wide-dispatched path).
+            // n is already a power of two here, so power-of-4 == no odd bit-pair set.
+            bool pow4 = (n & unchecked((int)0xAAAAAAAA)) == 0;
+            int swLen = 0;
+            if (pow4)
+                for (int qq = 1; qq < n; qq <<= 2)
+                    if (qq >= floatW.Width) swLen += qq;
+            int swAlloc = swLen > 0 ? swLen : 1;
+            var sw1re = arena.floatVec(swAlloc, uninit: true);
+            var sw1im = arena.floatVec(swAlloc, uninit: true);
+            var sw2re = arena.floatVec(swAlloc, uninit: true);
+            var sw2im = arena.floatVec(swAlloc, uninit: true);
+            var sw3re = arena.floatVec(swAlloc, uninit: true);
+            var sw3im = arena.floatVec(swAlloc, uninit: true);
+            if (pow4)
+            {
+                int off = 0;
+                for (int qq = 1; qq < n; qq <<= 2)
+                {
+                    if (qq < floatW.Width) continue;
+                    int len  = qq << 2;
+                    int step = n / len;
+                    for (int j = 0; j < qq; j++)
+                    {
+                        int t1 = j * step, t2 = t1 + t1, t3 = t2 + t1;
+                        sw1re[off + j] = twReFull[t1]; sw1im[off + j] = twImFull[t1];
+                        sw2re[off + j] = twReFull[t2]; sw2im[off + j] = twImFull[t2];
+                        sw3re[off + j] = twReFull[t3]; sw3im[off + j] = twImFull[t3];
+                    }
+                    off += qq;
+                }
+            }
+            
+
             return new floatFFTCache
             {
                 twRe     = twRe,
@@ -97,6 +142,12 @@ namespace LinearAlgebra
                 cz       = cz,
                 sz       = sz,
                 visited  = visited,
+                
+                sw1re = sw1re, sw1im = sw1im,
+                sw2re = sw2re, sw2im = sw2im,
+                sw3re = sw3re, sw3im = sw3im,
+                swLen = swLen,
+                
             };
         }
     }
@@ -144,9 +195,10 @@ namespace LinearAlgebra
 
             if (IsPowerOf4(n))
             {
-                var twReFull = ws.twReFull;
-                var twImFull = ws.twImFull;
-                FftCoreRadix4(ref re, ref im, ref twReFull, ref twImFull, n, false);
+                
+                FftCoreRadix4Wide(ref re, ref im, in ws, false);
+                
+                
             }
             else if ((n & (n - 1)) == 0)   // power-of-2, not power-of-4 → 2·4^k mixed-radix path
             {
@@ -174,9 +226,10 @@ namespace LinearAlgebra
 
             if (IsPowerOf4(n))
             {
-                var twReFull = ws.twReFull;
-                var twImFull = ws.twImFull;
-                FftCoreRadix4(ref re, ref im, ref twReFull, ref twImFull, n, true);
+                
+                FftCoreRadix4Wide(ref re, ref im, in ws, true);
+                
+                
             }
             else if ((n & (n - 1)) == 0)   // power-of-2, not power-of-4 → 2·4^k mixed-radix path
             {
@@ -441,6 +494,141 @@ namespace LinearAlgebra
                 }
             }
         }
+
+        
+        // Float-only wide (floatW, 8 lanes) radix-4 DIT for a top-level power-of-4 transform whose
+        // size equals the workspace size (ws.n). Digit-reversal, then per-stage butterflies:
+        // stages with quarter-stride q >= floatW.Width vectorize across j (8 consecutive j give
+        // contiguous 8-wide re/im loads and reads of the precomputed contiguous stage twiddles
+        // ws.sw*), stages with q < Width run scalar from the full-circle table. Every lane performs
+        // the exact scalar butterfly with the same tabulated twiddles, so output matches
+        // FftCoreRadix4 to the last bit per element.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static unsafe void FftCoreRadix4Wide(ref floatN re, ref floatN im, in floatFFTCache ws, bool inverse)
+        {
+            int n = re.N;
+            if (n == 1) return;
+
+            float* rp = re.Data.Ptr;
+            float* ip = im.Data.Ptr;
+
+            // Conjugate trick for the inverse.
+            if (inverse)
+                for (int i = 0; i < n; i++) ip[i] = -ip[i];
+
+            // Base-4 digit reversal.
+            int log4n = 0;
+            for (int t = n; t > 1; t >>= 2) log4n++;
+            for (int i = 0; i < n; i++)
+            {
+                int j = ReverseBase4Digits(i, log4n);
+                if (j > i)
+                {
+                    float tr = rp[i]; rp[i] = rp[j]; rp[j] = tr;
+                    float ti = ip[i]; ip[i] = ip[j]; ip[j] = ti;
+                }
+            }
+
+            float* twr = ws.twReFull.Data.Ptr;
+            float* twi = ws.twImFull.Data.Ptr;
+            float* s1r = ws.sw1re.Data.Ptr; float* s1i = ws.sw1im.Data.Ptr;
+            float* s2r = ws.sw2re.Data.Ptr; float* s2i = ws.sw2im.Data.Ptr;
+            float* s3r = ws.sw3re.Data.Ptr; float* s3i = ws.sw3im.Data.Ptr;
+
+            int W = floatW.Width;
+            int stageOff = 0;
+
+            for (int q = 1; q < n; q <<= 2)
+            {
+                int len  = q << 2;
+                int step = n / len;   // tableN == n at the top level
+
+                if (q >= W)
+                {
+                    // Wide stage: q is a multiple of W (powers of 4 >= 16 divide 8), so no j tail.
+                    for (int base_ = 0; base_ < n; base_ += len)
+                    {
+                        for (int j = 0; j < q; j += W)
+                        {
+                            int i0 = base_ + j, i1 = i0 + q, i2 = i1 + q, i3 = i2 + q;
+
+                            floatW Are = floatW.Load(rp + i0, 0), Aim = floatW.Load(ip + i0, 0);
+
+                            floatW w1r = floatW.Load(s1r + stageOff + j, 0), w1i = floatW.Load(s1i + stageOff + j, 0);
+                            floatW x1r = floatW.Load(rp + i1, 0), x1i = floatW.Load(ip + i1, 0);
+                            floatW Bre = w1r * x1r - w1i * x1i;
+                            floatW Bim = w1r * x1i + w1i * x1r;
+
+                            floatW w2r = floatW.Load(s2r + stageOff + j, 0), w2i = floatW.Load(s2i + stageOff + j, 0);
+                            floatW x2r = floatW.Load(rp + i2, 0), x2i = floatW.Load(ip + i2, 0);
+                            floatW Cre = w2r * x2r - w2i * x2i;
+                            floatW Cim = w2r * x2i + w2i * x2r;
+
+                            floatW w3r = floatW.Load(s3r + stageOff + j, 0), w3i = floatW.Load(s3i + stageOff + j, 0);
+                            floatW x3r = floatW.Load(rp + i3, 0), x3i = floatW.Load(ip + i3, 0);
+                            floatW Dre = w3r * x3r - w3i * x3i;
+                            floatW Dim = w3r * x3i + w3i * x3r;
+
+                            floatW T0re = Are + Cre, T0im = Aim + Cim;
+                            floatW T1re = Are - Cre, T1im = Aim - Cim;
+                            floatW T2re = Bre + Dre, T2im = Bim + Dim;
+                            floatW T3re = Bre - Dre, T3im = Bim - Dim;
+
+                            floatW.Store(rp + i0, 0, T0re + T2re); floatW.Store(ip + i0, 0, T0im + T2im);
+                            floatW.Store(rp + i2, 0, T0re - T2re); floatW.Store(ip + i2, 0, T0im - T2im);
+                            floatW.Store(rp + i1, 0, T1re + T3im); floatW.Store(ip + i1, 0, T1im - T3re);
+                            floatW.Store(rp + i3, 0, T1re - T3im); floatW.Store(ip + i3, 0, T1im + T3re);
+                        }
+                    }
+                    stageOff += q;
+                }
+                else
+                {
+                    // Small stage (q < Width): scalar, reading the full-circle table directly.
+                    for (int base_ = 0; base_ < n; base_ += len)
+                    {
+                        for (int j = 0; j < q; j++)
+                        {
+                            int i0 = base_ + j, i1 = i0 + q, i2 = i1 + q, i3 = i2 + q;
+                            int tw1 = j * step, tw2 = tw1 + tw1, tw3 = tw2 + tw1;
+
+                            float A_re = rp[i0], A_im = ip[i0];
+                            float w1r = twr[tw1], w1i = twi[tw1];
+                            float B_re = w1r * rp[i1] - w1i * ip[i1];
+                            float B_im = w1r * ip[i1] + w1i * rp[i1];
+                            float w2r = twr[tw2], w2i = twi[tw2];
+                            float C_re = w2r * rp[i2] - w2i * ip[i2];
+                            float C_im = w2r * ip[i2] + w2i * rp[i2];
+                            float w3r = twr[tw3], w3i = twi[tw3];
+                            float D_re = w3r * rp[i3] - w3i * ip[i3];
+                            float D_im = w3r * ip[i3] + w3i * rp[i3];
+
+                            float T0_re = A_re + C_re, T0_im = A_im + C_im;
+                            float T1_re = A_re - C_re, T1_im = A_im - C_im;
+                            float T2_re = B_re + D_re, T2_im = B_im + D_im;
+                            float T3_re = B_re - D_re, T3_im = B_im - D_im;
+
+                            rp[i0] = T0_re + T2_re; ip[i0] = T0_im + T2_im;
+                            rp[i2] = T0_re - T2_re; ip[i2] = T0_im - T2_im;
+                            rp[i1] = T1_re + T3_im; ip[i1] = T1_im - T3_re;
+                            rp[i3] = T1_re - T3_im; ip[i3] = T1_im + T3_re;
+                        }
+                    }
+                }
+            }
+
+            // Undo conjugate and apply 1/N for the inverse.
+            if (inverse)
+            {
+                float invN = (float)1 / (float)n;
+                for (int i = 0; i < n; i++)
+                {
+                    rp[i] =  rp[i] * invN;
+                    ip[i] = -ip[i] * invN;
+                }
+            }
+        }
+        
 
         // Outer radix-4 DIT core: permutation + conjugate trick + pointer kernel + inverse scale.
         // Transform size is re.N (must be a power of 4, caller guarantees).
