@@ -80,23 +80,32 @@ namespace LinearAlgebra
                 bkr[k] = c;
                 bki[k] = bki[k + 1] / (2.0 * c);          // -sin(angle_k), cancellation-free
             }
+            // Recursive-doubling fill: W^0 = 1, then for each bit k, W^(2^k + j) = W^j · B_k for
+            // j < 2^k. One complex-mult per entry (O(n) total vs O(n·log n) for per-entry
+            // bit-decomposition). Each entry is still <= log2(n) mults deep in the dependency chain,
+            // so error stays O(log n · ε). Kept in a double scratch and cast to fProxy once, so the
+            // accuracy model is identical to the per-entry form.
+            var dre = (double*)UnsafeUtility.Malloc((long)n * sizeof(double), 16, Allocator.Persistent);
+            var dim = (double*)UnsafeUtility.Malloc((long)n * sizeof(double), 16, Allocator.Persistent);
+            dre[0] = 1.0; dim[0] = 0.0;
+            for (int k = 0; k < P; k++)
+            {
+                int block = 1 << k;
+                double br = bkr[k], bi = bki[k];
+                for (int j = 0; j < block; j++)
+                {
+                    double ar = dre[j], ai = dim[j];
+                    dre[block + j] = ar * br - ai * bi;
+                    dim[block + j] = ar * bi + ai * br;
+                }
+            }
             for (int m = 0; m < n; m++)
             {
-                double cr = 1.0, ci = 0.0;                // W^0
-                int mm = m, k = 0;
-                while (mm != 0)
-                {
-                    if ((mm & 1) != 0)
-                    {
-                        double nr = cr * bkr[k] - ci * bki[k];
-                        ci = cr * bki[k] + ci * bkr[k];
-                        cr = nr;
-                    }
-                    mm >>= 1; k++;
-                }
-                twReFull[m] = (fProxy)cr;
-                twImFull[m] = (fProxy)ci;
+                twReFull[m] = (fProxy)dre[m];
+                twImFull[m] = (fProxy)dim[m];
             }
+            UnsafeUtility.Free(dre, Allocator.Persistent);
+            UnsafeUtility.Free(dim, Allocator.Persistent);
 
             // Scratch buffers — persistent in this arena (disposed with the arena).
             // cz/sz are the two-for-one packing temporaries for rfft/irfft (length n/2 = M).

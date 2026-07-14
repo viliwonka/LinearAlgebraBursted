@@ -814,6 +814,16 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   numerically broken) is the only real failure.
 
 ## FFT.Workspace
+- 2026-07-14 | Build ~13x faster via recursive-doubling twiddle fill. Replaced the per-entry
+  bit-decomposition (O(n·log n): each W^m an independent product of log n generators) with a
+  doubling fill (W^0=1, then W^(2^k+j)=W^j·B_k for j<2^k — one complex-mult per entry, O(n) total).
+  Each entry is still <= log2(n) mults deep so error stays O(log n·ε); done in a double scratch,
+  cast to fProxy once (same accuracy model, TwiddleTableAccuracy <1e-6 still passes). Measured
+  float N=1M build ~41ms → ~3ms (ws+build 48→9.8ms; transform unchanged ~6.7ms); double similar.
+  Cost: a transient double scratch of 2N doubles (16 MB at N=1M) via UnsafeUtility.Malloc/Free,
+  freed before the factory returns (steady-state workspace memory unchanged). The doubling reads
+  back intermediate values, so the scratch must be double even for the float variant to keep the
+  chain O(log n·ε) rather than O(log n·float-eps).
 - 2026-07-14 | sw* halving: store only the W^1 stage table (sw1re/sw1im), derive W^2=W^1·W^1 and
   W^3=W^1·W^2 in-register in the wide butterfly. Drops sw2/sw3 (4 of 6 arrays) → workspace
   −5.6 MB at N=1M float (−11 MB double), 28.4→22.8 MB. Perf-NEUTRAL: the 2 extra complex-mults
