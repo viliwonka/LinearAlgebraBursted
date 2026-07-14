@@ -127,11 +127,14 @@ The core algorithms are single-threaded with a fixed reduction order (the only r
 a documented, rounding-only multi-accumulator dot). Compiled under Burst's `FloatMode.Strict` (which
 disables FP reassociation), results are reproducible run to run and across CPU architectures for a
 fixed Burst version — what a deterministic lockstep multiplayer sim needs — **provided the path uses
-only correctly-rounded operations**: the core factorizations and solvers do, but FFT and random
-sampling both use transcendental functions (`sin`/`cos`/`exp`/...) and do not carry this guarantee.
-This isn't a project-wide default either way: the library's own benchmarks compile under
-`FloatMode.Default`, so a caller who needs determinism must compile their own jobs under
-`FloatMode.Strict`.
+only correctly-rounded operations** (`+ - * /` and `sqrt`). The core factorizations and solvers
+qualify, and so does the workspace FFT (`fft(ws)`/`rfft(ws)`/... — its twiddle table is built from
+`sqrt` and basic arithmetic, no `sin`/`cos`). The **no-workspace FFT and `dft`** compute twiddles
+with `sin`/`cos` on the fly, and **random sampling** uses transcendentals (`log`/`exp`/`sin`/...);
+both call functions Burst only makes bit-identical under `FloatMode.Deterministic` (opt-in, 64-bit
+only), so they do not carry the cross-architecture guarantee under `Strict`. This isn't a
+project-wide default either way: the library's own benchmarks compile under `FloatMode.Default`, so
+a caller who needs determinism must compile their own jobs under `FloatMode.Strict`.
 
 ## License
 

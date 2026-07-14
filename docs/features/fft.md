@@ -47,6 +47,20 @@ prefer the workspace if you need maximum accuracy on huge float transforms. The 
 validated by a stability suite: fft-vs-dft cross-check, Parseval energy, linearity, analytic
 transforms (impulse/constant/exponential/shift), rfft↔fft consistency, and large-N round-trips.
 
+## Cross-platform stability
+
+The **workspace path** (`fft(ws)`/`ifft(ws)`/`rfft(ws)`/`irfft(ws)`) is bit-for-bit reproducible
+across CPU architectures for a fixed Burst version, provided the caller's job is compiled under
+`FloatMode.Strict`. Its twiddle table is built from roots of unity using only `+ - * sqrt` (no
+`sin`/`cos`), and the butterflies are only `+ - *`; `sqrt` is IEEE-754 correctly-rounded (identical
+on every platform) and `+ - *` do not reassociate under `Strict`, so there is no architecture- or
+library-dependent rounding anywhere in the path. This is what a deterministic lockstep sim needs.
+
+The **no-workspace path** (`fft`/`ifft`/`rfft`/`irfft` without `ws`) and **`dft`/`idft`** compute
+their twiddles with `math.sin`/`math.cos` on the fly. Burst only guarantees those bit-identical under
+`FloatMode.Deterministic` (opt-in, 64-bit only) — under `Strict` they are *not* cross-architecture
+reproducible. If you need determinism, use the workspace path.
+
 ## Performance
 
 The transforms use an in-place mixed-radix (radix-4/2) core. The twiddle-table workspace is ~1.3–1.9×
@@ -58,11 +72,11 @@ machine memory traffic:
 
 | Path | dtype | med(ms) |
 |---|---|---|
-| `fft` (no workspace, in-place) | float | 23.52 |
-| `fft` (no workspace) | double | 25.12 |
-| `fft(ws)` (twiddle-table workspace) | float | 12.58 |
-| `fft(ws)` | double | 16.32 |
-| `rfft` (real input, no workspace) | float | 18.28 |
-| `rfft` (no workspace) | double | 18.72 |
-| `rfft(ws)` (twiddle-table workspace) | float | 9.83 |
-| `rfft(ws)` | double | 11.76 |
+| `fft` (no workspace, in-place) | float | 24.39 |
+| `fft` (no workspace) | double | 25.20 |
+| `fft(ws)` (twiddle-table workspace) | float | 12.91 |
+| `fft(ws)` | double | 18.55 |
+| `rfft` (real input, no workspace) | float | 17.87 |
+| `rfft` (no workspace) | double | 19.22 |
+| `rfft(ws)` (twiddle-table workspace) | float | 11.27 |
+| `rfft(ws)` | double | 12.95 |
