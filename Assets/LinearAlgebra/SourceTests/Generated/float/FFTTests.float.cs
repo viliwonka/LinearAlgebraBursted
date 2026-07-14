@@ -1336,17 +1336,11 @@ public class floatFFTTests
         {
             var arena = new Arena(Allocator.Persistent);
             var ws = arena.floatFFTCache(nn);
-            int half = nn >> 1;
             for (int m = 0; m < nn; m++)
             {
                 double ang = -2.0 * System.Math.PI * m / nn;
                 AssertClose(ws.twReFull[m], (float)math.cos(ang), (float)1E-6f);
                 AssertClose(ws.twImFull[m], (float)math.sin(ang), (float)1E-6f);
-                if (m < half)
-                {
-                    AssertClose(ws.twRe[m], (float)math.cos(ang), (float)1E-6f);
-                    AssertClose(ws.twIm[m], (float)math.sin(ang), (float)1E-6f);
-                }
             }
             arena.Dispose();
         }

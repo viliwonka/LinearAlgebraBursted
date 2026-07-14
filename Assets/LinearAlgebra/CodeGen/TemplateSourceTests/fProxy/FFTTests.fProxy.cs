@@ -1332,17 +1332,11 @@ public class fProxyFFTTests
         {
             var arena = new Arena(Allocator.Persistent);
             var ws = arena.fProxyFFTCache(nn);
-            int half = nn >> 1;
             for (int m = 0; m < nn; m++)
             {
                 double ang = -2.0 * System.Math.PI * m / nn;
                 AssertClose(ws.twReFull[m], (fProxy)math.cos(ang), (fProxy)1E-6f);
                 AssertClose(ws.twImFull[m], (fProxy)math.sin(ang), (fProxy)1E-6f);
-                if (m < half)
-                {
-                    AssertClose(ws.twRe[m], (fProxy)math.cos(ang), (fProxy)1E-6f);
-                    AssertClose(ws.twIm[m], (fProxy)math.sin(ang), (fProxy)1E-6f);
-                }
             }
             arena.Dispose();
         }

@@ -14,8 +14,8 @@ namespace LinearAlgebra
 {
     /// <summary>
     /// Precomputed twiddle table for FFT. One size-n table serves every radix-2 transform of
-    /// length ≤ n: the stage-len butterfly twiddle W_len^k is indexed as twRe[k*(n/len)],
-    /// twIm[k*(n/len)], eliminating per-element cos/sin from the hot loop. Build once via
+    /// length ≤ n: the stage-len butterfly twiddle W_len^k is indexed as twReFull[k*(n/len)],
+    /// twImFull[k*(n/len)], eliminating per-element cos/sin from the hot loop. Build once via
     /// Arena.doubleFFTCache(n) and reuse across many transforms of the same size.
     ///
     /// The table is computed at double precision and cast to the element type (float or double),
@@ -27,10 +27,9 @@ namespace LinearAlgebra
     /// </summary>
     public struct doubleFFTCache
     {
-        public doubleN twRe;       // length n/2: cos(-2π·j/n), j = 0..n/2-1  (half circle, radix-2)
-        public doubleN twIm;       // length n/2: sin(-2π·j/n)
-        public doubleN twReFull;   // length n:   cos(-2π·m/n), m = 0..n-1    (full circle, radix-4)
-        public doubleN twImFull;   // length n:   sin(-2π·m/n)
+        public doubleN twReFull;   // length n:   cos(-2π·m/n), m = 0..n-1    (full circle)
+        public doubleN twImFull;   // length n:   sin(-2π·m/n); the half-circle uses (rfft/irfft
+                                   //             unpack) read the first n/2 entries directly.
         public int n;              // the FFT size this table is built for (must be a power of two, >= 2)
 
         // Scratch buffers — allocated once in the factory, reused on every call.
@@ -65,8 +64,6 @@ namespace LinearAlgebra
                 throw new ArgumentException("doubleFFTCache: n must be a power of two and >= 2");
 
             int half = n >> 1;
-            var twRe     = arena.doubleVec(half);
-            var twIm     = arena.doubleVec(half);
             var twReFull = arena.doubleVec(n);
             var twImFull = arena.doubleVec(n);
 
@@ -103,7 +100,6 @@ namespace LinearAlgebra
                 }
                 twReFull[m] = (double)cr;
                 twImFull[m] = (double)ci;
-                if (m < half) { twRe[m] = (double)cr; twIm[m] = (double)ci; }
             }
 
             // Scratch buffers — persistent in this arena (disposed with the arena).
@@ -143,8 +139,6 @@ namespace LinearAlgebra
 
             return new doubleFFTCache
             {
-                twRe     = twRe,
-                twIm     = twIm,
                 twReFull = twReFull,
                 twImFull = twImFull,
                 n        = n,
@@ -167,7 +161,7 @@ namespace LinearAlgebra
         /// </summary>
         static void RequireFftWorkspace(in doubleFFTCache ws, int n, string who)
         {
-            if (ws.n != n || ws.twRe.N != n >> 1 || ws.twIm.N != n >> 1 ||
+            if (ws.n != n ||
                 ws.cz.N != n >> 1 || ws.sz.N != n >> 1 || ws.visited.N != n)
                 throw new ArgumentException(
                     who + ": workspace must be sized for an n-point FFT (use Arena.doubleFFTCache(n))");
@@ -249,7 +243,7 @@ namespace LinearAlgebra
         /// Real-input forward FFT using a precomputed twiddle table. ws must be sized for real.N
         /// (the full real signal length N — not the half-spectrum length N/2+1).
         /// Identical two-for-one packing as the recurrence rfft, but the inner M-point FFT uses
-        /// the radix-4/mixed dispatch and the unpack twiddle W_N^k = (ws.twRe[k], ws.twIm[k]) is
+        /// the radix-4/mixed dispatch and the unpack twiddle W_N^k = (ws.twReFull[k], ws.twImFull[k]) is
         /// read directly — no cos/sin in the hot loop.
         /// </summary>
         public static void rfft(in doubleN real, ref doubleN re, ref doubleN im, in doubleFFTCache ws)
@@ -292,8 +286,6 @@ namespace LinearAlgebra
             // Step 2: Inner M-point FFT via radix-4 (with full-circle table, tableN = ws.n = N).
             // IsPowerOf4(M) → pure radix-4 (M = 4^k); else → mixed 2·4^k path (M = 2·4^k).
             // Both paths index into twReFull/twImFull at step ws.n/len — no sub-table copy.
-            var twRe = ws.twRe;
-            var twIm = ws.twIm;
             var twReFull = ws.twReFull;
             var twImFull = ws.twImFull;
             var visitedScratch = ws.visited;
@@ -309,7 +301,7 @@ namespace LinearAlgebra
             im[M] = (double)0;
 
             // General bins k = 1..M-1.
-            // W_N^k = exp(-2πi·k/N) = (ws.twRe[k], ws.twIm[k]) — read directly, no cos/sin.
+            // W_N^k = exp(-2πi·k/N) = (ws.twReFull[k], ws.twImFull[k]) — read directly, no cos/sin.
             for (int k = 1; k < M; k++)
             {
                 int kr = M - k;
@@ -318,8 +310,8 @@ namespace LinearAlgebra
                 double O_re = (sz[k] + sz[kr]) * (double)0.5;
                 double O_im = (cz[kr] - cz[k]) * (double)0.5;
 
-                double curRe = twRe[k];   // W_N^k real part (half-table)
-                double curIm = twIm[k];   // W_N^k imaginary part (half-table)
+                double curRe = twReFull[k];   // W_N^k real part (first half of full table)
+                double curIm = twImFull[k];   // W_N^k imaginary part
 
                 re[k] = E_re + (curRe * O_re - curIm * O_im);
                 im[k] = E_im + (curRe * O_im + curIm * O_re);
@@ -330,7 +322,7 @@ namespace LinearAlgebra
         /// <summary>
         /// Inverse real FFT using a precomputed twiddle table. ws must be sized for the real signal
         /// length N = 2*(re.N-1) (= real.N). The re-pack conjugate twiddle conj(W_N^k) is read as
-        /// (ws.twRe[k], -ws.twIm[k]) — no cos/sin in the hot loop.
+        /// (ws.twReFull[k], -ws.twImFull[k]) — no cos/sin in the hot loop.
         /// irfft(rfft(x, ws), ws) == x to floating-point precision.
         /// </summary>
         public static void irfft(in doubleN re, in doubleN im, ref doubleN real, in doubleFFTCache ws)
@@ -366,12 +358,12 @@ namespace LinearAlgebra
             sz[0] = (re[0] - re[M]) * (double)0.5;
 
             // General bins k = 1..M-1.
-            // Same algebra as the recurrence irfft, but conj(W_N^k) = (twRe[k], -twIm[k]).
+            // Same algebra as the recurrence irfft, but conj(W_N^k) = (twReFull[k], -twImFull[k]).
             //   E[k] = (X[k] + conj(X[M-k])) / 2
             //   O[k] = (X[k] - conj(X[M-k])) · conj(W_N^k) / 2
             //   Y[k] = E[k] + i·O[k]
-            var twRe = ws.twRe;
-            var twIm = ws.twIm;
+            var twReFull = ws.twReFull;
+            var twImFull = ws.twImFull;
             for (int k = 1; k < M; k++)
             {
                 int kr = M - k;
@@ -386,11 +378,11 @@ namespace LinearAlgebra
                 double a = xr_k - xr_kr;
                 double b = xi_k + xi_kr;
 
-                // conj(W_N^k) = (twRe[k], -twIm[k]).
+                // conj(W_N^k) = (twReFull[k], -twImFull[k]).
                 // O[k] = (a + i·b) · conj(W_N^k) / 2  →  complex multiply (a+ib)·(cRe+icIm):
-                //   real = a·cRe - b·cIm,  imag = b·cRe + a·cIm   (with cIm = -twIm[k])
-                double cRe = twRe[k];
-                double cIm = -twIm[k];   // negate imaginary part for conjugate
+                //   real = a·cRe - b·cIm,  imag = b·cRe + a·cIm   (with cIm = -twImFull[k])
+                double cRe = twReFull[k];
+                double cIm = -twImFull[k];   // negate imaginary part for conjugate
                 double O_re = (a * cRe - b * cIm) * (double)0.5;
                 double O_im = (b * cRe + a * cIm) * (double)0.5;
 
@@ -400,8 +392,6 @@ namespace LinearAlgebra
             }
 
             // One M-point inverse FFT via radix-4 (with full-circle table, tableN = ws.n = N).
-            var twReFull = ws.twReFull;
-            var twImFull = ws.twImFull;
             var visitedScratch = ws.visited;
             if (IsPowerOf4(M))
                 FftCoreRadix4(ref cz, ref sz, ref twReFull, ref twImFull, ws.n, true);

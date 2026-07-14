@@ -1336,17 +1336,11 @@ public class doubleFFTTests
         {
             var arena = new Arena(Allocator.Persistent);
             var ws = arena.doubleFFTCache(nn);
-            int half = nn >> 1;
             for (int m = 0; m < nn; m++)
             {
                 double ang = -2.0 * System.Math.PI * m / nn;
                 AssertClose(ws.twReFull[m], (double)math.cos(ang), (double)1E-6f);
                 AssertClose(ws.twImFull[m], (double)math.sin(ang), (double)1E-6f);
-                if (m < half)
-                {
-                    AssertClose(ws.twRe[m], (double)math.cos(ang), (double)1E-6f);
-                    AssertClose(ws.twIm[m], (double)math.sin(ang), (double)1E-6f);
-                }
             }
             arena.Dispose();
         }
