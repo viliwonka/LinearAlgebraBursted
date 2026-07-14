@@ -107,6 +107,9 @@ between minor versions.
   pure copy reordering).
 - GEMM cache-blocks (packed operand panels) once the product's working set exceeds ~24 MB —
   about 1.3–1.4× at 2048×2048 — with bit-identical results to the direct route at every size.
+- Blocked factorization trailing updates (Cholesky, pivoted Cholesky, LU, QR/LQ block
+  reflectors) fuse four panel columns into each pass over the output row — factorizations are
+  ~10–17% faster at level-3 sizes, with bit-identical results.
 - **Breaking — float numeric change**: float dot products (`Blas.dot` on vectors and everything
   built on it) now reduce through 8-lane AVX accumulator chains — roughly 2× faster while
   operands are cache-resident. Float results differ from previous versions at the usual

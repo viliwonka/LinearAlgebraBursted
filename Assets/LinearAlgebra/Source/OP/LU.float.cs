@@ -517,12 +517,16 @@ namespace LinearAlgebra
 
                             int Pt = P[rStart + t];
                             float* crow = up + (long)Pt * m + rStart;
+                            float* Lrow = up + (long)Pt * m + k0;   // L21 multipliers for this row
 
-                            for (int p = 0; p < kb; p++) {
-                                float Lip = A_to_LU[Pt, k0 + p];
-                                float* wp = ubufp + (long)p * ntrail;
-                                UnsafeOP.axpy(crow, wp, -Lip, ntrail);
+                            int p = 0;
+                            for (; p + 4 <= kb; p += 4) {            // one crow pass per FOUR panel columns
+                                float* w0 = ubufp + (long)p * ntrail;
+                                UnsafeOP.axpy4(crow, w0, w0 + ntrail, w0 + 2 * ntrail, w0 + 3 * ntrail,
+                                    -Lrow[p], -Lrow[p + 1], -Lrow[p + 2], -Lrow[p + 3], ntrail);
                             }
+                            for (; p < kb; p++)
+                                UnsafeOP.axpy(crow, ubufp + (long)p * ntrail, -Lrow[p], ntrail);
                         }
                     }
                 }

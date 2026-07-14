@@ -1012,8 +1012,8 @@ namespace LinearAlgebra.Internal
         // the strict upper triangle (that would double the flops and write past L's diagonal). Used
         // by Cholesky's blocked (level-3) factorization for the trailing-block update A22 -= L21*L21ᵀ.
         // [NoAlias] is truthful: PT is a separate Temp buffer; the P read-region (cols [j0,j0+jb)) and
-        // the write-region (cols [rStart=j0+jb, i]) are disjoint column ranges of L, and the P entry is
-        // loaded into `temp` before any write in that same iteration.
+        // the write-region (cols [rStart=j0+jb, i]) are disjoint column ranges of L, and the P
+        // coefficients are read before each row pass writes.
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void syrkLowerSub([NoAlias] double* Lp, int n, int rStart, int j0, int jb, [NoAlias] double* PT)
         {
@@ -1021,15 +1021,18 @@ namespace LinearAlgebra.Internal
             for (int ip = 0; ip < ntrail; ip++)          // i' ; i = rStart+ip
             {
                 int i = rStart + ip;
-                double* Lrow = Lp + (long)i * n;         // write cols [rStart, i]
-                double* Pi = Lp + (long)i * n + j0;      // P[ip, 0..jb)
-                for (int p = 0; p < jb; p++)
+                double* Lrow = Lp + (long)i * n + rStart; // write cols [rStart, i], relative [0, ip]
+                double* Pi = Lp + (long)i * n + j0;       // P[ip, 0..jb)
+                int len = ip + 1;                         // lower triangle incl diagonal
+                int p = 0;
+                for (; p + 4 <= jb; p += 4)               // one Lrow pass per FOUR panel columns
                 {
-                    double temp = Pi[p];                  // scalar, loaded before the k' write loop (no hazard)
-                    double* PTp = PT + (long)p * ntrail;
-                    for (int kp = 0; kp <= ip; kp++)      // unit stride, lower triangle incl diagonal
-                        Lrow[rStart + kp] -= temp * PTp[kp];
+                    double* x0 = PT + (long)p * ntrail;
+                    axpy4(Lrow, x0, x0 + ntrail, x0 + 2 * ntrail, x0 + 3 * ntrail,
+                          -Pi[p], -Pi[p + 1], -Pi[p + 2], -Pi[p + 3], len);
                 }
+                for (; p < jb; p++)
+                    axpy(Lrow, PT + (long)p * ntrail, -Pi[p], len);
             }
         }
 
@@ -1055,14 +1058,18 @@ namespace LinearAlgebra.Internal
             for (int ip = 0; ip < ntrail; ip++)
             {
                 int i = rStart + ip;
-                double* Wrow = Wp + (long)i * n;
+                double* Wrow = Wp + (long)i * n + i;     // write cols [i, n)
                 double* Qi = QT + (long)ip * jb;
-                for (int p = 0; p < jb; p++)
+                int len = n - i;
+                int p = 0;
+                for (; p + 4 <= jb; p += 4)              // one Wrow pass per FOUR panel rows
                 {
-                    double temp = Qi[p];
-                    double* Up = Wp + (long)(j0 + p) * n + rStart;
-                    UnsafeOP.axpy(Wrow + i, Up + ip, -temp, n - i);
+                    double* u0 = Wp + (long)(j0 + p) * n + rStart + ip;
+                    axpy4(Wrow, u0, u0 + n, u0 + 2 * n, u0 + 3 * n,
+                          -Qi[p], -Qi[p + 1], -Qi[p + 2], -Qi[p + 3], len);
                 }
+                for (; p < jb; p++)
+                    axpy(Wrow, Wp + (long)(j0 + p) * n + rStart + ip, -Qi[p], len);
             }
         }
 
@@ -1082,17 +1089,21 @@ namespace LinearAlgebra.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void wyVtC([NoAlias] double* Vp, int Vld, [NoAlias] double* Cp, int Cld, int rows, int pb, int cw, [NoAlias] double* W)
         {
-            for (int t = 0; t < rows; t++)
+            int t = 0;
+            for (; t + 4 <= rows; t += 4)               // one Wi pass per FOUR C rows
+            {
+                double* V0 = Vp + (long)t * Vld;
+                double* C0 = Cp + (long)t * Cld;
+                for (int i = 0; i < pb; i++)
+                    axpy4(W + (long)i * cw, C0, C0 + Cld, C0 + 2 * Cld, C0 + 3 * Cld,
+                          V0[i], V0[Vld + i], V0[2 * Vld + i], V0[3 * Vld + i], cw);
+            }
+            for (; t < rows; t++)
             {
                 double* Vrow = Vp + (long)t * Vld;
                 double* Crow = Cp + (long)t * Cld;
                 for (int i = 0; i < pb; i++)
-                {
-                    double temp = Vrow[i];
-                    double* Wi = W + (long)i * cw;
-                    for (int j = 0; j < cw; j++)
-                        Wi[j] += temp * Crow[j];
-                }
+                    axpy(W + (long)i * cw, Crow, Vrow[i], cw);
             }
         }
 
@@ -1105,13 +1116,15 @@ namespace LinearAlgebra.Internal
             {
                 double* Vrow = Vp + (long)t * Vld;
                 double* Crow = Cp + (long)t * Cld;
-                for (int i = 0; i < pb; i++)
+                int i = 0;
+                for (; i + 4 <= pb; i += 4)             // one Crow pass per FOUR W rows
                 {
-                    double temp = Vrow[i];
-                    double* Wi = W + (long)i * cw;
-                    for (int j = 0; j < cw; j++)
-                        Crow[j] -= temp * Wi[j];
+                    double* W0 = W + (long)i * cw;
+                    axpy4(Crow, W0, W0 + cw, W0 + 2 * cw, W0 + 3 * cw,
+                          -Vrow[i], -Vrow[i + 1], -Vrow[i + 2], -Vrow[i + 3], cw);
                 }
+                for (; i < pb; i++)
+                    axpy(Crow, W + (long)i * cw, -Vrow[i], cw);
             }
         }
 
@@ -1138,13 +1151,15 @@ namespace LinearAlgebra.Internal
             {
                 double* Crow = Cp + (long)t * Cld;
                 double* Yrow = Y + (long)t * pb;
-                for (int c = 0; c < cn; c++)
+                int c = 0;
+                for (; c + 4 <= cn; c += 4)             // one Yrow pass per FOUR Vt rows
                 {
-                    double temp = Crow[c];
-                    double* Vtrow = Vt + (long)c * pb;
-                    for (int i = 0; i < pb; i++)
-                        Yrow[i] += temp * Vtrow[i];
+                    double* v0 = Vt + (long)c * pb;
+                    axpy4(Yrow, v0, v0 + pb, v0 + 2 * pb, v0 + 3 * pb,
+                          Crow[c], Crow[c + 1], Crow[c + 2], Crow[c + 3], pb);
                 }
+                for (; c < cn; c++)
+                    axpy(Yrow, Vt + (long)c * pb, Crow[c], pb);
             }
         }
 
@@ -1270,6 +1285,19 @@ namespace LinearAlgebra.Internal
 
             for (int i = 0; i < n; i++)
                 y[i] += a * x[i];
+        }
+
+        // Four-stream axpy: y[i] = (((y[i] + a0*x0[i]) + a1*x1[i]) + a2*x2[i]) + a3*x3[i].
+        // One read-modify-write pass over y carries four accumulations; per-element operation
+        // order is exactly four sequential axpy calls with the same coefficients. y must not
+        // alias any x stream (the x streams may share a base buffer with each other).
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void axpy4([NoAlias] double* y,
+            [NoAlias] double* x0, [NoAlias] double* x1, [NoAlias] double* x2, [NoAlias] double* x3,
+            double a0, double a1, double a2, double a3, int n) {
+
+            for (int i = 0; i < n; i++)
+                y[i] = (((y[i] + a0 * x0[i]) + a1 * x1[i]) + a2 * x2[i]) + a3 * x3[i];
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]

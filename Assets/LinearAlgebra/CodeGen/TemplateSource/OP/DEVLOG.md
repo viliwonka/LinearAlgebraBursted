@@ -1,6 +1,21 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## axpy4: quad-stream panel updates for the blocked factorizations
+- 2026-07-14 | The blocked factorization trailing updates (CHO syrkLowerSub, CHOP
+  syrkUpperSub, QR/LQ wyVtC/wySubVW/lqYeqCVt, pivoted-LU's inlined row update) all had the
+  same shape: one axpy pass over the output row per panel column — vectorized but bound by
+  output-row read-modify-write traffic, not flops (CHO float 1024 ran 33 GF/s vs the GEMM
+  tile's ~100). Fix: UnsafeOP.axpy4 fuses FOUR coefficient streams into one output pass
+  (arithmetic intensity 4x); per-element operation order stays p-ascending sequential, so
+  results are BIT-IDENTICAL to the old kernels for both dtypes — no skipFor/W-tier needed,
+  the map auto-vectorizes. Min-across-runs (ambient load made single runs swing 20-40%;
+  trust direction + mins): CHO 1024 float 10.79 → 9.10 ms, double 15.17 → 12.92; CHOP 1024
+  float 21.10 → 17.97; dense blocked LU inherits via wySubVW (float 1024 15.69 → 14.17).
+  NOT retuned under noise: floatCholBlockMinN (1024 — blocked path got ~15% faster, the
+  crossover may now sit at 512; re-measure on an idle machine), same for the QR/LQ/LU gates.
+  trsmLowerPanel and the LU/QR small TRSM steps (~5% of time) left single-stream.
+
 ## fProxyW stage 2c: broadcast GEMM tiles (matMatDot / TransA / AtA) on wide accumulators
 - 2026-07-14 | User ruling: no wrapper-level transpose routing ("just rewrite the critical
   path") — a briefly-added staged-transpose detour in Blas.dot/dotSym was reverted the same
