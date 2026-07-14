@@ -29,7 +29,18 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   GF/s at 128-512 (1024: 28.0 → 24.0), TransA 88 → 103-115 (1024: 27.5 → 24.9), AtA
   151 → 174-204 GF/s-eff (512: 1.61 → 1.31 ms); n=64 improved too (no small-size gate
   needed). Double: unchanged, keeps the scalar tiles via choose-routing.
-- 2026-07-14 | Blocked-gate retune sweep post-axpy4 (idle machine, one-notch-lower A/B on
+- 2026-07-14 | CHOP blocked-path optimization pass, bit-identical outputs (~10% at 1024,
+  ~4-10% at 512, ~6% at 256, both dtypes): (1) contiguous diagRaw mirror for the pivot
+  search — reading W[i,i] directly is a stride-(n+1) scan over the full trailing range
+  EVERY column (one cache line per entry, ~33 MB effective at n=1024, rivaling the whole
+  SYRK stream); the mirror is refreshed per panel after the SYRK and swapped alongside W's
+  diagonal, holding exactly W[i,i]'s bits so pivot choices are unchanged. (2) Deferred
+  panel-end L scatter: Ukk parks in W[k,k], the panel's factor rows block-transpose into
+  L's columns once per panel (W panel rows stay L2-resident, L written in 32-element runs)
+  instead of one stride-n column write per factored column; Swap.Rows(L) narrows to the
+  already-scattered columns [0,j0) — W's own column-segment swap maintains the deferred
+  part. (3) Winner-only corrections quad-fused via axpy4. CHOLP_BLOCK=64 tried on top:
+  float 1024 −3% but double 256 +5% — reverted, stays 32. Unblocked (<256) path untouched.
   every gate; ~1% ambient drift measured via unchanged-route control rows): doubleQr
   512→256 (−19% at 256), doubleQrcp 512→256 (−7%), CholPivot float+double 512→256
   (−12%/−9%), floatLu 256→128 (−3.5%). Ties (kept prior value): floatQr@64, doubleLu@64,

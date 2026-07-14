@@ -34,6 +34,7 @@ param(
   [switch]$NoRegen
 )
 $ErrorActionPreference = "Stop"
+$scriptStart = Get-Date
 . "$PSScriptRoot\_unity-common.ps1"
 
 # Regenerate sources from templates first (unless -NoRegen), so the benchmark
@@ -82,16 +83,28 @@ if (Select-String -Path $Log -Pattern "executeMethod method.*could not|couldn't 
 }
 
 # The benchmark logs the file it wrote ("Benchmark results written to <path>"); echo that file.
-$written = Select-String -Path $Log -Pattern "Benchmark results written to (.+)$" |
-  Select-Object -Last 1
-if ($written) {
-  $Results = $written.Matches[0].Groups[1].Value.Trim()
+# Read the log via File.ReadAllText (not Select-String -Path): PS 5.1's file reader misdecodes
+# some Unity log encodings and silently fails the match even when the line is present.
+$logText = [System.IO.File]::ReadAllText($Log)
+$m = [regex]::Matches($logText, "Benchmark results written to (\S+)")
+if ($m.Count -gt 0) {
+  $Results = $m[$m.Count - 1].Groups[1].Value.Trim()
+  if (-not [System.IO.Path]::IsPathRooted($Results)) { $Results = Join-Path $root $Results }
   if (Test-Path $Results) {
     Write-Host ""
     # File.ReadAllText, not Get-Content: PS 5.1 misdecodes BOM-less UTF-8 (results are written UTF-8 no BOM).
     [System.IO.File]::ReadAllText($Results)
     exit 0
   }
+}
+# Fallback: the log-line match can miss even on a good run — accept any TestResults\benchmark-*.txt
+# freshly written after this script started.
+$fresh = Get-ChildItem (Join-Path $root "TestResults\benchmark-*.txt") -ErrorAction SilentlyContinue |
+  Where-Object { $_.LastWriteTime -gt $scriptStart } | Sort-Object LastWriteTime | Select-Object -Last 1
+if ($fresh) {
+  Write-Host ""
+  [System.IO.File]::ReadAllText($fresh.FullName)
+  exit 0
 }
 
 Write-Host "`nFAIL: no results file produced. Last 40 log lines:"

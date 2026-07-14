@@ -210,10 +210,20 @@ namespace LinearAlgebra
             // The trailing block is updated once per panel via UnsafeOP.syrkUpperSub.
             unsafe {
                 float* wp = W.Data.Ptr;
+                float* lp = L.Data.Ptr;
 
                 // dot[i]: see (a) above. Reset per block; only entries [j0,n) are read.
                 var dotBuf = new floatN(n, Allocator.Temp, false);
                 float* dotp = dotBuf.Data.Ptr;
+
+                // Contiguous mirror of W's raw diagonal: the pivot search runs every column over the
+                // full trailing range, and reading W[i,i] directly is a stride-(n+1) scan touching one
+                // cache line per entry. The mirror makes it a unit-stride scan; it holds exactly
+                // W[i,i]'s bits (copied, not recomputed), so pivot choices are unchanged. Maintained on
+                // swaps; refreshed from W after each panel's SYRK trailing update.
+                var diagBuf = new floatN(n, Allocator.Temp, false);
+                float* diagp = diagBuf.Data.Ptr;
+                for (int i = 0; i < n; i++) diagp[i] = wp[(long)i * n + i];
 
                 // QT: transposed gather of a jb x ntrail panel-rows-at-trailing-columns block into
                 // ntrail x jb contiguous scratch (see UnsafeOP.syrkUpperSub). Sized for the worst case
@@ -238,10 +248,10 @@ namespace LinearAlgebra
                         }
 
                         int q = k;
-                        float maxDiag = W[k, k] - dotp[k];
+                        float maxDiag = diagp[k] - dotp[k];
                         float minDiag = maxDiag;
                         for (int i = k + 1; i < n; i++) {
-                            float d = W[i, i] - dotp[i];
+                            float d = diagp[i] - dotp[i];
                             if (d > maxDiag) { maxDiag = d; q = i; }
                             if (d < minDiag) minDiag = d;
                         }
@@ -250,7 +260,7 @@ namespace LinearAlgebra
                         // already gives an exact answer -- no flush needed (mirrors the unblocked path,
                         // which also skips the off-diagonal scan on this branch).
                         if (minDiag < -stopTol) {
-                            QT.Dispose(); dotBuf.Dispose();
+                            QT.Dispose(); dotBuf.Dispose(); diagBuf.Dispose();
                             rank = k;
                             return new RankInfo { status = DirectSolveStatus.Indefinite, rank = rank };
                         }
@@ -274,7 +284,7 @@ namespace LinearAlgebra
                             for (int i = k; i < n; i++)
                                 for (int j = i; j < n; j++)
                                     if (math.abs(W[i, j]) > stopTol) {
-                                        QT.Dispose(); dotBuf.Dispose();
+                                        QT.Dispose(); dotBuf.Dispose(); diagBuf.Dispose();
                                         rank = k;
                                         return new RankInfo { status = DirectSolveStatus.Indefinite, rank = rank };
                                     }
@@ -299,29 +309,52 @@ namespace LinearAlgebra
                             for (int m = k + 1; m < q; m++) { float t = W[k, m]; W[k, m] = W[m, q]; W[m, q] = t; }
                             W[q, q] = demoted;
                             { float t = dotp[k]; dotp[k] = dotp[q]; dotp[q] = t; }
-                            Swap.Rows(ref L, k, q, 0, k);    // permute the already-computed factor rows
+                            { float t = diagp[k]; diagp[k] = diagp[q]; diagp[q] = t; }
+                            // permute the already-SCATTERED factor rows only (columns [0,j0) — earlier
+                            // panels). This panel's own finished columns [j0,k) live in W's rows until the
+                            // deferred panel-end scatter, and the W column-segment swap above (i in [0,k))
+                            // already keeps them permuted.
+                            Swap.Rows(ref L, k, q, 0, j0);
                             P.Swap(k, q);
                         }
 
                         float Ukk = math.sqrt(maxDiag);
-                        L[k, k] = Ukk;
+                        // U[k,k] parks in W's own diagonal slot (its raw value lives on in diagp/W[q,q]);
+                        // the deferred panel-end scatter below reads it back as L[k,k].
+                        W[k, k] = Ukk;
 
                         // (b) expensive, winner-only: bring row k's FULL remaining width up to date
-                        // against every earlier-in-this-block finished row (unit-stride row axpys, not a
-                        // strided dot -- see the section header), then scale.
+                        // against every earlier-in-this-block finished row (unit-stride row axpys —
+                        // quad-fused, four finished rows per pass over krow), then scale.
                         if (k < n - 1) {
                             float* krow = wp + (long)k * n;
-                            for (int c = j0; c < k; c++) {
-                                float Wck = W[c, k];
-                                UnsafeOP.axpy(krow + (k + 1), wp + (long)c * n + (k + 1), -Wck, n - (k + 1));
-                            }
+                            int c = j0;
+                            for (; c + 4 <= k; c += 4)
+                                UnsafeOP.axpy4(krow + (k + 1),
+                                    wp + (long)(c + 0) * n + (k + 1), wp + (long)(c + 1) * n + (k + 1),
+                                    wp + (long)(c + 2) * n + (k + 1), wp + (long)(c + 3) * n + (k + 1),
+                                    -W[c + 0, k], -W[c + 1, k], -W[c + 2, k], -W[c + 3, k], n - (k + 1));
+                            for (; c < k; c++)
+                                UnsafeOP.axpy(krow + (k + 1), wp + (long)c * n + (k + 1), -W[c, k], n - (k + 1));
 
                             float inv = (float)1 / Ukk;
-                            for (int j = k + 1; j < n; j++) {
-                                float u = krow[j] * inv;
-                                krow[j] = u;
-                                L[j, k] = u;
-                            }
+                            for (int j = k + 1; j < n; j++)
+                                krow[j] *= inv;
+                        }
+                    }
+
+                    // Deferred scatter of this panel's finished factor rows into L's columns: one
+                    // block-transpose per panel (the jb W rows stay cache-resident; L is written in
+                    // runs of up to jb consecutive elements) instead of one strided column write per
+                    // factored column. On a rank break only the finished prefix [j0, rank) scatters;
+                    // Indefinite exits skip it entirely (L is undefined there by contract).
+                    {
+                        int fin = ((rank < n) ? rank : panelEnd) - j0;
+                        for (int j = j0; j < n; j++) {
+                            int pmax = j - j0 + 1; if (pmax > fin) pmax = fin;
+                            float* Lrow = lp + (long)j * n + j0;
+                            for (int p = 0; p < pmax; p++)
+                                Lrow[p] = wp[(long)(j0 + p) * n + j];
                         }
                     }
 
@@ -338,11 +371,16 @@ namespace LinearAlgebra
                             for (int ip = 0; ip < ntrail; ip++) qtp[(long)ip * jb + p] = rowp[ip];
                         }
                         UnsafeOP.syrkUpperSub(wp, n, rStart, j0, jb, qtp);
+
+                        // the SYRK just rewrote the trailing diagonal — re-sync the contiguous mirror
+                        // (one strided pass per PANEL, replacing one per column in the pivot search).
+                        for (int i = rStart; i < n; i++) diagp[i] = wp[(long)i * n + i];
                     }
                 }
 
                 QT.Dispose();
                 dotBuf.Dispose();
+                diagBuf.Dispose();
             }
 
             return new RankInfo
