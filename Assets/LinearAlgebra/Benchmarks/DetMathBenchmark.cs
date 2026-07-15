@@ -133,6 +133,8 @@ namespace LinearAlgebra.Benchmarks
                 sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture,
                     "    {0,-8} f ~ULP {1,8:F2}    d ~ULP {2,8:F2}", DerivedNames[k], uf[k], ud[k]));
             sb.AppendLine();
+
+            WideSection(sb);
         }
     }
 }

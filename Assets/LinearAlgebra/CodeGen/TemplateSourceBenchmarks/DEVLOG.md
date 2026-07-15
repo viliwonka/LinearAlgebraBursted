@@ -2,6 +2,40 @@
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
 ## DetMathBenchmark
+- 2026-07-15 (r10) | Wide/vectorization EXPERIMENT — verdict: explicit SIMD NOT needed, the real
+  lever is the floatN indexer. 10M float exp, all bit-relevant-identical (same 1.107e-7 maxRelErr):
+  our.exp via `floatN[i]` **21.3ms** / our.exp via raw `float*` **2.74ms** / math.exp via `floatN[i]`
+  **33.6ms** / math.exp via raw `float*` **2.35ms**. (A one-shot `X86.Avx.mm256_*` control measured
+  2.72ms = tied with the auto-vectorized raw-ptr 2.74ms → auto-vec is already optimal; that AVX
+  scaffold was then DELETED at user's request — we don't need intrinsics.) Findings: (1) Burst
+  auto-vectorizes the branch-free scalar exp to full 8-wide SIMD — floor, the integer exponent-bits
+  2^n, AND the math.select guard all become vector ops; explicit AVX buys nothing (both memory-bound
+  ~30GB/s = 80MB/2.7ms). (2) The ENTIRE ~8× gap is the `floatN[i]` indexer being opaque to the
+  vectorizer (record-pointer deref through a struct property) — hoist `.Data.Ptr` to a local
+  `float*` and it vanishes. Every DetMathProto batch number in r1-r9 (20.8ms exp etc.) paid this tax;
+  true exp throughput is ~2.7ms. (3) math.exp is NOT opaque — Burst has a vectorized exp intrinsic;
+  it paid the SAME indexer tax (33.6→2.35ms, ~14×) and on raw pointers even edges our.exp (2.35 vs
+  2.74, and 0.66 vs 0.93 ULP) — but it's the non-deterministic path, which is the whole reason
+  DetMath exists. (4) Still deterministic + portable: +-*, floor (IEEE-correctly-rounded), int
+  add/shift are lane-independent, no cross-lane reassociation under Strict → same bits x86(AVX)/
+  ARM(NEON), same rationale as the FFT butterflies. DECISION: shipping batch transcendental kernels =
+  plain scalar `+-*/`+floor loop over a HOISTED raw pointer, never the floatN indexer; no fProxyW,
+  no intrinsics. Benchmarks/DetMathWide.cs now pure C# (4 rows, indexer vs raw ptr, our vs math).
+- 2026-07-15 (r9) | HARDENED all cores (branch-free, keeps vectorization) + rebenched. exp: ExpGuard
+  masks x>OV→+inf, x<UN→0 (2 selects on the result). trig: ReduceTrig upgraded 2-word→3-word
+  Cody-Waite π/2 (accurate to ~whole float range / ~1e15 double, was ~1e5/~1e15 at 2-word — one extra
+  fms per element); TrigGuard maps non-finite→NaN (1 select). log: LogGuard (0→-inf, +inf→+inf,
+  x<0→NaN, NaN→NaN = 4 selects) + branch-free SUBNORMAL input scaling (compare+select+mul on input,
+  select on exponent). atan needs nothing — already total by construction (±inf→±π/2 via the 1/x fold,
+  NaN propagates). **Cost verdict: guards are ~free, subnormal scaling is NOT.** Hardened batch-f
+  (ms, 10M): exp Estrin 17.6, sin 27.5, cos 28.5, log 27.5, atan 30.8, sincos 34.6 — vs libm sin
+  110, cos 117, log 80, atan 156, sincos 222 ⇒ still 4.0×/4.1×/2.9×/5.1×/6.4×. The output-masking
+  guards (exp/trig) cost within noise. The one real hit is log's subnormal INPUT scaling: log batch-f
+  dropped from ~4.6× to 2.9× (~+10ms/element-loop) because it adds ops to EVERY element, not just
+  subnormals. DECISION FOR SHIPPING (deferred to user): make subnormal support a two-tier choice —
+  fast log (no subnormal, guard-only) vs hardened log — since logdet inputs (pivots/diagonals) are
+  rarely subnormal. Guards themselves stay (cheap + correct). Accuracy unchanged (guards don't touch
+  the in-range path): still 1-3.7 ULP everywhere.
 - 2026-07-15 (r8) | Added FUSED sincos + the derived layer. **sincos** = one shared π/2 reduction
   feeding both polys + branch-free quadrant for each; vs math.sin+cos (two full reductions): float
   batch 217→32.9ms (6.6×), double 197→49.3 (4.0×); single float 329→116 (2.85×), double 308→147

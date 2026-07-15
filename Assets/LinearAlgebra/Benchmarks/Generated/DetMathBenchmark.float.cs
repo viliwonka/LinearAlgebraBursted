@@ -57,6 +57,20 @@ namespace LinearAlgebra.Benchmarks
             
         }
 
+        // Branch-free overflow/underflow guard shared by all exp variants. x > OV -> +inf (also handles
+        // x = +inf), x < UN -> 0 (also x = -inf). NaN takes neither branch and propagates from the poly.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static float ExpGuard(float x, float y)
+        {
+            
+            const float OV = 88.72284f, UN = -87.33655f, INF = float.PositiveInfinity;
+            
+            
+            y = math.select(y, (float)INF, x > OV);
+            y = math.select(y, (float)0,   x < UN);
+            return y;
+        }
+
         // Accurate, Horner: minimax poly for exp(r) directly (float degree 6 ~0.03 ULP fit; double
         // degree 11 ~0.03 ULP fit). Sequential Horner — one long dependency chain (throughput-friendly
         // once vectorized, latency-bound scalar).
@@ -73,7 +87,7 @@ namespace LinearAlgebra.Benchmarks
             p = p * r + 1.00000000055416338e+00f;
             
             
-            return Ldexp(p, n);
+            return ExpGuard(x, Ldexp(p, n));
         }
 
         // Accurate, Estrin: SAME minimax coefficients, but the polynomial is regrouped into a balanced
@@ -95,7 +109,7 @@ namespace LinearAlgebra.Benchmarks
             float p  = (a0 + a1 * r2) + hi * r4;
             
             
-            return Ldexp(p, n);
+            return ExpGuard(x, Ldexp(p, n));
         }
 
         // Fast: fewer terms (float degree 3 ~6e-4; double degree 6 ~1e-7). "Slightly inaccurate" tier.
@@ -109,7 +123,19 @@ namespace LinearAlgebra.Benchmarks
             mant = mant * r + 1.0f;               // 1 + r + r^2/2 + r^3/6
             
             
-            return Ldexp(mant, n);
+            return ExpGuard(x, Ldexp(mant, n));
+        }
+
+        // Branch-free trig guard: sin/cos of ±inf or NaN → NaN (the floored reduction produces garbage
+        // for non-finite x). Computed then masked so the loop still vectorizes.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static float TrigGuard(float x, float y)
+        {
+            
+            const float INF = float.PositiveInfinity, NANV = float.NaN;
+            
+            
+            return math.select(y, (float)NANV, (x != x) | (math.abs(x) == (float)INF));
         }
 
         // Trig reduction: x = q·(π/2) + r, |r| <= π/4, via q = round(x·2/π) and a 2-part Cody-Waite
@@ -118,15 +144,19 @@ namespace LinearAlgebra.Benchmarks
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static void ReduceTrig(float x, out float r, out int quad)
         {
+            // 3-word Cody-Waite: accurate to ~|x| = whole useful float range / ~1e15 double. Each
+            // Pi has trailing zero mantissa bits so kf*Pi is exact.
             
-            const float T2_PI = 0.6366197466850281f;
-            const float HI = 1.5703125f;
-            const float LO = 0.0004838267923332751f;
+            const float T2_PI = 0.6366197723675814f;
+            const float P1 = 1.5703125f;
+            const float P2 = 4.83751297e-04f;
+            const float P3 = 7.5497901e-08f;
             
             
             float kf = math.floor(x * T2_PI + (float)0.5);
-            r = x - kf * HI;
-            r = r - kf * LO;
+            r = x - kf * P1;
+            r = r - kf * P2;
+            r = r - kf * P3;
             quad = (int)kf & 3;
         }
 
@@ -171,7 +201,7 @@ namespace LinearAlgebra.Benchmarks
             float sw = (float)(quad & 1);                       // q odd → use cos poly
             float baseS = s + sw * (c - s);
             float sign = (float)1 - (float)2 * (float)((quad >> 1) & 1);
-            return sign * baseS;
+            return TrigGuard(x, sign * baseS);
         }
 
         public static float Cos(float x)
@@ -182,22 +212,41 @@ namespace LinearAlgebra.Benchmarks
             float sw = (float)(quad & 1);
             float baseC = c + sw * (s - c);
             float sign = (float)1 - (float)2 * (float)(((quad + 1) >> 1) & 1);
-            return sign * baseC;
+            return TrigGuard(x, sign * baseC);
+        }
+
+        // Branch-free log domain guard: log(0)=-inf, log(+inf)=+inf, x<0→NaN, NaN→NaN. Computed then
+        // masked so the loop still vectorizes.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static float LogGuard(float x, float y)
+        {
+            
+            const float NINF = float.NegativeInfinity, PINF = float.PositiveInfinity, NANV = float.NaN;
+            
+            
+            y = math.select(y, (float)NINF, x == (float)0);
+            y = math.select(y, (float)PINF, x == (float)PINF);
+            y = math.select(y, (float)NANV, x < (float)0);
+            y = math.select(y, (float)NANV, x != x);
+            return y;
         }
 
         // log(x), x > 0: split x = m·2^e via the exponent bits, center m to [√2/2, √2), then
         // log(m) = 2s·B(s²) with s = (m-1)/(m+1) (atanh form, no cancellation near m=1). B is minimax
         // (float deg-3 ~0.01 ULP, double deg-7 ~0.01 ULP). log(x) = e·ln2 + log(m), ln2 split hi/lo.
-        // No x<=0 / inf / subnormal handling (prototype).
+        // Subnormal inputs are scaled into the normal range first (branch-free); LogGuard handles
+        // x<=0 / inf / NaN.
         public static float Log(float x)
         {
             
-            int i = math.asint(x);
-            int e = ((i >> 23) & 0xFF) - 127;
-            float m = math.asfloat((i & 0x007FFFFF) | 0x3F800000);   // mantissa in [1,2)
             const float SQRT2 = 1.4142135623730951f;
             const float LN2_HI = 0.693115234375f;
             const float LN2_LO = 3.194618329871446e-05f;
+            bool sub = x < 1.1754944e-38f;                           // below smallest normal (0/subnormal)
+            float xs = math.select(x, x * 8388608f, sub);           // scale by 2^23 into normal range
+            int i = math.asint(xs);
+            int e = ((i >> 23) & 0xFF) - 127 - math.select(0, 23, sub);
+            float m = math.asfloat((i & 0x007FFFFF) | 0x3F800000);   // mantissa in [1,2)
             float adj = math.select(0f, 1f, m > SQRT2);
             m = m - adj * (m * 0.5f);                                // if m>√2: halve → [√2/2,√2)
             float ef = (float)e + adj;
@@ -209,7 +258,8 @@ namespace LinearAlgebra.Benchmarks
             b = b * z + 3.33334124209226285e-1f;
             b = b * z + 9.99999999255582188e-1f;
             float logm = (2f * s) * b;
-            return ef * LN2_HI + (logm + ef * LN2_LO);
+            float y = ef * LN2_HI + (logm + ef * LN2_LO);
+            return LogGuard(x, y);
             
             
         }
@@ -260,8 +310,8 @@ namespace LinearAlgebra.Benchmarks
             float baseC = c + sw * (s - c);
             float sSign = (float)1 - (float)2 * (float)((quad >> 1) & 1);
             float cSign = (float)1 - (float)2 * (float)(((quad + 1) >> 1) & 1);
-            sinx = sSign * baseS;
-            cosx = cSign * baseC;
+            sinx = TrigGuard(x, sSign * baseS);
+            cosx = TrigGuard(x, cSign * baseC);
         }
 
         // ---- Derived functions: FUSED from the core primitives (not naive re-compositions). Each
