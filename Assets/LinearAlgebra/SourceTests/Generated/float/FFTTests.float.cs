@@ -1339,13 +1339,43 @@ public class floatFFTTests
             // float table is float-precision (~1 ulp of the cast); double table is ~machine
             // precision (O(log n) mults deep). Pin each to its achievable accuracy.
             float tol = (float)1E-6f;
+            int Q = nn >> 2;
+            // Stored first quadrant [0, n/4]: cos(2π j/n).
+            for (int j = 0; j <= Q; j++)
+            {
+                double ang = 2.0 * System.Math.PI * j / nn;
+                AssertClose(ws.twQuarter[j], (float)math.cos(ang), tol);
+            }
+            // Full circle reconstructed by quadrant reflection (Re) + π/2 shift (Im) matches W^m
+            // = exp(-2πi m/n) = (cos(-2π m/n), sin(-2π m/n)) at every m.
             for (int m = 0; m < nn; m++)
             {
                 double ang = -2.0 * System.Math.PI * m / nn;
-                AssertClose(ws.twReFull[m], (float)math.cos(ang), tol);
-                AssertClose(ws.twImFull[m], (float)math.sin(ang), tol);
+                WQTest(ws.twQuarter, m, nn, out float wr, out float wi);
+                AssertClose(wr, (float)math.cos(ang), tol);   // Re(W^m)
+                AssertClose(wi, (float)math.sin(ang), tol);   // Im(W^m)
             }
             arena.Dispose();
+        }
+
+        // Mirror of FFT.WQ / FFT.CosQ (quarter-table reconstruction) for the accuracy test:
+        // W^idx = exp(-2πi·idx/tableN) = (cos(2π·idx/tableN), -sin(2π·idx/tableN)).
+        static void WQTest(floatN c, int idx, int tableN, out float wr, out float wi)
+        {
+            wr = CosQTest(c, idx, tableN);
+            wi = tableN >= 4 ? CosQTest(c, idx + (tableN >> 2), tableN) : (float)0;
+        }
+
+        static float CosQTest(floatN c, int idx, int tableN)
+        {
+            int Q = tableN >> 2;
+            idx &= tableN - 1;
+            if (idx <= Q) return c[idx];
+            int h = tableN >> 1;
+            if (idx <= h) return -c[h - idx];
+            int t3 = h + Q;
+            if (idx <= t3) return -c[idx - h];
+            return c[tableN - idx];
         }
 
         void AssertClose(float a, float b, float precision)

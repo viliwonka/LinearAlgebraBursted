@@ -13,23 +13,28 @@ using LinearAlgebra.Internal;   // doubleW (8-lane AVX helper) for the wide radi
 namespace LinearAlgebra
 {
     /// <summary>
-    /// Precomputed twiddle table for FFT. One size-n table serves every radix-2 transform of
-    /// length ≤ n: the stage-len butterfly twiddle W_len^k is indexed as twReFull[k*(n/len)],
-    /// twImFull[k*(n/len)], eliminating per-element cos/sin from the hot loop. Build once via
-    /// Arena.doubleFFTCache(n) and reuse across many transforms of the same size.
+    /// Precomputed twiddle table for FFT. One size-n workspace drives the radix-4 (4^k) and
+    /// mixed-radix (2·4^k = two radix-4 sub-FFTs + one radix-2 combine) dispatch for any power-of-two
+    /// length ≤ n, eliminating per-element cos/sin from the hot loop. The butterfly reads its
+    /// per-stage W^1 from sw1 and the radix-2 combine reads cw1 — both materialized from this quarter
+    /// table via CosQ at build time. Build once via Arena.doubleFFTCache(n) and reuse across many
+    /// transforms of the same size.
     ///
     /// The table is computed at double precision and cast to the element type (float or double),
     /// so accuracy is maximized regardless of the transform element type.
     ///
-    /// The full-circle table (twReFull/twImFull, length n) is required by the auto-dispatch
-    /// radix-4 paths inside fft/ifft: radix-4 twiddles reach index 3n/4, past the half-table
-    /// boundary.
+    /// Only a QUARTER of the cosine circle (twQuarter, length n/4+1) is stored: twQuarter[j] =
+    /// cos(2π·j/n) for j = 0..n/4. Both real and imaginary parts of any W^m = exp(-2πi·m/n) are
+    /// reconstructed from it by quadrant reflection and a π/2 index shift (see CosQ): Re(W^m) =
+    /// CosQ(m), Im(W^m) = CosQ(m + n/4). The reconstruction is ~1 ULP accurate (not bit-exact vs a
+    /// full table): reflected entries are independently-built cos values, so a fold's sign flip is
+    /// not an exact negation of the direct entry. sw1/cw1 are materialized from CosQ at build time,
+    /// so the wide-butterfly and combine hot loops still read contiguous tables; only the scalar
+    /// butterfly and the rfft/irfft unpack call CosQ per element.
     /// </summary>
     public struct doubleFFTCache
     {
-        public doubleN twReFull;   // length n:   cos(-2π·m/n), m = 0..n-1    (full circle)
-        public doubleN twImFull;   // length n:   sin(-2π·m/n); the half-circle uses (rfft/irfft
-                                   //             unpack) read the first n/2 entries directly.
+        public doubleN twQuarter;  // length n/4+1: cos(2π·j/n), j = 0..n/4  (first quadrant, incl. 0)
         public int n;              // the FFT size this table is built for (must be a power of two, >= 2)
 
         // Scratch buffers — allocated once in the factory, reused on every call.
@@ -39,11 +44,12 @@ namespace LinearAlgebra
         public doubleN visited;    // length n:   cycle-following scratch for FftCoreRadix4Mixed
                                    //             (stores 0/1 flags via double; [0,size) used per call)
 
-        // Contiguous per-stage W^1 twiddle table for the wide (doubleW) radix-4 butterfly: stages
-        // with quarter-stride q >= doubleW.Width (8 float / 4 double lanes), concatenated in stage
-        // order (total length swLen). W^2 and W^3 are derived from W^1 in-register (W^2=W^1·W^1,
-        // W^3=W^1·W^2), so only W^1 is stored. Serves both the top-level pow-4 butterfly and the
-        // pow-4 radix-4 sub-transforms of the mixed-radix / rfft / irfft paths (same tableN).
+        // Contiguous per-stage W^1 twiddle table for the radix-4 butterfly, every stage (quarter-stride
+        // qq = 1, 4, 16, …, n/4) concatenated in stage order (total length swLen ≈ n/3). W^2 and W^3
+        // are derived from W^1 in-register (W^2=W^1·W^1, W^3=W^1·W^2), so only W^1 is stored, and no
+        // twiddle is reconstructed at runtime. Serves the top-level pow-4 butterfly and the pow-4
+        // radix-4 sub-transforms of the mixed / rfft / irfft paths (a size-M sub-transform reads the
+        // length-log4(M) prefix).
         public doubleN sw1re, sw1im;
         public int swLen;
 
@@ -52,7 +58,8 @@ namespace LinearAlgebra
         // where `size` is the single mixed-transform size this n produces (n itself when n = 2·4^k,
         // or n/2 via the rfft/irfft inner FFT when n = 4^k). Gathering the strided combine twiddle
         // into a contiguous run lets the radix-2 combine wide-load twiddles and E/O data together.
-        // For the combineStep==1 case these fields simply alias twReFull/twImFull (already contiguous).
+        // Both are materialized from CosQ at build time (a quarter table cannot be aliased by the
+        // combine's contiguous wide load, so there is no combineStep==1 alias fast-path anymore).
         public doubleN cw1re, cw1im;
     }
 
@@ -60,8 +67,8 @@ namespace LinearAlgebra
     {
         /// <summary>
         /// Allocates a twiddle-table FFT workspace for an n-point transform (n must be a power of two,
-        /// n ≥ 2). Entries are computed via direct per-entry cos/sin at double precision (no recurrence
-        /// drift); see <see cref="doubleFFTCache"/> for the table layout and full-circle-table rationale.
+        /// n ≥ 2). Entries are computed at double precision from sqrt-based roots of unity (no sin/cos,
+        /// no recurrence drift); see <see cref="doubleFFTCache"/> for the quarter-circle table layout.
         ///
         /// The buffers are persistent in this arena (disposed with it), so create the workspace once
         /// outside a hot loop and pass it to the table overloads. One table serves fft/ifft of length
@@ -73,8 +80,8 @@ namespace LinearAlgebra
                 throw new ArgumentException("doubleFFTCache: n must be a power of two and >= 2");
 
             int half = n >> 1;
-            var twReFull = arena.doubleVec(n);
-            var twImFull = arena.doubleVec(n);
+            int Q    = n >> 2;                        // n/4 = quarter-circle span
+            var twQuarter = arena.doubleVec(Q + 1);   // cos(2π·j/n), j = 0..Q
 
             // Twiddle table = Nth roots of unity W_N^m = exp(-2πi·m/n), generated at double precision
             // with only +,-,*,sqrt (cross-arch deterministic under FloatMode.Strict; no sin/cos). The
@@ -94,14 +101,16 @@ namespace LinearAlgebra
                 bki[k] = bki[k + 1] / (2.0 * c);          // -sin(angle_k), cancellation-free
             }
             // Recursive-doubling fill: W^0 = 1, then for each bit k, W^(2^k + j) = W^j · B_k for
-            // j < 2^k. One complex-mult per entry (O(n) total vs O(n·log n) for per-entry
-            // bit-decomposition). Each entry is still <= log2(n) mults deep in the dependency chain,
-            // so error stays O(log n · ε). Kept in a double scratch and cast to double once, so the
-            // accuracy model is identical to the per-entry form.
-            var dre = (double*)UnsafeUtility.Malloc((long)n * sizeof(double), 16, Allocator.Persistent);
-            var dim = (double*)UnsafeUtility.Malloc((long)n * sizeof(double), 16, Allocator.Persistent);
+            // j < 2^k. One complex-mult per entry; each entry is <= log2(n) mults deep in the
+            // dependency chain, so error stays O(log n · ε). Kept in a double scratch and cast to
+            // double once. Only the first QUADRANT [0, n/4) is built (doubling stops two stages early,
+            // at k = P-3); every reader reconstructs the rest via CosQ (quadrant reflection + π/2
+            // shift), so the scratch is only n/4 doubles.
+            int Qalloc = Q > 0 ? Q : 1;
+            var dre = (double*)UnsafeUtility.Malloc((long)Qalloc * sizeof(double), 16, Allocator.Persistent);
+            var dim = (double*)UnsafeUtility.Malloc((long)Qalloc * sizeof(double), 16, Allocator.Persistent);
             dre[0] = 1.0; dim[0] = 0.0;
-            for (int k = 0; k < P; k++)
+            for (int k = 0; k < P - 2; k++)
             {
                 int block = 1 << k;
                 double br = bkr[k], bi = bki[k];
@@ -112,11 +121,9 @@ namespace LinearAlgebra
                     dim[block + j] = ar * bi + ai * br;
                 }
             }
-            for (int m = 0; m < n; m++)
-            {
-                twReFull[m] = (double)dre[m];
-                twImFull[m] = (double)dim[m];
-            }
+            for (int m = 0; m < Q; m++)
+                twQuarter[m] = (double)dre[m];
+            twQuarter[Q] = (Q >= 1) ? (double)0 : (double)1;   // cos(π/2)=0 (n>=4); cos(0)=1 (n=2)
             UnsafeUtility.Free(dre, Allocator.Persistent);
             UnsafeUtility.Free(dim, Allocator.Persistent);
 
@@ -128,16 +135,17 @@ namespace LinearAlgebra
             var sz      = arena.doubleVec(half, uninit: true);
             var visited = arena.doubleVec(n,    uninit: true);
 
-            // Wide-butterfly stage twiddles: the contiguous per-stage W^1 table used by the wide
-            // (doubleW) radix-4 butterfly. Every power-of-two n gets one: the wide butterfly drives
-            // the pow-4 top-level path AND the pow-4 radix-4 sub-transforms of the mixed-radix
-            // (2·4^k) and rfft/irfft paths, which share this same table (they index the same
-            // full-circle tableN = n at stage quarter-stride qq, step = n/(4·qq)). The largest wide
-            // stage over all sub-transforms has 4·qq <= n; that is the loop bound. Stages with
-            // qq < doubleW.Width stay scalar and are skipped here.
+            // Per-stage W^1 twiddle table for the radix-4 butterfly. Every stage (both the wide
+            // doubleW stages and the small scalar stages) gets its W^1 = (Re,Im)(W^(j·step)),
+            // step = n/(4·qq), materialized here from the quarter table via WQ; the butterfly then
+            // derives W^2/W^3 in-register and never reconstructs at runtime. Contiguous in stage order
+            // (qq = 1, 4, 16, …, n/4), so a size-M sub-transform reads the length-log4(M) prefix. The
+            // scalar stages add only 1+4 = 5 entries, so swLen stays ≈ n/3. Serves the top-level path
+            // AND the pow-4 sub-transforms of the mixed / rfft / irfft paths (same tableN).
+            double* cq = twQuarter.Data.Ptr;
             int swLen = 0;
             for (int qq = 1; 4 * qq <= n; qq <<= 2)
-                if (qq >= doubleW.Width) swLen += qq;
+                swLen += qq;
             int swAlloc = swLen > 0 ? swLen : 1;
             var sw1re = arena.doubleVec(swAlloc, uninit: true);
             var sw1im = arena.doubleVec(swAlloc, uninit: true);
@@ -145,13 +153,13 @@ namespace LinearAlgebra
                 int off = 0;
                 for (int qq = 1; 4 * qq <= n; qq <<= 2)
                 {
-                    if (qq < doubleW.Width) continue;
                     int len  = qq << 2;
                     int step = n / len;
                     for (int j = 0; j < qq; j++)
                     {
                         int t1 = j * step;
-                        sw1re[off + j] = twReFull[t1]; sw1im[off + j] = twImFull[t1];
+                        FFT.WQ(cq, t1, n, out double wr, out double wi);
+                        sw1re[off + j] = wr; sw1im[off + j] = wi;
                     }
                     off += qq;
                 }
@@ -159,32 +167,24 @@ namespace LinearAlgebra
 
             // Combine-twiddle table for the mixed-radix radix-2 combine (Step 3). This n triggers the
             // mixed path at exactly one size/step:
-            //   n = 2·4^k (P odd)  → fft/ifft mixed at size = n,   combineStep = 1  (already contiguous)
-            //   n = 4^k    (P even) → rfft/irfft inner mixed at size = n/2, combineStep = 2  (strided)
-            // The step-1 layout is the first n/2 entries of the full-circle table — share the buffer,
-            // no copy. The step-2 layout is gathered into a contiguous length-n/4 run.
-            doubleN cw1re, cw1im;
-            if ((P & 1) == 0)
+            //   n = 2·4^k (P odd)  → fft/ifft mixed at size = n,   combineStep = 1
+            //   n = 4^k    (P even) → rfft/irfft inner mixed at size = n/2, combineStep = 2
+            // Both are materialized from CosQ (the quarter table cannot be aliased by a contiguous
+            // wide load). Combine twiddle W_size^k = W^(k·combineStep): step 2 gathers even indices
+            // 2k (P even, length n/4); step 1 gathers k (P odd, length n/2).
+            int cwLen = (P & 1) == 0 ? (n >> 2) : half;
+            int cwStep = (P & 1) == 0 ? 2 : 1;
+            var cw1re = arena.doubleVec(cwLen, uninit: true);
+            var cw1im = arena.doubleVec(cwLen, uninit: true);
+            for (int k = 0; k < cwLen; k++)
             {
-                int cwLen = n >> 2;   // n/4 = mixed inner M for n = 4^k (>= 1 since n >= 4 here)
-                cw1re = arena.doubleVec(cwLen, uninit: true);
-                cw1im = arena.doubleVec(cwLen, uninit: true);
-                for (int k = 0; k < cwLen; k++)
-                {
-                    cw1re[k] = twReFull[2 * k];
-                    cw1im[k] = twImFull[2 * k];
-                }
-            }
-            else
-            {
-                cw1re = twReFull;   // combineStep == 1: full-circle table is already the combine table
-                cw1im = twImFull;
+                FFT.WQ(cq, k * cwStep, n, out double wr, out double wi);
+                cw1re[k] = wr; cw1im[k] = wi;
             }
 
             return new doubleFFTCache
             {
-                twReFull = twReFull,
-                twImFull = twImFull,
+                twQuarter = twQuarter,
                 n        = n,
                 cz       = cz,
                 sz       = sz,
@@ -213,15 +213,43 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Throws if the workspace is missing the full-circle twiddle table required by the
+        /// Throws if the workspace is missing the quarter-circle twiddle table required by the
         /// radix-4 dispatch paths. Extends <see cref="RequireFftWorkspace"/>.
         /// </summary>
         static void RequireRadix4Workspace(in doubleFFTCache ws, int n, string who)
         {
             RequireFftWorkspace(in ws, n, who);
-            if (ws.twReFull.N != n || ws.twImFull.N != n)
+            if (ws.twQuarter.N != (n >> 2) + 1)
                 throw new ArgumentException(
-                    who + ": workspace must have full-circle twiddle table (use Arena.doubleFFTCache(n))");
+                    who + ": workspace must have quarter-circle twiddle table (use Arena.doubleFFTCache(n))");
+        }
+
+        // ---- quarter-table twiddle reconstruction ----
+        //
+        // The workspace stores only cos over the first quadrant: c[j] = cos(2π·j/tableN), j = 0..tableN/4.
+        // CosQ returns cos(2π·idx/tableN) for any idx by quadrant reflection; WQ returns the full
+        // twiddle W^idx = exp(-2πi·idx/tableN) = (Re, Im) using Re(W^idx)=CosQ(idx), Im(W^idx)=CosQ(idx+n/4)
+        // (since -sin θ = cos(θ+π/2)). tableN is a power of two, so `idx & (tableN-1)` reduces mod tableN.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static unsafe double CosQ(double* c, int idx, int tableN)
+        {
+            int Q = tableN >> 2;
+            idx &= tableN - 1;                         // mod tableN
+            if (idx <= Q) return c[idx];              // quadrant 1:  +cos
+            int h = tableN >> 1;                       // tableN/2
+            if (idx <= h) return -c[h - idx];         // quadrant 2:  -cos(π - θ)
+            int t3 = h + Q;                            // 3·tableN/4
+            if (idx <= t3) return -c[idx - h];        // quadrant 3:  -cos(θ - π)
+            return c[tableN - idx];                   // quadrant 4:  +cos(2π - θ)
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static unsafe void WQ(double* c, int idx, int tableN, out double wr, out double wi)
+        {
+            wr = CosQ(c, idx, tableN);
+            // Im(W^m) = -sin(2π·idx/tableN) = cos(2π·(idx+tableN/4)/tableN). The π/2 index shift
+            // needs tableN/4 >= 1; for the degenerate tableN==2 the imaginary part is identically 0.
+            wi = tableN >= 4 ? CosQ(c, idx + (tableN >> 2), tableN) : (double)0;
         }
 
         // ---- table-indexed overloads ----
@@ -229,7 +257,7 @@ namespace LinearAlgebra
         /// <summary>
         /// In-place forward FFT for any power-of-two length, using a precomputed twiddle table;
         /// throws for a non-power-of-two length (use dft for arbitrary N). ws must be sized for re.N
-        /// (build via Arena.doubleFFTCache(N)); it must contain the full-circle twiddle table required
+        /// (build via Arena.doubleFFTCache(N)); it must contain the quarter-circle twiddle table required
         /// by the radix-4 dispatch. Both arrays must have the same length, which must be a power of two.
         /// </summary>
         public static void fft(ref doubleN re, ref doubleN im, in doubleFFTCache ws)
@@ -237,20 +265,18 @@ namespace LinearAlgebra
             int n = re.N;
             RequireRadix4Workspace(in ws, n, "fft");
 
-            var twReFull    = ws.twReFull;
-            var twImFull    = ws.twImFull;
             var sw1re       = ws.sw1re;
             var sw1im       = ws.sw1im;
             var cw1re       = ws.cw1re;
             var cw1im       = ws.cw1im;
             if (IsPowerOf4(n))
             {
-                FftCoreRadix4(ref re, ref im, ref twReFull, ref twImFull, ref sw1re, ref sw1im, n, false);
+                FftCoreRadix4(ref re, ref im, ref sw1re, ref sw1im, false);
             }
             else if ((n & (n - 1)) == 0)   // power-of-2, not power-of-4 → 2·4^k mixed-radix path
             {
                 var visitedScratch = ws.visited;
-                FftCoreRadix4Mixed(ref re, ref im, ref twReFull, ref twImFull, ref sw1re, ref sw1im, ref cw1re, ref cw1im, visitedScratch, n, false);
+                FftCoreRadix4Mixed(ref re, ref im, ref sw1re, ref sw1im, ref cw1re, ref cw1im, visitedScratch, false);
             }
             else
             {
@@ -269,20 +295,18 @@ namespace LinearAlgebra
             int n = re.N;
             RequireRadix4Workspace(in ws, n, "ifft");
 
-            var twReFull    = ws.twReFull;
-            var twImFull    = ws.twImFull;
             var sw1re       = ws.sw1re;
             var sw1im       = ws.sw1im;
             var cw1re       = ws.cw1re;
             var cw1im       = ws.cw1im;
             if (IsPowerOf4(n))
             {
-                FftCoreRadix4(ref re, ref im, ref twReFull, ref twImFull, ref sw1re, ref sw1im, n, true);
+                FftCoreRadix4(ref re, ref im, ref sw1re, ref sw1im, true);
             }
             else if ((n & (n - 1)) == 0)   // power-of-2, not power-of-4 → 2·4^k mixed-radix path
             {
                 var visitedScratch = ws.visited;
-                FftCoreRadix4Mixed(ref re, ref im, ref twReFull, ref twImFull, ref sw1re, ref sw1im, ref cw1re, ref cw1im, visitedScratch, n, true);
+                FftCoreRadix4Mixed(ref re, ref im, ref sw1re, ref sw1im, ref cw1re, ref cw1im, visitedScratch, true);
             }
             else
             {
@@ -296,10 +320,10 @@ namespace LinearAlgebra
         /// Real-input forward FFT using a precomputed twiddle table. ws must be sized for real.N
         /// (the full real signal length N — not the half-spectrum length N/2+1).
         /// Identical two-for-one packing as the recurrence rfft, but the inner M-point FFT uses
-        /// the radix-4/mixed dispatch and the unpack twiddle W_N^k = (ws.twReFull[k], ws.twImFull[k]) is
-        /// read directly — no cos/sin in the hot loop.
+        /// the radix-4/mixed dispatch and the unpack twiddle W_N^k is reconstructed from the quarter
+        /// table via WQ — no cos/sin in the hot loop.
         /// </summary>
-        public static void rfft(in doubleN real, ref doubleN re, ref doubleN im, in doubleFFTCache ws)
+        public static unsafe void rfft(in doubleN real, ref doubleN re, ref doubleN im, in doubleFFTCache ws)
         {
             int n = real.N;
             RequireRadix4Workspace(in ws, n, "rfft");
@@ -336,20 +360,20 @@ namespace LinearAlgebra
                 sz[j] = real[2 * j + 1];
             }
 
-            // Step 2: Inner M-point FFT via radix-4 (with full-circle table, tableN = ws.n = N).
+            // Step 2: Inner M-point FFT via radix-4 (with the shared quarter table, tableN = ws.n = N).
             // IsPowerOf4(M) → pure radix-4 (M = 4^k); else → mixed 2·4^k path (M = 2·4^k).
-            // Both paths index into twReFull/twImFull at step ws.n/len — no sub-table copy.
-            var twReFull = ws.twReFull;
-            var twImFull = ws.twImFull;
+            // Both paths reconstruct twiddles from the quarter table via WQ — no sub-table copy.
+            var twQuarter    = ws.twQuarter;
+            double* cqPtr = twQuarter.Data.Ptr;
             var sw1re    = ws.sw1re;
             var sw1im    = ws.sw1im;
             var cw1re    = ws.cw1re;
             var cw1im    = ws.cw1im;
             var visitedScratch = ws.visited;
             if (IsPowerOf4(M))
-                FftCoreRadix4(ref cz, ref sz, ref twReFull, ref twImFull, ref sw1re, ref sw1im, ws.n, false);
+                FftCoreRadix4(ref cz, ref sz, ref sw1re, ref sw1im, false);
             else
-                FftCoreRadix4Mixed(ref cz, ref sz, ref twReFull, ref twImFull, ref sw1re, ref sw1im, ref cw1re, ref cw1im, visitedScratch, ws.n, false);
+                FftCoreRadix4Mixed(ref cz, ref sz, ref sw1re, ref sw1im, ref cw1re, ref cw1im, visitedScratch, false);
 
             // Step 3: Unpack. DC and Nyquist are always real for a real input.
             re[0] = cz[0] + sz[0];
@@ -358,7 +382,7 @@ namespace LinearAlgebra
             im[M] = (double)0;
 
             // General bins k = 1..M-1.
-            // W_N^k = exp(-2πi·k/N) = (ws.twReFull[k], ws.twImFull[k]) — read directly, no cos/sin.
+            // W_N^k = exp(-2πi·k/N), reconstructed from the quarter table via WQ (no cos/sin).
             for (int k = 1; k < M; k++)
             {
                 int kr = M - k;
@@ -367,8 +391,7 @@ namespace LinearAlgebra
                 double O_re = (sz[k] + sz[kr]) * (double)0.5;
                 double O_im = (cz[kr] - cz[k]) * (double)0.5;
 
-                double curRe = twReFull[k];   // W_N^k real part (first half of full table)
-                double curIm = twImFull[k];   // W_N^k imaginary part
+                WQ(cqPtr, k, n, out double curRe, out double curIm);   // W_N^k
 
                 re[k] = E_re + (curRe * O_re - curIm * O_im);
                 im[k] = E_im + (curRe * O_im + curIm * O_re);
@@ -378,11 +401,11 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Inverse real FFT using a precomputed twiddle table. ws must be sized for the real signal
-        /// length N = 2*(re.N-1) (= real.N). The re-pack conjugate twiddle conj(W_N^k) is read as
-        /// (ws.twReFull[k], -ws.twImFull[k]) — no cos/sin in the hot loop.
+        /// length N = 2*(re.N-1) (= real.N). The re-pack conjugate twiddle conj(W_N^k) is reconstructed
+        /// from the quarter table via WQ and its imaginary part negated — no cos/sin in the hot loop.
         /// irfft(rfft(x, ws), ws) == x to floating-point precision.
         /// </summary>
-        public static void irfft(in doubleN re, in doubleN im, ref doubleN real, in doubleFFTCache ws)
+        public static unsafe void irfft(in doubleN re, in doubleN im, ref doubleN real, in doubleFFTCache ws)
         {
             int halfSpec = re.N;
             if (im.N != halfSpec)
@@ -415,12 +438,12 @@ namespace LinearAlgebra
             sz[0] = (re[0] - re[M]) * (double)0.5;
 
             // General bins k = 1..M-1.
-            // Same algebra as the recurrence irfft, but conj(W_N^k) = (twReFull[k], -twImFull[k]).
+            // Same algebra as the recurrence irfft, with conj(W_N^k) = (Re(W_N^k), -Im(W_N^k)).
             //   E[k] = (X[k] + conj(X[M-k])) / 2
             //   O[k] = (X[k] - conj(X[M-k])) · conj(W_N^k) / 2
             //   Y[k] = E[k] + i·O[k]
-            var twReFull = ws.twReFull;
-            var twImFull = ws.twImFull;
+            var twQuarter    = ws.twQuarter;
+            double* cqPtr = twQuarter.Data.Ptr;
             var sw1re    = ws.sw1re;
             var sw1im    = ws.sw1im;
             var cw1re    = ws.cw1re;
@@ -439,11 +462,11 @@ namespace LinearAlgebra
                 double a = xr_k - xr_kr;
                 double b = xi_k + xi_kr;
 
-                // conj(W_N^k) = (twReFull[k], -twImFull[k]).
+                // conj(W_N^k): reconstruct W_N^k via WQ, then negate its imaginary part.
                 // O[k] = (a + i·b) · conj(W_N^k) / 2  →  complex multiply (a+ib)·(cRe+icIm):
-                //   real = a·cRe - b·cIm,  imag = b·cRe + a·cIm   (with cIm = -twImFull[k])
-                double cRe = twReFull[k];
-                double cIm = -twImFull[k];   // negate imaginary part for conjugate
+                //   real = a·cRe - b·cIm,  imag = b·cRe + a·cIm
+                WQ(cqPtr, k, N, out double cRe, out double cImPos);
+                double cIm = -cImPos;   // negate imaginary part for conjugate
                 double O_re = (a * cRe - b * cIm) * (double)0.5;
                 double O_im = (b * cRe + a * cIm) * (double)0.5;
 
@@ -452,12 +475,12 @@ namespace LinearAlgebra
                 sz[k] = E_im + O_re;
             }
 
-            // One M-point inverse FFT via radix-4 (with full-circle table, tableN = ws.n = N).
+            // One M-point inverse FFT via radix-4 (with the shared quarter table, tableN = ws.n = N).
             var visitedScratch = ws.visited;
             if (IsPowerOf4(M))
-                FftCoreRadix4(ref cz, ref sz, ref twReFull, ref twImFull, ref sw1re, ref sw1im, ws.n, true);
+                FftCoreRadix4(ref cz, ref sz, ref sw1re, ref sw1im, true);
             else
-                FftCoreRadix4Mixed(ref cz, ref sz, ref twReFull, ref twImFull, ref sw1re, ref sw1im, ref cw1re, ref cw1im, visitedScratch, ws.n, true);
+                FftCoreRadix4Mixed(ref cz, ref sz, ref sw1re, ref sw1im, ref cw1re, ref cw1im, visitedScratch, true);
 
             // Deinterleave: real[2j] = even[j], real[2j+1] = odd[j].
             for (int j = 0; j < M; j++)
@@ -471,7 +494,7 @@ namespace LinearAlgebra
         //
         // True radix-4 decimation-in-time for lengths that are exact powers of 4 (log4(n) even bits).
         // Radix-4 halves the number of full-array passes vs radix-2: log4(N) vs log2(N) stages,
-        // trading twiddle-table memory (~2× for the full-circle table) against half the pass count.
+        // trading twiddle-table memory against half the pass count.
         //
         // Inverse via conjugate trick: conjugate → forward radix-4 → conjugate + scale (1/N).
         // Permutation: base-4 digit reversal (reverse digit order in base-4 = swap bit-pairs).
@@ -481,31 +504,25 @@ namespace LinearAlgebra
 
         // Inner radix-4 butterfly pointer kernel (wide + scalar hybrid).
         // Performs log4(n) stages of radix-4 DIT butterflies on already-permuted data.
-        // twr/twi are the full-circle twiddle table of length tableN: T[m] = exp(-2πi·m/tableN).
-        // s1r/s1i are the contiguous per-stage W^1 table (ws.sw1re/sw1im): stages with quarter-stride
-        // q >= doubleW.Width vectorize across j (Width consecutive j give contiguous wide re/im loads
-        // and a contiguous read of s1r/s1i; W^2/W^3 derived in-register), stages with q < Width run
-        // scalar from the full-circle table. Both branches perform the exact same scalar butterfly per
-        // element, so output is bit-identical to a fully scalar pass.
-        // n is the DATA/transform size; tableN is the TABLE size (tableN >= n, both pow-of-4,
-        // n divides tableN). Stage-len twiddle W_len^j = T_tableN[j*(tableN/len)] so a single
-        // full-size table (and its shared per-stage sw1 slice) drives any sub-transform without copies.
-        // All pointer arguments are non-aliasing — [NoAlias] is truthful.
+        // s1r/s1i are the contiguous per-stage W^1 table (ws.sw1re/sw1im), laid out in stage order
+        // (qq = 1, 4, 16, …); EVERY stage reads its precomputed W^1 from it and derives W^2/W^3
+        // in-register — no runtime twiddle reconstruction. Stages with quarter-stride q >= doubleW.Width
+        // vectorize across j (Width consecutive j give contiguous wide re/im loads and a contiguous
+        // read of s1r/s1i); smaller stages run the identical scalar butterfly. stageOff walks the
+        // table one stage at a time, so a size-M sub-transform reads the length-log4(M) prefix.
+        // n is the DATA/transform size (a power of 4). All pointer arguments are non-aliasing.
         [MethodImpl(MethodImplOptions.NoInlining)]
         static unsafe void FftCoreRadix4Ptr(
             [NoAlias] double* re, [NoAlias] double* im,
-            [NoAlias] double* twr, [NoAlias] double* twi,
-            [NoAlias] double* s1r, [NoAlias] double* s1i, int n, int tableN)
+            [NoAlias] double* s1r, [NoAlias] double* s1i, int n)
         {
             // q = quarter-size per group (stride); starts at 1 and quadruples each stage.
-            // sub-transform length = 4q;  step = tableN/(4q) into the full-circle table.
             int W = doubleW.Width;
             int stageOff = 0;   // running offset into the contiguous per-stage sw1 table
 
             for (int q = 1; q < n; q <<= 2)
             {
-                int len  = q << 2;       // 4q
-                int step = tableN / len; // twiddle stride: W_len^j = T_tableN[j*step]
+                int len = q << 2;       // 4q
 
                 if (q >= W)
                 {
@@ -546,26 +563,26 @@ namespace LinearAlgebra
                             doubleW.Store(re + i3, 0, T1re - T3im); doubleW.Store(im + i3, 0, T1im + T3re);
                         }
                     }
-                    stageOff += q;
                 }
                 else
                 {
-                    // Small stage (q < Width): scalar, reading the full-circle table directly.
-                    for (int base_ = 0; base_ < n; base_ += len)
+                    // Small stage (q < Width): identical butterfly, scalar. j-outer so the stage's
+                    // q (<= 4) twiddle triples are read from sw1 and W^2/W^3 derived ONCE per j, held
+                    // in registers across every group — no per-butterfly reconstruction.
+                    for (int j = 0; j < q; j++)
                     {
-                        for (int j = 0; j < q; j++)
+                        double w1r = s1r[stageOff + j], w1i = s1i[stageOff + j];
+                        double w2r = w1r * w1r - w1i * w1i, w2i = w1r * w1i + w1i * w1r;
+                        double w3r = w1r * w2r - w1i * w2i, w3i = w1r * w2i + w1i * w2r;
+                        for (int base_ = 0; base_ < n; base_ += len)
                         {
                             int i0 = base_ + j, i1 = i0 + q, i2 = i1 + q, i3 = i2 + q;
-                            int tw1 = j * step, tw2 = tw1 + tw1, tw3 = tw2 + tw1;
 
                             double A_re = re[i0], A_im = im[i0];
-                            double w1r = twr[tw1], w1i = twi[tw1];
                             double B_re = w1r * re[i1] - w1i * im[i1];
                             double B_im = w1r * im[i1] + w1i * re[i1];
-                            double w2r = twr[tw2], w2i = twi[tw2];
                             double C_re = w2r * re[i2] - w2i * im[i2];
                             double C_im = w2r * im[i2] + w2i * re[i2];
-                            double w3r = twr[tw3], w3i = twi[tw3];
                             double D_re = w3r * re[i3] - w3i * im[i3];
                             double D_im = w3r * im[i3] + w3i * re[i3];
 
@@ -581,18 +598,17 @@ namespace LinearAlgebra
                         }
                     }
                 }
+                stageOff += q;
             }
         }
 
         // Outer radix-4 DIT core: permutation + conjugate trick + pointer kernel + inverse scale.
         // Transform size is re.N (must be a power of 4, caller guarantees).
-        // tableN is the length of the twiddle table (must be a multiple of re.N; == re.N for top-level
-        // callers, > re.N when called from FftCoreRadix4Mixed or rfft to drive a sub-transform).
-        // sw1re/sw1im are the workspace's contiguous per-stage W^1 table for the wide butterfly.
+        // sw1re/sw1im are the workspace's per-stage W^1 table; a size-M sub-transform reads its
+        // length-log4(M) prefix (the entries are shared across all sub-transforms of one workspace).
         static unsafe void FftCoreRadix4(ref doubleN re, ref doubleN im,
-                                         ref doubleN twReFull, ref doubleN twImFull,
                                          ref doubleN sw1re, ref doubleN sw1im,
-                                         int tableN, bool inverse)
+                                         bool inverse)
         {
             int size = re.N;
             if (size == 1) return;
@@ -605,11 +621,9 @@ namespace LinearAlgebra
             // Digit reversal + butterfly stages via shared slice helper.
             double* rePtr  = re.Data.Ptr;
             double* imPtr  = im.Data.Ptr;
-            double* twrPtr = twReFull.Data.Ptr;
-            double* twiPtr = twImFull.Data.Ptr;
             double* s1rPtr = sw1re.Data.Ptr;
             double* s1iPtr = sw1im.Data.Ptr;
-            FftCoreRadix4Slice(rePtr, imPtr, twrPtr, twiPtr, s1rPtr, s1iPtr, size, tableN);
+            FftCoreRadix4Slice(rePtr, imPtr, s1rPtr, s1iPtr, size);
 
             if (inverse)
             {
@@ -623,15 +637,12 @@ namespace LinearAlgebra
         }
 
         // Shared helper: base-4 digit reversal + butterfly on a raw pointer slice of length `size`.
-        // re/im are already offset to the start of the sub-array; twr/twi are the full-circle
-        // twiddle table (length tableN, shared across calls — read-only inside FftCoreRadix4Ptr);
-        // s1r/s1i are the workspace's contiguous per-stage W^1 table (shared across sub-transforms
-        // because they share tableN). size must be a power of 4; tableN must be a multiple of size.
+        // re/im are already offset to the start of the sub-array; s1r/s1i are the workspace's
+        // per-stage W^1 table (shared across sub-transforms). size must be a power of 4.
         static unsafe void FftCoreRadix4Slice(
             double* re, double* im,
-            double* twr, double* twi,
             double* s1r, double* s1i,
-            int size, int tableN)
+            int size)
         {
             if (size <= 1) return;
 
@@ -650,7 +661,7 @@ namespace LinearAlgebra
             }
 
             // Butterfly stages.
-            FftCoreRadix4Ptr(re, im, twr, twi, s1r, s1i, size, tableN);
+            FftCoreRadix4Ptr(re, im, s1r, s1i, size);
         }
 
         // Mixed-radix DIT for N = 2·4^k (IsPow2(N) && !IsPowerOf4(N)).
@@ -666,11 +677,10 @@ namespace LinearAlgebra
         // visited is a workspace scratch of length >= size (0/1 flags, double-typed).
         // The caller passes ws.visited (length n); only [0, size) is used, cleared at entry.
         static unsafe void FftCoreRadix4Mixed(ref doubleN re, ref doubleN im,
-                                              ref doubleN twReFull, ref doubleN twImFull,
                                               ref doubleN sw1re, ref doubleN sw1im,
                                               ref doubleN cw1re, ref doubleN cw1im,
                                               doubleN visited,
-                                              int tableN, bool inverse)
+                                              bool inverse)
         {
             int size = re.N;
             int M = size >> 1;   // size/2, always a power of 4
@@ -713,17 +723,15 @@ namespace LinearAlgebra
             }
 
             // Step 2: Two in-place radix-4 sub-FFTs on the contiguous halves (no temp copy).
-            // FftCoreRadix4Ptr twiddle indexing: W_M^j = T_tableN[j*(tableN/M)] via step=tableN/len,
-            // so the full-size table drives the sub-transforms correctly — no sub-table copies needed.
+            // Each reads the length-log4(M) prefix of the shared per-stage W^1 table (sw1) — no
+            // sub-table copies.
             double* rePtr  = re.Data.Ptr;
             double* imPtr  = im.Data.Ptr;
-            double* twrPtr = twReFull.Data.Ptr;
-            double* twiPtr = twImFull.Data.Ptr;
             double* s1rPtr = sw1re.Data.Ptr;
             double* s1iPtr = sw1im.Data.Ptr;
 
-            FftCoreRadix4Slice(rePtr,     imPtr,     twrPtr, twiPtr, s1rPtr, s1iPtr, M, tableN);
-            FftCoreRadix4Slice(rePtr + M, imPtr + M, twrPtr, twiPtr, s1rPtr, s1iPtr, M, tableN);
+            FftCoreRadix4Slice(rePtr,     imPtr,     s1rPtr, s1iPtr, M);
+            FftCoreRadix4Slice(rePtr + M, imPtr + M, s1rPtr, s1iPtr, M);
 
             // Step 3: Radix-2 DIT combine (wide + scalar hybrid).
             //   X[k]   = E[k] + W_size^k * O[k]

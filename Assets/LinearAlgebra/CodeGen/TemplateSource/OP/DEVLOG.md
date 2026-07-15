@@ -814,6 +814,35 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   numerically broken) is the only real failure.
 
 ## FFT.Workspace
+- 2026-07-15 | Quarter-wave twiddle table: store only the first quadrant cos (twQuarter, n/4+1)
+  instead of two full/half arrays; reconstruct any W^m via CosQ (quadrant reflection) + a π/2 index
+  shift (Im(W^m)=CosQ(m+n/4)). Cuts the persistent table 8→1 MB and the build double-scratch 16→4 MB
+  at N=2^20 float (over the session: full 8 MB → half 4 MB → quarter 1 MB). ~1 ULP accurate, NOT
+  bit-exact (reflected entries are independently-built, so a fold's sign flip isn't an exact
+  negation) — within the existing 1e-6/1e-12 twiddle tests; TwiddleTableAccuracy rewritten to check
+  the quarter values + full-circle reconstruction. N=2 degeneracy: Q=n/4=0 breaks the π/2 shift (Im
+  should be 0), guarded in WQ (tableN>=4). Perf lessons, all A/B'd on a quiet PC (no-ws path as the
+  stable control, cross-run):
+  * The old README/fft.md workspace numbers (12.9/11.3 ms @1M) were STALE — pre-dated the wide-SIMD
+    campaign. True steady-state is ~6.5/6.0; full-vs-quarter A/B on one machine confirmed the "2x"
+    was a stale-doc mirage, not this change.
+  * Quarter table alone (WQ in the scalar butterfly) REGRESSED fft(ws) float ~+10% (float has 2
+    scalar stages q=1,4; double 1 → double stayed flat). Cause: WQ's branchy reconstruction ran
+    per-butterfly in the finest stages (which carry n/4 butterflies each).
+  * Fix 1 — materialize EVERY stage's W^1 into sw1 (was wide-stages-only; +5 entries, swLen still
+    ~n/3), so the scalar butterfly reads W^1 and derives W^2/W^3 in-register like the wide path. No
+    runtime WQ in the butterfly. Recovered most (+10% → +3%).
+  * Fix 2 — reorder the scalar butterfly to j-outer/base-inner so the q(<=4) twiddle triples are
+    computed ONCE per j (not per-butterfly), held in registers. Closed the rest: steady-state now
+    parity-to-faster than the half-circle version (262144 ~-5%, double 1M ~-7%, 1M float within
+    noise). Zero extra workspace memory, no threaded pointers.
+  * cw1 (radix-2 combine) and sw1 stay materialized-from-CosQ-at-build → the wide combine/butterfly
+    hot loops read contiguous tables, no runtime reconstruction. Only rfft/irfft unpack calls WQ.
+  * Removed dead twq/tableN threading through FftCoreRadix4/Slice/Ptr/Mixed once the butterfly went
+    fully sw1-driven (the stage twiddles are stage-length-relative, W_(4q)^j, independent of tableN).
+  Radix-16 / storing W^2/W^3 in the workspace / horizontal-SIMD WQ all considered and rejected (see
+  session notes). Next real speed levers are bigger: rfft pack/unpack fusion, cross-stage cache
+  blocking — NOT the table.
 - 2026-07-15 | SIMD'd the last scalar loop: the radix-2 DIT combine (Step 3 of FftCoreRadix4Mixed).
   The combine reads E/O data (re[k],im[k],re[M+k],im[M+k]) contiguously in k but the twiddle
   W_size^k = twReFull[k*combineStep] was strided, forcing a scalar loop. Fix mirrors the sw1 trick
