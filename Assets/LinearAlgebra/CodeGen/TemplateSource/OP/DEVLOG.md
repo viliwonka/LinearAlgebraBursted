@@ -826,6 +826,16 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   internally (build scratch is only 4 MB post quarter-wave) rather than reviving sin/cos.
 
 ## FFT.Workspace
+- 2026-07-15 | irfft re-pack FUSED into the inner inverse FFT's first permutation (mirror of the rfft
+  pack fusion below). irfft(ws) float 1M 4.88 -> 4.04 ms (-17%), double 1M ~4.66. The half-spectrum
+  re-pack (E/O reconstruction over Hermitian pairs) already writes cz/sz out-of-place from re/im, so
+  scatter each re-packed sample k straight into its post-permutation slot dst(k) and call the compute
+  core directly — the inner FFT skips its own reversal / cycle-following de-interleave. Extracted
+  FftCoreRadix4Core (reversal-skipping variant of FftCoreRadix4, mirrors the MixedCore extraction);
+  pure path calls FftCoreRadix4Core, mixed path FftCoreRadix4MixedCore. dst is a bijection over [0,M)
+  and the pack reads re/im (separate buffer), so no collision/aliasing. Bit-identical, FFT tests
+  102/102, no regression in complex fft/ifft (6.59/6.64). Unpack-into-last-stage (output side) still
+  open: unpack pairing k,M-k ≠ combine k,k+M/2, needs a dedicated real last stage — big, deferred.
 - 2026-07-15 | rfft pack FUSED into the inner FFT's first permutation → ~1.77x faster than complex
   fft(ws) (was ~1.16x), i.e. near the theoretical 2x for a two-for-one real FFT. rfft(ws) float 1M
   5.50 -> 3.62 ms (-34%), 262K 1.27 -> 0.83, 16K -42%; double 1M 6.09 -> 4.10. Mechanism: the old

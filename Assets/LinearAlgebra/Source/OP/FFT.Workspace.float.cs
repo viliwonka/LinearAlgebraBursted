@@ -492,6 +492,17 @@ namespace LinearAlgebra
             var sw1im    = ws.sw1im;
             var cw1re    = ws.cw1re;
             var cw1im    = ws.cw1im;
+
+            // The re-pack writes are FUSED into the inner inverse FFT's first permutation: each
+            // re-packed sample k is scattered straight into its post-permutation slot dst(k), so the
+            // inner core skips its own de-interleave/reversal. dst is a bijection over [0,M) and the
+            // (k, M-k) writes read re/im (a separate buffer) — no collision, no aliasing.
+            //   pure radix-4 (M = 4^k): dst = base-4 digit reversal.
+            //   mixed 2·4^k:            dst = even/odd de-interleave.
+            bool pure = IsPowerOf4(M);
+            int log4M = 0;
+            if (pure) for (int t = M; t > 1; t >>= 2) log4M++;
+
             // Processed in Hermitian-symmetric pairs (k, M-k): one twiddle and one load of the
             // (k, M-k) spectrum serve both re-packed outputs. Under k -> M-k the conjugate twiddle
             // maps so E_im, a and Re(W) flip sign, giving O_re unchanged, O_im negated — hence
@@ -519,9 +530,11 @@ namespace LinearAlgebra
                 float O_re = (a * cRe - b * cIm) * (float)0.5;
                 float O_im = (b * cRe + a * cIm) * (float)0.5;
 
-                // Y[k] = E[k] + i·O[k], and its M-k partner.
-                cz[k]  = E_re - O_im;   sz[k]  = E_im + O_re;
-                cz[kr] = E_re + O_im;   sz[kr] = O_re - E_im;
+                // Y[k] = E[k] + i·O[k], and its M-k partner — scattered to their permutation slots.
+                int dk  = pure ? ReverseBase4Digits(k,  log4M) : ((k  & 1) == 0 ? (k  >> 1) : half + (k  >> 1));
+                int dkr = pure ? ReverseBase4Digits(kr, log4M) : ((kr & 1) == 0 ? (kr >> 1) : half + (kr >> 1));
+                cz[dk]  = E_re - O_im;   sz[dk]  = E_im + O_re;
+                cz[dkr] = E_re + O_im;   sz[dkr] = O_re - E_im;
             }
             // Middle bin k = M/2 (self-paired: M-k == k). Skipped for M == 1 (N == 2).
             if (M >= 2)
@@ -541,16 +554,18 @@ namespace LinearAlgebra
                 float O_re = (a * cRe - b * cIm) * (float)0.5;
                 float O_im = (b * cRe + a * cIm) * (float)0.5;
 
-                cz[k] = E_re - O_im;
-                sz[k] = E_im + O_re;
+                int dk = pure ? ReverseBase4Digits(k, log4M) : ((k & 1) == 0 ? (k >> 1) : half + (k >> 1));
+                cz[dk] = E_re - O_im;
+                sz[dk] = E_im + O_re;
             }
 
-            // One M-point inverse FFT via radix-4 (with the shared quarter table, tableN = ws.n = N).
-            var visitedScratch = ws.visited;
-            if (IsPowerOf4(M))
-                FftCoreRadix4(ref cz, ref sz, ref sw1re, ref sw1im, true);
+            // Inner M-point inverse FFT — first permutation already applied by the scatter above, so
+            // call the compute cores directly (skipping their built-in reversal / de-interleave).
+            if (pure)
+                FftCoreRadix4Core(cz.Data.Ptr, sz.Data.Ptr, sw1re.Data.Ptr, sw1im.Data.Ptr, M, true);
             else
-                FftCoreRadix4Mixed(ref cz, ref sz, ref sw1re, ref sw1im, ref cw1re, ref cw1im, visitedScratch, true);
+                FftCoreRadix4MixedCore(cz.Data.Ptr, sz.Data.Ptr, sw1re.Data.Ptr, sw1im.Data.Ptr,
+                                       cw1re.Data.Ptr, cw1im.Data.Ptr, M, true);
 
             // Deinterleave: real[2j] = even[j], real[2j+1] = odd[j].
             for (int j = 0; j < M; j++)
@@ -683,25 +698,48 @@ namespace LinearAlgebra
             int size = re.N;
             if (size == 1) return;
 
-            // Conjugate trick (see section banner above).
-            if (inverse)
-                for (int i = 0; i < size; i++)
-                    im[i] = -im[i];
-
-            // Digit reversal + butterfly stages via shared slice helper.
             float* rePtr  = re.Data.Ptr;
             float* imPtr  = im.Data.Ptr;
             float* s1rPtr = sw1re.Data.Ptr;
             float* s1iPtr = sw1im.Data.Ptr;
-            FftCoreRadix4Slice(rePtr, imPtr, s1rPtr, s1iPtr, size);
+
+            // Base-4 digit reversal, then the compute core.
+            int log4n = 0;
+            for (int t = size; t > 1; t >>= 2) log4n++;
+            for (int i = 0; i < size; i++)
+            {
+                int j = ReverseBase4Digits(i, log4n);
+                if (j > i)
+                {
+                    float tr = rePtr[i]; rePtr[i] = rePtr[j]; rePtr[j] = tr;
+                    float ti = imPtr[i]; imPtr[i] = imPtr[j]; imPtr[j] = ti;
+                }
+            }
+            FftCoreRadix4Core(rePtr, imPtr, s1rPtr, s1iPtr, size, inverse);
+        }
+
+        // Pure radix-4 compute core: assumes the base-4 digit reversal is already applied. Conjugate
+        // trick + butterfly stages + inverse scale. rfft/irfft fuse their pack/re-pack into the
+        // reversal and call this directly. The conjugate runs post-reversal here (elementwise negate
+        // commutes with the permutation, so this is identical to conjugating first).
+        static unsafe void FftCoreRadix4Core(float* rePtr, float* imPtr,
+                                             float* s1rPtr, float* s1iPtr,
+                                             int size, bool inverse)
+        {
+            // Conjugate trick (see section banner above).
+            if (inverse)
+                for (int i = 0; i < size; i++)
+                    imPtr[i] = -imPtr[i];
+
+            FftCoreRadix4Ptr(rePtr, imPtr, s1rPtr, s1iPtr, size);
 
             if (inverse)
             {
                 float invN = (float)1 / (float)size;
                 for (int i = 0; i < size; i++)
                 {
-                    re[i] =  re[i] * invN;
-                    im[i] = -im[i] * invN;   // undo conjugate, apply 1/N scale
+                    rePtr[i] =  rePtr[i] * invN;
+                    imPtr[i] = -imPtr[i] * invN;   // undo conjugate, apply 1/N scale
                 }
             }
         }
