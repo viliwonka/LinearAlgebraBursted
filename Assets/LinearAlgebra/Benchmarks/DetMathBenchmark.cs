@@ -65,7 +65,7 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine();
 
             sb.AppendLine("=== sin/cos: native math vs DetMath minimax — 10M, batch + single (ms), max ABS err ===");
-            sb.AppendLine("    Cody-Waite π/2 reduction + odd/even minimax (sin=r·P(r²), cos=Q(r²)) + branch-free");
+            sb.AppendLine("    Cody-Waite pi/2 reduction + odd/even minimax (sin=r*P(r^2), cos=Q(r^2)) + branch-free");
             sb.AppendLine("    quadrant select. Deterministic (+-*/ & int only). absErr vs System.Math, inputs [-10,10].");
             sb.AppendLine(ExpHeader());
             // variant: 0 math.sin, 1 det.sin, 2 math.cos, 3 det.cos.
@@ -81,6 +81,20 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine(TrigRowDouble(1, true,  "det.sin    single-d", N));
             sb.AppendLine(TrigRowDouble(2, false, "math.cos   batch-d", N));
             sb.AppendLine(TrigRowDouble(3, false, "det.cos    batch-d", N));
+            sb.AppendLine();
+
+            sb.AppendLine("=== log: native math.log vs DetMath minimax — 10M, batch + single (ms), max ABS err ===");
+            sb.AppendLine("    x = m*2^e via exponent bits, m centered to [sqrt2/2,sqrt2), log(m)=2s*B(s^2), s=(m-1)/(m+1).");
+            sb.AppendLine("    Deterministic (+-*/ & int/bit only). absErr vs System.Math.Log, inputs (0.1,10].");
+            sb.AppendLine(ExpHeader());
+            sb.AppendLine(LogRowFloat(0, false, "math.log   batch-f", N));
+            sb.AppendLine(LogRowFloat(0, true,  "math.log   single-f", N));
+            sb.AppendLine(LogRowFloat(1, false, "det.log    batch-f", N));
+            sb.AppendLine(LogRowFloat(1, true,  "det.log    single-f", N));
+            sb.AppendLine(LogRowDouble(0, false, "math.log   batch-d", N));
+            sb.AppendLine(LogRowDouble(0, true,  "math.log   single-d", N));
+            sb.AppendLine(LogRowDouble(1, false, "det.log    batch-d", N));
+            sb.AppendLine(LogRowDouble(1, true,  "det.log    single-d", N));
             sb.AppendLine();
         }
     }

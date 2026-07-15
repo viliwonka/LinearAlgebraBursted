@@ -204,6 +204,39 @@ namespace LinearAlgebra.Benchmarks
             double sign = (double)1 - (double)2 * (double)(((quad + 1) >> 1) & 1);
             return sign * baseC;
         }
+
+        // log(x), x > 0: split x = m·2^e via the exponent bits, center m to [√2/2, √2), then
+        // log(m) = 2s·B(s²) with s = (m-1)/(m+1) (atanh form, no cancellation near m=1). B is minimax
+        // (float deg-3 ~0.01 ULP, double deg-7 ~0.01 ULP). log(x) = e·ln2 + log(m), ln2 split hi/lo.
+        // No x<=0 / inf / subnormal handling (prototype).
+        public static double Log(double x)
+        {
+            
+            
+            long l = math.aslong(x);
+            int e = (int)((l >> 52) & 0x7FF) - 1023;
+            double m = math.asdouble((l & 0x000FFFFFFFFFFFFFL) | 0x3FF0000000000000L);
+            const double SQRT2 = 1.4142135623730951;
+            const double LN2_HI = 0.6931471675634384;
+            const double LN2_LO = 1.2996506893889889e-08;
+            double adj = math.select(0.0, 1.0, m > SQRT2);
+            m = m - adj * (m * 0.5);
+            double ef = (double)e + adj;
+            double f = m - 1.0;
+            double s = f / (2.0 + f);
+            double z = s * s;
+            double b = 7.42033651975721971e-02;
+            b = b * z + 7.65476597014954508e-02;
+            b = b * z + 9.09187247444205753e-02;
+            b = b * z + 1.11110974736367899e-01;
+            b = b * z + 1.42857143903260792e-01;
+            b = b * z + 1.99999999996063942e-01;
+            b = b * z + 3.33333333333338971e-01;
+            b = b * z + 9.99999999999999999e-01;
+            double logm = (2.0 * s) * b;
+            return ef * LN2_HI + (logm + ef * LN2_LO);
+            
+        }
     }
 
     // ---- native math.* throughput (batch) ----
@@ -308,8 +341,68 @@ namespace LinearAlgebra.Benchmarks
         }
     }
 
+    // ---- log comparison: variant {0 math.log, 1 det.log} x {batch,single} ----
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct LogCompareJobDouble : IJob
+    {
+        public doubleN src;
+        public doubleN dst;
+        public int variant;
+        public int single;
+
+        public void Execute()
+        {
+            int n = src.N;
+            if (single == 0)
+            {
+                if (variant == 0) for (int i = 0; i < n; i++) dst[i] = math.log(src[i]);
+                else              for (int i = 0; i < n; i++) dst[i] = DetMathProtoDouble.Log(src[i]);
+            }
+            else
+            {
+                double acc = (double)1;
+                double tiny = (double)1e-20;
+                if (variant == 0) for (int i = 0; i < n; i++) acc = math.log(src[i] + acc * tiny);
+                else              for (int i = 0; i < n; i++) acc = DetMathProtoDouble.Log(src[i] + acc * tiny);
+                dst[0] = acc;
+            }
+        }
+    }
+
     public static partial class DetMathBenchmark
     {
+        static string LogRowDouble(int variant, bool single, string label, int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var src = arena.doubleVec(n);
+            var dst = arena.doubleVec(n);
+
+            var rng = new Unity.Mathematics.Random(0x106106u ^ (uint)variant);
+            for (int i = 0; i < n; i++) src[i] = rng.NextDouble(0.1f, 10f);   // x > 0
+
+            var job = new LogCompareJobDouble { src = src, dst = dst, variant = variant, single = single ? 1 : 0 };
+            var stat = Bench.Time(() => job.Run());
+
+            double maxAbs = 0.0;   // absolute error (log crosses 0 at x=1 → relative would blow up there)
+            if (!single)
+            {
+                for (int i = 0; i < n; i++)
+                {
+                    double refv = System.Math.Log((double)src[i]);
+                    double err  = System.Math.Abs((double)dst[i] - refv);
+                    if (err > maxAbs) maxAbs = err;
+                }
+            }
+            arena.Dispose();
+
+            double eps = 2.220446049250313e-16;
+            string errStr = single ? "(chain)" : maxAbs.ToString("E3", CultureInfo.InvariantCulture);
+            string ulpStr = single ? "-" : (maxAbs / eps).ToString("F2", CultureInfo.InvariantCulture);
+            return string.Format(CultureInfo.InvariantCulture,
+                "{0,-20} {1,-10} {2,11:F4} {3,11:F4} {4,11:F4} {5,13} {6,11}",
+                label, n, stat.Min, stat.Median, stat.Mean, errStr, ulpStr);
+        }
+
         static string TrigRowDouble(int variant, bool single, string label, int n)
         {
             var arena = new Arena(Allocator.Persistent);

@@ -184,6 +184,35 @@ namespace LinearAlgebra.Benchmarks
             float sign = (float)1 - (float)2 * (float)(((quad + 1) >> 1) & 1);
             return sign * baseC;
         }
+
+        // log(x), x > 0: split x = m·2^e via the exponent bits, center m to [√2/2, √2), then
+        // log(m) = 2s·B(s²) with s = (m-1)/(m+1) (atanh form, no cancellation near m=1). B is minimax
+        // (float deg-3 ~0.01 ULP, double deg-7 ~0.01 ULP). log(x) = e·ln2 + log(m), ln2 split hi/lo.
+        // No x<=0 / inf / subnormal handling (prototype).
+        public static float Log(float x)
+        {
+            
+            int i = math.asint(x);
+            int e = ((i >> 23) & 0xFF) - 127;
+            float m = math.asfloat((i & 0x007FFFFF) | 0x3F800000);   // mantissa in [1,2)
+            const float SQRT2 = 1.4142135623730951f;
+            const float LN2_HI = 0.693115234375f;
+            const float LN2_LO = 3.194618329871446e-05f;
+            float adj = math.select(0f, 1f, m > SQRT2);
+            m = m - adj * (m * 0.5f);                                // if m>√2: halve → [√2/2,√2)
+            float ef = (float)e + adj;
+            float f = m - 1f;
+            float s = f / (2f + f);
+            float z = s * s;
+            float b = 1.49762394462376722e-1f;
+            b = b * z + 1.99868990328974250e-1f;
+            b = b * z + 3.33334124209226285e-1f;
+            b = b * z + 9.99999999255582188e-1f;
+            float logm = (2f * s) * b;
+            return ef * LN2_HI + (logm + ef * LN2_LO);
+            
+            
+        }
     }
 
     // ---- native math.* throughput (batch) ----
@@ -288,8 +317,68 @@ namespace LinearAlgebra.Benchmarks
         }
     }
 
+    // ---- log comparison: variant {0 math.log, 1 det.log} x {batch,single} ----
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct LogCompareJobFloat : IJob
+    {
+        public floatN src;
+        public floatN dst;
+        public int variant;
+        public int single;
+
+        public void Execute()
+        {
+            int n = src.N;
+            if (single == 0)
+            {
+                if (variant == 0) for (int i = 0; i < n; i++) dst[i] = math.log(src[i]);
+                else              for (int i = 0; i < n; i++) dst[i] = DetMathProtoFloat.Log(src[i]);
+            }
+            else
+            {
+                float acc = (float)1;
+                float tiny = (float)1e-20;
+                if (variant == 0) for (int i = 0; i < n; i++) acc = math.log(src[i] + acc * tiny);
+                else              for (int i = 0; i < n; i++) acc = DetMathProtoFloat.Log(src[i] + acc * tiny);
+                dst[0] = acc;
+            }
+        }
+    }
+
     public static partial class DetMathBenchmark
     {
+        static string LogRowFloat(int variant, bool single, string label, int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var src = arena.floatVec(n);
+            var dst = arena.floatVec(n);
+
+            var rng = new Unity.Mathematics.Random(0x106106u ^ (uint)variant);
+            for (int i = 0; i < n; i++) src[i] = rng.NextFloat(0.1f, 10f);   // x > 0
+
+            var job = new LogCompareJobFloat { src = src, dst = dst, variant = variant, single = single ? 1 : 0 };
+            var stat = Bench.Time(() => job.Run());
+
+            double maxAbs = 0.0;   // absolute error (log crosses 0 at x=1 → relative would blow up there)
+            if (!single)
+            {
+                for (int i = 0; i < n; i++)
+                {
+                    double refv = System.Math.Log((double)src[i]);
+                    double err  = System.Math.Abs((double)dst[i] - refv);
+                    if (err > maxAbs) maxAbs = err;
+                }
+            }
+            arena.Dispose();
+
+            double eps = 1.1920929e-7;
+            string errStr = single ? "(chain)" : maxAbs.ToString("E3", CultureInfo.InvariantCulture);
+            string ulpStr = single ? "-" : (maxAbs / eps).ToString("F2", CultureInfo.InvariantCulture);
+            return string.Format(CultureInfo.InvariantCulture,
+                "{0,-20} {1,-10} {2,11:F4} {3,11:F4} {4,11:F4} {5,13} {6,11}",
+                label, n, stat.Min, stat.Median, stat.Mean, errStr, ulpStr);
+        }
+
         static string TrigRowFloat(int variant, bool single, string label, int n)
         {
             var arena = new Arena(Allocator.Persistent);

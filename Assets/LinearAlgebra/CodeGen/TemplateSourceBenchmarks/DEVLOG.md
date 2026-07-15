@@ -2,6 +2,19 @@
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
 ## DetMathBenchmark
+- 2026-07-15 (r4) | Added deterministic log (x=m·2^e via exponent bits, m centered to [√2/2,√2),
+  log(m)=2s·B(s²) atanh form, s=(m-1)/(m+1); B minimax float deg-3 double deg-7). batch ms (10M):
+  float math.log 81.6 → det 17.7 (4.6×) @1.35 ULP abs; double 94.5 → 30.4 (3.1×) @2.0. single float
+  152→122 (1.25×); double single det 166 vs math 159 (Horner deg-7 chain latency — Estrin would fix,
+  same pattern as exp double). **CONSOLIDATED across all prototyped fns (batch throughput speedup vs
+  Unity.Mathematics, float / double, all deterministic +-*/ & int only, ~1-2 ULP):** exp 2.2× / 1.9×
+  (Estrin), sin 4.35× / 2.7×, cos 4.45× / 3.5×, log 4.6× / 3.1×. So in-house deterministic DetMath is
+  2-4.6× FASTER than libm on batch — the determinism (cross-arch bit-identical) is a perf WIN, not a
+  tax, because libm hardens for full range + all edge cases while our bounded-range poly is lean.
+  Trig/log reductions are bounded-arg (|x|<~10, sane mantissa); full range needs Payne-Hanek (trig) /
+  edge handling (all). atan still deferred. Decision input: option-3 DetMath is strongly favored,
+  default-on for Comp.*/softmax/dft. Estrin should be the canonical eval scheme (fixes double single
+  latency across exp/log).
 - 2026-07-15 (r3) | Added deterministic sin/cos (Cody-Waite π/2 reduction + odd/even minimax
   sin=r·P(r²) cos=Q(r²) + branch-free quadrant select; Remez coeffs via mpmath). **BIGGEST WIN so
   far — far bigger than exp, because math.sin/cos are much heavier (full reduction + poly) while our
