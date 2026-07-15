@@ -354,30 +354,48 @@ namespace LinearAlgebra
 
             int M = n >> 1;   // N/2
 
-            // Step 1: Pack even and odd samples into a length-M complex sequence.
-            // Use workspace scratch (no per-call allocation).
-            var cz = ws.cz;   // doubleN of length n/2 = M
-            var sz = ws.sz;   // doubleN of length n/2 = M
-            for (int j = 0; j < M; j++)
-            {
-                cz[j] = real[2 * j];
-                sz[j] = real[2 * j + 1];
-            }
+            var cz = ws.cz;   // doubleN of length n/2 = M (packed real parts)
+            var sz = ws.sz;   // doubleN of length n/2 = M (packed imag parts)
+            var twQuarter = ws.twQuarter;
+            double* cqPtr = twQuarter.Data.Ptr;   // used by the unpack below
+            double* czp   = cz.Data.Ptr;
+            double* szp   = sz.Data.Ptr;
+            double* realp = real.Data.Ptr;
+            double* s1rp  = ws.sw1re.Data.Ptr;
+            double* s1ip  = ws.sw1im.Data.Ptr;
 
-            // Step 2: Inner M-point FFT via radix-4 (with the shared quarter table, tableN = ws.n = N).
-            // IsPowerOf4(M) → pure radix-4 (M = 4^k); else → mixed 2·4^k path (M = 2·4^k).
-            // Both paths reconstruct twiddles from the quarter table via WQ — no sub-table copy.
-            var twQuarter    = ws.twQuarter;
-            double* cqPtr = twQuarter.Data.Ptr;
-            var sw1re    = ws.sw1re;
-            var sw1im    = ws.sw1im;
-            var cw1re    = ws.cw1re;
-            var cw1im    = ws.cw1im;
-            var visitedScratch = ws.visited;
+            // Steps 1+2 FUSED: scatter the even/odd pack straight into the inner M-point FFT's first
+            // permutation, out-of-place (real is a separate source), so there is neither a separate
+            // pack pass nor an in-place de-interleave. real[2j]/real[2j+1] are the real/imag of packed
+            // complex sample j; each lands directly in sample j's post-permutation slot. The compute
+            // core then runs the butterflies (and, for the mixed path, the radix-2 combine).
             if (IsPowerOf4(M))
-                FftCoreRadix4(ref cz, ref sz, ref sw1re, ref sw1im, false);
+            {
+                // Pure radix-4 (M = 4^k): first permutation is the base-4 digit reversal.
+                int log4M = 0;
+                for (int t = M; t > 1; t >>= 2) log4M++;
+                for (int j = 0; j < M; j++)
+                {
+                    int r = ReverseBase4Digits(j, log4M);
+                    czp[r] = realp[2 * j];
+                    szp[r] = realp[2 * j + 1];
+                }
+                FftCoreRadix4Ptr(czp, szp, s1rp, s1ip, M);
+            }
             else
-                FftCoreRadix4Mixed(ref cz, ref sz, ref sw1re, ref sw1im, ref cw1re, ref cw1im, visitedScratch, false);
+            {
+                // Mixed 2·4^k: first permutation is the even/odd de-interleave.
+                double* cw1rp = ws.cw1re.Data.Ptr;
+                double* cw1ip = ws.cw1im.Data.Ptr;
+                int deHalf = M >> 1;
+                for (int j = 0; j < M; j++)
+                {
+                    int d = (j & 1) == 0 ? (j >> 1) : (deHalf + (j >> 1));
+                    czp[d] = realp[2 * j];
+                    szp[d] = realp[2 * j + 1];
+                }
+                FftCoreRadix4MixedCore(czp, szp, s1rp, s1ip, cw1rp, cw1ip, M, false);
+            }
 
             // Step 3: Unpack. DC and Nyquist are always real for a real input.
             re[0] = cz[0] + sz[0];
@@ -735,19 +753,21 @@ namespace LinearAlgebra
                                               bool inverse)
         {
             int size = re.N;
-            int M = size >> 1;   // size/2, always a power of 4
+            MixedDeinterleave(re.Data.Ptr, im.Data.Ptr, visited.Data.Ptr, size);
+            FftCoreRadix4MixedCore(re.Data.Ptr, im.Data.Ptr,
+                                   sw1re.Data.Ptr, sw1im.Data.Ptr,
+                                   cw1re.Data.Ptr, cw1im.Data.Ptr, size, inverse);
+        }
 
-            // Conjugate trick at the outer level (see banner above).
-            if (inverse)
-                for (int i = 0; i < size; i++)
-                    im[i] = -im[i];
+        // In-place even/odd de-interleave via cycle-following: after it, [0,M) holds the
+        // even-indexed elements and [M,2M) holds the odd-indexed (M = size/2), both in natural
+        // order — the layout FftCoreRadix4MixedCore expects. visited is a length->=size 0/1
+        // scratch, cleared here. rfft/irfft skip this: they scatter their pack straight into the
+        // de-interleaved layout out-of-place (real source ≠ dest), so no cycle-following is needed.
+        static unsafe void MixedDeinterleave(double* re, double* im, double* visited, int size)
+        {
+            int M = size >> 1;
 
-            // Step 1: In-place de-interleave (unshuffle) via cycle-following.
-            // dst(i) = i/2 if i is even; M + i/2 if i is odd.
-            // After the permutation: [0,M) holds even-indexed elements, [M,2M) holds odd-indexed,
-            // both in natural order — exactly what FftCoreRadix4Slice expects as input.
-            // Cycle-following uses the workspace visited scratch (0 = unvisited, 1 = visited).
-            // Clear [0, size) — workspace is reused across calls so it must be zeroed each time.
             for (int i = 0; i < size; i++)
                 visited[i] = (double)0;
 
@@ -773,28 +793,34 @@ namespace LinearAlgebra
                 re[s] = carryRe;
                 im[s] = carryIm;
             }
+        }
 
-            // Step 2: Two in-place radix-4 sub-FFTs on the contiguous halves (no temp copy).
-            // Each reads the length-log4(M) prefix of the shared per-stage W^1 table (sw1) — no
-            // sub-table copies.
-            double* rePtr  = re.Data.Ptr;
-            double* imPtr  = im.Data.Ptr;
-            double* s1rPtr = sw1re.Data.Ptr;
-            double* s1iPtr = sw1im.Data.Ptr;
+        // Mixed-radix compute core: assumes the even/odd de-interleave is already done (even-indexed
+        // samples in [0,M), odd in [M,2M); M = size/2). Conjugate trick + two radix-4 sub-FFTs +
+        // radix-2 combine + inverse scale. The conjugate runs post-de-interleave here (elementwise
+        // negate commutes with the permutation, so this is identical to conjugating first).
+        static unsafe void FftCoreRadix4MixedCore(double* rePtr, double* imPtr,
+                                                  double* s1rPtr, double* s1iPtr,
+                                                  double* cw1r, double* cw1i,
+                                                  int size, bool inverse)
+        {
+            int M = size >> 1;   // size/2, always a power of 4
 
+            // Conjugate trick at the outer level (see banner above).
+            if (inverse)
+                for (int i = 0; i < size; i++)
+                    imPtr[i] = -imPtr[i];
+
+            // Two in-place radix-4 sub-FFTs on the contiguous halves (no temp copy). Each reads the
+            // length-log4(M) prefix of the shared per-stage W^1 table (sw1) — no sub-table copies.
             FftCoreRadix4Slice(rePtr,     imPtr,     s1rPtr, s1iPtr, M);
             FftCoreRadix4Slice(rePtr + M, imPtr + M, s1rPtr, s1iPtr, M);
 
-            // Step 3: Radix-2 DIT combine (wide + scalar hybrid).
+            // Radix-2 DIT combine (wide + scalar hybrid).
             //   X[k]   = E[k] + W_size^k * O[k]
             //   X[k+M] = E[k] - W_size^k * O[k]
-            // The combine twiddle W_size^k = T_tableN[k*(tableN/size)] is pre-gathered contiguously
-            // into cw1r/cw1i (ws.cw1re/cw1im) so k indexes it directly: Width consecutive k give
-            // contiguous wide loads of the twiddles AND the E/O data (re[k],im[k],re[M+k],im[M+k]).
-            // The scalar tail handles the M < Width remainder (M is a power of 4, so no partial
-            // wide iteration once M >= Width). Bit-identical to the scalar combine per element.
-            double* cw1r = cw1re.Data.Ptr;
-            double* cw1i = cw1im.Data.Ptr;
+            // The combine twiddle W_size^k = cw1[k] (pre-gathered contiguously), so Width consecutive
+            // k wide-load the twiddles AND the E/O data together. Scalar tail handles M < Width.
             int Wc = doubleW.Width;
             int k = 0;
             for (; k + Wc <= M; k += Wc)
@@ -823,8 +849,8 @@ namespace LinearAlgebra
                 double invN = (double)1 / (double)size;
                 for (int i = 0; i < size; i++)
                 {
-                    re[i] =  re[i] * invN;
-                    im[i] = -im[i] * invN;   // undo conjugate, apply 1/N scale
+                    rePtr[i] =  rePtr[i] * invN;
+                    imPtr[i] = -imPtr[i] * invN;   // undo conjugate, apply 1/N scale
                 }
             }
         }

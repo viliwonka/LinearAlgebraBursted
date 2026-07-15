@@ -826,6 +826,25 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   internally (build scratch is only 4 MB post quarter-wave) rather than reviving sin/cos.
 
 ## FFT.Workspace
+- 2026-07-15 | rfft pack FUSED into the inner FFT's first permutation → ~1.77x faster than complex
+  fft(ws) (was ~1.16x), i.e. near the theoretical 2x for a two-for-one real FFT. rfft(ws) float 1M
+  5.50 -> 3.62 ms (-34%), 262K 1.27 -> 0.83, 16K -42%; double 1M 6.09 -> 4.10. Mechanism: the old
+  rfft did a separate pack pass (deinterleave real -> cz/sz) AND then the mixed core did its OWN
+  in-place even/odd de-interleave via cycle-following (+ a full-length visited[] clear + pointer-
+  chasing). Those are the SAME axis, so fused: scatter real[2j]/real[2j+1] straight into the inner
+  FFT's first-permutation slot, OUT-OF-PLACE (real is a separate source, so no cycle-following /
+  visited needed at all). Pure-radix-4 case (M=4^k): first permutation = base-4 digit reversal, so
+  the fused scatter writes to ReverseBase4Digits(j) and then calls FftCoreRadix4Ptr directly. Mixed
+  case (M=2·4^k, the common one at N=4^k): first permutation = even/odd de-interleave, fused scatter
+  writes to dst(j) then FftCoreRadix4MixedCore. Refactored FftCoreRadix4Mixed -> MixedDeinterleave +
+  FftCoreRadix4MixedCore so rfft can call the compute core after its own fused permute; the conjugate
+  moved post-de-interleave (elementwise negate commutes with the permutation → identical). Bit-
+  identical (same permutation, computed differently); FFT tests 102/102. Research (2 agents, sourced):
+  planar/split re/im is the SIMD-right layout — interleaved needs shuffles our portable fProxyW
+  deliberately lacks (Popovici/Franchetti HPEC'17; FFTW genfft; confirmed) — so this fusion-on-split is
+  the correct route, NOT interleaving. Only complex-FMA HW (AVX-512 FP16 / Arm FCMLA) escapes, not
+  reachable portably. irfft mirror + unpack-into-last-stage still open (unpack pairing k,M-k ≠ combine
+  k,k+M/2, so unpack fusion needs a dedicated real last stage — big, deferred).
 - 2026-07-15 | Serpentine (boustrophedon) butterfly group order tried and REVERTED. Don't retry.
   Idea: alternate the base_ group loop high->low by stage parity so each stage restarts in the
   address range the previous stage left hot (groups are disjoint/order-independent, so it's

@@ -66,5 +66,5 @@ machine memory traffic:
 |---|---|---|
 | `fft(ws)` (twiddle-table workspace) | float | 6.56 |
 | `fft(ws)` | double | 7.25 |
-| `rfft(ws)` (twiddle-table workspace) | float | 5.50 |
-| `rfft(ws)` | double | 6.09 |
+| `rfft(ws)` (twiddle-table workspace) | float | 3.62 |
+| `rfft(ws)` | double | 4.10 |

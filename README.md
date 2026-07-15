@@ -94,7 +94,7 @@ Benchmarked on a Ryzen 9 9950X3D (pinned to a non-V-Cache core), single-threaded
 | `SVD.truncated` truncated SVD w/ top-k only | 2048×512, k=21, float | 17.6 ms |
 | `SVD.randomized` randomized SVD w/ top-k only  | 2048×512, k=21, float | 29.5 ms |
 | `FFT.fft` FFT | N = 2²⁰, float | 6.6 ms +1 ms init |
-|`FFT.rfft` Real FFT | N = 2²⁰, float | 5.5 ms +1 ms init |
+|`FFT.rfft` Real FFT | N = 2²⁰, float | 3.6 ms +1 ms init |
 
 ## Features
 
