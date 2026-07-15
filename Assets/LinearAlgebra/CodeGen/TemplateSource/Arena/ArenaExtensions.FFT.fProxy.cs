@@ -31,13 +31,14 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Inverse real FFT: allocates a fresh real output of length N = 2*(re.N-1) and fills it
-        /// with <see cref="FFT.irfft"/>. re.N must be ≥ 2 and N must be a power of two.
+        /// with <see cref="FFT.irfft"/>. re.N must be ≥ 2 and N must be a power of two; ws must be
+        /// built for the signal length N.
         /// </summary>
-        public static fProxyN fProxyIrfft(this ref Arena arena, in fProxyN re, in fProxyN im)
+        public static fProxyN fProxyIrfft(this ref Arena arena, in fProxyN re, in fProxyN im, in fProxyFFTCache ws)
         {
             int N = (re.N - 1) << 1;
             var real = arena.fProxyVec(N);
-            FFT.irfft(in re, in im, ref real);
+            FFT.irfft(in re, in im, ref real, in ws);
             return real;
         }
     }

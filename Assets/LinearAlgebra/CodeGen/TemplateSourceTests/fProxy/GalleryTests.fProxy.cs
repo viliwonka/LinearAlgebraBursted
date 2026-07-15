@@ -467,7 +467,8 @@ public class fProxyGalleryTests
             // DFT of c via the library FFT (in place ⇒ copy the real part, zero imag)
             var fRe = c.Copy();
             var fIm = arena.fProxyVec(n);
-            FFT.fft(ref fRe, ref fIm);
+            var fftWs = arena.fProxyFFTCache(n);
+            FFT.fft(ref fRe, ref fIm, in fftWs);
 
             fProxy spectralTol = (fProxy)100 * Consts.fProxySqrtEps;
 

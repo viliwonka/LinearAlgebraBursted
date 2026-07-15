@@ -471,7 +471,8 @@ public class doubleGalleryTests
             // DFT of c via the library FFT (in place ⇒ copy the real part, zero imag)
             var fRe = c.Copy();
             var fIm = arena.doubleVec(n);
-            FFT.fft(ref fRe, ref fIm);
+            var fftWs = arena.doubleFFTCache(n);
+            FFT.fft(ref fRe, ref fIm, in fftWs);
 
             double spectralTol = (double)100 * Consts.doubleSqrtEps;
 

@@ -34,10 +34,6 @@ public class floatFFTTests
             RfftRoundTrip,
             RfftKnownSignals,
             // twiddle-table workspace tests
-            TableFftMatchesRecurrence,
-            TableIfftMatchesRecurrence,
-            TableRfftMatchesRecurrence,
-            TableIrfftMatchesRecurrence,
             TableFftRoundTrip,
             TableRfftRoundTrip,
             // radix-4 oracle validation tests
@@ -75,10 +71,6 @@ public class floatFFTTests
                 case TestType.FftSmallSizes: FftSmallSizes(); break;
                 case TestType.RfftRoundTrip: RfftRoundTrip(); break;
                 case TestType.RfftKnownSignals: RfftKnownSignals(); break;
-                case TestType.TableFftMatchesRecurrence: TableFftMatchesRecurrence(); break;
-                case TestType.TableIfftMatchesRecurrence: TableIfftMatchesRecurrence(); break;
-                case TestType.TableRfftMatchesRecurrence: TableRfftMatchesRecurrence(); break;
-                case TestType.TableIrfftMatchesRecurrence: TableIrfftMatchesRecurrence(); break;
                 case TestType.TableFftRoundTrip: TableFftRoundTrip(); break;
                 case TestType.TableRfftRoundTrip: TableRfftRoundTrip(); break;
                 case TestType.Radix4MatchesOracle: Radix4MatchesOracle(); break;
@@ -98,10 +90,11 @@ public class floatFFTTests
         {
             var arena = new Arena(Allocator.Persistent);
             int N = 4;
+            var ws = arena.floatFFTCache(N);
             var re = arena.floatVec(N, 1f);     // all ones
             var im = arena.floatVec(N);         // zeros
 
-            FFT.fft(ref re, ref im);
+            FFT.fft(ref re, ref im, in ws);
 
             AssertClose(re[0], (float)N, 1E-4f);
             AssertClose(im[0], (float)0f, 1E-4f);
@@ -118,13 +111,14 @@ public class floatFFTTests
         {
             var arena = new Arena(Allocator.Persistent);
             int N = 8;
+            var ws = arena.floatFFTCache(N);
             var re = arena.floatVec(N);
             var im = arena.floatVec(N);
             float w = (float)(2.0 * System.Math.PI) / (float)N;
             for (int n = 0; n < N; n++)
                 re[n] = math.cos(w * n);
 
-            FFT.fft(ref re, ref im);
+            FFT.fft(ref re, ref im, in ws);
 
             var mag = arena.floatVec(N);
             FFT.magnitude(in re, in im, ref mag);
@@ -144,13 +138,14 @@ public class floatFFTTests
         {
             var arena = new Arena(Allocator.Persistent);
             int N = 8;
+            var ws = arena.floatFFTCache(N);
             var sigRe = arena.floatRandomVec(N, -2f, 2f, 9911);
             var sigIm = arena.floatRandomVec(N, -2f, 2f, 2244);
 
             // fft path (in-place on copies)
             var fRe = sigRe.Copy();
             var fIm = sigIm.Copy();
-            FFT.fft(ref fRe, ref fIm);
+            FFT.fft(ref fRe, ref fIm, in ws);
 
             // dft path
             var dRe = arena.floatVec(N);
@@ -170,13 +165,14 @@ public class floatFFTTests
         {
             var arena = new Arena(Allocator.Persistent);
             int N = 16;
+            var ws = arena.floatFFTCache(N);
             var re0 = arena.floatRandomVec(N, -3f, 3f, 5150);
             var im0 = arena.floatRandomVec(N, -3f, 3f, 6160);
 
             var re = re0.Copy();
             var im = im0.Copy();
-            FFT.fft(ref re, ref im);
-            FFT.ifft(ref re, ref im);
+            FFT.fft(ref re, ref im, in ws);
+            FFT.ifft(ref re, ref im, in ws);
 
             for (int i = 0; i < N; i++)
             {
@@ -218,17 +214,18 @@ public class floatFFTTests
             var arena = new Arena(Allocator.Persistent);
             int N = 8;
             int halfSpec = (N >> 1) + 1; // 5
+            var ws = arena.floatFFTCache(N);
             var real = arena.floatRandomVec(N, -2f, 2f, 1234);
 
             // half-spectrum output
             var rRe = arena.floatVec(halfSpec);
             var rIm = arena.floatVec(halfSpec);
-            FFT.rfft(in real, ref rRe, ref rIm);
+            FFT.rfft(in real, ref rRe, ref rIm, in ws);
 
             // full N-point FFT oracle
             var fRe = real.Copy();
             var fIm = arena.floatVec(N); // zeros (real input)
-            FFT.fft(ref fRe, ref fIm);
+            FFT.fft(ref fRe, ref fIm, in ws);
 
             // Compare only the N/2+1 non-redundant bins (0..N/2).
             for (int k = 0; k <= N / 2; k++)
@@ -318,11 +315,12 @@ public class floatFFTTests
         {
             var arena = new Arena(Allocator.Persistent);
             int N = 8;
+            var ws = arena.floatFFTCache(N);
             var re = arena.floatVec(N);
             var im = arena.floatVec(N);
             re[0] = (float)N; // X = [8, 0, 0, ...]
 
-            FFT.ifft(ref re, ref im);
+            FFT.ifft(ref re, ref im, in ws);
 
             for (int n = 0; n < N; n++)
             {
@@ -353,23 +351,19 @@ public class floatFFTTests
             arena.Dispose();
         }
 
-        // Edge sizes: N=1 fft is the identity (early-return path); N=2 is the smallest real butterfly,
-        // fft([1,0]) = [1,1] (re), [0,0] (im).
+        // Edge size: N=2 is the smallest real butterfly, fft([1,0]) = [1,1] (re), [0,0] (im).
+        // fft requires a workspace, and Arena.floatFFTCache only accepts n>=2 (see
+        // FftWorkspaceFactoryNonPow2Throws), so N=1 is not a constructible fft input.
         void FftSmallSizes()
         {
             var arena = new Arena(Allocator.Persistent);
-
-            var re1 = arena.floatVec(1);
-            var im1 = arena.floatVec(1);
-            re1[0] = (float)7; im1[0] = (float)(-2);
-            FFT.fft(ref re1, ref im1);
-            AssertClose(re1[0], (float)7f, 1E-5f);   // unchanged
-            AssertClose(im1[0], (float)(-2f), 1E-5f);
+            int N = 2;
+            var ws = arena.floatFFTCache(N);
 
             var re2 = arena.floatVec(2);
             var im2 = arena.floatVec(2);
             re2[0] = (float)1; re2[1] = (float)0;
-            FFT.fft(ref re2, ref im2);
+            FFT.fft(ref re2, ref im2, in ws);
             AssertClose(re2[0], (float)1f, 1E-5f);   // X0 = x0+x1
             AssertClose(re2[1], (float)1f, 1E-5f);   // X1 = x0-x1
             AssertClose(im2[0], (float)0f, 1E-5f);
@@ -378,7 +372,7 @@ public class floatFFTTests
             arena.Dispose();
         }
 
-        // irfft(rfft(x)) == x to floating-point precision, at several power-of-two lengths.
+        // irfft(rfft(x, ws), ws) == x to floating-point precision, at several power-of-two lengths.
         void RfftRoundTrip()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -387,12 +381,13 @@ public class floatFFTTests
             {
                 int N = 8;
                 int halfSpec = (N >> 1) + 1;
+                var ws = arena.floatFFTCache(N);
                 var real0 = arena.floatRandomVec(N, -3f, 3f, 5555);
                 var rRe = arena.floatVec(halfSpec);
                 var rIm = arena.floatVec(halfSpec);
                 var real2 = arena.floatVec(N);
-                FFT.rfft(in real0, ref rRe, ref rIm);
-                FFT.irfft(in rRe, in rIm, ref real2);
+                FFT.rfft(in real0, ref rRe, ref rIm, in ws);
+                FFT.irfft(in rRe, in rIm, ref real2, in ws);
                 for (int i = 0; i < N; i++)
                     AssertClose(real2[i], real0[i], (float)1E-4f);
             }
@@ -401,12 +396,13 @@ public class floatFFTTests
             {
                 int N = 16;
                 int halfSpec = (N >> 1) + 1;
+                var ws = arena.floatFFTCache(N);
                 var real0 = arena.floatRandomVec(N, -3f, 3f, 6666);
                 var rRe = arena.floatVec(halfSpec);
                 var rIm = arena.floatVec(halfSpec);
                 var real2 = arena.floatVec(N);
-                FFT.rfft(in real0, ref rRe, ref rIm);
-                FFT.irfft(in rRe, in rIm, ref real2);
+                FFT.rfft(in real0, ref rRe, ref rIm, in ws);
+                FFT.irfft(in rRe, in rIm, ref real2, in ws);
                 for (int i = 0; i < N; i++)
                     AssertClose(real2[i], real0[i], (float)1E-4f);
             }
@@ -415,25 +411,13 @@ public class floatFFTTests
             {
                 int N = 64;
                 int halfSpec = (N >> 1) + 1;
+                var ws = arena.floatFFTCache(N);
                 var real0 = arena.floatRandomVec(N, -3f, 3f, 7777);
                 var rRe = arena.floatVec(halfSpec);
                 var rIm = arena.floatVec(halfSpec);
                 var real2 = arena.floatVec(N);
-                FFT.rfft(in real0, ref rRe, ref rIm);
-                FFT.irfft(in rRe, in rIm, ref real2);
-                for (int i = 0; i < N; i++)
-                    AssertClose(real2[i], real0[i], (float)1E-4f);
-            }
-
-            // irfft arena wrapper round-trip (N=8)
-            {
-                int N = 8;
-                int halfSpec = (N >> 1) + 1;
-                var real0 = arena.floatRandomVec(N, -3f, 3f, 8888);
-                var rRe = arena.floatVec(halfSpec);
-                var rIm = arena.floatVec(halfSpec);
-                FFT.rfft(in real0, ref rRe, ref rIm);
-                var real2 = arena.floatIrfft(in rRe, in rIm);
+                FFT.rfft(in real0, ref rRe, ref rIm, in ws);
+                FFT.irfft(in rRe, in rIm, ref real2, in ws);
                 for (int i = 0; i < N; i++)
                     AssertClose(real2[i], real0[i], (float)1E-4f);
             }
@@ -447,6 +431,7 @@ public class floatFFTTests
             var arena = new Arena(Allocator.Persistent);
             int N = 8;
             int halfSpec = (N >> 1) + 1; // 5
+            var ws = arena.floatFFTCache(N);
 
             // --- DC: x[n]=1 for all n ---
             // X[0]=N, all other bins 0; im all 0.
@@ -454,7 +439,7 @@ public class floatFFTTests
                 var dc = arena.floatVec(N, 1f);
                 var dcRe = arena.floatVec(halfSpec);
                 var dcIm = arena.floatVec(halfSpec);
-                FFT.rfft(in dc, ref dcRe, ref dcIm);
+                FFT.rfft(in dc, ref dcRe, ref dcIm, in ws);
                 AssertClose(dcRe[0], (float)N, (float)1E-4f);
                 AssertClose(dcIm[0], (float)0, 0f);
                 for (int k = 1; k <= N / 2; k++)
@@ -476,7 +461,7 @@ public class floatFFTTests
 
                 var cosRe = arena.floatVec(halfSpec);
                 var cosIm = arena.floatVec(halfSpec);
-                FFT.rfft(in cosX, ref cosRe, ref cosIm);
+                FFT.rfft(in cosX, ref cosRe, ref cosIm, in ws);
 
                 AssertClose(cosRe[f], (float)(N / 2), (float)1E-4f);
                 AssertClose(cosIm[f], (float)0, (float)1E-4f);
@@ -497,7 +482,7 @@ public class floatFFTTests
 
                 var nyqRe = arena.floatVec(halfSpec);
                 var nyqIm = arena.floatVec(halfSpec);
-                FFT.rfft(in nyq, ref nyqRe, ref nyqIm);
+                FFT.rfft(in nyq, ref nyqRe, ref nyqIm, in ws);
 
                 AssertClose(nyqRe[N / 2], (float)N, (float)1E-4f);
                 AssertClose(nyqIm[N / 2], (float)0, 0f);
@@ -510,11 +495,12 @@ public class floatFFTTests
 
             // --- N=2 edge case: x=[a,b] -> re=[a+b, a-b], im=[0,0] ---
             {
+                var ws2 = arena.floatFFTCache(2);
                 var x2 = arena.floatVec(2);
                 x2[0] = (float)3; x2[1] = (float)7;
                 var r2 = arena.floatVec(2);
                 var i2 = arena.floatVec(2);
-                FFT.rfft(in x2, ref r2, ref i2);
+                FFT.rfft(in x2, ref r2, ref i2, in ws2);
                 AssertClose(r2[0], (float)10, (float)1E-5f);
                 AssertClose(r2[1], (float)(-4), (float)1E-5f);
                 AssertClose(i2[0], (float)0, 0f);
@@ -525,168 +511,6 @@ public class floatFFTTests
         }
 
         // ---- twiddle-table workspace tests ----
-
-        // Helper: compare fft(ws) (auto-dispatch) vs recurrence fft for one size.
-        // fft(ws) now dispatches to radix-4 for power-of-4 lengths and mixed for 2·4^k lengths,
-        // so the two algorithms accumulate rounding differently. Use relative tolerance (same
-        // scheme as Radix4MatchesOracle) — floor at 1.0 so near-zero bins get absolute relTol.
-        void TableFftVsRecurrence(int N, uint seedRe, uint seedIm)
-        {
-            var arena = new Arena(Allocator.Persistent);
-            var ws = arena.floatFFTCache(N);
-            var re0 = arena.floatRandomVec(N, -2f, 2f, seedRe);
-            var im0 = arena.floatRandomVec(N, -2f, 2f, seedIm);
-
-            var reR = re0.Copy(); var imR = im0.Copy();
-            FFT.fft(ref reR, ref imR);
-
-            var reT = re0.Copy(); var imT = im0.Copy();
-            FFT.fft(ref reT, ref imT, in ws);
-
-            float relTol = (float)1E-3f;
-            for (int k = 0; k < N; k++)
-            {
-                float absTolRe = relTol * math.max((float)1.0f, math.abs(reR[k]));
-                float absTolIm = relTol * math.max((float)1.0f, math.abs(imR[k]));
-                AssertClose(reT[k], reR[k], absTolRe);
-                AssertClose(imT[k], imR[k], absTolIm);
-            }
-            arena.Dispose();
-        }
-
-        // fft(ws) auto-dispatch == recurrence fft on random inputs at N=8, 16, 64, 256.
-        // N=16,64,256 exercise the radix-4 path; N=8 exercises the mixed-radix path.
-        void TableFftMatchesRecurrence()
-        {
-            TableFftVsRecurrence(8,   4321u, 4332u);
-            TableFftVsRecurrence(16,  4343u, 4354u);
-            TableFftVsRecurrence(64,  4365u, 4376u);
-            TableFftVsRecurrence(256, 4387u, 4398u);
-        }
-
-        // Helper: compare ifft(ws) (auto-dispatch) vs recurrence ifft for one size.
-        // Same relative-tolerance scheme as TableFftVsRecurrence — radix-4 and mixed paths
-        // accumulate rounding differently from the recurrence inverse.
-        void TableIfftVsRecurrence(int N, uint seedRe, uint seedIm)
-        {
-            var arena = new Arena(Allocator.Persistent);
-            var ws = arena.floatFFTCache(N);
-            var re0 = arena.floatRandomVec(N, -2f, 2f, seedRe);
-            var im0 = arena.floatRandomVec(N, -2f, 2f, seedIm);
-
-            var reR = re0.Copy(); var imR = im0.Copy();
-            FFT.ifft(ref reR, ref imR);
-
-            var reT = re0.Copy(); var imT = im0.Copy();
-            FFT.ifft(ref reT, ref imT, in ws);
-
-            float relTol = (float)1E-3f;
-            for (int k = 0; k < N; k++)
-            {
-                float absTolRe = relTol * math.max((float)1.0f, math.abs(reR[k]));
-                float absTolIm = relTol * math.max((float)1.0f, math.abs(imR[k]));
-                AssertClose(reT[k], reR[k], absTolRe);
-                AssertClose(imT[k], imR[k], absTolIm);
-            }
-            arena.Dispose();
-        }
-
-        // ifft(ws) auto-dispatch == recurrence ifft on random inputs at N=8, 16, 64, 256.
-        void TableIfftMatchesRecurrence()
-        {
-            TableIfftVsRecurrence(8,   9999u, 10001u);
-            TableIfftVsRecurrence(16,  10013u, 10027u);
-            TableIfftVsRecurrence(64,  10039u, 10051u);
-            TableIfftVsRecurrence(256, 10063u, 10079u);
-        }
-
-        // Helper: compare table rfft(ws) [now radix-4 inner] vs recurrence rfft for one size.
-        // Tight 1E-4 absolute tolerance — appropriate for N ≤ 256 where both algorithms agree to
-        // that precision. For larger N the cross-algorithm absolute error grows to ~1e-3 (both
-        // algorithms are still CORRECT; they just diverge in absolute terms for near-zero bins).
-        // Large N correctness is validated by TableRfftRoundTrip (self-consistent irfft·rfft==id).
-        void TableRfftVsRecurrence(int N, uint seed)
-        {
-            var arena = new Arena(Allocator.Persistent);
-            int halfSpec = (N >> 1) + 1;
-            var ws = arena.floatFFTCache(N);
-            var real = arena.floatRandomVec(N, -2f, 2f, seed);
-
-            var reR = arena.floatVec(halfSpec);
-            var imR = arena.floatVec(halfSpec);
-            FFT.rfft(in real, ref reR, ref imR);
-
-            var reT = arena.floatVec(halfSpec);
-            var imT = arena.floatVec(halfSpec);
-            FFT.rfft(in real, ref reT, ref imT, in ws);
-
-            float tol = (float)1E-4f;
-            for (int k = 0; k <= N / 2; k++)
-            {
-                AssertClose(reT[k], reR[k], tol);
-                AssertClose(imT[k], imR[k], tol);
-            }
-            // DC and Nyquist imaginary parts must be exactly zero (set unconditionally in rfft)
-            AssertClose(imT[0],     (float)0, 0f);
-            AssertClose(imT[N / 2], (float)0, 0f);
-            arena.Dispose();
-        }
-
-        // Table rfft(ws) == recurrence rfft at N ≤ 256 (tight cross-algorithm comparison, 1E-4).
-        // Covers BOTH inner-M paths:
-        //   IsPowerOf4(M)=true  (Radix4 inner): N=2(M=1), N=8(M=4), N=32(M=16), N=128(M=64)
-        //   IsPowerOf4(M)=false (Mixed inner):  N=4(M=2), N=16(M=8), N=64(M=32), N=256(M=128)
-        // N > 256 cross-algorithm agreement is validated by TableRfftRoundTrip (irfft·rfft==id).
-        void TableRfftMatchesRecurrence()
-        {
-            TableRfftVsRecurrence(2,   3001u);
-            TableRfftVsRecurrence(4,   3005u);
-            TableRfftVsRecurrence(8,   2468u);
-            TableRfftVsRecurrence(16,  2475u);
-            TableRfftVsRecurrence(32,  3009u);
-            TableRfftVsRecurrence(64,  2482u);
-            TableRfftVsRecurrence(128, 3013u);
-            TableRfftVsRecurrence(256, 2489u);
-        }
-
-        // Helper: compare table irfft vs recurrence irfft for one size.
-        void TableIrfftVsRecurrence(int N, uint seed)
-        {
-            var arena = new Arena(Allocator.Persistent);
-            int halfSpec = (N >> 1) + 1;
-            var ws = arena.floatFFTCache(N);
-            var real0 = arena.floatRandomVec(N, -2f, 2f, seed);
-
-            var specRe = arena.floatVec(halfSpec);
-            var specIm = arena.floatVec(halfSpec);
-            FFT.rfft(in real0, ref specRe, ref specIm);   // recurrence rfft as spectrum source
-
-            var realR = arena.floatVec(N);
-            FFT.irfft(in specRe, in specIm, ref realR);
-
-            var realT = arena.floatVec(N);
-            FFT.irfft(in specRe, in specIm, ref realT, in ws);
-
-            float tol = (float)1E-4f;
-            for (int i = 0; i < N; i++)
-                AssertClose(realT[i], realR[i], tol);
-            arena.Dispose();
-        }
-
-        // Table irfft(ws) == recurrence irfft at N ≤ 256 (tight cross-algorithm comparison, 1E-4).
-        // Both inner-M paths covered (same split as TableRfftMatchesRecurrence).
-        // Large-N correctness validated by TableRfftRoundTrip (irfft·rfft round-trip).
-        void TableIrfftMatchesRecurrence()
-        {
-            TableIrfftVsRecurrence(2,   4001u);
-            TableIrfftVsRecurrence(4,   4005u);
-            TableIrfftVsRecurrence(8,   1357u);
-            TableIrfftVsRecurrence(16,  1374u);
-            TableIrfftVsRecurrence(32,  4009u);
-            TableIrfftVsRecurrence(64,  1391u);
-            TableIrfftVsRecurrence(128, 4013u);
-            TableIrfftVsRecurrence(256, 1408u);
-        }
 
         // ifft(fft(x, ws), ws) == x with a workspace.
         void TableFftRoundTrip()
@@ -756,16 +580,16 @@ public class floatFFTTests
         // fft(ws) dispatches: IsPowerOf4(N) → FftCoreRadix4; 2·4^k → FftCoreRadix4Mixed; else FftCoreTable.
         //
         // Strategy:
-        //   N ≤ 256 — cross-algorithm oracle (recurrence fft vs fft(ws)) at relative 1E-3.
-        //     The recurrence (cur *= w) accumulates drift O(k · eps_f) per stage inner loop. At N ≤ 256
-        //     the last-stage drift reaches ~128 · 1.2e-7 ≈ 1.5e-5 per twiddle — well within 1E-3 relTol.
-        //     Covers all auto-dispatch paths: radix-4 (N=4,16,64,256) and mixed (N=2,8,32,128).
-        //   N > 256 — round-trip validation (ifft(fft(x,ws),ws) == x) at absolute 1E-3.
-        //     At float32 the recurrence last-stage drift reaches O(N/2 · eps_f) ≈ 2e-3 per twiddle at
-        //     N=32768; after amplification by intermediate magnitudes O(sqrt(N)), near-zero output bins
-        //     accumulate absolute error far exceeding any useful absolute threshold. The round-trip
-        //     (forward + inverse errors cancel to machine precision) is the correct large-N correctness
-        //     test. Radix4RoundTrip also covers these sizes with different seeds.
+        //   N ≤ 2048 — independent oracle: FFT.dft (O(N²) ground truth) vs auto-dispatch fft(ws).
+        //     relTol grows with N (base 1E-3 + 1E-4·sqrt(N), ≈5.5E-3 at N=2048): dft's own O(N²)
+        //     summation accumulates more float32 rounding as N grows, so a fixed small-N tolerance
+        //     would false-fail at the larger sizes. Covers all auto-dispatch paths: radix-4
+        //     (N=4,16,64,256,1024) and mixed (N=2,8,32,128,512,2048).
+        //   N > 2048 — round-trip validation (ifft(fft(x,ws),ws) == x) at absolute 1E-3.
+        //     dft is an unreliable float32 oracle at these sizes (its own O(N²) summation error
+        //     grows with N); the round-trip (forward + inverse errors cancel to machine precision)
+        //     is the correct large-N correctness test. Radix4RoundTrip also covers these sizes with
+        //     different seeds.
         void Radix4VsOracleOneSize(int N, uint seedRe, uint seedIm)
         {
             var arena = new Arena(Allocator.Persistent);
@@ -774,22 +598,22 @@ public class floatFFTTests
             var re0 = arena.floatRandomVec(N, -2f, 2f, seedRe);
             var im0 = arena.floatRandomVec(N, -2f, 2f, seedIm);
 
-            if (N <= 256)
+            if (N <= 2048)
             {
-                // Cross-algorithm oracle: recurrence fft (per-stage cos/sin) vs auto-dispatch fft(ws).
-                var reRef = re0.Copy(); var imRef = im0.Copy();
-                FFT.fft(ref reRef, ref imRef);
+                // Independent oracle: FFT.dft (O(N²) ground truth) vs auto-dispatch fft(ws).
+                var dRe = arena.floatVec(N); var dIm = arena.floatVec(N);
+                FFT.dft(in re0, in im0, ref dRe, ref dIm);
 
                 var reW = re0.Copy(); var imW = im0.Copy();
                 FFT.fft(ref reW, ref imW, in ws);
 
-                float relTol = (float)1E-3f;
+                float relTol = (float)1E-3f + (float)1E-4f * math.sqrt((float)N);
                 for (int k = 0; k < N; k++)
                 {
-                    float absTolRe = relTol * math.max((float)1.0f, math.abs(reRef[k]));
-                    float absTolIm = relTol * math.max((float)1.0f, math.abs(imRef[k]));
-                    AssertClose(reW[k], reRef[k], absTolRe);
-                    AssertClose(imW[k], imRef[k], absTolIm);
+                    float absTolRe = relTol * math.max((float)1.0f, math.abs(dRe[k]));
+                    float absTolIm = relTol * math.max((float)1.0f, math.abs(dIm[k]));
+                    AssertClose(reW[k], dRe[k], absTolRe);
+                    AssertClose(imW[k], dIm[k], absTolIm);
                 }
             }
             else
@@ -811,8 +635,8 @@ public class floatFFTTests
         }
 
         // Validate fft(ws) auto-dispatch at all sizes in {2,4,8,...,32768}.
-        // N ≤ 256: cross-algorithm oracle vs recurrence fft (all dispatch paths exercised).
-        // N > 256: round-trip (recurrence oracle not reliable at float32 for large N; see comment above).
+        // N ≤ 2048: independent oracle vs FFT.dft (all dispatch paths exercised, growing relTol).
+        // N > 2048: round-trip (dft not a reliable float32 oracle at these sizes; see comment above).
         void Radix4MatchesOracle()
         {
             Radix4VsOracleOneSize(2,     31001u, 31002u);
@@ -892,10 +716,9 @@ public class floatFFTTests
         }
 
         // ---- 1. fft vs dft cross-check (the anchor) -------------------------------------------
-        // dft is the independent O(N²) ground truth. Both the no-workspace recurrence fft and the
-        // workspace radix-4/mixed fft must match it bin-by-bin on random complex input. Validates
-        // fft (BOTH paths) AND dft simultaneously. Sizes cover power-of-4 (16,64,256) and mixed
-        // 2·4^k (8,32) dispatch classes.
+        // dft is the independent O(N²) ground truth; the workspace radix-4/mixed fft must match it
+        // bin-by-bin on random complex input. Sizes cover power-of-4 (16,64,256) and mixed 2·4^k
+        // (8,32) dispatch classes.
         void FftVsDftOneSize(int N, uint seedRe, uint seedIm)
         {
             var arena = new Arena(Allocator.Persistent);
@@ -907,17 +730,12 @@ public class floatFFTTests
             var dIm = arena.floatVec(N);
             FFT.dft(in re0, in im0, ref dRe, ref dIm);
 
-            var fRe = re0.Copy(); var fIm = im0.Copy();
-            FFT.fft(ref fRe, ref fIm);
-
             var wRe = re0.Copy(); var wIm = im0.Copy();
             FFT.fft(ref wRe, ref wIm, in ws);
 
             float relTol = (float)1E-3f;
             for (int k = 0; k < N; k++)
             {
-                AssertCloseRel(fRe[k], dRe[k], relTol);
-                AssertCloseRel(fIm[k], dIm[k], relTol);
                 AssertCloseRel(wRe[k], dRe[k], relTol);
                 AssertCloseRel(wIm[k], dIm[k], relTol);
             }
@@ -946,10 +764,6 @@ public class floatFFTTests
 
             float timeE = Energy(in re0, in im0);
             float relTol = (float)1E-2f;   // robust scalar-energy bound (float summation at large N)
-
-            var fRe = re0.Copy(); var fIm = im0.Copy();
-            FFT.fft(ref fRe, ref fIm);
-            AssertCloseRel(Energy(in fRe, in fIm) / (float)N, timeE, relTol);
 
             var wRe = re0.Copy(); var wIm = im0.Copy();
             FFT.fft(ref wRe, ref wIm, in ws);
@@ -1019,7 +833,7 @@ public class floatFFTTests
 
         // ---- 3. Linearity ---------------------------------------------------------------------
         // fft(a·x + b·y) == a·fft(x) + b·fft(y) for random complex scalars a,b and signals x,y.
-        // Validated for fft(no-ws), fft(ws) and dft. Per-bin relative tolerance.
+        // Validated for fft(ws) and dft. Per-bin relative tolerance.
         void FftLinearityOneSize(int N, uint sx, uint sy)
         {
             var arena = new Arena(Allocator.Persistent);
@@ -1052,8 +866,7 @@ public class floatFFTTests
             FFT.dft(in xr, in xi, ref Xr, ref Xi);
             FFT.dft(in yr, in yi, ref Yr, ref Yi);
 
-            // LHS via three transforms.
-            var Zno_r = zr.Copy(); var Zno_i = zi.Copy(); FFT.fft(ref Zno_r, ref Zno_i);
+            // LHS via two transforms (workspace fft and dft).
             var Zws_r = zr.Copy(); var Zws_i = zi.Copy(); FFT.fft(ref Zws_r, ref Zws_i, in ws);
             var Zdf_r = arena.floatVec(N); var Zdf_i = arena.floatVec(N);
             FFT.dft(in zr, in zi, ref Zdf_r, ref Zdf_i);
@@ -1064,8 +877,6 @@ public class floatFFTTests
                 float rhsRe = (aRe * Xr[k] - aIm * Xi[k]) + (bRe * Yr[k] - bIm * Yi[k]);
                 float rhsIm = (aRe * Xi[k] + aIm * Xr[k]) + (bRe * Yi[k] + bIm * Yr[k]);
 
-                AssertCloseRel(Zno_r[k], rhsRe, relTol);
-                AssertCloseRel(Zno_i[k], rhsIm, relTol);
                 AssertCloseRel(Zws_r[k], rhsRe, relTol);
                 AssertCloseRel(Zws_i[k], rhsIm, relTol);
                 AssertCloseRel(Zdf_r[k], rhsRe, relTol);
@@ -1292,16 +1103,18 @@ public class floatFFTTests
                 AssertCloseRel(fIm[k], dIm[k], relTol);
             }
 
-            // (b) rfft(ws) on the SAME workspace (touches cz/sz/visited) — compare to no-ws rfft.
+            // (b) rfft(ws) on the SAME workspace (touches cz/sz/visited) — compare to the dft oracle
+            // (real signal, im=0; dft's half-spectrum bins are the rfft ground truth).
             var real = arena.floatRandomVec(N, -2f, 2f, seed + 2u);
             var rRe = arena.floatVec(halfSpec); var rIm = arena.floatVec(halfSpec);
             FFT.rfft(in real, ref rRe, ref rIm, in ws);
-            var oRe = arena.floatVec(halfSpec); var oIm = arena.floatVec(halfSpec);
-            FFT.rfft(in real, ref oRe, ref oIm);   // no-ws oracle
+            var zeroIm = arena.floatVec(N);
+            var oDftRe = arena.floatVec(N); var oDftIm = arena.floatVec(N);
+            FFT.dft(in real, in zeroIm, ref oDftRe, ref oDftIm);
             for (int k = 0; k <= N / 2; k++)
             {
-                AssertCloseRel(rRe[k], oRe[k], relTol);
-                AssertCloseRel(rIm[k], oIm[k], relTol);
+                AssertCloseRel(rRe[k], oDftRe[k], relTol);
+                AssertCloseRel(rIm[k], oDftIm[k], relTol);
             }
 
             // (c) ifft(ws) on the SAME workspace, inverting the step-(a) spectrum back to re0/im0.
@@ -1427,10 +1240,6 @@ public class floatFFTTests
     [Test] public void RfftRoundTripTest() => RunJob(TestJob.TestType.RfftRoundTrip);
     [Test] public void RfftKnownSignalsTest() => RunJob(TestJob.TestType.RfftKnownSignals);
     // twiddle-table workspace tests
-    [Test] public void TableFftMatchesRecurrenceTest() => RunJob(TestJob.TestType.TableFftMatchesRecurrence);
-    [Test] public void TableIfftMatchesRecurrenceTest() => RunJob(TestJob.TestType.TableIfftMatchesRecurrence);
-    [Test] public void TableRfftMatchesRecurrenceTest() => RunJob(TestJob.TestType.TableRfftMatchesRecurrence);
-    [Test] public void TableIrfftMatchesRecurrenceTest() => RunJob(TestJob.TestType.TableIrfftMatchesRecurrence);
     [Test] public void TableFftRoundTripTest() => RunJob(TestJob.TestType.TableFftRoundTrip);
     [Test] public void TableRfftRoundTripTest() => RunJob(TestJob.TestType.TableRfftRoundTrip);
     // radix-4 oracle validation
@@ -1446,27 +1255,6 @@ public class floatFFTTests
     [Test] public void TwiddleTableAccuracyTest() => RunJob(TestJob.TestType.TwiddleTableAccuracy);
 
     // ---- Managed throw tests (guard paths) ----
-
-    [Test]
-    public void FftNonPowerOfTwoThrows()
-    {
-        var arena = new Arena(Allocator.Persistent);
-        var re = arena.floatVec(6); // 6 is not a power of two
-        var im = arena.floatVec(6);
-        Assert.Throws<ArgumentException>(() => FFT.fft(ref re, ref im));
-        Assert.Throws<ArgumentException>(() => FFT.ifft(ref re, ref im));
-        arena.Dispose();
-    }
-
-    [Test]
-    public void FftMismatchedLengthThrows()
-    {
-        var arena = new Arena(Allocator.Persistent);
-        var re = arena.floatVec(8);
-        var im = arena.floatVec(4);
-        Assert.Throws<ArgumentException>(() => FFT.fft(ref re, ref im));
-        arena.Dispose();
-    }
 
     [Test]
     public void DftAliasOutputThrows()
@@ -1507,6 +1295,7 @@ public class floatFFTTests
     public void RfftLengthAndAliasThrows()
     {
         var arena = new Arena(Allocator.Persistent);
+        var ws = arena.floatFFTCache(8);
         var real = arena.floatVec(8);
         // For N=8, the correct half-spectrum length is N/2+1 = 5.
         var re5  = arena.floatVec(5);  // correct
@@ -1515,16 +1304,17 @@ public class floatFFTTests
         var im4  = arena.floatVec(4);  // wrong
 
         // wrong re length
-        Assert.Throws<ArgumentException>(() => FFT.rfft(in real, ref re8, ref im5));
+        Assert.Throws<ArgumentException>(() => FFT.rfft(in real, ref re8, ref im5, in ws));
         // wrong im length
-        Assert.Throws<ArgumentException>(() => FFT.rfft(in real, ref re5, ref im4));
-        // non-power-of-two real length
+        Assert.Throws<ArgumentException>(() => FFT.rfft(in real, ref re5, ref im4, in ws));
+        // non-power-of-two real length: no matching workspace can exist (floatFFTCache itself
+        // requires a power of two), so this necessarily throws via the workspace-size guard.
         var real7 = arena.floatVec(7);
         var re4   = arena.floatVec(4);
         var im4b  = arena.floatVec(4);
-        Assert.Throws<ArgumentException>(() => FFT.rfft(in real7, ref re4, ref im4b));
+        Assert.Throws<ArgumentException>(() => FFT.rfft(in real7, ref re4, ref im4b, in ws));
         // im aliasing real must throw
-        Assert.Throws<ArgumentException>(() => FFT.rfft(in real, ref re5, ref real));
+        Assert.Throws<ArgumentException>(() => FFT.rfft(in real, ref re5, ref real, in ws));
         arena.Dispose();
     }
 
@@ -1532,34 +1322,37 @@ public class floatFFTTests
     public void IrfftGuards()
     {
         var arena = new Arena(Allocator.Persistent);
+        var ws = arena.floatFFTCache(8);
         // For N=8, half-spectrum has length N/2+1=5.
         var re5   = arena.floatVec(5);
         var im5   = arena.floatVec(5);
         var real8 = arena.floatVec(8);
 
-        // im.N != re.N
+        // im.N != re.N (throws before the workspace is consulted)
         var im4 = arena.floatVec(4);
-        Assert.Throws<ArgumentException>(() => FFT.irfft(in re5, in im4, ref real8));
+        Assert.Throws<ArgumentException>(() => FFT.irfft(in re5, in im4, ref real8, in ws));
 
         // halfSpec < 2 (re.N=1 means N=0; minimum is N=2)
         var re1  = arena.floatVec(1);
         var im1  = arena.floatVec(1);
-        Assert.Throws<ArgumentException>(() => FFT.irfft(in re1, in im1, ref real8));
+        Assert.Throws<ArgumentException>(() => FFT.irfft(in re1, in im1, ref real8, in ws));
 
         // wrong real output length (real.N=7 but N=8)
         var real7 = arena.floatVec(7);
-        Assert.Throws<ArgumentException>(() => FFT.irfft(in re5, in im5, ref real7));
+        Assert.Throws<ArgumentException>(() => FFT.irfft(in re5, in im5, ref real7, in ws));
 
         // Alias tests: use N=2 (halfSpec=2, real.N=2) so all length guards pass and the alias
-        // check is reached. re2.N=2 = N, so real.N matches and the ptr check fires.
+        // check is reached. re2.N=2 = N, so real.N matches and the ptr check fires. Needs its
+        // own workspace (sized for N=2) since the alias check runs after the workspace guard.
+        var ws2   = arena.floatFFTCache(2);
         var re2  = arena.floatVec(2);
         var im2  = arena.floatVec(2);
         var real2 = arena.floatVec(2);
 
         // real aliasing re (correct lengths: halfSpec=2, N=2)
-        Assert.Throws<ArgumentException>(() => FFT.irfft(in re2, in im2, ref re2));
+        Assert.Throws<ArgumentException>(() => FFT.irfft(in re2, in im2, ref re2, in ws2));
         // real aliasing im (correct lengths)
-        Assert.Throws<ArgumentException>(() => FFT.irfft(in re2, in im2, ref im2));
+        Assert.Throws<ArgumentException>(() => FFT.irfft(in re2, in im2, ref im2, in ws2));
 
         arena.Dispose();
     }
@@ -1611,6 +1404,21 @@ public class floatFFTTests
 
         // irfft: re.N=5 -> N=8, but ws.n=16
         Assert.Throws<ArgumentException>(() => FFT.irfft(in reHalf, in imHalf, ref real8, in ws16));
+
+        arena.Dispose();
+    }
+
+    // fft/ifft require re and im to have the same length (would otherwise index im out of bounds).
+    [Test]
+    public void FftMismatchedLengthThrows()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        var re8 = arena.floatVec(8);
+        var im4 = arena.floatVec(4);          // wrong: im shorter than re
+        var ws8 = arena.floatFFTCache(8);     // correctly sized for re.N=8
+
+        Assert.Throws<ArgumentException>(() => FFT.fft(ref re8, ref im4, in ws8));
+        Assert.Throws<ArgumentException>(() => FFT.ifft(ref re8, ref im4, in ws8));
 
         arena.Dispose();
     }

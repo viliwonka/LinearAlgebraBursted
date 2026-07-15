@@ -813,6 +813,18 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   expected on a redundant/collinear sensor row, not an error) collapse to Ok, and Indefinite (S
   numerically broken) is the only real failure.
 
+## FFT (no-workspace path)
+- 2026-07-15 | REMOVED the no-workspace fft/ifft/rfft/irfft overloads and their sin/cos recurrence
+  cores (FftCore radix-2, FftCoreRadix4Rec) from FFT.fProxy.cs. Rationale: the path was strictly
+  dominated — even a one-shot ws+build (build the quarter-wave table + one transform ~7.4 ms at
+  N=2^20 float) beat the recurrence (~22 ms), AND it was non-deterministic across architectures
+  (sin/cos twiddles). Nothing justified keeping it. Workspace overloads are now the only power-of-two
+  path. Tests repointed to FFT.dft as the independent oracle (small N; both dispatch paths, N up to
+  2048) + round-trips + analytic. dft/idft KEPT as the arbitrary-N fallback (still sin/cos, still the
+  documented non-deterministic escape hatch — DetMath would be the deterministic route, parked). Don't
+  re-add a recurrence FFT: if a zero-setup convenience call is ever wanted, build a Temp workspace
+  internally (build scratch is only 4 MB post quarter-wave) rather than reviving sin/cos.
+
 ## FFT.Workspace
 - 2026-07-15 | Serpentine (boustrophedon) butterfly group order tried and REVERTED. Don't retry.
   Idea: alternate the base_ group loop high->low by stage parity so each stage restarts in the

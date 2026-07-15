@@ -263,6 +263,8 @@ namespace LinearAlgebra
         public static void fft(ref floatN re, ref floatN im, in floatFFTCache ws)
         {
             int n = re.N;
+            if (im.N != n)
+                throw new ArgumentException("fft: re and im must have the same length");
             RequireRadix4Workspace(in ws, n, "fft");
 
             var sw1re       = ws.sw1re;
@@ -293,6 +295,8 @@ namespace LinearAlgebra
         public static void ifft(ref floatN re, ref floatN im, in floatFFTCache ws)
         {
             int n = re.N;
+            if (im.N != n)
+                throw new ArgumentException("ifft: re and im must have the same length");
             RequireRadix4Workspace(in ws, n, "ifft");
 
             var sw1re       = ws.sw1re;

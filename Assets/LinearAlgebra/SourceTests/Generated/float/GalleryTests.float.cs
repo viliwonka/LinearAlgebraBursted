@@ -471,7 +471,8 @@ public class floatGalleryTests
             // DFT of c via the library FFT (in place ⇒ copy the real part, zero imag)
             var fRe = c.Copy();
             var fIm = arena.floatVec(n);
-            FFT.fft(ref fRe, ref fIm);
+            var fftWs = arena.floatFFTCache(n);
+            FFT.fft(ref fRe, ref fIm, in fftWs);
 
             float spectralTol = (float)100 * Consts.floatSqrtEps;
 

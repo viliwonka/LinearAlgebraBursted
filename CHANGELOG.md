@@ -120,6 +120,14 @@ between minor versions.
   (8-lane AVX) accumulators with lane-identical fallbacks — float `A·Bᵀ` about 1.5×, float
   symmetric `A·Aᵀ` about 1.6×, float GEMV about 1.7× at mid-to-large sizes; double unchanged.
 
+### Removed
+
+- **Breaking**: the no-workspace FFT overloads `FFT.fft(ref re, ref im)`, `FFT.ifft(...)`,
+  `FFT.rfft(in real, ref re, ref im)`, and `FFT.irfft(...)` (the `sin`/`cos`-recurrence path).
+  They were slower than building a workspace and running one transform, and not deterministic across
+  architectures. Use the workspace overloads: build `arena.floatFFTCache(n)` once and pass it (`in ws`).
+  `dft`/`idft` still cover arbitrary (non-power-of-two) N.
+
 ## [0.1.0] — 2026-07-03
 
 First public preview. The library is feature-complete for its core scope and heavily

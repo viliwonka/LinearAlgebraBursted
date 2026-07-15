@@ -3,14 +3,14 @@ using System.Text;
 namespace LinearAlgebra.Benchmarks
 {
     // 1D FFT and DFT benchmarks. Own size arrays (not Bench.Sizes — which is for square matrices):
-    //   FFT: radix-2 in-place, lengths must be power of two, O(N log N).
+    //   FFT: twiddle-table workspace, lengths must be power of two, O(N log N).
     //   DFT: direct O(N²) for arbitrary N (smaller sizes since it's quadratic).
     //
     // FFT is IN-PLACE so re/im are destroyed each call; the job copies pristine srcRe/srcIm
     // into re/im at the start of each Execute so every timed sample does identical work.
     // DFT inputs are `in` (not modified), outputs are separate; no copy needed each call.
     //
-    // Hand-written harness half. The timed IJobs (Fft/Rfft/FftTable/FftBuildRun/RfftTable/Dft Job
+    // Hand-written harness half. The timed IJobs (FftTable/FftBuildRun/RfftTable/Dft Job
     // {Float,Double}) and build+measure methods are code-generated per dtype from
     // Assets/LinearAlgebra/CodeGen/TemplateSourceBenchmarks/FFTBenchmark.fProxy.cs.
     public static partial class FFTBenchmark
@@ -25,14 +25,6 @@ namespace LinearAlgebra.Benchmarks
 
         public static void Section(StringBuilder sb)
         {
-            sb.AppendLine("=== No-workspace FFT in-place (FFT.fft / FFT.fft; O(N log N); ms) ===");
-            sb.AppendLine("    Auto-dispatch: power-of-4 → radix-4 recurrence (table-free, zero-alloc); else → radix-2 recurrence.");
-            sb.AppendLine("    Input destroyed each call; job copies srcRe/srcIm -> re/im before each run.");
-            sb.AppendLine(Bench.HeaderTime());
-            foreach (var n in FftSizes) sb.AppendLine(FftFloat(n));
-            foreach (var n in FftSizes) sb.AppendLine(FftDouble(n));
-            sb.AppendLine();
-
             sb.AppendLine("=== FFT, twiddle-table workspace — auto radix-4/mixed/radix-2 (FFT.fft(ws) / FFT.fft(ws); ms) ===");
             sb.AppendLine("    Workspace built once; dispatches: IsPowerOf4 → radix-4 (log4N passes), 2·4^k → mixed, else → radix-2 table.");
             sb.AppendLine("    No per-element cos/sin; full-circle twiddle table built ONCE outside the timed loop.");
@@ -47,13 +39,6 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine(Bench.HeaderTime());
             foreach (var n in FftSizes) sb.AppendLine(FftTableBuiltFloat(n));
             foreach (var n in FftSizes) sb.AppendLine(FftTableBuiltDouble(n));
-            sb.AppendLine();
-
-            sb.AppendLine("=== Real-input half-spectrum FFT (FFT.rfft / FFT.rfft; two-for-one; ms) ===");
-            sb.AppendLine("    real input `in` — not modified; re/im output length N/2+1 overwritten each call.");
-            sb.AppendLine(Bench.HeaderTime());
-            foreach (var n in FftSizes) sb.AppendLine(RfftFloat(n));
-            foreach (var n in FftSizes) sb.AppendLine(RfftDouble(n));
             sb.AppendLine();
 
             sb.AppendLine("=== Real-input FFT, twiddle-table workspace (FFT.rfft(ws) / FFT.rfft(ws); ms) ===");

@@ -128,9 +128,9 @@ a documented, rounding-only multi-accumulator dot). Compiled under Burst's `Floa
 disables FP reassociation), results are reproducible run to run and across CPU architectures for a
 fixed Burst version — what a deterministic lockstep multiplayer sim needs — **provided the path uses
 only correctly-rounded operations** (`+ - * /` and `sqrt`). The core factorizations and solvers
-qualify, and so does the workspace FFT (`fft(ws)`/`rfft(ws)`/... — its twiddle table is built from
-`sqrt` and basic arithmetic, no `sin`/`cos`). The **no-workspace FFT and `dft`** compute twiddles
-with `sin`/`cos` on the fly, and **random sampling** uses transcendentals (`log`/`exp`/`sin`/...);
+qualify, and so does the FFT (`fft(ws)`/`rfft(ws)`/... — its twiddle table is built from `sqrt` and
+basic arithmetic, no `sin`/`cos`). The direct **`dft`/`idft`** (the arbitrary-N fallback) compute
+twiddles with `sin`/`cos` on the fly, and **random sampling** uses transcendentals (`log`/`exp`/`sin`/...);
 both call functions Burst only makes bit-identical under `FloatMode.Deterministic` (opt-in, 64-bit
 only), so they do not carry the cross-architecture guarantee. (Burst's default float mode already
 behaves as `Strict`, so the qualifying paths need no special build flag.)

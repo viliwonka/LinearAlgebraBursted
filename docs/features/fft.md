@@ -6,13 +6,10 @@ divides by N, so `ifft(fft(x)) == x`.
 
 ## Entry points
 
-- **`fft(ref re, ref im)` / `ifft(...)`** — in-place, zero-alloc, no workspace. Power-of-two only
-  (throws otherwise — use `dft` for arbitrary N). Dispatches to a zero-alloc radix-4 recurrence for
-  power-of-4 lengths, radix-2 recurrence otherwise.
-- **`fft(ref re, ref im, in ws)` / `ifft(...)`** — workspace (twiddle-table plan) form, fastest.
-  Dispatches to true table-indexed radix-4 or mixed-radix (one radix-2 stage + two radix-4
-  sub-FFTs), covering every power-of-two. ~3× faster than the no-workspace path; the table
-  build amortizes after ~1–3 transforms, so build one (`arena.floatFFTCache(n)`) for any repeated use.
+- **`fft(ref re, ref im, in ws)` / `ifft(...)`** — in-place power-of-two transform (throws otherwise —
+  use `dft` for arbitrary N). Dispatches to table-indexed radix-4 or mixed-radix (one radix-2 stage +
+  two radix-4 sub-FFTs), covering every power-of-two. Needs a workspace (`arena.floatFFTCache(n)`),
+  built once and reused.
 - **`rfft(in real, ref re, ref im[, in ws])` / `irfft(...)`** — real input, packs N samples into an
   N/2-point complex FFT and unpacks the half spectrum (`re`/`im` length **N/2+1**; `im[0]`/`im[N/2]`
   always zero).
@@ -24,14 +21,11 @@ Workspace `floatFFTCache` (twiddle tables + rfft/mixed-radix scratch) is built o
 `arena.floatFFTCache(n)`, persistent, disposed with the arena; single-use-at-a-time (one per thread
 for parallel transforms, FFTW "plan" semantics).
 
-## Which one to use
+## Usage
 
-All FFT/IFFT/rfft lengths must be a **power of two** — use `dft` for arbitrary N.
-
-- **One-shot or a few transforms → no-workspace `fft(re, im)`.** Table-free, zero-allocation, nothing
-  to set up (dispatches to a radix-4 recurrence for power-of-4 lengths, radix-2 otherwise).
-- **Many transforms of the same size → build a workspace once and reuse it.** The twiddle-table build
-  amortizes after only ~1–3 transforms, so this is the right default for any repeated use:
+All FFT/IFFT/rfft lengths must be a **power of two** — use `dft` for arbitrary N. Build a workspace
+once (its twiddle-table build amortizes after ~1–3 transforms) and reuse it for every transform of
+that size:
 
 ```csharp
 var ws = arena.floatFFTCache(1024);   // builds the twiddle table on creation
@@ -41,11 +35,10 @@ for (int f = 0; f < frames; f++)
 
 ## Accuracy
 
-The workspace builds its twiddle table at double precision (no recurrence drift); the no-workspace
-recurrence accumulates a small twiddle drift at very large `float` N — negligible for typical use, but
-prefer the workspace if you need maximum accuracy on huge float transforms. The transforms are
-validated by a stability suite: fft-vs-dft cross-check, Parseval energy, linearity, analytic
-transforms (impulse/constant/exponential/shift), rfft↔fft consistency, and large-N round-trips.
+The workspace builds its twiddle table at double precision, so there is no recurrence drift even at
+very large `float` N. The transforms are validated by a stability suite: fft-vs-dft cross-check (both
+dispatch paths, N up to 2048), Parseval energy, linearity, analytic transforms
+(impulse/constant/exponential/shift), rfft↔fft consistency, and large-N round-trips.
 
 ## Cross-platform stability
 
@@ -56,15 +49,14 @@ across CPU architectures for a fixed Burst version, provided the caller's job is
 on every platform) and `+ - *` do not reassociate under `Strict`, so there is no architecture- or
 library-dependent rounding anywhere in the path. This is what a deterministic lockstep sim needs.
 
-The **no-workspace path** (`fft`/`ifft`/`rfft`/`irfft` without `ws`) and **`dft`/`idft`** compute
-their twiddles with `math.sin`/`math.cos` on the fly. Burst only guarantees those bit-identical under
-`FloatMode.Deterministic` (opt-in, 64-bit only) — under `Strict` they are *not* cross-architecture
-reproducible. If you need determinism, use the workspace path.
+**`dft`/`idft`** (the arbitrary-N fallback) compute their twiddles with `math.sin`/`math.cos`. Burst
+only guarantees those bit-identical under `FloatMode.Deterministic` (opt-in, 64-bit only) — under
+`Strict` they are *not* cross-architecture reproducible. The power-of-two workspace transforms are
+deterministic; `dft`/`idft` are not.
 
 ## Performance
 
-The transforms use an in-place mixed-radix (radix-4/2) core. The twiddle-table workspace is ~3×
-faster than the no-workspace path but must be built once (see *Which one to use* above).
+The transforms use an in-place mixed-radix (radix-4/2) core over a twiddle-table workspace, built once.
 
 Ryzen 9 9950X3D, single-thread Burst, median of 4. N=1,048,576 (2²⁰,
 `Benchmarks/FFTBenchmark.cs`); this size is memory-bandwidth-bound, so absolute ms varies a few % with
@@ -72,11 +64,7 @@ machine memory traffic:
 
 | Path | dtype | med(ms) |
 |---|---|---|
-| `fft` (no workspace, in-place) | float | 22.49 |
-| `fft` (no workspace) | double | 23.72 |
 | `fft(ws)` (twiddle-table workspace) | float | 6.56 |
 | `fft(ws)` | double | 7.25 |
-| `rfft` (real input, no workspace) | float | 18.08 |
-| `rfft` (no workspace) | double | 18.67 |
 | `rfft(ws)` (twiddle-table workspace) | float | 5.50 |
 | `rfft(ws)` | double | 6.09 |

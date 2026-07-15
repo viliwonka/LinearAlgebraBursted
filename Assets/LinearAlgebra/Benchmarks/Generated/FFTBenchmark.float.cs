@@ -17,34 +17,6 @@ namespace LinearAlgebra.Benchmarks
     // dtype-agnostic harness (size lists, Run, Section) is hand-written in
     // Assets/LinearAlgebra/Benchmarks/FFTBenchmark.cs.
 
-    // ---- radix-2 in-place FFT ----
-    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
-    public struct FftJobFloat : IJob
-    {
-        public floatN re;       // working buffer — overwritten each Execute
-        public floatN im;       // working buffer — overwritten each Execute
-        public floatN srcRe;    // pristine copy of input re
-        public floatN srcIm;    // pristine copy of input im
-
-        public void Execute()
-        {
-            int n = srcRe.N;
-            for (int i = 0; i < n; i++) { re[i] = srcRe[i]; im[i] = srcIm[i]; }
-            FFT.fft(ref re, ref im);
-        }
-    }
-
-    // ---- real-input half-spectrum rfft ----
-    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
-    public struct RfftJobFloat : IJob
-    {
-        public floatN real;   // NOT modified (rfft takes `in`)
-        public floatN re;     // output — overwritten each Execute
-        public floatN im;     // output — overwritten each Execute
-
-        public void Execute() => FFT.rfft(in real, ref re, ref im);
-    }
-
     // ---- table-indexed FFT ----
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct FftTableJobFloat : IJob
@@ -113,29 +85,6 @@ namespace LinearAlgebra.Benchmarks
 
     public static partial class FFTBenchmark
     {
-        // ---- FFT helpers ----
-        static string FftFloat(int n)
-        {
-            var arena = new Arena(Allocator.Persistent);
-            var re    = arena.floatVec(n);
-            var im    = arena.floatVec(n);
-            var srcRe = arena.floatVec(n);
-            var srcIm = arena.floatVec(n);
-
-            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
-            for (int i = 0; i < n; i++)
-            {
-                srcRe[i] = rng.NextFloat(-1f, 1f);
-                srcIm[i] = rng.NextFloat(-1f, 1f);
-            }
-
-            var job = new FftJobFloat { re = re, im = im, srcRe = srcRe, srcIm = srcIm };
-            var stat = Bench.Time(() => job.Run());
-
-            arena.Dispose();
-            return Bench.RowTime("float", n, stat);
-        }
-
         // ---- table FFT helpers ----
         static string FftTableFloat(int n)
         {
@@ -181,25 +130,6 @@ namespace LinearAlgebra.Benchmarks
 
             arena.Dispose();
             return Bench.RowTime("float(ws+build)", n, stat);
-        }
-
-        // ---- rfft helpers ----
-        static string RfftFloat(int n)
-        {
-            var arena = new Arena(Allocator.Persistent);
-            var real  = arena.floatVec(n);
-            var re    = arena.floatVec(n / 2 + 1);
-            var im    = arena.floatVec(n / 2 + 1);
-
-            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n ^ 0xDEADBEEFu);
-            for (int i = 0; i < n; i++)
-                real[i] = rng.NextFloat(-1f, 1f);
-
-            var job = new RfftJobFloat { real = real, re = re, im = im };
-            var stat = Bench.Time(() => job.Run());
-
-            arena.Dispose();
-            return Bench.RowTime("float", n, stat);
         }
 
         // ---- table rfft helpers ----
