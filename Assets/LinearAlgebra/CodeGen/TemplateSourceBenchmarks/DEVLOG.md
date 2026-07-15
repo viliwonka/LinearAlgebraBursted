@@ -2,6 +2,20 @@
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
 ## DetMathBenchmark
+- 2026-07-15 (r5) | Added deterministic atan — the "one hard primitive", now DONE. A single wide-range
+  poly is hopeless (deg-12 on [0,1] = 8e4 ULP double), so use libm-style reduction: fold |x|>1 via
+  atan(x)=π/2-atan(1/x) → [0,1], then split at tan(π/8) via atan(x)=π/4+atan((x-1)/(x+1)) so the poly
+  argument stays in ~[-0.29,0.41]; odd minimax atan(xr)=xr·P(xr²), float deg-4 double deg-10, all
+  branch-free via math.select (both branches computed then blended → vectorizes; single π/4,π/2
+  constants, no hi/lo split needed). BIGGEST speedup of the whole sweep because math.atan is the
+  slowest transcendental: float math 156 → det 29.0 (5.4×) @1.33 ULP; double 171 → 47.9 (3.6×) @1.00.
+  single float 303→112 (2.7×), double 308→181 (1.7×). **ALL 5 CORE PRIMITIVES NOW PROTOTYPED
+  (batch speedup vs Unity.Mathematics, float / double, deterministic +-*/ & int, ~1-2 ULP):
+  exp 2.2×/1.9× · sin 4.35×/2.7× · cos 4.45×/3.5× · log 4.6×/3.1× · atan 5.4×/3.6×.** Every core
+  transcendental is 2-5.4× FASTER than libm on batch. DetMath is fully de-risked: feasible, faster,
+  deterministic. Remaining before shipping: edge-case hardening (inf/NaN/subnormal/domain), Payne-
+  Hanek for large trig args, Estrin as canonical eval, promote to TemplateSource/OP/DetMath.fProxy.cs
+  + golden-vector tests per spec-detmath.md.
 - 2026-07-15 (r4) | Added deterministic log (x=m·2^e via exponent bits, m centered to [√2/2,√2),
   log(m)=2s·B(s²) atanh form, s=(m-1)/(m+1); B minimax float deg-3 double deg-7). batch ms (10M):
   float math.log 81.6 → det 17.7 (4.6×) @1.35 ULP abs; double 94.5 → 30.4 (3.1×) @2.0. single float

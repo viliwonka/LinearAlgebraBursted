@@ -96,6 +96,20 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine(LogRowDouble(1, false, "det.log    batch-d", N));
             sb.AppendLine(LogRowDouble(1, true,  "det.log    single-d", N));
             sb.AppendLine();
+
+            sb.AppendLine("=== atan: native math.atan vs DetMath minimax — 10M, batch + single (ms), max ABS err ===");
+            sb.AppendLine("    Fold |x|>1 to [0,1] (atan(x)=pi/2-atan(1/x)), split at tan(pi/8) (atan=pi/4+atan((x-1)/");
+            sb.AppendLine("    (x+1))), odd minimax atan(xr)=xr*P(xr^2). Deterministic, branch-free. absErr vs System.Math.");
+            sb.AppendLine(ExpHeader());
+            sb.AppendLine(AtanRowFloat(0, false, "math.atan  batch-f", N));
+            sb.AppendLine(AtanRowFloat(0, true,  "math.atan  single-f", N));
+            sb.AppendLine(AtanRowFloat(1, false, "det.atan   batch-f", N));
+            sb.AppendLine(AtanRowFloat(1, true,  "det.atan   single-f", N));
+            sb.AppendLine(AtanRowDouble(0, false, "math.atan  batch-d", N));
+            sb.AppendLine(AtanRowDouble(0, true,  "math.atan  single-d", N));
+            sb.AppendLine(AtanRowDouble(1, false, "det.atan   batch-d", N));
+            sb.AppendLine(AtanRowDouble(1, true,  "det.atan   single-d", N));
+            sb.AppendLine();
         }
     }
 }

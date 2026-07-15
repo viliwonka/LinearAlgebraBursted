@@ -213,6 +213,39 @@ namespace LinearAlgebra.Benchmarks
             
             
         }
+
+        // atan(x), any real x. Fold |x|>1 via atan(x)=π/2-atan(1/x) → [0,1], then split at tan(π/8)
+        // using atan(x)=π/4+atan((x-1)/(x+1)) so the polynomial argument stays in ~[-0.29,0.41]. Odd
+        // minimax atan(xr)=xr·P(xr²) (float deg-4 ~0.3 ULP, double deg-10 ~0.33 ULP). Branch-free via
+        // math.select (both branches computed, then blended → vectorizes). The one hard primitive: a
+        // single wide-range poly is hopeless (deg-12 on [0,1] is ~8e4 ULP), the reduction is essential.
+        public static float Atan(float x)
+        {
+            
+            const float TAN_PI_8 = 0.41421356237309503f;
+            const float PI_4 = 0.7853981633974483f;
+            const float PI_2 = 1.5707963267948966f;
+            
+            
+            float ax = math.abs(x);
+            bool big = ax > (float)1;
+            float xx = math.select(ax, (float)1 / ax, big);          // fold to [0,1]
+            bool s1 = xx > TAN_PI_8;
+            float xr = math.select(xx, (xx - (float)1) / (xx + (float)1), s1);
+            float segbase = math.select((float)0, PI_4, s1);
+            float u = xr * xr;
+            
+            float p = 7.96193782326451162e-02f;
+            p = p * u + -1.38446124780312687e-01f;
+            p = p * u + 1.99737806986236897e-01f;
+            p = p * u + -3.33327794114148066e-01f;
+            p = p * u + 9.99999981144094623e-01f;
+            
+            
+            float inner = segbase + xr * p;
+            float res = math.select(inner, PI_2 - inner, big);        // undo the 1/x fold
+            return math.select(res, -res, x < (float)0);              // odd function
+        }
     }
 
     // ---- native math.* throughput (batch) ----
@@ -345,8 +378,68 @@ namespace LinearAlgebra.Benchmarks
         }
     }
 
+    // ---- atan comparison: variant {0 math.atan, 1 det.atan} x {batch,single} ----
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct AtanCompareJobFloat : IJob
+    {
+        public floatN src;
+        public floatN dst;
+        public int variant;
+        public int single;
+
+        public void Execute()
+        {
+            int n = src.N;
+            if (single == 0)
+            {
+                if (variant == 0) for (int i = 0; i < n; i++) dst[i] = math.atan(src[i]);
+                else              for (int i = 0; i < n; i++) dst[i] = DetMathProtoFloat.Atan(src[i]);
+            }
+            else
+            {
+                float acc = (float)0;
+                float tiny = (float)1e-20;
+                if (variant == 0) for (int i = 0; i < n; i++) acc = math.atan(src[i] + acc * tiny);
+                else              for (int i = 0; i < n; i++) acc = DetMathProtoFloat.Atan(src[i] + acc * tiny);
+                dst[0] = acc;
+            }
+        }
+    }
+
     public static partial class DetMathBenchmark
     {
+        static string AtanRowFloat(int variant, bool single, string label, int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var src = arena.floatVec(n);
+            var dst = arena.floatVec(n);
+
+            var rng = new Unity.Mathematics.Random(0xA7A11u ^ (uint)variant);
+            for (int i = 0; i < n; i++) src[i] = rng.NextFloat(-20f, 20f);   // exercises both folds
+
+            var job = new AtanCompareJobFloat { src = src, dst = dst, variant = variant, single = single ? 1 : 0 };
+            var stat = Bench.Time(() => job.Run());
+
+            double maxAbs = 0.0;
+            if (!single)
+            {
+                for (int i = 0; i < n; i++)
+                {
+                    double refv = System.Math.Atan((double)src[i]);
+                    double err  = System.Math.Abs((double)dst[i] - refv);
+                    if (err > maxAbs) maxAbs = err;
+                }
+            }
+            arena.Dispose();
+
+            double eps = 1.1920929e-7;
+            string errStr = single ? "(chain)" : maxAbs.ToString("E3", CultureInfo.InvariantCulture);
+            string ulpStr = single ? "-" : (maxAbs / eps).ToString("F2", CultureInfo.InvariantCulture);
+            return string.Format(CultureInfo.InvariantCulture,
+                "{0,-20} {1,-10} {2,11:F4} {3,11:F4} {4,11:F4} {5,13} {6,11}",
+                label, n, stat.Min, stat.Median, stat.Mean, errStr, ulpStr);
+        }
+
         static string LogRowFloat(int variant, bool single, string label, int n)
         {
             var arena = new Arena(Allocator.Persistent);
