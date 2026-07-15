@@ -1,0 +1,2033 @@
+=== LinearAlgebra kernel benchmarks ===
+Burst (CompileSynchronously), single-thread IJob.Run(), N x N matrices.
+Warmup=1 runs, timed=4 runs (median reported).
+Burst enabled: True
+
+=== Primitive BLAS kernels (Level-1 & Level-2) ===
+Isolates the kernels every solver bottoms out on. The signal is the float-vs-double
+GFLOP/s ratio at large N: ~2x => the inner loop vectorises, ~1x => it runs serial
+(headroom for the multi-accumulator rework). Reductions (vecDot/L1/L2/LInf/sum) are
+serial acc-chains; GEMV is a per-row reduction; vecMat (Aᵀx) and axpy are the
+already-vectorising baselines.
+Level-1 REPS=512, Level-2 REPS=64 back-to-back calls per timed sample.
+
+--- L1 reduction: vecDot (vector length N, REPS=512) ---
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)     GFLOP/s~
+float   64          0.0052      0.0060      0.0118      0.0301        11.01
+float   128         0.0054      0.0055      0.0056      0.0058        23.83
+float   256         0.0066      0.0069      0.0068      0.0069        38.27
+float   512         0.0081      0.0081      0.0081      0.0081        64.73
+float   1024        0.0144      0.0145      0.0145      0.0147        72.32
+double  64          0.0063      0.0067      0.0071      0.0085         9.78
+double  128         0.0060      0.0061      0.0061      0.0062        21.49
+double  256         0.0079      0.0079      0.0080      0.0081        33.18
+double  512         0.0134      0.0135      0.0135      0.0136        38.98
+double  1024        0.0251      0.0251      0.0254      0.0261        41.78
+
+--- L1 reduction: L1 (vector length N, REPS=512) ---
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)     GFLOP/s~
+float   64          0.0050      0.0051      0.0051      0.0051        12.98
+float   128         0.0054      0.0054      0.0054      0.0054        24.27
+float   256         0.0062      0.0062      0.0062      0.0062        42.28
+float   512         0.0077      0.0077      0.0077      0.0077        68.09
+float   1024        0.0140      0.0140      0.0140      0.0141        74.90
+double  64          0.0074      0.0077      0.0087      0.0119         8.51
+double  128         0.0069      0.0069      0.0069      0.0069        19.00
+double  256         0.0082      0.0082      0.0083      0.0084        31.97
+double  512         0.0133      0.0133      0.0133      0.0134        39.42
+double  1024        0.0249      0.0249      0.0249      0.0250        42.11
+
+--- L1 reduction: L2 (vector length N, REPS=512) ---
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)     GFLOP/s~
+float   64          0.0064      0.0064      0.0064      0.0064        10.24
+float   128         0.0070      0.0071      0.0071      0.0073        18.46
+float   256         0.0082      0.0082      0.0082      0.0083        31.97
+float   512         0.0092      0.0092      0.0092      0.0092        56.99
+float   1024        0.0152      0.0153      0.0153      0.0153        68.76
+double  64          0.0073      0.0073      0.0073      0.0073         8.98
+double  128         0.0078      0.0078      0.0078      0.0079        16.80
+double  256         0.0093      0.0094      0.0094      0.0095        27.89
+double  512         0.0140      0.0141      0.0141      0.0142        37.18
+double  1024        0.0257      0.0259      0.0265      0.0286        40.56
+
+--- L1 reduction: LInf (vector length N, REPS=512) ---
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)     GFLOP/s~
+float   64          0.0057      0.0058      0.0058      0.0059        11.30
+float   128         0.0061      0.0061      0.0061      0.0061        21.49
+float   256         0.0070      0.0072      0.0072      0.0074        36.41
+float   512         0.0085      0.0085      0.0085      0.0086        61.68
+float   1024        0.0142      0.0142      0.0142      0.0142        73.84
+double  64          0.0063      0.0063      0.0063      0.0064        10.40
+double  128         0.0077      0.0078      0.0078      0.0078        16.91
+double  256         0.0115      0.0116      0.0116      0.0116        22.70
+double  512         0.0220      0.0221      0.0221      0.0222        23.72
+double  1024        0.0453      0.0453      0.0453      0.0453        23.15
+
+--- L1 reduction: sum (vector length N, REPS=512) ---
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)     GFLOP/s~
+float   64          0.0049      0.0050      0.0050      0.0052         6.55
+float   128         0.0052      0.0052      0.0052      0.0053        12.60
+float   256         0.0076      0.0079      0.0078      0.0079        16.59
+float   512         0.0084      0.0085      0.0091      0.0111        31.02
+float   1024        0.0140      0.0142      0.0142      0.0143        37.05
+double  64          0.0050      0.0053      0.0052      0.0053         6.24
+double  128         0.0057      0.0058      0.0058      0.0058        11.30
+double  256         0.0073      0.0075      0.0074      0.0075        17.59
+double  512         0.0119      0.0119      0.0119      0.0119        22.03
+double  1024        0.0235      0.0235      0.0235      0.0236        22.31
+
+--- L1 axpy: y += a*x (vector length N, REPS=512) ---
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)     GFLOP/s~
+float   64          0.0020      0.0021      0.0023      0.0032        31.97
+float   128         0.0031      0.0032      0.0032      0.0034        41.61
+float   256         0.0042      0.0043      0.0043      0.0044        60.96
+float   512         0.0075      0.0075      0.0075      0.0076        69.91
+float   1024        0.0142      0.0142      0.0142      0.0142        73.84
+double  64          0.0032      0.0034      0.0035      0.0038        19.28
+double  128         0.0041      0.0044      0.0044      0.0046        30.13
+double  256         0.0075      0.0075      0.0077      0.0082        34.95
+double  512         0.0141      0.0142      0.0142      0.0142        37.05
+double  1024        0.0273      0.0273      0.0274      0.0275        38.41
+
+--- L2 GEMV: y = A*x (matVecDot, NxN, REPS=64) ---
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)     GFLOP/s~
+float   64          0.0144      0.0151      0.0169      0.0230        34.84
+float   128         0.0310      0.0330      0.0380      0.0551        63.55
+float   256         0.1075      0.1090      0.1282      0.1874        77.00
+float   512         0.4465      0.4489      0.5133      0.7090        74.76
+float   1024        1.8032      1.8510      2.0523      2.7041        72.51
+double  64          0.0137      0.0140      0.0143      0.0153        37.45
+double  128         0.0513      0.0515      0.0528      0.0568        40.72
+double  256         0.1909      0.1910      0.1923      0.1962        43.93
+double  512         0.8830      0.8900      0.8898      0.8960        37.70
+double  1024        3.6810      3.6882      3.6903      3.7039        36.39
+
+--- L2 vecMat: y = Aᵀx (vecMatDot, NxN, REPS=64) ---
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)     GFLOP/s~
+float   64          0.0069      0.0075      0.0082      0.0110        70.37
+float   128         0.0241      0.0245      0.0272      0.0357        85.77
+float   256         0.0943      0.0947      0.1038      0.1315        88.63
+float   512         0.3782      0.3794      0.4176      0.5333        88.44
+float   1024        1.6947      1.7704      1.8752      2.2652        75.81
+double  64          0.0112      0.0113      0.0113      0.0116        46.60
+double  128         0.0472      0.0473      0.0473      0.0475        44.38
+double  256         0.1863      0.1887      0.1884      0.1900        44.45
+double  512         0.9001      0.9077      0.9103      0.9258        36.97
+double  1024        3.8018      3.8134      3.8114      3.8170        35.20
+
+=== GEMM: dense C = A * B ===
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)     GFLOP/s~
+float   64          0.0047      0.0048      0.0051      0.0062       109.23
+float   128         0.0357      0.0358      0.0362      0.0377       117.32
+float   256         0.2772      0.2786      0.2785      0.2797       120.46
+float   512         2.3492      2.3579      2.3589      2.3706       113.85
+float   1024       22.8532     22.9664     22.9723     23.1033        93.51
+double  64          0.0102      0.0103      0.0107      0.0119        50.90
+double  128         0.0787      0.0789      0.0789      0.0792        53.19
+double  256         0.6158      0.6200      0.6198      0.6234        54.12
+double  512         5.3421      5.3461      5.3533      5.3789        50.21
+double  1024       40.3100     40.3635     40.5335     41.0970        53.20
+
+=== GEMM-scalar-tile: matMatDotUnpacked direct (same-run control for the wide tile) ===
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)     GFLOP/s~
+float   64          0.0059      0.0061      0.0066      0.0081        85.95
+float   128         0.0444      0.0445      0.0448      0.0459        94.36
+float   256         0.3437      0.3468      0.3465      0.3485        96.75
+float   512         2.8323      2.8658      2.8644      2.8937        93.67
+float   1024       25.0512     25.0678     25.0829     25.1448        85.67
+double  64          0.0104      0.0105      0.0108      0.0119        49.93
+double  128         0.0789      0.0790      0.0842      0.1000        53.13
+double  256         0.6166      0.6202      0.6204      0.6248        54.11
+double  512         5.3214      5.3341      5.3400      5.3703        50.32
+double  1024       43.8773     43.9432     43.9589     44.0717        48.87
+
+=== GEMM-large: dense C = A * B, beyond-L2 sizes (packed route) ===
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)     GFLOP/s~
+float   1536       81.7166     81.8209     81.8198     81.9208        88.58
+float   2048      194.3984    194.4971    194.4979    194.5991        88.33
+double  1536      139.9833    140.6363    140.7057    141.5669        51.54
+double  2048      337.2213    337.7586    337.7239    338.1573        50.86
+
+=== GEMM-packed-direct: matMatDotPacked, gate bypassed ===
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)     GFLOP/s~
+float   512         3.0062      3.0172      3.0159      3.0231        88.97
+float   1024       24.5396     24.5989     24.5971     24.6509        87.30
+float   1536       81.4799     81.6647     81.6572     81.8193        88.75
+float   2048      194.1392    194.3967    194.4185    194.7415        88.38
+double  512         5.0001      5.0287      5.0229      5.0340        53.38
+double  1024       40.2858     40.3297     40.3419     40.4224        53.25
+double  1536      140.9431    141.5123    141.5879    142.3840        51.22
+double  2048      339.7997    339.9364    339.9261    340.0318        50.54
+
+=== GEMM-TransA: dense C = A^T * B (covariance / compact-WY shape) ===
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)     GFLOP/s~
+float   64          0.0047      0.0048      0.0053      0.0068       109.23
+float   128         0.0351      0.0367      0.0368      0.0385       114.29
+float   256         0.2885      0.2907      0.2906      0.2923       115.43
+float   512         2.3301      2.3752      2.3792      2.4362       113.02
+float   1024       22.7752     22.8359     22.8336     22.8873        94.04
+double  64          0.0097      0.0099      0.0103      0.0115        52.96
+double  128         0.0745      0.0748      0.0748      0.0750        56.11
+double  256         0.6039      0.6075      0.6080      0.6131        55.23
+double  512         5.1139      5.1245      5.1342      5.1741        52.38
+double  1024       42.2072     42.3837     42.4100     42.6656        50.67
+
+=== GEMM-AtA: dense C = A^T * A (matAtA single-input kernel) ===
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)     GFLOP/s~
+float   64          0.0037      0.0038      0.0042      0.0054       137.97
+float   128         0.0250      0.0250      0.0251      0.0252       167.77
+float   256         0.1673      0.1678      0.1680      0.1691       200.03
+float   512         1.2620      1.2727      1.2729      1.2843       210.93
+float   1024       11.1949     11.2080     11.2074     11.2186       191.60
+double  64          0.0069      0.0087      0.0089      0.0111        60.26
+double  128         0.0449      0.0454      0.0461      0.0486        92.49
+double  256         0.3293      0.3303      0.3301      0.3305       101.60
+double  512         2.5372      2.5772      2.5744      2.6061       104.16
+double  1024       20.4248     20.4673     20.4693     20.5177       104.92
+
+=== GEMM-TransB: dense C = A * B^T (Kalman P*H^T / KMeans X*C^T shape) ===
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)     GFLOP/s~
+float   16          0.0006      0.0007      0.0011      0.0023        11.70
+float   32          0.0016      0.0017      0.0022      0.0038        39.72
+float   64          0.0065      0.0066      0.0066      0.0068        79.44
+float   128         0.0376      0.0380      0.0385      0.0403       110.52
+float   256         0.2497      0.2573      0.2560      0.2596       130.44
+float   512         1.9072      1.9131      1.9311      1.9910       140.31
+float   1024       16.4357     16.5047     16.5082     16.5879       130.11
+double  16          0.0006      0.0007      0.0018      0.0051        11.70
+double  32          0.0018      0.0018      0.0018      0.0018        36.41
+double  64          0.0087      0.0087      0.0087      0.0088        60.26
+double  128         0.0585      0.0588      0.0588      0.0590        71.33
+double  256         0.4288      0.4346      0.4345      0.4401        77.22
+double  512         3.8973      3.9473      3.9383      3.9614        68.01
+double  1024       33.0864     33.1604     33.1790     33.3086        64.76
+
+=== GEMM-TransB-viaTrans: C = A * trans(B) (the Blas.trans + dot route TransB replaces) ===
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)     GFLOP/s~
+float   16          0.0006      0.0008      0.0011      0.0024        10.92
+float   32          0.0014      0.0015      0.0015      0.0017        45.20
+float   64          0.0067      0.0068      0.0068      0.0068        77.67
+float   128         0.0432      0.0432      0.0432      0.0433        97.09
+float   256         0.3061      0.3071      0.3080      0.3117       109.28
+float   512         2.3889      2.4132      2.4131      2.4370       111.24
+float   1024       22.4026     22.6187     22.5767     22.6668        94.94
+double  16          0.0007      0.0009      0.0013      0.0028         9.10
+double  32          0.0020      0.0021      0.0021      0.0022        31.21
+double  64          0.0113      0.0114      0.0114      0.0115        46.19
+double  128         0.0830      0.0832      0.0839      0.0861        50.44
+double  256         0.6370      0.6403      0.6417      0.6493        52.40
+double  512         5.3476      5.3497      5.3518      5.3602        50.18
+double  1024       40.9260     41.2033     41.3128     41.9187        52.12
+
+=== GEMM-AAt: dense C = A * A^T (matAAt single-input kernel) ===
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)     GFLOP/s~
+float   16          0.0005      0.0007      0.0014      0.0038        12.60
+float   32          0.0012      0.0012      0.0012      0.0013        54.61
+float   64          0.0043      0.0044      0.0044      0.0046       120.53
+float   128         0.0248      0.0249      0.0250      0.0252       168.45
+float   256         0.1486      0.1503      0.1502      0.1516       223.25
+float   512         1.0433      1.0524      1.0551      1.0723       255.07
+float   1024        8.7179      8.7259      8.7254      8.7321       246.11
+double  16          0.0005      0.0007      0.0010      0.0022        11.70
+double  32          0.0013      0.0013      0.0014      0.0015        50.41
+double  64          0.0057      0.0058      0.0058      0.0059        91.18
+double  128         0.0346      0.0347      0.0347      0.0349       120.87
+double  256         0.2392      0.2400      0.2414      0.2462       139.81
+double  512         1.9212      1.9445      1.9404      1.9513       138.05
+double  1024       17.5461     17.6473     17.6682     17.8319       121.69
+
+=== Trans: T = A^T (element throughput; last column is Gelem/s) ===
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)     GFLOP/s~
+float   16          0.0005      0.0007      0.0009      0.0018         0.39
+float   32          0.0007      0.0011      0.0017      0.0038         0.93
+float   64          0.0018      0.0019      0.0019      0.0019         2.21
+float   128         0.0062      0.0062      0.0063      0.0064         2.64
+float   256         0.0234      0.0235      0.0235      0.0238         2.79
+float   512         0.0925      0.0965      0.0982      0.1075         2.72
+float   1024        0.3912      0.4064      0.4122      0.4448         2.58
+double  16          0.0004      0.0007      0.0009      0.0019         0.37
+double  32          0.0006      0.0007      0.0007      0.0007         1.58
+double  64          0.0013      0.0014      0.0014      0.0015         2.93
+double  128         0.0042      0.0045      0.0044      0.0045         3.68
+double  256         0.0163      0.0175      0.0175      0.0187         3.74
+double  512         0.0866      0.0870      0.0870      0.0873         3.01
+double  1024        0.3226      0.3321      0.3555      0.4351         3.16
+
+=== LU factorization with partial pivoting (time = LU.decomp, copies Src internally) ===
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)     GFLOP/s~
+float   64          0.0167      0.0185      0.0192      0.0230         9.45
+float   128         0.0743      0.0744      0.0746      0.0752        18.79
+float   256         0.3329      0.3351      0.3348      0.3363        33.38
+float   512         1.7777      1.8017      1.7978      1.8102        49.66
+float   1024       12.0076     12.0203     12.0220     12.0397        59.55
+double  64          0.0157      0.0173      0.0175      0.0195        10.10
+double  128         0.0759      0.0767      0.0768      0.0779        18.24
+double  256         0.4058      0.4081      0.4080      0.4101        27.41
+double  512         2.9694      2.9765      2.9801      2.9978        30.06
+double  1024       19.9895     20.0376     20.0339     20.0707        35.72
+
+=== Cholesky factorization A = L L^T (SPD input) ===
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)     GFLOP/s~
+float   64          0.0156      0.0160      0.0164      0.0179         5.48
+float   128         0.0656      0.0659      0.0674      0.0722        10.62
+float   256         0.3182      0.3211      0.3249      0.3392        17.42
+float   512         1.1233      1.1275      1.1281      1.1342        39.68
+float   1024        6.6049      6.6162      6.6170      6.6308        54.10
+double  64          0.0134      0.0137      0.0141      0.0155         6.40
+double  128         0.0663      0.0666      0.0666      0.0669        10.50
+double  256         0.3749      0.3756      0.3756      0.3764        14.89
+double  512         1.5840      1.5955      1.5945      1.6032        28.04
+double  1024       10.7909     10.8112     10.8121     10.8350        33.11
+
+=== Pivoted (rank-revealing) Cholesky P^T A P = L L^T (full-rank SPD input) ===
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)     GFLOP/s~
+float   64          0.0245      0.0253      0.0257      0.0278         3.46
+float   128         0.1093      0.1114      0.1117      0.1147         6.28
+float   256         0.3759      0.3796      0.3841      0.4014        14.73
+float   512         1.9160      1.9190      1.9200      1.9261        23.31
+float   1024       14.3966     14.4256     14.4238     14.4473        24.81
+double  64          0.0230      0.0234      0.0241      0.0266         3.74
+double  128         0.1069      0.1073      0.1077      0.1092         6.52
+double  256         0.4421      0.4470      0.4475      0.4540        12.51
+double  512         3.3238      3.3300      3.3319      3.3436        13.44
+double  1024       19.0112     19.0631     19.0591     19.0990        18.78
+
+=== Face-off: CHO vs CHOP vs LU (decompInPlace, SPD input, N=256/512/1024) ===
+--- CHO.decompInPlace ---
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)     GFLOP/s~
+float   256         0.4085      0.4125      0.4131      0.4188        13.56
+float   512         1.4899      1.4959      1.4952      1.4989        29.91
+float   1024        8.1025      8.1210      8.1169      8.1232        44.07
+double  256         0.4659      0.4718      0.4730      0.4823        11.85
+double  512         1.9595      1.9718      1.9710      1.9807        22.69
+double  1024       12.3077     12.3236     12.3254     12.3469        29.04
+--- CHOP.decomp (in-place, L aliases A) ---
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)     GFLOP/s~
+float   256         0.4699      0.4763      0.4778      0.4888        11.74
+float   512         2.3011      2.3063      2.3060      2.3103        19.40
+float   1024       16.0489     16.0968     16.0980     16.1493        22.24
+double  256         0.5260      0.5312      0.5318      0.5388        10.53
+double  512         3.6488      3.6594      3.6592      3.6693        12.23
+double  1024       20.4059     20.4300     20.4263     20.4395        17.52
+--- LU.decompInPlace ---
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)     GFLOP/s~
+float   256         0.4131      0.4151      0.4151      0.4172        26.94
+float   512         2.0834      2.0944      2.0922      2.0965        42.72
+float   1024       13.0017     13.0242     13.0228     13.0412        54.96
+double  256         0.4817      0.4851      0.4867      0.4949        23.06
+double  512         3.0827      3.0907      3.0894      3.0934        28.95
+double  1024       20.9803     21.0433     21.0424     21.1027        34.02
+
+=== QR Householder factorization (time = copy-in + decompInPlace, forms Q) ===
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)     GFLOP/s~
+float   64          0.0686      0.0704      0.0716      0.0771         4.96
+float   128         0.2724      0.2730      0.2733      0.2746        10.24
+float   256         1.1867      1.1902      1.1903      1.1939        18.79
+float   512         6.2410      6.2507      6.2508      6.2606        28.63
+float   1024       42.6940     42.7536     42.7622     42.8474        33.49
+double  64          0.0618      0.0626      0.0642      0.0698         5.58
+double  128         0.3337      0.3378      0.3369      0.3384         8.28
+double  256         1.6482      1.6501      1.6505      1.6534        13.56
+double  512        10.9911     11.0019     11.0033     11.0183        16.27
+double  1024       73.7218     73.7721     73.7719     73.8217        19.41
+
+=== QRCP (column-pivoted, rank-revealing QR; forms Q) ===
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)     GFLOP/s~
+float   64          0.0646      0.0684      0.0720      0.0866         5.11
+float   128         0.2788      0.2797      0.2800      0.2817        10.00
+float   256         1.3476      1.3536      1.3538      1.3602        16.53
+float   512         8.6671      8.6780      8.6772      8.6856        20.62
+float   1024       55.9840     56.0801     56.0849     56.1952        25.53
+double  64          0.0716      0.0746      0.0752      0.0798         4.69
+double  128         0.3740      0.3750      0.3768      0.3834         7.46
+double  256         2.2906      2.2952      2.2952      2.3000         9.75
+double  512        15.3456     15.3701     15.3744     15.4118        11.64
+double  1024       98.2351     98.3248     98.3037     98.3303        14.56
+
+=== QR.solveInPlace (Householder least-squares solve; no Q reconstruction) ===
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)     GFLOP/s~
+float   64          0.0362      0.0396      0.0402      0.0454         8.83
+float   128         0.1561      0.1580      0.1581      0.1602        17.70
+float   256         0.7762      0.7785      0.7790      0.7829        28.73
+float   512         4.7377      4.7454      4.7473      4.7606        37.71
+float   1024       35.0932     35.1463     35.1432     35.1871        40.73
+double  64          0.0346      0.0373      0.0377      0.0415         9.38
+double  128         0.1748      0.1755      0.1762      0.1791        15.94
+double  256         1.0476      1.0584      1.0563      1.0608        21.14
+double  512         7.9831      7.9968      7.9957      8.0063        22.38
+double  1024       60.8770     60.9593     60.9503     61.0057        23.49
+
+=== QRCP.solveInPlace (QRCP rank-safe LS solve; zero-alloc primitive) ===
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)     GFLOP/s~
+float   64          0.0515      0.0523      0.0533      0.0569         6.68
+float   128         0.2298      0.2310      0.2312      0.2328        12.10
+float   256         1.1040      1.1063      1.1063      1.1086        20.22
+float   512         6.7717      6.7823      6.7799      6.7834        26.39
+float   1024       40.9424     40.9915     40.9850     41.0147        34.93
+double  64          0.0523      0.0534      0.0548      0.0601         6.55
+double  128         0.2515      0.2536      0.2546      0.2599        11.03
+double  256         1.7034      1.7095      1.7093      1.7148        13.09
+double  512        11.3289     11.3486     11.3455     11.3559        15.77
+double  1024       65.9612     66.1163     66.1170     66.2741        21.65
+
+=== QRCP rank-deficient (n x n, rank = 3n/4): basic solveInPlace vs COD minNormSolveInPlace ===
+dtype   kernel                   N          min(ms)     med(ms)    mean(ms)     max(ms)     GFLOP/s~
+float   basic solveInPlace       64          0.0494      0.0507      0.0518      0.0563         6.89
+float   COD minNormSolveInPlace  64          0.0678      0.0687      0.0699      0.0742         5.09
+float   basic solveInPlace       128         0.2143      0.2161      0.2167      0.2203        12.94
+float   COD minNormSolveInPlace  128         0.2940      0.2943      0.2957      0.3000         9.50
+float   basic solveInPlace       256         1.0739      1.0753      1.0750      1.0757        20.80
+float   COD minNormSolveInPlace  256         1.5238      1.5299      1.5296      1.5349        14.62
+float   basic solveInPlace       512         7.5478      7.5499      7.5502      7.5533        23.70
+float   COD minNormSolveInPlace  512        10.3363     10.3635     10.3678     10.4079        17.27
+float   basic solveInPlace       1024       49.6612     49.7143     49.7109     49.7540        28.80
+float   COD minNormSolveInPlace  1024       70.1785     70.2406     70.2627     70.3910        20.38
+double  basic solveInPlace       64          0.0544      0.0559      0.0570      0.0619         6.26
+double  COD minNormSolveInPlace  64          0.0734      0.0743      0.0754      0.0797         4.70
+double  basic solveInPlace       128         0.2744      0.2757      0.2764      0.2798        10.14
+double  COD minNormSolveInPlace  128         0.3819      0.3830      0.3840      0.3880         7.30
+double  basic solveInPlace       256         1.7513      1.7601      1.7602      1.7692        12.71
+double  COD minNormSolveInPlace  256         2.4301      2.4362      2.4385      2.4514         9.18
+double  basic solveInPlace       512        11.6726     11.6830     11.6839     11.6971        15.32
+double  COD minNormSolveInPlace  512        16.4730     16.4883     16.4895     16.5082        10.85
+double  basic solveInPlace       1024       72.3478     72.4076     72.4178     72.5084        19.77
+double  COD minNormSolveInPlace  1024      109.6839    109.7514    109.7534    109.8270        13.04
+
+=== TALL overdetermined least squares (m x n, m > n): QR.solveInPlace vs QRCP.solveInPlace ===
+dtype   kernel m x n                 min(ms)     med(ms)    mean(ms)     max(ms)     GFLOP/s~
+float   QR.solveInPlace 2048x512     30.0228     30.0685     30.0650     30.1002        32.73
+float   QR.solveInPlace 2048x1024     91.4228     91.5196     91.5335     91.6721        39.11
+double  QR.solveInPlace 2048x512     47.8922     47.9264     47.9228     47.9461        20.54
+double  QR.solveInPlace 2048x1024    155.5503    155.7036    155.6752    155.7434        22.99
+float   QRCP.solveInPlace 2048x512     32.8304     32.9180     32.9777     33.2445        29.90
+float   QRCP.solveInPlace 2048x1024     96.9483     97.0567     97.1913     97.7034        36.88
+double  QRCP.solveInPlace 2048x512     60.3626     60.3887     60.3930     60.4322        16.30
+double  QRCP.solveInPlace 2048x1024    161.6077    161.9247    161.9033    162.1559        22.10
+
+=== Tall QR factorization (decompInPlace, A is 2k x k; forms thin Q); N column = k ===
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)     GFLOP/s~
+float   64          0.1558      0.1607      0.1604      0.1643         5.44
+float   128         0.5828      0.5849      0.5851      0.5878        11.95
+float   256         2.7272      2.7318      2.7316      2.7354        20.47
+float   512        15.3577     15.3902     15.3855     15.4037        29.07
+float   1024      109.7666    109.9160    109.9000    110.0016        32.56
+double  64          0.1557      0.1570      0.1582      0.1632         5.57
+double  128         0.8247      0.8250      0.8259      0.8288         8.47
+double  256         3.8784      3.8807      3.8862      3.9048        14.41
+double  512        27.2335     27.2646     27.2615     27.2832        16.41
+double  1024      184.7483    184.7861    184.7887    184.8341        19.37
+
+=== Overdetermined least squares (solveInPlace, A is 2k x k; no Q reconstruction); N column = k ===
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)     GFLOP/s~
+float   64          0.0886      0.0893      0.0907      0.0955         9.79
+float   128         0.3983      0.3993      0.3996      0.4016        17.51
+float   256         2.0268      2.0366      2.0347      2.0388        27.46
+float   512        12.9510     12.9569     12.9603     12.9765        34.53
+float   1024       91.2303     91.2939     91.2996     91.3805        39.20
+double  64          0.0886      0.0890      0.0902      0.0941         9.82
+double  128         0.4489      0.4502      0.4511      0.4550        15.53
+double  256         2.7858      2.7934      2.7934      2.8010        20.02
+double  512        21.2554     21.2841     21.2816     21.3028        21.02
+double  1024      156.4604    156.5072    156.5000    156.5250        22.87
+
+=== Wide LQ factorization (decomp, A is k x 2k); N column = k ===
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)     GFLOP/s~
+float   64          0.0771      0.0779      0.0787      0.0819        11.22
+float   128         0.4250      0.4262      0.4271      0.4311        16.40
+float   256         2.7870      2.7899      2.7902      2.7941        20.05
+float   512        16.1941     16.2383     16.2462     16.3141        27.55
+float   1024      107.4373    107.5801    107.5594    107.6402        33.27
+double  64          0.1017      0.1045      0.1048      0.1083         8.36
+double  128         0.6563      0.6604      0.6611      0.6674        10.59
+double  256         4.5937      4.5942      4.5960      4.6020        12.17
+double  512        31.0832     31.1116     31.1102     31.1344        14.38
+double  1024      223.7612    224.2469    224.1397    224.3039        15.96
+
+=== Underdetermined minimum-norm (minNormSolve, A is k x 2k); N column = k ===
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)     GFLOP/s~
+float   64          0.0480      0.0485      0.0497      0.0538        18.04
+float   128         0.2444      0.2468      0.2476      0.2526        28.33
+float   256         1.5218      1.5241      1.5237      1.5248        36.69
+float   512         8.6073      8.6183      8.6189      8.6316        51.91
+float   1024       55.6867     55.7348     55.7352     55.7846        64.22
+double  64          0.0625      0.0629      0.0643      0.0687        13.89
+double  128         0.3722      0.3751      0.3746      0.3762        18.64
+double  256         2.4687      2.4702      2.4705      2.4728        22.64
+double  512        16.2277     16.2403     16.2466     16.2781        27.55
+double  1024      114.4036    114.4721    114.5299    114.7717        31.27
+
+=== Wide LQRP row-pivoted factorization (decomp, A is k x 2k; forms L,Q,P; UNBLOCKED); N column = k ===
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)     GFLOP/s~
+float   64          0.0839      0.0854      0.0866      0.0919        10.24
+float   128         0.4527      0.4544      0.4546      0.4568        15.39
+float   256         2.8506      2.8571      2.8576      2.8656        19.57
+float   512        20.0502     20.0554     20.0711     20.1234        22.31
+float   1024      152.0520    152.2584    152.2286    152.3455        23.51
+double  64          0.1072      0.1083      0.1095      0.1141         8.07
+double  128         0.6828      0.6867      0.6914      0.7096        10.18
+double  256         4.7021      4.7040      4.7062      4.7149        11.89
+double  512        36.4505     36.4985     36.5274     36.6623        12.26
+double  1024      289.8795    290.0713    290.0510    290.1818        12.34
+
+=== Underdetermined rank-safe basic solve (LQRP.solveInPlace, A is k x 2k; no Q); N column = k ===
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)     GFLOP/s~
+float   64          0.0697      0.0704      0.0718      0.0768        12.41
+float   128         0.3333      0.3356      0.3355      0.3375        20.83
+float   256         1.8344      1.8413      1.8399      1.8426        30.37
+float   512        11.6902     11.7058     11.7060     11.7224        38.22
+float   1024       83.6793     83.7272     83.7548     83.8855        42.75
+double  64          0.0836      0.0840      0.0849      0.0880        10.41
+double  128         0.4560      0.4583      0.4584      0.4610        15.25
+double  256         2.8074      2.8107      2.8105      2.8133        19.90
+double  512        19.9537     19.9717     19.9760     20.0070        22.40
+double  1024      154.6444    155.0059    155.0260    155.4477        23.09
+
+=== LQRP rank-deficient (k x 2k, rank = 3k/4): basic solveInPlace vs COD minNormSolveInPlace; N column = k ===
+dtype   kernel                   N          min(ms)     med(ms)    mean(ms)     max(ms)     GFLOP/s~
+float   basic solveInPlace       64          0.0735      0.0742      0.0762      0.0830        11.78
+float   COD minNormSolveInPlace  64          0.0990      0.0998      0.1007      0.1041         8.76
+float   basic solveInPlace       128         0.3759      0.3768      0.3767      0.3772        18.55
+float   COD minNormSolveInPlace  128         0.4864      0.4893      0.4888      0.4900        14.29
+float   basic solveInPlace       256         2.2349      2.2364      2.2373      2.2417        25.01
+float   COD minNormSolveInPlace  256         2.7916      2.7936      2.7966      2.8077        20.02
+float   basic solveInPlace       512        14.9338     14.9507     14.9493     14.9620        29.92
+float   COD minNormSolveInPlace  512        18.1678     18.1723     18.1724     18.1770        24.62
+float   basic solveInPlace       1024      108.3447    108.4052    108.4290    108.5609        33.02
+float   COD minNormSolveInPlace  1024      130.9516    131.2112    131.3251    131.9264        27.28
+double  basic solveInPlace       64          0.0882      0.0889      0.0897      0.0929         9.83
+double  COD minNormSolveInPlace  64          0.1147      0.1155      0.1163      0.1194         7.57
+double  basic solveInPlace       128         0.4972      0.5030      0.5025      0.5069        13.90
+double  COD minNormSolveInPlace  128         0.6240      0.6253      0.6256      0.6278        11.18
+double  basic solveInPlace       256         3.2043      3.2070      3.2096      3.2201        17.44
+double  COD minNormSolveInPlace  256         3.9259      3.9366      3.9346      3.9392        14.21
+double  basic solveInPlace       512        23.0822     23.1189     23.1136     23.1343        19.35
+double  COD minNormSolveInPlace  512        28.2134     28.2367     28.2351     28.2536        15.84
+double  basic solveInPlace       1024      179.5569    179.6969    179.7129    179.9008        19.92
+double  COD minNormSolveInPlace  1024      218.6759    218.7696    218.8152    219.0456        16.36
+
+=== Direct solve Ax=b, square N=1024 (factor + triangular solve, ms) ===
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)
+LU float 1024       13.6288     13.6410     13.6431     13.6615
+LU double 1024       20.0130     20.0376     20.0335     20.0459
+LU float (TransA) 1024       13.2946     13.3091     13.3143     13.3443
+LU double (TransA) 1024       21.1813     21.2014     21.2226     21.3065
+Cholesky float 1024        7.4195      7.4228      7.4266      7.4413
+Cholesky double 1024       11.6368     11.6536     11.6524     11.6655
+QR float 1024       34.9538     34.9959     35.0001     35.0547
+QR double 1024       61.4293     61.5195     61.5182     61.6046
+QR float (cache) 1024       34.6772     34.8101     34.7835     34.8364
+QR double (cache) 1024       60.3975     60.4266     60.4339     60.4847
+
+=== Triangular solve ONLY (LU factored ONCE outside the timed region), forward vs TransA ===
+dtype   kernel                     N          min(ms)     med(ms)    mean(ms)     max(ms)
+float   LU solve fwd (vec)         256         0.0059      0.0063      0.0069      0.0092
+float   LU solve TransA (vec)      256         0.0056      0.0059      0.0063      0.0077
+float   LU solve fwd (mat k=8)     256         0.2052      0.2054      0.2059      0.2075
+float   LU solve TransA (mat k=8)  256         0.1890      0.1898      0.1910      0.1955
+float   Blas triUpperLU (vec)      256         0.0039      0.0041      0.0044      0.0056
+float   Blas triUpperLUTransA (vec) 256         0.0033      0.0035      0.0038      0.0048
+float   LU solve fwd (vec)         1024        0.0554      0.0574      0.0586      0.0640
+float   LU solve TransA (vec)      1024        0.0541      0.0550      0.0555      0.0578
+float   LU solve fwd (mat k=8)     1024        3.3312      3.3374      3.3374      3.3436
+float   LU solve TransA (mat k=8)  1024        3.0310      3.0324      3.0331      3.0365
+float   Blas triUpperLU (vec)      1024        0.0313      0.0316      0.0318      0.0326
+float   Blas triUpperLUTransA (vec) 1024        0.0286      0.0304      0.0312      0.0355
+float   LU solve fwd (vec)         4096        1.6881      1.6961      1.7001      1.7202
+float   LU solve TransA (vec)      4096        1.5228      1.5411      1.5431      1.5675
+float   LU solve fwd (mat k=8)     4096       53.5409     53.5858     53.6237     53.7824
+float   LU solve TransA (mat k=8)  4096       48.8582     48.9170     48.9355     49.0497
+float   Blas triUpperLU (vec)      4096        0.8357      0.8642      0.8716      0.9225
+float   Blas triUpperLUTransA (vec) 4096        0.6574      0.6645      0.6654      0.6752
+double  LU solve fwd (vec)         256         0.0069      0.0075      0.0081      0.0104
+double  LU solve TransA (vec)      256         0.0064      0.0069      0.0073      0.0090
+double  LU solve fwd (mat k=8)     256         0.2072      0.2074      0.2076      0.2085
+double  LU solve TransA (mat k=8)  256         0.1911      0.1919      0.1931      0.1974
+double  Blas triUpperLU (vec)      256         0.0045      0.0047      0.0050      0.0061
+double  Blas triUpperLUTransA (vec) 256         0.0036      0.0039      0.0042      0.0056
+double  LU solve fwd (vec)         1024        0.0969      0.0980      0.0987      0.1017
+double  LU solve TransA (vec)      1024        0.0916      0.0941      0.0943      0.0975
+double  LU solve fwd (mat k=8)     1024        3.4000      3.4124      3.4101      3.4157
+double  LU solve TransA (mat k=8)  1024        3.0722      3.0810      3.0820      3.0937
+double  Blas triUpperLU (vec)      1024        0.0531      0.0539      0.0541      0.0555
+double  Blas triUpperLUTransA (vec) 1024        0.0480      0.0483      0.0483      0.0485
+double  LU solve fwd (vec)         4096        3.1235      3.2409      3.2358      3.3379
+double  LU solve TransA (vec)      4096        2.9848      3.0305      3.0310      3.0782
+double  LU solve fwd (mat k=8)     4096       54.6017     54.6705     54.6685     54.7311
+double  LU solve TransA (mat k=8)  4096       49.6425     49.7719     49.9208     50.4970
+double  Blas triUpperLU (vec)      4096        1.5550      1.5767      1.5829      1.6232
+double  Blas triUpperLUTransA (vec) 4096        1.4763      1.5093      1.5062      1.5300
+
+=== Multi-RHS solveInPlace AX=B, END TO END, square N=512, float ===
+block = solveInPlace(A,B,X): factor once + solve k columns (QR/QRCP: fused, no Q).
+loop  = k x solveInPlace(A,b_i,x_i): the same one-call API per RHS -> re-factors each.
+solver   k       loop(ms)  block(ms)   speedup
+LU       16       28.7764     3.0474     9.44x
+LU       64      115.1406     2.6977    42.68x
+LU       256     464.1664     4.0720   113.99x
+Cholesky 16       21.0015     2.3214     9.05x
+Cholesky 64       84.0240     2.0176    41.65x
+Cholesky 256     332.3495     3.2812   101.29x
+QR       16       69.2968     5.6926    12.17x
+QR       64      277.7187     5.2512    52.89x
+QR       256    1107.8486     7.2487   152.84x
+QRCP     16      103.3467     7.8681    13.13x
+QRCP     64      414.4274     7.4558    55.58x
+QRCP     256    1650.8818     9.6606   170.89x
+
+=== Small square QR (QR.decompInPlace, time = copy-in + factor; blocked path kicks in only at N>=64) ===
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)
+float   16          0.0042      0.0044      0.0052      0.0076
+float   32          0.0178      0.0182      0.0186      0.0200
+float   48          0.0343      0.0347      0.0351      0.0367
+float   64          0.0670      0.0689      0.0692      0.0720
+float   96          0.1547      0.1555      0.1557      0.1572
+float   128         0.2658      0.2666      0.2675      0.2709
+double  16          0.0040      0.0044      0.0050      0.0073
+double  32          0.0142      0.0144      0.0149      0.0164
+double  48          0.0326      0.0330      0.0334      0.0351
+double  64          0.0613      0.0619      0.0622      0.0636
+double  96          0.1615      0.1622      0.1627      0.1651
+double  128         0.3309      0.3322      0.3322      0.3334
+
+=== Tall QR (QR.decompInPlace, m x n, m > n; forms thin Q; spans the N_Cols>=64 gate - n=32 unblocked, n=64 already blocked) ===
+dtype   shape         min(ms)     med(ms)    mean(ms)     max(ms)
+float   64x32          0.0415      0.0422      0.0430      0.0460
+float   128x32         0.0881      0.0885      0.0886      0.0893
+float   128x64         0.1641      0.1660      0.1659      0.1677
+double  64x32          0.0335      0.0338      0.0344      0.0363
+double  128x32         0.0712      0.0717      0.0722      0.0741
+double  128x64         0.1535      0.1542      0.1544      0.1556
+
+=== Small square LQ (LQ.decomp; blocked path kicks in only at M_Rows>=512) ===
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)
+float   16          0.0030      0.0033      0.0038      0.0056
+float   32          0.0117      0.0119      0.0122      0.0132
+float   48          0.0236      0.0239      0.0242      0.0254
+float   64          0.0465      0.0466      0.0469      0.0479
+float   96          0.1096      0.1100      0.1102      0.1113
+float   128         0.2127      0.2129      0.2131      0.2140
+double  16          0.0029      0.0034      0.0039      0.0058
+double  32          0.0103      0.0104      0.0107      0.0116
+double  48          0.0239      0.0242      0.0243      0.0251
+double  64          0.0460      0.0462      0.0464      0.0474
+double  96          0.1306      0.1309      0.1313      0.1326
+double  128         0.2796      0.2811      0.2809      0.2817
+
+=== Wide LQ (LQ.decomp, m x n, n > m; all far below the M_Rows>=512 gate) ===
+dtype   shape         min(ms)     med(ms)    mean(ms)     max(ms)
+float   32x64          0.0175      0.0184      0.0187      0.0206
+float   32x128         0.0288      0.0289      0.0291      0.0297
+float   64x128         0.0741      0.0745      0.0747      0.0757
+double  32x64          0.0184      0.0185      0.0186      0.0189
+double  32x128         0.0362      0.0365      0.0375      0.0407
+double  64x128         0.1010      0.1011      0.1012      0.1018
+
+=== Small square Cholesky (CHO.decomp, SPD input; blocked path kicks in only at N>=256) ===
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)
+float   16          0.0011      0.0012      0.0015      0.0026
+float   32          0.0035      0.0035      0.0036      0.0037
+float   48          0.0078      0.0079      0.0080      0.0083
+float   64          0.0144      0.0144      0.0145      0.0147
+float   96          0.0344      0.0345      0.0345      0.0347
+float   128         0.0654      0.0657      0.0664      0.0687
+double  16          0.0011      0.0013      0.0016      0.0027
+double  32          0.0033      0.0034      0.0034      0.0035
+double  48          0.0072      0.0073      0.0073      0.0074
+double  64          0.0132      0.0133      0.0134      0.0136
+double  96          0.0323      0.0324      0.0325      0.0329
+double  128         0.0660      0.0663      0.0662      0.0664
+
+=== Small square LU (LU.decomp, partial pivoting; blocked path kicks in only at N>=256) ===
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)
+float   16          0.0013      0.0014      0.0017      0.0028
+float   32          0.0043      0.0045      0.0045      0.0047
+float   48          0.0085      0.0087      0.0087      0.0090
+float   64          0.0168      0.0169      0.0184      0.0231
+float   96          0.0404      0.0404      0.0406      0.0411
+float   128         0.0735      0.0740      0.0741      0.0749
+double  16          0.0011      0.0014      0.0017      0.0028
+double  32          0.0035      0.0038      0.0038      0.0042
+double  48          0.0080      0.0083      0.0084      0.0089
+double  64          0.0153      0.0160      0.0159      0.0163
+double  96          0.0429      0.0430      0.0431      0.0434
+double  128         0.0759      0.0759      0.0762      0.0770
+
+=== Golub-Kahan full SVD (thin; bidiag + implicit-shift QR, ms) ===
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)
+float   64          0.1937      0.1961      0.1974      0.2037
+float   128         0.9127      0.9137      0.9139      0.9157
+float   256         4.9679      4.9725      4.9831      5.0193
+float   512        31.9581     32.1132     32.1154     32.2771
+float   1024      237.8865    238.0619    238.0263    238.0948
+double  64          0.2583      0.2604      0.2620      0.2691
+double  128         1.3712      1.3740      1.3751      1.3813
+double  256         8.5720      8.5829      8.5838      8.5975
+double  512        64.0825     64.2065     64.1941     64.2808
+double  1024      466.0946    468.5008    467.9757    468.8067
+
+=== SVD singular values only (values, Golub-Kahan bidiagonal; ms) ===
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)
+float   64          0.1057      0.1072      0.1093      0.1172
+float   128         0.4358      0.4390      0.4396      0.4446
+float   256         2.0783      2.0838      2.0845      2.0921
+float   512        11.4888     11.4962     11.4965     11.5049
+float   1024       76.4489     76.4612     76.4723     76.5181
+double  64          0.1478      0.1486      0.1494      0.1526
+double  128         0.6519      0.6540      0.6550      0.6602
+double  256         3.3251      3.3266      3.3266      3.3282
+double  512        20.3237     20.3303     20.3338     20.3509
+double  1024      137.5124    137.6165    137.6038    137.6698
+
+=== Householder symmetric eigenvalues (valuesSymmetric; values only, ms) ===
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)
+float   64          0.0902      0.0910      0.0920      0.0959
+float   128         0.3748      0.3761      0.3771      0.3814
+float   256         1.7237      1.7239      1.7262      1.7333
+float   512         9.2517      9.2640      9.2660      9.2841
+float   1024       60.5336     60.5864     60.5890     60.6495
+double  64          0.1182      0.1210      0.1210      0.1238
+double  128         0.5174      0.5194      0.5195      0.5217
+double  256         2.5643      2.5672      2.5675      2.5714
+double  512        15.4384     15.4427     15.4427     15.4470
+double  1024      105.2564    105.3509    105.4091    105.6782
+
+=== Householder symmetric eigen + vectors (symmetric; ms) ===
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)
+float   64          0.1274      0.1289      0.1303      0.1359
+float   128         0.6042      0.6056      0.6065      0.6107
+float   256         3.3548      3.3606      3.3621      3.3725
+float   512        22.9800     23.0272     23.0992     23.3624
+float   1024      164.6199    165.9799    165.9619    167.2681
+double  64          0.1787      0.1824      0.1820      0.1844
+double  128         0.9524      0.9537      0.9552      0.9611
+double  256         6.2855      6.3117      6.3092      6.3280
+double  512        44.4256     44.5832     44.5652     44.6689
+double  1024      319.8325    321.6662    321.9396    324.5935
+
+=== General eigenvalues, QR iteration (valuesQR; iterative, ms only) ===
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)
+float   64          0.7526      0.7567      0.7620      0.7820
+float   128         4.9042      4.9215      4.9191      4.9291
+float   256        34.9014     34.9178     34.9196     34.9415
+float   512       259.2586    259.5023    259.4781    259.6493
+float   1024     4272.7247   4315.8940   4318.1171   4367.9558
+double  64          0.7967      0.8001      0.8010      0.8070
+double  128         5.8842      5.8903      5.8892      5.8921
+double  256        44.4695     44.5513     44.5431     44.6004
+double  512       596.0206    596.6535    596.5864    597.0181
+double  1024     4845.7658   4858.4921   4857.3531   4866.6624
+
+=== randomized (Halko-Martinsson-Tropp, top-k singular triplets, k=16; ms) ===
+    Randomized low-rank path: GEMM sketch -> QR range-finder -> small exact SVD.
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)
+float   64          0.2499      0.2526      0.2543      0.2620
+float   128         0.6172      0.6184      0.6185      0.6200
+float   256         1.7520      1.7540      1.7540      1.7559
+float   512         5.6322      5.6389      5.6381      5.6424
+float   1024       20.0183     20.0387     20.0471     20.0926
+double  64          0.2490      0.2537      0.2562      0.2685
+double  128         0.6258      0.6273      0.6284      0.6334
+double  256         1.8387      1.8422      1.8424      1.8464
+double  512         6.0835      6.0967      6.1066      6.1495
+double  1024       22.2728     22.2903     22.5445     23.3247
+
+=== pinvSolve (Moore-Penrose minimum-norm LS solve via Golub-Kahan SVD; ms) ===
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)
+float   64          0.2284      0.2308      0.2326      0.2405
+float   128         1.0215      1.0236      1.0249      1.0309
+float   256         5.3262      5.3340      5.3345      5.3438
+float   512        35.8746     35.8823     35.8895     35.9189
+float   1024      266.7241    267.2819    267.1838    267.4474
+double  64          0.3004      0.3026      0.3062      0.3191
+double  128         1.5875      1.5893      1.5932      1.6067
+double  256        10.1936     10.2066     10.2093     10.2305
+double  512        73.0295     73.0599     73.0574     73.0803
+double  1024      520.8526    521.4284    521.3423    521.6597
+
+=== pseudoInverse (Moore-Penrose pseudo-inverse matrix via Golub-Kahan SVD; ms) ===
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)
+float   64          0.6376      0.6411      0.6429      0.6519
+float   128         4.3922      4.3949      4.3966      4.4046
+float   256        32.7182     32.7612     32.7710     32.8434
+float   512       256.6186    256.7462    256.7947    257.0679
+float   1024     2151.5519   2156.3314   2155.5571   2158.0138
+double  64          0.7245      0.7267      0.7291      0.7387
+double  128         4.9902      5.0077      5.0051      5.0148
+double  256        37.9728     38.0009     37.9987     38.0201
+double  512       297.6214    297.7351    297.7962    298.0930
+double  1024     2556.3458   2558.8235   2558.3766   2559.5137
+
+=== Eigen.lobpcg, dense SPD (A = M^T M + I), k=4 smallest, maxIter=50 (ms) ===
+dtype   N          min(ms)     med(ms)      iters  converged    maxResidual
+float   512        33.2456     33.2540         50          0     9.635E-001
+double  512        37.8295     37.8607         50          0     1.084E+000
+
+=== lobpcg preconditioner face-off, sparse BSR, k=4 smallest, solve to tol=sqrt(eps) ===
+dtype   N      precond          med(ms)     min(ms)   iters  converged    maxResidual
+float   1024   none            190.9565    190.8589     166          4     3.383E-004
+float   1024   Jacobi          150.4416    150.2143     140          4     3.442E-004
+float   1024   SSOR             65.1853     65.1129      57          4     3.362E-004
+float   1024   IC0              44.6828     44.6560      38          4     2.578E-004
+double  1024   none            485.1382    483.3328     500          3     2.361E-008
+double  1024   Jacobi          346.1856    344.4047     380          4     1.441E-008
+double  1024   SSOR            149.8210    149.6509     165          4     1.330E-008
+double  1024   IC0             110.0995    109.9863     127          4     1.345E-008
+float   360    none             12.9312     12.9193      29          4     2.810E-004
+float   360    Jacobi           11.1310     11.1180      25          4     2.795E-004
+float   360    SSOR             11.4639     11.4410      24          4     2.840E-004
+float   360    IC0              14.2703     14.2226      24          4     2.846E-004
+double  360    none             27.5376     27.5338      72          4     1.413E-008
+double  360    Jacobi           22.4240     22.4050      57          4     1.327E-008
+double  360    SSOR             23.5614     23.5473      56          4     1.295E-008
+double  360    IC0              29.5545     29.5109      56          4     1.304E-008
+
+=== Conjugate Gradient (dense SPD A = MᵀM + I; 100 iterations, tol=0; ms) ===
+    Each iteration: one dense GEMV (A·p) + vector ops. tol=0 forces all 100 iterations for deterministic timing.
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)
+float   64          0.0242      0.0246      0.0248      0.0257
+float   128         0.0529      0.0530      0.0532      0.0540
+float   256         0.1651      0.1661      0.1661      0.1670
+float   512         0.6812      0.6866      0.6868      0.6929
+float   1024        2.8002      2.8145      2.8125      2.8208
+double  64          0.0232      0.0236      0.0238      0.0247
+double  128         0.0825      0.0826      0.0833      0.0855
+double  256         0.3093      0.3106      0.3111      0.3138
+double  512         1.4007      1.4226      1.4204      1.4355
+double  1024        5.8871      5.8970      5.8952      5.8999
+
+=== Dense vs Sparse (BSR) iterative solvers: timing + numerical cross-check ===
+Same matrix, two storage forms: a dense NxN floatMxN/doubleMxN with zeros in the
+absent blocks, and a floatBSR/doubleBSR (block-CSR) holding exactly the nonzero
+b=3 blocks. Because both encode the IDENTICAL matrix, (a) dense-vs-sparse time is
+directly comparable (same math, only storage/traversal differs), and (b) dense-vs-
+sparse SOLUTIONS must agree numerically -- the residual column is that cross-check,
+always computed from the DENSE reference matrix. maxIter is FIXED with
+tol=0, so every sample runs exactly K iterations (deterministic timing,
+mirroring IterativeBenchmark.cs); residual after K iterations shows how converged
+(not just how fast) each path is. Block density is at the BLOCK level (nb x nb
+block grid): ~7% / ~33% of blocks nonzero, always including every diagonal block.
+Section 0 first isolates the pure per-iteration operator cost (dense GEMV vs sparse
+spMV) that dominates every solver -- the cleanest dense-vs-sparse signal. Section 0b
+goes one level deeper: symmetric lower-block storage (Symmetric=true, ToBSRSymmetric)
+vs full block-CSR storage on the IDENTICAL SPD matrix -- bsrMatVecSym touches half as
+many stored blocks as the full traversal, so this isolates that ~2x memory/FLOP win.
+Section 1x is a dedicated N=1024 CG-only case at b=4 (256 blocks of 4x4, an unrolled
+kernel size) -- 1024 isn't divisible by the b=3 workhorse size Section 1 sweeps.
+
+
+--- 0. Operator matvec throughput (b=3): dense GEMV vs sparse spMV, REPS=64 [float] ---
+dtype   N        dens% path             med(ms)     min(ms)   speedup   maxAbsDiff
+float   192        7.0 GEMV-dense        0.0639      0.0638     1.00x            -
+float   192        7.0 spMV-sparse       0.0267      0.0265     2.39x    3.05E-005
+float   192       33.0 GEMV-dense        0.0628      0.0627     1.00x            -
+float   192       33.0 spMV-sparse       0.1014      0.1013     0.62x    6.10E-005
+float   384        7.0 GEMV-dense        0.2242      0.2240     1.00x            -
+float   384        7.0 spMV-sparse       0.0940      0.0939     2.38x    6.10E-005
+float   384       33.0 GEMV-dense        0.2226      0.2211     1.00x            -
+float   384       33.0 spMV-sparse       0.3926      0.3915     0.57x    1.22E-004
+float   768        7.0 GEMV-dense        1.0151      1.0087     1.00x            -
+float   768        7.0 spMV-sparse       0.3439      0.3428     2.95x    1.83E-004
+float   768       33.0 GEMV-dense        1.0107      1.0086     1.00x            -
+float   768       33.0 spMV-sparse       1.5479      1.5471     0.65x    4.88E-004
+
+--- 0. Operator matvec throughput (b=3): dense GEMV vs sparse spMV, REPS=64 [double] ---
+dtype   N        dens% path             med(ms)     min(ms)   speedup   maxAbsDiff
+double  192        7.0 GEMV-dense        0.1094      0.1085     1.00x            -
+double  192        7.0 spMV-sparse       0.0264      0.0263     4.14x    5.68E-014
+double  192       33.0 GEMV-dense        0.1081      0.1078     1.00x            -
+double  192       33.0 spMV-sparse       0.1019      0.1018     1.06x    8.53E-014
+double  384        7.0 GEMV-dense        0.4806      0.4781     1.00x            -
+double  384        7.0 spMV-sparse       0.0940      0.0939     5.11x    2.27E-013
+double  384       33.0 GEMV-dense        0.4853      0.4799     1.00x            -
+double  384       33.0 spMV-sparse       0.3959      0.3929     1.23x    3.41E-013
+double  768        7.0 GEMV-dense        1.9566      1.9465     1.00x            -
+double  768        7.0 spMV-sparse       0.3451      0.3447     5.67x    5.68E-013
+double  768       33.0 GEMV-dense        1.9711      1.9665     1.00x            -
+double  768       33.0 spMV-sparse       1.5757      1.5727     1.25x    9.09E-013
+
+--- 0b. Symmetric-storage spMV vs full-storage spMV, SAME SPD matrix (b=3), REPS=64 [float] ---
+dtype   N        dens% path             med(ms)     min(ms)   speedup   maxAbsDiff
+float   192        7.0 spMV-full         0.0256      0.0254     1.00x            -
+float   192        7.0 spMV-sym          0.0254      0.0254     1.01x    0.00E+000
+float   192       33.0 spMV-full         0.1002      0.1001     1.00x            -
+float   192       33.0 spMV-sym          0.0973      0.0971     1.03x    0.00E+000
+float   384        7.0 spMV-full         0.0928      0.0926     1.00x            -
+float   384        7.0 spMV-sym          0.0907      0.0896     1.02x    0.00E+000
+float   384       33.0 spMV-full         0.3975      0.3960     1.00x            -
+float   384       33.0 spMV-sym          0.3770      0.3767     1.05x    0.00E+000
+float   768        7.0 spMV-full         0.3452      0.3448     1.00x            -
+float   768        7.0 spMV-sym          0.3315      0.3311     1.04x    0.00E+000
+float   768       33.0 spMV-full         1.5285      1.5268     1.00x            -
+float   768       33.0 spMV-sym          1.5240      1.5209     1.00x    0.00E+000
+
+--- 0b. Symmetric-storage spMV vs full-storage spMV, SAME SPD matrix (b=3), REPS=64 [double] ---
+dtype   N        dens% path             med(ms)     min(ms)   speedup   maxAbsDiff
+double  192        7.0 spMV-full         0.0260      0.0258     1.00x            -
+double  192        7.0 spMV-sym          0.0258      0.0256     1.01x    0.00E+000
+double  192       33.0 spMV-full         0.1013      0.1010     1.00x            -
+double  192       33.0 spMV-sym          0.0981      0.0980     1.03x    0.00E+000
+double  384        7.0 spMV-full         0.0931      0.0928     1.00x            -
+double  384        7.0 spMV-sym          0.0896      0.0892     1.04x    0.00E+000
+double  384       33.0 spMV-full         0.3982      0.3942     1.00x            -
+double  384       33.0 spMV-sym          0.3825      0.3808     1.04x    0.00E+000
+double  768        7.0 spMV-full         0.3447      0.3445     1.00x            -
+double  768        7.0 spMV-sym          0.3383      0.3376     1.02x    0.00E+000
+double  768       33.0 spMV-full         1.5688      1.5678     1.00x            -
+double  768       33.0 spMV-sym          1.5488      1.5469     1.01x    0.00E+000
+
+--- 1. SPD block-sparse (b=3): cg & minres, K=40, tol=0 [float] ---
+dtype   N        dens% path                     med(ms)     min(ms)       residual
+float   192        7.0 CG-dense                  0.0444      0.0442     1.007E-007
+float   192        7.0 CG-sparse                 0.0195      0.0193     1.019E-007
+float   192        7.0 MINRES-dense              0.0135      0.0133     1.206E-007
+float   192        7.0 MINRES-sparse             0.0066      0.0065     1.174E-007
+float   192       33.0 CG-dense                  0.0439      0.0437     1.046E-007
+float   192       33.0 CG-sparse                 0.0682      0.0680     1.279E-007
+float   192       33.0 MINRES-dense              0.0143      0.0142     1.335E-007
+float   192       33.0 MINRES-sparse             0.0221      0.0221     1.558E-007
+float   384        7.0 CG-dense                  0.1522      0.1520     9.330E-008
+float   384        7.0 CG-sparse                 0.0655      0.0653     1.035E-007
+float   384        7.0 MINRES-dense              0.0404      0.0402     1.452E-007
+float   384        7.0 MINRES-sparse             0.0191      0.0190     1.613E-007
+float   384       33.0 CG-dense                  0.1502      0.1494     1.183E-007
+float   384       33.0 CG-sparse                 0.2644      0.2643     1.512E-007
+float   384       33.0 MINRES-dense              0.0439      0.0438     1.743E-007
+float   384       33.0 MINRES-sparse             0.0776      0.0776     1.829E-007
+float   768        7.0 CG-dense                  0.6978      0.6886     1.050E-007
+float   768        7.0 CG-sparse                 0.2349      0.2347     1.213E-007
+float   768        7.0 MINRES-dense              0.1638      0.1633     1.427E-007
+float   768        7.0 MINRES-sparse             0.0583      0.0582     1.561E-007
+float   768       33.0 CG-dense                  0.6821      0.6789     1.356E-007
+float   768       33.0 CG-sparse                 1.0324      1.0254     1.951E-007
+float   768       33.0 MINRES-dense              0.1776      0.1757     1.519E-007
+float   768       33.0 MINRES-sparse             0.2749      0.2747     2.075E-007
+
+--- 1. SPD block-sparse (b=3): cg & minres, K=40, tol=0 [double] ---
+dtype   N        dens% path                     med(ms)     min(ms)       residual
+double  192        7.0 CG-dense                  0.0718      0.0716     2.072E-016
+double  192        7.0 CG-sparse                 0.0193      0.0188     2.028E-016
+double  192        7.0 MINRES-dense              0.0740      0.0739     1.996E-016
+double  192        7.0 MINRES-sparse             0.0222      0.0214     2.118E-016
+double  192       33.0 CG-dense                  0.0719      0.0717     2.144E-016
+double  192       33.0 CG-sparse                 0.0665      0.0664     2.986E-016
+double  192       33.0 MINRES-dense              0.0746      0.0746     2.815E-016
+double  192       33.0 MINRES-sparse             0.0697      0.0695     2.952E-016
+double  384        7.0 CG-dense                  0.3287      0.3270     2.066E-016
+double  384        7.0 CG-sparse                 0.0643      0.0642     2.131E-016
+double  384        7.0 MINRES-dense              0.3356      0.3346     2.461E-016
+double  384        7.0 MINRES-sparse             0.0703      0.0702     2.685E-016
+double  384       33.0 CG-dense                  0.3329      0.3310     2.736E-016
+double  384       33.0 CG-sparse                 0.2607      0.2604     3.265E-016
+double  384       33.0 MINRES-dense              0.3373      0.3367     3.061E-016
+double  384       33.0 MINRES-sparse             0.2634      0.2632     3.736E-016
+double  768        7.0 CG-dense                  1.2777      1.2737     2.220E-016
+double  768        7.0 CG-sparse                 0.2340      0.2337     2.433E-016
+double  768        7.0 MINRES-dense              1.2894      1.2780     2.539E-016
+double  768        7.0 MINRES-sparse             0.2452      0.2441     2.583E-016
+double  768       33.0 CG-dense                  1.2957      1.2943     3.217E-016
+double  768       33.0 CG-sparse                 1.0303      1.0255     4.062E-016
+double  768       33.0 MINRES-dense              1.2823      1.2721     4.382E-016
+double  768       33.0 MINRES-sparse             1.0475      1.0456     4.732E-016
+
+--- 1x. SPD block-sparse (b=4, N=1024): cg, K=40, tol=0 [float] ---
+dtype   N        dens% path                     med(ms)     min(ms)       residual
+float   1024       7.0 CG-dense                  1.2147      1.2044     9.430E-008
+float   1024       7.0 CG-sparse                 0.3556      0.3513     1.081E-007
+
+--- 1x. SPD block-sparse (b=4, N=1024): cg, K=40, tol=0 [double] ---
+dtype   N        dens% path                     med(ms)     min(ms)       residual
+double  1024       7.0 CG-dense                  2.3238      2.3104     2.100E-016
+double  1024       7.0 CG-sparse                 0.3542      0.3530     2.231E-016
+
+--- 2. Non-symmetric block-sparse (b=3): biCGStab, K=40, tol=0 [float] ---
+dtype   N        dens% path                     med(ms)     min(ms)       residual
+float   192        7.0 BiCGStab-dense            0.0131      0.0131     1.016E-007
+float   192        7.0 BiCGStab-sparse           0.0071      0.0063     8.261E-008
+float   192       33.0 BiCGStab-dense            0.0148      0.0144     1.064E-007
+float   192       33.0 BiCGStab-sparse           0.0219      0.0218     1.133E-007
+float   384        7.0 BiCGStab-dense            0.0413      0.0411     9.747E-008
+float   384        7.0 BiCGStab-sparse           0.0183      0.0182     1.028E-007
+float   384       33.0 BiCGStab-dense            0.0440      0.0435     1.126E-007
+float   384       33.0 BiCGStab-sparse           0.0766      0.0764     1.607E-007
+float   768        7.0 BiCGStab-dense            0.1820      0.1799     1.033E-007
+float   768        7.0 BiCGStab-sparse           0.0640      0.0639     1.182E-007
+float   768       33.0 BiCGStab-dense            0.1788      0.1780     1.342E-007
+float   768       33.0 BiCGStab-sparse           0.2751      0.2731     2.088E-007
+
+--- 2. Non-symmetric block-sparse (b=3): biCGStab, K=40, tol=0 [double] ---
+dtype   N        dens% path                     med(ms)     min(ms)       residual
+double  192        7.0 BiCGStab-dense            0.1327      0.1316     2.003E-016
+double  192        7.0 BiCGStab-sparse           0.0363      0.0362     2.080E-016
+double  192       33.0 BiCGStab-dense            0.1431      0.1417     2.205E-016
+double  192       33.0 BiCGStab-sparse           0.1336      0.1322     2.904E-016
+double  384        7.0 BiCGStab-dense            0.5431      0.5417     2.085E-016
+double  384        7.0 BiCGStab-sparse           0.1103      0.1101     2.152E-016
+double  384       33.0 BiCGStab-dense            0.5972      0.5958     2.917E-016
+double  384       33.0 BiCGStab-sparse           0.4730      0.4709     3.365E-016
+double  768        7.0 BiCGStab-dense            1.9867      1.9804     2.270E-016
+double  768        7.0 BiCGStab-sparse           0.3691      0.3680     2.520E-016
+double  768       33.0 BiCGStab-dense            2.1881      2.1578     2.925E-016
+double  768       33.0 BiCGStab-sparse           1.7511      1.7484     3.877E-016
+
+--- 3. Rectangular block-sparse (b=3): cgls & lsqr, K=24, tol=0 [float] ---
+    over: rows=2xcols block grid (m=2n, overdetermined); under: cols=2xrows block grid (m=n/2, underdetermined).
+    residual = ||A^T(Ax-b)|| / ||A^T b|| (least-squares optimality, not ||Ax-b||).
+dtype   N        dens% path                     med(ms)     min(ms)       residual
+float   192        7.0 CGLS-dense-over           0.0941      0.0939     1.680E-007
+float   192        7.0 CGLS-sparse-over          0.0424      0.0421     1.751E-007
+float   192        7.0 LSQR-dense-over           0.0949      0.0946     1.656E-007
+float   192        7.0 LSQR-sparse-over          0.0437      0.0428     1.726E-007
+float   192        7.0 CGLS-sparseT-over         0.0403      0.0402     1.751E-007
+float   192        7.0 LSQR-sparseT-over         0.0408      0.0407     1.726E-007
+float   192        7.0 CGLS-dense-under          0.0888      0.0887     1.425E-007
+float   192        7.0 CGLS-sparse-under         0.0384      0.0384     1.558E-007
+float   192        7.0 LSQR-dense-under          0.0895      0.0892     1.575E-007
+float   192        7.0 LSQR-sparse-under         0.0400      0.0392     1.478E-007
+float   192        7.0 CGLS-sparseT-under        0.0416      0.0415     1.558E-007
+float   192        7.0 LSQR-sparseT-under        0.0422      0.0422     1.478E-007
+float   192       33.0 CGLS-dense-over           0.0936      0.0935     1.306E-005
+float   192       33.0 CGLS-sparse-over          0.1651      0.1619     1.307E-005
+float   192       33.0 LSQR-dense-over           0.0937      0.0936     1.305E-005
+float   192       33.0 LSQR-sparse-over          0.1637      0.1636     1.305E-005
+float   192       33.0 CGLS-sparseT-over         0.1595      0.1595     1.307E-005
+float   192       33.0 LSQR-sparseT-over         0.1601      0.1599     1.305E-005
+float   192       33.0 CGLS-dense-under          0.0884      0.0882     5.731E-006
+float   192       33.0 CGLS-sparse-under         0.1612      0.1596     5.710E-006
+float   192       33.0 LSQR-dense-under          0.0912      0.0894     5.726E-006
+float   192       33.0 LSQR-sparse-under         0.1607      0.1606     5.743E-006
+float   192       33.0 CGLS-sparseT-under        0.1594      0.1591     5.710E-006
+float   192       33.0 LSQR-sparseT-under        0.1599      0.1598     5.743E-006
+float   384        7.0 CGLS-dense-over           0.3982      0.3924     2.969E-007
+float   384        7.0 CGLS-sparse-over          0.1516      0.1515     2.995E-007
+float   384        7.0 LSQR-dense-over           0.4026      0.4015     3.350E-007
+float   384        7.0 LSQR-sparse-over          0.1529      0.1526     3.451E-007
+float   384        7.0 CGLS-sparseT-over         0.1470      0.1456     2.995E-007
+float   384        7.0 LSQR-sparseT-over         0.1474      0.1472     3.451E-007
+float   384        7.0 CGLS-dense-under          0.3992      0.3974     2.618E-007
+float   384        7.0 CGLS-sparse-under         0.1427      0.1426     2.900E-007
+float   384        7.0 LSQR-dense-under          0.4015      0.3983     3.800E-007
+float   384        7.0 LSQR-sparse-under         0.1444      0.1442     4.107E-007
+float   384        7.0 CGLS-sparseT-under        0.1471      0.1470     2.900E-007
+float   384        7.0 LSQR-sparseT-under        0.1490      0.1478     4.107E-007
+float   384       33.0 CGLS-dense-over           0.3971      0.3941     4.168E-005
+float   384       33.0 CGLS-sparse-over          0.6568      0.6533     4.165E-005
+float   384       33.0 LSQR-dense-over           0.4027      0.3995     4.165E-005
+float   384       33.0 LSQR-sparse-over          0.6613      0.6554     4.162E-005
+float   384       33.0 CGLS-sparseT-over         0.6427      0.6351     4.165E-005
+float   384       33.0 LSQR-sparseT-over         0.6477      0.6437     4.162E-005
+float   384       33.0 CGLS-dense-under          0.4017      0.3988     4.028E-005
+float   384       33.0 CGLS-sparse-under         0.6428      0.6371     4.028E-005
+float   384       33.0 LSQR-dense-under          0.4017      0.4015     4.029E-005
+float   384       33.0 LSQR-sparse-under         0.6477      0.6417     4.028E-005
+float   384       33.0 CGLS-sparseT-under        0.6423      0.6391     4.028E-005
+float   384       33.0 LSQR-sparseT-under        0.6491      0.6389     4.028E-005
+float   768        7.0 CGLS-dense-over           1.6697      1.6666     5.867E-006
+float   768        7.0 CGLS-sparse-over          0.5639      0.5613     5.846E-006
+float   768        7.0 LSQR-dense-over           1.6836      1.6743     5.840E-006
+float   768        7.0 LSQR-sparse-over          0.5682      0.5649     5.826E-006
+float   768        7.0 CGLS-sparseT-over         0.5604      0.5553     5.846E-006
+float   768        7.0 LSQR-sparseT-over         0.5528      0.5521     5.826E-006
+float   768        7.0 CGLS-dense-under          1.6632      1.6603     6.114E-006
+float   768        7.0 CGLS-sparse-under         0.5612      0.5595     6.114E-006
+float   768        7.0 LSQR-dense-under          1.6647      1.6571     6.130E-006
+float   768        7.0 LSQR-sparse-under         0.5723      0.5680     6.128E-006
+float   768        7.0 CGLS-sparseT-under        0.5611      0.5512     6.114E-006
+float   768        7.0 LSQR-sparseT-under        0.5563      0.5514     6.128E-006
+float   768       33.0 CGLS-dense-over           1.6787      1.6643     1.061E-004
+float   768       33.0 CGLS-sparse-over          2.5437      2.5424     1.061E-004
+float   768       33.0 LSQR-dense-over           1.6851      1.6748     1.061E-004
+float   768       33.0 LSQR-sparse-over          2.5501      2.5462     1.061E-004
+float   768       33.0 CGLS-sparseT-over         2.4681      2.4595     1.061E-004
+float   768       33.0 LSQR-sparseT-over         2.4747      2.4595     1.061E-004
+float   768       33.0 CGLS-dense-under          1.6550      1.6481     8.263E-005
+float   768       33.0 CGLS-sparse-under         2.5100      2.5015     8.264E-005
+float   768       33.0 LSQR-dense-under          1.6659      1.6587     8.264E-005
+float   768       33.0 LSQR-sparse-under         2.5069      2.4999     8.262E-005
+float   768       33.0 CGLS-sparseT-under        2.4819      2.4678     8.264E-005
+float   768       33.0 LSQR-sparseT-under        2.4797      2.4769     8.262E-005
+
+--- 3. Rectangular block-sparse (b=3): cgls & lsqr, K=24, tol=0 [double] ---
+    over: rows=2xcols block grid (m=2n, overdetermined); under: cols=2xrows block grid (m=n/2, underdetermined).
+    residual = ||A^T(Ax-b)|| / ||A^T b|| (least-squares optimality, not ||Ax-b||).
+dtype   N        dens% path                     med(ms)     min(ms)       residual
+double  192        7.0 CGLS-dense-over           0.1749      0.1719     4.140E-010
+double  192        7.0 CGLS-sparse-over          0.0440      0.0438     4.140E-010
+double  192        7.0 LSQR-dense-over           0.1771      0.1742     4.140E-010
+double  192        7.0 LSQR-sparse-over          0.0465      0.0464     4.140E-010
+double  192        7.0 CGLS-sparseT-over         0.0436      0.0429     4.140E-010
+double  192        7.0 LSQR-sparseT-over         0.0466      0.0457     4.140E-010
+double  192        7.0 CGLS-dense-under          0.1717      0.1704     7.065E-010
+double  192        7.0 CGLS-sparse-under         0.0406      0.0405     7.065E-010
+double  192        7.0 LSQR-dense-under          0.1759      0.1745     7.065E-010
+double  192        7.0 LSQR-sparse-under         0.0439      0.0438     7.065E-010
+double  192        7.0 CGLS-sparseT-under        0.0434      0.0433     7.065E-010
+double  192        7.0 LSQR-sparseT-under        0.0462      0.0460     7.065E-010
+double  192       33.0 CGLS-dense-over           0.1732      0.1732     3.979E-006
+double  192       33.0 CGLS-sparse-over          0.1642      0.1638     3.979E-006
+double  192       33.0 LSQR-dense-over           0.1778      0.1760     3.979E-006
+double  192       33.0 LSQR-sparse-over          0.1672      0.1670     3.979E-006
+double  192       33.0 CGLS-sparseT-over         0.1622      0.1622     3.979E-006
+double  192       33.0 LSQR-sparseT-over         0.1666      0.1662     3.979E-006
+double  192       33.0 CGLS-dense-under          0.1754      0.1731     6.247E-006
+double  192       33.0 CGLS-sparse-under         0.1648      0.1632     6.247E-006
+double  192       33.0 LSQR-dense-under          0.1761      0.1730     6.247E-006
+double  192       33.0 LSQR-sparse-under         0.1666      0.1653     6.247E-006
+double  192       33.0 CGLS-sparseT-under        0.1626      0.1617     6.247E-006
+double  192       33.0 LSQR-sparseT-under        0.1644      0.1643     6.247E-006
+double  384        7.0 CGLS-dense-over           0.8137      0.8044     1.620E-007
+double  384        7.0 CGLS-sparse-over          0.1570      0.1562     1.620E-007
+double  384        7.0 LSQR-dense-over           0.8166      0.8097     1.620E-007
+double  384        7.0 LSQR-sparse-over          0.1631      0.1629     1.620E-007
+double  384        7.0 CGLS-sparseT-over         0.1503      0.1500     1.620E-007
+double  384        7.0 LSQR-sparseT-over         0.1549      0.1546     1.620E-007
+double  384        7.0 CGLS-dense-under          0.8172      0.8153     7.235E-008
+double  384        7.0 CGLS-sparse-under         0.1493      0.1486     7.235E-008
+double  384        7.0 LSQR-dense-under          0.8279      0.8238     7.235E-008
+double  384        7.0 LSQR-sparse-under         0.1564      0.1550     7.235E-008
+double  384        7.0 CGLS-sparseT-under        0.1503      0.1500     7.235E-008
+double  384        7.0 LSQR-sparseT-under        0.1607      0.1595     7.235E-008
+double  384       33.0 CGLS-dense-over           0.8128      0.8091     3.077E-005
+double  384       33.0 CGLS-sparse-over          0.6591      0.6546     3.077E-005
+double  384       33.0 LSQR-dense-over           0.8220      0.8162     3.077E-005
+double  384       33.0 LSQR-sparse-over          0.6656      0.6609     3.077E-005
+double  384       33.0 CGLS-sparseT-over         0.6475      0.6446     3.077E-005
+double  384       33.0 LSQR-sparseT-over         0.6563      0.6478     3.077E-005
+double  384       33.0 CGLS-dense-under          0.8207      0.8128     4.323E-005
+double  384       33.0 CGLS-sparse-under         0.6468      0.6421     4.323E-005
+double  384       33.0 LSQR-dense-under          0.8269      0.8236     4.323E-005
+double  384       33.0 LSQR-sparse-under         0.6477      0.6412     4.323E-005
+double  384       33.0 CGLS-sparseT-under        0.6503      0.6426     4.323E-005
+double  384       33.0 LSQR-sparseT-under        0.6535      0.6471     4.323E-005
+double  768        7.0 CGLS-dense-over           3.2686      3.2492     6.894E-006
+double  768        7.0 CGLS-sparse-over          0.5661      0.5635     6.894E-006
+double  768        7.0 LSQR-dense-over           3.2994      3.2837     6.894E-006
+double  768        7.0 LSQR-sparse-over          0.5826      0.5815     6.894E-006
+double  768        7.0 CGLS-sparseT-over         0.5733      0.5644     6.894E-006
+double  768        7.0 LSQR-sparseT-over         0.5755      0.5739     6.894E-006
+double  768        7.0 CGLS-dense-under          3.5695      3.5625     5.280E-006
+double  768        7.0 CGLS-sparse-under         0.5724      0.5685     5.280E-006
+double  768        7.0 LSQR-dense-under          3.5784      3.5735     5.280E-006
+double  768        7.0 LSQR-sparse-under         0.5895      0.5868     5.280E-006
+double  768        7.0 CGLS-sparseT-under        0.5757      0.5689     5.280E-006
+double  768        7.0 LSQR-sparseT-under        0.5808      0.5789     5.280E-006
+double  768       33.0 CGLS-dense-over           3.2793      3.2661     7.564E-005
+double  768       33.0 CGLS-sparse-over          2.6037      2.5970     7.564E-005
+double  768       33.0 LSQR-dense-over           3.2966      3.2912     7.564E-005
+double  768       33.0 LSQR-sparse-over          2.6236      2.6155     7.564E-005
+double  768       33.0 CGLS-sparseT-over         2.5322      2.5308     7.564E-005
+double  768       33.0 LSQR-sparseT-over         2.5452      2.5440     7.564E-005
+double  768       33.0 CGLS-dense-under          3.5778      3.5766     9.584E-005
+double  768       33.0 CGLS-sparse-under         2.5780      2.5714     9.584E-005
+double  768       33.0 LSQR-dense-under          3.5706      3.5622     9.584E-005
+double  768       33.0 LSQR-sparse-under         2.5879      2.5813     9.584E-005
+double  768       33.0 CGLS-sparseT-under        2.5398      2.5288     9.584E-005
+double  768       33.0 LSQR-sparseT-under        2.5608      2.5512     9.584E-005
+
+--- 4. Zero-cost-abstraction probe (dense SPD, K=40, tol=0) [float] ---
+    generic = Krylov.cg(in floatMxN,...) via cg<floatDenseOperator>;
+    hand-inlined = raw-pointer GEMV/axpy/dot written directly in the job, no operator interface.
+dtype   N      path                 med(ms)     min(ms)      ratio
+float   192    generic               0.0441      0.0440      0.098
+float   192    hand-inlined          0.4501      0.4455         --
+float   384    generic               0.1469      0.1451      0.071
+float   384    hand-inlined          2.0553      2.0537         --
+float   768    generic               0.7065      0.7013      0.090
+float   768    hand-inlined          7.8377      7.8264         --
+
+--- 4. Zero-cost-abstraction probe (dense SPD, K=40, tol=0) [double] ---
+    generic = Krylov.cg(in doubleMxN,...) via cg<doubleDenseOperator>;
+    hand-inlined = raw-pointer GEMV/axpy/dot written directly in the job, no operator interface.
+dtype   N      path                 med(ms)     min(ms)      ratio
+double  192    generic               0.0727      0.0719      0.142
+double  192    hand-inlined          0.5111      0.5078         --
+double  384    generic               0.3313      0.3277      0.158
+double  384    hand-inlined          2.0972      2.0798         --
+double  768    generic               1.2703      1.2639      0.154
+double  768    hand-inlined          8.2741      8.2673         --
+=== Block-Jacobi PCG vs plain CG, block-tridiagonal SPD BSR (b=3, nb=256, K=40, tol=0) ===
+dtype   N      solver           med(ms)     min(ms)       residual
+float   768    CG                0.0586      0.0584     9.027E-008
+float   768    PCG-Jacobi        0.0236      0.0233     8.548E-008
+double  768    CG                0.0620      0.0613     2.214E-016
+double  768    PCG-Jacobi        0.0738      0.0723     2.095E-016
+
+=== Preconditioner face-off, 2D Laplacian BSR, solve to tol=sqrt(eps) ===
+dtype   N      solver           med(ms)     min(ms)   iters       residual
+float   1024   PCG-Jacobi        0.0350      0.0349      14     1.929E-004
+float   1024   PCG-SSOR          0.0364      0.0354       5     1.914E-004
+float   1024   PCG-IC0           0.0184      0.0175       1     1.916E-007
+double  1024   PCG-Jacobi        0.0770      0.0761      30     1.105E-008
+double  1024   PCG-SSOR          0.0797      0.0789      11     7.627E-009
+double  1024   PCG-IC0           0.0193      0.0189       1     3.779E-016
+float   4096   PCG-Jacobi        0.1414      0.1413      14     2.024E-004
+float   4096   PCG-SSOR          0.1442      0.1435       5     1.911E-004
+float   4096   PCG-IC0           0.0698      0.0694       1     2.339E-007
+double  4096   PCG-Jacobi        0.3117      0.3096      30     1.222E-008
+double  4096   PCG-SSOR          0.3207      0.3181      11     7.183E-009
+double  4096   PCG-IC0           0.0764      0.0760       1     3.100E-016
+
+=== Preconditioner face-off, random sparse SPD BSR (genuine fill; IC(0) incomplete), tol=sqrt(eps) ===
+dtype   N      solver           med(ms)     min(ms)   iters       residual
+float   360    PCG-Jacobi        0.0384      0.0381       3     3.862E-005
+float   360    PCG-SSOR          0.0477      0.0477       2     6.495E-007
+float   360    PCG-IC0           0.1146      0.1125       2     3.624E-007
+double  360    PCG-Jacobi        0.0644      0.0612       6     1.586E-009
+double  360    PCG-SSOR          0.0644      0.0642       3     4.339E-010
+double  360    PCG-IC0           0.1581      0.1554       3     1.723E-010
+
+=== BlockJacobi build cost (ctor only, block-tridiagonal SPD) ===
+dtype   N      b       med(ms)     min(ms)
+float   12288  3        0.1370      0.1361
+double  12288  3        0.1461      0.1429
+float   8192   4        0.1145      0.1141
+double  8192   4        0.1191      0.1185
+
+=== LARGE sparse solvers (BSR, ~1.5% block fill, b=4), N up to 10240 -- no dense form ===
+Krylov rows: K=40 fixed iterations, tol=0 (deterministic timing); residual = ||Ax-b||/||b|| after K.
+iters/status: the last timed sample's SolveInfo/LstsqInfo -- a fixed-K/tol=0 row that exits via a
+breakdown guard did LESS work than one that ran the full K, even though both report the same K budget.
+At N=10240 a dense matrix is ~420 MB (float) and O(N^3) dense factor/eig is minutes -- these solvers
+touch only the ~1.5% nonzero blocks, so this scale is exactly where dense is not an option.
+
+dtype   size         solver           med(ms)     min(ms)       residual  iters       status
+float   5120         CG                3.5729      3.5600     1.919E-007     40      MaxIter
+float   5120         PCG-Jacobi        3.7558      3.7507     1.789E-007     40      MaxIter
+float   5120         PCG-SSOR          1.8206      1.8179     1.771E-007      8    Breakdown
+float   5120         MINRES            2.9056      2.8947     1.914E-007     32    Converged
+float   5120         BiCGStab          1.0360      1.0324     1.384E-007     11    Converged
+float   10240x5120   CGLS              4.8335      4.8224     1.434E-007     40      MaxIter
+float   10240x5120   LSQR              3.4452      3.4426     1.431E-007     28    Converged
+float   10240x5120   LSMR              3.4552      3.4452     1.429E-007     28    Converged
+float   10240        CG               13.9950     13.9737     2.472E-007     40      MaxIter
+float   10240        PCG-Jacobi        5.8986      5.8866     2.505E-007     16    Breakdown
+float   10240        PCG-SSOR         32.4261     32.4120     2.486E-007     40      MaxIter
+float   10240        CG@tol            2.0355      2.0286     1.216E-004      4    Converged
+float   10240        PCG-Jacobi@tol      1.7175      1.7119     2.135E-005      3    Converged
+float   10240        PCG-SSOR@tol      2.2504      2.2407     3.619E-007      2    Converged
+float   10240        MINRES           10.6702     10.6600     2.652E-007     30    Converged
+float   10240        BiCGStab          3.9252      3.9245     1.841E-007     11    Converged
+float   20480x10240  CGLS             19.4683     19.4318     1.855E-007     40      MaxIter
+float   20480x10240  LSQR             12.4360     12.4160     1.880E-007     25    Converged
+float   20480x10240  LSMR             12.4933     12.4848     2.026E-007     25    Converged
+
+double  5120         CG                3.7602      3.7562     3.897E-016     40      MaxIter
+double  5120         PCG-Jacobi        3.8605      3.8569     3.625E-016     40      MaxIter
+double  5120         PCG-SSOR          9.0432      9.0282     3.454E-016     40      MaxIter
+double  5120         MINRES            3.8382      3.8328     4.016E-016     40      MaxIter
+double  5120         BiCGStab          3.8702      3.8645     2.994E-016     40      MaxIter
+double  10240x5120   CGLS              5.7385      5.7019     3.079E-016     40      MaxIter
+double  10240x5120   LSQR              5.8454      5.8371     3.508E-016     40      MaxIter
+double  10240x5120   LSMR              5.8766      5.8588     3.158E-016     40      MaxIter
+double  10240        CG               14.7196     14.6911     4.844E-016     40      MaxIter
+double  10240        PCG-Jacobi       14.9187     14.8633     4.694E-016     40      MaxIter
+double  10240        PCG-SSOR         34.3826     34.2012     4.611E-016     40      MaxIter
+double  10240        CG@tol            3.9296      3.8782     4.971E-009      9    Converged
+double  10240        PCG-Jacobi@tol      2.9036      2.8794     4.576E-010      6    Converged
+double  10240        PCG-SSOR@tol      3.4940      3.2819     1.428E-010      3    Converged
+double  10240        MINRES           14.8531     14.8066     5.119E-016     40      MaxIter
+double  10240        BiCGStab         14.7693     14.7676     3.837E-016     40      MaxIter
+double  20480x10240  CGLS             23.2958     23.2521     3.905E-016     40      MaxIter
+double  20480x10240  LSQR             23.5930     23.5554     3.901E-016     40      MaxIter
+double  20480x10240  LSMR             23.6619     23.6201     3.919E-016     40      MaxIter
+
+=== b=1 stencil (scalar BSR, fProxyLaplacian2D(1,N): tridiag SPD, nnz~=3N) -- vector-op fusion visibility ===
+
+dtype   size         solver           med(ms)     min(ms)       residual  iters       status
+float   10240        CG                0.4626      0.4595     1.945E-007     40      MaxIter
+float   10240        PCG-Jacobi        0.5077      0.5023     1.945E-007     40      MaxIter
+float   10240        PCG-SSOR          1.2387      1.2325     1.297E-007     15    Breakdown
+float   10240        MINRES            0.5159      0.5093     2.317E-007     40      MaxIter
+float   10240        CG@tol            0.0879      0.0878     2.451E-004      6    Converged
+float   10240        PCG-Jacobi@tol      0.0934      0.0931     2.451E-004      6    Converged
+float   10240        PCG-SSOR@tol      0.1818      0.1794     3.100E-004      2    Converged
+
+double  10240        CG                0.4961      0.4948     4.970E-016     40      MaxIter
+double  10240        PCG-Jacobi        0.5645      0.5568     4.970E-016     40      MaxIter
+double  10240        PCG-SSOR          3.2675      3.2622     3.200E-016     40      MaxIter
+double  10240        MINRES            0.6254      0.6165     6.145E-016     40      MaxIter
+double  10240        CG@tol            0.1960      0.1929     5.901E-009     14    Converged
+double  10240        PCG-Jacobi@tol      0.2248      0.2229     5.901E-009     14    Converged
+double  10240        PCG-SSOR@tol      0.4338      0.4314     5.801E-009      5    Converged
+
+dtype   N            solver           med(ms)     min(ms)    iters  converged       maxResid
+float   5120         Lanczos s=32     15.4146     15.3970       32          1     0.000E+000
+float   10240        Lanczos s=32     36.1832     36.1309       32          1     0.000E+000
+
+double  5120         Lanczos s=32     15.5877     15.5828       32          1     0.000E+000
+double  10240        Lanczos s=32     36.5455     36.5257       32          1     0.000E+000
+
+=== LOBPCG smallest-8 eigenpairs, square 2D grid Laplacian (spread spectrum) ===
+Levers: preconditioner (none / block-Jacobi / SSOR) x guard (0, and block-Jacobi also at 8). maxIter=800, tol=sqrt(eps).
+Metrics are ITERATIONS (deterministic, one solve/row) AND wall-clock (med(ms), Bench.Time: 1 warmup + 4 timed,
+ws.X re-zeroed every sample so each is a fair cold start). orthoErr = max_ij |X_i.X_j - d_ij| over the k wanted.
+
+dtype   grid(n)      precond    guard      med(ms) status         iters   conv      maxResid      orthoErr
+float   32x32(1024)  none       0         286.7361 Converged         71      8    3.021E-004    1.228E-006
+float   32x32(1024)  blockJac   0         197.4611 Converged         48      8    3.339E-004    1.926E-006
+float   32x32(1024)  SSOR       0          77.0577 Converged         18      8    2.671E-004    7.791E-007
+float   32x32(1024)  blockJac   8         432.5058 Converged         24      8    3.062E-004    1.806E-006
+float   64x64(4096)  none       0        2498.6546 Converged        126      8    3.328E-004    2.377E-006
+float   64x64(4096)  blockJac   0        1743.0732 Converged         80      8    3.421E-004    1.560E-006
+float   64x64(4096)  SSOR       0         672.5965 Converged         30      8    3.019E-004    9.442E-007
+float   64x64(4096)  blockJac   8        3629.1766 Converged         45      8    3.277E-004    3.529E-006
+float   96x96(9216)  none       0        8889.4130 Converged        178      8    3.444E-004    2.491E-006
+float   96x96(9216)  blockJac   0        6424.2075 Converged        124      8    3.254E-004    1.989E-006
+float   96x96(9216)  SSOR       0        2548.8006 Converged         38      8    3.140E-004    3.050E-006
+float   96x96(9216)  blockJac   8       13167.4510 Converged         67      8    3.375E-004    3.595E-006
+
+double  32x32(1024)  none       0         563.4158 Converged        170      8    1.310E-008    2.887E-015
+double  32x32(1024)  blockJac   0         396.8589 Converged        115      8    1.423E-008    3.553E-015
+double  32x32(1024)  SSOR       0         143.6754 Converged         38      8    1.288E-008    3.109E-015
+double  32x32(1024)  blockJac   8         859.0153 Converged         48      8    1.407E-008    3.775E-015
+double  64x64(4096)  none       0        5126.1690 Converged        310      8    1.432E-008    2.554E-015
+double  64x64(4096)  blockJac   0        3619.6330 Converged        220      8    1.450E-008    6.439E-015
+double  64x64(4096)  SSOR       0        1311.3245 Converged         64      8    1.354E-008    2.887E-015
+double  64x64(4096)  blockJac   8        7655.5021 Converged         97      8    1.190E-008    3.997E-015
+double  96x96(9216)  none       0       19334.1898 Converged        464      8    1.478E-008    6.328E-015
+double  96x96(9216)  blockJac   0       14015.8185 Converged        333      8    1.460E-008    8.660E-015
+double  96x96(9216)  SSOR       0        5256.6136 Converged         96      8    1.346E-008    7.994E-015
+double  96x96(9216)  blockJac   8       27403.1297 Converged        142      8    1.429E-008    4.885E-015
+
+=== k-means (N points, D=64 features, k=16 clusters, maxIter=10, Uniform init; ms) ===
+    GEMM-accelerated assignment: O(N·D·k) per iteration via X·Cᵀ GEMM.
+    N column = number of points; D and k are fixed.
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)
+float   64          0.0223      0.0226      0.0230      0.0244
+float   128         0.0622      0.0624      0.0630      0.0651
+float   256         0.2046      0.2053      0.2063      0.2101
+float   512         0.9099      0.9133      0.9133      0.9166
+float   1024        1.7941      1.8083      1.8052      1.8099
+double  64          0.0234      0.0236      0.0239      0.0252
+double  128         0.0705      0.0708      0.0708      0.0710
+double  256         0.2875      0.2883      0.2888      0.2910
+double  512         0.6787      0.7554      0.7370      0.7584
+double  1024        1.9147      2.0851      2.0442      2.0919
+
+=== FFT, twiddle-table workspace — auto radix-4/mixed/radix-2 (FFT.fft(ws) / FFT.fft(ws); ms) ===
+    Workspace built once; dispatches: IsPowerOf4 → radix-4 (log4N passes), 2·4^k → mixed, else → radix-2 table.
+    No per-element cos/sin; full-circle twiddle table built ONCE outside the timed loop.
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)
+float(ws) 1024        0.0039      0.0047      0.0048      0.0060
+float(ws) 2048        0.0094      0.0100      0.0100      0.0107
+float(ws) 4096        0.0160      0.0161      0.0164      0.0172
+float(ws) 8192        0.0409      0.0412      0.0416      0.0429
+float(ws) 16384       0.0668      0.0681      0.0680      0.0690
+float(ws) 32768       0.1729      0.1737      0.1741      0.1761
+float(ws) 65536       0.3390      0.3614      0.3576      0.3687
+float(ws) 131072      0.8614      0.8647      0.8669      0.8768
+float(ws) 262144      1.5450      1.5993      1.5888      1.6116
+float(ws) 524288      3.8057      3.8078      3.8086      3.8131
+float(ws) 1048576      6.3627      6.3720      6.3842      6.4299
+double(ws) 1024        0.0039      0.0049      0.0049      0.0059
+double(ws) 2048        0.0098      0.0100      0.0102      0.0108
+double(ws) 4096        0.0166      0.0168      0.0170      0.0180
+double(ws) 8192        0.0439      0.0447      0.0448      0.0457
+double(ws) 16384       0.0728      0.0735      0.0735      0.0742
+double(ws) 32768       0.1909      0.1921      0.1923      0.1940
+double(ws) 65536       0.3667      0.3808      0.3798      0.3909
+double(ws) 131072      0.9349      0.9501      0.9470      0.9527
+double(ws) 262144      1.6408      1.6546      1.6525      1.6598
+double(ws) 524288      4.2780      4.3548      4.3685      4.4866
+double(ws) 1048576     10.3556     10.6912     10.9132     11.9146
+
+=== Complex inverse FFT, twiddle-table workspace (FFT.ifft(ws) / FFT.ifft(ws); ms) ===
+    Same dispatch as fft(ws); conjugate → forward → conjugate + 1/N scale. Regression guard for the shared cores.
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)
+float(ws) 1024        0.0038      0.0049      0.0054      0.0080
+float(ws) 2048        0.0095      0.0104      0.0107      0.0127
+float(ws) 4096        0.0161      0.0162      0.0162      0.0165
+float(ws) 8192        0.0421      0.0429      0.0429      0.0438
+float(ws) 16384       0.0666      0.0675      0.0674      0.0679
+float(ws) 32768       0.1771      0.1800      0.1794      0.1807
+float(ws) 65536       0.3580      0.3612      0.3619      0.3673
+float(ws) 131072      0.8618      0.8752      0.8758      0.8910
+float(ws) 262144      1.5670      1.5810      1.5812      1.5959
+float(ws) 524288      3.7526      3.7741      3.7794      3.8167
+float(ws) 1048576      6.3409      6.4235      6.4319      6.5399
+double(ws) 1024        0.0039      0.0042      0.0045      0.0057
+double(ws) 2048        0.0110      0.0116      0.0116      0.0122
+double(ws) 4096        0.0167      0.0171      0.0171      0.0175
+double(ws) 8192        0.0443      0.0451      0.0453      0.0468
+double(ws) 16384       0.0748      0.0751      0.0752      0.0757
+double(ws) 32768       0.1908      0.1933      0.1935      0.1967
+double(ws) 65536       0.3766      0.3801      0.3810      0.3874
+double(ws) 131072      0.9700      0.9733      0.9737      0.9780
+double(ws) 262144      1.6284      1.6473      1.6473      1.6662
+double(ws) 524288      4.3949      4.4593      4.4652      4.5474
+double(ws) 1048576     10.3905     10.6319     10.7142     11.2025
+
+=== FFT, table workspace WITH BUILD INCLUDED (one-shot: build + single transform; build in Burst; ms) ===
+    Burst job builds the workspace from scratch then runs one fft(ws) — the one-shot cost the reuse rows hide.
+    Crosses over the no-workspace path after ~1-3 transforms at N>=1024 (table build amortizes fast).
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)
+float(ws+build) 1024        0.0165      0.0169      0.0175      0.0199
+float(ws+build) 2048        0.0250      0.0260      0.0277      0.0338
+float(ws+build) 4096        0.0310      0.0312      0.0312      0.0314
+float(ws+build) 8192        0.0604      0.0605      0.0608      0.0616
+float(ws+build) 16384       0.0910      0.0916      0.0919      0.0935
+float(ws+build) 32768       0.2182      0.2190      0.2191      0.2204
+float(ws+build) 65536       0.4219      0.4244      0.4241      0.4259
+float(ws+build) 131072      0.9988      1.0039      1.0046      1.0116
+float(ws+build) 262144      1.7678      1.8046      1.8078      1.8541
+float(ws+build) 524288      4.1970      4.2215      4.2174      4.2297
+float(ws+build) 1048576      7.2238      7.2728      7.2703      7.3119
+double(ws+build) 1024        0.0166      0.0168      0.0175      0.0196
+double(ws+build) 2048        0.0233      0.0236      0.0238      0.0246
+double(ws+build) 4096        0.0314      0.0315      0.0315      0.0316
+double(ws+build) 8192        0.0628      0.0632      0.0633      0.0638
+double(ws+build) 16384       0.0989      0.0992      0.0996      0.1010
+double(ws+build) 32768       0.2344      0.2373      0.2463      0.2764
+double(ws+build) 65536       0.4411      0.4431      0.4438      0.4479
+double(ws+build) 131072      1.0684      1.0870      1.0843      1.0950
+double(ws+build) 262144      1.8348      1.8486      1.8553      1.8890
+double(ws+build) 524288      4.7522      4.8129      4.8313      4.9473
+double(ws+build) 1048576     12.1395     12.6301     12.6451     13.1807
+
+=== Real-input FFT, twiddle-table workspace (FFT.rfft(ws) / FFT.rfft(ws); ms) ===
+    Workspace built ONCE (arena persistent); no cos/sin in the unpack or butterfly.
+    Expectation: float no longer slower than double at large N (trig anomaly eliminated).
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)
+float(ws) 1024        0.0024      0.0029      0.0032      0.0046
+float(ws) 2048        0.0040      0.0041      0.0041      0.0041
+float(ws) 4096        0.0089      0.0090      0.0091      0.0093
+float(ws) 8192        0.0158      0.0159      0.0159      0.0159
+float(ws) 16384       0.0391      0.0393      0.0393      0.0395
+float(ws) 32768       0.0817      0.0838      0.0847      0.0894
+float(ws) 65536       0.1617      0.1625      0.1625      0.1634
+float(ws) 131072      0.4508      0.4518      0.4523      0.4547
+float(ws) 262144      0.8408      0.8453      0.8450      0.8486
+float(ws) 524288      2.1827      2.1971      2.1949      2.2028
+float(ws) 1048576      3.5504      3.5778      3.5788      3.6090
+double(ws) 1024        0.0023      0.0027      0.0030      0.0044
+double(ws) 2048        0.0041      0.0041      0.0041      0.0041
+double(ws) 4096        0.0090      0.0091      0.0091      0.0093
+double(ws) 8192        0.0163      0.0164      0.0164      0.0165
+double(ws) 16384       0.0402      0.0403      0.0403      0.0403
+double(ws) 32768       0.0947      0.0969      0.0971      0.0997
+double(ws) 65536       0.1753      0.1762      0.1762      0.1773
+double(ws) 131072      0.5136      0.5158      0.5162      0.5195
+double(ws) 262144      0.8857      0.8932      0.8934      0.9014
+double(ws) 524288      2.5908      2.5987      2.6003      2.6130
+double(ws) 1048576      3.9123      4.0695      4.1884      4.7022
+
+=== Real inverse FFT, twiddle-table workspace (FFT.irfft(ws) / FFT.irfft(ws); ms) ===
+    Half-spectrum re/im (N/2+1) input → length-N real output; workspace built ONCE.
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)
+float(ws) 1024        0.0023      0.0026      0.0031      0.0048
+float(ws) 2048        0.0039      0.0039      0.0040      0.0041
+float(ws) 4096        0.0089      0.0090      0.0090      0.0092
+float(ws) 8192        0.0152      0.0153      0.0153      0.0154
+float(ws) 16384       0.0390      0.0390      0.0390      0.0390
+float(ws) 32768       0.0658      0.0661      0.0660      0.0661
+float(ws) 65536       0.1635      0.1661      0.1658      0.1674
+float(ws) 131072      0.2896      0.2909      0.2927      0.2993
+float(ws) 262144      0.8515      0.8530      0.8531      0.8550
+float(ws) 524288      1.2737      1.2833      1.2833      1.2930
+float(ws) 1048576      3.4793      3.4864      3.4938      3.5230
+double(ws) 1024        0.0024      0.0028      0.0031      0.0044
+double(ws) 2048        0.0040      0.0042      0.0041      0.0042
+double(ws) 4096        0.0096      0.0098      0.0099      0.0103
+double(ws) 8192        0.0161      0.0162      0.0162      0.0162
+double(ws) 16384       0.0411      0.0418      0.0419      0.0428
+double(ws) 32768       0.0718      0.0720      0.0720      0.0721
+double(ws) 65536       0.1835      0.1842      0.1841      0.1846
+double(ws) 131072      0.3241      0.3264      0.3263      0.3284
+double(ws) 262144      0.9113      0.9199      0.9232      0.9415
+double(ws) 524288      1.5252      1.5387      1.5379      1.5490
+double(ws) 1048576      3.9485      3.9979      4.0325      4.1857
+
+=== Direct DFT (FFT.dft / FFT.dft; O(N^2); ms) ===
+    Inputs `in` — not modified; output written to separate outRe/outIm.
+dtype   N          min(ms)     med(ms)    mean(ms)     max(ms)
+float   256         1.5113      1.5145      1.5147      1.5187
+float   512         6.0362      6.0395      6.0393      6.0422
+float   1024       23.9119     24.1132     24.0743     24.1591
+float   2048       96.3865     96.4733     96.5037     96.6816
+double  256         1.5587      1.5598      1.5598      1.5609
+double  512         6.2329      6.2348      6.2346      6.2361
+double  1024       24.8875     24.9406     24.9334     24.9651
+double  2048       97.7016     99.4300     99.0672     99.7070
+
+=== Linear programming (simplex vs interior point vs revised/dual simplex) + least absolute deviation ===
+Section 1: random dense feasible/bounded LPs, min cx s.t. Ax<=b, x>=0 -- tableau simplex vs
+interior point vs revised primal simplex vs dual simplex, all on the SAME problem (objective
+column shows all four agree). Section 2: LAD
+(L1) regression with gross outliers -- exact LP.lad (all four LP.solve backends, LAD's own
+default is RevisedSimplex) plus the two reformulation-free exact engines, LP.ladFN (matrix-free
+Frisch-Newton dual interior point, no LP reformulation) and LP.ladBR (Barrodale-Roberts
+specialized simplex, exact vertex solution, ~O(n) iterations via its weighted-median long
+step), vs fast approximate Optimize.ladIRLS. L1-residual column shows
+agreement; timing shows tableau-simplex LAD grows with observation count (capped past
+LadSimplexCap) while revised/dual simplex/ladFN/ladBR/IRLS stay practical much further, ladFN and
+IRLS both staying a fixed n x n solve per iteration throughout, ladBR's iters staying ~O(n).
+Section 3: SPARSE LAD -- the same L1 fit over a tall block-sparse
+(BSR) design, solved by the matrix-free interior point (never forms the m x m normal
+matrix), vs the dense LP.lad baseline where it still fits. Same core drives sparse
+LP.solve, so it is representative. Section 4: the DENSE covering LP (min cx s.t.
+Ax>=b, x>=0), all four LP.solve backends -- deliberately dual-favorable (every row starts
+primal-infeasible, forcing a real phase 1 on the primal backends, while every column
+starts dual-feasible) -- the fairness counterpoint to Section 1 for the primal-vs-dual
+default question. Section 5: infeasibility detection -- Section 1's construction plus one
+contradictory row, all four backends; a STATUS column (not objective) shows which backends
+actually detect Infeasible vs exhaust MaxIterations (interior point has no exact
+infeasibility certificate, so MaxIterations there is expected, not a bug).
+Section 6: warm re-solve chain (docs/spec-lpbasis-persistence.md) -- 1 cold seed +
+K=16 rhs-perturbed re-solves on the same instance: cold every time vs ref LPBasis vs
+ref LPBasis + fProxyLPCache (factor/weight persistence); identical perturbation
+sequence per mode, so warmIters and objective are directly comparable.
+
+
+--- 1. LP.solve: random dense feasible LP (m = n/2, A>=0, Ax<=b), simplex vs interior point vs revised primal vs dual simplex [float] ---
+dtype   n      m      method             med(ms)     min(ms)   iters      objective
+float   24     12     simplex             0.0176      0.0173      30   -1.8858E+001
+float   24     12     interior-point      0.0356      0.0354       7   -1.8858E+001
+float   24     12     revised-primal      0.0076      0.0075       7   -1.8858E+001
+float   24     12     dual-simplex        0.0124      0.0121       5   -1.8858E+001
+float   48     24     simplex             0.2078      0.2070     100   -1.6839E+001
+float   48     24     interior-point      0.2446      0.2435       9   -1.6839E+001
+float   48     24     revised-primal      0.0214      0.0212      12   -1.6839E+001
+float   48     24     dual-simplex        0.0546      0.0537      16   -1.6839E+001
+float   96     48     simplex             1.9261      1.9238     246   -3.5470E+001
+float   96     48     interior-point      1.9575      1.9528      11   -3.5470E+001
+float   96     48     revised-primal      0.0723      0.0714      20   -3.5470E+001
+float   96     48     dual-simplex        0.1854      0.1823      27   -3.5470E+001
+float   192    96     simplex            99.5662     99.3828    3244   -7.1239E+001
+float   192    96     interior-point     15.6169     15.6027      12   -7.1238E+001
+float   192    96     revised-primal      0.6288      0.6188      80   -7.1240E+001
+float   192    96     dual-simplex        1.4072      1.4006      96   -7.1240E+001
+float   384    192    simplex          1422.8928   1422.1840   11837   -1.6048E+002
+float   384    192    interior-point    147.6333    147.5120      15   -1.6040E+002
+float   384    192    revised-primal      6.5206      6.5101     350   -1.6048E+002
+float   384    192    dual-simplex        6.1787      6.1700     179   -1.6048E+002
+
+--- 1. LP.solve: random dense feasible LP (m = n/2, A>=0, Ax<=b), simplex vs interior point vs revised primal vs dual simplex [double] ---
+dtype   n      m      method             med(ms)     min(ms)   iters      objective
+double  24     12     simplex             0.0141      0.0139      23   -1.1285E+001
+double  24     12     interior-point      0.0543      0.0507      10   -1.1285E+001
+double  24     12     revised-primal      0.0062      0.0059       5   -1.1285E+001
+double  24     12     dual-simplex        0.0141      0.0138       6   -1.1285E+001
+double  48     24     simplex             0.2205      0.2184     105   -1.8114E+001
+double  48     24     interior-point      1.4759      1.4561      53   -1.8114E+001
+double  48     24     revised-primal      0.0276      0.0272      17   -1.8114E+001
+double  48     24     dual-simplex        0.0636      0.0629      19   -1.8114E+001
+double  96     48     simplex             2.4450      2.4431     310   -3.6346E+001
+double  96     48     interior-point      2.9786      2.9113      15   -3.6346E+001
+double  96     48     revised-primal      0.0982      0.0956      28   -3.6346E+001
+double  96     48     dual-simplex        0.1763      0.1734      25   -3.6346E+001
+double  192    96     simplex            56.0356     55.9599    1827   -7.3962E+001
+double  192    96     interior-point     25.0618     24.7648      17   -7.3962E+001
+double  192    96     revised-primal      0.4358      0.4296      53   -7.3962E+001
+double  192    96     dual-simplex        0.7862      0.7804      46   -7.3962E+001
+double  384    192    simplex          1881.1312   1880.5474   15643   -1.6502E+002
+double  384    192    interior-point    339.4379    339.3109      29   -1.6502E+002
+double  384    192    revised-primal      3.8241      3.8133     160   -1.6502E+002
+double  384    192    dual-simplex        6.7774      6.7682     150   -1.6502E+002
+
+--- 2. LAD (L1) regression, gross outliers: exact LP.lad (simplex/interior/revised/dual) vs fast ladIRLS [float] ---
+dtype   m      n      method               med(ms)     min(ms)   iters    L1 residual
+float   48     4      LP.lad-simplex        1.6364      1.6346     221    3.7146E+001
+float   48     4      LP.lad-interior       0.3105      0.3093       7    2.6039E+001
+float   48     4      LP.lad-revised        0.3556      0.3515     103    2.6008E+001
+float   48     4      LP.lad-dual           0.3260      0.3190      50    2.6008E+001
+float   48     4      LP.ladFN              0.0154      0.0149       6    2.6008E+001
+float   48     4      LP.ladBR              0.0059      0.0053      10    2.6008E+001
+float   48     4      ladIRLS               0.0534      0.0533      39    2.6014E+001
+float   96     4      LP.lad-simplex        9.5110      9.5058     379    5.1949E+001
+float   96     4      LP.lad-interior       1.0653      1.0649       6    5.1982E+001
+float   96     4      LP.lad-revised        1.4698      1.4658     199    5.1993E+001
+float   96     4      LP.lad-dual           1.4822      1.4726     112    5.1949E+001
+float   96     4      LP.ladFN              0.0329      0.0327       8    5.1949E+001
+float   96     4      LP.ladBR              0.0128      0.0115      13    5.1949E+001
+float   96     4      ladIRLS               0.0732      0.0732      28    5.1951E+001
+float   192    4      LP.lad-simplex        2.3682      2.3647     136    1.2481E+002
+float   192    4      LP.lad-interior       4.2493      4.2460       6    1.0432E+002
+float   192    4      LP.lad-revised       14.0890     14.0625     796    1.0440E+002
+float   192    4      LP.lad-dual           7.0964      7.0929     225    1.0425E+002
+float   192    4      LP.ladFN              0.0677      0.0673       9    1.0425E+002
+float   192    4      LP.ladBR              0.0333      0.0306      14    1.0425E+002
+float   192    4      ladIRLS               0.1570      0.1569      31    1.0426E+002
+float   384    4      LP.lad-interior      17.9290     17.9171       6    2.0328E+002
+float   384    4      LP.lad-revised     4304.4323   4296.2367   77400    2.0507E+002
+float   384    4      LP.lad-dual          42.7059     42.5990     440    2.0326E+002
+float   384    4      LP.ladFN              0.1314      0.1295       9    2.0326E+002
+float   384    4      LP.ladBR              0.0773      0.0656      17    2.0326E+002
+float   384    4      ladIRLS               0.2785      0.2753      28    2.0326E+002
+
+--- 2b. LAD fast routes only (LP.ladFN / LP.ladBR / ladIRLS), extended m range for the Barrodale-Roberts vs Frisch-Newton crossover [float] ---
+dtype   m      n      method               med(ms)     min(ms)   iters    L1 residual
+float   8      4      LP.ladFN              0.0057      0.0055       5    5.0479E+000
+float   8      4      LP.ladBR              0.0016      0.0015       5    5.0476E+000
+float   8      4      ladIRLS               0.0038      0.0038       9    5.0529E+000
+float   16     4      LP.ladFN              0.0071      0.0070       5    1.0347E+001
+float   16     4      LP.ladBR              0.0022      0.0022       7    1.0347E+001
+float   16     4      ladIRLS               0.0110      0.0110      19    1.0351E+001
+float   1024   4      LP.ladFN              0.4434      0.4329      11    5.3801E+002
+float   1024   4      LP.ladBR              0.6200      0.6141      19    5.3801E+002
+float   1024   4      ladIRLS               0.6030      0.6004      23    5.3801E+002
+float   4096   4      LP.ladFN              1.8536      1.8389      11    2.1411E+003
+float   4096   4      LP.ladBR              2.9138      2.9101      19    2.1411E+003
+float   4096   4      ladIRLS               2.2027      2.1983      21    2.1411E+003
+float   16384  4      LP.ladFN             10.6586     10.5146      13    8.5625E+003
+float   16384  4      LP.ladBR             14.1164     14.0619      21    8.5625E+003
+float   16384  4      ladIRLS               8.4069      8.3768      20    8.5625E+003
+
+--- 2. LAD (L1) regression, gross outliers: exact LP.lad (simplex/interior/revised/dual) vs fast ladIRLS [double] ---
+dtype   m      n      method               med(ms)     min(ms)   iters    L1 residual
+double  48     4      LP.lad-simplex        1.1520      1.1464     170    2.6000E+001
+double  48     4      LP.lad-interior       0.6746      0.6590      20    2.6000E+001
+double  48     4      LP.lad-revised        0.3342      0.3265      98    2.6000E+001
+double  48     4      LP.lad-dual           0.3481      0.3427      53    2.6000E+001
+double  48     4      LP.ladFN              0.0231      0.0228      10    2.6000E+001
+double  48     4      LP.ladBR              0.0050      0.0046       6    2.6000E+001
+double  48     4      ladIRLS               0.0674      0.0672      50    2.6003E+001
+double  96     4      LP.lad-simplex       12.3888     12.3587     461    5.1973E+001
+double  96     4      LP.lad-interior       1.9822      1.9399      14    5.1973E+001
+double  96     4      LP.lad-revised        1.6809      1.6685     207    5.1973E+001
+double  96     4      LP.lad-dual           1.5350      1.5347     102    5.1973E+001
+double  96     4      LP.ladFN              0.0509      0.0507      13    5.1973E+001
+double  96     4      LP.ladBR              0.0139      0.0131      12    5.1973E+001
+double  96     4      ladIRLS               0.1271      0.1269      50    5.1979E+001
+double  192    4      LP.lad-simplex      133.1070    132.8888    1240    1.0408E+002
+double  192    4      LP.lad-interior      11.5749     11.4477      21    1.0408E+002
+double  192    4      LP.lad-revised       15.8821     15.8683     708    1.0408E+002
+double  192    4      LP.lad-dual           8.6720      8.6544     204    1.0408E+002
+double  192    4      LP.ladFN              0.0892      0.0884      12    1.0408E+002
+double  192    4      LP.ladBR              0.0380      0.0366      11    1.0408E+002
+double  192    4      ladIRLS               0.2481      0.2480      50    1.0409E+002
+double  384    4      LP.lad-interior      55.0158     54.9326      20    2.0322E+002
+double  384    4      LP.lad-revised      130.3632    128.9394    1539    2.0322E+002
+double  384    4      LP.lad-dual          60.7749     60.7384     404    2.0322E+002
+double  384    4      LP.ladFN              0.2163      0.2036      14    2.0322E+002
+double  384    4      LP.ladBR              0.0980      0.0891      19    2.0322E+002
+double  384    4      ladIRLS               0.4989      0.4909      50    2.0323E+002
+
+--- 2b. LAD fast routes only (LP.ladFN / LP.ladBR / ladIRLS), extended m range for the Barrodale-Roberts vs Frisch-Newton crossover [double] ---
+dtype   m      n      method               med(ms)     min(ms)   iters    L1 residual
+double  8      4      LP.ladFN              0.0076      0.0074       8    5.0996E+000
+double  8      4      LP.ladBR              0.0015      0.0015       5    5.0996E+000
+double  8      4      ladIRLS               0.0182      0.0182      50    5.1027E+000
+double  16     4      LP.ladFN              0.0117      0.0117      10    1.0322E+001
+double  16     4      LP.ladBR              0.0021      0.0020       5    1.0322E+001
+double  16     4      ladIRLS               0.0284      0.0283      50    1.0327E+001
+double  1024   4      LP.ladFN              0.4680      0.4573      12    5.3710E+002
+double  1024   4      LP.ladBR              0.6791      0.6719      21    5.3710E+002
+double  1024   4      ladIRLS               1.3065      1.3000      50    5.3711E+002
+double  4096   4      LP.ladFN              2.6366      2.6209      16    2.1424E+003
+double  4096   4      LP.ladBR              2.4430      2.4289      16    2.1424E+003
+double  4096   4      ladIRLS               5.2187      5.2110      50    2.1425E+003
+double  16384  4      LP.ladFN             12.9242     12.8691      17    8.5641E+003
+double  16384  4      LP.ladBR             14.8329     14.7013      22    8.5641E+003
+double  16384  4      ladIRLS              20.8519     20.8383      50    8.5641E+003
+
+--- 3. LAD over a tall BSR design (m x n, ~8 nnz/row): dense LP.lad (simplex vs interior) vs sparse matrix-free interior point; dense runs only where the m x m normal matrix fits [float] ---
+dtype   m      n      method               med(ms)     min(ms)   iters    L1 residual
+float   512    32     dense LP.lad-ip     123.2403    123.0591       7    2.9021E+002
+float   512    32     sparse LP.lad       118.6783    118.6596      23    2.9026E+002
+
+--- 3. LAD over a tall BSR design (m x n, ~8 nnz/row): dense LP.lad (simplex vs interior) vs sparse matrix-free interior point; dense runs only where the m x m normal matrix fits [double] ---
+dtype   m      n      method               med(ms)     min(ms)   iters    L1 residual
+double  512    32     dense LP.lad-ip     375.1791    373.1729      22    2.6975E+002
+double  512    32     sparse LP.lad       108.6761    108.6393      20    2.9456E+002
+
+--- 4. DENSE covering LP (min cx s.t. Ax>=b, x>=0; A,b,c>=0, m=n) -- dual-favorable (dual-feasible at start, primal needs a real phase 1): simplex vs interior point vs revised primal vs dual simplex [float] ---
+dtype   n      m      method             med(ms)     min(ms)   iters      objective
+float   48     48     simplex             7.3496      7.3381     906    2.3651E+000
+float   48     48     interior-point      2.6925      2.6847      27    2.3652E+000
+float   48     48     revised-primal      0.1553      0.1490      49    2.3652E+000
+float   48     48     dual-simplex        0.0935      0.0924      14    2.3652E+000
+float   96     96     simplex            88.2159     88.1441    2842    2.0976E+000
+float   96     96     interior-point      5.7808      5.7673       8    2.0976E+000
+float   96     96     revised-primal      0.5715      0.5651      79    2.0976E+000
+float   96     96     dual-simplex        0.4193      0.4165      30    2.0976E+000
+float   192    192    simplex          1532.0771   1531.8663   12617    1.9923E+000
+float   192    192    interior-point     43.2913     43.2522       8    1.9951E+000
+float   192    192    revised-primal      2.5250      2.5127     141    1.9925E+000
+float   192    192    dual-simplex        1.9991      1.9970      63    1.9925E+000
+
+--- 4. DENSE covering LP (min cx s.t. Ax>=b, x>=0; A,b,c>=0, m=n) -- dual-favorable (dual-feasible at start, primal needs a real phase 1): simplex vs interior point vs revised primal vs dual simplex [double] ---
+dtype   n      m      method             med(ms)     min(ms)   iters      objective
+double  48     48     simplex             5.1124      5.0930     628    2.0466E+000
+double  48     48     interior-point      1.3101      1.2667      11    2.0466E+000
+double  48     48     revised-primal      0.1531      0.1492      49    2.0466E+000
+double  48     48     dual-simplex        0.1031      0.1021      16    2.0466E+000
+double  96     96     simplex            86.4211     86.3595    2781    2.0814E+000
+double  96     96     interior-point      9.5984      9.5324      12    2.0814E+000
+double  96     96     revised-primal      0.6334      0.6265      81    2.0814E+000
+double  96     96     dual-simplex        0.4100      0.4073      26    2.0814E+000
+double  192    192    simplex          1465.5758   1464.2672   12032    2.1224E+000
+double  192    192    interior-point    147.7623    147.3713      24    2.1224E+000
+double  192    192    revised-primal      3.0410      3.0354     139    2.1224E+000
+double  192    192    dual-simplex        1.6388      1.6304      37    2.1224E+000
+
+--- 5. Infeasibility detection: Section-1-style dense LP + one contradictory duplicated row (row 0 as both <= b0 and >= b0+10) -- simplex vs interior point vs revised primal vs dual simplex [float] ---
+dtype   n      m      method             med(ms)     min(ms)   iters         status
+float   48     25     simplex             0.0265      0.0257      10     Infeasible
+float   48     25     interior-point      2.8151      2.8107     100        MaxIter
+float   48     25     revised-primal      0.0090      0.0086       1     Infeasible
+float   48     25     dual-simplex        0.0271      0.0265       6     Infeasible
+float   96     49     simplex             0.2546      0.2538      30     Infeasible
+float   96     49     interior-point     17.8139     17.8100     100        MaxIter
+float   96     49     revised-primal      0.0246      0.0242       1     Infeasible
+float   96     49     dual-simplex        0.1343      0.1307      13        MaxIter
+float   192    97     simplex             0.7103      0.7066      22     Infeasible
+float   192    97     interior-point    126.2856    126.1003     100        MaxIter
+float   192    97     revised-primal      0.0940      0.0931       2     Infeasible
+float   192    97     dual-simplex        0.5813      0.5742      39     Infeasible
+
+--- 5. Infeasibility detection: Section-1-style dense LP + one contradictory duplicated row (row 0 as both <= b0 and >= b0+10) -- simplex vs interior point vs revised primal vs dual simplex [double] ---
+dtype   n      m      method             med(ms)     min(ms)   iters         status
+double  48     25     simplex             0.0123      0.0122       4     Infeasible
+double  48     25     interior-point      3.0844      3.0404     100        MaxIter
+double  48     25     revised-primal      0.0087      0.0084       1     Infeasible
+double  48     25     dual-simplex        0.0351      0.0345       9     Infeasible
+double  96     49     simplex             0.3655      0.3640      44     Infeasible
+double  96     49     interior-point     20.0299     19.5954     100        MaxIter
+double  96     49     revised-primal      0.0273      0.0267       2     Infeasible
+double  96     49     dual-simplex        0.0858      0.0850      10     Infeasible
+double  192    97     simplex             4.0132      4.0021     127     Infeasible
+double  192    97     interior-point    147.8472    146.7041     100        MaxIter
+double  192    97     revised-primal      0.1020      0.1002       2     Infeasible
+double  192    97     dual-simplex        0.6862      0.6796      42     Infeasible
+
+--- 6. Warm re-solve chain: 1 cold seed + K=16 rhs-perturbed re-solves (Section-1-style instance; identical perturbation sequence per mode) [float] ---
+dtype   n      m      mode               med(ms)     min(ms) warmIters      objective
+float   96     48     cold                3.1229      3.1113       435   -3.5463E+001
+float   96     48     warm-basis          0.6064      0.6044         4   -3.5463E+001
+float   96     48     warm+cache          0.5089      0.5050         4   -3.5463E+001
+float   192    96     cold               23.1013     23.0891      1453   -7.1227E+001
+float   192    96     warm-basis          2.7497      2.7352         0   -7.1227E+001
+float   192    96     warm+cache          2.1849      2.1793         0   -7.1227E+001
+float   384    192    cold              102.4160    102.2498      2741   -1.6048E+002
+float   384    192    warm-basis         13.7725     13.7106         8   -1.6048E+002
+float   384    192    warm+cache         11.2681     11.2553         8   -1.6048E+002
+
+--- 6. Warm re-solve chain: 1 cold seed + K=16 rhs-perturbed re-solves (Section-1-style instance; identical perturbation sequence per mode) [double] ---
+dtype   n      m      mode               med(ms)     min(ms) warmIters      objective
+double  96     48     cold                3.1612      3.1515       433   -3.6318E+001
+double  96     48     warm-basis          0.5238      0.5200         0   -3.6318E+001
+double  96     48     warm+cache          0.4230      0.4179         0   -3.6318E+001
+double  192    96     cold               13.9123     13.8287       759   -7.3950E+001
+double  192    96     warm-basis          2.2420      2.2332         0   -7.3950E+001
+double  192    96     warm+cache          1.6236      1.6147         0   -7.3950E+001
+double  384    192    cold              113.9174    113.8237      2302   -1.6501E+002
+double  384    192    warm-basis         15.1575     15.1311         7   -1.6501E+002
+double  384    192    warm+cache         12.0539     12.0230         7   -1.6501E+002
+=== Convex quadratic programming (QP.solve: dense HiGHS-style primal null-space active set) ===
+Section 1: random SPD QP (m = n/2 LessEqual rows, box bounds [0,3], Q well-conditioned via
+Rand.spdInPlace) solved through the public facade with NO caller-supplied start -- every row
+exercises phase 1 (LP-powered feasible start) as well as the active-set loop. KKT resid is an
+HONEST, freshly-recomputed proxy (exact primal feasibility + box-only projected-gradient
+stationarity) using only public data -- see QpSolveJobFProxy's own comment for scope.
+Section 2: the active-set loop ALONE (qpActiveSetCore from a supplied feasible x0, no
+phase-1 LP), timed with the incremental reduced space vs from-scratch every iteration --
+the stage-2 up/downdate A/B gate, undiluted by phase 1. iters must match between rows.
+
+
+--- 1. QP.solve: random SPD QP (m = n/2, A>=0, Ax<=b, box [0,3]), public facade, no supplied start [float] ---
+dtype   n      m          med(ms)     min(ms)   iters      KKT resid     status      objective
+float   16     8           0.0366      0.0357      14    5.9605E-008    Optimal   -2.9998E-001
+float   64     32          1.7173      1.7114      62    2.6931E-004    Optimal   -9.0579E-001
+float   192    96         72.3523     72.2060     206    2.3842E-007    Optimal   -3.1903E+000
+
+--- 1. QP.solve: random SPD QP (m = n/2, A>=0, Ax<=b, box [0,3]), public facade, no supplied start [double] ---
+dtype   n      m          med(ms)     min(ms)   iters      KKT resid     status      objective
+double  16     8           0.0507      0.0497      20    2.2204E-016    Optimal   -6.3920E-001
+double  64     32          1.5219      1.5170      56    4.4409E-016    Optimal   -1.2496E+000
+double  192    96         66.9348     66.7994     198    8.8818E-016    Optimal   -3.3086E+000
+
+--- 2. qpActiveSetCore loop only (no phase 1), feasible x0 supplied, incremental vs from-scratch reduced space [float] ---
+dtype   reduced n      m          med(ms)     min(ms)   iters     status      objective
+float   incr   16     8           0.0355      0.0351      10    Optimal   -2.9998E-001
+float   batch  16     8           0.0423      0.0410      10    Optimal   -2.9998E-001
+float   incr   64     32          1.4235      1.4103      33    Optimal   -9.0579E-001
+float   batch  64     32          1.6077      1.5853      33    Optimal   -9.0579E-001
+float   incr   192    96         35.1498     35.1203      93    Optimal   -3.1908E+000
+float   batch  192    96         52.3242     52.2907      93    Optimal   -3.1908E+000
+
+--- 2. qpActiveSetCore loop only (no phase 1), feasible x0 supplied, incremental vs from-scratch reduced space [double] ---
+dtype   reduced n      m          med(ms)     min(ms)   iters     status      objective
+double  incr   16     8           0.0281      0.0276       7    Optimal   -6.3920E-001
+double  batch  16     8           0.0335      0.0333       7    Optimal   -6.3920E-001
+double  incr   64     32          1.4979      1.4947      37    Optimal   -1.2496E+000
+double  batch  64     32          2.0561      2.0488      37    Optimal   -1.2496E+000
+double  incr   192    96         37.9374     37.8963      97    Optimal   -3.3086E+000
+double  batch  192    96         73.8596     73.6897      97    Optimal   -3.3086E+000
+=== Mixed-integer programming (MIP.solve: B&B over the warm-started dual simplex) ===
+Section 1: MIPLIB oracles stein9/stein15/p0033 (same literal instance data as
+MIPTests.fProxy.cs) -- stein9 both dtypes, stein15/p0033 double only (float cannot prove
+optimality within a sane node budget). Section 2: synthetic scaling -- random branchy
+integer-box MIPs at n=8/12/16, both dtypes, under a tight maxNodes safety cap (a diverging
+cell reports its own status rather than burning the wall-clock budget). Section 3:
+gap-limit economics -- p0033 (double only) at relGap=0/0.01/0.05, showing the rounding
+heuristic finds the optimum early while the gap PROOF (closing the dual bound) is what
+costs. Section 4: warm-start accounting -- stein15 (double only), lpIterations/nodes as
+the average simplex pivots per warm-started B&B node.
+
+
+--- 1. MIPLIB oracles: stein9 (both dtypes); stein15 + p0033 (double only -- float cannot prove optimality within a sane node budget, see MIPTests.float.cs's Stein15/P0033) [float] ---
+dtype   instance     n    m     med(ms)     min(ms)   nodes   lpIters     status      objective
+float   stein9       9   13      4.4135      4.3975      41       636    Optimal    5.0000E+000
+
+--- 1. MIPLIB oracles: stein9 (both dtypes); stein15 + p0033 (double only -- float cannot prove optimality within a sane node budget, see MIPTests.double.cs's Stein15/P0033) [double] ---
+dtype   instance     n    m     med(ms)     min(ms)   nodes   lpIters     status      objective
+double  stein9       9   13      3.9784      3.9409      35       589    Optimal    5.0000E+000
+double  stein15     15   36     55.6717     55.6328     263      4501    Optimal    9.0000E+000
+double  p0033       33   15     75.1534     75.1187     404      2454    Optimal    3.0890E+003
+
+--- 2. Synthetic scaling: random branchy integer-box MIPs (n=8,12,16; fixed seeds; n=12's seed reproduces MIPTests.float.cs's Branchy12), both dtypes, maxNodes safety cap -- a diverging cell reports its status honestly (e.g. NodeLimit) rather than burning the wall-clock budget [float] ---
+dtype   instance     n    m     med(ms)     min(ms)   nodes   lpIters     status      objective
+float   branchy8     8    4      0.0202      0.0195       1         5    Optimal   -1.2000E+001
+float   branchy12   12    6      8.7482      8.7266     228       975    Optimal    6.0000E+000
+float   branchy16   16    8      7.5040      7.4771      30       435    Optimal   -1.5000E+001
+
+--- 2. Synthetic scaling: random branchy integer-box MIPs (n=8,12,16; fixed seeds; n=12's seed reproduces MIPTests.double.cs's Branchy12), both dtypes, maxNodes safety cap -- a diverging cell reports its status honestly (e.g. NodeLimit) rather than burning the wall-clock budget [double] ---
+dtype   instance     n    m     med(ms)     min(ms)   nodes   lpIters     status      objective
+double  branchy8     8    4      0.0199      0.0192       1         5    Optimal   -1.2000E+001
+double  branchy12   12    6      8.1135      8.0721     199       911    Optimal    6.0000E+000
+double  branchy16   16    8      7.3985      7.3252      28       439    Optimal   -1.5000E+001
+
+--- 3. Gap-limit economics: p0033 (double only) at relGap = 0 / 0.01 / 0.05 -- the rounding heuristic finds the optimum (3089) early, the gap PROOF is what costs [double] ---
+dtype   instance   relGap     med(ms)     min(ms)   nodes   lpIters     status      objective        gap
+double  p0033        0.00     76.0169     75.1281     404      2454    Optimal    3.0890E+003 0.000E+000
+double  p0033        0.01     74.3231     74.0298     401      2409   GapLimit    3.0890E+003 8.925E-003
+double  p0033        0.05     60.5722     60.5472     284      1760   GapLimit    3.0890E+003 4.968E-002
+
+--- 4. Warm-start accounting: stein15 (double only, mid-size), lpIterations/nodes -- average simplex pivots per warm-started node re-solve [double] ---
+dtype   instance     n    m     med(ms)     min(ms)   nodes   lpIters     status      objective
+double  stein15     15   36     55.6922     55.6486     263      4501    Optimal    9.0000E+000
+double  lpIterations=4501 / nodes=263 -> 17.114 simplex pivots/node (warm-started dual simplex)
+=== Discrete-time LQR (Control.lqr): cold SDA vs cold plain-recursion vs warm ===
+cold-recursion is the naive baseline (plain fixed-point Riccati iteration, S seeded
+at zero); cold-SDA (structure-preserving doubling) and warm (1e-3-relative A
+perturbation, re-solved from the prior converged S) should both be much cheaper.
+Everything here is expected in microseconds -- that IS the point at this
+gamedev-scale n<=12/m<=4 problem size.
+dtype   variant             n    m  reps     med(ms)     min(ms)  iters     status
+float   cold-SDA            4    2   100      0.0036      0.0035      3  Converged
+float   cold-recursion      4    2   100      0.0043      0.0043      5  Converged
+float   warm(1e-3 pert)     4    2   100      0.0015      0.0015      1  Converged
+float   cold-SDA            4    4   100      0.0040      0.0039      3  Converged
+float   cold-recursion      4    4   100      0.0046      0.0046      4  Converged
+float   warm(1e-3 pert)     4    4   100      0.0019      0.0019      1  Converged
+float   cold-SDA           12    2   100      0.0254      0.0253      3  Converged
+float   cold-recursion     12    2   100      0.0162      0.0161      5  Converged
+float   warm(1e-3 pert)    12    2   100      0.0054      0.0054      1  Converged
+float   cold-SDA           12    4   100      0.0260      0.0260      3  Converged
+float   cold-recursion     12    4   100      0.0188      0.0188      5  Converged
+float   warm(1e-3 pert)    12    4   100      0.0063      0.0063      1  Converged
+float   cold-SDA           64    4     1      0.4185      0.4145      3  Converged
+float   cold-recursion     64    4     1      0.2199      0.2186      5  Converged
+float   warm(1e-3 pert)    64    4     1      0.0710      0.0709      1  Converged
+float   cold-SDA          128    4     1      2.3702      2.3644      3  Converged
+float   cold-recursion    128    4     1      1.0266      1.0229      5  Converged
+float   warm(1e-3 pert)   128    4     1      0.3302      0.3254      1  Converged
+float   cold-SDA(marg)     12    4   100      0.0619      0.0616      8  Converged
+float   cold-rec(marg)     12    4   100      0.2188      0.2185     69  Converged
+float   warm(marg)         12    4   100      0.0310      0.0310      9  Converged
+float   cold-SDA(marg)     64    4     1      1.1819      1.1763      9  Converged
+float   cold-rec(marg)     64    4     1      3.4335      3.4313     91  Converged
+float   warm(marg)         64    4     1      0.7021      0.7014     18  Converged
+double  cold-SDA            4    2   100      0.0051      0.0051      5  Converged
+double  cold-recursion      4    2   100      0.0073      0.0073     10  Converged
+double  warm(1e-3 pert)     4    2   100      0.0041      0.0041      5  Converged
+double  cold-SDA            4    4   100      0.0048      0.0048      4  Converged
+double  cold-recursion      4    4   100      0.0077      0.0076      8  Converged
+double  warm(1e-3 pert)     4    4   100      0.0044      0.0044      4  Converged
+double  cold-SDA           12    2   100      0.0413      0.0411      5  Converged
+double  cold-recursion     12    2   100      0.0330      0.0328     10  Converged
+double  warm(1e-3 pert)    12    2   100      0.0209      0.0208      6  Converged
+double  cold-SDA           12    4   100      0.0422      0.0420      5  Converged
+double  cold-recursion     12    4   100      0.0388      0.0386     10  Converged
+double  warm(1e-3 pert)    12    4   100      0.0212      0.0212      5  Converged
+double  cold-SDA           64    4     1      0.9604      0.9572      5  Converged
+double  cold-recursion     64    4     1      0.5164      0.5147     10  Converged
+double  warm(1e-3 pert)    64    4     1      0.3240      0.3227      6  Converged
+double  cold-SDA          128    4     1      6.1603      6.1474      5  Converged
+double  cold-recursion    128    4     1      2.6579      2.6571     10  Converged
+double  warm(1e-3 pert)   128    4     1      1.6707      1.6601      6  Converged
+double  cold-SDA(marg)     12    4   100      0.0715      0.0711      9  Converged
+double  cold-rec(marg)     12    4   100      0.6762      0.6757    189  Converged
+double  warm(marg)         12    4   100      0.4575      0.4568    128  Converged
+double  cold-SDA(marg)     64    4     1      1.8767      1.8684     10  Converged
+double  cold-rec(marg)     64    4     1     14.1095     14.0412    291  Converged
+double  warm(marg)         64    4     1      9.9626      9.9056    208  Converged
+=== Kalman filter family (predict/update, fixed-gain, steadyStateGain, EKF vs UKF) ===
+Sections 1-2: linear predict/update (full covariance) vs predictFixed/updateFixed
+(steady-state gain, no covariance math) at the SAME sizes -- the fixed-gain row shows the
+per-frame speedup once steadyStateGain has converged. n<=12 rows are gamedev-scale; n in
+{24,32} rows are quadrotor-state-estimator scale (m up to n = heavy sensor fusion) and use
+a shorter per-Execute step count (see the steps column) to keep total wall time sane --
+us/step is still directly derivable from med(ms) and steps either way. Section 3:
+steadyStateGain's own one-shot cost (typically paid once at setup). Section 4: EKF vs UKF
+per-step cost, pendulum (n=2) and a synthetic drone-scale ring model (n=12,m=6) -- the cost
+of skipping analytic Jacobians entirely, at both a tiny and a drone-like state size.
+
+--- 1. Linear predict+update, full covariance path ---
+dtype   variant         n    m   steps     med(ms)     min(ms)    us/step     status
+float   full            2    1    1000      0.6110      0.5932     0.6110         Ok
+float   full            4    1    1000      0.7681      0.7659     0.7681         Ok
+float   full            4    2    1000      0.8784      0.8673     0.8784         Ok
+float   full            6    1    1000      1.0714      1.0674     1.0714         Ok
+float   full            6    3    1000      1.3554      1.3466     1.3554         Ok
+float   full           12    1    1000      2.4613      2.4522     2.4613         Ok
+float   full           12    6    1000      3.9982      3.9927     3.9982         Ok
+float   full           24    6     200      1.8069      1.8014     9.0345         Ok
+float   full           24   12     200      2.6150      2.5998    13.0748         Ok
+float   full           24   24     200      4.3664      4.3588    21.8318         Ok
+float   full           32    8     200      1.6897      1.6835     8.4483         Ok
+float   full           32   16     200      1.8046      1.7988     9.0230         Ok
+float   full           32   32     200      3.4314      3.4031    17.1568         Ok
+double  full            2    1    1000      0.6549      0.6458     0.6549         Ok
+double  full            4    1    1000      0.7882      0.7796     0.7882         Ok
+double  full            4    2    1000      0.8889      0.8864     0.8889         Ok
+double  full            6    1    1000      1.0972      1.0958     1.0972         Ok
+double  full            6    3    1000      1.3612      1.3473     1.3612         Ok
+double  full           12    1    1000      2.4494      2.4098     2.4494         Ok
+double  full           12    6    1000      3.8814      3.8404     3.8814         Ok
+double  full           24    6     200      1.9285      1.9187     9.6425         Ok
+double  full           24   12     200      2.6780      2.6511    13.3898         Ok
+double  full           24   24     200      4.3858      4.3575    21.9290         Ok
+double  full           32    8     200      2.1833      2.1753    10.9163         Ok
+double  full           32   16     200      2.5694      2.5647    12.8470         Ok
+double  full           32   32     200      4.6765      4.6706    23.3825         Ok
+
+--- 2. predictFixed+updateFixed (steady-state gain, no covariance math) ---
+dtype   variant         n    m   steps     med(ms)     min(ms)    us/step     status
+float   fixed-gain      2    1    1000      0.0271      0.0264     0.0271        n/a
+float   fixed-gain      4    1    1000      0.0338      0.0337     0.0338        n/a
+float   fixed-gain      4    2    1000      0.0368      0.0357     0.0368        n/a
+float   fixed-gain      6    1    1000      0.0437      0.0436     0.0437        n/a
+float   fixed-gain      6    3    1000      0.0503      0.0499     0.0503        n/a
+float   fixed-gain     12    1    1000      0.0548      0.0546     0.0548        n/a
+float   fixed-gain     12    6    1000      0.0680      0.0675     0.0680        n/a
+float   fixed-gain     24    6     200      0.0222      0.0220     0.1110        n/a
+float   fixed-gain     24   12     200      0.0249      0.0244     0.1243        n/a
+float   fixed-gain     24   24     200      0.0304      0.0303     0.1520        n/a
+float   fixed-gain     32    8     200      0.0288      0.0284     0.1438        n/a
+float   fixed-gain     32   16     200      0.0347      0.0345     0.1735        n/a
+float   fixed-gain     32   32     200      0.0453      0.0451     0.2263        n/a
+double  fixed-gain      2    1    1000      0.0298      0.0297     0.0298        n/a
+double  fixed-gain      4    1    1000      0.0280      0.0279     0.0280        n/a
+double  fixed-gain      4    2    1000      0.0294      0.0293     0.0294        n/a
+double  fixed-gain      6    1    1000      0.0364      0.0364     0.0364        n/a
+double  fixed-gain      6    3    1000      0.0436      0.0435     0.0436        n/a
+double  fixed-gain     12    1    1000      0.0459      0.0459     0.0459        n/a
+double  fixed-gain     12    6    1000      0.0562      0.0560     0.0562        n/a
+double  fixed-gain     24    6     200      0.0197      0.0194     0.0985        n/a
+double  fixed-gain     24   12     200      0.0222      0.0213     0.1108        n/a
+double  fixed-gain     24   24     200      0.0276      0.0273     0.1378        n/a
+double  fixed-gain     32    8     200      0.0279      0.0278     0.1395        n/a
+double  fixed-gain     32   16     200      0.0318      0.0318     0.1590        n/a
+double  fixed-gain     32   32     200      0.0430      0.0428     0.2150        n/a
+
+--- 3. steadyStateGain: one-shot cost ---
+dtype   variant             n    m  reps     med(ms)     min(ms)  iters     status
+float   steadyStateGain     2    1   100      0.0042      0.0041      9  Converged
+float   steadyStateGain     4    1   100      0.0054      0.0053      6  Converged
+float   steadyStateGain     4    2   100      0.0062      0.0061      7  Converged
+float   steadyStateGain     6    1   100      0.0195      0.0194     12  Converged
+float   steadyStateGain     6    3   100      0.0152      0.0152      9  Converged
+float   steadyStateGain    12    1   100      0.0748      0.0745     10  Converged
+float   steadyStateGain    12    6   100      0.0690      0.0688      9  Converged
+float   steadyStateGain    24    6    20      0.3169      0.3164     10  Converged
+float   steadyStateGain    24   12    20      0.2900      0.2893      9  Converged
+float   steadyStateGain    24   24    20      0.1786      0.1778      5  Converged
+float   steadyStateGain    32    8    20      0.2820      0.2819     11  Converged
+float   steadyStateGain    32   16    20      0.2828      0.2824     11  Converged
+float   steadyStateGain    32   32    20      0.1466      0.1462      5  Converged
+double  steadyStateGain     2    1   100      0.0035      0.0035      7  Converged
+double  steadyStateGain     4    1   100      0.0098      0.0098     12  Converged
+double  steadyStateGain     4    2   100      0.0092      0.0092     11  Converged
+double  steadyStateGain     6    1   100      0.0169      0.0167     10  Converged
+double  steadyStateGain     6    3   100      0.0141      0.0140      8  Converged
+double  steadyStateGain    12    1   100      0.0832      0.0818     11  Converged
+double  steadyStateGain    12    6   100      0.0771      0.0762     10  Converged
+double  steadyStateGain    24    6    20      0.3155      0.3114     11  Converged
+double  steadyStateGain    24   12    20      0.3198      0.3158     11  Converged
+double  steadyStateGain    24   24    20      0.1894      0.1878      6  Converged
+double  steadyStateGain    32    8    20      0.4188      0.4181     13  Converged
+double  steadyStateGain    32   16    20      0.3266      0.3255     10  Converged
+double  steadyStateGain    32   32    20      0.2177      0.2162      6  Converged
+
+--- 4. EKF vs UKF: pendulum (n=2,m=1) and a synthetic ring model (n=12,m=6, drone-scale) ---
+dtype   variant         n    m   steps     med(ms)     min(ms)    us/step     status
+float   EKF             2    1     100      0.0680      0.0675     0.6795         Ok
+float   UKF             2    1     100      0.1030      0.1017     1.0295         Ok
+float   EKF            12    6     100      0.4609      0.4576     4.6085         Ok
+float   UKF            12    6     100      1.4468      1.4399    14.4675         Ok
+double  EKF             2    1     100      0.0696      0.0682     0.6960         Ok
+double  UKF             2    1     100      0.1053      0.1037     1.0525         Ok
+double  EKF            12    6     100      0.4457      0.4441     4.4570         Ok
+double  UKF            12    6     100      1.3071      1.3064    13.0710         Ok
+=== Linear MPC (MPC.solve / fProxyMPCState) ===
+Section 1: warm steady-state per-frame cost (the headline) -- a receding-horizon loop,
+first 5 frames burned off untimed (cold-start + active-set churn), then the per-frame
+median reported; box-only and box+soft-wall variants. Sizes span gamedev-scale
+(10,4,1)/(20,6,2)/(40,12,4) up to quadrotor-MPC scale (20,16,4)/(30,24,8) -- the last
+row's d=N*m=240 condensed decision variables (270 with the soft wall's slack columns)
+deliberately sits AT the ~250-300-variable condensed-formulation boundary the design
+research flagged for revisit; this row is the empirical probe of that boundary.
+Section 2: cold solve cost (fresh warm-start carry every call) at the same sizes, for
+contrast (coldReps reduced for the largest row only). Section 3: fProxyMPCState
+construction cost (terminal DARE + condensing), one-shot. iters/asChanges/status are
+always the honest MPCInfo fields -- a budget-limited solve is visible, not masked.
+
+--- 1. Warm steady-state per-frame cost ---
+dtype   variant       N    n    m  reps     med(ms)     min(ms)   iters  asChanges     status
+float   warm-box     10    4    1     1      0.0032      0.0032       0          0    Optimal
+float   warm+wall    10    4    1     1      0.0047      0.0046       0          0    Optimal
+float   warm-box     20    6    2     1      0.0167      0.0166       0          0    Optimal
+float   warm+wall    20    6    2     1      0.0236      0.0235       0          0    Optimal
+float   warm-box     40   12    4     1      0.2325      0.2281       0          0    Optimal
+float   warm+wall    40   12    4     1      0.2710      0.2693       0          0    Optimal
+float   warm-box     20   16    4     1      0.0661      0.0659       0          0    Optimal
+float   warm+wall    20   16    4     1      0.0773      0.0772       0          0    Optimal
+float   warm-box     30   24    8     1      0.5393      0.5321       0          0    Optimal
+float   warm+wall    30   24    8     1      0.5789      0.5761       0          0    Optimal
+double  warm-box     10    4    1     1      0.0033      0.0032       0          0    Optimal
+double  warm+wall    10    4    1     1      0.0045      0.0044       0          0    Optimal
+double  warm-box     20    6    2     1      0.0158      0.0158       0          0    Optimal
+double  warm+wall    20    6    2     1      0.0224      0.0224       0          0    Optimal
+double  warm-box     40   12    4     1      0.2343      0.2337       0          0    Optimal
+double  warm+wall    40   12    4     1      0.2777      0.2756       0          0    Optimal
+double  warm-box     20   16    4     1      0.0640      0.0638       0          0    Optimal
+double  warm+wall    20   16    4     1      0.0747      0.0747       0          0    Optimal
+double  warm-box     30   24    8     1      0.5939      0.5924       0          0    Optimal
+double  warm+wall    30   24    8     1      0.6312      0.6306       0          0    Optimal
+
+--- 2. Cold solve cost (fresh warm-start carry every call) ---
+dtype   variant       N    n    m  reps     med(ms)     min(ms)   iters  asChanges     status
+float   cold-box     10    4    1    20      0.0035      0.0035       1          0    Optimal
+float   cold+wall    10    4    1    20      0.0118      0.0118       1         10    Optimal
+float   cold-box     20    6    2    20      0.0258      0.0257       1          0    Optimal
+float   cold+wall    20    6    2    20      0.0991      0.0987       1         20    Optimal
+float   cold-box     40   12    4    20      0.3831      0.3826       1          0    Optimal
+float   cold+wall    40   12    4    20      1.1290      1.1281       1         40    Optimal
+float   cold-box     20   16    4    20      0.1038      0.1034       1          0    Optimal
+float   cold+wall    20   16    4    20      0.2369      0.2366       1         20    Optimal
+float   cold-box     30   24    8     5      0.9109      0.9101       1          0    Optimal
+float   cold+wall    30   24    8     5      2.0640      2.0630       1         30    Optimal
+double  cold-box     10    4    1    20      0.0035      0.0035       1          0    Optimal
+double  cold+wall    10    4    1    20      0.0121      0.0121       1         10    Optimal
+double  cold-box     20    6    2    20      0.0244      0.0243       1          0    Optimal
+double  cold+wall    20    6    2    20      0.1016      0.1015       1         20    Optimal
+double  cold-box     40   12    4    20      0.4034      0.4033       1          0    Optimal
+double  cold+wall    40   12    4    20      1.3581      1.3537       1         40    Optimal
+double  cold-box     20   16    4    20      0.1011      0.1009       1          0    Optimal
+double  cold+wall    20   16    4    20      0.2552      0.2541       1         20    Optimal
+double  cold-box     30   24    8     5      1.0235      1.0214       1          0    Optimal
+double  cold+wall    30   24    8     5      2.7260      2.7220       1         30    Optimal
+
+--- 3. fProxyMPCState construction cost (one-shot) ---
+dtype      N    n    m  reps     med(ms)     min(ms)
+float     10    4    1     5      0.0129      0.0128
+float     20    6    2     5      0.1042      0.1032
+float     40   12    4     5      2.1757      2.1697
+float     20   16    4     5      0.9073      0.9061
+float     30   24    8     5      8.6845      8.6702
+double    10    4    1     5      0.0148      0.0146
+double    20    6    2     5      0.1093      0.1088
+double    40   12    4     5      2.3247      2.3210
+double    20   16    4     5      0.9401      0.9365
+double    30   24    8     5      9.2107      9.1829
+GFLOP/s~ uses each kernel's leading-term flop count (approximate): GEMM 2N^3, LU (2/3)N^3, Cholesky (1/3)N^3, QR (4/3)N^3, tall/wide QR-LQ 2cols^2(rows-cols/3).
