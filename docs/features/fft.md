@@ -11,7 +11,7 @@ divides by N, so `ifft(fft(x)) == x`.
   power-of-4 lengths, radix-2 recurrence otherwise.
 - **`fft(ref re, ref im, in ws)` / `ifft(...)`** — workspace (twiddle-table plan) form, fastest.
   Dispatches to true table-indexed radix-4 or mixed-radix (one radix-2 stage + two radix-4
-  sub-FFTs), covering every power-of-two. ~1.3–1.9× faster than the no-workspace path; the table
+  sub-FFTs), covering every power-of-two. ~3× faster than the no-workspace path; the table
   build amortizes after ~1–3 transforms, so build one (`arena.floatFFTCache(n)`) for any repeated use.
 - **`rfft(in real, ref re, ref im[, in ws])` / `irfft(...)`** — real input, packs N samples into an
   N/2-point complex FFT and unpacks the half spectrum (`re`/`im` length **N/2+1**; `im[0]`/`im[N/2]`
@@ -63,20 +63,20 @@ reproducible. If you need determinism, use the workspace path.
 
 ## Performance
 
-The transforms use an in-place mixed-radix (radix-4/2) core. The twiddle-table workspace is ~1.3–1.9×
+The transforms use an in-place mixed-radix (radix-4/2) core. The twiddle-table workspace is ~3×
 faster than the no-workspace path but must be built once (see *Which one to use* above).
 
-Ryzen 9 9950X3D, single-thread Burst, median of 9. N=1,048,576 (2²⁰,
+Ryzen 9 9950X3D, single-thread Burst, median of 4. N=1,048,576 (2²⁰,
 `Benchmarks/FFTBenchmark.cs`); this size is memory-bandwidth-bound, so absolute ms varies a few % with
 machine memory traffic:
 
 | Path | dtype | med(ms) |
 |---|---|---|
-| `fft` (no workspace, in-place) | float | 24.39 |
-| `fft` (no workspace) | double | 25.20 |
-| `fft(ws)` (twiddle-table workspace) | float | 12.91 |
-| `fft(ws)` | double | 18.55 |
-| `rfft` (real input, no workspace) | float | 17.87 |
-| `rfft` (no workspace) | double | 19.22 |
-| `rfft(ws)` (twiddle-table workspace) | float | 11.27 |
-| `rfft(ws)` | double | 12.95 |
+| `fft` (no workspace, in-place) | float | 22.49 |
+| `fft` (no workspace) | double | 23.72 |
+| `fft(ws)` (twiddle-table workspace) | float | 6.56 |
+| `fft(ws)` | double | 7.25 |
+| `rfft` (real input, no workspace) | float | 18.08 |
+| `rfft` (no workspace) | double | 18.67 |
+| `rfft(ws)` (twiddle-table workspace) | float | 5.50 |
+| `rfft(ws)` | double | 6.09 |

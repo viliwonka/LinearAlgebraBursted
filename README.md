@@ -93,8 +93,8 @@ Benchmarked on a Ryzen 9 9950X3D (pinned to a non-V-Cache core), single-threaded
 | `SVD.thin` full SVD | 2048×512, float | 186.8 ms |
 | `SVD.truncated` truncated SVD w/ top-k only | 2048×512, k=21, float | 17.6 ms |
 | `SVD.randomized` randomized SVD w/ top-k only  | 2048×512, k=21, float | 29.5 ms |
-| `FFT.fft` FFT  | N = 1,048,576, float | 24.4 ms |
-|`FFT.rfft` Real FFT | N = 1,048,576, float | 17.9 ms |
+| `FFT.fft` FFT | N = 2²⁰, float | 6.6 ms (+~1 ms one-time build) |
+|`FFT.rfft` Real FFT | N = 2²⁰, float | 5.5 ms (+~1 ms one-time build) |
 
 ## Features
 
@@ -132,9 +132,8 @@ qualify, and so does the workspace FFT (`fft(ws)`/`rfft(ws)`/... — its twiddle
 `sqrt` and basic arithmetic, no `sin`/`cos`). The **no-workspace FFT and `dft`** compute twiddles
 with `sin`/`cos` on the fly, and **random sampling** uses transcendentals (`log`/`exp`/`sin`/...);
 both call functions Burst only makes bit-identical under `FloatMode.Deterministic` (opt-in, 64-bit
-only), so they do not carry the cross-architecture guarantee under `Strict`. This isn't a
-project-wide default either way: the library's own benchmarks compile under `FloatMode.Default`, so
-a caller who needs determinism must compile their own jobs under `FloatMode.Strict`.
+only), so they do not carry the cross-architecture guarantee. (Burst's default float mode already
+behaves as `Strict`, so the qualifying paths need no special build flag.)
 
 ## License
 
