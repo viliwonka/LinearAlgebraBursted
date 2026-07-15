@@ -40,23 +40,28 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine("=== exp: native math.exp vs DetMath prototype — 10M, batch + single (ms), max rel err ===");
             sb.AppendLine("    batch  = out[i]=exp(in[i]), independent (throughput, vectorizable).");
             sb.AppendLine("    single = dependent chain acc=exp(in[i]+acc*tiny) (per-call latency, no vectorization).");
-            sb.AppendLine("    DetMath = Cody-Waite reduction + poly + ldexp via exponent bits; +-*/ and int/bit only,");
-            sb.AppendLine("    no libm call in the path (cross-arch deterministic by construction). acc = accurate poly,");
-            sb.AppendLine("    fast = fewer terms. relErr vs System.Math.Exp double reference over inputs in [-10,10].");
+            sb.AppendLine("    DetMath = Cody-Waite reduction + minimax poly + ldexp via exponent bits; +-*/ and int/bit");
+            sb.AppendLine("    only, no libm call in the path (cross-arch deterministic by construction). acc = accurate");
+            sb.AppendLine("    minimax; Horner = sequential, Estrin = balanced-tree regroup (shorter dependency chain →");
+            sb.AppendLine("    lower latency); fast = fewer terms. relErr vs System.Math.Exp double ref, inputs [-10,10].");
             sb.AppendLine(ExpHeader());
-            // variant: 0 = math.exp, 1 = DetMath accurate, 2 = DetMath fast.  single: false=batch, true=single.
+            // variant: 0 = math.exp, 1 = det.acc Horner, 2 = det.acc Estrin, 3 = det.fast.  single: batch/latency.
             sb.AppendLine(ExpRowFloat(0, false, "math.exp   batch-f", N));
             sb.AppendLine(ExpRowFloat(0, true,  "math.exp   single-f", N));
-            sb.AppendLine(ExpRowFloat(1, false, "det.acc    batch-f", N));
-            sb.AppendLine(ExpRowFloat(1, true,  "det.acc    single-f", N));
-            sb.AppendLine(ExpRowFloat(2, false, "det.fast   batch-f", N));
-            sb.AppendLine(ExpRowFloat(2, true,  "det.fast   single-f", N));
+            sb.AppendLine(ExpRowFloat(1, false, "det.acc.H  batch-f", N));
+            sb.AppendLine(ExpRowFloat(1, true,  "det.acc.H  single-f", N));
+            sb.AppendLine(ExpRowFloat(2, false, "det.acc.E  batch-f", N));
+            sb.AppendLine(ExpRowFloat(2, true,  "det.acc.E  single-f", N));
+            sb.AppendLine(ExpRowFloat(3, false, "det.fast   batch-f", N));
+            sb.AppendLine(ExpRowFloat(3, true,  "det.fast   single-f", N));
             sb.AppendLine(ExpRowDouble(0, false, "math.exp   batch-d", N));
             sb.AppendLine(ExpRowDouble(0, true,  "math.exp   single-d", N));
-            sb.AppendLine(ExpRowDouble(1, false, "det.acc    batch-d", N));
-            sb.AppendLine(ExpRowDouble(1, true,  "det.acc    single-d", N));
-            sb.AppendLine(ExpRowDouble(2, false, "det.fast   batch-d", N));
-            sb.AppendLine(ExpRowDouble(2, true,  "det.fast   single-d", N));
+            sb.AppendLine(ExpRowDouble(1, false, "det.acc.H  batch-d", N));
+            sb.AppendLine(ExpRowDouble(1, true,  "det.acc.H  single-d", N));
+            sb.AppendLine(ExpRowDouble(2, false, "det.acc.E  batch-d", N));
+            sb.AppendLine(ExpRowDouble(2, true,  "det.acc.E  single-d", N));
+            sb.AppendLine(ExpRowDouble(3, false, "det.fast   batch-d", N));
+            sb.AppendLine(ExpRowDouble(3, true,  "det.fast   single-d", N));
             sb.AppendLine();
         }
     }

@@ -2,6 +2,23 @@
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
 ## DetMathBenchmark
+- 2026-07-15 (r2) | Added MINIMAX coefficients + an ESTRIN-scheme variant (user asked). Genuine Remez
+  minimax computed offline (mpmath dps=50, scaled-variable exchange): float deg-6 ~0.03 ULP fit,
+  double deg-11 ~0.03 ULP fit (1 term fewer than the deg-12 Taylor). KEY LEARNINGS: (1) for exp,
+  minimax ≈ Taylor — coefficients differ only in the 5th-7th sig fig (exp is entire/super-smooth; the
+  minimax edge grows for functions with nearby singularities like log/atan, NOT exp). So minimax buys
+  ~1 degree, not a revolution. (2) The double accuracy problem (1.42 ULP in r1) was the ln2 SPLIT, not
+  the poly: switching to the fdlibm zero-low-bit hi/lo (0x3FE62E42FEE00000) dropped Horner double to
+  1.00 ULP. (3) ESTRIN is the real latency win, exactly as the spec said to use it: float single
+  108→72 ms (-33%), double single 160→89 ms (-45%). Horner's deg-11 chain (double single 160ms) is
+  even SLOWER than math.exp single (139ms) — a long dependency chain loses to libm on per-call latency;
+  Estrin's balanced tree fixes it. Estrin also helped batch (float 17.7→15.2). Numbers (10M, Ryzen
+  9950X3D, ms): float batch math.exp 33.6 | det.acc Horner 17.7 @0.93ULP | det.acc Estrin 15.2 @1.18
+  | fast 10.9 @8e-4. float single math.exp 148 | Horner 108 | Estrin 72 | fast 77. double batch
+  math.exp 41.6 | Horner 33.0 @1.00ULP | Estrin 22.4 @1.94 | fast 17.8 @1.6e-7. double single math.exp
+  139 | Horner 161 | Estrin 89 | fast 108. So best deterministic exp beats math.exp: float 2.2× batch
+  / 2.05× single, double 1.86× batch / 1.57× single (both via Estrin). Estrin/Horner give different
+  bits (different rounding order, both deterministic) → a shipping DetMath must pick ONE canonical.
 - 2026-07-15 | New benchmark: native math.* vs a PROTOTYPE in-house deterministic exp (DetMathProto,
   benchmark-only, non-shipping — Cody-Waite reduction + poly + ldexp via exponent bits, only +-*/ and
   int/bit ops → cross-arch bit-identical by construction). Ryzen 9 9950X3D, 10M elements, batch =

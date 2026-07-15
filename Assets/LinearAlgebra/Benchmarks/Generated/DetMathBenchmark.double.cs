@@ -3,6 +3,7 @@
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
 using System.Globalization;
+using System.Runtime.CompilerServices;
 
 using Unity.Burst;
 using Unity.Collections;
@@ -24,46 +25,96 @@ namespace LinearAlgebra.Benchmarks
     // edge cases are NOT handled (inputs are bounded); a shipping DetMath.Exp would add them.
     internal static class DetMathProtoDouble
     {
-        // Accurate: float = cephes expf minimax (~1 ULP); double = Taylor degree 12 (< 1 ULP on the
-        // reduced range). exp(r) = 1 + r + r^2·P(r).
-        public static double ExpAcc(double x)
+        // Cody-Waite argument reduction: x = n·ln2 + r, |r| <= ln2/2, with ln2 split hi/lo so
+        // x - n·hi - n·lo carries no cancellation error. Float hi (0.693359375) and double hi (fdlibm
+        // 0x3FE62E42FEE00000) both have their low mantissa bits zero, so n·hi is exact for the n here.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static void Reduce(double x, out double n, out double r)
         {
             
             
             const double INV_LN2 = 1.4426950408889634;
-            const double LN2_HI = 6.9314718036912382e-01;
-            const double LN2_LO = 1.9082149292705877e-10;
-            double n = math.floor(INV_LN2 * x + 0.5);
-            double r = x - n * LN2_HI;
-            r = r - n * LN2_LO;
-            double p = 2.0876756987868100e-09;   // 1/12!
-            p = p * r + 2.5052108385441720e-08;  // 1/11!
-            p = p * r + 2.7557319223985893e-07;  // 1/10!
-            p = p * r + 2.7557319223985893e-06;  // 1/9!
-            p = p * r + 2.4801587301587302e-05;  // 1/8!
-            p = p * r + 1.9841269841269841e-04;  // 1/7!
-            p = p * r + 1.3888888888888889e-03;  // 1/6!
-            p = p * r + 8.3333333333333332e-03;  // 1/5!
-            p = p * r + 4.1666666666666664e-02;  // 1/4!
-            p = p * r + 1.6666666666666666e-01;  // 1/3!
-            p = p * r + 5.0000000000000000e-01;  // 1/2!
-            double mant = (p * r) * r + r + 1.0;  // 1 + r + r^2·P(r)
-            long e = (long)n;
-            double scale = math.asdouble((e + 1023L) << 52);   // 2^n
-            return mant * scale;
+            const double HI = 6.93147180369123816490e-01;
+            const double LO = 1.90821492927058770002e-10;
+            
+            n = math.floor(INV_LN2 * x + (double)0.5);
+            r = x - n * HI;
+            
+            
+            r = r - n * LO;
             
         }
 
-        // Fast: fewer terms (float degree-3 Taylor ~6e-4; double degree-6 Taylor ~1e-7), single-word
-        // ln2 (no hi/lo split). "Slightly inaccurate" tier.
-        public static double ExpFast(double x)
+        // 2^n assembled directly from the IEEE exponent field (ldexp as integer bit ops). No edge-case
+        // clamp — inputs are bounded so n stays well inside the exponent range.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static double Ldexp(double mant, double n)
         {
             
             
-            const double INV_LN2 = 1.4426950408889634;
-            const double LN2 = 0.6931471805599453;
-            double n = math.floor(INV_LN2 * x + 0.5);
-            double r = x - n * LN2;
+            long e = (long)n;
+            return mant * math.asdouble((e + 1023L) << 52);
+            
+        }
+
+        // Accurate, Horner: minimax poly for exp(r) directly (float degree 6 ~0.03 ULP fit; double
+        // degree 11 ~0.03 ULP fit). Sequential Horner — one long dependency chain (throughput-friendly
+        // once vectorized, latency-bound scalar).
+        public static double ExpAcc(double x)
+        {
+            Reduce(x, out double n, out double r);
+            
+            
+            double p = 2.4994305002802721e-08;
+            p = p * r + 2.7632293277020833e-07;
+            p = p * r + 2.7557622530418205e-06;
+            p = p * r + 2.4801486521436422e-05;
+            p = p * r + 1.9841269432679901e-04;
+            p = p * r + 1.3888888951223976e-03;
+            p = p * r + 8.3333333335592709e-03;
+            p = p * r + 4.1666666666492767e-02;
+            p = p * r + 1.6666666666666169e-01;
+            p = p * r + 5.0000000000000177e-01;
+            p = p * r + 1.0000000000000000e+00;
+            p = p * r + 1.0000000000000000e+00;
+            
+            return Ldexp(p, n);
+        }
+
+        // Accurate, Estrin: SAME minimax coefficients, but the polynomial is regrouped into a balanced
+        // tree of independent sub-expressions (Estrin's scheme). Shorter dependency chain than Horner
+        // → exposes instruction-level parallelism, so it wins on per-call latency. Different rounding
+        // order than Horner (still a fixed +-* sequence → deterministic), so a shipping DetMath must
+        // pick ONE canonical scheme.
+        public static double ExpAccEstrin(double x)
+        {
+            Reduce(x, out double n, out double r);
+            double r2 = r * r;
+            double r4 = r2 * r2;
+            
+            
+            double r8 = r4 * r4;
+            // deg 11: pairs a_i = c_{2i}+c_{2i+1} r; p = (a0+a1 r2) + r4(a2+a3 r2) + r8(a4+a5 r2)
+            double a0 = 1.0000000000000000e+00 + 1.0000000000000000e+00 * r;
+            double a1 = 5.0000000000000177e-01 + 1.6666666666666169e-01 * r;
+            double a2 = 4.1666666666492767e-02 + 8.3333333335592709e-03 * r;
+            double a3 = 1.3888888951223976e-03 + 1.9841269432679901e-04 * r;
+            double a4 = 2.4801486521436422e-05 + 2.7557622530418205e-06 * r;
+            double a5 = 2.7632293277020833e-07 + 2.4994305002802721e-08 * r;
+            double lo  = a0 + a1 * r2;
+            double mid = a2 + a3 * r2;
+            double hi  = a4 + a5 * r2;
+            double p   = (lo + mid * r4) + hi * r8;
+            
+            return Ldexp(p, n);
+        }
+
+        // Fast: fewer terms (float degree 3 ~6e-4; double degree 6 ~1e-7). "Slightly inaccurate" tier.
+        public static double ExpFast(double x)
+        {
+            Reduce(x, out double n, out double r);
+            
+            
             double mant = 1.3888888888888889e-03;   // 1/6!
             mant = mant * r + 8.3333333333333332e-03;  // 1/5!
             mant = mant * r + 4.1666666666666664e-02;  // 1/4!
@@ -71,10 +122,8 @@ namespace LinearAlgebra.Benchmarks
             mant = mant * r + 5.0000000000000000e-01;  // 1/2!
             mant = mant * r + 1.0;
             mant = mant * r + 1.0;
-            long e = (long)n;
-            double scale = math.asdouble((e + 1023L) << 52);
-            return mant * scale;
             
+            return Ldexp(mant, n);
         }
     }
 
@@ -118,9 +167,10 @@ namespace LinearAlgebra.Benchmarks
             {
                 switch (variant)
                 {
-                    case 0: for (int i = 0; i < n; i++) dst[i] = math.exp(src[i]);                 break;
-                    case 1: for (int i = 0; i < n; i++) dst[i] = DetMathProtoDouble.ExpAcc(src[i]); break;
-                    default: for (int i = 0; i < n; i++) dst[i] = DetMathProtoDouble.ExpFast(src[i]); break;
+                    case 0: for (int i = 0; i < n; i++) dst[i] = math.exp(src[i]);                       break;
+                    case 1: for (int i = 0; i < n; i++) dst[i] = DetMathProtoDouble.ExpAcc(src[i]);       break;
+                    case 2: for (int i = 0; i < n; i++) dst[i] = DetMathProtoDouble.ExpAccEstrin(src[i]); break;
+                    default: for (int i = 0; i < n; i++) dst[i] = DetMathProtoDouble.ExpFast(src[i]);     break;
                 }
             }
             else
@@ -131,9 +181,10 @@ namespace LinearAlgebra.Benchmarks
                 double tiny = (double)1e-20;
                 switch (variant)
                 {
-                    case 0: for (int i = 0; i < n; i++) acc = math.exp(src[i] + acc * tiny);                 break;
-                    case 1: for (int i = 0; i < n; i++) acc = DetMathProtoDouble.ExpAcc(src[i] + acc * tiny); break;
-                    default: for (int i = 0; i < n; i++) acc = DetMathProtoDouble.ExpFast(src[i] + acc * tiny); break;
+                    case 0: for (int i = 0; i < n; i++) acc = math.exp(src[i] + acc * tiny);                       break;
+                    case 1: for (int i = 0; i < n; i++) acc = DetMathProtoDouble.ExpAcc(src[i] + acc * tiny);       break;
+                    case 2: for (int i = 0; i < n; i++) acc = DetMathProtoDouble.ExpAccEstrin(src[i] + acc * tiny); break;
+                    default: for (int i = 0; i < n; i++) acc = DetMathProtoDouble.ExpFast(src[i] + acc * tiny);     break;
                 }
                 dst[0] = acc;
             }
