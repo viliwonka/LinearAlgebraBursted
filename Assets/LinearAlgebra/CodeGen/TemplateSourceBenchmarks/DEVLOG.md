@@ -2,6 +2,22 @@
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
 ## DetMathBenchmark
+- 2026-07-15 (r6) | Added CORRECTLY-ROUNDED (0-ULP) FLOAT exp/log (user asked, for log-det etc.) —
+  `Benchmarks/DetMathCR.cs` (float-only, not templated). Technique: evaluate the deterministic poly in
+  DOUBLE (deg-11 exp / deg-8 B log, ~2^-56 rel — far below float's 2^-24 grid), round once to float.
+  EXHAUSTIVELY PROVEN: a Burst job walks all 2^32 float bit patterns vs the double-libm reference
+  rounded to float — logCR 2,139,095,039 floats (every positive finite) maxULP 0 / 0 mismatches;
+  expCR 2,237,661,186 (every finite |x|<=88) maxULP 0 / 0 mismatches. So our float CR == libm-double-
+  to-float everywhere = correctly rounded. Throughput (10M): logCR 44.4ms (still 1.8× < math.log 80.5,
+  AND 0-ULP + deterministic); expCR 37.1ms (~on par with math.exp 33.6 — double eval costs ~2×, but
+  deterministic + CR which libm is not). KEY POINTS: (1) float 0-ULP is EASY and provable (double
+  headroom + only 2^32 inputs to check exhaustively). (2) DOUBLE 0-ULP is much harder — needs double-
+  double (Dekker) intermediate precision, no exhaustive check possible (2^64) — a research-grade
+  effort; NOT done. For log-det specifically the SUM accumulation error dominates the per-term ULP, so
+  a ~1-2 ULP DETERMINISTIC double log already gives a reproducible accurate log-det; per-element double
+  0-ULP rarely changes the sum. (3) GIVENS/JACOBI rotations need NOTHING from DetMath — the library
+  computes (c,s)=(f/r,h/r), r=pythag=sqrt(f²+h²): sqrt+div only, both IEEE correctly-rounded &
+  deterministic already (verified SVD.fProxy.cs / Eigen.fProxy.cs use jacobiRotate + pythag, no trig).
 - 2026-07-15 (r5) | Added deterministic atan — the "one hard primitive", now DONE. A single wide-range
   poly is hopeless (deg-12 on [0,1] = 8e4 ULP double), so use libm-style reduction: fold |x|>1 via
   atan(x)=π/2-atan(1/x) → [0,1], then split at tan(π/8) via atan(x)=π/4+atan((x-1)/(x+1)) so the poly
