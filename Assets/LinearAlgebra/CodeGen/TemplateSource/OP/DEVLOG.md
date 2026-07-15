@@ -814,6 +814,16 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   numerically broken) is the only real failure.
 
 ## FFT.Workspace
+- 2026-07-15 | Serpentine (boustrophedon) butterfly group order tried and REVERTED. Don't retry.
+  Idea: alternate the base_ group loop high->low by stage parity so each stage restarts in the
+  address range the previous stage left hot (groups are disjoint/order-independent, so it's
+  bit-identical — FFT tests stayed 117/117). A/B on a quiet PC: it's a wash-to-negative. fft(ws)
+  float gained ~3-5% (1M 6.56 -> 6.30 ms, 16K -5%), but double REGRESSED ~1-3% (1M 7.25 -> 7.45)
+  and rfft(ws) regressed on both dtypes (float 262K 1.274 -> 1.352, double 1M 6.09 -> 6.21).
+  Regressions were consistent across sizes (not noise): the descending stream costs the 4-lane
+  double path more than the hot restart saves (weaker descending-prefetch, more exposed), and the
+  mixed-path rfft sub-FFT halves don't align with the combine boundary. Net makes 3 of 4 paths
+  slower. The proper version of this locality idea is cache-blocking (six-step FFT), not loop flips.
 - 2026-07-15 | rfft/irfft unpack: process bins in Hermitian-symmetric pairs (k, M-k). Under k -> M-k
   the twiddle maps W_N^(M-k) = -conj(W_N^k), so E_im, O_im and Re(W) flip sign — one WQ call and one
   (k, M-k) load produce BOTH outputs (re[k]=E_re+P, re[M-k]=E_re-P, etc.). Halves WQ calls and, more
