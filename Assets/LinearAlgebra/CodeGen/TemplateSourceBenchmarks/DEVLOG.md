@@ -1,6 +1,25 @@
 # DEVLOG — TemplateSourceBenchmarks
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## DetMathBenchmark
+- 2026-07-15 | New benchmark: native math.* vs a PROTOTYPE in-house deterministic exp (DetMathProto,
+  benchmark-only, non-shipping — Cody-Waite reduction + poly + ldexp via exponent bits, only +-*/ and
+  int/bit ops → cross-arch bit-identical by construction). Ryzen 9 9950X3D, 10M elements, batch =
+  independent (vectorizable) vs single = dependent chain (per-call latency). HEADLINE, contra the
+  "we won't beat libm" prior: the deterministic accurate poly BEATS math.exp on throughput at equal
+  accuracy — float batch det.acc 21.3ms @0.68 ULP vs math.exp 34.8ms @0.66 ULP (1.6x); double batch
+  det.acc 38.0ms @1.4 ULP vs math.exp 42.6ms @1.0 ULP. Fast tier: float 10.5ms @8e-4, double 16.3ms
+  @1.6e-7. Both paths auto-vectorize (batch ~5.6x faster than single per elem → Burst vectorized our
+  int-heavy reduction). Single/latency: det.acc float 120ms vs math.exp 152ms. So determinism here is
+  free-to-profitable on throughput, because our poly is leaner than libm's fully-hardened path.
+  CAVEATS before promoting to a shipping DetMath.Exp: (1) prototype skips overflow/underflow/NaN/inf
+  edge handling (libm does it — costs some ops); (2) accuracy measured only on inputs [-10,10], not the
+  full range / not guaranteed correctly-rounded everywhere; (3) double-acc uses a plain hi/lo ln2 split
+  + Taylor deg-12 — a zero-low-bit Cody-Waite split + a minimax poly would BOTH tighten ULP and drop a
+  term (faster); (4) double "ULP" is vs System.Math.Exp (same libm), so it's agreement, not true error.
+  math.* float throughput baseline (10M): sin 108, cos 113, exp 34.6, log 82.8, atan 166.5 ms;
+  double: sin 94, cos 118, exp 42.8, log 96, atan 186 ms.
+
 ## KMeansBenchmark
 - 2026-07-12 | KMeansJobFProxy.Execute() called KMeans.fit with a hardcoded literal 16 while
   BenchFProxy sizes the centroids/workspace buffers from parameter K -- harmless only because the
