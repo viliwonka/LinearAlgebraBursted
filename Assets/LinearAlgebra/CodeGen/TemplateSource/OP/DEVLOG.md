@@ -1,6 +1,23 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## DetMath
+- 2026-07-15 | Promoted the deterministic transcendentals from the benchmark prototype
+  (TemplateSourceBenchmarks/DetMathBenchmark) to a shipping public class `DetMath` (OP/DetMath.
+  fProxy.cs, float+double overloads). Surface: Exp/Exp2/Exp10/Log/Log2/Log10/Pow, Sin/Cos/SinCos/
+  Tan, Asin/Acos/Atan/Atan2, Sinh/Cosh/Tanh, Acosh — everything the library's math.* usage needs
+  (rcp/rsqrt/sqrt stay math.*, already deterministic). One canonical scheme: accurate Horner
+  minimax (dropped the prototype's Estrin/Fast experimental variants; Estrin is a latency option
+  if a scalar hot path ever needs it). Cody-Waite reduction, ldexp-by-bits, all branch-free
+  guards. Accuracy vs libm ~1e-5 float / ~1e-12 double (few ULP) verified by sweep tests
+  (DetMathTests, 500-pt sweeps per fn over the domain + edge/total behaviour), suite 6297/6297.
+- 2026-07-15 | ExpGuard NaN bug found by the new edge tests (the benchmark never exercised it —
+  its inputs were [-10,10]). Exp relied on the polynomial IMPLICITLY producing NaN for a NaN
+  input, but the `(int)NaN` conversion + multiply in Ldexp does not preserve NaN under Burst, so
+  Exp(NaN) returned a finite value. Fix: ExpGuard now propagates NaN EXPLICITLY via
+  `select(y, NaN, x != x)`, matching LogGuard/TrigGuard (which always did the explicit x!=x check
+  and passed). Lesson: never rely on implicit NaN propagation through an int-conversion path;
+  guard the original input explicitly.
 ## axpy4: quad-stream panel updates for the blocked factorizations
 - 2026-07-14 | vecMatDot (xᵀA — simplex PRICE, transposed GEMV) moved onto axpy4 (four matrix
   rows per output pass, r-ascending per element = bit-identical): float 41→69 GF/s at n=64,
