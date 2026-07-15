@@ -63,6 +63,25 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine(ExpRowDouble(3, false, "det.fast   batch-d", N));
             sb.AppendLine(ExpRowDouble(3, true,  "det.fast   single-d", N));
             sb.AppendLine();
+
+            sb.AppendLine("=== sin/cos: native math vs DetMath minimax — 10M, batch + single (ms), max ABS err ===");
+            sb.AppendLine("    Cody-Waite π/2 reduction + odd/even minimax (sin=r·P(r²), cos=Q(r²)) + branch-free");
+            sb.AppendLine("    quadrant select. Deterministic (+-*/ & int only). absErr vs System.Math, inputs [-10,10].");
+            sb.AppendLine(ExpHeader());
+            // variant: 0 math.sin, 1 det.sin, 2 math.cos, 3 det.cos.
+            sb.AppendLine(TrigRowFloat(0, false, "math.sin   batch-f", N));
+            sb.AppendLine(TrigRowFloat(0, true,  "math.sin   single-f", N));
+            sb.AppendLine(TrigRowFloat(1, false, "det.sin    batch-f", N));
+            sb.AppendLine(TrigRowFloat(1, true,  "det.sin    single-f", N));
+            sb.AppendLine(TrigRowFloat(2, false, "math.cos   batch-f", N));
+            sb.AppendLine(TrigRowFloat(3, false, "det.cos    batch-f", N));
+            sb.AppendLine(TrigRowDouble(0, false, "math.sin   batch-d", N));
+            sb.AppendLine(TrigRowDouble(0, true,  "math.sin   single-d", N));
+            sb.AppendLine(TrigRowDouble(1, false, "det.sin    batch-d", N));
+            sb.AppendLine(TrigRowDouble(1, true,  "det.sin    single-d", N));
+            sb.AppendLine(TrigRowDouble(2, false, "math.cos   batch-d", N));
+            sb.AppendLine(TrigRowDouble(3, false, "det.cos    batch-d", N));
+            sb.AppendLine();
         }
     }
 }

@@ -2,6 +2,19 @@
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
 ## DetMathBenchmark
+- 2026-07-15 (r3) | Added deterministic sin/cos (Cody-Waite π/2 reduction + odd/even minimax
+  sin=r·P(r²) cos=Q(r²) + branch-free quadrant select; Remez coeffs via mpmath). **BIGGEST WIN so
+  far — far bigger than exp, because math.sin/cos are much heavier (full reduction + poly) while our
+  bounded-range version is lean.** 10M, Ryzen 9950X3D, batch ms: float sin math 108.9 → det 25.0
+  (4.35×) @1.17 ULP; float cos math 116.5 → det 26.2 (4.45×) @1.13; double sin 91.3 → 33.6 (2.7×)
+  @1.00; double cos 117.5 → 33.4 (3.5×) @1.00. single/latency float sin 218 → 115 (1.9×). Accuracy
+  is absolute error (sin/cos hit zeros so relative blows up): float ~1.2 ULP, double ~1.0 ULP.
+  Both auto-vectorized incl. the branch-free quadrant int ops. Consumers that benefit most: FFT dft
+  twiddles, easing, Wave, rotations, windows/kernels — all bounded-argument. CAVEAT: reduction is
+  2-part Cody-Waite → accurate for |x|<~10 only; large |x| needs Payne-Hanek (documented domain, same
+  posture as exp). atan DEFERRED — needs interval-splitting reduction (deg-12 minimax on [0,1] still
+  8e4 ULP double; libm reduces to smaller intervals). Coefficient sets recorded in the coder's remez
+  scripts; regenerate via mpmath dps=50-60 Remez exchange.
 - 2026-07-15 (r2) | Added MINIMAX coefficients + an ESTRIN-scheme variant (user asked). Genuine Remez
   minimax computed offline (mpmath dps=50, scaled-variable exchange): float deg-6 ~0.03 ULP fit,
   double deg-11 ~0.03 ULP fit (1 term fewer than the deg-12 Taylor). KEY LEARNINGS: (1) for exp,

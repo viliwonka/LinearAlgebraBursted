@@ -125,6 +125,85 @@ namespace LinearAlgebra.Benchmarks
             
             return Ldexp(mant, n);
         }
+
+        // Trig reduction: x = q·(π/2) + r, |r| <= π/4, via q = round(x·2/π) and a 2-part Cody-Waite
+        // π/2 split. Bounded-argument (matches the exp caveat): fine for |x| up to ~10; large |x|
+        // needs Payne-Hanek. quadrant = q & 3 selects sin/cos poly + sign below.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static void ReduceTrig(double x, out double r, out int quad)
+        {
+            
+            
+            const double T2_PI = 0.6366197723675814;
+            const double HI = 1.5707963109016418;
+            const double LO = 1.5893254773528196e-08;
+            
+            double kf = math.floor(x * T2_PI + (double)0.5);
+            r = x - kf * HI;
+            r = r - kf * LO;
+            quad = (int)kf & 3;
+        }
+
+        // sin(r), |r| <= π/4: odd minimax, sin(r) = r·P(r²). float deg-3 (~0.05 ULP), double deg-6.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static double SinPoly(double r)
+        {
+            double u = r * r;
+            
+            
+            double p = 1.58941363709740611e-10;
+            p = p * u + -2.50507058463590353e-08;
+            p = p * u + 2.75573132990149026e-06;
+            p = p * u + -1.98412698284021293e-04;
+            p = p * u + 8.33333333332000244e-03;
+            p = p * u + -1.66666666666666148e-01;
+            p = p * u + 9.99999999999999997e-01;
+            
+            return r * p;
+        }
+
+        // cos(r), |r| <= π/4: even minimax, cos(r) = Q(r²). float deg-4 (~0.001 ULP), double deg-7.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static double CosPoly(double r)
+        {
+            double u = r * r;
+            
+            
+            double q = -1.13521232066215503e-11;
+            q = q * u + 2.08755551456743361e-09;
+            q = q * u + -2.75573128656958583e-07;
+            q = q * u + 2.48015872828994611e-05;
+            q = q * u + -1.38888888888589604e-03;
+            q = q * u + 4.16666666666664303e-02;
+            q = q * u + -4.99999999999999993e-01;
+            q = q * u + 1.00000000000000000e+00;
+            
+            return q;
+        }
+
+        // Full-range sin/cos: reduce, evaluate both polys, then branch-free quadrant select. Sin and
+        // Cos each compute the full thing (matching math.sin / math.cos individually).
+        public static double Sin(double x)
+        {
+            ReduceTrig(x, out double r, out int quad);
+            double s = SinPoly(r);
+            double c = CosPoly(r);
+            double sw = (double)(quad & 1);                       // q odd → use cos poly
+            double baseS = s + sw * (c - s);
+            double sign = (double)1 - (double)2 * (double)((quad >> 1) & 1);
+            return sign * baseS;
+        }
+
+        public static double Cos(double x)
+        {
+            ReduceTrig(x, out double r, out int quad);
+            double s = SinPoly(r);
+            double c = CosPoly(r);
+            double sw = (double)(quad & 1);
+            double baseC = c + sw * (s - c);
+            double sign = (double)1 - (double)2 * (double)(((quad + 1) >> 1) & 1);
+            return sign * baseC;
+        }
     }
 
     // ---- native math.* throughput (batch) ----
@@ -191,8 +270,79 @@ namespace LinearAlgebra.Benchmarks
         }
     }
 
+    // ---- sin/cos comparison: variant {0 math.sin, 1 det.sin, 2 math.cos, 3 det.cos} x {batch,single} ----
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct TrigCompareJobDouble : IJob
+    {
+        public doubleN src;
+        public doubleN dst;
+        public int variant;
+        public int single;
+
+        public void Execute()
+        {
+            int n = src.N;
+            if (single == 0)
+            {
+                switch (variant)
+                {
+                    case 0: for (int i = 0; i < n; i++) dst[i] = math.sin(src[i]);                 break;
+                    case 1: for (int i = 0; i < n; i++) dst[i] = DetMathProtoDouble.Sin(src[i]);     break;
+                    case 2: for (int i = 0; i < n; i++) dst[i] = math.cos(src[i]);                 break;
+                    default: for (int i = 0; i < n; i++) dst[i] = DetMathProtoDouble.Cos(src[i]);   break;
+                }
+            }
+            else
+            {
+                double acc = (double)0;
+                double tiny = (double)1e-20;
+                switch (variant)
+                {
+                    case 0: for (int i = 0; i < n; i++) acc = math.sin(src[i] + acc * tiny);                 break;
+                    case 1: for (int i = 0; i < n; i++) acc = DetMathProtoDouble.Sin(src[i] + acc * tiny);     break;
+                    case 2: for (int i = 0; i < n; i++) acc = math.cos(src[i] + acc * tiny);                 break;
+                    default: for (int i = 0; i < n; i++) acc = DetMathProtoDouble.Cos(src[i] + acc * tiny);   break;
+                }
+                dst[0] = acc;
+            }
+        }
+    }
+
     public static partial class DetMathBenchmark
     {
+        static string TrigRowDouble(int variant, bool single, string label, int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var src = arena.doubleVec(n);
+            var dst = arena.doubleVec(n);
+
+            var rng = new Unity.Mathematics.Random(0x5EED1234u ^ (uint)variant);
+            for (int i = 0; i < n; i++) src[i] = rng.NextDouble(-10f, 10f);
+
+            var job = new TrigCompareJobDouble { src = src, dst = dst, variant = variant, single = single ? 1 : 0 };
+            var stat = Bench.Time(() => job.Run());
+
+            bool isCos = variant >= 2;
+            double maxAbs = 0.0;   // sin/cos: absolute error (result in [-1,1]; relative blows up near zeros)
+            if (!single)
+            {
+                for (int i = 0; i < n; i++)
+                {
+                    double refv = isCos ? System.Math.Cos((double)src[i]) : System.Math.Sin((double)src[i]);
+                    double err  = System.Math.Abs((double)dst[i] - refv);
+                    if (err > maxAbs) maxAbs = err;
+                }
+            }
+            arena.Dispose();
+
+            double eps = 2.220446049250313e-16;
+            string errStr = single ? "(chain)" : maxAbs.ToString("E3", CultureInfo.InvariantCulture);
+            string ulpStr = single ? "-" : (maxAbs / eps).ToString("F2", CultureInfo.InvariantCulture);
+            return string.Format(CultureInfo.InvariantCulture,
+                "{0,-20} {1,-10} {2,11:F4} {3,11:F4} {4,11:F4} {5,13} {6,11}",
+                label, n, stat.Min, stat.Median, stat.Mean, errStr, ulpStr);
+        }
+
         static string MathThroughputDouble(int func, string label, int n)
         {
             var arena = new Arena(Allocator.Persistent);
