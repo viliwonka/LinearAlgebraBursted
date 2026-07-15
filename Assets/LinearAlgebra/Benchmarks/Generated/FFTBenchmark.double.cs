@@ -35,6 +35,24 @@ namespace LinearAlgebra.Benchmarks
         }
     }
 
+    // ---- table-indexed complex inverse FFT ----
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct IfftTableJobDouble : IJob
+    {
+        public doubleN re;
+        public doubleN im;
+        public doubleN srcRe;
+        public doubleN srcIm;
+        public doubleFFTCache ws;
+
+        public void Execute()
+        {
+            int n = srcRe.N;
+            for (int i = 0; i < n; i++) { re[i] = srcRe[i]; im[i] = srcIm[i]; }
+            FFT.ifft(ref re, ref im, in ws);
+        }
+    }
+
     // ---- table FFT WITH in-job table build (one-shot cost, build clocked in Burst) ----
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct FftBuildRunJobDouble : IJob
@@ -71,6 +89,18 @@ namespace LinearAlgebra.Benchmarks
         public void Execute() => FFT.rfft(in real, ref re, ref im, in ws);
     }
 
+    // ---- table-indexed real inverse irfft ----
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct IrfftTableJobDouble : IJob
+    {
+        public doubleN re;     // half-spectrum input (N/2+1), NOT modified
+        public doubleN im;     // half-spectrum input (N/2+1), NOT modified
+        public doubleN real;   // output length N, overwritten each Execute
+        public doubleFFTCache ws;   // built once, outside the timed loop
+
+        public void Execute() => FFT.irfft(in re, in im, ref real, in ws);
+    }
+
     // ---- direct DFT ----
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct DftJobDouble : IJob
@@ -103,6 +133,30 @@ namespace LinearAlgebra.Benchmarks
             }
 
             var job = new FftTableJobDouble { re = re, im = im, srcRe = srcRe, srcIm = srcIm, ws = ws };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.RowTime("double(ws)", n, stat);
+        }
+
+        // ---- table complex inverse FFT helpers ----
+        static string IfftTableDouble(int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var re    = arena.doubleVec(n);
+            var im    = arena.doubleVec(n);
+            var srcRe = arena.doubleVec(n);
+            var srcIm = arena.doubleVec(n);
+            var ws    = arena.doubleFFTCache(n);   // built ONCE outside the timed loop
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int i = 0; i < n; i++)
+            {
+                srcRe[i] = rng.NextDouble(-1f, 1f);
+                srcIm[i] = rng.NextDouble(-1f, 1f);
+            }
+
+            var job = new IfftTableJobDouble { re = re, im = im, srcRe = srcRe, srcIm = srcIm, ws = ws };
             var stat = Bench.Time(() => job.Run());
 
             arena.Dispose();
@@ -146,6 +200,31 @@ namespace LinearAlgebra.Benchmarks
                 real[i] = rng.NextDouble(-1f, 1f);
 
             var job = new RfftTableJobDouble { real = real, re = re, im = im, ws = ws };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.RowTime("double(ws)", n, stat);
+        }
+
+        // ---- table real inverse irfft helpers ----
+        static string IrfftTableDouble(int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int h     = n / 2 + 1;
+            var re    = arena.doubleVec(h);
+            var im    = arena.doubleVec(h);
+            var real  = arena.doubleVec(n);
+            var ws    = arena.doubleFFTCache(n);   // built ONCE outside the timed loop
+
+            // Arbitrary half-spectrum input (exact Hermitian validity is irrelevant to timing).
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n ^ 0xB16B00B5u);
+            for (int i = 0; i < h; i++)
+            {
+                re[i] = rng.NextDouble(-1f, 1f);
+                im[i] = rng.NextDouble(-1f, 1f);
+            }
+
+            var job = new IrfftTableJobDouble { re = re, im = im, real = real, ws = ws };
             var stat = Bench.Time(() => job.Run());
 
             arena.Dispose();

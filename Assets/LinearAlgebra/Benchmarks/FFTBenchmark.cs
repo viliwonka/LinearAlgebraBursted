@@ -10,13 +10,15 @@ namespace LinearAlgebra.Benchmarks
     // into re/im at the start of each Execute so every timed sample does identical work.
     // DFT inputs are `in` (not modified), outputs are separate; no copy needed each call.
     //
-    // Hand-written harness half. The timed IJobs (FftTable/FftBuildRun/RfftTable/Dft Job
-    // {Float,Double}) and build+measure methods are code-generated per dtype from
+    // Hand-written harness half. The timed IJobs (FftTable/IfftTable/FftBuildRun/RfftTable/IrfftTable/Dft
+    // Job {Float,Double}) and build+measure methods are code-generated per dtype from
     // Assets/LinearAlgebra/CodeGen/TemplateSourceBenchmarks/FFTBenchmark.fProxy.cs.
     public static partial class FFTBenchmark
     {
-        // Power-of-two sizes for the O(N log N) FFT.
-        static readonly int[] FftSizes = { 1024, 4096, 16384, 65536, 262144, 1048576 };
+        // Every power of two in range: 4^k sizes hit the pure radix-4 path, 2·4^k the mixed-radix
+        // path — so both cores (and the mixed de-interleave) are exercised, no path left unmeasured.
+        static readonly int[] FftSizes =
+            { 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576 };
 
         // Smaller sizes for the O(N²) direct DFT (quadratic cost limits feasible N).
         static readonly int[] DftSizes = { 256, 512, 1024, 2048 };
@@ -33,6 +35,13 @@ namespace LinearAlgebra.Benchmarks
             foreach (var n in FftSizes) sb.AppendLine(FftTableDouble(n));
             sb.AppendLine();
 
+            sb.AppendLine("=== Complex inverse FFT, twiddle-table workspace (FFT.ifft(ws) / FFT.ifft(ws); ms) ===");
+            sb.AppendLine("    Same dispatch as fft(ws); conjugate → forward → conjugate + 1/N scale. Regression guard for the shared cores.");
+            sb.AppendLine(Bench.HeaderTime());
+            foreach (var n in FftSizes) sb.AppendLine(IfftTableFloat(n));
+            foreach (var n in FftSizes) sb.AppendLine(IfftTableDouble(n));
+            sb.AppendLine();
+
             sb.AppendLine("=== FFT, table workspace WITH BUILD INCLUDED (one-shot: build + single transform; build in Burst; ms) ===");
             sb.AppendLine("    Burst job builds the workspace from scratch then runs one fft(ws) — the one-shot cost the reuse rows hide.");
             sb.AppendLine("    Crosses over the no-workspace path after ~1-3 transforms at N>=1024 (table build amortizes fast).");
@@ -47,6 +56,13 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine(Bench.HeaderTime());
             foreach (var n in FftSizes) sb.AppendLine(RfftTableFloat(n));
             foreach (var n in FftSizes) sb.AppendLine(RfftTableDouble(n));
+            sb.AppendLine();
+
+            sb.AppendLine("=== Real inverse FFT, twiddle-table workspace (FFT.irfft(ws) / FFT.irfft(ws); ms) ===");
+            sb.AppendLine("    Half-spectrum re/im (N/2+1) input → length-N real output; workspace built ONCE.");
+            sb.AppendLine(Bench.HeaderTime());
+            foreach (var n in FftSizes) sb.AppendLine(IrfftTableFloat(n));
+            foreach (var n in FftSizes) sb.AppendLine(IrfftTableDouble(n));
             sb.AppendLine();
 
             sb.AppendLine("=== Direct DFT (FFT.dft / FFT.dft; O(N^2); ms) ===");

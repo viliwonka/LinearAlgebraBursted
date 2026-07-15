@@ -35,6 +35,24 @@ namespace LinearAlgebra.Benchmarks
         }
     }
 
+    // ---- table-indexed complex inverse FFT ----
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct IfftTableJobFloat : IJob
+    {
+        public floatN re;
+        public floatN im;
+        public floatN srcRe;
+        public floatN srcIm;
+        public floatFFTCache ws;
+
+        public void Execute()
+        {
+            int n = srcRe.N;
+            for (int i = 0; i < n; i++) { re[i] = srcRe[i]; im[i] = srcIm[i]; }
+            FFT.ifft(ref re, ref im, in ws);
+        }
+    }
+
     // ---- table FFT WITH in-job table build (one-shot cost, build clocked in Burst) ----
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct FftBuildRunJobFloat : IJob
@@ -71,6 +89,18 @@ namespace LinearAlgebra.Benchmarks
         public void Execute() => FFT.rfft(in real, ref re, ref im, in ws);
     }
 
+    // ---- table-indexed real inverse irfft ----
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct IrfftTableJobFloat : IJob
+    {
+        public floatN re;     // half-spectrum input (N/2+1), NOT modified
+        public floatN im;     // half-spectrum input (N/2+1), NOT modified
+        public floatN real;   // output length N, overwritten each Execute
+        public floatFFTCache ws;   // built once, outside the timed loop
+
+        public void Execute() => FFT.irfft(in re, in im, ref real, in ws);
+    }
+
     // ---- direct DFT ----
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct DftJobFloat : IJob
@@ -103,6 +133,30 @@ namespace LinearAlgebra.Benchmarks
             }
 
             var job = new FftTableJobFloat { re = re, im = im, srcRe = srcRe, srcIm = srcIm, ws = ws };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.RowTime("float(ws)", n, stat);
+        }
+
+        // ---- table complex inverse FFT helpers ----
+        static string IfftTableFloat(int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var re    = arena.floatVec(n);
+            var im    = arena.floatVec(n);
+            var srcRe = arena.floatVec(n);
+            var srcIm = arena.floatVec(n);
+            var ws    = arena.floatFFTCache(n);   // built ONCE outside the timed loop
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int i = 0; i < n; i++)
+            {
+                srcRe[i] = rng.NextFloat(-1f, 1f);
+                srcIm[i] = rng.NextFloat(-1f, 1f);
+            }
+
+            var job = new IfftTableJobFloat { re = re, im = im, srcRe = srcRe, srcIm = srcIm, ws = ws };
             var stat = Bench.Time(() => job.Run());
 
             arena.Dispose();
@@ -146,6 +200,31 @@ namespace LinearAlgebra.Benchmarks
                 real[i] = rng.NextFloat(-1f, 1f);
 
             var job = new RfftTableJobFloat { real = real, re = re, im = im, ws = ws };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.RowTime("float(ws)", n, stat);
+        }
+
+        // ---- table real inverse irfft helpers ----
+        static string IrfftTableFloat(int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int h     = n / 2 + 1;
+            var re    = arena.floatVec(h);
+            var im    = arena.floatVec(h);
+            var real  = arena.floatVec(n);
+            var ws    = arena.floatFFTCache(n);   // built ONCE outside the timed loop
+
+            // Arbitrary half-spectrum input (exact Hermitian validity is irrelevant to timing).
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n ^ 0xB16B00B5u);
+            for (int i = 0; i < h; i++)
+            {
+                re[i] = rng.NextFloat(-1f, 1f);
+                im[i] = rng.NextFloat(-1f, 1f);
+            }
+
+            var job = new IrfftTableJobFloat { re = re, im = im, real = real, ws = ws };
             var stat = Bench.Time(() => job.Run());
 
             arena.Dispose();
