@@ -826,6 +826,17 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   internally (build scratch is only 4 MB post quarter-wave) rather than reviving sin/cos.
 
 ## FFT.Workspace
+- 2026-07-15 | irfft output de-interleave FUSED into the inner core's 1/N inverse-scale pass, so both
+  ends of irfft are now fused (input re-pack into the permutation + output interleave into the scale).
+  irfft(ws) float 1M 4.04 -> 3.52 ms (another -13%; now FASTER than rfft's 3.62, since rfft only fuses
+  its input pack — its WQ unpack is still a separate output pass). double 1M 4.66 -> 4.17. The old
+  irfft did the scale in place (rePtr[i]*=invN) then a separate pass real[2j]=cz[j]/real[2j+1]=sz[j].
+  Fused: FftCoreRadix4Core/FftCoreRadix4MixedCore gained an interleaveOut pointer; when non-null
+  (inverse only) the final scale writes interleaveOut[2i]=Re*invN, [2i+1]=-Im*invN straight into real
+  instead of back in place. real is a separate buffer from cz/sz, so no aliasing. Bit-identical (same
+  values, different destination). Complex ifft passes null → unchanged in-place path. FFT tests 102/102,
+  no regression in complex fft/ifft (6.56/6.56). Output-side fusion now DONE for irfft; the dedicated-
+  real-last-stage idea for rfft's unpack (k,M-k ≠ combine k,k+M/2) is a different, still-open item.
 - 2026-07-15 | irfft re-pack FUSED into the inner inverse FFT's first permutation (mirror of the rfft
   pack fusion below). irfft(ws) float 1M 4.88 -> 4.04 ms (-17%), double 1M ~4.66. The half-spectrum
   re-pack (E/O reconstruction over Hermitian pairs) already writes cz/sz out-of-place from re/im, so

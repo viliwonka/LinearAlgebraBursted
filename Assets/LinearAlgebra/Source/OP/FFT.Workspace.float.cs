@@ -394,7 +394,7 @@ namespace LinearAlgebra
                     czp[d] = realp[2 * j];
                     szp[d] = realp[2 * j + 1];
                 }
-                FftCoreRadix4MixedCore(czp, szp, s1rp, s1ip, cw1rp, cw1ip, M, false);
+                FftCoreRadix4MixedCore(czp, szp, s1rp, s1ip, cw1rp, cw1ip, M, false, null);
             }
 
             // Step 3: Unpack. DC and Nyquist are always real for a real input.
@@ -560,19 +560,15 @@ namespace LinearAlgebra
             }
 
             // Inner M-point inverse FFT — first permutation already applied by the scatter above, so
-            // call the compute cores directly (skipping their built-in reversal / de-interleave).
+            // call the compute cores directly (skipping their built-in reversal / de-interleave). The
+            // output de-interleave (real[2j]=even[j], real[2j+1]=odd[j]) is fused into the core's final
+            // 1/N scale pass via the interleaveOut pointer, so there is no separate output pass.
+            float* realp = real.Data.Ptr;
             if (pure)
-                FftCoreRadix4Core(cz.Data.Ptr, sz.Data.Ptr, sw1re.Data.Ptr, sw1im.Data.Ptr, M, true);
+                FftCoreRadix4Core(cz.Data.Ptr, sz.Data.Ptr, sw1re.Data.Ptr, sw1im.Data.Ptr, M, true, realp);
             else
                 FftCoreRadix4MixedCore(cz.Data.Ptr, sz.Data.Ptr, sw1re.Data.Ptr, sw1im.Data.Ptr,
-                                       cw1re.Data.Ptr, cw1im.Data.Ptr, M, true);
-
-            // Deinterleave: real[2j] = even[j], real[2j+1] = odd[j].
-            for (int j = 0; j < M; j++)
-            {
-                real[2 * j]     = cz[j];
-                real[2 * j + 1] = sz[j];
-            }
+                                       cw1re.Data.Ptr, cw1im.Data.Ptr, M, true, realp);
         }
 
         // ---- radix-4 DIT FFT ----
@@ -715,16 +711,19 @@ namespace LinearAlgebra
                     float ti = imPtr[i]; imPtr[i] = imPtr[j]; imPtr[j] = ti;
                 }
             }
-            FftCoreRadix4Core(rePtr, imPtr, s1rPtr, s1iPtr, size, inverse);
+            FftCoreRadix4Core(rePtr, imPtr, s1rPtr, s1iPtr, size, inverse, null);
         }
 
         // Pure radix-4 compute core: assumes the base-4 digit reversal is already applied. Conjugate
         // trick + butterfly stages + inverse scale. rfft/irfft fuse their pack/re-pack into the
         // reversal and call this directly. The conjugate runs post-reversal here (elementwise negate
         // commutes with the permutation, so this is identical to conjugating first).
+        // interleaveOut != null (inverse only): the final 1/N scale writes the result interleaved
+        // (interleaveOut[2i]=Re, [2i+1]=Im, length 2*size) instead of in place, fusing irfft's output
+        // de-interleave into this pass. Pass null for the in-place complex ifft.
         static unsafe void FftCoreRadix4Core(float* rePtr, float* imPtr,
                                              float* s1rPtr, float* s1iPtr,
-                                             int size, bool inverse)
+                                             int size, bool inverse, float* interleaveOut)
         {
             // Conjugate trick (see section banner above).
             if (inverse)
@@ -736,11 +735,18 @@ namespace LinearAlgebra
             if (inverse)
             {
                 float invN = (float)1 / (float)size;
-                for (int i = 0; i < size; i++)
-                {
-                    rePtr[i] =  rePtr[i] * invN;
-                    imPtr[i] = -imPtr[i] * invN;   // undo conjugate, apply 1/N scale
-                }
+                if (interleaveOut != null)
+                    for (int i = 0; i < size; i++)
+                    {
+                        interleaveOut[2 * i]     =  rePtr[i] * invN;
+                        interleaveOut[2 * i + 1] = -imPtr[i] * invN;   // undo conjugate, apply 1/N scale
+                    }
+                else
+                    for (int i = 0; i < size; i++)
+                    {
+                        rePtr[i] =  rePtr[i] * invN;
+                        imPtr[i] = -imPtr[i] * invN;   // undo conjugate, apply 1/N scale
+                    }
             }
         }
 
@@ -794,7 +800,7 @@ namespace LinearAlgebra
             MixedDeinterleave(re.Data.Ptr, im.Data.Ptr, visited.Data.Ptr, size);
             FftCoreRadix4MixedCore(re.Data.Ptr, im.Data.Ptr,
                                    sw1re.Data.Ptr, sw1im.Data.Ptr,
-                                   cw1re.Data.Ptr, cw1im.Data.Ptr, size, inverse);
+                                   cw1re.Data.Ptr, cw1im.Data.Ptr, size, inverse, null);
         }
 
         // In-place even/odd de-interleave via cycle-following: after it, [0,M) holds the
@@ -837,10 +843,13 @@ namespace LinearAlgebra
         // samples in [0,M), odd in [M,2M); M = size/2). Conjugate trick + two radix-4 sub-FFTs +
         // radix-2 combine + inverse scale. The conjugate runs post-de-interleave here (elementwise
         // negate commutes with the permutation, so this is identical to conjugating first).
+        // interleaveOut != null (inverse only): the final 1/N scale writes the result interleaved
+        // (interleaveOut[2i]=Re, [2i+1]=Im, length 2*size) instead of in place, fusing irfft's output
+        // de-interleave into this pass. Pass null for the in-place complex ifft.
         static unsafe void FftCoreRadix4MixedCore(float* rePtr, float* imPtr,
                                                   float* s1rPtr, float* s1iPtr,
                                                   float* cw1r, float* cw1i,
-                                                  int size, bool inverse)
+                                                  int size, bool inverse, float* interleaveOut)
         {
             int M = size >> 1;   // size/2, always a power of 4
 
@@ -885,11 +894,18 @@ namespace LinearAlgebra
             if (inverse)
             {
                 float invN = (float)1 / (float)size;
-                for (int i = 0; i < size; i++)
-                {
-                    rePtr[i] =  rePtr[i] * invN;
-                    imPtr[i] = -imPtr[i] * invN;   // undo conjugate, apply 1/N scale
-                }
+                if (interleaveOut != null)
+                    for (int i = 0; i < size; i++)
+                    {
+                        interleaveOut[2 * i]     =  rePtr[i] * invN;
+                        interleaveOut[2 * i + 1] = -imPtr[i] * invN;   // undo conjugate, apply 1/N scale
+                    }
+                else
+                    for (int i = 0; i < size; i++)
+                    {
+                        rePtr[i] =  rePtr[i] * invN;
+                        imPtr[i] = -imPtr[i] * invN;   // undo conjugate, apply 1/N scale
+                    }
             }
         }
 
