@@ -18,6 +18,7 @@ namespace LinearAlgebra.Benchmarks
         const int N = 10_000_000;
 
         static readonly string[] MathFuncs = { "sin", "cos", "exp", "log", "atan" };
+        static readonly string[] DerivedNames = { "tan", "exp2", "log2", "log10", "sinh", "cosh", "tanh", "pow", "atan2", "asin", "acos" };
 
         static string ExpHeader()
         {
@@ -109,6 +110,28 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine(AtanRowDouble(0, true,  "math.atan  single-d", N));
             sb.AppendLine(AtanRowDouble(1, false, "det.atan   batch-d", N));
             sb.AppendLine(AtanRowDouble(1, true,  "det.atan   single-d", N));
+            sb.AppendLine();
+
+            sb.AppendLine("=== FUSED sincos (det.SinCos) vs math.sin+cos — 10M, batch + single (ms); both compute sin AND cos ===");
+            sb.AppendLine("    One shared pi/2 reduction feeds both polynomials (Sin()+Cos() separately would reduce twice).");
+            sb.AppendLine(string.Format("{0,-20} {1,-10} {2,11} {3,11} {4,11}", "variant", "N", "min(ms)", "med(ms)", "mean(ms)"));
+            sb.AppendLine(SinCosRowFloat(0, false, "math.sin+cos batch-f", N));
+            sb.AppendLine(SinCosRowFloat(1, false, "det.sincos  batch-f", N));
+            sb.AppendLine(SinCosRowFloat(0, true,  "math.sin+cos single-f", N));
+            sb.AppendLine(SinCosRowFloat(1, true,  "det.sincos  single-f", N));
+            sb.AppendLine(SinCosRowDouble(0, false, "math.sin+cos batch-d", N));
+            sb.AppendLine(SinCosRowDouble(1, false, "det.sincos  batch-d", N));
+            sb.AppendLine(SinCosRowDouble(0, true,  "math.sin+cos single-d", N));
+            sb.AppendLine(SinCosRowDouble(1, true,  "det.sincos  single-d", N));
+            sb.AppendLine();
+
+            sb.AppendLine("=== Derived layer (fused from the core primitives) — correctness vs math.*, ~ULP ===");
+            sb.AppendLine("    tan/exp2/log2/log10/sinh/cosh/tanh/pow/atan2/asin/acos over sample inputs (0.2,0.9).");
+            var uf = DerivedVerifyFloat();
+            var ud = DerivedVerifyDouble();
+            for (int k = 0; k < DerivedNames.Length; k++)
+                sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                    "    {0,-8} f ~ULP {1,8:F2}    d ~ULP {2,8:F2}", DerivedNames[k], uf[k], ud[k]));
             sb.AppendLine();
         }
     }

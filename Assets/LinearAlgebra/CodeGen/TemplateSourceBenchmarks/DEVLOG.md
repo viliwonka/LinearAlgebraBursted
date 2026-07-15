@@ -2,6 +2,24 @@
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
 ## DetMathBenchmark
+- 2026-07-15 (r8) | Added FUSED sincos + the derived layer. **sincos** = one shared π/2 reduction
+  feeding both polys + branch-free quadrant for each; vs math.sin+cos (two full reductions): float
+  batch 217→32.9ms (6.6×), double 197→49.3 (4.0×); single float 329→116 (2.85×), double 308→147
+  (2.1×). This is the biggest batch win — fusion beats the doubled reduction. **Derived layer** (all
+  fused from core primitives, not naive re-composition): tan=sin/cos (one reduction+divide),
+  exp2/log2/log10=scaled exp/log, sinh/cosh share ONE exp + reciprocal, tanh from e^{2x}, pow=exp(y·
+  log x), atan2/asin/acos via atan. Correctness vs math.* (~ULP, float/double): tan 1.7/2.0, exp2
+  0.9/0.9, log2 1.9/2.1, log10 2.1/2.0, sinh 3.5/3.1, cosh 0.8/1.0, tanh 1.8/1.9, pow 3.6/3.7, atan2
+  1.9/2.0, asin 2.0/2.0, acos 2.8/3.0 — all 1-3.7 ULP (inherit core ~1-2 + a little composition
+  error; sinh/pow/acos slightly higher as expected). **STANDALONE (single-call, dependent-chain
+  latency, NOT vectorized) vs math** — answers "is it still good scalar?": float exp 153→74 (2.1×),
+  sin 221→117 (1.9×), log 151→120 (1.3×), atan 309→112 (2.8×), sincos 329→116 (2.85×); double exp
+  144→92, sin 187→148, atan 307→180, sincos 308→147 — all wins; only double log single is ~parity
+  (Horner chain; Estrin fixes). So DetMath wins on scalar calls too (1.3-2.85×), just a smaller margin
+  than batch (4-6.6×) — the vectorization amplifies but the scalar algorithm is also leaner. Codegen
+  gotchas hit: (1) math.sincos wants exact `out float` — the fProxy stub rejects it in the template,
+  used math.sin+math.cos; (2) a dtype-agnostic `static readonly string[]` in the template duplicates
+  across float+double partials (CS0102) — keep such fields in the hand-written half.
 - 2026-07-15 (r7) | REMOVED the 0-ULP FLOAT CR variants (DetMathCR.cs) — user's call: float-CR
   without a double-CR counterpart is an asymmetry that feels wrong, and 1-ULP deterministic is the
   right target anyway (0-ULP adds cross-LIBRARY agreement + exact monotonicity, NOT cross-arch

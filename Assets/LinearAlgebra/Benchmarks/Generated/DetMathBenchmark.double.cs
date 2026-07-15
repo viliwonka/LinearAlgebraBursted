@@ -276,6 +276,160 @@ namespace LinearAlgebra.Benchmarks
             double res = math.select(inner, PI_2 - inner, big);        // undo the 1/x fold
             return math.select(res, -res, x < (double)0);              // odd function
         }
+
+        // ---- FUSED sincos: ONE reduction feeds both, ~40% cheaper than Sin()+Cos() separately.
+        // (Sin and Cos above each redo the reduction + both polys; this does it once.) The natural
+        // primitive for rotation-by-angle / dft twiddles, which always want both.
+        public static void SinCos(double x, out double sinx, out double cosx)
+        {
+            ReduceTrig(x, out double r, out int quad);
+            double s = SinPoly(r);
+            double c = CosPoly(r);
+            double sw = (double)(quad & 1);
+            double baseS = s + sw * (c - s);
+            double baseC = c + sw * (s - c);
+            double sSign = (double)1 - (double)2 * (double)((quad >> 1) & 1);
+            double cSign = (double)1 - (double)2 * (double)(((quad + 1) >> 1) & 1);
+            sinx = sSign * baseS;
+            cosx = cSign * baseC;
+        }
+
+        // ---- Derived functions: FUSED from the core primitives (not naive re-compositions). Each
+        // shares one reduction / one exp where a naive version would pay for two.
+
+        // tan = sin/cos: one reduction, both polys, one divide (vs two full reductions).
+        public static double Tan(double x) { SinCos(x, out double s, out double c); return s / c; }
+
+        // exp2/log2/log10: scaled exp/log — one core call, one multiply.
+        public static double Exp2(double x)  => ExpAcc(x * (double)0.6931471805599453);
+        public static double Log2(double x)  => Log(x) * (double)1.4426950408889634;
+        public static double Log10(double x) => Log(x) * (double)0.4342944819032518;
+
+        // sinh/cosh share ONE exp + one reciprocal (naive pays two exp calls). tanh from e^{2x}.
+        public static void SinhCosh(double x, out double sh, out double ch)
+        {
+            double e = ExpAcc(x);
+            double er = (double)1 / e;
+            sh = (e - er) * (double)0.5;
+            ch = (e + er) * (double)0.5;
+        }
+        public static double Sinh(double x) { SinhCosh(x, out double sh, out double ch); return sh; }
+        public static double Cosh(double x) { SinhCosh(x, out double sh, out double ch); return ch; }
+        public static double Tanh(double x) { double e = ExpAcc((double)2 * x); return (e - (double)1) / (e + (double)1); }
+
+        // pow(x,y) = exp(y·log x), x > 0 (prototype: no sign/zero/integer-exponent edge handling).
+        public static double Pow(double x, double y) => ExpAcc(y * Log(x));
+
+        // atan2 from atan + branch-free quadrant. x=0 handled via ±inf into Atan (folds to ±π/2).
+        public static double Atan2(double y, double x)
+        {
+            const double PI_D = 3.141592653589793;
+            double PI = (double)PI_D;
+            double a = Atan(y / x);
+            a = math.select(a, a + PI, (x < (double)0) & (y >= (double)0));
+            a = math.select(a, a - PI, (x < (double)0) & (y <  (double)0));
+            return a;
+        }
+
+        // asin/acos via atan of the half-angle form. |x| <= 1.
+        public static double Asin(double x) => Atan(x / math.sqrt((double)1 - x * x));
+        public static double Acos(double x) => (double)1.5707963267948966 - Asin(x);
+    }
+
+    // ---- fused sincos vs math.sincos (both compute sin AND cos) ----
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct SinCosCompareJobDouble : IJob
+    {
+        public doubleN src, dst;
+        public int variant;   // 0 = math.sincos, 1 = det.SinCos
+        public int single;
+
+        public void Execute()
+        {
+            int n = src.N;
+            if (single == 0)
+            {
+                if (variant == 0) for (int i = 0; i < n; i++) { dst[i] = math.sin(src[i]) + math.cos(src[i]); }
+                else              for (int i = 0; i < n; i++) { DetMathProtoDouble.SinCos(src[i], out double s, out double c); dst[i] = s + c; }
+            }
+            else
+            {
+                double acc = (double)0, tiny = (double)1e-20;
+                if (variant == 0) for (int i = 0; i < n; i++) { double x = src[i] + acc * tiny; acc = math.sin(x) + math.cos(x); }
+                else              for (int i = 0; i < n; i++) { DetMathProtoDouble.SinCos(src[i] + acc * tiny, out double s, out double c); acc = s + c; }
+                dst[0] = acc;
+            }
+        }
+    }
+
+    // ---- correctness of the derived layer vs math.* (reference in double) at sample inputs ----
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct DerivedVerifyJobDouble : IJob
+    {
+        public doubleN src;                 // inputs in (0.2, 0.9): positive, < 1, below the tan pole
+        public NativeArray<double> maxUlp;  // [tan,exp2,log2,log10,sinh,cosh,tanh,pow,atan2,asin,acos]
+        public void Execute()
+        {
+            const double eps = 2.220446049250313e-16;
+            for (int k = 0; k < maxUlp.Length; k++) maxUlp[k] = 0.0;
+            int n = src.N;
+            for (int i = 0; i < n; i++)
+            {
+                double x = (double)src[i];
+                Acc(maxUlp, 0, (double)DetMathProtoDouble.Tan(src[i]),          math.tan(x), eps);
+                Acc(maxUlp, 1, (double)DetMathProtoDouble.Exp2(src[i]),         math.exp2(x), eps);
+                Acc(maxUlp, 2, (double)DetMathProtoDouble.Log2(src[i]),         math.log2(x), eps);
+                Acc(maxUlp, 3, (double)DetMathProtoDouble.Log10(src[i]),        math.log10(x), eps);
+                Acc(maxUlp, 4, (double)DetMathProtoDouble.Sinh(src[i]),         math.sinh(x), eps);
+                Acc(maxUlp, 5, (double)DetMathProtoDouble.Cosh(src[i]),         math.cosh(x), eps);
+                Acc(maxUlp, 6, (double)DetMathProtoDouble.Tanh(src[i]),         math.tanh(x), eps);
+                Acc(maxUlp, 7, (double)DetMathProtoDouble.Pow(src[i], (double)2.5), math.pow(x, 2.5), eps);
+                Acc(maxUlp, 8, (double)DetMathProtoDouble.Atan2(src[i], (double)0.7), math.atan2(x, 0.7), eps);
+                Acc(maxUlp, 9, (double)DetMathProtoDouble.Asin(src[i]),         math.asin(x), eps);
+                Acc(maxUlp, 10, (double)DetMathProtoDouble.Acos(src[i]),        math.acos(x), eps);
+            }
+        }
+        static void Acc(NativeArray<double> a, int k, double got, double refv, double eps)
+        {
+            double denom = math.max(math.abs(refv), 1e-30);
+            double ulp = math.abs(got - refv) / denom / eps;
+            if (ulp > a[k]) a[k] = ulp;
+        }
+    }
+
+    public static partial class DetMathBenchmark
+    {
+        static string SinCosRowDouble(int variant, bool single, string label, int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var src = arena.doubleVec(n);
+            var dst = arena.doubleVec(n);
+            var rng = new Unity.Mathematics.Random(0x51C0u ^ (uint)variant);
+            for (int i = 0; i < n; i++) src[i] = rng.NextDouble(-10f, 10f);
+            var job = new SinCosCompareJobDouble { src = src, dst = dst, variant = variant, single = single ? 1 : 0 };
+            var stat = Bench.Time(() => job.Run());
+            arena.Dispose();
+            return string.Format(CultureInfo.InvariantCulture,
+                "{0,-20} {1,-10} {2,11:F4} {3,11:F4} {4,11:F4}", label, n, stat.Min, stat.Median, stat.Mean);
+        }
+
+        // Returns the 11 max-ULP values (tan,exp2,log2,log10,sinh,cosh,tanh,pow,atan2,asin,acos);
+        // the hand-written harness attaches the names.
+        static double[] DerivedVerifyDouble()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int n = 100000;
+            var src = arena.doubleVec(n);
+            var rng = new Unity.Mathematics.Random(0xDE71u);
+            for (int i = 0; i < n; i++) src[i] = rng.NextDouble(0.2f, 0.9f);
+            var maxUlp = new NativeArray<double>(11, Allocator.Persistent);
+            new DerivedVerifyJobDouble { src = src, maxUlp = maxUlp }.Run();
+            var result = new double[11];
+            for (int k = 0; k < 11; k++) result[k] = maxUlp[k];
+            maxUlp.Dispose();
+            arena.Dispose();
+            return result;
+        }
     }
 
     // ---- native math.* throughput (batch) ----

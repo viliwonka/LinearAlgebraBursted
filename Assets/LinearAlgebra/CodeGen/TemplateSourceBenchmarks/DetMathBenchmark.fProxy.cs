@@ -345,6 +345,160 @@ namespace LinearAlgebra.Benchmarks
             fProxy res = math.select(inner, PI_2 - inner, big);        // undo the 1/x fold
             return math.select(res, -res, x < (fProxy)0);              // odd function
         }
+
+        // ---- FUSED sincos: ONE reduction feeds both, ~40% cheaper than Sin()+Cos() separately.
+        // (Sin and Cos above each redo the reduction + both polys; this does it once.) The natural
+        // primitive for rotation-by-angle / dft twiddles, which always want both.
+        public static void SinCos(fProxy x, out fProxy sinx, out fProxy cosx)
+        {
+            ReduceTrig(x, out fProxy r, out int quad);
+            fProxy s = SinPoly(r);
+            fProxy c = CosPoly(r);
+            fProxy sw = (fProxy)(quad & 1);
+            fProxy baseS = s + sw * (c - s);
+            fProxy baseC = c + sw * (s - c);
+            fProxy sSign = (fProxy)1 - (fProxy)2 * (fProxy)((quad >> 1) & 1);
+            fProxy cSign = (fProxy)1 - (fProxy)2 * (fProxy)(((quad + 1) >> 1) & 1);
+            sinx = sSign * baseS;
+            cosx = cSign * baseC;
+        }
+
+        // ---- Derived functions: FUSED from the core primitives (not naive re-compositions). Each
+        // shares one reduction / one exp where a naive version would pay for two.
+
+        // tan = sin/cos: one reduction, both polys, one divide (vs two full reductions).
+        public static fProxy Tan(fProxy x) { SinCos(x, out fProxy s, out fProxy c); return s / c; }
+
+        // exp2/log2/log10: scaled exp/log — one core call, one multiply.
+        public static fProxy Exp2(fProxy x)  => ExpAcc(x * (fProxy)0.6931471805599453);
+        public static fProxy Log2(fProxy x)  => Log(x) * (fProxy)1.4426950408889634;
+        public static fProxy Log10(fProxy x) => Log(x) * (fProxy)0.4342944819032518;
+
+        // sinh/cosh share ONE exp + one reciprocal (naive pays two exp calls). tanh from e^{2x}.
+        public static void SinhCosh(fProxy x, out fProxy sh, out fProxy ch)
+        {
+            fProxy e = ExpAcc(x);
+            fProxy er = (fProxy)1 / e;
+            sh = (e - er) * (fProxy)0.5;
+            ch = (e + er) * (fProxy)0.5;
+        }
+        public static fProxy Sinh(fProxy x) { SinhCosh(x, out fProxy sh, out fProxy ch); return sh; }
+        public static fProxy Cosh(fProxy x) { SinhCosh(x, out fProxy sh, out fProxy ch); return ch; }
+        public static fProxy Tanh(fProxy x) { fProxy e = ExpAcc((fProxy)2 * x); return (e - (fProxy)1) / (e + (fProxy)1); }
+
+        // pow(x,y) = exp(y·log x), x > 0 (prototype: no sign/zero/integer-exponent edge handling).
+        public static fProxy Pow(fProxy x, fProxy y) => ExpAcc(y * Log(x));
+
+        // atan2 from atan + branch-free quadrant. x=0 handled via ±inf into Atan (folds to ±π/2).
+        public static fProxy Atan2(fProxy y, fProxy x)
+        {
+            const double PI_D = 3.141592653589793;
+            fProxy PI = (fProxy)PI_D;
+            fProxy a = Atan(y / x);
+            a = math.select(a, a + PI, (x < (fProxy)0) & (y >= (fProxy)0));
+            a = math.select(a, a - PI, (x < (fProxy)0) & (y <  (fProxy)0));
+            return a;
+        }
+
+        // asin/acos via atan of the half-angle form. |x| <= 1.
+        public static fProxy Asin(fProxy x) => Atan(x / math.sqrt((fProxy)1 - x * x));
+        public static fProxy Acos(fProxy x) => (fProxy)1.5707963267948966 - Asin(x);
+    }
+
+    // ---- fused sincos vs math.sincos (both compute sin AND cos) ----
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct SinCosCompareJobFProxy : IJob
+    {
+        public fProxyN src, dst;
+        public int variant;   // 0 = math.sincos, 1 = det.SinCos
+        public int single;
+
+        public void Execute()
+        {
+            int n = src.N;
+            if (single == 0)
+            {
+                if (variant == 0) for (int i = 0; i < n; i++) { dst[i] = math.sin(src[i]) + math.cos(src[i]); }
+                else              for (int i = 0; i < n; i++) { DetMathProtoFProxy.SinCos(src[i], out fProxy s, out fProxy c); dst[i] = s + c; }
+            }
+            else
+            {
+                fProxy acc = (fProxy)0, tiny = (fProxy)1e-20;
+                if (variant == 0) for (int i = 0; i < n; i++) { fProxy x = src[i] + acc * tiny; acc = math.sin(x) + math.cos(x); }
+                else              for (int i = 0; i < n; i++) { DetMathProtoFProxy.SinCos(src[i] + acc * tiny, out fProxy s, out fProxy c); acc = s + c; }
+                dst[0] = acc;
+            }
+        }
+    }
+
+    // ---- correctness of the derived layer vs math.* (reference in double) at sample inputs ----
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct DerivedVerifyJobFProxy : IJob
+    {
+        public fProxyN src;                 // inputs in (0.2, 0.9): positive, < 1, below the tan pole
+        public NativeArray<double> maxUlp;  // [tan,exp2,log2,log10,sinh,cosh,tanh,pow,atan2,asin,acos]
+        public void Execute()
+        {
+            const double eps = /*+choose[1.1920929e-7|2.220446049250313e-16]*/1.1920929e-7/*-choose*/;
+            for (int k = 0; k < maxUlp.Length; k++) maxUlp[k] = 0.0;
+            int n = src.N;
+            for (int i = 0; i < n; i++)
+            {
+                double x = (double)src[i];
+                Acc(maxUlp, 0, (double)DetMathProtoFProxy.Tan(src[i]),          math.tan(x), eps);
+                Acc(maxUlp, 1, (double)DetMathProtoFProxy.Exp2(src[i]),         math.exp2(x), eps);
+                Acc(maxUlp, 2, (double)DetMathProtoFProxy.Log2(src[i]),         math.log2(x), eps);
+                Acc(maxUlp, 3, (double)DetMathProtoFProxy.Log10(src[i]),        math.log10(x), eps);
+                Acc(maxUlp, 4, (double)DetMathProtoFProxy.Sinh(src[i]),         math.sinh(x), eps);
+                Acc(maxUlp, 5, (double)DetMathProtoFProxy.Cosh(src[i]),         math.cosh(x), eps);
+                Acc(maxUlp, 6, (double)DetMathProtoFProxy.Tanh(src[i]),         math.tanh(x), eps);
+                Acc(maxUlp, 7, (double)DetMathProtoFProxy.Pow(src[i], (fProxy)2.5), math.pow(x, 2.5), eps);
+                Acc(maxUlp, 8, (double)DetMathProtoFProxy.Atan2(src[i], (fProxy)0.7), math.atan2(x, 0.7), eps);
+                Acc(maxUlp, 9, (double)DetMathProtoFProxy.Asin(src[i]),         math.asin(x), eps);
+                Acc(maxUlp, 10, (double)DetMathProtoFProxy.Acos(src[i]),        math.acos(x), eps);
+            }
+        }
+        static void Acc(NativeArray<double> a, int k, double got, double refv, double eps)
+        {
+            double denom = math.max(math.abs(refv), 1e-30);
+            double ulp = math.abs(got - refv) / denom / eps;
+            if (ulp > a[k]) a[k] = ulp;
+        }
+    }
+
+    public static partial class DetMathBenchmark
+    {
+        static string SinCosRowFProxy(int variant, bool single, string label, int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var src = arena.fProxyVec(n);
+            var dst = arena.fProxyVec(n);
+            var rng = new Unity.Mathematics.Random(0x51C0u ^ (uint)variant);
+            for (int i = 0; i < n; i++) src[i] = rng.NextFProxy(-10f, 10f);
+            var job = new SinCosCompareJobFProxy { src = src, dst = dst, variant = variant, single = single ? 1 : 0 };
+            var stat = Bench.Time(() => job.Run());
+            arena.Dispose();
+            return string.Format(CultureInfo.InvariantCulture,
+                "{0,-20} {1,-10} {2,11:F4} {3,11:F4} {4,11:F4}", label, n, stat.Min, stat.Median, stat.Mean);
+        }
+
+        // Returns the 11 max-ULP values (tan,exp2,log2,log10,sinh,cosh,tanh,pow,atan2,asin,acos);
+        // the hand-written harness attaches the names.
+        static double[] DerivedVerifyFProxy()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int n = 100000;
+            var src = arena.fProxyVec(n);
+            var rng = new Unity.Mathematics.Random(0xDE71u);
+            for (int i = 0; i < n; i++) src[i] = rng.NextFProxy(0.2f, 0.9f);
+            var maxUlp = new NativeArray<double>(11, Allocator.Persistent);
+            new DerivedVerifyJobFProxy { src = src, maxUlp = maxUlp }.Run();
+            var result = new double[11];
+            for (int k = 0; k < 11; k++) result[k] = maxUlp[k];
+            maxUlp.Dispose();
+            arena.Dispose();
+            return result;
+        }
     }
 
     // ---- native math.* throughput (batch) ----
