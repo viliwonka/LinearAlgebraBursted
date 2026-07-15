@@ -814,6 +814,18 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   numerically broken) is the only real failure.
 
 ## FFT.Workspace
+- 2026-07-15 | rfft/irfft unpack: process bins in Hermitian-symmetric pairs (k, M-k). Under k -> M-k
+  the twiddle maps W_N^(M-k) = -conj(W_N^k), so E_im, O_im and Re(W) flip sign — one WQ call and one
+  (k, M-k) load produce BOTH outputs (re[k]=E_re+P, re[M-k]=E_re-P, etc.). Halves WQ calls and, more
+  importantly, halves the effective cz/sz read traffic: the reverse-stream partner cz[M-k] is consumed
+  in the same iteration as cz[k] instead of being re-fetched M elements later (long evicted at large N,
+  so the old loop paid for cz/sz twice). Zero added memory. Loop now runs k=1..M/2-1 paired + a single
+  self-paired middle bin k=M/2; guarded for M==1 (N==2, no general bins). rfft(ws) quiet-PC: float 1M
+  6.14 -> 5.50 ms (-10%), 262K 1.478 -> 1.274 (-14%), 64K 0.308 -> 0.272; double 1M 6.58 -> 6.09; the
+  gap over complex fft(ws) widened ~7% -> ~16% at 1M. Recovered ~0.6 of the ~2.8 ms pack+unpack
+  overhead; the paired loop is now SIMD-shaped if pushed further (reversing load for the M-k stream +
+  boundary-split WQ). Pack (real[2j]/[2j+1] -> cz/sz) left as-is — sequential deinterleave, already
+  bandwidth-bound, nothing to fuse.
 - 2026-07-15 | Quarter-wave twiddle table: store only the first quadrant cos (twQuarter, n/4+1)
   instead of two full/half arrays; reconstruct any W^m via CosQ (quadrant reflection) + a π/2 index
   shift (Im(W^m)=CosQ(m+n/4)). Cuts the persistent table 8→1 MB and the build double-scratch 16→4 MB

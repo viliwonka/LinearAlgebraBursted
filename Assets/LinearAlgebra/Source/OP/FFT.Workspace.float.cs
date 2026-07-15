@@ -381,17 +381,39 @@ namespace LinearAlgebra
             re[M] = cz[0] - sz[0];
             im[M] = (float)0;
 
-            // General bins k = 1..M-1.
+            // General bins, processed in Hermitian-symmetric pairs (k, M-k): one twiddle and one
+            // packed load serve both outputs (halving twiddle work and cz/sz reads). Under k -> M-k
+            // the twiddle maps W_N^(M-k) = -conj(W_N^k), so E_im, O_im and Re(W) flip sign, giving
+            // re[M-k] = E_re - P, im[M-k] = Q - E_im from the same P, Q.
             // W_N^k = exp(-2πi·k/N), reconstructed from the quarter table via WQ (no cos/sin).
-            for (int k = 1; k < M; k++)
+            int half = M >> 1;
+            for (int k = 1; k < half; k++)
             {
+                int kr = M - k;
+                float czk = cz[k], czr = cz[kr], szk = sz[k], szr = sz[kr];
+                float E_re = (czk + czr) * (float)0.5;
+                float E_im = (szk - szr) * (float)0.5;
+                float O_re = (szk + szr) * (float)0.5;
+                float O_im = (czr - czk) * (float)0.5;
+
+                WQ(cqPtr, k, n, out float curRe, out float curIm);   // W_N^k
+                float P = curRe * O_re - curIm * O_im;
+                float Q = curRe * O_im + curIm * O_re;
+
+                re[k]  = E_re + P;   im[k]  = E_im + Q;
+                re[kr] = E_re - P;   im[kr] = Q - E_im;
+            }
+            // Middle bin k = M/2 (self-paired: M-k == k). Skipped for M == 1 (N == 2).
+            if (M >= 2)
+            {
+                int k = half;
                 int kr = M - k;
                 float E_re = (cz[k] + cz[kr]) * (float)0.5;
                 float E_im = (sz[k] - sz[kr]) * (float)0.5;
                 float O_re = (sz[k] + sz[kr]) * (float)0.5;
                 float O_im = (cz[kr] - cz[k]) * (float)0.5;
 
-                WQ(cqPtr, k, n, out float curRe, out float curIm);   // W_N^k
+                WQ(cqPtr, k, n, out float curRe, out float curIm);
 
                 re[k] = E_re + (curRe * O_re - curIm * O_im);
                 im[k] = E_im + (curRe * O_im + curIm * O_re);
@@ -448,7 +470,12 @@ namespace LinearAlgebra
             var sw1im    = ws.sw1im;
             var cw1re    = ws.cw1re;
             var cw1im    = ws.cw1im;
-            for (int k = 1; k < M; k++)
+            // Processed in Hermitian-symmetric pairs (k, M-k): one twiddle and one load of the
+            // (k, M-k) spectrum serve both re-packed outputs. Under k -> M-k the conjugate twiddle
+            // maps so E_im, a and Re(W) flip sign, giving O_re unchanged, O_im negated — hence
+            // cz[M-k] = E_re + O_im, sz[M-k] = O_re - E_im.
+            int half = M >> 1;
+            for (int k = 1; k < half; k++)
             {
                 int kr = M - k;
                 float xr_k  = re[k],  xi_k  = im[k];
@@ -470,7 +497,28 @@ namespace LinearAlgebra
                 float O_re = (a * cRe - b * cIm) * (float)0.5;
                 float O_im = (b * cRe + a * cIm) * (float)0.5;
 
-                // Y[k] = E[k] + i·O[k]
+                // Y[k] = E[k] + i·O[k], and its M-k partner.
+                cz[k]  = E_re - O_im;   sz[k]  = E_im + O_re;
+                cz[kr] = E_re + O_im;   sz[kr] = O_re - E_im;
+            }
+            // Middle bin k = M/2 (self-paired: M-k == k). Skipped for M == 1 (N == 2).
+            if (M >= 2)
+            {
+                int k = half;
+                int kr = M - k;
+                float xr_k  = re[k],  xi_k  = im[k];
+                float xr_kr = re[kr], xi_kr = im[kr];
+
+                float E_re = (xr_k + xr_kr) * (float)0.5;
+                float E_im = (xi_k - xi_kr) * (float)0.5;
+                float a = xr_k - xr_kr;
+                float b = xi_k + xi_kr;
+
+                WQ(cqPtr, k, N, out float cRe, out float cImPos);
+                float cIm = -cImPos;
+                float O_re = (a * cRe - b * cIm) * (float)0.5;
+                float O_im = (b * cRe + a * cIm) * (float)0.5;
+
                 cz[k] = E_re - O_im;
                 sz[k] = E_im + O_re;
             }
