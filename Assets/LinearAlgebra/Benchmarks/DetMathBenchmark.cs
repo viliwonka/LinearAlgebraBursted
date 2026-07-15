@@ -110,18 +110,6 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine(AtanRowDouble(1, false, "det.atan   batch-d", N));
             sb.AppendLine(AtanRowDouble(1, true,  "det.atan   single-d", N));
             sb.AppendLine();
-
-            sb.AppendLine("=== Correctly-rounded (0-ULP) FLOAT via double eval — throughput + EXHAUSTIVE proof ===");
-            sb.AppendLine("    Evaluate the deterministic poly in double, round once to float. Verified over EVERY");
-            sb.AppendLine("    2^32 float bit pattern vs the double-libm reference rounded to float. Double 0-ULP would");
-            sb.AppendLine("    need double-double (not done). Throughput (10M batch, ms):");
-            sb.AppendLine(string.Format("{0,-20} {1,-10} {2,11}", "variant", "N", "med(ms)"));
-            sb.AppendLine(CRThroughputRow(0, "logCR      batch-f", N));
-            sb.AppendLine(CRThroughputRow(1, "expCR      batch-f", N));
-            sb.AppendLine("    Exhaustive verification (all 2^32 floats; walks the entire float line):");
-            sb.AppendLine(CRVerifyRow(0, "logCR 0-ULP?"));
-            sb.AppendLine(CRVerifyRow(1, "expCR 0-ULP?"));
-            sb.AppendLine();
         }
     }
 }

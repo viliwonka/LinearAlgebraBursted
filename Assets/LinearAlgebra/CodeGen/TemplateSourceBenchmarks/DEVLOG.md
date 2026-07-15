@@ -2,6 +2,14 @@
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
 ## DetMathBenchmark
+- 2026-07-15 (r7) | REMOVED the 0-ULP FLOAT CR variants (DetMathCR.cs) — user's call: float-CR
+  without a double-CR counterpart is an asymmetry that feels wrong, and 1-ULP deterministic is the
+  right target anyway (0-ULP adds cross-LIBRARY agreement + exact monotonicity, NOT cross-arch
+  reproducibility, which 1 ULP already gives; and any downstream op's own rounding swamps a 1-ULP
+  input error — log-det's sum accumulation is the example). The proof stands in history (commit
+  b451441): float exp/log via double-eval are correctly-rounded over all 2^32 floats. If ever needed,
+  double 0-ULP is reachable via double-double + Ziv rounding test + bounded triple-double fallback
+  (deterministic, ~3-8× slower) — not built. Keeping the fast 1-ULP deterministic set as the design.
 - 2026-07-15 (r6) | Added CORRECTLY-ROUNDED (0-ULP) FLOAT exp/log (user asked, for log-det etc.) —
   `Benchmarks/DetMathCR.cs` (float-only, not templated). Technique: evaluate the deterministic poly in
   DOUBLE (deg-11 exp / deg-8 B log, ~2^-56 rel — far below float's 2^-24 grid), round once to float.
