@@ -2,6 +2,29 @@
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
 ## DetMath
+- 2026-07-16 | Added the `LINALG_NATIVE_MATH` compile-mode switch: a single `#if` sets
+  `public const bool UseNative`, and every transcendental branches on that const as its first
+  statement (`if (UseNative) return math.XXX(...)`). Deterministic DetMath stays the default
+  (const false); defining the symbol flips every call site to `math.*` for raw throughput,
+  giving up cross-arch determinism. Because it's a `const bool` rather than a per-function
+  `#if`, BOTH branches are always real, type-checked C# — Burst folds the dead branch away at
+  native codegen (literal-const propagation), so there's no runtime cost and no risk of a
+  native-only typo going unnoticed by the default (deterministic) test run. Left composing
+  (no native branch, per spec): `Pow(fProxy,int)` (exact integer path, no math.* equivalent),
+  `Exp10` (no math.exp10 in Unity.Mathematics), `Acosh` (no math.acosh). `SinhCosh` (the
+  shared-computation helper, analogous to `SinCos`) also stays composed — only its two callers
+  `Sinh`/`Cosh` gained native branches, matching the exact function map in the spec. Verified
+  `math.exp/log/log2/log10/sin/cos/tan/atan/atan2/asin/acos/sinh/cosh/tanh/exp2/pow/sincos` all
+  exist for both float and double in Unity.Mathematics before wiring (checked
+  Library/PackageCache math.cs directly). SinCos's native branch calls `math.sin`/`math.cos`
+  separately rather than `math.sincos` — its `out float`/`out double` params don't bind to the
+  `fProxy` proxy type in the raw template (same limitation already hit by RandomOP's Gaussian
+  sampler, see below). `UseNative` itself is wrapped in `//+skipFor[double]` so it's defined
+  ONCE (float fragment only) instead of twice — DetMath.float.cs and DetMath.double.cs merge
+  into one partial class, so a bare unwrapped const would double-define and fail CS0102; the
+  double fragment's method bodies still see it fine through the merge. Runtime testing of the
+  native path requires adding the define under Player Settings — not done here (out of scope;
+  default-mode compile already exercises both branches' C#).
 - 2026-07-15 | Promoted the deterministic transcendentals from the benchmark prototype
   (TemplateSourceBenchmarks/DetMathBenchmark) to a shipping public class `DetMath` (OP/DetMath.
   fProxy.cs, float+double overloads). Surface: Exp/Exp2/Exp10/Log/Log2/Log10/Pow, Sin/Cos/SinCos/

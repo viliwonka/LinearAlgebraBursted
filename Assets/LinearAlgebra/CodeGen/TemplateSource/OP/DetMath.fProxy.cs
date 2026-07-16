@@ -14,6 +14,16 @@ namespace LinearAlgebra
     // Edge cases are total and branch-free (computed then masked, preserving auto-vectorization).
     public static partial class DetMath
     {
+        // Type-independent: defined once (skipped for the double fragment) and shared through the
+        // merged partial class, so both the float and double method bodies below can reference it.
+        //+skipFor[double]
+#if LINALG_NATIVE_MATH
+        public const bool UseNative = true;
+#else
+        public const bool UseNative = false;
+#endif
+        //-skipFor
+
         // exp argument reduction: x = n·ln2 + r, |r| <= ln2/2, ln2 split hi/lo so n·hi is exact.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static void ExpReduce(fProxy x, out fProxy n, out fProxy r)
@@ -64,9 +74,10 @@ namespace LinearAlgebra
             return y;
         }
 
-        // e^x. Total: overflow -> +inf, underflow -> 0, NaN -> NaN.
+        // e^x. Total: overflow -> +inf, underflow -> 0, NaN -> NaN. Native mode: math.exp.
         public static fProxy Exp(fProxy x)
         {
+            if (UseNative) return math.exp(x);
             ExpReduce(x, out fProxy n, out fProxy r);
             //+skipFor[double]
             float p = 1.38368463709141461e-03f;
@@ -94,8 +105,12 @@ namespace LinearAlgebra
             return ExpGuard(x, Ldexp(p, n));
         }
 
-        // 2^x.
-        public static fProxy Exp2(fProxy x)  => Exp(x * (fProxy)0.6931471805599453);
+        // 2^x. Native mode: math.exp2.
+        public static fProxy Exp2(fProxy x)
+        {
+            if (UseNative) return math.exp2(x);
+            return Exp(x * (fProxy)0.6931471805599453);
+        }
         // 10^x.
         public static fProxy Exp10(fProxy x) => Exp(x * (fProxy)2.302585092994046);
 
@@ -117,9 +132,10 @@ namespace LinearAlgebra
         }
 
         // Natural log. Total: log(0) = -inf, log(+inf) = +inf, x < 0 or NaN -> NaN. Subnormal inputs
-        // are scaled into the normal range first (branch-free).
+        // are scaled into the normal range first (branch-free). Native mode: math.log.
         public static fProxy Log(fProxy x)
         {
+            if (UseNative) return math.log(x);
             //+skipFor[double]
             const float SQRT2 = 1.4142135623730951f;
             const float LN2_HI = 0.693115234375f;
@@ -172,13 +188,25 @@ namespace LinearAlgebra
             //-emitFor
         }
 
-        // log2(x) / log10(x). Same domain as Log.
-        public static fProxy Log2(fProxy x)  => Log(x) * (fProxy)1.4426950408889634;
-        public static fProxy Log10(fProxy x) => Log(x) * (fProxy)0.4342944819032518;
+        // log2(x) / log10(x). Same domain as Log. Native mode: math.log2 / math.log10.
+        public static fProxy Log2(fProxy x)
+        {
+            if (UseNative) return math.log2(x);
+            return Log(x) * (fProxy)1.4426950408889634;
+        }
+        public static fProxy Log10(fProxy x)
+        {
+            if (UseNative) return math.log10(x);
+            return Log(x) * (fProxy)0.4342944819032518;
+        }
 
         // x^y for x > 0, via exp(y·log x). x = 0 gives 0 for y > 0, +inf for y < 0; x < 0 gives NaN.
-        // y = 0 gives 1 for ANY x (including 0^0 = 1), matching IEEE pow.
-        public static fProxy Pow(fProxy x, fProxy y) => math.select(Exp(y * Log(x)), (fProxy)1, y == (fProxy)0);
+        // y = 0 gives 1 for ANY x (including 0^0 = 1), matching IEEE pow. Native mode: math.pow.
+        public static fProxy Pow(fProxy x, fProxy y)
+        {
+            if (UseNative) return math.pow(x, y);
+            return math.select(Exp(y * Log(x)), (fProxy)1, y == (fProxy)0);
+        }
 
         // x^n for INTEGER n, via exponentiation by squaring (+ - * / only, deterministic). Exact
         // reduction order; handles negative x (sign follows the multiplies). n < 0 gives 1/x^|n|.
@@ -282,8 +310,10 @@ namespace LinearAlgebra
         }
 
         // sin(x). |x| beyond ~1e7 (float) / ~1e15 (double) loses reduction accuracy; +-inf/NaN -> NaN.
+        // Native mode: math.sin.
         public static fProxy Sin(fProxy x)
         {
+            if (UseNative) return math.sin(x);
             ReduceTrig(x, out fProxy r, out int quad);
             fProxy s = SinPoly(r);
             fProxy c = CosPoly(r);
@@ -293,9 +323,10 @@ namespace LinearAlgebra
             return TrigGuard(x, sign * baseS);
         }
 
-        // cos(x). Same range/edge behavior as Sin.
+        // cos(x). Same range/edge behavior as Sin. Native mode: math.cos.
         public static fProxy Cos(fProxy x)
         {
+            if (UseNative) return math.cos(x);
             ReduceTrig(x, out fProxy r, out int quad);
             fProxy s = SinPoly(r);
             fProxy c = CosPoly(r);
@@ -306,8 +337,10 @@ namespace LinearAlgebra
         }
 
         // sin and cos of x from ONE shared reduction (cheaper than Sin(x) + Cos(x)).
+        // Native mode: math.sin then math.cos (no shared-reduction fast path).
         public static void SinCos(fProxy x, out fProxy sinx, out fProxy cosx)
         {
+            if (UseNative) { sinx = math.sin(x); cosx = math.cos(x); return; }
             ReduceTrig(x, out fProxy r, out int quad);
             fProxy s = SinPoly(r);
             fProxy c = CosPoly(r);
@@ -321,11 +354,18 @@ namespace LinearAlgebra
         }
 
         // tan(x) = sin(x)/cos(x). Poles (odd multiples of pi/2) return +-inf/large per the divide.
-        public static fProxy Tan(fProxy x) { SinCos(x, out fProxy s, out fProxy c); return s / c; }
+        // Native mode: math.tan.
+        public static fProxy Tan(fProxy x)
+        {
+            if (UseNative) return math.tan(x);
+            SinCos(x, out fProxy s, out fProxy c);
+            return s / c;
+        }
 
-        // atan(x), any real x (total: +-inf -> +-pi/2, NaN -> NaN).
+        // atan(x), any real x (total: +-inf -> +-pi/2, NaN -> NaN). Native mode: math.atan.
         public static fProxy Atan(fProxy x)
         {
+            if (UseNative) return math.atan(x);
             //+skipFor[double]
             const float TAN_PI_8 = 0.41421356237309503f;
             const float PI_4 = 0.7853981633974483f;
@@ -369,9 +409,10 @@ namespace LinearAlgebra
         }
 
         // atan2(y, x): angle in (-pi, pi]. Branch-free quadrant fix-up; x = 0 (y != 0) folds via
-        // +-inf into Atan; the origin (0,0) returns 0.
+        // +-inf into Atan; the origin (0,0) returns 0. Native mode: math.atan2.
         public static fProxy Atan2(fProxy y, fProxy x)
         {
+            if (UseNative) return math.atan2(y, x);
             fProxy PI = (fProxy)3.141592653589793;
             fProxy a = Atan(y / x);
             a = math.select(a, a + PI, (x < (fProxy)0) & (y >= (fProxy)0));
@@ -380,9 +421,17 @@ namespace LinearAlgebra
             return a;
         }
 
-        // asin(x) / acos(x), |x| <= 1.
-        public static fProxy Asin(fProxy x) => Atan(x / math.sqrt((fProxy)1 - x * x));
-        public static fProxy Acos(fProxy x) => (fProxy)1.5707963267948966 - Asin(x);
+        // asin(x) / acos(x), |x| <= 1. Native mode: math.asin / math.acos.
+        public static fProxy Asin(fProxy x)
+        {
+            if (UseNative) return math.asin(x);
+            return Atan(x / math.sqrt((fProxy)1 - x * x));
+        }
+        public static fProxy Acos(fProxy x)
+        {
+            if (UseNative) return math.acos(x);
+            return (fProxy)1.5707963267948966 - Asin(x);
+        }
 
         // sinh and cosh from ONE exp + one reciprocal.
         public static void SinhCosh(fProxy x, out fProxy sh, out fProxy ch)
@@ -392,11 +441,14 @@ namespace LinearAlgebra
             sh = (e - er) * (fProxy)0.5;
             ch = (e + er) * (fProxy)0.5;
         }
-        public static fProxy Sinh(fProxy x) { SinhCosh(x, out fProxy sh, out fProxy ch); return sh; }
-        public static fProxy Cosh(fProxy x) { SinhCosh(x, out fProxy sh, out fProxy ch); return ch; }
+        // Native mode: math.sinh / math.cosh.
+        public static fProxy Sinh(fProxy x) { if (UseNative) return math.sinh(x); SinhCosh(x, out fProxy sh, out fProxy ch); return sh; }
+        public static fProxy Cosh(fProxy x) { if (UseNative) return math.cosh(x); SinhCosh(x, out fProxy sh, out fProxy ch); return ch; }
         // tanh(x) via e^{2|x|}; saturates to +-1 for large |x| (no inf/inf), odd. Total: NaN -> NaN.
+        // Native mode: math.tanh.
         public static fProxy Tanh(fProxy x)
         {
+            if (UseNative) return math.tanh(x);
             fProxy ax = math.abs(x);
             fProxy e = Exp((fProxy)2 * ax);                      // >= 1; overflows to +inf for large |x|
             fProxy t = (fProxy)1 - (fProxy)2 / (e + (fProxy)1);  // 2/(inf+1) = 0 -> t = 1 (no inf/inf)

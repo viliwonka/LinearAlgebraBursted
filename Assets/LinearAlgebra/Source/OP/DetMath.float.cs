@@ -18,6 +18,16 @@ namespace LinearAlgebra
     // Edge cases are total and branch-free (computed then masked, preserving auto-vectorization).
     public static partial class DetMath
     {
+        // Type-independent: defined once (skipped for the double fragment) and shared through the
+        // merged partial class, so both the float and double method bodies below can reference it.
+        
+#if LINALG_NATIVE_MATH
+        public const bool UseNative = true;
+#else
+        public const bool UseNative = false;
+#endif
+        
+
         // exp argument reduction: x = n·ln2 + r, |r| <= ln2/2, ln2 split hi/lo so n·hi is exact.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static void ExpReduce(float x, out float n, out float r)
@@ -59,9 +69,10 @@ namespace LinearAlgebra
             return y;
         }
 
-        // e^x. Total: overflow -> +inf, underflow -> 0, NaN -> NaN.
+        // e^x. Total: overflow -> +inf, underflow -> 0, NaN -> NaN. Native mode: math.exp.
         public static float Exp(float x)
         {
+            if (UseNative) return math.exp(x);
             ExpReduce(x, out float n, out float r);
             
             float p = 1.38368463709141461e-03f;
@@ -76,8 +87,12 @@ namespace LinearAlgebra
             return ExpGuard(x, Ldexp(p, n));
         }
 
-        // 2^x.
-        public static float Exp2(float x)  => Exp(x * (float)0.6931471805599453);
+        // 2^x. Native mode: math.exp2.
+        public static float Exp2(float x)
+        {
+            if (UseNative) return math.exp2(x);
+            return Exp(x * (float)0.6931471805599453);
+        }
         // 10^x.
         public static float Exp10(float x) => Exp(x * (float)2.302585092994046);
 
@@ -97,9 +112,10 @@ namespace LinearAlgebra
         }
 
         // Natural log. Total: log(0) = -inf, log(+inf) = +inf, x < 0 or NaN -> NaN. Subnormal inputs
-        // are scaled into the normal range first (branch-free).
+        // are scaled into the normal range first (branch-free). Native mode: math.log.
         public static float Log(float x)
         {
+            if (UseNative) return math.log(x);
             
             const float SQRT2 = 1.4142135623730951f;
             const float LN2_HI = 0.693115234375f;
@@ -126,13 +142,25 @@ namespace LinearAlgebra
             
         }
 
-        // log2(x) / log10(x). Same domain as Log.
-        public static float Log2(float x)  => Log(x) * (float)1.4426950408889634;
-        public static float Log10(float x) => Log(x) * (float)0.4342944819032518;
+        // log2(x) / log10(x). Same domain as Log. Native mode: math.log2 / math.log10.
+        public static float Log2(float x)
+        {
+            if (UseNative) return math.log2(x);
+            return Log(x) * (float)1.4426950408889634;
+        }
+        public static float Log10(float x)
+        {
+            if (UseNative) return math.log10(x);
+            return Log(x) * (float)0.4342944819032518;
+        }
 
         // x^y for x > 0, via exp(y·log x). x = 0 gives 0 for y > 0, +inf for y < 0; x < 0 gives NaN.
-        // y = 0 gives 1 for ANY x (including 0^0 = 1), matching IEEE pow.
-        public static float Pow(float x, float y) => math.select(Exp(y * Log(x)), (float)1, y == (float)0);
+        // y = 0 gives 1 for ANY x (including 0^0 = 1), matching IEEE pow. Native mode: math.pow.
+        public static float Pow(float x, float y)
+        {
+            if (UseNative) return math.pow(x, y);
+            return math.select(Exp(y * Log(x)), (float)1, y == (float)0);
+        }
 
         // x^n for INTEGER n, via exponentiation by squaring (+ - * / only, deterministic). Exact
         // reduction order; handles negative x (sign follows the multiplies). n < 0 gives 1/x^|n|.
@@ -212,8 +240,10 @@ namespace LinearAlgebra
         }
 
         // sin(x). |x| beyond ~1e7 (float) / ~1e15 (double) loses reduction accuracy; +-inf/NaN -> NaN.
+        // Native mode: math.sin.
         public static float Sin(float x)
         {
+            if (UseNative) return math.sin(x);
             ReduceTrig(x, out float r, out int quad);
             float s = SinPoly(r);
             float c = CosPoly(r);
@@ -223,9 +253,10 @@ namespace LinearAlgebra
             return TrigGuard(x, sign * baseS);
         }
 
-        // cos(x). Same range/edge behavior as Sin.
+        // cos(x). Same range/edge behavior as Sin. Native mode: math.cos.
         public static float Cos(float x)
         {
+            if (UseNative) return math.cos(x);
             ReduceTrig(x, out float r, out int quad);
             float s = SinPoly(r);
             float c = CosPoly(r);
@@ -236,8 +267,10 @@ namespace LinearAlgebra
         }
 
         // sin and cos of x from ONE shared reduction (cheaper than Sin(x) + Cos(x)).
+        // Native mode: math.sin then math.cos (no shared-reduction fast path).
         public static void SinCos(float x, out float sinx, out float cosx)
         {
+            if (UseNative) { sinx = math.sin(x); cosx = math.cos(x); return; }
             ReduceTrig(x, out float r, out int quad);
             float s = SinPoly(r);
             float c = CosPoly(r);
@@ -251,11 +284,18 @@ namespace LinearAlgebra
         }
 
         // tan(x) = sin(x)/cos(x). Poles (odd multiples of pi/2) return +-inf/large per the divide.
-        public static float Tan(float x) { SinCos(x, out float s, out float c); return s / c; }
+        // Native mode: math.tan.
+        public static float Tan(float x)
+        {
+            if (UseNative) return math.tan(x);
+            SinCos(x, out float s, out float c);
+            return s / c;
+        }
 
-        // atan(x), any real x (total: +-inf -> +-pi/2, NaN -> NaN).
+        // atan(x), any real x (total: +-inf -> +-pi/2, NaN -> NaN). Native mode: math.atan.
         public static float Atan(float x)
         {
+            if (UseNative) return math.atan(x);
             
             const float TAN_PI_8 = 0.41421356237309503f;
             const float PI_4 = 0.7853981633974483f;
@@ -283,9 +323,10 @@ namespace LinearAlgebra
         }
 
         // atan2(y, x): angle in (-pi, pi]. Branch-free quadrant fix-up; x = 0 (y != 0) folds via
-        // +-inf into Atan; the origin (0,0) returns 0.
+        // +-inf into Atan; the origin (0,0) returns 0. Native mode: math.atan2.
         public static float Atan2(float y, float x)
         {
+            if (UseNative) return math.atan2(y, x);
             float PI = (float)3.141592653589793;
             float a = Atan(y / x);
             a = math.select(a, a + PI, (x < (float)0) & (y >= (float)0));
@@ -294,9 +335,17 @@ namespace LinearAlgebra
             return a;
         }
 
-        // asin(x) / acos(x), |x| <= 1.
-        public static float Asin(float x) => Atan(x / math.sqrt((float)1 - x * x));
-        public static float Acos(float x) => (float)1.5707963267948966 - Asin(x);
+        // asin(x) / acos(x), |x| <= 1. Native mode: math.asin / math.acos.
+        public static float Asin(float x)
+        {
+            if (UseNative) return math.asin(x);
+            return Atan(x / math.sqrt((float)1 - x * x));
+        }
+        public static float Acos(float x)
+        {
+            if (UseNative) return math.acos(x);
+            return (float)1.5707963267948966 - Asin(x);
+        }
 
         // sinh and cosh from ONE exp + one reciprocal.
         public static void SinhCosh(float x, out float sh, out float ch)
@@ -306,11 +355,14 @@ namespace LinearAlgebra
             sh = (e - er) * (float)0.5;
             ch = (e + er) * (float)0.5;
         }
-        public static float Sinh(float x) { SinhCosh(x, out float sh, out float ch); return sh; }
-        public static float Cosh(float x) { SinhCosh(x, out float sh, out float ch); return ch; }
+        // Native mode: math.sinh / math.cosh.
+        public static float Sinh(float x) { if (UseNative) return math.sinh(x); SinhCosh(x, out float sh, out float ch); return sh; }
+        public static float Cosh(float x) { if (UseNative) return math.cosh(x); SinhCosh(x, out float sh, out float ch); return ch; }
         // tanh(x) via e^{2|x|}; saturates to +-1 for large |x| (no inf/inf), odd. Total: NaN -> NaN.
+        // Native mode: math.tanh.
         public static float Tanh(float x)
         {
+            if (UseNative) return math.tanh(x);
             float ax = math.abs(x);
             float e = Exp((float)2 * ax);                      // >= 1; overflows to +inf for large |x|
             float t = (float)1 - (float)2 / (e + (float)1);  // 2/(inf+1) = 0 -> t = 1 (no inf/inf)
