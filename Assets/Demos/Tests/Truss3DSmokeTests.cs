@@ -11,9 +11,9 @@ namespace LinearAlgebraDemos.Tests
     /// <summary>
     /// Headless smoke test for <see cref="Truss3DStabilityDemo"/>: assembles a small braced
     /// 2-story tower (3 levels x 4 corners, 3x3-block BSR, same node/member/penalty-BC assembly
-    /// pattern as <see cref="Truss3DStabilityDemo.Build"/>), runs <see cref="TrussEigenJob"/>
-    /// (from <see cref="TrussStabilityDemo"/>, block-size-generic) once, and checks the
-    /// eigenpairs it returns rather than trusting the solver's own self-reported residual.
+    /// pattern as <see cref="Truss3DStabilityDemo.Build"/>), runs <see cref="TrussEigenJobIC0"/>
+    /// (IC(0)-preconditioned LOBPCG) once, and checks the eigenpairs it returns rather than
+    /// trusting the solver's own self-reported residual.
     /// </summary>
     public class Truss3DSmokeTests
     {
@@ -73,11 +73,11 @@ namespace LinearAlgebraDemos.Tests
             var A = builder.ToBSRSymmetric(ref arena);
             builder.Dispose();
 
-            var precond = arena.floatBlockJacobi(in A);
+            var precond = arena.floatIC0(in A);
             var cache = arena.floatLOBPCGCache(n, K);
             var outStats = new NativeArray<float>(2, Allocator.TempJob);
 
-            var job = new TrussEigenJob
+            var job = new TrussEigenJobIC0
             {
                 Op = new floatBSROperator(in A), Precond = precond, Cache = cache,
                 Out = outStats, K = K,
@@ -114,7 +114,7 @@ namespace LinearAlgebraDemos.Tests
                 }
                 float resNorm = math.sqrt(resNorm2);
                 float aNorm = math.sqrt(aNorm2);
-                Assert.IsTrue(resNorm <= 1e-2f * math.max(aNorm, 1f),
+                Assert.IsTrue(resNorm <= 1e-3f * math.max(aNorm, 1f),
                     $"mode {i}: residual {resNorm} too large relative to ||A*phi|| = {aNorm}");
             }
 

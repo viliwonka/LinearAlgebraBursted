@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using LinearAlgebra;
 using LinearAlgebra.Sparse;
+using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
@@ -12,10 +13,12 @@ namespace LinearAlgebraDemos
     /// <summary>
     /// Structural stability of a parametric 3D lattice tower (square-section space frame,
     /// <see cref="stories"/> stories tall). The stiffness matrix is assembled into 3×3-block
-    /// symmetric BSR (lower-block storage, 3 dof/node); a Burst job runs block-Jacobi-
-    /// preconditioned LOBPCG for the 4 smallest eigenpairs every frame (warm-started from the
-    /// previous frame's cache, reusing <see cref="TrussEigenJob"/> from
-    /// <see cref="TrussStabilityDemo"/> unchanged). Toggle a story's diagonal face-bracing off
+    /// symmetric BSR (lower-block storage, 3 dof/node); a Burst job runs IC(0)-preconditioned
+    /// LOBPCG (<see cref="TrussEigenJobIC0"/>) for the 4 smallest eigenpairs every frame
+    /// (warm-started from the previous frame's cache). IC(0) captures the inter-story coupling
+    /// of the slender tower — block-Jacobi (the 2D house frame's preconditioner) sees only each
+    /// node's own diagonal block and cannot resolve the global sway/torsion mode that is the
+    /// softest eigenvector here. Toggle a story's diagonal face-bracing off
     /// and watch lambda1 collapse toward a shear/torsion mechanism at that story; the
     /// corresponding mode shape is animated on the frame.
     /// </summary>
@@ -43,7 +46,7 @@ namespace LinearAlgebraDemos
 
         Arena arena;
         floatBSR A;
-        floatBlockJacobi precond;
+        floatIC0 precond;
         floatLOBPCGCache cache;
         floatN lambda;      // arena-owned view of cache.lambda after solve
         floatMxN modes;     // arena-owned view of cache.X (K x N)
@@ -162,7 +165,7 @@ namespace LinearAlgebraDemos
 
             A = builder.ToBSRSymmetric(ref arena);
             builder.Dispose();
-            precond = arena.floatBlockJacobi(in A);
+            precond = arena.floatIC0(in A);
             cache = arena.floatLOBPCGCache(N, K);
 
             built = true;
@@ -181,10 +184,7 @@ namespace LinearAlgebraDemos
                 for (int i = 0; i < braceOn.Length; i++) dirty |= braceOn[i] != builtBraces[i];
             if (dirty) Build();
 
-            // TrussEigenJob is not specific to 2×2 blocks -- it only sees the BSR through
-            // floatBSROperator/floatBlockJacobi, both block-size-generic -- so the 3D tower
-            // reuses it unchanged instead of duplicating a near-identical job.
-            var job = new TrussEigenJob
+            var job = new TrussEigenJobIC0
             {
                 Op = new floatBSROperator(in A),
                 Precond = precond,
@@ -273,6 +273,27 @@ namespace LinearAlgebraDemos
             v = GUILayout.HorizontalSlider(v, lo, hi, GUILayout.Width(220));
             GUILayout.EndHorizontal();
             return v;
+        }
+    }
+
+    /// <summary>Warm LOBPCG smallest-k eigenpairs of the tower stiffness matrix with an IC(0)
+    /// preconditioner. IC(0) factors A's lower block pattern, so it carries the inter-story
+    /// coupling that resolves the tower's global sway/torsion mode — the softest eigenvector,
+    /// which the diagonal-only block-Jacobi of the 2D house frame cannot see.</summary>
+    [BurstCompile(CompileSynchronously = true)]
+    public struct TrussEigenJobIC0 : IJob
+    {
+        [ReadOnly] public floatBSROperator Op;
+        [ReadOnly] public floatIC0 Precond;
+        public floatLOBPCGCache Cache;
+        public NativeArray<float> Out;
+        public int K;
+
+        public void Execute()
+        {
+            LOBPCGInfo info = Eigen.lobpcg(in Op, in Precond, ref Cache, K);
+            Out[0] = info.iterations;
+            Out[1] = info ? 1f : 0f;
         }
     }
 }
