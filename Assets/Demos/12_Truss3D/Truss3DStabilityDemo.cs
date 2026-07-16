@@ -13,21 +13,25 @@ namespace LinearAlgebraDemos
     /// <summary>
     /// Structural stability of a parametric 3D lattice tower (square-section space frame,
     /// <see cref="stories"/> stories tall). The stiffness matrix is assembled into 3×3-block
-    /// symmetric BSR (lower-block storage, 3 dof/node); a Burst job runs IC(0)-preconditioned
-    /// LOBPCG (<see cref="TrussEigenJobIC0"/>) for the 4 smallest eigenpairs every frame
-    /// (warm-started from the previous frame's cache). IC(0) captures the inter-story coupling
-    /// of the slender tower — block-Jacobi (the 2D house frame's preconditioner) sees only each
-    /// node's own diagonal block and cannot resolve the global sway/torsion mode that is the
-    /// softest eigenvector here. Toggle a story's diagonal face-bracing off
-    /// and watch lambda1 collapse toward a shear/torsion mechanism at that story; the
-    /// corresponding mode shape is animated on the frame.
+    /// symmetric BSR (lower-block storage, 3 dof/node); a Burst job runs preconditioned LOBPCG
+    /// for the 4 smallest eigenpairs every frame (warm-started from the previous frame's cache).
+    /// The preconditioner is switchable at runtime (block-Jacobi / IC(0) / SSOR) and the cold
+    /// iteration count is displayed so their strength is directly comparable: on the slender
+    /// tower IC(0) and SSOR capture the inter-story coupling that resolves the global
+    /// sway/torsion mode — the softest eigenvector — while block-Jacobi sees only each node's own
+    /// diagonal block and needs several times as many iterations to reach it. Toggle a story's
+    /// diagonal face-bracing off and watch lambda1 collapse toward a shear/torsion mechanism at
+    /// that story; the corresponding mode shape is animated on the frame.
     /// </summary>
     public class Truss3DStabilityDemo : MonoBehaviour
     {
+        public enum Preconditioner { BlockJacobi, IC0, SSOR }
+
         [Range(1, 24)] public int stories = 8;
         [Range(0.5f, 20f)] public float stiffnessEA = 8f;
         [Range(0f, 0.5f)] public float modeAmplitude = 0.15f;
         [Range(0, 3)] public int shownMode;
+        public Preconditioner preconditioner = Preconditioner.IC0;
 
         const float FootprintWidth = 1f;
         const float StoryHeight = 1f;
@@ -46,7 +50,9 @@ namespace LinearAlgebraDemos
 
         Arena arena;
         floatBSR A;
-        floatIC0 precond;
+        floatBlockJacobi mJacobi;   // only the field matching builtPrecond is live each Build()
+        floatIC0 mIC0;
+        floatSSOR mSSOR;
         floatLOBPCGCache cache;
         floatN lambda;      // arena-owned view of cache.lambda after solve
         floatMxN modes;     // arena-owned view of cache.X (K x N)
@@ -54,7 +60,10 @@ namespace LinearAlgebraDemos
         float builtEA;
         int builtStories;
         bool[] builtBraces;
+        Preconditioner builtPrecond;
         NativeArray<float> outStats;   // [0] iterations, [1] converged
+        float coldIters;    // iteration count of the first (cold) solve after a rebuild
+        bool justBuilt;     // set by Build(), consumed by the next Update() to latch coldIters
         float frameMs;
         readonly Stopwatch sw = new Stopwatch();
         GUIStyle stabilityLabelStyle;   // lazily built once; only its textColor is mutated per frame
@@ -165,13 +174,21 @@ namespace LinearAlgebraDemos
 
             A = builder.ToBSRSymmetric(ref arena);
             builder.Dispose();
-            precond = arena.floatIC0(in A);
+
+            switch (preconditioner)
+            {
+                case Preconditioner.BlockJacobi: mJacobi = arena.floatBlockJacobi(in A); break;
+                case Preconditioner.SSOR:        mSSOR = new floatSSOR(in A, ref arena); break;
+                default:                         mIC0 = arena.floatIC0(in A); break;
+            }
             cache = arena.floatLOBPCGCache(N, K);
 
             built = true;
+            justBuilt = true;
             builtEA = stiffnessEA;
             builtStories = stories;
             builtBraces = (bool[])braceOn.Clone();
+            builtPrecond = preconditioner;
         }
 
         void Update()
@@ -179,26 +196,46 @@ namespace LinearAlgebraDemos
             if (stories != builtStories)
                 braceOn = NewBraceArray(stories, braceOn);
 
-            bool dirty = stories != builtStories || builtEA != stiffnessEA;
+            bool dirty = stories != builtStories || builtEA != stiffnessEA || preconditioner != builtPrecond;
             if (!dirty)
                 for (int i = 0; i < braceOn.Length; i++) dirty |= braceOn[i] != builtBraces[i];
             if (dirty) Build();
 
-            var job = new TrussEigenJobIC0
-            {
-                Op = new floatBSROperator(in A),
-                Precond = precond,
-                Cache = cache,
-                Out = outStats,
-                K = K,
-            };
-
+            var Op = new floatBSROperator(in A);
             sw.Restart();
-            IJobExtensions.RunByRef(ref job);
+            switch (builtPrecond)
+            {
+                case Preconditioner.BlockJacobi:
+                {
+                    var job = new TrussEigenJob { Op = Op, Precond = mJacobi, Cache = cache, Out = outStats, K = K };
+                    IJobExtensions.RunByRef(ref job);
+                    cache = job.Cache;
+                    break;
+                }
+                case Preconditioner.SSOR:
+                {
+                    var job = new TrussEigenJobSSOR { Op = Op, Precond = mSSOR, Cache = cache, Out = outStats, K = K };
+                    IJobExtensions.RunByRef(ref job);
+                    cache = job.Cache;
+                    break;
+                }
+                default:
+                {
+                    var job = new TrussEigenJobIC0 { Op = Op, Precond = mIC0, Cache = cache, Out = outStats, K = K };
+                    IJobExtensions.RunByRef(ref job);
+                    cache = job.Cache;
+                    break;
+                }
+            }
             sw.Stop();
             frameMs = (float)sw.Elapsed.TotalMilliseconds;
 
-            cache = job.Cache;
+            // The per-frame solve is warm (starts from the previous frame's eigenvectors), so its
+            // iteration count collapses to a handful at steady state. The cold count -- the solve
+            // on the frame right after a rebuild, when the cache is fresh -- is where the
+            // preconditioners visibly differ, so latch it for display.
+            if (justBuilt) { coldIters = outStats[0]; justBuilt = false; }
+
             lambda = cache.lambda;   // default until the first Update -> lambda.IsCreated gates readers
             modes = cache.X;
         }
@@ -236,9 +273,16 @@ namespace LinearAlgebraDemos
 
         void OnGUI()
         {
-            GUILayout.BeginArea(new Rect(10, 10, 460, 340), GUI.skin.box);
+            GUILayout.BeginArea(new Rect(10, 10, 460, 380), GUI.skin.box);
             GUILayout.Label($"3D truss tower — LOBPCG k={K} over {N}-dof BSR (3x3 blocks), {frameMs:F2} ms/frame");
-            GUILayout.Label($"iters: {outStats[0]:F0} (warm)   converged: {outStats[1] == 1f}");
+            GUILayout.Label($"iters: {coldIters:F0} cold / {outStats[0]:F0} warm   converged: {outStats[1] == 1f}");
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("precond:", GUILayout.Width(60));
+            foreach (Preconditioner p in System.Enum.GetValues(typeof(Preconditioner)))
+                if (GUILayout.Toggle(preconditioner == p, p.ToString(), GUI.skin.button) && preconditioner != p)
+                    preconditioner = p;
+            GUILayout.EndHorizontal();
             if (built && lambda.IsCreated)
             {
                 GUILayout.Label($"lambda = [{lambda[0]:F3}, {lambda[1]:F3}, {lambda[2]:F3}, {lambda[3]:F3}]");
@@ -285,6 +329,27 @@ namespace LinearAlgebraDemos
     {
         [ReadOnly] public floatBSROperator Op;
         [ReadOnly] public floatIC0 Precond;
+        public floatLOBPCGCache Cache;
+        public NativeArray<float> Out;
+        public int K;
+
+        public void Execute()
+        {
+            LOBPCGInfo info = Eigen.lobpcg(in Op, in Precond, ref Cache, K);
+            Out[0] = info.iterations;
+            Out[1] = info ? 1f : 0f;
+        }
+    }
+
+    /// <summary>Warm LOBPCG smallest-k eigenpairs of the tower stiffness matrix with an SSOR
+    /// preconditioner (omega=1, symmetric Gauss-Seidel). Like IC(0) it carries inter-story
+    /// coupling through its forward/backward sweeps, but as a stationary iteration rather than a
+    /// factorization it needs roughly twice IC(0)'s iterations on this pencil.</summary>
+    [BurstCompile(CompileSynchronously = true)]
+    public struct TrussEigenJobSSOR : IJob
+    {
+        [ReadOnly] public floatBSROperator Op;
+        public floatSSOR Precond;   // not [ReadOnly]: SSOR.Apply writes its internal sweep scratch
         public floatLOBPCGCache Cache;
         public NativeArray<float> Out;
         public int K;
