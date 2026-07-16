@@ -97,6 +97,17 @@ namespace LinearAlgebra
             RequireLOBPCGWorkspace(in ws, n, kWork);
             RequireDistinctBuffers(in ws);
 
+            // Entry-time buffer identities for X and P. UpdateActiveBlock ping-pongs ws.X<->ws.Xnext
+            // and ws.P<->ws.Pnext by STRUCT VALUE (O(1), no copy), so after an odd number of
+            // iterations the ws.X/ws.P FIELDS reference their Xnext/Pnext allocations. When lobpcg
+            // runs inside an IJob the job executes on a COPY of the cache: writes THROUGH the buffer
+            // pointers reach the caller, but the reseated FIELD does not -- the caller's cache.X would
+            // then point at the entry allocation holding a STALE (pre-final) iterate. RestoreBufferIdentity
+            // (before every return) copies the final data back and swaps the fields so X/P reference
+            // their entry allocations on return, making the postcondition job-copy-safe.
+            var xEntry = ws.X;
+            var pEntry = ws.P;
+
             // ---- seed X if all-zero, then orthonormalize unconditionally ----
             bool allZero = true;
             for (int i = 0; i < kWork && allZero; i++)
@@ -175,6 +186,8 @@ namespace LinearAlgebra
                     if (!math.isfinite(rnorm))
                     {
                         SortAscending(ref ws, kWork);
+                        RestoreBufferIdentity(ref ws.X, ref ws.Xnext, in xEntry, kWork, n);
+                        RestoreBufferIdentity(ref ws.P, ref ws.Pnext, in pEntry, kWork, n);
                         return new LOBPCGInfo { iterations = iter, converged = math.min(k, kWork - numActive), maxResidual = double.NaN, status = IterativeSolveStatus.Breakdown };
                     }
 
@@ -227,6 +240,8 @@ namespace LinearAlgebra
                 if (converged)
                 {
                     SortAscending(ref ws, kWork);
+                    RestoreBufferIdentity(ref ws.X, ref ws.Xnext, in xEntry, kWork, n);
+                    RestoreBufferIdentity(ref ws.P, ref ws.Pnext, in pEntry, kWork, n);
                     return new LOBPCGInfo { iterations = iter, converged = k, maxResidual = MaxRelResidual(in ws, k), status = IterativeSolveStatus.Converged };
                 }
 
@@ -356,6 +371,8 @@ namespace LinearAlgebra
             }
 
             SortAscending(ref ws, kWork);
+            RestoreBufferIdentity(ref ws.X, ref ws.Xnext, in xEntry, kWork, n);
+            RestoreBufferIdentity(ref ws.P, ref ws.Pnext, in pEntry, kWork, n);
             return new LOBPCGInfo { iterations = maxIter, converged = ConvergedWithinTol(in ws, k, tol), maxResidual = MaxRelResidual(in ws, k), status = IterativeSolveStatus.MaxIterations };
         }
 
@@ -757,6 +774,19 @@ namespace LinearAlgebra
             var t = a;
             a = b;
             b = t;
+        }
+
+        // Restores a ping-ponged block (cur/other = ws.X/ws.Xnext or ws.P/ws.Pnext) to reference the
+        // allocation it did on entry (`entry`), carrying the final data with it, so the postcondition
+        // survives an IJob's struct-copy of the cache (see the capture site in lobpcg). No-op when the
+        // parity never flipped; otherwise one O(rows*cols) copy at exit -- off the hot path.
+        static unsafe void RestoreBufferIdentity(ref fProxyMxN cur, ref fProxyMxN other, in fProxyMxN entry, int rows, int cols)
+        {
+            if (cur.Data.Ptr == entry.Data.Ptr) return;
+            for (int r = 0; r < rows; r++)
+                for (int c = 0; c < cols; c++)
+                    other[r, c] = cur[r, c];
+            SwapMat(ref cur, ref other);
         }
 
         // Cholesky-QR-orthonormalizes the first `rows` rows of V IN PLACE, carrying AV along via

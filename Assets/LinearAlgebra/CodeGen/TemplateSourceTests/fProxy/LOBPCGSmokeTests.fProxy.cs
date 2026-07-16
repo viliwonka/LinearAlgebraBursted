@@ -5,7 +5,9 @@ using LinearAlgebra.Gallery;
 using LinearAlgebra.Sparse;
 
 using NUnit.Framework;
+using Unity.Burst;
 using Unity.Collections;
+using Unity.Jobs;
 using Unity.Mathematics;
 
 // Smoke-test coverage for Eigen.lobpcg: analytic diagonal/Laplacian oracles, dense-vs-eigenSymmetric
@@ -610,5 +612,67 @@ public class fProxyLOBPCGSmokeTests
         }
 
         arena.Dispose();
+    }
+
+    // ======================================================================================
+    // BURST-JOB regression: LOBPCG run inside an IJob must leave the CORRECT eigenvectors in the
+    // cache. The per-iteration ping-pong (double-buffering) swaps the ws.X / ws.P FIELDS by value;
+    // an IJob executes on a COPY of the cache struct, so a reseated field is lost and the caller
+    // would read a stale buffer -- sorted eigenVALUES paired with UNSORTED eigenVECTORS. A
+    // degenerate spectrum (2D-Laplacian grid symmetry) makes the exit sort do real reordering,
+    // which is what exposes it. Every [Test] above runs on the MAIN THREAD (ref cache), where the
+    // field reseat propagates back, so none of them could catch this -- hence this dedicated job.
+    // ======================================================================================
+    [BurstCompile(CompileSynchronously = true)]
+    struct JobbedLobpcg : IJob
+    {
+        [ReadOnly] public fProxyBSR A;
+        [ReadOnly] public fProxyBlockJacobi M;
+        public fProxyLOBPCGCache Cache;
+        public int K;
+        public NativeArray<int> Converged;
+
+        public void Execute()
+        {
+            var info = Eigen.lobpcg(in A, in M, ref Cache, K, Consts.fProxySqrtEps, 1000);
+            Converged[0] = info.Solved ? 1 : 0;
+        }
+    }
+
+    [Test]
+    public void JobbedClusteredSpectrumLeavesCorrectVectorsInCache()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        int gx = 4, gy = 4, n = gx * gy, k = 4;
+        var A = arena.fProxyLaplacian2D(gx, gy);
+        var M = new fProxyBlockJacobi(in A, Allocator.Persistent);
+        var ws = arena.fProxyLOBPCGCache(n, k);
+        var converged = new NativeArray<int>(1, Allocator.TempJob);
+
+        var job = new JobbedLobpcg { A = A, M = M, Cache = ws, K = k, Converged = converged };
+        job.Run();   // .Run() executes on a COPY of the job struct -- the path that exposed the bug.
+
+        Assert.AreEqual(1, converged[0], "LOBPCG did not converge");
+
+        // Verify each eigenpair straight out of the CACHE via an independent spMV -- if the sorted
+        // lambda were paired with unsorted X, these residuals blow up (~1e-1) even though every
+        // individual X row is a valid eigenvector.
+        var phi = new fProxyN(n, Allocator.Temp);
+        var Aphi = new fProxyN(n, Allocator.Temp);
+        for (int i = 0; i < k; i++)
+        {
+            for (int c = 0; c < n; c++) phi[c] = ws.X[i, c];
+            BSR.spMV(in A, in phi, ref Aphi);
+            fProxy rn2 = (fProxy)0, an2 = (fProxy)0;
+            for (int c = 0; c < n; c++)
+            {
+                fProxy r = Aphi[c] - ws.lambda[i] * phi[c];
+                rn2 += r * r; an2 += Aphi[c] * Aphi[c];
+            }
+            fProxy rel = math.sqrt(rn2) / math.max(math.sqrt(an2), (fProxy)1);
+            Assert.Less((double)rel, 1e-2, $"eigenpair {i} (lambda={ws.lambda[i]}) residual {rel} too large -- cache.X holds stale/mispaired vectors");
+        }
+
+        phi.Dispose(); Aphi.Dispose(); converged.Dispose(); M.Dispose(); arena.Dispose();
     }
 }

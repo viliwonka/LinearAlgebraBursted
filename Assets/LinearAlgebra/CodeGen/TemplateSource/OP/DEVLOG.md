@@ -1,6 +1,31 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## LOBPCG: IJob cache-copy corrupted eigenvectors (ping-pong buffer reseat)
+- 2026-07-16 | Symptom: `Eigen.lobpcg` run inside an IJob returned correct eigenVALUES but
+  corrupted eigenVECTORS (relative residual ~1e-1) on clustered/near-degenerate spectra; the same
+  call on the main thread (`ref cache`) was exact. Presented as "Burst-only" and cost a long hunt —
+  I wrongly chased FloatMode, FloatPrecision, `[ReadOnly]`/NoAlias, OptimizeFor, an aliased `Deflate`
+  call, and a stale-`AX` theory, and even wrote (then reverted) a comment blaming Burst for mis-
+  sequencing `Swap.Rows`. All wrong. ROOT CAUSE (credit: fable consult): `UpdateActiveBlock` ends
+  each iteration with `SwapMat(ref ws.X, ref ws.Xnext)` — a struct-VALUE ping-pong (double buffering)
+  that reseats which allocation the `ws.X` FIELD names. An IJob executes on a COPY of the cache
+  struct: writes THROUGH the buffer pointers reach the caller, but the reseated FIELD does not, so
+  after an ODD iteration count the caller's `cache.X` still points at the entry buffer, which holds
+  the previous (pre-sort) iterate → sorted `lambda` paired with UNSORTED `X`. `lambda`/`residual`
+  are never ping-ponged so they always sort correctly; that asymmetry was the tell. It is NOT a
+  Burst bug (a plain Mono IJob reproduces it identically; the correct vectors sit in `cache.Xnext`).
+  Only surfaces when the exit sort does real reordering (locking on clustered spectra) AND parity is
+  odd. Fix: capture entry buffer identities (`xEntry`/`pEntry`), and before every return
+  `RestoreBufferIdentity` copies the final data back into the entry allocation and swaps the fields
+  so `ws.X`/`ws.P` reference their entry buffers on return — one O(k·n) copy at exit only when parity
+  flipped, zero hot-loop cost, ping-pong untouched. P is restored too (warm-start reuse reads it).
+  Why the suite missed it: every prior LOBPCG [Test] was a main-thread `ref` call and the benchmark
+  jobs only read `infoOut`; added `JobbedClusteredSpectrumLeavesCorrectVectorsInCache` (runs
+  `.Run()` on a 2D-Laplacian degenerate spectrum, checks `cache.X` residuals post-job — verified it
+  fails when the fix is neutered). Audited: this `SwapMat`-of-caller-visible-cache-field pattern
+  exists ONLY in LOBPCG.
+
 ## Riccati (public DARE primitive)
 - 2026-07-16 | Extracted the DARE engine out of the LQR facade into a new public
   `Riccati.dare(in A, in B, in Q, in R, ref S, maxIter)` (root `LinearAlgebra`, sibling of
