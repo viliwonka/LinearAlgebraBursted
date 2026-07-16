@@ -27,7 +27,7 @@ namespace LinearAlgebraDemos.Tests
                 Allocator.TempJob, out var A, out var B, out var Q, out var R);
 
             var K = new floatMxN(m, n, Allocator.TempJob);
-            LQRInfo info = LQR.lqr(in A, in B, in Q, in R, ref K);
+            RiccatiInfo info = LQR.lqr(in A, in B, in Q, in R, ref K);
             Assert.IsTrue(info, $"hover LQR did not converge: {info.status}");
 
             var BK = new floatMxN(n, n, Allocator.TempJob);
@@ -74,7 +74,7 @@ namespace LinearAlgebraDemos.Tests
                 Allocator.TempJob, out var A, out var B, out var Q, out var R);
 
             var K = new floatMxN(m, n, Allocator.TempJob);
-            LQRInfo info = LQR.lqr(in A, in B, in Q, in R, ref K);
+            RiccatiInfo info = LQR.lqr(in A, in B, in Q, in R, ref K);
             Assert.IsTrue(info, $"turret servo LQR did not converge: {info.status}");
 
             var BK = new floatMxN(n, n, Allocator.TempJob);

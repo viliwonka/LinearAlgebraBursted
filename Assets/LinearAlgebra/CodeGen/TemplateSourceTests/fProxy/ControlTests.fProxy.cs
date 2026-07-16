@@ -51,7 +51,7 @@ public class fProxyControlTests
                     var K = new fProxyMxN(1, 2, Allocator.Temp);
 
                     var info = LQR.lqr(in A, in B, in Q, in R, ref K);
-                    AssertTrue(info.status == LQRStatus.Converged);
+                    AssertTrue(info.status == RiccatiStatus.Converged);
 
                     // closed-loop stability: max |eig(A - B K)| < 1
                     var Acl = new fProxyMxN(2, 2, Allocator.Temp);
@@ -94,7 +94,7 @@ public class fProxyControlTests
 
                     var Kschedule = new fProxyMxN(1, 2, Allocator.Temp);
                     var info = LQR.lqrSchedule(in A, in B, in Q, in R, in Q, 1, ref Kschedule);
-                    AssertTrue(info.status == LQRStatus.Converged);
+                    AssertTrue(info.status == RiccatiStatus.Converged);
                     AssertEqInt(info.iterations, 1);
 
                     var QB = new fProxyMxN(2, 1, Allocator.Temp);
@@ -126,11 +126,11 @@ public class fProxyControlTests
 
                     var Kinf = new fProxyMxN(1, 2, Allocator.Temp);
                     var infoInf = LQR.lqr(in A, in B, in Q, in R, ref Kinf);
-                    AssertTrue(infoInf.status == LQRStatus.Converged);
+                    AssertTrue(infoInf.status == RiccatiStatus.Converged);
 
                     var Kschedule = new fProxyMxN(60, 2, Allocator.Temp);
                     var info = LQR.lqrSchedule(in A, in B, in Q, in R, in Q, 60, ref Kschedule);
-                    AssertTrue(info.status == LQRStatus.Converged);
+                    AssertTrue(info.status == RiccatiStatus.Converged);
 
                     for (int j = 0; j < 2; j++)
                         AssertClose(Kschedule[0, j], Kinf[0, j], (fProxy)1e-2);
@@ -153,12 +153,12 @@ public class fProxyControlTests
                     var state = new fProxyLQRState(2, Allocator.Temp);
                     var Kcold = new fProxyMxN(1, 2, Allocator.Temp);
                     var coldInfo = LQR.lqr(in A, in B, in Q, in R, ref Kcold, ref state);
-                    AssertTrue(coldInfo.status == LQRStatus.Converged);
+                    AssertTrue(coldInfo.status == RiccatiStatus.Converged);
                     AssertTrue(state.populated);
 
                     var Kwarm = new fProxyMxN(1, 2, Allocator.Temp);
                     var warmInfo = LQR.lqr(in A, in B, in Q, in R, ref Kwarm, ref state);
-                    AssertTrue(warmInfo.status == LQRStatus.Converged);
+                    AssertTrue(warmInfo.status == RiccatiStatus.Converged);
                     AssertLE(warmInfo.iterations, 5);
 
                     for (int j = 0; j < 2; j++)
@@ -182,7 +182,7 @@ public class fProxyControlTests
                     var K = new fProxyMxN(1, 2, Allocator.Temp);
 
                     var info = LQR.lqr(in A, in B, in Q, in R, ref K);
-                    AssertTrue(info.status == LQRStatus.Diverged);
+                    AssertTrue(info.status == RiccatiStatus.Diverged);
                     AssertLE(info.iterations, 50);
 
                     A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); K.Dispose();

@@ -22,15 +22,15 @@ namespace LinearAlgebra.Benchmarks
         public static readonly uint[] Seeds = { 11u, 22u, 33u, 44u, 55u, 66u, 77u, 88u };
 
         // `status` crosses the hand-written/template assembly boundary as a raw int -- same CS0012
-        // reason as LPBenchmarkFmt.InfeasRow's own doc comment (LQRStatus is defined in Control.Info.cs,
+        // reason as LPBenchmarkFmt.InfeasRow's own doc comment (RiccatiStatus is defined in Control.Info.cs,
         // a "singularFile" that's ALSO part of the TemplateSource firstpass compile, so the generated
-        // TemplateSourceBenchmarks firstpass compile has its own LOCAL LQRStatus, distinct from this
+        // TemplateSourceBenchmarks firstpass compile has its own LOCAL RiccatiStatus, distinct from this
         // hand-written assembly's).
-        public static string StatusName(LQRStatus s) => s switch
+        public static string StatusName(RiccatiStatus s) => s switch
         {
-            LQRStatus.Converged => "Converged",
-            LQRStatus.MaxIterations => "MaxIter",
-            LQRStatus.Diverged => "Diverged",
+            RiccatiStatus.Converged => "Converged",
+            RiccatiStatus.MaxIterations => "MaxIter",
+            RiccatiStatus.Diverged => "Diverged",
             _ => "Unknown",
         };
 
@@ -40,7 +40,7 @@ namespace LinearAlgebra.Benchmarks
         // med/min are PER-SOLVE (job time / reps).
         public static string Row(string dtype, string variant, int n, int m, int reps, Bench.Stat st, int iters, int status) =>
             string.Format(CultureInfo.InvariantCulture, "{0,-7} {1,-16} {2,4} {3,4} {4,5} {5,11:F4} {6,11:F4} {7,6} {8,10}",
-                dtype, variant, n, m, reps, st.Median / reps, st.Min / reps, iters, StatusName((LQRStatus)status));
+                dtype, variant, n, m, reps, st.Median / reps, st.Min / reps, iters, StatusName((RiccatiStatus)status));
     }
 
     // ================================================================================================

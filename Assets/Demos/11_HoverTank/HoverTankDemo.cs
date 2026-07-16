@@ -435,11 +435,11 @@ namespace LinearAlgebraDemos
             BuildHoverModel(Dt, QHeight, QHeightRate, QTilt, QTiltRate, RThrust, RTorque,
                 Allocator.Temp, out var A, out var B, out var Q, out var R);
 
-            LQRInfo info = LQR.lqr(in A, in B, in Q, in R, ref HoverK, ref HoverLqrState);
+            RiccatiInfo info = LQR.lqr(in A, in B, in Q, in R, ref HoverK, ref HoverLqrState);
             HoverOut[0] = info.iterations;
             HoverOut[1] = info ? 1f : 0f;
             HoverOut[2] = (float)info.residual;
-            HoverOut[3] = info.rankDeficientControl ? 1f : 0f;
+            HoverOut[3] = info.rankDeficient ? 1f : 0f;
             A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose();
 
             // u = -K x  ->  [vertical accel command, roll angular accel command, pitch angular accel command]
@@ -472,7 +472,7 @@ namespace LinearAlgebraDemos
 
             // ---- turret yaw servo: 2-state double integrator tracking DesiredYaw ----
             BuildServoModel(Dt, QYawAngle, QYawRate, RYawTorque, Allocator.Temp, out var Ay, out var By, out var Qy, out var Ry);
-            LQRInfo infoYaw = LQR.lqr(in Ay, in By, in Qy, in Ry, ref TurretK, ref TurretLqrState);
+            RiccatiInfo infoYaw = LQR.lqr(in Ay, in By, in Qy, in Ry, ref TurretK, ref TurretLqrState);
             TurretOut[0] = infoYaw ? 1f : 0f;
             Ay.Dispose(); By.Dispose(); Qy.Dispose(); Ry.Dispose();
 
@@ -484,7 +484,7 @@ namespace LinearAlgebraDemos
 
             // ---- barrel pitch servo: 2-state double integrator tracking DesiredPitch, hard-clamped ----
             BuildServoModel(Dt, QPitchAngle, QPitchRate, RPitchTorque, Allocator.Temp, out var Ap, out var Bp, out var Qp, out var Rp);
-            LQRInfo infoPitch = LQR.lqr(in Ap, in Bp, in Qp, in Rp, ref BarrelK, ref BarrelLqrState);
+            RiccatiInfo infoPitch = LQR.lqr(in Ap, in Bp, in Qp, in Rp, ref BarrelK, ref BarrelLqrState);
             BarrelOut[0] = infoPitch ? 1f : 0f;
             Ap.Dispose(); Bp.Dispose(); Qp.Dispose(); Rp.Dispose();
 

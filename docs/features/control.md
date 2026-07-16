@@ -20,10 +20,10 @@ algebraic Riccati equation (DARE).
 
 `Q`/`R` are assumed symmetric PSD (not numerically validated); the `(R + BᵀSB)` solve always routes
 through the rank-revealing `CHOP`, so a semidefinite `R` degrades to a usable minimum-norm `K`
-instead of failing outright — surfaced via `LQRInfo.rankDeficientControl` rather than hidden.
+instead of failing outright — surfaced via `LQRInfo.rankDeficient` rather than hidden.
 
-Returns `LQRInfo`: `iterations`, `residual` (relative Frobenius change at the last step),
-`status : LQRStatus` (`Converged`/`MaxIterations`/`Diverged`), `rankDeficientControl`. Implicit
+Returns `RiccatiInfo`: `iterations`, `residual` (relative Frobenius change at the last step),
+`status : RiccatiStatus` (`Converged`/`MaxIterations`/`Diverged`), `rankDeficient`. Implicit
 `bool` conversion (`== Converged`), so `if (Control.lqr(...))` reads as "did it converge". A
 `Diverged` result (blowup detected, or an inner factorization broke down — the system is not
 stabilizable/detectable, or the input is degenerate) always returns the last known-good iterate,

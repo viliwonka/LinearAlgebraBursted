@@ -196,7 +196,7 @@ public class doubleKalmanTests
 
             var Kss = new doubleMxN(2, 1, Allocator.Temp);
             var info = Kalman.steadyStateGain(in A, in H, in Q, in R, ref Kss);
-            AssertTrue(info.status == LQRStatus.Converged);
+            AssertTrue(info.status == RiccatiStatus.Converged);
 
             var Kcorrect = new doubleMxN(2, 1, Allocator.Temp);
             OracleGain(in A, in H, in Q, in R, 400, ref Kcorrect);   // correct orientation
@@ -230,7 +230,7 @@ public class doubleKalmanTests
 
             var Kss = new doubleMxN(2, 1, Allocator.Temp);
             var ssInfo = Kalman.steadyStateGain(in A, in H, in Q, in R, ref Kss);
-            AssertTrue(ssInfo.status == LQRStatus.Converged);
+            AssertTrue(ssInfo.status == RiccatiStatus.Converged);
 
             var gen = new doubleKFState(2, 1, Allocator.Temp);
             gen.x[0] = (double)0; gen.x[1] = (double)0;
@@ -405,17 +405,17 @@ public class doubleKalmanTests
             var Kkf = new doubleMxN(2, 1, Allocator.Temp);
             var info = LQR.lqg(in A, in B, in H, in Qlqr, in Rlqr, in Qkf, in Rkf, ref Klqr, ref Kkf);
 
-            AssertTrue(info.lqrInfo.status == LQRStatus.Converged);
-            AssertTrue(info.kfInfo.status == LQRStatus.Converged);
+            AssertTrue(info.lqrInfo.status == RiccatiStatus.Converged);
+            AssertTrue(info.kfInfo.status == RiccatiStatus.Converged);
             AssertTrue(info.Solved);
 
             var KlqrDirect = new doubleMxN(1, 2, Allocator.Temp);
             var lqrDirect = LQR.lqr(in A, in B, in Qlqr, in Rlqr, ref KlqrDirect);
-            AssertTrue(lqrDirect.status == LQRStatus.Converged);
+            AssertTrue(lqrDirect.status == RiccatiStatus.Converged);
 
             var KkfDirect = new doubleMxN(2, 1, Allocator.Temp);
             var kfDirect = Kalman.steadyStateGain(in A, in H, in Qkf, in Rkf, ref KkfDirect);
-            AssertTrue(kfDirect.status == LQRStatus.Converged);
+            AssertTrue(kfDirect.status == RiccatiStatus.Converged);
 
             for (int i = 0; i < 1; i++)
                 for (int j = 0; j < 2; j++)

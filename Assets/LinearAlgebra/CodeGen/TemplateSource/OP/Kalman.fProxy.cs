@@ -2,7 +2,6 @@ using System;
 
 using Unity.Collections;
 using Unity.Mathematics;
-using LinearAlgebra.Control;
 
 namespace LinearAlgebra
 {
@@ -23,7 +22,7 @@ namespace LinearAlgebra
     // LQR/KF DARE DUALITY: the filter's predicted-covariance DARE
     //     Σ = AΣAᵀ + Q - AΣHᵀ(HΣHᵀ+R)⁻¹HΣAᵀ
     // is exactly Control's LQR DARE S = Q + ÃᵀSÃ - ÃᵀSB̃(R+B̃ᵀSB̃)⁻¹B̃ᵀSÃ under Ã=Aᵀ, B̃=Hᵀ (S↔Σ) --
-    // i.e. Control.LQR.SDACore(Aᵀ, Hᵀ, Q, R, ...) IS this filter's steady-state Riccati solve. No second
+    // i.e. Riccati.dare(Aᵀ, Hᵀ, Q, R, ...) IS this filter's steady-state Riccati solve. No second
     // Riccati implementation exists in this file.
     // ================================================================================================
     public static partial class Kalman
@@ -38,7 +37,7 @@ namespace LinearAlgebra
             Blas.dot(in Aeff, in s.P, ref s.AP);
             Blas.dotSymT(in s.AP, in Aeff, ref s.APAt);   // (Aeff P)·Aeffᵀ, symmetric since P is
             s.APAt.addInPlace(Q);
-            Control.LQR.SymmetrizeInPlace(ref s.APAt);
+            Riccati.SymmetrizeInPlace(ref s.APAt);
             s.P.Data.CopyFrom(s.APAt.Data);
         }
 
@@ -91,7 +90,7 @@ namespace LinearAlgebra
                 Blas.dot(in KR, in Xt, ref s.AP);             // term2 = K R Kᵀ (Xt == Kᵀ), -> AP
 
                 s.APAt.addInPlace(s.AP);                      // APAt := term1 + term2
-                Control.LQR.SymmetrizeInPlace(ref s.APAt);
+                Riccati.SymmetrizeInPlace(ref s.APAt);
                 s.P.Data.CopyFrom(s.APAt.Data);
 
                 status = KFStatus.Ok;
@@ -193,7 +192,7 @@ namespace LinearAlgebra
         /// <summary>
         /// Steady-state Kalman gain Kss (n x m) via the LQR/KF DARE duality: solves the filter's
         /// predicted-covariance DARE Σ = AΣAᵀ + Q - AΣHᵀ(HΣHᵀ+R)⁻¹HΣAᵀ by reusing
-        /// <see cref="Control.LQR.SDACore"/> under Ã=Aᵀ, B̃=Hᵀ (S↔Σ), then extracts
+        /// <see cref="Riccati.dare"/> under Ã=Aᵀ, B̃=Hᵀ (S↔Σ), then extracts
         /// Kss = ΣHᵀ(HΣHᵀ+R)⁻¹ via CHOP on the transposed system (never an explicit inverse). Q/R are
         /// jointly rescaled to unit data-norm before the SDA solve and Σ is unscaled after -- Kss
         /// itself is exactly invariant to this, so results are unaffected by Q/R's absolute magnitude
@@ -206,9 +205,9 @@ namespace LinearAlgebra
         /// <param name="Q">Process noise covariance, n x n.</param>
         /// <param name="R">Measurement noise covariance, m x m.</param>
         /// <param name="Kss">Output steady-state gain, n x m (overwritten only if the solve does not
-        /// report <see cref="LQRStatus.Diverged"/>).</param>
+        /// report <see cref="RiccatiStatus.Diverged"/>).</param>
         /// <param name="maxIter">SDA doubling-step budget; &lt;=0 picks the library default.</param>
-        public static LQRInfo steadyStateGain(in fProxyMxN A, in fProxyMxN H, in fProxyMxN Q, in fProxyMxN R,
+        public static RiccatiInfo steadyStateGain(in fProxyMxN A, in fProxyMxN H, in fProxyMxN Q, in fProxyMxN R,
                                               ref fProxyMxN Kss, int maxIter = 0)
         {
             if (!A.IsSquare)
@@ -232,14 +231,14 @@ namespace LinearAlgebra
             // Scale Q/R by a common positive factor before the SDA solve. Kss is EXACTLY invariant
             // under jointly scaling Q and R by the same c (scaling both by c scales Sigma by c too,
             // leaving Sigma Hᵀ(H Sigma Hᵀ+R)⁻¹ unchanged -- the optimal gain only depends on the
-            // RELATIVE process/measurement noise magnitude). SDACore's own convergence test compares
+            // RELATIVE process/measurement noise magnitude). Riccati.dare's own convergence test compares
             // the absolute doubling step against max(1, ‖Hk‖), a floor tuned for LQR's typically-O(1)
             // cost matrices; Kalman process/measurement covariances are routinely << 1, which trips
             // that floor into a premature Converged read in float (one tiny absolute step against a
             // still-near-zero Hk satisfies the tolerance long before the recursion has actually
             // reached the fixed point). Rescaling so the problem's own data sits near unit scale
             // restores the floor's intended meaning; Sigma is unscaled back right after the solve.
-            double dataNorm = Control.LQR.FrobeniusNorm(in Q) + Control.LQR.FrobeniusNorm(in R);
+            double dataNorm = Riccati.FrobeniusNorm(in Q) + Riccati.FrobeniusNorm(in R);
             fProxy scale = (fProxy)(1.0 / math.max(dataNorm, (double)Consts.fProxyZeroThreshold));
             fProxy invScale = (fProxy)1 / scale;
 
@@ -251,11 +250,11 @@ namespace LinearAlgebra
             Rs.mulInPlace(scale);
 
             var Sigma = new fProxyMxN(n, n, Allocator.Temp);
-            var info = Control.LQR.SDACore(in At, in Ht, in Qs, in Rs, ref Sigma, maxIter);
+            var info = Riccati.dare(in At, in Ht, in Qs, in Rs, ref Sigma, maxIter);
             Sigma.mulInPlace(invScale);
             Qs.Dispose(); Rs.Dispose();
 
-            if (info.status != LQRStatus.Diverged)
+            if (info.status != RiccatiStatus.Diverged)
             {
                 var SigHt = new fProxyMxN(n, m, Allocator.Temp);
                 Blas.dot(in Sigma, in Ht, ref SigHt);
@@ -276,7 +275,7 @@ namespace LinearAlgebra
                 }
                 else
                 {
-                    info.status = LQRStatus.Diverged;
+                    info.status = RiccatiStatus.Diverged;
                 }
                 L.Dispose(); Piv.Dispose(); Smeas.Dispose(); SigHt.Dispose();
             }

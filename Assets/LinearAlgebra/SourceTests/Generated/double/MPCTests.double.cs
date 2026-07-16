@@ -91,7 +91,7 @@ public class doubleMPCTests
 
             var K = new doubleMxN(1, 2, Allocator.Temp);
             var lqrInfo = LQR.lqr(in A, in B, in Q, in R, ref K);
-            AssertTrue(lqrInfo.status == LQRStatus.Converged);
+            AssertTrue(lqrInfo.status == RiccatiStatus.Converged);
 
             var mpc = new doubleMPCState(2, 1, 8, Allocator.Temp, in A, in B, in Q, in R, in uLo, in uHi);
             var reference = new doubleN(2, Allocator.Temp);   // zero-initialized: track to the origin
@@ -344,7 +344,7 @@ public class doubleMPCTests
 
             var Kstab = new doubleMxN(1, 2, Allocator.Temp);
             var lqrInfo = LQR.lqr(in A, in B, in Q, in R, ref Kstab);
-            AssertTrue(lqrInfo.status == LQRStatus.Converged);
+            AssertTrue(lqrInfo.status == RiccatiStatus.Converged);
 
             var mpcPlain = new doubleMPCState(2, 1, 8, Allocator.Temp, in A, in B, in Q, in R, in uLo, in uHi);
             var mpcPrestab = new doubleMPCState(2, 1, 8, Allocator.Temp, in A, in B, in Q, in R, in uLo, in uHi,

@@ -14,22 +14,17 @@ namespace LinearAlgebra.Control
     // discrete algebraic Riccati equation (DARE)
     //     S = Q + AᵀSA - AᵀSB(R+BᵀSB)⁻¹BᵀSA,   K = (R+BᵀSB)⁻¹BᵀSA.
     //
-    // One shared Riccati-step kernel (RiccatiStep below) computes S⁻/K from a given S and is reused by
-    // every entry point: the finite-horizon schedule (backward recursion from Qf), the warm path (plain
-    // fixed-point iteration from a carried S), and the cold path's own finalization (SDA converges S,
-    // then one RiccatiStep call turns it into K). The m x m (R+BᵀSB) solve always uses CHOP so a
-    // semidefinite R degrades to a usable minimum-norm K instead of hard-failing like plain CHO.
+    // The DARE itself (the cold infinite-horizon S) is solved by Riccati.dare (structure-preserving
+    // doubling); this file is the control facade on top of it. One shared Riccati-step kernel
+    // (RiccatiStep below) turns a given S into the gain K = (R+BᵀSB)⁻¹BᵀSA and the next S iterate, and
+    // is reused by every entry point: the finite-horizon schedule (backward recursion from Qf), the warm
+    // path (plain fixed-point iteration from a carried S), and the cold path's finalization (Riccati.dare
+    // converges S, then one RiccatiStep call turns it into K). The m x m (R+BᵀSB) solve always uses CHOP
+    // so a semidefinite R degrades to a usable minimum-norm K instead of hard-failing like plain CHO.
     //
-    // Cold infinite-horizon solves use SDA (structure-preserving doubling), a port of Chiang-Fan-Lin
-    // Algorithm 2.1 specialized to the no-cross-term / nonsingular-R case. The (I+GH)/(I+HG) solves are
-    // NONSYMMETRIC n x n -> LU, not Cholesky. G0 = BR⁻¹Bᵀ is itself built via CHOP on R (not a bare
-    // inverse), so a semidefinite R degrades gracefully there too.
-    //
-    // Hygiene (all paths): every updated S/G/H is re-symmetrized ((M+Mᵀ)/2) before its norm/residual is
-    // read; a data-scaled blowup check or an inner LU/CHOP breakdown forces LQRStatus.Diverged -- fail
-    // fast, never hang, never hand back an exploded/NaN buffer (the last KNOWN-GOOD iterate is kept
-    // instead). Convergence is the relative Frobenius change ‖S_new-S_old‖_F / max(1,‖S_new‖_F) <=
-    // Consts.floatSqrtEps.
+    // Numerical hygiene (symmetrize / double-accumulate Frobenius convergence / data-scaled blowup guard)
+    // lives in Riccati and is shared verbatim by the warm recursion and the schedule here. Convergence is
+    // the relative Frobenius change ‖S_new-S_old‖_F / max(1,‖S_new‖_F) <= Consts.floatSqrtEps.
     //
     // float storage throughout; double is used only for local scalar control math, never stored back
     // into an float buffer. All scratch is Allocator.Temp (job-safe) except floatLQRState's own
@@ -68,59 +63,12 @@ namespace LinearAlgebra.Control
             }
         }
 
-        // ---- scalar control math (double locals only -- never stored back into float) ----
-
-        // internal (not private): reused by Kalman.float.cs's steadyStateGain to data-scale the
-        // filter DARE before handing it to SDACore (see that method's own comment for why).
-        internal static double FrobeniusNorm(in floatMxN M)
-        {
-            double s = 0;
-            unsafe
-            {
-                float* p = M.Data.Ptr;
-                int len = M.Data.Length;
-                for (int i = 0; i < len; i++) s += (double)p[i] * (double)p[i];
-            }
-            return math.sqrt(s);
-        }
-
-        static double FrobeniusNormDiff(in floatMxN A, in floatMxN B)
-        {
-            double s = 0;
-            unsafe
-            {
-                float* pa = A.Data.Ptr;
-                float* pb = B.Data.Ptr;
-                int len = A.Data.Length;
-                for (int i = 0; i < len; i++) { double d = (double)pa[i] - (double)pb[i]; s += d * d; }
-            }
-            return math.sqrt(s);
-        }
-
-        static double BlowupThreshold(in floatMxN Q, in floatMxN R) =>
-            BLOWUP_FACTOR * (1.0 + FrobeniusNorm(in Q) + FrobeniusNorm(in R));
-
-        // internal (not private): reused by Kalman.float.cs's PredictCovarianceCore/UpdateCore --
-        // the Joseph-form covariance update needs the exact same symmetrize-after-roundoff hygiene
-        // as every SDA/Riccati step here, so it is not reimplemented a second time.
-        internal static void SymmetrizeInPlace(ref floatMxN M)
-        {
-            int n = M.M_Rows;
-            for (int i = 0; i < n; i++)
-                for (int j = i + 1; j < n; j++)
-                {
-                    float avg = (M[i, j] + M[j, i]) / (float)2;
-                    M[i, j] = avg;
-                    M[j, i] = avg;
-                }
-        }
-
         // ---- shared Riccati step kernel ----
         // S⁻ = Q + AᵀSA - AᵀSB(R+BᵀSB)⁻¹BᵀSA,  K = (R+BᵀSB)⁻¹BᵀSA. The m x m solve is CHOP
         // unconditionally (see file header). On a hard CHOP failure (Indefinite -- R+BᵀSB is not even
         // PSD, only reachable from a numerically broken S) Snext/K are left UNTOUCHED (caller must
         // check .Solved before reading them); on RankDeficient the minimum-norm K/S⁻ are still
-        // produced, and the caller is responsible for surfacing rankDeficientControl.
+        // produced, and the caller is responsible for surfacing rankDeficient.
         internal static RankInfo RiccatiStep(in floatMxN A, in floatMxN B, in floatMxN Q, in floatMxN R,
                                              in floatMxN S, ref floatMxN Snext, ref floatMxN K)
         {
@@ -167,134 +115,20 @@ namespace LinearAlgebra.Control
             return rinfo;
         }
 
-        // ---- SDA: cold infinite-horizon DARE via structure-preserving doubling ----
-        // A0=A, G0=BR⁻¹Bᵀ (via CHOP on R -- graceful on semidefinite R), H0=Q. S is ALWAYS overwritten
-        // with the terminal Hk (a defined, bounded value -- H0=Q in the worst case), regardless of
-        // status, matching the house "last iterate is usable" convention. rankDeficientControl reflects
-        // R's OWN rank at the G0 setup (independent of S/B) -- the only path that can see a semidefinite
-        // R directly, since R+BᵀSB is generically full rank whenever B has full column rank, even for a
-        // rank-deficient R.
-        internal static LQRInfo SDACore(in floatMxN A, in floatMxN B, in floatMxN Q, in floatMxN R,
-                                        ref floatMxN S, int maxIter)
-        {
-            int n = A.M_Rows, m = B.N_Cols;
-
-            var Ak = new floatMxN(in A, Allocator.Temp);
-            var Gk = new floatMxN(n, n, Allocator.Temp);
-            var Hk = new floatMxN(in Q, Allocator.Temp);
-
-            bool rankDeficient = false;
-            LQRStatus status = LQRStatus.MaxIterations;
-            int iters = 0;
-            double residual = double.PositiveInfinity;
-
-            var RL = new floatMxN(m, m, Allocator.Temp);
-            var RP = new Pivot(m, Allocator.Temp);
-            RankInfo rRInfo = CHOP.decomp(in R, ref RL, ref RP);
-
-            if (!rRInfo.Solved)
-            {
-                status = LQRStatus.Diverged;   // R itself indefinite -- cannot even build G0
-            }
-            else
-            {
-                if (rRInfo.status == DirectSolveStatus.RankDeficient) rankDeficient = true;
-
-                var RinvBt = new floatMxN(m, n, Allocator.Temp);
-                Blas.trans(in B, ref RinvBt);
-                CHOP.decompSolve(ref RL, in RP, rRInfo.rank, ref RinvBt);   // RinvBt := R⁺ Bᵀ
-                Blas.dot(in B, in RinvBt, ref Gk);                         // G0 = B (R⁺Bᵀ)
-                RinvBt.Dispose();
-
-                double blowup = BlowupThreshold(in Q, in R);
-                double tol = (double)Consts.floatSqrtEps;
-                int budget = maxIter > 0 ? maxIter : SDA_MAX_ITER;
-
-                var GH = new floatMxN(n, n, Allocator.Temp);
-                var HG = new floatMxN(n, n, Allocator.Temp);
-                var X1 = new floatMxN(n, n, Allocator.Temp);
-                var X2 = new floatMxN(n, n, Allocator.Temp);
-                var X3 = new floatMxN(n, n, Allocator.Temp);
-                var AkNext = new floatMxN(n, n, Allocator.Temp);
-                var AG = new floatMxN(n, n, Allocator.Temp);
-                var GkNext = new floatMxN(n, n, Allocator.Temp);
-                var HkNext = new floatMxN(n, n, Allocator.Temp);
-                var P1 = new Pivot(n, Allocator.Temp);
-                var P2 = new Pivot(n, Allocator.Temp);
-
-                while (iters < budget)
-                {
-                    Blas.dot(in Gk, in Hk, ref GH);
-                    Blas.dot(in Hk, in Gk, ref HG);
-                    for (int i = 0; i < n; i++) { GH[i, i] += (float)1; HG[i, i] += (float)1; }
-
-                    var info1 = LU.decompInPlace(ref GH, ref P1);
-                    var info2 = LU.decompInPlace(ref HG, ref P2);
-                    if (!info1.Solved || !info2.Solved) { status = LQRStatus.Diverged; residual = double.PositiveInfinity; break; }
-
-                    X1.Data.CopyFrom(Ak.Data);
-                    LU.decompSolve(ref GH, in P1, ref X1);              // X1 = (I+GkHk)⁻¹Ak
-                    Blas.dot(in Ak, in X1, ref AkNext);                 // A_{k+1} = Ak X1
-
-                    Blas.trans(in Ak, ref X2);
-                    LU.decompSolve(ref HG, in P2, ref X2);              // X2 = (I+HkGk)⁻¹Akᵀ
-                    Blas.dot(in Ak, in Gk, ref AG);                     // AG = Ak Gk
-                    Blas.dot(in AG, in X2, ref GkNext);
-                    for (int i = 0; i < n; i++)
-                        for (int j = 0; j < n; j++)
-                            GkNext[i, j] += Gk[i, j];                   // G_{k+1} = Gk + AkGk(I+HkGk)⁻¹Akᵀ
-
-                    Blas.dot(in Hk, in Ak, ref X3);
-                    LU.decompSolve(ref HG, in P2, ref X3);              // X3 = (I+HkGk)⁻¹(HkAk), reuses HG/P2
-                    Blas.dotSym(in Ak, in X3, ref HkNext);              // Akᵀ X3, symmetric (SymmetrizeInPlace below)
-                    for (int i = 0; i < n; i++)
-                        for (int j = 0; j < n; j++)
-                            HkNext[i, j] += Hk[i, j];                   // H_{k+1} = Hk + Akᵀ(I+HkGk)⁻¹HkAk
-
-                    SymmetrizeInPlace(ref GkNext);
-                    SymmetrizeInPlace(ref HkNext);
-
-                    iters++;
-
-                    double newNorm = FrobeniusNorm(in HkNext);
-                    if (!(newNorm <= blowup)) { status = LQRStatus.Diverged; residual = double.PositiveInfinity; break; }
-
-                    double diffNorm = FrobeniusNormDiff(in HkNext, in Hk);
-                    residual = diffNorm / math.max(1.0, newNorm);
-
-                    Ak.Data.CopyFrom(AkNext.Data);
-                    Gk.Data.CopyFrom(GkNext.Data);
-                    Hk.Data.CopyFrom(HkNext.Data);
-
-                    if (residual <= tol) { status = LQRStatus.Converged; break; }
-                }
-
-                GH.Dispose(); HG.Dispose(); X1.Dispose(); X2.Dispose(); X3.Dispose();
-                AkNext.Dispose(); AG.Dispose(); GkNext.Dispose(); HkNext.Dispose();
-                P1.Dispose(); P2.Dispose();
-            }
-
-            S.Data.CopyFrom(Hk.Data);   // always a defined, bounded value (H0=Q at worst)
-
-            RL.Dispose(); RP.Dispose(); Ak.Dispose(); Gk.Dispose(); Hk.Dispose();
-
-            return new LQRInfo { iterations = iters, residual = residual, status = status, rankDeficientControl = rankDeficient };
-        }
-
-        // Cold solve: SDA for S, then ONE RiccatiStep call (the shared kernel) at the converged S to
+        // Cold solve: Riccati.dare for S, then ONE RiccatiStep call (the shared kernel) at the converged S to
         // produce K -- shared by the plain cold overload (lqr) and the warm-state overload's cold
         // fallback (lqr with a not-yet-populated floatLQRState).
-        static LQRInfo SolveCold(in floatMxN A, in floatMxN B, in floatMxN Q, in floatMxN R,
+        static RiccatiInfo SolveCold(in floatMxN A, in floatMxN B, in floatMxN Q, in floatMxN R,
                                  ref floatMxN K, ref floatMxN S, int maxIter)
         {
-            var info = SDACore(in A, in B, in Q, in R, ref S, maxIter);
+            var info = Riccati.dare(in A, in B, in Q, in R, ref S, maxIter);
 
             var Snext = new floatMxN(A.M_Rows, A.M_Rows, Allocator.Temp);
             var kinfo = RiccatiStep(in A, in B, in Q, in R, in S, ref Snext, ref K);
             if (kinfo.Solved)
-                info.rankDeficientControl |= kinfo.status == DirectSolveStatus.RankDeficient;
+                info.rankDeficient |= kinfo.status == DirectSolveStatus.RankDeficient;
             else
-                info.status = LQRStatus.Diverged;
+                info.status = RiccatiStatus.Diverged;
             Snext.Dispose();
 
             return info;
@@ -306,7 +140,7 @@ namespace LinearAlgebra.Control
         // SolveCold, so mid-recursion K's -- one step behind their own S -- never leak out).
         // Sresult is written whenever status != Diverged (last-iterate convention); untouched on
         // Diverged. internal (not private): exposed for direct testing with a large maxIter.
-        internal static LQRInfo RiccatiIterate(in floatMxN A, in floatMxN B, in floatMxN Q, in floatMxN R,
+        internal static RiccatiInfo RiccatiIterate(in floatMxN A, in floatMxN B, in floatMxN Q, in floatMxN R,
                                                in floatMxN S0, ref floatMxN Sresult, ref floatMxN K, int maxIter)
         {
             var Scur = new floatMxN(in S0, Allocator.Temp);
@@ -314,32 +148,32 @@ namespace LinearAlgebra.Control
             var Kscratch = new floatMxN(K.M_Rows, K.N_Cols, Allocator.Temp);
 
             double tol = (double)Consts.floatSqrtEps;
-            double blowup = BlowupThreshold(in Q, in R);
+            double blowup = Riccati.BlowupThreshold(in Q, in R);
             int budget = maxIter > 0 ? maxIter : WARM_MAX_ITER;
 
             int iters = 0;
-            LQRStatus status = LQRStatus.MaxIterations;
+            RiccatiStatus status = RiccatiStatus.MaxIterations;
             double residual = double.PositiveInfinity;
 
             while (iters < budget)
             {
                 var rinfo = RiccatiStep(in A, in B, in Q, in R, in Scur, ref Snext, ref Kscratch);
                 iters++;
-                if (!rinfo.Solved) { status = LQRStatus.Diverged; residual = double.PositiveInfinity; break; }
+                if (!rinfo.Solved) { status = RiccatiStatus.Diverged; residual = double.PositiveInfinity; break; }
 
-                SymmetrizeInPlace(ref Snext);
-                double newNorm = FrobeniusNorm(in Snext);
-                if (!(newNorm <= blowup)) { status = LQRStatus.Diverged; residual = double.PositiveInfinity; break; }
+                Riccati.SymmetrizeInPlace(ref Snext);
+                double newNorm = Riccati.FrobeniusNorm(in Snext);
+                if (!(newNorm <= blowup)) { status = RiccatiStatus.Diverged; residual = double.PositiveInfinity; break; }
 
-                double diffNorm = FrobeniusNormDiff(in Snext, in Scur);
+                double diffNorm = Riccati.FrobeniusNormDiff(in Snext, in Scur);
                 residual = diffNorm / math.max(1.0, newNorm);
                 Scur.Data.CopyFrom(Snext.Data);
 
-                if (residual <= tol) { status = LQRStatus.Converged; break; }
+                if (residual <= tol) { status = RiccatiStatus.Converged; break; }
             }
 
             bool rankDeficient = false;
-            if (status != LQRStatus.Diverged)
+            if (status != RiccatiStatus.Diverged)
             {
                 var kinfo = RiccatiStep(in A, in B, in Q, in R, in Scur, ref Snext, ref K);
                 if (kinfo.Solved)
@@ -349,13 +183,13 @@ namespace LinearAlgebra.Control
                 }
                 else
                 {
-                    status = LQRStatus.Diverged;
+                    status = RiccatiStatus.Diverged;
                 }
             }
 
             Scur.Dispose(); Snext.Dispose(); Kscratch.Dispose();
 
-            return new LQRInfo { iterations = iters, residual = residual, status = status, rankDeficientControl = rankDeficient };
+            return new RiccatiInfo { iterations = iters, residual = residual, status = status, rankDeficient = rankDeficient };
         }
 
         // ---- public entry points ----
@@ -375,7 +209,7 @@ namespace LinearAlgebra.Control
         /// only its diagonal's finiteness/non-negativity is checked).</param>
         /// <param name="K">Output feedback gain, m x n (overwritten).</param>
         /// <param name="maxIter">SDA doubling-step budget; &lt;=0 picks the library default (50).</param>
-        public static LQRInfo lqr(in floatMxN A, in floatMxN B, in floatMxN Q, in floatMxN R,
+        public static RiccatiInfo lqr(in floatMxN A, in floatMxN B, in floatMxN Q, in floatMxN R,
                                   ref floatMxN K, int maxIter = 0)
         {
             ValidateLQRDims(in A, in B, in Q, in R, "LQR.lqr", out int n, out int m);
@@ -396,7 +230,7 @@ namespace LinearAlgebra.Control
         /// Riccati recursion (not SDA) iterates from the carried S; a slightly-changed A/B typically
         /// converges in a handful of steps. Otherwise runs the same cold SDA solve as the plain
         /// overload. The terminal S is written back into <paramref name="state"/> (and
-        /// <c>populated</c> set true) ONLY on a <see cref="LQRStatus.Converged"/> exit, so a non-
+        /// <c>populated</c> set true) ONLY on a <see cref="RiccatiStatus.Converged"/> exit, so a non-
         /// converged call never corrupts a future warm seed.
         /// </summary>
         /// <param name="state">Must be constructed via <c>new floatLQRState(n, allocator)</c> before
@@ -404,7 +238,7 @@ namespace LinearAlgebra.Control
         /// throws.</param>
         /// <param name="maxIter">Iteration budget for whichever path runs (SDA if cold, the plain
         /// recursion if warm); &lt;=0 picks that path's own library default (50 cold / 500 warm).</param>
-        public static LQRInfo lqr(in floatMxN A, in floatMxN B, in floatMxN Q, in floatMxN R,
+        public static RiccatiInfo lqr(in floatMxN A, in floatMxN B, in floatMxN Q, in floatMxN R,
                                   ref floatMxN K, ref floatLQRState state, int maxIter = 0)
         {
             ValidateLQRDims(in A, in B, in Q, in R, "LQR.lqr", out int n, out int m);
@@ -416,12 +250,12 @@ namespace LinearAlgebra.Control
             if (!state.IsValid(n))
                 throw new ArgumentException("LQR.lqr: state dimensions do not match A");
 
-            LQRInfo info;
+            RiccatiInfo info;
             if (state.populated)
             {
                 var Snew = new floatMxN(n, n, Allocator.Temp);
                 info = RiccatiIterate(in A, in B, in Q, in R, in state.S, ref Snew, ref K, maxIter);
-                if (info.status == LQRStatus.Converged)
+                if (info.status == RiccatiStatus.Converged)
                     state.S.Data.CopyFrom(Snew.Data);
                 Snew.Dispose();
             }
@@ -429,12 +263,12 @@ namespace LinearAlgebra.Control
             {
                 var Scold = new floatMxN(n, n, Allocator.Temp);
                 info = SolveCold(in A, in B, in Q, in R, ref K, ref Scold, maxIter);
-                if (info.status == LQRStatus.Converged)
+                if (info.status == RiccatiStatus.Converged)
                     state.S.Data.CopyFrom(Scold.Data);
                 Scold.Dispose();
             }
 
-            if (info.status == LQRStatus.Converged)
+            if (info.status == RiccatiStatus.Converged)
                 state.populated = true;
 
             return info;
@@ -449,7 +283,7 @@ namespace LinearAlgebra.Control
         /// </summary>
         /// <param name="N">Horizon length, &gt;= 1.</param>
         /// <param name="Kschedule">Output, (N*m) x n (overwritten row-block by row-block).</param>
-        public static LQRInfo lqrSchedule(in floatMxN A, in floatMxN B, in floatMxN Q, in floatMxN R,
+        public static RiccatiInfo lqrSchedule(in floatMxN A, in floatMxN B, in floatMxN Q, in floatMxN R,
                                           in floatMxN Qf, int N, ref floatMxN Kschedule)
         {
             ValidateLQRDims(in A, in B, in Q, in R, "LQR.lqrSchedule", out int n, out int m);
@@ -464,9 +298,9 @@ namespace LinearAlgebra.Control
             var Snext = new floatMxN(n, n, Allocator.Temp);
             var Kstep = new floatMxN(m, n, Allocator.Temp);
 
-            double blowup = BlowupThreshold(in Q, in Qf);
+            double blowup = Riccati.BlowupThreshold(in Q, in Qf);
             bool rankDeficient = false;
-            LQRStatus status = LQRStatus.Converged;
+            RiccatiStatus status = RiccatiStatus.Converged;
             int steps = 0;
             double residual = double.PositiveInfinity;
 
@@ -474,25 +308,25 @@ namespace LinearAlgebra.Control
             {
                 var rinfo = RiccatiStep(in A, in B, in Q, in R, in Sk, ref Snext, ref Kstep);
                 steps++;
-                if (!rinfo.Solved) { status = LQRStatus.Diverged; residual = double.PositiveInfinity; break; }
+                if (!rinfo.Solved) { status = RiccatiStatus.Diverged; residual = double.PositiveInfinity; break; }
                 if (rinfo.status == DirectSolveStatus.RankDeficient) rankDeficient = true;
 
-                SymmetrizeInPlace(ref Snext);
-                double newNorm = FrobeniusNorm(in Snext);
-                if (!(newNorm <= blowup)) { status = LQRStatus.Diverged; residual = double.PositiveInfinity; break; }
+                Riccati.SymmetrizeInPlace(ref Snext);
+                double newNorm = Riccati.FrobeniusNorm(in Snext);
+                if (!(newNorm <= blowup)) { status = RiccatiStatus.Diverged; residual = double.PositiveInfinity; break; }
 
                 for (int r = 0; r < m; r++)
                     for (int c = 0; c < n; c++)
                         Kschedule[k * m + r, c] = Kstep[r, c];
 
-                residual = FrobeniusNormDiff(in Snext, in Sk) / math.max(1.0, newNorm);
+                residual = Riccati.FrobeniusNormDiff(in Snext, in Sk) / math.max(1.0, newNorm);
 
                 Sk.Data.CopyFrom(Snext.Data);
             }
 
             Sk.Dispose(); Snext.Dispose(); Kstep.Dispose();
 
-            return new LQRInfo { iterations = steps, residual = residual, status = status, rankDeficientControl = rankDeficient };
+            return new RiccatiInfo { iterations = steps, residual = residual, status = status, rankDeficient = rankDeficient };
         }
 
         /// <summary>
@@ -540,7 +374,7 @@ namespace LinearAlgebra.Control
         public floatMxN S;
 
         /// <summary>False on a freshly-constructed instance. <c>lqr(..., ref state)</c> sets this true
-        /// (and writes the terminal S) ONLY on a <see cref="LQRStatus.Converged"/> exit -- a non-
+        /// (and writes the terminal S) ONLY on a <see cref="RiccatiStatus.Converged"/> exit -- a non-
         /// converged call never corrupts a future warm seed.</summary>
         public bool populated;
 

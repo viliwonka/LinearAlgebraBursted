@@ -358,12 +358,12 @@ namespace LinearAlgebra.Control
 
             // ---- terminal cost + tail gain: LQR.lqr's own PUBLIC warm overload exposes the
             // converged Riccati solution directly (state.S), so no internal Control access is needed
-            // here (unlike Kalman.steadyStateGain, which reuses LQR.SDACore directly because no
+            // here (unlike Kalman.steadyStateGain, which reuses Riccati.dare directly because no
             // public entry point already produces what it needs). ----
             Kinf = new fProxyMxN(m, n, allocator);
             var lqrState = new fProxyLQRState(n, Allocator.Temp);
             var lqrInfo = LQR.lqr(in A, in B, in Q, in R, ref Kinf, ref lqrState);
-            if (lqrInfo.status != LQRStatus.Converged)
+            if (lqrInfo.status != RiccatiStatus.Converged)
             {
                 lqrState.Dispose(); Kinf.Dispose();
                 this.A.Dispose(); this.B.Dispose(); this.uLo.Dispose(); this.uHi.Dispose();
@@ -567,7 +567,7 @@ namespace LinearAlgebra.Control
                 for (int j = 0; j < nSlack; j++)
                     H[nu + j, nu + j] = (fProxy)2 * rho2;
             H_UU.Dispose();
-            LQR.SymmetrizeInPlace(ref H);   // roundoff hygiene, reusing LQR's own helper directly
+            Riccati.SymmetrizeInPlace(ref H);   // roundoff hygiene, reusing Riccati's own helper directly
 
             // ---- general rows: soft state rows, then (if prestabilized) input-bound rows ----
             Arows = new fProxyMxN(nGeneral, nz, allocator);

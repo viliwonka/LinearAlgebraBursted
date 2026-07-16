@@ -173,7 +173,7 @@ namespace LinearAlgebraDemos
             Q[0, 0] = QPos; Q[1, 1] = 1f; Q[2, 2] = QAngle; Q[3, 3] = 1f;
             R[0, 0] = RCost;
 
-            LQRInfo info = LQR.lqr(in A, in B, in Q, in R, ref K, ref LqrState);
+            RiccatiInfo info = LQR.lqr(in A, in B, in Q, in R, ref K, ref LqrState);
             Out[1] = info.iterations;
             Out[2] = info ? 1f : 0f;
             Out[3] = (float)info.residual;

@@ -174,7 +174,7 @@ namespace LinearAlgebraDemos
             Q[3, 3] = 1f; Q[4, 4] = 4f; Q[5, 5] = 4f;
             R[0, 0] = RCost;
 
-            LQRInfo info = LQR.lqr(in A, in B, in Q, in R, ref K, ref LqrState);
+            RiccatiInfo info = LQR.lqr(in A, in B, in Q, in R, ref K, ref LqrState);
             Out[1] = info.iterations;
             Out[2] = info ? 1f : 0f;
 

@@ -1,6 +1,25 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Riccati (public DARE primitive)
+- 2026-07-16 | Extracted the DARE engine out of the LQR facade into a new public
+  `Riccati.dare(in A, in B, in Q, in R, ref S, maxIter)` (root `LinearAlgebra`, sibling of
+  Eigen/SVD/Krylov). Was `Control.LQR.SDACore` (internal); LQR (control) and Kalman.steadyStateGain
+  (estimation, via the Aᵀ/Hᵀ duality) BOTH consume it, so it belonged in a neutral primitive both
+  depend DOWN onto -- this deletes the Kalman->Control.LQR reach entirely (Kalman lost its
+  `using LinearAlgebra.Control;`). The shared hygiene kernels moved with it (Riccati.SymmetrizeInPlace,
+  Riccati.FrobeniusNorm/FrobeniusNormDiff -- double-accumulate, deliberately NOT Norms.L2 which sums in
+  fProxy -- Riccati.BlowupThreshold; consts SDA_MAX_ITER/BLOWUP_FACTOR now on Riccati.Info.cs). LQR
+  keeps its control-specific mechanics (RiccatiStep = S->K gain kernel, RiccatiIterate warm recursion,
+  lqr/lqrSchedule/lqg, fProxyLQRState, WARM_MAX_ITER) and calls Riccati.* for the shared bits; MPC's QP
+  Hessian symmetrize now calls Riccati.SymmetrizeInPlace too.
+- 2026-07-16 | DEDUP: `LQRInfo`/`LQRStatus`/`LQRStatusExtensions` DELETED, replaced everywhere by
+  `RiccatiInfo`/`RiccatiStatus` (identical fields; the DARE result is the DARE result whether used for
+  control or estimation). `rankDeficientControl` -> `rankDeficient` (generic: for the Kalman dual it is
+  measurement-space, not "control"). LQR.lqr/lqrSchedule/lqg and Kalman.steadyStateGain now return
+  RiccatiInfo; LQGInfo bundles two RiccatiInfo. Supersedes the "Control.LQR.SDACore" reach noted in the
+  namespace entry below (same day).
+
 ## Control namespace (LQR / MPC)
 - 2026-07-16 | Moved the control API out of `namespace LinearAlgebra` into a dedicated
   `namespace LinearAlgebra.Control` and renamed the LQR facade class `Control` -> `LQR` (the old

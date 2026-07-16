@@ -14,8 +14,8 @@ namespace LinearAlgebra
     /// <see cref="Kalman.updateFixed"/> need -- all pre-allocated here so those calls never touch
     /// <c>Allocator.Temp</c>. The general <see cref="Kalman.update"/> / <see cref="Kalman.ekfUpdate{TMeas}"/>
     /// path DOES allocate small <c>Allocator.Temp</c> scratch per call, sized to that call's own
-    /// measurement dimension -- the same convention <see cref="Control.LQR.RiccatiStep"/> uses for its
-    /// R+BᵀSB solve (arbitrary per-call shape, not worth pre-allocating for every possible size).
+    /// measurement dimension -- the same per-call-shape convention <see cref="Riccati.dare"/> and the
+    /// LQR gain kernel use for their inner solves (not worth pre-allocating for every possible size).
     /// </summary>
     public struct doubleKFState
     {

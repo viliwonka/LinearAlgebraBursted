@@ -1,0 +1,200 @@
+using System;
+
+using LinearAlgebra;
+
+using NUnit.Framework;
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Jobs;
+using Unity.Mathematics;
+
+// Direct tests for the public Riccati.dare DARE primitive (the shared engine LQR.lqr and
+// Kalman.steadyStateGain build on). The exhaustive DARE-vs-literature and property battery lives in
+// ControlLQRTests (via the LQR facade); this file pins the public entry point itself: a scalar
+// closed-form solution, an independent DARE residual on a 2x2 instance (m=1, so the R+BᵀSB solve is a
+// scalar division -- no CHOP needed to replicate), determinism, and argument-validation throws.
+// Templated (fProxy) so codegen emits a float and a double build; every numeric assertion routes
+// through Fail[0..3] like the control smoke file.
+public class fProxyRiccatiTests
+{
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct TestJob : IJob
+    {
+        public enum TestType
+        {
+            ScalarGoldenRatio,       // A=B=Q=R=[1] -> S solves s^2-s-1=0 -> golden ratio (1+sqrt5)/2
+            ResidualDoubleIntegrator,// S satisfies S = Q + AᵀSA - AᵀSB(R+BᵀSB)⁻¹BᵀSA to tolerance
+            Determinism,             // two back-to-back dares on the same instance -> bit-identical S
+        }
+
+        public TestType Type;
+        public NativeArray<fProxy> Fail;   // [0]=flag [1]=got [2]=expected/limit [3]=diff/extra
+
+        public void Execute()
+        {
+            switch (Type)
+            {
+                case TestType.ScalarGoldenRatio:
+                {
+                    var A = One(); var B = One(); var Q = One(); var R = One();
+                    var S = new fProxyMxN(1, 1, Allocator.Temp);
+
+                    var info = Riccati.dare(in A, in B, in Q, in R, ref S);
+                    AssertTrue(info.status == RiccatiStatus.Converged);
+                    AssertTrue(!info.rankDeficient);
+                    AssertClose(S[0, 0], (fProxy)1.6180339887498949, (fProxy)3e-3);   // (1+sqrt5)/2
+
+                    A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); S.Dispose();
+                    break;
+                }
+
+                case TestType.ResidualDoubleIntegrator:
+                {
+                    var A = new fProxyMxN(2, 2, Allocator.Temp);
+                    A[0, 0] = (fProxy)1; A[0, 1] = (fProxy)1; A[1, 0] = (fProxy)0; A[1, 1] = (fProxy)1;
+                    var B = new fProxyMxN(2, 1, Allocator.Temp);
+                    B[0, 0] = (fProxy)0; B[1, 0] = (fProxy)1;
+                    var Q = new fProxyMxN(2, 2, Allocator.Temp);
+                    Q[0, 0] = (fProxy)1; Q[1, 1] = (fProxy)1;
+                    var R = new fProxyMxN(1, 1, Allocator.Temp);
+                    R[0, 0] = (fProxy)1;
+                    var S = new fProxyMxN(2, 2, Allocator.Temp);
+
+                    var info = Riccati.dare(in A, in B, in Q, in R, ref S);
+                    AssertTrue(info.status == RiccatiStatus.Converged);
+
+                    // Recompute the RHS Q + AᵀSA - AᵀSB(R+BᵀSB)⁻¹BᵀSA via public Blas (m=1: the inner
+                    // solve is a scalar 1/(R+BᵀSB)) and assert S equals it componentwise.
+                    var SA = new fProxyMxN(2, 2, Allocator.Temp);
+                    Blas.dot(in S, in A, ref SA);                              // SA = S A
+                    var AtSA = new fProxyMxN(2, 2, Allocator.Temp);
+                    Blas.dot(in A, in SA, ref AtSA, transposeA: true);         // AᵀSA
+                    var SB = new fProxyMxN(2, 1, Allocator.Temp);
+                    Blas.dot(in S, in B, ref SB);                              // SB = S B
+                    var BtSB = new fProxyMxN(1, 1, Allocator.Temp);
+                    Blas.dot(in B, in SB, ref BtSB, transposeA: true);         // BᵀSB (scalar)
+                    fProxy Rbar = R[0, 0] + BtSB[0, 0];
+                    var AtSB = new fProxyMxN(2, 1, Allocator.Temp);
+                    Blas.dot(in A, in SB, ref AtSB, transposeA: true);         // AᵀSB (2x1); BᵀSA = (AᵀSB)ᵀ
+
+                    for (int i = 0; i < 2; i++)
+                        for (int j = 0; j < 2; j++)
+                        {
+                            fProxy rhs = Q[i, j] + AtSA[i, j] - AtSB[i, 0] * AtSB[j, 0] / Rbar;
+                            AssertClose(S[i, j], rhs, (fProxy)3e-3);
+                        }
+
+                    SA.Dispose(); AtSA.Dispose(); SB.Dispose(); BtSB.Dispose(); AtSB.Dispose();
+                    A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); S.Dispose();
+                    break;
+                }
+
+                case TestType.Determinism:
+                {
+                    var A = new fProxyMxN(2, 2, Allocator.Temp);
+                    A[0, 0] = (fProxy)1; A[0, 1] = (fProxy)1; A[1, 0] = (fProxy)0; A[1, 1] = (fProxy)1;
+                    var B = new fProxyMxN(2, 1, Allocator.Temp);
+                    B[0, 0] = (fProxy)0; B[1, 0] = (fProxy)1;
+                    var Q = new fProxyMxN(2, 2, Allocator.Temp);
+                    Q[0, 0] = (fProxy)1; Q[1, 1] = (fProxy)1;
+                    var R = new fProxyMxN(1, 1, Allocator.Temp);
+                    R[0, 0] = (fProxy)1;
+
+                    var S1 = new fProxyMxN(2, 2, Allocator.Temp);
+                    var i1 = Riccati.dare(in A, in B, in Q, in R, ref S1);
+                    var S2 = new fProxyMxN(2, 2, Allocator.Temp);
+                    var i2 = Riccati.dare(in A, in B, in Q, in R, ref S2);
+
+                    AssertEqInt(i1.iterations, i2.iterations);
+                    for (int i = 0; i < 2; i++)
+                        for (int j = 0; j < 2; j++)
+                            AssertClose(S1[i, j], S2[i, j], (fProxy)0);
+
+                    A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); S1.Dispose(); S2.Dispose();
+                    break;
+                }
+            }
+        }
+
+        static fProxyMxN One()
+        {
+            var M = new fProxyMxN(1, 1, Allocator.Temp);
+            M[0, 0] = (fProxy)1;
+            return M;
+        }
+
+        void AssertTrue(bool cond)
+        {
+            if (!cond && Fail[0] == (fProxy)0) { Fail[0] = (fProxy)1; Fail[1] = (fProxy)0; Fail[2] = (fProxy)1; Fail[3] = (fProxy)0; }
+            Assert.IsTrue(cond);
+        }
+
+        void AssertEqInt(int got, int expected)
+        {
+            if (got != expected && Fail[0] == (fProxy)0) { Fail[0] = (fProxy)1; Fail[1] = (fProxy)got; Fail[2] = (fProxy)expected; Fail[3] = (fProxy)(got - expected); }
+            Assert.IsTrue(got == expected);
+        }
+
+        void AssertClose(fProxy a, fProxy b, fProxy precision)
+        {
+            fProxy diff = math.abs(a - b);
+            if (!(diff <= precision) && Fail[0] == (fProxy)0) { Fail[0] = (fProxy)1; Fail[1] = a; Fail[2] = b; Fail[3] = diff; }
+            Assert.IsTrue(diff <= precision);
+        }
+    }
+
+    public static Array GetEnums() => Enum.GetValues(typeof(TestJob.TestType));
+
+    [TestCaseSource("GetEnums")]
+    public void RiccatiTests(TestJob.TestType type)
+    {
+        var fail = new NativeArray<fProxy>(4, Allocator.TempJob);
+        try
+        {
+            new TestJob() { Type = type, Fail = fail }.Run();
+            if (fail[0] != (fProxy)0)
+                Assert.Fail($"got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]}");
+        }
+        catch (Exception e)
+        {
+            if (fail[0] != (fProxy)0)
+                Assert.Fail($"{type}: got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]} ({e.Message})");
+            throw;
+        }
+        finally
+        {
+            fail.Dispose();
+        }
+    }
+
+    // ---- managed-thread argument-validation throws ----
+
+    [Test]
+    public void DareThrowsOnBadDimsOrNegativeR()
+    {
+        var A = new fProxyMxN(2, 2, Allocator.Temp);
+        A[0, 0] = (fProxy)1; A[0, 1] = (fProxy)1; A[1, 0] = (fProxy)0; A[1, 1] = (fProxy)1;
+        var B = new fProxyMxN(2, 1, Allocator.Temp);
+        B[1, 0] = (fProxy)1;
+        var Q = new fProxyMxN(2, 2, Allocator.Temp); Q[0, 0] = (fProxy)1; Q[1, 1] = (fProxy)1;
+        var R = new fProxyMxN(1, 1, Allocator.Temp); R[0, 0] = (fProxy)1;
+        var S = new fProxyMxN(2, 2, Allocator.Temp);
+
+        var Abad = new fProxyMxN(2, 3, Allocator.Temp);
+        Assert.Catch<ArgumentException>(() => Riccati.dare(in Abad, in B, in Q, in R, ref S));
+        var Bbad = new fProxyMxN(3, 1, Allocator.Temp);
+        Assert.Catch<ArgumentException>(() => Riccati.dare(in A, in Bbad, in Q, in R, ref S));
+        var Qbad = new fProxyMxN(3, 3, Allocator.Temp);
+        Assert.Catch<ArgumentException>(() => Riccati.dare(in A, in B, in Qbad, in R, ref S));
+        var Rbad = new fProxyMxN(2, 2, Allocator.Temp);
+        Assert.Catch<ArgumentException>(() => Riccati.dare(in A, in B, in Q, in Rbad, ref S));
+        var Sbad = new fProxyMxN(3, 3, Allocator.Temp);
+        Assert.Catch<ArgumentException>(() => Riccati.dare(in A, in B, in Q, in R, ref Sbad));
+
+        var Rneg = new fProxyMxN(1, 1, Allocator.Temp); Rneg[0, 0] = (fProxy)(-1);
+        Assert.Catch<ArgumentException>(() => Riccati.dare(in A, in B, in Q, in Rneg, ref S));
+
+        A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); S.Dispose();
+        Abad.Dispose(); Bbad.Dispose(); Qbad.Dispose(); Rbad.Dispose(); Sbad.Dispose(); Rneg.Dispose();
+    }
+}

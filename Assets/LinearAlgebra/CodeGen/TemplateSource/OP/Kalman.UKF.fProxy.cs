@@ -140,7 +140,7 @@ namespace LinearAlgebra
             }
             Blas.dotSym(in cache.X, in cache.Y, ref cache.Pacc);
             cache.Pacc.addInPlace(Q);
-            Control.LQR.SymmetrizeInPlace(ref cache.Pacc);
+            Riccati.SymmetrizeInPlace(ref cache.Pacc);
 
             s.x.Data.CopyFrom(cache.xPred.Data);
             s.P.Data.CopyFrom(cache.Pacc.Data);
@@ -217,7 +217,7 @@ namespace LinearAlgebra
             Blas.dot(in cache.X, in WdZ, ref Pxz, transposeA: true);
             WdZ.Dispose();
             Pzz.addInPlace(R);
-            Control.LQR.SymmetrizeInPlace(ref Pzz);
+            Riccati.SymmetrizeInPlace(ref Pzz);
 
             var y = new fProxyN(m, Allocator.Temp);
             y.Data.CopyFrom(z.Data);
@@ -243,7 +243,7 @@ namespace LinearAlgebra
                 var PxzK = new fProxyMxN(n, n, Allocator.Temp);
                 Blas.dot(in Pxz, in Pxzt, ref PxzK);   // Pxz * Kᵀ (Pxzt == Kᵀ)
                 s.P.subInPlace(PxzK);
-                Control.LQR.SymmetrizeInPlace(ref s.P);
+                Riccati.SymmetrizeInPlace(ref s.P);
 
                 status = KFStatus.Ok;
 

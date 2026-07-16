@@ -7,7 +7,7 @@ namespace LinearAlgebra
     /// Terminal state of a <see cref="Kalman.update"/> / <see cref="Kalman.ekfUpdate{TMeas}"/> call,
     /// carried by <see cref="KFInfo"/>. Type-agnostic (no fProxy) on purpose -- lives in a non-
     /// templated file so codegen does not emit a duplicate definition into both the float and double
-    /// partials (CS0102), exactly like <see cref="Control.LQRStatus"/>.
+    /// partials (CS0102), exactly like <see cref="RiccatiStatus"/>.
     /// </summary>
     public enum KFStatus
     {

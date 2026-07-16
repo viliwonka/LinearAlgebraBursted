@@ -97,7 +97,7 @@ public class doubleControlLQRTests
             var state = new doubleLQRState(2, Allocator.Temp);
 
             var info = LQR.lqr(in A, in B, in Q, in R, ref K, ref state);   // warm overload -> state.S = S
-            AssertTrue(info.status == LQRStatus.Converged);
+            AssertTrue(info.status == RiccatiStatus.Converged);
 
             AssertClose(K[0, 0], (double)0.42208244, LitKTol());
             AssertClose(K[0, 1], (double)1.24392885, LitKTol());
@@ -124,7 +124,7 @@ public class doubleControlLQRTests
             var state = new doubleLQRState(1, Allocator.Temp);
 
             var info = LQR.lqr(in A, in B, in Q, in R, ref K, ref state);
-            AssertTrue(info.status == LQRStatus.Converged);
+            AssertTrue(info.status == RiccatiStatus.Converged);
             AssertClose(K[0, 0], kExact, LitKTol());
             AssertClose(state.S[0, 0], sExact, (double)5e-2);
             AssertLess(ClosedLoopSpecRad(in A, in B, in K), (double)1);
@@ -154,7 +154,7 @@ public class doubleControlLQRTests
                     var state = new doubleLQRState(n, Allocator.Temp);
                     var info = LQR.lqr(in A, in B, in Q, in R, ref Ksda, ref state);
 
-                    if (info.status == LQRStatus.Converged)
+                    if (info.status == RiccatiStatus.Converged)
                     {
                         // oracle: iterate the shared recursion from S=0 to convergence via public kernels
                         var Sor = new doubleMxN(n, n, Allocator.Temp);
@@ -206,7 +206,7 @@ public class doubleControlLQRTests
                 var state = new doubleLQRState(n, Allocator.Temp);
                 var info = LQR.lqr(in A, in B, in Q, in R, ref K, ref state);
 
-                if (info.status == LQRStatus.Converged)
+                if (info.status == RiccatiStatus.Converged)
                 {
                     // S symmetric
                     double maxAsym = 0;
@@ -245,20 +245,20 @@ public class doubleControlLQRTests
             var state = new doubleLQRState(2, Allocator.Temp);
             var Kcold = new doubleMxN(1, 2, Allocator.Temp);
             var coldInfo = LQR.lqr(in A, in B, in Q, in R, ref Kcold, ref state);
-            AssertTrue(coldInfo.status == LQRStatus.Converged);
+            AssertTrue(coldInfo.status == RiccatiStatus.Converged);
             AssertTrue(state.populated);
 
             var Ap = Mat2(1, (double)(1.0 * (1.0 + 1e-3)), 0, 1);   // perturb the (0,1) entry by 1e-3 rel
 
             var Kwarm = new doubleMxN(1, 2, Allocator.Temp);
             var warmInfo = LQR.lqr(in Ap, in B, in Q, in R, ref Kwarm, ref state);
-            AssertTrue(warmInfo.status == LQRStatus.Converged);
+            AssertTrue(warmInfo.status == RiccatiStatus.Converged);
             AssertLE(warmInfo.iterations, 30);   // warm ≪ any cap; generous absolute margin
 
             // fresh cold solve of the perturbed system
             var Kpert = new doubleMxN(1, 2, Allocator.Temp);
             var pInfo = LQR.lqr(in Ap, in B, in Q, in R, ref Kpert);
-            AssertTrue(pInfo.status == LQRStatus.Converged);
+            AssertTrue(pInfo.status == RiccatiStatus.Converged);
             for (int j = 0; j < 2; j++) AssertClose(Kwarm[0, j], Kpert[0, j], (double)5e-3);
 
             state.Dispose(); A.Dispose(); Ap.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose();
@@ -277,7 +277,7 @@ public class doubleControlLQRTests
 
             var Ksched = new doubleMxN(m, n, Allocator.Temp);
             var info = LQR.lqrSchedule(in A, in B, in Q, in R, in Q, 1, ref Ksched);
-            AssertTrue(info.status == LQRStatus.Converged);
+            AssertTrue(info.status == RiccatiStatus.Converged);
             AssertEqInt(info.iterations, 1);
 
             var Shand = new doubleMxN(n, n, Allocator.Temp);
@@ -302,12 +302,12 @@ public class doubleControlLQRTests
 
             var Kinf = new doubleMxN(m, n, Allocator.Temp);
             var infoInf = LQR.lqr(in A, in B, in Q, in R, ref Kinf);
-            AssertTrue(infoInf.status == LQRStatus.Converged);
+            AssertTrue(infoInf.status == RiccatiStatus.Converged);
 
             int N = 80;
             var Ksched = new doubleMxN(N * m, n, Allocator.Temp);
             var info = LQR.lqrSchedule(in A, in B, in Q, in R, in Q, N, ref Ksched);
-            AssertTrue(info.status == LQRStatus.Converged);
+            AssertTrue(info.status == RiccatiStatus.Converged);
             AssertLEd(info.residual, (double)DareTol());   // deeply converged at k=0
 
             for (int i = 0; i < m; i++)
@@ -329,17 +329,17 @@ public class doubleControlLQRTests
             var K = new doubleMxN(1, 2, Allocator.Temp);
 
             var info = LQR.lqr(in A, in B, in Q, in R, ref K);
-            AssertTrue(info.status == LQRStatus.Diverged);
+            AssertTrue(info.status == RiccatiStatus.Diverged);
             AssertLE(info.iterations, 15);   // fails fast (hand estimate ~5), well under the 50 cap
             AssertTrue(info.residual == double.PositiveInfinity);
 
             A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); K.Dispose();
         }
 
-        // ============ 6b. semidefinite R (redundant actuator) -> rankDeficientControl flagged, K stabilizes ==
+        // ============ 6b. semidefinite R (redundant actuator) -> rankDeficient flagged, K stabilizes ==
         // Double-integrator dynamics with a DUPLICATED control column, B=[b b], and R=diag(1,0): the second
         // actuator is a redundant copy with zero cost. R itself is rank 1 < 2, so the COLD SDA path's CHOP
-        // on R while forming G0=BR⁺Bᵀ reports rank-deficiency and flags rankDeficientControl (the only
+        // on R while forming G0=BR⁺Bᵀ reports rank-deficiency and flags rankDeficient (the only
         // entry that sees a raw semidefinite R -- R+BᵀSB is full rank here, so the warm/schedule paths
         // would NOT flag it, hence targeting the cold lqr). The returned min-norm K still stabilizes.
         void FailureRankDeficientR()
@@ -352,8 +352,8 @@ public class doubleControlLQRTests
             var K = new doubleMxN(2, 2, Allocator.Temp);
 
             var info = LQR.lqr(in A, in B, in Q, in R, ref K);
-            AssertTrue(info.status == LQRStatus.Converged);
-            AssertTrue(info.rankDeficientControl);
+            AssertTrue(info.status == RiccatiStatus.Converged);
+            AssertTrue(info.rankDeficient);
             AssertLess(ClosedLoopSpecRad(in A, in B, in K), (double)1);   // still stabilizing
 
             A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); K.Dispose();
@@ -374,7 +374,7 @@ public class doubleControlLQRTests
             var K2 = new doubleMxN(m, n, Allocator.Temp);
             var i2 = LQR.lqr(in A, in B, in Q, in R, ref K2);
 
-            AssertTrue(i1.status == LQRStatus.Converged);
+            AssertTrue(i1.status == RiccatiStatus.Converged);
             AssertEqInt(i1.iterations, i2.iterations);
             for (int i = 0; i < m; i++)
                 for (int j = 0; j < n; j++)
