@@ -3,7 +3,7 @@ using System;
 using Unity.Collections;
 using Unity.Mathematics;
 
-namespace LinearAlgebra
+namespace LinearAlgebra.Control
 {
     // ================================================================================================
     // Discrete-time LQR. x_{k+1} = A x_k + B u_k, cost Σ(xᵀQx + uᵀRu), optimal feedback u = -Kx via the
@@ -31,7 +31,7 @@ namespace LinearAlgebra
     // into an fProxy buffer. All scratch is Allocator.Temp (job-safe) except fProxyLQRState's own
     // carried S buffer.
     // ================================================================================================
-    public static partial class Control
+    public static partial class LQR
     {
         // ---- validation (managed-thread throws, house pattern) ----
 
@@ -374,9 +374,9 @@ namespace LinearAlgebra
         public static LQRInfo lqr(in fProxyMxN A, in fProxyMxN B, in fProxyMxN Q, in fProxyMxN R,
                                   ref fProxyMxN K, int maxIter = 0)
         {
-            ValidateLQRDims(in A, in B, in Q, in R, "Control.lqr", out int n, out int m);
+            ValidateLQRDims(in A, in B, in Q, in R, "LQR.lqr", out int n, out int m);
             if (K.M_Rows != m || K.N_Cols != n)
-                throw new ArgumentException("Control.lqr: K must be m x n");
+                throw new ArgumentException("LQR.lqr: K must be m x n");
 
             var S = new fProxyMxN(n, n, Allocator.Temp);
             var info = SolveCold(in A, in B, in Q, in R, ref K, ref S, maxIter);
@@ -403,14 +403,14 @@ namespace LinearAlgebra
         public static LQRInfo lqr(in fProxyMxN A, in fProxyMxN B, in fProxyMxN Q, in fProxyMxN R,
                                   ref fProxyMxN K, ref fProxyLQRState state, int maxIter = 0)
         {
-            ValidateLQRDims(in A, in B, in Q, in R, "Control.lqr", out int n, out int m);
+            ValidateLQRDims(in A, in B, in Q, in R, "LQR.lqr", out int n, out int m);
             if (K.M_Rows != m || K.N_Cols != n)
-                throw new ArgumentException("Control.lqr: K must be m x n");
+                throw new ArgumentException("LQR.lqr: K must be m x n");
 
             if (!state.IsCreated)
-                throw new ArgumentException("Control.lqr: state must be constructed via new fProxyLQRState(n, allocator) before use");
+                throw new ArgumentException("LQR.lqr: state must be constructed via new fProxyLQRState(n, allocator) before use");
             if (!state.IsValid(n))
-                throw new ArgumentException("Control.lqr: state dimensions do not match A");
+                throw new ArgumentException("LQR.lqr: state dimensions do not match A");
 
             LQRInfo info;
             if (state.populated)
@@ -448,13 +448,13 @@ namespace LinearAlgebra
         public static LQRInfo lqrSchedule(in fProxyMxN A, in fProxyMxN B, in fProxyMxN Q, in fProxyMxN R,
                                           in fProxyMxN Qf, int N, ref fProxyMxN Kschedule)
         {
-            ValidateLQRDims(in A, in B, in Q, in R, "Control.lqrSchedule", out int n, out int m);
+            ValidateLQRDims(in A, in B, in Q, in R, "LQR.lqrSchedule", out int n, out int m);
             if (!Qf.IsSquare || Qf.M_Rows != n)
-                throw new ArgumentException("Control.lqrSchedule: Qf must be n x n");
+                throw new ArgumentException("LQR.lqrSchedule: Qf must be n x n");
             if (N < 1)
-                throw new ArgumentException("Control.lqrSchedule: N must be >= 1");
+                throw new ArgumentException("LQR.lqrSchedule: N must be >= 1");
             if (Kschedule.M_Rows != N * m || Kschedule.N_Cols != n)
-                throw new ArgumentException("Control.lqrSchedule: Kschedule must be (N*m) x n");
+                throw new ArgumentException("LQR.lqrSchedule: Kschedule must be (N*m) x n");
 
             var Sk = new fProxyMxN(in Qf, Allocator.Temp);
             var Snext = new fProxyMxN(n, n, Allocator.Temp);
@@ -523,7 +523,7 @@ namespace LinearAlgebra
     }
 
     /// <summary>
-    /// Buffer-carrying warm-start state for <see cref="Control.lqr(in fProxyMxN, in fProxyMxN, in fProxyMxN, in fProxyMxN, ref fProxyMxN, ref fProxyLQRState, int)"/>:
+    /// Buffer-carrying warm-start state for <see cref="LQR.lqr(in fProxyMxN, in fProxyMxN, in fProxyMxN, in fProxyMxN, ref fProxyMxN, ref fProxyLQRState, int)"/>:
     /// carries the n x n Riccati solution S across separate top-level calls, for LQR's per-frame
     /// re-linearization use case. Standalone, user-allocated (no arena requirement), since it must
     /// persist across separate solve calls. MUST be constructed via <c>(n, Allocator)</c> before being

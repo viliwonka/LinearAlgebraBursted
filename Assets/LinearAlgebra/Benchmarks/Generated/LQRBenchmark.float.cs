@@ -10,6 +10,7 @@ using Unity.Jobs;
 using Unity.Mathematics;
 
 using LinearAlgebra;
+using LinearAlgebra.Control;
 
 namespace LinearAlgebra.Benchmarks
 {
@@ -19,8 +20,8 @@ namespace LinearAlgebra.Benchmarks
     //
     // Three variants, all through the PUBLIC Control API only (Benchmarks has no InternalsVisibleTo
     // grant -- same constraint QPBenchmark.float.cs notes for qpActiveSetCore):
-    //   - cold-SDA: the plain Control.lqr(...) overload (structure-preserving doubling).
-    //   - cold-recursion: the warm Control.lqr(..., ref state) overload, but with a FRESH state whose
+    //   - cold-SDA: the plain LQR.lqr(...) overload (structure-preserving doubling).
+    //   - cold-recursion: the warm LQR.lqr(..., ref state) overload, but with a FRESH state whose
     //     S is force-seeded at zero and populated=true (both public fields) -- this makes the warm
     //     overload take its plain-fixed-point-recursion branch starting cold, the "naive" baseline the
     //     spec wants SDA/warm compared against, reached without touching Control's internal
@@ -41,7 +42,7 @@ namespace LinearAlgebra.Benchmarks
         {
             for (int r = 0; r < reps; r++)
             {
-                var info = Control.lqr(in A, in B, in Q, in R, ref K);
+                var info = LQR.lqr(in A, in B, in Q, in R, ref K);
                 itersOut[0] = info.iterations;
                 statusOut[0] = (int)info.status;
             }
@@ -62,7 +63,7 @@ namespace LinearAlgebra.Benchmarks
             {
                 var state = new floatLQRState(A.M_Rows, Allocator.Temp);   // S starts zero-filled
                 state.populated = true;                                    // forces the plain-recursion branch, cold-started
-                var info = Control.lqr(in A, in B, in Q, in R, ref K, ref state);
+                var info = LQR.lqr(in A, in B, in Q, in R, ref K, ref state);
                 itersOut[0] = info.iterations;
                 statusOut[0] = (int)info.status;
                 state.Dispose();
@@ -86,7 +87,7 @@ namespace LinearAlgebra.Benchmarks
                 var state = new floatLQRState(Aperturbed.M_Rows, Allocator.Temp);
                 state.S.Data.CopyFrom(Sprev.Data);
                 state.populated = true;
-                var info = Control.lqr(in Aperturbed, in B, in Q, in R, ref K, ref state);
+                var info = LQR.lqr(in Aperturbed, in B, in Q, in R, ref K, ref state);
                 itersOut[0] = info.iterations;
                 statusOut[0] = (int)info.status;
                 state.Dispose();
@@ -165,11 +166,11 @@ namespace LinearAlgebra.Benchmarks
             BuildInstanceFloat(n, m, seed, nearMarginal, in arena, out var A, out var B, out var Q, out var R);
             var K = arena.floatMat(m, n);
 
-            // untimed setup (managed thread -- Control.lqr is plain Burst-compatible code, just not
+            // untimed setup (managed thread -- LQR.lqr is plain Burst-compatible code, just not
             // Burst-JITted here; only the warm re-solve below is measured): cold-solve the unperturbed
             // system for its converged S, then perturb A by ~1e-3 relative per entry.
             var coldState = new floatLQRState(n, Allocator.Persistent);
-            Control.lqr(in A, in B, in Q, in R, ref K, ref coldState);
+            LQR.lqr(in A, in B, in Q, in R, ref K, ref coldState);
             var Sprev = arena.floatMat(n, n);
             Sprev.Data.CopyFrom(coldState.S.Data);
             coldState.Dispose();

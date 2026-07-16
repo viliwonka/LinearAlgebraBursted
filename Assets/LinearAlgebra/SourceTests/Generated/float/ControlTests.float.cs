@@ -5,6 +5,7 @@
 using System;
 
 using LinearAlgebra;
+using LinearAlgebra.Control;
 
 using NUnit.Framework;
 using Unity.Burst;
@@ -12,7 +13,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// BASIC smoke tests for Control.lqr / Control.lqrSchedule: a known tiny instance solves, statuses fire
+// BASIC smoke tests for LQR.lqr / LQR.lqrSchedule: a known tiny instance solves, statuses fire
 // (Converged/Diverged), and throws throw. Literature vectors, SDA-vs-oracle cross-checks, property-based
 // stability/PSD checks, warm-path perturbation convergence, redundant-actuator rank flagging, and
 // determinism are covered by the full battery elsewhere.
@@ -53,7 +54,7 @@ public class floatControlTests
                     R[0, 0] = (float)1;
                     var K = new floatMxN(1, 2, Allocator.Temp);
 
-                    var info = Control.lqr(in A, in B, in Q, in R, ref K);
+                    var info = LQR.lqr(in A, in B, in Q, in R, ref K);
                     AssertTrue(info.status == LQRStatus.Converged);
 
                     // closed-loop stability: max |eig(A - B K)| < 1
@@ -96,7 +97,7 @@ public class floatControlTests
                     R[0, 0] = (float)1;
 
                     var Kschedule = new floatMxN(1, 2, Allocator.Temp);
-                    var info = Control.lqrSchedule(in A, in B, in Q, in R, in Q, 1, ref Kschedule);
+                    var info = LQR.lqrSchedule(in A, in B, in Q, in R, in Q, 1, ref Kschedule);
                     AssertTrue(info.status == LQRStatus.Converged);
                     AssertEqInt(info.iterations, 1);
 
@@ -128,11 +129,11 @@ public class floatControlTests
                     R[0, 0] = (float)1;
 
                     var Kinf = new floatMxN(1, 2, Allocator.Temp);
-                    var infoInf = Control.lqr(in A, in B, in Q, in R, ref Kinf);
+                    var infoInf = LQR.lqr(in A, in B, in Q, in R, ref Kinf);
                     AssertTrue(infoInf.status == LQRStatus.Converged);
 
                     var Kschedule = new floatMxN(60, 2, Allocator.Temp);
-                    var info = Control.lqrSchedule(in A, in B, in Q, in R, in Q, 60, ref Kschedule);
+                    var info = LQR.lqrSchedule(in A, in B, in Q, in R, in Q, 60, ref Kschedule);
                     AssertTrue(info.status == LQRStatus.Converged);
 
                     for (int j = 0; j < 2; j++)
@@ -155,12 +156,12 @@ public class floatControlTests
 
                     var state = new floatLQRState(2, Allocator.Temp);
                     var Kcold = new floatMxN(1, 2, Allocator.Temp);
-                    var coldInfo = Control.lqr(in A, in B, in Q, in R, ref Kcold, ref state);
+                    var coldInfo = LQR.lqr(in A, in B, in Q, in R, ref Kcold, ref state);
                     AssertTrue(coldInfo.status == LQRStatus.Converged);
                     AssertTrue(state.populated);
 
                     var Kwarm = new floatMxN(1, 2, Allocator.Temp);
-                    var warmInfo = Control.lqr(in A, in B, in Q, in R, ref Kwarm, ref state);
+                    var warmInfo = LQR.lqr(in A, in B, in Q, in R, ref Kwarm, ref state);
                     AssertTrue(warmInfo.status == LQRStatus.Converged);
                     AssertLE(warmInfo.iterations, 5);
 
@@ -184,7 +185,7 @@ public class floatControlTests
                     R[0, 0] = (float)1;
                     var K = new floatMxN(1, 2, Allocator.Temp);
 
-                    var info = Control.lqr(in A, in B, in Q, in R, ref K);
+                    var info = LQR.lqr(in A, in B, in Q, in R, ref K);
                     AssertTrue(info.status == LQRStatus.Diverged);
                     AssertLE(info.iterations, 50);
 
@@ -204,9 +205,9 @@ public class floatControlTests
                     R[0, 0] = (float)1;
 
                     var K1 = new floatMxN(1, 2, Allocator.Temp);
-                    var i1 = Control.lqr(in A, in B, in Q, in R, ref K1);
+                    var i1 = LQR.lqr(in A, in B, in Q, in R, ref K1);
                     var K2 = new floatMxN(1, 2, Allocator.Temp);
-                    var i2 = Control.lqr(in A, in B, in Q, in R, ref K2);
+                    var i2 = LQR.lqr(in A, in B, in Q, in R, ref K2);
 
                     AssertEqInt(i1.iterations, i2.iterations);
                     for (int j = 0; j < 2; j++)
@@ -289,18 +290,18 @@ public class floatControlTests
         var K = new floatMxN(1, 2, Allocator.Temp);
 
         var Abad = new floatMxN(2, 3, Allocator.Temp);
-        Assert.Catch<ArgumentException>(() => Control.lqr(in Abad, in B, in Q, in R, ref K));
+        Assert.Catch<ArgumentException>(() => LQR.lqr(in Abad, in B, in Q, in R, ref K));
         var Bbad = new floatMxN(3, 1, Allocator.Temp);
-        Assert.Catch<ArgumentException>(() => Control.lqr(in A, in Bbad, in Q, in R, ref K));
+        Assert.Catch<ArgumentException>(() => LQR.lqr(in A, in Bbad, in Q, in R, ref K));
         var Qbad = new floatMxN(3, 3, Allocator.Temp);
-        Assert.Catch<ArgumentException>(() => Control.lqr(in A, in B, in Qbad, in R, ref K));
+        Assert.Catch<ArgumentException>(() => LQR.lqr(in A, in B, in Qbad, in R, ref K));
         var Rbad = new floatMxN(2, 2, Allocator.Temp);
-        Assert.Catch<ArgumentException>(() => Control.lqr(in A, in B, in Q, in Rbad, ref K));
+        Assert.Catch<ArgumentException>(() => LQR.lqr(in A, in B, in Q, in Rbad, ref K));
         var Kbad = new floatMxN(2, 2, Allocator.Temp);
-        Assert.Catch<ArgumentException>(() => Control.lqr(in A, in B, in Q, in R, ref Kbad));
+        Assert.Catch<ArgumentException>(() => LQR.lqr(in A, in B, in Q, in R, ref Kbad));
 
         var Rneg = new floatMxN(1, 1, Allocator.Temp); Rneg[0, 0] = (float)(-1);
-        Assert.Catch<ArgumentException>(() => Control.lqr(in A, in B, in Q, in Rneg, ref K));
+        Assert.Catch<ArgumentException>(() => LQR.lqr(in A, in B, in Q, in Rneg, ref K));
 
         A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); K.Dispose();
         Abad.Dispose(); Bbad.Dispose(); Qbad.Dispose(); Rbad.Dispose(); Kbad.Dispose(); Rneg.Dispose();
@@ -317,10 +318,10 @@ public class floatControlTests
         var R = new floatMxN(1, 1, Allocator.Temp); R[0, 0] = (float)1;
         var Kschedule = new floatMxN(2, 2, Allocator.Temp);
 
-        Assert.Catch<ArgumentException>(() => Control.lqrSchedule(in A, in B, in Q, in R, in Q, 0, ref Kschedule));
+        Assert.Catch<ArgumentException>(() => LQR.lqrSchedule(in A, in B, in Q, in R, in Q, 0, ref Kschedule));
 
         var KscheduleBad = new floatMxN(1, 2, Allocator.Temp);
-        Assert.Catch<ArgumentException>(() => Control.lqrSchedule(in A, in B, in Q, in R, in Q, 2, ref KscheduleBad));
+        Assert.Catch<ArgumentException>(() => LQR.lqrSchedule(in A, in B, in Q, in R, in Q, 2, ref KscheduleBad));
 
         A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); Kschedule.Dispose(); KscheduleBad.Dispose();
     }
@@ -337,10 +338,10 @@ public class floatControlTests
         var K = new floatMxN(1, 2, Allocator.Temp);
 
         var uncreated = default(floatLQRState);
-        Assert.Catch<ArgumentException>(() => Control.lqr(in A, in B, in Q, in R, ref K, ref uncreated));
+        Assert.Catch<ArgumentException>(() => LQR.lqr(in A, in B, in Q, in R, ref K, ref uncreated));
 
         var mismatched = new floatLQRState(3, Allocator.Temp);
-        Assert.Catch<ArgumentException>(() => Control.lqr(in A, in B, in Q, in R, ref K, ref mismatched));
+        Assert.Catch<ArgumentException>(() => LQR.lqr(in A, in B, in Q, in R, ref K, ref mismatched));
 
         mismatched.Dispose();
         A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); K.Dispose();

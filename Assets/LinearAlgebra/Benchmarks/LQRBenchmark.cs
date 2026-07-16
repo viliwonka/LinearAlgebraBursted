@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using LinearAlgebra.Control;
 
 namespace LinearAlgebra.Benchmarks
 {
@@ -43,9 +44,9 @@ namespace LinearAlgebra.Benchmarks
     }
 
     // ================================================================================================
-    // Discrete-time LQR (Control.lqr / Control.lqrSchedule -- docs/spec-lqr.md). Three variants at each
+    // Discrete-time LQR (LQR.lqr / LQR.lqrSchedule -- docs/spec-lqr.md). Three variants at each
     // (n, m):
-    //   - cold-SDA: structure-preserving doubling from scratch (the plain Control.lqr overload).
+    //   - cold-SDA: structure-preserving doubling from scratch (the plain LQR.lqr overload).
     //   - cold-recursion: the plain fixed-point Riccati recursion, ALSO cold-started (S seeded at zero)
     //     -- the naive baseline SDA/warm are compared against, reached via the warm overload with a
     //     force-populated fresh state (see LQRBenchmark.fProxy.cs's header for why).
@@ -67,7 +68,7 @@ namespace LinearAlgebra.Benchmarks
 
         public static void Section(StringBuilder sb)
         {
-            sb.AppendLine("=== Discrete-time LQR (Control.lqr): cold SDA vs cold plain-recursion vs warm ===");
+            sb.AppendLine("=== Discrete-time LQR (LQR.lqr): cold SDA vs cold plain-recursion vs warm ===");
             sb.AppendLine("cold-recursion is the naive baseline (plain fixed-point Riccati iteration, S seeded");
             sb.AppendLine("at zero); cold-SDA (structure-preserving doubling) and warm (1e-3-relative A");
             sb.AppendLine("perturbation, re-solved from the prior converged S) should both be much cheaper.");

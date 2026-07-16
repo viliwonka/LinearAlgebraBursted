@@ -2,6 +2,7 @@ using System;
 
 using Unity.Collections;
 using Unity.Mathematics;
+using LinearAlgebra.Control;
 
 namespace LinearAlgebra
 {
@@ -22,7 +23,7 @@ namespace LinearAlgebra
     // LQR/KF DARE DUALITY: the filter's predicted-covariance DARE
     //     Σ = AΣAᵀ + Q - AΣHᵀ(HΣHᵀ+R)⁻¹HΣAᵀ
     // is exactly Control's LQR DARE S = Q + ÃᵀSÃ - ÃᵀSB̃(R+B̃ᵀSB̃)⁻¹B̃ᵀSÃ under Ã=Aᵀ, B̃=Hᵀ (S↔Σ) --
-    // i.e. Control.SDACore(Aᵀ, Hᵀ, Q, R, ...) IS this filter's steady-state Riccati solve. No second
+    // i.e. Control.LQR.SDACore(Aᵀ, Hᵀ, Q, R, ...) IS this filter's steady-state Riccati solve. No second
     // Riccati implementation exists in this file.
     // ================================================================================================
     public static partial class Kalman
@@ -37,7 +38,7 @@ namespace LinearAlgebra
             Blas.dot(in Aeff, in s.P, ref s.AP);
             Blas.dotSymT(in s.AP, in Aeff, ref s.APAt);   // (Aeff P)·Aeffᵀ, symmetric since P is
             s.APAt.addInPlace(Q);
-            Control.SymmetrizeInPlace(ref s.APAt);
+            Control.LQR.SymmetrizeInPlace(ref s.APAt);
             s.P.Data.CopyFrom(s.APAt.Data);
         }
 
@@ -90,7 +91,7 @@ namespace LinearAlgebra
                 Blas.dot(in KR, in Xt, ref s.AP);             // term2 = K R Kᵀ (Xt == Kᵀ), -> AP
 
                 s.APAt.addInPlace(s.AP);                      // APAt := term1 + term2
-                Control.SymmetrizeInPlace(ref s.APAt);
+                Control.LQR.SymmetrizeInPlace(ref s.APAt);
                 s.P.Data.CopyFrom(s.APAt.Data);
 
                 status = KFStatus.Ok;
@@ -192,7 +193,7 @@ namespace LinearAlgebra
         /// <summary>
         /// Steady-state Kalman gain Kss (n x m) via the LQR/KF DARE duality: solves the filter's
         /// predicted-covariance DARE Σ = AΣAᵀ + Q - AΣHᵀ(HΣHᵀ+R)⁻¹HΣAᵀ by reusing
-        /// <see cref="Control.SDACore"/> under Ã=Aᵀ, B̃=Hᵀ (S↔Σ), then extracts
+        /// <see cref="Control.LQR.SDACore"/> under Ã=Aᵀ, B̃=Hᵀ (S↔Σ), then extracts
         /// Kss = ΣHᵀ(HΣHᵀ+R)⁻¹ via CHOP on the transposed system (never an explicit inverse). Q/R are
         /// jointly rescaled to unit data-norm before the SDA solve and Σ is unscaled after -- Kss
         /// itself is exactly invariant to this, so results are unaffected by Q/R's absolute magnitude
@@ -238,7 +239,7 @@ namespace LinearAlgebra
             // still-near-zero Hk satisfies the tolerance long before the recursion has actually
             // reached the fixed point). Rescaling so the problem's own data sits near unit scale
             // restores the floor's intended meaning; Sigma is unscaled back right after the solve.
-            double dataNorm = Control.FrobeniusNorm(in Q) + Control.FrobeniusNorm(in R);
+            double dataNorm = Control.LQR.FrobeniusNorm(in Q) + Control.LQR.FrobeniusNorm(in R);
             fProxy scale = (fProxy)(1.0 / math.max(dataNorm, (double)Consts.fProxyZeroThreshold));
             fProxy invScale = (fProxy)1 / scale;
 
@@ -250,7 +251,7 @@ namespace LinearAlgebra
             Rs.mulInPlace(scale);
 
             var Sigma = new fProxyMxN(n, n, Allocator.Temp);
-            var info = Control.SDACore(in At, in Ht, in Qs, in Rs, ref Sigma, maxIter);
+            var info = Control.LQR.SDACore(in At, in Ht, in Qs, in Rs, ref Sigma, maxIter);
             Sigma.mulInPlace(invScale);
             Qs.Dispose(); Rs.Dispose();
 

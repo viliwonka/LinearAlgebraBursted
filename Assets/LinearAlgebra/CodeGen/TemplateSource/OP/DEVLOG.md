@@ -1,6 +1,20 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Control namespace (LQR / MPC)
+- 2026-07-16 | Moved the control API out of `namespace LinearAlgebra` into a dedicated
+  `namespace LinearAlgebra.Control` and renamed the LQR facade class `Control` -> `LQR` (the old
+  `Control.lqr(...)` read confusingly next to the `LQ`/`LQRP` matrix decompositions). MPC + all
+  companion types (`LQRInfo`/`LQRStatus`/`LQGInfo`/`fProxyLQRState`, `MPCInfo`/`MPCStatus`/
+  `fProxyMPCState`) moved into the same sub-namespace. Kalman deliberately stayed in
+  `LinearAlgebra` (user ruling); it reaches the internal Riccati helpers as `Control.LQR.SDACore`/
+  `SymmetrizeInPlace`/`FrobeniusNorm` (internal = assembly-scoped, so cross-namespace is fine) and
+  gained a file-level `using LinearAlgebra.Control;` because it NAMES `LQRInfo`/`LQRStatus` in code
+  (`steadyStateGain`'s return type). Nested-namespace files still see every parent `LinearAlgebra`
+  type (fProxyMxN/QP/CHOP/Blas/...) with no `using`, which is what kept the move low-risk — only
+  external consumers (tests, benchmarks, demos) needed `using LinearAlgebra.Control;`. Method names
+  unchanged (`LQR.lqr`/`lqrSchedule`/`lqg`, `MPC.solve`). Suite green post-regen.
+
 ## DetMath
 - 2026-07-16 | Added the `LINALG_NATIVE_MATH` compile-mode switch: a single `#if` sets
   `public const bool UseNative`, and every transcendental branches on that const as its first

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using LinearAlgebra.Control;
 
 namespace LinearAlgebra.Benchmarks
 {

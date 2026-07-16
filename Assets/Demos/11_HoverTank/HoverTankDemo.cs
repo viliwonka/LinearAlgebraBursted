@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using LinearAlgebra;
+using LinearAlgebra.Control;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
@@ -434,7 +435,7 @@ namespace LinearAlgebraDemos
             BuildHoverModel(Dt, QHeight, QHeightRate, QTilt, QTiltRate, RThrust, RTorque,
                 Allocator.Temp, out var A, out var B, out var Q, out var R);
 
-            LQRInfo info = Control.lqr(in A, in B, in Q, in R, ref HoverK, ref HoverLqrState);
+            LQRInfo info = LQR.lqr(in A, in B, in Q, in R, ref HoverK, ref HoverLqrState);
             HoverOut[0] = info.iterations;
             HoverOut[1] = info ? 1f : 0f;
             HoverOut[2] = (float)info.residual;
@@ -471,7 +472,7 @@ namespace LinearAlgebraDemos
 
             // ---- turret yaw servo: 2-state double integrator tracking DesiredYaw ----
             BuildServoModel(Dt, QYawAngle, QYawRate, RYawTorque, Allocator.Temp, out var Ay, out var By, out var Qy, out var Ry);
-            LQRInfo infoYaw = Control.lqr(in Ay, in By, in Qy, in Ry, ref TurretK, ref TurretLqrState);
+            LQRInfo infoYaw = LQR.lqr(in Ay, in By, in Qy, in Ry, ref TurretK, ref TurretLqrState);
             TurretOut[0] = infoYaw ? 1f : 0f;
             Ay.Dispose(); By.Dispose(); Qy.Dispose(); Ry.Dispose();
 
@@ -483,7 +484,7 @@ namespace LinearAlgebraDemos
 
             // ---- barrel pitch servo: 2-state double integrator tracking DesiredPitch, hard-clamped ----
             BuildServoModel(Dt, QPitchAngle, QPitchRate, RPitchTorque, Allocator.Temp, out var Ap, out var Bp, out var Qp, out var Rp);
-            LQRInfo infoPitch = Control.lqr(in Ap, in Bp, in Qp, in Rp, ref BarrelK, ref BarrelLqrState);
+            LQRInfo infoPitch = LQR.lqr(in Ap, in Bp, in Qp, in Rp, ref BarrelK, ref BarrelLqrState);
             BarrelOut[0] = infoPitch ? 1f : 0f;
             Ap.Dispose(); Bp.Dispose(); Qp.Dispose(); Rp.Dispose();
 

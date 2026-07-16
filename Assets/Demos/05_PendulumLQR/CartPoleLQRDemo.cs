@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using LinearAlgebra;
+using LinearAlgebra.Control;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
@@ -9,7 +10,7 @@ using UnityEngine;
 namespace LinearAlgebraDemos
 {
     /// <summary>
-    /// Inverted pendulum on a cart, stabilized by discrete LQR (Control.lqr).
+    /// Inverted pendulum on a cart, stabilized by discrete LQR (LQR.lqr).
     /// Every frame one Burst job re-linearizes the dynamics around upright for the
     /// current (slider-adjustable) masses/length, warm-re-solves the Riccati
     /// equation via floatLQRState, then integrates the full nonlinear cart-pole
@@ -172,7 +173,7 @@ namespace LinearAlgebraDemos
             Q[0, 0] = QPos; Q[1, 1] = 1f; Q[2, 2] = QAngle; Q[3, 3] = 1f;
             R[0, 0] = RCost;
 
-            LQRInfo info = Control.lqr(in A, in B, in Q, in R, ref K, ref LqrState);
+            LQRInfo info = LQR.lqr(in A, in B, in Q, in R, ref K, ref LqrState);
             Out[1] = info.iterations;
             Out[2] = info ? 1f : 0f;
             Out[3] = (float)info.residual;

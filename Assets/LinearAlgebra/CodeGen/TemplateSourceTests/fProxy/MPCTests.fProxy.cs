@@ -1,6 +1,7 @@
 using System;
 
 using LinearAlgebra;
+using LinearAlgebra.Control;
 
 using NUnit.Framework;
 using Unity.Burst;
@@ -13,7 +14,7 @@ using Unity.Mathematics;
 // B=[[0],[1]], Q=I2, R=1 throughout -- the SAME system ControlLQRTests.fProxy.cs's own
 // LiteratureDoubleIntegrator job uses, so K/P below match that job's published literals):
 //
-// (a) UnconstrainedMatchesLQR -- wide input bounds reproduce Control.lqr's OWN gain exactly (a
+// (a) UnconstrainedMatchesLQR -- wide input bounds reproduce LQR.lqr's OWN gain exactly (a
 //     stationary terminal-P receding-horizon solve equals infinite-horizon LQR for ANY N >= 1 -- the
 //     correctness anchor).
 // (b) SaturatedMatchesOracle -- x0=(3,1.9), bounds [-2,2], N=8: independently solved via
@@ -85,7 +86,7 @@ public class fProxyMPCTests
             var uLo = Vec1((fProxy)(-1e30)); var uHi = Vec1((fProxy)1e30);   // library's own "unbounded" sentinel (QP.solve's own INF convention)
 
             var K = new fProxyMxN(1, 2, Allocator.Temp);
-            var lqrInfo = Control.lqr(in A, in B, in Q, in R, ref K);
+            var lqrInfo = LQR.lqr(in A, in B, in Q, in R, ref K);
             AssertTrue(lqrInfo.status == LQRStatus.Converged);
 
             var mpc = new fProxyMPCState(2, 1, 8, Allocator.Temp, in A, in B, in Q, in R, in uLo, in uHi);
@@ -338,7 +339,7 @@ public class fProxyMPCTests
             var uLo = Vec1((fProxy)(-2)); var uHi = Vec1((fProxy)2);
 
             var Kstab = new fProxyMxN(1, 2, Allocator.Temp);
-            var lqrInfo = Control.lqr(in A, in B, in Q, in R, ref Kstab);
+            var lqrInfo = LQR.lqr(in A, in B, in Q, in R, ref Kstab);
             AssertTrue(lqrInfo.status == LQRStatus.Converged);
 
             var mpcPlain = new fProxyMPCState(2, 1, 8, Allocator.Temp, in A, in B, in Q, in R, in uLo, in uHi);

@@ -8,7 +8,7 @@ using Unity.Collections;
 using Unity.Mathematics;
 using LinearAlgebra.Internal;
 
-namespace LinearAlgebra
+namespace LinearAlgebra.Control
 {
     // ================================================================================================
     // Buffer-carrying state for MPC.solve: a linear time-invariant model x_{k+1} = A x_k + B u_k is
@@ -30,8 +30,8 @@ namespace LinearAlgebra
     // whenever the original hard row is satisfiable) once rho1 exceeds the row's own hard-constraint
     // multiplier; rho2*s_k^2 only adds strict convexity/conditioning, it does not affect exactness.
     //
-    // Terminal cost P defaults to the infinite-horizon DARE solution (via Control.lqr's own public warm
-    // overload, which exposes the converged Riccati S directly -- no need to reach into Control's
+    // Terminal cost P defaults to the infinite-horizon DARE solution (via LQR.lqr's own public warm
+    // overload, which exposes the converged Riccati S directly -- no need to reach into LQR's
     // internals for this) -- the SAME call also yields Kinf, the LQR tail gain used to fill the newly-
     // exposed last stage of the warm-started next-frame guess after shifting.
     //
@@ -287,12 +287,12 @@ namespace LinearAlgebra
         /// <param name="A">Dynamics, n x n.</param>
         /// <param name="B">Control input, n x m.</param>
         /// <param name="Q">Stage state cost, n x n (assumed symmetric PSD; not numerically validated,
-        /// matching <see cref="Control.lqr"/>'s own contract).</param>
+        /// matching <see cref="LQR.lqr"/>'s own contract).</param>
         /// <param name="R">Stage input cost, m x m (assumed symmetric PD).</param>
         /// <param name="uLo">Hard input lower bound, length m.</param>
         /// <param name="uHi">Hard input upper bound, length m.</param>
         /// <param name="P">Terminal state cost, n x n, or <c>default(doubleMxN)</c> for the infinite-
-        /// horizon DARE solution (via <see cref="Control.lqr"/>).</param>
+        /// horizon DARE solution (via <see cref="LQR.lqr"/>).</param>
         /// <param name="S">DeltaU penalty weight, m x m, or <c>default(doubleMxN)</c> to disable.</param>
         /// <param name="C">Soft-row coefficients, k x n (k &gt;= 1), or <c>default(doubleMxN)</c> to
         /// disable soft rows entirely.</param>
@@ -360,13 +360,13 @@ namespace LinearAlgebra
             this.rho1 = rho1; this.rho2 = rho2;
             this.Kstab = hasPrestab ? new doubleMxN(in Kstab, allocator) : default;
 
-            // ---- terminal cost + tail gain: Control.lqr's own PUBLIC warm overload exposes the
+            // ---- terminal cost + tail gain: LQR.lqr's own PUBLIC warm overload exposes the
             // converged Riccati solution directly (state.S), so no internal Control access is needed
-            // here (unlike Kalman.steadyStateGain, which reuses Control.SDACore directly because no
+            // here (unlike Kalman.steadyStateGain, which reuses LQR.SDACore directly because no
             // public entry point already produces what it needs). ----
             Kinf = new doubleMxN(m, n, allocator);
             var lqrState = new doubleLQRState(n, Allocator.Temp);
-            var lqrInfo = Control.lqr(in A, in B, in Q, in R, ref Kinf, ref lqrState);
+            var lqrInfo = LQR.lqr(in A, in B, in Q, in R, ref Kinf, ref lqrState);
             if (lqrInfo.status != LQRStatus.Converged)
             {
                 lqrState.Dispose(); Kinf.Dispose();
@@ -571,7 +571,7 @@ namespace LinearAlgebra
                 for (int j = 0; j < nSlack; j++)
                     H[nu + j, nu + j] = (double)2 * rho2;
             H_UU.Dispose();
-            Control.SymmetrizeInPlace(ref H);   // roundoff hygiene, reusing Control's own helper directly
+            LQR.SymmetrizeInPlace(ref H);   // roundoff hygiene, reusing LQR's own helper directly
 
             // ---- general rows: soft state rows, then (if prestabilized) input-bound rows ----
             Arows = new doubleMxN(nGeneral, nz, allocator);

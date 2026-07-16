@@ -10,8 +10,8 @@ play mode. Visuals are gizmos (enable Gizmos in the Game view) + an on-screen pa
 | 02_LeastAbsoluteDeviation | `LadFitDemo` | `LP.lad` / `ladBR` / `ladFN` (τ quantile) vs `QR` |
 | 03_LinearProgram | `EconomyLPDemo` | warm `LP.solve` + `LPBasis` + `floatLPCache` |
 | 04_TrussStability | `TrussStabilityDemo` | symmetric BSR assembly, `Eigen.lobpcg` + `floatBlockJacobi` |
-| 05_PendulumLQR | `CartPoleLQRDemo` | `Control.lqr` warm (`floatLQRState`), cart-pole |
-| 06_DroneLQR | `DroneLQRDemo` | `Control.lqr` warm, 6-state planar quadrotor |
+| 05_PendulumLQR | `CartPoleLQRDemo` | `LQR.lqr` warm (`floatLQRState`), cart-pole |
+| 06_DroneLQR | `DroneLQRDemo` | `LQR.lqr` warm, 6-state planar quadrotor |
 | 07_SpringSystem | `SpringLatticeDemo` | `floatBSRBuilder`, `Krylov.pcg` + `floatIC0` |
 | 08_Circuit | `CircuitDemo` | MNA (indefinite), `Krylov.pbiCGStab` + `floatILU0` |
 

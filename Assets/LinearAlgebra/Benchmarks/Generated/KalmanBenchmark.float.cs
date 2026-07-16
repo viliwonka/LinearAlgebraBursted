@@ -359,7 +359,7 @@ namespace LinearAlgebra.Benchmarks
             var statusOut = new NativeArray<int>(1, Allocator.Persistent);
             var job = new KfSteadyStateGainJobFloat { A = A, H = H, Q = Q, R = R, Kss = Kss, reps = reps, itersOut = itersOut, statusOut = statusOut };
             var stat = Bench.Time(() => job.Run());
-            // LQRInfo is the same info type Control.lqr reports -- reuse LQRBenchmarkFmt's own formatter.
+            // LQRInfo is the same info type LQR.lqr reports -- reuse LQRBenchmarkFmt's own formatter.
             string row = LQRBenchmarkFmt.Row("float", "steadyStateGain", n, m, reps, stat, itersOut[0], statusOut[0]);
 
             itersOut.Dispose(); statusOut.Dispose(); arena.Dispose();

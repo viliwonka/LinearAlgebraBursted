@@ -1,6 +1,7 @@
 using System;
 
 using LinearAlgebra;
+using LinearAlgebra.Control;
 
 using NUnit.Framework;
 using Unity.Burst;
@@ -9,13 +10,13 @@ using Unity.Jobs;
 using Unity.Mathematics;
 
 // FULL test battery for the Kalman filter feature (Kalman.fProxy.cs / Kalman.State.fProxy.cs /
-// Kalman.Info.cs / KalmanModel.fProxy.cs) plus Control.lqg. Covers: the linear predict/update filter
+// Kalman.Info.cs / KalmanModel.fProxy.cs) plus LQR.lqg. Covers: the linear predict/update filter
 // (constant-velocity tracker, exact-symmetry contract), both predict overloads agreeing at u=0, the
 // update() indefinite-S failure path (state left untouched), steadyStateGain vs an INDEPENDENT
 // fixed-point Riccati oracle (with an orientation-discrimination check), the fixed-gain fast path
 // (predictFixed/updateFixed matching the converged general path, never touching P, dim throw), the
 // EKF (a nonlinear pendulum model tracked to bounded error, and numericJacobianF/H vs analytic
-// Jacobians), and Control.lqg returning both gains matching the direct lqr / steadyStateGain calls.
+// Jacobians), and LQR.lqg returning both gains matching the direct lqr / steadyStateGain calls.
 //
 // Value cases run inside a [BurstCompile] IJob with CompileSynchronously=true and route every numeric
 // assertion through Fail[0..3] with IsTrue-style checks (BC1330 forbids enum Assert.AreEqual inside
@@ -38,7 +39,7 @@ public class fProxyKalmanTests
             FixedPathNeverTouchesP,     // 5b. the fixed fast path leaves s.P byte-identical
             EKFTracksNonlinear,         // 6a. EKF pendulum tracked to bounded error
             NumericJacobianMatchesAnalytic, // 6b. numericJacobianF/H agree with analytic Jacobians
-            LqgReturnsBothGains,        // 7. lqg's Klqr==Control.lqr, Kkf==Kalman.steadyStateGain, statuses ok
+            LqgReturnsBothGains,        // 7. lqg's Klqr==LQR.lqr, Kkf==Kalman.steadyStateGain, statuses ok
         }
 
         public TestType Type;
@@ -382,7 +383,7 @@ public class fProxyKalmanTests
             x.Dispose(); u.Dispose(); Ja.Dispose(); Jn.Dispose(); Ha.Dispose(); Hn.Dispose();
         }
 
-        // ================================ 7. Control.lqg ============================================
+        // ================================ 7. LQR.lqg ============================================
         // lqg runs BOTH DARE solves (LQR control + KF filter) from the same A and returns two gains. Each
         // must equal the corresponding standalone call bit-for-bit (lqg simply forwards), and both
         // statuses / the aggregate Solved flag must be correct.
@@ -398,14 +399,14 @@ public class fProxyKalmanTests
 
             var Klqr = new fProxyMxN(1, 2, Allocator.Temp);
             var Kkf = new fProxyMxN(2, 1, Allocator.Temp);
-            var info = Control.lqg(in A, in B, in H, in Qlqr, in Rlqr, in Qkf, in Rkf, ref Klqr, ref Kkf);
+            var info = LQR.lqg(in A, in B, in H, in Qlqr, in Rlqr, in Qkf, in Rkf, ref Klqr, ref Kkf);
 
             AssertTrue(info.lqrInfo.status == LQRStatus.Converged);
             AssertTrue(info.kfInfo.status == LQRStatus.Converged);
             AssertTrue(info.Solved);
 
             var KlqrDirect = new fProxyMxN(1, 2, Allocator.Temp);
-            var lqrDirect = Control.lqr(in A, in B, in Qlqr, in Rlqr, ref KlqrDirect);
+            var lqrDirect = LQR.lqr(in A, in B, in Qlqr, in Rlqr, ref KlqrDirect);
             AssertTrue(lqrDirect.status == LQRStatus.Converged);
 
             var KkfDirect = new fProxyMxN(2, 1, Allocator.Temp);

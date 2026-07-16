@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using LinearAlgebra;
+using LinearAlgebra.Control;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
@@ -12,7 +13,7 @@ namespace LinearAlgebraDemos
     /// Planar quadrotor stabilized and steered by discrete LQR. State
     /// [x, z, theta, vx, vz, w], inputs [total thrust, torque] mapped to two
     /// clamped rotor forces. One Burst job per frame: warm Riccati re-solve
-    /// (Control.lqr + floatLQRState) around hover for the current sliders, then
+    /// (LQR.lqr + floatLQRState) around hover for the current sliders, then
     /// RK4 integration of the full nonlinear dynamics tracking a moving target
     /// with u = u_hover - K·(x - x_ref). Wind gusts on demand.
     /// </summary>
@@ -180,7 +181,7 @@ namespace LinearAlgebraDemos
             Q[3, 3] = 1f; Q[4, 4] = 1f; Q[5, 5] = 1f;
             R[0, 0] = RCost; R[1, 1] = RCost * 4f;
 
-            LQRInfo info = Control.lqr(in A, in B, in Q, in R, ref K, ref LqrState);
+            LQRInfo info = LQR.lqr(in A, in B, in Q, in R, ref K, ref LqrState);
             Out[2] = info.iterations;
             Out[3] = info ? 1f : 0f;
 

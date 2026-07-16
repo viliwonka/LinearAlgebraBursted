@@ -5,10 +5,10 @@
 //singularFile//
 using Unity.Collections;
 
-namespace LinearAlgebra
+namespace LinearAlgebra.Control
 {
     /// <summary>
-    /// Terminal state of a <see cref="Control.lqr(in fProxyMxN, in fProxyMxN, in fProxyMxN, in fProxyMxN, ref fProxyMxN, int)"/> /
+    /// Terminal state of a <see cref="LQR.lqr(in fProxyMxN, in fProxyMxN, in fProxyMxN, in fProxyMxN, ref fProxyMxN, int)"/> /
     /// <c>lqrSchedule</c> call, carried by <see cref="LQRInfo"/>. Type-agnostic (no fProxy) on
     /// purpose -- lives in a non-templated file so codegen does not emit a duplicate definition into
     /// both the float and double partials (CS0102), exactly like <see cref="LPStatus"/>/<see cref="MIPStatus"/>.
@@ -49,7 +49,7 @@ namespace LinearAlgebra
     }
 
     /// <summary>
-    /// Result of a <see cref="Control"/> LQR solve (cold <c>lqr</c>, warm <c>lqr(..., ref state)</c>,
+    /// Result of a <see cref="LQR"/> LQR solve (cold <c>lqr</c>, warm <c>lqr(..., ref state)</c>,
     /// or <c>lqrSchedule</c>). Implicit <c>bool</c> conversion == <see cref="Solved"/>, matching
     /// <see cref="LPInfo"/>/<see cref="MIPInfo"/>. Every field is filled from numbers the solve
     /// already computes (house diag-struct rule) -- no extra pass.
@@ -79,7 +79,7 @@ namespace LinearAlgebra
         /// <summary>True iff a stabilizing solution was reached (<c>status == LQRStatus.Converged</c>).</summary>
         public bool Solved => status == LQRStatus.Converged;
 
-        /// <summary>Implicit success test, so <c>if (Control.lqr(...))</c> reads as "did it converge".</summary>
+        /// <summary>Implicit success test, so <c>if (LQR.lqr(...))</c> reads as "did it converge".</summary>
         public static implicit operator bool(LQRInfo info) => info.status == LQRStatus.Converged;
 
         /// <summary>Burst-safe compact summary, e.g. <c>LQRInfo(Converged, iters=14, residual=1.23E-09,
@@ -98,7 +98,7 @@ namespace LinearAlgebra
     }
 
     /// <summary>
-    /// Result of <see cref="Control.lqg"/>: the two independent DARE solves it runs, one per gain.
+    /// Result of <see cref="LQR.lqg"/>: the two independent DARE solves it runs, one per gain.
     /// Type-agnostic (CS0102), same reasoning as <see cref="LQRInfo"/>. Deliberately a thin pair
     /// rather than a merged/averaged diagnostic -- the two Riccati solves are unrelated problems
     /// (control cost vs. process/measurement noise) that only happen to share A and the SDA engine.
@@ -114,7 +114,7 @@ namespace LinearAlgebra
         /// <summary>True iff BOTH solves converged.</summary>
         public bool Solved => lqrInfo.Solved && kfInfo.Solved;
 
-        /// <summary>Implicit success test, so <c>if (Control.lqg(...))</c> reads as "did both converge".</summary>
+        /// <summary>Implicit success test, so <c>if (LQR.lqg(...))</c> reads as "did both converge".</summary>
         public static implicit operator bool(LQGInfo info) => info.Solved;
 
         /// <summary>Burst-safe compact summary, e.g. <c>LQGInfo(lqr=Converged/iters=14, kf=Converged/iters=9)</c>.
@@ -135,10 +135,10 @@ namespace LinearAlgebra
         public override string ToString() => ToFixedString().ToString();
     }
 
-    // Type-agnostic tuning constants for Control.lqr/.lqrSchedule (Control.fProxy.cs); live here
+    // Type-agnostic tuning constants for LQR.lqr/.lqrSchedule (Control.fProxy.cs); live here
     // (singularFile) to avoid a duplicate-member collision across the float/double generated
     // fragments, same reasoning as LP.Info.cs's REFACTOR_INTERVAL / MIP.Info.cs's ABS_GAP etc.
-    public static partial class Control
+    public static partial class LQR
     {
         // SDA (cold infinite-horizon) doubling-step cap -- quadratic convergence means legitimate
         // stabilizable/detectable instances reach machine-precision-class residuals in ~10-25 steps;

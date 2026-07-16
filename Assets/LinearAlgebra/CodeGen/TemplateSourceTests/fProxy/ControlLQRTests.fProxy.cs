@@ -1,6 +1,7 @@
 using System;
 
 using LinearAlgebra;
+using LinearAlgebra.Control;
 
 using NUnit.Framework;
 using Unity.Burst;
@@ -8,13 +9,13 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// FULL test battery for Control.lqr / Control.lqr(warm) / Control.lqrSchedule. Basic smoke
+// FULL test battery for LQR.lqr / LQR.lqr(warm) / LQR.lqrSchedule. Basic smoke
 // coverage lives in ControlTests.fProxy.cs; this file is the
 // exhaustive battery: published literature gains, SDA-vs-recursion cross-check, S-symmetric-PSD +
 // closed-loop-stability properties, warm-path perturbation reconvergence, general-m schedule vs a
 // hand-computed Riccati step, unstabilizable divergence, semidefinite-R rank flagging, determinism.
 //
-// FIRSTPASS CONSTRAINT: Control.RiccatiStep/RiccatiIterate are internal and NOT reachable from the
+// FIRSTPASS CONSTRAINT: LQR.RiccatiStep/RiccatiIterate are internal and NOT reachable from the
 // template-test firstpass compile (only from the generated assembly's InternalsVisibleTo). Everything
 // here therefore goes through the PUBLIC API only; the recursion "oracle" is re-implemented from public
 // Blas.dot + LU (RiccatiStepPublic below), and the DARE solution S is read back via the warm state's
@@ -91,7 +92,7 @@ public class fProxyControlLQRTests
             var K = new fProxyMxN(1, 2, Allocator.Temp);
             var state = new fProxyLQRState(2, Allocator.Temp);
 
-            var info = Control.lqr(in A, in B, in Q, in R, ref K, ref state);   // warm overload -> state.S = S
+            var info = LQR.lqr(in A, in B, in Q, in R, ref K, ref state);   // warm overload -> state.S = S
             AssertTrue(info.status == LQRStatus.Converged);
 
             AssertClose(K[0, 0], (fProxy)0.42208244, LitKTol());
@@ -118,7 +119,7 @@ public class fProxyControlLQRTests
             var K = new fProxyMxN(1, 1, Allocator.Temp);
             var state = new fProxyLQRState(1, Allocator.Temp);
 
-            var info = Control.lqr(in A, in B, in Q, in R, ref K, ref state);
+            var info = LQR.lqr(in A, in B, in Q, in R, ref K, ref state);
             AssertTrue(info.status == LQRStatus.Converged);
             AssertClose(K[0, 0], kExact, LitKTol());
             AssertClose(state.S[0, 0], sExact, (fProxy)5e-2);
@@ -147,7 +148,7 @@ public class fProxyControlLQRTests
 
                     var Ksda = new fProxyMxN(m, n, Allocator.Temp);
                     var state = new fProxyLQRState(n, Allocator.Temp);
-                    var info = Control.lqr(in A, in B, in Q, in R, ref Ksda, ref state);
+                    var info = LQR.lqr(in A, in B, in Q, in R, ref Ksda, ref state);
 
                     if (info.status == LQRStatus.Converged)
                     {
@@ -199,7 +200,7 @@ public class fProxyControlLQRTests
 
                 var K = new fProxyMxN(m, n, Allocator.Temp);
                 var state = new fProxyLQRState(n, Allocator.Temp);
-                var info = Control.lqr(in A, in B, in Q, in R, ref K, ref state);
+                var info = LQR.lqr(in A, in B, in Q, in R, ref K, ref state);
 
                 if (info.status == LQRStatus.Converged)
                 {
@@ -239,20 +240,20 @@ public class fProxyControlLQRTests
 
             var state = new fProxyLQRState(2, Allocator.Temp);
             var Kcold = new fProxyMxN(1, 2, Allocator.Temp);
-            var coldInfo = Control.lqr(in A, in B, in Q, in R, ref Kcold, ref state);
+            var coldInfo = LQR.lqr(in A, in B, in Q, in R, ref Kcold, ref state);
             AssertTrue(coldInfo.status == LQRStatus.Converged);
             AssertTrue(state.populated);
 
             var Ap = Mat2(1, (fProxy)(1.0 * (1.0 + 1e-3)), 0, 1);   // perturb the (0,1) entry by 1e-3 rel
 
             var Kwarm = new fProxyMxN(1, 2, Allocator.Temp);
-            var warmInfo = Control.lqr(in Ap, in B, in Q, in R, ref Kwarm, ref state);
+            var warmInfo = LQR.lqr(in Ap, in B, in Q, in R, ref Kwarm, ref state);
             AssertTrue(warmInfo.status == LQRStatus.Converged);
             AssertLE(warmInfo.iterations, 30);   // warm ≪ any cap; generous absolute margin
 
             // fresh cold solve of the perturbed system
             var Kpert = new fProxyMxN(1, 2, Allocator.Temp);
-            var pInfo = Control.lqr(in Ap, in B, in Q, in R, ref Kpert);
+            var pInfo = LQR.lqr(in Ap, in B, in Q, in R, ref Kpert);
             AssertTrue(pInfo.status == LQRStatus.Converged);
             for (int j = 0; j < 2; j++) AssertClose(Kwarm[0, j], Kpert[0, j], (fProxy)5e-3);
 
@@ -271,7 +272,7 @@ public class fProxyControlLQRTests
             BuildRandom(ref rng, n, m, out var A, out var B, out var Q, out var R);
 
             var Ksched = new fProxyMxN(m, n, Allocator.Temp);
-            var info = Control.lqrSchedule(in A, in B, in Q, in R, in Q, 1, ref Ksched);
+            var info = LQR.lqrSchedule(in A, in B, in Q, in R, in Q, 1, ref Ksched);
             AssertTrue(info.status == LQRStatus.Converged);
             AssertEqInt(info.iterations, 1);
 
@@ -296,12 +297,12 @@ public class fProxyControlLQRTests
             BuildRandom(ref rng, n, m, out var A, out var B, out var Q, out var R);
 
             var Kinf = new fProxyMxN(m, n, Allocator.Temp);
-            var infoInf = Control.lqr(in A, in B, in Q, in R, ref Kinf);
+            var infoInf = LQR.lqr(in A, in B, in Q, in R, ref Kinf);
             AssertTrue(infoInf.status == LQRStatus.Converged);
 
             int N = 80;
             var Ksched = new fProxyMxN(N * m, n, Allocator.Temp);
-            var info = Control.lqrSchedule(in A, in B, in Q, in R, in Q, N, ref Ksched);
+            var info = LQR.lqrSchedule(in A, in B, in Q, in R, in Q, N, ref Ksched);
             AssertTrue(info.status == LQRStatus.Converged);
             AssertLEd(info.residual, (double)DareTol());   // deeply converged at k=0
 
@@ -323,7 +324,7 @@ public class fProxyControlLQRTests
             var Q = Eye(2); var R = R1(1);
             var K = new fProxyMxN(1, 2, Allocator.Temp);
 
-            var info = Control.lqr(in A, in B, in Q, in R, ref K);
+            var info = LQR.lqr(in A, in B, in Q, in R, ref K);
             AssertTrue(info.status == LQRStatus.Diverged);
             AssertLE(info.iterations, 15);   // fails fast (hand estimate ~5), well under the 50 cap
             AssertTrue(info.residual == double.PositiveInfinity);
@@ -346,7 +347,7 @@ public class fProxyControlLQRTests
             var R = new fProxyMxN(2, 2, Allocator.Temp); R[0, 0] = (fProxy)1; R[1, 1] = (fProxy)0;   // semidefinite
             var K = new fProxyMxN(2, 2, Allocator.Temp);
 
-            var info = Control.lqr(in A, in B, in Q, in R, ref K);
+            var info = LQR.lqr(in A, in B, in Q, in R, ref K);
             AssertTrue(info.status == LQRStatus.Converged);
             AssertTrue(info.rankDeficientControl);
             AssertLess(ClosedLoopSpecRad(in A, in B, in K), (fProxy)1);   // still stabilizing
@@ -365,9 +366,9 @@ public class fProxyControlLQRTests
             BuildRandom(ref rng, n, m, out var A, out var B, out var Q, out var R);
 
             var K1 = new fProxyMxN(m, n, Allocator.Temp);
-            var i1 = Control.lqr(in A, in B, in Q, in R, ref K1);
+            var i1 = LQR.lqr(in A, in B, in Q, in R, ref K1);
             var K2 = new fProxyMxN(m, n, Allocator.Temp);
-            var i2 = Control.lqr(in A, in B, in Q, in R, ref K2);
+            var i2 = LQR.lqr(in A, in B, in Q, in R, ref K2);
 
             AssertTrue(i1.status == LQRStatus.Converged);
             AssertEqInt(i1.iterations, i2.iterations);
@@ -399,9 +400,9 @@ public class fProxyControlLQRTests
         {
             var state = new fProxyLQRState(2, Allocator.Temp);
             var Kcold = new fProxyMxN(1, 2, Allocator.Temp);
-            Control.lqr(in A, in B, in Q, in R, ref Kcold, ref state);
+            LQR.lqr(in A, in B, in Q, in R, ref Kcold, ref state);
             var Kwarm = new fProxyMxN(1, 2, Allocator.Temp);
-            var wi = Control.lqr(in A, in B, in Q, in R, ref Kwarm, ref state);
+            var wi = LQR.lqr(in A, in B, in Q, in R, ref Kwarm, ref state);
             warmIters = wi.iterations;
             Kcold.Dispose(); state.Dispose();
             return Kwarm;   // caller disposes
@@ -410,7 +411,7 @@ public class fProxyControlLQRTests
         // ================================ helpers ================================
 
         // One Riccati/DARE step S⁻ = Q + AᵀSA - AᵀSB(R+BᵀSB)⁻¹BᵀSA, K = (R+BᵀSB)⁻¹BᵀSA via PUBLIC kernels
-        // (Blas.dot + LU). Mirrors internal Control.RiccatiStep; LU on the full-rank SPD (R+BᵀSB) yields
+        // (Blas.dot + LU). Mirrors internal LQR.RiccatiStep; LU on the full-rank SPD (R+BᵀSB) yields
         // the same K as production's CHOP. Snext is re-symmetrized like production.
         static void RiccatiStepPublic(in fProxyMxN A, in fProxyMxN B, in fProxyMxN Q, in fProxyMxN R,
                                       in fProxyMxN S, ref fProxyMxN Snext, ref fProxyMxN K)
@@ -634,7 +635,7 @@ public class fProxyControlLQRTests
         var K = new fProxyMxN(1, 2, Allocator.Temp);
 
         var Rnan = new fProxyMxN(1, 1, Allocator.Temp); Rnan[0, 0] = (fProxy)float.NaN;
-        Assert.Catch<ArgumentException>(() => Control.lqr(in A, in B, in Q, in Rnan, ref K));
+        Assert.Catch<ArgumentException>(() => LQR.lqr(in A, in B, in Q, in Rnan, ref K));
 
         A.Dispose(); B.Dispose(); Q.Dispose(); K.Dispose(); Rnan.Dispose();
     }
@@ -650,7 +651,7 @@ public class fProxyControlLQRTests
         var Ksched = new fProxyMxN(2, 2, Allocator.Temp);
 
         var QfBad = new fProxyMxN(2, 3, Allocator.Temp);
-        Assert.Catch<ArgumentException>(() => Control.lqrSchedule(in A, in B, in Q, in R, in QfBad, 1, ref Ksched));
+        Assert.Catch<ArgumentException>(() => LQR.lqrSchedule(in A, in B, in Q, in R, in QfBad, 1, ref Ksched));
 
         A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); Ksched.Dispose(); QfBad.Dispose();
     }

@@ -1,4 +1,5 @@
 using LinearAlgebra;
+using LinearAlgebra.Control;
 using LinearAlgebra.Sparse;
 using NUnit.Framework;
 using Unity.Collections;

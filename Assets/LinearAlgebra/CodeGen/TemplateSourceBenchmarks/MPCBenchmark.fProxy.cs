@@ -6,6 +6,7 @@ using Unity.Jobs;
 using Unity.Mathematics;
 
 using LinearAlgebra;
+using LinearAlgebra.Control;
 
 namespace LinearAlgebra.Benchmarks
 {
