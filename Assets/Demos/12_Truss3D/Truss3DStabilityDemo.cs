@@ -31,6 +31,7 @@ namespace LinearAlgebraDemos
         [Range(0.5f, 20f)] public float stiffnessEA = 8f;
         [Range(0f, 0.5f)] public float modeAmplitude = 0.15f;
         [Range(0, 3)] public int shownMode;
+        public bool colorByStress = true;   // color members by modal axial force (where it breaks first)
         public Preconditioner preconditioner = Preconditioner.IC0;
 
         const float FootprintWidth = 1f;
@@ -57,6 +58,9 @@ namespace LinearAlgebraDemos
         floatLOBPCGCache cache;
         floatN lambda;      // arena-owned view of cache.lambda after solve
         floatMxN modes;     // arena-owned view of cache.X (K x N)
+        floatN residX, residAx;   // scratch for per-mode residuals (arena-owned)
+        float softestResidual;    // ||A x0 - lambda0 x0|| / ||A x0|| of the current softest mode
+        float shownModeResidual;  // same, for the currently displayed mode
         bool built;
         float builtEA;
         int builtStories;
@@ -193,6 +197,8 @@ namespace LinearAlgebraDemos
                 default:                         mIC0 = arena.floatIC0(in A); break;
             }
             cache = arena.floatLOBPCGCache(N, K);
+            residX = arena.floatVec(N);
+            residAx = arena.floatVec(N);
 
             built = true;
             justBuilt = true;
@@ -249,13 +255,39 @@ namespace LinearAlgebraDemos
 
             lambda = cache.lambda;   // default until the first Update -> lambda.IsCreated gates readers
             modes = cache.X;
+
+            // Per-mode residuals, recomputed independently via spMV (not the solver's self-report):
+            // small for a genuine eigenpair, ~1 for a mechanism the solver cannot pin (a singular
+            // stiffness has exactly-null modes whose eigenvectors are undefined). softest drives the
+            // stable/unstable verdict; shown gates the mode animation.
+            softestResidual = ModeResidual(0);
+            shownModeResidual = ModeResidual(shownMode);
+        }
+
+        // ||A x_m - lambda_m x_m|| / ||A x_m|| for cache mode m, via an independent spMV.
+        float ModeResidual(int m)
+        {
+            for (int i = 0; i < N; i++) residX[i] = cache.X[m, i];
+            BSR.spMV(in A, in residX, ref residAx);
+            float num = 0f, den = 0f;
+            for (int i = 0; i < N; i++)
+            {
+                float r = residAx[i] - cache.lambda[m] * residX[i];
+                num += r * r;
+                den += residAx[i] * residAx[i];
+            }
+            return math.sqrt(num) / (math.sqrt(den) + 1e-30f);
         }
 
         void OnDrawGizmos()
         {
             if (!Application.isPlaying || !built || !lambda.IsCreated) return;
 
-            float wob = modeAmplitude * math.sin(6f * Time.time);
+            // A mechanism (unconverged null) mode has no defined shape and would just jitter -- freeze
+            // it undeformed and fall back to structural colors rather than animate noise.
+            bool resolved = shownModeResidual <= 0.25f;
+            bool stress = colorByStress && resolved;
+            float wob = resolved ? modeAmplitude * math.sin(6f * Time.time) : 0f;
             Vector3 P(int node)
             {
                 float3 p = Nodes[node];
@@ -265,21 +297,48 @@ namespace LinearAlgebraDemos
                 return new Vector3(p.x + dx, p.y + dy, p.z + dz);
             }
 
-            Gizmos.color = Color.white;
-            foreach (var m in Chords) Gizmos.DrawLine(P(m.x), P(m.y));
-            foreach (var m in Rings) Gizmos.DrawLine(P(m.x), P(m.y));
+            // Modal axial force of a member in the shown mode: (EA/L) * elongation, elongation =
+            // (disp_b - disp_a) . axis_unit. The member with the largest |force| is where the mode
+            // concentrates stress -- where the structure yields/buckles first. Eigenvectors are
+            // unit-normalized, so only the RELATIVE distribution matters: normalize to the per-mode peak.
+            float Force(int a, int b)
+            {
+                float3 axis = Nodes[b] - Nodes[a];
+                float L = math.length(axis);
+                float3 u = axis / L;
+                float3 da = new float3(modes[shownMode, 3 * a], modes[shownMode, 3 * a + 1], modes[shownMode, 3 * a + 2]);
+                float3 db = new float3(modes[shownMode, 3 * b], modes[shownMode, 3 * b + 1], modes[shownMode, 3 * b + 2]);
+                return (stiffnessEA / L) * math.dot(db - da, u);
+            }
 
-            Gizmos.color = new Color(0.4f, 0.6f, 1f);   // floor diaphragm braces
-            foreach (var m in Diaphragms) Gizmos.DrawLine(P(m.x), P(m.y));
+            float maxF = 1e-30f;
+            if (stress)
+            {
+                foreach (var m in Chords) maxF = math.max(maxF, math.abs(Force(m.x, m.y)));
+                foreach (var m in Rings) maxF = math.max(maxF, math.abs(Force(m.x, m.y)));
+                foreach (var m in Diaphragms) maxF = math.max(maxF, math.abs(Force(m.x, m.y)));
+                for (int s = 0; s < stories; s++)
+                    if (braceOn[s])
+                        for (int f = 0; f < 4; f++)
+                        { var m = Diagonals[s * 4 + f]; maxF = math.max(maxF, math.abs(Force(m.x, m.y))); }
+            }
 
-            Gizmos.color = Color.yellow;
+            // blue (low) -> cyan -> green -> yellow -> red (peak) via hue 0.66..0.
+            void Draw(int a, int b, Color baseColor)
+            {
+                Gizmos.color = stress
+                    ? Color.HSVToRGB((1f - math.saturate(math.abs(Force(a, b)) / maxF)) * 0.66f, 0.9f, 1f)
+                    : baseColor;
+                Gizmos.DrawLine(P(a), P(b));
+            }
+
+            foreach (var m in Chords) Draw(m.x, m.y, Color.white);
+            foreach (var m in Rings) Draw(m.x, m.y, Color.white);
+            foreach (var m in Diaphragms) Draw(m.x, m.y, new Color(0.4f, 0.6f, 1f));
             for (int s = 0; s < stories; s++)
                 if (braceOn[s])
                     for (int f = 0; f < 4; f++)
-                    {
-                        var m = Diagonals[s * 4 + f];
-                        Gizmos.DrawLine(P(m.x), P(m.y));
-                    }
+                    { var m = Diagonals[s * 4 + f]; Draw(m.x, m.y, Color.yellow); }
 
             Gizmos.color = Color.red;
             for (int c = 0; c < 4; c++) Gizmos.DrawSphere(P(c), 0.06f);
@@ -299,18 +358,21 @@ namespace LinearAlgebraDemos
             GUILayout.EndHorizontal();
             if (built && lambda.IsCreated)
             {
-                GUILayout.Label($"lambda = [{lambda[0]:E2}, {lambda[1]:E2}, {lambda[2]:E2}, {lambda[3]:E2}]");
+                GUILayout.Label($"lambda = [{Lam(lambda[0])}, {Lam(lambda[1])}, {Lam(lambda[2])}, {Lam(lambda[3])}]");
                 // A stable slender tower has a genuinely SMALL softest eigenvalue (its lateral sway
-                // mode), so an absolute bar can't separate "soft but stable" from "mechanism". A
-                // mechanism instead drops lambda0 orders of magnitude below the structural block --
-                // detect it by the spectral gap lambda0 << lambda_{K-1}, scale-free in EA and height.
-                bool unstable = lambda[0] < 1e-3f * lambda[K - 1];
+                // mode), so an absolute lambda bar can't separate "soft but stable" from "mechanism".
+                // The robust test is the softest mode's own residual ||A x0 - lambda0 x0|| / ||A x0||:
+                // near zero for a genuine eigenpair, near one for a mechanism the solver cannot pin --
+                // independent of tower height and of HOW MANY mechanism modes exist.
+                bool unstable = !(softestResidual <= 0.25f);   // NaN-safe
                 if (stabilityLabelStyle == null) stabilityLabelStyle = new GUIStyle(GUI.skin.label);
                 stabilityLabelStyle.normal.textColor = unstable ? Color.red : Color.green;
                 GUILayout.Label(unstable
-                    ? $"lambda0 collapsed ({lambda[K - 1] / math.max(lambda[0], 1e-30f):F0}x below lambda{K - 1}) — mechanism, UNSTABLE"
-                    : $"stable — softest sway lambda0={lambda[0]:E2}, gap {lambda[K - 1] / math.max(lambda[0], 1e-30f):F0}x", stabilityLabelStyle);
+                    ? $"softest mode is a mechanism (residual {softestResidual:F2}) — UNSTABLE"
+                    : $"stable — softest sway lambda0={lambda[0]:E2}, residual {softestResidual:F3}", stabilityLabelStyle);
             }
+
+            colorByStress = GUILayout.Toggle(colorByStress, "colour members by modal stress (red = breaks first)");
 
             GUILayout.Label("Diagonal bracing (per story):");
             for (int row = 0; row < braceOn.Length; row += 8)
@@ -321,12 +383,19 @@ namespace LinearAlgebraDemos
                 GUILayout.EndHorizontal();
             }
 
-            shownMode = (int)LabeledSlider($"mode {shownMode} (lambda={((built && lambda.IsCreated) ? lambda[shownMode] : 0f):F3})", shownMode, 0, 3.49f);
+            string modeTag = (built && lambda.IsCreated)
+                ? $"lambda={Lam(lambda[shownMode])}{(shownModeResidual > 0.25f ? ", mechanism — shape undefined" : "")}"
+                : "lambda=0";
+            shownMode = (int)LabeledSlider($"mode {shownMode} ({modeTag})", shownMode, 0, 3.49f);
             stiffnessEA = LabeledSlider($"EA {stiffnessEA:F1}", stiffnessEA, 0.5f, 20f);
             modeAmplitude = LabeledSlider($"amplitude {modeAmplitude:F2}", modeAmplitude, 0f, 0.5f);
             stories = (int)LabeledSlider($"stories {stories}", stories, 1, 24.49f);
             GUILayout.EndArea();
         }
+
+        // Render an eigenvalue: values at the float noise floor (a singular stiffness's exactly-null
+        // mechanism modes) read as "~0" instead of flickering their ~1e-7 noise in the display.
+        string Lam(float v) => math.abs(v) < 1e-5f * stiffnessEA ? "~0" : v.ToString("E2");
 
         static float LabeledSlider(string label, float v, float lo, float hi)
         {
