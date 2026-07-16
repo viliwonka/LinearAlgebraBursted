@@ -45,6 +45,7 @@ namespace LinearAlgebraDemos
         int2[] Chords;      // vertical, 4 per story
         int2[] Rings;       // horizontal, 4 per level
         int2[] Diagonals;   // one per face per story, grouped 4 per story (index = story*4 + face)
+        int2[] Diaphragms;  // one in-plane diagonal per floor (level >= 1), always present
 
         int N => Nodes.Length * 3;
 
@@ -125,6 +126,15 @@ namespace LinearAlgebraDemos
                 for (int f = 0; f < 4; f++)
                     diagonals.Add(new int2(l * 4 + f, (l + 1) * 4 + (f + 1) % 4));
             Diagonals = diagonals.ToArray();
+
+            // Floor-plane (diaphragm) bracing: one in-plane diagonal per suspended floor. Without it
+            // each square floor ring is a rhombus mechanism in its own plane, and the box lozenges in
+            // plan regardless of how the vertical faces are braced -- a spurious near-zero mode that
+            // masks the real stable/mechanism transition the face braces control. Always present.
+            var diaphragms = new List<int2>(stories);
+            for (int l = 1; l < levels; l++)
+                diaphragms.Add(new int2(l * 4 + 0, l * 4 + 2));
+            Diaphragms = diaphragms.ToArray();
         }
 
         void Build()
@@ -135,7 +145,7 @@ namespace LinearAlgebraDemos
             BuildGeometry();
 
             int nb = Nodes.Length;
-            int capHint = (Chords.Length + Rings.Length + Diagonals.Length + 4) * 27;
+            int capHint = (Chords.Length + Rings.Length + Diagonals.Length + Diaphragms.Length + 4) * 27;
             var builder = new floatBSRBuilder(nb, nb, 3, 3, Allocator.Temp, capHint);
 
             void AddBar(int a, int b)
@@ -159,6 +169,7 @@ namespace LinearAlgebraDemos
 
             foreach (var m in Chords) AddBar(m.x, m.y);
             foreach (var m in Rings) AddBar(m.x, m.y);
+            foreach (var m in Diaphragms) AddBar(m.x, m.y);
             for (int s = 0; s < stories; s++)
                 if (braceOn[s])
                     for (int f = 0; f < 4; f++)
@@ -258,6 +269,9 @@ namespace LinearAlgebraDemos
             foreach (var m in Chords) Gizmos.DrawLine(P(m.x), P(m.y));
             foreach (var m in Rings) Gizmos.DrawLine(P(m.x), P(m.y));
 
+            Gizmos.color = new Color(0.4f, 0.6f, 1f);   // floor diaphragm braces
+            foreach (var m in Diaphragms) Gizmos.DrawLine(P(m.x), P(m.y));
+
             Gizmos.color = Color.yellow;
             for (int s = 0; s < stories; s++)
                 if (braceOn[s])
@@ -285,13 +299,17 @@ namespace LinearAlgebraDemos
             GUILayout.EndHorizontal();
             if (built && lambda.IsCreated)
             {
-                GUILayout.Label($"lambda = [{lambda[0]:F3}, {lambda[1]:F3}, {lambda[2]:F3}, {lambda[3]:F3}]");
-                bool unstable = lambda[0] < 0.05f * stiffnessEA;
+                GUILayout.Label($"lambda = [{lambda[0]:E2}, {lambda[1]:E2}, {lambda[2]:E2}, {lambda[3]:E2}]");
+                // A stable slender tower has a genuinely SMALL softest eigenvalue (its lateral sway
+                // mode), so an absolute bar can't separate "soft but stable" from "mechanism". A
+                // mechanism instead drops lambda0 orders of magnitude below the structural block --
+                // detect it by the spectral gap lambda0 << lambda_{K-1}, scale-free in EA and height.
+                bool unstable = lambda[0] < 1e-3f * lambda[K - 1];
                 if (stabilityLabelStyle == null) stabilityLabelStyle = new GUIStyle(GUI.skin.label);
                 stabilityLabelStyle.normal.textColor = unstable ? Color.red : Color.green;
                 GUILayout.Label(unstable
-                    ? "lambda1 ≈ 0 — near-mechanism, tower is UNSTABLE"
-                    : "tower is stiff (no soft modes)", stabilityLabelStyle);
+                    ? $"lambda0 collapsed ({lambda[K - 1] / math.max(lambda[0], 1e-30f):F0}x below lambda{K - 1}) — mechanism, UNSTABLE"
+                    : $"stable — softest sway lambda0={lambda[0]:E2}, gap {lambda[K - 1] / math.max(lambda[0], 1e-30f):F0}x", stabilityLabelStyle);
             }
 
             GUILayout.Label("Diagonal bracing (per story):");

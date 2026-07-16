@@ -43,6 +43,8 @@ namespace LinearAlgebraDemos.Tests
             for (int l = 0; l < stories; l++)
                 for (int f = 0; f < 4; f++)
                     bars.Add(new int2(l * 4 + f, (l + 1) * 4 + (f + 1) % 4));     // one diagonal per face
+            for (int l = 1; l < levels; l++)
+                bars.Add(new int2(l * 4 + 0, l * 4 + 2));                          // floor diaphragm brace
 
             const int K = 3;
             int n = nodes.Length * 3;
