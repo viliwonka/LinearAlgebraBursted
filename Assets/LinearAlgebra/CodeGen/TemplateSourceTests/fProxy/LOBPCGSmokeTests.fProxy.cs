@@ -326,6 +326,46 @@ public class fProxyLOBPCGSmokeTests
         arena.Dispose();
     }
 
+    // STRUCTURAL generalized eigenproblem (A x = lambda B x) with a CLOSED-FORM spectrum: axial
+    // vibration of a uniform fixed-fixed bar -- a chain of collinear 2-node bar/truss elements.
+    // A = assembled element stiffness = tridiag(-1, 2, -1); B = assembled CONSISTENT mass matrix
+    // (rho*A*L/6)*[[2,1],[1,2]] per element -> interior pattern (1/6)*tridiag(1, 4, 1), SPD. Both
+    // are symmetric Toeplitz tridiagonals, so they share the sine eigenbasis phi_j(i) =
+    // sin(i j pi/(n+1)) and the generalized eigenvalues are EXACT:
+    //     lambda_j = (2 - 2 cos t_j) / ((4 + 2 cos t_j)/6),   t_j = j pi/(n+1).
+    // lambda_j increases with j so the k smallest are j = 1..k (e.g. n=2 gives exactly {6/5, 6}).
+    // Consistent element mass matrix: standard FE (Cook, Malkus & Plesha, "Concepts and
+    // Applications of Finite Element Analysis"). This is the real K x = lambda M x structural pencil
+    // the tower/frame demos solve, checked against an answer known to full precision.
+    [Test]
+    public void GeneralizedBarConsistentMassMatchesClosedFormSpectrum()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        int n = 12, k = 4;
+        var A = arena.fProxyLaplacian1D(n);                 // K = tridiag(-1, 2, -1)
+        var B = arena.fProxyMat(n, n);                      // M = (1/6) tridiag(1, 4, 1), SPD
+        for (int i = 0; i < n; i++)
+        {
+            B[i, i] = (fProxy)(4.0 / 6.0);
+            if (i > 0)     B[i, i - 1] = (fProxy)(1.0 / 6.0);
+            if (i < n - 1) B[i, i + 1] = (fProxy)(1.0 / 6.0);
+        }
+
+        var ws = arena.fProxyLOBPCGCache(n, k);
+        var info = Eigen.lobpcg(in A, in B, ref ws, k, Consts.fProxySqrtEps, 1000);
+        Assert.IsTrue(info.Solved, info.ToString());
+
+        for (int j = 1; j <= k; j++)
+        {
+            double t = j * math.PI_DBL / (n + 1);
+            double lambda = (2.0 - 2.0 * math.cos(t)) / ((4.0 + 2.0 * math.cos(t)) / 6.0);
+            Assert.AreEqual(lambda, (double)ws.lambda[j - 1], 1e-2);
+        }
+
+        arena.Dispose();
+    }
+
     // B=I regression / internal-consistency check: the generalized dense entry point called with
     // an EXPLICIT dense identity matrix in the B slot (a real matvec through Blas.dot, NOT the
     // fProxyIdentityOperator the standard path forwards through internally) must reproduce the
