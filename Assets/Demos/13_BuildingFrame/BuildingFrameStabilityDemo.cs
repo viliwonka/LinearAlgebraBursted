@@ -392,17 +392,19 @@ namespace LinearAlgebraDemos
             {
                 GUILayout.Label($"lambda = [{Lam(lambda[0])}, {Lam(lambda[1])}, {Lam(lambda[2])}, {Lam(lambda[3])}]");
                 // A braced building's genuine fundamental (lateral sway) mode is legitimately SMALL
-                // relative to EA, so an absolute lambda bar flags every real frame as unstable. The
-                // robust mechanism test is the softest mode's own residual ||A x0 - lambda0 x0|| /
-                // ||A x0||: a genuine eigenpair drives it near zero, a mechanism (a near-null mode the
-                // solver cannot pin) leaves it near one -- independent of building size and of HOW
-                // MANY mechanism modes exist (a pure spectral-gap test misreads >=K near-null modes
-                // as "stable" because lambda_{K-1} collapses too).
-                bool unstable = !(softestResidual <= 0.25f);   // NaN-safe
+                // relative to EA, so an absolute lambda bar flags every real frame as unstable. Two
+                // signs mark a mechanism instead: (1) lambda0 at the float noise floor (a singular
+                // stiffness's exactly-null mode -- caught even when the solver returns a CLEAN null
+                // vector with ~0 residual), or (2) the softest mode's own residual ||A x0 - lambda0
+                // x0|| / ||A x0|| near 1 (a near-null mode the solver cannot pin). Together these are
+                // robust to building size and to HOW MANY null modes exist (a spectral-gap test
+                // misreads >=K null modes as "stable"; a residual-only test misses clean null modes).
+                bool nullMode = math.abs(lambda[0]) < 1e-5f * stiffnessEA;
+                bool unstable = nullMode || !(softestResidual <= 0.25f);   // NaN-safe
                 if (stabilityLabelStyle == null) stabilityLabelStyle = new GUIStyle(GUI.skin.label);
                 stabilityLabelStyle.normal.textColor = unstable ? Color.red : Color.green;
                 GUILayout.Label(unstable
-                    ? $"softest mode is a mechanism (residual {softestResidual:F2}) — UNSTABLE"
+                    ? $"mechanism — softest mode lambda0={Lam(lambda[0])}, residual {softestResidual:F2} — UNSTABLE"
                     : $"stable — softest sway lambda0={lambda[0]:E2}, residual {softestResidual:F3}", stabilityLabelStyle);
             }
 
