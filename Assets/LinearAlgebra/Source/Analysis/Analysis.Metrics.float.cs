@@ -156,7 +156,7 @@ namespace LinearAlgebra
                 float d = lu[P[i], i];
                 if (d < (float)0) s = -s;
                 else if (d == (float)0) s = (float)0;          // singular -> det 0
-                logAbs += math.log(math.abs(d));                 // |d| == 0 -> log = -infinity
+                logAbs += DetMath.Log(math.abs(d));                 // |d| == 0 -> log = -infinity
             }
 
             sign = s;

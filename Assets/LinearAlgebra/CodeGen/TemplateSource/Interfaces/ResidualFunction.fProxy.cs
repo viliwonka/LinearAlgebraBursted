@@ -105,7 +105,7 @@ namespace LinearAlgebra
         public fProxy Rho(fProxy s)
         {
             fProxy c2 = Scale * Scale;
-            return c2 * math.log((fProxy)1 + s / c2);
+            return c2 * DetMath.Log((fProxy)1 + s / c2);
         }
 
         public fProxy RhoPrime(fProxy s)

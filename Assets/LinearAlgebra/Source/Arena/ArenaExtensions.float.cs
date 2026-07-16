@@ -193,8 +193,8 @@ namespace LinearAlgebra
                 return matrix;
             }
 
-            float c = math.cos(radians);
-            float s = math.sin(radians);
+            float c = DetMath.Cos(radians);
+            float s = DetMath.Sin(radians);
 
             matrix[i, i] = c;
             matrix[j, j] = c;

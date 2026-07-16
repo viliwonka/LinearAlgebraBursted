@@ -320,7 +320,7 @@ public class fProxySVDTests
         {
             var arena = new Arena(Allocator.Persistent);
             int n = 12;
-            var A = arena.fProxyKahan(n, (fProxy)1.2f);
+            var A = arena.fProxyKahan(n, (fProxy)0.36235775f);
             var U = arena.fProxyMat(n, n);
             var S = arena.fProxyVec(n);
             var V = arena.fProxyMat(n, n);

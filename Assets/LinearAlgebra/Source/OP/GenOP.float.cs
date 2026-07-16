@@ -109,7 +109,7 @@ namespace LinearAlgebra
             for (int i = 0; i < N; i++)
             {
                 float d = (float)i - c;
-                float w = math.exp(-d * d * inv2s2);
+                float w = DetMath.Exp(-d * d * inv2s2);
                 dest[i] = w;
                 sum += w;
             }
@@ -188,15 +188,15 @@ namespace LinearAlgebra
                 switch (type)
                 {
                     case WindowType.Hann:
-                        w = (float)0.5 * ((float)1 - math.cos(twoPiOverNm1 * i));
+                        w = (float)0.5 * ((float)1 - DetMath.Cos(twoPiOverNm1 * i));
                         break;
                     case WindowType.Hamming:
-                        w = (float)0.54 - (float)0.46 * math.cos(twoPiOverNm1 * i);
+                        w = (float)0.54 - (float)0.46 * DetMath.Cos(twoPiOverNm1 * i);
                         break;
                     case WindowType.Blackman:
                         w = (float)0.42
-                            - (float)0.5 * math.cos(twoPiOverNm1 * i)
-                            + (float)0.08 * math.cos(fourPiOverNm1 * i);
+                            - (float)0.5 * DetMath.Cos(twoPiOverNm1 * i)
+                            + (float)0.08 * DetMath.Cos(fourPiOverNm1 * i);
                         break;
                     default:
                         w = (float)1;

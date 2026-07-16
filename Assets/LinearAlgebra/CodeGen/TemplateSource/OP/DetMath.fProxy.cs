@@ -176,8 +176,26 @@ namespace LinearAlgebra
         public static fProxy Log2(fProxy x)  => Log(x) * (fProxy)1.4426950408889634;
         public static fProxy Log10(fProxy x) => Log(x) * (fProxy)0.4342944819032518;
 
-        // x^y for x > 0, via exp(y·log x). x = 0 gives 0 for y > 0; x < 0 gives NaN.
-        public static fProxy Pow(fProxy x, fProxy y) => Exp(y * Log(x));
+        // x^y for x > 0, via exp(y·log x). x = 0 gives 0 for y > 0, +inf for y < 0; x < 0 gives NaN.
+        // y = 0 gives 1 for ANY x (including 0^0 = 1), matching IEEE pow.
+        public static fProxy Pow(fProxy x, fProxy y) => math.select(Exp(y * Log(x)), (fProxy)1, y == (fProxy)0);
+
+        // x^n for INTEGER n, via exponentiation by squaring (+ - * / only, deterministic). Exact
+        // reduction order; handles negative x (sign follows the multiplies). n < 0 gives 1/x^|n|.
+        public static fProxy Pow(fProxy x, int n)
+        {
+            bool neg = n < 0;
+            uint u = (uint)(neg ? -n : n);
+            fProxy r = (fProxy)1;
+            fProxy p = x;
+            while (u != 0u)
+            {
+                if ((u & 1u) != 0u) r *= p;
+                p *= p;
+                u >>= 1;
+            }
+            return neg ? (fProxy)1 / r : r;
+        }
 
         // trig non-finite guard: sin/cos of +-inf or NaN -> NaN.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -350,13 +368,15 @@ namespace LinearAlgebra
             return math.select(res, -res, x < (fProxy)0);              // odd function
         }
 
-        // atan2(y, x): angle in (-pi, pi]. Branch-free quadrant fix-up; x = 0 folds via +-inf into Atan.
+        // atan2(y, x): angle in (-pi, pi]. Branch-free quadrant fix-up; x = 0 (y != 0) folds via
+        // +-inf into Atan; the origin (0,0) returns 0.
         public static fProxy Atan2(fProxy y, fProxy x)
         {
             fProxy PI = (fProxy)3.141592653589793;
             fProxy a = Atan(y / x);
             a = math.select(a, a + PI, (x < (fProxy)0) & (y >= (fProxy)0));
             a = math.select(a, a - PI, (x < (fProxy)0) & (y <  (fProxy)0));
+            a = math.select(a, (fProxy)0, (x == (fProxy)0) & (y == (fProxy)0));  // 0/0 -> NaN -> 0
             return a;
         }
 
@@ -374,8 +394,14 @@ namespace LinearAlgebra
         }
         public static fProxy Sinh(fProxy x) { SinhCosh(x, out fProxy sh, out fProxy ch); return sh; }
         public static fProxy Cosh(fProxy x) { SinhCosh(x, out fProxy sh, out fProxy ch); return ch; }
-        // tanh(x) via e^{2x}.
-        public static fProxy Tanh(fProxy x) { fProxy e = Exp((fProxy)2 * x); return (e - (fProxy)1) / (e + (fProxy)1); }
+        // tanh(x) via e^{2|x|}; saturates to +-1 for large |x| (no inf/inf), odd. Total: NaN -> NaN.
+        public static fProxy Tanh(fProxy x)
+        {
+            fProxy ax = math.abs(x);
+            fProxy e = Exp((fProxy)2 * ax);                      // >= 1; overflows to +inf for large |x|
+            fProxy t = (fProxy)1 - (fProxy)2 / (e + (fProxy)1);  // 2/(inf+1) = 0 -> t = 1 (no inf/inf)
+            return math.select(t, -t, x < (fProxy)0);            // odd
+        }
         // acosh(x), x >= 1.
         public static fProxy Acosh(fProxy x) => Log(x + math.sqrt(x * x - (fProxy)1));
     }

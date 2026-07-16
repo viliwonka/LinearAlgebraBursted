@@ -99,15 +99,15 @@ namespace LinearAlgebra
         // ---- Sine ----
         public struct EaseInSine : IfloatScalarFunction
         {
-            public float Eval(float t) => (float)1 - math.cos(t * (float)(System.Math.PI * 0.5));
+            public float Eval(float t) => (float)1 - DetMath.Cos(t * (float)(System.Math.PI * 0.5));
         }
         public struct EaseOutSine : IfloatScalarFunction
         {
-            public float Eval(float t) => math.sin(t * (float)(System.Math.PI * 0.5));
+            public float Eval(float t) => DetMath.Sin(t * (float)(System.Math.PI * 0.5));
         }
         public struct EaseInOutSine : IfloatScalarFunction
         {
-            public float Eval(float t) => (float)(-0.5) * (math.cos((float)System.Math.PI * t) - (float)1);
+            public float Eval(float t) => (float)(-0.5) * (DetMath.Cos((float)System.Math.PI * t) - (float)1);
         }
 
         // ---- Exponential ----
@@ -116,7 +116,7 @@ namespace LinearAlgebra
             public float Eval(float t)
             {
                 if (t <= (float)0) return (float)0;
-                return math.pow((float)2, (float)10 * t - (float)10);
+                return DetMath.Pow((float)2, (float)10 * t - (float)10);
             }
         }
         public struct EaseOutExpo : IfloatScalarFunction
@@ -124,7 +124,7 @@ namespace LinearAlgebra
             public float Eval(float t)
             {
                 if (t >= (float)1) return (float)1;
-                return (float)1 - math.pow((float)2, (float)(-10) * t);
+                return (float)1 - DetMath.Pow((float)2, (float)(-10) * t);
             }
         }
         public struct EaseInOutExpo : IfloatScalarFunction
@@ -134,8 +134,8 @@ namespace LinearAlgebra
                 if (t <= (float)0) return (float)0;
                 if (t >= (float)1) return (float)1;
                 if (t < (float)0.5)
-                    return (float)0.5 * math.pow((float)2, (float)20 * t - (float)10);
-                return (float)1 - (float)0.5 * math.pow((float)2, (float)(-20) * t + (float)10);
+                    return (float)0.5 * DetMath.Pow((float)2, (float)20 * t - (float)10);
+                return (float)1 - (float)0.5 * DetMath.Pow((float)2, (float)(-20) * t + (float)10);
             }
         }
 
@@ -171,8 +171,8 @@ namespace LinearAlgebra
                 if (t <= (float)0) return (float)0;
                 if (t >= (float)1) return (float)1;
                 float c4 = (float)(2.0 * System.Math.PI / 3.0);
-                return -math.pow((float)2, (float)10 * t - (float)10)
-                       * math.sin(((float)10 * t - (float)10.75) * c4);
+                return -DetMath.Pow((float)2, (float)10 * t - (float)10)
+                       * DetMath.Sin(((float)10 * t - (float)10.75) * c4);
             }
         }
         public struct EaseOutElastic : IfloatScalarFunction
@@ -182,8 +182,8 @@ namespace LinearAlgebra
                 if (t <= (float)0) return (float)0;
                 if (t >= (float)1) return (float)1;
                 float c4 = (float)(2.0 * System.Math.PI / 3.0);
-                return math.pow((float)2, (float)(-10) * t)
-                       * math.sin(((float)10 * t - (float)0.75) * c4) + (float)1;
+                return DetMath.Pow((float)2, (float)(-10) * t)
+                       * DetMath.Sin(((float)10 * t - (float)0.75) * c4) + (float)1;
             }
         }
 
@@ -230,10 +230,10 @@ namespace LinearAlgebra
                 if (t <= (float)0) return (float)0;
                 if (t >= (float)1) return (float)1;
                 float c5 = (float)(2.0 * System.Math.PI / 4.5);
-                float s = math.sin(((float)20 * t - (float)11.125) * c5);
+                float s = DetMath.Sin(((float)20 * t - (float)11.125) * c5);
                 if (t < (float)0.5)
-                    return -(math.pow((float)2, (float)20 * t - (float)10) * s) * (float)0.5;
-                return (math.pow((float)2, (float)(-20) * t + (float)10) * s) * (float)0.5 + (float)1;
+                    return -(DetMath.Pow((float)2, (float)20 * t - (float)10) * s) * (float)0.5;
+                return (DetMath.Pow((float)2, (float)(-20) * t + (float)10) * s) * (float)0.5 + (float)1;
             }
         }
 

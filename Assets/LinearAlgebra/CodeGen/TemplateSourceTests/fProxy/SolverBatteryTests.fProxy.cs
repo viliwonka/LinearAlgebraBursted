@@ -326,7 +326,7 @@ public class fProxySolverBatteryTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 5;
-            var A = arena.fProxyKahan(n, (fProxy)1.2);
+            var A = arena.fProxyKahan(n, (fProxy)0.36235775);
             CheckQRCPReconstruct(ref arena, in A);
 
             arena.Dispose();

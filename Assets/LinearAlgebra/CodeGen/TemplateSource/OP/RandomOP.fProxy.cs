@@ -239,7 +239,7 @@ namespace LinearAlgebra
         public static fProxy ExponentialICDF(fProxy u, fProxy lambda)
         {
             fProxy uc = (fProxy)1 - u;
-            return -math.log(uc) / lambda;
+            return -DetMath.Log(uc) / lambda;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -270,7 +270,7 @@ namespace LinearAlgebra
         public static fProxy RayleighICDF(fProxy u, fProxy sigma)
         {
             fProxy uc = (fProxy)1 - u;
-            return sigma * math.sqrt((fProxy)(-2) * math.log(uc));
+            return sigma * math.sqrt((fProxy)(-2) * DetMath.Log(uc));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -305,7 +305,7 @@ namespace LinearAlgebra
         public static fProxy WeibullICDF(fProxy u, fProxy k, fProxy lambda)
         {
             fProxy uc = (fProxy)1 - u;
-            return lambda * math.pow(-math.log(uc), (fProxy)1 / k);
+            return lambda * DetMath.Pow(-DetMath.Log(uc), (fProxy)1 / k);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -344,7 +344,7 @@ namespace LinearAlgebra
         {
             fProxy eps = Consts.fProxyEpsilon;
             fProxy uSafe = math.clamp(u, eps, (fProxy)1 - eps);
-            return x0 + gamma * math.tan((fProxy)System.Math.PI * (uSafe - (fProxy)0.5));
+            return x0 + gamma * DetMath.Tan((fProxy)System.Math.PI * (uSafe - (fProxy)0.5));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -380,7 +380,7 @@ namespace LinearAlgebra
             fProxy eps = Consts.fProxyEpsilon;
             fProxy uSafe = math.clamp(u, eps, (fProxy)1 - eps);
             fProxy uc = (fProxy)1 - uSafe;
-            return mu + s * math.log(uSafe / uc);
+            return mu + s * DetMath.Log(uSafe / uc);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -415,7 +415,7 @@ namespace LinearAlgebra
         public static fProxy ParetoICDF(fProxy u, fProxy xm, fProxy alpha)
         {
             fProxy uc = (fProxy)1 - u;
-            return xm / math.pow(uc, (fProxy)1 / alpha);
+            return xm / DetMath.Pow(uc, (fProxy)1 / alpha);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -524,11 +524,11 @@ namespace LinearAlgebra
             fProxy u1 = (fProxy)1 - rng.NextFProxy();
             fProxy u2 = rng.NextFProxy();
 
-            fProxy r = math.sqrt((fProxy)(-2) * math.log(u1));
+            fProxy r = math.sqrt((fProxy)(-2) * DetMath.Log(u1));
             fProxy angle = (fProxy)(2.0 * System.Math.PI) * u2;
 
-            fProxy sinVal = math.sin(angle);
-            fProxy cosVal = math.cos(angle);
+            fProxy sinVal = DetMath.Sin(angle);
+            fProxy cosVal = DetMath.Cos(angle);
 
             // Store the fully-scaled spare so a mid-fill mean/std change cannot rescale it.
             spare = mean + std * (r * sinVal);

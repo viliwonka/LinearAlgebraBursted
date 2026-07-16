@@ -330,7 +330,7 @@ public class doubleSolverBatteryTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 5;
-            var A = arena.doubleKahan(n, (double)1.2);
+            var A = arena.doubleKahan(n, (double)0.36235775);
             CheckQRCPReconstruct(ref arena, in A);
 
             arena.Dispose();

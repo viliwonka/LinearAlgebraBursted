@@ -109,7 +109,7 @@ namespace LinearAlgebra
         public float Rho(float s)
         {
             float c2 = Scale * Scale;
-            return c2 * math.log((float)1 + s / c2);
+            return c2 * DetMath.Log((float)1 + s / c2);
         }
 
         public float RhoPrime(float s)

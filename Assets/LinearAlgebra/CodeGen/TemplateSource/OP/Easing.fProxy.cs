@@ -95,15 +95,15 @@ namespace LinearAlgebra
         // ---- Sine ----
         public struct EaseInSine : IfProxyScalarFunction
         {
-            public fProxy Eval(fProxy t) => (fProxy)1 - math.cos(t * (fProxy)(System.Math.PI * 0.5));
+            public fProxy Eval(fProxy t) => (fProxy)1 - DetMath.Cos(t * (fProxy)(System.Math.PI * 0.5));
         }
         public struct EaseOutSine : IfProxyScalarFunction
         {
-            public fProxy Eval(fProxy t) => math.sin(t * (fProxy)(System.Math.PI * 0.5));
+            public fProxy Eval(fProxy t) => DetMath.Sin(t * (fProxy)(System.Math.PI * 0.5));
         }
         public struct EaseInOutSine : IfProxyScalarFunction
         {
-            public fProxy Eval(fProxy t) => (fProxy)(-0.5) * (math.cos((fProxy)System.Math.PI * t) - (fProxy)1);
+            public fProxy Eval(fProxy t) => (fProxy)(-0.5) * (DetMath.Cos((fProxy)System.Math.PI * t) - (fProxy)1);
         }
 
         // ---- Exponential ----
@@ -112,7 +112,7 @@ namespace LinearAlgebra
             public fProxy Eval(fProxy t)
             {
                 if (t <= (fProxy)0) return (fProxy)0;
-                return math.pow((fProxy)2, (fProxy)10 * t - (fProxy)10);
+                return DetMath.Pow((fProxy)2, (fProxy)10 * t - (fProxy)10);
             }
         }
         public struct EaseOutExpo : IfProxyScalarFunction
@@ -120,7 +120,7 @@ namespace LinearAlgebra
             public fProxy Eval(fProxy t)
             {
                 if (t >= (fProxy)1) return (fProxy)1;
-                return (fProxy)1 - math.pow((fProxy)2, (fProxy)(-10) * t);
+                return (fProxy)1 - DetMath.Pow((fProxy)2, (fProxy)(-10) * t);
             }
         }
         public struct EaseInOutExpo : IfProxyScalarFunction
@@ -130,8 +130,8 @@ namespace LinearAlgebra
                 if (t <= (fProxy)0) return (fProxy)0;
                 if (t >= (fProxy)1) return (fProxy)1;
                 if (t < (fProxy)0.5)
-                    return (fProxy)0.5 * math.pow((fProxy)2, (fProxy)20 * t - (fProxy)10);
-                return (fProxy)1 - (fProxy)0.5 * math.pow((fProxy)2, (fProxy)(-20) * t + (fProxy)10);
+                    return (fProxy)0.5 * DetMath.Pow((fProxy)2, (fProxy)20 * t - (fProxy)10);
+                return (fProxy)1 - (fProxy)0.5 * DetMath.Pow((fProxy)2, (fProxy)(-20) * t + (fProxy)10);
             }
         }
 
@@ -167,8 +167,8 @@ namespace LinearAlgebra
                 if (t <= (fProxy)0) return (fProxy)0;
                 if (t >= (fProxy)1) return (fProxy)1;
                 fProxy c4 = (fProxy)(2.0 * System.Math.PI / 3.0);
-                return -math.pow((fProxy)2, (fProxy)10 * t - (fProxy)10)
-                       * math.sin(((fProxy)10 * t - (fProxy)10.75) * c4);
+                return -DetMath.Pow((fProxy)2, (fProxy)10 * t - (fProxy)10)
+                       * DetMath.Sin(((fProxy)10 * t - (fProxy)10.75) * c4);
             }
         }
         public struct EaseOutElastic : IfProxyScalarFunction
@@ -178,8 +178,8 @@ namespace LinearAlgebra
                 if (t <= (fProxy)0) return (fProxy)0;
                 if (t >= (fProxy)1) return (fProxy)1;
                 fProxy c4 = (fProxy)(2.0 * System.Math.PI / 3.0);
-                return math.pow((fProxy)2, (fProxy)(-10) * t)
-                       * math.sin(((fProxy)10 * t - (fProxy)0.75) * c4) + (fProxy)1;
+                return DetMath.Pow((fProxy)2, (fProxy)(-10) * t)
+                       * DetMath.Sin(((fProxy)10 * t - (fProxy)0.75) * c4) + (fProxy)1;
             }
         }
 
@@ -226,10 +226,10 @@ namespace LinearAlgebra
                 if (t <= (fProxy)0) return (fProxy)0;
                 if (t >= (fProxy)1) return (fProxy)1;
                 fProxy c5 = (fProxy)(2.0 * System.Math.PI / 4.5);
-                fProxy s = math.sin(((fProxy)20 * t - (fProxy)11.125) * c5);
+                fProxy s = DetMath.Sin(((fProxy)20 * t - (fProxy)11.125) * c5);
                 if (t < (fProxy)0.5)
-                    return -(math.pow((fProxy)2, (fProxy)20 * t - (fProxy)10) * s) * (fProxy)0.5;
-                return (math.pow((fProxy)2, (fProxy)(-20) * t + (fProxy)10) * s) * (fProxy)0.5 + (fProxy)1;
+                    return -(DetMath.Pow((fProxy)2, (fProxy)20 * t - (fProxy)10) * s) * (fProxy)0.5;
+                return (DetMath.Pow((fProxy)2, (fProxy)(-20) * t + (fProxy)10) * s) * (fProxy)0.5 + (fProxy)1;
             }
         }
 

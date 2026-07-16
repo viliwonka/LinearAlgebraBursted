@@ -238,9 +238,9 @@ public class floatQRCPTests
             var arena = new Arena(Allocator.Persistent);
 
             int dim = 8;
-            float theta = (float)1.2f; // c=cos, s=sin both comfortably away from 0
+            float c = (float)0.36235775f; // cos(1.2): c and s = sqrt(1-c^2) both well away from 0
 
-            var Q = arena.floatKahan(dim, theta);
+            var Q = arena.floatKahan(dim, c);
             var R = arena.floatMat(dim);
             var P = new Pivot(dim, Allocator.Persistent);
             var A = Q.Copy();

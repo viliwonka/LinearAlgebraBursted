@@ -117,13 +117,13 @@ public class fProxyQRCPDowndateTests
                 for (int ti = 0; ti < 4; ti++)
                 {
                     int dim = ni == 0 ? 16 : (ni == 1 ? 32 : 64);
-                    // theta near the classic 0.285π (~0.8954 rad) plus a sweep well away from 0.
-                    fProxy theta = ti == 0 ? (fProxy)0.8953539f
-                                 : ti == 1 ? (fProxy)0.5f
-                                 : ti == 2 ? (fProxy)1.0f
-                                 :           (fProxy)1.2f;
+                    // c = cos of the classic thetas: ti0 the near-0.285π worst case, the rest a spread.
+                    fProxy c = ti == 0 ? (fProxy)0.62524266f
+                             : ti == 1 ? (fProxy)0.87758256f
+                             : ti == 2 ? (fProxy)0.54030231f
+                             :           (fProxy)0.36235775f;
 
-                    var A0 = arena.fProxyKahan(dim, theta);
+                    var A0 = arena.fProxyKahan(dim, c);
                     var Q = A0.Copy();
                     var R = arena.fProxyMat(dim);
                     var P = new Pivot(dim, Allocator.Temp);
@@ -160,7 +160,7 @@ public class fProxyQRCPDowndateTests
             try
             {
                 int dim = 16;
-                var A0 = arena.fProxyKahan(dim, (fProxy)1.2f);
+                var A0 = arena.fProxyKahan(dim, (fProxy)0.36235775f);
 
                 int svdRank = Analysis.rank(in A0);   // SVD-based numerical rank (auto tol)
                 RecordEq(svdRank, dim);               // sanity: this instance is genuinely full rank

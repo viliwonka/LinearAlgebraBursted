@@ -121,13 +121,13 @@ public class floatQRCPDowndateTests
                 for (int ti = 0; ti < 4; ti++)
                 {
                     int dim = ni == 0 ? 16 : (ni == 1 ? 32 : 64);
-                    // theta near the classic 0.285π (~0.8954 rad) plus a sweep well away from 0.
-                    float theta = ti == 0 ? (float)0.8953539f
-                                 : ti == 1 ? (float)0.5f
-                                 : ti == 2 ? (float)1.0f
-                                 :           (float)1.2f;
+                    // c = cos of the classic thetas: ti0 the near-0.285π worst case, the rest a spread.
+                    float c = ti == 0 ? (float)0.62524266f
+                             : ti == 1 ? (float)0.87758256f
+                             : ti == 2 ? (float)0.54030231f
+                             :           (float)0.36235775f;
 
-                    var A0 = arena.floatKahan(dim, theta);
+                    var A0 = arena.floatKahan(dim, c);
                     var Q = A0.Copy();
                     var R = arena.floatMat(dim);
                     var P = new Pivot(dim, Allocator.Temp);
@@ -164,7 +164,7 @@ public class floatQRCPDowndateTests
             try
             {
                 int dim = 16;
-                var A0 = arena.floatKahan(dim, (float)1.2f);
+                var A0 = arena.floatKahan(dim, (float)0.36235775f);
 
                 int svdRank = Analysis.rank(in A0);   // SVD-based numerical rank (auto tol)
                 RecordEq(svdRank, dim);               // sanity: this instance is genuinely full rank

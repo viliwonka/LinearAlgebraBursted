@@ -324,7 +324,7 @@ public class floatSVDTests
         {
             var arena = new Arena(Allocator.Persistent);
             int n = 12;
-            var A = arena.floatKahan(n, (float)1.2f);
+            var A = arena.floatKahan(n, (float)0.36235775f);
             var U = arena.floatMat(n, n);
             var S = arena.floatVec(n);
             var V = arena.floatMat(n, n);

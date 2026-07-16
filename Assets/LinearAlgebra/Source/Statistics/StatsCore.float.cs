@@ -999,7 +999,7 @@ namespace LinearAlgebra
                 float maxVal = ptr[0];
                 for (int i = 1; i < n; i++) if (ptr[i] > maxVal) maxVal = ptr[i];
                 float expSum = (float)0;
-                for (int i = 0; i < n; i++) { ptr[i] = math.exp(ptr[i] - maxVal); expSum += ptr[i]; }
+                for (int i = 0; i < n; i++) { ptr[i] = DetMath.Exp(ptr[i] - maxVal); expSum += ptr[i]; }
                 for (int i = 0; i < n; i++) ptr[i] /= expSum;
             }
         }
@@ -1013,7 +1013,7 @@ namespace LinearAlgebra
                 float maxVal = A[r, 0];
                 for (int c = 1; c < A.N_Cols; c++) if (A[r, c] > maxVal) maxVal = A[r, c];
                 float expSum = (float)0;
-                for (int c = 0; c < A.N_Cols; c++) { A[r, c] = math.exp(A[r, c] - maxVal); expSum += A[r, c]; }
+                for (int c = 0; c < A.N_Cols; c++) { A[r, c] = DetMath.Exp(A[r, c] - maxVal); expSum += A[r, c]; }
                 for (int c = 0; c < A.N_Cols; c++) A[r, c] /= expSum;
             }
         }
@@ -1027,7 +1027,7 @@ namespace LinearAlgebra
                 float maxVal = A[0, c];
                 for (int r = 1; r < A.M_Rows; r++) if (A[r, c] > maxVal) maxVal = A[r, c];
                 float expSum = (float)0;
-                for (int r = 0; r < A.M_Rows; r++) { A[r, c] = math.exp(A[r, c] - maxVal); expSum += A[r, c]; }
+                for (int r = 0; r < A.M_Rows; r++) { A[r, c] = DetMath.Exp(A[r, c] - maxVal); expSum += A[r, c]; }
                 for (int r = 0; r < A.M_Rows; r++) A[r, c] /= expSum;
             }
         }

@@ -276,18 +276,19 @@ namespace LinearAlgebra.Gallery
 
         /// <summary>
         /// Allocates the n×n Kahan matrix K = S·R where S = diag(s^0,…,s^(n−1)),
-        /// s = sin(theta), c = cos(theta):
+        /// c is the given parameter (0 &lt; c &lt; 1) and s = sqrt(1 − c²):
         /// K[i,i] = s^i; K[i,j] = −c·s^i for j &gt; i; K[i,j] = 0 for j &lt; i.
-        /// Known property: ill-conditioned; classic counterexample for column-pivoted QR —
-        /// unpivoted Householder QR produces a poor rank-revealing factorisation.
+        /// Built from sqrt and arithmetic only (no trig), so entries are cross-architecture
+        /// deterministic. Known property: ill-conditioned; classic counterexample for column-
+        /// pivoted QR — unpivoted Householder QR produces a poor rank-revealing factorisation.
         /// </summary>
-        public static floatMxN floatKahan(this ref Arena arena, int n, float theta)
+        public static floatMxN floatKahan(this ref Arena arena, int n, float c)
         {
             if (n < 1)
                 throw new ArgumentException("floatKahan: n must be >= 1");
 
-            float s  = math.sin(theta);
-            float cc = math.cos(theta);
+            float cc = c;
+            float s  = math.sqrt((float)1 - c * c);
             var mat = arena.floatMat(n, true);
 
             float si = (float)1;               // s^0
@@ -587,7 +588,7 @@ namespace LinearAlgebra.Gallery
                     if (k == 0)
                         A[i, j] = (float)2 * w;
                     else
-                        A[i, j] = math.sin((float)(2.0 * Math.PI) * w * (float)k)
+                        A[i, j] = DetMath.Sin((float)(2.0 * Math.PI) * w * (float)k)
                                  / ((float)Math.PI * (float)k);
                 }
             return A;

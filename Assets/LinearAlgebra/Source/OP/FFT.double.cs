@@ -79,8 +79,8 @@ namespace LinearAlgebra
                     // big argument. (long) guards the k·t product against int overflow for large N.
                     int kt = (int)(((long)k * t) % n);
                     double ang = baseAng * (double)kt;
-                    double c = math.cos(ang);
-                    double s = math.sin(ang);
+                    double c = DetMath.Cos(ang);
+                    double s = DetMath.Sin(ang);
                     double xr = inRe[t];
                     double xi = inIm[t];
                     // (xr + i·xi)·(c + i·s)
@@ -134,7 +134,7 @@ namespace LinearAlgebra
                 throw new ArgumentException("phase: re, im and dest must have the same length");
 
             for (int i = 0; i < n; i++)
-                dest[i] = math.atan2(im[i], re[i]);
+                dest[i] = DetMath.Atan2(im[i], re[i]);
         }
     }
 }

@@ -27,7 +27,7 @@ namespace LinearAlgebra
             public float Eval(float t)
             {
                 float cyc = Cycles == (float)0 ? (float)1 : Cycles;
-                return math.sin((float)(2.0 * System.Math.PI) * (cyc * t + Phase));
+                return DetMath.Sin((float)(2.0 * System.Math.PI) * (cyc * t + Phase));
             }
         }
 

@@ -130,8 +130,26 @@ namespace LinearAlgebra
         public static float Log2(float x)  => Log(x) * (float)1.4426950408889634;
         public static float Log10(float x) => Log(x) * (float)0.4342944819032518;
 
-        // x^y for x > 0, via exp(y·log x). x = 0 gives 0 for y > 0; x < 0 gives NaN.
-        public static float Pow(float x, float y) => Exp(y * Log(x));
+        // x^y for x > 0, via exp(y·log x). x = 0 gives 0 for y > 0, +inf for y < 0; x < 0 gives NaN.
+        // y = 0 gives 1 for ANY x (including 0^0 = 1), matching IEEE pow.
+        public static float Pow(float x, float y) => math.select(Exp(y * Log(x)), (float)1, y == (float)0);
+
+        // x^n for INTEGER n, via exponentiation by squaring (+ - * / only, deterministic). Exact
+        // reduction order; handles negative x (sign follows the multiplies). n < 0 gives 1/x^|n|.
+        public static float Pow(float x, int n)
+        {
+            bool neg = n < 0;
+            uint u = (uint)(neg ? -n : n);
+            float r = (float)1;
+            float p = x;
+            while (u != 0u)
+            {
+                if ((u & 1u) != 0u) r *= p;
+                p *= p;
+                u >>= 1;
+            }
+            return neg ? (float)1 / r : r;
+        }
 
         // trig non-finite guard: sin/cos of +-inf or NaN -> NaN.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -264,13 +282,15 @@ namespace LinearAlgebra
             return math.select(res, -res, x < (float)0);              // odd function
         }
 
-        // atan2(y, x): angle in (-pi, pi]. Branch-free quadrant fix-up; x = 0 folds via +-inf into Atan.
+        // atan2(y, x): angle in (-pi, pi]. Branch-free quadrant fix-up; x = 0 (y != 0) folds via
+        // +-inf into Atan; the origin (0,0) returns 0.
         public static float Atan2(float y, float x)
         {
             float PI = (float)3.141592653589793;
             float a = Atan(y / x);
             a = math.select(a, a + PI, (x < (float)0) & (y >= (float)0));
             a = math.select(a, a - PI, (x < (float)0) & (y <  (float)0));
+            a = math.select(a, (float)0, (x == (float)0) & (y == (float)0));  // 0/0 -> NaN -> 0
             return a;
         }
 
@@ -288,8 +308,14 @@ namespace LinearAlgebra
         }
         public static float Sinh(float x) { SinhCosh(x, out float sh, out float ch); return sh; }
         public static float Cosh(float x) { SinhCosh(x, out float sh, out float ch); return ch; }
-        // tanh(x) via e^{2x}.
-        public static float Tanh(float x) { float e = Exp((float)2 * x); return (e - (float)1) / (e + (float)1); }
+        // tanh(x) via e^{2|x|}; saturates to +-1 for large |x| (no inf/inf), odd. Total: NaN -> NaN.
+        public static float Tanh(float x)
+        {
+            float ax = math.abs(x);
+            float e = Exp((float)2 * ax);                      // >= 1; overflows to +inf for large |x|
+            float t = (float)1 - (float)2 / (e + (float)1);  // 2/(inf+1) = 0 -> t = 1 (no inf/inf)
+            return math.select(t, -t, x < (float)0);            // odd
+        }
         // acosh(x), x >= 1.
         public static float Acosh(float x) => Log(x + math.sqrt(x * x - (float)1));
     }

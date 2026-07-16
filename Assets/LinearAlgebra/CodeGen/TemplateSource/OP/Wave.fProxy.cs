@@ -23,7 +23,7 @@ namespace LinearAlgebra
             public fProxy Eval(fProxy t)
             {
                 fProxy cyc = Cycles == (fProxy)0 ? (fProxy)1 : Cycles;
-                return math.sin((fProxy)(2.0 * System.Math.PI) * (cyc * t + Phase));
+                return DetMath.Sin((fProxy)(2.0 * System.Math.PI) * (cyc * t + Phase));
             }
         }
 

@@ -302,7 +302,7 @@ namespace LinearAlgebra
                     // Log-space: σ[0] = cond (largest), σ[k-1] = 1 (smallest).
                     // t = i/(k-1) ∈ [0,1],  σᵢ = cond^(1-t).
                     double t = (double)i / (double)(k - 1);
-                    sigma = math.pow(cond, (double)1 - t);
+                    sigma = DetMath.Pow(cond, (double)1 - t);
                 }
                 for (int r = 0; r < m; r++)
                     US[r, i] = U[r, i] * sigma;

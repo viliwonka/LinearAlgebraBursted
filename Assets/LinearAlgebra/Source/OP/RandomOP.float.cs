@@ -243,7 +243,7 @@ namespace LinearAlgebra
         public static float ExponentialICDF(float u, float lambda)
         {
             float uc = (float)1 - u;
-            return -math.log(uc) / lambda;
+            return -DetMath.Log(uc) / lambda;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -274,7 +274,7 @@ namespace LinearAlgebra
         public static float RayleighICDF(float u, float sigma)
         {
             float uc = (float)1 - u;
-            return sigma * math.sqrt((float)(-2) * math.log(uc));
+            return sigma * math.sqrt((float)(-2) * DetMath.Log(uc));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -309,7 +309,7 @@ namespace LinearAlgebra
         public static float WeibullICDF(float u, float k, float lambda)
         {
             float uc = (float)1 - u;
-            return lambda * math.pow(-math.log(uc), (float)1 / k);
+            return lambda * DetMath.Pow(-DetMath.Log(uc), (float)1 / k);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -348,7 +348,7 @@ namespace LinearAlgebra
         {
             float eps = Consts.floatEpsilon;
             float uSafe = math.clamp(u, eps, (float)1 - eps);
-            return x0 + gamma * math.tan((float)System.Math.PI * (uSafe - (float)0.5));
+            return x0 + gamma * DetMath.Tan((float)System.Math.PI * (uSafe - (float)0.5));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -384,7 +384,7 @@ namespace LinearAlgebra
             float eps = Consts.floatEpsilon;
             float uSafe = math.clamp(u, eps, (float)1 - eps);
             float uc = (float)1 - uSafe;
-            return mu + s * math.log(uSafe / uc);
+            return mu + s * DetMath.Log(uSafe / uc);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -419,7 +419,7 @@ namespace LinearAlgebra
         public static float ParetoICDF(float u, float xm, float alpha)
         {
             float uc = (float)1 - u;
-            return xm / math.pow(uc, (float)1 / alpha);
+            return xm / DetMath.Pow(uc, (float)1 / alpha);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -528,11 +528,11 @@ namespace LinearAlgebra
             float u1 = (float)1 - rng.NextFloat();
             float u2 = rng.NextFloat();
 
-            float r = math.sqrt((float)(-2) * math.log(u1));
+            float r = math.sqrt((float)(-2) * DetMath.Log(u1));
             float angle = (float)(2.0 * System.Math.PI) * u2;
 
-            float sinVal = math.sin(angle);
-            float cosVal = math.cos(angle);
+            float sinVal = DetMath.Sin(angle);
+            float cosVal = DetMath.Cos(angle);
 
             // Store the fully-scaled spare so a mid-fill mean/std change cannot rescale it.
             spare = mean + std * (r * sinVal);

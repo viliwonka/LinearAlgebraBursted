@@ -2029,9 +2029,9 @@ namespace LinearAlgebra.Internal
             float sum = 0f;
 
             for (int i = 0; i < n; i++)
-                sum += math.pow(math.abs(target[i]), p);   // Lp norm uses |x_i|^p
+                sum += DetMath.Pow(math.abs(target[i]), p);   // Lp norm uses |x_i|^p
 
-            sum = math.pow(sum, 1f / p);
+            sum = DetMath.Pow(sum, 1f / p);
 
             for (int i = 0; i < n; i++)
                 target[i] /= sum;
@@ -2045,9 +2045,9 @@ namespace LinearAlgebra.Internal
             float sum = 0f;
 
             for (int i = start; i < end; i++)
-                sum += math.pow(math.abs(target[i]), p);   // Lp norm uses |x_i|^p
+                sum += DetMath.Pow(math.abs(target[i]), p);   // Lp norm uses |x_i|^p
 
-            sum = math.pow(sum, 1f / p);
+            sum = DetMath.Pow(sum, 1f / p);
 
             for (int i = start; i < end; i++)
                 target[i] = (target[i] / sum);

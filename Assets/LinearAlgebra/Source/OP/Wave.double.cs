@@ -27,7 +27,7 @@ namespace LinearAlgebra
             public double Eval(double t)
             {
                 double cyc = Cycles == (double)0 ? (double)1 : Cycles;
-                return math.sin((double)(2.0 * System.Math.PI) * (cyc * t + Phase));
+                return DetMath.Sin((double)(2.0 * System.Math.PI) * (cyc * t + Phase));
             }
         }
 

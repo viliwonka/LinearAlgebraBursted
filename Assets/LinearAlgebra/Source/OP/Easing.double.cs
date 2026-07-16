@@ -99,15 +99,15 @@ namespace LinearAlgebra
         // ---- Sine ----
         public struct EaseInSine : IdoubleScalarFunction
         {
-            public double Eval(double t) => (double)1 - math.cos(t * (double)(System.Math.PI * 0.5));
+            public double Eval(double t) => (double)1 - DetMath.Cos(t * (double)(System.Math.PI * 0.5));
         }
         public struct EaseOutSine : IdoubleScalarFunction
         {
-            public double Eval(double t) => math.sin(t * (double)(System.Math.PI * 0.5));
+            public double Eval(double t) => DetMath.Sin(t * (double)(System.Math.PI * 0.5));
         }
         public struct EaseInOutSine : IdoubleScalarFunction
         {
-            public double Eval(double t) => (double)(-0.5) * (math.cos((double)System.Math.PI * t) - (double)1);
+            public double Eval(double t) => (double)(-0.5) * (DetMath.Cos((double)System.Math.PI * t) - (double)1);
         }
 
         // ---- Exponential ----
@@ -116,7 +116,7 @@ namespace LinearAlgebra
             public double Eval(double t)
             {
                 if (t <= (double)0) return (double)0;
-                return math.pow((double)2, (double)10 * t - (double)10);
+                return DetMath.Pow((double)2, (double)10 * t - (double)10);
             }
         }
         public struct EaseOutExpo : IdoubleScalarFunction
@@ -124,7 +124,7 @@ namespace LinearAlgebra
             public double Eval(double t)
             {
                 if (t >= (double)1) return (double)1;
-                return (double)1 - math.pow((double)2, (double)(-10) * t);
+                return (double)1 - DetMath.Pow((double)2, (double)(-10) * t);
             }
         }
         public struct EaseInOutExpo : IdoubleScalarFunction
@@ -134,8 +134,8 @@ namespace LinearAlgebra
                 if (t <= (double)0) return (double)0;
                 if (t >= (double)1) return (double)1;
                 if (t < (double)0.5)
-                    return (double)0.5 * math.pow((double)2, (double)20 * t - (double)10);
-                return (double)1 - (double)0.5 * math.pow((double)2, (double)(-20) * t + (double)10);
+                    return (double)0.5 * DetMath.Pow((double)2, (double)20 * t - (double)10);
+                return (double)1 - (double)0.5 * DetMath.Pow((double)2, (double)(-20) * t + (double)10);
             }
         }
 
@@ -171,8 +171,8 @@ namespace LinearAlgebra
                 if (t <= (double)0) return (double)0;
                 if (t >= (double)1) return (double)1;
                 double c4 = (double)(2.0 * System.Math.PI / 3.0);
-                return -math.pow((double)2, (double)10 * t - (double)10)
-                       * math.sin(((double)10 * t - (double)10.75) * c4);
+                return -DetMath.Pow((double)2, (double)10 * t - (double)10)
+                       * DetMath.Sin(((double)10 * t - (double)10.75) * c4);
             }
         }
         public struct EaseOutElastic : IdoubleScalarFunction
@@ -182,8 +182,8 @@ namespace LinearAlgebra
                 if (t <= (double)0) return (double)0;
                 if (t >= (double)1) return (double)1;
                 double c4 = (double)(2.0 * System.Math.PI / 3.0);
-                return math.pow((double)2, (double)(-10) * t)
-                       * math.sin(((double)10 * t - (double)0.75) * c4) + (double)1;
+                return DetMath.Pow((double)2, (double)(-10) * t)
+                       * DetMath.Sin(((double)10 * t - (double)0.75) * c4) + (double)1;
             }
         }
 
@@ -230,10 +230,10 @@ namespace LinearAlgebra
                 if (t <= (double)0) return (double)0;
                 if (t >= (double)1) return (double)1;
                 double c5 = (double)(2.0 * System.Math.PI / 4.5);
-                double s = math.sin(((double)20 * t - (double)11.125) * c5);
+                double s = DetMath.Sin(((double)20 * t - (double)11.125) * c5);
                 if (t < (double)0.5)
-                    return -(math.pow((double)2, (double)20 * t - (double)10) * s) * (double)0.5;
-                return (math.pow((double)2, (double)(-20) * t + (double)10) * s) * (double)0.5 + (double)1;
+                    return -(DetMath.Pow((double)2, (double)20 * t - (double)10) * s) * (double)0.5;
+                return (DetMath.Pow((double)2, (double)(-20) * t + (double)10) * s) * (double)0.5 + (double)1;
             }
         }
 

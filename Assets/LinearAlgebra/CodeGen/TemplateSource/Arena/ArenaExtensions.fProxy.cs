@@ -189,8 +189,8 @@ namespace LinearAlgebra
                 return matrix;
             }
 
-            fProxy c = math.cos(radians);
-            fProxy s = math.sin(radians);
+            fProxy c = DetMath.Cos(radians);
+            fProxy s = DetMath.Sin(radians);
 
             matrix[i, i] = c;
             matrix[j, j] = c;

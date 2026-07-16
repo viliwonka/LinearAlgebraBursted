@@ -298,7 +298,7 @@ namespace LinearAlgebra
                     // Log-space: σ[0] = cond (largest), σ[k-1] = 1 (smallest).
                     // t = i/(k-1) ∈ [0,1],  σᵢ = cond^(1-t).
                     fProxy t = (fProxy)i / (fProxy)(k - 1);
-                    sigma = math.pow(cond, (fProxy)1 - t);
+                    sigma = DetMath.Pow(cond, (fProxy)1 - t);
                 }
                 for (int r = 0; r < m; r++)
                     US[r, i] = U[r, i] * sigma;

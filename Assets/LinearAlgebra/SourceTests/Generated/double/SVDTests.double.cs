@@ -324,7 +324,7 @@ public class doubleSVDTests
         {
             var arena = new Arena(Allocator.Persistent);
             int n = 12;
-            var A = arena.doubleKahan(n, (double)1.2f);
+            var A = arena.doubleKahan(n, (double)0.36235775f);
             var U = arena.doubleMat(n, n);
             var S = arena.doubleVec(n);
             var V = arena.doubleMat(n, n);

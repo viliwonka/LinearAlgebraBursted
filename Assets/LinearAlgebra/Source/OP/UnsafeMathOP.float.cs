@@ -57,21 +57,21 @@ namespace LinearAlgebra.Internal
         public static void acos([NoAlias] float* x, int n)
         {
             for (int i = 0; i < n; i++)
-                x[i] = math.acos(x[i]);
+                x[i] = DetMath.Acos(x[i]);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void asin([NoAlias] float* x, int n)
         {
             for (int i = 0; i < n; i++)
-                x[i] = math.asin(x[i]);
+                x[i] = DetMath.Asin(x[i]);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void atan([NoAlias] float* x, int n)
         {
             for (int i = 0; i < n; i++)
-                x[i] = math.atan(x[i]);
+                x[i] = DetMath.Atan(x[i]);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -85,35 +85,35 @@ namespace LinearAlgebra.Internal
         public static void cos([NoAlias] float* x, int n)
         {
             for (int i = 0; i < n; i++)
-                x[i] = math.cos(x[i]);
+                x[i] = DetMath.Cos(x[i]);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void cosh([NoAlias] float* x, int n)
         {
             for (int i = 0; i < n; i++)
-                x[i] = math.cosh(x[i]);
+                x[i] = DetMath.Cosh(x[i]);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void exp([NoAlias] float* x, int n)
         {
             for (int i = 0; i < n; i++)
-                x[i] = math.exp(x[i]);
+                x[i] = DetMath.Exp(x[i]);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void exp2([NoAlias] float* x, int n)
         {
             for (int i = 0; i < n; i++)
-                x[i] = math.exp2(x[i]);
+                x[i] = DetMath.Exp2(x[i]);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void exp10([NoAlias] float* x, int n)
         {
             for (int i = 0; i < n; i++)
-                x[i] = math.pow(10, x[i]);
+                x[i] = DetMath.Exp10(x[i]);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -127,21 +127,21 @@ namespace LinearAlgebra.Internal
         public static void log([NoAlias] float* x, int n)
         {
             for (int i = 0; i < n; i++)
-                x[i] = math.log(x[i]);
+                x[i] = DetMath.Log(x[i]);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void log2([NoAlias] float* x, int n)
         {
             for (int i = 0; i < n; i++)
-                x[i] = math.log2(x[i]);
+                x[i] = DetMath.Log2(x[i]);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void log10([NoAlias] float* x, int n)
         {
             for (int i = 0; i < n; i++)
-                x[i] = math.log10(x[i]);
+                x[i] = DetMath.Log10(x[i]);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -169,51 +169,50 @@ namespace LinearAlgebra.Internal
         public static void sin([NoAlias] float* x, int n)
         {
             for (int i = 0; i < n; i++)
-                x[i] = math.sin(x[i]);
+                x[i] = DetMath.Sin(x[i]);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void sinh([NoAlias] float* x, int n)
         {
             for (int i = 0; i < n; i++)
-                x[i] = math.sinh(x[i]);
+                x[i] = DetMath.Sinh(x[i]);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void tan([NoAlias] float* x, int n)
         {
             for (int i = 0; i < n; i++)
-                x[i] = math.tan(x[i]);
+                x[i] = DetMath.Tan(x[i]);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void tanh([NoAlias] float* x, int n)
         {
             for (int i = 0; i < n; i++)
-                x[i] = math.tanh(x[i]);
+                x[i] = DetMath.Tanh(x[i]);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void pow([NoAlias] float* x, int n, int pow)
         {
             for (int i = 0; i < n; i++)
-                x[i] = math.pow(x[i], pow);
+                x[i] = DetMath.Pow(x[i], pow);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void atan2([NoAlias] float* y, [NoAlias] float* x, int n)
         {
             for (int i = 0; i < n; i++)
-                y[i] = math.atan2(y[i], x[i]);
+                y[i] = DetMath.Atan2(y[i], x[i]);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void acosh([NoAlias] float* x, int n)
         {
             // acosh(x) = log(x + sqrt(x^2 - 1)), domain x >= 1.
-            // Unity.Mathematics has no math.acosh, so it is computed directly.
             for (int i = 0; i < n; i++)
-                x[i] = math.log(x[i] + math.sqrt(x[i] * x[i] - (float)1));
+                x[i] = DetMath.Acosh(x[i]);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -398,12 +397,12 @@ namespace LinearAlgebra.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void sincos([NoAlias] float* x, int n, [NoAlias] float* sin, [NoAlias] float* cos)
         {
-            // more cache efficient than calling sin&cos at same time and writing to both arrays
             for (int i = 0; i < n; i++)
-                sin[i] = math.sin(x[i]);
-
-            for (int i = 0; i < n; i++)
-                cos[i] = math.cos(x[i]);
+            {
+                DetMath.SinCos(x[i], out float s, out float c);
+                sin[i] = s;
+                cos[i] = c;
+            }
         }
     }
 }

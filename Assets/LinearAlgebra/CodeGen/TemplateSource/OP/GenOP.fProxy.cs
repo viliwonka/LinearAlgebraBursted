@@ -105,7 +105,7 @@ namespace LinearAlgebra
             for (int i = 0; i < N; i++)
             {
                 fProxy d = (fProxy)i - c;
-                fProxy w = math.exp(-d * d * inv2s2);
+                fProxy w = DetMath.Exp(-d * d * inv2s2);
                 dest[i] = w;
                 sum += w;
             }
@@ -184,15 +184,15 @@ namespace LinearAlgebra
                 switch (type)
                 {
                     case WindowType.Hann:
-                        w = (fProxy)0.5 * ((fProxy)1 - math.cos(twoPiOverNm1 * i));
+                        w = (fProxy)0.5 * ((fProxy)1 - DetMath.Cos(twoPiOverNm1 * i));
                         break;
                     case WindowType.Hamming:
-                        w = (fProxy)0.54 - (fProxy)0.46 * math.cos(twoPiOverNm1 * i);
+                        w = (fProxy)0.54 - (fProxy)0.46 * DetMath.Cos(twoPiOverNm1 * i);
                         break;
                     case WindowType.Blackman:
                         w = (fProxy)0.42
-                            - (fProxy)0.5 * math.cos(twoPiOverNm1 * i)
-                            + (fProxy)0.08 * math.cos(fourPiOverNm1 * i);
+                            - (fProxy)0.5 * DetMath.Cos(twoPiOverNm1 * i)
+                            + (fProxy)0.08 * DetMath.Cos(fourPiOverNm1 * i);
                         break;
                     default:
                         w = (fProxy)1;
