@@ -73,6 +73,16 @@ namespace LinearAlgebra.Benchmarks
             foreach (var k in Bench.Sizes) sb.AppendLine(WideLQRPSolveDouble(k, QrFlops(2 * k, k)));
             sb.AppendLine();
 
+            // README wide showcase: heavily underdetermined 512 x 2048 (4:1). Both compute the
+            // minimum-norm solution in place; LQ needs full row rank, LQRP is rank-revealing (COD).
+            sb.AppendLine("=== Underdetermined min-norm wide showcase (A is 512 x 2048): LQ.minNormSolveInPlace vs LQRP.minNormSolveInPlace ===");
+            sb.AppendLine(HeaderKernel());
+            sb.AppendLine(WideMinNormMNFloat(512, 2048));
+            sb.AppendLine(WideMinNormMNDouble(512, 2048));
+            sb.AppendLine(WideLQRPMinNormMNFloat(512, 2048));
+            sb.AppendLine(WideLQRPMinNormMNDouble(512, 2048));
+            sb.AppendLine();
+
             // COD overhead on a rank-deficient wide system: basic and COD row adjacent on the SAME matrix.
             sb.AppendLine("=== LQRP rank-deficient (k x 2k, rank = 3k/4): basic solveInPlace vs COD minNormSolveInPlace; N column = k ===");
             sb.AppendLine(HeaderKernel());

@@ -49,6 +49,25 @@ namespace LinearAlgebra.Benchmarks
     }
 
 
+    // Plain CG (no preconditioner) solve-to-tolerance, reporting iteration count -- the baseline the
+    // preconditioned rows are measured against.
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct CgTolJobFProxy : IJob
+    {
+        public fProxyBSR A;
+        public fProxyN b, x, r, p, Ap;
+        public int K;
+        public fProxy Tol;
+        public Indices Iters;
+
+        public void Execute()
+        {
+            for (int i = 0; i < x.N; i++) x[i] = 0f;
+            var info = Krylov.cg(in A, in b, ref x, ref r, ref p, ref Ap, K, Tol);
+            Iters[0] = info.iterations;
+        }
+    }
+
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct PcgSsorTolJobFProxy : IJob
     {
@@ -131,6 +150,11 @@ namespace LinearAlgebra.Benchmarks
 
             var x = arena.fProxyVec(n); var r = arena.fProxyVec(n); var p = arena.fProxyVec(n);
             var Ap = arena.fProxyVec(n); var z = arena.fProxyVec(n);
+
+            var cgJob = new CgTolJobFProxy { A = A, b = b, x = x, r = r, p = p, Ap = Ap, K = cap, Tol = tol, Iters = iters };
+            var cgStat = Bench.Time(() => cgJob.Run());
+            sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
+                "fProxy", n, "CG(plain)", cgStat.Median, cgStat.Min, iters[0], Residual(in A, in x, in b)));
 
             var mJ = arena.fProxyBlockJacobi(in A);
             var jJob = new PcgJacobiTolJobFProxy { A = A, M = mJ, b = b, x = x, r = r, p = p, Ap = Ap, z = z, K = cap, Tol = tol, Iters = iters };

@@ -73,28 +73,99 @@ arena.Dispose();                            // free everything, dispose the aren
 
 ## Benchmarks
 
-Benchmarked on a Ryzen 9 9950X3D (pinned to a non-V-Cache core), single-threaded Burst, median of
-9 runs. Full tables — more sizes, double precision — live in each feature's doc under
+Benchmarked on a Ryzen 9 9950X3D (pinned to a non-V-Cache core), single-threaded, median. More benchmarks live in each feature's doc under
 [docs/features](docs/features).
 
-| Algorithm | Case | Results |
+| Dense solvers & decomposition | Case | Results |
 |---|---|---|
-| `LU.decomp` + `LU.decompSolve` LU | 1024×1024, float | 12.2 ms |
-| `CHO.decomp` + `CHO.decompSolve` Cholesky | 1024×1024, float | 7.5 ms |
-| `QR.solveInPlace` QR | 1024×1024, float | 34.9 ms |
-| `QR.solveInPlace` QR least squares | 2048×512, float | 29.8 ms |
-| `QRCP.solveInPlace` pivoted QR, least squares | 2048×512, float | 32.5 ms |
-| `LQ.minNormSolve` LQ, underdetermined system | 512×1024, float | 8.9 ms |
-| `Krylov.cg` CG, iterative SPD solver, dense | 1024×1024, double; dense storage of the same 7%-fill SPD matrix, 40 iterations | 2.4 ms |
-| `Krylov.cg` CG, iterative SPD solver, sparse | 1024×1024, double; sparse BSR (4×4 blocks, 7% fill), 40 iterations | 0.36 ms |
-| `Eigen.symmetricInPlace` Symmetric eigen decomp  | 1024×1024, float, values + vectors | 168.8 ms |
-| `Eigen.valuesSymmetricInPlace` Symmetric eigen, values only | 1024×1024, float | 63.3 ms |
-| `Eigen.lobpcg` Smallest eigenpairs, SPD solver | 512×512, k=4, float, 50 iterations | 33.6 ms (0.67 ms/iter) |
-| `SVD.thin` full SVD | 2048×512, float | 186.8 ms |
-| `SVD.truncated` truncated SVD w/ top-k only | 2048×512, k=21, float | 17.6 ms |
+| `LU.solveInPlace` LU | 1024×1024, float | 12.0 ms |
+| `CHO.solveInPlace` Cholesky | 1024×1024, float | 7.7 ms |
+| `CHOP.solveInPlace` pivoted Cholesky | 1024×1024, float | 14.5 ms |
+| `QR.solveInPlace` QR, square | 1024×1024, float | 34.6 ms |
+| `QR.solveInPlace` QR, overdetermined | 2048×512, float | 29.9 ms |
+| `QRCP.solveInPlace` pivoted QR, overdetermined | 2048×512, float | 32.3 ms |
+| `LQ.minNormSolveInPlace` underdetermined min-norm, full row rank | 512×2048, float | 20.8 ms |
+| `LQRP.minNormSolveInPlace` underdetermined min-norm, rank-revealing (COD) | 512×2048, float | 29.4 ms |
+
+| SVD | Case | Result
+|---|---|---|
+| `SVD.thin` full SVD | 2048×512, float | 100.9 ms |
+| `SVD.truncated` truncated SVD w/ top-k only | 2048×512, k=21, float | 2.8 ms |
 | `SVD.randomized` randomized SVD w/ top-k only  | 2048×512, k=21, float | 29.5 ms |
-| `FFT.fft` FFT | N = 2²⁰, float | 6.6 ms +1 ms init |
-|`FFT.rfft` Real FFT | N = 2²⁰, float | 3.6 ms +1 ms init |
+
+
+| Transforms | Case | Result |
+|---|---|---|
+| `arena.floatFFTCache(n)` one-time twiddle-workspace build | N = 2^20, float | 1.0 ms |
+| `FFT.fft` complex forward,  | N = 2^20, float | 6.3 ms |
+| `FFT.ifft` complex inverse | N = 2^20, float | 6.4 ms |
+| `FFT.rfft` real forward | N = 2^20, float | 3.4 ms |
+| `FFT.irfft` real inverse | N = 2^20, float | 3.4 ms |
+| `FFT.rfft` real forward | N = 2^14, float | 0.039 ms |
+
+
+| Eigen solvers | Case | Result |
+|---|---|---|
+| `Eigen.symmetricInPlace` Symmetric eigen decomp  | 1024×1024, float, values + vectors | 163.7 ms |
+| `Eigen.valuesSymmetricInPlace` Symmetric eigen, values only | 1024×1024, float | 60.3 ms |
+| `Eigen.lobpcg` smallest-k eigenpairs, dense SPD | 512×512, k=4, float, 50 iterations | 33.1 ms (0.66 ms/iter) |
+| `Eigen.lobpcg` smallest-k eigenpairs, dense SPD | 1024×1024, k=4, float, 50 iterations | 74.7 ms (1.49 ms/iter) |
+| `Eigen.lobpcg` smallest-k, sparse BSR, IC(0)-preconditioned, converged | 1024×1024, k=4, float | 44.8 ms (38 iters) |
+| `Eigen.lobpcg` smallest-k, sparse 2D-grid Laplacian (96×96 grid), SSOR, converged | 9216×9216, k=8, float | 2.51 s (38 iters) |
+
+
+
+
+| Krylov solver | Iterations | Result |
+|---|---|---|
+| Sparse iterative solvers, N = 10240 BSR, 1.5% fill, float | | | 
+| `Krylov.cg` SPD | 40 (fixed budget) | 14.1 ms |
+| `Krylov.minres` symmetric-indefinite | 30 (converged) | 10.7 ms |
+| `Krylov.biCGStab` nonsymmetric | 11 (converged) | 4.0 ms |
+| Sparse least squares, D = 20480×10240. 1.5% fill, float |  |
+| `Krylov.lsqr` / `Krylov.lsmr`  | 25 (converged) | 12.4 / 12.5 ms |
+| `Krylov.cgls` | 40 (fixed budget) | 19.5 ms |
+
+Preconditioning (`Krylov.pcg`): iteration count grows with system size, but a good preconditioner can keep it small. 
+Example: square 2D Laplacian, solve to tolerance = √eps, double.
+
+| Preconditioner | N = 1024 | N = 10201 |
+|---|---|---|
+| none (plain `cg`) | 101 iters, 2.8 ms | 305 iters, 310 ms |
+| SSOR | 30 iters, 2.1 ms | 83 iters, 227 ms |
+| IC(0) † | 1 iter, 0.13 ms | 1 iter, 5.9 ms |
+
+† IC(0) is the exact factorization for this fill-free block-tridiagonal stencil (hence 1 iteration); on genuinely-filled matrices it is incomplete and takes more.
+
+| Programming | Case | Result |
+|---|---|---|
+| `LP.solve` revised / dual simplex, cold solve | 192×96 dense, float | 0.62 ms |
+| `LP.solve` warm re-solve (LPBasis reuse), 16 RHS-perturbed re-solves | 192×96 dense, float | cold 22.8 → warm 2.2 ms |
+| `QP.solve` active-set, cold (facade: phase-1 start + solve) | n = 192, m = 96, float | 72.0 ms |
+| `QP.solve` active-set, warm (feasible start, incremental reduced space) | n = 192, m = 96, float | 34.9 ms |
+| `MIP.solve` branch & bound over warm-started dual simplex | p0033 (MIPLIB), double | 74.8 ms, 404 nodes |
+| `MIP.solve` branch & bound over warm-started dual simplex | stein15 (MIPLIB), double | 55.4 ms, 263 nodes |
+
+| Control | Case | Result |
+|---|---|---|
+| `Control.lqr` Riccati gain solve — once (LTI) or re-solved per frame (adaptive/time-varying) | n = 12, m = 4, float | cold 26 µs → warm 6 µs |
+| `MPC.solve` receding-horizon step, box bounds | N = 40, n = 12, m = 4, float | cold 0.39 → warm 0.23 ms |
+| `MPC.solve` receding-horizon step, box + soft wall | N = 40, n = 12, m = 4, float | cold 1.14 → warm 0.27 ms |
+| `Kalman` EKF predict + update, per step | n = 12, m = 6, float | 0.45 ms |
+| `Kalman` UKF predict + update, per step | n = 12, m = 6, float | 1.42 ms |
+
+Once the LQR gain is solved (above), each control step is just `u = −K·x` — a matrix-vector product — so a 120-step episode adds only that trivial cost. MPC instead re-solves a QP every step (warm-started from the previous step), so its per-step cost above is what recurs each frame.
+
+Regression fitting — L2 (least squares) vs exact L1 (LAD) vs approximate L1 (IRLS), 2048 observations. Minimizes residuals in the response variable, *not* orthogonal distance (total least squares / total least deviation is a separate thing, not yet in the library):
+
+| Fitting | Case | Result |
+|---|---|---|
+| `QR.solveInPlace` — L2 least squares | 2048×4, float | 0.12 ms |
+| `LP.lad` — exact L1 (LAD) | 2048×4, float | 0.97 ms |
+| `Optimize.ladIRLS` — approximate L1 | 2048×4, float | 0.063 ms |
+| `QR.solveInPlace` — L2 least squares | 2048×64, float | 1.72 ms |
+| `LP.lad` — exact L1 (LAD) | 2048×64, float | 6.78 ms |
+| `Optimize.ladIRLS` — approximate L1 | 2048×64, float | 7.09 ms |
 
 ## Features
 
@@ -123,18 +194,14 @@ Benchmarked on a Ryzen 9 9950X3D (pinned to a non-V-Cache core), single-threaded
 
 ## Determinism
 
-The core algorithms are single-threaded with a fixed reduction order (the only reassociation used is
-a documented, rounding-only multi-accumulator dot). Compiled under Burst's `FloatMode.Strict` (which
-disables FP reassociation), results are reproducible run to run and across CPU architectures for a
-fixed Burst version — what a deterministic lockstep multiplayer sim needs — **provided the path uses
-only correctly-rounded operations** (`+ - * /` and `sqrt`). The core factorizations and solvers
-qualify, and so does the FFT (`fft(ws)`/`rfft(ws)`/... — its twiddle table is built from `sqrt` and
-basic arithmetic, no `sin`/`cos`). The direct **`dft`/`idft`** (the arbitrary-N fallback) compute
-twiddles with `sin`/`cos` on the fly, and **random sampling** uses transcendentals (`log`/`exp`/`sin`/...);
-both call functions Burst only makes bit-identical under `FloatMode.Deterministic` (opt-in, 64-bit
-only), so they do not carry the cross-architecture guarantee. (Burst's default float mode already
-behaves as `Strict`, so the qualifying paths need no special build flag.)
+The idea of this library is that besides being fast and accurate it's also deterministic run to run; and across different CPU architectures. (To be confirmed).
+
+All code in project is intended to be compiled under Burst's `FloatMode.Strict`, (which disables FP reassociation), results should be reproducible run to run and across different CPU architectures, **provided the code uses only basic operations** (`+ - * /` and `sqrt`). The core factorizations and solvers qualify, and so does the FFT and others.
+
+Transcedental functions (`log`/`exp`/`sin`/...) are reimplemented to cover the determinism gap. They are comparable in accuracy and speed to `unity.mathematics` functions.
+
+If you do not care about determinism, you still can just compile your job with `FloatMode.Fast`. 
 
 ## License
 
-[MIT](LICENSE).
+[MIT](LICENSE). (except LAD code, pending permission)

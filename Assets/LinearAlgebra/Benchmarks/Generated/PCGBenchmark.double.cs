@@ -53,6 +53,25 @@ namespace LinearAlgebra.Benchmarks
     }
 
 
+    // Plain CG (no preconditioner) solve-to-tolerance, reporting iteration count -- the baseline the
+    // preconditioned rows are measured against.
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct CgTolJobDouble : IJob
+    {
+        public doubleBSR A;
+        public doubleN b, x, r, p, Ap;
+        public int K;
+        public double Tol;
+        public Indices Iters;
+
+        public void Execute()
+        {
+            for (int i = 0; i < x.N; i++) x[i] = 0f;
+            var info = Krylov.cg(in A, in b, ref x, ref r, ref p, ref Ap, K, Tol);
+            Iters[0] = info.iterations;
+        }
+    }
+
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct PcgSsorTolJobDouble : IJob
     {
@@ -135,6 +154,11 @@ namespace LinearAlgebra.Benchmarks
 
             var x = arena.doubleVec(n); var r = arena.doubleVec(n); var p = arena.doubleVec(n);
             var Ap = arena.doubleVec(n); var z = arena.doubleVec(n);
+
+            var cgJob = new CgTolJobDouble { A = A, b = b, x = x, r = r, p = p, Ap = Ap, K = cap, Tol = tol, Iters = iters };
+            var cgStat = Bench.Time(() => cgJob.Run());
+            sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
+                "double", n, "CG(plain)", cgStat.Median, cgStat.Min, iters[0], Residual(in A, in x, in b)));
 
             var mJ = arena.doubleBlockJacobi(in A);
             var jJob = new PcgJacobiTolJobDouble { A = A, M = mJ, b = b, x = x, r = r, p = p, Ap = Ap, z = z, K = cap, Tol = tol, Iters = iters };

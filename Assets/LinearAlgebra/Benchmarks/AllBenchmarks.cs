@@ -38,6 +38,7 @@ namespace LinearAlgebra.Benchmarks
                 KMeansBenchmark.Section(sb);
                 FFTBenchmark.Section(sb);
                 LPBenchmark.Section(sb);
+                FittingBenchmark.Section(sb);
                 QPBenchmark.Section(sb);
                 MIPBenchmark.Section(sb);
                 LQRBenchmark.Section(sb);

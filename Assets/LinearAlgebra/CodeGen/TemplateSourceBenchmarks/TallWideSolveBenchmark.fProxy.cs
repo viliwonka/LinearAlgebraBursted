@@ -75,6 +75,26 @@ namespace LinearAlgebra.Benchmarks
         public void Execute() => LQ.minNormSolve(in A, in b, ref x);
     }
 
+    // LQ.minNormSolveInPlace: full-row-rank min-norm solve that factors A in place (no working copy).
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct WideMinNormInPlaceJobFProxy : IJob
+    {
+        public fProxyMxN A;     // m x n; DESTROYED by minNormSolveInPlace (restored from Src each sample)
+        public fProxyMxN Src;
+        public fProxyN b;       // length m; not modified
+        public fProxyN x;       // length n, min-norm solution
+
+        public void Execute()
+        {
+            int rows = A.M_Rows, cols = A.N_Cols;
+            for (int r = 0; r < rows; r++)
+                for (int c = 0; c < cols; c++)
+                    A[r, c] = Src[r, c];
+
+            LQ.minNormSolveInPlace(ref A, in b, ref x);
+        }
+    }
+
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct WideLQRPJobFProxy : IJob
     {
@@ -226,6 +246,58 @@ namespace LinearAlgebra.Benchmarks
 
             arena.Dispose();
             return Bench.Row("fProxy", k, stat, flops);
+        }
+
+        // ---- Min-norm InPlace at an explicit m x n aspect (README wide showcase): LQ (full-rank) vs
+        //      LQRP (rank-revealing COD); both DESTROY A and return the minimum-2-norm solution ----
+        static string WideMinNormMNFProxy(int m, int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.fProxyMat(m, n);
+            var Src = arena.fProxyMat(m, n);
+            var b = arena.fProxyVec(m);
+            var x = arena.fProxyVec(n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int r = 0; r < m; r++)
+            {
+                b[r] = rng.NextFProxy(-1f, 1f);
+                for (int c = 0; c < n; c++)
+                    Src[r, c] = rng.NextFProxy(-1f, 1f);
+            }
+            for (int d = 0; d < m; d++)
+                Src[d, d] += m + n;
+
+            var job = new WideMinNormInPlaceJobFProxy { A = A, Src = Src, b = b, x = x };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return TallWideFmt.RowKernel("fProxy", "LQ.minNormSolveInPlace", m, stat, 0);
+        }
+
+        static string WideLQRPMinNormMNFProxy(int m, int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.fProxyMat(m, n);
+            var Src = arena.fProxyMat(m, n);
+            var b = arena.fProxyVec(m);
+            var x = arena.fProxyVec(n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int r = 0; r < m; r++)
+            {
+                b[r] = rng.NextFProxy(-1f, 1f);
+                for (int c = 0; c < n; c++)
+                    Src[r, c] = rng.NextFProxy(-1f, 1f);
+            }
+            for (int d = 0; d < m; d++)
+                Src[d, d] += m + n;
+
+            var job = new WideLQRPMinNormJobFProxy { A = A, Src = Src, b = b, x = x };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return TallWideFmt.RowKernel("fProxy", "LQRP.minNormSolveInPlace", m, stat, 0);
         }
 
         // ---- Wide LQRP row-pivoted factorization (k x 2k) ----

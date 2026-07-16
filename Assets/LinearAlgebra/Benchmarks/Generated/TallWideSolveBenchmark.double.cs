@@ -79,6 +79,26 @@ namespace LinearAlgebra.Benchmarks
         public void Execute() => LQ.minNormSolve(in A, in b, ref x);
     }
 
+    // LQ.minNormSolveInPlace: full-row-rank min-norm solve that factors A in place (no working copy).
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct WideMinNormInPlaceJobDouble : IJob
+    {
+        public doubleMxN A;     // m x n; DESTROYED by minNormSolveInPlace (restored from Src each sample)
+        public doubleMxN Src;
+        public doubleN b;       // length m; not modified
+        public doubleN x;       // length n, min-norm solution
+
+        public void Execute()
+        {
+            int rows = A.M_Rows, cols = A.N_Cols;
+            for (int r = 0; r < rows; r++)
+                for (int c = 0; c < cols; c++)
+                    A[r, c] = Src[r, c];
+
+            LQ.minNormSolveInPlace(ref A, in b, ref x);
+        }
+    }
+
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct WideLQRPJobDouble : IJob
     {
@@ -230,6 +250,58 @@ namespace LinearAlgebra.Benchmarks
 
             arena.Dispose();
             return Bench.Row("double", k, stat, flops);
+        }
+
+        // ---- Min-norm InPlace at an explicit m x n aspect (README wide showcase): LQ (full-rank) vs
+        //      LQRP (rank-revealing COD); both DESTROY A and return the minimum-2-norm solution ----
+        static string WideMinNormMNDouble(int m, int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.doubleMat(m, n);
+            var Src = arena.doubleMat(m, n);
+            var b = arena.doubleVec(m);
+            var x = arena.doubleVec(n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int r = 0; r < m; r++)
+            {
+                b[r] = rng.NextDouble(-1f, 1f);
+                for (int c = 0; c < n; c++)
+                    Src[r, c] = rng.NextDouble(-1f, 1f);
+            }
+            for (int d = 0; d < m; d++)
+                Src[d, d] += m + n;
+
+            var job = new WideMinNormInPlaceJobDouble { A = A, Src = Src, b = b, x = x };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return TallWideFmt.RowKernel("double", "LQ.minNormSolveInPlace", m, stat, 0);
+        }
+
+        static string WideLQRPMinNormMNDouble(int m, int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.doubleMat(m, n);
+            var Src = arena.doubleMat(m, n);
+            var b = arena.doubleVec(m);
+            var x = arena.doubleVec(n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int r = 0; r < m; r++)
+            {
+                b[r] = rng.NextDouble(-1f, 1f);
+                for (int c = 0; c < n; c++)
+                    Src[r, c] = rng.NextDouble(-1f, 1f);
+            }
+            for (int d = 0; d < m; d++)
+                Src[d, d] += m + n;
+
+            var job = new WideLQRPMinNormJobDouble { A = A, Src = Src, b = b, x = x };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return TallWideFmt.RowKernel("double", "LQRP.minNormSolveInPlace", m, stat, 0);
         }
 
         // ---- Wide LQRP row-pivoted factorization (k x 2k) ----

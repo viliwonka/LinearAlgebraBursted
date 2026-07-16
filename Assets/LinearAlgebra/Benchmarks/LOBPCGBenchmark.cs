@@ -35,6 +35,8 @@ namespace LinearAlgebra.Benchmarks
                 "dtype", "N", "min(ms)", "med(ms)", "iters", "converged", "maxResidual"));
             sb.AppendLine(BenchFloat(N, K, MaxIter));
             sb.AppendLine(BenchDouble(N, K, MaxIter));
+            sb.AppendLine(BenchFloat(1024, K, MaxIter));
+            sb.AppendLine(BenchDouble(1024, K, MaxIter));
             sb.AppendLine();
 
             sb.AppendLine(string.Format("=== lobpcg preconditioner face-off, sparse BSR, k={0} smallest, solve to tol=sqrt(eps) ===", K));

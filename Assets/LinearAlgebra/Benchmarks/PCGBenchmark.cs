@@ -33,13 +33,18 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine(BenchDouble(BR, NB, K));
             sb.AppendLine();
 
-            sb.AppendLine("=== Preconditioner face-off, 2D Laplacian BSR, solve to tol=sqrt(eps) ===");
+            // SQUARE grids (gridX == gridY): the 2D Laplacian condition number grows ~O(N), so plain-CG
+            // iterations grow ~O(sqrt(N)) while a good preconditioner stays ~flat -- the convergence-at-
+            // scale story. (Elongated 4xN grids hide this: iters are set by the short side, flat in N.)
+            sb.AppendLine("=== Preconditioner face-off, SQUARE 2D Laplacian BSR, solve to tol=sqrt(eps) ===");
             sb.AppendLine(string.Format("{0,-7} {1,-6} {2,-12} {3,11} {4,11} {5,7} {6,14}",
                 "dtype", "N", "solver", "med(ms)", "min(ms)", "iters", "residual"));
-            sb.AppendLine(BenchPrecondFloat(4, 256));
-            sb.AppendLine(BenchPrecondDouble(4, 256));
-            sb.AppendLine(BenchPrecondFloat(4, 1024));
-            sb.AppendLine(BenchPrecondDouble(4, 1024));
+            sb.AppendLine(BenchPrecondFloat(32, 32));      // N = 1024
+            sb.AppendLine(BenchPrecondDouble(32, 32));
+            sb.AppendLine(BenchPrecondFloat(64, 64));      // N = 4096
+            sb.AppendLine(BenchPrecondDouble(64, 64));
+            sb.AppendLine(BenchPrecondFloat(101, 101));    // N = 10201
+            sb.AppendLine(BenchPrecondDouble(101, 101));
             sb.AppendLine();
 
             sb.AppendLine("=== Preconditioner face-off, random sparse SPD BSR (genuine fill; IC(0) incomplete), tol=sqrt(eps) ===");
