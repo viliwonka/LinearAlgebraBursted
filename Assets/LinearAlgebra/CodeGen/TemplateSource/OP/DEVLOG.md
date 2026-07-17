@@ -1,6 +1,23 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## LOBPCG + ladIRLS: reroute inner dots to UnsafeOP.vecDot (reduction-reroute batch 6)
+- 2026-07-17 | Replaced hand-rolled scalar `for c: s += V[i,c]*W[j,c]` dots with `UnsafeOP.vecDot`
+  (row pointers hoisted via `.Data.Ptr + (long)row*N_Cols`, length n). Sites: LOBPCG `FillGramSub`
+  (Gram = VᵀW, the O(k²·n) fill), `FillHSub` (H = VᵀAW), `Deflate` (coeff = <AgainstB_i, V_a>); ladIRLS
+  residual `ri = -b[i] + dot(A_i, x)` (`Optimize.ladIRLS`). Made the three LOBPCG helpers `static unsafe`
+  (matches the file's existing RequireDistinctBuffers/RestoreBufferIdentity convention); ladIRLS uses an
+  `unsafe {}` block around the row loop (public API method, kept non-unsafe). Added
+  `using LinearAlgebra.Internal;` to both files.
+  - NOT bit-identical: vecDot's fixed 2×fProxyW/2×fProxy4 accumulator tree reorders the summation vs the
+    scalar left-to-right sum. Deterministic + cross-arch (frozen kernel contract), covered by the pre-1.0
+    "no bit-compat obligation yet" waiver. Tolerance-based tests unaffected (suite 6317/6317).
+  - LEFT scalar deliberately: ladIRLS line ~297 final-objective dot accumulates in `double` even for the
+    float variant (higher precision) — vecDot would drop that. LOBPCG's residual loop (rv = AX-λBX)
+    fuses compute+store R[i,c]+norm in one pass — not a pure dot, left as a later pointer-hoist target.
+    LOBPCG lines 154/263 (Rayleigh/B-norm single dots) are O(k·n), inside the big non-unsafe iteration
+    method — skipped to avoid widening its unsafe scope for marginal gain.
+
 ## UnsafeOP/WideOP: alias fProxy4 + delete the fProxyM/floatM/doubleM shim layer
 - 2026-07-17 | Final step of the alias refactor: no file calls `fProxyM` any more, so deleted class
   `fProxyM` (`proxyStructs.math.cs`) AND `OP/SimdMath.cs` (`floatM`/`doubleM`) outright.

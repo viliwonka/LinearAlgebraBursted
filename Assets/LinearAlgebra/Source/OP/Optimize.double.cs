@@ -8,6 +8,7 @@ using System.Runtime.CompilerServices;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
+using LinearAlgebra.Internal;
 
 namespace LinearAlgebra
 {
@@ -260,16 +261,19 @@ namespace LinearAlgebra
                 for (int a = 0; a < n; a++) { rhs[a] = (double)0; for (int col = 0; col < n; col++) G[a, col] = (double)0; }
 
                 // Accumulate the weighted normal equations (upper triangle of G) in one pass over rows.
-                for (int i = 0; i < m; i++)
+                unsafe
                 {
-                    double ri = -b[i];
-                    for (int a = 0; a < n; a++) ri += A[i, a] * x[a];
-                    double wi = (double)1 / math.max(math.abs(ri), delta);
-                    for (int a = 0; a < n; a++)
+                    double* ap = A.Data.Ptr; int anc = A.N_Cols; double* xp = x.Data.Ptr;
+                    for (int i = 0; i < m; i++)
                     {
-                        double wa = wi * A[i, a];
-                        rhs[a] += wa * b[i];
-                        for (int col = a; col < n; col++) G[a, col] += wa * A[i, col];
+                        double ri = -b[i] + UnsafeOP.vecDot(ap + (long)i * anc, xp, n);
+                        double wi = (double)1 / math.max(math.abs(ri), delta);
+                        for (int a = 0; a < n; a++)
+                        {
+                            double wa = wi * A[i, a];
+                            rhs[a] += wa * b[i];
+                            for (int col = a; col < n; col++) G[a, col] += wa * A[i, col];
+                        }
                     }
                 }
                 for (int a = 0; a < n; a++) for (int col = 0; col < a; col++) G[a, col] = G[col, a];

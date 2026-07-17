@@ -8,6 +8,7 @@ using System.Runtime.CompilerServices;
 using Unity.Collections;
 using Unity.Mathematics;
 using LinearAlgebra.Sparse;
+using LinearAlgebra.Internal;
 
 namespace LinearAlgebra
 {
@@ -892,16 +893,17 @@ namespace LinearAlgebra
         // Fills Gram[rowOff+i, colOff+j] = dot(Vb[i,:], Wb[j,:]) and mirrors the SAME value into
         // [colOff+j, rowOff+i] (Gram is symmetric by construction). `sameBlock` (Vb/Wb identical,
         // rowOff==colOff) restricts the fill to the upper triangle i<=j to avoid redundant work.
-        static void FillGramSub(ref doubleMxN Gram, int rowOff, in doubleMxN Vb, int rows,
+        static unsafe void FillGramSub(ref doubleMxN Gram, int rowOff, in doubleMxN Vb, int rows,
                                  int colOff, in doubleMxN Wb, int cols, int n, bool sameBlock)
         {
+            double* vp = Vb.Data.Ptr; int vnc = Vb.N_Cols;
+            double* wp = Wb.Data.Ptr; int wnc = Wb.N_Cols;
             for (int i = 0; i < rows; i++)
             {
                 int jStart = sameBlock ? i : 0;
                 for (int j = jStart; j < cols; j++)
                 {
-                    double s = (double)0;
-                    for (int c = 0; c < n; c++) s += Vb[i, c] * Wb[j, c];
+                    double s = UnsafeOP.vecDot(vp + (long)i * vnc, wp + (long)j * wnc, n);
                     Gram[rowOff + i, colOff + j] = s;
                     Gram[colOff + j, rowOff + i] = s;
                 }
@@ -912,16 +914,17 @@ namespace LinearAlgebra
         // [colOff+j, rowOff+i]. Valid because A is symmetric: Vb_i . A Wb_j == Wb_j . A Vb_i
         // exactly, so one dot product correctly serves both slots -- guaranteeing exact symmetry
         // rather than "equal only to roundoff, computed twice".
-        static void FillHSub(ref doubleMxN H, int rowOff, in doubleMxN Vb, int rows,
+        static unsafe void FillHSub(ref doubleMxN H, int rowOff, in doubleMxN Vb, int rows,
                               int colOff, in doubleMxN AWb, int cols, int n, bool sameBlock)
         {
+            double* vp = Vb.Data.Ptr; int vnc = Vb.N_Cols;
+            double* wp = AWb.Data.Ptr; int wnc = AWb.N_Cols;
             for (int i = 0; i < rows; i++)
             {
                 int jStart = sameBlock ? i : 0;
                 for (int j = jStart; j < cols; j++)
                 {
-                    double s = (double)0;
-                    for (int c = 0; c < n; c++) s += Vb[i, c] * AWb[j, c];
+                    double s = UnsafeOP.vecDot(vp + (long)i * vnc, wp + (long)j * wnc, n);
                     H[rowOff + i, colOff + j] = s;
                     H[colOff + j, rowOff + i] = s;
                 }
@@ -938,15 +941,16 @@ namespace LinearAlgebra
         // AgainstB bits are identical to Against bits (see the class doc's "B=I strategy"), so
         // coeff and every update below reproduce the pre-generalization Euclidean Deflate formula
         // bit-for-bit.
-        static void Deflate(ref doubleMxN V, ref doubleMxN AV, ref doubleMxN BV, int activeCount,
+        static unsafe void Deflate(ref doubleMxN V, ref doubleMxN AV, ref doubleMxN BV, int activeCount,
                              in doubleMxN Against, in doubleMxN AgainstA, in doubleMxN AgainstB, int againstStart, int againstCount, int n)
         {
+            double* vpV = V.Data.Ptr; int vncV = V.N_Cols;
+            double* vpAB = AgainstB.Data.Ptr; int vncAB = AgainstB.N_Cols;
             for (int pass = 0; pass < 2; pass++)
                 for (int a = 0; a < activeCount; a++)
                     for (int i = againstStart; i < againstStart + againstCount; i++)
                     {
-                        double coeff = (double)0;
-                        for (int c = 0; c < n; c++) coeff += AgainstB[i, c] * V[a, c];
+                        double coeff = UnsafeOP.vecDot(vpAB + (long)i * vncAB, vpV + (long)a * vncV, n);
 
                         for (int c = 0; c < n; c++)
                         {
