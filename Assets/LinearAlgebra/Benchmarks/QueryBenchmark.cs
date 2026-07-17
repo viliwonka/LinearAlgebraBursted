@@ -2,9 +2,9 @@ using System.Text;
 
 namespace LinearAlgebra.Benchmarks
 {
-    // A few common Query ops on N x N matrices. Row-inner ops (rowArgMin, argMaxRowNorm) are
-    // unit-stride and vectorise; argMaxColNorm is column-inner (strided) and stays scalar -- the
-    // row/column asymmetry, benched side by side.
+    // A few common Query ops on N x N matrices. argMaxRowNorm is a row reduction (routed to the SIMD
+    // kernels); argMaxColNorm is a column reduction restructured into a row-major per-column accumulate
+    // (the colSum trick), so both now vectorise and land at the same speed.
     //
     // Hand-written harness half. The timed IJobs and build+measure methods are code-generated per
     // dtype from Assets/LinearAlgebra/CodeGen/TemplateSourceBenchmarks/QueryBenchmark.fProxy.cs.

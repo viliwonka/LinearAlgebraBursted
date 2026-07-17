@@ -10,9 +10,9 @@ using LinearAlgebra;
 namespace LinearAlgebra.Benchmarks
 {
     // GENERATED per-dtype half of QueryBenchmark. A few common Query ops on big N x N matrices:
-    // rowArgMin (per-row argmin, the k-means assignment primitive), argMaxRowNorm (row-inner =
-    // unit-stride, vectorises) vs argMaxColNorm (column-inner = strided, stays scalar -- the
-    // asymmetry counterpart to rowSum/colSum), and nearestRow (a linear scan query).
+    // rowArgMin (per-row argmin, the k-means assignment primitive), argMaxRowNorm (row reduction ->
+    // SIMD kernels) and argMaxColNorm (column reduction restructured into a row-major per-column
+    // accumulate -- the colSum trick, so it now matches the row op), and nearestRow (a linear scan).
     // Hand-written harness: Assets/LinearAlgebra/Benchmarks/QueryBenchmark.cs.
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]

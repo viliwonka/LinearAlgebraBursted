@@ -4,6 +4,7 @@
 // </auto-generated>
 using Unity.Mathematics;
 using Unity.Burst;
+using Unity.Collections;
 using System.Runtime.CompilerServices;
 
 using LinearAlgebra.Internal;
@@ -311,47 +312,55 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Returns the column index whose norm (L1/L2/Linf) is largest.
-        /// Columns are strided (non-contiguous); on ties the first occurrence wins.
+        /// Returns the column index whose norm (L1/L2/Linf) is largest. On ties the first occurrence wins.
         /// </summary>
         public static int argMaxColNorm(in floatMxN A, Norm n)
         {
             if (A.M_Rows == 0 || A.N_Cols == 0)
                 throw new System.InvalidOperationException("Query.argMaxColNorm: empty matrix");
 
+            int nc = A.N_Cols;
+            // Per-column norm accumulated in ONE row-major (unit-stride inner) sweep rather than a
+            // strided per-column walk: the inner loop over c vectorises, and each column still
+            // accumulates its rows in the same order (r ascending) so the result is bit-identical.
+            // Self-disposing Temp (job-safe), length N_Cols.
+            var acc = new floatN(nc, Allocator.Temp);
             int bestCol = 0;
             float bestNorm = (float)0;
+            unsafe
+            {
+                float* ap = A.Data.Ptr; float* accp = acc.Data.Ptr;
+                for (int c = 0; c < nc; c++) accp[c] = (float)0;
 
-            if (n == Norm.L1)
-            {
-                for (int c = 0; c < A.N_Cols; c++)
+                if (n == Norm.L1)
                 {
-                    float s = (float)0;
                     for (int r = 0; r < A.M_Rows; r++)
-                        s += math.abs(A[r, c]);
-                    if (s > bestNorm) { bestNorm = s; bestCol = c; }
+                    {
+                        float* row = ap + (long)r * nc;
+                        for (int c = 0; c < nc; c++) accp[c] += math.abs(row[c]);
+                    }
                 }
-            }
-            else if (n == Norm.L2)
-            {
-                for (int c = 0; c < A.N_Cols; c++)
+                else if (n == Norm.L2)
                 {
-                    float s = (float)0;
                     for (int r = 0; r < A.M_Rows; r++)
-                        s += A[r, c] * A[r, c];
-                    if (s > bestNorm) { bestNorm = s; bestCol = c; }
+                    {
+                        float* row = ap + (long)r * nc;
+                        for (int c = 0; c < nc; c++) accp[c] += row[c] * row[c];
+                    }
                 }
-            }
-            else // Norm.Linf
-            {
-                for (int c = 0; c < A.N_Cols; c++)
+                else // Norm.Linf
                 {
-                    float s = (float)0;
                     for (int r = 0; r < A.M_Rows; r++)
-                        s = math.max(s, math.abs(A[r, c]));
-                    if (s > bestNorm) { bestNorm = s; bestCol = c; }
+                    {
+                        float* row = ap + (long)r * nc;
+                        for (int c = 0; c < nc; c++) accp[c] = math.max(accp[c], math.abs(row[c]));
+                    }
                 }
+
+                for (int c = 0; c < nc; c++)
+                    if (accp[c] > bestNorm) { bestNorm = accp[c]; bestCol = c; }
             }
+            acc.Dispose();
             return bestCol;
         }
 

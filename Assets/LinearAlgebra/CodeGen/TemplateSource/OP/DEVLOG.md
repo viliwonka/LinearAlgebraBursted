@@ -1,6 +1,19 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## QueryOP.argMaxColNorm: strided column walk restructured to row-major (the colSum trick)
+- 2026-07-17 | Corrects the prior entry's "column ops are fundamentally strided, leave them scalar."
+  They are NOT: `argMaxColNorm`'s per-column norm was computed by a strided per-column walk
+  (`for c { for r A[r,c] }`), but the same result comes from ONE row-major sweep accumulating a
+  per-column norm vector (`for r { for c acc[c] += f(A[r,c]) }`), then argmax over acc — the inner c
+  loop is unit-stride and vectorises, and each column still sums its rows in ascending order so it is
+  BIT-IDENTICAL (no waiver; same reason colSum is). Costs one length-N_Cols Temp accumulator
+  (self-disposing, job-safe). Suite 6317/6317 unchanged. N=1024 float 1.85→0.032 ms (~58×), double
+  1.54→0.062 ms (~25×) — now identical to the row op; the row/column asymmetry is eliminated, not
+  merely worked around. **General lesson: "strided column reduction" is usually a restructuring
+  opportunity, not a hard limit — NormsOP.matrixL1 and normalizeColumns' norm pass are the same shape
+  and could get the same bit-identical treatment (softmaxColumns too, with 3 row-major passes).**
+
 ## QueryOP.argMaxRowNorm: routed to SIMD reduction kernels + new QueryBenchmark
 - 2026-07-17 | `argMaxRowNorm` (per-row L1/L2/Linf norm, pick the max) was a hand-rolled scalar
   reduction on the indexer. Rerouted the row-inner reductions: L1→`UnsafeOP.sumAbs`,
