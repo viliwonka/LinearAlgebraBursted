@@ -1,6 +1,15 @@
 # DEVLOG — Statistics
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## StatsCore.softmaxColumns: strided per-column → three row-major passes
+- 2026-07-17 | Was a per-column strided walk (`A[r,c]`, stride N_Cols) done 3× (max, exp+sum, divide) —
+  cache-hostile + scalar. Restructured to row-major passes over two length-N_Cols Temps (colMax, colSum):
+  P1 per-column max (strict `>`, NaN never displaces), P2 exp(A-colMax) in place + per-column sum, P3
+  divide by the sum. Unit-stride inner loops → good cache locality (the big win; the exp pass is still
+  exp-bound but now reads contiguously) + P1/P3 vectorise. BIT-IDENTICAL: each column's max/sum still
+  visit rows ascending, and P3 divides (not ×reciprocal). Needs arena-backed A (fProxyTempVec), like
+  matrixL1/normalizeColumns. softmaxRows was already row-contiguous (untouched).
+
 ## StatsCore rowMin/rowMax + Stats.min/max: reroute to UnsafeOP.min/max
 - 2026-07-17 | The row/vector max/min reductions were scalar (`m = math.min(m, x[i])` — a carried reduction,
   no auto-vectorisation). Rerouted `rowMin`/`rowMax` (per-row, contiguous) and the generic `min<T>`/`max<T>`

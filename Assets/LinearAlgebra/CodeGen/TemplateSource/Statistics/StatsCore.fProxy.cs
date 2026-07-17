@@ -1154,17 +1154,45 @@ namespace LinearAlgebra
             }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void softmaxColumns(ref fProxyMxN A)
         {
-            if (A.M_Rows == 0 || A.N_Cols == 0) return;
-            for (int c = 0; c < A.N_Cols; c++)
+            int nr = A.M_Rows, nc = A.N_Cols;
+            if (nr == 0 || nc == 0) return;
+
+            // Column softmax via three row-major passes (unit-stride inner loops -> good cache locality
+            // + the max/divide passes vectorise; the exp pass stays exp-bound but reads contiguously
+            // instead of column-strided). Each column's max and exp-sum still visit rows in ascending
+            // order, and pass 3 divides (not *reciprocal), so the result is bit-identical to the strided
+            // per-column form. Two length-N_Cols Temps hold the per-column max then the per-column exp-sum.
+            fProxyN colMax = A.fProxyTempVec(nc);
+            fProxyN colSum = A.fProxyTempVec(nc);
+            unsafe
             {
-                fProxy maxVal = A[0, c];
-                for (int r = 1; r < A.M_Rows; r++) if (A[r, c] > maxVal) maxVal = A[r, c];
-                fProxy expSum = (fProxy)0;
-                for (int r = 0; r < A.M_Rows; r++) { A[r, c] = DetMath.Exp(A[r, c] - maxVal); expSum += A[r, c]; }
-                for (int r = 0; r < A.M_Rows; r++) A[r, c] /= expSum;
+                fProxy* ap = A.Data.Ptr;
+                fProxy* mp = colMax.Data.Ptr;
+                fProxy* sp = colSum.Data.Ptr;
+
+                // Pass 1: per-column max (init from row 0; strict > so NaN never displaces).
+                for (int c = 0; c < nc; c++) { mp[c] = ap[c]; sp[c] = (fProxy)0; }
+                for (int r = 1; r < nr; r++)
+                {
+                    fProxy* row = ap + (long)r * nc;
+                    for (int c = 0; c < nc; c++) if (row[c] > mp[c]) mp[c] = row[c];
+                }
+
+                // Pass 2: exp(A - colMax) in place, accumulate the per-column sum (ascending rows).
+                for (int r = 0; r < nr; r++)
+                {
+                    fProxy* row = ap + (long)r * nc;
+                    for (int c = 0; c < nc; c++) { fProxy e = DetMath.Exp(row[c] - mp[c]); row[c] = e; sp[c] += e; }
+                }
+
+                // Pass 3: divide each column by its exp-sum.
+                for (int r = 0; r < nr; r++)
+                {
+                    fProxy* row = ap + (long)r * nc;
+                    for (int c = 0; c < nc; c++) row[c] /= sp[c];
+                }
             }
         }
 
