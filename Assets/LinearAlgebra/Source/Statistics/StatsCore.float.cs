@@ -120,28 +120,14 @@ namespace LinearAlgebra
             if (x.Data.Length == 0)
                 throw new InvalidOperationException("Cannot compute min of an empty array.");
 
-            if (x.Data.Length == 1)
-                return x.Data[0];
-
-            float min = float.MaxValue;
-            for (int i = 0; i < x.Data.Length; i++)
-                min = math.min(min, x.Data[i]);
-            
-            return min;
+            unsafe { return UnsafeOP.min(x.Data.Ptr, x.Data.Length); }
         }
 
         public static float max<T>(in T x) where T : unmanaged, IUnsafefloatArray {
             if (x.Data.Length == 0)
                 throw new InvalidOperationException("Cannot compute max of an empty array.");
 
-            if (x.Data.Length == 1)
-                return x.Data[0];
-
-            float max = float.MinValue;
-            for (int i = 0; i < x.Data.Length; i++)
-                max = math.max(max, x.Data[i]);
-            
-            return max;
+            unsafe { return UnsafeOP.max(x.Data.Ptr, x.Data.Length); }
         }
 
         public static float median<T>(in T x) where T : unmanaged, IUnsafefloatArray {
@@ -357,13 +343,7 @@ namespace LinearAlgebra
                 float* ap = A.Data.Ptr;
                 int nc = A.N_Cols;
                 for (int r = 0; r < A.M_Rows; r++)
-                {
-                    float* row = ap + (long)r * nc;
-                    float m = row[0];
-                    for (int c = 1; c < nc; c++)
-                        m = math.min(m, row[c]);
-                    dest[r] = m;
-                }
+                    dest[r] = UnsafeOP.min(ap + (long)r * nc, nc);
             }
         }
 
@@ -386,13 +366,7 @@ namespace LinearAlgebra
                 float* ap = A.Data.Ptr;
                 int nc = A.N_Cols;
                 for (int r = 0; r < A.M_Rows; r++)
-                {
-                    float* row = ap + (long)r * nc;
-                    float m = row[0];
-                    for (int c = 1; c < nc; c++)
-                        m = math.max(m, row[c]);
-                    dest[r] = m;
-                }
+                    dest[r] = UnsafeOP.max(ap + (long)r * nc, nc);
             }
         }
 

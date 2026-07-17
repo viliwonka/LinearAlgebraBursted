@@ -1,6 +1,14 @@
 # DEVLOG — Statistics
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## StatsCore rowMin/rowMax + Stats.min/max: reroute to UnsafeOP.min/max
+- 2026-07-17 | The row/vector max/min reductions were scalar (`m = math.min(m, x[i])` — a carried reduction,
+  no auto-vectorisation). Rerouted `rowMin`/`rowMax` (per-row, contiguous) and the generic `min<T>`/`max<T>`
+  (whole array) to the new `UnsafeOP.min`/`max` kernels, mirroring the shipped rowNormL1/L2 → sumAbs/vecDot
+  per-row pattern. Bit-identical on finite data (max/min exact; the MaxValue/MinValue seed was neutral).
+  LEFT AS-IS: `colMin`/`colMax` already use unit-stride `dp[c] = math.min(dp[c], row[c])` (the colSum-trick
+  form, auto-vectorises); `meanMinMaxRange` stays a single fused min+max+sum pass (rerouting = 3 passes).
+
 ## StatsCore.fProxy.cs — row reductions routed to SIMD kernels
 - 2026-07-17 | Follow-up to the hoist below. Under FloatMode.Strict (== Default in Burst), a plain
   `sum += row[c]` row reduction CANNOT auto-vectorise (lane-splitting reorders the sum, which Strict

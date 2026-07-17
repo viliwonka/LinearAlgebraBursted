@@ -113,6 +113,59 @@ namespace LinearAlgebra.Internal
             return m;
         }
 
+        // Running max / min over a[0..n). Contract: n >= 1 (a reduction has no value on empty input).
+        // max/min are EXACT (no rounding), so accumulator/lane order changes nothing but NaN propagation
+        // -- identical on every machine, and matching math.max/math.min lets scalar callers reroute here
+        // bit-for-bit on finite data. Width-4 (double4) only: these are memory-bound (one load + one
+        // compare per element), so the 4-wide accumulator saturates bandwidth as well as the 8-wide
+        // doubleW would, and needs no doubleW.Min (which does not exist). Seeded from the first lanes,
+        // not a neutral identity, so all-negative (max) / all-positive (min) inputs are correct.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static double max([NoAlias] double* a, int n)
+        {
+            int i;
+            double m;
+            if (n >= 8)
+            {
+                double4 q0 = *(double4*)(a + 0);
+                double4 q1 = *(double4*)(a + 4);
+                for (i = 8; i + 8 <= n; i += 8)
+                {
+                    q0 = math.max(q0, *(double4*)(a + i));
+                    q1 = math.max(q1, *(double4*)(a + i + 4));
+                }
+                if (i + 4 <= n) { q0 = math.max(q0, *(double4*)(a + i)); i += 4; }
+                double4 q = math.max(q0, q1);
+                m = math.max(math.max(q.x, q.y), math.max(q.z, q.w));
+            }
+            else { m = a[0]; i = 1; }
+            for (; i < n; i++) m = math.max(m, a[i]);
+            return m;
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static double min([NoAlias] double* a, int n)
+        {
+            int i;
+            double m;
+            if (n >= 8)
+            {
+                double4 q0 = *(double4*)(a + 0);
+                double4 q1 = *(double4*)(a + 4);
+                for (i = 8; i + 8 <= n; i += 8)
+                {
+                    q0 = math.min(q0, *(double4*)(a + i));
+                    q1 = math.min(q1, *(double4*)(a + i + 4));
+                }
+                if (i + 4 <= n) { q0 = math.min(q0, *(double4*)(a + i)); i += 4; }
+                double4 q = math.min(q0, q1);
+                m = math.min(math.min(q.x, q.y), math.min(q.z, q.w));
+            }
+            else { m = a[0]; i = 1; }
+            for (; i < n; i++) m = math.min(m, a[i]);
+            return m;
+        }
+
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static double vecDot([NoAlias] double* vA, [NoAlias] double* vB, int n) {
 
