@@ -146,6 +146,30 @@ namespace LinearAlgebra.Internal
             
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static doubleW Min(doubleW a, doubleW b)
+        {
+            
+            
+            double4 av = UnsafeUtility.As<v256, double4>(ref a.v);
+            double4 bv = UnsafeUtility.As<v256, double4>(ref b.v);
+            double4 r = math.min(av, bv);
+            return new doubleW { v = UnsafeUtility.As<double4, v256>(ref r) };
+            
+        }
+
+        // Fixed min-fold companion to HMax (min is exact; order only matters for a consistent NaN
+        // story — kept fixed anyway).
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static double HMin(doubleW a)
+        {
+            
+            
+            double4 av = UnsafeUtility.As<v256, double4>(ref a.v);
+            return math.min(math.min(av.x, av.y), math.min(av.z, av.w));
+            
+        }
+
         // Fixed fold — part of every consuming kernel's frozen numeric contract: opposite
         // halves pair first (lane l + lane l+W/2), then the balanced width-4 tree.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

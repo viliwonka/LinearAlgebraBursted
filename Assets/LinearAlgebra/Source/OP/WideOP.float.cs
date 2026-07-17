@@ -172,6 +172,38 @@ namespace LinearAlgebra.Internal
             
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static floatW Min(floatW a, floatW b)
+        {
+            
+            if (X86.Avx.IsAvxSupported)
+                return new floatW { v = X86.Avx.mm256_min_ps(a.v, b.v) };
+            return new floatW { v = new v256(
+                math.min(a.v.Float0, b.v.Float0), math.min(a.v.Float1, b.v.Float1),
+                math.min(a.v.Float2, b.v.Float2), math.min(a.v.Float3, b.v.Float3),
+                math.min(a.v.Float4, b.v.Float4), math.min(a.v.Float5, b.v.Float5),
+                math.min(a.v.Float6, b.v.Float6), math.min(a.v.Float7, b.v.Float7)) };
+            
+            
+        }
+
+        // Fixed min-fold companion to HMax (min is exact; order only matters for a consistent NaN
+        // story — kept fixed anyway).
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float HMin(floatW a)
+        {
+            
+            {
+                float h0 = math.min(a.v.Float0, a.v.Float4);
+                float h1 = math.min(a.v.Float1, a.v.Float5);
+                float h2 = math.min(a.v.Float2, a.v.Float6);
+                float h3 = math.min(a.v.Float3, a.v.Float7);
+                return math.min(math.min(h0, h1), math.min(h2, h3));
+            }
+            
+            
+        }
+
         // Fixed fold — part of every consuming kernel's frozen numeric contract: opposite
         // halves pair first (lane l + lane l+W/2), then the balanced width-4 tree.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

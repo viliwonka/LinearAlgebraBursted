@@ -38,6 +38,8 @@ namespace LinearAlgebra.Benchmarks
                     case Kern.L2:     acc += Norms.L2(a);     break;
                     case Kern.LInf:   acc += Norms.LInf(a);   break;
                     case Kern.Sum:    acc += Stats.sum(a);    break;
+                    case Kern.Max:    acc += Stats.max(a);    break;
+                    case Kern.Min:    acc += Stats.min(a);    break;
                 }
                 a[k % n] += acc * (double)1e-30;
             }

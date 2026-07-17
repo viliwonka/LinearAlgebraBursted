@@ -38,6 +38,7 @@ namespace LinearAlgebra.Benchmarks
     {
         public const int VecDot = 0, L1 = 1, L2 = 2, LInf = 3, Sum = 4; // Level-1 reductions
         public const int Gemv = 5, VecMat = 6;                          // Level-2 matrix-vector
+        public const int Max = 7, Min = 8;                              // Level-1 max/min reductions
     }
 
     public static partial class KernelBenchmark
@@ -55,6 +56,8 @@ namespace LinearAlgebra.Benchmarks
             (Kern.L2,     "L2",     2.0),
             (Kern.LInf,   "LInf",   2.0),
             (Kern.Sum,    "sum",    1.0),
+            (Kern.Max,    "max",    1.0),
+            (Kern.Min,    "min",    1.0),
         };
 
         public static void Run() => Bench.WriteReport("benchmark-kernels.txt", Section);

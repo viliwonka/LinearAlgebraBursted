@@ -1,6 +1,20 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## UnsafeOP.max/min: width-8 fProxyW upgrade (corrects the width-4 claim below)
+- 2026-07-17 | The earlier "width-4 saturates, min/max are memory-bound" claim was WRONG — KernelBenchmark
+  proved it. At in-L1 sizes (N<=1024) max/min are THROUGHPUT-bound: width-4 float max hit only ~12 GFLOP/s
+  vs sum's ~40. TWO causes: (1) width-4 (float4/128-bit) vs sum's width-8 (fProxyW/256-bit); (2) `math.max`
+  lowers to compare+select (2-3 ops), not a single hardware `maxps`. Fix: added `fProxyW.Min`/`HMin`
+  (hardware `mm256_min_ps`, mirrors Max/HMax) and rewrote the kernels to the fProxyW main loop + fProxy4
+  remainder (like maxAbs), seeded from a[0] (max/min idempotent → re-including the seed is exact).
+  Result: **float max 11.9→31.3 GFLOP/s (2.6×) @ N=1024**, near sum. Suite 6317/6317 (finite-data
+  bit-identical; float now follows hardware-max NaN semantics, like maxAbs already does).
+  - DOUBLE unchanged (~11.5, still ~2× behind sum): double skips fProxyW (double4 is already 256-bit) and
+    its fProxy4 body uses `math.max(double4)` = compare+select. Closing it needs `mm256_max_pd`/`min_pd` in
+    fProxyW.Max/Min's DOUBLE path — but that path is shared with maxAbs's frozen contract, so it's gated on
+    owner sign-off (OPEN). Added KernelBenchmark `max`/`min` reduction cases to measure all this.
+
 ## UnsafeOP.max/min kernels; NormsOP.normalizeColumns + Eigen dot reroutes
 - 2026-07-17 | Added `UnsafeOP.max`/`min` (SIMD running max/min over a[0..n), contract n>=1). WIDTH-4
   (fProxy4) only, NOT fProxyW: min/max reductions are memory-bound (one load + one compare/element) so the

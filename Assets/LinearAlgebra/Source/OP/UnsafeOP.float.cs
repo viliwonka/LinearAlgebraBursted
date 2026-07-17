@@ -156,31 +156,48 @@ namespace LinearAlgebra.Internal
         }
 
         // Running max / min over a[0..n). Contract: n >= 1 (a reduction has no value on empty input).
-        // max/min are EXACT (no rounding), so accumulator/lane order changes nothing but NaN propagation
-        // -- identical on every machine, and matching math.max/math.min lets scalar callers reroute here
-        // bit-for-bit on finite data. Width-4 (float4) only: these are memory-bound (one load + one
-        // compare per element), so the 4-wide accumulator saturates bandwidth as well as the 8-wide
-        // floatW would, and needs no floatW.Min (which does not exist). Seeded from the first lanes,
-        // not a neutral identity, so all-negative (max) / all-positive (min) inputs are correct.
+        // FLOAT uses the 8-wide floatW main loop (hardware mm256_max_ps/min_ps -- a single instruction,
+        // vs math.max's compare+select), then a float4 remainder; DOUBLE runs the float4 body directly
+        // (double4 already fills the 256-bit register). max/min are EXACT, so accumulator/lane order
+        // changes nothing but NaN propagation (identical on every machine, and following the hardware
+        // max like maxAbs) -- bit-identical to the scalar reduction on finite data. Seeded from a[0], not
+        // a neutral identity, so all-negative (max) / all-positive (min) inputs are correct; max/min are
+        // idempotent, so re-including a[0] via the seed is exact.
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static float max([NoAlias] float* a, int n)
         {
-            int i;
-            float m;
-            if (n >= 8)
+            float m = a[0];
+            int i = 0;
+
+            
             {
-                float4 q0 = *(float4*)(a + 0);
-                float4 q1 = *(float4*)(a + 4);
-                for (i = 8; i + 8 <= n; i += 8)
+                int nW = n / floatW.Width;
+                if (nW > 0)
                 {
-                    q0 = math.max(q0, *(float4*)(a + i));
-                    q1 = math.max(q1, *(float4*)(a + i + 4));
+                    floatW acc0 = floatW.Load(a, 0), acc1 = acc0;
+                    int q = 1;
+                    for (; q + 2 <= nW; q += 2)
+                    {
+                        acc0 = floatW.Max(acc0, floatW.Load(a, q));
+                        acc1 = floatW.Max(acc1, floatW.Load(a, q + 1));
+                    }
+                    if (q < nW) acc0 = floatW.Max(acc0, floatW.Load(a, q));
+                    m = math.max(m, floatW.HMax(floatW.Max(acc0, acc1)));
+                    i = nW * floatW.Width;
                 }
-                if (i + 4 <= n) { q0 = math.max(q0, *(float4*)(a + i)); i += 4; }
-                float4 q = math.max(q0, q1);
-                m = math.max(math.max(q.x, q.y), math.max(q.z, q.w));
             }
-            else { m = a[0]; i = 1; }
+            
+
+            float4 qacc0 = new float4(m), qacc1 = new float4(m);
+            for (; i + 8 <= n; i += 8)
+            {
+                qacc0 = math.max(qacc0, *(float4*)(a + i));
+                qacc1 = math.max(qacc1, *(float4*)(a + i + 4));
+            }
+            if (i + 4 <= n) { qacc0 = math.max(qacc0, *(float4*)(a + i)); i += 4; }
+            float4 qacc = math.max(qacc0, qacc1);
+            m = math.max(math.max(qacc.x, qacc.y), math.max(qacc.z, qacc.w));
+
             for (; i < n; i++) m = math.max(m, a[i]);
             return m;
         }
@@ -188,22 +205,38 @@ namespace LinearAlgebra.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static float min([NoAlias] float* a, int n)
         {
-            int i;
-            float m;
-            if (n >= 8)
+            float m = a[0];
+            int i = 0;
+
+            
             {
-                float4 q0 = *(float4*)(a + 0);
-                float4 q1 = *(float4*)(a + 4);
-                for (i = 8; i + 8 <= n; i += 8)
+                int nW = n / floatW.Width;
+                if (nW > 0)
                 {
-                    q0 = math.min(q0, *(float4*)(a + i));
-                    q1 = math.min(q1, *(float4*)(a + i + 4));
+                    floatW acc0 = floatW.Load(a, 0), acc1 = acc0;
+                    int q = 1;
+                    for (; q + 2 <= nW; q += 2)
+                    {
+                        acc0 = floatW.Min(acc0, floatW.Load(a, q));
+                        acc1 = floatW.Min(acc1, floatW.Load(a, q + 1));
+                    }
+                    if (q < nW) acc0 = floatW.Min(acc0, floatW.Load(a, q));
+                    m = math.min(m, floatW.HMin(floatW.Min(acc0, acc1)));
+                    i = nW * floatW.Width;
                 }
-                if (i + 4 <= n) { q0 = math.min(q0, *(float4*)(a + i)); i += 4; }
-                float4 q = math.min(q0, q1);
-                m = math.min(math.min(q.x, q.y), math.min(q.z, q.w));
             }
-            else { m = a[0]; i = 1; }
+            
+
+            float4 qacc0 = new float4(m), qacc1 = new float4(m);
+            for (; i + 8 <= n; i += 8)
+            {
+                qacc0 = math.min(qacc0, *(float4*)(a + i));
+                qacc1 = math.min(qacc1, *(float4*)(a + i + 4));
+            }
+            if (i + 4 <= n) { qacc0 = math.min(qacc0, *(float4*)(a + i)); i += 4; }
+            float4 qacc = math.min(qacc0, qacc1);
+            m = math.min(math.min(qacc.x, qacc.y), math.min(qacc.z, qacc.w));
+
             for (; i < n; i++) m = math.min(m, a[i]);
             return m;
         }

@@ -211,6 +211,46 @@ namespace LinearAlgebra.Internal
             //-emitFor
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static fProxyW Min(fProxyW a, fProxyW b)
+        {
+            //+skipFor[double]
+            if (X86.Avx.IsAvxSupported)
+                return new fProxyW { v = X86.Avx.mm256_min_ps(a.v, b.v) };
+            return new fProxyW { v = new v256(
+                math.min(a.v.Float0, b.v.Float0), math.min(a.v.Float1, b.v.Float1),
+                math.min(a.v.Float2, b.v.Float2), math.min(a.v.Float3, b.v.Float3),
+                math.min(a.v.Float4, b.v.Float4), math.min(a.v.Float5, b.v.Float5),
+                math.min(a.v.Float6, b.v.Float6), math.min(a.v.Float7, b.v.Float7)) };
+            //-skipFor
+            //+emitFor[double]
+            //!fProxy4 av = UnsafeUtility.As<v256, fProxy4>(ref a.v);
+            //!fProxy4 bv = UnsafeUtility.As<v256, fProxy4>(ref b.v);
+            //!fProxy4 r = math.min(av, bv);
+            //!return new fProxyW { v = UnsafeUtility.As<fProxy4, v256>(ref r) };
+            //-emitFor
+        }
+
+        // Fixed min-fold companion to HMax (min is exact; order only matters for a consistent NaN
+        // story — kept fixed anyway).
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static fProxy HMin(fProxyW a)
+        {
+            //+skipFor[double]
+            {
+                fProxy h0 = math.min(a.v.Float0, a.v.Float4);
+                fProxy h1 = math.min(a.v.Float1, a.v.Float5);
+                fProxy h2 = math.min(a.v.Float2, a.v.Float6);
+                fProxy h3 = math.min(a.v.Float3, a.v.Float7);
+                return math.min(math.min(h0, h1), math.min(h2, h3));
+            }
+            //-skipFor
+            //+emitFor[double]
+            //!fProxy4 av = UnsafeUtility.As<v256, fProxy4>(ref a.v);
+            //!return math.min(math.min(av.x, av.y), math.min(av.z, av.w));
+            //-emitFor
+        }
+
         // Fixed fold — part of every consuming kernel's frozen numeric contract: opposite
         // halves pair first (lane l + lane l+W/2), then the balanced width-4 tree.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
