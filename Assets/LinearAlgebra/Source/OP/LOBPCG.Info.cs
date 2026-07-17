@@ -20,9 +20,11 @@ namespace LinearAlgebra
     /// Reuses <see cref="IterativeSolveStatus"/> (the same enum every other Krylov/eigen solver in
     /// this library uses) rather than a dedicated LOBPCG enum: Converged means all k pairs locked
     /// within tolerance; MaxIterations means the iteration budget ran out with some pairs still active;
-    /// Breakdown means an unrecoverable numerical condition was hit (the initial X seed could not
-    /// be orthonormalized -- e.g. k &gt; n -- or a non-finite residual leaked into the loop), in
-    /// which case X/lambda are undefined.
+    /// Degenerate means at least one requested pair was numerically degenerate at exit (its B-norm
+    /// below the certification floor -- a collapsed Rayleigh-Ritz basis), so the returned pairs are
+    /// NOT certified and must be treated as non-converged; Breakdown means an unrecoverable
+    /// numerical condition was hit (the initial X seed could not be orthonormalized -- e.g. k &gt;
+    /// n -- or a non-finite residual leaked into the loop), in which case X/lambda are undefined.
     ///
     /// Type-agnostic (no per-precision prefix) on purpose, matching <see cref="EigenSolveInfo"/> /
     /// <see cref="LanczosInfo"/> / <see cref="SolveInfo"/>: it lives in a non-templated file so
@@ -36,13 +38,16 @@ namespace LinearAlgebra
         /// eigenvectors).</summary>
         public int iterations;
 
-        /// <summary>Number of eigenpairs that met the relative-residual tolerance and were locked
-        /// (0..k). Equals k iff <see cref="status"/> is Converged.</summary>
+        /// <summary>Number of eigenpairs that are CERTIFIED: within the residual tolerance AND not
+        /// numerically degenerate (B-norm at or above the certification floor). 0..k; equals k iff
+        /// <see cref="status"/> is Converged.</summary>
         public int converged;
 
-        /// <summary>Worst-case (maximum) relative residual ‖A x_i - lambda_i B x_i‖ / max(|lambda_i|,
-        /// 1) over all k returned pairs (B=I for the standard, non-generalized entry points, which
-        /// reduces this to the familiar ‖A x_i - lambda_i x_i‖), widened to <c>double</c> regardless
+        /// <summary>Worst-case (maximum) scale-invariant relative residual
+        /// ‖A x_i - lambda_i B x_i‖ / scale_i over all k returned pairs, with scale_i =
+        /// min(normAEst·‖x_i‖ + |lambda_i|·normBEst·‖x_i‖_B, max(|lambda_i|, 1)·‖x_i‖_B) --
+        /// the solver's own convergence-test denominator (normAEst/normBEst are its Frobenius
+        /// operator-norm estimates of A and B; normBEst is 1 for B=I), widened to <c>double</c> regardless
         /// of the solve's precision (matching every other *_Info.residual/rnorm convention in this
         /// library).
         /// Filled from the per-pair residual norms the solver already tracks (locked pairs keep

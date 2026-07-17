@@ -39,9 +39,20 @@ namespace LinearAlgebra
     /// <b>Zero-alloc scope:</b> all O(n)-scale buffers live in <see cref="floatLOBPCGCache"/>,
     /// allocated once via <c>Arena.floatLOBPCGCache(n, k)</c> and reused across calls.
     ///
-    /// <b>Convergence:</b> per-pair 2-norm relative residual ||A x_i - lambda_i B x_i|| /
-    /// max(|lambda_i|, 1) &lt;= tol. Returns a <see cref="LOBPCGInfo"/>
-    /// (Converged/MaxIterations/Breakdown).
+    /// <b>Convergence:</b> per-pair scale-invariant residual test ||A x_i - lambda_i B x_i|| &lt;=
+    /// tol · scale_i with scale_i = min(normAEst·||x_i|| + |lambda_i|·normBEst·||x_i||_B,
+    /// max(|lambda_i|, 1)·||x_i||_B), where normAEst/normBEst are Frobenius operator-norm
+    /// estimates of A and B taken from the orthonormalized seed block (normBEst is 1 for B=I,
+    /// making the two norms coincide). Explicit norms make the test immune to a
+    /// shrinking/collapsed iterate self-certifying; the lambda terms scale with ||x_i||_B (not
+    /// ||x_i||) so an iterate blowing up inside a singular B's null space cannot self-certify
+    /// either. Returns a <see cref="LOBPCGInfo"/>
+    /// (Converged/MaxIterations/Degenerate/Breakdown).
+    ///
+    /// <b>Degenerate pairs:</b> a pair whose B-norm ||x_i||_B drops below 0.25 is degenerate: it
+    /// is never locked and never counts as converged, and if any of the k WANTED pairs is still
+    /// degenerate at exit the whole solve returns <see cref="IterativeSolveStatus.Degenerate"/> --
+    /// the returned pairs are then NOT certified and must be treated as non-converged.
     ///
     /// <b>Output order:</b> eigenvalues/eigenvectors are returned ASCENDING (index 0 = smallest) --
     /// unlike the other Eigen methods (which sort descending) -- because LOBPCG targets the k
@@ -147,6 +158,29 @@ namespace LinearAlgebra
             // formula bit-for-bit.
             B.ApplyBlock(in ws.X, ref ws.BX, kWork);
 
+            // Frobenius-sketch operator-norm estimates over the orthonormalized seed:
+            // normAEst = ||AX||_F / sqrt(kWork) <= ||A||_2 (a LOWER bound -- errs strict, never
+            // lax), likewise normBEst for B (evaluates to 1 for B=I). They anchor the
+            // scale-invariant convergence test in the residual loop below. Plain fixed-order
+            // scalar accumulation (deterministic under FloatMode.Strict).
+            float normAEst, normBEst;
+            {
+                float af2 = (float)0, bf2 = (float)0;
+                for (int i = 0; i < kWork; i++)
+                    for (int c = 0; c < n; c++)
+                    {
+                        af2 += ws.AX[i, c] * ws.AX[i, c];
+                        bf2 += ws.BX[i, c] * ws.BX[i, c];
+                    }
+                normAEst = math.sqrt(af2 / (float)kWork);
+                normBEst = math.sqrt(bf2 / (float)kWork);
+            }
+
+            // Certification floor for the per-pair B-norm ||x_i||_B: below it a pair is DEGENERATE
+            // (collapsed iterate) -- it never locks, never counts converged, and forces the
+            // Degenerate exit status if still among the k wanted pairs at exit.
+            float normFloor = (float)0.25;
+
             // Bootstrap Rayleigh-quotient seed for lambda -- deliberately the plain EUCLIDEAN
             // quotient dot(X,AX), NOT divided by dot(X,BX) (the "more correct" generalized
             // quotient): see the class doc's "B=I strategy" note for why (this seed is immediately
@@ -176,15 +210,19 @@ namespace LinearAlgebra
                 bool allWithinTol = true;
                 for (int i = numActive - 1; i >= 0; i--)
                 {
-                    float rn2 = (float)0;
+                    float rn2 = (float)0, xn2 = (float)0, xb2 = (float)0;
                     for (int c = 0; c < n; c++)
                     {
                         // Generalized residual r_i = A x_i - lambda_i B x_i (standard practice --
                         // see the class doc). For B=I, ws.BX[i,c] is bit-identical to ws.X[i,c], so
                         // this reproduces the original "A x - lambda x" formula bit-for-bit.
-                        float rv = ws.AX[i, c] - ws.lambda[i] * ws.BX[i, c];
+                        float xv = ws.X[i, c];
+                        float bxv = ws.BX[i, c];
+                        float rv = ws.AX[i, c] - ws.lambda[i] * bxv;
                         ws.R[i, c] = rv;
                         rn2 += rv * rv;
+                        xn2 += xv * xv;
+                        xb2 += xv * bxv;
                     }
                     float rnorm = math.sqrt(rn2);
 
@@ -198,14 +236,32 @@ namespace LinearAlgebra
 
                     ws.residual[i] = rnorm;
 
-                    float scale = math.abs(ws.lambda[i]);
-                    if (scale < (float)1) scale = (float)1;
+                    // Scale-invariant test denominator (see the class doc's "Convergence" note),
+                    // the SMALLER (stricter) of two scales: the backward-stable operator-norm
+                    // scale normAEst*||x|| + |lambda|*normBEst*||x||_B, and the magnitude scale
+                    // max(|lambda|, 1)*||x||_B. Explicit norms keep a shrunken/zero iterate from
+                    // self-certifying (the residual is linear in x, so any test without ||x||
+                    // passes x=0 exactly); the lambda terms scale with ||x_i||_B so a null-space
+                    // blowup under a singular B cannot self-certify either; taking the minimum
+                    // keeps certification at least as strict as the magnitude scale, whose
+                    // absolute accuracy downstream residual audits rely on.
+                    float xB = math.sqrt(math.max(xb2, (float)0));
+                    float lamAbs = math.abs(ws.lambda[i]);
+                    float scaleMag = lamAbs;
+                    if (scaleMag < (float)1) scaleMag = (float)1;
+                    float scale = math.min(normAEst * math.sqrt(xn2) + lamAbs * normBEst * xB, scaleMag * xB);
+                    ws.resScale[i] = scale;
+                    ws.xBnorm[i] = xB;
+
+                    // A degenerate pair (B-norm below the certification floor) never counts as
+                    // converged and never locks.
+                    bool degenerate = ws.xBnorm[i] < normFloor;
 
                     // Convergence is measured at tolerance (this drives the honest exit below); a pair need
                     // not be locked to count as converged.
-                    if (!(rnorm <= tol * scale)) allWithinTol = false;
+                    if (degenerate || !(rnorm <= tol * scale)) allWithinTol = false;
 
-                    if (rnorm <= lockTol * scale)
+                    if (!degenerate && rnorm <= lockTol * scale)
                     {
                         int last = numActive - 1;
                         if (i != last)
@@ -215,6 +271,8 @@ namespace LinearAlgebra
                             Swap.Rows(ref ws.BX, i, last);
                             Swap.Vec(ref ws.lambda, i, last);
                             Swap.Vec(ref ws.residual, i, last);
+                            Swap.Vec(ref ws.resScale, i, last);
+                            Swap.Vec(ref ws.xBnorm, i, last);
 
                             // P/AP/BP (the search direction) and R (this row's own just-computed raw
                             // residual, which forms W a few lines below) must move WITH the pair
@@ -241,7 +299,7 @@ namespace LinearAlgebra
                 // W/Rayleigh-Ritz work pass; THIS iteration only ran the residual check before finding
                 // everyone converged, so it contributes no additional work -- matches SolveInfo's
                 // "0 when converged before the first step" convention.
-                bool converged = (kWork == k) ? allWithinTol : WantedWithinTol(in ws, kWork, k, tol);
+                bool converged = (kWork == k) ? allWithinTol : WantedWithinTol(in ws, kWork, k, tol, normFloor);
                 if (converged)
                 {
                     SortAscending(ref ws, kWork);
@@ -266,7 +324,31 @@ namespace LinearAlgebra
                     {
                         float bn2 = (float)0;
                         for (int c = 0; c < n; c++) bn2 += ws.X[i, c] * ws.BX[i, c];
-                        if (bn2 > (float)0)
+
+                        if (!(bn2 > Consts.floatEpsilon))
+                        {
+                            // Deflation annihilated this row (an exact zero row is otherwise a
+                            // FIXED POINT: zero residual, zero norm, unrecoverable by any later
+                            // direction). Reseed it deterministically (fixed seed keyed by
+                            // (iter, i)), restore its A/B images with one fresh matvec each, and
+                            // re-deflate against the locked rows before the renormalization below.
+                            uint seed = 0x9E3779B1u + (uint)(iter * kWork + i) * 0x85EBCA77u;
+                            if (seed == 0u) seed = 0x9E3779B1u;
+                            var reseedRng = new Unity.Mathematics.Random(seed);
+                            for (int c = 0; c < n; c++) ws.rowIn[c] = (float)(reseedRng.NextFloat() * 2f - 1f);
+                            for (int c = 0; c < n; c++) ws.X[i, c] = ws.rowIn[c];
+                            A.Apply(in ws.rowIn, ref ws.rowOut);
+                            for (int c = 0; c < n; c++) ws.AX[i, c] = ws.rowOut[c];
+                            B.Apply(in ws.rowIn, ref ws.rowOut);
+                            for (int c = 0; c < n; c++) ws.BX[i, c] = ws.rowOut[c];
+
+                            DeflateRow(ref ws.X, ref ws.AX, ref ws.BX, i, in ws.X, in ws.AX, in ws.BX, numActive, kWork - numActive, n);
+
+                            bn2 = (float)0;
+                            for (int c = 0; c < n; c++) bn2 += ws.X[i, c] * ws.BX[i, c];
+                        }
+
+                        if (bn2 > Consts.floatEpsilon)
                         {
                             float inv = (float)1 / math.sqrt(bn2);
                             for (int c = 0; c < n; c++)
@@ -378,7 +460,14 @@ namespace LinearAlgebra
             SortAscending(ref ws, kWork);
             RestoreBufferIdentity(ref ws.X, ref ws.Xnext, in xEntry, kWork, n);
             RestoreBufferIdentity(ref ws.P, ref ws.Pnext, in pEntry, kWork, n);
-            return new LOBPCGInfo { iterations = maxIter, converged = ConvergedWithinTol(in ws, k, tol), maxResidual = MaxRelResidual(in ws, k), status = IterativeSolveStatus.MaxIterations };
+
+            // A degenerate pair among the k WANTED (smallest, now sorted to the front) rows means
+            // the returned pairs are not certified: report Degenerate, not merely MaxIterations.
+            var exitStatus = IterativeSolveStatus.MaxIterations;
+            for (int i = 0; i < k; i++)
+                if (ws.xBnorm[i] < normFloor) { exitStatus = IterativeSolveStatus.Degenerate; break; }
+
+            return new LOBPCGInfo { iterations = maxIter, converged = ConvergedWithinTol(in ws, k, tol, normFloor), maxResidual = MaxRelResidual(in ws, k), status = exitStatus };
         }
 
         /// <summary>lobpcg (generalized, preconditioned) with default maxIter (1000).</summary>
@@ -728,7 +817,7 @@ namespace LinearAlgebra
         // simultaneously with the buffers it is combined against.
         static unsafe void RequireDistinctBuffers(in floatLOBPCGCache ws)
         {
-            const int count = 23;
+            const int count = 25;
             long* ptrs = stackalloc long[count];
             ptrs[0] = (long)ws.X.Data.Ptr;
             ptrs[1] = (long)ws.AX.Data.Ptr;
@@ -753,6 +842,8 @@ namespace LinearAlgebra
             ptrs[20] = (long)ws.BW.Data.Ptr;
             ptrs[21] = (long)ws.BP.Data.Ptr;
             ptrs[22] = (long)ws.rowAux.Data.Ptr;
+            ptrs[23] = (long)ws.resScale.Data.Ptr;
+            ptrs[24] = (long)ws.xBnorm.Data.Ptr;
 
             for (int i = 0; i < count; i++)
                 for (int j = i + 1; j < count; j++)
@@ -959,6 +1050,29 @@ namespace LinearAlgebra
                             BV[a, c] -= coeff * AgainstB[i, c];
                         }
                     }
+        }
+
+        // Single-row sibling of Deflate: B-deflates ONLY row `row` of V/AV/BV (same two-pass
+        // scheme, same B-inner-product coefficients, AV/BV carried by linearity) against rows
+        // [againstStart, againstStart + againstCount) of Against/AgainstA/AgainstB. Used to
+        // re-deflate one freshly reseeded row without touching its (already deflated) siblings.
+        static unsafe void DeflateRow(ref floatMxN V, ref floatMxN AV, ref floatMxN BV, int row,
+                             in floatMxN Against, in floatMxN AgainstA, in floatMxN AgainstB, int againstStart, int againstCount, int n)
+        {
+            float* vpV = V.Data.Ptr; int vncV = V.N_Cols;
+            float* vpAB = AgainstB.Data.Ptr; int vncAB = AgainstB.N_Cols;
+            for (int pass = 0; pass < 2; pass++)
+                for (int i = againstStart; i < againstStart + againstCount; i++)
+                {
+                    float coeff = UnsafeOP.vecDot(vpAB + (long)i * vncAB, vpV + (long)row * vncV, n);
+
+                    for (int c = 0; c < n; c++)
+                    {
+                        V[row, c] -= coeff * Against[i, c];
+                        AV[row, c] -= coeff * AgainstA[i, c];
+                        BV[row, c] -= coeff * AgainstB[i, c];
+                    }
+                }
         }
 
         // Builds the combined Gram/H (2-block [X,W] or 3-block [X,W,P]) for the active window.
@@ -1256,6 +1370,8 @@ namespace LinearAlgebra
                 {
                     Swap.Vec(ref ws.lambda, i, best);
                     Swap.Vec(ref ws.residual, i, best);
+                    Swap.Vec(ref ws.resScale, i, best);
+                    Swap.Vec(ref ws.xBnorm, i, best);
                     Swap.Rows(ref ws.X, i, best);
                     Swap.Rows(ref ws.AX, i, best);
                     // BX kept row-consistent with X/AX for the SAME "internally introspectable
@@ -1273,9 +1389,10 @@ namespace LinearAlgebra
             double worst = 0;
             for (int i = 0; i < k; i++)
             {
-                float scale = math.abs(ws.lambda[i]);
-                if (scale < (float)1) scale = (float)1;
-                double rel = (double)(ws.residual[i] / scale);
+                float scale = ws.resScale[i];
+                double rel = scale > (float)0
+                    ? (double)(ws.residual[i] / scale)
+                    : (ws.residual[i] > (float)0 ? double.PositiveInfinity : 0.0);
                 if (rel > worst) worst = rel;
             }
             return worst;
@@ -1290,7 +1407,7 @@ namespace LinearAlgebra
         // no row ordering is assumed. kWork is tiny (<= a few dozen) so the O(kWork^2) rank scan is
         // negligible. Only ever called when kWork > k; the kWork == k path uses allWithinTol inline and
         // stays bit-identical to the pre-guard implementation.
-        static bool WantedWithinTol(in floatLOBPCGCache ws, int kWork, int k, float tol)
+        static bool WantedWithinTol(in floatLOBPCGCache ws, int kWork, int k, float tol, float normFloor)
         {
             for (int i = 0; i < kWork; i++)
             {
@@ -1299,26 +1416,23 @@ namespace LinearAlgebra
                     if (ws.lambda[j] < ws.lambda[i] || (ws.lambda[j] == ws.lambda[i] && j < i)) rank++;
                 if (rank >= k) continue;                 // row i is a guard (not among the k smallest)
 
-                float scale = math.abs(ws.lambda[i]);
-                if (scale < (float)1) scale = (float)1;
-                if (!(ws.residual[i] <= tol * scale)) return false;   // NaN-safe (!(NaN<=x) == true)
+                if (!(ws.xBnorm[i] >= normFloor)) return false;       // degenerate pair (NaN-safe)
+                if (!(ws.residual[i] <= tol * ws.resScale[i])) return false;   // NaN-safe (!(NaN<=x) == true)
             }
             return true;
         }
 
-        // How many of the k pairs are within the requested tolerance (NOT the stricter lock margin lockTol).
+        // How many of the k pairs are CERTIFIED: within the requested tolerance (NOT the stricter lock
+        // margin lockTol) AND not degenerate (xBnorm at or above the certification floor).
         // On a non-converged exit, k - numActive would count only pairs frozen to lockTol (= 0.1*tolerance) and
-        // undercount pairs that reached tolerance but were never locked -- so report this instead. residual[] is
-        // populated for all k here (active pairs from the last scan, locked pairs frozen at lock time).
-        static int ConvergedWithinTol(in floatLOBPCGCache ws, int k, float tol)
+        // undercount pairs that reached tolerance but were never locked -- so report this instead. residual[]/
+        // resScale[]/xBnorm[] are populated for all k here (active pairs from the last scan, locked pairs
+        // frozen at lock time).
+        static int ConvergedWithinTol(in floatLOBPCGCache ws, int k, float tol, float normFloor)
         {
             int c = 0;
             for (int i = 0; i < k; i++)
-            {
-                float scale = math.abs(ws.lambda[i]);
-                if (scale < (float)1) scale = (float)1;
-                if (ws.residual[i] <= tol * scale) c++;
-            }
+                if (ws.xBnorm[i] >= normFloor && ws.residual[i] <= tol * ws.resScale[i]) c++;
             return c;
         }
     }

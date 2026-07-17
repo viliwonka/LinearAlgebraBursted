@@ -25,6 +25,11 @@ namespace LinearAlgebra
         /// rotation radius, or a bidiagonalization/Lanczos breakdown) -- the recurrence could make
         /// no further progress. On a breakdown the solution is undefined.</summary>
         Breakdown = 2,
+
+        /// <summary>Numerically degenerate iterate / collapsed Rayleigh-Ritz basis: a requested
+        /// pair's B-norm was below the certification floor at exit. Returned pairs are NOT
+        /// certified -- treat as non-converged.</summary>
+        Degenerate = 3,
     }
 
     /// <summary>
@@ -86,6 +91,7 @@ namespace LinearAlgebra
                 case IterativeSolveStatus.Converged: return "Converged";
                 case IterativeSolveStatus.MaxIterations: return "MaxIterations";
                 case IterativeSolveStatus.Breakdown: return "Breakdown";
+                case IterativeSolveStatus.Degenerate: return "Degenerate";
                 default: return "Unknown";
             }
         }

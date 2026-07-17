@@ -41,6 +41,10 @@ namespace LinearAlgebra
                 throw new ArgumentException("LOBPCG: workspace lambda must have length k (use Arena.fProxyLOBPCGCache(n, k))");
             if (ws.residual.N != k)
                 throw new ArgumentException("LOBPCG: workspace residual must have length k (use Arena.fProxyLOBPCGCache(n, k))");
+            if (ws.resScale.N != k)
+                throw new ArgumentException("LOBPCG: workspace resScale must have length k (use Arena.fProxyLOBPCGCache(n, k))");
+            if (ws.xBnorm.N != k)
+                throw new ArgumentException("LOBPCG: workspace xBnorm must have length k (use Arena.fProxyLOBPCGCache(n, k))");
 
             if (ws.rowIn.N != n || ws.rowOut.N != n)
                 throw new ArgumentException("LOBPCG: workspace rowIn/rowOut must have length n (use Arena.fProxyLOBPCGCache(n, k))");
@@ -133,6 +137,18 @@ namespace LinearAlgebra
         /// already-converged pairs).</summary>
         public fProxyN residual;
 
+        /// <summary>Length k. Per-pair convergence scale min(normAEst·‖x_i‖ +
+        /// |lambda_i|·normBEst·‖x_i‖_B, max(|lambda_i|, 1)·‖x_i‖_B): the denominator of the
+        /// scale-invariant residual test, computed alongside <see cref="residual"/> (frozen at its
+        /// locking-time value for locked pairs).</summary>
+        public fProxyN resScale;
+
+        /// <summary>Length k. Per-pair B-norm ‖x_i‖_B = sqrt(x_i·B x_i) (‖x_i‖ for B=I), computed
+        /// alongside <see cref="residual"/> (frozen at its locking-time value for locked pairs).
+        /// A pair below the solver's certification floor is degenerate: never locked, never counted
+        /// converged.</summary>
+        public fProxyN xBnorm;
+
         /// <summary>Length n each. Scratch row buffers used whenever a single operator/
         /// preconditioner Apply call needs to read from or write into one row of a k x n block
         /// (Apply operates on <see cref="fProxyN"/>, not a matrix row).</summary>
@@ -182,6 +198,8 @@ namespace LinearAlgebra
                 BP = arena.fProxyMat(k, n),
                 lambda = arena.fProxyVec(k),
                 residual = arena.fProxyVec(k),
+                resScale = arena.fProxyVec(k),
+                xBnorm = arena.fProxyVec(k),
                 rowIn = arena.fProxyVec(n),
                 rowOut = arena.fProxyVec(n),
                 rowAux = arena.fProxyVec(n),

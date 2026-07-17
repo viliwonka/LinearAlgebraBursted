@@ -1,6 +1,43 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## LOBPCG: scale-invariant convergence test + Degenerate status (spurious-zero-eigenvector fix)
+- 2026-07-17 | Root defect (docs/dev/spec-lobpcg-robustness.md, Duersch et al. 2018 §4.1): the old
+  test `‖r‖ ≤ tol·max(|λ|,1)` had no ‖x‖ — the residual is linear in x, so a shrinking iterate
+  passes ever more easily and x=0 passes EXACTLY (λ≈0, r≈0). On the penalty-conditioned n=24 frame
+  with k=4/guard=4 (3·kWork=n, RR basis tiles the whole space) float LOBPCG returned Converged with
+  zero vectors at λ=0. Fix = Duersch Eq. 9 shape: `‖r‖ ≤ tol·(normAEst + |λ|·normBEst)·‖x‖` with
+  Frobenius-sketch lower bounds from the orthonormalized seed (one-time, no extra matvecs;
+  normBEst=1 on B=I), plus a per-pair B-norm certification floor (0.25): a pair below it is
+  DEGENERATE — never locks, never counts converged, forces the new `IterativeSolveStatus.Degenerate`
+  exit if still among the k wanted at exit. The (d1) re-deflation guard `bn2 > 0` left an
+  annihilated row an exact zero row forever (self-certifying fixed point); now `bn2 > eps` with a
+  deterministic reseed (seed keyed by (iter,i)) + single-row re-deflation + B-normalize.
+  Cache grew two length-k vectors (resScale, xBnorm; RequireDistinctBuffers 23→25). Deliberately
+  NOT done here (specced §C.2, owner-gated): per-iteration B-renormalization of X, SVQB-with-
+  dropping, cube-rule Gram gate.
+- 2026-07-17 | TWO DEVIATIONS from the spec's literal Eq. 9 shape `(normAEst + |λ|·normBEst)·‖x‖₂`,
+  both forced by acceptance tests:
+  (1) the λ term is anchored to ‖x‖_B, i.e. `normAEst·‖x‖₂ + |λ|·normBEst·‖x‖_B` — required for
+  the spec's own §D.6 (rank-deficient B must not certify): with the literal shape, an iterate
+  blowing up in a singular B's null space (x = x_r + c·e_null, c huge, ‖x‖_B ≈ 1, λ ≈ −c²)
+  certifies as Converged — the denominator inflates with |λ|·‖x‖₂ ~ c³ while ‖r‖ ~ c² — observed
+  λ ≈ −2e15 (float) / −9e49 (double) reported Converged. ‖x‖_B anchoring makes that relative
+  residual O(1); the fixed floor xBnorm ≥ 0.25 alone does NOT catch it (the blowup keeps
+  ‖x‖_B ≈ 1).
+  (2) the final scale is `min(Eq9 shape, max(|λ|,1)·‖x‖_B)` — pure Eq.9 is ~‖A‖× LOOSER than the
+  old `max(|λ|,1)` test for small-λ modes of penalty-scaled matrices (normAEst ≈ 300 on the frame
+  demos), and certified residuals ~0.02-0.05 relative to ‖Aφ‖ that failed the demo smoke tests'
+  independent residual audits (BuildingFrame/Truss3D/TrussModal, 3 failures at 6334-test scale).
+  The min keeps certification at least as strict as pre-fix while every term still scales with
+  the iterate's norms (the actual bug was the ABSENT ‖x‖, not the magnitude anchor).
+  Also observed while testing: the fixed solver now honestly SOLVES the 1×1×1 frame repro in
+  float under Eq.9-only (2 iterations, matches dense) — degenerate rows can no longer lock, so
+  the lock-poisoning cascade never starts; the spec's expected `Degenerate` exit need not occur
+  on the repro. Pre-fix behavior (verified by stash-running the repro test against the old
+  solver): Converged with λ=0, ‖x‖=0 in both guard=4 (iters=4) and guard=0 (iters=48) float
+  configs.
+
 ## LPBasis.populated native-backed; warm-state fix complete + .Run() regression tests
 - 2026-07-17 | `LPBasis.populated` was a plain bool -> lost on an IJob by-value copy, so a worker `.Run()`
   re-seeded the basis and clobbered the warm start. It is set-once (read via IsEmpty/needsSeed, not
