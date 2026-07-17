@@ -1,6 +1,15 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## NormsOP.matrixL1 — colSum-trick restructure (bit-identical)
+- 2026-07-17 | ‖A‖₁ (max abs column sum) had a strided inner loop (`for i: colSum += |A[i,j]|`, stride
+  N_Cols → scalar under Strict). Restructured to a row-major per-column accumulate into a length-N_Cols
+  Temp: `for i { for j: acc[j] += |A[i,j]| }` (unit-stride inner → vectorises), then a scalar max over
+  acc. BIT-IDENTICAL — each column still sums its rows in ascending i order; NaN semantics preserved by
+  keeping the final max as `if (acc[j] > best)` (not a max kernel). Same restructure class as
+  StatsCore.colSum (~32×). Now needs an arena-backed A (via `fProxyTempVec`, like the sibling matrixL2);
+  matrixLInf stays allocation-free (rows are contiguous → already routes to UnsafeOP.sumAbs).
+
 ## LOBPCG + ladIRLS: reroute inner dots to UnsafeOP.vecDot (reduction-reroute batch 6)
 - 2026-07-17 | Replaced hand-rolled scalar `for c: s += V[i,c]*W[j,c]` dots with `UnsafeOP.vecDot`
   (row pointers hoisted via `.Data.Ptr + (long)row*N_Cols`, length n). Sites: LOBPCG `FillGramSub`

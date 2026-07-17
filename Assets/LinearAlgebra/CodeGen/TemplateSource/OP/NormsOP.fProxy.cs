@@ -172,15 +172,29 @@ namespace LinearAlgebra
         // Induced 1-norm ‖A‖₁: the maximum absolute column sum, max_j Σ_i |A[i,j]|. Allocation-free.
         public static fProxy matrixL1(in fProxyMxN A)
         {
-            fProxy best = (fProxy)0;
-            for (int j = 0; j < A.N_Cols; j++)
+            int nr = A.M_Rows, nc = A.N_Cols;
+            if (nr == 0 || nc == 0)
+                return (fProxy)0;
+
+            // Max absolute column sum via a row-major per-column accumulate: the inner loop is
+            // unit-stride (vectorises) and each column still sums its rows in ascending order, so the
+            // result is bit-identical to the strided form. One length-N_Cols Temp accumulator.
+            fProxyN acc = A.fProxyTempVec(nc);
+            unsafe
             {
-                fProxy colSum = (fProxy)0;
-                for (int i = 0; i < A.M_Rows; i++)
-                    colSum += math.abs(A[i, j]);
-                if (colSum > best)
-                    best = colSum;
+                fProxy* ap = A.Data.Ptr;
+                fProxy* cp = acc.Data.Ptr;
+                for (int j = 0; j < nc; j++) cp[j] = (fProxy)0;
+                for (int i = 0; i < nr; i++)
+                {
+                    fProxy* row = ap + (long)i * nc;
+                    for (int j = 0; j < nc; j++) cp[j] += math.abs(row[j]);
+                }
             }
+
+            fProxy best = (fProxy)0;
+            for (int j = 0; j < nc; j++)
+                if (acc[j] > best) best = acc[j];
             return best;
         }
 
