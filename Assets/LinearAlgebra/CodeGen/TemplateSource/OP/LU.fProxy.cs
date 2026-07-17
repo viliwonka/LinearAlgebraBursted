@@ -50,18 +50,28 @@ namespace LinearAlgebra
                 if (Ukk == 0)
                     return new DirectSolveInfo { status = DirectSolveStatus.Singular };
 
-                for(int j = k + 1; j < m; j++) {
+                // Trailing-row elimination U[j, k+1:] -= Ljk * U[k, k+1:] is an axpy over two
+                // DISTINCT rows (j > k) along the unit-stride column axis; routed through
+                // UnsafeOP.axpy ([NoAlias]). Bitwise identical to the scalar form: each column i
+                // is updated independently, and (-Ljk)*U[k,i] added to U[j,i] equals
+                // U[j,i] - Ljk*U[k,i] exactly in IEEE.
+                unsafe
+                {
+                    fProxy* up = U.Data.Ptr;
+                    fProxy* rowK = up + (long)k * m;
+                    int len = m - (k + 1);
+                    for(int j = k + 1; j < m; j++) {
 
-                    fProxy Ljk = U[j, k] / Ukk;
+                        fProxy Ljk = U[j, k] / Ukk;
 
-                    L[j, k] = Ljk;
+                        L[j, k] = Ljk;
 
-                    for (int i = k + 1; i < m; i++) {
-                        U[j, i] -= Ljk * U[k, i];
+                        fProxy* rowJ = up + (long)j * m;
+                        UnsafeOP.axpy(rowJ + (k + 1), rowK + (k + 1), -Ljk, len);
+
+                        // U is exactly upper-triangular
+                        U[j, k] = 0;
                     }
-
-                    // U is exactly upper-triangular
-                    U[j, k] = 0;
                 }
             }
 

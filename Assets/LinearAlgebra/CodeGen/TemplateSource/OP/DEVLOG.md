@@ -1,6 +1,20 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## LU.decompNoPivot: raw-pointer hoist (spec-raw-pointer-hoist-pass batch 1)
+- 2026-07-17 | `decompNoPivot`'s trailing-row elimination inner loop `U[j,i] -= Ljk*U[k,i]` was still
+  on the `fProxyMxN` struct indexer while its pivoted siblings (`decomp`/blocked/`decompInPlace`)
+  already hoist `U.Data.Ptr` and route the axpy through `UnsafeOP.axpy`. Applied the identical
+  transform (rows j>k are distinct → `[NoAlias]` legal; `(-Ljk)*U[k,i]` added is IEEE-exact to the
+  scalar form → bit-identical, suite 6317/6317 unchanged). Measured (9950X3D, upper CCD, N=1024):
+  float 514.9→19.30 ms (~27×, 1.39→37.1 GFLOP/s), double 519.6→34.43 ms (~15×). Tracks pivoted
+  `decomp` up to N≤256; the blocked level-3 path pulls `decomp` ahead only at N=1024 (out of scope).
+  Added a `decompNoPivot` case to LUBenchmark (was measuring only pivoted `decomp` = a gap).
+- 2026-07-17 | LU/LUP split (user floated during this batch): recommend DO NOT split. `decompNoPivot`
+  is already its own public entry point with its own contract, and post-hoist it shares the same
+  vectorised axpy kernel as the pivoted paths — a file/type split buys no perf and adds codegen churn
+  plus API-surface risk pre-v1.0. Left as one `LU` partial class.
+
 ## LOBPCG: IJob cache-copy corrupted eigenvectors (ping-pong buffer reseat)
 - 2026-07-16 | Symptom: `Eigen.lobpcg` run inside an IJob returned correct eigenVALUES but
   corrupted eigenVECTORS (relative residual ~1e-1) on clustered/near-degenerate spectra; the same

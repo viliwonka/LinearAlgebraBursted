@@ -24,6 +24,12 @@ namespace LinearAlgebra.Benchmarks
             foreach (var n in Bench.Sizes) sb.AppendLine(BenchFloat(n, Flops(n)));
             foreach (var n in Bench.Sizes) sb.AppendLine(BenchDouble(n, Flops(n)));
             sb.AppendLine();
+
+            sb.AppendLine("=== LU factorization, no pivoting (time = LU.decompNoPivot, copies Src internally) ===");
+            sb.AppendLine(Bench.Header());
+            foreach (var n in Bench.Sizes) sb.AppendLine(BenchNoPivotFloat(n, Flops(n)));
+            foreach (var n in Bench.Sizes) sb.AppendLine(BenchNoPivotDouble(n, Flops(n)));
+            sb.AppendLine();
         }
     }
 }

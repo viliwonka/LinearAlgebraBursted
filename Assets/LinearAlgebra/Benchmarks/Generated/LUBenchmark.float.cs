@@ -33,6 +33,19 @@ namespace LinearAlgebra.Benchmarks
         }
     }
 
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct LUNoPivotJobFloat : IJob
+    {
+        public floatMxN U;
+        public floatMxN L;
+        public floatMxN Src;
+
+        public void Execute()
+        {
+            LU.decompNoPivot(in Src, ref L, ref U);
+        }
+    }
+
     public static partial class LUBenchmark
     {
         static string BenchFloat(int n, double flops)
@@ -50,6 +63,27 @@ namespace LinearAlgebra.Benchmarks
                 Src[d, d] += n;                 // diagonal dominance => well-conditioned, full rank
 
             var job = new LUJobFloat { U = U, L = L, Src = Src };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.Row("float", n, stat, flops);
+        }
+
+        static string BenchNoPivotFloat(int n, double flops)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var U = arena.floatMat(n, n);
+            var L = arena.floatMat(n, n);
+            var Src = arena.floatMat(n, n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int r = 0; r < n; r++)
+                for (int c = 0; c < n; c++)
+                    Src[r, c] = rng.NextFloat(-1f, 1f);
+            for (int d = 0; d < n; d++)
+                Src[d, d] += n;                 // diagonal dominance => no pivoting needed, full rank
+
+            var job = new LUNoPivotJobFloat { U = U, L = L, Src = Src };
             var stat = Bench.Time(() => job.Run());
 
             arena.Dispose();
