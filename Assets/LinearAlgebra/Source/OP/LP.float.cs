@@ -7,6 +7,8 @@ using System;
 using Unity.Collections;
 using Unity.Mathematics;
 
+using LinearAlgebra.Internal;
+
 namespace LinearAlgebra
 {
     // ================================================================================================
@@ -470,14 +472,19 @@ namespace LinearAlgebra
             // Price both rows out against the initial basis (reduced cost = origCost − c_B·T).
             for (int j = 0; j < n; j++) cost2[j] = c[j];
             for (int j = 0; j < nCols; j++) if (isArt[j]) cost1[j] = (float)1;
-            for (int i = 0; i < m; i++)
+            unsafe
             {
-                int bcol = basis[i];
-                if (bcol < 0) continue;
-                float c1b = isArt[bcol] ? (float)1 : (float)0;
-                float c2b = bcol < n ? c[bcol] : (float)0;
-                if (c1b != (float)0) for (int j = 0; j < nCols; j++) cost1[j] -= c1b * T[i, j];
-                if (c2b != (float)0) for (int j = 0; j < nCols; j++) cost2[j] -= c2b * T[i, j];
+                float* tp = T.Data.Ptr; float* c1p = cost1.Data.Ptr; float* c2p = cost2.Data.Ptr;
+                for (int i = 0; i < m; i++)
+                {
+                    int bcol = basis[i];
+                    if (bcol < 0) continue;
+                    float c1b = isArt[bcol] ? (float)1 : (float)0;
+                    float c2b = bcol < n ? c[bcol] : (float)0;
+                    float* rowI = tp + (long)i * nCols;
+                    if (c1b != (float)0) UnsafeOP.axpy(c1p, rowI, -c1b, nCols);
+                    if (c2b != (float)0) UnsafeOP.axpy(c2p, rowI, -c2b, nCols);
+                }
             }
 
             // Simplex needs a tolerance LOOSER than machine precision: near-zero reduced costs and
@@ -587,23 +594,35 @@ namespace LinearAlgebra
         static void Pivot(floatMxN T, floatN rhs, floatN cost1, floatN cost2,
                           NativeArray<int> basis, int m, int nCols, int prow, int pcol)
         {
-            float inv = (float)1 / T[prow, pcol];
-            for (int j = 0; j < nCols; j++) T[prow, j] *= inv;
-            rhs[prow] *= inv;
-
-            for (int i = 0; i < m; i++)
+            unsafe
             {
-                if (i == prow) continue;
-                float f = T[i, pcol];
-                if (f == (float)0) continue;
-                for (int j = 0; j < nCols; j++) T[i, j] -= f * T[prow, j];
-                rhs[i] -= f * rhs[prow];
-            }
+                float* tp = T.Data.Ptr;
+                float* rowP = tp + (long)prow * nCols;
 
-            float f1 = cost1[pcol];
-            if (f1 != (float)0) for (int j = 0; j < nCols; j++) cost1[j] -= f1 * T[prow, j];
-            float f2 = cost2[pcol];
-            if (f2 != (float)0) for (int j = 0; j < nCols; j++) cost2[j] -= f2 * T[prow, j];
+                // The pivot-row normalize and every eliminate `row -= f * pivotRow` is an elementwise
+                // axpy over unit-stride columns: normalize into the prow pointer, and route each
+                // eliminate (constraint rows i != prow, and the two reduced-cost rows, all distinct
+                // buffers from the pivot row) through UnsafeOP.axpy ([NoAlias]). Bitwise identical to
+                // the scalar form: (-f)*rowP[j] added to row[j] equals row[j] - f*rowP[j] in IEEE.
+                float inv = (float)1 / rowP[pcol];
+                for (int j = 0; j < nCols; j++) rowP[j] *= inv;
+                rhs[prow] *= inv;
+
+                for (int i = 0; i < m; i++)
+                {
+                    if (i == prow) continue;
+                    float* rowI = tp + (long)i * nCols;
+                    float f = rowI[pcol];
+                    if (f == (float)0) continue;
+                    UnsafeOP.axpy(rowI, rowP, -f, nCols);
+                    rhs[i] -= f * rhs[prow];
+                }
+
+                float f1 = cost1[pcol];
+                if (f1 != (float)0) UnsafeOP.axpy(cost1.Data.Ptr, rowP, -f1, nCols);
+                float f2 = cost2[pcol];
+                if (f2 != (float)0) UnsafeOP.axpy(cost2.Data.Ptr, rowP, -f2, nCols);
+            }
 
             basis[prow] = pcol;
         }

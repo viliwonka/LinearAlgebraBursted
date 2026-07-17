@@ -1,6 +1,17 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## LP.simplexCore: tableau pivot hoisted to axpy (spec-raw-pointer-hoist-pass batch 3)
+- 2026-07-17 | The dense two-phase tableau simplex `Pivot` (row normalize + eliminate every other
+  constraint row and both reduced-cost rows) and `simplexCore`'s initial pricing were on the `fProxyMxN`
+  struct indexer. Hoisted `T.Data.Ptr` (per-row base) and routed every `row -= f*pivotRow` /
+  `cost -= f*pivotRow` through `UnsafeOP.axpy` (eliminate rows i != prow are distinct from the pivot
+  row; cost1/cost2 are distinct buffers → `[NoAlias]` legal; IEEE-exact → bit-identical, iters + objective
+  byte-identical, suite 6317/6317). Measured (9950X3D): §1 tableau simplex float n=192 102.8→4.41 ms
+  (23×), n=384 1475→50.3 ms (29×); double n=384 1924→118 ms (16×); §4 covering LP float n=192 1553→51.3 ms
+  (30×). RatioTest left scalar (T[i,enter] = strided column walk). Note: tableau simplex is the reference
+  backend (default is RevisedSimplex), so this mainly speeds LAD-simplex + the reference path.
+
 ## NormsOP: row norms routed to SIMD reduction kernels
 - 2026-07-17 | Same follow-up as StatsCore's row reductions (see Statistics/DEVLOG.md). `normalizeRows`
   (L1/L2/Linf per-row norm) and `matrixLInf` (max abs row-sum) were hand-rolled scalar reductions —
