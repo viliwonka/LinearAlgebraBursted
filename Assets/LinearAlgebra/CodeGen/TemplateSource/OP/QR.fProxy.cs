@@ -145,16 +145,12 @@ namespace LinearAlgebra
             }
             // Copy the upper triangular part of Q into R
             for (int r = 0; r < R.M_Rows; r++)
-            for (int c = 0; c < R.N_Cols; c++)
             {
-                if (c < r)
-                {
+                int z = math.min(r, R.N_Cols);
+                for (int c = 0; c < z; c++)
                     R[r, c] = 0;
-                }
-                else if (c > r)
-                {
+                for (int c = r + 1; c < R.N_Cols; c++)
                     R[r, c] = A_to_Q[r, c];
-                }
             }
 
             // Reconstruct Q from vectors stored inside Q columns
@@ -288,11 +284,11 @@ namespace LinearAlgebra
 
             // Copy the upper triangular part of Q into R (unchanged from the unblocked path).
             for (int r = 0; r < R.M_Rows; r++)
-            for (int c = 0; c < R.N_Cols; c++)
             {
-                if (c < r)
+                int z = math.min(r, R.N_Cols);
+                for (int c = 0; c < z; c++)
                     R[r, c] = 0;
-                else if (c > r)
+                for (int c = r + 1; c < R.N_Cols; c++)
                     R[r, c] = Q[r, c];
             }
 

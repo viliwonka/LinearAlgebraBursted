@@ -32,6 +32,11 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   keeps NaN forever (the same risk class MinMaxDiagRatio's select form exists to avoid). Left both
   `anorm` sites as branches rather than force an unverified conversion; not required by the batch
   (optional, take-or-leave).
+- 2026-07-17 | Batch C (QR triangular R extraction): `QR.fProxy.cs` unblocked and blocked
+  "copy upper triangular part of Q into R" loops split from a single `for r, for c { if c<r
+  zero; else if c>r copy }` double loop into `for r { for c<min(r,N_Cols) zero; for c in
+  [r+1,N_Cols) copy }` — branch-free by construction, touches the same cells with the same
+  values, and never re-reads or overwrites the stale/already-written diagonal `R[r,r]`.
 - 2026-07-17 | Root defect (docs/dev/spec-lobpcg-robustness.md, Duersch et al. 2018 §4.1): the old
   test `‖r‖ ≤ tol·max(|λ|,1)` had no ‖x‖ — the residual is linear in x, so a shrinking iterate
   passes ever more easily and x=0 passes EXACTLY (λ≈0, r≈0). On the penalty-conditioned n=24 frame
