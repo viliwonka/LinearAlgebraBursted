@@ -1,6 +1,16 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## fProxyLQRState.populated: native-backed so it survives an IJob by-value copy (warm-state fix)
+- 2026-07-17 | Bug class: a warm-start flag mutated inside `IJob.Run()`/`Schedule()` is LOST because the
+  job runs on a by-VALUE copy of the state struct (native BUFFERS survive — they're pointers — but plain
+  fields don't). A worker `.Run()` of an LQR warm solve silently reset `populated`, forcing every warm
+  call cold (or worse for LP's counters). Fix = the MPC `qpMeta` idea, but cleaner: `populated` moved
+  behind a `NativeReference<int>` and re-exposed as a `bool` PROPERTY, so all call sites are unchanged and
+  writes go through the shared handle — no rehydrate/copy-back (the flag is set once per solve, not in a
+  hot loop; contrast LP's `etaCount`). `NativeReference` confirmed Burst-job-compatible (ControlLQRTests'
+  TestJob runs the warm path through an IJob). Suite 6317/6317. See [[job-struct-copy-warmstate-audit]].
+
 ## UnsafeOP.max/min: hardware mm256_max_pd/min_pd for double too (closes the double gap)
 - 2026-07-17 | Follow-up to the width-8 float win: double max/min were still ~11.5 GFLOP/s (~2× behind
   double sum's ~22) because double skipped fProxyW and its fProxy4 body used `math.max(double4)` =

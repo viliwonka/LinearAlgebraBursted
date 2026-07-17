@@ -373,10 +373,19 @@ namespace LinearAlgebra.Control
         /// <summary>Carried Riccati solution, n x n. Meaningful only when <see cref="populated"/>.</summary>
         public floatMxN S;
 
+        NativeReference<int> _populated;
+
         /// <summary>False on a freshly-constructed instance. <c>lqr(..., ref state)</c> sets this true
         /// (and writes the terminal S) ONLY on a <see cref="RiccatiStatus.Converged"/> exit -- a non-
-        /// converged call never corrupts a future warm seed.</summary>
-        public bool populated;
+        /// converged call never corrupts a future warm seed. Native-backed: a plain field would not
+        /// survive an <c>IJob</c> by-value copy (silently forcing every warm call back onto the cold
+        /// path), so this lives behind a shared handle that writes persist through -- no rehydrate or
+        /// copy-back needed.</summary>
+        public bool populated
+        {
+            get => _populated.IsCreated && _populated.Value != 0;
+            set => _populated.Value = value ? 1 : 0;
+        }
 
         /// <summary>Allocates a state sized for an n x n Riccati solution. <see cref="populated"/>
         /// starts false, so the first <c>lqr(..., ref state)</c> call using this instance always takes
@@ -384,7 +393,7 @@ namespace LinearAlgebra.Control
         public floatLQRState(int n, Allocator allocator)
         {
             S = new floatMxN(n, n, allocator);
-            populated = false;
+            _populated = new NativeReference<int>(allocator);   // zero-initialised => not populated
         }
 
         /// <summary>True once <see cref="S"/> is allocated (regardless of <see cref="populated"/>).</summary>
@@ -397,6 +406,7 @@ namespace LinearAlgebra.Control
         public void Dispose()
         {
             if (S.Data.IsCreated) S.Dispose();
+            if (_populated.IsCreated) _populated.Dispose();
         }
     }
 }
