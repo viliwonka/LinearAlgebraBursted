@@ -80,13 +80,12 @@ namespace LinearAlgebra
 
         // ---- Per-axis row/col arg-min/max with Indices buffer ---
 
-        // argmin/argmax over one CONTIGUOUS row of length n via a width-4 double4 (-> float4/double4)
+        // argmin/argmax over one CONTIGUOUS row of length n via a width-4 double4 (aliased to
+        // float4/double4 -- see the file-top using, so native operators + math.select apply directly)
         // SIMD accumulator: lane L holds the running extreme of columns L, L+4, ... plus that extreme's
-        // column index (int4), updated branch-free with a strict `<`/`>` mask (doubleM.select for the
-        // value, math.select for the index -- strict so NaN never displaces). A horizontal reduce with
-        // a value-then-smallest-index tie-break makes it BIT-IDENTICAL to the scalar first-occurrence
-        // scan, NaN included. (Uses the double4 comparison + doubleM.select shims -- see
-        // proxyStructs.math.cs / SimdMath.cs.)
+        // column index (int4), updated branch-free with a strict `<`/`>` mask (math.select for both
+        // value and index -- strict so NaN never displaces). A horizontal reduce with a value-then-
+        // smallest-index tie-break makes it BIT-IDENTICAL to the scalar first-occurrence scan, NaN incl.
         internal static unsafe void RowArgMinScan(double* row, int n, out int bestC, out double bestVal)
         {
             if (n < 4)
@@ -104,7 +103,7 @@ namespace LinearAlgebra
                 cur += 4;
                 double4 v = *(double4*)(row + i);
                 bool4 mask = v < best;                       // strict: NaN -> false -> no update
-                best = doubleM.select(best, v, mask);
+                best = math.select(best, v, mask);
                 idx  = math.select(idx, cur, mask);
             }
             double b = best.x; int bi = idx.x;
@@ -133,7 +132,7 @@ namespace LinearAlgebra
                 cur += 4;
                 double4 v = *(double4*)(row + i);
                 bool4 mask = v > best;                       // strict: NaN -> false -> no update
-                best = doubleM.select(best, v, mask);
+                best = math.select(best, v, mask);
                 idx  = math.select(idx, cur, mask);
             }
             double b = best.x; int bi = idx.x;

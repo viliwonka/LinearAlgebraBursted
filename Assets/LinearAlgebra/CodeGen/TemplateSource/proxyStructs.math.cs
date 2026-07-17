@@ -93,16 +93,6 @@ namespace LinearAlgebra.mathProxies
             => new fProxy4 { x = a * b.x, y = a * b.y, z = a * b.z, w = a * b.w };
         public static fProxy4 operator *(fProxy4 a, fProxy b)
             => new fProxy4 { x = a.x * b, y = a.y * b, z = a.z * b, w = a.w * b };
-
-        // Component-wise comparisons returning Unity.Mathematics.bool4, so templates can drive a
-        // branch-free lane-parallel select on a width-4 accumulator (e.g. an argmin/argmax mask).
-        // Real float4/double4 have these natively with the SAME bool4 return type; the stub only has
-        // to compile the template (never runs -- see the note above). `<`/`>` and `<=`/`>=` are
-        // defined in pairs (C# requires the matching operator).
-        public static bool4 operator <(fProxy4 a, fProxy4 b)  => new bool4(a.x < b.x, a.y < b.y, a.z < b.z, a.w < b.w);
-        public static bool4 operator >(fProxy4 a, fProxy4 b)  => new bool4(a.x > b.x, a.y > b.y, a.z > b.z, a.w > b.w);
-        public static bool4 operator <=(fProxy4 a, fProxy4 b) => new bool4(a.x <= b.x, a.y <= b.y, a.z <= b.z, a.w <= b.w);
-        public static bool4 operator >=(fProxy4 a, fProxy4 b) => new bool4(a.x >= b.x, a.y >= b.y, a.z >= b.z, a.w >= b.w);
     }
 
     // TEMPLATE-ONLY shim so the fProxy kernel templates can call abs/max on the width-4 SIMD

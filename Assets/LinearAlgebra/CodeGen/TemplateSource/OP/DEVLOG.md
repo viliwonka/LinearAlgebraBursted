@@ -1,6 +1,20 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## QueryOP: alias fProxy4 -> float4/double4 (pilot) instead of extending the stub
+- 2026-07-17 | Better fix for the previous entry's problem. Rather than teaching the `fProxy4` STUB new
+  tricks (comparison/select), QueryOP now does `//+deleteThis using fProxy4 = Unity.Mathematics.float4;
+  //-deleteThis` at file top. In the template `fProxy4` IS `float4` (real type), so `v < best`,
+  `math.select(fProxy4,...)`, `*(fProxy4*)ptr` all resolve NATIVELY; codegen still rewrites the token
+  `fProxy4` -> `float4`/`double4` per file (alias line deleteThis'd), so the double side gets `double4`
+  natively too. No `fProxyM`/`floatM` shim in the path at all. Suite 6317/6317, rowArgMin bit-identical +
+  same perf. REVERTED the ec14fad stub additions as now-unused (fProxy4 `<`/`>`/`<=`/`>=`,
+  fProxyM.select/min, floatM/doubleM.select/min) — QueryOP was their only consumer. `fProxyM.abs/max` +
+  the fProxy4 struct KEPT (UnsafeOP/WideOP/LP/matrix-proxies still use the stub; not yet converted).
+  This is the pilot for the general "alias the vector proxies, delete the shim layer" refactor
+  ([[simd-proxy-select-extension]] / a spec TBD). fProxyW is the exception — no real Unity float8 to
+  alias to, so its ops stay hand-rolled.
+
 ## SIMD proxy stubs: fProxy4 comparison + fProxyM/floatM/doubleM select+min; rowArgMin -> fProxy4 SIMD
 - 2026-07-17 | Extended the width-4 SIMD proxy surface so branch-free lane-parallel select kernels can be
   written in templates (previously the `fProxy4` stub was accumulator-only: `+ - * /`, abs, max).

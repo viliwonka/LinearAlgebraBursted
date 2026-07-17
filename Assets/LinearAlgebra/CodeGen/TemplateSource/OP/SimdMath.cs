@@ -12,15 +12,11 @@ namespace LinearAlgebra.Internal
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)] public static float4 abs(float4 v) => math.abs(v);
         [MethodImpl(MethodImplOptions.AggressiveInlining)] public static float4 max(float4 a, float4 b) => math.max(a, b);
-        [MethodImpl(MethodImplOptions.AggressiveInlining)] public static float4 min(float4 a, float4 b) => math.min(a, b);
-        [MethodImpl(MethodImplOptions.AggressiveInlining)] public static float4 select(float4 a, float4 b, bool4 c) => math.select(a, b, c);
     }
 
     public static class doubleM
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)] public static double4 abs(double4 v) => math.abs(v);
         [MethodImpl(MethodImplOptions.AggressiveInlining)] public static double4 max(double4 a, double4 b) => math.max(a, b);
-        [MethodImpl(MethodImplOptions.AggressiveInlining)] public static double4 min(double4 a, double4 b) => math.min(a, b);
-        [MethodImpl(MethodImplOptions.AggressiveInlining)] public static double4 select(double4 a, double4 b, bool4 c) => math.select(a, b, c);
     }
 }
