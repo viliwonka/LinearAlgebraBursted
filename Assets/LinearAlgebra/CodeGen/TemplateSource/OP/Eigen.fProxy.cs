@@ -92,8 +92,7 @@ namespace LinearAlgebra
                 fProxy residual = (fProxy)0;
                 for (int i = 0; i < n; i++) {
                     fProxy ri = math.abs(w[i] - lambda * v[i]);
-                    if (ri > residual)
-                        residual = ri;
+                    residual = math.max(residual, ri);
                 }
 
                 // Step 4: convergence check
@@ -127,8 +126,7 @@ namespace LinearAlgebra
             fProxy finalResidual = (fProxy)0;
             for (int i = 0; i < n; i++) {
                 fProxy ri = math.abs(w[i] - lambda * v[i]);
-                if (ri > finalResidual)
-                    finalResidual = ri;
+                finalResidual = math.max(finalResidual, ri);
             }
 
             fProxy finalScale = math.abs(lambda);
@@ -338,7 +336,7 @@ namespace LinearAlgebra
                 for (int i = 0; i < n; i++) {
                     fProxy vNew = sign * y[i] * invYNorm;
                     fProxy di = math.abs(vNew - v[i]);
-                    if (di > vecDiff) vecDiff = di;
+                    vecDiff = math.max(vecDiff, di);
                     v[i] = vNew;
                 }
 
@@ -385,7 +383,7 @@ namespace LinearAlgebra
             fProxy residual = (fProxy)0;
             for (int i = 0; i < n; i++) {
                 fProxy ri = math.abs(Ap[i] - lambda * v[i]);
-                if (ri > residual) residual = ri;
+                residual = math.max(residual, ri);
             }
             return (double)residual;
         }
@@ -662,7 +660,7 @@ namespace LinearAlgebra
                     fProxy radius = math.abs(ws.alpha[i]);
                     if (i > 0) radius += math.abs(ws.beta[i - 1]);
                     if (i < produced - 1) radius += math.abs(ws.beta[i]);
-                    if (radius > bound) bound = radius;
+                    bound = math.max(bound, radius);
                 }
 
                 // Separation between the real block (all Ritz values >= -bound) and the padding is
@@ -1135,7 +1133,7 @@ namespace LinearAlgebra
                 for (long ii = 0; ii < (long)n * n; ii++)
                 {
                     fProxy a = math.abs(ap[ii]);
-                    if (a > matScale) matScale = a;
+                    matScale = math.max(matScale, a);
                 }
                 fProxy belowNormTol = (fProxy)n * Consts.fProxyEpsilon * matScale;
 
@@ -1387,7 +1385,7 @@ namespace LinearAlgebra
                 for (long ii = 0; ii < (long)n * n; ii++)
                 {
                     fProxy a = math.abs(ap[ii]);
-                    if (a > matScale) matScale = a;
+                    matScale = math.max(matScale, a);
                 }
                 fProxy belowNormTol = (fProxy)n * Consts.fProxyEpsilon * matScale;
 

@@ -1125,7 +1125,7 @@ namespace LinearAlgebra
                 return true;
 
             fProxy scale = (fProxy)0;
-            for (int i = 0; i < m; i++) { fProxy d = math.abs(Gram[i, i]); if (d > scale) scale = d; }
+            for (int i = 0; i < m; i++) { fProxy d = math.abs(Gram[i, i]); scale = math.max(scale, d); }
             fProxy ridge = (fProxy)m * Consts.fProxyEpsilon * scale;
             if (!(ridge > (fProxy)0)) ridge = Consts.fProxyEpsilon;
 
@@ -1142,8 +1142,8 @@ namespace LinearAlgebra
             for (int i = 1; i < m; i++)
             {
                 fProxy d = math.abs(L[i, i]);
-                if (d < mn) mn = d;
-                if (d > mx) mx = d;
+                mn = math.select(mn, d, d < mn);
+                mx = math.select(mx, d, d > mx);
             }
             return mx > (fProxy)0 ? mn / mx : (fProxy)0;
         }
@@ -1186,8 +1186,8 @@ namespace LinearAlgebra
                 fProxy gi = G[i, i];
                 if (!(gi > (fProxy)0)) continue; // shouldn't happen for a normalized block; skip defensively
                 fProxy q = Hv[i, i] / gi;
-                if (q < qMin) qMin = q;
-                if (q > qMax) qMax = q;
+                qMin = math.min(qMin, q);
+                qMax = math.max(qMax, q);
             }
             // Generous margin: a genuine Ritz value from superposing these rows can exceed their
             // individual quotient range somewhat, but never by orders of magnitude -- 1000x the
@@ -1389,7 +1389,7 @@ namespace LinearAlgebra
                 double rel = scale > (fProxy)0
                     ? (double)(ws.residual[i] / scale)
                     : (ws.residual[i] > (fProxy)0 ? double.PositiveInfinity : 0.0);
-                if (rel > worst) worst = rel;
+                worst = math.max(worst, rel);
             }
             return worst;
         }

@@ -196,7 +196,7 @@ namespace LinearAlgebra
 
             fProxy best = (fProxy)0;
             for (int j = 0; j < nc; j++)
-                if (acc[j] > best) best = acc[j];
+                best = math.max(best, acc[j]);
             return best;
         }
 
@@ -211,8 +211,7 @@ namespace LinearAlgebra
                 for (int i = 0; i < A.M_Rows; i++)
                 {
                     fProxy rowSum = UnsafeOP.sumAbs(ap + (long)i * nc, nc);
-                    if (rowSum > best)
-                        best = rowSum;
+                    best = math.max(best, rowSum);
                 }
             }
             return best;

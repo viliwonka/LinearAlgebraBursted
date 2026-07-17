@@ -17,6 +17,21 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   (expected — Unity.Mathematics' `select` is itself defined as `test ? t : f`, and a direct
   float-compare predicate was already select-friendly either way); not a regression, so nothing
   reverted. Scratch benchmark file removed after recording; no permanent benchmark added.
+- 2026-07-17 | Batch B (max/min reductions): converted `Eigen.fProxy.cs` powerIteration residual/
+  finalResidual, inversePowerIteration vecDiff, InversePowerResidual, Gershgorin `bound`, and both
+  `matScale` scans; `NormsOP.fProxy.cs` matrixL1/matrixLInf column/row-sum best; `LOBPCG.fProxy.cs`
+  FactorGram ridge `scale`, MaxRelResidual `worst` to `math.max`. `LOBPCG.fProxy.cs`
+  MinMaxDiagRatio (`mn`/`mx`, data-initialized from `L[0,0]`) and TryRayleighRitz's quotient
+  envelope (`qMin`/`qMax`, finite-constant-initialized) kept the spec's prescribed forms
+  (`math.select` for the former's NaN-accumulator risk, `math.min`/`math.max` for the latter).
+  Left both `matScale < 1`-family clamps as branches (scalar, not a reduction). DEVIATION: the
+  spec listed two `anorm` sites (Eigen.fProxy.cs, symmetric QL global-scale floor) as optional
+  same-recipe "zero-init" extras alongside the `bound`/`matScale` sites — they are actually
+  DATA-initialized (`math.abs(eigenvalues[0]) + math.abs(eVec[0])`), not `(fProxy)0`, so a NaN in
+  the first diagonal/subdiagonal entry would make `math.max` silently recover where the branch
+  keeps NaN forever (the same risk class MinMaxDiagRatio's select form exists to avoid). Left both
+  `anorm` sites as branches rather than force an unverified conversion; not required by the batch
+  (optional, take-or-leave).
 - 2026-07-17 | Root defect (docs/dev/spec-lobpcg-robustness.md, Duersch et al. 2018 §4.1): the old
   test `‖r‖ ≤ tol·max(|λ|,1)` had no ‖x‖ — the residual is linear in x, so a shrinking iterate
   passes ever more easily and x=0 passes EXACTLY (λ≈0, r≈0). On the penalty-conditioned n=24 frame

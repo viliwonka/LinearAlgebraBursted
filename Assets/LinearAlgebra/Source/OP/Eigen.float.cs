@@ -96,8 +96,7 @@ namespace LinearAlgebra
                 float residual = (float)0;
                 for (int i = 0; i < n; i++) {
                     float ri = math.abs(w[i] - lambda * v[i]);
-                    if (ri > residual)
-                        residual = ri;
+                    residual = math.max(residual, ri);
                 }
 
                 // Step 4: convergence check
@@ -131,8 +130,7 @@ namespace LinearAlgebra
             float finalResidual = (float)0;
             for (int i = 0; i < n; i++) {
                 float ri = math.abs(w[i] - lambda * v[i]);
-                if (ri > finalResidual)
-                    finalResidual = ri;
+                finalResidual = math.max(finalResidual, ri);
             }
 
             float finalScale = math.abs(lambda);
@@ -342,7 +340,7 @@ namespace LinearAlgebra
                 for (int i = 0; i < n; i++) {
                     float vNew = sign * y[i] * invYNorm;
                     float di = math.abs(vNew - v[i]);
-                    if (di > vecDiff) vecDiff = di;
+                    vecDiff = math.max(vecDiff, di);
                     v[i] = vNew;
                 }
 
@@ -389,7 +387,7 @@ namespace LinearAlgebra
             float residual = (float)0;
             for (int i = 0; i < n; i++) {
                 float ri = math.abs(Ap[i] - lambda * v[i]);
-                if (ri > residual) residual = ri;
+                residual = math.max(residual, ri);
             }
             return (double)residual;
         }
@@ -666,7 +664,7 @@ namespace LinearAlgebra
                     float radius = math.abs(ws.alpha[i]);
                     if (i > 0) radius += math.abs(ws.beta[i - 1]);
                     if (i < produced - 1) radius += math.abs(ws.beta[i]);
-                    if (radius > bound) bound = radius;
+                    bound = math.max(bound, radius);
                 }
 
                 // Separation between the real block (all Ritz values >= -bound) and the padding is
@@ -1139,7 +1137,7 @@ namespace LinearAlgebra
                 for (long ii = 0; ii < (long)n * n; ii++)
                 {
                     float a = math.abs(ap[ii]);
-                    if (a > matScale) matScale = a;
+                    matScale = math.max(matScale, a);
                 }
                 float belowNormTol = (float)n * Consts.floatEpsilon * matScale;
 
@@ -1391,7 +1389,7 @@ namespace LinearAlgebra
                 for (long ii = 0; ii < (long)n * n; ii++)
                 {
                     float a = math.abs(ap[ii]);
-                    if (a > matScale) matScale = a;
+                    matScale = math.max(matScale, a);
                 }
                 float belowNormTol = (float)n * Consts.floatEpsilon * matScale;
 
