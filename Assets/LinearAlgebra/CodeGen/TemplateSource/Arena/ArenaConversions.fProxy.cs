@@ -1,7 +1,15 @@
 using Unity.Mathematics;
 
 //+deleteThis
-using LinearAlgebra.mathProxies;
+// TEMPLATE-ONLY alias: codegen rewrites each fProxy* token -> float*/double* (real Unity.Mathematics
+// types), so the field access below (.x/.y/.z/.w, .c0/.c1/.c2/.c3) resolves natively -- no proxy-struct
+// shim needed. See proxyStructs.math.cs / docs/dev/spec-alias-simd-proxies.md.
+using fProxy2 = Unity.Mathematics.float2;
+using fProxy3 = Unity.Mathematics.float3;
+using fProxy4 = Unity.Mathematics.float4;
+using fProxy2x2 = Unity.Mathematics.float2x2;
+using fProxy3x3 = Unity.Mathematics.float3x3;
+using fProxy4x4 = Unity.Mathematics.float4x4;
 //-deleteThis
 
 namespace LinearAlgebra

@@ -1,6 +1,16 @@
 # DEVLOG — Arena
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## ArenaConversions.fProxy.cs — SIMD-proxy alias
+- 2026-07-17 | Swapped `using LinearAlgebra.mathProxies;` for per-token aliases to the real
+  Unity.Mathematics types (`fProxy2/3/4` -> `float2/3/4`, `fProxy2x2/3x3/4x4` -> `float2x2/3x3/4x4`),
+  in a `//+deleteThis` block. Part of the alias-the-proxies refactor (docs/dev/spec-alias-simd-proxies.md):
+  the file only field-accesses the proxies (`.x/.y/.z/.w`, `.c0..c3`, `new fProxy2()`), all natively
+  supported by the real types, so no `fProxyM` shim is needed and generated `.float/.double` output is
+  byte-identical (regen produced zero diff). The matrix-proxy portion of the refactor was proven clean
+  here (Phase 1b/2). Test template `TemplateSourceTests/fProxy/ArenaConversionsTests.fProxy.cs` got the
+  mirrored `fProxy2` alias so its `Convert(in fProxy2)` call still binds. Suite 6317/6317.
+
 ## Arena.cs — ArenaCore.Safety field
 - 2026-07-11 | Why the AtomicSafetyHandle lives on ArenaCore, not on the Arena handle struct:
   Unity's [NativeContainer] job-reflection protocol requires the safety handle to be a field

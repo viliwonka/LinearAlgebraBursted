@@ -7,7 +7,10 @@ using Unity.Collections;
 using Unity.Mathematics;
 
 //+deleteThis
-using LinearAlgebra.mathProxies;
+// TEMPLATE-ONLY alias, mirrors ArenaConversions.fProxy.cs: fProxy2 -> float2/double2 (real
+// Unity.Mathematics type), so arena.Convert(in fProxyN) below binds to the same type its return
+// value uses in generated code.
+using fProxy2 = Unity.Mathematics.float2;
 //-deleteThis
 
 // Guards for arena.Convert(in fProxyN -> fProxy2): the source vector must have length >= 2,
