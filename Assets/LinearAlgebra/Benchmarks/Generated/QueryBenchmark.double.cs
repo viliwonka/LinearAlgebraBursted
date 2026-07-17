@@ -65,6 +65,19 @@ namespace LinearAlgebra.Benchmarks
         }
     }
 
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct QueryNearestColumnJobDouble : IJob
+    {
+        public doubleMxN A;
+        public doubleN Q;
+        public NativeArray<int> Out;
+        public void Execute()
+        {
+            Query.nearestColumn(in A, in Q, Metric.Euclidean, out int idx, out double _);
+            Out[0] = idx;
+        }
+    }
+
     public static partial class QueryBenchmark
     {
         static doubleMxN FillDouble(Arena arena, int n)
@@ -117,6 +130,20 @@ namespace LinearAlgebra.Benchmarks
             var A = FillDouble(arena, n);
             var outv = new NativeArray<int>(1, Allocator.Persistent);
             var job = new QueryArgMaxColNormJobDouble { A = A, Out = outv };
+            var stat = Bench.Time(() => job.Run());
+            outv.Dispose(); arena.Dispose();
+            return Bench.Row("double", n, stat, flops);
+        }
+
+        static string NearestColumnDouble(int n, double flops)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = FillDouble(arena, n);
+            var q = arena.doubleVec(n);
+            var rng = new Unity.Mathematics.Random(0x9E3779B9u ^ (uint)n);
+            for (int r = 0; r < n; r++) q[r] = rng.NextDouble(-1f, 1f);
+            var outv = new NativeArray<int>(1, Allocator.Persistent);
+            var job = new QueryNearestColumnJobDouble { A = A, Q = q, Out = outv };
             var stat = Bench.Time(() => job.Run());
             outv.Dispose(); arena.Dispose();
             return Bench.Row("double", n, stat, flops);

@@ -1,6 +1,19 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## QueryOP: rowArgMin/rowArgMax as 4-lane branch-free math.select scans
+- 2026-07-17 | rowArgMin/rowArgMax (argmin/argmax WITH index capture — doesn't vectorise as a plain
+  loop) rewritten via `RowArgMinScan`/`RowArgMaxScan`: 4 INDEPENDENT branch-free scalar lanes (lane L =
+  columns L, L+4, ...) using `math.select` (NOT `if`), each keeping a running extreme + its column index
+  via a strict `<`/`>` mask, then a value-then-smallest-index horizontal reduce. Branch-free + independent
+  lanes → Burst packs/overlaps them. Bit-identical to the scalar first-occurrence scan (strict mask → NaN
+  never displaces; suite 6317/6317). N=1024 float rowArgMin 0.57→0.20 ms (~2.9×), double 0.75→0.23 ms
+  (~3.2×). Tried fProxy4-select first — BACKED OUT: the fProxy4 stub is accumulator-only (no comparison/
+  select); extending it is infra tracked in [[simd-proxy-select-extension]] (would let this go true SIMD,
+  but 4-lane scalar already gets most of it). Scan helpers keep `unsafe` in signature (fProxy* param =
+  the legitimate case, like UnsafeOP). Added nearestColumn to QueryBenchmark: AllColScores N=1024 float
+  0.034 ms (~50× over the old strided ColScore, now faster than nearestRow). QueryOP fully optimized.
+
 ## QueryOP: strided column search restructured row-major (AllColScores)
 - 2026-07-17 | The column search family (`nearestColumn`/`farthestColumn`/`countWithinColumnRadius`/
   `distancesToColumn`) each scanned columns via the strided `ColScore` (per-column walk down rows).

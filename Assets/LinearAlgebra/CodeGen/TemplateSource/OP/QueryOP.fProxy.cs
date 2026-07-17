@@ -75,6 +75,70 @@ namespace LinearAlgebra
 
         // ---- Per-axis row/col arg-min/max with Indices buffer ---
 
+        // argmin/argmax over one CONTIGUOUS row of length n, written as 4 INDEPENDENT branch-free
+        // lanes (math.select, not `if`) so Burst can pack/overlap them: lane L accumulates columns
+        // L, L+4, L+8, ... keeping its running extreme + that extreme's column index via a strict
+        // `<`/`>` mask (so NaN never displaces and, columns ascending, the first/smallest-column
+        // occurrence wins within a lane). A horizontal reduce with a value-then-smallest-index
+        // tie-break makes this BIT-IDENTICAL to the scalar first-occurrence scan, NaN included.
+        internal static unsafe void RowArgMinScan(fProxy* row, int n, out int bestC, out fProxy bestVal)
+        {
+            if (n < 4)
+            {
+                fProxy s = row[0]; int si = 0;
+                for (int c = 1; c < n; c++) if (row[c] < s) { s = row[c]; si = c; }
+                bestC = si; bestVal = s; return;
+            }
+            fProxy m0 = row[0], m1 = row[1], m2 = row[2], m3 = row[3];
+            int i0 = 0, i1 = 1, i2 = 2, i3 = 3;
+            int c4 = 4;
+            for (; c4 + 4 <= n; c4 += 4)
+            {
+                fProxy v0 = row[c4], v1 = row[c4 + 1], v2 = row[c4 + 2], v3 = row[c4 + 3];
+                bool l0 = v0 < m0, l1 = v1 < m1, l2 = v2 < m2, l3 = v3 < m3;
+                m0 = math.select(m0, v0, l0); i0 = math.select(i0, c4,     l0);
+                m1 = math.select(m1, v1, l1); i1 = math.select(i1, c4 + 1, l1);
+                m2 = math.select(m2, v2, l2); i2 = math.select(i2, c4 + 2, l2);
+                m3 = math.select(m3, v3, l3); i3 = math.select(i3, c4 + 3, l3);
+            }
+            fProxy b = m0; int bi = i0;
+            if (m1 < b || (m1 == b && i1 < bi)) { b = m1; bi = i1; }
+            if (m2 < b || (m2 == b && i2 < bi)) { b = m2; bi = i2; }
+            if (m3 < b || (m3 == b && i3 < bi)) { b = m3; bi = i3; }
+            for (; c4 < n; c4++)
+                if (row[c4] < b) { b = row[c4]; bi = c4; }
+            bestC = bi; bestVal = b;
+        }
+
+        internal static unsafe void RowArgMaxScan(fProxy* row, int n, out int bestC, out fProxy bestVal)
+        {
+            if (n < 4)
+            {
+                fProxy s = row[0]; int si = 0;
+                for (int c = 1; c < n; c++) if (row[c] > s) { s = row[c]; si = c; }
+                bestC = si; bestVal = s; return;
+            }
+            fProxy m0 = row[0], m1 = row[1], m2 = row[2], m3 = row[3];
+            int i0 = 0, i1 = 1, i2 = 2, i3 = 3;
+            int c4 = 4;
+            for (; c4 + 4 <= n; c4 += 4)
+            {
+                fProxy v0 = row[c4], v1 = row[c4 + 1], v2 = row[c4 + 2], v3 = row[c4 + 3];
+                bool l0 = v0 > m0, l1 = v1 > m1, l2 = v2 > m2, l3 = v3 > m3;
+                m0 = math.select(m0, v0, l0); i0 = math.select(i0, c4,     l0);
+                m1 = math.select(m1, v1, l1); i1 = math.select(i1, c4 + 1, l1);
+                m2 = math.select(m2, v2, l2); i2 = math.select(i2, c4 + 2, l2);
+                m3 = math.select(m3, v3, l3); i3 = math.select(i3, c4 + 3, l3);
+            }
+            fProxy b = m0; int bi = i0;
+            if (m1 > b || (m1 == b && i1 < bi)) { b = m1; bi = i1; }
+            if (m2 > b || (m2 == b && i2 < bi)) { b = m2; bi = i2; }
+            if (m3 > b || (m3 == b && i3 < bi)) { b = m3; bi = i3; }
+            for (; c4 < n; c4++)
+                if (row[c4] > b) { b = row[c4]; bi = c4; }
+            bestC = bi; bestVal = b;
+        }
+
         /// <summary>
         /// For each row i of A, writes the column index of the minimum element into
         /// colIndexPerRow[i] and the minimum value into valPerRow[i].
@@ -89,14 +153,16 @@ namespace LinearAlgebra
             if (valPerRow.N != A.M_Rows)
                 throw new System.ArgumentException("Query.rowArgMin: valPerRow.N must equal A.M_Rows");
 
-            for (int r = 0; r < A.M_Rows; r++)
+            int nc = A.N_Cols;
+            unsafe
             {
-                fProxy best = A[r, 0];
-                int bestC = 0;
-                for (int c = 1; c < A.N_Cols; c++)
-                    if (A[r, c] < best) { best = A[r, c]; bestC = c; }
-                colIndexPerRow[r] = bestC;
-                valPerRow[r] = best;
+                fProxy* ap = A.Data.Ptr;
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    RowArgMinScan(ap + (long)r * nc, nc, out int bestC, out fProxy best);
+                    colIndexPerRow[r] = bestC;
+                    valPerRow[r] = best;
+                }
             }
             return A.M_Rows;
         }
@@ -109,13 +175,15 @@ namespace LinearAlgebra
             if (colIndexPerRow.N != A.M_Rows)
                 throw new System.ArgumentException("Query.rowArgMin: colIndexPerRow.N must equal A.M_Rows");
 
-            for (int r = 0; r < A.M_Rows; r++)
+            int nc = A.N_Cols;
+            unsafe
             {
-                fProxy best = A[r, 0];
-                int bestC = 0;
-                for (int c = 1; c < A.N_Cols; c++)
-                    if (A[r, c] < best) { best = A[r, c]; bestC = c; }
-                colIndexPerRow[r] = bestC;
+                fProxy* ap = A.Data.Ptr;
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    RowArgMinScan(ap + (long)r * nc, nc, out int bestC, out fProxy _);
+                    colIndexPerRow[r] = bestC;
+                }
             }
             return A.M_Rows;
         }
@@ -134,14 +202,16 @@ namespace LinearAlgebra
             if (valPerRow.N != A.M_Rows)
                 throw new System.ArgumentException("Query.rowArgMax: valPerRow.N must equal A.M_Rows");
 
-            for (int r = 0; r < A.M_Rows; r++)
+            int nc = A.N_Cols;
+            unsafe
             {
-                fProxy best = A[r, 0];
-                int bestC = 0;
-                for (int c = 1; c < A.N_Cols; c++)
-                    if (A[r, c] > best) { best = A[r, c]; bestC = c; }
-                colIndexPerRow[r] = bestC;
-                valPerRow[r] = best;
+                fProxy* ap = A.Data.Ptr;
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    RowArgMaxScan(ap + (long)r * nc, nc, out int bestC, out fProxy best);
+                    colIndexPerRow[r] = bestC;
+                    valPerRow[r] = best;
+                }
             }
             return A.M_Rows;
         }
@@ -154,13 +224,15 @@ namespace LinearAlgebra
             if (colIndexPerRow.N != A.M_Rows)
                 throw new System.ArgumentException("Query.rowArgMax: colIndexPerRow.N must equal A.M_Rows");
 
-            for (int r = 0; r < A.M_Rows; r++)
+            int nc = A.N_Cols;
+            unsafe
             {
-                fProxy best = A[r, 0];
-                int bestC = 0;
-                for (int c = 1; c < A.N_Cols; c++)
-                    if (A[r, c] > best) { best = A[r, c]; bestC = c; }
-                colIndexPerRow[r] = bestC;
+                fProxy* ap = A.Data.Ptr;
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    RowArgMaxScan(ap + (long)r * nc, nc, out int bestC, out fProxy _);
+                    colIndexPerRow[r] = bestC;
+                }
             }
             return A.M_Rows;
         }

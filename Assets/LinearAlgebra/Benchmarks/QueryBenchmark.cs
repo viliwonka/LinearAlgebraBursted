@@ -22,6 +22,7 @@ namespace LinearAlgebra.Benchmarks
             Sub(sb, "Query.argMaxRowNorm L2 (row-inner)",       ArgMaxRowNormFloat, ArgMaxRowNormDouble);
             Sub(sb, "Query.argMaxColNorm L2 (column-inner)",    ArgMaxColNormFloat, ArgMaxColNormDouble);
             Sub(sb, "Query.nearestRow (Euclidean scan)",        NearestRowFloat,    NearestRowDouble);
+            Sub(sb, "Query.nearestColumn (Euclidean scan)",     NearestColumnFloat, NearestColumnDouble);
         }
 
         delegate string Measure(int n, double flops);
