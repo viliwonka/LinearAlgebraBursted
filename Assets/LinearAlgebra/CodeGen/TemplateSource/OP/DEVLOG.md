@@ -1,6 +1,23 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## UnsafeOP.max/min kernels; NormsOP.normalizeColumns + Eigen dot reroutes
+- 2026-07-17 | Added `UnsafeOP.max`/`min` (SIMD running max/min over a[0..n), contract n>=1). WIDTH-4
+  (fProxy4) only, NOT fProxyW: min/max reductions are memory-bound (one load + one compare/element) so the
+  4-wide accumulator saturates bandwidth as well as 8-wide would, AND fProxyW has no Min/HMin (adding it =
+  touching the owner-gated wide type, avoided). Seeded from the first lanes (not a neutral identity) so
+  all-negative/all-positive inputs are correct; uses math.max/min to match caller NaN semantics. max/min
+  are exact → lane order is bit-identical for finite data.
+- 2026-07-17 | NormsOP.normalizeColumns: strided per-column norm + scale → row-major per-column accumulate
+  (colSum trick, unit-stride, vectorises, bit-identical) into a length-N_Cols Temp, then reciprocal-once
+  (`(norm>0)?1/norm:1`) + branch-free row-major `row[c] *= inv[c]` (×1 leaves zero/NaN-norm columns
+  bit-identical, matching the old skip). Now needs arena-backed A (fProxyTempVec).
+- 2026-07-17 | Eigen: rerouted the O(n) vector dots in the two iterative eigensolvers to UnsafeOP.vecDot
+  (deterministic-reorder waiver): powerIteration (seed v·v, Rayleigh v·w, ‖w‖²) and lanczos (seed, alpha
+  v·w, the O(steps²) reorth proj = V[k,:]·w, ‖w‖²). Self-dots use vecDot(p,p,n) (established, e.g.
+  rowNormL2). MODEST — these are O(n) in O(n²/nnz)-per-iter algorithms (dense tridiagonal path already
+  uses vecDotRange and was untouched). Left fused residual max-abs loops scalar.
+
 ## NormsOP.matrixL1 — colSum-trick restructure (bit-identical)
 - 2026-07-17 | ‖A‖₁ (max abs column sum) had a strided inner loop (`for i: colSum += |A[i,j]|`, stride
   N_Cols → scalar under Strict). Restructured to a row-major per-column accumulate into a length-N_Cols

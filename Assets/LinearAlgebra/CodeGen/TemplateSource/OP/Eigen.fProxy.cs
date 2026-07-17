@@ -62,16 +62,13 @@ namespace LinearAlgebra
             int n = A.Rows;
 
             // Seed v deterministically if the caller supplied the zero vector
-            fProxy vNormSq = (fProxy)0;
-            for (int i = 0; i < n; i++)
-                vNormSq += v[i] * v[i];
+            fProxy vNormSq;
+            unsafe { vNormSq = UnsafeOP.vecDot(v.Data.Ptr, v.Data.Ptr, n); }
 
             if (vNormSq == (fProxy)0) {
                 for (int i = 0; i < n; i++)
                     v[i] = (fProxy)(1 + (i & 3));
-                vNormSq = (fProxy)0;
-                for (int i = 0; i < n; i++)
-                    vNormSq += v[i] * v[i];
+                unsafe { vNormSq = UnsafeOP.vecDot(v.Data.Ptr, v.Data.Ptr, n); }
             }
 
             // Normalize v to unit length
@@ -89,9 +86,7 @@ namespace LinearAlgebra
                 A.Apply(in v, ref w);
 
                 // Step 2: lambda = v . w (Rayleigh quotient; ||v||_2 = 1)
-                lambda = (fProxy)0;
-                for (int i = 0; i < n; i++)
-                    lambda += v[i] * w[i];
+                unsafe { lambda = UnsafeOP.vecDot(v.Data.Ptr, w.Data.Ptr, n); }
 
                 // Step 3: residual r = max_i |w[i] - lambda * v[i]|  (infinity norm)
                 fProxy residual = (fProxy)0;
@@ -109,9 +104,8 @@ namespace LinearAlgebra
                     return new EigenSolveInfo { iterations = iter + 1, residual = (double)residual, status = IterativeSolveStatus.Converged };
 
                 // Step 5: compute ||w||_2; handle exact null-space case
-                fProxy nw = (fProxy)0;
-                for (int i = 0; i < n; i++)
-                    nw += w[i] * w[i];
+                fProxy nw;
+                unsafe { nw = UnsafeOP.vecDot(w.Data.Ptr, w.Data.Ptr, n); }
                 nw = math.sqrt(nw);
 
                 if (nw == (fProxy)0) {
@@ -128,9 +122,7 @@ namespace LinearAlgebra
             // Post-loop: recompute w = A*v, lambda, residual with final v
             A.Apply(in v, ref w);
 
-            lambda = (fProxy)0;
-            for (int i = 0; i < n; i++)
-                lambda += v[i] * w[i];
+            unsafe { lambda = UnsafeOP.vecDot(v.Data.Ptr, w.Data.Ptr, n); }
 
             fProxy finalResidual = (fProxy)0;
             for (int i = 0; i < n; i++) {
@@ -578,16 +570,13 @@ namespace LinearAlgebra
 
             // Seed v_1 (row 0 of V) deterministically if the caller left it at zero (mirrors
             // powerIteration's seeding), then normalize either way.
-            fProxy seedNormSq = (fProxy)0;
-            for (int i = 0; i < n; i++)
-                seedNormSq += ws.V[0, i] * ws.V[0, i];
+            fProxy seedNormSq;
+            unsafe { seedNormSq = UnsafeOP.vecDot(ws.V.Data.Ptr, ws.V.Data.Ptr, n); }
 
             if (seedNormSq == (fProxy)0) {
                 for (int i = 0; i < n; i++)
                     ws.V[0, i] = (fProxy)(1 + (i & 3));
-                seedNormSq = (fProxy)0;
-                for (int i = 0; i < n; i++)
-                    seedNormSq += ws.V[0, i] * ws.V[0, i];
+                unsafe { seedNormSq = UnsafeOP.vecDot(ws.V.Data.Ptr, ws.V.Data.Ptr, n); }
             }
 
             fProxy invSeedNorm = (fProxy)1 / math.sqrt(seedNormSq);
@@ -613,9 +602,8 @@ namespace LinearAlgebra
                 }
 
                 // alpha_j = v_j . w; w -= alpha_j * v_j
-                fProxy alphaJ = (fProxy)0;
-                for (int i = 0; i < n; i++)
-                    alphaJ += ws.vCur[i] * ws.w[i];
+                fProxy alphaJ;
+                unsafe { alphaJ = UnsafeOP.vecDot(ws.vCur.Data.Ptr, ws.w.Data.Ptr, n); }
                 ws.alpha[jj] = alphaJ;
 
                 for (int i = 0; i < n; i++)
@@ -624,17 +612,15 @@ namespace LinearAlgebra
                 // Full reorthogonalization against v_1..v_j, done TWICE (see doc comment).
                 for (int pass = 0; pass < 2; pass++) {
                     for (int k = 0; k <= jj; k++) {
-                        fProxy proj = (fProxy)0;
-                        for (int i = 0; i < n; i++)
-                            proj += ws.V[k, i] * ws.w[i];
+                        fProxy proj;
+                        unsafe { proj = UnsafeOP.vecDot(ws.V.Data.Ptr + (long)k * ws.V.N_Cols, ws.w.Data.Ptr, n); }
                         for (int i = 0; i < n; i++)
                             ws.w[i] = ws.w[i] - proj * ws.V[k, i];
                     }
                 }
 
-                fProxy wNormSq = (fProxy)0;
-                for (int i = 0; i < n; i++)
-                    wNormSq += ws.w[i] * ws.w[i];
+                fProxy wNormSq;
+                unsafe { wNormSq = UnsafeOP.vecDot(ws.w.Data.Ptr, ws.w.Data.Ptr, n); }
                 fProxy wNorm = math.sqrt(wNormSq);
 
                 if (wNorm <= breakdownTol) {
