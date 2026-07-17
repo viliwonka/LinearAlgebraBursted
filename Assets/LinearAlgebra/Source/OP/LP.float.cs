@@ -228,6 +228,8 @@ namespace LinearAlgebra
             }
             else
             {
+                cache.RehydrateWarm();   // pull the job-copy-safe scalars into the fields the solve reads
+
                 bool cacheHit = cache.factorsValid && cache.builtVersion == cache.matrixVersion;
 
                 if (!cacheHit)
@@ -248,6 +250,8 @@ namespace LinearAlgebra
 
                 info = DualSimplexCore(cache.M, cache.lower, cache.upper, cache.cost, cache.rhs, m, n, N,
                                        maxIter, xFull, basis.basis, basis.status, ref cache);
+
+                cache.PersistWarm();     // push the solve-written scalars back to native
             }
 
             for (int j = 0; j < n; j++) x[j] = xFull[j];

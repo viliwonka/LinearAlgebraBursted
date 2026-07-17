@@ -94,6 +94,14 @@ namespace LinearAlgebra
         /// approximation.</summary>
         public bool weightsValid;
 
+        /// <summary>Native mirror of the four solve-owned scalars above ([0]=builtVersion, [1]=etaCount,
+        /// [2]=factorsValid, [3]=weightsValid). They stay plain fields so the solve reads/writes them
+        /// exactly as before; <see cref="RehydrateWarm"/> pulls them from here at solve entry and
+        /// <see cref="PersistWarm"/> writes them back at exit, so they survive an <c>IJob</c> by-value
+        /// copy (which drops plain-field writes). <see cref="matrixVersion"/> is NOT mirrored -- it is
+        /// caller-owned and read-only inside the solve, so it survives the copy-in as a field.</summary>
+        NativeArray<int> _meta;
+
         /// <summary>
         /// Allocates a cache sized for a computational form with <paramref name="n"/> structural
         /// variables and <paramref name="m"/> constraints (N = n + m). <see cref="factorsValid"/>/
@@ -118,6 +126,9 @@ namespace LinearAlgebra
             builtVersion = -1;       // never matches matrixVersion==0 -- first call always cold
             factorsValid = false;
             weightsValid = false;
+            _meta = new NativeArray<int>(4, allocator);
+            _meta[0] = builtVersion; _meta[1] = etaCount;
+            _meta[2] = factorsValid ? 1 : 0; _meta[3] = weightsValid ? 1 : 0;
         }
 
         /// <summary>True once every buffer is allocated. <c>default</c>/not-yet-constructed reads false
@@ -128,12 +139,30 @@ namespace LinearAlgebra
         /// <paramref name="m"/> constraints.</summary>
         public bool IsValid(int n, int m) => IsCreated && M.M_Rows == m && M.N_Cols == n + m;
 
+        /// <summary>Pull the solve-owned scalars from the native mirror into the plain fields the solve
+        /// reads. Called at solve entry so they are correct even after an IJob by-value copy dropped a
+        /// previous solve's field writes.</summary>
+        internal void RehydrateWarm()
+        {
+            builtVersion = _meta[0]; etaCount = _meta[1];
+            factorsValid = _meta[2] != 0; weightsValid = _meta[3] != 0;
+        }
+
+        /// <summary>Write the solve-owned scalars back to the native mirror so the next solve (even after
+        /// a fresh job copy) rehydrates them.</summary>
+        internal void PersistWarm()
+        {
+            _meta[0] = builtVersion; _meta[1] = etaCount;
+            _meta[2] = factorsValid ? 1 : 0; _meta[3] = weightsValid ? 1 : 0;
+        }
+
         /// <summary>Releases every buffer. Safe on an empty/already-disposed instance.</summary>
         public void Dispose()
         {
             if (!IsCreated) return;
             M.Dispose(); rhs.Dispose(); lower.Dispose(); upper.Dispose(); cost.Dispose();
             B.Dispose(); P.Dispose(); etaAlpha.Dispose(); etaRow.Dispose(); weight.Dispose();
+            _meta.Dispose();
         }
     }
 }
