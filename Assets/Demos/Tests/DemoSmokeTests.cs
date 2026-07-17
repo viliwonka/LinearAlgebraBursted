@@ -139,6 +139,47 @@ namespace LinearAlgebraDemos.Tests
             A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); K.Dispose(); state.Dispose(); outFlag.Dispose();
         }
 
+        // LP counterpart: solve the SAME LP twice via plain .Run() (by-value copy) through one cache +
+        // basis. The second solve is a cache HIT (near-zero pivots) ONLY if BOTH the fProxyLPCache scalar
+        // mirror and LPBasis.populated survived the copy. Without the native mirrors the second .Run()
+        // re-seeds + re-solves cold (== first). Fails on the pre-fix code.
+        [Test]
+        public void EconomyLPJob_WarmState_SurvivesRunByValueCopy()
+        {
+            const int n = 4, m = 7;
+            var A = new floatMxN(m, n, Allocator.TempJob);
+            var b = new floatN(m, Allocator.TempJob);
+            var c = new floatN(n, Allocator.TempJob);
+            var x = new floatN(n, Allocator.TempJob);
+            var senses = new NativeArray<ConstraintSense>(m, Allocator.TempJob);
+            var outStats = new NativeArray<float>(3, Allocator.TempJob);
+            var basis = new LPBasis(n, m, Allocator.TempJob);
+            var cache = new floatLPCache(n, m, Allocator.TempJob);
+
+            float[,] use = { { 2f, 1f, 0.5f, 1.5f }, { 0.5f, 2f, 1f, 0.5f }, { 1f, 0.5f, 2f, 1.5f } };
+            for (int r = 0; r < 3; r++) for (int j = 0; j < n; j++) A[r, j] = use[r, j];
+            for (int j = 0; j < n; j++) A[3 + j, j] = 1f;
+            for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
+            b[0] = 200f; b[1] = 150f; b[2] = 180f; for (int j = 0; j < n; j++) b[3 + j] = 80f;
+            c[0] = -3f; c[1] = -4f; c[2] = -6f; c[3] = -5f;
+
+            var job = new EconomyLPJob { A = A, B = b, C = c, X = x, Senses = senses, Basis = basis, Cache = cache, Out = outStats };
+            job.Run();   // cold solve on a by-value copy
+            Assert.IsTrue(outStats[2] == 1f, "cold LP solve not optimal");
+            float coldPivots = outStats[1];
+
+            job.Run();   // SAME LP again -- a cache HIT (near-zero pivots) iff the warm state survived
+            Assert.IsTrue(outStats[2] == 1f, "warm LP re-solve not optimal");
+            float warmPivots = outStats[1];
+
+            Assert.IsTrue(coldPivots >= 1f, $"cold solve did no pivots ({coldPivots}); cannot distinguish warm");
+            Assert.IsTrue(warmPivots < coldPivots,
+                $"warm re-solve of the UNCHANGED LP took {warmPivots} pivots vs cold {coldPivots} -- cache/basis warm state did not survive the .Run() by-value copy");
+
+            A.Dispose(); b.Dispose(); c.Dispose(); x.Dispose();
+            senses.Dispose(); outStats.Dispose(); basis.Dispose(); cache.Dispose();
+        }
+
         [Test]
         public void TrussEigenJob_BracedSquare_PositiveSpectrum()
         {

@@ -205,13 +205,20 @@ namespace LinearAlgebra
         /// indexes) of the variable basic in row i. Length m.</summary>
         public NativeArray<int> basis;
 
+        NativeReference<int> _populated;
+
         /// <summary>False on a freshly-constructed instance; <c>LP.solve(..., ref basis)</c> sets this
         /// true once <see cref="status"/>/<see cref="basis"/> hold a real terminal basis (seeded by a
         /// cold solve, or supplied warm by the caller). Distinguishes "just allocated, buffers are
         /// zero-filled garbage" from "has real content" independently of <see cref="IsCreated"/>, since
         /// the job-safe construction path (see the type's own doc comment) allocates well before it has
-        /// anything meaningful to put in the buffers.</summary>
-        public bool populated;
+        /// anything meaningful to put in the buffers. Native-backed (a plain field would not survive an
+        /// <c>IJob</c> by-value copy, silently re-seeding the basis and clobbering a warm start).</summary>
+        public bool populated
+        {
+            get => _populated.IsCreated && _populated.Value != 0;
+            set => _populated.Value = value ? 1 : 0;
+        }
 
         /// <summary>
         /// Allocates a basis sized for <paramref name="n"/> structural variables and
@@ -225,7 +232,7 @@ namespace LinearAlgebra
         {
             status = new NativeArray<byte>(n + m, allocator);
             basis = new NativeArray<int>(m, allocator);
-            populated = false;
+            _populated = new NativeReference<int>(allocator);   // zero-initialised => not populated
         }
 
         /// <summary>True once both buffers are allocated (regardless of content validity).</summary>
@@ -247,6 +254,7 @@ namespace LinearAlgebra
         {
             if (status.IsCreated) status.Dispose();
             if (basis.IsCreated) basis.Dispose();
+            if (_populated.IsCreated) _populated.Dispose();
         }
 
         /// <summary>Burst-safe compact summary, e.g. <c>LPBasis(n_total=16, m=4, created=true)</c>.

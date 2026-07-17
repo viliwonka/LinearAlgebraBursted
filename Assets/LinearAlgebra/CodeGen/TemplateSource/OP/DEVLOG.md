@@ -1,6 +1,20 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## LPBasis.populated native-backed; warm-state fix complete + .Run() regression tests
+- 2026-07-17 | `LPBasis.populated` was a plain bool -> lost on an IJob by-value copy, so a worker `.Run()`
+  re-seeded the basis and clobbered the warm start. It is set-once (read via IsEmpty/needsSeed, not
+  ref-passed into a hot loop), so the LQR approach fits: `NativeReference<int>` behind a `bool` property,
+  transparent to all call sites. Completes the LP warm-state fix (cache `_meta` mirror + this).
+- `Pivot.swapCount` deliberately NOT mirrored: it only feeds `Pivot.Sign` (permutation parity ->
+  determinant sign), which LP's warm resume never reads (FTRAN/BTRAN use the permutation ARRAY, native,
+  which survives); LU sets/reads it within a single solve, not across `.Run()`s. Not load-bearing -- the
+  warm-state audit over-flagged it.
+- Regression tests (DemoSmokeTests, plain `.Run()` = by-value copy, FAIL on the pre-fix plain-field code):
+  `LqrWarmState_SurvivesRunByValueCopy` (populated visible on caller after a cold solve through a job
+  field) and `EconomyLPJob_WarmState_SurvivesRunByValueCopy` (same LP twice via `.Run()` -> 2nd is a
+  cache HIT, warm pivots < cold, only if cache+basis survived the copy). See [[job-struct-copy-warmstate-audit]].
+
 ## fProxyLPCache: native-mirror warm-state so it survives an IJob by-value copy
 - 2026-07-17 | Same bug class as the LQR fix: LP.solve's warm-state scalars (builtVersion, etaCount,
   factorsValid, weightsValid) were plain fields, lost on an IJob by-value `.Run()`/`Schedule` copy →
