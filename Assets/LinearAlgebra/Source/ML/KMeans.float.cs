@@ -94,11 +94,16 @@ namespace LinearAlgebra.ML
                     "KMeans.fit: ws.D2Weights.N must equal N");
 
             // ---- precompute point squared norms (once, before the Lloyd loop) ----
-            for (int n = 0; n < N; n++)
+            unsafe
             {
-                float s = (float)0;
-                for (int f = 0; f < D; f++) { float v = X[n, f]; s += v * v; }
-                ws.PointNormSq[n] = s;
+                float* xp = X.Data.Ptr;
+                for (int n = 0; n < N; n++)
+                {
+                    float* xr = xp + (long)n * D;
+                    float s = (float)0;
+                    for (int f = 0; f < D; f++) { float v = xr[f]; s += v * v; }
+                    ws.PointNormSq[n] = s;
+                }
             }
 
             // Initialise assignment (not PrevAssignment) to -1 so that the first
@@ -131,11 +136,16 @@ namespace LinearAlgebra.ML
                 iters = iter + 1;
 
                 // Centroid squared norms
-                for (int j = 0; j < k; j++)
+                unsafe
                 {
-                    float s = (float)0;
-                    for (int f = 0; f < D; f++) { float v = centroids[j, f]; s += v * v; }
-                    ws.CentNormSq[j] = s;
+                    float* cp = centroids.Data.Ptr;
+                    for (int j = 0; j < k; j++)
+                    {
+                        float* cr = cp + (long)j * D;
+                        float s = (float)0;
+                        for (int f = 0; f < D; f++) { float v = cr[f]; s += v * v; }
+                        ws.CentNormSq[j] = s;
+                    }
                 }
 
                 // GEMM: ws.Gram = X * centroidsᵀ (N×k), read through the TransB kernel — no
@@ -144,9 +154,16 @@ namespace LinearAlgebra.ML
 
                 // Patch Gram in-place: score[n,j] = cn[j] - 2*G[n,j]
                 //   pn[n] omitted (constant over j — no effect on argmin).
-                for (int n = 0; n < N; n++)
-                    for (int j = 0; j < k; j++)
-                        ws.Gram[n, j] = ws.CentNormSq[j] - (float)2 * ws.Gram[n, j];
+                unsafe
+                {
+                    float* gp = ws.Gram.Data.Ptr; float* cn = ws.CentNormSq.Data.Ptr;
+                    for (int n = 0; n < N; n++)
+                    {
+                        float* gr = gp + (long)n * k;
+                        for (int j = 0; j < k; j++)
+                            gr[j] = cn[j] - (float)2 * gr[j];
+                    }
+                }
 
                 // Save previous assignment; compute new assignment; count changes.
                 for (int n = 0; n < N; n++)
@@ -173,18 +190,28 @@ namespace LinearAlgebra.ML
                 }
 
                 // Zero centroid accumulators and cluster counts
-                for (int j = 0; j < k; j++)
+                unsafe
                 {
-                    for (int f = 0; f < D; f++) ws.NewCentroids[j, f] = (float)0;
-                    ws.ClusterCounts[j] = 0;
+                    float* ncp = ws.NewCentroids.Data.Ptr;
+                    for (int j = 0; j < k; j++)
+                    {
+                        float* ncr = ncp + (long)j * D;
+                        for (int f = 0; f < D; f++) ncr[f] = (float)0;
+                        ws.ClusterCounts[j] = 0;
+                    }
                 }
 
                 // Accumulate points into cluster sums
-                for (int n = 0; n < N; n++)
+                unsafe
                 {
-                    int j = assignment[n];
-                    ws.ClusterCounts[j]++;
-                    for (int f = 0; f < D; f++) ws.NewCentroids[j, f] += X[n, f];
+                    float* ncp = ws.NewCentroids.Data.Ptr; float* xp = X.Data.Ptr;
+                    for (int n = 0; n < N; n++)
+                    {
+                        int j = assignment[n];
+                        ws.ClusterCounts[j]++;
+                        float* ncr = ncp + (long)j * D; float* xr = xp + (long)n * D;
+                        for (int f = 0; f < D; f++) ncr[f] += xr[f];
+                    }
                 }
 
                 // Empty-cluster reseed.
@@ -218,10 +245,15 @@ namespace LinearAlgebra.ML
                 }
 
                 // Divide accumulators -> new centroids
-                for (int j = 0; j < k; j++)
+                unsafe
                 {
-                    float invN = (float)1 / (float)ws.ClusterCounts[j];
-                    for (int f = 0; f < D; f++) centroids[j, f] = ws.NewCentroids[j, f] * invN;
+                    float* cp = centroids.Data.Ptr; float* ncp = ws.NewCentroids.Data.Ptr;
+                    for (int j = 0; j < k; j++)
+                    {
+                        float invN = (float)1 / (float)ws.ClusterCounts[j];
+                        float* cr = cp + (long)j * D; float* ncr = ncp + (long)j * D;
+                        for (int f = 0; f < D; f++) cr[f] = ncr[f] * invN;
+                    }
                 }
             }
 
@@ -232,16 +264,28 @@ namespace LinearAlgebra.ML
             // GEMM.
             if (!converged)
             {
-                for (int j = 0; j < k; j++)
+                unsafe
                 {
-                    float s = (float)0;
-                    for (int f = 0; f < D; f++) { float v = centroids[j, f]; s += v * v; }
-                    ws.CentNormSq[j] = s;
+                    float* cp = centroids.Data.Ptr;
+                    for (int j = 0; j < k; j++)
+                    {
+                        float* cr = cp + (long)j * D;
+                        float s = (float)0;
+                        for (int f = 0; f < D; f++) { float v = cr[f]; s += v * v; }
+                        ws.CentNormSq[j] = s;
+                    }
                 }
                 Blas.dot(in X, in centroids, ref ws.Gram, transposeA: false, transposeB: true);
-                for (int n = 0; n < N; n++)
-                    for (int j = 0; j < k; j++)
-                        ws.Gram[n, j] = ws.CentNormSq[j] - (float)2 * ws.Gram[n, j];
+                unsafe
+                {
+                    float* gp = ws.Gram.Data.Ptr; float* cn = ws.CentNormSq.Data.Ptr;
+                    for (int n = 0; n < N; n++)
+                    {
+                        float* gr = gp + (long)n * k;
+                        for (int j = 0; j < k; j++)
+                            gr[j] = cn[j] - (float)2 * gr[j];
+                    }
+                }
                 Query.rowArgMin(in ws.Gram, ref assignment);
 
                 float sse = (float)0;
@@ -359,15 +403,20 @@ namespace LinearAlgebra.ML
             if (k == 1) return; // nothing more to seed
 
             // Initialise D2Weights with squared distances to c_0.
-            for (int n = 0; n < N; n++)
+            unsafe
             {
-                float d2 = (float)0;
-                for (int f = 0; f < D; f++)
+                float* xp = X.Data.Ptr; float* c0 = centroids.Data.Ptr;
+                for (int n = 0; n < N; n++)
                 {
-                    float diff = X[n, f] - centroids[0, f];
-                    d2 += diff * diff;
+                    float* xr = xp + (long)n * D;
+                    float d2 = (float)0;
+                    for (int f = 0; f < D; f++)
+                    {
+                        float diff = xr[f] - c0[f];
+                        d2 += diff * diff;
+                    }
+                    ws.D2Weights[n] = d2;
                 }
-                ws.D2Weights[n] = d2;
             }
 
             // Centroids 1..k-1 via D² weighting (incremental).
@@ -397,15 +446,20 @@ namespace LinearAlgebra.ML
                 // Skip on the last centroid (ci == k-1) since D2Weights won't be read again.
                 if (ci < k - 1)
                 {
-                    for (int n = 0; n < N; n++)
+                    unsafe
                     {
-                        float d2 = (float)0;
-                        for (int f = 0; f < D; f++)
+                        float* xp = X.Data.Ptr; float* cci = centroids.Data.Ptr + (long)ci * D;
+                        for (int n = 0; n < N; n++)
                         {
-                            float diff = X[n, f] - centroids[ci, f];
-                            d2 += diff * diff;
+                            float* xr = xp + (long)n * D;
+                            float d2 = (float)0;
+                            for (int f = 0; f < D; f++)
+                            {
+                                float diff = xr[f] - cci[f];
+                                d2 += diff * diff;
+                            }
+                            if (d2 < ws.D2Weights[n]) ws.D2Weights[n] = d2;
                         }
-                        if (d2 < ws.D2Weights[n]) ws.D2Weights[n] = d2;
                     }
                 }
             }
