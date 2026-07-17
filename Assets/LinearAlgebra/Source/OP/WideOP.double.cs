@@ -127,6 +127,8 @@ namespace LinearAlgebra.Internal
         {
             
             
+            if (X86.Avx.IsAvxSupported)
+                return new doubleW { v = X86.Avx.mm256_max_pd(a.v, b.v) };
             double4 av = UnsafeUtility.As<v256, double4>(ref a.v);
             double4 bv = UnsafeUtility.As<v256, double4>(ref b.v);
             double4 r = math.max(av, bv);
@@ -151,6 +153,8 @@ namespace LinearAlgebra.Internal
         {
             
             
+            if (X86.Avx.IsAvxSupported)
+                return new doubleW { v = X86.Avx.mm256_min_pd(a.v, b.v) };
             double4 av = UnsafeUtility.As<v256, double4>(ref a.v);
             double4 bv = UnsafeUtility.As<v256, double4>(ref b.v);
             double4 r = math.min(av, bv);

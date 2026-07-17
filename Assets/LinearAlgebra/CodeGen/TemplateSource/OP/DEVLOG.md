@@ -1,6 +1,17 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## UnsafeOP.max/min: hardware mm256_max_pd/min_pd for double too (closes the double gap)
+- 2026-07-17 | Follow-up to the width-8 float win: double max/min were still ~11.5 GFLOP/s (~2× behind
+  double sum's ~22) because double skipped fProxyW and its fProxy4 body used `math.max(double4)` =
+  compare+select. Added `X86.Avx.mm256_max_pd`/`min_pd` to `fProxyW.Max`/`Min`'s DOUBLE path (AVX branch +
+  lane-wise fallback) and removed the `skipFor[double]` from the kernels so double now runs the fProxyW
+  main loop too. Result: **double max 11.5→19.6, min →20.5 GFLOP/s (~1.7-1.8×)** — now within ~10% of sum;
+  float unchanged (its diff was whitespace only). Suite 6317/6317, finite-data bit-identical.
+  - SAFE re maxAbs's frozen contract: maxAbs (and sum/vecDot) ALSO skipFor[double], so they never called
+    fProxyW.Max's double path — it was dead until this kernel. So adding mm256_max_pd there has no
+    collateral effect on any existing double kernel. (User sign-off given.)
+
 ## UnsafeOP.max/min: width-8 fProxyW upgrade (corrects the width-4 claim below)
 - 2026-07-17 | The earlier "width-4 saturates, min/max are memory-bound" claim was WRONG — KernelBenchmark
   proved it. At in-L1 sizes (N<=1024) max/min are THROUGHPUT-bound: width-4 float max hit only ~12 GFLOP/s

@@ -157,20 +157,19 @@ namespace LinearAlgebra.Internal
         }
 
         // Running max / min over a[0..n). Contract: n >= 1 (a reduction has no value on empty input).
-        // FLOAT uses the 8-wide fProxyW main loop (hardware mm256_max_ps/min_ps -- a single instruction,
-        // vs math.max's compare+select), then a fProxy4 remainder; DOUBLE runs the fProxy4 body directly
-        // (double4 already fills the 256-bit register). max/min are EXACT, so accumulator/lane order
-        // changes nothing but NaN propagation (identical on every machine, and following the hardware
-        // max like maxAbs) -- bit-identical to the scalar reduction on finite data. Seeded from a[0], not
-        // a neutral identity, so all-negative (max) / all-positive (min) inputs are correct; max/min are
-        // idempotent, so re-including a[0] via the seed is exact.
+        // Both dtypes use the fProxyW main loop with a HARDWARE mm256 max/min per block (float: 8-wide
+        // mm256_max_ps/min_ps; double: 4-wide mm256_max_pd/min_pd) -- a single instruction, vs math.max's
+        // compare+select -- then a fProxy4 remainder for float's last 4-7 lanes. max/min are EXACT, so
+        // accumulator/lane order changes nothing but NaN propagation (identical on every machine, and
+        // following the hardware max like maxAbs) -- bit-identical to the scalar reduction on finite data.
+        // Seeded from a[0], not a neutral identity, so all-negative (max) / all-positive (min) inputs are
+        // correct; max/min are idempotent, so re-including a[0] via the seed is exact.
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static fProxy max([NoAlias] fProxy* a, int n)
         {
             fProxy m = a[0];
             int i = 0;
 
-            //+skipFor[double]
             {
                 int nW = n / fProxyW.Width;
                 if (nW > 0)
@@ -187,7 +186,6 @@ namespace LinearAlgebra.Internal
                     i = nW * fProxyW.Width;
                 }
             }
-            //-skipFor
 
             fProxy4 qacc0 = new fProxy4(m), qacc1 = new fProxy4(m);
             for (; i + 8 <= n; i += 8)
@@ -209,7 +207,6 @@ namespace LinearAlgebra.Internal
             fProxy m = a[0];
             int i = 0;
 
-            //+skipFor[double]
             {
                 int nW = n / fProxyW.Width;
                 if (nW > 0)
@@ -226,7 +223,6 @@ namespace LinearAlgebra.Internal
                     i = nW * fProxyW.Width;
                 }
             }
-            //-skipFor
 
             fProxy4 qacc0 = new fProxy4(m), qacc1 = new fProxy4(m);
             for (; i + 8 <= n; i += 8)

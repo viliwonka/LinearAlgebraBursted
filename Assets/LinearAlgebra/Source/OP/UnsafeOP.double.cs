@@ -114,20 +114,35 @@ namespace LinearAlgebra.Internal
         }
 
         // Running max / min over a[0..n). Contract: n >= 1 (a reduction has no value on empty input).
-        // FLOAT uses the 8-wide doubleW main loop (hardware mm256_max_ps/min_ps -- a single instruction,
-        // vs math.max's compare+select), then a double4 remainder; DOUBLE runs the double4 body directly
-        // (double4 already fills the 256-bit register). max/min are EXACT, so accumulator/lane order
-        // changes nothing but NaN propagation (identical on every machine, and following the hardware
-        // max like maxAbs) -- bit-identical to the scalar reduction on finite data. Seeded from a[0], not
-        // a neutral identity, so all-negative (max) / all-positive (min) inputs are correct; max/min are
-        // idempotent, so re-including a[0] via the seed is exact.
+        // Both dtypes use the doubleW main loop with a HARDWARE mm256 max/min per block (float: 8-wide
+        // mm256_max_ps/min_ps; double: 4-wide mm256_max_pd/min_pd) -- a single instruction, vs math.max's
+        // compare+select -- then a double4 remainder for float's last 4-7 lanes. max/min are EXACT, so
+        // accumulator/lane order changes nothing but NaN propagation (identical on every machine, and
+        // following the hardware max like maxAbs) -- bit-identical to the scalar reduction on finite data.
+        // Seeded from a[0], not a neutral identity, so all-negative (max) / all-positive (min) inputs are
+        // correct; max/min are idempotent, so re-including a[0] via the seed is exact.
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static double max([NoAlias] double* a, int n)
         {
             double m = a[0];
             int i = 0;
 
-            
+            {
+                int nW = n / doubleW.Width;
+                if (nW > 0)
+                {
+                    doubleW acc0 = doubleW.Load(a, 0), acc1 = acc0;
+                    int q = 1;
+                    for (; q + 2 <= nW; q += 2)
+                    {
+                        acc0 = doubleW.Max(acc0, doubleW.Load(a, q));
+                        acc1 = doubleW.Max(acc1, doubleW.Load(a, q + 1));
+                    }
+                    if (q < nW) acc0 = doubleW.Max(acc0, doubleW.Load(a, q));
+                    m = math.max(m, doubleW.HMax(doubleW.Max(acc0, acc1)));
+                    i = nW * doubleW.Width;
+                }
+            }
 
             double4 qacc0 = new double4(m), qacc1 = new double4(m);
             for (; i + 8 <= n; i += 8)
@@ -149,7 +164,22 @@ namespace LinearAlgebra.Internal
             double m = a[0];
             int i = 0;
 
-            
+            {
+                int nW = n / doubleW.Width;
+                if (nW > 0)
+                {
+                    doubleW acc0 = doubleW.Load(a, 0), acc1 = acc0;
+                    int q = 1;
+                    for (; q + 2 <= nW; q += 2)
+                    {
+                        acc0 = doubleW.Min(acc0, doubleW.Load(a, q));
+                        acc1 = doubleW.Min(acc1, doubleW.Load(a, q + 1));
+                    }
+                    if (q < nW) acc0 = doubleW.Min(acc0, doubleW.Load(a, q));
+                    m = math.min(m, doubleW.HMin(doubleW.Min(acc0, acc1)));
+                    i = nW * doubleW.Width;
+                }
+            }
 
             double4 qacc0 = new double4(m), qacc1 = new double4(m);
             for (; i + 8 <= n; i += 8)

@@ -184,6 +184,8 @@ namespace LinearAlgebra.Internal
                 math.max(a.v.Float6, b.v.Float6), math.max(a.v.Float7, b.v.Float7)) };
             //-skipFor
             //+emitFor[double]
+            //!if (X86.Avx.IsAvxSupported)
+            //!    return new fProxyW { v = X86.Avx.mm256_max_pd(a.v, b.v) };
             //!fProxy4 av = UnsafeUtility.As<v256, fProxy4>(ref a.v);
             //!fProxy4 bv = UnsafeUtility.As<v256, fProxy4>(ref b.v);
             //!fProxy4 r = math.max(av, bv);
@@ -224,6 +226,8 @@ namespace LinearAlgebra.Internal
                 math.min(a.v.Float6, b.v.Float6), math.min(a.v.Float7, b.v.Float7)) };
             //-skipFor
             //+emitFor[double]
+            //!if (X86.Avx.IsAvxSupported)
+            //!    return new fProxyW { v = X86.Avx.mm256_min_pd(a.v, b.v) };
             //!fProxy4 av = UnsafeUtility.As<v256, fProxy4>(ref a.v);
             //!fProxy4 bv = UnsafeUtility.As<v256, fProxy4>(ref b.v);
             //!fProxy4 r = math.min(av, bv);
