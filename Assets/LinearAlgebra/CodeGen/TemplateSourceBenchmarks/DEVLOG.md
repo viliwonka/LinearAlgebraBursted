@@ -1,6 +1,12 @@
 # DEVLOG — TemplateSourceBenchmarks
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## RooflineBenchmark.fProxy.cs — SIMD-proxy alias
+- 2026-07-17 | Swapped `using LinearAlgebra.mathProxies;` for `using fProxy4 = Unity.Mathematics.float4;`
+  (deleteThis block). fProxy4-only, no fProxyM, native ops → generated output byte-identical. Last
+  non-owner-gated `mathProxies` importer; only `WideOP.fProxy.cs` (owner-gated) still uses the stub now.
+  See docs/dev/spec-alias-simd-proxies.md.
+
 ## DetMathBenchmark
 - 2026-07-15 (r10) | Wide/vectorization EXPERIMENT — verdict: explicit SIMD NOT needed, the real
   lever is the floatN indexer. 10M float exp, all bit-relevant-identical (same 1.107e-7 maxRelErr):

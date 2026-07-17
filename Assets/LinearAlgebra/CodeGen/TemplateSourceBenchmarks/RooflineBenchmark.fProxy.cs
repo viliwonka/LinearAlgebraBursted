@@ -9,7 +9,9 @@ using Unity.Mathematics;
 
 using LinearAlgebra;
 //+deleteThis
-using LinearAlgebra.mathProxies; // TEMPLATE-ONLY: fProxy4 stub (-> float4/double4)
+// TEMPLATE-ONLY alias: codegen rewrites the fProxy4 token -> float4 / double4 (real Unity.Mathematics
+// types), so its native operators + field access resolve directly. See docs/dev/spec-alias-simd-proxies.md.
+using fProxy4 = Unity.Mathematics.float4;
 //-deleteThis
 
 namespace LinearAlgebra.Benchmarks
