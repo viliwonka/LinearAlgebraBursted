@@ -37,6 +37,16 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   zero; else if c>r copy }` double loop into `for r { for c<min(r,N_Cols) zero; for c in
   [r+1,N_Cols) copy }` — branch-free by construction, touches the same cells with the same
   values, and never re-reads or overwrites the stale/already-written diagonal `R[r,r]`.
+- 2026-07-17 | Batch D (argmax/selection-sort, optional): implemented then DROPPED per the spec's
+  own gate. Converted all listed sites (`LU.fProxy.cs` decomp/decompInPlace partial-pivot argmax
+  x4, `SVD.fProxy.cs` descending selection-sort argmax x5, `Eigen.fProxy.cs` eigenvalue
+  selection-sort argmax x3, `LOBPCG.fProxy.cs` SortAscending argmin) to the
+  `bool better = ...; x = math.select(x, candidate, better);` form and confirmed the full suite
+  stayed green. LU A/B (`Tools/benchmark.ps1 LUBenchmark.Run`, N=64..1024, 4 timed runs, repeated):
+  float `LU.decomp` was flat-to-slightly-slower after (~1-3%, within noise); double repeats varied
+  ~12% run-to-run on the IDENTICAL unconverted code (e.g. N=1024 20.5-23.5ms), swamping any signal
+  — no reproducible improvement. Reverted every Batch D site back to the original branches (no
+  functional change from batch C); nothing committed for this batch.
 - 2026-07-17 | Root defect (docs/dev/spec-lobpcg-robustness.md, Duersch et al. 2018 §4.1): the old
   test `‖r‖ ≤ tol·max(|λ|,1)` had no ‖x‖ — the residual is linear in x, so a shrinking iterate
   passes ever more easily and x=0 passes EXACTLY (λ≈0, r≈0). On the penalty-conditioned n=24 frame
