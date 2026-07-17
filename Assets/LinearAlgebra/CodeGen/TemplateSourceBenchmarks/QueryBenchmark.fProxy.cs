@@ -24,6 +24,15 @@ namespace LinearAlgebra.Benchmarks
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct QueryColArgMinJobFProxy : IJob
+    {
+        public fProxyMxN A;
+        public Indices Idx;
+        public fProxyN Val;
+        public void Execute() => Query.colArgMin(in A, ref Idx, ref Val);
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct QueryArgMaxRowNormJobFProxy : IJob
     {
         public fProxyMxN A;
@@ -70,6 +79,18 @@ namespace LinearAlgebra.Benchmarks
             var A = FillFProxy(arena, n);
             var idx = arena.Indices(n);
             var job = new QueryRowArgMinJobFProxy { A = A, Idx = idx };
+            var stat = Bench.Time(() => job.Run());
+            arena.Dispose();
+            return Bench.Row("fProxy", n, stat, flops);
+        }
+
+        static string ColArgMinFProxy(int n, double flops)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = FillFProxy(arena, n);
+            var idx = arena.Indices(n);
+            var val = arena.fProxyVec(n);
+            var job = new QueryColArgMinJobFProxy { A = A, Idx = idx, Val = val };
             var stat = Bench.Time(() => job.Run());
             arena.Dispose();
             return Bench.Row("fProxy", n, stat, flops);

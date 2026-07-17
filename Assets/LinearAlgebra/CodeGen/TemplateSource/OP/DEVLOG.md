@@ -1,6 +1,24 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## QueryOP: colArgMin/colArgMax restructured + RowScore metric reductions to vecDot
+- 2026-07-17 | `colArgMin`/`colArgMax` (strided per-column argmin/argmax walk) restructured into a
+  row-major per-column running-min/max + argmin sweep (the (val,idx) overloads accumulate the running
+  extreme directly into valPerCol — no scratch; the index-only overloads use a length-N_Cols Temp).
+  Bit-identical (each column visits rows ascending, strict `<`/`>` → smallest-row-wins ties preserved).
+  N=1024 float 1.80→0.24 ms (~7.5×), double 1.57→0.25 ms — now FASTER than rowArgMin (0.75 ms), whose
+  horizontal per-row argmin doesn't vectorise. Added colArgMin to QueryBenchmark.
+- 2026-07-17 | `RowScore` (both overloads): Dot + Cosine reductions routed to `UnsafeOP.vecDot`
+  (summation-order-changing = deterministic, pre-1.0 waiver); the difference-based metrics
+  (Manhattan/Euclidean/SqEuclidean/Chebyshev) kept a DIRECT `(a-b)²`/`|a-b|` scalar sum, pointer-hoisted
+  only (the expanded ‖a‖²−2a·b+‖q‖² form risks catastrophic cancellation at near distances → not used).
+  Speeds nearestRow/farthestRow/countWithinRadius/distancesToRow: nearestRow Euclidean N=1024 float
+  0.94→0.36 ms (~2.6×). Used `unsafe { }` blocks, not an `unsafe` method modifier (minimal scope).
+  Cosine `normQ` was ALREADY hoisted out of the per-row loop (QueryNormSq + the normQ overloads) — not a
+  bug, verified. STILL scalar (follow-up): rowArgMin/rowArgMax (argmin index-capture — deferred by user),
+  and the STRIDED column search (nearestColumn/farthestColumn/countWithinColumnRadius via ColScore) which
+  needs the same row-major restructure but is metric-specific.
+
 ## QueryOP.argMaxColNorm: strided column walk restructured to row-major (the colSum trick)
 - 2026-07-17 | Corrects the prior entry's "column ops are fundamentally strided, leave them scalar."
   They are NOT: `argMaxColNorm`'s per-column norm was computed by a strided per-column walk

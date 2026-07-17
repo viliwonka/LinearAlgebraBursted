@@ -18,6 +18,7 @@ namespace LinearAlgebra.Benchmarks
         public static void Section(StringBuilder sb)
         {
             Sub(sb, "Query.rowArgMin (per-row argmin)",         RowArgMinFloat,     RowArgMinDouble);
+            Sub(sb, "Query.colArgMin (per-column argmin)",      ColArgMinFloat,     ColArgMinDouble);
             Sub(sb, "Query.argMaxRowNorm L2 (row-inner)",       ArgMaxRowNormFloat, ArgMaxRowNormDouble);
             Sub(sb, "Query.argMaxColNorm L2 (column-inner)",    ArgMaxColNormFloat, ArgMaxColNormDouble);
             Sub(sb, "Query.nearestRow (Euclidean scan)",        NearestRowFloat,    NearestRowDouble);

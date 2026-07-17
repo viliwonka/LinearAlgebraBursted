@@ -167,8 +167,7 @@ namespace LinearAlgebra
 
         /// <summary>
         /// For each column j of A, writes the row index of the minimum element into
-        /// rowIndexPerCol[j] and the minimum value into valPerCol[j].
-        /// Returns A.N_Cols. Columns are strided (non-contiguous).
+        /// rowIndexPerCol[j] and the minimum value into valPerCol[j]. Returns A.N_Cols.
         /// </summary>
         public static int colArgMin(in fProxyMxN A, ref Indices rowIndexPerCol, ref fProxyN valPerCol)
         {
@@ -179,14 +178,21 @@ namespace LinearAlgebra
             if (valPerCol.N != A.N_Cols)
                 throw new System.ArgumentException("Query.colArgMin: valPerCol.N must equal A.N_Cols");
 
-            for (int c = 0; c < A.N_Cols; c++)
+            // Per-column running min + argmin in ONE row-major (unit-stride inner) sweep instead of a
+            // strided per-column walk: each column still visits rows in ascending order with strict `<`,
+            // so ties (smallest row wins) and values are bit-identical. valPerCol holds the running min
+            // directly (no scratch).
+            int nc = A.N_Cols;
+            unsafe
             {
-                fProxy best = A[0, c];
-                int bestR = 0;
+                fProxy* ap = A.Data.Ptr; fProxy* vp = valPerCol.Data.Ptr;
+                for (int c = 0; c < nc; c++) { vp[c] = ap[c]; rowIndexPerCol[c] = 0; }
                 for (int r = 1; r < A.M_Rows; r++)
-                    if (A[r, c] < best) { best = A[r, c]; bestR = r; }
-                rowIndexPerCol[c] = bestR;
-                valPerCol[c] = best;
+                {
+                    fProxy* row = ap + (long)r * nc;
+                    for (int c = 0; c < nc; c++)
+                        if (row[c] < vp[c]) { vp[c] = row[c]; rowIndexPerCol[c] = r; }
+                }
             }
             return A.N_Cols;
         }
@@ -199,21 +205,26 @@ namespace LinearAlgebra
             if (rowIndexPerCol.N != A.N_Cols)
                 throw new System.ArgumentException("Query.colArgMin: rowIndexPerCol.N must equal A.N_Cols");
 
-            for (int c = 0; c < A.N_Cols; c++)
+            int nc = A.N_Cols;
+            var colBest = new fProxyN(nc, Allocator.Temp);   // running per-column min (self-disposing)
+            unsafe
             {
-                fProxy best = A[0, c];
-                int bestR = 0;
+                fProxy* ap = A.Data.Ptr; fProxy* vp = colBest.Data.Ptr;
+                for (int c = 0; c < nc; c++) { vp[c] = ap[c]; rowIndexPerCol[c] = 0; }
                 for (int r = 1; r < A.M_Rows; r++)
-                    if (A[r, c] < best) { best = A[r, c]; bestR = r; }
-                rowIndexPerCol[c] = bestR;
+                {
+                    fProxy* row = ap + (long)r * nc;
+                    for (int c = 0; c < nc; c++)
+                        if (row[c] < vp[c]) { vp[c] = row[c]; rowIndexPerCol[c] = r; }
+                }
             }
+            colBest.Dispose();
             return A.N_Cols;
         }
 
         /// <summary>
         /// For each column j of A, writes the row index of the maximum element into
-        /// rowIndexPerCol[j] and the maximum value into valPerCol[j].
-        /// Returns A.N_Cols. Columns are strided (non-contiguous).
+        /// rowIndexPerCol[j] and the maximum value into valPerCol[j]. Returns A.N_Cols.
         /// </summary>
         public static int colArgMax(in fProxyMxN A, ref Indices rowIndexPerCol, ref fProxyN valPerCol)
         {
@@ -224,14 +235,18 @@ namespace LinearAlgebra
             if (valPerCol.N != A.N_Cols)
                 throw new System.ArgumentException("Query.colArgMax: valPerCol.N must equal A.N_Cols");
 
-            for (int c = 0; c < A.N_Cols; c++)
+            // Row-major per-column running max + argmax (see colArgMin) — bit-identical, unit-stride.
+            int nc = A.N_Cols;
+            unsafe
             {
-                fProxy best = A[0, c];
-                int bestR = 0;
+                fProxy* ap = A.Data.Ptr; fProxy* vp = valPerCol.Data.Ptr;
+                for (int c = 0; c < nc; c++) { vp[c] = ap[c]; rowIndexPerCol[c] = 0; }
                 for (int r = 1; r < A.M_Rows; r++)
-                    if (A[r, c] > best) { best = A[r, c]; bestR = r; }
-                rowIndexPerCol[c] = bestR;
-                valPerCol[c] = best;
+                {
+                    fProxy* row = ap + (long)r * nc;
+                    for (int c = 0; c < nc; c++)
+                        if (row[c] > vp[c]) { vp[c] = row[c]; rowIndexPerCol[c] = r; }
+                }
             }
             return A.N_Cols;
         }
@@ -244,14 +259,20 @@ namespace LinearAlgebra
             if (rowIndexPerCol.N != A.N_Cols)
                 throw new System.ArgumentException("Query.colArgMax: rowIndexPerCol.N must equal A.N_Cols");
 
-            for (int c = 0; c < A.N_Cols; c++)
+            int nc = A.N_Cols;
+            var colBest = new fProxyN(nc, Allocator.Temp);   // running per-column max (self-disposing)
+            unsafe
             {
-                fProxy best = A[0, c];
-                int bestR = 0;
+                fProxy* ap = A.Data.Ptr; fProxy* vp = colBest.Data.Ptr;
+                for (int c = 0; c < nc; c++) { vp[c] = ap[c]; rowIndexPerCol[c] = 0; }
                 for (int r = 1; r < A.M_Rows; r++)
-                    if (A[r, c] > best) { best = A[r, c]; bestR = r; }
-                rowIndexPerCol[c] = bestR;
+                {
+                    fProxy* row = ap + (long)r * nc;
+                    for (int c = 0; c < nc; c++)
+                        if (row[c] > vp[c]) { vp[c] = row[c]; rowIndexPerCol[c] = r; }
+                }
             }
+            colBest.Dispose();
             return A.N_Cols;
         }
 
@@ -372,50 +393,53 @@ namespace LinearAlgebra
         internal static fProxy RowScore(in fProxyMxN A, int r, in fProxyN q, Metric m)
         {
             int nCols = A.N_Cols;
-            if (m == Metric.Manhattan)
+            // Row is contiguous: hoist the row/q pointers. Dot/Cosine reductions route to the SIMD
+            // vecDot kernel (summation-order-changing = deterministic, not bit-identical, pre-1.0
+            // waiver); the difference-based metrics stay a direct scalar sum (pure hoist, bit-
+            // identical) -- the expanded ||a||^2 - 2a.b + ||b||^2 form would cause catastrophic
+            // cancellation for near distances, so it is deliberately NOT used.
+            unsafe
             {
-                fProxy s = (fProxy)0;
-                for (int c = 0; c < nCols; c++)
-                    s += math.abs(A[r, c] - q[c]);
-                return s;
-            }
-            else if (m == Metric.Euclidean)
-            {
-                fProxy s = (fProxy)0;
-                for (int c = 0; c < nCols; c++) { fProxy d = A[r, c] - q[c]; s += d * d; }
-                return math.sqrt(s);
-            }
-            else if (m == Metric.SqEuclidean)
-            {
-                fProxy s = (fProxy)0;
-                for (int c = 0; c < nCols; c++) { fProxy d = A[r, c] - q[c]; s += d * d; }
-                return s;
-            }
-            else if (m == Metric.Chebyshev)
-            {
-                fProxy s = (fProxy)0;
-                for (int c = 0; c < nCols; c++)
-                    s = math.max(s, math.abs(A[r, c] - q[c]));
-                return s;
-            }
-            else if (m == Metric.Cosine)
-            {
-                fProxy dot = (fProxy)0, normA = (fProxy)0, normQ = (fProxy)0;
-                for (int c = 0; c < nCols; c++)
+                fProxy* row = A.Data.Ptr + (long)r * nCols;
+                fProxy* qp = q.Data.Ptr;
+                if (m == Metric.Manhattan)
                 {
-                    dot   += A[r, c] * q[c];
-                    normA += A[r, c] * A[r, c];
-                    normQ += q[c] * q[c];
+                    fProxy s = (fProxy)0;
+                    for (int c = 0; c < nCols; c++)
+                        s += math.abs(row[c] - qp[c]);
+                    return s;
                 }
-                fProxy denom = math.sqrt(normA * normQ);
-                return denom > (fProxy)0 ? dot / denom : (fProxy)0;
-            }
-            else // Metric.Dot
-            {
-                fProxy s = (fProxy)0;
-                for (int c = 0; c < nCols; c++)
-                    s += A[r, c] * q[c];
-                return s;
+                else if (m == Metric.Euclidean)
+                {
+                    fProxy s = (fProxy)0;
+                    for (int c = 0; c < nCols; c++) { fProxy d = row[c] - qp[c]; s += d * d; }
+                    return math.sqrt(s);
+                }
+                else if (m == Metric.SqEuclidean)
+                {
+                    fProxy s = (fProxy)0;
+                    for (int c = 0; c < nCols; c++) { fProxy d = row[c] - qp[c]; s += d * d; }
+                    return s;
+                }
+                else if (m == Metric.Chebyshev)
+                {
+                    fProxy s = (fProxy)0;
+                    for (int c = 0; c < nCols; c++)
+                        s = math.max(s, math.abs(row[c] - qp[c]));
+                    return s;
+                }
+                else if (m == Metric.Cosine)
+                {
+                    fProxy dot = UnsafeOP.vecDot(row, qp, nCols);
+                    fProxy normA = UnsafeOP.vecDot(row, row, nCols);
+                    fProxy normQ = UnsafeOP.vecDot(qp, qp, nCols);
+                    fProxy denom = math.sqrt(normA * normQ);
+                    return denom > (fProxy)0 ? dot / denom : (fProxy)0;
+                }
+                else // Metric.Dot
+                {
+                    return UnsafeOP.vecDot(row, qp, nCols);
+                }
             }
         }
 
@@ -490,14 +514,15 @@ namespace LinearAlgebra
             if (m != Metric.Cosine) return RowScore(in A, r, in q, m);
 
             int nCols = A.N_Cols;
-            fProxy dot = (fProxy)0, normA = (fProxy)0;
-            for (int c = 0; c < nCols; c++)
+            unsafe
             {
-                dot   += A[r, c] * q[c];
-                normA += A[r, c] * A[r, c];
+                fProxy* row = A.Data.Ptr + (long)r * nCols;
+                fProxy* qp = q.Data.Ptr;
+                fProxy dot = UnsafeOP.vecDot(row, qp, nCols);
+                fProxy normA = UnsafeOP.vecDot(row, row, nCols);
+                fProxy denom = math.sqrt(normA * normQ);
+                return denom > (fProxy)0 ? dot / denom : (fProxy)0;
             }
-            fProxy denom = math.sqrt(normA * normQ);
-            return denom > (fProxy)0 ? dot / denom : (fProxy)0;
         }
 
         /// <summary>Column analog of the normQ overload of <see cref="RowScore"/>.</summary>

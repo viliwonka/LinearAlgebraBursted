@@ -28,6 +28,15 @@ namespace LinearAlgebra.Benchmarks
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct QueryColArgMinJobDouble : IJob
+    {
+        public doubleMxN A;
+        public Indices Idx;
+        public doubleN Val;
+        public void Execute() => Query.colArgMin(in A, ref Idx, ref Val);
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct QueryArgMaxRowNormJobDouble : IJob
     {
         public doubleMxN A;
@@ -74,6 +83,18 @@ namespace LinearAlgebra.Benchmarks
             var A = FillDouble(arena, n);
             var idx = arena.Indices(n);
             var job = new QueryRowArgMinJobDouble { A = A, Idx = idx };
+            var stat = Bench.Time(() => job.Run());
+            arena.Dispose();
+            return Bench.Row("double", n, stat, flops);
+        }
+
+        static string ColArgMinDouble(int n, double flops)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = FillDouble(arena, n);
+            var idx = arena.Indices(n);
+            var val = arena.doubleVec(n);
+            var job = new QueryColArgMinJobDouble { A = A, Idx = idx, Val = val };
             var stat = Bench.Time(() => job.Run());
             arena.Dispose();
             return Bench.Row("double", n, stat, flops);
