@@ -134,40 +134,42 @@ namespace LinearAlgebra
         // Zero-norm column → left at 0 (NaN-safe !(norm > 0) guard). No allocation.
         public static void normalizeColumns(ref doubleMxN A, Norm n)
         {
-            if (A.M_Rows == 0 || A.N_Cols == 0) return;
+            int nr = A.M_Rows, nc = A.N_Cols;
+            if (nr == 0 || nc == 0) return;
 
-            for (int c = 0; c < A.N_Cols; c++)
+            // Per-column norms in one row-major pass (unit-stride inner loop vectorises; each column
+            // still accumulates its rows in ascending order → bit-identical to the strided per-column
+            // loops), then a branch-free row-major scale. One length-N_Cols Temp holds norms then inv.
+            doubleN inv = A.doubleTempVec(nc);
+            unsafe
             {
-                double colNorm;
+                double* ap = A.Data.Ptr;
+                double* ip = inv.Data.Ptr;
+                for (int c = 0; c < nc; c++) ip[c] = 0f;
+
                 switch (n)
                 {
                     case Norm.L1:
-                    {
-                        double s = 0f;
-                        for (int r = 0; r < A.M_Rows; r++) s += math.abs(A[r, c]);
-                        colNorm = s;
+                        for (int r = 0; r < nr; r++) { double* row = ap + (long)r * nc; for (int c = 0; c < nc; c++) ip[c] += math.abs(row[c]); }
                         break;
-                    }
                     case Norm.L2:
-                    {
-                        double s = 0f;
-                        for (int r = 0; r < A.M_Rows; r++) s += A[r, c] * A[r, c];
-                        colNorm = math.sqrt(s);
+                        for (int r = 0; r < nr; r++) { double* row = ap + (long)r * nc; for (int c = 0; c < nc; c++) ip[c] += row[c] * row[c]; }
+                        for (int c = 0; c < nc; c++) ip[c] = math.sqrt(ip[c]);
                         break;
-                    }
                     default: // Linf
-                    {
-                        double s = 0f;
-                        for (int r = 0; r < A.M_Rows; r++) s = math.max(s, math.abs(A[r, c]));
-                        colNorm = s;
+                        for (int r = 0; r < nr; r++) { double* row = ap + (long)r * nc; for (int c = 0; c < nc; c++) ip[c] = math.max(ip[c], math.abs(row[c])); }
                         break;
-                    }
                 }
 
-                if (!(colNorm > 0f)) continue; // zero-norm column → leave unchanged
+                // norm → reciprocal; zero-norm (or NaN) columns get factor 1 so `*= 1` leaves them
+                // bit-identically unchanged (x*1 == x for every value, matching the old skip).
+                for (int c = 0; c < nc; c++) ip[c] = (ip[c] > 0f) ? (double)1f / ip[c] : (double)1f;
 
-                double inv = (double)1f / colNorm;
-                for (int r = 0; r < A.M_Rows; r++) A[r, c] *= inv;
+                for (int r = 0; r < nr; r++)
+                {
+                    double* row = ap + (long)r * nc;
+                    for (int c = 0; c < nc; c++) row[c] *= ip[c];
+                }
             }
         }
 
