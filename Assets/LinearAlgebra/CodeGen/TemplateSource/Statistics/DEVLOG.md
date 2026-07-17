@@ -1,6 +1,22 @@
 # DEVLOG — Statistics
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## StatsCore.fProxy.cs — row reductions routed to SIMD kernels
+- 2026-07-17 | Follow-up to the hoist below. Under FloatMode.Strict (== Default in Burst), a plain
+  `sum += row[c]` row reduction CANNOT auto-vectorise (lane-splitting reorders the sum, which Strict
+  forbids), so post-hoist rowSum/rowNormL1/rowNormL2 were still scalar (~1.5× = de-index only) while
+  colSum — an elementwise accumulate into a per-column vector, no reassociation needed — vectorised to
+  32×. Rerouted the three pure row reductions to the frozen-tree SIMD kernels: rowSum→`UnsafeOP.sum`,
+  rowNormL1→`UnsafeOP.sumAbs`, rowNormL2→`sqrt(UnsafeOP.vecDot(row,row))`. These use fixed 2×fProxy4/
+  fProxyW accumulator trees that are cross-arch deterministic (the frozen numeric contract in
+  UnsafeOP.fProxy.cs) but NOT bit-identical to the prior serial left-to-right sum — a deliberate
+  pre-1.0 baseline change (owner-approved: no bit-compat obligation before release). Suite 6317/6317
+  stays green (existing tolerances absorb the last-ULP reorder). N=1024 float rowSum 0.35→0.035 ms
+  (10× beyond the hoist, ~15× over the original indexer), now colSum-tier (~30 GFLOP/s). rowVariance/
+  standardizeRows kept their stable two-pass scalar deviation sum (no single kernel; the one-pass
+  sum-of-squares reformulation would risk catastrophic cancellation) — candidates for an explicit
+  fProxyW two-pass later if needed.
+
 ## StatsCore.fProxy.cs — raw-pointer hoist (spec-raw-pointer-hoist-pass batch 2)
 - 2026-07-17 | The O(M·N) row-major reduction/transform family (rowSum, colSum, row/colMin,
   row/colMax, row/colVariance, row/colStdDev, row/colNormL1/L2, covarianceInto, standardizeRows,

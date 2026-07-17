@@ -4,6 +4,8 @@ using Unity.Collections.LowLevel.Unsafe;
 using System;
 using System.Runtime.CompilerServices;
 
+using LinearAlgebra.Internal;
+
 namespace LinearAlgebra
 {
 
@@ -270,13 +272,7 @@ namespace LinearAlgebra
                 fProxy* ap = A.Data.Ptr;
                 int nc = A.N_Cols;
                 for (int r = 0; r < A.M_Rows; r++)
-                {
-                    fProxy* row = ap + (long)r * nc;
-                    fProxy sum = 0f;
-                    for (int c = 0; c < nc; c++)
-                        sum += row[c];
-                    dest[r] = sum;
-                }
+                    dest[r] = UnsafeOP.sum(ap + (long)r * nc, nc);
             }
         }
 
@@ -601,13 +597,7 @@ namespace LinearAlgebra
                 fProxy* ap = A.Data.Ptr;
                 int nc = A.N_Cols;
                 for (int r = 0; r < A.M_Rows; r++)
-                {
-                    fProxy* row = ap + (long)r * nc;
-                    fProxy s = 0f;
-                    for (int c = 0; c < nc; c++)
-                        s += math.abs(row[c]);
-                    dest[r] = s;
-                }
+                    dest[r] = UnsafeOP.sumAbs(ap + (long)r * nc, nc);
             }
         }
 
@@ -630,10 +620,7 @@ namespace LinearAlgebra
                 for (int r = 0; r < A.M_Rows; r++)
                 {
                     fProxy* row = ap + (long)r * nc;
-                    fProxy s = 0f;
-                    for (int c = 0; c < nc; c++)
-                        s += row[c] * row[c];
-                    dest[r] = math.sqrt(s);
+                    dest[r] = math.sqrt(UnsafeOP.vecDot(row, row, nc));
                 }
             }
         }
