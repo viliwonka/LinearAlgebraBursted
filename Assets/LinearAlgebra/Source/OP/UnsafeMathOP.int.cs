@@ -38,10 +38,8 @@ namespace LinearAlgebra.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void abs([NoAlias] int* x, int n)
         {
-            for (int i = 0; i < n; i++) {
-                int v = x[i];
-                x[i] = v < 0? (int)(-v) : v;
-            }
+            for (int i = 0; i < n; i++)
+                x[i] = (int)math.abs(x[i]);
         }
         
 
@@ -49,14 +47,14 @@ namespace LinearAlgebra.Internal
         public static void max([NoAlias] int* x, [NoAlias] int* y, int n)
         {
             for (int i = 0; i < n; i++)
-                x[i] = x[i] > y[i]? x[i]: y[i];
+                x[i] = (int)math.max(x[i], y[i]);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void min([NoAlias] int* x, [NoAlias] int* y, int n)
         {
             for (int i = 0; i < n; i++)
-                x[i] = x[i] < y[i] ? x[i] : y[i];
+                x[i] = (int)math.min(x[i], y[i]);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -77,10 +75,8 @@ namespace LinearAlgebra.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void relu([NoAlias] int* x, int n)
         {
-            for (int i = 0; i < n; i++) {
-                int v = x[i];
-                x[i] = v < 0? (int)0 : v;
-            }
+            for (int i = 0; i < n; i++)
+                x[i] = (int)math.max(x[i], (int)0);
         }
         
 

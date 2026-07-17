@@ -1,7 +1,22 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
-## LOBPCG: scale-invariant convergence test + Degenerate status (spurious-zero-eigenvector fix)
+## math.select branch-free conversion pass (docs/dev/spec-math-select-pass.md)
+- 2026-07-17 | Batch A (per-element data selects): converted `SelectOP.fProxy.cs`/`SelectOP.iProxy.cs`
+  selectfProxy/selectiProxy, `UnsafeMathOP.iProxy.cs` abs/max/min/relu, `UnsafeMathOP.fProxy.cs`
+  relu, `UnsafeOP.iProxy.cs` sumAbs/maxAbs, `Blas.ColumnScaling.fProxy.cs` buildJacobiScale, and
+  `SelectOP.bool.cs` selectBool (A11, taken) from ternaries/if-branches to
+  `math.select`/`math.max`/`math.min`/`math.abs`. Float relu kept as
+  `math.select(x[i], 0, x[i] < 0)`, NOT `math.max(x[i], 0)` (NaN/-0 semantics differ). Benchmark
+  (A/B via a reverted scratch IJob benchmark, float N=10240, REPS=200, headless
+  `Tools/benchmark.ps1`, 4 timed runs/side, repeated to check noise): `Select.select` (A1)
+  before(branch) med ~0.36-0.67ms -> after(select) med ~0.10-0.11ms, a reproducible ~3-4x win
+  across repeats — Burst emits an LLVM `select` directly from `math.select`, where the
+  bool-array-driven ternary needed the optimizer to promote a branch, which it did less
+  reliably. `relu` (A7) before ~0.033-0.038ms -> after ~0.033-0.035ms: no measurable difference
+  (expected — Unity.Mathematics' `select` is itself defined as `test ? t : f`, and a direct
+  float-compare predicate was already select-friendly either way); not a regression, so nothing
+  reverted. Scratch benchmark file removed after recording; no permanent benchmark added.
 - 2026-07-17 | Root defect (docs/dev/spec-lobpcg-robustness.md, Duersch et al. 2018 §4.1): the old
   test `‖r‖ ≤ tol·max(|λ|,1)` had no ‖x‖ — the residual is linear in x, so a shrinking iterate
   passes ever more easily and x=0 passes EXACTLY (λ≈0, r≈0). On the penalty-conditioned n=24 frame

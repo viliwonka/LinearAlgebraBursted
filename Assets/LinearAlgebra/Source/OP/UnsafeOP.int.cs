@@ -29,10 +29,8 @@ namespace LinearAlgebra.Internal
         {
             int sum = 0;
 
-            for (int i = 0; i < n; i++) {
-                int v = a[i];
-                sum += (int)(v < 0? -v : v);
-            }
+            for (int i = 0; i < n; i++)
+                sum += (int)math.abs(a[i]);
 
             return sum;
         }
@@ -45,9 +43,8 @@ namespace LinearAlgebra.Internal
             int max = 0;
 
             for (int i = 0; i < n; i++) {
-                int v = a[i];
-                var abs = (v < 0 ? -v : v);
-                max = (int)(max < abs? abs : max);
+                int abs = (int)math.abs(a[i]);
+                max = (int)math.max(max, abs);
             }
             return max;
         }

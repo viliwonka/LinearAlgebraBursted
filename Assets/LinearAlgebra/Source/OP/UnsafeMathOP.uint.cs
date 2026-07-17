@@ -40,14 +40,14 @@ namespace LinearAlgebra.Internal
         public static void max([NoAlias] uint* x, [NoAlias] uint* y, int n)
         {
             for (int i = 0; i < n; i++)
-                x[i] = x[i] > y[i]? x[i]: y[i];
+                x[i] = (uint)math.max(x[i], y[i]);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void min([NoAlias] uint* x, [NoAlias] uint* y, int n)
         {
             for (int i = 0; i < n; i++)
-                x[i] = x[i] < y[i] ? x[i] : y[i];
+                x[i] = (uint)math.min(x[i], y[i]);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]

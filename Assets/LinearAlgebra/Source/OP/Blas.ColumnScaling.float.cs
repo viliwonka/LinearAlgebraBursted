@@ -53,7 +53,7 @@ namespace LinearAlgebra
             for (int j = 0; j < colNorm2.N; j++)
             {
                 float c = colNorm2[j];
-                d[j] = (c > (float)0) ? (float)1 / math.sqrt(c) : (float)1;   // NaN-safe: !(c>0) -> 1
+                d[j] = math.select((float)1, (float)1 / math.sqrt(c), c > (float)0);   // NaN-safe: !(c>0) -> 1
             }
         }
     }

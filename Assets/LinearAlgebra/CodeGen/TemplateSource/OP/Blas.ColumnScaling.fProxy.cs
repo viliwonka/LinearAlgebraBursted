@@ -49,7 +49,7 @@ namespace LinearAlgebra
             for (int j = 0; j < colNorm2.N; j++)
             {
                 fProxy c = colNorm2[j];
-                d[j] = (c > (fProxy)0) ? (fProxy)1 / math.sqrt(c) : (fProxy)1;   // NaN-safe: !(c>0) -> 1
+                d[j] = math.select((fProxy)1, (fProxy)1 / math.sqrt(c), c > (fProxy)0);   // NaN-safe: !(c>0) -> 1
             }
         }
     }

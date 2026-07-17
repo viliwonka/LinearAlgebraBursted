@@ -66,7 +66,7 @@ namespace LinearAlgebra.Internal
         public static void selectBool(bool* a, bool* b, bool* c, bool* target, int n)
         {
             for (int i = 0; i < n; i++)
-                target[i] = c[i] ? b[i] : a[i];
+                target[i] = (c[i] & b[i]) | (!c[i] & a[i]);
         }
     }
 }

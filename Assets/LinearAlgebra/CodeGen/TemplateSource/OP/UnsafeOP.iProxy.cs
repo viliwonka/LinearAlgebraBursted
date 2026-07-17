@@ -30,10 +30,8 @@ namespace LinearAlgebra.Internal
         {
             iProxy sum = 0;
 
-            for (int i = 0; i < n; i++) {
-                iProxy v = a[i];
-                sum += (iProxy)(v < 0? -v : v);
-            }
+            for (int i = 0; i < n; i++)
+                sum += (iProxy)math.abs(a[i]);
 
             return sum;
         }
@@ -46,9 +44,8 @@ namespace LinearAlgebra.Internal
             iProxy max = 0;
 
             for (int i = 0; i < n; i++) {
-                iProxy v = a[i];
-                var abs = (v < 0 ? -v : v);
-                max = (iProxy)(max < abs? abs : max);
+                iProxy abs = (iProxy)math.abs(a[i]);
+                max = (iProxy)math.max(max, abs);
             }
             return max;
         }

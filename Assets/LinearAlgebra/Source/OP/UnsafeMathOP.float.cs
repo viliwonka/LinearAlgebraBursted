@@ -275,7 +275,7 @@ namespace LinearAlgebra.Internal
         public static void relu([NoAlias] float* x, int n)
         {
             for (int i = 0; i < n; i++)
-                x[i] = x[i] < 0? 0 : x[i];
+                x[i] = math.select(x[i], (float)0, x[i] < (float)0);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]

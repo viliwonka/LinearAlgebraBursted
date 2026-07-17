@@ -1,5 +1,6 @@
 using System;
 using Unity.Burst;
+using Unity.Mathematics;
 using LinearAlgebra.Internal;
 
 //alsoExpand[uint]// select is pure data movement (dst[i] = c[i] ? b[i] : a[i]) - no comparison,
@@ -108,7 +109,7 @@ namespace LinearAlgebra.Internal
         public static void selectiProxy(iProxy* a, iProxy* b, [NoAlias] bool* c, iProxy* target, int n)
         {
             for (int i = 0; i < n; i++)
-                target[i] = c[i] ? b[i] : a[i];
+                target[i] = (iProxy)math.select(a[i], b[i], c[i]);
         }
     }
 }

@@ -29,10 +29,8 @@ namespace LinearAlgebra.Internal
         {
             long sum = 0;
 
-            for (int i = 0; i < n; i++) {
-                long v = a[i];
-                sum += (long)(v < 0? -v : v);
-            }
+            for (int i = 0; i < n; i++)
+                sum += (long)math.abs(a[i]);
 
             return sum;
         }
@@ -45,9 +43,8 @@ namespace LinearAlgebra.Internal
             long max = 0;
 
             for (int i = 0; i < n; i++) {
-                long v = a[i];
-                var abs = (v < 0 ? -v : v);
-                max = (long)(max < abs? abs : max);
+                long abs = (long)math.abs(a[i]);
+                max = (long)math.max(max, abs);
             }
             return max;
         }

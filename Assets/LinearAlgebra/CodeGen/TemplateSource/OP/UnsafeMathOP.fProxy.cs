@@ -271,7 +271,7 @@ namespace LinearAlgebra.Internal
         public static void relu([NoAlias] fProxy* x, int n)
         {
             for (int i = 0; i < n; i++)
-                x[i] = x[i] < 0? 0 : x[i];
+                x[i] = math.select(x[i], (fProxy)0, x[i] < (fProxy)0);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]

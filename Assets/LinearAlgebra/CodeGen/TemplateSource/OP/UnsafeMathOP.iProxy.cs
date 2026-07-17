@@ -40,10 +40,8 @@ namespace LinearAlgebra.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void abs([NoAlias] iProxy* x, int n)
         {
-            for (int i = 0; i < n; i++) {
-                iProxy v = x[i];
-                x[i] = v < 0? (iProxy)(-v) : v;
-            }
+            for (int i = 0; i < n; i++)
+                x[i] = (iProxy)math.abs(x[i]);
         }
         //-skipFor
 
@@ -51,14 +49,14 @@ namespace LinearAlgebra.Internal
         public static void max([NoAlias] iProxy* x, [NoAlias] iProxy* y, int n)
         {
             for (int i = 0; i < n; i++)
-                x[i] = x[i] > y[i]? x[i]: y[i];
+                x[i] = (iProxy)math.max(x[i], y[i]);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void min([NoAlias] iProxy* x, [NoAlias] iProxy* y, int n)
         {
             for (int i = 0; i < n; i++)
-                x[i] = x[i] < y[i] ? x[i] : y[i];
+                x[i] = (iProxy)math.min(x[i], y[i]);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -79,10 +77,8 @@ namespace LinearAlgebra.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void relu([NoAlias] iProxy* x, int n)
         {
-            for (int i = 0; i < n; i++) {
-                iProxy v = x[i];
-                x[i] = v < 0? (iProxy)0 : v;
-            }
+            for (int i = 0; i < n; i++)
+                x[i] = (iProxy)math.max(x[i], (iProxy)0);
         }
         //-skipFor
 

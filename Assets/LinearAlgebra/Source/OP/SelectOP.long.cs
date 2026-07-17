@@ -4,6 +4,7 @@
 // </auto-generated>
 using System;
 using Unity.Burst;
+using Unity.Mathematics;
 using LinearAlgebra.Internal;
 
 
@@ -109,7 +110,7 @@ namespace LinearAlgebra.Internal
         public static void selectlong(long* a, long* b, [NoAlias] bool* c, long* target, int n)
         {
             for (int i = 0; i < n; i++)
-                target[i] = c[i] ? b[i] : a[i];
+                target[i] = (long)math.select(a[i], b[i], c[i]);
         }
     }
 }
