@@ -569,10 +569,76 @@ namespace LinearAlgebra
                 dest[r] = RowScore(in A, r, in q, m, normQ);
         }
 
+        // Fills dest[c] with the metric score of column c of A vs q in ONE row-major (unit-stride
+        // inner) sweep with per-column accumulators (the colSum trick) instead of a strided per-column
+        // ColScore walk. Each column still accumulates its rows in ascending order, so the result is
+        // bit-identical to the strided form. dest length N_Cols; q length M_Rows; normQ = ||q||^2
+        // (Cosine only, from QueryNormSq).
+        internal static void AllColScores(in doubleMxN A, in doubleN q, Metric m, double normQ, ref doubleN dest)
+        {
+            int nc = A.N_Cols, mR = A.M_Rows;
+            unsafe
+            {
+                double* ap = A.Data.Ptr; double* qp = q.Data.Ptr; double* dp = dest.Data.Ptr;
+                for (int c = 0; c < nc; c++) dp[c] = (double)0;
+
+                if (m == Metric.Manhattan)
+                {
+                    for (int r = 0; r < mR; r++)
+                    {
+                        double* row = ap + (long)r * nc; double qr = qp[r];
+                        for (int c = 0; c < nc; c++) dp[c] += math.abs(row[c] - qr);
+                    }
+                }
+                else if (m == Metric.Euclidean || m == Metric.SqEuclidean)
+                {
+                    for (int r = 0; r < mR; r++)
+                    {
+                        double* row = ap + (long)r * nc; double qr = qp[r];
+                        for (int c = 0; c < nc; c++) { double d = row[c] - qr; dp[c] += d * d; }
+                    }
+                    if (m == Metric.Euclidean)
+                        for (int c = 0; c < nc; c++) dp[c] = math.sqrt(dp[c]);
+                }
+                else if (m == Metric.Chebyshev)
+                {
+                    for (int r = 0; r < mR; r++)
+                    {
+                        double* row = ap + (long)r * nc; double qr = qp[r];
+                        for (int c = 0; c < nc; c++) dp[c] = math.max(dp[c], math.abs(row[c] - qr));
+                    }
+                }
+                else if (m == Metric.Dot)
+                {
+                    for (int r = 0; r < mR; r++)
+                    {
+                        double* row = ap + (long)r * nc; double qr = qp[r];
+                        for (int c = 0; c < nc; c++) dp[c] += row[c] * qr;
+                    }
+                }
+                else // Metric.Cosine: per-column dot (into dest) + normA (Temp), then normalise
+                {
+                    var normAv = new doubleN(nc, Allocator.Temp);
+                    double* nap = normAv.Data.Ptr;
+                    for (int c = 0; c < nc; c++) nap[c] = (double)0;
+                    for (int r = 0; r < mR; r++)
+                    {
+                        double* row = ap + (long)r * nc; double qr = qp[r];
+                        for (int c = 0; c < nc; c++) { dp[c] += row[c] * qr; nap[c] += row[c] * row[c]; }
+                    }
+                    for (int c = 0; c < nc; c++)
+                    {
+                        double denom = math.sqrt(nap[c] * normQ);
+                        dp[c] = denom > (double)0 ? dp[c] / denom : (double)0;
+                    }
+                    normAv.Dispose();
+                }
+            }
+        }
+
         /// <summary>
         /// Fills dest[j] with the distance/similarity between column j of A and query q
         /// under metric m. dest must have length A.N_Cols. q.N must equal A.M_Rows.
-        /// Columns are strided (non-contiguous).
         /// </summary>
         public static void distancesToColumn(in doubleMxN A, in doubleN q, Metric m, ref doubleN dest)
         {
@@ -582,8 +648,7 @@ namespace LinearAlgebra
                 throw new System.ArgumentException("Query.distancesToColumn: dest.N must equal A.N_Cols");
 
             double normQ = m == Metric.Cosine ? QueryNormSq(in q) : (double)0;
-            for (int c = 0; c < A.N_Cols; c++)
-                dest[c] = ColScore(in A, c, in q, m, normQ);
+            AllColScores(in A, in q, m, normQ, ref dest);
         }
 
         // ---- nearestRow / nearestColumn ----------------------------------------
@@ -615,7 +680,7 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Finds the column of A most similar/closest to query q under metric m.
-        /// q.N must equal A.M_Rows. Columns are strided.
+        /// q.N must equal A.M_Rows.
         /// </summary>
         public static void nearestColumn(in doubleMxN A, in doubleN q, Metric m, out int index, out double score)
         {
@@ -624,14 +689,14 @@ namespace LinearAlgebra
             if (q.N != A.M_Rows)
                 throw new System.ArgumentException("Query.nearestColumn: q.N must equal A.M_Rows");
 
+            double normQ = m == Metric.Cosine ? QueryNormSq(in q) : (double)0;
+            var scores = new doubleN(A.N_Cols, Allocator.Temp);
+            AllColScores(in A, in q, m, normQ, ref scores);
             double best = doubleQueryCore.WorstScoreForNearest(m);
             int bestIdx = 0;
-            double normQ = m == Metric.Cosine ? QueryNormSq(in q) : (double)0;
             for (int c = 0; c < A.N_Cols; c++)
-            {
-                double s = ColScore(in A, c, in q, m, normQ);
-                if (doubleQueryCore.IsBetterForNearest(s, best, m)) { best = s; bestIdx = c; }
-            }
+                if (doubleQueryCore.IsBetterForNearest(scores[c], best, m)) { best = scores[c]; bestIdx = c; }
+            scores.Dispose();
             index = bestIdx;
             score = best;
         }
@@ -665,7 +730,7 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Finds the column of A most dissimilar/farthest from query q under metric m.
-        /// q.N must equal A.M_Rows. Columns are strided.
+        /// q.N must equal A.M_Rows.
         /// </summary>
         public static void farthestColumn(in doubleMxN A, in doubleN q, Metric m, out int index, out double score)
         {
@@ -674,14 +739,14 @@ namespace LinearAlgebra
             if (q.N != A.M_Rows)
                 throw new System.ArgumentException("Query.farthestColumn: q.N must equal A.M_Rows");
 
+            double normQ = m == Metric.Cosine ? QueryNormSq(in q) : (double)0;
+            var scores = new doubleN(A.N_Cols, Allocator.Temp);
+            AllColScores(in A, in q, m, normQ, ref scores);
             double worst = doubleQueryCore.WorstScoreForFarthest(m);
             int worstIdx = 0;
-            double normQ = m == Metric.Cosine ? QueryNormSq(in q) : (double)0;
             for (int c = 0; c < A.N_Cols; c++)
-            {
-                double s = ColScore(in A, c, in q, m, normQ);
-                if (doubleQueryCore.IsBetterForFarthest(s, worst, m)) { worst = s; worstIdx = c; }
-            }
+                if (doubleQueryCore.IsBetterForFarthest(scores[c], worst, m)) { worst = scores[c]; worstIdx = c; }
+            scores.Dispose();
             index = worstIdx;
             score = worst;
         }
@@ -712,7 +777,7 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Returns the count of columns with distance/similarity to q within radius r.
-        /// Columns are strided. q.N must equal A.M_Rows.
+        /// q.N must equal A.M_Rows.
         /// </summary>
         public static int countWithinColumnRadius(in doubleMxN A, in doubleN q, double r, Metric m)
         {
@@ -720,13 +785,13 @@ namespace LinearAlgebra
                 throw new System.ArgumentException("Query.countWithinColumnRadius: q.N must equal A.M_Rows");
 
             bool sim = doubleQueryCore.IsSimilarityMetric(m);
-            int count = 0;
             double normQ = m == Metric.Cosine ? QueryNormSq(in q) : (double)0;
+            var scores = new doubleN(A.N_Cols, Allocator.Temp);
+            AllColScores(in A, in q, m, normQ, ref scores);
+            int count = 0;
             for (int c = 0; c < A.N_Cols; c++)
-            {
-                double s = ColScore(in A, c, in q, m, normQ);
-                if (sim ? s >= r : s <= r) count++;
-            }
+                if (sim ? scores[c] >= r : scores[c] <= r) count++;
+            scores.Dispose();
             return count;
         }
 

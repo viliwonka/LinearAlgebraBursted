@@ -1,6 +1,18 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## QueryOP: strided column search restructured row-major (AllColScores)
+- 2026-07-17 | The column search family (`nearestColumn`/`farthestColumn`/`countWithinColumnRadius`/
+  `distancesToColumn`) each scanned columns via the strided `ColScore` (per-column walk down rows).
+  Factored a shared `AllColScores` helper that computes ALL per-column metric scores in ONE row-major
+  (unit-stride inner) sweep with per-column accumulators (the colSum trick) — metric-specific
+  (Manhattan/Euclidean/SqEuclidean/Chebyshev/Dot direct; Cosine uses a second normA accumulator + the
+  precomputed normQ). Each column still sums its rows ascending → bit-identical to the strided form
+  (suite 6317/6317). The four methods now allocate a length-N_Cols Temp, call AllColScores, then reduce
+  (argmin/argmax/count) over it. Same restructure class as colArgMin/nearestRow (~7×/2.6×). `ColScore`
+  kept (still used by ArenaExtensions.Query two-pass alloc). QueryOP is now fully optimized except
+  rowArgMin/rowArgMax (argmin index-capture — deliberately deferred).
+
 ## QueryOP: colArgMin/colArgMax restructured + RowScore metric reductions to vecDot
 - 2026-07-17 | `colArgMin`/`colArgMax` (strided per-column argmin/argmax walk) restructured into a
   row-major per-column running-min/max + argmin sweep (the (val,idx) overloads accumulate the running
