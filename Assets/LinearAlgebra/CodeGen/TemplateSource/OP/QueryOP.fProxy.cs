@@ -2,6 +2,8 @@ using Unity.Mathematics;
 using Unity.Burst;
 using System.Runtime.CompilerServices;
 
+using LinearAlgebra.Internal;
+
 namespace LinearAlgebra
 {
     // QueryOP: search & selection inside vectors / matrices.
@@ -269,34 +271,36 @@ namespace LinearAlgebra
             int bestRow = 0;
             fProxy bestNorm = (fProxy)0;
 
-            if (n == Norm.L1)
+            // Row-inner reductions routed to the SIMD kernels (L1/L2 = summation-order-changing but
+            // deterministic; Linf = math.max is exact = bit-identical). The outer argmax stays scalar.
+            unsafe
             {
-                for (int r = 0; r < A.M_Rows; r++)
+                fProxy* ap = A.Data.Ptr;
+                int nc = A.N_Cols;
+                if (n == Norm.L1)
                 {
-                    fProxy s = (fProxy)0;
-                    for (int c = 0; c < A.N_Cols; c++)
-                        s += math.abs(A[r, c]);
-                    if (s > bestNorm) { bestNorm = s; bestRow = r; }
+                    for (int r = 0; r < A.M_Rows; r++)
+                    {
+                        fProxy s = UnsafeOP.sumAbs(ap + (long)r * nc, nc);
+                        if (s > bestNorm) { bestNorm = s; bestRow = r; }
+                    }
                 }
-            }
-            else if (n == Norm.L2)
-            {
-                for (int r = 0; r < A.M_Rows; r++)
+                else if (n == Norm.L2)
                 {
-                    fProxy s = (fProxy)0;
-                    for (int c = 0; c < A.N_Cols; c++)
-                        s += A[r, c] * A[r, c];
-                    if (s > bestNorm) { bestNorm = s; bestRow = r; }
+                    for (int r = 0; r < A.M_Rows; r++)
+                    {
+                        fProxy* row = ap + (long)r * nc;
+                        fProxy s = UnsafeOP.vecDot(row, row, nc);
+                        if (s > bestNorm) { bestNorm = s; bestRow = r; }
+                    }
                 }
-            }
-            else // Norm.Linf
-            {
-                for (int r = 0; r < A.M_Rows; r++)
+                else // Norm.Linf
                 {
-                    fProxy s = (fProxy)0;
-                    for (int c = 0; c < A.N_Cols; c++)
-                        s = math.max(s, math.abs(A[r, c]));
-                    if (s > bestNorm) { bestNorm = s; bestRow = r; }
+                    for (int r = 0; r < A.M_Rows; r++)
+                    {
+                        fProxy s = UnsafeOP.maxAbs(ap + (long)r * nc, nc);
+                        if (s > bestNorm) { bestNorm = s; bestRow = r; }
+                    }
                 }
             }
             return bestRow;

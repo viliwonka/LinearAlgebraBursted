@@ -1,6 +1,17 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## QueryOP.argMaxRowNorm: routed to SIMD reduction kernels + new QueryBenchmark
+- 2026-07-17 | `argMaxRowNorm` (per-row L1/L2/Linf norm, pick the max) was a hand-rolled scalar
+  reduction on the indexer. Rerouted the row-inner reductions: L1→`UnsafeOP.sumAbs`,
+  L2→`UnsafeOP.vecDot(row,row)`, Linf→`UnsafeOP.maxAbs` (L1/L2 summation-order-changing = deterministic
+  not bit-identical, pre-1.0 waiver; Linf = math.max exact = bit-identical). Outer argmax stays scalar.
+  Suite 6317/6317. Added `QueryBenchmark` (a few common ops on N×N: rowArgMin, argMaxRowNorm,
+  argMaxColNorm, nearestRow — was a coverage gap). Measured N=1024 float argMaxRowNorm L2 0.61→0.030 ms
+  (~20×, 35 GFLOP/s). The bench cleanly shows the row/column asymmetry: rerouted row op 0.030 ms vs the
+  STRIDED `argMaxColNorm` (column-inner, left scalar — a contiguous kernel can't consume a strided
+  column) 1.85 ms = 62× apart at N=1024.
+
 ## LP.simplexCore: tableau pivot hoisted to axpy (spec-raw-pointer-hoist-pass batch 3)
 - 2026-07-17 | The dense two-phase tableau simplex `Pivot` (row normalize + eliminate every other
   constraint row and both reduced-cost rows) and `simplexCore`'s initial pricing were on the `fProxyMxN`
