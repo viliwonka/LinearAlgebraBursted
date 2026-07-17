@@ -265,12 +265,18 @@ namespace LinearAlgebra
             if (dest.N != A.M_Rows)
                 throw new System.ArgumentException("Stats.rowSum: dest.N must equal A.M_Rows");
 
-            for (int r = 0; r < A.M_Rows; r++)
+            unsafe
             {
-                fProxy sum = 0f;
-                for (int c = 0; c < A.N_Cols; c++)
-                    sum += A[r, c];
-                dest[r] = sum;
+                fProxy* ap = A.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    fProxy* row = ap + (long)r * nc;
+                    fProxy sum = 0f;
+                    for (int c = 0; c < nc; c++)
+                        sum += row[c];
+                    dest[r] = sum;
+                }
             }
         }
 
@@ -286,12 +292,20 @@ namespace LinearAlgebra
             if (dest.N != A.N_Cols)
                 throw new System.ArgumentException("Stats.colSum: dest.N must equal A.N_Cols");
 
-            for (int c = 0; c < A.N_Cols; c++)
-                dest[c] = 0f;
+            unsafe
+            {
+                fProxy* ap = A.Data.Ptr; fProxy* dp = dest.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int c = 0; c < nc; c++)
+                    dp[c] = 0f;
 
-            for (int r = 0; r < A.M_Rows; r++)
-                for (int c = 0; c < A.N_Cols; c++)
-                    dest[c] += A[r, c];
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    fProxy* row = ap + (long)r * nc;
+                    for (int c = 0; c < nc; c++)
+                        dp[c] += row[c];
+                }
+            }
         }
 
         public static fProxyN colSum(in fProxyMxN A)
@@ -338,12 +352,18 @@ namespace LinearAlgebra
             if (dest.N != A.M_Rows)
                 throw new System.ArgumentException("Stats.rowMin: dest.N must equal A.M_Rows");
 
-            for (int r = 0; r < A.M_Rows; r++)
+            unsafe
             {
-                fProxy m = A[r, 0];
-                for (int c = 1; c < A.N_Cols; c++)
-                    m = math.min(m, A[r, c]);
-                dest[r] = m;
+                fProxy* ap = A.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    fProxy* row = ap + (long)r * nc;
+                    fProxy m = row[0];
+                    for (int c = 1; c < nc; c++)
+                        m = math.min(m, row[c]);
+                    dest[r] = m;
+                }
             }
         }
 
@@ -361,12 +381,18 @@ namespace LinearAlgebra
             if (dest.N != A.M_Rows)
                 throw new System.ArgumentException("Stats.rowMax: dest.N must equal A.M_Rows");
 
-            for (int r = 0; r < A.M_Rows; r++)
+            unsafe
             {
-                fProxy m = A[r, 0];
-                for (int c = 1; c < A.N_Cols; c++)
-                    m = math.max(m, A[r, c]);
-                dest[r] = m;
+                fProxy* ap = A.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    fProxy* row = ap + (long)r * nc;
+                    fProxy m = row[0];
+                    for (int c = 1; c < nc; c++)
+                        m = math.max(m, row[c]);
+                    dest[r] = m;
+                }
             }
         }
 
@@ -384,12 +410,20 @@ namespace LinearAlgebra
             if (dest.N != A.N_Cols)
                 throw new System.ArgumentException("Stats.colMin: dest.N must equal A.N_Cols");
 
-            for (int c = 0; c < A.N_Cols; c++)
-                dest[c] = A[0, c];
+            unsafe
+            {
+                fProxy* ap = A.Data.Ptr; fProxy* dp = dest.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int c = 0; c < nc; c++)
+                    dp[c] = ap[c];
 
-            for (int r = 1; r < A.M_Rows; r++)
-                for (int c = 0; c < A.N_Cols; c++)
-                    dest[c] = math.min(dest[c], A[r, c]);
+                for (int r = 1; r < A.M_Rows; r++)
+                {
+                    fProxy* row = ap + (long)r * nc;
+                    for (int c = 0; c < nc; c++)
+                        dp[c] = math.min(dp[c], row[c]);
+                }
+            }
         }
 
         public static fProxyN colMin(in fProxyMxN A)
@@ -406,12 +440,20 @@ namespace LinearAlgebra
             if (dest.N != A.N_Cols)
                 throw new System.ArgumentException("Stats.colMax: dest.N must equal A.N_Cols");
 
-            for (int c = 0; c < A.N_Cols; c++)
-                dest[c] = A[0, c];
+            unsafe
+            {
+                fProxy* ap = A.Data.Ptr; fProxy* dp = dest.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int c = 0; c < nc; c++)
+                    dp[c] = ap[c];
 
-            for (int r = 1; r < A.M_Rows; r++)
-                for (int c = 0; c < A.N_Cols; c++)
-                    dest[c] = math.max(dest[c], A[r, c]);
+                for (int r = 1; r < A.M_Rows; r++)
+                {
+                    fProxy* row = ap + (long)r * nc;
+                    for (int c = 0; c < nc; c++)
+                        dp[c] = math.max(dp[c], row[c]);
+                }
+            }
         }
 
         public static fProxyN colMax(in fProxyMxN A)
@@ -430,20 +472,26 @@ namespace LinearAlgebra
             if (dest.N != A.M_Rows)
                 throw new System.ArgumentException("Stats.rowVariance: dest.N must equal A.M_Rows");
 
-            for (int r = 0; r < A.M_Rows; r++)
+            unsafe
             {
-                fProxy rsum = 0f;
-                for (int c = 0; c < A.N_Cols; c++)
-                    rsum += A[r, c];
-                fProxy m = rsum / A.N_Cols;
-
-                fProxy sum = 0f;
-                for (int c = 0; c < A.N_Cols; c++)
+                fProxy* ap = A.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int r = 0; r < A.M_Rows; r++)
                 {
-                    fProxy d = A[r, c] - m;
-                    sum += d * d;
+                    fProxy* row = ap + (long)r * nc;
+                    fProxy rsum = 0f;
+                    for (int c = 0; c < nc; c++)
+                        rsum += row[c];
+                    fProxy m = rsum / nc;
+
+                    fProxy sum = 0f;
+                    for (int c = 0; c < nc; c++)
+                    {
+                        fProxy d = row[c] - m;
+                        sum += d * d;
+                    }
+                    dest[r] = sum / nc;
                 }
-                dest[r] = sum / A.N_Cols;
             }
         }
 
@@ -467,20 +515,31 @@ namespace LinearAlgebra
 
             // column means in a self-disposing local temp (zero-initialised; freed on return).
             var means = new fProxyN(A.N_Cols, Allocator.Temp);
-            for (int r = 0; r < A.M_Rows; r++)
-                for (int c = 0; c < A.N_Cols; c++)
-                    means[c] += A[r, c];
-            fProxyComp.divInPlace(means, A.M_Rows);
-
-            for (int c = 0; c < A.N_Cols; c++)
-                dest[c] = 0f;
-
-            for (int r = 0; r < A.M_Rows; r++)
-                for (int c = 0; c < A.N_Cols; c++)
+            unsafe
+            {
+                fProxy* ap = A.Data.Ptr; fProxy* mp = means.Data.Ptr; fProxy* dp = dest.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int r = 0; r < A.M_Rows; r++)
                 {
-                    fProxy d = A[r, c] - means[c];
-                    dest[c] += d * d;
+                    fProxy* row = ap + (long)r * nc;
+                    for (int c = 0; c < nc; c++)
+                        mp[c] += row[c];
                 }
+                fProxyComp.divInPlace(means, A.M_Rows);
+
+                for (int c = 0; c < nc; c++)
+                    dp[c] = 0f;
+
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    fProxy* row = ap + (long)r * nc;
+                    for (int c = 0; c < nc; c++)
+                    {
+                        fProxy d = row[c] - mp[c];
+                        dp[c] += d * d;
+                    }
+                }
+            }
 
             fProxyComp.divInPlace(dest, A.M_Rows);
 
@@ -497,8 +556,13 @@ namespace LinearAlgebra
         public static void rowStdDev(in fProxyMxN A, ref fProxyN dest)
         {
             rowVariance(in A, ref dest);
-            for (int r = 0; r < A.M_Rows; r++)
-                dest[r] = math.sqrt(dest[r]);
+            unsafe
+            {
+                fProxy* dp = dest.Data.Ptr;
+                int m = A.M_Rows;
+                for (int r = 0; r < m; r++)
+                    dp[r] = math.sqrt(dp[r]);
+            }
         }
 
         public static fProxyN rowStdDev(in fProxyMxN A)
@@ -511,8 +575,13 @@ namespace LinearAlgebra
         public static void colStdDev(in fProxyMxN A, ref fProxyN dest)
         {
             colVariance(in A, ref dest);
-            for (int c = 0; c < A.N_Cols; c++)
-                dest[c] = math.sqrt(dest[c]);
+            unsafe
+            {
+                fProxy* dp = dest.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int c = 0; c < nc; c++)
+                    dp[c] = math.sqrt(dp[c]);
+            }
         }
 
         public static fProxyN colStdDev(in fProxyMxN A)
@@ -527,12 +596,18 @@ namespace LinearAlgebra
             if (dest.N != A.M_Rows)
                 throw new System.ArgumentException("Stats.rowNormL1: dest.N must equal A.M_Rows");
 
-            for (int r = 0; r < A.M_Rows; r++)
+            unsafe
             {
-                fProxy s = 0f;
-                for (int c = 0; c < A.N_Cols; c++)
-                    s += math.abs(A[r, c]);
-                dest[r] = s;
+                fProxy* ap = A.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    fProxy* row = ap + (long)r * nc;
+                    fProxy s = 0f;
+                    for (int c = 0; c < nc; c++)
+                        s += math.abs(row[c]);
+                    dest[r] = s;
+                }
             }
         }
 
@@ -548,12 +623,18 @@ namespace LinearAlgebra
             if (dest.N != A.M_Rows)
                 throw new System.ArgumentException("Stats.rowNormL2: dest.N must equal A.M_Rows");
 
-            for (int r = 0; r < A.M_Rows; r++)
+            unsafe
             {
-                fProxy s = 0f;
-                for (int c = 0; c < A.N_Cols; c++)
-                    s += A[r, c] * A[r, c];
-                dest[r] = math.sqrt(s);
+                fProxy* ap = A.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    fProxy* row = ap + (long)r * nc;
+                    fProxy s = 0f;
+                    for (int c = 0; c < nc; c++)
+                        s += row[c] * row[c];
+                    dest[r] = math.sqrt(s);
+                }
             }
         }
 
@@ -569,12 +650,20 @@ namespace LinearAlgebra
             if (dest.N != A.N_Cols)
                 throw new System.ArgumentException("Stats.colNormL1: dest.N must equal A.N_Cols");
 
-            for (int c = 0; c < A.N_Cols; c++)
-                dest[c] = 0f;
+            unsafe
+            {
+                fProxy* ap = A.Data.Ptr; fProxy* dp = dest.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int c = 0; c < nc; c++)
+                    dp[c] = 0f;
 
-            for (int r = 0; r < A.M_Rows; r++)
-                for (int c = 0; c < A.N_Cols; c++)
-                    dest[c] += math.abs(A[r, c]);
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    fProxy* row = ap + (long)r * nc;
+                    for (int c = 0; c < nc; c++)
+                        dp[c] += math.abs(row[c]);
+                }
+            }
         }
 
         public static fProxyN colNormL1(in fProxyMxN A)
@@ -589,15 +678,23 @@ namespace LinearAlgebra
             if (dest.N != A.N_Cols)
                 throw new System.ArgumentException("Stats.colNormL2: dest.N must equal A.N_Cols");
 
-            for (int c = 0; c < A.N_Cols; c++)
-                dest[c] = 0f;
+            unsafe
+            {
+                fProxy* ap = A.Data.Ptr; fProxy* dp = dest.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int c = 0; c < nc; c++)
+                    dp[c] = 0f;
 
-            for (int r = 0; r < A.M_Rows; r++)
-                for (int c = 0; c < A.N_Cols; c++)
-                    dest[c] += A[r, c] * A[r, c];
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    fProxy* row = ap + (long)r * nc;
+                    for (int c = 0; c < nc; c++)
+                        dp[c] += row[c] * row[c];
+                }
 
-            for (int c = 0; c < A.N_Cols; c++)
-                dest[c] = math.sqrt(dest[c]);
+                for (int c = 0; c < nc; c++)
+                    dp[c] = math.sqrt(dp[c]);
+            }
         }
 
         public static fProxyN colNormL2(in fProxyMxN A)
@@ -637,18 +734,28 @@ namespace LinearAlgebra
             var means = A.fProxyTempVec(N);
 
             // First pass: accumulate column sums (row-major), then divide to get means.
-            for (int r = 0; r < M; r++)
-                for (int c = 0; c < N; c++)
-                    means[c] += A[r, c];
-            for (int c = 0; c < N; c++)
-                means[c] /= (fProxy)M;
-
             // Second pass: build centered M×N matrix in one row-major sweep (reclaimed by ClearTemp).
             // centered[r, c] = A[r, c] − mean[c]
             var centered = A.fProxyTempMat(M, N);
-            for (int r = 0; r < M; r++)
+            unsafe
+            {
+                fProxy* ap = A.Data.Ptr; fProxy* mp = means.Data.Ptr; fProxy* cp = centered.Data.Ptr;
+                for (int r = 0; r < M; r++)
+                {
+                    fProxy* row = ap + (long)r * N;
+                    for (int c = 0; c < N; c++)
+                        mp[c] += row[c];
+                }
                 for (int c = 0; c < N; c++)
-                    centered[r, c] = A[r, c] - means[c];
+                    mp[c] /= (fProxy)M;
+
+                for (int r = 0; r < M; r++)
+                {
+                    fProxy* arow = ap + (long)r * N; fProxy* crow = cp + (long)r * N;
+                    for (int c = 0; c < N; c++)
+                        crow[c] = arow[c] - mp[c];
+                }
+            }
 
             // C = centeredᵀ · centered (Gram formulation). dot(..., transposeA:true) dispatches
             // to matMatDotTransA; inner read is unit-stride over columns of centered. Zeros C first.
@@ -657,9 +764,13 @@ namespace LinearAlgebra
             // Scale by 1/(M−1) (Bessel correction). The Gram matrix is exactly symmetric under
             // IEEE 754 (mul(a,b)==mul(b,a)), so no explicit symmetrization pass is needed.
             fProxy invDenom = 1f / (fProxy)(M - 1);
-            for (int i = 0; i < N; i++)
-                for (int j = 0; j < N; j++)
-                    C[i, j] *= invDenom;
+            unsafe
+            {
+                fProxy* cp = C.Data.Ptr;
+                long total = (long)N * N;
+                for (long k = 0; k < total; k++)
+                    cp[k] *= invDenom;
+            }
         }
 
         // Sample covariance matrix (N_Cols × N_Cols). Columns = variables, rows = observations.
@@ -770,16 +881,22 @@ namespace LinearAlgebra
             // Process each row in a single combined pass: compute mean once (eliminating the
             // duplicate computed by rowMean + rowVariance), then variance, then apply.
             // No Temp allocations — all scalars; rows are independently standardized.
-            for (int r = 0; r < A.M_Rows; r++)
+            unsafe
             {
-                fProxy rsum = (fProxy)0;
-                for (int c = 0; c < A.N_Cols; c++) rsum += A[r, c];
-                fProxy mu = rsum / A.N_Cols;
-                fProxy varAcc = (fProxy)0;
-                for (int c = 0; c < A.N_Cols; c++) { fProxy d = A[r, c] - mu; varAcc += d * d; }
-                fProxy sd = math.sqrt(varAcc / A.N_Cols);
-                if (!(sd > (fProxy)0)) { for (int c = 0; c < A.N_Cols; c++) A[r, c] = (fProxy)0; }
-                else                   { for (int c = 0; c < A.N_Cols; c++) A[r, c] = (A[r, c] - mu) / sd; }
+                fProxy* ap = A.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    fProxy* row = ap + (long)r * nc;
+                    fProxy rsum = (fProxy)0;
+                    for (int c = 0; c < nc; c++) rsum += row[c];
+                    fProxy mu = rsum / nc;
+                    fProxy varAcc = (fProxy)0;
+                    for (int c = 0; c < nc; c++) { fProxy d = row[c] - mu; varAcc += d * d; }
+                    fProxy sd = math.sqrt(varAcc / nc);
+                    if (!(sd > (fProxy)0)) { for (int c = 0; c < nc; c++) row[c] = (fProxy)0; }
+                    else                   { for (int c = 0; c < nc; c++) row[c] = (row[c] - mu) / sd; }
+                }
             }
         }
 
@@ -793,24 +910,35 @@ namespace LinearAlgebra
             colMean(in A, ref s0);
             // pass 2: inline column variance using s0, store std dev into s1
             // (avoids the extra Temp alloc that colStdDev → colVariance would make for its own means)
-            for (int c = 0; c < A.N_Cols; c++)
-                s1[c] = (fProxy)0;
-            for (int r = 0; r < A.M_Rows; r++)
-                for (int c = 0; c < A.N_Cols; c++)
+            unsafe
+            {
+                fProxy* ap = A.Data.Ptr; fProxy* s0p = s0.Data.Ptr; fProxy* s1p = s1.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int c = 0; c < nc; c++)
+                    s1p[c] = (fProxy)0;
+                for (int r = 0; r < A.M_Rows; r++)
                 {
-                    fProxy d = A[r, c] - s0[c];
-                    s1[c] += d * d;
+                    fProxy* row = ap + (long)r * nc;
+                    for (int c = 0; c < nc; c++)
+                    {
+                        fProxy d = row[c] - s0p[c];
+                        s1p[c] += d * d;
+                    }
                 }
-            for (int c = 0; c < A.N_Cols; c++)
-                s1[c] = math.sqrt(s1[c] / A.M_Rows);
-            // pass 3: apply z-score in-place (row-major traverse for unit-stride writes)
-            for (int r = 0; r < A.M_Rows; r++)
-                for (int c = 0; c < A.N_Cols; c++)
+                for (int c = 0; c < nc; c++)
+                    s1p[c] = math.sqrt(s1p[c] / A.M_Rows);
+                // pass 3: apply z-score in-place (row-major traverse for unit-stride writes)
+                for (int r = 0; r < A.M_Rows; r++)
                 {
-                    fProxy mu = s0[c], sd = s1[c];
-                    if (!(sd > (fProxy)0)) A[r, c] = (fProxy)0;
-                    else                   A[r, c] = (A[r, c] - mu) / sd;
+                    fProxy* row = ap + (long)r * nc;
+                    for (int c = 0; c < nc; c++)
+                    {
+                        fProxy mu = s0p[c], sd = s1p[c];
+                        if (!(sd > (fProxy)0)) row[c] = (fProxy)0;
+                        else                   row[c] = (row[c] - mu) / sd;
+                    }
                 }
+            }
             s0.Dispose(); s1.Dispose();
         }
 
@@ -855,14 +983,20 @@ namespace LinearAlgebra
             var s0 = new fProxyN(A.M_Rows, Allocator.Temp);
             var s1 = new fProxyN(A.M_Rows, Allocator.Temp);
             rowMin(in A, ref s0); rowMax(in A, ref s1);
-            for (int r = 0; r < A.M_Rows; r++)
+            unsafe
             {
-                fProxy mn = s0[r], rng = s1[r] - mn;
-                if (!(rng > (fProxy)0)) { for (int c = 0; c < A.N_Cols; c++) A[r, c] = lo; }
-                else
+                fProxy* ap = A.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int r = 0; r < A.M_Rows; r++)
                 {
-                    fProxy sc = hi - lo;
-                    for (int c = 0; c < A.N_Cols; c++) A[r, c] = lo + ((A[r, c] - mn) / rng) * sc;
+                    fProxy* row = ap + (long)r * nc;
+                    fProxy mn = s0[r], rng = s1[r] - mn;
+                    if (!(rng > (fProxy)0)) { for (int c = 0; c < nc; c++) row[c] = lo; }
+                    else
+                    {
+                        fProxy sc = hi - lo;
+                        for (int c = 0; c < nc; c++) row[c] = lo + ((row[c] - mn) / rng) * sc;
+                    }
                 }
             }
             s0.Dispose(); s1.Dispose();
@@ -880,13 +1014,21 @@ namespace LinearAlgebra
             colMin(in A, ref s0); colMax(in A, ref s1);
             // Apply: row-major traverse for unit-stride writes.
             fProxy sc = hi - lo;
-            for (int r = 0; r < A.M_Rows; r++)
-                for (int c = 0; c < A.N_Cols; c++)
+            unsafe
+            {
+                fProxy* ap = A.Data.Ptr; fProxy* s0p = s0.Data.Ptr; fProxy* s1p = s1.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int r = 0; r < A.M_Rows; r++)
                 {
-                    fProxy mn = s0[c], rng = s1[c] - mn;
-                    if (!(rng > (fProxy)0)) A[r, c] = lo;
-                    else                    A[r, c] = lo + ((A[r, c] - mn) / rng) * sc;
+                    fProxy* row = ap + (long)r * nc;
+                    for (int c = 0; c < nc; c++)
+                    {
+                        fProxy mn = s0p[c], rng = s1p[c] - mn;
+                        if (!(rng > (fProxy)0)) row[c] = lo;
+                        else                    row[c] = lo + ((row[c] - mn) / rng) * sc;
+                    }
                 }
+            }
             s0.Dispose(); s1.Dispose();
         }
 
@@ -913,10 +1055,16 @@ namespace LinearAlgebra
             if (A.M_Rows == 0 || A.N_Cols == 0) return;
             var s0 = new fProxyN(A.M_Rows, Allocator.Temp);
             rowMean(in A, ref s0);
-            for (int r = 0; r < A.M_Rows; r++)
+            unsafe
             {
-                fProxy m = s0[r];
-                for (int c = 0; c < A.N_Cols; c++) A[r, c] -= m;
+                fProxy* ap = A.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    fProxy* row = ap + (long)r * nc;
+                    fProxy m = s0[r];
+                    for (int c = 0; c < nc; c++) row[c] -= m;
+                }
             }
             s0.Dispose();
         }
@@ -928,9 +1076,17 @@ namespace LinearAlgebra
             var s0 = new fProxyN(A.N_Cols, Allocator.Temp);
             colMean(in A, ref s0);
             // Apply: row-major traverse for unit-stride writes.
-            for (int r = 0; r < A.M_Rows; r++)
-                for (int c = 0; c < A.N_Cols; c++)
-                    A[r, c] -= s0[c];
+            unsafe
+            {
+                fProxy* ap = A.Data.Ptr; fProxy* s0p = s0.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    fProxy* row = ap + (long)r * nc;
+                    for (int c = 0; c < nc; c++)
+                        row[c] -= s0p[c];
+                }
+            }
             s0.Dispose();
         }
 
@@ -956,12 +1112,18 @@ namespace LinearAlgebra
         public static void maxAbsRows(ref fProxyMxN A)
         {
             if (A.M_Rows == 0 || A.N_Cols == 0) return;
-            for (int r = 0; r < A.M_Rows; r++)
+            unsafe
             {
-                fProxy mAbs = (fProxy)0;
-                for (int c = 0; c < A.N_Cols; c++) mAbs = math.max(mAbs, math.abs(A[r, c]));
-                if (!(mAbs > (fProxy)0)) continue;
-                for (int c = 0; c < A.N_Cols; c++) A[r, c] /= mAbs;
+                fProxy* ap = A.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    fProxy* row = ap + (long)r * nc;
+                    fProxy mAbs = (fProxy)0;
+                    for (int c = 0; c < nc; c++) mAbs = math.max(mAbs, math.abs(row[c]));
+                    if (!(mAbs > (fProxy)0)) continue;
+                    for (int c = 0; c < nc; c++) row[c] /= mAbs;
+                }
             }
         }
 
@@ -971,13 +1133,24 @@ namespace LinearAlgebra
             if (A.M_Rows == 0 || A.N_Cols == 0) return;
             // Pre-compute per-column max|x| into a temp array via row-major stats pass.
             var mAbsArr = new fProxyN(A.N_Cols, Allocator.Temp);
-            for (int r = 0; r < A.M_Rows; r++)
-                for (int c = 0; c < A.N_Cols; c++)
-                    mAbsArr[c] = math.max(mAbsArr[c], math.abs(A[r, c]));
-            // Apply: row-major traverse for unit-stride writes.
-            for (int r = 0; r < A.M_Rows; r++)
-                for (int c = 0; c < A.N_Cols; c++)
-                    if (mAbsArr[c] > (fProxy)0) A[r, c] /= mAbsArr[c];
+            unsafe
+            {
+                fProxy* ap = A.Data.Ptr; fProxy* mp = mAbsArr.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    fProxy* row = ap + (long)r * nc;
+                    for (int c = 0; c < nc; c++)
+                        mp[c] = math.max(mp[c], math.abs(row[c]));
+                }
+                // Apply: row-major traverse for unit-stride writes.
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    fProxy* row = ap + (long)r * nc;
+                    for (int c = 0; c < nc; c++)
+                        if (mp[c] > (fProxy)0) row[c] /= mp[c];
+                }
+            }
             mAbsArr.Dispose();
         }
 
@@ -1004,13 +1177,19 @@ namespace LinearAlgebra
         public static void softmaxRows(ref fProxyMxN A)
         {
             if (A.M_Rows == 0 || A.N_Cols == 0) return;
-            for (int r = 0; r < A.M_Rows; r++)
+            unsafe
             {
-                fProxy maxVal = A[r, 0];
-                for (int c = 1; c < A.N_Cols; c++) if (A[r, c] > maxVal) maxVal = A[r, c];
-                fProxy expSum = (fProxy)0;
-                for (int c = 0; c < A.N_Cols; c++) { A[r, c] = DetMath.Exp(A[r, c] - maxVal); expSum += A[r, c]; }
-                for (int c = 0; c < A.N_Cols; c++) A[r, c] /= expSum;
+                fProxy* ap = A.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    fProxy* row = ap + (long)r * nc;
+                    fProxy maxVal = row[0];
+                    for (int c = 1; c < nc; c++) if (row[c] > maxVal) maxVal = row[c];
+                    fProxy expSum = (fProxy)0;
+                    for (int c = 0; c < nc; c++) { row[c] = DetMath.Exp(row[c] - maxVal); expSum += row[c]; }
+                    for (int c = 0; c < nc; c++) row[c] /= expSum;
+                }
             }
         }
 

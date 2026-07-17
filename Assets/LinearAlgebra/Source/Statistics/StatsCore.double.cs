@@ -269,12 +269,18 @@ namespace LinearAlgebra
             if (dest.N != A.M_Rows)
                 throw new System.ArgumentException("Stats.rowSum: dest.N must equal A.M_Rows");
 
-            for (int r = 0; r < A.M_Rows; r++)
+            unsafe
             {
-                double sum = 0f;
-                for (int c = 0; c < A.N_Cols; c++)
-                    sum += A[r, c];
-                dest[r] = sum;
+                double* ap = A.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    double* row = ap + (long)r * nc;
+                    double sum = 0f;
+                    for (int c = 0; c < nc; c++)
+                        sum += row[c];
+                    dest[r] = sum;
+                }
             }
         }
 
@@ -290,12 +296,20 @@ namespace LinearAlgebra
             if (dest.N != A.N_Cols)
                 throw new System.ArgumentException("Stats.colSum: dest.N must equal A.N_Cols");
 
-            for (int c = 0; c < A.N_Cols; c++)
-                dest[c] = 0f;
+            unsafe
+            {
+                double* ap = A.Data.Ptr; double* dp = dest.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int c = 0; c < nc; c++)
+                    dp[c] = 0f;
 
-            for (int r = 0; r < A.M_Rows; r++)
-                for (int c = 0; c < A.N_Cols; c++)
-                    dest[c] += A[r, c];
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    double* row = ap + (long)r * nc;
+                    for (int c = 0; c < nc; c++)
+                        dp[c] += row[c];
+                }
+            }
         }
 
         public static doubleN colSum(in doubleMxN A)
@@ -342,12 +356,18 @@ namespace LinearAlgebra
             if (dest.N != A.M_Rows)
                 throw new System.ArgumentException("Stats.rowMin: dest.N must equal A.M_Rows");
 
-            for (int r = 0; r < A.M_Rows; r++)
+            unsafe
             {
-                double m = A[r, 0];
-                for (int c = 1; c < A.N_Cols; c++)
-                    m = math.min(m, A[r, c]);
-                dest[r] = m;
+                double* ap = A.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    double* row = ap + (long)r * nc;
+                    double m = row[0];
+                    for (int c = 1; c < nc; c++)
+                        m = math.min(m, row[c]);
+                    dest[r] = m;
+                }
             }
         }
 
@@ -365,12 +385,18 @@ namespace LinearAlgebra
             if (dest.N != A.M_Rows)
                 throw new System.ArgumentException("Stats.rowMax: dest.N must equal A.M_Rows");
 
-            for (int r = 0; r < A.M_Rows; r++)
+            unsafe
             {
-                double m = A[r, 0];
-                for (int c = 1; c < A.N_Cols; c++)
-                    m = math.max(m, A[r, c]);
-                dest[r] = m;
+                double* ap = A.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    double* row = ap + (long)r * nc;
+                    double m = row[0];
+                    for (int c = 1; c < nc; c++)
+                        m = math.max(m, row[c]);
+                    dest[r] = m;
+                }
             }
         }
 
@@ -388,12 +414,20 @@ namespace LinearAlgebra
             if (dest.N != A.N_Cols)
                 throw new System.ArgumentException("Stats.colMin: dest.N must equal A.N_Cols");
 
-            for (int c = 0; c < A.N_Cols; c++)
-                dest[c] = A[0, c];
+            unsafe
+            {
+                double* ap = A.Data.Ptr; double* dp = dest.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int c = 0; c < nc; c++)
+                    dp[c] = ap[c];
 
-            for (int r = 1; r < A.M_Rows; r++)
-                for (int c = 0; c < A.N_Cols; c++)
-                    dest[c] = math.min(dest[c], A[r, c]);
+                for (int r = 1; r < A.M_Rows; r++)
+                {
+                    double* row = ap + (long)r * nc;
+                    for (int c = 0; c < nc; c++)
+                        dp[c] = math.min(dp[c], row[c]);
+                }
+            }
         }
 
         public static doubleN colMin(in doubleMxN A)
@@ -410,12 +444,20 @@ namespace LinearAlgebra
             if (dest.N != A.N_Cols)
                 throw new System.ArgumentException("Stats.colMax: dest.N must equal A.N_Cols");
 
-            for (int c = 0; c < A.N_Cols; c++)
-                dest[c] = A[0, c];
+            unsafe
+            {
+                double* ap = A.Data.Ptr; double* dp = dest.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int c = 0; c < nc; c++)
+                    dp[c] = ap[c];
 
-            for (int r = 1; r < A.M_Rows; r++)
-                for (int c = 0; c < A.N_Cols; c++)
-                    dest[c] = math.max(dest[c], A[r, c]);
+                for (int r = 1; r < A.M_Rows; r++)
+                {
+                    double* row = ap + (long)r * nc;
+                    for (int c = 0; c < nc; c++)
+                        dp[c] = math.max(dp[c], row[c]);
+                }
+            }
         }
 
         public static doubleN colMax(in doubleMxN A)
@@ -434,20 +476,26 @@ namespace LinearAlgebra
             if (dest.N != A.M_Rows)
                 throw new System.ArgumentException("Stats.rowVariance: dest.N must equal A.M_Rows");
 
-            for (int r = 0; r < A.M_Rows; r++)
+            unsafe
             {
-                double rsum = 0f;
-                for (int c = 0; c < A.N_Cols; c++)
-                    rsum += A[r, c];
-                double m = rsum / A.N_Cols;
-
-                double sum = 0f;
-                for (int c = 0; c < A.N_Cols; c++)
+                double* ap = A.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int r = 0; r < A.M_Rows; r++)
                 {
-                    double d = A[r, c] - m;
-                    sum += d * d;
+                    double* row = ap + (long)r * nc;
+                    double rsum = 0f;
+                    for (int c = 0; c < nc; c++)
+                        rsum += row[c];
+                    double m = rsum / nc;
+
+                    double sum = 0f;
+                    for (int c = 0; c < nc; c++)
+                    {
+                        double d = row[c] - m;
+                        sum += d * d;
+                    }
+                    dest[r] = sum / nc;
                 }
-                dest[r] = sum / A.N_Cols;
             }
         }
 
@@ -471,20 +519,31 @@ namespace LinearAlgebra
 
             // column means in a self-disposing local temp (zero-initialised; freed on return).
             var means = new doubleN(A.N_Cols, Allocator.Temp);
-            for (int r = 0; r < A.M_Rows; r++)
-                for (int c = 0; c < A.N_Cols; c++)
-                    means[c] += A[r, c];
-            doubleComp.divInPlace(means, A.M_Rows);
-
-            for (int c = 0; c < A.N_Cols; c++)
-                dest[c] = 0f;
-
-            for (int r = 0; r < A.M_Rows; r++)
-                for (int c = 0; c < A.N_Cols; c++)
+            unsafe
+            {
+                double* ap = A.Data.Ptr; double* mp = means.Data.Ptr; double* dp = dest.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int r = 0; r < A.M_Rows; r++)
                 {
-                    double d = A[r, c] - means[c];
-                    dest[c] += d * d;
+                    double* row = ap + (long)r * nc;
+                    for (int c = 0; c < nc; c++)
+                        mp[c] += row[c];
                 }
+                doubleComp.divInPlace(means, A.M_Rows);
+
+                for (int c = 0; c < nc; c++)
+                    dp[c] = 0f;
+
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    double* row = ap + (long)r * nc;
+                    for (int c = 0; c < nc; c++)
+                    {
+                        double d = row[c] - mp[c];
+                        dp[c] += d * d;
+                    }
+                }
+            }
 
             doubleComp.divInPlace(dest, A.M_Rows);
 
@@ -501,8 +560,13 @@ namespace LinearAlgebra
         public static void rowStdDev(in doubleMxN A, ref doubleN dest)
         {
             rowVariance(in A, ref dest);
-            for (int r = 0; r < A.M_Rows; r++)
-                dest[r] = math.sqrt(dest[r]);
+            unsafe
+            {
+                double* dp = dest.Data.Ptr;
+                int m = A.M_Rows;
+                for (int r = 0; r < m; r++)
+                    dp[r] = math.sqrt(dp[r]);
+            }
         }
 
         public static doubleN rowStdDev(in doubleMxN A)
@@ -515,8 +579,13 @@ namespace LinearAlgebra
         public static void colStdDev(in doubleMxN A, ref doubleN dest)
         {
             colVariance(in A, ref dest);
-            for (int c = 0; c < A.N_Cols; c++)
-                dest[c] = math.sqrt(dest[c]);
+            unsafe
+            {
+                double* dp = dest.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int c = 0; c < nc; c++)
+                    dp[c] = math.sqrt(dp[c]);
+            }
         }
 
         public static doubleN colStdDev(in doubleMxN A)
@@ -531,12 +600,18 @@ namespace LinearAlgebra
             if (dest.N != A.M_Rows)
                 throw new System.ArgumentException("Stats.rowNormL1: dest.N must equal A.M_Rows");
 
-            for (int r = 0; r < A.M_Rows; r++)
+            unsafe
             {
-                double s = 0f;
-                for (int c = 0; c < A.N_Cols; c++)
-                    s += math.abs(A[r, c]);
-                dest[r] = s;
+                double* ap = A.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    double* row = ap + (long)r * nc;
+                    double s = 0f;
+                    for (int c = 0; c < nc; c++)
+                        s += math.abs(row[c]);
+                    dest[r] = s;
+                }
             }
         }
 
@@ -552,12 +627,18 @@ namespace LinearAlgebra
             if (dest.N != A.M_Rows)
                 throw new System.ArgumentException("Stats.rowNormL2: dest.N must equal A.M_Rows");
 
-            for (int r = 0; r < A.M_Rows; r++)
+            unsafe
             {
-                double s = 0f;
-                for (int c = 0; c < A.N_Cols; c++)
-                    s += A[r, c] * A[r, c];
-                dest[r] = math.sqrt(s);
+                double* ap = A.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    double* row = ap + (long)r * nc;
+                    double s = 0f;
+                    for (int c = 0; c < nc; c++)
+                        s += row[c] * row[c];
+                    dest[r] = math.sqrt(s);
+                }
             }
         }
 
@@ -573,12 +654,20 @@ namespace LinearAlgebra
             if (dest.N != A.N_Cols)
                 throw new System.ArgumentException("Stats.colNormL1: dest.N must equal A.N_Cols");
 
-            for (int c = 0; c < A.N_Cols; c++)
-                dest[c] = 0f;
+            unsafe
+            {
+                double* ap = A.Data.Ptr; double* dp = dest.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int c = 0; c < nc; c++)
+                    dp[c] = 0f;
 
-            for (int r = 0; r < A.M_Rows; r++)
-                for (int c = 0; c < A.N_Cols; c++)
-                    dest[c] += math.abs(A[r, c]);
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    double* row = ap + (long)r * nc;
+                    for (int c = 0; c < nc; c++)
+                        dp[c] += math.abs(row[c]);
+                }
+            }
         }
 
         public static doubleN colNormL1(in doubleMxN A)
@@ -593,15 +682,23 @@ namespace LinearAlgebra
             if (dest.N != A.N_Cols)
                 throw new System.ArgumentException("Stats.colNormL2: dest.N must equal A.N_Cols");
 
-            for (int c = 0; c < A.N_Cols; c++)
-                dest[c] = 0f;
+            unsafe
+            {
+                double* ap = A.Data.Ptr; double* dp = dest.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int c = 0; c < nc; c++)
+                    dp[c] = 0f;
 
-            for (int r = 0; r < A.M_Rows; r++)
-                for (int c = 0; c < A.N_Cols; c++)
-                    dest[c] += A[r, c] * A[r, c];
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    double* row = ap + (long)r * nc;
+                    for (int c = 0; c < nc; c++)
+                        dp[c] += row[c] * row[c];
+                }
 
-            for (int c = 0; c < A.N_Cols; c++)
-                dest[c] = math.sqrt(dest[c]);
+                for (int c = 0; c < nc; c++)
+                    dp[c] = math.sqrt(dp[c]);
+            }
         }
 
         public static doubleN colNormL2(in doubleMxN A)
@@ -641,18 +738,28 @@ namespace LinearAlgebra
             var means = A.doubleTempVec(N);
 
             // First pass: accumulate column sums (row-major), then divide to get means.
-            for (int r = 0; r < M; r++)
-                for (int c = 0; c < N; c++)
-                    means[c] += A[r, c];
-            for (int c = 0; c < N; c++)
-                means[c] /= (double)M;
-
             // Second pass: build centered M×N matrix in one row-major sweep (reclaimed by ClearTemp).
             // centered[r, c] = A[r, c] − mean[c]
             var centered = A.doubleTempMat(M, N);
-            for (int r = 0; r < M; r++)
+            unsafe
+            {
+                double* ap = A.Data.Ptr; double* mp = means.Data.Ptr; double* cp = centered.Data.Ptr;
+                for (int r = 0; r < M; r++)
+                {
+                    double* row = ap + (long)r * N;
+                    for (int c = 0; c < N; c++)
+                        mp[c] += row[c];
+                }
                 for (int c = 0; c < N; c++)
-                    centered[r, c] = A[r, c] - means[c];
+                    mp[c] /= (double)M;
+
+                for (int r = 0; r < M; r++)
+                {
+                    double* arow = ap + (long)r * N; double* crow = cp + (long)r * N;
+                    for (int c = 0; c < N; c++)
+                        crow[c] = arow[c] - mp[c];
+                }
+            }
 
             // C = centeredᵀ · centered (Gram formulation). dot(..., transposeA:true) dispatches
             // to matMatDotTransA; inner read is unit-stride over columns of centered. Zeros C first.
@@ -661,9 +768,13 @@ namespace LinearAlgebra
             // Scale by 1/(M−1) (Bessel correction). The Gram matrix is exactly symmetric under
             // IEEE 754 (mul(a,b)==mul(b,a)), so no explicit symmetrization pass is needed.
             double invDenom = 1f / (double)(M - 1);
-            for (int i = 0; i < N; i++)
-                for (int j = 0; j < N; j++)
-                    C[i, j] *= invDenom;
+            unsafe
+            {
+                double* cp = C.Data.Ptr;
+                long total = (long)N * N;
+                for (long k = 0; k < total; k++)
+                    cp[k] *= invDenom;
+            }
         }
 
         // Sample covariance matrix (N_Cols × N_Cols). Columns = variables, rows = observations.
@@ -774,16 +885,22 @@ namespace LinearAlgebra
             // Process each row in a single combined pass: compute mean once (eliminating the
             // duplicate computed by rowMean + rowVariance), then variance, then apply.
             // No Temp allocations — all scalars; rows are independently standardized.
-            for (int r = 0; r < A.M_Rows; r++)
+            unsafe
             {
-                double rsum = (double)0;
-                for (int c = 0; c < A.N_Cols; c++) rsum += A[r, c];
-                double mu = rsum / A.N_Cols;
-                double varAcc = (double)0;
-                for (int c = 0; c < A.N_Cols; c++) { double d = A[r, c] - mu; varAcc += d * d; }
-                double sd = math.sqrt(varAcc / A.N_Cols);
-                if (!(sd > (double)0)) { for (int c = 0; c < A.N_Cols; c++) A[r, c] = (double)0; }
-                else                   { for (int c = 0; c < A.N_Cols; c++) A[r, c] = (A[r, c] - mu) / sd; }
+                double* ap = A.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    double* row = ap + (long)r * nc;
+                    double rsum = (double)0;
+                    for (int c = 0; c < nc; c++) rsum += row[c];
+                    double mu = rsum / nc;
+                    double varAcc = (double)0;
+                    for (int c = 0; c < nc; c++) { double d = row[c] - mu; varAcc += d * d; }
+                    double sd = math.sqrt(varAcc / nc);
+                    if (!(sd > (double)0)) { for (int c = 0; c < nc; c++) row[c] = (double)0; }
+                    else                   { for (int c = 0; c < nc; c++) row[c] = (row[c] - mu) / sd; }
+                }
             }
         }
 
@@ -797,24 +914,35 @@ namespace LinearAlgebra
             colMean(in A, ref s0);
             // pass 2: inline column variance using s0, store std dev into s1
             // (avoids the extra Temp alloc that colStdDev → colVariance would make for its own means)
-            for (int c = 0; c < A.N_Cols; c++)
-                s1[c] = (double)0;
-            for (int r = 0; r < A.M_Rows; r++)
-                for (int c = 0; c < A.N_Cols; c++)
+            unsafe
+            {
+                double* ap = A.Data.Ptr; double* s0p = s0.Data.Ptr; double* s1p = s1.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int c = 0; c < nc; c++)
+                    s1p[c] = (double)0;
+                for (int r = 0; r < A.M_Rows; r++)
                 {
-                    double d = A[r, c] - s0[c];
-                    s1[c] += d * d;
+                    double* row = ap + (long)r * nc;
+                    for (int c = 0; c < nc; c++)
+                    {
+                        double d = row[c] - s0p[c];
+                        s1p[c] += d * d;
+                    }
                 }
-            for (int c = 0; c < A.N_Cols; c++)
-                s1[c] = math.sqrt(s1[c] / A.M_Rows);
-            // pass 3: apply z-score in-place (row-major traverse for unit-stride writes)
-            for (int r = 0; r < A.M_Rows; r++)
-                for (int c = 0; c < A.N_Cols; c++)
+                for (int c = 0; c < nc; c++)
+                    s1p[c] = math.sqrt(s1p[c] / A.M_Rows);
+                // pass 3: apply z-score in-place (row-major traverse for unit-stride writes)
+                for (int r = 0; r < A.M_Rows; r++)
                 {
-                    double mu = s0[c], sd = s1[c];
-                    if (!(sd > (double)0)) A[r, c] = (double)0;
-                    else                   A[r, c] = (A[r, c] - mu) / sd;
+                    double* row = ap + (long)r * nc;
+                    for (int c = 0; c < nc; c++)
+                    {
+                        double mu = s0p[c], sd = s1p[c];
+                        if (!(sd > (double)0)) row[c] = (double)0;
+                        else                   row[c] = (row[c] - mu) / sd;
+                    }
                 }
+            }
             s0.Dispose(); s1.Dispose();
         }
 
@@ -859,14 +987,20 @@ namespace LinearAlgebra
             var s0 = new doubleN(A.M_Rows, Allocator.Temp);
             var s1 = new doubleN(A.M_Rows, Allocator.Temp);
             rowMin(in A, ref s0); rowMax(in A, ref s1);
-            for (int r = 0; r < A.M_Rows; r++)
+            unsafe
             {
-                double mn = s0[r], rng = s1[r] - mn;
-                if (!(rng > (double)0)) { for (int c = 0; c < A.N_Cols; c++) A[r, c] = lo; }
-                else
+                double* ap = A.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int r = 0; r < A.M_Rows; r++)
                 {
-                    double sc = hi - lo;
-                    for (int c = 0; c < A.N_Cols; c++) A[r, c] = lo + ((A[r, c] - mn) / rng) * sc;
+                    double* row = ap + (long)r * nc;
+                    double mn = s0[r], rng = s1[r] - mn;
+                    if (!(rng > (double)0)) { for (int c = 0; c < nc; c++) row[c] = lo; }
+                    else
+                    {
+                        double sc = hi - lo;
+                        for (int c = 0; c < nc; c++) row[c] = lo + ((row[c] - mn) / rng) * sc;
+                    }
                 }
             }
             s0.Dispose(); s1.Dispose();
@@ -884,13 +1018,21 @@ namespace LinearAlgebra
             colMin(in A, ref s0); colMax(in A, ref s1);
             // Apply: row-major traverse for unit-stride writes.
             double sc = hi - lo;
-            for (int r = 0; r < A.M_Rows; r++)
-                for (int c = 0; c < A.N_Cols; c++)
+            unsafe
+            {
+                double* ap = A.Data.Ptr; double* s0p = s0.Data.Ptr; double* s1p = s1.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int r = 0; r < A.M_Rows; r++)
                 {
-                    double mn = s0[c], rng = s1[c] - mn;
-                    if (!(rng > (double)0)) A[r, c] = lo;
-                    else                    A[r, c] = lo + ((A[r, c] - mn) / rng) * sc;
+                    double* row = ap + (long)r * nc;
+                    for (int c = 0; c < nc; c++)
+                    {
+                        double mn = s0p[c], rng = s1p[c] - mn;
+                        if (!(rng > (double)0)) row[c] = lo;
+                        else                    row[c] = lo + ((row[c] - mn) / rng) * sc;
+                    }
                 }
+            }
             s0.Dispose(); s1.Dispose();
         }
 
@@ -917,10 +1059,16 @@ namespace LinearAlgebra
             if (A.M_Rows == 0 || A.N_Cols == 0) return;
             var s0 = new doubleN(A.M_Rows, Allocator.Temp);
             rowMean(in A, ref s0);
-            for (int r = 0; r < A.M_Rows; r++)
+            unsafe
             {
-                double m = s0[r];
-                for (int c = 0; c < A.N_Cols; c++) A[r, c] -= m;
+                double* ap = A.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    double* row = ap + (long)r * nc;
+                    double m = s0[r];
+                    for (int c = 0; c < nc; c++) row[c] -= m;
+                }
             }
             s0.Dispose();
         }
@@ -932,9 +1080,17 @@ namespace LinearAlgebra
             var s0 = new doubleN(A.N_Cols, Allocator.Temp);
             colMean(in A, ref s0);
             // Apply: row-major traverse for unit-stride writes.
-            for (int r = 0; r < A.M_Rows; r++)
-                for (int c = 0; c < A.N_Cols; c++)
-                    A[r, c] -= s0[c];
+            unsafe
+            {
+                double* ap = A.Data.Ptr; double* s0p = s0.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    double* row = ap + (long)r * nc;
+                    for (int c = 0; c < nc; c++)
+                        row[c] -= s0p[c];
+                }
+            }
             s0.Dispose();
         }
 
@@ -960,12 +1116,18 @@ namespace LinearAlgebra
         public static void maxAbsRows(ref doubleMxN A)
         {
             if (A.M_Rows == 0 || A.N_Cols == 0) return;
-            for (int r = 0; r < A.M_Rows; r++)
+            unsafe
             {
-                double mAbs = (double)0;
-                for (int c = 0; c < A.N_Cols; c++) mAbs = math.max(mAbs, math.abs(A[r, c]));
-                if (!(mAbs > (double)0)) continue;
-                for (int c = 0; c < A.N_Cols; c++) A[r, c] /= mAbs;
+                double* ap = A.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    double* row = ap + (long)r * nc;
+                    double mAbs = (double)0;
+                    for (int c = 0; c < nc; c++) mAbs = math.max(mAbs, math.abs(row[c]));
+                    if (!(mAbs > (double)0)) continue;
+                    for (int c = 0; c < nc; c++) row[c] /= mAbs;
+                }
             }
         }
 
@@ -975,13 +1137,24 @@ namespace LinearAlgebra
             if (A.M_Rows == 0 || A.N_Cols == 0) return;
             // Pre-compute per-column max|x| into a temp array via row-major stats pass.
             var mAbsArr = new doubleN(A.N_Cols, Allocator.Temp);
-            for (int r = 0; r < A.M_Rows; r++)
-                for (int c = 0; c < A.N_Cols; c++)
-                    mAbsArr[c] = math.max(mAbsArr[c], math.abs(A[r, c]));
-            // Apply: row-major traverse for unit-stride writes.
-            for (int r = 0; r < A.M_Rows; r++)
-                for (int c = 0; c < A.N_Cols; c++)
-                    if (mAbsArr[c] > (double)0) A[r, c] /= mAbsArr[c];
+            unsafe
+            {
+                double* ap = A.Data.Ptr; double* mp = mAbsArr.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    double* row = ap + (long)r * nc;
+                    for (int c = 0; c < nc; c++)
+                        mp[c] = math.max(mp[c], math.abs(row[c]));
+                }
+                // Apply: row-major traverse for unit-stride writes.
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    double* row = ap + (long)r * nc;
+                    for (int c = 0; c < nc; c++)
+                        if (mp[c] > (double)0) row[c] /= mp[c];
+                }
+            }
             mAbsArr.Dispose();
         }
 
@@ -1008,13 +1181,19 @@ namespace LinearAlgebra
         public static void softmaxRows(ref doubleMxN A)
         {
             if (A.M_Rows == 0 || A.N_Cols == 0) return;
-            for (int r = 0; r < A.M_Rows; r++)
+            unsafe
             {
-                double maxVal = A[r, 0];
-                for (int c = 1; c < A.N_Cols; c++) if (A[r, c] > maxVal) maxVal = A[r, c];
-                double expSum = (double)0;
-                for (int c = 0; c < A.N_Cols; c++) { A[r, c] = DetMath.Exp(A[r, c] - maxVal); expSum += A[r, c]; }
-                for (int c = 0; c < A.N_Cols; c++) A[r, c] /= expSum;
+                double* ap = A.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    double* row = ap + (long)r * nc;
+                    double maxVal = row[0];
+                    for (int c = 1; c < nc; c++) if (row[c] > maxVal) maxVal = row[c];
+                    double expSum = (double)0;
+                    for (int c = 0; c < nc; c++) { row[c] = DetMath.Exp(row[c] - maxVal); expSum += row[c]; }
+                    for (int c = 0; c < nc; c++) row[c] /= expSum;
+                }
             }
         }
 
