@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 
 using LinearAlgebra.Internal;
 
+
 namespace LinearAlgebra
 {
     // QueryOP: search & selection inside vectors / matrices.
@@ -79,12 +80,13 @@ namespace LinearAlgebra
 
         // ---- Per-axis row/col arg-min/max with Indices buffer ---
 
-        // argmin/argmax over one CONTIGUOUS row of length n, written as 4 INDEPENDENT branch-free
-        // lanes (math.select, not `if`) so Burst can pack/overlap them: lane L accumulates columns
-        // L, L+4, L+8, ... keeping its running extreme + that extreme's column index via a strict
-        // `<`/`>` mask (so NaN never displaces and, columns ascending, the first/smallest-column
-        // occurrence wins within a lane). A horizontal reduce with a value-then-smallest-index
-        // tie-break makes this BIT-IDENTICAL to the scalar first-occurrence scan, NaN included.
+        // argmin/argmax over one CONTIGUOUS row of length n via a width-4 float4 (-> float4/double4)
+        // SIMD accumulator: lane L holds the running extreme of columns L, L+4, ... plus that extreme's
+        // column index (int4), updated branch-free with a strict `<`/`>` mask (floatM.select for the
+        // value, math.select for the index -- strict so NaN never displaces). A horizontal reduce with
+        // a value-then-smallest-index tie-break makes it BIT-IDENTICAL to the scalar first-occurrence
+        // scan, NaN included. (Uses the float4 comparison + floatM.select shims -- see
+        // proxyStructs.math.cs / SimdMath.cs.)
         internal static unsafe void RowArgMinScan(float* row, int n, out int bestC, out float bestVal)
         {
             if (n < 4)
@@ -93,24 +95,24 @@ namespace LinearAlgebra
                 for (int c = 1; c < n; c++) if (row[c] < s) { s = row[c]; si = c; }
                 bestC = si; bestVal = s; return;
             }
-            float m0 = row[0], m1 = row[1], m2 = row[2], m3 = row[3];
-            int i0 = 0, i1 = 1, i2 = 2, i3 = 3;
-            int c4 = 4;
-            for (; c4 + 4 <= n; c4 += 4)
+            float4 best = *(float4*)row;
+            int4 idx = new int4(0, 1, 2, 3);
+            int4 cur = new int4(0, 1, 2, 3);
+            int i = 4;
+            for (; i + 4 <= n; i += 4)
             {
-                float v0 = row[c4], v1 = row[c4 + 1], v2 = row[c4 + 2], v3 = row[c4 + 3];
-                bool l0 = v0 < m0, l1 = v1 < m1, l2 = v2 < m2, l3 = v3 < m3;
-                m0 = math.select(m0, v0, l0); i0 = math.select(i0, c4,     l0);
-                m1 = math.select(m1, v1, l1); i1 = math.select(i1, c4 + 1, l1);
-                m2 = math.select(m2, v2, l2); i2 = math.select(i2, c4 + 2, l2);
-                m3 = math.select(m3, v3, l3); i3 = math.select(i3, c4 + 3, l3);
+                cur += 4;
+                float4 v = *(float4*)(row + i);
+                bool4 mask = v < best;                       // strict: NaN -> false -> no update
+                best = floatM.select(best, v, mask);
+                idx  = math.select(idx, cur, mask);
             }
-            float b = m0; int bi = i0;
-            if (m1 < b || (m1 == b && i1 < bi)) { b = m1; bi = i1; }
-            if (m2 < b || (m2 == b && i2 < bi)) { b = m2; bi = i2; }
-            if (m3 < b || (m3 == b && i3 < bi)) { b = m3; bi = i3; }
-            for (; c4 < n; c4++)
-                if (row[c4] < b) { b = row[c4]; bi = c4; }
+            float b = best.x; int bi = idx.x;
+            if (best.y < b || (best.y == b && idx.y < bi)) { b = best.y; bi = idx.y; }
+            if (best.z < b || (best.z == b && idx.z < bi)) { b = best.z; bi = idx.z; }
+            if (best.w < b || (best.w == b && idx.w < bi)) { b = best.w; bi = idx.w; }
+            for (; i < n; i++)
+                if (row[i] < b) { b = row[i]; bi = i; }
             bestC = bi; bestVal = b;
         }
 
@@ -122,24 +124,24 @@ namespace LinearAlgebra
                 for (int c = 1; c < n; c++) if (row[c] > s) { s = row[c]; si = c; }
                 bestC = si; bestVal = s; return;
             }
-            float m0 = row[0], m1 = row[1], m2 = row[2], m3 = row[3];
-            int i0 = 0, i1 = 1, i2 = 2, i3 = 3;
-            int c4 = 4;
-            for (; c4 + 4 <= n; c4 += 4)
+            float4 best = *(float4*)row;
+            int4 idx = new int4(0, 1, 2, 3);
+            int4 cur = new int4(0, 1, 2, 3);
+            int i = 4;
+            for (; i + 4 <= n; i += 4)
             {
-                float v0 = row[c4], v1 = row[c4 + 1], v2 = row[c4 + 2], v3 = row[c4 + 3];
-                bool l0 = v0 > m0, l1 = v1 > m1, l2 = v2 > m2, l3 = v3 > m3;
-                m0 = math.select(m0, v0, l0); i0 = math.select(i0, c4,     l0);
-                m1 = math.select(m1, v1, l1); i1 = math.select(i1, c4 + 1, l1);
-                m2 = math.select(m2, v2, l2); i2 = math.select(i2, c4 + 2, l2);
-                m3 = math.select(m3, v3, l3); i3 = math.select(i3, c4 + 3, l3);
+                cur += 4;
+                float4 v = *(float4*)(row + i);
+                bool4 mask = v > best;                       // strict: NaN -> false -> no update
+                best = floatM.select(best, v, mask);
+                idx  = math.select(idx, cur, mask);
             }
-            float b = m0; int bi = i0;
-            if (m1 > b || (m1 == b && i1 < bi)) { b = m1; bi = i1; }
-            if (m2 > b || (m2 == b && i2 < bi)) { b = m2; bi = i2; }
-            if (m3 > b || (m3 == b && i3 < bi)) { b = m3; bi = i3; }
-            for (; c4 < n; c4++)
-                if (row[c4] > b) { b = row[c4]; bi = c4; }
+            float b = best.x; int bi = idx.x;
+            if (best.y > b || (best.y == b && idx.y < bi)) { b = best.y; bi = idx.y; }
+            if (best.z > b || (best.z == b && idx.z < bi)) { b = best.z; bi = idx.z; }
+            if (best.w > b || (best.w == b && idx.w < bi)) { b = best.w; bi = idx.w; }
+            for (; i < n; i++)
+                if (row[i] > b) { b = row[i]; bi = i; }
             bestC = bi; bestVal = b;
         }
 

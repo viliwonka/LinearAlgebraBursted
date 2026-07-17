@@ -1,6 +1,23 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## SIMD proxy stubs: fProxy4 comparison + fProxyM/floatM/doubleM select+min; rowArgMin -> fProxy4 SIMD
+- 2026-07-17 | Extended the width-4 SIMD proxy surface so branch-free lane-parallel select kernels can be
+  written in templates (previously the `fProxy4` stub was accumulator-only: `+ - * /`, abs, max).
+  Mechanism recap: `fProxy4`->`float4`/`double4` by codegen. OPERATORS float4 has natively (`<`/`>`/`<=`/
+  `>=` -> `bool4`) go straight on the `fProxy4` stub (`proxyStructs.math.cs`) — generated code uses
+  float4's native ones, no shim. But `math.select`/`math.min` are STATIC `math` methods, not float4
+  members, so a template can't call `math.select(fProxy4,...)`; they go through the existing
+  `fProxyM`->`floatM`/`doubleM` indirection (like abs/max) — added `select`+`min` there
+  (`proxyStructs.math.cs` stub + `OP/SimdMath.cs` real). `int4` is a REAL Unity type in templates, so the
+  index half (`math.select(int4,...)`) needs nothing. See [[simd-proxy-select-extension]].
+- 2026-07-17 | First customer: rewrote `RowArgMinScan`/`RowArgMaxScan` from the 4-lane-scalar fallback to
+  a real `fProxy4` SIMD accumulator (running extreme + int4 index, strict `<`/`>` mask -> NaN never
+  displaces; `fProxyM.select` value, `math.select` index; value-then-smallest-index horizontal reduce).
+  Bit-identical (suite 6317/6317). N=1024 float rowArgMin 0.20->0.1175 ms (1.7x over the scalar lanes,
+  ~5x over the original indexer scan). iProxy4 NOT built (no integer SIMD kernel needs it yet; int4 is
+  real so it wouldn't need the fProxyM shim anyway).
+
 ## QueryOP: rowArgMin/rowArgMax as 4-lane branch-free math.select scans
 - 2026-07-17 | rowArgMin/rowArgMax (argmin/argmax WITH index capture — doesn't vectorise as a plain
   loop) rewritten via `RowArgMinScan`/`RowArgMaxScan`: 4 INDEPENDENT branch-free scalar lanes (lane L =

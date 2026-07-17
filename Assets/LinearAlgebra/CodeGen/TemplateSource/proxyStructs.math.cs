@@ -93,6 +93,16 @@ namespace LinearAlgebra.mathProxies
             => new fProxy4 { x = a * b.x, y = a * b.y, z = a * b.z, w = a * b.w };
         public static fProxy4 operator *(fProxy4 a, fProxy b)
             => new fProxy4 { x = a.x * b, y = a.y * b, z = a.z * b, w = a.w * b };
+
+        // Component-wise comparisons returning Unity.Mathematics.bool4, so templates can drive a
+        // branch-free lane-parallel select on a width-4 accumulator (e.g. an argmin/argmax mask).
+        // Real float4/double4 have these natively with the SAME bool4 return type; the stub only has
+        // to compile the template (never runs -- see the note above). `<`/`>` and `<=`/`>=` are
+        // defined in pairs (C# requires the matching operator).
+        public static bool4 operator <(fProxy4 a, fProxy4 b)  => new bool4(a.x < b.x, a.y < b.y, a.z < b.z, a.w < b.w);
+        public static bool4 operator >(fProxy4 a, fProxy4 b)  => new bool4(a.x > b.x, a.y > b.y, a.z > b.z, a.w > b.w);
+        public static bool4 operator <=(fProxy4 a, fProxy4 b) => new bool4(a.x <= b.x, a.y <= b.y, a.z <= b.z, a.w <= b.w);
+        public static bool4 operator >=(fProxy4 a, fProxy4 b) => new bool4(a.x >= b.x, a.y >= b.y, a.z >= b.z, a.w >= b.w);
     }
 
     // TEMPLATE-ONLY shim so the fProxy kernel templates can call abs/max on the width-4 SIMD
@@ -105,6 +115,11 @@ namespace LinearAlgebra.mathProxies
             => new fProxy4 { x = math.abs(v.x), y = math.abs(v.y), z = math.abs(v.z), w = math.abs(v.w) };
         public static fProxy4 max(fProxy4 a, fProxy4 b)
             => new fProxy4 { x = math.max(a.x, b.x), y = math.max(a.y, b.y), z = math.max(a.z, b.z), w = math.max(a.w, b.w) };
+        public static fProxy4 min(fProxy4 a, fProxy4 b)
+            => new fProxy4 { x = math.min(a.x, b.x), y = math.min(a.y, b.y), z = math.min(a.z, b.z), w = math.min(a.w, b.w) };
+        // Matches math.select(a, b, c) convention: lane = c ? b : a (b on true).
+        public static fProxy4 select(fProxy4 a, fProxy4 b, bool4 c)
+            => new fProxy4 { x = c.x ? b.x : a.x, y = c.y ? b.y : a.y, z = c.z ? b.z : a.z, w = c.w ? b.w : a.w };
     }
 
     public struct fProxy2x2 {
