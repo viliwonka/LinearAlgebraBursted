@@ -117,7 +117,7 @@ namespace LinearAlgebra.Internal
             
             
             double4 av = UnsafeUtility.As<v256, double4>(ref a.v);
-            double4 r = doubleM.abs(av);
+            double4 r = math.abs(av);
             return new doubleW { v = UnsafeUtility.As<double4, v256>(ref r) };
             
         }
@@ -129,7 +129,7 @@ namespace LinearAlgebra.Internal
             
             double4 av = UnsafeUtility.As<v256, double4>(ref a.v);
             double4 bv = UnsafeUtility.As<v256, double4>(ref b.v);
-            double4 r = doubleM.max(av, bv);
+            double4 r = math.max(av, bv);
             return new doubleW { v = UnsafeUtility.As<double4, v256>(ref r) };
             
         }

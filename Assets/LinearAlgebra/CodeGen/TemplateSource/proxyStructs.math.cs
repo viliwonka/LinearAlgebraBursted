@@ -95,23 +95,6 @@ namespace LinearAlgebra.mathProxies
             => new fProxy4 { x = a.x * b, y = a.y * b, z = a.z * b, w = a.w * b };
     }
 
-    // TEMPLATE-ONLY shim so the fProxy kernel templates can call abs/max on the width-4 SIMD
-    // accumulator (fProxy4). Codegen substitutes fProxyM -> floatM/doubleM (the real shims in
-    // Internal/SimdMath.cs, which forward to Unity.Mathematics.math.abs/max on float4/double4);
-    // this manual body only has to COMPILE the template (it never runs). See UnsafeOP.sumAbs/maxAbs.
-    public static class fProxyM
-    {
-        public static fProxy4 abs(fProxy4 v)
-            => new fProxy4 { x = math.abs(v.x), y = math.abs(v.y), z = math.abs(v.z), w = math.abs(v.w) };
-        public static fProxy4 max(fProxy4 a, fProxy4 b)
-            => new fProxy4 { x = math.max(a.x, b.x), y = math.max(a.y, b.y), z = math.max(a.z, b.z), w = math.max(a.w, b.w) };
-        public static fProxy4 min(fProxy4 a, fProxy4 b)
-            => new fProxy4 { x = math.min(a.x, b.x), y = math.min(a.y, b.y), z = math.min(a.z, b.z), w = math.min(a.w, b.w) };
-        // Matches math.select(a, b, c) convention: lane = c ? b : a (b on true).
-        public static fProxy4 select(fProxy4 a, fProxy4 b, bool4 c)
-            => new fProxy4 { x = c.x ? b.x : a.x, y = c.y ? b.y : a.y, z = c.z ? b.z : a.z, w = c.w ? b.w : a.w };
-    }
-
     public struct fProxy2x2 {
 
         public fProxy2 c0;

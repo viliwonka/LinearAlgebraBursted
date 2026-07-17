@@ -54,12 +54,12 @@ namespace LinearAlgebra.Internal
             float4 qacc0 = default, qacc1 = default;
             for (; i + 8 <= n; i += 8)
             {
-                qacc0 += floatM.abs(*(float4*)(a + i));
-                qacc1 += floatM.abs(*(float4*)(a + i + 4));
+                qacc0 += math.abs(*(float4*)(a + i));
+                qacc1 += math.abs(*(float4*)(a + i + 4));
             }
             if (i + 4 <= n)
             {
-                qacc0 += floatM.abs(*(float4*)(a + i));
+                qacc0 += math.abs(*(float4*)(a + i));
                 i += 4;
             }
             float4 qacc = qacc0 + qacc1;
@@ -139,15 +139,15 @@ namespace LinearAlgebra.Internal
             float4 qacc0 = default, qacc1 = default;
             for (; i + 8 <= n; i += 8)
             {
-                qacc0 = floatM.max(qacc0, floatM.abs(*(float4*)(a + i)));
-                qacc1 = floatM.max(qacc1, floatM.abs(*(float4*)(a + i + 4)));
+                qacc0 = math.max(qacc0, math.abs(*(float4*)(a + i)));
+                qacc1 = math.max(qacc1, math.abs(*(float4*)(a + i + 4)));
             }
             if (i + 4 <= n)
             {
-                qacc0 = floatM.max(qacc0, floatM.abs(*(float4*)(a + i)));
+                qacc0 = math.max(qacc0, math.abs(*(float4*)(a + i)));
                 i += 4;
             }
-            float4 qacc = floatM.max(qacc0, qacc1);
+            float4 qacc = math.max(qacc0, qacc1);
             float m = math.max(head, math.max(math.max(qacc.x, qacc.y), math.max(qacc.z, qacc.w)));
 
             for (; i < n; i++)

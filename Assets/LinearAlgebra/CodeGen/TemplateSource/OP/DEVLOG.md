@@ -1,6 +1,23 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## UnsafeOP/WideOP: alias fProxy4 + delete the fProxyM/floatM/doubleM shim layer
+- 2026-07-17 | Final step of the alias refactor: no file calls `fProxyM` any more, so deleted class
+  `fProxyM` (`proxyStructs.math.cs`) AND `OP/SimdMath.cs` (`floatM`/`doubleM`) outright.
+  - `UnsafeOP.fProxy.cs`: aliased `fProxy4` -> `Unity.Mathematics.float4` (deleteThis block, replacing the
+    `mathProxies` import) and swapped the 10 `fProxyM.abs/max` accumulator calls (sumAbs/maxAbs) to
+    `math.abs/max` — resolve natively on the real float4/double4. `fProxyW` (265 uses, the wide v256 type)
+    is namespace-local (WideOP.fProxy.cs), unaffected, and NOT aliased/touched.
+  - `WideOP.fProxy.cs`: only touched the two `//!`-commented `emitFor[double]` lines (`fProxyM.abs/max`
+    -> `math.abs/max`); these activate ONLY in the generated double file where `fProxy4`->`double4`, so
+    `math.abs(double4)` is native. Kept the `mathProxies` import (its live `fProxy4` reinterpret casts
+    still use the stub); `fProxyW` itself untouched.
+  - Generated delta is a pure identity rename (`floatM.abs(float4)` was literally `=> math.abs(float4)`):
+    UnsafeOP.float/double.cs + WideOP.double.cs only, byte-diff = `floatM/doubleM.` -> `math.`. Suite
+    6317/6317. The `fProxy4` struct + matrix stubs (`fProxy4x4` etc.) in `proxyStructs.math.cs` STAY —
+    WideOP + the matrix proxies still compile against them; that stub deletion is a later phase.
+    See [[simd-proxy-select-extension]] / docs/dev/spec-alias-simd-proxies.md.
+
 ## QueryOP: alias fProxy4 -> float4/double4 (pilot) instead of extending the stub
 - 2026-07-17 | Better fix for the previous entry's problem. Rather than teaching the `fProxy4` STUB new
   tricks (comparison/select), QueryOP now does `//+deleteThis using fProxy4 = Unity.Mathematics.float4;

@@ -166,7 +166,7 @@ namespace LinearAlgebra.Internal
             //-skipFor
             //+emitFor[double]
             //!fProxy4 av = UnsafeUtility.As<v256, fProxy4>(ref a.v);
-            //!fProxy4 r = fProxyM.abs(av);
+            //!fProxy4 r = math.abs(av);
             //!return new fProxyW { v = UnsafeUtility.As<fProxy4, v256>(ref r) };
             //-emitFor
         }
@@ -186,7 +186,7 @@ namespace LinearAlgebra.Internal
             //+emitFor[double]
             //!fProxy4 av = UnsafeUtility.As<v256, fProxy4>(ref a.v);
             //!fProxy4 bv = UnsafeUtility.As<v256, fProxy4>(ref b.v);
-            //!fProxy4 r = fProxyM.max(av, bv);
+            //!fProxy4 r = math.max(av, bv);
             //!return new fProxyW { v = UnsafeUtility.As<fProxy4, v256>(ref r) };
             //-emitFor
         }

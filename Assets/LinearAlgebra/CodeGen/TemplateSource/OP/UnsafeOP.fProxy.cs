@@ -4,7 +4,10 @@ using Unity.Burst;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Collections;
 //+deleteThis
-using LinearAlgebra.mathProxies; // TEMPLATE-ONLY: fProxy4 stub (-> float4/double4) SIMD accumulators; see matVecDot
+// TEMPLATE-ONLY alias: codegen rewrites the fProxy4 token -> float4 / double4 (real Unity.Mathematics
+// types), so math.abs/max resolve natively on the width-4 accumulators -- no fProxyM shim. fProxyW
+// (the wide v256 type in WideOP.fProxy.cs, same namespace) is separate and unaffected.
+using fProxy4 = Unity.Mathematics.float4;
 //-deleteThis
 
 namespace LinearAlgebra.Internal
@@ -52,12 +55,12 @@ namespace LinearAlgebra.Internal
             fProxy4 qacc0 = default, qacc1 = default;
             for (; i + 8 <= n; i += 8)
             {
-                qacc0 += fProxyM.abs(*(fProxy4*)(a + i));
-                qacc1 += fProxyM.abs(*(fProxy4*)(a + i + 4));
+                qacc0 += math.abs(*(fProxy4*)(a + i));
+                qacc1 += math.abs(*(fProxy4*)(a + i + 4));
             }
             if (i + 4 <= n)
             {
-                qacc0 += fProxyM.abs(*(fProxy4*)(a + i));
+                qacc0 += math.abs(*(fProxy4*)(a + i));
                 i += 4;
             }
             fProxy4 qacc = qacc0 + qacc1;
@@ -137,15 +140,15 @@ namespace LinearAlgebra.Internal
             fProxy4 qacc0 = default, qacc1 = default;
             for (; i + 8 <= n; i += 8)
             {
-                qacc0 = fProxyM.max(qacc0, fProxyM.abs(*(fProxy4*)(a + i)));
-                qacc1 = fProxyM.max(qacc1, fProxyM.abs(*(fProxy4*)(a + i + 4)));
+                qacc0 = math.max(qacc0, math.abs(*(fProxy4*)(a + i)));
+                qacc1 = math.max(qacc1, math.abs(*(fProxy4*)(a + i + 4)));
             }
             if (i + 4 <= n)
             {
-                qacc0 = fProxyM.max(qacc0, fProxyM.abs(*(fProxy4*)(a + i)));
+                qacc0 = math.max(qacc0, math.abs(*(fProxy4*)(a + i)));
                 i += 4;
             }
-            fProxy4 qacc = fProxyM.max(qacc0, qacc1);
+            fProxy4 qacc = math.max(qacc0, qacc1);
             fProxy m = math.max(head, math.max(math.max(qacc.x, qacc.y), math.max(qacc.z, qacc.w)));
 
             for (; i < n; i++)
