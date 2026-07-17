@@ -73,11 +73,12 @@ namespace LinearAlgebra.Internal
             
             if (X86.Avx.IsAvxSupported)
                 return new floatW { v = X86.Avx.mm256_sub_ps(a.v, b.v) };
-            return new floatW { v = new v256(
-                a.v.Float0 - b.v.Float0, a.v.Float1 - b.v.Float1,
-                a.v.Float2 - b.v.Float2, a.v.Float3 - b.v.Float3,
-                a.v.Float4 - b.v.Float4, a.v.Float5 - b.v.Float5,
-                a.v.Float6 - b.v.Float6, a.v.Float7 - b.v.Float7) };
+            {
+                float4x2 av = UnsafeUtility.As<v256, float4x2>(ref a.v);
+                float4x2 bv = UnsafeUtility.As<v256, float4x2>(ref b.v);
+                float4x2 rr; rr.c0 = av.c0 - bv.c0; rr.c1 = av.c1 - bv.c1;
+                return new floatW { v = UnsafeUtility.As<float4x2, v256>(ref rr) };
+            }
             
             
         }
@@ -88,11 +89,12 @@ namespace LinearAlgebra.Internal
             
             if (X86.Avx.IsAvxSupported)
                 return new floatW { v = X86.Avx.mm256_add_ps(a.v, b.v) };
-            return new floatW { v = new v256(
-                a.v.Float0 + b.v.Float0, a.v.Float1 + b.v.Float1,
-                a.v.Float2 + b.v.Float2, a.v.Float3 + b.v.Float3,
-                a.v.Float4 + b.v.Float4, a.v.Float5 + b.v.Float5,
-                a.v.Float6 + b.v.Float6, a.v.Float7 + b.v.Float7) };
+            {
+                float4x2 av = UnsafeUtility.As<v256, float4x2>(ref a.v);
+                float4x2 bv = UnsafeUtility.As<v256, float4x2>(ref b.v);
+                float4x2 rr; rr.c0 = av.c0 + bv.c0; rr.c1 = av.c1 + bv.c1;
+                return new floatW { v = UnsafeUtility.As<float4x2, v256>(ref rr) };
+            }
             
             
         }
@@ -103,11 +105,12 @@ namespace LinearAlgebra.Internal
             
             if (X86.Avx.IsAvxSupported)
                 return new floatW { v = X86.Avx.mm256_mul_ps(a.v, b.v) };
-            return new floatW { v = new v256(
-                a.v.Float0 * b.v.Float0, a.v.Float1 * b.v.Float1,
-                a.v.Float2 * b.v.Float2, a.v.Float3 * b.v.Float3,
-                a.v.Float4 * b.v.Float4, a.v.Float5 * b.v.Float5,
-                a.v.Float6 * b.v.Float6, a.v.Float7 * b.v.Float7) };
+            {
+                float4x2 av = UnsafeUtility.As<v256, float4x2>(ref a.v);
+                float4x2 bv = UnsafeUtility.As<v256, float4x2>(ref b.v);
+                float4x2 rr; rr.c0 = av.c0 * bv.c0; rr.c1 = av.c1 * bv.c1;
+                return new floatW { v = UnsafeUtility.As<float4x2, v256>(ref rr) };
+            }
             
             
         }
@@ -118,11 +121,12 @@ namespace LinearAlgebra.Internal
             
             if (X86.Avx.IsAvxSupported)
                 return new floatW { v = X86.Avx.mm256_div_ps(a.v, b.v) };
-            return new floatW { v = new v256(
-                a.v.Float0 / b.v.Float0, a.v.Float1 / b.v.Float1,
-                a.v.Float2 / b.v.Float2, a.v.Float3 / b.v.Float3,
-                a.v.Float4 / b.v.Float4, a.v.Float5 / b.v.Float5,
-                a.v.Float6 / b.v.Float6, a.v.Float7 / b.v.Float7) };
+            {
+                float4x2 av = UnsafeUtility.As<v256, float4x2>(ref a.v);
+                float4x2 bv = UnsafeUtility.As<v256, float4x2>(ref b.v);
+                float4x2 rr; rr.c0 = av.c0 / bv.c0; rr.c1 = av.c1 / bv.c1;
+                return new floatW { v = UnsafeUtility.As<float4x2, v256>(ref rr) };
+            }
             
             
         }
@@ -133,9 +137,12 @@ namespace LinearAlgebra.Internal
             
             if (X86.Avx.IsAvxSupported)
                 return new floatW { v = X86.Avx.mm256_and_ps(a.v, X86.Avx.mm256_set1_ps(math.asfloat(0x7FFFFFFF))) };
-            return new floatW { v = new v256(
-                math.abs(a.v.Float0), math.abs(a.v.Float1), math.abs(a.v.Float2), math.abs(a.v.Float3),
-                math.abs(a.v.Float4), math.abs(a.v.Float5), math.abs(a.v.Float6), math.abs(a.v.Float7)) };
+            
+            float4x2 av = UnsafeUtility.As<v256, float4x2>(ref a.v);
+            float4x2 rr; rr.c0 = math.abs(av.c0); rr.c1 = math.abs(av.c1);
+            return new floatW { v = UnsafeUtility.As<float4x2, v256>(ref rr) };
+            
+            
             
             
         }
@@ -146,11 +153,13 @@ namespace LinearAlgebra.Internal
             
             if (X86.Avx.IsAvxSupported)
                 return new floatW { v = X86.Avx.mm256_max_ps(a.v, b.v) };
-            return new floatW { v = new v256(
-                math.max(a.v.Float0, b.v.Float0), math.max(a.v.Float1, b.v.Float1),
-                math.max(a.v.Float2, b.v.Float2), math.max(a.v.Float3, b.v.Float3),
-                math.max(a.v.Float4, b.v.Float4), math.max(a.v.Float5, b.v.Float5),
-                math.max(a.v.Float6, b.v.Float6), math.max(a.v.Float7, b.v.Float7)) };
+            
+            float4x2 av = UnsafeUtility.As<v256, float4x2>(ref a.v);
+            float4x2 bv = UnsafeUtility.As<v256, float4x2>(ref b.v);
+            float4x2 rr; rr.c0 = math.max(av.c0, bv.c0); rr.c1 = math.max(av.c1, bv.c1);
+            return new floatW { v = UnsafeUtility.As<float4x2, v256>(ref rr) };
+            
+            
             
             
         }
@@ -178,11 +187,13 @@ namespace LinearAlgebra.Internal
             
             if (X86.Avx.IsAvxSupported)
                 return new floatW { v = X86.Avx.mm256_min_ps(a.v, b.v) };
-            return new floatW { v = new v256(
-                math.min(a.v.Float0, b.v.Float0), math.min(a.v.Float1, b.v.Float1),
-                math.min(a.v.Float2, b.v.Float2), math.min(a.v.Float3, b.v.Float3),
-                math.min(a.v.Float4, b.v.Float4), math.min(a.v.Float5, b.v.Float5),
-                math.min(a.v.Float6, b.v.Float6), math.min(a.v.Float7, b.v.Float7)) };
+            
+            float4x2 av = UnsafeUtility.As<v256, float4x2>(ref a.v);
+            float4x2 bv = UnsafeUtility.As<v256, float4x2>(ref b.v);
+            float4x2 rr; rr.c0 = math.min(av.c0, bv.c0); rr.c1 = math.min(av.c1, bv.c1);
+            return new floatW { v = UnsafeUtility.As<float4x2, v256>(ref rr) };
+            
+            
             
             
         }

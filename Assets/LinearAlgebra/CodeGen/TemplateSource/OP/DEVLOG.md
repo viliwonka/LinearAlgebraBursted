@@ -194,6 +194,23 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
     LOBPCG lines 154/263 (Rayleigh/B-norm single dots) are O(k·n), inside the big non-unsafe iteration
     method — skipped to avoid widening its unsafe scope for marginal gain.
 
+## fProxyW: width-4-halves float fallback (NEON on ARM)
+- 2026-07-17 | The float (8-lane) non-AVX fallback for the element-wise ops built a `new v256(op(Float0),
+  … op(Float7))` from 8 scalar lane ops, which does not reliably auto-vectorize on ARM (scalar NEON). Rewrote
+  each as two width-4 `float4x2` halves (`c0` = lanes 0–3, `c1` = lanes 4–7) so Burst emits NEON on ARM;
+  x86 still takes the `if (IsAvxSupported)` mm256 path unchanged. Bit-identical — same per-lane op, same
+  lane mapping, no fold reorder. `float4x2` is exactly two contiguous `float4` (32 B = one v256); the
+  `fProxy4x2` stub already existed (proxyStructs.math.cs), so no new scaffolding. Two mechanics per op:
+  - `+ - * /`: stub `fProxy4` has these operators, so the two-halves body compiles in the template
+    assembly directly (kept in a `{ }` block to avoid a CS0136 clash with the double path's `av`/`bv`).
+  - `Abs/Max/Min`: stub `fProxy4` has NO `math.abs/max/min` overload, so the two-halves body is an
+    `emitFor[float]` (`//!`) block that only materializes in the generated float file (where `fProxy4`->
+    `float4`), with the old 8-scalar form kept behind `deleteThis` purely so the template assembly compiles.
+  - `HSum`/`HMax`/`HMin` unchanged — horizontal folds run once per reduction and their order is the frozen
+    numeric contract. `Splat`/`Load`/`Store` unchanged (broadcast/memcpy lower fine already).
+  - Untestable here (x86 CI always takes the AVX path; no ARM runner) but bit-identical by construction and
+    the whole suite compiles + passes. Perf claim is ARM-only and unmeasured.
+
 ## UnsafeOP/WideOP: alias fProxy4 + delete the fProxyM/floatM/doubleM shim layer
 - 2026-07-17 | Final step of the alias refactor: no file calls `fProxyM` any more, so deleted class
   `fProxyM` (`proxyStructs.math.cs`) AND `OP/SimdMath.cs` (`floatM`/`doubleM`) outright.
