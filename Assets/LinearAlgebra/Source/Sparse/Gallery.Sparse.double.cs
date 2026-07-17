@@ -219,5 +219,111 @@ namespace LinearAlgebra.Gallery
 
             return builder.ToBSR(ref arena);
         }
+
+        /// <summary>
+        /// Penalty-pinned 3D grid truss stiffness matrix: (nx+1)×(ny+1)×(nz+1) nodes on a
+        /// unit-spaced grid (nx × ny bays in plan, nz stories), 3 translational dof per node
+        /// (N = 3·nodeCount; nx=ny=nz=1 gives the minimal N=24 unit cube). Assembled from axial
+        /// bars (per-bar 3×3 stiffness blocks (EA/L)·uuᵀ): vertical columns on every grid line,
+        /// X/Y beams plus one floor diagonal per panel at every level ≥ 1, and one wall brace per
+        /// perimeter panel per story. Every base (level-0) node is pinned by adding
+        /// <paramref name="penalty"/> to its three diagonal entries. Symmetric positive-definite
+        /// for EA &gt; 0 and penalty &gt; 0; its conditioning grows with penalty/EA, making it the
+        /// penalty-conditioned SPD stress case for single-precision eigensolvers. Returned as
+        /// symmetric 3×3-block BSR; use <see cref="doubleBSR.ToDense"/> for the dense form.
+        /// </summary>
+        /// <param name="nx">Bays in x (plan). Must be ≥ 1.</param>
+        /// <param name="ny">Bays in y (plan). Must be ≥ 1.</param>
+        /// <param name="nz">Stories (vertical bays). Must be ≥ 1.</param>
+        /// <param name="EA">Axial bar stiffness (bar constant is EA/L). Must be &gt; 0.</param>
+        /// <param name="penalty">Diagonal penalty pinning the base nodes. Must be &gt; 0.</param>
+        public static doubleBSR doublePenalizedGrid3D(this ref Arena arena, int nx, int ny, int nz, double EA, double penalty)
+        {
+            if (nx < 1 || ny < 1 || nz < 1)
+                throw new ArgumentException("doublePenalizedGrid3D: nx/ny/nz must be >= 1");
+            if (!(EA > (double)0))
+                throw new ArgumentException("doublePenalizedGrid3D: EA must be > 0");
+            if (!(penalty > (double)0))
+                throw new ArgumentException("doublePenalizedGrid3D: penalty must be > 0");
+
+            int NWx = nx + 1, NWy = ny + 1, levels = nz + 1;
+            int nb = NWx * NWy * levels;
+
+            int barCount = NWx * NWy * nz                      // columns
+                         + nz * (nx * NWy + ny * NWx + nx * ny) // beams + floor diagonals
+                         + nz * (2 * nx + 2 * ny);              // wall braces
+            var builder = arena.doubleBSRBuilder(nb, nb, 3, 3, nb + 3 * barCount);
+
+            int Node(int i, int j, int l) => (l * NWy + j) * NWx + i;
+
+            void AddBar(int a, int b)
+            {
+                int ai = a % NWx, aj = (a / NWx) % NWy, al = a / (NWx * NWy);
+                int bi = b % NWx, bj = (b / NWx) % NWy, bl = b / (NWx * NWy);
+                double dx = (double)(bi - ai), dy = (double)(bj - aj), dz = (double)(bl - al);
+                double L = math.sqrt(dx * dx + dy * dy + dz * dz);
+                double ux = dx / L, uy = dy / L, uz = dz / L;
+                double kBar = EA / L;
+                int lo = math.min(a, b), hi = math.max(a, b);
+                for (int r = 0; r < 3; r++)
+                {
+                    double ur = r == 0 ? ux : (r == 1 ? uy : uz);
+                    for (int c = 0; c < 3; c++)
+                    {
+                        double uc = c == 0 ? ux : (c == 1 ? uy : uz);
+                        double v = kBar * ur * uc;
+                        builder.AddValue(3 * a + r, 3 * a + c, v);
+                        builder.AddValue(3 * b + r, 3 * b + c, v);
+                        builder.AddValue(3 * hi + r, 3 * lo + c, -v);
+                    }
+                }
+            }
+
+            // vertical columns on every grid line
+            for (int l = 0; l < nz; l++)
+                for (int j = 0; j < NWy; j++)
+                    for (int i = 0; i < NWx; i++)
+                        AddBar(Node(i, j, l), Node(i, j, l + 1));
+
+            // X/Y beams + one floor diagonal per panel, at every level >= 1
+            for (int l = 1; l <= nz; l++)
+            {
+                for (int j = 0; j < NWy; j++)
+                    for (int i = 0; i < nx; i++)
+                        AddBar(Node(i, j, l), Node(i + 1, j, l));
+                for (int j = 0; j < ny; j++)
+                    for (int i = 0; i < NWx; i++)
+                        AddBar(Node(i, j, l), Node(i, j + 1, l));
+                for (int j = 0; j < ny; j++)
+                    for (int i = 0; i < nx; i++)
+                        AddBar(Node(i, j, l), Node(i + 1, j + 1, l));
+            }
+
+            // one brace per perimeter wall panel per story (all rising one story across one bay)
+            for (int s = 0; s < nz; s++)
+            {
+                for (int i = 0; i < nx; i++)
+                {
+                    AddBar(Node(i, 0, s), Node(i + 1, 0, s + 1));
+                    AddBar(Node(i, ny, s), Node(i + 1, ny, s + 1));
+                }
+                for (int j = 0; j < ny; j++)
+                {
+                    AddBar(Node(0, j, s), Node(0, j + 1, s + 1));
+                    AddBar(Node(nx, j, s), Node(nx, j + 1, s + 1));
+                }
+            }
+
+            // penalty pins: every base (level-0) node's three diagonal entries
+            for (int j = 0; j < NWy; j++)
+                for (int i = 0; i < NWx; i++)
+                {
+                    int node = Node(i, j, 0);
+                    for (int d = 0; d < 3; d++)
+                        builder.AddValue(3 * node + d, 3 * node + d, penalty);
+                }
+
+            return builder.ToBSRSymmetric(ref arena);
+        }
     }
 }

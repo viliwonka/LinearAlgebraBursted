@@ -1,6 +1,14 @@
 # DEVLOG — Sparse
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Gallery.Sparse: fProxyPenalizedGrid3D
+- 2026-07-17 | Added for the LOBPCG false-convergence repro (docs/dev/spec-lobpcg-robustness.md
+  §D.1): a self-contained port of the BuildingFrame demo's truss topology (columns, X/Y beams,
+  floor diagonals, perimeter wall braces, penalty-pinned base) so tests don't depend on demo code.
+  Only a BSR variant exists — the spec asked for "dense + BSR", but C# cannot overload on return
+  type with identical parameters (fProxyMxN vs fProxyBSR, CS0111); the dense form is
+  `ToDense(ref arena)`, which handles symmetric lower-block storage.
+
 ## fProxyBSRBuilder.cs
 - 2026-07-13 | Type doc and ToBSR's doc both called value-restamping-on-a-fixed-pattern "a later
   phase"/"Phase 1 pattern-edit scope" — stale: BuildAssemblyCache + Refill
