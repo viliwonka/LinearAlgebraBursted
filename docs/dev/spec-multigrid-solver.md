@@ -9,6 +9,52 @@ User ask: "a generic multigrid solver, like AMG or matrix-free multigrid." Kille
 MG-preconditioned CG (`Krylov.pcg` with a V-cycle as `TPre`) — optimal O(n) solves with
 grid-independent iteration counts, where plain CG/PCG-Jacobi iteration counts grow with n.
 
+## ⚠️ REVISED RECOMMENDATION (post-research 2026-07-18) — SUPERSEDES the phasing below; PENDING USER REVIEW
+
+A web survey of MG flavours + the fastest implementations (hypre, AmgX, AMGCL, MueLu, PETSc GAMG,
+deal.II, PyAMG) against THIS library's constraints (cross-arch determinism, SIMD-first, BSR, **no
+spGEMM yet**, targets = structured Poisson AND **FEM elasticity / penalty-conditioned truss-frame**)
+changes the recommended MVP. **The geometric-MG MVP below is DEMOTED to an optional throwaway** —
+it validates the cycle/PCG plumbing but does NOT serve the elasticity target (vector problems whose
+smooth error is the rigid-body near-nullspace; geometric MG and classical Ruge–Stüben AMG cannot
+represent those, so iteration counts blow up under refinement).
+
+**Recommended MVP: unsmoothed nodal-aggregation AMG, rigid-body near-nullspace tentative
+prolongator, Chebyshev smoother, K-cycle, as a Flexible-CG (FCG) preconditioner.** Rationale:
+- **Elasticity-capable**: the tentative prolongator `T` carries the rigid-body modes per aggregate
+  (2D: 3, 3D: 6) — the decisive SA property — without SA's cost.
+- **Dodges the missing spGEMM**: with *unsmoothed* `T` (piecewise-constant over aggregates), the
+  Galerkin coarse operator `RAP = TᵀAT` collapses to a **segmented reduction over BSR nonzeros with
+  a fixed accumulation order** (deterministic) — no general sparse matrix-matrix product needed.
+  This is the single biggest reason to start here rather than SA.
+- **Deterministic + SIMD smoother**: **Chebyshev(-Jacobi)** is pure spMV + AXPY + diagonal-scale
+  (the modern default in PETSc GAMG / deal.II / MueLu precisely because Gauss–Seidel is sequential).
+  Needs a per-level `λ_max(D⁻¹A)` estimate via the ∞-norm row-sum bound or a pinned-iteration
+  Lanczos with fixed-order reductions. `ℓ1`-Jacobi is the robust fallback if the eigen-estimate is
+  deferred.
+- **K-cycle** (Krylov acceleration per level) recovers the grid-independence that unsmoothed
+  aggregation loses under a plain V-cycle → the outer solver must be **Flexible CG**, not plain PCG
+  (small, reusable addition; the preconditioner becomes variable/nonlinear).
+
+**End-state (Tier 2): Smoothed Aggregation (SA) + Chebyshev + plain V-cycle**, once a **deterministic
+spGEMM** (fixed merge order) exists — that is the one genuinely new subsystem, reusable beyond AMG.
+Add smoothed prolongation `P = (I − ωD⁻¹A)T`; MVP and end-state share ~80% of the code (aggregation,
+tentative `T`, Chebyshev, cycle driver, FCG); only spGEMM + prolongator-smoothing differ.
+
+**No-regret building blocks to add FIRST** (useful standalone, headless-testable, independent of the
+flavour verdict): (1) **Chebyshev(-Jacobi) smoother/preconditioner** — also a valid `pcg` `TPre`;
+(2) **Flexible CG (`fcg`)** — a clean variant of the existing `cg`/`pcg`. These de-risk the AMG and
+stand on their own.
+
+Model the implementation on **AMGCL** (header-only, fast, cleanly factored coarsen/relax/cycle
+policies — maps onto BSR); read **PyAMG** for algorithm clarity; take the `ℓ1`-smoother idea from
+**hypre** and default Chebyshev parameters from **PETSc GAMG / deal.II**. Sources in the research
+appendix at the bottom of this file.
+
+Everything from "## Phasing decision" down is Fable's original geometric-first plan, KEPT as the
+throwaway-MVP reference and because its cycle-driver / smoother / transfer / SolveInfo / Arena-safe
+hierarchy design carries over verbatim to the aggregation MVP.
+
 ## Phasing decision
 
 - **Phase 1 (MVP): matrix-free GEOMETRIC multigrid** for the scalar Dirichlet Laplacian / Poisson
@@ -383,3 +429,24 @@ Everything stays in + − * / sqrt. Same input → bit-identical hierarchy and s
 - Literature: Briggs–Henson–McCormick "A Multigrid Tutorial" 2nd ed. (Phase 1 algorithms verbatim);
   Vaněk–Mandel–Brezina 1996 (SA); PyAMG `smoothed_aggregation_solver` defaults (behavioral
   reference); Tatebe 1993 (MG as PCG preconditioner, symmetry requirement).
+
+## Research appendix (flavour survey 2026-07-18) — sources
+
+Empirical/perf claims behind the "REVISED RECOMMENDATION" section:
+- AMG survey (flavour taxonomy): https://multigrid.org/xu/paper/xu2017algebraic.pdf
+- Adaptive AMG for structural mechanics / rigid-body near-nullspace: https://arxiv.org/pdf/1902.01715
+- PETSc GAMG (SA, Chebyshev default, near-nullspace): https://web.cels.anl.gov/projects/petsc/vault/petsc-3.20/docs/manualpages/PC/PCGAMG.html
+- DOLFINx elasticity-AMG demo (6 rigid-body modes): https://docs.fenicsproject.org/dolfinx/main/python/demos/demo_elasticity.html
+- Adams et al., polynomial vs Gauss–Seidel smoothing (JCP 2003): https://ui.adsabs.harvard.edu/abs/2003JCoPh.188..593A/abstract
+- Baker/Falgout et al., ℓ1 smoothers for ultra-parallel MG: https://www.osti.gov/servlets/purl/1117969
+- deal.II matrix-free Chebyshev GMG: https://arxiv.org/pdf/1910.13247
+- MueLu User's Guide (SA level-build, near-nullspace API): https://trilinos.github.io/pdfs/mueluguide.pdf
+- hypre BoomerAMG docs (ℓ1-GS/Jacobi, coarsening): https://github.com/hypre-space/hypre/blob/master/src/docs/usr-manual/solvers-boomeramg.rst
+- AMGCL paper + CPU benchmarks (model reference): https://arxiv.org/pdf/1811.05704 ; https://amgcl.readthedocs.io/en/latest/benchmarks.html
+- Notay AGMG — unsmoothed aggregation + K-cycle (ETNA 2010): https://etna.ricam.oeaw.ac.at/vol.37.2010/pp123-146.dir/pp123-146.pdf
+- Sparse triple product (RAP) in MG: https://arxiv.org/pdf/1905.08423
+- PyAMG (algorithm reference): https://github.com/pyamg/pyamg
+
+Bottom line: determinism + no-spGEMM + elasticity ⇒ **unsmoothed nodal aggregation + RBM tentative
+prolongator + Chebyshev + K-cycle as an FCG preconditioner** (MVP), → **SA + Chebyshev + V-cycle**
+once a deterministic spGEMM exists.
