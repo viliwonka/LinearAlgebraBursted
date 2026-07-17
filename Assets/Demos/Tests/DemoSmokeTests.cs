@@ -2,6 +2,7 @@ using LinearAlgebra;
 using LinearAlgebra.Control;
 using LinearAlgebra.Sparse;
 using NUnit.Framework;
+using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
@@ -97,6 +98,45 @@ namespace LinearAlgebraDemos.Tests
 
             A.Dispose(); b.Dispose(); c.Dispose(); x.Dispose();
             senses.Dispose(); outStats.Dispose(); basis.Dispose(); cache.Dispose();
+        }
+
+        [BurstCompile(CompileSynchronously = true)]
+        struct LqrWarmRunJob : IJob
+        {
+            public floatMxN A, B, Q, R, K;
+            public floatLQRState State;
+            public NativeArray<int> Out;   // [0] = converged flag
+            public void Execute()
+            {
+                var info = LQR.lqr(in A, in B, in Q, in R, ref K, ref State);
+                Out[0] = info.status == RiccatiStatus.Converged ? 1 : 0;
+            }
+        }
+
+        // Decisive regression for the warm-state native-mirror: a plain .Run() executes Execute on a
+        // BY-VALUE copy of the job, so a plain-bool warm flag set inside would be dropped on return.
+        // floatLQRState.populated is native-backed (NativeReference), so the write survives the copy and
+        // is visible on the caller's `state` here. This FAILS on the pre-fix (plain-bool) code.
+        [Test]
+        public void LqrWarmState_SurvivesRunByValueCopy()
+        {
+            // Published discrete double integrator (same instance as the LQR literature test): converges.
+            var A = new floatMxN(2, 2, Allocator.TempJob); A[0, 0] = 1; A[0, 1] = 1; A[1, 0] = 0; A[1, 1] = 1;
+            var B = new floatMxN(2, 1, Allocator.TempJob); B[0, 0] = 0; B[1, 0] = 1;
+            var Q = new floatMxN(2, 2, Allocator.TempJob); Q[0, 0] = 1; Q[0, 1] = 0; Q[1, 0] = 0; Q[1, 1] = 1;
+            var R = new floatMxN(1, 1, Allocator.TempJob); R[0, 0] = 1;
+            var K = new floatMxN(1, 2, Allocator.TempJob);
+            var state = new floatLQRState(2, Allocator.TempJob);
+            var outFlag = new NativeArray<int>(1, Allocator.TempJob);
+
+            var job = new LqrWarmRunJob { A = A, B = B, Q = Q, R = R, K = K, State = state, Out = outFlag };
+            Assert.IsFalse(state.populated, "fresh LQR state should not be populated");
+            job.Run();   // plain .Run() -> Execute runs on a by-value copy of `job`
+            Assert.IsTrue(outFlag[0] == 1, "cold LQR solve did not converge");
+            Assert.IsTrue(state.populated,
+                "warm state 'populated' did not survive the .Run() by-value copy -- a native-backed flag is what makes this pass; a plain bool would be lost");
+
+            A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); K.Dispose(); state.Dispose(); outFlag.Dispose();
         }
 
         [Test]
