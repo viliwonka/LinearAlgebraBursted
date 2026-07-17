@@ -1,6 +1,17 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## NormsOP: row norms routed to SIMD reduction kernels
+- 2026-07-17 | Same follow-up as StatsCore's row reductions (see Statistics/DEVLOG.md). `normalizeRows`
+  (L1/L2/Linf per-row norm) and `matrixLInf` (max abs row-sum) were hand-rolled scalar reductions —
+  serial-locked under Strict. Rerouted: L1→`UnsafeOP.sumAbs`, L2→`sqrt(UnsafeOP.vecDot)`, matrixLInf
+  inner→`sumAbs` (all summation-order changes → deterministic but not bit-identical to the prior serial
+  sum; owner-approved pre-1.0 baseline change). **Linf→`UnsafeOP.maxAbs` is BIT-IDENTICAL** (max is
+  associative/exact — no rounding to reorder), a free win needing no waiver. The `row[c] *= inv` apply
+  loop is a bit-identical elementwise hoist. `normalizeColumns`/`matrixL1` left scalar (column-inner =
+  strided). Suite 6317/6317. No NormsOP benchmark (accepted gap); the kernels are the same ones
+  measured in StatsBenchmark (rowSum 0.35→0.035 ms at N=1024).
+
 ## LU.decompNoPivot: raw-pointer hoist (spec-raw-pointer-hoist-pass batch 1)
 - 2026-07-17 | `decompNoPivot`'s trailing-row elimination inner loop `U[j,i] -= Ljk*U[k,i]` was still
   on the `fProxyMxN` struct indexer while its pivoted siblings (`decomp`/blocked/`decompInPlace`)

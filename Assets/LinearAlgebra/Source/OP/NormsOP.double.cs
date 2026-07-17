@@ -108,38 +108,26 @@ namespace LinearAlgebra
         {
             if (A.M_Rows == 0 || A.N_Cols == 0) return;
 
-            for (int r = 0; r < A.M_Rows; r++)
+            unsafe
             {
-                double rowNorm;
-                switch (n)
+                double* ap = A.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int r = 0; r < A.M_Rows; r++)
                 {
-                    case Norm.L1:
+                    double* row = ap + (long)r * nc;
+                    double rowNorm;
+                    switch (n)
                     {
-                        double s = 0f;
-                        for (int c = 0; c < A.N_Cols; c++) s += math.abs(A[r, c]);
-                        rowNorm = s;
-                        break;
+                        case Norm.L1:   rowNorm = UnsafeOP.sumAbs(row, nc); break;
+                        case Norm.L2:   rowNorm = math.sqrt(UnsafeOP.vecDot(row, row, nc)); break;
+                        default:        rowNorm = UnsafeOP.maxAbs(row, nc); break; // Linf
                     }
-                    case Norm.L2:
-                    {
-                        double s = 0f;
-                        for (int c = 0; c < A.N_Cols; c++) s += A[r, c] * A[r, c];
-                        rowNorm = math.sqrt(s);
-                        break;
-                    }
-                    default: // Linf
-                    {
-                        double s = 0f;
-                        for (int c = 0; c < A.N_Cols; c++) s = math.max(s, math.abs(A[r, c]));
-                        rowNorm = s;
-                        break;
-                    }
+
+                    if (!(rowNorm > 0f)) continue; // zero-norm row → leave unchanged
+
+                    double inv = (double)1f / rowNorm;
+                    for (int c = 0; c < nc; c++) row[c] *= inv;
                 }
-
-                if (!(rowNorm > 0f)) continue; // zero-norm row → leave unchanged
-
-                double inv = (double)1f / rowNorm;
-                for (int c = 0; c < A.N_Cols; c++) A[r, c] *= inv;
             }
         }
 
@@ -204,13 +192,16 @@ namespace LinearAlgebra
         public static double matrixLInf(in doubleMxN A)
         {
             double best = (double)0;
-            for (int i = 0; i < A.M_Rows; i++)
+            unsafe
             {
-                double rowSum = (double)0;
-                for (int j = 0; j < A.N_Cols; j++)
-                    rowSum += math.abs(A[i, j]);
-                if (rowSum > best)
-                    best = rowSum;
+                double* ap = A.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int i = 0; i < A.M_Rows; i++)
+                {
+                    double rowSum = UnsafeOP.sumAbs(ap + (long)i * nc, nc);
+                    if (rowSum > best)
+                        best = rowSum;
+                }
             }
             return best;
         }

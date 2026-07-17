@@ -104,38 +104,26 @@ namespace LinearAlgebra
         {
             if (A.M_Rows == 0 || A.N_Cols == 0) return;
 
-            for (int r = 0; r < A.M_Rows; r++)
+            unsafe
             {
-                fProxy rowNorm;
-                switch (n)
+                fProxy* ap = A.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int r = 0; r < A.M_Rows; r++)
                 {
-                    case Norm.L1:
+                    fProxy* row = ap + (long)r * nc;
+                    fProxy rowNorm;
+                    switch (n)
                     {
-                        fProxy s = 0f;
-                        for (int c = 0; c < A.N_Cols; c++) s += math.abs(A[r, c]);
-                        rowNorm = s;
-                        break;
+                        case Norm.L1:   rowNorm = UnsafeOP.sumAbs(row, nc); break;
+                        case Norm.L2:   rowNorm = math.sqrt(UnsafeOP.vecDot(row, row, nc)); break;
+                        default:        rowNorm = UnsafeOP.maxAbs(row, nc); break; // Linf
                     }
-                    case Norm.L2:
-                    {
-                        fProxy s = 0f;
-                        for (int c = 0; c < A.N_Cols; c++) s += A[r, c] * A[r, c];
-                        rowNorm = math.sqrt(s);
-                        break;
-                    }
-                    default: // Linf
-                    {
-                        fProxy s = 0f;
-                        for (int c = 0; c < A.N_Cols; c++) s = math.max(s, math.abs(A[r, c]));
-                        rowNorm = s;
-                        break;
-                    }
+
+                    if (!(rowNorm > 0f)) continue; // zero-norm row → leave unchanged
+
+                    fProxy inv = (fProxy)1f / rowNorm;
+                    for (int c = 0; c < nc; c++) row[c] *= inv;
                 }
-
-                if (!(rowNorm > 0f)) continue; // zero-norm row → leave unchanged
-
-                fProxy inv = (fProxy)1f / rowNorm;
-                for (int c = 0; c < A.N_Cols; c++) A[r, c] *= inv;
             }
         }
 
@@ -200,13 +188,16 @@ namespace LinearAlgebra
         public static fProxy matrixLInf(in fProxyMxN A)
         {
             fProxy best = (fProxy)0;
-            for (int i = 0; i < A.M_Rows; i++)
+            unsafe
             {
-                fProxy rowSum = (fProxy)0;
-                for (int j = 0; j < A.N_Cols; j++)
-                    rowSum += math.abs(A[i, j]);
-                if (rowSum > best)
-                    best = rowSum;
+                fProxy* ap = A.Data.Ptr;
+                int nc = A.N_Cols;
+                for (int i = 0; i < A.M_Rows; i++)
+                {
+                    fProxy rowSum = UnsafeOP.sumAbs(ap + (long)i * nc, nc);
+                    if (rowSum > best)
+                        best = rowSum;
+                }
             }
             return best;
         }
