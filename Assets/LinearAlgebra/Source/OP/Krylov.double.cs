@@ -11,11 +11,13 @@ namespace LinearAlgebra
 {
     public static partial class Krylov {
 
-        // Shared factory for the square-solver diagnostics struct (cg/pcg/minres/biCGStab/cgne).
-        // rnorm is normally a value the solver already holds -- a tracked residual norm, or a
-        // single dot on its live residual r -- never a fresh A*x. EXCEPTION: cg/pcg/cgne verify a
-        // claimed Converged exit with one fresh r = b-Ax before trusting it, so rnorm on that path
-        // is the verified value. minres/biCGStab do not do this verification.
+        // Shared factory for the square-solver diagnostics struct (cg/pcg/minres/pminres/
+        // biCGStab/cgne). rnorm is normally a value the solver already holds -- a tracked
+        // residual norm, or a single dot on its live residual r -- never a fresh A*x. EXCEPTION:
+        // cg/pcg/cgne verify a claimed Converged exit with one fresh r = b-Ax before trusting it,
+        // so rnorm on that path is the verified value. pminres does the same, PLUS one fresh r on
+        // a MaxIterations exit -- its recursively tracked phibar is the M⁻¹-weighted residual
+        // once preconditioned, not ‖b-Ax‖. minres/biCGStab do not do this verification.
         static SolveInfo MakeSolveInfo(IterativeSolveStatus status, int iterations, double rnorm)
             => new SolveInfo { rnorm = rnorm, iterations = iterations, status = status };
 

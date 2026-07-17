@@ -1,0 +1,455 @@
+using System;
+using LinearAlgebra;
+using LinearAlgebra.Gallery;
+using LinearAlgebra.Sparse;
+using NUnit.Framework;
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Jobs;
+using Unity.Mathematics;
+
+// Preconditioned MINRES (Krylov.pminres, Paige-Saunders driven by z = M^-1 r). Mirrors the pcg
+// overload ladder (generic core + arena-alloc + default-params, then the same three rungs for the
+// BSR + BlockJacobi/SSOR/IC0 concrete pairs) and minres's indefinite regime. Coverage:
+//   (a) SPD system + Jacobi/diagonal preconditioner converges to the same answer as a direct LU
+//       solve (fProxyIdentityPreconditioner baseline + real fProxyBlockJacobi over a 1x1-block BSR).
+//   (b) Symmetric INDEFINITE system (Clement gallery, eigenvalues {n-1,..,-(n-1)}): plain CG's
+//       curvature guard trips / it never converges, while pminres DOES converge and recovers xTrue.
+//   (c) A real preconditioner (block-Jacobi) cuts pminres's iteration count vs plain minres on an
+//       ill-conditioned SPD case (2D Laplacian), by a meaningful margin (>=10%).
+//   (d) Guard / early-exit paths: zero RHS, already-converged x0, aliased scratch, wrong-length
+//       scratch, and a non-square operator.
+//
+// Numeric-heavy cases run inside a [BurstCompile] IJob (matches every other Krylov/sparse suite).
+// The verified-rnorm honesty checks and the Assert.Throws guard cases are managed [Test]s (a Burst
+// job cannot surface an assertable managed exception, and ToString/message formatting is managed).
+public class fProxyKrylovPMinresTests
+{
+    [BurstCompile(CompileSynchronously = true)]
+    public struct PMinresTestJob : IJob
+    {
+        public enum TestType
+        {
+            SpdIdentityMatchesLU,          // (a)
+            SpdBlockJacobiMatchesLU,       // (a)
+            IndefiniteCgFailsPminresWins,  // (b)
+            BlockJacobiBeatsPlainMinres,   // (c)
+            ZeroRhsConvergesAtZeroIters,   // (d)
+            AlreadyConvergedX0AtZeroIters, // (d)
+        }
+
+        public TestType Type;
+
+        // iterative-solve vs direct-oracle agreement (matches fProxyKrylovRound2Tests.SolveTol).
+        static fProxy SolveTol() => /*+choose[1e-3f|1e-7]*/1e-3f/*-choose*/;
+        // comparing an iterative solution to xTrue on a well-conditioned system.
+        static fProxy LooseTol() => /*+choose[1e-2f|1e-5]*/1e-2f/*-choose*/;
+        // recovering xTrue on the well-separated (cond ~= 5) indefinite Clement system.
+        static fProxy IndefTol() => /*+choose[1e-2f|1e-6]*/1e-2f/*-choose*/;
+
+        public void Execute()
+        {
+            switch (Type)
+            {
+                case TestType.SpdIdentityMatchesLU:          SpdIdentityMatchesLU();          break;
+                case TestType.SpdBlockJacobiMatchesLU:       SpdBlockJacobiMatchesLU();       break;
+                case TestType.IndefiniteCgFailsPminresWins:  IndefiniteCgFailsPminresWins();  break;
+                case TestType.BlockJacobiBeatsPlainMinres:   BlockJacobiBeatsPlainMinres();   break;
+                case TestType.ZeroRhsConvergesAtZeroIters:   ZeroRhsConvergesAtZeroIters();   break;
+                case TestType.AlreadyConvergedX0AtZeroIters: AlreadyConvergedX0AtZeroIters(); break;
+            }
+        }
+
+        // ---- helpers ---------------------------------------------------------------------
+
+        static void AssertClose(fProxy got, fProxy expected, fProxy tol)
+            => Assert.IsTrue(math.abs(got - expected) <= tol * ((fProxy)1 + math.abs(expected)));
+
+        static void AssertVecClose(in fProxyN got, in fProxyN expected, fProxy tol)
+        {
+            Assert.AreEqual(expected.N, got.N);
+            for (int i = 0; i < got.N; i++) AssertClose(got[i], expected[i], tol);
+        }
+
+        // SPD via M^T M + dim*I -- same recipe as fProxyKrylovRound2Tests.BuildDenseSPD.
+        static fProxyMxN BuildDenseSPD(ref Arena arena, int dim, uint seed)
+        {
+            var M = arena.fProxyRandomMat(dim, dim, -1f, 1f, seed);
+            var A = Blas.dot(M, M, true);
+            for (int d = 0; d < dim; d++) A[d, d] += dim;
+            return A;
+        }
+
+        static fProxyBSR DenseToBSR1x1(ref Arena arena, in fProxyMxN A, int nnzHint)
+        {
+            var builder = arena.fProxyBSRBuilder(A.M_Rows, A.N_Cols, 1, 1, math.max(nnzHint, 1));
+            for (int r = 0; r < A.M_Rows; r++)
+                for (int c = 0; c < A.N_Cols; c++)
+                    if (A[r, c] != (fProxy)0) builder.AddValue(r, c, A[r, c]);
+            return builder.ToBSR(ref arena);
+        }
+
+        // Dense LU oracle on COPIES (decompInPlace/decompSolve are destructive). Returns A^-1 b.
+        static fProxyN DenseSolve(in fProxyMxN A, in fProxyN b)
+        {
+            var LUcopy = A.Copy();
+            var pivot = new Pivot(A.M_Rows, Allocator.Temp);
+            bool okLU = LU.decompInPlace(ref LUcopy, ref pivot);
+            Assert.IsTrue(okLU);
+            var x = b.Copy();
+            LU.decompSolve(ref LUcopy, in pivot, ref x);
+            pivot.Dispose();
+            return x;
+        }
+
+        // ==============================================================================
+        // (a) SPD + preconditioner matches a dense LU oracle.
+        // ==============================================================================
+
+        // Baseline correctness: the generic core with a no-op (identity) preconditioner over a dense
+        // SPD operator lands on the LU solution and satisfies A x ~= b.
+        void SpdIdentityMatchesLU()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 14;
+            var A = BuildDenseSPD(ref arena, n, 97001u);
+            var op = new fProxyDenseOperator(in A);
+            var b = arena.fProxyRandomVec(n, -1f, 1f, 97002u);
+
+            var xLU = DenseSolve(in A, in b);
+
+            var x = arena.fProxyVec(n);
+            var info = Krylov.pminres(op, new fProxyIdentityPreconditioner(), in b, ref x, 4 * n, Consts.fProxySqrtEps);
+            Assert.IsTrue(info.Solved);
+
+            AssertVecClose(in x, in xLU, SolveTol());
+
+            var Ax = arena.fProxyVec(n);
+            Blas.dot(in A, in x, ref Ax);
+            AssertVecClose(in Ax, in b, SolveTol());
+
+            arena.Dispose();
+        }
+
+        // Real Jacobi-style preconditioner: block-Jacobi over a 1x1-block BSR wrapping of the dense
+        // SPD matrix (mirrors PcgBsrMatchesLUOracle). Exercises the concrete
+        // pminres(in fProxyBSR, in fProxyBlockJacobi, ...) rung end-to-end.
+        void SpdBlockJacobiMatchesLU()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int dim = 12;
+            var A = BuildDenseSPD(ref arena, dim, 97101u);
+            var bsm = DenseToBSR1x1(ref arena, in A, dim * dim);
+            var M = arena.fProxyBlockJacobi(in bsm);
+            var b = arena.fProxyRandomVec(dim, -1f, 1f, 97102u);
+
+            var xLU = DenseSolve(in A, in b);
+
+            var x = arena.fProxyVec(dim);
+            var info = Krylov.pminres(in bsm, in M, in b, ref x, 4 * dim, Consts.fProxySqrtEps);
+            Assert.IsTrue(info.Solved);
+
+            AssertVecClose(in x, in xLU, SolveTol());
+
+            var Ax = BSR.spMV(in bsm, in x);
+            AssertVecClose(in Ax, in b, SolveTol());
+
+            arena.Dispose();
+        }
+
+        // ==============================================================================
+        // (b) Symmetric INDEFINITE system: CG fails, pminres wins. Clement(n) for even n has
+        //     eigenvalues {n-1, n-3, ..., -(n-1)} -- genuinely indefinite, nonsingular, and
+        //     well-separated (smallest |lambda| = 1). Its diagonal is zero, so a Jacobi/block-Jacobi
+        //     preconditioner is ill-defined; the identity preconditioner is the valid SPD choice
+        //     and reduces pminres to plain (unpreconditioned) MINRES, the regime CG cannot handle.
+        // ==============================================================================
+        void IndefiniteCgFailsPminresWins()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 6;                                   // even -> {5,3,1,-1,-3,-5}, indefinite, nonsingular
+            var A = arena.fProxyClement(n);
+
+            var xTrue = arena.fProxyRandomVec(n, 0.5f, 1.5f, 97201u);
+            var b = arena.fProxyVec(n);
+            Blas.dot(in A, in xTrue, ref b);             // consistent RHS b = A xTrue
+
+            fProxy tol = Consts.fProxySqrtEps;
+            int maxIter = 8 * n;
+
+            // Plain CG on a symmetric INDEFINITE matrix cannot honestly solve: its p.Ap > 0 curvature
+            // guard trips (Breakdown) or it stagnates (MaxIterations) -- either way, NOT Solved. (CG's
+            // verify-at-exit means a Converged claim would be honest, so a genuinely indefinite A
+            // must not report Solved.)
+            var xCg = arena.fProxyVec(n);
+            var infoCg = Krylov.cg(in A, in b, ref xCg, maxIter, tol);
+            Assert.IsTrue(!infoCg.Solved);
+
+            // pminres (identity preconditioner) DOES converge and recovers xTrue.
+            var xP = arena.fProxyVec(n);
+            var infoP = Krylov.pminres(new fProxyDenseOperator(in A), new fProxyIdentityPreconditioner(),
+                                       in b, ref xP, maxIter, tol);
+            Assert.IsTrue(infoP.Solved);
+            AssertVecClose(in xP, in xTrue, IndefTol());
+
+            arena.Dispose();
+        }
+
+        // ==============================================================================
+        // (c) A real preconditioner cuts the iteration count. Same style as
+        //     SparseILU0Tests.PbiCGStabConvergesAndBeatsPlain / SSORTests' beat-Jacobi cases:
+        //     plain minres vs block-Jacobi pminres on an ill-conditioned SPD 2D Laplacian, same
+        //     tolerance, both converge, preconditioned needs <= 90% of plain's iterations.
+        // ==============================================================================
+        void BlockJacobiBeatsPlainMinres()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            var A = arena.fProxyLaplacian2D(4, 16);      // BR=4 (unrolled path), 64 dof, spread spectrum
+            int n = A.M_Rows;
+            var M = arena.fProxyBlockJacobi(in A);
+
+            var xTrue = arena.fProxyRandomVec(n, 0.5f, 1.5f, 97301u);
+            var b = BSR.spMV(in A, in xTrue);
+            fProxy tol = Consts.fProxySqrtEps;
+            int maxIter = 8 * n;
+
+            var xPlain = arena.fProxyVec(n);
+            var infoPlain = Krylov.minres(in A, in b, ref xPlain, maxIter, tol);
+            Assert.IsTrue(infoPlain.Solved);
+
+            var xP = arena.fProxyVec(n);
+            var infoP = Krylov.pminres(in A, in M, in b, ref xP, maxIter, tol);
+            Assert.IsTrue(infoP.Solved);
+
+            Assert.IsTrue((double)infoP.iterations <= (double)infoPlain.iterations * 0.9);
+
+            // both land on the same (true) solution
+            AssertVecClose(in xPlain, in xTrue, LooseTol());
+            AssertVecClose(in xP, in xTrue, LooseTol());
+
+            arena.Dispose();
+        }
+
+        // ==============================================================================
+        // (d) early-exit fast paths (no managed exception -> Burst-safe).
+        // ==============================================================================
+
+        // Zero RHS: the bb == 0 fast path copies b into x (-> x becomes zero) and returns Converged
+        // at 0 iterations, even from a nonzero initial guess.
+        void ZeroRhsConvergesAtZeroIters()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 10;
+            var A = BuildDenseSPD(ref arena, n, 97501u);
+            var op = new fProxyDenseOperator(in A);
+            var b = arena.fProxyVec(n);                  // all zero
+            var x = arena.fProxyRandomVec(n, -1f, 1f, 97502u);   // nonzero seed, must be overwritten
+
+            var info = Krylov.pminres(op, new fProxyIdentityPreconditioner(), in b, ref x, 4 * n, Consts.fProxySqrtEps);
+
+            Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
+            Assert.AreEqual(0, info.iterations);
+            for (int i = 0; i < n; i++) Assert.AreEqual(0.0, (double)x[i]);   // x <- b == 0
+
+            arena.Dispose();
+        }
+
+        // Already-converged initial guess: seeding x with the exact (LU) solution makes the initial
+        // residual b - A x0 already below tolerance -> Converged at 0 iterations (no Lanczos step).
+        void AlreadyConvergedX0AtZeroIters()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 12;
+            var A = BuildDenseSPD(ref arena, n, 97601u);
+            var op = new fProxyDenseOperator(in A);
+            var b = arena.fProxyRandomVec(n, -1f, 1f, 97602u);
+
+            var x = DenseSolve(in A, in b);              // seed x = A^-1 b (accurate to ~eps << sqrtEps)
+
+            var info = Krylov.pminres(op, new fProxyIdentityPreconditioner(), in b, ref x, 4 * n, Consts.fProxySqrtEps);
+
+            Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
+            Assert.AreEqual(0, info.iterations);
+
+            arena.Dispose();
+        }
+    }
+
+    // ---- (a) ----
+    [Test] public void SpdIdentityMatchesLUTest()
+        => new PMinresTestJob { Type = PMinresTestJob.TestType.SpdIdentityMatchesLU }.Run();
+    [Test] public void SpdBlockJacobiMatchesLUTest()
+        => new PMinresTestJob { Type = PMinresTestJob.TestType.SpdBlockJacobiMatchesLU }.Run();
+
+    // ---- (b) ----
+    [Test] public void IndefiniteCgFailsPminresWinsTest()
+        => new PMinresTestJob { Type = PMinresTestJob.TestType.IndefiniteCgFailsPminresWins }.Run();
+
+    // ---- (c) ----
+    [Test] public void BlockJacobiBeatsPlainMinresTest()
+        => new PMinresTestJob { Type = PMinresTestJob.TestType.BlockJacobiBeatsPlainMinres }.Run();
+
+    // ---- (d) fast paths ----
+    [Test] public void ZeroRhsConvergesAtZeroItersTest()
+        => new PMinresTestJob { Type = PMinresTestJob.TestType.ZeroRhsConvergesAtZeroIters }.Run();
+    [Test] public void AlreadyConvergedX0AtZeroItersTest()
+        => new PMinresTestJob { Type = PMinresTestJob.TestType.AlreadyConvergedX0AtZeroIters }.Run();
+
+    // ==============================================================================
+    // Managed [Test]s: verified-rnorm honesty (return contract) + guard throws.
+    // ==============================================================================
+
+    static fProxyMxN BuildDenseSPD(ref Arena arena, int dim, uint seed)
+    {
+        var M = arena.fProxyRandomMat(dim, dim, (fProxy)(-1f), (fProxy)1f, seed);
+        var A = Blas.dot(M, M, true);
+        for (int d = 0; d < dim; d++) A[d, d] += dim;
+        return A;
+    }
+
+    // b - A*x, recomputed fresh -- independent of whatever residual the solver tracked internally.
+    // Mirrors fProxyKrylovVerifyAtExitTests.TrueResidualSq.
+    static fProxy TrueResidualSq(in fProxyMxN A, in fProxyN b, in fProxyN x, ref fProxyN scratch)
+    {
+        Blas.dot(in A, in x, ref scratch);            // scratch = A x
+        scratch.scaleAddInPlace((fProxy)(-1), b);     // scratch = -Ax + b = b - Ax
+        return Blas.dot(scratch, scratch);
+    }
+
+    // On a CONVERGED exit pminres reports the freshly VERIFIED true residual ‖b-Ax‖ (one extra
+    // A.Apply), NOT the raw M^-1-weighted phibar -- so it must match an independently recomputed
+    // residual tightly. Mirrors fProxyKrylovVerifyAtExitTests.PcgConvergedRnormIsHonest.
+    [Test]
+    public void PminresConvergedRnormIsHonest()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        int n = 16;
+        var A = BuildDenseSPD(ref arena, n, 98001u);
+        var b = arena.fProxyRandomVec(n, (fProxy)(-1f), (fProxy)1f, 98002u);
+
+        var op = new fProxyDenseOperator(in A);
+        var x = arena.fProxyVec(n);
+        var info = Krylov.pminres(op, new fProxyIdentityPreconditioner(), in b, ref x, 4 * n, Consts.fProxySqrtEps);
+        Assert.IsTrue(info.Solved, info.ToString());
+
+        var scratch = arena.fProxyVec(n);
+        fProxy trueRs = TrueResidualSq(in A, in b, in x, ref scratch);
+        fProxy threshold = Consts.fProxySqrtEps * Consts.fProxySqrtEps * Blas.dot(b, b);
+        Assert.LessOrEqual((double)trueRs, (double)threshold);
+        Assert.AreEqual((double)math.sqrt(trueRs), info.rnorm, 1e-6 * (1.0 + info.rnorm));
+
+        arena.Dispose();
+    }
+
+    // On a MAXITERATIONS exit pminres ALSO reports a freshly computed true residual (one extra
+    // A.Apply), not phibar. Cap iterations at 1 with an unreachable tolerance to force the
+    // MaxIterations branch, then confirm rnorm == the independently recomputed ‖b-Ax‖.
+    [Test]
+    public void PminresMaxIterationsRnormIsTrueResidual()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        int n = 12;
+        var A = BuildDenseSPD(ref arena, n, 98101u);
+        var b = arena.fProxyRandomVec(n, (fProxy)(-1f), (fProxy)1f, 98102u);
+
+        var op = new fProxyDenseOperator(in A);
+        var x = arena.fProxyVec(n);
+        var info = Krylov.pminres(op, new fProxyIdentityPreconditioner(), in b, ref x, 1, (fProxy)1e-30f);
+        Assert.IsTrue(info.status == IterativeSolveStatus.MaxIterations, info.ToString());
+        Assert.AreEqual(1, info.iterations);
+
+        var scratch = arena.fProxyVec(n);
+        fProxy trueRs = TrueResidualSq(in A, in b, in x, ref scratch);
+        Assert.AreEqual((double)math.sqrt(trueRs), info.rnorm, 1e-6 * (1.0 + info.rnorm));
+
+        arena.Dispose();
+    }
+
+    // Aliasing guard: two scratch buffers sharing an allocation must be rejected (RequireDistinctBuffers).
+    [Test]
+    public void AliasedScratchThrows()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            int n = 8;
+            var A = BuildDenseSPD(ref arena, n, 98201u);
+            var op = new fProxyDenseOperator(in A);
+            var M = new fProxyIdentityPreconditioner();
+            var b = arena.fProxyRandomVec(n, (fProxy)(-1f), (fProxy)1f, 98202u);
+
+            var x  = arena.fProxyVec(n);
+            var y  = arena.fProxyVec(n);
+            var r1 = arena.fProxyVec(n);
+            var r2 = arena.fProxyVec(n);
+            var v  = arena.fProxyVec(n);
+            var w  = arena.fProxyVec(n);
+            var w1 = arena.fProxyVec(n);
+            var w2 = arena.fProxyVec(n);
+            var z  = y;   // ALIASES y (same Data buffer) -> distinct-buffer guard must fire
+
+            Assert.Throws<ArgumentException>(() =>
+                Krylov.pminres(op, M, in b, ref x, ref y, ref r1, ref r2, ref v,
+                               ref w, ref w1, ref w2, ref z, 4 * n, Consts.fProxySqrtEps));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    // Dimension guard: a wrong-length scratch vector must be rejected before any iteration.
+    [Test]
+    public void WrongLengthScratchThrows()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            int n = 8;
+            var A = BuildDenseSPD(ref arena, n, 98301u);
+            var op = new fProxyDenseOperator(in A);
+            var M = new fProxyIdentityPreconditioner();
+            var b = arena.fProxyRandomVec(n, (fProxy)(-1f), (fProxy)1f, 98302u);
+
+            var x  = arena.fProxyVec(n);
+            var y  = arena.fProxyVec(n);
+            var r1 = arena.fProxyVec(n);
+            var r2 = arena.fProxyVec(n);
+            var v  = arena.fProxyVec(n);
+            var w  = arena.fProxyVec(n);
+            var w1 = arena.fProxyVec(n);
+            var w2 = arena.fProxyVec(n);
+            var z  = arena.fProxyVec(n + 1);   // wrong length
+
+            Assert.Throws<ArgumentException>(() =>
+                Krylov.pminres(op, M, in b, ref x, ref y, ref r1, ref r2, ref v,
+                               ref w, ref w1, ref w2, ref z, 4 * n, Consts.fProxySqrtEps));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    // Non-square operator must be rejected up front ("A must be square").
+    [Test]
+    public void NonSquareOperatorThrows()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            int m = 7, k = 4;
+            var A = arena.fProxyRandomMat(m, k, (fProxy)(-1f), (fProxy)1f, 98401u);   // rectangular
+            var op = new fProxyDenseOperator(in A);                                   // Rows=7 != Cols=4
+            var M = new fProxyIdentityPreconditioner();
+            var b = arena.fProxyVec(m);
+            var x = arena.fProxyVec(m);
+
+            Assert.Throws<ArgumentException>(() =>
+                Krylov.pminres(op, M, in b, ref x, m, Consts.fProxySqrtEps));
+        }
+        finally { arena.Dispose(); }
+    }
+}

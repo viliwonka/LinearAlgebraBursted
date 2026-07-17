@@ -722,6 +722,29 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   Krylov.float.cs and Krylov.double.cs fragments of the same partial class -- two definitions of
   the same member -> CS0111. (was Krylov.Guards.cs:7-11)
 
+## Krylov.PMinres
+- 2026-07-18 | New solver (Krylov.PMinres.fProxy.cs), overload ladder mirrors pcg's exactly:
+  generic pminres<TOp,TPre> (core + arena-alloc + default-params) plus the same three BSR×
+  preconditioner rungs (block-Jacobi/SSOR/IC0) pcg exposes, each with its own core/arena/default
+  tier — 12 overloads total, no dense-specific rung (pcg has none either; a dense A + any
+  IfProxyPreconditioner goes through the generic core via fProxyDenseOperator, e.g.
+  fProxyIdentityPreconditioner).
+- 2026-07-18 | Preconditioning breaks minres's "phibar IS ‖b-Ax‖ for free" identity: once M ≠ I,
+  phibar is the M⁻¹-weighted residual norm ‖r‖_{M⁻¹}, not the Euclidean ‖b-Ax‖ SolveInfo's
+  contract requires on Converged/MaxIterations. Fix: verify a claimed Converged exit with one
+  fresh r = b-Ax (falls through and keeps iterating if the verify fails, mirroring pcg's
+  verify-at-exit), and compute one fresh r on the MaxIterations exit too (minres/pcg/cg don't need
+  this on MaxIterations — their tracked quantity already IS the true residual there). Breakdown
+  still reports the unverified phibar, matching every other solver's Breakdown carve-out. Cost:
+  the verify only fires when phibar crosses threshold (rare, not every iteration) plus once at
+  MaxIterations, so the steady-state per-iteration cost stays at 1 A.Apply + 1 M.Apply, same
+  shape as pcg's 1 A.ApplyDot + 1 M.Apply.
+- 2026-07-18 | z (holds M⁻¹ applied to the current unpreconditioned Lanczos vector r2) is a new
+  8th scratch buffer alongside minres's seven Paige-Saunders names (y/r1/r2/v/w/w1/w2) — kept
+  distinct from y (the A·v temp) rather than reusing one buffer for both roles the way the
+  reference Fortran/Matlab minres.m does, matching this codebase's existing per-buffer-single-
+  meaning discipline (cg/pcg keep z separate from Ap the same way).
+
 ## Krylov.PBiCGStab
 - 2026-07-13 | Parameterless BSR overload's default iteration budget changed 2*A.M_Rows → A.M_Rows
   to match the unpreconditioned biCGStab twin and the rest of the square-solver family (release-scan
