@@ -21,6 +21,7 @@ public class fProxyGMRESTests
             RestartConverges,
             MatchesBiCGStab,
             ZeroRhs,
+            PreconditionedFewerIters,
         }
 
         public TestType Type;
@@ -76,6 +77,7 @@ public class fProxyGMRESTests
                 case TestType.RestartConverges:  RestartConverges(); break;
                 case TestType.MatchesBiCGStab:   MatchesBiCGStab(); break;
                 case TestType.ZeroRhs:           ZeroRhs(); break;
+                case TestType.PreconditionedFewerIters: PreconditionedFewerIters(); break;
             }
         }
 
@@ -157,6 +159,32 @@ public class fProxyGMRESTests
             arena.Dispose();
         }
 
+        // ILU(0)-right-preconditioned GMRES converges AND in fewer inner iterations than plain GMRES.
+        void PreconditionedFewerIters()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int n = 200;
+            var A = ConvDiff1D(ref arena, n);
+            var b = arena.fProxyRandomVec(n, -1f, 1f, 0x9E42u);
+            fProxy tol = Tol();
+
+            var xG = arena.fProxyVec(n);
+            for (int i = 0; i < n; i++) xG[i] = (fProxy)0;
+            var gi = Krylov.gmres(in A, in b, ref xG, 20, 8 * n, tol);
+
+            var M = arena.fProxyILU0(in A);
+            var xP = arena.fProxyVec(n);
+            for (int i = 0; i < n; i++) xP[i] = (fProxy)0;
+            var pi = Krylov.pgmres(in A, in M, in b, ref xP, 20, 8 * n, tol);
+
+            Assert.IsTrue(gi.status == IterativeSolveStatus.Converged);
+            Assert.IsTrue(pi.status == IterativeSolveStatus.Converged);
+            Assert.IsTrue(RelResidualBSR(in A, in xP, in b) <= tol);
+            Assert.IsTrue(pi.iterations < gi.iterations);
+
+            arena.Dispose();
+        }
+
         void ZeroRhs()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -182,4 +210,5 @@ public class fProxyGMRESTests
     [Test] public void RestartConvergesTest() => new GmresTestJob { Type = GmresTestJob.TestType.RestartConverges }.Run();
     [Test] public void MatchesBiCGStabTest() => new GmresTestJob { Type = GmresTestJob.TestType.MatchesBiCGStab }.Run();
     [Test] public void ZeroRhsTest() => new GmresTestJob { Type = GmresTestJob.TestType.ZeroRhs }.Run();
+    [Test] public void PreconditionedFewerItersTest() => new GmresTestJob { Type = GmresTestJob.TestType.PreconditionedFewerIters }.Run();
 }

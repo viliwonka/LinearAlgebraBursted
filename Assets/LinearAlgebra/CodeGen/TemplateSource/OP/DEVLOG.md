@@ -10,7 +10,12 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   holds an UnsafeList — which Unity's safety checks reject). Hessenberg allocated cleared (uninit=false)
   — only written entries are read, but clearing follows the "partially-written matrix" rule. maxIter
   counts TOTAL inner iterations across restarts; rnorm = the Arnoldi residual estimate |g[k]|. Dense +
-  BSR concrete overloads + defaults (restart=min(30,N)). Preconditioned pgmres = separate follow-up.
+  BSR concrete overloads + defaults (restart=min(30,N)).
+- 2026-07-18 | pgmres = RIGHT-preconditioned GMRES(m): runs GMRES on A·M⁻¹. Right (not left)
+  preconditioning keeps the Arnoldi residual == true residual ‖b−Ax‖, so the convergence test is
+  unchanged; solution update is one extra M⁻¹ apply per restart (accumulate the v-space combination,
+  apply M⁻¹ once — no need to store the M⁻¹v_j basis). Generic pgmres<TOp,TPre> + BSR-ILU0 concrete
+  (the canonical GMRES+ILU0 pairing). Test: pgmres(ILU0) converges in fewer iters than plain gmres.
 ## Krylov.fcg (Flexible CG)
 - 2026-07-18 | Flexible CG (Notay 2000), first AMG prerequisite (K-cycle needs a variable-
   preconditioner outer solver; unsmoothed aggregation makes M vary per iteration). Implemented as
