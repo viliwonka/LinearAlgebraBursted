@@ -47,10 +47,7 @@ namespace LinearAlgebra.Sparse
             for (int i = 0; i < nb; i++) { int a = aggId[i]; aggMembers[cursor[a]] = i; cursor[a]++; }
             cursor.Dispose();
 
-            Bcoarse = arena.fProxyMat(numAgg * m, m);
-            for (int r = 0; r < numAgg * m; r++)
-                for (int c = 0; c < m; c++)
-                    Bcoarse[r, c] = (fProxy)0;
+            Bcoarse = arena.fProxyMat(numAgg * m, m);   // arena.fProxyMat clears (uninit=false)
 
             var builder = arena.fProxyBSRBuilder(nb, numAgg, BR, m, math.max(1, nb));
 
@@ -97,7 +94,10 @@ namespace LinearAlgebra.Sparse
                     for (int row = 0; row < rows; row++) nrm += L[row, j] * L[row, j];
                     nrm = math.sqrt(nrm);
 
-                    if (nrm > relTol * initNorm && nrm > (fProxy)0)
+                    // Relative gate against the column's own initial norm, plus an absolute floor so
+                    // a machine-tiny initNorm (whose relTol*initNorm underflows to ~0) cannot let an
+                    // FP-noise residual survive as a spurious coarse dof.
+                    if (nrm > relTol * initNorm && nrm > Consts.fProxyEpsilon)
                     {
                         R[j, j] = nrm;
                         fProxy inv = (fProxy)1 / nrm;

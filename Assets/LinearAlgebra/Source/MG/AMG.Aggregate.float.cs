@@ -122,9 +122,10 @@ namespace LinearAlgebra.Sparse
                 {
                     int j = A.ColInd[k];
                     if (j == i || !inP1[j]) continue;
-                    if (!Strong(in A, k, i, j, theta, diagNormF)) continue;
 
                     float str = BlockFrobenius(in A, k);
+                    if (!StrongNorm(str, i, j, theta, diagNormF)) continue;
+
                     int aj = aggId[j];
                     if (str > bestStr || (str == bestStr && aj < bestAgg))
                     {
@@ -145,10 +146,19 @@ namespace LinearAlgebra.Sparse
 
         // Strong-connection test for A's stored block k = (i,j), i != j.
         static bool Strong(in floatBSR A, int k, int i, int j, float theta, NativeArray<float> diagNormF)
+            => StrongNorm(BlockFrobenius(in A, k), i, j, theta, diagNormF);
+
+        // Strong-connection test given the precomputed ‖A_ij‖_F (lets pass 2 reuse the norm it also
+        // needs as the tie-break weight, instead of recomputing BlockFrobenius).
+        static bool StrongNorm(float nij, int i, int j, float theta, NativeArray<float> diagNormF)
         {
-            float nij = BlockFrobenius(in A, k);
             if (theta <= (float)0) return nij > (float)0;
-            return nij > theta * math.sqrt(diagNormF[i] * diagNormF[j]);
+            float di = diagNormF[i], dj = diagNormF[j];
+            // Zero-diagonal node (e.g. a constraint/interface row): strength is undefined, so treat
+            // every incident edge as WEAK — the node falls through to a pass-3 singleton rather than
+            // contaminating a real-DOF aggregate. sqrt-then-multiply avoids overflowing di*dj in float.
+            if (di <= (float)0 || dj <= (float)0) return false;
+            return nij > theta * math.sqrt(di) * math.sqrt(dj);
         }
     }
 }

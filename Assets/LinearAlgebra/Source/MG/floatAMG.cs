@@ -36,18 +36,29 @@ namespace LinearAlgebra.Sparse
 
         int _levels;
         int _pre, _post;
+        bool _usable;                   // false when the coarsest Cholesky failed (do not solve)
         Allocator _alloc;
 
         public int Levels => _levels;
         public int Rows => _A[0].M_Rows;
+        /// <summary>Pre-smoothing sweeps per level per cycle.</summary>
+        public int Pre => _pre;
+        /// <summary>Post-smoothing sweeps per level per cycle.</summary>
+        public int Post => _post;
+        /// <summary>True iff the build succeeded (coarsest Cholesky SPD). Solving an unusable
+        /// hierarchy would emit NaN — the entry points throw instead.</summary>
+        public bool Usable => _usable;
+        /// <summary>True iff the cycle is symmetric (Pre == Post) — the requirement for
+        /// <see cref="floatAMGPreconditioner"/> to be SPD and valid for pcg.</summary>
+        public bool IsCycleSymmetric => _pre == _post;
 
         internal floatAMG(UnsafeList<floatBSR> A, UnsafeList<floatBSR> P, UnsafeList<floatChebyshev> S,
             UnsafeList<floatN> X, UnsafeList<floatN> B, UnsafeList<floatN> R, UnsafeList<floatN> Z,
-            floatMxN coarseChol, floatN coarseRhs, int levels, int pre, int post, Allocator alloc)
+            floatMxN coarseChol, floatN coarseRhs, int levels, int pre, int post, bool usable, Allocator alloc)
         {
             _A = A; _P = P; _S = S; _X = X; _B = B; _R = R; _Z = Z;
             _coarseChol = coarseChol; _coarseRhs = coarseRhs;
-            _levels = levels; _pre = pre; _post = post; _alloc = alloc;
+            _levels = levels; _pre = pre; _post = post; _usable = usable; _alloc = alloc;
         }
 
         /// <summary>Frees the per-level handle containers (not the arena-owned level data).</summary>
@@ -128,6 +139,7 @@ namespace LinearAlgebra.Sparse
         // z = one V-cycle solving A z = r from a zero initial guess (the preconditioner apply).
         internal readonly void ApplyCycleFromZero(in floatN r, ref floatN z)
         {
+            if (!_usable) throw new InvalidOperationException("floatAMG: build failed (coarsest not SPD); do not Apply — check AMGSetupInfo.Solved");
             floatN b0 = _B[0], x0 = _X[0];
             b0.Data.CopyFrom(r.Data);
             for (int i = 0; i < x0.N; i++) x0[i] = (float)0;
@@ -138,6 +150,7 @@ namespace LinearAlgebra.Sparse
         // Standalone V-cycle iteration to a relative true-residual tolerance; x is warm-startable.
         internal readonly SolveInfo Solve(in floatN b, ref floatN x, int maxIter, float tol)
         {
+            if (!_usable) throw new InvalidOperationException("MG.solve: AMG build failed (coarsest not SPD); check AMGSetupInfo.Solved");
             if (b.N != Rows) throw new ArgumentException("MG.solve: b.N must equal amg.Rows");
             if (x.N != Rows) throw new ArgumentException("MG.solve: x.N must equal amg.Rows");
             if (maxIter < 1) throw new ArgumentException("MG.solve: maxIter must be >= 1");
@@ -201,61 +214,91 @@ namespace LinearAlgebra
             var self = this;
             var alloc = self.Allocator;
 
-            var levA = new UnsafeList<floatBSR>(4, alloc);
-            var levP = new UnsafeList<floatBSR>(4, alloc);
-            var levS = new UnsafeList<floatChebyshev>(4, alloc);
-
-            floatBSR A0 = A.Symmetric ? self.floatBSRMirrorToFull(in A) : A;
-            levA.Add(A0);
-
-            int n0 = A0.M_Rows;
-            floatMxN Bcur = self.floatMat(n0, 1);
-            for (int i = 0; i < n0; i++) Bcur[i, 0] = (float)1;
-
-            while (levA[levA.Length - 1].M_Rows > opts.coarseMax && levA.Length < opts.maxLevels)
+            // Declared up front so the finally can free them if a level build (aggregation /
+            // prolongator / Galerkin / Chebyshev) throws before the hierarchy is constructed —
+            // the containers are allocator-owned, not arena-tracked, so they would otherwise leak.
+            var levA = default(UnsafeList<floatBSR>);
+            var levP = default(UnsafeList<floatBSR>);
+            var levS = default(UnsafeList<floatChebyshev>);
+            var levX = default(UnsafeList<floatN>);
+            var levB = default(UnsafeList<floatN>);
+            var levR = default(UnsafeList<floatN>);
+            var levZ = default(UnsafeList<floatN>);
+            bool ok = false;
+            try
             {
-                floatBSR cur = levA[levA.Length - 1];
-                var aggId = self.Indices(cur.BlockRows);
-                AMG.aggregate(in cur, (float)opts.theta, ref aggId, out int numAgg);
-                if (numAgg >= cur.BlockRows) break;      // aggregation did not coarsen -> stop
+                levA = new UnsafeList<floatBSR>(4, alloc);
+                levP = new UnsafeList<floatBSR>(4, alloc);
+                levS = new UnsafeList<floatChebyshev>(4, alloc);
 
-                var T = AMG.tentativeProlongator(in cur, in aggId, numAgg, in Bcur, ref self, out var Bc);
-                var Ac = AMG.galerkinRAP(in cur, in T, in aggId, numAgg, ref self);
-                var sm = new floatChebyshev(in cur, ref self);   // smoother for the CURRENT level
+                floatBSR A0 = A.Symmetric ? self.floatBSRMirrorToFull(in A) : A;
+                levA.Add(A0);
 
-                levP.Add(T);
-                levS.Add(sm);
-                levA.Add(Ac);
-                Bcur = Bc;
+                int n0 = A0.M_Rows;
+                floatMxN Bcur = self.floatMat(n0, 1);
+                for (int i = 0; i < n0; i++) Bcur[i, 0] = (float)1;
+
+                while (levA[levA.Length - 1].M_Rows > opts.coarseMax && levA.Length < opts.maxLevels)
+                {
+                    floatBSR cur = levA[levA.Length - 1];
+                    var aggId = self.Indices(cur.BlockRows);
+                    AMG.aggregate(in cur, (float)opts.theta, ref aggId, out int numAgg);
+                    if (numAgg >= cur.BlockRows) break;      // aggregation did not coarsen -> stop
+
+                    var T = AMG.tentativeProlongator(in cur, in aggId, numAgg, in Bcur, ref self, out var Bc);
+                    var Ac = AMG.galerkinRAP(in cur, in T, in aggId, numAgg, ref self);
+                    var sm = new floatChebyshev(in cur, ref self);   // smoother for the CURRENT level
+
+                    levP.Add(T);
+                    levS.Add(sm);
+                    levA.Add(Ac);
+                    Bcur = Bc;
+                }
+
+                int L = levA.Length;
+                floatBSR coarse = levA[L - 1];
+                floatMxN chol = coarse.ToDense(ref self);
+                var cinfo = CHO.decompInPlace(ref chol);
+
+                levX = new UnsafeList<floatN>(L, alloc);
+                levB = new UnsafeList<floatN>(L, alloc);
+                levR = new UnsafeList<floatN>(L, alloc);
+                levZ = new UnsafeList<floatN>(L, alloc);
+                for (int l = 0; l < L; l++)
+                {
+                    int nl = levA[l].M_Rows;
+                    levX.Add(self.floatVec(nl));
+                    levB.Add(self.floatVec(nl));
+                    levR.Add(self.floatVec(nl));
+                    levZ.Add(self.floatVec(nl));
+                }
+                var coarseRhs = self.floatVec(coarse.M_Rows);
+
+                info = new AMGSetupInfo
+                {
+                    levels = L,
+                    coarseRows = coarse.M_Rows,
+                    status = cinfo.Solved ? DirectSolveStatus.Success : DirectSolveStatus.NotPositiveDefinite,
+                };
+
+                var result = new floatAMG(levA, levP, levS, levX, levB, levR, levZ, chol, coarseRhs,
+                    L, opts.pre, opts.post, cinfo.Solved, alloc);
+                ok = true;
+                return result;
             }
-
-            int L = levA.Length;
-            floatBSR coarse = levA[L - 1];
-            floatMxN chol = coarse.ToDense(ref self);
-            var cinfo = CHO.decompInPlace(ref chol);
-
-            var levX = new UnsafeList<floatN>(L, alloc);
-            var levB = new UnsafeList<floatN>(L, alloc);
-            var levR = new UnsafeList<floatN>(L, alloc);
-            var levZ = new UnsafeList<floatN>(L, alloc);
-            for (int l = 0; l < L; l++)
+            finally
             {
-                int nl = levA[l].M_Rows;
-                levX.Add(self.floatVec(nl));
-                levB.Add(self.floatVec(nl));
-                levR.Add(self.floatVec(nl));
-                levZ.Add(self.floatVec(nl));
+                if (!ok)
+                {
+                    if (levA.IsCreated) levA.Dispose();
+                    if (levP.IsCreated) levP.Dispose();
+                    if (levS.IsCreated) levS.Dispose();
+                    if (levX.IsCreated) levX.Dispose();
+                    if (levB.IsCreated) levB.Dispose();
+                    if (levR.IsCreated) levR.Dispose();
+                    if (levZ.IsCreated) levZ.Dispose();
+                }
             }
-            var coarseRhs = self.floatVec(coarse.M_Rows);
-
-            info = new AMGSetupInfo
-            {
-                levels = L,
-                coarseRows = coarse.M_Rows,
-                status = cinfo.Solved ? DirectSolveStatus.Success : DirectSolveStatus.NotPositiveDefinite,
-            };
-
-            return new floatAMG(levA, levP, levS, levX, levB, levR, levZ, chol, coarseRhs, L, opts.pre, opts.post, alloc);
         }
 
         /// <summary>Builds an <see cref="floatAMG"/> with <see cref="AMGOptions.Default"/>.</summary>

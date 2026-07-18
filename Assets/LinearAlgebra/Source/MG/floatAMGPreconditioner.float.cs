@@ -2,6 +2,7 @@
 //   Generated from Assets/LinearAlgebra/CodeGen/TemplateSource/MG/fProxyAMGPreconditioner.fProxy.cs
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
+using System;
 using LinearAlgebra.Sparse;
 
 namespace LinearAlgebra.Sparse
@@ -18,7 +19,12 @@ namespace LinearAlgebra.Sparse
     {
         readonly floatAMG _amg;
 
-        public floatAMGPreconditioner(in floatAMG amg) { _amg = amg; }
+        public floatAMGPreconditioner(in floatAMG amg)
+        {
+            if (!amg.IsCycleSymmetric)
+                throw new ArgumentException("floatAMGPreconditioner: the AMG cycle must be symmetric (AMGOptions.pre == post) to be an SPD preconditioner for pcg");
+            _amg = amg;
+        }
 
         public int Rows => _amg.Rows;
 

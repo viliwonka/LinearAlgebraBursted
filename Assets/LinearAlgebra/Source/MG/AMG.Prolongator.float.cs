@@ -51,10 +51,7 @@ namespace LinearAlgebra.Sparse
             for (int i = 0; i < nb; i++) { int a = aggId[i]; aggMembers[cursor[a]] = i; cursor[a]++; }
             cursor.Dispose();
 
-            Bcoarse = arena.floatMat(numAgg * m, m);
-            for (int r = 0; r < numAgg * m; r++)
-                for (int c = 0; c < m; c++)
-                    Bcoarse[r, c] = (float)0;
+            Bcoarse = arena.floatMat(numAgg * m, m);   // arena.floatMat clears (uninit=false)
 
             var builder = arena.floatBSRBuilder(nb, numAgg, BR, m, math.max(1, nb));
 
@@ -101,7 +98,10 @@ namespace LinearAlgebra.Sparse
                     for (int row = 0; row < rows; row++) nrm += L[row, j] * L[row, j];
                     nrm = math.sqrt(nrm);
 
-                    if (nrm > relTol * initNorm && nrm > (float)0)
+                    // Relative gate against the column's own initial norm, plus an absolute floor so
+                    // a machine-tiny initNorm (whose relTol*initNorm underflows to ~0) cannot let an
+                    // FP-noise residual survive as a spurious coarse dof.
+                    if (nrm > relTol * initNorm && nrm > Consts.floatEpsilon)
                     {
                         R[j, j] = nrm;
                         float inv = (float)1 / nrm;

@@ -25,6 +25,14 @@ public class floatAMGSolverTests
             PcgAmgBeatsPlainCg,
             Deterministic,
             PreconditionerSymmetric,
+            SingleLevelHierarchy,
+            ExplicitOptions,
+            NotPositiveDefiniteFailsCleanly,
+            ReuseAcrossRhs,
+            ZeroRhs,
+            WarmStart,
+            MaxIterationsExit,
+            CycleSymmetryFlag,
         }
 
         public TestType Type;
@@ -67,6 +75,14 @@ public class floatAMGSolverTests
                 case TestType.PcgAmgBeatsPlainCg:      PcgAmgBeatsPlainCg(); break;
                 case TestType.Deterministic:           Deterministic(); break;
                 case TestType.PreconditionerSymmetric: PreconditionerSymmetric(); break;
+                case TestType.SingleLevelHierarchy:    SingleLevelHierarchy(); break;
+                case TestType.ExplicitOptions:         ExplicitOptions(); break;
+                case TestType.NotPositiveDefiniteFailsCleanly: NotPositiveDefiniteFailsCleanly(); break;
+                case TestType.ReuseAcrossRhs:          ReuseAcrossRhs(); break;
+                case TestType.ZeroRhs:                 ZeroRhs(); break;
+                case TestType.WarmStart:               WarmStart(); break;
+                case TestType.MaxIterationsExit:       MaxIterationsExit(); break;
+                case TestType.CycleSymmetryFlag:       CycleSymmetryFlag(); break;
             }
         }
 
@@ -124,6 +140,7 @@ public class floatAMGSolverTests
 
             Assert.IsTrue(cgInfo.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(pcInfo.status == IterativeSolveStatus.Converged);
+            Assert.IsTrue(RelResidual(in A, in xCg, in b) <= tol);   // plain CG really solved it
             Assert.IsTrue(RelResidual(in A, in xPc, in b) <= tol);
             // AMG preconditioning must cut the iteration count.
             Assert.IsTrue(pcInfo.iterations < cgInfo.iterations);
@@ -173,6 +190,183 @@ public class floatAMGSolverTests
             amg.Dispose();
             arena.Dispose();
         }
+
+        // A system already <= coarseMax is a single-level hierarchy: the V-cycle is a pure dense
+        // Cholesky solve (down/up loops empty), converging in one cycle.
+        void SingleLevelHierarchy()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = Poisson2D(ref arena, 4, 4);            // n = 16 <= coarseMax(48)
+            int n = A.M_Rows;
+            var amg = arena.floatAMG(in A, out var info);
+            Assert.IsTrue(info.Solved);
+            Assert.IsTrue(info.levels == 1);
+            Assert.IsTrue(info.coarseRows == n);
+
+            var b = arena.floatRandomVec(n, -1f, 1f, 0x5171u);
+            var x = arena.floatVec(n);
+            for (int i = 0; i < n; i++) x[i] = (float)0;
+            var si = MG.solve(in amg, in b, ref x, 10, Tol());
+            Assert.IsTrue(si.status == IterativeSolveStatus.Converged);
+            Assert.IsTrue(si.iterations == 1);
+            Assert.IsTrue(RelResidual(in A, in x, in b) <= Tol());
+
+            amg.Dispose();
+            arena.Dispose();
+        }
+
+        // Exercises the explicit-options overload with non-default theta/pre/post/coarseMax/maxLevels.
+        void ExplicitOptions()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = Poisson2D(ref arena, 32, 32);
+            int n = A.M_Rows;
+            var opts = new AMGOptions { theta = 0.1, pre = 2, post = 2, coarseMax = 16, maxLevels = 5 };
+            var amg = arena.floatAMG(in A, in opts, out var info);
+            Assert.IsTrue(info.Solved);
+            Assert.IsTrue(info.levels <= 5);
+
+            var b = arena.floatRandomVec(n, -1f, 1f, 0xE0F5u);
+            var x = arena.floatVec(n);
+            for (int i = 0; i < n; i++) x[i] = (float)0;
+            var si = MG.solve(in amg, in b, ref x, 100, Tol());
+            Assert.IsTrue(si.status == IterativeSolveStatus.Converged);
+            Assert.IsTrue(RelResidual(in A, in x, in b) <= Tol());
+
+            amg.Dispose();
+            arena.Dispose();
+        }
+
+        // Indefinite input (negative diagonal) is single-level, so no smoother is built and the
+        // coarsest Cholesky fails: the build reports NotPositiveDefinite and the hierarchy is still
+        // safely disposable (rather than silently poisoning a solve with NaN).
+        void NotPositiveDefiniteFailsCleanly()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int nb = 4;
+            var bld = arena.floatBSRBuilder(nb, nb, 1, 1, 3 * nb);
+            for (int i = 0; i < nb; i++)
+            {
+                bld.AddValue(i, i, i == 2 ? (float)(-3) : (float)2);   // symmetric indefinite chain
+                if (i > 0) bld.AddValue(i, i - 1, (float)(-1));
+                if (i < nb - 1) bld.AddValue(i, i + 1, (float)(-1));
+            }
+            var A = bld.ToBSR(ref arena);
+
+            var amg = arena.floatAMG(in A, out var info);
+            Assert.IsTrue(!info.Solved);
+            Assert.IsTrue(info.status == DirectSolveStatus.NotPositiveDefinite);
+
+            amg.Dispose();
+            arena.Dispose();
+        }
+
+        // One hierarchy, two different right-hand sides: internal scratch must reset between solves.
+        void ReuseAcrossRhs()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = Poisson2D(ref arena, 16, 16);
+            int n = A.M_Rows;
+            var amg = arena.floatAMG(in A, out _);
+
+            var b1 = arena.floatRandomVec(n, -1f, 1f, 0x1111u);
+            var b2 = arena.floatRandomVec(n, -1f, 1f, 0x2222u);
+            var x = arena.floatVec(n);
+
+            for (int i = 0; i < n; i++) x[i] = (float)0;
+            var s1 = MG.solve(in amg, in b1, ref x, 100, Tol());
+            Assert.IsTrue(s1.status == IterativeSolveStatus.Converged);
+            Assert.IsTrue(RelResidual(in A, in x, in b1) <= Tol());
+
+            for (int i = 0; i < n; i++) x[i] = (float)0;
+            var s2 = MG.solve(in amg, in b2, ref x, 100, Tol());
+            Assert.IsTrue(s2.status == IterativeSolveStatus.Converged);
+            Assert.IsTrue(RelResidual(in A, in x, in b2) <= Tol());
+
+            amg.Dispose();
+            arena.Dispose();
+        }
+
+        void ZeroRhs()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = Poisson2D(ref arena, 8, 8);
+            int n = A.M_Rows;
+            var amg = arena.floatAMG(in A, out _);
+
+            var b = arena.floatVec(n);
+            for (int i = 0; i < n; i++) b[i] = (float)0;
+            var x = arena.floatVec(n);
+            for (int i = 0; i < n; i++) x[i] = (float)7;
+
+            var si = MG.solve(in amg, in b, ref x, 50, Tol());
+            Assert.IsTrue(si.status == IterativeSolveStatus.Converged);
+            Assert.IsTrue(si.iterations == 0);
+            for (int i = 0; i < n; i++) Assert.IsTrue(x[i] == (float)0);
+
+            amg.Dispose();
+            arena.Dispose();
+        }
+
+        // A warm start at (near) the solution converges in no more cycles than a cold start.
+        void WarmStart()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = Poisson2D(ref arena, 24, 24);
+            int n = A.M_Rows;
+            var b = arena.floatRandomVec(n, -1f, 1f, 0x99A1u);
+            var amg = arena.floatAMG(in A, out _);
+
+            var xCold = arena.floatVec(n);
+            for (int i = 0; i < n; i++) xCold[i] = (float)0;
+            var cold = MG.solve(in amg, in b, ref xCold, 100, Tol());
+            Assert.IsTrue(cold.status == IterativeSolveStatus.Converged);
+
+            var xWarm = arena.floatVec(n);
+            xWarm.Data.CopyFrom(xCold.Data);          // seed at the solution
+            var warm = MG.solve(in amg, in b, ref xWarm, 100, Tol());
+            Assert.IsTrue(warm.status == IterativeSolveStatus.Converged);
+            Assert.IsTrue(warm.iterations <= cold.iterations);
+
+            amg.Dispose();
+            arena.Dispose();
+        }
+
+        // maxIter exhausted before an unreachable tolerance -> MaxIterations status.
+        void MaxIterationsExit()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = Poisson2D(ref arena, 32, 32);
+            int n = A.M_Rows;
+            var b = arena.floatRandomVec(n, -1f, 1f, 0xF1A1u);
+            var amg = arena.floatAMG(in A, out _);
+
+            var x = arena.floatVec(n);
+            for (int i = 0; i < n; i++) x[i] = (float)0;
+            var si = MG.solve(in amg, in b, ref x, 1, (float)1e-15);   // one cycle can't reach 1e-15
+            Assert.IsTrue(si.status == IterativeSolveStatus.MaxIterations);
+            Assert.IsTrue(si.iterations == 1);
+
+            amg.Dispose();
+            arena.Dispose();
+        }
+
+        // The IsCycleSymmetric flag (the pcg-validity gate) reflects pre == post.
+        void CycleSymmetryFlag()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = Poisson2D(ref arena, 8, 8);
+
+            var sym = arena.floatAMG(in A, new AMGOptions { theta = 0, pre = 1, post = 1, coarseMax = 48, maxLevels = 20 }, out _);
+            Assert.IsTrue(sym.IsCycleSymmetric);
+
+            var asym = arena.floatAMG(in A, new AMGOptions { theta = 0, pre = 2, post = 0, coarseMax = 48, maxLevels = 20 }, out _);
+            Assert.IsTrue(!asym.IsCycleSymmetric);
+
+            sym.Dispose();
+            asym.Dispose();
+            arena.Dispose();
+        }
     }
 
     [Test] public void VCycleSolvesTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.VCycleSolves }.Run();
@@ -180,4 +374,41 @@ public class floatAMGSolverTests
     [Test] public void PcgAmgBeatsPlainCgTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.PcgAmgBeatsPlainCg }.Run();
     [Test] public void DeterministicTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.Deterministic }.Run();
     [Test] public void PreconditionerSymmetricTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.PreconditionerSymmetric }.Run();
+    [Test] public void SingleLevelHierarchyTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.SingleLevelHierarchy }.Run();
+    [Test] public void ExplicitOptionsTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.ExplicitOptions }.Run();
+    [Test] public void NotPositiveDefiniteFailsCleanlyTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.NotPositiveDefiniteFailsCleanly }.Run();
+    [Test] public void ReuseAcrossRhsTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.ReuseAcrossRhs }.Run();
+    [Test] public void ZeroRhsTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.ZeroRhs }.Run();
+    [Test] public void WarmStartTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.WarmStart }.Run();
+    [Test] public void MaxIterationsExitTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.MaxIterationsExit }.Run();
+    [Test] public void CycleSymmetryFlagTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.CycleSymmetryFlag }.Run();
+
+    // Managed-thread reject: an asymmetric cycle (pre != post) is not an SPD preconditioner, so
+    // constructing floatAMGPreconditioner must throw. Runs on the managed thread (Assert.Throws)
+    // over a single-level (n=9) hierarchy, which needs no Chebyshev smoother build.
+    [Test]
+    public void AsymmetricCyclePreconditionerThrows()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        int gx = 3, gy = 3, n = gx * gy;
+        var bld = arena.floatBSRBuilder(n, n, 1, 1, 5 * n);
+        for (int y = 0; y < gy; y++)
+            for (int x = 0; x < gx; x++)
+            {
+                int i = y * gx + x;
+                bld.AddValue(i, i, (float)4);
+                if (x > 0) bld.AddValue(i, i - 1, (float)(-1));
+                if (x < gx - 1) bld.AddValue(i, i + 1, (float)(-1));
+                if (y > 0) bld.AddValue(i, i - gx, (float)(-1));
+                if (y < gy - 1) bld.AddValue(i, i + gx, (float)(-1));
+            }
+        var A = bld.ToBSR(ref arena);
+
+        var amg = arena.floatAMG(in A, new AMGOptions { theta = 0, pre = 2, post = 0, coarseMax = 48, maxLevels = 20 }, out var info);
+        Assert.IsTrue(info.Solved);
+        Assert.Throws<ArgumentException>(() => { var m = new floatAMGPreconditioner(in amg); });
+
+        amg.Dispose();
+        arena.Dispose();
+    }
 }

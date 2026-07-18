@@ -24,6 +24,7 @@ public class floatAMGAggregationTests
             ChainPartitionsAndCoarsens,
             DiagonalOnlyAllSingletons,
             HighThetaWeakLinksAllSingletons,
+            ZeroDiagonalNodeIsolated,
             Deterministic,
         }
 
@@ -64,6 +65,7 @@ public class floatAMGAggregationTests
                 case TestType.ChainPartitionsAndCoarsens:        ChainPartitionsAndCoarsens(); break;
                 case TestType.DiagonalOnlyAllSingletons:         DiagonalOnlyAllSingletons(); break;
                 case TestType.HighThetaWeakLinksAllSingletons:   HighThetaWeakLinksAllSingletons(); break;
+                case TestType.ZeroDiagonalNodeIsolated:          ZeroDiagonalNodeIsolated(); break;
                 case TestType.Deterministic:                     Deterministic(); break;
             }
         }
@@ -131,6 +133,40 @@ public class floatAMGAggregationTests
             arena.Dispose();
         }
 
+        // A zero-diagonal block (constraint/interface row) has undefined strength; with theta>0 its
+        // edges must be treated WEAK so it falls through to a pass-3 singleton, NOT pulled into a
+        // real-DOF aggregate. (Regression for the strength-normalizer bug where theta*sqrt(0*d)==0
+        // made every incident edge spuriously strong.)
+        void ZeroDiagonalNodeIsolated()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int nb = 5;
+            // Chain with node 2 given a ZERO diagonal; off-diagonals -1 everywhere.
+            var b = arena.floatBSRBuilder(nb, nb, 1, 1, 3 * nb);
+            for (int i = 0; i < nb; i++)
+            {
+                b.AddValue(i, i, i == 2 ? (float)0 : (float)2);
+                if (i > 0) b.AddValue(i, i - 1, (float)(-1));
+                if (i < nb - 1) b.AddValue(i, i + 1, (float)(-1));
+            }
+            var A = b.ToBSR(ref arena);
+            var aggId = arena.Indices(nb);
+
+            // theta=0.5: real-DOF edges (|off|=1 vs threshold 0.5*sqrt(2)*sqrt(2)≈1) are strong;
+            // edges incident to the zero-diagonal node 2 are weak.
+            AMG.aggregate(in A, (float)0.5, ref aggId, out int numAgg);
+
+            AssertValidPartition(in aggId, nb, numAgg);
+
+            // node 2's aggregate must contain only node 2 (singleton).
+            int a2 = aggId[2];
+            int size = 0;
+            for (int i = 0; i < nb; i++) if (aggId[i] == a2) size++;
+            Assert.IsTrue(size == 1);
+
+            arena.Dispose();
+        }
+
         void Deterministic()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -160,6 +196,10 @@ public class floatAMGAggregationTests
     [Test]
     public void HighThetaWeakLinksAllSingletonsTest()
         => new AggregateTestJob { Type = AggregateTestJob.TestType.HighThetaWeakLinksAllSingletons }.Run();
+
+    [Test]
+    public void ZeroDiagonalNodeIsolatedTest()
+        => new AggregateTestJob { Type = AggregateTestJob.TestType.ZeroDiagonalNodeIsolated }.Run();
 
     [Test]
     public void DeterministicTest()

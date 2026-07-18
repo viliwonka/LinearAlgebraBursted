@@ -1,3 +1,4 @@
+using System;
 using LinearAlgebra.Sparse;
 
 namespace LinearAlgebra.Sparse
@@ -14,7 +15,12 @@ namespace LinearAlgebra.Sparse
     {
         readonly fProxyAMG _amg;
 
-        public fProxyAMGPreconditioner(in fProxyAMG amg) { _amg = amg; }
+        public fProxyAMGPreconditioner(in fProxyAMG amg)
+        {
+            if (!amg.IsCycleSymmetric)
+                throw new ArgumentException("fProxyAMGPreconditioner: the AMG cycle must be symmetric (AMGOptions.pre == post) to be an SPD preconditioner for pcg");
+            _amg = amg;
+        }
 
         public int Rows => _amg.Rows;
 

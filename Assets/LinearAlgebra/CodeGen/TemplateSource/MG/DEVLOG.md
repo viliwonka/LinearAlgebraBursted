@@ -8,6 +8,31 @@ Path: elasticity-capable (rigid-body near-nullspace per aggregate), dodges gener
 unsmoothed Galerkin RAP collapses to a deterministic segmented assembly), Chebyshev smoother
 (already shipped), Flexible-CG outer solver. SA + deterministic spGEMM is the later Tier-2 end-state.
 
+## AMG review pass (3 adversarial reviewers) — fixes + hardening
+- 2026-07-18 | Three code-review agents over the whole AMG track: verdict NO critical/major algorithm
+  bug (V-cycle P/Pᵀ directions, residual signs, aliasing, coarse-factor reuse, job-safety, Galerkin
+  indexing, builder determinism, fcg beta/aliasing, reconstruction identity all independently
+  confirmed correct). Fixes applied:
+  - 🔴 REAL BUG (aggregate `Strong`): for a ZERO-diagonal block, `theta*sqrt(0*d)==0` made every
+    incident edge spuriously STRONG — the OPPOSITE of the documented "zero-diag → weak → singleton"
+    (would pull a constraint/interface row into a real-DOF aggregate on saddle-point systems). Fix:
+    `StrongNorm` returns false when either diagNormF is 0; also switched to `sqrt(di)*sqrt(dj)`
+    (avoids float overflow of di*dj). θ=0 path unchanged. Regression test: ZeroDiagonalNodeIsolated.
+  - pcg-validity footgun: nothing enforced pre==post (required for the AMG preconditioner to be SPD).
+    Added `fProxyAMG.Pre/Post/IsCycleSymmetric`; the `fProxyAMGPreconditioner` ctor now throws on an
+    asymmetric cycle. Tests: CycleSymmetryFlag + managed AsymmetricCyclePreconditionerThrows.
+  - NaN-poison guard: a NotPositiveDefinite build returned a hierarchy whose coarse solve emits NaN.
+    Added `_usable` flag; Solve/ApplyCycleFromZero throw. Test: NotPositiveDefiniteFailsCleanly.
+  - setup leak on build-failure throw: wrapped the build in try/finally (ok-flag) that disposes the
+    UnsafeList containers on the exception path (managed-only under Burst, matching the Arena ctor).
+  - minor: pass-2 duplicate BlockFrobenius hoisted; prolongator dropped a redundant Bcoarse zeroing
+    (arena.fProxyMat already clears) + added an absolute rank-collapse floor; singular-file crefs to
+    a non-existent `fProxyAMG` type reworded to plain text.
+  - Coverage tests added (were gaps): SingleLevelHierarchy (L==1), ExplicitOptions, ReuseAcrossRhs,
+    ZeroRhs, WarmStart, MaxIterationsExit; strengthened PcgAmgBeatsPlainCg with a plain-CG residual
+    check. FCG note: on a verify-fail-continue the PR beta pairs the true residual with the recursive
+    r_old — tiny perturbation, typically helpful, no fix (reviewer-confirmed informational).
+
 ## fProxyAMG / MG.solve / fProxyAMGPreconditioner
 - 2026-07-18 | AMG-5: the hierarchy + V-cycle + solve/preconditioner API wiring the four setup
   kernels together. Setup loop (arena.fProxyAMG): aggregate → tentativeProlongator (scalar B=ones,

@@ -4,8 +4,9 @@ using LinearAlgebra;
 namespace LinearAlgebra.Sparse
 {
     /// <summary>
-    /// Setup knobs for <see cref="fProxyAMG"/>. Fields are plain int/double (not proxy-typed), so
-    /// this file is not float/double-duplicated by codegen — same role as <see cref="SchwarzOptions"/>.
+    /// Setup knobs for the AMG hierarchy (floatAMG / doubleAMG). Fields are plain int/double (not
+    /// proxy-typed), so this file is not float/double-duplicated by codegen — same role as
+    /// <see cref="SchwarzOptions"/>.
     /// </summary>
     public struct AMGOptions
     {
@@ -31,7 +32,7 @@ namespace LinearAlgebra.Sparse
         };
     }
 
-    /// <summary>Result of an <see cref="fProxyAMG"/> build (fields only from already-computed numbers).</summary>
+    /// <summary>Result of an AMG hierarchy build (fields only from already-computed numbers).</summary>
     public struct AMGSetupInfo
     {
         public int levels;

@@ -32,18 +32,29 @@ namespace LinearAlgebra.Sparse
 
         int _levels;
         int _pre, _post;
+        bool _usable;                   // false when the coarsest Cholesky failed (do not solve)
         Allocator _alloc;
 
         public int Levels => _levels;
         public int Rows => _A[0].M_Rows;
+        /// <summary>Pre-smoothing sweeps per level per cycle.</summary>
+        public int Pre => _pre;
+        /// <summary>Post-smoothing sweeps per level per cycle.</summary>
+        public int Post => _post;
+        /// <summary>True iff the build succeeded (coarsest Cholesky SPD). Solving an unusable
+        /// hierarchy would emit NaN — the entry points throw instead.</summary>
+        public bool Usable => _usable;
+        /// <summary>True iff the cycle is symmetric (Pre == Post) — the requirement for
+        /// <see cref="fProxyAMGPreconditioner"/> to be SPD and valid for pcg.</summary>
+        public bool IsCycleSymmetric => _pre == _post;
 
         internal fProxyAMG(UnsafeList<fProxyBSR> A, UnsafeList<fProxyBSR> P, UnsafeList<fProxyChebyshev> S,
             UnsafeList<fProxyN> X, UnsafeList<fProxyN> B, UnsafeList<fProxyN> R, UnsafeList<fProxyN> Z,
-            fProxyMxN coarseChol, fProxyN coarseRhs, int levels, int pre, int post, Allocator alloc)
+            fProxyMxN coarseChol, fProxyN coarseRhs, int levels, int pre, int post, bool usable, Allocator alloc)
         {
             _A = A; _P = P; _S = S; _X = X; _B = B; _R = R; _Z = Z;
             _coarseChol = coarseChol; _coarseRhs = coarseRhs;
-            _levels = levels; _pre = pre; _post = post; _alloc = alloc;
+            _levels = levels; _pre = pre; _post = post; _usable = usable; _alloc = alloc;
         }
 
         /// <summary>Frees the per-level handle containers (not the arena-owned level data).</summary>
@@ -124,6 +135,7 @@ namespace LinearAlgebra.Sparse
         // z = one V-cycle solving A z = r from a zero initial guess (the preconditioner apply).
         internal readonly void ApplyCycleFromZero(in fProxyN r, ref fProxyN z)
         {
+            if (!_usable) throw new InvalidOperationException("fProxyAMG: build failed (coarsest not SPD); do not Apply — check AMGSetupInfo.Solved");
             fProxyN b0 = _B[0], x0 = _X[0];
             b0.Data.CopyFrom(r.Data);
             for (int i = 0; i < x0.N; i++) x0[i] = (fProxy)0;
@@ -134,6 +146,7 @@ namespace LinearAlgebra.Sparse
         // Standalone V-cycle iteration to a relative true-residual tolerance; x is warm-startable.
         internal readonly SolveInfo Solve(in fProxyN b, ref fProxyN x, int maxIter, fProxy tol)
         {
+            if (!_usable) throw new InvalidOperationException("MG.solve: AMG build failed (coarsest not SPD); check AMGSetupInfo.Solved");
             if (b.N != Rows) throw new ArgumentException("MG.solve: b.N must equal amg.Rows");
             if (x.N != Rows) throw new ArgumentException("MG.solve: x.N must equal amg.Rows");
             if (maxIter < 1) throw new ArgumentException("MG.solve: maxIter must be >= 1");
@@ -197,61 +210,91 @@ namespace LinearAlgebra
             var self = this;
             var alloc = self.Allocator;
 
-            var levA = new UnsafeList<fProxyBSR>(4, alloc);
-            var levP = new UnsafeList<fProxyBSR>(4, alloc);
-            var levS = new UnsafeList<fProxyChebyshev>(4, alloc);
-
-            fProxyBSR A0 = A.Symmetric ? self.fProxyBSRMirrorToFull(in A) : A;
-            levA.Add(A0);
-
-            int n0 = A0.M_Rows;
-            fProxyMxN Bcur = self.fProxyMat(n0, 1);
-            for (int i = 0; i < n0; i++) Bcur[i, 0] = (fProxy)1;
-
-            while (levA[levA.Length - 1].M_Rows > opts.coarseMax && levA.Length < opts.maxLevels)
+            // Declared up front so the finally can free them if a level build (aggregation /
+            // prolongator / Galerkin / Chebyshev) throws before the hierarchy is constructed —
+            // the containers are allocator-owned, not arena-tracked, so they would otherwise leak.
+            var levA = default(UnsafeList<fProxyBSR>);
+            var levP = default(UnsafeList<fProxyBSR>);
+            var levS = default(UnsafeList<fProxyChebyshev>);
+            var levX = default(UnsafeList<fProxyN>);
+            var levB = default(UnsafeList<fProxyN>);
+            var levR = default(UnsafeList<fProxyN>);
+            var levZ = default(UnsafeList<fProxyN>);
+            bool ok = false;
+            try
             {
-                fProxyBSR cur = levA[levA.Length - 1];
-                var aggId = self.Indices(cur.BlockRows);
-                AMG.aggregate(in cur, (fProxy)opts.theta, ref aggId, out int numAgg);
-                if (numAgg >= cur.BlockRows) break;      // aggregation did not coarsen -> stop
+                levA = new UnsafeList<fProxyBSR>(4, alloc);
+                levP = new UnsafeList<fProxyBSR>(4, alloc);
+                levS = new UnsafeList<fProxyChebyshev>(4, alloc);
 
-                var T = AMG.tentativeProlongator(in cur, in aggId, numAgg, in Bcur, ref self, out var Bc);
-                var Ac = AMG.galerkinRAP(in cur, in T, in aggId, numAgg, ref self);
-                var sm = new fProxyChebyshev(in cur, ref self);   // smoother for the CURRENT level
+                fProxyBSR A0 = A.Symmetric ? self.fProxyBSRMirrorToFull(in A) : A;
+                levA.Add(A0);
 
-                levP.Add(T);
-                levS.Add(sm);
-                levA.Add(Ac);
-                Bcur = Bc;
+                int n0 = A0.M_Rows;
+                fProxyMxN Bcur = self.fProxyMat(n0, 1);
+                for (int i = 0; i < n0; i++) Bcur[i, 0] = (fProxy)1;
+
+                while (levA[levA.Length - 1].M_Rows > opts.coarseMax && levA.Length < opts.maxLevels)
+                {
+                    fProxyBSR cur = levA[levA.Length - 1];
+                    var aggId = self.Indices(cur.BlockRows);
+                    AMG.aggregate(in cur, (fProxy)opts.theta, ref aggId, out int numAgg);
+                    if (numAgg >= cur.BlockRows) break;      // aggregation did not coarsen -> stop
+
+                    var T = AMG.tentativeProlongator(in cur, in aggId, numAgg, in Bcur, ref self, out var Bc);
+                    var Ac = AMG.galerkinRAP(in cur, in T, in aggId, numAgg, ref self);
+                    var sm = new fProxyChebyshev(in cur, ref self);   // smoother for the CURRENT level
+
+                    levP.Add(T);
+                    levS.Add(sm);
+                    levA.Add(Ac);
+                    Bcur = Bc;
+                }
+
+                int L = levA.Length;
+                fProxyBSR coarse = levA[L - 1];
+                fProxyMxN chol = coarse.ToDense(ref self);
+                var cinfo = CHO.decompInPlace(ref chol);
+
+                levX = new UnsafeList<fProxyN>(L, alloc);
+                levB = new UnsafeList<fProxyN>(L, alloc);
+                levR = new UnsafeList<fProxyN>(L, alloc);
+                levZ = new UnsafeList<fProxyN>(L, alloc);
+                for (int l = 0; l < L; l++)
+                {
+                    int nl = levA[l].M_Rows;
+                    levX.Add(self.fProxyVec(nl));
+                    levB.Add(self.fProxyVec(nl));
+                    levR.Add(self.fProxyVec(nl));
+                    levZ.Add(self.fProxyVec(nl));
+                }
+                var coarseRhs = self.fProxyVec(coarse.M_Rows);
+
+                info = new AMGSetupInfo
+                {
+                    levels = L,
+                    coarseRows = coarse.M_Rows,
+                    status = cinfo.Solved ? DirectSolveStatus.Success : DirectSolveStatus.NotPositiveDefinite,
+                };
+
+                var result = new fProxyAMG(levA, levP, levS, levX, levB, levR, levZ, chol, coarseRhs,
+                    L, opts.pre, opts.post, cinfo.Solved, alloc);
+                ok = true;
+                return result;
             }
-
-            int L = levA.Length;
-            fProxyBSR coarse = levA[L - 1];
-            fProxyMxN chol = coarse.ToDense(ref self);
-            var cinfo = CHO.decompInPlace(ref chol);
-
-            var levX = new UnsafeList<fProxyN>(L, alloc);
-            var levB = new UnsafeList<fProxyN>(L, alloc);
-            var levR = new UnsafeList<fProxyN>(L, alloc);
-            var levZ = new UnsafeList<fProxyN>(L, alloc);
-            for (int l = 0; l < L; l++)
+            finally
             {
-                int nl = levA[l].M_Rows;
-                levX.Add(self.fProxyVec(nl));
-                levB.Add(self.fProxyVec(nl));
-                levR.Add(self.fProxyVec(nl));
-                levZ.Add(self.fProxyVec(nl));
+                if (!ok)
+                {
+                    if (levA.IsCreated) levA.Dispose();
+                    if (levP.IsCreated) levP.Dispose();
+                    if (levS.IsCreated) levS.Dispose();
+                    if (levX.IsCreated) levX.Dispose();
+                    if (levB.IsCreated) levB.Dispose();
+                    if (levR.IsCreated) levR.Dispose();
+                    if (levZ.IsCreated) levZ.Dispose();
+                }
             }
-            var coarseRhs = self.fProxyVec(coarse.M_Rows);
-
-            info = new AMGSetupInfo
-            {
-                levels = L,
-                coarseRows = coarse.M_Rows,
-                status = cinfo.Solved ? DirectSolveStatus.Success : DirectSolveStatus.NotPositiveDefinite,
-            };
-
-            return new fProxyAMG(levA, levP, levS, levX, levB, levR, levZ, chol, coarseRhs, L, opts.pre, opts.post, alloc);
         }
 
         /// <summary>Builds an <see cref="fProxyAMG"/> with <see cref="AMGOptions.Default"/>.</summary>
