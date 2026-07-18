@@ -68,8 +68,17 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Flexible-CG-accelerated AMG over a BSR SPD matrix — the correct pairing for a K-cycle
-        /// preconditioner (variable operator). Also valid for a V-cycle. Same convenience-rung pattern.
+        /// preconditioner (variable operator). Also valid for a V-cycle. Same convenience-rung pattern
+        /// as the pcg overloads (fcg's fifth scratch vector rOld holds the previous residual).
         /// </summary>
+        public static SolveInfo fcg(in Sparse.fProxyBSR A, in Sparse.fProxyAMGPreconditioner M, in fProxyN b, ref fProxyN x,
+                               ref fProxyN r, ref fProxyN p, ref fProxyN Ap, ref fProxyN z, ref fProxyN rOld,
+                               int maxIter, fProxy tol)
+        {
+            return fcg(new Sparse.fProxyBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, ref rOld, maxIter, tol);
+        }
+
+        /// <summary>AMG-preconditioned Flexible CG over a BSR SPD matrix — allocates five scratch vectors.</summary>
         public static SolveInfo fcg(in Sparse.fProxyBSR A, in Sparse.fProxyAMGPreconditioner M, in fProxyN b, ref fProxyN x,
                                int maxIter, fProxy tol)
         {

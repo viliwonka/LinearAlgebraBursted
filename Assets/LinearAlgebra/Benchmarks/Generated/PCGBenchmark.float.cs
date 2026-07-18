@@ -198,6 +198,24 @@ namespace LinearAlgebra.Benchmarks
         }
     }
 
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct FcgAMGKTolJobFloat : IJob
+    {
+        public floatBSR A;
+        public floatAMGPreconditioner M;
+        public floatN b, x, r, p, Ap, z, rOld;
+        public int K;
+        public float Tol;
+        public Indices Iters;
+
+        public void Execute()
+        {
+            for (int i = 0; i < x.N; i++) x[i] = 0f;
+            var info = Krylov.fcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, ref rOld, K, Tol);
+            Iters[0] = info.iterations;
+        }
+    }
+
     public static partial class PCGBenchmark
     {
         // Preconditioner face-off: solve-to-tolerance. Reports wall-clock AND iteration count --
@@ -299,9 +317,20 @@ namespace LinearAlgebra.Benchmarks
             var mAmg = new floatAMGPreconditioner(in amgH);
             var aJob = new PcgAMGTolJobFloat { A = A, M = mAmg, b = b, x = x, r = r, p = p, Ap = Ap, z = z, K = cap, Tol = tol, Iters = iters };
             var aStat = Bench.Time(() => aJob.Run());
-            sb.Append(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
-                "float", n, "PCG-AMG", aStat.Median, aStat.Min, iters[0], Residual(in A, in x, in b)));
+            sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
+                "float", n, "PCG-AMG-V", aStat.Median, aStat.Min, iters[0], Residual(in A, in x, in b)));
 
+            // K-cycle AMG: per-level Krylov acceleration, driven by fcg (the K-cycle is a variable
+            // operator). Compare its iteration count against PCG-AMG-V above.
+            var rOld = arena.floatVec(n);
+            var amgK = arena.floatAMG(in A, new AMGOptions { cycle = MGCycle.K, theta = 0, pre = 1, post = 1, coarseMax = 48, maxLevels = 20 }, out _);
+            var mAmgK = new floatAMGPreconditioner(in amgK);
+            var akJob = new FcgAMGKTolJobFloat { A = A, M = mAmgK, b = b, x = x, r = r, p = p, Ap = Ap, z = z, rOld = rOld, K = cap, Tol = tol, Iters = iters };
+            var akStat = Bench.Time(() => akJob.Run());
+            sb.Append(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
+                "float", n, "FCG-AMG-K", akStat.Median, akStat.Min, iters[0], Residual(in A, in x, in b)));
+
+            amgK.Dispose();
             amgH.Dispose();
             arena.Dispose();
             return sb.ToString();
