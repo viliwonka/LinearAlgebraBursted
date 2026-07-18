@@ -117,38 +117,6 @@ namespace LinearAlgebra.Benchmarks
         }
     }
 
-    // ---- CGLS scratch: r, q (A.Rows length), s, p (A.Cols length) ----------------------------------
-
-    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
-    public struct CglsDenseJobFProxy : IJob
-    {
-        public fProxyMxN A;
-        public fProxyN b, x, r, s, p, q;
-        public int K;
-
-        public void Execute()
-        {
-            int n = x.N;
-            for (int i = 0; i < n; i++) x[i] = 0f;
-            Krylov.cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, K, 0f);
-        }
-    }
-
-    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
-    public struct CglsSparseJobFProxy : IJob
-    {
-        public fProxyBSR A;
-        public fProxyN b, x, r, s, p, q;
-        public int K;
-
-        public void Execute()
-        {
-            int n = x.N;
-            for (int i = 0; i < n; i++) x[i] = 0f;
-            Krylov.cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, K, 0f);
-        }
-    }
-
     // ---- LSQR scratch: u, tmpM (A.Rows length), v, w, tmpN (A.Cols length) ------------------------
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -181,23 +149,9 @@ namespace LinearAlgebra.Benchmarks
         }
     }
 
-    // ---- transpose-optimized sparse CGLS/LSQR jobs: use a materialized Aᵀ so ApplyT runs as a forward
+    // ---- transpose-optimized sparse LSQR jobs: use a materialized Aᵀ so ApplyT runs as a forward
     //      spMV over Aᵀ instead of the cache-unfriendly on-the-fly spMVT. Aᵀ is built ONCE outside the
     //      timed region (a real solve builds it once and reuses it every iteration). ------------------
-
-    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
-    public struct CglsSparseTJobFProxy : IJob
-    {
-        public fProxyBSR A, AT;
-        public fProxyN b, x, r, s, p, q;
-        public int K;
-        public void Execute()
-        {
-            int n = x.N;
-            for (int i = 0; i < n; i++) x[i] = 0f;
-            Krylov.cgls(in A, in AT, in b, ref x, ref r, ref s, ref p, ref q, K, 0f);
-        }
-    }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct LsqrSparseTJobFProxy : IJob
@@ -808,7 +762,7 @@ namespace LinearAlgebra.Benchmarks
             }
         }
 
-        // ==== Section 3: rectangular -> cgls & lsqr (over- and under-determined) ========================
+        // ==== Section 3: rectangular -> lsqr (over- and under-determined) ========================
 
         static void RunRectCaseFProxy(int nRef, int mb, int nb, float density, string tag, int tagSeed, StringBuilder sb)
         {
@@ -817,16 +771,6 @@ namespace LinearAlgebra.Benchmarks
             BuildBlockRectFProxy(ref arena, mb, nb, density, SparseSolverFmt.Seed(nRef, density, tagSeed), out var dense, out var sparse);
             int rows = mb * BR, cols = nb * BR;
             var b = arena.fProxyRandomVec(rows, -1f, 1f, SparseSolverFmt.Seed(nRef, density, tagSeed + 1));
-
-            var xCD = arena.fProxyVec(cols); var rCD = arena.fProxyVec(rows); var sCD = arena.fProxyVec(cols); var pCD = arena.fProxyVec(cols); var qCD = arena.fProxyVec(rows);
-            var cglsDenseJob = new CglsDenseJobFProxy { A = dense, b = b, x = xCD, r = rCD, s = sCD, p = pCD, q = qCD, K = K };
-            var cglsDenseStat = Bench.Time(() => cglsDenseJob.Run());
-            sb.AppendLine(SparseSolverFmt.Row("fProxy", nRef, density, "CGLS-dense-" + tag, cglsDenseStat, ResidualLS(in dense, in xCD, in b)));
-
-            var xCS = arena.fProxyVec(cols); var rCS = arena.fProxyVec(rows); var sCS = arena.fProxyVec(cols); var pCS = arena.fProxyVec(cols); var qCS = arena.fProxyVec(rows);
-            var cglsSparseJob = new CglsSparseJobFProxy { A = sparse, b = b, x = xCS, r = rCS, s = sCS, p = pCS, q = qCS, K = K };
-            var cglsSparseStat = Bench.Time(() => cglsSparseJob.Run());
-            sb.AppendLine(SparseSolverFmt.Row("fProxy", nRef, density, "CGLS-sparse-" + tag, cglsSparseStat, ResidualLS(in dense, in xCS, in b)));
 
             var xLD = arena.fProxyVec(cols); var uLD = arena.fProxyVec(rows); var vLD = arena.fProxyVec(cols); var wLD = arena.fProxyVec(cols);
             var tmMLD = arena.fProxyVec(rows); var tmNLD = arena.fProxyVec(cols);
@@ -844,11 +788,6 @@ namespace LinearAlgebra.Benchmarks
             // becomes a forward spMV over Aᵀ. Compare "sparseT" rows against the "sparse" rows above.
             var AT = arena.fProxyBSRTranspose(in sparse);
 
-            var xCST = arena.fProxyVec(cols); var rCST = arena.fProxyVec(rows); var sCST = arena.fProxyVec(cols); var pCST = arena.fProxyVec(cols); var qCST = arena.fProxyVec(rows);
-            var cglsSparseTJob = new CglsSparseTJobFProxy { A = sparse, AT = AT, b = b, x = xCST, r = rCST, s = sCST, p = pCST, q = qCST, K = K };
-            var cglsSparseTStat = Bench.Time(() => cglsSparseTJob.Run());
-            sb.AppendLine(SparseSolverFmt.Row("fProxy", nRef, density, "CGLS-sparseT-" + tag, cglsSparseTStat, ResidualLS(in dense, in xCST, in b)));
-
             var xLST = arena.fProxyVec(cols); var uLST = arena.fProxyVec(rows); var vLST = arena.fProxyVec(cols); var wLST = arena.fProxyVec(cols);
             var tmMLST = arena.fProxyVec(rows); var tmNLST = arena.fProxyVec(cols);
             var lsqrSparseTJob = new LsqrSparseTJobFProxy { A = sparse, AT = AT, b = b, x = xLST, u = uLST, v = vLST, w = wLST, tmpM = tmMLST, tmpN = tmNLST, K = K };
@@ -863,7 +802,7 @@ namespace LinearAlgebra.Benchmarks
             int BR = SparseSolverFmt.BR, K = SparseSolverFmt.K_LS;
             sb.AppendLine();
             sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
-                "--- 3. Rectangular block-sparse (b={0}): cgls & lsqr, K={1}, tol=0 [fProxy] ---", BR, K));
+                "--- 3. Rectangular block-sparse (b={0}): lsqr, K={1}, tol=0 [fProxy] ---", BR, K));
             sb.AppendLine("    over: rows=2xcols block grid (m=2n, overdetermined); under: cols=2xrows block grid (m=n/2, underdetermined).");
             sb.AppendLine("    residual = ||A^T(Ax-b)|| / ||A^T b|| (least-squares optimality, not ||Ax-b||).");
             sb.AppendLine(SparseSolverFmt.RowHeader());

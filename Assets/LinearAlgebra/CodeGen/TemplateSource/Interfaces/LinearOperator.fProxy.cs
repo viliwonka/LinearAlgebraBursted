@@ -3,7 +3,7 @@ namespace LinearAlgebra
     /// <summary>
     /// A linear operator y = A x, abstracted behind a generic struct constraint: solvers are
     /// generic over <c>TOp : struct, IfProxyLinearOperator</c>, so each Apply compiles to a direct
-    /// call (no virtual dispatch). Lets Krylov solvers (CG, PCG, MINRES, BiCGSTAB, CGLS, LSQR --
+    /// call (no virtual dispatch). Lets Krylov solvers (CG, PCG, MINRES, BiCGSTAB, LSQR, LSMR --
     /// see <c>Krylov</c>) be written ONCE and reused over both dense
     /// (<see cref="fProxyDenseOperator"/>) and block-sparse
     /// (<c>LinearAlgebra.Sparse.fProxyBSROperator</c>) matrices without duplicating the solver
@@ -21,7 +21,7 @@ namespace LinearAlgebra
         void Apply(in fProxyN x, ref fProxyN y);
 
         /// <summary>y = Aᵀ x. y must be distinct from x. Needed by transpose-using solvers
-        /// (CGLS/LSQR/LSMR) and residual audits; biCGStab is transpose-free and never calls this.</summary>
+        /// (LSQR/LSMR) and residual audits; biCGStab is transpose-free and never calls this.</summary>
         void ApplyT(in fProxyN x, ref fProxyN y);
 
         /// <summary>
@@ -193,9 +193,9 @@ namespace LinearAlgebra
         }
 
         // Composes: Apply, then a separate dot pass. This wrapper is RECTANGULAR in its usual
-        // callers (cgls/lsqr column-preconditioning, x length Cols, y length Rows) -- dot(x,y)
+        // callers (lsqr/lsmr column-preconditioning, x length Cols, y length Rows) -- dot(x,y)
         // isn't even well-formed there, so ApplyDot exists only to satisfy the interface; no
-        // solver calls it on this operator today (cgls/lsqr don't use ApplyDot).
+        // solver calls it on this operator today (lsqr/lsmr don't use ApplyDot).
         public fProxy ApplyDot(in fProxyN x, ref fProxyN y)
         {
             Apply(in x, ref y);

@@ -1,6 +1,19 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.cgls / cglsJacobi removed
+- 2026-07-19 | Removed CGLS (all overloads: generic + dense + BSR + damped + transpose-optimized) and
+  its column-equilibration wrapper cglsJacobi, plus all tests/benchmarks/CglsInfo. Rationale: CGLS is
+  a normal-equations (AᵀA) method → squares the conditioning (κ²); lsqr/lsmr solve the same
+  least-squares problem (including Tikhonov `damp` and the *Jacobi column-equilibration wrapper) at
+  strictly better conditioning, so CGLS was dominated. KEPT lsqr/lsmr + lsqrJacobi/lsmrJacobi (user
+  wants to study the Jacobi wrappers before deciding their fate). Test rewiring: damping/diagnostics
+  tests dropped their cgls arm (lsqr becomes the primary oracle); the 3-way `which` loops in
+  Strang-line-fit + LstsqInfo dropped case 0. Comment cleanup swept the shared operator/BSR/gallery
+  docs (cgls no longer a named consumer of ApplyT / transpose-materialization). Continues the cgne
+  removal below — the whole normal-equations LS family is now gone. `updateXR`'s rectangular path is
+  now exercised only by the fused-kernel regression test (no production caller), kept as a guard.
+
 ## Krylov.cgne removed
 - 2026-07-18 | Removed CGNE / Craig's method (all overloads: generic + dense + BSR) + its tests
   (3 methods in SparseSolverTests, the verify-at-exit case, the aliasing guard, embedded rnorm-honesty

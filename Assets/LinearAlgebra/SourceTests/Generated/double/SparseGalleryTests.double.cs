@@ -16,7 +16,7 @@ using Unity.Mathematics;
 //   - SPD generator: build A, form b = A*x_known, solve with CG -> recovers x_known. CG converges only
 //     for SPD, so success is proof the generator is symmetric positive-definite (not just symmetric).
 //   - Tall generator: build A (m > n), form a CONSISTENT b = A*x_known, solve the least-squares problem
-//     with CGLS -> recovers x_known. That requires full column rank, so success proves it.
+//     with LSQR -> recovers x_known. That requires full column rank, so success proves it.
 // Runs inside a [BurstCompile] IJob (matches doubleSparseSolverTests); the generators are themselves
 // Burst-compatible (no managed collections -- Unity.Mathematics.Random + arena/builder only).
 public class doubleSparseGalleryTests
@@ -27,7 +27,7 @@ public class doubleSparseGalleryTests
         public enum TestType
         {
             RandomSparseSPDRecoversViaCG,
-            RandomSparseTallRecoversViaCgls,
+            RandomSparseTallRecoversViaLsqr,
         }
 
         public TestType Type;
@@ -37,11 +37,11 @@ public class doubleSparseGalleryTests
             switch (Type)
             {
                 case TestType.RandomSparseSPDRecoversViaCG:     RandomSparseSPDRecoversViaCG();     break;
-                case TestType.RandomSparseTallRecoversViaCgls:  RandomSparseTallRecoversViaCgls();  break;
+                case TestType.RandomSparseTallRecoversViaLsqr:  RandomSparseTallRecoversViaLsqr();  break;
             }
         }
 
-        // Recovery tol = achievable CG/CGLS solution accuracy: the solvers converge on the RESIDUAL to
+        // Recovery tol = achievable CG/LSQR solution accuracy: the solvers converge on the RESIDUAL to
         // sqrt(eps), so the SOLUTION error is ~kappa*sqrt(eps) (kappa ~ tens for these diag-dominant
         // matrices) -- ~1e-3 in float, ~1e-6 in double. (A tighter double bound like 1e-8 would test the
         // solver's conditioning, not the generator.)
@@ -67,7 +67,7 @@ public class doubleSparseGalleryTests
             arena.Dispose();
         }
 
-        void RandomSparseTallRecoversViaCgls()
+        void RandomSparseTallRecoversViaLsqr()
         {
             var arena = new Arena(Allocator.Persistent);
 
@@ -79,8 +79,8 @@ public class doubleSparseGalleryTests
             var b = BSR.spMV(in A, in xKnown);                   // consistent (b in range(A))
 
             var x = arena.doubleVec(n);
-            bool ok = Krylov.cgls(in A, in b, ref x, 16 * n, Consts.doubleSqrtEps);
-            Assert.IsTrue(ok);                                   // CGLS converged => full column rank
+            bool ok = Krylov.lsqr(in A, in b, ref x, 16 * n, Consts.doubleSqrtEps);
+            Assert.IsTrue(ok);                                   // LSQR converged => full column rank
 
             Assert.IsTrue(Analysis.isZero(xKnown - x, Tol()));
 
@@ -93,6 +93,6 @@ public class doubleSparseGalleryTests
         => new SparseGalleryTestJob { Type = SparseGalleryTestJob.TestType.RandomSparseSPDRecoversViaCG }.Run();
 
     [Test]
-    public void RandomSparseTallRecoversViaCgls()
-        => new SparseGalleryTestJob { Type = SparseGalleryTestJob.TestType.RandomSparseTallRecoversViaCgls }.Run();
+    public void RandomSparseTallRecoversViaLsqr()
+        => new SparseGalleryTestJob { Type = SparseGalleryTestJob.TestType.RandomSparseTallRecoversViaLsqr }.Run();
 }

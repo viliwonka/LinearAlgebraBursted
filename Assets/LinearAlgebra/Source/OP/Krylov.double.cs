@@ -585,10 +585,10 @@ namespace LinearAlgebra
             return pcg(in A, in M, in b, ref x, A.M_Rows, Consts.doubleSqrtEps);
         }
 
-        // MINRES (symmetric indefinite), BiCGSTAB (non-symmetric), CGLS/LSQR (rectangular
+        // MINRES (symmetric indefinite), BiCGSTAB (non-symmetric), LSQR/LSMR (rectangular
         // least-squares). Same generic-operator pattern as cg&lt;TOp&gt;/pcg&lt;TOp,TPre&gt; above --
         // see cg&lt;TOp&gt;'s doc comment for the shared "why an up-front aliasing guard" rationale.
-        // These four solvers carry more scratch vectors than cg/pcg (6-9 vs 3-4), so their guards
+        // These solvers carry more scratch vectors than cg/pcg (6-9 vs 3-4), so their guards
         // use RequireDistinctBuffers (a small loop-based helper) instead of a hand-expanded OR chain.
 
         /// <summary>
@@ -1000,7 +1000,7 @@ namespace LinearAlgebra
         /// it describes x, not a solve.
         ///
         /// DAMPED CONVENTION: Arnorm uses the ‖x‖-Tikhonov gradient ‖Aᵀr - damp²x‖ -- the optimality
-        /// residual for cgls (any start) and for cold-start (x₀=0) lsqr/lsmr. Auditing a WARM-STARTED
+        /// residual for a cold-start (x₀=0) lsqr/lsmr. Auditing a WARM-STARTED
         /// lsqr/lsmr result with damp!=0 will report a nonzero Arnorm even at that solver's optimum,
         /// because it minimizes the CORRECTION-penalized ‖Aᵀr - damp²(x-x₀)‖ instead; rnorm = ‖b-Ax‖
         /// is unaffected by the convention and is always exact.
@@ -1014,7 +1014,7 @@ namespace LinearAlgebra
             rScratch.scaleAddInPlace((double)(-1), b);          // rScratch = -A x + b = b - A x
             double rnorm = math.sqrt(Blas.dot(rScratch, rScratch));
 
-            // s = Aᵀr - damp²x  (the same optimality residual cgls's loop tracks)
+            // s = Aᵀr - damp²x  (the ‖x‖-Tikhonov optimality residual)
             A.ApplyT(in rScratch, ref sScratch);
             if (damp != (double)0) sScratch.addScaledInPlace(-(damp * damp), x);
             double arnorm = math.sqrt(Blas.dot(sScratch, sScratch));
@@ -1032,292 +1032,23 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Zero-alloc CGLS solver for RECTANGULAR least-squares systems: minimizes ‖Ax-b‖₂ for
-        /// possibly non-square A (over- or under-determined), generic over
-        /// <see cref="IdoubleLinearOperator"/>. CG applied to the normal equations AᵀA x = Aᵀb, but
-        /// never explicitly forms AᵀA -- every AᵀA-vector product is one Apply plus one ApplyT. Uses
-        /// the numerically-stable "CGLS" variant (Björck, Algorithm 7.17): the normal-equation
-        /// residual s = Aᵀr is recomputed fresh every iteration rather than updated incrementally
-        /// (avoids the classic CGNR update's drift); same op count either way.
-        ///
-        /// Caller provides x (initial guess, length A.Cols -- overwritten with solution, WARM-
-        /// STARTABLE) and four scratch vectors: r, q (length A.Rows) and s, p (length A.Cols).
-        /// Converges when ‖Aᵀr‖ &lt;= tol*‖Aᵀb‖. For a CONSISTENT system (b in range(A)) this
-        /// drives r itself to zero; for an INCONSISTENT system it converges to the least-squares
-        /// solution with ‖Aᵀr‖≈0 and ‖r‖ generally nonzero.
-        ///
-        /// <paramref name="damp"/> (&gt;= 0) applies Tikhonov regularization: minimizes
-        /// ‖Ax-b‖² + damp²‖x‖² (damp == 0 is BIT-IDENTICAL to the plain solve). Because the
-        /// regularization term uses the FULL x, not the residual, cgls regularizes ‖x‖ for ANY
-        /// initial x -- warm start included -- unlike lsqr/lsmr, which regularize ‖x - x₀‖ under a
-        /// nonzero warm start.
-        ///
-        /// Returns an <see cref="LstsqInfo"/> — see that struct for the implicit-bool/status/
-        /// undefined-x contract. Breakdown on non-positive curvature ‖Ap‖²&lt;=0 (mirrors cg's
-        /// p·Ap&lt;=0 guard: p is in null(A), or p==0).
-        /// </summary>
-        public static LstsqInfo cgls<TOp>(in TOp A, in doubleN b, ref doubleN x,
-                                     ref doubleN r, ref doubleN s, ref doubleN p, ref doubleN q,
-                                     int maxIter, double tol, double damp)
-            where TOp : struct, IdoubleLinearOperator
-        {
-            if (b.N != A.Rows) throw new ArgumentException("cgls: b.N must equal A.Rows");
-            if (x.N != A.Cols) throw new ArgumentException("cgls: x.N must equal A.Cols");
-            if (r.N != A.Rows) throw new ArgumentException("cgls: r.N must equal A.Rows");
-            if (q.N != A.Rows) throw new ArgumentException("cgls: q.N must equal A.Rows");
-            if (s.N != A.Cols) throw new ArgumentException("cgls: s.N must equal A.Cols");
-            if (p.N != A.Cols) throw new ArgumentException("cgls: p.N must equal A.Cols");
-
-            if (maxIter < 1)
-                throw new ArgumentException("cgls: maxIter must be >= 1");
-
-            unsafe
-            {
-                long* ptrs = stackalloc long[6];
-                ptrs[0] = (long)r.Data.Ptr; ptrs[1] = (long)s.Data.Ptr; ptrs[2] = (long)p.Data.Ptr;
-                ptrs[3] = (long)q.Data.Ptr; ptrs[4] = (long)x.Data.Ptr; ptrs[5] = (long)b.Data.Ptr;
-                RequireDistinctBuffers("cgls: r/s/p/q/x/b must be distinct", ptrs, 6);
-            }
-
-            // Fixed scale reference for the relative tolerance, independent of x0 (mirrors cg's
-            // bb = dot(b,b)): AtB = A^T b, atbSq = ||AtB||^2. s doubles as scratch for this
-            // one-off computation -- the main loop overwrites it every iteration from here on.
-            A.ApplyT(in b, ref s);
-            double atbSq = Blas.dot(s, s);
-
-            if (atbSq == (double)0)
-            {
-                // A^T b == 0 -> x=0 is a valid least-squares minimizer regardless of warm start
-                // (mirrors cg's bb==0 shortcut: a deterministic, NaN-sanitizing exact answer).
-                for (int i = 0; i < x.N; i++) x[i] = (double)0;
-                // r = b, Aᵀr = Aᵀb = 0, x = 0.
-                return new LstsqInfo { rnorm = math.sqrt(Blas.dot(b, b)), Arnorm = (double)0, xnorm = (double)0, iterations = 0, status = IterativeSolveStatus.Converged };
-            }
-
-            double threshold = tol * tol * atbSq;
-
-            // r = b - A x
-            A.Apply(in x, ref q);                          // q = A x (temp use of q)
-            r.Data.CopyFrom(b.Data);
-            r.addScaledInPlace((double)(-1), q);
-
-            // s = A^T r - damp^2 x  (damped: the residual of the normal equations
-            // (A^T A + damp^2 I) x = A^T b; damp==0 -> s = A^T r exactly, bit-identical).
-            A.ApplyT(in r, ref s);
-            if (damp != (double)0) s.addScaledInPlace(-(damp * damp), x);
-
-            double gamma = Blas.dot(s, s);
-
-            // rnorm/Arnorm/xnorm are all FREE here: r is live (one dot), Arnorm = √gamma is the
-            // tracked normal-equation residual, xnorm one dot on x. No extra matvec.
-            if (gamma <= threshold)
-                return CglsInfo(IterativeSolveStatus.Converged, 0, gamma, in r, in x);
-
-            p.Data.CopyFrom(s.Data);
-
-            for (int k = 0; k < maxIter; k++)
-            {
-                A.Apply(in p, ref q);                       // q = A p
-
-                double delta = Blas.dot(q, q);
-                if (damp != (double)0) delta += (damp * damp) * Blas.dot(p, p);   // p^T(A^T A + damp^2 I)p
-
-                if (!(delta > (double)0))                   // NaN-safe: also catches breakdown
-                    return CglsInfo(IterativeSolveStatus.Breakdown, k + 1, gamma, in r, in x);
-
-                double alpha = gamma / delta;
-
-                // NOTE: x (length A.Cols) and r (length A.Rows) generally differ in size here (cgls is
-                // rectangular), so Blas.updateXR cannot interleave them into a shared-index pass and
-                // cgls does not need updateXR's ||r||^2 byproduct (convergence is tracked via gamma =
-                // ||A^T r||^2). Left as two plain axpy calls -- updateXR would only add a wasted
-                // reduction here, not remove a sweep.
-                x.addScaledInPlace(alpha, p);
-                r.addScaledInPlace(-alpha, q);
-
-                A.ApplyT(in r, ref s);                       // s = A^T r, recomputed fresh (stability)
-                if (damp != (double)0) s.addScaledInPlace(-(damp * damp), x);   // - damp^2 x (damped gradient)
-
-                double gammaNew = Blas.dot(s, s);
-
-                if (gammaNew <= threshold)
-                {
-                    // Verify-at-exit: r itself is recursively updated (r -= alpha q), so its
-                    // ApplyT-derived gamma can drift. Recompute r fresh (+1 Apply) and s = Aᵀr -
-                    // damp²x fresh (+1 ApplyT) from it, then retest -- cgls's own optimality
-                    // residual needs both operators, unlike cg's plain ‖r‖² gate.
-                    A.Apply(in x, ref q);
-                    r.Data.CopyFrom(b.Data);
-                    r.addScaledInPlace((double)(-1), q);
-                    A.ApplyT(in r, ref s);
-                    if (damp != (double)0) s.addScaledInPlace(-(damp * damp), x);
-                    gammaNew = Blas.dot(s, s);
-
-                    if (gammaNew <= threshold)
-                        return CglsInfo(IterativeSolveStatus.Converged, k + 1, gammaNew, in r, in x);
-                }
-
-                double beta = gammaNew / gamma;
-
-                p.scaleAddInPlace(beta, s);                     // p = beta p + s
-
-                gamma = gammaNew;
-            }
-
-            return CglsInfo(IterativeSolveStatus.MaxIterations, maxIter, gamma, in r, in x);
-        }
-
-        /// <summary>Assemble a CGLS <see cref="LstsqInfo"/> from live state: rnorm = ‖r‖
-        /// (r is CGLS's live residual b - A x), Arnorm = √gamma (its tracked ‖Aᵀr - damp²x‖²),
-        /// xnorm = ‖x‖. Two dots on vectors already in cache -- no matvec.</summary>
-        static LstsqInfo CglsInfo(IterativeSolveStatus status, int iterations, double gamma, in doubleN r, in doubleN x)
-            => new LstsqInfo
-            {
-                rnorm = math.sqrt(Blas.dot(r, r)),
-                Arnorm = math.sqrt(gamma),
-                xnorm = math.sqrt(Blas.dot(x, x)),
-                iterations = iterations,
-                status = status,
-            };
-
-        /// <summary>Undamped CGLS (damp = 0): plain least-squares. Forwards to the damped core.</summary>
-        public static LstsqInfo cgls<TOp>(in TOp A, in doubleN b, ref doubleN x,
-                                     ref doubleN r, ref doubleN s, ref doubleN p, ref doubleN q,
-                                     int maxIter, double tol)
-            where TOp : struct, IdoubleLinearOperator
-            => cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, maxIter, tol, (double)0);
-
-        /// <summary>
-        /// CGLS over a dense <see cref="doubleMxN"/> (possibly rectangular) -- zero-alloc
-        /// primitive. Forwards into <see cref="cgls{TOp}"/> via <see cref="doubleDenseOperator"/>.
-        /// </summary>
-        public static LstsqInfo cgls(in doubleMxN A, in doubleN b, ref doubleN x,
-                                ref doubleN r, ref doubleN s, ref doubleN p, ref doubleN q,
-                                int maxIter, double tol)
-        {
-            return cgls(new doubleDenseOperator(in A), in b, ref x, ref r, ref s, ref p, ref q, maxIter, tol);
-        }
-
-        /// <summary>CGLS over a dense matrix -- allocates four scratch vectors from the arena.</summary>
-        public static LstsqInfo cgls(in doubleMxN A, in doubleN b, ref doubleN x, int maxIter, double tol)
-        {
-            doubleN r = b.doubleTempVec(A.M_Rows);
-            doubleN s = b.doubleTempVec(A.N_Cols);
-            doubleN p = b.doubleTempVec(A.N_Cols);
-            doubleN q = b.doubleTempVec(A.M_Rows);
-            return cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, maxIter, tol);
-        }
-
-        /// <summary>
-        /// Damped (Tikhonov) CGLS over a dense matrix -- minimizes ‖Ax-b‖² + damp²‖x‖². Allocates
-        /// four scratch vectors from the arena. damp == 0 reproduces the plain least-squares solve.
-        /// </summary>
-        public static LstsqInfo cgls(in doubleMxN A, in doubleN b, ref doubleN x, int maxIter, double tol, double damp)
-        {
-            doubleN r = b.doubleTempVec(A.M_Rows);
-            doubleN s = b.doubleTempVec(A.N_Cols);
-            doubleN p = b.doubleTempVec(A.N_Cols);
-            doubleN q = b.doubleTempVec(A.M_Rows);
-            return cgls(new doubleDenseOperator(in A), in b, ref x, ref r, ref s, ref p, ref q, maxIter, tol, damp);
-        }
-
-        /// <summary>CGLS over a dense matrix with default maxIter (A.N_Cols) and tol (Consts.doubleSqrtEps).</summary>
-        public static LstsqInfo cgls(in doubleMxN A, in doubleN b, ref doubleN x)
-        {
-            return cgls(in A, in b, ref x, A.N_Cols, Consts.doubleSqrtEps);
-        }
-
-        /// <summary>
-        /// CGLS over a (possibly rectangular) block-sparse (BSR) matrix -- zero-alloc primitive.
-        /// Forwards into <see cref="cgls{TOp}"/> via <c>doubleBSROperator</c>. This is the payoff
-        /// of rectangular BR x BC blocks: matrix-free least squares over a sparse Jacobian-like
-        /// operator, never forming AᵀA.
-        /// </summary>
-        public static LstsqInfo cgls(in doubleBSR A, in doubleN b, ref doubleN x,
-                                ref doubleN r, ref doubleN s, ref doubleN p, ref doubleN q,
-                                int maxIter, double tol)
-        {
-            return cgls(new doubleBSROperator(in A), in b, ref x, ref r, ref s, ref p, ref q, maxIter, tol);
-        }
-
-        /// <summary>
-        /// CGLS over a (possibly rectangular) block-sparse (BSR) matrix -- zero-alloc primitive
-        /// variant that takes a CALLER-PROVIDED precomputed transpose AT (e.g. built once via
-        /// <c>arena.doubleBSRTranspose(in A)</c> outside a hot loop / before a benchmark's timed
-        /// region) and routes every ApplyT call through the resulting cache-friendly forward
-        /// spMV(AT, x) instead of the scatter-heavy on-the-fly spMVT(A, x) -- see
-        /// <see cref="doubleBSROperator"/>'s two-arg ctor. Caller is responsible for AT actually
-        /// being A's transpose; this overload does not verify it. Prefer this over the allocating
-        /// <see cref="cgls(in doubleBSR, in doubleN, ref doubleN, int, double)"/> overload when
-        /// solving repeatedly against the same A (build AT once, reuse it across many solves).
-        /// </summary>
-        public static LstsqInfo cgls(in doubleBSR A, in doubleBSR AT, in doubleN b, ref doubleN x,
-                                ref doubleN r, ref doubleN s, ref doubleN p, ref doubleN q,
-                                int maxIter, double tol)
-        {
-            return cgls(new doubleBSROperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIter, tol);
-        }
-
-        /// <summary>
-        /// CGLS over a BSR matrix -- allocates four scratch vectors AND materializes A^T ONCE via
-        /// <c>arena.doubleBSRTranspose</c>, then drives CGLS with the two-arg
-        /// <see cref="doubleBSROperator"/> so every ApplyT call routes through a cache-friendly
-        /// forward spMV(A^T, x) instead of scatter-heavy spMVT(A, x) every iteration -- the one-time
-        /// O(nnz) transpose build is amortized over every iteration. For a build-free zero-alloc path
-        /// (e.g. many solves reusing the same A), build A^T yourself once and call the zero-alloc
-        /// <see cref="cgls(in doubleBSR, in doubleBSR, in doubleN, ref doubleN, ref doubleN, ref doubleN, ref doubleN, int, double)"/>
-        /// overload above with your own scratch vectors.
-        /// </summary>
-        public static LstsqInfo cgls(in doubleBSR A, in doubleN b, ref doubleN x, int maxIter, double tol)
-        {
-            doubleN r = b.doubleTempVec(A.M_Rows);
-            doubleN s = b.doubleTempVec(A.N_Cols);
-            doubleN p = b.doubleTempVec(A.N_Cols);
-            doubleN q = b.doubleTempVec(A.M_Rows);
-            doubleBSR AT = b.doubleBSRTranspose(in A);
-            return cgls(new doubleBSROperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIter, tol);
-        }
-
-        /// <summary>
-        /// Damped (Tikhonov) CGLS over a BSR matrix -- minimizes ‖Ax-b‖² + damp²‖x‖². Allocates four
-        /// scratch vectors AND materializes A^T once (see the undamped allocating overload). damp == 0
-        /// reproduces the plain least-squares solve.
-        /// </summary>
-        public static LstsqInfo cgls(in doubleBSR A, in doubleN b, ref doubleN x, int maxIter, double tol, double damp)
-        {
-            doubleN r = b.doubleTempVec(A.M_Rows);
-            doubleN s = b.doubleTempVec(A.N_Cols);
-            doubleN p = b.doubleTempVec(A.N_Cols);
-            doubleN q = b.doubleTempVec(A.M_Rows);
-            doubleBSR AT = b.doubleBSRTranspose(in A);
-            return cgls(new doubleBSROperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIter, tol, damp);
-        }
-
-        /// <summary>CGLS over a BSR matrix with default maxIter (A.N_Cols) and tol (Consts.doubleSqrtEps).</summary>
-        public static LstsqInfo cgls(in doubleBSR A, in doubleN b, ref doubleN x)
-        {
-            return cgls(in A, in b, ref x, A.N_Cols, Consts.doubleSqrtEps);
-        }
-
-        /// <summary>
         /// Zero-alloc LSQR (Paige-Saunders 1982) solver for RECTANGULAR least-squares systems:
         /// minimizes ‖Ax-b‖₂ for possibly non-square A, generic over
         /// <see cref="IdoubleLinearOperator"/>. Builds an implicit bidiagonalization of A via the
         /// Golub-Kahan process and folds it through an incremental Givens-rotated QR factorization.
-        /// More robust than <see cref="cgls{TOp}"/> on ill-conditioned A (never squares A's condition
-        /// number the way the normal equations implicitly do), at the same O(n+m) memory and
-        /// per-iteration cost (1 Apply + 1 ApplyT).
+        /// Robust on ill-conditioned A (never squares A's condition number the way the normal
+        /// equations implicitly do), at O(n+m) memory and per-iteration cost (1 Apply + 1 ApplyT).
         ///
         /// Caller provides x (initial guess, length A.Cols -- overwritten with solution, WARM-
         /// STARTABLE) and five scratch vectors: u, tmpM (length A.Rows) and v, w, tmpN (length
-        /// A.Cols). Converges when ‖Aᵀr‖ &lt;= tol*‖Aᵀb‖ (same contract as cgls).
+        /// A.Cols). Converges when ‖Aᵀr‖ &lt;= tol*‖Aᵀb‖ (the least-squares optimality condition).
         ///
         /// <paramref name="damp"/> (&gt;= 0) applies Tikhonov regularization: minimizes
         /// ‖Ax-b‖² + damp²‖x‖² (damp == 0 is BIT-IDENTICAL to the plain solve).
         ///
         /// WARM START + DAMPING GOTCHA: lsqr bidiagonalizes the residual b - A·x₀, so a NONZERO
         /// initial x₀ makes it minimize ‖Ax-b‖² + damp²‖x - x₀‖² (regularizing the CORRECTION), not
-        /// ‖x‖. Start from x = 0 for the ‖x‖-regularized minimizer. (cgls regularizes ‖x‖ for any x₀.)
+        /// ‖x‖. Start from x = 0 for the ‖x‖-regularized minimizer.
         ///
         /// Returns an <see cref="LstsqInfo"/> — see that struct for the implicit-bool/status/
         /// undefined-x contract. Breakdown on a total bidiagonalization breakdown (alpha and beta
@@ -1349,7 +1080,7 @@ namespace LinearAlgebra
                 RequireDistinctBuffers("lsqr: u/v/w/tmpM/tmpN/x/b must be distinct", ptrs, 7);
             }
 
-            // Fixed scale reference for the relative tolerance (mirrors cgls's atbSq).
+            // Fixed scale reference for the relative tolerance: ‖Aᵀb‖².
             A.ApplyT(in b, ref tmpN);
             double atbSq = Blas.dot(tmpN, tmpN);
 
@@ -1463,8 +1194,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>Assemble an <see cref="LstsqInfo"/> from a solver's tracked residual and
-        /// ‖Aᵀr‖ scalars, filling xnorm = ‖x‖ with one dot on x. Shared by lsqr/lsmr (cgls uses
-        /// <see cref="CglsInfo"/>, which reads ‖r‖ from its live residual instead).
+        /// ‖Aᵀr‖ scalars, filling xnorm = ‖x‖ with one dot on x. Shared by lsqr/lsmr.
         ///
         /// Recovers the plain ‖b-Ax‖ from the (possibly damping-augmented) tracked residual; exact
         /// only for damp == 0 or a cold start (x₀ = 0). Under a NONZERO warm start with damping, this
@@ -1540,8 +1270,8 @@ namespace LinearAlgebra
         /// LSQR over a (possibly rectangular) block-sparse (BSR) matrix -- zero-alloc primitive.
         /// Forwards into <see cref="lsqr{TOp}"/> via <c>doubleBSROperator</c>. This is the payoff
         /// of rectangular BR x BC blocks: matrix-free least squares over a sparse Jacobian-like
-        /// operator, never forming AᵀA, with better ill-conditioned behavior than <see
-        /// cref="cgls{TOp}"/>.
+        /// operator, never forming AᵀA, with better ill-conditioned behavior than the normal
+        /// equations.
         /// </summary>
         public static LstsqInfo lsqr(in doubleBSR A, in doubleN b, ref doubleN x,
                                 ref doubleN u, ref doubleN v, ref doubleN w,
@@ -1574,8 +1304,7 @@ namespace LinearAlgebra
         /// LSQR over a BSR matrix -- allocates five scratch vectors AND materializes A^T ONCE via
         /// <c>arena.doubleBSRTranspose</c>, then drives LSQR with the two-arg
         /// <see cref="doubleBSROperator"/> so every ApplyT call routes through a cache-friendly
-        /// forward spMV(A^T, x) instead of scatter-heavy spMVT(A, x) every iteration -- same
-        /// tradeoff as <see cref="cgls(in doubleBSR, in doubleN, ref doubleN, int, double)"/>. For a
+        /// forward spMV(A^T, x) instead of scatter-heavy spMVT(A, x) every iteration. For a
         /// build-free zero-alloc path, build A^T yourself once and call the zero-alloc
         /// <see cref="lsqr(in doubleBSR, in doubleBSR, in doubleN, ref doubleN, ref doubleN, ref doubleN, ref doubleN, ref doubleN, int, double)"/>
         /// overload above with your own scratch vectors.
@@ -1627,7 +1356,7 @@ namespace LinearAlgebra
         /// STARTABLE) and six scratch vectors: u, tmpM (length A.Rows) and v, h, hbar, tmpN (length
         /// A.Cols) -- one more than LSQR, since LSMR carries both the Golub-Kahan search direction h
         /// and the MINRES-folded direction hbar. Converges when ‖Aᵀr‖ &lt;= tol*‖Aᵀb‖ (same
-        /// contract as cgls/lsqr).
+        /// contract as lsqr).
         ///
         /// <paramref name="damp"/> (&gt;= 0) applies Tikhonov regularization: minimizes
         /// ‖Ax-b‖² + damp²‖x‖² (damp == 0 is BIT-IDENTICAL to the plain solve).
@@ -1635,7 +1364,7 @@ namespace LinearAlgebra
         /// WARM START + DAMPING GOTCHA: same as <see cref="lsqr{TOp}"/> -- lsmr bidiagonalizes the
         /// residual b - A·x₀, so a NONZERO initial x₀ makes it minimize ‖Ax-b‖² + damp²‖x - x₀‖²
         /// (regularizing the CORRECTION), not ‖x‖. Start from x = 0 for the ‖x‖-regularized
-        /// minimizer. (cgls regularizes ‖x‖ for any x₀.)
+        /// minimizer.
         ///
         /// Returns an <see cref="LstsqInfo"/> — see that struct for the implicit-bool/status/
         /// undefined-x contract. Breakdown on a bidiagonalization breakdown (a rotation radius
@@ -1668,7 +1397,7 @@ namespace LinearAlgebra
                 RequireDistinctBuffers("lsmr: u/v/h/hbar/tmpM/tmpN/x/b must be distinct", ptrs, 8);
             }
 
-            // Fixed scale reference for the relative tolerance (identical contract to lsqr/cgls).
+            // Fixed scale reference for the relative tolerance (identical contract to lsqr).
             A.ApplyT(in b, ref tmpN);
             double atbSq = Blas.dot(tmpN, tmpN);
 
@@ -1946,7 +1675,7 @@ namespace LinearAlgebra
         }
 
         // AᵀA-Jacobi (column-equilibration) convenience overloads.
-        // cglsJacobi / lsqrJacobi / lsmrJacobi build the column scale d[j] = 1/||A_:,j|| from
+        // lsqrJacobi / lsmrJacobi build the column scale d[j] = 1/||A_:,j|| from
         // columnNormsSquared, wrap A in a doubleColScaledOperator, solve the equilibrated system
         // (A*D) y = b with the underlying solver (COLD start -- x is zeroed internally; column
         // scaling is a change of variable, so a warm start would need pre-mapping y0 = D^-1 x0), and
@@ -1984,46 +1713,6 @@ namespace LinearAlgebra
             info.status = status;
             return info;
         }
-
-        // ---- CGLS + Jacobi ----
-        /// <summary>CGLS with an AᵀA-Jacobi column-equilibration preconditioner over a dense matrix.</summary>
-        public static LstsqInfo cglsJacobi(in doubleMxN A, in doubleN b, ref doubleN x, int maxIter, double tol)
-        {
-            int m = A.M_Rows, n = A.N_Cols;
-            doubleN d = b.doubleTempVec(n), d2 = b.doubleTempVec(n), scratch = b.doubleTempVec(n);
-            Blas.columnNormsSquared(in A, ref d2);
-            Blas.buildJacobiScale(in d2, ref d);
-            var op = new doubleColScaledOperator<doubleDenseOperator>(new doubleDenseOperator(in A), d, scratch);
-
-            for (int j = 0; j < n; j++) x[j] = (double)0;                 // cold start (change of variable)
-            doubleN r = b.doubleTempVec(m), s = b.doubleTempVec(n), p = b.doubleTempVec(n), q = b.doubleTempVec(m);
-            var solveInfo = cgls(op, in b, ref x, ref r, ref s, ref p, ref q, maxIter, tol);
-            return JacobiFinish(new doubleDenseOperator(in A), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref r, ref s);
-        }
-
-        /// <summary>CGLS + Jacobi (dense), default maxIter (A.N_Cols) / tol (Consts.doubleSqrtEps).</summary>
-        public static LstsqInfo cglsJacobi(in doubleMxN A, in doubleN b, ref doubleN x)
-            => cglsJacobi(in A, in b, ref x, A.N_Cols, Consts.doubleSqrtEps);
-
-        /// <summary>CGLS with an AᵀA-Jacobi preconditioner over a BSR matrix (materializes Aᵀ once).</summary>
-        public static LstsqInfo cglsJacobi(in doubleBSR A, in doubleN b, ref doubleN x, int maxIter, double tol)
-        {
-            int m = A.M_Rows, n = A.N_Cols;
-            doubleN d = b.doubleTempVec(n), d2 = b.doubleTempVec(n), scratch = b.doubleTempVec(n);
-            BSR.columnNormsSquared(in A, ref d2);
-            Blas.buildJacobiScale(in d2, ref d);
-            doubleBSR AT = b.doubleBSRTranspose(in A);
-            var op = new doubleColScaledOperator<doubleBSROperator>(new doubleBSROperator(in A, in AT), d, scratch);
-
-            for (int j = 0; j < n; j++) x[j] = (double)0;
-            doubleN r = b.doubleTempVec(m), s = b.doubleTempVec(n), p = b.doubleTempVec(n), q = b.doubleTempVec(m);
-            var solveInfo = cgls(op, in b, ref x, ref r, ref s, ref p, ref q, maxIter, tol);
-            return JacobiFinish(new doubleBSROperator(in A, in AT), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref r, ref s);
-        }
-
-        /// <summary>CGLS + Jacobi (BSR), default maxIter (A.N_Cols) / tol (Consts.doubleSqrtEps).</summary>
-        public static LstsqInfo cglsJacobi(in doubleBSR A, in doubleN b, ref doubleN x)
-            => cglsJacobi(in A, in b, ref x, A.N_Cols, Consts.doubleSqrtEps);
 
         // ---- LSQR + Jacobi ----
         /// <summary>LSQR with an AᵀA-Jacobi column-equilibration preconditioner over a dense matrix.</summary>

@@ -5,10 +5,10 @@ using NUnit.Framework;
 using Unity.Collections;
 using Unity.Mathematics;
 
-// Krylov verify-at-exit: cg/pcg/cgls recursively
+// Krylov verify-at-exit: cg/pcg recursively
 // track their residual; in float that tracked value can drift from the true b-Ax and claim
 // convergence early. When the tracked residual FIRST claims convergence, the guarded solver now
-// recomputes the true residual fresh (+1 Apply, +1 ApplyT for cgls) and retests, continuing if it
+// recomputes the true residual fresh and retests, continuing if it
 // fails. Only at claimed convergence -- MaxIterations/Breakdown exits are untouched.
 //
 // (c) drift-firing: an ill-conditioned float instance (Moler matrix, deep tolerance) where the
@@ -235,7 +235,7 @@ public class fProxyKrylovVerifyAtExitTests
     }
 
     // ==============================================================================
-    // Lighter wiring-sanity checks for pcg/cgls: confirm each still converges and its
+    // Lighter wiring-sanity check for pcg: confirm it still converges and its
     // Converged-path rnorm is HONEST (matches an independently-recomputed fresh residual), i.e.
     // the verify block compiles and returns the right value for every verify-at-exit-covered
     // solver, not just cg. Well-conditioned instances (no drift-firing construction needed here --
@@ -266,34 +266,4 @@ public class fProxyKrylovVerifyAtExitTests
         arena.Dispose();
     }
 
-    [Test]
-    public void CglsConvergedResidualIsHonest()
-    {
-        var arena = new Arena(Allocator.Persistent);
-
-        // Rectangular over-determined system -- cgls's normal case.
-        int m = 24, nCols = 10;
-        var A = arena.fProxyRandomMat(m, nCols, (fProxy)(-1f), (fProxy)1f, 144001);
-        var b = arena.fProxyRandomVec(m, (fProxy)(-1f), (fProxy)1f, 144002);
-
-        // cgls has no generic-TOp allocating convenience overload (locked ladder) --
-        // solve via the concrete dense overload, then wrap in fProxyDenseOperator for the
-        // independent (generic) audit call below.
-        var x = arena.fProxyVec(nCols);
-        var info = Krylov.cgls(in A, in b, ref x, 8 * nCols, Consts.fProxySqrtEps);
-        Assert.IsTrue(info.Solved, info.ToString());
-
-        var op = new fProxyDenseOperator(in A);
-        var rScratch = arena.fProxyVec(m);
-        var sScratch = arena.fProxyVec(nCols);
-        var audit = Krylov.lstsqResidual(op, in b, in x, (fProxy)0, ref rScratch, ref sScratch);
-
-        // audit.Arnorm is the certified-exact optimality residual (fresh Apply+ApplyT) -- must be
-        // small, and info's own tracked Arnorm must agree with it closely (both describe the same
-        // converged x).
-        Assert.Less(audit.Arnorm, 1e-2);
-        Assert.AreEqual(audit.Arnorm, info.Arnorm, 1e-3 * (1.0 + info.Arnorm));
-
-        arena.Dispose();
-    }
 }

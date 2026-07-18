@@ -37,15 +37,13 @@ public class doubleSparseSolverTests
             WarmStart,
             PcgNonSpdPreconditionerBreaksDown,
 
-            // ---- Phase 3: MINRES / BiCGSTAB / CGLS / LSQR ----
+            // ---- Phase 3: MINRES / BiCGSTAB / LSQR / LSMR ----
             MinresIndefiniteDenseAndBSR,
             MinresSpdMatchesCG,
             BiCGStabNonSymmetricMatchesLU,
-            CglsOverdeterminedConsistentDenseAndBSR,
             LsqrOverdeterminedConsistentDenseAndBSR,
-            CglsInconsistentMatchesQR,
             LsqrInconsistentMatchesQR,
-            CglsLsqrUnderdeterminedConsistent,
+            LsqrUnderdeterminedConsistent,
 
             // ---- LSMR (Fong-Saunders): least-squares with monotone ||A^T r|| ----
             LsmrOverdeterminedConsistentDenseAndBSR,
@@ -53,10 +51,8 @@ public class doubleSparseSolverTests
             LsmrUnderdeterminedMatchesLsqr,
             LsmrMonotonicArnorm,
 
-            // ---- Tikhonov damping (CGLS/LSQR/LSMR): min ||Ax-b||^2 + damp^2||x||^2 ----
+            // ---- Tikhonov damping (LSQR/LSMR): min ||Ax-b||^2 + damp^2||x||^2 ----
             TikhonovDampingMatchesAugmentedQR,
-
-            // ---- CGNE / Craig: minimum-norm solve for consistent under-determined systems ----
 
             // ---- LS diagnostics (LstsqInfo: rnorm/Arnorm/xnorm/iterations/status; free tracked estimates) ----
             LstsqInfoMatchesIndependentRecompute,
@@ -77,7 +73,6 @@ public class doubleSparseSolverTests
             // ---- Phase 3 warm-start plumbing (initial residual r = b - A*x0 from the CALLER's x) ----
             MinresWarmStart,
             BiCGStabWarmStart,
-            CglsWarmStart,
             LsqrWarmStart,
             LsmrWarmStart,
         }
@@ -99,7 +94,7 @@ public class doubleSparseSolverTests
         static double LooseTol() => 1e-5;
 
         // Least-squares optimality: the NORMAL-EQUATION residual ||A^T(A x - b)|| must vanish
-        // relative to the fixed scale ||A^T b|| (mirrors cgls/lsqr's own convergence reference).
+        // relative to the fixed scale ||A^T b|| (mirrors lsqr/lsmr's own convergence reference).
         // This -- NOT ||A x - b|| ~= 0 -- is the correct acceptance criterion for an inconsistent
         // (overdetermined) system, whose residual A x - b is left orthogonal to range(A), nonzero.
         static void AssertLeastSquaresOptimal(in doubleMxN A, in doubleN x, in doubleN b, double relTol)
@@ -129,11 +124,9 @@ public class doubleSparseSolverTests
                 case TestType.MinresIndefiniteDenseAndBSR: MinresIndefiniteDenseAndBSR(); break;
                 case TestType.MinresSpdMatchesCG: MinresSpdMatchesCG(); break;
                 case TestType.BiCGStabNonSymmetricMatchesLU: BiCGStabNonSymmetricMatchesLU(); break;
-                case TestType.CglsOverdeterminedConsistentDenseAndBSR: CglsOverdeterminedConsistentDenseAndBSR(); break;
                 case TestType.LsqrOverdeterminedConsistentDenseAndBSR: LsqrOverdeterminedConsistentDenseAndBSR(); break;
-                case TestType.CglsInconsistentMatchesQR: CglsInconsistentMatchesQR(); break;
                 case TestType.LsqrInconsistentMatchesQR: LsqrInconsistentMatchesQR(); break;
-                case TestType.CglsLsqrUnderdeterminedConsistent: CglsLsqrUnderdeterminedConsistent(); break;
+                case TestType.LsqrUnderdeterminedConsistent: LsqrUnderdeterminedConsistent(); break;
 
                 case TestType.LsmrOverdeterminedConsistentDenseAndBSR: LsmrOverdeterminedConsistentDenseAndBSR(); break;
                 case TestType.LsmrInconsistentMatchesQR: LsmrInconsistentMatchesQR(); break;
@@ -154,7 +147,6 @@ public class doubleSparseSolverTests
 
                 case TestType.MinresWarmStart: MinresWarmStart(); break;
                 case TestType.BiCGStabWarmStart: BiCGStabWarmStart(); break;
-                case TestType.CglsWarmStart: CglsWarmStart(); break;
                 case TestType.LsqrWarmStart: LsqrWarmStart(); break;
                 case TestType.LsmrWarmStart: LsmrWarmStart(); break;
             }
@@ -653,36 +645,6 @@ public class doubleSparseSolverTests
             arena.Dispose();
         }
 
-        // ---- CGLS on an overdetermined CONSISTENT least-squares problem (dense + BSR) -----
-        //
-        // b = A*x_true exactly (b in range(A)) -> the least-squares solution is x_true, recovered
-        // exactly (within tolerance). m > n.
-        void CglsOverdeterminedConsistentDenseAndBSR()
-        {
-            var arena = new Arena(Allocator.Persistent);
-
-            int m = 10, n = 4;
-            var A = arena.doubleRandomMat(m, n, -1f, 1f, 34001);
-            var xTrue = arena.doubleRandomVec(n, -1f, 1f, 34002);
-            var b = Blas.dot(A, xTrue);      // consistent
-
-            var x = arena.doubleVec(n);
-            bool ok = Krylov.cgls(in A, in b, ref x, 8 * n, Consts.doubleSqrtEps);
-            Assert.IsTrue(ok);
-            AssertVecEq(in x, in xTrue, LooseTol());
-
-            var Ax = Blas.dot(A, x);
-            AssertVecEq(in Ax, in b, LooseTol());
-
-            var bsm = DenseToBSR1x1(ref arena, in A, m * n);
-            var xBsr = arena.doubleVec(n);
-            bool okBsr = Krylov.cgls(in bsm, in b, ref xBsr, 8 * n, Consts.doubleSqrtEps);
-            Assert.IsTrue(okBsr);
-            AssertVecEq(in x, in xBsr, LooseTol());
-
-            arena.Dispose();
-        }
-
         // ---- LSQR on an overdetermined CONSISTENT least-squares problem (dense + BSR) ------
         void LsqrOverdeterminedConsistentDenseAndBSR()
         {
@@ -704,41 +666,6 @@ public class doubleSparseSolverTests
             var bsm = DenseToBSR1x1(ref arena, in A, m * n);
             var xBsr = arena.doubleVec(n);
             bool okBsr = Krylov.lsqr(in bsm, in b, ref xBsr, 8 * n, Consts.doubleSqrtEps);
-            Assert.IsTrue(okBsr);
-            AssertVecEq(in x, in xBsr, LooseTol());
-
-            arena.Dispose();
-        }
-
-        // ---- CGLS on an overdetermined INCONSISTENT problem: normal-equation optimality ---
-        //
-        // Random b generally NOT in range(A) -> ||A x - b|| does NOT go to 0. The correct
-        // acceptance criterion is ||A^T(A x - b)|| ~= 0 (residual orthogonal to range(A)),
-        // cross-checked against a dense QR least-squares solve on the SAME system.
-        void CglsInconsistentMatchesQR()
-        {
-            var arena = new Arena(Allocator.Persistent);
-
-            int m = 10, n = 4;
-            var A = arena.doubleRandomMat(m, n, -1f, 1f, 36001);
-            var b = arena.doubleRandomVec(m, -1f, 1f, 36002);   // inconsistent
-
-            var x = arena.doubleVec(n);
-            bool ok = Krylov.cgls(in A, in b, ref x, 8 * n, Consts.doubleSqrtEps);
-            Assert.IsTrue(ok);
-
-            AssertLeastSquaresOptimal(in A, in x, in b, LooseTol());
-
-            // Dense QR least-squares reference on COPIES (QR.solveInPlace is DESTRUCTIVE).
-            var A2 = A.Copy();
-            var b2 = b.Copy();
-            var xQR = arena.doubleVec(n);
-            QR.solveInPlace(ref A2, ref b2, ref xQR);
-            AssertVecEq(in x, in xQR, LooseTol());
-
-            var bsm = DenseToBSR1x1(ref arena, in A, m * n);
-            var xBsr = arena.doubleVec(n);
-            bool okBsr = Krylov.cgls(in bsm, in b, ref xBsr, 8 * n, Consts.doubleSqrtEps);
             Assert.IsTrue(okBsr);
             AssertVecEq(in x, in xBsr, LooseTol());
 
@@ -775,13 +702,11 @@ public class doubleSparseSolverTests
             arena.Dispose();
         }
 
-        // ---- CGLS & LSQR on an underdetermined (m < n) CONSISTENT problem (nice-to-have) ---
+        // ---- LSQR on an underdetermined (m < n) CONSISTENT problem (min-norm, nice-to-have) ---
         //
-        // Wide A, b = A*x_gen (consistent) -> infinitely many exact solutions. Starting from
-        // x0 = 0, both CGLS and LSQR converge to the SAME (minimum-norm) solution. We assert the
-        // easy-to-verify properties -- A x ~= b and both solvers agree -- rather than the min-norm
-        // optimality itself (that weaker check is all this nice-to-have case claims).
-        void CglsLsqrUnderdeterminedConsistent()
+        // Wide A, b = A*x_gen (consistent) -> infinitely many exact solutions. From x0 = 0 LSQR
+        // converges to the (minimum-norm) solution; assert the easy-to-verify property A x ~= b.
+        void LsqrUnderdeterminedConsistent()
         {
             var arena = new Arena(Allocator.Persistent);
 
@@ -790,20 +715,11 @@ public class doubleSparseSolverTests
             var xGen = arena.doubleRandomVec(n, -1f, 1f, 38002);
             var b = Blas.dot(A, xGen);      // consistent
 
-            var xC = arena.doubleVec(n);
-            bool okC = Krylov.cgls(in A, in b, ref xC, 8 * n, Consts.doubleSqrtEps);
-            Assert.IsTrue(okC);
-            var AxC = Blas.dot(A, xC);
-            AssertVecEq(in AxC, in b, LooseTol());
-
             var xL = arena.doubleVec(n);
             bool okL = Krylov.lsqr(in A, in b, ref xL, 8 * n, Consts.doubleSqrtEps);
             Assert.IsTrue(okL);
             var AxL = Blas.dot(A, xL);
             AssertVecEq(in AxL, in b, LooseTol());
-
-            // Both start from x0=0 -> both land on the unique minimum-norm solution -> they agree.
-            AssertVecEq(in xC, in xL, LooseTol());
 
             arena.Dispose();
         }
@@ -868,28 +784,6 @@ public class doubleSparseSolverTests
             arena.Dispose();
         }
 
-        // ---- CGLS warm start (overdetermined m>n CONSISTENT system, b = A*xTrue) ----
-        void CglsWarmStart()
-        {
-            var arena = new Arena(Allocator.Persistent);
-
-            int m = 10, n = 4;
-            var A = arena.doubleRandomMat(m, n, -1f, 1f, 41201);
-            var xTrue = arena.doubleRandomVec(n, -1f, 1f, 41202);
-            var b = Blas.dot(A, xTrue);      // consistent
-
-            var x = arena.doubleVec(n);
-            bool ok = Krylov.cgls(in A, in b, ref x, 8 * n, Consts.doubleSqrtEps);
-            Assert.IsTrue(ok);
-
-            var xWarm = x.Copy();
-            bool okWarm = Krylov.cgls(in A, in b, ref xWarm, 1, Consts.doubleSqrtEps);
-            Assert.IsTrue(okWarm);
-            AssertVecEq(in x, in xWarm, LooseTol());
-
-            arena.Dispose();
-        }
-
         // ---- LSQR warm start (overdetermined m>n CONSISTENT system, b = A*xTrue) ----
         void LsqrWarmStart()
         {
@@ -914,7 +808,7 @@ public class doubleSparseSolverTests
 
         // ---- LSMR on an overdetermined CONSISTENT least-squares problem (dense + BSR) ------
         //
-        // Same fixture and acceptance criterion as CglsOverdeterminedConsistentDenseAndBSR above.
+        // Same fixture and acceptance criterion as LsqrOverdeterminedConsistentDenseAndBSR above.
         void LsmrOverdeterminedConsistentDenseAndBSR()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -945,7 +839,7 @@ public class doubleSparseSolverTests
         //
         // Random b generally NOT in range(A). Correct acceptance = ||A^T(A x - b)|| ~= 0, plus a
         // cross-check against the dense QR least-squares solution (the unique minimizer) -- the
-        // same oracle as the CGLS/LSQR inconsistent tests, so LSMR must land on the same x.
+        // same oracle as the LSQR inconsistent test, so LSMR must land on the same x.
         void LsmrInconsistentMatchesQR()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -977,7 +871,7 @@ public class doubleSparseSolverTests
 
         // ---- LSMR on an underdetermined (m < n) CONSISTENT problem: matches LSQR ----
         //
-        // Same wide-A min-norm setup as CglsLsqrUnderdeterminedConsistent above; here LSMR is
+        // Same wide-A min-norm setup as LsqrUnderdeterminedConsistent above; here LSMR is
         // cross-checked against the already-tested LSQR solution.
         void LsmrUnderdeterminedMatchesLsqr()
         {
@@ -1059,7 +953,7 @@ public class doubleSparseSolverTests
             arena.Dispose();
         }
 
-        // ---- Tikhonov damping: CGLS / LSQR / LSMR all solve min ||Ax-b||^2 + damp^2||x||^2 ----
+        // ---- Tikhonov damping: LSQR / LSMR both solve min ||Ax-b||^2 + damp^2||x||^2 ----
         //
         // Reference = dense QR least-squares on the AUGMENTED system [A; damp*I] x ~= [b; 0], which
         // IS the damped minimizer x = (A^T A + damp^2 I)^-1 A^T b. All three damped solvers (dense
@@ -1078,10 +972,6 @@ public class doubleSparseSolverTests
             var xref = DampedReferenceQR(ref arena, in A, in b, damp);
 
             // dense damped solvers
-            var xC = arena.doubleVec(n);
-            Assert.IsTrue(Krylov.cgls(in A, in b, ref xC, 16 * n, Consts.doubleSqrtEps, damp));
-            AssertVecEq(in xC, in xref, LooseTol());
-
             var xL = arena.doubleVec(n);
             Assert.IsTrue(Krylov.lsqr(in A, in b, ref xL, 16 * n, Consts.doubleSqrtEps, damp));
             AssertVecEq(in xL, in xref, LooseTol());
@@ -1092,10 +982,6 @@ public class doubleSparseSolverTests
 
             // 1x1-BSR damped solvers agree with the same reference
             var bsm = DenseToBSR1x1(ref arena, in A, m * n);
-
-            var xCb = arena.doubleVec(n);
-            Assert.IsTrue(Krylov.cgls(in bsm, in b, ref xCb, 16 * n, Consts.doubleSqrtEps, damp));
-            AssertVecEq(in xCb, in xref, LooseTol());
 
             var xLb = arena.doubleVec(n);
             Assert.IsTrue(Krylov.lsqr(in bsm, in b, ref xLb, 16 * n, Consts.doubleSqrtEps, damp));
@@ -1143,12 +1029,6 @@ public class doubleSparseSolverTests
             var b = arena.doubleRandomVec(m, -1f, 1f, 51002);   // random rhs -> inconsistent
             int maxIter = 8 * n;
 
-            var xC = arena.doubleVec(n);
-            var infoC = Krylov.cgls(in A, in b, ref xC, maxIter, Consts.doubleSqrtEps, (double)0);
-            Assert.IsTrue(infoC.Solved);
-            Assert.IsTrue(infoC.iterations >= 1 && infoC.iterations <= maxIter);
-            AssertInfoMatches(in A, in b, in xC, (double)0, in infoC, LooseTol());
-
             var xL = arena.doubleVec(n);
             var infoL = Krylov.lsqr(in A, in b, ref xL, maxIter, Consts.doubleSqrtEps, (double)0);
             Assert.IsTrue(infoL.Solved);
@@ -1162,8 +1042,8 @@ public class doubleSparseSolverTests
             AssertInfoMatches(in A, in b, in xM, (double)0, in infoM, LooseTol());
 
             // Inconsistent system: residual is nonzero but the normal-equation residual vanishes.
-            Assert.IsTrue(infoC.rnorm > (double)0.01);
-            Assert.IsTrue(infoC.Arnorm <= LooseTol() * ((double)1 + infoC.rnorm));
+            Assert.IsTrue(infoL.rnorm > (double)0.01);
+            Assert.IsTrue(infoL.Arnorm <= LooseTol() * ((double)1 + infoL.rnorm));
 
             arena.Dispose();
         }
@@ -1179,11 +1059,6 @@ public class doubleSparseSolverTests
             var b = arena.doubleRandomVec(m, -1f, 1f, 51102);
             double damp = (double)0.3;
             int maxIter = 8 * n;
-
-            var xC = arena.doubleVec(n);
-            var infoC = Krylov.cgls(in A, in b, ref xC, maxIter, Consts.doubleSqrtEps, damp);
-            Assert.IsTrue(infoC.Solved);
-            AssertInfoMatches(in A, in b, in xC, damp, in infoC, LooseTol());
 
             var xL = arena.doubleVec(n);
             var infoL = Krylov.lsqr(in A, in b, ref xL, maxIter, Consts.doubleSqrtEps, damp);
@@ -1347,7 +1222,7 @@ public class doubleSparseSolverTests
             arena.Dispose();
         }
 
-        // Every *Jacobi convenience wrapper (cgls/lsqr/lsmr, dense AND 1x1-BSR) solves the
+        // Every *Jacobi convenience wrapper (lsqr/lsmr, dense AND 1x1-BSR) solves the
         // badly-scaled system to least-squares optimality, and the BSR form matches the dense form.
         void JacobiConvenienceSolversLSOptimalDenseAndBSR()
         {
@@ -1359,14 +1234,6 @@ public class doubleSparseSolverTests
             var bsm = DenseToBSR1x1(ref arena, in A, m * n);
             int maxIter = 4 * n;
             double tol = Consts.doubleSqrtEps;
-
-            // cgls
-            var xCd = arena.doubleVec(n);
-            Assert.IsTrue(Krylov.cglsJacobi(in A, in b, ref xCd, maxIter, tol));
-            AssertLeastSquaresOptimal(in A, in xCd, in b, LooseTol());
-            var xCb = arena.doubleVec(n);
-            Assert.IsTrue(Krylov.cglsJacobi(in bsm, in b, ref xCb, maxIter, tol));
-            AssertVecEq(in xCd, in xCb, LooseTol());
 
             // lsqr
             var xLd = arena.doubleVec(n);
@@ -1408,14 +1275,13 @@ public class doubleSparseSolverTests
             double expRnorm = math.sqrt((double)6);
             double expXnorm = math.sqrt((double)34);
 
-            // All three solvers must reproduce x = (5,-3) and the exact diagnostics.
-            for (int which = 0; which < 3; which++)
+            // Both solvers must reproduce x = (5,-3) and the exact diagnostics.
+            for (int which = 0; which < 2; which++)
             {
                 var x = arena.doubleVec(2);
                 LstsqInfo info;
-                if (which == 0)      info = Krylov.cgls(in A, in b, ref x, 50, tol, (double)0);
-                else if (which == 1) info = Krylov.lsqr(in A, in b, ref x, 50, tol, (double)0);
-                else                 info = Krylov.lsmr(in A, in b, ref x, 50, tol, (double)0);
+                if (which == 0) info = Krylov.lsqr(in A, in b, ref x, 50, tol, (double)0);
+                else            info = Krylov.lsmr(in A, in b, ref x, 50, tol, (double)0);
 
                 Assert.IsTrue(info.Solved);
                 AssertClose(x[0], (double)5,    LooseTol());
@@ -1627,24 +1493,16 @@ public class doubleSparseSolverTests
         => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.BiCGStabNonSymmetricMatchesLU }.Run();
 
     [Test]
-    public void CglsOverdeterminedConsistentDenseAndBSRTest()
-        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.CglsOverdeterminedConsistentDenseAndBSR }.Run();
-
-    [Test]
     public void LsqrOverdeterminedConsistentDenseAndBSRTest()
         => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.LsqrOverdeterminedConsistentDenseAndBSR }.Run();
-
-    [Test]
-    public void CglsInconsistentMatchesQRTest()
-        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.CglsInconsistentMatchesQR }.Run();
 
     [Test]
     public void LsqrInconsistentMatchesQRTest()
         => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.LsqrInconsistentMatchesQR }.Run();
 
     [Test]
-    public void CglsLsqrUnderdeterminedConsistentTest()
-        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.CglsLsqrUnderdeterminedConsistent }.Run();
+    public void LsqrUnderdeterminedConsistentTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.LsqrUnderdeterminedConsistent }.Run();
 
     // ---- LSMR entry points ----
 
@@ -1711,10 +1569,6 @@ public class doubleSparseSolverTests
     [Test]
     public void BiCGStabWarmStartTest()
         => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.BiCGStabWarmStart }.Run();
-
-    [Test]
-    public void CglsWarmStartTest()
-        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.CglsWarmStart }.Run();
 
     [Test]
     public void LsqrWarmStartTest()
@@ -1979,7 +1833,7 @@ public class doubleSparseSolverTests
 
     // ---- Phase 3 guard / aliasing cases (managed thread; Assert.Throws can't run in Burst) ----
     //
-    // MINRES/BiCGSTAB/CGLS/LSQR share cg/pcg's "every vector argument must be a distinct buffer"
+    // MINRES/BiCGSTAB/LSQR/LSMR share cg/pcg's "every vector argument must be a distinct buffer"
     // contract, enforced up front by RequireDistinctBuffers before any computation -- so the
     // operator matrix's contents are irrelevant and a bare zeroed doubleMat suffices. 1-2 aliasing
     // cases per solver (matching Phase 2's coverage) prove the guard fires; exhaustive pairwise
@@ -2040,26 +1894,6 @@ public class doubleSparseSolverTests
             var v = arena.doubleVec(dim); var t = arena.doubleVec(dim);
             Assert.Throws<ArgumentException>(() =>
                 Krylov.biCGStab(in A, in b, ref xAlias, ref r, ref rHat0, ref p, ref v, ref t, dim, Consts.doubleSqrtEps));
-        }
-        finally { arena.Dispose(); }
-    }
-
-    [Test]
-    public void Cgls_AliasingRAndQ_Throws()
-    {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            int m = 5, n = 3;
-            var A = arena.doubleMat(m, n);      // rectangular; guard fires before A is read
-            var b = arena.doubleRandomVec(m, -1f, 1f, 39201);
-            var x = arena.doubleVec(n);
-            var r = arena.doubleVec(m);
-            var s = arena.doubleVec(n);
-            var p = arena.doubleVec(n);
-            var qAlias = r; // q aliases r (both length m -> passes the dimension checks, trips the guard)
-            Assert.Throws<ArgumentException>(() =>
-                Krylov.cgls(in A, in b, ref x, ref r, ref s, ref p, ref qAlias, n, Consts.doubleSqrtEps));
         }
         finally { arena.Dispose(); }
     }

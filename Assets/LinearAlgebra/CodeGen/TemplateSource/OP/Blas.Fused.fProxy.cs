@@ -33,8 +33,8 @@ namespace LinearAlgebra
         }
 
         /// <summary>x += a·p ; r -= a·q ; returns ‖r‖². The CG-family twin update (solution + residual)
-        /// plus its convergence dot. x/p and r/q may have DIFFERENT lengths (cgls is
-        /// rectangular: x/p are length A.Cols, r/q are length A.Rows) -- the r-update folds the
+        /// plus its convergence dot. x/p and r/q may have DIFFERENT lengths (a rectangular
+        /// system has x/p length A.Cols, r/q length A.Rows) -- the r-update folds the
         /// reduction into its own pass, eliminating a separate <c>Blas.dot(r, r)</c> traversal.
         /// Bit-identical to <c>x.addScaledInPlace(a, p); r.addScaledInPlace(-a, q); Blas.dot(r, r);</c>.</summary>
         public static fProxy updateXR(fProxy a, in fProxyN p, ref fProxyN x, in fProxyN q, ref fProxyN r)

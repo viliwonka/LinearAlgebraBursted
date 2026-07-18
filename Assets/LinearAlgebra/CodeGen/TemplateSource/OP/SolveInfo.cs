@@ -4,7 +4,7 @@ using Unity.Collections;
 namespace LinearAlgebra
 {
     /// <summary>
-    /// Result of a least-squares Krylov solve (<c>cgls</c> / <c>lsqr</c> / <c>lsmr</c>). Every LS
+    /// Result of a least-squares Krylov solve (<c>lsqr</c> / <c>lsmr</c>). Every LS
     /// solver RETURNS this by value; an implicit <c>bool</c> conversion (== <see cref="Solved"/>)
     /// lets old success-test call shapes keep compiling, e.g. <c>if (Krylov.lsqr(A, b, ref x))</c>.
     /// Carries <see cref="rnorm"/> (‖b - A x‖), <see cref="Arnorm"/> (‖Aᵀ(b - A x)‖, or with

@@ -1511,8 +1511,8 @@ namespace LinearAlgebra.Internal
         }
 
         // x += a*p (length nx) ; r -= a*q (length nr) ; return dot(r,r). The twin CG-family update
-        // (solution + residual) plus the convergence dot. nx and nr are independent (cgls is
-        // RECTANGULAR: x/p have length A.Cols, r/q have length A.Rows, which differ in general) --
+        // (solution + residual) plus the convergence dot. nx and nr are independent (a rectangular
+        // system has x/p of length A.Cols, r/q of length A.Rows, which differ in general) --
         // this is two loops, not one shared-index loop, but the second (r) loop still folds the
         // trailing reduction into the update pass, eliminating the separate vecDot(r,r) traversal.
         // Bit-identical to axpy(x,p,a,nx); axpy(r,q,-a,nr); vecDot(r,r,nr)

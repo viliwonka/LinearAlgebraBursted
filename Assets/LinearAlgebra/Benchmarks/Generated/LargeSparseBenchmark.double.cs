@@ -52,10 +52,6 @@ namespace LinearAlgebra.Benchmarks
         public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.biCGStab(in A, in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, K, 0f); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
-    public struct SpCglsJobDouble : IJob { public doubleBSR A; public doubleN b, x, r, s, p, q; public int K; public NativeArray<double> outInfo;
-        public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, K, 0f); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
-
-    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SpLsqrJobDouble : IJob { public doubleBSR A; public doubleN b, x, u, v, w, tmpM, tmpN; public int K; public NativeArray<double> outInfo;
         public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, K, 0f); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
 
@@ -195,10 +191,6 @@ namespace LinearAlgebra.Benchmarks
                 var At = arena.doubleRandomSparse(mb, nb, BR, density, 0xC0DEu);
                 var bt = arena.doubleVec(m); BSR.spMV(in At, in xKnown, ref bt);
                 string rsz = m + "x" + N;
-                var xc = arena.doubleVec(N);
-                var cglsJob = new SpCglsJobDouble { A = At, b = bt, x = xc, r = arena.doubleVec(m), s = arena.doubleVec(N), p = arena.doubleVec(N), q = arena.doubleVec(m), K = K, outInfo = oi };
-                var cglsStat = Bench.Time(() => cglsJob.Run());
-                sb.AppendLine(LargeSparseFmt.Row("double", rsz, "CGLS", cglsStat, Res(in At, in xc, in bt), (int)oi[1], (int)oi[0]));
                 var xl = arena.doubleVec(N);
                 var lsqrJob = new SpLsqrJobDouble { A = At, b = bt, x = xl, u = arena.doubleVec(m), v = arena.doubleVec(N), w = arena.doubleVec(N), tmpM = arena.doubleVec(m), tmpN = arena.doubleVec(N), K = K, outInfo = oi };
                 var lsqrStat = Bench.Time(() => lsqrJob.Run());
@@ -219,7 +211,7 @@ namespace LinearAlgebra.Benchmarks
         // (diag=4, off-diag=-1, nnz ~= 3N) -- the low-fill, b=1 regime where vector-op fusion is
         // the largest fraction of per-iteration traffic. Only the SPD-compatible solvers run here
         // (CG/PCG-Jacobi/PCG-SSOR/MINRES) -- BiCGStab needs a non-symmetric operator and
-        // CGLS/LSQR/LSMR need a rectangular one, neither of which this generator produces. PCG-SSOR
+        // LSQR/LSMR need a rectangular one, neither of which this generator produces. PCG-SSOR
         // carries both the fixed-K row and the "@tol" convergence-comparison row at the largest N,
         // same reasoning as BenchKrylovDouble's own comment.
         static void BenchStencilDouble(StringBuilder sb, int[] Ns, int K)

@@ -121,38 +121,6 @@ namespace LinearAlgebra.Benchmarks
         }
     }
 
-    // ---- CGLS scratch: r, q (A.Rows length), s, p (A.Cols length) ----------------------------------
-
-    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
-    public struct CglsDenseJobDouble : IJob
-    {
-        public doubleMxN A;
-        public doubleN b, x, r, s, p, q;
-        public int K;
-
-        public void Execute()
-        {
-            int n = x.N;
-            for (int i = 0; i < n; i++) x[i] = 0f;
-            Krylov.cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, K, 0f);
-        }
-    }
-
-    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
-    public struct CglsSparseJobDouble : IJob
-    {
-        public doubleBSR A;
-        public doubleN b, x, r, s, p, q;
-        public int K;
-
-        public void Execute()
-        {
-            int n = x.N;
-            for (int i = 0; i < n; i++) x[i] = 0f;
-            Krylov.cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, K, 0f);
-        }
-    }
-
     // ---- LSQR scratch: u, tmpM (A.Rows length), v, w, tmpN (A.Cols length) ------------------------
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -185,23 +153,9 @@ namespace LinearAlgebra.Benchmarks
         }
     }
 
-    // ---- transpose-optimized sparse CGLS/LSQR jobs: use a materialized Aᵀ so ApplyT runs as a forward
+    // ---- transpose-optimized sparse LSQR jobs: use a materialized Aᵀ so ApplyT runs as a forward
     //      spMV over Aᵀ instead of the cache-unfriendly on-the-fly spMVT. Aᵀ is built ONCE outside the
     //      timed region (a real solve builds it once and reuses it every iteration). ------------------
-
-    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
-    public struct CglsSparseTJobDouble : IJob
-    {
-        public doubleBSR A, AT;
-        public doubleN b, x, r, s, p, q;
-        public int K;
-        public void Execute()
-        {
-            int n = x.N;
-            for (int i = 0; i < n; i++) x[i] = 0f;
-            Krylov.cgls(in A, in AT, in b, ref x, ref r, ref s, ref p, ref q, K, 0f);
-        }
-    }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct LsqrSparseTJobDouble : IJob
@@ -812,7 +766,7 @@ namespace LinearAlgebra.Benchmarks
             }
         }
 
-        // ==== Section 3: rectangular -> cgls & lsqr (over- and under-determined) ========================
+        // ==== Section 3: rectangular -> lsqr (over- and under-determined) ========================
 
         static void RunRectCaseDouble(int nRef, int mb, int nb, float density, string tag, int tagSeed, StringBuilder sb)
         {
@@ -821,16 +775,6 @@ namespace LinearAlgebra.Benchmarks
             BuildBlockRectDouble(ref arena, mb, nb, density, SparseSolverFmt.Seed(nRef, density, tagSeed), out var dense, out var sparse);
             int rows = mb * BR, cols = nb * BR;
             var b = arena.doubleRandomVec(rows, -1f, 1f, SparseSolverFmt.Seed(nRef, density, tagSeed + 1));
-
-            var xCD = arena.doubleVec(cols); var rCD = arena.doubleVec(rows); var sCD = arena.doubleVec(cols); var pCD = arena.doubleVec(cols); var qCD = arena.doubleVec(rows);
-            var cglsDenseJob = new CglsDenseJobDouble { A = dense, b = b, x = xCD, r = rCD, s = sCD, p = pCD, q = qCD, K = K };
-            var cglsDenseStat = Bench.Time(() => cglsDenseJob.Run());
-            sb.AppendLine(SparseSolverFmt.Row("double", nRef, density, "CGLS-dense-" + tag, cglsDenseStat, ResidualLS(in dense, in xCD, in b)));
-
-            var xCS = arena.doubleVec(cols); var rCS = arena.doubleVec(rows); var sCS = arena.doubleVec(cols); var pCS = arena.doubleVec(cols); var qCS = arena.doubleVec(rows);
-            var cglsSparseJob = new CglsSparseJobDouble { A = sparse, b = b, x = xCS, r = rCS, s = sCS, p = pCS, q = qCS, K = K };
-            var cglsSparseStat = Bench.Time(() => cglsSparseJob.Run());
-            sb.AppendLine(SparseSolverFmt.Row("double", nRef, density, "CGLS-sparse-" + tag, cglsSparseStat, ResidualLS(in dense, in xCS, in b)));
 
             var xLD = arena.doubleVec(cols); var uLD = arena.doubleVec(rows); var vLD = arena.doubleVec(cols); var wLD = arena.doubleVec(cols);
             var tmMLD = arena.doubleVec(rows); var tmNLD = arena.doubleVec(cols);
@@ -848,11 +792,6 @@ namespace LinearAlgebra.Benchmarks
             // becomes a forward spMV over Aᵀ. Compare "sparseT" rows against the "sparse" rows above.
             var AT = arena.doubleBSRTranspose(in sparse);
 
-            var xCST = arena.doubleVec(cols); var rCST = arena.doubleVec(rows); var sCST = arena.doubleVec(cols); var pCST = arena.doubleVec(cols); var qCST = arena.doubleVec(rows);
-            var cglsSparseTJob = new CglsSparseTJobDouble { A = sparse, AT = AT, b = b, x = xCST, r = rCST, s = sCST, p = pCST, q = qCST, K = K };
-            var cglsSparseTStat = Bench.Time(() => cglsSparseTJob.Run());
-            sb.AppendLine(SparseSolverFmt.Row("double", nRef, density, "CGLS-sparseT-" + tag, cglsSparseTStat, ResidualLS(in dense, in xCST, in b)));
-
             var xLST = arena.doubleVec(cols); var uLST = arena.doubleVec(rows); var vLST = arena.doubleVec(cols); var wLST = arena.doubleVec(cols);
             var tmMLST = arena.doubleVec(rows); var tmNLST = arena.doubleVec(cols);
             var lsqrSparseTJob = new LsqrSparseTJobDouble { A = sparse, AT = AT, b = b, x = xLST, u = uLST, v = vLST, w = wLST, tmpM = tmMLST, tmpN = tmNLST, K = K };
@@ -867,7 +806,7 @@ namespace LinearAlgebra.Benchmarks
             int BR = SparseSolverFmt.BR, K = SparseSolverFmt.K_LS;
             sb.AppendLine();
             sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
-                "--- 3. Rectangular block-sparse (b={0}): cgls & lsqr, K={1}, tol=0 [double] ---", BR, K));
+                "--- 3. Rectangular block-sparse (b={0}): lsqr, K={1}, tol=0 [double] ---", BR, K));
             sb.AppendLine("    over: rows=2xcols block grid (m=2n, overdetermined); under: cols=2xrows block grid (m=n/2, underdetermined).");
             sb.AppendLine("    residual = ||A^T(Ax-b)|| / ||A^T b|| (least-squares optimality, not ||Ax-b||).");
             sb.AppendLine(SparseSolverFmt.RowHeader());

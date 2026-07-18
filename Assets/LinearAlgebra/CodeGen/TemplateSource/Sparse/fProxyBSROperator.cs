@@ -44,7 +44,7 @@ namespace LinearAlgebra.Sparse
         /// built ONCE per solve). ApplyT then forwards to <see cref="BSR.spMV(in fProxyBSR,
         /// in fProxyN, ref fProxyN)"/> over aT -- a forward, cache-friendly block-CSR traversal --
         /// instead of the scatter-heavy <see cref="BSR.spMVT"/> over a. The one-time O(nnz)
-        /// transpose build is amortized over every iteration a solver (e.g. cgls/lsqr) calls
+        /// transpose build is amortized over every iteration a solver (e.g. lsqr/lsmr) calls
         /// ApplyT. Caller is responsible for aT actually being a's transpose -- this ctor does not
         /// verify it (that would defeat the point of precomputing it once).
         /// </summary>

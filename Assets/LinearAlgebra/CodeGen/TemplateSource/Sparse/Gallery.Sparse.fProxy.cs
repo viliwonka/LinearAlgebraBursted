@@ -101,7 +101,7 @@ namespace LinearAlgebra.Gallery
         /// strictly row-diagonally-dominant, hence invertible, non-symmetric matrix (use for BiCGSTAB /
         /// GMRES-style solvers). Tall (blockRows &gt; blockCols) gives a full-column-rank rectangular
         /// operator (the top blockCols square carries the dominant diagonal), suitable for the iterative
-        /// least-squares solvers (cgls/lsqr/lsmr over a sparse operator). O(nnz), no dense form.
+        /// least-squares solvers (lsqr/lsmr over a sparse operator). O(nnz), no dense form.
         /// </summary>
         /// <param name="blockRows">Block rows (m/BR).</param>
         /// <param name="blockCols">Block cols (n/BC). Equal → square; greater → tall rectangular.</param>

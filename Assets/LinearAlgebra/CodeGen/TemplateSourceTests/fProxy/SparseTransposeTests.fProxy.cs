@@ -15,7 +15,7 @@ using Unity.Mathematics;
 // cache-friendly forward traversal of a materialized AT rather than the scatter-heavy on-the-fly
 // spMVT over A. So every case here is a cross-check: the new path must agree with the old path to
 // within a tight (exact-identity, not iterative-convergence) tolerance. The solver-level wiring
-// that consumes these (cgls/lsqr allocating BSR overloads) is regression-covered separately by
+// that consumes these (lsqr allocating BSR overloads) is regression-covered separately by
 // fProxySparseSolverTests -- this file targets the transpose primitive + operator ctor directly.
 //
 // Correctness cases run inside a [BurstCompile] IJob (matches fProxySparseSolverTests /
