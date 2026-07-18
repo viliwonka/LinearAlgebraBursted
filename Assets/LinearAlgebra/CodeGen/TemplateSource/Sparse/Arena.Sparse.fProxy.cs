@@ -353,5 +353,63 @@ namespace LinearAlgebra
             Arena self = this;
             return new fProxySPAI(in A, ref self, in opts, out info);
         }
+
+        /// <summary>
+        /// Builds a one-level symmetric additive Schwarz (AS) preconditioner from A (must be square
+        /// SPD; Symmetric-storage A is mirrored to full transiently at setup). See
+        /// <see cref="fProxyAdditiveSchwarz"/> for the overlap/breakdown/memory contract and
+        /// <see cref="SchwarzOptions"/> for the tunables. Valid for pcg AND pminres. Arena-owned:
+        /// disposed with the arena.
+        /// </summary>
+        public fProxyAdditiveSchwarz fProxyAdditiveSchwarz(in fProxyBSR A, in SchwarzOptions opts)
+        {
+            Arena self = this;
+            return new fProxyAdditiveSchwarz(in A, ref self, in opts);
+        }
+
+        /// <summary>Non-throwing twin of <see cref="fProxyAdditiveSchwarz(in fProxyBSR, in SchwarzOptions)"/>:
+        /// info carries the build outcome (Success, or NotPositiveDefinite on breakdown).</summary>
+        public fProxyAdditiveSchwarz fProxyAdditiveSchwarz(in fProxyBSR A, in SchwarzOptions opts, out PreconditionerInfo info)
+        {
+            Arena self = this;
+            return new fProxyAdditiveSchwarz(in A, ref self, in opts, out info);
+        }
+
+        /// <summary><see cref="fProxyAdditiveSchwarz(in fProxyBSR, in SchwarzOptions)"/> with
+        /// <see cref="SchwarzOptions.Default"/> (subdomainSize=128, overlap=1).</summary>
+        public fProxyAdditiveSchwarz fProxyAdditiveSchwarz(in fProxyBSR A)
+        {
+            Arena self = this;
+            return new fProxyAdditiveSchwarz(in A, ref self);
+        }
+
+        /// <summary>
+        /// Builds a one-level restricted additive Schwarz (RAS) preconditioner from A (square;
+        /// Symmetric-storage A is mirrored to full transiently at setup) -- the NON-symmetric sibling
+        /// of <see cref="fProxyAdditiveSchwarz"/>, for Krylov.pbiCGStab only. See
+        /// <see cref="fProxyRestrictedSchwarz"/> for the contract. Arena-owned: disposed with the
+        /// arena.
+        /// </summary>
+        public fProxyRestrictedSchwarz fProxyRestrictedSchwarz(in fProxyBSR A, in SchwarzOptions opts)
+        {
+            Arena self = this;
+            return new fProxyRestrictedSchwarz(in A, ref self, in opts);
+        }
+
+        /// <summary>Non-throwing twin of <see cref="fProxyRestrictedSchwarz(in fProxyBSR, in SchwarzOptions)"/>:
+        /// info carries the build outcome (Success, or Singular on a zero-pivot local LU).</summary>
+        public fProxyRestrictedSchwarz fProxyRestrictedSchwarz(in fProxyBSR A, in SchwarzOptions opts, out PreconditionerInfo info)
+        {
+            Arena self = this;
+            return new fProxyRestrictedSchwarz(in A, ref self, in opts, out info);
+        }
+
+        /// <summary><see cref="fProxyRestrictedSchwarz(in fProxyBSR, in SchwarzOptions)"/> with
+        /// <see cref="SchwarzOptions.Default"/> (subdomainSize=128, overlap=1).</summary>
+        public fProxyRestrictedSchwarz fProxyRestrictedSchwarz(in fProxyBSR A)
+        {
+            Arena self = this;
+            return new fProxyRestrictedSchwarz(in A, ref self);
+        }
     }
 }

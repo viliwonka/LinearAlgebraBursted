@@ -14,10 +14,11 @@ namespace LinearAlgebra.Sparse
     /// it is NOT a valid CG/MINRES preconditioner.
     ///
     /// Each row is an independent small least-squares problem (row i's support J_i, shadow column
-    /// pattern I_i, dense normal-equations solve via <see cref="CHO"/>) -- no row-to-row
+    /// pattern I_i, dense tall QR least-squares solve via <see cref="QR"/>) -- no row-to-row
     /// dependency, no global breakdown cascade. A rank-deficient local system retries with an
-    /// escalating diagonal (Tikhonov) shift, recorded in <see cref="Shift"/>; throws if the largest
-    /// shift still fails. Apply is a single BSR spMV.
+    /// escalating Tikhonov shift (a regularizing √shift·I row block appended to the least-squares
+    /// matrix), recorded in <see cref="Shift"/>; throws if the largest shift still fails. Apply is
+    /// a single BSR spMV.
     ///
     /// Symmetric-storage A pays a one-time mirror-to-full copy (SPAI needs full rows), same as
     /// ILU0. A must store every diagonal block. Arena-composed -- no record table of its own, no
@@ -167,17 +168,25 @@ namespace LinearAlgebra.Sparse
                     }
                 }
 
-                var Nbase = new fProxyMxN(nJ, nJ, Allocator.Temp, true);
-                Blas.dotSymT(in Ahat, in Ahat, ref Nbase);   // N = A_hat . A_hat^T (SPD by construction)
+                // Local least-squares problem: min ‖A_hat^T . g − e_iLocal‖ (A_hat^T is nI x nJ, TALL
+                // since nI >= nJ). Solved directly by tall QR least-squares (avoids the κ² squaring of
+                // the A_hat . A_hat^T normal equations). Tikhonov robustness ladder: attempt 0 solves
+                // the plain problem; a rank-deficient A_hat^T gives QR a zero R diagonal (non-finite g,
+                // unguarded), which is detected and retried with an appended √shift·I row block --
+                // min ‖A_hat^T g − c‖² + shift‖g‖², whose normal equations are exactly the shifted
+                // (A_hat A_hat^T + shift I) g = A_hat c. shift > 0 guarantees full column rank.
+                // Bt = A_hat^T (nI x nJ) built once; the augmented buffers (nI+nJ rows) are refilled
+                // per attempt because QR.solveInPlace destroys its matrix and RHS inputs.
+                int nAug = nI + nJ;
 
-                // RHS base = A_hat . e_shadow(iLocal) = A_hat's own iLocal-th BR-column block.
-                var RHSbase = new fProxyMxN(nJ, BR, Allocator.Temp, true);
+                var Bt = new fProxyMxN(nI, nJ, Allocator.Temp, true);
                 for (int r = 0; r < nJ; r++)
-                    for (int c = 0; c < BR; c++)
-                        RHSbase[r, c] = Ahat[r, iLocal * BR + c];
+                    for (int c = 0; c < nI; c++)
+                        Bt[c, r] = Ahat[r, c];
 
-                var Nwork = new fProxyMxN(nJ, nJ, Allocator.Temp, true);
-                var RHSwork = new fProxyMxN(nJ, BR, Allocator.Temp, true);
+                var Bwork = new fProxyMxN(nAug, nJ, Allocator.Temp, true);
+                var Cwork = new fProxyMxN(nAug, BR, Allocator.Temp, true);
+                var Xwork = new fProxyMxN(nJ, BR, Allocator.Temp, true);
 
                 fProxy shift = 0;
                 bool rowOk = false;
@@ -187,22 +196,38 @@ namespace LinearAlgebra.Sparse
                 {
                     rowAttempts = attempt + 1;
 
-                    Nwork.Data.CopyFrom(Nbase.Data);
-                    if (shift != (fProxy)0)
-                        for (int r = 0; r < nJ; r++) Nwork[r, r] += shift;
-                    RHSwork.Data.CopyFrom(RHSbase.Data);
+                    // Bwork = [ A_hat^T ; √shift·I ]  (nAug x nJ).
+                    for (int r = 0; r < nI; r++)
+                        for (int c = 0; c < nJ; c++)
+                            Bwork[r, c] = Bt[r, c];
+                    fProxy sq = math.sqrt(shift);
+                    for (int r = 0; r < nJ; r++)
+                        for (int c = 0; c < nJ; c++)
+                            Bwork[nI + r, c] = (r == c) ? sq : (fProxy)0;
 
-                    var chInfo = CHO.decompInPlace(ref Nwork);
-                    if (chInfo.Solved)
+                    // Cwork = [ e_iLocal ; 0 ]  (nAug x BR): an I_BR block at block-row iLocal, else 0.
+                    for (int r = 0; r < nAug; r++)
+                        for (int c = 0; c < BR; c++)
+                            Cwork[r, c] = (fProxy)0;
+                    for (int c = 0; c < BR; c++)
+                        Cwork[iLocal * BR + c, c] = (fProxy)1;
+
+                    // Xwork := g (nJ x BR) == this row of M^T restricted to J_i. Destroys Bwork, Cwork.
+                    QR.solveInPlace(ref Bwork, ref Cwork, ref Xwork);
+
+                    bool finite = true;
+                    for (int r = 0; r < nJ && finite; r++)
+                        for (int c = 0; c < BR; c++)
+                            if (!math.isfinite(Xwork[r, c])) { finite = false; break; }
+
+                    if (finite)
                     {
-                        CHO.decompSolve(ref Nwork, ref RHSwork);   // RHSwork := m (nJ x BR) == this row of M^T restricted to J_i
-
                         for (int aI = 0; aI < m; aI++)
                         {
                             int dstOff = (jS + aI) * blockLen;   // M's row-i slots share A's RowPtr layout 1:1
                             for (int q = 0; q < BR; q++)
                                 for (int p = 0; p < BR; p++)
-                                    mValues[dstOff + q * BR + p] = RHSwork[aI * BR + p, q];
+                                    mValues[dstOff + q * BR + p] = Xwork[aI * BR + p, q];
                         }
 
                         rowOk = true;
@@ -212,10 +237,10 @@ namespace LinearAlgebra.Sparse
                     shift = shift == (fProxy)0 ? (fProxy)1e-3 * diagMax : shift * (fProxy)10;
                 }
 
-                RHSwork.Dispose();
-                Nwork.Dispose();
-                RHSbase.Dispose();
-                Nbase.Dispose();
+                Xwork.Dispose();
+                Cwork.Dispose();
+                Bwork.Dispose();
+                Bt.Dispose();
                 Ahat.Dispose();
 
                 if (rowAttempts > worstAttempts) worstAttempts = rowAttempts;

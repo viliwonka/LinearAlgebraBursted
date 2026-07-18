@@ -165,5 +165,33 @@ namespace LinearAlgebra
         {
             return pbiCGStab(in A, in M, in b, ref x, A.M_Rows, Consts.doubleSqrtEps);
         }
+
+        /// <summary>
+        /// Restricted additive-Schwarz (RAS) preconditioned BiCGSTAB over a block-sparse (BSR)
+        /// matrix -- forwards into <see cref="pbiCGStab{TOp,TPre}"/> via <c>doubleBSROperator</c>.
+        /// RAS is NOT symmetric (even for symmetric A) and is not a valid CG/MINRES preconditioner --
+        /// pbiCGStab is its only Krylov rung, mirroring ILU0's and SPAI's placement.
+        /// </summary>
+        public static SolveInfo pbiCGStab(in doubleBSR A, in doubleRestrictedSchwarz M, in doubleN b, ref doubleN x,
+                               int maxIter, double tol)
+        {
+            doubleN r     = b.doubleTempVec(A.M_Rows);
+            doubleN rHat0 = b.doubleTempVec(A.M_Rows);
+            doubleN p     = b.doubleTempVec(A.M_Rows);
+            doubleN v     = b.doubleTempVec(A.M_Rows);
+            doubleN t     = b.doubleTempVec(A.M_Rows);
+            doubleN pHat  = b.doubleTempVec(A.M_Rows);
+            doubleN sHat  = b.doubleTempVec(A.M_Rows);
+            return pbiCGStab(new doubleBSROperator(in A), in M, in b, ref x,
+                             ref r, ref rHat0, ref p, ref v, ref t, ref pHat, ref sHat,
+                             maxIter, tol);
+        }
+
+        /// <summary>RAS BiCGSTAB over BSR with default maxIter (A.M_Rows) and tolerance
+        /// (Consts.doubleSqrtEps).</summary>
+        public static SolveInfo pbiCGStab(in doubleBSR A, in doubleRestrictedSchwarz M, in doubleN b, ref doubleN x)
+        {
+            return pbiCGStab(in A, in M, in b, ref x, A.M_Rows, Consts.doubleSqrtEps);
+        }
     }
 }

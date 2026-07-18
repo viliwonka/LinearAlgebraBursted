@@ -161,5 +161,33 @@ namespace LinearAlgebra
         {
             return pbiCGStab(in A, in M, in b, ref x, A.M_Rows, Consts.fProxySqrtEps);
         }
+
+        /// <summary>
+        /// Restricted additive-Schwarz (RAS) preconditioned BiCGSTAB over a block-sparse (BSR)
+        /// matrix -- forwards into <see cref="pbiCGStab{TOp,TPre}"/> via <c>fProxyBSROperator</c>.
+        /// RAS is NOT symmetric (even for symmetric A) and is not a valid CG/MINRES preconditioner --
+        /// pbiCGStab is its only Krylov rung, mirroring ILU0's and SPAI's placement.
+        /// </summary>
+        public static SolveInfo pbiCGStab(in fProxyBSR A, in fProxyRestrictedSchwarz M, in fProxyN b, ref fProxyN x,
+                               int maxIter, fProxy tol)
+        {
+            fProxyN r     = b.fProxyTempVec(A.M_Rows);
+            fProxyN rHat0 = b.fProxyTempVec(A.M_Rows);
+            fProxyN p     = b.fProxyTempVec(A.M_Rows);
+            fProxyN v     = b.fProxyTempVec(A.M_Rows);
+            fProxyN t     = b.fProxyTempVec(A.M_Rows);
+            fProxyN pHat  = b.fProxyTempVec(A.M_Rows);
+            fProxyN sHat  = b.fProxyTempVec(A.M_Rows);
+            return pbiCGStab(new fProxyBSROperator(in A), in M, in b, ref x,
+                             ref r, ref rHat0, ref p, ref v, ref t, ref pHat, ref sHat,
+                             maxIter, tol);
+        }
+
+        /// <summary>RAS BiCGSTAB over BSR with default maxIter (A.M_Rows) and tolerance
+        /// (Consts.fProxySqrtEps).</summary>
+        public static SolveInfo pbiCGStab(in fProxyBSR A, in fProxyRestrictedSchwarz M, in fProxyN b, ref fProxyN x)
+        {
+            return pbiCGStab(in A, in M, in b, ref x, A.M_Rows, Consts.fProxySqrtEps);
+        }
     }
 }

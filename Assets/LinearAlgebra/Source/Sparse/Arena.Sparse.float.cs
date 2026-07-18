@@ -357,5 +357,63 @@ namespace LinearAlgebra
             Arena self = this;
             return new floatSPAI(in A, ref self, in opts, out info);
         }
+
+        /// <summary>
+        /// Builds a one-level symmetric additive Schwarz (AS) preconditioner from A (must be square
+        /// SPD; Symmetric-storage A is mirrored to full transiently at setup). See
+        /// <see cref="floatAdditiveSchwarz"/> for the overlap/breakdown/memory contract and
+        /// <see cref="SchwarzOptions"/> for the tunables. Valid for pcg AND pminres. Arena-owned:
+        /// disposed with the arena.
+        /// </summary>
+        public floatAdditiveSchwarz floatAdditiveSchwarz(in floatBSR A, in SchwarzOptions opts)
+        {
+            Arena self = this;
+            return new floatAdditiveSchwarz(in A, ref self, in opts);
+        }
+
+        /// <summary>Non-throwing twin of <see cref="floatAdditiveSchwarz(in floatBSR, in SchwarzOptions)"/>:
+        /// info carries the build outcome (Success, or NotPositiveDefinite on breakdown).</summary>
+        public floatAdditiveSchwarz floatAdditiveSchwarz(in floatBSR A, in SchwarzOptions opts, out PreconditionerInfo info)
+        {
+            Arena self = this;
+            return new floatAdditiveSchwarz(in A, ref self, in opts, out info);
+        }
+
+        /// <summary><see cref="floatAdditiveSchwarz(in floatBSR, in SchwarzOptions)"/> with
+        /// <see cref="SchwarzOptions.Default"/> (subdomainSize=128, overlap=1).</summary>
+        public floatAdditiveSchwarz floatAdditiveSchwarz(in floatBSR A)
+        {
+            Arena self = this;
+            return new floatAdditiveSchwarz(in A, ref self);
+        }
+
+        /// <summary>
+        /// Builds a one-level restricted additive Schwarz (RAS) preconditioner from A (square;
+        /// Symmetric-storage A is mirrored to full transiently at setup) -- the NON-symmetric sibling
+        /// of <see cref="floatAdditiveSchwarz"/>, for Krylov.pbiCGStab only. See
+        /// <see cref="floatRestrictedSchwarz"/> for the contract. Arena-owned: disposed with the
+        /// arena.
+        /// </summary>
+        public floatRestrictedSchwarz floatRestrictedSchwarz(in floatBSR A, in SchwarzOptions opts)
+        {
+            Arena self = this;
+            return new floatRestrictedSchwarz(in A, ref self, in opts);
+        }
+
+        /// <summary>Non-throwing twin of <see cref="floatRestrictedSchwarz(in floatBSR, in SchwarzOptions)"/>:
+        /// info carries the build outcome (Success, or Singular on a zero-pivot local LU).</summary>
+        public floatRestrictedSchwarz floatRestrictedSchwarz(in floatBSR A, in SchwarzOptions opts, out PreconditionerInfo info)
+        {
+            Arena self = this;
+            return new floatRestrictedSchwarz(in A, ref self, in opts, out info);
+        }
+
+        /// <summary><see cref="floatRestrictedSchwarz(in floatBSR, in SchwarzOptions)"/> with
+        /// <see cref="SchwarzOptions.Default"/> (subdomainSize=128, overlap=1).</summary>
+        public floatRestrictedSchwarz floatRestrictedSchwarz(in floatBSR A)
+        {
+            Arena self = this;
+            return new floatRestrictedSchwarz(in A, ref self);
+        }
     }
 }

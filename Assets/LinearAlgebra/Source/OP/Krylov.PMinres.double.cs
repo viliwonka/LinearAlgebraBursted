@@ -137,6 +137,13 @@ namespace LinearAlgebra
                 // NEXT iteration's v (and this iteration's beta below).
                 M.Apply(in r2, ref z);
                 double betaNewSq = Blas.dot(r2, z);
+
+                // Non-SPD preconditioner: <r2, M^-1 r2> < 0 -> beta = sqrt(negative) = NaN. Bail
+                // BEFORE the Givens/x update below poisons a warm-started x; x is left untouched.
+                // (betaNewSq == 0, a true invariant subspace, is left to the beta>0 guard below.)
+                if (!(betaNewSq >= (double)0))
+                    return MakeSolveInfo(IterativeSolveStatus.Breakdown, k + 1, phibar);
+
                 beta = math.sqrt(betaNewSq);
 
                 // ---- apply the PREVIOUS Givens rotation (cs,sn) to the new tridiagonal column ----
@@ -428,6 +435,48 @@ namespace LinearAlgebra
         /// tol (Consts.doubleSqrtEps).
         /// </summary>
         public static SolveInfo pminres(in doubleBSR A, in doubleChebyshev M, in doubleN b, ref doubleN x)
+        {
+            return pminres(in A, in M, in b, ref x, A.M_Rows, Consts.doubleSqrtEps);
+        }
+
+        /// <summary>
+        /// Preconditioned MINRES over a block-sparse (BSR) matrix with its matching symmetric
+        /// additive-Schwarz preconditioner. Forwards into <see cref="pminres{TOp,TPre}"/> via
+        /// <c>doubleBSROperator</c> -- same three-rung BSR convenience pattern as the block-Jacobi
+        /// and IC0 overloads above. AS is SPD whenever its build reports Success, so it is a valid
+        /// MINRES preconditioner; restricted Schwarz (RAS) is NOT symmetric and has no pminres rung.
+        /// </summary>
+        public static SolveInfo pminres(in doubleBSR A, in doubleAdditiveSchwarz M, in doubleN b, ref doubleN x,
+                               ref doubleN y, ref doubleN r1, ref doubleN r2, ref doubleN v,
+                               ref doubleN w, ref doubleN w1, ref doubleN w2, ref doubleN z,
+                               int maxIter, double tol)
+        {
+            return pminres(new doubleBSROperator(in A), in M, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, ref z, maxIter, tol);
+        }
+
+        /// <summary>
+        /// Additive-Schwarz Preconditioned MINRES over a BSR matrix -- allocates eight scratch
+        /// vectors from the arena and calls the zero-alloc primitive.
+        /// </summary>
+        public static SolveInfo pminres(in doubleBSR A, in doubleAdditiveSchwarz M, in doubleN b, ref doubleN x,
+                               int maxIter, double tol)
+        {
+            doubleN y  = b.doubleTempVec(A.M_Rows);
+            doubleN r1 = b.doubleTempVec(A.M_Rows);
+            doubleN r2 = b.doubleTempVec(A.M_Rows);
+            doubleN v  = b.doubleTempVec(A.M_Rows);
+            doubleN w  = b.doubleTempVec(A.M_Rows);
+            doubleN w1 = b.doubleTempVec(A.M_Rows);
+            doubleN w2 = b.doubleTempVec(A.M_Rows);
+            doubleN z  = b.doubleTempVec(A.M_Rows);
+            return pminres(in A, in M, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, ref z, maxIter, tol);
+        }
+
+        /// <summary>
+        /// Additive-Schwarz Preconditioned MINRES over a BSR matrix, with default maxIter (A.M_Rows)
+        /// and tol (Consts.doubleSqrtEps).
+        /// </summary>
+        public static SolveInfo pminres(in doubleBSR A, in doubleAdditiveSchwarz M, in doubleN b, ref doubleN x)
         {
             return pminres(in A, in M, in b, ref x, A.M_Rows, Consts.doubleSqrtEps);
         }

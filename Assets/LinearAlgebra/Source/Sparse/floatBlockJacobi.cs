@@ -203,10 +203,20 @@ namespace LinearAlgebra.Sparse
         }
 
         // In-place Gauss-Jordan inverse with partial pivoting: M (n x n row-major, DESTROYED) ->
-        // Inv. Returns false on a numerically zero pivot (NaN-safe, the library's usual pivot
-        // idiom). M and Inv are distinct stack buffers.
+        // Inv. Returns false when a pivot falls at or below a diagonal-scaled floor (16*eps*diagMax,
+        // matching floatILU0) so a denormal pivot reports singular instead of inverting to Inf.
+        // NaN-safe, the library's usual pivot idiom. M and Inv are distinct stack buffers.
         static unsafe bool InvertBlock(float* M, float* Inv, int n)
         {
+            float diagMax = 0;
+            for (int r = 0; r < n; r++)
+            {
+                float av = math.abs(M[r * n + r]);
+                if (av > diagMax) diagMax = av;
+            }
+            if (diagMax <= (float)0) diagMax = (float)1;
+            float pivotFloor = (float)16 * Consts.floatEpsilon * diagMax;
+
             for (int r = 0; r < n; r++)
                 for (int c = 0; c < n; c++)
                     Inv[r * n + c] = (r == c) ? (float)1 : (float)0;
@@ -220,7 +230,7 @@ namespace LinearAlgebra.Sparse
                     float av = math.abs(M[r * n + c]);
                     if (av > best) { best = av; piv = r; }
                 }
-                if (!(best > (float)0))
+                if (!(best > pivotFloor))
                     return false;
 
                 if (piv != c)

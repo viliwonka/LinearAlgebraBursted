@@ -548,6 +548,43 @@ namespace LinearAlgebra
             return pcg(in A, in M, in b, ref x, A.M_Rows, Consts.doubleSqrtEps);
         }
 
+        /// <summary>
+        /// Preconditioned Conjugate Gradient over a block-sparse (BSR) SPD matrix with its matching
+        /// symmetric additive-Schwarz preconditioner. Forwards into <see cref="pcg{TOp,TPre}"/> via
+        /// <c>doubleBSROperator</c> -- same three-rung BSR convenience pattern as the block-Jacobi,
+        /// SSOR, IC0, FSAI, and Chebyshev overloads above. Restricted Schwarz (RAS) is NOT symmetric
+        /// and has no pcg rung (pbiCGStab only) -- that absence is the CG-safety guard.
+        /// </summary>
+        public static SolveInfo pcg(in doubleBSR A, in doubleAdditiveSchwarz M, in doubleN b, ref doubleN x,
+                               ref doubleN r, ref doubleN p, ref doubleN Ap, ref doubleN z,
+                               int maxIter, double tol)
+        {
+            return pcg(new doubleBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
+        }
+
+        /// <summary>
+        /// Additive-Schwarz Preconditioned Conjugate Gradient over a BSR SPD matrix -- allocates four
+        /// scratch vectors from the arena and calls the zero-alloc primitive.
+        /// </summary>
+        public static SolveInfo pcg(in doubleBSR A, in doubleAdditiveSchwarz M, in doubleN b, ref doubleN x,
+                               int maxIter, double tol)
+        {
+            doubleN r  = b.doubleTempVec(A.M_Rows);
+            doubleN p  = b.doubleTempVec(A.M_Rows);
+            doubleN Ap = b.doubleTempVec(A.M_Rows);
+            doubleN z  = b.doubleTempVec(A.M_Rows);
+            return pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
+        }
+
+        /// <summary>
+        /// Additive-Schwarz Preconditioned Conjugate Gradient over a BSR SPD matrix, with default
+        /// maxIter (A.M_Rows) and tol (Consts.doubleSqrtEps).
+        /// </summary>
+        public static SolveInfo pcg(in doubleBSR A, in doubleAdditiveSchwarz M, in doubleN b, ref doubleN x)
+        {
+            return pcg(in A, in M, in b, ref x, A.M_Rows, Consts.doubleSqrtEps);
+        }
+
         // MINRES (symmetric indefinite), BiCGSTAB (non-symmetric), CGLS/LSQR (rectangular
         // least-squares). Same generic-operator pattern as cg&lt;TOp&gt;/pcg&lt;TOp,TPre&gt; above --
         // see cg&lt;TOp&gt;'s doc comment for the shared "why an up-front aliasing guard" rationale.

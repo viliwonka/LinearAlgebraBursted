@@ -1,0 +1,27 @@
+//singularFile//
+namespace LinearAlgebra.Sparse
+{
+    /// <summary>
+    /// Build options for the one-level Schwarz preconditioners (<see cref="fProxyAdditiveSchwarz"/>
+    /// and <see cref="fProxyRestrictedSchwarz"/>, both precisions -- fields are plain int, not
+    /// proxy-typed, so this file is not float/double-duplicated by codegen; same role as
+    /// <see cref="PreconditionerInfo"/> / <see cref="SaiOptions"/>).
+    ///
+    /// Cached-factor memory scales as O(N * overlapFactor^2 * subdomainSize) scalars, where N is the
+    /// matrix dimension and overlapFactor >= 1 grows with <see cref="overlap"/> -- size
+    /// <see cref="subdomainSize"/> and <see cref="overlap"/> consciously (a 64k-unknown double build
+    /// at subdomainSize=128, overlap=1 is on the order of 100 MB).
+    /// </summary>
+    public struct SchwarzOptions
+    {
+        /// <summary>Target subdomain size in SCALAR unknowns; rounded down to whole blocks, minimum
+        /// one block per subdomain. Default 128.</summary>
+        public int subdomainSize;
+
+        /// <summary>Number of block-adjacency layers added to each subdomain's owned block range.
+        /// Default 1; 0 is legal (non-overlapping block solves -- AS then equals RAS).</summary>
+        public int overlap;
+
+        public static SchwarzOptions Default => new SchwarzOptions { subdomainSize = 128, overlap = 1 };
+    }
+}

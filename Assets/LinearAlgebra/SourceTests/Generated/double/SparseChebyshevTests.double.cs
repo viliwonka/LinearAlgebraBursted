@@ -31,9 +31,10 @@ using Unity.Mathematics;
 // the through-IJob case and the guard cases run on the managed thread (NUnit Assert.Throws cannot run
 // inside a Burst-compiled job).
 //
-// Every built preconditioner runs Eigen.lanczos for opt.eigSteps steps, which throws if
-// eigSteps > A.Rows, so every VALID build here keeps n >= eigSteps (default 10). The guard cases that
-// expect a throw BEFORE the Lanczos run (bad options / bad diagonal / non-square) may use tiny matrices.
+// Every built preconditioner runs Eigen.lanczos, whose step count the ctor clamps to A.Rows -- so a
+// system smaller than opt.eigSteps (default 10) builds fine (see SmallSystemBelowEigStepsBuildsAndConverges).
+// The guard cases that expect a throw BEFORE the Lanczos run (bad options / bad diagonal / non-square)
+// may use tiny matrices.
 public class doubleSparseChebyshevTests
 {
     [BurstCompile(CompileSynchronously = true)]
@@ -352,6 +353,98 @@ public class doubleSparseChebyshevTests
 
         outp.Dispose();
         arena.Dispose();
+    }
+
+    // ---- 9. Small system (n < default eigSteps): builds and converges ----------------------
+    //
+    // Regression for the eigSteps>n Lanczos throw: a BR=2, 4-block SPD chain has n=8 < the default
+    // eigSteps (10). The ctor must clamp the Lanczos step count to n and BUILD (previously threw),
+    // and pcg must then converge. Residual is recomputed from a fresh spMV and asserted on the
+    // managed thread (‖b-Ax‖² <= C²·tol²·‖b‖²) so a failure prints the real numbers.
+    [BurstCompile(CompileSynchronously = true)]
+    struct SmallSystemBuildSolveJob : IJob
+    {
+        public NativeArray<double> OutR;   // [0] = ‖b-Ax‖², [1] = ‖b‖²
+        public NativeArray<int> OutI;      // [0] = solved flag (1/0), [1] = iterations
+
+        static doubleBSR BuildBlockTridiag(ref Arena arena, int nb, int BR)
+        {
+            var builder = arena.doubleBSRBuilder(nb, nb, BR, BR);
+            var diag = arena.doubleMat(BR, BR);
+            var off = arena.doubleMat(BR, BR);
+            for (int r = 0; r < BR; r++)
+                for (int c = 0; c < BR; c++)
+                {
+                    diag[r, c] = (r == c ? (double)(2 * BR + 2) : (double)0) + (double)0.25f;
+                    off[r, c] = r == c ? (double)(-1) : (double)0;
+                }
+            for (int i = 0; i < nb; i++)
+            {
+                builder.AddBlock(i, i, in diag);
+                if (i + 1 < nb)
+                {
+                    builder.AddBlock(i + 1, i, in off);
+                    builder.AddBlock(i, i + 1, in off);
+                }
+            }
+            return builder.ToBSR(ref arena);
+        }
+
+        public void Execute()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            const int nb = 4, BR = 2;                            // n = 8 < default eigSteps (10)
+            var A = BuildBlockTridiag(ref arena, nb, BR);
+            int n = A.M_Rows;
+
+            var M = arena.doubleChebyshev(in A);                 // must not throw (eigSteps clamped to n)
+            var xTrue = arena.doubleRandomVec(n, 0.5f, 1.5f, 853001u);
+            var b = BSR.spMV(in A, in xTrue);
+            double tol = Consts.doubleSqrtEps;
+            int maxIter = 8 * n;
+
+            var x = arena.doubleVec(n);
+            var info = Krylov.pcg(in A, in M, in b, ref x, maxIter, tol);
+
+            var Ax = BSR.spMV(in A, in x);
+            double rr = 0, bb = 0;
+            for (int i = 0; i < n; i++)
+            {
+                double d = b[i] - Ax[i];
+                rr += d * d;
+                bb += b[i] * b[i];
+            }
+
+            OutR[0] = rr;
+            OutR[1] = bb;
+            OutI[0] = info.Solved ? 1 : 0;
+            OutI[1] = info.iterations;
+
+            arena.Dispose();
+        }
+    }
+
+    [Test]
+    public void SmallSystemBelowEigStepsBuildsAndConverges()
+    {
+        var outR = new NativeArray<double>(2, Allocator.TempJob);
+        var outI = new NativeArray<int>(2, Allocator.TempJob);
+        new SmallSystemBuildSolveJob { OutR = outR, OutI = outI }.Run();
+
+        double rr = outR[0], bb = outR[1];
+        int solved = outI[0], iters = outI[1];
+        TestContext.WriteLine($"SmallSystemBelowEigStepsBuildsAndConverges: solved={solved} iters={iters} rr={rr} bb={bb}");
+
+        Assert.IsTrue(solved == 1, $"pcg did not converge (iterations={iters}, rr={rr}, bb={bb})");
+
+        double C = (double)64;
+        double tol = Consts.doubleSqrtEps;
+        double bound = C * C * tol * tol * bb;
+        Assert.IsTrue(rr <= bound, $"residual too large: rr={rr} > bound={bound} (iters={iters}, bb={bb})");
+
+        outR.Dispose();
+        outI.Dispose();
     }
 
     // ---- 2. Degree sweep d in {1,2,3,4}: outer-iteration count -----------------------------

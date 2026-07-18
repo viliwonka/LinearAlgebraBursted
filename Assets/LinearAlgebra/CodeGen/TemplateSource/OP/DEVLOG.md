@@ -833,6 +833,14 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   the same member -> CS0111. (was Krylov.Guards.cs:7-11)
 
 ## Krylov.PMinres
+- 2026-07-18 | Sign-check `betaNewSq` before the Givens/x update. `betaNewSq = <r2, M^-1 r2>` was
+  fed straight into `beta = sqrt(...)` with no sign guard; a non-SPD preconditioner makes it < 0 ->
+  beta = NaN, and the Givens rotation + `x.addScaledInPlace(phi, w)` block runs BEFORE the existing
+  `!(beta > 0)` guard, so a warm-started x was overwritten with Inf/NaN and the reported residual
+  was NaN. Now bails with a Breakdown SolveInfo (x LEFT UNTOUCHED) immediately after computing
+  betaNewSq when `!(betaNewSq >= 0)` -- mirrors the iteration-0 `!(betaSq > 0)` breakdown and pcg's
+  `!(rz > 0)` guard. The legitimate `betaNewSq == 0` invariant-subspace exit stays with the
+  downstream beta>0 guard; only `< 0` is the new bail. Source touched; needs regen.
 - 2026-07-18 | New solver (Krylov.PMinres.fProxy.cs), overload ladder mirrors pcg's exactly:
   generic pminres<TOp,TPre> (core + arena-alloc + default-params) plus the same three BSR×
   preconditioner rungs (block-Jacobi/SSOR/IC0) pcg exposes, each with its own core/arena/default

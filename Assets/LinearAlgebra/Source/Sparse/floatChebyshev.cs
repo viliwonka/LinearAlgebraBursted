@@ -133,11 +133,13 @@ namespace LinearAlgebra.Sparse
         public int Rows => A.M_Rows;
 
         /// <summary>
-        /// Builds InvDiag, then Hi/Lo from a pinned Lanczos run on the symmetrically-scaled
-        /// operator, then the Chebyshev recurrence coefficients. Throws ArgumentException if A is
-        /// not square (BlockRows==BlockCols, BR==BC), a diagonal block is missing, any scalar
-        /// diagonal entry A[i,i] &lt;= 0 ("is A symmetric positive definite?"), opt.degree &lt; 1,
-        /// opt.kappa &lt;= 1, opt.eigSteps &lt; 1, or opt.safety &lt; 1.
+        /// Builds InvDiag, then Hi/Lo from a Lanczos run on the symmetrically-scaled operator (the
+        /// step count is clamped to A.Rows, so a system smaller than opt.eigSteps builds fine), then
+        /// the Chebyshev recurrence coefficients. Throws ArgumentException if A is not square
+        /// (BlockRows==BlockCols, BR==BC), a diagonal block is missing, any scalar diagonal entry
+        /// A[i,i] &lt;= 0, the Lanczos eigen-estimate fails to converge or yields a non-positive
+        /// largest eigenvalue ("is A symmetric positive definite?"), opt.degree &lt; 1, opt.kappa
+        /// &lt;= 1, opt.eigSteps &lt; 1, or opt.safety &lt; 1.
         /// </summary>
         public floatChebyshev(in floatBSR a, in floatChebyshevOptions opt, ref Arena arena)
         {
@@ -193,13 +195,21 @@ namespace LinearAlgebra.Sparse
             var scaledScratch = arena.floatVec(n);
             var scaledOp = new floatJacobiScaledBSROperator(in A, in invSqrtD, in scaledScratch);
 
-            var ws = arena.floatLanczosCache(n, opt.eigSteps);
-            var ritz = arena.floatVec(opt.eigSteps);
-            var lInfo = Eigen.lanczos(in scaledOp, ref ws, ref ritz, opt.eigSteps);
+            // Lanczos needs steps in [1, n]; clamp so a system smaller than opt.eigSteps still
+            // builds (fewer steps only coarsens the estimate, never invalidates it).
+            int eigSteps = math.min(opt.eigSteps, n);
+            var ws = arena.floatLanczosCache(n, eigSteps);
+            var ritz = arena.floatVec(eigSteps);
+            var lInfo = Eigen.lanczos(in scaledOp, ref ws, ref ritz, eigSteps);
 
             float lambdaMax = ritz[0];
             for (int i = 1; i < lInfo.produced; i++)
                 if (ritz[i] > lambdaMax) lambdaMax = ritz[i];
+
+            // A failed eigen-estimate (non-converged Lanczos, or a non-positive largest eigenvalue)
+            // makes Hi/Sigma garbage and the induced M^-1 indefinite/NaN -- signal a bad SPD build.
+            if (!(lInfo.status == IterativeSolveStatus.Converged) || !(lambdaMax > (float)0))
+                throw new ArgumentException("floatChebyshev: Lanczos produced no positive largest-eigenvalue estimate for D^-1 A -- is A symmetric positive definite? (raise opt.eigSteps or check A)");
 
             float hi = opt.safety * lambdaMax;
             float lo = hi / opt.kappa;

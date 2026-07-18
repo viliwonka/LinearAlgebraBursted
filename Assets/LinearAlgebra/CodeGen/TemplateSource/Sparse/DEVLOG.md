@@ -1,7 +1,65 @@
 # DEVLOG — Sparse
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## fProxyBlockJacobi
+- 2026-07-18 | `InvertBlock` (BR<=16 fast-path Gauss-Jordan) accepted any pivot `best > 0`,
+  including denormals -- a ~1e-38 diagonal inverts to Inf and the build falsely reported Success.
+  Threaded in the same diagonal-scaled pivot floor its sibling `fProxyILU0` uses: compute
+  `diagMax` over the block's diagonal (floored to 1 if <= 0), reject with `!(best > 16*eps*diagMax)`
+  so the build honestly reports NotPositiveDefinite/Singular. Constant/style copied from ILU0
+  verbatim. Source touched; needs regen.
+
+## Schwarz (fProxyAdditiveSchwarz / fProxyRestrictedSchwarz)
+- 2026-07-18 | One-level AS/RAS MVP per docs/dev/spec-additive-schwarz-preconditioner.md.
+  Contiguous block-row partition + delta-layer overlap; dense local factors cached at build
+  (AS = Cholesky, RAS = LU+partial-pivot), reused every Apply. Design resolutions of spec
+  ambiguities:
+  - Naming: kept the long `fProxyAdditiveSchwarz`/`fProxyRestrictedSchwarz` (spec open-Q 1;
+    orchestrator did not veto).
+  - RAS breakdown: NO diagonal-shift retry (attempts always 1, shift always 0) — a singular
+    local LU reports `Singular` directly. Chosen so the spec's test-8 "zero pivot column ->
+    Singular" is reachable (a diagonal shift would rescue a zero column and hide it). AS keeps the
+    IC0-style escalating Manteuffel shift (6 attempts) since every principal submatrix of an SPD A
+    is SPD, so shifts only fire on numerical breakdown.
+  - Missing-diagonal-block is NOT a guard here (unlike IC0/FSAI): the local gather zero-fills
+    absent blocks and the factorization handles it (AS via shift, RAS via Singular). Only the
+    square check (BlockRows==BlockCols, BR==BC) throws.
+  - Local factor storage is a FLAT arena `Factors` buffer (offsets in `FactorStart`), NOT
+    fProxyMxN views: the Cholesky/LU triangular sweeps are hand-rolled on the flat slice
+    (`CholSolveInPlace`/`LUSolveInPlace`). RAS stores its compact LU in LOGICAL (pivoted) row order
+    — `F[r,c] = M[P[r],c]` — plus the permutation in `Piv`, so Apply's solve is a plain
+    identity-pivot sweep after permuting the gathered RHS (`bperm[r]=rLoc[Piv[r]]`, derived from
+    PA=LU: (P_mat·A)[r]=A[P[r]]). This avoids replicating the library's P-indirection at Apply.
+  - Overlap adjacency is symmetrized via a transient transpose CSR (Temp) so RAS's general
+    (structurally-unsymmetric) A and Symmetric-storage A both expand correctly; Symmetric A is
+    mirrored to full (arena, logically dead after setup) for value gather so no per-block transpose
+    is needed in the gather.
+  - Arena factories: exactly the spec's 3 per struct (opts / opts+out-info / default-opts). The
+    breakdown test uses `(A, SchwarzOptions.Default, out info)`.
+
 ## FSAI/SPAI
+- 2026-07-18 | SPAI local solve: normal-equations + `CHO` -> tall QR least-squares (`QR.solveInPlace`
+  multi-RHS). The per-block-row problem is `min ‖A_hat^T·g − e_iLocal‖` with `A_hat^T` nI×nJ tall
+  (nI >= nJ) and BR-wide RHS; the old route formed `N = A_hat·A_hat^T` (`Blas.dotSymT`) and factored
+  it with Cholesky, squaring the condition number (κ²). Now `A_hat^T` is QR-factored directly and the
+  BR unit-block RHS `e_iLocal` (I_BR at block-row iLocal, else 0) back-substituted — κ, not κ². Used
+  the existing multi-RHS `QR.solveInPlace(ref A, ref B, ref X)` (tall, destroys A/B, allocates
+  u/w/acc Temp internally), which already handles the whole BR block in one factorization. Tikhonov
+  ladder preserved but re-expressed as regularized LS: attempt 0 is the plain problem; on breakdown a
+  `√shift·I` row block is appended to the LS matrix (RHS gets matching zero rows) —
+  `min ‖A_hat^T g − c‖² + shift‖g‖²`, whose normal equations are exactly the old shifted
+  `(A_hat A_hat^T + shift I) g = A_hat c`, so the shift SCHEDULE is unchanged (1e-3·diagMax, ×10, 6
+  attempts, worst reported in `Shift`/`attempts`). Breakdown DETECTION changed: `QR.solveInPlace` is
+  unguarded on rank deficiency (zero R diagonal -> non-finite g), so a `math.isfinite` sweep of the
+  solution replaces `CHO.decompInPlace(...).Solved`. shift>0 makes the augmented matrix full-column-
+  rank, so the ladder is strictly more robust than before (a positive shift can no longer "fail").
+  Output layout and the `mValues[dstOff+q*BR+p] = g[aI*BR+p, q]` scatter are byte-for-byte identical.
+  Semantic note vs the old route: QR does NOT shift merely because N would be near-indefinite (the κ²
+  regime CHO tripped on) — it solves those accurately instead, so on ill-conditioned-but-full-rank
+  local blocks the built M can now DIFFER from the CHO version (more accurate, no shift bias); shift
+  only fires on genuine (near-)rank-deficiency. SPAI stays nonsymmetric / pbiCGStab-only; interface,
+  overload ladder, and arena factories untouched. SPAI generates float+double only (no int variant),
+  so `math.sqrt`/`math.isfinite` are safe.
 - 2026-07-18 | Follow-up to the entry directly below: after the multi-trial restructure, the full
   suite (all dtypes) still showed `BeatsJacobiOnLaplacianTest` and `BeatsJacobiOnPenalizedGrid3DTest`
   failing intermittently across fProxy/float/double. Coordinator's full-capture run confirmed every
@@ -84,6 +142,18 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   entry format expects (this entry intentionally has none yet).
 
 ## Chebyshev
+- 2026-07-18 | Two SPD-robustness fixes to the ctor. (1) eigSteps clamp: `opt.eigSteps` (default
+  10) was passed unclamped into `Eigen.lanczos`, which throws "steps must be in [1, A.Rows]" for
+  any n < eigSteps -- so any valid SPD system smaller than 10 rows failed to build. Now clamped to
+  `min(opt.eigSteps, n)` before both the LanczosCache sizing and the Lanczos call; fewer steps only
+  coarsens the hi-estimate, never invalidates it. Supersedes the earlier entry below that told
+  callers to pass a smaller eigSteps on small n. (2) Lanczos-result guard: the old code took
+  `lambdaMax` unconditionally (the entry below deliberately did NOT treat non-convergence as a
+  throw path). But a non-converged Lanczos or `lambdaMax <= 0`/NaN makes Hi/Sigma garbage and the
+  induced M^-1 silently indefinite/NaN -- CG then diverges with no diagnostic. Now throws the same
+  ArgumentException the ctor uses for a non-SPD build when `lInfo.status != Converged || !(lambdaMax
+  > 0)`. Regression: `SmallSystemBelowEigStepsBuildsAndConverges` (n=8 < 10, residual-based assert
+  on the managed thread). Source touched; needs regen. Suite NOT run (central).
 - 2026-07-18 | `DegreeSweepNonIncreasingTest` (float only) failed centrally on
   `iters(d) <= iters(d-1)+1`. Diagnosed with a standalone float32 NumPy re-implementation of the
   exact ctor (InvDiag/Lanczos 10-step deterministic-seed/hi=1.1*ritzMax/lo=hi/30) and
