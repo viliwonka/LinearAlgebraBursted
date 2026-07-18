@@ -12,14 +12,14 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// Preconditioned MINRES (Krylov.pminres, Paige-Saunders driven by z = M^-1 r). Mirrors the cg
+// Preconditioned MINRES (Krylov.minres, Paige-Saunders driven by z = M^-1 r). Mirrors the cg
 // overload ladder (generic core + arena-alloc + default-params, then the same three rungs for the
 // BSR + BlockJacobi/SSOR/IC0 concrete pairs) and minres's indefinite regime. Coverage:
 //   (a) SPD system + Jacobi/diagonal preconditioner converges to the same answer as a direct LU
 //       solve (floatIdentityPreconditioner baseline + real floatBlockJacobi over a 1x1-block BSR).
 //   (b) Symmetric INDEFINITE system (Clement gallery, eigenvalues {n-1,..,-(n-1)}): plain CG's
-//       curvature guard trips / it never converges, while pminres DOES converge and recovers xTrue.
-//   (c) A real preconditioner (block-Jacobi) cuts pminres's iteration count vs plain minres on an
+//       curvature guard trips / it never converges, while minres DOES converge and recovers xTrue.
+//   (c) A real preconditioner (block-Jacobi) cuts minres's iteration count vs plain minres on an
 //       ill-conditioned SPD case (2D Laplacian), by a meaningful margin (>=10%).
 //   (d) Guard / early-exit paths: zero RHS, already-converged x0, aliased scratch, wrong-length
 //       scratch, and a non-square operator.
@@ -124,7 +124,7 @@ public class floatKrylovPMinresTests
             var xLU = DenseSolve(in A, in b);
 
             var x = arena.floatVec(n);
-            var info = Krylov.pminres(op, new floatIdentityPreconditioner(), in b, ref x, 4 * n, Consts.floatSqrtEps);
+            var info = Krylov.minres(op, new floatIdentityPreconditioner(), in b, ref x, 4 * n, Consts.floatSqrtEps);
             Assert.IsTrue(info.Solved);
 
             AssertVecClose(in x, in xLU, SolveTol());
@@ -138,7 +138,7 @@ public class floatKrylovPMinresTests
 
         // Real Jacobi-style preconditioner: block-Jacobi over a 1x1-block BSR wrapping of the dense
         // SPD matrix (mirrors PcgBsrMatchesLUOracle). Exercises the concrete
-        // pminres(in floatBSR, in floatBlockJacobi, ...) rung end-to-end.
+        // minres(in floatBSR, in floatBlockJacobi, ...) rung end-to-end.
         void SpdBlockJacobiMatchesLU()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -152,7 +152,7 @@ public class floatKrylovPMinresTests
             var xLU = DenseSolve(in A, in b);
 
             var x = arena.floatVec(dim);
-            var info = Krylov.pminres(in bsm, in M, in b, ref x, 4 * dim, Consts.floatSqrtEps);
+            var info = Krylov.minres(in bsm, in M, in b, ref x, 4 * dim, Consts.floatSqrtEps);
             Assert.IsTrue(info.Solved);
 
             AssertVecClose(in x, in xLU, SolveTol());
@@ -164,11 +164,11 @@ public class floatKrylovPMinresTests
         }
 
         // ==============================================================================
-        // (b) Symmetric INDEFINITE system: CG fails, pminres wins. Clement(n) for even n has
+        // (b) Symmetric INDEFINITE system: CG fails, minres wins. Clement(n) for even n has
         //     eigenvalues {n-1, n-3, ..., -(n-1)} -- genuinely indefinite, nonsingular, and
         //     well-separated (smallest |lambda| = 1). Its diagonal is zero, so a Jacobi/block-Jacobi
         //     preconditioner is ill-defined; the identity preconditioner is the valid SPD choice
-        //     and reduces pminres to plain (unpreconditioned) MINRES, the regime CG cannot handle.
+        //     and reduces minres to plain (unpreconditioned) MINRES, the regime CG cannot handle.
         // ==============================================================================
         void IndefiniteCgFailsPminresWins()
         {
@@ -192,9 +192,9 @@ public class floatKrylovPMinresTests
             var infoCg = Krylov.cg(in A, in b, ref xCg, maxIter, tol);
             Assert.IsTrue(!infoCg.Solved);
 
-            // pminres (identity preconditioner) DOES converge and recovers xTrue.
+            // minres (identity preconditioner) DOES converge and recovers xTrue.
             var xP = arena.floatVec(n);
-            var infoP = Krylov.pminres(new floatDenseOperator(in A), new floatIdentityPreconditioner(),
+            var infoP = Krylov.minres(new floatDenseOperator(in A), new floatIdentityPreconditioner(),
                                        in b, ref xP, maxIter, tol);
             Assert.IsTrue(infoP.Solved);
             AssertVecClose(in xP, in xTrue, IndefTol());
@@ -205,7 +205,7 @@ public class floatKrylovPMinresTests
         // ==============================================================================
         // (c) A real preconditioner cuts the iteration count. Same style as
         //     SparseILU0Tests.PbiCGStabConvergesAndBeatsPlain / SSORTests' beat-Jacobi cases:
-        //     plain minres vs block-Jacobi pminres on an ill-conditioned SPD 2D Laplacian, same
+        //     plain minres vs block-Jacobi minres on an ill-conditioned SPD 2D Laplacian, same
         //     tolerance, both converge, preconditioned needs <= 90% of plain's iterations.
         // ==============================================================================
         void BlockJacobiBeatsPlainMinres()
@@ -226,7 +226,7 @@ public class floatKrylovPMinresTests
             Assert.IsTrue(infoPlain.Solved);
 
             var xP = arena.floatVec(n);
-            var infoP = Krylov.pminres(in A, in M, in b, ref xP, maxIter, tol);
+            var infoP = Krylov.minres(in A, in M, in b, ref xP, maxIter, tol);
             Assert.IsTrue(infoP.Solved);
 
             Assert.IsTrue((double)infoP.iterations <= (double)infoPlain.iterations * 0.9);
@@ -254,7 +254,7 @@ public class floatKrylovPMinresTests
             var b = arena.floatVec(n);                  // all zero
             var x = arena.floatRandomVec(n, -1f, 1f, 97502u);   // nonzero seed, must be overwritten
 
-            var info = Krylov.pminres(op, new floatIdentityPreconditioner(), in b, ref x, 4 * n, Consts.floatSqrtEps);
+            var info = Krylov.minres(op, new floatIdentityPreconditioner(), in b, ref x, 4 * n, Consts.floatSqrtEps);
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.AreEqual(0, info.iterations);
@@ -276,7 +276,7 @@ public class floatKrylovPMinresTests
 
             var x = DenseSolve(in A, in b);              // seed x = A^-1 b (accurate to ~eps << sqrtEps)
 
-            var info = Krylov.pminres(op, new floatIdentityPreconditioner(), in b, ref x, 4 * n, Consts.floatSqrtEps);
+            var info = Krylov.minres(op, new floatIdentityPreconditioner(), in b, ref x, 4 * n, Consts.floatSqrtEps);
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.AreEqual(0, info.iterations);
@@ -326,7 +326,7 @@ public class floatKrylovPMinresTests
         return Blas.dot(scratch, scratch);
     }
 
-    // On a CONVERGED exit pminres reports the freshly VERIFIED true residual ‖b-Ax‖ (one extra
+    // On a CONVERGED exit minres reports the freshly VERIFIED true residual ‖b-Ax‖ (one extra
     // A.Apply), NOT the raw M^-1-weighted phibar -- so it must match an independently recomputed
     // residual tightly. Mirrors floatKrylovVerifyAtExitTests.PcgConvergedRnormIsHonest.
     [Test]
@@ -340,7 +340,7 @@ public class floatKrylovPMinresTests
 
         var op = new floatDenseOperator(in A);
         var x = arena.floatVec(n);
-        var info = Krylov.pminres(op, new floatIdentityPreconditioner(), in b, ref x, 4 * n, Consts.floatSqrtEps);
+        var info = Krylov.minres(op, new floatIdentityPreconditioner(), in b, ref x, 4 * n, Consts.floatSqrtEps);
         Assert.IsTrue(info.Solved, info.ToString());
 
         var scratch = arena.floatVec(n);
@@ -352,7 +352,7 @@ public class floatKrylovPMinresTests
         arena.Dispose();
     }
 
-    // On a MAXITERATIONS exit pminres ALSO reports a freshly computed true residual (one extra
+    // On a MAXITERATIONS exit minres ALSO reports a freshly computed true residual (one extra
     // A.Apply), not phibar. Cap iterations at 1 with an unreachable tolerance to force the
     // MaxIterations branch, then confirm rnorm == the independently recomputed ‖b-Ax‖.
     [Test]
@@ -366,7 +366,7 @@ public class floatKrylovPMinresTests
 
         var op = new floatDenseOperator(in A);
         var x = arena.floatVec(n);
-        var info = Krylov.pminres(op, new floatIdentityPreconditioner(), in b, ref x, 1, (float)1e-30f);
+        var info = Krylov.minres(op, new floatIdentityPreconditioner(), in b, ref x, 1, (float)1e-30f);
         Assert.IsTrue(info.status == IterativeSolveStatus.MaxIterations, info.ToString());
         Assert.AreEqual(1, info.iterations);
 
@@ -397,11 +397,12 @@ public class floatKrylovPMinresTests
             var v  = arena.floatVec(n);
             var w  = arena.floatVec(n);
             var w1 = arena.floatVec(n);
-            var w2 = arena.floatVec(n);
-            var z  = y;   // ALIASES y (same Data buffer) -> distinct-buffer guard must fire
+            var w2 = w1;   // ALIASES w1 (a required buffer) -> distinct-buffer guard must fire
+                           // (z is exempt from the guard under the identity preconditioner)
+            var z  = arena.floatVec(n);
 
             Assert.Throws<ArgumentException>(() =>
-                Krylov.pminres(op, M, in b, ref x, ref y, ref r1, ref r2, ref v,
+                Krylov.minres(op, M, in b, ref x, ref y, ref r1, ref r2, ref v,
                                ref w, ref w1, ref w2, ref z, 4 * n, Consts.floatSqrtEps));
         }
         finally { arena.Dispose(); }
@@ -427,11 +428,12 @@ public class floatKrylovPMinresTests
             var v  = arena.floatVec(n);
             var w  = arena.floatVec(n);
             var w1 = arena.floatVec(n);
-            var w2 = arena.floatVec(n);
-            var z  = arena.floatVec(n + 1);   // wrong length
+            var w2 = arena.floatVec(n + 1);   // wrong length (a required buffer -- always validated;
+                                               // z is exempt under the identity preconditioner)
+            var z  = arena.floatVec(n);
 
             Assert.Throws<ArgumentException>(() =>
-                Krylov.pminres(op, M, in b, ref x, ref y, ref r1, ref r2, ref v,
+                Krylov.minres(op, M, in b, ref x, ref y, ref r1, ref r2, ref v,
                                ref w, ref w1, ref w2, ref z, 4 * n, Consts.floatSqrtEps));
         }
         finally { arena.Dispose(); }
@@ -452,7 +454,7 @@ public class floatKrylovPMinresTests
             var x = arena.floatVec(m);
 
             Assert.Throws<ArgumentException>(() =>
-                Krylov.pminres(op, M, in b, ref x, m, Consts.floatSqrtEps));
+                Krylov.minres(op, M, in b, ref x, m, Consts.floatSqrtEps));
         }
         finally { arena.Dispose(); }
     }

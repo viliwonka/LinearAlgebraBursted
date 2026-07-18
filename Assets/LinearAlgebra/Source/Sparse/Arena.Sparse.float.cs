@@ -362,7 +362,7 @@ namespace LinearAlgebra
         /// Builds a one-level symmetric additive Schwarz (AS) preconditioner from A (must be square
         /// SPD; Symmetric-storage A is mirrored to full transiently at setup). See
         /// <see cref="floatAdditiveSchwarz"/> for the overlap/breakdown/memory contract and
-        /// <see cref="SchwarzOptions"/> for the tunables. Valid for cg AND pminres. Arena-owned:
+        /// <see cref="SchwarzOptions"/> for the tunables. Valid for cg AND minres. Arena-owned:
         /// disposed with the arena.
         /// </summary>
         public floatAdditiveSchwarz floatAdditiveSchwarz(in floatBSR A, in SchwarzOptions opts)

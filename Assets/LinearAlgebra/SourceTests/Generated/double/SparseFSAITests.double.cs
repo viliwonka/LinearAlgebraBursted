@@ -12,7 +12,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// Factored sparse approximate inverse preconditioner (doubleFSAI), valid for cg/pminres.
+// Factored sparse approximate inverse preconditioner (doubleFSAI), valid for cg/minres.
 // Correctness anchors (spec docs/dev/spec-sparse-approximate-inverse-preconditioner.md, section 8):
 //   (1) EXACTNESS: on a block-DIAGONAL SPD A, S = {(i,i)} so G is block-diagonal and M = G^T G is
 //       the exact block inverse A^-1 -> Apply matches a dense Cholesky solve and cg converges in
@@ -36,8 +36,8 @@ using Unity.Mathematics;
 //       IJob.Run() twice, gives bit-identical iteration counts and bit-identical x; the managed
 //       path matches to tolerance.
 //   (8) SYMMETRIC- vs FULL-storage A produce bit-identical G.
-//   (9) CG-SAFETY: cg AND pminres are exercised with FSAI here; SPAI (not symmetric) is never
-//       passed to cg/pminres anywhere (it has no such overload -- would not compile).
+//   (9) CG-SAFETY: cg AND minres are exercised with FSAI here; SPAI (not symmetric) is never
+//       passed to cg/minres anywhere (it has no such overload -- would not compile).
 //
 // Value/correctness cases run inside a [BurstCompile] IJob (matches the IC0/SSOR/ILU0 suites);
 // guard-throw and orchestration cases run on the managed thread with Assert.Throws.
@@ -336,7 +336,7 @@ public class doubleSparseFSAITests
         }
 
         // ================================================================================
-        // (9) FSAI is valid for pminres too (SPD, symmetric M). Exercises the pminres rung.
+        // (9) FSAI is valid for minres too (SPD, symmetric M). Exercises the minres rung.
         // ================================================================================
 
         void PminresConverges()
@@ -350,7 +350,7 @@ public class doubleSparseFSAITests
             var b = BSR.spMV(in A, in xTrue);
 
             var x = arena.doubleVec(n);
-            var info = Krylov.pminres(in A, in M, in b, ref x, 8 * n, Consts.doubleSqrtEps);
+            var info = Krylov.minres(in A, in M, in b, ref x, 8 * n, Consts.doubleSqrtEps);
             Assert.IsTrue(info.Solved);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(math.abs(x[i] - xTrue[i]) < SolveTol() * ((double)1 + math.abs(xTrue[i])));

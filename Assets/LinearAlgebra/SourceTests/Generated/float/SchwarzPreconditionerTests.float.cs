@@ -12,7 +12,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// One-level Schwarz preconditioners: floatAdditiveSchwarz (symmetric AS, valid for cg/pminres)
+// One-level Schwarz preconditioners: floatAdditiveSchwarz (symmetric AS, valid for cg/minres)
 // and floatRestrictedSchwarz (RAS, non-symmetric, pbiCGStab only).
 // Correctness anchors (spec docs/dev/spec-additive-schwarz-preconditioner.md, section Tests):
 //   (1) EXACTNESS: one subdomain covering the whole matrix (subdomainSize >= N), overlap 0 -> the
@@ -32,7 +32,7 @@ using Unity.Mathematics;
 //   (8) BREAKDOWN: an indefinite local block makes AS's out-info report NotPositiveDefinite; a
 //       singular local block makes RAS's out-info report Singular -- both without throwing, while
 //       the throwing ctors throw.
-//   CG-SAFETY: RAS has NO cg/pminres overload (it is not symmetric) -- Krylov.cg(A, ras, ...)
+//   CG-SAFETY: RAS has NO cg/minres overload (it is not symmetric) -- Krylov.cg(A, ras, ...)
 //       would not compile. That absence is the type-system guard; it cannot be asserted at runtime.
 //
 // "Beats X" is always RESIDUAL-based (||b - A x||^2 <= (C*tol)^2 ||b||^2), never a per-element
@@ -309,7 +309,7 @@ public class floatSchwarzPreconditionerTests
         }
 
         // ================================================================================
-        // AS is valid for pminres too (SPD, symmetric M). Exercises the pminres rung.
+        // AS is valid for minres too (SPD, symmetric M). Exercises the minres rung.
         // ================================================================================
 
         void PminresConverges()
@@ -323,7 +323,7 @@ public class floatSchwarzPreconditionerTests
             var xTrue = arena.floatRandomVec(n, 0.5f, 1.5f, 956001u);
             var b = BSR.spMV(in A, in xTrue);
             var x = arena.floatVec(n);
-            var info = Krylov.pminres(in A, in M, in b, ref x, 8 * n, Consts.floatSqrtEps);
+            var info = Krylov.minres(in A, in M, in b, ref x, 8 * n, Consts.floatSqrtEps);
             Assert.IsTrue(info.Solved);
 
             var Ax = arena.floatVec(n);

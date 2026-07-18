@@ -1,6 +1,21 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.minres — single-body merge (minres/pminres share one loop, IsIdentity fold)
+- 2026-07-19 | Same collapse as cg, applied to MINRES: merged body `minres<TOp,TPre>` lives in
+  Krylov.fProxy.cs; `minres<TOp>` forwards with the identity preconditioner (z=default, no z buffer);
+  the pminres explicit-scratch body is DELETED and Krylov.PMinres.fProxy.cs keeps only the
+  allocating/default/concrete overloads, renamed minres. pminres name HARD-REMOVED (39 call sites +
+  comments swept). Trickier than cg because the two bodies genuinely differ: (a) plain MINRES checks
+  `beta1²<=threshold` with beta1=sqrt(dot(r1,r1)) (sqrt-then-square) while pminres tests the TRUE
+  residual dot(r1,r1); (b) plain phibar IS ‖b-Ax‖ (no verify) while preconditioned phibar is
+  M⁻¹-weighted (verify-at-exit + fresh-residual MaxIter). Both gated under `if(M.IsIdentity)` so the
+  identity path stays BIT-IDENTICAL to old minres (init check uses beta=sqrt(trueRR0) then
+  beta*beta<=threshold; loop uses r2 not z for v; no verify; MaxIter returns phibar). z size/aliasing
+  guards gated under !IsIdentity → identity may pass default. TEST FIX: KrylovPMinresTests'
+  WrongLength/AliasedScratchThrows used the identity precond + a bad z; z is now exempt under identity,
+  so they alias/mis-size a REQUIRED buffer (w2/w1) instead. 6667/6667 green. See [[iterative-solver-overload-ladder]].
+
 ## Krylov.cg — single-body merge (cg/pcg share one loop, IsIdentity fold)
 - 2026-07-19 | Collapsed the plain + preconditioned CG into ONE body `cg<TOp,TPre>`; `cg<TOp>` and
   `pcg<TOp,TPre>` now forward into it (no duplicate loop). Mechanism: new compile-time

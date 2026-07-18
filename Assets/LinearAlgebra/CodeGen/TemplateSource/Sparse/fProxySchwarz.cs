@@ -202,7 +202,7 @@ namespace LinearAlgebra.Sparse
     /// A_i = R_i A R_i^T is factored densely (Cholesky) once at build and reused by every Apply.
     /// The overlapped scatter (R_i^T sums each dof over every subdomain that owns it) makes M
     /// symmetric; whenever the build reports Success, M is SPD by construction -- valid for
-    /// <see cref="LinearAlgebra.Krylov"/>.cg AND pminres.
+    /// <see cref="LinearAlgebra.Krylov"/>.cg AND minres.
     ///
     /// Subdomains are contiguous block-row ranges of size opts.subdomainSize (in scalar unknowns,
     /// rounded to whole blocks) extended by opts.overlap adjacency layers. A local Cholesky that
@@ -433,7 +433,7 @@ namespace LinearAlgebra.Sparse
     /// M^-1 = sum_i R~_i^T A_i^-1 R_i, where R_i gathers the overlapped subdomain and R~_i^T scatters
     /// back only its OWNED (non-overlapped) cell (Cai &amp; Sarkis 1999). Because the owned cells
     /// partition the index space, every dof is written exactly once -- no overlap summation. This
-    /// makes M NON-SYMMETRIC even for SPD A: never use it with cg/pminres/CG (there is no such
+    /// makes M NON-SYMMETRIC even for SPD A: never use it with cg/minres/CG (there is no such
     /// overload -- the type is the guard); use <see cref="LinearAlgebra.Krylov"/>.pbiCGStab. The
     /// nonsymmetric sibling of <see cref="fProxyAdditiveSchwarz"/>, mirroring the IC0/ILU0 split.
     ///

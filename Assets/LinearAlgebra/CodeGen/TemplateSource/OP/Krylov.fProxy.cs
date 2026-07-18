@@ -7,11 +7,11 @@ namespace LinearAlgebra
 {
     public static partial class Krylov {
 
-        // Shared factory for the square-solver diagnostics struct (cg/minres/pminres/
+        // Shared factory for the square-solver diagnostics struct (cg/minres/
         // biCGStab). rnorm is normally a value the solver already holds -- a tracked
         // residual norm, or a single dot on its live residual r -- never a fresh A*x. EXCEPTION:
         // cg verify a claimed Converged exit with one fresh r = b-Ax before trusting it,
-        // so rnorm on that path is the verified value. pminres does the same, PLUS one fresh r on
+        // so rnorm on that path is the verified value. minres does the same, PLUS one fresh r on
         // a MaxIterations exit -- its recursively tracked phibar is the M⁻¹-weighted residual
         // once preconditioned, not ‖b-Ax‖. minres/biCGStab do not do this verification.
         static SolveInfo MakeSolveInfo(IterativeSolveStatus status, int iterations, fProxy rnorm)
@@ -504,26 +504,31 @@ namespace LinearAlgebra
         // use RequireDistinctBuffers (a small loop-based helper) instead of a hand-expanded OR chain.
 
         /// <summary>
-        /// Zero-alloc MINRES (Paige-Saunders) solver for symmetric systems A x = b, generic over
-        /// <see cref="IfProxyLinearOperator"/>. Unlike <see cref="cg{TOp}"/>, A need NOT be positive
-        /// definite -- MINRES minimizes the 2-norm residual ‖b-Ax‖ over the Krylov subspace, so it
-        /// converges cleanly on symmetric INDEFINITE (and singular/semidefinite) systems where CG's
-        /// p·Ap&gt;0 curvature requirement breaks down. A MUST be symmetric -- caller precondition,
-        /// not verified at runtime.
+        /// Zero-alloc MINRES (Paige-Saunders) for symmetric (possibly indefinite) systems A x = b,
+        /// generic over BOTH the operator (<see cref="IfProxyLinearOperator"/>) and the preconditioner
+        /// (<see cref="IfProxyPreconditioner"/>) -- the SINGLE body behind the plain and the
+        /// preconditioned entry points. Unlike <see cref="cg{TOp}"/>, A need NOT be positive definite;
+        /// MINRES minimizes ‖b-Ax‖ over the Krylov subspace, converging on symmetric INDEFINITE (and
+        /// singular/semidefinite) systems. A MUST be symmetric; a real preconditioner M MUST be SPD --
+        /// caller precondition, not verified beyond the NaN-safe breakdown guards.
         ///
-        /// Caller provides x (initial guess, overwritten with solution -- WARM-STARTABLE) and seven
-        /// scratch vectors (y, r1, r2, v, w, w1, w2, all length A.Rows), matching the classic MINRES
-        /// variable names (Paige &amp; Saunders 1975).
+        /// With <see cref="fProxyIdentityPreconditioner"/> the IsIdentity fold reduces this to plain
+        /// MINRES bit-for-bit: z is untouched (may be <c>default</c>), phibar IS the true residual
+        /// ‖b-Ax‖ (no verify), and the initial/loop residual checks match the classic recurrence.
+        /// With a real M the Lanczos recurrence runs in the M⁻¹-inner-product and phibar is the
+        /// M⁻¹-weighted residual, so a claimed Converged (and the MaxIterations) exit is reported
+        /// against one freshly recomputed ‖b-Ax‖; only Breakdown reports the unverified phibar.
         ///
-        /// Returns a <see cref="SolveInfo"/> (rnorm = ‖b-Ax‖) — see that struct for the
-        /// implicit-bool/status/undefined-x contract. Breakdown if the Lanczos recurrence exactly
-        /// exhausts the Krylov subspace short of tolerance.
+        /// Caller provides x (initial guess, overwritten -- WARM-STARTABLE) and eight scratch vectors
+        /// (y, r1, r2, v, w, w1, w2, z; all length A.Rows; z unused under the identity). Returns a
+        /// <see cref="SolveInfo"/> — see that struct for the implicit-bool/status/undefined-x contract.
         /// </summary>
-        public static SolveInfo minres<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
+        public static SolveInfo minres<TOp, TPre>(in TOp A, in TPre M, in fProxyN b, ref fProxyN x,
                                        ref fProxyN y, ref fProxyN r1, ref fProxyN r2, ref fProxyN v,
-                                       ref fProxyN w, ref fProxyN w1, ref fProxyN w2,
+                                       ref fProxyN w, ref fProxyN w1, ref fProxyN w2, ref fProxyN z,
                                        int maxIter, fProxy tol)
             where TOp : struct, IfProxyLinearOperator
+            where TPre : struct, IfProxyPreconditioner
         {
             if (A.Rows != A.Cols)
                 throw new ArgumentException("minres: A must be square");
@@ -537,17 +542,21 @@ namespace LinearAlgebra
             if (w.N != A.Rows) throw new ArgumentException("minres: w.N must equal A.Rows");
             if (w1.N != A.Rows) throw new ArgumentException("minres: w1.N must equal A.Rows");
             if (w2.N != A.Rows) throw new ArgumentException("minres: w2.N must equal A.Rows");
+            if (!M.IsIdentity && z.N != A.Rows) throw new ArgumentException("minres: z.N must equal A.Rows");
 
             if (maxIter < 1)
                 throw new ArgumentException("minres: maxIter must be >= 1");
 
             unsafe
             {
-                long* ptrs = stackalloc long[9];
+                // z joins the checked set only for a real preconditioner (identity never touches it).
+                int n = M.IsIdentity ? 9 : 10;
+                long* ptrs = stackalloc long[10];
                 ptrs[0] = (long)y.Data.Ptr;  ptrs[1] = (long)r1.Data.Ptr; ptrs[2] = (long)r2.Data.Ptr;
                 ptrs[3] = (long)v.Data.Ptr;  ptrs[4] = (long)w.Data.Ptr;  ptrs[5] = (long)w1.Data.Ptr;
                 ptrs[6] = (long)w2.Data.Ptr; ptrs[7] = (long)x.Data.Ptr;  ptrs[8] = (long)b.Data.Ptr;
-                RequireDistinctBuffers("minres: y/r1/r2/v/w/w1/w2/x/b must be distinct", ptrs, 9);
+                if (!M.IsIdentity) ptrs[9] = (long)z.Data.Ptr;
+                RequireDistinctBuffers("minres: y/r1/r2/v/w/w1/w2/z/x/b must be distinct", ptrs, n);
             }
 
             fProxy bb = Blas.dot(b, b);
@@ -563,11 +572,31 @@ namespace LinearAlgebra
             r1.Data.CopyFrom(b.Data);
             r1.addScaledInPlace((fProxy)(-1), y);           // r1 = b - A x
 
-            fProxy beta1 = math.sqrt(Blas.dot(r1, r1));
             fProxy threshold = tol * tol * bb;
+            fProxy trueRR0 = Blas.dot(r1, r1);
 
-            if (beta1 * beta1 <= threshold)
-                return MakeSolveInfo(IterativeSolveStatus.Converged, 0, beta1);
+            // Lanczos normalization beta. Identity: beta = ‖r1‖, and phibar tracks the TRUE residual
+            // (so the checks below match plain MINRES exactly). Preconditioned: beta = sqrt⟨r1, M⁻¹r1⟩
+            // in the M-inner-product, and phibar tracks the M⁻¹-weighted residual (verified at exit).
+            fProxy beta;
+            if (M.IsIdentity)
+            {
+                beta = math.sqrt(trueRR0);
+                if (beta * beta <= threshold)
+                    return MakeSolveInfo(IterativeSolveStatus.Converged, 0, beta);
+            }
+            else
+            {
+                if (trueRR0 <= threshold)
+                    return MakeSolveInfo(IterativeSolveStatus.Converged, 0, math.sqrt(trueRR0));
+
+                M.Apply(in r1, ref z);                       // z = M⁻¹ r1
+                fProxy betaSq = Blas.dot(r1, z);
+                // Non-SPD preconditioner (non-positive ⟨r1, M⁻¹r1⟩): mirrors cg's breakdown guard.
+                if (!(betaSq > (fProxy)0))
+                    return MakeSolveInfo(IterativeSolveStatus.Breakdown, 0, math.sqrt(trueRR0));
+                beta = math.sqrt(betaSq);
+            }
 
             r2.Data.CopyFrom(r1.Data);
 
@@ -575,20 +604,19 @@ namespace LinearAlgebra
             for (int i = 0; i < A.Rows; i++) { w[i] = (fProxy)0; w1[i] = (fProxy)0; w2[i] = (fProxy)0; }
 
             fProxy oldb = (fProxy)0;
-            fProxy beta = beta1;
             fProxy dbar = (fProxy)0;
             fProxy epsln = (fProxy)0;
-            fProxy phibar = beta1;
+            fProxy phibar = beta;
             fProxy cs = (fProxy)(-1);
             fProxy sn = (fProxy)0;
             fProxy gammaFloor = Consts.fProxyEpsilon;
 
             for (int k = 0; k < maxIter; k++)
             {
-                // ---- Lanczos step: extend the tridiagonalization by one vector ----
-                // v = r2 / beta, one pass (Blas.scaledCopy with a = 1/beta, i.e. reciprocal-multiply
-                // instead of a per-element divide).
-                Blas.scaledCopy(1 / beta, r2, ref v);
+                // ---- (preconditioned) Lanczos step: extend the tridiagonalization by one vector ----
+                // v = (M⁻¹ of the current Lanczos vector) / beta. Identity: that is just r2/beta.
+                if (M.IsIdentity) Blas.scaledCopy(1 / beta, r2, ref v);
+                else              Blas.scaledCopy(1 / beta, z, ref v);
 
                 A.Apply(in v, ref y);                      // y = A v
 
@@ -605,7 +633,23 @@ namespace LinearAlgebra
                 { fProxyN tmp = r1; r1 = r2; r2 = y; y = tmp; }
 
                 oldb = beta;
-                beta = math.sqrt(Blas.dot(r2, r2));
+
+                // beta = sqrt of the (M-weighted) norm of the new unpreconditioned Lanczos vector.
+                fProxy betaNewSq;
+                if (M.IsIdentity)
+                {
+                    betaNewSq = Blas.dot(r2, r2);
+                }
+                else
+                {
+                    M.Apply(in r2, ref z);                    // z = M⁻¹ r2 (feeds next v, and beta now)
+                    betaNewSq = Blas.dot(r2, z);
+                    // Non-SPD preconditioner: ⟨r2, M⁻¹r2⟩ < 0 -> sqrt = NaN. Bail before the Givens/x
+                    // update poisons a warm-started x; x left untouched.
+                    if (!(betaNewSq >= (fProxy)0))
+                        return MakeSolveInfo(IterativeSolveStatus.Breakdown, k + 1, phibar);
+                }
+                beta = math.sqrt(betaNewSq);
 
                 // ---- apply the PREVIOUS Givens rotation (cs,sn) to the new tridiagonal column ----
                 fProxy oldeps = epsln;
@@ -632,17 +676,55 @@ namespace LinearAlgebra
 
                 x.addScaledInPlace(phi, w);
 
-                // phibar IS the true residual norm ‖b-Ax‖ at this step (MINRES identity) --
-                // no extra dot product needed, so rnorm = phibar is free.
                 if (phibar * phibar <= threshold)
-                    return MakeSolveInfo(IterativeSolveStatus.Converged, k + 1, phibar);
+                {
+                    if (M.IsIdentity)
+                        // phibar IS ‖b-Ax‖ at this step (MINRES identity) -- no verify needed.
+                        return MakeSolveInfo(IterativeSolveStatus.Converged, k + 1, phibar);
+
+                    // Preconditioned: phibar is the M⁻¹-weighted residual, not ‖b-Ax‖ -- verify with
+                    // one fresh residual before trusting it (mirrors cg's verify-at-exit); y and v are
+                    // both idle here (y: recycled garbage; v: consumed by combine3 above), reused as
+                    // scratch. Fall through and keep iterating on a failed verify.
+                    A.Apply(in x, ref y);                     // y = A x
+                    v.Data.CopyFrom(b.Data);
+                    v.addScaledInPlace((fProxy)(-1), y);         // v = b - A x
+                    fProxy trueRR = Blas.dot(v, v);
+
+                    if (trueRR <= threshold)
+                        return MakeSolveInfo(IterativeSolveStatus.Converged, k + 1, math.sqrt(trueRR));
+                }
 
                 if (!(beta > (fProxy)0))
                     // Lanczos breakdown: invariant subspace exhausted, no further progress possible.
                     return MakeSolveInfo(IterativeSolveStatus.Breakdown, k + 1, phibar);
             }
 
-            return MakeSolveInfo(IterativeSolveStatus.MaxIterations, maxIter, phibar);
+            if (M.IsIdentity)
+                return MakeSolveInfo(IterativeSolveStatus.MaxIterations, maxIter, phibar);
+
+            // Preconditioned MaxIterations: report the TRUE residual (one fresh Apply), not phibar.
+            A.Apply(in x, ref y);                             // y = A x
+            v.Data.CopyFrom(b.Data);
+            v.addScaledInPlace((fProxy)(-1), y);                 // v = b - A x
+            fProxy finalRR = Blas.dot(v, v);
+            return MakeSolveInfo(IterativeSolveStatus.MaxIterations, maxIter, math.sqrt(finalRR));
+        }
+
+        /// <summary>
+        /// Unpreconditioned MINRES -- forwards into the merged
+        /// <see cref="minres{TOp, TPre}(in TOp, in TPre, in fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, int, fProxy)"/>
+        /// with the identity preconditioner (whose IsIdentity fold strips all z traffic), so this
+        /// needs no z buffer.
+        /// </summary>
+        public static SolveInfo minres<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
+                                       ref fProxyN y, ref fProxyN r1, ref fProxyN r2, ref fProxyN v,
+                                       ref fProxyN w, ref fProxyN w1, ref fProxyN w2,
+                                       int maxIter, fProxy tol)
+            where TOp : struct, IfProxyLinearOperator
+        {
+            fProxyN z = default;
+            return minres(in A, default(fProxyIdentityPreconditioner), in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, ref z, maxIter, tol);
         }
 
         /// <summary>
