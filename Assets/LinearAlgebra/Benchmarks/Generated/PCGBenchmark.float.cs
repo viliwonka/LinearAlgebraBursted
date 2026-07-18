@@ -144,6 +144,60 @@ namespace LinearAlgebra.Benchmarks
         }
     }
 
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct PcgChebyshevTolJobFloat : IJob
+    {
+        public floatBSR A;
+        public floatChebyshev M;
+        public floatN b, x, r, p, Ap, z;
+        public int K;
+        public float Tol;
+        public Indices Iters;
+
+        public void Execute()
+        {
+            for (int i = 0; i < x.N; i++) x[i] = 0f;
+            var info = Krylov.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, Tol);
+            Iters[0] = info.iterations;
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct PcgFSAITolJobFloat : IJob
+    {
+        public floatBSR A;
+        public floatFSAI M;
+        public floatN b, x, r, p, Ap, z;
+        public int K;
+        public float Tol;
+        public Indices Iters;
+
+        public void Execute()
+        {
+            for (int i = 0; i < x.N; i++) x[i] = 0f;
+            var info = Krylov.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, Tol);
+            Iters[0] = info.iterations;
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct PcgAMGTolJobFloat : IJob
+    {
+        public floatBSR A;
+        public floatAMGPreconditioner M;
+        public floatN b, x, r, p, Ap, z;
+        public int K;
+        public float Tol;
+        public Indices Iters;
+
+        public void Execute()
+        {
+            for (int i = 0; i < x.N; i++) x[i] = 0f;
+            var info = Krylov.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, Tol);
+            Iters[0] = info.iterations;
+        }
+    }
+
     public static partial class PCGBenchmark
     {
         // Preconditioner face-off: solve-to-tolerance. Reports wall-clock AND iteration count --
@@ -199,9 +253,31 @@ namespace LinearAlgebra.Benchmarks
             var mW = arena.floatAdditiveSchwarz(in A);
             var wJob = new PcgSchwarzTolJobFloat { A = A, M = mW, b = b, x = x, r = r, p = p, Ap = Ap, z = z, K = cap, Tol = tol, Iters = iters };
             var wStat = Bench.Time(() => wJob.Run());
-            sb.Append(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
+            sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                 "float", n, "PCG-Schwarz", wStat.Median, wStat.Min, iters[0], Residual(in A, in x, in b)));
 
+            var mC = arena.floatChebyshev(in A);
+            var cJob = new PcgChebyshevTolJobFloat { A = A, M = mC, b = b, x = x, r = r, p = p, Ap = Ap, z = z, K = cap, Tol = tol, Iters = iters };
+            var cStat = Bench.Time(() => cJob.Run());
+            sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
+                "float", n, "PCG-Cheby", cStat.Median, cStat.Min, iters[0], Residual(in A, in x, in b)));
+
+            var mF = arena.floatFSAI(in A);
+            var fJob = new PcgFSAITolJobFloat { A = A, M = mF, b = b, x = x, r = r, p = p, Ap = Ap, z = z, K = cap, Tol = tol, Iters = iters };
+            var fStat = Bench.Time(() => fJob.Run());
+            sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
+                "float", n, "PCG-FSAI", fStat.Median, fStat.Min, iters[0], Residual(in A, in x, in b)));
+
+            // AMG hierarchy built once outside the timed solve (mirrors the other build-then-solve
+            // rows); the solve times one V-cycle-preconditioned CG. Setup cost is not in this number.
+            var amgH = arena.floatAMG(in A, out _);
+            var mAmg = new floatAMGPreconditioner(in amgH);
+            var aJob = new PcgAMGTolJobFloat { A = A, M = mAmg, b = b, x = x, r = r, p = p, Ap = Ap, z = z, K = cap, Tol = tol, Iters = iters };
+            var aStat = Bench.Time(() => aJob.Run());
+            sb.Append(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
+                "float", n, "PCG-AMG", aStat.Median, aStat.Min, iters[0], Residual(in A, in x, in b)));
+
+            amgH.Dispose();
             arena.Dispose();
             return sb.ToString();
         }
