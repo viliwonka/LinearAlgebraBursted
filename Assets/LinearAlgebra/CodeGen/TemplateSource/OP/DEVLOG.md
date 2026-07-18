@@ -1,6 +1,16 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.gmres (restarted GMRES(m))
+- 2026-07-18 | Restarted GMRES(m) for general nonsymmetric A: Arnoldi + modified Gram-Schmidt basis,
+  incremental Givens-rotated least-squares (inline, same idiom as minres/pminres), restart every m
+  inner steps. Unlike cg/biCGStab, GMRES ALLOCATES its workspace (m+1 basis vectors + Hessenberg +
+  Givens) from Allocator.Temp — inherent to the method, no practical zero-alloc primitive. Basis held
+  in `UnsafeList<fProxyN>` NOT `NativeArray<fProxyN>` (the latter nests a native container — fProxyN
+  holds an UnsafeList — which Unity's safety checks reject). Hessenberg allocated cleared (uninit=false)
+  — only written entries are read, but clearing follows the "partially-written matrix" rule. maxIter
+  counts TOTAL inner iterations across restarts; rnorm = the Arnoldi residual estimate |g[k]|. Dense +
+  BSR concrete overloads + defaults (restart=min(30,N)). Preconditioned pgmres = separate follow-up.
 ## Krylov.fcg (Flexible CG)
 - 2026-07-18 | Flexible CG (Notay 2000), first AMG prerequisite (K-cycle needs a variable-
   preconditioner outer solver; unsmoothed aggregation makes M vary per iteration). Implemented as
