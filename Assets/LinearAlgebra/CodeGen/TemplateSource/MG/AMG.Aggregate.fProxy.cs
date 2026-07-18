@@ -1,0 +1,150 @@
+using System;
+using Unity.Collections;
+using Unity.Mathematics;
+using LinearAlgebra.Sparse;
+
+namespace LinearAlgebra.Sparse
+{
+    /// <summary>
+    /// Algebraic-multigrid setup primitives over BSR — aggregation (here), tentative prolongation,
+    /// and the unsmoothed Galerkin coarse operator (other partials). Deterministic by construction:
+    /// every graph pass runs in ascending block-row order with lowest-index tie-breaks; no RNG, no
+    /// transcendentals (only + − * / sqrt).
+    /// </summary>
+    public static partial class AMG
+    {
+        // ‖A's stored block k‖_F.
+        static fProxy BlockFrobenius(in fProxyBSR A, int k)
+        {
+            int blockLen = A.BR * A.BC;
+            int off = k * blockLen;
+            fProxy s = 0;
+            for (int t = 0; t < blockLen; t++)
+            {
+                fProxy v = A.Values[off + t];
+                s += v * v;
+            }
+            return math.sqrt(s);
+        }
+
+        // Storage index of diagonal block (i,i), or -1 if not stored.
+        static int DiagBlockIndex(in fProxyBSR A, int i)
+        {
+            int s = A.RowPtr[i], e = A.RowPtr[i + 1];
+            for (int k = s; k < e; k++)
+                if (A.ColInd[k] == i) return k;
+            return -1;
+        }
+
+        /// <summary>
+        /// Greedy nodal aggregation of A's block-rows (Vaněk–Mandel–Brezina). Block-rows i,j are
+        /// STRONGLY connected iff ‖A_ij‖_F &gt; theta·sqrt(‖A_ii‖_F·‖A_jj‖_F); theta = 0 keeps every
+        /// stored off-diagonal block. Three passes, all ascending index order: (1) an unaggregated
+        /// node whose strong neighbors are ALL unaggregated seeds an aggregate {itself + those
+        /// neighbors}; (2) each remaining node attaches to the pass-1 aggregate it connects to most
+        /// strongly (‖A_ij‖_F), ties → lowest aggregate index; (3) leftovers become singletons.
+        /// Assigns every block-row to exactly one aggregate, aggId[i] in [0, numAgg). Deterministic.
+        ///
+        /// A must be FULL storage (not <see cref="fProxyBSR.Symmetric"/>) with a structurally
+        /// symmetric pattern — the AMG hierarchy mirrors the user's input once at setup and every
+        /// Galerkin coarse operator is assembled full. aggId.Length must equal A.BlockRows.
+        /// </summary>
+        public static void aggregate(in fProxyBSR A, fProxy theta, ref Indices aggId, out int numAgg)
+        {
+            if (A.Symmetric)
+                throw new ArgumentException("AMG.aggregate: A must be full storage (mirror a Symmetric BSR first)");
+            if (A.BlockRows != A.BlockCols)
+                throw new ArgumentException("AMG.aggregate: A must be square (BlockRows == BlockCols)");
+
+            int nb = A.BlockRows;
+            if (aggId.N != nb)
+                throw new ArgumentException("AMG.aggregate: aggId.N must equal A.BlockRows");
+
+            // Diagonal-block Frobenius norms (strength denominators). A missing/zero diagonal block
+            // yields diagNormF = 0, making every incident edge weak (theta > 0) — a genuinely
+            // isolated node then falls through to a pass-3 singleton, which is correct.
+            var diagNormF = new NativeArray<fProxy>(nb, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+            for (int i = 0; i < nb; i++)
+            {
+                int d = DiagBlockIndex(in A, i);
+                diagNormF[i] = d < 0 ? (fProxy)0 : BlockFrobenius(in A, d);
+            }
+
+            for (int i = 0; i < nb; i++) aggId[i] = -1;
+            numAgg = 0;
+
+            // ---- pass 1: root aggregates ----
+            for (int i = 0; i < nb; i++)
+            {
+                if (aggId[i] != -1) continue;
+
+                int s = A.RowPtr[i], e = A.RowPtr[i + 1];
+
+                bool allFree = true;
+                for (int k = s; k < e; k++)
+                {
+                    int j = A.ColInd[k];
+                    if (j == i) continue;
+                    if (!Strong(in A, k, i, j, theta, diagNormF)) continue;
+                    if (aggId[j] != -1) { allFree = false; break; }
+                }
+                if (!allFree) continue;
+
+                aggId[i] = numAgg;
+                for (int k = s; k < e; k++)
+                {
+                    int j = A.ColInd[k];
+                    if (j == i) continue;
+                    if (!Strong(in A, k, i, j, theta, diagNormF)) continue;
+                    aggId[j] = numAgg;   // all verified free above
+                }
+                numAgg++;
+            }
+
+            // Snapshot pass-1 membership so pass-2 attachments don't chain (a node attached in
+            // pass 2 must not itself pull further nodes in this same pass).
+            var inP1 = new NativeArray<bool>(nb, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+            for (int i = 0; i < nb; i++) inP1[i] = aggId[i] != -1;
+
+            // ---- pass 2: attach leftovers to the strongest pass-1 aggregate ----
+            for (int i = 0; i < nb; i++)
+            {
+                if (aggId[i] != -1) continue;
+
+                int s = A.RowPtr[i], e = A.RowPtr[i + 1];
+                int bestAgg = -1;
+                fProxy bestStr = -1;
+                for (int k = s; k < e; k++)
+                {
+                    int j = A.ColInd[k];
+                    if (j == i || !inP1[j]) continue;
+                    if (!Strong(in A, k, i, j, theta, diagNormF)) continue;
+
+                    fProxy str = BlockFrobenius(in A, k);
+                    int aj = aggId[j];
+                    if (str > bestStr || (str == bestStr && aj < bestAgg))
+                    {
+                        bestStr = str;
+                        bestAgg = aj;
+                    }
+                }
+                if (bestAgg != -1) aggId[i] = bestAgg;
+            }
+
+            // ---- pass 3: singletons ----
+            for (int i = 0; i < nb; i++)
+                if (aggId[i] == -1) aggId[i] = numAgg++;
+
+            inP1.Dispose();
+            diagNormF.Dispose();
+        }
+
+        // Strong-connection test for A's stored block k = (i,j), i != j.
+        static bool Strong(in fProxyBSR A, int k, int i, int j, fProxy theta, NativeArray<fProxy> diagNormF)
+        {
+            fProxy nij = BlockFrobenius(in A, k);
+            if (theta <= (fProxy)0) return nij > (fProxy)0;
+            return nij > theta * math.sqrt(diagNormF[i] * diagNormF[j]);
+        }
+    }
+}
