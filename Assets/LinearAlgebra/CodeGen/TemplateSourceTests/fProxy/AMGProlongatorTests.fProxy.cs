@@ -1,0 +1,196 @@
+using System;
+using LinearAlgebra;
+using LinearAlgebra.Sparse;
+using NUnit.Framework;
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Jobs;
+using Unity.Mathematics;
+
+// AMG.tentativeProlongator: the tentative prolongator must reconstruct the near-nullspace exactly
+// (T·Bcoarse == B) and have orthonormal columns within each aggregate (QᵀQ = I). Cases run inside
+// a [BurstCompile] IJob.
+public class fProxyAMGProlongatorTests
+{
+    [BurstCompile(CompileSynchronously = true)]
+    public struct ProlongatorTestJob : IJob
+    {
+        public enum TestType
+        {
+            ReconstructsConstant,
+            ReconstructsGeneralB,
+            OrthonormalColumns,
+            Deterministic,
+        }
+
+        public TestType Type;
+
+        static fProxy Tol() => /*+choose[1e-4f|1e-10]*/1e-4f/*-choose*/;
+
+        // BR x BR-block chain: diagonal 2·I, symmetric off-diagonal -I to each neighbor (full).
+        static fProxyBSR BlockChain(ref Arena arena, int nb, int BR)
+        {
+            var b = arena.fProxyBSRBuilder(nb, nb, BR, BR, 3 * nb);
+            var diag = arena.fProxyMat(BR, BR);
+            var off = arena.fProxyMat(BR, BR);
+            for (int r = 0; r < BR; r++)
+                for (int c = 0; c < BR; c++)
+                { diag[r, c] = r == c ? (fProxy)2 : (fProxy)0; off[r, c] = r == c ? (fProxy)(-1) : (fProxy)0; }
+            for (int i = 0; i < nb; i++)
+            {
+                b.AddBlock(i, i, in diag);
+                if (i > 0) b.AddBlock(i, i - 1, in off);
+                if (i < nb - 1) b.AddBlock(i, i + 1, in off);
+            }
+            return b.ToBSR(ref arena);
+        }
+
+        // (T·Bcoarse)[i-block row r, col c]; T has exactly one A.BR x m block per block-row.
+        static fProxy TBcoarse(in fProxyBSR T, in fProxyMxN Bcoarse, int i, int BR, int m, int r, int c)
+        {
+            int k0 = T.RowPtr[i];
+            int a = T.ColInd[k0];
+            int blockLen = BR * m;
+            fProxy s = 0;
+            for (int p = 0; p < m; p++)
+                s += T.Values[k0 * blockLen + r * m + p] * Bcoarse[a * m + p, c];
+            return s;
+        }
+
+        static void AssertOneBlockPerRow(in fProxyBSR T, int nb)
+        {
+            for (int i = 0; i < nb; i++)
+                Assert.IsTrue(T.RowPtr[i + 1] - T.RowPtr[i] == 1);
+        }
+
+        public void Execute()
+        {
+            switch (Type)
+            {
+                case TestType.ReconstructsConstant:  ReconstructsConstant(); break;
+                case TestType.ReconstructsGeneralB:  ReconstructsGeneralB(); break;
+                case TestType.OrthonormalColumns:    OrthonormalColumns(); break;
+                case TestType.Deterministic:         Deterministic(); break;
+            }
+        }
+
+        // m = 1 default (B = ones): T·Bcoarse must equal the all-ones vector exactly.
+        void ReconstructsConstant()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int nb = 12;
+            var A = BlockChain(ref arena, nb, 1);
+            var aggId = arena.Indices(nb);
+            AMG.aggregate(in A, (fProxy)0, ref aggId, out int numAgg);
+
+            var T = AMG.tentativeProlongator(in A, in aggId, numAgg, ref arena, out var Bc);
+            AssertOneBlockPerRow(in T, nb);
+
+            for (int i = 0; i < nb; i++)
+                Assert.IsTrue(math.abs(TBcoarse(in T, in Bc, i, 1, 1, 0, 0) - (fProxy)1) <= Tol());
+
+            arena.Dispose();
+        }
+
+        // General near-nullspace (BR=2, m=2, random B): T·Bcoarse must reproduce B row-for-row.
+        void ReconstructsGeneralB()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int nb = 10, BR = 2, m = 2;
+            var A = BlockChain(ref arena, nb, BR);
+            int n = nb * BR;
+            var B = arena.fProxyRandomMat(n, m, -1f, 1f, 0xB0A7u);
+
+            var aggId = arena.Indices(nb);
+            AMG.aggregate(in A, (fProxy)0, ref aggId, out int numAgg);
+
+            var T = AMG.tentativeProlongator(in A, in aggId, numAgg, in B, ref arena, out var Bc);
+            AssertOneBlockPerRow(in T, nb);
+
+            for (int i = 0; i < nb; i++)
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < m; c++)
+                    {
+                        fProxy got = TBcoarse(in T, in Bc, i, BR, m, r, c);
+                        Assert.IsTrue(math.abs(got - B[i * BR + r, c]) <= Tol() * ((fProxy)1 + math.abs(B[i * BR + r, c])));
+                    }
+
+            arena.Dispose();
+        }
+
+        // Within each aggregate the stacked T blocks have orthonormal columns: sum_i QiᵀQi = I_m.
+        void OrthonormalColumns()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int nb = 10, BR = 2, m = 2;
+            var A = BlockChain(ref arena, nb, BR);
+            int n = nb * BR;
+            var B = arena.fProxyRandomMat(n, m, -1f, 1f, 0xC0C0u);
+
+            var aggId = arena.Indices(nb);
+            AMG.aggregate(in A, (fProxy)0, ref aggId, out int numAgg);
+            var T = AMG.tentativeProlongator(in A, in aggId, numAgg, in B, ref arena, out _);
+
+            int blockLen = BR * m;
+            for (int a = 0; a < numAgg; a++)
+            {
+                // Gram matrix G = sum over member rows of Qᵀ Q (m x m); expect identity.
+                for (int p = 0; p < m; p++)
+                    for (int q = 0; q < m; q++)
+                    {
+                        fProxy g = 0;
+                        for (int i = 0; i < nb; i++)
+                        {
+                            if (aggId[i] != a) continue;
+                            int k0 = T.RowPtr[i];
+                            for (int r = 0; r < BR; r++)
+                                g += T.Values[k0 * blockLen + r * m + p] * T.Values[k0 * blockLen + r * m + q];
+                        }
+                        Assert.IsTrue(math.abs(g - (p == q ? (fProxy)1 : (fProxy)0)) <= Tol());
+                    }
+            }
+
+            arena.Dispose();
+        }
+
+        void Deterministic()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int nb = 14, BR = 2, m = 2;
+            var A = BlockChain(ref arena, nb, BR);
+            int n = nb * BR;
+            var B = arena.fProxyRandomMat(n, m, -1f, 1f, 0xD37Du);
+            var aggId = arena.Indices(nb);
+            AMG.aggregate(in A, (fProxy)0, ref aggId, out int numAgg);
+
+            var T1 = AMG.tentativeProlongator(in A, in aggId, numAgg, in B, ref arena, out var Bc1);
+            var T2 = AMG.tentativeProlongator(in A, in aggId, numAgg, in B, ref arena, out var Bc2);
+
+            Assert.IsTrue(T1.Nnzb == T2.Nnzb);
+            int blockLen = BR * m;
+            for (int k = 0; k < T1.Nnzb * blockLen; k++)
+                Assert.IsTrue(T1.Values[k] == T2.Values[k]);
+            for (int r = 0; r < numAgg * m; r++)
+                for (int c = 0; c < m; c++)
+                    Assert.IsTrue(Bc1[r, c] == Bc2[r, c]);
+
+            arena.Dispose();
+        }
+    }
+
+    [Test]
+    public void ReconstructsConstantTest()
+        => new ProlongatorTestJob { Type = ProlongatorTestJob.TestType.ReconstructsConstant }.Run();
+
+    [Test]
+    public void ReconstructsGeneralBTest()
+        => new ProlongatorTestJob { Type = ProlongatorTestJob.TestType.ReconstructsGeneralB }.Run();
+
+    [Test]
+    public void OrthonormalColumnsTest()
+        => new ProlongatorTestJob { Type = ProlongatorTestJob.TestType.OrthonormalColumns }.Run();
+
+    [Test]
+    public void DeterministicTest()
+        => new ProlongatorTestJob { Type = ProlongatorTestJob.TestType.Deterministic }.Run();
+}

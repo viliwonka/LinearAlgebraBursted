@@ -8,6 +8,19 @@ Path: elasticity-capable (rigid-body near-nullspace per aggregate), dodges gener
 unsmoothed Galerkin RAP collapses to a deterministic segmented assembly), Chebyshev smoother
 (already shipped), Flexible-CG outer solver. SA + deterministic spGEMM is the later Tier-2 end-state.
 
+## AMG.tentativeProlongator
+- 2026-07-18 | Tentative (unsmoothed) prolongator T, AMG-3. Per aggregate: gather B's local rows,
+  modified Gram–Schmidt (in place) → Q (T's BR x m blocks) + R (m x m) with B_local = Q·R, so
+  T·Bcoarse == B exactly (the defining identity). T is a BSR, one BR x m block per fine block-row
+  (col = aggId[i]), built via fProxyBSRBuilder. Bcoarse = block-stacked R. Rank-deficient aggregate
+  column (norm collapses under MGS) → zero Q column + R=0. Default overload: B = ones (m=1).
+  🔴 BUG CAUGHT BY TESTS (uninit memory): `new fProxyMxN(m, m, Allocator.Temp, true)` — the ctor's
+  4th bool is `uninit`, NOT `clear`. R is upper-triangular; its never-written lower triangle was
+  garbage and got copied into Bcoarse → reconstruction failed for m>=2 AND was NONDETERMINISTIC
+  (m=1 has no lower triangle, so it passed — the tell). Fix: allocate R with uninit=false. Fully
+  written buffers (L, blk) keep uninit=true. Lesson: fProxyMxN(...,bool) = uninit; pass false for
+  any partially-written matrix.
+
 ## AMG.aggregate
 - 2026-07-18 | Deterministic greedy nodal aggregation (Vaněk–Mandel–Brezina), AMG-2. Strength
   ‖A_ij‖_F > θ·sqrt(‖A_ii‖_F·‖A_jj‖_F), θ=0 keeps all stored off-diagonals (PyAMG SA default).
