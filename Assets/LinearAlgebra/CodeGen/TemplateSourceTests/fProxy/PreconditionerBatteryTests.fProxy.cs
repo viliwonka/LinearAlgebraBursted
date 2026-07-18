@@ -1,0 +1,285 @@
+using System;
+
+using LinearAlgebra;
+using LinearAlgebra.Gallery;
+using LinearAlgebra.Sparse;
+
+using NUnit.Framework;
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Jobs;
+using Unity.Mathematics;
+
+// "Preconditioner battery" — systematic preconditioner × sparse-matrix cross-coverage, the sparse
+// analogue of SolverBatteryTests. Each preconditioner is built on a spread of SPD BSR matrices and
+// driven through its matching Krylov solver; the pinned invariant is that EVERY (preconditioner,
+// matrix) pair CONVERGES to a relative true-residual tolerance (residual-based, not solution-error;
+// caps are generous — the point is regression coverage across the whole family, not iteration races).
+// Symmetric-M preconditioners route through pcg; nonsymmetric-M (ILU0/SPAI/RAS) through pbiCGStab.
+// Grouped BY PRECONDITIONER (one case each) with the failing (matrix, residual) surfaced via Fail.
+public class fProxyPreconditionerBatteryTests
+{
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct TestJob : IJob
+    {
+        public enum TestType
+        {
+            // symmetric-M -> pcg
+            BlockJacobi,
+            SSOR,
+            IC0,
+            Chebyshev,
+            FSAI,
+            AdditiveSchwarz,
+            AMG,
+            // nonsymmetric-M -> pbiCGStab
+            ILU0,
+            SPAI,
+            RestrictedSchwarz,
+        }
+
+        public TestType Type;
+
+        // [0] flag (1 = failure), [1] matrix index, [2] residual/got, [3] which-check
+        public NativeArray<fProxy> Fail;
+
+        static int NumMatrices => 3;
+        static fProxy Tol() => Consts.fProxySqrtEps;
+
+        // A spread of SPD BSR matrices every preconditioner handles: scalar 2D Poisson (BR=1),
+        // the block-tridiagonal gallery Laplacian, and a diagonally-dominant random-sparse SPD (BR=2).
+        static fProxyBSR Matrix(ref Arena arena, int which)
+        {
+            if (which == 0) return Poisson2D(ref arena, 20, 20);
+            if (which == 1) return arena.fProxyLaplacian2D(16, 16);
+            return arena.fProxyRandomSparseSPD(120, 2, (fProxy)0.2, 0x5EED0u);
+        }
+
+        static fProxyBSR Poisson2D(ref Arena arena, int gx, int gy)
+        {
+            int n = gx * gy;
+            var b = arena.fProxyBSRBuilder(n, n, 1, 1, 5 * n);
+            for (int y = 0; y < gy; y++)
+                for (int x = 0; x < gx; x++)
+                {
+                    int i = y * gx + x;
+                    b.AddValue(i, i, (fProxy)4);
+                    if (x > 0) b.AddValue(i, i - 1, (fProxy)(-1));
+                    if (x < gx - 1) b.AddValue(i, i + 1, (fProxy)(-1));
+                    if (y > 0) b.AddValue(i, i - gx, (fProxy)(-1));
+                    if (y < gy - 1) b.AddValue(i, i + gx, (fProxy)(-1));
+                }
+            return b.ToBSR(ref arena);
+        }
+
+        static fProxy VecNorm(in fProxyN v)
+        {
+            fProxy s = 0;
+            for (int i = 0; i < v.N; i++) s += v[i] * v[i];
+            return math.sqrt(s);
+        }
+
+        static fProxy RelResidual(in fProxyBSR A, in fProxyN x, in fProxyN b)
+        {
+            var Ax = BSR.spMV(in A, in x);
+            fProxy num = 0, den = 0;
+            for (int i = 0; i < b.N; i++) { fProxy d = Ax[i] - b[i]; num += d * d; den += b[i] * b[i]; }
+            return math.sqrt(num) / math.sqrt(math.max(den, (fProxy)1e-30));
+        }
+
+        void Record(bool ok, int mi, fProxy got, fProxy which)
+        {
+            if (!ok && Fail[0] == (fProxy)0)
+            {
+                Fail[0] = (fProxy)1; Fail[1] = mi; Fail[2] = got; Fail[3] = which;
+            }
+            Assert.IsTrue(ok);
+        }
+
+        // Convergence invariant: Converged status AND relative true residual within a generous band.
+        void CheckSolve(in fProxyBSR A, in fProxyN x, in fProxyN b, SolveInfo info, int mi)
+        {
+            Record(info.status == IterativeSolveStatus.Converged, mi, (fProxy)info.iterations, (fProxy)0);
+            Record(RelResidual(in A, in x, in b) <= (fProxy)100 * Tol(), mi, RelResidual(in A, in x, in b), (fProxy)1);
+        }
+
+        public void Execute()
+        {
+            switch (Type)
+            {
+                case TestType.BlockJacobi:       BlockJacobi(); break;
+                case TestType.SSOR:              SSOR(); break;
+                case TestType.IC0:               IC0(); break;
+                case TestType.Chebyshev:         Chebyshev(); break;
+                case TestType.FSAI:              FSAI(); break;
+                case TestType.AdditiveSchwarz:   AdditiveSchwarz(); break;
+                case TestType.AMG:               AMG(); break;
+                case TestType.ILU0:              ILU0(); break;
+                case TestType.SPAI:              SPAI(); break;
+                case TestType.RestrictedSchwarz: RestrictedSchwarz(); break;
+            }
+        }
+
+        // ---- symmetric-M -> pcg ----
+
+        void BlockJacobi()
+        {
+            for (int mi = 0; mi < NumMatrices; mi++)
+            {
+                var arena = new Arena(Allocator.Persistent);
+                var A = Matrix(ref arena, mi); int n = A.M_Rows;
+                var b = arena.fProxyRandomVec(n, -1f, 1f, 0xB0u + (uint)mi);
+                var M = arena.fProxyBlockJacobi(in A);
+                var x = arena.fProxyVec(n); for (int i = 0; i < n; i++) x[i] = (fProxy)0;
+                CheckSolve(in A, in x, in b, Krylov.pcg(in A, in M, in b, ref x, 8 * n, Tol()), mi);
+                arena.Dispose();
+            }
+        }
+
+        void SSOR()
+        {
+            for (int mi = 0; mi < NumMatrices; mi++)
+            {
+                var arena = new Arena(Allocator.Persistent);
+                var A = Matrix(ref arena, mi); int n = A.M_Rows;
+                var b = arena.fProxyRandomVec(n, -1f, 1f, 0xB1u + (uint)mi);
+                var M = arena.fProxySSOR(in A);
+                var x = arena.fProxyVec(n); for (int i = 0; i < n; i++) x[i] = (fProxy)0;
+                CheckSolve(in A, in x, in b, Krylov.pcg(in A, in M, in b, ref x, 8 * n, Tol()), mi);
+                arena.Dispose();
+            }
+        }
+
+        void IC0()
+        {
+            for (int mi = 0; mi < NumMatrices; mi++)
+            {
+                var arena = new Arena(Allocator.Persistent);
+                var A = Matrix(ref arena, mi); int n = A.M_Rows;
+                var b = arena.fProxyRandomVec(n, -1f, 1f, 0xB2u + (uint)mi);
+                var M = arena.fProxyIC0(in A);
+                var x = arena.fProxyVec(n); for (int i = 0; i < n; i++) x[i] = (fProxy)0;
+                CheckSolve(in A, in x, in b, Krylov.pcg(in A, in M, in b, ref x, 8 * n, Tol()), mi);
+                arena.Dispose();
+            }
+        }
+
+        void Chebyshev()
+        {
+            for (int mi = 0; mi < NumMatrices; mi++)
+            {
+                var arena = new Arena(Allocator.Persistent);
+                var A = Matrix(ref arena, mi); int n = A.M_Rows;
+                var b = arena.fProxyRandomVec(n, -1f, 1f, 0xB3u + (uint)mi);
+                var M = arena.fProxyChebyshev(in A);
+                var x = arena.fProxyVec(n); for (int i = 0; i < n; i++) x[i] = (fProxy)0;
+                CheckSolve(in A, in x, in b, Krylov.pcg(in A, in M, in b, ref x, 8 * n, Tol()), mi);
+                arena.Dispose();
+            }
+        }
+
+        void FSAI()
+        {
+            for (int mi = 0; mi < NumMatrices; mi++)
+            {
+                var arena = new Arena(Allocator.Persistent);
+                var A = Matrix(ref arena, mi); int n = A.M_Rows;
+                var b = arena.fProxyRandomVec(n, -1f, 1f, 0xB4u + (uint)mi);
+                var M = arena.fProxyFSAI(in A);
+                var x = arena.fProxyVec(n); for (int i = 0; i < n; i++) x[i] = (fProxy)0;
+                CheckSolve(in A, in x, in b, Krylov.pcg(in A, in M, in b, ref x, 8 * n, Tol()), mi);
+                arena.Dispose();
+            }
+        }
+
+        void AdditiveSchwarz()
+        {
+            for (int mi = 0; mi < NumMatrices; mi++)
+            {
+                var arena = new Arena(Allocator.Persistent);
+                var A = Matrix(ref arena, mi); int n = A.M_Rows;
+                var b = arena.fProxyRandomVec(n, -1f, 1f, 0xB5u + (uint)mi);
+                var M = arena.fProxyAdditiveSchwarz(in A);
+                var x = arena.fProxyVec(n); for (int i = 0; i < n; i++) x[i] = (fProxy)0;
+                CheckSolve(in A, in x, in b, Krylov.pcg(in A, in M, in b, ref x, 8 * n, Tol()), mi);
+                arena.Dispose();
+            }
+        }
+
+        void AMG()
+        {
+            for (int mi = 0; mi < NumMatrices; mi++)
+            {
+                var arena = new Arena(Allocator.Persistent);
+                var A = Matrix(ref arena, mi); int n = A.M_Rows;
+                var b = arena.fProxyRandomVec(n, -1f, 1f, 0xB6u + (uint)mi);
+                var amg = arena.fProxyAMG(in A, out var info);
+                Record(info.Solved, mi, (fProxy)0, (fProxy)2);
+                var M = new fProxyAMGPreconditioner(in amg);
+                var x = arena.fProxyVec(n); for (int i = 0; i < n; i++) x[i] = (fProxy)0;
+                CheckSolve(in A, in x, in b, Krylov.pcg(in A, in M, in b, ref x, 8 * n, Tol()), mi);
+                amg.Dispose();
+                arena.Dispose();
+            }
+        }
+
+        // ---- nonsymmetric-M -> pbiCGStab ----
+
+        void ILU0()
+        {
+            for (int mi = 0; mi < NumMatrices; mi++)
+            {
+                var arena = new Arena(Allocator.Persistent);
+                var A = Matrix(ref arena, mi); int n = A.M_Rows;
+                var b = arena.fProxyRandomVec(n, -1f, 1f, 0xB7u + (uint)mi);
+                var M = arena.fProxyILU0(in A);
+                var x = arena.fProxyVec(n); for (int i = 0; i < n; i++) x[i] = (fProxy)0;
+                CheckSolve(in A, in x, in b, Krylov.pbiCGStab(in A, in M, in b, ref x, 8 * n, Tol()), mi);
+                arena.Dispose();
+            }
+        }
+
+        void SPAI()
+        {
+            for (int mi = 0; mi < NumMatrices; mi++)
+            {
+                var arena = new Arena(Allocator.Persistent);
+                var A = Matrix(ref arena, mi); int n = A.M_Rows;
+                var b = arena.fProxyRandomVec(n, -1f, 1f, 0xB8u + (uint)mi);
+                var M = arena.fProxySPAI(in A);
+                var x = arena.fProxyVec(n); for (int i = 0; i < n; i++) x[i] = (fProxy)0;
+                CheckSolve(in A, in x, in b, Krylov.pbiCGStab(in A, in M, in b, ref x, 8 * n, Tol()), mi);
+                arena.Dispose();
+            }
+        }
+
+        void RestrictedSchwarz()
+        {
+            for (int mi = 0; mi < NumMatrices; mi++)
+            {
+                var arena = new Arena(Allocator.Persistent);
+                var A = Matrix(ref arena, mi); int n = A.M_Rows;
+                var b = arena.fProxyRandomVec(n, -1f, 1f, 0xB9u + (uint)mi);
+                var M = arena.fProxyRestrictedSchwarz(in A);
+                var x = arena.fProxyVec(n); for (int i = 0; i < n; i++) x[i] = (fProxy)0;
+                CheckSolve(in A, in x, in b, Krylov.pbiCGStab(in A, in M, in b, ref x, 8 * n, Tol()), mi);
+                arena.Dispose();
+            }
+        }
+    }
+
+    public static Array GetEnums() => Enum.GetValues(typeof(TestJob.TestType));
+
+    [TestCaseSource("GetEnums")]
+    public void PreconditionerBattery(TestJob.TestType type)
+    {
+        var fail = new NativeArray<fProxy>(4, Allocator.TempJob);
+        try
+        {
+            new TestJob() { Type = type, Fail = fail }.Run();
+            if (fail[0] != (fProxy)0)
+                Assert.Fail($"{type}: matrix {fail[1]} check {fail[3]} failed (got {fail[2]})");
+        }
+        finally { fail.Dispose(); }
+    }
+}
