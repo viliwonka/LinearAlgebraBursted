@@ -54,6 +54,21 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine(BenchPrecondRandomDouble(120, 3, 0.30f, 0xC003Du));
             sb.AppendLine();
 
+            // SCALAR 5-point Poisson (BR=1): the fair grid-independence case. IC(0) is genuinely
+            // incomplete here (unlike the block-tridiagonal gallery Laplacian, where it is exact), so
+            // point-preconditioner iteration counts grow ~O(sqrt(N)) while AMG's stay ~flat. Watch the
+            // iters column across sizes.
+            sb.AppendLine("=== Preconditioner face-off, SCALAR 5-point 2D Poisson (BR=1; IC0 genuinely incomplete), tol=sqrt(eps) ===");
+            sb.AppendLine(string.Format("{0,-7} {1,-6} {2,-12} {3,11} {4,11} {5,7} {6,14}",
+                "dtype", "N", "solver", "med(ms)", "min(ms)", "iters", "residual"));
+            sb.AppendLine(BenchPrecondScalarPoissonFloat(48, 48));      // N = 2304
+            sb.AppendLine(BenchPrecondScalarPoissonDouble(48, 48));
+            sb.AppendLine(BenchPrecondScalarPoissonFloat(96, 96));      // N = 9216
+            sb.AppendLine(BenchPrecondScalarPoissonDouble(96, 96));
+            sb.AppendLine(BenchPrecondScalarPoissonFloat(144, 144));    // N = 20736
+            sb.AppendLine(BenchPrecondScalarPoissonDouble(144, 144));
+            sb.AppendLine();
+
             sb.AppendLine("=== BlockJacobi build cost (ctor only, block-tridiagonal SPD) ===");
             sb.AppendLine(string.Format("{0,-7} {1,-6} {2,-3} {3,11} {4,11}",
                 "dtype", "N", "b", "med(ms)", "min(ms)"));

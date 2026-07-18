@@ -202,17 +202,42 @@ namespace LinearAlgebra.Benchmarks
         // fill-free pattern where IC(0) is the exact factorization (1 iteration) -- the
         // random-sparse-SPD rows are the genuinely-incomplete case.
         static string BenchPrecondFProxy(int gridX, int gridY)
-            => BenchPrecondCoreFProxy(gridX, gridY, true, 0);
+            => BenchPrecondCoreFProxy(gridX, gridY, 0, 0);
 
         static string BenchPrecondRandomFProxy(int nb, int bs, float density, uint seed)
-            => BenchPrecondCoreFProxy(nb, bs, false, density, seed);
+            => BenchPrecondCoreFProxy(nb, bs, 1, density, seed);
 
-        static string BenchPrecondCoreFProxy(int p1, int p2, bool laplacian, float density, uint seed = 0)
+        static string BenchPrecondScalarPoissonFProxy(int gridX, int gridY)
+            => BenchPrecondCoreFProxy(gridX, gridY, 2, 0);
+
+        // Scalar 5-point 2D Poisson (BR=1): unlike the block-tridiagonal gallery Laplacian2D, IC(0)
+        // is a GENUINELY incomplete factorization here, so every point-preconditioner's iteration
+        // count grows ~O(sqrt(N)) while AMG stays ~flat -- the fair grid-independence comparison.
+        static fProxyBSR ScalarPoisson2DFProxy(ref Arena arena, int gx, int gy)
+        {
+            int n = gx * gy;
+            var bld = arena.fProxyBSRBuilder(n, n, 1, 1, 5 * n);
+            for (int y = 0; y < gy; y++)
+                for (int x = 0; x < gx; x++)
+                {
+                    int i = y * gx + x;
+                    bld.AddValue(i, i, (fProxy)4);
+                    if (x > 0) bld.AddValue(i, i - 1, (fProxy)(-1));
+                    if (x < gx - 1) bld.AddValue(i, i + 1, (fProxy)(-1));
+                    if (y > 0) bld.AddValue(i, i - gx, (fProxy)(-1));
+                    if (y < gy - 1) bld.AddValue(i, i + gx, (fProxy)(-1));
+                }
+            return bld.ToBSR(ref arena);
+        }
+
+        // kind: 0 = block Laplacian2D gallery, 1 = random-sparse SPD, 2 = scalar 5-point Poisson.
+        static string BenchPrecondCoreFProxy(int p1, int p2, int kind, float density, uint seed = 0)
         {
             const string fmt = "{0,-7} {1,-6} {2,-12} {3,11:F4} {4,11:F4} {5,7} {6,14:E3}";
             var arena = new Arena(Allocator.Persistent);
-            var A = laplacian ? arena.fProxyLaplacian2D(p1, p2)
-                              : arena.fProxyRandomSparseSPD(p1, p2, (fProxy)density, seed);
+            var A = kind == 0 ? arena.fProxyLaplacian2D(p1, p2)
+                  : kind == 1 ? arena.fProxyRandomSparseSPD(p1, p2, (fProxy)density, seed)
+                              : ScalarPoisson2DFProxy(ref arena, p1, p2);
             int n = A.M_Rows;
             var b = arena.fProxyRandomVec(n, -1f, 1f, 0xC002Du);
             fProxy tol = Consts.fProxySqrtEps;

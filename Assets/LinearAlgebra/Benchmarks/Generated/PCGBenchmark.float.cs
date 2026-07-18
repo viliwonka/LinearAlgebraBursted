@@ -206,17 +206,42 @@ namespace LinearAlgebra.Benchmarks
         // fill-free pattern where IC(0) is the exact factorization (1 iteration) -- the
         // random-sparse-SPD rows are the genuinely-incomplete case.
         static string BenchPrecondFloat(int gridX, int gridY)
-            => BenchPrecondCoreFloat(gridX, gridY, true, 0);
+            => BenchPrecondCoreFloat(gridX, gridY, 0, 0);
 
         static string BenchPrecondRandomFloat(int nb, int bs, float density, uint seed)
-            => BenchPrecondCoreFloat(nb, bs, false, density, seed);
+            => BenchPrecondCoreFloat(nb, bs, 1, density, seed);
 
-        static string BenchPrecondCoreFloat(int p1, int p2, bool laplacian, float density, uint seed = 0)
+        static string BenchPrecondScalarPoissonFloat(int gridX, int gridY)
+            => BenchPrecondCoreFloat(gridX, gridY, 2, 0);
+
+        // Scalar 5-point 2D Poisson (BR=1): unlike the block-tridiagonal gallery Laplacian2D, IC(0)
+        // is a GENUINELY incomplete factorization here, so every point-preconditioner's iteration
+        // count grows ~O(sqrt(N)) while AMG stays ~flat -- the fair grid-independence comparison.
+        static floatBSR ScalarPoisson2DFloat(ref Arena arena, int gx, int gy)
+        {
+            int n = gx * gy;
+            var bld = arena.floatBSRBuilder(n, n, 1, 1, 5 * n);
+            for (int y = 0; y < gy; y++)
+                for (int x = 0; x < gx; x++)
+                {
+                    int i = y * gx + x;
+                    bld.AddValue(i, i, (float)4);
+                    if (x > 0) bld.AddValue(i, i - 1, (float)(-1));
+                    if (x < gx - 1) bld.AddValue(i, i + 1, (float)(-1));
+                    if (y > 0) bld.AddValue(i, i - gx, (float)(-1));
+                    if (y < gy - 1) bld.AddValue(i, i + gx, (float)(-1));
+                }
+            return bld.ToBSR(ref arena);
+        }
+
+        // kind: 0 = block Laplacian2D gallery, 1 = random-sparse SPD, 2 = scalar 5-point Poisson.
+        static string BenchPrecondCoreFloat(int p1, int p2, int kind, float density, uint seed = 0)
         {
             const string fmt = "{0,-7} {1,-6} {2,-12} {3,11:F4} {4,11:F4} {5,7} {6,14:E3}";
             var arena = new Arena(Allocator.Persistent);
-            var A = laplacian ? arena.floatLaplacian2D(p1, p2)
-                              : arena.floatRandomSparseSPD(p1, p2, (float)density, seed);
+            var A = kind == 0 ? arena.floatLaplacian2D(p1, p2)
+                  : kind == 1 ? arena.floatRandomSparseSPD(p1, p2, (float)density, seed)
+                              : ScalarPoisson2DFloat(ref arena, p1, p2);
             int n = A.M_Rows;
             var b = arena.floatRandomVec(n, -1f, 1f, 0xC002Du);
             float tol = Consts.floatSqrtEps;
