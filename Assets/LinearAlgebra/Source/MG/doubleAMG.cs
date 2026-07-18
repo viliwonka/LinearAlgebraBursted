@@ -306,10 +306,12 @@ namespace LinearAlgebra
         /// NotPositiveDefinite when the coarsest Cholesky fails. A Symmetric-storage A is mirrored to
         /// full transiently. Throws if A is not square. The returned hierarchy must be Disposed.
         /// </summary>
-        public doubleAMG doubleAMG(in doubleBSR A, in AMGOptions opts, out AMGSetupInfo info)
+        internal doubleAMG doubleAMGBuild(in doubleBSR A, in doubleMxN B0, in AMGOptions opts, out AMGSetupInfo info)
         {
             if (A.BlockRows != A.BlockCols || A.BR != A.BC)
                 throw new ArgumentException("Arena.doubleAMG: A must be square (BlockRows==BlockCols, BR==BC)");
+            if (B0.M_Rows != A.M_Rows || B0.N_Cols < 1)
+                throw new ArgumentException("Arena.doubleAMG: near-nullspace B must be A.M_Rows x m with m >= 1");
             if (opts.pre < 0 || opts.post < 0)
                 throw new ArgumentException("Arena.doubleAMG: pre/post must be >= 0");
             if (opts.coarseMax < 1 || opts.maxLevels < 1)
@@ -344,9 +346,7 @@ namespace LinearAlgebra
                 doubleBSR A0 = A.Symmetric ? self.doubleBSRMirrorToFull(in A) : A;
                 levA.Add(A0);
 
-                int n0 = A0.M_Rows;
-                doubleMxN Bcur = self.doubleMat(n0, 1);
-                for (int i = 0; i < n0; i++) Bcur[i, 0] = (double)1;
+                doubleMxN Bcur = B0;                     // level-0 near-nullspace (m = B0.N_Cols)
 
                 while (levA[levA.Length - 1].M_Rows > opts.coarseMax && levA.Length < opts.maxLevels)
                 {
@@ -440,8 +440,40 @@ namespace LinearAlgebra
             }
         }
 
-        /// <summary>Builds an <see cref="doubleAMG"/> with <see cref="AMGOptions.Default"/>.</summary>
+        /// <summary>
+        /// Builds an AMG hierarchy with the SCALAR default near-nullspace (B = the constant vector,
+        /// m = 1) — correct for scalar PDEs (Poisson, diffusion). For a vector problem (elasticity /
+        /// structures) pass the rigid-body modes via the <c>Bnear</c> overload instead. See that
+        /// overload for the coarsening/failure/dispose contract.
+        /// </summary>
+        public doubleAMG doubleAMG(in doubleBSR A, in AMGOptions opts, out AMGSetupInfo info)
+        {
+            int n = A.M_Rows;
+            var ones = doubleMat(n, 1);
+            for (int i = 0; i < n; i++) ones[i, 0] = (double)1;
+            return doubleAMGBuild(in A, in ones, in opts, out info);
+        }
+
+        /// <summary>Scalar-default AMG with <see cref="AMGOptions.Default"/>.</summary>
         public doubleAMG doubleAMG(in doubleBSR A, out AMGSetupInfo info)
             => doubleAMG(in A, AMGOptions.Default, out info);
+
+        /// <summary>
+        /// Builds an AMG hierarchy with a user-supplied near-nullspace <paramref name="Bnear"/>
+        /// (A.M_Rows x m, row-major) — the low-energy modes the coarse grid must represent. Scalar
+        /// problems use m = 1 (the constant, i.e. the overload without Bnear); a vector problem passes
+        /// its rigid-body modes (e.g. 3D elasticity: the 3 rigid translations, m = 3, or 6 with
+        /// rotations). The coarse block size becomes m. Coarsens by unsmoothed nodal aggregation until
+        /// a level has &lt;= opts.coarseMax scalar unknowns / aggregation stops / opts.maxLevels; the
+        /// coarsest is factored by dense Cholesky. info.status is Success or NotPositiveDefinite. A
+        /// Symmetric-storage A is mirrored to full transiently. Throws if A is not square or Bnear is
+        /// not A.M_Rows x (m &gt;= 1). The returned hierarchy must be Disposed.
+        /// </summary>
+        public doubleAMG doubleAMG(in doubleBSR A, in doubleMxN Bnear, in AMGOptions opts, out AMGSetupInfo info)
+            => doubleAMGBuild(in A, in Bnear, in opts, out info);
+
+        /// <summary>Near-nullspace AMG with <see cref="AMGOptions.Default"/>.</summary>
+        public doubleAMG doubleAMG(in doubleBSR A, in doubleMxN Bnear, out AMGSetupInfo info)
+            => doubleAMG(in A, in Bnear, AMGOptions.Default, out info);
     }
 }

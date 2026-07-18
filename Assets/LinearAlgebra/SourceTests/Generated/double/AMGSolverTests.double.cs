@@ -36,6 +36,8 @@ public class doubleAMGSolverTests
             KCycleSolves,
             KCycleTighterThanV,
             FcgKCycleConverges,
+            NearNullspaceOnesMatchesDefault,
+            BlockNearNullspaceSolves,
         }
 
         public TestType Type;
@@ -89,6 +91,8 @@ public class doubleAMGSolverTests
                 case TestType.KCycleSolves:            KCycleSolves(); break;
                 case TestType.KCycleTighterThanV:      KCycleTighterThanV(); break;
                 case TestType.FcgKCycleConverges:      FcgKCycleConverges(); break;
+                case TestType.NearNullspaceOnesMatchesDefault: NearNullspaceOnesMatchesDefault(); break;
+                case TestType.BlockNearNullspaceSolves:        BlockNearNullspaceSolves(); break;
             }
         }
 
@@ -425,6 +429,69 @@ public class doubleAMGSolverTests
             arena.Dispose();
         }
 
+        // The explicit-near-nullspace overload with B = ones (m=1) reproduces the scalar default.
+        void NearNullspaceOnesMatchesDefault()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = Poisson2D(ref arena, 16, 16);
+            int n = A.M_Rows;
+            var b = arena.doubleRandomVec(n, -1f, 1f, 0x4E01u);
+
+            var B = arena.doubleMat(n, 1);
+            for (int i = 0; i < n; i++) B[i, 0] = (double)1;
+            var amg = arena.doubleAMG(in A, in B, out var info);
+            Assert.IsTrue(info.Solved);
+
+            var x = arena.doubleVec(n);
+            for (int i = 0; i < n; i++) x[i] = (double)0;
+            var si = MG.solve(in amg, in b, ref x, 100, Tol());
+            Assert.IsTrue(si.status == IterativeSolveStatus.Converged);
+            Assert.IsTrue(RelResidual(in A, in x, in b) <= Tol());
+
+            amg.Dispose();
+            arena.Dispose();
+        }
+
+        // A vector problem: two decoupled 1D Laplacians stacked into BR=2 blocks. The near-nullspace
+        // is the two component-constants (m=2). AMG built with that B coarsens and solves; coarse
+        // block size becomes m=2.
+        void BlockNearNullspaceSolves()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int nb = 40, BR = 2, m = 2, n = nb * BR;
+            var bld = arena.doubleBSRBuilder(nb, nb, BR, BR, 3 * nb);
+            var diag = arena.doubleMat(BR, BR); var off = arena.doubleMat(BR, BR);
+            for (int r = 0; r < BR; r++)
+                for (int c = 0; c < BR; c++)
+                { diag[r, c] = r == c ? (double)2 : (double)0; off[r, c] = r == c ? (double)(-1) : (double)0; }
+            for (int i = 0; i < nb; i++)
+            {
+                bld.AddBlock(i, i, in diag);
+                if (i > 0) bld.AddBlock(i, i - 1, in off);
+                if (i < nb - 1) bld.AddBlock(i, i + 1, in off);
+            }
+            var A = bld.ToBSR(ref arena);
+
+            // Near-nullspace: column c is the constant of component c (1 at rows ≡ c mod BR).
+            var B = arena.doubleMat(n, m);
+            for (int r = 0; r < n; r++)
+                for (int c = 0; c < m; c++) B[r, c] = (r % BR) == c ? (double)1 : (double)0;
+
+            var amg = arena.doubleAMG(in A, in B, out var info);
+            Assert.IsTrue(info.Solved);
+            Assert.IsTrue(info.levels >= 2);
+
+            var b = arena.doubleRandomVec(n, -1f, 1f, 0x4E11u);
+            var x = arena.doubleVec(n);
+            for (int i = 0; i < n; i++) x[i] = (double)0;
+            var si = MG.solve(in amg, in b, ref x, 200, Tol());
+            Assert.IsTrue(si.status == IterativeSolveStatus.Converged);
+            Assert.IsTrue(RelResidual(in A, in x, in b) <= Tol());
+
+            amg.Dispose();
+            arena.Dispose();
+        }
+
         // A K-cycle preconditioner (variable operator) drives Flexible CG to convergence.
         void FcgKCycleConverges()
         {
@@ -462,6 +529,8 @@ public class doubleAMGSolverTests
     [Test] public void KCycleSolvesTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.KCycleSolves }.Run();
     [Test] public void KCycleTighterThanVTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.KCycleTighterThanV }.Run();
     [Test] public void FcgKCycleConvergesTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.FcgKCycleConverges }.Run();
+    [Test] public void NearNullspaceOnesMatchesDefaultTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.NearNullspaceOnesMatchesDefault }.Run();
+    [Test] public void BlockNearNullspaceSolvesTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.BlockNearNullspaceSolves }.Run();
 
     // Managed-thread reject: an AMG preconditioner that is not a fixed SPD operator (asymmetric
     // V-cycle here; a K-cycle likewise) is rejected by Krylov.pcg — the preconditioner constructs

@@ -50,6 +50,18 @@ unsmoothed Galerkin RAP collapses to a deterministic segmented assembly), Chebys
     check. FCG note: on a verify-fail-continue the PR beta pairs the true residual with the recursive
     r_old — tiny perturbation, typically helpful, no fix (reviewer-confirmed informational).
 
+## AMG near-nullspace overload (arbitrary m)
+- 2026-07-18 | arena.fProxyAMG(in A, in Bnear, opts/…) — build with a user-supplied near-nullspace
+  B (A.M_Rows x m, row-major): the low-energy modes the coarse grid must represent. Scalar = m=1
+  constant (the no-B overload, which now just builds ones and delegates); vector problems pass rigid-
+  body modes (3D elasticity: 3 translations m=3, or 6 with rotations). Coarse block size = m. The
+  guts (tentativeProlongator/galerkinRAP) were already generic over m = B.N_Cols — this only refactors
+  the setup: the old public builder became internal fProxyAMGBuild(in A, in B0, …); four public
+  wrappers (m=1 default + Bnear, each × default-opts). NOT multi-RHS — B is a one-time SETUP input
+  (consumed into the prolongator), not a per-solve rhs. Tests: NearNullspaceOnesMatchesDefault (m=1
+  path), BlockNearNullspaceSolves (m=2, two decoupled Laplacians in BR=2 blocks, near-nullspace = the
+  two component-constants — builds+solves). This is the deferred "elasticity m=3" item.
+
 ## fProxyAMG / MG.solve / fProxyAMGPreconditioner
 - 2026-07-18 | AMG-5: the hierarchy + V-cycle + solve/preconditioner API wiring the four setup
   kernels together. Setup loop (arena.fProxyAMG): aggregate → tentativeProlongator (scalar B=ones,
