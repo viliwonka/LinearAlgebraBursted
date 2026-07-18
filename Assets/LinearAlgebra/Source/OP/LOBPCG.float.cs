@@ -590,7 +590,7 @@ namespace LinearAlgebra
         /// Zero-alloc (at O(n) scale) LOBPCG primitive, UNPRECONDITIONED. Forwards into
         /// <see cref="lobpcg{TOp,TPre}"/> via <see cref="floatIdentityPreconditioner"/> -- a
         /// one-line forwarder rather than a hand-duplicated loop (unlike <see cref="Krylov.cg{TOp}"/>
-        /// / <see cref="Krylov.pcg{TOp,TPre}"/>'s literal duplication -- LOBPCG's loop is
+        /// / <see cref="Krylov.cg{TOp,TPre}"/>'s literal duplication -- LOBPCG's loop is
         /// considerably larger, so this method mirrors the SAME "single source of truth, thin
         /// forwarder" pattern already used everywhere else in this file for dense/BSR wrapping,
         /// just applied one level further).
@@ -810,7 +810,7 @@ namespace LinearAlgebra
         /// zero-alloc primitive. Forwards into <see cref="lobpcg{TOp,TPre}"/> via
         /// <c>floatBSROperator</c>/<c>floatBlockJacobi</c>. This is the preconditioned entry point
         /// the sparse-BSR eigensolver roadmap calls out (matvec + block-Jacobi, matching how
-        /// <see cref="Krylov.pcg(in floatBSR, in floatBlockJacobi, in floatN, ref floatN)"/>
+        /// <see cref="Krylov.cg(in floatBSR, in floatBlockJacobi, in floatN, ref floatN)"/>
         /// consumes it).
         /// </summary>
         public static LOBPCGInfo lobpcg(in floatBSR A, in floatBlockJacobi M, ref floatLOBPCGCache ws,

@@ -12,7 +12,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// Preconditioned MINRES (Krylov.pminres, Paige-Saunders driven by z = M^-1 r). Mirrors the pcg
+// Preconditioned MINRES (Krylov.pminres, Paige-Saunders driven by z = M^-1 r). Mirrors the cg
 // overload ladder (generic core + arena-alloc + default-params, then the same three rungs for the
 // BSR + BlockJacobi/SSOR/IC0 concrete pairs) and minres's indefinite regime. Coverage:
 //   (a) SPD system + Jacobi/diagonal preconditioner converges to the same answer as a direct LU

@@ -12,27 +12,27 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// One-level Schwarz preconditioners: floatAdditiveSchwarz (symmetric AS, valid for pcg/pminres)
+// One-level Schwarz preconditioners: floatAdditiveSchwarz (symmetric AS, valid for cg/pminres)
 // and floatRestrictedSchwarz (RAS, non-symmetric, pbiCGStab only).
 // Correctness anchors (spec docs/dev/spec-additive-schwarz-preconditioner.md, section Tests):
 //   (1) EXACTNESS: one subdomain covering the whole matrix (subdomainSize >= N), overlap 0 -> the
-//       local factor IS A's factor -> M = A^-1: Apply matches a dense solve and pcg converges in 1
+//       local factor IS A's factor -> M = A^-1: Apply matches a dense solve and cg converges in 1
 //       iteration.
 //   (2) AS SYMMETRY: <M r1, r2> == <r1, M r2> on Laplacian2D and PenalizedGrid3D, several
 //       (subdomainSize, overlap) combos including ragged last subdomains -- the CG-validity contract.
 //   (3) RAS SOLVES: pbiCGStab + RAS converges (residual-checked) on a general diag-dominant square
 //       and on an SPD matrix.
-//   (4) HEADLINE (iterations): AS-pcg reaches tol in fewer iterations than plain CG AND than
-//       block-Jacobi-pcg, aggregated over 3 random right-hand sides (residual-based, counts read
+//   (4) HEADLINE (iterations): AS-cg reaches tol in fewer iterations than plain CG AND than
+//       block-Jacobi-cg, aggregated over 3 random right-hand sides (residual-based, counts read
 //       back to the managed thread). IC0 is NOT compared (reference-only per spec).
 //   (5) SYMMETRIC-storage A produces bit-identical M^-1 r to the same A in full storage.
 //   (6) DETERMINISM: two builds + applies -> byte-identical z.
-//   (7) THROUGH-IJOB: AS built once on the main thread, pcg run inside a Burst IJob.Run() twice,
+//   (7) THROUGH-IJOB: AS built once on the main thread, cg run inside a Burst IJob.Run() twice,
 //       gives bit-identical iteration count and x; the managed path matches to tolerance.
 //   (8) BREAKDOWN: an indefinite local block makes AS's out-info report NotPositiveDefinite; a
 //       singular local block makes RAS's out-info report Singular -- both without throwing, while
 //       the throwing ctors throw.
-//   CG-SAFETY: RAS has NO pcg/pminres overload (it is not symmetric) -- Krylov.pcg(A, ras, ...)
+//   CG-SAFETY: RAS has NO cg/pminres overload (it is not symmetric) -- Krylov.cg(A, ras, ...)
 //       would not compile. That absence is the type-system guard; it cannot be asserted at runtime.
 //
 // "Beats X" is always RESIDUAL-based (||b - A x||^2 <= (C*tol)^2 ||b||^2), never a per-element
@@ -146,11 +146,11 @@ public class floatSchwarzPreconditionerTests
             var Adense = A.ToDense(ref arena);
             AssertVecMatchesInverse(in z, in Adense, in r, ref arena, Tol());
 
-            // Exact preconditioner -> pcg converges in one step.
+            // Exact preconditioner -> cg converges in one step.
             var xTrue = arena.floatRandomVec(n, 0.5f, 1.5f, 950003u);
             var b = BSR.spMV(in A, in xTrue);
             var x = arena.floatVec(n);
-            var info = Krylov.pcg(in A, in M, in b, ref x, 4 * n, Consts.floatSqrtEps);
+            var info = Krylov.cg(in A, in M, in b, ref x, 4 * n, Consts.floatSqrtEps);
             Assert.IsTrue(info.Solved);
             Assert.IsTrue(info.iterations <= 1);
 
@@ -341,7 +341,7 @@ public class floatSchwarzPreconditionerTests
     }
 
     // ================================================================================
-    // (4) Headline: AS-pcg beats plain CG AND block-Jacobi-pcg in iterations, aggregated over
+    // (4) Headline: AS-cg beats plain CG AND block-Jacobi-cg in iterations, aggregated over
     // 3 random right-hand sides. All numbers written to NativeArrays; asserts on managed thread.
     // ================================================================================
     [BurstCompile(CompileSynchronously = true)]
@@ -397,9 +397,9 @@ public class floatSchwarzPreconditionerTests
             var xCG = arena.floatVec(n);
             var infoCG = Krylov.cg(in A, in b, ref xCG, maxIter, tol);
             var xJ = arena.floatVec(n);
-            var infoJ = Krylov.pcg(in A, in bJ, in b, ref xJ, maxIter, tol);
+            var infoJ = Krylov.cg(in A, in bJ, in b, ref xJ, maxIter, tol);
             var xA = arena.floatVec(n);
-            var infoA = Krylov.pcg(in A, in asM, in b, ref xA, maxIter, tol);
+            var infoA = Krylov.cg(in A, in asM, in b, ref xA, maxIter, tol);
 
             iters[trial * 3 + 0] = infoCG.iterations;
             iters[trial * 3 + 1] = infoJ.iterations;
@@ -421,7 +421,7 @@ public class floatSchwarzPreconditionerTests
     }
 
     // Solve-only job for the through-IJob determinism test: AS is built ONCE on the main thread and
-    // passed in by value; the job runs pcg and records the iteration count.
+    // passed in by value; the job runs cg and records the iteration count.
     [BurstCompile(CompileSynchronously = true)]
     public struct SchwarzSolveJob : IJob
     {
@@ -435,7 +435,7 @@ public class floatSchwarzPreconditionerTests
 
         public void Execute()
         {
-            var info = Krylov.pcg(in A, in M, in b, ref x, maxIter, tol);
+            var info = Krylov.cg(in A, in M, in b, ref x, maxIter, tol);
             iters[0] = info.iterations;
         }
     }
@@ -538,7 +538,7 @@ public class floatSchwarzPreconditionerTests
 
         // Managed (non-Burst) path: consistent to tolerance (SIMD reassociation may differ).
         var x3 = arena.floatVec(n);
-        var infoM = Krylov.pcg(in A, in M, in b, ref x3, maxIter, tol);
+        var infoM = Krylov.cg(in A, in M, in b, ref x3, maxIter, tol);
         Assert.IsTrue(infoM.Solved);
         float consistencyTol = 1e-3f;
         for (int i = 0; i < n; i++)

@@ -82,8 +82,8 @@ true` reads as "solved") so `if (solve(...))` call shapes keep compiling:
 |---|---|---|
 | `DirectSolveInfo` | `status : DirectSolveStatus` | LU, CHO, un-pivoted QR/LQ, triangular solves — no rank concept |
 | `RankInfo` | `status`, `rank` | QRCP (`solveInPlace`), CHOP, and the SVD-backed rank-revealing calls (`pinvSolve`, `pseudoInverse`, `nullspaceBasis`, `rangeBasis`) |
-| `SolveInfo` | `rnorm`, `iterations`, `status : IterativeSolveStatus` | square iterative solvers (`cg`/`pcg`/`minres`/`biCGStab`/`cgne`) |
-| `LstsqInfo` | `rnorm`, `Arnorm`, `xnorm`, `iterations`, `status` | least-squares Krylov solvers (`cgls`/`lsqr`/`lsmr`) |
+| `SolveInfo` | `rnorm`, `iterations`, `status : IterativeSolveStatus` | square iterative solvers (`cg`/`minres`/`biCGStab`/`gmres`) |
+| `LstsqInfo` | `rnorm`, `Arnorm`, `xnorm`, `iterations`, `status` | least-squares Krylov solvers (`lsqr`/`lsmr`) |
 
 `DirectSolveStatus`: `Success, Singular, NotPositiveDefinite, Indefinite, RankDeficient,
 NotConverged` (the last reported by the SVD-backed rank-revealing calls when the SVD fails to

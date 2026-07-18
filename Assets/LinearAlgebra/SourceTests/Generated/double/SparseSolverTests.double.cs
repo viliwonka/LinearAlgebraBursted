@@ -13,8 +13,8 @@ using Unity.Jobs;
 using Unity.Mathematics;
 
 // Phase-2 sparse-solver test suite: IdoubleLinearOperator / doubleDenseOperator /
-// doubleBSROperator / doubleBlockJacobi / Krylov.cg&lt;TOp&gt; / Krylov.pcg&lt;TOp,TPre&gt;, plus
-// the concrete cg/pcg convenience overloads for doubleMxN and doubleBSR. Every
+// doubleBSROperator / doubleBlockJacobi / Krylov.cg&lt;TOp&gt; / Krylov.cg&lt;TOp,TPre&gt;, plus
+// the concrete cg convenience overloads for doubleMxN and doubleBSR. Every
 // BSR system is cross-checked against the equivalent dense system (same pattern as
 // doubleSparseBSRTests: build the SAME system in both forms and compare).
 //
@@ -344,7 +344,7 @@ public class doubleSparseSolverTests
             Assert.IsTrue(okCG);
 
             var xPCG = arena.doubleVec(dim);
-            bool okPCG = Krylov.pcg(in bsm, in M, in b, ref xPCG);
+            bool okPCG = Krylov.cg(in bsm, in M, in b, ref xPCG);
             Assert.IsTrue(okPCG);
 
             AssertVecEq(in xCG, in xPCG, Tol());
@@ -444,7 +444,7 @@ public class doubleSparseSolverTests
                 if (minPCG < 0)
                 {
                     var xPCG = arena.doubleVec(dim);
-                    if (Krylov.pcg(in bsm, in M, in b, ref xPCG, budget, Consts.doubleSqrtEps))
+                    if (Krylov.cg(in bsm, in M, in b, ref xPCG, budget, Consts.doubleSqrtEps))
                         minPCG = budget;
                 }
             }
@@ -508,14 +508,14 @@ public class doubleSparseSolverTests
             var b = arena.doubleRandomVec(dim, -1f, 1f, 9002);
 
             var x = arena.doubleVec(dim);
-            bool ok = Krylov.pcg(in bsm, in M, in b, ref x);
+            bool ok = Krylov.cg(in bsm, in M, in b, ref x);
             Assert.IsTrue(ok);
 
             // Feed the converged solution back as the initial guess -- a single iteration's
             // worth of budget must still report convergence (matches
             // doubleConjugateGradientTests.AlreadyConverged's dense-CG counterpart).
             var xWarm = x.Copy();
-            bool okWarm = Krylov.pcg(in bsm, in M, in b, ref xWarm, 1, Consts.doubleSqrtEps);
+            bool okWarm = Krylov.cg(in bsm, in M, in b, ref xWarm, 1, Consts.doubleSqrtEps);
             Assert.IsTrue(okWarm);
             AssertVecEq(in x, in xWarm, Tol());
 
@@ -531,11 +531,11 @@ public class doubleSparseSolverTests
             arena.Dispose();
         }
 
-        // ---- 8. pcg breakdown guard: a non-SPD preconditioner bails out (returns false) -------
+        // ---- 8. cg breakdown guard: a non-SPD preconditioner bails out (returns false) -------
         //
         // The preconditioned inner product <r,z> must stay positive for PCG to be well-defined.
         // doubleNegatePreconditioner deliberately returns z = -r, so rzold = <r,-r> = -||r||^2 < 0
-        // -- the pcg `if (!(rzold > 0)) return false;` guard must catch it and
+        // -- the cg `if (!(rzold > 0)) return false;` guard must catch it and
         // return false, rather than looping with a wrong-signed alpha/beta (silent divergence /
         // NaN). A itself is a genuine SPD system so the failure is attributable to the
         // preconditioner, not the operator.
@@ -550,7 +550,7 @@ public class doubleSparseSolverTests
             var b = arena.doubleRandomVec(dim, -1f, 1f, 5502); // nonzero rhs -> not the b==0 shortcut
 
             var x = arena.doubleVec(dim);
-            bool ok = Krylov.pcg(in op, in pre, in b, ref x, dim, Consts.doubleSqrtEps);
+            bool ok = Krylov.cg(in op, in pre, in b, ref x, dim, Consts.doubleSqrtEps);
             Assert.IsFalse(ok);
 
             arena.Dispose();
@@ -1360,8 +1360,8 @@ public class doubleSparseSolverTests
             AssertClose(rnorm, math.sqrt(acc), tol);
         }
 
-        // The square solvers (cg/pcg/minres/biCGStab) RETURN an SolveInfo
-        // whose rnorm is filled from each solver's already-tracked residual -- cg/pcg a live
+        // The square solvers (cg/minres/biCGStab) RETURN an SolveInfo
+        // whose rnorm is filled from each solver's already-tracked residual -- cg a live
         // ‖r‖ (√ of the dot they already form for the convergence test), minres its phibar (the
         // MINRES identity), biCGStab its running ‖r‖ -- never a fresh matvec. Pin that free rnorm
         // against an INDEPENDENTLY recomputed ‖b - A x‖ for every solver + operator shape, plus a
@@ -1372,7 +1372,7 @@ public class doubleSparseSolverTests
             var arena = new Arena(Allocator.Persistent);
             double tol = LooseTol();
 
-            // ---- SPD system: cg, pcg (block-Jacobi over BSR), minres ----
+            // ---- SPD system: cg (plain and block-Jacobi over BSR), minres ----
             int n = 12;
             var Aspd = BuildDenseSPD(ref arena, n, 52001);
             var bspd = arena.doubleRandomVec(n, -1f, 1f, 52002);
@@ -1386,7 +1386,7 @@ public class doubleSparseSolverTests
             AssertResidualNorm(in Aspd, in bspd, in xg, ig.rnorm, tol);
 
             var xp = arena.doubleVec(n);
-            var ip = Krylov.pcg(in bsm, in M, in bspd, ref xp, maxIter, Consts.doubleSqrtEps);
+            var ip = Krylov.cg(in bsm, in M, in bspd, ref xp, maxIter, Consts.doubleSqrtEps);
             Assert.IsTrue(ip.Solved && ip.iterations >= 1);
             AssertResidualNormBSR(in bsm, in bspd, in xp, ip.rnorm, tol);   // BSR solve -> BSR recompute
 
@@ -1415,7 +1415,7 @@ public class doubleSparseSolverTests
             AssertResidualNorm(in Aspd, in bspd, in xh, ih.rnorm, tol);
 
             var xhp = arena.doubleVec(n);
-            var ihp = Krylov.pcg(in bsm, in M, in bspd, ref xhp, 1, Consts.doubleSqrtEps);
+            var ihp = Krylov.cg(in bsm, in M, in bspd, ref xhp, 1, Consts.doubleSqrtEps);
             Assert.IsTrue(ihp.status == IterativeSolveStatus.MaxIterations && ihp.iterations == 1);
             AssertResidualNormBSR(in bsm, in bspd, in xhp, ihp.rnorm, tol);
 
@@ -1479,7 +1479,7 @@ public class doubleSparseSolverTests
     }
 
     // Deliberately non-SPD test-double preconditioner: z = M^-1 r := -r, so <r,z> = -||r||^2 <= 0.
-    // Used only by PcgNonSpdPreconditionerBreaksDown to exercise pcg's rzold>0 breakdown guard.
+    // Used only by PcgNonSpdPreconditionerBreaksDown to exercise cg's rzold>0 breakdown guard.
     public struct doubleNegatePreconditioner : IdoublePreconditioner
     {
         public bool IsIdentity => false;
@@ -1747,9 +1747,9 @@ public class doubleSparseSolverTests
         finally { arena.Dispose(); }
     }
 
-    // ---- scratch-aliasing guards for cg / pcg --------------------------------------------
+    // ---- scratch-aliasing guards for cg / cg --------------------------------------------
     //
-    // cg/pcg throw if ANY two of their vector arguments share a Data.Ptr (the elementwise axpy
+    // cg throw if ANY two of their vector arguments share a Data.Ptr (the elementwise axpy
     // scratch updates silently corrupt on aliasing rather than self-checking). The pairs below
     // are chosen to be ones NOT already caught by a downstream Apply/dot guard, so each proves
     // the up-front distinctness check is doing real work. The guard runs before any computation,
@@ -1811,7 +1811,7 @@ public class doubleSparseSolverTests
             var z = arena.doubleVec(dim);
             var rAlias = x; // r aliases x
             Assert.Throws<ArgumentException>(() =>
-                Krylov.pcg(in A, in M, in b, ref x, ref rAlias, ref p, ref Ap, ref z, dim, Consts.doubleSqrtEps));
+                Krylov.cg(in A, in M, in b, ref x, ref rAlias, ref p, ref Ap, ref z, dim, Consts.doubleSqrtEps));
         }
         finally { arena.Dispose(); }
     }
@@ -1832,7 +1832,7 @@ public class doubleSparseSolverTests
             var Ap = arena.doubleVec(dim);
             var zAlias = x; // z aliases x (not caught by M.Apply's own r/z guard)
             Assert.Throws<ArgumentException>(() =>
-                Krylov.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref zAlias, dim, Consts.doubleSqrtEps));
+                Krylov.cg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref zAlias, dim, Consts.doubleSqrtEps));
         }
         finally { arena.Dispose(); }
     }
@@ -1877,14 +1877,14 @@ public class doubleSparseSolverTests
             var Ap = arena.doubleVec(dim);
             var z = arena.doubleVec(dim);
             Assert.Throws<ArgumentException>(() =>
-                Krylov.pcg(in A, in M, in b, ref xAlias, ref r, ref p, ref Ap, ref z, dim, Consts.doubleSqrtEps));
+                Krylov.cg(in A, in M, in b, ref xAlias, ref r, ref p, ref Ap, ref z, dim, Consts.doubleSqrtEps));
         }
         finally { arena.Dispose(); }
     }
 
     // ---- Phase 3 guard / aliasing cases (managed thread; Assert.Throws can't run in Burst) ----
     //
-    // MINRES/BiCGSTAB/LSQR/LSMR share cg/pcg's "every vector argument must be a distinct buffer"
+    // MINRES/BiCGSTAB/LSQR/LSMR share cg's "every vector argument must be a distinct buffer"
     // contract, enforced up front by RequireDistinctBuffers before any computation -- so the
     // operator matrix's contents are irrelevant and a bare zeroed doubleMat suffices. 1-2 aliasing
     // cases per solver (matching Phase 2's coverage) prove the guard fires; exhaustive pairwise

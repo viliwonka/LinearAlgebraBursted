@@ -146,8 +146,8 @@ tested; the surface is still being finalized ahead of a `1.0`.
 
 - Decompositions: LU, Cholesky, QR & LQ (level-3 blocked, compact-WY), pivoted variants
   (QRCP), and SVD (thin, truncated GKL/Lanczos, randomized).
-- Solvers: direct, least-squares (over-determined), min-norm (under-determined, CGNE/Craig),
-  and iterative — CG/PCG, MINRES, BiCGSTAB, CGLS/LSQR/LSMR with Tikhonov damping and
+- Solvers: direct, least-squares (over-determined), min-norm (under-determined),
+  and iterative — CG, MINRES, BiCGSTAB, GMRES, LSQR/LSMR with Tikhonov damping and
   Jacobi / column-equilibration preconditioners. Every solver returns a diagnostics struct.
 - Eigensolvers: dominant eigenpair (power iteration), symmetric (Householder + QL,
   `Eigen.symmetric`), non-symmetric eigenvalues (Francis QR), and matrix-free

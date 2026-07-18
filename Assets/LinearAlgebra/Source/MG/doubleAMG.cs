@@ -54,10 +54,10 @@ namespace LinearAlgebra.Sparse
         /// hierarchy would emit NaN — the entry points throw instead.</summary>
         public bool Usable => _usable;
         /// <summary>True for a K-cycle hierarchy: the cycle is a VARIABLE operator, so it must be
-        /// driven by <see cref="LinearAlgebra.Krylov"/>.fcg (not pcg / not a fixed-M pcg precond).</summary>
+        /// driven by <see cref="LinearAlgebra.Krylov"/>.fcg (not cg / not a fixed-M cg precond).</summary>
         public bool IsKCycle => _cycle == 1;
-        /// <summary>True iff the cycle is a fixed SPD operator valid for pcg: a symmetric (Pre == Post)
-        /// V-cycle. A K-cycle is never pcg-valid.</summary>
+        /// <summary>True iff the cycle is a fixed SPD operator valid for cg: a symmetric (Pre == Post)
+        /// V-cycle. A K-cycle is never cg-valid.</summary>
         public bool IsCycleSymmetric => _cycle == 0 && _pre == _post;
 
         internal doubleAMG(UnsafeList<doubleBSR> A, UnsafeList<doubleBSR> P, UnsafeList<doubleChebyshev> S,

@@ -34,7 +34,7 @@ namespace LinearAlgebra.Benchmarks
         public void Execute()
         {
             for (int i = 0; i < x.N; i++) x[i] = 0f;
-            Krylov.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, 0f);
+            Krylov.cg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, 0f);
         }
     }
 
@@ -85,7 +85,7 @@ namespace LinearAlgebra.Benchmarks
         public void Execute()
         {
             for (int i = 0; i < x.N; i++) x[i] = 0f;
-            var info = Krylov.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, Tol);
+            var info = Krylov.cg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, Tol);
             Iters[0] = info.iterations;
         }
     }
@@ -103,7 +103,7 @@ namespace LinearAlgebra.Benchmarks
         public void Execute()
         {
             for (int i = 0; i < x.N; i++) x[i] = 0f;
-            var info = Krylov.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, Tol);
+            var info = Krylov.cg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, Tol);
             Iters[0] = info.iterations;
         }
     }
@@ -121,7 +121,7 @@ namespace LinearAlgebra.Benchmarks
         public void Execute()
         {
             for (int i = 0; i < x.N; i++) x[i] = 0f;
-            var info = Krylov.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, Tol);
+            var info = Krylov.cg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, Tol);
             Iters[0] = info.iterations;
         }
     }
@@ -139,7 +139,7 @@ namespace LinearAlgebra.Benchmarks
         public void Execute()
         {
             for (int i = 0; i < x.N; i++) x[i] = 0f;
-            var info = Krylov.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, Tol);
+            var info = Krylov.cg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, Tol);
             Iters[0] = info.iterations;
         }
     }
@@ -157,7 +157,7 @@ namespace LinearAlgebra.Benchmarks
         public void Execute()
         {
             for (int i = 0; i < x.N; i++) x[i] = 0f;
-            var info = Krylov.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, Tol);
+            var info = Krylov.cg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, Tol);
             Iters[0] = info.iterations;
         }
     }
@@ -175,7 +175,7 @@ namespace LinearAlgebra.Benchmarks
         public void Execute()
         {
             for (int i = 0; i < x.N; i++) x[i] = 0f;
-            var info = Krylov.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, Tol);
+            var info = Krylov.cg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, Tol);
             Iters[0] = info.iterations;
         }
     }
@@ -193,7 +193,7 @@ namespace LinearAlgebra.Benchmarks
         public void Execute()
         {
             for (int i = 0; i < x.N; i++) x[i] = 0f;
-            var info = Krylov.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, Tol);
+            var info = Krylov.cg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, Tol);
             Iters[0] = info.iterations;
         }
     }

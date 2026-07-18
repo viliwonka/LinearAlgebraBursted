@@ -10,9 +10,9 @@ namespace LinearAlgebra.Sparse
     /// <summary>
     /// An <see cref="floatAMG"/> hierarchy used as a preconditioner: Apply(r, z) runs exactly one
     /// cycle solving A z = r from a zero initial guess. A symmetric V-cycle (pre == post) is a fixed
-    /// SPD operator — pair it with <see cref="LinearAlgebra.Krylov"/>.pcg. A K-cycle is a VARIABLE
-    /// operator (inner Krylov acceleration) — pair it with <see cref="LinearAlgebra.Krylov"/>.fcg; pcg
-    /// is invalid for it (and the pcg overloads reject it). The wrapped hierarchy must outlive the
+    /// SPD operator — pair it with <see cref="LinearAlgebra.Krylov"/>.cg. A K-cycle is a VARIABLE
+    /// operator (inner Krylov acceleration) — pair it with <see cref="LinearAlgebra.Krylov"/>.fcg; cg
+    /// is invalid for it (and the cg overloads reject it). The wrapped hierarchy must outlive the
     /// preconditioner; its buffers are shared (not copied), so a single instance is not safe for
     /// concurrent Apply.
     /// </summary>
@@ -23,7 +23,7 @@ namespace LinearAlgebra.Sparse
         public floatAMGPreconditioner(in floatAMG amg) { _amg = amg; }
 
         public int Rows => _amg.Rows;
-        /// <summary>True iff the cycle is a fixed SPD operator (symmetric V-cycle) valid for pcg.</summary>
+        /// <summary>True iff the cycle is a fixed SPD operator (symmetric V-cycle) valid for cg.</summary>
         public bool IsCycleSymmetric => _amg.IsCycleSymmetric;
 
         /// <summary>z = one cycle on A z = r, zero initial guess. z must not alias r.</summary>
@@ -44,38 +44,38 @@ namespace LinearAlgebra
         /// (AMGOptions.pre == post, cycle == V); a K-cycle is variable and rejected here (use
         /// <see cref="fcg(in Sparse.floatBSR, in Sparse.floatAMGPreconditioner, in floatN, ref floatN, int, float)"/>).
         /// </summary>
-        public static SolveInfo pcg(in Sparse.floatBSR A, in Sparse.floatAMGPreconditioner M, in floatN b, ref floatN x,
+        public static SolveInfo cg(in Sparse.floatBSR A, in Sparse.floatAMGPreconditioner M, in floatN b, ref floatN x,
                                ref floatN r, ref floatN p, ref floatN Ap, ref floatN z,
                                int maxIter, float tol)
         {
             if (!M.IsCycleSymmetric)
-                throw new ArgumentException("Krylov.pcg: the AMG preconditioner is not a fixed SPD operator (needs a symmetric V-cycle, pre == post); use Krylov.fcg for a K-cycle or asymmetric cycle");
-            return pcg(new Sparse.floatBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
+                throw new ArgumentException("Krylov.cg: the AMG preconditioner is not a fixed SPD operator (needs a symmetric V-cycle, pre == post); use Krylov.fcg for a K-cycle or asymmetric cycle");
+            return cg(new Sparse.floatBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
         }
 
         /// <summary>AMG-preconditioned CG over a BSR SPD matrix — allocates four scratch vectors.</summary>
-        public static SolveInfo pcg(in Sparse.floatBSR A, in Sparse.floatAMGPreconditioner M, in floatN b, ref floatN x,
+        public static SolveInfo cg(in Sparse.floatBSR A, in Sparse.floatAMGPreconditioner M, in floatN b, ref floatN x,
                                int maxIter, float tol)
         {
             if (!M.IsCycleSymmetric)
-                throw new ArgumentException("Krylov.pcg: the AMG preconditioner is not a fixed SPD operator (needs a symmetric V-cycle, pre == post); use Krylov.fcg for a K-cycle or asymmetric cycle");
+                throw new ArgumentException("Krylov.cg: the AMG preconditioner is not a fixed SPD operator (needs a symmetric V-cycle, pre == post); use Krylov.fcg for a K-cycle or asymmetric cycle");
             floatN r  = b.floatTempVec(A.M_Rows);
             floatN p  = b.floatTempVec(A.M_Rows);
             floatN Ap = b.floatTempVec(A.M_Rows);
             floatN z  = b.floatTempVec(A.M_Rows);
-            return pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
+            return cg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
         }
 
         /// <summary>AMG-preconditioned CG with default maxIter (A.M_Rows) and tol (Consts.floatSqrtEps).</summary>
-        public static SolveInfo pcg(in Sparse.floatBSR A, in Sparse.floatAMGPreconditioner M, in floatN b, ref floatN x)
+        public static SolveInfo cg(in Sparse.floatBSR A, in Sparse.floatAMGPreconditioner M, in floatN b, ref floatN x)
         {
-            return pcg(in A, in M, in b, ref x, A.M_Rows, Consts.floatSqrtEps);
+            return cg(in A, in M, in b, ref x, A.M_Rows, Consts.floatSqrtEps);
         }
 
         /// <summary>
         /// Flexible-CG-accelerated AMG over a BSR SPD matrix — the correct pairing for a K-cycle
         /// preconditioner (variable operator). Also valid for a V-cycle. Same convenience-rung pattern
-        /// as the pcg overloads (fcg's fifth scratch vector rOld holds the previous residual).
+        /// as the cg overloads (fcg's fifth scratch vector rOld holds the previous residual).
         /// </summary>
         public static SolveInfo fcg(in Sparse.floatBSR A, in Sparse.floatAMGPreconditioner M, in floatN b, ref floatN x,
                                ref floatN r, ref floatN p, ref floatN Ap, ref floatN z, ref floatN rOld,

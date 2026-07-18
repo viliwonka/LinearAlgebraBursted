@@ -39,7 +39,7 @@ public class doubleSparseSymmetricTests
             CrossCheck_SingleBlock,    // 1x1 block grid: trivially symmetric == full (no lower triangle)
             CrossCheck_Empty,          // zero-triplet symmetric BSR: round-trips to zero dense / zero matvec
 
-            // ---- A2 solver wiring (symmetric BSR feeds cg / minres / block-Jacobi pcg) ----
+            // ---- A2 solver wiring (symmetric BSR feeds cg / minres / block-Jacobi cg) ----
             CgSymMatchesFull,
             MinresSymMatchesFull,
             PcgBlockJacobiSymMatchesFull,
@@ -531,11 +531,11 @@ public class doubleSparseSymmetricTests
             var mFull = arena.doubleBlockJacobi(in full);
 
             var xPcgSym = arena.doubleVec(dim);
-            bool okSym = Krylov.pcg(in sym, in mSym, in b, ref xPcgSym, 4 * dim, Consts.doubleSqrtEps);
+            bool okSym = Krylov.cg(in sym, in mSym, in b, ref xPcgSym, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okSym);
 
             var xPcgFull = arena.doubleVec(dim);
-            bool okFull = Krylov.pcg(in full, in mFull, in b, ref xPcgFull, 4 * dim, Consts.doubleSqrtEps);
+            bool okFull = Krylov.cg(in full, in mFull, in b, ref xPcgFull, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okFull);
 
             AssertVecEq(in xPcgSym, in xPcgFull, LooseTol());

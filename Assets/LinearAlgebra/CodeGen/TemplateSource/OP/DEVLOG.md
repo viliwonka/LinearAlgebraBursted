@@ -14,10 +14,17 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   PCG benchmark shows byte-identical iters+residuals for every CG and PCG row; (3) zero perf cost —
   identity-fold CG rows are ≤ the old hand-written body's time (the ~5% delta vs the Jul-18 baseline is
   run/thermal variance, not a real speedup — baseline file left unchanged). Confirms the pattern for
-  the rest of the family. NEXT: rename pcg→cg at call sites + drop the pcg forwarders (cosmetic/API,
-  pre-1.0); then the same merge for minres/pminres, biCGStab/pbiCGStab, gmres/pgmres; then block
-  (m-rhs) solvers written single-body from the start. See [[iterative-solver-overload-ladder]]
-  (this supersedes the keep-arity ruling, per user).
+  the rest of the family.
+- 2026-07-19 | pcg name HARD-REMOVED (user ruling): the `pcg<TOp,TPre>` explicit-scratch forwarder is
+  deleted (cg<TOp,TPre> already carries that signature); the allocating/default generic overloads and
+  all concrete `pcg(BSR,<Precond>)` overloads are renamed to `cg`; ~134 `Krylov.pcg(` call sites across
+  tests/benchmarks/the SpringLattice demo + comment mentions swept to `cg` (byte-safe sed, then the
+  `cg/pcg`→`cg` prose artifacts collapsed). Capitalized `PCG` acronym in prose + benchmark row labels
+  (`PCG-Jacobi`) LEFT — accurate description of preconditioned CG, not an API identifier. User-facing
+  docs got factual token swaps (CHANGELOG solver list, solvers.md diag-struct table, lp-lad.md
+  `Krylov.cg`); README untouched (user's). 6667/6667 green. NEXT: same merge for
+  minres/pminres, biCGStab/pbiCGStab, gmres/pgmres; then block (m-rhs) solvers single-body from the
+  start. See [[iterative-solver-overload-ladder]] (supersedes the keep-arity ruling, per user).
 
 ## Krylov.cgls / cglsJacobi removed
 - 2026-07-19 | Removed CGLS (all overloads: generic + dense + BSR + damped + transpose-optimized) and

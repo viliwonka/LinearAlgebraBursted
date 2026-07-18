@@ -14,7 +14,7 @@ using Unity.Mathematics;
 //       {1,2,3,4,6} (unrolled) plus b=5 (general runtime-BR fallback), both diagScale=1 (plain
 //       Gauss-Seidel) and a nontrivial diagScale (the parameter fProxySSOR actually drives).
 //   (b) fProxySSOR is M-SPD: a hand-rolled PCG loop (built from the same public primitives
-//       Krylov.pcg itself uses -- M.Apply/op.ApplyDot/Blas.dot/Blas.updateXR) asserts <r,z> > 0
+//       Krylov.cg itself uses -- M.Apply/op.ApplyDot/Blas.dot/Blas.updateXR) asserts <r,z> > 0
 //       every iteration and that the solve converges to the true solution -- no new production
 //       API added just to expose this; the test reads what is already public.
 //   (c) fProxySSOR converges in FEWER iterations than fProxyBlockJacobi (>=10% margin) on both
@@ -289,7 +289,7 @@ public class fProxySSORTests
             arena.Dispose();
         }
 
-        // End-to-end: the production Krylov.pcg(in fProxyBSR, in fProxySSOR, ...) three-rung
+        // End-to-end: the production Krylov.cg(in fProxyBSR, in fProxySSOR, ...) three-rung
         // overload matches a dense LU oracle (mirrors PcgBsrMatchesLUOracle for block-Jacobi).
         void PcgSSORMatchesLUOracle()
         {
@@ -303,7 +303,7 @@ public class fProxySSORTests
             var xLU = DenseSolve(in Adense, in b);
 
             var xPcg = arena.fProxyVec(dim);
-            bool okPcg = Krylov.pcg(in bsm, in M, in b, ref xPcg, 4 * dim, Consts.fProxySqrtEps);
+            bool okPcg = Krylov.cg(in bsm, in M, in b, ref xPcg, 4 * dim, Consts.fProxySqrtEps);
             Assert.IsTrue(okPcg);
             AssertVecClose(in xPcg, in xLU, SolveTol());
 
@@ -331,11 +331,11 @@ public class fProxySSORTests
             int maxIter = 8 * n;
 
             var xJ = arena.fProxyVec(n);
-            var infoJ = Krylov.pcg(in A, in bJ, in b, ref xJ, maxIter, tol);
+            var infoJ = Krylov.cg(in A, in bJ, in b, ref xJ, maxIter, tol);
             Assert.IsTrue(infoJ.Solved);
 
             var xS = arena.fProxyVec(n);
-            var infoS = Krylov.pcg(in A, in ssor, in b, ref xS, maxIter, tol);
+            var infoS = Krylov.cg(in A, in ssor, in b, ref xS, maxIter, tol);
             Assert.IsTrue(infoS.Solved);
 
             Assert.IsTrue((double)infoS.iterations <= (double)infoJ.iterations * 0.9);
@@ -357,11 +357,11 @@ public class fProxySSORTests
             int maxIter = 8 * n;
 
             var xJ = arena.fProxyVec(n);
-            var infoJ = Krylov.pcg(in A, in bJ, in b, ref xJ, maxIter, tol);
+            var infoJ = Krylov.cg(in A, in bJ, in b, ref xJ, maxIter, tol);
             Assert.IsTrue(infoJ.Solved);
 
             var xS = arena.fProxyVec(n);
-            var infoS = Krylov.pcg(in A, in ssor, in b, ref xS, maxIter, tol);
+            var infoS = Krylov.cg(in A, in ssor, in b, ref xS, maxIter, tol);
             Assert.IsTrue(infoS.Solved);
 
             Assert.IsTrue((double)infoS.iterations <= (double)infoJ.iterations * 0.9);

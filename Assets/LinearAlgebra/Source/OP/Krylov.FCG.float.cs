@@ -14,14 +14,14 @@ namespace LinearAlgebra
         /// Flexible Conjugate Gradient (Notay 2000): preconditioned CG that stays valid when the
         /// preconditioner M VARIES from iteration to iteration — the case a Krylov-accelerated
         /// multigrid (K-cycle) or any inner-iterative preconditioner produces, where plain
-        /// <see cref="pcg{TOp,TPre}(in TOp, in TPre, in floatN, ref floatN, ref floatN, ref floatN, ref floatN, ref floatN, int, float)"/>
-        /// loses conjugacy. The only change from pcg is the Polak–Ribière direction coefficient
-        /// beta = &lt;z_new, r_new − r_old&gt; / &lt;z_old, r_old&gt; (vs pcg's Fletcher–Reeves
+        /// <see cref="cg{TOp,TPre}(in TOp, in TPre, in floatN, ref floatN, ref floatN, ref floatN, ref floatN, ref floatN, int, float)"/>
+        /// loses conjugacy. The only change from cg is the Polak–Ribière direction coefficient
+        /// beta = &lt;z_new, r_new − r_old&gt; / &lt;z_old, r_old&gt; (vs cg's Fletcher–Reeves
         /// &lt;z_new, r_new&gt; / &lt;z_old, r_old&gt;); for a CONSTANT SPD M the cross term
-        /// &lt;z_new, r_old&gt; vanishes and this reduces to pcg exactly. Requires one extra scratch
+        /// &lt;z_new, r_old&gt; vanishes and this reduces to cg exactly. Requires one extra scratch
         /// vector rOld and one extra dot per iteration.
         ///
-        /// Same contract as pcg: A must be SPD, M applies M⁻¹, x is a warm-startable initial guess
+        /// Same contract as cg: A must be SPD, M applies M⁻¹, x is a warm-startable initial guess
         /// overwritten with the solution, tol is the relative true-residual tolerance, and a
         /// non-positive &lt;r, z&gt; reports Breakdown (M not SPD). r/p/Ap/z/rOld/x/b must be
         /// distinct length-A.Rows vectors.
@@ -52,7 +52,7 @@ namespace LinearAlgebra
             if (maxIter < 1)
                 throw new ArgumentException("fcg: maxIter must be >= 1");
 
-            // Aliasing guard -- rOld joins pcg's r/p/Ap/z/x/b set (the flexible beta reads the
+            // Aliasing guard -- rOld joins cg's r/p/Ap/z/x/b set (the flexible beta reads the
             // previous residual out of it).
             unsafe
             {
@@ -131,7 +131,7 @@ namespace LinearAlgebra
                     return MakeSolveInfo(IterativeSolveStatus.Breakdown, k + 1, math.sqrt(rr));
 
                 // Flexible (Polak–Ribière) beta = <z_new, r_new − r_old> / <z_old, r_old>. For a
-                // constant SPD M this equals pcg's rznew/rzold (the <z_new, r_old> term is zero).
+                // constant SPD M this equals cg's rznew/rzold (the <z_new, r_old> term is zero).
                 float beta = (rznew - Blas.dot(z, rOld)) / rzold;
 
                 p.scaleAddInPlace(beta, z);                 // p = beta p + z
@@ -145,7 +145,7 @@ namespace LinearAlgebra
         /// <summary>
         /// Flexible CG — allocates five scratch vectors from the arena and calls the zero-alloc
         /// primitive. Use when the preconditioner varies between iterations (K-cycle multigrid,
-        /// inner-iterative M); prefer <see cref="pcg{TOp,TPre}(in TOp, in TPre, in floatN, ref floatN, int, float)"/>
+        /// inner-iterative M); prefer <see cref="cg{TOp,TPre}(in TOp, in TPre, in floatN, ref floatN, int, float)"/>
         /// for a fixed SPD preconditioner.
         /// </summary>
         public static SolveInfo fcg<TOp, TPre>(in TOp A, in TPre M, in floatN b, ref floatN x,

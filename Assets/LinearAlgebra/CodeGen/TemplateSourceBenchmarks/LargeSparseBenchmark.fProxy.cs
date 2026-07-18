@@ -31,13 +31,13 @@ namespace LinearAlgebra.Benchmarks
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SpPcgJobFProxy : IJob { public fProxyBSR A; public fProxyBlockJacobi M; public fProxyN b, x, r, p, Ap, z; public int K; public fProxy tol; public NativeArray<double> outInfo;
-        public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, tol); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
+        public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.cg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, tol); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
 
     // SSOR twin of SpPcgJobFProxy (same reuse for fixed-K throughput and convergence-comparison
     // rows).
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SpPcgSSORJobFProxy : IJob { public fProxyBSR A; public fProxySSOR M; public fProxyN b, x, r, p, Ap, z; public int K; public fProxy tol; public NativeArray<double> outInfo;
-        public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, tol); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
+        public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.cg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, tol); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SpMinresJobFProxy : IJob { public fProxyBSR A; public fProxyN b, x, y, r1, r2, v, w, w1, w2; public int K; public NativeArray<double> outInfo;

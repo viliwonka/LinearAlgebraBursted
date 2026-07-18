@@ -24,7 +24,7 @@ namespace LinearAlgebra
         /// Unlike <see cref="minres{TOp}"/>, the recursively tracked phibar is the M⁻¹-weighted
         /// residual norm once M ≠ I, not ‖b-Ax‖ -- so a claimed Converged exit is verified with
         /// one fresh r = b-Ax before it is trusted (falls through and keeps iterating on a failed
-        /// verify, mirroring <see cref="pcg{TOp,TPre}"/>), and the MaxIterations exit also
+        /// verify, mirroring <see cref="cg{TOp,TPre}"/>), and the MaxIterations exit also
         /// reports one freshly computed true residual instead of phibar. Only Breakdown reports
         /// the unverified phibar estimate -- the same carve-out <see cref="SolveInfo"/> documents
         /// for every solver's Breakdown exit.
@@ -86,7 +86,7 @@ namespace LinearAlgebra
             M.Apply(in r1, ref z);
             fProxy betaSq = Blas.dot(r1, z);
 
-            // Non-SPD preconditioner (or a non-positive <r1, M^-1 r1>): mirrors pcg's
+            // Non-SPD preconditioner (or a non-positive <r1, M^-1 r1>): mirrors cg's
             // !(rzold > 0) breakdown guard.
             if (!(betaSq > (fProxy)0))
                 return MakeSolveInfo(IterativeSolveStatus.Breakdown, 0, math.sqrt(trueRR0));
@@ -169,7 +169,7 @@ namespace LinearAlgebra
 
                 // phibar is the M^-1-weighted residual norm once preconditioned, not ‖b-Ax‖ --
                 // verify with one fresh residual before trusting a claimed convergence (mirrors
-                // pcg's verify-at-exit); fall through and keep iterating if the verify fails. y and
+                // cg's verify-at-exit); fall through and keep iterating if the verify fails. y and
                 // v are both idle at this point in the iteration (y: recycled garbage awaiting next
                 // iteration's A.Apply; v: fully consumed by the combine3 call above), so they are
                 // reused as scratch instead of allocating.

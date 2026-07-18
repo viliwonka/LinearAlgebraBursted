@@ -121,7 +121,7 @@ public class doubleKrylovFusedKernelTests
             arena.Dispose();
         }
 
-        // ---- updateXR, square case (cg/pcg): x += a*p ; r -= a*q ; return dot(r,r) ----
+        // ---- updateXR, square case (cg): x += a*p ; r -= a*q ; return dot(r,r) ----
         void UpdateXRBitIdenticalSquare()
         {
             var arena = new Arena(Allocator.Persistent);

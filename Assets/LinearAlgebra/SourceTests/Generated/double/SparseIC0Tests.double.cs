@@ -123,11 +123,11 @@ public class doubleSparseIC0Tests
             int maxIter = 8 * n;
 
             var xJ = arena.doubleVec(n);
-            var infoJ = Krylov.pcg(in A, in bJ, in b, ref xJ, maxIter, tol);
+            var infoJ = Krylov.cg(in A, in bJ, in b, ref xJ, maxIter, tol);
             Assert.IsTrue(infoJ.Solved);
 
             var xI = arena.doubleVec(n);
-            var infoI = Krylov.pcg(in A, in ic0, in b, ref xI, maxIter, tol);
+            var infoI = Krylov.cg(in A, in ic0, in b, ref xI, maxIter, tol);
             Assert.IsTrue(infoI.Solved);
 
             Assert.IsTrue((double)infoI.iterations <= (double)infoJ.iterations * 0.9);
@@ -149,11 +149,11 @@ public class doubleSparseIC0Tests
             int maxIter = 8 * n;
 
             var xJ = arena.doubleVec(n);
-            var infoJ = Krylov.pcg(in A, in bJ, in b, ref xJ, maxIter, tol);
+            var infoJ = Krylov.cg(in A, in bJ, in b, ref xJ, maxIter, tol);
             Assert.IsTrue(infoJ.Solved);
 
             var xI = arena.doubleVec(n);
-            var infoI = Krylov.pcg(in A, in ic0, in b, ref xI, maxIter, tol);
+            var infoI = Krylov.cg(in A, in ic0, in b, ref xI, maxIter, tol);
             Assert.IsTrue(infoI.Solved);
 
             Assert.IsTrue((double)infoI.iterations <= (double)infoJ.iterations * 0.9);

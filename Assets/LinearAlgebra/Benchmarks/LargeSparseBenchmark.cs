@@ -40,9 +40,9 @@ namespace LinearAlgebra.Benchmarks
     // Every Krylov timing is a FIXED K iterations at tol=0 (deterministic timing; the residual column shows
     // how converged, not just how fast). All workspace is pre-allocated ONCE and reused across timed
     // samples; every solve runs inside a [BurstCompile] IJob.
-    //   1. spMV throughput; 2. square SPD (cg/pcg/minres); 3. square non-symmetric (biCGStab);
-    //   4. tall rectangular least-squares m=2n (cgls/lsqr/lsmr); 5. b=1 scalar stencil SPD
-    //   (cg/pcg/minres, low-fill R1-fusion visibility); 6. Lanczos (throughput);
+    //   1. spMV throughput; 2. square SPD (cg/minres); 3. square non-symmetric (biCGStab);
+    //   4. tall rectangular least-squares m=2n (lsqr/lsmr); 5. b=1 scalar stencil SPD
+    //   (cg/minres, low-fill R1-fusion visibility); 6. Lanczos (throughput);
     //   7. LOBPCG smallest-k eigenpairs on a spread-spectrum grid Laplacian (precond x guard levers).
     // Every Krylov row also reports the LAST timed sample's iterations+status (fixed K/tol=0 can exit
     // early via a breakdown guard, which looks "fast" for doing less work -- see StencilSection).

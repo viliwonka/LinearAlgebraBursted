@@ -11,15 +11,15 @@ using Unity.Mathematics;
 // Flexible CG (Krylov.fcg): the variable-preconditioner CG needed by the AMG K-cycle.
 // Cases run inside a [BurstCompile] IJob (matches the other Krylov suites). Coverage:
 //   - solves an SPD BSR with a fixed SPD preconditioner (block-Jacobi), residual-based;
-//   - agrees with pcg when the preconditioner is CONSTANT (fcg's reduction property);
+//   - agrees with cg when the preconditioner is CONSTANT (fcg's reduction property);
 //   - converges with a genuinely VARIABLE preconditioner (an inner-CG apply, whose k-step
-//     iterate is a data-dependent polynomial in r) -- the case plain pcg is not built for;
+//     iterate is a data-dependent polynomial in r) -- the case plain cg is not built for;
 //   - zero-rhs short-circuit.
 public class fProxyFlexibleCGTests
 {
     // Variable preconditioner: z = (a few CG steps on A z = r from z = 0). k fixed steps of CG
     // is a NONLINEAR (data-dependent) operator in r, so the effective M changes per outer
-    // iteration -- exactly what fcg is designed to tolerate and pcg is not. Scratch vectors are
+    // iteration -- exactly what fcg is designed to tolerate and cg is not. Scratch vectors are
     // arena-owned (built on the main thread), so Apply allocates nothing.
     readonly struct InnerCgPreconditioner : IfProxyPreconditioner
     {
@@ -103,7 +103,7 @@ public class fProxyFlexibleCGTests
             arena.Dispose();
         }
 
-        // Constant SPD preconditioner: fcg's Polak–Ribière beta reduces to pcg's Fletcher–Reeves
+        // Constant SPD preconditioner: fcg's Polak–Ribière beta reduces to cg's Fletcher–Reeves
         // (the <z_new, r_old> cross term is zero for constant M), so the two track the same
         // trajectory. Asserted via iteration-count agreement -- robust, unlike an element-wise
         // solution compare whose error scales with cond(A)·residual. Both must also converge.
@@ -121,7 +121,7 @@ public class fProxyFlexibleCGTests
             for (int i = 0; i < n; i++) { xF[i] = (fProxy)0; xP[i] = (fProxy)0; }
 
             var infoF = Krylov.fcg(in op, in M, in b, ref xF, 4 * n, Tol());
-            var infoP = Krylov.pcg(in op, in M, in b, ref xP, 4 * n, Tol());
+            var infoP = Krylov.cg(in op, in M, in b, ref xP, 4 * n, Tol());
             Assert.IsTrue(infoF.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(infoP.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(RelResidual(in A, in xF, in b) <= Tol());

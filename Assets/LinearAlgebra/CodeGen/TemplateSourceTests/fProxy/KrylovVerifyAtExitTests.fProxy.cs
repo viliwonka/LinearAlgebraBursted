@@ -5,7 +5,7 @@ using NUnit.Framework;
 using Unity.Collections;
 using Unity.Mathematics;
 
-// Krylov verify-at-exit: cg/pcg recursively
+// Krylov verify-at-exit: cg recursively
 // track their residual; in float that tracked value can drift from the true b-Ax and claim
 // convergence early. When the tracked residual FIRST claims convergence, the guarded solver now
 // recomputes the true residual fresh and retests, continuing if it
@@ -235,7 +235,7 @@ public class fProxyKrylovVerifyAtExitTests
     }
 
     // ==============================================================================
-    // Lighter wiring-sanity check for pcg: confirm it still converges and its
+    // Lighter wiring-sanity check for cg: confirm it still converges and its
     // Converged-path rnorm is HONEST (matches an independently-recomputed fresh residual), i.e.
     // the verify block compiles and returns the right value for every verify-at-exit-covered
     // solver, not just cg. Well-conditioned instances (no drift-firing construction needed here --
@@ -254,7 +254,7 @@ public class fProxyKrylovVerifyAtExitTests
 
         var op = new fProxyDenseOperator(in A);
         var x = arena.fProxyVec(n);
-        var info = Krylov.pcg(op, new fProxyIdentityPreconditioner(), in b, ref x, 4 * n, Consts.fProxySqrtEps);
+        var info = Krylov.cg(op, new fProxyIdentityPreconditioner(), in b, ref x, 4 * n, Consts.fProxySqrtEps);
         Assert.IsTrue(info.Solved, info.ToString());
 
         var scratch = arena.fProxyVec(n);

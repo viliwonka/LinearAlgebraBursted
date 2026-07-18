@@ -32,7 +32,7 @@ namespace LinearAlgebra
     /// Symmetric normal-equations operator M = Aₛ · diag(D) · Aₛᵀ, presented matrix-free over any inner
     /// <typeparamref name="TInner"/> operator Aₛ -- never forms M. This is the SPD system an interior-
     /// point LP solves each iteration (D = Z S⁻¹, the primal/dual diagonal, changes every iteration), so
-    /// it lets <see cref="Krylov.pcg{TOp,TPre}"/> solve the normal equations directly. Also a general
+    /// it lets <see cref="Krylov.cg{TOp,TPre}"/> solve the normal equations directly. Also a general
     /// "AᵀDA / A D Aᵀ" operator usable beyond LP.
     ///
     /// <c>Rows == Cols == Aₛ.Rows</c> (M is Aₛ.Rows square). Apply(v) = Aₛ (D ∘ (Aₛᵀ v)). Symmetric, so

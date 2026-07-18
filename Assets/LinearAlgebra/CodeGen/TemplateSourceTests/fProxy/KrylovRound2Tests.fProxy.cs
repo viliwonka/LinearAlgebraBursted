@@ -19,8 +19,8 @@ using Unity.Mathematics;
 //       vs the dense expansion: multi-block rows with BOTH even and odd stored-block counts
 //       stress the pair loop and its scalar tail. (SparseUnrollTests already sweeps these vs the
 //       dense oracle at <=2 blocks/row; this adds the >2-blocks/row tail path explicitly.)
-//   (d) cg/pcg on a small BSR SPD system agree with a dense LU oracle -- pins the ApplyDot
-//       routing end-to-end (cg/pcg's pAp = ApplyDot(p, Ap)).
+//   (d) cg on a small BSR SPD system agree with a dense LU oracle -- pins the ApplyDot
+//       routing end-to-end (cg's pAp = ApplyDot(p, Ap)).
 //
 // Value cases run inside a [BurstCompile] IJob (matches every other sparse suite). The rectangular
 // ApplyDot dimension-mismatch throw (e) is a managed [Test] with Assert.Catch (Burst cannot
@@ -47,7 +47,7 @@ public class fProxyKrylovRound2Tests
             // (c) paired spMV kernels, >2-blocks/row tail stress, full / transposed / symmetric.
             PairedSpMVFull, PairedSpMVT, PairedSpMVSym,
 
-            // (d) cg / pcg over BSR match a dense LU oracle.
+            // (d) cg / cg over BSR match a dense LU oracle.
             CgBsrMatchesLUOracle,
             PcgBsrMatchesLUOracle,
         }
@@ -432,8 +432,8 @@ public class fProxyKrylovRound2Tests
         }
 
         // ==============================================================================
-        // (d) cg / pcg over a BSR SPD system match a dense LU oracle -- exercises ApplyDot end to
-        //     end (cg/pcg compute pAp = op.ApplyDot(p, Ap) internally).
+        // (d) cg / cg over a BSR SPD system match a dense LU oracle -- exercises ApplyDot end to
+        //     end (cg compute pAp = op.ApplyDot(p, Ap) internally).
         // ==============================================================================
 
         void CgBsrMatchesLUOracle()
@@ -484,7 +484,7 @@ public class fProxyKrylovRound2Tests
             pivot.Dispose();
 
             var xPcg = arena.fProxyVec(dim);
-            bool okPcg = Krylov.pcg(in bsm, in M, in b, ref xPcg, 4 * dim, Consts.fProxySqrtEps);
+            bool okPcg = Krylov.cg(in bsm, in M, in b, ref xPcg, 4 * dim, Consts.fProxySqrtEps);
             Assert.IsTrue(okPcg);
             AssertVecClose(in xPcg, in xLU, SolveTol());
 
@@ -533,7 +533,7 @@ public class fProxyKrylovRound2Tests
     [Test] public void PairedSpMVSymTest()
         => new KrylovRound2TestJob { Type = KrylovRound2TestJob.TestType.PairedSpMVSym }.Run();
 
-    // ---- (d) cg/pcg BSR vs LU oracle ----
+    // ---- (d) cg BSR vs LU oracle ----
     [Test] public void CgBsrMatchesLUOracleTest()
         => new KrylovRound2TestJob { Type = KrylovRound2TestJob.TestType.CgBsrMatchesLUOracle }.Run();
     [Test] public void PcgBsrMatchesLUOracleTest()

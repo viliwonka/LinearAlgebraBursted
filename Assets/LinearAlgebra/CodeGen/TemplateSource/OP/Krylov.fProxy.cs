@@ -7,10 +7,10 @@ namespace LinearAlgebra
 {
     public static partial class Krylov {
 
-        // Shared factory for the square-solver diagnostics struct (cg/pcg/minres/pminres/
+        // Shared factory for the square-solver diagnostics struct (cg/minres/pminres/
         // biCGStab). rnorm is normally a value the solver already holds -- a tracked
         // residual norm, or a single dot on its live residual r -- never a fresh A*x. EXCEPTION:
-        // cg/pcg verify a claimed Converged exit with one fresh r = b-Ax before trusting it,
+        // cg verify a claimed Converged exit with one fresh r = b-Ax before trusting it,
         // so rnorm on that path is the verified value. pminres does the same, PLUS one fresh r on
         // a MaxIterations exit -- its recursively tracked phibar is the M⁻¹-weighted residual
         // once preconditioned, not ‖b-Ax‖. minres/biCGStab do not do this verification.
@@ -255,35 +255,10 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Zero-alloc Preconditioned Conjugate Gradient solver for SPD systems A x = b, generic
-        /// over both the operator (<see cref="IfProxyLinearOperator"/>) and the preconditioner
-        /// (<see cref="IfProxyPreconditioner"/>). Standard PCG: p is combined with z = M⁻¹r (not r), and β uses
-        /// ⟨r,z⟩ instead of ⟨r,r⟩.
-        ///
-        /// Caller provides x (initial guess, overwritten with solution — warm-startable) and four
-        /// scratch vectors r, p, Ap, z (all length A.Rows). The convergence test compares the
-        /// TRUE (unpreconditioned) residual ||r||² against tol²·||b||² — the same criterion
-        /// as <see cref="cg{TOp}"/> — so iteration counts between cg and pcg on the same system are
-        /// directly comparable. Returns a <see cref="SolveInfo"/> — see that struct for the
-        /// implicit-bool/status/undefined-x contract. Breakdown on non-positive curvature
-        /// p·Ap &lt;= 0 (or a non-SPD preconditioner's non-positive ⟨r,z⟩).
+        /// Preconditioned Conjugate Gradient — allocates four scratch vectors from the arena and
+        /// calls the merged zero-alloc <see cref="cg{TOp, TPre}(in TOp, in TPre, in fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, int, fProxy)"/>.
         /// </summary>
-        public static SolveInfo pcg<TOp, TPre>(in TOp A, in TPre M, in fProxyN b, ref fProxyN x,
-                                          ref fProxyN r, ref fProxyN p, ref fProxyN Ap, ref fProxyN z,
-                                          int maxIter, fProxy tol)
-            where TOp : struct, IfProxyLinearOperator
-            where TPre : struct, IfProxyPreconditioner
-        {
-            // Preconditioned CG is the single cg<TOp,TPre> body (this method is retained as the
-            // familiar name; the merged body carries the loop + the IsIdentity fold).
-            return cg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
-        }
-
-        /// <summary>
-        /// Preconditioned Conjugate Gradient solver — allocates four scratch vectors from the
-        /// arena and calls the zero-alloc primitive.
-        /// </summary>
-        public static SolveInfo pcg<TOp, TPre>(in TOp A, in TPre M, in fProxyN b, ref fProxyN x,
+        public static SolveInfo cg<TOp, TPre>(in TOp A, in TPre M, in fProxyN b, ref fProxyN x,
                                           int maxIter, fProxy tol)
             where TOp : struct, IfProxyLinearOperator
             where TPre : struct, IfProxyPreconditioner
@@ -292,240 +267,240 @@ namespace LinearAlgebra
             fProxyN p  = b.fProxyTempVec(A.Rows);
             fProxyN Ap = b.fProxyTempVec(A.Rows);
             fProxyN z  = b.fProxyTempVec(A.Rows);
-            return pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
+            return cg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
         }
 
         /// <summary>
         /// Preconditioned Conjugate Gradient solver with default maxIter (A.Rows) and
         /// tol (Consts.fProxySqrtEps).
         /// </summary>
-        public static SolveInfo pcg<TOp, TPre>(in TOp A, in TPre M, in fProxyN b, ref fProxyN x)
+        public static SolveInfo cg<TOp, TPre>(in TOp A, in TPre M, in fProxyN b, ref fProxyN x)
             where TOp : struct, IfProxyLinearOperator
             where TPre : struct, IfProxyPreconditioner
         {
-            return pcg(in A, in M, in b, ref x, A.Rows, Consts.fProxySqrtEps);
+            return cg(in A, in M, in b, ref x, A.Rows, Consts.fProxySqrtEps);
         }
 
         /// <summary>
         /// Preconditioned Conjugate Gradient over a block-sparse (BSR) SPD matrix with its
-        /// matching block-Jacobi preconditioner. Forwards into <see cref="pcg{TOp,TPre}"/> via
+        /// matching block-Jacobi preconditioner. Forwards into <see cref="cg{TOp,TPre}"/> via
         /// <c>fProxyBSROperator</c>.
         /// </summary>
-        public static SolveInfo pcg(in fProxyBSR A, in fProxyBlockJacobi M, in fProxyN b, ref fProxyN x,
+        public static SolveInfo cg(in fProxyBSR A, in fProxyBlockJacobi M, in fProxyN b, ref fProxyN x,
                                ref fProxyN r, ref fProxyN p, ref fProxyN Ap, ref fProxyN z,
                                int maxIter, fProxy tol)
         {
-            return pcg(new fProxyBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
+            return cg(new fProxyBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
         }
 
         /// <summary>
         /// Block-Jacobi Preconditioned Conjugate Gradient over a BSR SPD matrix — allocates four
         /// scratch vectors from the arena and calls the zero-alloc primitive.
         /// </summary>
-        public static SolveInfo pcg(in fProxyBSR A, in fProxyBlockJacobi M, in fProxyN b, ref fProxyN x,
+        public static SolveInfo cg(in fProxyBSR A, in fProxyBlockJacobi M, in fProxyN b, ref fProxyN x,
                                int maxIter, fProxy tol)
         {
             fProxyN r  = b.fProxyTempVec(A.M_Rows);
             fProxyN p  = b.fProxyTempVec(A.M_Rows);
             fProxyN Ap = b.fProxyTempVec(A.M_Rows);
             fProxyN z  = b.fProxyTempVec(A.M_Rows);
-            return pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
+            return cg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
         }
 
         /// <summary>
         /// Block-Jacobi Preconditioned Conjugate Gradient over a BSR SPD matrix, with default
         /// maxIter (A.M_Rows) and tol (Consts.fProxySqrtEps).
         /// </summary>
-        public static SolveInfo pcg(in fProxyBSR A, in fProxyBlockJacobi M, in fProxyN b, ref fProxyN x)
+        public static SolveInfo cg(in fProxyBSR A, in fProxyBlockJacobi M, in fProxyN b, ref fProxyN x)
         {
-            return pcg(in A, in M, in b, ref x, A.M_Rows, Consts.fProxySqrtEps);
+            return cg(in A, in M, in b, ref x, A.M_Rows, Consts.fProxySqrtEps);
         }
 
         /// <summary>
         /// Preconditioned Conjugate Gradient over a block-sparse (BSR) SPD matrix with its
-        /// matching SSOR preconditioner. Forwards into <see cref="pcg{TOp,TPre}"/> via
+        /// matching SSOR preconditioner. Forwards into <see cref="cg{TOp,TPre}"/> via
         /// <c>fProxyBSROperator</c> -- same three-rung BSR convenience pattern as the block-Jacobi
         /// overloads above.
         /// </summary>
-        public static SolveInfo pcg(in fProxyBSR A, in fProxySSOR M, in fProxyN b, ref fProxyN x,
+        public static SolveInfo cg(in fProxyBSR A, in fProxySSOR M, in fProxyN b, ref fProxyN x,
                                ref fProxyN r, ref fProxyN p, ref fProxyN Ap, ref fProxyN z,
                                int maxIter, fProxy tol)
         {
-            return pcg(new fProxyBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
+            return cg(new fProxyBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
         }
 
         /// <summary>
         /// SSOR Preconditioned Conjugate Gradient over a BSR SPD matrix -- allocates four scratch
         /// vectors from the arena and calls the zero-alloc primitive.
         /// </summary>
-        public static SolveInfo pcg(in fProxyBSR A, in fProxySSOR M, in fProxyN b, ref fProxyN x,
+        public static SolveInfo cg(in fProxyBSR A, in fProxySSOR M, in fProxyN b, ref fProxyN x,
                                int maxIter, fProxy tol)
         {
             fProxyN r  = b.fProxyTempVec(A.M_Rows);
             fProxyN p  = b.fProxyTempVec(A.M_Rows);
             fProxyN Ap = b.fProxyTempVec(A.M_Rows);
             fProxyN z  = b.fProxyTempVec(A.M_Rows);
-            return pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
+            return cg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
         }
 
         /// <summary>
         /// SSOR Preconditioned Conjugate Gradient over a BSR SPD matrix, with default
         /// maxIter (A.M_Rows) and tol (Consts.fProxySqrtEps).
         /// </summary>
-        public static SolveInfo pcg(in fProxyBSR A, in fProxySSOR M, in fProxyN b, ref fProxyN x)
+        public static SolveInfo cg(in fProxyBSR A, in fProxySSOR M, in fProxyN b, ref fProxyN x)
         {
-            return pcg(in A, in M, in b, ref x, A.M_Rows, Consts.fProxySqrtEps);
+            return cg(in A, in M, in b, ref x, A.M_Rows, Consts.fProxySqrtEps);
         }
 
         /// <summary>
         /// Preconditioned Conjugate Gradient over a block-sparse (BSR) SPD matrix with its
-        /// matching block IC(0) preconditioner. Forwards into <see cref="pcg{TOp,TPre}"/> via
+        /// matching block IC(0) preconditioner. Forwards into <see cref="cg{TOp,TPre}"/> via
         /// <c>fProxyBSROperator</c> -- same three-rung BSR convenience pattern as the block-Jacobi
         /// and SSOR overloads above.
         /// </summary>
-        public static SolveInfo pcg(in fProxyBSR A, in fProxyIC0 M, in fProxyN b, ref fProxyN x,
+        public static SolveInfo cg(in fProxyBSR A, in fProxyIC0 M, in fProxyN b, ref fProxyN x,
                                ref fProxyN r, ref fProxyN p, ref fProxyN Ap, ref fProxyN z,
                                int maxIter, fProxy tol)
         {
-            return pcg(new fProxyBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
+            return cg(new fProxyBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
         }
 
         /// <summary>
         /// IC(0) Preconditioned Conjugate Gradient over a BSR SPD matrix -- allocates four scratch
         /// vectors from the arena and calls the zero-alloc primitive.
         /// </summary>
-        public static SolveInfo pcg(in fProxyBSR A, in fProxyIC0 M, in fProxyN b, ref fProxyN x,
+        public static SolveInfo cg(in fProxyBSR A, in fProxyIC0 M, in fProxyN b, ref fProxyN x,
                                int maxIter, fProxy tol)
         {
             fProxyN r  = b.fProxyTempVec(A.M_Rows);
             fProxyN p  = b.fProxyTempVec(A.M_Rows);
             fProxyN Ap = b.fProxyTempVec(A.M_Rows);
             fProxyN z  = b.fProxyTempVec(A.M_Rows);
-            return pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
+            return cg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
         }
 
         /// <summary>
         /// IC(0) Preconditioned Conjugate Gradient over a BSR SPD matrix, with default
         /// maxIter (A.M_Rows) and tol (Consts.fProxySqrtEps).
         /// </summary>
-        public static SolveInfo pcg(in fProxyBSR A, in fProxyIC0 M, in fProxyN b, ref fProxyN x)
+        public static SolveInfo cg(in fProxyBSR A, in fProxyIC0 M, in fProxyN b, ref fProxyN x)
         {
-            return pcg(in A, in M, in b, ref x, A.M_Rows, Consts.fProxySqrtEps);
+            return cg(in A, in M, in b, ref x, A.M_Rows, Consts.fProxySqrtEps);
         }
 
         /// <summary>
         /// Preconditioned Conjugate Gradient over a block-sparse (BSR) SPD matrix with its
-        /// matching FSAI preconditioner. Forwards into <see cref="pcg{TOp,TPre}"/> via
+        /// matching FSAI preconditioner. Forwards into <see cref="cg{TOp,TPre}"/> via
         /// <c>fProxyBSROperator</c> -- same three-rung BSR convenience pattern as the block-Jacobi,
         /// SSOR, and IC0 overloads above.
         /// </summary>
-        public static SolveInfo pcg(in fProxyBSR A, in fProxyFSAI M, in fProxyN b, ref fProxyN x,
+        public static SolveInfo cg(in fProxyBSR A, in fProxyFSAI M, in fProxyN b, ref fProxyN x,
                                ref fProxyN r, ref fProxyN p, ref fProxyN Ap, ref fProxyN z,
                                int maxIter, fProxy tol)
         {
-            return pcg(new fProxyBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
+            return cg(new fProxyBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
         }
 
         /// <summary>
         /// FSAI Preconditioned Conjugate Gradient over a BSR SPD matrix -- allocates four scratch
         /// vectors from the arena and calls the zero-alloc primitive.
         /// </summary>
-        public static SolveInfo pcg(in fProxyBSR A, in fProxyFSAI M, in fProxyN b, ref fProxyN x,
+        public static SolveInfo cg(in fProxyBSR A, in fProxyFSAI M, in fProxyN b, ref fProxyN x,
                                int maxIter, fProxy tol)
         {
             fProxyN r  = b.fProxyTempVec(A.M_Rows);
             fProxyN p  = b.fProxyTempVec(A.M_Rows);
             fProxyN Ap = b.fProxyTempVec(A.M_Rows);
             fProxyN z  = b.fProxyTempVec(A.M_Rows);
-            return pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
+            return cg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
         }
 
         /// <summary>
         /// FSAI Preconditioned Conjugate Gradient over a BSR SPD matrix, with default
         /// maxIter (A.M_Rows) and tol (Consts.fProxySqrtEps).
         /// </summary>
-        public static SolveInfo pcg(in fProxyBSR A, in fProxyFSAI M, in fProxyN b, ref fProxyN x)
+        public static SolveInfo cg(in fProxyBSR A, in fProxyFSAI M, in fProxyN b, ref fProxyN x)
         {
-            return pcg(in A, in M, in b, ref x, A.M_Rows, Consts.fProxySqrtEps);
+            return cg(in A, in M, in b, ref x, A.M_Rows, Consts.fProxySqrtEps);
         }
 
         /// <summary>
         /// Preconditioned Conjugate Gradient over a block-sparse (BSR) SPD matrix with its
-        /// matching Chebyshev preconditioner. Forwards into <see cref="pcg{TOp,TPre}"/> via
+        /// matching Chebyshev preconditioner. Forwards into <see cref="cg{TOp,TPre}"/> via
         /// <c>fProxyBSROperator</c> -- same three-rung BSR convenience pattern as the block-Jacobi,
         /// SSOR, and IC0 overloads above.
         /// </summary>
-        public static SolveInfo pcg(in fProxyBSR A, in fProxyChebyshev M, in fProxyN b, ref fProxyN x,
+        public static SolveInfo cg(in fProxyBSR A, in fProxyChebyshev M, in fProxyN b, ref fProxyN x,
                                ref fProxyN r, ref fProxyN p, ref fProxyN Ap, ref fProxyN z,
                                int maxIter, fProxy tol)
         {
-            return pcg(new fProxyBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
+            return cg(new fProxyBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
         }
 
         /// <summary>
         /// Chebyshev Preconditioned Conjugate Gradient over a BSR SPD matrix -- allocates four
         /// scratch vectors from the arena and calls the zero-alloc primitive.
         /// </summary>
-        public static SolveInfo pcg(in fProxyBSR A, in fProxyChebyshev M, in fProxyN b, ref fProxyN x,
+        public static SolveInfo cg(in fProxyBSR A, in fProxyChebyshev M, in fProxyN b, ref fProxyN x,
                                int maxIter, fProxy tol)
         {
             fProxyN r  = b.fProxyTempVec(A.M_Rows);
             fProxyN p  = b.fProxyTempVec(A.M_Rows);
             fProxyN Ap = b.fProxyTempVec(A.M_Rows);
             fProxyN z  = b.fProxyTempVec(A.M_Rows);
-            return pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
+            return cg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
         }
 
         /// <summary>
         /// Chebyshev Preconditioned Conjugate Gradient over a BSR SPD matrix, with default
         /// maxIter (A.M_Rows) and tol (Consts.fProxySqrtEps).
         /// </summary>
-        public static SolveInfo pcg(in fProxyBSR A, in fProxyChebyshev M, in fProxyN b, ref fProxyN x)
+        public static SolveInfo cg(in fProxyBSR A, in fProxyChebyshev M, in fProxyN b, ref fProxyN x)
         {
-            return pcg(in A, in M, in b, ref x, A.M_Rows, Consts.fProxySqrtEps);
+            return cg(in A, in M, in b, ref x, A.M_Rows, Consts.fProxySqrtEps);
         }
 
         /// <summary>
         /// Preconditioned Conjugate Gradient over a block-sparse (BSR) SPD matrix with its matching
-        /// symmetric additive-Schwarz preconditioner. Forwards into <see cref="pcg{TOp,TPre}"/> via
+        /// symmetric additive-Schwarz preconditioner. Forwards into <see cref="cg{TOp,TPre}"/> via
         /// <c>fProxyBSROperator</c> -- same three-rung BSR convenience pattern as the block-Jacobi,
         /// SSOR, IC0, FSAI, and Chebyshev overloads above. Restricted Schwarz (RAS) is NOT symmetric
-        /// and has no pcg rung (pbiCGStab only) -- that absence is the CG-safety guard.
+        /// and has no cg rung (pbiCGStab only) -- that absence is the CG-safety guard.
         /// </summary>
-        public static SolveInfo pcg(in fProxyBSR A, in fProxyAdditiveSchwarz M, in fProxyN b, ref fProxyN x,
+        public static SolveInfo cg(in fProxyBSR A, in fProxyAdditiveSchwarz M, in fProxyN b, ref fProxyN x,
                                ref fProxyN r, ref fProxyN p, ref fProxyN Ap, ref fProxyN z,
                                int maxIter, fProxy tol)
         {
-            return pcg(new fProxyBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
+            return cg(new fProxyBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
         }
 
         /// <summary>
         /// Additive-Schwarz Preconditioned Conjugate Gradient over a BSR SPD matrix -- allocates four
         /// scratch vectors from the arena and calls the zero-alloc primitive.
         /// </summary>
-        public static SolveInfo pcg(in fProxyBSR A, in fProxyAdditiveSchwarz M, in fProxyN b, ref fProxyN x,
+        public static SolveInfo cg(in fProxyBSR A, in fProxyAdditiveSchwarz M, in fProxyN b, ref fProxyN x,
                                int maxIter, fProxy tol)
         {
             fProxyN r  = b.fProxyTempVec(A.M_Rows);
             fProxyN p  = b.fProxyTempVec(A.M_Rows);
             fProxyN Ap = b.fProxyTempVec(A.M_Rows);
             fProxyN z  = b.fProxyTempVec(A.M_Rows);
-            return pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
+            return cg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
         }
 
         /// <summary>
         /// Additive-Schwarz Preconditioned Conjugate Gradient over a BSR SPD matrix, with default
         /// maxIter (A.M_Rows) and tol (Consts.fProxySqrtEps).
         /// </summary>
-        public static SolveInfo pcg(in fProxyBSR A, in fProxyAdditiveSchwarz M, in fProxyN b, ref fProxyN x)
+        public static SolveInfo cg(in fProxyBSR A, in fProxyAdditiveSchwarz M, in fProxyN b, ref fProxyN x)
         {
-            return pcg(in A, in M, in b, ref x, A.M_Rows, Consts.fProxySqrtEps);
+            return cg(in A, in M, in b, ref x, A.M_Rows, Consts.fProxySqrtEps);
         }
 
         // MINRES (symmetric indefinite), BiCGSTAB (non-symmetric), LSQR/LSMR (rectangular
-        // least-squares). Same generic-operator pattern as cg&lt;TOp&gt;/pcg&lt;TOp,TPre&gt; above --
+        // least-squares). Same generic-operator pattern as cg&lt;TOp&gt;/cg&lt;TOp,TPre&gt; above --
         // see cg&lt;TOp&gt;'s doc comment for the shared "why an up-front aliasing guard" rationale.
-        // These solvers carry more scratch vectors than cg/pcg (6-9 vs 3-4), so their guards
+        // These solvers carry more scratch vectors than cg (6-9 vs 3-4), so their guards
         // use RequireDistinctBuffers (a small loop-based helper) instead of a hand-expanded OR chain.
 
         /// <summary>

@@ -35,7 +35,7 @@ public class fProxySparseSymmetricTests
             CrossCheck_SingleBlock,    // 1x1 block grid: trivially symmetric == full (no lower triangle)
             CrossCheck_Empty,          // zero-triplet symmetric BSR: round-trips to zero dense / zero matvec
 
-            // ---- A2 solver wiring (symmetric BSR feeds cg / minres / block-Jacobi pcg) ----
+            // ---- A2 solver wiring (symmetric BSR feeds cg / minres / block-Jacobi cg) ----
             CgSymMatchesFull,
             MinresSymMatchesFull,
             PcgBlockJacobiSymMatchesFull,
@@ -527,11 +527,11 @@ public class fProxySparseSymmetricTests
             var mFull = arena.fProxyBlockJacobi(in full);
 
             var xPcgSym = arena.fProxyVec(dim);
-            bool okSym = Krylov.pcg(in sym, in mSym, in b, ref xPcgSym, 4 * dim, Consts.fProxySqrtEps);
+            bool okSym = Krylov.cg(in sym, in mSym, in b, ref xPcgSym, 4 * dim, Consts.fProxySqrtEps);
             Assert.IsTrue(okSym);
 
             var xPcgFull = arena.fProxyVec(dim);
-            bool okFull = Krylov.pcg(in full, in mFull, in b, ref xPcgFull, 4 * dim, Consts.fProxySqrtEps);
+            bool okFull = Krylov.cg(in full, in mFull, in b, ref xPcgFull, 4 * dim, Consts.fProxySqrtEps);
             Assert.IsTrue(okFull);
 
             AssertVecEq(in xPcgSym, in xPcgFull, LooseTol());

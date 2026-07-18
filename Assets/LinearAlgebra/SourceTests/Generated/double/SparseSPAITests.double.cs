@@ -13,7 +13,7 @@ using Unity.Jobs;
 using Unity.Mathematics;
 
 // Row-oriented sparse approximate inverse preconditioner (doubleSPAI), for pbiCGStab ONLY.
-// SPAI is NOT symmetric even for symmetric A, so it is intentionally NOT wired to pcg/pminres --
+// SPAI is NOT symmetric even for symmetric A, so it is intentionally NOT wired to cg/pminres --
 // there is no such overload, and this suite never attempts one (a CG/MINRES call with SPAI would
 // not compile). Correctness anchors (spec section 8):
 //   (4) RESIDUAL QUALITY: on a nonsymmetric diagonally-dominant BSR, SPAI beats Jacobi scaling:

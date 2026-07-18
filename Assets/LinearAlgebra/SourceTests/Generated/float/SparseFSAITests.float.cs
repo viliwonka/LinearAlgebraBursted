@@ -12,17 +12,17 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// Factored sparse approximate inverse preconditioner (floatFSAI), valid for pcg/pminres.
+// Factored sparse approximate inverse preconditioner (floatFSAI), valid for cg/pminres.
 // Correctness anchors (spec docs/dev/spec-sparse-approximate-inverse-preconditioner.md, section 8):
 //   (1) EXACTNESS: on a block-DIAGONAL SPD A, S = {(i,i)} so G is block-diagonal and M = G^T G is
-//       the exact block inverse A^-1 -> Apply matches a dense Cholesky solve and pcg converges in
+//       the exact block inverse A^-1 -> Apply matches a dense Cholesky solve and cg converges in
 //       one step. On a small dense SPD A stored with the FULL lower-triangle pattern (BR=1), FSAI
-//       reconstructs the exact inverse factor (G == chol(A)^-1 up to roundoff) -> M == A^-1 and pcg
+//       reconstructs the exact inverse factor (G == chol(A)^-1 up to roundoff) -> M == A^-1 and cg
 //       converges in <= 2 steps.
 //   (2) SPD PRESERVATION: M = G^T G is symmetric (dot(r1, M r2) == dot(r2, M r1)) and positive
 //       definite (dot(r, M r) > 0) -- the CG-validity contract.
-//   (3) CONVERGENCE: FSAI-pcg reaches tol on floatLaplacian2D in STRICTLY fewer iterations than
-//       block-Jacobi-pcg (hard), and roughly comparable to IC0 (loose upper bound, not a tight
+//   (3) CONVERGENCE: FSAI-cg reaches tol on floatLaplacian2D in STRICTLY fewer iterations than
+//       block-Jacobi-cg (hard), and roughly comparable to IC0 (loose upper bound, not a tight
 //       assert). On floatPenalizedGrid3D (BR=3 elasticity, see PenalizedGrid3DDiagJob below):
 //       never regresses per trial (hard) and clearly beats in aggregate over 3 independent
 //       right-hand sides (hard) -- a single fixed b was found to be a fragile way to test this
@@ -32,12 +32,12 @@ using Unity.Mathematics;
 //       throwing overload throws.
 //   (6) GUARDS: non-square A, missing diagonal block, and Apply aliasing (z==r, z==Scratch,
 //       r==Scratch) all throw ArgumentException.
-//   (7) THROUGH-IJOB DETERMINISM: FSAI built once on the main thread, pcg run inside a Burst
+//   (7) THROUGH-IJOB DETERMINISM: FSAI built once on the main thread, cg run inside a Burst
 //       IJob.Run() twice, gives bit-identical iteration counts and bit-identical x; the managed
 //       path matches to tolerance.
 //   (8) SYMMETRIC- vs FULL-storage A produce bit-identical G.
-//   (9) CG-SAFETY: pcg AND pminres are exercised with FSAI here; SPAI (not symmetric) is never
-//       passed to pcg/pminres anywhere (it has no such overload -- would not compile).
+//   (9) CG-SAFETY: cg AND pminres are exercised with FSAI here; SPAI (not symmetric) is never
+//       passed to cg/pminres anywhere (it has no such overload -- would not compile).
 //
 // Value/correctness cases run inside a [BurstCompile] IJob (matches the IC0/SSOR/ILU0 suites);
 // guard-throw and orchestration cases run on the managed thread with Assert.Throws.
@@ -171,11 +171,11 @@ public class floatSparseFSAITests
             var Adense = A.ToDense(ref arena);
             AssertVecMatchesInverse(in z, in Adense, in r, ref arena, Tol());  // M == A^-1 exactly
 
-            // Exact preconditioner -> preconditioned operator is identity -> pcg converges in 1 step.
+            // Exact preconditioner -> preconditioned operator is identity -> cg converges in 1 step.
             var xTrue = arena.floatRandomVec(n, 0.5f, 1.5f, 901003u);
             var b = BSR.spMV(in A, in xTrue);
             var x = arena.floatVec(n);
-            var info = Krylov.pcg(in A, in M, in b, ref x, 4 * n, Consts.floatSqrtEps);
+            var info = Krylov.cg(in A, in M, in b, ref x, 4 * n, Consts.floatSqrtEps);
             Assert.IsTrue(info.Solved);
             Assert.IsTrue(info.iterations <= 1);
 
@@ -204,7 +204,7 @@ public class floatSparseFSAITests
             var xTrue = arena.floatRandomVec(n, 0.5f, 1.5f, 902003u);
             var b = BSR.spMV(in A, in xTrue);
             var x = arena.floatVec(n);
-            var info = Krylov.pcg(in A, in M, in b, ref x, 4 * n, Consts.floatSqrtEps);
+            var info = Krylov.cg(in A, in M, in b, ref x, 4 * n, Consts.floatSqrtEps);
             Assert.IsTrue(info.Solved);
             Assert.IsTrue(info.iterations <= 2);
 
@@ -250,7 +250,7 @@ public class floatSparseFSAITests
         }
 
         // ================================================================================
-        // (3) Convergence: FSAI-pcg beats block-Jacobi-pcg (hard); comparable to IC0 (loose).
+        // (3) Convergence: FSAI-cg beats block-Jacobi-cg (hard); comparable to IC0 (loose).
         // ================================================================================
 
         void BeatsJacobiOnLaplacian()
@@ -268,22 +268,22 @@ public class floatSparseFSAITests
             int maxIter = 8 * n;
 
             var xJ = arena.floatVec(n);
-            var infoJ = Krylov.pcg(in A, in bJ, in b, ref xJ, maxIter, tol);
+            var infoJ = Krylov.cg(in A, in bJ, in b, ref xJ, maxIter, tol);
             Assert.IsTrue(infoJ.Solved);
 
             var xC = arena.floatVec(n);
-            var infoC = Krylov.pcg(in A, in ic0, in b, ref xC, maxIter, tol);
+            var infoC = Krylov.cg(in A, in ic0, in b, ref xC, maxIter, tol);
             Assert.IsTrue(infoC.Solved);
 
             var xF = arena.floatVec(n);
-            var infoF = Krylov.pcg(in A, in fsai, in b, ref xF, maxIter, tol);
+            var infoF = Krylov.cg(in A, in fsai, in b, ref xF, maxIter, tol);
             Assert.IsTrue(infoF.Solved);
 
             // HARD: strictly fewer iterations than block-Jacobi.
             Assert.IsTrue(infoF.iterations < infoJ.iterations);
             // Residual check (conditioning-independent -- solution error ~ cond(A)*residual, so a
-            // per-element bound on ||xF-xTrue|| against SolveTol/pcg's tol is NOT well-posed for
-            // any cond(A) > 1; see DEVLOG). pcg's Solved already means the TRUE residual is below
+            // per-element bound on ||xF-xTrue|| against SolveTol/cg's tol is NOT well-posed for
+            // any cond(A) > 1; see DEVLOG). cg's Solved already means the TRUE residual is below
             // tol (verify-at-exit); reconfirm independently via a fresh spMV:
             // ||b - A xF|| <= RESIDUAL_C * tol * ||b||.
             var AxF = arena.floatVec(n);
@@ -360,7 +360,7 @@ public class floatSparseFSAITests
     }
 
     // Solve-only job for the through-IJob determinism test: FSAI is built ONCE on the main thread
-    // and passed in by value; the job just runs pcg and records the iteration count.
+    // and passed in by value; the job just runs cg and records the iteration count.
     [BurstCompile(CompileSynchronously = true)]
     public struct FSAISolveJob : IJob
     {
@@ -374,7 +374,7 @@ public class floatSparseFSAITests
 
         public void Execute()
         {
-            var info = Krylov.pcg(in A, in M, in b, ref x, maxIter, tol);
+            var info = Krylov.cg(in A, in M, in b, ref x, maxIter, tol);
             iters[0] = info.iterations;
         }
     }
@@ -388,7 +388,7 @@ public class floatSparseFSAITests
     // the failure was an opaque Burst-internal assert with no visible iteration counts (same
     // failure mode as the earlier Chebyshev degree-sweep issue -- see Sparse/DEVLOG.md). Root
     // cause investigation (standalone float32 re-implementation of floatPenalizedGrid3D(2,2,1,
-    // EA=1,penalty=10) + floatFSAI + floatBlockJacobi + pcg outside Unity, mirroring the
+    // EA=1,penalty=10) + floatFSAI + floatBlockJacobi + cg outside Unity, mirroring the
     // Chebyshev repro method) found NEITHER of the two suspected causes: FSAI's build has ZERO
     // shift escalation on this matrix (worstShift=0, every row solved on attempt 1 -- rules out
     // "per-row local solves failing/collapsing toward diagonal"), and FSAI beats block-Jacobi
@@ -442,11 +442,11 @@ public class floatSparseFSAITests
             var b = BSR.spMV(in A, in xTrue);
 
             var xJ = arena.floatVec(n);
-            var infoJ = Krylov.pcg(in A, in bJ, in b, ref xJ, maxIter, tol);
+            var infoJ = Krylov.cg(in A, in bJ, in b, ref xJ, maxIter, tol);
             var xF = arena.floatVec(n);
-            var infoF = Krylov.pcg(in A, in fsai, in b, ref xF, maxIter, tol);
+            var infoF = Krylov.cg(in A, in fsai, in b, ref xF, maxIter, tol);
             var xC = arena.floatVec(n);
-            var infoC = Krylov.pcg(in A, in ic0, in b, ref xC, maxIter, tol);
+            var infoC = Krylov.cg(in A, in ic0, in b, ref xC, maxIter, tol);
 
             iters[trial * 3 + 0] = infoJ.iterations;
             iters[trial * 3 + 1] = infoF.iterations;
@@ -456,7 +456,7 @@ public class floatSparseFSAITests
             solved[trial * 3 + 2] = infoC.Solved ? 1 : 0;
 
             // Residual check (conditioning-independent -- see BeatsJacobiOnLaplacian's matching
-            // comment and the DEVLOG: a per-element solution-error bound against pcg's tol is not
+            // comment and the DEVLOG: a per-element solution-error bound against cg's tol is not
             // well-posed for any cond(A) > 1). ||b - A xF|| <= RESIDUAL_C * tol * ||b||.
             var AxF = arena.floatVec(n);
             BSR.spMV(in A, in xF, ref AxF);
@@ -557,7 +557,7 @@ public class floatSparseFSAITests
 
         // Managed (non-Burst) path: consistent to tolerance (SIMD reassociation may differ).
         var x3 = arena.floatVec(n);
-        var infoM = Krylov.pcg(in A, in M, in b, ref x3, maxIter, tol);
+        var infoM = Krylov.cg(in A, in M, in b, ref x3, maxIter, tol);
         Assert.IsTrue(infoM.Solved);
         float consistencyTol = 1e-3f;
         for (int i = 0; i < n; i++)

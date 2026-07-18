@@ -2,9 +2,9 @@ using System.Text;
 
 namespace LinearAlgebra.Benchmarks
 {
-    // Block-Jacobi Preconditioned Conjugate Gradient (Krylov.pcg) over a representative BSR system —
-    // the one square iterative solver SparseSolverBenchmark.cs doesn't already cover (that file
-    // benchmarks plain cg/minres/biCGStab/cgls/lsqr but predates pcg). The system is a block-tridiagonal
+    // Block-Jacobi preconditioned Conjugate Gradient (Krylov.cg with a preconditioner) over a
+    // representative BSR system — the one square iterative solver SparseSolverBenchmark.cs doesn't
+    // already cover (that file benchmarks plain cg/minres/biCGStab/lsqr). The system is a block-tridiagonal
     // SPD matrix (block size BR, a common 1D FEM/heat-equation stencil): diagonally-dominant diagonal
     // blocks + small symmetric off-diagonal coupling to the immediate neighbor block only, so it is
     // genuinely sparse (nnzb = 3*nb-2) without needing SparseSolverBenchmark's randomized block-pattern

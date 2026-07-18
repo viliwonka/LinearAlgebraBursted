@@ -18,7 +18,7 @@ using Unity.Mathematics;
 //       {1,2,3,4,6} (unrolled) plus b=5 (general runtime-BR fallback), both diagScale=1 (plain
 //       Gauss-Seidel) and a nontrivial diagScale (the parameter floatSSOR actually drives).
 //   (b) floatSSOR is M-SPD: a hand-rolled PCG loop (built from the same public primitives
-//       Krylov.pcg itself uses -- M.Apply/op.ApplyDot/Blas.dot/Blas.updateXR) asserts <r,z> > 0
+//       Krylov.cg itself uses -- M.Apply/op.ApplyDot/Blas.dot/Blas.updateXR) asserts <r,z> > 0
 //       every iteration and that the solve converges to the true solution -- no new production
 //       API added just to expose this; the test reads what is already public.
 //   (c) floatSSOR converges in FEWER iterations than floatBlockJacobi (>=10% margin) on both
@@ -293,7 +293,7 @@ public class floatSSORTests
             arena.Dispose();
         }
 
-        // End-to-end: the production Krylov.pcg(in floatBSR, in floatSSOR, ...) three-rung
+        // End-to-end: the production Krylov.cg(in floatBSR, in floatSSOR, ...) three-rung
         // overload matches a dense LU oracle (mirrors PcgBsrMatchesLUOracle for block-Jacobi).
         void PcgSSORMatchesLUOracle()
         {
@@ -307,7 +307,7 @@ public class floatSSORTests
             var xLU = DenseSolve(in Adense, in b);
 
             var xPcg = arena.floatVec(dim);
-            bool okPcg = Krylov.pcg(in bsm, in M, in b, ref xPcg, 4 * dim, Consts.floatSqrtEps);
+            bool okPcg = Krylov.cg(in bsm, in M, in b, ref xPcg, 4 * dim, Consts.floatSqrtEps);
             Assert.IsTrue(okPcg);
             AssertVecClose(in xPcg, in xLU, SolveTol());
 
@@ -335,11 +335,11 @@ public class floatSSORTests
             int maxIter = 8 * n;
 
             var xJ = arena.floatVec(n);
-            var infoJ = Krylov.pcg(in A, in bJ, in b, ref xJ, maxIter, tol);
+            var infoJ = Krylov.cg(in A, in bJ, in b, ref xJ, maxIter, tol);
             Assert.IsTrue(infoJ.Solved);
 
             var xS = arena.floatVec(n);
-            var infoS = Krylov.pcg(in A, in ssor, in b, ref xS, maxIter, tol);
+            var infoS = Krylov.cg(in A, in ssor, in b, ref xS, maxIter, tol);
             Assert.IsTrue(infoS.Solved);
 
             Assert.IsTrue((double)infoS.iterations <= (double)infoJ.iterations * 0.9);
@@ -361,11 +361,11 @@ public class floatSSORTests
             int maxIter = 8 * n;
 
             var xJ = arena.floatVec(n);
-            var infoJ = Krylov.pcg(in A, in bJ, in b, ref xJ, maxIter, tol);
+            var infoJ = Krylov.cg(in A, in bJ, in b, ref xJ, maxIter, tol);
             Assert.IsTrue(infoJ.Solved);
 
             var xS = arena.floatVec(n);
-            var infoS = Krylov.pcg(in A, in ssor, in b, ref xS, maxIter, tol);
+            var infoS = Krylov.cg(in A, in ssor, in b, ref xS, maxIter, tol);
             Assert.IsTrue(infoS.Solved);
 
             Assert.IsTrue((double)infoS.iterations <= (double)infoJ.iterations * 0.9);

@@ -14,7 +14,7 @@ namespace LinearAlgebra.Sparse
     /// over a precomputed transpose AT (two-arg ctor -- see <see cref="Arena.floatBSRTranspose"/>),
     /// depending on which constructor built this operator.
     /// Lets the generic Krylov solvers (<c>Krylov.cg&lt;TOp&gt;</c>,
-    /// <c>Krylov.pcg&lt;TOp,TPre&gt;</c>) run over a BSR matrix.
+    /// <c>Krylov.cg&lt;TOp,TPre&gt;</c>) run over a BSR matrix.
     /// Readonly: a value copy of this struct only copies the floatBSR/AT headers (a handful of
     /// UnsafeList headers + ints), not the underlying buffers -- cheap and safe to pass through
     /// `in` parameters in generic constrained calls.

@@ -119,7 +119,7 @@ For a fast *approximate* alternative (iteratively-reweighted least squares, no L
 
 `LP.solve`/`LP.lad` also take a `floatBSR`/`doubleBSR` in place of the dense matrix — a matrix-free
 Mehrotra interior point over a [block-sparse](sparse-bsr.md) constraint matrix. Every normal-equation solve
-each iteration runs through `Krylov.pcg` against a matrix-free operator (Jacobi-preconditioned; the
+each iteration runs through `Krylov.cg` against a matrix-free operator (Jacobi-preconditioned; the
 normal matrix is never formed), so nothing scales with a dense `N²` — the regime where a dense LP
 isn't an option. Interior point only (no simplex for sparse), so it reports `Optimal`/
 `MaxIterations` only; use the dense simplex backends for exact infeasibility/unboundedness

@@ -19,7 +19,7 @@ using Unity.Mathematics;
 // driven through its matching Krylov solver; the pinned invariant is that EVERY (preconditioner,
 // matrix) pair CONVERGES to a relative true-residual tolerance (residual-based, not solution-error;
 // caps are generous — the point is regression coverage across the whole family, not iteration races).
-// Symmetric-M preconditioners route through pcg; nonsymmetric-M (ILU0/SPAI/RAS) through pbiCGStab.
+// Symmetric-M preconditioners route through cg; nonsymmetric-M (ILU0/SPAI/RAS) through pbiCGStab.
 // Grouped BY PRECONDITIONER (one case each) with the failing (matrix, residual) surfaced via Fail.
 public class doublePreconditionerBatteryTests
 {
@@ -28,7 +28,7 @@ public class doublePreconditionerBatteryTests
     {
         public enum TestType
         {
-            // symmetric-M -> pcg
+            // symmetric-M -> cg
             BlockJacobi,
             SSOR,
             IC0,
@@ -124,7 +124,7 @@ public class doublePreconditionerBatteryTests
             }
         }
 
-        // ---- symmetric-M -> pcg ----
+        // ---- symmetric-M -> cg ----
 
         void BlockJacobi()
         {
@@ -135,7 +135,7 @@ public class doublePreconditionerBatteryTests
                 var b = arena.doubleRandomVec(n, -1f, 1f, 0xB0u + (uint)mi);
                 var M = arena.doubleBlockJacobi(in A);
                 var x = arena.doubleVec(n); for (int i = 0; i < n; i++) x[i] = (double)0;
-                CheckSolve(in A, in x, in b, Krylov.pcg(in A, in M, in b, ref x, 8 * n, Tol()), mi);
+                CheckSolve(in A, in x, in b, Krylov.cg(in A, in M, in b, ref x, 8 * n, Tol()), mi);
                 arena.Dispose();
             }
         }
@@ -149,7 +149,7 @@ public class doublePreconditionerBatteryTests
                 var b = arena.doubleRandomVec(n, -1f, 1f, 0xB1u + (uint)mi);
                 var M = arena.doubleSSOR(in A);
                 var x = arena.doubleVec(n); for (int i = 0; i < n; i++) x[i] = (double)0;
-                CheckSolve(in A, in x, in b, Krylov.pcg(in A, in M, in b, ref x, 8 * n, Tol()), mi);
+                CheckSolve(in A, in x, in b, Krylov.cg(in A, in M, in b, ref x, 8 * n, Tol()), mi);
                 arena.Dispose();
             }
         }
@@ -163,7 +163,7 @@ public class doublePreconditionerBatteryTests
                 var b = arena.doubleRandomVec(n, -1f, 1f, 0xB2u + (uint)mi);
                 var M = arena.doubleIC0(in A);
                 var x = arena.doubleVec(n); for (int i = 0; i < n; i++) x[i] = (double)0;
-                CheckSolve(in A, in x, in b, Krylov.pcg(in A, in M, in b, ref x, 8 * n, Tol()), mi);
+                CheckSolve(in A, in x, in b, Krylov.cg(in A, in M, in b, ref x, 8 * n, Tol()), mi);
                 arena.Dispose();
             }
         }
@@ -177,7 +177,7 @@ public class doublePreconditionerBatteryTests
                 var b = arena.doubleRandomVec(n, -1f, 1f, 0xB3u + (uint)mi);
                 var M = arena.doubleChebyshev(in A);
                 var x = arena.doubleVec(n); for (int i = 0; i < n; i++) x[i] = (double)0;
-                CheckSolve(in A, in x, in b, Krylov.pcg(in A, in M, in b, ref x, 8 * n, Tol()), mi);
+                CheckSolve(in A, in x, in b, Krylov.cg(in A, in M, in b, ref x, 8 * n, Tol()), mi);
                 arena.Dispose();
             }
         }
@@ -191,7 +191,7 @@ public class doublePreconditionerBatteryTests
                 var b = arena.doubleRandomVec(n, -1f, 1f, 0xB4u + (uint)mi);
                 var M = arena.doubleFSAI(in A);
                 var x = arena.doubleVec(n); for (int i = 0; i < n; i++) x[i] = (double)0;
-                CheckSolve(in A, in x, in b, Krylov.pcg(in A, in M, in b, ref x, 8 * n, Tol()), mi);
+                CheckSolve(in A, in x, in b, Krylov.cg(in A, in M, in b, ref x, 8 * n, Tol()), mi);
                 arena.Dispose();
             }
         }
@@ -205,7 +205,7 @@ public class doublePreconditionerBatteryTests
                 var b = arena.doubleRandomVec(n, -1f, 1f, 0xB5u + (uint)mi);
                 var M = arena.doubleAdditiveSchwarz(in A);
                 var x = arena.doubleVec(n); for (int i = 0; i < n; i++) x[i] = (double)0;
-                CheckSolve(in A, in x, in b, Krylov.pcg(in A, in M, in b, ref x, 8 * n, Tol()), mi);
+                CheckSolve(in A, in x, in b, Krylov.cg(in A, in M, in b, ref x, 8 * n, Tol()), mi);
                 arena.Dispose();
             }
         }
@@ -221,7 +221,7 @@ public class doublePreconditionerBatteryTests
                 Record(info.Solved, mi, (double)0, (double)2);
                 var M = new doubleAMGPreconditioner(in amg);
                 var x = arena.doubleVec(n); for (int i = 0; i < n; i++) x[i] = (double)0;
-                CheckSolve(in A, in x, in b, Krylov.pcg(in A, in M, in b, ref x, 8 * n, Tol()), mi);
+                CheckSolve(in A, in x, in b, Krylov.cg(in A, in M, in b, ref x, 8 * n, Tol()), mi);
                 amg.Dispose();
                 arena.Dispose();
             }

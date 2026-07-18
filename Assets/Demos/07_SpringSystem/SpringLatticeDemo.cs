@@ -12,7 +12,7 @@ namespace LinearAlgebraDemos
     /// <summary>
     /// Hanging cloth as a mass-spring lattice, integrated implicitly: each frame
     /// solves (M + h²·k·L) v+ = M·v + h·f over 3×3-block sparse BSR with
-    /// IC(0)-preconditioned CG (Krylov.pcg) inside a Burst job. The system matrix
+    /// IC(0)-preconditioned CG (Krylov.cg) inside a Burst job. The system matrix
     /// uses the constant graph-Laplacian approximation, so it is assembled ONCE
     /// (symmetric lower-block storage) and only the right-hand side changes per
     /// frame — the realtime sparse-SPD showcase. Wind slider + poke button.
@@ -39,7 +39,7 @@ namespace LinearAlgebraDemos
         NativeArray<int2> edges;
         NativeArray<float> restLen;
         NativeArray<byte> pinned;
-        NativeArray<float> outStats;   // [0] pcg iters, [1] converged, [2] rnorm
+        NativeArray<float> outStats;   // [0] cg iters, [1] converged, [2] rnorm
         float frameMs;
         readonly Stopwatch sw = new Stopwatch();
 
@@ -164,7 +164,7 @@ namespace LinearAlgebraDemos
             int dof = NodeCount * 3;
             GUILayout.BeginArea(new Rect(10, 10, 400, 200), GUI.skin.box);
             GUILayout.Label($"Implicit springs — {NodeCount} nodes ({dof} dof), IC(0)-PCG, {frameMs:F2} ms/frame");
-            GUILayout.Label($"pcg iters: {outStats[0]:F0}   converged: {outStats[1] == 1f}   rnorm: {outStats[2]:E1}");
+            GUILayout.Label($"cg iters: {outStats[0]:F0}   converged: {outStats[1] == 1f}   rnorm: {outStats[2]:E1}");
             stiffness = LabeledSlider($"stiffness {stiffness:F0}", stiffness, 10f, 800f);
             windZ = LabeledSlider($"wind {windZ:F1}", windZ, -20f, 20f);
             damping = LabeledSlider($"damping {damping:F2}", damping, 0f, 3f);
@@ -244,7 +244,7 @@ namespace LinearAlgebraDemos
             var p = new floatN(dof, Allocator.Temp);
             var Ap = new floatN(dof, Allocator.Temp);
             var z = new floatN(dof, Allocator.Temp);
-            SolveInfo info = Krylov.pcg(in A, in Precond, in rhs, ref v,
+            SolveInfo info = Krylov.cg(in A, in Precond, in rhs, ref v,
                                         ref r, ref p, ref Ap, ref z,
                                         200, 1e-5f);
             Out[0] = info.iterations;

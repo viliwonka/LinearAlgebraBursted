@@ -148,7 +148,7 @@ public class doubleAMGSolverTests
             var M = new doubleAMGPreconditioner(in amg);
             var xPc = arena.doubleVec(n);
             for (int i = 0; i < n; i++) xPc[i] = (double)0;
-            var pcInfo = Krylov.pcg(in A, in M, in b, ref xPc, 8 * n, tol);
+            var pcInfo = Krylov.cg(in A, in M, in b, ref xPc, 8 * n, tol);
 
             Assert.IsTrue(cgInfo.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(pcInfo.status == IterativeSolveStatus.Converged);
@@ -180,7 +180,7 @@ public class doubleAMGSolverTests
             arena.Dispose();
         }
 
-        // pcg validity: the symmetric V-cycle (pre==post) must give <M r1, r2> == <r1, M r2>.
+        // cg validity: the symmetric V-cycle (pre==post) must give <M r1, r2> == <r1, M r2>.
         void PreconditionerSymmetric()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -363,7 +363,7 @@ public class doubleAMGSolverTests
             arena.Dispose();
         }
 
-        // The IsCycleSymmetric flag (the pcg-validity gate) reflects pre == post.
+        // The IsCycleSymmetric flag (the cg-validity gate) reflects pre == post.
         void CycleSymmetryFlag()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -390,7 +390,7 @@ public class doubleAMGSolverTests
             var amg = arena.doubleAMG(in A, KOpts(), out var info);
             Assert.IsTrue(info.Solved);
             Assert.IsTrue(amg.IsKCycle);
-            Assert.IsTrue(!amg.IsCycleSymmetric);       // K-cycle is never pcg-valid
+            Assert.IsTrue(!amg.IsCycleSymmetric);       // K-cycle is never cg-valid
 
             var x = arena.doubleVec(n);
             for (int i = 0; i < n; i++) x[i] = (double)0;
@@ -533,8 +533,8 @@ public class doubleAMGSolverTests
     [Test] public void BlockNearNullspaceSolvesTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.BlockNearNullspaceSolves }.Run();
 
     // Managed-thread reject: an AMG preconditioner that is not a fixed SPD operator (asymmetric
-    // V-cycle here; a K-cycle likewise) is rejected by Krylov.pcg — the preconditioner constructs
-    // fine (it is valid for fcg), but pcg throws. Single-level (n=9) hierarchy needs no smoother.
+    // V-cycle here; a K-cycle likewise) is rejected by Krylov.cg — the preconditioner constructs
+    // fine (it is valid for fcg), but cg throws. Single-level (n=9) hierarchy needs no smoother.
     [Test]
     public void AsymmetricCyclePcgRejected()
     {
@@ -558,7 +558,7 @@ public class doubleAMGSolverTests
         var M = new doubleAMGPreconditioner(in amg);          // constructing is fine
         var rhs = arena.doubleRandomVec(n, -1f, 1f, 0x321u);
         var sol = arena.doubleVec(n);
-        Assert.Throws<ArgumentException>(() => { Krylov.pcg(in A, in M, in rhs, ref sol); });
+        Assert.Throws<ArgumentException>(() => { Krylov.cg(in A, in M, in rhs, ref sol); });
 
         amg.Dispose();
         arena.Dispose();

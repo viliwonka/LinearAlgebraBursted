@@ -10,11 +10,11 @@ using Unity.Mathematics;
 
 // Chebyshev polynomial preconditioner (fProxyChebyshev). Correctness anchors (spec
 // docs/dev/spec-chebyshev-preconditioner.md Section 9):
-//   (1) on a 2D Poisson system pcg+Chebyshev(d=3) needs strictly fewer OUTER iterations than
-//       pcg+block-Jacobi, which in turn needs strictly fewer than plain CG (same tol/rhs/x0);
+//   (1) on a 2D Poisson system cg+Chebyshev(d=3) needs strictly fewer OUTER iterations than
+//       cg+block-Jacobi, which in turn needs strictly fewer than plain CG (same tol/rhs/x0);
 //   (2) raising the polynomial degree from 1 to 4 does not increase the outer-iteration count
 //       (interior degrees are not asserted strictly non-increasing -- see DegreeSweepNonIncreasingTest);
-//   (3) pcg+Chebyshev lands on the dense-direct solution within tolerance;
+//   (3) cg+Chebyshev lands on the dense-direct solution within tolerance;
 //   (4) the induced M^-1 is symmetric (dot(u,M v)==dot(v,M u)) and positive (dot(v,M v)>0);
 //   (5) build on the managed thread + solve THROUGH a Burst IJob (struct copied by value) yields a
 //       correct solve agreeing with the managed solve -- the readonly/set-once struct-copy-safety claim;
@@ -109,11 +109,11 @@ public class fProxySparseChebyshevTests
             var Mj = arena.fProxyBlockJacobi(in A);
 
             var xC = arena.fProxyVec(n);
-            var infoC = Krylov.pcg(in A, in Mc, in b, ref xC, maxIter, tol);
+            var infoC = Krylov.cg(in A, in Mc, in b, ref xC, maxIter, tol);
             Assert.IsTrue(infoC.Solved);
 
             var xJ = arena.fProxyVec(n);
-            var infoJ = Krylov.pcg(in A, in Mj, in b, ref xJ, maxIter, tol);
+            var infoJ = Krylov.cg(in A, in Mj, in b, ref xJ, maxIter, tol);
             Assert.IsTrue(infoJ.Solved);
 
             var xG = arena.fProxyVec(n);
@@ -127,7 +127,7 @@ public class fProxySparseChebyshevTests
             arena.Dispose();
         }
 
-        // ---- 3. Solution correctness: pcg+Chebyshev matches the dense direct (Cholesky) solve -----
+        // ---- 3. Solution correctness: cg+Chebyshev matches the dense direct (Cholesky) solve -----
         void SolutionMatchesDirect()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -141,7 +141,7 @@ public class fProxySparseChebyshevTests
             var b = BSR.spMV(in A, in xTrue);
 
             var x = arena.fProxyVec(n);
-            var info = Krylov.pcg(in A, in M, in b, ref x, 8 * n, Consts.fProxySqrtEps);
+            var info = Krylov.cg(in A, in M, in b, ref x, 8 * n, Consts.fProxySqrtEps);
             Assert.IsTrue(info.Solved);
 
             // Dense Cholesky oracle on the same system (independent code path). CHO.solveInPlace is
@@ -202,11 +202,11 @@ public class fProxySparseChebyshevTests
             int maxIter = 4 * n;
 
             var x1 = arena.fProxyVec(n);
-            var i1 = Krylov.pcg(in A, in M, in b, ref x1, maxIter, tol);
+            var i1 = Krylov.cg(in A, in M, in b, ref x1, maxIter, tol);
             Assert.IsTrue(i1.Solved);
 
             var x2 = arena.fProxyVec(n);
-            var i2 = Krylov.pcg(in A, in M, in b, ref x2, maxIter, tol);
+            var i2 = Krylov.cg(in A, in M, in b, ref x2, maxIter, tol);
             Assert.IsTrue(i2.Solved);
 
             Assert.IsTrue(i1.iterations == i2.iterations);
@@ -287,7 +287,7 @@ public class fProxySparseChebyshevTests
     // ---- 5. through-IJob struct-copy safety (managed build, jobbed solve) -----------------
     //
     // The preconditioner is built on the managed thread, then handed BY VALUE into a Burst IJob that
-    // runs the full pcg solve. .Run() executes on a struct COPY of fProxyChebyshev -- the path that
+    // runs the full cg solve. .Run() executes on a struct COPY of fProxyChebyshev -- the path that
     // would expose a stale self-pointer or a lost post-construction write (the LOBPCG IJob cache-copy
     // lesson). The struct is readonly/arena-backed, so the jobbed solve must reproduce the managed
     // solve (managed Mono vs Burst -> agree to tolerance, not bitwise) and satisfy A x ~= b.
@@ -304,7 +304,7 @@ public class fProxySparseChebyshevTests
 
         public void Execute()
         {
-            var info = Krylov.pcg(in A, in M, in b, ref x, MaxIter, Tol);
+            var info = Krylov.cg(in A, in M, in b, ref x, MaxIter, Tol);
             Out[0] = info.Solved ? 1 : 0;
             Out[1] = info.iterations;
         }
@@ -328,7 +328,7 @@ public class fProxySparseChebyshevTests
 
         // Managed-thread reference solve.
         var xManaged = arena.fProxyVec(n);
-        var infoM = Krylov.pcg(in A, in M, in b, ref xManaged, maxIter, tol);
+        var infoM = Krylov.cg(in A, in M, in b, ref xManaged, maxIter, tol);
         Assert.IsTrue(infoM.Solved);
 
         // Same struct copied INTO a Burst job (runs AFTER the managed solve; M's owned scratch is
@@ -355,7 +355,7 @@ public class fProxySparseChebyshevTests
     //
     // Regression for the eigSteps>n Lanczos throw: a BR=2, 4-block SPD chain has n=8 < the default
     // eigSteps (10). The ctor must clamp the Lanczos step count to n and BUILD (previously threw),
-    // and pcg must then converge. Residual is recomputed from a fresh spMV and asserted on the
+    // and cg must then converge. Residual is recomputed from a fresh spMV and asserted on the
     // managed thread (‖b-Ax‖² <= C²·tol²·‖b‖²) so a failure prints the real numbers.
     [BurstCompile(CompileSynchronously = true)]
     struct SmallSystemBuildSolveJob : IJob
@@ -401,7 +401,7 @@ public class fProxySparseChebyshevTests
             int maxIter = 8 * n;
 
             var x = arena.fProxyVec(n);
-            var info = Krylov.pcg(in A, in M, in b, ref x, maxIter, tol);
+            var info = Krylov.cg(in A, in M, in b, ref x, maxIter, tol);
 
             var Ax = BSR.spMV(in A, in x);
             fProxy rr = 0, bb = 0;
@@ -432,7 +432,7 @@ public class fProxySparseChebyshevTests
         int solved = outI[0], iters = outI[1];
         TestContext.WriteLine($"SmallSystemBelowEigStepsBuildsAndConverges: solved={solved} iters={iters} rr={rr} bb={bb}");
 
-        Assert.IsTrue(solved == 1, $"pcg did not converge (iterations={iters}, rr={rr}, bb={bb})");
+        Assert.IsTrue(solved == 1, $"cg did not converge (iterations={iters}, rr={rr}, bb={bb})");
 
         fProxy C = (fProxy)64;
         fProxy tol = Consts.fProxySqrtEps;
@@ -473,7 +473,7 @@ public class fProxySparseChebyshevTests
                 var M = arena.fProxyChebyshev(in A, in opt);
 
                 var x = arena.fProxyVec(n);
-                var info = Krylov.pcg(in A, in M, in b, ref x, maxIter, tol);
+                var info = Krylov.cg(in A, in M, in b, ref x, maxIter, tol);
                 Out[d - 1] = info.iterations;
                 Out[4 + d - 1] = info.Solved ? 1 : 0;
             }
@@ -484,7 +484,7 @@ public class fProxySparseChebyshevTests
 
     // Every degree must converge, and the strongest smoother (degree 4) must not need MORE outer
     // iterations than the weakest one (degree 1) -- a Chebyshev-damped preconditioner should never
-    // make pcg's outer loop worse as the polynomial gets stronger. Interior degrees (2, 3) are NOT
+    // make cg's outer loop worse as the polynomial gets stronger. Interior degrees (2, 3) are NOT
     // asserted strictly non-increasing step-by-step: the exact iteration a true-residual convergence
     // test crosses tol is a threshold-boundary event, sensitive to SIMD-reduction-order rounding at
     // the ULP level, and can wobble by a step at one interior degree without indicating a real

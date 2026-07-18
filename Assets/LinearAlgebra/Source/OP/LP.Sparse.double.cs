@@ -17,7 +17,7 @@ namespace LinearAlgebra
         //
         // Both entry points reduce to the same standard form  min cᵀz  s.t.  Aₛ z = b,  z ≥ 0, and share
         // one generic interior-point loop (standardFormInterior). The per-iteration normal equations
-        // M Δy = rhs (M = Aₛ D Aₛᵀ, SPD) are solved with the library's Krylov.pcg over a
+        // M Δy = rhs (M = Aₛ D Aₛᵀ, SPD) are solved with the library's Krylov.cg over a
         // doubleNormalOperator (M is never formed) preconditioned by a doubleNormalJacobi (diagonal of M,
         // computed matrix-free). Only the standard-form constraint operator Aₛ differs:
         //   * LP.lad  -> doubleLadOperator            Aₛ = [A | −A | −I | I]   (LAD is all-equality)
@@ -152,7 +152,7 @@ namespace LinearAlgebra
             var rp = new doubleN(m, Allocator.Temp); var rhsY = new doubleN(m, Allocator.Temp);
             var ADrc = new doubleN(m, Allocator.Temp); var tmpM = new doubleN(m, Allocator.Temp);
             var diagM = new doubleN(m, Allocator.Temp); var invDiag = new doubleN(m, Allocator.Temp);
-            // pcg scratch (length m)
+            // cg scratch (length m)
             var pr = new doubleN(m, Allocator.Temp); var pp = new doubleN(m, Allocator.Temp);
             var pAp = new doubleN(m, Allocator.Temp); var pz = new doubleN(m, Allocator.Temp);
 
@@ -186,12 +186,12 @@ namespace LinearAlgebra
             for (int i = 0; i < m; i++) invDiag[i] = (double)1 / (diagM[i] + reg);
 
             for (int i = 0; i < m; i++) dy[i] = (double)0;
-            Krylov.pcg(in Mop, in Jac, in b, ref dy, ref pr, ref pp, ref pAp, ref pz, pcgMaxIter, pcgTol);
+            Krylov.cg(in Mop, in Jac, in b, ref dy, ref pr, ref pp, ref pAp, ref pz, pcgMaxIter, pcgTol);
             aS.ApplyT(in dy, ref z);                                    // z = z̃
 
             aS.Apply(in cvec, ref tmpM);                               // tmpM = Aₛ c
             for (int i = 0; i < m; i++) y[i] = (double)0;
-            Krylov.pcg(in Mop, in Jac, in tmpM, ref y, ref pr, ref pp, ref pAp, ref pz, pcgMaxIter, pcgTol);
+            Krylov.cg(in Mop, in Jac, in tmpM, ref y, ref pr, ref pp, ref pAp, ref pz, pcgMaxIter, pcgTol);
             aS.ApplyT(in y, ref s);
             for (int j = 0; j < nv; j++) s[j] = cvec[j] - s[j];         // s̃ = c − Aₛᵀ ỹ
 
@@ -253,7 +253,7 @@ namespace LinearAlgebra
                 for (int j = 0; j < nv; j++) tmpNV[j] = d[j] * rc[j];
                 aS.Apply(in tmpNV, ref ADrc);
                 for (int i = 0; i < m; i++) rhsY[i] = b[i] - ADrc[i];
-                Krylov.pcg(in Mop, in Jac, in rhsY, ref dy, ref pr, ref pp, ref pAp, ref pz, pcgMaxIter, pcgTol);
+                Krylov.cg(in Mop, in Jac, in rhsY, ref dy, ref pr, ref pp, ref pAp, ref pz, pcgMaxIter, pcgTol);
                 aS.ApplyT(in dy, ref tmpNV);                                    // tmpNV = Aₛᵀ Δy_aff
                 for (int j = 0; j < nv; j++) { dsA[j] = -rc[j] - tmpNV[j]; dzA[j] = -d[j] * dsA[j] - z[j]; }
 
@@ -268,7 +268,7 @@ namespace LinearAlgebra
                 for (int j = 0; j < nv; j++) g[j] = (double)((sig * mu - (double)dzA[j] * (double)dsA[j]) / (double)s[j]);
                 aS.Apply(in g, ref tmpM);
                 for (int i = 0; i < m; i++) rhsY[i] -= tmpM[i];
-                Krylov.pcg(in Mop, in Jac, in rhsY, ref dy, ref pr, ref pp, ref pAp, ref pz, pcgMaxIter, pcgTol);
+                Krylov.cg(in Mop, in Jac, in rhsY, ref dy, ref pr, ref pp, ref pAp, ref pz, pcgMaxIter, pcgTol);
                 aS.ApplyT(in dy, ref tmpNV);
                 for (int j = 0; j < nv; j++) { ds[j] = -rc[j] - tmpNV[j]; dz[j] = -d[j] * ds[j] - z[j] + g[j]; }
 

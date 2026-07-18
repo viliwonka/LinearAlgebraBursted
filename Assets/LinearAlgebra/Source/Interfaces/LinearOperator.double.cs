@@ -30,7 +30,7 @@ namespace LinearAlgebra
 
         /// <summary>
         /// y = A x (same contract as <see cref="Apply"/>), and also returns dot(x, y) -- a single
-        /// call site for cg/pcg's <c>pAp = dot(p, Ap)</c>. Only meaningful when x and y are the
+        /// call site for cg's <c>pAp = dot(p, Ap)</c>. Only meaningful when x and y are the
         /// same length (A square, Rows == Cols). Every implementation composes Apply then
         /// <c>Blas.dot</c>; opt-in per call site, not a replacement for Apply.
         /// </summary>
