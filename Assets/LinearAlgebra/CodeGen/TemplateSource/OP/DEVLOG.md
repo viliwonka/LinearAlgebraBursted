@@ -1,6 +1,17 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.fcg (Flexible CG)
+- 2026-07-18 | Flexible CG (Notay 2000), first AMG prerequisite (K-cycle needs a variable-
+  preconditioner outer solver; unsmoothed aggregation makes M vary per iteration). Implemented as
+  pcg with the Polak–Ribière beta = (rznew − <z_new, r_old>)/rzold. Chose the explicit r_old
+  snapshot vector over the cheaper "reconstruct r_old = r_new + alpha·Ap" identity because the
+  verify-at-exit block overwrites Ap on the convergence path, so the identity would be stale on a
+  verify-fail-continue — the snapshot is provably correct regardless. Costs one extra scratch vec +
+  one extra dot/iter vs pcg. Reduces to pcg exactly for constant SPD M (cross term = 0) — asserted
+  in tests via iteration-count agreement (NOT element-wise solution compare, which scales with
+  cond·residual). Variable-M coverage: an inner-CG(3-step) preconditioner, whose k-step iterate is
+  a data-dependent polynomial in r — the canonical case pcg mishandles. Not yet wired to AMG.
 ## LOBPCG robustness
 - 2026-07-18 | Post-seed-B-normalize-fix, `PenalizedFramePathologicalGuardConfigNoFalseCertificate`
   flipped float `LOBPCGInfo(MaxIterations, converged=1)` (was `converged=0`) -- NOT re-broken by
