@@ -275,6 +275,8 @@ namespace LinearAlgebra.Sparse
 
         /// <summary>z = (L·U)⁻¹ r: unit-lower forward sweep into z, then upper backward sweep in
         /// place (diagonal solves are multiplies by the stored U_ii inverses). z must not alias r.</summary>
+        public bool IsIdentity => false;
+
         public unsafe void Apply(in doubleN r, ref doubleN z)
         {
             int n = Rows;

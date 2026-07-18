@@ -94,6 +94,8 @@ namespace LinearAlgebra.Sparse
         public doubleSSOR(in doubleBSR a, ref Arena arena) : this(in a, (double)1, ref arena) { }
 
         /// <summary>z = M⁻¹ r -- see the type doc comment for the three-step derivation. z must not alias r.</summary>
+        public bool IsIdentity => false;
+
         public unsafe void Apply(in doubleN r, ref doubleN z)
         {
             int n = Rows;

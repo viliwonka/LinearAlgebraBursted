@@ -36,6 +36,7 @@ public class doubleSparseSolverTests
             BlockJacobiApplyHandComputed,
             WarmStart,
             PcgNonSpdPreconditionerBreaksDown,
+            MergedCgIdentityMatchesPlainCg,
 
             // ---- Phase 3: MINRES / BiCGSTAB / LSQR / LSMR ----
             MinresIndefiniteDenseAndBSR,
@@ -120,6 +121,7 @@ public class doubleSparseSolverTests
                 case TestType.BlockJacobiApplyHandComputed: BlockJacobiApplyHandComputed(); break;
                 case TestType.WarmStart: WarmStart(); break;
                 case TestType.PcgNonSpdPreconditionerBreaksDown: PcgNonSpdPreconditionerBreaksDown(); break;
+                case TestType.MergedCgIdentityMatchesPlainCg: MergedCgIdentityMatchesPlainCg(); break;
 
                 case TestType.MinresIndefiniteDenseAndBSR: MinresIndefiniteDenseAndBSR(); break;
                 case TestType.MinresSpdMatchesCG: MinresSpdMatchesCG(); break;
@@ -346,6 +348,49 @@ public class doubleSparseSolverTests
             Assert.IsTrue(okPCG);
 
             AssertVecEq(in xCG, in xPCG, Tol());
+
+            arena.Dispose();
+        }
+
+        // The merged single-body cg<TOp,TPre> with the identity preconditioner must be BIT-IDENTICAL
+        // to the hand-written plain cg<TOp> -- same solution, same iteration count, same status, same
+        // rnorm -- on the same operator path (both wrap the BSR in doubleBSROperator). Proves the
+        // IsIdentity fold reproduces plain CG exactly (numerics AND control flow), so collapsing the
+        // two bodies is safe. z is passed as `default` on the identity path (never dereferenced).
+        void MergedCgIdentityMatchesPlainCg()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int dim = 12;
+            var A = BuildDenseSPD(ref arena, dim, 6101);
+            var bsm = DenseToBSR1x1(ref arena, in A, dim * dim);
+            var b = arena.doubleRandomVec(dim, -1f, 1f, 6102);
+
+            int maxIter = 4 * dim;
+            double tol = Consts.doubleSqrtEps;
+
+            // Reference: plain cg<TOp> (explicit scratch).
+            var xPlain = arena.doubleVec(dim);
+            var rP = arena.doubleVec(dim); var pP = arena.doubleVec(dim); var ApP = arena.doubleVec(dim);
+            var infoPlain = Krylov.cg(in bsm, in b, ref xPlain, ref rP, ref pP, ref ApP, maxIter, tol);
+
+            // Merged: cg<TOp,TPre> with the identity preconditioner; z = default (unused when identity).
+            var xMerged = arena.doubleVec(dim);
+            var rM = arena.doubleVec(dim); var pM = arena.doubleVec(dim); var ApM = arena.doubleVec(dim);
+            doubleN zM = default;
+            var op = new doubleBSROperator(in bsm);
+            var id = new doubleIdentityPreconditioner();
+            var infoMerged = Krylov.cg(in op, in id, in b, ref xMerged, ref rM, ref pM, ref ApM, ref zM, maxIter, tol);
+
+            // Bit-identical solution.
+            Assert.AreEqual(xPlain.N, xMerged.N);
+            for (int i = 0; i < xPlain.N; i++)
+                Assert.AreEqual((double)xPlain[i], (double)xMerged[i]);
+
+            // Identical control flow + diagnostics.
+            Assert.AreEqual(infoPlain.iterations, infoMerged.iterations);
+            Assert.AreEqual((int)infoPlain.status, (int)infoMerged.status);
+            Assert.AreEqual(infoPlain.rnorm, infoMerged.rnorm);
 
             arena.Dispose();
         }
@@ -1437,6 +1482,8 @@ public class doubleSparseSolverTests
     // Used only by PcgNonSpdPreconditionerBreaksDown to exercise pcg's rzold>0 breakdown guard.
     public struct doubleNegatePreconditioner : IdoublePreconditioner
     {
+        public bool IsIdentity => false;
+
         public void Apply(in doubleN r, ref doubleN z)
         {
             for (int i = 0; i < r.N; i++)
@@ -1461,6 +1508,10 @@ public class doubleSparseSolverTests
     [Test]
     public void PCGMatchesCGTest()
         => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.PCGMatchesCG }.Run();
+
+    [Test]
+    public void MergedCgIdentityMatchesPlainCgTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.MergedCgIdentityMatchesPlainCg }.Run();
 
     [Test]
     public void PCGBeatsCGIllConditionedTest()

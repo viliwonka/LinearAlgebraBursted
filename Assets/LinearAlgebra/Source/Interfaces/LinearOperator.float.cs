@@ -59,6 +59,13 @@ namespace LinearAlgebra
     {
         /// <summary>z = M⁻¹ r. z must be distinct from r (see each implementation's aliasing guard).</summary>
         void Apply(in floatN r, ref floatN z);
+
+        /// <summary>Compile-time literal: true ONLY for <see cref="floatIdentityPreconditioner"/>,
+        /// false for every real preconditioner. A <c>TPre</c>-generic solver branches on it
+        /// (<c>if (!M.IsIdentity) M.Apply(...)</c>); because TPre is a struct type parameter the
+        /// branch constant-folds per specialization, so the identity case compiles down to the
+        /// unpreconditioned solver (no <c>Apply</c>, no z traffic) from the single body.</summary>
+        bool IsIdentity { get; }
     }
 
     /// <summary>
@@ -110,6 +117,8 @@ namespace LinearAlgebra
     public readonly struct floatIdentityPreconditioner : IfloatPreconditioner
     {
         public void Apply(in floatN r, ref floatN z) => z.Data.CopyFrom(r.Data);
+
+        public bool IsIdentity => true;
     }
 
     /// <summary>

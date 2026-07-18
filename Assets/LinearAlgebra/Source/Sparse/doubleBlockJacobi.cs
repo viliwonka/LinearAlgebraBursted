@@ -300,6 +300,8 @@ namespace LinearAlgebra.Sparse
         /// unrolled dense b x b matvec (<see cref="UnsafeOP.blockJacobiApplyB1"/>..B6), bit-identical
         /// to the general loop below. Any other BR falls through to the general runtime-BR loop.
         /// </summary>
+        public bool IsIdentity => false;
+
         public unsafe void Apply(in doubleN r, ref doubleN z)
         {
             int n = Rows;

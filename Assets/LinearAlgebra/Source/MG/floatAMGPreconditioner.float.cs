@@ -27,6 +27,8 @@ namespace LinearAlgebra.Sparse
         public bool IsCycleSymmetric => _amg.IsCycleSymmetric;
 
         /// <summary>z = one cycle on A z = r, zero initial guess. z must not alias r.</summary>
+        public bool IsIdentity => false;
+
         public void Apply(in floatN r, ref floatN z) => _amg.ApplyCycleFromZero(in r, ref z);
     }
 }

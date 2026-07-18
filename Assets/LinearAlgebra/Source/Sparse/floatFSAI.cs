@@ -369,6 +369,8 @@ namespace LinearAlgebra.Sparse
 
         /// <summary>z = Gᵀ (G r): two forward BSR spMVs through <see cref="Scratch"/>. z must not
         /// alias r or Scratch.</summary>
+        public bool IsIdentity => false;
+
         public unsafe void Apply(in floatN r, ref floatN z)
         {
             int n = Rows;

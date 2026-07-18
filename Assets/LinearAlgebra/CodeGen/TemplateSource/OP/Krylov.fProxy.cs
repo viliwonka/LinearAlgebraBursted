@@ -36,104 +36,10 @@ namespace LinearAlgebra
                                    int maxIter, fProxy tol)
             where TOp : struct, IfProxyLinearOperator
         {
-            if (A.Rows != A.Cols)
-                throw new ArgumentException("cg: A must be square");
-
-            if (b.N != A.Rows)
-                throw new ArgumentException("cg: b.N must equal A.Rows");
-
-            if (x.N != A.Rows)
-                throw new ArgumentException("cg: x.N must equal A.Rows");
-
-            if (r.N != A.Rows)
-                throw new ArgumentException("cg: r.N must equal A.Rows");
-
-            if (p.N != A.Rows)
-                throw new ArgumentException("cg: p.N must equal A.Rows");
-
-            if (Ap.N != A.Rows)
-                throw new ArgumentException("cg: Ap.N must equal A.Rows");
-
-            if (maxIter < 1)
-                throw new ArgumentException("cg: maxIter must be >= 1");
-
-            // Aliasing guard: the loop below mixes plain elementwise scratch updates
-            // (addScaledInPlace/scaleAddInPlace) with reads of "old" values, and those primitives do
-            // NOT self-check aliasing the way A.Apply's own dot/spMV call does. E.g. r aliasing
-            // Ap turns `r.addScaledInPlace(-1, Ap)` (r -= Ap) into r -= r == 0 elementwise -- a
-            // silent false convergence instead of a thrown exception. Check every pair up front.
-            unsafe
-            {
-                fProxy* rPtr = r.Data.Ptr, pPtr = p.Data.Ptr, ApPtr = Ap.Data.Ptr, xPtr = x.Data.Ptr, bPtr = b.Data.Ptr;
-
-                if (rPtr == pPtr || rPtr == ApPtr || rPtr == xPtr || rPtr == bPtr ||
-                    pPtr == ApPtr || pPtr == xPtr || pPtr == bPtr ||
-                    ApPtr == xPtr || ApPtr == bPtr ||
-                    xPtr == bPtr)
-                    throw new ArgumentException("cg: r/p/Ap/x/b must be distinct");
-            }
-
-            fProxy bb = Blas.dot(b, b);
-
-            // b is the zero vector — x = 0 is the exact solution. Copy b (all zeros)
-            // rather than multiplying by 0, so a NaN/Inf initial guess is sanitized
-            // (NaN * 0 = NaN would otherwise leak through).
-            if (bb == (fProxy)0)
-            {
-                x.Data.CopyFrom(b.Data);
-                return MakeSolveInfo(IterativeSolveStatus.Converged, 0, (fProxy)0);
-            }
-
-            // r = b - A x
-            A.Apply(in x, ref Ap);                       // Ap = A x (temp use of Ap)
-            r.Data.CopyFrom(b.Data);                     // r  = b
-            r.addScaledInPlace((fProxy)(-1), Ap);           // r -= Ap  =>  r = b - A x
-
-            // p = r
-            p.Data.CopyFrom(r.Data);
-
-            fProxy rsold = Blas.dot(r, r);
-            fProxy threshold = tol * tol * bb;
-
-            if (rsold <= threshold)
-                return MakeSolveInfo(IterativeSolveStatus.Converged, 0, math.sqrt(rsold));
-
-            for (int k = 0; k < maxIter; k++)
-            {
-                // Ap = A p ; pAp = dot(p, Ap) via ApplyDot (see IfProxyLinearOperator.ApplyDot).
-                fProxy pAp = A.ApplyDot(in p, ref Ap);
-
-                if (!(pAp > (fProxy)0))                  // NaN-safe: also catches breakdown
-                    return MakeSolveInfo(IterativeSolveStatus.Breakdown, k, math.sqrt(rsold));
-
-                fProxy alpha = rsold / pAp;
-
-                // x += alpha p ; r -= alpha Ap ; rsnew = ||r||^2 folded into the r-update pass
-                // (Blas.updateXR), eliminating the separate Blas.dot(r,r) traversal.
-                fProxy rsnew = Blas.updateXR(alpha, p, ref x, Ap, ref r);
-
-                if (rsnew <= threshold)
-                {
-                    // Verify-at-exit: r is recursively updated, so a claimed convergence can be
-                    // optimistic drift (float). Recompute r = b - Ax fresh (+1 Apply, reusing Ap)
-                    // and retest before trusting it; fall through with the corrected r if it fails.
-                    A.Apply(in x, ref Ap);
-                    r.Data.CopyFrom(b.Data);
-                    r.addScaledInPlace((fProxy)(-1), Ap);
-                    rsnew = Blas.dot(r, r);
-
-                    if (rsnew <= threshold)
-                        return MakeSolveInfo(IterativeSolveStatus.Converged, k + 1, math.sqrt(rsnew));
-                }
-
-                fProxy beta = rsnew / rsold;
-
-                p.scaleAddInPlace(beta, r);                 // p = beta p + r
-
-                rsold = rsnew;
-            }
-
-            return MakeSolveInfo(IterativeSolveStatus.MaxIterations, maxIter, math.sqrt(rsold));
+            // Unpreconditioned CG == the single cg<TOp,TPre> body with the identity preconditioner:
+            // its IsIdentity fold strips every z access, so this compiles to plain CG and needs no z.
+            fProxyN z = default;
+            return cg(in A, default(fProxyIdentityPreconditioner), in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
         }
 
         /// <summary>
@@ -205,6 +111,150 @@ namespace LinearAlgebra
         }
 
         /// <summary>
+        /// Zero-alloc Conjugate Gradient for SPD systems A x = b, generic over BOTH the operator
+        /// (<see cref="IfProxyLinearOperator"/>) and the preconditioner
+        /// (<see cref="IfProxyPreconditioner"/>) -- the SINGLE body behind the plain and the
+        /// preconditioned entry points. Every z access (its scratch, size/aliasing guards, M.Apply,
+        /// and the ⟨r,z⟩ dot) sits behind <c>if (!M.IsIdentity)</c>, a compile-time-literal branch
+        /// that constant-folds per Burst specialization -- so with
+        /// <see cref="fProxyIdentityPreconditioner"/> this compiles to, and is bit-identical to,
+        /// plain CG (no Apply, no z traffic), and z may be passed as <c>default</c>.
+        ///
+        /// Caller provides x (initial guess, overwritten -- warm-startable) and scratch r, p, Ap, z
+        /// (length A.Rows; z UNUSED under the identity). Convergence tests the true residual ‖r‖²
+        /// against tol²·‖b‖². Returns a <see cref="SolveInfo"/>. Breakdown on non-positive curvature
+        /// p·Ap ≤ 0 (or a non-SPD preconditioner's non-positive ⟨r,z⟩).
+        /// </summary>
+        public static SolveInfo cg<TOp, TPre>(in TOp A, in TPre M, in fProxyN b, ref fProxyN x,
+                                          ref fProxyN r, ref fProxyN p, ref fProxyN Ap, ref fProxyN z,
+                                          int maxIter, fProxy tol)
+            where TOp : struct, IfProxyLinearOperator
+            where TPre : struct, IfProxyPreconditioner
+        {
+            if (A.Rows != A.Cols)
+                throw new ArgumentException("cg: A must be square");
+            if (b.N != A.Rows)
+                throw new ArgumentException("cg: b.N must equal A.Rows");
+            if (x.N != A.Rows)
+                throw new ArgumentException("cg: x.N must equal A.Rows");
+            if (r.N != A.Rows)
+                throw new ArgumentException("cg: r.N must equal A.Rows");
+            if (p.N != A.Rows)
+                throw new ArgumentException("cg: p.N must equal A.Rows");
+            if (Ap.N != A.Rows)
+                throw new ArgumentException("cg: Ap.N must equal A.Rows");
+            if (!M.IsIdentity && z.N != A.Rows)
+                throw new ArgumentException("cg: z.N must equal A.Rows");
+            if (maxIter < 1)
+                throw new ArgumentException("cg: maxIter must be >= 1");
+
+            // Aliasing guard -- see cg<TOp>. z joins the checked set only for a real preconditioner
+            // (the identity path never dereferences z, and may pass default).
+            unsafe
+            {
+                fProxy* rPtr = r.Data.Ptr, pPtr = p.Data.Ptr, ApPtr = Ap.Data.Ptr, xPtr = x.Data.Ptr, bPtr = b.Data.Ptr;
+
+                if (rPtr == pPtr || rPtr == ApPtr || rPtr == xPtr || rPtr == bPtr ||
+                    pPtr == ApPtr || pPtr == xPtr || pPtr == bPtr ||
+                    ApPtr == xPtr || ApPtr == bPtr ||
+                    xPtr == bPtr)
+                    throw new ArgumentException("cg: r/p/Ap/x/b must be distinct");
+
+                if (!M.IsIdentity)
+                {
+                    fProxy* zPtr = z.Data.Ptr;
+                    if (zPtr == rPtr || zPtr == pPtr || zPtr == ApPtr || zPtr == xPtr || zPtr == bPtr)
+                        throw new ArgumentException("cg: z must be distinct from r/p/Ap/x/b");
+                }
+            }
+
+            fProxy bb = Blas.dot(b, b);
+
+            if (bb == (fProxy)0)
+            {
+                x.Data.CopyFrom(b.Data);
+                return MakeSolveInfo(IterativeSolveStatus.Converged, 0, (fProxy)0);
+            }
+
+            // r = b - A x
+            A.Apply(in x, ref Ap);
+            r.Data.CopyFrom(b.Data);
+            r.addScaledInPlace((fProxy)(-1), Ap);
+
+            fProxy threshold = tol * tol * bb;
+
+            fProxy rr = Blas.dot(r, r);
+            if (rr <= threshold)
+                return MakeSolveInfo(IterativeSolveStatus.Converged, 0, math.sqrt(rr));
+
+            // p = z = M⁻¹r ; rzold = ⟨r,z⟩. Identity folds to p = r, rzold = ⟨r,r⟩ (== plain CG).
+            fProxy rzold;
+            if (M.IsIdentity)
+            {
+                p.Data.CopyFrom(r.Data);
+                rzold = rr;
+            }
+            else
+            {
+                M.Apply(in r, ref z);
+                p.Data.CopyFrom(z.Data);
+                rzold = Blas.dot(r, z);
+
+                // Non-SPD preconditioner guard (identity's ⟨r,r⟩ is always > 0 here).
+                if (!(rzold > (fProxy)0))
+                    return MakeSolveInfo(IterativeSolveStatus.Breakdown, 0, math.sqrt(rr));
+            }
+
+            for (int k = 0; k < maxIter; k++)
+            {
+                fProxy pAp = A.ApplyDot(in p, ref Ap);
+
+                if (!(pAp > (fProxy)0))                  // NaN-safe: also catches breakdown
+                    return MakeSolveInfo(IterativeSolveStatus.Breakdown, k, math.sqrt(rr));
+
+                fProxy alpha = rzold / pAp;
+
+                // x += alpha p ; r -= alpha Ap ; rr = ‖r‖² folded into the r-update pass.
+                rr = Blas.updateXR(alpha, p, ref x, Ap, ref r);
+                if (rr <= threshold)
+                {
+                    // Verify-at-exit -- see cg<TOp>'s matching block for the rationale.
+                    A.Apply(in x, ref Ap);
+                    r.Data.CopyFrom(b.Data);
+                    r.addScaledInPlace((fProxy)(-1), Ap);
+                    rr = Blas.dot(r, r);
+
+                    if (rr <= threshold)
+                        return MakeSolveInfo(IterativeSolveStatus.Converged, k + 1, math.sqrt(rr));
+                }
+
+                fProxy rznew;
+                if (M.IsIdentity)
+                {
+                    rznew = rr;                          // ⟨r,z⟩ = ⟨r,r⟩, already in hand
+                }
+                else
+                {
+                    M.Apply(in r, ref z);                 // z = M⁻¹r
+                    rznew = Blas.dot(r, z);
+                    if (!(rznew > (fProxy)0))             // NaN-safe: same breakdown guard, fresh ⟨r,z⟩
+                        return MakeSolveInfo(IterativeSolveStatus.Breakdown, k + 1, math.sqrt(rr));
+                }
+
+                fProxy beta = rznew / rzold;
+
+                if (M.IsIdentity)
+                    p.scaleAddInPlace(beta, r);              // p = beta p + r
+                else
+                    p.scaleAddInPlace(beta, z);              // p = beta p + z
+
+                rzold = rznew;
+            }
+
+            return MakeSolveInfo(IterativeSolveStatus.MaxIterations, maxIter, math.sqrt(rr));
+        }
+
+        /// <summary>
         /// Zero-alloc Preconditioned Conjugate Gradient solver for SPD systems A x = b, generic
         /// over both the operator (<see cref="IfProxyLinearOperator"/>) and the preconditioner
         /// (<see cref="IfProxyPreconditioner"/>). Standard PCG: p is combined with z = M⁻¹r (not r), and β uses
@@ -224,118 +274,9 @@ namespace LinearAlgebra
             where TOp : struct, IfProxyLinearOperator
             where TPre : struct, IfProxyPreconditioner
         {
-            if (A.Rows != A.Cols)
-                throw new ArgumentException("pcg: A must be square");
-
-            if (b.N != A.Rows)
-                throw new ArgumentException("pcg: b.N must equal A.Rows");
-
-            if (x.N != A.Rows)
-                throw new ArgumentException("pcg: x.N must equal A.Rows");
-
-            if (r.N != A.Rows)
-                throw new ArgumentException("pcg: r.N must equal A.Rows");
-
-            if (p.N != A.Rows)
-                throw new ArgumentException("pcg: p.N must equal A.Rows");
-
-            if (Ap.N != A.Rows)
-                throw new ArgumentException("pcg: Ap.N must equal A.Rows");
-
-            if (z.N != A.Rows)
-                throw new ArgumentException("pcg: z.N must equal A.Rows");
-
-            if (maxIter < 1)
-                throw new ArgumentException("pcg: maxIter must be >= 1");
-
-            // Aliasing guard -- see the matching comment in cg<TOp>. z joins the set here since
-            // PCG additionally mixes p/r into the preconditioned residual via M.Apply / axpy.
-            unsafe
-            {
-                fProxy* rPtr = r.Data.Ptr, pPtr = p.Data.Ptr, ApPtr = Ap.Data.Ptr, zPtr = z.Data.Ptr, xPtr = x.Data.Ptr, bPtr = b.Data.Ptr;
-
-                if (rPtr == pPtr || rPtr == ApPtr || rPtr == zPtr || rPtr == xPtr || rPtr == bPtr ||
-                    pPtr == ApPtr || pPtr == zPtr || pPtr == xPtr || pPtr == bPtr ||
-                    ApPtr == zPtr || ApPtr == xPtr || ApPtr == bPtr ||
-                    zPtr == xPtr || zPtr == bPtr ||
-                    xPtr == bPtr)
-                    throw new ArgumentException("pcg: r/p/Ap/z/x/b must be distinct");
-            }
-
-            fProxy bb = Blas.dot(b, b);
-
-            if (bb == (fProxy)0)
-            {
-                x.Data.CopyFrom(b.Data);
-                return MakeSolveInfo(IterativeSolveStatus.Converged, 0, (fProxy)0);
-            }
-
-            // r = b - A x
-            A.Apply(in x, ref Ap);
-            r.Data.CopyFrom(b.Data);
-            r.addScaledInPlace((fProxy)(-1), Ap);
-
-            fProxy threshold = tol * tol * bb;
-
-            // rr tracks ‖r‖² of the CURRENT residual across the whole solve -- it is exactly the
-            // quantity the convergence test already needs, so reporting rnorm = √rr is free.
-            fProxy rr = Blas.dot(r, r);
-            if (rr <= threshold)
-                return MakeSolveInfo(IterativeSolveStatus.Converged, 0, math.sqrt(rr));
-
-            // z = M^-1 r ; p = z
-            M.Apply(in r, ref z);
-            p.Data.CopyFrom(z.Data);
-
-            fProxy rzold = Blas.dot(r, z);
-
-            // Block-Jacobi is SPD so this never trips on the shipped path, but a user-supplied
-            // preconditioner is not guaranteed SPD; a non-positive <r,z> yields a wrong-signed
-            // alpha/beta and silent divergence instead of a clean bailout. Mirrors cg's
-            // NaN-safe !(pAp > 0) breakdown guard.
-            if (!(rzold > (fProxy)0))
-                return MakeSolveInfo(IterativeSolveStatus.Breakdown, 0, math.sqrt(rr));
-
-            for (int k = 0; k < maxIter; k++)
-            {
-                // Ap = A p ; pAp = dot(p, Ap) via ApplyDot (see IfProxyLinearOperator.ApplyDot).
-                fProxy pAp = A.ApplyDot(in p, ref Ap);
-
-                if (!(pAp > (fProxy)0))                  // NaN-safe: also catches breakdown
-                    return MakeSolveInfo(IterativeSolveStatus.Breakdown, k, math.sqrt(rr));
-
-                fProxy alpha = rzold / pAp;
-
-                // x += alpha p ; r -= alpha Ap ; rr = ||r||^2 folded into the r-update pass
-                // (Blas.updateXR), eliminating the separate Blas.dot(r,r) traversal.
-                rr = Blas.updateXR(alpha, p, ref x, Ap, ref r);
-                if (rr <= threshold)
-                {
-                    // Verify-at-exit -- see cg<TOp>'s matching block for the rationale.
-                    A.Apply(in x, ref Ap);
-                    r.Data.CopyFrom(b.Data);
-                    r.addScaledInPlace((fProxy)(-1), Ap);
-                    rr = Blas.dot(r, r);
-
-                    if (rr <= threshold)
-                        return MakeSolveInfo(IterativeSolveStatus.Converged, k + 1, math.sqrt(rr));
-                }
-
-                M.Apply(in r, ref z);                     // z = M^-1 r
-
-                fProxy rznew = Blas.dot(r, z);
-
-                if (!(rznew > (fProxy)0))                 // NaN-safe: same breakdown guard, fresh <r,z>
-                    return MakeSolveInfo(IterativeSolveStatus.Breakdown, k + 1, math.sqrt(rr));
-
-                fProxy beta = rznew / rzold;
-
-                p.scaleAddInPlace(beta, z);                 // p = beta p + z
-
-                rzold = rznew;
-            }
-
-            return MakeSolveInfo(IterativeSolveStatus.MaxIterations, maxIter, math.sqrt(rr));
+            // Preconditioned CG is the single cg<TOp,TPre> body (this method is retained as the
+            // familiar name; the merged body carries the loop + the IsIdentity fold).
+            return cg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
         }
 
         /// <summary>

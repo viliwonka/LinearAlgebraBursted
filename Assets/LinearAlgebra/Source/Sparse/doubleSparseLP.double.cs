@@ -110,6 +110,8 @@ namespace LinearAlgebra
 
         public doubleNormalJacobi(in doubleN invDiag) { InvDiag = invDiag; }
 
+        public bool IsIdentity => false;
+
         public void Apply(in doubleN r, ref doubleN z)
         {
             if (z.N != r.N || InvDiag.N != r.N)

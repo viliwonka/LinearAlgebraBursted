@@ -36,6 +36,8 @@ public class floatFlexibleCGTests
 
         public int Rows => A.M_Rows;
 
+        public bool IsIdentity => false;
+
         public void Apply(in floatN r, ref floatN z)
         {
             for (int i = 0; i < z.N; i++) z[i] = (float)0;

@@ -55,6 +55,13 @@ namespace LinearAlgebra
     {
         /// <summary>z = M⁻¹ r. z must be distinct from r (see each implementation's aliasing guard).</summary>
         void Apply(in fProxyN r, ref fProxyN z);
+
+        /// <summary>Compile-time literal: true ONLY for <see cref="fProxyIdentityPreconditioner"/>,
+        /// false for every real preconditioner. A <c>TPre</c>-generic solver branches on it
+        /// (<c>if (!M.IsIdentity) M.Apply(...)</c>); because TPre is a struct type parameter the
+        /// branch constant-folds per specialization, so the identity case compiles down to the
+        /// unpreconditioned solver (no <c>Apply</c>, no z traffic) from the single body.</summary>
+        bool IsIdentity { get; }
     }
 
     /// <summary>
@@ -106,6 +113,8 @@ namespace LinearAlgebra
     public readonly struct fProxyIdentityPreconditioner : IfProxyPreconditioner
     {
         public void Apply(in fProxyN r, ref fProxyN z) => z.Data.CopyFrom(r.Data);
+
+        public bool IsIdentity => true;
     }
 
     /// <summary>

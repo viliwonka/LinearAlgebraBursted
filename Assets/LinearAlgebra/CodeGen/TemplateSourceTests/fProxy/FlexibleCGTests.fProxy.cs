@@ -32,6 +32,8 @@ public class fProxyFlexibleCGTests
 
         public int Rows => A.M_Rows;
 
+        public bool IsIdentity => false;
+
         public void Apply(in fProxyN r, ref fProxyN z)
         {
             for (int i = 0; i < z.N; i++) z[i] = (fProxy)0;

@@ -1,6 +1,24 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.cg — single-body merge (cg/pcg share one loop, IsIdentity fold)
+- 2026-07-19 | Collapsed the plain + preconditioned CG into ONE body `cg<TOp,TPre>`; `cg<TOp>` and
+  `pcg<TOp,TPre>` now forward into it (no duplicate loop). Mechanism: new compile-time
+  `bool IsIdentity` on IfProxyPreconditioner (identity → literal true, all 13 real preconditioners →
+  literal false). Every z access — size guard, aliasing sub-guard, M.Apply, ⟨r,z⟩ dot — sits behind
+  `if(!M.IsIdentity)`; because TPre is a struct-constrained generic, Burst constant-folds the branch
+  per specialization, so `cg<…,fProxyIdentityPreconditioner>` strips all z traffic and compiles to
+  plain CG. z may be passed `default` on the identity path (never dereferenced) — so `cg<TOp>` needs
+  no z buffer. SPIKE VERDICT (all 3 gates passed): (1) compiles under Burst; (2) bit-identical —
+  `MergedCgIdentityMatchesPlainCg` asserts exact double-equality on x/iterations/status/rnorm, and the
+  PCG benchmark shows byte-identical iters+residuals for every CG and PCG row; (3) zero perf cost —
+  identity-fold CG rows are ≤ the old hand-written body's time (the ~5% delta vs the Jul-18 baseline is
+  run/thermal variance, not a real speedup — baseline file left unchanged). Confirms the pattern for
+  the rest of the family. NEXT: rename pcg→cg at call sites + drop the pcg forwarders (cosmetic/API,
+  pre-1.0); then the same merge for minres/pminres, biCGStab/pbiCGStab, gmres/pgmres; then block
+  (m-rhs) solvers written single-body from the start. See [[iterative-solver-overload-ladder]]
+  (this supersedes the keep-arity ruling, per user).
+
 ## Krylov.cgls / cglsJacobi removed
 - 2026-07-19 | Removed CGLS (all overloads: generic + dense + BSR + damped + transpose-optimized) and
   its column-equilibration wrapper cglsJacobi, plus all tests/benchmarks/CglsInfo. Rationale: CGLS is

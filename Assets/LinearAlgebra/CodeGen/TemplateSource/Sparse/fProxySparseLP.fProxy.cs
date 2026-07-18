@@ -106,6 +106,8 @@ namespace LinearAlgebra
 
         public fProxyNormalJacobi(in fProxyN invDiag) { InvDiag = invDiag; }
 
+        public bool IsIdentity => false;
+
         public void Apply(in fProxyN r, ref fProxyN z)
         {
             if (z.N != r.N || InvDiag.N != r.N)

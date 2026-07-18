@@ -368,6 +368,8 @@ namespace LinearAlgebra.Sparse
         /// <summary>z = M^-1 r = sum_i R_i^T A_i^-1 R_i r: zero z, then for each subdomain gather r,
         /// solve against the cached Cholesky factor, and add the local solution back into z over the
         /// overlapped block set. z must not alias r or Scratch.</summary>
+        public bool IsIdentity => false;
+
         public unsafe void Apply(in floatN r, ref floatN z)
         {
             int n = Rows;
@@ -594,6 +596,8 @@ namespace LinearAlgebra.Sparse
         /// <summary>z = M^-1 r = sum_i R~_i^T A_i^-1 R_i r: for each subdomain gather r, solve against
         /// the cached LU factor, and write the owned-cell entries into z (each dof exactly once). z
         /// must not alias r, Scratch, or Scratch2.</summary>
+        public bool IsIdentity => false;
+
         public unsafe void Apply(in floatN r, ref floatN z)
         {
             int n = Rows;

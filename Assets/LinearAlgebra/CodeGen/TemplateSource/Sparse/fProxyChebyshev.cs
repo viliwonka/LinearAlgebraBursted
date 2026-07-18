@@ -228,6 +228,8 @@ namespace LinearAlgebra.Sparse
 
         /// <summary>z = q(D⁻¹A)·D⁻¹r via the degree-Degree Chebyshev recurrence
         /// (<see cref="BSR.chebyApply"/>) over the struct's owned scratch. z must not alias r.</summary>
+        public bool IsIdentity => false;
+
         public unsafe void Apply(in fProxyN r, ref fProxyN z)
         {
             int n = Rows;

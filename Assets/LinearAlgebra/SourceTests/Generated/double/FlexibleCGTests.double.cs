@@ -36,6 +36,8 @@ public class doubleFlexibleCGTests
 
         public int Rows => A.M_Rows;
 
+        public bool IsIdentity => false;
+
         public void Apply(in doubleN r, ref doubleN z)
         {
             for (int i = 0; i < z.N; i++) z[i] = (double)0;

@@ -90,6 +90,8 @@ namespace LinearAlgebra.Sparse
         public fProxySSOR(in fProxyBSR a, ref Arena arena) : this(in a, (fProxy)1, ref arena) { }
 
         /// <summary>z = M⁻¹ r -- see the type doc comment for the three-step derivation. z must not alias r.</summary>
+        public bool IsIdentity => false;
+
         public unsafe void Apply(in fProxyN r, ref fProxyN z)
         {
             int n = Rows;

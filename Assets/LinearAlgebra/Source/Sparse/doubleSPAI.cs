@@ -266,6 +266,8 @@ namespace LinearAlgebra.Sparse
         }
 
         /// <summary>z = M r: one BSR spMV. z must not alias r.</summary>
+        public bool IsIdentity => false;
+
         public unsafe void Apply(in doubleN r, ref doubleN z)
         {
             int n = Rows;
