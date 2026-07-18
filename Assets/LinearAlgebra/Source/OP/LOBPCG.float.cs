@@ -24,7 +24,12 @@ namespace LinearAlgebra
     /// further matvec/preconditioner/Rayleigh-Ritz) and deflated out of the active subspace. Locked
     /// pairs stay in the output X.
     ///
-    /// <b>Robustness:</b> the Gram Cholesky has a Tikhonov-ridge retry; if it still fails the
+    /// <b>Robustness:</b> the seed X is B-renormalized once before the first Rayleigh-Ritz, then
+    /// every active X row is B-renormalized again each iteration (a row whose B-norm^2 is at/below
+    /// <c>Consts.floatEpsilon</c> is reseeded first). W and P are B-orthonormalized
+    /// with dropping: a direction the block cannot support to working precision is dropped (that
+    /// block's width shrinks) rather than folded in via a Tikhonov ridge. The combined
+    /// Rayleigh-Ritz Gram's Cholesky is gated on a cubed pivot-ratio threshold; on failure the
     /// iteration drops P and retries with just [X, W], and failing that stalls (X/lambda unchanged)
     /// rather than producing NaN. A non-finite residual aborts with
     /// <see cref="IterativeSolveStatus.Breakdown"/>.
@@ -157,6 +162,47 @@ namespace LinearAlgebra
             // computation reading BX in place of a Euclidean X reproduces the pre-generalization
             // formula bit-for-bit.
             B.ApplyBlock(in ws.X, ref ws.BX, kWork);
+
+            // B-normalize the seed once, before the first Rayleigh-Ritz: OrthonormalizeBlock above
+            // only guarantees X^T X = I (Euclidean), not the B-inner-product X^T B X = I the
+            // combined Gram gate assumes -- for B != I with even a mild condition number this can
+            // leave the FIRST iteration's [X,W] Gram under the cube-rule gate before any later
+            // B-normalize runs. Linearity: scaling X_i by inv scales AX_i/BX_i by the SAME inv, so
+            // this costs no extra matvec beyond the ApplyBlocks just above. A column at/below
+            // Consts.floatEpsilon B-norm^2 is reseeded first (deterministic, distinct seed from the
+            // other reseed sites).
+            for (int i = 0; i < kWork; i++)
+            {
+                float bn2 = (float)0;
+                for (int c = 0; c < n; c++) bn2 += ws.X[i, c] * ws.BX[i, c];
+
+                if (!(bn2 > Consts.floatEpsilon))
+                {
+                    uint seed = 0x27D4EB2Fu + (uint)i * 0x165667B1u;
+                    if (seed == 0u) seed = 0x27D4EB2Fu;
+                    var reseedRng = new Unity.Mathematics.Random(seed);
+                    for (int c = 0; c < n; c++) ws.rowIn[c] = (float)(reseedRng.NextFloat() * 2f - 1f);
+                    for (int c = 0; c < n; c++) ws.X[i, c] = ws.rowIn[c];
+                    A.Apply(in ws.rowIn, ref ws.rowOut);
+                    for (int c = 0; c < n; c++) ws.AX[i, c] = ws.rowOut[c];
+                    B.Apply(in ws.rowIn, ref ws.rowOut);
+                    for (int c = 0; c < n; c++) ws.BX[i, c] = ws.rowOut[c];
+
+                    bn2 = (float)0;
+                    for (int c = 0; c < n; c++) bn2 += ws.X[i, c] * ws.BX[i, c];
+                }
+
+                if (bn2 > Consts.floatEpsilon)
+                {
+                    float inv = (float)1 / math.sqrt(bn2);
+                    for (int c = 0; c < n; c++)
+                    {
+                        ws.X[i, c]  *= inv;
+                        ws.AX[i, c] *= inv;
+                        ws.BX[i, c] *= inv;
+                    }
+                }
+            }
 
             // Frobenius-sketch operator-norm estimates over the orthonormalized seed:
             // normAEst = ||AX||_F / sqrt(kWork) <= ||A||_2 (a LOWER bound -- errs strict, never
@@ -375,21 +421,15 @@ namespace LinearAlgebra
                 // (bounded, not chained across iterations -- exactly how AW already works).
                 B.ApplyBlock(in ws.W, ref ws.BW, numActive);
 
-                // ---- B-deflate against X, then INTERNALLY B-orthonormalize (safeguard 1) ----
-                // Deflation alone leaves W's OWN Gram an arbitrary SPD matrix (its rows can differ
-                // in scale by orders of magnitude, e.g. once some pairs' residuals have shrunk much
-                // more than others) -- feeding that directly into the combined Rayleigh-Ritz Gram
-                // relies on ONE Cholesky to absorb both the deflation AND that scale spread, which
-                // is exactly the ill-conditioned-basis failure mode that produces spurious Ritz
-                // values (below lambda_min, even negative) instead of tripping the rank-deficiency
-                // safeguard. Cholesky-QR-normalizing W (and P) INTERNALLY right here, w.r.t. the
-                // B-inner-product -- via the same FactorGram (with its ridge retry) used everywhere
-                // else -- keeps the combined B-Gram close to the identity, so the final
-                // Rayleigh-Ritz Cholesky is well-conditioned by construction and a genuine rank
-                // deficiency reliably trips the correct safeguard.
+                // ---- B-deflate against X, then INTERNALLY B-orthonormalize WITH DROPPING (safeguard 1) ----
+                // W is deflated against the full [locked, active] X block, then B-orthonormalized
+                // with dropping: a direction W cannot support to working precision is DROPPED
+                // (nw <= numActive, the surviving rows written into W/AW/BW[0, nw)) rather than
+                // folded into the combined Rayleigh-Ritz Gram via a Tikhonov ridge.
                 Deflate(ref ws.W, ref ws.AW, ref ws.BW, numActive, in ws.X, in ws.AX, in ws.BX, 0, kWork, n);
 
-                if (!OrthonormalizeBlockB(ref ws.W, ref ws.AW, ref ws.BW, numActive, n, ref ws.Gram, ref ws.L, ref ws.rowIn, ref ws.rowOut, ref ws.rowAux))
+                int nw = OrthonormalizeBlockB(ref ws.W, ref ws.AW, ref ws.BW, numActive, n, ref ws.Gram, ref ws.L, ref ws.Xnext);
+                if (nw == 0)
                 {
                     // W collapsed entirely onto the already-known (locked+active X) subspace --
                     // a genuinely degenerate iteration. Stall (leave X/lambda untouched) rather
@@ -399,27 +439,28 @@ namespace LinearAlgebra
                 }
 
                 bool haveP0 = haveP;
+                int np = 0;
                 if (haveP0)
                 {
                     Deflate(ref ws.P, ref ws.AP, ref ws.BP, numActive, in ws.X, in ws.AX, in ws.BX, 0, kWork, n);
-                    Deflate(ref ws.P, ref ws.AP, ref ws.BP, numActive, in ws.W, in ws.AW, in ws.BW, 0, numActive, n);
+                    Deflate(ref ws.P, ref ws.AP, ref ws.BP, numActive, in ws.W, in ws.AW, in ws.BW, 0, nw, n);
 
                     // If P has become (nearly) linearly dependent on X/W -- e.g. after many
                     // iterations P can drift toward the span already covered -- drop it for just
                     // this iteration (safeguard 2's "standard fix") rather than treating it as a
                     // hard stall; W alone is still a perfectly good (steepest-descent) basis.
-                    if (!OrthonormalizeBlockB(ref ws.P, ref ws.AP, ref ws.BP, numActive, n, ref ws.Gram, ref ws.L, ref ws.rowIn, ref ws.rowOut, ref ws.rowAux))
-                        haveP0 = false;
+                    np = OrthonormalizeBlockB(ref ws.P, ref ws.AP, ref ws.BP, numActive, n, ref ws.Gram, ref ws.L, ref ws.Xnext);
+                    if (np == 0) haveP0 = false;
                 }
 
                 // ---- Rayleigh-Ritz, 3-block with a 2-block ("drop P") fallback (safeguard 2) ----
                 bool usedP = haveP0;
-                bool ok = TryRayleighRitz(ref ws, numActive, usedP, n);
+                bool ok = TryRayleighRitz(ref ws, numActive, nw, np, usedP, n);
 
                 if (!ok && usedP)
                 {
                     usedP = false;
-                    ok = TryRayleighRitz(ref ws, numActive, usedP, n);
+                    ok = TryRayleighRitz(ref ws, numActive, nw, np, usedP, n);
                 }
 
                 if (!ok)
@@ -432,11 +473,11 @@ namespace LinearAlgebra
                     continue;
                 }
 
-                UpdateActiveBlock(ref ws, numActive, usedP, n, kWork);
+                UpdateActiveBlock(ref ws, numActive, nw, np, usedP, n, kWork);
 
                 // Recompute AX/BX FRESH via a matvec each -- UpdateActiveBlock deliberately does
                 // NOT also mirror-combine AX/BX (see its own doc comment): propagating AX through
-                // many iterations of Cholesky-QR/Rayleigh-Ritz combinations (never re-touching A)
+                // many iterations of Cholesky-QR/SVQB/Rayleigh-Ritz combinations (never re-touching A)
                 // accumulates rounding error that compounds. This is the canonical
                 // "R = A X - X diag(theta)" fresh-residual formulation (generalized:
                 // "- B X diag(theta)"); the extra matvecs/iteration (over numActive rows only) are a
@@ -444,6 +485,43 @@ namespace LinearAlgebra
                 // indefinitely.
                 A.ApplyBlock(in ws.X, ref ws.AX, numActive);
                 B.ApplyBlock(in ws.X, ref ws.BX, numActive);
+
+                // Restores the B-unit invariant on every active row every iteration (linearity:
+                // scaling X_i by inv scales A X_i/B X_i by the SAME inv -- no extra matvec). A row
+                // whose B-norm^2 is at/below Consts.floatEpsilon is reseeded first (deterministic,
+                // keyed by (iter,i)), mirroring the (d1) reseed above.
+                for (int i = 0; i < numActive; i++)
+                {
+                    float bn2 = (float)0;
+                    for (int c = 0; c < n; c++) bn2 += ws.X[i, c] * ws.BX[i, c];
+
+                    if (!(bn2 > Consts.floatEpsilon))
+                    {
+                        uint seed = 0x2545F491u + (uint)(iter * kWork + i) * 0xC2B2AE35u;
+                        if (seed == 0u) seed = 0x2545F491u;
+                        var reseedRng = new Unity.Mathematics.Random(seed);
+                        for (int c = 0; c < n; c++) ws.rowIn[c] = (float)(reseedRng.NextFloat() * 2f - 1f);
+                        for (int c = 0; c < n; c++) ws.X[i, c] = ws.rowIn[c];
+                        A.Apply(in ws.rowIn, ref ws.rowOut);
+                        for (int c = 0; c < n; c++) ws.AX[i, c] = ws.rowOut[c];
+                        B.Apply(in ws.rowIn, ref ws.rowOut);
+                        for (int c = 0; c < n; c++) ws.BX[i, c] = ws.rowOut[c];
+
+                        bn2 = (float)0;
+                        for (int c = 0; c < n; c++) bn2 += ws.X[i, c] * ws.BX[i, c];
+                    }
+
+                    if (bn2 > Consts.floatEpsilon)
+                    {
+                        float inv = (float)1 / math.sqrt(bn2);
+                        for (int c = 0; c < n; c++)
+                        {
+                            ws.X[i, c]  *= inv;
+                            ws.AX[i, c] *= inv;
+                            ws.BX[i, c] *= inv;
+                        }
+                    }
+                }
 
                 // Same fix for AP/BP: P is reformed EVERY iteration from a combination of the
                 // CURRENT W and the OLD P (chained iteration to iteration), and -- unlike AX,
@@ -807,17 +885,16 @@ namespace LinearAlgebra
         // Aliasing guard: every scratch buffer in the workspace must be distinct -- same rationale
         // as cg<TOp>'s guard (elementwise updates below don't self-check aliasing). A local
         // loop-based check (mirrors Krylov.RequireDistinctBuffers) rather than a hand-expanded OR
-        // chain: 23 buffers -> 253 pairs, impractical to hand-write/review. Includes the O(k)-scale
+        // chain: 24 buffers -> 276 pairs, impractical to hand-write/review. Includes the O(k)-scale
         // Rayleigh-Ritz scratch (Gram/H/L/Atrans/Y/C) alongside the O(n)-scale buffers -- all six
         // live simultaneously within a single TryRayleighRitz call (Gram/H built together, L
         // factored from Gram, Atrans formed from H/L, Y from Atrans, C from Y/L), so an aliased
         // pair among THEM is just as much a correctness hazard as an aliased O(n) pair. BX/BW/BP
-        // (the generalized-eigenproblem B-images of X/W/P) and rowAux (OrthonormalizeBlockB's third
-        // row-combination scratch) are included for the SAME reason -- every one of them is live
-        // simultaneously with the buffers it is combined against.
+        // (the generalized-eigenproblem B-images of X/W/P) are included for the SAME reason --
+        // every one of them is live simultaneously with the buffers it is combined against.
         static unsafe void RequireDistinctBuffers(in floatLOBPCGCache ws)
         {
-            const int count = 25;
+            const int count = 24;
             long* ptrs = stackalloc long[count];
             ptrs[0] = (long)ws.X.Data.Ptr;
             ptrs[1] = (long)ws.AX.Data.Ptr;
@@ -841,9 +918,8 @@ namespace LinearAlgebra
             ptrs[19] = (long)ws.BX.Data.Ptr;
             ptrs[20] = (long)ws.BW.Data.Ptr;
             ptrs[21] = (long)ws.BP.Data.Ptr;
-            ptrs[22] = (long)ws.rowAux.Data.Ptr;
-            ptrs[23] = (long)ws.resScale.Data.Ptr;
-            ptrs[24] = (long)ws.xBnorm.Data.Ptr;
+            ptrs[22] = (long)ws.resScale.Data.Ptr;
+            ptrs[23] = (long)ws.xBnorm.Data.Ptr;
 
             for (int i = 0; i < count; i++)
                 for (int j = i + 1; j < count; j++)
@@ -861,6 +937,18 @@ namespace LinearAlgebra
             var v = buf;
             v.M_Rows = m;
             v.N_Cols = m;
+            return v;
+        }
+
+        // Same-buffer logical view with `rows` rows and the SAME column count as `buf` -- used to
+        // borrow a k x n cache buffer as `rows` x n scratch (row-major layout makes the leading
+        // `rows` rows of a k x n buffer identical to a standalone `rows` x n matrix). Not a new
+        // allocation. See the class doc comment's "Zero-alloc scope" note.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static floatMxN RowsView(in floatMxN buf, int rows)
+        {
+            var v = buf;
+            v.M_Rows = rows;
             return v;
         }
 
@@ -890,17 +978,11 @@ namespace LinearAlgebra
         // a fresh matvec): G = V V^T, Cholesky-factor it (with FactorGram's own ridge retry), then
         // Vortho[i,:] = (V[i,:] - sum_{r<i} L[i,r]*Vortho[r,:]) / L[i,i] row by row (each row's
         // update only reads ALREADY-finalized earlier rows, so overwriting V/AV in place, top row
-        // first, is safe), with the identical row combination applied to AV in lockstep. Used both
-        // to orthonormalize the initial X seed and, every iteration, to internally orthonormalize
-        // the (already X-deflated) W and P blocks -- see the class doc comment's "Orthogonalization"
-        // note on why this is not redundant with the Rayleigh-Ritz Gram's own Cholesky step: without
-        // it, W/P's arbitrary internal scale (e.g. once residuals have shrunk by very different
-        // amounts across active pairs) can make the COMBINED Gram ill-conditioned enough that its
-        // one Cholesky produces spurious Ritz values instead of tripping the rank-deficiency
-        // safeguard. `rowTmp`/`rowTmp2` (length n each) are caller-provided scratch. Returns false
-        // if V's rows cannot be orthonormalized at all (rank-deficient even after FactorGram's ridge
-        // retry -- e.g. k > n for the initial seed, or W/P has collapsed onto the already-known
-        // subspace); callers stall or drop P accordingly.
+        // first, is safe), with the identical row combination applied to AV in lockstep. Used only
+        // to orthonormalize the initial X seed (Euclidean Gram = V V^T -- see the call site's
+        // comment on why that is correct even though the real problem is generalized). `rowTmp`/
+        // `rowTmp2` (length n each) are caller-provided scratch. Returns false if V's rows cannot be
+        // orthonormalized at all (rank-deficient even after FactorGram's ridge retry -- e.g. k > n).
         static bool OrthonormalizeBlock(ref floatMxN V, ref floatMxN AV, int rows, int n,
                                          ref floatMxN Gram, ref floatMxN L, ref floatN rowTmp, ref floatN rowTmp2)
         {
@@ -937,48 +1019,108 @@ namespace LinearAlgebra
             return true;
         }
 
-        // GENERALIZED (B-inner-product) sibling of OrthonormalizeBlock: Cholesky-QR-orthonormalizes
-        // V in place w.r.t. Gram = V^T B V, carrying AV and BV along via the same row combination.
-        // Requires BV to already hold a valid B-image of V on entry. Used for the per-iteration W/P
-        // blocks (never the initial X seed, which stays Euclidean-only). Returns false if V's rows
-        // cannot be B-orthonormalized (rank-deficient even after FactorGram's ridge retry); callers
-        // stall or drop P accordingly.
-        static bool OrthonormalizeBlockB(ref floatMxN V, ref floatMxN AV, ref floatMxN BV, int rows, int n,
-                                          ref floatMxN Gram, ref floatMxN L, ref floatN rowTmp, ref floatN rowTmp2, ref floatN rowTmp3)
+        // GENERALIZED (B-inner-product) sibling of OrthonormalizeBlock: B-orthonormalizes the first
+        // `rows` rows of V WITH DROPPING, carrying AV/BV along via the same combination. Requires BV
+        // to already hold a valid B-image of V on entry. Used for the per-iteration W/P blocks
+        // (never the initial X seed, which stays Euclidean-only via OrthonormalizeBlock). A
+        // direction the block cannot support to working precision is DROPPED rather than folded in:
+        // returns the number of rows kept (0..rows), written into the LEADING rows of V/AV/BV --
+        // rows [kept, rows) are left stale and must not be read by the caller. `Gram`/`Z` are 3k x 3k
+        // arena scratch views (only the leading rows x rows block is used; both fully overwritten).
+        // `scratch` is a k x n (or larger) arena buffer borrowed as row-combination scratch (its
+        // OWN prior contents are irrelevant and fully overwritten); the caller must not read it
+        // meaningfully until it repopulates it for its own purpose.
+        static int OrthonormalizeBlockB(ref floatMxN V, ref floatMxN AV, ref floatMxN BV, int rows, int n,
+                                         ref floatMxN Gram, ref floatMxN Z, ref floatMxN scratch)
         {
-            var G = View(in Gram, rows);
-            var Lv = View(in L, rows);
+            if (rows <= 0) return 0;
 
+            var G = View(in Gram, rows);
             FillGramSub(ref G, 0, in V, rows, 0, in BV, rows, n, true);
 
-            if (!FactorGram(ref G, ref Lv, rows))
-                return false;
-
+            var D = new floatN(rows, Allocator.Temp);
             for (int i = 0; i < rows; i++)
             {
-                for (int c = 0; c < n; c++) { rowTmp[c] = V[i, c]; rowTmp2[c] = AV[i, c]; rowTmp3[c] = BV[i, c]; }
+                float gi = G[i, i];
+                D[i] = gi > (float)0 ? (float)1 / math.sqrt(gi) : (float)0;
+            }
 
-                for (int r = 0; r < i; r++)
+            for (int i = 0; i < rows; i++)
+                for (int j = 0; j < rows; j++)
+                    G[i, j] = D[i] * G[i, j] * D[j];
+
+            // Roundoff insurance: the two scalings of G[i,j]/G[j,i] above are mathematically equal
+            // but not necessarily bit-identical (multiplication order differs) -- symmetricInPlace
+            // requires exact-within-tolerance symmetry.
+            for (int i = 0; i < rows; i++)
+                for (int j = i + 1; j < rows; j++)
                 {
-                    float coef = Lv[i, r];
-                    for (int c = 0; c < n; c++)
-                    {
-                        rowTmp[c] -= coef * V[r, c];
-                        rowTmp2[c] -= coef * AV[r, c];
-                        rowTmp3[c] -= coef * BV[r, c];
-                    }
+                    float avg = (float)0.5 * (G[i, j] + G[j, i]);
+                    G[i, j] = avg;
+                    G[j, i] = avg;
                 }
 
-                float inv = (float)1 / Lv[i, i];
-                for (int c = 0; c < n; c++)
+            var theta = new floatN(rows, Allocator.Temp);
+            var Zv = View(in Z, rows);
+            bool eigOk = Eigen.symmetricInPlace(ref G, ref theta, ref Zv);
+
+            // theta is sorted DESCENDING; the kept set is its leading prefix above the drop floor.
+            int kept = 0;
+            if (eigOk)
+            {
+                float thetaMax = theta[0];
+                if (thetaMax > (float)0)
                 {
-                    V[i, c] = rowTmp[c] * inv;
-                    AV[i, c] = rowTmp2[c] * inv;
-                    BV[i, c] = rowTmp3[c] * inv;
+                    float dropFloor = thetaMax * ((float)rows * Consts.floatEpsilon * (float)10);
+                    for (int j = 0; j < rows && theta[j] > dropFloor; j++) kept++;
                 }
             }
 
-            return true;
+            if (kept > 0)
+            {
+                var scratchView = RowsView(in scratch, kept);
+
+                SvqbAccumulate(in V, ref scratchView, in D, in Zv, in theta, rows, kept, n);
+                for (int j = 0; j < kept; j++)
+                    for (int c = 0; c < n; c++)
+                        V[j, c] = scratchView[j, c];
+
+                SvqbAccumulate(in AV, ref scratchView, in D, in Zv, in theta, rows, kept, n);
+                for (int j = 0; j < kept; j++)
+                    for (int c = 0; c < n; c++)
+                        AV[j, c] = scratchView[j, c];
+
+                SvqbAccumulate(in BV, ref scratchView, in D, in Zv, in theta, rows, kept, n);
+                for (int j = 0; j < kept; j++)
+                    for (int c = 0; c < n; c++)
+                        BV[j, c] = scratchView[j, c];
+            }
+
+            D.Dispose();
+            theta.Dispose();
+            return kept;
+        }
+
+        // Accumulates the kept SVQB combination columns of Src into Dst[0, kept): Dst[j,:] =
+        // sum_i D[i]*Zv[i,j]*theta[j]^-0.5 * Src[i,:]. Dst must be distinct from Src (fully
+        // overwritten, not accumulated onto prior contents).
+        static void SvqbAccumulate(in floatMxN Src, ref floatMxN Dst, in floatN D, in floatMxN Zv, in floatN theta,
+                                    int rows, int kept, int n)
+        {
+            for (int j = 0; j < kept; j++)
+                for (int c = 0; c < n; c++)
+                    Dst[j, c] = (float)0;
+
+            for (int j = 0; j < kept; j++)
+            {
+                float invSqrtTheta = (float)1 / math.sqrt(theta[j]);
+                for (int i = 0; i < rows; i++)
+                {
+                    float coef = D[i] * Zv[i, j] * invSqrtTheta;
+                    for (int c = 0; c < n; c++)
+                        Dst[j, c] += coef * Src[i, c];
+                }
+            }
         }
 
         // Fills Gram[rowOff+i, colOff+j] = dot(Vb[i,:], Wb[j,:]) and mirrors the SAME value into
@@ -1075,57 +1217,55 @@ namespace LinearAlgebra
                 }
         }
 
-        // Builds the combined Gram/H (2-block [X,W] or 3-block [X,W,P]) for the active window.
-        // Gram is now the B-Gram (S^T B S): every FillGramSub call reads the RAW block as its first
-        // operand and that block's B-IMAGE (BX/BW/BP) as its second -- for B=I those B-images are
-        // bit-identical copies (see the class doc's "B=I strategy"), so this reproduces the
-        // pre-generalization Euclidean Gram (S^T S) bit-for-bit. H stays S^T A S, unaffected by B.
-        static void BuildProjected(ref floatMxN Gram, ref floatMxN H, int numActive, bool useP,
+        // Builds the combined Gram/H for the active window: nx = numActive X rows (always the full
+        // active count), nw <= numActive kept W rows, and -- iff useP -- np <= numActive kept P
+        // rows (nw/np are SVQB's surviving widths, possibly narrower than numActive; see
+        // OrthonormalizeBlockB). Gram is the B-Gram (S^T B S): every FillGramSub call reads the RAW
+        // block as its first operand and that block's B-IMAGE (BX/BW/BP) as its second -- for B=I
+        // those B-images are bit-identical copies (see the class doc's "B=I strategy"), so this
+        // reproduces the pre-generalization Euclidean Gram (S^T S) bit-for-bit. H stays S^T A S,
+        // unaffected by B. Caller-sized Gram/H must be at least (nx+nw+(useP?np:0)) square.
+        static void BuildProjected(ref floatMxN Gram, ref floatMxN H, int nx, int nw, int np, bool useP,
                                     in floatMxN X, in floatMxN AX, in floatMxN BX,
                                     in floatMxN W, in floatMxN AW, in floatMxN BW,
                                     in floatMxN P, in floatMxN AP, in floatMxN BP, int n)
         {
-            int offX = 0, offW = numActive, offP = 2 * numActive;
+            int offX = 0, offW = nx, offP = nx + nw;
 
-            FillGramSub(ref Gram, offX, in X, numActive, offX, in BX, numActive, n, true);
-            FillGramSub(ref Gram, offX, in X, numActive, offW, in BW, numActive, n, false);
-            FillGramSub(ref Gram, offW, in W, numActive, offW, in BW, numActive, n, true);
+            FillGramSub(ref Gram, offX, in X, nx, offX, in BX, nx, n, true);
+            FillGramSub(ref Gram, offX, in X, nx, offW, in BW, nw, n, false);
+            FillGramSub(ref Gram, offW, in W, nw, offW, in BW, nw, n, true);
 
-            FillHSub(ref H, offX, in X, numActive, offX, in AX, numActive, n, true);
-            FillHSub(ref H, offX, in X, numActive, offW, in AW, numActive, n, false);
-            FillHSub(ref H, offW, in W, numActive, offW, in AW, numActive, n, true);
+            FillHSub(ref H, offX, in X, nx, offX, in AX, nx, n, true);
+            FillHSub(ref H, offX, in X, nx, offW, in AW, nw, n, false);
+            FillHSub(ref H, offW, in W, nw, offW, in AW, nw, n, true);
 
             if (useP)
             {
-                FillGramSub(ref Gram, offX, in X, numActive, offP, in BP, numActive, n, false);
-                FillGramSub(ref Gram, offW, in W, numActive, offP, in BP, numActive, n, false);
-                FillGramSub(ref Gram, offP, in P, numActive, offP, in BP, numActive, n, true);
+                FillGramSub(ref Gram, offX, in X, nx, offP, in BP, np, n, false);
+                FillGramSub(ref Gram, offW, in W, nw, offP, in BP, np, n, false);
+                FillGramSub(ref Gram, offP, in P, np, offP, in BP, np, n, true);
 
-                FillHSub(ref H, offX, in X, numActive, offP, in AP, numActive, n, false);
-                FillHSub(ref H, offW, in W, numActive, offP, in AP, numActive, n, false);
-                FillHSub(ref H, offP, in P, numActive, offP, in AP, numActive, n, true);
+                FillHSub(ref H, offX, in X, nx, offP, in AP, np, n, false);
+                FillHSub(ref H, offW, in W, nw, offP, in AP, np, n, false);
+                FillHSub(ref H, offP, in P, np, offP, in AP, np, n, true);
             }
         }
 
-        // Attempts Cholesky of an m x m Gram view; on failure OR a suspiciously tiny relative
-        // pivot, adds a small Tikhonov ridge (scaled to Gram's own diagonal) and retries once --
-        // mirrors CHOP.decompSolve's own ridge-retry recovery for a borderline
-        // semidefinite Gram. The ridge-retry attempt is checked against the SAME pivotRelTol (not
-        // merely "Cholesky did not report a negative pivot") -- a ridge just barely large enough to
-        // make Gram numerically SPD can still leave L badly conditioned, and accepting that
-        // unconditionally would reintroduce exactly the failure this check exists to catch. Returns
-        // false only if BOTH attempts fail the threshold.
-        static bool FactorGram(ref floatMxN Gram, ref floatMxN L, int m)
+        // Attempts Cholesky of an m x m Gram view; on failure OR a suspiciously tiny pivot-ratio
+        // gate, adds a small Tikhonov ridge (scaled to Gram's own diagonal) and retries once --
+        // mirrors CHOP.decompSolve's own ridge-retry recovery for a borderline semidefinite Gram.
+        // `cubeRule` selects the gate: linear (MinMaxDiagRatio(L) >= tol) or cubed
+        // (MinMaxDiagRatio(L)^3 >= tol, equivalent to a cube-root threshold without a pow call).
+        // The ridge-retry attempt is checked against the SAME gate (not merely "Cholesky did not
+        // report a negative pivot") -- a ridge just barely large enough to make Gram numerically
+        // SPD can still leave L badly conditioned, and accepting that unconditionally would
+        // reintroduce exactly the failure this check exists to catch. Returns false only if BOTH
+        // attempts fail the gate.
+        static bool FactorGram(ref floatMxN Gram, ref floatMxN L, int m, float tol, bool cubeRule)
         {
-            // Relative-pivot tolerance for the "tiny diagonal" rank-deficiency check. A method-
-            // local value (not a class-level const): Cholesky/QR/etc. in this codebase already
-            // declare their tuning constants in method scope for the same reason -- a class-level
-            // const of the same name would collide across the float/double generated partials
-            // (CS0102; see CHO.float.cs's CHOL_BLOCK comment).
-            float pivotRelTol = Consts.floatSqrtEps;
-
             var info = CHO.decomp(in Gram, ref L);
-            if (info.Solved && MinMaxDiagRatio(in L, m) >= pivotRelTol)
+            if (info.Solved && PivotGateOk(MinMaxDiagRatio(in L, m), tol, cubeRule))
                 return true;
 
             float scale = (float)0;
@@ -1136,8 +1276,24 @@ namespace LinearAlgebra
             for (int i = 0; i < m; i++) Gram[i, i] += ridge;
 
             info = CHO.decomp(in Gram, ref L);
-            return info.Solved && MinMaxDiagRatio(in L, m) >= pivotRelTol;
+            return info.Solved && PivotGateOk(MinMaxDiagRatio(in L, m), tol, cubeRule);
         }
+
+        // Seed / internal-block gate: linear pivot-ratio threshold Consts.floatSqrtEps. A
+        // method-local value (not a class-level const): Cholesky/QR/etc. in this codebase already
+        // declare their tuning constants in method scope for the same reason -- a class-level const
+        // of the same name would collide across the float/double generated partials (CS0102; see
+        // CHO.float.cs's CHOL_BLOCK comment).
+        static bool FactorGram(ref floatMxN Gram, ref floatMxN L, int m)
+            => FactorGram(ref Gram, ref L, m, Consts.floatSqrtEps, false);
+
+        // Combined Rayleigh-Ritz Gram gate: cubed pivot-ratio threshold 10*eps -- its Cholesky
+        // factor is applied three times downstream (FormAtrans x2, RecoverC x1).
+        static bool FactorGramCombined(ref floatMxN Gram, ref floatMxN L, int m)
+            => FactorGram(ref Gram, ref L, m, Consts.floatEpsilon * (float)10, true);
+
+        static bool PivotGateOk(float ratio, float tol, bool cubeRule)
+            => cubeRule ? (ratio * ratio * ratio >= tol) : (ratio >= tol);
 
         static float MinMaxDiagRatio(in floatMxN L, int m)
         {
@@ -1152,22 +1308,24 @@ namespace LinearAlgebra
             return mx > (float)0 ? mn / mx : (float)0;
         }
 
-        // Attempts the full Rayleigh-Ritz reduction for the active window (2-block or 3-block per
-        // `useP`): build Gram/H, factor Gram (with retry), reduce to the standard eigenproblem
-        // Ahat = L^-1 H L^-T, solve it, recover the combination coefficients C = L^-T Y, and write
-        // the selected (smallest numActive) Ritz values directly into ws.lambda[0..numActive) --
-        // done here (rather than returned) because the eigenvalues live in a small Allocator.Temp
-        // buffer that is disposed before this method returns. Returns false (caller falls back or
-        // stalls) if Cholesky or the small eigensolve fails.
-        static bool TryRayleighRitz(ref floatLOBPCGCache ws, int numActive, bool useP, int n)
+        // Attempts the full Rayleigh-Ritz reduction for the active window: nx = numActive X rows,
+        // nw kept W rows, and -- iff `useP` -- np kept P rows (see BuildProjected). Builds Gram/H,
+        // factors the combined Gram (cube-rule gate, ridge retry), reduces to the standard
+        // eigenproblem Ahat = L^-1 H L^-T, solves it, recovers the combination coefficients
+        // C = L^-T Y, and writes the selected (smallest numActive) Ritz values directly into
+        // ws.lambda[0..numActive) -- done here (rather than returned) because the eigenvalues live
+        // in a small Allocator.Temp buffer that is disposed before this method returns. Returns
+        // false (caller falls back or stalls) if Cholesky or the small eigensolve fails.
+        static bool TryRayleighRitz(ref floatLOBPCGCache ws, int numActive, int nw, int np, bool useP, int n)
         {
-            int m = useP ? 3 * numActive : 2 * numActive;
+            int npEff = useP ? np : 0;
+            int m = numActive + nw + npEff;
 
             var G = View(in ws.Gram, m);
             var Hv = View(in ws.H, m);
             var Lv = View(in ws.L, m);
 
-            BuildProjected(ref G, ref Hv, numActive, useP, in ws.X, in ws.AX, in ws.BX, in ws.W, in ws.AW, in ws.BW, in ws.P, in ws.AP, in ws.BP, n);
+            BuildProjected(ref G, ref Hv, numActive, nw, npEff, useP, in ws.X, in ws.AX, in ws.BX, in ws.W, in ws.AW, in ws.BW, in ws.P, in ws.AP, in ws.BP, n);
 
             // Cheap, numerically TRUSTWORTHY plausibility envelope for the eventual Ritz values
             // (safeguard 3), computed BEFORE the Cholesky-based reduction below: H[i,i]/G[i,i] is
@@ -1180,10 +1338,10 @@ namespace LinearAlgebra
             // just this formula's Gram[i,i]==1 special case. If the Ritz values symmetric
             // returns fall wildly outside the range spanned by these trustworthy individual
             // quotients, that is conclusive evidence the transform corrupted the problem, even when
-            // the Cholesky diag-ratio check (FactorGram's pivotRelTol) reported a perfectly
-            // comfortable pivot; diagRatio alone is a poor proxy for THIS failure mode. Reject the
-            // whole attempt (so the caller falls back to dropping P, or stalls) instead of locking
-            // in garbage.
+            // the Cholesky diag-ratio check (FactorGramCombined's cube-rule gate) reported a
+            // perfectly comfortable pivot; diagRatio alone is a poor proxy for THIS failure mode.
+            // Reject the whole attempt (so the caller falls back to dropping P, or stalls) instead
+            // of locking in garbage.
             float qMin = float.MaxValue, qMax = -float.MaxValue;
             for (int i = 0; i < m; i++)
             {
@@ -1201,7 +1359,7 @@ namespace LinearAlgebra
             float envMin = qMin - margin;
             float envMax = qMax + margin;
 
-            if (!FactorGram(ref G, ref Lv, m))
+            if (!FactorGramCombined(ref G, ref Lv, m))
                 return false;
 
             var Atrans = View(in ws.Atrans, m);
@@ -1303,18 +1461,23 @@ namespace LinearAlgebra
 
         // Forms the new active X/P block from the recovered combination coefficients C
         // (ws.lambda[0..numActive) already holds the selected Ritz values -- see TryRayleighRitz).
-        // X_new combines the FULL basis (X/W/[P] parts); P_new (the new "conjugate direction")
-        // combines only the W/[P] parts (zero X-part). Written into the ping-pong Xnext/Pnext
-        // buffers (the combination reads the CURRENT X/W/P, so it cannot safely write in place),
-        // then swapped in; the frozen locked rows [numActive, k) are carried forward first since
-        // Xnext is about to become the new X wholesale.
+        // nw/np are the SAME kept widths TryRayleighRitz was called with (np only meaningful when
+        // `useP`). X_new combines the FULL basis (X/W/[P] parts, reading only rows [0,nw) of W and
+        // [0,np) of P); P_new (the new "conjugate direction") combines only the W/[P] parts (zero
+        // X-part). Written into the ping-pong Xnext/Pnext buffers (the combination reads the
+        // CURRENT X/W/P, so it cannot safely write in place; also OVERWRITES every row, so any
+        // scratch OrthonormalizeBlockB borrowed from Xnext earlier this iteration is fully
+        // superseded), then swapped in; the frozen locked rows [numActive, k) are carried forward
+        // first since Xnext is about to become the new X wholesale.
         //
         // Deliberately does NOT also mirror-combine AX/AP (or BX/BP) the same way: the caller ALWAYS
         // immediately recomputes AX/BX/AP/BP via a fresh A.Apply/B.Apply right after this call
         // returns, which unconditionally overwrites whatever this method would have written.
-        static void UpdateActiveBlock(ref floatLOBPCGCache ws, int numActive, bool useP, int n, int k)
+        static void UpdateActiveBlock(ref floatLOBPCGCache ws, int numActive, int nw, int np, bool useP, int n, int k)
         {
-            int m = useP ? 3 * numActive : 2 * numActive;
+            int npEff = useP ? np : 0;
+            int m = numActive + nw + npEff;
+            int offW = numActive, offP = numActive + nw;
             var Cv = View(in ws.C, m);
 
             for (int j = 0; j < numActive; j++)
@@ -1327,11 +1490,11 @@ namespace LinearAlgebra
 
                     for (int r = 0; r < numActive; r++)
                         xv += Cv[r, col] * ws.X[r, c];
-                    for (int r = 0; r < numActive; r++)
-                        xv += Cv[numActive + r, col] * ws.W[r, c];
+                    for (int r = 0; r < nw; r++)
+                        xv += Cv[offW + r, col] * ws.W[r, c];
                     if (useP)
-                        for (int r = 0; r < numActive; r++)
-                            xv += Cv[2 * numActive + r, col] * ws.P[r, c];
+                        for (int r = 0; r < np; r++)
+                            xv += Cv[offP + r, col] * ws.P[r, c];
 
                     ws.Xnext[j, c] = xv;
                 }
@@ -1340,11 +1503,11 @@ namespace LinearAlgebra
                 {
                     float pv = (float)0;
 
-                    for (int r = 0; r < numActive; r++)
-                        pv += Cv[numActive + r, col] * ws.W[r, c];
+                    for (int r = 0; r < nw; r++)
+                        pv += Cv[offW + r, col] * ws.W[r, c];
                     if (useP)
-                        for (int r = 0; r < numActive; r++)
-                            pv += Cv[2 * numActive + r, col] * ws.P[r, c];
+                        for (int r = 0; r < np; r++)
+                            pv += Cv[offP + r, col] * ws.P[r, c];
 
                     ws.Pnext[j, c] = pv;
                 }

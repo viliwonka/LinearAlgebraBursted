@@ -52,8 +52,6 @@ namespace LinearAlgebra
 
             if (ws.rowIn.N != n || ws.rowOut.N != n)
                 throw new ArgumentException("LOBPCG: workspace rowIn/rowOut must have length n (use Arena.doubleLOBPCGCache(n, k))");
-            if (ws.rowAux.N != n)
-                throw new ArgumentException("LOBPCG: workspace rowAux must have length n (use Arena.doubleLOBPCGCache(n, k))");
 
             int cap = 3 * k;
             if (!ws.Gram.IsSquare || ws.Gram.M_Rows != cap)
@@ -158,14 +156,6 @@ namespace LinearAlgebra
         /// (Apply operates on <see cref="doubleN"/>, not a matrix row).</summary>
         public doubleN rowIn, rowOut;
 
-        /// <summary>Length n. Third row-combination scratch used only by
-        /// <c>Eigen.OrthonormalizeBlockB</c> (the B-aware sibling of <c>OrthonormalizeBlock</c>) to
-        /// carry a block's B-image (BW or BP) through the SAME Cholesky-QR row combination applied
-        /// to that block itself and its A-image -- <see cref="rowIn"/>/<see cref="rowOut"/> already
-        /// serve as the other two (V/AV) scratch slots there, so a third distinct buffer is needed
-        /// for BV.</summary>
-        public doubleN rowAux;
-
         /// <summary>3k x 3k each. Backing store for the small dense Rayleigh-Ritz sub-problem
         /// (Gram = S^T S, H = S^T A S, L = Cholesky factor of Gram, Atrans = the transformed
         /// standard-form matrix L^-1 H L^-T, Y = Atrans's eigenvectors, C = the recovered
@@ -206,7 +196,6 @@ namespace LinearAlgebra
                 xBnorm = arena.doubleVec(k),
                 rowIn = arena.doubleVec(n),
                 rowOut = arena.doubleVec(n),
-                rowAux = arena.doubleVec(n),
                 Gram = arena.doubleMat(cap, cap),
                 H = arena.doubleMat(cap, cap),
                 L = arena.doubleMat(cap, cap),

@@ -1,6 +1,116 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## LOBPCG robustness
+- 2026-07-18 | Post-seed-B-normalize-fix, `PenalizedFramePathologicalGuardConfigNoFalseCertificate`
+  flipped float `LOBPCGInfo(MaxIterations, converged=1)` (was `converged=0`) -- NOT re-broken by
+  weakening the test; RESOLVED by strengthening it. `info.converged` on a MaxIterations/Degenerate
+  exit is `ConvergedWithinTol`: per wanted pair, `xBnorm >= 0.25 (normFloor) && residual <=
+  tol*resScale`, evaluated after the final ascending sort -- it DOES already apply the min-fix's
+  B-norm floor (not norm-blind), but that floor (0.25) is looser than this test-file's own
+  genuineness bar (0.5), and it never cross-checks the dense oracle. `AssertNoFalseCertificate`'s
+  `if (!info.Solved) return` guard is BLIND to a nonzero converged count under a non-Solved status
+  -- it passed here trivially, proving nothing. Added `AssertConvergedPairsGenuine`: replicates
+  `ConvergedWithinTol`'s exact predicate over `ws` (classification only, never trusted for
+  genuineness) to find which pair(s) are counted, then independently re-derives residual/norm via a
+  FRESH spMV (not `ws.residual`/`ws.xBnorm`) and cross-checks the dense oracle -- runs regardless of
+  Solved status, skips only Converged (redundant with AssertNoFalseCertificate) and Breakdown
+  (X/lambda contractually undefined). OUTCOME: the flagged pair passed every independent check
+  (dense match, norm, residual) -- GENUINE, the intended robustness win, not a spurious mode. Also
+  applied to the sibling `PenalizedFrameSaneConfigNoFalseCertificate` (was already passing; the same
+  structural gap existed there, extending coverage is a pure strengthening, not a risk). Dropped the
+  float-specific `AreEqual(0, converged)` / `AreNotEqual(Converged, status)` hard requirements per
+  spec: forbid false certificates only, never require non-convergence on a hard case. NOT extended:
+  the shared `AssertNoFalseCertificate` helper itself, or the other callers that gate similarly
+  (`ZeroRowWarmStartNoFalseCertificate`'s Solved-gated residual check, the test-writer's
+  `PenalizedLaplacian1DNoFalseCertificate`/`LauchliGramSmallestNonNegativeOrHonest`) -- same
+  structural gap, surfaced here rather than blind-fixed everywhere without the ability to run the
+  suite.
+- 2026-07-18 | REGRESSION FIX (found by suite + adversarial review after the SVQB/cube-rule change
+  below): `floatLOBPCGSmokeTests.GeneralizedOutputIsBOrthonormal` (A=Laplacian1D(10), B=diag(1..10),
+  k=3) went from Solved to a permanent MaxIterations stall in float (double unaffected). Root cause:
+  the seed X is only EUCLIDEAN-orthonormalized (OrthonormalizeBlock) before the loop, never
+  B-normalized -- for B=I that's already B-orthonormal so it never mattered before, but for a
+  mildly-conditioned B != I the first [X,W] Gram's diagonal spread now trips the (correctly
+  tightened) cube-rule combined-Gram gate on iteration 0. With `usedP` already false there (no P
+  yet), `TryRayleighRitz` returning false has no lower fallback -- X/lambda/W are left untouched and
+  the identical failing Gram reproduces every subsequent iteration: a permanent zero-progress stall,
+  not a slow convergence. Fix: B-normalize the seed ONCE right after the seed BX ApplyBlock (mirrors
+  the existing end-of-iteration B-normalize block's reseed-guard/scale pattern, distinct RNG seed
+  constants so none of the three reseed sites in this file can coincidentally collide). This also
+  happens to make the pre-loop bootstrap lambda seed (`dot(X,AX)`) exactly the GENERALIZED Rayleigh
+  quotient for B != I (denominator dot(X,BX) is now exactly 1 by construction) instead of the
+  Euclidean one -- a side effect, not the point of the fix. For B=I this seed-normalize divides by a
+  B-norm (bit-identical to the Euclidean norm OrthonormalizeBlock already drove to ~1) that is not
+  bit-exact 1.0 in floating point, so it perturbs X/AX/BX by roughly one ULP even on the standard
+  path -- the SAME class of perturbation the end-of-iteration B-normalize block already introduces
+  every iteration regardless of B, already accepted in the first round of review.
+- 2026-07-18 | Test vectors (spec "Test vectors to add", cases 2/5/6/7a/8) added to
+  LOBPCGRobustnessTests.fProxy.cs (test-writer). JUDGMENT CALLS:
+  (case 1) KEPT the existing PenalizedFramePathologicalGuardConfig float assertion
+  `AreNotEqual(Converged)` + `converged==0` unchanged. The robustness fix's STATED goal is to make
+  this case solve in float, but that is explicitly un-verified (suite not run) and the cube-rule
+  Gram gate could equally route it to drop-P -> stall -> Degenerate; a stated-but-unmeasured goal is
+  not strong enough to weaken a regression guard. IF the fix does make float certify a genuine pair
+  here, that assertion (LOBPCGRobustnessTests.fProxy.cs ~line 90) is the ONE line to relax to the
+  general AssertNoFalseCertificate contract — flagged to the orchestrator, who runs the suite.
+  (case 6) The spec's "B=diag(1,...,1,0) must return non-Converged" contract is covered TWO ways:
+  the pre-existing RankDeficientBPencilIndefiniteANeverReportsConverged (indefinite A along B's null
+  -> unbounded below) and a NEW RankDeficientBFewerFiniteEigenpairsThanKNeverReportsConverged
+  (SPD non-diagonal A, B rank n-1, k=n): B admits at most n-1 B-normalizable directions so the n-th
+  wanted pair is provably B-null (degenerate) -> can never certify -> status != Converged. A hard
+  mathematical contract (not a snapshot), asserted as AreNotEqual(Converged).
+- 2026-07-18 | Implemented spec-lobpcg-robustness.md's "Robustness fix" items 1-3 (the "Minimum
+  fix" — Degenerate status, ||x||_B-aware convergence test — shipped 2026-07-17, see the entry
+  below). Goal: make FLOAT LOBPCG actually SOLVE the penalty-conditioned cases that previously
+  returned honest Degenerate, without regressing any case that already converged correctly.
+  (1) Every active X row is B-renormalized after each iteration's fresh AX/BX matvec (linearity,
+  no extra matvec) — restores the B-unit invariant Duersch's analysis identifies as collapsing
+  under repeated ill-conditioned Cholesky-QR, and keeps next iteration's Gram diagonal ~= 1. A row
+  whose B-norm^2 is at/below Consts.fProxyEpsilon is reseeded first (distinct seed formula from
+  the existing (d1) reseed — 0x2545F491/0xC2B2AE35 vs 0x9E3779B1/0x85EBCA77 — so the two can't
+  coincidentally collide on the same (iter,i) despite firing at different points in the same outer
+  iteration); NOT re-deflated against locked rows here (the (d1) block at the TOP of the next
+  iteration already re-deflates every active row unconditionally when numActive<kWork, whether or
+  not it was just reseeded, so duplicating that logic here would be redundant).
+  (2) OrthonormalizeBlockB (W/P) rewritten from Cholesky-QR+ridge to SVQB-with-dropping: scale the
+  Gram by D=diag(G)^-1/2, eig-decompose DGD via Eigen.symmetricInPlace (reusing ws.Gram/ws.L as
+  scratch — same reuse pattern TryRayleighRitz already applies to Atrans/Y), keep the leading
+  (descending-sorted) theta_j > theta_max * (rows*eps*10), and combine V*D*Z(:,J)*Theta(J,J)^-1/2
+  into the block's LEADING kept rows (AV/BV via the same combination). A direction the block can't
+  support is DROPPED (block width shrinks: nw/np <= numActive) instead of ridge-inflated into
+  noise. Zero extra O(n)-scale allocation: the row-combination output (SvqbAccumulate) is written
+  into ws.Xnext borrowed as scratch — safe because Xnext is otherwise untouched between the top of
+  the loop and UpdateActiveBlock (which unconditionally overwrites every row of it), and W's SVQB
+  call fully finishes before P's SVQB call starts, so sequential reuse for both never overlaps.
+  D/theta are O(rows) Allocator.Temp vectors, same class as TryRayleighRitz's own eigSmall.
+  STRUCTURAL RIPPLE (the one real change beyond the two functions above): nw/np != numActive means
+  BuildProjected/TryRayleighRitz/UpdateActiveBlock needed per-block widths (nx=numActive always,
+  since X is never dropped as a block — only individually B-renormalized by (1); nw, np <=
+  numActive) threaded through instead of a single shared `numActive` for every block. Caught mid-
+  implementation: the P-against-W Deflate call's against-count was `numActive` in the pre-SVQB
+  code (valid there because W's block width WAS numActive) — it must become `nw` post-SVQB, since
+  W's rows [nw, numActive) are stale after dropping; deflating P against them would read garbage.
+  (3) FactorGram gained a cubeRule bool: the seed/internal-block gate stays linear
+  (MinMaxDiagRatio(L) >= sqrtEps, unchanged, still used by the Euclidean X-seed's
+  OrthonormalizeBlock), and a new FactorGramCombined (used only for the combined [X,W,P]
+  Rayleigh-Ritz Gram inside TryRayleighRitz) gates on MinMaxDiagRatio(L)^3 >= 10*eps — algebraically
+  the cube-rule threshold (eps*c)^(1/3) rearranged to avoid a math.pow/cbrt call (~30x stricter
+  than the old sqrtEps gate in float: ~0.0106 vs ~0.000345). On failure: unchanged control flow
+  (drop P, retry 2-block; failing that, stall to honest Degenerate/MaxIterations).
+  rowAux (the third row-combination scratch OrthonormalizeBlockB's old row-by-row Cholesky-QR
+  needed) is now dead — SVQB's combination is a dense (non-triangular) recombination, not a
+  triangular row update, so it needs a same-shape OUTPUT buffer instead (Xnext, see above) rather
+  than a third per-row scratch vector. Removed from fProxyLOBPCGCache/RequireLOBPCGWorkspace/
+  ArenaExtensions.fProxyLOBPCGCache (RequireDistinctBuffers 25->24); grep confirmed no test or
+  benchmark file referenced it directly.
+  NOT verified: the Burst test suite (orchestrator runs Tools/run-tests.ps1 centrally). `Tools/
+  regen.ps1` confirmed both float/double codegen compile clean. The 3 structural demo residual
+  audits (BuildingFrame/Truss3D/TrussModal) were NOT re-run — this fix can only change their
+  iteration counts/residuals for the better (more likely to converge, never less certified), per
+  the class doc's certification floor being unchanged, but that is an expectation, not a
+  measurement.
+
 ## math.select branch-free conversion pass (docs/dev/spec-math-select-pass.md)
 - 2026-07-17 | Batch A (per-element data selects): converted `SelectOP.fProxy.cs`/`SelectOP.iProxy.cs`
   selectfProxy/selectiProxy, `UnsafeMathOP.iProxy.cs` abs/max/min/relu, `UnsafeMathOP.fProxy.cs`

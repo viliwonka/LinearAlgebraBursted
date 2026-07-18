@@ -5,7 +5,9 @@ using LinearAlgebra.Gallery;
 using LinearAlgebra.Sparse;
 
 using NUnit.Framework;
+using Unity.Burst;
 using Unity.Collections;
+using Unity.Jobs;
 using Unity.Mathematics;
 
 // False-certificate coverage for Eigen.lobpcg: a degenerate/collapsed iterate must never be
@@ -55,6 +57,60 @@ public class fProxyLOBPCGRobustnessTests
         }
     }
 
+    // Stronger, status-independent invariant: AssertNoFalseCertificate only checks the fully-Solved
+    // case (`if (!info.Solved) return`), so a PARTIAL per-pair converged count under a non-Solved
+    // status (MaxIterations/Degenerate) is never cross-checked by it. info.converged on those exits
+    // comes from the solver's own per-pair predicate (xBnorm >= a certification floor AND residual
+    // <= tol*resScale, evaluated per wanted pair after the final ascending sort -- mirrors
+    // Eigen.lobpcg's private ConvergedWithinTol exactly); this replicates that SAME predicate over
+    // ws (so it only classifies pairs, never trusts their genuineness) and independently verifies --
+    // via a fresh spMV, not solver bookkeeping -- that every pair it flags matches the dense oracle
+    // AND has a healthy norm AND a small residual. B=I only (uses Euclidean norm as the B-norm).
+    // Skips Converged (already covered by AssertNoFalseCertificate) and Breakdown (X/lambda
+    // contractually undefined there).
+    static void AssertConvergedPairsGenuine(in fProxyBSR A, in fProxyLOBPCGCache ws, int k, int n,
+                                             fProxy tol, fProxy normFloor, double[] dense, double tolFactor,
+                                             in LOBPCGInfo info)
+    {
+        if (info.status == IterativeSolveStatus.Converged || info.status == IterativeSolveStatus.Breakdown)
+            return;
+
+        int solverCounted = 0;
+        var phi = new fProxyN(n, Allocator.Temp);
+        var Aphi = new fProxyN(n, Allocator.Temp);
+        for (int i = 0; i < k; i++)
+        {
+            bool countedBySolver = ws.xBnorm[i] >= normFloor && ws.residual[i] <= tol * ws.resScale[i];
+            if (!countedBySolver) continue;
+            solverCounted++;
+
+            for (int c = 0; c < n; c++) phi[c] = ws.X[i, c];
+            BSR.spMV(in A, in phi, ref Aphi);
+
+            double norm2 = 0, rn2 = 0, an2 = 0;
+            for (int c = 0; c < n; c++)
+            {
+                norm2 += (double)phi[c] * (double)phi[c];
+                double rv = (double)Aphi[c] - (double)ws.lambda[i] * (double)phi[c];
+                rn2 += rv * rv;
+                an2 += (double)Aphi[c] * (double)Aphi[c];
+            }
+
+            Assert.GreaterOrEqual(Math.Sqrt(norm2), 0.5,
+                $"pair {i} counted in info.converged but has a collapsed norm ({info.ToString()})");
+            Assert.LessOrEqual(Math.Sqrt(rn2), 1e-2 * Math.Max(1.0, Math.Sqrt(an2)),
+                $"pair {i} counted in info.converged but independent residual check fails ({info.ToString()})");
+            Assert.AreEqual(dense[i], (double)ws.lambda[i], tolFactor * Math.Max(1.0, Math.Abs(dense[i])),
+                $"pair {i} counted in info.converged but its eigenvalue does not match the dense oracle ({info.ToString()})");
+        }
+
+        phi.Dispose();
+        Aphi.Dispose();
+
+        Assert.AreEqual(info.converged, solverCounted,
+            $"test's replica of the per-pair converged predicate disagrees with info.converged ({info.ToString()})");
+    }
+
     // The collapse repro: minimal penalty-pinned unit-cube truss (n = 24), run in the pathological
     // guard configuration k=4 + guard=4 (kWork=8, so the 3-block Rayleigh-Ritz basis has
     // 3*kWork = 24 = n rows -- guaranteed near-linear-dependence every iteration). A norm-blind
@@ -75,21 +131,23 @@ public class fProxyLOBPCGRobustnessTests
         var dense = DenseSmallestAscending(ref arena, in D, k);
         Assert.Greater(dense[0], 0.0);   // the assembled truss is SPD
 
-        var eig = Eigen.lobpcg(ref arena, in A, k, guard, out var vecs, out var info,
-                               Consts.fProxySqrtEps, 300);
+        // Calls the SAME primitive the allocating guard overload forwards into, but keeps ws
+        // (rather than just its k-row eigenvector/eigenvalue copies) so AssertConvergedPairsGenuine
+        // can independently classify+verify a PARTIAL per-pair converged count under a non-Solved
+        // status, not just the fully-Solved case.
+        fProxy tol = Consts.fProxySqrtEps;
+        fProxy normFloor = (fProxy)0.25;    // must match Eigen.lobpcg's own certification floor
+        var ws = arena.fProxyLOBPCGCache(n, k + guard);
+        var info = Eigen.lobpcg(in A, ref ws, k, tol, 300);
 
-        AssertNoFalseCertificate(in info, in eig, in vecs, k, n, dense, TolFactor());
+        AssertNoFalseCertificate(in info, in ws.lambda, in ws.X, k, n, dense, TolFactor());
         if (info.Solved)
             Assert.AreEqual(k, info.converged, info.ToString());
 
-        if (IsFloat)
-        {
-            // Single precision cannot reach the certification accuracy on this penalty-conditioned
-            // matrix: the honest outcome is a non-Converged status with zero certified pairs
-            // (the norm-blind test instead reported Converged with lambda = 0, ||x|| = 0 modes).
-            Assert.AreNotEqual(IterativeSolveStatus.Converged, info.status, info.ToString());
-            Assert.AreEqual(0, info.converged, info.ToString());
-        }
+        // Single precision cannot reach the certification accuracy on this penalty-conditioned
+        // matrix, so a non-Solved status is expected and always acceptable -- but ANY pair the
+        // solver's own bookkeeping counts toward info.converged, Solved or not, must be genuine.
+        AssertConvergedPairsGenuine(in A, in ws, k, n, tol, normFloor, dense, TolFactor(), in info);
 
         arena.Dispose();
     }
@@ -108,10 +166,13 @@ public class fProxyLOBPCGRobustnessTests
         var D = A.ToDense(ref arena);
         var dense = DenseSmallestAscending(ref arena, in D, k);
 
-        var eig = Eigen.lobpcg(ref arena, in A, k, 0, out var vecs, out var info,
-                               Consts.fProxySqrtEps, 500);
+        fProxy tol = Consts.fProxySqrtEps;
+        fProxy normFloor = (fProxy)0.25;    // must match Eigen.lobpcg's own certification floor
+        var ws = arena.fProxyLOBPCGCache(n, k);
+        var info = Eigen.lobpcg(in A, ref ws, k, tol, 500);
 
-        AssertNoFalseCertificate(in info, in eig, in vecs, k, n, dense, TolFactor());
+        AssertNoFalseCertificate(in info, in ws.lambda, in ws.X, k, n, dense, TolFactor());
+        AssertConvergedPairsGenuine(in A, in ws, k, n, tol, normFloor, dense, TolFactor(), in info);
 
         arena.Dispose();
     }
@@ -237,6 +298,279 @@ public class fProxyLOBPCGRobustnessTests
                     $"Solved but mode {i} residual is not small relative to its norm");
         }
 
+        arena.Dispose();
+    }
+
+    // Case 2 (spec "Test vectors to add"): penalized 1-D Laplacian EA*Laplacian1D(16) +
+    // penalty*(e_0 e_0^T + e_{n-1} e_{n-1}^T), penalty = 1e4. cond(A) ~ penalty/EA and the Gram
+    // squares it, so single precision cannot certify -- run the smallest k both guarded and
+    // guard-free and enforce only the no-false-certificate invariant against the dense oracle.
+    [Test]
+    public void PenalizedLaplacian1DNoFalseCertificate()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        int n = 16, k = 3;
+        var A = arena.fProxyLaplacian1D(n);
+        for (int i = 0; i < n; i++)
+            for (int j = 0; j < n; j++)
+                A[i, j] = A[i, j] * (fProxy)2;               // EA = 2
+        A[0, 0] = A[0, 0] + (fProxy)1e4;
+        A[n - 1, n - 1] = A[n - 1, n - 1] + (fProxy)1e4;
+
+        var dense = DenseSmallestAscending(ref arena, in A, k);
+        Assert.Greater(dense[0], 0.0);                       // penalized stiffness is SPD
+
+        var eigG = Eigen.lobpcg(ref arena, in A, k, 4, out var vecsG, out var infoG,
+                                Consts.fProxySqrtEps, 500);
+        AssertNoFalseCertificate(in infoG, in eigG, in vecsG, k, n, dense, TolFactor());
+
+        var eigP = Eigen.lobpcg(ref arena, in A, k, out var vecsP, out var infoP,
+                                Consts.fProxySqrtEps, 500);
+        AssertNoFalseCertificate(in infoP, in eigP, in vecsP, k, n, dense, TolFactor());
+
+        arena.Dispose();
+    }
+
+    // Case 5 (spec "Test vectors to add"): A = L^T L for the (n+1)-by-n Lauchli matrix with
+    // eps = sqrt(float eps) (fixed across the float/double expansions). Closed form
+    // A = ones(n,n) + eps^2*I: SPD, smallest eigenvalue eps^2 ~ 1.2e-7 with multiplicity n-1 -- a
+    // near-singular Gram. When Solved every returned lambda is non-negative (small roundoff
+    // allowed) AND matches the dense oracle; a non-Converged status is always acceptable.
+    [Test]
+    public void LauchliGramSmallestNonNegativeOrHonest()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        int n = 6, k = 2;
+        fProxy eps = (fProxy)math.sqrt(1.1920929e-7f);       // sqrt(FLT_EPSILON), fixed for both types
+        var L = arena.fProxyLauchli(n, eps);
+
+        var A = arena.fProxyMat(n, n);
+        for (int i = 0; i < n; i++)
+            for (int j = 0; j < n; j++)
+            {
+                fProxy s = (fProxy)0;
+                for (int r = 0; r < n + 1; r++) s += L[r, i] * L[r, j];
+                A[i, j] = s;
+            }
+
+        var dense = DenseSmallestAscending(ref arena, in A, k);
+
+        var eig = Eigen.lobpcg(ref arena, in A, k, out var vecs, out var info,
+                               Consts.fProxySqrtEps, 500);
+
+        if (info.Solved)
+        {
+            for (int j = 0; j < k; j++)
+                Assert.GreaterOrEqual((double)eig[j], -1e-4,
+                    $"Solved but returned a significantly negative eigenvalue at {j} ({info.ToString()})");
+            AssertNoFalseCertificate(in info, in eig, in vecs, k, n, dense, TolFactor());
+        }
+
+        arena.Dispose();
+    }
+
+    // Case 6 (spec "Test vectors to add"): rank-deficient B = diag(1,...,1,0) with an SPD,
+    // NON-diagonal A (1-D Laplacian, whose tridiagonal coupling forces the finite pencil
+    // eigenvectors to carry a nonzero component along B's null coordinate). B admits at most n-1
+    // B-normalizable directions, so requesting k = n smallest pairs cannot be honestly certified:
+    // the n-th wanted direction is B-null (degenerate). The solve must therefore NEVER report
+    // Converged -- the hard contract for the Degenerate status.
+    [Test]
+    public void RankDeficientBFewerFiniteEigenpairsThanKNeverReportsConverged()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        int n = 4, k = n;
+        var A = arena.fProxyLaplacian1D(n);
+        var B = arena.fProxyMat(n, n);
+        for (int i = 0; i < n - 1; i++) B[i, i] = (fProxy)1;
+        B[n - 1, n - 1] = (fProxy)0;
+
+        var ws = arena.fProxyLOBPCGCache(n, k);
+        var info = Eigen.lobpcg(in A, in B, ref ws, k, Consts.fProxySqrtEps, 300);
+
+        Assert.AreNotEqual(IterativeSolveStatus.Converged, info.status, info.ToString());
+
+        arena.Dispose();
+    }
+
+    // Case 7(a) (spec "Test vectors to add"): warm-start X with the exact k smallest eigenvectors of
+    // a well-conditioned SPD matrix. The iterate is already converged on entry, so the solver must
+    // certify essentially immediately (0 iterations, allowing a small margin) and return eigenpairs
+    // matching the dense oracle.
+    [Test]
+    public void ExactEigenvectorWarmStartCertifiesImmediately()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        int n = 12, k = 3;
+        var A = arena.fProxyLaplacian1D(n);
+
+        var Acopy = A.Copy();
+        var eigAll = arena.fProxyVec(n);
+        var Vall = arena.fProxyMat(n, n);
+        Assert.IsTrue(Eigen.symmetricInPlace(ref Acopy, ref eigAll, ref Vall));
+
+        var ws = arena.fProxyLOBPCGCache(n, k);
+        // smallest k eigenvectors = last k columns of Vall (symmetricInPlace sorts descending)
+        for (int r = 0; r < k; r++)
+            for (int c = 0; c < n; c++)
+                ws.X[r, c] = Vall[c, n - 1 - r];
+
+        var info = Eigen.lobpcg(in A, ref ws, k, Consts.fProxySqrtEps, 500);
+
+        Assert.IsTrue(info.Solved, info.ToString());
+        Assert.LessOrEqual(info.iterations, 2,
+            $"exact warm start should certify near-immediately ({info.ToString()})");
+
+        for (int j = 0; j < k; j++)
+            Assert.AreEqual((double)eigAll[n - 1 - j], (double)ws.lambda[j],
+                TolFactor() * Math.Max(1.0, Math.Abs((double)eigAll[n - 1 - j])),
+                $"warm-started eigenvalue {j} does not match the dense oracle ({info.ToString()})");
+
+        arena.Dispose();
+    }
+
+    // ======================================================================================
+    // Case 8 (spec "Test vectors to add"): run the case-1 (penalized frame) and case-7(a)
+    // (exact-eigenvector warm start) scenarios THROUGH an IJob. .Run() executes on a COPY of the
+    // cache struct, the path that exposed the ping-pong buffer-reseat bug (see the OP DEVLOG's
+    // "IJob cache-copy corrupted eigenvectors" entry) -- so the returned eigenpairs must be read
+    // back straight from the cache and cross-checked against an independent oracle after the job.
+    // ======================================================================================
+    [BurstCompile(CompileSynchronously = true)]
+    struct JobbedLobpcgBSR : IJob
+    {
+        [ReadOnly] public fProxyBSR A;
+        public fProxyLOBPCGCache Cache;
+        public int K;
+        public fProxy Tol;
+        public int MaxIter;
+        public NativeArray<int> Out;      // [0]=solved, [1]=iterations, [2]=converged
+
+        public void Execute()
+        {
+            var info = Eigen.lobpcg(in A, ref Cache, K, Tol, MaxIter);
+            Out[0] = info.Solved ? 1 : 0;
+            Out[1] = info.iterations;
+            Out[2] = info.converged;
+        }
+    }
+
+    // Case 8, penalized-frame variant: the case-1 pathological guard config (k=4, guard=4 ->
+    // 3*kWork = n = 24) run through an IJob. No false certificate against the dense oracle read
+    // straight from the post-job cache.
+    [Test]
+    public void JobbedPenalizedFrameNoFalseCertificate()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        int k = 4, guard = 4;
+        var A = arena.fProxyPenalizedGrid3D(1, 1, 1, (fProxy)8, (fProxy)1e3);
+        int n = A.M_Rows;
+
+        var D = A.ToDense(ref arena);
+        var dense = DenseSmallestAscending(ref arena, in D, k);
+
+        var ws = arena.fProxyLOBPCGCache(n, k + guard);
+        var outp = new NativeArray<int>(3, Allocator.TempJob);
+
+        var job = new JobbedLobpcgBSR { A = A, Cache = ws, K = k, Tol = Consts.fProxySqrtEps, MaxIter = 300, Out = outp };
+        job.Run();
+
+        var info = new LOBPCGInfo
+        {
+            iterations = outp[1],
+            converged = outp[2],
+            maxResidual = 0.0,
+            status = outp[0] == 1 ? IterativeSolveStatus.Converged : IterativeSolveStatus.Degenerate,
+        };
+        AssertNoFalseCertificate(in info, in ws.lambda, in ws.X, k, n, dense, TolFactor());
+        if (info.Solved)
+            Assert.AreEqual(k, info.converged, info.ToString());
+
+        outp.Dispose();
+        arena.Dispose();
+    }
+
+    // Case 8, warm-start variant: exact k smallest eigenvectors of a well-conditioned block
+    // tridiagonal SPD BSR seeded into the cache, run through an IJob. Must certify near-immediately
+    // AND leave the CORRECT eigenpairs in the cache -- verified by an independent spMV residual
+    // check (the check that fails if RestoreBufferIdentity did not reseat X after the by-value copy).
+    [Test]
+    public void JobbedExactWarmStartCertifiesInCache()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        int blocks = 4, br = 2, n = blocks * br, k = 2;
+        var builder = arena.fProxyBSRBuilder(blocks, blocks, br, br);
+        for (int b = 0; b < blocks; b++)
+        {
+            var diag = new fProxyMxN(br, br, Allocator.Temp);
+            for (int r = 0; r < br; r++)
+                for (int c = 0; c < br; c++)
+                    diag[r, c] = (r == c) ? (fProxy)6 : (fProxy)0.5;
+            builder.AddBlock(b, b, in diag);
+            diag.Dispose();
+
+            if (b + 1 < blocks)
+            {
+                var off = new fProxyMxN(br, br, Allocator.Temp);
+                for (int r = 0; r < br; r++)
+                    for (int c = 0; c < br; c++)
+                        off[r, c] = (r == c) ? (fProxy)(-1) : (fProxy)0;
+                builder.AddBlock(b, b + 1, in off);
+                builder.AddBlock(b + 1, b, in off);
+                off.Dispose();
+            }
+        }
+        var A = builder.ToBSR(ref arena);
+
+        var D = A.ToDense(ref arena);
+        var Dcopy = D.Copy();
+        var eigAll = arena.fProxyVec(n);
+        var Vall = arena.fProxyMat(n, n);
+        Assert.IsTrue(Eigen.symmetricInPlace(ref Dcopy, ref eigAll, ref Vall));
+
+        var ws = arena.fProxyLOBPCGCache(n, k);
+        for (int r = 0; r < k; r++)
+            for (int c = 0; c < n; c++)
+                ws.X[r, c] = Vall[c, n - 1 - r];
+
+        var outp = new NativeArray<int>(3, Allocator.TempJob);
+        var job = new JobbedLobpcgBSR { A = A, Cache = ws, K = k, Tol = Consts.fProxySqrtEps, MaxIter = 500, Out = outp };
+        job.Run();
+
+        Assert.AreEqual(1, outp[0], "exact warm start through IJob did not certify");
+        Assert.LessOrEqual(outp[1], 2, "exact warm start should certify near-immediately through IJob");
+
+        for (int j = 0; j < k; j++)
+            Assert.AreEqual((double)eigAll[n - 1 - j], (double)ws.lambda[j],
+                TolFactor() * Math.Max(1.0, Math.Abs((double)eigAll[n - 1 - j])),
+                $"jobbed warm-started eigenvalue {j} does not match the dense oracle");
+
+        // Independent residual check on each eigenpair straight out of the cache: if the sorted
+        // lambda were paired with a stale/unswapped X, these residuals blow up.
+        var phi = new fProxyN(n, Allocator.Temp);
+        var Aphi = new fProxyN(n, Allocator.Temp);
+        for (int i = 0; i < k; i++)
+        {
+            for (int c = 0; c < n; c++) phi[c] = ws.X[i, c];
+            BSR.spMV(in A, in phi, ref Aphi);
+            double rn2 = 0, an2 = 0;
+            for (int c = 0; c < n; c++)
+            {
+                double rv = (double)Aphi[c] - (double)ws.lambda[i] * (double)phi[c];
+                rn2 += rv * rv; an2 += (double)Aphi[c] * (double)Aphi[c];
+            }
+            Assert.LessOrEqual(Math.Sqrt(rn2), 1e-2 * Math.Max(1.0, Math.Sqrt(an2)),
+                $"cache eigenpair {i} residual too large -- stale/mispaired vectors after IJob");
+        }
+        phi.Dispose(); Aphi.Dispose();
+
+        outp.Dispose();
         arena.Dispose();
     }
 }
