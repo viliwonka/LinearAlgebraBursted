@@ -1,6 +1,21 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.cgne removed
+- 2026-07-18 | Removed CGNE / Craig's method (all overloads: generic + dense + BSR) + its tests
+  (3 methods in SparseSolverTests, the verify-at-exit case, the aliasing guard, embedded rnorm-honesty
+  subsections). Rationale: it's a normal-equations (AAᵀ) method → squares the conditioning (κ²), AND
+  it's REDUNDANT — lsqr already produces the min-norm solution for underdetermined consistent systems
+  at better conditioning. Kept cgls/cglsJacobi (deeper sunk value: Tikhonov damping = ridge regression,
+  column-equilibration preconditioner; the user's call after researching origins — both came wholesale
+  from c01d99e's Solvers→Krylov split). DESIGN DIRECTION (not yet built): merge the p-prefix pairs
+  (pcg/cg, pminres/minres, pbiCGStab/biCGStab, pgmres/gmres) — every solver is "preconditioned by
+  default" with fProxyIdentityPreconditioner (already exists) as the no-M overload; keep the dedicated
+  zero-copy unpreconditioned path. For the future BLOCK-Krylov rewrite: ~7 UNIFIED block algorithms
+  (identity default, no p-prefix), on ApplyBlock + QRCP-orthogonalized blocks (tall-skinny, O(n·s²)) +
+  s×s coeff via CHOP/QRCP; block-preconditioner = column-loop helper (no per-precond rewrite); SKIP
+  cgls/cgne normal-equations methods (κ²). Supersedes the earlier "keep arity" ruling.
+
 ## Krylov.gmres (restarted GMRES(m))
 - 2026-07-18 | Restarted GMRES(m) for general nonsymmetric A: Arnoldi + modified Gram-Schmidt basis,
   incremental Givens-rotated least-squares (inline, same idiom as minres/pminres), restart every m

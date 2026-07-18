@@ -9,7 +9,7 @@ using NUnit.Framework;
 using Unity.Collections;
 using Unity.Mathematics;
 
-// Krylov verify-at-exit: cg/pcg/cgls/cgne recursively
+// Krylov verify-at-exit: cg/pcg/cgls recursively
 // track their residual; in float that tracked value can drift from the true b-Ax and claim
 // convergence early. When the tracked residual FIRST claims convergence, the guarded solver now
 // recomputes the true residual fresh (+1 Apply, +1 ApplyT for cgls) and retests, continuing if it
@@ -239,7 +239,7 @@ public class doubleKrylovVerifyAtExitTests
     }
 
     // ==============================================================================
-    // Lighter wiring-sanity checks for pcg/cgls/cgne: confirm each still converges and its
+    // Lighter wiring-sanity checks for pcg/cgls: confirm each still converges and its
     // Converged-path rnorm is HONEST (matches an independently-recomputed fresh residual), i.e.
     // the verify block compiles and returns the right value for every verify-at-exit-covered
     // solver, not just cg. Well-conditioned instances (no drift-firing construction needed here --
@@ -271,32 +271,6 @@ public class doubleKrylovVerifyAtExitTests
     }
 
     [Test]
-    public void CgneConvergedRnormIsHonest()
-    {
-        var arena = new Arena(Allocator.Persistent);
-
-        int n = 16;
-        var A = BuildDenseSPD(ref arena, n, 143001);
-        var b = arena.doubleRandomVec(n, (double)(-1f), (double)1f, 143002);
-
-        // cgne has no generic-TOp allocating convenience overload (locked ladder: only the
-        // zero-alloc generic core + concrete dense/BSR forwarders) -- solve via the concrete dense
-        // overload, then wrap in doubleDenseOperator just for the independent audit below.
-        var x = arena.doubleVec(n);
-        var info = Krylov.cgne(in A, in b, ref x, 4 * n, Consts.doubleSqrtEps);
-        Assert.IsTrue(info.Solved, info.ToString());
-
-        var op = new doubleDenseOperator(in A);
-        var scratch = arena.doubleVec(n);
-        double trueRs = TrueResidualSq(in op, in b, in x, ref scratch);
-        double threshold = Consts.doubleSqrtEps * Consts.doubleSqrtEps * Blas.dot(b, b);
-        Assert.LessOrEqual((double)trueRs, (double)threshold);
-        Assert.AreEqual((double)math.sqrt(trueRs), info.rnorm, 1e-6 * (1.0 + info.rnorm));
-
-        arena.Dispose();
-    }
-
-    [Test]
     public void CglsConvergedResidualIsHonest()
     {
         var arena = new Arena(Allocator.Persistent);
@@ -306,7 +280,7 @@ public class doubleKrylovVerifyAtExitTests
         var A = arena.doubleRandomMat(m, nCols, (double)(-1f), (double)1f, 144001);
         var b = arena.doubleRandomVec(m, (double)(-1f), (double)1f, 144002);
 
-        // cgls, like cgne, has no generic-TOp allocating convenience overload (locked ladder) --
+        // cgls has no generic-TOp allocating convenience overload (locked ladder) --
         // solve via the concrete dense overload, then wrap in doubleDenseOperator for the
         // independent (generic) audit call below.
         var x = arena.doubleVec(nCols);

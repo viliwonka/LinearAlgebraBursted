@@ -148,7 +148,7 @@ public class doubleKrylovFusedKernelTests
             arena.Dispose();
         }
 
-        // ---- updateXR, RECTANGULAR case (cgls/cgne): x/p length != r/q length. Regression guard:
+        // ---- updateXR, RECTANGULAR case (cgls): x/p length != r/q length. Regression guard:
         // x/p and r/q must use INDEPENDENT lengths, not a shared loop bound. ----
         void UpdateXRBitIdenticalRectangular()
         {

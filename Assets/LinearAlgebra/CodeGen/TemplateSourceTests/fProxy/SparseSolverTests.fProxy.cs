@@ -53,9 +53,6 @@ public class fProxySparseSolverTests
             TikhonovDampingMatchesAugmentedQR,
 
             // ---- CGNE / Craig: minimum-norm solve for consistent under-determined systems ----
-            CgneUnderdeterminedMinNormMatchesLsqr,
-            CgneWarmStart,
-            CgneInconsistentDoesNotConverge,
 
             // ---- LS diagnostics (LstsqInfo: rnorm/Arnorm/xnorm/iterations/status; free tracked estimates) ----
             LstsqInfoMatchesIndependentRecompute,
@@ -141,9 +138,6 @@ public class fProxySparseSolverTests
 
                 case TestType.TikhonovDampingMatchesAugmentedQR: TikhonovDampingMatchesAugmentedQR(); break;
 
-                case TestType.CgneUnderdeterminedMinNormMatchesLsqr: CgneUnderdeterminedMinNormMatchesLsqr(); break;
-                case TestType.CgneWarmStart: CgneWarmStart(); break;
-                case TestType.CgneInconsistentDoesNotConverge: CgneInconsistentDoesNotConverge(); break;
 
                 case TestType.LstsqInfoMatchesIndependentRecompute: LstsqInfoMatchesIndependentRecompute(); break;
                 case TestType.LstsqInfoDampedArnorm: LstsqInfoDampedArnorm(); break;
@@ -1110,84 +1104,6 @@ public class fProxySparseSolverTests
             arena.Dispose();
         }
 
-        // ---- CGNE / Craig: minimum-norm solution of a consistent under-determined system ----
-        //
-        // Same wide-A min-norm setup as CglsLsqrUnderdeterminedConsistent above; CGNE is
-        // cross-checked against LSQR (already tested), on dense AND 1x1-BSR.
-        void CgneUnderdeterminedMinNormMatchesLsqr()
-        {
-            var arena = new Arena(Allocator.Persistent);
-
-            int m = 4, n = 10;
-            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 44001);
-            var xGen = arena.fProxyRandomVec(n, -1f, 1f, 44002);
-            var b = Blas.dot(A, xGen);      // consistent (b in range(A))
-
-            var xC = arena.fProxyVec(n);
-            Assert.IsTrue(Krylov.cgne(in A, in b, ref xC, 8 * n, Consts.fProxySqrtEps));
-            var AxC = Blas.dot(A, xC);
-            AssertVecEq(in AxC, in b, LooseTol());          // solves the consistent system
-
-            var xL = arena.fProxyVec(n);
-            Assert.IsTrue(Krylov.lsqr(in A, in b, ref xL, 8 * n, Consts.fProxySqrtEps));
-            AssertVecEq(in xC, in xL, LooseTol());          // both land on the unique min-norm solution
-
-            var bsm = DenseToBSR1x1(ref arena, in A, m * n);
-            var xCb = arena.fProxyVec(n);
-            Assert.IsTrue(Krylov.cgne(in bsm, in b, ref xCb, 8 * n, Consts.fProxySqrtEps));
-            AssertVecEq(in xC, in xCb, LooseTol());          // BSR agrees with dense CGNE
-
-            arena.Dispose();
-        }
-
-        // ---- CGNE warm start (consistent under-determined system) ----
-        void CgneWarmStart()
-        {
-            var arena = new Arena(Allocator.Persistent);
-
-            int m = 4, n = 10;
-            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 44101);
-            var xGen = arena.fProxyRandomVec(n, -1f, 1f, 44102);
-            var b = Blas.dot(A, xGen);      // consistent
-
-            var x = arena.fProxyVec(n);
-            Assert.IsTrue(Krylov.cgne(in A, in b, ref x, 8 * n, Consts.fProxySqrtEps));
-
-            var xWarm = x.Copy();
-            bool okWarm = Krylov.cgne(in A, in b, ref xWarm, 1, Consts.fProxySqrtEps);
-            Assert.IsTrue(okWarm);                            // pre-loop residual check reports convergence
-            AssertVecEq(in x, in xWarm, LooseTol());          // and leaves x untouched
-
-            arena.Dispose();
-        }
-
-        // ---- CGNE on an INCONSISTENT system: b not in range(A) ----
-        // An over-determined (m > n) A with a random b is generically inconsistent (b has a
-        // component orthogonal to range(A)). CGNE drives r = b - Ax toward zero, which is
-        // impossible here -- ||r|| stalls at the nonzero least-squares residual -- so it runs out
-        // of iterations (or breaks down on A^T r == 0 at the LS point) and returns false. CGLS on
-        // the SAME system converges to the least-squares minimizer. This pins the behavioral
-        // contract that CGNE is for consistent systems only and exercises the false-return path.
-        void CgneInconsistentDoesNotConverge()
-        {
-            var arena = new Arena(Allocator.Persistent);
-
-            int m = 10, n = 4;                                 // over-determined
-            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 44201);
-            var b = arena.fProxyRandomVec(m, -1f, 1f, 44202);  // random rhs: generically NOT in range(A)
-
-            var xC = arena.fProxyVec(n);
-            bool okCgne = Krylov.cgne(in A, in b, ref xC, 8 * n, Consts.fProxySqrtEps);
-            Assert.IsFalse(okCgne);                            // cannot reach zero residual -> false
-
-            // CGLS solves the same system in the least-squares sense (normal equations A^T r = 0).
-            var xLs = arena.fProxyVec(n);
-            Assert.IsTrue(Krylov.cgls(in A, in b, ref xLs, 8 * n, Consts.fProxySqrtEps));
-            AssertLeastSquaresOptimal(in A, in xLs, in b, LooseTol());
-
-            arena.Dispose();
-        }
-
         // ================== LS diagnostics (LstsqInfo) ==================
 
         // Independently recompute rnorm/Arnorm/xnorm EXACTLY from the returned x (paying a real
@@ -1529,8 +1445,8 @@ public class fProxySparseSolverTests
             AssertClose(rnorm, math.sqrt(acc), tol);
         }
 
-        // The square solvers (cg/pcg/minres/biCGStab/cgne) RETURN an SolveInfo
-        // whose rnorm is filled from each solver's already-tracked residual -- cg/pcg/cgne a live
+        // The square solvers (cg/pcg/minres/biCGStab) RETURN an SolveInfo
+        // whose rnorm is filled from each solver's already-tracked residual -- cg/pcg a live
         // ‖r‖ (√ of the dot they already form for the convergence test), minres its phibar (the
         // MINRES identity), biCGStab its running ‖r‖ -- never a fresh matvec. Pin that free rnorm
         // against an INDEPENDENTLY recomputed ‖b - A x‖ for every solver + operator shape, plus a
@@ -1574,16 +1490,6 @@ public class fProxySparseSolverTests
             Assert.IsTrue(ib.Solved && ib.iterations >= 1);
             AssertResidualNorm(in Ansym, in bns, in xb, ib.rnorm, tol);
 
-            // ---- Underdetermined CONSISTENT system (m < n): cgne (min-norm) ----
-            int mm = 6, nn = 10;
-            var Aun = arena.fProxyRandomMat(mm, nn, -1f, 1f, 52201);
-            var xStar = arena.fProxyRandomVec(nn, -1f, 1f, 52202);
-            var bun = Blas.dot(Aun, xStar);                          // b = A x*  (in range(A))
-            var xn = arena.fProxyVec(nn);
-            var inx = Krylov.cgne(in Aun, in bun, ref xn, 4 * nn, Consts.fProxySqrtEps);
-            Assert.IsTrue(inx.Solved && inx.iterations >= 1);
-            AssertResidualNorm(in Aun, in bun, in xn, inx.rnorm, tol);
-
             // ---- Mid-flight MaxIterations for EVERY square solver: one (or two) step(s) does NOT
             //      converge, yet rnorm must still equal ‖b - A x‖ of the (updated) un-converged
             //      iterate -- the contract that on MaxIterations x is a valid last iterate, not
@@ -1607,11 +1513,6 @@ public class fProxySparseSolverTests
             var ihb = Krylov.biCGStab(in Ansym, in bns, ref xhb, 1, Consts.fProxySqrtEps);
             Assert.IsTrue(ihb.status == IterativeSolveStatus.MaxIterations && ihb.iterations == 1);
             AssertResidualNorm(in Ansym, in bns, in xhb, ihb.rnorm, tol);
-
-            var xhn = arena.fProxyVec(nn);
-            var ihn = Krylov.cgne(in Aun, in bun, ref xhn, 1, Consts.fProxySqrtEps);
-            Assert.IsTrue(ihn.status == IterativeSolveStatus.MaxIterations && ihn.iterations == 1);
-            AssertResidualNorm(in Aun, in bun, in xhn, ihn.rnorm, tol);
 
             // ---- Breakdown path: CG on the indefinite A = diag(1,-1) with b = (1,1) and x₀ = 0
             //      hits p·Ap = 1·1 + 1·(-1) = 0 on the very first step -> Breakdown at iterations=0,
@@ -1762,18 +1663,6 @@ public class fProxySparseSolverTests
     [Test]
     public void TikhonovDampingMatchesAugmentedQRTest()
         => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.TikhonovDampingMatchesAugmentedQR }.Run();
-
-    [Test]
-    public void CgneUnderdeterminedMinNormMatchesLsqrTest()
-        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.CgneUnderdeterminedMinNormMatchesLsqr }.Run();
-
-    [Test]
-    public void CgneWarmStartTest()
-        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.CgneWarmStart }.Run();
-
-    [Test]
-    public void CgneInconsistentDoesNotConvergeTest()
-        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.CgneInconsistentDoesNotConverge }.Run();
 
     // ---- LS diagnostics entry points ----
 
@@ -2214,23 +2103,4 @@ public class fProxySparseSolverTests
         finally { arena.Dispose(); }
     }
 
-    [Test]
-    public void Cgne_AliasingPAndTmpN_Throws()
-    {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            int m = 4, n = 6;                   // under-determined
-            var A = arena.fProxyMat(m, n);
-            var b = arena.fProxyRandomVec(m, -1f, 1f, 39501);
-            var x = arena.fProxyVec(n);
-            var r = arena.fProxyVec(m);
-            var p = arena.fProxyVec(n);
-            var q = arena.fProxyVec(m);
-            var tmpNAlias = p; // tmpN aliases p (both length n)
-            Assert.Throws<ArgumentException>(() =>
-                Krylov.cgne(in A, in b, ref x, ref r, ref p, ref q, ref tmpNAlias, n, Consts.fProxySqrtEps));
-        }
-        finally { arena.Dispose(); }
-    }
 }
