@@ -8,6 +8,16 @@ Path: elasticity-capable (rigid-body near-nullspace per aggregate), dodges gener
 unsmoothed Galerkin RAP collapses to a deterministic segmented assembly), Chebyshev smoother
 (already shipped), Flexible-CG outer solver. SA + deterministic spGEMM is the later Tier-2 end-state.
 
+## AMG.galerkinRAP
+- 2026-07-18 | Unsmoothed Galerkin coarse operator A_c = TᵀAT, AMG-4 — the spGEMM-dodging kernel.
+  Each fine block-row maps to ONE aggregate, so the triple product collapses to a segmented
+  scatter-add: fine block A_ij contributes T[i]ᵀ A_ij T[j] (m×m) to coarse block (aggId[i],aggId[j]).
+  Uses fProxyBSRBuilder duplicate-summation; deterministic because the builder's counting+insertion
+  sort is stable and fine blocks are added in ascending (i,j) order → fixed sum order. Full-storage
+  numAgg×numAgg output with m×m blocks. Contract: full-storage square-block A. Tested MATRIX-FREE via
+  the Galerkin identity <v,A_c u>==<Tv,A(Tu)> (scalar m=1 and block BR=2/m=2), coarse symmetry, and
+  determinism — no dense TᵀAT oracle needed. BSR.spMV confirmed to handle T's rectangular BR×m blocks.
+
 ## AMG.tentativeProlongator
 - 2026-07-18 | Tentative (unsmoothed) prolongator T, AMG-3. Per aggregate: gather B's local rows,
   modified Gram–Schmidt (in place) → Q (T's BR x m blocks) + R (m x m) with B_local = Q·R, so
