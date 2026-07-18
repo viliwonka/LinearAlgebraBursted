@@ -231,6 +231,26 @@ namespace LinearAlgebra
         }
 
         /// <summary>
+        /// Builds a Chebyshev polynomial preconditioner from A (must be square SPD: every scalar
+        /// diagonal entry &gt; 0, every diagonal block stored; Symmetric-storage A is consumed
+        /// directly, no mirror needed). See <see cref="doubleChebyshev"/> for the setup/Apply
+        /// contract and <paramref name="opt"/>'s field docs for the tunable defaults. Arena-owned:
+        /// disposed with the arena.
+        /// </summary>
+        public doubleChebyshev doubleChebyshev(in doubleBSR A, in doubleChebyshevOptions opt)
+        {
+            Arena self = this;
+            return new doubleChebyshev(in A, in opt, ref self);
+        }
+
+        /// <summary>doubleChebyshev with doubleChebyshevOptions.Default (degree=3, kappa=30, eigSteps=10, safety=1.1).</summary>
+        public doubleChebyshev doubleChebyshev(in doubleBSR A)
+        {
+            Arena self = this;
+            return new doubleChebyshev(in A, ref self);
+        }
+
+        /// <summary>
         /// Builds a block incomplete-Cholesky IC(0) preconditioner from A (must be square SPD
         /// with every diagonal block stored; Symmetric-storage A is consumed zero-copy -- its
         /// stored lower-block pattern IS the IC(0) pattern). See <see cref="doubleIC0"/> for the

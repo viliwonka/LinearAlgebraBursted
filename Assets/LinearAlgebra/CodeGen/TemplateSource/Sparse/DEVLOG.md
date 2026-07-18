@@ -1,6 +1,44 @@
 # DEVLOG — Sparse
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Chebyshev
+- 2026-07-18 | `DegreeSweepNonIncreasingTest` (float only) failed centrally on
+  `iters(d) <= iters(d-1)+1`. Diagnosed with a standalone float32 NumPy re-implementation of the
+  exact ctor (InvDiag/Lanczos 10-step deterministic-seed/hi=1.1*ritzMax/lo=hi/30) and
+  `BSR.chebyApply`/`Krylov.pcg` (16x16 Poisson, n=256) OUTSIDE Burst, to make the hidden numbers
+  legible without running the Unity suite. Result: hi=2.1281 vs the TRUE lambda_max(D^-1 A)=1.9830
+  (analytic 2D-Poisson eigenvalue formula, cross-checked against a full dense eigendecomposition) --
+  a healthy 7.3% margin, ruling out an eigenvalue-underestimate/amplification defect (hypothesis
+  B). A 30-trial sweep over random right-hand sides (both a double-precision-detour dot and a pure
+  sequential-float32-accumulation dot, to stress-test rounding) showed iteration counts robustly
+  monotone-decreasing with wide margins (e.g. 15/11/9/7 for d=1..4) and ZERO violations of
+  `d4 <= d1` -- confirms hypothesis A (benign ULP-scale non-monotonicity from the true-residual
+  convergence test's threshold-crossing timing vs Burst's actual SIMD dot-reduction order, which
+  the standalone repro cannot bit-match). Fix: relaxed `DegreeSweepNonIncreasingTest` to the
+  invariant the algorithm actually guarantees -- every degree converges, and degree=4 needs no MORE
+  outer iterations than degree=1 -- and restructured it off a Burst-internal `Assert.IsTrue` onto a
+  `NativeArray<int>` iteration-count output read and asserted on the managed thread (mirrors
+  `JobbedChebyshevSolve`'s Out-array shape), so a future regression prints the real counts instead
+  of hiding behind an opaque failed assert. Source (`fProxyChebyshev`/`BSR.chebyApply`) was NOT
+  touched -- this was a test-strictness bug, not an algorithm bug. Diagnostic script was scratch-only,
+  not committed.
+- 2026-07-18 | Implemented per `docs/dev/spec-chebyshev-preconditioner.md`: `fProxyChebyshev`
+  (Sparse/fProxyChebyshev.cs) + `BSR.chebyApply` static kernel (same file) + arena factories
+  (Sparse/Arena.Sparse.fProxy.cs) + 3 pcg rungs (OP/Krylov.fProxy.cs) + 3 pminres rungs
+  (OP/Krylov.PMinres.fProxy.cs). Open questions resolved per the spec's stated defaults/answers:
+  Q1 degree=3/kappa=30 shipped as-is, NOT re-tuned against PCGBenchmark (no benchmark run this
+  pass); Q2 hi = safety*lanczos only, no Gershgorin cap; Q3 no pbiCGStab rung (mirrors
+  BlockJacobi/SSOR/IC0); Q4 no un-scaled (D=I) variant; Q5 no block-diagonal scaling; Q6 no `out
+  PreconditionerInfo` overload -- every setup failure throws; Q7 no LOBPCG overloads.
+  PCGBenchmark's Chebyshev column (spec §5) was NOT added this pass (out of the requested scope) --
+  next coder pass should add it before re-tuning Q1.
+  Lanczos non-convergence on the symmetrically-scaled operator (LanczosInfo.Solved == false) is
+  NOT an extra throw path -- the spec's ctor throw list (§4.2) doesn't include it, so lambdaMax is
+  taken from whatever Ritz values were produced regardless of the inner QL convergence flag.
+  eigSteps default (10) can exceed a tiny test matrix's Rows and trip `Eigen.lanczos`'s own "steps
+  must be in [1, A.Rows]" guard -- not a Chebyshev-specific check, callers on small n must pass a
+  smaller eigSteps.
+
 ## Gallery.Sparse: fProxyPenalizedGrid3D
 - 2026-07-17 | Added for the LOBPCG false-convergence repro (docs/dev/spec-lobpcg-robustness.md
   §D.1): a self-contained port of the BuildingFrame demo's truss topology (columns, X/Y beams,

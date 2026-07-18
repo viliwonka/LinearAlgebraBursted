@@ -472,6 +472,42 @@ namespace LinearAlgebra
             return pcg(in A, in M, in b, ref x, A.M_Rows, Consts.fProxySqrtEps);
         }
 
+        /// <summary>
+        /// Preconditioned Conjugate Gradient over a block-sparse (BSR) SPD matrix with its
+        /// matching Chebyshev preconditioner. Forwards into <see cref="pcg{TOp,TPre}"/> via
+        /// <c>fProxyBSROperator</c> -- same three-rung BSR convenience pattern as the block-Jacobi,
+        /// SSOR, and IC0 overloads above.
+        /// </summary>
+        public static SolveInfo pcg(in fProxyBSR A, in fProxyChebyshev M, in fProxyN b, ref fProxyN x,
+                               ref fProxyN r, ref fProxyN p, ref fProxyN Ap, ref fProxyN z,
+                               int maxIter, fProxy tol)
+        {
+            return pcg(new fProxyBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
+        }
+
+        /// <summary>
+        /// Chebyshev Preconditioned Conjugate Gradient over a BSR SPD matrix -- allocates four
+        /// scratch vectors from the arena and calls the zero-alloc primitive.
+        /// </summary>
+        public static SolveInfo pcg(in fProxyBSR A, in fProxyChebyshev M, in fProxyN b, ref fProxyN x,
+                               int maxIter, fProxy tol)
+        {
+            fProxyN r  = b.fProxyTempVec(A.M_Rows);
+            fProxyN p  = b.fProxyTempVec(A.M_Rows);
+            fProxyN Ap = b.fProxyTempVec(A.M_Rows);
+            fProxyN z  = b.fProxyTempVec(A.M_Rows);
+            return pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
+        }
+
+        /// <summary>
+        /// Chebyshev Preconditioned Conjugate Gradient over a BSR SPD matrix, with default
+        /// maxIter (A.M_Rows) and tol (Consts.fProxySqrtEps).
+        /// </summary>
+        public static SolveInfo pcg(in fProxyBSR A, in fProxyChebyshev M, in fProxyN b, ref fProxyN x)
+        {
+            return pcg(in A, in M, in b, ref x, A.M_Rows, Consts.fProxySqrtEps);
+        }
+
         // MINRES (symmetric indefinite), BiCGSTAB (non-symmetric), CGLS/LSQR (rectangular
         // least-squares). Same generic-operator pattern as cg&lt;TOp&gt;/pcg&lt;TOp,TPre&gt; above --
         // see cg&lt;TOp&gt;'s doc comment for the shared "why an up-front aliasing guard" rationale.
