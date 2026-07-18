@@ -377,9 +377,12 @@ namespace LinearAlgebra.Sparse
             if (z.Data.Ptr == Scratch.Data.Ptr) throw new ArgumentException("floatAdditiveSchwarz.Apply: z must not alias Scratch");
             if (r.Data.Ptr == Scratch.Data.Ptr) throw new ArgumentException("floatAdditiveSchwarz.Apply: r must not alias Scratch");
 
-            for (int i = 0; i < n; i++) z[i] = (float)0;
-
             floatN buf = Scratch;
+            float* zp = z.Data.Ptr;
+            float* rp = r.Data.Ptr;
+            float* bufp = buf.Data.Ptr;
+
+            for (int i = 0; i < n; i++) zp[i] = (float)0;
 
             for (int sub = 0; sub < K; sub++)
             {
@@ -392,7 +395,7 @@ namespace LinearAlgebra.Sparse
                 {
                     int g = SubBlocks[start + l];
                     int lb = l * BR, gb = g * BR;
-                    for (int t = 0; t < BR; t++) buf[lb + t] = r[gb + t];
+                    for (int t = 0; t < BR; t++) bufp[lb + t] = rp[gb + t];
                 }
 
                 CholSolveInPlace(Factors, fbase, nn, buf);
@@ -401,26 +404,28 @@ namespace LinearAlgebra.Sparse
                 {
                     int g = SubBlocks[start + l];
                     int lb = l * BR, gb = g * BR;
-                    for (int t = 0; t < BR; t++) z[gb + t] += buf[lb + t];
+                    for (int t = 0; t < BR; t++) zp[gb + t] += bufp[lb + t];
                 }
             }
         }
 
         // Solves (L L^T) x = b in place on b[0..nn), L the row-major nn x nn factor at Factors[fbase].
-        static void CholSolveInPlace(floatN factors, int fbase, int nn, floatN b)
+        static unsafe void CholSolveInPlace(floatN factors, int fbase, int nn, floatN b)
         {
+            float* f = factors.Data.Ptr;
+            float* bp = b.Data.Ptr;
             for (int r = 0; r < nn; r++)
             {
-                float s = b[r];
+                float s = bp[r];
                 int rowOff = fbase + r * nn;
-                for (int c = 0; c < r; c++) s -= factors[rowOff + c] * b[c];
-                b[r] = s / factors[rowOff + r];
+                for (int c = 0; c < r; c++) s -= f[rowOff + c] * bp[c];
+                bp[r] = s / f[rowOff + r];
             }
             for (int r = nn - 1; r >= 0; r--)
             {
-                float s = b[r];
-                for (int c = r + 1; c < nn; c++) s -= factors[fbase + c * nn + r] * b[c];
-                b[r] = s / factors[fbase + r * nn + r];
+                float s = bp[r];
+                for (int c = r + 1; c < nn; c++) s -= f[fbase + c * nn + r] * bp[c];
+                bp[r] = s / f[fbase + r * nn + r];
             }
         }
     }
@@ -600,6 +605,10 @@ namespace LinearAlgebra.Sparse
 
             floatN gatherBuf = Scratch;
             floatN solveBuf = Scratch2;
+            float* rp = r.Data.Ptr;
+            float* zp = z.Data.Ptr;
+            float* gatherp = gatherBuf.Data.Ptr;
+            float* solvep = solveBuf.Data.Ptr;
 
             for (int sub = 0; sub < K; sub++)
             {
@@ -613,10 +622,10 @@ namespace LinearAlgebra.Sparse
                 {
                     int g = SubBlocks[start + l];
                     int lb = l * BR, gb = g * BR;
-                    for (int t = 0; t < BR; t++) gatherBuf[lb + t] = r[gb + t];
+                    for (int t = 0; t < BR; t++) gatherp[lb + t] = rp[gb + t];
                 }
 
-                for (int rr = 0; rr < nn; rr++) solveBuf[rr] = gatherBuf[Piv[pbase + rr]];
+                for (int rr = 0; rr < nn; rr++) solvep[rr] = gatherp[Piv[pbase + rr]];
 
                 LUSolveInPlace(Factors, fbase, nn, solveBuf);
 
@@ -626,28 +635,30 @@ namespace LinearAlgebra.Sparse
                     int g = SubBlocks[start + l];
                     if (g < lo || g >= hi) continue;
                     int lb = l * BR, gb = g * BR;
-                    for (int t = 0; t < BR; t++) z[gb + t] = solveBuf[lb + t];
+                    for (int t = 0; t < BR; t++) zp[gb + t] = solvep[lb + t];
                 }
             }
         }
 
         // Solves (L U) x = b in place on b[0..nn) (already row-permuted): unit-lower forward sweep,
         // then upper backward sweep. F the row-major compact LU at Factors[fbase].
-        static void LUSolveInPlace(floatN factors, int fbase, int nn, floatN b)
+        static unsafe void LUSolveInPlace(floatN factors, int fbase, int nn, floatN b)
         {
+            float* f = factors.Data.Ptr;
+            float* bp = b.Data.Ptr;
             for (int r = 0; r < nn; r++)
             {
-                float s = b[r];
+                float s = bp[r];
                 int rowOff = fbase + r * nn;
-                for (int c = 0; c < r; c++) s -= factors[rowOff + c] * b[c];
-                b[r] = s;
+                for (int c = 0; c < r; c++) s -= f[rowOff + c] * bp[c];
+                bp[r] = s;
             }
             for (int r = nn - 1; r >= 0; r--)
             {
-                float s = b[r];
+                float s = bp[r];
                 int rowOff = fbase + r * nn;
-                for (int c = r + 1; c < nn; c++) s -= factors[rowOff + c] * b[c];
-                b[r] = s / factors[rowOff + r];
+                for (int c = r + 1; c < nn; c++) s -= f[rowOff + c] * bp[c];
+                bp[r] = s / f[rowOff + r];
             }
         }
     }

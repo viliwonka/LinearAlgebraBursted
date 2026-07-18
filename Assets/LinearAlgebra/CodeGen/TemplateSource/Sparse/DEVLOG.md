@@ -10,6 +10,17 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   verbatim. Source touched; needs regen.
 
 ## Schwarz (fProxyAdditiveSchwarz / fProxyRestrictedSchwarz)
+- 2026-07-18 | Apply optimization pass (raw-pointer hoist, bit-identical). The per-iteration hot
+  path is the dense subdomain triangular solves (`CholSolveInPlace`/`LUSolveInPlace`) + the
+  gather/scatter — every `fProxyN` element access routed through the `Data` getter's
+  `_rec != null ? _rec->Data : _inlineData` branch each iteration. Hoisted `factors`/`b`/`r`/`z`/
+  scratch to raw `fProxy*` once per call (Apply is already `unsafe`). Full PCG-Schwarz solve
+  ~1.1-1.25x faster on the 2D-Laplacian face-off (N=1024..10201, both dtypes); iters + residuals
+  byte-identical before/after (pure accessor elimination, no reassociation). Indices (SubBlocks/
+  Piv) left as-is — the fProxyN traffic dominates. The other three new preconditioners were
+  reviewed and left untouched: Chebyshev/FSAI/SPAI Apply = spMV (already SIMD), and their build
+  gathers are O(n^2) dwarfed by the O(n^3) library CHO/QR factorization — a hoist there is churn.
+  Added a PCG-Schwarz row to PCGBenchmark's preconditioner face-off (it predated Schwarz).
 - 2026-07-18 | One-level AS/RAS MVP per docs/dev/spec-additive-schwarz-preconditioner.md.
   Contiguous block-row partition + delta-layer overlap; dense local factors cached at build
   (AS = Cholesky, RAS = LU+partial-pivot), reused every Apply. Design resolutions of spec

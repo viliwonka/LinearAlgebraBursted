@@ -126,6 +126,24 @@ namespace LinearAlgebra.Benchmarks
         }
     }
 
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct PcgSchwarzTolJobDouble : IJob
+    {
+        public doubleBSR A;
+        public doubleAdditiveSchwarz M;
+        public doubleN b, x, r, p, Ap, z;
+        public int K;
+        public double Tol;
+        public Indices Iters;
+
+        public void Execute()
+        {
+            for (int i = 0; i < x.N; i++) x[i] = 0f;
+            var info = Krylov.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, Tol);
+            Iters[0] = info.iterations;
+        }
+    }
+
     public static partial class PCGBenchmark
     {
         // Preconditioner face-off: solve-to-tolerance. Reports wall-clock AND iteration count --
@@ -175,8 +193,14 @@ namespace LinearAlgebra.Benchmarks
             var mI = arena.doubleIC0(in A);
             var iJob = new PcgIC0TolJobDouble { A = A, M = mI, b = b, x = x, r = r, p = p, Ap = Ap, z = z, K = cap, Tol = tol, Iters = iters };
             var iStat = Bench.Time(() => iJob.Run());
-            sb.Append(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
+            sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                 "double", n, "PCG-IC0", iStat.Median, iStat.Min, iters[0], Residual(in A, in x, in b)));
+
+            var mW = arena.doubleAdditiveSchwarz(in A);
+            var wJob = new PcgSchwarzTolJobDouble { A = A, M = mW, b = b, x = x, r = r, p = p, Ap = Ap, z = z, K = cap, Tol = tol, Iters = iters };
+            var wStat = Bench.Time(() => wJob.Run());
+            sb.Append(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
+                "double", n, "PCG-Schwarz", wStat.Median, wStat.Min, iters[0], Residual(in A, in x, in b)));
 
             arena.Dispose();
             return sb.ToString();
