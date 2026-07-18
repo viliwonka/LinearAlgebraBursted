@@ -1,0 +1,179 @@
+using System;
+using LinearAlgebra;
+using LinearAlgebra.Sparse;
+using NUnit.Framework;
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Jobs;
+using Unity.Mathematics;
+
+// fProxyAMG / MG.solve / fProxyAMGPreconditioner: the unsmoothed nodal-aggregation AMG hierarchy as
+// a standalone V-cycle solver and as a CG preconditioner. Cases run inside a [BurstCompile] IJob.
+public class fProxyAMGSolverTests
+{
+    [BurstCompile(CompileSynchronously = true)]
+    public struct AMGSolverTestJob : IJob
+    {
+        public enum TestType
+        {
+            VCycleSolves,
+            MultiLevelBuilt,
+            PcgAmgBeatsPlainCg,
+            Deterministic,
+            PreconditionerSymmetric,
+        }
+
+        public TestType Type;
+
+        static fProxy Tol() => /*+choose[1e-4f|1e-9]*/1e-4f/*-choose*/;
+        static fProxy SymTol() => /*+choose[1e-3f|1e-8]*/1e-3f/*-choose*/;
+
+        // Scalar 5-point 2D Poisson on a gx*gy grid (BR=1, full storage): SPD, diagonally dominant.
+        static fProxyBSR Poisson2D(ref Arena arena, int gx, int gy)
+        {
+            int n = gx * gy;
+            var b = arena.fProxyBSRBuilder(n, n, 1, 1, 5 * n);
+            for (int y = 0; y < gy; y++)
+                for (int x = 0; x < gx; x++)
+                {
+                    int i = y * gx + x;
+                    b.AddValue(i, i, (fProxy)4);
+                    if (x > 0) b.AddValue(i, i - 1, (fProxy)(-1));
+                    if (x < gx - 1) b.AddValue(i, i + 1, (fProxy)(-1));
+                    if (y > 0) b.AddValue(i, i - gx, (fProxy)(-1));
+                    if (y < gy - 1) b.AddValue(i, i + gx, (fProxy)(-1));
+                }
+            return b.ToBSR(ref arena);
+        }
+
+        static fProxy RelResidual(in fProxyBSR A, in fProxyN x, in fProxyN b)
+        {
+            var Ax = BSR.spMV(in A, in x);
+            fProxy num = 0, den = 0;
+            for (int i = 0; i < b.N; i++) { fProxy d = Ax[i] - b[i]; num += d * d; den += b[i] * b[i]; }
+            return math.sqrt(num) / math.sqrt(math.max(den, (fProxy)1e-30));
+        }
+
+        public void Execute()
+        {
+            switch (Type)
+            {
+                case TestType.VCycleSolves:            VCycleSolves(); break;
+                case TestType.MultiLevelBuilt:         MultiLevelBuilt(); break;
+                case TestType.PcgAmgBeatsPlainCg:      PcgAmgBeatsPlainCg(); break;
+                case TestType.Deterministic:           Deterministic(); break;
+                case TestType.PreconditionerSymmetric: PreconditionerSymmetric(); break;
+            }
+        }
+
+        void VCycleSolves()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = Poisson2D(ref arena, 16, 16);
+            int n = A.M_Rows;
+            var b = arena.fProxyRandomVec(n, -1f, 1f, 0xA31u);
+            var amg = arena.fProxyAMG(in A, out var info);
+            Assert.IsTrue(info.Solved);
+
+            var x = arena.fProxyVec(n);
+            for (int i = 0; i < n; i++) x[i] = (fProxy)0;
+            var si = MG.solve(in amg, in b, ref x, 100, Tol());
+
+            Assert.IsTrue(si.status == IterativeSolveStatus.Converged);
+            Assert.IsTrue(RelResidual(in A, in x, in b) <= Tol());
+
+            amg.Dispose();
+            arena.Dispose();
+        }
+
+        void MultiLevelBuilt()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = Poisson2D(ref arena, 32, 32);          // n = 1024 -> several levels
+            var amg = arena.fProxyAMG(in A, out var info);
+
+            Assert.IsTrue(info.Solved);
+            Assert.IsTrue(info.levels >= 3);
+            Assert.IsTrue(info.coarseRows <= AMGOptions.Default.coarseMax);
+
+            amg.Dispose();
+            arena.Dispose();
+        }
+
+        void PcgAmgBeatsPlainCg()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = Poisson2D(ref arena, 24, 24);
+            int n = A.M_Rows;
+            var b = arena.fProxyRandomVec(n, -1f, 1f, 0xB42u);
+            fProxy tol = Tol();
+
+            var xCg = arena.fProxyVec(n);
+            for (int i = 0; i < n; i++) xCg[i] = (fProxy)0;
+            var cgInfo = Krylov.cg(in A, in b, ref xCg, 8 * n, tol);
+
+            var amg = arena.fProxyAMG(in A, out _);
+            var M = new fProxyAMGPreconditioner(in amg);
+            var xPc = arena.fProxyVec(n);
+            for (int i = 0; i < n; i++) xPc[i] = (fProxy)0;
+            var pcInfo = Krylov.pcg(in A, in M, in b, ref xPc, 8 * n, tol);
+
+            Assert.IsTrue(cgInfo.status == IterativeSolveStatus.Converged);
+            Assert.IsTrue(pcInfo.status == IterativeSolveStatus.Converged);
+            Assert.IsTrue(RelResidual(in A, in xPc, in b) <= tol);
+            // AMG preconditioning must cut the iteration count.
+            Assert.IsTrue(pcInfo.iterations < cgInfo.iterations);
+
+            amg.Dispose();
+            arena.Dispose();
+        }
+
+        void Deterministic()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = Poisson2D(ref arena, 20, 20);
+            int n = A.M_Rows;
+            var b = arena.fProxyRandomVec(n, -1f, 1f, 0xC53u);
+            var amg = arena.fProxyAMG(in A, out _);
+
+            var x1 = arena.fProxyVec(n); var x2 = arena.fProxyVec(n);
+            for (int i = 0; i < n; i++) { x1[i] = (fProxy)0; x2[i] = (fProxy)0; }
+            MG.solve(in amg, in b, ref x1, 50, Tol());
+            MG.solve(in amg, in b, ref x2, 50, Tol());
+
+            for (int i = 0; i < n; i++) Assert.IsTrue(x1[i] == x2[i]);
+
+            amg.Dispose();
+            arena.Dispose();
+        }
+
+        // pcg validity: the symmetric V-cycle (pre==post) must give <M r1, r2> == <r1, M r2>.
+        void PreconditionerSymmetric()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = Poisson2D(ref arena, 16, 16);
+            int n = A.M_Rows;
+            var amg = arena.fProxyAMG(in A, out _);
+
+            var M = new fProxyAMGPreconditioner(in amg);
+            var r1 = arena.fProxyRandomVec(n, -1f, 1f, 0x111u);
+            var r2 = arena.fProxyRandomVec(n, -1f, 1f, 0x222u);
+            var z1 = arena.fProxyVec(n); var z2 = arena.fProxyVec(n);
+            M.Apply(in r1, ref z1);
+            M.Apply(in r2, ref z2);
+
+            fProxy a = Blas.dot(z1, r2);   // <M r1, r2>
+            fProxy b2 = Blas.dot(r1, z2);  // <r1, M r2>
+            Assert.IsTrue(math.abs(a - b2) <= SymTol() * ((fProxy)1 + math.abs(a)));
+
+            amg.Dispose();
+            arena.Dispose();
+        }
+    }
+
+    [Test] public void VCycleSolvesTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.VCycleSolves }.Run();
+    [Test] public void MultiLevelBuiltTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.MultiLevelBuilt }.Run();
+    [Test] public void PcgAmgBeatsPlainCgTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.PcgAmgBeatsPlainCg }.Run();
+    [Test] public void DeterministicTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.Deterministic }.Run();
+    [Test] public void PreconditionerSymmetricTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.PreconditionerSymmetric }.Run();
+}

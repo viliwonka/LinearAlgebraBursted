@@ -8,6 +8,25 @@ Path: elasticity-capable (rigid-body near-nullspace per aggregate), dodges gener
 unsmoothed Galerkin RAP collapses to a deterministic segmented assembly), Chebyshev smoother
 (already shipped), Flexible-CG outer solver. SA + deterministic spGEMM is the later Tier-2 end-state.
 
+## fProxyAMG / MG.solve / fProxyAMGPreconditioner
+- 2026-07-18 | AMG-5: the hierarchy + V-cycle + solve/preconditioner API wiring the four setup
+  kernels together. Setup loop (arena.fProxyAMG): aggregate → tentativeProlongator (scalar B=ones,
+  m=1) → galerkinRAP → per-level Chebyshev smoother, until a level ≤ coarseMax scalar unknowns /
+  aggregation stops coarsening / maxLevels; coarsest = dense ToDense + CHO. ITERATIVE V-cycle
+  (down: pre-smooth+restrict via spMVT(P); coarse: CHO solve; up: prolong via spMV(P)+post-smooth) —
+  no recursion. MG.solve = outer V-cycle loop to relative residual; fProxyAMGPreconditioner = one
+  symmetric cycle from zero (pcg-valid when pre==post) + 3-rung Krylov.pcg BSR overloads.
+  STORAGE: fProxyAMG : IDisposable holds per-level handles in UnsafeList<> containers (freed by
+  Dispose); the level DATA is arena-owned. No mutable scalar fields → IJob-copy safe. The arena has
+  no generic array-of-handles slot, hence the container+Dispose approach (like fProxyBlockJacobi).
+  🔴 TWO CODEGEN TRAPS caught at compile: (1) AMGOptions/AMGSetupInfo defined in a fProxy file →
+  duplicated in float+double (CS0101); moved to a `//singularFile//` AMGOptions.cs with theta as
+  `double` (not fProxy) — the SchwarzOptions pattern. (2) The `partial struct Arena` build method was
+  in namespace LinearAlgebra.Sparse, but the real Arena is in `LinearAlgebra` — the phantom
+  Sparse.Arena shadowed the real one for EVERY Sparse file (cascade of "Arena has no fProxyVec").
+  Fix: Arena partial in namespace LinearAlgebra. Currently V-cycle only; K-cycle (fcg-accelerated per
+  level, for grid-independence under unsmoothed aggregation) is the remaining enhancement.
+
 ## AMG.galerkinRAP
 - 2026-07-18 | Unsmoothed Galerkin coarse operator A_c = TᵀAT, AMG-4 — the spGEMM-dodging kernel.
   Each fine block-row maps to ONE aggregate, so the triple product collapses to a segmented
