@@ -29,6 +29,9 @@ public class fProxyAMGSolverTests
             WarmStart,
             MaxIterationsExit,
             CycleSymmetryFlag,
+            KCycleSolves,
+            KCycleTighterThanV,
+            FcgKCycleConverges,
         }
 
         public TestType Type;
@@ -79,8 +82,13 @@ public class fProxyAMGSolverTests
                 case TestType.WarmStart:               WarmStart(); break;
                 case TestType.MaxIterationsExit:       MaxIterationsExit(); break;
                 case TestType.CycleSymmetryFlag:       CycleSymmetryFlag(); break;
+                case TestType.KCycleSolves:            KCycleSolves(); break;
+                case TestType.KCycleTighterThanV:      KCycleTighterThanV(); break;
+                case TestType.FcgKCycleConverges:      FcgKCycleConverges(); break;
             }
         }
+
+        static AMGOptions KOpts() => new AMGOptions { cycle = MGCycle.K, theta = 0, pre = 1, post = 1, coarseMax = 48, maxLevels = 20 };
 
         void VCycleSolves()
         {
@@ -363,6 +371,75 @@ public class fProxyAMGSolverTests
             asym.Dispose();
             arena.Dispose();
         }
+
+        // A K-cycle hierarchy solves standalone (MG.solve iterates the K-cycle).
+        void KCycleSolves()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = Poisson2D(ref arena, 24, 24);
+            int n = A.M_Rows;
+            var b = arena.fProxyRandomVec(n, -1f, 1f, 0x4B01u);
+            var amg = arena.fProxyAMG(in A, KOpts(), out var info);
+            Assert.IsTrue(info.Solved);
+            Assert.IsTrue(amg.IsKCycle);
+            Assert.IsTrue(!amg.IsCycleSymmetric);       // K-cycle is never pcg-valid
+
+            var x = arena.fProxyVec(n);
+            for (int i = 0; i < n; i++) x[i] = (fProxy)0;
+            var si = MG.solve(in amg, in b, ref x, 100, Tol());
+            Assert.IsTrue(si.status == IterativeSolveStatus.Converged);
+            Assert.IsTrue(RelResidual(in A, in x, in b) <= Tol());
+
+            amg.Dispose();
+            arena.Dispose();
+        }
+
+        // The K-cycle's per-level Krylov acceleration is never worse than the V-cycle: it converges
+        // in no more outer cycles (usually fewer) on the same system.
+        void KCycleTighterThanV()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = Poisson2D(ref arena, 48, 48);
+            int n = A.M_Rows;
+            var b = arena.fProxyRandomVec(n, -1f, 1f, 0x4B02u);
+
+            var vAmg = arena.fProxyAMG(in A, out _);           // default V-cycle
+            var xv = arena.fProxyVec(n); for (int i = 0; i < n; i++) xv[i] = (fProxy)0;
+            var vInfo = MG.solve(in vAmg, in b, ref xv, 200, Tol());
+
+            var kAmg = arena.fProxyAMG(in A, KOpts(), out _);
+            var xk = arena.fProxyVec(n); for (int i = 0; i < n; i++) xk[i] = (fProxy)0;
+            var kInfo = MG.solve(in kAmg, in b, ref xk, 200, Tol());
+
+            Assert.IsTrue(vInfo.status == IterativeSolveStatus.Converged);
+            Assert.IsTrue(kInfo.status == IterativeSolveStatus.Converged);
+            Assert.IsTrue(RelResidual(in A, in xk, in b) <= Tol());
+            Assert.IsTrue(kInfo.iterations <= vInfo.iterations);
+
+            vAmg.Dispose();
+            kAmg.Dispose();
+            arena.Dispose();
+        }
+
+        // A K-cycle preconditioner (variable operator) drives Flexible CG to convergence.
+        void FcgKCycleConverges()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = Poisson2D(ref arena, 24, 24);
+            int n = A.M_Rows;
+            var b = arena.fProxyRandomVec(n, -1f, 1f, 0x4B03u);
+            var amg = arena.fProxyAMG(in A, KOpts(), out _);
+            var M = new fProxyAMGPreconditioner(in amg);
+
+            var x = arena.fProxyVec(n);
+            for (int i = 0; i < n; i++) x[i] = (fProxy)0;
+            var info = Krylov.fcg(in A, in M, in b, ref x, 4 * n, Tol());
+            Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
+            Assert.IsTrue(RelResidual(in A, in x, in b) <= Tol());
+
+            amg.Dispose();
+            arena.Dispose();
+        }
     }
 
     [Test] public void VCycleSolvesTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.VCycleSolves }.Run();
@@ -378,12 +455,15 @@ public class fProxyAMGSolverTests
     [Test] public void WarmStartTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.WarmStart }.Run();
     [Test] public void MaxIterationsExitTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.MaxIterationsExit }.Run();
     [Test] public void CycleSymmetryFlagTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.CycleSymmetryFlag }.Run();
+    [Test] public void KCycleSolvesTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.KCycleSolves }.Run();
+    [Test] public void KCycleTighterThanVTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.KCycleTighterThanV }.Run();
+    [Test] public void FcgKCycleConvergesTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.FcgKCycleConverges }.Run();
 
-    // Managed-thread reject: an asymmetric cycle (pre != post) is not an SPD preconditioner, so
-    // constructing fProxyAMGPreconditioner must throw. Runs on the managed thread (Assert.Throws)
-    // over a single-level (n=9) hierarchy, which needs no Chebyshev smoother build.
+    // Managed-thread reject: an AMG preconditioner that is not a fixed SPD operator (asymmetric
+    // V-cycle here; a K-cycle likewise) is rejected by Krylov.pcg — the preconditioner constructs
+    // fine (it is valid for fcg), but pcg throws. Single-level (n=9) hierarchy needs no smoother.
     [Test]
-    public void AsymmetricCyclePreconditionerThrows()
+    public void AsymmetricCyclePcgRejected()
     {
         var arena = new Arena(Allocator.Persistent);
         int gx = 3, gy = 3, n = gx * gy;
@@ -402,7 +482,10 @@ public class fProxyAMGSolverTests
 
         var amg = arena.fProxyAMG(in A, new AMGOptions { theta = 0, pre = 2, post = 0, coarseMax = 48, maxLevels = 20 }, out var info);
         Assert.IsTrue(info.Solved);
-        Assert.Throws<ArgumentException>(() => { var m = new fProxyAMGPreconditioner(in amg); });
+        var M = new fProxyAMGPreconditioner(in amg);          // constructing is fine
+        var rhs = arena.fProxyRandomVec(n, -1f, 1f, 0x321u);
+        var sol = arena.fProxyVec(n);
+        Assert.Throws<ArgumentException>(() => { Krylov.pcg(in A, in M, in rhs, ref sol); });
 
         amg.Dispose();
         arena.Dispose();

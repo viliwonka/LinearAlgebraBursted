@@ -31,11 +31,16 @@ namespace LinearAlgebra.Sparse
         UnsafeList<floatChebyshev> _S;  // [Levels-1] smoother for level l
         UnsafeList<floatN> _X, _B, _R, _Z;  // [Levels] per-level solution/rhs/residual/correction
 
+        // K-cycle only: per-level 2-step Flexible-CG scratch (restricted residual, two search
+        // directions, their operator images, and the accumulated correction). Empty for a V-cycle.
+        UnsafeList<floatN> _krc, _kc1, _kc2, _kv1, _kv2, _ke;
+
         floatMxN _coarseChol;           // dense Cholesky factor of A[Levels-1]
         floatN _coarseRhs;              // coarsest solve scratch
 
         int _levels;
         int _pre, _post;
+        int _cycle;                     // 0 = V, 1 = K
         bool _usable;                   // false when the coarsest Cholesky failed (do not solve)
         Allocator _alloc;
 
@@ -48,17 +53,23 @@ namespace LinearAlgebra.Sparse
         /// <summary>True iff the build succeeded (coarsest Cholesky SPD). Solving an unusable
         /// hierarchy would emit NaN — the entry points throw instead.</summary>
         public bool Usable => _usable;
-        /// <summary>True iff the cycle is symmetric (Pre == Post) — the requirement for
-        /// <see cref="floatAMGPreconditioner"/> to be SPD and valid for pcg.</summary>
-        public bool IsCycleSymmetric => _pre == _post;
+        /// <summary>True for a K-cycle hierarchy: the cycle is a VARIABLE operator, so it must be
+        /// driven by <see cref="LinearAlgebra.Krylov"/>.fcg (not pcg / not a fixed-M pcg precond).</summary>
+        public bool IsKCycle => _cycle == 1;
+        /// <summary>True iff the cycle is a fixed SPD operator valid for pcg: a symmetric (Pre == Post)
+        /// V-cycle. A K-cycle is never pcg-valid.</summary>
+        public bool IsCycleSymmetric => _cycle == 0 && _pre == _post;
 
         internal floatAMG(UnsafeList<floatBSR> A, UnsafeList<floatBSR> P, UnsafeList<floatChebyshev> S,
             UnsafeList<floatN> X, UnsafeList<floatN> B, UnsafeList<floatN> R, UnsafeList<floatN> Z,
-            floatMxN coarseChol, floatN coarseRhs, int levels, int pre, int post, bool usable, Allocator alloc)
+            UnsafeList<floatN> krc, UnsafeList<floatN> kc1, UnsafeList<floatN> kc2,
+            UnsafeList<floatN> kv1, UnsafeList<floatN> kv2, UnsafeList<floatN> ke,
+            floatMxN coarseChol, floatN coarseRhs, int levels, int pre, int post, int cycle, bool usable, Allocator alloc)
         {
             _A = A; _P = P; _S = S; _X = X; _B = B; _R = R; _Z = Z;
+            _krc = krc; _kc1 = kc1; _kc2 = kc2; _kv1 = kv1; _kv2 = kv2; _ke = ke;
             _coarseChol = coarseChol; _coarseRhs = coarseRhs;
-            _levels = levels; _pre = pre; _post = post; _usable = usable; _alloc = alloc;
+            _levels = levels; _pre = pre; _post = post; _cycle = cycle; _usable = usable; _alloc = alloc;
         }
 
         /// <summary>Frees the per-level handle containers (not the arena-owned level data).</summary>
@@ -71,6 +82,12 @@ namespace LinearAlgebra.Sparse
             if (_B.IsCreated) _B.Dispose();
             if (_R.IsCreated) _R.Dispose();
             if (_Z.IsCreated) _Z.Dispose();
+            if (_krc.IsCreated) _krc.Dispose();
+            if (_kc1.IsCreated) _kc1.Dispose();
+            if (_kc2.IsCreated) _kc2.Dispose();
+            if (_kv1.IsCreated) _kv1.Dispose();
+            if (_kv2.IsCreated) _kv2.Dispose();
+            if (_ke.IsCreated) _ke.Dispose();
         }
 
         // One smoothing sweep on level l: X += M^-1 (B - A X), M the level's Chebyshev smoother.
@@ -136,14 +153,101 @@ namespace LinearAlgebra.Sparse
             }
         }
 
-        // z = one V-cycle solving A z = r from a zero initial guess (the preconditioner apply).
+        // K-cycle (Notay 2008 / AMGCL): like the V-cycle, but the coarse correction at each level is
+        // computed by TWO steps of Flexible CG on the coarse operator, preconditioned by the next
+        // level's K-cycle — the per-level Krylov acceleration that recovers the grid-independence
+        // unsmoothed aggregation loses under a plain V-cycle. Recursive (calls itself twice per
+        // level); the branching tree is 2^level but per-level work shrinks faster than 2x, so total
+        // work stays O(N) with a larger constant than a V-cycle. Solves A_l _X[l] = _B[l] in place
+        // (caller sets _X[l] — warm at the top, zeroed for an inner apply). Coarse correction breaks
+        // down gracefully to a single unaccelerated apply on non-positive curvature.
+        readonly void KCycle(int l)
+        {
+            int L = _levels;
+            if (l == L - 1)
+            {
+                floatN bcz = _B[l], xcz = _X[l];
+                floatN crhs = _coarseRhs;
+                floatMxN chol = _coarseChol;
+                crhs.Data.CopyFrom(bcz.Data);
+                CHO.decompSolve(ref chol, ref crhs);
+                xcz.Data.CopyFrom(crhs.Data);
+                return;
+            }
+
+            if (_pre > 0) Smooth(l, _pre);
+
+            floatBSR A = _A[l];
+            floatBSR Pl = _P[l];                         // local copies: a readonly method cannot
+            floatN x = _X[l], b = _B[l], r = _R[l], zl = _Z[l];   // pass a field's indexer by ref/in
+            BSR.spMV(in A, in x, ref r);
+            r.scaleAddInPlace((float)(-1), b);           // r = b - A x
+
+            int c = l + 1;
+            floatBSR Ac = _A[c];
+            floatN bc = _B[c], xc = _X[c];
+            floatN rc = _krc[c], c1 = _kc1[c], c2 = _kc2[c], v1 = _kv1[c], v2 = _kv2[c], e = _ke[c];
+
+            BSR.spMVT(in Pl, in r, ref bc);               // b_c = P^T r  (the restricted residual)
+            rc.Data.CopyFrom(bc.Data);                    // keep a copy of rc (b_c gets rewritten)
+
+            // c1 = K(rc): one K-cycle apply from a zero coarse guess.
+            for (int i = 0; i < xc.N; i++) xc[i] = (float)0;
+            KCycle(c);
+            c1.Data.CopyFrom(xc.Data);
+            BSR.spMV(in Ac, in c1, ref v1);               // v1 = A_c c1
+
+            float d1 = Blas.dot(c1, v1);
+            if (d1 > (float)0)
+            {
+                float a1 = Blas.dot(c1, rc) / d1;
+                for (int i = 0; i < e.N; i++) e[i] = (float)0;
+                e.addScaledInPlace(a1, c1);               // e = a1 c1
+                rc.addScaledInPlace(-a1, v1);             // rc <- rc - a1 v1
+
+                // c2 = K(rc'): second flexible direction.
+                bc.Data.CopyFrom(rc.Data);
+                for (int i = 0; i < xc.N; i++) xc[i] = (float)0;
+                KCycle(c);
+                c2.Data.CopyFrom(xc.Data);
+                BSR.spMV(in Ac, in c2, ref v2);           // v2 = A_c c2
+
+                float beta = Blas.dot(c2, v1) / d1;      // A-orthogonalize c2 against c1
+                c2.addScaledInPlace(-beta, c1);
+                v2.addScaledInPlace(-beta, v1);
+
+                float d2 = Blas.dot(c2, v2);
+                if (d2 > (float)0)
+                {
+                    float a2 = Blas.dot(c2, rc) / d2;
+                    e.addScaledInPlace(a2, c2);           // e += a2 c2
+                }
+            }
+            else
+            {
+                e.Data.CopyFrom(c1.Data);                 // breakdown: single unaccelerated apply
+            }
+
+            BSR.spMV(in Pl, in e, ref zl);                // prolong: x += P e
+            x.addScaledInPlace((float)1, zl);
+            if (_post > 0) Smooth(l, _post);
+        }
+
+        // Runs one cycle of the configured shape over the level buffers (X[0]/B[0] set by the caller).
+        readonly void Cycle()
+        {
+            if (_cycle == 1) KCycle(0);
+            else VCycle();
+        }
+
+        // z = one cycle solving A z = r from a zero initial guess (the preconditioner apply).
         internal readonly void ApplyCycleFromZero(in floatN r, ref floatN z)
         {
             if (!_usable) throw new InvalidOperationException("floatAMG: build failed (coarsest not SPD); do not Apply — check AMGSetupInfo.Solved");
             floatN b0 = _B[0], x0 = _X[0];
             b0.Data.CopyFrom(r.Data);
             for (int i = 0; i < x0.N; i++) x0[i] = (float)0;
-            VCycle();
+            Cycle();
             z.Data.CopyFrom(x0.Data);
         }
 
@@ -172,7 +276,7 @@ namespace LinearAlgebra.Sparse
             float rr = 0;
             for (int it = 0; it < maxIter; it++)
             {
-                VCycle();                                 // one MG iteration on X[0]
+                Cycle();                                  // one MG iteration on X[0]
 
                 BSR.spMV(in A0, in x0, ref r0);
                 r0.scaleAddInPlace((float)(-1), b0);     // r = b - A x
@@ -224,6 +328,12 @@ namespace LinearAlgebra
             var levB = default(UnsafeList<floatN>);
             var levR = default(UnsafeList<floatN>);
             var levZ = default(UnsafeList<floatN>);
+            var kRc = default(UnsafeList<floatN>);
+            var kC1 = default(UnsafeList<floatN>);
+            var kC2 = default(UnsafeList<floatN>);
+            var kV1 = default(UnsafeList<floatN>);
+            var kV2 = default(UnsafeList<floatN>);
+            var kE = default(UnsafeList<floatN>);
             bool ok = false;
             try
             {
@@ -274,6 +384,28 @@ namespace LinearAlgebra
                 }
                 var coarseRhs = self.floatVec(coarse.M_Rows);
 
+                int cycle = opts.cycle == MGCycle.K ? 1 : 0;
+                if (cycle == 1)
+                {
+                    // Per-level 2-step-FCG scratch (level 0's slot is unused but kept for indexing).
+                    kRc = new UnsafeList<floatN>(L, alloc);
+                    kC1 = new UnsafeList<floatN>(L, alloc);
+                    kC2 = new UnsafeList<floatN>(L, alloc);
+                    kV1 = new UnsafeList<floatN>(L, alloc);
+                    kV2 = new UnsafeList<floatN>(L, alloc);
+                    kE = new UnsafeList<floatN>(L, alloc);
+                    for (int l = 0; l < L; l++)
+                    {
+                        int nl = levA[l].M_Rows;
+                        kRc.Add(self.floatVec(nl));
+                        kC1.Add(self.floatVec(nl));
+                        kC2.Add(self.floatVec(nl));
+                        kV1.Add(self.floatVec(nl));
+                        kV2.Add(self.floatVec(nl));
+                        kE.Add(self.floatVec(nl));
+                    }
+                }
+
                 info = new AMGSetupInfo
                 {
                     levels = L,
@@ -281,8 +413,9 @@ namespace LinearAlgebra
                     status = cinfo.Solved ? DirectSolveStatus.Success : DirectSolveStatus.NotPositiveDefinite,
                 };
 
-                var result = new floatAMG(levA, levP, levS, levX, levB, levR, levZ, chol, coarseRhs,
-                    L, opts.pre, opts.post, cinfo.Solved, alloc);
+                var result = new floatAMG(levA, levP, levS, levX, levB, levR, levZ,
+                    kRc, kC1, kC2, kV1, kV2, kE, chol, coarseRhs,
+                    L, opts.pre, opts.post, cycle, cinfo.Solved, alloc);
                 ok = true;
                 return result;
             }
@@ -297,6 +430,12 @@ namespace LinearAlgebra
                     if (levB.IsCreated) levB.Dispose();
                     if (levR.IsCreated) levR.Dispose();
                     if (levZ.IsCreated) levZ.Dispose();
+                    if (kRc.IsCreated) kRc.Dispose();
+                    if (kC1.IsCreated) kC1.Dispose();
+                    if (kC2.IsCreated) kC2.Dispose();
+                    if (kV1.IsCreated) kV1.Dispose();
+                    if (kV2.IsCreated) kV2.Dispose();
+                    if (kE.IsCreated) kE.Dispose();
                 }
             }
         }

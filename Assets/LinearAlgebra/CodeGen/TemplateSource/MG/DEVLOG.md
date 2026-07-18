@@ -8,6 +8,23 @@ Path: elasticity-capable (rigid-body near-nullspace per aggregate), dodges gener
 unsmoothed Galerkin RAP collapses to a deterministic segmented assembly), Chebyshev smoother
 (already shipped), Flexible-CG outer solver. SA + deterministic spGEMM is the later Tier-2 end-state.
 
+## AMG K-cycle
+- 2026-07-18 | K-cycle (Notay 2008 / AMGCL): AMGOptions.cycle = MGCycle.K. Each non-coarsest level's
+  coarse correction is computed by TWO steps of Flexible CG on the coarse operator, preconditioned by
+  the next level's K-cycle — the per-level Krylov acceleration that recovers grid-independence
+  unsmoothed aggregation loses under a plain V-cycle. Recursive (KCycle calls itself twice per level);
+  RECURSION COMPILES UNDER BURST (the geometric-spec's "avoid recursion" caution was unfounded here).
+  Cost: the 2^level tree is bounded because per-level work shrinks faster than 2×, so total work stays
+  O(N) with a larger constant than a V-cycle. 6 extra per-level scratch buffers (rc, c1, c2, v1, v2, e)
+  allocated only when cycle==K. Breaks down gracefully to a single unaccelerated apply on non-positive
+  curvature. A K-cycle is a VARIABLE operator → NOT pcg-valid: the symmetry guard moved from the
+  preconditioner ctor to the pcg overloads (ctor now unguarded — valid for fcg); added
+  Krylov.fcg(in fProxyBSR, in fProxyAMGPreconditioner, ...) rungs. IsCycleSymmetric = V && pre==post;
+  IsKCycle exposed. Driven standalone by MG.solve(cycle=K) or as an fcg preconditioner. Tests:
+  KCycleSolves, KCycleTighterThanV (K iters <= V iters), FcgKCycleConverges, AsymmetricCyclePcgRejected.
+  🔴 CS8156/CS0206: a readonly method cannot pass a field's UnsafeList indexer (_P[l]/_Z[l]) by ref/in
+  — copy to a local first (as VCycle already did).
+
 ## AMG review pass (3 adversarial reviewers) — fixes + hardening
 - 2026-07-18 | Three code-review agents over the whole AMG track: verdict NO critical/major algorithm
   bug (V-cycle P/Pᵀ directions, residual signs, aliasing, coarse-factor reuse, job-safety, Galerkin
