@@ -478,6 +478,42 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Preconditioned Conjugate Gradient over a block-sparse (BSR) SPD matrix with its
+        /// matching FSAI preconditioner. Forwards into <see cref="pcg{TOp,TPre}"/> via
+        /// <c>doubleBSROperator</c> -- same three-rung BSR convenience pattern as the block-Jacobi,
+        /// SSOR, and IC0 overloads above.
+        /// </summary>
+        public static SolveInfo pcg(in doubleBSR A, in doubleFSAI M, in doubleN b, ref doubleN x,
+                               ref doubleN r, ref doubleN p, ref doubleN Ap, ref doubleN z,
+                               int maxIter, double tol)
+        {
+            return pcg(new doubleBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
+        }
+
+        /// <summary>
+        /// FSAI Preconditioned Conjugate Gradient over a BSR SPD matrix -- allocates four scratch
+        /// vectors from the arena and calls the zero-alloc primitive.
+        /// </summary>
+        public static SolveInfo pcg(in doubleBSR A, in doubleFSAI M, in doubleN b, ref doubleN x,
+                               int maxIter, double tol)
+        {
+            doubleN r  = b.doubleTempVec(A.M_Rows);
+            doubleN p  = b.doubleTempVec(A.M_Rows);
+            doubleN Ap = b.doubleTempVec(A.M_Rows);
+            doubleN z  = b.doubleTempVec(A.M_Rows);
+            return pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
+        }
+
+        /// <summary>
+        /// FSAI Preconditioned Conjugate Gradient over a BSR SPD matrix, with default
+        /// maxIter (A.M_Rows) and tol (Consts.doubleSqrtEps).
+        /// </summary>
+        public static SolveInfo pcg(in doubleBSR A, in doubleFSAI M, in doubleN b, ref doubleN x)
+        {
+            return pcg(in A, in M, in b, ref x, A.M_Rows, Consts.doubleSqrtEps);
+        }
+
+        /// <summary>
+        /// Preconditioned Conjugate Gradient over a block-sparse (BSR) SPD matrix with its
         /// matching Chebyshev preconditioner. Forwards into <see cref="pcg{TOp,TPre}"/> via
         /// <c>doubleBSROperator</c> -- same three-rung BSR convenience pattern as the block-Jacobi,
         /// SSOR, and IC0 overloads above.

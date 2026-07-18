@@ -289,5 +289,73 @@ namespace LinearAlgebra
             Arena self = this;
             return new floatILU0(in A, ref self, out info);
         }
+
+        /// <summary>
+        /// Builds a factored sparse approximate inverse (FSAI) preconditioner from A (must be
+        /// square SPD with every diagonal block stored; Symmetric-storage A is consumed zero-copy).
+        /// Uses <see cref="SaiOptions.Default"/>. See <see cref="floatFSAI"/> for the
+        /// breakdown/diagonal-shift contract. Arena-owned: disposed with the arena.
+        /// </summary>
+        public floatFSAI floatFSAI(in floatBSR A)
+        {
+            Arena self = this;
+            return new floatFSAI(in A, ref self);
+        }
+
+        /// <summary>Non-throwing twin of <see cref="floatFSAI(in floatBSR)"/>: info carries the
+        /// build outcome (Success, or NotPositiveDefinite on factorization breakdown).</summary>
+        public floatFSAI floatFSAI(in floatBSR A, out PreconditionerInfo info)
+        {
+            Arena self = this;
+            return new floatFSAI(in A, ref self, out info);
+        }
+
+        /// <summary>Same as <see cref="floatFSAI(in floatBSR)"/> with explicit <see cref="SaiOptions"/>.</summary>
+        public floatFSAI floatFSAI(in floatBSR A, in SaiOptions opts)
+        {
+            Arena self = this;
+            return new floatFSAI(in A, ref self, in opts);
+        }
+
+        /// <summary>Non-throwing twin of <see cref="floatFSAI(in floatBSR, in SaiOptions)"/>.</summary>
+        public floatFSAI floatFSAI(in floatBSR A, in SaiOptions opts, out PreconditionerInfo info)
+        {
+            Arena self = this;
+            return new floatFSAI(in A, ref self, in opts, out info);
+        }
+
+        /// <summary>
+        /// Builds a row-oriented sparse approximate inverse (SPAI) preconditioner from A (square,
+        /// every diagonal block stored) -- the nonsymmetric sibling of <see cref="floatFSAI"/>,
+        /// for Krylov.pbiCGStab. Uses <see cref="SaiOptions.Default"/>. See <see cref="floatSPAI"/>
+        /// for the breakdown/shift contract. Arena-owned: disposed with the arena.
+        /// </summary>
+        public floatSPAI floatSPAI(in floatBSR A)
+        {
+            Arena self = this;
+            return new floatSPAI(in A, ref self);
+        }
+
+        /// <summary>Non-throwing twin of <see cref="floatSPAI(in floatBSR)"/>: info carries the
+        /// build outcome (Success, or Singular on factorization breakdown).</summary>
+        public floatSPAI floatSPAI(in floatBSR A, out PreconditionerInfo info)
+        {
+            Arena self = this;
+            return new floatSPAI(in A, ref self, out info);
+        }
+
+        /// <summary>Same as <see cref="floatSPAI(in floatBSR)"/> with explicit <see cref="SaiOptions"/>.</summary>
+        public floatSPAI floatSPAI(in floatBSR A, in SaiOptions opts)
+        {
+            Arena self = this;
+            return new floatSPAI(in A, ref self, in opts);
+        }
+
+        /// <summary>Non-throwing twin of <see cref="floatSPAI(in floatBSR, in SaiOptions)"/>.</summary>
+        public floatSPAI floatSPAI(in floatBSR A, in SaiOptions opts, out PreconditionerInfo info)
+        {
+            Arena self = this;
+            return new floatSPAI(in A, ref self, in opts, out info);
+        }
     }
 }

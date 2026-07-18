@@ -285,5 +285,73 @@ namespace LinearAlgebra
             Arena self = this;
             return new fProxyILU0(in A, ref self, out info);
         }
+
+        /// <summary>
+        /// Builds a factored sparse approximate inverse (FSAI) preconditioner from A (must be
+        /// square SPD with every diagonal block stored; Symmetric-storage A is consumed zero-copy).
+        /// Uses <see cref="SaiOptions.Default"/>. See <see cref="fProxyFSAI"/> for the
+        /// breakdown/diagonal-shift contract. Arena-owned: disposed with the arena.
+        /// </summary>
+        public fProxyFSAI fProxyFSAI(in fProxyBSR A)
+        {
+            Arena self = this;
+            return new fProxyFSAI(in A, ref self);
+        }
+
+        /// <summary>Non-throwing twin of <see cref="fProxyFSAI(in fProxyBSR)"/>: info carries the
+        /// build outcome (Success, or NotPositiveDefinite on factorization breakdown).</summary>
+        public fProxyFSAI fProxyFSAI(in fProxyBSR A, out PreconditionerInfo info)
+        {
+            Arena self = this;
+            return new fProxyFSAI(in A, ref self, out info);
+        }
+
+        /// <summary>Same as <see cref="fProxyFSAI(in fProxyBSR)"/> with explicit <see cref="SaiOptions"/>.</summary>
+        public fProxyFSAI fProxyFSAI(in fProxyBSR A, in SaiOptions opts)
+        {
+            Arena self = this;
+            return new fProxyFSAI(in A, ref self, in opts);
+        }
+
+        /// <summary>Non-throwing twin of <see cref="fProxyFSAI(in fProxyBSR, in SaiOptions)"/>.</summary>
+        public fProxyFSAI fProxyFSAI(in fProxyBSR A, in SaiOptions opts, out PreconditionerInfo info)
+        {
+            Arena self = this;
+            return new fProxyFSAI(in A, ref self, in opts, out info);
+        }
+
+        /// <summary>
+        /// Builds a row-oriented sparse approximate inverse (SPAI) preconditioner from A (square,
+        /// every diagonal block stored) -- the nonsymmetric sibling of <see cref="fProxyFSAI"/>,
+        /// for Krylov.pbiCGStab. Uses <see cref="SaiOptions.Default"/>. See <see cref="fProxySPAI"/>
+        /// for the breakdown/shift contract. Arena-owned: disposed with the arena.
+        /// </summary>
+        public fProxySPAI fProxySPAI(in fProxyBSR A)
+        {
+            Arena self = this;
+            return new fProxySPAI(in A, ref self);
+        }
+
+        /// <summary>Non-throwing twin of <see cref="fProxySPAI(in fProxyBSR)"/>: info carries the
+        /// build outcome (Success, or Singular on factorization breakdown).</summary>
+        public fProxySPAI fProxySPAI(in fProxyBSR A, out PreconditionerInfo info)
+        {
+            Arena self = this;
+            return new fProxySPAI(in A, ref self, out info);
+        }
+
+        /// <summary>Same as <see cref="fProxySPAI(in fProxyBSR)"/> with explicit <see cref="SaiOptions"/>.</summary>
+        public fProxySPAI fProxySPAI(in fProxyBSR A, in SaiOptions opts)
+        {
+            Arena self = this;
+            return new fProxySPAI(in A, ref self, in opts);
+        }
+
+        /// <summary>Non-throwing twin of <see cref="fProxySPAI(in fProxyBSR, in SaiOptions)"/>.</summary>
+        public fProxySPAI fProxySPAI(in fProxyBSR A, in SaiOptions opts, out PreconditionerInfo info)
+        {
+            Arena self = this;
+            return new fProxySPAI(in A, ref self, in opts, out info);
+        }
     }
 }

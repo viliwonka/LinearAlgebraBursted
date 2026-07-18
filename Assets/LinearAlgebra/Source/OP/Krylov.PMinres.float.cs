@@ -349,6 +349,49 @@ namespace LinearAlgebra
         }
 
         /// <summary>
+        /// Preconditioned MINRES over a block-sparse (BSR) matrix with its matching FSAI
+        /// preconditioner. Forwards into <see cref="pminres{TOp,TPre}"/> via
+        /// <c>floatBSROperator</c> -- same three-rung BSR convenience pattern as the block-Jacobi
+        /// and IC0 overloads above. FSAI's local SPD solves need A[J,J] SPD; on an indefinite A
+        /// build may fall back to shifted rows (same practical caveat IC0 already carries on
+        /// pminres).
+        /// </summary>
+        public static SolveInfo pminres(in floatBSR A, in floatFSAI M, in floatN b, ref floatN x,
+                               ref floatN y, ref floatN r1, ref floatN r2, ref floatN v,
+                               ref floatN w, ref floatN w1, ref floatN w2, ref floatN z,
+                               int maxIter, float tol)
+        {
+            return pminres(new floatBSROperator(in A), in M, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, ref z, maxIter, tol);
+        }
+
+        /// <summary>
+        /// FSAI Preconditioned MINRES over a BSR matrix -- allocates eight scratch vectors from
+        /// the arena and calls the zero-alloc primitive.
+        /// </summary>
+        public static SolveInfo pminres(in floatBSR A, in floatFSAI M, in floatN b, ref floatN x,
+                               int maxIter, float tol)
+        {
+            floatN y  = b.floatTempVec(A.M_Rows);
+            floatN r1 = b.floatTempVec(A.M_Rows);
+            floatN r2 = b.floatTempVec(A.M_Rows);
+            floatN v  = b.floatTempVec(A.M_Rows);
+            floatN w  = b.floatTempVec(A.M_Rows);
+            floatN w1 = b.floatTempVec(A.M_Rows);
+            floatN w2 = b.floatTempVec(A.M_Rows);
+            floatN z  = b.floatTempVec(A.M_Rows);
+            return pminres(in A, in M, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, ref z, maxIter, tol);
+        }
+
+        /// <summary>
+        /// FSAI Preconditioned MINRES over a BSR matrix, with default maxIter (A.M_Rows) and tol
+        /// (Consts.floatSqrtEps).
+        /// </summary>
+        public static SolveInfo pminres(in floatBSR A, in floatFSAI M, in floatN b, ref floatN x)
+        {
+            return pminres(in A, in M, in b, ref x, A.M_Rows, Consts.floatSqrtEps);
+        }
+
+        /// <summary>
         /// Preconditioned MINRES over a block-sparse (BSR) matrix with its matching Chebyshev
         /// preconditioner. Forwards into <see cref="pminres{TOp,TPre}"/> via
         /// <c>floatBSROperator</c> -- same three-rung BSR convenience pattern as the block-Jacobi,

@@ -1,6 +1,88 @@
 # DEVLOG — Sparse
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## FSAI/SPAI
+- 2026-07-18 | Follow-up to the entry directly below: after the multi-trial restructure, the full
+  suite (all dtypes) still showed `BeatsJacobiOnLaplacianTest` and `BeatsJacobiOnPenalizedGrid3DTest`
+  failing intermittently across fProxy/float/double. Coordinator's full-capture run confirmed every
+  iteration-count assertion PASSED (FSAI strictly beat block-Jacobi every time: e.g. 8&lt;11, 8&lt;17,
+  9&lt;15, 15&lt;25) and both `Solved` flags were true — the failing gate was the per-element
+  `accOk`/solution-error check: `abs(xF[i]-xTrue[i]) < SolveTol()*(1+abs(xTrue[i]))`. That is a
+  residual-vs-error confusion: pcg converges to a RESIDUAL tolerance (`‖b-Ax‖ &lt;= tol·‖b‖`, verified
+  fresh at exit), while solution error scales as `‖x-xTrue‖ ≈ cond(A)·‖residual‖` — so bounding
+  solution error by the same `tol` used for the residual is unsatisfiable for any `cond(A) &gt; 1`,
+  i.e. every real matrix including the well-conditioned Laplacian (explains why it flipped
+  True/False marginally across trials/dtypes: it was sitting on a rounding boundary that has
+  nothing to do with FSAI's correctness). Fix (test-only, same file, both `BeatsJacobi*` tests):
+  replaced the per-element solution-error check with a residual check —
+  recompute `r = b - A·xF` via a fresh `BSR.spMV`, assert `‖r‖² &lt;= (RESIDUAL_C·tol)²·‖b‖²` with
+  `RESIDUAL_C=8` (a safety cushion over pcg's own exact `‖r‖&lt;=tol·‖b‖` exit guarantee, absorbing
+  the small summation-order difference between this fresh dot-product and pcg's own internal one)
+  — conditioning-independent, matches what pcg's `Solved` flag actually guarantees. Removed the
+  now-dead `PenalizedGrid3DDiagJob.SolveTol()` helper (its only call site was the deleted check).
+  Not touched: `PminresConvergesTest` has the SAME per-element-vs-SolveTol anti-pattern but was
+  NOT reported as failing (smaller/better-conditioned system, tol=1e-3f loose enough not to trip
+  in practice) — left as-is per the coordinator's explicit "both BeatsJacobi tests" scope; flagged
+  as a latent fragility worth a follow-up pass. No production code changed (again).
+- 2026-07-18 | `BeatsJacobiOnPenalizedGrid3DTest` (float only) failed on
+  `Assert.IsTrue(infoF.iterations < infoJ.iterations)`, run INSIDE the Burst job — an opaque
+  Burst-internal assert, no iteration counts visible (same failure shape as the earlier Chebyshev
+  degree-sweep issue). Diagnosed with a standalone float32 C# re-implementation (mirrors the
+  Chebyshev repro method) of `fProxyPenalizedGrid3D(2,2,1,EA=1,penalty=10)` +
+  `fProxyFSAI`/`fProxyBlockJacobi`/`pcg`, ported line-for-line from the actual template files
+  (not from memory) and cross-checked against the shipped `bsrMatVecB3` kernel. Two hypotheses
+  were on the table: (A) a real, expected limitation — static-pattern FSAI can't dominate
+  penalty-conditioned elasticity, so the "beats" assertion was over-optimistic; (B) a real defect
+  — FSAI's per-row local solves shift-escalating toward a near-diagonal G. RESULT: neither.
+  `worstShift=0.000`, every row solved on attempt 1 (zero shift escalation on this exact
+  matrix) — (B) is false. FSAI beat block-Jacobi in 499/500 independent random-right-hand-side
+  trials (typical ratio 0.4-0.6x block-Jacobi's iteration count; the single non-strict trial was
+  a TIE, never a loss) — so (A) is false too: the property is real and strongly supported, not
+  over-optimistic. Conclusion: a single FIXED random seed is a fragile way to test a statistical
+  "beats" property — a rare tie is possible per the sweep, and Burst's SIMD reduction order can
+  plausibly tip a close call either way for one specific seed, independent of any algorithm
+  defect. Fix (test-only, `TemplateSourceTests/fProxy/SparseFSAITests.fProxy.cs`): replaced the
+  single-b in-Burst-assert test with `PenalizedGrid3DDiagJob`, which only computes (BlockJacobi,
+  FSAI, IC0-for-reference iterations; FSAI's build `PreconditionerInfo`) across 3 independent
+  right-hand sides and writes raw numbers to `NativeArray` outputs — every `Assert` now runs on
+  the managed thread with the actual counts embedded in the failure message. Assertions: FSAI
+  never regresses per-trial (hard, `<=`; 0/500 losses observed), FSAI's summed iterations across
+  the 3 trials strictly beats block-Jacobi's sum (hard), and FSAI strictly beats on at least 2 of
+  3 individual trials (hard). No production code changed — `fProxyFSAI`/`fProxySPAI` sources were
+  read line-by-line against the repro and found correct; this was a test-fragility bug, not an
+  algorithm bug. The diagnostic script was scratch-only (`~/scratch/fsai-repro/`), not committed.
+- 2026-07-18 | Implemented per `docs/dev/spec-sparse-approximate-inverse-preconditioner.md`:
+  `fProxyFSAI` + `fProxySPAI` (Sparse/fProxyFSAI.cs, Sparse/fProxySPAI.cs) + shared `SaiOptions`
+  (Sparse/SaiOptions.cs) + 8 arena factories (Sparse/Arena.Sparse.fProxy.cs) + 3 pcg rungs
+  (OP/Krylov.fProxy.cs) + 3 pminres rungs (OP/Krylov.PMinres.fProxy.cs, FSAI only) + 2 pbiCGStab
+  rungs (OP/Krylov.PBiCGStab.fProxy.cs, SPAI only, mirroring the ILU0 rungs' arity exactly — no
+  zero-alloc-scratch rung, unlike pcg/pminres). Shipped BOTH FSAI and SPAI in one pass (spec's Q3
+  left phase-1-FSAI-only vs both open; the commissioning task asked for both, including SPAI
+  tests, so both shipped together rather than splitting into two passes).
+  Open questions resolved per the spec's stated recommendations: Q1 pattern = lower(A) (like IC0,
+  not lower(A^2)); Q2 dropTol implemented (Frobenius-norm block filter, §3.2 formula) and exposed
+  via `SaiOptions`, default 0 = off; Q4 Gt stored explicitly (both Apply spMVs forward, per spec's
+  stated default — no on-the-fly `spMVT` variant, no `SaiOptions` toggle added since the spec only
+  floated that as a "could be" idea, not a requirement); Q5 SPAI local solve via normal equations
+  + CHO (not QR) — unchanged from spec's default, no conditioning issue observed in a quick manual
+  smoke check on `fProxyLaplacian2D`; Q6 FSAI DOES get pminres rungs, with the same indefinite-A
+  caveat doc IC0 carries there. `patternPower=2` (A²  pattern) throws (ArgumentException) rather
+  than silently falling back to patternPower=1 — matches "throw until then" in the spec's
+  `SaiOptions` snippet.
+  FSAI's per-row diagonal-shift escalation is LOCAL (retry just that row, up to 6 attempts, same
+  ladder shape as IC0's global one) since FSAI's rows are independent — cheaper than IC0's
+  whole-matrix refactorization retry and explicitly called out as a difference in §3.1. `Shift`/
+  `PreconditionerInfo.attempts` on the built struct report the WORST (max) shift/attempts seen
+  across all processed rows, not a single global value (no single global shift exists for a
+  per-row-independent build).
+  `fProxyFSAI.FindBlockIndex`/`GatherBlockInto` are the shared gather-under-either-storage-mode
+  primitive (`internal static` on `fProxyFSAI`, called by `fProxySPAI` too) — placed on the FSAI
+  file rather than `UnsafeOP.Sparse`, per the spec's "implementer's choice" note (§7).
+  Not verified: no Burst test suite run this pass (coder does not run `Tools/run-tests.ps1`); the
+  "beats IC0" headline wall-clock comparison (spec §8 benchmark) needs `PCGBenchmark.fProxy.cs`
+  extended with an FSAI arm — left for a follow-up pass together with the numbers this DEVLOG
+  entry format expects (this entry intentionally has none yet).
+
 ## Chebyshev
 - 2026-07-18 | `DegreeSweepNonIncreasingTest` (float only) failed centrally on
   `iters(d) <= iters(d-1)+1`. Diagnosed with a standalone float32 NumPy re-implementation of the
