@@ -1,6 +1,40 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov templates split one-file-per-solver
+- 2026-07-19 | Pure reorganization, no algorithm/signature changes (verified: sorted-line diff of
+  every non-blank, non-boilerplate line across the old and new file sets is empty; the 125
+  public + 21 private method signatures are byte-identical, just relocated). `Krylov.fProxy.cs`
+  (previously a grab-bag of `cg`/`lsqr`/`lsmr`/`lstsqResidual` + half of `minres`/`biCGStab`),
+  `Krylov.PMinres.fProxy.cs` (the other half of `minres`, legacy pre-merge filename), and
+  `Krylov.PBiCGStab.fProxy.cs` (the other half of `biCGStab`, same legacy pattern) collapsed and
+  re-split into one template per solver: `Krylov.CG`, `Krylov.MINRES` (consolidates the old
+  `Krylov.fProxy.cs` + `Krylov.PMinres.fProxy.cs` halves), `Krylov.BiCGStab` (consolidates
+  `Krylov.fProxy.cs` + `Krylov.PBiCGStab.fProxy.cs`), `Krylov.LSQR`, `Krylov.LSMR`, and a new
+  `Krylov.Lstsq.Common` for the two solvers' shared plumbing (`lstsqResidual`, `LstsqInfoTracked`,
+  `JacobiFinish`). `Krylov.fProxy.cs` itself now holds only `MakeSolveInfo` (the shared
+  `SolveInfo` factory used by `cg`/`minres`/`biCGStab`, plus `gmres`/`fcg` in their own
+  already-separate files) — genuinely shared across every square-solver file, so it stays rather
+  than being deleted. `Krylov.GMRES.fProxy.cs`/`Krylov.FCG.fProxy.cs`/`Krylov.Guards.cs`
+  untouched (already one-file-per-solver / shared-singular).
+  Mirrored for the block (multi-RHS) family: `Krylov.Block.fProxy.cs` (bcg + bcgrq + bfbcg + ~17
+  shared private helpers) split into `Krylov.Block.CG` (bcg), `Krylov.Block.BCGrQ` (bcgrq),
+  `Krylov.Block.BFBCG` (bfbcg), and `Krylov.Block.Common` for every private helper
+  (`BlockGram`/`BlockCTV`/`BlockAdd`/`BlockZplusT`/`BlockSolveSPD`/`CountConverged`/
+  `BlockApplyPre`/`CopyBlock`/`CopyMat`/`View`/`RowsView`/`RectView`/`BlockScatterAddRows`/
+  `LockConvergedRows`/`LQRPRank`/`FactorLiveResidual`/`FactorLiveSearch`/`FactorGramOnce`) — per
+  spec, ALL listed helpers moved to Common even though `FactorLiveResidual` (bcgrq) and
+  `FactorLiveSearch`/`FactorGramOnce` (bfbcg) are each actually called by only one solver today;
+  the original "-only" section-divider comments were dropped since they'd otherwise misdescribe a
+  helper now living in a shared file (the doc-comment on each helper itself, which states its real
+  contract, is untouched). Old orphaned generated outputs
+  (`Source/OP/Krylov.{PMinres,PBiCGStab,Block}.{float,double}.cs`) auto-pruned by
+  `Tools/prune-orphaned-generated.ps1` (invoked from `regen.ps1`) — no manual `git rm` of
+  generated files needed beyond staging the deletions it already made on disk. No test file
+  needed changes: every solver kept its exact name/signature (`KrylovPMinresTests.fProxy.cs`'s
+  class/job names are local test-naming convention, not a dependency on the old template
+  filenames — it only ever called the public `Krylov.minres(...)` API).
+
 ## Fixed-size struct-to-struct copies -- silent-resize footgun sweep
 - 2026-07-19 | Root cause and the `fProxyN`/`fProxyMxN` `CopyFrom(in Self)`/`CopyTo(in Self)` fix are
   documented in `fProxy/DEVLOG.md` (this bug was first found here, via `LQRP.decomp`'s
