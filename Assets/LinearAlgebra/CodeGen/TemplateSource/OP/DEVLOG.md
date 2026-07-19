@@ -1,6 +1,32 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.cg (BLOCK / multi-RHS) — block-CG, first true block-Krylov solver
+- 2026-07-19 | New `OP/Krylov.Block.fProxy.cs`: block-CG for SPD A with s simultaneous RHS. TRUE block
+  method (O'Leary) — ONE shared Krylov subspace, s×s block coefficients α=(PᵀAP)⁻¹(RᵀZ),
+  β=(RᵀZ)⁻¹(RₙᵀZₙ), streaming A over the whole block once per iteration via `ApplyBlock`. NOT s scalar
+  solves. Block vectors = fProxyMxN s-rows × n-cols (row = RHS), matching ApplyBlock. Single-body +
+  IsIdentity fold from the start (no pblockCg): under identity, R is used directly wherever Z would be
+  (no M-apply, no Z block — pass default); preconditioner = per-row M.Apply loop (BlockApplyPre),
+  gated `if(!M.IsIdentity)`. Overload name `cg` on fProxyMxN B (resolves by type vs scalar fProxyN).
+  Returns BlockSolveInfo (per-column converged count + worst maxRnorm). Spec: docs/dev/spec-block-krylov.md.
+- DEFLATION (first cut) = RIDGE, not column-dropping. The s×s PᵀAP / RᵀZ go singular when RHS columns
+  are linearly dependent (classic block-CG breakdown). BlockSolveSPD copies the Gram, tries CHO, and on
+  non-SPD adds an escalating diagonal ridge scaled to the Gram's own diag (FactorGram discipline), so a
+  rank-deficient block DAMPS the dependent direction instead of NaN-ing — identical RHS columns get
+  identical correct solutions. Fixed block width s throughout (no active-width bookkeeping). TRUE
+  column-dropping deflation (BCGrQ, Dubrulle/Ji-Li, via OrthonormalizeBlock's kept-count) is the future
+  robustness/perf upgrade — noted, not built. Ridge is negligible for full-rank blocks (all 4 accept
+  tests pass): per-column matches scalar cg, block iters ≤ worst scalar iters (block advantage),
+  rank-deficient (two identical columns) stays finite + solves, block-Jacobi matches scalar. Reduces to
+  scalar (P)CG exactly at s=1.
+- Tests `BlockCGTests.fProxy.cs` run inside a [BurstCompile] IJob → job-safety (caller sees X written
+  through ref fProxyMxN) covered by construction; block-CG never swaps block handles (writes in place),
+  so no LOBPCG-style RestoreBufferIdentity hazard. GOTCHA (cost me a Mono-fallback cycle): `Assert.IsTrue(
+  bool, $"msg")` is BC1071 (unsupported assert overload) → forced Mono → 1-ULP fails in untouched
+  BlockJacobi tests. Plain `Assert.IsTrue(bool)` only. 6679/6679. TODO: BlockKrylovBenchmark (block-CG vs
+  s scalar), then block-MINRES / block-BiCGStab / block-GMRES.
+
 ## Krylov.gmres — single-body merge (gmres/pgmres share one loop, IsIdentity fold) — FAMILY COMPLETE
 - 2026-07-19 | Merged `gmres<TOp,TPre>`; `gmres<TOp>` forwards with identity. No caller scratch (GMRES
   allocates its own Temp workspace), so the merge is signature-simple — the only extra state is `zt`
