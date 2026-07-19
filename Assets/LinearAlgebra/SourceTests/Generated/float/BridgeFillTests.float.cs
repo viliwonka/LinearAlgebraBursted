@@ -111,6 +111,32 @@ public class floatBridgeFillTests
     }
 
     [Test]
+    public void MatrixReslice_RealViewOverLeadingPrefix_And_GuardsBounds()
+    {
+        var buf = new floatMxN(4, 4, Allocator.Temp);
+        for (int i = 0; i < 16; i++) buf[i] = (float)i;
+
+        var view = new floatMxN(in buf, 2, 2);
+        Assert.AreEqual(4, view.Length);
+        Assert.AreEqual(4, view.Data.Length);
+        Assert.AreEqual(2, view.M_Rows);
+        Assert.AreEqual(2, view.N_Cols);
+
+        // Tightly-packed prefix reading, NOT a stride-preserving "top-left corner of the 4x4"
+        // (which would read view[1,0] == buf[4]).
+        Assert.AreEqual(0.0, (double)view[0, 0], 0.0);
+        Assert.AreEqual(1.0, (double)view[0, 1], 0.0);
+        Assert.AreEqual(2.0, (double)view[1, 0], 0.0);
+        Assert.AreEqual(3.0, (double)view[1, 1], 0.0);
+
+        Assert.Throws<ArgumentException>(() => { var bad = new floatMxN(in buf, 5, 4); });
+
+        var full = new floatMxN(in buf, 4, 4);
+        Assert.AreEqual(16, full.Length);
+        for (int i = 0; i < 16; i++) Assert.AreEqual((double)buf[i], (double)full[i], 0.0);
+    }
+
+    [Test]
     public void CopyToFrom_NativeArray_Roundtrip_And_Guards()
     {
         var v = new floatN(3, Allocator.Temp);

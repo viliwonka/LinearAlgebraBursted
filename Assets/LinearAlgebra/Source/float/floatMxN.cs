@@ -91,6 +91,33 @@ namespace LinearAlgebra
             _inlineData = new UnsafeList<float>((float*)viewOf.GetUnsafePtr(), viewOf.Length);
         }
 
+        /// <summary>
+        /// Creates a standalone VIEW over the leading rows*cols elements of <paramref name="source"/>'s own
+        /// backing storage, repacked row-major as a rows x cols matrix -- a tightly-packed reinterpretation of
+        /// source's flat storage prefix, not a strided sub-block that preserves source's own N_Cols pitch. No
+        /// copy, no ownership; Dispose() on the view releases nothing. Aliases source's memory: reads/writes
+        /// through the view touch source's own storage in place, visible through any other handle to the same
+        /// storage. Valid only while source's backing memory is alive; outside the job-safety/generation-stamp
+        /// system, same contract as the NativeArray view constructor above -- caller owns the aliasing/lifetime
+        /// discipline. Throws if rows*cols exceeds source's own logical length.
+        /// </summary>
+        public unsafe floatMxN(in floatMxN source, int rows, int cols)
+        {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            if (!source.IsCreated)
+                throw new InvalidOperationException("floatMxN view: source is not created / has been disposed");
+#endif
+            if (rows < 0 || cols < 0 || rows * cols > source.Data.Length)
+                throw new ArgumentException("floatMxN view: rows*cols must not exceed source's own logical length");
+
+            _rec = null;
+            _gen = 0; // standalone (non-arena): never read (AssertRecordValid short-circuits on _rec == null)
+            M_Rows = rows;
+            N_Cols = cols;
+            Length = rows * cols;
+            _inlineData = new UnsafeList<float>(source.Data.Ptr, Length);
+        }
+
         public unsafe floatMxN(int M_rows, int N_cols, Allocator allocator, bool uninit = false)
         {
             _rec = null;

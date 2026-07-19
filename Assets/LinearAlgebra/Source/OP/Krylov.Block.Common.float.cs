@@ -119,36 +119,17 @@ namespace LinearAlgebra
                 for (int j = 0; j < s; j++) dst[i, j] = src[i, j];
         }
 
-        // Same-buffer, smaller SQUARE logical view (rows == cols == m): a value-copy of the floatMxN
-        // struct with M_Rows/N_Cols overwritten to the leading m*m elements of buf's storage -- not a
-        // new allocation, not a strided sub-block of a larger stride (mirrors LOBPCG.float.cs's View).
-        static floatMxN View(in floatMxN buf, int m)
-        {
-            var v = buf;
-            v.M_Rows = m;
-            v.N_Cols = m;
-            return v;
-        }
+        // Real VIEW (Data.Length/Length == m*m) over the leading m*m elements of buf's storage, square
+        // (mirrors LOBPCG.float.cs's View).
+        static floatMxN View(in floatMxN buf, int m) => new floatMxN(in buf, m, m);
 
-        // Same-buffer logical view with `rows` rows and buf's own column count: the leading `rows` rows
-        // of a row-major buffer are exactly a standalone rows x N_Cols matrix, so this is a contiguous-
-        // prefix reinterpretation, not a new allocation (mirrors LOBPCG.float.cs's RowsView).
-        static floatMxN RowsView(in floatMxN buf, int rows)
-        {
-            var v = buf;
-            v.M_Rows = rows;
-            return v;
-        }
+        // Real VIEW (Data.Length/Length == rows*buf.N_Cols) over the leading `rows` rows of buf's
+        // storage, buf's own column count (mirrors LOBPCG.float.cs's RowsView).
+        static floatMxN RowsView(in floatMxN buf, int rows) => new floatMxN(in buf, rows, buf.N_Cols);
 
-        // Same-buffer logical view with an independent row/col count (the rectangular generalization of
-        // View/RowsView), valid whenever rows*cols does not exceed buf's element capacity.
-        static floatMxN RectView(in floatMxN buf, int rows, int cols)
-        {
-            var v = buf;
-            v.M_Rows = rows;
-            v.N_Cols = cols;
-            return v;
-        }
+        // Real VIEW (Data.Length/Length == rows*cols) over the leading rows*cols elements of buf's
+        // storage -- the rectangular generalization of View/RowsView.
+        static floatMxN RectView(in floatMxN buf, int rows, int cols) => new floatMxN(in buf, rows, cols);
 
         // Yfull[Live[i], c] += sign * Tlive[i, c] for i in [0, sLive), all columns of Yfull -- scatters
         // an sLive-wide live update back into Yfull's ORIGINAL (never-reordered) row order.

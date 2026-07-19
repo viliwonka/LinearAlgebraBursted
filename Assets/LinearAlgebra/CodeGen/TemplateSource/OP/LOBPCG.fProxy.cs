@@ -923,30 +923,16 @@ namespace LinearAlgebra
                         throw new ArgumentException("LOBPCG: workspace buffers must be distinct (use Arena.fProxyLOBPCGCache(n, k))");
         }
 
-        // Same-buffer, smaller-shaped logical view: fProxyMxN.M_Rows/N_Cols are plain mutable
-        // fields independent of the backing Data store, so a value-copy with adjusted dims is a
-        // free reinterpretation of the SAME (larger, cache-owned) buffer's leading m x m block --
-        // not a new allocation. See the class doc comment's "Zero-alloc scope" note.
+        // Real VIEW (Data.Length/Length == m*m) over the leading m*m elements of the SAME (larger,
+        // cache-owned) buffer's storage, square. See the class doc comment's "Zero-alloc scope" note.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static fProxyMxN View(in fProxyMxN buf, int m)
-        {
-            var v = buf;
-            v.M_Rows = m;
-            v.N_Cols = m;
-            return v;
-        }
+        static fProxyMxN View(in fProxyMxN buf, int m) => new fProxyMxN(in buf, m, m);
 
-        // Same-buffer logical view with `rows` rows and the SAME column count as `buf` -- used to
-        // borrow a k x n cache buffer as `rows` x n scratch (row-major layout makes the leading
-        // `rows` rows of a k x n buffer identical to a standalone `rows` x n matrix). Not a new
-        // allocation. See the class doc comment's "Zero-alloc scope" note.
+        // Real VIEW (Data.Length/Length == rows*buf.N_Cols) over the leading `rows` rows of a k x n
+        // cache buffer's storage, buf's own column count. See the class doc comment's "Zero-alloc
+        // scope" note.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static fProxyMxN RowsView(in fProxyMxN buf, int rows)
-        {
-            var v = buf;
-            v.M_Rows = rows;
-            return v;
-        }
+        static fProxyMxN RowsView(in fProxyMxN buf, int rows) => new fProxyMxN(in buf, rows, buf.N_Cols);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static void SwapMat(ref fProxyMxN a, ref fProxyMxN b)

@@ -1,6 +1,20 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.Block.Common / LOBPCG -- View/RowsView/RectView reslice fix
+- 2026-07-19 | Supersedes-in-spirit the `NormsOP`/`Krylov.bgmres` entries just below: those patched
+  two individual `Data.Length` readers (`Norms.L1`/`L2`/`LInf(in fProxyMxN)`, `CopyFrom`/`CopyTo`).
+  This fixes the actual root cause instead -- `View`/`RowsView`/`RectView` here and in
+  `LOBPCG.fProxy.cs` are now one-line wrappers over a new `fProxyMxN(in fProxyMxN source, int rows,
+  int cols)` reslice constructor (see `fProxy/DEVLOG.md`) that produces a REAL view with
+  `Data.Length`/`Length` exactly `rows*cols`, not a bare struct copy with `M_Rows`/`N_Cols`
+  overwritten and `Data`/`Length` left stale. No call site in `Krylov.Block.BCGrQ`/`BFBCG`/`GMRES`/
+  `LOBPCG.fProxy.cs` changed -- same `View(buf, m)`/`RowsView(buf, rows)`/`RectView(buf, rows,
+  cols)` call shape, zero-copy/zero-allocation, no per-iteration compaction added anywhere. The
+  `NormsOP`/`CopyFrom` patches are left in place (redundant but harmless now that
+  `Data.Length == M_Rows*N_Cols` always holds); the `uninit: true` -> `false` workarounds noted
+  below are still unnecessary-but-harmless. Root-caused in `docs/dev/spec-matrix-view-fix.md`.
+
 ## NormsOP
 - 2026-07-19 | ROOT FIX for the `Norms.LInf` narrowed-view over-read documented under Krylov.bgmres
   below. The entrywise `L2`/`L1`/`LInf(in fProxyMxN)` overloads now scan the LOGICAL `M_Rows*N_Cols`

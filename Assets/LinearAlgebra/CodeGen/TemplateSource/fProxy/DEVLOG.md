@@ -8,6 +8,28 @@ files: `fProxyN.cs`, `fProxyMxN.cs`, `iProxy\iProxyN.cs`, `iProxy\iProxyMxN.cs`,
 `bool\boolMxN.cs`. Each was rewritten to one contract-only version and applied consistently to all
 six; this single entry captures the shared history/rationale that used to be inline in all of them.
 
+## fProxyMxN(in fProxyMxN source, int rows, int cols) -- reslice-view constructor
+- 2026-07-19 | Root-fixes the whole class of bugs the `CopyFrom`/`Norms` entries below patch
+  individually: `View`/`RowsView`/`RectView` (`OP/Krylov.Block.Common.fProxy.cs`, duplicated in
+  `OP/LOBPCG.fProxy.cs`) used to be a bare struct copy with only `M_Rows`/`N_Cols` overwritten,
+  leaving `Data`/the readonly `Length` field pointing at the full backing buffer -- any current or
+  future reader of `.Data.Length`/`.Length` on one of those views (not just the two already-patched
+  call sites) silently over-read/over-wrote past the logical view. The indexer
+  (`fProxyMxN.Indexing.cs`, `this[r,c] => Data.ElementAt(r*N_Cols+c)`) already addresses through the
+  OVERWRITTEN `N_Cols`, so every existing `View`/`RowsView`/`RectView` result was already a
+  tightly-packed reinterpretation of the buffer's own leading flat prefix, never a strided
+  sub-block preserving the wider buffer's own pitch -- so a real reslice (pointer + exact length) is
+  a drop-in, zero-copy, zero-allocation replacement, needing no compaction anywhere. Always
+  standalone (`_rec = null`), even when `source` is arena-tracked: a view that kept `_rec` and ever
+  wrote `Data` would write through the shared record and truncate `source` for every other holder.
+  Forfeits the generation-stamp staleness check on reads (same accepted tradeoff as the existing
+  `NativeArray` view constructor just above it); `Dispose()` on the view is a no-op (built from the
+  non-allocating `UnsafeList<T>(T*, int)` ctor). Establishes the invariant
+  `Data.Length == M_Rows*N_Cols` for every `fProxyMxN` that can ever exist (see
+  `docs/dev/spec-matrix-view-fix.md` for the by-construction proof over every ctor path). Side
+  effect: the linear indexer's debug bounds check (`Assume.IndexInsideBounds(Data.Length, index)`)
+  now correctly throws past a narrowed view's logical region -- previously silently succeeded.
+
 ## CopyFrom(in Self) / CopyTo(in Self) -- silent-resize footgun (N and MxN family)
 - 2026-07-19 | Root cause: `Data` returns the backing `UnsafeList<T>` BY VALUE (plain fields, not
   indirected through a pointer). `dst.Data.CopyFrom(src.Data)` resizes `dst` off `src.Data.Length` --

@@ -1,0 +1,236 @@
+using LinearAlgebra;
+using NUnit.Framework;
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Jobs;
+using Unity.Mathematics;
+
+// Regression coverage for the fProxyMxN(in fProxyMxN source, int rows, int cols) reslice-view
+// constructor (docs/dev/spec-matrix-view-fix.md): every narrowed view produced by it must satisfy
+// Data.Length == Length == rows*cols, so a poisoned (sentinel-filled) tail beyond the view's
+// logical region is never read nor written by Norms, the generic elementwise surface, or any
+// solver fed the view directly. Every test runs inside a [BurstCompile] IJob (by-value struct
+// copy), matching BlockGmresTests' enum-dispatch convention.
+public class fProxyMatrixViewInvariantTests
+{
+    [BurstCompile(CompileSynchronously = true)]
+    public struct TestJob : IJob
+    {
+        public enum TestType
+        {
+            PoisonedTailInvariant_NormsAndZeroInPlace,
+            RowsViewRetroactiveFix_LQRPMatchesExact,
+            SquareViewRetroactiveFix_QRMatchesExact,
+            SquareViewRetroactiveFix_CHOMatchesExact,
+        }
+
+        public TestType Type;
+
+        public void Execute()
+        {
+            switch (Type)
+            {
+                case TestType.PoisonedTailInvariant_NormsAndZeroInPlace:  PoisonedTailInvariant_NormsAndZeroInPlace();  break;
+                case TestType.RowsViewRetroactiveFix_LQRPMatchesExact:    RowsViewRetroactiveFix_LQRPMatchesExact();    break;
+                case TestType.SquareViewRetroactiveFix_QRMatchesExact:    SquareViewRetroactiveFix_QRMatchesExact();    break;
+                case TestType.SquareViewRetroactiveFix_CHOMatchesExact:   SquareViewRetroactiveFix_CHOMatchesExact();   break;
+            }
+        }
+
+        static fProxy Tol() => /*+choose[1e-5f|1e-10]*/1e-5f/*-choose*/;
+
+        // Test 2: a narrowed VIEW's Norms and zeroInPlace must never touch the backing buffer's tail
+        // (elements at or past rows*cols) -- the exact over-read/over-write this fix closes.
+        void PoisonedTailInvariant_NormsAndZeroInPlace()
+        {
+            int s = 6, m = 3;
+            fProxy sentinel = (fProxy)12345;
+
+            var buf = new fProxyMxN(s, s, Allocator.Temp, true);
+            buf.fillInPlace(sentinel);
+
+            // Known, deterministic m*m pattern (flat 1..m*m) in the leading elements only.
+            for (int i = 0; i < m * m; i++) buf[i] = (fProxy)(i + 1);
+
+            var view = new fProxyMxN(in buf, m, m);
+            Assert.AreEqual(m * m, view.Length);
+            Assert.AreEqual(m * m, view.Data.Length);
+            Assert.AreEqual(m, view.M_Rows);
+            Assert.AreEqual(m, view.N_Cols);
+
+            fProxy expL1 = (fProxy)0, expSumSq = (fProxy)0, expLInf = (fProxy)0;
+            for (int i = 0; i < m * m; i++)
+            {
+                fProxy v = (fProxy)(i + 1);
+                expL1 += v;
+                expSumSq += v * v;
+                expLInf = math.max(expLInf, v);
+            }
+            fProxy expL2 = math.sqrt(expSumSq);
+
+            Assert.AreEqual((double)expL1, (double)Norms.L1(in view), (double)Tol());
+            Assert.AreEqual((double)expL2, (double)Norms.L2(in view), (double)Tol());
+            Assert.AreEqual((double)expLInf, (double)Norms.LInf(in view), (double)Tol());
+
+            view.zeroInPlace();
+            for (int r = 0; r < m; r++)
+                for (int c = 0; c < m; c++)
+                    Assert.AreEqual(0.0, (double)view[r, c], 0.0);
+
+            // Tail past the view's logical region (read via buf, not view) is untouched.
+            for (int k = m * m; k < s * s; k++)
+                Assert.AreEqual((double)sentinel, (double)buf[k], 0.0);
+        }
+
+        // Deterministic, strongly row-diagonal-dominant sLive x n pattern -- guarantees full row
+        // rank regardless of sLive/n so LQRP.decomp always succeeds.
+        static void FillRowDominant(ref fProxyMxN mat, int rows, int cols)
+        {
+            for (int i = 0; i < rows; i++)
+                for (int j = 0; j < cols; j++)
+                    mat[i, j] = (fProxy)(((i * 3 + j * 2 + 1) % 7) - 3) + (fProxy)((i == j) ? 20 : 0);
+        }
+
+        // Test 3a: a RowsView-style narrowing (M_Rows narrowed, N_Cols == buf's own) fed to
+        // LQRP.decomp must match an independent decomp of an equal-valued, non-poisoned buffer.
+        void RowsViewRetroactiveFix_LQRPMatchesExact()
+        {
+            int s = 8, n = 5, sLive = 3;
+            fProxy sentinel = (fProxy)(-99999);
+
+            var wide = new fProxyMxN(s, n, Allocator.Temp, true);
+            wide.fillInPlace(sentinel);
+            FillRowDominant(ref wide, sLive, n);
+
+            var exact = new fProxyMxN(sLive, n, Allocator.Temp);
+            FillRowDominant(ref exact, sLive, n);
+
+            var view = new fProxyMxN(in wide, sLive, n);
+            Assert.AreEqual(sLive * n, view.Length);
+            Assert.AreEqual(sLive * n, view.Data.Length);
+
+            var Lview = new fProxyMxN(sLive, sLive, Allocator.Temp);
+            var Qview = new fProxyMxN(sLive, n, Allocator.Temp);
+            var Pview = new Pivot(sLive, Allocator.Temp);
+            var infoView = LQRP.decomp(in view, ref Lview, ref Qview, ref Pview);
+
+            var Lexact = new fProxyMxN(sLive, sLive, Allocator.Temp);
+            var Qexact = new fProxyMxN(sLive, n, Allocator.Temp);
+            var Pexact = new Pivot(sLive, Allocator.Temp);
+            var infoExact = LQRP.decomp(in exact, ref Lexact, ref Qexact, ref Pexact);
+
+            Assert.IsTrue(infoView.Solved);
+            Assert.IsTrue(infoExact.Solved);
+
+            for (int i = 0; i < sLive; i++)
+                for (int j = 0; j < sLive; j++)
+                    Assert.AreEqual((double)Lexact[i, j], (double)Lview[i, j], (double)Tol());
+
+            for (int i = 0; i < sLive; i++)
+                for (int j = 0; j < n; j++)
+                    Assert.AreEqual((double)Qexact[i, j], (double)Qview[i, j], (double)Tol());
+        }
+
+        // Symmetric, strongly diagonally-dominant m x m pattern -- SPD (valid for CHO) and full
+        // rank (valid for QR). Writes via the FLAT linear index i*m+j (pitch m), not mat[i,j] (which
+        // would address with mat's OWN N_Cols) -- for the poisoned buf (its own N_Cols == s != m)
+        // this must land in the buf's leading m*m flat prefix, the exact region the View-style
+        // reslice reads back (a tightly-packed reinterpretation, not a stride-preserving corner of
+        // the wider buf -- see the reslice constructor's doc comment). For the m x m `exact` buffer
+        // (N_Cols == m already) this is identical to mat[i,j].
+        static void FillSymmetricDominantFlat(ref fProxyMxN mat, int m)
+        {
+            for (int i = 0; i < m; i++)
+                for (int j = 0; j < m; j++)
+                    mat[i * m + j] = (fProxy)(((i + j) % 3) + 1) + (fProxy)((i == j) ? 20 : 0);
+        }
+
+        // Test 3b: a View-style square narrowing (BOTH M_Rows and N_Cols narrowed, unlike RowsView)
+        // fed to QR.decompInPlace must match an independent decomp of an equal-valued, non-poisoned
+        // buffer -- exercises the N_Cols-narrowing case.
+        void SquareViewRetroactiveFix_QRMatchesExact()
+        {
+            int s = 6, m = 3;
+
+            var buf = new fProxyMxN(s, s, Allocator.Temp, true);
+            buf.fillInPlace((fProxy)(-77777));
+            FillSymmetricDominantFlat(ref buf, m);
+
+            var exact = new fProxyMxN(m, m, Allocator.Temp);
+            FillSymmetricDominantFlat(ref exact, m);
+
+            var view = new fProxyMxN(in buf, m, m);
+            Assert.AreEqual(m * m, view.Length);
+            Assert.AreEqual(m * m, view.Data.Length);
+
+            var Rview = new fProxyMxN(m, m, Allocator.Temp);
+            var infoView = QR.decompInPlace(ref view, ref Rview);
+
+            var Rexact = new fProxyMxN(m, m, Allocator.Temp);
+            var infoExact = QR.decompInPlace(ref exact, ref Rexact);
+
+            Assert.IsTrue(infoView.Solved);
+            Assert.IsTrue(infoExact.Solved);
+
+            for (int i = 0; i < m; i++)
+                for (int j = 0; j < m; j++)
+                {
+                    Assert.AreEqual((double)exact[i, j], (double)view[i, j], (double)Tol());
+                    Assert.AreEqual((double)Rexact[i, j], (double)Rview[i, j], (double)Tol());
+                }
+        }
+
+        // Test 3b continued: same square-view pattern through CHO.decompInPlace + CHO.decompSolve.
+        void SquareViewRetroactiveFix_CHOMatchesExact()
+        {
+            int s = 6, m = 3;
+
+            var buf = new fProxyMxN(s, s, Allocator.Temp, true);
+            buf.fillInPlace((fProxy)(-55555));
+            FillSymmetricDominantFlat(ref buf, m);
+
+            var exact = new fProxyMxN(m, m, Allocator.Temp);
+            FillSymmetricDominantFlat(ref exact, m);
+
+            var view = new fProxyMxN(in buf, m, m);
+            Assert.AreEqual(m * m, view.Length);
+            Assert.AreEqual(m * m, view.Data.Length);
+
+            var infoView = CHO.decompInPlace(ref view);
+            var infoExact = CHO.decompInPlace(ref exact);
+
+            Assert.IsTrue(infoView.Solved);
+            Assert.IsTrue(infoExact.Solved);
+
+            for (int i = 0; i < m; i++)
+                for (int j = 0; j < m; j++)
+                    Assert.AreEqual((double)exact[i, j], (double)view[i, j], (double)Tol());
+
+            var bView = new fProxyN(m, Allocator.Temp);
+            var bExact = new fProxyN(m, Allocator.Temp);
+            for (int i = 0; i < m; i++) { bView[i] = (fProxy)(i + 1); bExact[i] = (fProxy)(i + 1); }
+
+            CHO.decompSolve(ref view, ref bView);
+            CHO.decompSolve(ref exact, ref bExact);
+
+            for (int i = 0; i < m; i++)
+                Assert.AreEqual((double)bExact[i], (double)bView[i], (double)Tol());
+        }
+    }
+
+    [Test]
+    public void PoisonedTailInvariant_NormsAndZeroInPlaceRespectViewBounds()
+        => new TestJob { Type = TestJob.TestType.PoisonedTailInvariant_NormsAndZeroInPlace }.Run();
+
+    [Test]
+    public void RowsViewRetroactiveFix_LQRPMatchesExactBuffer()
+        => new TestJob { Type = TestJob.TestType.RowsViewRetroactiveFix_LQRPMatchesExact }.Run();
+
+    [Test]
+    public void SquareViewRetroactiveFix_QRMatchesExactBuffer()
+        => new TestJob { Type = TestJob.TestType.SquareViewRetroactiveFix_QRMatchesExact }.Run();
+
+    [Test]
+    public void SquareViewRetroactiveFix_CHOMatchesExactBuffer()
+        => new TestJob { Type = TestJob.TestType.SquareViewRetroactiveFix_CHOMatchesExact }.Run();
+}
