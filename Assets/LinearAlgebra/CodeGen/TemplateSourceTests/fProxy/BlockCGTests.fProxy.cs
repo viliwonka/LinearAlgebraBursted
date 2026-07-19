@@ -21,6 +21,7 @@ public class fProxyBlockCGTests
             BlockAdvantageIterations,
             RankDeficientBlockDeflates,
             PreconditionedMatchesScalar,
+            KnownSolutionRecovered,
         }
 
         public TestType Type;
@@ -33,6 +34,7 @@ public class fProxyBlockCGTests
                 case TestType.BlockAdvantageIterations:   BlockAdvantageIterations();   break;
                 case TestType.RankDeficientBlockDeflates: RankDeficientBlockDeflates(); break;
                 case TestType.PreconditionedMatchesScalar: PreconditionedMatchesScalar(); break;
+                case TestType.KnownSolutionRecovered:      KnownSolutionRecovered();      break;
             }
         }
 
@@ -171,6 +173,31 @@ public class fProxyBlockCGTests
             arena.Dispose();
         }
 
+        // Independent of the scalar solver: pick a KNOWN block solution Xk, form B = A Xk (via the
+        // operator's own ApplyBlock), solve, and recover Xk. Verifies the block recurrence end-to-end
+        // against a ground-truth solution, not against another solver.
+        void KnownSolutionRecovered()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 20, s = 5;
+            var A = BuildDenseSPD(ref arena, n, 75001u);
+            var Xk = arena.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 75002u);   // known solution
+
+            var B = arena.fProxyMat(s, n);
+            new fProxyDenseOperator(in A).ApplyBlock(in Xk, ref B, s);                 // B[j,:] = A Xk[j,:]
+
+            var X = arena.fProxyMat(s, n);
+            var info = Krylov.cg(in A, in B, ref X, 8 * n, Consts.fProxySqrtEps);
+            Assert.IsTrue(info.Solved);
+
+            for (int j = 0; j < s; j++)
+                for (int c = 0; c < n; c++)
+                    Assert.IsTrue(math.abs((double)X[j, c] - (double)Xk[j, c]) <= Tol() * (1.0 + math.abs((double)Xk[j, c])));
+
+            arena.Dispose();
+        }
+
         // Dense n x n -> 1x1-block BSR (mirrors the helper used across the sparse solver tests).
         static fProxyBSR DenseToBSR1x1(ref Arena arena, in fProxyMxN A, int nnzHint)
         {
@@ -198,4 +225,8 @@ public class fProxyBlockCGTests
     [Test]
     public void PreconditionedMatchesScalar()
         => new BlockCGTestJob { Type = BlockCGTestJob.TestType.PreconditionedMatchesScalar }.Run();
+
+    [Test]
+    public void KnownSolutionRecovered()
+        => new BlockCGTestJob { Type = BlockCGTestJob.TestType.KnownSolutionRecovered }.Run();
 }
