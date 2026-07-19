@@ -19,46 +19,39 @@ namespace LinearAlgebra
 
         // ---- block helpers (private) --------------------------------------------------------------
 
-        // G[i,j] = <V_i, W_j> over the first s rows (length n each), forced EXACTLY symmetric (one dot
-        // per pair mirrored) -- the Grams here (P^T A P, R^T M^-1 R) are symmetric by construction.
-        static unsafe void BlockSymGram(in doubleMxN V, in doubleMxN W, ref doubleMxN G, int s, int n)
+        // G = V * W^T  (s x s Gram of the block rows) via the optimized GEMM, then symmetrized
+        // exactly (the Grams here -- P^T A P, R^T M^-1 R -- are symmetric by construction; forcing it
+        // shields the s x s Cholesky from GEMM round-off asymmetry).
+        static void BlockGram(in doubleMxN V, in doubleMxN W, ref doubleMxN G, int s)
         {
-            double* vp = V.Data.Ptr; int vnc = V.N_Cols;
-            double* wp = W.Data.Ptr; int wnc = W.N_Cols;
+            Blas.dot(in V, in W, ref G, false, true);       // G = V W^T
             for (int i = 0; i < s; i++)
-                for (int j = i; j < s; j++)
+                for (int j = i + 1; j < s; j++)
                 {
-                    double d = UnsafeOP.vecDot(vp + (long)i * vnc, wp + (long)j * wnc, n);
-                    G[i, j] = d;
-                    G[j, i] = d;
+                    double avg = (double)0.5 * (G[i, j] + G[j, i]);
+                    G[i, j] = avg;
+                    G[j, i] = avg;
                 }
         }
 
-        // Y[j,:] += sign * sum_i C[i,j] * V[i,:]   (Y += sign * C^T V, in the block sense).
-        static void BlockAxpyCT(ref doubleMxN Y, in doubleMxN C, in doubleMxN V, int s, int n, double sign)
+        // dst = C^T * V  (s x n block) via the optimized GEMM. dst must be distinct from C and V.
+        static void BlockCTV(in doubleMxN C, in doubleMxN V, ref doubleMxN dst)
+            => Blas.dot(in C, in V, ref dst, true, false);   // dst = C^T V
+
+        // Y += sign * T over the whole (contiguous) s x n block.
+        static unsafe void BlockAdd(ref doubleMxN Y, in doubleMxN T, double sign)
         {
-            for (int j = 0; j < s; j++)
-                for (int i = 0; i < s; i++)
-                {
-                    double coef = sign * C[i, j];
-                    if (coef == (double)0) continue;
-                    for (int c = 0; c < n; c++) Y[j, c] += coef * V[i, c];
-                }
+            double* yp = Y.Data.Ptr; double* tp = T.Data.Ptr;
+            long len = (long)Y.M_Rows * Y.N_Cols;
+            for (long i = 0; i < len; i++) yp[i] += sign * tp[i];
         }
 
-        // dst[j,:] = sum_i C[i,j] * V[i,:]   (dst = C^T V). dst must be distinct from V.
-        static void BlockGemmCT(ref doubleMxN dst, in doubleMxN C, in doubleMxN V, int s, int n)
+        // dst = Z + T over the whole (contiguous) s x n block. dst may be Z? no -- dst distinct.
+        static unsafe void BlockZplusT(in doubleMxN Z, in doubleMxN T, ref doubleMxN dst)
         {
-            for (int j = 0; j < s; j++)
-            {
-                for (int c = 0; c < n; c++) dst[j, c] = (double)0;
-                for (int i = 0; i < s; i++)
-                {
-                    double coef = C[i, j];
-                    if (coef == (double)0) continue;
-                    for (int c = 0; c < n; c++) dst[j, c] += coef * V[i, c];
-                }
-            }
+            double* zp = Z.Data.Ptr; double* tp = T.Data.Ptr; double* dp = dst.Data.Ptr;
+            long len = (long)dst.M_Rows * dst.N_Cols;
+            for (long i = 0; i < len; i++) dp[i] = zp[i] + tp[i];
         }
 
         // Solve the s x s SPD system G * Xsol = RHS_to_X (each column an independent RHS), writing the
@@ -170,6 +163,7 @@ namespace LinearAlgebra
             var RZnew = new doubleMxN(s, s, Allocator.Temp, true);
             var coef  = new doubleMxN(s, s, Allocator.Temp, true);
             var work  = new doubleMxN(s, s, Allocator.Temp, true);
+            var T     = new doubleMxN(s, n, Allocator.Temp, true);   // s x n GEMM target for block updates
             var thr   = new doubleN(s);
             doubleN rowIn = default, rowOut = default;
             if (!M.IsIdentity) { rowIn = new doubleN(n); rowOut = new doubleN(n); }
@@ -199,38 +193,38 @@ namespace LinearAlgebra
             if (M.IsIdentity)
             {
                 CopyBlock(in R, ref P, s, n);
-                BlockSymGram(in R, in R, ref RZ, s, n);
+                BlockGram(in R, in R, ref RZ, s);
             }
             else
             {
                 BlockApplyPre(in M, in R, ref Z, s, n, ref rowIn, ref rowOut);
                 CopyBlock(in Z, ref P, s, n);
-                BlockSymGram(in R, in Z, ref RZ, s, n);
+                BlockGram(in R, in Z, ref RZ, s);
             }
 
             for (int k = 0; k < maxIter; k++)
             {
                 A.ApplyBlock(in P, ref Q, s);             // Q = A P
-                BlockSymGram(in P, in Q, ref PQ, s, n);   // PQ = P^T A P (s x s SPD)
+                BlockGram(in P, in Q, ref PQ, s);         // PQ = P^T A P (s x s SPD)
 
                 // alpha = (P^T A P)^-1 (R^T Z);   coef <- RZ, solved in place.
                 CopyMat(in RZ, ref coef, s);
                 if (!BlockSolveSPD(in PQ, ref coef, ref work, s))
                 { status = IterativeSolveStatus.Breakdown; iters = k; goto cleanup; }
 
-                BlockAxpyCT(ref X, in coef, in P, s, n, (double)1);    // X += alpha^T P
-                BlockAxpyCT(ref R, in coef, in Q, s, n, (double)(-1)); // R -= alpha^T Q
+                BlockCTV(in coef, in P, ref T); BlockAdd(ref X, in T, (double)1);    // X += alpha^T P
+                BlockCTV(in coef, in Q, ref T); BlockAdd(ref R, in T, (double)(-1)); // R -= alpha^T Q
 
                 converged = CountConverged(in R, in thr, s, n, out maxr);
                 if (converged == s) { status = IterativeSolveStatus.Converged; iters = k + 1; goto cleanup; }
 
                 // Z = M^-1 R ; RZnew = R^T Z.
                 if (M.IsIdentity)
-                    BlockSymGram(in R, in R, ref RZnew, s, n);
+                    BlockGram(in R, in R, ref RZnew, s);
                 else
                 {
                     BlockApplyPre(in M, in R, ref Z, s, n, ref rowIn, ref rowOut);
-                    BlockSymGram(in R, in Z, ref RZnew, s, n);
+                    BlockGram(in R, in Z, ref RZnew, s);
                 }
 
                 // beta = (R^T Z)^-1 (R_new^T Z_new);   coef <- RZnew, solved in place.
@@ -238,20 +232,16 @@ namespace LinearAlgebra
                 if (!BlockSolveSPD(in RZ, ref coef, ref work, s))
                 { status = IterativeSolveStatus.Breakdown; iters = k + 1; goto cleanup; }
 
-                // P = Z + beta^T P: stage beta^T P into Q (free now), then P = Zeff + Q.
-                BlockGemmCT(ref Q, in coef, in P, s, n);
-                if (M.IsIdentity)
-                    for (int i = 0; i < s; i++)
-                        for (int c = 0; c < n; c++) P[i, c] = R[i, c] + Q[i, c];
-                else
-                    for (int i = 0; i < s; i++)
-                        for (int c = 0; c < n; c++) P[i, c] = Z[i, c] + Q[i, c];
+                // P = Zeff + beta^T P: stage beta^T P into Q (free now), then P = Zeff + Q.
+                BlockCTV(in coef, in P, ref Q);
+                if (M.IsIdentity) BlockZplusT(in R, in Q, ref P);
+                else              BlockZplusT(in Z, in Q, ref P);
 
                 CopyMat(in RZnew, ref RZ, s);
             }
 
         cleanup:
-            PQ.Dispose(); RZ.Dispose(); RZnew.Dispose(); coef.Dispose(); work.Dispose(); thr.Dispose();
+            PQ.Dispose(); RZ.Dispose(); RZnew.Dispose(); coef.Dispose(); work.Dispose(); T.Dispose(); thr.Dispose();
             if (!M.IsIdentity) { rowIn.Dispose(); rowOut.Dispose(); }
             return new BlockSolveInfo { rhs = s, converged = converged, iterations = iters, maxRnorm = maxr, status = status };
         }

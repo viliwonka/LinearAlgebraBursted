@@ -24,8 +24,22 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   through ref fProxyMxN) covered by construction; block-CG never swaps block handles (writes in place),
   so no LOBPCG-style RestoreBufferIdentity hazard. GOTCHA (cost me a Mono-fallback cycle): `Assert.IsTrue(
   bool, $"msg")` is BC1071 (unsupported assert overload) → forced Mono → 1-ULP fails in untouched
-  BlockJacobi tests. Plain `Assert.IsTrue(bool)` only. 6679/6679. TODO: BlockKrylovBenchmark (block-CG vs
-  s scalar), then block-MINRES / block-BiCGStab / block-GMRES.
+  BlockJacobi tests. Plain `Assert.IsTrue(bool)` only. 6679/6679.
+- 2026-07-19 | PERF: GEMM-routed the block bookkeeping. FIRST benchmark (naive scalar-loop Grams +
+  block updates) showed the block ADVANTAGE is real in ITERATIONS (s=16: block converges in 5-6 iters
+  vs the scalar loop's 96 = 6/col × 16) but block was 5-11× SLOWER in WALL CLOCK — same matvec flops
+  both ways, so the loss was entirely the O(s²n) Grams (PᵀAP, RᵀZ) and updates (X+=αᵀP) running as
+  un-vectorized triple-loops while the matvec (ApplyBlock) is an optimized GEMM. Fix: route Grams to
+  `Blas.dot(V,W,false,true)` (= V·Wᵀ, symmetrized) and updates to `Blas.dot(coef,V,true,false)` (=coefᵀV)
+  + a flat block add; s×n GEMM temp `T`. Result: block-CG 5-9× faster (float N=128 s=16: 0.79→0.087ms).
+  New crossover (BlockCGBenchmark, dense random SPD): **s≥8 block-CG BEATS the scalar loop and the win
+  grows with N** (double N=512 s=16: block 2.49 vs scalar 3.31ms; float N=512 s=8: 0.33 vs 0.46) — the
+  memory-traffic win (block reads A ~s× fewer times) shows once bookkeeping is vectorized. s=1-2 block
+  loses (overhead unamortized — expected; use scalar for 1 RHS). Advantage is modest (1.3-1.4×) on these
+  WELL-conditioned systems (few iters); ill-conditioned/more-iters would widen it. CHO+ridge kept (see
+  the ridge-vs-BCGrQ note): the wall-clock issue was bookkeeping, NOT the deflation choice. BCGrQ remains
+  the future win — dropping converged/dependent columns cuts BOTH the s²n bookkeeping and the matvec
+  width near convergence. TODO: block-MINRES / block-BiCGStab / block-GMRES; then BCGrQ deflation.
 
 ## Krylov.gmres — single-body merge (gmres/pgmres share one loop, IsIdentity fold) — FAMILY COMPLETE
 - 2026-07-19 | Merged `gmres<TOp,TPre>`; `gmres<TOp>` forwards with identity. No caller scratch (GMRES
