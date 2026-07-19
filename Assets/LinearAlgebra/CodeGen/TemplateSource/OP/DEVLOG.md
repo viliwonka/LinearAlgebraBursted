@@ -1,6 +1,40 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.bfbcg — breakdown-free block CG (Ji & Li 2017)
+- 2026-07-19 | Third block-CG family in `Krylov.Block.fProxy.cs`, coexisting with ridge `bcg` and
+  `bcgrq`. Source: Ji, H. & Li, Y., "A breakdown-free block conjugate gradient method", BIT Numer. Math.
+  57:379-403 (2017); porting extract at `reference/papers/BFBCG-algorithm-extract.md`. Unlike `bcgrq`
+  (which orthonormalizes the RESIDUAL block every iteration via LQRP), `bfbcg` orthonormalizes the
+  SEARCH block P: `Phat_i = orth(P_i)` (rank r_i, row-major analogue of the paper's pivoted-QR `orth`),
+  `AP_i = A Phat_i` (the one matvec/iteration), `G_i = Phat_i^T A Phat_i` (r_i x r_i, SPD by
+  construction — no ridge, no normal-equations kappa^2). `alpha = G_i^-1(Phat_i^T R)`,
+  `X += alpha^T Phat_i`, `R -= alpha^T AP_i`; then `beta = -G_i^-1(AP_i^T Z)`, `P_{i+1} = Z + beta^T
+  Phat_i` (Z = R under an identity preconditioner, folded per the existing `IsIdentity` convention).
+  `G_i` is Cholesky-factored ONCE (new `FactorGramOnce` helper, ridge-ladder safety net only) and the
+  same factor (`work`) is reused for both the alpha and beta `CHO.decompSolve` calls — `BlockSolveSPD`
+  couldn't do this (it always re-factors), so `bfbcg` bypasses it entirely rather than extend its
+  contract for one caller.
+- Column locking (`Live`/`sLive`, `LockConvergedRows`, `BlockScatterAddRows`) mirrors `bcgrq` exactly:
+  converged original RHS columns drop out of R/Z/P/X-update bookkeeping, X's rows are never reordered
+  (scatter-add through the persistent `Live` pivot). Difference from `bcgrq`: P is NOT re-derived from
+  scratch each iteration — it persists via the recurrence (`P_{i+1} = Z_{i+1} + Phat_i^T beta`), so its
+  live width naturally tracks `sLive` (shrinks when columns lock, no independent "P has its own
+  permutation" bookkeeping needed — it's always rebuilt fresh from R's current physical order every
+  iteration before being re-orthonormalized).
+- New private helper `FactorLiveSearch` (orth of the live P block via `LQRP.decomp`) mirrors `bcgrq`'s
+  `FactorLiveResidual` byte-for-byte except it has no preconditioner-apply step (P is already the value
+  to orthonormalize) — hits the SAME `fProxyMxN.Data`-stale-length landmine `bcgrq` found (see that
+  section below), so it copies the live rows into a freshly, exactly `sLive x n` sized `Allocator.Temp`
+  buffer before `LQRP.decomp`, same as `FactorLiveResidual`.
+- Test oracle (`RankDeficientDeflates`): the paper's own Section 6.3 appendix gives a 10x10 SPD `A` and
+  10x2 `B` with `B[:,2] = 10*B[:,1]` exactly (`rank(R_0) = 1` at zero initial guess). Reproduced via the
+  `bcgrq` lesson below: perturb a known `Xk` first (`Xk[row] = 10 * Xk[otherRow]`), then re-derive
+  `B = A Xk` via `ApplyBlock`, so `Xk` stays exact ground truth for the forward-error check instead of
+  silently changing under a direct `B` edit.
+- Benchmark row added to `BlockCGSparseBenchmark` (BSR 2D Poisson) alongside `bcg`/`bcgrq`/scalar-loop;
+  numbers in the commit history's benchmark run.
+
 ## Krylov.bcgrq — deflating block-CG with reliable QR (LQRP) residual updates
 - 2026-07-19 | New solver set alongside ridge `bcg` (not a replacement): replaces the s×s ridge-
   regularized Gram solve with a row-pivoted rank-revealing LQ (`LQRP.decomp`) factorization of the live

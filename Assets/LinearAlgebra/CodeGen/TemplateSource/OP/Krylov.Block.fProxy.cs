@@ -659,5 +659,310 @@ namespace LinearAlgebra
                       AP = B.fProxyTempMat(s, n, true), Pa = B.fProxyTempMat(s, n, true), Z = B.fProxyTempMat(s, n, true);
             return bcgrq(new fProxyBSROperator(in A), in M, in B, ref X, ref R, ref P, ref AP, ref Pa, ref Z, maxIter, tol);
         }
+
+        // ================= bfbcg: breakdown-free block CG (Ji & Li 2017) ============================
+
+        // ---- bfbcg-only private helpers -------------------------------------------------------------
+
+        // Factors the live search block via LQRP, writing the fresh orthonormal search basis into Pa's
+        // leading sLive rows and returning its numerical rank. Copies the live rows into a freshly,
+        // exactly sLive x n sized Temp buffer before calling LQRP.decomp (disposed immediately after) --
+        // decomp's A input must be exactly sized, see DEVLOG.md.
+        static int FactorLiveSearch(in fProxyMxN P, int sLive, int n, ref fProxyMxN Lbuf, ref fProxyMxN Pa)
+        {
+            var Pfactor = new fProxyMxN(sLive, n, Allocator.Temp, true);
+            var Plive = RowsView(P, sLive);
+            CopyBlock(in Plive, ref Pfactor, sLive, n);
+
+            var Ppiv  = new Pivot(sLive, Allocator.Temp);
+            var Lv    = View(Lbuf, sLive);
+            var Qfull = RowsView(Pa, sLive);
+            LQRP.decomp(in Pfactor, ref Lv, ref Qfull, ref Ppiv);
+            Ppiv.Dispose();
+            Pfactor.Dispose();
+
+            return LQRPRank(in Lv, sLive, n);
+        }
+
+        // Factors the r x r Gram G (SPD by construction: G = Phat^T A Phat with Phat's rows orthonormal)
+        // into work via Cholesky ONCE, so the caller can reuse the same factor for both the alpha and
+        // beta solves. Retries an escalating diagonal ridge scaled to G's own diagonal as a numerical-
+        // noise safety net (mirrors BlockSolveSPD's ladder). Returns false only if even the largest
+        // ridge fails.
+        static bool FactorGramOnce(in fProxyMxN G, ref fProxyMxN work, int r)
+        {
+            fProxy diagMax = (fProxy)0;
+            for (int i = 0; i < r; i++) { fProxy d = G[i, i]; if (d > diagMax) diagMax = d; }
+            if (diagMax <= (fProxy)0) diagMax = (fProxy)1;
+
+            fProxy ridge = (fProxy)0;
+            for (int attempt = 0; attempt < 6; attempt++)
+            {
+                for (int i = 0; i < r; i++)
+                    for (int j = 0; j < r; j++)
+                        work[i, j] = G[i, j] + (i == j ? ridge : (fProxy)0);
+
+                var info = CHO.decompInPlace(ref work);
+                if (info.status == DirectSolveStatus.Success) return true;
+                ridge = ridge == (fProxy)0 ? (fProxy)16 * Consts.fProxyEpsilon * diagMax : ridge * (fProxy)16;
+            }
+            return false;
+        }
+
+        // ---- bfbcg core -------------------------------------------------------------------------------
+
+        /// <summary>
+        /// Zero-alloc block (multi-RHS) Conjugate Gradient for an SPD A and s simultaneous right-hand
+        /// sides, generic over BOTH the operator (<see cref="IfProxyLinearOperator"/>) and the
+        /// preconditioner (<see cref="IfProxyPreconditioner"/>). Breakdown-free block CG (Ji &amp; Li
+        /// 2017): every iteration orthonormalizes the search block P via a row-pivoted rank-revealing LQ
+        /// (<see cref="LQRP"/>) factorization, so the coefficient system is always SPD and well-
+        /// conditioned by construction -- rank-deficient or converged search directions are deflated
+        /// (dropped), not ridge-patched. The Gram G = Phat^T A Phat is Cholesky-factored once per
+        /// iteration and the same factor solves both the alpha and beta updates.
+        ///
+        /// B and X are s ROWS x n COLS (row j = the j-th RHS / solution, length n = A.Rows, requires
+        /// s &lt;= n); X is warm-startable and its rows are NEVER reordered. R, P, AP, Pa are s x n block
+        /// scratch (Pa receives LQRP's orthonormal-rows output); Z is s x n block scratch, required (and
+        /// only touched) when <c>!M.IsIdentity</c> -- pass <c>default</c> otherwise. Convergence is per
+        /// original column against tol²·‖B[j]‖². Returns a <see cref="BlockSolveInfo"/> whose
+        /// <see cref="BlockSolveInfo.minActive"/> is the smallest numerical rank the search block
+        /// reached over the whole solve.
+        /// </summary>
+        public static BlockSolveInfo bfbcg<TOp, TPre>(in TOp A, in TPre M, in fProxyMxN B, ref fProxyMxN X,
+                                        ref fProxyMxN R, ref fProxyMxN P, ref fProxyMxN AP, ref fProxyMxN Pa,
+                                        ref fProxyMxN Z, int maxIter, fProxy tol)
+            where TOp : struct, IfProxyLinearOperator
+            where TPre : struct, IfProxyPreconditioner
+        {
+            if (A.Rows != A.Cols) throw new ArgumentException("bfbcg (block): A must be square");
+            int n = A.Rows;
+            int s = B.M_Rows;
+            if (B.N_Cols != n) throw new ArgumentException("bfbcg (block): B must be s x A.Rows");
+            if (X.M_Rows != s || X.N_Cols != n) throw new ArgumentException("bfbcg (block): X must match B");
+            if (R.M_Rows != s || R.N_Cols != n) throw new ArgumentException("bfbcg (block): R must match B");
+            if (P.M_Rows != s || P.N_Cols != n) throw new ArgumentException("bfbcg (block): P must match B");
+            if (AP.M_Rows != s || AP.N_Cols != n) throw new ArgumentException("bfbcg (block): AP must match B");
+            if (Pa.M_Rows != s || Pa.N_Cols != n) throw new ArgumentException("bfbcg (block): Pa must match B");
+            if (!M.IsIdentity && (Z.M_Rows != s || Z.N_Cols != n))
+                throw new ArgumentException("bfbcg (block): Z must match B");
+            if (maxIter < 1) throw new ArgumentException("bfbcg (block): maxIter must be >= 1");
+            if (s > n) throw new ArgumentException("bfbcg: B.M_Rows (s) must be <= A.Rows (n)");
+
+            // s x s (max) coefficient scratch (narrowed per iteration via View/RectView) + per-original-
+            // column thresholds + row scratch for the preconditioner + the persistent slot pivot
+            // tracking "physical live row -> original RHS index".
+            var thr      = new fProxyN(s);
+            var Live     = new Pivot(s, Allocator.Temp);
+            var alphaBuf = new fProxyMxN(s, s, Allocator.Temp, true);
+            var betaBuf  = new fProxyMxN(s, s, Allocator.Temp, true);
+            var Gbuf     = new fProxyMxN(s, s, Allocator.Temp, true);
+            var Lbuf     = new fProxyMxN(s, s, Allocator.Temp, true);
+            var workBuf  = new fProxyMxN(s, s, Allocator.Temp, true);
+            var Tbuf     = new fProxyMxN(s, n, Allocator.Temp, true);
+            fProxyN rowIn = default, rowOut = default;
+            if (!M.IsIdentity) { rowIn = new fProxyN(n); rowOut = new fProxyN(n); }
+
+            IterativeSolveStatus status = IterativeSolveStatus.MaxIterations;
+            int iters = maxIter;
+            int converged = 0;
+            double maxr = 0;
+            int sLive = s;
+            int minActive = s;
+            int saSearch = 0;
+
+            // Per-original-column thresholds tol^2 ||B[j]||^2, computed once before any permutation.
+            for (int j = 0; j < s; j++)
+            {
+                fProxy bb = (fProxy)0;
+                for (int c = 0; c < n; c++) bb += B[j, c] * B[j, c];
+                thr[j] = tol * tol * bb;
+            }
+
+            // R = B - A X (AP reused as scratch, mirroring bcgrq's own reuse).
+            A.ApplyBlock(in X, ref AP, s);
+            for (int i = 0; i < s; i++)
+                for (int c = 0; c < n; c++) R[i, c] = B[i, c] - AP[i, c];
+
+            LockConvergedRows(ref R, ref Live, ref sLive, in thr);
+            if (sLive == 0) { status = IterativeSolveStatus.Converged; iters = 0; goto cleanup; }
+
+            // ---- setup: P_0(raw) = Z_0 = M R_0 (identity: P_0 = R_0); first orth(P_0), A Phat_0, G_0 ----
+            {
+                var Rlive0 = RowsView(R, sLive);
+                var Praw0  = RowsView(P, sLive);
+                if (M.IsIdentity)
+                    CopyBlock(in Rlive0, ref Praw0, sLive, n);
+                else
+                {
+                    var Zlive0 = RowsView(Z, sLive);
+                    BlockApplyPre(in M, in Rlive0, ref Zlive0, sLive, n, ref rowIn, ref rowOut);
+                    CopyBlock(in Zlive0, ref Praw0, sLive, n);
+                }
+
+                int r0 = FactorLiveSearch(in P, sLive, n, ref Lbuf, ref Pa);
+                minActive = math.min(minActive, r0);
+                if (r0 == 0) { status = IterativeSolveStatus.Breakdown; iters = 0; goto cleanup; }
+
+                saSearch = r0;
+                var Phat0 = RowsView(Pa, saSearch);
+                var APz0  = RowsView(AP, saSearch);
+                A.ApplyBlock(in Phat0, ref APz0, saSearch);
+
+                var G0 = View(Gbuf, saSearch);
+                BlockGram(in Phat0, in APz0, ref G0, saSearch);
+            }
+
+            for (int k = 0; k < maxIter; k++)
+            {
+                // Phat/APv/G already hold this iteration's search block/A-image/Gram at width saSearch
+                // (from the setup block above, or from the previous iteration's tail).
+                var Phat = RowsView(Pa, saSearch);
+                var APv  = RowsView(AP, saSearch);
+                var G    = View(Gbuf, saSearch);
+                var work = View(workBuf, saSearch);
+
+                if (!FactorGramOnce(in G, ref work, saSearch))
+                { status = IterativeSolveStatus.Breakdown; iters = k; goto cleanup; }
+
+                // alpha = G^-1 (Phat^T R_live), saSearch x sLive.
+                var Rlive = RowsView(R, sLive);
+                var alpha = RectView(alphaBuf, saSearch, sLive);
+                Blas.dot(in Phat, in Rlive, ref alpha, false, true);
+                CHO.decompSolve(ref work, ref alpha);
+
+                // X += scatter(alpha^T Phat) into X's ORIGINAL (never-reordered) row order.
+                var T = RowsView(Tbuf, sLive);
+                BlockCTV(in alpha, in Phat, ref T);
+                BlockScatterAddRows(ref X, in T, in Live, sLive, (fProxy)1);
+
+                // R_live -= alpha^T AP (R stays permuted -- plain BlockAdd applies).
+                var T2 = RowsView(Tbuf, sLive);
+                BlockCTV(in alpha, in APv, ref T2);
+                var Rlive2 = RowsView(R, sLive);
+                BlockAdd(ref Rlive2, in T2, (fProxy)(-1));
+
+                // Lock newly converged rows, shrinking sLive.
+                LockConvergedRows(ref R, ref Live, ref sLive, in thr);
+                if (sLive == 0) { status = IterativeSolveStatus.Converged; iters = k + 1; goto cleanup; }
+
+                // Z_{i+1} = M R_live (identity: Z aliases R directly, no copy/apply).
+                if (!M.IsIdentity)
+                {
+                    var RliveZ = RowsView(R, sLive);
+                    var ZliveZ = RowsView(Z, sLive);
+                    BlockApplyPre(in M, in RliveZ, ref ZliveZ, sLive, n, ref rowIn, ref rowOut);
+                }
+                var Zeff = M.IsIdentity ? RowsView(R, sLive) : RowsView(Z, sLive);
+
+                // beta = -G^-1 (AP^T Z_{i+1}), saSearch x sLive -- REUSES the SAME factored `work`.
+                var beta = RectView(betaBuf, saSearch, sLive);
+                Blas.dot(in APv, in Zeff, ref beta, false, true);
+                CHO.decompSolve(ref work, ref beta);
+                for (int i = 0; i < saSearch; i++)
+                    for (int j = 0; j < sLive; j++)
+                        beta[i, j] = -beta[i, j];
+
+                // P_{i+1}(raw) = Z_{i+1} + Phat^T beta (beta already carries the paper's minus sign).
+                var Traw = RowsView(Tbuf, sLive);
+                BlockCTV(in beta, in Phat, ref Traw);
+                var Pnew = RowsView(P, sLive);
+                BlockZplusT(in Zeff, in Traw, ref Pnew);
+
+                // orth(P_{i+1}) -- fresh rank-revealing search basis for the next iteration.
+                int saNew = FactorLiveSearch(in P, sLive, n, ref Lbuf, ref Pa);
+                minActive = math.min(minActive, saNew);
+                if (saNew == 0) { status = IterativeSolveStatus.Breakdown; iters = k + 1; goto cleanup; }
+
+                var PhatNew = RowsView(Pa, saNew);
+                var APnew   = RowsView(AP, saNew);
+                A.ApplyBlock(in PhatNew, ref APnew, saNew);
+
+                var Gnew = View(Gbuf, saNew);
+                BlockGram(in PhatNew, in APnew, ref Gnew, saNew);
+
+                saSearch = saNew;
+            }
+
+        cleanup:
+            // Recompute the residual fresh from the final X (does not try to unpermute the internal
+            // working R) -- doubles as an exit-time sanity check.
+            {
+                var Rfinal = RowsView(AP, s);
+                A.ApplyBlock(in X, ref Rfinal, s);
+                for (int i = 0; i < s; i++)
+                    for (int c = 0; c < n; c++)
+                        Rfinal[i, c] = B[i, c] - Rfinal[i, c];
+                converged = CountConverged(in Rfinal, in thr, s, n, out maxr);
+            }
+
+            thr.Dispose(); Live.Dispose(); alphaBuf.Dispose(); betaBuf.Dispose(); Gbuf.Dispose();
+            Lbuf.Dispose(); workBuf.Dispose(); Tbuf.Dispose();
+            if (!M.IsIdentity) { rowIn.Dispose(); rowOut.Dispose(); }
+
+            return new BlockSolveInfo { rhs = s, converged = converged, iterations = iters, maxRnorm = maxr, minActive = minActive, status = status };
+        }
+
+        // ---- bfbcg unpreconditioned + concrete forwarders --------------------------------------------
+
+        /// <summary>Unpreconditioned bfbcg -- forwards into the merged block
+        /// <see cref="bfbcg{TOp, TPre}(in TOp, in TPre, in fProxyMxN, ref fProxyMxN, ref fProxyMxN, ref fProxyMxN, ref fProxyMxN, ref fProxyMxN, ref fProxyMxN, int, fProxy)"/>
+        /// with the identity preconditioner (needs no Z block).</summary>
+        public static BlockSolveInfo bfbcg<TOp>(in TOp A, in fProxyMxN B, ref fProxyMxN X,
+                                        ref fProxyMxN R, ref fProxyMxN P, ref fProxyMxN AP, ref fProxyMxN Pa,
+                                        int maxIter, fProxy tol)
+            where TOp : struct, IfProxyLinearOperator
+        {
+            fProxyMxN Z = default;
+            return bfbcg(in A, default(fProxyIdentityPreconditioner), in B, ref X, ref R, ref P, ref AP, ref Pa, ref Z, maxIter, tol);
+        }
+
+        /// <summary>bfbcg over a dense SPD <see cref="fProxyMxN"/> A (n x n) with an s x n block B.
+        /// Allocates block scratch from the arena.</summary>
+        public static BlockSolveInfo bfbcg(in fProxyMxN A, in fProxyMxN B, ref fProxyMxN X, int maxIter, fProxy tol)
+        {
+            int s = B.M_Rows, n = A.M_Rows;
+            fProxyMxN R = B.fProxyTempMat(s, n, true), P = B.fProxyTempMat(s, n, true),
+                      AP = B.fProxyTempMat(s, n, true), Pa = B.fProxyTempMat(s, n, true);
+            return bfbcg(new fProxyDenseOperator(in A), in B, ref X, ref R, ref P, ref AP, ref Pa, maxIter, tol);
+        }
+
+        /// <summary>bfbcg over a dense SPD A with default maxIter (A.M_Rows) and tol (sqrtEps).</summary>
+        public static BlockSolveInfo bfbcg(in fProxyMxN A, in fProxyMxN B, ref fProxyMxN X)
+            => bfbcg(in A, in B, ref X, A.M_Rows, Consts.fProxySqrtEps);
+
+        /// <summary>Preconditioned bfbcg over a dense SPD A. Allocates block scratch (incl. Z).</summary>
+        public static BlockSolveInfo bfbcg<TPre>(in fProxyMxN A, in TPre M, in fProxyMxN B, ref fProxyMxN X, int maxIter, fProxy tol)
+            where TPre : struct, IfProxyPreconditioner
+        {
+            int s = B.M_Rows, n = A.M_Rows;
+            fProxyMxN R = B.fProxyTempMat(s, n, true), P = B.fProxyTempMat(s, n, true),
+                      AP = B.fProxyTempMat(s, n, true), Pa = B.fProxyTempMat(s, n, true), Z = B.fProxyTempMat(s, n, true);
+            return bfbcg(new fProxyDenseOperator(in A), in M, in B, ref X, ref R, ref P, ref AP, ref Pa, ref Z, maxIter, tol);
+        }
+
+        /// <summary>bfbcg over a block-sparse (BSR) SPD A with an s x n block B. Allocates block
+        /// scratch from the arena.</summary>
+        public static BlockSolveInfo bfbcg(in fProxyBSR A, in fProxyMxN B, ref fProxyMxN X, int maxIter, fProxy tol)
+        {
+            int s = B.M_Rows, n = A.M_Rows;
+            fProxyMxN R = B.fProxyTempMat(s, n, true), P = B.fProxyTempMat(s, n, true),
+                      AP = B.fProxyTempMat(s, n, true), Pa = B.fProxyTempMat(s, n, true);
+            return bfbcg(new fProxyBSROperator(in A), in B, ref X, ref R, ref P, ref AP, ref Pa, maxIter, tol);
+        }
+
+        /// <summary>bfbcg over a BSR SPD A with default maxIter (A.M_Rows) and tol (sqrtEps).</summary>
+        public static BlockSolveInfo bfbcg(in fProxyBSR A, in fProxyMxN B, ref fProxyMxN X)
+            => bfbcg(in A, in B, ref X, A.M_Rows, Consts.fProxySqrtEps);
+
+        /// <summary>Preconditioned bfbcg over a BSR SPD A. Allocates block scratch (incl. Z).</summary>
+        public static BlockSolveInfo bfbcg<TPre>(in fProxyBSR A, in TPre M, in fProxyMxN B, ref fProxyMxN X, int maxIter, fProxy tol)
+            where TPre : struct, IfProxyPreconditioner
+        {
+            int s = B.M_Rows, n = A.M_Rows;
+            fProxyMxN R = B.fProxyTempMat(s, n, true), P = B.fProxyTempMat(s, n, true),
+                      AP = B.fProxyTempMat(s, n, true), Pa = B.fProxyTempMat(s, n, true), Z = B.fProxyTempMat(s, n, true);
+            return bfbcg(new fProxyBSROperator(in A), in M, in B, ref X, ref R, ref P, ref AP, ref Pa, ref Z, maxIter, tol);
+        }
     }
 }

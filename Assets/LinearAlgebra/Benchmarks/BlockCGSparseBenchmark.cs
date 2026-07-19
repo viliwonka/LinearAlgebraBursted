@@ -2,15 +2,16 @@ using System.Text;
 
 namespace LinearAlgebra.Benchmarks
 {
-    // Ridge block-CG (bcg) and deflating block-CG (bcgrq) vs the scalar loop of s independent cg solves,
-    // over a BSR 2D-Poisson operator (5-point stencil, ~5 nonzeros/row, n = grid²), solved to sqrt(eps)
-    // — SPARSE is block-CG's real use case. A "spMM x50 / spMVx s x50" pair per row is a matvec-only
-    // probe: 50 block spMM(s) calls vs 50*s single-vector spMV calls (same total matvec work), whose
-    // wall-clock ratio isolates the s×n multivector layout cost from the O(s²n) solver bookkeeping.
-    // s = number of right-hand sides; `iters` is block iterations for the block-CG rows, summed column
-    // iterations for the scalar loop, and the rep count for the probes. `minActive` is the smallest
-    // active block width each block-CG row reached (bcg always reports rhs; bcgrq's LQRP deflation can
-    // report less).
+    // Ridge block-CG (bcg), deflating block-CG (bcgrq), and breakdown-free block-CG (bfbcg) vs the
+    // scalar loop of s independent cg solves, over a BSR 2D-Poisson operator (5-point stencil, ~5
+    // nonzeros/row, n = grid²), solved to sqrt(eps) — SPARSE is block-CG's real use case. A
+    // "spMM x50 / spMVx s x50" pair per row is a matvec-only probe: 50 block spMM(s) calls vs 50*s
+    // single-vector spMV calls (same total matvec work), whose wall-clock ratio isolates the s×n
+    // multivector layout cost from the O(s²n) solver bookkeeping. s = number of right-hand sides;
+    // `iters` is block iterations for the block-CG rows, summed column iterations for the scalar loop,
+    // and the rep count for the probes. `minActive` is the smallest active block width each block-CG
+    // row reached (bcg always reports rhs; bcgrq's and bfbcg's rank-revealing deflation can report
+    // less).
     //
     // Hand-written harness half; the timed IJobs + build/measure (Bench{Float,Double}) are code-generated
     // per dtype from Assets/LinearAlgebra/CodeGen/TemplateSourceBenchmarks/BlockCGSparseBenchmark.fProxy.cs.

@@ -54,6 +54,24 @@ namespace LinearAlgebra.Benchmarks
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct BlockBfbcgSparseJobFProxy : IJob
+    {
+        public fProxyBSR A;
+        public fProxyMxN B, X, R, P, AP, Pa;
+        public int K; public fProxy Tol;
+        public Indices Out;   // [0] = block iters, [1] = minActive
+
+        public void Execute()
+        {
+            int s = B.M_Rows, n = B.N_Cols;
+            for (int i = 0; i < s; i++) for (int c = 0; c < n; c++) X[i, c] = (fProxy)0;
+            var info = Krylov.bfbcg(new fProxyBSROperator(in A), in B, ref X, ref R, ref P, ref AP, ref Pa, K, Tol);
+            Out[0] = info.iterations;
+            Out[1] = info.minActive;
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct ScalarLoopSparseJobFProxy : IJob
     {
         public fProxyBSR A;
@@ -143,6 +161,14 @@ namespace LinearAlgebra.Benchmarks
             var rqStat = Bench.Time(() => rqJob.Run());
             sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                 "fProxy", n, s, "bcgrq", rqStat.Median, rqStat.Min, outv[0], outv[1]));
+
+            // bfbcg
+            var Xbf = arena.fProxyMat(s, n); var Rbf = arena.fProxyMat(s, n);
+            var Pbf = arena.fProxyMat(s, n); var APbf = arena.fProxyMat(s, n); var Pabf = arena.fProxyMat(s, n);
+            var bfJob = new BlockBfbcgSparseJobFProxy { A = A, B = B, X = Xbf, R = Rbf, P = Pbf, AP = APbf, Pa = Pabf, K = cap, Tol = tol, Out = outv };
+            var bfStat = Bench.Time(() => bfJob.Run());
+            sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
+                "fProxy", n, s, "bfbcg", bfStat.Median, bfStat.Min, outv[0], outv[1]));
 
             // scalar loop
             var x = arena.fProxyVec(n); var r = arena.fProxyVec(n); var p = arena.fProxyVec(n);
