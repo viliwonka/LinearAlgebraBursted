@@ -1,6 +1,76 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.minresQLP
+- 2026-07-19 | New file `Krylov.MINRESQLP.fProxy.cs`: single-RHS MINRES-QLP (Choi, Paige &
+  Saunders, SIAM J. Sci. Comput. 2011) for symmetric (possibly indefinite/singular) systems,
+  structural sibling of `Krylov.MINRES.fProxy.cs` (same Lanczos base + left-Givens reflection,
+  plus a second right-Givens QLP reflection that regularizes the near-singular tail and yields the
+  minimum-length solution on a singular/rank-deficient A). Ported fidelity-first from
+  `reference/square/minresQLP.py` (Apache-2.0, Liu & Roosta-Khorasani's Python translation of the
+  Stanford SOL MATLAB `minresQLP`), cross-referenced against `MINRESQLP-SISC-2011.pdf`. Workspace
+  (own Temp/arena, 9 length-n vectors: v/r1/r2/r3/w/wl/wl2/xl2/t1) -- one more than plain minres's
+  8; `r3` doubles as both the Lanczos matvec accumulator and (preconditioned) the M⁻¹-apply
+  target, so no separate `z` buffer is needed; `t1` is a generic recycle buffer used only inside
+  the QLP right-reflection's w/wl/wl2 update (needed once three buffers must all be read while two
+  new ones are produced -- see the in-file buffer-rotation comments). Overload ladder trimmed to
+  what the spec enumerated: generic `<TOp,TPre>` core, `<TOp>` unpreconditioned forwarder, dense
+  `fProxyMxN` + BSR `fProxyBSR` unpreconditioned rungs (zero-alloc + arena + default-param), the
+  generic preconditioned `<TOp,TPre>` arena rungs, and (matching the one preconditioner the spec's
+  tests exercise) a named BSR+block-Jacobi convenience trio. The other five named BSR
+  preconditioner convenience wrappers minres carries (SSOR/IC0/FSAI/Chebyshev/AdditiveSchwarz) were
+  NOT added for QLP -- any of them still works through the generic `<TOp,TPre>` rungs.
+- 2026-07-19 | DEVIATION (warm start): the reference always starts from x=0 (no warm-start
+  parameter at all). This library's whole Krylov surface treats `x` as a warm-startable in/out
+  parameter, so the port forms r0 = b - A·x0 up front (exactly like plain `minres`'s own r1 = b -
+  A·x) and runs the reference's recurrence with r0 in place of "b" everywhere it seeds the
+  Lanczos/right-reflection state. This is exact, not approximate: every reference x-update is
+  either `x +=` (additive) or, once the QLP phase starts, `x = xl2 + ...` where `xl2` was itself
+  reconstructed by subtracting off the last two increments from the CURRENT (x0-seeded) `x` --
+  proven by hand to still carry x0 through every subsequent QLP-phase overwrite. The one edge this
+  doesn't cover (QLP transition landing exactly on iters==1, before any x0-carrying `xl2` exists)
+  is provably unreachable: `Acond` starts at 1 < the default `TranCond` = 1e7, so the branch that
+  first flips `QLPiter` from 0 to 1 cannot fire before iters==1 has already run its `if iters>1`
+  guard.
+- 2026-07-19 | DEVIATION (branch condition, NOT "fixed"): section H's branch
+  `if (Acond < TranCond) and flag != flag0 and QLPiter == 0: <cheaper MINRES step> else: <QLP
+  step>` reads, at the point it runs, `flag` as either still `flag0` (untouched this iteration) or
+  freshly 6/9 (just set by the xnorm/maxxnorm guard immediately above it) -- so in EVERY normal
+  iteration (nothing exceptional triggered) the condition is false and the QLP branch runs, i.e.
+  this reference effectively hardcodes "always QLP" (`TranCond=1` behavior) regardless of the
+  nominal `TranCond=1e7` default, from iteration 1 onward. Both branches are still mathematically
+  valid (QLP is a strict stability generalization of the plain step), so this is not a correctness
+  bug -- just a missed "cheaper early iterations" optimization in the reference. Ported the
+  condition EXACTLY as written (fidelity-first): the MINRES branch is dead in practice but still
+  implemented (and exercised whenever xnorm/gama boundary guards do trip flag=6/9 mid-solve).
+- 2026-07-19 | DEVIATION (safety guards the reference lacks, added to satisfy this library's
+  "no NaN/throw" contract): (1) the reference's preconditioner-indefinite checks (`beta1<0` at
+  init, `betan<=0` mid-loop) only `print` and let a negative/zero value silently propagate as a
+  "norm" -- replaced with the same clean `Breakdown` early-exit plain `minres` already uses for the
+  identical situation. (2) the reference's iters==1-betan==0 "lucky Lanczos breakdown" shortcut
+  (either x is already optimal, flag 0, or x += r0/alfa solves exactly, flag -1) is coded ONLY
+  inside the unpreconditioned branch in the reference -- under a real M it falls through and would
+  divide by beta=0 on the next iteration's `v = r/beta`. Generalized the check to run after both
+  branches converge on a `betan` value, so it also guards the preconditioned path.
+- 2026-07-19 | Reference flag (-1, 0..9) -> `IterativeSolveStatus` mapping (SolveInfo has no room
+  for the reference's extra flag/Acond/Anorm/relAres diagnostics, per spec "only surface what fits
+  SolveInfo"): flag in {-1,0,1,2,3,4,5} (b=0/eigenvector shortcuts, compatible solve, min-length LS
+  solve, either at rtol or at eps, x converged to eigenvector precision) -> Converged; flag 8
+  (maxit) -> MaxIterations; flag in {6,7,9} (xnorm exceeded maxxnorm, Acond exceeded Acondlim,
+  gama too tiny to safely divide) plus the added `-3` sentinel (non-SPD M mid-loop) ->
+  Breakdown. `rnorm` reported is always a FRESH b-Ax (one extra matvec at the very end, regardless
+  of exit reason) rather than the internally tracked `phi`/`rnorm` -- cheap (paid once per solve,
+  not per iteration) and removes any doubt from accumulated recurrence drift; the reference's own
+  Arnorm/relAres final recompute was dropped (not needed for a value SolveInfo doesn't carry).
+- 2026-07-19 | `maxxnorm`/`Acondlim`/`TranCond` are internal constants at the reference's own
+  defaults (1e7, 1e15, 1e7), NOT exposed as new parameters -- the spec pins the overload ladder to
+  mirror plain `minres`'s (maxIter, tol only). Reference's `tiny` (smallest normal double,
+  `np.finfo(np.double).tiny`) and `eps` (hardcoded DOUBLE epsilon, `np.finfo(float).eps` in
+  Python, i.e. NOT adapted to the array dtype even in the original) were both remapped to
+  precision-scaled equivalents so the float build isn't silently running double-precision
+  thresholds: `eps = Consts.fProxyEpsilon`, `tiny = eps*eps`. `rtol` -> this library's existing
+  `tol` param name (see [[short-param-names]]).
+
 ## Krylov.idr
 - 2026-07-19 | New file `Krylov.IDR.fProxy.cs`: single-RHS IDR(s) (Sonneveld & van Gijzen 2008),
   structural sibling of `Krylov.BiCGStab.fProxy.cs`/`Krylov.GMRES.fProxy.cs` (generic
