@@ -1,0 +1,332 @@
+using System;
+using Unity.Collections;
+using Unity.Mathematics;
+using LinearAlgebra.Sparse;
+
+namespace LinearAlgebra
+{
+    /// <summary>
+    /// General (non-symmetric-safe) dense block operator. Unlike <see cref="fProxyDenseOperator"/>'s
+    /// <c>ApplyBlock</c> (which computes Vrows·A and is only correct when A = Aᵀ — see its own doc),
+    /// this computes the true AVrows[i,:] = A · Vrows[i,:] for ANY square A via the transpose-B GEMM
+    /// route (<c>Blas.dot(..., transposeA: false, transposeB: true)</c>). Apply/ApplyT/ApplyDot are
+    /// identical to <see cref="fProxyDenseOperator"/> (already general, not symmetry-dependent).
+    /// <c>ApplyBlock</c> requires <c>rows == Vrows.M_Rows == AVrows.M_Rows</c> (no partial/locked-tail
+    /// support) — the only caller, <see cref="Krylov.bbiCGStab{TOp, TPre}"/>, keeps every column live
+    /// for the whole solve and never calls it any other way.
+    /// </summary>
+    public readonly struct fProxyDenseOperatorGeneral : IfProxyLinearOperator
+    {
+        public readonly fProxyMxN A;
+
+        public fProxyDenseOperatorGeneral(in fProxyMxN a)
+        {
+            A = a;
+        }
+
+        public int Rows => A.M_Rows;
+        public int Cols => A.N_Cols;
+
+        public void Apply(in fProxyN x, ref fProxyN y) => Blas.dot(in A, in x, ref y);
+
+        public void ApplyT(in fProxyN x, ref fProxyN y) => Blas.dot(in x, in A, ref y);
+
+        public fProxy ApplyDot(in fProxyN x, ref fProxyN y) => Blas.dotSelf(in A, in x, ref y);
+
+        public void ApplyBlock(in fProxyMxN Vrows, ref fProxyMxN AVrows, int rows)
+        {
+            if (rows != Vrows.M_Rows || rows != AVrows.M_Rows)
+                throw new ArgumentException("fProxyDenseOperatorGeneral.ApplyBlock: rows must equal Vrows.M_Rows and AVrows.M_Rows");
+            Blas.dot(in Vrows, in A, ref AVrows, false, true);
+        }
+    }
+
+    public static partial class Krylov {
+
+        // ---- bbiCGStab private helpers ---------------------------------------------------------------
+
+        // G = Rhat0^T X (classical), via the transpose-B GEMM route. Deliberately NOT BlockGram: Rhat0
+        // (the fixed shadow residual) and X (V/R/T, evolving) are unrelated blocks, so this s x s cross
+        // term is NOT symmetric by construction -- BlockGram's unconditional symmetrization would
+        // corrupt it. G must not alias Rhat0 or X.
+        static void BlockCrossGram(in fProxyMxN Rhat0, in fProxyMxN X, ref fProxyMxN G)
+            => Blas.dot(in Rhat0, in X, ref G, false, true);
+
+        // General (nonsymmetric) s x s solve: Coef * X = Rhs, via QRCP (rank-revealing). Coef/Rhs are
+        // copied into coefWork/rhsWork (which QRCP.solveInPlace destroys), so Coef/Rhs are preserved.
+        // X must be distinct from Coef/Rhs.
+        static RankInfo BlockSolveGeneral(in fProxyMxN Coef, in fProxyMxN Rhs, ref fProxyMxN X,
+                                           ref fProxyMxN coefWork, ref fProxyMxN rhsWork,
+                                           ref fProxyMxN Rqrcp, ref Pivot Pqrcp, ref fProxyN uQrcp, int s)
+        {
+            CopyMat(in Coef, ref coefWork, s);
+            CopyMat(in Rhs, ref rhsWork, s);
+            return QRCP.solveInPlace(ref coefWork, ref rhsWork, ref X, ref Rqrcp, ref Pqrcp, ref uQrcp, (fProxy)(-1));
+        }
+
+        // Frobenius inner product sum_i,c U[i,c]*V[i,c] over the whole (contiguous) block -- equals
+        // trace(U_classical^T V_classical) regardless of row/col storage convention. U, V must be same shape.
+        static unsafe fProxy BlockFrobDot(in fProxyMxN U, in fProxyMxN V)
+        {
+            fProxy* up = U.Data.Ptr; fProxy* vp = V.Data.Ptr;
+            long len = (long)U.M_Rows * U.N_Cols;
+            fProxy acc = (fProxy)0;
+            for (long i = 0; i < len; i++) acc += up[i] * vp[i];
+            return acc;
+        }
+
+        // M *= scale over the whole (contiguous) block, in place.
+        static unsafe void BlockScaleInPlace(ref fProxyMxN M, fProxy scale)
+        {
+            fProxy* mp = M.Data.Ptr;
+            long len = (long)M.M_Rows * M.N_Cols;
+            for (long i = 0; i < len; i++) mp[i] *= scale;
+        }
+
+        // ---- block BiCGSTAB core (bbiCGStab) -------------------------------------------------------
+
+        /// <summary>
+        /// Zero-alloc block (multi-RHS) BiCGSTAB for a NON-symmetric (general) square A and s
+        /// simultaneous right-hand sides, generic over BOTH the operator (<see cref="IfProxyLinearOperator"/>)
+        /// and the preconditioner (<see cref="IfProxyPreconditioner"/>). One shared block Krylov
+        /// subspace built from all s RHS at once (s x s block coefficients, two <c>ApplyBlock</c> calls
+        /// per iteration), not s independent scalar <see cref="biCGStab{TOp, TPre}"/> solves. Ported
+        /// from the block-BiCGSTAB recurrence in nmoteki's <c>bl_bicgstab.cpp</c> (Tadano et al. 2009):
+        /// unlike scalar BiCGSTAB's rho/alpha/omega carry, this solves the SAME s x s coefficient
+        /// (Rhat0^T V) for both the alpha and beta steps within one iteration, via a rank-revealing
+        /// QRCP solve (<see cref="BlockSolveGeneral"/>) rather than Cholesky (the coefficients are not
+        /// SPD — A is nonsymmetric). The stabilization omega is a single SCALAR shared across all s
+        /// columns (Frobenius-trace ratio), not a block.
+        ///
+        /// B and X are s ROWS x n COLS (row j = the j-th RHS / solution, length n = A.Rows); X is
+        /// warm-startable. R, Rhat0, P, V, T are s x n block scratch (Rhat0 is the fixed shadow
+        /// residual); Phat, Shat are s x n block scratch, UNUSED under the identity preconditioner
+        /// (pass <c>default</c>). Convergence is per column against tol²·‖B[j]‖². Every live column is
+        /// updated every iteration (no column locking/deflation — see <see cref="bcgrq{TOp, TPre}"/>
+        /// for that treatment on CG). Breakdown (a singular block coefficient, or a non-positive/NaN
+        /// omega denominator) reports <see cref="IterativeSolveStatus.Breakdown"/> with X holding the
+        /// last committed iterate — never NaN/throw. Returns a <see cref="BlockSolveInfo"/>.
+        /// </summary>
+        public static BlockSolveInfo bbiCGStab<TOp, TPre>(in TOp A, in TPre M, in fProxyMxN B, ref fProxyMxN X,
+                                        ref fProxyMxN R, ref fProxyMxN Rhat0, ref fProxyMxN P, ref fProxyMxN V, ref fProxyMxN T,
+                                        ref fProxyMxN Phat, ref fProxyMxN Shat,
+                                        int maxIter, fProxy tol)
+            where TOp : struct, IfProxyLinearOperator
+            where TPre : struct, IfProxyPreconditioner
+        {
+            if (A.Rows != A.Cols) throw new ArgumentException("bbiCGStab (block): A must be square");
+            int n = A.Rows;
+            int s = B.M_Rows;
+            if (B.N_Cols != n) throw new ArgumentException("bbiCGStab (block): B must be s x A.Rows");
+            if (X.M_Rows != s || X.N_Cols != n) throw new ArgumentException("bbiCGStab (block): X must match B");
+            if (R.M_Rows != s || R.N_Cols != n) throw new ArgumentException("bbiCGStab (block): R must match B");
+            if (Rhat0.M_Rows != s || Rhat0.N_Cols != n) throw new ArgumentException("bbiCGStab (block): Rhat0 must match B");
+            if (P.M_Rows != s || P.N_Cols != n) throw new ArgumentException("bbiCGStab (block): P must match B");
+            if (V.M_Rows != s || V.N_Cols != n) throw new ArgumentException("bbiCGStab (block): V must match B");
+            if (T.M_Rows != s || T.N_Cols != n) throw new ArgumentException("bbiCGStab (block): T must match B");
+            if (!M.IsIdentity && (Phat.M_Rows != s || Phat.N_Cols != n || Shat.M_Rows != s || Shat.N_Cols != n))
+                throw new ArgumentException("bbiCGStab (block): Phat/Shat must match B");
+            if (maxIter < 1) throw new ArgumentException("bbiCGStab (block): maxIter must be >= 1");
+
+            unsafe
+            {
+                int cnt = M.IsIdentity ? 7 : 9;
+                long* ptrs = stackalloc long[9];
+                ptrs[0] = (long)R.Data.Ptr; ptrs[1] = (long)Rhat0.Data.Ptr; ptrs[2] = (long)P.Data.Ptr;
+                ptrs[3] = (long)V.Data.Ptr; ptrs[4] = (long)T.Data.Ptr;
+                ptrs[5] = (long)X.Data.Ptr; ptrs[6] = (long)B.Data.Ptr;
+                if (!M.IsIdentity) { ptrs[7] = (long)Phat.Data.Ptr; ptrs[8] = (long)Shat.Data.Ptr; }
+                RequireDistinctBuffers("bbiCGStab (block): R/Rhat0/P/V/T/Phat/Shat/X/B must be distinct", ptrs, cnt);
+            }
+
+            // s x s coefficient scratch (Mmat shared by the alpha and beta solves within one
+            // iteration) + BlockSolveGeneral's own QRCP scratch + per-column thresholds + row scratch
+            // for the preconditioner.
+            var Mmat     = new fProxyMxN(s, s, Allocator.Temp, true);
+            var Rhs      = new fProxyMxN(s, s, Allocator.Temp, true);
+            var alphaMat = new fProxyMxN(s, s, Allocator.Temp, true);
+            var betaMat  = new fProxyMxN(s, s, Allocator.Temp, true);
+            var coefWork = new fProxyMxN(s, s, Allocator.Temp, true);
+            var rhsWork  = new fProxyMxN(s, s, Allocator.Temp, true);
+            var Rqrcp    = new fProxyMxN(s, s, Allocator.Temp, true);
+            var Pqrcp    = new Pivot(s, Allocator.Temp);
+            var uQrcp    = new fProxyN(s);
+            var Tmp      = new fProxyMxN(s, n, Allocator.Temp, true);   // s x n GEMM scratch (BlockCTV outputs)
+            var thr      = new fProxyN(s);
+            fProxyN rowIn = default, rowOut = default;
+            if (!M.IsIdentity) { rowIn = new fProxyN(n); rowOut = new fProxyN(n); }
+
+            IterativeSolveStatus status = IterativeSolveStatus.MaxIterations;
+            int iters = maxIter;
+            int converged = 0;
+            double maxr = 0;
+
+            // Per-column thresholds tol^2 ||B[j]||^2.
+            for (int j = 0; j < s; j++)
+            {
+                fProxy bb = (fProxy)0;
+                for (int c = 0; c < n; c++) bb += B[j, c] * B[j, c];
+                thr[j] = tol * tol * bb;
+            }
+
+            // R = B - A X (T as scratch, mirrors bcg's own reuse of Q).
+            A.ApplyBlock(in X, ref T, s);
+            for (int i = 0; i < s; i++)
+                for (int c = 0; c < n; c++) R[i, c] = B[i, c] - T[i, c];
+
+            converged = CountConverged(in R, in thr, s, n, out maxr);
+            if (converged == s) { status = IterativeSolveStatus.Converged; iters = 0; goto cleanup; }
+
+            CopyBlock(in R, ref Rhat0, s, n);   // fixed shadow residual
+            CopyBlock(in R, ref P, s, n);       // P := R (nmoteki's own init -- not zero)
+
+            for (int k = 0; k < maxIter; k++)
+            {
+                // V = A (M^-1 P).
+                if (M.IsIdentity)
+                {
+                    A.ApplyBlock(in P, ref V, s);
+                }
+                else
+                {
+                    BlockApplyPre(in M, in P, ref Phat, s, n, ref rowIn, ref rowOut);
+                    A.ApplyBlock(in Phat, ref V, s);
+                }
+
+                BlockCrossGram(in Rhat0, in V, ref Mmat);   // Mmat = Rhat0^T V
+                BlockCrossGram(in Rhat0, in R, ref Rhs);    // Rhs  = Rhat0^T R
+
+                var rankA = BlockSolveGeneral(in Mmat, in Rhs, ref alphaMat, ref coefWork, ref rhsWork, ref Rqrcp, ref Pqrcp, ref uQrcp, s);
+                if (rankA.status != DirectSolveStatus.Success)
+                { status = IterativeSolveStatus.Breakdown; iters = k; goto cleanup; }
+
+                // X += alpha (M^-1 P). Identity: pHat = p, so this is X += P alpha directly.
+                if (M.IsIdentity) { BlockCTV(in alphaMat, in P, ref Tmp); }
+                else              { BlockCTV(in alphaMat, in Phat, ref Tmp); }
+                BlockAdd(ref X, in Tmp, (fProxy)1);
+                BlockCTV(in alphaMat, in V, ref Tmp); BlockAdd(ref R, in Tmp, (fProxy)(-1));  // R -= V alpha (R := S)
+
+                converged = CountConverged(in R, in thr, s, n, out maxr);
+                if (converged == s) { status = IterativeSolveStatus.Converged; iters = k + 1; goto cleanup; }
+
+                // T = A (M^-1 S), S = R.
+                if (M.IsIdentity)
+                {
+                    A.ApplyBlock(in R, ref T, s);
+                }
+                else
+                {
+                    BlockApplyPre(in M, in R, ref Shat, s, n, ref rowIn, ref rowOut);
+                    A.ApplyBlock(in Shat, ref T, s);
+                }
+
+                fProxy tS = BlockFrobDot(in T, in R);
+                fProxy tT = BlockFrobDot(in T, in T);
+                if (!(tT > (fProxy)0))                      // NaN-safe: tT is a sum of squares
+                { status = IterativeSolveStatus.Breakdown; iters = k; goto cleanup; }
+
+                fProxy omega = tS / tT;
+                if (omega == (fProxy)0 || math.isnan(omega))
+                { status = IterativeSolveStatus.Breakdown; iters = k; goto cleanup; }
+
+                // X += omega (M^-1 S). Identity: sHat = s (R holds S), so this is X += omega R directly.
+                if (M.IsIdentity) BlockAdd(ref X, in R, omega);
+                else              BlockAdd(ref X, in Shat, omega);
+                BlockAdd(ref R, in T, -omega);          // R := S - omega T (new residual)
+
+                converged = CountConverged(in R, in thr, s, n, out maxr);
+                if (converged == s) { status = IterativeSolveStatus.Converged; iters = k + 1; goto cleanup; }
+
+                // beta = Mmat^-1 (-Rhat0^T T)  (Mmat reused from this same iteration's alpha solve).
+                BlockCrossGram(in Rhat0, in T, ref Rhs);
+                BlockScaleInPlace(ref Rhs, (fProxy)(-1));
+
+                var rankB = BlockSolveGeneral(in Mmat, in Rhs, ref betaMat, ref coefWork, ref rhsWork, ref Rqrcp, ref Pqrcp, ref uQrcp, s);
+                if (rankB.status != DirectSolveStatus.Success)
+                { status = IterativeSolveStatus.Breakdown; iters = k + 1; goto cleanup; }
+
+                // P := R + (P - omega V) beta.
+                BlockAdd(ref P, in V, -omega);
+                BlockCTV(in betaMat, in P, ref Tmp);
+                BlockZplusT(in R, in Tmp, ref P);
+            }
+
+        cleanup:
+            Mmat.Dispose(); Rhs.Dispose(); alphaMat.Dispose(); betaMat.Dispose();
+            coefWork.Dispose(); rhsWork.Dispose(); Rqrcp.Dispose(); Pqrcp.Dispose(); uQrcp.Dispose();
+            Tmp.Dispose(); thr.Dispose();
+            if (!M.IsIdentity) { rowIn.Dispose(); rowOut.Dispose(); }
+
+            // No column locking/deflation -- every column stays active the whole solve -> minActive = s.
+            return new BlockSolveInfo { rhs = s, converged = converged, iterations = iters, maxRnorm = maxr, minActive = s, status = status };
+        }
+
+        // ---- unpreconditioned + concrete forwarders ------------------------------------------------
+
+        /// <summary>Unpreconditioned block-BiCGSTAB -- forwards into the merged
+        /// <see cref="bbiCGStab{TOp, TPre}"/> with the identity preconditioner (needs no Phat/Shat).</summary>
+        public static BlockSolveInfo bbiCGStab<TOp>(in TOp A, in fProxyMxN B, ref fProxyMxN X,
+                                        ref fProxyMxN R, ref fProxyMxN Rhat0, ref fProxyMxN P, ref fProxyMxN V, ref fProxyMxN T,
+                                        int maxIter, fProxy tol)
+            where TOp : struct, IfProxyLinearOperator
+        {
+            fProxyMxN Phat = default, Shat = default;
+            return bbiCGStab(in A, default(fProxyIdentityPreconditioner), in B, ref X, ref R, ref Rhat0, ref P, ref V, ref T, ref Phat, ref Shat, maxIter, tol);
+        }
+
+        /// <summary>Block-BiCGSTAB over a dense NON-symmetric <see cref="fProxyMxN"/> A (n x n) with an
+        /// s x n block B, via <see cref="fProxyDenseOperatorGeneral"/> (general block apply). Allocates
+        /// block scratch from the arena.</summary>
+        public static BlockSolveInfo bbiCGStab(in fProxyMxN A, in fProxyMxN B, ref fProxyMxN X, int maxIter, fProxy tol)
+        {
+            int s = B.M_Rows, n = A.M_Rows;
+            fProxyMxN R = B.fProxyTempMat(s, n, true), Rhat0 = B.fProxyTempMat(s, n, true),
+                      P = B.fProxyTempMat(s, n, true), V = B.fProxyTempMat(s, n, true), T = B.fProxyTempMat(s, n, true);
+            return bbiCGStab(new fProxyDenseOperatorGeneral(in A), in B, ref X, ref R, ref Rhat0, ref P, ref V, ref T, maxIter, tol);
+        }
+
+        /// <summary>Block-BiCGSTAB over a dense non-symmetric A with default maxIter (A.M_Rows) and
+        /// tol (sqrtEps).</summary>
+        public static BlockSolveInfo bbiCGStab(in fProxyMxN A, in fProxyMxN B, ref fProxyMxN X)
+            => bbiCGStab(in A, in B, ref X, A.M_Rows, Consts.fProxySqrtEps);
+
+        /// <summary>Preconditioned block-BiCGSTAB over a dense non-symmetric A. Allocates block scratch
+        /// (incl. Phat/Shat).</summary>
+        public static BlockSolveInfo bbiCGStab<TPre>(in fProxyMxN A, in TPre M, in fProxyMxN B, ref fProxyMxN X, int maxIter, fProxy tol)
+            where TPre : struct, IfProxyPreconditioner
+        {
+            int s = B.M_Rows, n = A.M_Rows;
+            fProxyMxN R = B.fProxyTempMat(s, n, true), Rhat0 = B.fProxyTempMat(s, n, true),
+                      P = B.fProxyTempMat(s, n, true), V = B.fProxyTempMat(s, n, true), T = B.fProxyTempMat(s, n, true),
+                      Phat = B.fProxyTempMat(s, n, true), Shat = B.fProxyTempMat(s, n, true);
+            return bbiCGStab(new fProxyDenseOperatorGeneral(in A), in M, in B, ref X, ref R, ref Rhat0, ref P, ref V, ref T, ref Phat, ref Shat, maxIter, tol);
+        }
+
+        /// <summary>Block-BiCGSTAB over a block-sparse (BSR) non-symmetric A with an s x n block B.
+        /// Allocates block scratch from the arena.</summary>
+        public static BlockSolveInfo bbiCGStab(in fProxyBSR A, in fProxyMxN B, ref fProxyMxN X, int maxIter, fProxy tol)
+        {
+            int s = B.M_Rows, n = A.M_Rows;
+            fProxyMxN R = B.fProxyTempMat(s, n, true), Rhat0 = B.fProxyTempMat(s, n, true),
+                      P = B.fProxyTempMat(s, n, true), V = B.fProxyTempMat(s, n, true), T = B.fProxyTempMat(s, n, true);
+            return bbiCGStab(new fProxyBSROperator(in A), in B, ref X, ref R, ref Rhat0, ref P, ref V, ref T, maxIter, tol);
+        }
+
+        /// <summary>Block-BiCGSTAB over a BSR non-symmetric A with default maxIter (A.M_Rows) and tol
+        /// (sqrtEps).</summary>
+        public static BlockSolveInfo bbiCGStab(in fProxyBSR A, in fProxyMxN B, ref fProxyMxN X)
+            => bbiCGStab(in A, in B, ref X, A.M_Rows, Consts.fProxySqrtEps);
+
+        /// <summary>Preconditioned block-BiCGSTAB over a BSR non-symmetric A. Allocates block scratch
+        /// (incl. Phat/Shat).</summary>
+        public static BlockSolveInfo bbiCGStab<TPre>(in fProxyBSR A, in TPre M, in fProxyMxN B, ref fProxyMxN X, int maxIter, fProxy tol)
+            where TPre : struct, IfProxyPreconditioner
+        {
+            int s = B.M_Rows, n = A.M_Rows;
+            fProxyMxN R = B.fProxyTempMat(s, n, true), Rhat0 = B.fProxyTempMat(s, n, true),
+                      P = B.fProxyTempMat(s, n, true), V = B.fProxyTempMat(s, n, true), T = B.fProxyTempMat(s, n, true),
+                      Phat = B.fProxyTempMat(s, n, true), Shat = B.fProxyTempMat(s, n, true);
+            return bbiCGStab(new fProxyBSROperator(in A), in M, in B, ref X, ref R, ref Rhat0, ref P, ref V, ref T, ref Phat, ref Shat, maxIter, tol);
+        }
+    }
+}

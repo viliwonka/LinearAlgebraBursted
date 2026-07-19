@@ -1,6 +1,47 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.bbiCGStab
+- 2026-07-19 | Recurrence ported from nmoteki's `bl_bicgstab.cpp` (Tadano et al. 2009 JSIAM
+  letters), per task instruction to take the math from that working reference rather than
+  `docs/dev/spec-bbicgstab.md` Section 4's speculative generalization. nmoteki's loop carries no
+  `rho_(k-1)` at all: the SAME s x s coefficient `Mmat = Rhat0^T V` (this iteration's) is solved
+  twice, once for alpha (rhs `Rhat0^T R`) and once for beta (rhs `-Rhat0^T Z`, Z = A applied to
+  the half-step residual) — this sidesteps the spec's Section 6 "open risk" (the `Y*alphaMat` vs
+  `alphaMat*Y` ordering ambiguity) entirely, since that ambiguity was an artifact of trying to
+  generalize scalar BiCGSTAB's `rho_k/rho_(k-1)` ratio to matrices, which nmoteki's formulation
+  never does. Kept spec Section 4.3's early-exit-on-half-residual optimization (checking
+  convergence on S before the second matvec) since it mirrors scalar `biCGStab`'s own shape and
+  doesn't change the recurrence, only when it's allowed to stop early — nmoteki's own loop always
+  runs both matvecs and checks once at the end.
+- 2026-07-19 | `BlockGram` (Common helper) is NOT valid for `Rhat0^T V` / `Rhat0^T R` / `Rhat0^T Z`:
+  it unconditionally symmetrizes its output, which is only correct for a self-Gram
+  (`P^T A P`-shaped). Rhat0 is the FIXED shadow residual, distinct from V/R/Z for every k >= 1, so
+  these cross terms are genuinely asymmetric; symmetrizing them silently corrupts alpha/beta.
+  Added a local, non-symmetrizing `BlockCrossGram` (same GEMM call as `BlockGram` minus the
+  symmetrization loop) instead. `docs/dev/spec-bbicgstab.md`'s Section 4.3 pseudocode calls
+  `BlockGram` for these terms — that line is wrong; do not "fix" `BlockCrossGram` back to
+  `BlockGram` if revisiting this file.
+- 2026-07-19 | `fProxyDenseOperator.ApplyBlock` (`Interfaces/LinearOperator.fProxy.cs`) computes
+  `Vrows * A` (classical), which equals `A * Vrows[r]` per row only when `A = Aᵀ` — true for every
+  existing caller (bcg/bcgrq/bfbcg/LOBPCG, all SPD/symmetric) but false for bbiCGStab's whole
+  reason to exist (nonsymmetric A). Reusing it for the dense rungs would have silently solved
+  `Aᵀx = b` instead of `Ax = b`. Added `fProxyDenseOperatorGeneral` (this file) whose `ApplyBlock`
+  routes through `Blas.dot(..., transposeB: true)` instead — the correct classical `A * Vrows[r]`
+  for any square A, at the cost of requiring `rows == Vrows.M_Rows == AVrows.M_Rows` (no
+  partial/locked-tail write, since bbiCGStab never needs one). Used only by bbiCGStab's dense
+  rungs; `fProxyDenseOperator` and its callers are untouched.
+- 2026-07-19 | First test pass caught a real bug: the preconditioned X update was accumulating
+  `alpha*P` / `omega*S` (the raw, unpreconditioned search directions) instead of
+  `alpha*Phat` / `omega*Shat` (`M^-1` applied) — copied the unpreconditioned shape without
+  re-deriving the preconditioned one. Scalar `biCGStab` is explicit about this
+  (`x.addScaledInPlace(alpha, pHat)` under `!M.IsIdentity`, `Krylov.BiCGStab.fProxy.cs`); the P
+  search-direction recurrence itself (`P := R + (P - omega V) beta`) correctly stays in the raw,
+  unpreconditioned space either way (mirrors scalar's own `p`/`v`/`r` — only the operator applies
+  and the X commit route through the preconditioner). Caught by
+  `BlockBiCGStabTests.PreconditionedMatchesScalar` (RAS + BSR nonsymmetric) failing an Assert
+  inside the Burst job before the fix, passing after.
+
 ## Krylov templates split one-file-per-solver
 - 2026-07-19 | Pure reorganization, no algorithm/signature changes (verified: sorted-line diff of
   every non-blank, non-boilerplate line across the old and new file sets is empty; the 125
