@@ -15,7 +15,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static fProxy L2(in fProxyN   a) => fProxyNormsCore.L2(a);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static fProxy L2(in fProxyMxN a) => fProxyNormsCore.L2(a);
+        public static unsafe fProxy L2(in fProxyMxN a) => math.sqrt(UnsafeOP.vecDot(a.Data.Ptr, a.Data.Ptr, a.M_Rows * a.N_Cols));
 
         // Standard L1 norm: the sum of absolute values, Σ|xᵢ| (NOT averaged by length).
         // Naïve accumulation (no Kahan/pairwise compensation): accurate at moderate sizes; very
@@ -23,13 +23,13 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static fProxy L1(in fProxyN   a) => fProxyNormsCore.L1(a);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static fProxy L1(in fProxyMxN a) => fProxyNormsCore.L1(a);
+        public static unsafe fProxy L1(in fProxyMxN a) => UnsafeOP.sumAbs(a.Data.Ptr, a.M_Rows * a.N_Cols);
 
         // L-infinity (max-abs) norm: the largest absolute element, max_i |xᵢ|.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static fProxy LInf(in fProxyN   a) => fProxyNormsCore.LInf(a);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static fProxy LInf(in fProxyMxN a) => fProxyNormsCore.LInf(a);
+        public static unsafe fProxy LInf(in fProxyMxN a) => UnsafeOP.maxAbs(a.Data.Ptr, a.M_Rows * a.N_Cols);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static fProxy L2Range(in fProxyN a, int start, int end)

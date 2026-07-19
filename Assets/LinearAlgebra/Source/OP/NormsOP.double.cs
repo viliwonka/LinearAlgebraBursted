@@ -19,7 +19,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static double L2(in doubleN   a) => doubleNormsCore.L2(a);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static double L2(in doubleMxN a) => doubleNormsCore.L2(a);
+        public static unsafe double L2(in doubleMxN a) => math.sqrt(UnsafeOP.vecDot(a.Data.Ptr, a.Data.Ptr, a.M_Rows * a.N_Cols));
 
         // Standard L1 norm: the sum of absolute values, Σ|xᵢ| (NOT averaged by length).
         // Naïve accumulation (no Kahan/pairwise compensation): accurate at moderate sizes; very
@@ -27,13 +27,13 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static double L1(in doubleN   a) => doubleNormsCore.L1(a);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static double L1(in doubleMxN a) => doubleNormsCore.L1(a);
+        public static unsafe double L1(in doubleMxN a) => UnsafeOP.sumAbs(a.Data.Ptr, a.M_Rows * a.N_Cols);
 
         // L-infinity (max-abs) norm: the largest absolute element, max_i |xᵢ|.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static double LInf(in doubleN   a) => doubleNormsCore.LInf(a);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static double LInf(in doubleMxN a) => doubleNormsCore.LInf(a);
+        public static unsafe double LInf(in doubleMxN a) => UnsafeOP.maxAbs(a.Data.Ptr, a.M_Rows * a.N_Cols);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static double L2Range(in doubleN a, int start, int end)

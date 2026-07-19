@@ -1,6 +1,17 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## NormsOP
+- 2026-07-19 | ROOT FIX for the `Norms.LInf` narrowed-view over-read documented under Krylov.bgmres
+  below. The entrywise `L2`/`L1`/`LInf(in fProxyMxN)` overloads now scan the LOGICAL `M_Rows*N_Cols`
+  extent instead of `a.Data.Length` (the full backing). `RowsView`/`RectView` narrow `M_Rows` on a
+  struct copy but leave `Data.Length` (and the readonly `Length` field) at the full buffer size, so
+  scanning `Data.Length` read past the logical matrix into the uninitialized tail — silently
+  corrupting the `Norms.LInf`-derived zero threshold in `QR.decompInPlace`/`LQRP.decomp`. Sibling of
+  the Phase 1 `CopyFrom` resize footgun (rule: on a view, use logical `M_Rows*N_Cols`, never
+  `Data.Length`). The `uninit:true`→`false` workarounds in bgmres (`Wbuf`/`HQscratch`) are now
+  unnecessary but harmless; left in place.
+
 ## Krylov.bgmres
 - 2026-07-19 | **Real bug found via the new test suite: `Norms.LInf` over-reads uninitialized memory
   through a narrowed view.** `QR.decompInPlace` and `LQRP.decomp` both compute a Householder
