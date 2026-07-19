@@ -1,6 +1,23 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.fgmres
+- 2026-07-19 | New file `Krylov.FGMRES.fProxy.cs`, sibling to `Krylov.GMRES.fProxy.cs` (not an
+  addition to it) per the single-solver-per-file convention. Ported the flexible mechanism (store
+  the preconditioned basis Z, update x = x0 + Z y instead of applying M once to Σ y_i v_i) from
+  Belos (`reference/belos/BelosBlockFGmresIter.hpp`, BSD, its `Znext = M*Vprev` / `Vnext = A*Znext`
+  / `getCurrentUpdate` = `Z*y`), scalarized onto our own single-RHS Arnoldi/Givens/restart loop
+  (`gmres`'s, unchanged). Workspace footprint: gmres's V (m+1 vectors of length n) PLUS Z (m more
+  vectors of length n) when M is a real preconditioner -- roughly double gmres's basis memory,
+  the structural cost of tolerating a per-step-varying M. Under `IsIdentity` (`fProxyIdentityPreconditioner`)
+  no Z is allocated and the loop takes the exact same instruction sequence as `gmres` (z_j == v_j,
+  solution accumulated straight into x via V) -- verified bit-identical against `gmres` in
+  `FGMRESTests.fProxy.cs`, not just "close".
+- 2026-07-19 | Overload ladder mirrors `gmres` exactly (generic `fgmres<TOp,TPre>` core,
+  `fgmres<TOp>` identity forwarder, dense/BSR unpreconditioned rungs, BSR+ILU0 preconditioned
+  rungs) rather than inventing a new shape -- callers already fluent in `gmres`'s ladder get
+  `fgmres` for free.
+
 ## Krylov.Block.Common / LOBPCG -- View/RowsView/RectView reslice fix
 - 2026-07-19 | Supersedes-in-spirit the `NormsOP`/`Krylov.bgmres` entries just below: those patched
   two individual `Data.Length` readers (`Norms.L1`/`L2`/`LInf(in fProxyMxN)`, `CopyFrom`/`CopyTo`).
