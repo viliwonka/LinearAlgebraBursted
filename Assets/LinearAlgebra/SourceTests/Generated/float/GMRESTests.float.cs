@@ -179,7 +179,7 @@ public class floatGMRESTests
             var M = arena.floatILU0(in A);
             var xP = arena.floatVec(n);
             for (int i = 0; i < n; i++) xP[i] = (float)0;
-            var pi = Krylov.pgmres(in A, in M, in b, ref xP, 20, 8 * n, tol);
+            var pi = Krylov.gmres(in A, in M, in b, ref xP, 20, 8 * n, tol);
 
             Assert.IsTrue(gi.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(pi.status == IterativeSolveStatus.Converged);

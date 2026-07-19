@@ -179,7 +179,7 @@ public class doubleGMRESTests
             var M = arena.doubleILU0(in A);
             var xP = arena.doubleVec(n);
             for (int i = 0; i < n; i++) xP[i] = (double)0;
-            var pi = Krylov.pgmres(in A, in M, in b, ref xP, 20, 8 * n, tol);
+            var pi = Krylov.gmres(in A, in M, in b, ref xP, 20, 8 * n, tol);
 
             Assert.IsTrue(gi.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(pi.status == IterativeSolveStatus.Converged);

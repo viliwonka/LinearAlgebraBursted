@@ -1,6 +1,18 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.gmres — single-body merge (gmres/pgmres share one loop, IsIdentity fold) — FAMILY COMPLETE
+- 2026-07-19 | Merged `gmres<TOp,TPre>`; `gmres<TOp>` forwards with identity. No caller scratch (GMRES
+  allocates its own Temp workspace), so the merge is signature-simple — the only extra state is `zt`
+  (M⁻¹ apply target), allocated/disposed only under !IsIdentity. Two gated spots: (1) Arnoldi apply —
+  identity `A.Apply(vj,w)`, preconditioned `M.Apply(vj,zt); A.Apply(zt,w)` = A·M⁻¹ (right precond);
+  (2) solution update — identity accumulates `y_i v_i` STRAIGHT into x (bit-identical to plain gmres),
+  preconditioned accumulates into w then `x += M⁻¹w` (different summation grouping, so gating keeps the
+  identity path exact). pgmres explicit-scratch body DELETED; only the ILU0 concrete overloads remain,
+  renamed gmres. pgmres HARD-REMOVED (only GMRESTests referenced it). 6667/6667.
+  **SCALAR KRYLOV FAMILY NOW FULLY COLLAPSED**: cg, minres, biCGStab, gmres each = one body, identity
+  default, no p-prefix anywhere. Next: m-RHS block solvers, single-body from the start (task #12).
+
 ## Krylov.biCGStab — single-body merge (biCGStab/pbiCGStab share one loop, IsIdentity fold)
 - 2026-07-19 | Merged body `biCGStab<TOp,TPre>` (7 scratch: r/rHat0/p/v/t + pHat/sHat); `biCGStab<TOp>`
   forwards with identity (pHat/sHat=default, unused). pbiCGStab explicit-scratch body DELETED;

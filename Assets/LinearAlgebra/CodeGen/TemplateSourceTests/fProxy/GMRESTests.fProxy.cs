@@ -175,7 +175,7 @@ public class fProxyGMRESTests
             var M = arena.fProxyILU0(in A);
             var xP = arena.fProxyVec(n);
             for (int i = 0; i < n; i++) xP[i] = (fProxy)0;
-            var pi = Krylov.pgmres(in A, in M, in b, ref xP, 20, 8 * n, tol);
+            var pi = Krylov.gmres(in A, in M, in b, ref xP, 20, 8 * n, tol);
 
             Assert.IsTrue(gi.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(pi.status == IterativeSolveStatus.Converged);
