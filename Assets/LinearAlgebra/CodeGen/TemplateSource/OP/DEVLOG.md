@@ -1,6 +1,37 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.idr
+- 2026-07-19 | New file `Krylov.IDR.fProxy.cs`: single-RHS IDR(s) (Sonneveld & van Gijzen 2008),
+  structural sibling of `Krylov.BiCGStab.fProxy.cs`/`Krylov.GMRES.fProxy.cs` (generic
+  `idr<TOp,TPre>` core, `idr<TOp>` identity forwarder, dense/BSR unpreconditioned rungs, BSR+ILU0
+  and BSR+BlockJacobi preconditioned rungs). Ported from `reference/square/IDRsSolver.jl/IDRsSolver.jl`
+  (MIT, Schauer/Astudillo/van Gijzen) `idrs_core`, cross-checked against
+  `reference/square/idrs.jl` (IterativeSolvers.jl, MIT). Workspace (own Temp allocation, GMRES's
+  style, since `s` is a runtime value like `restart`): P/G/U = 3s vectors of length n, plus
+  Q/V/(VHat under a real M), plus the s×s system and its f/c vectors.
+- 2026-07-19 | DETERMINISM: the reference's shadow space `P` is `rand!(...)` (uninitialized RNG
+  state) -- breaks this library's cross-arch determinism. Replaced with `P` filled from
+  `Unity.Mathematics.Random(seed)` (uniform [0,1), matching Julia's default `rand`), `seed`
+  defaulted on every public overload to `0x9E3779B1u` (the same golden-ratio constant already used
+  as LOBPCG's/SVD.Randomized's default deterministic seed). Same seed -> bit-identical `x` on every
+  run/architecture.
+- 2026-07-19 | The `omega(t, s, angle)` correction step took its `angle = 0.7` from the PRIMARY
+  reference (`IDRsSolver.jl`'s literal default), not `idrs.jl`'s `sqrt(2)/2` -- the two references
+  disagree here and primary wins per port-fidelity. Added a guard the reference doesn't have:
+  `rho > 0` before the `om *= angle/rho` correction (avoids a `0/0` NaN when `Q ⟂ R` exactly);
+  `om` then resolves to its uncorrected `ts/nt2 == 0` and trips the existing `om == 0` breakdown
+  check on the next line -- same Breakdown outcome the reference silently NaNs into, just without
+  the NaN.
+- 2026-07-19 | The s×s `Msys` solve is a hand-rolled forward-substitution loop, not
+  `Blas.triLower` -- the submatrix `Msys[k..s-1,k..s-1]` shifts every `k`, so `triLower` would need
+  a fresh sliced copy every column; the direct loop matches the reference's
+  `LowerTriangular(M[k:s,k:s])\f[k:s]` exactly with no extra allocation (mirrors GMRES's own
+  hand-rolled Hessenberg back-substitution).
+- 2026-07-19 | Convergence test uses this library's `tol² · ‖b‖²` relative-threshold convention
+  (`Blas.dot`/`Blas.axpyNormSq`, no per-step `sqrt`), matching `biCGStab`/`gmres`, not the
+  reference's raw `normR <= tol`.
+
 ## Krylov.fgmres
 - 2026-07-19 | New file `Krylov.FGMRES.fProxy.cs`, sibling to `Krylov.GMRES.fProxy.cs` (not an
   addition to it) per the single-solver-per-file convention. Ported the flexible mechanism (store
