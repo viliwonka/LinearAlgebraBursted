@@ -1,6 +1,66 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.bgmres
+- 2026-07-19 | **Real bug found via the new test suite: `Norms.LInf` over-reads uninitialized memory
+  through a narrowed view.** `QR.decompInPlace` and `LQRP.decomp` both compute a Householder
+  zero-column threshold via `Consts.fProxyZeroThreshold * Norms.LInf(in A)`, and `Norms.LInf` (via
+  `fProxyNormsCore.LInf<T>`) scans `a.Data.Ptr` for `a.Data.Length` elements — the buffer's TRUE
+  allocated length, not the logical `M_Rows*N_Cols` of a `RectView`/`RowsView`. Two scratch buffers,
+  `Wbuf` (fed to `LQRP.decomp` as its `A` input via `RowsView(Wbuf, w[j])`, `w[j] <= s`) and
+  `HQscratch` (fed to `QR.decompInPlace` as its in-place `A_to_Q` via `RectView(HQscratch, totalRows,
+  totalCols)`, `totalCols <= m*s`), were allocated `uninit: true`. Every call after the buffer's first
+  (widest) use over-reads whatever `Allocator.Temp` memory sits beyond the current logical region —
+  uninitialized on first use, stale-but-finite on reuse. This corrupted the Householder zero-threshold
+  (occasionally to NaN or a wild magnitude), silently producing a WRONG factorization with no thrown
+  exception: 12 of 18 `BlockGmresTests` failed with `X` diverging from the per-column scalar `gmres`
+  comparison, while the solver's own honest residual-based `Solved` check still (misleadingly) reported
+  convergence over enough restart cycles. Fix: allocate `Wbuf`/`HQscratch` with `uninit: false`
+  (cleared) — mirrors scalar `gmres`'s own `H` allocation comment ("cleared: read only written
+  entries"). Any FUTURE buffer here that gets narrowed via `RectView`/`RowsView` to less than its true
+  stride and handed to `QR`/`LQRP`/anything computing `Norms.L1`/`L2`/`LInf` on it needs the same
+  `uninit: false` treatment — `V[0..m]`, `Tbuf`, `R0`, `Wcombo`, `Zt`, `Zcombo`, `Lbuf`, `HijBuf`,
+  `YiBuf`, `Rscratch`, `Yscratch`, `QtGscratch` were individually verified NOT to reach `Norms.*` (only
+  `Blas.dot`/GEMM kernels, which size every read/write off `M_Rows`/`N_Cols` explicitly, never
+  `Data.Length`) and were left `uninit: true`.
+- 2026-07-19 | Ported from Belos (`BelosBlockGmresIter.hpp`/`BelosBlockGmresSolMgr.hpp`, BSD) per
+  `docs/dev/spec-bgmres.md`: block Arnoldi (Simoncini & Gallopoulos 1996) generalizing scalar GMRES
+  (Saad & Schultz 1986), with basis-rank deflation (Morgan 2005, without the eigenvalue-recycling
+  half). New sibling file (not an addition to the bcg-family `Krylov.Block.*.fProxy.cs` files) —
+  reuses `BlockCTV`/`BlockAdd`/`CopyBlock`/`BlockApplyPre`/`CountConverged`/`View`/`RowsView`/
+  `RectView`/`LQRPRank` from `Krylov.Block.Common.fProxy.cs` and `fProxyDenseOperatorGeneral`/
+  `BlockCrossGram` from `Krylov.Block.BiCGStab.fProxy.cs` (both already shipped) unmodified.
+- 2026-07-19 | The block-Hessenberg least-squares is a PERIODIC DENSE RE-QR of the accumulated `Hbuf`
+  prefix every inner Arnoldi step (`QR.decompInPlace` + `QR.decompSolve` on a freshly-copied
+  `totalRows x totalCols` scratch), not an incremental block-Givens/block-Householder update. Same
+  answer either way (identical least-squares problem); the incremental route's variable-width-row-group
+  rotation bookkeeping was judged not worth the correctness risk for the first cut. `Hbuf`'s active
+  region is at most `(m+1)s x ms` (no `n` dependence), trivial next to a single matvec for any
+  non-trivial `n` — deferred as a future optimization, not attempted here.
+  Per-column convergence is read off the QR residual via the Pythagorean identity (`‖G‖² = ‖QᵀG‖² +
+  ‖residual‖²`, thin `Q` has orthonormal columns) — no extra matvec, mirrors scalar `gmres`'s own O(1)
+  per-step check.
+- 2026-07-19 | `Hbuf`/`Gbuf` are fully zeroed (`(m+1)s x ms` / `(m+1)s x s`, their whole true
+  allocation) at the START of every restart cycle, not just the `[0, s)`-row slice a literal reading of
+  an early spec draft's §4.1 pseudocode line suggested — §3.2's own text ("both zeroed at the start of
+  every restart cycle") and the `StoreBlockAt` `+=`-accumulate contract (which needs every `(i,j)` block
+  a cycle will ever write to start at exactly 0, and a cycle can write block-rows up to `k <= m`, not
+  just `< s`) both require the full-buffer reset; the narrower literal region would leave block-rows
+  `>= 1` uncleared and corrupt `StoreBlockAt`'s accumulation on any cycle after the first. Cheap either
+  way (`O(m²s²)`, independent of `n`).
+- 2026-07-19 | `BlockSolveInfo.maxRnorm`/`.converged` are documented as describing "the returned X" (see
+  `BlockSolveInfo.cs`), but the per-cycle `CountConverged` check happens at the TOP of a cycle (before
+  that cycle's own `Commit`), so it's stale by one `Commit` whenever a `MaxIterations`-terminated run's
+  last cycle didn't fully converge. Added one fresh, independent residual recompute
+  (`A.ApplyBlock` + `CountConverged`, no QR/LQRP involved) after the restart loop exits, for every exit
+  path — mirrors `bcgrq`'s own "recompute fresh from the final X ... doubles as an exit-time sanity
+  check" cleanup pattern. Not in the original spec's §4 pseudocode; added to honor the existing
+  `BlockSolveInfo` field contract.
+- 2026-07-19 | Memory: `V[0..m]` (`(m+1) s n` elements) dominates for any non-trivial `n`; the
+  `Hbuf`/`Gbuf`/`HQscratch`/`Rscratch`/`Yscratch`/`QtGscratch` family is `O(m²s²)` with no `n` term —
+  tens of KB at the library's default `restart` (~30) and typical `s` (a handful), negligible next to
+  `V`'s term for any `n` beyond a few hundred.
+
 ## Krylov.bbiCGStab
 - 2026-07-19 | Recurrence ported from nmoteki's `bl_bicgstab.cpp` (Tadano et al. 2009 JSIAM
   letters), per task instruction to take the math from that working reference rather than
