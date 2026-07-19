@@ -35,7 +35,7 @@ namespace LinearAlgebra.Benchmarks
         {
             int s = B.M_Rows, n = B.N_Cols;
             for (int i = 0; i < s; i++) for (int c = 0; c < n; c++) X[i, c] = (float)0;
-            var info = Krylov.cg(new floatDenseOperator(in A), in B, ref X, ref R, ref P, ref Q, K, Tol);
+            var info = Krylov.bcg(new floatDenseOperator(in A), in B, ref X, ref R, ref P, ref Q, K, Tol);
             Iters[0] = info.iterations;
         }
     }

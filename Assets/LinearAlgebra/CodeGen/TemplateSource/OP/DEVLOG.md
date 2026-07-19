@@ -1,6 +1,72 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.bcgrq — deflating block-CG with reliable QR (LQRP) residual updates
+- 2026-07-19 | New solver set alongside ridge `bcg` (not a replacement): replaces the s×s ridge-
+  regularized Gram solve with a row-pivoted rank-revealing LQ (`LQRP.decomp`) factorization of the live
+  (preconditioned) residual block every iteration, so near-dependent RHS directions are DEFLATED (dropped
+  from the search subspace) instead of ridge-patched. `X`'s rows never reorder (scatter update through a
+  persistent `Live` Pivot); `R`'s rows lock/swap-to-back on convergence, mirroring LOBPCG's lock loop. The
+  search-subspace width `sa`/`saSearch` is independent of `sLive` (still-live column count) and can
+  shrink or grow every iteration — every live column still gets an X/R update every iteration regardless
+  of the deflated width. `BlockSolveInfo.minActive` now genuinely reports `< rhs` for a rank-deficient
+  block (ridge `bcg` always reports `rhs`, since it never drops columns). Same 8-overload ladder as `bcg`
+  plus one extra required `Pa` buffer (LQRP's orthonormal-rows output). Spec: `docs/dev/spec-bcgrq.md`.
+- BUG FOUND while wiring `LQRP.decomp` onto a `RowsView` (the LOBPCG-style "same-buffer, narrower-shape"
+  view trick, reused here for `sLive`/`saSearch`-width scratch): `fProxyMxN.Data` is a `UnsafeList<T>`
+  STRUCT returned BY VALUE from a property getter (`Ptr`/`m_length` are plain fields, not indirected
+  through a pointer). A `View`/`RowsView`/`RectView` narrowing (copy the struct, overwrite `M_Rows`/
+  `N_Cols`) leaves `.Data.Length` at the BACKING buffer's full size, not the narrowed shape's.
+  `LQRP.decomp`'s `W.Data.CopyFrom(A.Data)` resizes off `A.Data.Length` — when that's larger than `W`'s
+  own real capacity, the grow-reallocation happens on the DISCARDED temporary `UnsafeList` the getter
+  returned, silently leaving `W`'s real storage at its original zeroed content (decomp then factors an
+  all-zero matrix → rank 0 → a spurious `Breakdown`). Reproduced concretely with `sLive=1` (after 3/4
+  columns locked): `L[0,0]` came back exactly `0` despite a real ~1e-3-norm residual row feeding it.
+  FIX (in `bcgrq` only, nothing touched in `fProxyMxN`/`LQRP`/`Norms`): `FactorLiveResidual` copies the
+  live rows into a fresh, EXACTLY `sLive x n` sized `Allocator.Temp` buffer before calling `LQRP.decomp`,
+  disposed right after (mirrors the existing per-iteration `Pivot` allocation). Audited every other view
+  use in `bcgrq` (`Blas.dot` destinations, `BlockGram`/`BlockCTV`/`BlockAdd`/`CopyBlock`/`BlockSolveSPD`,
+  `CHO.decompInPlace`/`decompSolve`) for the same landmine: none of them rely on `.Data.Length` for a
+  NARROWED view argument — over-clearing a view's OWN root buffer's real capacity (e.g. `alphaBuf`'s
+  `MemClear` inside `Blas.dot`) is harmless; only a CROSS-buffer `.Data.CopyFrom`/implicit-resize like
+  `LQRP.decomp`'s is unsafe. Flagging as a general landmine for future `View`-style narrowing fed into
+  anything `Data.Length`-sensitive — LOBPCG's own `View`/`RowsView` don't hit it today only because they
+  never narrow below their cache's own allocation width before calling something Data.Length-sensitive;
+  worth a follow-up audit if that ever changes.
+- Two test-design gotchas found writing the ill-conditioned/near-parallel comparison tests
+  (`BlockCGrQTests.fProxy.cs`): (1) perturbing `B` directly (not `Xk`) for the near-parallel-RHS case
+  silently changes column 1's TRUE solution away from the original `Xk[1,:]` (`B[1] ≈ A·Xk[0]`, not
+  `A·Xk[1]`) — fixed by perturbing `Xk[1,:]` first, then re-deriving `B` via `ApplyBlock`, so `Xk` stays
+  the exact ground truth. (2) A tiny `(1+1e-6)` relative slack on `maxRnorm`/forward-error assumes the two
+  solvers land at near-identical precision; empirically they stop at DIFFERENT points on the convergence
+  curve (same residual threshold, different last iterate), so a genuinely healthy run can differ by up to
+  ~2x either way — widened to a 3x slack (`ResidualSlack()`) to absorb that without losing the "not
+  dramatically worse" signal a real regression would trip.
+- Benchmark (`BlockCGSparseBenchmark`, BSR 2D Poisson, independent random RHS — i.e. NOT deliberately
+  rank-deficient): `bcgrq` is consistently SLOWER than ridge `bcg`, roughly 15-40% wall-clock overhead
+  across grid/s combinations (float N=4096 s=32: 391.9ms vs block-CG's 336.3ms; double N=4096 s=32:
+  616.9ms vs 499.7ms), for the SAME iteration count in almost every row (e.g. float N=1024 s=4: both 44
+  iters; double N=2304 s=8: both 79 iters) — on a well-conditioned random-RHS system there is no rank
+  deficiency to deflate, so the per-iteration LQRP factorization is pure added cost with no offsetting
+  iteration-count win here (expected: this benchmark is not `bcgrq`'s target case — see the ill-
+  conditioned/near-parallel-RHS comparison tests for where deflation actually pays off). Interesting
+  aside: `bcgrq`'s `minActive` frequently drops to 1-2 well before convergence even on this "friendly"
+  random-RHS system (e.g. float N=1024 s=32: minActive=1, vs block-CG's minActive=32 always) — floating-
+  point residuals coincidentally become near-parallel as iterates approach the noise floor; harmless here
+  since `sa` only narrows the search SUBSPACE, never the `sLive`-wide X/R update. `CHO.decompInPlace`/
+  `decompSolve` "factor once, solve alpha and beta from the same factor" (spec §1/§14, deferred) is worth
+  revisiting given this overhead — `BlockSolveSPD` currently re-factors `PQ` from scratch for both alpha
+  and beta every iteration.
+
+## Krylov.bcg (renamed from `cg`) — block-Krylov `b`-prefix convention
+- 2026-07-19 | Renamed all block-CG overloads in `Krylov.Block.fProxy.cs` from `cg` to `bcg`, so every
+  block-Krylov method carries the same lowercase `b` prefix (`bcgrq` above is the first sibling). The
+  SCALAR `cg` (`Krylov.fProxy.cs`, `in fProxyN b, ref fProxyN x`) is untouched — only the 8 block
+  overloads (`in fProxyMxN B, ref fProxyMxN X`) renamed. Callers swept: `BlockCGTests.fProxy.cs` (only the
+  block calls; the scalar-oracle `Krylov.cg(in A, in bj, ...)` calls stay `cg`), `BlockCGBenchmark.fProxy.cs`,
+  `BlockCGSparseBenchmark.fProxy.cs` (both block-matvec `Krylov.cg(new fProxy...Operator(...), in B, ...)`
+  jobs; each file's scalar-loop job stays `cg`).
+
 ## Krylov.cg (BLOCK / multi-RHS) — block-CG, first true block-Krylov solver
 - 2026-07-19 | New `OP/Krylov.Block.fProxy.cs`: block-CG for SPD A with s simultaneous RHS. TRUE block
   method (O'Leary) — ONE shared Krylov subspace, s×s block coefficients α=(PᵀAP)⁻¹(RᵀZ),

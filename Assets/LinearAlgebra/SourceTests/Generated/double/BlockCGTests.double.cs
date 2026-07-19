@@ -10,7 +10,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// Block (multi-RHS) CG: Krylov.cg(in A, in B, ref X) where B/X are s ROWS x n COLS (row = RHS). A true
+// Block (multi-RHS) CG: Krylov.bcg(in A, in B, ref X) where B/X are s ROWS x n COLS (row = RHS). A true
 // block method (one shared subspace, s x s coefficients, ApplyBlock per iteration), NOT s scalar solves.
 // Every test runs inside a [BurstCompile] IJob (by-value struct copy), so the job-safety criterion --
 // the caller sees the final X written through the ref doubleMxN -- is exercised by construction.
@@ -70,7 +70,7 @@ public class doubleBlockCGTests
             var B = arena.doubleRandomMat(s, n, (double)(-1f), (double)1f, 71002u);
 
             var X = arena.doubleMat(s, n);                      // zero initial guess
-            var info = Krylov.cg(in A, in B, ref X, 8 * n, Consts.doubleSqrtEps);
+            var info = Krylov.bcg(in A, in B, ref X, 8 * n, Consts.doubleSqrtEps);
 
             Assert.IsTrue(info.Solved);
             Assert.AreEqual(s, info.converged);
@@ -103,7 +103,7 @@ public class doubleBlockCGTests
             int budget = 8 * n;
 
             var X = arena.doubleMat(s, n);
-            var blockInfo = Krylov.cg(in A, in B, ref X, budget, tol);
+            var blockInfo = Krylov.bcg(in A, in B, ref X, budget, tol);
             Assert.IsTrue(blockInfo.Solved);
 
             int worstScalar = 0;
@@ -135,7 +135,7 @@ public class doubleBlockCGTests
             for (int c = 0; c < n; c++) B[3, c] = B[1, c];
 
             var X = arena.doubleMat(s, n);
-            var info = Krylov.cg(in A, in B, ref X, 8 * n, Consts.doubleSqrtEps);
+            var info = Krylov.bcg(in A, in B, ref X, 8 * n, Consts.doubleSqrtEps);
 
             // Finite, no NaN, and every column solved (system is consistent for each column).
             for (int j = 0; j < s; j++)
@@ -162,7 +162,7 @@ public class doubleBlockCGTests
             var B = arena.doubleRandomMat(s, n, (double)(-1f), (double)1f, 74002u);
 
             var X = arena.doubleMat(s, n);
-            var info = Krylov.cg(in A, in M, in B, ref X, 8 * n, Consts.doubleSqrtEps);
+            var info = Krylov.bcg(in A, in M, in B, ref X, 8 * n, Consts.doubleSqrtEps);
             Assert.IsTrue(info.Solved);
 
             for (int j = 0; j < s; j++)
@@ -192,7 +192,7 @@ public class doubleBlockCGTests
             new doubleDenseOperator(in A).ApplyBlock(in Xk, ref B, s);                 // B[j,:] = A Xk[j,:]
 
             var X = arena.doubleMat(s, n);
-            var info = Krylov.cg(in A, in B, ref X, 8 * n, Consts.doubleSqrtEps);
+            var info = Krylov.bcg(in A, in B, ref X, 8 * n, Consts.doubleSqrtEps);
             Assert.IsTrue(info.Solved);
 
             for (int j = 0; j < s; j++)

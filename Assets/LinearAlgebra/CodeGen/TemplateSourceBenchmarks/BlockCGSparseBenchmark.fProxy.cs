@@ -29,7 +29,25 @@ namespace LinearAlgebra.Benchmarks
         {
             int s = B.M_Rows, n = B.N_Cols;
             for (int i = 0; i < s; i++) for (int c = 0; c < n; c++) X[i, c] = (fProxy)0;
-            var info = Krylov.cg(new fProxyBSROperator(in A), in B, ref X, ref R, ref P, ref Q, K, Tol);
+            var info = Krylov.bcg(new fProxyBSROperator(in A), in B, ref X, ref R, ref P, ref Q, K, Tol);
+            Out[0] = info.iterations;
+            Out[1] = info.minActive;
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct BlockCgrQSparseJobFProxy : IJob
+    {
+        public fProxyBSR A;
+        public fProxyMxN B, X, R, P, AP, Pa;
+        public int K; public fProxy Tol;
+        public Indices Out;   // [0] = block iters, [1] = minActive
+
+        public void Execute()
+        {
+            int s = B.M_Rows, n = B.N_Cols;
+            for (int i = 0; i < s; i++) for (int c = 0; c < n; c++) X[i, c] = (fProxy)0;
+            var info = Krylov.bcgrq(new fProxyBSROperator(in A), in B, ref X, ref R, ref P, ref AP, ref Pa, K, Tol);
             Out[0] = info.iterations;
             Out[1] = info.minActive;
         }
@@ -117,6 +135,14 @@ namespace LinearAlgebra.Benchmarks
             var blockStat = Bench.Time(() => blockJob.Run());
             sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                 "fProxy", n, s, "block-CG", blockStat.Median, blockStat.Min, outv[0], outv[1]));
+
+            // bcgrq
+            var Xrq = arena.fProxyMat(s, n); var Rrq = arena.fProxyMat(s, n);
+            var Prq = arena.fProxyMat(s, n); var APrq = arena.fProxyMat(s, n); var Parq = arena.fProxyMat(s, n);
+            var rqJob = new BlockCgrQSparseJobFProxy { A = A, B = B, X = Xrq, R = Rrq, P = Prq, AP = APrq, Pa = Parq, K = cap, Tol = tol, Out = outv };
+            var rqStat = Bench.Time(() => rqJob.Run());
+            sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
+                "fProxy", n, s, "bcgrq", rqStat.Median, rqStat.Min, outv[0], outv[1]));
 
             // scalar loop
             var x = arena.fProxyVec(n); var r = arena.fProxyVec(n); var p = arena.fProxyVec(n);

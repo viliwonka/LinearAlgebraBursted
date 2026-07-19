@@ -122,7 +122,7 @@ namespace LinearAlgebra
                 for (int j = 0; j < s; j++) dst[i, j] = src[i, j];
         }
 
-        // ---- block-CG core -------------------------------------------------------------------------
+        // ---- ridge block-CG core (bcg) -------------------------------------------------------------
 
         /// <summary>
         /// Zero-alloc block (multi-RHS) Conjugate Gradient for an SPD A and s simultaneous right-hand
@@ -139,23 +139,23 @@ namespace LinearAlgebra
         /// rank-deficient RHS block (linearly dependent columns) is handled by a ridge-regularized s x s
         /// solve rather than breaking down. Returns a <see cref="BlockSolveInfo"/>.
         /// </summary>
-        public static BlockSolveInfo cg<TOp, TPre>(in TOp A, in TPre M, in doubleMxN B, ref doubleMxN X,
+        public static BlockSolveInfo bcg<TOp, TPre>(in TOp A, in TPre M, in doubleMxN B, ref doubleMxN X,
                                         ref doubleMxN R, ref doubleMxN P, ref doubleMxN Q, ref doubleMxN Z,
                                         int maxIter, double tol)
             where TOp : struct, IdoubleLinearOperator
             where TPre : struct, IdoublePreconditioner
         {
-            if (A.Rows != A.Cols) throw new ArgumentException("cg (block): A must be square");
+            if (A.Rows != A.Cols) throw new ArgumentException("bcg (block): A must be square");
             int n = A.Rows;
             int s = B.M_Rows;
-            if (B.N_Cols != n) throw new ArgumentException("cg (block): B must be s x A.Rows");
-            if (X.M_Rows != s || X.N_Cols != n) throw new ArgumentException("cg (block): X must match B");
-            if (R.M_Rows != s || R.N_Cols != n) throw new ArgumentException("cg (block): R must match B");
-            if (P.M_Rows != s || P.N_Cols != n) throw new ArgumentException("cg (block): P must match B");
-            if (Q.M_Rows != s || Q.N_Cols != n) throw new ArgumentException("cg (block): Q must match B");
+            if (B.N_Cols != n) throw new ArgumentException("bcg (block): B must be s x A.Rows");
+            if (X.M_Rows != s || X.N_Cols != n) throw new ArgumentException("bcg (block): X must match B");
+            if (R.M_Rows != s || R.N_Cols != n) throw new ArgumentException("bcg (block): R must match B");
+            if (P.M_Rows != s || P.N_Cols != n) throw new ArgumentException("bcg (block): P must match B");
+            if (Q.M_Rows != s || Q.N_Cols != n) throw new ArgumentException("bcg (block): Q must match B");
             if (!M.IsIdentity && (Z.M_Rows != s || Z.N_Cols != n))
-                throw new ArgumentException("cg (block): Z must match B");
-            if (maxIter < 1) throw new ArgumentException("cg (block): maxIter must be >= 1");
+                throw new ArgumentException("bcg (block): Z must match B");
+            if (maxIter < 1) throw new ArgumentException("bcg (block): maxIter must be >= 1");
 
             // s x s coefficient scratch + per-column thresholds + row scratch for the preconditioner.
             var PQ    = new doubleMxN(s, s, Allocator.Temp, true);
@@ -250,61 +250,418 @@ namespace LinearAlgebra
         // ---- unpreconditioned + concrete forwarders ------------------------------------------------
 
         /// <summary>Unpreconditioned block-CG -- forwards into the merged block
-        /// <see cref="cg{TOp, TPre}(in TOp, in TPre, in doubleMxN, ref doubleMxN, ref doubleMxN, ref doubleMxN, ref doubleMxN, ref doubleMxN, int, double)"/>
+        /// <see cref="bcg{TOp, TPre}(in TOp, in TPre, in doubleMxN, ref doubleMxN, ref doubleMxN, ref doubleMxN, ref doubleMxN, ref doubleMxN, int, double)"/>
         /// with the identity preconditioner (needs no Z block).</summary>
-        public static BlockSolveInfo cg<TOp>(in TOp A, in doubleMxN B, ref doubleMxN X,
+        public static BlockSolveInfo bcg<TOp>(in TOp A, in doubleMxN B, ref doubleMxN X,
                                         ref doubleMxN R, ref doubleMxN P, ref doubleMxN Q,
                                         int maxIter, double tol)
             where TOp : struct, IdoubleLinearOperator
         {
             doubleMxN Z = default;
-            return cg(in A, default(doubleIdentityPreconditioner), in B, ref X, ref R, ref P, ref Q, ref Z, maxIter, tol);
+            return bcg(in A, default(doubleIdentityPreconditioner), in B, ref X, ref R, ref P, ref Q, ref Z, maxIter, tol);
         }
 
         /// <summary>Block-CG over a dense SPD <see cref="doubleMxN"/> A (n x n) with an s x n block B.
         /// Allocates block scratch from the arena.</summary>
-        public static BlockSolveInfo cg(in doubleMxN A, in doubleMxN B, ref doubleMxN X, int maxIter, double tol)
+        public static BlockSolveInfo bcg(in doubleMxN A, in doubleMxN B, ref doubleMxN X, int maxIter, double tol)
         {
             int s = B.M_Rows, n = A.M_Rows;
             doubleMxN R = B.doubleTempMat(s, n, true), P = B.doubleTempMat(s, n, true), Q = B.doubleTempMat(s, n, true);
-            return cg(new doubleDenseOperator(in A), in B, ref X, ref R, ref P, ref Q, maxIter, tol);
+            return bcg(new doubleDenseOperator(in A), in B, ref X, ref R, ref P, ref Q, maxIter, tol);
         }
 
         /// <summary>Block-CG over a dense SPD A with default maxIter (A.M_Rows) and tol (sqrtEps).</summary>
-        public static BlockSolveInfo cg(in doubleMxN A, in doubleMxN B, ref doubleMxN X)
-            => cg(in A, in B, ref X, A.M_Rows, Consts.doubleSqrtEps);
+        public static BlockSolveInfo bcg(in doubleMxN A, in doubleMxN B, ref doubleMxN X)
+            => bcg(in A, in B, ref X, A.M_Rows, Consts.doubleSqrtEps);
 
         /// <summary>Preconditioned block-CG over a dense SPD A. Allocates block scratch (incl. Z).</summary>
-        public static BlockSolveInfo cg<TPre>(in doubleMxN A, in TPre M, in doubleMxN B, ref doubleMxN X, int maxIter, double tol)
+        public static BlockSolveInfo bcg<TPre>(in doubleMxN A, in TPre M, in doubleMxN B, ref doubleMxN X, int maxIter, double tol)
             where TPre : struct, IdoublePreconditioner
         {
             int s = B.M_Rows, n = A.M_Rows;
             doubleMxN R = B.doubleTempMat(s, n, true), P = B.doubleTempMat(s, n, true),
                       Q = B.doubleTempMat(s, n, true), Z = B.doubleTempMat(s, n, true);
-            return cg(new doubleDenseOperator(in A), in M, in B, ref X, ref R, ref P, ref Q, ref Z, maxIter, tol);
+            return bcg(new doubleDenseOperator(in A), in M, in B, ref X, ref R, ref P, ref Q, ref Z, maxIter, tol);
         }
 
         /// <summary>Block-CG over a block-sparse (BSR) SPD A with an s x n block B. Allocates block
         /// scratch from the arena.</summary>
-        public static BlockSolveInfo cg(in doubleBSR A, in doubleMxN B, ref doubleMxN X, int maxIter, double tol)
+        public static BlockSolveInfo bcg(in doubleBSR A, in doubleMxN B, ref doubleMxN X, int maxIter, double tol)
         {
             int s = B.M_Rows, n = A.M_Rows;
             doubleMxN R = B.doubleTempMat(s, n, true), P = B.doubleTempMat(s, n, true), Q = B.doubleTempMat(s, n, true);
-            return cg(new doubleBSROperator(in A), in B, ref X, ref R, ref P, ref Q, maxIter, tol);
+            return bcg(new doubleBSROperator(in A), in B, ref X, ref R, ref P, ref Q, maxIter, tol);
         }
 
         /// <summary>Block-CG over a BSR SPD A with default maxIter (A.M_Rows) and tol (sqrtEps).</summary>
-        public static BlockSolveInfo cg(in doubleBSR A, in doubleMxN B, ref doubleMxN X)
-            => cg(in A, in B, ref X, A.M_Rows, Consts.doubleSqrtEps);
+        public static BlockSolveInfo bcg(in doubleBSR A, in doubleMxN B, ref doubleMxN X)
+            => bcg(in A, in B, ref X, A.M_Rows, Consts.doubleSqrtEps);
 
         /// <summary>Preconditioned block-CG over a BSR SPD A. Allocates block scratch (incl. Z).</summary>
-        public static BlockSolveInfo cg<TPre>(in doubleBSR A, in TPre M, in doubleMxN B, ref doubleMxN X, int maxIter, double tol)
+        public static BlockSolveInfo bcg<TPre>(in doubleBSR A, in TPre M, in doubleMxN B, ref doubleMxN X, int maxIter, double tol)
             where TPre : struct, IdoublePreconditioner
         {
             int s = B.M_Rows, n = A.M_Rows;
             doubleMxN R = B.doubleTempMat(s, n, true), P = B.doubleTempMat(s, n, true),
                       Q = B.doubleTempMat(s, n, true), Z = B.doubleTempMat(s, n, true);
-            return cg(new doubleBSROperator(in A), in M, in B, ref X, ref R, ref P, ref Q, ref Z, maxIter, tol);
+            return bcg(new doubleBSROperator(in A), in M, in B, ref X, ref R, ref P, ref Q, ref Z, maxIter, tol);
+        }
+
+        // ================= bcgrq: deflating block-CG with reliable QR (LQRP) residual updates =========
+
+        // ---- bcgrq-only private helpers -------------------------------------------------------------
+
+        // Same-buffer, smaller SQUARE logical view (rows == cols == m): a value-copy of the doubleMxN
+        // struct with M_Rows/N_Cols overwritten to the leading m*m elements of buf's storage -- not a
+        // new allocation, not a strided sub-block of a larger stride (mirrors LOBPCG.double.cs's View).
+        static doubleMxN View(in doubleMxN buf, int m)
+        {
+            var v = buf;
+            v.M_Rows = m;
+            v.N_Cols = m;
+            return v;
+        }
+
+        // Same-buffer logical view with `rows` rows and buf's own column count: the leading `rows` rows
+        // of a row-major buffer are exactly a standalone rows x N_Cols matrix, so this is a contiguous-
+        // prefix reinterpretation, not a new allocation (mirrors LOBPCG.double.cs's RowsView).
+        static doubleMxN RowsView(in doubleMxN buf, int rows)
+        {
+            var v = buf;
+            v.M_Rows = rows;
+            return v;
+        }
+
+        // Same-buffer logical view with an independent row/col count (the rectangular generalization of
+        // View/RowsView), valid whenever rows*cols does not exceed buf's element capacity.
+        static doubleMxN RectView(in doubleMxN buf, int rows, int cols)
+        {
+            var v = buf;
+            v.M_Rows = rows;
+            v.N_Cols = cols;
+            return v;
+        }
+
+        // Yfull[Live[i], c] += sign * Tlive[i, c] for i in [0, sLive), all columns of Yfull -- scatters
+        // an sLive-wide live update back into Yfull's ORIGINAL (never-reordered) row order.
+        static void BlockScatterAddRows(ref doubleMxN Yfull, in doubleMxN Tlive, in Pivot Live, int sLive, double sign)
+        {
+            int n = Yfull.N_Cols;
+            for (int i = 0; i < sLive; i++)
+            {
+                int orig = Live[i];
+                for (int c = 0; c < n; c++)
+                    Yfull[orig, c] += sign * Tlive[i, c];
+            }
+        }
+
+        // Backward lock scan (mirrors LOBPCG's numActive lock loop): swaps any row i whose current
+        // squared residual is within thr[Live[i]] to the current last live slot and shrinks sLive. A
+        // locked row's R value is frozen (correct -- it already satisfied thr) and its original index
+        // drops out of every later BlockScatterAddRows (X update) for the rest of the solve.
+        static void LockConvergedRows(ref doubleMxN R, ref Pivot Live, ref int sLive, in doubleN thr)
+        {
+            int n = R.N_Cols;
+            for (int i = sLive - 1; i >= 0; i--)
+            {
+                int orig = Live[i];
+                double rr = (double)0;
+                for (int c = 0; c < n; c++) rr += R[i, c] * R[i, c];
+                if (rr <= thr[orig])
+                {
+                    int last = sLive - 1;
+                    if (i != last) { Swap.Rows(ref R, i, last); Live.Swap(i, last); }
+                    sLive--;
+                }
+            }
+        }
+
+        // Numerical rank off L's non-increasing |diagonal|, LQRP's own convention: tol = relTol *
+        // |L[0,0]|, relTol = max(m, nGlobal) * Consts.doubleZeroThreshold (matches LQRP.solveInPlace's
+        // default relTol / SVD.pinvSolve / Analysis.rank).
+        static int LQRPRank(in doubleMxN L, int m, int nGlobal)
+        {
+            double relTol = (double)math.max(m, nGlobal) * Consts.doubleZeroThreshold;
+            double tol = relTol * math.abs(L[0, 0]);
+            int rank = 0;
+            for (int i = 0; i < m; i++)
+            {
+                if (math.abs(L[i, i]) > tol) rank++;
+                else break;
+            }
+            return rank;
+        }
+
+        // Factors the live (preconditioned) residual block via LQRP, writing the fresh orthonormal
+        // search basis into Pa's leading sLive rows and returning its numerical rank. Copies the live
+        // rows into a freshly, exactly sLive x n sized Temp buffer before calling LQRP.decomp (disposed
+        // immediately after, like the per-iteration Pivot) -- decomp's A input must be exactly sized,
+        // see DEVLOG.md.
+        static int FactorLiveResidual<TPre>(in doubleMxN R, in TPre M, ref doubleMxN Z, int sLive, int n,
+                                            ref doubleN rowIn, ref doubleN rowOut, ref doubleMxN Lbuf, ref doubleMxN Pa)
+            where TPre : struct, IdoublePreconditioner
+        {
+            var Zfactor = new doubleMxN(sLive, n, Allocator.Temp, true);
+            if (M.IsIdentity)
+            {
+                var Rlive = RowsView(R, sLive);
+                CopyBlock(in Rlive, ref Zfactor, sLive, n);
+            }
+            else
+            {
+                var Rlive = RowsView(R, sLive);
+                var Zpre = RowsView(Z, sLive);
+                BlockApplyPre(in M, in Rlive, ref Zpre, sLive, n, ref rowIn, ref rowOut);
+                CopyBlock(in Zpre, ref Zfactor, sLive, n);
+            }
+
+            var Ppiv  = new Pivot(sLive, Allocator.Temp);
+            var Lv    = View(Lbuf, sLive);
+            var Qfull = RowsView(Pa, sLive);
+            LQRP.decomp(in Zfactor, ref Lv, ref Qfull, ref Ppiv);
+            Ppiv.Dispose();
+            Zfactor.Dispose();
+
+            return LQRPRank(in Lv, sLive, n);
+        }
+
+        // ---- bcgrq core -------------------------------------------------------------------------------
+
+        /// <summary>
+        /// Zero-alloc block (multi-RHS) Conjugate Gradient for an SPD A and s simultaneous right-hand
+        /// sides, generic over BOTH the operator (<see cref="IdoubleLinearOperator"/>) and the
+        /// preconditioner (<see cref="IdoublePreconditioner"/>). Replaces ridge-regularized
+        /// <see cref="bcg{TOp, TPre}(in TOp, in TPre, in doubleMxN, ref doubleMxN, ref doubleMxN, ref doubleMxN, ref doubleMxN, ref doubleMxN, int, double)"/>'s
+        /// s x s Gram solve with a row-pivoted rank-revealing LQ (<see cref="LQRP"/>) factorization of the
+        /// (preconditioned) live residual block every iteration, so near-dependent RHS directions are
+        /// DROPPED (deflated) from the search subspace rather than ridge-patched -- every still-live
+        /// column keeps receiving an X/R update every iteration regardless of the deflated search width.
+        ///
+        /// B and X are s ROWS x n COLS (row j = the j-th RHS / solution, length n = A.Rows, requires
+        /// s &lt;= n); X is warm-startable and its rows are NEVER reordered. R, P, AP, Pa are s x n block
+        /// scratch (Pa receives LQRP's orthonormal-rows output); Z is s x n block scratch, required (and
+        /// only touched) when <c>!M.IsIdentity</c> -- pass <c>default</c> otherwise. Convergence is per
+        /// original column against tol²·‖B[j]‖². Returns a <see cref="BlockSolveInfo"/> whose
+        /// <see cref="BlockSolveInfo.minActive"/> is the smallest numerical rank the live residual block
+        /// reached over the whole solve (search-subspace deflation), independent of column convergence.
+        /// </summary>
+        public static BlockSolveInfo bcgrq<TOp, TPre>(in TOp A, in TPre M, in doubleMxN B, ref doubleMxN X,
+                                        ref doubleMxN R, ref doubleMxN P, ref doubleMxN AP, ref doubleMxN Pa,
+                                        ref doubleMxN Z, int maxIter, double tol)
+            where TOp : struct, IdoubleLinearOperator
+            where TPre : struct, IdoublePreconditioner
+        {
+            if (A.Rows != A.Cols) throw new ArgumentException("bcgrq (block): A must be square");
+            int n = A.Rows;
+            int s = B.M_Rows;
+            if (B.N_Cols != n) throw new ArgumentException("bcgrq (block): B must be s x A.Rows");
+            if (X.M_Rows != s || X.N_Cols != n) throw new ArgumentException("bcgrq (block): X must match B");
+            if (R.M_Rows != s || R.N_Cols != n) throw new ArgumentException("bcgrq (block): R must match B");
+            if (P.M_Rows != s || P.N_Cols != n) throw new ArgumentException("bcgrq (block): P must match B");
+            if (AP.M_Rows != s || AP.N_Cols != n) throw new ArgumentException("bcgrq (block): AP must match B");
+            if (Pa.M_Rows != s || Pa.N_Cols != n) throw new ArgumentException("bcgrq (block): Pa must match B");
+            if (!M.IsIdentity && (Z.M_Rows != s || Z.N_Cols != n))
+                throw new ArgumentException("bcgrq (block): Z must match B");
+            if (maxIter < 1) throw new ArgumentException("bcgrq (block): maxIter must be >= 1");
+            if (s > n) throw new ArgumentException("bcgrq: B.M_Rows (s) must be <= A.Rows (n)");
+
+            // s x s coefficient scratch (max size; narrowed per iteration via View/RectView) + per-
+            // original-column thresholds + row scratch for the preconditioner + the persistent slot
+            // pivot tracking "physical live row -> original RHS index".
+            var thr      = new doubleN(s);
+            var Live     = new Pivot(s, Allocator.Temp);
+            var alphaBuf = new doubleMxN(s, s, Allocator.Temp, true);
+            var betaBuf  = new doubleMxN(s, s, Allocator.Temp, true);
+            var PQbuf    = new doubleMxN(s, s, Allocator.Temp, true);
+            var Lbuf     = new doubleMxN(s, s, Allocator.Temp, true);
+            var workBuf  = new doubleMxN(s, s, Allocator.Temp, true);
+            var Tbuf     = new doubleMxN(s, n, Allocator.Temp, true);
+            doubleN rowIn = default, rowOut = default;
+            if (!M.IsIdentity) { rowIn = new doubleN(n); rowOut = new doubleN(n); }
+
+            IterativeSolveStatus status = IterativeSolveStatus.MaxIterations;
+            int iters = maxIter;
+            int converged = 0;
+            double maxr = 0;
+            int sLive = s;
+            int minActive = s;
+            int saSearch = 0;
+
+            // Per-original-column thresholds tol^2 ||B[j]||^2, computed once before any permutation.
+            for (int j = 0; j < s; j++)
+            {
+                double bb = (double)0;
+                for (int c = 0; c < n; c++) bb += B[j, c] * B[j, c];
+                thr[j] = tol * tol * bb;
+            }
+
+            // R = B - A X (AP reused as scratch, mirroring bcg's own reuse of Q).
+            A.ApplyBlock(in X, ref AP, s);
+            for (int i = 0; i < s; i++)
+                for (int c = 0; c < n; c++) R[i, c] = B[i, c] - AP[i, c];
+
+            LockConvergedRows(ref R, ref Live, ref sLive, in thr);
+            if (sLive == 0) { status = IterativeSolveStatus.Converged; iters = 0; goto cleanup; }
+
+            // ---- setup: establish iteration 0's P_search/AP_search/PQ_search ----
+            {
+                int sa = FactorLiveResidual(in R, in M, ref Z, sLive, n, ref rowIn, ref rowOut, ref Lbuf, ref Pa);
+                minActive = math.min(minActive, sa);
+                if (sa == 0) { status = IterativeSolveStatus.Breakdown; iters = 0; goto cleanup; }
+
+                saSearch = sa;
+                var Psearch  = RowsView(P, saSearch);
+                var PaActive = RowsView(Pa, saSearch);
+                CopyBlock(in PaActive, ref Psearch, saSearch, n);
+
+                var APsearch = RowsView(AP, saSearch);
+                A.ApplyBlock(in Psearch, ref APsearch, saSearch);
+
+                var PQsetup = View(PQbuf, saSearch);
+                BlockGram(in Psearch, in APsearch, ref PQsetup, saSearch);
+            }
+
+            for (int k = 0; k < maxIter; k++)
+            {
+                // Precondition: P, AP, PQ already hold this iteration's P_search/AP_search/PQ_search at
+                // width saSearch (from the setup block above, or from the previous iteration's S11-S13).
+                var Psearch  = RowsView(P, saSearch);
+                var APsearch = RowsView(AP, saSearch);
+                var PQ       = View(PQbuf, saSearch);
+
+                // S2/S3: alpha = (P_search^T A P_search)^-1 (P_search R_live^T), saSearch x sLive.
+                var Rlive = RowsView(R, sLive);
+                var alpha = RectView(alphaBuf, saSearch, sLive);
+                Blas.dot(in Psearch, in Rlive, ref alpha, false, true);
+                var work = View(workBuf, saSearch);
+                if (!BlockSolveSPD(in PQ, ref alpha, ref work, saSearch))
+                { status = IterativeSolveStatus.Breakdown; iters = k; goto cleanup; }
+
+                // S4: X += scatter(alpha^T P_search) into X's ORIGINAL (never-reordered) row order.
+                var T = RowsView(Tbuf, sLive);
+                BlockCTV(in alpha, in Psearch, ref T);
+                BlockScatterAddRows(ref X, in T, in Live, sLive, (double)1);
+
+                // S5: R_live -= alpha^T AP_search (R stays permuted -- plain BlockAdd applies).
+                var T2 = RowsView(Tbuf, sLive);
+                BlockCTV(in alpha, in APsearch, ref T2);
+                var Rlive2 = RowsView(R, sLive);
+                BlockAdd(ref Rlive2, in T2, (double)(-1));
+
+                // S6: lock newly converged rows, shrinking sLive.
+                LockConvergedRows(ref R, ref Live, ref sLive, in thr);
+                if (sLive == 0) { status = IterativeSolveStatus.Converged; iters = k + 1; goto cleanup; }
+
+                // S7/S8: fresh (preconditioned) live residual, rank-revealing factorization.
+                int saNew = FactorLiveResidual(in R, in M, ref Z, sLive, n, ref rowIn, ref rowOut, ref Lbuf, ref Pa);
+                minActive = math.min(minActive, saNew);
+                if (saNew == 0) { status = IterativeSolveStatus.Breakdown; iters = k + 1; goto cleanup; }
+                var PaActive = RowsView(Pa, saNew);
+
+                // S9/S10: beta from the A-conjugacy condition P_new _|_A P_search (PQ/APsearch are the
+                // SAME ones from S2/S3 -- no extra matvec).
+                var beta = RectView(betaBuf, saSearch, saNew);
+                Blas.dot(in APsearch, in PaActive, ref beta, false, true);
+                var work2 = View(workBuf, saSearch);
+                if (!BlockSolveSPD(in PQ, ref beta, ref work2, saSearch))
+                { status = IterativeSolveStatus.Breakdown; iters = k + 1; goto cleanup; }
+
+                // S11: P_new = Pa_new - beta^T P_search. Read P_search (Tb) BEFORE overwriting P's
+                // storage -- RowsView(P, saSearch) and RowsView(P, saNew) share the same backing buffer.
+                var Tb = RowsView(Tbuf, saNew);
+                BlockCTV(in beta, in Psearch, ref Tb);
+                var Pnew = RowsView(P, saNew);
+                CopyBlock(in PaActive, ref Pnew, saNew, n);
+                BlockAdd(ref Pnew, in Tb, (double)(-1));
+
+                // S12/S13: A * P_new and its own Gram -- ready for the next iteration's S1-S3/S9-S10.
+                var APnew = RowsView(AP, saNew);
+                A.ApplyBlock(in Pnew, ref APnew, saNew);
+                var PQnew = View(PQbuf, saNew);
+                BlockGram(in Pnew, in APnew, ref PQnew, saNew);
+
+                saSearch = saNew;
+            }
+
+        cleanup:
+            // Recompute the residual fresh from the final X (does not try to unpermute the internal
+            // working R) -- doubles as an exit-time sanity check.
+            {
+                var Rfinal = RowsView(AP, s);
+                A.ApplyBlock(in X, ref Rfinal, s);
+                for (int i = 0; i < s; i++)
+                    for (int c = 0; c < n; c++)
+                        Rfinal[i, c] = B[i, c] - Rfinal[i, c];
+                converged = CountConverged(in Rfinal, in thr, s, n, out maxr);
+            }
+
+            thr.Dispose(); Live.Dispose(); alphaBuf.Dispose(); betaBuf.Dispose(); PQbuf.Dispose();
+            Lbuf.Dispose(); workBuf.Dispose(); Tbuf.Dispose();
+            if (!M.IsIdentity) { rowIn.Dispose(); rowOut.Dispose(); }
+
+            return new BlockSolveInfo { rhs = s, converged = converged, iterations = iters, maxRnorm = maxr, minActive = minActive, status = status };
+        }
+
+        // ---- bcgrq unpreconditioned + concrete forwarders ----------------------------------------------
+
+        /// <summary>Unpreconditioned bcgrq -- forwards into the merged block
+        /// <see cref="bcgrq{TOp, TPre}(in TOp, in TPre, in doubleMxN, ref doubleMxN, ref doubleMxN, ref doubleMxN, ref doubleMxN, ref doubleMxN, ref doubleMxN, int, double)"/>
+        /// with the identity preconditioner (needs no Z block).</summary>
+        public static BlockSolveInfo bcgrq<TOp>(in TOp A, in doubleMxN B, ref doubleMxN X,
+                                        ref doubleMxN R, ref doubleMxN P, ref doubleMxN AP, ref doubleMxN Pa,
+                                        int maxIter, double tol)
+            where TOp : struct, IdoubleLinearOperator
+        {
+            doubleMxN Z = default;
+            return bcgrq(in A, default(doubleIdentityPreconditioner), in B, ref X, ref R, ref P, ref AP, ref Pa, ref Z, maxIter, tol);
+        }
+
+        /// <summary>bcgrq over a dense SPD <see cref="doubleMxN"/> A (n x n) with an s x n block B.
+        /// Allocates block scratch from the arena.</summary>
+        public static BlockSolveInfo bcgrq(in doubleMxN A, in doubleMxN B, ref doubleMxN X, int maxIter, double tol)
+        {
+            int s = B.M_Rows, n = A.M_Rows;
+            doubleMxN R = B.doubleTempMat(s, n, true), P = B.doubleTempMat(s, n, true),
+                      AP = B.doubleTempMat(s, n, true), Pa = B.doubleTempMat(s, n, true);
+            return bcgrq(new doubleDenseOperator(in A), in B, ref X, ref R, ref P, ref AP, ref Pa, maxIter, tol);
+        }
+
+        /// <summary>bcgrq over a dense SPD A with default maxIter (A.M_Rows) and tol (sqrtEps).</summary>
+        public static BlockSolveInfo bcgrq(in doubleMxN A, in doubleMxN B, ref doubleMxN X)
+            => bcgrq(in A, in B, ref X, A.M_Rows, Consts.doubleSqrtEps);
+
+        /// <summary>Preconditioned bcgrq over a dense SPD A. Allocates block scratch (incl. Z).</summary>
+        public static BlockSolveInfo bcgrq<TPre>(in doubleMxN A, in TPre M, in doubleMxN B, ref doubleMxN X, int maxIter, double tol)
+            where TPre : struct, IdoublePreconditioner
+        {
+            int s = B.M_Rows, n = A.M_Rows;
+            doubleMxN R = B.doubleTempMat(s, n, true), P = B.doubleTempMat(s, n, true),
+                      AP = B.doubleTempMat(s, n, true), Pa = B.doubleTempMat(s, n, true), Z = B.doubleTempMat(s, n, true);
+            return bcgrq(new doubleDenseOperator(in A), in M, in B, ref X, ref R, ref P, ref AP, ref Pa, ref Z, maxIter, tol);
+        }
+
+        /// <summary>bcgrq over a block-sparse (BSR) SPD A with an s x n block B. Allocates block
+        /// scratch from the arena.</summary>
+        public static BlockSolveInfo bcgrq(in doubleBSR A, in doubleMxN B, ref doubleMxN X, int maxIter, double tol)
+        {
+            int s = B.M_Rows, n = A.M_Rows;
+            doubleMxN R = B.doubleTempMat(s, n, true), P = B.doubleTempMat(s, n, true),
+                      AP = B.doubleTempMat(s, n, true), Pa = B.doubleTempMat(s, n, true);
+            return bcgrq(new doubleBSROperator(in A), in B, ref X, ref R, ref P, ref AP, ref Pa, maxIter, tol);
+        }
+
+        /// <summary>bcgrq over a BSR SPD A with default maxIter (A.M_Rows) and tol (sqrtEps).</summary>
+        public static BlockSolveInfo bcgrq(in doubleBSR A, in doubleMxN B, ref doubleMxN X)
+            => bcgrq(in A, in B, ref X, A.M_Rows, Consts.doubleSqrtEps);
+
+        /// <summary>Preconditioned bcgrq over a BSR SPD A. Allocates block scratch (incl. Z).</summary>
+        public static BlockSolveInfo bcgrq<TPre>(in doubleBSR A, in TPre M, in doubleMxN B, ref doubleMxN X, int maxIter, double tol)
+            where TPre : struct, IdoublePreconditioner
+        {
+            int s = B.M_Rows, n = A.M_Rows;
+            doubleMxN R = B.doubleTempMat(s, n, true), P = B.doubleTempMat(s, n, true),
+                      AP = B.doubleTempMat(s, n, true), Pa = B.doubleTempMat(s, n, true), Z = B.doubleTempMat(s, n, true);
+            return bcgrq(new doubleBSROperator(in A), in M, in B, ref X, ref R, ref P, ref AP, ref Pa, ref Z, maxIter, tol);
         }
     }
 }
