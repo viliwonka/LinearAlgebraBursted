@@ -243,7 +243,8 @@ namespace LinearAlgebra
         cleanup:
             PQ.Dispose(); RZ.Dispose(); RZnew.Dispose(); coef.Dispose(); work.Dispose(); T.Dispose(); thr.Dispose();
             if (!M.IsIdentity) { rowIn.Dispose(); rowOut.Dispose(); }
-            return new BlockSolveInfo { rhs = s, converged = converged, iterations = iters, maxRnorm = maxr, status = status };
+            // Ridge version keeps the full block width every iteration (no column dropping) -> minActive = s.
+            return new BlockSolveInfo { rhs = s, converged = converged, iterations = iters, maxRnorm = maxr, minActive = s, status = status };
         }
 
         // ---- unpreconditioned + concrete forwarders ------------------------------------------------

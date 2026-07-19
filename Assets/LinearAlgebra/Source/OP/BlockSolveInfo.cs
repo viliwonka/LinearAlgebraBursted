@@ -29,6 +29,12 @@ namespace LinearAlgebra
         /// returned X.</summary>
         public double maxRnorm;
 
+        /// <summary>Smallest active search-block width reached during the solve — the numerical
+        /// row-rank of the (preconditioned) residual block at its most deflated. Equals
+        /// <see cref="rhs"/> when nothing deflated; &lt; <see cref="rhs"/> means columns dropped
+        /// (converged or linearly dependent).</summary>
+        public int minActive;
+
         /// <summary>Why the solve stopped. <see cref="IterativeSolveStatus.Converged"/> iff ALL
         /// <see cref="rhs"/> columns converged; otherwise MaxIterations or Breakdown.</summary>
         public IterativeSolveStatus status;
@@ -45,7 +51,7 @@ namespace LinearAlgebra
         {
             FixedString128Bytes str = "BlockSolveInfo(";
             str.Append(status.Name());
-            FixedString128Bytes tail = $", rhs={rhs}, converged={converged}, iters={iterations}, maxRnorm={maxRnorm:G3})";
+            FixedString128Bytes tail = $", rhs={rhs}, converged={converged}, iters={iterations}, minActive={minActive}, maxRnorm={maxRnorm:G3})";
             str.Append(tail);
             return str;
         }
