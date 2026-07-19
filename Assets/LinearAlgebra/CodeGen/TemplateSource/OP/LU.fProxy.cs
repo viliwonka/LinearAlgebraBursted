@@ -36,7 +36,7 @@ namespace LinearAlgebra
             if (A.M_Rows != L.M_Rows || A.M_Rows != U.M_Rows)
                 throw new System.ArgumentException("decompNoPivot: A, L and U need to have the same dimensions");
 
-            U.Data.CopyFrom(A.Data);
+            U.CopyFrom(in A);
 
             int m = U.M_Rows;
 
@@ -108,7 +108,7 @@ namespace LinearAlgebra
             if (A.M_Rows != L.M_Rows || A.M_Rows != U.M_Rows)
                 throw new System.ArgumentException("decomp: A, L and U need to have the same dimensions");
 
-            U.Data.CopyFrom(A.Data);
+            U.CopyFrom(in A);
 
             int m = U.M_Rows;
 

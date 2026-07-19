@@ -44,6 +44,7 @@ public class doubleLQRPTests
             DuplicateRows,
             DecompPreservesA,
             CacheEquivalence,
+            DecompInPlaceNarrowedView,
         }
 
         public TestType Type;
@@ -65,6 +66,7 @@ public class doubleLQRPTests
                 case TestType.DuplicateRows:           DuplicateRows();           break;
                 case TestType.DecompPreservesA:        DecompPreservesA();        break;
                 case TestType.CacheEquivalence:        CacheEquivalence();        break;
+                case TestType.DecompInPlaceNarrowedView: DecompInPlaceNarrowedView(); break;
             }
         }
 
@@ -333,6 +335,50 @@ public class doubleLQRPTests
             for (int j = 0; j < m; j++) RecordEq(P2[j], P1[j]);
 
             P1.Dispose(); P2.Dispose();
+            arena.Dispose();
+        }
+
+        // Regression: a "narrowed view" whose M_Rows is smaller than its backing buffer's row count
+        // (Length stays the FULL backing size -- the exact "silent resize" trap: UnsafeList<T>.CopyFrom
+        // would try to GROW a fixed-size scratch copy to the view's Data.Length instead of its logical
+        // M_Rows*N_Cols, and since Data returns the backing UnsafeList BY VALUE, that resize lands on a
+        // discarded struct copy and the scratch is left stale/all-zero). decompInPlace must factor the
+        // view's logical m x n content correctly, not silently degrade to an all-zero L/Q.
+        void DecompInPlaceNarrowedView()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int bigM = 10, m = 4, n = 6;
+            var big = arena.doubleRandomMat(bigM, n, -3f, 3f, 24681357);
+
+            // Leading-rows narrowed view: same backing buffer (bigM x n row-major), M_Rows overwritten
+            // to m -- mirrors Krylov.Block.double.cs's RowsView / LOBPCG.double.cs's RowsView.
+            var view = big;
+            view.M_Rows = m;
+
+            // Snapshot the view's logical m x n content before decompInPlace overwrites it with Q.
+            var Aorig = arena.doubleMat(m, n);
+            for (int r = 0; r < m; r++)
+                for (int c = 0; c < n; c++)
+                    Aorig[r, c] = view[r, c];
+
+            var L = arena.doubleMat(m, m);
+            var P = new Pivot(m, Allocator.Persistent);
+
+            LQRP.decompInPlace(ref view, ref L, ref P);
+            AssertLQRP(in Aorig, in L, in view, in P, (double)1E-4f);
+
+            // Must not silently degrade to an all-zero factorization: a generic full-row-rank m x n
+            // matrix (m < n) has full numerical row rank m.
+            double lead = math.abs(L[0, 0]);
+            double rankTol = (double)1E-4f * lead;
+            int rank = 0;
+            for (int d = 0; d < m; d++)
+                if (math.abs(L[d, d]) > rankTol)
+                    rank++;
+            RecordEq(rank, m);
+
+            P.Dispose();
             arena.Dispose();
         }
 

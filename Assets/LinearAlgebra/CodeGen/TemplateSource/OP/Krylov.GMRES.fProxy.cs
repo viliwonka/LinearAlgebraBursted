@@ -45,7 +45,7 @@ namespace LinearAlgebra
             fProxy bb = Blas.dot(b, b);
             if (bb == (fProxy)0)
             {
-                x.Data.CopyFrom(b.Data);
+                x.CopyFrom(in b);
                 return MakeSolveInfo(IterativeSolveStatus.Converged, 0, (fProxy)0);
             }
             fProxy bnorm = math.sqrt(bb);
@@ -73,7 +73,7 @@ namespace LinearAlgebra
             {
                 fProxyN v0 = V[0];
                 A.Apply(in x, ref w);                       // w = A x
-                v0.Data.CopyFrom(b.Data);
+                v0.CopyFrom(in b);
                 v0.addScaledInPlace((fProxy)(-1), w);        // v0 = b - A x
                 fProxy beta = math.sqrt(Blas.dot(v0, v0));
                 resnorm = beta;
@@ -113,7 +113,7 @@ namespace LinearAlgebra
                     {
                         fProxyN vj1 = V[j + 1];
                         fProxy invh = (fProxy)1 / hj1;
-                        vj1.Data.CopyFrom(w.Data);
+                        vj1.CopyFrom(in w);
                         for (int i = 0; i < n; i++) vj1[i] *= invh;
                     }
 

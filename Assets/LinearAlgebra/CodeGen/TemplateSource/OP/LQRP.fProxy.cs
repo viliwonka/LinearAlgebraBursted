@@ -268,7 +268,7 @@ namespace LinearAlgebra
             var W = new fProxyMxN(m, n, Allocator.Temp, false);
             var v = new fProxyN(n, Allocator.Temp, false);
 
-            W.Data.CopyFrom(A.Data);
+            W.CopyFrom(in A);
             fProxy zeroThreshold = Consts.fProxyZeroThreshold * Norms.LInf(in A);
 
             lqrpKernel(ref W, ref L, ref Q, ref P, ref v, zeroThreshold, reconstructQ: true);
@@ -305,7 +305,7 @@ namespace LinearAlgebra
             var W = ws.W;
             var v = ws.v;
 
-            W.Data.CopyFrom(A.Data);
+            W.CopyFrom(in A);
             fProxy zeroThreshold = Consts.fProxyZeroThreshold * Norms.LInf(in A);
 
             lqrpKernel(ref W, ref L, ref Q, ref P, ref v, zeroThreshold, reconstructQ: true);
@@ -355,7 +355,7 @@ namespace LinearAlgebra
             // overwrites A_to_Q with Q. Factor the scratch copy W; reconstruct Q straight into A_to_Q
             // (a separate buffer from W's reflector store — no aliasing).
             var W = new fProxyMxN(m, n, Allocator.Temp, false);
-            W.Data.CopyFrom(A_to_Q.Data);
+            W.CopyFrom(in A_to_Q);
             fProxy zeroThreshold = Consts.fProxyZeroThreshold * Norms.LInf(in A_to_Q);
 
             lqrpKernel(ref W, ref L, ref A_to_Q, ref P, ref v, zeroThreshold, reconstructQ: true);
@@ -388,7 +388,7 @@ namespace LinearAlgebra
 
             var W = ws.W;
             var v = ws.v;
-            W.Data.CopyFrom(A_to_Q.Data);
+            W.CopyFrom(in A_to_Q);
             fProxy zeroThreshold = Consts.fProxyZeroThreshold * Norms.LInf(in A_to_Q);
 
             lqrpKernel(ref W, ref L, ref A_to_Q, ref P, ref v, zeroThreshold, reconstructQ: true);

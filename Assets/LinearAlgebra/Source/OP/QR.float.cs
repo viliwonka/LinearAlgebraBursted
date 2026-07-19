@@ -491,7 +491,7 @@ namespace LinearAlgebra
             if (Q.M_Rows != A.M_Rows || Q.N_Cols != A.N_Cols)
                 throw new ArgumentException("QR.decomp: Q must have the same dimensions as A");
 
-            Q.Data.CopyFrom(A.Data);
+            Q.CopyFrom(in A);
             return decompInPlace(ref Q, ref R, ref u, ref w);
         }
 
@@ -507,7 +507,7 @@ namespace LinearAlgebra
             if (Q.M_Rows != A.M_Rows || Q.N_Cols != A.N_Cols)
                 throw new ArgumentException("QR.decomp: Q must have the same dimensions as A");
 
-            Q.Data.CopyFrom(A.Data);
+            Q.CopyFrom(in A);
             return decompInPlace(ref Q, ref R, ref u);
         }
 
@@ -524,7 +524,7 @@ namespace LinearAlgebra
             if (Q.M_Rows != A.M_Rows || Q.N_Cols != A.N_Cols)
                 throw new ArgumentException("QR.decomp: Q must have the same dimensions as A");
 
-            Q.Data.CopyFrom(A.Data);
+            Q.CopyFrom(in A);
             return decompInPlace(ref Q, ref R);
         }
 
@@ -543,7 +543,7 @@ namespace LinearAlgebra
             if (Q.M_Rows != A.M_Rows || Q.N_Cols != A.N_Cols)
                 throw new ArgumentException("QR.decomp: Q must have the same dimensions as A");
 
-            Q.Data.CopyFrom(A.Data);
+            Q.CopyFrom(in A);
             return decompInPlace(ref Q, ref R, ref cache);
         }
 

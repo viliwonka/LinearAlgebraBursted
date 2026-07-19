@@ -178,7 +178,7 @@ namespace LinearAlgebra
                     var info2 = LU.decompInPlace(ref HG, ref P2);
                     if (!info1.Solved || !info2.Solved) { status = RiccatiStatus.Diverged; residual = double.PositiveInfinity; break; }
 
-                    X1.Data.CopyFrom(Ak.Data);
+                    X1.CopyFrom(in Ak);
                     LU.decompSolve(ref GH, in P1, ref X1);              // X1 = (I+GkHk)⁻¹Ak
                     Blas.dot(in Ak, in X1, ref AkNext);                 // A_{k+1} = Ak X1
 
@@ -208,9 +208,9 @@ namespace LinearAlgebra
                     double diffNorm = FrobeniusNormDiff(in HkNext, in Hk);
                     residual = diffNorm / math.max(1.0, newNorm);
 
-                    Ak.Data.CopyFrom(AkNext.Data);
-                    Gk.Data.CopyFrom(GkNext.Data);
-                    Hk.Data.CopyFrom(HkNext.Data);
+                    Ak.CopyFrom(in AkNext);
+                    Gk.CopyFrom(in GkNext);
+                    Hk.CopyFrom(in HkNext);
 
                     if (residual <= tol) { status = RiccatiStatus.Converged; break; }
                 }
@@ -220,7 +220,7 @@ namespace LinearAlgebra
                 P1.Dispose(); P2.Dispose();
             }
 
-            S.Data.CopyFrom(Hk.Data);   // always a defined, bounded value (H0=Q at worst)
+            S.CopyFrom(in Hk);   // always a defined, bounded value (H0=Q at worst)
 
             RL.Dispose(); RP.Dispose(); Ak.Dispose(); Gk.Dispose(); Hk.Dispose();
 

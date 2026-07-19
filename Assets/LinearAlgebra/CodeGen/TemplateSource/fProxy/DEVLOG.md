@@ -8,6 +8,25 @@ files: `fProxyN.cs`, `fProxyMxN.cs`, `iProxy\iProxyN.cs`, `iProxy\iProxyMxN.cs`,
 `bool\boolMxN.cs`. Each was rewritten to one contract-only version and applied consistently to all
 six; this single entry captures the shared history/rationale that used to be inline in all of them.
 
+## CopyFrom(in Self) / CopyTo(in Self) -- silent-resize footgun (N and MxN family)
+- 2026-07-19 | Root cause: `Data` returns the backing `UnsafeList<T>` BY VALUE (plain fields, not
+  indirected through a pointer). `dst.Data.CopyFrom(src.Data)` resizes `dst` off `src.Data.Length` --
+  for a narrowed same-buffer view (the `View`/`RowsView`/`RectView` pattern used by
+  `Krylov.Block.fProxy.cs`/`LOBPCG.fProxy.cs`: copy the struct, overwrite `M_Rows`/`N_Cols`, leave the
+  readonly `Length` field pointing at the ORIGINAL backing buffer's size), `Data.Length` reports the
+  FULL backing size, not the narrowed logical `M_Rows*N_Cols`. When `dst` must grow to match that
+  stale size, the reallocation lands on the DISCARDED temporary `UnsafeList` the `Data` getter
+  returned -- `dst`'s real storage is left at its original (often zeroed) content. Found via
+  `LQRP.decomp`'s `W.Data.CopyFrom(A.Data)`; see OP/DEVLOG.md's bcgrq section for the concrete repro
+  (`L[0,0]` came back exactly 0 despite a real residual).
+  FIX: `CopyFrom(in Self)`/`CopyTo(in Self)` on `fProxyN`/`fProxyMxN`/`iProxyN`/`iProxyMxN`/`boolMxN`
+  (mirrors the already-safe `CopyFrom(NativeArray<T>)` overload just below each) now validate the
+  LOGICAL size -- `N` for the vector family (always live: `N => Data.Length`), or `M_Rows`/`N_Cols`
+  for the matrix family (the pre-existing dimension check already used those, not the possibly-stale
+  `Length` field) -- and `UnsafeUtility.MemCpy` exactly that many elements: fixed-size, never resizes
+  either side, throws `ArgumentException` on a genuine mismatch. `boolN` has no struct-to-struct
+  `CopyFrom`/`CopyTo` overload (only the `NativeArray<bool>` ones), so nothing changed there.
+
 ## `_rec` (arena-tracked record pointer), N and MxN family
 - 2026-07-11 | Design cites docs/dev/rfc-memory-model.md §4 Option A (the record-pointer design).
   Replaces an older `Arena _arena` handle field: retiring that field kept the struct's size

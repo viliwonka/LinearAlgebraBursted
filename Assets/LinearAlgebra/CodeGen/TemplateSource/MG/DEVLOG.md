@@ -2,6 +2,13 @@
 
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## fProxyAMG.cs -- silent-resize footgun sweep
+- 2026-07-19 | All `.Data.CopyFrom(` sites in `VCycle`/`KCycle`/`ApplyCycleFromZero`/`Solve` switched
+  to the length-checked `fProxyN.CopyFrom(in Self)` wrapper (fProxy/DEVLOG.md). Every pair here is a
+  same-level (same `nl = levA[l].M_Rows`) real per-level vector (`self.fProxyVec(nl)`, never a
+  narrowed view), so this had no observable bug -- pure defense-in-depth/consistency, same as the
+  Kalman/Riccati/Control same-size sites in OP/DEVLOG.md's sweep entry.
+
 Building the unsmoothed nodal-aggregation AMG MVP (spec docs/dev/spec-multigrid-solver.md, the
 post-research REVISED recommendation; user chose it 2026-07-18 over the geometric-first plan).
 Path: elasticity-capable (rigid-body near-nullspace per aggregate), dodges general spGEMM (the

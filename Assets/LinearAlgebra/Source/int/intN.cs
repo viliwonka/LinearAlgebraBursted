@@ -166,20 +166,22 @@ namespace LinearAlgebra
             return OwnerArena.intTempVec(in this);   // temp pool
         }
 
-        public void CopyTo(in intN vec)
+        /// <summary>Copies every component into <paramref name="vec"/> (lengths must match). Fixed-size: never resizes <paramref name="vec"/>.</summary>
+        public unsafe void CopyTo(in intN vec)
         {
             if (this.N != vec.N)
                 throw new ArgumentException("CopyTo: dimensions do not match!");
 
-            vec.Data.CopyFrom(Data);
+            UnsafeUtility.MemCpy(vec.Data.Ptr, Data.Ptr, (long)N * sizeof(int));
         }
 
-        public void CopyFrom(in intN vec) {
+        /// <summary>Copies every component from <paramref name="vec"/> (lengths must match). Fixed-size: never resizes this vector.</summary>
+        public unsafe void CopyFrom(in intN vec) {
 
             if (this.N != vec.N)
                 throw new ArgumentException("CopyFrom: dimensions do not match!");
 
-            Data.CopyFrom(vec.Data);
+            UnsafeUtility.MemCpy(Data.Ptr, vec.Data.Ptr, (long)N * sizeof(int));
         }
 
         /// <summary>Copies every component into <paramref name="dst"/> (lengths must match).</summary>

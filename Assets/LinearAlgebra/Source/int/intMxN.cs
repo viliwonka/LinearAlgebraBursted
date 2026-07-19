@@ -193,22 +193,22 @@ namespace LinearAlgebra
             return OwnerArena.intTempMat(in this);
         }
 
-        /// <summary>Copies every element into <paramref name="mat"/> (dimensions must match).</summary>
-        public void CopyTo(in intMxN mat)
+        /// <summary>Copies every element into <paramref name="mat"/> (dimensions must match). Fixed-size: never resizes <paramref name="mat"/>.</summary>
+        public unsafe void CopyTo(in intMxN mat)
         {
             if (M_Rows != mat.M_Rows || N_Cols != mat.N_Cols)
                 throw new ArgumentException("CopyTo: dimensions do not match!");
 
-            mat.Data.CopyFrom(Data);
+            UnsafeUtility.MemCpy(mat.Data.Ptr, Data.Ptr, (long)M_Rows * N_Cols * sizeof(int));
         }
 
-        /// <summary>Copies every element from <paramref name="mat"/> (dimensions must match).</summary>
-        public void CopyFrom(in intMxN mat)
+        /// <summary>Copies every element from <paramref name="mat"/> (dimensions must match). Fixed-size: never resizes this matrix.</summary>
+        public unsafe void CopyFrom(in intMxN mat)
         {
             if (M_Rows != mat.M_Rows || N_Cols != mat.N_Cols)
                 throw new ArgumentException("CopyFrom: dimensions do not match!");
 
-            Data.CopyFrom(mat.Data);
+            UnsafeUtility.MemCpy(Data.Ptr, mat.Data.Ptr, (long)M_Rows * N_Cols * sizeof(int));
         }
 
         /// <summary>Copies every element (row-major) into <paramref name="dst"/> (dst.Length must equal M_Rows*N_Cols).</summary>

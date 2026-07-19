@@ -176,13 +176,13 @@ namespace LinearAlgebra
 
             if (bb == (double)0)
             {
-                x.Data.CopyFrom(b.Data);
+                x.CopyFrom(in b);
                 return MakeSolveInfo(IterativeSolveStatus.Converged, 0, (double)0);
             }
 
             // r = b - A x
             A.Apply(in x, ref Ap);
-            r.Data.CopyFrom(b.Data);
+            r.CopyFrom(in b);
             r.addScaledInPlace((double)(-1), Ap);
 
             double threshold = tol * tol * bb;
@@ -195,13 +195,13 @@ namespace LinearAlgebra
             double rzold;
             if (M.IsIdentity)
             {
-                p.Data.CopyFrom(r.Data);
+                p.CopyFrom(in r);
                 rzold = rr;
             }
             else
             {
                 M.Apply(in r, ref z);
-                p.Data.CopyFrom(z.Data);
+                p.CopyFrom(in z);
                 rzold = Blas.dot(r, z);
 
                 // Non-SPD preconditioner guard (identity's ⟨r,r⟩ is always > 0 here).
@@ -224,7 +224,7 @@ namespace LinearAlgebra
                 {
                     // Verify-at-exit -- see cg<TOp>'s matching block for the rationale.
                     A.Apply(in x, ref Ap);
-                    r.Data.CopyFrom(b.Data);
+                    r.CopyFrom(in b);
                     r.addScaledInPlace((double)(-1), Ap);
                     rr = Blas.dot(r, r);
 
@@ -567,13 +567,13 @@ namespace LinearAlgebra
 
             if (bb == (double)0)
             {
-                x.Data.CopyFrom(b.Data);
+                x.CopyFrom(in b);
                 return MakeSolveInfo(IterativeSolveStatus.Converged, 0, (double)0);
             }
 
             // r1 = b - A x
             A.Apply(in x, ref y);                       // y = A x (temp use of y)
-            r1.Data.CopyFrom(b.Data);
+            r1.CopyFrom(in b);
             r1.addScaledInPlace((double)(-1), y);           // r1 = b - A x
 
             double threshold = tol * tol * bb;
@@ -602,7 +602,7 @@ namespace LinearAlgebra
                 beta = math.sqrt(betaSq);
             }
 
-            r2.Data.CopyFrom(r1.Data);
+            r2.CopyFrom(in r1);
 
             // Zero the 3-term search-direction history (w/w1/w2 start at 0 in exact MINRES).
             for (int i = 0; i < A.Rows; i++) { w[i] = (double)0; w1[i] = (double)0; w2[i] = (double)0; }
@@ -691,7 +691,7 @@ namespace LinearAlgebra
                     // both idle here (y: recycled garbage; v: consumed by combine3 above), reused as
                     // scratch. Fall through and keep iterating on a failed verify.
                     A.Apply(in x, ref y);                     // y = A x
-                    v.Data.CopyFrom(b.Data);
+                    v.CopyFrom(in b);
                     v.addScaledInPlace((double)(-1), y);         // v = b - A x
                     double trueRR = Blas.dot(v, v);
 
@@ -709,7 +709,7 @@ namespace LinearAlgebra
 
             // Preconditioned MaxIterations: report the TRUE residual (one fresh Apply), not phibar.
             A.Apply(in x, ref y);                             // y = A x
-            v.Data.CopyFrom(b.Data);
+            v.CopyFrom(in b);
             v.addScaledInPlace((double)(-1), y);                 // v = b - A x
             double finalRR = Blas.dot(v, v);
             return MakeSolveInfo(IterativeSolveStatus.MaxIterations, maxIter, math.sqrt(finalRR));
@@ -851,13 +851,13 @@ namespace LinearAlgebra
 
             if (bb == (double)0)
             {
-                x.Data.CopyFrom(b.Data);
+                x.CopyFrom(in b);
                 return MakeSolveInfo(IterativeSolveStatus.Converged, 0, (double)0);
             }
 
             // r = b - A x
             A.Apply(in x, ref v);                          // v = A x (temp use, overwritten below)
-            r.Data.CopyFrom(b.Data);
+            r.CopyFrom(in b);
             r.addScaledInPlace((double)(-1), v);
 
             double threshold = tol * tol * bb;
@@ -868,7 +868,7 @@ namespace LinearAlgebra
             if (rr <= threshold)
                 return MakeSolveInfo(IterativeSolveStatus.Converged, 0, math.sqrt(rr));
 
-            rHat0.Data.CopyFrom(r.Data);
+            rHat0.CopyFrom(in r);
 
             // p_0 = v_0 = 0 (standard BiCGSTAB init).
             for (int i = 0; i < A.Rows; i++) { p[i] = (double)0; v[i] = (double)0; }
@@ -1145,7 +1145,7 @@ namespace LinearAlgebra
 
             // u = b - A x ; beta = ||u||
             A.Apply(in x, ref tmpM);
-            u.Data.CopyFrom(b.Data);
+            u.CopyFrom(in b);
             u.addScaledInPlace((double)(-1), tmpM);
 
             double beta = math.sqrt(Blas.dot(u, u));
@@ -1158,7 +1158,7 @@ namespace LinearAlgebra
 
             // v = A^T u ; alpha = ||v||
             A.ApplyT(in u, ref tmpN);
-            v.Data.CopyFrom(tmpN.Data);
+            v.CopyFrom(in tmpN);
 
             double alpha = math.sqrt(Blas.dot(v, v));
 
@@ -1184,7 +1184,7 @@ namespace LinearAlgebra
                 // already within tolerance before the first bidiagonalization step
                 return LstsqInfoTracked(IterativeSolveStatus.Converged, 0, phibar, arnorm, (double)0, in x);
 
-            w.Data.CopyFrom(v.Data);
+            w.CopyFrom(in v);
 
             for (int k = 0; k < maxIter; k++)
             {
@@ -1462,7 +1462,7 @@ namespace LinearAlgebra
 
             // u = b - A x ; beta = ||u||   (warm-startable: bidiagonalization of the residual)
             A.Apply(in x, ref tmpM);
-            u.Data.CopyFrom(b.Data);
+            u.CopyFrom(in b);
             u.addScaledInPlace((double)(-1), tmpM);
 
             double beta = math.sqrt(Blas.dot(u, u));
@@ -1475,7 +1475,7 @@ namespace LinearAlgebra
 
             // v = A^T u ; alpha = ||v||
             A.ApplyT(in u, ref tmpN);
-            v.Data.CopyFrom(tmpN.Data);
+            v.CopyFrom(in tmpN);
 
             double alpha = math.sqrt(Blas.dot(v, v));
 
@@ -1490,7 +1490,7 @@ namespace LinearAlgebra
                 return LstsqInfoTracked(IterativeSolveStatus.Converged, 0, beta, alpha * beta, (double)0, in x);
 
             // h = v ; hbar = 0
-            h.Data.CopyFrom(v.Data);
+            h.CopyFrom(in v);
             for (int i = 0; i < hbar.N; i++) hbar[i] = (double)0;
 
             // MINRES-on-normal-equations rotation state.

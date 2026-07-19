@@ -168,7 +168,7 @@ namespace LinearAlgebra
             // (entries k..m-1); its written entries are exactly the ones the backward U pass reads, so
             // values left over from a previous call are never observed.
             var W = ws.W;
-            W.Data.CopyFrom(A.Data);
+            W.CopyFrom(in A);
             var leftU = ws.leftU;
             var uVec = ws.uVec;
             var vVec = ws.vVec;
@@ -303,7 +303,7 @@ namespace LinearAlgebra
 
             // W: working copy of A, reduced to bidiagonal form in place (from the caller workspace).
             var W = ws.W;
-            W.Data.CopyFrom(A.Data);
+            W.CopyFrom(in A);
 
             var uVec = ws.uVec;
             var vVec = ws.vVec;

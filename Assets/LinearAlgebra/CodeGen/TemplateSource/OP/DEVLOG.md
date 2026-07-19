@@ -1,7 +1,33 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Fixed-size struct-to-struct copies -- silent-resize footgun sweep
+- 2026-07-19 | Root cause and the `fProxyN`/`fProxyMxN` `CopyFrom(in Self)`/`CopyTo(in Self)` fix are
+  documented in `fProxy/DEVLOG.md` (this bug was first found here, via `LQRP.decomp`'s
+  `W.Data.CopyFrom(A.Data)` -- see the bcgrq section below for the concrete repro). This entry covers
+  the sweep of every other `.Data.CopyFrom(` site across `LQ`/`LU`/`QR`/`QRCP`/`Bidiag`/`Kalman`/
+  `Kalman.UKF`/`Control`/`Riccati`/`Krylov`/`Krylov.FCG`/`Krylov.GMRES`/`OP.Dot`/`SelectOP` in this
+  folder (plus `Interfaces/LinearOperator.fProxy.cs` and `MG/fProxyAMG.cs`, each noted in their own
+  DEVLOG). Two categories: (1) sites where the destination is a fixed, already-correctly-sized
+  buffer copying from ANOTHER caller-supplied `in fProxyMxN`/`in fProxyN` parameter that could
+  legitimately be a narrowed view (`LQ.decomp`/`LQRP.decomp`/`LU.decompNoPivot`/`LU.decomp`/
+  `QR.decomp`/`QRCP.decomp`'s `W`/`U`/`Q.Data.CopyFrom(A.Data)`, `QRCP`'s row-unpermute `Z`) -- these
+  were LATENT instances of the same bug (silently degrade to a stale/zeroed copy whenever fed a view
+  whose backing buffer differs from its logical size) and are real fixes, not just style; (2) sites
+  where both sides are known same-size fresh/state buffers (Kalman filter state vectors, Riccati/LQR
+  n x n iterates, Krylov solver scratch validated against `A.Rows`/`A.Cols` at entry, `SelectOP`'s
+  dimension-checked `dest`) -- these get the same treatment for consistency and defense-in-depth, but
+  had no observable bug (`UnsafeList.CopyFrom` only misbehaves when an actual resize is needed).
+  All switched to the now length-checked `CopyFrom(in Self)` wrapper (throws on a real mismatch,
+  `MemCpy`s the logical size, never resizes).
+
 ## Krylov.bfbcg — breakdown-free block CG (Ji & Li 2017)
+- 2026-07-19 | `FactorLiveSearch`'s exactly-sized `Pfactor` Temp buffer + `CopyBlock` pre-copy REMOVED
+  now that `LQRP.decomp`'s own internal scratch copy is length-checked against its logical
+  `M_Rows*N_Cols` (fProxy/DEVLOG.md's silent-resize fix) instead of resizing off a view's stale
+  `Data.Length` -- `Plive` (the `RowsView`) is fed straight into `LQRP.decomp` now. One fewer
+  `Allocator.Temp` allocation and one fewer O(sLive*n) copy per call; behavior unchanged (full suite
+  green after the switch).
 - 2026-07-19 | Third block-CG family in `Krylov.Block.fProxy.cs`, coexisting with ridge `bcg` and
   `bcgrq`. Source: Ji, H. & Li, Y., "A breakdown-free block conjugate gradient method", BIT Numer. Math.
   57:379-403 (2017); porting extract at `reference/papers/BFBCG-algorithm-extract.md`. Unlike `bcgrq`
@@ -36,6 +62,13 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   numbers in the commit history's benchmark run.
 
 ## Krylov.bcgrq — deflating block-CG with reliable QR (LQRP) residual updates
+- 2026-07-19 | `FactorLiveResidual`'s exactly-sized `Zfactor` Temp buffer + `CopyBlock` pre-copy
+  REMOVED now that the root cause below is fixed at the source (`fProxyMxN.CopyFrom(in Self)` is
+  length-checked against `M_Rows*N_Cols`, not resized off a view's stale `Data.Length` --
+  fProxy/DEVLOG.md): `Rlive`/`Zpre` (the `RowsView`s) are fed straight into `LQRP.decomp` now, in both
+  the identity and preconditioned branches. One fewer `Allocator.Temp` allocation and one fewer
+  O(sLive*n) copy per iteration; behavior unchanged (full suite green after the switch). The BUG FOUND
+  note directly below is now historical -- the workaround it describes is the one just removed.
 - 2026-07-19 | New solver set alongside ridge `bcg` (not a replacement): replaces the s×s ridge-
   regularized Gram solve with a row-pivoted rank-revealing LQ (`LQRP.decomp`) factorization of the live
   (preconditioned) residual block every iteration, so near-dependent RHS directions are DEFLATED (dropped

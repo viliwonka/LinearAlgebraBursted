@@ -151,7 +151,7 @@ namespace LinearAlgebra
                     // A·A: matMatDot promises [NoAlias] on every pointer and has no single-input
                     // twin, so feed it a Temp copy of b — an O(n²) copy against the O(n³) product.
                     var bCopy = new iProxyMxN(b.M_Rows, b.N_Cols, Unity.Collections.Allocator.Temp, true);
-                    bCopy.Data.CopyFrom(b.Data);
+                    bCopy.CopyFrom(in b);
                     UnsafeOP.matMatDot(a.Data.Ptr, bCopy.Data.Ptr, c.Data.Ptr, m, n, k);
                     bCopy.Dispose();
                 }

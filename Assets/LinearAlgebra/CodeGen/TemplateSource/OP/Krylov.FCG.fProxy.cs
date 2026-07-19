@@ -68,13 +68,13 @@ namespace LinearAlgebra
 
             if (bb == (fProxy)0)
             {
-                x.Data.CopyFrom(b.Data);
+                x.CopyFrom(in b);
                 return MakeSolveInfo(IterativeSolveStatus.Converged, 0, (fProxy)0);
             }
 
             // r = b - A x
             A.Apply(in x, ref Ap);
-            r.Data.CopyFrom(b.Data);
+            r.CopyFrom(in b);
             r.addScaledInPlace((fProxy)(-1), Ap);
 
             fProxy threshold = tol * tol * bb;
@@ -85,7 +85,7 @@ namespace LinearAlgebra
 
             // z = M^-1 r ; p = z
             M.Apply(in r, ref z);
-            p.Data.CopyFrom(z.Data);
+            p.CopyFrom(in z);
 
             fProxy rzold = Blas.dot(r, z);
 
@@ -103,7 +103,7 @@ namespace LinearAlgebra
 
                 // Snapshot the current residual before the update; the flexible beta needs
                 // <z_new, r_old>, and the verify-at-exit block below may overwrite r.
-                rOld.Data.CopyFrom(r.Data);
+                rOld.CopyFrom(in r);
 
                 // x += alpha p ; r -= alpha Ap ; rr = ||r||^2 folded into the r-update pass.
                 rr = Blas.updateXR(alpha, p, ref x, Ap, ref r);
@@ -111,7 +111,7 @@ namespace LinearAlgebra
                 {
                     // Verify-at-exit -- see cg<TOp>'s matching block for the rationale.
                     A.Apply(in x, ref Ap);
-                    r.Data.CopyFrom(b.Data);
+                    r.CopyFrom(in b);
                     r.addScaledInPlace((fProxy)(-1), Ap);
                     rr = Blas.dot(r, r);
 

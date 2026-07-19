@@ -112,7 +112,7 @@ namespace LinearAlgebra
     /// </summary>
     public readonly struct fProxyIdentityPreconditioner : IfProxyPreconditioner
     {
-        public void Apply(in fProxyN r, ref fProxyN z) => z.Data.CopyFrom(r.Data);
+        public void Apply(in fProxyN r, ref fProxyN z) => z.CopyFrom(in r);
 
         public bool IsIdentity => true;
     }
@@ -135,8 +135,8 @@ namespace LinearAlgebra
         public int Rows => N;
         public int Cols => N;
 
-        public void Apply(in fProxyN x, ref fProxyN y) => y.Data.CopyFrom(x.Data);
-        public void ApplyT(in fProxyN x, ref fProxyN y) => y.Data.CopyFrom(x.Data);
+        public void Apply(in fProxyN x, ref fProxyN y) => y.CopyFrom(in x);
+        public void ApplyT(in fProxyN x, ref fProxyN y) => y.CopyFrom(in x);
 
         // y == x exactly (an exact bit-copy), so dot(x,y) == dot(x,x) == ||x||^2. Nothing to
         // fuse beyond the copy itself -- this composes (Apply, then Blas.dot), which for the

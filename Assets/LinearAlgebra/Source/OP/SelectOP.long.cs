@@ -69,9 +69,9 @@ namespace LinearAlgebra
                 throw new ArgumentException("select: dest.N must equal a.N");
 
             if (c)
-                dest.Data.CopyFrom(b.Data);
+                dest.CopyFrom(in b);
             else
-                dest.Data.CopyFrom(a.Data);
+                dest.CopyFrom(in a);
         }
 
         public static longN select(in longN a, in longN b, in bool c)
@@ -88,9 +88,9 @@ namespace LinearAlgebra
                 throw new ArgumentException("select: dest dimensions must match a");
 
             if (c)
-                dest.Data.CopyFrom(b.Data);
+                dest.CopyFrom(in b);
             else
-                dest.Data.CopyFrom(a.Data);
+                dest.CopyFrom(in a);
         }
 
         public static longMxN select(in longMxN a, in longMxN b, in bool c)

@@ -393,34 +393,32 @@ namespace LinearAlgebra
         }
 
         // Factors the live (preconditioned) residual block via LQRP, writing the fresh orthonormal
-        // search basis into Pa's leading sLive rows and returning its numerical rank. Copies the live
-        // rows into a freshly, exactly sLive x n sized Temp buffer before calling LQRP.decomp (disposed
-        // immediately after, like the per-iteration Pivot) -- decomp's A input must be exactly sized,
-        // see DEVLOG.md.
+        // search basis into Pa's leading sLive rows and returning its numerical rank. Feeds the live
+        // RowsView straight into LQRP.decomp -- decomp's own internal scratch copy is now length-checked
+        // against its logical M_Rows*N_Cols (floatMxN.CopyFrom), so it no longer needs pre-copying into
+        // an exactly-sized buffer first (see DEVLOG.md).
         static int FactorLiveResidual<TPre>(in floatMxN R, in TPre M, ref floatMxN Z, int sLive, int n,
                                             ref floatN rowIn, ref floatN rowOut, ref floatMxN Lbuf, ref floatMxN Pa)
             where TPre : struct, IfloatPreconditioner
         {
-            var Zfactor = new floatMxN(sLive, n, Allocator.Temp, true);
+            var Ppiv  = new Pivot(sLive, Allocator.Temp);
+            var Lv    = View(Lbuf, sLive);
+            var Qfull = RowsView(Pa, sLive);
+
             if (M.IsIdentity)
             {
                 var Rlive = RowsView(R, sLive);
-                CopyBlock(in Rlive, ref Zfactor, sLive, n);
+                LQRP.decomp(in Rlive, ref Lv, ref Qfull, ref Ppiv);
             }
             else
             {
                 var Rlive = RowsView(R, sLive);
                 var Zpre = RowsView(Z, sLive);
                 BlockApplyPre(in M, in Rlive, ref Zpre, sLive, n, ref rowIn, ref rowOut);
-                CopyBlock(in Zpre, ref Zfactor, sLive, n);
+                LQRP.decomp(in Zpre, ref Lv, ref Qfull, ref Ppiv);
             }
 
-            var Ppiv  = new Pivot(sLive, Allocator.Temp);
-            var Lv    = View(Lbuf, sLive);
-            var Qfull = RowsView(Pa, sLive);
-            LQRP.decomp(in Zfactor, ref Lv, ref Qfull, ref Ppiv);
             Ppiv.Dispose();
-            Zfactor.Dispose();
 
             return LQRPRank(in Lv, sLive, n);
         }
@@ -669,21 +667,17 @@ namespace LinearAlgebra
         // ---- bfbcg-only private helpers -------------------------------------------------------------
 
         // Factors the live search block via LQRP, writing the fresh orthonormal search basis into Pa's
-        // leading sLive rows and returning its numerical rank. Copies the live rows into a freshly,
-        // exactly sLive x n sized Temp buffer before calling LQRP.decomp (disposed immediately after) --
-        // decomp's A input must be exactly sized, see DEVLOG.md.
+        // leading sLive rows and returning its numerical rank. Feeds the live RowsView straight into
+        // LQRP.decomp -- see FactorLiveResidual above.
         static int FactorLiveSearch(in floatMxN P, int sLive, int n, ref floatMxN Lbuf, ref floatMxN Pa)
         {
-            var Pfactor = new floatMxN(sLive, n, Allocator.Temp, true);
             var Plive = RowsView(P, sLive);
-            CopyBlock(in Plive, ref Pfactor, sLive, n);
 
             var Ppiv  = new Pivot(sLive, Allocator.Temp);
             var Lv    = View(Lbuf, sLive);
             var Qfull = RowsView(Pa, sLive);
-            LQRP.decomp(in Pfactor, ref Lv, ref Qfull, ref Ppiv);
+            LQRP.decomp(in Plive, ref Lv, ref Qfull, ref Ppiv);
             Ppiv.Dispose();
-            Pfactor.Dispose();
 
             return LQRPRank(in Lv, sLive, n);
         }

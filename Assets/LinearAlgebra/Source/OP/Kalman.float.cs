@@ -42,7 +42,7 @@ namespace LinearAlgebra
             Blas.dotSymT(in s.AP, in Aeff, ref s.APAt);   // (Aeff P)·Aeffᵀ, symmetric since P is
             s.APAt.addInPlace(Q);
             Riccati.SymmetrizeInPlace(ref s.APAt);
-            s.P.Data.CopyFrom(s.APAt.Data);
+            s.P.CopyFrom(in s.APAt);
         }
 
         // Given H (m x n, literal for update() or a freshly-evaluated Jacobian for ekfUpdate) and the
@@ -95,7 +95,7 @@ namespace LinearAlgebra
 
                 s.APAt.addInPlace(s.AP);                      // APAt := term1 + term2
                 Riccati.SymmetrizeInPlace(ref s.APAt);
-                s.P.Data.CopyFrom(s.APAt.Data);
+                s.P.CopyFrom(in s.APAt);
 
                 status = KFStatus.Ok;
 
@@ -140,7 +140,7 @@ namespace LinearAlgebra
             s.xNext.addScaledInPlace((float)1, s.Bu);
 
             PredictCovarianceCore(ref s, in A, in Q);
-            s.x.Data.CopyFrom(s.xNext.Data);
+            s.x.CopyFrom(in s.xNext);
         }
 
         /// <summary>Autonomous overload (no control input): x = Ax; P = APAᵀ + Q.</summary>
@@ -155,7 +155,7 @@ namespace LinearAlgebra
 
             Blas.dot(in A, in s.x, ref s.xNext);
             PredictCovarianceCore(ref s, in A, in Q);
-            s.x.Data.CopyFrom(s.xNext.Data);
+            s.x.CopyFrom(in s.xNext);
         }
 
         /// <summary>
@@ -182,7 +182,7 @@ namespace LinearAlgebra
             var Hx = new floatN(m, Allocator.Temp);
             Blas.dot(in H, in s.x, ref Hx);
             var y = new floatN(m, Allocator.Temp);
-            y.Data.CopyFrom(z.Data);
+            y.CopyFrom(in z);
             y.addScaledInPlace((float)(-1), Hx);
             Hx.Dispose();
 
@@ -247,10 +247,10 @@ namespace LinearAlgebra
             float invScale = (float)1 / scale;
 
             var Qs = new floatMxN(n, n, Allocator.Temp);
-            Qs.Data.CopyFrom(Q.Data);
+            Qs.CopyFrom(in Q);
             Qs.mulInPlace(scale);
             var Rs = new floatMxN(m, m, Allocator.Temp);
-            Rs.Data.CopyFrom(R.Data);
+            Rs.CopyFrom(in R);
             Rs.mulInPlace(scale);
 
             var Sigma = new floatMxN(n, n, Allocator.Temp);
@@ -306,7 +306,7 @@ namespace LinearAlgebra
             Blas.dot(in A, in s.x, ref s.xNext);
             Blas.dot(in B, in u, ref s.Bu);
             s.xNext.addScaledInPlace((float)1, s.Bu);
-            s.x.Data.CopyFrom(s.xNext.Data);
+            s.x.CopyFrom(in s.xNext);
         }
 
         /// <summary>Autonomous overload of <see cref="predictFixed(ref floatKFState, in floatMxN, in floatMxN, in floatN)"/>: x = Ax.</summary>
@@ -318,7 +318,7 @@ namespace LinearAlgebra
                 throw new ArgumentException("Kalman.predictFixed: A must be n x n");
 
             Blas.dot(in A, in s.x, ref s.xNext);
-            s.x.Data.CopyFrom(s.xNext.Data);
+            s.x.CopyFrom(in s.xNext);
         }
 
         /// <summary>
@@ -367,7 +367,7 @@ namespace LinearAlgebra
             model.F(in s.x, in u, ref s.xNext);
             model.JacobianF(in s.x, in u, ref s.J);
             PredictCovarianceCore(ref s, in s.J, in Q);
-            s.x.Data.CopyFrom(s.xNext.Data);
+            s.x.CopyFrom(in s.xNext);
         }
 
         /// <summary>
@@ -389,7 +389,7 @@ namespace LinearAlgebra
             var zPred = new floatN(m, Allocator.Temp);
             meas.H(in s.x, ref zPred);
             var y = new floatN(m, Allocator.Temp);
-            y.Data.CopyFrom(z.Data);
+            y.CopyFrom(in z);
             y.addScaledInPlace((float)(-1), zPred);
             zPred.Dispose();
 
@@ -421,8 +421,8 @@ namespace LinearAlgebra
 
             for (int k = 0; k < n; k++)
             {
-                xp.Data.CopyFrom(x.Data);
-                xm.Data.CopyFrom(x.Data);
+                xp.CopyFrom(in x);
+                xm.CopyFrom(in x);
                 xp[k] += eps;
                 xm[k] -= eps;
                 model.F(in xp, in u, ref fp);
@@ -457,8 +457,8 @@ namespace LinearAlgebra
 
             for (int k = 0; k < n; k++)
             {
-                xp.Data.CopyFrom(x.Data);
-                xm.Data.CopyFrom(x.Data);
+                xp.CopyFrom(in x);
+                xm.CopyFrom(in x);
                 xp[k] += eps;
                 xm[k] -= eps;
                 meas.H(in xp, ref hp);

@@ -714,7 +714,7 @@ namespace LinearAlgebra
             if (Q.M_Rows != A.M_Rows || Q.N_Cols != A.N_Cols)
                 throw new ArgumentException("QRCP.decomp: Q must have the same dimensions as A");
 
-            Q.Data.CopyFrom(A.Data);
+            Q.CopyFrom(in A);
             return decompInPlace(ref Q, ref R, ref P, ref u);
         }
 
@@ -732,7 +732,7 @@ namespace LinearAlgebra
             if (Q.M_Rows != A.M_Rows || Q.N_Cols != A.N_Cols)
                 throw new ArgumentException("QRCP.decomp: Q must have the same dimensions as A");
 
-            Q.Data.CopyFrom(A.Data);
+            Q.CopyFrom(in A);
             return decompInPlace(ref Q, ref R, ref P, ref u, ref cache);
         }
 
@@ -750,7 +750,7 @@ namespace LinearAlgebra
             if (Q.M_Rows != A.M_Rows || Q.N_Cols != A.N_Cols)
                 throw new ArgumentException("QRCP.decomp: Q must have the same dimensions as A");
 
-            Q.Data.CopyFrom(A.Data);
+            Q.CopyFrom(in A);
             return decompInPlace(ref Q, ref R, ref P);
         }
 
@@ -1308,7 +1308,7 @@ namespace LinearAlgebra
 
             // Un-permute rows: x_final[P[j], :] = z[j, :]. Scatter through a Temp copy of z (X's rows).
             var Z = new doubleMxN(n, k, Allocator.Temp, false);
-            Z.Data.CopyFrom(X.Data);
+            Z.CopyFrom(in X);
             double* Zp = Z.Data.Ptr;
             for (int j = 0; j < n; j++)
             {

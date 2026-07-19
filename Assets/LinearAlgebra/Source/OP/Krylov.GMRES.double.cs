@@ -49,7 +49,7 @@ namespace LinearAlgebra
             double bb = Blas.dot(b, b);
             if (bb == (double)0)
             {
-                x.Data.CopyFrom(b.Data);
+                x.CopyFrom(in b);
                 return MakeSolveInfo(IterativeSolveStatus.Converged, 0, (double)0);
             }
             double bnorm = math.sqrt(bb);
@@ -77,7 +77,7 @@ namespace LinearAlgebra
             {
                 doubleN v0 = V[0];
                 A.Apply(in x, ref w);                       // w = A x
-                v0.Data.CopyFrom(b.Data);
+                v0.CopyFrom(in b);
                 v0.addScaledInPlace((double)(-1), w);        // v0 = b - A x
                 double beta = math.sqrt(Blas.dot(v0, v0));
                 resnorm = beta;
@@ -117,7 +117,7 @@ namespace LinearAlgebra
                     {
                         doubleN vj1 = V[j + 1];
                         double invh = (double)1 / hj1;
-                        vj1.Data.CopyFrom(w.Data);
+                        vj1.CopyFrom(in w);
                         for (int i = 0; i < n; i++) vj1[i] *= invh;
                     }
 

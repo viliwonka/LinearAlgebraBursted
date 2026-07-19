@@ -146,8 +146,8 @@ namespace LinearAlgebra
             cache.Pacc.addInPlace(Q);
             Riccati.SymmetrizeInPlace(ref cache.Pacc);
 
-            s.x.Data.CopyFrom(cache.xPred.Data);
-            s.P.Data.CopyFrom(cache.Pacc.Data);
+            s.x.CopyFrom(in cache.xPred);
+            s.P.CopyFrom(in cache.Pacc);
         }
 
         /// <summary>
@@ -224,7 +224,7 @@ namespace LinearAlgebra
             Riccati.SymmetrizeInPlace(ref Pzz);
 
             var y = new floatN(m, Allocator.Temp);
-            y.Data.CopyFrom(z.Data);
+            y.CopyFrom(in z);
             y.addScaledInPlace((float)(-1), zPred);
             double innovationNorm = math.sqrt((double)Blas.dot(y, y));
 

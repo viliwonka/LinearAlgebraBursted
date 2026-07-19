@@ -116,7 +116,7 @@ namespace LinearAlgebra
     /// </summary>
     public readonly struct doubleIdentityPreconditioner : IdoublePreconditioner
     {
-        public void Apply(in doubleN r, ref doubleN z) => z.Data.CopyFrom(r.Data);
+        public void Apply(in doubleN r, ref doubleN z) => z.CopyFrom(in r);
 
         public bool IsIdentity => true;
     }
@@ -139,8 +139,8 @@ namespace LinearAlgebra
         public int Rows => N;
         public int Cols => N;
 
-        public void Apply(in doubleN x, ref doubleN y) => y.Data.CopyFrom(x.Data);
-        public void ApplyT(in doubleN x, ref doubleN y) => y.Data.CopyFrom(x.Data);
+        public void Apply(in doubleN x, ref doubleN y) => y.CopyFrom(in x);
+        public void ApplyT(in doubleN x, ref doubleN y) => y.CopyFrom(in x);
 
         // y == x exactly (an exact bit-copy), so dot(x,y) == dot(x,x) == ||x||^2. Nothing to
         // fuse beyond the copy itself -- this composes (Apply, then Blas.dot), which for the

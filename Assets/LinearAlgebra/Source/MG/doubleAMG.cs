@@ -136,9 +136,9 @@ namespace LinearAlgebra.Sparse
                 doubleN bc = _B[lc], xc = _X[lc];
                 doubleN crhs = _coarseRhs;
                 doubleMxN chol = _coarseChol;
-                crhs.Data.CopyFrom(bc.Data);
+                crhs.CopyFrom(in bc);
                 CHO.decompSolve(ref chol, ref crhs);
-                xc.Data.CopyFrom(crhs.Data);
+                xc.CopyFrom(in crhs);
             }
 
             // Up: prolongate the coarse correction and post-smooth.
@@ -169,9 +169,9 @@ namespace LinearAlgebra.Sparse
                 doubleN bcz = _B[l], xcz = _X[l];
                 doubleN crhs = _coarseRhs;
                 doubleMxN chol = _coarseChol;
-                crhs.Data.CopyFrom(bcz.Data);
+                crhs.CopyFrom(in bcz);
                 CHO.decompSolve(ref chol, ref crhs);
-                xcz.Data.CopyFrom(crhs.Data);
+                xcz.CopyFrom(in crhs);
                 return;
             }
 
@@ -189,12 +189,12 @@ namespace LinearAlgebra.Sparse
             doubleN rc = _krc[c], c1 = _kc1[c], c2 = _kc2[c], v1 = _kv1[c], v2 = _kv2[c], e = _ke[c];
 
             BSR.spMVT(in Pl, in r, ref bc);               // b_c = P^T r  (the restricted residual)
-            rc.Data.CopyFrom(bc.Data);                    // keep a copy of rc (b_c gets rewritten)
+            rc.CopyFrom(in bc);                            // keep a copy of rc (b_c gets rewritten)
 
             // c1 = K(rc): one K-cycle apply from a zero coarse guess.
             for (int i = 0; i < xc.N; i++) xc[i] = (double)0;
             KCycle(c);
-            c1.Data.CopyFrom(xc.Data);
+            c1.CopyFrom(in xc);
             BSR.spMV(in Ac, in c1, ref v1);               // v1 = A_c c1
 
             double d1 = Blas.dot(c1, v1);
@@ -206,10 +206,10 @@ namespace LinearAlgebra.Sparse
                 rc.addScaledInPlace(-a1, v1);             // rc <- rc - a1 v1
 
                 // c2 = K(rc'): second flexible direction.
-                bc.Data.CopyFrom(rc.Data);
+                bc.CopyFrom(in rc);
                 for (int i = 0; i < xc.N; i++) xc[i] = (double)0;
                 KCycle(c);
-                c2.Data.CopyFrom(xc.Data);
+                c2.CopyFrom(in xc);
                 BSR.spMV(in Ac, in c2, ref v2);           // v2 = A_c c2
 
                 double beta = Blas.dot(c2, v1) / d1;      // A-orthogonalize c2 against c1
@@ -225,7 +225,7 @@ namespace LinearAlgebra.Sparse
             }
             else
             {
-                e.Data.CopyFrom(c1.Data);                 // breakdown: single unaccelerated apply
+                e.CopyFrom(in c1);                         // breakdown: single unaccelerated apply
             }
 
             BSR.spMV(in Pl, in e, ref zl);                // prolong: x += P e
@@ -245,10 +245,10 @@ namespace LinearAlgebra.Sparse
         {
             if (!_usable) throw new InvalidOperationException("doubleAMG: build failed (coarsest not SPD); do not Apply — check AMGSetupInfo.Solved");
             doubleN b0 = _B[0], x0 = _X[0];
-            b0.Data.CopyFrom(r.Data);
+            b0.CopyFrom(in r);
             for (int i = 0; i < x0.N; i++) x0[i] = (double)0;
             Cycle();
-            z.Data.CopyFrom(x0.Data);
+            z.CopyFrom(in x0);
         }
 
         // Standalone V-cycle iteration to a relative true-residual tolerance; x is warm-startable.
@@ -262,7 +262,7 @@ namespace LinearAlgebra.Sparse
             double bb = Blas.dot(b, b);
             if (bb == (double)0)
             {
-                x.Data.CopyFrom(b.Data);
+                x.CopyFrom(in b);
                 return new SolveInfo { rnorm = 0, iterations = 0, status = IterativeSolveStatus.Converged };
             }
 
@@ -270,8 +270,8 @@ namespace LinearAlgebra.Sparse
 
             doubleN x0 = _X[0], b0 = _B[0], r0 = _R[0];
             doubleBSR A0 = _A[0];
-            x0.Data.CopyFrom(x.Data);
-            b0.Data.CopyFrom(b.Data);
+            x0.CopyFrom(in x);
+            b0.CopyFrom(in b);
 
             double rr = 0;
             for (int it = 0; it < maxIter; it++)
@@ -283,12 +283,12 @@ namespace LinearAlgebra.Sparse
                 rr = Blas.dot(r0, r0);
                 if (rr <= threshold)
                 {
-                    x.Data.CopyFrom(x0.Data);
+                    x.CopyFrom(in x0);
                     return new SolveInfo { rnorm = math.sqrt(rr), iterations = it + 1, status = IterativeSolveStatus.Converged };
                 }
             }
 
-            x.Data.CopyFrom(x0.Data);
+            x.CopyFrom(in x0);
             return new SolveInfo { rnorm = math.sqrt(rr), iterations = maxIter, status = IterativeSolveStatus.MaxIterations };
         }
     }

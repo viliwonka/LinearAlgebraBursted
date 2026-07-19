@@ -163,7 +163,7 @@ namespace LinearAlgebra.Control
 
                 double diffNorm = Riccati.FrobeniusNormDiff(in Snext, in Scur);
                 residual = diffNorm / math.max(1.0, newNorm);
-                Scur.Data.CopyFrom(Snext.Data);
+                Scur.CopyFrom(in Snext);
 
                 if (residual <= tol) { status = RiccatiStatus.Converged; break; }
             }
@@ -175,7 +175,7 @@ namespace LinearAlgebra.Control
                 if (kinfo.Solved)
                 {
                     rankDeficient = kinfo.status == DirectSolveStatus.RankDeficient;
-                    Sresult.Data.CopyFrom(Scur.Data);
+                    Sresult.CopyFrom(in Scur);
                 }
                 else
                 {
@@ -252,7 +252,7 @@ namespace LinearAlgebra.Control
                 var Snew = new fProxyMxN(n, n, Allocator.Temp);
                 info = RiccatiIterate(in A, in B, in Q, in R, in state.S, ref Snew, ref K, maxIter);
                 if (info.status == RiccatiStatus.Converged)
-                    state.S.Data.CopyFrom(Snew.Data);
+                    state.S.CopyFrom(in Snew);
                 Snew.Dispose();
             }
             else
@@ -260,7 +260,7 @@ namespace LinearAlgebra.Control
                 var Scold = new fProxyMxN(n, n, Allocator.Temp);
                 info = SolveCold(in A, in B, in Q, in R, ref K, ref Scold, maxIter);
                 if (info.status == RiccatiStatus.Converged)
-                    state.S.Data.CopyFrom(Scold.Data);
+                    state.S.CopyFrom(in Scold);
                 Scold.Dispose();
             }
 
@@ -317,7 +317,7 @@ namespace LinearAlgebra.Control
 
                 residual = Riccati.FrobeniusNormDiff(in Snext, in Sk) / math.max(1.0, newNorm);
 
-                Sk.Data.CopyFrom(Snext.Data);
+                Sk.CopyFrom(in Snext);
             }
 
             Sk.Dispose(); Snext.Dispose(); Kstep.Dispose();

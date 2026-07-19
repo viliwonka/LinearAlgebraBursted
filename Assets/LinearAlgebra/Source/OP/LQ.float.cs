@@ -368,7 +368,7 @@ namespace LinearAlgebra
             var W = new floatMxN(m, n, Allocator.Temp, false);
             var v = new floatN(n, Allocator.Temp, false);
 
-            W.Data.CopyFrom(A.Data);
+            W.CopyFrom(in A);
             float zeroThreshold = Consts.floatZeroThreshold * Norms.LInf(in A);
 
             if (m < LQ_BLOCK_MIN_M)
@@ -422,7 +422,7 @@ namespace LinearAlgebra
             var W = ws.W;
             var v = ws.v;
 
-            W.Data.CopyFrom(A.Data);
+            W.CopyFrom(in A);
             float zeroThreshold = Consts.floatZeroThreshold * Norms.LInf(in A);
 
             lqKernel(ref W, ref L, ref Q, ref v, zeroThreshold, reconstructQ: true);
@@ -531,13 +531,13 @@ namespace LinearAlgebra
             var W = new floatMxN(m, n, Allocator.Temp, false);
             var L = new floatMxN(m, m, Allocator.Temp, false);
             var v = new floatN(n, Allocator.Temp, false);
-            W.Data.CopyFrom(A.Data);
+            W.CopyFrom(in A);
             float zeroThreshold = Consts.floatZeroThreshold * Norms.LInf(in A);
             lqFactorInPlace(ref W, ref L, ref v, zeroThreshold);
 
             // Step 1: forward-solve L y = b.  y starts as a copy of b (triLower is in-place).
             var y = new floatN(m, Allocator.Temp, false);
-            y.Data.CopyFrom(b.Data);
+            y.CopyFrom(in b);
             Blas.triLower(ref L, ref y);
 
             // Step 2: x = Qᵀ y, applied directly from W's reflectors (no dense Q).
@@ -580,13 +580,13 @@ namespace LinearAlgebra
             var v = ws.LQWs.v;
             var L = ws.L;
             var Qnull = default(floatMxN);
-            W.Data.CopyFrom(A.Data);
+            W.CopyFrom(in A);
             float zeroThreshold = Consts.floatZeroThreshold * Norms.LInf(in A);
             lqKernel(ref W, ref L, ref Qnull, ref v, zeroThreshold, reconstructQ: false);
 
             // Forward-solve L y = b, then x = Qᵀ y straight from W's reflectors (no dense Q).
             var y = ws.y;
-            y.Data.CopyFrom(b.Data);
+            y.CopyFrom(in b);
             Blas.triLower(ref L, ref y);
             applyQtFromReflectors(ref W, ref y, ref x);
 
@@ -629,7 +629,7 @@ namespace LinearAlgebra
 
             // Forward-solve L y = b (y starts as a copy of b; triLower is in-place).
             var y = new floatN(m, Allocator.Temp, false);
-            y.Data.CopyFrom(b.Data);
+            y.CopyFrom(in b);
             Blas.triLower(ref L, ref y);
 
             // x = Qᵀ y, applied directly from A's reflectors.
@@ -670,7 +670,7 @@ namespace LinearAlgebra
             lqKernel(ref A, ref L, ref Qnull, ref v, zeroThreshold, reconstructQ: false);
 
             var y = ws.y;
-            y.Data.CopyFrom(b.Data);
+            y.CopyFrom(in b);
             Blas.triLower(ref L, ref y);
             applyQtFromReflectors(ref A, ref y, ref x);
 
@@ -758,13 +758,13 @@ namespace LinearAlgebra
             var W = new floatMxN(m, n, Allocator.Temp, false);
             var L = new floatMxN(m, m, Allocator.Temp, false);
             var v = new floatN(n, Allocator.Temp, false);
-            W.Data.CopyFrom(A.Data);
+            W.CopyFrom(in A);
             float zeroThreshold = Consts.floatZeroThreshold * Norms.LInf(in A);
             lqFactorInPlace(ref W, ref L, ref v, zeroThreshold);
 
             // Step 1: forward-solve L Y = B (Y starts as a copy of B; triLower is in-place).
             var Y = new floatMxN(m, k, Allocator.Temp, false);
-            Y.Data.CopyFrom(B.Data);
+            Y.CopyFrom(in B);
             Blas.triLower(ref L, ref Y);
 
             // Step 2: X = Qᵀ Y, applied directly from W's reflectors (no dense Q).
@@ -814,7 +814,7 @@ namespace LinearAlgebra
 
             // Forward-solve L Y = B (Y starts as a copy of B; triLower is in-place).
             var Y = new floatMxN(m, k, Allocator.Temp, false);
-            Y.Data.CopyFrom(B.Data);
+            Y.CopyFrom(in B);
             Blas.triLower(ref L, ref Y);
 
             // X = Qᵀ Y, applied directly from A's reflectors.

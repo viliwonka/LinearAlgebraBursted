@@ -11,6 +11,9 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   IfProxyScalarDerivativeFunction's own relationship to IfProxyScalarFunction just above.
 
 ## LinearOperator.fProxy.cs
+- 2026-07-19 | `fProxyIdentityPreconditioner.Apply` / `fProxyIdentityOperator.Apply`/`ApplyT` switched
+  from `z.Data.CopyFrom(r.Data)` to the length-checked `z.CopyFrom(in r)` (fProxy/DEVLOG.md's
+  silent-resize fix) -- same-size by contract (both N-sized), no observable bug, defense-in-depth.
 - 2026-07-11 | `IfProxyLinearOperator.ApplyDot`'s doc comment used to spend most of its length on a
   fusion-attempt post-mortem (Krylov R2, docs/draft-spec-krylov-optimization.md): an earlier
   version genuinely fused the dot-product reduction into the dense/BSR Apply kernels, but that was
