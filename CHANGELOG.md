@@ -72,7 +72,7 @@ between minor versions.
 - `Analysis.cond` / `Blas.matrixL2` return NaN and `Analysis.rank` throws when the underlying SVD
   fails to converge (previously they read an unwritten buffer); `rowMean`/`colMean` throw on an
   empty axis like every other statistic.
-- `Krylov.pbiCGStab`'s parameterless overload defaults its iteration budget to `A.M_Rows`
+- `Krylov.biCGStab`'s parameterless overload defaults its iteration budget to `A.M_Rows`
   (was `2*A.M_Rows`), matching the rest of the square-solver family.
 - `SVD.values`/`SVD.thin` honor their `tol` parameter (deflation was previously hardcoded to
   `eps·‖A‖`); the default threshold is looser than the old hardcoded value, so default-path sweep

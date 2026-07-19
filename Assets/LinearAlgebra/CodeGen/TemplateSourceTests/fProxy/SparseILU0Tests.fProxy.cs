@@ -7,9 +7,9 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// Block ILU(0) preconditioner (fProxyILU0) + right-preconditioned BiCGSTAB (Krylov.pbiCGStab).
+// Block ILU(0) preconditioner (fProxyILU0) + right-preconditioned BiCGSTAB (Krylov.biCGStab).
 // Anchors: (a) on a block-tridiagonal (fill-free) NONSYMMETRIC system ILU(0) is the exact LU,
-// so Apply must match a dense LU solve; (b) pbiCGStab with ILU(0) converges to the true
+// so Apply must match a dense LU solve; (b) biCGStab with ILU(0) converges to the true
 // solution and needs fewer iterations than unpreconditioned biCGStab on the same system.
 public class fProxySparseILU0Tests
 {
@@ -118,7 +118,7 @@ public class fProxySparseILU0Tests
             // ILU(0)-preconditioned.
             var M = arena.fProxyILU0(in A);
             var xI = arena.fProxyVec(n);
-            var infoIlu = Krylov.pbiCGStab(in A, in M, in b, ref xI, maxIter, tol);
+            var infoIlu = Krylov.biCGStab(in A, in M, in b, ref xI, maxIter, tol);
             Assert.IsTrue(infoIlu.Solved);
             Assert.IsTrue((double)infoIlu.iterations <= (double)infoPlain.iterations * 0.9);
 

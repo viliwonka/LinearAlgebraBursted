@@ -273,7 +273,7 @@ namespace LinearAlgebra
         /// <summary>
         /// Builds a block incomplete-LU ILU(0) preconditioner from A (square, every diagonal
         /// block stored) — the nonsymmetric sibling of <see cref="doubleIC0"/>, for
-        /// Krylov.pbiCGStab. See <see cref="doubleILU0"/> for the breakdown/shift contract.
+        /// Krylov.biCGStab. See <see cref="doubleILU0"/> for the breakdown/shift contract.
         /// Arena-owned: disposed with the arena.
         /// </summary>
         public doubleILU0 doubleILU0(in doubleBSR A)
@@ -327,7 +327,7 @@ namespace LinearAlgebra
         /// <summary>
         /// Builds a row-oriented sparse approximate inverse (SPAI) preconditioner from A (square,
         /// every diagonal block stored) -- the nonsymmetric sibling of <see cref="doubleFSAI"/>,
-        /// for Krylov.pbiCGStab. Uses <see cref="SaiOptions.Default"/>. See <see cref="doubleSPAI"/>
+        /// for Krylov.biCGStab. Uses <see cref="SaiOptions.Default"/>. See <see cref="doubleSPAI"/>
         /// for the breakdown/shift contract. Arena-owned: disposed with the arena.
         /// </summary>
         public doubleSPAI doubleSPAI(in doubleBSR A)
@@ -390,7 +390,7 @@ namespace LinearAlgebra
         /// <summary>
         /// Builds a one-level restricted additive Schwarz (RAS) preconditioner from A (square;
         /// Symmetric-storage A is mirrored to full transiently at setup) -- the NON-symmetric sibling
-        /// of <see cref="doubleAdditiveSchwarz"/>, for Krylov.pbiCGStab only. See
+        /// of <see cref="doubleAdditiveSchwarz"/>, for Krylov.biCGStab only. See
         /// <see cref="doubleRestrictedSchwarz"/> for the contract. Arena-owned: disposed with the
         /// arena.
         /// </summary>

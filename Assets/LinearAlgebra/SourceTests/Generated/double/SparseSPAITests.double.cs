@@ -12,12 +12,12 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// Row-oriented sparse approximate inverse preconditioner (doubleSPAI), for pbiCGStab ONLY.
+// Row-oriented sparse approximate inverse preconditioner (doubleSPAI), for biCGStab ONLY.
 // SPAI is NOT symmetric even for symmetric A, so it is intentionally NOT wired to cg/minres --
 // there is no such overload, and this suite never attempts one (a CG/MINRES call with SPAI would
 // not compile). Correctness anchors (spec section 8):
 //   (4) RESIDUAL QUALITY: on a nonsymmetric diagonally-dominant BSR, SPAI beats Jacobi scaling:
-//       ||M A - I||_F < ||D^-1 A - I||_F; pbiCGStab with SPAI converges to the true solution on
+//       ||M A - I||_F < ||D^-1 A - I||_F; biCGStab with SPAI converges to the true solution on
 //       the same matrix family the ILU0 test uses.
 //   (5) CLEAN BUILD: on a well-conditioned matrix the out-info build reports Solved==true /
 //       Success with Shift==0 (a genuine SPAI breakdown cannot be forced: its local normal-equation
@@ -25,7 +25,7 @@ using Unity.Mathematics;
 //       noted in the report).
 //   (6) GUARDS: non-square A, missing diagonal block, and Apply aliasing (z==r) throw
 //       ArgumentException. SPAI has no owned Scratch, so it has no z==Scratch/r==Scratch guard.
-//   (7) THROUGH-IJOB DETERMINISM: SPAI built once on the main thread, pbiCGStab run inside a Burst
+//   (7) THROUGH-IJOB DETERMINISM: SPAI built once on the main thread, biCGStab run inside a Burst
 //       IJob.Run() twice, gives bit-identical iteration counts and bit-identical x; the managed
 //       path matches to tolerance.
 public class doubleSparseSPAITests
@@ -155,7 +155,7 @@ public class doubleSparseSPAITests
 
             var M = arena.doubleSPAI(in A);
             var x = arena.doubleVec(n);
-            var info = Krylov.pbiCGStab(in A, in M, in b, ref x, maxIter, tol);
+            var info = Krylov.biCGStab(in A, in M, in b, ref x, maxIter, tol);
             Assert.IsTrue(info.Solved);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(math.abs(x[i] - xTrue[i]) < SolveTol() * ((double)1 + math.abs(xTrue[i])));
@@ -194,7 +194,7 @@ public class doubleSparseSPAITests
 
         public void Execute()
         {
-            var info = Krylov.pbiCGStab(in A, in M, in b, ref x, maxIter, tol);
+            var info = Krylov.biCGStab(in A, in M, in b, ref x, maxIter, tol);
             iters[0] = info.iterations;
         }
     }
@@ -236,7 +236,7 @@ public class doubleSparseSPAITests
             Assert.IsTrue(x1[i] == x2[i]);
 
         var x3 = arena.doubleVec(n);
-        var infoM = Krylov.pbiCGStab(in A, in M, in b, ref x3, maxIter, tol);
+        var infoM = Krylov.biCGStab(in A, in M, in b, ref x3, maxIter, tol);
         Assert.IsTrue(infoM.Solved);
         double consistencyTol = 1e-9;
         for (int i = 0; i < n; i++)

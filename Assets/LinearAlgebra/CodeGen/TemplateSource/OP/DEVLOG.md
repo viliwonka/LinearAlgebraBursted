@@ -1,6 +1,16 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.biCGStab — single-body merge (biCGStab/pbiCGStab share one loop, IsIdentity fold)
+- 2026-07-19 | Merged body `biCGStab<TOp,TPre>` (7 scratch: r/rHat0/p/v/t + pHat/sHat); `biCGStab<TOp>`
+  forwards with identity (pHat/sHat=default, unused). pbiCGStab explicit-scratch body DELETED;
+  PBiCGStab.fProxy.cs keeps only the ILU0/SPAI/RestrictedSchwarz concrete overloads, renamed biCGStab.
+  pbiCGStab name HARD-REMOVED (call sites in Sparse precond docs, tests, CircuitDemo, CHANGELOG swept).
+  Cleanest of the three: right-preconditioned BiCGSTAB just inserts pHat=M⁻¹p, sHat=M⁻¹s into the two
+  A-applies and the x update; identity makes pHat=p, sHat=s (r holds s), so gating those four spots
+  under `if(M.IsIdentity)` is bit-identical to plain biCGStab. pHat/sHat size+aliasing guards gated
+  under !IsIdentity. 6667/6667. Scalar family now 3/4 (cg, minres, biCGStab); gmres next.
+
 ## Krylov.minres — single-body merge (minres/pminres share one loop, IsIdentity fold)
 - 2026-07-19 | Same collapse as cg, applied to MINRES: merged body `minres<TOp,TPre>` lives in
   Krylov.fProxy.cs; `minres<TOp>` forwards with the identity preconditioner (z=default, no z buffer);

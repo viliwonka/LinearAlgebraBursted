@@ -13,14 +13,14 @@ using Unity.Jobs;
 using Unity.Mathematics;
 
 // One-level Schwarz preconditioners: doubleAdditiveSchwarz (symmetric AS, valid for cg/minres)
-// and doubleRestrictedSchwarz (RAS, non-symmetric, pbiCGStab only).
+// and doubleRestrictedSchwarz (RAS, non-symmetric, biCGStab only).
 // Correctness anchors (spec docs/dev/spec-additive-schwarz-preconditioner.md, section Tests):
 //   (1) EXACTNESS: one subdomain covering the whole matrix (subdomainSize >= N), overlap 0 -> the
 //       local factor IS A's factor -> M = A^-1: Apply matches a dense solve and cg converges in 1
 //       iteration.
 //   (2) AS SYMMETRY: <M r1, r2> == <r1, M r2> on Laplacian2D and PenalizedGrid3D, several
 //       (subdomainSize, overlap) combos including ragged last subdomains -- the CG-validity contract.
-//   (3) RAS SOLVES: pbiCGStab + RAS converges (residual-checked) on a general diag-dominant square
+//   (3) RAS SOLVES: biCGStab + RAS converges (residual-checked) on a general diag-dominant square
 //       and on an SPD matrix.
 //   (4) HEADLINE (iterations): AS-cg reaches tol in fewer iterations than plain CG AND than
 //       block-Jacobi-cg, aggregated over 3 random right-hand sides (residual-based, counts read
@@ -201,7 +201,7 @@ public class doubleSchwarzPreconditionerTests
         }
 
         // ================================================================================
-        // (3) RAS solves via pbiCGStab on a general square and an SPD matrix (residual-checked).
+        // (3) RAS solves via biCGStab on a general square and an SPD matrix (residual-checked).
         // ================================================================================
 
         void RasSolves()
@@ -226,7 +226,7 @@ public class doubleSchwarzPreconditionerTests
             var xTrue = arena.doubleRandomVec(n, 0.5f, 1.5f, seed);
             var b = BSR.spMV(in A, in xTrue);
             var x = arena.doubleVec(n);
-            var info = Krylov.pbiCGStab(in A, in M, in b, ref x, 20 * n, Consts.doubleSqrtEps);
+            var info = Krylov.biCGStab(in A, in M, in b, ref x, 20 * n, Consts.doubleSqrtEps);
             Assert.IsTrue(info.Solved);
 
             var Ax = arena.doubleVec(n);

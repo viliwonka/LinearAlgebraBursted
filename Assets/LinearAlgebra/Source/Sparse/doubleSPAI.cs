@@ -14,7 +14,7 @@ namespace LinearAlgebra.Sparse
     /// (no factorization) by minimizing ‖M A − I‖_F row by row over a STATIC pattern (default:
     /// A's own row pattern) -- the nonsymmetric sibling of <see cref="doubleIC0"/>/<see
     /// cref="doubleFSAI"/>'s counterpart <see cref="doubleILU0"/>, intended for
-    /// <see cref="LinearAlgebra.Krylov"/>.pbiCGStab. M is NOT symmetric even for symmetric A --
+    /// <see cref="LinearAlgebra.Krylov"/>.biCGStab. M is NOT symmetric even for symmetric A --
     /// it is NOT a valid CG/MINRES preconditioner.
     ///
     /// Each row is an independent small least-squares problem (row i's support J_i, shadow column

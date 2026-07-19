@@ -465,7 +465,7 @@ namespace LinearAlgebra
         /// symmetric additive-Schwarz preconditioner. Forwards into <see cref="cg{TOp,TPre}"/> via
         /// <c>fProxyBSROperator</c> -- same three-rung BSR convenience pattern as the block-Jacobi,
         /// SSOR, IC0, FSAI, and Chebyshev overloads above. Restricted Schwarz (RAS) is NOT symmetric
-        /// and has no cg rung (pbiCGStab only) -- that absence is the CG-safety guard.
+        /// and has no cg rung (biCGStab only) -- that absence is the CG-safety guard.
         /// </summary>
         public static SolveInfo cg(in fProxyBSR A, in fProxyAdditiveSchwarz M, in fProxyN b, ref fProxyN x,
                                ref fProxyN r, ref fProxyN p, ref fProxyN Ap, ref fProxyN z,
@@ -791,25 +791,29 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Zero-alloc BiCGSTAB (van der Vorst 1992, stabilized Bi-Conjugate Gradient) solver for
-        /// NON-symmetric (general) square systems A x = b, generic over
-        /// <see cref="IfProxyLinearOperator"/>. Short two-sided recurrence, flat O(n) memory (no
-        /// growing Krylov basis like GMRES) -- the non-symmetric counterpart to CG/MINRES, for
-        /// e.g. frictional-LCP or MNA-circuit operators.
+        /// Zero-alloc BiCGSTAB (van der Vorst 1992) for NON-symmetric (general) square systems
+        /// A x = b, generic over BOTH the operator (<see cref="IfProxyLinearOperator"/>) and the
+        /// preconditioner (<see cref="IfProxyPreconditioner"/>) -- the SINGLE body behind the plain
+        /// and the right-preconditioned entry points. Short two-sided recurrence, flat O(n) memory
+        /// (no growing Krylov basis like GMRES) -- the non-symmetric counterpart to CG/MINRES.
         ///
-        /// Caller provides x (initial guess, overwritten with solution -- WARM-STARTABLE) and five
-        /// scratch vectors r, rHat0, p, v, t (all length A.Rows). rHat0 is the fixed "shadow"
-        /// residual, chosen once at the start and never mutated after.
+        /// With <see cref="fProxyIdentityPreconditioner"/> the IsIdentity fold makes pHat = p and
+        /// sHat = s, so this compiles to, and is bit-identical to, plain BiCGSTAB -- pHat/sHat are
+        /// untouched and may be passed as <c>default</c>. With a real M this is right-preconditioned
+        /// BiCGSTAB (M ≈ A applied as M⁻¹): pHat = M⁻¹p, sHat = M⁻¹s drive the A-applies and the x
+        /// update.
         ///
-        /// Returns a <see cref="SolveInfo"/> (rnorm = ‖b-Ax‖) — see that struct for the
-        /// implicit-bool/status/undefined-x contract. Breakdown on one of the standard BiCGSTAB
-        /// breakdowns (rho == 0, rHat0·v == 0, or omega == 0 -- A not amenable to BiCGSTAB from
-        /// this shadow residual, or numerical breakdown).
+        /// Caller provides x (initial guess, overwritten -- WARM-STARTABLE) and seven scratch vectors
+        /// r, rHat0, p, v, t, pHat, sHat (all length A.Rows; pHat/sHat unused under the identity).
+        /// rHat0 is the fixed "shadow" residual. Returns a <see cref="SolveInfo"/>. Breakdown on one
+        /// of the standard BiCGSTAB breakdowns (rho == 0, rHat0·v == 0, or omega == 0).
         /// </summary>
-        public static SolveInfo biCGStab<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
+        public static SolveInfo biCGStab<TOp, TPre>(in TOp A, in TPre M, in fProxyN b, ref fProxyN x,
                                          ref fProxyN r, ref fProxyN rHat0, ref fProxyN p, ref fProxyN v, ref fProxyN t,
+                                         ref fProxyN pHat, ref fProxyN sHat,
                                          int maxIter, fProxy tol)
             where TOp : struct, IfProxyLinearOperator
+            where TPre : struct, IfProxyPreconditioner
         {
             if (A.Rows != A.Cols)
                 throw new ArgumentException("biCGStab: A must be square");
@@ -821,17 +825,22 @@ namespace LinearAlgebra
             if (p.N != A.Rows) throw new ArgumentException("biCGStab: p.N must equal A.Rows");
             if (v.N != A.Rows) throw new ArgumentException("biCGStab: v.N must equal A.Rows");
             if (t.N != A.Rows) throw new ArgumentException("biCGStab: t.N must equal A.Rows");
+            if (!M.IsIdentity && (pHat.N != A.Rows || sHat.N != A.Rows))
+                throw new ArgumentException("biCGStab: pHat/sHat must equal A.Rows");
 
             if (maxIter < 1)
                 throw new ArgumentException("biCGStab: maxIter must be >= 1");
 
             unsafe
             {
-                long* ptrs = stackalloc long[7];
+                // pHat/sHat join the checked set only for a real preconditioner.
+                int n = M.IsIdentity ? 7 : 9;
+                long* ptrs = stackalloc long[9];
                 ptrs[0] = (long)r.Data.Ptr; ptrs[1] = (long)rHat0.Data.Ptr; ptrs[2] = (long)p.Data.Ptr;
                 ptrs[3] = (long)v.Data.Ptr; ptrs[4] = (long)t.Data.Ptr;
                 ptrs[5] = (long)x.Data.Ptr; ptrs[6] = (long)b.Data.Ptr;
-                RequireDistinctBuffers("biCGStab: r/rHat0/p/v/t/x/b must be distinct", ptrs, 7);
+                if (!M.IsIdentity) { ptrs[7] = (long)pHat.Data.Ptr; ptrs[8] = (long)sHat.Data.Ptr; }
+                RequireDistinctBuffers("biCGStab: r/rHat0/p/v/t/pHat/sHat/x/b must be distinct", ptrs, n);
             }
 
             fProxy bb = Blas.dot(b, b);
@@ -874,7 +883,16 @@ namespace LinearAlgebra
                 p.addScaledInPlace(-omega, v);                // p -= omega v      (still old p, old v)
                 p.scaleAddInPlace(beta, r);                    // p = beta p + r
 
-                A.Apply(in p, ref v);                       // v = A p
+                // v = A (M⁻¹ p). Identity: pHat = p, so v = A p directly (pHat untouched).
+                if (M.IsIdentity)
+                {
+                    A.Apply(in p, ref v);
+                }
+                else
+                {
+                    M.Apply(in p, ref pHat);                  // pHat = M⁻¹ p
+                    A.Apply(in pHat, ref v);                  // v = A pHat
+                }
 
                 fProxy rv = Blas.dot(rHat0, v);
 
@@ -889,12 +907,22 @@ namespace LinearAlgebra
                 if (ss <= threshold)
                 {
                     // Early exit: the half-step residual s is already small enough -- finish
-                    // with x += alpha p (skipping the t = A s stabilization matvec entirely).
-                    x.addScaledInPlace(alpha, p);
+                    // with x += alpha (M⁻¹ p) (skipping the t = A(M⁻¹s) stabilization matvec entirely).
+                    if (M.IsIdentity) x.addScaledInPlace(alpha, p);
+                    else              x.addScaledInPlace(alpha, pHat);
                     return MakeSolveInfo(IterativeSolveStatus.Converged, k + 1, math.sqrt(ss));
                 }
 
-                A.Apply(in r, ref t);                       // t = A s   (r currently holds s)
+                // t = A (M⁻¹ s). Identity: sHat = s (r holds s), so t = A r directly (sHat untouched).
+                if (M.IsIdentity)
+                {
+                    A.Apply(in r, ref t);                     // t = A s   (r currently holds s)
+                }
+                else
+                {
+                    M.Apply(in r, ref sHat);                  // sHat = M⁻¹ s
+                    A.Apply(in sHat, ref t);                  // t = A sHat
+                }
 
                 fProxy tt = Blas.dot(t, t);
 
@@ -910,8 +938,17 @@ namespace LinearAlgebra
                     // breakdown: beta would divide by zero. x is still x_old (see above) -> report rr.
                     return MakeSolveInfo(IterativeSolveStatus.Breakdown, k, math.sqrt(rr));
 
-                x.addScaledInPlace(alpha, p);
-                x.addScaledInPlace(omega, r);                  // r still holds s here
+                // x += alpha (M⁻¹ p) + omega (M⁻¹ s). Identity: pHat = p, sHat = s (r holds s).
+                if (M.IsIdentity)
+                {
+                    x.addScaledInPlace(alpha, p);
+                    x.addScaledInPlace(omega, r);              // r still holds s here
+                }
+                else
+                {
+                    x.addScaledInPlace(alpha, pHat);
+                    x.addScaledInPlace(omega, sHat);
+                }
 
                 // r := s - omega t (new residual) ; rr = ||r||^2, fused into one pass (Blas.axpyNormSq).
                 rr = Blas.axpyNormSq(-omega, t, ref r);
@@ -923,6 +960,21 @@ namespace LinearAlgebra
             }
 
             return MakeSolveInfo(IterativeSolveStatus.MaxIterations, maxIter, math.sqrt(rr));
+        }
+
+        /// <summary>
+        /// Unpreconditioned BiCGSTAB -- forwards into the merged
+        /// <see cref="biCGStab{TOp, TPre}(in TOp, in TPre, in fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, int, fProxy)"/>
+        /// with the identity preconditioner (whose IsIdentity fold strips the pHat/sHat traffic), so
+        /// this needs no pHat/sHat buffers.
+        /// </summary>
+        public static SolveInfo biCGStab<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
+                                         ref fProxyN r, ref fProxyN rHat0, ref fProxyN p, ref fProxyN v, ref fProxyN t,
+                                         int maxIter, fProxy tol)
+            where TOp : struct, IfProxyLinearOperator
+        {
+            fProxyN pHat = default, sHat = default;
+            return biCGStab(in A, default(fProxyIdentityPreconditioner), in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, ref pHat, ref sHat, maxIter, tol);
         }
 
         /// <summary>

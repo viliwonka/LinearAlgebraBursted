@@ -194,7 +194,7 @@ namespace LinearAlgebraDemos
             var pHat = new floatN(nu, Allocator.Temp);
             var sHat = new floatN(nu, Allocator.Temp);
 
-            SolveInfo info = Krylov.pbiCGStab(in op, in Precond, in b, ref x,
+            SolveInfo info = Krylov.biCGStab(in op, in Precond, in b, ref x,
                                               ref r, ref rHat0, ref p, ref v, ref t,
                                               ref pHat, ref sHat,
                                               400, 1e-6f);

@@ -19,7 +19,7 @@ using Unity.Mathematics;
 // driven through its matching Krylov solver; the pinned invariant is that EVERY (preconditioner,
 // matrix) pair CONVERGES to a relative true-residual tolerance (residual-based, not solution-error;
 // caps are generous — the point is regression coverage across the whole family, not iteration races).
-// Symmetric-M preconditioners route through cg; nonsymmetric-M (ILU0/SPAI/RAS) through pbiCGStab.
+// Symmetric-M preconditioners route through cg; nonsymmetric-M (ILU0/SPAI/RAS) through biCGStab.
 // Grouped BY PRECONDITIONER (one case each) with the failing (matrix, residual) surfaced via Fail.
 public class floatPreconditionerBatteryTests
 {
@@ -36,7 +36,7 @@ public class floatPreconditionerBatteryTests
             FSAI,
             AdditiveSchwarz,
             AMG,
-            // nonsymmetric-M -> pbiCGStab
+            // nonsymmetric-M -> biCGStab
             ILU0,
             SPAI,
             RestrictedSchwarz,
@@ -227,7 +227,7 @@ public class floatPreconditionerBatteryTests
             }
         }
 
-        // ---- nonsymmetric-M -> pbiCGStab ----
+        // ---- nonsymmetric-M -> biCGStab ----
 
         void ILU0()
         {
@@ -238,7 +238,7 @@ public class floatPreconditionerBatteryTests
                 var b = arena.floatRandomVec(n, -1f, 1f, 0xB7u + (uint)mi);
                 var M = arena.floatILU0(in A);
                 var x = arena.floatVec(n); for (int i = 0; i < n; i++) x[i] = (float)0;
-                CheckSolve(in A, in x, in b, Krylov.pbiCGStab(in A, in M, in b, ref x, 8 * n, Tol()), mi);
+                CheckSolve(in A, in x, in b, Krylov.biCGStab(in A, in M, in b, ref x, 8 * n, Tol()), mi);
                 arena.Dispose();
             }
         }
@@ -252,7 +252,7 @@ public class floatPreconditionerBatteryTests
                 var b = arena.floatRandomVec(n, -1f, 1f, 0xB8u + (uint)mi);
                 var M = arena.floatSPAI(in A);
                 var x = arena.floatVec(n); for (int i = 0; i < n; i++) x[i] = (float)0;
-                CheckSolve(in A, in x, in b, Krylov.pbiCGStab(in A, in M, in b, ref x, 8 * n, Tol()), mi);
+                CheckSolve(in A, in x, in b, Krylov.biCGStab(in A, in M, in b, ref x, 8 * n, Tol()), mi);
                 arena.Dispose();
             }
         }
@@ -266,7 +266,7 @@ public class floatPreconditionerBatteryTests
                 var b = arena.floatRandomVec(n, -1f, 1f, 0xB9u + (uint)mi);
                 var M = arena.floatRestrictedSchwarz(in A);
                 var x = arena.floatVec(n); for (int i = 0; i < n; i++) x[i] = (float)0;
-                CheckSolve(in A, in x, in b, Krylov.pbiCGStab(in A, in M, in b, ref x, 8 * n, Tol()), mi);
+                CheckSolve(in A, in x, in b, Krylov.biCGStab(in A, in M, in b, ref x, 8 * n, Tol()), mi);
                 arena.Dispose();
             }
         }

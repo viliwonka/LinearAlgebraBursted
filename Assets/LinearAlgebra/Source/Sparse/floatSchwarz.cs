@@ -438,7 +438,7 @@ namespace LinearAlgebra.Sparse
     /// back only its OWNED (non-overlapped) cell (Cai &amp; Sarkis 1999). Because the owned cells
     /// partition the index space, every dof is written exactly once -- no overlap summation. This
     /// makes M NON-SYMMETRIC even for SPD A: never use it with cg/minres/CG (there is no such
-    /// overload -- the type is the guard); use <see cref="LinearAlgebra.Krylov"/>.pbiCGStab. The
+    /// overload -- the type is the guard); use <see cref="LinearAlgebra.Krylov"/>.biCGStab. The
     /// nonsymmetric sibling of <see cref="floatAdditiveSchwarz"/>, mirroring the IC0/ILU0 split.
     ///
     /// Local matrices A_i are factored densely once (LU with partial pivoting, since the target is
