@@ -1,0 +1,250 @@
+using LinearAlgebra;
+using NUnit.Framework;
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Jobs;
+using Unity.Mathematics;
+
+// Block (multi-RHS) MINRES: Krylov.bminres(in A, in B, ref X) where B/X are s ROWS x n COLS (row =
+// RHS), A symmetric and possibly INDEFINITE. A true block method (one shared block-Lanczos subspace,
+// s x s coefficients, ApplyBlock per iteration), NOT s scalar solves. Every test runs inside a
+// [BurstCompile] IJob (by-value struct copy), so the job-safety criterion -- the caller sees the final
+// X written through the ref fProxyMxN -- is exercised by construction.
+public class fProxyBlockMinresTests
+{
+    [BurstCompile(CompileSynchronously = true)]
+    public struct BlockMinresTestJob : IJob
+    {
+        public enum TestType
+        {
+            MatchesScalarAtS1,
+            MatchesScalarMinresPerColumn,
+            KnownSolutionRecovered,
+            BlockAdvantageIterations,
+            IdentityFoldBitIdentical,
+        }
+
+        public TestType Type;
+
+        public void Execute()
+        {
+            switch (Type)
+            {
+                case TestType.MatchesScalarAtS1:              MatchesScalarAtS1();              break;
+                case TestType.MatchesScalarMinresPerColumn:   MatchesScalarMinresPerColumn();   break;
+                case TestType.KnownSolutionRecovered:         KnownSolutionRecovered();         break;
+                case TestType.BlockAdvantageIterations:       BlockAdvantageIterations();       break;
+                case TestType.IdentityFoldBitIdentical:       IdentityFoldBitIdentical();       break;
+            }
+        }
+
+        static fProxy Tol() => /*+choose[3e-2f|1e-5]*/3e-2f/*-choose*/;
+
+        // Symmetric, genuinely INDEFINITE, and ROBUSTLY well-conditioned: half the rows get a large
+        // POSITIVE diagonal shift, half a large NEGATIVE one. Gershgorin then guarantees two clean,
+        // well-separated eigenvalue clusters (one positive, one negative; off-diagonal magnitude is
+        // bounded by 1 per entry, so a dim-scale shift dominates the <= (dim-1)-radius Gershgorin
+        // disks) -- indefinite by construction, but without the near-zero eigenvalues an unshifted
+        // random symmetric matrix could produce (which would make a residual-tolerance solve and a
+        // tight X-comparison disagree for reasons having nothing to do with solver correctness).
+        static fProxyMxN BuildDenseSymIndefinite(ref Arena arena, int dim, uint seed)
+        {
+            var M = arena.fProxyRandomMat(dim, dim, (fProxy)(-1f), (fProxy)1f, seed);
+            var A = arena.fProxyMat(dim, dim);
+            for (int r = 0; r < dim; r++)
+                for (int c = 0; c < dim; c++)
+                    A[r, c] = (fProxy)0.5 * (M[r, c] + M[c, r]);
+            for (int d = 0; d < dim; d++)
+                A[d, d] += (d < dim / 2) ? (fProxy)dim : (fProxy)(-dim);
+            return A;
+        }
+
+        static fProxyN Row(ref Arena arena, in fProxyMxN B, int j, int n)
+        {
+            var v = arena.fProxyVec(n);
+            for (int c = 0; c < n; c++) v[c] = B[j, c];
+            return v;
+        }
+
+        // PRIMARY ORACLE: at s=1 every block quantity degenerates to its scalar counterpart, so
+        // bminres must trace scalar minres's X to round-off on the same single-column system.
+        void MatchesScalarAtS1()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 20, s = 1;
+            var A = BuildDenseSymIndefinite(ref arena, n, 91001u);
+            var B = arena.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 91002u);
+            int maxIter = 8 * n;
+            fProxy tol = Consts.fProxySqrtEps;
+
+            var X = arena.fProxyMat(s, n);
+            var infoBlock = Krylov.bminres(in A, in B, ref X, maxIter, tol);
+
+            var b = Row(ref arena, in B, 0, n);
+            var x = arena.fProxyVec(n);
+            var infoScalar = Krylov.minres(in A, in b, ref x, maxIter, tol);
+
+            Assert.IsTrue(infoBlock.Solved);
+            Assert.IsTrue(infoScalar.Solved);
+            for (int c = 0; c < n; c++)
+                Assert.IsTrue(math.abs((double)X[0, c] - (double)x[c]) <= Tol() * (1.0 + math.abs((double)x[c])));
+
+            arena.Dispose();
+        }
+
+        // Each column of the block solution matches an independent scalar minres solve of that
+        // column, and every column reached tolerance.
+        void MatchesScalarMinresPerColumn()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 20, s = 4;
+            var A = BuildDenseSymIndefinite(ref arena, n, 92001u);
+            var B = arena.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 92002u);
+            int maxIter = 8 * n;
+            fProxy tol = Consts.fProxySqrtEps;
+
+            var X = arena.fProxyMat(s, n);
+            var info = Krylov.bminres(in A, in B, ref X, maxIter, tol);
+
+            Assert.IsTrue(info.Solved);
+            Assert.AreEqual(s, info.converged);
+            Assert.AreEqual(s, info.rhs);
+
+            for (int j = 0; j < s; j++)
+            {
+                var bj = Row(ref arena, in B, j, n);
+                var xj = arena.fProxyVec(n);
+                Assert.IsTrue(Krylov.minres(in A, in bj, ref xj, maxIter, tol));
+
+                for (int c = 0; c < n; c++)
+                    Assert.IsTrue(math.abs((double)X[j, c] - (double)xj[c]) <= Tol() * (1.0 + math.abs((double)xj[c])));
+            }
+
+            arena.Dispose();
+        }
+
+        // Independent of the scalar solver: pick a KNOWN block solution Xk, form B = A Xk (via the
+        // operator's own ApplyBlock), solve, and recover Xk, on a symmetric INDEFINITE A.
+        void KnownSolutionRecovered()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 20, s = 5;
+            var A = BuildDenseSymIndefinite(ref arena, n, 93001u);
+            var Xk = arena.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 93002u);
+
+            var B = arena.fProxyMat(s, n);
+            new fProxyDenseOperator(in A).ApplyBlock(in Xk, ref B, s);
+
+            var X = arena.fProxyMat(s, n);
+            var info = Krylov.bminres(in A, in B, ref X, 8 * n, Consts.fProxySqrtEps);
+            Assert.IsTrue(info.Solved);
+
+            for (int j = 0; j < s; j++)
+                for (int c = 0; c < n; c++)
+                    Assert.IsTrue(math.abs((double)X[j, c] - (double)Xk[j, c]) <= Tol() * (1.0 + math.abs((double)Xk[j, c])));
+
+            arena.Dispose();
+        }
+
+        // The block solve converges in <= the worst single-column scalar iteration count (the block
+        // advantage: all RHS share the richer block Krylov subspace), on a symmetric indefinite system.
+        // n is a multiple of s (full-rank regime, no natural mid-solve deflation) -- an n/s ratio that
+        // forces a deflation is a separate, deferred robustness question (see OP/DEVLOG.md).
+        void BlockAdvantageIterations()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 20, s = 5;
+            var A = BuildDenseSymIndefinite(ref arena, n, 94001u);
+            var B = arena.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 94002u);
+            fProxy tol = Consts.fProxySqrtEps;
+            int budget = 8 * n;
+
+            var X = arena.fProxyMat(s, n);
+            var blockInfo = Krylov.bminres(in A, in B, ref X, budget, tol);
+            Assert.IsTrue(blockInfo.Solved);
+
+            int worstScalar = 0;
+            for (int j = 0; j < s; j++)
+            {
+                var bj = Row(ref arena, in B, j, n);
+                var xj = arena.fProxyVec(n);
+                var si = Krylov.minres(in A, in bj, ref xj, budget, tol);
+                Assert.IsTrue(si.Solved);
+                if (si.iterations > worstScalar) worstScalar = si.iterations;
+            }
+
+            Assert.IsTrue(blockInfo.iterations <= worstScalar);
+
+            arena.Dispose();
+        }
+
+        // bminres<TOp, fProxyIdentityPreconditioner> (explicit identity) must be BIT-IDENTICAL to the
+        // unpreconditioned bminres<TOp> overload on the same fixed-seed system.
+        void IdentityFoldBitIdentical()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 16, s = 3;
+            var A = BuildDenseSymIndefinite(ref arena, n, 97001u);
+            var B = arena.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 97002u);
+            int maxIter = 8 * n;
+            fProxy tol = Consts.fProxySqrtEps;
+
+            var opA = new fProxyDenseOperator(in A);
+
+            var X1 = arena.fProxyMat(s, n);
+            var Vprev1 = arena.fProxyMat(s, n);
+            var Vcur1  = arena.fProxyMat(s, n);
+            var Wk1    = arena.fProxyMat(s, n);
+            var Wb1    = arena.fProxyMat(s, n);
+            var W1a1   = arena.fProxyMat(s, n);
+            var W2a1   = arena.fProxyMat(s, n);
+            var Z1     = arena.fProxyMat(s, n);
+            var info1 = Krylov.bminres<fProxyDenseOperator, fProxyIdentityPreconditioner>(
+                in opA, default(fProxyIdentityPreconditioner), in B, ref X1,
+                ref Vprev1, ref Vcur1, ref Wk1, ref Wb1, ref W1a1, ref W2a1, ref Z1, maxIter, tol);
+
+            var X2 = arena.fProxyMat(s, n);
+            var Vprev2 = arena.fProxyMat(s, n);
+            var Vcur2  = arena.fProxyMat(s, n);
+            var Wk2    = arena.fProxyMat(s, n);
+            var Wb2    = arena.fProxyMat(s, n);
+            var W1a2   = arena.fProxyMat(s, n);
+            var W2a2   = arena.fProxyMat(s, n);
+            var info2 = Krylov.bminres<fProxyDenseOperator>(
+                in opA, in B, ref X2, ref Vprev2, ref Vcur2, ref Wk2, ref Wb2, ref W1a2, ref W2a2, maxIter, tol);
+
+            Assert.AreEqual(info1.iterations, info2.iterations);
+            Assert.IsTrue(info1.status == info2.status);
+            for (int i = 0; i < s; i++)
+                for (int c = 0; c < n; c++)
+                    Assert.IsTrue(X1[i, c] == X2[i, c]);
+
+            arena.Dispose();
+        }
+    }
+
+    [Test]
+    public void MatchesScalarAtS1()
+        => new BlockMinresTestJob { Type = BlockMinresTestJob.TestType.MatchesScalarAtS1 }.Run();
+
+    [Test]
+    public void MatchesScalarMinresPerColumn()
+        => new BlockMinresTestJob { Type = BlockMinresTestJob.TestType.MatchesScalarMinresPerColumn }.Run();
+
+    [Test]
+    public void KnownSolutionRecovered()
+        => new BlockMinresTestJob { Type = BlockMinresTestJob.TestType.KnownSolutionRecovered }.Run();
+
+    [Test]
+    public void BlockAdvantageIterations()
+        => new BlockMinresTestJob { Type = BlockMinresTestJob.TestType.BlockAdvantageIterations }.Run();
+
+    [Test]
+    public void IdentityFoldBitIdentical()
+        => new BlockMinresTestJob { Type = BlockMinresTestJob.TestType.IdentityFoldBitIdentical }.Run();
+}

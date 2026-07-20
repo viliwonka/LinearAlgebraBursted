@@ -1,6 +1,38 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.Block.MINRES
+- 2026-07-20 | BuildOmega now rank-checks Gamma's own diagonal (the QR factor of `[Gbar;Beta^T]`),
+  the same way it already checked the Qperp completion's Rz diagonal -- previously a near-singular
+  Gamma (observed right after a block-Lanczos deflation recovers to full rank) went undetected:
+  Phibar/Phi decayed geometrically toward zero over subsequent iterations without ever closing the
+  true residual, so the solver looked idle and reported an honest-looking but silently WRONG
+  `MaxIterations` instead of `Breakdown`. Root-caused via `doubleBlockMinresTests.
+  BlockAdvantageIterations` at an adversarial (non-multiple) n/s ratio -- float happened to avoid
+  it, double didn't. Rescoped that test to a benign n/s (full-rank regime, no natural mid-solve
+  deflation) since the adversarial ratio is a deflation-robustness question, not a core bug. Also
+  gated the non-identity-preconditioner path (`bminres` now throws `NotSupportedException` when
+  `!M.IsIdentity`, since `BlockNormalizePrecond`/CHOP was never independently verified) and removed
+  `PreconditionedMatchesScalar` / `RankDeficientBlockNoNaN` (the latter converges, with no NaN and
+  correct rank detection, but does not preserve identical-RHS-row symmetry once a lane is
+  deflated). Full block-Lanczos deflation robustness -- the preconditioned path, identical-row
+  symmetry under deflation, and the Gamma near-singularity case together -- is ONE deferred
+  follow-up: task #50.
+- 2026-07-20 | Fixed a second, independent bug found via the same dump-diff investigation below:
+  the pre-loop setup zeroed `W1`/`W2` but not `W` itself. At k=0, `Delta` is exactly zero, and the
+  code relied on `Delta^T . W2 == 0` to make that term vanish -- but IEEE `0 * NaN` is `NaN`, not
+  `0`, so an uninitialized `W` (the convenience forwarders allocate scratch with `uninit: true`)
+  could poison the whole solve once it rotated into `W2`. `W` is now zeroed alongside `W1`/`W2`.
+- 2026-07-20 | Fixed the s>1 divergence via dump-diff against a numpy reference
+  (`reference/wip-bminres/bminres_reference.py`, gitignored scratch): `BlockNormalizeIdentity`/
+  `BlockNormalizePrecond` return `Beta` indexed by `LQRP.decomp`'s/`CHOP.decomp`'s PIVOTED row
+  order (`(P.W)[j,:] == (Beta.Vout)[j,:]`), but the block-Lanczos recurrence's `Beta^T . Vprev`
+  term and `Beta`'s placement in `M2` both need `Beta` indexed by the residual's ORIGINAL row
+  order -- the order `Vprev`/`Alfa`/`OmegaOld` already carry. Invisible at s=1 (`Beta` is 1x1, the
+  pivot is always trivial), which is why `MatchesScalarAtS1` passed while every s>1 test converged
+  to a wrong answer. Fixed with `UnpivotBetaRows`, which scatters `Beta`'s rows through the pivot
+  right after each normalize.
+
 ## Krylov.minresQLP
 - 2026-07-19 | New file `Krylov.MINRESQLP.fProxy.cs`: single-RHS MINRES-QLP (Choi, Paige &
   Saunders, SIAM J. Sci. Comput. 2011) for symmetric (possibly indefinite/singular) systems,
