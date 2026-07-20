@@ -37,6 +37,7 @@ public class fProxyBlockGCRODRTests
             Deterministic,
             ZeroRhs,
             SingularBreakdown,
+            RecycleRebuildStaysFinite,
         }
 
         public TestType Type;
@@ -114,6 +115,7 @@ public class fProxyBlockGCRODRTests
                 case TestType.Deterministic:        Deterministic();        break;
                 case TestType.ZeroRhs:               ZeroRhs();             break;
                 case TestType.SingularBreakdown:    SingularBreakdown();    break;
+                case TestType.RecycleRebuildStaysFinite: RecycleRebuildStaysFinite(); break;
             }
         }
 
@@ -284,6 +286,35 @@ public class fProxyBlockGCRODRTests
 
             arena.Dispose();
         }
+
+        // ---- Recycling active across several restart cycles must produce a finite, converged X. The
+        // recycled-subspace rebuild's AU block was allocated uninitialized then accumulated (+=) into
+        // on the 2nd+ deflation rebuild (3+ restart cycles with recycling), which could fold garbage /
+        // NaN into the recycled subspace and thus into X. A small per-cycle Krylov budget (m) with a
+        // nonzero recycle count (k) on a small-isolated-eigenvalue spectrum forces multiple recycling
+        // rebuilds. Uninitialized-Temp garbage is nondeterministic, so this is a path guard: it asserts
+        // no NaN/Inf and honest convergence. ----
+        void RecycleRebuildStaysFinite()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int n = 50, s = 2;
+            int m = 5, k = 3;    // small per-cycle Krylov space forces many restart cycles; k>0 recycles
+            var A = SmallIsolatedEig(ref arena, n, 0x7C71u);
+            var Aop = new fProxyDenseOperatorGeneral(in A);
+            var B = arena.fProxyRandomMat(s, n, -1f, 1f, 0x7C72u);
+
+            var X = arena.fProxyMat(s, n);
+            var info = Krylov.bgcrodr(in Aop, in B, ref X, m, k, 80 * n, Tol());
+
+            for (int j = 0; j < s; j++)
+                for (int c = 0; c < n; c++)
+                    Assert.IsFalse(double.IsNaN((double)X[j, c]) || double.IsInfinity((double)X[j, c]));
+
+            Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
+            Assert.IsTrue(RelResidualBlockDense(in A, in X, in B, s, n) <= Tol());
+
+            arena.Dispose();
+        }
     }
 
     [Test] public void RecyclingBeatsBgmresTest() => new BgcrodrTestJob { Type = BgcrodrTestJob.TestType.RecyclingBeatsBgmres }.Run();
@@ -292,4 +323,5 @@ public class fProxyBlockGCRODRTests
     [Test] public void DeterministicTest()        => new BgcrodrTestJob { Type = BgcrodrTestJob.TestType.Deterministic }.Run();
     [Test] public void ZeroRhsTest()              => new BgcrodrTestJob { Type = BgcrodrTestJob.TestType.ZeroRhs }.Run();
     [Test] public void SingularBreakdownTest()    => new BgcrodrTestJob { Type = BgcrodrTestJob.TestType.SingularBreakdown }.Run();
+    [Test] public void RecycleRebuildStaysFiniteTest() => new BgcrodrTestJob { Type = BgcrodrTestJob.TestType.RecycleRebuildStaysFinite }.Run();
 }
