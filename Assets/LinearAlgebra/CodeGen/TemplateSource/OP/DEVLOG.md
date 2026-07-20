@@ -1,6 +1,22 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.TFQMR
+- 2026-07-20 | New file `Krylov.TFQMR.fProxy.cs`: single-RHS transpose-free QMR (Freund 1993),
+  ported from `reference/scipy/tfqmr.py`'s recurrence (readable float/double reference) with the
+  breakdown-guard/stopping-criterion shape cross-checked against `reference/square/BelosTFQMRIter.hpp`.
+  DEVIATION from both references: they precondition LEFT (`v = M(A(r))`, and even accumulate x via
+  a final `z = M(d)` apply every half-step). Ported RIGHT instead, matching this codebase's other
+  nonsymmetric solvers (biCGStab/gmres/idr all solve `A M⁻¹ y = b`): `uHat = M⁻¹u` feeds both the
+  A-apply (`au = A(uHat)`) and the solution-update accumulator `d` directly, so `eta·d` folds
+  straight into `x` with no extra M-apply, and the tracked quasi-residual bound (`tau·sqrt(half-steps)`)
+  stays a bound on the TRUE ‖b−Ax‖ rather than scipy's M-transformed residual. Verified the
+  substitution algebraically (M⁻¹ is linear, so it commutes through the `d`-recursion) and numerically
+  (a standalone Python port against a Jacobi-preconditioned nonsymmetric system, 20/20 trials to
+  <1e-10 relative error; a 500-trial stress sweep on harsh non-diagonally-dominant random matrices
+  produced zero NaNs and zero false-Converged exits). `maxIter` counts HALF-steps (~one A-apply
+  each) -- NOT full passes like biCGStab's two-matvec loop -- documented on the entry point.
+
 ## Krylov.Block.MINRES
 - 2026-07-20 | BuildOmega now rank-checks Gamma's own diagonal (the QR factor of `[Gbar;Beta^T]`),
   the same way it already checked the Qperp completion's Rz diagonal -- previously a near-singular

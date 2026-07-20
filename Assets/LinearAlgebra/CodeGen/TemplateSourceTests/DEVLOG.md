@@ -2,6 +2,10 @@
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
 ## KrylovSquareBatteryTests / KrylovBattery.Invokers
+- 2026-07-20 | Added `fProxyTfqmrInvoker` + `SolverKind.Tfqmr`, mirroring `fProxyBiCGStabInvoker`
+  (Requires=Square, Forbids=IllConditioned, PrecondKind=NonsymmetricBSR -- same task-#53-deferred
+  Rosser exclusion class as biCGStab/gmres/idr). `MaxIterMul=40` (tfqmr's maxIter counts half-steps,
+  ~one A-apply each, so ~40 half-steps matches biCGStab's 20 two-matvec passes).
 - 2026-07-20 | Fanned out the remaining single-RHS square solvers (fcg, minres, minresQLP,
   biCGStab, gmres, fgmres, idr) into the battery alongside the cg spike -- one invoker struct +
   one SolverKind case each, no change to the shared RunStandardChecks/CheckDense/CheckBSR harness.

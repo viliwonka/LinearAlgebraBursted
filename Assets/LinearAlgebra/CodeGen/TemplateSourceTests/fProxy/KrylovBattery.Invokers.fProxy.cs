@@ -393,4 +393,49 @@ namespace LinearAlgebra
             where TPre : struct, IfProxyPreconditioner
             => Krylov.idr(in A, in M, in b, ref x, S, MaxIter(A.Rows), Tol, Seed);
     }
+
+    /// <summary>
+    /// <see cref="IfProxySquareSolverInvoker"/> for <see cref="Krylov.tfqmr{TOp,TPre}"/> -- TFQMR
+    /// (transpose-free QMR) for general (nonsymmetric) square systems; usable on any square matrix
+    /// kind, so Requires is just Square (same breadth as <see cref="fProxyBiCGStabInvoker"/>). Owns
+    /// the seven scratch vectors the zero-alloc primitive needs (uHat unused under the identity
+    /// fold of the plain path). Forbids IllConditioned: like every transpose-free nonsymmetric
+    /// method here, the gallery's clustered-near-degenerate-spectrum entry (Rosser) trips it past a
+    /// near-breakdown rather than mere slow convergence -- same rationale as biCGStab/gmres/idr, see
+    /// DEVLOG. MaxIterMul is in HALF-steps (~one A-apply each), so ~40 matches biCGStab's 20
+    /// two-matvec-per-pass budget.
+    /// </summary>
+    public struct fProxyTfqmrInvoker : IfProxySquareSolverInvoker
+    {
+        public fProxy TolValue;
+        public int MaxIterMul;
+
+        fProxyN rHat0, u, w, v, au, d, uHat;
+
+        public MatrixProfile Requires => MatrixProfile.Square;
+        public MatrixProfile Forbids => MatrixProfile.IllConditioned;
+        public PreconditionerKind PrecondKind => PreconditionerKind.NonsymmetricBSR;
+        public fProxy Tol => TolValue;
+        public int MaxIter(int n) => MaxIterMul * n;
+
+        public void Init(ref Arena arena, int n)
+        {
+            rHat0 = arena.fProxyVec(n);
+            u = arena.fProxyVec(n);
+            w = arena.fProxyVec(n);
+            v = arena.fProxyVec(n);
+            au = arena.fProxyVec(n);
+            d = arena.fProxyVec(n);
+            uHat = arena.fProxyVec(n);
+        }
+
+        public SolveInfo Solve<TOp>(in TOp A, in fProxyN b, ref fProxyN x)
+            where TOp : struct, IfProxyLinearOperator
+            => Krylov.tfqmr(in A, in b, ref x, ref rHat0, ref u, ref w, ref v, ref au, ref d, MaxIter(A.Rows), Tol);
+
+        public SolveInfo SolveWithPrecond<TOp, TPre>(in TOp A, in TPre M, in fProxyN b, ref fProxyN x)
+            where TOp : struct, IfProxyLinearOperator
+            where TPre : struct, IfProxyPreconditioner
+            => Krylov.tfqmr(in A, in M, in b, ref x, ref rHat0, ref u, ref w, ref v, ref au, ref d, ref uHat, MaxIter(A.Rows), Tol);
+    }
 }

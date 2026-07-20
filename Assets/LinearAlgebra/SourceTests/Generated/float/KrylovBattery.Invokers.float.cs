@@ -397,4 +397,49 @@ namespace LinearAlgebra
             where TPre : struct, IfloatPreconditioner
             => Krylov.idr(in A, in M, in b, ref x, S, MaxIter(A.Rows), Tol, Seed);
     }
+
+    /// <summary>
+    /// <see cref="IfloatSquareSolverInvoker"/> for <see cref="Krylov.tfqmr{TOp,TPre}"/> -- TFQMR
+    /// (transpose-free QMR) for general (nonsymmetric) square systems; usable on any square matrix
+    /// kind, so Requires is just Square (same breadth as <see cref="floatBiCGStabInvoker"/>). Owns
+    /// the seven scratch vectors the zero-alloc primitive needs (uHat unused under the identity
+    /// fold of the plain path). Forbids IllConditioned: like every transpose-free nonsymmetric
+    /// method here, the gallery's clustered-near-degenerate-spectrum entry (Rosser) trips it past a
+    /// near-breakdown rather than mere slow convergence -- same rationale as biCGStab/gmres/idr, see
+    /// DEVLOG. MaxIterMul is in HALF-steps (~one A-apply each), so ~40 matches biCGStab's 20
+    /// two-matvec-per-pass budget.
+    /// </summary>
+    public struct floatTfqmrInvoker : IfloatSquareSolverInvoker
+    {
+        public float TolValue;
+        public int MaxIterMul;
+
+        floatN rHat0, u, w, v, au, d, uHat;
+
+        public MatrixProfile Requires => MatrixProfile.Square;
+        public MatrixProfile Forbids => MatrixProfile.IllConditioned;
+        public PreconditionerKind PrecondKind => PreconditionerKind.NonsymmetricBSR;
+        public float Tol => TolValue;
+        public int MaxIter(int n) => MaxIterMul * n;
+
+        public void Init(ref Arena arena, int n)
+        {
+            rHat0 = arena.floatVec(n);
+            u = arena.floatVec(n);
+            w = arena.floatVec(n);
+            v = arena.floatVec(n);
+            au = arena.floatVec(n);
+            d = arena.floatVec(n);
+            uHat = arena.floatVec(n);
+        }
+
+        public SolveInfo Solve<TOp>(in TOp A, in floatN b, ref floatN x)
+            where TOp : struct, IfloatLinearOperator
+            => Krylov.tfqmr(in A, in b, ref x, ref rHat0, ref u, ref w, ref v, ref au, ref d, MaxIter(A.Rows), Tol);
+
+        public SolveInfo SolveWithPrecond<TOp, TPre>(in TOp A, in TPre M, in floatN b, ref floatN x)
+            where TOp : struct, IfloatLinearOperator
+            where TPre : struct, IfloatPreconditioner
+            => Krylov.tfqmr(in A, in M, in b, ref x, ref rHat0, ref u, ref w, ref v, ref au, ref d, ref uHat, MaxIter(A.Rows), Tol);
+    }
 }
