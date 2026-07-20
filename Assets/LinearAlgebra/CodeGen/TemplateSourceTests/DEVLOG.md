@@ -1,6 +1,22 @@
 # DEVLOG — TemplateSourceTests
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## KrylovLstsqBatteryTests (task #48)
+- 2026-07-20 | New file, third and final battery family (square/block already shipped). Wires
+  lsqr/lsmr (Overdetermined, min-residual oracle: fresh `Krylov.lstsqResidual` Arnorm vs. the same
+  ‖Aᵀb‖ scale the solvers' own stopping test uses, plus elementwise agreement with a direct dense
+  `QR.decomp`/`decompSolve` least-squares reference) and craig/craigmr (Underdetermined, min-norm
+  oracle: fresh rnorm vs. ‖b‖, plus elementwise agreement with `LQ.minNormSolve`). Damped-path
+  check (#12) only runs for the Overdetermined pair -- craig/craigmr have no `damp` parameter in
+  production (a consistent min-norm system has no residual/norm trade-off to regularize), so
+  wiring them into that check would just be asserting a promise the solver never makes.
+- 2026-07-20 | `LstsqBattery` needed `[Timeout(600000)]`: this fixture's single `[BurstCompile]`
+  `TestJob.Execute()` compiles all four solver branches (lsqr/lsmr/craig/craigmr) PLUS the QR
+  blocked-path and LQ min-norm machinery used only by this battery's oracles (no other battery
+  file calls either), so the first `[TestCaseSource]` case to run in a session pays one cold
+  compile that exceeded NUnit's 180s default here (measured ~227s wall time for the whole 4-case
+  fixture on a cold cache); later cases reuse the compiled job and finish in milliseconds.
+
 ## BlockFGmresTests / KrylovBlockBatteryTests (bfgmres, task #38)
 - 2026-07-20 | New file `BlockFGmresTests.fProxy.cs`, mirroring `BlockGmresTests.fProxy.cs`'s IJob/
   TestType shape. Coverage: known-block-solution recovery on nonsymmetric A (`fProxyDenseOperatorGeneral`,

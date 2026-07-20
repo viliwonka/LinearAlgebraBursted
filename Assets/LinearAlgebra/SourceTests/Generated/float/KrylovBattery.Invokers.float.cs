@@ -854,4 +854,141 @@ namespace LinearAlgebra
 
         public IfloatSquareSolverInvoker ScalarCounterpart() => new floatTfqmrInvoker { TolValue = TolValue, MaxIterMul = MaxIterMul };
     }
+
+    /// <summary>
+    /// <see cref="IfloatLstsqSolverInvoker"/> for <see cref="Krylov.lsqr{TOp}"/> -- least-squares
+    /// (Paige-Saunders) solver for OVERDETERMINED (Rows &gt;= Cols, full column rank) systems:
+    /// minimizes ‖Ax-b‖. Owns the five scratch vectors lsqr's zero-alloc primitive needs. Forbids
+    /// RankDeficient: the battery's min-residual oracle (normal-equations optimality vs. a direct
+    /// QR solve) assumes the unique least-squares solution a rank-deficient A does not have.
+    /// </summary>
+    public struct floatLsqrInvoker : IfloatLstsqSolverInvoker
+    {
+        public float TolValue;
+        public int MaxIterMul;
+
+        floatN u, v, w, tmpM, tmpN;
+
+        public MatrixProfile Requires => MatrixProfile.Overdetermined;
+        public MatrixProfile Forbids => MatrixProfile.RankDeficient;
+        public float Tol => TolValue;
+        public int MaxIter(int rows, int cols) => MaxIterMul * (rows < cols ? rows : cols);
+
+        public void Init(ref Arena arena, int rows, int cols)
+        {
+            u = arena.floatVec(rows);
+            v = arena.floatVec(cols);
+            w = arena.floatVec(cols);
+            tmpM = arena.floatVec(rows);
+            tmpN = arena.floatVec(cols);
+        }
+
+        public LstsqInfo Solve<TOp>(in TOp A, in floatN b, ref floatN x, float damp)
+            where TOp : struct, IfloatLinearOperator
+            => Krylov.lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, MaxIter(A.Rows, A.Cols), Tol, damp);
+    }
+
+    /// <summary>
+    /// <see cref="IfloatLstsqSolverInvoker"/> for <see cref="Krylov.lsmr{TOp}"/> -- LSMR
+    /// (Fong-Saunders; monotone normal-equation residual) solver for OVERDETERMINED (Rows &gt;=
+    /// Cols, full column rank) systems: minimizes ‖Ax-b‖. Owns the six scratch vectors lsmr's
+    /// zero-alloc primitive needs (one more than <see cref="floatLsqrInvoker"/> -- the
+    /// MINRES-folded direction hbar). Same Requires/Forbids as floatLsqrInvoker.
+    /// </summary>
+    public struct floatLsmrInvoker : IfloatLstsqSolverInvoker
+    {
+        public float TolValue;
+        public int MaxIterMul;
+
+        floatN u, v, h, hbar, tmpM, tmpN;
+
+        public MatrixProfile Requires => MatrixProfile.Overdetermined;
+        public MatrixProfile Forbids => MatrixProfile.RankDeficient;
+        public float Tol => TolValue;
+        public int MaxIter(int rows, int cols) => MaxIterMul * (rows < cols ? rows : cols);
+
+        public void Init(ref Arena arena, int rows, int cols)
+        {
+            u = arena.floatVec(rows);
+            v = arena.floatVec(cols);
+            h = arena.floatVec(cols);
+            hbar = arena.floatVec(cols);
+            tmpM = arena.floatVec(rows);
+            tmpN = arena.floatVec(cols);
+        }
+
+        public LstsqInfo Solve<TOp>(in TOp A, in floatN b, ref floatN x, float damp)
+            where TOp : struct, IfloatLinearOperator
+            => Krylov.lsmr(in A, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, MaxIter(A.Rows, A.Cols), Tol, damp);
+    }
+
+    /// <summary>
+    /// <see cref="IfloatLstsqSolverInvoker"/> for <see cref="Krylov.craig{TOp}"/> -- least-NORM
+    /// (Craig 1955 / Paige-Saunders) solver for UNDERDETERMINED (Rows &lt;= Cols, full row rank)
+    /// CONSISTENT systems: among all x with Ax=b, finds the minimum-‖x‖ one. Owns the four
+    /// scratch vectors craig's zero-alloc primitive needs. Forbids RankDeficient (no
+    /// Underdetermined gallery entry currently carries it; kept for symmetry with
+    /// <see cref="floatLsqrInvoker"/>).
+    /// </summary>
+    public struct floatCraigInvoker : IfloatLstsqSolverInvoker
+    {
+        public float TolValue;
+        public int MaxIterMul;
+
+        floatN u, v, tmpM, tmpN;
+
+        public MatrixProfile Requires => MatrixProfile.Underdetermined;
+        public MatrixProfile Forbids => MatrixProfile.RankDeficient;
+        public float Tol => TolValue;
+        public int MaxIter(int rows, int cols) => MaxIterMul * (rows < cols ? rows : cols);
+
+        public void Init(ref Arena arena, int rows, int cols)
+        {
+            u = arena.floatVec(rows);
+            v = arena.floatVec(cols);
+            tmpM = arena.floatVec(rows);
+            tmpN = arena.floatVec(cols);
+        }
+
+        /// damp is ignored: craig has no Tikhonov-damped production entry point (a consistent
+        /// min-norm system has no residual/norm trade-off to regularize). The battery only
+        /// exercises the damped-path check on Overdetermined invokers.
+        public LstsqInfo Solve<TOp>(in TOp A, in floatN b, ref floatN x, float damp)
+            where TOp : struct, IfloatLinearOperator
+            => Krylov.craig(in A, in b, ref x, ref u, ref v, ref tmpM, ref tmpN, MaxIter(A.Rows, A.Cols), Tol);
+    }
+
+    /// <summary>
+    /// <see cref="IfloatLstsqSolverInvoker"/> for <see cref="Krylov.craigmr{TOp}"/> -- MINRES-
+    /// flavored CRAIG (monotone residual) for UNDERDETERMINED (Rows &lt;= Cols, full row rank)
+    /// CONSISTENT systems: among all x with Ax=b, finds the minimum-‖x‖ one. Owns the five
+    /// scratch vectors craigmr's zero-alloc primitive needs (one more than
+    /// <see cref="floatCraigInvoker"/> -- the running-QR direction d). damp is ignored, same
+    /// rationale as floatCraigInvoker.
+    /// </summary>
+    public struct floatCraigmrInvoker : IfloatLstsqSolverInvoker
+    {
+        public float TolValue;
+        public int MaxIterMul;
+
+        floatN u, v, d, tmpM, tmpN;
+
+        public MatrixProfile Requires => MatrixProfile.Underdetermined;
+        public MatrixProfile Forbids => MatrixProfile.RankDeficient;
+        public float Tol => TolValue;
+        public int MaxIter(int rows, int cols) => MaxIterMul * (rows < cols ? rows : cols);
+
+        public void Init(ref Arena arena, int rows, int cols)
+        {
+            u = arena.floatVec(rows);
+            v = arena.floatVec(cols);
+            d = arena.floatVec(cols);
+            tmpM = arena.floatVec(rows);
+            tmpN = arena.floatVec(cols);
+        }
+
+        public LstsqInfo Solve<TOp>(in TOp A, in floatN b, ref floatN x, float damp)
+            where TOp : struct, IfloatLinearOperator
+            => Krylov.craigmr(in A, in b, ref x, ref u, ref v, ref d, ref tmpM, ref tmpN, MaxIter(A.Rows, A.Cols), Tol);
+    }
 }

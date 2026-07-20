@@ -1,0 +1,188 @@
+using System;
+
+using LinearAlgebra;
+
+using NUnit.Framework;
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Jobs;
+using Unity.Mathematics;
+
+// Krylov least-squares/least-norm battery -- solver x matrix-regime cross-coverage for the
+// rectangular Krylov family, driven through the IfProxyLstsqSolverInvoker struct-functor shape
+// (see KrylovBattery.Invokers.fProxy.cs). Two distinct correctness oracles selected by matrix
+// shape: Overdetermined (lsqr, lsmr) -- min-RESIDUAL, checked via the fresh normal-equations
+// optimality residual ‖Aᵀ(Ax-b)‖ plus elementwise agreement with a direct dense QR least-squares
+// solve (check #10); Underdetermined (craig, craigmr) -- min-NORM, checked via the fresh ‖Ax-b‖
+// plus elementwise agreement with LQ.minNormSolve (check #11). Check #12 (damped path) only
+// applies to the Overdetermined family -- craig/craigmr have no Tikhonov-damped production entry
+// point (a consistent min-norm system has no residual/norm trade-off to regularize). No BSR
+// gallery matrix is Rectangular today, so this battery drives the dense literature gallery only.
+public class fProxyKrylovLstsqBatteryTests
+{
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct TestJob : IJob
+    {
+        public enum SolverKind { Lsqr, Lsmr, Craig, Craigmr }
+
+        public SolverKind Kind;
+
+        // [0] flag (1 = failure recorded) [1] matrix-enum-as-int [2] check-id [3] got [4] expected
+        public NativeArray<fProxy> Fail;
+
+        const int DenseCount = (int)GalleryDenseMatrix.RandSPDIllCond20 + 1;
+
+        public void Execute()
+        {
+            switch (Kind)
+            {
+                case SolverKind.Lsqr:    RunStandardChecks(new fProxyLsqrInvoker { TolValue = Consts.fProxySqrtEps, MaxIterMul = 20 }); break;
+                case SolverKind.Lsmr:    RunStandardChecks(new fProxyLsmrInvoker { TolValue = Consts.fProxySqrtEps, MaxIterMul = 20 }); break;
+                case SolverKind.Craig:   RunStandardChecks(new fProxyCraigInvoker { TolValue = Consts.fProxySqrtEps, MaxIterMul = 20 }); break;
+                case SolverKind.Craigmr: RunStandardChecks(new fProxyCraigmrInvoker { TolValue = Consts.fProxySqrtEps, MaxIterMul = 20 }); break;
+            }
+        }
+
+        void RunStandardChecks<TInvoker>(TInvoker inv) where TInvoker : struct, IfProxyLstsqSolverInvoker
+        {
+            for (int i = 0; i < DenseCount; i++)
+            {
+                var gm = (GalleryDenseMatrix)i;
+                if (MatrixProfileMatch.Applicable(inv.Requires, inv.Forbids, GalleryProfiles.Of(gm)))
+                    CheckDense(inv, gm);
+            }
+        }
+
+        // Checks #10-12 (SS5.4) on one dense literature-gallery matrix. Branches the oracle by
+        // shape: Overdetermined -> min-residual (#10), Underdetermined -> min-norm (#11). #12
+        // (damped path) only runs for Overdetermined invokers.
+        void CheckDense<TInvoker>(TInvoker inv, GalleryDenseMatrix gm) where TInvoker : struct, IfProxyLstsqSolverInvoker
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            var A = fProxyKrylovBatteryGallery.Build(ref arena, gm);
+            int m = A.M_Rows, n = A.N_Cols;
+            var Aop = new fProxyDenseOperator(in A);
+            MatrixProfile tags = GalleryProfiles.Of(gm);
+            fProxy tolBand = TolBand(tags);
+            bool overdetermined = (tags & MatrixProfile.Overdetermined) != 0;
+            int checkId = overdetermined ? 10 : 11;
+
+            var b = arena.fProxyRandomVec(m, (fProxy)(-1), (fProxy)1, 0xD200u + (uint)gm);
+
+            inv.Init(ref arena, m, n);
+
+            var rScratch = arena.fProxyVec(m);
+            var sScratch = arena.fProxyVec(n);
+
+            // Fixed scale references matching each family's own internal stopping test: ||A^T b||
+            // for lsqr/lsmr's normal-equations criterion, ||b|| for craig/craigmr's residual one.
+            Aop.ApplyT(in b, ref sScratch);
+            fProxy atbNorm = math.sqrt(Blas.dot(sScratch, sScratch));
+            fProxy bNorm = math.sqrt(Blas.dot(b, b));
+            fProxy thresh = overdetermined
+                ? (fProxy)10 * inv.Tol * math.max(atbNorm, (fProxy)1e-30)
+                : (fProxy)10 * inv.Tol * math.max(bNorm, (fProxy)1e-30);
+
+            var x1 = arena.fProxyVec(n);
+            LstsqInfo info1 = inv.Solve(in Aop, in b, ref x1, (fProxy)0);
+            bool statusOk1 = info1.status == IterativeSolveStatus.Converged || info1.status == IterativeSolveStatus.MaxIterations;
+            Record(statusOk1, (int)gm, checkId, (fProxy)(int)info1.status, (fProxy)0);
+
+            var audit1 = Krylov.lstsqResidual(in Aop, in b, in x1, (fProxy)0, ref rScratch, ref sScratch);
+
+            if (overdetermined)
+            {
+                // 10. Overdetermined -> min-residual: fresh normal-equations optimality residual
+                // small relative to the same ||A^T b|| scale lsqr/lsmr's own stopping test uses,
+                // plus elementwise agreement with a direct dense QR least-squares solve.
+                Record((fProxy)audit1.Arnorm <= thresh, (int)gm, 10, (fProxy)audit1.Arnorm, thresh);
+
+                var xRef = ReferenceSolveLstsq(ref arena, in A, in b);
+                for (int i = 0; i < n; i++)
+                    Record(math.abs(x1[i] - xRef[i]) <= tolBand * ((fProxy)1 + math.abs(xRef[i])), (int)gm, 10, x1[i], xRef[i]);
+
+                // 12. Damped path: damp=0 bit-identical to a second independent plain solve, then
+                // damp>0 drives the damped optimality residual under the same threshold (lsqr/
+                // lsmr's internal stopping test compares the damped residual against this same
+                // fixed ||A^T b|| scale, undiminished by damp).
+                var x12a = arena.fProxyVec(n);
+                LstsqInfo info12a = inv.Solve(in Aop, in b, ref x12a, (fProxy)0);
+                for (int i = 0; i < n; i++)
+                    Record(x1[i] == x12a[i], (int)gm, 12, x1[i], x12a[i]);
+
+                fProxy damp = (fProxy)0.1;
+                var x12b = arena.fProxyVec(n);
+                LstsqInfo info12b = inv.Solve(in Aop, in b, ref x12b, damp);
+                bool statusOk12 = info12b.status == IterativeSolveStatus.Converged || info12b.status == IterativeSolveStatus.MaxIterations;
+                Record(statusOk12, (int)gm, 12, (fProxy)(int)info12b.status, (fProxy)0);
+
+                var audit12b = Krylov.lstsqResidual(in Aop, in b, in x12b, damp, ref rScratch, ref sScratch);
+                Record((fProxy)audit12b.Arnorm <= thresh, (int)gm, 12, (fProxy)audit12b.Arnorm, thresh);
+            }
+            else
+            {
+                // 11. Underdetermined -> min-norm: fresh ||b-Ax|| small relative to ||b|| (craig/
+                // craigmr's own stopping scale), plus elementwise agreement with LQ.minNormSolve
+                // (the exact minimum-2-norm solution).
+                Record((fProxy)audit1.rnorm <= thresh, (int)gm, 11, (fProxy)audit1.rnorm, thresh);
+
+                var xRef = arena.fProxyVec(n);
+                LQ.minNormSolve(in A, in b, ref xRef);
+                for (int i = 0; i < n; i++)
+                    Record(math.abs(x1[i] - xRef[i]) <= tolBand * ((fProxy)1 + math.abs(xRef[i])), (int)gm, 11, x1[i], xRef[i]);
+            }
+
+            arena.Dispose();
+        }
+
+        // Direct dense least-squares reference via QR (A must have full column rank, M_Rows >=
+        // N_Cols) -- the oracle check #10 compares lsqr/lsmr's iterative solution against.
+        fProxyN ReferenceSolveLstsq(ref Arena arena, in fProxyMxN A, in fProxyN b)
+        {
+            var Q = arena.fProxyMat(A.M_Rows, A.N_Cols);
+            var R = arena.fProxyMat(A.N_Cols);
+            QR.decomp(in A, ref Q, ref R);
+            fProxyN bLocal = b;
+            var xRef = arena.fProxyVec(A.N_Cols);
+            QR.decompSolve(ref Q, ref R, ref bLocal, ref xRef);
+            return xRef;
+        }
+
+        // WellConditioned -> 50*sqrtEps, IllConditioned -> 5E-2 (mirrors KrylovSquareBatteryTests'
+        // own bands).
+        static fProxy TolBand(MatrixProfile tags)
+            => (tags & MatrixProfile.IllConditioned) != 0 ? (fProxy)5E-2 : (fProxy)50 * Consts.fProxySqrtEps;
+
+        void Record(bool ok, int matrixIdx, int checkId, fProxy got, fProxy expected)
+        {
+            if (!ok && Fail[0] == (fProxy)0)
+            {
+                Fail[0] = (fProxy)1;
+                Fail[1] = (fProxy)matrixIdx;
+                Fail[2] = (fProxy)checkId;
+                Fail[3] = got;
+                Fail[4] = expected;
+            }
+            Assert.IsTrue(ok);
+        }
+    }
+
+    static Array GetKinds() => Enum.GetValues(typeof(TestJob.SolverKind));
+
+    // Generous timeout: the first case run in a session pays one cold Burst compile of the whole
+    // Execute() body (see DEVLOG).
+    [Timeout(600000)]
+    [TestCaseSource(nameof(GetKinds))]
+    public void LstsqBattery(TestJob.SolverKind kind)
+    {
+        var fail = new NativeArray<fProxy>(5, Allocator.TempJob);
+        try
+        {
+            new TestJob { Kind = kind, Fail = fail }.Run();
+            if (fail[0] != (fProxy)0)
+                Assert.Fail($"{kind}: matrix={fail[1]} check={fail[2]} got={fail[3]} expected={fail[4]}");
+        }
+        finally { fail.Dispose(); }
+    }
+}
