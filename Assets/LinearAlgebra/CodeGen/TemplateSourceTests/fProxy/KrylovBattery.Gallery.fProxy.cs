@@ -43,6 +43,8 @@ namespace LinearAlgebra
                 case GalleryDenseMatrix.RandSPDWellCond20: return RandSPD(ref arena, 20, (fProxy)1, (fProxy)10, 0x5EED4u);
                 case GalleryDenseMatrix.RandSPDIllCond20:  return RandSPD(ref arena, 20, (fProxy)1E-3, (fProxy)1, 0x5EED5u);
 
+                case GalleryDenseMatrix.TallRandom24x8: return arena.fProxyRandomMat(24, 8, (fProxy)(-1), (fProxy)1, 0x5EED6u);
+
                 default: throw new System.ArgumentException("fProxyKrylovBatteryGallery.Build: unhandled GalleryDenseMatrix");
             }
         }

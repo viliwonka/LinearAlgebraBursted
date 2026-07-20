@@ -88,6 +88,36 @@ namespace LinearAlgebra
     }
 
     /// <summary>
+    /// Struct-functor entry point the Krylov battery drives a block (multi-RHS) least-squares solver
+    /// family through -- same role as <see cref="IfloatLstsqSolverInvoker"/>, block-shaped like
+    /// <see cref="IfloatBlockSolverInvoker"/>. Test infrastructure only. OVERDETERMINED only (blsmr/
+    /// bcgls, tall A, min-RESIDUAL) -- no min-NORM counterpart exists yet (bcraig/bcraigmr are not
+    /// implemented). No TPre-generic overload (mirrors <see cref="IfloatLstsqSolverInvoker"/>: neither
+    /// production solver has a preconditioned entry point) and no damp parameter (mirrors
+    /// <see cref="IfloatBlockSolverInvoker"/>'s NeedsGeneralDenseOperator-free shape -- blsmr/bcgls have
+    /// no Tikhonov-damped production entry point). <see cref="Solve{TOp}"/> takes an explicit maxIter
+    /// (rather than deriving it from <see cref="MaxIter"/> internally) so the battery's tiny-maxIter
+    /// no-NaN check can force a single iteration without a second invoker configuration.
+    /// </summary>
+    public interface IfloatBlockLstsqSolverInvoker
+    {
+        MatrixProfile Requires { get; }
+        MatrixProfile Forbids { get; }
+        float Tol { get; }
+        int MaxIter(int rows, int cols);
+
+        void Init(ref Arena arena, int rows, int cols, int s);
+
+        BlockSolveInfo Solve<TOp>(in TOp A, in floatMxN B, ref floatMxN X, int maxIter)
+            where TOp : struct, IfloatLinearOperator;
+
+        /// The scalar solver this block family reduces to at s=1 / is compared per-column against.
+        /// Both blsmr and bcgls compare against plain <see cref="Krylov.lsmr{TOp}"/> -- their shared
+        /// least-squares solution, not a distinct per-solver counterpart.
+        IfloatLstsqSolverInvoker ScalarCounterpart();
+    }
+
+    /// <summary>
     /// <see cref="IfloatSquareSolverInvoker"/> for <see cref="Krylov.cg{TOp}"/> -- the square-SPD
     /// spike solver for the Krylov battery (see KrylovSquareBatteryTests). Owns the four scratch
     /// vectors cg's zero-alloc primitive needs; r/p/Ap/z are sized to the current gallery matrix by
@@ -990,5 +1020,62 @@ namespace LinearAlgebra
         public LstsqInfo Solve<TOp>(in TOp A, in floatN b, ref floatN x, float damp)
             where TOp : struct, IfloatLinearOperator
             => Krylov.craigmr(in A, in b, ref x, ref u, ref v, ref d, ref tmpM, ref tmpN, MaxIter(A.Rows, A.Cols), Tol);
+    }
+
+    /// <summary>
+    /// <see cref="IfloatBlockLstsqSolverInvoker"/> for <see cref="Krylov.blsmr{TOp}"/> -- block LSMR
+    /// (Mojarrab &amp; Toutounian 2015) for a TALL/overdetermined operator A and s simultaneous
+    /// right-hand sides: minimizes ‖A X - B‖_F. Owns no scratch (blsmr allocates its whole workspace
+    /// from Allocator.Temp, mirroring <see cref="floatGmresInvoker"/>), so <see cref="Init"/> is a
+    /// no-op. <see cref="ScalarCounterpart"/> is <see cref="floatLsmrInvoker"/> -- blsmr solves the
+    /// same least-squares problem lsmr does, one column at a time.
+    /// </summary>
+    public struct floatBlsmrInvoker : IfloatBlockLstsqSolverInvoker
+    {
+        public float TolValue;
+        public int MaxIterMul;
+
+        public MatrixProfile Requires => MatrixProfile.Overdetermined;
+        public MatrixProfile Forbids => MatrixProfile.RankDeficient;
+        public float Tol => TolValue;
+        public int MaxIter(int rows, int cols) => MaxIterMul * cols;
+
+        public void Init(ref Arena arena, int rows, int cols, int s) { }
+
+        public BlockSolveInfo Solve<TOp>(in TOp A, in floatMxN B, ref floatMxN X, int maxIter)
+            where TOp : struct, IfloatLinearOperator
+            => Krylov.blsmr(in A, in B, ref X, maxIter, Tol);
+
+        public IfloatLstsqSolverInvoker ScalarCounterpart() => new floatLsmrInvoker { TolValue = TolValue, MaxIterMul = MaxIterMul };
+    }
+
+    /// <summary>
+    /// <see cref="IfloatBlockLstsqSolverInvoker"/> for <see cref="Krylov.bcgls{TOp}"/> -- block CGLS
+    /// (block conjugate gradients on the normal equations AᵀA X = AᵀB, never forming AᵀA) for a TALL/
+    /// overdetermined operator A and s simultaneous right-hand sides: minimizes ‖A X - B‖_F. Owns no
+    /// scratch (bcgls allocates its whole workspace from Allocator.Temp), so <see cref="Init"/> is a
+    /// no-op. Same <see cref="ScalarCounterpart"/> as <see cref="floatBlsmrInvoker"/> -- same
+    /// least-squares problem, same lsmr comparison target. Forbids IllConditioned (unlike blsmr):
+    /// squaring the condition number via the normal equations makes the gallery's IllConditioned
+    /// overdetermined entry (Lauchli, eps=1e-3) genuinely too hard for this s x s Gram-based
+    /// coefficient solve at a small block width -- see the folder DEVLOG.
+    /// </summary>
+    public struct floatBcglsInvoker : IfloatBlockLstsqSolverInvoker
+    {
+        public float TolValue;
+        public int MaxIterMul;
+
+        public MatrixProfile Requires => MatrixProfile.Overdetermined;
+        public MatrixProfile Forbids => MatrixProfile.RankDeficient | MatrixProfile.IllConditioned;
+        public float Tol => TolValue;
+        public int MaxIter(int rows, int cols) => MaxIterMul * cols;
+
+        public void Init(ref Arena arena, int rows, int cols, int s) { }
+
+        public BlockSolveInfo Solve<TOp>(in TOp A, in floatMxN B, ref floatMxN X, int maxIter)
+            where TOp : struct, IfloatLinearOperator
+            => Krylov.bcgls(in A, in B, ref X, maxIter, Tol);
+
+        public IfloatLstsqSolverInvoker ScalarCounterpart() => new floatLsmrInvoker { TolValue = TolValue, MaxIterMul = MaxIterMul };
     }
 }

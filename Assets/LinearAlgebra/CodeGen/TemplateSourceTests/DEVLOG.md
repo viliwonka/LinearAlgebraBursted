@@ -1,6 +1,42 @@
 # DEVLOG — TemplateSourceTests
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## KrylovBlockLstsqBatteryTests / KrylovBattery.Invokers (task #56)
+- 2026-07-20 | New file, fourth and final battery family (square/block/single-RHS-lstsq already
+  shipped). Wires blsmr/bcgls (both Overdetermined-only, tall A + block RHS, min-residual oracle)
+  via a new `IfProxyBlockLstsqSolverInvoker` interface -- block-shaped like
+  `IfProxyBlockSolverInvoker`, damp-free and TPre-free like `IfProxyLstsqSolverInvoker` (neither
+  production solver has a Tikhonov-damped or preconditioned entry point). `Solve<TOp>` takes an
+  explicit `maxIter` argument (rather than deriving it internally) so the battery's tiny-maxIter
+  no-NaN check can force a single iteration without a second invoker configuration. Both retired
+  bespoke files' scenarios (normal-equations optimality, per-column agreement with scalar `lsmr`,
+  consistent-system exact recovery, zero-rhs immediate convergence, tiny-maxIter no-NaN) are fully
+  covered by checks #1-6 -- no bespoke case needed to be kept.
+- 2026-07-20 | Added `GalleryDenseMatrix.TallRandom24x8` (Overdetermined|FullRank|WellConditioned,
+  same 24x8 random-entry shape the retired bespoke tests built inline): the existing Overdetermined
+  gallery only had Lauchli3_05/Lauchli3_1e3 (n=3), too narrow for a useful block RHS at S>=2 on top
+  of Lauchli's own near-rank-deficiency stress. Kept Lauchli3_05 applicable too (bcgls handles it
+  cleanly) rather than dropping it outright.
+- 2026-07-20 | blsmr's block Golub-Kahan bidiagonalization hits a genuine `Breakdown` (not just slow
+  convergence) on Lauchli3_05 at S=2 -- even the WellConditioned entry, the very first gallery matrix
+  tried. Its per-iteration LQ factors need more column-space headroom than 2-of-3 columns leaves.
+  Excluded via a battery-local `IsNarrowDense`/`skipNarrow` gate (mirrors `KrylovBlockBatteryTests`'
+  bminres `SkipTinyDense` precedent) rather than a `MatrixProfile` flag, since "too narrow for this
+  solver's block width" isn't a property of the matrix in isolation the way `IllConditioned` is.
+- 2026-07-20 | `fProxyBcglsInvoker.Forbids` gained `IllConditioned`: squaring the condition number via
+  the normal equations makes Lauchli3_1e3 (eps=1e-3) genuinely too hard for the s x s Gram-based
+  coefficient solve at S=2 (per-column mismatch vs. scalar lsmr, and the consistent-recovery check
+  never reaches full converged==S status). bcgls tolerates Lauchli3_05 (WellConditioned) fine, so
+  only the IllConditioned sibling is excluded -- unlike blsmr, no narrow-matrix exclusion needed.
+- 2026-07-20 | blsmr's convergence flag is CONSERVATIVE in float on the consistent-recovery check
+  (#4): the internal ||A^T R||_F^2 stopping test can leave an already-accurate solution just short of
+  its threshold under float rounding. That check's strict `Solved`/`converged==S` assertion is
+  double-only for blsmr, all dtypes for bcgls (which tests convergence via the EXACT maintained
+  S = A^T R, not an estimate) -- carried as a `strictConsistentStatus` bool per `SolverKind`, same
+  role as the block family's per-solver `CheckFlags`.
+- 2026-07-20 | Retired `BlockLSMRTests.fProxy.cs` / `BlockCGLSTests.fProxy.cs` (and their generated
+  float/double copies) -- every one of their four `[Test]` cases per file is now a battery check.
+
 ## KrylovLstsqBatteryTests (task #48)
 - 2026-07-20 | New file, third and final battery family (square/block already shipped). Wires
   lsqr/lsmr (Overdetermined, min-residual oracle: fresh `Krylov.lstsqResidual` Arnorm vs. the same

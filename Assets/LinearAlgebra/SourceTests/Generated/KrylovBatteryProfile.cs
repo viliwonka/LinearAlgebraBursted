@@ -67,6 +67,9 @@ namespace LinearAlgebra
         // Synthetic modifiers (Rand.*InPlace) -- clean, size-independent WellConditioned /
         // IllConditioned knobs the literature gallery doesn't give directly
         RandSPDWellCond20, RandSPDIllCond20,
+        // Rectangular (Overdetermined), roomier than Lauchli3 -- block least-squares family (needs a
+        // column count wide enough for a block RHS beyond Lauchli3's n=3)
+        TallRandom24x8,
     }
 
     /// <summary>Block-sparse (BSR) gallery matrices driven by the Krylov battery, tagged via
@@ -112,6 +115,8 @@ namespace LinearAlgebra
 
                 case GalleryDenseMatrix.RandSPDWellCond20: return MatrixProfile.SPD | MatrixProfile.Square | MatrixProfile.FullRank | MatrixProfile.WellConditioned;
                 case GalleryDenseMatrix.RandSPDIllCond20:  return MatrixProfile.SPD | MatrixProfile.Square | MatrixProfile.FullRank | MatrixProfile.IllConditioned;
+
+                case GalleryDenseMatrix.TallRandom24x8: return MatrixProfile.Rectangular | MatrixProfile.Overdetermined | MatrixProfile.FullRank | MatrixProfile.WellConditioned;
 
                 default: return MatrixProfile.None;
             }
