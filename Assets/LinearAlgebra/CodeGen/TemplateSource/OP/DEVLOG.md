@@ -1,6 +1,52 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.CRAIGMR
+- 2026-07-20 | New file `Krylov.CRAIGMR.fProxy.cs`: single-RHS CRAIGMR, the MINRES-flavored sibling
+  of `craig` -- same least-norm problem (min ‖x‖ s.t. Ax=b, A m×n full row rank, m<=n), same
+  Golub-Kahan bidiagonalization, but the lower-bidiagonal system L is solved via a running QR
+  (one Givens rotation/step) instead of craig's forward substitution, giving a MONOTONICALLY
+  decreasing ‖b-Ax‖ (craig's error is monotonic, its residual is not). Task #37.
+- 2026-07-20 | PORT-FIDELITY DEVIATION: primarily ported the recurrence in
+  `reference/rectangular/CRAIGMR-BlockCRAIG-algorithm-extract.md` §3.1-3.2 (a clean-room
+  reimplementation reference, cross-checked by that document's author against both Krylov.jl's
+  MPL-licensed docstring/source, read-not-copied, and the MIT `pykrylov-lls/craigmr.py`), rather
+  than porting `pykrylov-lls/craigmr.py` line-for-line as the nominal "primary" source. Reason:
+  pykrylov's actual code decomposes the same update into THREE named rotation families ("type
+  I/II/III") seeded by a fixed `alpha_hat = sqrt(alpha**2 + 1)` -- consistent with solving the
+  augmented saddle-point system `[I A; Aᵀ 0][r;x]=[b;0]` directly via MINRES (the identity block
+  contributes the structural "+1"), a different derivation path to the same answer. The extract's
+  single-rotation form works directly off the reduced AAᵀ system (matching this library's existing
+  `craig`/`lsmr` bidiagonalization, no augmented-system reindexing) and is markedly simpler to audit
+  line-by-line. The extract itself flags pykrylov's `craigmr.py` as real but unfinished (TODO
+  comment, stray Python-2 `print`, no y output). Verified against the required behavior instead
+  (least-norm oracle + monotonic-residual tests), not against pykrylov's numbers directly.
+- 2026-07-20 | API surface: only `x` is tracked/returned (matches `craig`'s API), not the dual `y`
+  (Aᵀy=x, AAᵀy=b) that the full published CRAIGMR also produces. Traced the dependency graph of the
+  extract's §3.2 update: the y/w/wbar family is write-only into y and is never read back into the
+  d/x/theta/rhobar recurrence that actually produces x -- so it was dropped entirely rather than
+  computed and discarded. Scratch buffers: u/v/tmpM/tmpN (craig's four) plus one more, `d` (the
+  running Aᵀ-image accumulator, craigmr's analog of craig's direct `v`-weighted sum / lsmr's h).
+  Default `maxIter` = `A.M_Rows` (same bound as craig, not lsqr/lsmr's `A.N_Cols`) -- identical
+  bidiagonalization, identical finite-termination argument.
+- 2026-07-20 | Unlike craig, `LstsqInfo.rnorm`/`Arnorm` are FILLED FOR FREE from the same per-step
+  QR recurrence (`rNorm = |zetabar|`, `ArNorm = alphaNew*betaNew*|zeta|/rho`) via
+  `LstsqInfoTracked` -- no `lstsqResidual` audit needed, unlike craig's direct rank-1 update which
+  has no free per-iteration ‖Aᵀr‖. This is the same tracked-norm shape `lsmr` uses.
+- 2026-07-20 | Breakdown guards, in order every iteration: (1) `rho > 0` (both the running rotation
+  radius and the fresh beta collapsed -- reports the PREVIOUS iteration's rNorm/ArNorm, matching
+  lsmr's "carry prior step's values" convention), checked before the convergence test since rho
+  gates the division that produces this step's x; (2) `betaNew > 0` after the convergence check
+  (defensive only -- betaNew==0 forces rho=|rhobar|, s=0, zetabar=0, rNorm=0, which converges above
+  for any tol>=0, so this branch is not known to be reachable, but is kept as a guard on the
+  division it precedes, matching craig/lsmr's own defensive doubling); (3) `alphaNew > 0` (Krylov
+  space exhausted backward). Same KNOWN LIMITATION as craig: these are exact bit-zero tests, not a
+  relative/‖A‖-scaled threshold, so a NUMERICALLY (not bit-exactly) rank-deficient A can slip past
+  the guard and run to MaxIterations with a blown-up but finite (never NaN) x instead of reporting
+  Breakdown -- deep rank-deficient least-norm is out of scope per the task.
+- 2026-07-20 | NOT wired into the standardized Krylov battery, same as craig (least-norm invokers
+  don't exist yet there) -- bespoke coverage only, in `CRAIGMRTests`.
+
 ## Krylov.CRAIG
 - 2026-07-20 | New file `Krylov.CRAIG.fProxy.cs`: single-RHS CRAIG (Craig 1955; Paige-Saunders BIT
   1995), the least-NORM counterpart to `lsqr`/`lsmr` -- among all x with Ax=b (A m×n, m<=n, full row

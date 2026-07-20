@@ -1,0 +1,281 @@
+using System;
+
+using LinearAlgebra;
+using NUnit.Framework;
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Jobs;
+using Unity.Mathematics;
+
+// Krylov.craigmr — single-RHS CRAIGMR (MINRES-flavored craig): the least-NORM solver for
+// underdetermined consistent systems A x = b (A is m×n, m<=n, full row rank). Among all x with
+// A x = b it returns the minimum-‖x‖ one, via the same Golub-Kahan bidiagonalization as craig, but
+// with a running-QR (Givens) update instead of craig's forward substitution -- giving a
+// MONOTONICALLY decreasing ‖b-Ax‖, which craig does not guarantee.
+//
+// Oracle for the min-norm value: LQ.minNormSolve (exact x* via LQ factorization).
+public class fProxyCRAIGMRTests
+{
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct TestJob : IJob
+    {
+        public enum TestType
+        {
+            RectangularMinNorm,
+            SquareFullRank,
+            ExplicitScratchInJob,
+            ZeroRhs,
+            RankDeficientBreakdown,
+            MonotonicResidual,
+        }
+
+        public TestType Type;
+
+        public void Execute()
+        {
+            switch (Type)
+            {
+                case TestType.RectangularMinNorm:     RectangularMinNorm();     break;
+                case TestType.SquareFullRank:         SquareFullRank();         break;
+                case TestType.ExplicitScratchInJob:   ExplicitScratchInJob();   break;
+                case TestType.ZeroRhs:                ZeroRhs();                break;
+                case TestType.RankDeficientBreakdown: RankDeficientBreakdown(); break;
+                case TestType.MonotonicResidual:      MonotonicResidual();     break;
+            }
+        }
+
+        // Comparison tolerance for craigmr vs LQ oracle / Ax≈b, scaled per numeric type. Same
+        // rationale as CRAIGTests: finite bidiagonalization (m steps in exact arithmetic) over a
+        // well-conditioned diagonal-boosted system.
+        static fProxy Tol() => /*+choose[1e-3f|1e-9]*/1e-3f/*-choose*/;
+
+        // Convergence tolerance handed to craigmr -- tighter than the default Consts.fProxySqrtEps,
+        // loose enough that a well-conditioned full-row-rank system converges within its m
+        // bidiagonalization steps (default maxIter = A.M_Rows).
+        static fProxy SolveTol() => /*+choose[1e-5f|1e-13]*/1e-5f/*-choose*/;
+
+        // Full-(row-)rank test matrix: random with a diagonal boost (mirrors CRAIGTests).
+        static fProxyMxN BuildA(ref Arena arena, int m, int n, uint seed)
+        {
+            var A = arena.fProxyRandomMat(m, n, -1f, 1f, seed);
+            for (int d = 0; d < m; d++)
+                A[d, d] += (fProxy)10;
+            return A;
+        }
+
+        static fProxy Norm(in fProxyN v) => math.sqrt(Blas.dot(v, v));
+
+        // ---- KEY TEST: least-norm correctness on an underdetermined consistent system. ----
+        // Ax=b alone is satisfied by any solution; the mandatory assertion is x ≈ the LQ min-norm
+        // oracle xRef (and x is verifiably NOT the arbitrary x_true used to build b).
+        void RectangularMinNorm()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 5, n = 9;
+            var A = BuildA(ref arena, m, n, 61001);
+
+            // Arbitrary true solution; b = A x_true makes the system consistent. x_true is generally
+            // NOT in row(A), so the min-norm solution differs from it.
+            var xTrue = arena.fProxyRandomVec(n, -5f, 5f, 61002);
+            var b = arena.fProxyVec(m);
+            Blas.dot(in A, in xTrue, ref b);
+
+            var x = arena.fProxyVec(n);
+            var info = Krylov.craigmr(in A, in b, ref x, A.M_Rows, SolveTol());
+            Assert.IsTrue(info.Solved);
+
+            // (a) Ax ≈ b — necessary but not sufficient.
+            var Ax = arena.fProxyVec(m);
+            Blas.dot(in A, in x, ref Ax);
+            Assert.IsTrue(Analysis.isZero(b - Ax, Tol()));
+
+            // (b) THE POINT: x matches the exact min-2-norm solution from the LQ oracle.
+            var xRef = arena.fProxyVec(n);
+            LQ.minNormSolve(in A, in b, ref xRef);
+            Assert.IsTrue(Analysis.isZero(xRef - x, Tol()));
+
+            // (b, softer) ‖x‖ <= ‖x_true‖ (x is minimal among all solutions incl. x_true).
+            fProxy nx = Norm(in x);
+            fProxy nxTrue = Norm(in xTrue);
+            Assert.IsTrue(nx <= nxTrue + Tol());
+
+            // (b, negative guard) craigmr did NOT merely echo x_true or some arbitrary solution:
+            // x_true is a solution but not the min-norm one, so x != x_true at any sane tolerance.
+            Assert.IsFalse(Analysis.isZero(xTrue - x, (fProxy)0.1));
+
+            arena.Dispose();
+        }
+
+        // ---- Square full-rank: the system has a UNIQUE solution, so craigmr must recover x_true. ----
+        void SquareFullRank()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int nn = 7;
+            var A = BuildA(ref arena, nn, nn, 62001);
+
+            var xTrue = arena.fProxyRandomVec(nn, -5f, 5f, 62002);
+            var b = arena.fProxyVec(nn);
+            Blas.dot(in A, in xTrue, ref b);
+
+            var x = arena.fProxyVec(nn);
+            var info = Krylov.craigmr(in A, in b, ref x, A.M_Rows, SolveTol());
+            Assert.IsTrue(info.Solved);
+
+            var Ax = arena.fProxyVec(nn);
+            Blas.dot(in A, in x, ref Ax);
+            Assert.IsTrue(Analysis.isZero(b - Ax, Tol()));
+
+            // Unique solution: x IS x_true (direct comparison, unlike the rectangular case).
+            Assert.IsTrue(Analysis.isZero(xTrue - x, Tol()));
+
+            arena.Dispose();
+        }
+
+        // ---- Explicit-scratch overload driven through the IJob struct: exercises the
+        // caller-provided u/v/d/tmpM/tmpN buffer path (guards against IJob struct-copy resets of
+        // the solver's internal ping-pong buffers) on the rectangular min-norm case. ----
+        void ExplicitScratchInJob()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 6, n = 11;
+            var A = BuildA(ref arena, m, n, 63001);
+
+            var xTrue = arena.fProxyRandomVec(n, -4f, 4f, 63002);
+            var b = arena.fProxyVec(m);
+            Blas.dot(in A, in xTrue, ref b);
+
+            // Caller-provided scratch (lengths: u,tmpM = Rows; v,d,tmpN = Cols).
+            var u    = arena.fProxyVec(m);
+            var v    = arena.fProxyVec(n);
+            var d    = arena.fProxyVec(n);
+            var tmpM = arena.fProxyVec(m);
+            var tmpN = arena.fProxyVec(n);
+            var x    = arena.fProxyVec(n);
+
+            var info = Krylov.craigmr(in A, in b, ref x, ref u, ref v, ref d, ref tmpM, ref tmpN, A.M_Rows, SolveTol());
+            Assert.IsTrue(info.Solved);
+
+            var Ax = arena.fProxyVec(m);
+            Blas.dot(in A, in x, ref Ax);
+            Assert.IsTrue(Analysis.isZero(b - Ax, Tol()));
+
+            var xRef = arena.fProxyVec(n);
+            LQ.minNormSolve(in A, in b, ref xRef);
+            Assert.IsTrue(Analysis.isZero(xRef - x, Tol()));
+
+            arena.Dispose();
+        }
+
+        // ---- Zero RHS: min-norm solution is exactly x = 0, returned on the early-out path with
+        // zero iterations. Assertions are EXACT, not approximate. ----
+        void ZeroRhs()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 5, n = 9;
+            var A = BuildA(ref arena, m, n, 64001);
+            var b = arena.fProxyVec(m); // all zeros
+
+            // Seed x with garbage to prove craigmr zeroes it internally (no warm start).
+            var x = arena.fProxyVec(n);
+            for (int j = 0; j < n; j++) x[j] = (fProxy)7;
+
+            var info = Krylov.craigmr(in A, in b, ref x);
+            Assert.IsTrue(info.Solved);
+            Assert.IsTrue(info.iterations == 0);
+            Assert.IsTrue(Analysis.isZero(x, (fProxy)0));
+
+            arena.Dispose();
+        }
+
+        // ---- BONUS: rank-deficient A with b ∉ range(A) -> the very first Aᵀu step collapses
+        // (alpha == 0), the documented "v collapsed on the first step" branch. Constructed
+        // bit-exactly (row 1 all zeros, b nonzero ONLY in that row's component) so u1 weights only
+        // the zero row and Aᵀu1 == 0 EXACTLY in both float and double -- craigmr must report
+        // Breakdown (never Converged, never NaN). x is UNDEFINED per the Breakdown contract, so it
+        // is NOT asserted. ----
+        void RankDeficientBreakdown()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 2, n = 4;
+            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 65001);
+            for (int j = 0; j < n; j++)
+                A[1, j] = (fProxy)0; // row 1 = 0 -> rank-deficient (not full row rank)
+
+            // b = e_2: nonzero only where A's row is zero, so b is orthogonal to range(A) and
+            // u1 = b/‖b‖ makes Aᵀu1 = 0 exactly on the first bidiagonalization step.
+            var b = arena.fProxyVec(m);
+            b[1] = (fProxy)1;
+
+            var x = arena.fProxyVec(n);
+            var info = Krylov.craigmr(in A, in b, ref x);
+
+            Assert.IsTrue(info.status == IterativeSolveStatus.Breakdown);
+            // Norms are finite (no NaN escapes the collapse path).
+            Assert.IsFalse(double.IsNaN(info.rnorm));
+
+            arena.Dispose();
+        }
+
+        // ---- THE DISTINGUISHING PROPERTY: ‖b-Ax‖ decreases MONOTONICALLY across increasing
+        // maxIter budgets. craig (forward-substitution) only guarantees the ERROR ‖x*-xₖ‖ is
+        // monotonic; its residual can bounce. craigmr's running-QR update guarantees the RESIDUAL
+        // itself never increases from one step to the next -- this is the entire reason craigmr
+        // exists over craig, so it is asserted directly here (not merely implied by convergence). ----
+        void MonotonicResidual()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 6, n = 14;
+            var A = BuildA(ref arena, m, n, 66001);
+
+            var xTrue = arena.fProxyRandomVec(n, -5f, 5f, 66002);
+            var b = arena.fProxyVec(m);
+            Blas.dot(in A, in xTrue, ref b);
+
+            // Zero tol so every budget runs to exactly maxIter steps (no early Converged exit) --
+            // isolates the per-step residual trajectory from the stopping rule.
+            fProxy zeroTol = (fProxy)0;
+
+            // LstsqInfo.rnorm is always double regardless of solve precision.
+            double prevRnorm = double.MaxValue;
+            for (int maxIter = 1; maxIter <= A.M_Rows; maxIter++)
+            {
+                var x = arena.fProxyVec(n);
+                var info = Krylov.craigmr(in A, in b, ref x, maxIter, zeroTol);
+
+                // Never NaN, never a false Converged before genuinely reaching the (zero) tolerance
+                // budget -- Breakdown is acceptable (bidiagonalization can legitimately exhaust
+                // before maxIter on a well-conditioned finite-termination problem).
+                Assert.IsFalse(double.IsNaN(info.rnorm));
+
+                // The core property: rnorm at budget k+1 is never LARGER than at budget k (allow a
+                // tiny slack for roundoff -- the guarantee is non-increasing, not strictly
+                // decreasing, since a converged/breakdown iterate repeats the same x).
+                Assert.IsTrue(info.rnorm <= prevRnorm + (double)Tol());
+                prevRnorm = info.rnorm;
+
+                if (info.status == IterativeSolveStatus.Breakdown)
+                    break; // bidiagonalization exhausted -- no further budgets to compare
+            }
+
+            // Sanity: by the last budget tried, the residual actually got small (the trajectory is
+            // not merely flat/trivial).
+            Assert.IsTrue(prevRnorm <= (double)Tol());
+
+            arena.Dispose();
+        }
+    }
+
+    public static Array GetEnums() => Enum.GetValues(typeof(TestJob.TestType));
+
+    [TestCaseSource("GetEnums")]
+    public void Test(TestJob.TestType type)
+    {
+        new TestJob() { Type = type }.Run();
+    }
+}
