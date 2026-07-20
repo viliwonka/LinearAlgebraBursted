@@ -140,7 +140,10 @@ namespace LinearAlgebra
                         x.CopyFrom(in t);
                         return MakeSolveInfo(IterativeSolveStatus.Converged, k + 1, math.sqrt(trialRR));
                     }
-                    // else: fall through to the standard stabilization step (t/v get overwritten below regardless).
+                    // Failed trial: this block overwrote v (= A M⁻¹p), which the NEXT iteration's
+                    // p-recurrence (p -= omega v) reads. t is overwritten below, but v is not — restore it.
+                    if (M.IsIdentity) A.Apply(in p, ref v);
+                    else              A.Apply(in pHat, ref v);
                 }
 
                 // t = A (M⁻¹ s). Identity: sHat = s (r holds s), so t = A r directly (sHat untouched).
@@ -185,9 +188,11 @@ namespace LinearAlgebra
 
                 if (rr <= threshold)
                 {
-                    // Verify-at-exit (mirrors cg's). v is idle here. On a failed verify, r is left
-                    // holding the FRESH residual so the next iteration continues from a corrected state.
-                    rr = VerifyTrueResidual(in A, in b, in x, ref v, ref r);
+                    // Verify-at-exit. Scratch must be t (idle: last read at the rr update above, next
+                    // written next iteration) — NOT v, which the next iteration's p-recurrence still
+                    // reads. On a failed verify, r is left holding the FRESH residual so the next
+                    // iteration continues from a corrected state.
+                    rr = VerifyTrueResidual(in A, in b, in x, ref t, ref r);
 
                     if (rr <= threshold)
                         return MakeSolveInfo(IterativeSolveStatus.Converged, k + 1, math.sqrt(rr));

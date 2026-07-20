@@ -3,6 +3,7 @@
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
 using System;
+using Unity.Collections;
 using Unity.Mathematics;
 using LinearAlgebra.Sparse;
 
@@ -44,20 +45,29 @@ namespace LinearAlgebra
             return acc;
         }
 
-        // True iff any of the first s entries is exactly zero or NaN (shared shape of every
-        // rho/vtrstar/alpha/tau breakdown denominator check).
-        static bool AnyZeroOrNaN(in floatN v, int s)
+        // True iff any NON-FROZEN entry in [0,s) is exactly zero or NaN (shared shape of every
+        // rho/vtrstar/alpha/tau breakdown denominator check). Rows frozen at init (already converged --
+        // zero RHS row, or a warm-started row already at its exact solution) are skipped: their per-row
+        // scalars stay pinned at their init value (0 for a truly-zero row) for the rest of the solve,
+        // which would otherwise look like a spurious breakdown; it isn't one.
+        static bool AnyZeroOrNaNActive(in floatN v, in NativeArray<bool> frozen, int s)
         {
             for (int i = 0; i < s; i++)
+            {
+                if (frozen[i]) continue;
                 if (v[i] == (float)0 || math.isnan(v[i])) return true;
+            }
             return false;
         }
 
-        // True iff any of the first s entries is NaN.
-        static bool AnyNaN(in floatN v, int s)
+        // True iff any NON-FROZEN entry in [0,s) is NaN.
+        static bool AnyNaNActive(in floatN v, in NativeArray<bool> frozen, int s)
         {
             for (int i = 0; i < s; i++)
+            {
+                if (frozen[i]) continue;
                 if (math.isnan(v[i])) return true;
+            }
             return false;
         }
 
@@ -97,12 +107,16 @@ namespace LinearAlgebra
         /// <c>default</c>). Convergence is per row against its own quasi-residual bound (tau[j] *
         /// sqrt(half-steps+1), Freund's rigorous upper bound on ‖B[j]-AX[j]‖) crossing tol*‖B[j]‖ -- a
         /// Converged row's true residual is guaranteed within tolerance, never independently recomputed.
-        /// No column locking/deflation: every row is advanced every half-step. A breakdown on ANY row
-        /// (zero/NaN bi-orthogonality dot, degenerate alpha, zero/NaN rhoLast, or tau collapsing before
-        /// its bound catches it) reports <see cref="IterativeSolveStatus.Breakdown"/> for the WHOLE
-        /// solve, X holding the last committed iterate -- never NaN, never a false Converged. Returns a
-        /// <see cref="BlockSolveInfo"/> whose <see cref="BlockSolveInfo.minActive"/> is always s (no
-        /// deflation).
+        /// A row already converged at entry (all-zero RHS row, or a warm-started X row already exact)
+        /// is frozen at construction: it is skipped in every per-row update for the rest of the solve
+        /// (state stays at its init value, X row stays as-is) and excluded from every breakdown scan,
+        /// so it cannot trigger a spurious whole-solve Breakdown. No other column locking/deflation
+        /// happens mid-solve: every non-frozen row is advanced every half-step. A breakdown on any
+        /// non-frozen row (zero/NaN bi-orthogonality dot, degenerate alpha, zero/NaN rhoLast, or tau
+        /// collapsing before its bound catches it) reports <see cref="IterativeSolveStatus.Breakdown"/>
+        /// for the WHOLE solve, X holding the last committed iterate -- never NaN, never a false
+        /// Converged. Returns a <see cref="BlockSolveInfo"/> whose <see cref="BlockSolveInfo.minActive"/>
+        /// is always s (no deflation).
         /// </summary>
         public static BlockSolveInfo btfqmr<TOp, TPre>(in TOp A, in TPre M, in floatMxN B, ref floatMxN X,
                                          ref floatMxN Rhat0, ref floatMxN U, ref floatMxN W, ref floatMxN V,
@@ -171,6 +185,13 @@ namespace LinearAlgebra
                 return new BlockSolveInfo { rhs = s, converged = s, iterations = 0, maxRnorm = maxrInit, minActive = s, status = IterativeSolveStatus.Converged };
             }
 
+            // Rows already meeting thresh at init (zero RHS row, or a warm-started X row already exact)
+            // are frozen: their Rhat0/U/W/V/D rows are exactly 0 (or, for a non-zero-but-converged warm
+            // start, their per-row scalars never need updating), so every per-row loop below skips them
+            // and every breakdown scan excludes them -- a frozen row's 0 is expected, not a breakdown.
+            var frozen = new NativeArray<bool>(s, Allocator.Temp);
+            for (int j = 0; j < s; j++) frozen[j] = bound[j] <= thresh[j];
+
             CopyBlock(in Rhat0, ref U, s, n);
             CopyBlock(in Rhat0, ref W, s, n);
 
@@ -212,17 +233,19 @@ namespace LinearAlgebra
 
                 if (even)
                 {
-                    for (int i = 0; i < s; i++) vtrstar[i] = RowDot(in Rhat0, in V, i, n);
-                    if (AnyZeroOrNaN(in vtrstar, s))
+                    for (int i = 0; i < s; i++) { if (frozen[i]) continue; vtrstar[i] = RowDot(in Rhat0, in V, i, n); }
+                    if (AnyZeroOrNaNActive(in vtrstar, in frozen, s))
                     { status = IterativeSolveStatus.Breakdown; itersDone = k; goto cleanup; } // row orthogonal to its shadow
 
-                    for (int i = 0; i < s; i++) alpha[i] = rho[i] / vtrstar[i];
-                    if (AnyZeroOrNaN(in alpha, s))
+                    for (int i = 0; i < s; i++) { if (frozen[i]) continue; alpha[i] = rho[i] / vtrstar[i]; }
+                    if (AnyZeroOrNaNActive(in alpha, in frozen, s))
                     { status = IterativeSolveStatus.Breakdown; itersDone = k; goto cleanup; } // degenerate alpha
                 }
 
                 for (int i = 0; i < s; i++)
                 {
+                    if (frozen[i]) continue; // state stays pinned at its init value; X row stays as-is
+
                     // W -= alpha AU -- AU already holds A(M^-1 U) for the CURRENT U (computed at the
                     // tail of the previous half-step, or just above for k == 0).
                     RowAddScaled(ref W, i, -alpha[i], in AU, n);
@@ -246,37 +269,40 @@ namespace LinearAlgebra
 
                 converged = CountConvergedByBound(in bound, in thresh, s, out maxr);
                 if (converged == s) { status = IterativeSolveStatus.Converged; itersDone = k + 1; goto cleanup; }
-                if (AnyZeroOrNaN(in tau, s))
+                if (AnyZeroOrNaNActive(in tau, in frozen, s))
                 { status = IterativeSolveStatus.Breakdown; itersDone = k + 1; goto cleanup; } // tau collapsed on some row
 
                 if (even)
                 {
-                    // Advance U = U - alpha V, then refresh AU (and UHat) from the new U.
-                    for (int i = 0; i < s; i++) RowAddScaled(ref U, i, -alpha[i], in V, n);
+                    // Advance U = U - alpha V, then refresh AU (and UHat) from the new U. ApplyBlock runs
+                    // over the whole block (frozen rows carry alpha=0/U row=0 through unguarded -- A of a
+                    // zero row is exactly zero, so this is harmless and keeps the frozen invariant).
+                    for (int i = 0; i < s; i++) { if (frozen[i]) continue; RowAddScaled(ref U, i, -alpha[i], in V, n); }
                     if (M.IsIdentity) A.ApplyBlock(in U, ref AU, s);
                     else { BlockApplyPre(in M, in U, ref UHat, s, n, ref rowIn, ref rowOut); A.ApplyBlock(in UHat, ref AU, s); }
-                    for (int i = 0; i < s; i++) rhoLast[i] = rho[i];
+                    for (int i = 0; i < s; i++) { if (frozen[i]) continue; rhoLast[i] = rho[i]; }
                 }
                 else
                 {
-                    for (int i = 0; i < s; i++) rhoNew[i] = RowDot(in Rhat0, in W, i, n);
-                    if (AnyZeroOrNaN(in rhoLast, s))
+                    for (int i = 0; i < s; i++) { if (frozen[i]) continue; rhoNew[i] = RowDot(in Rhat0, in W, i, n); }
+                    if (AnyZeroOrNaNActive(in rhoLast, in frozen, s))
                     { status = IterativeSolveStatus.Breakdown; itersDone = k + 1; goto cleanup; } // beta undefined
 
-                    for (int i = 0; i < s; i++) beta[i] = rhoNew[i] / rhoLast[i];
-                    if (AnyNaN(in beta, s))
+                    for (int i = 0; i < s; i++) { if (frozen[i]) continue; beta[i] = rhoNew[i] / rhoLast[i]; }
+                    if (AnyNaNActive(in beta, in frozen, s))
                     { status = IterativeSolveStatus.Breakdown; itersDone = k + 1; goto cleanup; }
-                    for (int i = 0; i < s; i++) rho[i] = rhoNew[i];
+                    for (int i = 0; i < s; i++) { if (frozen[i]) continue; rho[i] = rhoNew[i]; }
 
                     for (int i = 0; i < s; i++)
                     {
+                        if (frozen[i]) continue;
                         RowScaleAddSelf(ref U, i, beta[i], in W, n);              // U = beta U + W
                         RowScaleInPlace(ref V, i, beta[i] * beta[i], n);          // V = beta^2 V ...
                         RowAddScaled(ref V, i, beta[i], in AU, n);                // ... + beta AU (AU still OLD here)
                     }
                     if (M.IsIdentity) A.ApplyBlock(in U, ref AU, s);
                     else { BlockApplyPre(in M, in U, ref UHat, s, n, ref rowIn, ref rowOut); A.ApplyBlock(in UHat, ref AU, s); }
-                    for (int i = 0; i < s; i++) RowAddScaled(ref V, i, (float)1, in AU, n);  // V += AU (now refreshed)
+                    for (int i = 0; i < s; i++) { if (frozen[i]) continue; RowAddScaled(ref V, i, (float)1, in AU, n); }  // V += AU (now refreshed)
                 }
             }
 
@@ -284,9 +310,10 @@ namespace LinearAlgebra
             thresh.Dispose(); tau.Dispose(); bound.Dispose();
             theta.Dispose(); eta.Dispose(); alpha.Dispose(); rho.Dispose(); rhoLast.Dispose();
             vtrstar.Dispose(); rhoNew.Dispose(); beta.Dispose();
+            frozen.Dispose();
             if (!M.IsIdentity) { rowIn.Dispose(); rowOut.Dispose(); }
 
-            // No column locking/deflation -- every row stays active the whole solve -> minActive = s.
+            // No width reduction -- frozen rows are skipped, not deflated, so minActive = s always.
             return new BlockSolveInfo { rhs = s, converged = converged, iterations = itersDone, maxRnorm = maxr, minActive = s, status = status };
         }
 

@@ -243,7 +243,7 @@ namespace LinearAlgebra
                     QLPiter += 1;
                     if (QLPiter == 1)
                     {
-                        xl2.zeroInPlace();
+                        xl2.CopyFrom(in x);   // seed x0 (warm start); == zeroInPlace for cold x=0. iters>1 reseeds below.
                         if (iters > 1)
                         {
                             if (iters > 3)

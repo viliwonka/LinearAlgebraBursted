@@ -425,7 +425,7 @@ namespace LinearAlgebra
                     floatMxN AUblk = default;
                     if (hadOldU)
                     {
-                        AUblk = new floatMxN(kcurAtEntry, n, Allocator.Temp, true);
+                        AUblk = new floatMxN(kcurAtEntry, n, Allocator.Temp, false);   // cleared: AddScaledRowToRow ACCUMULATES (+=) into it
                         for (int i = 0; i < kcurAtEntry; i++)
                             for (int l = 0; l < kcurAtEntry; l++)
                                 AddScaledRowToRow(ref AUblk, i, Ru[l, i], in Cblk, l, n);
