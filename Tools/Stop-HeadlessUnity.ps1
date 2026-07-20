@@ -1,8 +1,9 @@
 <#
-  Kill ONLY headless batchmode Unity.exe processes launched against THIS project's
-  root -- never an interactive Unity Editor and never a different project's run.
-  Matches on both "-batchmode" AND this project's resolved path in the process
-  command line, so a normal editor (no -batchmode) is always left alone.
+  Kill ONLY the headless TEST-RUNNER Unity.exe launched by run-tests.ps1 against
+  THIS project -- never an interactive editor and never its AssetImportWorker
+  children (which DO run with -batchmode + this project path, so -batchmode is NOT
+  a safe discriminator). Matches on "-runTests" (only the test runner passes it,
+  Tools/run-tests.ps1) AND this project's resolved path in the command line.
 
   Use this instead of `Get-Process Unity | Stop-Process` (which would also kill an
   open editor). -WhatIf lists what would be killed without killing anything.
@@ -15,7 +16,7 @@ $root = (Get-ProjectRoot)
 $targets = @()
 Get-CimInstance Win32_Process -Filter "Name='Unity.exe'" -ErrorAction SilentlyContinue | ForEach-Object {
   $cl = $_.CommandLine
-  if ($cl -and $cl.Contains('-batchmode') -and $cl.Contains($root)) {
+  if ($cl -and $cl.Contains('-runTests') -and $cl.Contains($root)) {
     $targets += $_
   }
 }
