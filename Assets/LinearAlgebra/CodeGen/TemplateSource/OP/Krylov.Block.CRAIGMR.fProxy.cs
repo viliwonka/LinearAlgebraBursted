@@ -1,0 +1,253 @@
+using System;
+using Unity.Collections;
+using Unity.Mathematics;
+using LinearAlgebra.Sparse;
+
+namespace LinearAlgebra
+{
+    public static partial class Krylov {
+
+        // ---- bcraigmr core ----------------------------------------------------------------------------
+
+        /// <summary>
+        /// Block CRAIGMR (MINRES-flavored block CRAIG; monotonic residual) for a WIDE/underdetermined
+        /// operator A (A.Rows &lt;= A.Cols, full row rank) and s simultaneous CONSISTENT right-hand
+        /// sides: among all X with A X_j = B_j (per row j), finds the minimum-Euclidean-norm one,
+        /// generic over <see cref="IfProxyLinearOperator"/>. Block generalization of <see
+        /// cref="craigmr{TOp}"/>: reuses <see cref="bcraig{TOp}"/>'s block Golub-Kahan bidiagonalization
+        /// (LA/LBnew each round via <see cref="LQ.decomp"/>) but replaces bcraig's block-triangular
+        /// forward substitution with a running block-QR continuation (one p x p orthogonal
+        /// transformation per round, via <see cref="QR.decomp"/> on a zero-padded 2s x 2s stack), the
+        /// block analog of scalar CRAIGMR's single-Givens-rotation-per-step update.
+        ///
+        /// B and X are s ROWS x (A.Rows / A.Cols) COLS respectively (row j = the j-th RHS/solution
+        /// vector). X is NOT warm-startable (the min-norm characterization requires X0 = 0, matching
+        /// <see cref="bcraig{TOp}"/>); this overload always overwrites X from zero. Owns its whole
+        /// workspace via Allocator.Temp (no external scratch params, mirroring <see cref="bcraig{TOp}"/>).
+        ///
+        /// Breakdown (<see cref="IterativeSolveStatus.Breakdown"/>) on ANY block-bidiagonalization LQ
+        /// factor or the per-round block-Givens R-factor going numerically singular (A lacks full row
+        /// rank, or the block RHS B lacks full row rank), or on the small block solves losing full rank.
+        /// Never NaN, never a false Converged. Convergence is checked against a fresh block residual
+        /// ‖B - A X‖_F every round (not a tracked estimate -- see the OP/DEVLOG Krylov.Block.CRAIGMR
+        /// note). <see cref="BlockSolveInfo.minActive"/> is always s (no column deflation; the stopping
+        /// test is a single joint Frobenius-norm criterion, matching bcraig).
+        /// </summary>
+        public static BlockSolveInfo bcraigmr<TOp>(in TOp A, in fProxyMxN B, ref fProxyMxN X, int maxIter, fProxy tol)
+            where TOp : struct, IfProxyLinearOperator
+        {
+            if (A.Rows > A.Cols) throw new ArgumentException("bcraigmr: A must be square or underdetermined (A.Rows <= A.Cols)");
+            int m = A.Rows, n = A.Cols;
+            int s = B.M_Rows;
+            if (B.N_Cols != m) throw new ArgumentException("bcraigmr: B.N_Cols must equal A.Rows");
+            if (X.M_Rows != s || X.N_Cols != n) throw new ArgumentException("bcraigmr: X must be s x A.Cols");
+            if (s < 1 || s > m) throw new ArgumentException("bcraigmr: B.M_Rows (s) must be in [1, A.Rows]");
+            if (maxIter < 1) throw new ArgumentException("bcraigmr: maxIter must be >= 1");
+
+            for (int i = 0; i < s; i++)
+                for (int c = 0; c < n; c++) X[i, c] = (fProxy)0;
+
+            fProxyN rowN = new fProxyN(n), rowM = new fProxyN(m);
+
+            // ---- persistent state: carried across rounds, updated by explicit copy at the end of
+            // each round (never pointer-swapped -- s is small, copy cost is trivial). ----
+            var LA      = new fProxyMxN(s, s, Allocator.Temp, true);   // current block bidiag diagonal
+            var U       = new fProxyMxN(s, m, Allocator.Temp, true);
+            var V       = new fProxyMxN(s, n, Allocator.Temp, true);
+            var RhoBar  = new fProxyMxN(s, s, Allocator.Temp, true);   // running (unfinalized) R-factor pivot
+            var ZetaBar = new fProxyMxN(s, s, Allocator.Temp, true);   // running RHS carry
+            var Theta   = new fProxyMxN(s, s, Allocator.Temp, false);  // 0s -- R-factor super-diagonal block
+            var D       = new fProxyMxN(s, n, Allocator.Temp, false);  // 0s -- running x-direction block
+
+            // ---- per-round scratch (s x s) ----
+            var LBnew       = new fProxyMxN(s, s, Allocator.Temp, true);
+            var LBnewT      = new fProxyMxN(s, s, Allocator.Temp, true);
+            var Rho         = new fProxyMxN(s, s, Allocator.Temp, true);
+            var RhoT        = new fProxyMxN(s, s, Allocator.Temp, true);
+            var Abark       = new fProxyMxN(s, s, Allocator.Temp, true);
+            var Bbark       = new fProxyMxN(s, s, Allocator.Temp, true);
+            var Cbark       = new fProxyMxN(s, s, Allocator.Temp, true);
+            var Dbark       = new fProxyMxN(s, s, Allocator.Temp, true);
+            var ThetaT      = new fProxyMxN(s, s, Allocator.Temp, true);
+            var ThetaNew    = new fProxyMxN(s, s, Allocator.Temp, true);
+            var RhoBarNew   = new fProxyMxN(s, s, Allocator.Temp, true);
+            var ZetaBarNew  = new fProxyMxN(s, s, Allocator.Temp, true);
+            var Zeta        = new fProxyMxN(s, s, Allocator.Temp, true);
+            var coefWork    = new fProxyMxN(s, s, Allocator.Temp, true);
+            var Rqrcp       = new fProxyMxN(s, s, Allocator.Temp, true);
+            var Pqrcp       = new Pivot(s, Allocator.Temp);
+            var uQrcp       = new fProxyN(s);
+
+            int s2 = 2 * s;
+            var Mpad  = new fProxyMxN(s2, s2, Allocator.Temp, false);   // right half stays 0 forever
+            var Qfull = new fProxyMxN(s2, s2, Allocator.Temp, true);
+            var Rfull = new fProxyMxN(s2, s2, Allocator.Temp, true);
+
+            // ---- per-round scratch (s x m / s x n) ----
+            var Wbar     = new fProxyMxN(s, m, Allocator.Temp, true);
+            var termSM   = new fProxyMxN(s, m, Allocator.Temp, true);
+            var Rfinal   = new fProxyMxN(s, m, Allocator.Temp, true);
+            var Sbar     = new fProxyMxN(s, n, Allocator.Temp, true);
+            var Vnext    = new fProxyMxN(s, n, Allocator.Temp, true);
+            var ThetaTD  = new fProxyMxN(s, n, Allocator.Temp, true);
+            var RHSD     = new fProxyMxN(s, n, Allocator.Temp, true);
+            var Dnew     = new fProxyMxN(s, n, Allocator.Temp, true);
+            var XTerm    = new fProxyMxN(s, n, Allocator.Temp, true);
+            var BackTerm = new fProxyMxN(s, n, Allocator.Temp, true);
+            var LAnew    = new fProxyMxN(s, s, Allocator.Temp, true);
+
+            IterativeSolveStatus status = IterativeSolveStatus.MaxIterations;
+            int iters = 0;
+
+            // ---- tolerance scale: ||B||_F^2 (matches scalar craigmr's ||b||-based stopping test) ----
+            fProxy bSqF = BlockFrobDot(in B, in B);
+            if (bSqF == (fProxy)0)
+            {
+                // B = 0: the min-norm solution is trivially X = 0.
+                status = IterativeSolveStatus.Converged;
+                goto cleanup;
+            }
+            fProxy threshold = tol * tol * bSqF;
+
+            // ---- init: thin LQ of B, then of A^T U1 (same first pair bcraig's bidiagonalization uses) ----
+            {
+                var LB1 = new fProxyMxN(s, s, Allocator.Temp, true);
+                LQ.decomp(in B, ref LB1, ref U);
+                if (TriNearSingular(in LB1, s)) { LB1.Dispose(); status = IterativeSolveStatus.Breakdown; goto cleanup; }
+
+                BlockApplyOpT(in A, in U, ref Sbar, s, ref rowN, ref rowM);
+                LQ.decomp(in Sbar, ref LA, ref V);
+                if (TriNearSingular(in LA, s)) { LB1.Dispose(); status = IterativeSolveStatus.Breakdown; goto cleanup; }
+
+                // ZetaBar0 = R_1 = LB1^T (our LQ-row convention transposes the classical upper-tri R_1
+                // -- same relation bcraig's own init block documents).
+                TransposeSmall(in LB1, ref ZetaBar, s);
+                LB1.Dispose();
+                CopyMat(in LA, ref RhoBar, s);
+            }
+
+            for (int k = 0; k < maxIter; k++)
+            {
+                // Step A (forward extend, identical to bcraig's): LBnew, Unew from A V_j - LA^T U_j.
+                BlockApplyOp(in A, in V, ref Wbar, s, ref rowN, ref rowM);
+                BlockCTV(in LA, in U, ref termSM);
+                BlockAdd(ref Wbar, in termSM, (fProxy)(-1));
+
+                LQ.decomp(in Wbar, ref LBnew, ref U);
+                if (TriNearSingular(in LBnew, s)) { status = IterativeSolveStatus.Breakdown; iters = k; goto cleanup; }
+
+                // Block-Givens: QR-factor the stacked 2s x s block [RhoBar ; LBnew^T] (zero-padded to
+                // 2s x 2s so QR.decomp yields the FULL orthogonal factor -- same padding trick blsmr
+                // uses for its own block-Givens step). Rho finalizes this round's R-factor diagonal
+                // pivot; Abark/Bbark/Cbark/Dbark are the p x p blocks of the orthogonal transform
+                // (Qfull^T's own 2x2 block partition), the block analog of scalar (c, s, -s, c).
+                TransposeSmall(in LBnew, ref LBnewT, s);
+                WriteBlockAt(ref Mpad, 0, 0, in RhoBar, s, s);
+                WriteBlockAt(ref Mpad, s, 0, in LBnewT, s, s);
+                QR.decomp(in Mpad, ref Qfull, ref Rfull);
+
+                ExtractBlockAt(in Rfull, 0, 0, ref Rho, s, s);
+                if (TriNearSingular(in Rho, s)) { status = IterativeSolveStatus.Breakdown; iters = k; goto cleanup; }
+                ExtractBlockTranspose(in Qfull, 0, 0, ref Abark, s);
+                ExtractBlockTranspose(in Qfull, s, 0, ref Bbark, s);
+                ExtractBlockTranspose(in Qfull, 0, s, ref Cbark, s);
+                ExtractBlockTranspose(in Qfull, s, s, ref Dbark, s);
+
+                // Zeta finalizes this round's contribution; ZetaBarNew carries the leftover to the
+                // next round -- both a direct application of the SAME orthogonal transform to the
+                // RHS carry (mirrors scalar zeta = c*zetabar, zetabar = s*zetabar).
+                Blas.dot(in Abark, in ZetaBar, ref Zeta, false, false);
+                Blas.dot(in Cbark, in ZetaBar, ref ZetaBarNew, false, false);
+
+                // D update -- the block w/d-trick that lets X accumulate without ever back-substituting
+                // the full R-factor: D = Rho^-T (V - Theta^T D). BOTH Rho and Theta enter TRANSPOSED
+                // here (unlike Zeta/ThetaNew/RhoBarNew below, which are plain products) -- see the
+                // OP/DEVLOG Krylov.Block.CRAIGMR note for the index-level derivation.
+                TransposeSmall(in Theta, ref ThetaT, s);
+                Blas.dot(in ThetaT, in D, ref ThetaTD, false, false);
+                CopyBlock(in V, ref RHSD, s, n);
+                BlockAdd(ref RHSD, in ThetaTD, (fProxy)(-1));
+                TransposeSmall(in Rho, ref RhoT, s);
+                var rankD = BlockSolveGeneralWide(in RhoT, ref RHSD, ref Dnew, ref coefWork, ref Rqrcp, ref Pqrcp, ref uQrcp, s);
+                if (rankD.status != DirectSolveStatus.Success || rankD.rank != s)
+                { status = IterativeSolveStatus.Breakdown; iters = k; goto cleanup; }
+
+                BlockCTV(in Zeta, in Dnew, ref XTerm);
+                BlockAdd(ref X, in XTerm, (fProxy)1);
+                iters = k + 1;
+                CopyBlock(in Dnew, ref D, s, n);
+
+                BlockApplyOp(in A, in X, ref Rfinal, s, ref rowN, ref rowM);
+                BlockScaleInPlace(ref Rfinal, (fProxy)(-1));
+                BlockAdd(ref Rfinal, in B, (fProxy)1);
+                fProxy rSqF = BlockFrobDot(in Rfinal, in Rfinal);
+                if (rSqF <= threshold) { status = IterativeSolveStatus.Converged; goto cleanup; }
+
+                // Step B (backward extend, identical to bcraig's): LAnew, Vnext from A^T U_{j+1} -
+                // LBnew^T V_j (uses the CURRENT V, not yet overwritten).
+                BlockApplyOpT(in A, in U, ref Sbar, s, ref rowN, ref rowM);
+                BlockCTV(in LBnew, in V, ref BackTerm);
+                BlockAdd(ref Sbar, in BackTerm, (fProxy)(-1));
+
+                LQ.decomp(in Sbar, ref LAnew, ref Vnext);
+                if (TriNearSingular(in LAnew, s)) { status = IterativeSolveStatus.Breakdown; iters = k; goto cleanup; }
+
+                // Theta/RhoBar prepared for the NEXT round, from THIS round's Bbark/Dbark applied to
+                // the new diagonal block (mirrors scalar theta = s*alphaNew, rhobar = -c*alphaNew --
+                // no sign flip needed here, Dbark already carries it via the QR factor's own sign).
+                Blas.dot(in Bbark, in LAnew, ref ThetaNew, false, false);
+                Blas.dot(in Dbark, in LAnew, ref RhoBarNew, false, false);
+
+                CopyMat(in ThetaNew, ref Theta, s);
+                CopyMat(in RhoBarNew, ref RhoBar, s);
+                CopyMat(in ZetaBarNew, ref ZetaBar, s);
+                CopyMat(in LAnew, ref LA, s);
+                CopyBlock(in Vnext, ref V, s, n);
+                // U was already overwritten in place by this round's first LQ.decomp call.
+            }
+
+        cleanup:
+            {
+                BlockApplyOp(in A, in X, ref Rfinal, s, ref rowN, ref rowM);
+                double maxr = 0;
+                for (int j = 0; j < s; j++)
+                {
+                    double rr = 0;
+                    for (int c = 0; c < m; c++)
+                    {
+                        double d = (double)(B[j, c] - Rfinal[j, c]);
+                        rr += d * d;
+                    }
+                    double rn = math.sqrt(rr);
+                    if (rn > maxr) maxr = rn;
+                }
+                int converged = status == IterativeSolveStatus.Converged ? s : 0;
+
+                rowN.Dispose(); rowM.Dispose();
+                LA.Dispose(); U.Dispose(); V.Dispose(); RhoBar.Dispose(); ZetaBar.Dispose(); Theta.Dispose(); D.Dispose();
+                LBnew.Dispose(); LBnewT.Dispose(); Rho.Dispose(); RhoT.Dispose();
+                Abark.Dispose(); Bbark.Dispose(); Cbark.Dispose(); Dbark.Dispose();
+                ThetaT.Dispose(); ThetaNew.Dispose(); RhoBarNew.Dispose(); ZetaBarNew.Dispose(); Zeta.Dispose();
+                coefWork.Dispose(); Rqrcp.Dispose(); Pqrcp.Dispose(); uQrcp.Dispose();
+                Mpad.Dispose(); Qfull.Dispose(); Rfull.Dispose();
+                Wbar.Dispose(); termSM.Dispose(); Rfinal.Dispose();
+                Sbar.Dispose(); Vnext.Dispose(); ThetaTD.Dispose(); RHSD.Dispose(); Dnew.Dispose(); XTerm.Dispose(); BackTerm.Dispose();
+                LAnew.Dispose();
+
+                return new BlockSolveInfo { rhs = s, converged = converged, iterations = iters, maxRnorm = maxr, minActive = s, status = status };
+            }
+        }
+
+        // ---- bcraigmr concrete forwarders ----------------------------------------------------------
+
+        /// <summary>Block CRAIGMR over a dense <see cref="fProxyMxN"/> A (wide or square, full row
+        /// rank). Forwards into <see cref="bcraigmr{TOp}"/> via <see cref="fProxyDenseOperator"/>.</summary>
+        public static BlockSolveInfo bcraigmr(in fProxyMxN A, in fProxyMxN B, ref fProxyMxN X, int maxIter, fProxy tol)
+            => bcraigmr(new fProxyDenseOperator(in A), in B, ref X, maxIter, tol);
+
+        /// <summary>Block CRAIGMR over a dense A with default maxIter (A.M_Rows) and tol
+        /// (Consts.fProxySqrtEps).</summary>
+        public static BlockSolveInfo bcraigmr(in fProxyMxN A, in fProxyMxN B, ref fProxyMxN X)
+            => bcraigmr(in A, in B, ref X, A.M_Rows, Consts.fProxySqrtEps);
+    }
+}

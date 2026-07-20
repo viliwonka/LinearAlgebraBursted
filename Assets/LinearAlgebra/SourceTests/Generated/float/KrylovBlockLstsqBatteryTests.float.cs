@@ -15,13 +15,13 @@ using Unity.Mathematics;
 // Krylov block-least-squares battery -- solver x matrix-regime cross-coverage for the block
 // (multi-RHS) rectangular Krylov family, driven through the IfloatBlockLstsqSolverInvoker
 // struct-functor shape (see KrylovBattery.Invokers.float.cs). Wires blsmr (block LSMR) and bcgls
-// (block CGLS) -- both OVERDETERMINED (tall A, min-RESIDUAL) -- plus bcraig (block CRAIG),
-// UNDERDETERMINED (wide A, min-NORM); the correctness oracle is branched by matrix shape the same
-// way the single-RHS KrylovLstsqBatteryTests.float.cs branches lsqr/lsmr vs craig/craigmr
-// (bcraigmr is not implemented yet). Overdetermined checks the min-RESIDUAL normal-equations
-// optimality ‖Aᵀ(AX-B)‖ and per-column agreement with scalar lsmr; underdetermined checks a fresh
-// ‖AX-B‖ AND per-row agreement with LQ.minNormSolve (the exact minimum-2-norm oracle -- a residual
-// check alone would pass for ANY consistent solve, not just the minimum-norm one). Retires
+// (block CGLS) -- both OVERDETERMINED (tall A, min-RESIDUAL) -- plus bcraig (block CRAIG) and
+// bcraigmr (block CRAIGMR), both UNDERDETERMINED (wide A, min-NORM); the correctness oracle is
+// branched by matrix shape the same way the single-RHS KrylovLstsqBatteryTests.float.cs branches
+// lsqr/lsmr vs craig/craigmr. Overdetermined checks the min-RESIDUAL normal-equations optimality
+// ‖Aᵀ(AX-B)‖ and per-column agreement with scalar lsmr; underdetermined checks a fresh ‖AX-B‖ AND
+// per-row agreement with LQ.minNormSolve (the exact minimum-2-norm oracle -- a residual check alone
+// would pass for ANY consistent solve, not just the minimum-norm one). Retires
 // BlockLSMRTests.float.cs / BlockCGLSTests.float.cs -- every scenario those bespoke files asserted
 // (optimality, per-column agreement with the scalar sibling, consistent-system exact recovery,
 // zero-rhs immediate convergence, tiny-maxIter no-NaN) is covered here, generalized across the dense
@@ -31,7 +31,7 @@ public class floatKrylovBlockLstsqBatteryTests
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {
-        public enum SolverKind { Blsmr, Bcgls, Bcraig }
+        public enum SolverKind { Blsmr, Bcgls, Bcraig, Bcraigmr }
 
         public SolverKind Kind;
 
@@ -82,6 +82,15 @@ public class floatKrylovBlockLstsqBatteryTests
                     RunStandardChecks(
                         new floatBcraigInvoker { TolValue = Consts.floatSqrtEps, MaxIterMul = 20 },
                         new floatCraigInvoker { TolValue = Consts.floatSqrtEps, MaxIterMul = 20 },
+                        strictConsistentStatus: true, skipNarrow: false);
+                    break;
+                // bcraigmr checks a FRESH ‖B - A X‖_F every round (an honest test, not a tracked
+                // estimate -- see the OP/DEVLOG Krylov.Block.CRAIGMR note), so its Solved/converged==S
+                // status is honest in float too -- asserted for every dtype, like bcraig.
+                case SolverKind.Bcraigmr:
+                    RunStandardChecks(
+                        new floatBcraigmrInvoker { TolValue = Consts.floatSqrtEps, MaxIterMul = 20 },
+                        new floatCraigmrInvoker { TolValue = Consts.floatSqrtEps, MaxIterMul = 20 },
                         strictConsistentStatus: true, skipNarrow: false);
                     break;
             }

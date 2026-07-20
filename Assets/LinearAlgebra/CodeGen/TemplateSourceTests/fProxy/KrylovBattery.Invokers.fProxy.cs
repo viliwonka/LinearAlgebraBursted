@@ -87,8 +87,8 @@ namespace LinearAlgebra
     /// Struct-functor entry point the Krylov battery drives a block (multi-RHS) least-squares solver
     /// family through -- same role as <see cref="IfProxyLstsqSolverInvoker"/>, block-shaped like
     /// <see cref="IfProxyBlockSolverInvoker"/>. Test infrastructure only. Spans both rectangular
-    /// regimes: OVERDETERMINED (blsmr/bcgls, tall A, min-RESIDUAL) and UNDERDETERMINED (bcraig, wide A,
-    /// min-NORM -- bcraigmr is not implemented yet). No TPre-generic overload (mirrors <see cref="IfProxyLstsqSolverInvoker"/>: neither
+    /// regimes: OVERDETERMINED (blsmr/bcgls, tall A, min-RESIDUAL) and UNDERDETERMINED (bcraig/bcraigmr,
+    /// wide A, min-NORM). No TPre-generic overload (mirrors <see cref="IfProxyLstsqSolverInvoker"/>: neither
     /// production solver has a preconditioned entry point) and no damp parameter (mirrors
     /// <see cref="IfProxyBlockSolverInvoker"/>'s NeedsGeneralDenseOperator-free shape -- blsmr/bcgls have
     /// no Tikhonov-damped production entry point). <see cref="Solve{TOp}"/> takes an explicit maxIter
@@ -1105,5 +1105,36 @@ namespace LinearAlgebra
             => Krylov.bcraig(in A, in B, ref X, maxIter, Tol);
 
         public IfProxyLstsqSolverInvoker ScalarCounterpart() => new fProxyCraigInvoker { TolValue = TolValue, MaxIterMul = MaxIterMul };
+    }
+
+    /// <summary>
+    /// <see cref="IfProxyBlockLstsqSolverInvoker"/> for <see cref="Krylov.bcraigmr{TOp}"/> -- block
+    /// CRAIGMR (MINRES-flavored block CRAIG, monotonic residual) for a WIDE/underdetermined operator A
+    /// (A.Rows &lt;= A.Cols, full row rank) and s simultaneous CONSISTENT right-hand sides: among all X
+    /// with A X_j = B_j, finds the minimum-Euclidean-norm one. Same min-NORM regime as <see
+    /// cref="fProxyBcraigInvoker"/> (Requires Underdetermined, Forbids RankDeficient) -- bcraigmr finds
+    /// the identical minimum-norm solution bcraig does, via a running block-QR continuation instead of
+    /// block forward substitution. Owns no scratch (bcraigmr allocates its whole workspace from
+    /// Allocator.Temp, mirroring <see cref="fProxyBcraigInvoker"/>), so <see cref="Init"/> is a no-op.
+    /// <see cref="ScalarCounterpart"/> is <see cref="fProxyCraigmrInvoker"/> -- bcraigmr reduces to
+    /// scalar craigmr one column at a time, not to plain craig.
+    /// </summary>
+    public struct fProxyBcraigmrInvoker : IfProxyBlockLstsqSolverInvoker
+    {
+        public fProxy TolValue;
+        public int MaxIterMul;
+
+        public MatrixProfile Requires => MatrixProfile.Underdetermined;
+        public MatrixProfile Forbids => MatrixProfile.RankDeficient;
+        public fProxy Tol => TolValue;
+        public int MaxIter(int rows, int cols) => MaxIterMul * cols;
+
+        public void Init(ref Arena arena, int rows, int cols, int s) { }
+
+        public BlockSolveInfo Solve<TOp>(in TOp A, in fProxyMxN B, ref fProxyMxN X, int maxIter)
+            where TOp : struct, IfProxyLinearOperator
+            => Krylov.bcraigmr(in A, in B, ref X, maxIter, Tol);
+
+        public IfProxyLstsqSolverInvoker ScalarCounterpart() => new fProxyCraigmrInvoker { TolValue = TolValue, MaxIterMul = MaxIterMul };
     }
 }
