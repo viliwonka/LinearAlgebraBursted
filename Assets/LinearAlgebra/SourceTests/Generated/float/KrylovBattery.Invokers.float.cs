@@ -803,6 +803,43 @@ namespace LinearAlgebra
     }
 
     /// <summary>
+    /// <see cref="IfloatBlockSolverInvoker"/> for <see cref="Krylov.bgcrodr{TOp, TPre}"/> -- block
+    /// GCRO-DR (restarted block GMRES(m) with a recycled harmonic-Ritz subspace) for a NON-symmetric
+    /// (general) square A and s simultaneous right-hand sides. Same profile and no-op <see cref="Init"/>
+    /// as <see cref="floatBgmresInvoker"/> (including <see cref="NeedsGeneralDenseOperator"/> and the
+    /// IllConditioned exclusion -- it shares bgmres's block Arnoldi/Hessenberg machinery, same
+    /// rationale). <see cref="ScalarCounterpart"/> is <see cref="floatGcrodrInvoker"/> (same recycled-
+    /// subspace family, not plain gmres).
+    /// </summary>
+    public struct floatBgcrodrInvoker : IfloatBlockSolverInvoker
+    {
+        public float TolValue;
+        public int MaxIterMul;
+        public int Restart;
+        public int Recycle;
+
+        public MatrixProfile Requires => MatrixProfile.Nonsymmetric;
+        public MatrixProfile Forbids => MatrixProfile.IllConditioned;
+        public PreconditionerKind PrecondKind => PreconditionerKind.NonsymmetricBSR;
+        public bool NeedsGeneralDenseOperator => true;
+        public float Tol => TolValue;
+        public int MaxIter(int n) => MaxIterMul * n;
+
+        public void Init(ref Arena arena, int n, int s) { }
+
+        public BlockSolveInfo Solve<TOp>(in TOp A, in floatMxN B, ref floatMxN X)
+            where TOp : struct, IfloatLinearOperator
+            => Krylov.bgcrodr(in A, in B, ref X, Restart, Recycle, MaxIter(A.Rows), Tol);
+
+        public BlockSolveInfo SolveWithPrecond<TOp, TPre>(in TOp A, in TPre M, in floatMxN B, ref floatMxN X)
+            where TOp : struct, IfloatLinearOperator
+            where TPre : struct, IfloatPreconditioner
+            => Krylov.bgcrodr(in A, in M, in B, ref X, Restart, Recycle, MaxIter(A.Rows), Tol);
+
+        public IfloatSquareSolverInvoker ScalarCounterpart() => new floatGcrodrInvoker { TolValue = TolValue, MaxIterMul = MaxIterMul, Restart = Restart, Recycle = Recycle };
+    }
+
+    /// <summary>
     /// <see cref="IfloatBlockSolverInvoker"/> for <see cref="Krylov.bfgmres{TOp, TPre}"/> -- restarted
     /// block FLEXIBLE GMRES(m) (per-step-varying preconditioner) for a NON-symmetric (general) square A
     /// and s simultaneous right-hand sides. Same profile and no-op <see cref="Init"/> as

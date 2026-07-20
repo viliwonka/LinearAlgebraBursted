@@ -33,7 +33,7 @@ public class doubleKrylovBlockBatteryTests
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {
-        public enum SolverKind { Bcg, Bcgrq, Bfbcg, Bminres, BbiCGStab, Bidr, Bgmres, Bfgmres, Btfqmr }
+        public enum SolverKind { Bcg, Bcgrq, Bfbcg, Bminres, BbiCGStab, Bidr, Bgmres, Bfgmres, Btfqmr, Bgcrodr }
 
         public SolverKind Kind;
 
@@ -183,6 +183,18 @@ public class doubleKrylovBlockBatteryTests
                     RunBlockStandardChecks(
                         new doubleBtfqmrInvoker { TolValue = Consts.doubleSqrtEps, MaxIterMul = 40 },
                         new doubleTfqmrInvoker { TolValue = Consts.doubleSqrtEps, MaxIterMul = 40 },
+                        new CheckFlags { S = 4, BlockAdvantage = false, NoBreakdown = true, IdenticalColumns = true });
+                    break;
+                case SolverKind.Bgcrodr:
+                    // Same CheckFlags as Bgmres: bgcrodr shares its block Arnoldi/Hessenberg machinery
+                    // (BlockAdvantage=false for the identical reason -- deflation trades subspace
+                    // richness for robustness, so the naive block-iterations-<=-worst-scalar bound does
+                    // not hold once deflation kicks in) plus its own recycled-subspace deflation, which
+                    // does not change that picture (it helps ACROSS restarts on spectra with isolated
+                    // small eigenvalues, not the per-cycle deflated-width bound this check exercises).
+                    RunBlockStandardChecks(
+                        new doubleBgcrodrInvoker { TolValue = Consts.doubleSqrtEps, MaxIterMul = 4, Restart = 30, Recycle = 10 },
+                        new doubleGmresInvoker { TolValue = Consts.doubleSqrtEps, MaxIterMul = 4, Restart = 30 },
                         new CheckFlags { S = 4, BlockAdvantage = false, NoBreakdown = true, IdenticalColumns = true });
                     break;
             }
