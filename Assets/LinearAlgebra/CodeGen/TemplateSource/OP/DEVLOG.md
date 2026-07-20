@@ -1,6 +1,56 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.Block.TFQMR
+- 2026-07-20 | New file `Krylov.Block.TFQMR.fProxy.cs` (task #42): a PSEUDO-block generalization of
+  `Krylov.TFQMR.fProxy.cs`, not a true (subspace-mixing) block method -- see the derivation note below
+  for why the mixing design is ill-defined. `reference/square/BlockIDR-BlockTFQMR-algorithm-extract.md`
+  Part B already documents an extensive, multilingual literature search that found NO published block
+  TFQMR (block, transpose-free, quasi-minimal-residual); this entry records an independent from-scratch
+  derivation attempt (per the task's "block-GENERALIZE... guided by the extract" instruction) that
+  reaches the same negative conclusion for the mixing design, and explains what shipped instead.
+- 2026-07-20 | DERIVATION -- why m x m block coefficients (mirroring `bbiCGStab`/`bidr`'s
+  `BlockCrossGram`+`BlockSolveGeneral` pattern) are ill-defined for TFQMR specifically: TFQMR's x-update
+  is `x_m = x_{m-1} + eta_m*d_m` with `d_m = uHat_m + (theta_{m-1}^2/alpha_{n}) * eta_{m-1} * d_{m-1}` --
+  a SCALAR recurrence coefficient (`theta^2/alpha`) that reuses the SAME scalar `alpha` from the
+  bi-orthogonality step to weight the PREVIOUS `d`. If `alpha`/`rho` are promoted to m x m matrices (as
+  `bbiCGStab`'s engine does, and as this task's own CORRECTNESS section anticipated via
+  `BlockSolveGeneral`), `theta^2/alpha` stops being well-formed: `theta` is a per-row scalar derived from
+  `‖w_i‖` (a NORM, inherently scalar/per-row), but `alpha` is now a matrix MIXING all s rows together, so
+  there is no coherent "divide by alpha" that keeps `d`'s row-space consistent with `w`'s row-space
+  without inventing a genuinely new matrix least-squares recursion. That IS what true Block QMR
+  (Freund-Malhotra 1997) does -- it re-derives the whole quasi-minimization via a two-sided (needs Aᵀ)
+  block Lanczos process and a block-Hessenberg QR update -- but that paper is paywalled (confirmed
+  `oa_status: closed`, not fetchable; see the extract's Part B item 1) and is NOT transpose-free, i.e. a
+  structurally different algorithm from TFQMR, not a mechanical block-ification of it. A "global"
+  (Frobenius-only, single shared scalar tau/theta/eta for the WHOLE s x n block) variant sidesteps the
+  matrix-division problem but loses honest per-row convergence tracking, breaking the
+  `BlockSolveInfo.converged`/`CountConverged`-style per-column contract every other block solver in this
+  codebase honors. Concluded: a per-column-honest, subspace-mixing block TFQMR is not achievable by
+  mechanically block-ifying the scalar recurrence within this task's scope -- genuinely ill-defined, not
+  just hard, per the task's own stated park/drop criterion.
+- 2026-07-20 | SHIPPED INSTEAD: `btfqmr` runs s INDEPENDENT scalar-TFQMR recurrences in lockstep (every
+  coefficient is a per-row scalar, never mixed across rows), sharing one `ApplyBlock` call per half-step
+  instead of s separate `Apply` calls. This batching pattern is a real, established design -- found
+  in the reference stash AFTER the mixing-design derivation above, at
+  `reference/square/BelosPseudoBlockTFQMRIter.hpp` (Trilinos/Belos, BSD-3): Belos ships exactly this
+  ("Pseudo-Block TFQMR", explicitly named to distinguish it from a true mixing Block TFQMR, which Belos
+  does NOT have either) -- per-RHS `alpha_/eta_/rho_/tau_/theta_` vectors, one shared `lp_->apply` per
+  half-step. `btfqmr` reimplements the SAME batching idea from scratch against this codebase's own
+  shipped `Krylov.TFQMR.fProxy.cs` recurrence (variable names/structure/breakdown-guard order mirror the
+  scalar file directly), not a line-by-line port of the Belos C++. Consequence: `btfqmr` has NO
+  block-Krylov-subspace advantage over looping scalar `tfqmr` s times (wired into
+  `KrylovBlockBatteryTests.fProxy.cs` with `BlockAdvantage=false`, per the task's own instruction "like
+  bbiCGStab/bidr") -- the value it adds is the shared `ApplyBlock` traffic (one BLAS3-shaped pass over A
+  per half-step instead of s BLAS2 passes for dense/BSR operators) and API parity with the rest of the
+  block family, not fewer iterations.
+- 2026-07-20 | Because rows never mix, two bit-identical RHS rows produce bit-identical output rows and
+  a duplicate row cannot singularize any shared coefficient (there is no shared coefficient) -- unlike
+  `bbiCGStab`/`bidr`, whose `NoBreakdown`/`IdenticalColumns` battery flags are false because their shared
+  m x m block solve genuinely goes singular on duplicate RHS rows. `fProxyBtfqmrInvoker`'s CheckFlags
+  were verified empirically against the battery (see `KrylovBlockBatteryTests.fProxy.cs`'s `Btfqmr` case)
+  before being set stronger than bbiCGStab/bidr's.
+
 ## Krylov.Block.IDR
 - 2026-07-20 | New file `Krylov.Block.IDR.fProxy.cs`: true block IDR(s) (task #41), the block
   generalization of `Krylov.IDR.fProxy.cs`. Ported from `reference/square/BlockIDRs-Du-Sogabe-Yu-

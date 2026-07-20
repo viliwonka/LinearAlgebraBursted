@@ -804,4 +804,50 @@ namespace LinearAlgebra
 
         public IfProxySquareSolverInvoker ScalarCounterpart() => new fProxyFgmresInvoker { TolValue = TolValue, MaxIterMul = MaxIterMul, Restart = Restart };
     }
+
+    /// <summary>
+    /// <see cref="IfProxyBlockSolverInvoker"/> for <see cref="Krylov.btfqmr{TOp, TPre}"/> -- PSEUDO-block
+    /// TFQMR (s independent scalar-TFQMR recurrences batched over one shared ApplyBlock per half-step,
+    /// NOT a subspace-mixing true block method -- see OP/DEVLOG.md "Krylov.Block.TFQMR") for a
+    /// NON-symmetric (general) square A and s simultaneous right-hand sides.
+    /// <see cref="NeedsGeneralDenseOperator"/> is true (same landmine as <see cref="fProxyBbiCGStabInvoker"/>).
+    /// Owns the seven s x n scratch blocks the zero-alloc primitive needs (UHat unused under the identity
+    /// preconditioner). MaxIterMul is in HALF-steps per row (mirrors <see cref="fProxyTfqmrInvoker"/>).
+    /// </summary>
+    public struct fProxyBtfqmrInvoker : IfProxyBlockSolverInvoker
+    {
+        public fProxy TolValue;
+        public int MaxIterMul;
+
+        fProxyMxN Rhat0, U, W, V, AU, D, UHat;
+
+        public MatrixProfile Requires => MatrixProfile.Nonsymmetric;
+        public MatrixProfile Forbids => MatrixProfile.IllConditioned;
+        public PreconditionerKind PrecondKind => PreconditionerKind.NonsymmetricBSR;
+        public bool NeedsGeneralDenseOperator => true;
+        public fProxy Tol => TolValue;
+        public int MaxIter(int n) => MaxIterMul * n;
+
+        public void Init(ref Arena arena, int n, int s)
+        {
+            Rhat0 = arena.fProxyMat(s, n);
+            U = arena.fProxyMat(s, n);
+            W = arena.fProxyMat(s, n);
+            V = arena.fProxyMat(s, n);
+            AU = arena.fProxyMat(s, n);
+            D = arena.fProxyMat(s, n);
+            UHat = arena.fProxyMat(s, n);
+        }
+
+        public BlockSolveInfo Solve<TOp>(in TOp A, in fProxyMxN B, ref fProxyMxN X)
+            where TOp : struct, IfProxyLinearOperator
+            => Krylov.btfqmr(in A, in B, ref X, ref Rhat0, ref U, ref W, ref V, ref AU, ref D, MaxIter(A.Rows), Tol);
+
+        public BlockSolveInfo SolveWithPrecond<TOp, TPre>(in TOp A, in TPre M, in fProxyMxN B, ref fProxyMxN X)
+            where TOp : struct, IfProxyLinearOperator
+            where TPre : struct, IfProxyPreconditioner
+            => Krylov.btfqmr(in A, in M, in B, ref X, ref Rhat0, ref U, ref W, ref V, ref AU, ref D, ref UHat, MaxIter(A.Rows), Tol);
+
+        public IfProxySquareSolverInvoker ScalarCounterpart() => new fProxyTfqmrInvoker { TolValue = TolValue, MaxIterMul = MaxIterMul };
+    }
 }

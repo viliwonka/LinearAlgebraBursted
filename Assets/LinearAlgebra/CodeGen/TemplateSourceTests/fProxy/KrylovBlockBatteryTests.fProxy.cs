@@ -29,7 +29,7 @@ public class fProxyKrylovBlockBatteryTests
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {
-        public enum SolverKind { Bcg, Bcgrq, Bfbcg, Bminres, BbiCGStab, Bidr, Bgmres, Bfgmres }
+        public enum SolverKind { Bcg, Bcgrq, Bfbcg, Bminres, BbiCGStab, Bidr, Bgmres, Bfgmres, Btfqmr }
 
         public SolverKind Kind;
 
@@ -163,6 +163,22 @@ public class fProxyKrylovBlockBatteryTests
                     RunBlockStandardChecks(
                         new fProxyBfgmresInvoker { TolValue = Consts.fProxySqrtEps, MaxIterMul = 4, Restart = 30 },
                         new fProxyFgmresInvoker { TolValue = Consts.fProxySqrtEps, MaxIterMul = 4, Restart = 30 },
+                        new CheckFlags { S = 4, BlockAdvantage = false, NoBreakdown = true, IdenticalColumns = true });
+                    break;
+                case SolverKind.Btfqmr:
+                    // BlockAdvantage=false: btfqmr is a PSEUDO-block method (s independent scalar-TFQMR
+                    // recurrences batched over one shared ApplyBlock per half-step, no subspace mixing --
+                    // see OP/DEVLOG.md "Krylov.Block.TFQMR" for why a true mixing block TFQMR is
+                    // ill-defined), so it has no block-Krylov-subspace advantage over looping scalar
+                    // tfqmr at all (weaker than even bbiCGStab/bidr's "not airtight" -- here it is simply
+                    // never expected to beat the worst per-row scalar iteration count).
+                    // NoBreakdown=true/IdenticalColumns=true (STRONGER than bbiCGStab/bidr): rows never
+                    // mix, so a duplicate RHS row cannot singularize any shared coefficient (there is no
+                    // shared coefficient) -- two bit-identical rows run the identical scalar recurrence
+                    // and land on bit-identical output rows.
+                    RunBlockStandardChecks(
+                        new fProxyBtfqmrInvoker { TolValue = Consts.fProxySqrtEps, MaxIterMul = 40 },
+                        new fProxyTfqmrInvoker { TolValue = Consts.fProxySqrtEps, MaxIterMul = 40 },
                         new CheckFlags { S = 4, BlockAdvantage = false, NoBreakdown = true, IdenticalColumns = true });
                     break;
             }

@@ -808,4 +808,50 @@ namespace LinearAlgebra
 
         public IfloatSquareSolverInvoker ScalarCounterpart() => new floatFgmresInvoker { TolValue = TolValue, MaxIterMul = MaxIterMul, Restart = Restart };
     }
+
+    /// <summary>
+    /// <see cref="IfloatBlockSolverInvoker"/> for <see cref="Krylov.btfqmr{TOp, TPre}"/> -- PSEUDO-block
+    /// TFQMR (s independent scalar-TFQMR recurrences batched over one shared ApplyBlock per half-step,
+    /// NOT a subspace-mixing true block method -- see OP/DEVLOG.md "Krylov.Block.TFQMR") for a
+    /// NON-symmetric (general) square A and s simultaneous right-hand sides.
+    /// <see cref="NeedsGeneralDenseOperator"/> is true (same landmine as <see cref="floatBbiCGStabInvoker"/>).
+    /// Owns the seven s x n scratch blocks the zero-alloc primitive needs (UHat unused under the identity
+    /// preconditioner). MaxIterMul is in HALF-steps per row (mirrors <see cref="floatTfqmrInvoker"/>).
+    /// </summary>
+    public struct floatBtfqmrInvoker : IfloatBlockSolverInvoker
+    {
+        public float TolValue;
+        public int MaxIterMul;
+
+        floatMxN Rhat0, U, W, V, AU, D, UHat;
+
+        public MatrixProfile Requires => MatrixProfile.Nonsymmetric;
+        public MatrixProfile Forbids => MatrixProfile.IllConditioned;
+        public PreconditionerKind PrecondKind => PreconditionerKind.NonsymmetricBSR;
+        public bool NeedsGeneralDenseOperator => true;
+        public float Tol => TolValue;
+        public int MaxIter(int n) => MaxIterMul * n;
+
+        public void Init(ref Arena arena, int n, int s)
+        {
+            Rhat0 = arena.floatMat(s, n);
+            U = arena.floatMat(s, n);
+            W = arena.floatMat(s, n);
+            V = arena.floatMat(s, n);
+            AU = arena.floatMat(s, n);
+            D = arena.floatMat(s, n);
+            UHat = arena.floatMat(s, n);
+        }
+
+        public BlockSolveInfo Solve<TOp>(in TOp A, in floatMxN B, ref floatMxN X)
+            where TOp : struct, IfloatLinearOperator
+            => Krylov.btfqmr(in A, in B, ref X, ref Rhat0, ref U, ref W, ref V, ref AU, ref D, MaxIter(A.Rows), Tol);
+
+        public BlockSolveInfo SolveWithPrecond<TOp, TPre>(in TOp A, in TPre M, in floatMxN B, ref floatMxN X)
+            where TOp : struct, IfloatLinearOperator
+            where TPre : struct, IfloatPreconditioner
+            => Krylov.btfqmr(in A, in M, in B, ref X, ref Rhat0, ref U, ref W, ref V, ref AU, ref D, ref UHat, MaxIter(A.Rows), Tol);
+
+        public IfloatSquareSolverInvoker ScalarCounterpart() => new floatTfqmrInvoker { TolValue = TolValue, MaxIterMul = MaxIterMul };
+    }
 }
