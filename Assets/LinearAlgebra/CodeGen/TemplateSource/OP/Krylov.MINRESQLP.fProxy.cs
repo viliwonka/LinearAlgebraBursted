@@ -381,6 +381,18 @@ namespace LinearAlgebra
             else if (flag == 6 || flag == 7 || flag == 9 || flag == -3) status = IterativeSolveStatus.Breakdown;
             else status = IterativeSolveStatus.Converged;
 
+            // Honesty guard: a QLP-flagged convergence whose FRESH true residual is not
+            // small on the RAW relative scale ‖b-Ax‖/‖b‖ is downgraded to an honest
+            // MaxIterations, never a false Converged. The flag metric divides by
+            // (Anorm*xnorm + beta1), which a near-breakdown's large Anorm*xnorm can inflate
+            // enough to mask a big true residual; beta1 (= ‖b‖) is the un-inflated scale.
+            // Factor is generous so genuine convergence (a few x the QLP metric) is kept.
+            if (status == IterativeSolveStatus.Converged &&
+                finalRnorm > (fProxy)64 * tol * beta1)
+            {
+                status = IterativeSolveStatus.MaxIterations;
+            }
+
             return MakeSolveInfo(status, iters, finalRnorm);
         }
 

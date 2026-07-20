@@ -1,6 +1,9 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.MINRESQLP
+- 2026-07-20 | Honesty guard on the Converged exit (#53, surfaced by battery Forbids=IllConditioned). The QLP stop metric relres = rnorm/(Anorm*xnorm+beta1) can be deflated below tol by a large Anorm*xnorm on a near-breakdown/clustered spectrum (Rosser), flagging Converged while the true ‖b-Ax‖/‖b‖ is large (~0.38). Fix: after the fresh finalRnorm recompute, downgrade Converged->MaxIterations when finalRnorm > 64*tol*beta1 (RAW ‖b‖ scale, not the inflatable QLP denominator). 64x keeps genuine convergence (raw residual runs only a few x the QLP metric). Tests MinresQLPNeverFalseConvergesOnRosser + MinresQLPStillConvergesHonestlyOnWellConditioned in KrylovVerifyAtExitTests. Other solvers in docs/dev/spec-krylov-nonconvergence-fix.md (gmres/biCGStab/idr/minres) deferred — a naive gmres change broke GCRODR RecycleZeroMatchesGmres equivalence, needs care.
+
 ## Krylov.Block.TFQMR
 - 2026-07-20 | New file `Krylov.Block.TFQMR.fProxy.cs` (task #42): a PSEUDO-block generalization of
   `Krylov.TFQMR.fProxy.cs`, not a true (subspace-mixing) block method -- see the derivation note below

@@ -270,4 +270,63 @@ public class doubleKrylovVerifyAtExitTests
         arena.Dispose();
     }
 
+    // ==============================================================================
+    // minresQLP honesty guard: its QLP stopping metric rnorm/(Anorm*xnorm+beta1) can be
+    // deflated below tol by a large Anorm*xnorm on a near-breakdown spectrum, flagging
+    // Converged while the true ‖b-Ax‖/‖b‖ is large. The guard must NOT claim convergence
+    // with a large true residual (Rosser), and must NOT reject a genuine convergence
+    // (well-conditioned).
+    // ==============================================================================
+
+    [Test]
+    public void MinresQLPNeverFalseConvergesOnRosser()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        var A = arena.doubleRosser();            // 8x8 symmetric, clustered near-degenerate spectrum
+        int n = A.M_Rows;
+        var op = new doubleDenseOperator(in A);
+        var b = arena.doubleRandomVec(n, (double)(-1f), (double)1f, 143003);
+
+        double tol = Consts.doubleSqrtEps;
+        var x = arena.doubleVec(n);
+        var info = Krylov.minresQLP(in A, in b, ref x, 8 * n, tol);
+
+        var scratch = arena.doubleVec(n);
+        double trueRs = TrueResidualSq(in op, in b, in x, ref scratch);
+        double honestBoundSq = (double)((double)64 * tol) * (double)((double)64 * tol) * (double)Blas.dot(b, b);
+
+        // A false Converged (the pre-guard bug reported Solved on Rosser with a large true
+        // residual) must be caught: never Solved while the true residual exceeds the raw bound.
+        Assert.IsFalse(info.Solved && (double)trueRs > honestBoundSq,
+            "minresQLP claimed convergence on Rosser but the true residual is large: " + info);
+
+        arena.Dispose();
+    }
+
+    [Test]
+    public void MinresQLPStillConvergesHonestlyOnWellConditioned()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        int n = 20;
+        var A = BuildDenseSPD(ref arena, n, 143001);   // symmetric, well-conditioned
+        var op = new doubleDenseOperator(in A);
+        var b = arena.doubleRandomVec(n, (double)(-1f), (double)1f, 143002);
+
+        double tol = Consts.doubleSqrtEps;
+        var x = arena.doubleVec(n);
+        var info = Krylov.minresQLP(in A, in b, ref x, 8 * n, tol);
+
+        // The honesty guard must NOT reject a genuine convergence.
+        Assert.IsTrue(info.Solved, "minresQLP must still converge on a well-conditioned system: " + info);
+
+        var scratch = arena.doubleVec(n);
+        double trueRs = TrueResidualSq(in op, in b, in x, ref scratch);
+        double bound = (double)((double)64 * tol) * (double)((double)64 * tol) * (double)Blas.dot(b, b);
+        Assert.LessOrEqual((double)trueRs, bound, "minresQLP Converged but true residual exceeds the honesty bound: " + info);
+
+        arena.Dispose();
+    }
+
 }
