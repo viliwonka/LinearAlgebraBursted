@@ -90,9 +90,9 @@ namespace LinearAlgebra
     /// <summary>
     /// Struct-functor entry point the Krylov battery drives a block (multi-RHS) least-squares solver
     /// family through -- same role as <see cref="IfloatLstsqSolverInvoker"/>, block-shaped like
-    /// <see cref="IfloatBlockSolverInvoker"/>. Test infrastructure only. OVERDETERMINED only (blsmr/
-    /// bcgls, tall A, min-RESIDUAL) -- no min-NORM counterpart exists yet (bcraig/bcraigmr are not
-    /// implemented). No TPre-generic overload (mirrors <see cref="IfloatLstsqSolverInvoker"/>: neither
+    /// <see cref="IfloatBlockSolverInvoker"/>. Test infrastructure only. Spans both rectangular
+    /// regimes: OVERDETERMINED (blsmr/bcgls, tall A, min-RESIDUAL) and UNDERDETERMINED (bcraig, wide A,
+    /// min-NORM -- bcraigmr is not implemented yet). No TPre-generic overload (mirrors <see cref="IfloatLstsqSolverInvoker"/>: neither
     /// production solver has a preconditioned entry point) and no damp parameter (mirrors
     /// <see cref="IfloatBlockSolverInvoker"/>'s NeedsGeneralDenseOperator-free shape -- blsmr/bcgls have
     /// no Tikhonov-damped production entry point). <see cref="Solve{TOp}"/> takes an explicit maxIter
@@ -1077,5 +1077,37 @@ namespace LinearAlgebra
             => Krylov.bcgls(in A, in B, ref X, maxIter, Tol);
 
         public IfloatLstsqSolverInvoker ScalarCounterpart() => new floatLsmrInvoker { TolValue = TolValue, MaxIterMul = MaxIterMul };
+    }
+
+    /// <summary>
+    /// <see cref="IfloatBlockLstsqSolverInvoker"/> for <see cref="Krylov.bcraig{TOp}"/> -- block CRAIG
+    /// for a WIDE/underdetermined operator A (A.Rows &lt;= A.Cols, full row rank) and s simultaneous
+    /// CONSISTENT right-hand sides: among all X with A X_j = B_j (per row j), finds the minimum-
+    /// Euclidean-norm one. Block min-NORM counterpart to <see cref="floatBlsmrInvoker"/>/
+    /// <see cref="floatBcglsInvoker"/> (which are OVERDETERMINED / min-RESIDUAL) -- exactly the block
+    /// analog of what <see cref="floatCraigInvoker"/> is to <see cref="floatLsmrInvoker"/>. Owns no
+    /// scratch (bcraig allocates its whole workspace from Allocator.Temp, mirroring
+    /// <see cref="floatBlsmrInvoker"/>), so <see cref="Init"/> is a no-op. <see cref="ScalarCounterpart"/>
+    /// is <see cref="floatCraigInvoker"/> -- bcraig finds the same minimum-norm solution craig does, one
+    /// column at a time. Requires Underdetermined and Forbids RankDeficient, mirroring
+    /// <see cref="floatCraigInvoker"/>.
+    /// </summary>
+    public struct floatBcraigInvoker : IfloatBlockLstsqSolverInvoker
+    {
+        public float TolValue;
+        public int MaxIterMul;
+
+        public MatrixProfile Requires => MatrixProfile.Underdetermined;
+        public MatrixProfile Forbids => MatrixProfile.RankDeficient;
+        public float Tol => TolValue;
+        public int MaxIter(int rows, int cols) => MaxIterMul * cols;
+
+        public void Init(ref Arena arena, int rows, int cols, int s) { }
+
+        public BlockSolveInfo Solve<TOp>(in TOp A, in floatMxN B, ref floatMxN X, int maxIter)
+            where TOp : struct, IfloatLinearOperator
+            => Krylov.bcraig(in A, in B, ref X, maxIter, Tol);
+
+        public IfloatLstsqSolverInvoker ScalarCounterpart() => new floatCraigInvoker { TolValue = TolValue, MaxIterMul = MaxIterMul };
     }
 }
