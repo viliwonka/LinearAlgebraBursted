@@ -86,7 +86,16 @@ function Invoke-Unity {
       Write-Host "WARN: could not set processor affinity (0x$($AffinityMask.ToString('X'))): $_"
     }
   }
-  $proc.WaitForExit()
+  # Hang guard: bound the blocking wait so a stalled editor is killed and reported
+  # as a failure instead of blocking forever (a genuine Unity hang, or a crashed
+  # child that never releases). Override the ceiling via $env:UNITY_TIMEOUT_SEC.
+  $timeoutSec = if ($env:UNITY_TIMEOUT_SEC) { [int]$env:UNITY_TIMEOUT_SEC } else { 900 }
+  if (-not $proc.WaitForExit($timeoutSec * 1000)) {
+    Write-Host "ERROR: Unity exceeded ${timeoutSec}s wall-clock -- killing (hang guard)."
+    try { $proc.Kill() } catch {}
+    Start-Sleep -Milliseconds 500
+    return 124
+  }
   return [int]$proc.ExitCode
 }
 
