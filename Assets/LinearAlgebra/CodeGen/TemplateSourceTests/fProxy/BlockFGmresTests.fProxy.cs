@@ -1,0 +1,282 @@
+using LinearAlgebra;
+using LinearAlgebra.Sparse;
+using NUnit.Framework;
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Jobs;
+using Unity.Mathematics;
+
+// Block (multi-RHS) restarted FLEXIBLE GMRES(m): Krylov.bfgmres(in A, in M, in B, ref X) where B/X are
+// s ROWS x n COLS (row = RHS). A is a GENERAL non-symmetric square matrix. bfgmres is bgmres's block
+// Arnoldi/Givens/Hessenberg machinery crossed with fgmres's flexible-basis update: the preconditioned block
+// basis Z[j] = M^-1 V[j] is STORED per step (M may vary every step -- an inner-iterative/nonlinear
+// preconditioner), and the update reads X += sum Yi^T Zi, never re-applying M to a combined vector. Under
+// fProxyIdentityPreconditioner the IsIdentity fold makes Z[j] alias V[j], so bfgmres-with-identity takes the
+// exact same instruction sequence as bgmres-with-identity (bit-identical). Every test runs inside a
+// [BurstCompile] IJob (by-value struct copy), so job-safety -- the caller sees the final X written through
+// the ref fProxyMxN -- is exercised by construction.
+public class fProxyBlockFGmresTests
+{
+    // Variable preconditioner: z = (a few unpreconditioned GMRES steps on A z = r from z = 0). k fixed inner
+    // steps is a NONLINEAR (data-dependent) map r -> z, so the effective M changes per outer step -- exactly
+    // what bfgmres is designed to tolerate and plain bgmres is not. IfProxyPreconditioner.Apply is a single-row
+    // op; BlockApplyPre calls it row-by-row, so this scalar struct drives the block solve unmodified.
+    readonly struct InnerGmresPreconditioner : IfProxyPreconditioner
+    {
+        readonly fProxyBSR A;
+        readonly int innerRestart, steps;
+
+        public InnerGmresPreconditioner(in fProxyBSR a, int innerRestart, int steps)
+        { A = a; this.innerRestart = innerRestart; this.steps = steps; }
+
+        public bool IsIdentity => false;
+
+        public void Apply(in fProxyN r, ref fProxyN z)
+        {
+            for (int i = 0; i < z.N; i++) z[i] = (fProxy)0;
+            Krylov.gmres(in A, in r, ref z, innerRestart, steps, (fProxy)0);
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true)]
+    public struct BlockFGmresTestJob : IJob
+    {
+        public enum TestType
+        {
+            KnownSolutionRecovered,
+            MatchesScalarFgmresPerColumn,
+            IdentityFoldMatchesBgmresBitIdentical,
+            VariableInnerGmresConverges,
+            RestartCorrectness,
+        }
+
+        public TestType Type;
+
+        public void Execute()
+        {
+            switch (Type)
+            {
+                case TestType.KnownSolutionRecovered:                KnownSolutionRecovered();                break;
+                case TestType.MatchesScalarFgmresPerColumn:          MatchesScalarFgmresPerColumn();          break;
+                case TestType.IdentityFoldMatchesBgmresBitIdentical: IdentityFoldMatchesBgmresBitIdentical(); break;
+                case TestType.VariableInnerGmresConverges:           VariableInnerGmresConverges();           break;
+                case TestType.RestartCorrectness:                    RestartCorrectness();                    break;
+            }
+        }
+
+        // Comparison band for block-dense solves: both paths converge to residual ~ tol on the same unique
+        // solution of a well-conditioned system, so they agree well within this bound. Mirrors BlockGmresTests.
+        static fProxy Tol() => /*+choose[3e-2f|1e-5]*/3e-2f/*-choose*/;
+
+        // Residual bound for the flexible BSR case (solver tol below): per-column convergence gives
+        // ||R||_F <= tol*||B||_F, so the aggregate ratio stays under the solver tol. Mirrors FGMRESTests.
+        static fProxy ResidTol() => /*+choose[1e-3f|1e-9]*/1e-3f/*-choose*/;
+
+        // Diagonally dominant (so nonsingular) but NOT symmetrized -> genuinely non-symmetric. Do NOT form
+        // M^T M (that would make it symmetric, defeating the point of a GMRES test).
+        static fProxyMxN BuildDenseNonsymmetric(ref Arena arena, int dim, uint seed)
+        {
+            var A = arena.fProxyRandomMat(dim, dim, (fProxy)(-1f), (fProxy)1f, seed);
+            for (int d = 0; d < dim; d++) A[d, d] += dim;   // diagonally dominant -> nonsingular, nonsymmetric
+            return A;
+        }
+
+        // Scalar 1D convection-diffusion (BR=1): diagonal 6, super -1, sub -3 -- nonsymmetric, diagonally
+        // dominant. Full storage. Mirrors FGMRESTests.
+        static fProxyBSR ConvDiff1D(ref Arena arena, int n)
+        {
+            var b = arena.fProxyBSRBuilder(n, n, 1, 1, 3 * n);
+            for (int i = 0; i < n; i++)
+            {
+                b.AddValue(i, i, (fProxy)6);
+                if (i > 0) b.AddValue(i, i - 1, (fProxy)(-3));
+                if (i < n - 1) b.AddValue(i, i + 1, (fProxy)(-1));
+            }
+            return b.ToBSR(ref arena);
+        }
+
+        static fProxyN Row(ref Arena arena, in fProxyMxN B, int j, int n)
+        {
+            var v = arena.fProxyVec(n);
+            for (int c = 0; c < n; c++) v[c] = B[j, c];
+            return v;
+        }
+
+        // Aggregate (block-Frobenius) relative residual ||B - A X||_F / ||B||_F for a BSR A.
+        static fProxy RelResidualBlockBSR(ref Arena arena, in fProxyBSR A, in fProxyMxN X, in fProxyMxN B)
+        {
+            int s = B.M_Rows, n = B.N_Cols;
+            var AX = arena.fProxyMat(s, n);
+            new fProxyBSROperator(in A).ApplyBlock(in X, ref AX, s);
+            fProxy num = 0, den = 0;
+            for (int j = 0; j < s; j++)
+                for (int c = 0; c < n; c++)
+                { fProxy d = B[j, c] - AX[j, c]; num += d * d; den += B[j, c] * B[j, c]; }
+            return math.sqrt(num) / math.sqrt(math.max(den, (fProxy)1e-30));
+        }
+
+        // Independent of any other solver: pick a KNOWN block solution Xk, form B = A Xk via the GENERAL block
+        // apply (fProxyDenseOperatorGeneral -- fProxyDenseOperator.ApplyBlock computes A^T for a non-symmetric
+        // A and would build the WRONG B here), solve unpreconditioned, and recover Xk.
+        void KnownSolutionRecovered()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 20, s = 5;
+            var A = BuildDenseNonsymmetric(ref arena, n, 82001u);
+            var Xk = arena.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 82002u);   // known solution
+
+            var B = arena.fProxyMat(s, n);
+            new fProxyDenseOperatorGeneral(in A).ApplyBlock(in Xk, ref B, s);          // B[j,:] = A Xk[j,:]
+
+            var X = arena.fProxyMat(s, n);
+            var info = Krylov.bfgmres(in A, in B, ref X, n, 4 * n, Consts.fProxySqrtEps);
+            Assert.IsTrue(info.Solved);
+
+            for (int j = 0; j < s; j++)
+                for (int c = 0; c < n; c++)
+                    Assert.IsTrue(math.abs((double)X[j, c] - (double)Xk[j, c]) <= Tol() * (1.0 + math.abs((double)Xk[j, c])));
+
+            arena.Dispose();
+        }
+
+        // Each column of the block flexible solution matches an independent scalar fgmres solve of that column
+        // (both unpreconditioned, same A/B), and every column reached tolerance.
+        void MatchesScalarFgmresPerColumn()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 20, s = 4;
+            var A = BuildDenseNonsymmetric(ref arena, n, 81001u);
+            var B = arena.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 81002u);
+
+            int restart = n;             // full block subspace -> converges within one cycle
+            int maxIter = 4 * n;
+            fProxy tol = Consts.fProxySqrtEps;
+
+            var X = arena.fProxyMat(s, n);   // zero initial guess
+            var info = Krylov.bfgmres(in A, in B, ref X, restart, maxIter, tol);
+
+            Assert.IsTrue(info.Solved);
+            Assert.AreEqual(s, info.converged);
+            Assert.AreEqual(s, info.rhs);
+
+            for (int j = 0; j < s; j++)
+            {
+                var bj = Row(ref arena, in B, j, n);
+                var xj = arena.fProxyVec(n);
+                Assert.IsTrue(Krylov.fgmres(in A, in bj, ref xj, restart, maxIter, tol).Solved);
+
+                // Block column j matches the scalar solve (both converged to the same unique solution).
+                for (int c = 0; c < n; c++)
+                    Assert.IsTrue(math.abs((double)X[j, c] - (double)xj[c]) <= Tol() * (1.0 + math.abs((double)xj[c])));
+            }
+
+            arena.Dispose();
+        }
+
+        // THE key correctness test: under fProxyIdentityPreconditioner the flexible-basis machinery (Z aliases
+        // V) must fold to EXACTLY bgmres-with-identity -- bit-identical X, iterations, status. Same opA (a
+        // readonly struct, constructed once and reused), same B, same restart/maxIter/tol, independently zeroed
+        // Xf/Xg. restart < n so restarts actually happen (the fold must hold across multiple cycles, not just a
+        // trivial single cycle). Bit-identical via ==/IsTrue, NOT a tolerance -- matches FGMRESTests' fold test.
+        void IdentityFoldMatchesBgmresBitIdentical()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 16, s = 3;
+            var A = BuildDenseNonsymmetric(ref arena, n, 83001u);
+            var B = arena.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 83002u);
+            int restart = 8;             // < n -> exercises restarts, still bit-identical across both paths
+            int maxIter = 4 * n;
+            fProxy tol = Consts.fProxySqrtEps;
+
+            var opA = new fProxyDenseOperatorGeneral(in A);   // readonly struct -- construct once, reuse the value
+
+            var Xf = arena.fProxyMat(s, n);
+            var infoBf = Krylov.bfgmres<fProxyDenseOperatorGeneral, fProxyIdentityPreconditioner>(
+                in opA, default(fProxyIdentityPreconditioner), in B, ref Xf, restart, maxIter, tol);
+
+            var Xg = arena.fProxyMat(s, n);
+            var infoBg = Krylov.bgmres<fProxyDenseOperatorGeneral, fProxyIdentityPreconditioner>(
+                in opA, default(fProxyIdentityPreconditioner), in B, ref Xg, restart, maxIter, tol);
+
+            Assert.AreEqual(infoBf.iterations, infoBg.iterations);
+            Assert.IsTrue(infoBf.status == infoBg.status);
+            // Bit-identical X (no tolerance) -- the whole point: the flexible machinery folds away exactly.
+            for (int i = 0; i < s; i++)
+                for (int c = 0; c < n; c++)
+                    Assert.IsTrue(Xf[i, c] == Xg[i, c]);
+
+            arena.Dispose();
+        }
+
+        // The genuinely flexible case: a per-outer-step-VARYING M (a fixed-step-count inner GMRES apply, whose
+        // map r -> z is data-dependent/nonlinear) on a nonsymmetric BSR system. This is the case plain bgmres
+        // cannot handle (its apply-M-once commit would be corrupted by a varying M). Assert convergence and a
+        // small aggregate relative residual.
+        void VariableInnerGmresConverges()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 150, s = 3;
+            var A = ConvDiff1D(ref arena, n);
+            var B = arena.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 84001u);
+            var op = new fProxyBSROperator(in A);
+            var M = new InnerGmresPreconditioner(in A, 5, 3);   // 3 fixed unpreconditioned-GMRES inner steps
+
+            var X = arena.fProxyMat(s, n);   // zero initial guess
+            var info = Krylov.bfgmres(in op, in M, in B, ref X, 20, 8 * n, ResidTol());
+
+            Assert.IsTrue(info.Solved);
+            Assert.IsTrue(RelResidualBlockBSR(ref arena, in A, in X, in B) <= ResidTol());
+
+            arena.Dispose();
+        }
+
+        // A restart well below the number of block steps this system needs forces multiple restart cycles: one
+        // cycle of only `restart` block-Arnoldi steps cannot reach tolerance, so the solver must restart at
+        // least once. Assert full convergence AND that MORE than `restart` total block steps were taken (proving
+        // a real restart happened, not a trivial cycle-1 convergence).
+        void RestartCorrectness()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 40, s = 3;
+            var A = BuildDenseNonsymmetric(ref arena, n, 85001u);
+            var B = arena.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 85002u);
+
+            int restart = 2;             // << the block steps this system needs -> forces >=2 cycles for both types
+            int maxIter = 10 * n;        // generous -> several restart cycles can finish converging
+            fProxy tol = Consts.fProxySqrtEps;
+
+            var X = arena.fProxyMat(s, n);
+            var info = Krylov.bfgmres(in A, in B, ref X, restart, maxIter, tol);
+
+            Assert.IsTrue(info.Solved);
+            Assert.IsTrue(info.iterations > restart);   // at least one restart actually happened
+
+            arena.Dispose();
+        }
+    }
+
+    [Test]
+    public void KnownSolutionRecovered()
+        => new BlockFGmresTestJob { Type = BlockFGmresTestJob.TestType.KnownSolutionRecovered }.Run();
+
+    [Test]
+    public void MatchesScalarFgmresPerColumn()
+        => new BlockFGmresTestJob { Type = BlockFGmresTestJob.TestType.MatchesScalarFgmresPerColumn }.Run();
+
+    [Test]
+    public void IdentityFoldMatchesBgmresBitIdentical()
+        => new BlockFGmresTestJob { Type = BlockFGmresTestJob.TestType.IdentityFoldMatchesBgmresBitIdentical }.Run();
+
+    [Test]
+    public void VariableInnerGmresConverges()
+        => new BlockFGmresTestJob { Type = BlockFGmresTestJob.TestType.VariableInnerGmresConverges }.Run();
+
+    [Test]
+    public void RestartCorrectness()
+        => new BlockFGmresTestJob { Type = BlockFGmresTestJob.TestType.RestartCorrectness }.Run();
+}

@@ -29,7 +29,7 @@ public class fProxyKrylovBlockBatteryTests
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {
-        public enum SolverKind { Bcg, Bcgrq, Bfbcg, Bminres, BbiCGStab, Bgmres }
+        public enum SolverKind { Bcg, Bcgrq, Bfbcg, Bminres, BbiCGStab, Bgmres, Bfgmres }
 
         public SolverKind Kind;
 
@@ -138,6 +138,18 @@ public class fProxyKrylovBlockBatteryTests
                     RunBlockStandardChecks(
                         new fProxyBgmresInvoker { TolValue = Consts.fProxySqrtEps, MaxIterMul = 4, Restart = 30 },
                         new fProxyGmresInvoker { TolValue = Consts.fProxySqrtEps, MaxIterMul = 4, Restart = 30 },
+                        new CheckFlags { S = 4, BlockAdvantage = false, NoBreakdown = true, IdenticalColumns = true });
+                    break;
+                case SolverKind.Bfgmres:
+                    // Same CheckFlags as Bgmres: bfgmres shares its block Arnoldi/Hessenberg machinery
+                    // (BlockAdvantage=false for the identical reason -- deflation trades subspace
+                    // richness for robustness, so the naive block-iterations-<=-worst-scalar bound does
+                    // not hold once deflation kicks in) and the SAME identity-fold path (checks #1-4 use
+                    // Solve/SolveWithPrecond-with-identity only, never a genuinely varying M -- that path
+                    // is exercised by the bespoke BlockFGmresTests.fProxy.cs instead).
+                    RunBlockStandardChecks(
+                        new fProxyBfgmresInvoker { TolValue = Consts.fProxySqrtEps, MaxIterMul = 4, Restart = 30 },
+                        new fProxyFgmresInvoker { TolValue = Consts.fProxySqrtEps, MaxIterMul = 4, Restart = 30 },
                         new CheckFlags { S = 4, BlockAdvantage = false, NoBreakdown = true, IdenticalColumns = true });
                     break;
             }

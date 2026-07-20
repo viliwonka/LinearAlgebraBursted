@@ -1,6 +1,26 @@
 # DEVLOG — TemplateSourceTests
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## BlockFGmresTests / KrylovBlockBatteryTests (bfgmres, task #38)
+- 2026-07-20 | New file `BlockFGmresTests.fProxy.cs`, mirroring `BlockGmresTests.fProxy.cs`'s IJob/
+  TestType shape. Coverage: known-block-solution recovery on nonsymmetric A (`fProxyDenseOperatorGeneral`,
+  never the symmetric-only `fProxyDenseOperator`), per-column agreement with scalar `fgmres`, restart
+  correctness, a genuinely flexible case (`InnerGmresPreconditioner` -- a few fixed unpreconditioned
+  inner `gmres` steps, reused verbatim from `FGMRESTests.fProxy.cs` since `IfProxyPreconditioner.Apply`
+  is single-row and `BlockApplyPre` drives it row-by-row, so the scalar struct needs no block-specific
+  variant), and the required `IdentityFoldMatchesBgmresBitIdentical` cross-solver check (bit-identical
+  X/iterations/status between `bfgmres`-with-identity and `bgmres`-with-identity on the same seeded
+  system). In-job struct-copy safety has no separate test -- inherent to every case already running
+  inside a `[BurstCompile(CompileSynchronously = true)] IJob` + `.Run()`.
+- 2026-07-20 | Wired `bfgmres` into the block battery (`KrylovBlockBatteryTests.fProxy.cs`): new
+  `SolverKind.Bfgmres` case and `fProxyBfgmresInvoker` (`KrylovBattery.Invokers.fProxy.cs`), same
+  `CheckFlags` as `Bgmres` (`NeedsGeneralDenseOperator=true`, `Requires=Nonsymmetric`,
+  `Forbids=IllConditioned`, `BlockAdvantage=false` -- shares bgmres's deflating rank-revealing basis and
+  the same lack of a monotone block-advantage bound, `NoBreakdown`/`IdenticalColumns=true`). The
+  battery's own checks #1-4 only ever pass the identity preconditioner (see `IfProxyBlockSolverInvoker`'s
+  own doc) so never exercise a genuinely varying M -- that path is `BlockFGmresTests.fProxy.cs`'s job,
+  not the battery's.
+
 ## KrylovBlockBatteryTests / KrylovBattery.Invokers
 - 2026-07-20 | New file `KrylovBlockBatteryTests.fProxy.cs`: block-family battery (spec-krylov-test-
   battery.md SS5.3, checks #6-9 on top of block-shaped #1-5), mirroring `KrylovSquareBatteryTests`'

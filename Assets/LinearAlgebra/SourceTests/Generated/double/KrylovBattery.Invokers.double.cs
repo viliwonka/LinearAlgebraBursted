@@ -734,4 +734,41 @@ namespace LinearAlgebra
 
         public IdoubleSquareSolverInvoker ScalarCounterpart() => new doubleGmresInvoker { TolValue = TolValue, MaxIterMul = MaxIterMul, Restart = Restart };
     }
+
+    /// <summary>
+    /// <see cref="IdoubleBlockSolverInvoker"/> for <see cref="Krylov.bfgmres{TOp, TPre}"/> -- restarted
+    /// block FLEXIBLE GMRES(m) (per-step-varying preconditioner) for a NON-symmetric (general) square A
+    /// and s simultaneous right-hand sides. Same profile and no-op <see cref="Init"/> as
+    /// <see cref="doubleBgmresInvoker"/> (including <see cref="NeedsGeneralDenseOperator"/> and the
+    /// IllConditioned exclusion -- it shares bgmres's block Arnoldi/Hessenberg machinery and has no
+    /// monotone block-advantage bound either, same rationale as bgmres's own KrylovBlockBatteryTests
+    /// case); SolveWithPrecond's TPre slots in cleanly since a single battery call only ever passes one
+    /// (possibly internally-iterative) preconditioner instance.
+    /// </summary>
+    public struct doubleBfgmresInvoker : IdoubleBlockSolverInvoker
+    {
+        public double TolValue;
+        public int MaxIterMul;
+        public int Restart;
+
+        public MatrixProfile Requires => MatrixProfile.Nonsymmetric;
+        public MatrixProfile Forbids => MatrixProfile.IllConditioned;
+        public PreconditionerKind PrecondKind => PreconditionerKind.NonsymmetricBSR;
+        public bool NeedsGeneralDenseOperator => true;
+        public double Tol => TolValue;
+        public int MaxIter(int n) => MaxIterMul * n;
+
+        public void Init(ref Arena arena, int n, int s) { }
+
+        public BlockSolveInfo Solve<TOp>(in TOp A, in doubleMxN B, ref doubleMxN X)
+            where TOp : struct, IdoubleLinearOperator
+            => Krylov.bfgmres(in A, in B, ref X, Restart, MaxIter(A.Rows), Tol);
+
+        public BlockSolveInfo SolveWithPrecond<TOp, TPre>(in TOp A, in TPre M, in doubleMxN B, ref doubleMxN X)
+            where TOp : struct, IdoubleLinearOperator
+            where TPre : struct, IdoublePreconditioner
+            => Krylov.bfgmres(in A, in M, in B, ref X, Restart, MaxIter(A.Rows), Tol);
+
+        public IdoubleSquareSolverInvoker ScalarCounterpart() => new doubleFgmresInvoker { TolValue = TolValue, MaxIterMul = MaxIterMul, Restart = Restart };
+    }
 }

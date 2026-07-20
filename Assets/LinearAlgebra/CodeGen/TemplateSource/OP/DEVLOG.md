@@ -1,6 +1,38 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.bfgmres
+- 2026-07-20 | New file `Krylov.Block.FGMRES.fProxy.cs`, sibling to `Krylov.Block.GMRES.fProxy.cs` (not
+  an addition to it) per the single-solver-per-file convention (task #38). This is the intersection of
+  the two solvers already in the tree: `bgmres`'s block Arnoldi/Givens/Hessenberg machinery (block RHS,
+  rank-revealing-LQ deflation, periodic dense-QR block least-squares) with `fgmres`'s flexible-basis
+  update ported onto it. Reused every `Krylov.Block.Common.fProxy.cs` / `Krylov.Block.BiCGStab.fProxy.cs`
+  helper `bgmres` itself uses (`BlockCrossGram`/`BlockCTV`/`BlockAdd`/`CopyBlock`/`BlockApplyPre`/
+  `CountConverged`/`View`/`RowsView`/`RectView`/`LQRPRank`/`StoreBlockAt`/`ExtractRowsAt`/`ZeroPrefix`,
+  the last three defined in `Krylov.Block.GMRES.fProxy.cs` itself and visible here via the shared
+  `partial class Krylov`) unmodified -- no new shared helper needed.
+- 2026-07-20 | The ONE structural change from `bgmres`: `bgmres`'s Arnoldi loop already right-
+  preconditions each step (`w = A M⁻¹ v_j`) into a single reusable scratch buffer (`Zt`), then applies
+  M ONCE more to the combined vector at commit time (`X += M⁻¹(Σ y_i v_i)`) -- valid only because M is
+  fixed across the whole cycle, so `M⁻¹` factors out of the sum. `bfgmres` instead stores each step's
+  `Z[j] = M⁻¹ V[j]` into a PERSISTENT `Z[0..m-1]` array (mirrors `fgmres`'s own `Z`) and commits
+  `X += Σ Yᵢᵀ Zᵢ` reading directly off the stored per-step basis, never re-applying M -- valid even when
+  M varies every step. Verified against Belos (`reference/belos/BelosBlockFGmresIter.hpp`, BSD): its
+  persistent `Z_` multivector (sized to the full restart length, `Znext = M*Vprev` per step,
+  `getCurrentUpdate` = `Z*y`) is the same design, reimplemented onto this codebase's own block-Arnoldi
+  loop rather than ported line-by-line.
+- 2026-07-20 | Under `fProxyIdentityPreconditioner`, `Z` is never allocated and every commit-step branch
+  reads `V[i]` instead of `Z[i]` -- the EXACT same instruction sequence `bgmres` runs under identity (no
+  arithmetic reordering, same Temp-allocation shapes/order). Verified bit-identical (X AND iteration
+  count, not just "close") against `bgmres` in `BlockFGmresTests.fProxy.cs`'s
+  `IdentityFoldMatchesBgmresBitIdentical`, across multiple restart cycles (`restart < n`).
+- 2026-07-20 | Overload ladder mirrors `bgmres` exactly (generic `bfgmres<TOp,TPre>` core,
+  `bfgmres<TOp>` identity forwarder, dense-general/BSR unpreconditioned rungs, BSR+ILU0 preconditioned
+  rungs) -- callers already fluent in `bgmres`'s ladder get `bfgmres` for free. Workspace footprint:
+  `bgmres`'s `V` (`(m+1) s n` elements) plus `Z` (`m` more `s x n` blocks) when M is a real
+  preconditioner -- the same roughly-doubled-basis-memory cost `fgmres` pays over `gmres`, for the same
+  reason (tolerating a per-step-varying M).
+
 ## Krylov.GCRODR
 - 2026-07-20 | Breakdown path now recomputes `rnorm` as a fresh ‖b-Ax‖ before returning, instead of
   reporting the stale Arnoldi/Givens `resnorm` estimate -- found while reviewing the bespoke
