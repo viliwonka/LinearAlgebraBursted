@@ -1,0 +1,74 @@
+using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
+using Unity.Mathematics;
+
+namespace LinearAlgebra
+{
+    public static partial class Krylov {
+
+        // ================= Scalar Arnoldi / Givens / Hessenberg core =================
+        // Shared by gmres and fgmres (identical modified-Gram-Schmidt Arnoldi step, Givens
+        // rotation apply/generate, and Hessenberg back-solve in both). gcrodr keeps its own copy:
+        // its Arnoldi step interleaves a recycled-subspace projection and a pivotGuard-based
+        // breakdown test that gmres/fgmres don't have, so folding it in would not be bit-identical.
+
+        // Orthogonalizes w against the existing Arnoldi basis V[0..j] (modified Gram-Schmidt),
+        // writing H's column j (H[i,j] for i in [0,j], H[j+1,j] the subdiagonal norm), then
+        // normalizes the residual into V[j+1] when H[j+1,j] > 0. w is destroyed. n = A.Rows.
+        static void ArnoldiMGSStep(fProxyN w, in UnsafeList<fProxyN> V, ref fProxyMxN H, int j, int n)
+        {
+            for (int i = 0; i <= j; i++)
+            {
+                fProxyN vi = V[i];
+                fProxy hij = Blas.dot(w, vi);
+                H[i, j] = hij;
+                w.addScaledInPlace(-hij, vi);
+            }
+            fProxy hj1 = math.sqrt(Blas.dot(w, w));
+            H[j + 1, j] = hj1;
+            if (hj1 > (fProxy)0)
+            {
+                fProxyN vj1 = V[j + 1];
+                fProxy invh = (fProxy)1 / hj1;
+                vj1.CopyFrom(in w);
+                for (int i = 0; i < n; i++) vj1[i] *= invh;
+            }
+        }
+
+        // Applies the j already-generated Givens rotations to column j of H, then generates and
+        // applies rotation j (zeroing H[j+1,j], rotating g[j]/g[j+1] by it).
+        static void GivensApplyAndGenerate(ref fProxyMxN H, ref fProxyN cs, ref fProxyN sn, ref fProxyN g, int j)
+        {
+            for (int i = 0; i < j; i++)
+            {
+                fProxy t0 = cs[i] * H[i, j] + sn[i] * H[i + 1, j];
+                H[i + 1, j] = -sn[i] * H[i, j] + cs[i] * H[i + 1, j];
+                H[i, j] = t0;
+            }
+
+            fProxy a = H[j, j], bb2 = H[j + 1, j];
+            fProxy rr = math.sqrt(a * a + bb2 * bb2);
+            fProxy c, s;
+            if (rr > (fProxy)0) { c = a / rr; s = bb2 / rr; }
+            else { c = (fProxy)1; s = (fProxy)0; }
+            cs[j] = c; sn[j] = s;
+            H[j, j] = rr;
+            H[j + 1, j] = (fProxy)0;
+
+            fProxy gj = g[j];
+            g[j] = c * gj;
+            g[j + 1] = -s * gj;
+        }
+
+        // Back-substitutes the upper-triangular Hessenberg system H[0..k-1,0..k-1] y = g[0..k-1].
+        static void HessenbergBackSolve(in fProxyMxN H, in fProxyN g, ref fProxyN y, int k)
+        {
+            for (int i = k - 1; i >= 0; i--)
+            {
+                fProxy sum = g[i];
+                for (int l = i + 1; l < k; l++) sum -= H[i, l] * y[l];
+                y[i] = sum / H[i, i];
+            }
+        }
+    }
+}

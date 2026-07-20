@@ -99,45 +99,11 @@ namespace LinearAlgebra
                         A.Apply(in zt, ref w);              // w  = A M⁻¹ v_j
                     }
 
-                    // Modified Gram–Schmidt against v_0..v_j.
-                    for (int i = 0; i <= j; i++)
-                    {
-                        fProxyN vi = V[i];
-                        fProxy hij = Blas.dot(w, vi);
-                        H[i, j] = hij;
-                        w.addScaledInPlace(-hij, vi);
-                    }
-                    fProxy hj1 = math.sqrt(Blas.dot(w, w));
-                    H[j + 1, j] = hj1;
-                    if (hj1 > (fProxy)0)
-                    {
-                        fProxyN vj1 = V[j + 1];
-                        fProxy invh = (fProxy)1 / hj1;
-                        vj1.CopyFrom(in w);
-                        for (int i = 0; i < n; i++) vj1[i] *= invh;
-                    }
+                    // Arnoldi step: orthogonalize w against V[0..j], normalize into V[j+1].
+                    ArnoldiMGSStep(w, in V, ref H, j, n);
 
-                    // Apply previous Givens rotations to column j of H.
-                    for (int i = 0; i < j; i++)
-                    {
-                        fProxy t0 = cs[i] * H[i, j] + sn[i] * H[i + 1, j];
-                        H[i + 1, j] = -sn[i] * H[i, j] + cs[i] * H[i + 1, j];
-                        H[i, j] = t0;
-                    }
-
-                    // New Givens rotation zeroing H[j+1,j].
-                    fProxy a = H[j, j], bb2 = H[j + 1, j];
-                    fProxy rr = math.sqrt(a * a + bb2 * bb2);
-                    fProxy c, s;
-                    if (rr > (fProxy)0) { c = a / rr; s = bb2 / rr; }
-                    else { c = (fProxy)1; s = (fProxy)0; }
-                    cs[j] = c; sn[j] = s;
-                    H[j, j] = rr;
-                    H[j + 1, j] = (fProxy)0;
-
-                    fProxy gj = g[j];
-                    g[j] = c * gj;
-                    g[j + 1] = -s * gj;
+                    // Apply/generate the Givens rotations, rotating H's column j and rhs g.
+                    GivensApplyAndGenerate(ref H, ref cs, ref sn, ref g, j);
 
                     resnorm = math.abs(g[j + 1]);
                     total++;
@@ -146,12 +112,7 @@ namespace LinearAlgebra
                 }
 
                 // Back-substitute H[0..k-1,0..k-1] y = g[0..k-1].
-                for (int i = k - 1; i >= 0; i--)
-                {
-                    fProxy sum = g[i];
-                    for (int l = i + 1; l < k; l++) sum -= H[i, l] * y[l];
-                    y[i] = sum / H[i, i];
-                }
+                HessenbergBackSolve(in H, in g, ref y, k);
                 // Identity: x += sum y_i v_i (accumulated straight into x -- matches plain GMRES).
                 // Preconditioned: x += M⁻¹(sum y_i v_i) -- accumulate into w, apply M⁻¹ once.
                 if (M.IsIdentity)

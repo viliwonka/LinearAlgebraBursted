@@ -113,45 +113,11 @@ namespace LinearAlgebra
                         A.Apply(in zj, ref w);               // w   = A z_j
                     }
 
-                    // Modified Gram–Schmidt against v_0..v_j.
-                    for (int i = 0; i <= j; i++)
-                    {
-                        floatN vi = V[i];
-                        float hij = Blas.dot(w, vi);
-                        H[i, j] = hij;
-                        w.addScaledInPlace(-hij, vi);
-                    }
-                    float hj1 = math.sqrt(Blas.dot(w, w));
-                    H[j + 1, j] = hj1;
-                    if (hj1 > (float)0)
-                    {
-                        floatN vj1 = V[j + 1];
-                        float invh = (float)1 / hj1;
-                        vj1.CopyFrom(in w);
-                        for (int i = 0; i < n; i++) vj1[i] *= invh;
-                    }
+                    // Arnoldi step: orthogonalize w against V[0..j], normalize into V[j+1].
+                    ArnoldiMGSStep(w, in V, ref H, j, n);
 
-                    // Apply previous Givens rotations to column j of H.
-                    for (int i = 0; i < j; i++)
-                    {
-                        float t0 = cs[i] * H[i, j] + sn[i] * H[i + 1, j];
-                        H[i + 1, j] = -sn[i] * H[i, j] + cs[i] * H[i + 1, j];
-                        H[i, j] = t0;
-                    }
-
-                    // New Givens rotation zeroing H[j+1,j].
-                    float a = H[j, j], bb2 = H[j + 1, j];
-                    float rr = math.sqrt(a * a + bb2 * bb2);
-                    float c, s;
-                    if (rr > (float)0) { c = a / rr; s = bb2 / rr; }
-                    else { c = (float)1; s = (float)0; }
-                    cs[j] = c; sn[j] = s;
-                    H[j, j] = rr;
-                    H[j + 1, j] = (float)0;
-
-                    float gj = g[j];
-                    g[j] = c * gj;
-                    g[j + 1] = -s * gj;
+                    // Apply/generate the Givens rotations, rotating H's column j and rhs g.
+                    GivensApplyAndGenerate(ref H, ref cs, ref sn, ref g, j);
 
                     resnorm = math.abs(g[j + 1]);
                     total++;
@@ -160,12 +126,7 @@ namespace LinearAlgebra
                 }
 
                 // Back-substitute H[0..k-1,0..k-1] y = g[0..k-1].
-                for (int i = k - 1; i >= 0; i--)
-                {
-                    float sum = g[i];
-                    for (int l = i + 1; l < k; l++) sum -= H[i, l] * y[l];
-                    y[i] = sum / H[i, i];
-                }
+                HessenbergBackSolve(in H, in g, ref y, k);
                 // x += Z y (identity: Z aliases V, accumulated straight into x -- matches plain
                 // GMRES exactly). Preconditioned: x += sum y_i z_i using the STORED per-step
                 // preconditioned vectors, valid even when M varied across j = 0..k-1.

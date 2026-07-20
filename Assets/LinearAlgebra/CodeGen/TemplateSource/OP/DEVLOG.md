@@ -1,6 +1,30 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov DRY extraction (P1)
+- 2026-07-20 | Task #57 P1 (docs/dev/spec-krylov-dry-extraction.md Clusters B/H): extracted the
+  scalar Arnoldi/Givens/Hessenberg core shared by `gmres`/`fgmres` into new
+  `Krylov.Arnoldi.Common.fProxy.cs` (`ArnoldiMGSStep`, `GivensApplyAndGenerate`,
+  `HessenbergBackSolve`), and the block Arnoldi/dense-QR-least-squares core shared by
+  `bgmres`/`bfgmres` into `Krylov.Block.Common.fProxy.cs` (`BlockArnoldiMGS2Step`,
+  `BlockLSResolveAndCheck`). Pure cut-paste, same statement order, no reduction/rounding
+  reorder — confirmed via `diff` on the pre-edit source that every extracted block was
+  byte-identical (modulo comment wording) between the two solvers in each pair before touching
+  anything. Suite stayed 7123/7123 green before and after; GMRES/GCRODR/Battery filters also
+  independently green.
+- 2026-07-20 | `gcrodr`/`bgcrodr` deliberately NOT folded into these helpers, left on their own
+  full copies. Their Arnoldi step interleaves a recycled-subspace projection before MGS and a
+  `pivotGuard`-based breakdown test (`arnoldiDone`/`lsBreakdown`) that gmres/fgmres/bgmres/bfgmres
+  don't have — `bgcrodr` specifically inserts a NaN/Inf scan on `Yv` between the dense-QR solve
+  and the Pythagorean check, which changes control flow (an early break that must happen before
+  the Pythagorean check ever reads possibly-NaN data) and would corrupt bit-identity for the
+  other two if merged into one shared function. Note: `bgcrodr`'s block-MGS2 + LQ-deflation
+  sub-block (the part before the dense-QR resolve) DID diff byte-identical against
+  `bgmres`/`bfgmres`'s and could technically call `BlockArnoldiMGS2Step` too — left out anyway to
+  keep the fold-in decision at the whole-solver level (matches scalar `gcrodr`'s treatment) rather
+  than mixing a partially-shared solver body, per the task's 1-hour-rule / "leave on its own copy"
+  default.
+
 ## Krylov DRY extraction (P0)
 - 2026-07-20 | Task #57 P0 (docs/dev/spec-krylov-dry-extraction.md Cluster F/I): relocated 15
   single-definition block helpers (`BlockApplyOp`, `BlockApplyOpT`, `TriNearSingular`,

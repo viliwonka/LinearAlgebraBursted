@@ -1,4 +1,5 @@
 using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 
 namespace LinearAlgebra
@@ -416,6 +417,93 @@ namespace LinearAlgebra
             for (int r = 0; r < rows; r++)
                 for (int c = 0; c < cols; c++)
                     buf[r, c] = (fProxy)0;
+        }
+
+        // ---- block Arnoldi / dense-QR least-squares core (bgmres, bfgmres) ----------------------------
+        // bgcrodr keeps its own copy of the surrounding cycle (recycled-subspace projection before
+        // the Arnoldi step, a NaN/Inf breakdown scan between the dense-QR solve and the Pythagorean
+        // check) so folding it into these two would not be bit-identical; see the file DEVLOG.
+
+        // Block Arnoldi step (MGS2 + basis-rank-deflating thin-LQ): orthogonalizes Wj against
+        // V[0..j] (modified block Gram-Schmidt, one unconditional reorthogonalization pass),
+        // writes Hbuf's [off[i], off[j]) block-columns, LQ-factors the residual into V[j+1] (rank
+        // wj1 <= w[j], w[j+1] = wj1, off[j+2] = off[j+1] + wj1), and -- when wj1 > 0 -- stores the
+        // H[j+1,j] cross block. Returns wj1 (0 signals happy breakdown: the block Krylov subspace
+        // stopped growing). n = A.Rows.
+        static int BlockArnoldiMGS2Step(ref fProxyMxN Wj, in UnsafeList<fProxyMxN> V, ref Indices w, ref Indices off,
+                                         ref fProxyMxN Hbuf, ref fProxyMxN HijBuf, ref fProxyMxN Tbuf, ref fProxyMxN Lbuf,
+                                         ref int minActive, int j, int n)
+        {
+            for (int pass = 0; pass < 2; pass++)
+            {
+                for (int i = 0; i <= j; i++)
+                {
+                    var Vi  = RowsView(V[i], w[i]);
+                    var Hij = RectView(HijBuf, w[i], w[j]);
+                    BlockCrossGram(in Vi, in Wj, ref Hij);
+                    StoreBlockAt(ref Hbuf, off[i], off[j], in Hij, w[i], w[j]);
+                    var Tij = RowsView(Tbuf, w[j]);
+                    BlockCTV(in Hij, in Vi, ref Tij);
+                    BlockAdd(ref Wj, in Tij, (fProxy)(-1));
+                }
+            }
+
+            var Ppiv2 = new Pivot(w[j], Allocator.Temp);
+            var Lv = View(Lbuf, w[j]);
+            var Qout = RowsView(V[j + 1], w[j]);
+            LQRP.decomp(in Wj, ref Lv, ref Qout, ref Ppiv2);
+            Ppiv2.Dispose();
+
+            int wj1 = LQRPRank(in Lv, w[j], n);
+            w[j + 1] = wj1;
+            minActive = math.min(minActive, wj1);
+            off[j + 2] = off[j + 1] + wj1;
+
+            if (wj1 > 0)
+            {
+                var Vj1  = RowsView(V[j + 1], wj1);
+                var Hj1j = RectView(HijBuf, wj1, w[j]);
+                BlockCrossGram(in Vj1, in Wj, ref Hj1j);
+                StoreBlockAt(ref Hbuf, off[j + 1], off[j], in Hj1j, wj1, w[j]);
+            }
+
+            return wj1;
+        }
+
+        // Periodic dense re-QR least-squares re-solve over the accumulated block-Hessenberg prefix
+        // Hbuf[0..off[k+1], 0..off[k]), then the per-column Pythagorean LS-residual check
+        // (max(0, ||G_c||^2 - ||Q^T G_c||^2) vs thr[c]) -- no extra matvec. Yscratch[0..off[k])
+        // holds the solved coefficients on return. Returns true iff every column converged.
+        static bool BlockLSResolveAndCheck(in fProxyMxN Hbuf, in Indices off, int k,
+                                            ref fProxyMxN HQscratch, ref fProxyMxN Rscratch,
+                                            ref fProxyMxN Gbuf, ref fProxyMxN Yscratch, ref fProxyMxN QtGscratch,
+                                            in fProxyN thr, int s)
+        {
+            int totalRows = off[k + 1];
+            int totalCols = off[k];
+
+            var HQ = RectView(HQscratch, totalRows, totalCols);
+            CopyBlock(in Hbuf, ref HQ, totalRows, totalCols);
+            var Rls = RectView(Rscratch, totalCols, totalCols);
+            QR.decompInPlace(ref HQ, ref Rls);
+            var Gactive = RowsView(Gbuf, totalRows);
+            var Yv = RowsView(Yscratch, totalCols);
+            QR.decompSolve(ref HQ, ref Rls, ref Gactive, ref Yv);
+
+            var QtG = RowsView(QtGscratch, totalCols);
+            Blas.dot(in HQ, in Gactive, ref QtG, true, false);
+
+            bool allConverged = true;
+            for (int c = 0; c < s; c++)
+            {
+                fProxy gg = (fProxy)0;
+                for (int r = 0; r < totalRows; r++) gg += Gactive[r, c] * Gactive[r, c];
+                fProxy qq = (fProxy)0;
+                for (int r = 0; r < totalCols; r++) qq += QtG[r, c] * QtG[r, c];
+                fProxy resid2 = math.max((fProxy)0, gg - qq);
+                if (resid2 > thr[c]) allConverged = false;
+            }
+            return allConverged;
         }
     }
 }

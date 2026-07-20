@@ -163,42 +163,8 @@ namespace LinearAlgebra
                         A.ApplyBlock(in Zj, ref Wj, w[j]);
                     }
 
-                    // Modified block Gram-Schmidt against V[0..j], ONE unconditional reorthogonalization
-                    // pass (MGS2).
-                    for (int pass = 0; pass < 2; pass++)
-                    {
-                        for (int i = 0; i <= j; i++)
-                        {
-                            var Vi  = RowsView(V[i], w[i]);
-                            var Hij = RectView(HijBuf, w[i], w[j]);
-                            BlockCrossGram(in Vi, in Wj, ref Hij);
-                            StoreBlockAt(ref Hbuf, off[i], off[j], in Hij, w[i], w[j]);
-                            var Tij = RowsView(Tbuf, w[j]);
-                            BlockCTV(in Hij, in Vi, ref Tij);
-                            BlockAdd(ref Wj, in Tij, (float)(-1));
-                        }
-                    }
-
-                    // Deflating thin-LQ of the residual Wj -- basis-rank deflation. LQRP decomposes
-                    // directly into V[j+1]'s own s x n buffer (reshaped to w[j] rows for the call).
-                    var Ppiv2 = new Pivot(w[j], Allocator.Temp);
-                    var Lv = View(Lbuf, w[j]);
-                    var Qout = RowsView(V[j + 1], w[j]);
-                    LQRP.decomp(in Wj, ref Lv, ref Qout, ref Ppiv2);
-                    Ppiv2.Dispose();
-
-                    int wj1 = LQRPRank(in Lv, w[j], n);
-                    w[j + 1] = wj1;
-                    minActive = math.min(minActive, wj1);
-                    off[j + 2] = off[j + 1] + wj1;
-
-                    if (wj1 > 0)
-                    {
-                        var Vj1  = RowsView(V[j + 1], wj1);
-                        var Hj1j = RectView(HijBuf, wj1, w[j]);
-                        BlockCrossGram(in Vj1, in Wj, ref Hj1j);
-                        StoreBlockAt(ref Hbuf, off[j + 1], off[j], in Hj1j, wj1, w[j]);
-                    }
+                    int wj1 = BlockArnoldiMGS2Step(ref Wj, in V, ref w, ref off, ref Hbuf, ref HijBuf, ref Tbuf, ref Lbuf,
+                                                    ref minActive, j, n);
 
                     total++;
                     k = j + 1;
@@ -206,31 +172,8 @@ namespace LinearAlgebra
                     // Least-squares solve (periodic dense re-QR of the accumulated Hbuf prefix) + a
                     // per-column residual check via the Pythagorean LS-residual identity -- no extra
                     // matvec, mirrors bgmres/scalar gmres's O(1) per-step check.
-                    int totalRows = off[k + 1];
-                    int totalCols = off[k];
-
-                    var HQ = RectView(HQscratch, totalRows, totalCols);
-                    CopyBlock(in Hbuf, ref HQ, totalRows, totalCols);
-                    var Rls = RectView(Rscratch, totalCols, totalCols);
-                    QR.decompInPlace(ref HQ, ref Rls);
-                    var Gactive = RowsView(Gbuf, totalRows);
-                    var Yv = RowsView(Yscratch, totalCols);
-                    QR.decompSolve(ref HQ, ref Rls, ref Gactive, ref Yv);
-
-                    var QtG = RowsView(QtGscratch, totalCols);
-                    Blas.dot(in HQ, in Gactive, ref QtG, true, false);
-
-                    bool allConverged = true;
-                    for (int c = 0; c < s; c++)
-                    {
-                        float gg = (float)0;
-                        for (int r = 0; r < totalRows; r++) gg += Gactive[r, c] * Gactive[r, c];
-                        float qq = (float)0;
-                        for (int r = 0; r < totalCols; r++) qq += QtG[r, c] * QtG[r, c];
-                        float resid2 = math.max((float)0, gg - qq);
-                        if (resid2 > thr[c]) allConverged = false;
-                    }
-                    cycleConverged = allConverged;
+                    cycleConverged = BlockLSResolveAndCheck(in Hbuf, in off, k, ref HQscratch, ref Rscratch,
+                                                             ref Gbuf, ref Yscratch, ref QtGscratch, in thr, s);
 
                     // Happy breakdown: the block Krylov subspace stopped growing -- the just-computed Y
                     // is already exact for the reachable subspace, so no further step can help.
