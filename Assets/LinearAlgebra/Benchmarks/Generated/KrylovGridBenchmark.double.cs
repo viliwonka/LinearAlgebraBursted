@@ -19,12 +19,16 @@ namespace LinearAlgebra.Benchmarks
     // dtype-agnostic harness (gallery/solver constants, Run, Section) is hand-written in
     // Assets/LinearAlgebra/Benchmarks/KrylovGridBenchmark.cs.
     //
-    // Every job zeroes x then calls a solver's fixed-iteration BSR entry point at tol=0 -- every
-    // timed sample runs exactly K iterations (deterministic timing, mirrors IterativeBenchmark /
-    // SparseSolverBenchmark / PCGBenchmark's convention). fcg is excluded: it has no unpreconditioned
-    // BSR entry point (see doubleFcgInvoker in KrylovBattery.Invokers.double.cs), so a plain-Identity
-    // timing here would need an explicit identity preconditioner instance, not a "clean" fixed-iter
-    // call like the other nine.
+    // Two regimes over the same jobs:
+    //   FIXED-K   -- Tol = 0, so every timed sample runs exactly K iterations (deterministic
+    //                per-iteration cost, mirrors IterativeBenchmark/SparseSolverBenchmark/PCGBenchmark).
+    //   CONVERGE  -- Tol = sqrt(eps), K = generous cap, so each solver runs to its own stopping test;
+    //                reports iterations-to-converge + status + time-to-solution (the comparison that
+    //                ranks solvers -- fewer/cheaper iterations, not a forced fixed count).
+    // Each job writes info.iterations/info.status into Out (when created) for the converge regime.
+    // fcg is excluded: it has no unpreconditioned BSR entry point (see doubleFcgInvoker in
+    // KrylovBattery.Invokers.double.cs), so a plain-Identity call here would need an explicit identity
+    // preconditioner instance, not a "clean" call like the other nine.
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct CgGridJobDouble : IJob
@@ -32,11 +36,14 @@ namespace LinearAlgebra.Benchmarks
         public doubleBSR A;
         public doubleN b, x;
         public int K;
+        public double Tol;
+        public NativeArray<int> Out;
 
         public void Execute()
         {
             for (int i = 0; i < x.N; i++) x[i] = 0f;
-            Krylov.cg(in A, in b, ref x, K, 0f);
+            var info = Krylov.cg(in A, in b, ref x, K, Tol);
+            if (Out.IsCreated) { Out[0] = info.iterations; Out[1] = (int)info.status; }
         }
     }
 
@@ -46,11 +53,14 @@ namespace LinearAlgebra.Benchmarks
         public doubleBSR A;
         public doubleN b, x;
         public int K;
+        public double Tol;
+        public NativeArray<int> Out;
 
         public void Execute()
         {
             for (int i = 0; i < x.N; i++) x[i] = 0f;
-            Krylov.minres(in A, in b, ref x, K, 0f);
+            var info = Krylov.minres(in A, in b, ref x, K, Tol);
+            if (Out.IsCreated) { Out[0] = info.iterations; Out[1] = (int)info.status; }
         }
     }
 
@@ -60,11 +70,14 @@ namespace LinearAlgebra.Benchmarks
         public doubleBSR A;
         public doubleN b, x;
         public int K;
+        public double Tol;
+        public NativeArray<int> Out;
 
         public void Execute()
         {
             for (int i = 0; i < x.N; i++) x[i] = 0f;
-            Krylov.minresQLP(in A, in b, ref x, K, 0f);
+            var info = Krylov.minresQLP(in A, in b, ref x, K, Tol);
+            if (Out.IsCreated) { Out[0] = info.iterations; Out[1] = (int)info.status; }
         }
     }
 
@@ -74,11 +87,14 @@ namespace LinearAlgebra.Benchmarks
         public doubleBSR A;
         public doubleN b, x;
         public int K;
+        public double Tol;
+        public NativeArray<int> Out;
 
         public void Execute()
         {
             for (int i = 0; i < x.N; i++) x[i] = 0f;
-            Krylov.biCGStab(in A, in b, ref x, K, 0f);
+            var info = Krylov.biCGStab(in A, in b, ref x, K, Tol);
+            if (Out.IsCreated) { Out[0] = info.iterations; Out[1] = (int)info.status; }
         }
     }
 
@@ -89,11 +105,14 @@ namespace LinearAlgebra.Benchmarks
         public doubleN b, x;
         public int Restart;
         public int K;
+        public double Tol;
+        public NativeArray<int> Out;
 
         public void Execute()
         {
             for (int i = 0; i < x.N; i++) x[i] = 0f;
-            Krylov.gmres(in A, in b, ref x, Restart, K, 0f);
+            var info = Krylov.gmres(in A, in b, ref x, Restart, K, Tol);
+            if (Out.IsCreated) { Out[0] = info.iterations; Out[1] = (int)info.status; }
         }
     }
 
@@ -104,11 +123,14 @@ namespace LinearAlgebra.Benchmarks
         public doubleN b, x;
         public int Restart;
         public int K;
+        public double Tol;
+        public NativeArray<int> Out;
 
         public void Execute()
         {
             for (int i = 0; i < x.N; i++) x[i] = 0f;
-            Krylov.fgmres(in A, in b, ref x, Restart, K, 0f);
+            var info = Krylov.fgmres(in A, in b, ref x, Restart, K, Tol);
+            if (Out.IsCreated) { Out[0] = info.iterations; Out[1] = (int)info.status; }
         }
     }
 
@@ -119,11 +141,14 @@ namespace LinearAlgebra.Benchmarks
         public doubleN b, x;
         public int S;
         public int K;
+        public double Tol;
+        public NativeArray<int> Out;
 
         public void Execute()
         {
             for (int i = 0; i < x.N; i++) x[i] = 0f;
-            Krylov.idr(in A, in b, ref x, S, K, 0f);
+            var info = Krylov.idr(in A, in b, ref x, S, K, Tol);
+            if (Out.IsCreated) { Out[0] = info.iterations; Out[1] = (int)info.status; }
         }
     }
 
@@ -133,11 +158,14 @@ namespace LinearAlgebra.Benchmarks
         public doubleBSR A;
         public doubleN b, x;
         public int K;
+        public double Tol;
+        public NativeArray<int> Out;
 
         public void Execute()
         {
             for (int i = 0; i < x.N; i++) x[i] = 0f;
-            Krylov.tfqmr(in A, in b, ref x, K, 0f);
+            var info = Krylov.tfqmr(in A, in b, ref x, K, Tol);
+            if (Out.IsCreated) { Out[0] = info.iterations; Out[1] = (int)info.status; }
         }
     }
 
@@ -149,11 +177,14 @@ namespace LinearAlgebra.Benchmarks
         public int Restart;
         public int Recycle;
         public int K;
+        public double Tol;
+        public NativeArray<int> Out;
 
         public void Execute()
         {
             for (int i = 0; i < x.N; i++) x[i] = 0f;
-            Krylov.gcrodr(in A, in b, ref x, Restart, Recycle, K, 0f);
+            var info = Krylov.gcrodr(in A, in b, ref x, Restart, Recycle, K, Tol);
+            if (Out.IsCreated) { Out[0] = info.iterations; Out[1] = (int)info.status; }
         }
     }
 
@@ -179,6 +210,18 @@ namespace LinearAlgebra.Benchmarks
                 "double", n, gallery, solver, st.Median, st.Min, residual);
         }
 
+        // Converge-regime row: iterations-to-converge + status alongside the time and true residual.
+        static string RowConvDouble(string gallery, string solver, int n, int iters, string status, Bench.Stat st, double residual)
+        {
+            const string fmt = "{0,-7} {1,-6} {2,-10} {3,-12} {4,7} {5,-13} {6,11:F4} {7,11:F4} {8,14:E3}";
+            return string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
+                "double", n, gallery, solver, iters, status, st.Median, st.Min, residual);
+        }
+
+        // double-tokened purely so codegen renames it per dtype (StatusNameFloat/StatusNameDouble),
+        // avoiding a duplicate-member clash the way RowDouble does -- the body is dtype-agnostic.
+        static string StatusNameDouble(int code) => ((IterativeSolveStatus)code).ToString();
+
         // Every square solver applies on an SPD gallery -- times all nine.
         static string BenchSpdDouble(int restart, int s, int recycle, int k)
         {
@@ -187,35 +230,37 @@ namespace LinearAlgebra.Benchmarks
             int n = A.M_Rows;
             var b = arena.doubleRandomVec(n, (double)(-1), (double)1, 0xD100u);
             var x = arena.doubleVec(n);
+            var o = new NativeArray<int>(2, Allocator.Persistent);   // required construction; unread in fixed-K
             var sb = new StringBuilder();
 
-            var cgJob = new CgGridJobDouble { A = A, b = b, x = x, K = k };
+            var cgJob = new CgGridJobDouble { A = A, b = b, x = x, K = k, Tol = (double)0, Out = o };
             sb.AppendLine(RowDouble("SPD", "cg", n, Bench.Time(() => cgJob.Run()), ResidualDouble(in A, in x, in b)));
 
-            var minresJob = new MinresGridJobDouble { A = A, b = b, x = x, K = k };
+            var minresJob = new MinresGridJobDouble { A = A, b = b, x = x, K = k, Tol = (double)0, Out = o };
             sb.AppendLine(RowDouble("SPD", "minres", n, Bench.Time(() => minresJob.Run()), ResidualDouble(in A, in x, in b)));
 
-            var minresQlpJob = new MinresQLPGridJobDouble { A = A, b = b, x = x, K = k };
+            var minresQlpJob = new MinresQLPGridJobDouble { A = A, b = b, x = x, K = k, Tol = (double)0, Out = o };
             sb.AppendLine(RowDouble("SPD", "minresQLP", n, Bench.Time(() => minresQlpJob.Run()), ResidualDouble(in A, in x, in b)));
 
-            var biCGStabJob = new BiCGStabGridJobDouble { A = A, b = b, x = x, K = k };
+            var biCGStabJob = new BiCGStabGridJobDouble { A = A, b = b, x = x, K = k, Tol = (double)0, Out = o };
             sb.AppendLine(RowDouble("SPD", "biCGStab", n, Bench.Time(() => biCGStabJob.Run()), ResidualDouble(in A, in x, in b)));
 
-            var gmresJob = new GmresGridJobDouble { A = A, b = b, x = x, Restart = restart, K = k };
+            var gmresJob = new GmresGridJobDouble { A = A, b = b, x = x, Restart = restart, K = k, Tol = (double)0, Out = o };
             sb.AppendLine(RowDouble("SPD", "gmres", n, Bench.Time(() => gmresJob.Run()), ResidualDouble(in A, in x, in b)));
 
-            var fgmresJob = new FgmresGridJobDouble { A = A, b = b, x = x, Restart = restart, K = k };
+            var fgmresJob = new FgmresGridJobDouble { A = A, b = b, x = x, Restart = restart, K = k, Tol = (double)0, Out = o };
             sb.AppendLine(RowDouble("SPD", "fgmres", n, Bench.Time(() => fgmresJob.Run()), ResidualDouble(in A, in x, in b)));
 
-            var idrJob = new IdrGridJobDouble { A = A, b = b, x = x, S = s, K = k };
+            var idrJob = new IdrGridJobDouble { A = A, b = b, x = x, S = s, K = k, Tol = (double)0, Out = o };
             sb.AppendLine(RowDouble("SPD", "idr", n, Bench.Time(() => idrJob.Run()), ResidualDouble(in A, in x, in b)));
 
-            var tfqmrJob = new TfqmrGridJobDouble { A = A, b = b, x = x, K = k };
+            var tfqmrJob = new TfqmrGridJobDouble { A = A, b = b, x = x, K = k, Tol = (double)0, Out = o };
             sb.AppendLine(RowDouble("SPD", "tfqmr", n, Bench.Time(() => tfqmrJob.Run()), ResidualDouble(in A, in x, in b)));
 
-            var gcrodrJob = new GcrodrGridJobDouble { A = A, b = b, x = x, Restart = restart, Recycle = recycle, K = k };
+            var gcrodrJob = new GcrodrGridJobDouble { A = A, b = b, x = x, Restart = restart, Recycle = recycle, K = k, Tol = (double)0, Out = o };
             sb.Append(RowDouble("SPD", "gcrodr", n, Bench.Time(() => gcrodrJob.Run()), ResidualDouble(in A, in x, in b)));
 
+            o.Dispose();
             arena.Dispose();
             return sb.ToString();
         }
@@ -229,26 +274,125 @@ namespace LinearAlgebra.Benchmarks
             int n = A.M_Rows;
             var b = arena.doubleRandomVec(n, (double)(-1), (double)1, 0xD101u);
             var x = arena.doubleVec(n);
+            var o = new NativeArray<int>(2, Allocator.Persistent);   // required construction; unread in fixed-K
             var sb = new StringBuilder();
 
-            var biCGStabJob = new BiCGStabGridJobDouble { A = A, b = b, x = x, K = k };
+            var biCGStabJob = new BiCGStabGridJobDouble { A = A, b = b, x = x, K = k, Tol = (double)0, Out = o };
             sb.AppendLine(RowDouble("Nonsym", "biCGStab", n, Bench.Time(() => biCGStabJob.Run()), ResidualDouble(in A, in x, in b)));
 
-            var gmresJob = new GmresGridJobDouble { A = A, b = b, x = x, Restart = restart, K = k };
+            var gmresJob = new GmresGridJobDouble { A = A, b = b, x = x, Restart = restart, K = k, Tol = (double)0, Out = o };
             sb.AppendLine(RowDouble("Nonsym", "gmres", n, Bench.Time(() => gmresJob.Run()), ResidualDouble(in A, in x, in b)));
 
-            var fgmresJob = new FgmresGridJobDouble { A = A, b = b, x = x, Restart = restart, K = k };
+            var fgmresJob = new FgmresGridJobDouble { A = A, b = b, x = x, Restart = restart, K = k, Tol = (double)0, Out = o };
             sb.AppendLine(RowDouble("Nonsym", "fgmres", n, Bench.Time(() => fgmresJob.Run()), ResidualDouble(in A, in x, in b)));
 
-            var idrJob = new IdrGridJobDouble { A = A, b = b, x = x, S = s, K = k };
+            var idrJob = new IdrGridJobDouble { A = A, b = b, x = x, S = s, K = k, Tol = (double)0, Out = o };
             sb.AppendLine(RowDouble("Nonsym", "idr", n, Bench.Time(() => idrJob.Run()), ResidualDouble(in A, in x, in b)));
 
-            var tfqmrJob = new TfqmrGridJobDouble { A = A, b = b, x = x, K = k };
+            var tfqmrJob = new TfqmrGridJobDouble { A = A, b = b, x = x, K = k, Tol = (double)0, Out = o };
             sb.AppendLine(RowDouble("Nonsym", "tfqmr", n, Bench.Time(() => tfqmrJob.Run()), ResidualDouble(in A, in x, in b)));
 
-            var gcrodrJob = new GcrodrGridJobDouble { A = A, b = b, x = x, Restart = restart, Recycle = recycle, K = k };
+            var gcrodrJob = new GcrodrGridJobDouble { A = A, b = b, x = x, Restart = restart, Recycle = recycle, K = k, Tol = (double)0, Out = o };
             sb.Append(RowDouble("Nonsym", "gcrodr", n, Bench.Time(() => gcrodrJob.Run()), ResidualDouble(in A, in x, in b)));
 
+            o.Dispose();
+            arena.Dispose();
+            return sb.ToString();
+        }
+
+        // CONVERGE regime, SPD gallery: run each of the nine to its own stopping test (real tol,
+        // generous cap) and report iterations + status + time-to-solution.
+        static string BenchSpdConvergeDouble(int restart, int s, int recycle)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.doubleLaplacian2D(16, 16);
+            int n = A.M_Rows;
+            double tol = Consts.doubleSqrtEps;
+            int maxIter = 4 * n;
+            var b = arena.doubleRandomVec(n, (double)(-1), (double)1, 0xD100u);
+            var x = arena.doubleVec(n);
+            var o = new NativeArray<int>(2, Allocator.Persistent);
+            var sb = new StringBuilder();
+
+            var cgJob = new CgGridJobDouble { A = A, b = b, x = x, K = maxIter, Tol = tol, Out = o };
+            var st = Bench.Time(() => cgJob.Run());
+            sb.AppendLine(RowConvDouble("SPD", "cg", n, o[0], StatusNameDouble(o[1]), st, ResidualDouble(in A, in x, in b)));
+
+            var minresJob = new MinresGridJobDouble { A = A, b = b, x = x, K = maxIter, Tol = tol, Out = o };
+            st = Bench.Time(() => minresJob.Run());
+            sb.AppendLine(RowConvDouble("SPD", "minres", n, o[0], StatusNameDouble(o[1]), st, ResidualDouble(in A, in x, in b)));
+
+            var minresQlpJob = new MinresQLPGridJobDouble { A = A, b = b, x = x, K = maxIter, Tol = tol, Out = o };
+            st = Bench.Time(() => minresQlpJob.Run());
+            sb.AppendLine(RowConvDouble("SPD", "minresQLP", n, o[0], StatusNameDouble(o[1]), st, ResidualDouble(in A, in x, in b)));
+
+            var biCGStabJob = new BiCGStabGridJobDouble { A = A, b = b, x = x, K = maxIter, Tol = tol, Out = o };
+            st = Bench.Time(() => biCGStabJob.Run());
+            sb.AppendLine(RowConvDouble("SPD", "biCGStab", n, o[0], StatusNameDouble(o[1]), st, ResidualDouble(in A, in x, in b)));
+
+            var gmresJob = new GmresGridJobDouble { A = A, b = b, x = x, Restart = restart, K = maxIter, Tol = tol, Out = o };
+            st = Bench.Time(() => gmresJob.Run());
+            sb.AppendLine(RowConvDouble("SPD", "gmres", n, o[0], StatusNameDouble(o[1]), st, ResidualDouble(in A, in x, in b)));
+
+            var fgmresJob = new FgmresGridJobDouble { A = A, b = b, x = x, Restart = restart, K = maxIter, Tol = tol, Out = o };
+            st = Bench.Time(() => fgmresJob.Run());
+            sb.AppendLine(RowConvDouble("SPD", "fgmres", n, o[0], StatusNameDouble(o[1]), st, ResidualDouble(in A, in x, in b)));
+
+            var idrJob = new IdrGridJobDouble { A = A, b = b, x = x, S = s, K = maxIter, Tol = tol, Out = o };
+            st = Bench.Time(() => idrJob.Run());
+            sb.AppendLine(RowConvDouble("SPD", "idr", n, o[0], StatusNameDouble(o[1]), st, ResidualDouble(in A, in x, in b)));
+
+            var tfqmrJob = new TfqmrGridJobDouble { A = A, b = b, x = x, K = maxIter, Tol = tol, Out = o };
+            st = Bench.Time(() => tfqmrJob.Run());
+            sb.AppendLine(RowConvDouble("SPD", "tfqmr", n, o[0], StatusNameDouble(o[1]), st, ResidualDouble(in A, in x, in b)));
+
+            var gcrodrJob = new GcrodrGridJobDouble { A = A, b = b, x = x, Restart = restart, Recycle = recycle, K = maxIter, Tol = tol, Out = o };
+            st = Bench.Time(() => gcrodrJob.Run());
+            sb.Append(RowConvDouble("SPD", "gcrodr", n, o[0], StatusNameDouble(o[1]), st, ResidualDouble(in A, in x, in b)));
+
+            o.Dispose();
+            arena.Dispose();
+            return sb.ToString();
+        }
+
+        // CONVERGE regime, nonsymmetric gallery: only the general-square solvers apply.
+        static string BenchNonsymConvergeDouble(int restart, int s, int recycle)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.doubleRandomSparse(80, 80, 1, (double)0.1, 0x5EED1u);
+            int n = A.M_Rows;
+            double tol = Consts.doubleSqrtEps;
+            int maxIter = 4 * n;
+            var b = arena.doubleRandomVec(n, (double)(-1), (double)1, 0xD101u);
+            var x = arena.doubleVec(n);
+            var o = new NativeArray<int>(2, Allocator.Persistent);
+            var sb = new StringBuilder();
+
+            var biCGStabJob = new BiCGStabGridJobDouble { A = A, b = b, x = x, K = maxIter, Tol = tol, Out = o };
+            var st = Bench.Time(() => biCGStabJob.Run());
+            sb.AppendLine(RowConvDouble("Nonsym", "biCGStab", n, o[0], StatusNameDouble(o[1]), st, ResidualDouble(in A, in x, in b)));
+
+            var gmresJob = new GmresGridJobDouble { A = A, b = b, x = x, Restart = restart, K = maxIter, Tol = tol, Out = o };
+            st = Bench.Time(() => gmresJob.Run());
+            sb.AppendLine(RowConvDouble("Nonsym", "gmres", n, o[0], StatusNameDouble(o[1]), st, ResidualDouble(in A, in x, in b)));
+
+            var fgmresJob = new FgmresGridJobDouble { A = A, b = b, x = x, Restart = restart, K = maxIter, Tol = tol, Out = o };
+            st = Bench.Time(() => fgmresJob.Run());
+            sb.AppendLine(RowConvDouble("Nonsym", "fgmres", n, o[0], StatusNameDouble(o[1]), st, ResidualDouble(in A, in x, in b)));
+
+            var idrJob = new IdrGridJobDouble { A = A, b = b, x = x, S = s, K = maxIter, Tol = tol, Out = o };
+            st = Bench.Time(() => idrJob.Run());
+            sb.AppendLine(RowConvDouble("Nonsym", "idr", n, o[0], StatusNameDouble(o[1]), st, ResidualDouble(in A, in x, in b)));
+
+            var tfqmrJob = new TfqmrGridJobDouble { A = A, b = b, x = x, K = maxIter, Tol = tol, Out = o };
+            st = Bench.Time(() => tfqmrJob.Run());
+            sb.AppendLine(RowConvDouble("Nonsym", "tfqmr", n, o[0], StatusNameDouble(o[1]), st, ResidualDouble(in A, in x, in b)));
+
+            var gcrodrJob = new GcrodrGridJobDouble { A = A, b = b, x = x, Restart = restart, Recycle = recycle, K = maxIter, Tol = tol, Out = o };
+            st = Bench.Time(() => gcrodrJob.Run());
+            sb.Append(RowConvDouble("Nonsym", "gcrodr", n, o[0], StatusNameDouble(o[1]), st, ResidualDouble(in A, in x, in b)));
+
+            o.Dispose();
             arena.Dispose();
             return sb.ToString();
         }
