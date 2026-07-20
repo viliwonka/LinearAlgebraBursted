@@ -145,20 +145,12 @@ namespace LinearAlgebra
             // (the identity path never dereferences z, and may pass default).
             unsafe
             {
-                double* rPtr = r.Data.Ptr, pPtr = p.Data.Ptr, ApPtr = Ap.Data.Ptr, xPtr = x.Data.Ptr, bPtr = b.Data.Ptr;
-
-                if (rPtr == pPtr || rPtr == ApPtr || rPtr == xPtr || rPtr == bPtr ||
-                    pPtr == ApPtr || pPtr == xPtr || pPtr == bPtr ||
-                    ApPtr == xPtr || ApPtr == bPtr ||
-                    xPtr == bPtr)
-                    throw new ArgumentException("cg: r/p/Ap/x/b must be distinct");
-
-                if (!M.IsIdentity)
-                {
-                    double* zPtr = z.Data.Ptr;
-                    if (zPtr == rPtr || zPtr == pPtr || zPtr == ApPtr || zPtr == xPtr || zPtr == bPtr)
-                        throw new ArgumentException("cg: z must be distinct from r/p/Ap/x/b");
-                }
+                int n = M.IsIdentity ? 5 : 6;
+                long* ptrs = stackalloc long[6];
+                ptrs[0] = (long)r.Data.Ptr; ptrs[1] = (long)p.Data.Ptr; ptrs[2] = (long)Ap.Data.Ptr;
+                ptrs[3] = (long)x.Data.Ptr; ptrs[4] = (long)b.Data.Ptr;
+                if (!M.IsIdentity) ptrs[5] = (long)z.Data.Ptr;
+                RequireDistinctBuffers("cg: r/p/Ap/z/x/b must be distinct", ptrs, n);
             }
 
             double bb = Blas.dot(b, b);

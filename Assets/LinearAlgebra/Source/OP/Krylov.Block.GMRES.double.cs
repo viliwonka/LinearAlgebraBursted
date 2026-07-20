@@ -12,36 +12,6 @@ namespace LinearAlgebra
 {
     public static partial class Krylov {
 
-        // ---- bgmres private helpers -----------------------------------------------------------------
-
-        // dst[rowOff+a, colOff+b] += src[a,b] for a<rows, b<cols. Absolute-index accumulate into dst's
-        // OWN true stride -- safe regardless of dst's true N_Cols vs src's (the manual-copy escape
-        // hatch for a buffer that must not be treated as a reshaped View -- see OP/DEVLOG.md).
-        static void StoreBlockAt(ref doubleMxN dst, int rowOff, int colOff, in doubleMxN src, int rows, int cols)
-        {
-            for (int a = 0; a < rows; a++)
-                for (int b = 0; b < cols; b++)
-                    dst[rowOff + a, colOff + b] += src[a, b];
-        }
-
-        // dst[a,c] = src[rowOff+a, c] for a<rows, all c<dst.N_Cols (== src.N_Cols, both fixed-width,
-        // never-reshaped-in-that-dimension buffers).
-        static void ExtractRowsAt(in doubleMxN src, int rowOff, int rows, ref doubleMxN dst)
-        {
-            int cols = dst.N_Cols;
-            for (int a = 0; a < rows; a++)
-                for (int c = 0; c < cols; c++)
-                    dst[a, c] = src[rowOff + a, c];
-        }
-
-        // buf[r,c] = 0 for r<rows, c<cols.
-        static void ZeroPrefix(ref doubleMxN buf, int rows, int cols)
-        {
-            for (int r = 0; r < rows; r++)
-                for (int c = 0; c < cols; c++)
-                    buf[r, c] = (double)0;
-        }
-
         // ---- block GMRES core (bgmres) ---------------------------------------------------------------
 
         /// <summary>

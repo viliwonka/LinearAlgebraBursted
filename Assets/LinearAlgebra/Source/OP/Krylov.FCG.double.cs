@@ -56,16 +56,11 @@ namespace LinearAlgebra
             // previous residual out of it).
             unsafe
             {
-                double* rPtr = r.Data.Ptr, pPtr = p.Data.Ptr, ApPtr = Ap.Data.Ptr, zPtr = z.Data.Ptr,
-                        oPtr = rOld.Data.Ptr, xPtr = x.Data.Ptr, bPtr = b.Data.Ptr;
-
-                if (rPtr == pPtr || rPtr == ApPtr || rPtr == zPtr || rPtr == oPtr || rPtr == xPtr || rPtr == bPtr ||
-                    pPtr == ApPtr || pPtr == zPtr || pPtr == oPtr || pPtr == xPtr || pPtr == bPtr ||
-                    ApPtr == zPtr || ApPtr == oPtr || ApPtr == xPtr || ApPtr == bPtr ||
-                    zPtr == oPtr || zPtr == xPtr || zPtr == bPtr ||
-                    oPtr == xPtr || oPtr == bPtr ||
-                    xPtr == bPtr)
-                    throw new ArgumentException("fcg: r/p/Ap/z/rOld/x/b must be distinct");
+                long* ptrs = stackalloc long[7];
+                ptrs[0] = (long)r.Data.Ptr; ptrs[1] = (long)p.Data.Ptr; ptrs[2] = (long)Ap.Data.Ptr;
+                ptrs[3] = (long)z.Data.Ptr; ptrs[4] = (long)rOld.Data.Ptr;
+                ptrs[5] = (long)x.Data.Ptr; ptrs[6] = (long)b.Data.Ptr;
+                RequireDistinctBuffers("fcg: r/p/Ap/z/rOld/x/b must be distinct", ptrs, 7);
             }
 
             double bb = Blas.dot(b, b);

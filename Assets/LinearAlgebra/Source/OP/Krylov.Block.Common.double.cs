@@ -252,5 +252,174 @@ namespace LinearAlgebra
             }
             return false;
         }
+
+        // ---- block least-squares marshalling helpers (blsmr, bcgls, bcraig, bcraigmr) ----------------
+
+        // Block-applies a (possibly rectangular) TOp per row through scalar Apply, via a Temp row
+        // pair: rowN (length A.Cols) / rowM (length A.Rows). Vrows is `rows` x A.Cols; AVrows is
+        // `rows` x A.Rows. Mirrors doubleColScaledOperator.ApplyBlock's per-row loop -- the general
+        // (non-fused) fallback used because IdoubleLinearOperator.ApplyBlock is symmetric/square-only
+        // (see its own doc), and blsmr's A is rectangular.
+        static void BlockApplyOp<TOp>(in TOp A, in doubleMxN Vrows, ref doubleMxN AVrows, int rows,
+                                       ref doubleN rowN, ref doubleN rowM)
+            where TOp : struct, IdoubleLinearOperator
+        {
+            int n = A.Cols, m = A.Rows;
+            for (int i = 0; i < rows; i++)
+            {
+                for (int c = 0; c < n; c++) rowN[c] = Vrows[i, c];
+                A.Apply(in rowN, ref rowM);
+                for (int c = 0; c < m; c++) AVrows[i, c] = rowM[c];
+            }
+        }
+
+        // Block-applies TOp's transpose per row: Urows is `rows` x A.Rows; ATUrows is `rows` x A.Cols.
+        static void BlockApplyOpT<TOp>(in TOp A, in doubleMxN Urows, ref doubleMxN ATUrows, int rows,
+                                        ref doubleN rowN, ref doubleN rowM)
+            where TOp : struct, IdoubleLinearOperator
+        {
+            int n = A.Cols, m = A.Rows;
+            for (int i = 0; i < rows; i++)
+            {
+                for (int c = 0; c < m; c++) rowM[c] = Urows[i, c];
+                A.ApplyT(in rowM, ref rowN);
+                for (int c = 0; c < n; c++) ATUrows[i, c] = rowN[c];
+            }
+        }
+
+        // True iff the s x s lower- or upper-triangular L is numerically singular: any |diagonal|
+        // entry has collapsed relative to the largest one. Used on every block-bidiagonalization LQ
+        // factor (LB/LA) and on alphabark (the 2s x 2s block-Givens R-factor) -- the paper's own
+        // stated Bl-LSMR breakdown condition is exactly "alphabark singular".
+        static bool TriNearSingular(in doubleMxN L, int s)
+        {
+            double maxDiag = (double)0;
+            for (int i = 0; i < s; i++)
+            {
+                double d = math.abs(L[i, i]);
+                if (d > maxDiag) maxDiag = d;
+            }
+            if (!(maxDiag > (double)0)) return true;
+            double tol = (double)s * Consts.doubleZeroThreshold * maxDiag;
+            for (int i = 0; i < s; i++)
+                if (math.abs(L[i, i]) <= tol) return true;
+            return false;
+        }
+
+        // Dst (size x size) = transpose of Src's (size x size) sub-block starting at (rowOff, colOff).
+        static void ExtractBlockTranspose(in doubleMxN Src, int rowOff, int colOff, ref doubleMxN Dst, int size)
+        {
+            for (int i = 0; i < size; i++)
+                for (int j = 0; j < size; j++)
+                    Dst[i, j] = Src[rowOff + j, colOff + i];
+        }
+
+        // Dst (rows x cols) = Src's own sub-block starting at (rowOff, colOff), no transpose.
+        static void ExtractBlockAt(in doubleMxN Src, int rowOff, int colOff, ref doubleMxN Dst, int rows, int cols)
+        {
+            for (int i = 0; i < rows; i++)
+                for (int j = 0; j < cols; j++)
+                    Dst[i, j] = Src[rowOff + i, colOff + j];
+        }
+
+        // Writes Src (rows x cols) into Dst's sub-block starting at (rowOff, colOff). Dst's remaining
+        // entries are left untouched -- callers rely on this to keep Mpad's zero-padded half intact
+        // across iterations (allocated once, zeroed, only ever written through this on its live half).
+        static void WriteBlockAt(ref doubleMxN Dst, int rowOff, int colOff, in doubleMxN Src, int rows, int cols)
+        {
+            for (int i = 0; i < rows; i++)
+                for (int j = 0; j < cols; j++)
+                    Dst[rowOff + i, colOff + j] = Src[i, j];
+        }
+
+        // Dst (s x s) = transpose(Src). Dst must be distinct from Src.
+        static void TransposeSmall(in doubleMxN Src, ref doubleMxN Dst, int s)
+        {
+            for (int i = 0; i < s; i++)
+                for (int j = 0; j < s; j++)
+                    Dst[i, j] = Src[j, i];
+        }
+
+        // General s x s solve CoefT @ X = Rhs (Rhs DESTROYED, matching QRCP.solveInPlace's destructive
+        // fast path) via rank-revealing QRCP. X's shape (s x width) drives the RHS width -- used both
+        // for the s x s phi solve and the s x n P solve. coefWork/Rqrcp/Pqrcp/uQrcp are s x s / s x s /
+        // Pivot(s) / length-s scratch, shared and fully overwritten by every call.
+        static RankInfo BlockSolveGeneralWide(in doubleMxN CoefT, ref doubleMxN Rhs, ref doubleMxN X,
+                                               ref doubleMxN coefWork, ref doubleMxN Rqrcp,
+                                               ref Pivot Pqrcp, ref doubleN uQrcp, int s)
+        {
+            CopyMat(in CoefT, ref coefWork, s);
+            return QRCP.solveInPlace(ref coefWork, ref Rhs, ref X, ref Rqrcp, ref Pqrcp, ref uQrcp, (double)(-1));
+        }
+
+        // ---- block nonsymmetric-Gram helpers (bbiCGStab, bidr, bgmres, bfgmres, bgcrodr, btfqmr) -----
+
+        // G = Rhat0^T X (classical), via the transpose-B GEMM route. Deliberately NOT BlockGram: Rhat0
+        // (the fixed shadow residual) and X (V/R/T, evolving) are unrelated blocks, so this s x s cross
+        // term is NOT symmetric by construction -- BlockGram's unconditional symmetrization would
+        // corrupt it. G must not alias Rhat0 or X.
+        static void BlockCrossGram(in doubleMxN Rhat0, in doubleMxN X, ref doubleMxN G)
+            => Blas.dot(in Rhat0, in X, ref G, false, true);
+
+        // General (nonsymmetric) s x s solve: Coef * X = Rhs, via QRCP (rank-revealing). Coef/Rhs are
+        // copied into coefWork/rhsWork (which QRCP.solveInPlace destroys), so Coef/Rhs are preserved.
+        // X must be distinct from Coef/Rhs.
+        static RankInfo BlockSolveGeneral(in doubleMxN Coef, in doubleMxN Rhs, ref doubleMxN X,
+                                           ref doubleMxN coefWork, ref doubleMxN rhsWork,
+                                           ref doubleMxN Rqrcp, ref Pivot Pqrcp, ref doubleN uQrcp, int s)
+        {
+            CopyMat(in Coef, ref coefWork, s);
+            CopyMat(in Rhs, ref rhsWork, s);
+            return QRCP.solveInPlace(ref coefWork, ref rhsWork, ref X, ref Rqrcp, ref Pqrcp, ref uQrcp, (double)(-1));
+        }
+
+        // Frobenius inner product sum_i,c U[i,c]*V[i,c] over the whole (contiguous) block -- equals
+        // trace(U_classical^T V_classical) regardless of row/col storage convention. U, V must be same shape.
+        static unsafe double BlockFrobDot(in doubleMxN U, in doubleMxN V)
+        {
+            double* up = U.Data.Ptr; double* vp = V.Data.Ptr;
+            long len = (long)U.M_Rows * U.N_Cols;
+            double acc = (double)0;
+            for (long i = 0; i < len; i++) acc += up[i] * vp[i];
+            return acc;
+        }
+
+        // M *= scale over the whole (contiguous) block, in place.
+        static unsafe void BlockScaleInPlace(ref doubleMxN M, double scale)
+        {
+            double* mp = M.Data.Ptr;
+            long len = (long)M.M_Rows * M.N_Cols;
+            for (long i = 0; i < len; i++) mp[i] *= scale;
+        }
+
+        // ---- block-Hessenberg marshalling helpers (bgmres, bfgmres, bgcrodr) --------------------------
+
+        // dst[rowOff+a, colOff+b] += src[a,b] for a<rows, b<cols. Absolute-index accumulate into dst's
+        // OWN true stride -- safe regardless of dst's true N_Cols vs src's (the manual-copy escape
+        // hatch for a buffer that must not be treated as a reshaped View -- see OP/DEVLOG.md).
+        static void StoreBlockAt(ref doubleMxN dst, int rowOff, int colOff, in doubleMxN src, int rows, int cols)
+        {
+            for (int a = 0; a < rows; a++)
+                for (int b = 0; b < cols; b++)
+                    dst[rowOff + a, colOff + b] += src[a, b];
+        }
+
+        // dst[a,c] = src[rowOff+a, c] for a<rows, all c<dst.N_Cols (== src.N_Cols, both fixed-width,
+        // never-reshaped-in-that-dimension buffers).
+        static void ExtractRowsAt(in doubleMxN src, int rowOff, int rows, ref doubleMxN dst)
+        {
+            int cols = dst.N_Cols;
+            for (int a = 0; a < rows; a++)
+                for (int c = 0; c < cols; c++)
+                    dst[a, c] = src[rowOff + a, c];
+        }
+
+        // buf[r,c] = 0 for r<rows, c<cols.
+        static void ZeroPrefix(ref doubleMxN buf, int rows, int cols)
+        {
+            for (int r = 0; r < rows; r++)
+                for (int c = 0; c < cols; c++)
+                    buf[r, c] = (double)0;
+        }
     }
 }

@@ -47,46 +47,6 @@ namespace LinearAlgebra
 
     public static partial class Krylov {
 
-        // ---- bbiCGStab private helpers ---------------------------------------------------------------
-
-        // G = Rhat0^T X (classical), via the transpose-B GEMM route. Deliberately NOT BlockGram: Rhat0
-        // (the fixed shadow residual) and X (V/R/T, evolving) are unrelated blocks, so this s x s cross
-        // term is NOT symmetric by construction -- BlockGram's unconditional symmetrization would
-        // corrupt it. G must not alias Rhat0 or X.
-        static void BlockCrossGram(in doubleMxN Rhat0, in doubleMxN X, ref doubleMxN G)
-            => Blas.dot(in Rhat0, in X, ref G, false, true);
-
-        // General (nonsymmetric) s x s solve: Coef * X = Rhs, via QRCP (rank-revealing). Coef/Rhs are
-        // copied into coefWork/rhsWork (which QRCP.solveInPlace destroys), so Coef/Rhs are preserved.
-        // X must be distinct from Coef/Rhs.
-        static RankInfo BlockSolveGeneral(in doubleMxN Coef, in doubleMxN Rhs, ref doubleMxN X,
-                                           ref doubleMxN coefWork, ref doubleMxN rhsWork,
-                                           ref doubleMxN Rqrcp, ref Pivot Pqrcp, ref doubleN uQrcp, int s)
-        {
-            CopyMat(in Coef, ref coefWork, s);
-            CopyMat(in Rhs, ref rhsWork, s);
-            return QRCP.solveInPlace(ref coefWork, ref rhsWork, ref X, ref Rqrcp, ref Pqrcp, ref uQrcp, (double)(-1));
-        }
-
-        // Frobenius inner product sum_i,c U[i,c]*V[i,c] over the whole (contiguous) block -- equals
-        // trace(U_classical^T V_classical) regardless of row/col storage convention. U, V must be same shape.
-        static unsafe double BlockFrobDot(in doubleMxN U, in doubleMxN V)
-        {
-            double* up = U.Data.Ptr; double* vp = V.Data.Ptr;
-            long len = (long)U.M_Rows * U.N_Cols;
-            double acc = (double)0;
-            for (long i = 0; i < len; i++) acc += up[i] * vp[i];
-            return acc;
-        }
-
-        // M *= scale over the whole (contiguous) block, in place.
-        static unsafe void BlockScaleInPlace(ref doubleMxN M, double scale)
-        {
-            double* mp = M.Data.Ptr;
-            long len = (long)M.M_Rows * M.N_Cols;
-            for (long i = 0; i < len; i++) mp[i] *= scale;
-        }
-
         // ---- block BiCGSTAB core (bbiCGStab) -------------------------------------------------------
 
         /// <summary>

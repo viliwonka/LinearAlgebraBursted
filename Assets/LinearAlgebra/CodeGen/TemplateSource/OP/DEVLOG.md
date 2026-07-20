@@ -1,6 +1,18 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov DRY extraction (P0)
+- 2026-07-20 | Task #57 P0 (docs/dev/spec-krylov-dry-extraction.md Cluster F/I): relocated 15
+  single-definition block helpers (`BlockApplyOp`, `BlockApplyOpT`, `TriNearSingular`,
+  `ExtractBlockTranspose`, `ExtractBlockAt`, `WriteBlockAt`, `TransposeSmall`,
+  `BlockSolveGeneralWide` from `Krylov.Block.LSMR.fProxy.cs`; `BlockCrossGram`,
+  `BlockSolveGeneral`, `BlockFrobDot`, `BlockScaleInPlace` from `Krylov.Block.BiCGStab.fProxy.cs`;
+  `StoreBlockAt`, `ExtractRowsAt`, `ZeroPrefix` from `Krylov.Block.GMRES.fProxy.cs`) into
+  `Krylov.Block.Common.fProxy.cs`, pure cut-paste (partial class, no call-site changes). Also
+  converted `cg`/`fcg`'s inline pointer-aliasing OR-chains to the shared `RequireDistinctBuffers`
+  helper (mirrors minres/biCGStab/etc), same buffer sets. Zero behavior change; suite stayed
+  7123/7123 green before and after.
+
 ## Krylov.Block.GCRODR
 - 2026-07-20 | New `Krylov.Block.GCRODR.fProxy.cs` (task #40, bgcrodr): block GCRO-DR, block-generalizing scalar `gcrodr`'s recycled-subspace + refined-harmonic-Ritz deflation (same two eigensolvers: `Eigen.valuesQRInPlace` for the harmonic-Ritz VALUES of `Gmat^-1 Fmat`, `Eigen.symmetricInPlace` for each refined VECTOR) on top of `bgmres`'s block Arnoldi / deflating-LQ / periodic-dense-QR-least-squares engine. The recycled subspace (U/C/Ru, up to `recycle` individual n-vectors) is stored as block matrices (recycle rows) rather than scalar gcrodr's `UnsafeList<fProxyN>`, so the projection/uncorrection steps reuse the same GEMM-shaped block helpers (`BlockCrossGram`/`BlockCTV`) bgmres's own machinery uses. Preconditioning mirrors scalar gcrodr's per-Arnoldi-step M-apply + stored basis (Zv, combined at commit) rather than bgmres's apply-M-once-to-the-combination trick, because U/C need to live directly in solution space for the recycled correction to need no second M-apply — so recycle=0 is NOT guaranteed bit-identical to bgmres (unlike scalar gcrodr's recycle=0-equals-gmres guarantee), one extra M-apply per block step versus bgmres's optimum.
 - 2026-07-20 | Landmine hit and avoided: a `RectView`/`View` narrower than a buffer's TRUE column width reinterprets the FLAT storage (front `rows*cols` elements), not a geometric sub-rectangle — using it to narrow `Bmat` (recycle x m*s) down to (kcur, totalCols) for the commit-phase `Bmat @ Y` product would misalign rows. Fixed by GEMM-ing the FULL untruncated `RowsView(Bmat, kcur)` against the full `Yscratch` (m*s rows): Bmat's columns beyond this cycle's totalCols are freshly zeroed every cycle, so they cancel any stale (but always finite, never NaN) rows Yscratch carries over from an earlier, wider cycle. Same rationale as `StoreBlockAt`/`ExtractRowsAt`'s own doc comments in `Krylov.Block.GMRES.fProxy.cs`.
