@@ -20,6 +20,11 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   least-norm invoker yet).
 
 ## KrylovSquareBatteryTests / KrylovBattery.Invokers
+- 2026-07-20 | Added `fProxyGcrodrInvoker` + `SolverKind.Gcrodr` for `Krylov.gcrodr` (task #29),
+  mirroring `fProxyGmresInvoker` (Requires=Square, Forbids=IllConditioned, PrecondKind=
+  NonsymmetricBSR, no-op Init, same task-#53-deferred Rosser exclusion). `Restart=30, Recycle=10`
+  (recycle at 1/3 of restart, matching the `GcrodrDefaultRecycle` production default). See the OP
+  DEVLOG's `Krylov.GCRODR` entry for the solver-side design/deviations.
 - 2026-07-20 | Added `fProxyTfqmrInvoker` + `SolverKind.Tfqmr`, mirroring `fProxyBiCGStabInvoker`
   (Requires=Square, Forbids=IllConditioned, PrecondKind=NonsymmetricBSR -- same task-#53-deferred
   Rosser exclusion class as biCGStab/gmres/idr). `MaxIterMul=40` (tfqmr's maxIter counts half-steps,

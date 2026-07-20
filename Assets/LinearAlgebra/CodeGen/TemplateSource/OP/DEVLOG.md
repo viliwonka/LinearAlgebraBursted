@@ -1,6 +1,86 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.GCRODR
+- 2026-07-20 | Breakdown path now recomputes `rnorm` as a fresh ‖b-Ax‖ before returning, instead of
+  reporting the stale Arnoldi/Givens `resnorm` estimate -- found while reviewing the bespoke
+  `SingularBreakdownTest` (all-zero A): the degenerate Givens rotation (`rr==0 -> c=1,s=0`) leaves
+  `g[j+1]==0`, an artifact that reads as a near-zero residual even though x was never updated that
+  cycle and the true residual is still ‖b‖. Never affected the Breakdown/NaN correctness the test
+  checks (rnorm was 0, not NaN), just SolveInfo.rnorm's documented "at the returned x" contract.
+- 2026-07-20 | New file `Krylov.GCRODR.fProxy.cs`: single-RHS GCRO-DR (Morgan 2002 / Parks-de
+  Sturler-Mackey-Johnson-Maiti 2006), the last single-RHS Krylov solver (task #29). Extends
+  `gmres(m)` with a recycled k-dimensional subspace carried across restart cycles. Structure/Arnoldi/
+  Givens machinery mirrors `Krylov.GMRES.fProxy.cs` directly; the flexible-basis storage (retaining
+  M⁻¹v_j across a whole cycle instead of one scratch buffer) mirrors `Krylov.FGMRES.fProxy.cs`'s Z
+  array. Primary reference `reference/square/BelosGCRODRIter.hpp` supplied the Arnoldi/QR-update
+  loop shape but NOT the harmonic-Ritz recompute (that lives in Belos's SolMgr file, not in the
+  `reference/` stash) -- the deflation-update math below was derived from first principles
+  (Morgan/Parks harmonic Ritz theory), not ported line-for-line. `reference/scipy/_gcrotmk.py` is a
+  DIFFERENT algorithm (GCROT(m,k), single-vector-append recycling, no harmonic Ritz) -- used only to
+  cross-check the recycled-subspace projection bookkeeping shape (C/U roles, `x += U(C^Tr)` /
+  `r -= C(C^Tr)` cycle-start projection), not ported.
+- 2026-07-20 | DEVIATION from strict Morgan-2002 harmonic Ritz VECTORS, forced by the library's
+  eigensolver surface: the classic method needs eigenvectors of a small dense GENERAL (nonsymmetric)
+  matrix, but this codebase's only nonsymmetric dense eigensolver (`Eigen.valuesQRInPlace`) is
+  values-only (Hessenberg + Francis QR, EISPACK hqr) -- there is no general eigenVECTOR solver, and
+  the spec requires reusing an existing eigensolver rather than hand-rolling one. Fix: use harmonic
+  Ritz VALUES from `valuesQRInPlace` (real ones only -- a complex-conjugate pair is skipped, since a
+  single real recycled direction can't represent one half of a complex pair; the target matrix
+  usually has more real small-eigenvalue candidates than `recycle` needs) but REFINED vectors for
+  each selected value: z = argmin_{‖z‖=1} ‖(AP - θP)z‖ over the combined old-recycle + this-cycle
+  Krylov space P, which is the smallest-eigenvalue eigenvector of the SYMMETRIC d x d matrix
+  `N_θ = Fmat - θ(Gmat+Gmatᵀ) + θ²·Pgram` (Fmat=(AP)ᵀ(AP), Gmat=(AP)ᵀP, Pgram=PᵀP), solved via
+  `Eigen.symmetricInPlace` (existing, has eigenvectors). Refined Ritz vectors are themselves an
+  established alternative to harmonic Ritz vectors in the recycled-Krylov literature (Jia 1997);
+  pairing them with harmonic Ritz VALUES (rather than plain Ritz values from H alone) keeps the
+  "target the smallest eigenvalues" property Morgan's method relies on. One eigendecomposition of
+  `N_θ` per selected θ (up to `recycle` calls per cycle) -- d is small (≲ restart+recycle), so this
+  is cheap relative to the O(n) Arnoldi work per cycle.
+- 2026-07-20 | AU=C·Ru invariant (not AU=C exactly): C (orthonormal) and Ru (upper triangular) are
+  rebuilt each cycle via a thin QR of the harmonic-Ritz combination `A·U_raw` (`QR.decompInPlace`);
+  U itself is kept unnormalized. This needs one extra k x k upper-triangular back-substitution both
+  at cycle start (`Ru z = Cᵀr` before `x += Uz`) and at cycle end (`Ru q = B[:,:p]y` before
+  `x -= Uq`) versus the simpler "AU=C exactly" invariant some references use, but avoids ever needing
+  a triangular matrix RIGHT-division (`U_final = U_raw·Ru⁻¹`, i.e. solving `X·Ru = Y` for a matrix
+  X) which this library has no direct primitive for. Both residual updates recompute `b-Ax` with a
+  FRESH matvec rather than trusting the incremental `r -= C·(Cᵀr)` through a possibly
+  near-singular Ru solve -- a deliberate one-extra-matvec-per-cycle cost for exactness (a clamped
+  `z[i]=0` on a near-zero Ru diagonal must never let x and the tracked residual silently disagree).
+- 2026-07-20 | AV[j] (the raw, PRE-projection `A·(this-cycle basis vector)`) is captured during
+  Arnoldi and reused for the deflation-update's `AP` -- avoids re-applying the operator for the
+  Krylov part of the combined subspace. The recycled part's `A·U_old` (= `C_old·Ru_old`) is instead
+  MATERIALIZED explicitly each cycle (k dense combinations, not re-derived through the R-factored
+  block-Gram shortcut a more optimized port would use) -- simpler and easier to audit at the cost of
+  O(n·k²) extra work per cycle, which is small next to the O(n·restart) Arnoldi cost. A future perf
+  pass could fold this into the Gram-matrix construction directly (Fmat's top-left block reduces to
+  `Ru_oldᵀRu_old` via C's orthonormality, no n-dependence) -- not done here, correctness-first given
+  the 1-hour-park budget for this solver.
+- 2026-07-20 | Guards (never NaN, never a false Converged): Arnoldi subdiagonal (`hj1`) and the final
+  Hessenberg back-substitution pivot both compare against `pivotGuard = 100·eps·(‖b‖+1)`; the former
+  is a HAPPY breakdown (stops the cycle's Arnoldi loop, not an error -- the Krylov space is exactly
+  A-invariant here); the latter is an honest `IterativeSolveStatus.Breakdown`. The recycle-space
+  triangular solves (`Ru`) clamp a near-zero pivot's contribution to 0 rather than dividing (paired
+  with the fresh-residual-recompute above, so this never desyncs x from the tracked residual). The
+  deflation update's own numerics (`Gmat` LU solve, the small eigendecompositions, the QR
+  rank-check on the new `Ru`) degrade to "keep the previous cycle's recycled subspace unchanged"
+  on ANY failure -- recycling is an accelerator, not a correctness requirement, so a bad cycle there
+  never aborts the outer solve.
+- 2026-07-20 | `recycle` sits where the spec asked (`restart` then `recycle`, before `maxIter, tol`),
+  guarded `0 <= recycle < restart` (recycle=0 disables recycling entirely and is bit-identical to
+  `gmres(m)` -- exercised as an internal consistency check, not a spec requirement). Overload ladder
+  mirrors `gmres` exactly (TOp,TPre generic / TOp identity-forward / dense / dense-defaults / BSR /
+  BSR-defaults / BSR+ILU0 / BSR+ILU0-defaults) with one added helper, `GcrodrDefaultRecycle`, for the
+  three "-defaults" overloads' `recycle = min(10, restart-1)`.
+- 2026-07-20 | Wired into the square Krylov battery: `fProxyGcrodrInvoker` + `SolverKind.Gcrodr` in
+  `KrylovBattery.Invokers.fProxy.cs` / `KrylovSquareBatteryTests.fProxy.cs`, `Requires=Square,
+  Forbids=IllConditioned` -- same task-#53-deferred Rosser exclusion class as gmres/biCGStab/idr
+  (unguarded-in-gmres-family Hessenberg pivot on that clustered-near-degenerate spectrum; gcrodr's
+  OWN pivot guard above would catch it as a clean Breakdown rather than gmres's unbounded diverge,
+  but the battery's shared RunStandardChecks treats Breakdown as a failing status like any other
+  solver here, so the exclusion stays for consistency with its siblings pending a battery-level
+  decision on whether Breakdown should count as an acceptable outcome).
+
 ## Krylov.CRAIGMR
 - 2026-07-20 | New file `Krylov.CRAIGMR.fProxy.cs`: single-RHS CRAIGMR, the MINRES-flavored sibling
   of `craig` -- same least-norm problem (min ‖x‖ s.t. Ax=b, A m×n full row rank, m<=n), same

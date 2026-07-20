@@ -28,7 +28,7 @@ public class floatKrylovSquareBatteryTests
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {
-        public enum SolverKind { Cg, Fcg, Minres, MinresQLP, BiCGStab, Gmres, Fgmres, Idr, Tfqmr }
+        public enum SolverKind { Cg, Fcg, Minres, MinresQLP, BiCGStab, Gmres, Fgmres, Idr, Tfqmr, Gcrodr }
 
         public SolverKind Kind;
 
@@ -51,6 +51,7 @@ public class floatKrylovSquareBatteryTests
                 case SolverKind.Fgmres:    RunStandardChecks(new floatFgmresInvoker { TolValue = Consts.floatSqrtEps, MaxIterMul = 4, Restart = 30 }); break;
                 case SolverKind.Idr:       RunStandardChecks(new floatIdrInvoker { TolValue = Consts.floatSqrtEps, MaxIterMul = 20, S = 4, Seed = 0x9E3779B1u }); break;
                 case SolverKind.Tfqmr:     RunStandardChecks(new floatTfqmrInvoker { TolValue = Consts.floatSqrtEps, MaxIterMul = 40 }); break;
+                case SolverKind.Gcrodr:    RunStandardChecks(new floatGcrodrInvoker { TolValue = Consts.floatSqrtEps, MaxIterMul = 4, Restart = 30, Recycle = 10 }); break;
             }
         }
 

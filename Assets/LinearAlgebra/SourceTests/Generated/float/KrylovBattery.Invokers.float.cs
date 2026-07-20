@@ -366,6 +366,41 @@ namespace LinearAlgebra
     }
 
     /// <summary>
+    /// <see cref="IfloatSquareSolverInvoker"/> for <see cref="Krylov.gcrodr{TOp,TPre}"/> -- restarted
+    /// GMRES(m) with a recycled harmonic-Ritz subspace; usable on any square matrix kind (Requires =
+    /// Square only). Self-allocates its Arnoldi + recycle workspace from Allocator.Temp, so
+    /// <see cref="Init"/> is a no-op. Forbids IllConditioned: shares gmres's Hessenberg
+    /// back-substitution shape on the gallery's clustered-near-degenerate-spectrum entry (Rosser) --
+    /// gcrodr's own pivot guard turns that into a clean Breakdown rather than gmres's unbounded
+    /// divergence, but RunStandardChecks treats Breakdown as a failing status like any other solver
+    /// here, so the exclusion stays for consistency with gmres/biCGStab/idr (task #53).
+    /// </summary>
+    public struct floatGcrodrInvoker : IfloatSquareSolverInvoker
+    {
+        public float TolValue;
+        public int MaxIterMul;
+        public int Restart;
+        public int Recycle;
+
+        public MatrixProfile Requires => MatrixProfile.Square;
+        public MatrixProfile Forbids => MatrixProfile.IllConditioned;
+        public PreconditionerKind PrecondKind => PreconditionerKind.NonsymmetricBSR;
+        public float Tol => TolValue;
+        public int MaxIter(int n) => MaxIterMul * n;
+
+        public void Init(ref Arena arena, int n) { }
+
+        public SolveInfo Solve<TOp>(in TOp A, in floatN b, ref floatN x)
+            where TOp : struct, IfloatLinearOperator
+            => Krylov.gcrodr(in A, in b, ref x, Restart, Recycle, MaxIter(A.Rows), Tol);
+
+        public SolveInfo SolveWithPrecond<TOp, TPre>(in TOp A, in TPre M, in floatN b, ref floatN x)
+            where TOp : struct, IfloatLinearOperator
+            where TPre : struct, IfloatPreconditioner
+            => Krylov.gcrodr(in A, in M, in b, ref x, Restart, Recycle, MaxIter(A.Rows), Tol);
+    }
+
+    /// <summary>
     /// <see cref="IfloatSquareSolverInvoker"/> for <see cref="Krylov.idr{TOp,TPre}"/> -- IDR(s);
     /// usable on any square matrix kind (Requires = Square only). Self-allocates its shadow-space
     /// workspace from Allocator.Temp, so <see cref="Init"/> is a no-op. Forbids IllConditioned: the
