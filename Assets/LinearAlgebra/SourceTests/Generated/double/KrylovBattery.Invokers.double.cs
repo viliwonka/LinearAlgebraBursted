@@ -477,4 +477,261 @@ namespace LinearAlgebra
             where TPre : struct, IdoublePreconditioner
             => Krylov.tfqmr(in A, in M, in b, ref x, ref rHat0, ref u, ref w, ref v, ref au, ref d, ref uHat, MaxIter(A.Rows), Tol);
     }
+
+    /// <summary>
+    /// <see cref="IdoubleBlockSolverInvoker"/> for <see cref="Krylov.bcg{TOp, TPre}"/> -- ridge-
+    /// regularized block CG for an SPD A and s simultaneous right-hand sides. Owns the four s x n
+    /// scratch blocks bcg's zero-alloc primitive needs (Z unused under the identity preconditioner);
+    /// R/P/Q/Z are sized to the current gallery matrix and block width by Init.
+    /// <see cref="ScalarCounterpart"/> is a plain <see cref="doubleCgInvoker"/> -- bcg solves the
+    /// same SPD system CG does, just s columns at once. Forbids IllConditioned: the ridge-regularized
+    /// s x s solve only guards RANK-deficient search blocks, not the s == n corner (the battery's
+    /// block width equals the gallery's smallest matrix dimension, Hilbert4) combined with extreme
+    /// conditioning, which diverges outright rather than converging slowly (bcgrq/bfbcg's rank-
+    /// revealing-LQ search basis does not share this failure mode and keep IllConditioned).
+    /// </summary>
+    public struct doubleBcgInvoker : IdoubleBlockSolverInvoker
+    {
+        public double TolValue;
+        public int MaxIterMul;
+
+        doubleMxN R, P, Q, Z;
+
+        public MatrixProfile Requires => MatrixProfile.SPD;
+        public MatrixProfile Forbids => MatrixProfile.IllConditioned;
+        public PreconditionerKind PrecondKind => PreconditionerKind.SymmetricBSR;
+        public bool NeedsGeneralDenseOperator => false;
+        public double Tol => TolValue;
+        public int MaxIter(int n) => MaxIterMul * n;
+
+        public void Init(ref Arena arena, int n, int s)
+        {
+            R = arena.doubleMat(s, n);
+            P = arena.doubleMat(s, n);
+            Q = arena.doubleMat(s, n);
+            Z = arena.doubleMat(s, n);
+        }
+
+        public BlockSolveInfo Solve<TOp>(in TOp A, in doubleMxN B, ref doubleMxN X)
+            where TOp : struct, IdoubleLinearOperator
+            => Krylov.bcg(in A, in B, ref X, ref R, ref P, ref Q, MaxIter(A.Rows), Tol);
+
+        public BlockSolveInfo SolveWithPrecond<TOp, TPre>(in TOp A, in TPre M, in doubleMxN B, ref doubleMxN X)
+            where TOp : struct, IdoubleLinearOperator
+            where TPre : struct, IdoublePreconditioner
+            => Krylov.bcg(in A, in M, in B, ref X, ref R, ref P, ref Q, ref Z, MaxIter(A.Rows), Tol);
+
+        public IdoubleSquareSolverInvoker ScalarCounterpart() => new doubleCgInvoker { TolValue = TolValue, MaxIterMul = MaxIterMul };
+    }
+
+    /// <summary>
+    /// <see cref="IdoubleBlockSolverInvoker"/> for <see cref="Krylov.bcgrq{TOp, TPre}"/> -- rank-
+    /// revealing-LQ block CG (deflates dependent search directions instead of ridge-patching) for an
+    /// SPD A and s simultaneous right-hand sides. Owns the five s x n scratch blocks bcgrq's zero-
+    /// alloc primitive needs (Z unused under the identity preconditioner).
+    /// <see cref="ScalarCounterpart"/> is <see cref="doubleCgInvoker"/> -- same SPD system as bcg.
+    /// </summary>
+    public struct doubleBcgrqInvoker : IdoubleBlockSolverInvoker
+    {
+        public double TolValue;
+        public int MaxIterMul;
+
+        doubleMxN R, P, AP, Pa, Z;
+
+        public MatrixProfile Requires => MatrixProfile.SPD;
+        public MatrixProfile Forbids => MatrixProfile.None;
+        public PreconditionerKind PrecondKind => PreconditionerKind.SymmetricBSR;
+        public bool NeedsGeneralDenseOperator => false;
+        public double Tol => TolValue;
+        public int MaxIter(int n) => MaxIterMul * n;
+
+        public void Init(ref Arena arena, int n, int s)
+        {
+            R = arena.doubleMat(s, n);
+            P = arena.doubleMat(s, n);
+            AP = arena.doubleMat(s, n);
+            Pa = arena.doubleMat(s, n);
+            Z = arena.doubleMat(s, n);
+        }
+
+        public BlockSolveInfo Solve<TOp>(in TOp A, in doubleMxN B, ref doubleMxN X)
+            where TOp : struct, IdoubleLinearOperator
+            => Krylov.bcgrq(in A, in B, ref X, ref R, ref P, ref AP, ref Pa, MaxIter(A.Rows), Tol);
+
+        public BlockSolveInfo SolveWithPrecond<TOp, TPre>(in TOp A, in TPre M, in doubleMxN B, ref doubleMxN X)
+            where TOp : struct, IdoubleLinearOperator
+            where TPre : struct, IdoublePreconditioner
+            => Krylov.bcgrq(in A, in M, in B, ref X, ref R, ref P, ref AP, ref Pa, ref Z, MaxIter(A.Rows), Tol);
+
+        public IdoubleSquareSolverInvoker ScalarCounterpart() => new doubleCgInvoker { TolValue = TolValue, MaxIterMul = MaxIterMul };
+    }
+
+    /// <summary>
+    /// <see cref="IdoubleBlockSolverInvoker"/> for <see cref="Krylov.bfbcg{TOp, TPre}"/> -- breakdown-
+    /// free block CG (Ji &amp; Li 2017; every iteration re-orthonormalizes the search block via a
+    /// rank-revealing LQ) for an SPD A and s simultaneous right-hand sides. Same scratch shape as
+    /// <see cref="doubleBcgrqInvoker"/> (R/P/AP/Pa/Z, Z unused under the identity preconditioner).
+    /// <see cref="ScalarCounterpart"/> is <see cref="doubleCgInvoker"/> -- same SPD system as bcg.
+    /// </summary>
+    public struct doubleBfbcgInvoker : IdoubleBlockSolverInvoker
+    {
+        public double TolValue;
+        public int MaxIterMul;
+
+        doubleMxN R, P, AP, Pa, Z;
+
+        public MatrixProfile Requires => MatrixProfile.SPD;
+        public MatrixProfile Forbids => MatrixProfile.None;
+        public PreconditionerKind PrecondKind => PreconditionerKind.SymmetricBSR;
+        public bool NeedsGeneralDenseOperator => false;
+        public double Tol => TolValue;
+        public int MaxIter(int n) => MaxIterMul * n;
+
+        public void Init(ref Arena arena, int n, int s)
+        {
+            R = arena.doubleMat(s, n);
+            P = arena.doubleMat(s, n);
+            AP = arena.doubleMat(s, n);
+            Pa = arena.doubleMat(s, n);
+            Z = arena.doubleMat(s, n);
+        }
+
+        public BlockSolveInfo Solve<TOp>(in TOp A, in doubleMxN B, ref doubleMxN X)
+            where TOp : struct, IdoubleLinearOperator
+            => Krylov.bfbcg(in A, in B, ref X, ref R, ref P, ref AP, ref Pa, MaxIter(A.Rows), Tol);
+
+        public BlockSolveInfo SolveWithPrecond<TOp, TPre>(in TOp A, in TPre M, in doubleMxN B, ref doubleMxN X)
+            where TOp : struct, IdoubleLinearOperator
+            where TPre : struct, IdoublePreconditioner
+            => Krylov.bfbcg(in A, in M, in B, ref X, ref R, ref P, ref AP, ref Pa, ref Z, MaxIter(A.Rows), Tol);
+
+        public IdoubleSquareSolverInvoker ScalarCounterpart() => new doubleCgInvoker { TolValue = TolValue, MaxIterMul = MaxIterMul };
+    }
+
+    /// <summary>
+    /// <see cref="IdoubleBlockSolverInvoker"/> for <see cref="Krylov.bminres{TOp, TPre}"/> -- block
+    /// MINRES for a SYMMETRIC (possibly indefinite) A and s simultaneous right-hand sides. Same
+    /// Requires/Forbids as <see cref="doubleMinresInvoker"/> (Forbids Nonsymmetric and IllConditioned
+    /// -- the gallery's clustered-spectrum entry, see that invoker's own doc). <see cref="PrecondKind"/>
+    /// is None: bminres's non-identity-preconditioner path throws <see cref="System.NotSupportedException"/>
+    /// (unverified deflation robustness, OP/DEVLOG.md), so this keeps the battery's Sparse-only
+    /// preconditioned-convergence check (#5) from ever constructing a real (non-identity) M for this
+    /// solver -- <see cref="SolveWithPrecond{TOp, TPre}"/> is still exercised by the identity-fold
+    /// check (#4), which only ever passes the identity preconditioner.
+    /// </summary>
+    public struct doubleBminresInvoker : IdoubleBlockSolverInvoker
+    {
+        public double TolValue;
+        public int MaxIterMul;
+
+        doubleMxN Vprev, Vcur, Wk, W, W1, W2, Z;
+
+        public MatrixProfile Requires => MatrixProfile.Square;
+        public MatrixProfile Forbids => MatrixProfile.Nonsymmetric | MatrixProfile.IllConditioned;
+        public PreconditionerKind PrecondKind => PreconditionerKind.None;
+        public bool NeedsGeneralDenseOperator => false;
+        public double Tol => TolValue;
+        public int MaxIter(int n) => MaxIterMul * n;
+
+        public void Init(ref Arena arena, int n, int s)
+        {
+            Vprev = arena.doubleMat(s, n);
+            Vcur = arena.doubleMat(s, n);
+            Wk = arena.doubleMat(s, n);
+            W = arena.doubleMat(s, n);
+            W1 = arena.doubleMat(s, n);
+            W2 = arena.doubleMat(s, n);
+            Z = arena.doubleMat(s, n);
+        }
+
+        public BlockSolveInfo Solve<TOp>(in TOp A, in doubleMxN B, ref doubleMxN X)
+            where TOp : struct, IdoubleLinearOperator
+            => Krylov.bminres(in A, in B, ref X, ref Vprev, ref Vcur, ref Wk, ref W, ref W1, ref W2, MaxIter(A.Rows), Tol);
+
+        public BlockSolveInfo SolveWithPrecond<TOp, TPre>(in TOp A, in TPre M, in doubleMxN B, ref doubleMxN X)
+            where TOp : struct, IdoubleLinearOperator
+            where TPre : struct, IdoublePreconditioner
+            => Krylov.bminres(in A, in M, in B, ref X, ref Vprev, ref Vcur, ref Wk, ref W, ref W1, ref W2, ref Z, MaxIter(A.Rows), Tol);
+
+        public IdoubleSquareSolverInvoker ScalarCounterpart() => new doubleMinresInvoker { TolValue = TolValue, MaxIterMul = MaxIterMul };
+    }
+
+    /// <summary>
+    /// <see cref="IdoubleBlockSolverInvoker"/> for <see cref="Krylov.bbiCGStab{TOp, TPre}"/> -- block
+    /// BiCGSTAB for a NON-symmetric (general) square A and s simultaneous right-hand sides.
+    /// <see cref="NeedsGeneralDenseOperator"/> is true: the dense gallery path must wrap A in
+    /// <see cref="doubleDenseOperatorGeneral"/>, not <see cref="doubleDenseOperator"/> (SS4's
+    /// symmetric-only ApplyBlock landmine). Owns the seven s x n scratch blocks the zero-alloc
+    /// primitive needs (Phat/Shat unused under the identity preconditioner).
+    /// </summary>
+    public struct doubleBbiCGStabInvoker : IdoubleBlockSolverInvoker
+    {
+        public double TolValue;
+        public int MaxIterMul;
+
+        doubleMxN R, Rhat0, P, V, T, Phat, Shat;
+
+        public MatrixProfile Requires => MatrixProfile.Nonsymmetric;
+        public MatrixProfile Forbids => MatrixProfile.IllConditioned;
+        public PreconditionerKind PrecondKind => PreconditionerKind.NonsymmetricBSR;
+        public bool NeedsGeneralDenseOperator => true;
+        public double Tol => TolValue;
+        public int MaxIter(int n) => MaxIterMul * n;
+
+        public void Init(ref Arena arena, int n, int s)
+        {
+            R = arena.doubleMat(s, n);
+            Rhat0 = arena.doubleMat(s, n);
+            P = arena.doubleMat(s, n);
+            V = arena.doubleMat(s, n);
+            T = arena.doubleMat(s, n);
+            Phat = arena.doubleMat(s, n);
+            Shat = arena.doubleMat(s, n);
+        }
+
+        public BlockSolveInfo Solve<TOp>(in TOp A, in doubleMxN B, ref doubleMxN X)
+            where TOp : struct, IdoubleLinearOperator
+            => Krylov.bbiCGStab(in A, in B, ref X, ref R, ref Rhat0, ref P, ref V, ref T, MaxIter(A.Rows), Tol);
+
+        public BlockSolveInfo SolveWithPrecond<TOp, TPre>(in TOp A, in TPre M, in doubleMxN B, ref doubleMxN X)
+            where TOp : struct, IdoubleLinearOperator
+            where TPre : struct, IdoublePreconditioner
+            => Krylov.bbiCGStab(in A, in M, in B, ref X, ref R, ref Rhat0, ref P, ref V, ref T, ref Phat, ref Shat, MaxIter(A.Rows), Tol);
+
+        public IdoubleSquareSolverInvoker ScalarCounterpart() => new doubleBiCGStabInvoker { TolValue = TolValue, MaxIterMul = MaxIterMul };
+    }
+
+    /// <summary>
+    /// <see cref="IdoubleBlockSolverInvoker"/> for <see cref="Krylov.bgmres{TOp, TPre}"/> -- restarted
+    /// block GMRES(m) for a NON-symmetric (general) square A and s simultaneous right-hand sides.
+    /// <see cref="NeedsGeneralDenseOperator"/> is true (same landmine as <see cref="doubleBbiCGStabInvoker"/>).
+    /// Self-allocates its whole Arnoldi workspace from Allocator.Temp, so <see cref="Init"/> is a no-op
+    /// (mirrors <see cref="doubleGmresInvoker"/>).
+    /// </summary>
+    public struct doubleBgmresInvoker : IdoubleBlockSolverInvoker
+    {
+        public double TolValue;
+        public int MaxIterMul;
+        public int Restart;
+
+        public MatrixProfile Requires => MatrixProfile.Nonsymmetric;
+        public MatrixProfile Forbids => MatrixProfile.IllConditioned;
+        public PreconditionerKind PrecondKind => PreconditionerKind.NonsymmetricBSR;
+        public bool NeedsGeneralDenseOperator => true;
+        public double Tol => TolValue;
+        public int MaxIter(int n) => MaxIterMul * n;
+
+        public void Init(ref Arena arena, int n, int s) { }
+
+        public BlockSolveInfo Solve<TOp>(in TOp A, in doubleMxN B, ref doubleMxN X)
+            where TOp : struct, IdoubleLinearOperator
+            => Krylov.bgmres(in A, in B, ref X, Restart, MaxIter(A.Rows), Tol);
+
+        public BlockSolveInfo SolveWithPrecond<TOp, TPre>(in TOp A, in TPre M, in doubleMxN B, ref doubleMxN X)
+            where TOp : struct, IdoubleLinearOperator
+            where TPre : struct, IdoublePreconditioner
+            => Krylov.bgmres(in A, in M, in B, ref X, Restart, MaxIter(A.Rows), Tol);
+
+        public IdoubleSquareSolverInvoker ScalarCounterpart() => new doubleGmresInvoker { TolValue = TolValue, MaxIterMul = MaxIterMul, Restart = Restart };
+    }
 }

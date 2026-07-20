@@ -473,4 +473,261 @@ namespace LinearAlgebra
             where TPre : struct, IfProxyPreconditioner
             => Krylov.tfqmr(in A, in M, in b, ref x, ref rHat0, ref u, ref w, ref v, ref au, ref d, ref uHat, MaxIter(A.Rows), Tol);
     }
+
+    /// <summary>
+    /// <see cref="IfProxyBlockSolverInvoker"/> for <see cref="Krylov.bcg{TOp, TPre}"/> -- ridge-
+    /// regularized block CG for an SPD A and s simultaneous right-hand sides. Owns the four s x n
+    /// scratch blocks bcg's zero-alloc primitive needs (Z unused under the identity preconditioner);
+    /// R/P/Q/Z are sized to the current gallery matrix and block width by Init.
+    /// <see cref="ScalarCounterpart"/> is a plain <see cref="fProxyCgInvoker"/> -- bcg solves the
+    /// same SPD system CG does, just s columns at once. Forbids IllConditioned: the ridge-regularized
+    /// s x s solve only guards RANK-deficient search blocks, not the s == n corner (the battery's
+    /// block width equals the gallery's smallest matrix dimension, Hilbert4) combined with extreme
+    /// conditioning, which diverges outright rather than converging slowly (bcgrq/bfbcg's rank-
+    /// revealing-LQ search basis does not share this failure mode and keep IllConditioned).
+    /// </summary>
+    public struct fProxyBcgInvoker : IfProxyBlockSolverInvoker
+    {
+        public fProxy TolValue;
+        public int MaxIterMul;
+
+        fProxyMxN R, P, Q, Z;
+
+        public MatrixProfile Requires => MatrixProfile.SPD;
+        public MatrixProfile Forbids => MatrixProfile.IllConditioned;
+        public PreconditionerKind PrecondKind => PreconditionerKind.SymmetricBSR;
+        public bool NeedsGeneralDenseOperator => false;
+        public fProxy Tol => TolValue;
+        public int MaxIter(int n) => MaxIterMul * n;
+
+        public void Init(ref Arena arena, int n, int s)
+        {
+            R = arena.fProxyMat(s, n);
+            P = arena.fProxyMat(s, n);
+            Q = arena.fProxyMat(s, n);
+            Z = arena.fProxyMat(s, n);
+        }
+
+        public BlockSolveInfo Solve<TOp>(in TOp A, in fProxyMxN B, ref fProxyMxN X)
+            where TOp : struct, IfProxyLinearOperator
+            => Krylov.bcg(in A, in B, ref X, ref R, ref P, ref Q, MaxIter(A.Rows), Tol);
+
+        public BlockSolveInfo SolveWithPrecond<TOp, TPre>(in TOp A, in TPre M, in fProxyMxN B, ref fProxyMxN X)
+            where TOp : struct, IfProxyLinearOperator
+            where TPre : struct, IfProxyPreconditioner
+            => Krylov.bcg(in A, in M, in B, ref X, ref R, ref P, ref Q, ref Z, MaxIter(A.Rows), Tol);
+
+        public IfProxySquareSolverInvoker ScalarCounterpart() => new fProxyCgInvoker { TolValue = TolValue, MaxIterMul = MaxIterMul };
+    }
+
+    /// <summary>
+    /// <see cref="IfProxyBlockSolverInvoker"/> for <see cref="Krylov.bcgrq{TOp, TPre}"/> -- rank-
+    /// revealing-LQ block CG (deflates dependent search directions instead of ridge-patching) for an
+    /// SPD A and s simultaneous right-hand sides. Owns the five s x n scratch blocks bcgrq's zero-
+    /// alloc primitive needs (Z unused under the identity preconditioner).
+    /// <see cref="ScalarCounterpart"/> is <see cref="fProxyCgInvoker"/> -- same SPD system as bcg.
+    /// </summary>
+    public struct fProxyBcgrqInvoker : IfProxyBlockSolverInvoker
+    {
+        public fProxy TolValue;
+        public int MaxIterMul;
+
+        fProxyMxN R, P, AP, Pa, Z;
+
+        public MatrixProfile Requires => MatrixProfile.SPD;
+        public MatrixProfile Forbids => MatrixProfile.None;
+        public PreconditionerKind PrecondKind => PreconditionerKind.SymmetricBSR;
+        public bool NeedsGeneralDenseOperator => false;
+        public fProxy Tol => TolValue;
+        public int MaxIter(int n) => MaxIterMul * n;
+
+        public void Init(ref Arena arena, int n, int s)
+        {
+            R = arena.fProxyMat(s, n);
+            P = arena.fProxyMat(s, n);
+            AP = arena.fProxyMat(s, n);
+            Pa = arena.fProxyMat(s, n);
+            Z = arena.fProxyMat(s, n);
+        }
+
+        public BlockSolveInfo Solve<TOp>(in TOp A, in fProxyMxN B, ref fProxyMxN X)
+            where TOp : struct, IfProxyLinearOperator
+            => Krylov.bcgrq(in A, in B, ref X, ref R, ref P, ref AP, ref Pa, MaxIter(A.Rows), Tol);
+
+        public BlockSolveInfo SolveWithPrecond<TOp, TPre>(in TOp A, in TPre M, in fProxyMxN B, ref fProxyMxN X)
+            where TOp : struct, IfProxyLinearOperator
+            where TPre : struct, IfProxyPreconditioner
+            => Krylov.bcgrq(in A, in M, in B, ref X, ref R, ref P, ref AP, ref Pa, ref Z, MaxIter(A.Rows), Tol);
+
+        public IfProxySquareSolverInvoker ScalarCounterpart() => new fProxyCgInvoker { TolValue = TolValue, MaxIterMul = MaxIterMul };
+    }
+
+    /// <summary>
+    /// <see cref="IfProxyBlockSolverInvoker"/> for <see cref="Krylov.bfbcg{TOp, TPre}"/> -- breakdown-
+    /// free block CG (Ji &amp; Li 2017; every iteration re-orthonormalizes the search block via a
+    /// rank-revealing LQ) for an SPD A and s simultaneous right-hand sides. Same scratch shape as
+    /// <see cref="fProxyBcgrqInvoker"/> (R/P/AP/Pa/Z, Z unused under the identity preconditioner).
+    /// <see cref="ScalarCounterpart"/> is <see cref="fProxyCgInvoker"/> -- same SPD system as bcg.
+    /// </summary>
+    public struct fProxyBfbcgInvoker : IfProxyBlockSolverInvoker
+    {
+        public fProxy TolValue;
+        public int MaxIterMul;
+
+        fProxyMxN R, P, AP, Pa, Z;
+
+        public MatrixProfile Requires => MatrixProfile.SPD;
+        public MatrixProfile Forbids => MatrixProfile.None;
+        public PreconditionerKind PrecondKind => PreconditionerKind.SymmetricBSR;
+        public bool NeedsGeneralDenseOperator => false;
+        public fProxy Tol => TolValue;
+        public int MaxIter(int n) => MaxIterMul * n;
+
+        public void Init(ref Arena arena, int n, int s)
+        {
+            R = arena.fProxyMat(s, n);
+            P = arena.fProxyMat(s, n);
+            AP = arena.fProxyMat(s, n);
+            Pa = arena.fProxyMat(s, n);
+            Z = arena.fProxyMat(s, n);
+        }
+
+        public BlockSolveInfo Solve<TOp>(in TOp A, in fProxyMxN B, ref fProxyMxN X)
+            where TOp : struct, IfProxyLinearOperator
+            => Krylov.bfbcg(in A, in B, ref X, ref R, ref P, ref AP, ref Pa, MaxIter(A.Rows), Tol);
+
+        public BlockSolveInfo SolveWithPrecond<TOp, TPre>(in TOp A, in TPre M, in fProxyMxN B, ref fProxyMxN X)
+            where TOp : struct, IfProxyLinearOperator
+            where TPre : struct, IfProxyPreconditioner
+            => Krylov.bfbcg(in A, in M, in B, ref X, ref R, ref P, ref AP, ref Pa, ref Z, MaxIter(A.Rows), Tol);
+
+        public IfProxySquareSolverInvoker ScalarCounterpart() => new fProxyCgInvoker { TolValue = TolValue, MaxIterMul = MaxIterMul };
+    }
+
+    /// <summary>
+    /// <see cref="IfProxyBlockSolverInvoker"/> for <see cref="Krylov.bminres{TOp, TPre}"/> -- block
+    /// MINRES for a SYMMETRIC (possibly indefinite) A and s simultaneous right-hand sides. Same
+    /// Requires/Forbids as <see cref="fProxyMinresInvoker"/> (Forbids Nonsymmetric and IllConditioned
+    /// -- the gallery's clustered-spectrum entry, see that invoker's own doc). <see cref="PrecondKind"/>
+    /// is None: bminres's non-identity-preconditioner path throws <see cref="System.NotSupportedException"/>
+    /// (unverified deflation robustness, OP/DEVLOG.md), so this keeps the battery's Sparse-only
+    /// preconditioned-convergence check (#5) from ever constructing a real (non-identity) M for this
+    /// solver -- <see cref="SolveWithPrecond{TOp, TPre}"/> is still exercised by the identity-fold
+    /// check (#4), which only ever passes the identity preconditioner.
+    /// </summary>
+    public struct fProxyBminresInvoker : IfProxyBlockSolverInvoker
+    {
+        public fProxy TolValue;
+        public int MaxIterMul;
+
+        fProxyMxN Vprev, Vcur, Wk, W, W1, W2, Z;
+
+        public MatrixProfile Requires => MatrixProfile.Square;
+        public MatrixProfile Forbids => MatrixProfile.Nonsymmetric | MatrixProfile.IllConditioned;
+        public PreconditionerKind PrecondKind => PreconditionerKind.None;
+        public bool NeedsGeneralDenseOperator => false;
+        public fProxy Tol => TolValue;
+        public int MaxIter(int n) => MaxIterMul * n;
+
+        public void Init(ref Arena arena, int n, int s)
+        {
+            Vprev = arena.fProxyMat(s, n);
+            Vcur = arena.fProxyMat(s, n);
+            Wk = arena.fProxyMat(s, n);
+            W = arena.fProxyMat(s, n);
+            W1 = arena.fProxyMat(s, n);
+            W2 = arena.fProxyMat(s, n);
+            Z = arena.fProxyMat(s, n);
+        }
+
+        public BlockSolveInfo Solve<TOp>(in TOp A, in fProxyMxN B, ref fProxyMxN X)
+            where TOp : struct, IfProxyLinearOperator
+            => Krylov.bminres(in A, in B, ref X, ref Vprev, ref Vcur, ref Wk, ref W, ref W1, ref W2, MaxIter(A.Rows), Tol);
+
+        public BlockSolveInfo SolveWithPrecond<TOp, TPre>(in TOp A, in TPre M, in fProxyMxN B, ref fProxyMxN X)
+            where TOp : struct, IfProxyLinearOperator
+            where TPre : struct, IfProxyPreconditioner
+            => Krylov.bminres(in A, in M, in B, ref X, ref Vprev, ref Vcur, ref Wk, ref W, ref W1, ref W2, ref Z, MaxIter(A.Rows), Tol);
+
+        public IfProxySquareSolverInvoker ScalarCounterpart() => new fProxyMinresInvoker { TolValue = TolValue, MaxIterMul = MaxIterMul };
+    }
+
+    /// <summary>
+    /// <see cref="IfProxyBlockSolverInvoker"/> for <see cref="Krylov.bbiCGStab{TOp, TPre}"/> -- block
+    /// BiCGSTAB for a NON-symmetric (general) square A and s simultaneous right-hand sides.
+    /// <see cref="NeedsGeneralDenseOperator"/> is true: the dense gallery path must wrap A in
+    /// <see cref="fProxyDenseOperatorGeneral"/>, not <see cref="fProxyDenseOperator"/> (SS4's
+    /// symmetric-only ApplyBlock landmine). Owns the seven s x n scratch blocks the zero-alloc
+    /// primitive needs (Phat/Shat unused under the identity preconditioner).
+    /// </summary>
+    public struct fProxyBbiCGStabInvoker : IfProxyBlockSolverInvoker
+    {
+        public fProxy TolValue;
+        public int MaxIterMul;
+
+        fProxyMxN R, Rhat0, P, V, T, Phat, Shat;
+
+        public MatrixProfile Requires => MatrixProfile.Nonsymmetric;
+        public MatrixProfile Forbids => MatrixProfile.IllConditioned;
+        public PreconditionerKind PrecondKind => PreconditionerKind.NonsymmetricBSR;
+        public bool NeedsGeneralDenseOperator => true;
+        public fProxy Tol => TolValue;
+        public int MaxIter(int n) => MaxIterMul * n;
+
+        public void Init(ref Arena arena, int n, int s)
+        {
+            R = arena.fProxyMat(s, n);
+            Rhat0 = arena.fProxyMat(s, n);
+            P = arena.fProxyMat(s, n);
+            V = arena.fProxyMat(s, n);
+            T = arena.fProxyMat(s, n);
+            Phat = arena.fProxyMat(s, n);
+            Shat = arena.fProxyMat(s, n);
+        }
+
+        public BlockSolveInfo Solve<TOp>(in TOp A, in fProxyMxN B, ref fProxyMxN X)
+            where TOp : struct, IfProxyLinearOperator
+            => Krylov.bbiCGStab(in A, in B, ref X, ref R, ref Rhat0, ref P, ref V, ref T, MaxIter(A.Rows), Tol);
+
+        public BlockSolveInfo SolveWithPrecond<TOp, TPre>(in TOp A, in TPre M, in fProxyMxN B, ref fProxyMxN X)
+            where TOp : struct, IfProxyLinearOperator
+            where TPre : struct, IfProxyPreconditioner
+            => Krylov.bbiCGStab(in A, in M, in B, ref X, ref R, ref Rhat0, ref P, ref V, ref T, ref Phat, ref Shat, MaxIter(A.Rows), Tol);
+
+        public IfProxySquareSolverInvoker ScalarCounterpart() => new fProxyBiCGStabInvoker { TolValue = TolValue, MaxIterMul = MaxIterMul };
+    }
+
+    /// <summary>
+    /// <see cref="IfProxyBlockSolverInvoker"/> for <see cref="Krylov.bgmres{TOp, TPre}"/> -- restarted
+    /// block GMRES(m) for a NON-symmetric (general) square A and s simultaneous right-hand sides.
+    /// <see cref="NeedsGeneralDenseOperator"/> is true (same landmine as <see cref="fProxyBbiCGStabInvoker"/>).
+    /// Self-allocates its whole Arnoldi workspace from Allocator.Temp, so <see cref="Init"/> is a no-op
+    /// (mirrors <see cref="fProxyGmresInvoker"/>).
+    /// </summary>
+    public struct fProxyBgmresInvoker : IfProxyBlockSolverInvoker
+    {
+        public fProxy TolValue;
+        public int MaxIterMul;
+        public int Restart;
+
+        public MatrixProfile Requires => MatrixProfile.Nonsymmetric;
+        public MatrixProfile Forbids => MatrixProfile.IllConditioned;
+        public PreconditionerKind PrecondKind => PreconditionerKind.NonsymmetricBSR;
+        public bool NeedsGeneralDenseOperator => true;
+        public fProxy Tol => TolValue;
+        public int MaxIter(int n) => MaxIterMul * n;
+
+        public void Init(ref Arena arena, int n, int s) { }
+
+        public BlockSolveInfo Solve<TOp>(in TOp A, in fProxyMxN B, ref fProxyMxN X)
+            where TOp : struct, IfProxyLinearOperator
+            => Krylov.bgmres(in A, in B, ref X, Restart, MaxIter(A.Rows), Tol);
+
+        public BlockSolveInfo SolveWithPrecond<TOp, TPre>(in TOp A, in TPre M, in fProxyMxN B, ref fProxyMxN X)
+            where TOp : struct, IfProxyLinearOperator
+            where TPre : struct, IfProxyPreconditioner
+            => Krylov.bgmres(in A, in M, in B, ref X, Restart, MaxIter(A.Rows), Tol);
+
+        public IfProxySquareSolverInvoker ScalarCounterpart() => new fProxyGmresInvoker { TolValue = TolValue, MaxIterMul = MaxIterMul, Restart = Restart };
+    }
 }

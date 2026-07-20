@@ -1,3 +1,4 @@
+using Unity.Collections;
 using Unity.Mathematics;
 using LinearAlgebra.Gallery;
 using LinearAlgebra.Sparse;
@@ -139,6 +140,46 @@ namespace LinearAlgebra
             fProxy num = 0, den = 0;
             for (int i = 0; i < b.N; i++) { fProxy d = Ax[i] - b[i]; num += d * d; den += b[i] * b[i]; }
             return math.sqrt(num) / math.sqrt(math.max(den, (fProxy)1e-30));
+        }
+
+        // Block counterparts of RelResidualDense/RelResidualBSR (Frobenius norm over the whole s x n
+        // block) for the block-battery family. AX is computed via the GENERAL block-apply formula
+        // (Blas.dot(X, A, transposeB: true) / BSR.spMM, both correct for ANY square A) rather than
+        // through a caller-supplied operator wrapper, so this oracle is never exposed to
+        // fProxyDenseOperator.ApplyBlock's symmetric-only landmine (SS4).
+        public static fProxy RelResidualBlockDense(in fProxyMxN A, in fProxyMxN X, in fProxyMxN B)
+        {
+            int s = B.M_Rows, n = B.N_Cols;
+            var AX = new fProxyMxN(s, n, Allocator.Temp, true);
+            Blas.dot(in X, in A, ref AX, false, true);
+            fProxy num = 0, den = 0;
+            for (int i = 0; i < s; i++)
+                for (int c = 0; c < n; c++)
+                { fProxy d = AX[i, c] - B[i, c]; num += d * d; den += B[i, c] * B[i, c]; }
+            AX.Dispose();
+            return math.sqrt(num) / math.sqrt(math.max(den, (fProxy)1e-30));
+        }
+
+        public static fProxy RelResidualBlockBSR(in fProxyBSR A, in fProxyMxN X, in fProxyMxN B)
+        {
+            int s = B.M_Rows, n = B.N_Cols;
+            var AX = new fProxyMxN(s, n, Allocator.Temp, true);
+            BSR.spMM(in A, in X, ref AX, s);
+            fProxy num = 0, den = 0;
+            for (int i = 0; i < s; i++)
+                for (int c = 0; c < n; c++)
+                { fProxy d = AX[i, c] - B[i, c]; num += d * d; den += B[i, c] * B[i, c]; }
+            AX.Dispose();
+            return math.sqrt(num) / math.sqrt(math.max(den, (fProxy)1e-30));
+        }
+
+        // Row j of B (length n) as an independent fProxyN -- the per-column extraction every
+        // block-battery check that compares against a scalar solve needs.
+        public static fProxyN Row(ref Arena arena, in fProxyMxN B, int j, int n)
+        {
+            var v = arena.fProxyVec(n);
+            for (int c = 0; c < n; c++) v[c] = B[j, c];
+            return v;
         }
     }
 }

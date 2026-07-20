@@ -2,6 +2,7 @@
 //   Generated from Assets/LinearAlgebra/CodeGen/TemplateSourceTests/fProxy/KrylovBattery.Gallery.fProxy.cs
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
+using Unity.Collections;
 using Unity.Mathematics;
 using LinearAlgebra.Gallery;
 using LinearAlgebra.Sparse;
@@ -143,6 +144,46 @@ namespace LinearAlgebra
             float num = 0, den = 0;
             for (int i = 0; i < b.N; i++) { float d = Ax[i] - b[i]; num += d * d; den += b[i] * b[i]; }
             return math.sqrt(num) / math.sqrt(math.max(den, (float)1e-30));
+        }
+
+        // Block counterparts of RelResidualDense/RelResidualBSR (Frobenius norm over the whole s x n
+        // block) for the block-battery family. AX is computed via the GENERAL block-apply formula
+        // (Blas.dot(X, A, transposeB: true) / BSR.spMM, both correct for ANY square A) rather than
+        // through a caller-supplied operator wrapper, so this oracle is never exposed to
+        // floatDenseOperator.ApplyBlock's symmetric-only landmine (SS4).
+        public static float RelResidualBlockDense(in floatMxN A, in floatMxN X, in floatMxN B)
+        {
+            int s = B.M_Rows, n = B.N_Cols;
+            var AX = new floatMxN(s, n, Allocator.Temp, true);
+            Blas.dot(in X, in A, ref AX, false, true);
+            float num = 0, den = 0;
+            for (int i = 0; i < s; i++)
+                for (int c = 0; c < n; c++)
+                { float d = AX[i, c] - B[i, c]; num += d * d; den += B[i, c] * B[i, c]; }
+            AX.Dispose();
+            return math.sqrt(num) / math.sqrt(math.max(den, (float)1e-30));
+        }
+
+        public static float RelResidualBlockBSR(in floatBSR A, in floatMxN X, in floatMxN B)
+        {
+            int s = B.M_Rows, n = B.N_Cols;
+            var AX = new floatMxN(s, n, Allocator.Temp, true);
+            BSR.spMM(in A, in X, ref AX, s);
+            float num = 0, den = 0;
+            for (int i = 0; i < s; i++)
+                for (int c = 0; c < n; c++)
+                { float d = AX[i, c] - B[i, c]; num += d * d; den += B[i, c] * B[i, c]; }
+            AX.Dispose();
+            return math.sqrt(num) / math.sqrt(math.max(den, (float)1e-30));
+        }
+
+        // Row j of B (length n) as an independent floatN -- the per-column extraction every
+        // block-battery check that compares against a scalar solve needs.
+        public static floatN Row(ref Arena arena, in floatMxN B, int j, int n)
+        {
+            var v = arena.floatVec(n);
+            for (int c = 0; c < n; c++) v[c] = B[j, c];
+            return v;
         }
     }
 }

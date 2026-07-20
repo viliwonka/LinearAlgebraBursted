@@ -1,6 +1,55 @@
 # DEVLOG — TemplateSourceTests
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## KrylovBlockBatteryTests / KrylovBattery.Invokers
+- 2026-07-20 | New file `KrylovBlockBatteryTests.fProxy.cs`: block-family battery (spec-krylov-test-
+  battery.md SS5.3, checks #6-9 on top of block-shaped #1-5), mirroring `KrylovSquareBatteryTests`'
+  IJob/RunStandardChecks shape. Added 6 block invoker structs (`fProxyBcgInvoker`, `fProxyBcgrqInvoker`,
+  `fProxyBfbcgInvoker`, `fProxyBminresInvoker`, `fProxyBbiCGStabInvoker`, `fProxyBgmresInvoker`) to
+  `KrylovBattery.Invokers.fProxy.cs` -- all 6 currently-implemented block solvers wired, none skipped.
+  `ScalarCounterpart()` is implemented on every invoker (interface contract) but never CALLED from
+  inside the `[BurstCompile]` job: returning it as the naked `IfProxySquareSolverInvoker` interface
+  would box the concrete struct and dispatch through it, which Burst cannot compile. Instead
+  `RunBlockStandardChecks<TInvoker, TScalar>` takes the matching scalar invoker as its own generic type
+  parameter, constructed explicitly alongside the block invoker in `Execute()`'s switch -- an extra
+  generic parameter, not a design the spec anticipated, but zero boxing and fully monomorphized like
+  every other TOp/TPre call in this battery.
+- 2026-07-20 | The identical-RHS-columns invariant (check #8) is unconditional for bcg/bcgrq/bfbcg/
+  bbiCGStab/bgmres but disabled for bminres: forcing two RHS rows bit-identical deflates a Lanczos lane
+  from iteration 0, and bminres does not yet preserve row symmetry once a lane deflates (a known,
+  separate, deferred limitation from the s>1 divergence bug this check is otherwise meant to guard --
+  see `OP/DEVLOG.md`'s `Krylov.bminres (block)` entry, task #50). The same forced-duplicate-row RHS can
+  also trip bminres's Gamma near-singularity case into a genuine `Breakdown` (also task #50), so check
+  #9's "status != Breakdown" half is disabled for bminres too; its "no NaN/Inf" half stays unconditional
+  for every solver. bbiCGStab also disables the "status != Breakdown" half: it has no column locking/
+  deflation, so a block coefficient made exactly singular by the forced duplicate rows is its
+  documented, honest Breakdown contract ("never NaN/throw"), not a bug.
+- 2026-07-20 | Check #7 (block advantage: block iterations <= worst per-column scalar iterations) is
+  disabled for bbiCGStab/bgmres/bminres -- all three lack the residual-minimizing/monotone-convergence
+  property (CG's energy norm, MINRES's residual norm under exact block-Lanczos) the naive bound relies
+  on: bgmres's deflating rank-revealing basis trades subspace richness for robustness (measured 5x
+  overshoot on DenseNonsym20's heavy diagonal dominance), bbiCGStab's short two-term recurrence is not
+  residual-optimal (measured a narrow 9-vs-8 overshoot on ConvDiffDense40), and indefinite block-Lanczos
+  convergence is not guaranteed monotone either. Kept unconditional (and passing) for bcg/bcgrq/bfbcg.
+- 2026-07-20 | `fProxyBcgInvoker.Forbids` gained `IllConditioned` (bcg-family's other two members,
+  bcgrq/bfbcg, do not need it): ridge regularization only guards RANK-deficient search blocks, not the
+  s == n corner (this battery's block width, 4, equals Hilbert4's dimension) combined with extreme
+  conditioning -- diverges outright (residual ~487x) rather than converging slowly. bcgrq/bfbcg's
+  per-iteration rank-revealing-LQ search basis does not share this failure mode.
+- 2026-07-20 | bminres additionally runs at S=2 (not the other 5 solvers' S=4), MaxIterMul=40 (not 20),
+  and `SkipTinyDense=true` (excludes the n<=5 dense entries: Fiedler5/Clement4/MinIJ_5/Pei5_2/Lehmer5,
+  leaving Laplacian1D_8/RandSPDWellCond20 dense plus every n>=80 BSR entry). Its block-Lanczos
+  recurrence saturates a tiny matrix's whole dimension almost immediately even on an ORDINARY random
+  RHS (no forced duplication needed), tripping the same Gamma near-singularity gap as above (task #50)
+  or landing just outside the residual tolerance within an otherwise-generous budget. This drops
+  bminres's dense battery coverage to SPD only (no indefinite dense entry is both large enough and not
+  already IllConditioned-excluded) -- the existing bespoke `BlockMinresTests.fProxy.cs` already covers
+  indefinite correctness at a comfortable n=20, unaffected by this exclusion.
+- 2026-07-20 | Battery-wide block width is 4 (except bminres's 2): the smallest applicable matrix per
+  family after the above exclusions is n=5 (bcg-family: MinIJ_5) or n=8 (bminres: Laplacian1D_8) or
+  n=20 (bbiCGStab/bgmres: DenseNonsym20), all comfortably >= S. Checks #8/#9 force rows 0 and S-1
+  bit-identical (generic in S, not hardcoded to specific indices).
+
 ## CRAIGTests
 - 2026-07-20 | New bespoke file `CRAIGTests.fProxy.cs` for `Krylov.craig` (task #27). The key test
   (`RectangularMinNorm`) verifies actual least-NORM correctness, not just `Ax=b`: builds an
