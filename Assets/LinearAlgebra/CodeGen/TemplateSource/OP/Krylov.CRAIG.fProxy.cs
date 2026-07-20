@@ -77,9 +77,7 @@ namespace LinearAlgebra
             for (int k = 0; k < maxIter; k++)
             {
                 // ---- bidiagonalization step (Golub-Kahan) ----
-                // v = A^T u - beta*v ; alpha = ||v||, fused (Blas.xpayNormSq) into one pass over v.
-                A.ApplyT(in u, ref tmpN);
-                fProxy alfa = math.sqrt(Blas.xpayNormSq(-beta, tmpN, ref v));
+                fProxy alfa = GolubKahanVStep(in A, in u, beta, ref tmpN, ref v);
 
                 if (!(alfa > (fProxy)0)) // NaN-safe: alfa is a norm, nonnegative
                     // v collapsed: the Krylov space on AAᵀ is exhausted before reaching b -- A is
@@ -97,8 +95,7 @@ namespace LinearAlgebra
                 x.addScaledInPlace(z, v);
 
                 // u = A v - alpha*u ; beta = ||u||, same fusion.
-                A.Apply(in v, ref tmpM);
-                beta = math.sqrt(Blas.xpayNormSq(-alfa, tmpM, ref u));
+                beta = GolubKahanUStep(in A, in v, alfa, ref tmpM, ref u);
 
                 // ‖b - A x‖ for the just-updated x, free from the same recurrence (Paige-Saunders
                 // 1995) -- no extra matvec.

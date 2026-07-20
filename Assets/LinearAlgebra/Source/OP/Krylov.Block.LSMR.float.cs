@@ -263,18 +263,7 @@ namespace LinearAlgebra
         cleanup:
             {
                 BlockApplyOp(in A, in X, ref Rfinal, s, ref rowN, ref rowM);
-                double maxr = 0;
-                for (int j = 0; j < s; j++)
-                {
-                    double rr = 0;
-                    for (int c = 0; c < m; c++)
-                    {
-                        double d = (double)(B[j, c] - Rfinal[j, c]);
-                        rr += d * d;
-                    }
-                    double rn = math.sqrt(rr);
-                    if (rn > maxr) maxr = rn;
-                }
+                double maxr = BlockMaxResidualRecompute(in B, in Rfinal, s, m);
                 int converged = status == IterativeSolveStatus.Converged ? s : 0;
 
                 rowN.Dispose(); rowM.Dispose();

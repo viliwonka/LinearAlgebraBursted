@@ -105,10 +105,7 @@ namespace LinearAlgebra
                 if (rr <= threshold)
                 {
                     // Verify-at-exit -- see cg<TOp>'s matching block for the rationale.
-                    A.Apply(in x, ref Ap);
-                    r.CopyFrom(in b);
-                    r.addScaledInPlace((fProxy)(-1), Ap);
-                    rr = Blas.dot(r, r);
+                    rr = VerifyTrueResidual(in A, in b, in x, ref Ap, ref r);
 
                     if (rr <= threshold)
                         return MakeSolveInfo(IterativeSolveStatus.Converged, k + 1, math.sqrt(rr));

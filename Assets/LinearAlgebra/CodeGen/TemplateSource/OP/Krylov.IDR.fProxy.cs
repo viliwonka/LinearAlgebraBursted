@@ -171,10 +171,7 @@ namespace LinearAlgebra
                         // above until the next k-step's forward substitution reuses them). On a
                         // failed verify, R is left holding the fresh residual (correct sign) so
                         // subsequent P[i]-dot-R work stays correct.
-                        A.Apply(in x, ref V);
-                        Q.CopyFrom(in b);
-                        Q.addScaledInPlace((fProxy)(-1), V);
-                        fProxy trueRR = Blas.dot(Q, Q);
+                        fProxy trueRR = VerifyTrueResidual(in A, in b, in x, ref V, ref Q);
                         R.CopyFrom(in Q);
                         rr = trueRR;
                         if (trueRR <= threshold) { status = IterativeSolveStatus.Converged; done = true; break; }
@@ -227,10 +224,7 @@ namespace LinearAlgebra
                     // Verify-at-exit: V/Q are idle here (V: last read by the x update above; Q: last
                     // read forming rr above), same buffer-reuse shape as the in-sweep site. On a
                     // failed verify, R is left holding the fresh residual (correct sign).
-                    A.Apply(in x, ref V);
-                    Q.CopyFrom(in b);
-                    Q.addScaledInPlace((fProxy)(-1), V);
-                    fProxy trueRR = Blas.dot(Q, Q);
+                    fProxy trueRR = VerifyTrueResidual(in A, in b, in x, ref V, ref Q);
                     R.CopyFrom(in Q);
                     rr = trueRR;
                     if (trueRR <= threshold) { status = IterativeSolveStatus.Converged; break; }

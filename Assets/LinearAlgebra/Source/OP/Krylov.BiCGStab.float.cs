@@ -187,10 +187,7 @@ namespace LinearAlgebra
                 {
                     // Verify-at-exit (mirrors cg's). v is idle here. On a failed verify, r is left
                     // holding the FRESH residual so the next iteration continues from a corrected state.
-                    A.Apply(in x, ref v);
-                    r.CopyFrom(in b);
-                    r.addScaledInPlace((float)(-1), v);
-                    rr = Blas.dot(r, r);
+                    rr = VerifyTrueResidual(in A, in b, in x, ref v, ref r);
 
                     if (rr <= threshold)
                         return MakeSolveInfo(IterativeSolveStatus.Converged, k + 1, math.sqrt(rr));

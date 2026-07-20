@@ -95,10 +95,8 @@ namespace LinearAlgebra
 
             for (int k = 0; k < maxIter; k++)
             {
-                // ---- extend the bidiagonalization forward: beta_{k+1} u_{k+1} = A v_k - alpha_k u_k,
-                // fused (Blas.xpayNormSq) into one pass over u. ----
-                A.Apply(in v, ref tmpM);
-                fProxy betaNew = math.sqrt(Blas.xpayNormSq(-alpha, tmpM, ref u));
+                // ---- extend the bidiagonalization forward: beta_{k+1} u_{k+1} = A v_k - alpha_k u_k. ----
+                fProxy betaNew = GolubKahanUStep(in A, in v, alpha, ref tmpM, ref u);
 
                 // ---- Givens rotation continuing the running QR of L: eliminates betaNew against
                 // the current rhobar (rhobar can be negative -- it is a signed R-factor entry, not
@@ -139,9 +137,8 @@ namespace LinearAlgebra
                 u.divInPlace(betaNew);
 
                 // ---- extend the bidiagonalization backward: alpha_{k+1} v_{k+1} = A^T u_{k+1} -
-                // beta_{k+1} v_k, fused into one pass over v (overwrites v_k -> v_{k+1}). ----
-                A.ApplyT(in u, ref tmpN);
-                fProxy alphaNew = math.sqrt(Blas.xpayNormSq(-betaNew, tmpN, ref v));
+                // beta_{k+1} v_k (overwrites v_k -> v_{k+1}). ----
+                fProxy alphaNew = GolubKahanVStep(in A, in u, betaNew, ref tmpN, ref v);
 
                 // ‖Aᵀ(b-Ax)‖ for the just-updated x, free from the same recurrence -- no extra matvec.
                 ArNorm = alphaNew * betaNew * math.abs(zeta) / rho;

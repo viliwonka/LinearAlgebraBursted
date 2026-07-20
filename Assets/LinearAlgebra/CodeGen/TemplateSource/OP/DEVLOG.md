@@ -1,6 +1,57 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov DRY extraction (P2)
+- 2026-07-20 | Task #57 P2 (docs/dev/spec-krylov-dry-extraction.md Cluster E3): extracted the
+  final block-solver maxRnorm cleanup reduction into two variants in `Krylov.Block.Common.fProxy.cs`
+  — `BlockMaxResidualRecompute` (B - Rfinal, `Rfinal` freshly recomputed by the caller) and
+  `BlockMaxResidualNorm` (residual already sitting in a buffer, no recompute). Retargeted the 4
+  files that still hand-rolled the raw loop: `Krylov.Block.LSMR.fProxy.cs`,
+  `Krylov.Block.CRAIG.fProxy.cs`, `Krylov.Block.CRAIGMR.fProxy.cs` (recompute variant),
+  `Krylov.Block.CGLS.fProxy.cs` (in-hand variant). The other 9 block files (bcg, bcgrq, bfbcg,
+  bminres, bidr, bgmres, bfgmres, bgcrodr, bbiCGStab) already routed their final maxRnorm through
+  the pre-existing `CountConverged`/`CountConvergedByBound` helpers (P0/P1-era), so E3's remaining
+  duplication was only these 4 raw loops by the time P2 started — confirmed via `grep` for the
+  `rr +=` / `math.sqrt(rr)` shape across every `Krylov.Block.*.fProxy.cs` before touching anything.
+- 2026-07-20 | Task #57 P2 (Cluster C2): extracted the verify-at-exit / final-true-residual
+  recompute (`A.Apply(x)` -> `r = b - Ax` -> `‖r‖²`) into `VerifyTrueResidual` in new
+  `Krylov.Solve.Common.fProxy.cs`. Returns the squared norm only — no baked-in return/branch — so
+  every caller keeps its own control flow exactly as before (the landmine: several sites must FALL
+  THROUGH and keep iterating on a failed verify, not return). Retargeted 8 call sites: `cg`, `fcg`
+  (one site each), `minres` (both the in-loop verify and the preconditioned-MaxIterations final
+  report), `minresQLP` (the unconditional final-residual report), `biCGStab` (its second,
+  committed-x site only), `idr` (both its in-sweep and end-of-sweep sites).
+- 2026-07-20 | Cluster C2 left inline: `biCGStab`'s FIRST verify-at-exit site (checks a
+  not-yet-committed trial x, sign-flipped into `A·x_trial - b` instead of `b - A·x`, and never
+  touches `r`) is a genuinely different shape from the other 8 sites — folding it in would mean
+  branching the shared helper on "which buffer is x" and "which sign", which starts baking
+  call-site-specific control flow into a "shared" helper. Left inline, per the task's
+  don't-force-it guidance.
+- 2026-07-20 | Task #57 P2 (Cluster D): extracted the scalar Golub-Kahan bidiagonalization
+  half-steps into `GolubKahanUStep`/`GolubKahanVStep` in new `Krylov.Bidiag.Common.fProxy.cs`
+  (`u = Av - alpha*u`/`v = Aᵀu - beta*v`, fused via the existing `Blas.xpayNormSq`, returning the
+  fresh norm WITHOUT dividing or branching). This is the one piece of the bidiag recurrence that is
+  genuinely byte-identical across all 4 solvers regardless of step order: `lsqr`/`lsmr` do u-step
+  then v-step and divide immediately after each; `craig`/`craigmr` also do u-step then v-step but
+  interleave their own convergence/breakdown checks BETWEEN computing the norm and dividing by it
+  (craigmr divides even later, after its Givens update) — every caller kept its own divide/branch
+  placement untouched, only the `Apply`+`xpayNormSq` pair moved. Retargeted 8 call sites (2 each in
+  lsqr, lsmr, craig, craigmr).
+- 2026-07-20 | Cluster D init left inline: `lsqr`'s and `lsmr`'s init blocks (`atbSq` scale, warm-
+  started `u = b - Ax`/beta, `v = Aᵀu`/alpha, THREE separate early-return points each constructing
+  a different `LstsqInfo` via `LstsqInfoTracked`) ARE byte-identical to each other and were a
+  candidate — but `craig`/`craigmr` do NOT share this shape (no warm start, x forced to 0, scale is
+  `‖b‖` not `‖Aᵀb‖²`, `v` bootstraps from 0 instead of an `ApplyT`), so the extraction would only
+  cover 2 of the 4 files. Given the three interleaved early-returns each build a different
+  `LstsqInfo` inline, sharing even the lsqr/lsmr pair would mean either baking a return into the
+  helper (same landmine C2 avoids) or a discriminated-result design — deferred as lower value than
+  the half-step extraction for the 1-hour budget; left inline in both files.
+- 2026-07-20 | Verified bit-identity for all of the above the same way as P0/P1: `diff` the
+  pre-edit source for every candidate before merging, then a full suite run
+  (`Result=Passed total=7123 passed=7123 failed=0`) before and after: the pre-edit suite was
+  already green at 7123/7123, and the post-edit suite reproduced the exact same line — a pure
+  refactor, no test count change, no rounding/reduction reorder.
+
 ## Krylov DRY extraction (P1)
 - 2026-07-20 | Task #57 P1 (docs/dev/spec-krylov-dry-extraction.md Clusters B/H): extracted the
   scalar Arnoldi/Givens/Hessenberg core shared by `gmres`/`fgmres` into new

@@ -198,10 +198,7 @@ namespace LinearAlgebra
                     // rotation's unitarity) -- true under the identity path too. y and v are both
                     // idle here (y: recycled garbage; v: consumed by combine3 above), reused as
                     // scratch. Fall through and keep iterating on a failed verify.
-                    A.Apply(in x, ref y);                     // y = A x
-                    v.CopyFrom(in b);
-                    v.addScaledInPlace((float)(-1), y);         // v = b - A x
-                    float trueRR = Blas.dot(v, v);
+                    float trueRR = VerifyTrueResidual(in A, in b, in x, ref y, ref v);
 
                     if (trueRR <= threshold)
                         return MakeSolveInfo(IterativeSolveStatus.Converged, k + 1, math.sqrt(trueRR));
@@ -216,10 +213,7 @@ namespace LinearAlgebra
                 return MakeSolveInfo(IterativeSolveStatus.MaxIterations, maxIter, phibar);
 
             // Preconditioned MaxIterations: report the TRUE residual (one fresh Apply), not phibar.
-            A.Apply(in x, ref y);                             // y = A x
-            v.CopyFrom(in b);
-            v.addScaledInPlace((float)(-1), y);                 // v = b - A x
-            float finalRR = Blas.dot(v, v);
+            float finalRR = VerifyTrueResidual(in A, in b, in x, ref y, ref v);
             return MakeSolveInfo(IterativeSolveStatus.MaxIterations, maxIter, math.sqrt(finalRR));
         }
 

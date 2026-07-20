@@ -128,15 +128,11 @@ namespace LinearAlgebra
             for (int k = 0; k < maxIter; k++)
             {
                 // ---- bidiagonalization step (Golub-Kahan) ----
-                // u = A v - alpha u ; beta = ||u||, fused (Blas.xpayNormSq) into one pass over u.
-                A.Apply(in v, ref tmpM);
-                beta = math.sqrt(Blas.xpayNormSq(-alpha, tmpM, ref u));
+                beta = GolubKahanUStep(in A, in v, alpha, ref tmpM, ref u);
                 if (beta > (fProxy)0)
                 {
                     u.divInPlace(beta);
-                    // v = A^T u - beta v ; alpha = ||v||, same fusion.
-                    A.ApplyT(in u, ref tmpN);
-                    alpha = math.sqrt(Blas.xpayNormSq(-beta, tmpN, ref v));
+                    alpha = GolubKahanVStep(in A, in u, beta, ref tmpN, ref v);
                     if (alpha > (fProxy)0) v.divInPlace(alpha);
                 }
 

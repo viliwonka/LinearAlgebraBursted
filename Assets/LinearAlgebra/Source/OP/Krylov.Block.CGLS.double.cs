@@ -116,18 +116,7 @@ namespace LinearAlgebra
 
         cleanup:
             {
-                double maxr = 0;
-                for (int j = 0; j < s; j++)
-                {
-                    double rr = 0;
-                    for (int c = 0; c < m; c++)
-                    {
-                        double d = (double)R[j, c];
-                        rr += d * d;
-                    }
-                    double rn = math.sqrt(rr);
-                    if (rn > maxr) maxr = rn;
-                }
+                double maxr = BlockMaxResidualNorm(in R, s, m);
 
                 rowN.Dispose(); rowM.Dispose();
                 R.Dispose(); S.Dispose(); P.Dispose(); Q.Dispose(); TN.Dispose(); TM.Dispose();

@@ -80,6 +80,46 @@ namespace LinearAlgebra
             return true;
         }
 
+        // Worst raw least-squares residual ‖B[j] - Rfinal[j]‖ over the s rows of an m-wide block,
+        // where Rfinal already holds a freshly recomputed A·X. Shared cleanup-tail reduction for
+        // the block least-squares solvers that don't keep the residual in a dedicated buffer
+        // (blsmr/bcraig/bcraigmr).
+        static double BlockMaxResidualRecompute(in doubleMxN B, in doubleMxN Rfinal, int s, int m)
+        {
+            double maxr = 0;
+            for (int j = 0; j < s; j++)
+            {
+                double rr = 0;
+                for (int c = 0; c < m; c++)
+                {
+                    double d = (double)(B[j, c] - Rfinal[j, c]);
+                    rr += d * d;
+                }
+                double rn = math.sqrt(rr);
+                if (rn > maxr) maxr = rn;
+            }
+            return maxr;
+        }
+
+        // Worst raw residual norm ‖R[j]‖ over the s rows of an m-wide block, where R already holds
+        // the current residual (no recompute). Shared cleanup-tail reduction for bcgls.
+        static double BlockMaxResidualNorm(in doubleMxN R, int s, int m)
+        {
+            double maxr = 0;
+            for (int j = 0; j < s; j++)
+            {
+                double rr = 0;
+                for (int c = 0; c < m; c++)
+                {
+                    double d = (double)R[j, c];
+                    rr += d * d;
+                }
+                double rn = math.sqrt(rr);
+                if (rn > maxr) maxr = rn;
+            }
+            return maxr;
+        }
+
         // Counts columns with ||R[j]||^2 <= thr[j]; also returns the worst ||R[j]||.
         static int CountConverged(in doubleMxN R, in doubleN thr, int s, int n, out double maxRnorm)
         {

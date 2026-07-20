@@ -375,10 +375,7 @@ namespace LinearAlgebra
             if (flag == flag0) { flag = 8; iters = maxIter; }
 
             // Final true residual (fresh, regardless of exit reason -- r3/r1 are idle by now).
-            A.Apply(in x, ref r3);
-            r1.CopyFrom(in b);
-            r1.addScaledInPlace((double)(-1), r3);
-            double finalRnorm = math.sqrt(Blas.dot(r1, r1));
+            double finalRnorm = math.sqrt(VerifyTrueResidual(in A, in b, in x, ref r3, ref r1));
 
             IterativeSolveStatus status;
             if (flag == 8) status = IterativeSolveStatus.MaxIterations;

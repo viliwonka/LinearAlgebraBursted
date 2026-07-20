@@ -1,0 +1,35 @@
+using Unity.Mathematics;
+
+namespace LinearAlgebra
+{
+    public static partial class Krylov {
+
+        // ================= Scalar Golub-Kahan bidiagonalization half-steps =================
+        // Shared by lsqr/lsmr/craig/craigmr. Each solver sequences the two half-steps in its own
+        // order (lsqr/lsmr: u-step then v-step; craig/craigmr: u-step then v-step too, but craig
+        // interleaves its convergence/breakdown checks BETWEEN computing beta/alpha and dividing by
+        // it, and craigmr divides even later, after the Givens update) -- so a half-step returns the
+        // fresh norm and never divides or branches itself; every caller keeps its own
+        // divide/converge/breakdown control flow exactly where it was. Init differs too much to
+        // share (lsqr/lsmr warm-start from `b - A x` against an ‖Aᵀb‖² threshold; craig/craigmr
+        // force x=0 and scale off ‖b‖ directly) -- left inline in each file, see DEVLOG.
+
+        // u-step: u = A v - alpha*u ; returns beta = ‖u‖ (fused via Blas.xpayNormSq). Caller divides
+        // u by beta (guarded) itself.
+        static fProxy GolubKahanUStep<TOp>(in TOp A, in fProxyN v, fProxy alpha, ref fProxyN tmpM, ref fProxyN u)
+            where TOp : struct, IfProxyLinearOperator
+        {
+            A.Apply(in v, ref tmpM);
+            return math.sqrt(Blas.xpayNormSq(-alpha, tmpM, ref u));
+        }
+
+        // v-step: v = Aᵀu - beta*v ; returns alpha = ‖v‖ (fused via Blas.xpayNormSq). Caller divides
+        // v by alpha (guarded) itself.
+        static fProxy GolubKahanVStep<TOp>(in TOp A, in fProxyN u, fProxy beta, ref fProxyN tmpN, ref fProxyN v)
+            where TOp : struct, IfProxyLinearOperator
+        {
+            A.ApplyT(in u, ref tmpN);
+            return math.sqrt(Blas.xpayNormSq(-beta, tmpN, ref v));
+        }
+    }
+}
