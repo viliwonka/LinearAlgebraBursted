@@ -1,6 +1,24 @@
 # DEVLOG — TemplateSourceTests
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## CRAIGTests
+- 2026-07-20 | New bespoke file `CRAIGTests.fProxy.cs` for `Krylov.craig` (task #27). The key test
+  (`RectangularMinNorm`) verifies actual least-NORM correctness, not just `Ax=b`: builds an
+  underdetermined consistent system from an ARBITRARY x_true (b = A·x_true), then checks craig's x
+  against the exact min-2-norm oracle `LQ.minNormSolve` (already in this library, LQ-factorization
+  based) -- plus a softer `‖x‖ <= ‖x_true‖` sanity check and a negative guard that x is NOT x_true
+  (proving the oracle comparison isn't vacuously true). `SquareFullRank` covers the unique-solution
+  case, `ExplicitScratchInJob` exercises the caller-provided u/v/tmpM/tmpN zero-alloc overload inside
+  the IJob (guarding the struct-copy/ping-pong-buffer bug class seen previously in LOBPCG),
+  `ZeroRhs` checks the exact (not approximate) x=0/iterations=0 early-out, and a bonus
+  `RankDeficientBreakdown` bit-exactly constructs a first-step Aᵀu=0 collapse (row of A exactly
+  zero, b nonzero only in that row's component) to confirm honest `Breakdown` status with no NaN.
+  Convergence tol handed to craig (`SolveTol`, 1e-5f/1e-13) is tighter than
+  `Consts.fProxySqrtEps` -- the sqrt-eps default only drives ‖b-Ax‖ to ~1e-2 absolute on these
+  test-scale systems, too loose for the oracle comparison tolerance (`Tol`, 1e-3f/1e-9). NOT wired
+  into `KrylovSquareBatteryTests` -- see the OP DEVLOG's `Krylov.CRAIG` entry (battery has no
+  least-norm invoker yet).
+
 ## KrylovSquareBatteryTests / KrylovBattery.Invokers
 - 2026-07-20 | Added `fProxyTfqmrInvoker` + `SolverKind.Tfqmr`, mirroring `fProxyBiCGStabInvoker`
   (Requires=Square, Forbids=IllConditioned, PrecondKind=NonsymmetricBSR -- same task-#53-deferred

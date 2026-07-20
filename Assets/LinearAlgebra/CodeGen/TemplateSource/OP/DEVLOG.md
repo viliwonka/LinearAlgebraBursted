@@ -1,6 +1,58 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.CRAIG
+- 2026-07-20 | New file `Krylov.CRAIG.fProxy.cs`: single-RHS CRAIG (Craig 1955; Paige-Saunders BIT
+  1995), the least-NORM counterpart to `lsqr`/`lsmr` -- among all x with Ax=b (A m×n, m<=n, full row
+  rank), returns the minimum-Euclidean-norm one. Fills the gap noted in task #27: the library had
+  least-SQUARES but no least-NORM solver.
+- 2026-07-20 | PORT-FIDELITY DEVIATION: primarily ported `reference/rectangular/craigSOL/craigSOL.m`
+  (Saunders SOL MATLAB), not `reference/rectangular/pykrylov-lls/craig.py` (nominally the "primary"
+  source per the spec). pykrylov's `craig.py` implements the GENERALIZED CRAIG (damping, arbitrary
+  SPD preconditioners M/N, dual QR-style rotations for a symmetric quasi-definite system) -- a
+  materially different, more complex recurrence than plain undamped CRAIG, and out of scope for this
+  task (no damp/M/N in the spec). `craigSOL.m` is the plain Paige-Saunders algorithm and was
+  cross-checked against `reference/rectangular/CRAIG-Paige-Saunders-BIT1995.txt`. Derived and
+  verified the bidiagonalization or ordering (craigSOL computes v_k before u_{k+1} each loop
+  iteration, using dummy pre-loop values alpha=1/z=-1 to bootstrap; this is loop-boundary
+  bookkeeping only -- the underlying Golub-Kahan recurrence is identical to lsqr/lsmr's).
+- 2026-07-20 | API surface deviates from lsqr/lsmr in three ways, all documented on the entry point:
+  (1) no `w`/`y` scratch buffers -- craigSOL's y (dual variable satisfying x=Aᵀy, AAᵀy=b) and its w
+  bookkeeping were dropped since nothing in this API exposes y; x's update is a direct rank-1
+  `x += z*v` accumulation, not lsqr's Givens-rotated w-based update, so only u/v/tmpM/tmpN (4
+  buffers) are needed, not lsqr's 5. (2) No `damp` parameter and no `craigJacobi` -- undamped only,
+  matching the spec's scope. Deliberately did NOT add a naive Jacobi/column-scaling preconditioner:
+  for lsqr, column-scaling the search (x=Dy) is a harmless change of variables because the objective
+  (‖Ax-b‖) doesn't care how x is parametrized. For CRAIG, minimizing ‖y‖ in scaled space and
+  unscaling x=Dy minimizes a WEIGHTED norm ‖D⁻¹x‖ of the original x, not ‖x‖ -- silently the WRONG
+  min-norm solution unless D=I. A correct CRAIG preconditioner needs the generalized M/N form (the
+  part of pykrylov's craig.py this port intentionally skipped), so it's left undone rather than
+  shipped subtly wrong. (3) Default `maxIter` = `A.M_Rows`, not lsqr/lsmr's `A.N_Cols`: CRAIG's
+  bidiagonalization is CG-on-AAᵀ in disguise (an m×m system), so it terminates within m steps in
+  exact arithmetic, unlike lsqr/lsmr's search which can run up to n steps.
+- 2026-07-20 | `LstsqInfo.rnorm`/`Arnorm`/`xnorm` are filled via a fresh `lstsqResidual` audit (one
+  extra Apply+ApplyT) at every return point, not a tracked per-iteration identity -- CRAIG's direct
+  rank-1 x update has no free ‖Aᵀr‖ recurrence the way lsqr's Givens rotations or lsmr's MINRES-layer
+  rotations do. The LOOP's own convergence test still uses the free `rnorm = |beta*z|` identity from
+  craigSOL (no extra matvec per iteration); only the terminal `LstsqInfo` construction pays the extra
+  Apply+ApplyT, once per call.
+- 2026-07-20 | Breakdown guard is an exact `alfa > 0` / `beta > 0` test (NaN-safe, matches
+  lsqr/lsmr's own convention), firing when the bidiagonalization collapses to bit-exact zero -- e.g.
+  b exactly orthogonal to range(A) on the first step. KNOWN LIMITATION found while testing: a
+  NUMERICALLY (not bit-exactly) rank-deficient A -- e.g. one row a near-exact multiple of another --
+  produces a tiny-but-nonzero `alfa` (~1e-7 float / ~1e-16 double) from roundoff, so this guard does
+  NOT fire; the solver instead runs to `MaxIterations` with `x` blown up by the `z = -(beta/alfa)*z`
+  division (‖x‖ reaching ~1e7 float / ~1e16 double -- finite, never NaN, and status is honestly
+  MaxIterations/not-Solved, never a false Converged, so the core safety contract holds). A tighter
+  breakdown detector would need a relative threshold on alfa (vs. the first alfa or an ‖A‖ estimate)
+  instead of an absolute zero test -- not attempted here (deep rank-deficient least-norm is
+  out-of-scope per the spec; that territory belongs to a future LNLQ/CRAIGMR).
+- 2026-07-20 | NOT wired into the standardized Krylov battery (`KrylovSquareBatteryTests`/
+  `KrylovBattery.Invokers`) -- that battery's checks #1-5 are square-system only; least-squares/
+  least-norm invokers (checks #10-12) don't exist yet. A future battery increment should add a
+  least-norm invoker (rectangular consistent gallery entries + the min-norm oracle check via
+  `LQ.minNormSolve`) and wire `craig` in then. Bespoke coverage only for now, in `CRAIGTests`.
+
 ## Krylov.TFQMR
 - 2026-07-20 | New file `Krylov.TFQMR.fProxy.cs`: single-RHS transpose-free QMR (Freund 1993),
   ported from `reference/scipy/tfqmr.py`'s recurrence (readable float/double reference) with the
