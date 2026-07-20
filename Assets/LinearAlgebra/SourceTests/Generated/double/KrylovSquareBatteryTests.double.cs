@@ -15,11 +15,9 @@ using Unity.Mathematics;
 
 // Krylov square-solver battery -- solver x matrix-regime cross-coverage for the square (single-RHS)
 // Krylov family, driven through the IdoubleSquareSolverInvoker struct-functor shape (see
-// KrylovBattery.Invokers.double.cs). SPIKE: only Krylov.cg (via doubleCgInvoker) is wired so far --
-// the de-risking increment for the generic-method-on-a-struct-functor-interface shape this battery is
-// built on. Fanning out the rest of the square family (fcg/minres/minresQLP/biCGStab/gmres/fgmres/idr)
-// is a later increment; add each as a new SolverKind case + RunStandardChecks call, nothing else in
-// this file changes.
+// KrylovBattery.Invokers.double.cs). Every single-RHS square solver in the codebase is wired here:
+// cg, fcg, minres, minresQLP, biCGStab, gmres, fgmres, idr. Add a new solver as a new SolverKind case
+// + RunStandardChecks call, nothing else in this file changes.
 //
 // Every case runs the same 4 standard checks (SS5.2 #1-4 of the battery spec) across every gallery
 // matrix whose tags satisfy the invoker's Requires/Forbids (MatrixProfileMatch.Applicable), plus a
@@ -30,7 +28,7 @@ public class doubleKrylovSquareBatteryTests
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {
-        public enum SolverKind { Cg }
+        public enum SolverKind { Cg, Fcg, Minres, MinresQLP, BiCGStab, Gmres, Fgmres, Idr }
 
         public SolverKind Kind;
 
@@ -44,7 +42,14 @@ public class doubleKrylovSquareBatteryTests
         {
             switch (Kind)
             {
-                case SolverKind.Cg: RunStandardChecks(new doubleCgInvoker { TolValue = Consts.doubleSqrtEps, MaxIterMul = 20 }); break;
+                case SolverKind.Cg:        RunStandardChecks(new doubleCgInvoker { TolValue = Consts.doubleSqrtEps, MaxIterMul = 20 }); break;
+                case SolverKind.Fcg:       RunStandardChecks(new doubleFcgInvoker { TolValue = Consts.doubleSqrtEps, MaxIterMul = 20 }); break;
+                case SolverKind.Minres:    RunStandardChecks(new doubleMinresInvoker { TolValue = Consts.doubleSqrtEps, MaxIterMul = 20 }); break;
+                case SolverKind.MinresQLP: RunStandardChecks(new doubleMinresQLPInvoker { TolValue = Consts.doubleSqrtEps, MaxIterMul = 20 }); break;
+                case SolverKind.BiCGStab:  RunStandardChecks(new doubleBiCGStabInvoker { TolValue = Consts.doubleSqrtEps, MaxIterMul = 20 }); break;
+                case SolverKind.Gmres:     RunStandardChecks(new doubleGmresInvoker { TolValue = Consts.doubleSqrtEps, MaxIterMul = 4, Restart = 30 }); break;
+                case SolverKind.Fgmres:    RunStandardChecks(new doubleFgmresInvoker { TolValue = Consts.doubleSqrtEps, MaxIterMul = 4, Restart = 30 }); break;
+                case SolverKind.Idr:       RunStandardChecks(new doubleIdrInvoker { TolValue = Consts.doubleSqrtEps, MaxIterMul = 20, S = 4, Seed = 0x9E3779B1u }); break;
             }
         }
 
