@@ -1,6 +1,59 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.Block.IDR
+- 2026-07-20 | New file `Krylov.Block.IDR.fProxy.cs`: true block IDR(s) (task #41), the block
+  generalization of `Krylov.IDR.fProxy.cs`. Ported from `reference/square/BlockIDRs-Du-Sogabe-Yu-
+  Yamamoto-Zhang-JCAM2011.{pdf,txt}` (Algorithm 2) via the clean extract
+  `reference/square/BlockIDR-BlockTFQMR-algorithm-extract.md` (paper, uncertain-OA -- see the extract's
+  own provenance note; pseudocode-only, reimplemented from scratch) and cross-checked against
+  `reference/square/IDRsSolver.jl/IDRsSolver.jl` (MIT) for the scalar recurrence shape. `idrs.jl` in the
+  same folder was NOT read (per `reference/README-PROVENANCE.md`'s MPL-uncertainty flag on that file).
+- 2026-07-20 | DEVIATION (structural, not mathematical): block-generalized the ACTUAL scalar `idr`
+  implementation in this codebase (the merged "G/U start at zero, Msys starts at identity" loop, itself
+  the canonical van Gijzen/Sonneveld `idrs.m` form) rather than transcribing the paper's own two-phase
+  Algorithm 2 (explicit phase-1 loop building s initial residuals via 1-D residual-minimizing MR steps,
+  then a separate main loop). Both are the same recursion in different packaging -- with G/U starting
+  at zero and Msys at the identity, the merged loop's first sweep IS phase 1 (verified by hand: k=0's
+  forward-substitution is trivial under an identity Msys, giving G[0]=A*r0, U[0]=r0, matching Algorithm
+  1/2's phase-1 first step exactly). Keeps bidr consistent with idr's own file rather than introducing a
+  second IDR packaging into the codebase.
+- 2026-07-20 | Block-generalization derivation (row-storage convention, m x n blocks with m = RHS count
+  = paper's "m", n = A.Rows): every scalar dot product `Blas.dot(P[i], X)` becomes an m x m Gram block
+  `BlockCrossGram(P[i], X)` (= `P[i] @ X^T`, matches the paper's `P_i^H X` DIRECTLY under this row
+  convention -- no transpose correction needed, unlike the bi-orthogonalisation coefficients below);
+  every scalar divide `f[i]/dkk` becomes an m x m general (non-SPD) solve via `BlockSolveGeneral`
+  (QRCP rank-revealing, reusing `bbiCGStab`'s own helper -- Msys's blocks have no SPD guarantee); every
+  scalar-times-vector combine (`c[i]*G[i]`) becomes `BlockCTV(c[i], G[i])` = `c[i]^T @ G[i]` (LEFT-
+  multiply by the coefficient's TRANSPOSE) -- this transpose is real and necessary: the paper's own
+  combine is a RIGHT-multiply (`G_paper[i] @ c_paper[i]`, n x m paper convention), and translating a
+  right-multiply into this codebase's row-major (m x n) storage flips it into a left-multiply by the
+  transpose, which is exactly `BlockCTV`'s `C^T @ V` shape already used by `bbiCGStab`/`bgmres` for the
+  identical reason. Bi-orthogonalisation's `alpha` and the final `beta` both solve `Msys[i,i] @ X = RHS`
+  (LEFT-multiply, standard block-forward-substitution direction) then feed into `BlockCTV` the same way.
+  `om` (the end-of-sweep step length) stays a SCALAR trace ratio (`BlockFrobDot(Q,Q)`/`BlockFrobDot`
+  cross terms), matching the paper's own explicit remark that block IDR(s) still does a scalar
+  Frobenius-residual minimization per step, not a blocked one.
+- 2026-07-20 | Storage: Msys/f/c are `UnsafeList<fProxyMxN>` of small (m x m) standalone blocks (Msys
+  sized s*s, only the lower triangle i>=j ever read/written, mirrors scalar idr's own unused-upper-
+  triangle s x s Msys) rather than one big (s*m) x (s*m) matrix with offset sub-views -- avoids needing
+  a strided/offset submatrix view type this codebase does not have (RectView/RowsView/View all start at
+  a buffer's own row/col 0), at the cost of s*s small Allocator.Temp allocations (acceptable: s is a
+  small user-chosen shadow depth, matching the many-small-Temp-allocs pattern scalar idr's own P/G/U
+  lists already use).
+- 2026-07-20 | No deflation/column-locking (every RHS column stays live the whole solve, `minActive`
+  always m in the returned `BlockSolveInfo`) -- the paper explicitly states deflation of converged
+  columns is left to future work; mirrors `bbiCGStab`'s identical choice for the identical reason.
+  Breakdown (any m x m block solve reporting non-`Success`, or a non-positive/NaN `om` denominator)
+  reports `IterativeSolveStatus.Breakdown` with X holding the last committed iterate -- never NaN, never
+  throws from the recurrence itself.
+- 2026-07-20 | Seed default (`0x9E3779B1u`, `seed == 0` folds to the same default) copied VERBATIM from
+  `Krylov.idr` -- required by spec for cross-solver seed consistency, not an independent choice.
+  `fProxyBidrInvoker` (`KrylovBattery.Invokers.fProxy.cs`) mirrors `fProxyIdrInvoker`'s own `S`/`Seed`
+  fields (S = shadow depth, unrelated to the battery's own block-width `s`) and wires into
+  `KrylovBlockBatteryTests.fProxy.cs` as `SolverKind.Bidr` with `BlockAdvantage=false`/`NoBreakdown=
+  false` (both citing the same no-monotone-bound / no-deflation rationale as `BbiCGStab`'s own entry).
+
 ## Krylov.bfgmres
 - 2026-07-20 | New file `Krylov.Block.FGMRES.fProxy.cs`, sibling to `Krylov.Block.GMRES.fProxy.cs` (not
   an addition to it) per the single-solver-per-file convention (task #38). This is the intersection of

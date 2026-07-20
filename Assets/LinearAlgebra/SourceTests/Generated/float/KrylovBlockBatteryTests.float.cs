@@ -33,7 +33,7 @@ public class floatKrylovBlockBatteryTests
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {
-        public enum SolverKind { Bcg, Bcgrq, Bfbcg, Bminres, BbiCGStab, Bgmres, Bfgmres }
+        public enum SolverKind { Bcg, Bcgrq, Bfbcg, Bminres, BbiCGStab, Bidr, Bgmres, Bfgmres }
 
         public SolverKind Kind;
 
@@ -129,6 +129,19 @@ public class floatKrylovBlockBatteryTests
                     RunBlockStandardChecks(
                         new floatBbiCGStabInvoker { TolValue = Consts.floatSqrtEps, MaxIterMul = 20 },
                         new floatBiCGStabInvoker { TolValue = Consts.floatSqrtEps, MaxIterMul = 20 },
+                        new CheckFlags { S = 4, BlockAdvantage = false, NoBreakdown = false, IdenticalColumns = true });
+                    break;
+                case SolverKind.Bidr:
+                    // BlockAdvantage=false: like bbiCGStab, IDR(s)'s dimension-reduction recurrence has
+                    // no monotone residual-norm bound, so "block iterations <= worst scalar iterations"
+                    // is not airtight. NoBreakdown=false: bidr has no column locking/deflation (the
+                    // paper explicitly leaves that to future work -- see OP/DEVLOG.md "Krylov.Block.IDR"),
+                    // so a singular m x m block solve (exactly rank-deficient here, from two bit-identical
+                    // RHS rows) is its documented Breakdown contract, same rationale as bbiCGStab's own
+                    // exclusion.
+                    RunBlockStandardChecks(
+                        new floatBidrInvoker { TolValue = Consts.floatSqrtEps, MaxIterMul = 20, S = 4, Seed = 0x9E3779B1u },
+                        new floatIdrInvoker { TolValue = Consts.floatSqrtEps, MaxIterMul = 20, S = 4, Seed = 0x9E3779B1u },
                         new CheckFlags { S = 4, BlockAdvantage = false, NoBreakdown = false, IdenticalColumns = true });
                     break;
                 case SolverKind.Bgmres:

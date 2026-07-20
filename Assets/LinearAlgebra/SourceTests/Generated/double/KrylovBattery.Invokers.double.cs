@@ -702,6 +702,43 @@ namespace LinearAlgebra
     }
 
     /// <summary>
+    /// <see cref="IdoubleBlockSolverInvoker"/> for <see cref="Krylov.bidr{TOp, TPre}"/> -- true block
+    /// IDR(s) for a NON-symmetric (general) square A and s simultaneous right-hand sides.
+    /// <see cref="NeedsGeneralDenseOperator"/> is true (same landmine as <see cref="doubleBbiCGStabInvoker"/>).
+    /// Self-allocates its whole shadow-space/history workspace from Allocator.Temp, so <see
+    /// cref="Init"/> is a no-op (mirrors <see cref="doubleIdrInvoker"/>). <see cref="S"/>/<see
+    /// cref="Seed"/> are the IDR shadow-space DEPTH and its deterministic RNG seed -- unrelated to the
+    /// CheckFlags block width (RHS count) the battery drives this invoker through.
+    /// </summary>
+    public struct doubleBidrInvoker : IdoubleBlockSolverInvoker
+    {
+        public double TolValue;
+        public int MaxIterMul;
+        public int S;
+        public uint Seed;
+
+        public MatrixProfile Requires => MatrixProfile.Nonsymmetric;
+        public MatrixProfile Forbids => MatrixProfile.IllConditioned;
+        public PreconditionerKind PrecondKind => PreconditionerKind.NonsymmetricBSR;
+        public bool NeedsGeneralDenseOperator => true;
+        public double Tol => TolValue;
+        public int MaxIter(int n) => MaxIterMul * n;
+
+        public void Init(ref Arena arena, int n, int s) { }
+
+        public BlockSolveInfo Solve<TOp>(in TOp A, in doubleMxN B, ref doubleMxN X)
+            where TOp : struct, IdoubleLinearOperator
+            => Krylov.bidr(in A, in B, ref X, S, MaxIter(A.Rows), Tol, Seed);
+
+        public BlockSolveInfo SolveWithPrecond<TOp, TPre>(in TOp A, in TPre M, in doubleMxN B, ref doubleMxN X)
+            where TOp : struct, IdoubleLinearOperator
+            where TPre : struct, IdoublePreconditioner
+            => Krylov.bidr(in A, in M, in B, ref X, S, MaxIter(A.Rows), Tol, Seed);
+
+        public IdoubleSquareSolverInvoker ScalarCounterpart() => new doubleIdrInvoker { TolValue = TolValue, MaxIterMul = MaxIterMul, S = S, Seed = Seed };
+    }
+
+    /// <summary>
     /// <see cref="IdoubleBlockSolverInvoker"/> for <see cref="Krylov.bgmres{TOp, TPre}"/> -- restarted
     /// block GMRES(m) for a NON-symmetric (general) square A and s simultaneous right-hand sides.
     /// <see cref="NeedsGeneralDenseOperator"/> is true (same landmine as <see cref="doubleBbiCGStabInvoker"/>).

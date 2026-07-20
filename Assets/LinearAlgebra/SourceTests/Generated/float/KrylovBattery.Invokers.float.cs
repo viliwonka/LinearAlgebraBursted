@@ -702,6 +702,43 @@ namespace LinearAlgebra
     }
 
     /// <summary>
+    /// <see cref="IfloatBlockSolverInvoker"/> for <see cref="Krylov.bidr{TOp, TPre}"/> -- true block
+    /// IDR(s) for a NON-symmetric (general) square A and s simultaneous right-hand sides.
+    /// <see cref="NeedsGeneralDenseOperator"/> is true (same landmine as <see cref="floatBbiCGStabInvoker"/>).
+    /// Self-allocates its whole shadow-space/history workspace from Allocator.Temp, so <see
+    /// cref="Init"/> is a no-op (mirrors <see cref="floatIdrInvoker"/>). <see cref="S"/>/<see
+    /// cref="Seed"/> are the IDR shadow-space DEPTH and its deterministic RNG seed -- unrelated to the
+    /// CheckFlags block width (RHS count) the battery drives this invoker through.
+    /// </summary>
+    public struct floatBidrInvoker : IfloatBlockSolverInvoker
+    {
+        public float TolValue;
+        public int MaxIterMul;
+        public int S;
+        public uint Seed;
+
+        public MatrixProfile Requires => MatrixProfile.Nonsymmetric;
+        public MatrixProfile Forbids => MatrixProfile.IllConditioned;
+        public PreconditionerKind PrecondKind => PreconditionerKind.NonsymmetricBSR;
+        public bool NeedsGeneralDenseOperator => true;
+        public float Tol => TolValue;
+        public int MaxIter(int n) => MaxIterMul * n;
+
+        public void Init(ref Arena arena, int n, int s) { }
+
+        public BlockSolveInfo Solve<TOp>(in TOp A, in floatMxN B, ref floatMxN X)
+            where TOp : struct, IfloatLinearOperator
+            => Krylov.bidr(in A, in B, ref X, S, MaxIter(A.Rows), Tol, Seed);
+
+        public BlockSolveInfo SolveWithPrecond<TOp, TPre>(in TOp A, in TPre M, in floatMxN B, ref floatMxN X)
+            where TOp : struct, IfloatLinearOperator
+            where TPre : struct, IfloatPreconditioner
+            => Krylov.bidr(in A, in M, in B, ref X, S, MaxIter(A.Rows), Tol, Seed);
+
+        public IfloatSquareSolverInvoker ScalarCounterpart() => new floatIdrInvoker { TolValue = TolValue, MaxIterMul = MaxIterMul, S = S, Seed = Seed };
+    }
+
+    /// <summary>
     /// <see cref="IfloatBlockSolverInvoker"/> for <see cref="Krylov.bgmres{TOp, TPre}"/> -- restarted
     /// block GMRES(m) for a NON-symmetric (general) square A and s simultaneous right-hand sides.
     /// <see cref="NeedsGeneralDenseOperator"/> is true (same landmine as <see cref="floatBbiCGStabInvoker"/>).
