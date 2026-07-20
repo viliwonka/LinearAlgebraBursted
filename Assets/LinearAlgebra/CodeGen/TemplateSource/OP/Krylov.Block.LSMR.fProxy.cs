@@ -1,0 +1,402 @@
+using System;
+using Unity.Collections;
+using Unity.Mathematics;
+using LinearAlgebra.Sparse;
+
+namespace LinearAlgebra
+{
+    public static partial class Krylov {
+
+        // ---- blsmr private helpers ---------------------------------------------------------------
+
+        // Block-applies a (possibly rectangular) TOp per row through scalar Apply, via a Temp row
+        // pair: rowN (length A.Cols) / rowM (length A.Rows). Vrows is `rows` x A.Cols; AVrows is
+        // `rows` x A.Rows. Mirrors fProxyColScaledOperator.ApplyBlock's per-row loop -- the general
+        // (non-fused) fallback used because IfProxyLinearOperator.ApplyBlock is symmetric/square-only
+        // (see its own doc), and blsmr's A is rectangular.
+        static void BlockApplyOp<TOp>(in TOp A, in fProxyMxN Vrows, ref fProxyMxN AVrows, int rows,
+                                       ref fProxyN rowN, ref fProxyN rowM)
+            where TOp : struct, IfProxyLinearOperator
+        {
+            int n = A.Cols, m = A.Rows;
+            for (int i = 0; i < rows; i++)
+            {
+                for (int c = 0; c < n; c++) rowN[c] = Vrows[i, c];
+                A.Apply(in rowN, ref rowM);
+                for (int c = 0; c < m; c++) AVrows[i, c] = rowM[c];
+            }
+        }
+
+        // Block-applies TOp's transpose per row: Urows is `rows` x A.Rows; ATUrows is `rows` x A.Cols.
+        static void BlockApplyOpT<TOp>(in TOp A, in fProxyMxN Urows, ref fProxyMxN ATUrows, int rows,
+                                        ref fProxyN rowN, ref fProxyN rowM)
+            where TOp : struct, IfProxyLinearOperator
+        {
+            int n = A.Cols, m = A.Rows;
+            for (int i = 0; i < rows; i++)
+            {
+                for (int c = 0; c < m; c++) rowM[c] = Urows[i, c];
+                A.ApplyT(in rowM, ref rowN);
+                for (int c = 0; c < n; c++) ATUrows[i, c] = rowN[c];
+            }
+        }
+
+        // True iff the s x s lower- or upper-triangular L is numerically singular: any |diagonal|
+        // entry has collapsed relative to the largest one. Used on every block-bidiagonalization LQ
+        // factor (LB/LA) and on alphabark (the 2s x 2s block-Givens R-factor) -- the paper's own
+        // stated Bl-LSMR breakdown condition is exactly "alphabark singular".
+        static bool TriNearSingular(in fProxyMxN L, int s)
+        {
+            fProxy maxDiag = (fProxy)0;
+            for (int i = 0; i < s; i++)
+            {
+                fProxy d = math.abs(L[i, i]);
+                if (d > maxDiag) maxDiag = d;
+            }
+            if (!(maxDiag > (fProxy)0)) return true;
+            fProxy tol = (fProxy)s * Consts.fProxyZeroThreshold * maxDiag;
+            for (int i = 0; i < s; i++)
+                if (math.abs(L[i, i]) <= tol) return true;
+            return false;
+        }
+
+        // Dst (size x size) = transpose of Src's (size x size) sub-block starting at (rowOff, colOff).
+        static void ExtractBlockTranspose(in fProxyMxN Src, int rowOff, int colOff, ref fProxyMxN Dst, int size)
+        {
+            for (int i = 0; i < size; i++)
+                for (int j = 0; j < size; j++)
+                    Dst[i, j] = Src[rowOff + j, colOff + i];
+        }
+
+        // Dst (rows x cols) = Src's own sub-block starting at (rowOff, colOff), no transpose.
+        static void ExtractBlockAt(in fProxyMxN Src, int rowOff, int colOff, ref fProxyMxN Dst, int rows, int cols)
+        {
+            for (int i = 0; i < rows; i++)
+                for (int j = 0; j < cols; j++)
+                    Dst[i, j] = Src[rowOff + i, colOff + j];
+        }
+
+        // Writes Src (rows x cols) into Dst's sub-block starting at (rowOff, colOff). Dst's remaining
+        // entries are left untouched -- callers rely on this to keep Mpad's zero-padded half intact
+        // across iterations (allocated once, zeroed, only ever written through this on its live half).
+        static void WriteBlockAt(ref fProxyMxN Dst, int rowOff, int colOff, in fProxyMxN Src, int rows, int cols)
+        {
+            for (int i = 0; i < rows; i++)
+                for (int j = 0; j < cols; j++)
+                    Dst[rowOff + i, colOff + j] = Src[i, j];
+        }
+
+        // Dst (s x s) = transpose(Src). Dst must be distinct from Src.
+        static void TransposeSmall(in fProxyMxN Src, ref fProxyMxN Dst, int s)
+        {
+            for (int i = 0; i < s; i++)
+                for (int j = 0; j < s; j++)
+                    Dst[i, j] = Src[j, i];
+        }
+
+        // General s x s solve CoefT @ X = Rhs (Rhs DESTROYED, matching QRCP.solveInPlace's destructive
+        // fast path) via rank-revealing QRCP. X's shape (s x width) drives the RHS width -- used both
+        // for the s x s phi solve and the s x n P solve. coefWork/Rqrcp/Pqrcp/uQrcp are s x s / s x s /
+        // Pivot(s) / length-s scratch, shared and fully overwritten by every call.
+        static RankInfo BlockSolveGeneralWide(in fProxyMxN CoefT, ref fProxyMxN Rhs, ref fProxyMxN X,
+                                               ref fProxyMxN coefWork, ref fProxyMxN Rqrcp,
+                                               ref Pivot Pqrcp, ref fProxyN uQrcp, int s)
+        {
+            CopyMat(in CoefT, ref coefWork, s);
+            return QRCP.solveInPlace(ref coefWork, ref Rhs, ref X, ref Rqrcp, ref Pqrcp, ref uQrcp, (fProxy)(-1));
+        }
+
+        // ---- blsmr core ---------------------------------------------------------------------------
+
+        /// <summary>
+        /// Block LSMR (Mojarrab &amp; Toutounian 2015) for a TALL/overdetermined operator A (A.Rows
+        /// &gt;= A.Cols, full column rank) and s simultaneous right-hand sides: minimizes the
+        /// Frobenius norm ‖A X - B‖_F, generic over <see cref="IfProxyLinearOperator"/>. Block
+        /// generalization of <see cref="lsmr{TOp}"/>: the scalar Golub-Kahan bidiagonalization
+        /// coefficients (alpha, beta) become s x s blocks factored via a thin LQ (<see
+        /// cref="LQ.decomp"/>) each step, and LSMR's two nested Givens rotation stages become a block
+        /// QR of a stacked 2s x s pair (<see cref="QR.decomp"/> on a zero-padded 2s x 2s matrix, which
+        /// reduces to the same thing without needing a dedicated "full Q from a tall QR" primitive).
+        /// Monitors the SAME quantity scalar LSMR does -- ‖AᵀR‖_F -- via a free O(1) recurrence over
+        /// the block rotations (Fong &amp; Saunders' insight, block-lifted), never forming R explicitly.
+        ///
+        /// B and X are s ROWS x (A.Rows / A.Cols) COLS respectively (row j = the j-th RHS/solution
+        /// vector) -- this codebase's usual block-Krylov convention. X is NOT warm-startable (the
+        /// paper's Algorithm 2 fixes X0 = 0); this overload always overwrites X from zero. Owns its
+        /// whole workspace via Allocator.Temp (no external scratch params, mirroring <see
+        /// cref="bidr{TOp, TPre}"/>). No damping (Tikhonov) support -- the paper's algorithm has none.
+        ///
+        /// Breakdown (<see cref="IterativeSolveStatus.Breakdown"/>) on ANY block-bidiagonalization LQ
+        /// factor or the block-Givens R-factor (alphabark) going numerically singular -- the paper's
+        /// own stated Bl-LSMR breakdown condition -- or on the small block solves losing full rank.
+        /// Never NaN, never a false Converged. <see cref="BlockSolveInfo.minActive"/> is always s (no
+        /// column deflation; the stopping test is a single joint Frobenius-norm criterion, not
+        /// per-column).
+        /// </summary>
+        public static BlockSolveInfo blsmr<TOp>(in TOp A, in fProxyMxN B, ref fProxyMxN X, int maxIter, fProxy tol)
+            where TOp : struct, IfProxyLinearOperator
+        {
+            if (A.Rows < A.Cols) throw new ArgumentException("blsmr: A must be tall or square (A.Rows >= A.Cols)");
+            int m = A.Rows, n = A.Cols;
+            int s = B.M_Rows;
+            if (B.N_Cols != m) throw new ArgumentException("blsmr: B.N_Cols must equal A.Rows");
+            if (X.M_Rows != s || X.N_Cols != n) throw new ArgumentException("blsmr: X must be s x A.Cols");
+            if (s < 1 || s > n) throw new ArgumentException("blsmr: B.M_Rows (s) must be in [1, A.Cols]");
+            if (maxIter < 1) throw new ArgumentException("blsmr: maxIter must be >= 1");
+
+            for (int i = 0; i < s; i++)
+                for (int c = 0; c < n; c++) X[i, c] = (fProxy)0;
+
+            fProxyN rowN = new fProxyN(n), rowM = new fProxyN(m);
+
+            // ---- persistent small (s x s) state: carried across iterations, updated by explicit copy
+            // at the end of each iteration (never pointer-swapped -- s is small, copy cost is trivial
+            // and this keeps every buffer's identity fixed and easy to audit). ----
+            var LA        = new fProxyMxN(s, s, Allocator.Temp, true);   // "current Ak" transposed
+            var Bbar      = new fProxyMxN(s, s, Allocator.Temp, true);   // "current Bbark" (paper convention)
+            var abarLag1  = new fProxyMxN(s, s, Allocator.Temp, false);  // 0s
+            var bbarLag1  = new fProxyMxN(s, s, Allocator.Temp, false);  // Is
+            var bbarLag2  = new fProxyMxN(s, s, Allocator.Temp, false);  // 0s
+            var cbarLag1  = new fProxyMxN(s, s, Allocator.Temp, false);  // 0s
+            var dbarLag1  = new fProxyMxN(s, s, Allocator.Temp, false);  // Is
+            var dbarLag2  = new fProxyMxN(s, s, Allocator.Temp, false);  // 0s
+            var phiLag1   = new fProxyMxN(s, s, Allocator.Temp, true);
+            var phiLag2   = new fProxyMxN(s, s, Allocator.Temp, false);  // 0s
+            for (int i = 0; i < s; i++) { bbarLag1[i, i] = (fProxy)1; dbarLag1[i, i] = (fProxy)1; }
+
+            // ---- persistent big (s x m / s x n) state ----
+            var U    = new fProxyMxN(s, m, Allocator.Temp, true);   // current Uk (self-overwritten each iter)
+            var V    = new fProxyMxN(s, n, Allocator.Temp, true);   // current Vk
+            var PLag1 = new fProxyMxN(s, n, Allocator.Temp, false); // 0
+            var PLag2 = new fProxyMxN(s, n, Allocator.Temp, false); // 0
+
+            // ---- per-iteration scratch (small) ----
+            var LBnew     = new fProxyMxN(s, s, Allocator.Temp, true);
+            var LAnew     = new fProxyMxN(s, s, Allocator.Temp, true);
+            var Abark     = new fProxyMxN(s, s, Allocator.Temp, true);
+            var Bbarnew   = new fProxyMxN(s, s, Allocator.Temp, true);
+            var betadot   = new fProxyMxN(s, s, Allocator.Temp, true);
+            var alphadot  = new fProxyMxN(s, s, Allocator.Temp, true);
+            var betabar   = new fProxyMxN(s, s, Allocator.Temp, true);
+            var thetabar  = new fProxyMxN(s, s, Allocator.Temp, true);
+            var termSS    = new fProxyMxN(s, s, Allocator.Temp, true);
+            var alphabark = new fProxyMxN(s, s, Allocator.Temp, true);
+            var alphabarT = new fProxyMxN(s, s, Allocator.Temp, true);
+            var abark     = new fProxyMxN(s, s, Allocator.Temp, true);
+            var bbark     = new fProxyMxN(s, s, Allocator.Temp, true);
+            var cbark     = new fProxyMxN(s, s, Allocator.Temp, true);
+            var dbark     = new fProxyMxN(s, s, Allocator.Temp, true);
+            var RHSphi    = new fProxyMxN(s, s, Allocator.Temp, true);
+            var phiNew    = new fProxyMxN(s, s, Allocator.Temp, true);
+            var coefWork  = new fProxyMxN(s, s, Allocator.Temp, true);
+            var Rqrcp     = new fProxyMxN(s, s, Allocator.Temp, true);
+            var Pqrcp     = new Pivot(s, Allocator.Temp);
+            var uQrcp     = new fProxyN(s);
+
+            int s2 = 2 * s;
+            var Mpad  = new fProxyMxN(s2, s2, Allocator.Temp, false);   // right half stays 0 forever
+            var Qfull = new fProxyMxN(s2, s2, Allocator.Temp, true);
+            var Rfull = new fProxyMxN(s2, s2, Allocator.Temp, true);
+
+            // ---- per-iteration scratch (big) ----
+            var Wbar   = new fProxyMxN(s, m, Allocator.Temp, true);
+            var termSM = new fProxyMxN(s, m, Allocator.Temp, true);
+            var Sbar   = new fProxyMxN(s, n, Allocator.Temp, true);
+            var Vnext  = new fProxyMxN(s, n, Allocator.Temp, true);
+            var RHS_P  = new fProxyMxN(s, n, Allocator.Temp, true);
+            var Pnew   = new fProxyMxN(s, n, Allocator.Temp, true);
+            var termSN = new fProxyMxN(s, n, Allocator.Temp, true);
+            var ATB    = new fProxyMxN(s, n, Allocator.Temp, true);
+            var Rfinal = new fProxyMxN(s, m, Allocator.Temp, true);
+
+            IterativeSolveStatus status = IterativeSolveStatus.MaxIterations;
+            int iters = 0;
+            fProxy nrmATR2 = (fProxy)0;
+
+            // ---- tolerance scale: ||A^T B||_F^2 ----
+            BlockApplyOpT(in A, in B, ref ATB, s, ref rowN, ref rowM);
+            fProxy atbSqF = BlockFrobDot(in ATB, in ATB);
+            if (atbSqF == (fProxy)0)
+            {
+                status = IterativeSolveStatus.Converged;
+                goto cleanup;
+            }
+            fProxy threshold = tol * tol * atbSqF;
+
+            // ---- init: Block Bidiag 1's first pair (thin LQ of B, then of A^T U1) ----
+            {
+                var LB1 = new fProxyMxN(s, s, Allocator.Temp, true);
+                LQ.decomp(in B, ref LB1, ref U);
+                if (TriNearSingular(in LB1, s)) { LB1.Dispose(); status = IterativeSolveStatus.Breakdown; goto cleanup; }
+
+                BlockApplyOpT(in A, in U, ref Sbar /* reuse as AT_U1 scratch */, s, ref rowN, ref rowM);
+                var LA1 = new fProxyMxN(s, s, Allocator.Temp, true);
+                LQ.decomp(in Sbar, ref LA1, ref V);
+                if (TriNearSingular(in LA1, s)) { LB1.Dispose(); LA1.Dispose(); status = IterativeSolveStatus.Breakdown; goto cleanup; }
+
+                CopyMat(in LA1, ref LA, s);
+                var Bbar1 = new fProxyMxN(s, s, Allocator.Temp, true);
+                Blas.dot(in LA1, in LB1, ref Bbar1, true, true);          // Bbar1 = A1 @ B1
+                CopyMat(in Bbar1, ref Bbar, s);
+                CopyMat(in Bbar1, ref phiLag1, s);
+                BlockScaleInPlace(ref phiLag1, (fProxy)(-1));             // phi0 = -Bbar1
+
+                LB1.Dispose(); LA1.Dispose(); Bbar1.Dispose();
+            }
+
+            nrmATR2 = BlockFrobDot(in phiLag1, in phiLag1);
+            if (nrmATR2 <= threshold) { status = IterativeSolveStatus.Converged; goto cleanup; }
+
+            for (int k = 0; k < maxIter; k++)
+            {
+                // Wbark = A Vk - Ak^T Uk  (Ak^T Uk == BlockCTV(LA, U), since LA == Ak^T already)
+                BlockApplyOp(in A, in V, ref Wbar, s, ref rowN, ref rowM);
+                BlockCTV(in LA, in U, ref termSM);
+                BlockAdd(ref Wbar, in termSM, (fProxy)(-1));
+
+                LQ.decomp(in Wbar, ref LBnew, ref U);
+                if (TriNearSingular(in LBnew, s)) { status = IterativeSolveStatus.Breakdown; iters = k; goto cleanup; }
+
+                // Abark = Ak Ak^T + Bk+1^T Bk+1
+                Blas.dot(in LA, in LA, ref Abark, true, false);
+                Blas.dot(in LBnew, in LBnew, ref termSS, false, true);
+                BlockAdd(ref Abark, in termSS, (fProxy)1);
+
+                // Sbark = A^T Uk+1 - Bk+1^T Vk  (Bk+1^T Vk == BlockCTV(LBnew, V))
+                BlockApplyOpT(in A, in U, ref Sbar, s, ref rowN, ref rowM);
+                BlockCTV(in LBnew, in V, ref termSN);
+                BlockAdd(ref Sbar, in termSN, (fProxy)(-1));
+
+                LQ.decomp(in Sbar, ref LAnew, ref Vnext);
+                if (TriNearSingular(in LAnew, s)) { status = IterativeSolveStatus.Breakdown; iters = k; goto cleanup; }
+
+                // Bbark+1 = Ak+1 Bk+1
+                Blas.dot(in LAnew, in LBnew, ref Bbarnew, true, true);
+
+                // betadotk = dbark-2 @ Bbark^T ; thetabark = bbark-2 @ Bbark^T
+                Blas.dot(in dbarLag2, in Bbar, ref betadot, false, true);
+                Blas.dot(in bbarLag2, in Bbar, ref thetabar, false, true);
+
+                // alphadotk = cbark-1 @ betadotk + dbark-1 @ Abark
+                Blas.dot(in cbarLag1, in betadot, ref alphadot, false, false);
+                Blas.dot(in dbarLag1, in Abark, ref termSS, false, false);
+                BlockAdd(ref alphadot, in termSS, (fProxy)1);
+
+                // betabark = abark-1 @ betadotk + bbark-1 @ Abark
+                Blas.dot(in abarLag1, in betadot, ref betabar, false, false);
+                Blas.dot(in bbarLag1, in Abark, ref termSS, false, false);
+                BlockAdd(ref betabar, in termSS, (fProxy)1);
+
+                // Block-Givens: QR-factor [alphadotk ; Bbark+1] (2s x s), zero-padded to 2s x 2s so the
+                // library's square/tall-only QR.decomp yields the FULL 2s x 2s orthogonal factor. The
+                // padded columns stay exactly zero (orthogonal transforms of a zero vector are zero),
+                // so Qfull's first s columns / Rfull's top-left s x s block equal the thin QR of the
+                // s-wide input exactly; Qfull's second s columns give the needed orthogonal complement.
+                WriteBlockAt(ref Mpad, 0, 0, in alphadot, s, s);
+                WriteBlockAt(ref Mpad, s, 0, in Bbarnew, s, s);
+                QR.decomp(in Mpad, ref Qfull, ref Rfull);
+
+                ExtractBlockAt(in Rfull, 0, 0, ref alphabark, s, s);
+                if (TriNearSingular(in alphabark, s)) { status = IterativeSolveStatus.Breakdown; iters = k; goto cleanup; }
+                TransposeSmall(in alphabark, ref alphabarT, s);
+
+                ExtractBlockTranspose(in Qfull, 0, 0, ref abark, s);
+                ExtractBlockTranspose(in Qfull, s, 0, ref bbark, s);
+                ExtractBlockTranspose(in Qfull, 0, s, ref cbark, s);
+                ExtractBlockTranspose(in Qfull, s, s, ref dbark, s);
+
+                // phik = -alphabark^-T (thetabark^T phik-2 + betabark^T phik-1)
+                BlockCTV(in thetabar, in phiLag2, ref RHSphi);
+                BlockCTV(in betabar, in phiLag1, ref termSS);
+                BlockAdd(ref RHSphi, in termSS, (fProxy)1);
+                var rankPhi = BlockSolveGeneralWide(in alphabarT, ref RHSphi, ref phiNew, ref coefWork, ref Rqrcp, ref Pqrcp, ref uQrcp, s);
+                if (rankPhi.status != DirectSolveStatus.Success || rankPhi.rank != s)
+                { status = IterativeSolveStatus.Breakdown; iters = k; goto cleanup; }
+                BlockScaleInPlace(ref phiNew, (fProxy)(-1));
+
+                // Pk = (Vk - Pk-2 thetabark - Pk-1 betabark) alphabark^-1
+                BlockCTV(in thetabar, in PLag2, ref RHS_P);
+                BlockScaleInPlace(ref RHS_P, (fProxy)(-1));
+                BlockAdd(ref RHS_P, in V, (fProxy)1);
+                BlockCTV(in betabar, in PLag1, ref termSN);
+                BlockAdd(ref RHS_P, in termSN, (fProxy)(-1));
+                var rankP = BlockSolveGeneralWide(in alphabarT, ref RHS_P, ref Pnew, ref coefWork, ref Rqrcp, ref Pqrcp, ref uQrcp, s);
+                if (rankP.status != DirectSolveStatus.Success || rankP.rank != s)
+                { status = IterativeSolveStatus.Breakdown; iters = k; goto cleanup; }
+
+                // Xk = Xk-1 + Pk phik
+                BlockCTV(in phiNew, in Pnew, ref termSN);
+                BlockAdd(ref X, in termSN, (fProxy)1);
+
+                // ||A^T R||_F^2 -= ||phik||_F^2 (clamped: roundoff can push it fractionally negative)
+                fProxy phiNormSq = BlockFrobDot(in phiNew, in phiNew);
+                nrmATR2 = math.max((fProxy)0, nrmATR2 - phiNormSq);
+                iters = k + 1;
+
+                if (nrmATR2 <= threshold) { status = IterativeSolveStatus.Converged; goto cleanup; }
+
+                // ---- shift lag state (order matters: read old Lag1 into Lag2 before overwriting Lag1) ----
+                CopyMat(in bbarLag1, ref bbarLag2, s);
+                CopyMat(in dbarLag1, ref dbarLag2, s);
+                CopyMat(in abark, ref abarLag1, s);
+                CopyMat(in bbark, ref bbarLag1, s);
+                CopyMat(in cbark, ref cbarLag1, s);
+                CopyMat(in dbark, ref dbarLag1, s);
+
+                CopyMat(in phiLag1, ref phiLag2, s);
+                CopyMat(in phiNew, ref phiLag1, s);
+
+                CopyBlock(in PLag1, ref PLag2, s, n);
+                CopyBlock(in Pnew, ref PLag1, s, n);
+
+                CopyMat(in Bbarnew, ref Bbar, s);
+                CopyMat(in LAnew, ref LA, s);
+                CopyBlock(in Vnext, ref V, s, n);
+                // U was already overwritten in place by this iteration's first LQ.decomp call.
+            }
+
+        cleanup:
+            {
+                BlockApplyOp(in A, in X, ref Rfinal, s, ref rowN, ref rowM);
+                double maxr = 0;
+                for (int j = 0; j < s; j++)
+                {
+                    double rr = 0;
+                    for (int c = 0; c < m; c++)
+                    {
+                        double d = (double)(B[j, c] - Rfinal[j, c]);
+                        rr += d * d;
+                    }
+                    double rn = math.sqrt(rr);
+                    if (rn > maxr) maxr = rn;
+                }
+                int converged = status == IterativeSolveStatus.Converged ? s : 0;
+
+                rowN.Dispose(); rowM.Dispose();
+                LA.Dispose(); Bbar.Dispose(); abarLag1.Dispose(); bbarLag1.Dispose(); bbarLag2.Dispose();
+                cbarLag1.Dispose(); dbarLag1.Dispose(); dbarLag2.Dispose(); phiLag1.Dispose(); phiLag2.Dispose();
+                U.Dispose(); V.Dispose(); PLag1.Dispose(); PLag2.Dispose();
+                LBnew.Dispose(); LAnew.Dispose(); Abark.Dispose(); Bbarnew.Dispose(); betadot.Dispose();
+                alphadot.Dispose(); betabar.Dispose(); thetabar.Dispose(); termSS.Dispose();
+                alphabark.Dispose(); alphabarT.Dispose(); abark.Dispose(); bbark.Dispose(); cbark.Dispose(); dbark.Dispose();
+                RHSphi.Dispose(); phiNew.Dispose(); coefWork.Dispose(); Rqrcp.Dispose(); Pqrcp.Dispose(); uQrcp.Dispose();
+                Mpad.Dispose(); Qfull.Dispose(); Rfull.Dispose();
+                Wbar.Dispose(); termSM.Dispose(); Sbar.Dispose(); Vnext.Dispose(); RHS_P.Dispose(); Pnew.Dispose();
+                termSN.Dispose(); ATB.Dispose(); Rfinal.Dispose();
+
+                return new BlockSolveInfo { rhs = s, converged = converged, iterations = iters, maxRnorm = maxr, minActive = s, status = status };
+            }
+        }
+
+        // ---- blsmr concrete forwarders --------------------------------------------------------------
+
+        /// <summary>Block LSMR over a dense <see cref="fProxyMxN"/> A (tall or square). Forwards into
+        /// <see cref="blsmr{TOp}"/> via <see cref="fProxyDenseOperator"/>.</summary>
+        public static BlockSolveInfo blsmr(in fProxyMxN A, in fProxyMxN B, ref fProxyMxN X, int maxIter, fProxy tol)
+            => blsmr(new fProxyDenseOperator(in A), in B, ref X, maxIter, tol);
+
+        /// <summary>Block LSMR over a dense A with default maxIter (A.N_Cols) and tol (Consts.fProxySqrtEps).</summary>
+        public static BlockSolveInfo blsmr(in fProxyMxN A, in fProxyMxN B, ref fProxyMxN X)
+            => blsmr(in A, in B, ref X, A.N_Cols, Consts.fProxySqrtEps);
+    }
+}
