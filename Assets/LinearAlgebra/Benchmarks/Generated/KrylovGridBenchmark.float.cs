@@ -210,23 +210,45 @@ namespace LinearAlgebra.Benchmarks
                 "float", n, gallery, solver, st.Median, st.Min, residual);
         }
 
-        // Converge-regime row: iterations-to-converge + status alongside the time and true residual.
+        // Converge-regime row: iterations-to-converge + status alongside the time, per-iteration cost,
+        // and true residual.
         static string RowConvFloat(string gallery, string solver, int n, int iters, string status, Bench.Stat st, double residual)
         {
-            const string fmt = "{0,-7} {1,-6} {2,-10} {3,-12} {4,7} {5,-13} {6,11:F4} {7,11:F4} {8,14:E3}";
+            double msPerIter = st.Median / math.max(iters, 1);
+            const string fmt = "{0,-7} {1,-6} {2,-10} {3,-12} {4,7} {5,-13} {6,11:F4} {7,11:F4} {8,11:F4} {9,14:E3}";
             return string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
-                "float", n, gallery, solver, iters, status, st.Median, st.Min, residual);
+                "float", n, gallery, solver, iters, status, st.Median, st.Min, msPerIter, residual);
         }
 
         // float-tokened purely so codegen renames it per dtype (StatusNameFloat/StatusNameDouble),
         // avoiding a duplicate-member clash the way RowFloat does -- the body is dtype-agnostic.
         static string StatusNameFloat(int code) => ((IterativeSolveStatus)code).ToString();
 
+        // Scalar (BR=1) 2D 5-point UPWIND convection-diffusion stencil on a gx x gy grid, Peclet
+        // number pe. Nonsymmetric (west coefficient != east); diagonally dominant M-matrix
+        // (Dirichlet boundaries make it nonsingular).
+        static floatBSR ConvDiff2DFloat(ref Arena arena, int gx, int gy, float pe)
+        {
+            int n = gx * gy;
+            var b = arena.floatBSRBuilder(n, n, 1, 1, 5 * n);
+            for (int y = 0; y < gy; y++)
+                for (int x = 0; x < gx; x++)
+                {
+                    int i = y * gx + x;
+                    b.AddValue(i, i, (float)4 + pe);
+                    if (x > 0) b.AddValue(i, i - 1, -((float)1 + pe));
+                    if (x < gx - 1) b.AddValue(i, i + 1, (float)(-1));
+                    if (y > 0) b.AddValue(i, i - gx, (float)(-1));
+                    if (y < gy - 1) b.AddValue(i, i + gx, (float)(-1));
+                }
+            return b.ToBSR(ref arena);
+        }
+
         // Every square solver applies on an SPD gallery -- times all nine.
         static string BenchSpdFloat(int restart, int s, int recycle, int k)
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatLaplacian2D(16, 16);   // same construction as GalleryBSRMatrix.Laplacian2D_16x16
+            var A = arena.floatLaplacian2D(64, 64);   // 64x64 scalar Laplacian grid (N=4096); benchmark-local size, not a gallery enum
             int n = A.M_Rows;
             var b = arena.floatRandomVec(n, (float)(-1), (float)1, 0xD100u);
             var x = arena.floatVec(n);
@@ -305,7 +327,7 @@ namespace LinearAlgebra.Benchmarks
         static string BenchSpdConvergeFloat(int restart, int s, int recycle)
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatLaplacian2D(16, 16);
+            var A = arena.floatLaplacian2D(64, 64);   // 64x64 scalar Laplacian grid (N=4096); benchmark-local size, not a gallery enum
             int n = A.M_Rows;
             float tol = Consts.floatSqrtEps;
             int maxIter = 4 * n;
@@ -391,6 +413,51 @@ namespace LinearAlgebra.Benchmarks
             var gcrodrJob = new GcrodrGridJobFloat { A = A, b = b, x = x, Restart = restart, Recycle = recycle, K = maxIter, Tol = tol, Out = o };
             st = Bench.Time(() => gcrodrJob.Run());
             sb.Append(RowConvFloat("Nonsym", "gcrodr", n, o[0], StatusNameFloat(o[1]), st, ResidualFloat(in A, in x, in b)));
+
+            o.Dispose();
+            arena.Dispose();
+            return sb.ToString();
+        }
+
+        // CONVERGE regime, HARD nonsymmetric gallery: 2D convection-diffusion, high Peclet
+        // (pe=8, strongly convection-dominated). Only the general-square solvers apply. At this
+        // Peclet number, restarted gmres/fgmres tend to stagnate -- the differentiator gcrodr's
+        // recycled subspace deflation is meant to show.
+        static string BenchHardConvergeFloat(int restart, int s, int recycle)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = ConvDiff2DFloat(ref arena, 64, 64, (float)8);
+            int n = A.M_Rows;
+            float tol = Consts.floatSqrtEps;
+            int maxIter = 4 * n;
+            var b = arena.floatRandomVec(n, (float)(-1), (float)1, 0xD102u);
+            var x = arena.floatVec(n);
+            var o = new NativeArray<int>(2, Allocator.Persistent);
+            var sb = new StringBuilder();
+
+            var biCGStabJob = new BiCGStabGridJobFloat { A = A, b = b, x = x, K = maxIter, Tol = tol, Out = o };
+            var st = Bench.Time(() => biCGStabJob.Run());
+            sb.AppendLine(RowConvFloat("ConvDiff", "biCGStab", n, o[0], StatusNameFloat(o[1]), st, ResidualFloat(in A, in x, in b)));
+
+            var gmresJob = new GmresGridJobFloat { A = A, b = b, x = x, Restart = restart, K = maxIter, Tol = tol, Out = o };
+            st = Bench.Time(() => gmresJob.Run());
+            sb.AppendLine(RowConvFloat("ConvDiff", "gmres", n, o[0], StatusNameFloat(o[1]), st, ResidualFloat(in A, in x, in b)));
+
+            var fgmresJob = new FgmresGridJobFloat { A = A, b = b, x = x, Restart = restart, K = maxIter, Tol = tol, Out = o };
+            st = Bench.Time(() => fgmresJob.Run());
+            sb.AppendLine(RowConvFloat("ConvDiff", "fgmres", n, o[0], StatusNameFloat(o[1]), st, ResidualFloat(in A, in x, in b)));
+
+            var idrJob = new IdrGridJobFloat { A = A, b = b, x = x, S = s, K = maxIter, Tol = tol, Out = o };
+            st = Bench.Time(() => idrJob.Run());
+            sb.AppendLine(RowConvFloat("ConvDiff", "idr", n, o[0], StatusNameFloat(o[1]), st, ResidualFloat(in A, in x, in b)));
+
+            var tfqmrJob = new TfqmrGridJobFloat { A = A, b = b, x = x, K = maxIter, Tol = tol, Out = o };
+            st = Bench.Time(() => tfqmrJob.Run());
+            sb.AppendLine(RowConvFloat("ConvDiff", "tfqmr", n, o[0], StatusNameFloat(o[1]), st, ResidualFloat(in A, in x, in b)));
+
+            var gcrodrJob = new GcrodrGridJobFloat { A = A, b = b, x = x, Restart = restart, Recycle = recycle, K = maxIter, Tol = tol, Out = o };
+            st = Bench.Time(() => gcrodrJob.Run());
+            sb.Append(RowConvFloat("ConvDiff", "gcrodr", n, o[0], StatusNameFloat(o[1]), st, ResidualFloat(in A, in x, in b)));
 
             o.Dispose();
             arena.Dispose();

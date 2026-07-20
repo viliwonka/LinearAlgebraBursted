@@ -206,23 +206,45 @@ namespace LinearAlgebra.Benchmarks
                 "fProxy", n, gallery, solver, st.Median, st.Min, residual);
         }
 
-        // Converge-regime row: iterations-to-converge + status alongside the time and true residual.
+        // Converge-regime row: iterations-to-converge + status alongside the time, per-iteration cost,
+        // and true residual.
         static string RowConvFProxy(string gallery, string solver, int n, int iters, string status, Bench.Stat st, double residual)
         {
-            const string fmt = "{0,-7} {1,-6} {2,-10} {3,-12} {4,7} {5,-13} {6,11:F4} {7,11:F4} {8,14:E3}";
+            double msPerIter = st.Median / math.max(iters, 1);
+            const string fmt = "{0,-7} {1,-6} {2,-10} {3,-12} {4,7} {5,-13} {6,11:F4} {7,11:F4} {8,11:F4} {9,14:E3}";
             return string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
-                "fProxy", n, gallery, solver, iters, status, st.Median, st.Min, residual);
+                "fProxy", n, gallery, solver, iters, status, st.Median, st.Min, msPerIter, residual);
         }
 
         // fProxy-tokened purely so codegen renames it per dtype (StatusNameFloat/StatusNameDouble),
         // avoiding a duplicate-member clash the way RowFProxy does -- the body is dtype-agnostic.
         static string StatusNameFProxy(int code) => ((IterativeSolveStatus)code).ToString();
 
+        // Scalar (BR=1) 2D 5-point UPWIND convection-diffusion stencil on a gx x gy grid, Peclet
+        // number pe. Nonsymmetric (west coefficient != east); diagonally dominant M-matrix
+        // (Dirichlet boundaries make it nonsingular).
+        static fProxyBSR ConvDiff2DFProxy(ref Arena arena, int gx, int gy, fProxy pe)
+        {
+            int n = gx * gy;
+            var b = arena.fProxyBSRBuilder(n, n, 1, 1, 5 * n);
+            for (int y = 0; y < gy; y++)
+                for (int x = 0; x < gx; x++)
+                {
+                    int i = y * gx + x;
+                    b.AddValue(i, i, (fProxy)4 + pe);
+                    if (x > 0) b.AddValue(i, i - 1, -((fProxy)1 + pe));
+                    if (x < gx - 1) b.AddValue(i, i + 1, (fProxy)(-1));
+                    if (y > 0) b.AddValue(i, i - gx, (fProxy)(-1));
+                    if (y < gy - 1) b.AddValue(i, i + gx, (fProxy)(-1));
+                }
+            return b.ToBSR(ref arena);
+        }
+
         // Every square solver applies on an SPD gallery -- times all nine.
         static string BenchSpdFProxy(int restart, int s, int recycle, int k)
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyLaplacian2D(16, 16);   // same construction as GalleryBSRMatrix.Laplacian2D_16x16
+            var A = arena.fProxyLaplacian2D(64, 64);   // 64x64 scalar Laplacian grid (N=4096); benchmark-local size, not a gallery enum
             int n = A.M_Rows;
             var b = arena.fProxyRandomVec(n, (fProxy)(-1), (fProxy)1, 0xD100u);
             var x = arena.fProxyVec(n);
@@ -301,7 +323,7 @@ namespace LinearAlgebra.Benchmarks
         static string BenchSpdConvergeFProxy(int restart, int s, int recycle)
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyLaplacian2D(16, 16);
+            var A = arena.fProxyLaplacian2D(64, 64);   // 64x64 scalar Laplacian grid (N=4096); benchmark-local size, not a gallery enum
             int n = A.M_Rows;
             fProxy tol = Consts.fProxySqrtEps;
             int maxIter = 4 * n;
@@ -387,6 +409,51 @@ namespace LinearAlgebra.Benchmarks
             var gcrodrJob = new GcrodrGridJobFProxy { A = A, b = b, x = x, Restart = restart, Recycle = recycle, K = maxIter, Tol = tol, Out = o };
             st = Bench.Time(() => gcrodrJob.Run());
             sb.Append(RowConvFProxy("Nonsym", "gcrodr", n, o[0], StatusNameFProxy(o[1]), st, ResidualFProxy(in A, in x, in b)));
+
+            o.Dispose();
+            arena.Dispose();
+            return sb.ToString();
+        }
+
+        // CONVERGE regime, HARD nonsymmetric gallery: 2D convection-diffusion, high Peclet
+        // (pe=8, strongly convection-dominated). Only the general-square solvers apply. At this
+        // Peclet number, restarted gmres/fgmres tend to stagnate -- the differentiator gcrodr's
+        // recycled subspace deflation is meant to show.
+        static string BenchHardConvergeFProxy(int restart, int s, int recycle)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = ConvDiff2DFProxy(ref arena, 64, 64, (fProxy)8);
+            int n = A.M_Rows;
+            fProxy tol = Consts.fProxySqrtEps;
+            int maxIter = 4 * n;
+            var b = arena.fProxyRandomVec(n, (fProxy)(-1), (fProxy)1, 0xD102u);
+            var x = arena.fProxyVec(n);
+            var o = new NativeArray<int>(2, Allocator.Persistent);
+            var sb = new StringBuilder();
+
+            var biCGStabJob = new BiCGStabGridJobFProxy { A = A, b = b, x = x, K = maxIter, Tol = tol, Out = o };
+            var st = Bench.Time(() => biCGStabJob.Run());
+            sb.AppendLine(RowConvFProxy("ConvDiff", "biCGStab", n, o[0], StatusNameFProxy(o[1]), st, ResidualFProxy(in A, in x, in b)));
+
+            var gmresJob = new GmresGridJobFProxy { A = A, b = b, x = x, Restart = restart, K = maxIter, Tol = tol, Out = o };
+            st = Bench.Time(() => gmresJob.Run());
+            sb.AppendLine(RowConvFProxy("ConvDiff", "gmres", n, o[0], StatusNameFProxy(o[1]), st, ResidualFProxy(in A, in x, in b)));
+
+            var fgmresJob = new FgmresGridJobFProxy { A = A, b = b, x = x, Restart = restart, K = maxIter, Tol = tol, Out = o };
+            st = Bench.Time(() => fgmresJob.Run());
+            sb.AppendLine(RowConvFProxy("ConvDiff", "fgmres", n, o[0], StatusNameFProxy(o[1]), st, ResidualFProxy(in A, in x, in b)));
+
+            var idrJob = new IdrGridJobFProxy { A = A, b = b, x = x, S = s, K = maxIter, Tol = tol, Out = o };
+            st = Bench.Time(() => idrJob.Run());
+            sb.AppendLine(RowConvFProxy("ConvDiff", "idr", n, o[0], StatusNameFProxy(o[1]), st, ResidualFProxy(in A, in x, in b)));
+
+            var tfqmrJob = new TfqmrGridJobFProxy { A = A, b = b, x = x, K = maxIter, Tol = tol, Out = o };
+            st = Bench.Time(() => tfqmrJob.Run());
+            sb.AppendLine(RowConvFProxy("ConvDiff", "tfqmr", n, o[0], StatusNameFProxy(o[1]), st, ResidualFProxy(in A, in x, in b)));
+
+            var gcrodrJob = new GcrodrGridJobFProxy { A = A, b = b, x = x, Restart = restart, Recycle = recycle, K = maxIter, Tol = tol, Out = o };
+            st = Bench.Time(() => gcrodrJob.Run());
+            sb.Append(RowConvFProxy("ConvDiff", "gcrodr", n, o[0], StatusNameFProxy(o[1]), st, ResidualFProxy(in A, in x, in b)));
 
             o.Dispose();
             arena.Dispose();

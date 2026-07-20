@@ -18,7 +18,9 @@ namespace LinearAlgebra.Benchmarks
     public static partial class KrylovGridBenchmark
     {
         const int K = 100;         // fixed iteration budget, tol=0 (deterministic per-iteration timing)
-        const int Restart = 30;    // gmres/fgmres/gcrodr restart length
+        const int Restart = 20;    // gmres/fgmres/gcrodr restart length (short enough that restarted
+                                    // gmres stagnates on the hard ConvDiff gallery, letting gcrodr's
+                                    // recycled-subspace deflation show)
         const int S = 4;           // idr shadow-space depth
         const int Recycle = 10;    // gcrodr recycled subspace size
 
@@ -36,12 +38,14 @@ namespace LinearAlgebra.Benchmarks
 
             sb.AppendLine("=== Krylov solver convergence, BSR galleries (run to tol=sqrt(eps), cap 4N iters) ===");
             sb.AppendLine("    iters/status/time to SOLUTION -- the solver ranking fixed-K cannot show.");
-            sb.AppendLine(string.Format("{0,-7} {1,-6} {2,-10} {3,-12} {4,7} {5,-13} {6,11} {7,11} {8,14}",
-                "dtype", "N", "gallery", "solver", "iters", "status", "med(ms)", "min(ms)", "residual"));
+            sb.AppendLine(string.Format("{0,-7} {1,-6} {2,-10} {3,-12} {4,7} {5,-13} {6,11} {7,11} {8,11} {9,14}",
+                "dtype", "N", "gallery", "solver", "iters", "status", "med(ms)", "min(ms)", "ms/iter", "residual"));
             sb.AppendLine(BenchSpdConvergeFloat(Restart, S, Recycle));
             sb.AppendLine(BenchSpdConvergeDouble(Restart, S, Recycle));
             sb.AppendLine(BenchNonsymConvergeFloat(Restart, S, Recycle));
             sb.AppendLine(BenchNonsymConvergeDouble(Restart, S, Recycle));
+            sb.AppendLine(BenchHardConvergeFloat(Restart, S, Recycle));
+            sb.AppendLine(BenchHardConvergeDouble(Restart, S, Recycle));
         }
     }
 }
