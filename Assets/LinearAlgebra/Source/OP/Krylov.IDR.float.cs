@@ -169,7 +169,20 @@ namespace LinearAlgebra
                     x.addScaledInPlace(beta, Uk);
                     iter++;
 
-                    if (rr <= threshold) { status = IterativeSolveStatus.Converged; done = true; break; }
+                    if (rr <= threshold)
+                    {
+                        // Verify-at-exit: V/Q are idle here (both idle from right after they feed Uk
+                        // above until the next k-step's forward substitution reuses them). On a
+                        // failed verify, R is left holding the fresh residual (correct sign) so
+                        // subsequent P[i]-dot-R work stays correct.
+                        A.Apply(in x, ref V);
+                        Q.CopyFrom(in b);
+                        Q.addScaledInPlace((float)(-1), V);
+                        float trueRR = Blas.dot(Q, Q);
+                        R.CopyFrom(in Q);
+                        rr = trueRR;
+                        if (trueRR <= threshold) { status = IterativeSolveStatus.Converged; done = true; break; }
+                    }
 
                     if (k < s - 1)
                         for (int i = k + 1; i < s; i++) f[i] -= beta * Msys[i, k];
@@ -213,7 +226,19 @@ namespace LinearAlgebra
                 else              x.addScaledInPlace(om, VHat);
                 iter++;
 
-                if (rr <= threshold) { status = IterativeSolveStatus.Converged; break; }
+                if (rr <= threshold)
+                {
+                    // Verify-at-exit: V/Q are idle here (V: last read by the x update above; Q: last
+                    // read forming rr above), same buffer-reuse shape as the in-sweep site. On a
+                    // failed verify, R is left holding the fresh residual (correct sign).
+                    A.Apply(in x, ref V);
+                    Q.CopyFrom(in b);
+                    Q.addScaledInPlace((float)(-1), V);
+                    float trueRR = Blas.dot(Q, Q);
+                    R.CopyFrom(in Q);
+                    rr = trueRR;
+                    if (trueRR <= threshold) { status = IterativeSolveStatus.Converged; break; }
+                }
             }
 
             for (int i = 0; i < s; i++) { P[i].Dispose(); G[i].Dispose(); U[i].Dispose(); }

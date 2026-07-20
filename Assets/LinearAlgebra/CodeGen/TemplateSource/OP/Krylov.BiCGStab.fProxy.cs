@@ -122,11 +122,21 @@ namespace LinearAlgebra
 
                 if (ss <= threshold)
                 {
-                    // Early exit: the half-step residual s is already small enough -- finish
-                    // with x += alpha (M⁻¹ p) (skipping the t = A(M⁻¹s) stabilization matvec entirely).
-                    if (M.IsIdentity) x.addScaledInPlace(alpha, p);
-                    else              x.addScaledInPlace(alpha, pHat);
-                    return MakeSolveInfo(IterativeSolveStatus.Converged, k + 1, math.sqrt(ss));
+                    // Verify-at-exit on a TRIAL x (not yet committed): t/v are both idle here (t: not
+                    // yet written this iteration; v: fully consumed forming rv above). On a failed
+                    // verify, x is left untouched, so the standard stabilization step below applies
+                    // alpha*p exactly once (no double-apply).
+                    if (M.IsIdentity) { t.CopyFrom(in x); t.addScaledInPlace(alpha, p); }
+                    else              { t.CopyFrom(in x); t.addScaledInPlace(alpha, pHat); }
+                    A.Apply(in t, ref v);                     // v = A * (trial x)
+                    v.addScaledInPlace((fProxy)(-1), b);      // v = A*(trial x) - b; sign irrelevant, only dot(v,v) is used
+                    fProxy trialRR = Blas.dot(v, v);
+                    if (trialRR <= threshold)
+                    {
+                        x.CopyFrom(in t);
+                        return MakeSolveInfo(IterativeSolveStatus.Converged, k + 1, math.sqrt(trialRR));
+                    }
+                    // else: fall through to the standard stabilization step (t/v get overwritten below regardless).
                 }
 
                 // t = A (M⁻¹ s). Identity: sHat = s (r holds s), so t = A r directly (sHat untouched).
@@ -170,7 +180,17 @@ namespace LinearAlgebra
                 rr = Blas.axpyNormSq(-omega, t, ref r);
 
                 if (rr <= threshold)
-                    return MakeSolveInfo(IterativeSolveStatus.Converged, k + 1, math.sqrt(rr));
+                {
+                    // Verify-at-exit (mirrors cg's). v is idle here. On a failed verify, r is left
+                    // holding the FRESH residual so the next iteration continues from a corrected state.
+                    A.Apply(in x, ref v);
+                    r.CopyFrom(in b);
+                    r.addScaledInPlace((fProxy)(-1), v);
+                    rr = Blas.dot(r, r);
+
+                    if (rr <= threshold)
+                        return MakeSolveInfo(IterativeSolveStatus.Converged, k + 1, math.sqrt(rr));
+                }
 
                 rho = rhoNew;
             }

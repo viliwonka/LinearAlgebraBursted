@@ -22,11 +22,13 @@ namespace LinearAlgebra
         /// caller precondition, not verified beyond the NaN-safe breakdown guards.
         ///
         /// With <see cref="fProxyIdentityPreconditioner"/> the IsIdentity fold reduces this to plain
-        /// MINRES bit-for-bit: z is untouched (may be <c>default</c>), phibar IS the true residual
-        /// ‖b-Ax‖ (no verify), and the initial/loop residual checks match the classic recurrence.
-        /// With a real M the Lanczos recurrence runs in the M⁻¹-inner-product and phibar is the
-        /// M⁻¹-weighted residual, so a claimed Converged (and the MaxIterations) exit is reported
-        /// against one freshly recomputed ‖b-Ax‖; only Breakdown reports the unverified phibar.
+        /// MINRES bit-for-bit: z is untouched (may be <c>default</c>), and the initial residual check
+        /// matches the classic recurrence. With a real M the Lanczos recurrence runs in the
+        /// M⁻¹-inner-product and phibar is the M⁻¹-weighted residual. Either way, a claimed Converged
+        /// exit is reported against one freshly recomputed ‖b-Ax‖, not the raw phibar; the
+        /// preconditioned MaxIterations exit is verified the same way, while the identity
+        /// MaxIterations exit reports the unverified phibar (still an honest non-convergence signal).
+        /// Breakdown always reports the unverified phibar.
         ///
         /// Caller provides x (initial guess, overwritten -- WARM-STARTABLE) and eight scratch vectors
         /// (y, r1, r2, v, w, w1, w2, z; all length A.Rows; z unused under the identity). Returns a
@@ -187,13 +189,10 @@ namespace LinearAlgebra
 
                 if (phibar * phibar <= threshold)
                 {
-                    if (M.IsIdentity)
-                        // phibar IS ‖b-Ax‖ at this step (MINRES identity) -- no verify needed.
-                        return MakeSolveInfo(IterativeSolveStatus.Converged, k + 1, phibar);
-
-                    // Preconditioned: phibar is the M⁻¹-weighted residual, not ‖b-Ax‖ -- verify with
-                    // one fresh residual before trusting it (mirrors cg's verify-at-exit); y and v are
-                    // both idle here (y: recycled garbage; v: consumed by combine3 above), reused as
+                    // Verify-at-exit (identity AND preconditioned): phibar can drift from the true
+                    // ‖b-Ax‖ once gamma has been floored (gammaFloor guard above breaks the Givens
+                    // rotation's unitarity) -- true under the identity path too. y and v are both
+                    // idle here (y: recycled garbage; v: consumed by combine3 above), reused as
                     // scratch. Fall through and keep iterating on a failed verify.
                     A.Apply(in x, ref y);                     // y = A x
                     v.CopyFrom(in b);

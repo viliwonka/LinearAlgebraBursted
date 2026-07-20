@@ -38,6 +38,15 @@ public class doubleKrylovVerifyAtExitTests
         return A;
     }
 
+    // Well-conditioned nonsymmetric: random entries + a heavy diagonal (diagonally dominant,
+    // nonsingular) -- same recipe as doubleIDRTests/doubleGMRESTests DenseNonsym.
+    static doubleMxN BuildDenseNonsym(ref Arena arena, int dim, uint seed)
+    {
+        var A = arena.doubleRandomMat(dim, dim, (double)(-1f), (double)1f, seed);
+        for (int i = 0; i < dim; i++) A[i, i] += (double)(2 * dim);
+        return A;
+    }
+
     // b - A*x, recomputed fresh (independent of whatever residual the solver tracked internally).
     static double TrueResidualSq<TOp>(in TOp A, in doubleN b, in doubleN x, ref doubleN scratch)
         where TOp : struct, IdoubleLinearOperator
@@ -325,6 +334,175 @@ public class doubleKrylovVerifyAtExitTests
         double trueRs = TrueResidualSq(in op, in b, in x, ref scratch);
         double bound = (double)((double)64 * tol) * (double)((double)64 * tol) * (double)Blas.dot(b, b);
         Assert.LessOrEqual((double)trueRs, bound, "minresQLP Converged but true residual exceeds the honesty bound: " + info);
+
+        arena.Dispose();
+    }
+
+    // ==============================================================================
+    // minres (identity / unpreconditioned path) honesty guard: once gamma is floored the Givens
+    // recurrence loses unitarity and phibar can decay away from the true ‖b-Ax‖, flagging
+    // Converged while the residual is large. The verify-at-exit block must NOT claim convergence
+    // with a large true residual (Rosser), and must NOT reject a genuine convergence (SPD).
+    // ==============================================================================
+
+    [Test]
+    public void MinresNeverFalseConvergesOnRosser()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        var A = arena.doubleRosser();            // 8x8 symmetric, clustered near-degenerate spectrum
+        int n = A.M_Rows;
+        var op = new doubleDenseOperator(in A);
+        var b = arena.doubleRandomVec(n, (double)(-1f), (double)1f, 144003);
+
+        double tol = Consts.doubleSqrtEps;
+        var x = arena.doubleVec(n);
+        var info = Krylov.minres(in A, in b, ref x, 8 * n, tol);
+
+        var scratch = arena.doubleVec(n);
+        double trueRs = TrueResidualSq(in op, in b, in x, ref scratch);
+        double honestBoundSq = (double)((double)64 * tol) * (double)((double)64 * tol) * (double)Blas.dot(b, b);
+
+        // Never Solved while the true residual exceeds the raw bound (the pre-fix identity path
+        // trusted phibar unconditionally and could report Solved with a large true residual).
+        Assert.IsFalse(info.Solved && (double)trueRs > honestBoundSq,
+            "minres claimed convergence on Rosser but the true residual is large: " + info);
+
+        arena.Dispose();
+    }
+
+    [Test]
+    public void MinresStillConvergesHonestlyOnWellConditioned()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        int n = 20;
+        var A = BuildDenseSPD(ref arena, n, 144001);   // symmetric, well-conditioned
+        var op = new doubleDenseOperator(in A);
+        var b = arena.doubleRandomVec(n, (double)(-1f), (double)1f, 144002);
+
+        double tol = Consts.doubleSqrtEps;
+        var x = arena.doubleVec(n);
+        var info = Krylov.minres(in A, in b, ref x, 8 * n, tol);
+
+        // The verify-at-exit block must NOT over-reject a genuine convergence.
+        Assert.IsTrue(info.Solved, "minres must still converge on a well-conditioned system: " + info);
+
+        var scratch = arena.doubleVec(n);
+        double trueRs = TrueResidualSq(in op, in b, in x, ref scratch);
+        double bound = (double)((double)64 * tol) * (double)((double)64 * tol) * (double)Blas.dot(b, b);
+        Assert.LessOrEqual((double)trueRs, bound, "minres Converged but true residual exceeds the honesty bound: " + info);
+
+        arena.Dispose();
+    }
+
+    // ==============================================================================
+    // biCGStab honesty guard: r and x are propagated on separate recurrences that only equal
+    // b-Ax in exact arithmetic; a near-zero pivot (rho/rv/omega) can decouple them so ss/rr reads
+    // small while the true residual is large. Both verify sites (early-exit ss, main rr) must NOT
+    // claim convergence with a large true residual (Rosser), and must NOT reject a genuine
+    // convergence (well-conditioned nonsymmetric).
+    // ==============================================================================
+
+    [Test]
+    public void BiCGStabNeverFalseConvergesOnRosser()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        var A = arena.doubleRosser();
+        int n = A.M_Rows;
+        var op = new doubleDenseOperator(in A);
+        var b = arena.doubleRandomVec(n, (double)(-1f), (double)1f, 145003);
+
+        double tol = Consts.doubleSqrtEps;
+        var x = arena.doubleVec(n);
+        var info = Krylov.biCGStab(in A, in b, ref x, 8 * n, tol);
+
+        var scratch = arena.doubleVec(n);
+        double trueRs = TrueResidualSq(in op, in b, in x, ref scratch);
+        double honestBoundSq = (double)((double)64 * tol) * (double)((double)64 * tol) * (double)Blas.dot(b, b);
+
+        Assert.IsFalse(info.Solved && (double)trueRs > honestBoundSq,
+            "biCGStab claimed convergence on Rosser but the true residual is large: " + info);
+
+        arena.Dispose();
+    }
+
+    [Test]
+    public void BiCGStabStillConvergesHonestlyOnWellConditioned()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        int n = 20;
+        var A = BuildDenseNonsym(ref arena, n, 145001);   // nonsymmetric, diagonally dominant
+        var op = new doubleDenseOperator(in A);
+        var b = arena.doubleRandomVec(n, (double)(-1f), (double)1f, 145002);
+
+        double tol = Consts.doubleSqrtEps;
+        var x = arena.doubleVec(n);
+        var info = Krylov.biCGStab(in A, in b, ref x, 8 * n, tol);
+
+        Assert.IsTrue(info.Solved, "biCGStab must still converge on a well-conditioned system: " + info);
+
+        var scratch = arena.doubleVec(n);
+        double trueRs = TrueResidualSq(in op, in b, in x, ref scratch);
+        double bound = (double)((double)64 * tol) * (double)((double)64 * tol) * (double)Blas.dot(b, b);
+        Assert.LessOrEqual((double)trueRs, bound, "biCGStab Converged but true residual exceeds the honesty bound: " + info);
+
+        arena.Dispose();
+    }
+
+    // ==============================================================================
+    // idr honesty guard: R and x are propagated on separate recurrences (same shape as biCGStab);
+    // a near-zero shadow-space pivot can make rr read small while the true residual is large. Both
+    // verify sites (in-sweep, end-of-sweep) must NOT claim convergence with a large true residual
+    // (Rosser), and must NOT reject a genuine convergence (well-conditioned nonsymmetric).
+    // ==============================================================================
+
+    [Test]
+    public void IdrNeverFalseConvergesOnRosser()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        var A = arena.doubleRosser();
+        int n = A.M_Rows;
+        var op = new doubleDenseOperator(in A);
+        var b = arena.doubleRandomVec(n, (double)(-1f), (double)1f, 146003);
+
+        double tol = Consts.doubleSqrtEps;
+        var x = arena.doubleVec(n);
+        var info = Krylov.idr(in A, in b, ref x, 4, 20 * n, tol);
+
+        var scratch = arena.doubleVec(n);
+        double trueRs = TrueResidualSq(in op, in b, in x, ref scratch);
+        double honestBoundSq = (double)((double)64 * tol) * (double)((double)64 * tol) * (double)Blas.dot(b, b);
+
+        Assert.IsFalse(info.Solved && (double)trueRs > honestBoundSq,
+            "idr claimed convergence on Rosser but the true residual is large: " + info);
+
+        arena.Dispose();
+    }
+
+    [Test]
+    public void IdrStillConvergesHonestlyOnWellConditioned()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        int n = 20;
+        var A = BuildDenseNonsym(ref arena, n, 146001);   // nonsymmetric, diagonally dominant
+        var op = new doubleDenseOperator(in A);
+        var b = arena.doubleRandomVec(n, (double)(-1f), (double)1f, 146002);
+
+        double tol = Consts.doubleSqrtEps;
+        var x = arena.doubleVec(n);
+        var info = Krylov.idr(in A, in b, ref x, 4, 20 * n, tol);
+
+        Assert.IsTrue(info.Solved, "idr must still converge on a well-conditioned system: " + info);
+
+        var scratch = arena.doubleVec(n);
+        double trueRs = TrueResidualSq(in op, in b, in x, ref scratch);
+        double bound = (double)((double)64 * tol) * (double)((double)64 * tol) * (double)Blas.dot(b, b);
+        Assert.LessOrEqual((double)trueRs, bound, "idr Converged but true residual exceeds the honesty bound: " + info);
 
         arena.Dispose();
     }
