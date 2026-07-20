@@ -30,7 +30,7 @@ using Unity.Mathematics;
 //   - SingularBreakdown    : 0-matrix operator (no solution) -> honest Breakdown, no NaN.
 public class doubleBlockGCRODRTests
 {
-    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Strict)]
+    [BurstCompile(CompileSynchronously = true)]
     public struct BgcrodrTestJob : IJob
     {
         public enum TestType
@@ -153,8 +153,7 @@ public class doubleBlockGCRODRTests
             // modest spectrum the advantage is real only in float precision (plain bgmres genuinely
             // grinds); in double, bgmres resolves the isolated eigenvalue well enough that the
             // iteration count matches bgcrodr's, so the advantage isn't asserted there. double still
-            // verifies correctness (converged + residual) above. Job is FloatMode.Strict, so the
-            // float comparison is deterministic. See OP/DEVLOG.md.
+            // verifies correctness (converged + residual) above.
             if (false)
                 Assert.IsTrue(giR.iterations < giG.iterations);
 
