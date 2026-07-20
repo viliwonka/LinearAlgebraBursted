@@ -39,11 +39,14 @@ namespace LinearAlgebra
         /// (‖b − Ax‖ ≤ tol·‖b‖); maxIter counts TOTAL inner Arnoldi iterations across restarts (the
         /// per-cycle residual/recycle-projection matvecs are not counted, matching gmres's convention).
         /// recycle must be in [0, restart). Allocates its workspace (Arnoldi + recycle + small dense
-        /// deflation buffers) from the Temp allocator. Returns the shared <see cref="SolveInfo"/>.
-        /// Status: Converged / MaxIterations / Breakdown (a collapsed Hessenberg pivot in the
-        /// least-squares back-substitution) -- never NaN, never a false Converged. A failed or
-        /// ill-conditioned per-cycle deflation update degrades gracefully (keeps the previous cycle's
-        /// recycled subspace) rather than aborting the solve.
+        /// deflation buffers) from the Temp allocator. Returns the shared <see cref="SolveInfo"/>;
+        /// rnorm on a Converged exit is a freshly recomputed ‖b−Ax‖, not the raw Arnoldi/Givens
+        /// estimate (which only measures the C-orthogonal, recycle-projected residual) -- a failed
+        /// verify falls through to another cycle instead of a false Converged. Status: Converged /
+        /// MaxIterations / Breakdown (a collapsed Hessenberg pivot in the least-squares
+        /// back-substitution) -- never NaN, never a false Converged. A failed or ill-conditioned
+        /// per-cycle deflation update degrades gracefully (keeps the previous cycle's recycled
+        /// subspace) rather than aborting the solve.
         /// </summary>
         public static SolveInfo gcrodr<TOp, TPre>(in TOp A, in TPre M, in doubleN b, ref doubleN x,
                                      int restart, int recycle, int maxIter, double tol)
@@ -276,6 +279,20 @@ namespace LinearAlgebra
                         zproj[i] = math.abs(diag) > pivotGuard ? s / diag : (double)0;
                     }
                     for (int i = 0; i < kcur; i++) x.addScaledInPlace(-zproj[i], U[i]);
+                }
+
+                if (converged)
+                {
+                    // Verify-at-exit: |g[j+1]| only measures the C-orthogonal (recycle-projected)
+                    // residual, and a clamped Ru back-solve above can leave the C-component
+                    // un-cancelled -- recompute the TRUE residual at the just-updated x. V[0] and w
+                    // are both about to be fully overwritten at the top of the next cycle regardless,
+                    // so they're free scratch here; a failed verify falls through to the normal
+                    // not-converged path below (including the deflation update).
+                    doubleN v0v = V[0];
+                    double trueRR = VerifyTrueResidual(in A, in b, in x, ref w, ref v0v);
+                    resnorm = math.sqrt(trueRR);
+                    converged = resnorm <= thresh;
                 }
 
                 // ---- deflation update: rebuild the recycled subspace from the combined

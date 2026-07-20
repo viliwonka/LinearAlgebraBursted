@@ -40,8 +40,13 @@ namespace LinearAlgebra
         }
 
         // Applies the j already-generated Givens rotations to column j of H, then generates and
-        // applies rotation j (zeroing H[j+1,j], rotating g[j]/g[j+1] by it).
-        static void GivensApplyAndGenerate(ref floatMxN H, ref floatN cs, ref floatN sn, ref floatN g, int j)
+        // applies rotation j (zeroing H[j+1,j], rotating g[j]/g[j+1] by it). Returns false when the
+        // rotated pivot H[j,j] and the raw Arnoldi subdiagonal H[j+1,j] are BOTH exactly zero -- a
+        // genuine breakdown (column j carries no residual-reducing direction at all) distinct from
+        // ordinary happy breakdown (subdiagonal zero, pivot nonzero), which is still resolved
+        // normally below. Callers must not use column j as a back-substitution pivot when this
+        // returns false -- H[j,j] is left at 0 and g is left unrotated.
+        static bool GivensApplyAndGenerate(ref floatMxN H, ref floatN cs, ref floatN sn, ref floatN g, int j)
         {
             for (int i = 0; i < j; i++)
             {
@@ -52,9 +57,10 @@ namespace LinearAlgebra
 
             float a = H[j, j], bb2 = H[j + 1, j];
             float rr = math.sqrt(a * a + bb2 * bb2);
-            float c, s;
-            if (rr > (float)0) { c = a / rr; s = bb2 / rr; }
-            else { c = (float)1; s = (float)0; }
+            if (rr <= (float)0)
+                return false;
+
+            float c = a / rr, s = bb2 / rr;
             cs[j] = c; sn[j] = s;
             H[j, j] = rr;
             H[j + 1, j] = (float)0;
@@ -62,6 +68,7 @@ namespace LinearAlgebra
             float gj = g[j];
             g[j] = c * gj;
             g[j + 1] = -s * gj;
+            return true;
         }
 
         // Back-substitutes the upper-triangular Hessenberg system H[0..k-1,0..k-1] y = g[0..k-1].

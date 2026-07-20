@@ -31,10 +31,12 @@ namespace LinearAlgebra
         /// vectors rHat0, u, w, v, au, d, uHat (all length A.Rows; uHat unused under the identity).
         /// rHat0 is the fixed initial residual, doubling as the shadow vector for every
         /// bi-orthogonality dot product (never mutated after setup). Returns a
-        /// <see cref="SolveInfo"/> whose rnorm is TFQMR's own quasi-residual bound (Freund's
-        /// tau·sqrt(half-steps taken)) -- a rigorous upper bound on the true ‖b−Ax‖, never
-        /// independently recomputed, so a Converged exit still guarantees the true residual is
-        /// within tol·‖b‖. Breakdown on a zero/NaN bi-orthogonality dot (vtrstar), a zero/NaN/
+        /// <see cref="SolveInfo"/>. TFQMR's own quasi-residual bound (Freund's tau·sqrt(half-steps
+        /// taken)) is a rigorous upper bound on the true ‖b−Ax‖ only in exact arithmetic; when the
+        /// bound first crosses tol·‖b‖ this is verified against a freshly recomputed true residual
+        /// before being reported as Converged (falling back to MaxIterations, not a false Converged,
+        /// if the estimate turned out optimistic) -- rnorm on that path is the verified value, not
+        /// the raw bound. Breakdown on a zero/NaN bi-orthogonality dot (vtrstar), a zero/NaN/
         /// degenerate alpha, a zero/NaN rhoLast (beta undefined), or tau collapsing to zero/NaN
         /// before the bound-based convergence check catches it.
         /// </summary>
@@ -143,7 +145,17 @@ namespace LinearAlgebra
 
                 bound = tau * math.sqrt((double)(k + 1));
                 if (bound <= thresh)
-                    return MakeSolveInfo(IterativeSolveStatus.Converged, k + 1, bound);
+                {
+                    // Verify-at-exit: Freund's bound is rigorous only in exact arithmetic (see the
+                    // header doc). No scratch vector is idle here across both loop parities under
+                    // the identity preconditioner (au/v/d/u/w all feed the next half-step), so this
+                    // commits to a final return either way instead of falling through -- au and v
+                    // are safe to clobber since both outcomes return immediately.
+                    double trueRnorm = math.sqrt(VerifyTrueResidual(in A, in b, in x, ref au, ref v));
+                    return MakeSolveInfo(
+                        trueRnorm <= thresh ? IterativeSolveStatus.Converged : IterativeSolveStatus.MaxIterations,
+                        k + 1, trueRnorm);
+                }
                 if (tau == (double)0 || math.isnan(tau))
                     return MakeSolveInfo(IterativeSolveStatus.Breakdown, k + 1, bound); // tau collapsed
 

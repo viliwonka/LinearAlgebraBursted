@@ -29,9 +29,12 @@ namespace LinearAlgebra
         /// struct for the implicit-bool/status/undefined-x contract; rnorm/Arnorm/xnorm are filled
         /// by a certified-exact <see cref="lstsqResidual{TOp}"/> audit (one extra Apply + ApplyT)
         /// rather than a tracked identity, since CRAIG's direct rank-1 x update has no free
-        /// per-iteration ‖Aᵀr‖ the way lsqr/lsmr's rotation recurrences do. Breakdown when the
-        /// bidiagonalization collapses before ‖b-Ax‖ reaches tolerance -- A lacks full row rank (or,
-        /// on the very first step, b lies outside its row space).
+        /// per-iteration ‖Aᵀr‖ the way lsqr/lsmr's rotation recurrences do. A claimed Converged is
+        /// reconciled against that certified rnorm (no extra matvec beyond the audit already paid
+        /// for) before being reported -- falls through to another iteration if the tracked estimate
+        /// turned out optimistic. Breakdown when the bidiagonalization collapses before ‖b-Ax‖
+        /// reaches tolerance -- A lacks full row rank (or, on the very first step, b lies outside its
+        /// row space).
         /// </summary>
         public static LstsqInfo craig<TOp>(in TOp A, in floatN b, ref floatN x,
                                      ref floatN u, ref floatN v,
@@ -106,7 +109,19 @@ namespace LinearAlgebra
                 float rnorm = math.abs(beta * z);
 
                 if (rnorm <= tol * bnorm)
-                    return CraigInfo(IterativeSolveStatus.Converged, k + 1, in A, in b, ref x, ref tmpM, ref tmpN);
+                {
+                    // Verify-at-exit: the tracked bidiagonalization estimate can drift from the true
+                    // residual on an ill-conditioned A (CRAIG is CG-on-AAᵀ in disguise, kappa²
+                    // sensitivity). CraigInfo already pays for a certified-exact ‖b-Ax‖ audit
+                    // (lstsqResidual: one Apply + one ApplyT) for every exit regardless of status --
+                    // reuse THAT instead of a redundant matvec: only commit to Converged if the
+                    // certified residual also clears the threshold. tmpM/tmpN are safe to reuse
+                    // either way (GolubKahanUStep/VStep fully overwrite them before their next read,
+                    // so a fall-through loses nothing).
+                    var info = CraigInfo(IterativeSolveStatus.Converged, k + 1, in A, in b, ref x, ref tmpM, ref tmpN);
+                    if (info.rnorm <= tol * bnorm)
+                        return info;
+                }
 
                 if (!(beta > (float)0)) // NaN-safe: beta is a norm, nonnegative
                     // u collapsed without reaching tolerance. Only reachable with a degenerate tol

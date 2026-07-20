@@ -253,7 +253,49 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   preconditioner -- the same roughly-doubled-basis-memory cost `fgmres` pays over `gmres`, for the same
   reason (tolerating a per-step-varying M).
 
+## Krylov.GMRES
+- 2026-07-21 | Task #60 (Fable audit `docs/dev/audit-krylov-fable-20260720.md`): two fixes to the
+  shared `GivensApplyAndGenerate` (`Krylov.Arnoldi.Common.fProxy.cs`, also used by `fgmres`) plus a
+  verify-at-exit gate. (1) Breakdown: when the rotated pivot `H[j,j]` AND the raw Arnoldi
+  subdiagonal are BOTH exactly zero, the old code took the `c=1,s=0` happy-breakdown branch
+  unconditionally, leaving `H[j,j]=0` stored and `g[j+1]=0` -- read as both an instant Converged
+  (false, since x hadn't even been updated with this cycle's zero-progress column) AND a divide-by-
+  zero in `HessenbergBackSolve`. `GivensApplyAndGenerate` now returns false in that case; the caller
+  excludes the column (`k` stays at the prior valid count) instead of back-substituting through it.
+  Concrete trigger: `A` all-zero (or any operator that maps the current Arnoldi vector into the span
+  already covered AND leaves the rotated pivot exactly zero too) -- `diag(1,0)` with `b=(1,1)` also
+  reaches it after normalization. (2) If that breakdown produces ZERO usable columns this cycle (`k
+  == 0`, meaning x is provably unchanged), a restart would reproduce an identical residual forever;
+  a `deadEnd` flag forces the outer loop to stop and report `Breakdown` instead of spinning. If `k >
+  0` (partial progress), the cycle's partial x-update is kept and the outer loop naturally restarts
+  from the new residual. (3) Verify-at-exit: the mid-cycle Converged exit (`|g[j+1]| <= thresh`) is
+  the rotated-rhs ESTIMATE, not the true residual -- MGS orthogonality loss can make it drift
+  optimistically below `tol*bnorm` on an ill-conditioned A. After the post-loop x-update (identity or
+  preconditioned), a fresh `VerifyTrueResidual` recomputes ‖b-Ax‖ using `w`/`V[0]` as scratch (both
+  fully overwritten at the top of the next cycle regardless, so free); only kept Converged if the
+  fresh residual also clears the threshold, else falls through to another restart cycle. The
+  existing restart-ENTRY check (top of the while loop) was already a true residual and needed no
+  change. `total` now increments once per attempted Arnoldi column (moved before the breakdown
+  check, same count as before on every non-breakdown path -- no behavior change there).
+
+## Krylov.FGMRES
+- 2026-07-21 | Task #60: same three fixes as `Krylov.GMRES` (shared `Krylov.Arnoldi.Common.fProxy.cs`
+  breakdown guard + `deadEnd` dead-column handling + post-x-update verify-at-exit using `w`/`V[0]`
+  scratch). The preconditioned x-update reads the STORED per-step `Z[i]` vectors (valid even when M
+  varies every step) instead of gmres's single `zt` -- unaffected by the fix, `k` simply excludes the
+  breakdown column from that sum too.
+
 ## Krylov.GCRODR
+- 2026-07-21 | Task #60: added a verify-at-exit gate after the post-cycle x-update + recycle
+  correction, before the deflation-update block. `|g[j+1]|` only measures the C-orthogonal
+  (recycle-projected) residual -- a clamped `Ru` back-solve (near-zero diagonal) can leave the
+  C-component of the true residual un-cancelled, so a Converged decision from the Arnoldi/Givens
+  estimate alone can be wrong. `VerifyTrueResidual` recomputes ‖b-Ax‖ using `w`/`V[0]` (both fully
+  overwritten at the top of the next cycle regardless, so free); a failed verify flips `converged`
+  back to false, which naturally re-enables the deflation-update block for that cycle (previously
+  skipped only when actually converged) instead of returning early. gcrodr's OWN pivotGuard-based
+  breakdown path (a DIFFERENT bug the same audit entry flagged as separately mis-scaled, out of scope
+  here) already recomputes a true residual on that path and was untouched.
 - 2026-07-20 | Breakdown path now recomputes `rnorm` as a fresh ‖b-Ax‖ before returning, instead of
   reporting the stale Arnoldi/Givens `resnorm` estimate -- found while reviewing the bespoke
   `SingularBreakdownTest` (all-zero A): the degenerate Givens rotation (`rr==0 -> c=1,s=0`) leaves
@@ -380,6 +422,15 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   don't exist yet there) -- bespoke coverage only, in `CRAIGMRTests`.
 
 ## Krylov.CRAIG
+- 2026-07-21 | Task #60: the tracked-estimate Converged exit (`rnorm = |beta*z| <= tol*bnorm`) is now
+  reconciled against `CraigInfo`'s certified-exact residual (`lstsqResidual`: one Apply + one ApplyT)
+  BEFORE returning, instead of trusting the recurrence estimate outright -- CRAIG is CG-on-AAᵀ in
+  disguise (κ² sensitivity), so an ill-conditioned A can make the estimate cross threshold while the
+  certified rnorm has not. No extra matvec: `CraigInfo` was already being called on every exit path
+  (Converged/Breakdown/MaxIterations) to fill `LstsqInfo`, so this just checks its result before
+  committing to Converged rather than after. `tmpM`/`tmpN` are safe to reuse for the audit even when
+  falling through to keep iterating (`GolubKahanUStep`/`VStep` fully overwrite them before their next
+  read, same write-first contract `lstsqResidual` relies on).
 - 2026-07-20 | New file `Krylov.CRAIG.fProxy.cs`: single-RHS CRAIG (Craig 1955; Paige-Saunders BIT
   1995), the least-NORM counterpart to `lsqr`/`lsmr` -- among all x with Ax=b (A m×n, m<=n, full row
   rank), returns the minimum-Euclidean-norm one. Fills the gap noted in task #27: the library had
@@ -432,6 +483,15 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   `LQ.minNormSolve`) and wire `craig` in then. Bespoke coverage only for now, in `CRAIGTests`.
 
 ## Krylov.TFQMR
+- 2026-07-21 | Task #60: added a verify-at-exit gate at the `bound <= thresh` Converged exit --
+  Freund's quasi-residual bound is a rigorous upper bound on the true residual only in exact
+  arithmetic. Unlike cg/biCGStab/minres, NO scratch vector is idle at that point under the identity
+  preconditioner across BOTH loop parities (au is idle only on even half-steps, uHat only exists
+  under a real M, w/u/v/d are all read again before their next overwrite regardless of parity) -- so
+  instead of the usual fall-through-on-failed-verify pattern, this commits to a final return either
+  way (`Converged` if the fresh residual clears the threshold, else `MaxIterations`, never a false
+  Converged) and clobbers `au`/`v` for the check, which is free since neither outcome touches them
+  again.
 - 2026-07-20 | New file `Krylov.TFQMR.fProxy.cs`: single-RHS transpose-free QMR (Freund 1993),
   ported from `reference/scipy/tfqmr.py`'s recurrence (readable float/double reference) with the
   breakdown-guard/stopping-criterion shape cross-checked against `reference/square/BelosTFQMRIter.hpp`.

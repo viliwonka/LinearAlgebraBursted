@@ -32,8 +32,12 @@ namespace LinearAlgebra
         /// (‖b − Ax‖ ≤ tol·‖b‖); maxIter counts TOTAL inner iterations across restarts. Allocates its
         /// workspace (restart+1 basis vectors V, restart preconditioned vectors Z when M is not the
         /// identity, and a small Hessenberg / Givens set) from the Temp allocator. Returns the shared
-        /// <see cref="SolveInfo"/> (rnorm from the Arnoldi residual estimate). Status: Converged /
-        /// MaxIterations; a happy-breakdown (exact Krylov solution) converges.
+        /// <see cref="SolveInfo"/>; rnorm is a freshly recomputed ‖b−Ax‖, not the raw Arnoldi/Givens
+        /// estimate -- a Converged exit is verified before being reported, falling through to
+        /// another restart cycle if the estimate turned out optimistic. Status: Converged /
+        /// MaxIterations; a happy-breakdown (exact Krylov solution) converges. An exact-zero
+        /// Arnoldi/Givens pivot with no usable column produced this cycle reports Breakdown instead
+        /// of dividing by zero.
         /// </summary>
         public static SolveInfo fgmres<TOp, TPre>(in TOp A, in TPre M, in floatN b, ref floatN x, int restart, int maxIter, float tol)
             where TOp : struct, IfloatLinearOperator
@@ -79,8 +83,13 @@ namespace LinearAlgebra
             int total = 0;
             float resnorm = bnorm;
             bool converged = false;
+            // Set only when an Arnoldi/Givens step breaks down (H[j,j] and the Arnoldi subdiagonal
+            // both exactly zero) with ZERO usable columns produced this cycle -- x is then
+            // unchanged, so retrying would reproduce an identical residual forever. Forces the
+            // outer loop to stop instead of spinning.
+            bool deadEnd = false;
 
-            while (total < maxIter && !converged)
+            while (total < maxIter && !converged && !deadEnd)
             {
                 floatN v0 = V[0];
                 A.Apply(in x, ref w);                       // w = A x
@@ -96,6 +105,7 @@ namespace LinearAlgebra
                 g[0] = beta;
 
                 int k = 0;
+                bool breakdown = false;
                 for (int j = 0; j < m && total < maxIter; j++)
                 {
                     floatN vj = V[j];
@@ -115,36 +125,63 @@ namespace LinearAlgebra
 
                     // Arnoldi step: orthogonalize w against V[0..j], normalize into V[j+1].
                     ArnoldiMGSStep(w, in V, ref H, j, n);
+                    total++;   // one Arnoldi/matvec step consumed, whether or not it yields a pivot
 
-                    // Apply/generate the Givens rotations, rotating H's column j and rhs g.
-                    GivensApplyAndGenerate(ref H, ref cs, ref sn, ref g, j);
+                    // Apply/generate the Givens rotations, rotating H's column j and rhs g. False
+                    // means H[j,j] and the Arnoldi subdiagonal are both exactly zero -- column j has
+                    // no usable pivot (would divide by zero in HessenbergBackSolve). Exclude it: k
+                    // stays at the last valid column count, and this cycle stops here.
+                    if (!GivensApplyAndGenerate(ref H, ref cs, ref sn, ref g, j))
+                    {
+                        breakdown = true;
+                        break;
+                    }
 
                     resnorm = math.abs(g[j + 1]);
-                    total++;
                     k = j + 1;
                     if (resnorm <= thresh) { converged = true; break; }
                 }
 
-                // Back-substitute H[0..k-1,0..k-1] y = g[0..k-1].
-                HessenbergBackSolve(in H, in g, ref y, k);
-                // x += Z y (identity: Z aliases V, accumulated straight into x -- matches plain
-                // GMRES exactly). Preconditioned: x += sum y_i z_i using the STORED per-step
-                // preconditioned vectors, valid even when M varied across j = 0..k-1.
-                if (M.IsIdentity)
+                // Back-substitute H[0..k-1,0..k-1] y = g[0..k-1] (k == 0 only on an immediate,
+                // zero-column breakdown -- both loops below are then no-ops).
+                if (k > 0)
                 {
-                    for (int i = 0; i < k; i++)
+                    HessenbergBackSolve(in H, in g, ref y, k);
+                    // x += Z y (identity: Z aliases V, accumulated straight into x -- matches plain
+                    // GMRES exactly). Preconditioned: x += sum y_i z_i using the STORED per-step
+                    // preconditioned vectors, valid even when M varied across j = 0..k-1.
+                    if (M.IsIdentity)
                     {
-                        floatN vi = V[i];
-                        x.addScaledInPlace(y[i], vi);
+                        for (int i = 0; i < k; i++)
+                        {
+                            floatN vi = V[i];
+                            x.addScaledInPlace(y[i], vi);
+                        }
+                    }
+                    else
+                    {
+                        for (int i = 0; i < k; i++)
+                        {
+                            floatN zi = Z[i];
+                            x.addScaledInPlace(y[i], zi);
+                        }
                     }
                 }
-                else
+
+                // Verify-at-exit (converged path) OR final honesty check on a dead-end breakdown
+                // (zero columns produced -- x unchanged, further restarts are futile): the
+                // rotated-rhs estimate |g[j+1]| can drift from the true ‖b-Ax‖ once MGS loses
+                // orthogonality (an aggressive inner-iterative M widens the gap further). w and V[0]
+                // are both about to be fully overwritten at the top of the next cycle regardless, so
+                // they're free scratch here; a failed verify on the converged path falls through to
+                // another restart cycle instead of a false Converged.
+                if (converged || (breakdown && k == 0))
                 {
-                    for (int i = 0; i < k; i++)
-                    {
-                        floatN zi = Z[i];
-                        x.addScaledInPlace(y[i], zi);
-                    }
+                    floatN v0v = V[0];
+                    float trueRR = VerifyTrueResidual(in A, in b, in x, ref w, ref v0v);
+                    resnorm = math.sqrt(trueRR);
+                    converged = resnorm <= thresh;
+                    if (breakdown && k == 0) deadEnd = true;
                 }
             }
 
@@ -157,8 +194,10 @@ namespace LinearAlgebra
             }
             H.Dispose(); cs.Dispose(); sn.Dispose(); g.Dispose(); y.Dispose(); w.Dispose();
 
-            return MakeSolveInfo(converged ? IterativeSolveStatus.Converged : IterativeSolveStatus.MaxIterations,
-                                 total, resnorm);
+            var status = converged ? IterativeSolveStatus.Converged
+                       : deadEnd ? IterativeSolveStatus.Breakdown
+                       : IterativeSolveStatus.MaxIterations;
+            return MakeSolveInfo(status, total, resnorm);
         }
 
         /// <summary>
