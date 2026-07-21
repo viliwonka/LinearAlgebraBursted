@@ -1026,6 +1026,52 @@ namespace LinearAlgebra
     }
 
     /// <summary>
+    /// <see cref="IdoubleLstsqSolverInvoker"/> for <see cref="Krylov.cgne{TOp}"/> -- least-NORM
+    /// CGNE (CG on the normal equations of the second kind, AAᵀy=b, x=Aᵀy, matrix-free) for
+    /// UNDERDETERMINED (Rows &lt;= Cols, full row rank) CONSISTENT systems: among all x with Ax=b,
+    /// finds the minimum-‖x‖ one -- the SAME x <see cref="doubleCraigInvoker"/> computes, but via a
+    /// direct CG recurrence on the (never-formed) AAᵀ rather than Golub-Kahan bidiagonalization.
+    /// Owns the four scratch vectors cgne's zero-alloc primitive needs (r,Ap sized to Rows; p,tmpN
+    /// to Cols). Requires Underdetermined; Forbids RankDeficient -- CGNE runs CG directly on AAᵀ, so
+    /// its effective conditioning is cond(A)² and it cannot handle a rank-deficient (row-rank-
+    /// deficient) A the way a rank-revealing method could.
+    ///
+    /// TolValue is set an order of magnitude TIGHTER than <see cref="doubleCraigInvoker"/>'s in the
+    /// battery: CGNE's κ² sensitivity means its solution error scales as cond(A)²·(residual tol),
+    /// vs craig's cond(A)·(residual tol), so to land x inside the battery's shared element-agreement
+    /// band (TolBand = 50·sqrtEps for the well-conditioned WideRandom10x30, the only underdetermined
+    /// full-rank gallery entry) the residual must be driven ~10x lower than craig needs. The
+    /// battery's residual threshold (10·Tol·‖b‖) scales with Tol in lockstep, so the residual check
+    /// stays satisfied at 0.1·(that scale) regardless. See the KrylovLstsqBatteryTests switch.
+    /// </summary>
+    public struct doubleCgneInvoker : IdoubleLstsqSolverInvoker
+    {
+        public double TolValue;
+        public int MaxIterMul;
+
+        doubleN r, p, Ap, tmpN;
+
+        public MatrixProfile Requires => MatrixProfile.Underdetermined;
+        public MatrixProfile Forbids => MatrixProfile.RankDeficient;
+        public double Tol => TolValue;
+        public int MaxIter(int rows, int cols) => MaxIterMul * (rows < cols ? rows : cols);
+
+        public void Init(ref Arena arena, int rows, int cols)
+        {
+            r = arena.doubleVec(rows);
+            p = arena.doubleVec(cols);
+            Ap = arena.doubleVec(rows);
+            tmpN = arena.doubleVec(cols);
+        }
+
+        /// damp is ignored: cgne has no Tikhonov-damped production entry point (a consistent
+        /// min-norm system has no residual/norm trade-off to regularize), same as craig.
+        public LstsqInfo Solve<TOp>(in TOp A, in doubleN b, ref doubleN x, double damp)
+            where TOp : struct, IdoubleLinearOperator
+            => Krylov.cgne(in A, in b, ref x, ref r, ref p, ref Ap, ref tmpN, MaxIter(A.Rows, A.Cols), Tol);
+    }
+
+    /// <summary>
     /// <see cref="IdoubleLstsqSolverInvoker"/> for <see cref="Krylov.craigmr{TOp}"/> -- MINRES-
     /// flavored CRAIG (monotone residual) for UNDERDETERMINED (Rows &lt;= Cols, full row rank)
     /// CONSISTENT systems: among all x with Ax=b, finds the minimum-‖x‖ one. Owns the five

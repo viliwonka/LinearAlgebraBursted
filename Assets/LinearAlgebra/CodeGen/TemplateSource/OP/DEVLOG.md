@@ -1,6 +1,18 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.CGNE — direct-CG least-norm (κ² route); LNLQ deferred
+- 2026-07-21 | Added `cgne` = CG on AAᵀ (x = Aᵀy, matrix-free), the direct-CG minimum-norm solver.
+  Computes the SAME min-norm x as `craig` but via CG on AAᵀ → κ² conditioning (cheaper/simpler per
+  step, less stable) — the least-norm analog of CGLS, symmetric to keeping `bcgls` on the
+  least-squares side. NOT redundant with craig (which is the stable Golub-Kahan route, like LSQR);
+  it fills the κ² direct-CG route we lacked. Battery invoker runs at tol = sqrtEps·0.1 / MaxIterMul
+  20 because κ² drives x's error as κ²·(residual tol), so the residual must go ~10× lower than
+  craig's to land x in the same element band (a real κ²-driven adjustment, not a loosened assertion).
+- 2026-07-21 | LNLQ (Montoison-Orban least-norm LQ) requested alongside cgne but DEFERRED: no
+  reference in reference/ (only CRAIG/CRAIGMR/LSQR/LSMR/GKB). Per port-fidelity, don't derive it
+  blind (same call as blsmr deflation). Unpark when the Montoison-Orban paper is obtained.
+
 ## Krylov.Block.LSMR — deflation deferred (do not implement blind)
 - 2026-07-21 | Assessed adding per-column / graceful rank-deficient deflation to blsmr (task #74).
   DEFER. blsmr's Golub-Kahan block bidiagonalization is a lag-2 short recurrence over ~20 fixed

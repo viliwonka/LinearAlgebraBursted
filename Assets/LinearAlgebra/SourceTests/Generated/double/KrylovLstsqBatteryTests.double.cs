@@ -27,7 +27,7 @@ public class doubleKrylovLstsqBatteryTests
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {
-        public enum SolverKind { Lsqr, Lsmr, Craig, Craigmr }
+        public enum SolverKind { Lsqr, Lsmr, Craig, Craigmr, Cgne }
 
         public SolverKind Kind;
 
@@ -45,6 +45,13 @@ public class doubleKrylovLstsqBatteryTests
                 case SolverKind.Lsmr:    RunStandardChecks(new doubleLsmrInvoker { TolValue = Consts.doubleSqrtEps, MaxIterMul = 20 }); break;
                 case SolverKind.Craig:   RunStandardChecks(new doubleCraigInvoker { TolValue = Consts.doubleSqrtEps, MaxIterMul = 20 }); break;
                 case SolverKind.Craigmr: RunStandardChecks(new doubleCraigmrInvoker { TolValue = Consts.doubleSqrtEps, MaxIterMul = 20 }); break;
+                // CGNE runs CG directly on AAᵀ (κ² sensitivity), so its solution error scales as
+                // cond(A)²·(residual tol) vs craig's cond(A)·(residual tol). Drive the residual an
+                // order of magnitude tighter than craig so x still lands inside check #11's shared
+                // 50·sqrtEps element band on the well-conditioned WideRandom10x30 (the only
+                // underdetermined full-rank entry); the #11 residual bound (10·Tol·‖b‖) scales with
+                // Tol in lockstep, so it stays satisfied. See doubleCgneInvoker's doc.
+                case SolverKind.Cgne:    RunStandardChecks(new doubleCgneInvoker { TolValue = Consts.doubleSqrtEps * (double)0.1, MaxIterMul = 20 }); break;
             }
         }
 
