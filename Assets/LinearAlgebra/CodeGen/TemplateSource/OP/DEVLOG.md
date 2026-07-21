@@ -9,9 +9,15 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   it fills the κ² direct-CG route we lacked. Battery invoker runs at tol = sqrtEps·0.1 / MaxIterMul
   20 because κ² drives x's error as κ²·(residual tol), so the residual must go ~10× lower than
   craig's to land x in the same element band (a real κ²-driven adjustment, not a loosened assertion).
-- 2026-07-21 | LNLQ (Montoison-Orban least-norm LQ) requested alongside cgne but DEFERRED: no
-  reference in reference/ (only CRAIG/CRAIGMR/LSQR/LSMR/GKB). Per port-fidelity, don't derive it
-  blind (same call as blsmr deflation). Unpark when the Montoison-Orban paper is obtained.
+- 2026-07-21 | LNLQ (Estrin-Orban-Saunders least-norm LQ) — UNPARKED. Justification: it is the
+  library's only forward-error-in-x bound (`‖x*-x_k‖` upper bound), a real capability gap —
+  LstsqInfo/SolveInfo carry residual norms only. Reference chain now stashed + pdftotext'd in
+  reference/rectangular/: LNLQ-…eos2018 (Algorithm 2 core + §5 bounds), EOS2017 (LSLQ companion,
+  Radau node procedure), EOS2016 (SYMMLQ/CG error bounds, the constant-time ξ recurrence). All
+  three from Ron Estrin's Stanford ~restrin/files/. Krylov.jl lnlq.jl is MPL-2.0 → oracle-only,
+  never copied. Spec: docs/dev/spec-lnlq.md. Core solve = same min-norm x as craig; the Gauss-Radau
+  error bound is the entire value-add (needs a σ_min UNDERestimate). Sliding-window/regularization/
+  preconditioned-GGK all v1-out-of-scope.
 
 ## Krylov.Block.LSMR — deflation deferred (do not implement blind)
 - 2026-07-21 | Assessed adding per-column / graceful rank-deficient deflation to blsmr (task #74).
@@ -99,6 +105,18 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   question, see task tracker).
 
 ## Krylov.Block.MINRES — tol==0 nonzero-B false convergence
+- 2026-07-21 | Block sub-matrix copy-kernel consolidation + rename. (1) Deleted MINRES-local
+  `CopyRowsAt`/`CopyColsAt`/`CopyBlockAt` — pure redundancy with Block.Common helpers already in
+  scope (same `partial class Krylov`); they had drifted in during the s>1 debugging. (2) Renamed the
+  Common block-copy family for direction-clarity (the old `Copy*` conflated read vs write, the old
+  `Extract*`/`Write*`/`Store*` split direction but read clinically): now `CopyBlockFrom` (read: Dst =
+  Src sub-block), `CopyBlockInto` (write/assign), `AddBlockInto` (write/+=), `CopyBlockFromTransposed`,
+  `CopyRowsFrom`. Arg orders unchanged (offsets already sit next to the buffer they index — From is
+  Src-first, Into is Dst-first), so it was a pure token rename across Common/MINRES/CRAIGMR/LSMR/
+  GMRES/FGMRES/GCRODR. Behavior-identical; battery is the oracle. Implementations kept as element
+  loops (NOT MemCpy'd — the blocks are small, the win would be nil and the stride/alias risk real;
+  the DRY/compile-time payoff is the dedup itself). `CopyBlock`/`CopyMat` (whole-block) and the views
+  keep their names.
 - 2026-07-21 | `bminres`'s zero-RHS early-out (Krylov.Block.MINRES.fProxy.cs) tested `thr[j] ==
   0` (`thr[j] = tol*tol*||B[j]||^2`), which is also true whenever `tol == 0` regardless of `B` --
   a `tol=0` call on a NONZERO `B` took the shortcut, set `X := B`, and reported `Converged`. `X = B`

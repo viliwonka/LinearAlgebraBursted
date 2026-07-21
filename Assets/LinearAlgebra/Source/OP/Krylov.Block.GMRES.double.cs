@@ -192,7 +192,7 @@ namespace LinearAlgebra
                     for (int i = 0; i < k; i++)
                     {
                         var Yi = RectView(YiBuf, w[i], s);
-                        ExtractRowsAt(in Yfinal, off[i], w[i], ref Yi);
+                        CopyRowsFrom(in Yfinal, off[i], w[i], ref Yi);
                         var Vi = RowsView(V[i], w[i]);
                         var Ti = RowsView(Tbuf, s);
                         BlockCTV(in Yi, in Vi, ref Ti);

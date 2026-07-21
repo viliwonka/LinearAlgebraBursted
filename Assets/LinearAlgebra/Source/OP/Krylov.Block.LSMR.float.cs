@@ -200,18 +200,18 @@ namespace LinearAlgebra
                 // padded columns stay exactly zero (orthogonal transforms of a zero vector are zero),
                 // so Qfull's first s columns / Rfull's top-left s x s block equal the thin QR of the
                 // s-wide input exactly; Qfull's second s columns give the needed orthogonal complement.
-                WriteBlockAt(ref Mpad, 0, 0, in alphadot, s, s);
-                WriteBlockAt(ref Mpad, s, 0, in Bbarnew, s, s);
+                CopyBlockInto(ref Mpad, 0, 0, in alphadot, s, s);
+                CopyBlockInto(ref Mpad, s, 0, in Bbarnew, s, s);
                 QR.decomp(in Mpad, ref Qfull, ref Rfull);
 
-                ExtractBlockAt(in Rfull, 0, 0, ref alphabark, s, s);
+                CopyBlockFrom(in Rfull, 0, 0, ref alphabark, s, s);
                 if (TriNearSingular(in alphabark, s)) { status = IterativeSolveStatus.Breakdown; iters = k; goto cleanup; }
                 TransposeSmall(in alphabark, ref alphabarT, s);
 
-                ExtractBlockTranspose(in Qfull, 0, 0, ref abark, s);
-                ExtractBlockTranspose(in Qfull, s, 0, ref bbark, s);
-                ExtractBlockTranspose(in Qfull, 0, s, ref cbark, s);
-                ExtractBlockTranspose(in Qfull, s, s, ref dbark, s);
+                CopyBlockFromTransposed(in Qfull, 0, 0, ref abark, s);
+                CopyBlockFromTransposed(in Qfull, s, 0, ref bbark, s);
+                CopyBlockFromTransposed(in Qfull, 0, s, ref cbark, s);
+                CopyBlockFromTransposed(in Qfull, s, s, ref dbark, s);
 
                 // phik = -alphabark^-T (thetabark^T phik-2 + betabark^T phik-1)
                 BlockCTV(in thetabar, in phiLag2, ref RHSphi);

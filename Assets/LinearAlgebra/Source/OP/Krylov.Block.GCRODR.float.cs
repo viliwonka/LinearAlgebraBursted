@@ -274,7 +274,7 @@ namespace LinearAlgebra
                         var Cactive = RowsView(Cblk, kcur);
                         var Bij = RectView(BijBuf, kcur, w[j]);
                         BlockCrossGram(in Cactive, in Wj, ref Bij);
-                        StoreBlockAt(ref Bmat, 0, off[j], in Bij, kcur, w[j]);
+                        AddBlockInto(ref Bmat, 0, off[j], in Bij, kcur, w[j]);
                         var Tij0 = RowsView(Tbuf, w[j]);
                         BlockCTV(in Bij, in Cactive, ref Tij0);
                         BlockAdd(ref Wj, in Tij0, (float)(-1));
@@ -295,7 +295,7 @@ namespace LinearAlgebra
                             var Vi  = RowsView(V[i], w[i]);
                             var Hij = RectView(HijBuf, w[i], w[j]);
                             BlockCrossGram(in Vi, in Wj, ref Hij);
-                            StoreBlockAt(ref Hbuf, off[i], off[j], in Hij, w[i], w[j]);
+                            AddBlockInto(ref Hbuf, off[i], off[j], in Hij, w[i], w[j]);
                             var Tij = RowsView(Tbuf, w[j]);
                             BlockCTV(in Hij, in Vi, ref Tij);
                             BlockAdd(ref Wj, in Tij, (float)(-1));
@@ -318,7 +318,7 @@ namespace LinearAlgebra
                         var Vj1  = RowsView(V[j + 1], wj1);
                         var Hj1j = RectView(HijBuf, wj1, w[j]);
                         BlockCrossGram(in Vj1, in Wj, ref Hj1j);
-                        StoreBlockAt(ref Hbuf, off[j + 1], off[j], in Hj1j, wj1, w[j]);
+                        AddBlockInto(ref Hbuf, off[j + 1], off[j], in Hj1j, wj1, w[j]);
                     }
 
                     total++;
@@ -381,7 +381,7 @@ namespace LinearAlgebra
                     for (int i = 0; i < k; i++)
                     {
                         var Yi = RectView(YiBuf, w[i], s);
-                        ExtractRowsAt(in Yfinal, off[i], w[i], ref Yi);
+                        CopyRowsFrom(in Yfinal, off[i], w[i], ref Yi);
                         var Bi = flexible ? RowsView(Zv[i], w[i]) : RowsView(V[i], w[i]);
                         var Ti = RowsView(Tbuf, s);
                         BlockCTV(in Yi, in Bi, ref Ti);

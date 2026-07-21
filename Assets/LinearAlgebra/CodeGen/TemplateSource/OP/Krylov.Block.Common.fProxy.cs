@@ -395,7 +395,7 @@ namespace LinearAlgebra
         }
 
         // Dst (size x size) = transpose of Src's (size x size) sub-block starting at (rowOff, colOff).
-        static void ExtractBlockTranspose(in fProxyMxN Src, int rowOff, int colOff, ref fProxyMxN Dst, int size)
+        static void CopyBlockFromTransposed(in fProxyMxN Src, int rowOff, int colOff, ref fProxyMxN Dst, int size)
         {
             for (int i = 0; i < size; i++)
                 for (int j = 0; j < size; j++)
@@ -403,7 +403,7 @@ namespace LinearAlgebra
         }
 
         // Dst (rows x cols) = Src's own sub-block starting at (rowOff, colOff), no transpose.
-        static void ExtractBlockAt(in fProxyMxN Src, int rowOff, int colOff, ref fProxyMxN Dst, int rows, int cols)
+        static void CopyBlockFrom(in fProxyMxN Src, int rowOff, int colOff, ref fProxyMxN Dst, int rows, int cols)
         {
             for (int i = 0; i < rows; i++)
                 for (int j = 0; j < cols; j++)
@@ -413,7 +413,7 @@ namespace LinearAlgebra
         // Writes Src (rows x cols) into Dst's sub-block starting at (rowOff, colOff). Dst's remaining
         // entries are left untouched -- callers rely on this to keep Mpad's zero-padded half intact
         // across iterations (allocated once, zeroed, only ever written through this on its live half).
-        static void WriteBlockAt(ref fProxyMxN Dst, int rowOff, int colOff, in fProxyMxN Src, int rows, int cols)
+        static void CopyBlockInto(ref fProxyMxN Dst, int rowOff, int colOff, in fProxyMxN Src, int rows, int cols)
         {
             for (int i = 0; i < rows; i++)
                 for (int j = 0; j < cols; j++)
@@ -485,7 +485,7 @@ namespace LinearAlgebra
         // dst[rowOff+a, colOff+b] += src[a,b] for a<rows, b<cols. Absolute-index accumulate into dst's
         // OWN true stride -- safe regardless of dst's true N_Cols vs src's (the manual-copy escape
         // hatch for a buffer that must not be treated as a reshaped View -- see OP/DEVLOG.md).
-        static void StoreBlockAt(ref fProxyMxN dst, int rowOff, int colOff, in fProxyMxN src, int rows, int cols)
+        static void AddBlockInto(ref fProxyMxN dst, int rowOff, int colOff, in fProxyMxN src, int rows, int cols)
         {
             for (int a = 0; a < rows; a++)
                 for (int b = 0; b < cols; b++)
@@ -494,7 +494,7 @@ namespace LinearAlgebra
 
         // dst[a,c] = src[rowOff+a, c] for a<rows, all c<dst.N_Cols (== src.N_Cols, both fixed-width,
         // never-reshaped-in-that-dimension buffers).
-        static void ExtractRowsAt(in fProxyMxN src, int rowOff, int rows, ref fProxyMxN dst)
+        static void CopyRowsFrom(in fProxyMxN src, int rowOff, int rows, ref fProxyMxN dst)
         {
             int cols = dst.N_Cols;
             for (int a = 0; a < rows; a++)
@@ -536,7 +536,7 @@ namespace LinearAlgebra
                     var Vi  = RowsView(V[i], w[i]);
                     var Hij = RectView(HijBuf, w[i], w[j]);
                     BlockCrossGram(in Vi, in Wj, ref Hij);
-                    StoreBlockAt(ref Hbuf, off[i], off[j], in Hij, w[i], w[j]);
+                    AddBlockInto(ref Hbuf, off[i], off[j], in Hij, w[i], w[j]);
                     var Tij = RowsView(Tbuf, w[j]);
                     BlockCTV(in Hij, in Vi, ref Tij);
                     BlockAdd(ref Wj, in Tij, (fProxy)(-1));
@@ -559,7 +559,7 @@ namespace LinearAlgebra
                 var Vj1  = RowsView(V[j + 1], wj1);
                 var Hj1j = RectView(HijBuf, wj1, w[j]);
                 BlockCrossGram(in Vj1, in Wj, ref Hj1j);
-                StoreBlockAt(ref Hbuf, off[j + 1], off[j], in Hj1j, wj1, w[j]);
+                AddBlockInto(ref Hbuf, off[j + 1], off[j], in Hj1j, wj1, w[j]);
             }
 
             return wj1;

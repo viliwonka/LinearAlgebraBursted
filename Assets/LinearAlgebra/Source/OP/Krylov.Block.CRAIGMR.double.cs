@@ -153,16 +153,16 @@ namespace LinearAlgebra
                 // pivot; Abark/Bbark/Cbark/Dbark are the p x p blocks of the orthogonal transform
                 // (Qfull^T's own 2x2 block partition), the block analog of scalar (c, s, -s, c).
                 TransposeSmall(in LBnew, ref LBnewT, s);
-                WriteBlockAt(ref Mpad, 0, 0, in RhoBar, s, s);
-                WriteBlockAt(ref Mpad, s, 0, in LBnewT, s, s);
+                CopyBlockInto(ref Mpad, 0, 0, in RhoBar, s, s);
+                CopyBlockInto(ref Mpad, s, 0, in LBnewT, s, s);
                 QR.decomp(in Mpad, ref Qfull, ref Rfull);
 
-                ExtractBlockAt(in Rfull, 0, 0, ref Rho, s, s);
+                CopyBlockFrom(in Rfull, 0, 0, ref Rho, s, s);
                 if (TriNearSingular(in Rho, s)) { status = IterativeSolveStatus.Breakdown; iters = k; goto cleanup; }
-                ExtractBlockTranspose(in Qfull, 0, 0, ref Abark, s);
-                ExtractBlockTranspose(in Qfull, s, 0, ref Bbark, s);
-                ExtractBlockTranspose(in Qfull, 0, s, ref Cbark, s);
-                ExtractBlockTranspose(in Qfull, s, s, ref Dbark, s);
+                CopyBlockFromTransposed(in Qfull, 0, 0, ref Abark, s);
+                CopyBlockFromTransposed(in Qfull, s, 0, ref Bbark, s);
+                CopyBlockFromTransposed(in Qfull, 0, s, ref Cbark, s);
+                CopyBlockFromTransposed(in Qfull, s, s, ref Dbark, s);
 
                 // Zeta finalizes this round's contribution; ZetaBarNew carries the leftover to the
                 // next round -- both a direct application of the SAME orthogonal transform to the

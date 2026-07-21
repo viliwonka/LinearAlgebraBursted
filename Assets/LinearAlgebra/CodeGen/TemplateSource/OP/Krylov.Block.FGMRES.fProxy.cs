@@ -194,7 +194,7 @@ namespace LinearAlgebra
                     for (int i = 0; i < k; i++)
                     {
                         var Yi = RectView(YiBuf, w[i], s);
-                        ExtractRowsAt(in Yfinal, off[i], w[i], ref Yi);
+                        CopyRowsFrom(in Yfinal, off[i], w[i], ref Yi);
                         var Ti = RowsView(Tbuf, s);
                         if (M.IsIdentity)
                         {

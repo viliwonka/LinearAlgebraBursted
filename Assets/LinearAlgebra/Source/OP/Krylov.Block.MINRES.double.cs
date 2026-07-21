@@ -13,31 +13,6 @@ namespace LinearAlgebra
 
         // ---- bminres private helpers ----------------------------------------------------------------
 
-        // dst[rowOffset+r, c] = src[r, c] for r<rows, c<cols. Stride-safe: uses each buffer's own
-        // indexer, so src/dst may have different native column counts.
-        static void CopyRowsAt(in doubleMxN src, ref doubleMxN dst, int rowOffset, int rows, int cols)
-        {
-            for (int r = 0; r < rows; r++)
-                for (int c = 0; c < cols; c++)
-                    dst[rowOffset + r, c] = src[r, c];
-        }
-
-        // dst[r, colOffset+c] = src[r, c] for r<rows, c<cols.
-        static void CopyColsAt(in doubleMxN src, ref doubleMxN dst, int colOffset, int rows, int cols)
-        {
-            for (int r = 0; r < rows; r++)
-                for (int c = 0; c < cols; c++)
-                    dst[r, colOffset + c] = src[r, c];
-        }
-
-        // dst[r, c] = src[srcRowOff+r, srcColOff+c] for r<rows, c<cols.
-        static void CopyBlockAt(in doubleMxN src, int srcRowOff, int srcColOff, ref doubleMxN dst, int rows, int cols)
-        {
-            for (int r = 0; r < rows; r++)
-                for (int c = 0; c < cols; c++)
-                    dst[r, c] = src[srcRowOff + r, srcColOff + c];
-        }
-
         // Un-pivots Beta's ROWS in place: a row-pivoted normalize (LQRP.decomp / CHOP.decomp) returns
         // Beta with (P.W)[j,:] == (Beta.Vout)[j,:] -- Beta's row j is the CANDIDATE that ended up at
         // pivoted position j, i.e. W's original row P[j], not row j of W itself. Every consumer outside
@@ -131,7 +106,7 @@ namespace LinearAlgebra
         {
             int s2 = 2 * s;
             var Y = new doubleMxN(s2, s, Allocator.Temp, true);
-            CopyRowsAt(in Gbar, ref Y, 0, s, s);
+            CopyBlockInto(ref Y, 0, 0, in Gbar, s, s);
             for (int r = 0; r < s; r++)
                 for (int c = 0; c < s; c++)
                     Y[s + r, c] = Beta[c, r];   // Beta^T
@@ -176,8 +151,8 @@ namespace LinearAlgebra
 
             if (ok)
             {
-                CopyColsAt(in Qy, ref Omega, 0, s2, s);
-                CopyColsAt(in Qperp, ref Omega, s, s2, s);
+                CopyBlockInto(ref Omega, 0, 0, in Qy, s2, s);
+                CopyBlockInto(ref Omega, 0, s, in Qperp, s2, s);
             }
 
             Y.Dispose(); Qy.Dispose(); Z0.Dispose(); T.Dispose(); QyT.Dispose(); Z1.Dispose(); Qperp.Dispose(); Rz.Dispose();
@@ -368,18 +343,18 @@ namespace LinearAlgebra
                 // ---- apply the OLD Omega to the stacked block-2x2 (Dbar,0 ; Alfa,Beta) ----
                 for (int r = 0; r < s2; r++)
                     for (int c = 0; c < s2; c++) M2[r, c] = (double)0;
-                CopyRowsAt(in Dbar, ref M2, 0, s, s);       // top-left
-                CopyRowsAt(in Alfa, ref M2, s, s, s);       // bottom-left (cols 0..s of row-block 1)
+                CopyBlockInto(ref M2, 0, 0, in Dbar, s, s);   // top-left
+                CopyBlockInto(ref M2, s, 0, in Alfa, s, s);   // bottom-left (cols 0..s of row-block 1)
                 for (int r = 0; r < s; r++)
                     for (int c = 0; c < s; c++) M2[s + r, s + c] = Beta[r, c];   // bottom-right
 
                 Blas.dot(in OmegaOld, in M2, ref Result, true, false);
 
                 CopyMat(in Epsln, ref OldEps, s);
-                CopyBlockAt(in Result, 0, 0, ref Delta, s, s);
-                CopyBlockAt(in Result, 0, s, ref Epsln, s, s);
-                CopyBlockAt(in Result, s, 0, ref Gbar, s, s);
-                CopyBlockAt(in Result, s, s, ref Dbar, s, s);
+                CopyBlockFrom(in Result, 0, 0, ref Delta, s, s);
+                CopyBlockFrom(in Result, 0, s, ref Epsln, s, s);
+                CopyBlockFrom(in Result, s, 0, ref Gbar, s, s);
+                CopyBlockFrom(in Result, s, s, ref Dbar, s, s);
 
                 // ---- new Omega from (Gbar, Beta) ----
                 if (!BuildOmega(in Gbar, in Beta, ref OmegaNew, ref Gamma, s))
@@ -388,10 +363,10 @@ namespace LinearAlgebra
                 // ---- RHS update (Phi/Phibar) ----
                 for (int r = 0; r < s2; r++)
                     for (int c = 0; c < s; c++) PhibarStack[r, c] = (double)0;
-                CopyRowsAt(in Phibar, ref PhibarStack, 0, s, s);
+                CopyBlockInto(ref PhibarStack, 0, 0, in Phibar, s, s);
                 Blas.dot(in OmegaNew, in PhibarStack, ref Res2, true, false);
-                CopyBlockAt(in Res2, 0, 0, ref Phi, s, s);
-                CopyBlockAt(in Res2, s, 0, ref Phibar, s, s);
+                CopyBlockFrom(in Res2, 0, 0, ref Phi, s, s);
+                CopyBlockFrom(in Res2, s, 0, ref Phibar, s, s);
 
                 // ---- search-direction update: Gamma^T.Wnew = Vcur - OldEps^T.W1 - Delta^T.W2 ----
                 // (block generalization of scalar's w=(v-oldeps.w1-delta.w2)/gamma: the block search-
