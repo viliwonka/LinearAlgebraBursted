@@ -24,7 +24,11 @@ namespace LinearAlgebra.Benchmarks
         public floatMxN B;
         public floatMxN C;
 
-        public void Execute() => Blas.dot(in A, in B, ref C);
+        public void Execute()
+        {
+            BurstProbe.RequireBursted();
+            Blas.dot(in A, in B, ref C);
+        }
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]

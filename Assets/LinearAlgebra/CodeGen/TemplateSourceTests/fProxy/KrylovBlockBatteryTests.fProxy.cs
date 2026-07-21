@@ -66,6 +66,7 @@ public class fProxyKrylovBlockBatteryTests
 
         public void Execute()
         {
+            BurstProbe.RequireBursted();
             switch (Kind)
             {
                 case SolverKind.Bcg:

@@ -38,6 +38,7 @@ public class floatKrylovLstsqBatteryTests
 
         public void Execute()
         {
+            BurstProbe.RequireBursted();
             switch (Kind)
             {
                 case SolverKind.Lsqr:    RunStandardChecks(new floatLsqrInvoker { TolValue = Consts.floatSqrtEps, MaxIterMul = 20 }); break;

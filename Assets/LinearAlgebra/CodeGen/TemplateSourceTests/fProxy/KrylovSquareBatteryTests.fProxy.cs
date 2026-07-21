@@ -39,6 +39,7 @@ public class fProxyKrylovSquareBatteryTests
 
         public void Execute()
         {
+            BurstProbe.RequireBursted();
             switch (Kind)
             {
                 case SolverKind.Cg:        RunStandardChecks(new fProxyCgInvoker { TolValue = Consts.fProxySqrtEps, MaxIterMul = 20 }); break;

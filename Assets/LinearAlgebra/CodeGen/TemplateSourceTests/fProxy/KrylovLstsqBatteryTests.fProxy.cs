@@ -34,6 +34,7 @@ public class fProxyKrylovLstsqBatteryTests
 
         public void Execute()
         {
+            BurstProbe.RequireBursted();
             switch (Kind)
             {
                 case SolverKind.Lsqr:    RunStandardChecks(new fProxyLsqrInvoker { TolValue = Consts.fProxySqrtEps, MaxIterMul = 20 }); break;

@@ -1,6 +1,22 @@
 # DEVLOG — TemplateSourceBenchmarks
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Bench / GemmBenchmark -- BurstProbe wiring
+- 2026-07-21 | `Assets/LinearAlgebra/Benchmarks/Bench.cs`'s `Time()` now resets
+  `LinearAlgebra.BurstProbe.RanUnderMono` before timing and polls it after every warmup/timed
+  `.Run()` call; `Row`/`RowTime` print a `NOT BURSTED -- job fell back to Mono...` line instead of
+  bogus timing numbers when it fires, and the sweep continues (mirrors the exact LPBenchmark failure
+  this class of bug already caused once, see the `## LPBenchmark` entry below). Deliberately NOT a
+  try/catch around the timed call: verified (via a throwaway self-test, see
+  `CodeGen/TemplateSource/DEVLOG.md`'s `## BurstProbe.cs` entry) that a job's `Execute()` exception is
+  never rethrown synchronously to the `.Run()` caller in this Unity/Burst version -- only
+  `BurstProbe.RanUnderMono`, a plain field write, is reliably observable right after `.Run()`
+  returns.
+- 2026-07-21 | Added `BurstProbe.RequireBursted()` to `GemmJobFProxy.Execute()` (GemmBenchmark.fProxy.cs)
+  as the one spot-check benchmark job exercising the new harness wiring end-to-end (per
+  spec-test-burst-mono-hygiene.md SS5.3's suggested example); a no-op under Burst, so it does not
+  affect GEMM's measured timings.
+
 ## RooflineBenchmark.fProxy.cs — SIMD-proxy alias
 - 2026-07-17 | Swapped `using LinearAlgebra.mathProxies;` for `using fProxy4 = Unity.Mathematics.float4;`
   (deleteThis block). fProxy4-only, no fProxyM, native ops → generated output byte-identical. Last

@@ -1,6 +1,14 @@
 # DEVLOG — TemplateSourceTests
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## KrylovSquareBatteryTests / KrylovBlockBatteryTests / KrylovLstsqBatteryTests / KrylovBlockLstsqBatteryTests -- BurstProbe
+- 2026-07-21 | Added `BurstProbe.RequireBursted()` as the first statement of each battery `TestJob`'s
+  `Execute()` (per spec-test-burst-mono-hygiene.md SS2.1/SS7): a no-op under a real Burst compile, but
+  throws if the job ever silently falls back to Mono (the failure mode that caused a prior 10+ minute
+  suite -- `burst-test-compile-gotchas` project memory). Full suite re-run after wiring stayed
+  7138/7138 green -- none of the four battery jobs were actually falling back, so this is now a
+  standing regression guard, not a fix for a live bug.
+
 ## KrylovBlockLstsqBatteryTests / KrylovBattery.Invokers (task #56)
 - 2026-07-20 | New file, fourth and final battery family (square/block/single-RHS-lstsq already
   shipped). Wires blsmr/bcgls (both Overdetermined-only, tall A + block RHS, min-residual oracle)

@@ -43,6 +43,7 @@ public class floatKrylovSquareBatteryTests
 
         public void Execute()
         {
+            BurstProbe.RequireBursted();
             switch (Kind)
             {
                 case SolverKind.Cg:        RunStandardChecks(new floatCgInvoker { TolValue = Consts.floatSqrtEps, MaxIterMul = 20 }); break;

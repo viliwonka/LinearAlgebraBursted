@@ -1,6 +1,33 @@
 # DEVLOG — TemplateSource
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## BurstProbe.cs
+- 2026-07-21 | New singular (non-fProxy) file, `internal` so it's reachable from
+  `BurstLinearAlgebra.Tests`/`BurstLinearAlgebra.Benchmarks` via the `InternalsVisibleTo` grants in
+  AssemblyInfo.cs without adding public API surface to the shipped package. Placed here (flows
+  through codegen as a verbatim copy to `Source/BurstProbe.cs`, same as `Assume.cs`) rather than
+  hand-placed directly in `Source/`, because CLAUDE.md requires everything under `Source/` to be
+  codegen output; this is the only location both the Tests and Benchmarks assemblies can reference
+  without an asmdef change (neither references the other; both already reference the core `Source`
+  assembly).
+- 2026-07-21 | Verified end-to-end with a throwaway `SourceTests/BurstProbeSelfTest.cs` (deleted
+  after use, per spec-test-burst-mono-hygiene.md's acceptance criterion): a `[BurstCompile]` job
+  calling `RequireBursted()` passes clean (true no-op); a job with no `[BurstCompile]` attribute at
+  all throws, and Unity reports it as `Unhandled log message: '[Exception]
+  InvalidOperationException: Job ran under Mono...'`, which auto-fails the current NUnit test case --
+  the same channel the project's existing in-job `Assert.IsTrue`-abort battery tests already rely on
+  (no managed-side `Assert.Throws`/try-catch needed in a test).
+- 2026-07-21 | Load-bearing finding from that same verification: a job's `Execute()` exception is
+  NEVER rethrown synchronously to the `.Run()` caller in this Unity/Burst version -- confirmed by a
+  plain `try/catch` around `.Run()` observing nothing, for both a `[BurstCompile]` job (with
+  `DisableDirectCall = true`) and a plain non-attributed job, using both the
+  `BurstCompiler.Options.EnableBurstCompilation` runtime toggle and the
+  `--burst-disable-compilation` process-launch flag to force Mono. Unity only reports it via
+  `Debug.LogException` on a later tick. This is fine for NUnit tests (which auto-fail on the stray
+  log) but means `Bench.cs`'s benchmark harness cannot use try/catch at all -- see `RanUnderMono`
+  (a plain static flag written just before the throw, unaffected by the logging quirk since it's an
+  ordinary synchronous field write) and its use in `Assets/LinearAlgebra/Benchmarks/Bench.cs`.
+
 ## AssemblyInfo.cs
 - 2026-07-11 | `InternalsVisibleTo("BurstLinearAlgebra.Tests")` exists so concrete (NOT codegen'd) test
   files like ChunkedRecordTableTests.cs can exercise internal-only building blocks (e.g.

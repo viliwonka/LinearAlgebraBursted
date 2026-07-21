@@ -20,7 +20,11 @@ namespace LinearAlgebra.Benchmarks
         public fProxyMxN B;
         public fProxyMxN C;
 
-        public void Execute() => Blas.dot(in A, in B, ref C);
+        public void Execute()
+        {
+            BurstProbe.RequireBursted();
+            Blas.dot(in A, in B, ref C);
+        }
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]

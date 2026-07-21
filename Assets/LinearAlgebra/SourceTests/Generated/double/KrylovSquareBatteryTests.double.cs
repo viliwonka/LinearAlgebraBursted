@@ -43,6 +43,7 @@ public class doubleKrylovSquareBatteryTests
 
         public void Execute()
         {
+            BurstProbe.RequireBursted();
             switch (Kind)
             {
                 case SolverKind.Cg:        RunStandardChecks(new doubleCgInvoker { TolValue = Consts.doubleSqrtEps, MaxIterMul = 20 }); break;

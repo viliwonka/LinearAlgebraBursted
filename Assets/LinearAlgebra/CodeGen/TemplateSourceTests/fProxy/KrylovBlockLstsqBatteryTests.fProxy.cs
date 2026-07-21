@@ -50,6 +50,7 @@ public class fProxyKrylovBlockLstsqBatteryTests
 
         public void Execute()
         {
+            BurstProbe.RequireBursted();
             switch (Kind)
             {
                 // blsmr's convergence flag is CONSERVATIVE in float: the internal ||A^T R||_F^2

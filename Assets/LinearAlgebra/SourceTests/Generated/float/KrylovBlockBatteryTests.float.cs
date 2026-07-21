@@ -70,6 +70,7 @@ public class floatKrylovBlockBatteryTests
 
         public void Execute()
         {
+            BurstProbe.RequireBursted();
             switch (Kind)
             {
                 case SolverKind.Bcg:

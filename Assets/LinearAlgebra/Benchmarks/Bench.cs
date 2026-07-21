@@ -5,6 +5,8 @@ using System.Text;
 
 using Unity.Burst;
 
+using LinearAlgebra;
+
 using Debug = UnityEngine.Debug;
 
 namespace LinearAlgebra.Benchmarks
@@ -27,11 +29,22 @@ namespace LinearAlgebra.Benchmarks
         public const int Warmup = 1;
         public const int Runs = 4;
 
-        public struct Stat { public double Min, Median, Mean, Max; }
+        public struct Stat { public double Min, Median, Mean, Max; public bool RanUnderMono; }
 
+        // A job that falls back to Mono cannot be caught with try/catch here: Unity never rethrows
+        // a job Execute() exception synchronously to the .Run() caller, it only logs it later (see
+        // BurstProbe's doc comment). BurstProbe.RanUnderMono is the synchronous signal instead --
+        // reset before timing, polled after every .Run() call so a mid-run fallback is caught
+        // without wasting the remaining warmup/timed runs.
         public static Stat Time(Action run)
         {
-            for (int i = 0; i < Warmup; i++) run();
+            BurstProbe.RanUnderMono = false;
+
+            for (int i = 0; i < Warmup; i++)
+            {
+                run();
+                if (BurstProbe.RanUnderMono) return new Stat { RanUnderMono = true };
+            }
 
             var times = new double[Runs];
             var sw = new System.Diagnostics.Stopwatch();
@@ -40,6 +53,7 @@ namespace LinearAlgebra.Benchmarks
                 sw.Restart();
                 run();
                 sw.Stop();
+                if (BurstProbe.RanUnderMono) return new Stat { RanUnderMono = true };
                 times[i] = sw.Elapsed.TotalMilliseconds;
             }
             return Summarize(times);
@@ -73,6 +87,7 @@ namespace LinearAlgebra.Benchmarks
         // median time so the throughput column is comparable across kernels and sizes.
         public static string Row(string dtype, int n, Stat st, double flops)
         {
+            if (st.RanUnderMono) return NotBurstedRow(dtype, n);
             double gflops = flops / (st.Median / 1000.0) / 1e9;
             return string.Format(CultureInfo.InvariantCulture,
                 "{0,-7} {1,-6} {2,11:F4} {3,11:F4} {4,11:F4} {5,11:F4} {6,12:F2}",
@@ -89,9 +104,18 @@ namespace LinearAlgebra.Benchmarks
 
         public static string RowTime(string dtype, int n, Stat st)
         {
+            if (st.RanUnderMono) return NotBurstedRow(dtype, n);
             return string.Format(CultureInfo.InvariantCulture,
                 "{0,-7} {1,-6} {2,11:F4} {3,11:F4} {4,11:F4} {5,11:F4}",
                 dtype, n, st.Min, st.Median, st.Mean, st.Max);
+        }
+
+        // Distinct, unmissable line for a job that fell back to Mono instead of Burst -- printed in
+        // place of a timing row so the sweep keeps going instead of reporting a bogus (interpreter)
+        // timing next to genuine Burst-native numbers.
+        static string NotBurstedRow(string dtype, int n)
+        {
+            return string.Format("{0,-7} {1,-6} NOT BURSTED -- job fell back to Mono, see BurstProbe / Editor log", dtype, n);
         }
 
         // Builds the common preamble, runs `body` to fill in the kernel section(s), writes the report
