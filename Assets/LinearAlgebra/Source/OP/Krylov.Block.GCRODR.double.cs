@@ -14,14 +14,6 @@ namespace LinearAlgebra
 
         // ---- bgcrodr private helpers -------------------------------------------------------------
 
-        // dot(A[rowA,:], B[rowB,:]) -- two possibly-distinct rows from two possibly-distinct blocks.
-        static double RowDotAt(in doubleMxN A, int rowA, in doubleMxN B, int rowB, int n)
-        {
-            double acc = (double)0;
-            for (int c = 0; c < n; c++) acc += A[rowA, c] * B[rowB, c];
-            return acc;
-        }
-
         // dst[c] += scale * src[row,c].
         static void AddScaledRowInto(ref doubleN dst, double scale, in doubleMxN src, int row, int n)
         {
@@ -440,34 +432,27 @@ namespace LinearAlgebra
                                 AddScaledRowToRow(ref AUblk, i, Ru[l, i], in Cblk, l, n);
                     }
 
-                    var Fmat = new doubleMxN(d, d, Allocator.Temp, false);
-                    var Gmat = new doubleMxN(d, d, Allocator.Temp, false);
-                    var Pgram = new doubleMxN(d, d, Allocator.Temp, false);
-
+                    // Gather the d combined columns of P and AP into contiguous n x d buffers, then
+                    // build the three Gram matrices as GEMMs (mirrors scalar gcrodr's Gram
+                    // construction) instead of one dot product per (ai,bi) entry -- an O(d*n) gather
+                    // feeding cache-friendly O(d^2*n) GEMMs. Fmat/Pgram hit Blas.dot's dedicated
+                    // symmetric-by-construction (AtA) kernel since both operands are the same buffer.
+                    var Pgathered = new doubleMxN(n, d, Allocator.Temp, false);
+                    var APgathered = new doubleMxN(n, d, Allocator.Temp, false);
                     for (int ai = 0; ai < d; ai++)
                     {
                         ResolveCombinedCol(ai, kcurAtEntry, flexible, in Ublk, in AUblk, in V, in Zv, in AVlist, in off, k,
                                             out doubleMxN Pa, out int Prow, out doubleMxN APa, out int AProw);
-
-                        for (int bi = ai; bi < d; bi++)
-                        {
-                            ResolveCombinedCol(bi, kcurAtEntry, flexible, in Ublk, in AUblk, in V, in Zv, in AVlist, in off, k,
-                                                out doubleMxN Pb, out int Pbrow, out doubleMxN APb, out int APbrow);
-
-                            double fval = RowDotAt(in APa, AProw, in APb, APbrow, n);
-                            Fmat[ai, bi] = fval; Fmat[bi, ai] = fval;
-
-                            double pval = RowDotAt(in Pa, Prow, in Pb, Pbrow, n);
-                            Pgram[ai, bi] = pval; Pgram[bi, ai] = pval;
-                        }
-
-                        for (int bi = 0; bi < d; bi++)
-                        {
-                            ResolveCombinedCol(bi, kcurAtEntry, flexible, in Ublk, in AUblk, in V, in Zv, in AVlist, in off, k,
-                                                out doubleMxN Pb, out int Pbrow, out doubleMxN _, out int _unused);
-                            Gmat[ai, bi] = RowDotAt(in APa, AProw, in Pb, Pbrow, n);
-                        }
+                        for (int r = 0; r < n; r++) { Pgathered[r, ai] = Pa[Prow, r]; APgathered[r, ai] = APa[AProw, r]; }
                     }
+
+                    var Fmat = new doubleMxN(d, d, Allocator.Temp, false);
+                    var Gmat = new doubleMxN(d, d, Allocator.Temp, false);
+                    var Pgram = new doubleMxN(d, d, Allocator.Temp, false);
+                    Blas.dot(in APgathered, in APgathered, ref Fmat, true);
+                    Blas.dot(in Pgathered, in Pgathered, ref Pgram, true);
+                    Blas.dot(in APgathered, in Pgathered, ref Gmat, true);
+                    Pgathered.Dispose(); APgathered.Dispose();
 
                     var GmatLU = new doubleMxN(in Gmat, Allocator.Temp);
                     var Xsol = new doubleMxN(in Fmat, Allocator.Temp);

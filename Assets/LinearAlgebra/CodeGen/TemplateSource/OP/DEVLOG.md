@@ -1,6 +1,19 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.Block.GCRODR — harmonic-Ritz Gram construction via GEMM
+- 2026-07-21 | The three d×d Grams (Fmat=APᵀAP, Pgram=PᵀP, Gmat=APᵀP, d=kcur+Krylov dim) were
+  built with one Blas.dot per (ai,bi) entry — O(d²) calls over length-n vectors. Replaced with an
+  O(d·n) gather of the d combined columns into contiguous n×d buffers + three GEMMs (Fmat/Pgram hit
+  the symmetric matAtA kernel, Gmat hits matMatDotTransA). Measured 27–58% faster on bgcrodr across
+  float/double and N=128..512 (BlockArnoldiBenchmark), every data point improved. Reduction reorder
+  vs the per-entry dot is not bit-identical (pre-1.0 waiver); oracle battery + GCRODRTests stay
+  green. SCALAR gcrodr was tried the same way and REVERTED — its d (≈30, bounded by recycle+restart)
+  is small enough that the per-entry SIMD vecDot over a cache-resident length-n vector already wins;
+  gather+GEMM-dispatch overhead regressed it (ConvDiff up to +199%). Don't retry scalar. Block's d
+  is far larger (restart·s can exceed n → basis rank-exhausts per cycle), so the O(d²) call overhead
+  dominates there and GEMM pays off.
+
 ## Krylov least-squares family — blsqr decided-against
 - 2026-07-21 | Dropped block-LSQR from the roadmap (user call). No permissive reference to port
   (fidelity-first porting rule), and the block LS space is already spanned: `bcgls` = CG on the
