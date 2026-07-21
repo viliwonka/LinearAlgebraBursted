@@ -31,6 +31,7 @@ public class doubleLNLQTests
             ExplicitScratchInJob,
             ZeroRhs,
             RankDeficientBreakdown,
+            BoundIsUpperBound,
         }
 
         public TestType Type;
@@ -44,6 +45,7 @@ public class doubleLNLQTests
                 case TestType.ExplicitScratchInJob:   ExplicitScratchInJob();   break;
                 case TestType.ZeroRhs:                ZeroRhs();                break;
                 case TestType.RankDeficientBreakdown: RankDeficientBreakdown(); break;
+                case TestType.BoundIsUpperBound:      BoundIsUpperBound();      break;
             }
         }
 
@@ -225,6 +227,60 @@ public class doubleLNLQTests
             Assert.IsTrue(info.status == IterativeSolveStatus.Breakdown);
             // Norms are finite (no NaN escapes the collapse path).
             Assert.IsFalse(double.IsNaN(info.rnorm));
+
+            arena.Dispose();
+        }
+
+        // ---- HEADLINE: the certified Gauss-Radau forward-error bound. Checked at a MID-convergence
+        // iterate (maxIter=2, well short of the ~1e-5 residual tol) so the true error is meaningfully
+        // nonzero -- otherwise the invariant `xErrBound >= ‖x-x*‖` is trivially satisfied at
+        // convergence and has no teeth. σ_est = (1-1e-10)·σ_min(A) (a valid underestimate via SVD).
+        // The bound must (a) be a valid UPPER bound and (b) be TIGHT (within a small factor), which a
+        // crude residual/σ_min bound would fail. ----
+        void BoundIsUpperBound()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 6, n = 11;
+            var A = BuildA(ref arena, m, n, 66001);
+            var xTrue = arena.doubleRandomVec(n, -4f, 4f, 66002);
+            var b = arena.doubleVec(m);
+            Blas.dot(in A, in xTrue, ref b);
+
+            // σ_min(A) via SVD of Aᵀ (n×m tall -> m singular values = A's).
+            var At = arena.doubleMat(n, m);
+            for (int i = 0; i < m; i++)
+                for (int j = 0; j < n; j++)
+                    At[j, i] = A[i, j];
+            var svals = arena.doubleVec(m);
+            SVD.values(in At, ref svals);
+            double smin = svals[0];
+            for (int i = 1; i < m; i++) smin = math.min(smin, svals[i]);
+            double sigmaEst = (1.0 - 1e-10) * (double)smin;
+
+            var x = arena.doubleVec(n);
+            var info = Krylov.lnlq(in A, in b, ref x, 2, SolveTol(), sigmaEst);
+            // 2 iterations cannot reach the 1e-5 residual tol on a 6-row system: mid-convergence.
+            Assert.IsTrue(info.status == IterativeSolveStatus.MaxIterations);
+
+            var xRef = arena.doubleVec(n);
+            LQ.minNormSolve(in A, in b, ref xRef);
+            var diff = xRef - x;
+            double trueErr = (double)Norm(in diff);
+
+            // (a) the reported bound is a VALID UPPER bound on the true error (a wrong recurrence that
+            // under-reports fails here) ...
+            Assert.IsFalse(double.IsNaN(info.xErrBound));
+            Assert.IsTrue(info.xErrBound >= trueErr * (1.0 - 1e-3));
+            // (b) ... and TIGHT -- within a small factor (a crude ‖r‖/σ_min bound would be far looser).
+            Assert.IsTrue(info.xErrBound <= trueErr * 10.0);
+
+            // Estimate gates the machinery: no σ_est (default) -> NaN bound, same solve.
+            var x2 = arena.doubleVec(n);
+            var info2 = Krylov.lnlq(in A, in b, ref x2, 2, SolveTol());
+            Assert.IsTrue(double.IsNaN(info2.xErrBound));
+            for (int i = 0; i < n; i++)
+                Assert.IsTrue(x[i] == x2[i]);   // bound machinery does not perturb the solve
 
             arena.Dispose();
         }

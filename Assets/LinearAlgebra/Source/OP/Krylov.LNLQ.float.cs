@@ -27,14 +27,18 @@ namespace LinearAlgebra
         /// bidiagonalization collapses before ‖b-Ax‖ reaches tolerance (A lacks full row rank, or b
         /// ∉ range(A) on the first step).
         ///
-        /// <see cref="LnlqInfo.xErrBound"/> is <see cref="double.NaN"/> on these overloads: the
-        /// certified Gauss-Radau forward-error bound is supplied only by the overloads that take a
-        /// σ_min underestimate.
+        /// <paramref name="sigmaMinEst"/> is an UNDERESTIMATE of σ_min(A): when &gt; 0 the returned
+        /// <see cref="LnlqInfo.xErrBound"/> is a certified upper bound on ‖x* - x‖ (the constant-time
+        /// Gauss-Radau bound, EOS2018 eq 41), computed in double regardless of the solve's precision.
+        /// It is a valid upper bound only while <paramref name="sigmaMinEst"/> ≤ σ_min(A); too large a
+        /// value can make it under-report (the caller owns that contract). When ≤ 0 the bound machinery
+        /// is skipped and xErrBound is NaN. The bound is undefined at the very first iterate (needs
+        /// τ_{k-1}); a solve that converges on iteration 1 also returns NaN.
         /// </summary>
         public static LnlqInfo lnlq<TOp>(in TOp A, in floatN b, ref floatN x,
                                      ref floatN u, ref floatN v,
                                      ref floatN tmpM, ref floatN tmpN,
-                                     int maxIter, float tol)
+                                     int maxIter, float tol, double sigmaMinEst = 0)
             where TOp : struct, IfloatLinearOperator
         {
             if (A.Rows > A.Cols) throw new ArgumentException("lnlq: A must be square or underdetermined (Rows <= Cols)");
@@ -63,7 +67,7 @@ namespace LinearAlgebra
             float bnorm = math.sqrt(Blas.dot(b, b));
             if (bnorm == (float)0)
                 // b = 0: the min-norm solution is trivially x = 0.
-                return LnlqInfoFrom(IterativeSolveStatus.Converged, 0, in A, in b, ref x, ref tmpM, ref tmpN);
+                return LnlqInfoFrom(IterativeSolveStatus.Converged, 0, in A, in b, ref x, ref tmpM, ref tmpN, double.NaN);
 
             // beta_1 u_1 = b  (Algorithm 1 line 1)
             u.CopyFrom(in b);
@@ -76,6 +80,17 @@ namespace LinearAlgebra
             // iteration (the sign flip cancels the leading minus). tau_k == the reference's x^C step.
             float tau = (float)(-1);
 
+            // ---- Gauss-Radau forward-error bound sidecar (active only for a positive σ_min estimate).
+            // pivChain = the running last LDLᵀ pivot p_j of (Y - σ_est·I), where Y is the Golub-Kahan
+            // augmented tridiagonal (zero diagonal, off-diagonals interleaving α_1,β_2,α_2,β_3,...).
+            // At iterate m the bound uses p_{2m-2}; xErrBound² = τ̃_m² - τ_m² with τ̃_m = -β_m·τ_{m-1}/ω_m,
+            // ω_m² = σ_est² + σ_est·β_m²/p_{2m-2}.
+            double se = sigmaMinEst;
+            bool boundOn = se > 0;
+            double piv = -se;                 // p_1
+            float tauPrev = (float)0;
+            double xErrBound = double.NaN;
+
             for (int k = 0; k < maxIter; k++)
             {
                 // ---- Golub-Kahan: alpha_{k+1} v_{k+1} = Aᵀ u_{k+1} - beta_{k+1} v_k ----
@@ -84,14 +99,43 @@ namespace LinearAlgebra
                 if (!(alfa > (float)0)) // NaN-safe: alfa is a norm, nonnegative
                     // v collapsed: the Krylov space on AAᵀ is exhausted before reaching b -- A is not
                     // full row rank (or, on the first step, b ∉ range(A)).
-                    return LnlqInfoFrom(IterativeSolveStatus.Breakdown, k + 1, in A, in b, ref x, ref tmpM, ref tmpN);
+                    return LnlqInfoFrom(IterativeSolveStatus.Breakdown, k + 1, in A, in b, ref x, ref tmpM, ref tmpN, double.NaN);
 
                 v.divInPlace(alfa);
 
                 // x^C update (Algorithm 2 lines 17-18): tau_{k+1} = -beta_{k+1} tau_k / alpha_{k+1};
                 // x^C_{k+1} = x^C_k + tau_{k+1} v_{k+1}. Each v is an Aᵀ-image, so x stays in row(A).
+                tauPrev = tau;
                 tau = -(beta / alfa) * tau;
                 x.addScaledInPlace(tau, v);
+
+                if (boundOn)
+                {
+                    if (k == 0)
+                    {
+                        // iterate m=1 has no bound; feed g_1 = alpha_1 to advance p_1 -> p_2.
+                        piv = -se - (double)alfa * (double)alfa / piv;
+                    }
+                    else
+                    {
+                        // piv == p_{2k} == p_{2m-2} for the current iterate m = k+1; beta == beta_m.
+                        double bm = (double)beta;
+                        double om2 = se * se + se * bm * bm / piv;   // ω_m² = σ_est² - σ_est·β_m·θ_{2m-2}
+                        if (om2 > 0 && !double.IsInfinity(om2))
+                        {
+                            double ttilde = -bm * (double)tauPrev / math.sqrt(om2);
+                            double bnd = ttilde * ttilde - (double)tau * (double)tau;
+                            xErrBound = math.sqrt(bnd > 0 ? bnd : 0);
+                        }
+                        else
+                        {
+                            xErrBound = double.NaN;
+                        }
+                        // advance the pivot chain by beta_m then alpha_m: p_{2m-2} -> p_{2m}.
+                        piv = -se - bm * bm / piv;
+                        piv = -se - (double)alfa * (double)alfa / piv;
+                    }
+                }
 
                 // beta_{k+1} u_{k+1} = A v_k - alpha_k u_k.
                 beta = GolubKahanUStep(in A, in v, alfa, ref tmpM, ref u);
@@ -104,25 +148,25 @@ namespace LinearAlgebra
                     // Verify-at-exit: the tracked estimate can drift on an ill-conditioned A. LnlqInfoFrom
                     // pays for a certified-exact ‖b-Ax‖ audit for every exit; only commit to Converged if
                     // that certified residual also clears the threshold (else fall through).
-                    var info = LnlqInfoFrom(IterativeSolveStatus.Converged, k + 1, in A, in b, ref x, ref tmpM, ref tmpN);
+                    var info = LnlqInfoFrom(IterativeSolveStatus.Converged, k + 1, in A, in b, ref x, ref tmpM, ref tmpN, xErrBound);
                     if (info.rnorm <= tol * bnorm)
                         return info;
                 }
 
                 if (!(beta > (float)0)) // NaN-safe: beta is a norm, nonnegative
-                    return LnlqInfoFrom(IterativeSolveStatus.Breakdown, k + 1, in A, in b, ref x, ref tmpM, ref tmpN);
+                    return LnlqInfoFrom(IterativeSolveStatus.Breakdown, k + 1, in A, in b, ref x, ref tmpM, ref tmpN, double.NaN);
 
                 u.divInPlace(beta);
             }
 
-            return LnlqInfoFrom(IterativeSolveStatus.MaxIterations, maxIter, in A, in b, ref x, ref tmpM, ref tmpN);
+            return LnlqInfoFrom(IterativeSolveStatus.MaxIterations, maxIter, in A, in b, ref x, ref tmpM, ref tmpN, xErrBound);
         }
 
         /// <summary>Assembles the returned <see cref="LnlqInfo"/> from a certified-exact residual audit
-        /// (<see cref="lstsqResidual{TOp}"/>: one Apply + one ApplyT). xErrBound is NaN -- the
-        /// Gauss-Radau bound is filled only by the σ_min-estimate overloads.</summary>
+        /// (<see cref="lstsqResidual{TOp}"/>: one Apply + one ApplyT) plus the caller's iteration count,
+        /// status, and (already-computed) forward-error bound.</summary>
         static LnlqInfo LnlqInfoFrom<TOp>(IterativeSolveStatus status, int iterations, in TOp A, in floatN b,
-                                          ref floatN x, ref floatN rScratch, ref floatN sScratch)
+                                          ref floatN x, ref floatN rScratch, ref floatN sScratch, double xErrBound)
             where TOp : struct, IfloatLinearOperator
         {
             var lstsq = lstsqResidual(in A, in b, in x, (float)0, ref rScratch, ref sScratch);
@@ -130,7 +174,7 @@ namespace LinearAlgebra
             {
                 rnorm = lstsq.rnorm,
                 xnorm = lstsq.xnorm,
-                xErrBound = double.NaN,
+                xErrBound = xErrBound,
                 iterations = iterations,
                 status = status,
             };
@@ -143,27 +187,27 @@ namespace LinearAlgebra
         public static LnlqInfo lnlq(in floatMxN A, in floatN b, ref floatN x,
                                 ref floatN u, ref floatN v,
                                 ref floatN tmpM, ref floatN tmpN,
-                                int maxIter, float tol)
+                                int maxIter, float tol, double sigmaMinEst = 0)
         {
-            return lnlq(new floatDenseOperator(in A), in b, ref x, ref u, ref v, ref tmpM, ref tmpN, maxIter, tol);
+            return lnlq(new floatDenseOperator(in A), in b, ref x, ref u, ref v, ref tmpM, ref tmpN, maxIter, tol, sigmaMinEst);
         }
 
         /// <summary>LNLQ over a dense matrix -- allocates four scratch vectors from the arena.</summary>
-        public static LnlqInfo lnlq(in floatMxN A, in floatN b, ref floatN x, int maxIter, float tol)
+        public static LnlqInfo lnlq(in floatMxN A, in floatN b, ref floatN x, int maxIter, float tol, double sigmaMinEst = 0)
         {
             floatN u    = b.floatTempVec(A.M_Rows);
             floatN v    = b.floatTempVec(A.N_Cols);
             floatN tmpM = b.floatTempVec(A.M_Rows);
             floatN tmpN = b.floatTempVec(A.N_Cols);
-            return lnlq(in A, in b, ref x, ref u, ref v, ref tmpM, ref tmpN, maxIter, tol);
+            return lnlq(in A, in b, ref x, ref u, ref v, ref tmpM, ref tmpN, maxIter, tol, sigmaMinEst);
         }
 
         /// <summary>LNLQ over a dense matrix with default maxIter (A.M_Rows -- the bidiagonalization on
         /// a full-row-rank A terminates within m = Rows steps in exact arithmetic) and tol
         /// (Consts.floatSqrtEps).</summary>
-        public static LnlqInfo lnlq(in floatMxN A, in floatN b, ref floatN x)
+        public static LnlqInfo lnlq(in floatMxN A, in floatN b, ref floatN x, double sigmaMinEst = 0)
         {
-            return lnlq(in A, in b, ref x, A.M_Rows, Consts.floatSqrtEps);
+            return lnlq(in A, in b, ref x, A.M_Rows, Consts.floatSqrtEps, sigmaMinEst);
         }
 
         /// <summary>
@@ -174,9 +218,9 @@ namespace LinearAlgebra
         public static LnlqInfo lnlq(in floatBSR A, in floatN b, ref floatN x,
                                 ref floatN u, ref floatN v,
                                 ref floatN tmpM, ref floatN tmpN,
-                                int maxIter, float tol)
+                                int maxIter, float tol, double sigmaMinEst = 0)
         {
-            return lnlq(new floatBSROperator(in A), in b, ref x, ref u, ref v, ref tmpM, ref tmpN, maxIter, tol);
+            return lnlq(new floatBSROperator(in A), in b, ref x, ref u, ref v, ref tmpM, ref tmpN, maxIter, tol, sigmaMinEst);
         }
 
         /// <summary>
@@ -188,9 +232,9 @@ namespace LinearAlgebra
         public static LnlqInfo lnlq(in floatBSR A, in floatBSR AT, in floatN b, ref floatN x,
                                 ref floatN u, ref floatN v,
                                 ref floatN tmpM, ref floatN tmpN,
-                                int maxIter, float tol)
+                                int maxIter, float tol, double sigmaMinEst = 0)
         {
-            return lnlq(new floatBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref tmpM, ref tmpN, maxIter, tol);
+            return lnlq(new floatBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref tmpM, ref tmpN, maxIter, tol, sigmaMinEst);
         }
 
         /// <summary>
@@ -198,21 +242,21 @@ namespace LinearAlgebra
         /// <c>arena.floatBSRTranspose</c>, then drives LNLQ with the two-arg <c>floatBSROperator</c>.
         /// For a build-free zero-alloc path, build Aᵀ yourself once and call the zero-alloc AT overload.
         /// </summary>
-        public static LnlqInfo lnlq(in floatBSR A, in floatN b, ref floatN x, int maxIter, float tol)
+        public static LnlqInfo lnlq(in floatBSR A, in floatN b, ref floatN x, int maxIter, float tol, double sigmaMinEst = 0)
         {
             floatN u    = b.floatTempVec(A.M_Rows);
             floatN v    = b.floatTempVec(A.N_Cols);
             floatN tmpM = b.floatTempVec(A.M_Rows);
             floatN tmpN = b.floatTempVec(A.N_Cols);
             floatBSR AT = b.floatBSRTranspose(in A);
-            return lnlq(new floatBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref tmpM, ref tmpN, maxIter, tol);
+            return lnlq(new floatBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref tmpM, ref tmpN, maxIter, tol, sigmaMinEst);
         }
 
         /// <summary>LNLQ over a BSR matrix with default maxIter (A.M_Rows) and tol
         /// (Consts.floatSqrtEps).</summary>
-        public static LnlqInfo lnlq(in floatBSR A, in floatN b, ref floatN x)
+        public static LnlqInfo lnlq(in floatBSR A, in floatN b, ref floatN x, double sigmaMinEst = 0)
         {
-            return lnlq(in A, in b, ref x, A.M_Rows, Consts.floatSqrtEps);
+            return lnlq(in A, in b, ref x, A.M_Rows, Consts.floatSqrtEps, sigmaMinEst);
         }
     }
 }

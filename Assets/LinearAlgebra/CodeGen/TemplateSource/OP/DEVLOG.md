@@ -1,6 +1,27 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.LNLQ — least-norm solver with a certified forward-error bound
+- 2026-07-21 | Shipped `lnlq` (Estrin-Orban-Saunders 2019). The SOLVE returns LNLQ's transferred
+  CRAIG point x^C (identical min-norm x as `craig`, via the τ recurrence) — verified vs LQ.minNormSolve
+  AND craig. The VALUE-ADD is `LnlqInfo.xErrBound`: a certified upper bound on ‖x*-x‖ (the library's
+  only forward-error-in-x bound), opt-in via `double sigmaMinEst` (an underestimate of σ_min(A)).
+- 2026-07-21 | The bound is the constant-time Gauss-Radau recurrence (EOS2018 eq 41):
+  ‖x*-x_k^C‖² ≤ τ̃_k² - τ_k², τ̃_k = -β_k·τ_{k-1}/ω_k, ω_k² = σ_est² + σ_est·β_k²/p_{2k-2}, where p_j is
+  the running LDLᵀ pivot of (Y - σ_est·I) (Y = Golub-Kahan augmented tridiagonal, zero diagonal,
+  off-diagonals interleaving α_1,β_2,α_2,β_3,...): p_1=-σ_est, p_{j+1}=-σ_est-g_j²/p_j. O(1)/iter, no
+  stored history — advance the pivot by (α_1) then (β_m,α_m) each step. Computed in DOUBLE regardless of
+  solve precision. `sigmaMinEst<=0` skips it (xErrBound=NaN); iterate 1 has no bound (needs τ_{k-1}).
+- 2026-07-21 | METHOD (this was the crux): pdftotext mangles the sub/superscripts of the three source
+  papers, so the recurrence was extracted by RASTERIZING the PDF pages via PyMuPDF (`fitz`,
+  Matrix(2.6,2.6)) and reading them as images — EOS2016 p.10 (Algorithm 1), EOS2018 p.13 (§5.1/eq 41),
+  EOS2017 p.12 (θ node). Then NUMERICALLY VERIFIED end-to-end in `reference/wip-lnlq/*.py` (gitignored):
+  the bound holds (slack≥0) and is tight (~1.5-3× true err) across 360 trials; the constant-time pivot ω
+  matches the σ_min(L̃_k)=σ_est root-find. Do NOT re-derive from the OCR .txt — re-render if unclear.
+  Test `BoundIsUpperBound` checks a MID-convergence iterate (maxIter=2) so the invariant has teeth.
+  OUT OF SCOPE (v1): the y-bounds (eq 38/39), the x^L bound (eq 43), the sliding-window refinement
+  (eq 40), and the preconditioned Generalized-Golub-Kahan path (§6). Spec: docs/dev/spec-lnlq.md.
+
 ## Krylov.CGNE — direct-CG least-norm (κ² route); LNLQ deferred
 - 2026-07-21 | Added `cgne` = CG on AAᵀ (x = Aᵀy, matrix-free), the direct-CG minimum-norm solver.
   Computes the SAME min-norm x as `craig` but via CG on AAᵀ → κ² conditioning (cheaper/simpler per
