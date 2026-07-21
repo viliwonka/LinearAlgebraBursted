@@ -1,6 +1,24 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.Block.LSMR — deflation deferred (do not implement blind)
+- 2026-07-21 | Assessed adding per-column / graceful rank-deficient deflation to blsmr (task #74).
+  DEFER. blsmr's Golub-Kahan block bidiagonalization is a lag-2 short recurrence over ~20 fixed
+  s×s/s×n buffers overwritten in place each step, with NO persistently-addressable identity axis
+  (only B/X/ATB carry it; every other block mixes two direction indices) and NO reconciliation
+  point analogous to bgmres's growing-basis re-solve. So bgmres's w[j]/off[] active-width pattern
+  does NOT transfer, and neither does bcgrq's per-column lock (needs an identity axis through the
+  whole recurrence). "Deflate and continue" would require inventing variable-width bookkeeping
+  across mismatched lag history AND re-deriving the free O(1) ‖AᵀR‖_F stopping recurrence (which is
+  proved only for constant width) — content Mojarrab & Toutounian explicitly decline, pointing to
+  an unfetched Robbe & Sadkane paper (not in reference/). Deriving it blind risks a wrong
+  convergence certificate (worse than today's honest Breakdown); porting it needs the reference
+  first (port-fidelity rule, same rule that dropped blsqr). Value is narrow: a rank-deficient RHS
+  *block* is user-avoidable (dedupe columns / scalar lsmr per column), and bgmres/bfgmres/bgcrodr
+  already deflate where it's structurally tractable. Revisit only if the Robbe & Sadkane reference
+  is obtained. The one small sub-option (ridge-regularize the two BlockSolveGeneralWide solve sites)
+  does NOT fix the motivating first-LQ-step case, so it's not worth a standalone change.
+
 ## Krylov.Block.GCRODR — harmonic-Ritz Gram construction via GEMM
 - 2026-07-21 | The three d×d Grams (Fmat=APᵀAP, Pgram=PᵀP, Gmat=APᵀP, d=kcur+Krylov dim) were
   built with one Blas.dot per (ai,bi) entry — O(d²) calls over length-n vectors. Replaced with an
