@@ -60,10 +60,14 @@ namespace LinearAlgebra
             // No warm start: the min-norm characterization x = Aᵀ(AAᵀ)⁻¹b requires x₀ = 0.
             for (int i = 0; i < x.N; i++) x[i] = (fProxy)0;
 
+            // x = 0 is EXACT on the b = 0 early-out below (x* = 0), so ‖x*-x‖ = 0: report a 0 bound
+            // when a σ estimate was supplied (only NaN it when the bound was not requested).
+            double exactBound = sigmaMinEst > 0 ? 0.0 : double.NaN;
+
             fProxy bnorm = math.sqrt(Blas.dot(b, b));
             if (bnorm == (fProxy)0)
                 // b = 0: the min-norm solution is trivially x = 0.
-                return LnlqInfoFrom(IterativeSolveStatus.Converged, 0, in A, in b, ref x, ref tmpM, ref tmpN, double.NaN);
+                return LnlqInfoFrom(IterativeSolveStatus.Converged, 0, in A, in b, ref x, ref tmpM, ref tmpN, exactBound);
 
             // beta_1 u_1 = b  (Algorithm 1 line 1)
             u.CopyFrom(in b);

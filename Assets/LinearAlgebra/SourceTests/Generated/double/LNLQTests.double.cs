@@ -15,8 +15,8 @@ using Unity.Mathematics;
 // consistent system A x = b (A is m×n, m<=n, full row rank) via Golub-Kahan bidiagonalization folded
 // through an LQ factorization. Returns the SAME minimum-‖x‖ iterate as craig (LNLQ's transferred
 // CRAIG point x^C = Aᵀ(AAᵀ)⁻¹b), so both the LQ min-norm oracle AND craig itself are oracles here.
-// (These tests cover the SOLVE only; the certified Gauss-Radau xErrBound is exercised separately once
-// the σ_min-estimate overloads land -- xErrBound is NaN on the plain overloads used here.)
+// (The certified Gauss-Radau xErrBound is exercised by BoundIsUpperBound via the sigmaMinEst default
+// parameter; the other cases pass no estimate, so xErrBound is NaN there.)
 //
 // Oracle for the min-norm value: LQ.minNormSolve (exact x* via LQ factorization).
 public class doubleLNLQTests
@@ -256,7 +256,10 @@ public class doubleLNLQTests
             SVD.values(in At, ref svals);
             double smin = svals[0];
             for (int i = 1; i < m; i++) smin = math.min(smin, svals[i]);
-            double sigmaEst = (1.0 - 1e-10) * (double)smin;
+            // 1e-4 underestimate margin: coarse enough to stay a STRICT underestimate through the float
+            // build's (double)sigmaMinEst cast (~1e-7 rel) AND the float SVD's own error -- a tighter
+            // 1e-10 would round away in float and let sigmaEst exceed σ_min(A), breaking the bound.
+            double sigmaEst = (1.0 - 1e-4) * (double)smin;
 
             var x = arena.doubleVec(n);
             var info = Krylov.lnlq(in A, in b, ref x, 2, SolveTol(), sigmaEst);
@@ -288,6 +291,9 @@ public class doubleLNLQTests
 
     public static Array GetEnums() => Enum.GetValues(typeof(TestJob.TestType));
 
+    // Generous timeout: the first case run in a session pays one cold Burst compile of the whole
+    // Execute() body (all six test methods), which can exceed the 180s default on its own.
+    [Timeout(600000)]
     [TestCaseSource("GetEnums")]
     public void Test(TestJob.TestType type)
     {

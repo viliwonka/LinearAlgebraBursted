@@ -70,6 +70,13 @@ namespace LinearAlgebra
     /// is a true upper bound only when <c>sigmaMinEst &lt;= σ_min(A)</c> -- too large an estimate can
     /// make it under-report (the caller owns that contract; it is not clamped).
     ///
+    /// This is a CONSERVATIVE bound: it bounds the leading CRAIG iterate x^C that lnlq returns, so it
+    /// typically over-reports the true error by ~1.2-3x mid-convergence (the Gauss-Radau quadrature
+    /// remainder). It also has an absolute saturation floor near exact convergence -- it cannot certify
+    /// an arbitrarily small error, so ‖x*-x‖ can keep falling below xErrBound. That inherent slack is
+    /// what keeps the bound a valid upper bound even in the float build (unlike the tighter
+    /// <see cref="LslqInfo.xErrBound"/>, which is only certified in double).
+    ///
     /// On a Converged OR MaxIterations return, x is the last iterate and the fields describe it. Only
     /// on a Breakdown return is x left partially updated / undefined.
     /// </summary>
