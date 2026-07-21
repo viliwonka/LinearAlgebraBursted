@@ -222,6 +222,8 @@ namespace LinearAlgebra
             for (int i = 0; i < s; i++)
                 for (int c = 0; c < n; c++) R0[i, c] = B[i, c] - R0[i, c];
             converged = CountConverged(in R0, in thr, s, n, out maxr);
+            if (status == IterativeSolveStatus.Converged && converged < s)
+                status = IterativeSolveStatus.MaxIterations;
 
             for (int i = 0; i <= m; i++) V[i].Dispose();
             V.Dispose();

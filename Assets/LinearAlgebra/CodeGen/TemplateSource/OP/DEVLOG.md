@@ -1,6 +1,31 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov least-squares family — blsqr decided-against
+- 2026-07-21 | Dropped block-LSQR from the roadmap (user call). No permissive reference to port
+  (fidelity-first porting rule), and the block LS space is already spanned: `bcgls` = CG on the
+  normal equations = LSQR's iterates in exact arithmetic (the ‖r‖-minimizing route), and `blsmr` =
+  MINRES on the normal equations (‖Aᵀr‖-optimal, Golub–Kahan-stable, the modern default). blsqr
+  would only add a marginally-more-stable variant of bcgls that blsmr already supersedes. LSMR is
+  not literally dominant (on compatible systems LSQR's ‖r‖ can be marginally ahead), but that niche
+  doesn't justify the port.
+
+## Krylov.Block.{GMRES,FGMRES,GCRODR} — status/fresh-residual reconciliation
+- 2026-07-21 | `status` was set to `Converged` purely from the in-cycle Pythagorean LS-residual
+  estimate (bgmres/bfgmres: the post-Arnoldi-step check; bgcrodr: the same check at its mid-cycle
+  site -- its top-of-cycle recycled-correction recheck already used a fresh residual and was left
+  alone), while `converged`/`maxRnorm` were always derived from a fresh `R0 = B - A·X` recomputed
+  after the loop. `info.converged` was honest but `info.status` could over-claim Converged when
+  Arnoldi orthogonality loss (MGS drift) made the estimate optimistic -- the same silent
+  false-Converged class fixed for Block.CG/BiCGStab/IDR (see above) and for scalar
+  gmres/fgmres/gcrodr (#60). Fix: after the existing post-loop `converged = CountConverged(...)`,
+  downgrade `status` to `MaxIterations` whenever it says `Converged` but `converged < s` -- free
+  (the fresh residual was already computed), definitionally correct, cannot regress a genuinely
+  converged solve. Unlike the Block.CG/BiCGStab/IDR gate this is a post-hoc downgrade, not a
+  fall-through-and-keep-iterating re-verify (the block-GMRES family's post-loop recompute already
+  runs unconditionally once per call, so there was nowhere to "keep iterating" to without
+  restructuring the loop).
+
 ## QR/LQ/Bidiag — zero-column Householder fallback used a float √2 in the double build
 - 2026-07-21 | genHouseholder's zero-column fallback (QR.fProxy.cs:51, LQ.fProxy.cs:39,
   Bidiag.fProxy.cs:40 & :67) stored `math.SQRT2` into the reflector vector. `math.SQRT2` is a FLOAT
