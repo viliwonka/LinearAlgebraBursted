@@ -121,11 +121,13 @@ namespace LinearAlgebra
     /// iterate is LSLQ's LQ point xᴸ -- the one whose Euclidean error ‖xᴸ - x*‖ decreases monotonically
     /// (LSLQ's error-minimization property), NOT the residual-minimizing LSQR point.
     ///
-    /// <see cref="xErrBound"/> is an UPPER bound on ‖x* - x‖ of the returned xᴸ, meaningful only when
-    /// the solve was given a strict UNDERESTIMATE of the smallest singular value
-    /// (<c>sigmaMinEst</c> &lt;= σ_min(A)); with no estimate it is <see cref="double.NaN"/>. Too large
-    /// an estimate can make it under-report (the caller owns that contract; it is not clamped). NaN
-    /// also signals a bound that went numerically complex mid-run (cancellation / σ estimate too large).
+    /// <see cref="xErrBound"/> is the Gauss-Radau bound on ‖x* - x‖ of the returned xᴸ, meaningful only
+    /// when the solve was given a strict UNDERESTIMATE of the smallest singular value
+    /// (<c>sigmaMinEst</c> &lt;= σ_min(A)); with no estimate it is <see cref="double.NaN"/>. In the
+    /// DOUBLE build it is a certified upper bound; in the FLOAT build it is a tight estimate (~1-3%,
+    /// may marginally under-report) that inherits the solve's precision floor. Too large an estimate
+    /// can also make it under-report (the caller owns that contract; it is not clamped). NaN also
+    /// signals a bound that went numerically complex mid-run (cancellation / σ estimate too large).
     ///
     /// On a Converged OR MaxIterations return, x is the last iterate and the fields describe it. Only
     /// on a Breakdown return is x left partially updated / undefined.

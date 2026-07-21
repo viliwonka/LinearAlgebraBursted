@@ -23,11 +23,13 @@ namespace LinearAlgebra
         /// bidiagonalization collapses before reaching optimality (A lacks full column rank).
         ///
         /// <paramref name="sigmaMinEst"/> is a strict UNDERESTIMATE of σ_min(A): when &gt; 0 the
-        /// returned <see cref="LslqInfo.xErrBound"/> is a certified upper bound on ‖x* - xᴸ‖ (the
-        /// constant-time Gauss-Radau bound |ζ̃|, EOS2019), computed in double regardless of the solve's
-        /// precision. It is a valid upper bound only while <paramref name="sigmaMinEst"/> ≤ σ_min(A);
-        /// too large a value can make it under-report (the caller owns that contract). When ≤ 0 the
-        /// bound machinery is skipped and xErrBound is NaN.
+        /// returned <see cref="LslqInfo.xErrBound"/> is the constant-time Gauss-Radau bound |ζ̃|
+        /// (EOS2019) on ‖x* - xᴸ‖. In the DOUBLE build it is a certified upper bound (given
+        /// <paramref name="sigmaMinEst"/> ≤ σ_min(A)); in the FLOAT build it is a tight ESTIMATE (~1-3%,
+        /// may marginally under-report) -- it reads the bidiagonalization scalars, so it inherits the
+        /// solve's precision floor and single precision cannot certify it. Too large a
+        /// <paramref name="sigmaMinEst"/> also makes it under-report (the caller owns that contract).
+        /// When ≤ 0 the bound machinery is skipped and xErrBound is NaN.
         /// </summary>
         public static LslqInfo lslq<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
                                      ref fProxyN u, ref fProxyN v, ref fProxyN wbar,
@@ -58,10 +60,14 @@ namespace LinearAlgebra
             // No warm start: the error-minimization characterization requires x₀ = 0.
             for (int i = 0; i < x.N; i++) x[i] = (fProxy)0;
 
+            // x = 0 is EXACT on the early-out paths below, so ‖x*-x‖ = 0: report a 0 bound when a
+            // σ estimate was supplied (only NaN it when the bound was not requested).
+            double exactBound = sigmaMinEst > 0 ? 0.0 : double.NaN;
+
             fProxy bnorm = math.sqrt(Blas.dot(b, b));
             if (bnorm == (fProxy)0)
                 // b = 0: x = 0 is the exact least-squares solution.
-                return LslqInfoFrom(IterativeSolveStatus.Converged, 0, in A, in b, ref x, ref tmpM, ref tmpN, double.NaN);
+                return LslqInfoFrom(IterativeSolveStatus.Converged, 0, in A, in b, ref x, ref tmpM, ref tmpN, exactBound);
 
             // β₁ u₁ = b  (Golub-Kahan line 1).
             u.CopyFrom(in b);
@@ -74,7 +80,7 @@ namespace LinearAlgebra
 
             if (alpha == (fProxy)0)
                 // Aᵀb = 0: x = 0 is already least-squares-stationary.
-                return LslqInfoFrom(IterativeSolveStatus.Converged, 0, in A, in b, ref x, ref tmpM, ref tmpN, double.NaN);
+                return LslqInfoFrom(IterativeSolveStatus.Converged, 0, in A, in b, ref x, ref tmpM, ref tmpN, exactBound);
 
             v.divInPlace(alpha);
 
@@ -92,13 +98,16 @@ namespace LinearAlgebra
             fProxy zeta = (fProxy)0;
             double xlqNorm2 = 0;
 
-            // ---- Gauss-Radau forward-error bound sidecar (double; active only for a positive σ estimate).
-            double se = sigmaMinEst;
-            bool boundOn = se > 0;
+            // ---- Gauss-Radau forward-error bound sidecar (active only for a positive σ estimate).
+            // Runs at the solve's precision: it reads the bidiagonalization scalars (gamma/delta/tau/
+            // zeta/c/s), so a double sidecar can't recover accuracy the float solve already lost --
+            // hence a certified upper bound in the double build, a ~1-3% estimate in the float build.
+            fProxy se = (fProxy)sigmaMinEst;
+            bool boundOn = se > (fProxy)0;
             bool complexBnd = false;
-            double csig = -1;
-            double rhoBar = -se;
-            double omega = 0;
+            fProxy csig = (fProxy)(-1);
+            fProxy rhoBar = -se;
+            fProxy omega = (fProxy)0;
             double xErrBound = double.NaN;
 
             for (int k = 0; k < maxIter; k++)
@@ -123,17 +132,15 @@ namespace LinearAlgebra
                 // ---- Gauss-Radau σ-QR: advance ω for the error bound (uses γ and the NEW δ) ----
                 if (boundOn && !complexBnd)
                 {
-                    double gam = (double)gamma;
-                    double del = (double)delta;
-                    double muBar = -csig * gam;
-                    SymGivensD(rhoBar, gam, out csig, out double ssig);
+                    fProxy muBar = -csig * gamma;
+                    SymGivens(rhoBar, gamma, out csig, out fProxy ssig, out _);
                     rhoBar = ssig * muBar + csig * se;
-                    muBar = -csig * del;
-                    double hh = del * csig / rhoBar;
-                    double disc = se * (se - del * hh);
-                    if (disc < 0) complexBnd = true;
+                    muBar = -csig * delta;
+                    fProxy hh = delta * csig / rhoBar;
+                    fProxy disc = se * (se - delta * hh);
+                    if (disc < (fProxy)0) complexBnd = true;
                     else omega = math.sqrt(disc);
-                    SymGivensD(rhoBar, del, out csig, out ssig);
+                    SymGivens(rhoBar, delta, out csig, out ssig, out _);
                     rhoBar = ssig * muBar + csig * se;
                 }
 
@@ -159,11 +166,11 @@ namespace LinearAlgebra
                 {
                     if (!complexBnd)
                     {
-                        double etaT = omega * (double)s;
-                        double epsT = -omega * (double)c;
-                        double tauT = -(double)tau * (double)delta / omega;
-                        double zetaT = (tauT - (double)zeta * etaT) / epsT;
-                        xErrBound = math.abs(zetaT);
+                        fProxy etaT = omega * s;
+                        fProxy epsT = -omega * c;
+                        fProxy tauT = -tau * delta / omega;
+                        fProxy zetaT = (tauT - zeta * etaT) / epsT;
+                        xErrBound = (double)math.abs(zetaT);
                     }
                     else
                     {

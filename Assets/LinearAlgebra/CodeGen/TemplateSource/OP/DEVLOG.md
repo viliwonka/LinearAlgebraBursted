@@ -9,12 +9,31 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   via `double sigmaMinEst` (a strict UNDERestimate of σ_min(A)); the bound's tightness ratio is ~1.0
   (essentially exact — the whole point of the LQ point over LSQR). New struct `LslqInfo` (rnorm +
   Arnorm + xnorm + xErrBound); reuses lstsqResidual + the fProxy `SymGivens` (from MINRESQLP).
-- 2026-07-21 | Bound recurrence (double sidecar, EOS2019): σ-QR Givens chain (init csig=-1, ρ̄=-σ)
-  yields the Gauss-Radau ω each step — ω²=σ(σ-δ·h), h=δ·csig/ρ̄; then η̃=ω·s, ε̃=-ω·c, τ̃=-τδ/ω,
-  ζ̃=(τ̃-ζη̃)/ε̃. Valid from the FIRST iterate (unlike LNLQ's, which needs τ_{k-1}). disc<0 → complex,
-  xErrBound=NaN. Computed in DOUBLE regardless of solve precision (needs a single-output file for the
-  double `SymGivensD`, else CS0111 duplicates it across the float/double generated copies — see
-  Krylov.Givens.cs).
+- 2026-07-21 | Bound recurrence (EOS2019): σ-QR Givens chain (init csig=-1, ρ̄=-σ) yields the
+  Gauss-Radau ω each step — ω²=σ(σ-δ·h), h=δ·csig/ρ̄; then η̃=ω·s, ε̃=-ω·c, τ̃=-τδ/ω, ζ̃=(τ̃-ζη̃)/ε̃.
+  Valid from the FIRST iterate (unlike LNLQ's, which needs τ_{k-1}). disc<0 → complex, xErrBound=NaN.
+- 2026-07-21 | Bound runs at the SOLVE's precision (fProxy SymGivens), NOT a double sidecar. First
+  shipped it in double (LNLQ mirror) via a single-output SymGivensD (an all-double helper CS0111-dupes
+  across float/double copies) — user pushback ("meh"). MEASURED it (reference/wip-lnlq/lslq_float32.py,
+  lslq_mysplit.py): a float solve + DOUBLE bound STILL under-reports ~2% (ratio 0.980) because the
+  bound reads the float-rounded bidiag scalars (γ/δ/τ/ζ/c/s) — double can't recover lost precision.
+  Fully-float = ~3% (0.968). Only the fully-DOUBLE build is certified (violation 0, ratio 1.0). So the
+  double sidecar bought ~1% and never certified float → dropped it + deleted Krylov.Givens.cs. Contract
+  now honest: xErrBound is a certified upper bound in the double build, a ~1-3% tight estimate in float.
+  Test lowerFactor = choose[0.99(float)|1-1e-3(double)].
+- 2026-07-22 | Fable audit (fable-model code-review) verified recurrence CLEAN vs Krylov.jl oracle +
+  all numpy prototypes (double violation 0/ratio 1.0; stopping never-false-Converged; tmpM/tmpN mid-loop
+  audit reuse safe — write-first next iter). Fixes it caught: (1) float test factor was 0.95 but a
+  500-seed sim at the EXACT test op-point (iter 2) gives ratio ∈[1.0005,1.19] — the ~3% under-report is
+  a NEAR-convergence-only effect, not at mid-convergence — so 0.95 was 50-100× too loose → tightened to
+  0.99 (still catches any >1% float-specific pathology). (2) b=0 / Aᵀb=0 early-outs now return
+  xErrBound=0 (x is EXACT there) not NaN, when a σ-est was given. (3) test σ-est margin 1e-10→1e-4 so the
+  strict-underestimate survives the (fProxy)sigmaMinEst float cast (~1e-7) + float-SVD error.
+- 2026-07-22 | LNLQ is NOT affected by the same float issue (Fable hypothesized it was; MEASURED via
+  reference/wip-lnlq/lnlq_float32.py: float64 AND float32 both give violation 0, min ratio 1.174). LNLQ's
+  Gauss-Radau bound has ~17% inherent slack (τ̃²-τ² on the augmented tridiagonal) that ABSORBS float
+  noise → stays a valid upper bound in float; LSLQ's |ζ̃| is essentially exact (ratio ~1.0) so it can't.
+  The contracts legitimately differ — do NOT "fix" LNLQ to match, and do NOT re-loosen LSLQ's float test.
 - 2026-07-21 | STOPPING: LSLQ's xᴸ minimizes error, not residual, so the Krylov.jl running
   rNorm/ArNorm estimates track NEITHER xᴸ nor x^C in a plain transcription (verified: rel-err 0.8 /
   1e12). So the stop is a CERTIFIED optimality audit (lstsqResidual ‖Aᵀr‖ ≤ tol·‖Aᵀb‖, ‖Aᵀb‖=α₁β₁
