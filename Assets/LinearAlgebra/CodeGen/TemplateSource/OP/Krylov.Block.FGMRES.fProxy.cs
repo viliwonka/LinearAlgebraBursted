@@ -155,7 +155,7 @@ namespace LinearAlgebra
                         A.ApplyBlock(in Zj, ref Wj, w[j]);
                     }
 
-                    int wj1 = BlockArnoldiMGS2Step(ref Wj, in V, ref w, ref off, ref Hbuf, ref HijBuf, ref Tbuf, ref Lbuf,
+                    int wj1 = BlockArnoldiMGS2Step(ref Wj, in V, ref w, ref off, ref Hbuf, ref HijBuf, ref Tbuf,
                                                     ref minActive, j, n);
 
                     total++;

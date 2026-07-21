@@ -1,6 +1,7 @@
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
+using LinearAlgebra.Internal;
 
 namespace LinearAlgebra
 {
@@ -510,23 +511,100 @@ namespace LinearAlgebra
                     buf[r, c] = (fProxy)0;
         }
 
+        // Allocation-free rank-revealing row-orthonormalizer -- replaces LQRP.decomp + LQRPRankFloored
+        // for the block-Arnoldi step (BlockArnoldiMGS2Step below and bgcrodr's own copy), the one
+        // consumer that only needs orthonormal Q rows + a deflation rank, never the pivoted L or the
+        // row permutation. Pivoted (rank-revealing) modified Gram-Schmidt on W's rows: at each step,
+        // orthonormalizes the current best (largest-residual-norm) row into Qout and projects it out
+        // of every remaining row -- mirrors LQRP's own greedy row-pivot rule, so the resulting sequence
+        // of pivot norms is non-increasing exactly as LQRP's L diagonal is, and plays the same role for
+        // the rank/floor test. That test reproduces LQRPRankFloored verbatim (self-relative against the
+        // first pivot norm, floored by relTol * scale) so callers switching from LQRP.decomp +
+        // LQRPRankFloored to this get an identical deflation-rank DECISION rule, just evaluated on MGS
+        // pivot norms instead of LQ diagonals -- the iterates themselves need not match bit-for-bit.
+        // Every row norm is a fresh, exact reduction (via UnsafeOP.axpyNormSq's fused update+dot), so
+        // -- unlike LQRP's guarded approximate downdate -- no re-sum guard is needed. No Pivot struct,
+        // no L, no Householder algebra: row swaps + dot products only.
+        // W and Qout are both m x n (Qout distinct from W, W left unmodified). On return, Qout's rows
+        // [0, rank) are orthonormal (Qout Qoutᵀ = I_rank); rows [rank, m) are undefined scratch.
+        // nGlobal is the LQRPRankFloored-style global column count (A.Rows) driving relTol; scale is
+        // the step's pre-orthogonalization magnitude (the absolute floor).
+        static unsafe int RowOrthoRankFloored(in fProxyMxN W, ref fProxyMxN Qout, int m, int nGlobal, fProxy scale)
+        {
+            if (m <= 0) return 0;
+            int n = W.N_Cols;
+            fProxy* q = Qout.Data.Ptr;
+            UnsafeUtility.MemCpy(q, W.Data.Ptr, (long)m * n * UnsafeUtility.SizeOf<fProxy>());
+
+            // Initial pivot (step 0): largest raw row norm among all m rows -- the only full scan;
+            // every later step's pivot falls out of the previous step's orthogonalization pass below.
+            int pivotRow = 0;
+            fProxy pivotNormSq = UnsafeOP.vecDot(q, q, n);
+            for (int i = 1; i < m; i++)
+            {
+                fProxy ns = UnsafeOP.vecDot(q + (long)i * n, q + (long)i * n, n);
+                if (ns > pivotNormSq) { pivotNormSq = ns; pivotRow = i; }
+            }
+
+            fProxy relTol = (fProxy)math.max(m, nGlobal) * Consts.fProxyZeroThreshold;
+            fProxy diag0 = (fProxy)0;
+            int rank = 0;
+
+            for (int d = 0; d < m; d++)
+            {
+                if (pivotRow != d) Swap.Rows(ref Qout, d, pivotRow);
+
+                fProxy pivotNorm = math.sqrt(pivotNormSq);
+                if (d == 0)
+                {
+                    if (!math.isfinite(pivotNorm)) return 0;   // mirrors LQRPRankFloored's L[0,0] guard
+                    diag0 = pivotNorm;
+                }
+
+                fProxy tol = math.max(relTol * diag0, relTol * scale);
+                if (!(pivotNorm > tol))
+                    break;
+                rank = d + 1;
+
+                fProxy* qd = q + (long)d * n;
+                fProxy inv = (fProxy)1 / pivotNorm;
+                for (int c = 0; c < n; c++) qd[c] *= inv;
+
+                // Orthogonalize the remaining rows against the fresh unit row d, discovering the NEXT
+                // pivot (largest resulting residual norm) in the same pass -- no separate re-scan.
+                int nextPivot = d + 1;
+                fProxy nextNormSq = (fProxy)(-1);
+                for (int i = d + 1; i < m; i++)
+                {
+                    fProxy* qi = q + (long)i * n;
+                    fProxy dot = UnsafeOP.vecDot(qi, qd, n);
+                    fProxy ns = UnsafeOP.axpyNormSq(qi, qd, -dot, n);
+                    if (ns > nextNormSq) { nextNormSq = ns; nextPivot = i; }
+                }
+                pivotRow = nextPivot;
+                pivotNormSq = nextNormSq;
+            }
+
+            return rank;
+        }
+
         // ---- block Arnoldi / dense-QR least-squares core (bgmres, bfgmres) ----------------------------
         // bgcrodr keeps its own copy of the surrounding cycle (recycled-subspace projection before
         // the Arnoldi step, a NaN/Inf breakdown scan between the dense-QR solve and the Pythagorean
         // check) so folding it into these two would not be bit-identical; see the file DEVLOG.
 
-        // Block Arnoldi step (MGS2 + basis-rank-deflating thin-LQ): orthogonalizes Wj against
-        // V[0..j] (modified block Gram-Schmidt, one unconditional reorthogonalization pass),
-        // writes Hbuf's [off[i], off[j]) block-columns, LQ-factors the residual into V[j+1] (rank
-        // wj1 <= w[j], w[j+1] = wj1, off[j+2] = off[j+1] + wj1), and -- when wj1 > 0 -- stores the
-        // H[j+1,j] cross block. Returns wj1 (0 signals happy breakdown: the block Krylov subspace
-        // stopped growing). n = A.Rows.
+        // Block Arnoldi step (MGS2 + basis-rank-deflating rank-revealing row-orthonormalization):
+        // orthogonalizes Wj against V[0..j] (modified block Gram-Schmidt, one unconditional
+        // reorthogonalization pass), writes Hbuf's [off[i], off[j]) block-columns, orthonormalizes the
+        // residual into V[j+1] (rank wj1 <= w[j], w[j+1] = wj1, off[j+2] = off[j+1] + wj1), and -- when
+        // wj1 > 0 -- stores the H[j+1,j] cross block. Returns wj1 (0 signals happy breakdown: the block
+        // Krylov subspace stopped growing). n = A.Rows.
         static int BlockArnoldiMGS2Step(ref fProxyMxN Wj, in UnsafeList<fProxyMxN> V, ref Indices w, ref Indices off,
-                                         ref fProxyMxN Hbuf, ref fProxyMxN HijBuf, ref fProxyMxN Tbuf, ref fProxyMxN Lbuf,
+                                         ref fProxyMxN Hbuf, ref fProxyMxN HijBuf, ref fProxyMxN Tbuf,
                                          ref int minActive, int j, int n)
         {
             // Pre-orthogonalization magnitude of this step, captured before MGS2 below mutates Wj --
-            // the absolute floor LQRPRankFloored applies to the post-orthogonalization LQ diagonals.
+            // the absolute floor RowOrthoRankFloored applies to the post-orthogonalization pivot norms.
             fProxy scale = Norms.L2(in Wj);
 
             for (int pass = 0; pass < 2; pass++)
@@ -543,13 +621,8 @@ namespace LinearAlgebra
                 }
             }
 
-            var Ppiv2 = new Pivot(w[j], Allocator.Temp);
-            var Lv = View(Lbuf, w[j]);
             var Qout = RowsView(V[j + 1], w[j]);
-            LQRP.decomp(in Wj, ref Lv, ref Qout, ref Ppiv2);
-            Ppiv2.Dispose();
-
-            int wj1 = LQRPRankFloored(in Lv, w[j], n, scale);
+            int wj1 = RowOrthoRankFloored(in Wj, ref Qout, w[j], n, scale);
             w[j + 1] = wj1;
             minActive = math.min(minActive, wj1);
             off[j + 2] = off[j + 1] + wj1;

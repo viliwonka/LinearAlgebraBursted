@@ -283,7 +283,7 @@ namespace LinearAlgebra
                     // Pre-orthogonalization magnitude of this step, captured before MGS2 below mutates
                     // Wj (after the recycled-subspace projection above, mirrors
                     // Krylov.BlockArnoldiMGS2Step's own scale capture) -- the absolute floor
-                    // LQRPRankFloored applies to the post-orthogonalization LQ diagonals.
+                    // RowOrthoRankFloored applies to the post-orthogonalization pivot norms.
                     double scale = Norms.L2(in Wj);
 
                     // Modified block Gram-Schmidt against V[0..j], ONE unconditional reorthogonalization
@@ -302,13 +302,8 @@ namespace LinearAlgebra
                         }
                     }
 
-                    var Ppiv2 = new Pivot(w[j], Allocator.Temp);
-                    var Lv = View(Lbuf, w[j]);
                     var Qout = RowsView(V[j + 1], w[j]);
-                    LQRP.decomp(in Wj, ref Lv, ref Qout, ref Ppiv2);
-                    Ppiv2.Dispose();
-
-                    int wj1 = LQRPRankFloored(in Lv, w[j], n, scale);
+                    int wj1 = RowOrthoRankFloored(in Wj, ref Qout, w[j], n, scale);
                     w[j + 1] = wj1;
                     minActive = math.min(minActive, wj1);
                     off[j + 2] = off[j + 1] + wj1;

@@ -1,6 +1,24 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.Block.Common — RowOrthoRankFloored replaces LQRP in the block-Arnoldi step
+- 2026-07-22 | Merged the `wip/lqrp-drop` branch (was 946a8af). The block-Arnoldi residual
+  orthonormalization (BlockArnoldiMGS2Step + bgcrodr's inline copy) used `LQRP.decomp` + a per-step
+  `new Pivot(w[j], Allocator.Temp)` + `LQRPRankFloored`, but only consumes the orthonormal Q rows and a
+  deflation rank — never the pivoted L or the row permutation. Replaced with `RowOrthoRankFloored`: an
+  allocation-free pivoted (rank-revealing) modified Gram-Schmidt on W's rows. Greedy largest-residual
+  row pivot mirrors LQRP's, so the pivot-norm sequence is non-increasing like LQRP's L diagonal; the
+  rank/floor test reproduces LQRPRankFloored verbatim (self-relative vs the first pivot, floored by
+  relTol*scale) → identical deflation DECISION, just on MGS pivot norms not LQ diagonals (iterates need
+  not match bit-for-bit). Drops the LQRP dependency + the hot-loop Temp Pivot alloc. BlockArnoldiMGS2Step
+  loses its `ref Lbuf` param; Lbuf stays allocated in the callers (still used for the initial R0 factor).
+- 2026-07-22 | Perf: prior A/B (on the branch) was neutral (±6%, noisy machine) — MGS2 re-orthogonalization
+  dominates block-Arnoldi cost, not the tiny w[j]×n factor this replaces; the win is architectural
+  (allocation + dependency drop), not speed, so NOT re-benchmarked on merge. Correctness re-verified on
+  current main: block suite 522/522 green. Merged by hand-applying the template change (the branch's raw
+  merge conflicted with main's copy-kernel renames + carried stale generated files); RowOrthoRankFloored
+  needs `using LinearAlgebra.Internal` for UnsafeOP.vecDot/axpyNormSq.
+
 ## Krylov.LSLQ — least-squares solver with a certified forward-error bound
 - 2026-07-21 | Shipped `lslq` (Estrin-Orban-Saunders 2019), the least-SQUARES twin of `lnlq`: same
   Golub-Kahan bidiagonalization as `lsqr`, folded through an LQ factorization (SYMMLQ on AᵀAx=Aᵀb).
