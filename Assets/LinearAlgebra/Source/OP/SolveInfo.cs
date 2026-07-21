@@ -66,6 +66,58 @@ namespace LinearAlgebra
     }
 
     /// <summary>
+    /// Result of an <c>lnlq</c> least-norm solve. Same shape as <see cref="LstsqInfo"/> (returned by
+    /// value, implicit <c>bool</c> == <see cref="Solved"/>, norms as <c>double</c>), plus
+    /// <see cref="xErrBound"/> -- an UPPER bound on the forward error <c>‖x* - x‖</c> of the returned
+    /// iterate. The bound is meaningful only when the solve was given an underestimate of the smallest
+    /// singular value (<c>sigmaMinEst</c>); with no estimate it is <see cref="double.NaN"/>. The bound
+    /// is a true upper bound only when <c>sigmaMinEst &lt;= σ_min(A)</c> -- too large an estimate can
+    /// make it under-report (the caller owns that contract; it is not clamped).
+    ///
+    /// On a Converged OR MaxIterations return, x is the last iterate and the fields describe it. Only
+    /// on a Breakdown return is x left partially updated / undefined.
+    /// </summary>
+    public struct LnlqInfo
+    {
+        /// <summary>Residual norm ‖b - A x‖ at the returned x (certified-exact, recomputed).</summary>
+        public double rnorm;
+
+        /// <summary>Solution norm ‖x‖.</summary>
+        public double xnorm;
+
+        /// <summary>Upper bound on the forward error ‖x* - x‖ of the returned iterate, or
+        /// <see cref="double.NaN"/> when no <c>sigmaMinEst</c> was supplied. See the type remarks for
+        /// the validity contract.</summary>
+        public double xErrBound;
+
+        /// <summary>Iterations actually performed.</summary>
+        public int iterations;
+
+        /// <summary>Why the solve stopped -- see <see cref="IterativeSolveStatus"/>.</summary>
+        public IterativeSolveStatus status;
+
+        /// <summary>True iff the solver reached its tolerance
+        /// (<c>status == IterativeSolveStatus.Converged</c>).</summary>
+        public bool Solved => status == IterativeSolveStatus.Converged;
+
+        /// <summary>Implicit success test, so <c>if (Krylov.lnlq(...))</c> reads as a success test.</summary>
+        public static implicit operator bool(LnlqInfo info) => info.status == IterativeSolveStatus.Converged;
+
+        /// <summary>Burst-safe compact summary. Never allocates managed memory.</summary>
+        public FixedString128Bytes ToFixedString()
+        {
+            FixedString128Bytes str = "LnlqInfo(";
+            str.Append(status.Name());
+            FixedString128Bytes tail = $", iters={iterations}, rnorm={rnorm:G3}, xnorm={xnorm:G3}, xErrBound={xErrBound:G3})";
+            str.Append(tail);
+            return str;
+        }
+
+        /// <summary>Managed wrapper -- do not call from inside a [BurstCompile] job.</summary>
+        public override string ToString() => ToFixedString().ToString();
+    }
+
+    /// <summary>
     /// Result of a square-system Krylov solve (<c>cg</c> / <c>cg</c> /
     /// <c>minres</c> / <c>biCGStab</c>). Same contract as <see cref="LstsqInfo"/> --
     /// returned by value, implicit <c>bool</c> == <see cref="Solved"/>, norm reported as <c>double</c>

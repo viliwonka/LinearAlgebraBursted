@@ -1,0 +1,236 @@
+using System;
+
+using LinearAlgebra;
+using NUnit.Framework;
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Jobs;
+using Unity.Mathematics;
+
+// Krylov.lnlq — single-RHS LNLQ (Estrin-Orban-Saunders): least-norm solve for an underdetermined
+// consistent system A x = b (A is m×n, m<=n, full row rank) via Golub-Kahan bidiagonalization folded
+// through an LQ factorization. Returns the SAME minimum-‖x‖ iterate as craig (LNLQ's transferred
+// CRAIG point x^C = Aᵀ(AAᵀ)⁻¹b), so both the LQ min-norm oracle AND craig itself are oracles here.
+// (These tests cover the SOLVE only; the certified Gauss-Radau xErrBound is exercised separately once
+// the σ_min-estimate overloads land -- xErrBound is NaN on the plain overloads used here.)
+//
+// Oracle for the min-norm value: LQ.minNormSolve (exact x* via LQ factorization).
+public class fProxyLNLQTests
+{
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct TestJob : IJob
+    {
+        public enum TestType
+        {
+            RectangularMinNorm,
+            SquareFullRank,
+            ExplicitScratchInJob,
+            ZeroRhs,
+            RankDeficientBreakdown,
+        }
+
+        public TestType Type;
+
+        public void Execute()
+        {
+            switch (Type)
+            {
+                case TestType.RectangularMinNorm:     RectangularMinNorm();     break;
+                case TestType.SquareFullRank:         SquareFullRank();         break;
+                case TestType.ExplicitScratchInJob:   ExplicitScratchInJob();   break;
+                case TestType.ZeroRhs:                ZeroRhs();                break;
+                case TestType.RankDeficientBreakdown: RankDeficientBreakdown(); break;
+            }
+        }
+
+        // Comparison tolerance vs the LQ oracle / craig / Ax≈b, scaled per numeric type. The +10-boosted
+        // matrices below are κ≈1, so LNLQ's Golub-Kahan bidiagonalization converges cleanly and this
+        // stays tight; float carries the looser value.
+        static fProxy Tol() => /*+choose[1e-3f|1e-9]*/1e-3f/*-choose*/;
+
+        // Convergence tolerance handed to lnlq -- tighter than the default Consts.fProxySqrtEps so
+        // ‖b-Ax‖ is driven well below Tol(); loose enough that a well-conditioned full-row-rank system
+        // still converges within the generous maxIter below (no MaxIterations).
+        static fProxy SolveTol() => /*+choose[1e-5f|1e-13]*/1e-5f/*-choose*/;
+
+        // Generous iteration budget: the bidiagonalization on a full-row-rank A terminates within m
+        // steps in exact arithmetic; 4*m gives float loss-of-orthogonality headroom without masking a
+        // real convergence bug.
+        static int MaxIter(in fProxyMxN A) => 4 * A.M_Rows;
+
+        // Full-(row-)rank test matrix: random with a +10 diagonal boost -> AAᵀ ≈ (100+ε)·I -> κ≈1.
+        static fProxyMxN BuildA(ref Arena arena, int m, int n, uint seed)
+        {
+            var A = arena.fProxyRandomMat(m, n, -1f, 1f, seed);
+            for (int d = 0; d < m; d++)
+                A[d, d] += (fProxy)10;
+            return A;
+        }
+
+        static fProxy Norm(in fProxyN v) => math.sqrt(Blas.dot(v, v));
+
+        // ---- KEY TEST: least-norm correctness on an underdetermined consistent system. Ax=b alone is
+        // satisfied by any solution; the mandatory assertions are x ≈ the LQ min-norm oracle AND
+        // x ≈ craig's own iterate (same x^C point), and x is verifiably NOT the arbitrary x_true. ----
+        void RectangularMinNorm()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 5, n = 9;
+            var A = BuildA(ref arena, m, n, 61001);
+
+            // Arbitrary true solution; b = A x_true makes the system consistent. x_true is generally
+            // NOT in row(A), so the min-norm solution differs from it.
+            var xTrue = arena.fProxyRandomVec(n, -5f, 5f, 61002);
+            var b = arena.fProxyVec(m);
+            Blas.dot(in A, in xTrue, ref b);
+
+            var x = arena.fProxyVec(n);
+            var info = Krylov.lnlq(in A, in b, ref x, MaxIter(in A), SolveTol());
+            Assert.IsTrue(info.Solved);
+
+            // (a) Ax ≈ b — necessary but not sufficient.
+            var Ax = arena.fProxyVec(m);
+            Blas.dot(in A, in x, ref Ax);
+            Assert.IsTrue(Analysis.isZero(b - Ax, Tol()));
+
+            // (b) THE POINT: x matches the exact min-2-norm solution from the LQ oracle -- separates a
+            // correct LNLQ from any solver that merely satisfies Ax=b.
+            var xRef = arena.fProxyVec(n);
+            LQ.minNormSolve(in A, in b, ref xRef);
+            Assert.IsTrue(Analysis.isZero(xRef - x, Tol()));
+
+            // (c) Cross-solver oracle: LNLQ's x^C is CRAIG's point, so craig must agree to tolerance.
+            var xCraig = arena.fProxyVec(n);
+            Krylov.craig(in A, in b, ref xCraig, MaxIter(in A), SolveTol());
+            Assert.IsTrue(Analysis.isZero(xCraig - x, Tol()));
+
+            // (d, softer) ‖x‖ <= ‖x_true‖ (x is minimal among all solutions incl. x_true).
+            Assert.IsTrue(Norm(in x) <= Norm(in xTrue) + Tol());
+
+            // (e, negative guard) lnlq did NOT merely echo x_true: it is a solution but not min-norm.
+            Assert.IsFalse(Analysis.isZero(xTrue - x, (fProxy)0.1));
+
+            // xErrBound is NaN on the plain overloads (no σ_min estimate supplied).
+            Assert.IsTrue(double.IsNaN(info.xErrBound));
+
+            arena.Dispose();
+        }
+
+        // ---- Square full-rank: the system has a UNIQUE solution, so lnlq must recover x_true. ----
+        void SquareFullRank()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int nn = 7;
+            var A = BuildA(ref arena, nn, nn, 62001);
+
+            var xTrue = arena.fProxyRandomVec(nn, -5f, 5f, 62002);
+            var b = arena.fProxyVec(nn);
+            Blas.dot(in A, in xTrue, ref b);
+
+            var x = arena.fProxyVec(nn);
+            var info = Krylov.lnlq(in A, in b, ref x, MaxIter(in A), SolveTol());
+            Assert.IsTrue(info.Solved);
+
+            var Ax = arena.fProxyVec(nn);
+            Blas.dot(in A, in x, ref Ax);
+            Assert.IsTrue(Analysis.isZero(b - Ax, Tol()));
+
+            // Unique solution: x IS x_true (direct comparison, unlike the rectangular case).
+            Assert.IsTrue(Analysis.isZero(xTrue - x, Tol()));
+
+            arena.Dispose();
+        }
+
+        // ---- Explicit-scratch overload driven through the IJob struct: exercises the caller-provided
+        // u/v/tmpM/tmpN buffer path (guards against IJob struct-copy resets) on the rectangular
+        // min-norm case. ----
+        void ExplicitScratchInJob()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 6, n = 11;
+            var A = BuildA(ref arena, m, n, 63001);
+
+            var xTrue = arena.fProxyRandomVec(n, -4f, 4f, 63002);
+            var b = arena.fProxyVec(m);
+            Blas.dot(in A, in xTrue, ref b);
+
+            // Caller-provided scratch (lengths: u,tmpM = Rows; v,tmpN = Cols).
+            var u    = arena.fProxyVec(m);
+            var v    = arena.fProxyVec(n);
+            var tmpM = arena.fProxyVec(m);
+            var tmpN = arena.fProxyVec(n);
+            var x    = arena.fProxyVec(n);
+
+            var info = Krylov.lnlq(in A, in b, ref x, ref u, ref v, ref tmpM, ref tmpN, MaxIter(in A), SolveTol());
+            Assert.IsTrue(info.Solved);
+
+            var Ax = arena.fProxyVec(m);
+            Blas.dot(in A, in x, ref Ax);
+            Assert.IsTrue(Analysis.isZero(b - Ax, Tol()));
+
+            var xRef = arena.fProxyVec(n);
+            LQ.minNormSolve(in A, in b, ref xRef);
+            Assert.IsTrue(Analysis.isZero(xRef - x, Tol()));
+
+            arena.Dispose();
+        }
+
+        // ---- Zero RHS: min-norm solution is exactly x = 0 on the early-out path with zero iterations.
+        // Assertions are EXACT. Also proves lnlq zeroes x internally (no warm start) by seeding garbage. ----
+        void ZeroRhs()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 5, n = 9;
+            var A = BuildA(ref arena, m, n, 64001);
+            var b = arena.fProxyVec(m); // all zeros
+
+            var x = arena.fProxyVec(n);
+            for (int j = 0; j < n; j++) x[j] = (fProxy)7;
+
+            var info = Krylov.lnlq(in A, in b, ref x);
+            Assert.IsTrue(info.Solved);
+            Assert.IsTrue(info.iterations == 0);
+            Assert.IsTrue(Analysis.isZero(x, (fProxy)0));
+
+            arena.Dispose();
+        }
+
+        // ---- Rank-deficient A (row 1 all zeros) with b nonzero only in that zero row: u_1 = b selects
+        // the zero row, so Aᵀu_1 == 0 EXACTLY (both float and double), the first Golub-Kahan V-step
+        // collapses (alpha_1 == 0), and lnlq must report Breakdown -- never Converged, never NaN. x is
+        // UNDEFINED per the Breakdown contract, so it is NOT asserted. ----
+        void RankDeficientBreakdown()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 2, n = 4;
+            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 65001);
+            for (int j = 0; j < n; j++)
+                A[1, j] = (fProxy)0; // row 1 = 0 -> rank-deficient (not full row rank)
+
+            var b = arena.fProxyVec(m);
+            b[1] = (fProxy)1; // nonzero only where A's row is zero -> Aᵀb = 0 on the first step
+
+            var x = arena.fProxyVec(n);
+            var info = Krylov.lnlq(in A, in b, ref x);
+
+            Assert.IsTrue(info.status == IterativeSolveStatus.Breakdown);
+            // Norms are finite (no NaN escapes the collapse path).
+            Assert.IsFalse(double.IsNaN(info.rnorm));
+
+            arena.Dispose();
+        }
+    }
+
+    public static Array GetEnums() => Enum.GetValues(typeof(TestJob.TestType));
+
+    [TestCaseSource("GetEnums")]
+    public void Test(TestJob.TestType type)
+    {
+        new TestJob() { Type = type }.Run();
+    }
+}
