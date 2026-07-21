@@ -118,6 +118,68 @@ namespace LinearAlgebra
     }
 
     /// <summary>
+    /// Result of an <c>lslq</c> least-SQUARES solve. Combines the least-squares diagnostics of
+    /// <see cref="LstsqInfo"/> (<see cref="rnorm"/> = ‖b - A x‖, <see cref="Arnorm"/> = ‖Aᵀ(b - A x)‖
+    /// the optimality residual, <see cref="xnorm"/> = ‖x‖, all certified-exact from a fresh audit)
+    /// with the forward-error bound of <see cref="LnlqInfo"/> (<see cref="xErrBound"/>). The returned
+    /// iterate is LSLQ's LQ point xᴸ -- the one whose Euclidean error ‖xᴸ - x*‖ decreases monotonically
+    /// (LSLQ's error-minimization property), NOT the residual-minimizing LSQR point.
+    ///
+    /// <see cref="xErrBound"/> is an UPPER bound on ‖x* - x‖ of the returned xᴸ, meaningful only when
+    /// the solve was given a strict UNDERESTIMATE of the smallest singular value
+    /// (<c>sigmaMinEst</c> &lt;= σ_min(A)); with no estimate it is <see cref="double.NaN"/>. Too large
+    /// an estimate can make it under-report (the caller owns that contract; it is not clamped). NaN
+    /// also signals a bound that went numerically complex mid-run (cancellation / σ estimate too large).
+    ///
+    /// On a Converged OR MaxIterations return, x is the last iterate and the fields describe it. Only
+    /// on a Breakdown return is x left partially updated / undefined.
+    /// </summary>
+    public struct LslqInfo
+    {
+        /// <summary>Residual norm ‖b - A x‖ at the returned x (certified-exact, recomputed). Nonzero
+        /// for an inconsistent (over-determined) system even at the optimum.</summary>
+        public double rnorm;
+
+        /// <summary>Optimality residual ‖Aᵀ(b - A x)‖ (certified-exact). Goes to zero at the
+        /// least-squares minimizer regardless of whether the system is consistent.</summary>
+        public double Arnorm;
+
+        /// <summary>Solution norm ‖x‖.</summary>
+        public double xnorm;
+
+        /// <summary>Upper bound on the forward error ‖x* - x‖ of the returned iterate, or
+        /// <see cref="double.NaN"/> when no <c>sigmaMinEst</c> was supplied (or the bound went complex).
+        /// See the type remarks for the validity contract.</summary>
+        public double xErrBound;
+
+        /// <summary>Iterations actually performed.</summary>
+        public int iterations;
+
+        /// <summary>Why the solve stopped -- see <see cref="IterativeSolveStatus"/>.</summary>
+        public IterativeSolveStatus status;
+
+        /// <summary>True iff the solver reached its tolerance
+        /// (<c>status == IterativeSolveStatus.Converged</c>).</summary>
+        public bool Solved => status == IterativeSolveStatus.Converged;
+
+        /// <summary>Implicit success test, so <c>if (Krylov.lslq(...))</c> reads as a success test.</summary>
+        public static implicit operator bool(LslqInfo info) => info.status == IterativeSolveStatus.Converged;
+
+        /// <summary>Burst-safe compact summary. Never allocates managed memory.</summary>
+        public FixedString128Bytes ToFixedString()
+        {
+            FixedString128Bytes str = "LslqInfo(";
+            str.Append(status.Name());
+            FixedString128Bytes tail = $", iters={iterations}, rnorm={rnorm:G3}, Arnorm={Arnorm:G3}, xnorm={xnorm:G3}, xErrBound={xErrBound:G3})";
+            str.Append(tail);
+            return str;
+        }
+
+        /// <summary>Managed wrapper -- do not call from inside a [BurstCompile] job.</summary>
+        public override string ToString() => ToFixedString().ToString();
+    }
+
+    /// <summary>
     /// Result of a square-system Krylov solve (<c>cg</c> / <c>cg</c> /
     /// <c>minres</c> / <c>biCGStab</c>). Same contract as <see cref="LstsqInfo"/> --
     /// returned by value, implicit <c>bool</c> == <see cref="Solved"/>, norm reported as <c>double</c>

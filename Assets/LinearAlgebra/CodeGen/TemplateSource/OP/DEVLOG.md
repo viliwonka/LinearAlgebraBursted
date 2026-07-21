@@ -1,6 +1,36 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.LSLQ — least-squares solver with a certified forward-error bound
+- 2026-07-21 | Shipped `lslq` (Estrin-Orban-Saunders 2019), the least-SQUARES twin of `lnlq`: same
+  Golub-Kahan bidiagonalization as `lsqr`, folded through an LQ factorization (SYMMLQ on AᵀAx=Aᵀb).
+  Returns the LQ point xᴸ — the ERROR-minimizing iterate (‖xᴸ-x*‖ ↓ monotone), NOT lsqr's residual-
+  minimizing point. VALUE-ADD is `LslqInfo.xErrBound` = |ζ̃|, a certified upper bound on ‖x*-xᴸ‖, opt-in
+  via `double sigmaMinEst` (a strict UNDERestimate of σ_min(A)); the bound's tightness ratio is ~1.0
+  (essentially exact — the whole point of the LQ point over LSQR). New struct `LslqInfo` (rnorm +
+  Arnorm + xnorm + xErrBound); reuses lstsqResidual + the fProxy `SymGivens` (from MINRESQLP).
+- 2026-07-21 | Bound recurrence (double sidecar, EOS2019): σ-QR Givens chain (init csig=-1, ρ̄=-σ)
+  yields the Gauss-Radau ω each step — ω²=σ(σ-δ·h), h=δ·csig/ρ̄; then η̃=ω·s, ε̃=-ω·c, τ̃=-τδ/ω,
+  ζ̃=(τ̃-ζη̃)/ε̃. Valid from the FIRST iterate (unlike LNLQ's, which needs τ_{k-1}). disc<0 → complex,
+  xErrBound=NaN. Computed in DOUBLE regardless of solve precision (needs a single-output file for the
+  double `SymGivensD`, else CS0111 duplicates it across the float/double generated copies — see
+  Krylov.Givens.cs).
+- 2026-07-21 | STOPPING: LSLQ's xᴸ minimizes error, not residual, so the Krylov.jl running
+  rNorm/ArNorm estimates track NEITHER xᴸ nor x^C in a plain transcription (verified: rel-err 0.8 /
+  1e12). So the stop is a CERTIFIED optimality audit (lstsqResidual ‖Aᵀr‖ ≤ tol·‖Aᵀb‖, ‖Aᵀb‖=α₁β₁
+  free), armed by a cheap forward-error trigger |ζ_k| ≤ tol·‖xᴸ‖ (verified to fire at/after the gate on
+  160 problems; a premature fire is rejected by the audit → never-false-Converged). Collapse
+  (β or α → 0) also arms the audit → Converged if optimal, else Breakdown. Rank-deficient A is handled
+  gracefully (terminates at the min-norm LS point, ‖Aᵀr‖~1e-16), not a Breakdown.
+- 2026-07-21 | NO damping and NOT battery-wired (deliberate). The shared KrylovLstsqBatteryTests
+  overdetermined path unconditionally exercises a Tikhonov-damped entry point (#12); LSLQ's damped
+  (λ-rotation) transcription had a fixed ~1.4e-3 optimality-residual bias I could not clear cleanly
+  (entangled with the preconditioned derivation in the reference), so damping is out of scope for v1
+  and LSLQ gets a dedicated LSLQTests instead — which also covers the certified bound the battery
+  can't test. VERIFIED end-to-end in reference/wip-lnlq/lslq_*.py (gitignored): solve==lstsq to 9.6e-15,
+  LQ bound violation 0 + ratio 1.0 over 320 trials; the paper's c₀=1 is a TYPO (must be -1), caught by
+  diffing my numpy against Krylov.jl lslq.jl (MPL-2.0 → oracle-only, never copied).
+
 ## Krylov.LNLQ — least-norm solver with a certified forward-error bound
 - 2026-07-21 | Shipped `lnlq` (Estrin-Orban-Saunders 2019). The SOLVE returns LNLQ's transferred
   CRAIG point x^C (identical min-norm x as `craig`, via the τ recurrence) — verified vs LQ.minNormSolve

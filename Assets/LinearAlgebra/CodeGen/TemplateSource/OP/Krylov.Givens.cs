@@ -1,0 +1,42 @@
+//singularFile//
+using Unity.Mathematics;
+
+namespace LinearAlgebra
+{
+    public static partial class Krylov {
+
+        /// <summary>
+        /// Stable symmetric Givens rotation in double precision, independent of the solve's numeric
+        /// type: returns c, s such that the rotation zeroes the second component of (a, b). Sign
+        /// convention matches the fProxy <c>SymGivens</c> (r-sign follows the dominant component; zero
+        /// -> +1). Used by the double-precision Gauss-Radau error-bound sidecars (e.g. <c>lslq</c>)
+        /// that run in double regardless of the solve precision, so it lives in a single (non-templated)
+        /// file to avoid a duplicate definition across the float/double generated copies.
+        /// </summary>
+        static void SymGivensD(double a, double b, out double c, out double s)
+        {
+            if (b == 0)
+            {
+                c = a == 0 ? 1.0 : math.sign(a);
+                s = 0;
+            }
+            else if (a == 0)
+            {
+                c = 0;
+                s = math.sign(b);
+            }
+            else if (math.abs(b) > math.abs(a))
+            {
+                double t = a / b;
+                s = math.sign(b) / math.sqrt(1 + t * t);
+                c = s * t;
+            }
+            else
+            {
+                double t = b / a;
+                c = math.sign(a) / math.sqrt(1 + t * t);
+                s = c * t;
+            }
+        }
+    }
+}
