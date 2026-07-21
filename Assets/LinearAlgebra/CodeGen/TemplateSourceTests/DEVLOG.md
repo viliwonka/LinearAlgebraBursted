@@ -1,6 +1,35 @@
 # DEVLOG — TemplateSourceTests
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## KrylovVerifyAtExitTests — minresQLP two-certificate rework
+- 2026-07-21 | `MinresQLPNeverFalseConvergesOnRosser` asserted the impossible: on Rosser + random b
+  (INCOMPATIBLE — b has a null-space component) the true LS optimum's residual is always above
+  64*tol*‖b‖, so `!(Solved && bigResidual)` forbade every correct LS-Converged the new exit gate can
+  now legitimately report. Reworked to the gate-shaped invariant via `AssertSolvedImpliesCertified`:
+  Solved ⟹ compatible certificate OR LS-optimality certificate, with the test-side Anorm taken as
+  ‖A‖F (upper bound of ‖A‖2, hence of the solver's internal lower Anorm estimate — solver-certified
+  results always pass; a false Converged passes neither). Red-proofed against the UNGUARDED
+  (pre-#53) solver: double build returned Converged (iters=6, rnorm=0.36) with fresh ‖Ar‖ 2.4e-3
+  vs certified bound 8.5e-4 → test correctly RED; with the gate → green. Compatible coverage
+  (#53's original class) split into `MinresQLPNeverFalseConvergesOnCompatibleRosser` (b = A z);
+  note the unguarded solver does NOT currently false-Converge on that compatible instance (it
+  genuinely converges, rnorm/‖b‖ ~ 8e-5 float, 1e-13 double), so the compatible test is standing
+  invariant coverage while the incompatible instance carries the adversarial burden.
+- 2026-07-21 | Positive min-length LS oracles added:
+  `MinresQLPSolvesSingularDiagLeastSquaresToMinLengthOracle` (diag(1,1,0), b=ones, x*=(1,1,0),
+  ‖r*‖=1) and `MinresQLPSolvesConjugatedSingularLeastSquaresToMinLengthOracle`
+  (Householder-conjugated diag(3,2,1.5,1,0,0), b=Q·ones,
+  x*=QD⁺ones, ‖r*‖=√2). Both assert incompatibility unconditionally (rnorm > 64*tol*‖b‖ holds for
+  ANY x — the Converged can only arrive via the LS certificate, never the compatible path).
+  strict-double / honest-float split (same pattern as the Moler requireLie gate): double must
+  report Converged with the oracle x (red-proofed: on the pre-fix guard both double tests FAIL
+  with Breakdown, iters=1/4, rnorm oracle-exact 1/1.41 — the flag-6/9 min-length exits the
+  promotion now certifies); float's terminal Lanczos iteration on an exactly-singular A is
+  rounding-limited (x lands 2-14% off the oracle; the template-stub build even diverges to ~6e5
+  unguarded), so the float builds accept honest non-convergence — but every assert inside
+  `if (info.Solved)` still binds any Converged the float build claims (red-proofed: unguarded
+  float claims Converged with x[0]=1.14 on diag → oracle assert RED).
+
 ## KrylovSquareBatteryTests / KrylovBlockBatteryTests / KrylovLstsqBatteryTests / KrylovBlockLstsqBatteryTests -- BurstProbe
 - 2026-07-21 | Added `BurstProbe.RequireBursted()` as the first statement of each battery `TestJob`'s
   `Execute()` (per spec-test-burst-mono-hygiene.md SS2.1/SS7): a no-op under a real Burst compile, but

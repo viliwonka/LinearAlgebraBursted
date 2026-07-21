@@ -29,12 +29,14 @@ namespace LinearAlgebra
         ///
         /// Caller provides x and nine scratch vectors (v, r1, r2, r3, w, wl, wl2, xl2, t1; all
         /// length A.Rows) -- see the folder DEVLOG for the buffer-reuse/aliasing plan. Returns a
-        /// <see cref="SolveInfo"/>: Converged for every reference outcome that reports a usable x
-        /// (compatible solve, min-length least-squares solve, or lucky eigenvector solve),
-        /// MaxIterations when the step budget was exhausted, Breakdown when xnorm/Acond exceeded
-        /// their safety bounds, the recurrence went singular, or a non-SPD M was detected -- see
-        /// the folder DEVLOG for the full flag-to-status mapping and the reference's own flag
-        /// semantics.
+        /// <see cref="SolveInfo"/>: Converged only when the FRESH residual r = b - A x certifies
+        /// the exit, either as a compatible solve (‖r‖ &lt;= 64*tol*‖b‖) or as a least-squares
+        /// optimum (‖A·r‖ &lt;= 64*tol*Anorm*‖r‖) -- so an incompatible-system Converged carries a
+        /// legitimately large rnorm; MaxIterations when the step budget was exhausted or a claimed
+        /// convergence failed both certificates; Breakdown when Acond exceeded its safety bound, a
+        /// xnorm-clamp exit failed both certificates, the recurrence went singular, or a non-SPD M
+        /// was detected -- see the folder DEVLOG for the full flag-to-status mapping and the
+        /// reference's own flag semantics.
         /// </summary>
         public static SolveInfo minresQLP<TOp, TPre>(in TOp A, in TPre M, in floatN b, ref floatN x,
                                        ref floatN v, ref floatN r1, ref floatN r2, ref floatN r3,
@@ -382,16 +384,33 @@ namespace LinearAlgebra
             else if (flag == 6 || flag == 7 || flag == 9 || flag == -3) status = IterativeSolveStatus.Breakdown;
             else status = IterativeSolveStatus.Converged;
 
-            // Honesty guard: a QLP-flagged convergence whose FRESH true residual is not
-            // small on the RAW relative scale ‖b-Ax‖/‖b‖ is downgraded to an honest
-            // MaxIterations, never a false Converged. The flag metric divides by
-            // (Anorm*xnorm + beta1), which a near-breakdown's large Anorm*xnorm can inflate
-            // enough to mask a big true residual; beta1 (= ‖b‖) is the un-inflated scale.
-            // Factor is generous so genuine convergence (a few x the QLP metric) is kept.
-            if (status == IterativeSolveStatus.Converged &&
-                finalRnorm > (float)64 * tol * beta1)
+            // Exit certificates against the FRESH residual r = b - A x (left in r1 above), on
+            // un-inflated scales -- the QLP stop metric divides by (Anorm*xnorm + beta1), which
+            // a near-breakdown's large Anorm*xnorm can deflate below tol while the true residual
+            // is large. Converged is only reported when one certificate holds:
+            //   1. compatible:    ‖b-Ax‖ <= 64*tol*‖b‖ (no extra cost);
+            //   2. least-squares: ‖A(b-Ax)‖ <= 64*tol*Anorm*‖b-Ax‖ (one extra matvec, only when
+            //      1 fails; A symmetric, so A·r is the optimality residual Aᵀr of min ‖b-Ax‖).
+            // A Converged claim failing both is downgraded to MaxIterations. A flag-6/9 exit
+            // (the maxxnorm/u-clamp -- the min-length mechanism on a singular A) is promoted to
+            // Converged when a certificate holds, else stays Breakdown; flags 7 (Acond) and -3
+            // (non-SPD M) are genuine breakdowns, never promoted.
+            if (status == IterativeSolveStatus.Converged ||
+                (status == IterativeSolveStatus.Breakdown && (flag == 6 || flag == 9)))
             {
-                status = IterativeSolveStatus.MaxIterations;
+                if (finalRnorm <= (float)64 * tol * beta1)
+                {
+                    status = IterativeSolveStatus.Converged;
+                }
+                else
+                {
+                    A.Apply(in r1, ref r3);
+                    float arnorm = math.sqrt(Blas.dot(r3, r3));
+                    if (arnorm <= (float)64 * tol * Anorm * finalRnorm)
+                        status = IterativeSolveStatus.Converged;
+                    else if (status == IterativeSolveStatus.Converged)
+                        status = IterativeSolveStatus.MaxIterations;
+                }
             }
 
             return MakeSolveInfo(status, iters, finalRnorm);

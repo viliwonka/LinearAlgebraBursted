@@ -231,6 +231,32 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
 - 2026-07-20 | New `Krylov.Block.LSMR.fProxy.cs` (task #43, blsmr): block LSMR for tall/overdetermined systems via block Golub-Kahan bidiag + block QR update; ported from rectangular/BlockLSQR-LSMR-algorithm-extract.md (Bl-LSMR Algorithm 2). Fidelity deviations: no warm start, no damping, per-row Apply/ApplyT (not a fused block GEMM). Key oracle = per-column normal-equation optimality + matches scalar lsmr — passes all dtypes; exact recovery of a consistent system also holds all dtypes. The convergence FLAG (Solved/converged==s) is CONSERVATIVE in float: the block-GKB residual estimate is stricter than the achieved accuracy, so float recovers Xk yet can report MaxIterations — so ConsistentSystemRecoversExactSolution asserts full-convergence status for double only, recovery for all. Not wired to a battery (no block-LS battery family yet). NOTE: the WIP's earlier "test data reads back as zero" was the IJob struct-copy trap (verify INSIDE the job, never off a job field after Run()), NOT an Arena bug — see #54 / ArenaBurstReadbackRegressionTests.
 
 ## Krylov.MINRESQLP
+- 2026-07-21 | Two-certificate exit gate replaces the #53 single-certificate honesty guard, which
+  had a least-squares blind spot: it downgraded EVERY Converged whose fresh ‖b-Ax‖ > 64*tol*‖b‖,
+  correctly killing false-Converged on compatible systems but also killing every genuine LS
+  solution of an INCOMPATIBLE singular system (whose optimal residual is legitimately ‖b_perp‖,
+  large). New gate: certificate 1 (unchanged, fires first, free) keeps Converged when
+  finalRnorm <= 64*tol*beta1; certificate 2 (only when 1 fails, one extra matvec on the r=b-Ax
+  already sitting in r1) keeps Converged when ‖A·r‖ <= 64*tol*Anorm*finalRnorm — the reference's
+  RELARES = ‖Ar‖/(ANORM·RNORM) <= RTOL, r-RELATIVE (scaled by ‖r‖, NOT beta1). Soundness: on any
+  system with κ < 1/(64*tol) a wrong-x large-residual Converged cannot pass 2 (‖Ar‖ >= σ_min‖r‖
+  forces κ >= 1/(64*tol)); beyond that κ it is rank-cutoff semantics, same class as pinv rcond.
+  Same gate now also PROMOTES flag-6/9 Breakdown exits (maxxnorm/u-clamp — the min-length
+  mechanism as γ→0 on the null direction) to Converged when a certificate holds: verified
+  empirically (promotion disabled, statuses probed) that A=diag(1,1,0),b=ones and a
+  Householder-conjugated diag(3,2,1.5,1,0,0) exit flag 6/9 in double with ORACLE-EXACT min-length
+  x (rnorm exactly 1 and √2) yet reported Breakdown pre-fix. Flags 7 (Acondlim) and -3 (non-SPD M)
+  are genuine breakdowns, never promoted; a flag-6/9 divergence on a resolvable system cannot pass
+  the certificate (same κ-cutoff argument). Pre-fix (no guard at all) Rosser+random-b false-
+  Converged (double: rnorm 0.36, fresh ‖Ar‖ 2.4e-3 vs certified <= 8.5e-4) confirms the downgrade
+  path still catches the #53 bug class. Float limitation (NOT changed here): on the exactly-
+  singular oracle instances float's terminal Lanczos iteration is rounding-limited (x 2-14% off,
+  stub build diverges to 6e5 unguarded), certificates honestly refuse → MaxIterations; only double
+  certifies the oracle. Untested branch note: no current instance exits flags 1-5 with cert-2
+  passing (clean flag-2 LS exits get clamped to 6/9 first on exactly-singular inputs); that branch
+  is the same one-line status assignment as the tested promotion. Tests in
+  KrylovVerifyAtExitTests (certificate invariant + two min-length LS oracles + compatible-Rosser
+  #53 coverage).
 - 2026-07-20 | Honesty guard on the Converged exit (#53, surfaced by battery Forbids=IllConditioned). The QLP stop metric relres = rnorm/(Anorm*xnorm+beta1) can be deflated below tol by a large Anorm*xnorm on a near-breakdown/clustered spectrum (Rosser), flagging Converged while the true ‖b-Ax‖/‖b‖ is large (~0.38). Fix: after the fresh finalRnorm recompute, downgrade Converged->MaxIterations when finalRnorm > 64*tol*beta1 (RAW ‖b‖ scale, not the inflatable QLP denominator). 64x keeps genuine convergence (raw residual runs only a few x the QLP metric). Tests MinresQLPNeverFalseConvergesOnRosser + MinresQLPStillConvergesHonestlyOnWellConditioned in KrylovVerifyAtExitTests. Other solvers in docs/dev/spec-krylov-nonconvergence-fix.md (gmres/biCGStab/idr/minres) deferred — a naive gmres change broke GCRODR RecycleZeroMatchesGmres equivalence, needs care.
 
 ## Krylov.MINRES

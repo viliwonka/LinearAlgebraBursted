@@ -280,35 +280,222 @@ public class doubleKrylovVerifyAtExitTests
     }
 
     // ==============================================================================
-    // minresQLP honesty guard: its QLP stopping metric rnorm/(Anorm*xnorm+beta1) can be
+    // minresQLP honesty gate: its QLP stopping metric rnorm/(Anorm*xnorm+beta1) can be
     // deflated below tol by a large Anorm*xnorm on a near-breakdown spectrum, flagging
-    // Converged while the true ‖b-Ax‖/‖b‖ is large. The guard must NOT claim convergence
-    // with a large true residual (Rosser), and must NOT reject a genuine convergence
-    // (well-conditioned).
+    // Converged while the true ‖b-Ax‖/‖b‖ is large. The exit gate accepts a Converged only
+    // with one of two fresh-residual certificates: compatible (‖r‖ <= 64*tol*‖b‖) or
+    // least-squares optimality (‖A·r‖ <= 64*tol*Anorm*‖r‖ -- legitimate on an INCOMPATIBLE
+    // singular system, where the LS optimum's raw residual is inherently large). The tests:
+    // never a Solved that fails BOTH certificates (Rosser, compatible and incompatible b);
+    // a genuine min-length LS optimum on an exactly-singular A IS reported Solved with the
+    // oracle x (diag + Householder-conjugated instances); and a genuine compatible
+    // convergence is never rejected (well-conditioned).
     // ==============================================================================
+
+    // The gate's invariant, checked from OUTSIDE the solver via fresh recomputes:
+    // Solved ⟹ ‖b-Ax‖ <= 64*tol*‖b‖ (compatible) OR ‖A(b-Ax)‖ <= 64*tol*‖A‖F*‖b-Ax‖
+    // (least-squares optimality; A symmetric so A·r = Aᵀr). ‖A‖F >= ‖A‖2 >= the solver's
+    // internal Anorm estimate, so anything the solver certifies also passes here, while a
+    // false Converged (wrong x on a resolvable system) passes neither.
+    static void AssertSolvedImpliesCertified(in doubleMxN A, in doubleN b, in doubleN x,
+                                             SolveInfo info, double tol, ref Arena arena, string what)
+    {
+        if (!info.Solved) return;
+        var op = new doubleDenseOperator(in A);
+        var r = arena.doubleVec(b.N);
+        double rnorm = math.sqrt((double)TrueResidualSq(in op, in b, in x, ref r));   // r = b - Ax
+        double bnorm = math.sqrt((double)Blas.dot(b, b));
+        if (rnorm <= (double)((double)64 * tol) * bnorm)
+            return;   // compatible certificate
+        var Ar = arena.doubleVec(b.N);
+        op.Apply(in r, ref Ar);
+        double arnorm = math.sqrt((double)Blas.dot(Ar, Ar));
+        Assert.LessOrEqual(arnorm, (double)((double)64 * tol) * (double)Norms.L2(in A) * rnorm,
+            what + ": Solved with a large raw residual must be a certified least-squares optimum: " + info);
+    }
 
     [Test]
     public void MinresQLPNeverFalseConvergesOnRosser()
     {
         var arena = new Arena(Allocator.Persistent);
 
-        var A = arena.doubleRosser();            // 8x8 symmetric, clustered near-degenerate spectrum
+        var A = arena.doubleRosser();            // 8x8 symmetric, exactly singular, clustered spectrum
         int n = A.M_Rows;
-        var op = new doubleDenseOperator(in A);
-        var b = arena.doubleRandomVec(n, (double)(-1f), (double)1f, 143003);
+        var b = arena.doubleRandomVec(n, (double)(-1f), (double)1f, 143003);   // INCOMPATIBLE (null-space component)
 
         double tol = Consts.doubleSqrtEps;
         var x = arena.doubleVec(n);
         var info = Krylov.minresQLP(in A, in b, ref x, 8 * n, tol);
 
-        var scratch = arena.doubleVec(n);
-        double trueRs = TrueResidualSq(in op, in b, in x, ref scratch);
-        double honestBoundSq = (double)((double)64 * tol) * (double)((double)64 * tol) * (double)Blas.dot(b, b);
+        // The LS optimum's raw residual is inherently large here (‖b_null‖ ~ ‖b‖/√n), so a raw
+        // small-residual demand would forbid every correct answer; the certificate invariant
+        // instead allows a genuine LS optimum and still forbids a false Converged.
+        AssertSolvedImpliesCertified(in A, in b, in x, info, tol, ref arena, "minresQLP Rosser incompatible");
 
-        // A false Converged (the pre-guard bug reported Solved on Rosser with a large true
-        // residual) must be caught: never Solved while the true residual exceeds the raw bound.
-        Assert.IsFalse(info.Solved && (double)trueRs > honestBoundSq,
-            "minresQLP claimed convergence on Rosser but the true residual is large: " + info);
+        arena.Dispose();
+    }
+
+    [Test]
+    public void MinresQLPNeverFalseConvergesOnCompatibleRosser()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        var A = arena.doubleRosser();
+        int n = A.M_Rows;
+        var z = arena.doubleRandomVec(n, (double)(-1f), (double)1f, 143005);
+        var b = arena.doubleVec(n);
+        Blas.dot(in A, in z, ref b);             // b = A z: COMPATIBLE, the #53 false-Converged class
+
+        double tol = Consts.doubleSqrtEps;
+        var x = arena.doubleVec(n);
+        var info = Krylov.minresQLP(in A, in b, ref x, 8 * n, tol);
+
+        // Compatible system: r = b - Ax stays in range(A), where Rosser's smallest nonzero
+        // |eigenvalue| (~0.098) keeps ‖A·r‖/‖r‖ far above the double LS-certificate bound -- so
+        // in double this invariant collapses to the original #53 guard (never Solved with a
+        // large raw residual), and in float to the documented rank-cutoff semantics.
+        AssertSolvedImpliesCertified(in A, in b, in x, info, tol, ref arena, "minresQLP Rosser compatible");
+
+        arena.Dispose();
+    }
+
+    // Positive LS oracle: A = diag(1,1,0), b = (1,1,1) -- exactly singular, INCOMPATIBLE, with
+    // the min-length least-squares solution known exactly: x* = (1,1,0), r* = (0,0,1),
+    // ‖r*‖ = 1 (large: rel residual 1/√3), A·r* = 0. Must be reported Converged via the LS
+    // certificate (the raw residual can never pass the compatible one), with the oracle x.
+    [Test]
+    public void MinresQLPSolvesSingularDiagLeastSquaresToMinLengthOracle()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        int n = 3;
+        var A = arena.doubleMat(n, n);
+        for (int i = 0; i < n; i++)
+            for (int j = 0; j < n; j++)
+                A[i, j] = (double)0;
+        A[0, 0] = (double)1; A[1, 1] = (double)1;   // A[2,2] stays 0
+        var b = arena.doubleVec(n);
+        for (int i = 0; i < n; i++) b[i] = (double)1;
+
+        double tol = Consts.doubleSqrtEps;
+        var x = arena.doubleVec(n);
+        var info = Krylov.minresQLP(in A, in b, ref x, 50, tol);
+
+        var op = new doubleDenseOperator(in A);
+        var r = arena.doubleVec(n);
+        double rnorm = math.sqrt((double)TrueResidualSq(in op, in b, in x, ref r));
+        double bnorm = math.sqrt((double)Blas.dot(b, b));
+
+        // The instance is incompatible for ANY x (every residual has the fixed null-space part
+        // b[2] = 1), so a Converged here can only come through the LS certificate, never the
+        // compatible one.
+        Assert.Greater(rnorm, (double)((double)64 * tol) * bnorm,
+            "instance must be incompatible (large raw residual) or it does not exercise the LS certificate");
+
+        // double resolves the exactly-singular terminal Lanczos iteration to oracle precision and
+        // must deliver the min-length LS solution outright; float's terminal iteration is
+        // rounding-limited on this instance, so the float build accepts an HONEST non-convergence
+        // (never a false Converged -- the oracle checks below still bind any Solved it claims).
+        bool strictOracle = true;
+        if (strictOracle)
+            Assert.IsTrue(info.Solved,
+                "minresQLP must report Converged for the exact min-length LS solution of diag(1,1,0): " + info);
+
+        if (info.Solved)
+        {
+            double xTol = 1e-10;
+            Assert.AreEqual(1.0, (double)x[0], xTol, "x[0] must match the min-length oracle (1,1,0)");
+            Assert.AreEqual(1.0, (double)x[1], xTol, "x[1] must match the min-length oracle (1,1,0)");
+            Assert.AreEqual(0.0, (double)x[2], xTol, "x[2] must match the min-length oracle (1,1,0)");
+
+            Assert.AreEqual(1.0, rnorm, xTol, "‖b-Ax‖ must match the oracle residual ‖r*‖ = 1");
+            Assert.AreEqual(rnorm, info.rnorm, xTol, "reported rnorm must be the fresh ‖b-Ax‖");
+
+            var Ar = arena.doubleVec(n);
+            op.Apply(in r, ref Ar);
+            double arnorm = math.sqrt((double)Blas.dot(Ar, Ar));
+            Assert.AreEqual(0.0, arnorm, xTol, "optimality residual ‖A·r‖ must vanish at the LS optimum");
+        }
+
+        arena.Dispose();
+    }
+
+    // Positive LS oracle, non-diagonal: A = Q D Qᵀ with D = diag(3,2,1.5,1,0,0) and Q the
+    // Householder reflector of v = (1,..,6) -- exactly singular with a genuine multi-step
+    // Lanczos run. b = Q·ones so Qᵀb = ones exactly: min-length x* = Q D⁺ Qᵀ b and
+    // ‖r*‖ = √2 (the null-space part of b) are hand-computable oracles.
+    [Test]
+    public void MinresQLPSolvesConjugatedSingularLeastSquaresToMinLengthOracle()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        int n = 6;
+        var d = new double[] { 3, 2, 1.5, 1, 0, 0 };
+        var v = new double[n];
+        double vv = 0;
+        for (int i = 0; i < n; i++) { v[i] = i + 1; vv += v[i] * v[i]; }
+
+        // Q = I - 2 v vᵀ / (vᵀv): orthogonal, symmetric. Build Q, A = Q D Qᵀ, b = Q·ones and
+        // the pinv oracle x* = Q D⁺ Qᵀ b in double, then cast into the proxy matrix/vectors.
+        var Q = new double[n, n];
+        for (int i = 0; i < n; i++)
+            for (int j = 0; j < n; j++)
+                Q[i, j] = (i == j ? 1.0 : 0.0) - 2.0 * v[i] * v[j] / vv;
+
+        var A = arena.doubleMat(n, n);
+        var b = arena.doubleVec(n);
+        var xStar = new double[n];
+        for (int i = 0; i < n; i++)
+        {
+            double bi = 0, xi = 0;
+            for (int j = 0; j < n; j++)
+            {
+                double aij = 0;
+                for (int k = 0; k < n; k++) aij += Q[i, k] * d[k] * Q[j, k];
+                A[i, j] = (double)aij;
+                bi += Q[i, j];                                   // b = Q·(1,..,1)
+                xi += d[j] > 0 ? Q[i, j] / d[j] : 0.0;           // x* = Q·D⁺·(1,..,1)
+            }
+            b[i] = (double)bi;
+            xStar[i] = xi;
+        }
+        double rStarSq = 2.0;   // Qᵀb = ones -> null-space part (last two coords) has ‖·‖² = 2
+
+        double tol = Consts.doubleSqrtEps;
+        var x = arena.doubleVec(n);
+        var info = Krylov.minresQLP(in A, in b, ref x, 100, tol);
+
+        var op = new doubleDenseOperator(in A);
+        var r = arena.doubleVec(n);
+        double rnorm = math.sqrt((double)TrueResidualSq(in op, in b, in x, ref r));
+        double bnorm = math.sqrt((double)Blas.dot(b, b));
+
+        // Incompatible for ANY x (the null-space part of b is fixed): a Converged here can only
+        // come through the LS certificate, never the compatible one.
+        Assert.Greater(rnorm, (double)((double)64 * tol) * bnorm,
+            "instance must be incompatible (large raw residual) or it does not exercise the LS certificate");
+
+        // Same strict-double / honest-float split as the diag oracle test above.
+        bool strictOracle = true;
+        if (strictOracle)
+            Assert.IsTrue(info.Solved,
+                "minresQLP must report Converged for the min-length LS solution of the conjugated singular A: " + info);
+
+        if (info.Solved)
+        {
+            double xTol = 1e-9;
+            for (int i = 0; i < n; i++)
+                Assert.AreEqual(xStar[i], (double)x[i], xTol, "x[" + i + "] must match the pinv min-length oracle");
+
+            Assert.AreEqual(math.sqrt(rStarSq), rnorm, xTol, "‖b-Ax‖ must match the oracle residual √2");
+            Assert.AreEqual(rnorm, info.rnorm, xTol, "reported rnorm must be the fresh ‖b-Ax‖");
+
+            var Ar = arena.doubleVec(n);
+            op.Apply(in r, ref Ar);
+            double arnorm = math.sqrt((double)Blas.dot(Ar, Ar));
+            Assert.LessOrEqual(arnorm, (double)((double)64 * tol) * (double)Norms.L2(in A) * rnorm,
+                "optimality residual ‖A·r‖ must pass the LS certificate at the oracle solution");
+        }
 
         arena.Dispose();
     }
