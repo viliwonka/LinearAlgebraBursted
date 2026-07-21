@@ -63,6 +63,7 @@ namespace LinearAlgebra
             var dbarLag2  = new fProxyMxN(s, s, Allocator.Temp, false);  // 0s
             var phiLag1   = new fProxyMxN(s, s, Allocator.Temp, true);
             var phiLag2   = new fProxyMxN(s, s, Allocator.Temp, false);  // 0s
+            var zetabar   = new fProxyMxN(s, s, Allocator.Temp, true);   // tail block of the rotated LS RHS; ||zetabar||_F = ||A^T R||_F
             for (int i = 0; i < s; i++) { bbarLag1[i, i] = (fProxy)1; dbarLag1[i, i] = (fProxy)1; }
 
             // ---- persistent big (s x m / s x n) state ----
@@ -89,6 +90,7 @@ namespace LinearAlgebra
             var dbark     = new fProxyMxN(s, s, Allocator.Temp, true);
             var RHSphi    = new fProxyMxN(s, s, Allocator.Temp, true);
             var phiNew    = new fProxyMxN(s, s, Allocator.Temp, true);
+            var zetabarNew = new fProxyMxN(s, s, Allocator.Temp, true);
             var coefWork  = new fProxyMxN(s, s, Allocator.Temp, true);
             var Rqrcp     = new fProxyMxN(s, s, Allocator.Temp, true);
             var Pqrcp     = new Pivot(s, Allocator.Temp);
@@ -141,11 +143,12 @@ namespace LinearAlgebra
                 CopyMat(in Bbar1, ref Bbar, s);
                 CopyMat(in Bbar1, ref phiLag1, s);
                 BlockScaleInPlace(ref phiLag1, (fProxy)(-1));             // phi0 = -Bbar1
+                CopyMat(in Bbar1, ref zetabar, s);                        // zetabar1 = Bbar1
 
                 LB1.Dispose(); LA1.Dispose(); Bbar1.Dispose();
             }
 
-            nrmATR2 = BlockFrobDot(in phiLag1, in phiLag1);
+            nrmATR2 = BlockFrobDot(in zetabar, in zetabar);               // ||A^T R0||_F^2 = ||Bbar1||_F^2
             if (nrmATR2 <= threshold) { status = IterativeSolveStatus.Converged; goto cleanup; }
 
             for (int k = 0; k < maxIter; k++)
@@ -229,9 +232,11 @@ namespace LinearAlgebra
                 BlockCTV(in phiNew, in Pnew, ref termSN);
                 BlockAdd(ref X, in termSN, (fProxy)1);
 
-                // ||A^T R||_F^2 -= ||phik||_F^2 (clamped: roundoff can push it fractionally negative)
-                fProxy phiNormSq = BlockFrobDot(in phiNew, in phiNew);
-                nrmATR2 = math.max((fProxy)0, nrmATR2 - phiNormSq);
+                // ||A^T Rk||_F = ||zetabark+1||_F, with zetabark+1 = cbark @ zetabark: the tail
+                // block of the block-rotated least-squares RHS (block analog of scalar LSMR's
+                // |zetabar| product recurrence; ||cbark||_2 <= 1, so the estimate is non-increasing).
+                Blas.dot(in cbark, in zetabar, ref zetabarNew, false, false);
+                nrmATR2 = BlockFrobDot(in zetabarNew, in zetabarNew);
                 iters = k + 1;
 
                 if (nrmATR2 <= threshold) { status = IterativeSolveStatus.Converged; goto cleanup; }
@@ -246,6 +251,7 @@ namespace LinearAlgebra
 
                 CopyMat(in phiLag1, ref phiLag2, s);
                 CopyMat(in phiNew, ref phiLag1, s);
+                CopyMat(in zetabarNew, ref zetabar, s);
 
                 CopyBlock(in PLag1, ref PLag2, s, n);
                 CopyBlock(in Pnew, ref PLag1, s, n);
@@ -265,6 +271,7 @@ namespace LinearAlgebra
                 rowN.Dispose(); rowM.Dispose();
                 LA.Dispose(); Bbar.Dispose(); abarLag1.Dispose(); bbarLag1.Dispose(); bbarLag2.Dispose();
                 cbarLag1.Dispose(); dbarLag1.Dispose(); dbarLag2.Dispose(); phiLag1.Dispose(); phiLag2.Dispose();
+                zetabar.Dispose(); zetabarNew.Dispose();
                 U.Dispose(); V.Dispose(); PLag1.Dispose(); PLag2.Dispose();
                 LBnew.Dispose(); LAnew.Dispose(); Abark.Dispose(); Bbarnew.Dispose(); betadot.Dispose();
                 alphadot.Dispose(); betabar.Dispose(); thetabar.Dispose(); termSS.Dispose();
