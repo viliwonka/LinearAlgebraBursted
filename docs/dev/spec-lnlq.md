@@ -86,18 +86,39 @@ count near CRAIG's; drop `w`/`wbar` params if the chosen formulation doesn't use
 
 ## 6. Error-bound recurrence (the hard, must-be-faithful part)
 
-Implement the constant-time bound from **EOS2016 Algorithm 1** adapted to the Golub-Kahan setting
-per **EOS2018 §5 / §5.1** and the **EOS2017 §4** node procedure:
-1. Choose `ω_k` (the est-Radau node) so σ_min(L̃_k) = `est` — EOS2018 line 343:
-   `ω_k = √(est² − est·ξ²_{k−2})`, with the `ξ` eigenvector-element recurrence from EOS2016 §4.
-2. Maintain the tilde factors `t̃_k = (t_{k−1}, τ̃_k)`, `z̃_k = (z_{k−1}, ζ̃_k)` (EOS2018 lines
-   975–977) with `ρ̃_k = α̃_k s_k`, etc.
-3. `xErrBound = √(eq 41)` for the returned `x_k^C`.
+### VERIFIED recurrence (extracted from rendered PDF pages + numpy-checked)
 
-**Do NOT hand-derive any of this.** Port it line-by-line from the papers' recurrences. If a recurrence
-element is ambiguous in the OCR'd `.txt`, read the corresponding `.pdf` page (poppler is installed;
-`pdftotext -layout` or open the PDF) rather than guessing. The **sliding-window** refinement (EOS2018
-eq 40, tightens the *y* bound) is OUT OF SCOPE for v1 — note it as a future refinement in the DEVLOG.
+The pages were rasterized via PyMuPDF (`fitz`) and read directly (pdftotext mangles the sub/super-
+scripts). Sources: EOS2016 p.10 Algorithm 1; EOS2018 p.13 §5.1 + eq (41); EOS2017 p.12 §node.
+The x^C bound below was **numerically verified** (`reference/wip-lnlq/lnlq_bound_check.py`, gitignored):
+the bound holds (slack ≥ 0) and is tight (~2–3× the true error) across 30 seeds × 4 shapes.
+
+Returned iterate is `x_k^C` (the CRAIG point, already implemented). Its bound:
+
+```
+‖x⋆ − x_k^C‖²  ≤  τ̃_k² − τ_k²                                     (EOS2018 eq 41)
+    τ_k     : the solver's own x^C step scalar (Algorithm 2 line 17: τ_{k+1} = −β_{k+1} τ_k / α_{k+1})
+    τ̃_k    = −β_k · τ_{k−1} / ω_k                                  (EOS2018 §5.1)
+    ω_k     = √(σ_est² − σ_est · β_k · θ_{2k−2})                    (the est-Radau node)
+            ≡  the value that makes σ_min(L̃_k) = σ_est, where L̃_k = L_k with its LAST diagonal
+               entry α_k replaced by ω_k  (L_k = k×k lower bidiagonal, diag α_1..α_k, subdiag β_2..β_k)
+    xErrBound = sqrt(max(0, τ̃_k² − τ_k²))
+```
+
+`θ_{2k−2}` is the last entry of the shifted-system solve `(Y_{2k−2} − σ_est I) h = −β_k e_{2k−2}`
+(EOS2017 p.12 lines 371–376). **OPEN for the port:** the CONSTANT-TIME recurrence for `θ_{2k−2}`
+(EOS2016 Algorithm 1's "QR of (8)" machinery — the `c^{(ω)}/s^{(ω)}/ρ̄/ρ/σ̄` lines 4,5,15,16,20–22,
+adapted to LNLQ's bidiagonal). The numpy prototype computes `ω_k` directly (root-find on
+σ_min(L̃_k)=σ_est) to VERIFY the bound; the C# port must either (a) port that constant-time θ
+recurrence (preferred, O(1)/iter — verify it reproduces the prototype's ω_k), or (b) ship a first
+correct version storing the α/β history and computing ω_k per-iteration, noting the O(n²)/O(n)-mem
+cost as a perf follow-up. `σ_est` = an underestimate of σ_min(A) (test uses `(1−1e-10)·σ_min` via SVD).
+
+x^L bound (eq 43, only if x^L is exposed): `‖x⋆ − x_k^L‖² ≤ τ̃_k² − τ_k² + (τ_k − η_k ζ_{k−1})²`.
+Sliding-window (eq 40) and the y-bounds (eq 38/39) are OUT OF SCOPE for v1.
+
+**Do NOT hand-derive.** The recurrence above is transcribed from the rendered pages and numpy-checked;
+re-render (`fitz`, `matrix=fitz.Matrix(2.6,2.6)`) rather than trusting the OCR `.txt` if anything is unclear.
 
 ## 7. Tests (oracle-based; prove red pre-fix)
 
