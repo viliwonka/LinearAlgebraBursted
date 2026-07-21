@@ -97,13 +97,8 @@ namespace LinearAlgebra
             var w   = new Indices(m + 1, Allocator.Temp);
             var off = new Indices(m + 2, Allocator.Temp);
 
-            // Per-column thresholds tol^2 ||B[j]||^2, computed once (original RHS order).
-            for (int j = 0; j < s; j++)
-            {
-                float bb = (float)0;
-                for (int c = 0; c < n; c++) bb += B[j, c] * B[j, c];
-                thr[j] = tol * tol * bb;
-            }
+            // Per-column thresholds tol^2 ||B[j]||^2 (floored for zero/tiny-norm columns), original RHS order.
+            BuildColumnThresholds(in B, ref thr, s, n, tol);
 
             IterativeSolveStatus status = IterativeSolveStatus.MaxIterations;
             int total = 0;
@@ -145,6 +140,7 @@ namespace LinearAlgebra
                 // ---- inner block-Arnoldi loop: builds V[1..k], Z[0..k-1], H's columns 0..k-1 ----
                 int k = 0;
                 bool cycleConverged = false;
+                bool lsBreakdown = false;
                 for (int j = 0; j < m && total < maxIter; j++)
                 {
                     var Vj = RowsView(V[j], w[j]);
@@ -173,11 +169,21 @@ namespace LinearAlgebra
                     // per-column residual check via the Pythagorean LS-residual identity -- no extra
                     // matvec, mirrors bgmres/scalar gmres's O(1) per-step check.
                     cycleConverged = BlockLSResolveAndCheck(in Hbuf, in off, k, ref HQscratch, ref Rscratch,
-                                                             ref Gbuf, ref Yscratch, ref QtGscratch, in thr, s);
+                                                             ref Gbuf, ref Yscratch, ref QtGscratch, in thr, s,
+                                                             out lsBreakdown);
+                    if (lsBreakdown) break;
 
                     // Happy breakdown: the block Krylov subspace stopped growing -- the just-computed Y
                     // is already exact for the reachable subspace, so no further step can help.
                     if (cycleConverged || wj1 == 0) break;
+                }
+
+                if (lsBreakdown)
+                {
+                    // X was never updated this cycle -- the shared post-loop recompute below reports
+                    // the TRUE fresh residual at the returned X, never this cycle's poisoned solve.
+                    status = IterativeSolveStatus.Breakdown;
+                    break;
                 }
 
                 // Commit: X += combine(Y, Z[0..k-1]) -- the FLEXIBLE update, reading the STORED per-step

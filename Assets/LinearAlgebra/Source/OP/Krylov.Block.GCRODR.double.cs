@@ -193,12 +193,8 @@ namespace LinearAlgebra
                 for (int c = 0; c < n; c++) bbFrob += B[j, c] * B[j, c];
             double pivotGuard = Consts.doubleEpsilon * (double)100 * (math.sqrt(bbFrob) + (double)1);
 
-            for (int j = 0; j < s; j++)
-            {
-                double bb = (double)0;
-                for (int c = 0; c < n; c++) bb += B[j, c] * B[j, c];
-                thr[j] = tol * tol * bb;
-            }
+            // Per-column thresholds tol^2 ||B[j]||^2, floored for zero/tiny-norm columns.
+            BuildColumnThresholds(in B, ref thr, s, n, tol);
 
             IterativeSolveStatus status = IterativeSolveStatus.MaxIterations;
             int total = 0;
@@ -286,6 +282,12 @@ namespace LinearAlgebra
                         BlockAdd(ref Wj, in Tij0, (double)(-1));
                     }
 
+                    // Pre-orthogonalization magnitude of this step, captured before MGS2 below mutates
+                    // Wj (after the recycled-subspace projection above, mirrors
+                    // Krylov.BlockArnoldiMGS2Step's own scale capture) -- the absolute floor
+                    // LQRPRankFloored applies to the post-orthogonalization LQ diagonals.
+                    double scale = Norms.L2(in Wj);
+
                     // Modified block Gram-Schmidt against V[0..j], ONE unconditional reorthogonalization
                     // pass (MGS2, mirrors bgmres exactly).
                     for (int pass = 0; pass < 2; pass++)
@@ -308,7 +310,7 @@ namespace LinearAlgebra
                     LQRP.decomp(in Wj, ref Lv, ref Qout, ref Ppiv2);
                     Ppiv2.Dispose();
 
-                    int wj1 = LQRPRank(in Lv, w[j], n);
+                    int wj1 = LQRPRankFloored(in Lv, w[j], n, scale);
                     w[j + 1] = wj1;
                     minActive = math.min(minActive, wj1);
                     off[j + 2] = off[j + 1] + wj1;

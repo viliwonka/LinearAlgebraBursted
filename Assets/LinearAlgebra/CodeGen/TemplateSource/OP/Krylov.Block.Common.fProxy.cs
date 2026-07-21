@@ -116,7 +116,10 @@ namespace LinearAlgebra
             return maxr;
         }
 
-        // Counts columns with ||R[j]||^2 <= thr[j]; also returns the worst ||R[j]||.
+        // Counts columns with ||R[j]||^2 <= thr[j]; also returns the worst ||R[j]||. A non-finite row
+        // must win the worst-norm update (NaN propagates into maxRnorm, never silently dropped) so a
+        // poisoned R can never report back as a clean/small residual; it still never counts as
+        // converged (rr <= thr[j] is already false for a non-finite rr).
         static int CountConverged(in fProxyMxN R, in fProxyN thr, int s, int n, out double maxRnorm)
         {
             int conv = 0; double worst = 0;
@@ -126,10 +129,34 @@ namespace LinearAlgebra
                 for (int c = 0; c < n; c++) rr += R[j, c] * R[j, c];
                 if (rr <= thr[j]) conv++;
                 double rn = math.sqrt((double)rr);
-                if (rn > worst) worst = rn;
+                if (!(rn <= worst)) worst = rn;
             }
             maxRnorm = worst;
             return conv;
+        }
+
+        // Per-column convergence thresholds: tol^2 * ||B[j]||^2, floored by (64*eps)^2 * ||B||_F^2. A
+        // zero- or tiny-norm RHS column has an exact residual at machine zero, so the bare relative
+        // target (== 0 for a zero column) is unreachable: the column stays perpetually "unconverged"
+        // and drives the deflating block-Arnoldi solvers (bgmres/bfgmres/bgcrodr) to restart past the
+        // exact solution into a spurious w[0]==0 Breakdown. The absolute floor, tied to the overall RHS
+        // scale, gives such a column an achievable target. Bit-identical for ordinary columns (whose
+        // relative term tol^2*||B[j]||^2 dominates the floor).
+        static void BuildColumnThresholds(in fProxyMxN B, ref fProxyN thr, int s, int n, fProxy tol)
+        {
+            fProxy bbFrob = (fProxy)0;
+            for (int j = 0; j < s; j++)
+            {
+                fProxy bb = (fProxy)0;
+                for (int c = 0; c < n; c++) bb += B[j, c] * B[j, c];
+                thr[j] = bb;                 // stash ||B[j]||^2; scaled in the second pass
+                bbFrob += bb;
+            }
+            fProxy absScale = (fProxy)64 * Consts.fProxyEpsilon;
+            fProxy floorSq = absScale * absScale * bbFrob;
+            fProxy t2 = tol * tol;
+            for (int j = 0; j < s; j++)
+                thr[j] = math.max(t2 * thr[j], floorSq);
         }
 
         static void BlockApplyPre<TPre>(in TPre M, in fProxyMxN R, ref fProxyMxN Z, int s, int n,
@@ -204,11 +231,35 @@ namespace LinearAlgebra
 
         // Numerical rank off L's non-increasing |diagonal|, LQRP's own convention: tol = relTol *
         // |L[0,0]|, relTol = max(m, nGlobal) * Consts.fProxyZeroThreshold (matches LQRP.solveInPlace's
-        // default relTol / SVD.pinvSolve / Analysis.rank).
+        // default relTol / SVD.pinvSolve / Analysis.rank). A non-finite L[0,0] returns rank 0
+        // explicitly -- never masquerading as a legitimate finite deflation-to-zero; the caller must
+        // still treat that 0 as a genuine (non-finite-residual) breakdown, not a clean converged state.
         static int LQRPRank(in fProxyMxN L, int m, int nGlobal)
         {
+            if (!math.isfinite(L[0, 0])) return 0;
             fProxy relTol = (fProxy)math.max(m, nGlobal) * Consts.fProxyZeroThreshold;
             fProxy tol = relTol * math.abs(L[0, 0]);
+            int rank = 0;
+            for (int i = 0; i < m; i++)
+            {
+                if (math.abs(L[i, i]) > tol) rank++;
+                else break;
+            }
+            return rank;
+        }
+
+        // As LQRPRank, but ALSO floored against an absolute threshold tied to `scale` -- the block
+        // step's PRE-orthogonalization magnitude (relTol * scale, the same relTol as the self-relative
+        // term). Once a block-Arnoldi residual collapses to pure rounding noise, its LQ diagonals
+        // become mutually comparable, so LQRPRank's self-relative test against the noise block's OWN
+        // |L[0,0]| can never trip; the scale-tied floor forces a clean rank collapse to 0 once the
+        // orthogonalized step is noise relative to what it started from. scale <= 0 reduces to
+        // LQRPRank exactly.
+        static int LQRPRankFloored(in fProxyMxN L, int m, int nGlobal, fProxy scale)
+        {
+            if (!math.isfinite(L[0, 0])) return 0;
+            fProxy relTol = (fProxy)math.max(m, nGlobal) * Consts.fProxyZeroThreshold;
+            fProxy tol = math.max(relTol * math.abs(L[0, 0]), relTol * scale);
             int rank = 0;
             for (int i = 0; i < m; i++)
             {
@@ -474,6 +525,10 @@ namespace LinearAlgebra
                                          ref fProxyMxN Hbuf, ref fProxyMxN HijBuf, ref fProxyMxN Tbuf, ref fProxyMxN Lbuf,
                                          ref int minActive, int j, int n)
         {
+            // Pre-orthogonalization magnitude of this step, captured before MGS2 below mutates Wj --
+            // the absolute floor LQRPRankFloored applies to the post-orthogonalization LQ diagonals.
+            fProxy scale = Norms.L2(in Wj);
+
             for (int pass = 0; pass < 2; pass++)
             {
                 for (int i = 0; i <= j; i++)
@@ -494,7 +549,7 @@ namespace LinearAlgebra
             LQRP.decomp(in Wj, ref Lv, ref Qout, ref Ppiv2);
             Ppiv2.Dispose();
 
-            int wj1 = LQRPRank(in Lv, w[j], n);
+            int wj1 = LQRPRankFloored(in Lv, w[j], n, scale);
             w[j + 1] = wj1;
             minActive = math.min(minActive, wj1);
             off[j + 2] = off[j + 1] + wj1;
@@ -513,11 +568,15 @@ namespace LinearAlgebra
         // Periodic dense re-QR least-squares re-solve over the accumulated block-Hessenberg prefix
         // Hbuf[0..off[k+1], 0..off[k]), then the per-column Pythagorean LS-residual check
         // (max(0, ||G_c||^2 - ||Q^T G_c||^2) vs thr[c]) -- no extra matvec. Yscratch[0..off[k])
-        // holds the solved coefficients on return. Returns true iff every column converged.
+        // holds the solved coefficients on return. A rank-deficient least-squares system can leave Yv
+        // non-finite; lsBreakdown reports this (mirrors bgcrodr's own guard) so the caller can treat it
+        // as an honest Breakdown and never commit a non-finite Y into X -- when lsBreakdown is true the
+        // return value and Yscratch's contents are not meaningful. Returns true iff every column
+        // converged.
         static bool BlockLSResolveAndCheck(in fProxyMxN Hbuf, in Indices off, int k,
                                             ref fProxyMxN HQscratch, ref fProxyMxN Rscratch,
                                             ref fProxyMxN Gbuf, ref fProxyMxN Yscratch, ref fProxyMxN QtGscratch,
-                                            in fProxyN thr, int s)
+                                            in fProxyN thr, int s, out bool lsBreakdown)
         {
             int totalRows = off[k + 1];
             int totalCols = off[k];
@@ -529,6 +588,12 @@ namespace LinearAlgebra
             var Gactive = RowsView(Gbuf, totalRows);
             var Yv = RowsView(Yscratch, totalCols);
             QR.decompSolve(ref HQ, ref Rls, ref Gactive, ref Yv);
+
+            lsBreakdown = false;
+            for (int r = 0; r < totalCols; r++)
+                for (int c = 0; c < s; c++)
+                    if (math.isnan(Yv[r, c]) || math.isinf(Yv[r, c])) lsBreakdown = true;
+            if (lsBreakdown) return false;
 
             var QtG = RowsView(QtGscratch, totalCols);
             Blas.dot(in HQ, in Gactive, ref QtG, true, false);

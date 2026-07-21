@@ -1,6 +1,58 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Block GMRES family (bgmres/bfgmres/bgcrodr) — zero-RHS-row saturation NaN fix
+- 2026-07-21 | Root cause (Fable): battery check #11 (KrylovBlockBatteryTests, matrix DenseNonsym20,
+  S=4, B row 0 all-zeros) drove `bgmres`/`bfgmres`/`bgcrodr` to a NaN-poisoned `X` reported as
+  `Breakdown` -- masking real corruption as a status the caller could plausibly treat as "the
+  degenerate row broke something benign". The zero-norm column can never self-declare converged, so
+  the block-Arnoldi loop iterates PAST the point where the shared basis has captured everything A's
+  Krylov subspace can offer. At that saturation point `Wj` (the freshly orthogonalized step) is pure
+  rounding noise, but `LQRPRank`'s deflation test compared each `|L[i,i]|` only against the SAME
+  noise block's own `|L[0,0]|` (self-relative) -- mutually comparable noise never trips a relative
+  test, so `wj1` stayed > 0 instead of collapsing to 0. Unit-norm noise rows then entered `V`/`H`, the
+  block-Hessenberg least-squares matrix went singular, `QR.decompSolve`'s unpivoted `Blas.triUpper`
+  divided by ~0, and `Y` went Inf -> Inf-Inf -> NaN, committed straight into `X`. The NEXT cycle's
+  `R0 = B - A*X_NaN` came back all-NaN; `CountConverged`/`LQRPRank`'s NaN-blind comparisons (`rn >
+  worst`, `abs(L[i,i]) > tol`, both false for NaN) read that as `maxr=0, rank=0`, tripping the
+  existing `w[0]==0` "defensive" Breakdown one cycle late -- Breakdown status, NaN `X`, silently.
+- 2026-07-21 | Fix 1 (the actual root cause): `BlockArnoldiMGS2Step` (Krylov.Block.Common.fProxy.cs)
+  and bgcrodr's own duplicated inline copy of the same step (Krylov.Block.GCRODR.fProxy.cs, kept
+  separate per this file's own earlier note on the recycled-subspace projection) now capture
+  `scale = Norms.L2(Wj)` BEFORE MGS2 mutates `Wj`, and rank the post-orthogonalization LQ diagonals
+  via a new `LQRPRankFloored(L, m, nGlobal, scale)` -- `max(m,nGlobal)*ZeroThreshold` applied against
+  BOTH `|L[0,0]|` (the existing self-relative term) and `scale` (an absolute floor tied to what the
+  step actually started from). At true saturation the orthogonalized step is noise relative to its
+  own pre-orthogonalization magnitude, so the scale-tied floor drives `wj1 -> 0` (a clean happy
+  breakdown, ending the cycle on the already-optimal `Y`) before any noise row reaches `V`/`H`. Plain
+  `LQRPRank` (the initial per-cycle `w[0]` site in all three solvers, plus `FactorLiveResidual`/
+  `FactorLiveSearch`, LOBPCG-shaped and not saturation-prone) is UNTOUCHED -- confirmed via the full
+  suite reproducing the exact pre-fix pass count on everything except the 3 targeted failures.
+- 2026-07-21 | Fix 2: ported bgcrodr's own NaN/Inf scan of `Yv` (already present between its
+  dense-QR solve and Pythagorean check) into the shared `BlockLSResolveAndCheck`
+  (Krylov.Block.Common.fProxy.cs), used by both `bgmres` and `bfgmres` -- `out bool lsBreakdown`. Both
+  callers now break their inner Arnoldi loop and skip the cycle's `X` commit entirely on a non-finite
+  `Y`, reporting `Breakdown` from the UNMODIFIED `X` (the shared post-loop fresh-residual recompute
+  then reports the true state at that `X`, never a poisoned one). Defense in depth: with Fix 1 in
+  place this should rarely fire on the battery's own inputs, but a singular/near-singular
+  block-Hessenberg least-squares is reachable from other inputs (e.g. A mapping a whole cycle's basis
+  to 0), same as bgcrodr's own documented rationale for the guard it already had.
+- 2026-07-21 | Fix 3 (cheap safety net, not required for the battery fix but closes the class):
+  `CountConverged`'s worst-norm update changed `rn > worst` to `!(rn <= worst)` so a NaN row now WINS
+  the update instead of being silently dropped -- `maxRnorm` can no longer report 0 from a poisoned
+  block (bit-identical for finite inputs: the two forms agree whenever `rn`/`worst` are finite).
+  `LQRPRank`/`LQRPRankFloored` both added an explicit `!math.isfinite(L[0,0])` early return of rank 0
+  -- behaviorally a no-op (a NaN/Inf `L[0,0]` already produced rank 0 through the loop's own
+  NaN-comparison-is-false semantics), but makes the "never masquerade as a clean deflation-to-zero"
+  contract an explicit, self-documenting guard instead of an implicit IEEE side effect.
+- 2026-07-21 | Verification: reverted only these 4 files (keeping the rest of the in-flight tree,
+  including the already-shipped `BuildColumnThresholds` per-column absolute floor, untouched) and ran
+  the full suite both ways. Before: 7138 total, 7132 passed, 6 failed -- exactly
+  `{Bgmres,Bfgmres,Bgcrodr} x {fProxy-literal compile-check, float}` on matrix=9 (DenseNonsym20),
+  check=11, status=Breakdown (the `double` variant already passed at this seed -- consistent with a
+  rounding-noise-triggered saturation being much rarer at double precision). After: 7138/7138, 0
+  failed, no duration spike (354.9s vs 356.5s -- no Burst-to-Mono fallback).
+
 ## Krylov DRY extraction (P2)
 - 2026-07-20 | Task #57 P2 (docs/dev/spec-krylov-dry-extraction.md Cluster E3): extracted the
   final block-solver maxRnorm cleanup reduction into two variants in `Krylov.Block.Common.fProxy.cs`
