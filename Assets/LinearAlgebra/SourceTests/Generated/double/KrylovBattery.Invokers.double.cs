@@ -1026,6 +1026,47 @@ namespace LinearAlgebra
     }
 
     /// <summary>
+    /// <see cref="IdoubleLstsqSolverInvoker"/> for <see cref="Krylov.lnlq{TOp}"/> -- least-NORM
+    /// (Estrin-Orban-Saunders) solver for UNDERDETERMINED (Rows &lt;= Cols, full row rank) CONSISTENT
+    /// systems. Returns the SAME minimum-‖x‖ iterate as <see cref="doubleCraigInvoker"/> (LNLQ's
+    /// transferred CRAIG point), folding the same Golub-Kahan bidiagonalization through an LQ
+    /// factorization. Owns the four scratch vectors lnlq's zero-alloc primitive needs; same
+    /// Requires/Forbids and tol regime as craig (Golub-Kahan cond(A) conditioning, not CGNE's κ²).
+    /// lnlq returns <see cref="LnlqInfo"/>; only its status is consumed here (check #11 recomputes the
+    /// residual and compares against LQ.minNormSolve on its own), so the adapter maps status through
+    /// and leaves the least-squares-only Arnorm NaN.
+    /// </summary>
+    public struct doubleLnlqInvoker : IdoubleLstsqSolverInvoker
+    {
+        public double TolValue;
+        public int MaxIterMul;
+
+        doubleN u, v, tmpM, tmpN;
+
+        public MatrixProfile Requires => MatrixProfile.Underdetermined;
+        public MatrixProfile Forbids => MatrixProfile.RankDeficient;
+        public double Tol => TolValue;
+        public int MaxIter(int rows, int cols) => MaxIterMul * (rows < cols ? rows : cols);
+
+        public void Init(ref Arena arena, int rows, int cols)
+        {
+            u = arena.doubleVec(rows);
+            v = arena.doubleVec(cols);
+            tmpM = arena.doubleVec(rows);
+            tmpN = arena.doubleVec(cols);
+        }
+
+        /// damp is ignored: lnlq, like craig, has no Tikhonov-damped entry point (a consistent
+        /// min-norm system has no residual/norm trade-off to regularize).
+        public LstsqInfo Solve<TOp>(in TOp A, in doubleN b, ref doubleN x, double damp)
+            where TOp : struct, IdoubleLinearOperator
+        {
+            var info = Krylov.lnlq(in A, in b, ref x, ref u, ref v, ref tmpM, ref tmpN, MaxIter(A.Rows, A.Cols), Tol);
+            return new LstsqInfo { rnorm = info.rnorm, Arnorm = double.NaN, xnorm = info.xnorm, iterations = info.iterations, status = info.status };
+        }
+    }
+
+    /// <summary>
     /// <see cref="IdoubleLstsqSolverInvoker"/> for <see cref="Krylov.cgne{TOp}"/> -- least-NORM
     /// CGNE (CG on the normal equations of the second kind, AAᵀy=b, x=Aᵀy, matrix-free) for
     /// UNDERDETERMINED (Rows &lt;= Cols, full row rank) CONSISTENT systems: among all x with Ax=b,

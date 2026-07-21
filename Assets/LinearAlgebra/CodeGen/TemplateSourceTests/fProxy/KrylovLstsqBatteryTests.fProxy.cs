@@ -23,7 +23,7 @@ public class fProxyKrylovLstsqBatteryTests
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {
-        public enum SolverKind { Lsqr, Lsmr, Craig, Craigmr, Cgne }
+        public enum SolverKind { Lsqr, Lsmr, Craig, Craigmr, Cgne, Lnlq }
 
         public SolverKind Kind;
 
@@ -40,6 +40,7 @@ public class fProxyKrylovLstsqBatteryTests
                 case SolverKind.Lsqr:    RunStandardChecks(new fProxyLsqrInvoker { TolValue = Consts.fProxySqrtEps, MaxIterMul = 20 }); break;
                 case SolverKind.Lsmr:    RunStandardChecks(new fProxyLsmrInvoker { TolValue = Consts.fProxySqrtEps, MaxIterMul = 20 }); break;
                 case SolverKind.Craig:   RunStandardChecks(new fProxyCraigInvoker { TolValue = Consts.fProxySqrtEps, MaxIterMul = 20 }); break;
+                case SolverKind.Lnlq:    RunStandardChecks(new fProxyLnlqInvoker { TolValue = Consts.fProxySqrtEps, MaxIterMul = 20 }); break;
                 case SolverKind.Craigmr: RunStandardChecks(new fProxyCraigmrInvoker { TolValue = Consts.fProxySqrtEps, MaxIterMul = 20 }); break;
                 // CGNE runs CG directly on AAᵀ (κ² sensitivity), so its solution error scales as
                 // cond(A)²·(residual tol) vs craig's cond(A)·(residual tol). Drive the residual an
