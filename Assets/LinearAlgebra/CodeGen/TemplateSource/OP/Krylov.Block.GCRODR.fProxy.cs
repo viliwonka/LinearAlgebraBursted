@@ -73,6 +73,16 @@ namespace LinearAlgebra
             }
         }
 
+        // Max |diagonal| of the active kcur x kcur upper-triangular Ru -- scales
+        // BackSubUpperBlock's singularity guard to Ru's own (||A||-scaled) magnitude rather than an
+        // unrelated norm (e.g. ||B||).
+        static fProxy MaxAbsRuDiag(in fProxyMxN Ru, int kcur)
+        {
+            fProxy m = (fProxy)0;
+            for (int i = 0; i < kcur; i++) m = math.max(m, math.abs(Ru[i, i]));
+            return m;
+        }
+
         // ---- block GCRO-DR core (bgcrodr) ----------------------------------------------------------
 
         /// <summary>
@@ -184,11 +194,6 @@ namespace LinearAlgebra
                 ZprojBuf = new fProxyMxN(recycle, s, Allocator.Temp, true);
             }
 
-            fProxy bbFrob = (fProxy)0;
-            for (int j = 0; j < s; j++)
-                for (int c = 0; c < n; c++) bbFrob += B[j, c] * B[j, c];
-            fProxy pivotGuard = Consts.fProxyEpsilon * (fProxy)100 * (math.sqrt(bbFrob) + (fProxy)1);
-
             // Per-column thresholds tol^2 ||B[j]||^2, floored for zero/tiny-norm columns.
             BuildColumnThresholds(in B, ref thr, s, n, tol);
 
@@ -210,7 +215,8 @@ namespace LinearAlgebra
                     var CtrView = RowsView(CtrBuf, kcur);
                     BlockCrossGram(in Cactive, in R0, ref CtrView);
                     var ZprojView = RowsView(ZprojBuf, kcur);
-                    BackSubUpperBlock(in Ru, kcur, in CtrView, ref ZprojView, s, pivotGuard);
+                    fProxy ruGuard = Consts.fProxyEpsilon * (fProxy)100 * MaxAbsRuDiag(in Ru, kcur);
+                    BackSubUpperBlock(in Ru, kcur, in CtrView, ref ZprojView, s, ruGuard);
                     var Uactive = RowsView(Ublk, kcur);
                     var corr = RowsView(CorrBuf, s);
                     BlockCTV(in ZprojView, in Uactive, ref corr);
@@ -398,7 +404,8 @@ namespace LinearAlgebra
                         var CtrView2 = RowsView(CtrBuf, kcur);
                         Blas.dot(in Bview, in Yscratch, ref CtrView2, false, false);
                         var ZprojView2 = RowsView(ZprojBuf, kcur);
-                        BackSubUpperBlock(in Ru, kcur, in CtrView2, ref ZprojView2, s, pivotGuard);
+                        fProxy ruGuard2 = Consts.fProxyEpsilon * (fProxy)100 * MaxAbsRuDiag(in Ru, kcur);
+                        BackSubUpperBlock(in Ru, kcur, in CtrView2, ref ZprojView2, s, ruGuard2);
                         var Uactive2 = RowsView(Ublk, kcur);
                         var corr2 = RowsView(CorrBuf, s);
                         BlockCTV(in ZprojView2, in Uactive2, ref corr2);

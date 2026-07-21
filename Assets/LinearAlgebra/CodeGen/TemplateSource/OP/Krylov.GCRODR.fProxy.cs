@@ -70,7 +70,12 @@ namespace LinearAlgebra
             }
             fProxy bnorm = math.sqrt(bb);
             fProxy thresh = tol * bnorm;
-            fProxy pivotGuard = Consts.fProxyEpsilon * (fProxy)100 * (bnorm + (fProxy)1);
+            // hMaxAbs tracks the running max |H| entry (raw Arnoldi, pre-Givens) seen so far in this
+            // solve -- an ||A||-scaled reference for the Arnoldi/back-substitution pivot guards below,
+            // instead of the ||b||-scaled bnorm (which under- or over-guards whenever ||A|| and ||b||
+            // differ in magnitude). The Ru guard is scaled separately, per use, by max |Ru[i,i]|.
+            fProxy hMaxAbs = (fProxy)0;
+            fProxy hPivotGuard = (fProxy)0;
 
             // ---- Arnoldi workspace (Temp), fixed max size, mirrors gmres/fgmres ----
             var V = new UnsafeList<fProxyN>(m + 1, Allocator.Temp);
@@ -130,12 +135,15 @@ namespace LinearAlgebra
                 {
                     for (int i = 0; i < kcur; i++) ctr[i] = Blas.dot(C[i], v0);
 
+                    fProxy ruMaxAbs = (fProxy)0;
+                    for (int i = 0; i < kcur; i++) ruMaxAbs = math.max(ruMaxAbs, math.abs(Ru[i, i]));
+                    fProxy ruPivotGuard = Consts.fProxyEpsilon * (fProxy)100 * ruMaxAbs;
                     for (int i = kcur - 1; i >= 0; i--)
                     {
                         fProxy s = ctr[i];
                         for (int l = i + 1; l < kcur; l++) s -= Ru[i, l] * zproj[l];
                         fProxy diag = Ru[i, i];
-                        zproj[i] = math.abs(diag) > pivotGuard ? s / diag : (fProxy)0;
+                        zproj[i] = math.abs(diag) > ruPivotGuard ? s / diag : (fProxy)0;
                     }
                     for (int i = 0; i < kcur; i++) x.addScaledInPlace(zproj[i], U[i]);
 
@@ -186,11 +194,14 @@ namespace LinearAlgebra
                         fProxyN vi = V[i];
                         fProxy hij = Blas.dot(w, vi);
                         H[i, j] = hij;
+                        hMaxAbs = math.max(hMaxAbs, math.abs(hij));
                         w.addScaledInPlace(-hij, vi);
                     }
                     fProxy hj1 = math.sqrt(Blas.dot(w, w));
                     H[j + 1, j] = hj1;
-                    bool arnoldiDone = hj1 <= pivotGuard;
+                    hPivotGuard = Consts.fProxyEpsilon * (fProxy)100 * hMaxAbs;
+                    bool arnoldiDone = hj1 <= hPivotGuard;
+                    hMaxAbs = math.max(hMaxAbs, hj1);
                     if (!arnoldiDone)
                     {
                         fProxyN vj1 = V[j + 1];
@@ -230,13 +241,15 @@ namespace LinearAlgebra
                 }
 
                 // Back-substitute H[0..p-1,0..p-1] y = g[0..p-1]; a collapsed pivot is an honest
-                // Breakdown (never divide by a near-zero H[i,i]).
+                // Breakdown (never divide by a near-zero H[i,i]). hPivotGuard uses the full running
+                // hMaxAbs (including the last column's subdiagonal), the freshest ||A||-scale estimate.
+                hPivotGuard = Consts.fProxyEpsilon * (fProxy)100 * hMaxAbs;
                 for (int i = p - 1; i >= 0; i--)
                 {
                     fProxy sum = g[i];
                     for (int l = i + 1; l < p; l++) sum -= H[i, l] * y[l];
                     fProxy diag = H[i, i];
-                    if (math.abs(diag) <= pivotGuard) { breakdown = true; break; }
+                    if (math.abs(diag) <= hPivotGuard) { breakdown = true; break; }
                     y[i] = sum / diag;
                 }
                 if (breakdown)
@@ -267,12 +280,15 @@ namespace LinearAlgebra
                         for (int j = 0; j < p; j++) s += Bmat[i, j] * y[j];
                         ctr[i] = s;
                     }
+                    fProxy ruMaxAbs = (fProxy)0;
+                    for (int i = 0; i < kcur; i++) ruMaxAbs = math.max(ruMaxAbs, math.abs(Ru[i, i]));
+                    fProxy ruPivotGuard = Consts.fProxyEpsilon * (fProxy)100 * ruMaxAbs;
                     for (int i = kcur - 1; i >= 0; i--)
                     {
                         fProxy s = ctr[i];
                         for (int l = i + 1; l < kcur; l++) s -= Ru[i, l] * zproj[l];
                         fProxy diag = Ru[i, i];
-                        zproj[i] = math.abs(diag) > pivotGuard ? s / diag : (fProxy)0;
+                        zproj[i] = math.abs(diag) > ruPivotGuard ? s / diag : (fProxy)0;
                     }
                     for (int i = 0; i < kcur; i++) x.addScaledInPlace(-zproj[i], U[i]);
                 }

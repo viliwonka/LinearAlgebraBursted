@@ -151,7 +151,9 @@ namespace LinearAlgebra
                 x.addScaledInPlace(phi / rho, w);
                 w.scaleAddInPlace(-theta / rho, v);             // w = -(theta/rho)*w + v
 
-                arnorm = phibar * alpha * math.abs(c);        // ‖Aᵀr‖ for the just-updated x (free)
+                arnorm = math.abs(phibar) * alpha * math.abs(c);  // ‖Aᵀr‖ for the just-updated x (free) --
+                // phibar is a Givens-rotated RHS carry, not a norm, and damping's own rotation
+                // (rhobar1, above) can flip its sign; alpha is a bidiagonalization norm (>= 0).
 
                 if (arnorm * arnorm <= threshold)
                     return LstsqInfoTracked(IterativeSolveStatus.Converged, k + 1, math.sqrt(sumPsiSq + phibar * phibar), arnorm, damp, in x);

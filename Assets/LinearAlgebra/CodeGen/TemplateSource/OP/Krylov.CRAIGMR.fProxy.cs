@@ -86,12 +86,12 @@ namespace LinearAlgebra
             // Running QR state of the CRAIG lower-bidiagonal system L (diag alpha, subdiag beta):
             // rhobar carries the previous alpha into the next Givens elimination, zetabar carries
             // the residual weight, theta feeds the next d update. Iterate-0 values (x=0): rNorm =
-            // ‖b-Ax‖ = beta, ArNorm = ‖Aᵀ(b-Ax)‖ = alpha.
+            // ‖b-Ax‖ = beta, ArNorm = ‖Aᵀ(b-Ax)‖ = ‖Aᵀb‖ = alpha*beta.
             fProxy zetabar = beta;
             fProxy rhobar = alpha;
             fProxy theta = (fProxy)0;
             fProxy rNorm = beta;
-            fProxy ArNorm = alpha;
+            fProxy ArNorm = alpha * beta;
 
             for (int k = 0; k < maxIter; k++)
             {

@@ -1,6 +1,48 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.Block.MINRES — tol==0 nonzero-B false convergence
+- 2026-07-21 | `bminres`'s zero-RHS early-out (Krylov.Block.MINRES.fProxy.cs) tested `thr[j] ==
+  0` (`thr[j] = tol*tol*||B[j]||^2`), which is also true whenever `tol == 0` regardless of `B` --
+  a `tol=0` call on a NONZERO `B` took the shortcut, set `X := B`, and reported `Converged`. `X = B`
+  only solves `A.X = B` when `A` is the identity. Fixed by testing `||B[j]||^2` directly (`bIsZero`)
+  instead of `thr[j]`; the shortcut now fires only for a genuinely zero `B`. `tol == 0` with nonzero
+  `B` falls through to the normal iteration, which honestly converges only at an exact residual or
+  reports MaxIterations. Test: `fProxyBlockMinresTests.ZeroTolShortcutOnlyFiresOnGenuineZeroB`.
+
+## Krylov.LSQR — damped Arnorm sign
+- 2026-07-21 | `lsqr`'s per-iteration `arnorm = phibar * alpha * math.abs(c)` (Krylov.LSQR.fProxy.cs)
+  took `abs` on `c` only. Under Tikhonov damping (`damp != 0`) the rotation `rhobar1 =
+  sqrt(rhobar^2+damp^2)` folds `rhobar`'s sign into `phibar` every iteration once `rhobar` goes
+  negative (which it does from the second iteration on, `rhobar = -c*alpha`), so `phibar` is not
+  itself sign-definite the way `alpha`/`beta` (bidiagonalization norms) are -- Arnorm (a norm) came
+  back negative. Fixed by also taking `math.abs(phibar)`. `phibar >= 0` for the entire undamped
+  (`damp == 0`) recurrence (`phibar_{k+1} = sn_k*phibar_k`, `sn_k >= 0`, `phibar_0 = beta_1 >= 0`),
+  so the undamped path is bit-identical. Test: `fProxyLSQRDampedArnormTests.DampedArnormNeverNegative`
+  (deterministic sign flip via `maxIter=2`) + `UndampedArnormBitIdenticalToAbsPath`.
+
+## Krylov.Block.CRAIG / Krylov.Block.CRAIGMR — missing X/B aliasing guard
+- 2026-07-21 | Neither `bcraig` nor `bcraigmr` (Krylov.Block.CRAIG.fProxy.cs /
+  Krylov.Block.CRAIGMR.fProxy.cs) checked `X`/`B` for aliasing before use, unlike every other block
+  Krylov solver with caller-supplied buffers (e.g. `bbiCGStab`'s `RequireDistinctBuffers` over
+  R/Rhat0/P/V/T/Phat/Shat/X/B). Both solvers own their entire internal workspace via
+  `Allocator.Temp` (no external scratch params), so `X` and `B` are the only two caller-supplied
+  buffers -- an aliased `X` silently destroys `B` mid-solve. Added a 2-pointer
+  `RequireDistinctBuffers` guard to both, right after the existing shape/maxIter validation. Test:
+  `fProxyBlockCraigGuardTests.BcraigAliasedXBThrows` / `BcraigmrAliasedXBThrows`.
+
+## Krylov.CRAIGMR — iterate-0 ArNorm off by ||b||
+- 2026-07-21 | `craigmr`'s pre-loop `ArNorm = alpha` (Krylov.CRAIGMR.fProxy.cs) claimed to be
+  ‖Aᵀ(b-Ax₀)‖ = ‖Aᵀb‖ at x₀=0, but `alpha` alone is `‖Aᵀu_1‖` (`u_1 = b/beta_1` is UNIT norm), not
+  `‖Aᵀb‖` -- the correct identity is `alpha*beta = ‖Aᵀu_1‖*beta_1 = ‖Aᵀb‖`, matching the sibling
+  lsqr/lsmr convention (`arnorm = alpha*beta` pre-loop) and this file's own per-iteration recurrence
+  (`ArNorm = alphaNew*betaNew*|zeta|/rho`), which only reduces to `alpha*beta` in that shape, never
+  bare `alpha`. The stale value was returned whenever the solve exited during the FIRST loop pass
+  (a k=0 Breakdown, or a k=0 Converged exit before the per-iteration `ArNorm` update at the end of
+  the loop body). Fixed `ArNorm = alpha * beta` pre-loop; `x`/`rNorm` unaffected. Test:
+  `fProxyCRAIGMRTests.IterateZeroArnormMatchesAtb` (loose `tol > 1` forces a k=0 Converged exit, by
+  the file's own monotonic-residual property).
+
 ## Block GMRES family (bgmres/bfgmres/bgcrodr) — zero-RHS-row saturation NaN fix
 - 2026-07-21 | Root cause (Fable): battery check #11 (KrylovBlockBatteryTests, matrix DenseNonsym20,
   S=4, B row 0 all-zeros) drove `bgmres`/`bfgmres`/`bgcrodr` to a NaN-poisoned `X` reported as

@@ -135,9 +135,10 @@ namespace LinearAlgebra
             var Qy = new fProxyMxN(s2, s, Allocator.Temp, true);
             QR.decomp(in Y, ref Qy, ref Gamma);
 
-            bool gammaOk = true;
-            for (int i = 0; i < s; i++)
-                if (math.abs(Gamma[i, i]) <= Consts.fProxyZeroThreshold) { gammaOk = false; break; }
+            // Gamma scales with ||A|| (it is the R-factor of a QR built from Lanczos quantities), so
+            // its singularity test must be RELATIVE to Gamma's own magnitude -- mirrors TriNearSingular
+            // (Krylov.Block.Common.fProxy.cs), the convention every sibling rank/pivot guard uses.
+            bool gammaOk = !TriNearSingular(in Gamma, s);
 
             var Z0 = new fProxyMxN(s2, s, Allocator.Temp, true);
             var T = new fProxyMxN(s, s, Allocator.Temp, true);
@@ -281,17 +282,19 @@ namespace LinearAlgebra
             double maxr = 0;
             int minActive = s;
 
+            bool bIsZero = true;
             for (int j = 0; j < s; j++)
             {
                 fProxy bb = (fProxy)0;
                 for (int c = 0; c < n; c++) bb += B[j, c] * B[j, c];
                 thr[j] = tol * tol * bb;
+                if (bb != (fProxy)0) bIsZero = false;
             }
 
-            bool allZero = true;
-            for (int j = 0; j < s; j++) if (thr[j] != (fProxy)0) { allZero = false; break; }
-            if (allZero)
+            if (bIsZero)
             {
+                // B = 0: the trivial solution X = 0 is exact -- unlike a thr==0 test (also true
+                // whenever tol == 0, even for a nonzero B), this fires only on a genuinely zero B.
                 CopyBlock(in B, ref X, s, n);
                 status = IterativeSolveStatus.Converged;
                 iters = 0;

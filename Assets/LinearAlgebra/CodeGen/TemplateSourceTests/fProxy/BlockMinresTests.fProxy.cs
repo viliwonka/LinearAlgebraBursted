@@ -22,6 +22,8 @@ public class fProxyBlockMinresTests
             KnownSolutionRecovered,
             BlockAdvantageIterations,
             IdentityFoldBitIdentical,
+            ZeroTolShortcutOnlyFiresOnGenuineZeroB,
+            SmallScaleWellConditioned,
         }
 
         public TestType Type;
@@ -35,6 +37,8 @@ public class fProxyBlockMinresTests
                 case TestType.KnownSolutionRecovered:         KnownSolutionRecovered();         break;
                 case TestType.BlockAdvantageIterations:       BlockAdvantageIterations();       break;
                 case TestType.IdentityFoldBitIdentical:       IdentityFoldBitIdentical();       break;
+                case TestType.ZeroTolShortcutOnlyFiresOnGenuineZeroB: ZeroTolShortcutOnlyFiresOnGenuineZeroB(); break;
+                case TestType.SmallScaleWellConditioned: SmallScaleWellConditioned(); break;
             }
         }
 
@@ -226,6 +230,124 @@ public class fProxyBlockMinresTests
 
             arena.Dispose();
         }
+
+        // The B==0 early-out is keyed on B being genuinely zero, not on tol*tol*||B[j]||^2 == 0 (also
+        // true whenever tol == 0, even for a nonzero B). Covers all four {tol==0,tol>0} x {B zero, B
+        // nonzero} combinations: the two zero-B cases must still take the exact X=0 shortcut; the
+        // tol==0-nonzero-B case must NOT return a false Converged with X left equal to B (X=B does not
+        // solve A.X=B unless A=I, and A here is indefinite, not the identity) -- it must either
+        // genuinely converge (true residual small) or run out to MaxIterations/Breakdown.
+        void ZeroTolShortcutOnlyFiresOnGenuineZeroB()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 12, s = 3;
+            var A = BuildDenseSymIndefinite(ref arena, n, 95001u);
+            var opA = new fProxyDenseOperator(in A);
+            var Bnz = arena.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 95002u);
+            var Bz  = arena.fProxyMat(s, n);   // zeroed by allocation
+
+            // (tol==0, B==0): shortcut must still fire -- exact X=0, zero iterations.
+            {
+                var X = arena.fProxyMat(s, n);
+                var info = Krylov.bminres(in A, in Bz, ref X, 8 * n, (fProxy)0);
+                Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
+                Assert.IsTrue(info.iterations == 0);
+                for (int j = 0; j < s; j++)
+                    for (int c = 0; c < n; c++)
+                        Assert.IsTrue(X[j, c] == (fProxy)0);
+            }
+
+            // (tol>0, B==0): shortcut must still fire -- exact X=0, zero iterations.
+            {
+                var X = arena.fProxyMat(s, n);
+                var info = Krylov.bminres(in A, in Bz, ref X, 8 * n, Consts.fProxySqrtEps);
+                Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
+                Assert.IsTrue(info.iterations == 0);
+                for (int j = 0; j < s; j++)
+                    for (int c = 0; c < n; c++)
+                        Assert.IsTrue(X[j, c] == (fProxy)0);
+            }
+
+            // (tol==0, B nonzero): THE BUG -- must not silently report Converged with X==B.
+            {
+                var X = arena.fProxyMat(s, n);
+                var info = Krylov.bminres(in A, in Bnz, ref X, 8 * n, (fProxy)0);
+
+                bool xEqualsB = true;
+                for (int j = 0; j < s; j++)
+                    for (int c = 0; c < n; c++)
+                        if (X[j, c] != Bnz[j, c]) xEqualsB = false;
+                Assert.IsFalse(xEqualsB);
+
+                if (info.status == IterativeSolveStatus.Converged)
+                {
+                    var AX = arena.fProxyMat(s, n);
+                    opA.ApplyBlock(in X, ref AX, s);
+                    fProxy maxResSq = (fProxy)0;
+                    for (int j = 0; j < s; j++)
+                        for (int c = 0; c < n; c++)
+                        {
+                            fProxy d = Bnz[j, c] - AX[j, c];
+                            maxResSq = math.max(maxResSq, d * d);
+                        }
+                    Assert.IsTrue(maxResSq <= Tol() * Tol());
+                }
+                else
+                {
+                    Assert.IsTrue(info.status == IterativeSolveStatus.MaxIterations || info.status == IterativeSolveStatus.Breakdown);
+                }
+            }
+
+            // (tol>0, B nonzero): ordinary path, unaffected -- must converge normally.
+            {
+                var X = arena.fProxyMat(s, n);
+                var info = Krylov.bminres(in A, in Bnz, ref X, 8 * n, Consts.fProxySqrtEps);
+                Assert.IsTrue(info.Solved);
+            }
+
+            arena.Dispose();
+        }
+
+        // ---- BuildOmega's Gamma singularity check was an ABSOLUTE threshold (scale-dependent): a
+        // well-conditioned system uniformly scaled to a small magnitude (||A|| below the absolute
+        // floor) tripped a spurious Breakdown at iteration 0, even though it is exactly as solvable
+        // as its O(1) counterpart. ----
+        void SmallScaleWellConditioned()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 4, s = 2;
+            fProxy c = /*+choose[1e-7f|1e-15]*/1e-7f/*-choose*/;
+            var Abase = BuildDenseSymIndefinite(ref arena, n, 98001u);
+            var A = arena.fProxyMat(n, n);
+            for (int r = 0; r < n; r++)
+                for (int cc = 0; cc < n; cc++)
+                    A[r, cc] = Abase[r, cc] * c;
+            var B = arena.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 98002u);
+            int maxIter = 8 * n;
+            fProxy tol = Consts.fProxySqrtEps;
+
+            var X = arena.fProxyMat(s, n);
+            var info = Krylov.bminres(in A, in B, ref X, maxIter, tol);
+
+            Assert.IsTrue(info.Solved);
+
+            var AX = arena.fProxyMat(s, n);
+            new fProxyDenseOperator(in A).ApplyBlock(in X, ref AX, s);
+            fProxy num = (fProxy)0, den = (fProxy)0;
+            for (int j = 0; j < s; j++)
+                for (int cc = 0; cc < n; cc++)
+                {
+                    fProxy d = B[j, cc] - AX[j, cc];
+                    num += d * d;
+                    den += B[j, cc] * B[j, cc];
+                }
+            fProxy relRes = math.sqrt(num) / math.sqrt(math.max(den, (fProxy)1e-30));
+            Assert.IsTrue(relRes <= Tol());
+
+            arena.Dispose();
+        }
     }
 
     [Test]
@@ -247,4 +369,12 @@ public class fProxyBlockMinresTests
     [Test]
     public void IdentityFoldBitIdentical()
         => new BlockMinresTestJob { Type = BlockMinresTestJob.TestType.IdentityFoldBitIdentical }.Run();
+
+    [Test]
+    public void ZeroTolShortcutOnlyFiresOnGenuineZeroB()
+        => new BlockMinresTestJob { Type = BlockMinresTestJob.TestType.ZeroTolShortcutOnlyFiresOnGenuineZeroB }.Run();
+
+    [Test]
+    public void SmallScaleWellConditioned()
+        => new BlockMinresTestJob { Type = BlockMinresTestJob.TestType.SmallScaleWellConditioned }.Run();
 }

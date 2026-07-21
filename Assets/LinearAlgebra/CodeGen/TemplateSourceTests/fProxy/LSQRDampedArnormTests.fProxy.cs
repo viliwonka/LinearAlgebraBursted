@@ -1,0 +1,94 @@
+using LinearAlgebra;
+using NUnit.Framework;
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Jobs;
+using Unity.Mathematics;
+
+// Krylov.lsqr damped (Tikhonov) path: Arnorm must stay a NON-NEGATIVE norm (‖Aᵀr‖) at every
+// reported exit, damped or not. The damping rotation (rhobar1 = sqrt(rhobar^2+damp^2)) folds
+// rhobar's SIGN into phibar every iteration once damp != 0, so phibar (unlike alpha/beta, which
+// are bidiagonalization norms) is not itself sign-definite -- only |phibar| is.
+public class fProxyLSQRDampedArnormTests
+{
+    [BurstCompile(CompileSynchronously = true)]
+    public struct TestJob : IJob
+    {
+        public enum TestType
+        {
+            DampedArnormNeverNegative,
+            UndampedArnormBitIdenticalToAbsPath,
+        }
+
+        public TestType Type;
+
+        public void Execute()
+        {
+            switch (Type)
+            {
+                case TestType.DampedArnormNeverNegative:              DampedArnormNeverNegative();              break;
+                case TestType.UndampedArnormBitIdenticalToAbsPath:    UndampedArnormBitIdenticalToAbsPath();    break;
+            }
+        }
+
+        static fProxyMxN BuildOverdetermined(ref Arena arena, int m, int n, uint seed)
+            => arena.fProxyRandomMat(m, n, (fProxy)(-1f), (fProxy)1f, seed);
+
+        // Deterministic sign-flip construction: with damp != 0, rhobar after the k=0 iteration is
+        // -c_0*alpha_2 (c_0, alpha_2 > 0 for a generic system) -- strictly negative. That negative
+        // rhobar folds into phibar at the START of the k=1 iteration (phibar *= rhobar/rhobar1),
+        // making phibar negative there and, by the k=1 Givens fold, in the ArNorm reported at
+        // maxIter=2. Pre-fix (bare `phibar * alpha * abs(c)`), this reports a NEGATIVE Arnorm --
+        // a norm must never be negative regardless of solve status (Converged/Breakdown/MaxIterations).
+        void DampedArnormNeverNegative()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 30, n = 10;
+            var A = BuildOverdetermined(ref arena, m, n, 71001u);
+            var b = arena.fProxyRandomVec(m, (fProxy)(-1f), (fProxy)1f, 71002u);
+
+            fProxy damp = (fProxy)0.5;
+            var x = arena.fProxyVec(n);
+            // maxIter = 2 forces exactly the k=0/k=1 iterations described above; tol tight enough
+            // that a random ill-conditioned-by-construction overdetermined system will not
+            // legitimately converge within 2 steps (status is not itself under test here).
+            var info = Krylov.lsqr(in A, in b, ref x, 2, Consts.fProxySqrtEps, damp);
+
+            Assert.IsFalse(double.IsNaN(info.Arnorm));
+            Assert.IsTrue(info.Arnorm >= 0.0);
+
+            arena.Dispose();
+        }
+
+        // damp == 0 must stay BIT-IDENTICAL to the pre-fix formula: phibar is provably >= 0 for the
+        // entire undamped recurrence (phibar_{k+1} = sn_k*phibar_k, sn_k >= 0, phibar_0 = beta_1 >=
+        // 0), so abs(phibar) == phibar exactly, every iteration.
+        void UndampedArnormBitIdenticalToAbsPath()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 24, n = 8;
+            var A = BuildOverdetermined(ref arena, m, n, 72001u);
+            var b = arena.fProxyRandomVec(m, (fProxy)(-1f), (fProxy)1f, 72002u);
+
+            for (int maxIter = 1; maxIter <= n; maxIter++)
+            {
+                var x = arena.fProxyVec(n);
+                var info = Krylov.lsqr(in A, in b, ref x, maxIter, Consts.fProxySqrtEps);
+                Assert.IsFalse(double.IsNaN(info.Arnorm));
+                Assert.IsTrue(info.Arnorm >= 0.0);
+            }
+
+            arena.Dispose();
+        }
+    }
+
+    [Test]
+    public void DampedArnormNeverNegative()
+        => new TestJob { Type = TestJob.TestType.DampedArnormNeverNegative }.Run();
+
+    [Test]
+    public void UndampedArnormBitIdenticalToAbsPath()
+        => new TestJob { Type = TestJob.TestType.UndampedArnormBitIdenticalToAbsPath }.Run();
+}

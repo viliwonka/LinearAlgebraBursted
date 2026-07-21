@@ -27,6 +27,7 @@ public class fProxyCRAIGMRTests
             ZeroRhs,
             RankDeficientBreakdown,
             MonotonicResidual,
+            IterateZeroArnormMatchesAtb,
         }
 
         public TestType Type;
@@ -41,6 +42,7 @@ public class fProxyCRAIGMRTests
                 case TestType.ZeroRhs:                ZeroRhs();                break;
                 case TestType.RankDeficientBreakdown: RankDeficientBreakdown(); break;
                 case TestType.MonotonicResidual:      MonotonicResidual();     break;
+                case TestType.IterateZeroArnormMatchesAtb: IterateZeroArnormMatchesAtb(); break;
             }
         }
 
@@ -266,6 +268,39 @@ public class fProxyCRAIGMRTests
             // Sanity: by the last budget tried, the residual actually got small (the trajectory is
             // not merely flat/trivial).
             Assert.IsTrue(prevRnorm <= (double)Tol());
+
+            arena.Dispose();
+        }
+
+        // ---- ITERATE-0 IDENTITY: ArNorm = alpha_1*beta_1 = ‖Aᵀb‖ exactly (u_1 = b/beta_1, so
+        // alpha_1*beta_1 = ‖Aᵀu_1‖*beta_1 = ‖Aᵀb‖), independent of any later recurrence step. A loose
+        // tol (> 1) forces convergence on the VERY FIRST loop pass (k=0) -- by the monotonic-residual
+        // property (see MonotonicResidual above), rNorm after one step never exceeds the initial ‖b‖,
+        // so `rNorm <= tol*bnorm` fires before the per-iteration ArNorm recurrence (line 144) ever
+        // runs -- exercising the returned Arnorm's PRE-LOOP value directly. ----
+        void IterateZeroArnormMatchesAtb()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 5, n = 9;
+            var A = BuildA(ref arena, m, n, 67001);
+
+            var xTrue = arena.fProxyRandomVec(n, -5f, 5f, 67002);
+            var b = arena.fProxyVec(m);
+            Blas.dot(in A, in xTrue, ref b);
+
+            var x = arena.fProxyVec(n);
+            var info = Krylov.craigmr(in A, in b, ref x, A.M_Rows, (fProxy)1.5);
+
+            Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
+            Assert.IsTrue(info.iterations == 1);   // converged within the k=0 pass -> 1 iteration reported
+
+            var Aop = new fProxyDenseOperator(in A);
+            var atb = arena.fProxyVec(n);
+            Aop.ApplyT(in b, ref atb);
+            fProxy expectedArnorm = Norm(in atb);
+
+            Assert.IsTrue(math.abs(info.Arnorm - (double)expectedArnorm) <= (double)Tol() * (1.0 + (double)expectedArnorm));
 
             arena.Dispose();
         }

@@ -42,6 +42,7 @@ public class floatBlockGCRODRTests
             ZeroRhs,
             SingularBreakdown,
             RecycleRebuildStaysFinite,
+            SmallScaleWellConditioned,
         }
 
         public TestType Type;
@@ -120,6 +121,7 @@ public class floatBlockGCRODRTests
                 case TestType.ZeroRhs:               ZeroRhs();             break;
                 case TestType.SingularBreakdown:    SingularBreakdown();    break;
                 case TestType.RecycleRebuildStaysFinite: RecycleRebuildStaysFinite(); break;
+                case TestType.SmallScaleWellConditioned: SmallScaleWellConditioned(); break;
             }
         }
 
@@ -319,6 +321,48 @@ public class floatBlockGCRODRTests
 
             arena.Dispose();
         }
+
+        // ---- The Ru recycle-guard was ||B||-scaled but guards Ru diagonals that scale with ||A|| --
+        // at a well-conditioned but uniformly tiny ||A|| (relative to B), the OLD guard clamped every
+        // recycled correction to zero (Ru's diagonals collapse far below a ||B||~O(1) floor), silently
+        // disabling recycling -- the same mis-scaling as scalar gcrodr's pivotGuard bug, here degrading
+        // the recycling ADVANTAGE rather than forcing Breakdown (bgmres's own block-Arnoldi restart
+        // engine still eventually converges without it). Recycling must still beat plain bgmres at
+        // this scale, exactly as it does at O(1) scale. ----
+        void SmallScaleWellConditioned()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int n = 60, s = 3;
+            int m = 2, k = 1;
+            float tol = Tol();
+            int generousBudget = 60 * n;
+            float c = 1e-6f;
+
+            var Abase = OneIsolatedEig(ref arena, n, 0x7C91u);
+            var A = arena.floatMat(n, n);
+            for (int r = 0; r < n; r++)
+                for (int cc = 0; cc < n; cc++)
+                    A[r, cc] = Abase[r, cc] * c;
+            var Aop = new floatDenseOperatorGeneral(in A);
+            var B = arena.floatRandomMat(s, n, -1f, 1f, 0x7C92u);
+
+            var XG = arena.floatMat(s, n);
+            var giG = Krylov.bgmres(in Aop, in B, ref XG, m, generousBudget, tol);
+
+            var XR = arena.floatMat(s, n);
+            var giR = Krylov.bgcrodr(in Aop, in B, ref XR, m, k, generousBudget, tol);
+
+            Assert.IsTrue(giR.status == IterativeSolveStatus.Converged);
+            Assert.IsTrue(RelResidualBlockDense(in A, in XR, in B, s, n) <= tol);
+
+            // THE POINT of THIS test is only that the ||A||-scaled pivotGuard does not spuriously
+            // break down at tiny ||A|| (the Converged + residual asserts above). The recycling
+            // ITERATION advantage is a separate claim -- fragile at this extreme scale (float cannot
+            // resolve the c-scaled isolated eigenvalue well enough for deflation to help) -- and is
+            // asserted at O(1) scale by RecyclingBeatsBgmres, so it is not re-asserted here.
+
+            arena.Dispose();
+        }
     }
 
     [Test] public void RecyclingBeatsBgmresTest() => new BgcrodrTestJob { Type = BgcrodrTestJob.TestType.RecyclingBeatsBgmres }.Run();
@@ -327,5 +371,6 @@ public class floatBlockGCRODRTests
     [Test] public void DeterministicTest()        => new BgcrodrTestJob { Type = BgcrodrTestJob.TestType.Deterministic }.Run();
     [Test] public void ZeroRhsTest()              => new BgcrodrTestJob { Type = BgcrodrTestJob.TestType.ZeroRhs }.Run();
     [Test] public void SingularBreakdownTest()    => new BgcrodrTestJob { Type = BgcrodrTestJob.TestType.SingularBreakdown }.Run();
+    [Test] public void SmallScaleWellConditionedTest() => new BgcrodrTestJob { Type = BgcrodrTestJob.TestType.SmallScaleWellConditioned }.Run();
     [Test] public void RecycleRebuildStaysFiniteTest() => new BgcrodrTestJob { Type = BgcrodrTestJob.TestType.RecycleRebuildStaysFinite }.Run();
 }

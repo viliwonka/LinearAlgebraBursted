@@ -48,6 +48,13 @@ namespace LinearAlgebra
             if (s < 1 || s > m) throw new ArgumentException("bcraigmr: B.M_Rows (s) must be in [1, A.Rows]");
             if (maxIter < 1) throw new ArgumentException("bcraigmr: maxIter must be >= 1");
 
+            unsafe
+            {
+                long* ptrs = stackalloc long[2];
+                ptrs[0] = (long)X.Data.Ptr; ptrs[1] = (long)B.Data.Ptr;
+                RequireDistinctBuffers("bcraigmr: X/B must be distinct", ptrs, 2);
+            }
+
             for (int i = 0; i < s; i++)
                 for (int c = 0; c < n; c++) X[i, c] = (double)0;
 

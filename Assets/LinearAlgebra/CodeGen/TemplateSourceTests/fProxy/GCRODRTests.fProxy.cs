@@ -22,6 +22,9 @@ using Unity.Mathematics;
 //   - Deterministic        : two runs from x0=0 on identical (A,b) are bit-identical.
 //   - ZeroRhs              : b=0 -> Converged, iterations=0, x=0 exactly.
 //   - SingularBreakdown    : 0-matrix operator (no solution) -> honest Breakdown, no NaN.
+//   - SmallScaleWellConditioned : A = c*I for a tiny c -> must Converge (pivotGuard is ||A||-scaled,
+//                                 not ||b||-scaled -- a well-conditioned small-magnitude A must not
+//                                 trip a spurious Breakdown).
 public class fProxyGCRODRTests
 {
     [BurstCompile(CompileSynchronously = true)]
@@ -36,6 +39,7 @@ public class fProxyGCRODRTests
             Deterministic,
             ZeroRhs,
             SingularBreakdown,
+            SmallScaleWellConditioned,
         }
 
         public TestType Type;
@@ -96,6 +100,7 @@ public class fProxyGCRODRTests
                 case TestType.Deterministic:           Deterministic();           break;
                 case TestType.ZeroRhs:                 ZeroRhs();                 break;
                 case TestType.SingularBreakdown:       SingularBreakdown();       break;
+                case TestType.SmallScaleWellConditioned: SmallScaleWellConditioned(); break;
             }
         }
 
@@ -276,6 +281,31 @@ public class fProxyGCRODRTests
 
             arena.Dispose();
         }
+
+        // ---- pivotGuard must scale with ||A||, not ||b||: a well-conditioned but uniformly tiny-
+        // magnitude diagonal system (A = c*I) is exactly as solvable as its O(1) counterpart -- a
+        // ||b||-scaled guard clamps the (legitimately tiny) ||A||-scaled Hessenberg pivot and reports
+        // a spurious Breakdown with x left untouched. ----
+        void SmallScaleWellConditioned()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int n = 8;
+            fProxy c = /*+choose[1e-6f|1e-30]*/1e-6f/*-choose*/;
+            var A = arena.fProxyMat(n, n);
+            for (int i = 0; i < n; i++) A[i, i] = c;
+            var b = arena.fProxyVec(n);
+            for (int i = 0; i < n; i++) b[i] = (fProxy)1;
+
+            var x = arena.fProxyVec(n);
+            var info = Krylov.gcrodr(in A, in b, ref x, 5, 2, 4 * n, Tol());
+
+            Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
+            fProxy expected = (fProxy)1 / c;
+            for (int i = 0; i < n; i++)
+                Assert.IsTrue(math.abs(x[i] - expected) <= Tol() * expected);
+
+            arena.Dispose();
+        }
     }
 
     [Test] public void RecyclingBeatsGmresTest()     => new GcrodrTestJob { Type = GcrodrTestJob.TestType.RecyclingBeatsGmres }.Run();
@@ -285,4 +315,5 @@ public class fProxyGCRODRTests
     [Test] public void DeterministicTest()           => new GcrodrTestJob { Type = GcrodrTestJob.TestType.Deterministic }.Run();
     [Test] public void ZeroRhsTest()                 => new GcrodrTestJob { Type = GcrodrTestJob.TestType.ZeroRhs }.Run();
     [Test] public void SingularBreakdownTest()       => new GcrodrTestJob { Type = GcrodrTestJob.TestType.SingularBreakdown }.Run();
+    [Test] public void SmallScaleWellConditionedTest() => new GcrodrTestJob { Type = GcrodrTestJob.TestType.SmallScaleWellConditioned }.Run();
 }
