@@ -21,8 +21,11 @@ using Unity.Mathematics;
 //
 // Every case runs the same 4 standard checks (SS5.2 #1-4 of the battery spec) across every gallery
 // matrix whose tags satisfy the invoker's Requires/Forbids (MatrixProfileMatch.Applicable), plus a
-// 5th Sparse-only preconditioned-convergence check on the BSR gallery. Grouped BY SOLVER (one NUnit
-// case per SolverKind); the failing (matrix, check, got, expected) is surfaced via Fail.
+// 5th Sparse-only preconditioned-convergence check on the BSR gallery, a 6th warm-start-correctness
+// check (nonzero initial guess must be carried into the solution, not discarded), and a 7th
+// verify-at-exit-honesty check folded into every solve site in the loop (any Converged return must
+// have a fresh true residual within bound). Grouped BY SOLVER (one NUnit case per SolverKind); the
+// failing (matrix, check, got, expected) is surfaced via Fail.
 public class doubleKrylovSquareBatteryTests
 {
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -94,6 +97,7 @@ public class doubleKrylovSquareBatteryTests
             Record(statusOk1, (int)gm, 1, (double)(int)info1.status, (double)0);
             double relRes1 = doubleKrylovBatteryOracles.RelResidualDense(in A, in x1, in b);
             Record(relRes1 <= (double)10 * inv.Tol, (int)gm, 1, relRes1, (double)10 * inv.Tol);
+            VerifyHonestDense(info1.status, in A, in x1, in b, inv.Tol, (int)gm);
 
             // 2. Correctness vs. direct-solve reference (same A, b, and the x1 solved in #1).
             var xRef = ReferenceSolveDense(in A, in b, tags);
@@ -108,6 +112,8 @@ public class doubleKrylovSquareBatteryTests
             for (int i = 0; i < n; i++)
                 Record(x3a[i] == x3b[i], (int)gm, 3, x3a[i], x3b[i]);
             Record(info3a.iterations == info3b.iterations, (int)gm, 3, (double)info3a.iterations, (double)info3b.iterations);
+            VerifyHonestDense(info3a.status, in A, in x3a, in b, inv.Tol, (int)gm);
+            VerifyHonestDense(info3b.status, in A, in x3b, in b, inv.Tol, (int)gm);
 
             // 4. Identity-fold: the unpreconditioned path == the generic path with an explicit identity.
             var x4a = arena.doubleVec(n);
@@ -117,6 +123,21 @@ public class doubleKrylovSquareBatteryTests
             for (int i = 0; i < n; i++)
                 Record(x4a[i] == x4b[i], (int)gm, 4, x4a[i], x4b[i]);
             Record(info4a.iterations == info4b.iterations, (int)gm, 4, (double)info4a.iterations, (double)info4b.iterations);
+            VerifyHonestDense(info4a.status, in A, in x4a, in b, inv.Tol, (int)gm);
+            VerifyHonestDense(info4b.status, in A, in x4b, in b, inv.Tol, (int)gm);
+
+            // 6. Warm-start correctness: a NONZERO initial guess must be carried into the solution
+            // (x0 + dx), not silently discarded -- known x*, b = A x*, x seeded to a fixed nonzero
+            // vector unrelated to x*. Applies unconditionally: every square solver takes ref x.
+            var xStar6 = arena.doubleRandomVec(n, (double)(-1), (double)1, 0xE000u + (uint)gm);
+            var bWarm6 = arena.doubleVec(n);
+            Blas.dot(in A, in xStar6, ref bWarm6);
+            var xWarm6 = arena.doubleRandomVec(n, (double)(-1), (double)1, 0xE100u + (uint)gm);
+            SolveInfo infoWarm6 = inv.Solve(in Aop, in bWarm6, ref xWarm6);
+            Record(infoWarm6.status == IterativeSolveStatus.Converged, (int)gm, 6, (double)(int)infoWarm6.status, (double)(int)IterativeSolveStatus.Converged);
+            double relResWarm6 = doubleKrylovBatteryOracles.RelResidualDense(in A, in xWarm6, in bWarm6);
+            Record(relResWarm6 <= (double)100 * inv.Tol, (int)gm, 6, relResWarm6, (double)100 * inv.Tol);
+            VerifyHonestDense(infoWarm6.status, in A, in xWarm6, in bWarm6, inv.Tol, (int)gm);
 
             arena.Dispose();
         }
@@ -144,6 +165,7 @@ public class doubleKrylovSquareBatteryTests
             Record(statusOk1, (int)gm, 1, (double)(int)info1.status, (double)0);
             double relRes1 = doubleKrylovBatteryOracles.RelResidualBSR(in A, in x1, in b);
             Record(relRes1 <= (double)10 * inv.Tol, (int)gm, 1, relRes1, (double)10 * inv.Tol);
+            VerifyHonestBSR(info1.status, in A, in x1, in b, inv.Tol, (int)gm);
 
             // 2. Correctness vs. direct-solve reference (densify A -- no direct BSR factorization).
             var Adense = A.ToDense(ref arena);
@@ -159,6 +181,8 @@ public class doubleKrylovSquareBatteryTests
             for (int i = 0; i < n; i++)
                 Record(x3a[i] == x3b[i], (int)gm, 3, x3a[i], x3b[i]);
             Record(info3a.iterations == info3b.iterations, (int)gm, 3, (double)info3a.iterations, (double)info3b.iterations);
+            VerifyHonestBSR(info3a.status, in A, in x3a, in b, inv.Tol, (int)gm);
+            VerifyHonestBSR(info3b.status, in A, in x3b, in b, inv.Tol, (int)gm);
 
             // 4. Identity-fold.
             var x4a = arena.doubleVec(n);
@@ -168,6 +192,8 @@ public class doubleKrylovSquareBatteryTests
             for (int i = 0; i < n; i++)
                 Record(x4a[i] == x4b[i], (int)gm, 4, x4a[i], x4b[i]);
             Record(info4a.iterations == info4b.iterations, (int)gm, 4, (double)info4a.iterations, (double)info4b.iterations);
+            VerifyHonestBSR(info4a.status, in A, in x4a, in b, inv.Tol, (int)gm);
+            VerifyHonestBSR(info4b.status, in A, in x4b, in b, inv.Tol, (int)gm);
 
             // 5. Preconditioned convergence (Sparse-only), M built per inv.PrecondKind.
             var x5 = arena.doubleVec(n);
@@ -190,6 +216,17 @@ public class doubleKrylovSquareBatteryTests
             Record(statusOk5, (int)gm, 5, (double)(int)info5.status, (double)0);
             double relRes5 = doubleKrylovBatteryOracles.RelResidualBSR(in A, in x5, in b);
             Record(relRes5 <= (double)10 * inv.Tol, (int)gm, 5, relRes5, (double)10 * inv.Tol);
+            VerifyHonestBSR(info5.status, in A, in x5, in b, inv.Tol, (int)gm);
+
+            // 6. Warm-start correctness (mirrors CheckDense).
+            var xStar6 = arena.doubleRandomVec(n, (double)(-1), (double)1, 0xE000u + (uint)gm);
+            var bWarm6 = BSR.spMV(in A, in xStar6);
+            var xWarm6 = arena.doubleRandomVec(n, (double)(-1), (double)1, 0xE100u + (uint)gm);
+            SolveInfo infoWarm6 = inv.Solve(in Aop, in bWarm6, ref xWarm6);
+            Record(infoWarm6.status == IterativeSolveStatus.Converged, (int)gm, 6, (double)(int)infoWarm6.status, (double)(int)IterativeSolveStatus.Converged);
+            double relResWarm6 = doubleKrylovBatteryOracles.RelResidualBSR(in A, in xWarm6, in bWarm6);
+            Record(relResWarm6 <= (double)100 * inv.Tol, (int)gm, 6, relResWarm6, (double)100 * inv.Tol);
+            VerifyHonestBSR(infoWarm6.status, in A, in xWarm6, in bWarm6, inv.Tol, (int)gm);
 
             arena.Dispose();
         }
@@ -221,6 +258,25 @@ public class doubleKrylovSquareBatteryTests
         static double TolBand(MatrixProfile tags)
             => (tags & MatrixProfile.IllConditioned) != 0 ? (double)5E-2 : (double)50 * Consts.doubleSqrtEps;
 
+        // 7. Verify-at-exit honesty (universal invariant, folded into every solve call above rather
+        // than a standalone check block): whenever a solve claims Converged, the fresh true residual
+        // (recomputed from x/A/b, independent of whatever the solver tracked internally) must
+        // actually be within a generous bound. Guards the whole silent-false-Converged family across
+        // every check site in the loop, not only the "Converges" check.
+        void VerifyHonestDense(IterativeSolveStatus status, in doubleMxN A, in doubleN x, in doubleN b, double tol, int gmIdx)
+        {
+            if (status != IterativeSolveStatus.Converged) return;
+            double relRes = doubleKrylovBatteryOracles.RelResidualDense(in A, in x, in b);
+            Record(relRes <= (double)100 * tol, gmIdx, 7, relRes, (double)100 * tol);
+        }
+
+        void VerifyHonestBSR(IterativeSolveStatus status, in doubleBSR A, in doubleN x, in doubleN b, double tol, int gmIdx)
+        {
+            if (status != IterativeSolveStatus.Converged) return;
+            double relRes = doubleKrylovBatteryOracles.RelResidualBSR(in A, in x, in b);
+            Record(relRes <= (double)100 * tol, gmIdx, 7, relRes, (double)100 * tol);
+        }
+
         void Record(bool ok, int matrixIdx, int checkId, double got, double expected)
         {
             if (!ok && Fail[0] == (double)0)
@@ -237,6 +293,10 @@ public class doubleKrylovSquareBatteryTests
 
     static Array GetKinds() => Enum.GetValues(typeof(TestJob.SolverKind));
 
+    // Generous timeout: the first case run in a session pays one cold Burst compile of the whole
+    // Execute() body, and checks #6/#7 add a warm-start solve (plus an honesty re-verify) per
+    // gallery matrix on top of checks #1-5 (mirrors KrylovLstsqBatteryTests' own [Timeout], see DEVLOG).
+    [Timeout(600000)]
     [TestCaseSource(nameof(GetKinds))]
     public void SquareBattery(TestJob.SolverKind kind)
     {

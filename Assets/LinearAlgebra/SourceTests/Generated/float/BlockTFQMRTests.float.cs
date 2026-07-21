@@ -37,8 +37,6 @@ public class floatBlockTFQMRTests
             MaxIterBudgetHonestStatus,
             PreconditionedILU0,
             ZeroRhs,
-            ZeroRhsRowDoesNotBreakdownWholeSolve,
-            WarmStartedExactRowDoesNotBreakdown,
         }
 
         public TestType Type;
@@ -120,8 +118,6 @@ public class floatBlockTFQMRTests
                 case TestType.MaxIterBudgetHonestStatus:      MaxIterBudgetHonestStatus();       break;
                 case TestType.PreconditionedILU0:             PreconditionedILU0();              break;
                 case TestType.ZeroRhs:                        ZeroRhs();                         break;
-                case TestType.ZeroRhsRowDoesNotBreakdownWholeSolve: ZeroRhsRowDoesNotBreakdownWholeSolve(); break;
-                case TestType.WarmStartedExactRowDoesNotBreakdown:  WarmStartedExactRowDoesNotBreakdown();  break;
             }
         }
 
@@ -367,70 +363,6 @@ public class floatBlockTFQMRTests
             arena.Dispose();
         }
 
-        // Mixed batch (one all-zero RHS row padding a fixed-s batch, other rows ordinary): a single
-        // zero row must NOT break the whole solve. That row's shadow dot is exactly 0, which used to
-        // trip a whole-solve Breakdown at iteration 0 (X untouched), killing every other solvable row.
-        // It must instead be frozen at init (counted converged from iteration 0, its X row left
-        // exactly as its input) and excluded from the breakdown scans, while the ordinary rows solve.
-        void ZeroRhsRowDoesNotBreakdownWholeSolve()
-        {
-            var arena = new Arena(Allocator.Persistent);
-
-            int n = 30, s = 4, zeroRow = 1;
-            var A = DenseNonsym(ref arena, n, 0x1F71u);
-            var B = arena.floatRandomMat(s, n, (float)(-1f), (float)1f, 0x1F72u);
-            for (int c = 0; c < n; c++) B[zeroRow, c] = (float)0;   // all-zero row (batch padding)
-
-            var X = arena.floatMat(s, n);                           // zero initial guess
-
-            var info = Krylov.btfqmr(in A, in B, ref X, 40 * n, ResTol());
-
-            Assert.IsTrue(info.status != IterativeSolveStatus.Breakdown);   // no spurious whole-solve Breakdown
-            Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
-            Assert.AreEqual(s, info.converged);                            // frozen zero row counted from iter 0
-            Assert.AreEqual(s, info.rhs);
-
-            // Every row satisfies its residual (the zero row trivially: 0/0 clamps to 0).
-            Assert.IsTrue(BlockResidualDenseOK(ref arena, in A, in X, in B, s, n, ResTol()));
-
-            // The zero row's X output stays exactly as its input (0) -- never touched.
-            for (int c = 0; c < n; c++)
-                Assert.IsTrue(X[zeroRow, c] == (float)0);
-
-            arena.Dispose();
-        }
-
-        // Warm-started row already at its exact solution (row 0 seeded to xk with B[0] = A xk), other
-        // rows ordinary from X=0. Its initial residual is ~0, so it freezes at init just like a zero
-        // row -- and must not trip a whole-solve Breakdown while the ordinary rows solve.
-        void WarmStartedExactRowDoesNotBreakdown()
-        {
-            var arena = new Arena(Allocator.Persistent);
-
-            int n = 28, s = 3, exactRow = 0;
-            var A = DenseNonsym(ref arena, n, 0x1F81u);
-            var xk = arena.floatRandomVec(n, (float)(-1f), (float)1f, 0x1F82u);
-
-            var B = arena.floatRandomMat(s, n, (float)(-1f), (float)1f, 0x1F83u);
-            for (int r = 0; r < n; r++)                              // B[exactRow, :] = A xk  (row = RHS)
-            {
-                float acc = (float)0;
-                for (int c = 0; c < n; c++) acc += A[r, c] * xk[c];
-                B[exactRow, r] = acc;
-            }
-
-            var X = arena.floatMat(s, n);                           // rows all zero ...
-            for (int c = 0; c < n; c++) X[exactRow, c] = xk[c];      // ... except the warm-started exact row
-
-            var info = Krylov.btfqmr(in A, in B, ref X, 40 * n, ResTol());
-
-            Assert.IsTrue(info.status != IterativeSolveStatus.Breakdown);
-            Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
-            Assert.AreEqual(s, info.converged);
-            Assert.IsTrue(BlockResidualDenseOK(ref arena, in A, in X, in B, s, n, ResTol()));
-
-            arena.Dispose();
-        }
     }
 
     [Test] public void SolvesDenseNonsymTest() => new BlockTfqmrTestJob { Type = BlockTfqmrTestJob.TestType.SolvesDenseNonsym }.Run();
@@ -442,6 +374,4 @@ public class floatBlockTFQMRTests
     [Test] public void MaxIterBudgetHonestStatusTest() => new BlockTfqmrTestJob { Type = BlockTfqmrTestJob.TestType.MaxIterBudgetHonestStatus }.Run();
     [Test] public void PreconditionedILU0Test() => new BlockTfqmrTestJob { Type = BlockTfqmrTestJob.TestType.PreconditionedILU0 }.Run();
     [Test] public void ZeroRhsTest() => new BlockTfqmrTestJob { Type = BlockTfqmrTestJob.TestType.ZeroRhs }.Run();
-    [Test] public void ZeroRhsRowDoesNotBreakdownWholeSolveTest() => new BlockTfqmrTestJob { Type = BlockTfqmrTestJob.TestType.ZeroRhsRowDoesNotBreakdownWholeSolve }.Run();
-    [Test] public void WarmStartedExactRowDoesNotBreakdownTest() => new BlockTfqmrTestJob { Type = BlockTfqmrTestJob.TestType.WarmStartedExactRowDoesNotBreakdown }.Run();
 }

@@ -508,54 +508,6 @@ public class doubleKrylovVerifyAtExitTests
     }
 
     // ==============================================================================
-    // minresQLP warm start: a NONZERO initial guess x0 must be carried into the solution
-    // (x0 + dx), not silently discarded. The QLP x-rebuild used to seed its accumulator from
-    // zero, so a warm-started solve returned dx = A^-1(b - A x0) instead of x0 + dx AND the
-    // honesty guard then downgraded the status to MaxIterations (finalRnorm = ||A x0||). SPD A,
-    // known x*, b = A x*, x seeded to a nonzero x0 unrelated to x*: a correct solve recovers x*
-    // and reports Converged.
-    // ==============================================================================
-    [Test]
-    public void MinresQLPWarmStartRecoversSolution()
-    {
-        var arena = new Arena(Allocator.Persistent);
-
-        int n = 24;
-        var A = BuildDenseSPD(ref arena, n, 143011);   // symmetric, well-conditioned
-        var op = new doubleDenseOperator(in A);
-
-        var xStar = arena.doubleRandomVec(n, (double)(-1f), (double)1f, 143012);   // known exact solution
-        var b = arena.doubleVec(n);
-        Blas.dot(in A, in xStar, ref b);   // b = A x*   (A symmetric)
-
-        // Nonzero warm start, unrelated to x* -- the whole point is that it must NOT be discarded.
-        var x0 = arena.doubleRandomVec(n, (double)(-1f), (double)1f, 143013);
-        var x = arena.doubleVec(n);
-        for (int i = 0; i < n; i++) x[i] = x0[i];
-
-        double tol = Consts.doubleSqrtEps;
-        var info = Krylov.minresQLP(in A, in b, ref x, 8 * n, tol);
-
-        // Pre-fix: MaxIterations (the returned x was x* - x0, whose residual is ||A x0|| >> tol).
-        Assert.IsTrue(info.status == IterativeSolveStatus.Converged,
-            "minresQLP must converge from a nonzero warm start (x0 discarded?): " + info);
-
-        // Recovered x* (not x* - x0), verified two ways: fresh true residual + element match.
-        var scratch = arena.doubleVec(n);
-        double trueRs = TrueResidualSq(in op, in b, in x, ref scratch);
-        double bound = (double)((double)64 * tol) * (double)((double)64 * tol) * (double)Blas.dot(b, b);
-        Assert.LessOrEqual((double)trueRs, bound,
-            "minresQLP warm-started true residual exceeds the honesty bound (warm start discarded?): " + info);
-
-        double matchTol = 1e-4;
-        for (int i = 0; i < n; i++)
-            Assert.LessOrEqual(math.abs((double)x[i] - (double)xStar[i]), matchTol * (1.0 + math.abs((double)xStar[i])),
-                "minresQLP warm-started solution does not match x* at " + i);
-
-        arena.Dispose();
-    }
-
-    // ==============================================================================
     // biCGStab verify-fail-continue: on a drift-prone ill-conditioned system the recurrence
     // residual can dip under threshold while the true residual has not, so the half-step /
     // end-of-iteration verify fails and iteration continues. The scratch vector v (= A M^-1 p)

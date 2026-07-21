@@ -179,6 +179,24 @@ namespace LinearAlgebra
             return math.sqrt(num) / math.sqrt(math.max(den, (double)1e-30));
         }
 
+        // Generic block-residual oracle via a caller-supplied operator's ApplyBlock -- used where no
+        // raw doubleMxN/doubleBSR is at hand (e.g. CheckBlockAdditions, which only carries the
+        // already-correctly-selected TOp). Safe for ANY TOp: the caller is responsible for having
+        // picked the symmetric-safe/general variant appropriate for the underlying matrix (same
+        // requirement every ApplyBlock call in this battery already has).
+        public static double RelResidualBlockOp<TOp>(in TOp Aop, in doubleMxN X, in doubleMxN B, int s, int n)
+            where TOp : struct, IdoubleLinearOperator
+        {
+            var AX = new doubleMxN(s, n, Allocator.Temp, true);
+            Aop.ApplyBlock(in X, ref AX, s);
+            double num = 0, den = 0;
+            for (int i = 0; i < s; i++)
+                for (int c = 0; c < n; c++)
+                { double d = AX[i, c] - B[i, c]; num += d * d; den += B[i, c] * B[i, c]; }
+            AX.Dispose();
+            return math.sqrt(num) / math.sqrt(math.max(den, (double)1e-30));
+        }
+
         // Row j of B (length n) as an independent doubleN -- the per-column extraction every
         // block-battery check that compares against a scalar solve needs.
         public static doubleN Row(ref Arena arena, in doubleMxN B, int j, int n)

@@ -19,7 +19,9 @@ using Unity.Mathematics;
 // bfbcg, bminres, bbiCGStab, bgmres. Runs the block-shaped standard checks (mirroring
 // KrylovSquareBatteryTests' converges/correctness/determinism/identity-fold[/preconditioned-
 // convergence on BSR]) plus the block-family additions: per-column matches scalar, block advantage,
-// the identical-RHS-columns invariant, and rank-deficient-RHS graceful output.
+// the identical-RHS-columns invariant, rank-deficient-RHS graceful output, warm-start correctness
+// (#10), a degenerate/zero-RHS-row does-not-break-the-batch check (#11), and a verify-at-exit
+// honesty check (#12) folded into every solve call in the loop.
 //
 // ScalarCounterpart() is implemented on every invoker (interface contract in
 // KrylovBattery.Invokers.double.cs), but never CALLED from inside this [BurstCompile] job: returning
@@ -263,6 +265,7 @@ public class doubleKrylovBlockBatteryTests
             Record(statusOk1, (int)gm, 1, (double)(int)info1.status, (double)0);
             double relRes1 = doubleKrylovBatteryOracles.RelResidualBlockDense(in A, in X1, in B);
             Record(relRes1 <= (double)10 * inv.Tol, (int)gm, 1, relRes1, (double)10 * inv.Tol);
+            VerifyHonestBlockOp(info1.status, in Aop, in X1, in B, flags.S, n, inv.Tol, (int)gm);
 
             // 2. Correctness vs. direct-solve reference, per column (same A, B, and the X1 solved in #1).
             for (int j = 0; j < flags.S; j++)
@@ -282,6 +285,8 @@ public class doubleKrylovBlockBatteryTests
                 for (int c = 0; c < n; c++)
                     Record(X3a[j, c] == X3b[j, c], (int)gm, 3, X3a[j, c], X3b[j, c]);
             Record(info3a.iterations == info3b.iterations, (int)gm, 3, (double)info3a.iterations, (double)info3b.iterations);
+            VerifyHonestBlockOp(info3a.status, in Aop, in X3a, in B, flags.S, n, inv.Tol, (int)gm);
+            VerifyHonestBlockOp(info3b.status, in Aop, in X3b, in B, flags.S, n, inv.Tol, (int)gm);
 
             // 4. Identity-fold: the unpreconditioned path == the generic path with an explicit identity.
             var X4a = arena.doubleMat(flags.S, n);
@@ -292,6 +297,8 @@ public class doubleKrylovBlockBatteryTests
                 for (int c = 0; c < n; c++)
                     Record(X4a[j, c] == X4b[j, c], (int)gm, 4, X4a[j, c], X4b[j, c]);
             Record(info4a.iterations == info4b.iterations, (int)gm, 4, (double)info4a.iterations, (double)info4b.iterations);
+            VerifyHonestBlockOp(info4a.status, in Aop, in X4a, in B, flags.S, n, inv.Tol, (int)gm);
+            VerifyHonestBlockOp(info4b.status, in Aop, in X4b, in B, flags.S, n, inv.Tol, (int)gm);
 
             CheckBlockAdditions(inv, scalarInv, ref arena, in Aop, n, tags, (int)gm, 0xD800u + (uint)gm, flags);
 
@@ -325,6 +332,7 @@ public class doubleKrylovBlockBatteryTests
             Record(statusOk1, (int)gm, 1, (double)(int)info1.status, (double)0);
             double relRes1 = doubleKrylovBatteryOracles.RelResidualBlockBSR(in A, in X1, in B);
             Record(relRes1 <= (double)10 * inv.Tol, (int)gm, 1, relRes1, (double)10 * inv.Tol);
+            VerifyHonestBlockOp(info1.status, in Aop, in X1, in B, flags.S, n, inv.Tol, (int)gm);
 
             // 2. Correctness vs. direct-solve reference (densify A -- no direct BSR factorization).
             var Adense = A.ToDense(ref arena);
@@ -345,6 +353,8 @@ public class doubleKrylovBlockBatteryTests
                 for (int c = 0; c < n; c++)
                     Record(X3a[j, c] == X3b[j, c], (int)gm, 3, X3a[j, c], X3b[j, c]);
             Record(info3a.iterations == info3b.iterations, (int)gm, 3, (double)info3a.iterations, (double)info3b.iterations);
+            VerifyHonestBlockOp(info3a.status, in Aop, in X3a, in B, flags.S, n, inv.Tol, (int)gm);
+            VerifyHonestBlockOp(info3b.status, in Aop, in X3b, in B, flags.S, n, inv.Tol, (int)gm);
 
             // 4. Identity-fold.
             var X4a = arena.doubleMat(flags.S, n);
@@ -355,6 +365,8 @@ public class doubleKrylovBlockBatteryTests
                 for (int c = 0; c < n; c++)
                     Record(X4a[j, c] == X4b[j, c], (int)gm, 4, X4a[j, c], X4b[j, c]);
             Record(info4a.iterations == info4b.iterations, (int)gm, 4, (double)info4a.iterations, (double)info4b.iterations);
+            VerifyHonestBlockOp(info4a.status, in Aop, in X4a, in B, flags.S, n, inv.Tol, (int)gm);
+            VerifyHonestBlockOp(info4b.status, in Aop, in X4b, in B, flags.S, n, inv.Tol, (int)gm);
 
             // 5. Preconditioned convergence (Sparse-only), M built per inv.PrecondKind. PrecondKind
             // == None (bminres) falls through to the plain unpreconditioned solve, same as the
@@ -380,6 +392,7 @@ public class doubleKrylovBlockBatteryTests
             Record(statusOk5, (int)gm, 5, (double)(int)info5.status, (double)0);
             double relRes5 = doubleKrylovBatteryOracles.RelResidualBlockBSR(in A, in X5, in B);
             Record(relRes5 <= (double)10 * inv.Tol, (int)gm, 5, relRes5, (double)10 * inv.Tol);
+            VerifyHonestBlockOp(info5.status, in Aop, in X5, in B, flags.S, n, inv.Tol, (int)gm);
 
             CheckBlockAdditions(inv, scalarInv, ref arena, in Aop, n, tags, (int)gm, 0xB800u + (uint)gm, flags);
 
@@ -395,6 +408,15 @@ public class doubleKrylovBlockBatteryTests
         //      flags.IdenticalColumns -- see Execute()'s Bminres case.
         //   9. Rank-deficient RHS graceful: finite output (unconditional) and status never Breakdown
         //      (gated by flags.NoBreakdown -- see Execute()'s Bminres/BbiCGStab cases).
+        //  10. Warm-start correctness: a NONZERO initial guess must be carried into the solution, not
+        //      discarded -- known X*, B = A X* (Aop.ApplyBlock, correct for the already-selected TOp),
+        //      X seeded to a fixed nonzero block unrelated to X*. Applies unconditionally: every
+        //      block solver takes ref X.
+        //  11. Degenerate/zero-RHS-row: one all-zero row among ordinary rows must not break the whole
+        //      batch (generalizes the fixed btfqmr zero-row bug). Status must not report Breakdown
+        //      (gated by flags.NoBreakdown, same rationale as check #9), every ordinary row still
+        //      reaches its true solution, and the zero row's own output stays at (numerically) zero
+        //      -- its exact solution, A being nonsingular.
         void CheckBlockAdditions<TInvoker, TScalar, TOp>(TInvoker inv, TScalar scalarInv, ref Arena arena, in TOp Aop,
                                                            int n, MatrixProfile tags, int gmIdx, uint seedBase, CheckFlags flags)
             where TInvoker : struct, IdoubleBlockSolverInvoker
@@ -419,6 +441,7 @@ public class doubleKrylovBlockBatteryTests
             }
             if (flags.BlockAdvantage)
                 Record(info6.iterations <= worstScalarIter, gmIdx, 7, (double)info6.iterations, (double)worstScalarIter);
+            VerifyHonestBlockOp(info6.status, in Aop, in X6, in B6, flags.S, n, inv.Tol, gmIdx);
 
             // 8/9: force two distinct rows (0 and S-1) bit-identical.
             int dupA = 0, dupB = flags.S - 1;
@@ -442,6 +465,61 @@ public class doubleKrylovBlockBatteryTests
             if (flags.IdenticalColumns)
                 for (int c = 0; c < n; c++)
                     Record(math.abs(X8[dupA, c] - X8[dupB, c]) <= tolBand * ((double)1 + math.abs(X8[dupA, c])), gmIdx, 8, X8[dupA, c], X8[dupB, c]);
+            VerifyHonestBlockOp(info8.status, in Aop, in X8, in B8, flags.S, n, inv.Tol, gmIdx);
+
+            // 10. Warm-start correctness.
+            var Xstar10 = arena.doubleRandomMat(flags.S, n, (double)(-1), (double)1, seedBase + 3u);
+            var Bwarm10 = arena.doubleMat(flags.S, n);
+            Aop.ApplyBlock(in Xstar10, ref Bwarm10, flags.S);
+            var Xwarm10 = arena.doubleRandomMat(flags.S, n, (double)(-1), (double)1, seedBase + 4u);
+            BlockSolveInfo infoWarm10 = inv.Solve(in Aop, in Bwarm10, ref Xwarm10);
+            Record(infoWarm10.status == IterativeSolveStatus.Converged, gmIdx, 10, (double)(int)infoWarm10.status, (double)(int)IterativeSolveStatus.Converged);
+            double relResWarm10 = doubleKrylovBatteryOracles.RelResidualBlockOp(in Aop, in Xwarm10, in Bwarm10, flags.S, n);
+            Record(relResWarm10 <= (double)100 * inv.Tol, gmIdx, 10, relResWarm10, (double)100 * inv.Tol);
+            VerifyHonestBlockOp(infoWarm10.status, in Aop, in Xwarm10, in Bwarm10, flags.S, n, inv.Tol, gmIdx);
+
+            // 11. Degenerate/zero-RHS-row.
+            int zeroRow11 = 0;
+            var Bz11 = arena.doubleRandomMat(flags.S, n, (double)(-1), (double)1, seedBase + 5u);
+            for (int c = 0; c < n; c++) Bz11[zeroRow11, c] = (double)0;
+            var Xz11 = arena.doubleMat(flags.S, n);
+            BlockSolveInfo infoZ11 = inv.Solve(in Aop, in Bz11, ref Xz11);
+
+            if (flags.NoBreakdown)
+                Record(infoZ11.status != IterativeSolveStatus.Breakdown, gmIdx, 11, (double)(int)infoZ11.status, (double)(int)IterativeSolveStatus.Breakdown);
+
+            for (int c = 0; c < n; c++)
+                Record(math.abs(Xz11[zeroRow11, c]) <= tolBand, gmIdx, 11, Xz11[zeroRow11, c], (double)0);
+
+            if (infoZ11.status != IterativeSolveStatus.Breakdown)
+            {
+                var scratch11 = arena.doubleVec(n);
+                for (int j = 0; j < flags.S; j++)
+                {
+                    if (j == zeroRow11) continue;
+                    var bj = doubleKrylovBatteryOracles.Row(ref arena, in Bz11, j, n);
+                    var xj = doubleKrylovBatteryOracles.Row(ref arena, in Xz11, j, n);
+                    Aop.Apply(in xj, ref scratch11);
+                    double num11 = 0, den11 = 0;
+                    for (int c = 0; c < n; c++) { double d = scratch11[c] - bj[c]; num11 += d * d; den11 += bj[c] * bj[c]; }
+                    double relRes11 = math.sqrt(num11) / math.sqrt(math.max(den11, (double)1e-30));
+                    Record(relRes11 <= (double)100 * inv.Tol, gmIdx, 11, relRes11, (double)100 * inv.Tol);
+                }
+            }
+        }
+
+        // 12. Verify-at-exit honesty (universal invariant, folded into every solve call above rather
+        // than a standalone check block): whenever a solve claims Converged, the fresh true residual
+        // (recomputed via the caller-supplied TOp, independent of whatever the solver tracked
+        // internally) must actually be within a generous bound. Guards the whole silent-false-
+        // Converged family across every check site in the loop, not only the "Converges" check.
+        void VerifyHonestBlockOp<TOp>(IterativeSolveStatus status, in TOp Aop, in doubleMxN X, in doubleMxN B,
+                                       int s, int n, double tol, int gmIdx)
+            where TOp : struct, IdoubleLinearOperator
+        {
+            if (status != IterativeSolveStatus.Converged) return;
+            double relRes = doubleKrylovBatteryOracles.RelResidualBlockOp(in Aop, in X, in B, s, n);
+            Record(relRes <= (double)100 * tol, gmIdx, 12, relRes, (double)100 * tol);
         }
 
         // Reference solution via the library's own direct solver for A's KIND: CHO for SPD, LU for
@@ -487,6 +565,11 @@ public class doubleKrylovBlockBatteryTests
 
     static Array GetKinds() => Enum.GetValues(typeof(TestJob.SolverKind));
 
+    // Generous timeout: the first case run in a session pays one cold Burst compile of the whole
+    // Execute() body, and checks #10/#11/#12 add two more full block solves (plus per-solve honesty
+    // re-verification) per gallery matrix on top of checks #1-9 (mirrors KrylovLstsqBatteryTests'
+    // own [Timeout], see DEVLOG).
+    [Timeout(600000)]
     [TestCaseSource(nameof(GetKinds))]
     public void BlockBattery(TestJob.SolverKind kind)
     {
