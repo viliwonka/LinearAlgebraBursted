@@ -1,6 +1,19 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.Block.{CG,BiCGStab,IDR} — verify-at-exit honesty gate
+- 2026-07-21 | These block solvers declared `Converged` purely from the tracked recurrence residual;
+  on ill-conditioned inputs the tracked residual can drift below tolerance while the true residual
+  is still above it (silent false-Converged). Added a fresh true-residual gate at each `Converged`
+  decision: recompute `R = B - A.X` from the current X into an IDLE scratch block (Block.CG: `Q`;
+  Block.BiCGStab: `Tmp`; Block.IDR: `termMN`, scratch-only — IDR's `f[]` cross-product history must
+  NOT be reseated mid-sweep) and only commit `Converged` if `CountConverged` also clears against the
+  SAME `thr`. On a failed fresh check the loop continues (never a post-hoc downgrade), preserving the
+  iterations contract. Bit-identical for well-conditioned inputs (the fresh check passes there).
+  Battery honesty check (#12) is the regression oracle. blsmr's analogous gate is deferred (its
+  clamped estimator floors above tol on a consistent system — a separate attainable-accuracy
+  question, see task tracker).
+
 ## Krylov.Block.MINRES — tol==0 nonzero-B false convergence
 - 2026-07-21 | `bminres`'s zero-RHS early-out (Krylov.Block.MINRES.fProxy.cs) tested `thr[j] ==
   0` (`thr[j] = tol*tol*||B[j]||^2`), which is also true whenever `tol == 0` regardless of `B` --

@@ -100,7 +100,22 @@ namespace LinearAlgebra
                 BlockCTV(in coef, in Q, ref T); BlockAdd(ref R, in T, (fProxy)(-1)); // R -= alpha^T Q
 
                 converged = CountConverged(in R, in thr, s, n, out maxr);
-                if (converged == s) { status = IterativeSolveStatus.Converged; iters = k + 1; goto cleanup; }
+                if (converged == s)
+                {
+                    // Verify-at-exit: the recurrence residual can drift from the true B - A X on an
+                    // ill-conditioned SPD A. Q is idle here (last read by the BlockCTV two lines up,
+                    // next write is next iteration's A P or this iteration's beta-step BlockCTV) --
+                    // reuse it for a fresh A X and only trust Converged if that also clears thr.
+                    A.ApplyBlock(in X, ref Q, s);
+                    for (int i = 0; i < s; i++)
+                        for (int c = 0; c < n; c++) Q[i, c] = B[i, c] - Q[i, c];
+                    int freshConverged = CountConverged(in Q, in thr, s, n, out double freshMaxr);
+                    if (freshConverged == s)
+                    {
+                        converged = freshConverged; maxr = freshMaxr;
+                        status = IterativeSolveStatus.Converged; iters = k + 1; goto cleanup;
+                    }
+                }
 
                 // Z = M^-1 R ; RZnew = R^T Z.
                 if (M.IsIdentity)

@@ -171,7 +171,22 @@ namespace LinearAlgebra
                 BlockCTV(in alphaMat, in V, ref Tmp); BlockAdd(ref R, in Tmp, (double)(-1));  // R -= V alpha (R := S)
 
                 converged = CountConverged(in R, in thr, s, n, out maxr);
-                if (converged == s) { status = IterativeSolveStatus.Converged; iters = k + 1; goto cleanup; }
+                if (converged == s)
+                {
+                    // Verify-at-exit: R is the classic drift-prone BiCGSTAB recurrence residual. Tmp
+                    // is idle here (last read into the BlockAdd above, next write is the beta-step
+                    // BlockCTV further down) -- reuse it for a fresh A X, discarding the check on
+                    // failure so R/the recurrence are untouched.
+                    A.ApplyBlock(in X, ref Tmp, s);
+                    for (int i = 0; i < s; i++)
+                        for (int c = 0; c < n; c++) Tmp[i, c] = B[i, c] - Tmp[i, c];
+                    int freshConverged = CountConverged(in Tmp, in thr, s, n, out double freshMaxr);
+                    if (freshConverged == s)
+                    {
+                        converged = freshConverged; maxr = freshMaxr;
+                        status = IterativeSolveStatus.Converged; iters = k + 1; goto cleanup;
+                    }
+                }
 
                 // T = A (M^-1 S), S = R.
                 if (M.IsIdentity)
@@ -199,7 +214,21 @@ namespace LinearAlgebra
                 BlockAdd(ref R, in T, -omega);          // R := S - omega T (new residual)
 
                 converged = CountConverged(in R, in thr, s, n, out maxr);
-                if (converged == s) { status = IterativeSolveStatus.Converged; iters = k + 1; goto cleanup; }
+                if (converged == s)
+                {
+                    // Verify-at-exit (same rationale as the alpha-step check above). Tmp is idle here
+                    // (last read at the alpha-step BlockAdd, next write is the beta-step BlockCTV
+                    // further down) -- reuse it for a fresh A X.
+                    A.ApplyBlock(in X, ref Tmp, s);
+                    for (int i = 0; i < s; i++)
+                        for (int c = 0; c < n; c++) Tmp[i, c] = B[i, c] - Tmp[i, c];
+                    int freshConverged = CountConverged(in Tmp, in thr, s, n, out double freshMaxr);
+                    if (freshConverged == s)
+                    {
+                        converged = freshConverged; maxr = freshMaxr;
+                        status = IterativeSolveStatus.Converged; iters = k + 1; goto cleanup;
+                    }
+                }
 
                 // beta = Mmat^-1 (-Rhat0^T T)  (Mmat reused from this same iteration's alpha solve).
                 BlockCrossGram(in Rhat0, in T, ref Rhs);

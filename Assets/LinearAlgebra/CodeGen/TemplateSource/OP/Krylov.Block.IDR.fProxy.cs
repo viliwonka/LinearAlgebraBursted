@@ -223,7 +223,24 @@ namespace LinearAlgebra
                     iter++;
 
                     converged = CountConverged(in R, in thr, m, n, out maxr);
-                    if (converged == m) { status = IterativeSolveStatus.Converged; goto cleanup; }
+                    if (converged == m)
+                    {
+                        // Verify-at-exit: the recurrence R can drift from the true B - A X (IDR is
+                        // the family with the worst known tracked-vs-true drift). termMN is idle here
+                        // (last read into the BlockAdd above, next write is the next k-step's BlockCTV
+                        // or the end-of-sweep block) -- used only to gate the decision; the incremental
+                        // f[] history this sweep tracks off R must NOT be perturbed, so a failed check
+                        // discards the fresh residual and leaves R untouched.
+                        A.ApplyBlock(in X, ref termMN, m);
+                        for (int i = 0; i < m; i++)
+                            for (int col = 0; col < n; col++) termMN[i, col] = B[i, col] - termMN[i, col];
+                        int freshConverged = CountConverged(in termMN, in thr, m, n, out double freshMaxr);
+                        if (freshConverged == m)
+                        {
+                            converged = freshConverged; maxr = freshMaxr;
+                            status = IterativeSolveStatus.Converged; goto cleanup;
+                        }
+                    }
 
                     if (k < s - 1)
                         for (int i = k + 1; i < s; i++)
@@ -269,7 +286,20 @@ namespace LinearAlgebra
                 iter++;
 
                 converged = CountConverged(in R, in thr, m, n, out maxr);
-                if (converged == m) { status = IterativeSolveStatus.Converged; goto cleanup; }
+                if (converged == m)
+                {
+                    // Verify-at-exit (same rationale as the in-sweep check above). termMN is idle
+                    // here (last touched inside the k-loop above, not read again this sweep).
+                    A.ApplyBlock(in X, ref termMN, m);
+                    for (int i = 0; i < m; i++)
+                        for (int col = 0; col < n; col++) termMN[i, col] = B[i, col] - termMN[i, col];
+                    int freshConverged = CountConverged(in termMN, in thr, m, n, out double freshMaxr);
+                    if (freshConverged == m)
+                    {
+                        converged = freshConverged; maxr = freshMaxr;
+                        status = IterativeSolveStatus.Converged; goto cleanup;
+                    }
+                }
             }
 
         cleanup:
