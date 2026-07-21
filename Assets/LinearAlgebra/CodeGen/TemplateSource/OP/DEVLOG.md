@@ -105,6 +105,16 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   question, see task tracker).
 
 ## Krylov.Block.MINRES — tol==0 nonzero-B false convergence
+- 2026-07-21 | Task #49 (un-gate preconditioned path) ATTEMPTED, REVERTED. Removed the
+  `NotSupportedException` and flipped `fProxyBminresInvoker.PrecondKind` None→SymmetricBSR so the
+  block battery's check #5 drives `SolveWithPrecond` with a real BlockJacobi M. Result: it does NOT
+  converge — fresh relRes ~0.43 (double) / ~0.48 (float) vs a ~1e-7 threshold on the first symmetric
+  gallery (matrix=0), i.e. the solve stalls near half the initial residual. So the two shared-recursion
+  fixes (BuildOmega `Beta^T`, BlockNormalize un-pivot) did NOT also fix the preconditioned path:
+  `BlockNormalizePrecond`'s M-inner-product block-Lanczos normalization is independently wrong. #49 is
+  therefore NOT a free un-gate; it needs the same reference-driven diagnosis as #50 (extend the numpy
+  reference `reference/wip-bminres/bminres_reference.py` to a nontrivial SPD M, or dump the C#'s
+  per-iteration Beta/Gnorm/Vcur under M and diff). Gate restored; unpreconditioned bminres unaffected.
 - 2026-07-21 | Block sub-matrix copy-kernel consolidation + rename. (1) Deleted MINRES-local
   `CopyRowsAt`/`CopyColsAt`/`CopyBlockAt` — pure redundancy with Block.Common helpers already in
   scope (same `partial class Krylov`); they had drifted in during the s>1 debugging. (2) Renamed the
