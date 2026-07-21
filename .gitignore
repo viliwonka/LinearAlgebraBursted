@@ -74,3 +74,6 @@ crashlytics-build.properties
 
 # Unity headless test output
 /TestResults/
+
+# Local reference source stash (BSD/open pseudocode) — not part of the package
+/reference/

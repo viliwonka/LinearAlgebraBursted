@@ -21,7 +21,11 @@ namespace LinearAlgebra
         /// A MUST be symmetric; a real preconditioner M MUST be SPD (caller precondition, not
         /// verified beyond the NaN-safe breakdown guards). x is a warm-startable initial guess,
         /// overwritten with the solution. tol is the relative-residual tolerance (reference's
-        /// RTOL); maxIter bounds the Lanczos step count.
+        /// RTOL); maxIter bounds the Lanczos step count. tol also sets the min-length
+        /// regularization scale: solution growth past ~beta1/(64*tol*‖A‖est) -- contributions from
+        /// directions with sigma below ~64*tol*‖A‖est, which can never be certified at tol -- is
+        /// truncated toward the minimum-length solution (the reference's MAXXNORM knob, made
+        /// problem-relative instead of its absolute 1e7 default).
         ///
         /// Caller provides x and nine scratch vectors (v, r1, r2, r3, w, wl, wl2, xl2, t1; all
         /// length A.Rows) -- see the folder DEVLOG for the buffer-reuse/aliasing plan. Returns a
@@ -100,9 +104,15 @@ namespace LinearAlgebra
 
             fProxy eps = Consts.fProxyEpsilon;
             fProxy tiny = eps * eps;
-            fProxy maxxnorm = (fProxy)1e7;
             fProxy Acondlim = (fProxy)1e15;
             fProxy TranCond = (fProxy)1e7;
+            // Denominator of the per-iteration min-length cap maxxnorm (computed inside the loop
+            // from the running Anorm estimate): solution growth beyond
+            // beta1/(MaxXNormFactor*tol*Anorm) can never be certified at tolerance tol -- both the
+            // relres stop metric and the exit certificates (64*tol slack, mirrored by
+            // MaxXNormFactor) go vacuous there -- so it is truncated toward the min-length
+            // solution. tol is floored at eps.
+            fProxy maxxnormDenom = Consts.fProxyMaxXNormFactor * math.max(tol, eps);
 
             const int flag0 = -2;
             int flag = flag0;
@@ -169,7 +179,19 @@ namespace LinearAlgebra
                     break;
                 }
 
-                fProxy pnorm = math.sqrt(betal * betal + alfa * alfa + betan * betan);
+                // Column norm of the Lanczos tridiagonal T, feeding the Anorm (~ ‖A‖) estimate. At
+                // iters == 2 the sliding window's betal holds beta1 = ‖M-weighted r0‖, which is NOT
+                // an entry of T -- substituting beta (= beta_2, T's actual subdiagonal entry) keeps
+                // Anorm a ‖T‖ estimate instead of max(‖A‖, ‖r0‖), which otherwise inflates the
+                // relres denominator and both exit certificates whenever ‖b‖ > ‖A‖.
+                fProxy pnorm = (iters == 2)
+                    ? math.sqrt(beta * beta + alfa * alfa + betan * betan)
+                    : math.sqrt(betal * betal + alfa * alfa + betan * betan);
+
+                // Min-length cap on the tracked solution(-correction) norm, relative to the
+                // problem's own scale beta1/Anorm -- never an absolute constant. pnorm keeps the
+                // estimate live at iters == 1, before the first Anorm update below.
+                fProxy maxxnorm = beta1 / (maxxnormDenom * math.max(Anorm, pnorm));
 
                 // ---- previous left rotation Q_{k-1} ----
                 fProxy dbar = dltan;

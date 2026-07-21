@@ -2,6 +2,26 @@
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
 ## KrylovVerifyAtExitTests — minresQLP two-certificate rework
+- 2026-07-21 | Two tests for the problem-relative maxxnorm cap (+ Anorm-estimator fix; see
+  TemplateSource/OP DEVLOG, Krylov.MINRESQLP).
+  `MinresQLPTruncatesNearNullSlipThroughToMinLengthOracle` — conjugated D=(3,2,1.5,1,1,1e-9),
+  b=Q·(1,1,1,1,1,3e-3): all builds assert ‖x‖ ≤ 10·‖x*‖ and Solved ⟹ certified; double
+  additionally asserts Solved, x = truncation oracle ± 1e-6, rnorm = 3e-3 ± 1e-5. RED-proofed on
+  pre-fix maxxnorm=1e7: double returned CERTIFIED Converged (rnorm 9.4e-8) with ‖x‖ = 3.0e6 vs
+  bound 16.7 — exactly the certified-garbage slip-through class (u = b_σ/σ = 3e6 < 1e7). The
+  float/stub builds are cap-independent on this instance (σ=1e-9 is below float's noise floor;
+  ‖x‖ ~ 2.9 under every cap), hence the honest-only float branch.
+  `MinresQLPLargeBWellConditionedLargeXIsNotClamped` — SPD n=20 (cond ~ few), b = A·x* with
+  ‖x*‖ ~ 2.7e5, ‖b‖ ~ 1e6-1e7: all builds assert Solved and ‖x−x*‖ ≤ (1e-3 float | 1e-6
+  double)·‖x*‖. RED-proofed twice: on pre-fix code double exits MaxIterations at iters=4 with
+  rnorm 7.7e3 (the beta1-inflated-Anorm vacuous relres stop, certificate rightly rejecting) and
+  float/stub Converge with 4.3e-2 relative x-error; on an absolute maxxnorm=100 variant all three
+  builds exit Breakdown at iters=0 with rnorm ~ 1.7e6 (legit large-x solution clamped at the first
+  step) — so the test forbids both the old absolute-loose and any absolute-tight cap.
+  Also tightened the two min-length oracle tests' double xTol 1e-10/1e-9 → 1e-12: both pass at
+  1e-12 under the OLD and the NEW solver (the exact-singular clamp path is trajectory-identical —
+  the terminal u-blowup exceeds either cap at the same step), so the cap change does not move
+  those oracles; its payoff is the near-singular slip-through class above.
 - 2026-07-21 | `MinresQLPNeverFalseConvergesOnRosser` asserted the impossible: on Rosser + random b
   (INCOMPATIBLE — b has a null-space component) the true LS optimum's residual is always above
   64*tol*‖b‖, so `!(Solved && bigResidual)` forbade every correct LS-Converged the new exit gate can

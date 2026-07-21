@@ -15,6 +15,7 @@ namespace LinearAlgebra {
         public const float fProxyEpsilon = 1.1920929e-7f;
         public const float fProxySqrtEps = 3.4526698e-4f;
         public const float fProxySqrt2 = 1.4142135623730951f;
+        public const float fProxyMaxXNormFactor = 64f;
         public const int fProxyLqBlockMinM = 512;
         public const int fProxyQrBlockMinN = 64;
         public const int fProxyQrcpBlockMinN = 64;
@@ -31,6 +32,13 @@ namespace LinearAlgebra {
         public const double doubleEpsilon = 2.220446049250313e-16;  // machine epsilon, 2^-52
         public const double doubleSqrtEps = 1.4901161193847656e-8;  // sqrt(doubleEpsilon): best localization of a smooth minimum
         public const double doubleSqrt2 = 1.4142135623730951;   // sqrt(2), exact double (NOT the float-rounded math.SQRT2)
+
+        // minresQLP min-length cap: solution growth is truncated beyond
+        // beta1 / (MaxXNormFactor * tol * Anorm). 64 mirrors the 64*tol slack of the solver's exit
+        // certificates: a direction is truncated exactly when it could only ever be certified as
+        // null at the requested tolerance. Per-dtype so either precision can be retuned alone.
+        public const float floatMaxXNormFactor = 64f;
+        public const double doubleMaxXNormFactor = 64;
 
         // Row-count gate for LQ's blocked (compact-WY) vs unblocked kernel: below it, unblocked runs;
         // at/above it, blocked runs. Cache-dependent, so pinned per dtype.

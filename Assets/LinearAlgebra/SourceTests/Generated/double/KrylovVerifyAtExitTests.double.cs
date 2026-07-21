@@ -403,7 +403,7 @@ public class doubleKrylovVerifyAtExitTests
 
         if (info.Solved)
         {
-            double xTol = 1e-10;
+            double xTol = 1e-12;
             Assert.AreEqual(1.0, (double)x[0], xTol, "x[0] must match the min-length oracle (1,1,0)");
             Assert.AreEqual(1.0, (double)x[1], xTol, "x[1] must match the min-length oracle (1,1,0)");
             Assert.AreEqual(0.0, (double)x[2], xTol, "x[2] must match the min-length oracle (1,1,0)");
@@ -483,7 +483,7 @@ public class doubleKrylovVerifyAtExitTests
 
         if (info.Solved)
         {
-            double xTol = 1e-9;
+            double xTol = 1e-12;
             for (int i = 0; i < n; i++)
                 Assert.AreEqual(xStar[i], (double)x[i], xTol, "x[" + i + "] must match the pinv min-length oracle");
 
@@ -496,6 +496,129 @@ public class doubleKrylovVerifyAtExitTests
             Assert.LessOrEqual(arnorm, (double)((double)64 * tol) * (double)Norms.L2(in A) * rnorm,
                 "optimality residual ‖A·r‖ must pass the LS certificate at the oracle solution");
         }
+
+        arena.Dispose();
+    }
+
+    // The maxxnorm slip-through class: a NEAR-singular (sigma_min ~ 1e-9, NOT exactly 0, so no
+    // terminal exact-null clamp rescues the solve) direction carrying a SMALL b-component. The
+    // unregularized answer puts b_sigma/sigma ~ 3e6 on that direction -- under the old absolute
+    // maxxnorm = 1e7 that slipped the cap and was returned as a CERTIFIED Converged x with
+    // ‖x‖ ~ 3e6, while the min-length solution has ‖x*‖ ~ 1.7. The problem-relative cap
+    // beta1/(64*tol*Anorm) ~ 8e5 truncates it and returns the min-length oracle. Instance:
+    // A = Q D Qᵀ (Householder Q of v=(1..6)), D = diag(3,2,1.5,1,1,1e-9), b = Q·(1,1,1,1,1,3e-3);
+    // oracle x* = Q·(1/3,1/2,1/1.5,1,1,0), r* = 3e-3 on the near-null direction. Double resolves
+    // the truncation to oracle precision; float's rounding perturbs sigma=1e-9 beyond recognition
+    // (the direction sits below float's noise floor), so the float branch asserts honest behavior
+    // only: any Solved must be certified and must not carry a large-norm x.
+    [Test]
+    public void MinresQLPTruncatesNearNullSlipThroughToMinLengthOracle()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        int n = 6;
+        var d = new double[] { 3, 2, 1.5, 1, 1, 1e-9 };
+        var wts = new double[] { 1, 1, 1, 1, 1, 3e-3 };
+        var v = new double[n];
+        double vv = 0;
+        for (int i = 0; i < n; i++) { v[i] = i + 1; vv += v[i] * v[i]; }
+
+        var Q = new double[n, n];
+        for (int i = 0; i < n; i++)
+            for (int j = 0; j < n; j++)
+                Q[i, j] = (i == j ? 1.0 : 0.0) - 2.0 * v[i] * v[j] / vv;
+
+        var A = arena.doubleMat(n, n);
+        var b = arena.doubleVec(n);
+        var xStar = new double[n];   // truncation oracle: sigma = 1e-9 treated as null
+        for (int i = 0; i < n; i++)
+        {
+            double bi = 0, xi = 0;
+            for (int j = 0; j < n; j++)
+            {
+                double aij = 0;
+                for (int k = 0; k < n; k++) aij += Q[i, k] * d[k] * Q[j, k];
+                A[i, j] = (double)aij;
+                bi += wts[j] * Q[i, j];
+                if (d[j] > 1e-6) xi += wts[j] * Q[i, j] / d[j];
+            }
+            b[i] = (double)bi;
+            xStar[i] = xi;
+        }
+        double xStarNorm = 0;
+        for (int i = 0; i < n; i++) xStarNorm += xStar[i] * xStar[i];
+        xStarNorm = math.sqrt(xStarNorm);
+
+        double tol = Consts.doubleSqrtEps;
+        var x = arena.doubleVec(n);
+        var info = Krylov.minresQLP(in A, in b, ref x, 100, tol);
+
+        // BOTH dtypes: never a large-norm garbage x -- the old absolute cap's failure mode was a
+        // certified Converged with ‖x‖ ~ 2e6 * ‖x*‖.
+        double xNorm = math.sqrt((double)Blas.dot(x, x));
+        Assert.LessOrEqual(xNorm, 10.0 * xStarNorm,
+            "returned ‖x‖ must stay at the min-length scale, not blow up along the near-null direction: " + info);
+        AssertSolvedImpliesCertified(in A, in b, in x, info, tol, ref arena, "minresQLP near-null slip-through");
+
+        // double: the truncation must land on the min-length oracle, reported Solved through the
+        // LS certificate (r* = 3e-3 on the near-null direction, ‖A·r*‖ ~ 3e-12).
+        bool strictOracle = true;
+        if (strictOracle)
+        {
+            Assert.IsTrue(info.Solved,
+                "minresQLP must report Converged for the truncated min-length solution: " + info);
+
+            double xTol = 1e-6;
+            for (int i = 0; i < n; i++)
+                Assert.AreEqual(xStar[i], (double)x[i], xTol, "x[" + i + "] must match the truncation min-length oracle");
+
+            var op = new doubleDenseOperator(in A);
+            var r = arena.doubleVec(n);
+            double rnorm = math.sqrt((double)TrueResidualSq(in op, in b, in x, ref r));
+            Assert.AreEqual(3e-3, rnorm, 1e-5, "‖b-Ax‖ must match the oracle residual 3e-3");
+            Assert.AreEqual(rnorm, info.rnorm, 1e-5, "reported rnorm must be the fresh ‖b-Ax‖");
+        }
+
+        arena.Dispose();
+    }
+
+    // The over-clamp guard: a well-conditioned SPD system with ‖b‖ ~ 1e6 and a genuinely large
+    // ‖x*‖ ~ 1e5 must sail through -- the cap scales with beta1/Anorm, so a legitimately large
+    // solution of a large-‖b‖ system is never touched (an absolute cap -- 1e7 marginally, 100
+    // catastrophically -- clamps it). Also locks the Anorm estimate staying ~‖T‖ ~ ‖A‖: with
+    // beta1 = ‖b‖ leaked into Anorm, the relres stop fires vacuously at rnorm ~ tol*‖b‖²/‖A‖ and
+    // the exit certificate then rejects the premature x (MaxIterations, rnorm ~ 1e3).
+    [Test]
+    public void MinresQLPLargeBWellConditionedLargeXIsNotClamped()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        int n = 20;
+        var A = BuildDenseSPD(ref arena, n, 147001);   // cond ~ few: eigenvalues in [n, n + ‖M‖²]
+        var xStar = arena.doubleRandomVec(n, (double)(-1e5f), (double)1e5f, 147002);
+        var b = arena.doubleVec(n);
+        Blas.dot(in A, in xStar, ref b);               // b = A x*: compatible, ‖b‖ ~ 1e6-1e7
+
+        double xStarNorm = math.sqrt((double)Blas.dot(xStar, xStar));
+        Assert.Greater(xStarNorm, 1e4, "instance must have a genuinely large ‖x*‖ or it does not exercise the cap");
+        Assert.Greater(math.sqrt((double)Blas.dot(b, b)), 1e5, "instance must have a large ‖b‖ or it does not exercise the b-relative scaling");
+
+        double tol = Consts.doubleSqrtEps;
+        var x = arena.doubleVec(n);
+        var info = Krylov.minresQLP(in A, in b, ref x, 8 * n, tol);
+
+        Assert.IsTrue(info.Solved,
+            "minresQLP must converge on a well-conditioned large-‖b‖ system (no clamp, no vacuous stop): " + info);
+
+        double errSq = 0;
+        for (int i = 0; i < n; i++)
+        {
+            double di = (double)x[i] - (double)xStar[i];
+            errSq += di * di;
+        }
+        double xRelTol = 1e-6;
+        Assert.LessOrEqual(math.sqrt(errSq), xRelTol * xStarNorm,
+            "x must match the known solution of the well-conditioned system: " + info);
 
         arena.Dispose();
     }

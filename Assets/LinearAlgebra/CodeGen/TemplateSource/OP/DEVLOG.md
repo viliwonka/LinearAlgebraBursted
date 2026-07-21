@@ -231,6 +231,35 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
 - 2026-07-20 | New `Krylov.Block.LSMR.fProxy.cs` (task #43, blsmr): block LSMR for tall/overdetermined systems via block Golub-Kahan bidiag + block QR update; ported from rectangular/BlockLSQR-LSMR-algorithm-extract.md (Bl-LSMR Algorithm 2). Fidelity deviations: no warm start, no damping, per-row Apply/ApplyT (not a fused block GEMM). Key oracle = per-column normal-equation optimality + matches scalar lsmr — passes all dtypes; exact recovery of a consistent system also holds all dtypes. The convergence FLAG (Solved/converged==s) is CONSERVATIVE in float: the block-GKB residual estimate is stricter than the achieved accuracy, so float recovers Xk yet can report MaxIterations — so ConsistentSystemRecoversExactSolution asserts full-convergence status for double only, recovery for all. Not wired to a battery (no block-LS battery family yet). NOTE: the WIP's earlier "test data reads back as zero" was the IJob struct-copy trap (verify INSIDE the job, never off a job field after Run()), NOT an Arena bug — see #54 / ArenaBurstReadbackRegressionTests.
 
 ## Krylov.MINRESQLP
+- 2026-07-21 | maxxnorm: absolute `(fProxy)1e7` → per-iteration problem-relative min-length cap
+  `beta1 / (Consts.MaxXNormFactor * max(tol, eps) * max(Anorm, pnorm))`, MaxXNormFactor = 64 per
+  dtype (Consts). The reference's MAXXNORM=1e7 default is "effectively unbounded" (its own
+  commented singular examples pass maxxnorm=1e2); as a hard constant it was (1) sitting AT float's
+  garbage scale — the float exact-singular oracle instances diverge to ‖x‖ 8.2e6/5.5e6 under it
+  (replica probe) — and (2) too loose to enforce min-length in double: a near-null direction
+  (σ=1e-9) carrying a small b-component (3e-3) yields u = b_σ/σ = 3e6 < 1e7, returned as a
+  CERTIFIED Converged (compatible cert, rnorm 9.4e-8) with ‖x‖ = 3.0e6 vs min-length 1.67 (suite
+  red-proof). The 64 mirrors the exit certificates' 64*tol slack: the cap truncates a direction
+  exactly when it could only ever be certified NULL at the requested tolerance
+  (σ ≲ 64*tol*‖A‖est), so cap-truncated min-length exits stay certificate-promotable and
+  certifiable-signal directions are never clamped; beyond beta1/(tol*Anorm) the relres stop metric
+  is vacuous anyway (denominator Anorm*xnorm dominates). tol floored at eps (tol=0 degrades to a
+  precision-aware absolute cap ~beta1/(64*eps*Anorm)). Formula validated in a standalone
+  double+float replica of this loop across exact-singular / near-singular / slip-through /
+  large-‖b‖ / compatible-large-x grids. Deliberately NOT changed: Acondlim=1e15 and TranCond=1e7
+  (double-calibrated — flag 7 is effectively dead in float and the QLP transfer rare — but no
+  demonstrated failure, and retuning them shifts iteration paths across every caller).
+- 2026-07-21 | Anorm estimator: pnorm at iters==2 used betal, which at that iteration holds
+  beta1 = ‖M-weighted r0‖ — NOT an entry of the Lanczos T (T's column 2 is (beta2, alfa2, beta3);
+  Choi/Paige/Saunders define Anorm as a ‖T‖ estimate; the betal leak is a quirk of the reference
+  CODE's sliding window, faithfully ported until now). Whenever ‖b‖ > ‖A‖ it inflated Anorm to
+  ‖b‖, so relres = rnorm/(Anorm*xnorm + beta1) fired VACUOUSLY at rnorm ~ tol*‖b‖²/‖A‖: a
+  well-conditioned SPD n=20 with ‖b‖~3e6 exited at iters=4 with rnorm 7.7e3 and the exit
+  certificate then rightly rejected it → MaxIterations on a trivially solvable system (suite
+  red-proof); the same inflation made the LS certificate's 64*tol*Anorm*‖r‖ bound vacuously lax.
+  Fix: substitute beta (= beta_2, a genuine T entry) at iters==2 only. Also required so the new
+  maxxnorm cap's beta1/Anorm means ‖b‖/‖A‖ — the two halves are complementary (replica: cap-only
+  stays broken on large-‖b‖, estimator-only stays broken on the float singular oracles).
 - 2026-07-21 | Two-certificate exit gate replaces the #53 single-certificate honesty guard, which
   had a least-squares blind spot: it downgraded EVERY Converged whose fresh ‖b-Ax‖ > 64*tol*‖b‖,
   correctly killing false-Converged on compatible systems but also killing every genuine LS
