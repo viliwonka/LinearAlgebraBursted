@@ -36,7 +36,9 @@ namespace LinearAlgebra
             }
             else
             {
-                v[colStart] = math.SQRT2;
+                // Exact sign-flip reflector (vᵀv must equal 2); Consts.fProxySqrt2 is exact per dtype,
+                // unlike math.SQRT2 (a float constant). See QR.fProxy.cs for the full note.
+                v[colStart] = Consts.fProxySqrt2;
             }
         }
 

@@ -1,6 +1,22 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## QR/LQ/Bidiag — zero-column Householder fallback used a float √2 in the double build
+- 2026-07-21 | genHouseholder's zero-column fallback (QR.fProxy.cs:51, LQ.fProxy.cs:39,
+  Bidiag.fProxy.cs:40 & :67) stored `math.SQRT2` into the reflector vector. `math.SQRT2` is a FLOAT
+  constant (= (float)SQRT2_DBL); in the double-generated variant that gives uᵀu = 1.99999993 instead
+  of 2, so H = I - uuᵀ has H[k,k] = -0.99999993 -- an off-by-6.85e-8 sign-flip reflector and a Q with
+  ‖QᵀQ-I‖ ≈ 1.37e-7, IN DOUBLE. An ordinary full-rank factorization never takes this fallback, but
+  blsmr's block-Givens step QRs a deliberately zero-PADDED 2s×2s matrix, so its padded columns hit
+  the fallback every iteration; the polluted complement columns poison the cbark/dbark recurrence,
+  which drifts phi by ~5e-8 and makes the subtractive ‖AᵀR‖² estimator cross threshold early -> a
+  FALSE Converged with X frozen (blsmr double plateaued at ~1e-5..5e-7 relative normal-eq residual
+  vs scalar lsmr's 2e-16). bcraigmr shares the zero-padded-QR trick and degraded similarly. Fix:
+  `(fProxy)math.SQRT2_DBL` at all four sites -- exact per fProxy precision, float build bit-identical
+  ((float)SQRT2_DBL == math.SQRT2). Root-caused by Fable (instrumented ‖QᵀQ-I‖ trace matched the
+  predicted 1.3691416e-7 to five digits). This unblocks the deferred blsmr verify-at-exit gate (#73):
+  no more false Converged at its source.
+
 ## Krylov.Block.{CG,BiCGStab,IDR} — verify-at-exit honesty gate
 - 2026-07-21 | These block solvers declared `Converged` purely from the tracked recurrence residual;
   on ill-conditioned inputs the tracked residual can drift below tolerance while the true residual

@@ -48,7 +48,10 @@ namespace LinearAlgebra
             }
             else {
 
-                u[k] = math.SQRT2;
+                // Exact sign-flip reflector: uᵀu must equal 2 so H[k,k] = -1. Uses the exact-per-dtype
+                // Consts.fProxySqrt2, NOT math.SQRT2 (a FLOAT constant that leaves uᵀu = 2 - 7e-8 in
+                // the double build -- an off-by-1e-7 reflector). Float build is bit-identical.
+                u[k] = Consts.fProxySqrt2;
             }
         }
 
