@@ -1,6 +1,26 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.craig / craigmr — Tikhonov damping via the augmented operator
+- 2026-07-23 | New Krylov.LeastNormDamped.fProxy.cs. Damped craig/craigmr = ridge least-norm
+  x = Aᵀ(AAᵀ+damp²·I)⁻¹b. KEY: instead of the "materially more complex" generalized Golub-Kahan
+  recurrence (why this was deferred before — the LSLQ-bias risk), run the UNDAMPED, proven solver over
+  the AUGMENTED operator `fProxyDampedLeastNormOperator<TOp>` = [A | damp·I] (Rows × (Cols+Rows)). The
+  min-norm solution of [A|damp·I]·(x,s)=b minimizes ‖x‖²+‖s‖² s.t. Ax+damp·s=b, which IS the ridge
+  least-norm x; the solver's solution vector is (x,s) and x = its first Cols entries. Zero recurrence
+  surgery → low risk (same trick as damped cgne, but via an operator wrapper since craig/craigmr are
+  generic over TOp). The augmented operator is always full-row-rank + consistent (the damp·I block),
+  so the inner solve is always well-posed — damped craig even handles a RANK-DEFICIENT A (undamped
+  would break down). Operator needs ONE Cols-length scratch (x-part copy in Apply; Aᵀx in ApplyT).
+  Diagnostics re-audited in ORIGINAL coords via lstsqResidual (DampedLeastNormFinish): rnorm=‖b-Ax‖
+  (=damp·‖s‖, nonzero at optimum), Arnorm=‖Aᵀr-damp²x‖ (→0, the cert) — same convention as damped cgne.
+  damp==0 delegates to the plain solver (bit-identical). Surface: dense + BSR damped overloads for
+  craig + craigmr. lnlq DELIBERATELY not damped this way: its certified forward-error bound is on the
+  augmented (x,s), not x, so the augmentation defeats its distinctive feature. Tests
+  (fProxyCraigDampedTests): dense Aᵀ(AAᵀ+damp²I)⁻¹b oracle + rank-deficient + damp==0 bit-identity, for
+  both craig and craigmr. Completes non-square damping: lsqr/lsmr (LS) + cgne/craig/craigmr (LN);
+  still out = lnlq (above) + lslq (~1.4e-3 λ-rotation bias, v1-out).
+
 ## Eigen.eigNearShift — shift-and-invert interior eigensolver
 - 2026-07-23 | New Eigen.ShiftInvert.fProxy.cs: `fProxyShiftInvertOperator<TOp>` (Apply = (A-shift·I)⁻¹x
   via an inner minresQLP solve with the eigenvalue shift; symmetric so ApplyT=Apply) + the driver
