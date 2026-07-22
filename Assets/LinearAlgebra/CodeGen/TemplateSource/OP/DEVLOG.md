@@ -1,6 +1,24 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.GMRES / Krylov.FGMRES — merge into a shared GmresCore
+- 2026-07-22 | gmres and fgmres were ~95% identical (Arnoldi-MGS + incremental Givens LS + restart);
+  the only diffs were the preconditioned-basis storage and the solution update. Extracted the single
+  body into `GmresCore<TOp,TPre>` (new Krylov.GMRES.Common.fProxy.cs); gmres/fgmres are now thin
+  façades (validation + gmres's `!IsConstant` throw, then forward). The core branches on the
+  compile-time-constant preconditioner flags (Burst-folds each specialization to one path):
+  IsIdentity → plain GMRES (no M, accumulate into x); `flexible = !IsConstant` → store the
+  preconditioned basis Z (m vectors), x += Σ y_i z_i (FGMRES, per-step-varying M); constant real M →
+  single zt vector, x += M⁻¹(Σ y_i v_i) (standard right-precond, m-1 fewer basis vectors + one M-apply
+  per restart instead of per step). This REALIZES the user's "switch on the preconditioner": a CONSTANT
+  M takes the cheap standard path whether it came through gmres OR fgmres — so fgmres(constant M) is now
+  BIT-IDENTICAL to gmres(constant M) and drops from m basis vectors to 1 (was the Z path). Only a
+  genuinely varying M (AMG K-cycle) pays for Z. Behaviour preserved bit-for-bit for: identity (both),
+  gmres(constant real M), fgmres(variable M); fgmres(constant real M) changes bit-level (cheaper,
+  mathematically identical — M⁻¹Σy_i v_i == Σy_i M⁻¹v_i when M fixed). gmres keeps its constant-only
+  API contract (the IsConstant throw stays). No public signature changed. 189/189 across
+  GMRES/FGMRES/square-battery/preconditioner-compat/AMG.
+
 ## Krylov.MINRESQLP — eigenvalue shift (A - shift*I) x = b
 - 2026-07-22 | Added `fProxy shift` to the `minresQLP<TOp,TPre>` primitive: solves (A - shift*I) x = b.
   Math: shifted Lanczos on B = A - shift*I. The recurrence is exact because
