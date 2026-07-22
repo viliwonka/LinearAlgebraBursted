@@ -1,6 +1,26 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.MINRESQLP — eigenvalue shift (A - shift*I) x = b
+- 2026-07-22 | Added `fProxy shift` to the `minresQLP<TOp,TPre>` primitive: solves (A - shift*I) x = b.
+  Math: shifted Lanczos on B = A - shift*I. The recurrence is exact because
+  B·v - (vᵀBv)·v = (A·v - shift·v) - (vᵀA·v - shift)·v = A·v - (vᵀA·v)·v — the -shift·v term cancels
+  against +shift in the diagonal alfa, so β and the Lanczos vectors are identical to unshifted; only
+  T's diagonal shifts by -shift. Implemented as option (a): shift the matvec directly (one axpy),
+  which makes alfa, the recurrence, and all downstream QLP machinery consistent with zero extra
+  bookkeeping. FOUR shift sites, each guarded `if (shift != 0)` so a compile-time-0 forwarder
+  Burst-folds it away: Lanczos matvec (A·v - shift·v), initial residual r0 = b - (A-shift·I)x, final
+  true residual (inlined instead of VerifyTrueResidual so r1 keeps the SHIFTED residual for the LS
+  certificate), and the ‖A·r‖ certificate ((A-shift·I)·r). Preconditioned case unchanged (M applied
+  after the shifted matvec — solving M-weighted B). This is a lambda (eigenvalue) shift on the
+  operator, distinct from lsqr/lsmr damp (a sigma / singular-value Tikhonov on AᵀA+damp²I): A-shift·I
+  stays symmetric so the QLP min-length machinery needs no change. Surface: shift added to the
+  primitive + a zero-shift forwarder (every existing convenience overload resolves to it) + arena
+  overloads for generic-preconditioned / dense / BSR. Perf penalty: one axpy/iter when shift≠0, nil
+  when shift==0. Unlocks shifted systems and shift-and-invert interior-eigenvalue drivers without an
+  operator wrapper. Tests: fProxyMinresQLPShiftTests (residual certificate, explicit-A-σI
+  self-consistency, zero-shift bit-identity, BSR path).
+
 ## Krylov.CG / Krylov.MINRES — collapse per-preconditioner BSR overloads to generic
 - 2026-07-22 | Each file had 18 concrete BSR overloads (BlockJacobi/SSOR/IC0/FSAI/Chebyshev/
   AdditiveSchwarz × zero-alloc/arena/default rungs), every one a pure forward

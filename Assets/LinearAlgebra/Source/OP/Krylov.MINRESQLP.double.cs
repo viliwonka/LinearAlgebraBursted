@@ -24,7 +24,13 @@ namespace LinearAlgebra
         ///
         /// A MUST be symmetric; a real preconditioner M MUST be SPD (caller precondition, not
         /// verified beyond the NaN-safe breakdown guards). x is a warm-startable initial guess,
-        /// overwritten with the solution. tol is the relative-residual tolerance (reference's
+        /// overwritten with the solution. shift applies an eigenvalue shift, solving
+        /// (A - shift*I) x = b: the Lanczos recurrence stays exact because the -shift*v term in the
+        /// shifted matvec cancels against +shift in the diagonal alfa, so the shift is one extra
+        /// axpy per iteration (Burst-folded away when shift is a compile-time 0). This is an
+        /// eigenvalue (lambda) shift on the operator, distinct from the singular-value damp of
+        /// lsqr/lsmr; A - shift*I stays symmetric, so the QLP min-length machinery is unchanged.
+        /// tol is the relative-residual tolerance (reference's
         /// RTOL); maxIter bounds the Lanczos step count. tol also sets the min-length
         /// regularization scale: solution growth past ~beta1/(64*tol*‖A‖est) -- contributions from
         /// directions with sigma below ~64*tol*‖A‖est, which can never be certified at tol -- is
@@ -45,7 +51,7 @@ namespace LinearAlgebra
         public static SolveInfo minresQLP<TOp, TPre>(in TOp A, in TPre M, in doubleN b, ref doubleN x,
                                        ref doubleN v, ref doubleN r1, ref doubleN r2, ref doubleN r3,
                                        ref doubleN w, ref doubleN wl, ref doubleN wl2, ref doubleN xl2,
-                                       ref doubleN t1, int maxIter, double tol)
+                                       ref doubleN t1, int maxIter, double tol, double shift)
             where TOp : struct, IdoubleLinearOperator
             where TPre : struct, IdoublePreconditioner
         {
@@ -93,6 +99,7 @@ namespace LinearAlgebra
             A.Apply(in x, ref r1);
             r2.CopyFrom(in b);
             r2.addScaledInPlace((double)(-1), r1);
+            if (shift != (double)0) r2.addScaledInPlace(shift, x);   // r0 = b - (A - shift*I) x
 
             double beta1;
             if (M.IsIdentity)
@@ -158,6 +165,7 @@ namespace LinearAlgebra
                 else              Blas.scaledCopy(1 / beta, r3, ref v);
 
                 A.Apply(in v, ref r3);
+                if (shift != (double)0) r3.addScaledInPlace(-shift, v);   // (A - shift*I) v
                 if (iters > 1) r3.addScaledInPlace(-(beta / betal), r1);
                 double alfa = Blas.dot(r3, v);
                 r3.addScaledInPlace(-(alfa / beta), r2);
@@ -403,7 +411,13 @@ namespace LinearAlgebra
             if (flag == flag0) { flag = 8; iters = maxIter; }
 
             // Final true residual (fresh, regardless of exit reason -- r3/r1 are idle by now).
-            double finalRnorm = math.sqrt(VerifyTrueResidual(in A, in b, in x, ref r3, ref r1));
+            // Inlined rather than VerifyTrueResidual so the shift term folds in and r1 keeps the
+            // SHIFTED residual r = b - (A - shift*I) x for the least-squares certificate below.
+            A.Apply(in x, ref r3);
+            r1.CopyFrom(in b);
+            r1.addScaledInPlace((double)(-1), r3);
+            if (shift != (double)0) r1.addScaledInPlace(shift, x);
+            double finalRnorm = math.sqrt(Blas.dot(r1, r1));
 
             IterativeSolveStatus status;
             if (flag == 8) status = IterativeSolveStatus.MaxIterations;
@@ -431,6 +445,7 @@ namespace LinearAlgebra
                 else
                 {
                     A.Apply(in r1, ref r3);
+                    if (shift != (double)0) r3.addScaledInPlace(-shift, r1);   // (A - shift*I) r
                     double arnorm = math.sqrt(Blas.dot(r3, r3));
                     if (arnorm <= (double)64 * tol * Anorm * finalRnorm)
                         status = IterativeSolveStatus.Converged;
@@ -440,6 +455,20 @@ namespace LinearAlgebra
             }
 
             return MakeSolveInfo(status, iters, finalRnorm);
+        }
+
+        /// <summary>
+        /// Unshifted MINRES-QLP (shift == 0) -- forwards into the shifted primitive. This is the
+        /// signature every internal convenience overload resolves to; the shift folds away.
+        /// </summary>
+        public static SolveInfo minresQLP<TOp, TPre>(in TOp A, in TPre M, in doubleN b, ref doubleN x,
+                                       ref doubleN v, ref doubleN r1, ref doubleN r2, ref doubleN r3,
+                                       ref doubleN w, ref doubleN wl, ref doubleN wl2, ref doubleN xl2,
+                                       ref doubleN t1, int maxIter, double tol)
+            where TOp : struct, IdoubleLinearOperator
+            where TPre : struct, IdoublePreconditioner
+        {
+            return minresQLP(in A, in M, in b, ref x, ref v, ref r1, ref r2, ref r3, ref w, ref wl, ref wl2, ref xl2, ref t1, maxIter, tol, (double)0);
         }
 
         /// <summary>
@@ -632,6 +661,47 @@ namespace LinearAlgebra
             where TPre : struct, IdoublePreconditioner
         {
             return minresQLP(in A, in M, in b, ref x, A.M_Rows, Consts.doubleSqrtEps);
+        }
+
+        // ===== eigenvalue-shifted overloads: solve (A - shift*I) x = b (arena-allocated) =====
+
+        /// <summary>
+        /// Preconditioned MINRES-QLP for the shifted system (A - shift*I) x = b -- allocates nine
+        /// scratch vectors from the arena. See the primitive for shift semantics.
+        /// </summary>
+        public static SolveInfo minresQLP<TOp, TPre>(in TOp A, in TPre M, in doubleN b, ref doubleN x,
+                                          int maxIter, double tol, double shift)
+            where TOp : struct, IdoubleLinearOperator
+            where TPre : struct, IdoublePreconditioner
+        {
+            doubleN v   = b.doubleTempVec(A.Rows);
+            doubleN r1  = b.doubleTempVec(A.Rows);
+            doubleN r2  = b.doubleTempVec(A.Rows);
+            doubleN r3  = b.doubleTempVec(A.Rows);
+            doubleN w   = b.doubleTempVec(A.Rows);
+            doubleN wl  = b.doubleTempVec(A.Rows);
+            doubleN wl2 = b.doubleTempVec(A.Rows);
+            doubleN xl2 = b.doubleTempVec(A.Rows);
+            doubleN t1  = b.doubleTempVec(A.Rows);
+            return minresQLP(in A, in M, in b, ref x, ref v, ref r1, ref r2, ref r3, ref w, ref wl, ref wl2, ref xl2, ref t1, maxIter, tol, shift);
+        }
+
+        /// <summary>
+        /// MINRES-QLP over a dense matrix for the shifted system (A - shift*I) x = b -- allocates
+        /// nine scratch vectors from the arena.
+        /// </summary>
+        public static SolveInfo minresQLP(in doubleMxN A, in doubleN b, ref doubleN x, int maxIter, double tol, double shift)
+        {
+            return minresQLP(new doubleDenseOperator(in A), default(doubleIdentityPreconditioner), in b, ref x, maxIter, tol, shift);
+        }
+
+        /// <summary>
+        /// MINRES-QLP over a BSR matrix for the shifted system (A - shift*I) x = b -- allocates nine
+        /// scratch vectors from the arena.
+        /// </summary>
+        public static SolveInfo minresQLP(in doubleBSR A, in doubleN b, ref doubleN x, int maxIter, double tol, double shift)
+        {
+            return minresQLP(new doubleBSROperator(in A), default(doubleIdentityPreconditioner), in b, ref x, maxIter, tol, shift);
         }
     }
 }
