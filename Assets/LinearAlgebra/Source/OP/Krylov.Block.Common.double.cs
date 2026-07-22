@@ -495,6 +495,8 @@ namespace LinearAlgebra
 
         // Frobenius inner product sum_i,c U[i,c]*V[i,c] over the whole (contiguous) block -- equals
         // trace(U_classical^T V_classical) regardless of row/col storage convention. U, V must be same shape.
+        // Sequential accumulate; do NOT reroute to the multi-accumulator vecDot (fold order feeds
+        // block convergence -- see OP/DEVLOG.md).
         static unsafe double BlockFrobDot(in doubleMxN U, in doubleMxN V)
         {
             double* up = U.Data.Ptr; double* vp = V.Data.Ptr;

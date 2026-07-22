@@ -1,6 +1,22 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov SIMD sweep (#58) — BlockFrobDot reroute measured, REVERTED
+- 2026-07-22 | Re-ran the Krylov SIMD-reduction sweep. Finding: the core single-RHS solvers are
+  already SIMD-optimal — every dot/norm goes through Blas.dot → UnsafeOP.vecDot (2×fProxyW + 2×fProxy4
+  multi-accumulator). The benchmarked block solvers (bcg/bcgrq/bfbcg/bgcrodr/bgmres) are BlockGram/
+  GEMM-based (gcrodr Gram→GEMM already shipped, ec8bae3), no hand-rolled reduction debt. The ONLY
+  hand-rolled reductions left are in the UN-benchmarked block solvers (bidr/blsmr/bbiCGStab/btfqmr/
+  bcraig/bcraigmr): BlockFrobDot (whole-block Frobenius dot, 16 call sites) + per-row/per-col norm
+  loops. Tried rerouting BlockFrobDot to the multi-accumulator vecDot (self-dot NoAlias is fine —
+  read-only, same as Blas.dot(a,a) library-wide). MEASURED: it BREAKS the block battery — bidr float
+  matrix-10 flips 0→2 non-converged, because the multi-acc fold changes ‖R‖_F at ULP level and shifts
+  bidr's convergence detection. REVERTED. This upgrades the earlier "recommended skip" (memory) to a
+  measured fact: BlockFrobDot must stay a sequential accumulate. Also: these solvers have NO benchmark
+  at all, so any block-reduction opt here is unmeasurable without adding one — and the reductions are
+  O(s·n) in O(nnz·s)+O(s²·n) code. Net: the Krylov SIMD sweep is complete; no code change kept. Real
+  remaining reduction targets are OUTSIDE Krylov (QueryOP argMaxRowNorm, Eigen/LOBPCG/ladIRLS dots).
+
 ## Krylov.GMRES / Krylov.FGMRES — merge into a shared GmresCore
 - 2026-07-22 | gmres and fgmres were ~95% identical (Arnoldi-MGS + incremental Givens LS + restart);
   the only diffs were the preconditioned-basis storage and the solution update. Extracted the single
