@@ -1,6 +1,19 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.CG / Krylov.MINRES — collapse per-preconditioner BSR overloads to generic
+- 2026-07-22 | Each file had 18 concrete BSR overloads (BlockJacobi/SSOR/IC0/FSAI/Chebyshev/
+  AdditiveSchwarz × zero-alloc/arena/default rungs), every one a pure forward
+  `cg(new fProxyBSROperator(in A), in M, …)`. Since preconditioners are generic
+  (`TPre : IfProxyPreconditioner`), collapsed each 18 → 3 generic `cg<TPre>(in fProxyBSR A, in TPre M, …)`
+  (one per rung). C# infers TPre from the concrete M, so ALL existing call sites bind unchanged
+  (507/507, no test edits). No ambiguity with the fully-generic `<TOp,TPre>` since fProxyBSR isn't an
+  IfProxyLinearOperator. Only loss = per-type IntelliSense doc text (cosmetic). This REVERSES the
+  earlier "keep the overload ladder as-is" stance on the per-preconditioner-TYPE axis (the rung axis
+  is untouched) — user-directed. Rollout candidates enumerated for the rest of the family (BiCGStab
+  3 types, IDR 2, MINRESQLP/GMRES/FGMRES/GCRODR/TFQMR + block twins 1 each, LOBPCG 3) — same
+  transform, smaller per-file wins.
+
 ## Krylov.Block.* — more shared helpers (thresholds, LS-exit tail)
 - 2026-07-22 | `BuildColumnThresholdsPlain` (un-floored tol²·‖B[j]‖², the twin of the floored
   `BuildColumnThresholds`) folds the inline threshold loop in bcg/bfbcg/bcgrq/bbiCGStab/bidr.

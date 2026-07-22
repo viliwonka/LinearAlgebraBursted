@@ -264,23 +264,26 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Preconditioned Conjugate Gradient over a block-sparse (BSR) SPD matrix with its
-        /// matching block-Jacobi preconditioner. Forwards into <see cref="cg{TOp,TPre}"/> via
-        /// <c>floatBSROperator</c>.
+        /// Preconditioned Conjugate Gradient over a block-sparse (BSR) SPD matrix with ANY
+        /// <see cref="IfloatPreconditioner"/> (block-Jacobi/SSOR/IC0/FSAI/Chebyshev/additive-Schwarz).
+        /// Forwards into <see cref="cg{TOp,TPre}"/> via <c>floatBSROperator</c>.
         /// </summary>
-        public static SolveInfo cg(in floatBSR A, in floatBlockJacobi M, in floatN b, ref floatN x,
+        public static SolveInfo cg<TPre>(in floatBSR A, in TPre M, in floatN b, ref floatN x,
                                ref floatN r, ref floatN p, ref floatN Ap, ref floatN z,
                                int maxIter, float tol)
+            where TPre : struct, IfloatPreconditioner
         {
             return cg(new floatBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
         }
 
         /// <summary>
-        /// Block-Jacobi Preconditioned Conjugate Gradient over a BSR SPD matrix — allocates four
-        /// scratch vectors from the arena and calls the zero-alloc primitive.
+        /// Preconditioned Conjugate Gradient over a BSR SPD matrix with ANY
+        /// <see cref="IfloatPreconditioner"/> (block-Jacobi/SSOR/IC0/FSAI/Chebyshev/additive-Schwarz)
+        /// -- allocates four scratch vectors from the arena and calls the zero-alloc primitive.
         /// </summary>
-        public static SolveInfo cg(in floatBSR A, in floatBlockJacobi M, in floatN b, ref floatN x,
+        public static SolveInfo cg<TPre>(in floatBSR A, in TPre M, in floatN b, ref floatN x,
                                int maxIter, float tol)
+            where TPre : struct, IfloatPreconditioner
         {
             floatN r  = b.floatTempVec(A.M_Rows);
             floatN p  = b.floatTempVec(A.M_Rows);
@@ -290,191 +293,12 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Block-Jacobi Preconditioned Conjugate Gradient over a BSR SPD matrix, with default
-        /// maxIter (A.M_Rows) and tol (Consts.floatSqrtEps).
+        /// Preconditioned Conjugate Gradient over a BSR SPD matrix with ANY
+        /// <see cref="IfloatPreconditioner"/> (block-Jacobi/SSOR/IC0/FSAI/Chebyshev/additive-Schwarz),
+        /// with default maxIter (A.M_Rows) and tol (Consts.floatSqrtEps).
         /// </summary>
-        public static SolveInfo cg(in floatBSR A, in floatBlockJacobi M, in floatN b, ref floatN x)
-        {
-            return cg(in A, in M, in b, ref x, A.M_Rows, Consts.floatSqrtEps);
-        }
-
-        /// <summary>
-        /// Preconditioned Conjugate Gradient over a block-sparse (BSR) SPD matrix with its
-        /// matching SSOR preconditioner. Forwards into <see cref="cg{TOp,TPre}"/> via
-        /// <c>floatBSROperator</c> -- same three-rung BSR convenience pattern as the block-Jacobi
-        /// overloads above.
-        /// </summary>
-        public static SolveInfo cg(in floatBSR A, in floatSSOR M, in floatN b, ref floatN x,
-                               ref floatN r, ref floatN p, ref floatN Ap, ref floatN z,
-                               int maxIter, float tol)
-        {
-            return cg(new floatBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
-        }
-
-        /// <summary>
-        /// SSOR Preconditioned Conjugate Gradient over a BSR SPD matrix -- allocates four scratch
-        /// vectors from the arena and calls the zero-alloc primitive.
-        /// </summary>
-        public static SolveInfo cg(in floatBSR A, in floatSSOR M, in floatN b, ref floatN x,
-                               int maxIter, float tol)
-        {
-            floatN r  = b.floatTempVec(A.M_Rows);
-            floatN p  = b.floatTempVec(A.M_Rows);
-            floatN Ap = b.floatTempVec(A.M_Rows);
-            floatN z  = b.floatTempVec(A.M_Rows);
-            return cg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
-        }
-
-        /// <summary>
-        /// SSOR Preconditioned Conjugate Gradient over a BSR SPD matrix, with default
-        /// maxIter (A.M_Rows) and tol (Consts.floatSqrtEps).
-        /// </summary>
-        public static SolveInfo cg(in floatBSR A, in floatSSOR M, in floatN b, ref floatN x)
-        {
-            return cg(in A, in M, in b, ref x, A.M_Rows, Consts.floatSqrtEps);
-        }
-
-        /// <summary>
-        /// Preconditioned Conjugate Gradient over a block-sparse (BSR) SPD matrix with its
-        /// matching block IC(0) preconditioner. Forwards into <see cref="cg{TOp,TPre}"/> via
-        /// <c>floatBSROperator</c> -- same three-rung BSR convenience pattern as the block-Jacobi
-        /// and SSOR overloads above.
-        /// </summary>
-        public static SolveInfo cg(in floatBSR A, in floatIC0 M, in floatN b, ref floatN x,
-                               ref floatN r, ref floatN p, ref floatN Ap, ref floatN z,
-                               int maxIter, float tol)
-        {
-            return cg(new floatBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
-        }
-
-        /// <summary>
-        /// IC(0) Preconditioned Conjugate Gradient over a BSR SPD matrix -- allocates four scratch
-        /// vectors from the arena and calls the zero-alloc primitive.
-        /// </summary>
-        public static SolveInfo cg(in floatBSR A, in floatIC0 M, in floatN b, ref floatN x,
-                               int maxIter, float tol)
-        {
-            floatN r  = b.floatTempVec(A.M_Rows);
-            floatN p  = b.floatTempVec(A.M_Rows);
-            floatN Ap = b.floatTempVec(A.M_Rows);
-            floatN z  = b.floatTempVec(A.M_Rows);
-            return cg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
-        }
-
-        /// <summary>
-        /// IC(0) Preconditioned Conjugate Gradient over a BSR SPD matrix, with default
-        /// maxIter (A.M_Rows) and tol (Consts.floatSqrtEps).
-        /// </summary>
-        public static SolveInfo cg(in floatBSR A, in floatIC0 M, in floatN b, ref floatN x)
-        {
-            return cg(in A, in M, in b, ref x, A.M_Rows, Consts.floatSqrtEps);
-        }
-
-        /// <summary>
-        /// Preconditioned Conjugate Gradient over a block-sparse (BSR) SPD matrix with its
-        /// matching FSAI preconditioner. Forwards into <see cref="cg{TOp,TPre}"/> via
-        /// <c>floatBSROperator</c> -- same three-rung BSR convenience pattern as the block-Jacobi,
-        /// SSOR, and IC0 overloads above.
-        /// </summary>
-        public static SolveInfo cg(in floatBSR A, in floatFSAI M, in floatN b, ref floatN x,
-                               ref floatN r, ref floatN p, ref floatN Ap, ref floatN z,
-                               int maxIter, float tol)
-        {
-            return cg(new floatBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
-        }
-
-        /// <summary>
-        /// FSAI Preconditioned Conjugate Gradient over a BSR SPD matrix -- allocates four scratch
-        /// vectors from the arena and calls the zero-alloc primitive.
-        /// </summary>
-        public static SolveInfo cg(in floatBSR A, in floatFSAI M, in floatN b, ref floatN x,
-                               int maxIter, float tol)
-        {
-            floatN r  = b.floatTempVec(A.M_Rows);
-            floatN p  = b.floatTempVec(A.M_Rows);
-            floatN Ap = b.floatTempVec(A.M_Rows);
-            floatN z  = b.floatTempVec(A.M_Rows);
-            return cg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
-        }
-
-        /// <summary>
-        /// FSAI Preconditioned Conjugate Gradient over a BSR SPD matrix, with default
-        /// maxIter (A.M_Rows) and tol (Consts.floatSqrtEps).
-        /// </summary>
-        public static SolveInfo cg(in floatBSR A, in floatFSAI M, in floatN b, ref floatN x)
-        {
-            return cg(in A, in M, in b, ref x, A.M_Rows, Consts.floatSqrtEps);
-        }
-
-        /// <summary>
-        /// Preconditioned Conjugate Gradient over a block-sparse (BSR) SPD matrix with its
-        /// matching Chebyshev preconditioner. Forwards into <see cref="cg{TOp,TPre}"/> via
-        /// <c>floatBSROperator</c> -- same three-rung BSR convenience pattern as the block-Jacobi,
-        /// SSOR, and IC0 overloads above.
-        /// </summary>
-        public static SolveInfo cg(in floatBSR A, in floatChebyshev M, in floatN b, ref floatN x,
-                               ref floatN r, ref floatN p, ref floatN Ap, ref floatN z,
-                               int maxIter, float tol)
-        {
-            return cg(new floatBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
-        }
-
-        /// <summary>
-        /// Chebyshev Preconditioned Conjugate Gradient over a BSR SPD matrix -- allocates four
-        /// scratch vectors from the arena and calls the zero-alloc primitive.
-        /// </summary>
-        public static SolveInfo cg(in floatBSR A, in floatChebyshev M, in floatN b, ref floatN x,
-                               int maxIter, float tol)
-        {
-            floatN r  = b.floatTempVec(A.M_Rows);
-            floatN p  = b.floatTempVec(A.M_Rows);
-            floatN Ap = b.floatTempVec(A.M_Rows);
-            floatN z  = b.floatTempVec(A.M_Rows);
-            return cg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
-        }
-
-        /// <summary>
-        /// Chebyshev Preconditioned Conjugate Gradient over a BSR SPD matrix, with default
-        /// maxIter (A.M_Rows) and tol (Consts.floatSqrtEps).
-        /// </summary>
-        public static SolveInfo cg(in floatBSR A, in floatChebyshev M, in floatN b, ref floatN x)
-        {
-            return cg(in A, in M, in b, ref x, A.M_Rows, Consts.floatSqrtEps);
-        }
-
-        /// <summary>
-        /// Preconditioned Conjugate Gradient over a block-sparse (BSR) SPD matrix with its matching
-        /// symmetric additive-Schwarz preconditioner. Forwards into <see cref="cg{TOp,TPre}"/> via
-        /// <c>floatBSROperator</c> -- same three-rung BSR convenience pattern as the block-Jacobi,
-        /// SSOR, IC0, FSAI, and Chebyshev overloads above. Restricted Schwarz (RAS) is NOT symmetric
-        /// and has no cg rung (biCGStab only) -- that absence is the CG-safety guard.
-        /// </summary>
-        public static SolveInfo cg(in floatBSR A, in floatAdditiveSchwarz M, in floatN b, ref floatN x,
-                               ref floatN r, ref floatN p, ref floatN Ap, ref floatN z,
-                               int maxIter, float tol)
-        {
-            return cg(new floatBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
-        }
-
-        /// <summary>
-        /// Additive-Schwarz Preconditioned Conjugate Gradient over a BSR SPD matrix -- allocates four
-        /// scratch vectors from the arena and calls the zero-alloc primitive.
-        /// </summary>
-        public static SolveInfo cg(in floatBSR A, in floatAdditiveSchwarz M, in floatN b, ref floatN x,
-                               int maxIter, float tol)
-        {
-            floatN r  = b.floatTempVec(A.M_Rows);
-            floatN p  = b.floatTempVec(A.M_Rows);
-            floatN Ap = b.floatTempVec(A.M_Rows);
-            floatN z  = b.floatTempVec(A.M_Rows);
-            return cg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
-        }
-
-        /// <summary>
-        /// Additive-Schwarz Preconditioned Conjugate Gradient over a BSR SPD matrix, with default
-        /// maxIter (A.M_Rows) and tol (Consts.floatSqrtEps).
-        /// </summary>
-        public static SolveInfo cg(in floatBSR A, in floatAdditiveSchwarz M, in floatN b, ref floatN x)
+        public static SolveInfo cg<TPre>(in floatBSR A, in TPre M, in floatN b, ref floatN x)
+            where TPre : struct, IfloatPreconditioner
         {
             return cg(in A, in M, in b, ref x, A.M_Rows, Consts.floatSqrtEps);
         }

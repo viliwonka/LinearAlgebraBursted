@@ -328,24 +328,27 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Preconditioned MINRES over a block-sparse (BSR) matrix with its matching block-Jacobi
-        /// preconditioner. Forwards into <see cref="minres{TOp,TPre}"/> via
-        /// <c>doubleBSROperator</c>.
+        /// Preconditioned MINRES over a block-sparse (BSR) matrix with ANY
+        /// <see cref="IdoublePreconditioner"/> (block-Jacobi/SSOR/IC0/FSAI/Chebyshev/additive-Schwarz).
+        /// Forwards into <see cref="minres{TOp,TPre}"/> via <c>doubleBSROperator</c>.
         /// </summary>
-        public static SolveInfo minres(in doubleBSR A, in doubleBlockJacobi M, in doubleN b, ref doubleN x,
+        public static SolveInfo minres<TPre>(in doubleBSR A, in TPre M, in doubleN b, ref doubleN x,
                                ref doubleN y, ref doubleN r1, ref doubleN r2, ref doubleN v,
                                ref doubleN w, ref doubleN w1, ref doubleN w2, ref doubleN z,
                                int maxIter, double tol)
+            where TPre : struct, IdoublePreconditioner
         {
             return minres(new doubleBSROperator(in A), in M, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, ref z, maxIter, tol);
         }
 
         /// <summary>
-        /// Block-Jacobi Preconditioned MINRES over a BSR matrix -- allocates eight scratch
+        /// Preconditioned MINRES over a BSR matrix with ANY <see cref="IdoublePreconditioner"/>
+        /// (block-Jacobi/SSOR/IC0/FSAI/Chebyshev/additive-Schwarz) -- allocates eight scratch
         /// vectors from the arena and calls the zero-alloc primitive.
         /// </summary>
-        public static SolveInfo minres(in doubleBSR A, in doubleBlockJacobi M, in doubleN b, ref doubleN x,
+        public static SolveInfo minres<TPre>(in doubleBSR A, in TPre M, in doubleN b, ref doubleN x,
                                int maxIter, double tol)
+            where TPre : struct, IdoublePreconditioner
         {
             doubleN y  = b.doubleTempVec(A.M_Rows);
             doubleN r1 = b.doubleTempVec(A.M_Rows);
@@ -359,218 +362,12 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Block-Jacobi Preconditioned MINRES over a BSR matrix, with default maxIter (A.M_Rows)
+        /// Preconditioned MINRES over a BSR matrix with ANY <see cref="IdoublePreconditioner"/>
+        /// (block-Jacobi/SSOR/IC0/FSAI/Chebyshev/additive-Schwarz), with default maxIter (A.M_Rows)
         /// and tol (Consts.doubleSqrtEps).
         /// </summary>
-        public static SolveInfo minres(in doubleBSR A, in doubleBlockJacobi M, in doubleN b, ref doubleN x)
-        {
-            return minres(in A, in M, in b, ref x, A.M_Rows, Consts.doubleSqrtEps);
-        }
-
-        /// <summary>
-        /// Preconditioned MINRES over a block-sparse (BSR) matrix with its matching SSOR
-        /// preconditioner. Forwards into <see cref="minres{TOp,TPre}"/> via
-        /// <c>doubleBSROperator</c> -- same three-rung BSR convenience pattern as the block-Jacobi
-        /// overloads above.
-        /// </summary>
-        public static SolveInfo minres(in doubleBSR A, in doubleSSOR M, in doubleN b, ref doubleN x,
-                               ref doubleN y, ref doubleN r1, ref doubleN r2, ref doubleN v,
-                               ref doubleN w, ref doubleN w1, ref doubleN w2, ref doubleN z,
-                               int maxIter, double tol)
-        {
-            return minres(new doubleBSROperator(in A), in M, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, ref z, maxIter, tol);
-        }
-
-        /// <summary>
-        /// SSOR Preconditioned MINRES over a BSR matrix -- allocates eight scratch vectors from
-        /// the arena and calls the zero-alloc primitive.
-        /// </summary>
-        public static SolveInfo minres(in doubleBSR A, in doubleSSOR M, in doubleN b, ref doubleN x,
-                               int maxIter, double tol)
-        {
-            doubleN y  = b.doubleTempVec(A.M_Rows);
-            doubleN r1 = b.doubleTempVec(A.M_Rows);
-            doubleN r2 = b.doubleTempVec(A.M_Rows);
-            doubleN v  = b.doubleTempVec(A.M_Rows);
-            doubleN w  = b.doubleTempVec(A.M_Rows);
-            doubleN w1 = b.doubleTempVec(A.M_Rows);
-            doubleN w2 = b.doubleTempVec(A.M_Rows);
-            doubleN z  = b.doubleTempVec(A.M_Rows);
-            return minres(in A, in M, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, ref z, maxIter, tol);
-        }
-
-        /// <summary>
-        /// SSOR Preconditioned MINRES over a BSR matrix, with default maxIter (A.M_Rows) and tol
-        /// (Consts.doubleSqrtEps).
-        /// </summary>
-        public static SolveInfo minres(in doubleBSR A, in doubleSSOR M, in doubleN b, ref doubleN x)
-        {
-            return minres(in A, in M, in b, ref x, A.M_Rows, Consts.doubleSqrtEps);
-        }
-
-        /// <summary>
-        /// Preconditioned MINRES over a block-sparse (BSR) matrix with its matching block IC(0)
-        /// preconditioner. Forwards into <see cref="minres{TOp,TPre}"/> via
-        /// <c>doubleBSROperator</c> -- same three-rung BSR convenience pattern as the block-Jacobi
-        /// and SSOR overloads above.
-        /// </summary>
-        public static SolveInfo minres(in doubleBSR A, in doubleIC0 M, in doubleN b, ref doubleN x,
-                               ref doubleN y, ref doubleN r1, ref doubleN r2, ref doubleN v,
-                               ref doubleN w, ref doubleN w1, ref doubleN w2, ref doubleN z,
-                               int maxIter, double tol)
-        {
-            return minres(new doubleBSROperator(in A), in M, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, ref z, maxIter, tol);
-        }
-
-        /// <summary>
-        /// IC(0) Preconditioned MINRES over a BSR matrix -- allocates eight scratch vectors from
-        /// the arena and calls the zero-alloc primitive.
-        /// </summary>
-        public static SolveInfo minres(in doubleBSR A, in doubleIC0 M, in doubleN b, ref doubleN x,
-                               int maxIter, double tol)
-        {
-            doubleN y  = b.doubleTempVec(A.M_Rows);
-            doubleN r1 = b.doubleTempVec(A.M_Rows);
-            doubleN r2 = b.doubleTempVec(A.M_Rows);
-            doubleN v  = b.doubleTempVec(A.M_Rows);
-            doubleN w  = b.doubleTempVec(A.M_Rows);
-            doubleN w1 = b.doubleTempVec(A.M_Rows);
-            doubleN w2 = b.doubleTempVec(A.M_Rows);
-            doubleN z  = b.doubleTempVec(A.M_Rows);
-            return minres(in A, in M, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, ref z, maxIter, tol);
-        }
-
-        /// <summary>
-        /// IC(0) Preconditioned MINRES over a BSR matrix, with default maxIter (A.M_Rows) and tol
-        /// (Consts.doubleSqrtEps).
-        /// </summary>
-        public static SolveInfo minres(in doubleBSR A, in doubleIC0 M, in doubleN b, ref doubleN x)
-        {
-            return minres(in A, in M, in b, ref x, A.M_Rows, Consts.doubleSqrtEps);
-        }
-
-        /// <summary>
-        /// Preconditioned MINRES over a block-sparse (BSR) matrix with its matching FSAI
-        /// preconditioner. Forwards into <see cref="minres{TOp,TPre}"/> via
-        /// <c>doubleBSROperator</c> -- same three-rung BSR convenience pattern as the block-Jacobi
-        /// and IC0 overloads above. FSAI's local SPD solves need A[J,J] SPD; on an indefinite A
-        /// build may fall back to shifted rows (same practical caveat IC0 already carries on
-        /// minres).
-        /// </summary>
-        public static SolveInfo minres(in doubleBSR A, in doubleFSAI M, in doubleN b, ref doubleN x,
-                               ref doubleN y, ref doubleN r1, ref doubleN r2, ref doubleN v,
-                               ref doubleN w, ref doubleN w1, ref doubleN w2, ref doubleN z,
-                               int maxIter, double tol)
-        {
-            return minres(new doubleBSROperator(in A), in M, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, ref z, maxIter, tol);
-        }
-
-        /// <summary>
-        /// FSAI Preconditioned MINRES over a BSR matrix -- allocates eight scratch vectors from
-        /// the arena and calls the zero-alloc primitive.
-        /// </summary>
-        public static SolveInfo minres(in doubleBSR A, in doubleFSAI M, in doubleN b, ref doubleN x,
-                               int maxIter, double tol)
-        {
-            doubleN y  = b.doubleTempVec(A.M_Rows);
-            doubleN r1 = b.doubleTempVec(A.M_Rows);
-            doubleN r2 = b.doubleTempVec(A.M_Rows);
-            doubleN v  = b.doubleTempVec(A.M_Rows);
-            doubleN w  = b.doubleTempVec(A.M_Rows);
-            doubleN w1 = b.doubleTempVec(A.M_Rows);
-            doubleN w2 = b.doubleTempVec(A.M_Rows);
-            doubleN z  = b.doubleTempVec(A.M_Rows);
-            return minres(in A, in M, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, ref z, maxIter, tol);
-        }
-
-        /// <summary>
-        /// FSAI Preconditioned MINRES over a BSR matrix, with default maxIter (A.M_Rows) and tol
-        /// (Consts.doubleSqrtEps).
-        /// </summary>
-        public static SolveInfo minres(in doubleBSR A, in doubleFSAI M, in doubleN b, ref doubleN x)
-        {
-            return minres(in A, in M, in b, ref x, A.M_Rows, Consts.doubleSqrtEps);
-        }
-
-        /// <summary>
-        /// Preconditioned MINRES over a block-sparse (BSR) matrix with its matching Chebyshev
-        /// preconditioner. Forwards into <see cref="minres{TOp,TPre}"/> via
-        /// <c>doubleBSROperator</c> -- same three-rung BSR convenience pattern as the block-Jacobi,
-        /// SSOR, and IC0 overloads above.
-        /// </summary>
-        public static SolveInfo minres(in doubleBSR A, in doubleChebyshev M, in doubleN b, ref doubleN x,
-                               ref doubleN y, ref doubleN r1, ref doubleN r2, ref doubleN v,
-                               ref doubleN w, ref doubleN w1, ref doubleN w2, ref doubleN z,
-                               int maxIter, double tol)
-        {
-            return minres(new doubleBSROperator(in A), in M, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, ref z, maxIter, tol);
-        }
-
-        /// <summary>
-        /// Chebyshev Preconditioned MINRES over a BSR matrix -- allocates eight scratch vectors
-        /// from the arena and calls the zero-alloc primitive.
-        /// </summary>
-        public static SolveInfo minres(in doubleBSR A, in doubleChebyshev M, in doubleN b, ref doubleN x,
-                               int maxIter, double tol)
-        {
-            doubleN y  = b.doubleTempVec(A.M_Rows);
-            doubleN r1 = b.doubleTempVec(A.M_Rows);
-            doubleN r2 = b.doubleTempVec(A.M_Rows);
-            doubleN v  = b.doubleTempVec(A.M_Rows);
-            doubleN w  = b.doubleTempVec(A.M_Rows);
-            doubleN w1 = b.doubleTempVec(A.M_Rows);
-            doubleN w2 = b.doubleTempVec(A.M_Rows);
-            doubleN z  = b.doubleTempVec(A.M_Rows);
-            return minres(in A, in M, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, ref z, maxIter, tol);
-        }
-
-        /// <summary>
-        /// Chebyshev Preconditioned MINRES over a BSR matrix, with default maxIter (A.M_Rows) and
-        /// tol (Consts.doubleSqrtEps).
-        /// </summary>
-        public static SolveInfo minres(in doubleBSR A, in doubleChebyshev M, in doubleN b, ref doubleN x)
-        {
-            return minres(in A, in M, in b, ref x, A.M_Rows, Consts.doubleSqrtEps);
-        }
-
-        /// <summary>
-        /// Preconditioned MINRES over a block-sparse (BSR) matrix with its matching symmetric
-        /// additive-Schwarz preconditioner. Forwards into <see cref="minres{TOp,TPre}"/> via
-        /// <c>doubleBSROperator</c> -- same three-rung BSR convenience pattern as the block-Jacobi
-        /// and IC0 overloads above. AS is SPD whenever its build reports Success, so it is a valid
-        /// MINRES preconditioner; restricted Schwarz (RAS) is NOT symmetric and has no minres rung.
-        /// </summary>
-        public static SolveInfo minres(in doubleBSR A, in doubleAdditiveSchwarz M, in doubleN b, ref doubleN x,
-                               ref doubleN y, ref doubleN r1, ref doubleN r2, ref doubleN v,
-                               ref doubleN w, ref doubleN w1, ref doubleN w2, ref doubleN z,
-                               int maxIter, double tol)
-        {
-            return minres(new doubleBSROperator(in A), in M, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, ref z, maxIter, tol);
-        }
-
-        /// <summary>
-        /// Additive-Schwarz Preconditioned MINRES over a BSR matrix -- allocates eight scratch
-        /// vectors from the arena and calls the zero-alloc primitive.
-        /// </summary>
-        public static SolveInfo minres(in doubleBSR A, in doubleAdditiveSchwarz M, in doubleN b, ref doubleN x,
-                               int maxIter, double tol)
-        {
-            doubleN y  = b.doubleTempVec(A.M_Rows);
-            doubleN r1 = b.doubleTempVec(A.M_Rows);
-            doubleN r2 = b.doubleTempVec(A.M_Rows);
-            doubleN v  = b.doubleTempVec(A.M_Rows);
-            doubleN w  = b.doubleTempVec(A.M_Rows);
-            doubleN w1 = b.doubleTempVec(A.M_Rows);
-            doubleN w2 = b.doubleTempVec(A.M_Rows);
-            doubleN z  = b.doubleTempVec(A.M_Rows);
-            return minres(in A, in M, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, ref z, maxIter, tol);
-        }
-
-        /// <summary>
-        /// Additive-Schwarz Preconditioned MINRES over a BSR matrix, with default maxIter (A.M_Rows)
-        /// and tol (Consts.doubleSqrtEps).
-        /// </summary>
-        public static SolveInfo minres(in doubleBSR A, in doubleAdditiveSchwarz M, in doubleN b, ref doubleN x)
+        public static SolveInfo minres<TPre>(in doubleBSR A, in TPre M, in doubleN b, ref doubleN x)
+            where TPre : struct, IdoublePreconditioner
         {
             return minres(in A, in M, in b, ref x, A.M_Rows, Consts.doubleSqrtEps);
         }
