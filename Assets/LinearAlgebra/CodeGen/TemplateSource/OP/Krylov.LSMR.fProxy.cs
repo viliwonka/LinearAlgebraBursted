@@ -424,5 +424,67 @@ namespace LinearAlgebra
         /// <summary>LSMR + Jacobi (BSR), default maxIter (A.N_Cols) / tol (Consts.fProxySqrtEps).</summary>
         public static LstsqInfo lsmrJacobi(in fProxyBSR A, in fProxyN b, ref fProxyN x)
             => lsmrJacobi(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
+
+        // ---- LSMR + general (non-symmetric) right (column) preconditioner ----
+        /// <summary>
+        /// LSMR with a caller-supplied GENERAL right (column) preconditioner N (n×n), supplied as an
+        /// <see cref="IfProxyLinearOperator"/> rather than an <see cref="IfProxyPreconditioner"/>, so
+        /// N need NOT be symmetric: the wrapped transpose uses N's own <c>ApplyT</c>, giving
+        /// (A·N)ᵀ = Nᵀ·Aᵀ. Solves min ‖Ax-b‖² + damp²‖N⁻¹x‖² through the change of variables x = N·y
+        /// (COLD start -- x is zeroed internally), then reports diagnostics in ORIGINAL coordinates
+        /// (see <c>RightPreFinishOp</c>). This unlocks the strong least-squares preconditioners the
+        /// symmetric path can't express -- N = R⁻¹ from a QR or randomized sketch of A
+        /// (Blendenpik/LSRN), for which A·N ≈ Q and convergence is near-immediate. The damped term
+        /// penalizes ‖y‖ = ‖N⁻¹x‖, NOT ‖x‖. Allocates from b's temp pool.
+        /// </summary>
+        public static LstsqInfo lsmrRightPreOp<TPreN>(in fProxyMxN A, in TPreN N, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol, fProxy damp)
+            where TPreN : struct, IfProxyLinearOperator
+            => LsmrRightPreOpCore(new fProxyDenseOperator(in A), in N, in b, ref x, maxIter, tol, damp);
+
+        /// <summary>Undamped general right-preconditioned LSMR over a dense matrix (damp = 0).</summary>
+        public static LstsqInfo lsmrRightPreOp<TPreN>(in fProxyMxN A, in TPreN N, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol)
+            where TPreN : struct, IfProxyLinearOperator
+            => LsmrRightPreOpCore(new fProxyDenseOperator(in A), in N, in b, ref x, maxIter, tol, (fProxy)0);
+
+        /// <summary>General right-preconditioned LSMR (dense), default maxIter (A.N_Cols) / tol (Consts.fProxySqrtEps).</summary>
+        public static LstsqInfo lsmrRightPreOp<TPreN>(in fProxyMxN A, in TPreN N, in fProxyN b, ref fProxyN x)
+            where TPreN : struct, IfProxyLinearOperator
+            => LsmrRightPreOpCore(new fProxyDenseOperator(in A), in N, in b, ref x, A.N_Cols, Consts.fProxySqrtEps, (fProxy)0);
+
+        /// <summary>General right-preconditioned damped LSMR over a BSR matrix (materializes Aᵀ once)
+        /// -- same contract as the dense overload.</summary>
+        public static LstsqInfo lsmrRightPreOp<TPreN>(in fProxyBSR A, in TPreN N, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol, fProxy damp)
+            where TPreN : struct, IfProxyLinearOperator
+        {
+            fProxyBSR AT = b.fProxyBSRTranspose(in A);
+            return LsmrRightPreOpCore(new fProxyBSROperator(in A, in AT), in N, in b, ref x, maxIter, tol, damp);
+        }
+
+        /// <summary>Undamped general right-preconditioned LSMR over a BSR matrix (damp = 0, materializes Aᵀ once).</summary>
+        public static LstsqInfo lsmrRightPreOp<TPreN>(in fProxyBSR A, in TPreN N, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol)
+            where TPreN : struct, IfProxyLinearOperator
+            => lsmrRightPreOp(in A, in N, in b, ref x, maxIter, tol, (fProxy)0);
+
+        /// <summary>General right-preconditioned LSMR (BSR), default maxIter (A.N_Cols) / tol (Consts.fProxySqrtEps).</summary>
+        public static LstsqInfo lsmrRightPreOp<TPreN>(in fProxyBSR A, in TPreN N, in fProxyN b, ref fProxyN x)
+            where TPreN : struct, IfProxyLinearOperator
+            => lsmrRightPreOp(in A, in N, in b, ref x, A.N_Cols, Consts.fProxySqrtEps, (fProxy)0);
+
+        /// <summary>Shared worker for the general right-preconditioned LSMR entry points: wrap Aop as
+        /// A·N with an operator-valued N, cold-start, solve (A·N)y = b, then map back and re-audit via
+        /// <c>RightPreFinishOp</c>. Scratch is temp-pool allocated from b.</summary>
+        static LstsqInfo LsmrRightPreOpCore<TOp, TPreN>(in TOp Aop, in TPreN N, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol, fProxy damp)
+            where TOp : struct, IfProxyLinearOperator
+            where TPreN : struct, IfProxyLinearOperator
+        {
+            int m = Aop.Rows, n = Aop.Cols;
+            fProxyN scratch = b.fProxyTempVec(n);
+            var op = new fProxyGeneralRightPreconditionedOperator<TOp, TPreN>(in Aop, in N, in scratch);
+
+            for (int j = 0; j < n; j++) x[j] = (fProxy)0;
+            fProxyN u = b.fProxyTempVec(m), v = b.fProxyTempVec(n), h = b.fProxyTempVec(n), hbar = b.fProxyTempVec(n), tmpM = b.fProxyTempVec(m), tmpN = b.fProxyTempVec(n);
+            var solveInfo = lsmr(op, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIter, tol, damp);
+            return RightPreFinishOp(in Aop, in N, in b, ref x, damp, solveInfo.iterations, solveInfo.status, ref u, ref v);
+        }
     }
 }

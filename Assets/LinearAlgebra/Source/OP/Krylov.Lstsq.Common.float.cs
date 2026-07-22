@@ -121,5 +121,24 @@ namespace LinearAlgebra
             info.status = status;
             return info;
         }
+
+        /// <summary>Right-preconditioned tail for a GENERAL (operator-valued) preconditioner N: same
+        /// as <see cref="RightPreFinish{TOp,TPre}"/> but N is an <see cref="IfloatLinearOperator"/>
+        /// (need not be symmetric). Maps the solution x = N·y (y arriving in x) back to the ORIGINAL
+        /// variables via <c>N.Apply</c>, then re-audits rnorm/Arnorm/xnorm on the UNWRAPPED operator
+        /// via <see cref="lstsqResidual"/>, keeping the solve's iteration count and status.</summary>
+        static LstsqInfo RightPreFinishOp<TOp, TPreN>(in TOp Aop, in TPreN N, in floatN b, ref floatN x,
+                                                 float damp, int iterations, IterativeSolveStatus status,
+                                                 ref floatN mScratch, ref floatN nScratch)
+            where TOp : struct, IfloatLinearOperator
+            where TPreN : struct, IfloatLinearOperator
+        {
+            N.Apply(in x, ref nScratch);                     // x holds y: nScratch = N·y
+            x.CopyFrom(in nScratch);
+            var info = lstsqResidual(in Aop, in b, in x, damp, ref mScratch, ref nScratch);
+            info.iterations = iterations;
+            info.status = status;
+            return info;
+        }
     }
 }

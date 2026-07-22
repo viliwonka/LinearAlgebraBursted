@@ -387,5 +387,67 @@ namespace LinearAlgebra
         /// <summary>LSQR + Jacobi (BSR), default maxIter (A.N_Cols) / tol (Consts.doubleSqrtEps).</summary>
         public static LstsqInfo lsqrJacobi(in doubleBSR A, in doubleN b, ref doubleN x)
             => lsqrJacobi(in A, in b, ref x, A.N_Cols, Consts.doubleSqrtEps);
+
+        // ---- LSQR + general (non-symmetric) right (column) preconditioner ----
+        /// <summary>
+        /// LSQR with a caller-supplied GENERAL right (column) preconditioner N (n×n), supplied as an
+        /// <see cref="IdoubleLinearOperator"/> rather than an <see cref="IdoublePreconditioner"/>, so
+        /// N need NOT be symmetric: the wrapped transpose uses N's own <c>ApplyT</c>, giving
+        /// (A·N)ᵀ = Nᵀ·Aᵀ. Solves min ‖Ax-b‖² + damp²‖N⁻¹x‖² through the change of variables x = N·y
+        /// (COLD start -- x is zeroed internally), then reports diagnostics in ORIGINAL coordinates
+        /// (see <c>RightPreFinishOp</c>). This unlocks the strong least-squares preconditioners the
+        /// symmetric path can't express -- N = R⁻¹ from a QR or randomized sketch of A
+        /// (Blendenpik/LSRN), for which A·N ≈ Q and convergence is near-immediate. The damped term
+        /// penalizes ‖y‖ = ‖N⁻¹x‖, NOT ‖x‖. Allocates from b's temp pool.
+        /// </summary>
+        public static LstsqInfo lsqrRightPreOp<TPreN>(in doubleMxN A, in TPreN N, in doubleN b, ref doubleN x, int maxIter, double tol, double damp)
+            where TPreN : struct, IdoubleLinearOperator
+            => LsqrRightPreOpCore(new doubleDenseOperator(in A), in N, in b, ref x, maxIter, tol, damp);
+
+        /// <summary>Undamped general right-preconditioned LSQR over a dense matrix (damp = 0).</summary>
+        public static LstsqInfo lsqrRightPreOp<TPreN>(in doubleMxN A, in TPreN N, in doubleN b, ref doubleN x, int maxIter, double tol)
+            where TPreN : struct, IdoubleLinearOperator
+            => LsqrRightPreOpCore(new doubleDenseOperator(in A), in N, in b, ref x, maxIter, tol, (double)0);
+
+        /// <summary>General right-preconditioned LSQR (dense), default maxIter (A.N_Cols) / tol (Consts.doubleSqrtEps).</summary>
+        public static LstsqInfo lsqrRightPreOp<TPreN>(in doubleMxN A, in TPreN N, in doubleN b, ref doubleN x)
+            where TPreN : struct, IdoubleLinearOperator
+            => LsqrRightPreOpCore(new doubleDenseOperator(in A), in N, in b, ref x, A.N_Cols, Consts.doubleSqrtEps, (double)0);
+
+        /// <summary>General right-preconditioned damped LSQR over a BSR matrix (materializes Aᵀ once)
+        /// -- same contract as the dense overload.</summary>
+        public static LstsqInfo lsqrRightPreOp<TPreN>(in doubleBSR A, in TPreN N, in doubleN b, ref doubleN x, int maxIter, double tol, double damp)
+            where TPreN : struct, IdoubleLinearOperator
+        {
+            doubleBSR AT = b.doubleBSRTranspose(in A);
+            return LsqrRightPreOpCore(new doubleBSROperator(in A, in AT), in N, in b, ref x, maxIter, tol, damp);
+        }
+
+        /// <summary>Undamped general right-preconditioned LSQR over a BSR matrix (damp = 0, materializes Aᵀ once).</summary>
+        public static LstsqInfo lsqrRightPreOp<TPreN>(in doubleBSR A, in TPreN N, in doubleN b, ref doubleN x, int maxIter, double tol)
+            where TPreN : struct, IdoubleLinearOperator
+            => lsqrRightPreOp(in A, in N, in b, ref x, maxIter, tol, (double)0);
+
+        /// <summary>General right-preconditioned LSQR (BSR), default maxIter (A.N_Cols) / tol (Consts.doubleSqrtEps).</summary>
+        public static LstsqInfo lsqrRightPreOp<TPreN>(in doubleBSR A, in TPreN N, in doubleN b, ref doubleN x)
+            where TPreN : struct, IdoubleLinearOperator
+            => lsqrRightPreOp(in A, in N, in b, ref x, A.N_Cols, Consts.doubleSqrtEps, (double)0);
+
+        /// <summary>Shared worker for the general right-preconditioned LSQR entry points: wrap Aop as
+        /// A·N with an operator-valued N, cold-start, solve (A·N)y = b, then map back and re-audit via
+        /// <c>RightPreFinishOp</c>. Scratch is temp-pool allocated from b.</summary>
+        static LstsqInfo LsqrRightPreOpCore<TOp, TPreN>(in TOp Aop, in TPreN N, in doubleN b, ref doubleN x, int maxIter, double tol, double damp)
+            where TOp : struct, IdoubleLinearOperator
+            where TPreN : struct, IdoubleLinearOperator
+        {
+            int m = Aop.Rows, n = Aop.Cols;
+            doubleN scratch = b.doubleTempVec(n);
+            var op = new doubleGeneralRightPreconditionedOperator<TOp, TPreN>(in Aop, in N, in scratch);
+
+            for (int j = 0; j < n; j++) x[j] = (double)0;
+            doubleN u = b.doubleTempVec(m), v = b.doubleTempVec(n), w = b.doubleTempVec(n), tmpM = b.doubleTempVec(m), tmpN = b.doubleTempVec(n);
+            var solveInfo = lsqr(op, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIter, tol, damp);
+            return RightPreFinishOp(in Aop, in N, in b, ref x, damp, solveInfo.iterations, solveInfo.status, ref u, ref v);
+        }
     }
 }

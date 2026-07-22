@@ -334,4 +334,84 @@ namespace LinearAlgebra
             rin.Dispose();
         }
     }
+
+    /// <summary>
+    /// Wraps <typeparamref name="TInner"/> with a GENERAL (not necessarily symmetric) right (column)
+    /// preconditioner N (n×n, n = Inner.Cols) supplied as an <see cref="IfloatLinearOperator"/>,
+    /// presenting the operator A·N. <see cref="Apply"/> forms A(N·x); <see cref="ApplyT"/> forms
+    /// Nᵀ(Aᵀx) = (A·N)ᵀx via N's OWN transpose -- so N may be non-symmetric, unlike
+    /// <see cref="floatRightPreconditionedOperator{TInner,TPre}"/> which requires N = Nᵀ. Solve
+    /// (A·N) y = b for y, then recover x = N·y. This is the shape of the strong least-squares right
+    /// preconditioners: N = R⁻¹ from a QR or randomized sketch of A (Blendenpik/LSRN), for which
+    /// A·N ≈ Q (orthonormal columns) and lsqr/lsmr converge in a handful of iterations.
+    /// <c>scratch</c> (length n) must not alias any vector passed to Apply/ApplyT. With Tikhonov
+    /// damping, the penalty acts on ‖y‖ = ‖N⁻¹x‖, an N-weighted ridge on x, not ‖x‖.
+    /// </summary>
+    public readonly struct floatGeneralRightPreconditionedOperator<TInner, TPreN> : IfloatLinearOperator
+        where TInner : struct, IfloatLinearOperator
+        where TPreN : struct, IfloatLinearOperator
+    {
+        public readonly TInner Inner;
+        public readonly TPreN N;          // general (n×n) right preconditioner, applied as N·x / Nᵀ·x
+        public readonly floatN Scratch;  // length Inner.Cols: workspace (holds N·x / Aᵀx)
+
+        public floatGeneralRightPreconditionedOperator(in TInner inner, in TPreN n, in floatN scratch)
+        {
+            if (n.Rows != inner.Cols || n.Cols != inner.Cols)
+                throw new System.ArgumentException("floatGeneralRightPreconditionedOperator: N must be square with N.Rows == N.Cols == inner.Cols");
+            if (scratch.N != inner.Cols)
+                throw new System.ArgumentException("floatGeneralRightPreconditionedOperator: scratch.N must equal inner.Cols");
+
+            Inner = inner;
+            N = n;
+            Scratch = scratch;
+        }
+
+        public int Rows => Inner.Rows;
+        public int Cols => Inner.Cols;
+
+        // (A N) x = A (N x). Preconditions into the owned Scratch so the caller's x is untouched.
+        public void Apply(in floatN x, ref floatN y)
+        {
+            floatN s = Scratch;
+            N.Apply(in x, ref s);
+            Inner.Apply(in s, ref y);
+        }
+
+        // (A N)ᵀ x = Nᵀ (Aᵀ x). Inner transpose into the owned Scratch, then N's transpose into y --
+        // uses ApplyT on N, so N need not be symmetric.
+        public void ApplyT(in floatN x, ref floatN y)
+        {
+            floatN s = Scratch;
+            Inner.ApplyT(in x, ref s);
+            N.ApplyT(in s, ref y);
+        }
+
+        // Composes: Apply, then a separate dot pass. RECTANGULAR in its usual callers (lsqr/lsmr
+        // right preconditioning) -- dot(x,y) isn't well-formed there, so ApplyDot exists only to
+        // satisfy the interface; no solver calls it on this operator today.
+        public float ApplyDot(in floatN x, ref floatN y)
+        {
+            Apply(in x, ref y);
+            return Blas.dot(x, y);
+        }
+
+        // No block specialization (composes over an arbitrary inner operator): apply per row through
+        // the scalar Apply, into two bounded Temp scratch vectors.
+        public void ApplyBlock(in floatMxN Vrows, ref floatMxN AVrows, int rows)
+        {
+            int cols = Vrows.N_Cols;
+            int outCols = Inner.Rows;
+            var rin = new floatN(cols, Unity.Collections.Allocator.Temp, false);
+            var rout = new floatN(outCols, Unity.Collections.Allocator.Temp, false);
+            for (int i = 0; i < rows; i++)
+            {
+                for (int c = 0; c < cols; c++) rin[c] = Vrows[i, c];
+                Apply(in rin, ref rout);
+                for (int c = 0; c < outCols; c++) AVrows[i, c] = rout[c];
+            }
+            rout.Dispose();
+            rin.Dispose();
+        }
+    }
 }

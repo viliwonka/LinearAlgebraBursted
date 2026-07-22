@@ -1,7 +1,20 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
-## Krylov.LSQR / Krylov.LSMR — general right (column) preconditioning
+## Krylov.LSQR / Krylov.LSMR — GENERAL (non-symmetric) right preconditioning
+- 2026-07-22 | Follow-on to the symmetric path below: added `lsqrRightPreOp`/`lsmrRightPreOp`
+  (dense + BSR, damped + undamped + default ladder) taking N as a general
+  `IfProxyLinearOperator` instead of a symmetric `IfProxyPreconditioner`. Chose to REUSE
+  `IfProxyLinearOperator` rather than mint a preconditioner-with-transpose interface — it already
+  carries both Apply and ApplyT, so `fProxyGeneralRightPreconditionedOperator<TInner,TPreN>` gets
+  (A·N)ᵀ = Nᵀ·Aᵀ from N's own ApplyT (the symmetric wrapper instead reused N.Apply for the
+  transpose, only valid for N = Nᵀ). Couldn't overload `lsqrRightPre` by constraint (generic
+  constraints aren't part of the overload signature → CS0111), hence the distinct `…Op` name.
+  Motivation = the strong LS preconditioners are non-symmetric: N = R⁻¹ from a QR/sketch of A
+  (Blendenpik/LSRN) makes A·N orthonormal → 1–2 iterations. `fProxyDenseOperator` already serves
+  as a concrete N, so no new concrete type shipped; the R⁻¹ strength test builds Rinv by
+  back-substitution and wraps it. `RightPreFinishOp` duplicates `RightPreFinish` because TPre and
+  TPreN are different interfaces (both have Apply, but C# can't unify them without a common base).
 - 2026-07-22 | Generalized least-squares RIGHT preconditioning from diagonal-only Jacobi to any
   SYMMETRIC `IfProxyPreconditioner`: new `fProxyRightPreconditionedOperator<TInner,TPre>` wraps A·N
   (Apply = A(N·x) via owned scratch; ApplyT = N(Aᵀx), valid because N = Nᵀ), new

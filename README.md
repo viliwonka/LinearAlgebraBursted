@@ -37,10 +37,9 @@ work on the library itself (templates + codegen), open the repo directly in Unit
 ## Features
 
 - [**Types**](docs/features/dense-types.md): vectors, matrices, the `Arena` allocator
-- [**Element-wise ops**](docs/features/comp-elementwise.md): Per component arithmetic, math functions, clamp
+- [**Element-wise ops**](docs/features/comp-elementwise.md): Per component arithmetic, math functions, clamp, integer bit ops, bool logic
 - [**LA primitives**](docs/features/la-primitives.md): `Blas`/`Norms`/`Analysis`: dot, GEMM, transpose, outer product, norms, matrix metrics
-- [**Decompositions**](docs/features/decompositions.md): LU, CHO/CHOP, QR/QRCP,LQ
-- [**Direct solvers**](docs/features/solvers.md): tri/LU/CHO/QR solve
+- [**Decompositions & direct solvers**](docs/features/decompositions.md): LU, CHO/CHOP, QR/QRCP, LQ/LQRP, Bidiag; direct solve (tri/LU/CHO/QR)
 - [**Least squares**](docs/features/least-squares.md): QR/QRCP/SVD routes, CGLS/LSQR/LSMR, Tikhonov damping, Jacobi preconditioning
 - [**SVD**](docs/features/svd.md): thin/values/truncated-GKL/randomized, pseudo-inverse, low-rank approximation
 - [**Eigensolvers**](docs/features/eigen.md): symmetric Jacobi & Householder, non-symmetric QR, matrix-free power/inverse/Lanczos/LOBPCG
@@ -53,7 +52,7 @@ work on the library itself (templates + codegen), open the repo directly in Unit
 - [**Random**](docs/features/random.md): distribution samplers, weighted pick/shuffle, multivariate normal, structured matrices
 - [**Realtime**](docs/features/realtime.md): fixed-capacity rolling window, moving mean/covariance
 - [**Query**](docs/features/query.md): nearest/k-nearest/radius search, argmax/argmin, predicate-filtered variants
-- [**Select & bit ops**](docs/features/select-bits.md): element-wise select, integer bit intrinsics, bool logic
+- [**Select**](docs/features/select-bits.md): element-wise select
 - [**Hash**](docs/features/hash.md): vector/matrix, col/row reduction
 - [**ML**](docs/features/ml.md): k-means, PCA
 - [**Generators**](docs/features/generators.md): linspace, easing curves, LFO/wave, DSP windows, kernels

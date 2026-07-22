@@ -428,5 +428,67 @@ namespace LinearAlgebra
         /// <summary>LSMR + Jacobi (BSR), default maxIter (A.N_Cols) / tol (Consts.floatSqrtEps).</summary>
         public static LstsqInfo lsmrJacobi(in floatBSR A, in floatN b, ref floatN x)
             => lsmrJacobi(in A, in b, ref x, A.N_Cols, Consts.floatSqrtEps);
+
+        // ---- LSMR + general (non-symmetric) right (column) preconditioner ----
+        /// <summary>
+        /// LSMR with a caller-supplied GENERAL right (column) preconditioner N (n×n), supplied as an
+        /// <see cref="IfloatLinearOperator"/> rather than an <see cref="IfloatPreconditioner"/>, so
+        /// N need NOT be symmetric: the wrapped transpose uses N's own <c>ApplyT</c>, giving
+        /// (A·N)ᵀ = Nᵀ·Aᵀ. Solves min ‖Ax-b‖² + damp²‖N⁻¹x‖² through the change of variables x = N·y
+        /// (COLD start -- x is zeroed internally), then reports diagnostics in ORIGINAL coordinates
+        /// (see <c>RightPreFinishOp</c>). This unlocks the strong least-squares preconditioners the
+        /// symmetric path can't express -- N = R⁻¹ from a QR or randomized sketch of A
+        /// (Blendenpik/LSRN), for which A·N ≈ Q and convergence is near-immediate. The damped term
+        /// penalizes ‖y‖ = ‖N⁻¹x‖, NOT ‖x‖. Allocates from b's temp pool.
+        /// </summary>
+        public static LstsqInfo lsmrRightPreOp<TPreN>(in floatMxN A, in TPreN N, in floatN b, ref floatN x, int maxIter, float tol, float damp)
+            where TPreN : struct, IfloatLinearOperator
+            => LsmrRightPreOpCore(new floatDenseOperator(in A), in N, in b, ref x, maxIter, tol, damp);
+
+        /// <summary>Undamped general right-preconditioned LSMR over a dense matrix (damp = 0).</summary>
+        public static LstsqInfo lsmrRightPreOp<TPreN>(in floatMxN A, in TPreN N, in floatN b, ref floatN x, int maxIter, float tol)
+            where TPreN : struct, IfloatLinearOperator
+            => LsmrRightPreOpCore(new floatDenseOperator(in A), in N, in b, ref x, maxIter, tol, (float)0);
+
+        /// <summary>General right-preconditioned LSMR (dense), default maxIter (A.N_Cols) / tol (Consts.floatSqrtEps).</summary>
+        public static LstsqInfo lsmrRightPreOp<TPreN>(in floatMxN A, in TPreN N, in floatN b, ref floatN x)
+            where TPreN : struct, IfloatLinearOperator
+            => LsmrRightPreOpCore(new floatDenseOperator(in A), in N, in b, ref x, A.N_Cols, Consts.floatSqrtEps, (float)0);
+
+        /// <summary>General right-preconditioned damped LSMR over a BSR matrix (materializes Aᵀ once)
+        /// -- same contract as the dense overload.</summary>
+        public static LstsqInfo lsmrRightPreOp<TPreN>(in floatBSR A, in TPreN N, in floatN b, ref floatN x, int maxIter, float tol, float damp)
+            where TPreN : struct, IfloatLinearOperator
+        {
+            floatBSR AT = b.floatBSRTranspose(in A);
+            return LsmrRightPreOpCore(new floatBSROperator(in A, in AT), in N, in b, ref x, maxIter, tol, damp);
+        }
+
+        /// <summary>Undamped general right-preconditioned LSMR over a BSR matrix (damp = 0, materializes Aᵀ once).</summary>
+        public static LstsqInfo lsmrRightPreOp<TPreN>(in floatBSR A, in TPreN N, in floatN b, ref floatN x, int maxIter, float tol)
+            where TPreN : struct, IfloatLinearOperator
+            => lsmrRightPreOp(in A, in N, in b, ref x, maxIter, tol, (float)0);
+
+        /// <summary>General right-preconditioned LSMR (BSR), default maxIter (A.N_Cols) / tol (Consts.floatSqrtEps).</summary>
+        public static LstsqInfo lsmrRightPreOp<TPreN>(in floatBSR A, in TPreN N, in floatN b, ref floatN x)
+            where TPreN : struct, IfloatLinearOperator
+            => lsmrRightPreOp(in A, in N, in b, ref x, A.N_Cols, Consts.floatSqrtEps, (float)0);
+
+        /// <summary>Shared worker for the general right-preconditioned LSMR entry points: wrap Aop as
+        /// A·N with an operator-valued N, cold-start, solve (A·N)y = b, then map back and re-audit via
+        /// <c>RightPreFinishOp</c>. Scratch is temp-pool allocated from b.</summary>
+        static LstsqInfo LsmrRightPreOpCore<TOp, TPreN>(in TOp Aop, in TPreN N, in floatN b, ref floatN x, int maxIter, float tol, float damp)
+            where TOp : struct, IfloatLinearOperator
+            where TPreN : struct, IfloatLinearOperator
+        {
+            int m = Aop.Rows, n = Aop.Cols;
+            floatN scratch = b.floatTempVec(n);
+            var op = new floatGeneralRightPreconditionedOperator<TOp, TPreN>(in Aop, in N, in scratch);
+
+            for (int j = 0; j < n; j++) x[j] = (float)0;
+            floatN u = b.floatTempVec(m), v = b.floatTempVec(n), h = b.floatTempVec(n), hbar = b.floatTempVec(n), tmpM = b.floatTempVec(m), tmpN = b.floatTempVec(n);
+            var solveInfo = lsmr(op, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIter, tol, damp);
+            return RightPreFinishOp(in Aop, in N, in b, ref x, damp, solveInfo.iterations, solveInfo.status, ref u, ref v);
+        }
     }
 }

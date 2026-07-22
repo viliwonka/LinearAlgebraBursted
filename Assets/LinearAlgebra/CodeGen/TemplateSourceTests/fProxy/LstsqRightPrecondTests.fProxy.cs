@@ -34,6 +34,10 @@ public class fProxyLstsqRightPrecondTests
             LsqrRightPreSpdBSR,
             LsmrRightPreSpdBSR,
             JacobiWrappersMatchOracle,
+            LsqrRightPreOpRinvDense,
+            LsmrRightPreOpRinvDense,
+            LsqrRightPreOpNonSymDense,
+            LsqrRightPreOpNonSymBSR,
         }
 
         public TestType Type;
@@ -51,6 +55,10 @@ public class fProxyLstsqRightPrecondTests
                 case TestType.LsqrRightPreSpdBSR:         LsqrRightPreSpdBSR();         break;
                 case TestType.LsmrRightPreSpdBSR:         LsmrRightPreSpdBSR();         break;
                 case TestType.JacobiWrappersMatchOracle:  JacobiWrappersMatchOracle();  break;
+                case TestType.LsqrRightPreOpRinvDense:    LsqrRightPreOpRinvDense();    break;
+                case TestType.LsmrRightPreOpRinvDense:    LsmrRightPreOpRinvDense();    break;
+                case TestType.LsqrRightPreOpNonSymDense:  LsqrRightPreOpNonSymDense();  break;
+                case TestType.LsqrRightPreOpNonSymBSR:    LsqrRightPreOpNonSymBSR();    break;
             }
         }
 
@@ -71,6 +79,53 @@ public class fProxyLstsqRightPrecondTests
                     Nmat[i, j] = s / (fProxy)n + (i == j ? (fProxy)1 : (fProxy)0);
                 }
             return Nmat;
+        }
+
+        // R^-1 (n x n dense) from the thin QR of A (A full column rank): A·R^-1 = Q has orthonormal
+        // columns, so it is the canonical STRONG least-squares right preconditioner (Blendenpik/LSRN
+        // shape) -- and non-symmetric (upper-triangular). Built by upper-triangular back-substitution
+        // solving R·Rinv = I column by column.
+        static fProxyMxN BuildRinv(ref Arena arena, in fProxyMxN A)
+        {
+            int n = A.N_Cols;
+            var Q = arena.fProxyMat(A.M_Rows, n);
+            var R = arena.fProxyMat(n);
+            QR.decomp(in A, ref Q, ref R);
+            var Rinv = arena.fProxyMat(n);
+            for (int c = 0; c < n; c++)
+                for (int i = n - 1; i >= 0; i--)
+                {
+                    fProxy s = (i == c) ? (fProxy)1 : (fProxy)0;
+                    for (int k = i + 1; k < n; k++) s -= R[i, k] * Rinv[k, c];
+                    Rinv[i, c] = s / R[i, i];
+                }
+            return Rinv;
+        }
+
+        // A genuinely non-symmetric, well-conditioned invertible N = I + 0.25·(strictly-lower random):
+        // unit diagonal over a nilpotent lower part, so every eigenvalue is 1 (invertible) and
+        // N != N^T. Exercises the wrapper's N^T (ApplyT) path, which the symmetric path never touches.
+        static fProxyMxN BuildNonSym(ref Arena arena, int n, uint seed)
+        {
+            var W = arena.fProxyRandomMat(n, n, -1f, 1f, seed);
+            var Nmat = arena.fProxyMat(n);
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                    Nmat[i, j] = (i == j) ? (fProxy)1 : (j < i ? (fProxy)0.25 * W[i, j] : (fProxy)0);
+            return Nmat;
+        }
+
+        // Random m x n A with columns geometrically scaled to condition number ~1e2 -- ill-scaled
+        // enough that a column preconditioner earns its keep, mild enough to stay inside the float band.
+        static fProxyMxN BuildIllScaled(ref Arena arena, int m, int n, uint seed)
+        {
+            var A = arena.fProxyRandomMat(m, n, -1f, 1f, seed);
+            for (int j = 0; j < n; j++)
+            {
+                fProxy scale = math.pow((fProxy)10, (fProxy)2 * j / (fProxy)(n - 1));
+                for (int i = 0; i < m; i++) A[i, j] *= scale;
+            }
+            return A;
         }
 
         // Direct dense least-squares reference via QR (A full column rank, M_Rows >= N_Cols).
@@ -210,6 +265,82 @@ public class fProxyLstsqRightPrecondTests
 
             arena.Dispose();
         }
+
+        // ---- 6./7. general (operator-valued) right preconditioner N = R^-1: A·N is orthonormal, so
+        // lsqr/lsmr must SOLVE within a tiny iteration budget (n) even on an ill-scaled A, and still
+        // land on the QR oracle. Proves both the non-symmetric wrapper AND its strength. ----
+        void LsqrRightPreOpRinvDense()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 24, n = 6;
+            var A = BuildIllScaled(ref arena, m, n, 63501);
+            var b = arena.fProxyRandomVec(m, -1f, 1f, 63502);
+            var Rinv = BuildRinv(ref arena, in A);
+
+            fProxy tol = Consts.fProxySqrtEps;
+            var x = arena.fProxyVec(n);
+            // budget = n: converges only because A·R^-1 is (near-)orthonormal; CheckSolution asserts Solved.
+            var info = Krylov.lsqrRightPreOp(in A, new fProxyDenseOperator(in Rinv), in b, ref x, n, tol);
+            CheckSolution(ref arena, in A, in b, in x, in info, tol);
+
+            arena.Dispose();
+        }
+
+        void LsmrRightPreOpRinvDense()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 24, n = 6;
+            var A = BuildIllScaled(ref arena, m, n, 63511);
+            var b = arena.fProxyRandomVec(m, -1f, 1f, 63512);
+            var Rinv = BuildRinv(ref arena, in A);
+
+            fProxy tol = Consts.fProxySqrtEps;
+            var x = arena.fProxyVec(n);
+            var info = Krylov.lsmrRightPreOp(in A, new fProxyDenseOperator(in Rinv), in b, ref x, n, tol);
+            CheckSolution(ref arena, in A, in b, in x, in info, tol);
+
+            arena.Dispose();
+        }
+
+        // ---- 8./9. general non-symmetric N (N != N^T): the wrapped transpose must use N^T, so a
+        // symmetric-only wrapper would give the WRONG answer here. Must match the QR oracle -- dense
+        // and BSR entry points. ----
+        void LsqrRightPreOpNonSymDense()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 20, n = 6;
+            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 63601);
+            var b = arena.fProxyRandomVec(m, -1f, 1f, 63602);
+            var Nmat = BuildNonSym(ref arena, n, 63603);
+
+            fProxy tol = Consts.fProxySqrtEps;
+            var x = arena.fProxyVec(n);
+            var info = Krylov.lsqrRightPreOp(in A, new fProxyDenseOperator(in Nmat), in b, ref x, 20 * n, tol);
+            CheckSolution(ref arena, in A, in b, in x, in info, tol);
+
+            arena.Dispose();
+        }
+
+        void LsqrRightPreOpNonSymBSR()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 20, n = 6;
+            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 63701);
+            var b = arena.fProxyRandomVec(m, -1f, 1f, 63702);
+            var bsm = DenseToBSR(ref arena, in A);
+            var Nmat = BuildNonSym(ref arena, n, 63703);
+
+            fProxy tol = Consts.fProxySqrtEps;
+            var x = arena.fProxyVec(n);
+            var info = Krylov.lsqrRightPreOp(in bsm, new fProxyDenseOperator(in Nmat), in b, ref x, 20 * n, tol);
+            CheckSolution(ref arena, in A, in b, in x, in info, tol);
+
+            arena.Dispose();
+        }
     }
 
     // Generous timeout: the first case run in a session pays one cold Burst compile of the whole
@@ -238,4 +369,24 @@ public class fProxyLstsqRightPrecondTests
     [Test]
     public void JacobiWrappersMatchOracle()
         => new TestJob { Type = TestJob.TestType.JacobiWrappersMatchOracle }.Run();
+
+    [Timeout(600000)]
+    [Test]
+    public void LsqrRightPreOpRinvDense()
+        => new TestJob { Type = TestJob.TestType.LsqrRightPreOpRinvDense }.Run();
+
+    [Timeout(600000)]
+    [Test]
+    public void LsmrRightPreOpRinvDense()
+        => new TestJob { Type = TestJob.TestType.LsmrRightPreOpRinvDense }.Run();
+
+    [Timeout(600000)]
+    [Test]
+    public void LsqrRightPreOpNonSymDense()
+        => new TestJob { Type = TestJob.TestType.LsqrRightPreOpNonSymDense }.Run();
+
+    [Timeout(600000)]
+    [Test]
+    public void LsqrRightPreOpNonSymBSR()
+        => new TestJob { Type = TestJob.TestType.LsqrRightPreOpNonSymBSR }.Run();
 }
