@@ -123,6 +123,117 @@ namespace LinearAlgebra
         }
 
         /// <summary>
+        /// Tikhonov-DAMPED CGNE: minimum-norm solve of the regularized underdetermined system,
+        /// x = Aᵀ(A Aᵀ + damp²·I)⁻¹ b (ridge-regularized least-norm; equivalently the least-norm
+        /// solution of the augmented system [A | damp·I]·(x,s) = b). Reduces to plain
+        /// <see cref="cgne{TOp}(in TOp, in fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, int, fProxy)"/>
+        /// when damp == 0 (delegated, bit-identical -- ps/s unused). MATRIX-FREE: runs CGNE on the
+        /// augmented operator [A | damp·I], so A Aᵀ + damp²·I is never assembled; each iteration
+        /// costs exactly one A.Apply + one A.ApplyT, as undamped.
+        ///
+        /// Unlike undamped CGNE, damping does NOT require A to have full row rank or b ∈ range(A):
+        /// A Aᵀ + damp²·I is SPD for any A when damp ≠ 0, so the iteration is always well-posed.
+        /// Needs two extra Rows-length scratch vectors over the undamped primitive: ps (the
+        /// Rows-space component of the augmented search direction) and s (the auxiliary variable,
+        /// used only for the fresh augmented-residual convergence check).
+        ///
+        /// Convergence is decided on the AUGMENTED residual ‖b - A x - damp·s‖ ≤ tol·‖b‖ (which →0
+        /// at the regularized solution), verified fresh at exit. The returned
+        /// <see cref="LstsqInfo"/> reports the UNDAMPED residual ‖b - A x‖ as rnorm (= damp·‖s‖ at
+        /// the optimum -- legitimately NONZERO, mirroring damped lsqr/lsmr), so a Converged exit
+        /// here carries a nonzero rnorm; read the implicit bool / status, not rnorm, for success.
+        /// </summary>
+        public static LstsqInfo cgne<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
+                                     ref fProxyN r, ref fProxyN p, ref fProxyN Ap, ref fProxyN tmpN,
+                                     ref fProxyN ps, ref fProxyN s,
+                                     int maxIter, fProxy tol, fProxy damp)
+            where TOp : struct, IfProxyLinearOperator
+        {
+            if (damp == (fProxy)0)
+                return cgne(in A, in b, ref x, ref r, ref p, ref Ap, ref tmpN, maxIter, tol);
+
+            if (A.Rows > A.Cols) throw new ArgumentException("cgne: A must be square or underdetermined (Rows <= Cols)");
+            if (b.N != A.Rows) throw new ArgumentException("cgne: b.N must equal A.Rows");
+            if (x.N != A.Cols) throw new ArgumentException("cgne: x.N must equal A.Cols");
+            if (r.N != A.Rows) throw new ArgumentException("cgne: r.N must equal A.Rows");
+            if (p.N != A.Cols) throw new ArgumentException("cgne: p.N must equal A.Cols");
+            if (Ap.N != A.Rows) throw new ArgumentException("cgne: Ap.N must equal A.Rows");
+            if (tmpN.N != A.Cols) throw new ArgumentException("cgne: tmpN.N must equal A.Cols");
+            if (ps.N != A.Rows) throw new ArgumentException("cgne: ps.N must equal A.Rows");
+            if (s.N != A.Rows) throw new ArgumentException("cgne: s.N must equal A.Rows");
+            if (maxIter < 1) throw new ArgumentException("cgne: maxIter must be >= 1");
+
+            unsafe
+            {
+                long* ptrs = stackalloc long[8];
+                ptrs[0] = (long)r.Data.Ptr;  ptrs[1] = (long)p.Data.Ptr;
+                ptrs[2] = (long)Ap.Data.Ptr; ptrs[3] = (long)tmpN.Data.Ptr;
+                ptrs[4] = (long)ps.Data.Ptr; ptrs[5] = (long)s.Data.Ptr;
+                ptrs[6] = (long)x.Data.Ptr;  ptrs[7] = (long)b.Data.Ptr;
+                RequireDistinctBuffers("cgne: r/p/Ap/tmpN/ps/s/x/b must be distinct", ptrs, 8);
+            }
+
+            fProxy lam = damp;
+
+            // x0 = 0, s0 = 0 (the min-norm characterization requires the zero start).
+            for (int i = 0; i < x.N; i++) x[i] = (fProxy)0;
+            for (int i = 0; i < s.N; i++) s[i] = (fProxy)0;
+
+            fProxy bb = Blas.dot(b, b);
+            if (bb == (fProxy)0)
+                return LstsqInfoAudited(IterativeSolveStatus.Converged, 0, in A, in b, ref x, ref Ap, ref tmpN);
+
+            r.CopyFrom(in b);   // r_0 = b - [A|λI](x0,s0) = b
+            fProxy rr = bb;
+            fProxy threshold = tol * tol * bb;
+            if (rr <= threshold)
+                return LstsqInfoAudited(IterativeSolveStatus.Converged, 0, in A, in b, ref x, ref Ap, ref tmpN);
+
+            // Initial augmented search direction [A|λI]ᵀ r0 = (Aᵀ r0, λ r0).
+            A.ApplyT(in r, ref p);            // p_c = Aᵀ r
+            Blas.scaledCopy(lam, r, ref ps);  // p_s = λ r
+
+            for (int k = 0; k < maxIter; k++)
+            {
+                fProxy pp = Blas.dot(p, p) + Blas.dot(ps, ps);   // ‖(p_c,p_s)‖²
+                if (!(pp > (fProxy)0))
+                    return LstsqInfoAudited(IterativeSolveStatus.Breakdown, k, in A, in b, ref x, ref Ap, ref tmpN);
+
+                fProxy alpha = rr / pp;
+
+                A.Apply(in p, ref Ap);            // Ap = A p_c
+                Ap.addScaledInPlace(lam, ps);     // Ap = A p_c + λ p_s = [A|λI](p_c,p_s)
+                fProxy rrNew = Blas.updateXR(alpha, p, ref x, Ap, ref r);  // x += α p_c ; r -= α Ap ; ‖r‖²
+                s.addScaledInPlace(alpha, ps);    // s += α p_s
+
+                if (rrNew <= threshold)
+                {
+                    // Fresh augmented residual ‖b - A x - λ s‖² (tracked r can drift). Ap is free
+                    // scratch here (recomputed as A p_c at the top of the next iter on fall-through).
+                    A.Apply(in x, ref Ap);        // Ap = A x
+                    fProxy augSq = (fProxy)0;
+                    for (int i = 0; i < b.N; i++)
+                    {
+                        fProxy e = b[i] - Ap[i] - lam * s[i];
+                        augSq += e * e;
+                    }
+                    if (augSq <= threshold)
+                        return LstsqInfoAudited(IterativeSolveStatus.Converged, k + 1, in A, in b, ref x, ref Ap, ref tmpN);
+                }
+
+                fProxy beta = rrNew / rr;
+                A.ApplyT(in r, ref tmpN);         // tmpN = Aᵀ r
+                p.scaleAddInPlace(beta, tmpN);    // p_c = β p_c + Aᵀ r
+                ps.mulInPlace(beta);              // p_s = β p_s + λ r
+                ps.addScaledInPlace(lam, r);
+
+                rr = rrNew;
+            }
+
+            return LstsqInfoAudited(IterativeSolveStatus.MaxIterations, maxIter, in A, in b, ref x, ref Ap, ref tmpN);
+        }
+
+        /// <summary>
         /// CGNE over a dense <see cref="fProxyMxN"/> (Rows ≤ Cols) -- zero-alloc primitive.
         /// Forwards into <see cref="cgne{TOp}"/> via <see cref="fProxyDenseOperator"/>.
         /// </summary>
@@ -202,6 +313,41 @@ namespace LinearAlgebra
         public static LstsqInfo cgne(in fProxyBSR A, in fProxyN b, ref fProxyN x)
         {
             return cgne(in A, in b, ref x, A.M_Rows, Consts.fProxySqrtEps);
+        }
+
+        // ===== Tikhonov-damped overloads: x = Aᵀ(A Aᵀ + damp²·I)⁻¹ b (arena-allocated) =====
+
+        /// <summary>
+        /// Damped CGNE over a dense matrix (Rows ≤ Cols) -- allocates six scratch vectors from the
+        /// arena. damp == 0 falls through to the undamped path. See the damped primitive for the
+        /// regularized-least-norm semantics and the nonzero-rnorm-at-convergence contract.
+        /// </summary>
+        public static LstsqInfo cgne(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol, fProxy damp)
+        {
+            fProxyN r    = b.fProxyTempVec(A.M_Rows);
+            fProxyN p    = b.fProxyTempVec(A.N_Cols);
+            fProxyN Ap   = b.fProxyTempVec(A.M_Rows);
+            fProxyN tmpN = b.fProxyTempVec(A.N_Cols);
+            fProxyN ps   = b.fProxyTempVec(A.M_Rows);
+            fProxyN s    = b.fProxyTempVec(A.M_Rows);
+            return cgne(new fProxyDenseOperator(in A), in b, ref x, ref r, ref p, ref Ap, ref tmpN, ref ps, ref s, maxIter, tol, damp);
+        }
+
+        /// <summary>
+        /// Damped CGNE over a BSR matrix (Rows ≤ Cols) -- allocates six scratch vectors AND
+        /// materializes Aᵀ once (cache-friendly ApplyT), then drives the damped primitive. damp == 0
+        /// falls through to the undamped path.
+        /// </summary>
+        public static LstsqInfo cgne(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol, fProxy damp)
+        {
+            fProxyN r    = b.fProxyTempVec(A.M_Rows);
+            fProxyN p    = b.fProxyTempVec(A.N_Cols);
+            fProxyN Ap   = b.fProxyTempVec(A.M_Rows);
+            fProxyN tmpN = b.fProxyTempVec(A.N_Cols);
+            fProxyN ps   = b.fProxyTempVec(A.M_Rows);
+            fProxyN s    = b.fProxyTempVec(A.M_Rows);
+            fProxyBSR AT = b.fProxyBSRTranspose(in A);
+            return cgne(new fProxyBSROperator(in A, in AT), in b, ref x, ref r, ref p, ref Ap, ref tmpN, ref ps, ref s, maxIter, tol, damp);
         }
     }
 }

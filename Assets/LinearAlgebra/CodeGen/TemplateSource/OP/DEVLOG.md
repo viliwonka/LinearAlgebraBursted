@@ -213,6 +213,25 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   OUT OF SCOPE (v1): the y-bounds (eq 38/39), the x^L bound (eq 43), the sliding-window refinement
   (eq 40), and the preconditioned Generalized-Golub-Kahan path (§6). Spec: docs/dev/spec-lnlq.md.
 
+## Krylov.CGNE — Tikhonov-damped least-norm (augmented-operator route)
+- 2026-07-22 | Added a DAMPED cgne overload: x = Aᵀ(AAᵀ + damp²·I)⁻¹ b (ridge-regularized least-norm).
+  The clean derivation is CGNE on the AUGMENTED operator [A | damp·I]: its normal matrix is
+  [A|λI][A|λI]ᵀ = AAᵀ + λ²I, so no matrix is assembled and per-iter cost stays 1 Apply + 1 ApplyT.
+  Why not "just add λ² to the matvec": undamped cgne stores only x = Aᵀy and p = Aᵀd (Aᵀ-images), which
+  PROJECT OUT the y/d space (R^Rows) where λ²I acts — so damping needs the Rows-space search-direction
+  component back. The augmented view supplies it as ONE extra Rows vector ps (= the R^Rows part of
+  [A|λI]ᵀr = (Aᵀr, λr)); curvature pp = ‖p‖²+‖ps‖², matvec Ap = A·p + λ·ps, plus s (aux, Rows) only
+  for the fresh augmented-residual verify. damp==0 DELEGATES to the undamped primitive (bit-identical,
+  ps/s untouched) so the proven path is never perturbed. Convergence is on the AUGMENTED residual
+  ‖b − Ax − damp·s‖→0 (verified fresh at exit); the Info reports the UNDAMPED ‖b−Ax‖ = damp·‖s‖ as
+  rnorm (legitimately nonzero at the optimum — same convention as damped lsqr/lsmr), so read the
+  status/implicit-bool, not rnorm. Damping also makes the solve well-posed without full row rank / b∈range(A)
+  (AAᵀ+damp²I is SPD for any A). Surface: damped generic primitive (6 scratch: r/p/Ap/tmpN/ps/s) +
+  arena dense/BSR damped overloads. Rounds out non-square regularization: lsqr/lsmr (least-SQUARES)
+  already had damp; craig/craigmr/lnlq (generalized bidiag damping) and lslq (known ~1.4e-3 λ-rotation
+  bias) remain deliberately undamped — see their notes. Tests: fProxyCGNEDampedTests (dense
+  Aᵀ(AAᵀ+damp²I)⁻¹b oracle, nonzero-reported-residual contract, damp==0 bit-identity).
+
 ## Krylov.CGNE — direct-CG least-norm (κ² route); LNLQ deferred
 - 2026-07-21 | Added `cgne` = CG on AAᵀ (x = Aᵀy, matrix-free), the direct-CG minimum-norm solver.
   Computes the SAME min-norm x as `craig` but via CG on AAᵀ → κ² conditioning (cheaper/simpler per
