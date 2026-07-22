@@ -52,22 +52,6 @@ public class fProxyGMRESTests
             return b.ToBSR(ref arena);
         }
 
-        static fProxy RelResidualDense(in fProxyMxN A, in fProxyN x, in fProxyN b)
-        {
-            var Ax = Blas.dot(A, x);
-            fProxy num = 0, den = 0;
-            for (int i = 0; i < b.N; i++) { fProxy d = Ax[i] - b[i]; num += d * d; den += b[i] * b[i]; }
-            return math.sqrt(num) / math.sqrt(math.max(den, (fProxy)1e-30));
-        }
-
-        static fProxy RelResidualBSR(in fProxyBSR A, in fProxyN x, in fProxyN b)
-        {
-            var Ax = BSR.spMV(in A, in x);
-            fProxy num = 0, den = 0;
-            for (int i = 0; i < b.N; i++) { fProxy d = Ax[i] - b[i]; num += d * d; den += b[i] * b[i]; }
-            return math.sqrt(num) / math.sqrt(math.max(den, (fProxy)1e-30));
-        }
-
         public void Execute()
         {
             switch (Type)
@@ -94,7 +78,7 @@ public class fProxyGMRESTests
             var info = Krylov.gmres(in A, in b, ref x, n, 4 * n, Tol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
-            Assert.IsTrue(RelResidualDense(in A, in x, in b) <= Tol());
+            Assert.IsTrue(fProxyKrylovBatteryOracles.RelResidualDense(in A, in x, in b) <= Tol());
 
             arena.Dispose();
         }
@@ -112,7 +96,7 @@ public class fProxyGMRESTests
             var info = Krylov.gmres(in A, in b, ref x, 40, 4 * n, Tol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
-            Assert.IsTrue(RelResidualBSR(in A, in x, in b) <= Tol());
+            Assert.IsTrue(fProxyKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
 
             arena.Dispose();
         }
@@ -130,7 +114,7 @@ public class fProxyGMRESTests
             var info = Krylov.gmres(in A, in b, ref x, 10, 20 * n, Tol());   // restart 10 << n
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
-            Assert.IsTrue(RelResidualBSR(in A, in x, in b) <= Tol());
+            Assert.IsTrue(fProxyKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
 
             arena.Dispose();
         }
@@ -179,7 +163,7 @@ public class fProxyGMRESTests
 
             Assert.IsTrue(gi.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(pi.status == IterativeSolveStatus.Converged);
-            Assert.IsTrue(RelResidualBSR(in A, in xP, in b) <= tol);
+            Assert.IsTrue(fProxyKrylovBatteryOracles.RelResidualBSR(in A, in xP, in b) <= tol);
             Assert.IsTrue(pi.iterations < gi.iterations);
 
             arena.Dispose();

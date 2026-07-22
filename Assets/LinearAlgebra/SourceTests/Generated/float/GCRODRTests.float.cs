@@ -85,14 +85,6 @@ public class floatGCRODRTests
             return A;
         }
 
-        static float RelResidualDense(in floatMxN A, in floatN x, in floatN b)
-        {
-            var Ax = Blas.dot(A, x);
-            float num = 0, den = 0;
-            for (int i = 0; i < b.N; i++) { float d = Ax[i] - b[i]; num += d * d; den += b[i] * b[i]; }
-            return math.sqrt(num) / math.sqrt(math.max(den, (float)1e-30));
-        }
-
         public void Execute()
         {
             switch (Type)
@@ -129,7 +121,7 @@ public class floatGCRODRTests
 
             // gcrodr must actually solve it.
             Assert.IsTrue(giR.status == IterativeSolveStatus.Converged);
-            Assert.IsTrue(RelResidualDense(in A, in xR, in b) <= tol);
+            Assert.IsTrue(floatKrylovBatteryOracles.RelResidualDense(in A, in xR, in b) <= tol);
 
             // Non-tautology guard: plain gmres(m) genuinely grinds many restart cycles here (or
             // exhausts the budget) -- not a one-cycle solve. m inner iters == one restart cycle.
@@ -162,7 +154,7 @@ public class floatGCRODRTests
             var x = arena.floatVec(n);
             var info = Krylov.gcrodr(in A, in b, ref x, 16, 4, 8 * n, Tol());
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
-            Assert.IsTrue(RelResidualDense(in A, in x, in b) <= Tol());
+            Assert.IsTrue(floatKrylovBatteryOracles.RelResidualDense(in A, in x, in b) <= Tol());
 
             // Agrees with the LU oracle and recovers the planted solution (unique on a nonsingular A).
             for (int i = 0; i < n; i++)

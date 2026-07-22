@@ -126,12 +126,43 @@ namespace LinearAlgebra
     }
 
     /// <summary>
+    /// Dense non-diagonal SPD preconditioner (z = Nmat * r via a full mat-vec) -- the ONE shared
+    /// copy of the SpdPre/BlockSpdPre structs otherwise duplicated per bespoke test file. Nmat must
+    /// be symmetric positive definite (see <see cref="doubleKrylovBatteryOracles.BuildDenseSpd"/>).
+    /// </summary>
+    internal struct doubleDenseSpdPreconditioner : IdoublePreconditioner
+    {
+        public doubleMxN Nmat;   // n x n symmetric positive definite
+
+        public bool IsIdentity => false;
+
+        public void Apply(in doubleN r, ref doubleN z) => Blas.dot(in Nmat, in r, ref z);
+    }
+
+    /// <summary>
     /// Fresh (not solver-reported) relative residual oracles the Krylov battery's "Converges" /
     /// "Preconditioned convergence" checks verify against -- the ONE shared copy of
     /// RelResidualDense/RelResidualBSR otherwise duplicated per bespoke test file.
     /// </summary>
     internal static class doubleKrylovBatteryOracles
     {
+        // Non-diagonal SPD preconditioner matrix N = I + W^T W / invScale (W random n x n). Bit-
+        // exactly symmetric (the (i,j) and (j,i) sums run the same k order), eigenvalues >= 1;
+        // invScale tunes the eigenvalue spread / condition number.
+        public static doubleMxN BuildDenseSpd(ref Arena arena, int n, uint seed, double invScale)
+        {
+            var W = arena.doubleRandomMat(n, n, (double)(-1), (double)1, seed);
+            var Nmat = arena.doubleMat(n);
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                {
+                    double s = (double)0;
+                    for (int k = 0; k < n; k++) s += W[k, i] * W[k, j];
+                    Nmat[i, j] = s / invScale + (i == j ? (double)1 : (double)0);
+                }
+            return Nmat;
+        }
+
         public static double RelResidualDense(in doubleMxN A, in doubleN x, in doubleN b)
         {
             var Ax = Blas.dot(A, x);

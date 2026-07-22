@@ -39,32 +39,6 @@ public class floatKrylovBlockBatteryTests
 
         public SolverKind Kind;
 
-        // Dense SPD preconditioner for check #13: z = Nmat * r (a fully-coupled dense mat-vec). Nmat
-        // is SPD and MILD (I + W^T W / (2n), eigenvalues in [1, ~], mild cond) so it exercises the
-        // recurrence's off-diagonal M-coupling WITHOUT hurting convergence on a well-conditioned A.
-        struct BlockSpdPre : IfloatPreconditioner
-        {
-            public floatMxN Nmat;
-            public bool IsIdentity => false;
-            public void Apply(in floatN r, ref floatN z) => Blas.dot(in Nmat, in r, ref z);
-        }
-
-        // Mild non-diagonal SPD N = I + W^T W / (2n) (bit-exactly symmetric: (i,j) and (j,i) sums run
-        // the same k order), eigenvalues >= 1, mild condition number.
-        static floatMxN BuildDenseSpdPre(ref Arena arena, int n, uint seed)
-        {
-            var W = arena.floatRandomMat(n, n, (float)(-1), (float)1, seed);
-            var Nmat = arena.floatMat(n);
-            for (int i = 0; i < n; i++)
-                for (int j = 0; j < n; j++)
-                {
-                    float s = (float)0;
-                    for (int k = 0; k < n; k++) s += W[k, i] * W[k, j];
-                    Nmat[i, j] = s / (float)(2 * n) + (i == j ? (float)1 : (float)0);
-                }
-            return Nmat;
-        }
-
         // [0] flag (1 = failure recorded) [1] matrix-enum-as-int [2] check-id [3] got [4] expected
         public NativeArray<float> Fail;
 
@@ -341,7 +315,7 @@ public class floatKrylovBlockBatteryTests
             // Restricted to well-conditioned SPD dense entries so a correct solver converges cleanly.
             if (flags.DensePrecondSPD && (tags & MatrixProfile.SPD) != 0 && (tags & MatrixProfile.IllConditioned) == 0)
             {
-                var M13 = new BlockSpdPre { Nmat = BuildDenseSpdPre(ref arena, n, 0xD500u + (uint)gm) };
+                var M13 = new floatDenseSpdPreconditioner { Nmat = floatKrylovBatteryOracles.BuildDenseSpd(ref arena, n, 0xD500u + (uint)gm, (float)(2 * n)) };
                 var X13 = arena.floatMat(flags.S, n);
                 BlockSolveInfo info13 = inv.SolveWithPrecond(in Aop, in M13, in B, ref X13);
                 bool statusOk13 = info13.status == IterativeSolveStatus.Converged || info13.status == IterativeSolveStatus.MaxIterations;

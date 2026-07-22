@@ -13,17 +13,6 @@ using Unity.Mathematics;
 // wrappers (the diagonal case of the same path) must keep matching the QR oracle.
 public class fProxyLstsqRightPrecondTests
 {
-    // Dense SPD right preconditioner: z = Nmat * r via a plain dense mat-vec. Nmat must be
-    // symmetric positive definite (the tests build it as I + W^T W / n).
-    public struct SpdPre : IfProxyPreconditioner
-    {
-        public fProxyMxN Nmat;   // n x n symmetric positive definite
-
-        public bool IsIdentity => false;
-
-        public void Apply(in fProxyN r, ref fProxyN z) => Blas.dot(in Nmat, in r, ref z);
-    }
-
     [BurstCompile(CompileSynchronously = true)]
     public struct TestJob : IJob
     {
@@ -63,23 +52,6 @@ public class fProxyLstsqRightPrecondTests
         }
 
         // ---- helpers ----
-
-        // Non-diagonal SPD preconditioner matrix N = I + W^T W / n (W random n x n). Bit-exactly
-        // symmetric (the (i,j) and (j,i) sums run the same k order), eigenvalues >= 1, mild
-        // condition number -- a well-conditioned but genuinely non-diagonal symmetric N.
-        static fProxyMxN BuildSpd(ref Arena arena, int n, uint seed)
-        {
-            var W = arena.fProxyRandomMat(n, n, -1f, 1f, seed);
-            var Nmat = arena.fProxyMat(n);
-            for (int i = 0; i < n; i++)
-                for (int j = 0; j < n; j++)
-                {
-                    fProxy s = (fProxy)0;
-                    for (int k = 0; k < n; k++) s += W[k, i] * W[k, j];
-                    Nmat[i, j] = s / (fProxy)n + (i == j ? (fProxy)1 : (fProxy)0);
-                }
-            return Nmat;
-        }
 
         // R^-1 (n x n dense) from the thin QR of A (A full column rank): A·R^-1 = Q has orthonormal
         // columns, so it is the canonical STRONG least-squares right preconditioner (Blendenpik/LSRN
@@ -179,7 +151,7 @@ public class fProxyLstsqRightPrecondTests
             int m = 20, n = 6;
             var A = arena.fProxyRandomMat(m, n, -1f, 1f, 63001);
             var b = arena.fProxyRandomVec(m, -1f, 1f, 63002);
-            var pre = new SpdPre { Nmat = BuildSpd(ref arena, n, 63003) };
+            var pre = new fProxyDenseSpdPreconditioner { Nmat = fProxyKrylovBatteryOracles.BuildDenseSpd(ref arena, n, 63003, (fProxy)n) };
 
             fProxy tol = Consts.fProxySqrtEps;
             var x = arena.fProxyVec(n);
@@ -196,7 +168,7 @@ public class fProxyLstsqRightPrecondTests
             int m = 20, n = 6;
             var A = arena.fProxyRandomMat(m, n, -1f, 1f, 63101);
             var b = arena.fProxyRandomVec(m, -1f, 1f, 63102);
-            var pre = new SpdPre { Nmat = BuildSpd(ref arena, n, 63103) };
+            var pre = new fProxyDenseSpdPreconditioner { Nmat = fProxyKrylovBatteryOracles.BuildDenseSpd(ref arena, n, 63103, (fProxy)n) };
 
             fProxy tol = Consts.fProxySqrtEps;
             var x = arena.fProxyVec(n);
@@ -215,7 +187,7 @@ public class fProxyLstsqRightPrecondTests
             var A = arena.fProxyRandomMat(m, n, -1f, 1f, 63201);
             var b = arena.fProxyRandomVec(m, -1f, 1f, 63202);
             var bsm = DenseToBSR(ref arena, in A);
-            var pre = new SpdPre { Nmat = BuildSpd(ref arena, n, 63203) };
+            var pre = new fProxyDenseSpdPreconditioner { Nmat = fProxyKrylovBatteryOracles.BuildDenseSpd(ref arena, n, 63203, (fProxy)n) };
 
             fProxy tol = Consts.fProxySqrtEps;
             var x = arena.fProxyVec(n);
@@ -233,7 +205,7 @@ public class fProxyLstsqRightPrecondTests
             var A = arena.fProxyRandomMat(m, n, -1f, 1f, 63301);
             var b = arena.fProxyRandomVec(m, -1f, 1f, 63302);
             var bsm = DenseToBSR(ref arena, in A);
-            var pre = new SpdPre { Nmat = BuildSpd(ref arena, n, 63303) };
+            var pre = new fProxyDenseSpdPreconditioner { Nmat = fProxyKrylovBatteryOracles.BuildDenseSpd(ref arena, n, 63303, (fProxy)n) };
 
             fProxy tol = Consts.fProxySqrtEps;
             var x = arena.fProxyVec(n);

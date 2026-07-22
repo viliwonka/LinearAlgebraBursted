@@ -93,23 +93,6 @@ public class doubleBlockGCRODRTests
             return A;
         }
 
-        static double RelResidualBlockDense(in doubleMxN A, in doubleMxN X, in doubleMxN B, int s, int n)
-        {
-            double num = (double)0, den = (double)0;
-            for (int j = 0; j < s; j++)
-            {
-                for (int r = 0; r < n; r++)
-                {
-                    double ax = (double)0;
-                    for (int c = 0; c < n; c++) ax += A[r, c] * X[j, c];
-                    double d = ax - B[j, r];
-                    num += d * d;
-                }
-                for (int c = 0; c < n; c++) den += B[j, c] * B[j, c];
-            }
-            return math.sqrt(num) / math.sqrt(math.max(den, (double)1e-30));
-        }
-
         public void Execute()
         {
             switch (Type)
@@ -150,7 +133,7 @@ public class doubleBlockGCRODRTests
             var giR = Krylov.bgcrodr(in Aop, in B, ref XR, m, k, generousBudget, tol);
 
             Assert.IsTrue(giR.status == IterativeSolveStatus.Converged);
-            Assert.IsTrue(RelResidualBlockDense(in A, in XR, in B, s, n) <= tol);
+            Assert.IsTrue(doubleKrylovBatteryOracles.RelResidualBlockDense(in A, in XR, in B) <= tol);
 
             // THE POINT: deflating the single isolated eigenvalue reaches tolerance in strictly
             // fewer total block steps than plain bgmres(m) -- asserted for double/float. On this
@@ -184,7 +167,7 @@ public class doubleBlockGCRODRTests
             var X = arena.doubleMat(s, n);
             var info = Krylov.bgcrodr(in Aop, in B, ref X, 16, 4, 8 * n, Tol());
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
-            Assert.IsTrue(RelResidualBlockDense(in A, in X, in B, s, n) <= Tol());
+            Assert.IsTrue(doubleKrylovBatteryOracles.RelResidualBlockDense(in A, in X, in B) <= Tol());
 
             for (int j = 0; j < s; j++)
             {
@@ -317,7 +300,7 @@ public class doubleBlockGCRODRTests
                     Assert.IsFalse(double.IsNaN((double)X[j, c]) || double.IsInfinity((double)X[j, c]));
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
-            Assert.IsTrue(RelResidualBlockDense(in A, in X, in B, s, n) <= Tol());
+            Assert.IsTrue(doubleKrylovBatteryOracles.RelResidualBlockDense(in A, in X, in B) <= Tol());
 
             arena.Dispose();
         }
@@ -353,7 +336,7 @@ public class doubleBlockGCRODRTests
             var giR = Krylov.bgcrodr(in Aop, in B, ref XR, m, k, generousBudget, tol);
 
             Assert.IsTrue(giR.status == IterativeSolveStatus.Converged);
-            Assert.IsTrue(RelResidualBlockDense(in A, in XR, in B, s, n) <= tol);
+            Assert.IsTrue(doubleKrylovBatteryOracles.RelResidualBlockDense(in A, in XR, in B) <= tol);
 
             // THE POINT of THIS test is only that the ||A||-scaled pivotGuard does not spuriously
             // break down at tiny ||A|| (the Converged + residual asserts above). The recycling

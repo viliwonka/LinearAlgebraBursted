@@ -126,12 +126,43 @@ namespace LinearAlgebra
     }
 
     /// <summary>
+    /// Dense non-diagonal SPD preconditioner (z = Nmat * r via a full mat-vec) -- the ONE shared
+    /// copy of the SpdPre/BlockSpdPre structs otherwise duplicated per bespoke test file. Nmat must
+    /// be symmetric positive definite (see <see cref="floatKrylovBatteryOracles.BuildDenseSpd"/>).
+    /// </summary>
+    internal struct floatDenseSpdPreconditioner : IfloatPreconditioner
+    {
+        public floatMxN Nmat;   // n x n symmetric positive definite
+
+        public bool IsIdentity => false;
+
+        public void Apply(in floatN r, ref floatN z) => Blas.dot(in Nmat, in r, ref z);
+    }
+
+    /// <summary>
     /// Fresh (not solver-reported) relative residual oracles the Krylov battery's "Converges" /
     /// "Preconditioned convergence" checks verify against -- the ONE shared copy of
     /// RelResidualDense/RelResidualBSR otherwise duplicated per bespoke test file.
     /// </summary>
     internal static class floatKrylovBatteryOracles
     {
+        // Non-diagonal SPD preconditioner matrix N = I + W^T W / invScale (W random n x n). Bit-
+        // exactly symmetric (the (i,j) and (j,i) sums run the same k order), eigenvalues >= 1;
+        // invScale tunes the eigenvalue spread / condition number.
+        public static floatMxN BuildDenseSpd(ref Arena arena, int n, uint seed, float invScale)
+        {
+            var W = arena.floatRandomMat(n, n, (float)(-1), (float)1, seed);
+            var Nmat = arena.floatMat(n);
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                {
+                    float s = (float)0;
+                    for (int k = 0; k < n; k++) s += W[k, i] * W[k, j];
+                    Nmat[i, j] = s / invScale + (i == j ? (float)1 : (float)0);
+                }
+            return Nmat;
+        }
+
         public static float RelResidualDense(in floatMxN A, in floatN x, in floatN b)
         {
             var Ax = Blas.dot(A, x);

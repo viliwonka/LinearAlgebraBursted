@@ -74,20 +74,6 @@ public class floatFlexibleCGTests
             }
         }
 
-        // Relative true residual ‖b − Ax‖ / ‖b‖.
-        static float RelResidual(in floatBSR A, in floatN x, in floatN b)
-        {
-            var Ax = BSR.spMV(in A, in x);
-            float num = 0, den = 0;
-            for (int i = 0; i < b.N; i++)
-            {
-                float d = Ax[i] - b[i];
-                num += d * d;
-                den += b[i] * b[i];
-            }
-            return math.sqrt(num) / math.sqrt(math.max(den, (float)1e-30));
-        }
-
         void SolvesSpdBlockJacobi()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -102,7 +88,7 @@ public class floatFlexibleCGTests
 
             var info = Krylov.fcg(in op, in M, in b, ref x, 4 * n, Tol());
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
-            Assert.IsTrue(RelResidual(in A, in x, in b) <= Tol());
+            Assert.IsTrue(floatKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
 
             arena.Dispose();
         }
@@ -128,7 +114,7 @@ public class floatFlexibleCGTests
             var infoP = Krylov.cg(in op, in M, in b, ref xP, 4 * n, Tol());
             Assert.IsTrue(infoF.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(infoP.status == IterativeSolveStatus.Converged);
-            Assert.IsTrue(RelResidual(in A, in xF, in b) <= Tol());
+            Assert.IsTrue(floatKrylovBatteryOracles.RelResidualBSR(in A, in xF, in b) <= Tol());
 
             // Same convergence trajectory for constant M (allow a small floating-point slack from
             // fcg's extra cross-term dot).
@@ -153,7 +139,7 @@ public class floatFlexibleCGTests
 
             var info = Krylov.fcg(in op, in M, in b, ref x, 4 * n, Tol());
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
-            Assert.IsTrue(RelResidual(in A, in x, in b) <= Tol());
+            Assert.IsTrue(floatKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
 
             arena.Dispose();
         }

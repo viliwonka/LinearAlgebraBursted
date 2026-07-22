@@ -63,14 +63,6 @@ public class floatAMGSolverTests
             return b.ToBSR(ref arena);
         }
 
-        static float RelResidual(in floatBSR A, in floatN x, in floatN b)
-        {
-            var Ax = BSR.spMV(in A, in x);
-            float num = 0, den = 0;
-            for (int i = 0; i < b.N; i++) { float d = Ax[i] - b[i]; num += d * d; den += b[i] * b[i]; }
-            return math.sqrt(num) / math.sqrt(math.max(den, (float)1e-30));
-        }
-
         public void Execute()
         {
             switch (Type)
@@ -112,7 +104,7 @@ public class floatAMGSolverTests
             var si = MG.solve(in amg, in b, ref x, 100, Tol());
 
             Assert.IsTrue(si.status == IterativeSolveStatus.Converged);
-            Assert.IsTrue(RelResidual(in A, in x, in b) <= Tol());
+            Assert.IsTrue(floatKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
 
             amg.Dispose();
             arena.Dispose();
@@ -152,8 +144,8 @@ public class floatAMGSolverTests
 
             Assert.IsTrue(cgInfo.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(pcInfo.status == IterativeSolveStatus.Converged);
-            Assert.IsTrue(RelResidual(in A, in xCg, in b) <= tol);   // plain CG really solved it
-            Assert.IsTrue(RelResidual(in A, in xPc, in b) <= tol);
+            Assert.IsTrue(floatKrylovBatteryOracles.RelResidualBSR(in A, in xCg, in b) <= tol);   // plain CG really solved it
+            Assert.IsTrue(floatKrylovBatteryOracles.RelResidualBSR(in A, in xPc, in b) <= tol);
             // AMG preconditioning must cut the iteration count.
             Assert.IsTrue(pcInfo.iterations < cgInfo.iterations);
 
@@ -221,7 +213,7 @@ public class floatAMGSolverTests
             var si = MG.solve(in amg, in b, ref x, 10, Tol());
             Assert.IsTrue(si.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(si.iterations == 1);
-            Assert.IsTrue(RelResidual(in A, in x, in b) <= Tol());
+            Assert.IsTrue(floatKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
 
             amg.Dispose();
             arena.Dispose();
@@ -243,7 +235,7 @@ public class floatAMGSolverTests
             for (int i = 0; i < n; i++) x[i] = (float)0;
             var si = MG.solve(in amg, in b, ref x, 100, Tol());
             Assert.IsTrue(si.status == IterativeSolveStatus.Converged);
-            Assert.IsTrue(RelResidual(in A, in x, in b) <= Tol());
+            Assert.IsTrue(floatKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
 
             amg.Dispose();
             arena.Dispose();
@@ -288,12 +280,12 @@ public class floatAMGSolverTests
             for (int i = 0; i < n; i++) x[i] = (float)0;
             var s1 = MG.solve(in amg, in b1, ref x, 100, Tol());
             Assert.IsTrue(s1.status == IterativeSolveStatus.Converged);
-            Assert.IsTrue(RelResidual(in A, in x, in b1) <= Tol());
+            Assert.IsTrue(floatKrylovBatteryOracles.RelResidualBSR(in A, in x, in b1) <= Tol());
 
             for (int i = 0; i < n; i++) x[i] = (float)0;
             var s2 = MG.solve(in amg, in b2, ref x, 100, Tol());
             Assert.IsTrue(s2.status == IterativeSolveStatus.Converged);
-            Assert.IsTrue(RelResidual(in A, in x, in b2) <= Tol());
+            Assert.IsTrue(floatKrylovBatteryOracles.RelResidualBSR(in A, in x, in b2) <= Tol());
 
             amg.Dispose();
             arena.Dispose();
@@ -396,7 +388,7 @@ public class floatAMGSolverTests
             for (int i = 0; i < n; i++) x[i] = (float)0;
             var si = MG.solve(in amg, in b, ref x, 100, Tol());
             Assert.IsTrue(si.status == IterativeSolveStatus.Converged);
-            Assert.IsTrue(RelResidual(in A, in x, in b) <= Tol());
+            Assert.IsTrue(floatKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
 
             amg.Dispose();
             arena.Dispose();
@@ -421,7 +413,7 @@ public class floatAMGSolverTests
 
             Assert.IsTrue(vInfo.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(kInfo.status == IterativeSolveStatus.Converged);
-            Assert.IsTrue(RelResidual(in A, in xk, in b) <= Tol());
+            Assert.IsTrue(floatKrylovBatteryOracles.RelResidualBSR(in A, in xk, in b) <= Tol());
             Assert.IsTrue(kInfo.iterations <= vInfo.iterations);
 
             vAmg.Dispose();
@@ -446,7 +438,7 @@ public class floatAMGSolverTests
             for (int i = 0; i < n; i++) x[i] = (float)0;
             var si = MG.solve(in amg, in b, ref x, 100, Tol());
             Assert.IsTrue(si.status == IterativeSolveStatus.Converged);
-            Assert.IsTrue(RelResidual(in A, in x, in b) <= Tol());
+            Assert.IsTrue(floatKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
 
             amg.Dispose();
             arena.Dispose();
@@ -486,7 +478,7 @@ public class floatAMGSolverTests
             for (int i = 0; i < n; i++) x[i] = (float)0;
             var si = MG.solve(in amg, in b, ref x, 200, Tol());
             Assert.IsTrue(si.status == IterativeSolveStatus.Converged);
-            Assert.IsTrue(RelResidual(in A, in x, in b) <= Tol());
+            Assert.IsTrue(floatKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
 
             amg.Dispose();
             arena.Dispose();
@@ -506,7 +498,7 @@ public class floatAMGSolverTests
             for (int i = 0; i < n; i++) x[i] = (float)0;
             var info = Krylov.fcg(in A, in M, in b, ref x, 4 * n, Tol());
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
-            Assert.IsTrue(RelResidual(in A, in x, in b) <= Tol());
+            Assert.IsTrue(floatKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
 
             amg.Dispose();
             arena.Dispose();

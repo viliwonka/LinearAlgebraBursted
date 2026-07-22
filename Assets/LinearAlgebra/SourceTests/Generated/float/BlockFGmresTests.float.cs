@@ -106,19 +106,6 @@ public class floatBlockFGmresTests
             return v;
         }
 
-        // Aggregate (block-Frobenius) relative residual ||B - A X||_F / ||B||_F for a BSR A.
-        static float RelResidualBlockBSR(ref Arena arena, in floatBSR A, in floatMxN X, in floatMxN B)
-        {
-            int s = B.M_Rows, n = B.N_Cols;
-            var AX = arena.floatMat(s, n);
-            new floatBSROperator(in A).ApplyBlock(in X, ref AX, s);
-            float num = 0, den = 0;
-            for (int j = 0; j < s; j++)
-                for (int c = 0; c < n; c++)
-                { float d = B[j, c] - AX[j, c]; num += d * d; den += B[j, c] * B[j, c]; }
-            return math.sqrt(num) / math.sqrt(math.max(den, (float)1e-30));
-        }
-
         // Independent of any other solver: pick a KNOWN block solution Xk, form B = A Xk via the GENERAL block
         // apply (floatDenseOperatorGeneral -- floatDenseOperator.ApplyBlock computes A^T for a non-symmetric
         // A and would build the WRONG B here), solve unpreconditioned, and recover Xk.
@@ -233,7 +220,7 @@ public class floatBlockFGmresTests
             var info = Krylov.bfgmres(in op, in M, in B, ref X, 20, 8 * n, ResidTol());
 
             Assert.IsTrue(info.Solved);
-            Assert.IsTrue(RelResidualBlockBSR(ref arena, in A, in X, in B) <= ResidTol());
+            Assert.IsTrue(floatKrylovBatteryOracles.RelResidualBlockBSR(in A, in X, in B) <= ResidTol());
 
             arena.Dispose();
         }

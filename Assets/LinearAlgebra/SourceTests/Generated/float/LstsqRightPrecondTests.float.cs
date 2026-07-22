@@ -17,17 +17,6 @@ using Unity.Mathematics;
 // wrappers (the diagonal case of the same path) must keep matching the QR oracle.
 public class floatLstsqRightPrecondTests
 {
-    // Dense SPD right preconditioner: z = Nmat * r via a plain dense mat-vec. Nmat must be
-    // symmetric positive definite (the tests build it as I + W^T W / n).
-    public struct SpdPre : IfloatPreconditioner
-    {
-        public floatMxN Nmat;   // n x n symmetric positive definite
-
-        public bool IsIdentity => false;
-
-        public void Apply(in floatN r, ref floatN z) => Blas.dot(in Nmat, in r, ref z);
-    }
-
     [BurstCompile(CompileSynchronously = true)]
     public struct TestJob : IJob
     {
@@ -67,23 +56,6 @@ public class floatLstsqRightPrecondTests
         }
 
         // ---- helpers ----
-
-        // Non-diagonal SPD preconditioner matrix N = I + W^T W / n (W random n x n). Bit-exactly
-        // symmetric (the (i,j) and (j,i) sums run the same k order), eigenvalues >= 1, mild
-        // condition number -- a well-conditioned but genuinely non-diagonal symmetric N.
-        static floatMxN BuildSpd(ref Arena arena, int n, uint seed)
-        {
-            var W = arena.floatRandomMat(n, n, -1f, 1f, seed);
-            var Nmat = arena.floatMat(n);
-            for (int i = 0; i < n; i++)
-                for (int j = 0; j < n; j++)
-                {
-                    float s = (float)0;
-                    for (int k = 0; k < n; k++) s += W[k, i] * W[k, j];
-                    Nmat[i, j] = s / (float)n + (i == j ? (float)1 : (float)0);
-                }
-            return Nmat;
-        }
 
         // R^-1 (n x n dense) from the thin QR of A (A full column rank): A·R^-1 = Q has orthonormal
         // columns, so it is the canonical STRONG least-squares right preconditioner (Blendenpik/LSRN
@@ -183,7 +155,7 @@ public class floatLstsqRightPrecondTests
             int m = 20, n = 6;
             var A = arena.floatRandomMat(m, n, -1f, 1f, 63001);
             var b = arena.floatRandomVec(m, -1f, 1f, 63002);
-            var pre = new SpdPre { Nmat = BuildSpd(ref arena, n, 63003) };
+            var pre = new floatDenseSpdPreconditioner { Nmat = floatKrylovBatteryOracles.BuildDenseSpd(ref arena, n, 63003, (float)n) };
 
             float tol = Consts.floatSqrtEps;
             var x = arena.floatVec(n);
@@ -200,7 +172,7 @@ public class floatLstsqRightPrecondTests
             int m = 20, n = 6;
             var A = arena.floatRandomMat(m, n, -1f, 1f, 63101);
             var b = arena.floatRandomVec(m, -1f, 1f, 63102);
-            var pre = new SpdPre { Nmat = BuildSpd(ref arena, n, 63103) };
+            var pre = new floatDenseSpdPreconditioner { Nmat = floatKrylovBatteryOracles.BuildDenseSpd(ref arena, n, 63103, (float)n) };
 
             float tol = Consts.floatSqrtEps;
             var x = arena.floatVec(n);
@@ -219,7 +191,7 @@ public class floatLstsqRightPrecondTests
             var A = arena.floatRandomMat(m, n, -1f, 1f, 63201);
             var b = arena.floatRandomVec(m, -1f, 1f, 63202);
             var bsm = DenseToBSR(ref arena, in A);
-            var pre = new SpdPre { Nmat = BuildSpd(ref arena, n, 63203) };
+            var pre = new floatDenseSpdPreconditioner { Nmat = floatKrylovBatteryOracles.BuildDenseSpd(ref arena, n, 63203, (float)n) };
 
             float tol = Consts.floatSqrtEps;
             var x = arena.floatVec(n);
@@ -237,7 +209,7 @@ public class floatLstsqRightPrecondTests
             var A = arena.floatRandomMat(m, n, -1f, 1f, 63301);
             var b = arena.floatRandomVec(m, -1f, 1f, 63302);
             var bsm = DenseToBSR(ref arena, in A);
-            var pre = new SpdPre { Nmat = BuildSpd(ref arena, n, 63303) };
+            var pre = new floatDenseSpdPreconditioner { Nmat = floatKrylovBatteryOracles.BuildDenseSpd(ref arena, n, 63303, (float)n) };
 
             float tol = Consts.floatSqrtEps;
             var x = arena.floatVec(n);

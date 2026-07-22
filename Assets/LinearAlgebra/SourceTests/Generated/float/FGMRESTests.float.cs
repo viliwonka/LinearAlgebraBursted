@@ -83,22 +83,6 @@ public class floatFGMRESTests
             return b.ToBSR(ref arena);
         }
 
-        static float RelResidualDense(in floatMxN A, in floatN x, in floatN b)
-        {
-            var Ax = Blas.dot(A, x);
-            float num = 0, den = 0;
-            for (int i = 0; i < b.N; i++) { float d = Ax[i] - b[i]; num += d * d; den += b[i] * b[i]; }
-            return math.sqrt(num) / math.sqrt(math.max(den, (float)1e-30));
-        }
-
-        static float RelResidualBSR(in floatBSR A, in floatN x, in floatN b)
-        {
-            var Ax = BSR.spMV(in A, in x);
-            float num = 0, den = 0;
-            for (int i = 0; i < b.N; i++) { float d = Ax[i] - b[i]; num += d * d; den += b[i] * b[i]; }
-            return math.sqrt(num) / math.sqrt(math.max(den, (float)1e-30));
-        }
-
         public void Execute()
         {
             switch (Type)
@@ -135,7 +119,7 @@ public class floatFGMRESTests
 
             Assert.IsTrue(gi.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(fi.status == IterativeSolveStatus.Converged);
-            Assert.IsTrue(RelResidualBSR(in A, in xF, in b) <= tol);
+            Assert.IsTrue(floatKrylovBatteryOracles.RelResidualBSR(in A, in xF, in b) <= tol);
             Assert.IsTrue(math.abs(fi.iterations - gi.iterations) <= 2);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(math.abs(xF[i] - xG[i]) <= MatchTol() * ((float)1 + math.abs(xG[i])));
@@ -162,7 +146,7 @@ public class floatFGMRESTests
 
             Assert.IsTrue(gi.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(fi.status == IterativeSolveStatus.Converged);
-            Assert.IsTrue(RelResidualDense(in A, in xF, in b) <= Tol());
+            Assert.IsTrue(floatKrylovBatteryOracles.RelResidualDense(in A, in xF, in b) <= Tol());
             Assert.AreEqual(gi.iterations, fi.iterations);
             Assert.AreEqual(gi.rnorm, fi.rnorm);
             for (int i = 0; i < n; i++) Assert.IsTrue(xG[i] == xF[i]);
@@ -183,7 +167,7 @@ public class floatFGMRESTests
             var info = Krylov.fgmres(in A, in b, ref x, 40, 4 * n, Tol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
-            Assert.IsTrue(RelResidualBSR(in A, in x, in b) <= Tol());
+            Assert.IsTrue(floatKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
 
             arena.Dispose();
         }
@@ -201,7 +185,7 @@ public class floatFGMRESTests
             var info = Krylov.fgmres(in A, in b, ref x, 10, 20 * n, Tol());   // restart 10 << n
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
-            Assert.IsTrue(RelResidualBSR(in A, in x, in b) <= Tol());
+            Assert.IsTrue(floatKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
 
             arena.Dispose();
         }
@@ -220,7 +204,7 @@ public class floatFGMRESTests
 
             var info = Krylov.fgmres(in op, in M, in b, ref x, 20, 8 * n, Tol());
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
-            Assert.IsTrue(RelResidualBSR(in A, in x, in b) <= Tol());
+            Assert.IsTrue(floatKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
 
             arena.Dispose();
         }
