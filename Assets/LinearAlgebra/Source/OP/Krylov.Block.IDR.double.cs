@@ -63,12 +63,7 @@ namespace LinearAlgebra
 
             // Per-column thresholds tol^2 ||B[j]||^2.
             var thr = new doubleN(m);
-            for (int j = 0; j < m; j++)
-            {
-                double rowbb = (double)0;
-                for (int col = 0; col < n; col++) rowbb += B[j, col] * B[j, col];
-                thr[j] = tol * tol * rowbb;
-            }
+            BuildColumnThresholdsPlain(in B, ref thr, m, n, tol);
 
             // Shadow space P (s slots, each m x n, deterministic from seed); history G/U (s slots, each
             // m x n, start at zero); Msys (s x s grid of m x m blocks, diagonal blocks start at

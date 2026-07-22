@@ -2,6 +2,7 @@
 //   Generated from Assets/LinearAlgebra/CodeGen/TemplateSourceTests/fProxy/KrylovBattery.Gallery.fProxy.cs
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
+using NUnit.Framework;
 using Unity.Collections;
 using Unity.Mathematics;
 using LinearAlgebra.Gallery;
@@ -163,6 +164,27 @@ namespace LinearAlgebra
             return Nmat;
         }
 
+        // SPD SYSTEM matrix A = M^T M + n*I (M random n x n) -- NOT a preconditioner (see
+        // BuildDenseSpd above for that). Symmetric, well-conditioned by the diagonal boost.
+        public static floatMxN BuildDenseSpdSystem(ref Arena arena, int n, uint seed)
+        {
+            var M = arena.floatRandomMat(n, n, (float)(-1f), (float)1f, seed);
+            var A = Blas.dot(M, M, true);                       // M^T M
+            for (int d = 0; d < n; d++) A[d, d] += n;           // diagonally boost -> SPD, well-conditioned
+            return A;
+        }
+
+        // Dense n x n -> 1x1-block BSR scalar copy. nnz capacity hint inferred from A's own shape.
+        public static floatBSR DenseToBSR1x1(ref Arena arena, in floatMxN A)
+        {
+            var builder = arena.floatBSRBuilder(A.M_Rows, A.N_Cols, 1, 1, math.max(A.M_Rows * A.N_Cols, 1));
+            for (int r = 0; r < A.M_Rows; r++)
+                for (int c = 0; c < A.N_Cols; c++)
+                    if (A[r, c] != (float)0)
+                        builder.AddValue(r, c, A[r, c]);
+            return builder.ToBSR(ref arena);
+        }
+
         public static float RelResidualDense(in floatMxN A, in floatN x, in floatN b)
         {
             var Ax = Blas.dot(A, x);
@@ -235,6 +257,23 @@ namespace LinearAlgebra
             var v = arena.floatVec(n);
             for (int c = 0; c < n; c++) v[c] = B[j, c];
             return v;
+        }
+    }
+
+    /// <summary>
+    /// Shared scalar/vector relative-tolerance assertions -- the ONE shared copy of AssertClose /
+    /// AssertVecClose otherwise duplicated per bespoke test file. Called from inside [BurstCompile]
+    /// IJob structs.
+    /// </summary>
+    internal static class floatKrylovTestAsserts
+    {
+        public static void AssertClose(float got, float expected, float tol)
+            => Assert.IsTrue(math.abs(got - expected) <= tol * ((float)1 + math.abs(expected)));
+
+        public static void AssertVecClose(in floatN got, in floatN expected, float tol)
+        {
+            Assert.AreEqual(expected.N, got.N);
+            for (int i = 0; i < got.N; i++) AssertClose(got[i], expected[i], tol);
         }
     }
 }

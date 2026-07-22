@@ -44,14 +44,6 @@ public class doubleBlockCGTests
 
         static double Tol() => 1e-5;
 
-        static doubleMxN BuildDenseSPD(ref Arena arena, int dim, uint seed)
-        {
-            var M = arena.doubleRandomMat(dim, dim, (double)(-1f), (double)1f, seed);
-            var A = Blas.dot(M, M, true);                       // M^T M
-            for (int d = 0; d < dim; d++) A[d, d] += dim;       // diagonally boost -> SPD, well-conditioned
-            return A;
-        }
-
         static doubleN Row(ref Arena arena, in doubleMxN B, int j, int n)
         {
             var v = arena.doubleVec(n);
@@ -66,7 +58,7 @@ public class doubleBlockCGTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 20, s = 4;
-            var A = BuildDenseSPD(ref arena, n, 71001u);
+            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 71001u);
             var B = arena.doubleRandomMat(s, n, (double)(-1f), (double)1f, 71002u);
 
             var X = arena.doubleMat(s, n);                      // zero initial guess
@@ -97,7 +89,7 @@ public class doubleBlockCGTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 24, s = 5;
-            var A = BuildDenseSPD(ref arena, n, 72001u);
+            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 72001u);
             var B = arena.doubleRandomMat(s, n, (double)(-1f), (double)1f, 72002u);
             double tol = Consts.doubleSqrtEps;
             int budget = 8 * n;
@@ -129,7 +121,7 @@ public class doubleBlockCGTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 16, s = 4;
-            var A = BuildDenseSPD(ref arena, n, 73001u);
+            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 73001u);
             var B = arena.doubleRandomMat(s, n, (double)(-1f), (double)1f, 73002u);
             // Force columns 1 and 3 identical -> block rank <= 3.
             for (int c = 0; c < n; c++) B[3, c] = B[1, c];
@@ -156,8 +148,8 @@ public class doubleBlockCGTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 18, s = 3;
-            var Adense = BuildDenseSPD(ref arena, n, 74001u);
-            var A = DenseToBSR1x1(ref arena, in Adense, n * n);
+            var Adense = doubleKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 74001u);
+            var A = doubleKrylovBatteryOracles.DenseToBSR1x1(ref arena, in Adense);
             var M = arena.doubleBlockJacobi(in A);
             var B = arena.doubleRandomMat(s, n, (double)(-1f), (double)1f, 74002u);
 
@@ -185,7 +177,7 @@ public class doubleBlockCGTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 20, s = 5;
-            var A = BuildDenseSPD(ref arena, n, 75001u);
+            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 75001u);
             var Xk = arena.doubleRandomMat(s, n, (double)(-1f), (double)1f, 75002u);   // known solution
 
             var B = arena.doubleMat(s, n);
@@ -200,17 +192,6 @@ public class doubleBlockCGTests
                     Assert.IsTrue(math.abs((double)X[j, c] - (double)Xk[j, c]) <= Tol() * (1.0 + math.abs((double)Xk[j, c])));
 
             arena.Dispose();
-        }
-
-        // Dense n x n -> 1x1-block BSR (mirrors the helper used across the sparse solver tests).
-        static doubleBSR DenseToBSR1x1(ref Arena arena, in doubleMxN A, int nnzHint)
-        {
-            var builder = arena.doubleBSRBuilder(A.M_Rows, A.N_Cols, 1, 1, math.max(nnzHint, 1));
-            for (int r = 0; r < A.M_Rows; r++)
-                for (int c = 0; c < A.N_Cols; c++)
-                    if (A[r, c] != (double)0)
-                        builder.AddValue(r, c, A[r, c]);
-            return builder.ToBSR(ref arena);
         }
     }
 

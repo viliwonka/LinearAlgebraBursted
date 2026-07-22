@@ -63,16 +63,6 @@ public class fProxyKrylovFusedKernelTests
                 Assert.AreEqual((double)a[i], (double)b[i]);
         }
 
-        static void AssertClose(fProxy got, fProxy expected, fProxy tol)
-            => Assert.IsTrue(math.abs(got - expected) <= tol * ((fProxy)1 + math.abs(expected)));
-
-        static void AssertVecClose(in fProxyN a, in fProxyN b, fProxy tol)
-        {
-            Assert.AreEqual(a.N, b.N);
-            for (int i = 0; i < a.N; i++)
-                AssertClose(a[i], b[i], tol);
-        }
-
         // ---- axpyNormSq: y += a*x ; return dot(y,y) -- vs axpy(y,x,a,n) then Blas.dot(y,y) ----
         void AxpyNormSqBitIdentical()
         {
@@ -189,7 +179,7 @@ public class fProxyKrylovFusedKernelTests
                 yRef.Data.CopyFrom(x.Data);
                 yRef.divInPlace(s);
 
-                AssertVecClose(in yFused, in yRef, RoundingTol());
+                fProxyKrylovTestAsserts.AssertVecClose(in yFused, in yRef, RoundingTol());
             }
             arena.Dispose();
         }
@@ -214,7 +204,7 @@ public class fProxyKrylovFusedKernelTests
                 wRef.addScaledInPlace(b, w2);
                 wRef.divInPlace(gamma);
 
-                AssertVecClose(in wFused, in wRef, RoundingTol());
+                fProxyKrylovTestAsserts.AssertVecClose(in wFused, in wRef, RoundingTol());
             }
             arena.Dispose();
         }

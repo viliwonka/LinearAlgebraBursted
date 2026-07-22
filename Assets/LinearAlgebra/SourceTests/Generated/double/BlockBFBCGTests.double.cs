@@ -49,14 +49,6 @@ public class doubleBlockBFBCGTests
 
         static double Tol() => 1e-5;
 
-        static doubleMxN BuildDenseSPD(ref Arena arena, int dim, uint seed)
-        {
-            var M = arena.doubleRandomMat(dim, dim, (double)(-1f), (double)1f, seed);
-            var A = Blas.dot(M, M, true);                       // M^T M
-            for (int d = 0; d < dim; d++) A[d, d] += dim;       // diagonally boost -> SPD, well-conditioned
-            return A;
-        }
-
         // A = M^T M with M's columns geometrically scaled across [1, condSpan] -- stretches A's singular
         // spectrum (cond(A) ~ condSpan^2) without a Hilbert matrix's extreme growth.
         static doubleMxN BuildStretchedSPD(ref Arena arena, int dim, uint seed, double condSpan)
@@ -103,7 +95,7 @@ public class doubleBlockBFBCGTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 20, s = 4;
-            var A = BuildDenseSPD(ref arena, n, 88001u);
+            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 88001u);
             var B = arena.doubleRandomMat(s, n, (double)(-1f), (double)1f, 88002u);
 
             var X = arena.doubleMat(s, n);                      // zero initial guess
@@ -133,7 +125,7 @@ public class doubleBlockBFBCGTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 20, s = 5;
-            var A = BuildDenseSPD(ref arena, n, 88011u);
+            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 88011u);
             var Xk = arena.doubleRandomMat(s, n, (double)(-1f), (double)1f, 88012u);   // known solution
 
             var B = arena.doubleMat(s, n);
@@ -157,7 +149,7 @@ public class doubleBlockBFBCGTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 24, s = 5;
-            var A = BuildDenseSPD(ref arena, n, 88021u);
+            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 88021u);
             var B = arena.doubleRandomMat(s, n, (double)(-1f), (double)1f, 88022u);
             double tol = Consts.doubleSqrtEps;
             int budget = 8 * n;
@@ -190,7 +182,7 @@ public class doubleBlockBFBCGTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 16, s = 4;
-            var A = BuildDenseSPD(ref arena, n, 88031u);
+            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 88031u);
             var Xk = arena.doubleRandomMat(s, n, (double)(-1f), (double)1f, 88032u);
             // Make the KNOWN solution's row 2 a scalar multiple of row 0 -> B[2,:] = 10 B[0,:].
             for (int c = 0; c < n; c++) Xk[2, c] = (double)10 * Xk[0, c];
@@ -222,8 +214,8 @@ public class doubleBlockBFBCGTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 18, s = 3;
-            var Adense = BuildDenseSPD(ref arena, n, 88041u);
-            var A = DenseToBSR1x1(ref arena, in Adense, n * n);
+            var Adense = doubleKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 88041u);
+            var A = doubleKrylovBatteryOracles.DenseToBSR1x1(ref arena, in Adense);
             var M = arena.doubleBlockJacobi(in A);
             var B = arena.doubleRandomMat(s, n, (double)(-1f), (double)1f, 88042u);
 
@@ -252,7 +244,7 @@ public class doubleBlockBFBCGTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 16, s = 4;
-            var A = BuildDenseSPD(ref arena, n, 88051u);
+            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 88051u);
             var B = arena.doubleRandomMat(s, n, (double)(-1f), (double)1f, 88052u);
             int maxIter = 8 * n;
             double tol = Consts.doubleSqrtEps;
@@ -322,17 +314,6 @@ public class doubleBlockBFBCGTests
             Assert.IsTrue(bfInfo.iterations <= ridgeInfo.iterations * 2 + 2);
 
             arena.Dispose();
-        }
-
-        // Dense n x n -> 1x1-block BSR (mirrors the helper used across the sparse solver tests).
-        static doubleBSR DenseToBSR1x1(ref Arena arena, in doubleMxN A, int nnzHint)
-        {
-            var builder = arena.doubleBSRBuilder(A.M_Rows, A.N_Cols, 1, 1, math.max(nnzHint, 1));
-            for (int r = 0; r < A.M_Rows; r++)
-                for (int c = 0; c < A.N_Cols; c++)
-                    if (A[r, c] != (double)0)
-                        builder.AddValue(r, c, A[r, c]);
-            return builder.ToBSR(ref arena);
         }
     }
 

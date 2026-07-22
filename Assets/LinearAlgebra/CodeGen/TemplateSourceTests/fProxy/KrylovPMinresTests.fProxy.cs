@@ -62,33 +62,6 @@ public class fProxyKrylovPMinresTests
 
         // ---- helpers ---------------------------------------------------------------------
 
-        static void AssertClose(fProxy got, fProxy expected, fProxy tol)
-            => Assert.IsTrue(math.abs(got - expected) <= tol * ((fProxy)1 + math.abs(expected)));
-
-        static void AssertVecClose(in fProxyN got, in fProxyN expected, fProxy tol)
-        {
-            Assert.AreEqual(expected.N, got.N);
-            for (int i = 0; i < got.N; i++) AssertClose(got[i], expected[i], tol);
-        }
-
-        // SPD via M^T M + dim*I -- same recipe as fProxyKrylovRound2Tests.BuildDenseSPD.
-        static fProxyMxN BuildDenseSPD(ref Arena arena, int dim, uint seed)
-        {
-            var M = arena.fProxyRandomMat(dim, dim, -1f, 1f, seed);
-            var A = Blas.dot(M, M, true);
-            for (int d = 0; d < dim; d++) A[d, d] += dim;
-            return A;
-        }
-
-        static fProxyBSR DenseToBSR1x1(ref Arena arena, in fProxyMxN A, int nnzHint)
-        {
-            var builder = arena.fProxyBSRBuilder(A.M_Rows, A.N_Cols, 1, 1, math.max(nnzHint, 1));
-            for (int r = 0; r < A.M_Rows; r++)
-                for (int c = 0; c < A.N_Cols; c++)
-                    if (A[r, c] != (fProxy)0) builder.AddValue(r, c, A[r, c]);
-            return builder.ToBSR(ref arena);
-        }
-
         // Dense LU oracle on COPIES (decompInPlace/decompSolve are destructive). Returns A^-1 b.
         static fProxyN DenseSolve(in fProxyMxN A, in fProxyN b)
         {
@@ -113,7 +86,7 @@ public class fProxyKrylovPMinresTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 14;
-            var A = BuildDenseSPD(ref arena, n, 97001u);
+            var A = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 97001u);
             var op = new fProxyDenseOperator(in A);
             var b = arena.fProxyRandomVec(n, -1f, 1f, 97002u);
 
@@ -123,11 +96,11 @@ public class fProxyKrylovPMinresTests
             var info = Krylov.minres(op, new fProxyIdentityPreconditioner(), in b, ref x, 4 * n, Consts.fProxySqrtEps);
             Assert.IsTrue(info.Solved);
 
-            AssertVecClose(in x, in xLU, SolveTol());
+            fProxyKrylovTestAsserts.AssertVecClose(in x, in xLU, SolveTol());
 
             var Ax = arena.fProxyVec(n);
             Blas.dot(in A, in x, ref Ax);
-            AssertVecClose(in Ax, in b, SolveTol());
+            fProxyKrylovTestAsserts.AssertVecClose(in Ax, in b, SolveTol());
 
             arena.Dispose();
         }
@@ -140,8 +113,8 @@ public class fProxyKrylovPMinresTests
             var arena = new Arena(Allocator.Persistent);
 
             int dim = 12;
-            var A = BuildDenseSPD(ref arena, dim, 97101u);
-            var bsm = DenseToBSR1x1(ref arena, in A, dim * dim);
+            var A = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, dim, 97101u);
+            var bsm = fProxyKrylovBatteryOracles.DenseToBSR1x1(ref arena, in A);
             var M = arena.fProxyBlockJacobi(in bsm);
             var b = arena.fProxyRandomVec(dim, -1f, 1f, 97102u);
 
@@ -151,10 +124,10 @@ public class fProxyKrylovPMinresTests
             var info = Krylov.minres(in bsm, in M, in b, ref x, 4 * dim, Consts.fProxySqrtEps);
             Assert.IsTrue(info.Solved);
 
-            AssertVecClose(in x, in xLU, SolveTol());
+            fProxyKrylovTestAsserts.AssertVecClose(in x, in xLU, SolveTol());
 
             var Ax = BSR.spMV(in bsm, in x);
-            AssertVecClose(in Ax, in b, SolveTol());
+            fProxyKrylovTestAsserts.AssertVecClose(in Ax, in b, SolveTol());
 
             arena.Dispose();
         }
@@ -193,7 +166,7 @@ public class fProxyKrylovPMinresTests
             var infoP = Krylov.minres(new fProxyDenseOperator(in A), new fProxyIdentityPreconditioner(),
                                        in b, ref xP, maxIter, tol);
             Assert.IsTrue(infoP.Solved);
-            AssertVecClose(in xP, in xTrue, IndefTol());
+            fProxyKrylovTestAsserts.AssertVecClose(in xP, in xTrue, IndefTol());
 
             arena.Dispose();
         }
@@ -228,8 +201,8 @@ public class fProxyKrylovPMinresTests
             Assert.IsTrue((double)infoP.iterations <= (double)infoPlain.iterations * 0.9);
 
             // both land on the same (true) solution
-            AssertVecClose(in xPlain, in xTrue, LooseTol());
-            AssertVecClose(in xP, in xTrue, LooseTol());
+            fProxyKrylovTestAsserts.AssertVecClose(in xPlain, in xTrue, LooseTol());
+            fProxyKrylovTestAsserts.AssertVecClose(in xP, in xTrue, LooseTol());
 
             arena.Dispose();
         }
@@ -245,7 +218,7 @@ public class fProxyKrylovPMinresTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 10;
-            var A = BuildDenseSPD(ref arena, n, 97501u);
+            var A = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 97501u);
             var op = new fProxyDenseOperator(in A);
             var b = arena.fProxyVec(n);                  // all zero
             var x = arena.fProxyRandomVec(n, -1f, 1f, 97502u);   // nonzero seed, must be overwritten
@@ -266,7 +239,7 @@ public class fProxyKrylovPMinresTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 12;
-            var A = BuildDenseSPD(ref arena, n, 97601u);
+            var A = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 97601u);
             var op = new fProxyDenseOperator(in A);
             var b = arena.fProxyRandomVec(n, -1f, 1f, 97602u);
 
@@ -305,14 +278,6 @@ public class fProxyKrylovPMinresTests
     // Managed [Test]s: verified-rnorm honesty (return contract) + guard throws.
     // ==============================================================================
 
-    static fProxyMxN BuildDenseSPD(ref Arena arena, int dim, uint seed)
-    {
-        var M = arena.fProxyRandomMat(dim, dim, (fProxy)(-1f), (fProxy)1f, seed);
-        var A = Blas.dot(M, M, true);
-        for (int d = 0; d < dim; d++) A[d, d] += dim;
-        return A;
-    }
-
     // b - A*x, recomputed fresh -- independent of whatever residual the solver tracked internally.
     // Mirrors fProxyKrylovVerifyAtExitTests.TrueResidualSq.
     static fProxy TrueResidualSq(in fProxyMxN A, in fProxyN b, in fProxyN x, ref fProxyN scratch)
@@ -331,7 +296,7 @@ public class fProxyKrylovPMinresTests
         var arena = new Arena(Allocator.Persistent);
 
         int n = 16;
-        var A = BuildDenseSPD(ref arena, n, 98001u);
+        var A = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 98001u);
         var b = arena.fProxyRandomVec(n, (fProxy)(-1f), (fProxy)1f, 98002u);
 
         var op = new fProxyDenseOperator(in A);
@@ -357,7 +322,7 @@ public class fProxyKrylovPMinresTests
         var arena = new Arena(Allocator.Persistent);
 
         int n = 12;
-        var A = BuildDenseSPD(ref arena, n, 98101u);
+        var A = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 98101u);
         var b = arena.fProxyRandomVec(n, (fProxy)(-1f), (fProxy)1f, 98102u);
 
         var op = new fProxyDenseOperator(in A);
@@ -381,7 +346,7 @@ public class fProxyKrylovPMinresTests
         try
         {
             int n = 8;
-            var A = BuildDenseSPD(ref arena, n, 98201u);
+            var A = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 98201u);
             var op = new fProxyDenseOperator(in A);
             var M = new fProxyIdentityPreconditioner();
             var b = arena.fProxyRandomVec(n, (fProxy)(-1f), (fProxy)1f, 98202u);
@@ -412,7 +377,7 @@ public class fProxyKrylovPMinresTests
         try
         {
             int n = 8;
-            var A = BuildDenseSPD(ref arena, n, 98301u);
+            var A = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 98301u);
             var op = new fProxyDenseOperator(in A);
             var M = new fProxyIdentityPreconditioner();
             var b = arena.fProxyRandomVec(n, (fProxy)(-1f), (fProxy)1f, 98302u);

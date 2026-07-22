@@ -68,12 +68,7 @@ namespace LinearAlgebra
             double maxr = 0;
 
             // Per-column thresholds tol^2 ||B[j]||^2.
-            for (int j = 0; j < s; j++)
-            {
-                fProxy bb = (fProxy)0;
-                for (int c = 0; c < n; c++) bb += B[j, c] * B[j, c];
-                thr[j] = tol * tol * bb;
-            }
+            BuildColumnThresholdsPlain(in B, ref thr, s, n, tol);
 
             // R = B - A X.
             BlockResidual(in A, in X, in B, ref Q, ref R, s, n);

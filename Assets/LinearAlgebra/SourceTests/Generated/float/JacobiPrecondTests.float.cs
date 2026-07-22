@@ -62,9 +62,6 @@ public class floatJacobiPrecondTests
             return builder.ToBSR(ref arena);
         }
 
-        static void AssertClose(float got, float expected, float tol)
-            => Assert.IsTrue(math.abs(got - expected) <= tol * ((float)1 + math.abs(expected)));
-
         // ---- 1. dense columnNormsSquared == diag(AᵀA) ----
         void ColumnNormsSquaredDenseMatchesReference()
         {
@@ -80,7 +77,7 @@ public class floatJacobiPrecondTests
             {
                 float refv = (float)0;
                 for (int r = 0; r < m; r++) refv += A[r, c] * A[r, c];
-                AssertClose(d2[c], refv, Tight());
+                floatKrylovTestAsserts.AssertClose(d2[c], refv, Tight());
             }
 
             arena.Dispose();
@@ -100,12 +97,12 @@ public class floatJacobiPrecondTests
             var bsm1 = DenseToBSR(ref arena, in A, 1, 1, m * n);
             var d2b1 = arena.floatVec(n);
             BSR.columnNormsSquared(in bsm1, ref d2b1);
-            for (int c = 0; c < n; c++) AssertClose(d2b1[c], d2Dense[c], Tight());
+            for (int c = 0; c < n; c++) floatKrylovTestAsserts.AssertClose(d2b1[c], d2Dense[c], Tight());
 
             var bsm3 = DenseToBSR(ref arena, in A, 3, 3, m * n);
             var d2b3 = arena.floatVec(n);
             BSR.columnNormsSquared(in bsm3, ref d2b3);
-            for (int c = 0; c < n; c++) AssertClose(d2b3[c], d2Dense[c], Tight());
+            for (int c = 0; c < n; c++) floatKrylovTestAsserts.AssertClose(d2b3[c], d2Dense[c], Tight());
 
             // RECTANGULAR blocks BR=2, BC=3 (would catch a BR/BC swap in the block-column indexing
             // that square blocks cannot). Fresh matrix sized to the block grid: 4x9 -> 2x3 grid.
@@ -117,7 +114,7 @@ public class floatJacobiPrecondTests
             var bsm23 = DenseToBSR(ref arena, in A2, 2, 3, m2 * n2);
             var d2b23 = arena.floatVec(n2);
             BSR.columnNormsSquared(in bsm23, ref d2b23);
-            for (int c = 0; c < n2; c++) AssertClose(d2b23[c], d2Dense2[c], Tight());
+            for (int c = 0; c < n2; c++) floatKrylovTestAsserts.AssertClose(d2b23[c], d2Dense2[c], Tight());
 
             arena.Dispose();
         }
@@ -132,10 +129,10 @@ public class floatJacobiPrecondTests
             var d = arena.floatVec(4);
             Blas.buildJacobiScale(in c2, ref d);
 
-            AssertClose(d[0], (float)0.5, Tight());        // 1/sqrt(4)
-            AssertClose(d[1], (float)1,   Tight());        // zero column -> unscaled
-            AssertClose(d[2], (float)1 / (float)3, Tight()); // 1/sqrt(9)
-            AssertClose(d[3], (float)2,   Tight());        // 1/sqrt(0.25)
+            floatKrylovTestAsserts.AssertClose(d[0], (float)0.5, Tight());        // 1/sqrt(4)
+            floatKrylovTestAsserts.AssertClose(d[1], (float)1,   Tight());        // zero column -> unscaled
+            floatKrylovTestAsserts.AssertClose(d[2], (float)1 / (float)3, Tight()); // 1/sqrt(9)
+            floatKrylovTestAsserts.AssertClose(d[3], (float)2,   Tight());        // 1/sqrt(0.25)
 
             for (int j = 0; j < 4; j++) Assert.IsTrue(math.isfinite(d[j]));
 
@@ -168,7 +165,7 @@ public class floatJacobiPrecondTests
             op.ApplyT(in u, ref y2);                // (AD)^T u
             float rhs = Blas.dot(v, y2);
 
-            AssertClose(lhs, rhs, LooseTol());
+            floatKrylovTestAsserts.AssertClose(lhs, rhs, LooseTol());
 
             arena.Dispose();
         }
@@ -193,7 +190,7 @@ public class floatJacobiPrecondTests
 
             var d2s = arena.floatVec(n);
             Blas.columnNormsSquared(in AD, ref d2s);
-            for (int c = 0; c < n; c++) AssertClose(d2s[c], (float)1, LooseTol());  // random cols are nonzero
+            for (int c = 0; c < n; c++) floatKrylovTestAsserts.AssertClose(d2s[c], (float)1, LooseTol());  // random cols are nonzero
 
             arena.Dispose();
         }
@@ -229,10 +226,10 @@ public class floatJacobiPrecondTests
             var x = arena.floatVec(n);
             for (int j = 0; j < n; j++) x[j] = d[j] * y[j];    // unscale
 
-            for (int j = 0; j < n; j++) AssertClose(x[j], xTrue[j], LooseTol());
+            for (int j = 0; j < n; j++) floatKrylovTestAsserts.AssertClose(x[j], xTrue[j], LooseTol());
 
             var Ax = Blas.dot(A, x);
-            for (int i = 0; i < m; i++) AssertClose(Ax[i], b[i], LooseTol());
+            for (int i = 0; i < m; i++) floatKrylovTestAsserts.AssertClose(Ax[i], b[i], LooseTol());
 
             arena.Dispose();
         }

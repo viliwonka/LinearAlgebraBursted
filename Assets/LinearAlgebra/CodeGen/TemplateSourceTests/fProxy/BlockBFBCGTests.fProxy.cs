@@ -45,14 +45,6 @@ public class fProxyBlockBFBCGTests
 
         static fProxy Tol() => /*+choose[2e-2f|1e-5]*/2e-2f/*-choose*/;
 
-        static fProxyMxN BuildDenseSPD(ref Arena arena, int dim, uint seed)
-        {
-            var M = arena.fProxyRandomMat(dim, dim, (fProxy)(-1f), (fProxy)1f, seed);
-            var A = Blas.dot(M, M, true);                       // M^T M
-            for (int d = 0; d < dim; d++) A[d, d] += dim;       // diagonally boost -> SPD, well-conditioned
-            return A;
-        }
-
         // A = M^T M with M's columns geometrically scaled across [1, condSpan] -- stretches A's singular
         // spectrum (cond(A) ~ condSpan^2) without a Hilbert matrix's extreme growth.
         static fProxyMxN BuildStretchedSPD(ref Arena arena, int dim, uint seed, fProxy condSpan)
@@ -99,7 +91,7 @@ public class fProxyBlockBFBCGTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 20, s = 4;
-            var A = BuildDenseSPD(ref arena, n, 88001u);
+            var A = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 88001u);
             var B = arena.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 88002u);
 
             var X = arena.fProxyMat(s, n);                      // zero initial guess
@@ -129,7 +121,7 @@ public class fProxyBlockBFBCGTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 20, s = 5;
-            var A = BuildDenseSPD(ref arena, n, 88011u);
+            var A = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 88011u);
             var Xk = arena.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 88012u);   // known solution
 
             var B = arena.fProxyMat(s, n);
@@ -153,7 +145,7 @@ public class fProxyBlockBFBCGTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 24, s = 5;
-            var A = BuildDenseSPD(ref arena, n, 88021u);
+            var A = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 88021u);
             var B = arena.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 88022u);
             fProxy tol = Consts.fProxySqrtEps;
             int budget = 8 * n;
@@ -186,7 +178,7 @@ public class fProxyBlockBFBCGTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 16, s = 4;
-            var A = BuildDenseSPD(ref arena, n, 88031u);
+            var A = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 88031u);
             var Xk = arena.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 88032u);
             // Make the KNOWN solution's row 2 a scalar multiple of row 0 -> B[2,:] = 10 B[0,:].
             for (int c = 0; c < n; c++) Xk[2, c] = (fProxy)10 * Xk[0, c];
@@ -218,8 +210,8 @@ public class fProxyBlockBFBCGTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 18, s = 3;
-            var Adense = BuildDenseSPD(ref arena, n, 88041u);
-            var A = DenseToBSR1x1(ref arena, in Adense, n * n);
+            var Adense = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 88041u);
+            var A = fProxyKrylovBatteryOracles.DenseToBSR1x1(ref arena, in Adense);
             var M = arena.fProxyBlockJacobi(in A);
             var B = arena.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 88042u);
 
@@ -248,7 +240,7 @@ public class fProxyBlockBFBCGTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 16, s = 4;
-            var A = BuildDenseSPD(ref arena, n, 88051u);
+            var A = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 88051u);
             var B = arena.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 88052u);
             int maxIter = 8 * n;
             fProxy tol = Consts.fProxySqrtEps;
@@ -318,17 +310,6 @@ public class fProxyBlockBFBCGTests
             Assert.IsTrue(bfInfo.iterations <= ridgeInfo.iterations * 2 + 2);
 
             arena.Dispose();
-        }
-
-        // Dense n x n -> 1x1-block BSR (mirrors the helper used across the sparse solver tests).
-        static fProxyBSR DenseToBSR1x1(ref Arena arena, in fProxyMxN A, int nnzHint)
-        {
-            var builder = arena.fProxyBSRBuilder(A.M_Rows, A.N_Cols, 1, 1, math.max(nnzHint, 1));
-            for (int r = 0; r < A.M_Rows; r++)
-                for (int c = 0; c < A.N_Cols; c++)
-                    if (A[r, c] != (fProxy)0)
-                        builder.AddValue(r, c, A[r, c]);
-            return builder.ToBSR(ref arena);
         }
     }
 

@@ -214,9 +214,7 @@ namespace LinearAlgebra
 
         cleanup:
             {
-                BlockApplyOp(in A, in X, ref Rfinal, s, ref rowN, ref rowM);
-                double maxr = BlockMaxResidualRecompute(in B, in Rfinal, s, m);
-                int converged = status == IterativeSolveStatus.Converged ? s : 0;
+                BlockLstsqExit(in A, in X, in B, ref Rfinal, status, s, m, ref rowN, ref rowM, out double maxr, out int converged);
 
                 rowN.Dispose(); rowM.Dispose();
                 LA.Dispose(); U.Dispose(); V.Dispose(); RhoBar.Dispose(); ZetaBar.Dispose(); Theta.Dispose(); D.Dispose();

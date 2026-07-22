@@ -66,33 +66,6 @@ public class floatKrylovPMinresTests
 
         // ---- helpers ---------------------------------------------------------------------
 
-        static void AssertClose(float got, float expected, float tol)
-            => Assert.IsTrue(math.abs(got - expected) <= tol * ((float)1 + math.abs(expected)));
-
-        static void AssertVecClose(in floatN got, in floatN expected, float tol)
-        {
-            Assert.AreEqual(expected.N, got.N);
-            for (int i = 0; i < got.N; i++) AssertClose(got[i], expected[i], tol);
-        }
-
-        // SPD via M^T M + dim*I -- same recipe as floatKrylovRound2Tests.BuildDenseSPD.
-        static floatMxN BuildDenseSPD(ref Arena arena, int dim, uint seed)
-        {
-            var M = arena.floatRandomMat(dim, dim, -1f, 1f, seed);
-            var A = Blas.dot(M, M, true);
-            for (int d = 0; d < dim; d++) A[d, d] += dim;
-            return A;
-        }
-
-        static floatBSR DenseToBSR1x1(ref Arena arena, in floatMxN A, int nnzHint)
-        {
-            var builder = arena.floatBSRBuilder(A.M_Rows, A.N_Cols, 1, 1, math.max(nnzHint, 1));
-            for (int r = 0; r < A.M_Rows; r++)
-                for (int c = 0; c < A.N_Cols; c++)
-                    if (A[r, c] != (float)0) builder.AddValue(r, c, A[r, c]);
-            return builder.ToBSR(ref arena);
-        }
-
         // Dense LU oracle on COPIES (decompInPlace/decompSolve are destructive). Returns A^-1 b.
         static floatN DenseSolve(in floatMxN A, in floatN b)
         {
@@ -117,7 +90,7 @@ public class floatKrylovPMinresTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 14;
-            var A = BuildDenseSPD(ref arena, n, 97001u);
+            var A = floatKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 97001u);
             var op = new floatDenseOperator(in A);
             var b = arena.floatRandomVec(n, -1f, 1f, 97002u);
 
@@ -127,11 +100,11 @@ public class floatKrylovPMinresTests
             var info = Krylov.minres(op, new floatIdentityPreconditioner(), in b, ref x, 4 * n, Consts.floatSqrtEps);
             Assert.IsTrue(info.Solved);
 
-            AssertVecClose(in x, in xLU, SolveTol());
+            floatKrylovTestAsserts.AssertVecClose(in x, in xLU, SolveTol());
 
             var Ax = arena.floatVec(n);
             Blas.dot(in A, in x, ref Ax);
-            AssertVecClose(in Ax, in b, SolveTol());
+            floatKrylovTestAsserts.AssertVecClose(in Ax, in b, SolveTol());
 
             arena.Dispose();
         }
@@ -144,8 +117,8 @@ public class floatKrylovPMinresTests
             var arena = new Arena(Allocator.Persistent);
 
             int dim = 12;
-            var A = BuildDenseSPD(ref arena, dim, 97101u);
-            var bsm = DenseToBSR1x1(ref arena, in A, dim * dim);
+            var A = floatKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, dim, 97101u);
+            var bsm = floatKrylovBatteryOracles.DenseToBSR1x1(ref arena, in A);
             var M = arena.floatBlockJacobi(in bsm);
             var b = arena.floatRandomVec(dim, -1f, 1f, 97102u);
 
@@ -155,10 +128,10 @@ public class floatKrylovPMinresTests
             var info = Krylov.minres(in bsm, in M, in b, ref x, 4 * dim, Consts.floatSqrtEps);
             Assert.IsTrue(info.Solved);
 
-            AssertVecClose(in x, in xLU, SolveTol());
+            floatKrylovTestAsserts.AssertVecClose(in x, in xLU, SolveTol());
 
             var Ax = BSR.spMV(in bsm, in x);
-            AssertVecClose(in Ax, in b, SolveTol());
+            floatKrylovTestAsserts.AssertVecClose(in Ax, in b, SolveTol());
 
             arena.Dispose();
         }
@@ -197,7 +170,7 @@ public class floatKrylovPMinresTests
             var infoP = Krylov.minres(new floatDenseOperator(in A), new floatIdentityPreconditioner(),
                                        in b, ref xP, maxIter, tol);
             Assert.IsTrue(infoP.Solved);
-            AssertVecClose(in xP, in xTrue, IndefTol());
+            floatKrylovTestAsserts.AssertVecClose(in xP, in xTrue, IndefTol());
 
             arena.Dispose();
         }
@@ -232,8 +205,8 @@ public class floatKrylovPMinresTests
             Assert.IsTrue((double)infoP.iterations <= (double)infoPlain.iterations * 0.9);
 
             // both land on the same (true) solution
-            AssertVecClose(in xPlain, in xTrue, LooseTol());
-            AssertVecClose(in xP, in xTrue, LooseTol());
+            floatKrylovTestAsserts.AssertVecClose(in xPlain, in xTrue, LooseTol());
+            floatKrylovTestAsserts.AssertVecClose(in xP, in xTrue, LooseTol());
 
             arena.Dispose();
         }
@@ -249,7 +222,7 @@ public class floatKrylovPMinresTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 10;
-            var A = BuildDenseSPD(ref arena, n, 97501u);
+            var A = floatKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 97501u);
             var op = new floatDenseOperator(in A);
             var b = arena.floatVec(n);                  // all zero
             var x = arena.floatRandomVec(n, -1f, 1f, 97502u);   // nonzero seed, must be overwritten
@@ -270,7 +243,7 @@ public class floatKrylovPMinresTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 12;
-            var A = BuildDenseSPD(ref arena, n, 97601u);
+            var A = floatKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 97601u);
             var op = new floatDenseOperator(in A);
             var b = arena.floatRandomVec(n, -1f, 1f, 97602u);
 
@@ -309,14 +282,6 @@ public class floatKrylovPMinresTests
     // Managed [Test]s: verified-rnorm honesty (return contract) + guard throws.
     // ==============================================================================
 
-    static floatMxN BuildDenseSPD(ref Arena arena, int dim, uint seed)
-    {
-        var M = arena.floatRandomMat(dim, dim, (float)(-1f), (float)1f, seed);
-        var A = Blas.dot(M, M, true);
-        for (int d = 0; d < dim; d++) A[d, d] += dim;
-        return A;
-    }
-
     // b - A*x, recomputed fresh -- independent of whatever residual the solver tracked internally.
     // Mirrors floatKrylovVerifyAtExitTests.TrueResidualSq.
     static float TrueResidualSq(in floatMxN A, in floatN b, in floatN x, ref floatN scratch)
@@ -335,7 +300,7 @@ public class floatKrylovPMinresTests
         var arena = new Arena(Allocator.Persistent);
 
         int n = 16;
-        var A = BuildDenseSPD(ref arena, n, 98001u);
+        var A = floatKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 98001u);
         var b = arena.floatRandomVec(n, (float)(-1f), (float)1f, 98002u);
 
         var op = new floatDenseOperator(in A);
@@ -361,7 +326,7 @@ public class floatKrylovPMinresTests
         var arena = new Arena(Allocator.Persistent);
 
         int n = 12;
-        var A = BuildDenseSPD(ref arena, n, 98101u);
+        var A = floatKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 98101u);
         var b = arena.floatRandomVec(n, (float)(-1f), (float)1f, 98102u);
 
         var op = new floatDenseOperator(in A);
@@ -385,7 +350,7 @@ public class floatKrylovPMinresTests
         try
         {
             int n = 8;
-            var A = BuildDenseSPD(ref arena, n, 98201u);
+            var A = floatKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 98201u);
             var op = new floatDenseOperator(in A);
             var M = new floatIdentityPreconditioner();
             var b = arena.floatRandomVec(n, (float)(-1f), (float)1f, 98202u);
@@ -416,7 +381,7 @@ public class floatKrylovPMinresTests
         try
         {
             int n = 8;
-            var A = BuildDenseSPD(ref arena, n, 98301u);
+            var A = floatKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 98301u);
             var op = new floatDenseOperator(in A);
             var M = new floatIdentityPreconditioner();
             var b = arena.floatRandomVec(n, (float)(-1f), (float)1f, 98302u);

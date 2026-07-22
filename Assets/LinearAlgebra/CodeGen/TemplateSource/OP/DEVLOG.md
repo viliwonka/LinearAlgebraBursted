@@ -1,6 +1,14 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.Block.* — more shared helpers (thresholds, LS-exit tail)
+- 2026-07-22 | `BuildColumnThresholdsPlain` (un-floored tol²·‖B[j]‖², the twin of the floored
+  `BuildColumnThresholds`) folds the inline threshold loop in bcg/bfbcg/bcgrq/bbiCGStab/bidr.
+  bminres SKIPPED — its loop also tracks `bIsZero` (tol==0 edge-case), not a clean match. CGLS
+  skipped (gamma[j,j] variant). `BlockLstsqExit` folds the identical 3-line exit tail
+  (BlockApplyOp + BlockMaxResidualRecompute + converged flag) in bcraig/bcraigmr/blsmr. All
+  bit-identical; 489/489.
+
 ## Krylov.Block.* — shared BlockResidual helper (R = B - A·X)
 - 2026-07-22 | The `A.ApplyBlock(in X, ref buf, s)` + i-major/c-minor `R = B - buf` block was
   copy-pasted 23× across the block family (init + restart + verify-at-exit sites in

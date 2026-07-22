@@ -70,12 +70,7 @@ namespace LinearAlgebra
             int saSearch = 0;
 
             // Per-original-column thresholds tol^2 ||B[j]||^2, computed once before any permutation.
-            for (int j = 0; j < s; j++)
-            {
-                fProxy bb = (fProxy)0;
-                for (int c = 0; c < n; c++) bb += B[j, c] * B[j, c];
-                thr[j] = tol * tol * bb;
-            }
+            BuildColumnThresholdsPlain(in B, ref thr, s, n, tol);
 
             // R = B - A X (AP reused as scratch, mirroring bcg's own reuse of Q).
             BlockResidual(in A, in X, in B, ref AP, ref R, s, n);

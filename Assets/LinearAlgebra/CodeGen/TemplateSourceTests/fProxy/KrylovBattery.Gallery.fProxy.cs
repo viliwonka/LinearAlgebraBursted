@@ -1,3 +1,4 @@
+using NUnit.Framework;
 using Unity.Collections;
 using Unity.Mathematics;
 using LinearAlgebra.Gallery;
@@ -159,6 +160,27 @@ namespace LinearAlgebra
             return Nmat;
         }
 
+        // SPD SYSTEM matrix A = M^T M + n*I (M random n x n) -- NOT a preconditioner (see
+        // BuildDenseSpd above for that). Symmetric, well-conditioned by the diagonal boost.
+        public static fProxyMxN BuildDenseSpdSystem(ref Arena arena, int n, uint seed)
+        {
+            var M = arena.fProxyRandomMat(n, n, (fProxy)(-1f), (fProxy)1f, seed);
+            var A = Blas.dot(M, M, true);                       // M^T M
+            for (int d = 0; d < n; d++) A[d, d] += n;           // diagonally boost -> SPD, well-conditioned
+            return A;
+        }
+
+        // Dense n x n -> 1x1-block BSR scalar copy. nnz capacity hint inferred from A's own shape.
+        public static fProxyBSR DenseToBSR1x1(ref Arena arena, in fProxyMxN A)
+        {
+            var builder = arena.fProxyBSRBuilder(A.M_Rows, A.N_Cols, 1, 1, math.max(A.M_Rows * A.N_Cols, 1));
+            for (int r = 0; r < A.M_Rows; r++)
+                for (int c = 0; c < A.N_Cols; c++)
+                    if (A[r, c] != (fProxy)0)
+                        builder.AddValue(r, c, A[r, c]);
+            return builder.ToBSR(ref arena);
+        }
+
         public static fProxy RelResidualDense(in fProxyMxN A, in fProxyN x, in fProxyN b)
         {
             var Ax = Blas.dot(A, x);
@@ -231,6 +253,23 @@ namespace LinearAlgebra
             var v = arena.fProxyVec(n);
             for (int c = 0; c < n; c++) v[c] = B[j, c];
             return v;
+        }
+    }
+
+    /// <summary>
+    /// Shared scalar/vector relative-tolerance assertions -- the ONE shared copy of AssertClose /
+    /// AssertVecClose otherwise duplicated per bespoke test file. Called from inside [BurstCompile]
+    /// IJob structs.
+    /// </summary>
+    internal static class fProxyKrylovTestAsserts
+    {
+        public static void AssertClose(fProxy got, fProxy expected, fProxy tol)
+            => Assert.IsTrue(math.abs(got - expected) <= tol * ((fProxy)1 + math.abs(expected)));
+
+        public static void AssertVecClose(in fProxyN got, in fProxyN expected, fProxy tol)
+        {
+            Assert.AreEqual(expected.N, got.N);
+            for (int i = 0; i < got.N; i++) AssertClose(got[i], expected[i], tol);
         }
     }
 }

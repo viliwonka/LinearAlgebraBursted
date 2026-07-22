@@ -108,15 +108,6 @@ public class doubleKrylovRound2Tests
                 Assert.AreEqual((double)expected[i], (double)got[i]);   // bit-exact
         }
 
-        static void AssertClose(double got, double expected, double tol)
-            => Assert.IsTrue(math.abs(got - expected) <= tol * ((double)1 + math.abs(expected)));
-
-        static void AssertVecClose(in doubleN got, in doubleN expected, double tol)
-        {
-            Assert.AreEqual(expected.N, got.N);
-            for (int i = 0; i < got.N; i++) AssertClose(got[i], expected[i], tol);
-        }
-
         // Reference y = A^T x from the dense expansion (independent of Blas.trans), mirroring
         // doubleSparseUnrollTests.DenseTransMatVec.
         static void DenseTransMatVec(in doubleMxN dense, in doubleN x, ref doubleN y)
@@ -139,23 +130,6 @@ public class doubleKrylovRound2Tests
             return D;
         }
 
-        // Same SPD recipe as doubleSparseSolverTests.BuildDenseSPD.
-        static doubleMxN BuildDenseSPD(ref Arena arena, int dim, uint seed)
-        {
-            var M = arena.doubleRandomMat(dim, dim, -1f, 1f, seed);
-            var A = Blas.dot(M, M, true);
-            for (int d = 0; d < dim; d++) A[d, d] += dim;
-            return A;
-        }
-
-        static doubleBSR DenseToBSR1x1(ref Arena arena, in doubleMxN A, int nnzHint)
-        {
-            var builder = arena.doubleBSRBuilder(A.M_Rows, A.N_Cols, 1, 1, math.max(nnzHint, 1));
-            for (int r = 0; r < A.M_Rows; r++)
-                for (int c = 0; c < A.N_Cols; c++)
-                    if (A[r, c] != (double)0) builder.AddValue(r, c, A[r, c]);
-            return builder.ToBSR(ref arena);
-        }
 
         // ==============================================================================
         // (a) ApplyDot == Apply, then Blas.dot(x, y) -- BIT-EXACT for every operator.
@@ -182,7 +156,7 @@ public class doubleKrylovRound2Tests
         {
             var arena = new Arena(Allocator.Persistent);
             int n = 11;
-            var A = BuildDenseSPD(ref arena, n, 70001);      // square so dot(x, A x) is well-formed
+            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 70001);      // square so dot(x, A x) is well-formed
             var x = arena.doubleRandomVec(n, -1f, 1f, 70002);
             CheckApplyDotExact(new doubleDenseOperator(in A), in x, ref arena);
             arena.Dispose();
@@ -240,7 +214,7 @@ public class doubleKrylovRound2Tests
             // SQUARE inner so x and y share a length and dot(x, y) is well-formed (the rectangular
             // case's dimension throw is the managed test below).
             int n = 8;
-            var A = BuildDenseSPD(ref arena, n, 70401);
+            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 70401);
             var d = arena.doubleRandomVec(n, (double)0.5f, (double)2f, 70402);   // nonzero scale
             var scratch = arena.doubleVec(n);
             var op = new doubleColScaledOperator<doubleDenseOperator>(new doubleDenseOperator(in A), d, scratch);
@@ -255,7 +229,7 @@ public class doubleKrylovRound2Tests
             // LP normal operator M = As D As^T + reg*I over a rectangular BSR inner (m x n).
             int m = 6, n = 4;
             var Adense = arena.doubleRandomMat(m, n, -1f, 1f, 70501);
-            var bsm = DenseToBSR1x1(ref arena, in Adense, m * n);
+            var bsm = doubleKrylovBatteryOracles.DenseToBSR1x1(ref arena, in Adense);
             var inner = new doubleBSROperator(in bsm);
             var d = arena.doubleRandomVec(n, (double)0.25f, (double)1.5f, 70502);  // length As.Cols
             var scratch = arena.doubleVec(n);
@@ -327,7 +301,7 @@ public class doubleKrylovRound2Tests
                     double prod = 0;
                     for (int lc = 0; lc < b; lc++)
                         prod += dense[rowBase + lr, rowBase + lc] * z[rowBase + lc];
-                    AssertClose(prod, r[rowBase + lr], BjTol());
+                    doubleKrylovTestAsserts.AssertClose(prod, r[rowBase + lr], BjTol());
                 }
             }
 
@@ -388,7 +362,7 @@ public class doubleKrylovRound2Tests
                 var x = arena.doubleRandomVec(A.N_Cols, -1f, 1f, (uint)(91500 + b));
                 var y = arena.doubleVec(A.M_Rows);
                 BSR.spMV(in A, in x, ref y);
-                AssertVecClose(in y, Blas.dot(dense, x), SpTol());
+                doubleKrylovTestAsserts.AssertVecClose(in y, Blas.dot(dense, x), SpTol());
             }
             arena.Dispose();
         }
@@ -406,7 +380,7 @@ public class doubleKrylovRound2Tests
                 BSR.spMVT(in A, in xt, ref yt);
                 var ytRef = arena.doubleVec(A.N_Cols);
                 DenseTransMatVec(in dense, in xt, ref ytRef);
-                AssertVecClose(in yt, in ytRef, SpTol());
+                doubleKrylovTestAsserts.AssertVecClose(in yt, in ytRef, SpTol());
             }
             arena.Dispose();
         }
@@ -423,14 +397,14 @@ public class doubleKrylovRound2Tests
 
                 var y = arena.doubleVec(A.M_Rows);
                 BSR.spMV(in A, in x, ref y);
-                AssertVecClose(in y, Blas.dot(dense, x), SpTol());
+                doubleKrylovTestAsserts.AssertVecClose(in y, Blas.dot(dense, x), SpTol());
 
                 // A == A^T: spMVT compared to an independent dense transpose-matvec.
                 var ytRef = arena.doubleVec(A.N_Cols);
                 DenseTransMatVec(in dense, in x, ref ytRef);
                 var yt = arena.doubleVec(A.N_Cols);
                 BSR.spMVT(in A, in x, ref yt);
-                AssertVecClose(in yt, in ytRef, SpTol());
+                doubleKrylovTestAsserts.AssertVecClose(in yt, in ytRef, SpTol());
             }
             arena.Dispose();
         }
@@ -445,8 +419,8 @@ public class doubleKrylovRound2Tests
             var arena = new Arena(Allocator.Persistent);
 
             int dim = 12;
-            var A = BuildDenseSPD(ref arena, dim, 94001);
-            var bsm = DenseToBSR1x1(ref arena, in A, dim * dim);
+            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, dim, 94001);
+            var bsm = doubleKrylovBatteryOracles.DenseToBSR1x1(ref arena, in A);
             var b = arena.doubleRandomVec(dim, -1f, 1f, 94002);
 
             // Dense LU oracle on COPIES (decompInPlace/decompSolve are destructive).
@@ -461,10 +435,10 @@ public class doubleKrylovRound2Tests
             var xCg = arena.doubleVec(dim);
             bool okCg = Krylov.cg(in bsm, in b, ref xCg, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okCg);
-            AssertVecClose(in xCg, in xLU, SolveTol());
+            doubleKrylovTestAsserts.AssertVecClose(in xCg, in xLU, SolveTol());
 
             var Ax = BSR.spMV(in bsm, in xCg);
-            AssertVecClose(in Ax, in b, SolveTol());
+            doubleKrylovTestAsserts.AssertVecClose(in Ax, in b, SolveTol());
 
             arena.Dispose();
         }
@@ -474,8 +448,8 @@ public class doubleKrylovRound2Tests
             var arena = new Arena(Allocator.Persistent);
 
             int dim = 12;
-            var A = BuildDenseSPD(ref arena, dim, 95001);
-            var bsm = DenseToBSR1x1(ref arena, in A, dim * dim);
+            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, dim, 95001);
+            var bsm = doubleKrylovBatteryOracles.DenseToBSR1x1(ref arena, in A);
             var M = arena.doubleBlockJacobi(in bsm);
             var b = arena.doubleRandomVec(dim, -1f, 1f, 95002);
 
@@ -490,10 +464,10 @@ public class doubleKrylovRound2Tests
             var xPcg = arena.doubleVec(dim);
             bool okPcg = Krylov.cg(in bsm, in M, in b, ref xPcg, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okPcg);
-            AssertVecClose(in xPcg, in xLU, SolveTol());
+            doubleKrylovTestAsserts.AssertVecClose(in xPcg, in xLU, SolveTol());
 
             var Ax = BSR.spMV(in bsm, in xPcg);
-            AssertVecClose(in Ax, in b, SolveTol());
+            doubleKrylovTestAsserts.AssertVecClose(in Ax, in b, SolveTol());
 
             arena.Dispose();
         }

@@ -108,15 +108,6 @@ public class floatKrylovRound2Tests
                 Assert.AreEqual((double)expected[i], (double)got[i]);   // bit-exact
         }
 
-        static void AssertClose(float got, float expected, float tol)
-            => Assert.IsTrue(math.abs(got - expected) <= tol * ((float)1 + math.abs(expected)));
-
-        static void AssertVecClose(in floatN got, in floatN expected, float tol)
-        {
-            Assert.AreEqual(expected.N, got.N);
-            for (int i = 0; i < got.N; i++) AssertClose(got[i], expected[i], tol);
-        }
-
         // Reference y = A^T x from the dense expansion (independent of Blas.trans), mirroring
         // floatSparseUnrollTests.DenseTransMatVec.
         static void DenseTransMatVec(in floatMxN dense, in floatN x, ref floatN y)
@@ -139,23 +130,6 @@ public class floatKrylovRound2Tests
             return D;
         }
 
-        // Same SPD recipe as floatSparseSolverTests.BuildDenseSPD.
-        static floatMxN BuildDenseSPD(ref Arena arena, int dim, uint seed)
-        {
-            var M = arena.floatRandomMat(dim, dim, -1f, 1f, seed);
-            var A = Blas.dot(M, M, true);
-            for (int d = 0; d < dim; d++) A[d, d] += dim;
-            return A;
-        }
-
-        static floatBSR DenseToBSR1x1(ref Arena arena, in floatMxN A, int nnzHint)
-        {
-            var builder = arena.floatBSRBuilder(A.M_Rows, A.N_Cols, 1, 1, math.max(nnzHint, 1));
-            for (int r = 0; r < A.M_Rows; r++)
-                for (int c = 0; c < A.N_Cols; c++)
-                    if (A[r, c] != (float)0) builder.AddValue(r, c, A[r, c]);
-            return builder.ToBSR(ref arena);
-        }
 
         // ==============================================================================
         // (a) ApplyDot == Apply, then Blas.dot(x, y) -- BIT-EXACT for every operator.
@@ -182,7 +156,7 @@ public class floatKrylovRound2Tests
         {
             var arena = new Arena(Allocator.Persistent);
             int n = 11;
-            var A = BuildDenseSPD(ref arena, n, 70001);      // square so dot(x, A x) is well-formed
+            var A = floatKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 70001);      // square so dot(x, A x) is well-formed
             var x = arena.floatRandomVec(n, -1f, 1f, 70002);
             CheckApplyDotExact(new floatDenseOperator(in A), in x, ref arena);
             arena.Dispose();
@@ -240,7 +214,7 @@ public class floatKrylovRound2Tests
             // SQUARE inner so x and y share a length and dot(x, y) is well-formed (the rectangular
             // case's dimension throw is the managed test below).
             int n = 8;
-            var A = BuildDenseSPD(ref arena, n, 70401);
+            var A = floatKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 70401);
             var d = arena.floatRandomVec(n, (float)0.5f, (float)2f, 70402);   // nonzero scale
             var scratch = arena.floatVec(n);
             var op = new floatColScaledOperator<floatDenseOperator>(new floatDenseOperator(in A), d, scratch);
@@ -255,7 +229,7 @@ public class floatKrylovRound2Tests
             // LP normal operator M = As D As^T + reg*I over a rectangular BSR inner (m x n).
             int m = 6, n = 4;
             var Adense = arena.floatRandomMat(m, n, -1f, 1f, 70501);
-            var bsm = DenseToBSR1x1(ref arena, in Adense, m * n);
+            var bsm = floatKrylovBatteryOracles.DenseToBSR1x1(ref arena, in Adense);
             var inner = new floatBSROperator(in bsm);
             var d = arena.floatRandomVec(n, (float)0.25f, (float)1.5f, 70502);  // length As.Cols
             var scratch = arena.floatVec(n);
@@ -327,7 +301,7 @@ public class floatKrylovRound2Tests
                     float prod = 0;
                     for (int lc = 0; lc < b; lc++)
                         prod += dense[rowBase + lr, rowBase + lc] * z[rowBase + lc];
-                    AssertClose(prod, r[rowBase + lr], BjTol());
+                    floatKrylovTestAsserts.AssertClose(prod, r[rowBase + lr], BjTol());
                 }
             }
 
@@ -388,7 +362,7 @@ public class floatKrylovRound2Tests
                 var x = arena.floatRandomVec(A.N_Cols, -1f, 1f, (uint)(91500 + b));
                 var y = arena.floatVec(A.M_Rows);
                 BSR.spMV(in A, in x, ref y);
-                AssertVecClose(in y, Blas.dot(dense, x), SpTol());
+                floatKrylovTestAsserts.AssertVecClose(in y, Blas.dot(dense, x), SpTol());
             }
             arena.Dispose();
         }
@@ -406,7 +380,7 @@ public class floatKrylovRound2Tests
                 BSR.spMVT(in A, in xt, ref yt);
                 var ytRef = arena.floatVec(A.N_Cols);
                 DenseTransMatVec(in dense, in xt, ref ytRef);
-                AssertVecClose(in yt, in ytRef, SpTol());
+                floatKrylovTestAsserts.AssertVecClose(in yt, in ytRef, SpTol());
             }
             arena.Dispose();
         }
@@ -423,14 +397,14 @@ public class floatKrylovRound2Tests
 
                 var y = arena.floatVec(A.M_Rows);
                 BSR.spMV(in A, in x, ref y);
-                AssertVecClose(in y, Blas.dot(dense, x), SpTol());
+                floatKrylovTestAsserts.AssertVecClose(in y, Blas.dot(dense, x), SpTol());
 
                 // A == A^T: spMVT compared to an independent dense transpose-matvec.
                 var ytRef = arena.floatVec(A.N_Cols);
                 DenseTransMatVec(in dense, in x, ref ytRef);
                 var yt = arena.floatVec(A.N_Cols);
                 BSR.spMVT(in A, in x, ref yt);
-                AssertVecClose(in yt, in ytRef, SpTol());
+                floatKrylovTestAsserts.AssertVecClose(in yt, in ytRef, SpTol());
             }
             arena.Dispose();
         }
@@ -445,8 +419,8 @@ public class floatKrylovRound2Tests
             var arena = new Arena(Allocator.Persistent);
 
             int dim = 12;
-            var A = BuildDenseSPD(ref arena, dim, 94001);
-            var bsm = DenseToBSR1x1(ref arena, in A, dim * dim);
+            var A = floatKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, dim, 94001);
+            var bsm = floatKrylovBatteryOracles.DenseToBSR1x1(ref arena, in A);
             var b = arena.floatRandomVec(dim, -1f, 1f, 94002);
 
             // Dense LU oracle on COPIES (decompInPlace/decompSolve are destructive).
@@ -461,10 +435,10 @@ public class floatKrylovRound2Tests
             var xCg = arena.floatVec(dim);
             bool okCg = Krylov.cg(in bsm, in b, ref xCg, 4 * dim, Consts.floatSqrtEps);
             Assert.IsTrue(okCg);
-            AssertVecClose(in xCg, in xLU, SolveTol());
+            floatKrylovTestAsserts.AssertVecClose(in xCg, in xLU, SolveTol());
 
             var Ax = BSR.spMV(in bsm, in xCg);
-            AssertVecClose(in Ax, in b, SolveTol());
+            floatKrylovTestAsserts.AssertVecClose(in Ax, in b, SolveTol());
 
             arena.Dispose();
         }
@@ -474,8 +448,8 @@ public class floatKrylovRound2Tests
             var arena = new Arena(Allocator.Persistent);
 
             int dim = 12;
-            var A = BuildDenseSPD(ref arena, dim, 95001);
-            var bsm = DenseToBSR1x1(ref arena, in A, dim * dim);
+            var A = floatKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, dim, 95001);
+            var bsm = floatKrylovBatteryOracles.DenseToBSR1x1(ref arena, in A);
             var M = arena.floatBlockJacobi(in bsm);
             var b = arena.floatRandomVec(dim, -1f, 1f, 95002);
 
@@ -490,10 +464,10 @@ public class floatKrylovRound2Tests
             var xPcg = arena.floatVec(dim);
             bool okPcg = Krylov.cg(in bsm, in M, in b, ref xPcg, 4 * dim, Consts.floatSqrtEps);
             Assert.IsTrue(okPcg);
-            AssertVecClose(in xPcg, in xLU, SolveTol());
+            floatKrylovTestAsserts.AssertVecClose(in xPcg, in xLU, SolveTol());
 
             var Ax = BSR.spMV(in bsm, in xPcg);
-            AssertVecClose(in Ax, in b, SolveTol());
+            floatKrylovTestAsserts.AssertVecClose(in Ax, in b, SolveTol());
 
             arena.Dispose();
         }

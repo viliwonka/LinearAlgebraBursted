@@ -98,6 +98,20 @@ namespace LinearAlgebra
             return maxr;
         }
 
+        // Shared least-squares exit-residual tail: recomputes A·X into Rfinal, the worst raw residual
+        // ‖B[j] - Rfinal[j]‖ over it, and the converged count from `status`. Shared cleanup for the
+        // block least-squares solvers that don't keep the residual in a dedicated buffer
+        // (blsmr/bcraig/bcraigmr).
+        static void BlockLstsqExit<TOp>(in TOp A, in fProxyMxN X, in fProxyMxN B, ref fProxyMxN Rfinal,
+                                        IterativeSolveStatus status, int s, int m,
+                                        ref fProxyN rowN, ref fProxyN rowM, out double maxr, out int converged)
+            where TOp : struct, IfProxyLinearOperator
+        {
+            BlockApplyOp(in A, in X, ref Rfinal, s, ref rowN, ref rowM);
+            maxr = BlockMaxResidualRecompute(in B, in Rfinal, s, m);
+            converged = status == IterativeSolveStatus.Converged ? s : 0;
+        }
+
         // Worst raw residual norm ‖R[j]‖ over the s rows of an m-wide block, where R already holds
         // the current residual (no recompute). Shared cleanup-tail reduction for bcgls.
         static double BlockMaxResidualNorm(in fProxyMxN R, int s, int m)
@@ -158,6 +172,19 @@ namespace LinearAlgebra
             fProxy t2 = tol * tol;
             for (int j = 0; j < s; j++)
                 thr[j] = math.max(t2 * thr[j], floorSq);
+        }
+
+        // Un-floored per-column convergence thresholds: thr[j] = tol^2 * ||B[j]||^2. The plain twin of
+        // BuildColumnThresholds (which adds an absolute floor for the deflating block-Arnoldi solvers);
+        // for the SPD / short-recurrence solvers that never restart past the exact solution.
+        static void BuildColumnThresholdsPlain(in fProxyMxN B, ref fProxyN thr, int s, int n, fProxy tol)
+        {
+            for (int j = 0; j < s; j++)
+            {
+                fProxy bb = (fProxy)0;
+                for (int c = 0; c < n; c++) bb += B[j, c] * B[j, c];
+                thr[j] = tol * tol * bb;
+            }
         }
 
         static void BlockApplyPre<TPre>(in TPre M, in fProxyMxN R, ref fProxyMxN Z, int s, int n,
