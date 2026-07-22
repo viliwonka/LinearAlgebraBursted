@@ -51,6 +51,8 @@ namespace LinearAlgebra
                 throw new ArgumentException("fcg: rOld.N must equal A.Rows");
             if (maxIter < 1)
                 throw new ArgumentException("fcg: maxIter must be >= 1");
+            if (!M.IsSpd)
+                throw new ArgumentException("Krylov.fcg: requires an SPD preconditioner (M.IsSpd == false — e.g. ILU0/SPAI/restricted-Schwarz). Use a non-symmetric solver (gmres/biCGStab) for a general preconditioner.");
 
             // Aliasing guard -- rOld joins cg's r/p/Ap/z/x/b set (the flexible beta reads the
             // previous residual out of it).

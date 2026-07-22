@@ -50,6 +50,10 @@ namespace LinearAlgebra
                 throw new ArgumentException("bcgrq (block): Z must match B");
             if (maxIter < 1) throw new ArgumentException("bcgrq (block): maxIter must be >= 1");
             if (s > n) throw new ArgumentException("bcgrq: B.M_Rows (s) must be <= A.Rows (n)");
+            if (!M.IsSpd)
+                throw new ArgumentException("Krylov.bcgrq: requires an SPD preconditioner (M.IsSpd == false — e.g. ILU0/SPAI/restricted-Schwarz). Use a non-symmetric solver (gmres/biCGStab) for a general preconditioner.");
+            if (!M.IsConstant)
+                throw new ArgumentException("Krylov.bcgrq: requires a constant (non-flexible) preconditioner (M.IsConstant == false — e.g. an AMG K-cycle). Use the flexible variant (fcg / fgmres).");
 
             // s x s coefficient scratch (max size; narrowed per iteration via View/RectView) + per-
             // original-column thresholds + row scratch for the preconditioner + the persistent slot

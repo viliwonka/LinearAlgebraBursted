@@ -46,6 +46,8 @@ namespace LinearAlgebra
 
             if (maxIter < 1)
                 throw new ArgumentException("biCGStab: maxIter must be >= 1");
+            if (!M.IsConstant)
+                throw new ArgumentException("Krylov.biCGStab: requires a constant (non-flexible) preconditioner (M.IsConstant == false — e.g. an AMG K-cycle). Use the flexible variant (fcg / fgmres).");
 
             unsafe
             {

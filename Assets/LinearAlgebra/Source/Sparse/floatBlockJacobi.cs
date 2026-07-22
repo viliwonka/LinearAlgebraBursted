@@ -301,6 +301,8 @@ namespace LinearAlgebra.Sparse
         /// to the general loop below. Any other BR falls through to the general runtime-BR loop.
         /// </summary>
         public bool IsIdentity => false;
+        public bool IsSpd => true;
+        public bool IsConstant => true;
 
         public unsafe void Apply(in floatN r, ref floatN z)
         {

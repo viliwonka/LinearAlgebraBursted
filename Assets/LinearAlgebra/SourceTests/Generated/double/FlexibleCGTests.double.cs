@@ -37,6 +37,11 @@ public class doubleFlexibleCGTests
         public int Rows => A.M_Rows;
 
         public bool IsIdentity => false;
+        // Fixed-step inner CG from z=0 is SPD-flavored (built from A's own Krylov subspace) but its
+        // map r -> z is data-dependent -- exactly the VARIABLE case fcg (IsSpd-only) is designed to
+        // tolerate and plain cg (IsSpd && IsConstant) is not; this struct is never passed to cg.
+        public bool IsSpd => true;
+        public bool IsConstant => false;
 
         public void Apply(in doubleN r, ref doubleN z)
         {

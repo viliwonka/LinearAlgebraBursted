@@ -31,7 +31,6 @@ public class fProxySparseSolverTests
             PCGBeatsCGIllConditioned,
             BlockJacobiApplyHandComputed,
             WarmStart,
-            PcgNonSpdPreconditionerBreaksDown,
             MergedCgIdentityMatchesPlainCg,
 
             // ---- Phase 3: MINRES / BiCGSTAB / LSQR / LSMR ----
@@ -116,7 +115,6 @@ public class fProxySparseSolverTests
                 case TestType.PCGBeatsCGIllConditioned: PCGBeatsCGIllConditioned(); break;
                 case TestType.BlockJacobiApplyHandComputed: BlockJacobiApplyHandComputed(); break;
                 case TestType.WarmStart: WarmStart(); break;
-                case TestType.PcgNonSpdPreconditionerBreaksDown: PcgNonSpdPreconditionerBreaksDown(); break;
                 case TestType.MergedCgIdentityMatchesPlainCg: MergedCgIdentityMatchesPlainCg(); break;
 
                 case TestType.MinresIndefiniteDenseAndBSR: MinresIndefiniteDenseAndBSR(); break;
@@ -527,30 +525,10 @@ public class fProxySparseSolverTests
             arena.Dispose();
         }
 
-        // ---- 8. cg breakdown guard: a non-SPD preconditioner bails out (returns false) -------
-        //
-        // The preconditioned inner product <r,z> must stay positive for PCG to be well-defined.
-        // fProxyNegatePreconditioner deliberately returns z = -r, so rzold = <r,-r> = -||r||^2 < 0
-        // -- the cg `if (!(rzold > 0)) return false;` guard must catch it and
-        // return false, rather than looping with a wrong-signed alpha/beta (silent divergence /
-        // NaN). A itself is a genuine SPD system so the failure is attributable to the
-        // preconditioner, not the operator.
-        void PcgNonSpdPreconditionerBreaksDown()
-        {
-            var arena = new Arena(Allocator.Persistent);
-
-            int dim = 8;
-            var A = BuildDenseSPD(ref arena, dim, 5501);
-            var op = new fProxyDenseOperator(in A);
-            var pre = new fProxyNegatePreconditioner();
-            var b = arena.fProxyRandomVec(dim, -1f, 1f, 5502); // nonzero rhs -> not the b==0 shortcut
-
-            var x = arena.fProxyVec(dim);
-            bool ok = Krylov.cg(in op, in pre, in b, ref x, dim, Consts.fProxySqrtEps);
-            Assert.IsFalse(ok);
-
-            arena.Dispose();
-        }
+        // Note: the old "non-SPD preconditioner breaks down" case was removed when IfProxyPreconditioner
+        // gained IsSpd/IsConstant -- cg now REJECTS a non-SPD preconditioner at entry (ArgumentException),
+        // covered by fProxyPreconditionerCompatibilityTests.CgRejectsIlu0 on the managed thread. cg's
+        // downstream rzold>0 guard remains as a defensive net for a marked-SPD-but-numerically-indefinite M.
 
         // =================================================================================
         // Phase 3 correctness cases
@@ -1474,19 +1452,6 @@ public class fProxySparseSolverTests
         }
     }
 
-    // Deliberately non-SPD test-double preconditioner: z = M^-1 r := -r, so <r,z> = -||r||^2 <= 0.
-    // Used only by PcgNonSpdPreconditionerBreaksDown to exercise cg's rzold>0 breakdown guard.
-    public struct fProxyNegatePreconditioner : IfProxyPreconditioner
-    {
-        public bool IsIdentity => false;
-
-        public void Apply(in fProxyN r, ref fProxyN z)
-        {
-            for (int i = 0; i < r.N; i++)
-                z[i] = -r[i];
-        }
-    }
-
     // ---- correctness cases (Burst) -------------------------------------------------------
 
     [Test]
@@ -1520,10 +1485,6 @@ public class fProxySparseSolverTests
     [Test]
     public void WarmStartTest()
         => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.WarmStart }.Run();
-
-    [Test]
-    public void PcgNonSpdPreconditionerBreaksDownTest()
-        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.PcgNonSpdPreconditionerBreaksDown }.Run();
 
     // ---- Phase 3 correctness entry points ----
 

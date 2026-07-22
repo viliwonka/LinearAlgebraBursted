@@ -135,6 +135,8 @@ namespace LinearAlgebra
             if (!M.IsIdentity && (UHat.M_Rows != s || UHat.N_Cols != n))
                 throw new ArgumentException("btfqmr: UHat must match B");
             if (maxIter < 1) throw new ArgumentException("btfqmr: maxIter must be >= 1");
+            if (!M.IsConstant)
+                throw new ArgumentException("Krylov.btfqmr: requires a constant (non-flexible) preconditioner (M.IsConstant == false — e.g. an AMG K-cycle). Use the flexible variant (fcg / fgmres).");
 
             unsafe
             {

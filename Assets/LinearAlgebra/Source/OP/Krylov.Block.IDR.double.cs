@@ -53,6 +53,8 @@ namespace LinearAlgebra
             if (X.M_Rows != m || X.N_Cols != n) throw new ArgumentException("bidr: X must match B");
             if (s < 1) throw new ArgumentException("bidr: s must be >= 1");
             if (maxIter < 1) throw new ArgumentException("bidr: maxIter must be >= 1");
+            if (!M.IsConstant)
+                throw new ArgumentException("Krylov.bidr: requires a constant (non-flexible) preconditioner (M.IsConstant == false — e.g. an AMG K-cycle). Use the flexible variant (fcg / fgmres).");
 
             double bb = BlockFrobDot(in B, in B);
             if (bb == (double)0)

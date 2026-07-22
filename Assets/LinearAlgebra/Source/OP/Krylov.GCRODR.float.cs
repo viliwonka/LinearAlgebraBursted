@@ -60,6 +60,8 @@ namespace LinearAlgebra
             if (recycle < 0) throw new ArgumentException("gcrodr: recycle must be >= 0");
             if (recycle >= restart) throw new ArgumentException("gcrodr: recycle must be < restart");
             if (maxIter < 1) throw new ArgumentException("gcrodr: maxIter must be >= 1");
+            if (!M.IsConstant)
+                throw new ArgumentException("Krylov.gcrodr: requires a constant (non-flexible) preconditioner (M.IsConstant == false — e.g. an AMG K-cycle). Use the flexible variant (fcg / fgmres).");
 
             int n = A.Rows;
             int m = restart;

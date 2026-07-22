@@ -369,6 +369,8 @@ namespace LinearAlgebra.Sparse
         /// solve against the cached Cholesky factor, and add the local solution back into z over the
         /// overlapped block set. z must not alias r or Scratch.</summary>
         public bool IsIdentity => false;
+        public bool IsSpd => true;
+        public bool IsConstant => true;
 
         public unsafe void Apply(in doubleN r, ref doubleN z)
         {
@@ -597,6 +599,10 @@ namespace LinearAlgebra.Sparse
         /// the cached LU factor, and write the owned-cell entries into z (each dof exactly once). z
         /// must not alias r, Scratch, or Scratch2.</summary>
         public bool IsIdentity => false;
+        // RAS's owned-cell scatter (no overlap summation) makes M non-symmetric even for SPD A --
+        // see the type doc comment. Never a valid cg/minres preconditioner.
+        public bool IsSpd => false;
+        public bool IsConstant => true;
 
         public unsafe void Apply(in doubleN r, ref doubleN z)
         {

@@ -115,6 +115,9 @@ namespace LinearAlgebra
             if (tol <= (double)0)
                 throw new ArgumentException("LOBPCG: tol must be > 0");
 
+            if (!M.IsSpd)
+                throw new ArgumentException("Eigen.lobpcg: requires an SPD preconditioner (M.IsSpd == false — e.g. ILU0/SPAI/restricted-Schwarz).");
+
             RequireLOBPCGWorkspace(in ws, n, kWork);
             RequireDistinctBuffers(in ws);
 

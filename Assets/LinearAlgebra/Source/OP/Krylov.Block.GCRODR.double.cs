@@ -128,6 +128,8 @@ namespace LinearAlgebra
             if (recycle >= restart * s) throw new ArgumentException("bgcrodr: recycle must be < restart * B.M_Rows");
             if (maxIter < 1) throw new ArgumentException("bgcrodr: maxIter must be >= 1");
             if (s > n) throw new ArgumentException("bgcrodr: B.M_Rows (s) must be <= A.Rows");
+            if (!M.IsConstant)
+                throw new ArgumentException("Krylov.bgcrodr: requires a constant (non-flexible) preconditioner (M.IsConstant == false — e.g. an AMG K-cycle). Use the flexible variant (fcg / fgmres).");
 
             int m = restart;
             bool flexible = !M.IsIdentity;

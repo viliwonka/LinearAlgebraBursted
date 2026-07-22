@@ -1,4 +1,3 @@
-using System;
 using LinearAlgebra.Sparse;
 
 namespace LinearAlgebra.Sparse
@@ -24,6 +23,12 @@ namespace LinearAlgebra.Sparse
 
         /// <summary>z = one cycle on A z = r, zero initial guess. z must not alias r.</summary>
         public bool IsIdentity => false;
+        /// <summary>Forwards <see cref="fProxyAMG.IsCycleSpd"/>: true iff the cycle's smoothing pass
+        /// is symmetric (Pre == Post).</summary>
+        public bool IsSpd => _amg.IsCycleSpd;
+        /// <summary>Forwards <see cref="fProxyAMG.IsCycleConstant"/>: true iff the cycle is a fixed
+        /// operator (V-cycle), false for a K-cycle.</summary>
+        public bool IsConstant => _amg.IsCycleConstant;
 
         public void Apply(in fProxyN r, ref fProxyN z) => _amg.ApplyCycleFromZero(in r, ref z);
     }
@@ -44,8 +49,6 @@ namespace LinearAlgebra
                                ref fProxyN r, ref fProxyN p, ref fProxyN Ap, ref fProxyN z,
                                int maxIter, fProxy tol)
         {
-            if (!M.IsCycleSymmetric)
-                throw new ArgumentException("Krylov.cg: the AMG preconditioner is not a fixed SPD operator (needs a symmetric V-cycle, pre == post); use Krylov.fcg for a K-cycle or asymmetric cycle");
             return cg(new Sparse.fProxyBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
         }
 
@@ -53,8 +56,6 @@ namespace LinearAlgebra
         public static SolveInfo cg(in Sparse.fProxyBSR A, in Sparse.fProxyAMGPreconditioner M, in fProxyN b, ref fProxyN x,
                                int maxIter, fProxy tol)
         {
-            if (!M.IsCycleSymmetric)
-                throw new ArgumentException("Krylov.cg: the AMG preconditioner is not a fixed SPD operator (needs a symmetric V-cycle, pre == post); use Krylov.fcg for a K-cycle or asymmetric cycle");
             fProxyN r  = b.fProxyTempVec(A.M_Rows);
             fProxyN p  = b.fProxyTempVec(A.M_Rows);
             fProxyN Ap = b.fProxyTempVec(A.M_Rows);

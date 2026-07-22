@@ -2,7 +2,6 @@
 //   Generated from Assets/LinearAlgebra/CodeGen/TemplateSource/MG/fProxyAMGPreconditioner.fProxy.cs
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
-using System;
 using LinearAlgebra.Sparse;
 
 namespace LinearAlgebra.Sparse
@@ -28,6 +27,12 @@ namespace LinearAlgebra.Sparse
 
         /// <summary>z = one cycle on A z = r, zero initial guess. z must not alias r.</summary>
         public bool IsIdentity => false;
+        /// <summary>Forwards <see cref="doubleAMG.IsCycleSpd"/>: true iff the cycle's smoothing pass
+        /// is symmetric (Pre == Post).</summary>
+        public bool IsSpd => _amg.IsCycleSpd;
+        /// <summary>Forwards <see cref="doubleAMG.IsCycleConstant"/>: true iff the cycle is a fixed
+        /// operator (V-cycle), false for a K-cycle.</summary>
+        public bool IsConstant => _amg.IsCycleConstant;
 
         public void Apply(in doubleN r, ref doubleN z) => _amg.ApplyCycleFromZero(in r, ref z);
     }
@@ -48,8 +53,6 @@ namespace LinearAlgebra
                                ref doubleN r, ref doubleN p, ref doubleN Ap, ref doubleN z,
                                int maxIter, double tol)
         {
-            if (!M.IsCycleSymmetric)
-                throw new ArgumentException("Krylov.cg: the AMG preconditioner is not a fixed SPD operator (needs a symmetric V-cycle, pre == post); use Krylov.fcg for a K-cycle or asymmetric cycle");
             return cg(new Sparse.doubleBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIter, tol);
         }
 
@@ -57,8 +60,6 @@ namespace LinearAlgebra
         public static SolveInfo cg(in Sparse.doubleBSR A, in Sparse.doubleAMGPreconditioner M, in doubleN b, ref doubleN x,
                                int maxIter, double tol)
         {
-            if (!M.IsCycleSymmetric)
-                throw new ArgumentException("Krylov.cg: the AMG preconditioner is not a fixed SPD operator (needs a symmetric V-cycle, pre == post); use Krylov.fcg for a K-cycle or asymmetric cycle");
             doubleN r  = b.doubleTempVec(A.M_Rows);
             doubleN p  = b.doubleTempVec(A.M_Rows);
             doubleN Ap = b.doubleTempVec(A.M_Rows);

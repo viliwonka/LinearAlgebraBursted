@@ -34,6 +34,10 @@ public class floatBlockFGmresTests
         { A = a; this.innerRestart = innerRestart; this.steps = steps; }
 
         public bool IsIdentity => false;
+        // Fixed-step inner GMRES from z=0 is a nonlinear (data-dependent) map r -> z -- exactly the
+        // VARIABLE case bfgmres tolerates; never passed to a non-flexible solver.
+        public bool IsSpd => false;
+        public bool IsConstant => false;
 
         public void Apply(in floatN r, ref floatN z)
         {

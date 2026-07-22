@@ -263,6 +263,10 @@ namespace LinearAlgebra.Sparse
 
         /// <summary>z = M r: one BSR spMV. z must not alias r.</summary>
         public bool IsIdentity => false;
+        // M minimizes ||M A - I||_F row by row over A's own (non-symmetric-constrained) pattern --
+        // not symmetric in general, even for symmetric A. Never a valid cg/minres preconditioner.
+        public bool IsSpd => false;
+        public bool IsConstant => true;
 
         public unsafe void Apply(in fProxyN r, ref fProxyN z)
         {

@@ -46,6 +46,8 @@ namespace LinearAlgebra
             if (x.N != A.Rows) throw new ArgumentException("gmres: x.N must equal A.Rows");
             if (restart < 1) throw new ArgumentException("gmres: restart must be >= 1");
             if (maxIter < 1) throw new ArgumentException("gmres: maxIter must be >= 1");
+            if (!M.IsConstant)
+                throw new ArgumentException("Krylov.gmres: requires a constant (non-flexible) preconditioner (M.IsConstant == false — e.g. an AMG K-cycle). Use the flexible variant (fcg / fgmres).");
 
             int n = A.Rows;
             int m = restart;

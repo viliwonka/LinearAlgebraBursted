@@ -66,6 +66,22 @@ namespace LinearAlgebra
         /// branch constant-folds per specialization, so the identity case compiles down to the
         /// unpreconditioned solver (no <c>Apply</c>, no z traffic) from the single body.</summary>
         bool IsIdentity { get; }
+
+        /// <summary>True iff M is symmetric positive-definite. Required by solvers that measure
+        /// convergence in the M-inner-product (cg, minres, minresQLP, fcg, lobpcg, and their block
+        /// variants) -- an indefinite or non-symmetric M breaks that inner product. On the static
+        /// preconditioners this is a compile-time literal, so a <c>TPre</c>-generic solver's check
+        /// constant-folds to zero cost per specialization; only a runtime-variable case (AMG) pays
+        /// for the check.</summary>
+        bool IsSpd { get; }
+
+        /// <summary>True iff M is the same fixed linear operator on every iteration (false for a
+        /// variable one, e.g. an AMG K-cycle that runs an inner Krylov acceleration). Required by
+        /// non-flexible solvers (gmres, biCGStab, idr, tfqmr, gcrodr, and their block variants,
+        /// plus cg/minres/minresQLP which also require <see cref="IsSpd"/>); a variable
+        /// preconditioner needs the flexible variant (fcg / fgmres). Compile-time literal on the
+        /// static preconditioners, same zero-cost constant-folding as <see cref="IsSpd"/>.</summary>
+        bool IsConstant { get; }
     }
 
     /// <summary>
@@ -119,6 +135,8 @@ namespace LinearAlgebra
         public void Apply(in floatN r, ref floatN z) => z.CopyFrom(in r);
 
         public bool IsIdentity => true;
+        public bool IsSpd => true;
+        public bool IsConstant => true;
     }
 
     /// <summary>
@@ -138,6 +156,13 @@ namespace LinearAlgebra
         }
 
         public bool IsIdentity => false;
+
+        /// <summary>Symmetric by construction (diag), and SPD assuming a positive diagonal --
+        /// the caller's contract for its Jacobi/column-scale uses. Only ever used on the
+        /// least-squares path (<see cref="floatRightPreconditionedOperator{TInner,TPre}"/>),
+        /// which checks neither flag.</summary>
+        public bool IsSpd => true;
+        public bool IsConstant => true;
 
         public void Apply(in floatN r, ref floatN z)
         {

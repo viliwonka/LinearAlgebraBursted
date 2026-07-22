@@ -42,6 +42,8 @@ namespace LinearAlgebra
             if (restart < 1) throw new ArgumentException("bgmres: restart must be >= 1");
             if (maxIter < 1) throw new ArgumentException("bgmres: maxIter must be >= 1");
             if (s > n) throw new ArgumentException("bgmres: B.M_Rows (s) must be <= A.Rows");
+            if (!M.IsConstant)
+                throw new ArgumentException("Krylov.bgmres: requires a constant (non-flexible) preconditioner (M.IsConstant == false — e.g. an AMG K-cycle). Use the flexible variant (fcg / fgmres).");
 
             int m = restart;
 

@@ -132,6 +132,8 @@ namespace LinearAlgebra
         public fProxyMxN Nmat;   // n x n symmetric positive definite
 
         public bool IsIdentity => false;
+        public bool IsSpd => true;
+        public bool IsConstant => true;
 
         public void Apply(in fProxyN r, ref fProxyN z) => Blas.dot(in Nmat, in r, ref z);
     }

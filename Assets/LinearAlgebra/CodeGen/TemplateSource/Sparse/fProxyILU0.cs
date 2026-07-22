@@ -272,6 +272,10 @@ namespace LinearAlgebra.Sparse
         /// <summary>z = (L·U)⁻¹ r: unit-lower forward sweep into z, then upper backward sweep in
         /// place (diagonal solves are multiplies by the stored U_ii inverses). z must not alias r.</summary>
         public bool IsIdentity => false;
+        // L/U come from A's full (non-symmetric-constrained) pattern -- M is not symmetric in
+        // general, even for symmetric A. Never a valid cg/minres preconditioner.
+        public bool IsSpd => false;
+        public bool IsConstant => true;
 
         public unsafe void Apply(in fProxyN r, ref fProxyN z)
         {

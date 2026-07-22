@@ -95,6 +95,8 @@ namespace LinearAlgebra.Sparse
 
         /// <summary>z = M⁻¹ r -- see the type doc comment for the three-step derivation. z must not alias r.</summary>
         public bool IsIdentity => false;
+        public bool IsSpd => true;
+        public bool IsConstant => true;
 
         public unsafe void Apply(in doubleN r, ref doubleN z)
         {

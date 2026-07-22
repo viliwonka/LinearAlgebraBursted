@@ -107,6 +107,13 @@ namespace LinearAlgebra
         public fProxyNormalJacobi(in fProxyN invDiag) { InvDiag = invDiag; }
 
         public bool IsIdentity => false;
+        /// <summary>Symmetric by construction (diag), and SPD assuming a positive diag(M) -- M = Aₛ D
+        /// Aₛᵀ is SPD by construction for D &gt; 0, the caller's contract. Consumed only by
+        /// <see cref="LinearAlgebra.Krylov"/>.cg, which requires exactly this.</summary>
+        public bool IsSpd => true;
+        /// <summary>Fixed for the duration of one <see cref="LinearAlgebra.Krylov"/>.cg call (the
+        /// caller rebuilds InvDiag once per outer interior-point iteration, not per CG iteration).</summary>
+        public bool IsConstant => true;
 
         public void Apply(in fProxyN r, ref fProxyN z)
         {

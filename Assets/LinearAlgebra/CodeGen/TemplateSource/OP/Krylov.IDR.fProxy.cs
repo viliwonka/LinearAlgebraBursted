@@ -39,6 +39,8 @@ namespace LinearAlgebra
             if (x.N != A.Rows) throw new ArgumentException("idr: x.N must equal A.Rows");
             if (s < 1) throw new ArgumentException("idr: s must be >= 1");
             if (maxIter < 1) throw new ArgumentException("idr: maxIter must be >= 1");
+            if (!M.IsConstant)
+                throw new ArgumentException("Krylov.idr: requires a constant (non-flexible) preconditioner (M.IsConstant == false — e.g. an AMG K-cycle). Use the flexible variant (fcg / fgmres).");
 
             int n = A.Rows;
 

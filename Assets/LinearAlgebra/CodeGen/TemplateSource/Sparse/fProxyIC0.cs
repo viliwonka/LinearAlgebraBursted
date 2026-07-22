@@ -284,6 +284,8 @@ namespace LinearAlgebra.Sparse
         /// <summary>z = (L·Lᵀ)⁻¹ r: forward block sweep (L y = r, written into z), then in-place
         /// backward block sweep (Lᵀ z = y). z must not alias r.</summary>
         public bool IsIdentity => false;
+        public bool IsSpd => true;
+        public bool IsConstant => true;
 
         public unsafe void Apply(in fProxyN r, ref fProxyN z)
         {

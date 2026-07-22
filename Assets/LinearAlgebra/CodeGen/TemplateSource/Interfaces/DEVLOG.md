@@ -1,6 +1,24 @@
 # DEVLOG — Interfaces
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## IfProxyPreconditioner — IsSpd / IsConstant compatibility flags
+- 2026-07-22 | After the per-preconditioner overload collapse widened every solver to accept any
+  `IfProxyPreconditioner`, added two self-describing flags so solvers reject an incompatible
+  preconditioner at entry (uniform runtime check, NOT a marker interface — chosen because AMG is
+  only CONDITIONALLY SPD (V-cycle yes, K-cycle no), so a static marker can't express it, and because
+  the flags cover the raw-operator path a marker can't). `IsSpd` = symmetric positive-definite M;
+  `IsConstant` = fixed operator each iteration (false only for a variable one, e.g. AMG K-cycle).
+  Both are compile-time-constant on the static preconditioners, so Burst constant-folds the checks
+  to zero cost there (like `IsIdentity`); the real check survives only for AMG. Solver requirements:
+  cg/minres/minresQLP/bcg/bcgrq/bfbcg/bminres need SPD∧Constant; fcg + lobpcg need SPD (lobpcg lenient
+  on constancy — block iteration tolerates a varying M, enabling K-cycle-AMG-preconditioned LOBPCG);
+  gmres/gcrodr/biCGStab/idr/tfqmr + block twins need Constant; fgmres/bfgmres none. AMG's bespoke
+  `IsCycleSymmetric` throw was replaced by the uniform mechanism (`IsSpd=IsCycleSpd`,
+  `IsConstant=IsCycleConstant`; `IsCycleSymmetric` kept as their AND). This is how PETSc/Eigen handle
+  it (runtime + docs) — we just make the check explicit. Retired
+  SparseSolverTests.PcgNonSpdPreconditionerBreaksDown (its non-SPD-M → graceful-breakdown scenario is
+  superseded by the entry rejection, covered by the new managed fProxyPreconditionerCompatibilityTests).
+
 ## ResidualFunction.fProxy.cs
 - 2026-07-12 | NEW file: IfProxyResidualFunction/IfProxyResidualJacobian (Optimize.nlsSolve),
   IfProxyRobustLoss + fProxyL2Loss/fProxyHuberLoss/fProxyCauchyLoss/fProxyTukeyLoss (shared,

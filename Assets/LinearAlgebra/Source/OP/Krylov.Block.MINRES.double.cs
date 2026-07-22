@@ -240,6 +240,10 @@ namespace LinearAlgebra
                 throw new ArgumentException("bminres (block): Z must match B");
             if (s > n) throw new ArgumentException("bminres (block): B.M_Rows (s) must be <= A.Rows");
             if (maxIter < 1) throw new ArgumentException("bminres (block): maxIter must be >= 1");
+            if (!M.IsSpd)
+                throw new ArgumentException("Krylov.bminres: requires an SPD preconditioner (M.IsSpd == false — e.g. ILU0/SPAI/restricted-Schwarz). Use a non-symmetric solver (gmres/biCGStab) for a general preconditioner.");
+            if (!M.IsConstant)
+                throw new ArgumentException("Krylov.bminres: requires a constant (non-flexible) preconditioner (M.IsConstant == false — e.g. an AMG K-cycle). Use the flexible variant (fcg / fgmres).");
 
             unsafe
             {

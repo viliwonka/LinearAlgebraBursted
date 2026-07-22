@@ -87,6 +87,8 @@ namespace LinearAlgebra
             if (!M.IsIdentity && (Phat.M_Rows != s || Phat.N_Cols != n || Shat.M_Rows != s || Shat.N_Cols != n))
                 throw new ArgumentException("bbiCGStab (block): Phat/Shat must match B");
             if (maxIter < 1) throw new ArgumentException("bbiCGStab (block): maxIter must be >= 1");
+            if (!M.IsConstant)
+                throw new ArgumentException("Krylov.bbiCGStab: requires a constant (non-flexible) preconditioner (M.IsConstant == false — e.g. an AMG K-cycle). Use the flexible variant (fcg / fgmres).");
 
             unsafe
             {

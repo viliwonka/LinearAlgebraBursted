@@ -136,6 +136,8 @@ namespace LinearAlgebra
         public floatMxN Nmat;   // n x n symmetric positive definite
 
         public bool IsIdentity => false;
+        public bool IsSpd => true;
+        public bool IsConstant => true;
 
         public void Apply(in floatN r, ref floatN z) => Blas.dot(in Nmat, in r, ref z);
     }

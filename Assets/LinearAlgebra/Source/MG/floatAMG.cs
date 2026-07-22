@@ -56,9 +56,20 @@ namespace LinearAlgebra.Sparse
         /// <summary>True for a K-cycle hierarchy: the cycle is a VARIABLE operator, so it must be
         /// driven by <see cref="LinearAlgebra.Krylov"/>.fcg (not cg / not a fixed-M cg precond).</summary>
         public bool IsKCycle => _cycle == 1;
-        /// <summary>True iff the cycle is a fixed SPD operator valid for cg: a symmetric (Pre == Post)
-        /// V-cycle. A K-cycle is never cg-valid.</summary>
-        public bool IsCycleSymmetric => _cycle == 0 && _pre == _post;
+        /// <summary>True iff the cycle's smoothing pass is symmetric (Pre == Post sweeps) -- combined
+        /// with Galerkin coarsening and the symmetric Chebyshev smoother, this is the SYMMETRY half of
+        /// <see cref="IsCycleSymmetric"/>; independent of V vs K cycle shape (see
+        /// <see cref="IsCycleConstant"/> for that half).</summary>
+        public bool IsCycleSpd => _pre == _post;
+        /// <summary>True iff the cycle is a FIXED linear operator (a V-cycle) rather than a variable
+        /// one (a K-cycle, whose per-level inner Flexible-CG acceleration makes each Apply
+        /// operator-dependent) -- the CONSTANCY half of <see cref="IsCycleSymmetric"/>. Same as
+        /// <c>!IsKCycle</c>.</summary>
+        public bool IsCycleConstant => _cycle == 0;
+        /// <summary>True iff the cycle is a fixed SPD operator valid for cg: <see cref="IsCycleSpd"/>
+        /// AND <see cref="IsCycleConstant"/> -- a symmetric (Pre == Post) V-cycle. A K-cycle is never
+        /// cg-valid.</summary>
+        public bool IsCycleSymmetric => IsCycleSpd && IsCycleConstant;
 
         internal floatAMG(UnsafeList<floatBSR> A, UnsafeList<floatBSR> P, UnsafeList<floatChebyshev> S,
             UnsafeList<floatN> X, UnsafeList<floatN> B, UnsafeList<floatN> R, UnsafeList<floatN> Z,
