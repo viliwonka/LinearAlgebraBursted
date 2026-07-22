@@ -1,6 +1,14 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.Block.* — shared BlockResidual helper (R = B - A·X)
+- 2026-07-22 | The `A.ApplyBlock(in X, ref buf, s)` + i-major/c-minor `R = B - buf` block was
+  copy-pasted 23× across the block family (init + restart + verify-at-exit sites in
+  cg/bcgrq/bfbcg/bminres/bbiCGStab/btfqmr/bidr/bgmres/bfgmres/bgcrodr). Extracted to
+  `Block.Common.BlockResidual` with two overloads: in-place (A·X into R, R = B - R) and
+  separate-scratch (A·X into `applied`, R = B - applied) for the few sites that keep the applied
+  block in a distinct buffer. Bit-identical (same fold order); 522/522.
+
 ## Krylov.Block.MINRES — hoist BuildOmega scratch out of the iteration loop
 - 2026-07-22 | `BuildOmega` allocated 8 `Allocator.Temp` matrices (Y/Qy/Z0/T/QyT/Z1/Qperp/Rz) per
   call = per iteration; hoisted them to caller-owned pre-loop scratch passed by ref (they are

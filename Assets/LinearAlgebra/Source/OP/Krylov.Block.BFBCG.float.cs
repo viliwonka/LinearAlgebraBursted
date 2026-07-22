@@ -82,9 +82,7 @@ namespace LinearAlgebra
             }
 
             // R = B - A X (AP reused as scratch, mirroring bcgrq's own reuse).
-            A.ApplyBlock(in X, ref AP, s);
-            for (int i = 0; i < s; i++)
-                for (int c = 0; c < n; c++) R[i, c] = B[i, c] - AP[i, c];
+            BlockResidual(in A, in X, in B, ref AP, ref R, s, n);
 
             LockConvergedRows(ref R, ref Live, ref sLive, in thr);
             if (sLive == 0) { status = IterativeSolveStatus.Converged; iters = 0; goto cleanup; }
@@ -191,10 +189,7 @@ namespace LinearAlgebra
             // working R) -- doubles as an exit-time sanity check.
             {
                 var Rfinal = RowsView(AP, s);
-                A.ApplyBlock(in X, ref Rfinal, s);
-                for (int i = 0; i < s; i++)
-                    for (int c = 0; c < n; c++)
-                        Rfinal[i, c] = B[i, c] - Rfinal[i, c];
+                BlockResidual(in A, in X, in B, ref Rfinal, s, n);
                 converged = CountConverged(in Rfinal, in thr, s, n, out maxr);
             }
 

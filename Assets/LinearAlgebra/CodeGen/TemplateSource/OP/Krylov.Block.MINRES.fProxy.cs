@@ -324,9 +324,7 @@ namespace LinearAlgebra
             }
 
             // R0 = B - A.X (into Wk).
-            A.ApplyBlock(in X, ref Wk, s);
-            for (int i = 0; i < s; i++)
-                for (int c = 0; c < n; c++) Wk[i, c] = B[i, c] - Wk[i, c];
+            BlockResidual(in A, in X, in B, ref Wk, s, n);
 
             converged = CountConverged(in Wk, in thr, s, n, out maxr);
             if (converged == s) { status = IterativeSolveStatus.Converged; iters = 0; goto cleanup; }
@@ -470,9 +468,7 @@ namespace LinearAlgebra
                 }
                 if (probeOk)
                 {
-                    A.ApplyBlock(in X, ref T, s);
-                    for (int i = 0; i < s; i++)
-                        for (int c = 0; c < n; c++) T[i, c] = B[i, c] - T[i, c];
+                    BlockResidual(in A, in X, in B, ref T, s, n);
                     if (CountConverged(in T, in thr, s, n, out _) == s)
                     { status = IterativeSolveStatus.Converged; iters = k + 1; goto cleanup; }
                 }
@@ -482,9 +478,7 @@ namespace LinearAlgebra
             iters = maxIter;
 
         cleanup:
-            A.ApplyBlock(in X, ref T, s);
-            for (int i = 0; i < s; i++)
-                for (int c = 0; c < n; c++) T[i, c] = B[i, c] - T[i, c];
+            BlockResidual(in A, in X, in B, ref T, s, n);
             converged = CountConverged(in T, in thr, s, n, out maxr);
 
             Alfa.Dispose(); Beta.Dispose(); Dbar.Dispose(); Epsln.Dispose(); OldEps.Dispose();

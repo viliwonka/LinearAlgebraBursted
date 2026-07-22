@@ -130,9 +130,7 @@ namespace LinearAlgebra
             }
 
             // R = B - A X (T as scratch, mirrors bcg's own reuse of Q).
-            A.ApplyBlock(in X, ref T, s);
-            for (int i = 0; i < s; i++)
-                for (int c = 0; c < n; c++) R[i, c] = B[i, c] - T[i, c];
+            BlockResidual(in A, in X, in B, ref T, ref R, s, n);
 
             converged = CountConverged(in R, in thr, s, n, out maxr);
             if (converged == s) { status = IterativeSolveStatus.Converged; iters = 0; goto cleanup; }
@@ -173,9 +171,7 @@ namespace LinearAlgebra
                     // is idle here (last read into the BlockAdd above, next write is the beta-step
                     // BlockCTV further down) -- reuse it for a fresh A X, discarding the check on
                     // failure so R/the recurrence are untouched.
-                    A.ApplyBlock(in X, ref Tmp, s);
-                    for (int i = 0; i < s; i++)
-                        for (int c = 0; c < n; c++) Tmp[i, c] = B[i, c] - Tmp[i, c];
+                    BlockResidual(in A, in X, in B, ref Tmp, s, n);
                     int freshConverged = CountConverged(in Tmp, in thr, s, n, out double freshMaxr);
                     if (freshConverged == s)
                     {
@@ -215,9 +211,7 @@ namespace LinearAlgebra
                     // Verify-at-exit (same rationale as the alpha-step check above). Tmp is idle here
                     // (last read at the alpha-step BlockAdd, next write is the beta-step BlockCTV
                     // further down) -- reuse it for a fresh A X.
-                    A.ApplyBlock(in X, ref Tmp, s);
-                    for (int i = 0; i < s; i++)
-                        for (int c = 0; c < n; c++) Tmp[i, c] = B[i, c] - Tmp[i, c];
+                    BlockResidual(in A, in X, in B, ref Tmp, s, n);
                     int freshConverged = CountConverged(in Tmp, in thr, s, n, out double freshMaxr);
                     if (freshConverged == s)
                     {

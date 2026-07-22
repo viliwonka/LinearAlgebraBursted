@@ -169,9 +169,7 @@ namespace LinearAlgebra
             // Rhat0 = B - A X -- the fixed initial residual AND per-row shadow vector for the rest of the
             // solve (never mutated again). V doubles as scratch for A X here (overwritten below), mirroring
             // scalar tfqmr's own reuse of v.
-            A.ApplyBlock(in X, ref V, s);
-            for (int i = 0; i < s; i++)
-                for (int c = 0; c < n; c++) Rhat0[i, c] = B[i, c] - V[i, c];
+            BlockResidual(in A, in X, in B, ref V, ref Rhat0, s, n);
 
             var tau = new doubleN(s);
             for (int i = 0; i < s; i++) tau[i] = math.sqrt(RowDot(in Rhat0, in Rhat0, i, n));

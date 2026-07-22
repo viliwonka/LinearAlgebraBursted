@@ -109,9 +109,7 @@ namespace LinearAlgebra
             while (total < maxIter)
             {
                 // R0 = B - A X.
-                A.ApplyBlock(in X, ref R0, s);
-                for (int i = 0; i < s; i++)
-                    for (int c = 0; c < n; c++) R0[i, c] = B[i, c] - R0[i, c];
+                BlockResidual(in A, in X, in B, ref R0, s, n);
 
                 converged = CountConverged(in R0, in thr, s, n, out maxr);
                 if (converged == s) { status = IterativeSolveStatus.Converged; break; }
@@ -216,9 +214,7 @@ namespace LinearAlgebra
 
             // Fresh residual from the final X (every BlockSolveInfo field is documented "at the
             // returned X") -- a cycle's top-of-loop CountConverged predates that cycle's own Commit.
-            A.ApplyBlock(in X, ref R0, s);
-            for (int i = 0; i < s; i++)
-                for (int c = 0; c < n; c++) R0[i, c] = B[i, c] - R0[i, c];
+            BlockResidual(in A, in X, in B, ref R0, s, n);
             converged = CountConverged(in R0, in thr, s, n, out maxr);
             if (status == IterativeSolveStatus.Converged && converged < s)
                 status = IterativeSolveStatus.MaxIterations;

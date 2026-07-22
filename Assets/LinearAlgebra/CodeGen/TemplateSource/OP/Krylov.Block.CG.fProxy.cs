@@ -76,9 +76,7 @@ namespace LinearAlgebra
             }
 
             // R = B - A X.
-            A.ApplyBlock(in X, ref Q, s);                 // Q = A X (temp use of Q)
-            for (int i = 0; i < s; i++)
-                for (int c = 0; c < n; c++) R[i, c] = B[i, c] - Q[i, c];
+            BlockResidual(in A, in X, in B, ref Q, ref R, s, n);
 
             converged = CountConverged(in R, in thr, s, n, out maxr);
             if (converged == s) { status = IterativeSolveStatus.Converged; iters = 0; goto cleanup; }
@@ -116,9 +114,7 @@ namespace LinearAlgebra
                     // ill-conditioned SPD A. Q is idle here (last read by the BlockCTV two lines up,
                     // next write is next iteration's A P or this iteration's beta-step BlockCTV) --
                     // reuse it for a fresh A X and only trust Converged if that also clears thr.
-                    A.ApplyBlock(in X, ref Q, s);
-                    for (int i = 0; i < s; i++)
-                        for (int c = 0; c < n; c++) Q[i, c] = B[i, c] - Q[i, c];
+                    BlockResidual(in A, in X, in B, ref Q, s, n);
                     int freshConverged = CountConverged(in Q, in thr, s, n, out double freshMaxr);
                     if (freshConverged == s)
                     {

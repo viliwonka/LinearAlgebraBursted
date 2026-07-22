@@ -511,6 +511,30 @@ namespace LinearAlgebra
                     buf[r, c] = (fProxy)0;
         }
 
+        // Block residual R = B - A·X for an s×n block. `applied` receives A·X (via ApplyBlock, so it
+        // must be distinct from X); R receives the residual. `applied` and R MAY be the SAME buffer
+        // (the common in-place form: A·X into R, then R = B - R). Element-wise subtract in the
+        // canonical i-major/c-minor order every block solver used.
+        static void BlockResidual<TOp>(in TOp A, in fProxyMxN X, in fProxyMxN B, ref fProxyMxN applied, ref fProxyMxN R, int s, int n)
+            where TOp : struct, IfProxyLinearOperator
+        {
+            A.ApplyBlock(in X, ref applied, s);
+            for (int i = 0; i < s; i++)
+                for (int c = 0; c < n; c++)
+                    R[i, c] = B[i, c] - applied[i, c];
+        }
+
+        // In-place block residual: A·X computed directly into R, then R = B - R. R must be distinct
+        // from X (ApplyBlock contract).
+        static void BlockResidual<TOp>(in TOp A, in fProxyMxN X, in fProxyMxN B, ref fProxyMxN R, int s, int n)
+            where TOp : struct, IfProxyLinearOperator
+        {
+            A.ApplyBlock(in X, ref R, s);
+            for (int i = 0; i < s; i++)
+                for (int c = 0; c < n; c++)
+                    R[i, c] = B[i, c] - R[i, c];
+        }
+
         // Allocation-free rank-revealing row-orthonormalizer -- replaces LQRP.decomp + LQRPRankFloored
         // for the block-Arnoldi step (BlockArnoldiMGS2Step below and bgcrodr's own copy), the one
         // consumer that only needs orthonormal Q rows + a deflation rank, never the pivoted L or the

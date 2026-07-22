@@ -134,9 +134,7 @@ namespace LinearAlgebra
             var uQrcp    = new floatN(m);
 
             // R = B - A X.
-            A.ApplyBlock(in X, ref R, m);
-            for (int i = 0; i < m; i++)
-                for (int col = 0; col < n; col++) R[i, col] = B[i, col] - R[i, col];
+            BlockResidual(in A, in X, in B, ref R, m, n);
 
             IterativeSolveStatus status = IterativeSolveStatus.MaxIterations;
             int iter = 0;
@@ -235,9 +233,7 @@ namespace LinearAlgebra
                         // or the end-of-sweep block) -- used only to gate the decision; the incremental
                         // f[] history this sweep tracks off R must NOT be perturbed, so a failed check
                         // discards the fresh residual and leaves R untouched.
-                        A.ApplyBlock(in X, ref termMN, m);
-                        for (int i = 0; i < m; i++)
-                            for (int col = 0; col < n; col++) termMN[i, col] = B[i, col] - termMN[i, col];
+                        BlockResidual(in A, in X, in B, ref termMN, m, n);
                         int freshConverged = CountConverged(in termMN, in thr, m, n, out double freshMaxr);
                         if (freshConverged == m)
                         {
@@ -294,9 +290,7 @@ namespace LinearAlgebra
                 {
                     // Verify-at-exit (same rationale as the in-sweep check above). termMN is idle
                     // here (last touched inside the k-loop above, not read again this sweep).
-                    A.ApplyBlock(in X, ref termMN, m);
-                    for (int i = 0; i < m; i++)
-                        for (int col = 0; col < n; col++) termMN[i, col] = B[i, col] - termMN[i, col];
+                    BlockResidual(in A, in X, in B, ref termMN, m, n);
                     int freshConverged = CountConverged(in termMN, in thr, m, n, out double freshMaxr);
                     if (freshConverged == m)
                     {

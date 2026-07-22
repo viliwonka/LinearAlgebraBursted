@@ -201,9 +201,7 @@ namespace LinearAlgebra
 
             while (total < maxIter)
             {
-                A.ApplyBlock(in X, ref R0, s);
-                for (int i = 0; i < s; i++)
-                    for (int c = 0; c < n; c++) R0[i, c] = B[i, c] - R0[i, c];
+                BlockResidual(in A, in X, in B, ref R0, s, n);
 
                 if (kcur > 0)
                 {
@@ -218,9 +216,7 @@ namespace LinearAlgebra
                     BlockCTV(in ZprojView, in Uactive, ref corr);
                     BlockAdd(ref X, in corr, (double)1);
 
-                    A.ApplyBlock(in X, ref R0, s);
-                    for (int i = 0; i < s; i++)
-                        for (int c = 0; c < n; c++) R0[i, c] = B[i, c] - R0[i, c];
+                    BlockResidual(in A, in X, in B, ref R0, s, n);
                 }
 
                 converged = CountConverged(in R0, in thr, s, n, out maxr);
@@ -565,9 +561,7 @@ namespace LinearAlgebra
                 // else: loop back -- fresh restart, R0 recomputed from the just-updated X.
             }
 
-            A.ApplyBlock(in X, ref R0, s);
-            for (int i = 0; i < s; i++)
-                for (int c = 0; c < n; c++) R0[i, c] = B[i, c] - R0[i, c];
+            BlockResidual(in A, in X, in B, ref R0, s, n);
             converged = CountConverged(in R0, in thr, s, n, out maxr);
             if (status == IterativeSolveStatus.Converged && converged < s)
                 status = IterativeSolveStatus.MaxIterations;
