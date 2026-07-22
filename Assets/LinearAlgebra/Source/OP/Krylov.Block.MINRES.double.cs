@@ -136,29 +136,25 @@ namespace LinearAlgebra
         // Returns false (breakdown) if Gamma itself is near-singular (Y = [Gbar;Beta^T] is rank-
         // deficient -- this search direction carries no new information) or if BOTH Qperp completion
         // seeds are rank-deficient.
-        static bool BuildOmega(in doubleMxN Gbar, in doubleMxN Beta, ref doubleMxN Omega, ref doubleMxN Gamma, int s)
+        // Omega/Gamma are outputs; Y/Qy/Z0/T/QyT/Z1/Qperp/Rz are caller-hoisted scratch (fixed size for
+        // the whole solve, fully overwritten each call) -- passed by ref so the per-iteration caller
+        // allocates them ONCE before its loop instead of 8 Allocator.Temp buffers per iteration.
+        static bool BuildOmega(in doubleMxN Gbar, in doubleMxN Beta, ref doubleMxN Omega, ref doubleMxN Gamma, int s,
+                               ref doubleMxN Y, ref doubleMxN Qy, ref doubleMxN Z0, ref doubleMxN T,
+                               ref doubleMxN QyT, ref doubleMxN Z1, ref doubleMxN Qperp, ref doubleMxN Rz)
         {
             int s2 = 2 * s;
-            var Y = new doubleMxN(s2, s, Allocator.Temp, true);
             CopyBlockInto(ref Y, 0, 0, in Gbar, s, s);
             for (int r = 0; r < s; r++)
                 for (int c = 0; c < s; c++)
                     Y[s + r, c] = Beta[c, r];   // Beta^T
 
-            var Qy = new doubleMxN(s2, s, Allocator.Temp, true);
             QR.decomp(in Y, ref Qy, ref Gamma);
 
             // Gamma scales with ||A|| (it is the R-factor of a QR built from Lanczos quantities), so
             // its singularity test must be RELATIVE to Gamma's own magnitude -- mirrors TriNearSingular
             // (Krylov.Block.Common.double.cs), the convention every sibling rank/pivot guard uses.
             bool gammaOk = !TriNearSingular(in Gamma, s);
-
-            var Z0 = new doubleMxN(s2, s, Allocator.Temp, true);
-            var T = new doubleMxN(s, s, Allocator.Temp, true);
-            var QyT = new doubleMxN(s2, s, Allocator.Temp, true);
-            var Z1 = new doubleMxN(s2, s, Allocator.Temp, true);
-            var Qperp = new doubleMxN(s2, s, Allocator.Temp, true);
-            var Rz = new doubleMxN(s, s, Allocator.Temp, true);
 
             bool ok = false;
             for (int seed = 0; seed < 2 && !ok && gammaOk; seed++)
@@ -189,7 +185,6 @@ namespace LinearAlgebra
                 CopyBlockInto(ref Omega, 0, s, in Qperp, s2, s);
             }
 
-            Y.Dispose(); Qy.Dispose(); Z0.Dispose(); T.Dispose(); QyT.Dispose(); Z1.Dispose(); Qperp.Dispose(); Rz.Dispose();
             return ok;
         }
 
@@ -278,6 +273,17 @@ namespace LinearAlgebra
             var T = new doubleMxN(s, n, Allocator.Temp, true);
             var thr = new doubleN(s);
             var Pnorm = new Pivot(s, Allocator.Temp);
+
+            // Hoisted BuildOmega scratch: allocated ONCE here (fixed size for the whole solve, fully
+            // overwritten each call) instead of 8 Allocator.Temp buffers per iteration.
+            var omY     = new doubleMxN(s2, s, Allocator.Temp, true);
+            var omQy    = new doubleMxN(s2, s, Allocator.Temp, true);
+            var omZ0    = new doubleMxN(s2, s, Allocator.Temp, true);
+            var omT     = new doubleMxN(s,  s, Allocator.Temp, true);
+            var omQyT   = new doubleMxN(s2, s, Allocator.Temp, true);
+            var omZ1    = new doubleMxN(s2, s, Allocator.Temp, true);
+            var omQperp = new doubleMxN(s2, s, Allocator.Temp, true);
+            var omRz    = new doubleMxN(s,  s, Allocator.Temp, true);
 
             doubleMxN Gnorm = default;
             doubleN rowIn = default, rowOut = default;
@@ -422,7 +428,8 @@ namespace LinearAlgebra
                 CopyBlockFrom(in Result, s, s, ref Dbar, s, s);
 
                 // ---- new Omega from (Gbar, Beta) ----
-                if (!BuildOmega(in Gbar, in Beta, ref OmegaNew, ref Gamma, s))
+                if (!BuildOmega(in Gbar, in Beta, ref OmegaNew, ref Gamma, s,
+                                ref omY, ref omQy, ref omZ0, ref omT, ref omQyT, ref omZ1, ref omQperp, ref omRz))
                 { status = IterativeSolveStatus.Breakdown; iters = k; goto cleanup; }
 
                 // ---- RHS update (Phi/Phibar) ----
@@ -488,6 +495,7 @@ namespace LinearAlgebra
             Phibar.Dispose(); Phi.Dispose(); Delta.Dispose(); Gbar.Dispose(); Gamma.Dispose(); GammaCopy.Dispose();
             OmegaOld.Dispose(); OmegaNew.Dispose(); M2.Dispose(); Result.Dispose();
             PhibarStack.Dispose(); Res2.Dispose(); T.Dispose(); thr.Dispose(); Pnorm.Dispose();
+            omY.Dispose(); omQy.Dispose(); omZ0.Dispose(); omT.Dispose(); omQyT.Dispose(); omZ1.Dispose(); omQperp.Dispose(); omRz.Dispose();
             if (!M.IsIdentity) { Gnorm.Dispose(); rowIn.Dispose(); rowOut.Dispose(); Ucur.Dispose(); Uprev.Dispose(); Wres.Dispose(); }
 
             return new BlockSolveInfo { rhs = s, converged = converged, iterations = iters, maxRnorm = maxr, minActive = minActive, status = status };

@@ -1,6 +1,16 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.Block.MINRES — hoist BuildOmega scratch out of the iteration loop
+- 2026-07-22 | `BuildOmega` allocated 8 `Allocator.Temp` matrices (Y/Qy/Z0/T/QyT/Z1/Qperp/Rz) per
+  call = per iteration; hoisted them to caller-owned pre-loop scratch passed by ref (they are
+  fixed-size for the whole solve — s constant — and fully overwritten each call, so reuse is
+  behavior-preserving; verified bit-stable, 135/135 incl. precond path). Named `om*` in the caller
+  to avoid colliding with the loop's own `T` (s×n vs BuildOmega's s×s). Remaining per-iteration
+  allocs in this solver (UnpivotBetaRows `tmp`, BlockNormalizePrecond/BlockResidualSolve `corner`,
+  the `pivS` Pivot) are one-each and thread through the normalize helpers — deferred (smaller win,
+  more invasive). From the allocation survey; scalar solvers were already clean (one-time pre-loop).
+
 ## Krylov.Block.CG — bcg aliasing guard
 - 2026-07-22 | Added the RequireDistinctBuffers guard (X/R/P/Q/B, plus Z under a real M) that its
   sibling block solvers (bminres/bbiCGStab/btfqmr/bcraig/bcraigmr) already carry — bcg was the
