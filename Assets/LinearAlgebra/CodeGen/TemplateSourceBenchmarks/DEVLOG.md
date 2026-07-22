@@ -1,6 +1,72 @@
 # DEVLOG — TemplateSourceBenchmarks
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Determinism harness
+- 2026-07-23 | Post-build fixes (harness verified end-to-end: 30 groups / 414 ops, byte-identical
+  re-run, ROOT cf7ca5a9 / ROOT-B cff27309 on Win x64). (1) `krylov-sparse-precond` case built IC0/ILU0
+  on a Laplacian2D(32,32) → BR=32 blocks, but IC0/ILU0 cap block size at 16 (fixed pivot scratch) →
+  runtime throw aborting the whole report. Switched to Laplacian2D(8,128) (same N=1024, BR=8). (2)
+  `Tools/determinism-report.ps1` `-Compare` used one `[string[]]` param, which `powershell -File`
+  can't populate with two args (collapses to one string / positional error) → split into
+  `-CompareA <file> -CompareB <file>` (binds correctly under -File). DetMath routing confirmed shipped
+  (detmath-native: False in the default build), so section B currently only diverges under
+  LINALG_NATIVE_MATH. NOTE: the driver evaluates every case eagerly, so ONE throwing case aborts the
+  whole run — a future robustness pass could try/catch per group to surface all failures at once.
+- 2026-07-22 | Implemented per docs/dev/spec-determinism-conformance-harness.md. Files:
+  `Determinism.Shared.cs` (dtype-agnostic scalar-hash-fold helpers, `DetHash`), `DeterminismDirect.
+  fProxy.cs` (hash-selftest/blas-dense/elementwise-core/norms/qr-family/lu/cholesky),
+  `DeterminismEigenSvd.fProxy.cs` (eigen-sym/eigen-nonsym/svd/lobpcg), `DeterminismIterativeSparse.
+  fProxy.cs` (krylov-dense/sparse-bsr/krylov-sparse-precond), `DeterminismOptimize.fProxy.cs`
+  (lp-lad/qp/mip/control/nls-optimize), `DeterminismStatsMl.fProxy.cs` (stats-core/fft/ml/
+  histogram-resample-query/gallery-analysis), `DeterminismNativeSensitive.fProxy.cs` (section B:
+  detmath/elementwise-transcendental/random-samplers/softmax/dft-signal), `DeterminismInt.iProxy.cs`
+  (int-family, `//alsoExpand[uint]//`). Hand-written driver:
+  `Assets/LinearAlgebra/Benchmarks/DeterminismReport.cs`. Wrapper: `Tools/determinism-report.ps1`.
+- 2026-07-22 | Deviations from the spec's literal group list (all HarnessRev=1, first cut — no prior
+  rev to bump from):
+  - **UKF folded into `control` (group 20), no standalone group 31.** Verified `Kalman.ukfPredict`/
+    `ukfUpdate`'s own sigma-point machinery (incl. `CHOP.decomp`) calls zero `DetMath.*` — only a
+    user-supplied nonlinear model can introduce a transcendental. A harness-local LINEAR model/
+    measurement (`DetLinearKFModelFProxy`/`DetLinearKFMeasFProxy`, F(x,u)=Ax+Bu, H(x)=Hx) keeps the
+    whole call section-A-safe. Do NOT reuse `KalmanBenchmark.fProxy.cs`'s `PendulumModelFProxy`/
+    `RingModelFProxy` for a section-A case — they call raw (non-DetMath) `math.sin`/`math.cos`
+    directly, which would leak native-math sensitivity into what should be a `+-*/sqrt`-only case.
+    Net: 25 section-A groups, 5 section-B groups (spec targeted ~22/6).
+  - `Krylov.cgls` removed from `krylov-dense` — the method no longer exists in the library (removed
+    2026-07-19/20 per `Assets/LinearAlgebra/CodeGen/TemplateSource/OP/DEVLOG.md`); kept
+    cg/minres/biCGStab/lsqr/lsmr.
+  - `krylov-sparse-precond`: `Krylov.pcg` never existed as a name — current API is generic
+    `cg<TPre>`/`minres<TPre>`/`biCGStab<TPre>(in fProxyBSR, in TPre, ...)`. `fProxyILU0.IsSpd ==
+    false` (hardcoded), so it is paired with `biCGStab<TPre>`, not `cg`/`minres` (which throw on a
+    non-SPD preconditioner) — matches the spec's own intent ("ILU0 via its shipped solver path").
+  - `qp`: `QP.Create` does not exist. `QP.solve` takes raw `Q/c/A/b/senses/xl/xu` arrays directly
+    (same shape as `LP.solve`); the Hessian is built via `MᵀM + shift·I` (plain arithmetic), NOT
+    `Rand.spdInPlace` — that helper is transitively DetMath-dependent (calls `orthogonalInPlace`,
+    which draws Gaussian noise), which would leak a native-math dependency into a section-A group.
+  - `fft` group: swapped the spec's `n=192` "mixed radix" size for `n=128` (=2·4³) — `n=192` is not
+    a power of two and every `FFT.fft/ifft/rfft/irfft`/`fProxyFFTCache` call requires one (throws
+    otherwise); `n=256` (=4⁴, pure radix-4) is unchanged.
+  - `gallery-analysis`: all 6 dense generators (Hilbert/Pascal/Lehmer/MinIJ/KMS/Laplacian1D) and 20
+    of 21 `Gallery.Special` generators are confirmed transcendental-free; only `fProxyProlate`
+    (`DetMath.Sin` in its formula) needed triage, and it moved to `dft-signal` (section B).
+  - `dft-signal`: only a subset of `fProxyWave`/`fProxyEasing` functors is DetMath-dependent (Wave:
+    1/4 structs — `Sine`; Easing: 9/~24 — the Sine/Expo/Elastic families). Sampled one representative
+    per family (`Sine`, `EaseInSine`, `EaseInExpo`, `EaseInElastic`) rather than all ~10, since the
+    rest are pure polynomial and would just duplicate section-A coverage without exercising more of
+    the native-math surface.
+  - `elementwise-transcendental`: `Comp.fmod` does not exist as a public wrapper — the underlying
+    `math.fmod` kernel (`LinearAlgebra.Internal.UnsafeMathOP.fmod`) is called directly via its raw
+    pointer signature instead.
+  - `int-family`: dropped `Rand.weightedPick`/`weightedPickInPlace` — no iProxy (int/uint) overload
+    exists, only an fProxy one (`rng.NextFProxy()`-based, itself floating point). `Norms`/`Stats`
+    have no `uint` overload (by design — see their own file header notes), so
+    `int-family/norms-stats` is `//+skipFor[u]`-gated to int/short/long only; the dot/pivot-
+    roundtrip/rand-uniform case runs for all four (int/short/long/uint, `//alsoExpand[uint]//`).
+- 2026-07-22 | `hash-selftest/known-answer.bytes`'s expected constant (`0x59441253`) was computed by
+  an INDEPENDENT standalone reimplementation of `Hash.Shared.cs`'s xxHash32 algorithm (a throwaway
+  `dotnet run` console app, not committed), not copied from a harness run — a genuine cross-check,
+  not a circular one.
+
 ## Bench / GemmBenchmark -- BurstProbe wiring
 - 2026-07-21 | `Assets/LinearAlgebra/Benchmarks/Bench.cs`'s `Time()` now resets
   `LinearAlgebra.BurstProbe.RanUnderMono` before timing and polls it after every warmup/timed
