@@ -1,6 +1,24 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.Block.MINRES — preconditioned path un-gated (r-space recurrence)
+- 2026-07-22 | Fixed the preconditioned block-Lanczos recurrence and removed the
+  `NotSupportedException` gate. Root cause (diagnosed + fix verified in the numpy reference,
+  `reference/wip-bminres/precond_full.py`): the old shared recurrence subtracted the Alfa/Beta
+  terms in V-space (the M-orthonormal vectors) and then `BlockNormalizePrecond` applied M⁻¹ to the
+  WHOLE result, corrupting the subtraction terms — the Lanczos vectors came out non-M-orthogonal
+  and the solve stalled at relRes ~0.43 (`BlockNormalizePrecond` itself was always correct; at M=I
+  V-space == r-space, which is why the identity path passed 522/522). The precond path now keeps the
+  UNPRECONDITIONED residual blocks (r-space): `Wnext = A·Vcur − Alfa·(Beta⁻¹Wcur) −
+  Betaᵀ·(Beta_prev⁻¹Wprev)`, with `Alfa = Vcur·A·Vcurᵀ` taken from A·Vcur BEFORE any subtraction —
+  reduces exactly to scalar minres's r1/r2 bookkeeping at s=1. Implementation caches each step's
+  triangular solve (`BlockResidualSolve`: gather W's rows through the CHOP pivot, solve the revealed
+  rank×rank corner, deflated lanes zero — same frame as Vout's own corner solve, computed right
+  after the normalize while that step's pivot/rank are live) as Ucur, rolled to Uprev — bit-identical
+  to re-solving, since W/Beta don't change between iterations, and it dodges saving pivot history.
+  The identity recurrence and all post-Lanczos MINRES machinery (M2/Omega/Gamma/Phibar/W/X) are
+  untouched. Invoker PrecondKind None→SymmetricBSR so battery check #5 drives a real BlockJacobi M.
+
 ## Krylov.Block.Common — RowOrthoRankFloored replaces LQRP in the block-Arnoldi step
 - 2026-07-22 | Merged the `wip/lqrp-drop` branch (was 946a8af). The block-Arnoldi residual
   orthonormalization (BlockArnoldiMGS2Step + bgcrodr's inline copy) used `LQRP.decomp` + a per-step

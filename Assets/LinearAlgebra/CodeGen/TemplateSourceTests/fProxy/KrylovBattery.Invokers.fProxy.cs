@@ -639,11 +639,9 @@ namespace LinearAlgebra
     /// MINRES for a SYMMETRIC (possibly indefinite) A and s simultaneous right-hand sides. Same
     /// Requires/Forbids as <see cref="fProxyMinresInvoker"/> (Forbids Nonsymmetric and IllConditioned
     /// -- the gallery's clustered-spectrum entry, see that invoker's own doc). <see cref="PrecondKind"/>
-    /// is None: bminres's non-identity-preconditioner path throws <see cref="System.NotSupportedException"/>
-    /// (unverified deflation robustness, OP/DEVLOG.md), so this keeps the battery's Sparse-only
-    /// preconditioned-convergence check (#5) from ever constructing a real (non-identity) M for this
-    /// solver -- <see cref="SolveWithPrecond{TOp, TPre}"/> is still exercised by the identity-fold
-    /// check (#4), which only ever passes the identity preconditioner.
+    /// is SymmetricBSR: bminres's preconditioned path is the r-space block-Lanczos recurrence over
+    /// the unpreconditioned residual blocks, so the battery's preconditioned-convergence check (#5)
+    /// exercises it with a real BlockJacobi M.
     /// </summary>
     public struct fProxyBminresInvoker : IfProxyBlockSolverInvoker
     {
@@ -654,7 +652,7 @@ namespace LinearAlgebra
 
         public MatrixProfile Requires => MatrixProfile.Square;
         public MatrixProfile Forbids => MatrixProfile.Nonsymmetric | MatrixProfile.IllConditioned;
-        public PreconditionerKind PrecondKind => PreconditionerKind.None;
+        public PreconditionerKind PrecondKind => PreconditionerKind.SymmetricBSR;
         public bool NeedsGeneralDenseOperator => false;
         public fProxy Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;

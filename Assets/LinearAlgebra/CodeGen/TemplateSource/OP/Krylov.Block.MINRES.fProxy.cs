@@ -90,6 +90,40 @@ namespace LinearAlgebra
             return info;
         }
 
+        // Uout = Beta^-1 . W for the preconditioned block-Lanczos recurrence: W is the s x n
+        // unpreconditioned residual block that BlockNormalizePrecond just factored, and Beta/P/rank
+        // are that call's outputs (Beta already UN-pivoted back to W's row order). Gathers W's rows
+        // through P, solves the revealed rank x rank lower-triangular corner (against a copy -- Beta
+        // and W are preserved), and writes the result into Uout's leading `rank` rows, the same row
+        // order as that call's Vout; rows [rank, s) are forced to zero (deflated lanes stay zero).
+        // Uout must be distinct from W.
+        static void BlockResidualSolve(in fProxyMxN W, in fProxyMxN Beta, in Pivot P, int rank,
+                                        ref fProxyMxN Uout, int s, int n)
+        {
+            for (int i = 0; i < s; i++)
+                for (int c = 0; c < n; c++)
+                    Uout[i, c] = (fProxy)0;
+            if (rank == 0) return;
+
+            for (int i = 0; i < rank; i++)
+            {
+                int p = P[i];
+                for (int c = 0; c < n; c++)
+                    Uout[i, c] = W[p, c];
+            }
+
+            var corner = new fProxyMxN(rank, rank, Allocator.Temp, true);
+            for (int i = 0; i < rank; i++)
+            {
+                int p = P[i];
+                for (int c = 0; c < rank; c++)
+                    corner[i, c] = Beta[p, c];
+            }
+            var uRank = RowsView(Uout, rank);
+            Blas.triLower(ref corner, ref uRank);
+            corner.Dispose();
+        }
+
         // Builds the 2s x 2s orthogonal completion Omega = [Qy | Qperp] of the thin-QR left factor Qy
         // of the 2s x s stack [Gbar; Beta^T] (Gamma is that QR's s x s R-factor). Qperp completes Qy to a
         // full orthogonal basis via one of two fixed seed subspaces ([0;I] or [I;0]), whichever yields
@@ -165,9 +199,12 @@ namespace LinearAlgebra
         /// per iteration -- not s independent scalar <see cref="minres{TOp, TPre}"/> solves. Unlike
         /// <see cref="bcg{TOp, TPre}"/>, A need NOT be SPD; none of this solver's s x s factorizations
         /// (block-Lanczos normalization, the Gamma search-direction solve) assume symmetric-definite
-        /// coefficients. Uses fully-normalized block Lanczos vectors throughout (no separate
-        /// unnormalized copy, unlike scalar minres's r1/r2 bookkeeping -- a block-friendlier but
-        /// mathematically equivalent formulation of the same recurrence).
+        /// coefficients. Under the identity preconditioner the block-Lanczos recurrence runs on the
+        /// normalized Lanczos vectors alone (no separate unnormalized copy -- a block-friendlier but
+        /// mathematically equivalent formulation); under a non-identity M it runs on the
+        /// UNPRECONDITIONED residual blocks and their s x s normalization factors (the block
+        /// analogue of scalar minres's r1/r2 bookkeeping), so only M⁻¹ applications are needed.
+        /// M must be symmetric positive definite.
         ///
         /// B and X are s ROWS x n COLS (row j = the j-th RHS/solution, length n = A.Rows; requires
         /// s &lt;= n). X is warm-startable. Vprev, Vcur, Wk, W, W1, W2 are s x n block scratch; Z is s x n,
@@ -182,8 +219,6 @@ namespace LinearAlgebra
         /// is ALWAYS confirmed by a fresh B - A·X residual check before being reported (never trusted
         /// from the internal recursion alone). Returns a <see cref="BlockSolveInfo"/>.
         /// </summary>
-        /// <exception cref="NotSupportedException">M is not the identity preconditioner -- the
-        /// preconditioned path is not yet verified correct (see OP/DEVLOG.md).</exception>
         public static BlockSolveInfo bminres<TOp, TPre>(in TOp A, in TPre M, in fProxyMxN B, ref fProxyMxN X,
                                         ref fProxyMxN Vprev, ref fProxyMxN Vcur, ref fProxyMxN Wk,
                                         ref fProxyMxN W, ref fProxyMxN W1, ref fProxyMxN W2, ref fProxyMxN Z,
@@ -206,8 +241,6 @@ namespace LinearAlgebra
                 throw new ArgumentException("bminres (block): Z must match B");
             if (s > n) throw new ArgumentException("bminres (block): B.M_Rows (s) must be <= A.Rows");
             if (maxIter < 1) throw new ArgumentException("bminres (block): maxIter must be >= 1");
-            if (!M.IsIdentity)
-                throw new NotSupportedException("bminres (block): a non-identity preconditioner is not yet verified correct -- use the unpreconditioned overload, or per-column scalar minres with a preconditioner, instead (see OP/DEVLOG.md).");
 
             unsafe
             {
@@ -244,11 +277,19 @@ namespace LinearAlgebra
 
             fProxyMxN Gnorm = default;
             fProxyN rowIn = default, rowOut = default;
+            // Ucur/Uprev hold the r-space recurrence terms Beta^-1.Wcur / Beta_prev^-1.Wprev (the
+            // triangular solves of the current/previous UNPRECONDITIONED residual blocks against
+            // their own normalization factors); Wres saves the fresh residual block across the
+            // normalize, which overwrites Wk with the next Lanczos vector.
+            fProxyMxN Ucur = default, Uprev = default, Wres = default;
             if (!M.IsIdentity)
             {
                 Gnorm = new fProxyMxN(s, s, Allocator.Temp, true);
                 rowIn = new fProxyN(n);
                 rowOut = new fProxyN(n);
+                Ucur = new fProxyMxN(s, n, Allocator.Temp);
+                Uprev = new fProxyMxN(s, n, Allocator.Temp);
+                Wres = new fProxyMxN(s, n, Allocator.Temp, true);
             }
 
             IterativeSolveStatus status = IterativeSolveStatus.MaxIterations;
@@ -296,6 +337,10 @@ namespace LinearAlgebra
             }
             if (!info0.Solved || info0.rank == 0) { status = IterativeSolveStatus.Breakdown; iters = 0; goto cleanup; }
             minActive = math.min(minActive, info0.rank);
+            // Wk still holds R0 (the normalize wrote Vout into Vcur, not Wk): seed the r-space
+            // recurrence with Ucur = Beta^-1.R0.
+            if (!M.IsIdentity)
+                BlockResidualSolve(in Wk, in Beta, in Pnorm, info0.rank, ref Ucur, s, n);
 
             Blas.trans(in Beta, ref Phibar);
             for (int i = 0; i < s; i++)
@@ -314,27 +359,47 @@ namespace LinearAlgebra
             {
                 // ---- Lanczos step: produces Alfa, the new Beta, and the next Lanczos vector (in Wk) ----
                 A.ApplyBlock(in Vcur, ref Wk, s);
-                if (k >= 1)
-                {
-                    BlockCTV(in Beta, in Vprev, ref T);
-                    BlockAdd(ref Wk, in T, (fProxy)(-1));
-                }
-                BlockGram(in Vcur, in Wk, ref Alfa, s);
-                BlockCTV(in Alfa, in Vcur, ref T);
-                BlockAdd(ref Wk, in T, (fProxy)(-1));
-
                 RankInfo infoK;
                 if (M.IsIdentity)
                 {
+                    if (k >= 1)
+                    {
+                        BlockCTV(in Beta, in Vprev, ref T);
+                        BlockAdd(ref Wk, in T, (fProxy)(-1));
+                    }
+                    BlockGram(in Vcur, in Wk, ref Alfa, s);
+                    BlockCTV(in Alfa, in Vcur, ref T);
+                    BlockAdd(ref Wk, in T, (fProxy)(-1));
                     infoK = BlockNormalizeIdentity(in Wk, ref Beta, ref Wk, ref Pnorm, s, n);
                 }
                 else
                 {
+                    // r-space recurrence: Wnext = A.Vcur - Alfa.(Beta^-1.Wcur) - Beta^T.(Beta_prev^-1.Wprev),
+                    // subtracting against the unpreconditioned residual solves Ucur/Uprev, NOT the
+                    // M-orthonormal V's. Alfa = Vcur.A.Vcur^T, from A.Vcur BEFORE any subtraction.
+                    BlockGram(in Vcur, in Wk, ref Alfa, s);
+                    BlockCTV(in Alfa, in Ucur, ref T);
+                    BlockAdd(ref Wk, in T, (fProxy)(-1));
+                    if (k >= 1)
+                    {
+                        BlockCTV(in Beta, in Uprev, ref T);
+                        BlockAdd(ref Wk, in T, (fProxy)(-1));
+                    }
+                    // Wk now holds the next unpreconditioned residual block; the normalize below
+                    // overwrites Wk with the next Lanczos vector, so save it first.
+                    CopyBlock(in Wk, ref Wres, s, n);
                     BlockApplyPre(in M, in Wk, ref Z, s, n, ref rowIn, ref rowOut);
                     infoK = BlockNormalizePrecond(in Wk, in Z, ref Gnorm, ref Beta, ref Pnorm, ref Wk, s, n);
                 }
                 if (!infoK.Solved || infoK.rank == 0) { status = IterativeSolveStatus.Breakdown; iters = k; goto cleanup; }
                 minActive = math.min(minActive, infoK.rank);
+                if (!M.IsIdentity)
+                {
+                    // Roll the r-space recurrence state: the current solve becomes the previous one,
+                    // then Ucur = Beta^-1.Wnext against the factor the normalize just produced.
+                    { var tmp = Uprev; Uprev = Ucur; Ucur = tmp; }
+                    BlockResidualSolve(in Wres, in Beta, in Pnorm, infoK.rank, ref Ucur, s, n);
+                }
 
                 // ---- apply the OLD Omega to the stacked block-2x2 (Dbar,0 ; Alfa,Beta) ----
                 for (int r = 0; r < s2; r++)
@@ -419,7 +484,7 @@ namespace LinearAlgebra
             Phibar.Dispose(); Phi.Dispose(); Delta.Dispose(); Gbar.Dispose(); Gamma.Dispose(); GammaCopy.Dispose();
             OmegaOld.Dispose(); OmegaNew.Dispose(); M2.Dispose(); Result.Dispose();
             PhibarStack.Dispose(); Res2.Dispose(); T.Dispose(); thr.Dispose(); Pnorm.Dispose();
-            if (!M.IsIdentity) { Gnorm.Dispose(); rowIn.Dispose(); rowOut.Dispose(); }
+            if (!M.IsIdentity) { Gnorm.Dispose(); rowIn.Dispose(); rowOut.Dispose(); Ucur.Dispose(); Uprev.Dispose(); Wres.Dispose(); }
 
             return new BlockSolveInfo { rhs = s, converged = converged, iterations = iters, maxRnorm = maxr, minActive = minActive, status = status };
         }
@@ -453,8 +518,6 @@ namespace LinearAlgebra
             => bminres(in A, in B, ref X, A.M_Rows, Consts.fProxySqrtEps);
 
         /// <summary>Preconditioned block-MINRES over a dense symmetric A. Allocates block scratch (incl. Z).</summary>
-        /// <exception cref="NotSupportedException">M is not the identity preconditioner (see
-        /// <see cref="bminres{TOp, TPre}"/>).</exception>
         public static BlockSolveInfo bminres<TPre>(in fProxyMxN A, in TPre M, in fProxyMxN B, ref fProxyMxN X, int maxIter, fProxy tol)
             where TPre : struct, IfProxyPreconditioner
         {
@@ -480,8 +543,6 @@ namespace LinearAlgebra
             => bminres(in A, in B, ref X, A.M_Rows, Consts.fProxySqrtEps);
 
         /// <summary>Preconditioned block-MINRES over a BSR symmetric A. Allocates block scratch (incl. Z).</summary>
-        /// <exception cref="NotSupportedException">M is not the identity preconditioner (see
-        /// <see cref="bminres{TOp, TPre}"/>).</exception>
         public static BlockSolveInfo bminres<TPre>(in fProxyBSR A, in TPre M, in fProxyMxN B, ref fProxyMxN X, int maxIter, fProxy tol)
             where TPre : struct, IfProxyPreconditioner
         {
