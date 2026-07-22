@@ -1,6 +1,26 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Eigen.eigNearShift — shift-and-invert interior eigensolver
+- 2026-07-23 | New Eigen.ShiftInvert.fProxy.cs: `fProxyShiftInvertOperator<TOp>` (Apply = (A-shift·I)⁻¹x
+  via an inner minresQLP solve with the eigenvalue shift; symmetric so ApplyT=Apply) + the driver
+  `eigNearShift` (finds the k eigenpairs of symmetric A NEAREST shift). ARPACK-style shift-invert
+  LANCZOS, chosen over LOBPCG (user steer): Lanczos converges the EXTREME Ritz values of the
+  shift-invert operator T=(A-shift·I)⁻¹ first, i.e. the eigenvalues nearest shift, on BOTH sides,
+  with ONE inner solve per step (LOBPCG would need −T² / two solves and its smallest-eigenvalue
+  orientation fights the interior goal). The operator needs NO scratch fields — Apply just calls the
+  arena minresQLP-shift overload which allocates internally. KEY correctness point: the k modes are
+  SELECTED by largest |theta_j| (Ritz value of T = 1/|lambda_j-shift|, large exactly for the
+  nearest+best-converged modes), NOT by |Rayleigh-shift| — an UNconverged Ritz vector can have a
+  Rayleigh quotient that lands near shift by accident and poison the result (this was the first-cut
+  bug, residual 0.52). lambda is then RECOVERED per selected mode by the Rayleigh quotient vᵀAv/vᵀv
+  against the ORIGINAL A (robust to an inexact inner solve — far better than shift+1/theta). Uses
+  lanczosVectors (full reorth). Dense + BSR convenience overloads default steps=min(n,2k+20),
+  innerTol=sqrtEps. Tests (fProxyEigNearShiftTests): diagonal + 1D-Laplacian tridiagonal, both with
+  exact known spectra compared as a SET (the Laplacian spectrum is symmetric about 2 → the two
+  nearest shift=2 are an exact tie, so nearness-ORDER is ambiguous — set comparison handles it) +
+  eigenpair residual ‖Av-λv‖ (~1e-2 float, innerTol-limited).
+
 ## Krylov SIMD sweep (#58) — BlockFrobDot reroute measured, REVERTED
 - 2026-07-22 | Re-ran the Krylov SIMD-reduction sweep. Finding: the core single-RHS solvers are
   already SIMD-optimal — every dot/norm goes through Blas.dot → UnsafeOP.vecDot (2×fProxyW + 2×fProxy4
