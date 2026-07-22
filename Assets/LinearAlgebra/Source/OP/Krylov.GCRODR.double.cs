@@ -534,12 +534,14 @@ namespace LinearAlgebra
             return gcrodr(new doubleBSROperator(in A), in b, ref x, r, doubleGcrodrDefaultRecycle(r), A.M_Rows, Consts.doubleSqrtEps);
         }
 
-        /// <summary>Right-preconditioned GCRO-DR over a BSR matrix with an ILU(0) preconditioner.</summary>
-        public static SolveInfo gcrodr(in doubleBSR A, in doubleILU0 M, in doubleN b, ref doubleN x, int restart, int recycle, int maxIter, double tol)
+        /// <summary>Right-preconditioned GCRO-DR over a BSR matrix with ANY <see cref="IdoublePreconditioner"/> (ILU0).</summary>
+        public static SolveInfo gcrodr<TPre>(in doubleBSR A, in TPre M, in doubleN b, ref doubleN x, int restart, int recycle, int maxIter, double tol)
+            where TPre : struct, IdoublePreconditioner
             => gcrodr(new doubleBSROperator(in A), in M, in b, ref x, restart, recycle, maxIter, tol);
 
-        /// <summary>ILU(0)-right-preconditioned GCRO-DR over a BSR matrix with defaults (restart = min(30, N)).</summary>
-        public static SolveInfo gcrodr(in doubleBSR A, in doubleILU0 M, in doubleN b, ref doubleN x)
+        /// <summary>Right-preconditioned GCRO-DR over a BSR matrix with ANY <see cref="IdoublePreconditioner"/> (ILU0), with defaults (restart = min(30, N)).</summary>
+        public static SolveInfo gcrodr<TPre>(in doubleBSR A, in TPre M, in doubleN b, ref doubleN x)
+            where TPre : struct, IdoublePreconditioner
         {
             int r = math.min(30, A.M_Rows);
             return gcrodr(new doubleBSROperator(in A), in M, in b, ref x, r, doubleGcrodrDefaultRecycle(r), A.M_Rows, Consts.doubleSqrtEps);

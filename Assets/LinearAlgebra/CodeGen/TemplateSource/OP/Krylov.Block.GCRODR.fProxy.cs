@@ -626,14 +626,17 @@ namespace LinearAlgebra
             return bgcrodr(new fProxyBSROperator(in A), in B, ref X, r, fProxyBgcrodrDefaultRecycle(r, B.M_Rows), A.M_Rows, Consts.fProxySqrtEps);
         }
 
-        /// <summary>Right-preconditioned block GCRO-DR over a BSR matrix with an ILU(0) preconditioner.</summary>
-        public static BlockSolveInfo bgcrodr(in fProxyBSR A, in fProxyILU0 M, in fProxyMxN B, ref fProxyMxN X,
+        /// <summary>Right-preconditioned block GCRO-DR over a BSR matrix with ANY
+        /// <see cref="IfProxyPreconditioner"/> (ILU0).</summary>
+        public static BlockSolveInfo bgcrodr<TPre>(in fProxyBSR A, in TPre M, in fProxyMxN B, ref fProxyMxN X,
                                         int restart, int recycle, int maxIter, fProxy tol)
+            where TPre : struct, IfProxyPreconditioner
             => bgcrodr(new fProxyBSROperator(in A), in M, in B, ref X, restart, recycle, maxIter, tol);
 
-        /// <summary>ILU(0)-right-preconditioned block GCRO-DR over a BSR matrix with defaults
-        /// (restart = min(30, A.M_Rows)).</summary>
-        public static BlockSolveInfo bgcrodr(in fProxyBSR A, in fProxyILU0 M, in fProxyMxN B, ref fProxyMxN X)
+        /// <summary>Right-preconditioned block GCRO-DR over a BSR matrix with ANY
+        /// <see cref="IfProxyPreconditioner"/> (ILU0), with defaults (restart = min(30, A.M_Rows)).</summary>
+        public static BlockSolveInfo bgcrodr<TPre>(in fProxyBSR A, in TPre M, in fProxyMxN B, ref fProxyMxN X)
+            where TPre : struct, IfProxyPreconditioner
         {
             int r = math.min(30, A.M_Rows);
             return bgcrodr(new fProxyBSROperator(in A), in M, in B, ref X, r, fProxyBgcrodrDefaultRecycle(r, B.M_Rows), A.M_Rows, Consts.fProxySqrtEps);

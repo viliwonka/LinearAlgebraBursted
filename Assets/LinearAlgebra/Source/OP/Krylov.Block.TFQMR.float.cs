@@ -381,10 +381,12 @@ namespace LinearAlgebra
         public static BlockSolveInfo btfqmr(in floatBSR A, in floatMxN B, ref floatMxN X)
             => btfqmr(in A, in B, ref X, A.M_Rows, Consts.floatSqrtEps);
 
-        /// <summary>ILU(0)-right-preconditioned pseudo-block TFQMR over a block-sparse (BSR) non-symmetric
-        /// A -- forwards into <see cref="btfqmr{TOp,TPre}"/> via <c>floatBSROperator</c>.</summary>
-        public static BlockSolveInfo btfqmr(in floatBSR A, in floatILU0 M, in floatMxN B, ref floatMxN X,
+        /// <summary>Right-preconditioned pseudo-block TFQMR over a block-sparse (BSR) non-symmetric
+        /// A with ANY <see cref="IfloatPreconditioner"/> (ILU0) -- forwards into
+        /// <see cref="btfqmr{TOp,TPre}"/> via <c>floatBSROperator</c>.</summary>
+        public static BlockSolveInfo btfqmr<TPre>(in floatBSR A, in TPre M, in floatMxN B, ref floatMxN X,
                                int maxIter, float tol)
+            where TPre : struct, IfloatPreconditioner
         {
             int s = B.M_Rows, n = A.M_Rows;
             floatMxN Rhat0 = B.floatTempMat(s, n, true), U = B.floatTempMat(s, n, true), W = B.floatTempMat(s, n, true),
@@ -395,9 +397,10 @@ namespace LinearAlgebra
                              maxIter, tol);
         }
 
-        /// <summary>ILU(0) pseudo-block TFQMR over BSR with default maxIter (A.M_Rows) and tolerance
-        /// (Consts.floatSqrtEps).</summary>
-        public static BlockSolveInfo btfqmr(in floatBSR A, in floatILU0 M, in floatMxN B, ref floatMxN X)
+        /// <summary>Preconditioned pseudo-block TFQMR over BSR with ANY <see cref="IfloatPreconditioner"/>
+        /// (ILU0), with default maxIter (A.M_Rows) and tolerance (Consts.floatSqrtEps).</summary>
+        public static BlockSolveInfo btfqmr<TPre>(in floatBSR A, in TPre M, in floatMxN B, ref floatMxN X)
+            where TPre : struct, IfloatPreconditioner
             => btfqmr(in A, in M, in B, ref X, A.M_Rows, Consts.floatSqrtEps);
     }
 }

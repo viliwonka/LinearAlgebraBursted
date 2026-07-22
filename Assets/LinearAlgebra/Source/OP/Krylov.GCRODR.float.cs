@@ -534,12 +534,14 @@ namespace LinearAlgebra
             return gcrodr(new floatBSROperator(in A), in b, ref x, r, floatGcrodrDefaultRecycle(r), A.M_Rows, Consts.floatSqrtEps);
         }
 
-        /// <summary>Right-preconditioned GCRO-DR over a BSR matrix with an ILU(0) preconditioner.</summary>
-        public static SolveInfo gcrodr(in floatBSR A, in floatILU0 M, in floatN b, ref floatN x, int restart, int recycle, int maxIter, float tol)
+        /// <summary>Right-preconditioned GCRO-DR over a BSR matrix with ANY <see cref="IfloatPreconditioner"/> (ILU0).</summary>
+        public static SolveInfo gcrodr<TPre>(in floatBSR A, in TPre M, in floatN b, ref floatN x, int restart, int recycle, int maxIter, float tol)
+            where TPre : struct, IfloatPreconditioner
             => gcrodr(new floatBSROperator(in A), in M, in b, ref x, restart, recycle, maxIter, tol);
 
-        /// <summary>ILU(0)-right-preconditioned GCRO-DR over a BSR matrix with defaults (restart = min(30, N)).</summary>
-        public static SolveInfo gcrodr(in floatBSR A, in floatILU0 M, in floatN b, ref floatN x)
+        /// <summary>Right-preconditioned GCRO-DR over a BSR matrix with ANY <see cref="IfloatPreconditioner"/> (ILU0), with defaults (restart = min(30, N)).</summary>
+        public static SolveInfo gcrodr<TPre>(in floatBSR A, in TPre M, in floatN b, ref floatN x)
+            where TPre : struct, IfloatPreconditioner
         {
             int r = math.min(30, A.M_Rows);
             return gcrodr(new floatBSROperator(in A), in M, in b, ref x, r, floatGcrodrDefaultRecycle(r), A.M_Rows, Consts.floatSqrtEps);

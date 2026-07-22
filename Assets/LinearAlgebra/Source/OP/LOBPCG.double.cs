@@ -806,48 +806,56 @@ namespace LinearAlgebra
             => lobpcg(ref arena, in A, in B, k, out eigenvectors, out info, Consts.doubleSqrtEps, 1000);
 
         /// <summary>
-        /// LOBPCG over a block-sparse (BSR) matrix with its matching block-Jacobi preconditioner --
-        /// zero-alloc primitive. Forwards into <see cref="lobpcg{TOp,TPre}"/> via
-        /// <c>doubleBSROperator</c>/<c>doubleBlockJacobi</c>. This is the preconditioned entry point
-        /// the sparse-BSR eigensolver roadmap calls out (matvec + block-Jacobi, matching how
-        /// <see cref="Krylov.cg(in doubleBSR, in doubleBlockJacobi, in doubleN, ref doubleN)"/>
+        /// LOBPCG over a block-sparse (BSR) matrix with ANY <see cref="IdoublePreconditioner"/>
+        /// (block-Jacobi) -- zero-alloc primitive. Forwards into <see cref="lobpcg{TOp,TPre}"/> via
+        /// <c>doubleBSROperator</c>. This is the preconditioned entry point the sparse-BSR
+        /// eigensolver roadmap calls out (matvec + block-Jacobi, matching how
+        /// <see cref="Krylov.cg{TPre}(in doubleBSR, in TPre, in doubleN, ref doubleN)"/>
         /// consumes it).
         /// </summary>
-        public static LOBPCGInfo lobpcg(in doubleBSR A, in doubleBlockJacobi M, ref doubleLOBPCGCache ws,
+        public static LOBPCGInfo lobpcg<TPre>(in doubleBSR A, in TPre M, ref doubleLOBPCGCache ws,
                                          int k, double tol, int maxIter)
+            where TPre : struct, IdoublePreconditioner
             => lobpcg(new doubleBSROperator(in A), in M, ref ws, k, tol, maxIter);
 
-        /// <summary>lobpcg (BSR + block-Jacobi) with default maxIter (1000).</summary>
-        public static LOBPCGInfo lobpcg(in doubleBSR A, in doubleBlockJacobi M, ref doubleLOBPCGCache ws, int k, double tol)
+        /// <summary>lobpcg (BSR + preconditioner) with default maxIter (1000).</summary>
+        public static LOBPCGInfo lobpcg<TPre>(in doubleBSR A, in TPre M, ref doubleLOBPCGCache ws, int k, double tol)
+            where TPre : struct, IdoublePreconditioner
             => lobpcg(in A, in M, ref ws, k, tol, 1000);
 
-        /// <summary>lobpcg (BSR + block-Jacobi) with default tol (Consts.doubleSqrtEps) and maxIter (1000).</summary>
-        public static LOBPCGInfo lobpcg(in doubleBSR A, in doubleBlockJacobi M, ref doubleLOBPCGCache ws, int k)
+        /// <summary>lobpcg (BSR + preconditioner) with default tol (Consts.doubleSqrtEps) and maxIter (1000).</summary>
+        public static LOBPCGInfo lobpcg<TPre>(in doubleBSR A, in TPre M, ref doubleLOBPCGCache ws, int k)
+            where TPre : struct, IdoublePreconditioner
             => lobpcg(in A, in M, ref ws, k, Consts.doubleSqrtEps, 1000);
 
         /// <summary>
-        /// LOBPCG over a block-sparse pencil (A, B) -- GENERALIZED eigenproblem -- with A's matching
-        /// block-Jacobi preconditioner. Forwards into <see cref="lobpcg{TOp,TBOp,TPre}"/> via
-        /// <c>doubleBSROperator</c>/<c>doubleBlockJacobi</c>. Note the preconditioner M is built from
-        /// (and approximates the inverse of) A only -- it operates on the RAW residual r = A x -
-        /// lambda B x exactly like the standard-path block-Jacobi preconditioner does, B does not
-        /// enter M's construction or Apply.
+        /// LOBPCG over a block-sparse pencil (A, B) -- GENERALIZED eigenproblem -- with ANY
+        /// <see cref="IdoublePreconditioner"/> (block-Jacobi) built from A. Forwards into
+        /// <see cref="lobpcg{TOp,TBOp,TPre}"/> via <c>doubleBSROperator</c>. Note the preconditioner
+        /// M is built from (and approximates the inverse of) A only -- it operates on the RAW
+        /// residual r = A x - lambda B x exactly like the standard-path preconditioner does, B does
+        /// not enter M's construction or Apply.
         /// </summary>
-        public static LOBPCGInfo lobpcg(in doubleBSR A, in doubleBSR B, in doubleBlockJacobi M, ref doubleLOBPCGCache ws,
+        public static LOBPCGInfo lobpcg<TPre>(in doubleBSR A, in doubleBSR B, in TPre M, ref doubleLOBPCGCache ws,
                                          int k, double tol, int maxIter)
+            where TPre : struct, IdoublePreconditioner
             => lobpcg(new doubleBSROperator(in A), new doubleBSROperator(in B), in M, ref ws, k, tol, maxIter);
 
-        /// <summary>lobpcg (generalized, BSR + block-Jacobi) with default maxIter (1000).</summary>
-        public static LOBPCGInfo lobpcg(in doubleBSR A, in doubleBSR B, in doubleBlockJacobi M, ref doubleLOBPCGCache ws, int k, double tol)
+        /// <summary>lobpcg (generalized, BSR + preconditioner) with default maxIter (1000).</summary>
+        public static LOBPCGInfo lobpcg<TPre>(in doubleBSR A, in doubleBSR B, in TPre M, ref doubleLOBPCGCache ws, int k, double tol)
+            where TPre : struct, IdoublePreconditioner
             => lobpcg(in A, in B, in M, ref ws, k, tol, 1000);
 
-        /// <summary>lobpcg (generalized, BSR + block-Jacobi) with default tol (Consts.doubleSqrtEps) and maxIter (1000).</summary>
-        public static LOBPCGInfo lobpcg(in doubleBSR A, in doubleBSR B, in doubleBlockJacobi M, ref doubleLOBPCGCache ws, int k)
+        /// <summary>lobpcg (generalized, BSR + preconditioner) with default tol (Consts.doubleSqrtEps) and maxIter (1000).</summary>
+        public static LOBPCGInfo lobpcg<TPre>(in doubleBSR A, in doubleBSR B, in TPre M, ref doubleLOBPCGCache ws, int k)
+            where TPre : struct, IdoublePreconditioner
             => lobpcg(in A, in B, in M, ref ws, k, Consts.doubleSqrtEps, 1000);
 
-        /// <summary>lobpcg (allocating) over a BSR matrix with block-Jacobi. See the dense overload's doc comment.</summary>
-        public static doubleN lobpcg(ref Arena arena, in doubleBSR A, in doubleBlockJacobi M, int k,
+        /// <summary>lobpcg (allocating) over a BSR matrix with ANY <see cref="IdoublePreconditioner"/>
+        /// (block-Jacobi). See the dense overload's doc comment.</summary>
+        public static doubleN lobpcg<TPre>(ref Arena arena, in doubleBSR A, in TPre M, int k,
                                       out doubleMxN eigenvectors, out LOBPCGInfo info, double tol, int maxIter)
+            where TPre : struct, IdoublePreconditioner
         {
             var ws = arena.doubleLOBPCGCache(A.M_Rows, k);
             info = lobpcg(in A, in M, ref ws, k, tol, maxIter);
@@ -855,17 +863,21 @@ namespace LinearAlgebra
             return ws.lambda;
         }
 
-        /// <summary>lobpcg (allocating) over a BSR matrix with block-Jacobi and default tol/maxIter.</summary>
-        public static doubleN lobpcg(ref Arena arena, in doubleBSR A, in doubleBlockJacobi M, int k,
+        /// <summary>lobpcg (allocating) over a BSR matrix with ANY <see cref="IdoublePreconditioner"/>
+        /// (block-Jacobi) and default tol/maxIter.</summary>
+        public static doubleN lobpcg<TPre>(ref Arena arena, in doubleBSR A, in TPre M, int k,
                                       out doubleMxN eigenvectors, out LOBPCGInfo info)
+            where TPre : struct, IdoublePreconditioner
             => lobpcg(ref arena, in A, in M, k, out eigenvectors, out info, Consts.doubleSqrtEps, 1000);
 
         /// <summary>
-        /// LOBPCG over a block-sparse pencil (A, B) with block-Jacobi -- GENERALIZED eigenproblem,
-        /// allocating. See the standard BSR+block-Jacobi overload's doc comment.
+        /// LOBPCG over a block-sparse pencil (A, B) with ANY <see cref="IdoublePreconditioner"/>
+        /// (block-Jacobi) -- GENERALIZED eigenproblem, allocating. See the standard
+        /// BSR+preconditioner overload's doc comment.
         /// </summary>
-        public static doubleN lobpcg(ref Arena arena, in doubleBSR A, in doubleBSR B, in doubleBlockJacobi M, int k,
+        public static doubleN lobpcg<TPre>(ref Arena arena, in doubleBSR A, in doubleBSR B, in TPre M, int k,
                                       out doubleMxN eigenvectors, out LOBPCGInfo info, double tol, int maxIter)
+            where TPre : struct, IdoublePreconditioner
         {
             var ws = arena.doubleLOBPCGCache(A.M_Rows, k);
             info = lobpcg(in A, in B, in M, ref ws, k, tol, maxIter);
@@ -873,9 +885,11 @@ namespace LinearAlgebra
             return ws.lambda;
         }
 
-        /// <summary>lobpcg (allocating, generalized) over a BSR pencil with block-Jacobi and default tol/maxIter.</summary>
-        public static doubleN lobpcg(ref Arena arena, in doubleBSR A, in doubleBSR B, in doubleBlockJacobi M, int k,
+        /// <summary>lobpcg (allocating, generalized) over a BSR pencil with ANY
+        /// <see cref="IdoublePreconditioner"/> (block-Jacobi) and default tol/maxIter.</summary>
+        public static doubleN lobpcg<TPre>(ref Arena arena, in doubleBSR A, in doubleBSR B, in TPre M, int k,
                                       out doubleMxN eigenvectors, out LOBPCGInfo info)
+            where TPre : struct, IdoublePreconditioner
             => lobpcg(ref arena, in A, in B, in M, k, out eigenvectors, out info, Consts.doubleSqrtEps, 1000);
 
         // ==================================================================================

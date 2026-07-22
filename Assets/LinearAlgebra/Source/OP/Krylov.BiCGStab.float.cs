@@ -276,11 +276,13 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// ILU(0)-preconditioned BiCGSTAB over a block-sparse (BSR) matrix — forwards into
+        /// Preconditioned BiCGSTAB over a block-sparse (BSR) matrix with ANY
+        /// <see cref="IfloatPreconditioner"/> (ILU0/SPAI/restricted-Schwarz) -- forwards into
         /// <see cref="biCGStab{TOp,TPre}"/> via <c>floatBSROperator</c>.
         /// </summary>
-        public static SolveInfo biCGStab(in floatBSR A, in floatILU0 M, in floatN b, ref floatN x,
+        public static SolveInfo biCGStab<TPre>(in floatBSR A, in TPre M, in floatN b, ref floatN x,
                                int maxIter, float tol)
+            where TPre : struct, IfloatPreconditioner
         {
             floatN r     = b.floatTempVec(A.M_Rows);
             floatN rHat0 = b.floatTempVec(A.M_Rows);
@@ -294,65 +296,10 @@ namespace LinearAlgebra
                              maxIter, tol);
         }
 
-        /// <summary>ILU(0) BiCGSTAB over BSR with default maxIter (A.M_Rows) and tolerance
+        /// <summary>Preconditioned BiCGSTAB over BSR with default maxIter (A.M_Rows) and tolerance
         /// (Consts.floatSqrtEps).</summary>
-        public static SolveInfo biCGStab(in floatBSR A, in floatILU0 M, in floatN b, ref floatN x)
-        {
-            return biCGStab(in A, in M, in b, ref x, A.M_Rows, Consts.floatSqrtEps);
-        }
-
-        /// <summary>
-        /// SPAI-preconditioned BiCGSTAB over a block-sparse (BSR) matrix -- forwards into
-        /// <see cref="biCGStab{TOp,TPre}"/> via <c>floatBSROperator</c>. SPAI is NOT symmetric
-        /// (even for symmetric A) and is not a valid CG/MINRES preconditioner -- biCGStab is its
-        /// only Krylov rung, mirroring ILU0's placement.
-        /// </summary>
-        public static SolveInfo biCGStab(in floatBSR A, in floatSPAI M, in floatN b, ref floatN x,
-                               int maxIter, float tol)
-        {
-            floatN r     = b.floatTempVec(A.M_Rows);
-            floatN rHat0 = b.floatTempVec(A.M_Rows);
-            floatN p     = b.floatTempVec(A.M_Rows);
-            floatN v     = b.floatTempVec(A.M_Rows);
-            floatN t     = b.floatTempVec(A.M_Rows);
-            floatN pHat  = b.floatTempVec(A.M_Rows);
-            floatN sHat  = b.floatTempVec(A.M_Rows);
-            return biCGStab(new floatBSROperator(in A), in M, in b, ref x,
-                             ref r, ref rHat0, ref p, ref v, ref t, ref pHat, ref sHat,
-                             maxIter, tol);
-        }
-
-        /// <summary>SPAI BiCGSTAB over BSR with default maxIter (A.M_Rows) and tolerance
-        /// (Consts.floatSqrtEps).</summary>
-        public static SolveInfo biCGStab(in floatBSR A, in floatSPAI M, in floatN b, ref floatN x)
-        {
-            return biCGStab(in A, in M, in b, ref x, A.M_Rows, Consts.floatSqrtEps);
-        }
-
-        /// <summary>
-        /// Restricted additive-Schwarz (RAS) preconditioned BiCGSTAB over a block-sparse (BSR)
-        /// matrix -- forwards into <see cref="biCGStab{TOp,TPre}"/> via <c>floatBSROperator</c>.
-        /// RAS is NOT symmetric (even for symmetric A) and is not a valid CG/MINRES preconditioner --
-        /// biCGStab is its only Krylov rung, mirroring ILU0's and SPAI's placement.
-        /// </summary>
-        public static SolveInfo biCGStab(in floatBSR A, in floatRestrictedSchwarz M, in floatN b, ref floatN x,
-                               int maxIter, float tol)
-        {
-            floatN r     = b.floatTempVec(A.M_Rows);
-            floatN rHat0 = b.floatTempVec(A.M_Rows);
-            floatN p     = b.floatTempVec(A.M_Rows);
-            floatN v     = b.floatTempVec(A.M_Rows);
-            floatN t     = b.floatTempVec(A.M_Rows);
-            floatN pHat  = b.floatTempVec(A.M_Rows);
-            floatN sHat  = b.floatTempVec(A.M_Rows);
-            return biCGStab(new floatBSROperator(in A), in M, in b, ref x,
-                             ref r, ref rHat0, ref p, ref v, ref t, ref pHat, ref sHat,
-                             maxIter, tol);
-        }
-
-        /// <summary>RAS BiCGSTAB over BSR with default maxIter (A.M_Rows) and tolerance
-        /// (Consts.floatSqrtEps).</summary>
-        public static SolveInfo biCGStab(in floatBSR A, in floatRestrictedSchwarz M, in floatN b, ref floatN x)
+        public static SolveInfo biCGStab<TPre>(in floatBSR A, in TPre M, in floatN b, ref floatN x)
+            where TPre : struct, IfloatPreconditioner
         {
             return biCGStab(in A, in M, in b, ref x, A.M_Rows, Consts.floatSqrtEps);
         }

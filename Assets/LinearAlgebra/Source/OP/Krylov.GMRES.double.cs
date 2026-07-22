@@ -215,12 +215,14 @@ namespace LinearAlgebra
         public static SolveInfo gmres(in doubleBSR A, in doubleN b, ref doubleN x)
             => gmres(new doubleBSROperator(in A), in b, ref x, math.min(30, A.M_Rows), A.M_Rows, Consts.doubleSqrtEps);
 
-        /// <summary>Right-preconditioned GMRES(m) over a BSR matrix with an ILU(0) preconditioner.</summary>
-        public static SolveInfo gmres(in doubleBSR A, in doubleILU0 M, in doubleN b, ref doubleN x, int restart, int maxIter, double tol)
+        /// <summary>Right-preconditioned GMRES(m) over a BSR matrix with ANY <see cref="IdoublePreconditioner"/> (ILU0).</summary>
+        public static SolveInfo gmres<TPre>(in doubleBSR A, in TPre M, in doubleN b, ref doubleN x, int restart, int maxIter, double tol)
+            where TPre : struct, IdoublePreconditioner
             => gmres(new doubleBSROperator(in A), in M, in b, ref x, restart, maxIter, tol);
 
-        /// <summary>ILU(0)-right-preconditioned GMRES over a BSR matrix with defaults (restart = min(30, N)).</summary>
-        public static SolveInfo gmres(in doubleBSR A, in doubleILU0 M, in doubleN b, ref doubleN x)
+        /// <summary>Right-preconditioned GMRES over a BSR matrix with ANY <see cref="IdoublePreconditioner"/> (ILU0), with defaults (restart = min(30, N)).</summary>
+        public static SolveInfo gmres<TPre>(in doubleBSR A, in TPre M, in doubleN b, ref doubleN x)
+            where TPre : struct, IdoublePreconditioner
             => gmres(new doubleBSROperator(in A), in M, in b, ref x, math.min(30, A.M_Rows), A.M_Rows, Consts.doubleSqrtEps);
     }
 }

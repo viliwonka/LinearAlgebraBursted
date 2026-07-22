@@ -586,24 +586,27 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Preconditioned MINRES-QLP over a block-sparse (BSR) matrix with its matching
-        /// block-Jacobi preconditioner. Forwards into <see cref="minresQLP{TOp,TPre}"/> via
-        /// <c>floatBSROperator</c>.
+        /// Preconditioned MINRES-QLP over a block-sparse (BSR) matrix with ANY
+        /// <see cref="IfloatPreconditioner"/> (block-Jacobi). Forwards into
+        /// <see cref="minresQLP{TOp,TPre}"/> via <c>floatBSROperator</c>.
         /// </summary>
-        public static SolveInfo minresQLP(in floatBSR A, in floatBlockJacobi M, in floatN b, ref floatN x,
+        public static SolveInfo minresQLP<TPre>(in floatBSR A, in TPre M, in floatN b, ref floatN x,
                                ref floatN v, ref floatN r1, ref floatN r2, ref floatN r3,
                                ref floatN w, ref floatN wl, ref floatN wl2, ref floatN xl2,
                                ref floatN t1, int maxIter, float tol)
+            where TPre : struct, IfloatPreconditioner
         {
             return minresQLP(new floatBSROperator(in A), in M, in b, ref x, ref v, ref r1, ref r2, ref r3, ref w, ref wl, ref wl2, ref xl2, ref t1, maxIter, tol);
         }
 
         /// <summary>
-        /// Block-Jacobi Preconditioned MINRES-QLP over a BSR matrix -- allocates nine scratch
-        /// vectors from the arena and calls the zero-alloc primitive.
+        /// Preconditioned MINRES-QLP over a BSR matrix with ANY <see cref="IfloatPreconditioner"/>
+        /// (block-Jacobi) -- allocates nine scratch vectors from the arena and calls the zero-alloc
+        /// primitive.
         /// </summary>
-        public static SolveInfo minresQLP(in floatBSR A, in floatBlockJacobi M, in floatN b, ref floatN x,
+        public static SolveInfo minresQLP<TPre>(in floatBSR A, in TPre M, in floatN b, ref floatN x,
                                int maxIter, float tol)
+            where TPre : struct, IfloatPreconditioner
         {
             floatN v   = b.floatTempVec(A.M_Rows);
             floatN r1  = b.floatTempVec(A.M_Rows);
@@ -618,10 +621,11 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Block-Jacobi Preconditioned MINRES-QLP over a BSR matrix, with default maxIter
-        /// (A.M_Rows) and tol (Consts.floatSqrtEps).
+        /// Preconditioned MINRES-QLP over a BSR matrix with ANY <see cref="IfloatPreconditioner"/>
+        /// (block-Jacobi), with default maxIter (A.M_Rows) and tol (Consts.floatSqrtEps).
         /// </summary>
-        public static SolveInfo minresQLP(in floatBSR A, in floatBlockJacobi M, in floatN b, ref floatN x)
+        public static SolveInfo minresQLP<TPre>(in floatBSR A, in TPre M, in floatN b, ref floatN x)
+            where TPre : struct, IfloatPreconditioner
         {
             return minresQLP(in A, in M, in b, ref x, A.M_Rows, Consts.floatSqrtEps);
         }

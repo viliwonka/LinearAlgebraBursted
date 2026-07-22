@@ -215,12 +215,14 @@ namespace LinearAlgebra
         public static SolveInfo gmres(in floatBSR A, in floatN b, ref floatN x)
             => gmres(new floatBSROperator(in A), in b, ref x, math.min(30, A.M_Rows), A.M_Rows, Consts.floatSqrtEps);
 
-        /// <summary>Right-preconditioned GMRES(m) over a BSR matrix with an ILU(0) preconditioner.</summary>
-        public static SolveInfo gmres(in floatBSR A, in floatILU0 M, in floatN b, ref floatN x, int restart, int maxIter, float tol)
+        /// <summary>Right-preconditioned GMRES(m) over a BSR matrix with ANY <see cref="IfloatPreconditioner"/> (ILU0).</summary>
+        public static SolveInfo gmres<TPre>(in floatBSR A, in TPre M, in floatN b, ref floatN x, int restart, int maxIter, float tol)
+            where TPre : struct, IfloatPreconditioner
             => gmres(new floatBSROperator(in A), in M, in b, ref x, restart, maxIter, tol);
 
-        /// <summary>ILU(0)-right-preconditioned GMRES over a BSR matrix with defaults (restart = min(30, N)).</summary>
-        public static SolveInfo gmres(in floatBSR A, in floatILU0 M, in floatN b, ref floatN x)
+        /// <summary>Right-preconditioned GMRES over a BSR matrix with ANY <see cref="IfloatPreconditioner"/> (ILU0), with defaults (restart = min(30, N)).</summary>
+        public static SolveInfo gmres<TPre>(in floatBSR A, in TPre M, in floatN b, ref floatN x)
+            where TPre : struct, IfloatPreconditioner
             => gmres(new floatBSROperator(in A), in M, in b, ref x, math.min(30, A.M_Rows), A.M_Rows, Consts.floatSqrtEps);
     }
 }

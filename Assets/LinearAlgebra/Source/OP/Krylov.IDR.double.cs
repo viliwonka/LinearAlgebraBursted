@@ -272,20 +272,16 @@ namespace LinearAlgebra
         public static SolveInfo idr(in doubleBSR A, in doubleN b, ref doubleN x)
             => idr(in A, in b, ref x, 4, A.M_Rows, Consts.doubleSqrtEps);
 
-        /// <summary>ILU(0)-right-preconditioned IDR(s) over a BSR matrix. Forwards via <c>doubleBSROperator</c>.</summary>
-        public static SolveInfo idr(in doubleBSR A, in doubleILU0 M, in doubleN b, ref doubleN x, int s, int maxIter, double tol, uint seed = 0x9E3779B1u)
+        /// <summary>Right-preconditioned IDR(s) over a BSR matrix with ANY <see cref="IdoublePreconditioner"/>
+        /// (ILU0/block-Jacobi). Forwards via <c>doubleBSROperator</c>.</summary>
+        public static SolveInfo idr<TPre>(in doubleBSR A, in TPre M, in doubleN b, ref doubleN x, int s, int maxIter, double tol, uint seed = 0x9E3779B1u)
+            where TPre : struct, IdoublePreconditioner
             => idr(new doubleBSROperator(in A), in M, in b, ref x, s, maxIter, tol, seed);
 
-        /// <summary>ILU(0)-right-preconditioned IDR(s) over BSR with defaults (s = 4, maxIter = A.M_Rows, tol = Consts.doubleSqrtEps, seed = default).</summary>
-        public static SolveInfo idr(in doubleBSR A, in doubleILU0 M, in doubleN b, ref doubleN x)
-            => idr(in A, in M, in b, ref x, 4, A.M_Rows, Consts.doubleSqrtEps);
-
-        /// <summary>Block-Jacobi-right-preconditioned IDR(s) over a BSR matrix. Forwards via <c>doubleBSROperator</c>.</summary>
-        public static SolveInfo idr(in doubleBSR A, in doubleBlockJacobi M, in doubleN b, ref doubleN x, int s, int maxIter, double tol, uint seed = 0x9E3779B1u)
-            => idr(new doubleBSROperator(in A), in M, in b, ref x, s, maxIter, tol, seed);
-
-        /// <summary>Block-Jacobi-right-preconditioned IDR(s) over BSR with defaults (s = 4, maxIter = A.M_Rows, tol = Consts.doubleSqrtEps, seed = default).</summary>
-        public static SolveInfo idr(in doubleBSR A, in doubleBlockJacobi M, in doubleN b, ref doubleN x)
+        /// <summary>Right-preconditioned IDR(s) over BSR with ANY <see cref="IdoublePreconditioner"/>
+        /// (ILU0/block-Jacobi), with defaults (s = 4, maxIter = A.M_Rows, tol = Consts.doubleSqrtEps, seed = default).</summary>
+        public static SolveInfo idr<TPre>(in doubleBSR A, in TPre M, in doubleN b, ref doubleN x)
+            where TPre : struct, IdoublePreconditioner
             => idr(in A, in M, in b, ref x, 4, A.M_Rows, Consts.doubleSqrtEps);
     }
 }

@@ -264,15 +264,17 @@ namespace LinearAlgebra
         public static BlockSolveInfo bgmres(in floatBSR A, in floatMxN B, ref floatMxN X)
             => bgmres(new floatBSROperator(in A), in B, ref X, math.min(30, A.M_Rows), A.M_Rows, Consts.floatSqrtEps);
 
-        /// <summary>Right-preconditioned block GMRES(m) over a BSR non-symmetric A with an ILU(0)
-        /// preconditioner.</summary>
-        public static BlockSolveInfo bgmres(in floatBSR A, in floatILU0 M, in floatMxN B, ref floatMxN X,
+        /// <summary>Right-preconditioned block GMRES(m) over a BSR non-symmetric A with ANY
+        /// <see cref="IfloatPreconditioner"/> (ILU0).</summary>
+        public static BlockSolveInfo bgmres<TPre>(in floatBSR A, in TPre M, in floatMxN B, ref floatMxN X,
                                         int restart, int maxIter, float tol)
+            where TPre : struct, IfloatPreconditioner
             => bgmres(new floatBSROperator(in A), in M, in B, ref X, restart, maxIter, tol);
 
-        /// <summary>ILU(0)-right-preconditioned block GMRES over a BSR non-symmetric A with defaults
-        /// (restart = min(30, A.M_Rows)).</summary>
-        public static BlockSolveInfo bgmres(in floatBSR A, in floatILU0 M, in floatMxN B, ref floatMxN X)
+        /// <summary>Right-preconditioned block GMRES over a BSR non-symmetric A with ANY
+        /// <see cref="IfloatPreconditioner"/> (ILU0), with defaults (restart = min(30, A.M_Rows)).</summary>
+        public static BlockSolveInfo bgmres<TPre>(in floatBSR A, in TPre M, in floatMxN B, ref floatMxN X)
+            where TPre : struct, IfloatPreconditioner
             => bgmres(new floatBSROperator(in A), in M, in B, ref X, math.min(30, A.M_Rows), A.M_Rows, Consts.floatSqrtEps);
     }
 }

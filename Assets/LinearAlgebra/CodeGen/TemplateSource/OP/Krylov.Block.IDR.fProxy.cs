@@ -339,24 +339,18 @@ namespace LinearAlgebra
         public static BlockSolveInfo bidr(in fProxyBSR A, in fProxyMxN B, ref fProxyMxN X)
             => bidr(new fProxyBSROperator(in A), in B, ref X, 4, A.M_Rows, Consts.fProxySqrtEps);
 
-        /// <summary>ILU(0)-right-preconditioned block IDR(s) over a BSR non-symmetric A.</summary>
-        public static BlockSolveInfo bidr(in fProxyBSR A, in fProxyILU0 M, in fProxyMxN B, ref fProxyMxN X,
+        /// <summary>Right-preconditioned block IDR(s) over a BSR non-symmetric A with ANY
+        /// <see cref="IfProxyPreconditioner"/> (ILU0/block-Jacobi).</summary>
+        public static BlockSolveInfo bidr<TPre>(in fProxyBSR A, in TPre M, in fProxyMxN B, ref fProxyMxN X,
                                         int s, int maxIter, fProxy tol, uint seed = 0x9E3779B1u)
+            where TPre : struct, IfProxyPreconditioner
             => bidr(new fProxyBSROperator(in A), in M, in B, ref X, s, maxIter, tol, seed);
 
-        /// <summary>ILU(0)-right-preconditioned block IDR(s) over BSR with defaults (s = 4,
-        /// maxIter = A.M_Rows, tol = Consts.fProxySqrtEps, seed = default).</summary>
-        public static BlockSolveInfo bidr(in fProxyBSR A, in fProxyILU0 M, in fProxyMxN B, ref fProxyMxN X)
-            => bidr(new fProxyBSROperator(in A), in M, in B, ref X, 4, A.M_Rows, Consts.fProxySqrtEps);
-
-        /// <summary>Block-Jacobi-right-preconditioned block IDR(s) over a BSR non-symmetric A.</summary>
-        public static BlockSolveInfo bidr(in fProxyBSR A, in fProxyBlockJacobi M, in fProxyMxN B, ref fProxyMxN X,
-                                        int s, int maxIter, fProxy tol, uint seed = 0x9E3779B1u)
-            => bidr(new fProxyBSROperator(in A), in M, in B, ref X, s, maxIter, tol, seed);
-
-        /// <summary>Block-Jacobi-right-preconditioned block IDR(s) over BSR with defaults (s = 4,
-        /// maxIter = A.M_Rows, tol = Consts.fProxySqrtEps, seed = default).</summary>
-        public static BlockSolveInfo bidr(in fProxyBSR A, in fProxyBlockJacobi M, in fProxyMxN B, ref fProxyMxN X)
+        /// <summary>Right-preconditioned block IDR(s) over BSR with ANY <see cref="IfProxyPreconditioner"/>
+        /// (ILU0/block-Jacobi), with defaults (s = 4, maxIter = A.M_Rows, tol = Consts.fProxySqrtEps,
+        /// seed = default).</summary>
+        public static BlockSolveInfo bidr<TPre>(in fProxyBSR A, in TPre M, in fProxyMxN B, ref fProxyMxN X)
+            where TPre : struct, IfProxyPreconditioner
             => bidr(new fProxyBSROperator(in A), in M, in B, ref X, 4, A.M_Rows, Consts.fProxySqrtEps);
     }
 }

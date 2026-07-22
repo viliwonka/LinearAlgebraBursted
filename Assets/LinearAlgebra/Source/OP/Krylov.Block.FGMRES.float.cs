@@ -276,16 +276,19 @@ namespace LinearAlgebra
         public static BlockSolveInfo bfgmres(in floatBSR A, in floatMxN B, ref floatMxN X)
             => bfgmres(new floatBSROperator(in A), in B, ref X, math.min(30, A.M_Rows), A.M_Rows, Consts.floatSqrtEps);
 
-        /// <summary>Right-preconditioned block flexible GMRES(m) over a BSR non-symmetric A with an
-        /// ILU(0) preconditioner. A single fixed ILU(0) here exercises the SAME reduction bgmres already
-        /// covers; bfgmres's own advantage is a genuinely varying M -- see the bespoke flexible test.</summary>
-        public static BlockSolveInfo bfgmres(in floatBSR A, in floatILU0 M, in floatMxN B, ref floatMxN X,
+        /// <summary>Right-preconditioned block flexible GMRES(m) over a BSR non-symmetric A with ANY
+        /// <see cref="IfloatPreconditioner"/> (ILU0). A single fixed preconditioner here exercises the
+        /// SAME reduction bgmres already covers; bfgmres's own advantage is a genuinely varying M -- see
+        /// the bespoke flexible test.</summary>
+        public static BlockSolveInfo bfgmres<TPre>(in floatBSR A, in TPre M, in floatMxN B, ref floatMxN X,
                                         int restart, int maxIter, float tol)
+            where TPre : struct, IfloatPreconditioner
             => bfgmres(new floatBSROperator(in A), in M, in B, ref X, restart, maxIter, tol);
 
-        /// <summary>ILU(0)-right-preconditioned block flexible GMRES over a BSR non-symmetric A with
-        /// defaults (restart = min(30, A.M_Rows)).</summary>
-        public static BlockSolveInfo bfgmres(in floatBSR A, in floatILU0 M, in floatMxN B, ref floatMxN X)
+        /// <summary>Right-preconditioned block flexible GMRES over a BSR non-symmetric A with ANY
+        /// <see cref="IfloatPreconditioner"/> (ILU0), with defaults (restart = min(30, A.M_Rows)).</summary>
+        public static BlockSolveInfo bfgmres<TPre>(in floatBSR A, in TPre M, in floatMxN B, ref floatMxN X)
+            where TPre : struct, IfloatPreconditioner
             => bfgmres(new floatBSROperator(in A), in M, in B, ref X, math.min(30, A.M_Rows), A.M_Rows, Consts.floatSqrtEps);
     }
 }

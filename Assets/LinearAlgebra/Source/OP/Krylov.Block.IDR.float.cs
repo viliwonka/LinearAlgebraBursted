@@ -343,24 +343,18 @@ namespace LinearAlgebra
         public static BlockSolveInfo bidr(in floatBSR A, in floatMxN B, ref floatMxN X)
             => bidr(new floatBSROperator(in A), in B, ref X, 4, A.M_Rows, Consts.floatSqrtEps);
 
-        /// <summary>ILU(0)-right-preconditioned block IDR(s) over a BSR non-symmetric A.</summary>
-        public static BlockSolveInfo bidr(in floatBSR A, in floatILU0 M, in floatMxN B, ref floatMxN X,
+        /// <summary>Right-preconditioned block IDR(s) over a BSR non-symmetric A with ANY
+        /// <see cref="IfloatPreconditioner"/> (ILU0/block-Jacobi).</summary>
+        public static BlockSolveInfo bidr<TPre>(in floatBSR A, in TPre M, in floatMxN B, ref floatMxN X,
                                         int s, int maxIter, float tol, uint seed = 0x9E3779B1u)
+            where TPre : struct, IfloatPreconditioner
             => bidr(new floatBSROperator(in A), in M, in B, ref X, s, maxIter, tol, seed);
 
-        /// <summary>ILU(0)-right-preconditioned block IDR(s) over BSR with defaults (s = 4,
-        /// maxIter = A.M_Rows, tol = Consts.floatSqrtEps, seed = default).</summary>
-        public static BlockSolveInfo bidr(in floatBSR A, in floatILU0 M, in floatMxN B, ref floatMxN X)
-            => bidr(new floatBSROperator(in A), in M, in B, ref X, 4, A.M_Rows, Consts.floatSqrtEps);
-
-        /// <summary>Block-Jacobi-right-preconditioned block IDR(s) over a BSR non-symmetric A.</summary>
-        public static BlockSolveInfo bidr(in floatBSR A, in floatBlockJacobi M, in floatMxN B, ref floatMxN X,
-                                        int s, int maxIter, float tol, uint seed = 0x9E3779B1u)
-            => bidr(new floatBSROperator(in A), in M, in B, ref X, s, maxIter, tol, seed);
-
-        /// <summary>Block-Jacobi-right-preconditioned block IDR(s) over BSR with defaults (s = 4,
-        /// maxIter = A.M_Rows, tol = Consts.floatSqrtEps, seed = default).</summary>
-        public static BlockSolveInfo bidr(in floatBSR A, in floatBlockJacobi M, in floatMxN B, ref floatMxN X)
+        /// <summary>Right-preconditioned block IDR(s) over BSR with ANY <see cref="IfloatPreconditioner"/>
+        /// (ILU0/block-Jacobi), with defaults (s = 4, maxIter = A.M_Rows, tol = Consts.floatSqrtEps,
+        /// seed = default).</summary>
+        public static BlockSolveInfo bidr<TPre>(in floatBSR A, in TPre M, in floatMxN B, ref floatMxN X)
+            where TPre : struct, IfloatPreconditioner
             => bidr(new floatBSROperator(in A), in M, in B, ref X, 4, A.M_Rows, Consts.floatSqrtEps);
     }
 }

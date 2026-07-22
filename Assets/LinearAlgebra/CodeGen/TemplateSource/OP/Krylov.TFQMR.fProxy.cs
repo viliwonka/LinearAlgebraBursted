@@ -262,11 +262,13 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// ILU(0)-right-preconditioned TFQMR over a block-sparse (BSR) matrix -- forwards into
-        /// <see cref="tfqmr{TOp,TPre}"/> via <c>fProxyBSROperator</c>.
+        /// Right-preconditioned TFQMR over a block-sparse (BSR) matrix with ANY
+        /// <see cref="IfProxyPreconditioner"/> (ILU0) -- forwards into <see cref="tfqmr{TOp,TPre}"/>
+        /// via <c>fProxyBSROperator</c>.
         /// </summary>
-        public static SolveInfo tfqmr(in fProxyBSR A, in fProxyILU0 M, in fProxyN b, ref fProxyN x,
+        public static SolveInfo tfqmr<TPre>(in fProxyBSR A, in TPre M, in fProxyN b, ref fProxyN x,
                                int maxIter, fProxy tol)
+            where TPre : struct, IfProxyPreconditioner
         {
             fProxyN rHat0 = b.fProxyTempVec(A.M_Rows);
             fProxyN u     = b.fProxyTempVec(A.M_Rows);
@@ -280,9 +282,10 @@ namespace LinearAlgebra
                              maxIter, tol);
         }
 
-        /// <summary>ILU(0) TFQMR over BSR with default maxIter (A.M_Rows) and tolerance
-        /// (Consts.fProxySqrtEps).</summary>
-        public static SolveInfo tfqmr(in fProxyBSR A, in fProxyILU0 M, in fProxyN b, ref fProxyN x)
+        /// <summary>Preconditioned TFQMR over BSR with ANY <see cref="IfProxyPreconditioner"/> (ILU0),
+        /// with default maxIter (A.M_Rows) and tolerance (Consts.fProxySqrtEps).</summary>
+        public static SolveInfo tfqmr<TPre>(in fProxyBSR A, in TPre M, in fProxyN b, ref fProxyN x)
+            where TPre : struct, IfProxyPreconditioner
         {
             return tfqmr(in A, in M, in b, ref x, A.M_Rows, Consts.fProxySqrtEps);
         }

@@ -272,20 +272,16 @@ namespace LinearAlgebra
         public static SolveInfo idr(in floatBSR A, in floatN b, ref floatN x)
             => idr(in A, in b, ref x, 4, A.M_Rows, Consts.floatSqrtEps);
 
-        /// <summary>ILU(0)-right-preconditioned IDR(s) over a BSR matrix. Forwards via <c>floatBSROperator</c>.</summary>
-        public static SolveInfo idr(in floatBSR A, in floatILU0 M, in floatN b, ref floatN x, int s, int maxIter, float tol, uint seed = 0x9E3779B1u)
+        /// <summary>Right-preconditioned IDR(s) over a BSR matrix with ANY <see cref="IfloatPreconditioner"/>
+        /// (ILU0/block-Jacobi). Forwards via <c>floatBSROperator</c>.</summary>
+        public static SolveInfo idr<TPre>(in floatBSR A, in TPre M, in floatN b, ref floatN x, int s, int maxIter, float tol, uint seed = 0x9E3779B1u)
+            where TPre : struct, IfloatPreconditioner
             => idr(new floatBSROperator(in A), in M, in b, ref x, s, maxIter, tol, seed);
 
-        /// <summary>ILU(0)-right-preconditioned IDR(s) over BSR with defaults (s = 4, maxIter = A.M_Rows, tol = Consts.floatSqrtEps, seed = default).</summary>
-        public static SolveInfo idr(in floatBSR A, in floatILU0 M, in floatN b, ref floatN x)
-            => idr(in A, in M, in b, ref x, 4, A.M_Rows, Consts.floatSqrtEps);
-
-        /// <summary>Block-Jacobi-right-preconditioned IDR(s) over a BSR matrix. Forwards via <c>floatBSROperator</c>.</summary>
-        public static SolveInfo idr(in floatBSR A, in floatBlockJacobi M, in floatN b, ref floatN x, int s, int maxIter, float tol, uint seed = 0x9E3779B1u)
-            => idr(new floatBSROperator(in A), in M, in b, ref x, s, maxIter, tol, seed);
-
-        /// <summary>Block-Jacobi-right-preconditioned IDR(s) over BSR with defaults (s = 4, maxIter = A.M_Rows, tol = Consts.floatSqrtEps, seed = default).</summary>
-        public static SolveInfo idr(in floatBSR A, in floatBlockJacobi M, in floatN b, ref floatN x)
+        /// <summary>Right-preconditioned IDR(s) over BSR with ANY <see cref="IfloatPreconditioner"/>
+        /// (ILU0/block-Jacobi), with defaults (s = 4, maxIter = A.M_Rows, tol = Consts.floatSqrtEps, seed = default).</summary>
+        public static SolveInfo idr<TPre>(in floatBSR A, in TPre M, in floatN b, ref floatN x)
+            where TPre : struct, IfloatPreconditioner
             => idr(in A, in M, in b, ref x, 4, A.M_Rows, Consts.floatSqrtEps);
     }
 }

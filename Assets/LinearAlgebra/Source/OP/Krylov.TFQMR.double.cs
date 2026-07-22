@@ -266,11 +266,13 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// ILU(0)-right-preconditioned TFQMR over a block-sparse (BSR) matrix -- forwards into
-        /// <see cref="tfqmr{TOp,TPre}"/> via <c>doubleBSROperator</c>.
+        /// Right-preconditioned TFQMR over a block-sparse (BSR) matrix with ANY
+        /// <see cref="IdoublePreconditioner"/> (ILU0) -- forwards into <see cref="tfqmr{TOp,TPre}"/>
+        /// via <c>doubleBSROperator</c>.
         /// </summary>
-        public static SolveInfo tfqmr(in doubleBSR A, in doubleILU0 M, in doubleN b, ref doubleN x,
+        public static SolveInfo tfqmr<TPre>(in doubleBSR A, in TPre M, in doubleN b, ref doubleN x,
                                int maxIter, double tol)
+            where TPre : struct, IdoublePreconditioner
         {
             doubleN rHat0 = b.doubleTempVec(A.M_Rows);
             doubleN u     = b.doubleTempVec(A.M_Rows);
@@ -284,9 +286,10 @@ namespace LinearAlgebra
                              maxIter, tol);
         }
 
-        /// <summary>ILU(0) TFQMR over BSR with default maxIter (A.M_Rows) and tolerance
-        /// (Consts.doubleSqrtEps).</summary>
-        public static SolveInfo tfqmr(in doubleBSR A, in doubleILU0 M, in doubleN b, ref doubleN x)
+        /// <summary>Preconditioned TFQMR over BSR with ANY <see cref="IdoublePreconditioner"/> (ILU0),
+        /// with default maxIter (A.M_Rows) and tolerance (Consts.doubleSqrtEps).</summary>
+        public static SolveInfo tfqmr<TPre>(in doubleBSR A, in TPre M, in doubleN b, ref doubleN x)
+            where TPre : struct, IdoublePreconditioner
         {
             return tfqmr(in A, in M, in b, ref x, A.M_Rows, Consts.doubleSqrtEps);
         }

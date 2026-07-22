@@ -13,6 +13,16 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   is untouched) — user-directed. Rollout candidates enumerated for the rest of the family (BiCGStab
   3 types, IDR 2, MINRESQLP/GMRES/FGMRES/GCRODR/TFQMR + block twins 1 each, LOBPCG 3) — same
   transform, smaller per-file wins.
+- 2026-07-22 (rollout) | Applied the same collapse to the rest of the family: BiCGStab/IDR/GMRES/
+  FGMRES/GCRODR/TFQMR/MINRESQLP + block IDR/FGMRES/GMRES/GCRODR/TFQMR + LOBPCG (which had 10
+  BlockJacobi overloads across standard/generalized × rungs). 45 concrete → 35 generic, all verified
+  pure forwards, 1071/1071. NOTE this WIDENS every solver to accept any IfProxyPreconditioner —
+  including the symmetric solvers (cg/minres/minresQLP/bcg/bcgrq/bfbcg/bminres/lobpcg), which
+  mathematically require an SPD M (M defines the inner product). The old per-type overloads were a
+  leaky implicit gate against that. PLANNED fix: an `IfProxySpdPreconditioner : IfProxyPreconditioner`
+  marker (implemented by BlockJacobi/SSOR/IC0/FSAI/Chebyshev/identity; NOT ILU0/SPAI/RestrictedSchwarz)
+  constraining the symmetric-solver family, restoring the gate at compile time. The A-requirement axis
+  (SPD vs symmetric-indefinite vs general) stays runtime/doc — SPD-ness isn't a static property.
 
 ## Krylov.Block.* — more shared helpers (thresholds, LS-exit tail)
 - 2026-07-22 | `BuildColumnThresholdsPlain` (un-floored tol²·‖B[j]‖², the twin of the floored

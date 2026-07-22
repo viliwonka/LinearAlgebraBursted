@@ -381,10 +381,12 @@ namespace LinearAlgebra
         public static BlockSolveInfo btfqmr(in doubleBSR A, in doubleMxN B, ref doubleMxN X)
             => btfqmr(in A, in B, ref X, A.M_Rows, Consts.doubleSqrtEps);
 
-        /// <summary>ILU(0)-right-preconditioned pseudo-block TFQMR over a block-sparse (BSR) non-symmetric
-        /// A -- forwards into <see cref="btfqmr{TOp,TPre}"/> via <c>doubleBSROperator</c>.</summary>
-        public static BlockSolveInfo btfqmr(in doubleBSR A, in doubleILU0 M, in doubleMxN B, ref doubleMxN X,
+        /// <summary>Right-preconditioned pseudo-block TFQMR over a block-sparse (BSR) non-symmetric
+        /// A with ANY <see cref="IdoublePreconditioner"/> (ILU0) -- forwards into
+        /// <see cref="btfqmr{TOp,TPre}"/> via <c>doubleBSROperator</c>.</summary>
+        public static BlockSolveInfo btfqmr<TPre>(in doubleBSR A, in TPre M, in doubleMxN B, ref doubleMxN X,
                                int maxIter, double tol)
+            where TPre : struct, IdoublePreconditioner
         {
             int s = B.M_Rows, n = A.M_Rows;
             doubleMxN Rhat0 = B.doubleTempMat(s, n, true), U = B.doubleTempMat(s, n, true), W = B.doubleTempMat(s, n, true),
@@ -395,9 +397,10 @@ namespace LinearAlgebra
                              maxIter, tol);
         }
 
-        /// <summary>ILU(0) pseudo-block TFQMR over BSR with default maxIter (A.M_Rows) and tolerance
-        /// (Consts.doubleSqrtEps).</summary>
-        public static BlockSolveInfo btfqmr(in doubleBSR A, in doubleILU0 M, in doubleMxN B, ref doubleMxN X)
+        /// <summary>Preconditioned pseudo-block TFQMR over BSR with ANY <see cref="IdoublePreconditioner"/>
+        /// (ILU0), with default maxIter (A.M_Rows) and tolerance (Consts.doubleSqrtEps).</summary>
+        public static BlockSolveInfo btfqmr<TPre>(in doubleBSR A, in TPre M, in doubleMxN B, ref doubleMxN X)
+            where TPre : struct, IdoublePreconditioner
             => btfqmr(in A, in M, in B, ref X, A.M_Rows, Consts.doubleSqrtEps);
     }
 }

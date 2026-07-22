@@ -272,16 +272,19 @@ namespace LinearAlgebra
         public static BlockSolveInfo bfgmres(in fProxyBSR A, in fProxyMxN B, ref fProxyMxN X)
             => bfgmres(new fProxyBSROperator(in A), in B, ref X, math.min(30, A.M_Rows), A.M_Rows, Consts.fProxySqrtEps);
 
-        /// <summary>Right-preconditioned block flexible GMRES(m) over a BSR non-symmetric A with an
-        /// ILU(0) preconditioner. A single fixed ILU(0) here exercises the SAME reduction bgmres already
-        /// covers; bfgmres's own advantage is a genuinely varying M -- see the bespoke flexible test.</summary>
-        public static BlockSolveInfo bfgmres(in fProxyBSR A, in fProxyILU0 M, in fProxyMxN B, ref fProxyMxN X,
+        /// <summary>Right-preconditioned block flexible GMRES(m) over a BSR non-symmetric A with ANY
+        /// <see cref="IfProxyPreconditioner"/> (ILU0). A single fixed preconditioner here exercises the
+        /// SAME reduction bgmres already covers; bfgmres's own advantage is a genuinely varying M -- see
+        /// the bespoke flexible test.</summary>
+        public static BlockSolveInfo bfgmres<TPre>(in fProxyBSR A, in TPre M, in fProxyMxN B, ref fProxyMxN X,
                                         int restart, int maxIter, fProxy tol)
+            where TPre : struct, IfProxyPreconditioner
             => bfgmres(new fProxyBSROperator(in A), in M, in B, ref X, restart, maxIter, tol);
 
-        /// <summary>ILU(0)-right-preconditioned block flexible GMRES over a BSR non-symmetric A with
-        /// defaults (restart = min(30, A.M_Rows)).</summary>
-        public static BlockSolveInfo bfgmres(in fProxyBSR A, in fProxyILU0 M, in fProxyMxN B, ref fProxyMxN X)
+        /// <summary>Right-preconditioned block flexible GMRES over a BSR non-symmetric A with ANY
+        /// <see cref="IfProxyPreconditioner"/> (ILU0), with defaults (restart = min(30, A.M_Rows)).</summary>
+        public static BlockSolveInfo bfgmres<TPre>(in fProxyBSR A, in TPre M, in fProxyMxN B, ref fProxyMxN X)
+            where TPre : struct, IfProxyPreconditioner
             => bfgmres(new fProxyBSROperator(in A), in M, in B, ref X, math.min(30, A.M_Rows), A.M_Rows, Consts.fProxySqrtEps);
     }
 }

@@ -276,16 +276,19 @@ namespace LinearAlgebra
         public static BlockSolveInfo bfgmres(in doubleBSR A, in doubleMxN B, ref doubleMxN X)
             => bfgmres(new doubleBSROperator(in A), in B, ref X, math.min(30, A.M_Rows), A.M_Rows, Consts.doubleSqrtEps);
 
-        /// <summary>Right-preconditioned block flexible GMRES(m) over a BSR non-symmetric A with an
-        /// ILU(0) preconditioner. A single fixed ILU(0) here exercises the SAME reduction bgmres already
-        /// covers; bfgmres's own advantage is a genuinely varying M -- see the bespoke flexible test.</summary>
-        public static BlockSolveInfo bfgmres(in doubleBSR A, in doubleILU0 M, in doubleMxN B, ref doubleMxN X,
+        /// <summary>Right-preconditioned block flexible GMRES(m) over a BSR non-symmetric A with ANY
+        /// <see cref="IdoublePreconditioner"/> (ILU0). A single fixed preconditioner here exercises the
+        /// SAME reduction bgmres already covers; bfgmres's own advantage is a genuinely varying M -- see
+        /// the bespoke flexible test.</summary>
+        public static BlockSolveInfo bfgmres<TPre>(in doubleBSR A, in TPre M, in doubleMxN B, ref doubleMxN X,
                                         int restart, int maxIter, double tol)
+            where TPre : struct, IdoublePreconditioner
             => bfgmres(new doubleBSROperator(in A), in M, in B, ref X, restart, maxIter, tol);
 
-        /// <summary>ILU(0)-right-preconditioned block flexible GMRES over a BSR non-symmetric A with
-        /// defaults (restart = min(30, A.M_Rows)).</summary>
-        public static BlockSolveInfo bfgmres(in doubleBSR A, in doubleILU0 M, in doubleMxN B, ref doubleMxN X)
+        /// <summary>Right-preconditioned block flexible GMRES over a BSR non-symmetric A with ANY
+        /// <see cref="IdoublePreconditioner"/> (ILU0), with defaults (restart = min(30, A.M_Rows)).</summary>
+        public static BlockSolveInfo bfgmres<TPre>(in doubleBSR A, in TPre M, in doubleMxN B, ref doubleMxN X)
+            where TPre : struct, IdoublePreconditioner
             => bfgmres(new doubleBSROperator(in A), in M, in B, ref X, math.min(30, A.M_Rows), A.M_Rows, Consts.doubleSqrtEps);
     }
 }

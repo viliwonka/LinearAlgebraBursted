@@ -211,12 +211,14 @@ namespace LinearAlgebra
         public static SolveInfo gmres(in fProxyBSR A, in fProxyN b, ref fProxyN x)
             => gmres(new fProxyBSROperator(in A), in b, ref x, math.min(30, A.M_Rows), A.M_Rows, Consts.fProxySqrtEps);
 
-        /// <summary>Right-preconditioned GMRES(m) over a BSR matrix with an ILU(0) preconditioner.</summary>
-        public static SolveInfo gmres(in fProxyBSR A, in fProxyILU0 M, in fProxyN b, ref fProxyN x, int restart, int maxIter, fProxy tol)
+        /// <summary>Right-preconditioned GMRES(m) over a BSR matrix with ANY <see cref="IfProxyPreconditioner"/> (ILU0).</summary>
+        public static SolveInfo gmres<TPre>(in fProxyBSR A, in TPre M, in fProxyN b, ref fProxyN x, int restart, int maxIter, fProxy tol)
+            where TPre : struct, IfProxyPreconditioner
             => gmres(new fProxyBSROperator(in A), in M, in b, ref x, restart, maxIter, tol);
 
-        /// <summary>ILU(0)-right-preconditioned GMRES over a BSR matrix with defaults (restart = min(30, N)).</summary>
-        public static SolveInfo gmres(in fProxyBSR A, in fProxyILU0 M, in fProxyN b, ref fProxyN x)
+        /// <summary>Right-preconditioned GMRES over a BSR matrix with ANY <see cref="IfProxyPreconditioner"/> (ILU0), with defaults (restart = min(30, N)).</summary>
+        public static SolveInfo gmres<TPre>(in fProxyBSR A, in TPre M, in fProxyN b, ref fProxyN x)
+            where TPre : struct, IfProxyPreconditioner
             => gmres(new fProxyBSROperator(in A), in M, in b, ref x, math.min(30, A.M_Rows), A.M_Rows, Consts.fProxySqrtEps);
     }
 }

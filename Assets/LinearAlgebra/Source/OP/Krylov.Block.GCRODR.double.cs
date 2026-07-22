@@ -630,14 +630,17 @@ namespace LinearAlgebra
             return bgcrodr(new doubleBSROperator(in A), in B, ref X, r, doubleBgcrodrDefaultRecycle(r, B.M_Rows), A.M_Rows, Consts.doubleSqrtEps);
         }
 
-        /// <summary>Right-preconditioned block GCRO-DR over a BSR matrix with an ILU(0) preconditioner.</summary>
-        public static BlockSolveInfo bgcrodr(in doubleBSR A, in doubleILU0 M, in doubleMxN B, ref doubleMxN X,
+        /// <summary>Right-preconditioned block GCRO-DR over a BSR matrix with ANY
+        /// <see cref="IdoublePreconditioner"/> (ILU0).</summary>
+        public static BlockSolveInfo bgcrodr<TPre>(in doubleBSR A, in TPre M, in doubleMxN B, ref doubleMxN X,
                                         int restart, int recycle, int maxIter, double tol)
+            where TPre : struct, IdoublePreconditioner
             => bgcrodr(new doubleBSROperator(in A), in M, in B, ref X, restart, recycle, maxIter, tol);
 
-        /// <summary>ILU(0)-right-preconditioned block GCRO-DR over a BSR matrix with defaults
-        /// (restart = min(30, A.M_Rows)).</summary>
-        public static BlockSolveInfo bgcrodr(in doubleBSR A, in doubleILU0 M, in doubleMxN B, ref doubleMxN X)
+        /// <summary>Right-preconditioned block GCRO-DR over a BSR matrix with ANY
+        /// <see cref="IdoublePreconditioner"/> (ILU0), with defaults (restart = min(30, A.M_Rows)).</summary>
+        public static BlockSolveInfo bgcrodr<TPre>(in doubleBSR A, in TPre M, in doubleMxN B, ref doubleMxN X)
+            where TPre : struct, IdoublePreconditioner
         {
             int r = math.min(30, A.M_Rows);
             return bgcrodr(new doubleBSROperator(in A), in M, in B, ref X, r, doubleBgcrodrDefaultRecycle(r, B.M_Rows), A.M_Rows, Consts.doubleSqrtEps);

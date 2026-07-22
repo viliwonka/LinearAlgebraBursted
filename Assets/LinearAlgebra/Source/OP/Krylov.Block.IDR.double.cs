@@ -343,24 +343,18 @@ namespace LinearAlgebra
         public static BlockSolveInfo bidr(in doubleBSR A, in doubleMxN B, ref doubleMxN X)
             => bidr(new doubleBSROperator(in A), in B, ref X, 4, A.M_Rows, Consts.doubleSqrtEps);
 
-        /// <summary>ILU(0)-right-preconditioned block IDR(s) over a BSR non-symmetric A.</summary>
-        public static BlockSolveInfo bidr(in doubleBSR A, in doubleILU0 M, in doubleMxN B, ref doubleMxN X,
+        /// <summary>Right-preconditioned block IDR(s) over a BSR non-symmetric A with ANY
+        /// <see cref="IdoublePreconditioner"/> (ILU0/block-Jacobi).</summary>
+        public static BlockSolveInfo bidr<TPre>(in doubleBSR A, in TPre M, in doubleMxN B, ref doubleMxN X,
                                         int s, int maxIter, double tol, uint seed = 0x9E3779B1u)
+            where TPre : struct, IdoublePreconditioner
             => bidr(new doubleBSROperator(in A), in M, in B, ref X, s, maxIter, tol, seed);
 
-        /// <summary>ILU(0)-right-preconditioned block IDR(s) over BSR with defaults (s = 4,
-        /// maxIter = A.M_Rows, tol = Consts.doubleSqrtEps, seed = default).</summary>
-        public static BlockSolveInfo bidr(in doubleBSR A, in doubleILU0 M, in doubleMxN B, ref doubleMxN X)
-            => bidr(new doubleBSROperator(in A), in M, in B, ref X, 4, A.M_Rows, Consts.doubleSqrtEps);
-
-        /// <summary>Block-Jacobi-right-preconditioned block IDR(s) over a BSR non-symmetric A.</summary>
-        public static BlockSolveInfo bidr(in doubleBSR A, in doubleBlockJacobi M, in doubleMxN B, ref doubleMxN X,
-                                        int s, int maxIter, double tol, uint seed = 0x9E3779B1u)
-            => bidr(new doubleBSROperator(in A), in M, in B, ref X, s, maxIter, tol, seed);
-
-        /// <summary>Block-Jacobi-right-preconditioned block IDR(s) over BSR with defaults (s = 4,
-        /// maxIter = A.M_Rows, tol = Consts.doubleSqrtEps, seed = default).</summary>
-        public static BlockSolveInfo bidr(in doubleBSR A, in doubleBlockJacobi M, in doubleMxN B, ref doubleMxN X)
+        /// <summary>Right-preconditioned block IDR(s) over BSR with ANY <see cref="IdoublePreconditioner"/>
+        /// (ILU0/block-Jacobi), with defaults (s = 4, maxIter = A.M_Rows, tol = Consts.doubleSqrtEps,
+        /// seed = default).</summary>
+        public static BlockSolveInfo bidr<TPre>(in doubleBSR A, in TPre M, in doubleMxN B, ref doubleMxN X)
+            where TPre : struct, IdoublePreconditioner
             => bidr(new doubleBSROperator(in A), in M, in B, ref X, 4, A.M_Rows, Consts.doubleSqrtEps);
     }
 }

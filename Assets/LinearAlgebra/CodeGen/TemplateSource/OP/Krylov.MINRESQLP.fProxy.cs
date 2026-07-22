@@ -582,24 +582,27 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Preconditioned MINRES-QLP over a block-sparse (BSR) matrix with its matching
-        /// block-Jacobi preconditioner. Forwards into <see cref="minresQLP{TOp,TPre}"/> via
-        /// <c>fProxyBSROperator</c>.
+        /// Preconditioned MINRES-QLP over a block-sparse (BSR) matrix with ANY
+        /// <see cref="IfProxyPreconditioner"/> (block-Jacobi). Forwards into
+        /// <see cref="minresQLP{TOp,TPre}"/> via <c>fProxyBSROperator</c>.
         /// </summary>
-        public static SolveInfo minresQLP(in fProxyBSR A, in fProxyBlockJacobi M, in fProxyN b, ref fProxyN x,
+        public static SolveInfo minresQLP<TPre>(in fProxyBSR A, in TPre M, in fProxyN b, ref fProxyN x,
                                ref fProxyN v, ref fProxyN r1, ref fProxyN r2, ref fProxyN r3,
                                ref fProxyN w, ref fProxyN wl, ref fProxyN wl2, ref fProxyN xl2,
                                ref fProxyN t1, int maxIter, fProxy tol)
+            where TPre : struct, IfProxyPreconditioner
         {
             return minresQLP(new fProxyBSROperator(in A), in M, in b, ref x, ref v, ref r1, ref r2, ref r3, ref w, ref wl, ref wl2, ref xl2, ref t1, maxIter, tol);
         }
 
         /// <summary>
-        /// Block-Jacobi Preconditioned MINRES-QLP over a BSR matrix -- allocates nine scratch
-        /// vectors from the arena and calls the zero-alloc primitive.
+        /// Preconditioned MINRES-QLP over a BSR matrix with ANY <see cref="IfProxyPreconditioner"/>
+        /// (block-Jacobi) -- allocates nine scratch vectors from the arena and calls the zero-alloc
+        /// primitive.
         /// </summary>
-        public static SolveInfo minresQLP(in fProxyBSR A, in fProxyBlockJacobi M, in fProxyN b, ref fProxyN x,
+        public static SolveInfo minresQLP<TPre>(in fProxyBSR A, in TPre M, in fProxyN b, ref fProxyN x,
                                int maxIter, fProxy tol)
+            where TPre : struct, IfProxyPreconditioner
         {
             fProxyN v   = b.fProxyTempVec(A.M_Rows);
             fProxyN r1  = b.fProxyTempVec(A.M_Rows);
@@ -614,10 +617,11 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Block-Jacobi Preconditioned MINRES-QLP over a BSR matrix, with default maxIter
-        /// (A.M_Rows) and tol (Consts.fProxySqrtEps).
+        /// Preconditioned MINRES-QLP over a BSR matrix with ANY <see cref="IfProxyPreconditioner"/>
+        /// (block-Jacobi), with default maxIter (A.M_Rows) and tol (Consts.fProxySqrtEps).
         /// </summary>
-        public static SolveInfo minresQLP(in fProxyBSR A, in fProxyBlockJacobi M, in fProxyN b, ref fProxyN x)
+        public static SolveInfo minresQLP<TPre>(in fProxyBSR A, in TPre M, in fProxyN b, ref fProxyN x)
+            where TPre : struct, IfProxyPreconditioner
         {
             return minresQLP(in A, in M, in b, ref x, A.M_Rows, Consts.fProxySqrtEps);
         }
