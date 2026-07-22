@@ -67,7 +67,7 @@ namespace LinearAlgebra
             fProxy bb = Blas.dot(b, b);
             if (bb == (fProxy)0)
                 // b = 0: the min-norm solution is trivially x = 0.
-                return CGNEInfo(IterativeSolveStatus.Converged, 0, in A, in b, ref x, ref Ap, ref tmpN);
+                return LstsqInfoAudited(IterativeSolveStatus.Converged, 0, in A, in b, ref x, ref Ap, ref tmpN);
 
             // r_0 = b - A x_0 = b (x_0 = 0), so ‖r_0‖² == bb -- no extra dot needed.
             r.CopyFrom(in b);
@@ -75,7 +75,7 @@ namespace LinearAlgebra
 
             fProxy threshold = tol * tol * bb;
             if (rr <= threshold)
-                return CGNEInfo(IterativeSolveStatus.Converged, 0, in A, in b, ref x, ref Ap, ref tmpN);
+                return LstsqInfoAudited(IterativeSolveStatus.Converged, 0, in A, in b, ref x, ref Ap, ref tmpN);
 
             // p_0 = Aᵀ r_0 -- an Aᵀ-image, so every later p_k (built below as Aᵀr_k + beta·p_{k-1})
             // stays in row(A) by induction, keeping x = Σ alpha_k p_k row(A)-minimal throughout.
@@ -88,7 +88,7 @@ namespace LinearAlgebra
                     // p collapsed before ‖r‖ reached tolerance: r is (numerically) orthogonal to
                     // row(A) -- A lacks full row rank (or b escaped range(A)). x is the previous
                     // iterate (undefined per the Breakdown contract).
-                    return CGNEInfo(IterativeSolveStatus.Breakdown, k, in A, in b, ref x, ref Ap, ref tmpN);
+                    return LstsqInfoAudited(IterativeSolveStatus.Breakdown, k, in A, in b, ref x, ref Ap, ref tmpN);
 
                 fProxy alpha = rr / pp;
 
@@ -106,7 +106,7 @@ namespace LinearAlgebra
                     // also clears the threshold. Ap/tmpN are safe to reuse either way (fully
                     // overwritten by the audit before their next read, so a fall-through loses
                     // nothing).
-                    var info = CGNEInfo(IterativeSolveStatus.Converged, k + 1, in A, in b, ref x, ref Ap, ref tmpN);
+                    var info = LstsqInfoAudited(IterativeSolveStatus.Converged, k + 1, in A, in b, ref x, ref Ap, ref tmpN);
                     if (info.rnorm * info.rnorm <= threshold)
                         return info;
                 }
@@ -119,21 +119,7 @@ namespace LinearAlgebra
                 rr = rrNew;
             }
 
-            return CGNEInfo(IterativeSolveStatus.MaxIterations, maxIter, in A, in b, ref x, ref Ap, ref tmpN);
-        }
-
-        /// <summary>Assembles the returned <see cref="LstsqInfo"/> from a certified-exact residual
-        /// audit (<see cref="lstsqResidual{TOp}"/>: one Apply + one ApplyT) plus the caller's
-        /// iteration count and status. <paramref name="rScratch"/>/<paramref name="sScratch"/> are
-        /// the solver's own Ap/tmpN buffers, free to reuse post-update.</summary>
-        static LstsqInfo CGNEInfo<TOp>(IterativeSolveStatus status, int iterations, in TOp A, in fProxyN b,
-                                         ref fProxyN x, ref fProxyN rScratch, ref fProxyN sScratch)
-            where TOp : struct, IfProxyLinearOperator
-        {
-            var info = lstsqResidual(in A, in b, in x, (fProxy)0, ref rScratch, ref sScratch);
-            info.iterations = iterations;
-            info.status = status;
-            return info;
+            return LstsqInfoAudited(IterativeSolveStatus.MaxIterations, maxIter, in A, in b, ref x, ref Ap, ref tmpN);
         }
 
         /// <summary>

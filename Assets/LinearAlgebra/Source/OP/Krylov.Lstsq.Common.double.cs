@@ -74,6 +74,21 @@ namespace LinearAlgebra
             };
         }
 
+        /// <summary>Assembles the returned <see cref="LstsqInfo"/> from a certified-exact residual
+        /// audit (<see cref="lstsqResidual{TOp}"/>: one Apply + one ApplyT, damp = 0) plus the
+        /// caller's iteration count and status. Shared by the undamped least-norm solvers
+        /// (cgne/craig). <paramref name="rScratch"/> (length A.Rows) / <paramref name="sScratch"/>
+        /// (length A.Cols) are the solver's own buffers, free to reuse post-solve.</summary>
+        static LstsqInfo LstsqInfoAudited<TOp>(IterativeSolveStatus status, int iterations, in TOp A, in doubleN b,
+                                                 ref doubleN x, ref doubleN rScratch, ref doubleN sScratch)
+            where TOp : struct, IdoubleLinearOperator
+        {
+            var info = lstsqResidual(in A, in b, in x, (double)0, ref rScratch, ref sScratch);
+            info.iterations = iterations;
+            info.status = status;
+            return info;
+        }
+
         // Right (column) preconditioned convenience overloads.
         // lsqrRightPre / lsmrRightPre solve min ‖Ax-b‖ through a change of variables x = N·y with a
         // caller-supplied SYMMETRIC preconditioner N (n×n, IdoublePreconditioner): wrap A in a

@@ -49,8 +49,7 @@ namespace LinearAlgebra
             if (s < 1 || s > n) throw new ArgumentException("blsmr: B.M_Rows (s) must be in [1, A.Cols]");
             if (maxIter < 1) throw new ArgumentException("blsmr: maxIter must be >= 1");
 
-            for (int i = 0; i < s; i++)
-                for (int c = 0; c < n; c++) X[i, c] = (float)0;
+            ZeroPrefix(ref X, s, n);
 
             floatN rowN = new floatN(n), rowM = new floatN(m);
 

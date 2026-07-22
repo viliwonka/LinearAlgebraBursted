@@ -55,8 +55,7 @@ namespace LinearAlgebra
                 RequireDistinctBuffers("bcraigmr: X/B must be distinct", ptrs, 2);
             }
 
-            for (int i = 0; i < s; i++)
-                for (int c = 0; c < n; c++) X[i, c] = (double)0;
+            ZeroPrefix(ref X, s, n);
 
             doubleN rowN = new doubleN(n), rowM = new doubleN(m);
 

@@ -68,7 +68,7 @@ namespace LinearAlgebra
             double bnorm = math.sqrt(Blas.dot(b, b));
             if (bnorm == (double)0)
                 // b = 0: the min-norm solution is trivially x = 0.
-                return CraigInfo(IterativeSolveStatus.Converged, 0, in A, in b, ref x, ref tmpM, ref tmpN);
+                return LstsqInfoAudited(IterativeSolveStatus.Converged, 0, in A, in b, ref x, ref tmpM, ref tmpN);
 
             // beta_1 u_1 = b
             u.CopyFrom(in b);
@@ -90,7 +90,7 @@ namespace LinearAlgebra
                     // v collapsed: the Krylov space on AAᵀ is exhausted before reaching b -- A is
                     // not full row rank (or, on the first step, b ∉ range(A)). x is the previous
                     // iterate (undefined per the Breakdown contract).
-                    return CraigInfo(IterativeSolveStatus.Breakdown, k + 1, in A, in b, ref x, ref tmpM, ref tmpN);
+                    return LstsqInfoAudited(IterativeSolveStatus.Breakdown, k + 1, in A, in b, ref x, ref tmpM, ref tmpN);
 
                 v.divInPlace(alfa);
 
@@ -118,7 +118,7 @@ namespace LinearAlgebra
                     // certified residual also clears the threshold. tmpM/tmpN are safe to reuse
                     // either way (GolubKahanUStep/VStep fully overwrite them before their next read,
                     // so a fall-through loses nothing).
-                    var info = CraigInfo(IterativeSolveStatus.Converged, k + 1, in A, in b, ref x, ref tmpM, ref tmpN);
+                    var info = LstsqInfoAudited(IterativeSolveStatus.Converged, k + 1, in A, in b, ref x, ref tmpM, ref tmpN);
                     if (info.rnorm <= tol * bnorm)
                         return info;
                 }
@@ -127,26 +127,12 @@ namespace LinearAlgebra
                     // u collapsed without reaching tolerance. Only reachable with a degenerate tol
                     // (beta == 0 forces rnorm == 0 above, which converges for any tol >= 0) --
                     // guards the division below from ever seeing a zero.
-                    return CraigInfo(IterativeSolveStatus.Breakdown, k + 1, in A, in b, ref x, ref tmpM, ref tmpN);
+                    return LstsqInfoAudited(IterativeSolveStatus.Breakdown, k + 1, in A, in b, ref x, ref tmpM, ref tmpN);
 
                 u.divInPlace(beta);
             }
 
-            return CraigInfo(IterativeSolveStatus.MaxIterations, maxIter, in A, in b, ref x, ref tmpM, ref tmpN);
-        }
-
-        /// <summary>Assembles the returned <see cref="LstsqInfo"/> from a certified-exact residual
-        /// audit (<see cref="lstsqResidual{TOp}"/>: one Apply + one ApplyT) plus the caller's
-        /// iteration count and status. <paramref name="rScratch"/>/<paramref name="sScratch"/> are
-        /// the solver's own tmpM/tmpN buffers, free to reuse post-update.</summary>
-        static LstsqInfo CraigInfo<TOp>(IterativeSolveStatus status, int iterations, in TOp A, in doubleN b,
-                                         ref doubleN x, ref doubleN rScratch, ref doubleN sScratch)
-            where TOp : struct, IdoubleLinearOperator
-        {
-            var info = lstsqResidual(in A, in b, in x, (double)0, ref rScratch, ref sScratch);
-            info.iterations = iterations;
-            info.status = status;
-            return info;
+            return LstsqInfoAudited(IterativeSolveStatus.MaxIterations, maxIter, in A, in b, ref x, ref tmpM, ref tmpN);
         }
 
         /// <summary>

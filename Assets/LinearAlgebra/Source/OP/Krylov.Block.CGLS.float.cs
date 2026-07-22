@@ -43,8 +43,7 @@ namespace LinearAlgebra
             if (X.M_Rows != s || X.N_Cols != n) throw new ArgumentException("bcgls: X must be s x A.Cols");
             if (maxIter < 1) throw new ArgumentException("bcgls: maxIter must be >= 1");
 
-            for (int i = 0; i < s; i++)
-                for (int c = 0; c < n; c++) X[i, c] = (float)0;
+            ZeroPrefix(ref X, s, n);
 
             floatN rowN = new floatN(n), rowM = new floatN(m);
 
