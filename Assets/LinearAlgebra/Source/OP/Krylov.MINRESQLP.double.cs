@@ -26,8 +26,10 @@ namespace LinearAlgebra
         /// verified beyond the NaN-safe breakdown guards). x is a warm-startable initial guess,
         /// overwritten with the solution. shift applies an eigenvalue shift, solving
         /// (A - shift*I) x = b: the Lanczos recurrence stays exact because the -shift*v term in the
-        /// shifted matvec cancels against +shift in the diagonal alfa, so the shift is one extra
-        /// axpy per iteration (Burst-folded away when shift is a compile-time 0). This is an
+        /// shifted matvec cancels against +shift in the diagonal alfa, so the shift costs one extra
+        /// axpy per iteration when shift != 0; when shift == 0 each `if (shift != 0)` guard skips its
+        /// axpy at runtime (shift is a runtime parameter here, not a compile-time constant, so this
+        /// is a branch-skip, not a Burst fold), leaving zero-shift callers bit-identical. This is an
         /// eigenvalue (lambda) shift on the operator, distinct from the singular-value damp of
         /// lsqr/lsmr; A - shift*I stays symmetric, so the QLP min-length machinery is unchanged.
         /// tol is the relative-residual tolerance (reference's

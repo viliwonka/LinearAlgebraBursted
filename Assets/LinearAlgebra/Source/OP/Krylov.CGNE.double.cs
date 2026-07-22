@@ -142,10 +142,11 @@ namespace LinearAlgebra
         /// used only for the fresh augmented-residual convergence check).
         ///
         /// Convergence is decided on the AUGMENTED residual ‖b - A x - damp·s‖ ≤ tol·‖b‖ (which →0
-        /// at the regularized solution), verified fresh at exit. The returned
-        /// <see cref="LstsqInfo"/> reports the UNDAMPED residual ‖b - A x‖ as rnorm (= damp·‖s‖ at
-        /// the optimum -- legitimately NONZERO, mirroring damped lsqr/lsmr), so a Converged exit
-        /// here carries a nonzero rnorm; read the implicit bool / status, not rnorm, for success.
+        /// at the regularized solution), verified fresh at exit. In the returned
+        /// <see cref="LstsqInfo"/>, rnorm is the UNDAMPED residual ‖b - A x‖ (= damp·‖s‖ at the
+        /// optimum -- legitimately NONZERO, mirroring damped lsqr/lsmr), so a Converged exit here
+        /// carries a nonzero rnorm; Arnorm is the Tikhonov gradient ‖Aᵀr - damp²x‖, which DOES →0 at
+        /// the optimum. Read the implicit bool / status (or Arnorm), not rnorm, for success.
         /// </summary>
         public static LstsqInfo cgne<TOp>(in TOp A, in doubleN b, ref doubleN x,
                                      ref doubleN r, ref doubleN p, ref doubleN Ap, ref doubleN tmpN,
@@ -185,13 +186,13 @@ namespace LinearAlgebra
 
             double bb = Blas.dot(b, b);
             if (bb == (double)0)
-                return LstsqInfoAudited(IterativeSolveStatus.Converged, 0, in A, in b, ref x, ref Ap, ref tmpN);
+                return LstsqInfoAudited(IterativeSolveStatus.Converged, 0, in A, in b, ref x, ref Ap, ref tmpN, damp);
 
             r.CopyFrom(in b);   // r_0 = b - [A|λI](x0,s0) = b
             double rr = bb;
             double threshold = tol * tol * bb;
             if (rr <= threshold)
-                return LstsqInfoAudited(IterativeSolveStatus.Converged, 0, in A, in b, ref x, ref Ap, ref tmpN);
+                return LstsqInfoAudited(IterativeSolveStatus.Converged, 0, in A, in b, ref x, ref Ap, ref tmpN, damp);
 
             // Initial augmented search direction [A|λI]ᵀ r0 = (Aᵀ r0, λ r0).
             A.ApplyT(in r, ref p);            // p_c = Aᵀ r
@@ -201,7 +202,7 @@ namespace LinearAlgebra
             {
                 double pp = Blas.dot(p, p) + Blas.dot(ps, ps);   // ‖(p_c,p_s)‖²
                 if (!(pp > (double)0))
-                    return LstsqInfoAudited(IterativeSolveStatus.Breakdown, k, in A, in b, ref x, ref Ap, ref tmpN);
+                    return LstsqInfoAudited(IterativeSolveStatus.Breakdown, k, in A, in b, ref x, ref Ap, ref tmpN, damp);
 
                 double alpha = rr / pp;
 
@@ -222,7 +223,7 @@ namespace LinearAlgebra
                         augSq += e * e;
                     }
                     if (augSq <= threshold)
-                        return LstsqInfoAudited(IterativeSolveStatus.Converged, k + 1, in A, in b, ref x, ref Ap, ref tmpN);
+                        return LstsqInfoAudited(IterativeSolveStatus.Converged, k + 1, in A, in b, ref x, ref Ap, ref tmpN, damp);
                 }
 
                 double beta = rrNew / rr;
@@ -234,7 +235,7 @@ namespace LinearAlgebra
                 rr = rrNew;
             }
 
-            return LstsqInfoAudited(IterativeSolveStatus.MaxIterations, maxIter, in A, in b, ref x, ref Ap, ref tmpN);
+            return LstsqInfoAudited(IterativeSolveStatus.MaxIterations, maxIter, in A, in b, ref x, ref Ap, ref tmpN, damp);
         }
 
         /// <summary>

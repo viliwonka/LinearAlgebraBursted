@@ -85,6 +85,20 @@ namespace LinearAlgebra
             return info;
         }
 
+        /// <summary>Damped variant of <see cref="LstsqInfoAudited{TOp}(IterativeSolveStatus, int, in TOp, in fProxyN, ref fProxyN, ref fProxyN, ref fProxyN)"/>:
+        /// forwards <paramref name="damp"/> so Arnorm is the Tikhonov gradient ‖Aᵀr - damp²x‖ (→0 at
+        /// the regularized optimum -- the meaningful convergence indicator), while rnorm stays the
+        /// UNDAMPED ‖b-Ax‖ (nonzero at the damped optimum). Used by damped cgne.</summary>
+        static LstsqInfo LstsqInfoAudited<TOp>(IterativeSolveStatus status, int iterations, in TOp A, in fProxyN b,
+                                                 ref fProxyN x, ref fProxyN rScratch, ref fProxyN sScratch, fProxy damp)
+            where TOp : struct, IfProxyLinearOperator
+        {
+            var info = lstsqResidual(in A, in b, in x, damp, ref rScratch, ref sScratch);
+            info.iterations = iterations;
+            info.status = status;
+            return info;
+        }
+
         // Right (column) preconditioned convenience overloads.
         // lsqrRightPre / lsmrRightPre solve min ‖Ax-b‖ through a change of variables x = N·y with a
         // caller-supplied SYMMETRIC preconditioner N (n×n, IfProxyPreconditioner): wrap A in a

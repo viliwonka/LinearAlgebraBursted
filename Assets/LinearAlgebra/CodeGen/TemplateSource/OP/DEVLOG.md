@@ -26,8 +26,10 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   against +shift in the diagonal alfa, so β and the Lanczos vectors are identical to unshifted; only
   T's diagonal shifts by -shift. Implemented as option (a): shift the matvec directly (one axpy),
   which makes alfa, the recurrence, and all downstream QLP machinery consistent with zero extra
-  bookkeeping. FOUR shift sites, each guarded `if (shift != 0)` so a compile-time-0 forwarder
-  Burst-folds it away: Lanczos matvec (A·v - shift·v), initial residual r0 = b - (A-shift·I)x, final
+  bookkeeping. FOUR shift sites, each guarded `if (shift != 0)` — a RUNTIME branch-skip (shift is a
+  runtime parameter of the generic primitive, NOT a compile-time constant like IsIdentity, so it is
+  not Burst-folded; the zero-shift forwarder simply doesn't take the branch → bit-identical): Lanczos
+  matvec (A·v - shift·v), initial residual r0 = b - (A-shift·I)x, final
   true residual (inlined instead of VerifyTrueResidual so r1 keeps the SHIFTED residual for the LS
   certificate), and the ‖A·r‖ certificate ((A-shift·I)·r). Preconditioned case unchanged (M applied
   after the shifted matvec — solving M-weighted B). This is a lambda (eigenvalue) shift on the
@@ -249,6 +251,12 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   already had damp; craig/craigmr/lnlq (generalized bidiag damping) and lslq (known ~1.4e-3 λ-rotation
   bias) remain deliberately undamped — see their notes. Tests: fProxyCGNEDampedTests (dense
   Aᵀ(AAᵀ+damp²I)⁻¹b oracle, nonzero-reported-residual contract, damp==0 bit-identity).
+- 2026-07-22 | Review follow-up: the damped exits route through a new `LstsqInfoAudited(…, damp)`
+  overload (forwards damp to lstsqResidual) so Info.Arnorm is the Tikhonov gradient ‖Aᵀr − damp²x‖
+  (→0 at the optimum — the meaningful convergence cert), not the undamped ‖Aᵀr‖ (= damp²‖x‖, nonzero).
+  rnorm stays the undamped ‖b−Ax‖. Undamped LstsqInfoAudited (cgne/craig) unchanged. Added
+  rank-deficient (two identical rows) + BSR-path damped tests; the review panel found no correctness
+  bugs in the recurrence.
 
 ## Krylov.CGNE — direct-CG least-norm (κ² route); LNLQ deferred
 - 2026-07-21 | Added `cgne` = CG on AAᵀ (x = Aᵀy, matrix-free), the direct-CG minimum-norm solver.

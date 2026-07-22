@@ -62,7 +62,6 @@ public class doubleFGMRESTests
         public TestType Type;
 
         static double Tol() => 1e-9;
-        static double MatchTol() => 1e-7;
 
         // Dense nonsymmetric, diagonally dominant (well-conditioned, nonsingular): random entries +
         // a heavy diagonal. Not symmetric (random off-diagonals differ across the diagonal).
@@ -99,11 +98,10 @@ public class doubleFGMRESTests
             }
         }
 
-        // Constant preconditioner (block-Jacobi, degenerates to point-Jacobi at BR=1): fgmres's
-        // per-step z_j = M⁻¹ v_j stored into Z is mathematically the SAME Krylov sequence as
-        // gmres's A M⁻¹ v_j with the solution recovered as M⁻¹(Σ y_i v_i) -- for constant M,
-        // Z y == M⁻¹(V y) by linearity. Verified via residual + close solutions + close iteration
-        // counts (small floating-point slack from the different accumulation order).
+        // Constant preconditioner (block-Jacobi, IsConstant == true): post-GmresCore-merge, a
+        // CONSTANT M makes fgmres take the SAME standard (single-zt) path as gmres -- not the Z
+        // basis -- so fgmres(constant M) is now BIT-IDENTICAL to gmres(constant M), not merely
+        // close. Assert exact equality on iterations, rnorm, and every x component.
         void MatchesGmresConstantPrecond()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -124,9 +122,10 @@ public class doubleFGMRESTests
             Assert.IsTrue(gi.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(fi.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(doubleKrylovBatteryOracles.RelResidualBSR(in A, in xF, in b) <= tol);
-            Assert.IsTrue(math.abs(fi.iterations - gi.iterations) <= 2);
+            Assert.IsTrue(fi.iterations == gi.iterations);
+            Assert.IsTrue(fi.rnorm == gi.rnorm);
             for (int i = 0; i < n; i++)
-                Assert.IsTrue(math.abs(xF[i] - xG[i]) <= MatchTol() * ((double)1 + math.abs(xG[i])));
+                Assert.IsTrue(xF[i] == xG[i]);
 
             arena.Dispose();
         }

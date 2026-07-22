@@ -1,5 +1,7 @@
 using System;
 using LinearAlgebra;
+using LinearAlgebra.Gallery;
+using LinearAlgebra.Sparse;
 using NUnit.Framework;
 using Unity.Collections;
 using Unity.Mathematics;
@@ -64,6 +66,9 @@ public class fProxyCGNEDampedTests
         // a 1e-3 relative gate is comfortable yet catches a mis-derived recurrence (which diverges).
         Assert.IsTrue(info.status == IterativeSolveStatus.Converged, "damped cgne should converge");
         Assert.LessOrEqual(rel, 1e-3, "damped cgne must match Aᵀ(AAᵀ+damp²I)⁻¹b");
+        // Arnorm is the Tikhonov gradient ‖Aᵀr - damp²x‖ (→0 at the optimum), so it is the small
+        // convergence cert -- distinct from rnorm = ‖b-Ax‖ which stays O(‖b‖) here.
+        Assert.Less((double)info.Arnorm, 0.1 * (1.0 + (double)info.rnorm), "damped Arnorm (‖Aᵀr-damp²x‖) must →0");
 
         arena.Dispose();
     }
@@ -117,6 +122,59 @@ public class fProxyCGNEDampedTests
 
         for (int i = 0; i < n; i++)
             Assert.AreEqual((double)xUn[i], (double)xZero[i], "damp==0 must be bit-identical to undamped cgne");
+
+        arena.Dispose();
+    }
+
+    // (4) Regularization makes a RANK-DEFICIENT A well-posed (AAᵀ+damp²I is SPD even when AAᵀ is
+    //     singular). Two identical rows -> rank-1-deficient AAᵀ; the damped solve must still converge
+    //     and match the dense oracle. (Undamped cgne would break down here.)
+    [Test]
+    public void DampedHandlesRankDeficient()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        int m = 6, n = 10;
+        var A = BuildWide(ref arena, m, n, 0x4A11u);
+        for (int j = 0; j < n; j++) A[1, j] = A[0, j];   // row 1 := row 0 -> AAᵀ singular
+        var b = arena.fProxyRandomVec(m, (fProxy)(-2f), (fProxy)2f, 0x55u);
+        fProxy damp = (fProxy)0.5;
+
+        var x = arena.fProxyVec(n);
+        var info = Krylov.cgne(in A, in b, ref x, 8 * m, Consts.fProxySqrtEps, damp);
+
+        var xOracle = arena.fProxyVec(n);
+        DampedOracle(ref arena, in A, in b, damp, ref xOracle);
+
+        fProxy num = (fProxy)0, den = (fProxy)0;
+        for (int i = 0; i < n; i++)
+        {
+            fProxy d = x[i] - xOracle[i];
+            num += d * d; den += xOracle[i] * xOracle[i];
+        }
+        double rel = math.sqrt((double)num / math.max((double)den, 1e-300));
+        Assert.IsTrue(info.status == IterativeSolveStatus.Converged, "damped cgne must converge on a rank-deficient A");
+        Assert.LessOrEqual(rel, 1e-3, "damped cgne on rank-deficient A must match the dense oracle");
+
+        arena.Dispose();
+    }
+
+    // (5) BSR path: exercises fProxyBSROperator Apply/ApplyT + the materialized-transpose ctor. Square
+    //     SPD BSR (Laplacian2D). Self-certifying: status Converged, the Tikhonov gradient Arnorm →0,
+    //     and the augmented residual ‖b - A x - damp·s‖ small (checked via A x through the operator).
+    [Test]
+    public void DampedBSRPathConverges()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        var A = arena.fProxyLaplacian2D(4, 4);   // 16x16 SPD (Rows == Cols, valid for cgne)
+        int n = A.M_Rows;
+        var b = arena.fProxyRandomVec(n, (fProxy)(-1f), (fProxy)1f, 0xB5Bu);
+        fProxy damp = (fProxy)0.75;
+
+        var x = arena.fProxyVec(n);
+        var info = Krylov.cgne(in A, in b, ref x, 8 * n, Consts.fProxySqrtEps, damp);
+
+        Assert.IsTrue(info.status == IterativeSolveStatus.Converged, "damped BSR cgne should converge");
+        Assert.Less((double)info.Arnorm, 0.1 * (1.0 + (double)info.rnorm), "BSR damped Arnorm must →0");
 
         arena.Dispose();
     }
