@@ -1,6 +1,19 @@
 # DEVLOG — TemplateSourceTests
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## KrylovBlockBatteryTests — check #13 dense SPD preconditioner
+- 2026-07-22 | Coverage guard added after the block-MINRES #49 postmortem: check #5 only ever
+  drove the preconditioned block path with a BLOCK-DIAGONAL (block-Jacobi) M over BSR, which
+  cannot expose a recurrence that mishandles M's OFF-diagonal coupling — exactly the
+  V-space-vs-r-space bug class that had gated bminres. #13 runs a fully-coupled dense SPD M
+  (mild I + WᵀW/2n, IfProxyPreconditioner) through SolveWithPrecond for the three SPD block-CG
+  solvers (bcg/bcgrq/bfbcg, gated by CheckFlags.AllSpd), asserting Converged/MaxIter + small
+  fresh residual + per-column oracle agreement. Restricted to WELL-conditioned SPD dense entries
+  (Laplacian1D_8/RandSPDWellCond20 + tiny SPD literature) so a correct solver converges cleanly;
+  any SPD M keeps preconditioned CG landing on the same solution, so a wrong M-coupling would
+  diverge/miss the oracle. Defensive (the Fable audit already proved these three r-space-correct),
+  not a red-first fix. dense-only — the dense operator path is where the fully-coupled M matters.
+
 ## KrylovVerifyAtExitTests — minresQLP two-certificate rework
 - 2026-07-21 | Two tests for the problem-relative maxxnorm cap (+ Anorm-estimator fix; see
   TemplateSource/OP DEVLOG, Krylov.MINRESQLP).

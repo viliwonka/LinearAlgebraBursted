@@ -45,6 +45,16 @@ namespace LinearAlgebra
                 throw new ArgumentException("bcg (block): Z must match B");
             if (maxIter < 1) throw new ArgumentException("bcg (block): maxIter must be >= 1");
 
+            unsafe
+            {
+                int cnt = M.IsIdentity ? 5 : 6;
+                long* ptrs = stackalloc long[6];
+                ptrs[0] = (long)X.Data.Ptr; ptrs[1] = (long)R.Data.Ptr; ptrs[2] = (long)P.Data.Ptr;
+                ptrs[3] = (long)Q.Data.Ptr; ptrs[4] = (long)B.Data.Ptr;
+                if (!M.IsIdentity) ptrs[5] = (long)Z.Data.Ptr;
+                RequireDistinctBuffers("bcg (block): X/R/P/Q/Z/B must be distinct", ptrs, cnt);
+            }
+
             // s x s coefficient scratch + per-column thresholds + row scratch for the preconditioner.
             var PQ    = new doubleMxN(s, s, Allocator.Temp, true);
             var RZ    = new doubleMxN(s, s, Allocator.Temp, true);

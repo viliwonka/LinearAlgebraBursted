@@ -1,6 +1,14 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.Block.CG — bcg aliasing guard
+- 2026-07-22 | Added the RequireDistinctBuffers guard (X/R/P/Q/B, plus Z under a real M) that its
+  sibling block solvers (bminres/bbiCGStab/btfqmr/bcraig/bcraigmr) already carry — bcg was the
+  outlier with only shape checks. Left bcgrq/bfbcg's guards out on purpose: bfbcg DELIBERATELY
+  aliases Z onto R under the identity preconditioner (see its own comment), so a blanket
+  distinct-buffer guard there would be wrong; bcgrq deferred with it. Surfaced by the Fable/Sonnet
+  block-solver audit that followed the bminres #49 fix.
+
 ## Krylov.LSQR / Krylov.LSMR — GENERAL (non-symmetric) right preconditioning
 - 2026-07-22 | Follow-on to the symmetric path below: added `lsqrRightPreOp`/`lsmrRightPreOp`
   (dense + BSR, damped + undamped + default ladder) taking N as a general

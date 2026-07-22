@@ -35,6 +35,32 @@ public class fProxyKrylovBlockBatteryTests
 
         public SolverKind Kind;
 
+        // Dense SPD preconditioner for check #13: z = Nmat * r (a fully-coupled dense mat-vec). Nmat
+        // is SPD and MILD (I + W^T W / (2n), eigenvalues in [1, ~], mild cond) so it exercises the
+        // recurrence's off-diagonal M-coupling WITHOUT hurting convergence on a well-conditioned A.
+        struct BlockSpdPre : IfProxyPreconditioner
+        {
+            public fProxyMxN Nmat;
+            public bool IsIdentity => false;
+            public void Apply(in fProxyN r, ref fProxyN z) => Blas.dot(in Nmat, in r, ref z);
+        }
+
+        // Mild non-diagonal SPD N = I + W^T W / (2n) (bit-exactly symmetric: (i,j) and (j,i) sums run
+        // the same k order), eigenvalues >= 1, mild condition number.
+        static fProxyMxN BuildDenseSpdPre(ref Arena arena, int n, uint seed)
+        {
+            var W = arena.fProxyRandomMat(n, n, (fProxy)(-1), (fProxy)1, seed);
+            var Nmat = arena.fProxyMat(n);
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                {
+                    fProxy s = (fProxy)0;
+                    for (int k = 0; k < n; k++) s += W[k, i] * W[k, j];
+                    Nmat[i, j] = s / (fProxy)(2 * n) + (i == j ? (fProxy)1 : (fProxy)0);
+                }
+            return Nmat;
+        }
+
         // [0] flag (1 = failure recorded) [1] matrix-enum-as-int [2] check-id [3] got [4] expected
         public NativeArray<fProxy> Fail;
 
@@ -54,8 +80,13 @@ public class fProxyKrylovBlockBatteryTests
             public bool NoBreakdown;        // #9: status != Breakdown on the forced-duplicate-row RHS
             public bool IdenticalColumns;   // #8: X[0,:] == X[S-1,:] on the forced-duplicate-row RHS
             public bool SkipTinyDense;      // additionally exclude the n<=5 dense gallery entries
+            public bool DensePrecondSPD;    // #13: dense non-diagonal SPD preconditioner (SPD solvers)
 
             public static CheckFlags All(int s) => new CheckFlags { S = s, BlockAdvantage = true, NoBreakdown = true, IdenticalColumns = true };
+
+            // All() plus check #13: for the SPD block-CG solvers (bcg/bcgrq/bfbcg), whose symmetric
+            // preconditioned path accepts an arbitrary SPD M.
+            public static CheckFlags AllSpd(int s) => new CheckFlags { S = s, BlockAdvantage = true, NoBreakdown = true, IdenticalColumns = true, DensePrecondSPD = true };
         }
 
         // The n<=5 dense literature entries (Fiedler5/Clement4/MinIJ_5/Pei5_2/Lehmer5) -- used only by
@@ -73,19 +104,19 @@ public class fProxyKrylovBlockBatteryTests
                     RunBlockStandardChecks(
                         new fProxyBcgInvoker { TolValue = Consts.fProxySqrtEps, MaxIterMul = 20 },
                         new fProxyCgInvoker { TolValue = Consts.fProxySqrtEps, MaxIterMul = 20 },
-                        CheckFlags.All(4));
+                        CheckFlags.AllSpd(4));
                     break;
                 case SolverKind.Bcgrq:
                     RunBlockStandardChecks(
                         new fProxyBcgrqInvoker { TolValue = Consts.fProxySqrtEps, MaxIterMul = 20 },
                         new fProxyCgInvoker { TolValue = Consts.fProxySqrtEps, MaxIterMul = 20 },
-                        CheckFlags.All(4));
+                        CheckFlags.AllSpd(4));
                     break;
                 case SolverKind.Bfbcg:
                     RunBlockStandardChecks(
                         new fProxyBfbcgInvoker { TolValue = Consts.fProxySqrtEps, MaxIterMul = 20 },
                         new fProxyCgInvoker { TolValue = Consts.fProxySqrtEps, MaxIterMul = 20 },
-                        CheckFlags.All(4));
+                        CheckFlags.AllSpd(4));
                     break;
                 case SolverKind.Bminres:
                     // bminres's block-Lanczos genuinely needs headroom between s, n, AND the matrix
@@ -296,6 +327,32 @@ public class fProxyKrylovBlockBatteryTests
             Record(info4a.iterations == info4b.iterations, (int)gm, 4, (fProxy)info4a.iterations, (fProxy)info4b.iterations);
             VerifyHonestBlockOp(info4a.status, in Aop, in X4a, in B, flags.S, n, inv.Tol, (int)gm);
             VerifyHonestBlockOp(info4b.status, in Aop, in X4b, in B, flags.S, n, inv.Tol, (int)gm);
+
+            // 13. Dense non-diagonal SPD preconditioner (SPD block-CG solvers only). Check #5 exercises
+            // the preconditioned path with a BLOCK-DIAGONAL (block-Jacobi) M over BSR; a fully-coupled
+            // dense SPD M is the regression guard for a recurrence that mishandles M's off-diagonal
+            // coupling (the V-space-vs-r-space class of bug that gated block MINRES). Any SPD M keeps
+            // preconditioned block-CG converging to the SAME solution, so this asserts Converged/
+            // MaxIterations, a small fresh residual, and per-column agreement with the direct oracle.
+            // Restricted to well-conditioned SPD dense entries so a correct solver converges cleanly.
+            if (flags.DensePrecondSPD && (tags & MatrixProfile.SPD) != 0 && (tags & MatrixProfile.IllConditioned) == 0)
+            {
+                var M13 = new BlockSpdPre { Nmat = BuildDenseSpdPre(ref arena, n, 0xD500u + (uint)gm) };
+                var X13 = arena.fProxyMat(flags.S, n);
+                BlockSolveInfo info13 = inv.SolveWithPrecond(in Aop, in M13, in B, ref X13);
+                bool statusOk13 = info13.status == IterativeSolveStatus.Converged || info13.status == IterativeSolveStatus.MaxIterations;
+                Record(statusOk13, (int)gm, 13, (fProxy)(int)info13.status, (fProxy)0);
+                fProxy relRes13 = fProxyKrylovBatteryOracles.RelResidualBlockDense(in A, in X13, in B);
+                Record(relRes13 <= (fProxy)10 * inv.Tol, (int)gm, 13, relRes13, (fProxy)10 * inv.Tol);
+                for (int j = 0; j < flags.S; j++)
+                {
+                    var bj = fProxyKrylovBatteryOracles.Row(ref arena, in B, j, n);
+                    var xRefj = ReferenceSolveDense(in A, in bj, tags);
+                    for (int c = 0; c < n; c++)
+                        Record(math.abs(X13[j, c] - xRefj[c]) <= tolBand * ((fProxy)1 + math.abs(xRefj[c])), (int)gm, 13, X13[j, c], xRefj[c]);
+                }
+                VerifyHonestBlockOp(info13.status, in Aop, in X13, in B, flags.S, n, inv.Tol, (int)gm);
+            }
 
             CheckBlockAdditions(inv, scalarInv, ref arena, in Aop, n, tags, (int)gm, 0xD800u + (uint)gm, flags);
 
