@@ -122,6 +122,32 @@ namespace LinearAlgebra
     }
 
     /// <summary>
+    /// Symmetric diagonal preconditioner N = diag(d): <see cref="Apply"/> gives z = d .* r.
+    /// The natural <see cref="IdoublePreconditioner"/> for least-squares right (column)
+    /// preconditioning via <see cref="doubleRightPreconditionedOperator{TInner,TPre}"/> (d built
+    /// e.g. from <c>Blas.columnNormsSquared</c> + <c>Blas.buildJacobiScale</c>). z must be
+    /// distinct from r. Holds the <c>D</c> handle (length n); no buffer copy.
+    /// </summary>
+    public readonly struct doubleDiagonalPreconditioner : IdoublePreconditioner
+    {
+        public readonly doubleN D;   // length n: the diagonal of N
+
+        public doubleDiagonalPreconditioner(in doubleN d)
+        {
+            D = d;
+        }
+
+        public bool IsIdentity => false;
+
+        public void Apply(in doubleN r, ref doubleN z)
+        {
+            if (z.N != r.N || D.N != r.N)
+                throw new System.ArgumentException("doubleDiagonalPreconditioner.Apply: r, z and D lengths must match");
+            for (int j = 0; j < r.N; j++) z[j] = D[j] * r[j];
+        }
+    }
+
+    /// <summary>
     /// Identity linear operator: y = x (an exact bit-copy), Rows == Cols == the size fixed at
     /// construction. Lets B=I callers (e.g. <see cref="Eigen.lobpcg{TOp,TPre}"/>) forward the
     /// standard eigenproblem into the generalized <see cref="Eigen.lobpcg{TOp,TBOp,TPre}"/> core
@@ -207,6 +233,81 @@ namespace LinearAlgebra
 
         // Composes: Apply, then a separate dot pass. This wrapper is RECTANGULAR in its usual
         // callers (lsqr/lsmr column-preconditioning, x length Cols, y length Rows) -- dot(x,y)
+        // isn't even well-formed there, so ApplyDot exists only to satisfy the interface; no
+        // solver calls it on this operator today (lsqr/lsmr don't use ApplyDot).
+        public double ApplyDot(in doubleN x, ref doubleN y)
+        {
+            Apply(in x, ref y);
+            return Blas.dot(x, y);
+        }
+
+        // No block specialization (this wrapper composes over an arbitrary inner operator): apply per
+        // row through the scalar Apply, into two bounded Temp scratch vectors.
+        public void ApplyBlock(in doubleMxN Vrows, ref doubleMxN AVrows, int rows)
+        {
+            int cols = Vrows.N_Cols;
+            int outCols = Inner.Rows;
+            var rin = new doubleN(cols, Unity.Collections.Allocator.Temp, false);
+            var rout = new doubleN(outCols, Unity.Collections.Allocator.Temp, false);
+            for (int i = 0; i < rows; i++)
+            {
+                for (int c = 0; c < cols; c++) rin[c] = Vrows[i, c];
+                Apply(in rin, ref rout);
+                for (int c = 0; c < outCols; c++) AVrows[i, c] = rout[c];
+            }
+            rout.Dispose();
+            rin.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Wraps <typeparamref name="TInner"/> with a SYMMETRIC right (column) preconditioner N
+    /// (n×n, n = Inner.Cols), presenting the operator A·N. <see cref="Apply"/> forms A(N·x) via an
+    /// owned scratch buffer; <see cref="ApplyT"/> forms N(Aᵀx) -- valid only because N = Nᵀ, which
+    /// the caller must guarantee. Solve (A·N) y = b for y, then recover x = N·y. <c>scratch</c>
+    /// must not alias any vector passed to Apply/ApplyT. With Tikhonov damping, damping the
+    /// preconditioned system penalizes ‖y‖ = ‖N⁻¹x‖ (an N-weighted ridge on x), not ‖x‖ -- a
+    /// different regularizer.
+    /// </summary>
+    public readonly struct doubleRightPreconditionedOperator<TInner, TPre> : IdoubleLinearOperator
+        where TInner : struct, IdoubleLinearOperator
+        where TPre : struct, IdoublePreconditioner
+    {
+        public readonly TInner Inner;
+        public readonly TPre N;           // symmetric right preconditioner
+        public readonly doubleN Scratch;  // length Inner.Cols: workspace (holds N·x / Aᵀx)
+
+        public doubleRightPreconditionedOperator(in TInner inner, in TPre n, in doubleN scratch)
+        {
+            if (scratch.N != inner.Cols)
+                throw new System.ArgumentException("doubleRightPreconditionedOperator: scratch.N must equal inner.Cols");
+
+            Inner = inner;
+            N = n;
+            Scratch = scratch;
+        }
+
+        public int Rows => Inner.Rows;
+        public int Cols => Inner.Cols;
+
+        // (A N) x = A (N x). Preconditions into the owned Scratch so the caller's x is untouched.
+        public void Apply(in doubleN x, ref doubleN y)
+        {
+            doubleN s = Scratch;
+            N.Apply(in x, ref s);
+            Inner.Apply(in s, ref y);
+        }
+
+        // (A N)ᵀ x = N Aᵀ x (N symmetric). Inner transpose into the owned Scratch, then N into y.
+        public void ApplyT(in doubleN x, ref doubleN y)
+        {
+            doubleN s = Scratch;
+            Inner.ApplyT(in x, ref s);
+            N.Apply(in s, ref y);
+        }
+
+        // Composes: Apply, then a separate dot pass. This wrapper is RECTANGULAR in its usual
+        // callers (lsqr/lsmr right preconditioning, x length Cols, y length Rows) -- dot(x,y)
         // isn't even well-formed there, so ApplyDot exists only to satisfy the interface; no
         // solver calls it on this operator today (lsqr/lsmr don't use ApplyDot).
         public double ApplyDot(in doubleN x, ref doubleN y)

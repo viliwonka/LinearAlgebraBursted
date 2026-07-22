@@ -334,40 +334,91 @@ namespace LinearAlgebra
             return lsmr(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
         }
 
-        // ---- LSMR + Jacobi ----
-        /// <summary>LSMR with an AᵀA-Jacobi column-equilibration preconditioner over a dense matrix.</summary>
-        public static LstsqInfo lsmrJacobi(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol)
+        // ---- LSMR + right (column) preconditioner ----
+        /// <summary>
+        /// LSMR with a caller-supplied SYMMETRIC right (column) preconditioner N (n×n) over a dense
+        /// matrix: solves min ‖Ax-b‖² + damp²‖N⁻¹x‖² through the change of variables x = N·y
+        /// (COLD start -- x is zeroed internally), then reports diagnostics in ORIGINAL coordinates
+        /// (see <c>RightPreFinish</c>). N must be symmetric: the wrapped operator's transpose relies
+        /// on (A·N)ᵀ = N·Aᵀ. Note the damped term penalizes ‖y‖ = ‖N⁻¹x‖, NOT ‖x‖ -- a different
+        /// regularizer than the plain damped <c>lsmr</c>. Allocates from b's temp pool.
+        /// </summary>
+        public static LstsqInfo lsmrRightPre<TPre>(in fProxyMxN A, in TPre N, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol, fProxy damp)
+            where TPre : struct, IfProxyPreconditioner
+            => LsmrRightPreCore(new fProxyDenseOperator(in A), in N, in b, ref x, maxIter, tol, damp);
+
+        /// <summary>Undamped right-preconditioned LSMR over a dense matrix (damp = 0): plain
+        /// least-squares, accelerated by N.</summary>
+        public static LstsqInfo lsmrRightPre<TPre>(in fProxyMxN A, in TPre N, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol)
+            where TPre : struct, IfProxyPreconditioner
+            => LsmrRightPreCore(new fProxyDenseOperator(in A), in N, in b, ref x, maxIter, tol, (fProxy)0);
+
+        /// <summary>Right-preconditioned LSMR (dense), default maxIter (A.N_Cols) / tol (Consts.fProxySqrtEps).</summary>
+        public static LstsqInfo lsmrRightPre<TPre>(in fProxyMxN A, in TPre N, in fProxyN b, ref fProxyN x)
+            where TPre : struct, IfProxyPreconditioner
+            => LsmrRightPreCore(new fProxyDenseOperator(in A), in N, in b, ref x, A.N_Cols, Consts.fProxySqrtEps, (fProxy)0);
+
+        /// <summary>Right-preconditioned damped LSMR over a BSR matrix (materializes Aᵀ once) --
+        /// same contract as the dense overload.</summary>
+        public static LstsqInfo lsmrRightPre<TPre>(in fProxyBSR A, in TPre N, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol, fProxy damp)
+            where TPre : struct, IfProxyPreconditioner
         {
-            int m = A.M_Rows, n = A.N_Cols;
-            fProxyN d = b.fProxyTempVec(n), d2 = b.fProxyTempVec(n), scratch = b.fProxyTempVec(n);
-            Blas.columnNormsSquared(in A, ref d2);
-            Blas.buildJacobiScale(in d2, ref d);
-            var op = new fProxyColScaledOperator<fProxyDenseOperator>(new fProxyDenseOperator(in A), d, scratch);
+            fProxyBSR AT = b.fProxyBSRTranspose(in A);
+            return LsmrRightPreCore(new fProxyBSROperator(in A, in AT), in N, in b, ref x, maxIter, tol, damp);
+        }
+
+        /// <summary>Undamped right-preconditioned LSMR over a BSR matrix (damp = 0, materializes Aᵀ once).</summary>
+        public static LstsqInfo lsmrRightPre<TPre>(in fProxyBSR A, in TPre N, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol)
+            where TPre : struct, IfProxyPreconditioner
+            => lsmrRightPre(in A, in N, in b, ref x, maxIter, tol, (fProxy)0);
+
+        /// <summary>Right-preconditioned LSMR (BSR), default maxIter (A.N_Cols) / tol (Consts.fProxySqrtEps).</summary>
+        public static LstsqInfo lsmrRightPre<TPre>(in fProxyBSR A, in TPre N, in fProxyN b, ref fProxyN x)
+            where TPre : struct, IfProxyPreconditioner
+            => lsmrRightPre(in A, in N, in b, ref x, A.N_Cols, Consts.fProxySqrtEps, (fProxy)0);
+
+        /// <summary>Shared worker for the right-preconditioned LSMR entry points: wrap Aop as A·N,
+        /// cold-start, solve (A·N)y = b, then map back and re-audit via <c>RightPreFinish</c>.
+        /// Scratch is temp-pool allocated from b.</summary>
+        static LstsqInfo LsmrRightPreCore<TOp, TPre>(in TOp Aop, in TPre N, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol, fProxy damp)
+            where TOp : struct, IfProxyLinearOperator
+            where TPre : struct, IfProxyPreconditioner
+        {
+            int m = Aop.Rows, n = Aop.Cols;
+            fProxyN scratch = b.fProxyTempVec(n);
+            var op = new fProxyRightPreconditionedOperator<TOp, TPre>(in Aop, in N, in scratch);
 
             for (int j = 0; j < n; j++) x[j] = (fProxy)0;
             fProxyN u = b.fProxyTempVec(m), v = b.fProxyTempVec(n), h = b.fProxyTempVec(n), hbar = b.fProxyTempVec(n), tmpM = b.fProxyTempVec(m), tmpN = b.fProxyTempVec(n);
-            var solveInfo = lsmr(op, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIter, tol);
-            return JacobiFinish(new fProxyDenseOperator(in A), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref u, ref v);
+            var solveInfo = lsmr(op, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIter, tol, damp);
+            return RightPreFinish(in Aop, in N, in b, ref x, damp, solveInfo.iterations, solveInfo.status, ref u, ref v);
+        }
+
+        // ---- LSMR + Jacobi ----
+        /// <summary>LSMR with an AᵀA-Jacobi column-equilibration preconditioner over a dense matrix:
+        /// the diagonal case of <c>lsmrRightPre</c> with N = diag(1/‖A_:,j‖).</summary>
+        public static LstsqInfo lsmrJacobi(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol)
+        {
+            int n = A.N_Cols;
+            fProxyN d = b.fProxyTempVec(n), d2 = b.fProxyTempVec(n);
+            Blas.columnNormsSquared(in A, ref d2);
+            Blas.buildJacobiScale(in d2, ref d);
+            return lsmrRightPre(in A, new fProxyDiagonalPreconditioner(in d), in b, ref x, maxIter, tol);
         }
 
         /// <summary>LSMR + Jacobi (dense), default maxIter (A.N_Cols) / tol (Consts.fProxySqrtEps).</summary>
         public static LstsqInfo lsmrJacobi(in fProxyMxN A, in fProxyN b, ref fProxyN x)
             => lsmrJacobi(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
 
-        /// <summary>LSMR with an AᵀA-Jacobi preconditioner over a BSR matrix (materializes Aᵀ once).</summary>
+        /// <summary>LSMR with an AᵀA-Jacobi preconditioner over a BSR matrix (materializes Aᵀ once):
+        /// the diagonal case of <c>lsmrRightPre</c> with N = diag(1/‖A_:,j‖).</summary>
         public static LstsqInfo lsmrJacobi(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol)
         {
-            int m = A.M_Rows, n = A.N_Cols;
-            fProxyN d = b.fProxyTempVec(n), d2 = b.fProxyTempVec(n), scratch = b.fProxyTempVec(n);
+            int n = A.N_Cols;
+            fProxyN d = b.fProxyTempVec(n), d2 = b.fProxyTempVec(n);
             BSR.columnNormsSquared(in A, ref d2);
             Blas.buildJacobiScale(in d2, ref d);
-            fProxyBSR AT = b.fProxyBSRTranspose(in A);
-            var op = new fProxyColScaledOperator<fProxyBSROperator>(new fProxyBSROperator(in A, in AT), d, scratch);
-
-            for (int j = 0; j < n; j++) x[j] = (fProxy)0;
-            fProxyN u = b.fProxyTempVec(m), v = b.fProxyTempVec(n), h = b.fProxyTempVec(n), hbar = b.fProxyTempVec(n), tmpM = b.fProxyTempVec(m), tmpN = b.fProxyTempVec(n);
-            var solveInfo = lsmr(op, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIter, tol);
-            return JacobiFinish(new fProxyBSROperator(in A, in AT), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref u, ref v);
+            return lsmrRightPre(in A, new fProxyDiagonalPreconditioner(in d), in b, ref x, maxIter, tol);
         }
 
         /// <summary>LSMR + Jacobi (BSR), default maxIter (A.N_Cols) / tol (Consts.fProxySqrtEps).</summary>

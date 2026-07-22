@@ -297,40 +297,91 @@ namespace LinearAlgebra
             return lsqr(in A, in b, ref x, A.N_Cols, Consts.doubleSqrtEps);
         }
 
-        // ---- LSQR + Jacobi ----
-        /// <summary>LSQR with an AᵀA-Jacobi column-equilibration preconditioner over a dense matrix.</summary>
-        public static LstsqInfo lsqrJacobi(in doubleMxN A, in doubleN b, ref doubleN x, int maxIter, double tol)
+        // ---- LSQR + right (column) preconditioner ----
+        /// <summary>
+        /// LSQR with a caller-supplied SYMMETRIC right (column) preconditioner N (n×n) over a dense
+        /// matrix: solves min ‖Ax-b‖² + damp²‖N⁻¹x‖² through the change of variables x = N·y
+        /// (COLD start -- x is zeroed internally), then reports diagnostics in ORIGINAL coordinates
+        /// (see <c>RightPreFinish</c>). N must be symmetric: the wrapped operator's transpose relies
+        /// on (A·N)ᵀ = N·Aᵀ. Note the damped term penalizes ‖y‖ = ‖N⁻¹x‖, NOT ‖x‖ -- a different
+        /// regularizer than the plain damped <c>lsqr</c>. Allocates from b's temp pool.
+        /// </summary>
+        public static LstsqInfo lsqrRightPre<TPre>(in doubleMxN A, in TPre N, in doubleN b, ref doubleN x, int maxIter, double tol, double damp)
+            where TPre : struct, IdoublePreconditioner
+            => LsqrRightPreCore(new doubleDenseOperator(in A), in N, in b, ref x, maxIter, tol, damp);
+
+        /// <summary>Undamped right-preconditioned LSQR over a dense matrix (damp = 0): plain
+        /// least-squares, accelerated by N.</summary>
+        public static LstsqInfo lsqrRightPre<TPre>(in doubleMxN A, in TPre N, in doubleN b, ref doubleN x, int maxIter, double tol)
+            where TPre : struct, IdoublePreconditioner
+            => LsqrRightPreCore(new doubleDenseOperator(in A), in N, in b, ref x, maxIter, tol, (double)0);
+
+        /// <summary>Right-preconditioned LSQR (dense), default maxIter (A.N_Cols) / tol (Consts.doubleSqrtEps).</summary>
+        public static LstsqInfo lsqrRightPre<TPre>(in doubleMxN A, in TPre N, in doubleN b, ref doubleN x)
+            where TPre : struct, IdoublePreconditioner
+            => LsqrRightPreCore(new doubleDenseOperator(in A), in N, in b, ref x, A.N_Cols, Consts.doubleSqrtEps, (double)0);
+
+        /// <summary>Right-preconditioned damped LSQR over a BSR matrix (materializes Aᵀ once) --
+        /// same contract as the dense overload.</summary>
+        public static LstsqInfo lsqrRightPre<TPre>(in doubleBSR A, in TPre N, in doubleN b, ref doubleN x, int maxIter, double tol, double damp)
+            where TPre : struct, IdoublePreconditioner
         {
-            int m = A.M_Rows, n = A.N_Cols;
-            doubleN d = b.doubleTempVec(n), d2 = b.doubleTempVec(n), scratch = b.doubleTempVec(n);
-            Blas.columnNormsSquared(in A, ref d2);
-            Blas.buildJacobiScale(in d2, ref d);
-            var op = new doubleColScaledOperator<doubleDenseOperator>(new doubleDenseOperator(in A), d, scratch);
+            doubleBSR AT = b.doubleBSRTranspose(in A);
+            return LsqrRightPreCore(new doubleBSROperator(in A, in AT), in N, in b, ref x, maxIter, tol, damp);
+        }
+
+        /// <summary>Undamped right-preconditioned LSQR over a BSR matrix (damp = 0, materializes Aᵀ once).</summary>
+        public static LstsqInfo lsqrRightPre<TPre>(in doubleBSR A, in TPre N, in doubleN b, ref doubleN x, int maxIter, double tol)
+            where TPre : struct, IdoublePreconditioner
+            => lsqrRightPre(in A, in N, in b, ref x, maxIter, tol, (double)0);
+
+        /// <summary>Right-preconditioned LSQR (BSR), default maxIter (A.N_Cols) / tol (Consts.doubleSqrtEps).</summary>
+        public static LstsqInfo lsqrRightPre<TPre>(in doubleBSR A, in TPre N, in doubleN b, ref doubleN x)
+            where TPre : struct, IdoublePreconditioner
+            => lsqrRightPre(in A, in N, in b, ref x, A.N_Cols, Consts.doubleSqrtEps, (double)0);
+
+        /// <summary>Shared worker for the right-preconditioned LSQR entry points: wrap Aop as A·N,
+        /// cold-start, solve (A·N)y = b, then map back and re-audit via <c>RightPreFinish</c>.
+        /// Scratch is temp-pool allocated from b.</summary>
+        static LstsqInfo LsqrRightPreCore<TOp, TPre>(in TOp Aop, in TPre N, in doubleN b, ref doubleN x, int maxIter, double tol, double damp)
+            where TOp : struct, IdoubleLinearOperator
+            where TPre : struct, IdoublePreconditioner
+        {
+            int m = Aop.Rows, n = Aop.Cols;
+            doubleN scratch = b.doubleTempVec(n);
+            var op = new doubleRightPreconditionedOperator<TOp, TPre>(in Aop, in N, in scratch);
 
             for (int j = 0; j < n; j++) x[j] = (double)0;
             doubleN u = b.doubleTempVec(m), v = b.doubleTempVec(n), w = b.doubleTempVec(n), tmpM = b.doubleTempVec(m), tmpN = b.doubleTempVec(n);
-            var solveInfo = lsqr(op, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIter, tol);
-            return JacobiFinish(new doubleDenseOperator(in A), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref u, ref v);
+            var solveInfo = lsqr(op, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIter, tol, damp);
+            return RightPreFinish(in Aop, in N, in b, ref x, damp, solveInfo.iterations, solveInfo.status, ref u, ref v);
+        }
+
+        // ---- LSQR + Jacobi ----
+        /// <summary>LSQR with an AᵀA-Jacobi column-equilibration preconditioner over a dense matrix:
+        /// the diagonal case of <c>lsqrRightPre</c> with N = diag(1/‖A_:,j‖).</summary>
+        public static LstsqInfo lsqrJacobi(in doubleMxN A, in doubleN b, ref doubleN x, int maxIter, double tol)
+        {
+            int n = A.N_Cols;
+            doubleN d = b.doubleTempVec(n), d2 = b.doubleTempVec(n);
+            Blas.columnNormsSquared(in A, ref d2);
+            Blas.buildJacobiScale(in d2, ref d);
+            return lsqrRightPre(in A, new doubleDiagonalPreconditioner(in d), in b, ref x, maxIter, tol);
         }
 
         /// <summary>LSQR + Jacobi (dense), default maxIter (A.N_Cols) / tol (Consts.doubleSqrtEps).</summary>
         public static LstsqInfo lsqrJacobi(in doubleMxN A, in doubleN b, ref doubleN x)
             => lsqrJacobi(in A, in b, ref x, A.N_Cols, Consts.doubleSqrtEps);
 
-        /// <summary>LSQR with an AᵀA-Jacobi preconditioner over a BSR matrix (materializes Aᵀ once).</summary>
+        /// <summary>LSQR with an AᵀA-Jacobi preconditioner over a BSR matrix (materializes Aᵀ once):
+        /// the diagonal case of <c>lsqrRightPre</c> with N = diag(1/‖A_:,j‖).</summary>
         public static LstsqInfo lsqrJacobi(in doubleBSR A, in doubleN b, ref doubleN x, int maxIter, double tol)
         {
-            int m = A.M_Rows, n = A.N_Cols;
-            doubleN d = b.doubleTempVec(n), d2 = b.doubleTempVec(n), scratch = b.doubleTempVec(n);
+            int n = A.N_Cols;
+            doubleN d = b.doubleTempVec(n), d2 = b.doubleTempVec(n);
             BSR.columnNormsSquared(in A, ref d2);
             Blas.buildJacobiScale(in d2, ref d);
-            doubleBSR AT = b.doubleBSRTranspose(in A);
-            var op = new doubleColScaledOperator<doubleBSROperator>(new doubleBSROperator(in A, in AT), d, scratch);
-
-            for (int j = 0; j < n; j++) x[j] = (double)0;
-            doubleN u = b.doubleTempVec(m), v = b.doubleTempVec(n), w = b.doubleTempVec(n), tmpM = b.doubleTempVec(m), tmpN = b.doubleTempVec(n);
-            var solveInfo = lsqr(op, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIter, tol);
-            return JacobiFinish(new doubleBSROperator(in A, in AT), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref u, ref v);
+            return lsqrRightPre(in A, new doubleDiagonalPreconditioner(in d), in b, ref x, maxIter, tol);
         }
 
         /// <summary>LSQR + Jacobi (BSR), default maxIter (A.N_Cols) / tol (Consts.doubleSqrtEps).</summary>

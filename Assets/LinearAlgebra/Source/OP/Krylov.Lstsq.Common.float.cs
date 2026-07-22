@@ -74,41 +74,49 @@ namespace LinearAlgebra
             };
         }
 
-        // AᵀA-Jacobi (column-equilibration) convenience overloads.
-        // lsqrJacobi / lsmrJacobi build the column scale d[j] = 1/||A_:,j|| from
-        // columnNormsSquared, wrap A in a floatColScaledOperator, solve the equilibrated system
-        // (A*D) y = b with the underlying solver (COLD start -- x is zeroed internally; column
-        // scaling is a change of variable, so a warm start would need pre-mapping y0 = D^-1 x0), and
-        // unscale x = D*y in place. On an ill-conditioned least-squares problem this converges in
-        // fewer iterations than the un-preconditioned solve to the SAME solution. Everything is
-        // temp-pool allocated from b. BSR forms materialize A^T once (ApplyT-heavy). For explicit
-        // control (custom d, warm start, damping semantics, zero-alloc) use the composable path
-        // directly: Blas.columnNormsSquared + buildJacobiScale + floatColScaledOperator + the
-        // generic solver overload.
+        // Right (column) preconditioned convenience overloads.
+        // lsqrRightPre / lsmrRightPre solve min ‖Ax-b‖ through a change of variables x = N·y with a
+        // caller-supplied SYMMETRIC preconditioner N (n×n, IfloatPreconditioner): wrap A in a
+        // floatRightPreconditionedOperator, solve (A·N) y = b with the underlying solver (COLD
+        // start -- x is zeroed internally; the change of variable means a warm start would need
+        // pre-mapping y0 = N⁻¹ x0), recover x = N·y, and report diagnostics in ORIGINAL coordinates
+        // (RightPreFinish). lsqrJacobi / lsmrJacobi are the DIAGONAL case: build the column scale
+        // d[j] = 1/||A_:,j|| from columnNormsSquared + buildJacobiScale, wrap it in a
+        // floatDiagonalPreconditioner, and forward. On an ill-conditioned least-squares problem a
+        // good N converges in fewer iterations than the un-preconditioned solve to the SAME
+        // solution. Everything is temp-pool allocated from b. BSR forms materialize A^T once
+        // (ApplyT-heavy). For explicit control (warm start, zero-alloc, custom scratch) use the
+        // composable path directly: floatRightPreconditionedOperator + the generic solver overload.
         //
         // DIAGNOSTICS: the returned LstsqInfo is reported in ORIGINAL coordinates. The
-        // equilibrated solve tracks rnorm/Arnorm/xnorm in scaled y-space (Arnorm = ‖D·Aᵀr‖ can be
-        // wildly off), so JacobiFinish recomputes all three exactly on the unscaled A via
+        // preconditioned solve tracks rnorm/Arnorm/xnorm in transformed y-space (Arnorm = ‖N·Aᵀr‖
+        // can be wildly off), so RightPreFinish recomputes all three exactly on the unwrapped A via
         // lstsqResidual (one Apply + ApplyT) and keeps the solve's iteration count + status. So
-        // info.Arnorm here is the true ‖Aᵀr‖ and info.Solved still reflects the equilibrated solve.
+        // info.Arnorm here is the true ‖Aᵀr‖ and info.Solved still reflects the preconditioned solve.
 
-        /// <summary>Shared tail for the *Jacobi convenience wrappers: unscale the solution
-        /// (x = D·y) back to the ORIGINAL variables, then report diagnostics in original coordinates.
-        /// The equilibrated solve of (A·D)y=b tracks rnorm/Arnorm/xnorm in the SCALED y-space --
-        /// rnorm happens to coincide (‖b-(AD)y‖ = ‖b-Ax‖) but Arnorm = ‖(AD)ᵀr‖ = ‖D·Aᵀr‖ is off by
-        /// the column scaling (badly so on exactly the ill-scaled systems the preconditioner targets).
-        /// So we recompute all three exactly on the UNSCALED operator via <see cref="lstsqResidual"/>
-        /// (one Apply + one ApplyT -- negligible next to the solve and the Aᵀ build these wrappers
-        /// already pay), keeping the solve's iteration count and status. <paramref name="Aop"/> is the
-        /// UNSCALED operator; <paramref name="mScratch"/>/<paramref name="nScratch"/> are Rows-/Cols-
-        /// length scratch (the solver's own buffers, free to reuse post-solve).</summary>
-        static LstsqInfo JacobiFinish<TOp>(in TOp Aop, in floatN b, ref floatN x, in floatN d,
-                                                 int iterations, IterativeSolveStatus status,
+        /// <summary>Shared tail for the right-preconditioned convenience wrappers: map the solution
+        /// (x = N·y, y arriving in x) back to the ORIGINAL variables, then report diagnostics in
+        /// original coordinates. The preconditioned solve of (A·N)y=b tracks rnorm/Arnorm/xnorm in
+        /// the transformed y-space -- rnorm happens to coincide (‖b-(AN)y‖ = ‖b-Ax‖) but
+        /// Arnorm = ‖(AN)ᵀr‖ = ‖N·Aᵀr‖ is off by the preconditioner (badly so on exactly the
+        /// ill-scaled systems it targets). So we recompute all three exactly on the UNWRAPPED
+        /// operator via <see cref="lstsqResidual"/> (one Apply + one ApplyT -- negligible next to
+        /// the solve these wrappers already pay), keeping the solve's iteration count and status.
+        /// <paramref name="Aop"/> is the UNWRAPPED operator; <paramref name="mScratch"/>/
+        /// <paramref name="nScratch"/> are Rows-/Cols-length scratch (the solver's own buffers, free
+        /// to reuse post-solve; nScratch also stages the N·y map). With nonzero
+        /// <paramref name="damp"/> the reported Arnorm is ‖Aᵀr - damp²x‖, the plain ‖x‖-ridge
+        /// gradient; the damped PRECONDITIONED solve minimizes the ‖N⁻¹x‖-weighted ridge instead,
+        /// so even a converged damped solve generally leaves it nonzero.</summary>
+        static LstsqInfo RightPreFinish<TOp, TPre>(in TOp Aop, in TPre N, in floatN b, ref floatN x,
+                                                 float damp, int iterations, IterativeSolveStatus status,
                                                  ref floatN mScratch, ref floatN nScratch)
             where TOp : struct, IfloatLinearOperator
+            where TPre : struct, IfloatPreconditioner
         {
-            for (int j = 0; j < d.N; j++) x[j] *= d[j];      // unscale x = D y
-            var info = lstsqResidual(in Aop, in b, in x, (float)0, ref mScratch, ref nScratch);
+            N.Apply(in x, ref nScratch);                     // x holds y: nScratch = N·y
+            x.CopyFrom(in nScratch);
+            var info = lstsqResidual(in Aop, in b, in x, damp, ref mScratch, ref nScratch);
             info.iterations = iterations;
             info.status = status;
             return info;

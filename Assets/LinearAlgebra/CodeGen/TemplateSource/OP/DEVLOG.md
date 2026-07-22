@@ -1,6 +1,22 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Krylov.LSQR / Krylov.LSMR — general right (column) preconditioning
+- 2026-07-22 | Generalized least-squares RIGHT preconditioning from diagonal-only Jacobi to any
+  SYMMETRIC `IfProxyPreconditioner`: new `fProxyRightPreconditionedOperator<TInner,TPre>` wraps A·N
+  (Apply = A(N·x) via owned scratch; ApplyT = N(Aᵀx), valid because N = Nᵀ), new
+  `fProxyDiagonalPreconditioner` (z = d.*r) makes diag(d) one instance of it, and
+  `lsqrRightPre`/`lsmrRightPre` (dense + BSR, damped + undamped + default-arg ladder) do the
+  change-of-variables solve (A·N)y = b cold-start, recover x = N·y, and re-audit diagnostics in
+  original coordinates. `lsqrJacobi`/`lsmrJacobi` now just build d (columnNormsSquared +
+  buildJacobiScale), wrap it in `fProxyDiagonalPreconditioner`, and forward — numerically identical
+  to the old `fProxyColScaledOperator` path (same multiplies, same order; that operator stays as
+  the composable zero-alloc primitive). `JacobiFinish` became `RightPreFinish<TOp,TPre>` (unscale
+  step is now N.Apply staged through nScratch instead of the in-place d.* loop, plus a damp
+  pass-through to lstsqResidual). Damped caveat unchanged in kind: damping the preconditioned
+  system penalizes ‖y‖ = ‖N⁻¹x‖, not ‖x‖, so the reported ‖x‖-ridge Arnorm is generally nonzero
+  even at the damped optimum — documented on the entry points, not asserted small in tests.
+
 ## Krylov.Block.MINRES — preconditioned path un-gated (r-space recurrence)
 - 2026-07-22 | Fixed the preconditioned block-Lanczos recurrence and removed the
   `NotSupportedException` gate. Root cause (diagnosed + fix verified in the numpy reference,
