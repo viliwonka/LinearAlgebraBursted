@@ -93,24 +93,24 @@ public class floatSparseUnrollTests
 
         // 4x4 block grid of b x b blocks (square, non-symmetric storage), six scattered stored
         // blocks (some rows/cols empty) so RowPtr/ColInd traversal isn't trivially degenerate.
-        static floatBSR BuildRandomSquare(ref Arena arena, int b, uint seedBase)
+        static floatBSR BuildRandomSquare(int b, uint seedBase)
         {
-            var builder = arena.floatBSRBuilder(4, 4, b, b);
-            builder.AddBlock(0, 0, arena.floatRandomMat(b, b, (float)(-1f), (float)1f, seedBase + 1u));
-            builder.AddBlock(0, 2, arena.floatRandomMat(b, b, (float)(-1f), (float)1f, seedBase + 2u));
-            builder.AddBlock(1, 1, arena.floatRandomMat(b, b, (float)(-1f), (float)1f, seedBase + 3u));
-            builder.AddBlock(1, 3, arena.floatRandomMat(b, b, (float)(-1f), (float)1f, seedBase + 4u));
-            builder.AddBlock(2, 0, arena.floatRandomMat(b, b, (float)(-1f), (float)1f, seedBase + 5u));
-            builder.AddBlock(3, 3, arena.floatRandomMat(b, b, (float)(-1f), (float)1f, seedBase + 6u));
-            return builder.ToBSR(ref arena);
+            var builder = new floatBSRBuilder(4, 4, b, b, Allocator.Temp);
+            builder.AddBlock(0, 0, GenerateOP.floatRandomMat(b, b, (float)(-1f), (float)1f, seedBase + 1u));
+            builder.AddBlock(0, 2, GenerateOP.floatRandomMat(b, b, (float)(-1f), (float)1f, seedBase + 2u));
+            builder.AddBlock(1, 1, GenerateOP.floatRandomMat(b, b, (float)(-1f), (float)1f, seedBase + 3u));
+            builder.AddBlock(1, 3, GenerateOP.floatRandomMat(b, b, (float)(-1f), (float)1f, seedBase + 4u));
+            builder.AddBlock(2, 0, GenerateOP.floatRandomMat(b, b, (float)(-1f), (float)1f, seedBase + 5u));
+            builder.AddBlock(3, 3, GenerateOP.floatRandomMat(b, b, (float)(-1f), (float)1f, seedBase + 6u));
+            return builder.ToBSR(Allocator.Temp);
         }
 
         // Symmetric b x b diagonal block D = M^T M: symmetric by construction (bit-exact, since
         // D[r,c] and D[c,r] sum the identical products in the identical order), so it satisfies
         // ToBSRSymmetric's diagonal-symmetry contract with zero asymmetry.
-        static floatMxN SymDiagBlock(ref Arena arena, int b, uint seed)
+        static floatMxN SymDiagBlock(int b, uint seed)
         {
-            var M = arena.floatRandomMat(b, b, (float)(-1f), (float)1f, seed);
+            var M = GenerateOP.floatRandomMat(b, b, (float)(-1f), (float)1f, seed);
             return Blas.dot(M, M, true);   // M^T M
         }
 
@@ -121,17 +121,17 @@ public class floatSparseUnrollTests
         // symmetric (required by ToBSRSymmetric); off-diagonal blocks stay arbitrary (their
         // transpose fills the upper triangle). dense is derived via A.ToDense (side-agnostic), so
         // only the stored (row, col) POSITION matters here, not which triangle "K" nominally lives in.
-        static floatBSR BuildRandomSymmetric(ref Arena arena, int b, uint seedBase)
+        static floatBSR BuildRandomSymmetric(int b, uint seedBase)
         {
-            var builder = arena.floatBSRBuilder(4, 4, b, b);
-            builder.AddBlock(0, 0, SymDiagBlock(ref arena, b, seedBase + 1u));
-            builder.AddBlock(1, 1, SymDiagBlock(ref arena, b, seedBase + 2u));
-            builder.AddBlock(2, 2, SymDiagBlock(ref arena, b, seedBase + 3u));
-            builder.AddBlock(3, 3, SymDiagBlock(ref arena, b, seedBase + 4u));
-            builder.AddBlock(1, 0, arena.floatRandomMat(b, b, (float)(-1f), (float)1f, seedBase + 5u));
-            builder.AddBlock(3, 1, arena.floatRandomMat(b, b, (float)(-1f), (float)1f, seedBase + 6u));
-            builder.AddBlock(3, 0, arena.floatRandomMat(b, b, (float)(-1f), (float)1f, seedBase + 7u));
-            return builder.ToBSRSymmetric(ref arena);
+            var builder = new floatBSRBuilder(4, 4, b, b, Allocator.Temp);
+            builder.AddBlock(0, 0, SymDiagBlock(b, seedBase + 1u));
+            builder.AddBlock(1, 1, SymDiagBlock(b, seedBase + 2u));
+            builder.AddBlock(2, 2, SymDiagBlock(b, seedBase + 3u));
+            builder.AddBlock(3, 3, SymDiagBlock(b, seedBase + 4u));
+            builder.AddBlock(1, 0, GenerateOP.floatRandomMat(b, b, (float)(-1f), (float)1f, seedBase + 5u));
+            builder.AddBlock(3, 1, GenerateOP.floatRandomMat(b, b, (float)(-1f), (float)1f, seedBase + 6u));
+            builder.AddBlock(3, 0, GenerateOP.floatRandomMat(b, b, (float)(-1f), (float)1f, seedBase + 7u));
+            return builder.ToBSRSymmetric(Allocator.Temp);
         }
 
         // ---- square-block spMV / spMVT: covers b in {1,2,3,4,6} (specialized) and b=5
@@ -139,43 +139,43 @@ public class floatSparseUnrollTests
 
         void CheckSquareSpMV(int b, uint seedBase)
         {
-            var arena = new Arena(Allocator.Persistent);
+            var A = BuildRandomSquare(b, seedBase);
+            var dense = A.ToDense(Allocator.Temp);
+            var x = GenerateOP.floatRandomVec(A.N_Cols, (float)(-1f), (float)1f, seedBase + 900u);
 
-            var A = BuildRandomSquare(ref arena, b, seedBase);
-            var dense = A.ToDense(ref arena);
-            var x = arena.floatRandomVec(A.N_Cols, (float)(-1f), (float)1f, seedBase + 900u);
-
-            var y = arena.floatVec(A.M_Rows);
+            var y = new floatN(A.M_Rows, Allocator.Temp);
             BSR.spMV(in A, in x, ref y);
             var yRef = Blas.dot(dense, x);
-            Assert.IsTrue(Analysis.isZero(y - yRef, Tol()));
+            var diff = new floatN(in y, Allocator.Temp);
+            floatComp.subInPlace(diff, yRef);
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
 
             // allocating overload must agree with the ref-dest overload.
             var y2 = BSR.spMV(in A, in x);
-            Assert.IsTrue(Analysis.isZero(y2 - yRef, Tol()));
-
-            arena.Dispose();
+            var diff2 = new floatN(in y2, Allocator.Temp);
+            floatComp.subInPlace(diff2, yRef);
+            Assert.IsTrue(Analysis.isZero(diff2, Tol()));
         }
 
         void CheckSquareSpMVT(int b, uint seedBase)
         {
-            var arena = new Arena(Allocator.Persistent);
+            var A = BuildRandomSquare(b, seedBase);
+            var dense = A.ToDense(Allocator.Temp);
+            var xt = GenerateOP.floatRandomVec(A.M_Rows, (float)(-1f), (float)1f, seedBase + 900u);
 
-            var A = BuildRandomSquare(ref arena, b, seedBase);
-            var dense = A.ToDense(ref arena);
-            var xt = arena.floatRandomVec(A.M_Rows, (float)(-1f), (float)1f, seedBase + 900u);
-
-            var yt = arena.floatVec(A.N_Cols);
+            var yt = new floatN(A.N_Cols, Allocator.Temp);
             BSR.spMVT(in A, in xt, ref yt);
 
-            var ytRef = arena.floatVec(A.N_Cols);
+            var ytRef = new floatN(A.N_Cols, Allocator.Temp);
             DenseTransMatVec(in dense, in xt, ref ytRef);
-            Assert.IsTrue(Analysis.isZero(yt - ytRef, Tol()));
+            var diff = new floatN(in yt, Allocator.Temp);
+            floatComp.subInPlace(diff, ytRef);
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
 
             var yt2 = BSR.spMVT(in A, in xt);
-            Assert.IsTrue(Analysis.isZero(yt2 - ytRef, Tol()));
-
-            arena.Dispose();
+            var diff2 = new floatN(in yt2, Allocator.Temp);
+            floatComp.subInPlace(diff2, ytRef);
+            Assert.IsTrue(Analysis.isZero(diff2, Tol()));
         }
 
         // ---- rectangular blocks (BR != BC): must ALWAYS route through the general kernel,
@@ -183,47 +183,43 @@ public class floatSparseUnrollTests
 
         void CheckRectangularSpMV()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             const int BR = 2, BC = 3; // BC would be a specialized size on its own -- BR != BC must still fall back.
-            var builder = arena.floatBSRBuilder(3, 3, BR, BC);
-            builder.AddBlock(0, 0, arena.floatRandomMat(BR, BC, (float)(-1f), (float)1f, 71001));
-            builder.AddBlock(0, 2, arena.floatRandomMat(BR, BC, (float)(-1f), (float)1f, 71002));
-            builder.AddBlock(1, 1, arena.floatRandomMat(BR, BC, (float)(-1f), (float)1f, 71003));
-            builder.AddBlock(2, 0, arena.floatRandomMat(BR, BC, (float)(-1f), (float)1f, 71004));
-            var A = builder.ToBSR(ref arena);
-            var dense = A.ToDense(ref arena);
+            var builder = new floatBSRBuilder(3, 3, BR, BC, Allocator.Temp);
+            builder.AddBlock(0, 0, GenerateOP.floatRandomMat(BR, BC, (float)(-1f), (float)1f, 71001));
+            builder.AddBlock(0, 2, GenerateOP.floatRandomMat(BR, BC, (float)(-1f), (float)1f, 71002));
+            builder.AddBlock(1, 1, GenerateOP.floatRandomMat(BR, BC, (float)(-1f), (float)1f, 71003));
+            builder.AddBlock(2, 0, GenerateOP.floatRandomMat(BR, BC, (float)(-1f), (float)1f, 71004));
+            var A = builder.ToBSR(Allocator.Temp);
+            var dense = A.ToDense(Allocator.Temp);
 
-            var x = arena.floatRandomVec(A.N_Cols, (float)(-1f), (float)1f, 71100);
-            var y = arena.floatVec(A.M_Rows);
+            var x = GenerateOP.floatRandomVec(A.N_Cols, (float)(-1f), (float)1f, 71100);
+            var y = new floatN(A.M_Rows, Allocator.Temp);
             BSR.spMV(in A, in x, ref y);
-            Assert.IsTrue(Analysis.isZero(y - Blas.dot(dense, x), Tol()));
-
-            arena.Dispose();
+            var diff = new floatN(in y, Allocator.Temp);
+            floatComp.subInPlace(diff, Blas.dot(dense, x));
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
         }
 
         void CheckRectangularSpMVT()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             const int BR = 2, BC = 3;
-            var builder = arena.floatBSRBuilder(3, 3, BR, BC);
-            builder.AddBlock(0, 0, arena.floatRandomMat(BR, BC, (float)(-1f), (float)1f, 72001));
-            builder.AddBlock(0, 2, arena.floatRandomMat(BR, BC, (float)(-1f), (float)1f, 72002));
-            builder.AddBlock(1, 1, arena.floatRandomMat(BR, BC, (float)(-1f), (float)1f, 72003));
-            builder.AddBlock(2, 0, arena.floatRandomMat(BR, BC, (float)(-1f), (float)1f, 72004));
-            var A = builder.ToBSR(ref arena);
-            var dense = A.ToDense(ref arena);
+            var builder = new floatBSRBuilder(3, 3, BR, BC, Allocator.Temp);
+            builder.AddBlock(0, 0, GenerateOP.floatRandomMat(BR, BC, (float)(-1f), (float)1f, 72001));
+            builder.AddBlock(0, 2, GenerateOP.floatRandomMat(BR, BC, (float)(-1f), (float)1f, 72002));
+            builder.AddBlock(1, 1, GenerateOP.floatRandomMat(BR, BC, (float)(-1f), (float)1f, 72003));
+            builder.AddBlock(2, 0, GenerateOP.floatRandomMat(BR, BC, (float)(-1f), (float)1f, 72004));
+            var A = builder.ToBSR(Allocator.Temp);
+            var dense = A.ToDense(Allocator.Temp);
 
-            var xt = arena.floatRandomVec(A.M_Rows, (float)(-1f), (float)1f, 72100);
-            var yt = arena.floatVec(A.N_Cols);
+            var xt = GenerateOP.floatRandomVec(A.M_Rows, (float)(-1f), (float)1f, 72100);
+            var yt = new floatN(A.N_Cols, Allocator.Temp);
             BSR.spMVT(in A, in xt, ref yt);
 
-            var ytRef = arena.floatVec(A.N_Cols);
+            var ytRef = new floatN(A.N_Cols, Allocator.Temp);
             DenseTransMatVec(in dense, in xt, ref ytRef);
-            Assert.IsTrue(Analysis.isZero(yt - ytRef, Tol()));
-
-            arena.Dispose();
+            var diff = new floatN(in yt, Allocator.Temp);
+            floatComp.subInPlace(diff, ytRef);
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
         }
 
         // ---- symmetric-storage spMV: covers b in {1,2,3,4,6} (specialized bsrMatVecSymB{b})
@@ -231,28 +227,28 @@ public class floatSparseUnrollTests
 
         void CheckSymmetric(int b, uint seedBase)
         {
-            var arena = new Arena(Allocator.Persistent);
+            var A = BuildRandomSymmetric(b, seedBase);
+            var dense = A.ToDense(Allocator.Temp);
+            var x = GenerateOP.floatRandomVec(A.N_Cols, (float)(-1f), (float)1f, seedBase + 900u);
 
-            var A = BuildRandomSymmetric(ref arena, b, seedBase);
-            var dense = A.ToDense(ref arena);
-            var x = arena.floatRandomVec(A.N_Cols, (float)(-1f), (float)1f, seedBase + 900u);
-
-            var y = arena.floatVec(A.M_Rows);
+            var y = new floatN(A.M_Rows, Allocator.Temp);
             BSR.spMV(in A, in x, ref y);
             var yRef = Blas.dot(dense, x);
-            Assert.IsTrue(Analysis.isZero(y - yRef, Tol()));
+            var diff = new floatN(in y, Allocator.Temp);
+            floatComp.subInPlace(diff, yRef);
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
 
             // spMVT on symmetric storage forwards to spMV (A == A^T). Because the matrix is now
             // GENUINELY symmetric, check spMVT against an INDEPENDENT transpose-matvec of the dense
             // expansion (not spMV's own output): a true cross-check that A^T*x is computed, which
             // for the symmetric A must equal A*x.
-            var ytRef = arena.floatVec(A.N_Cols);
+            var ytRef = new floatN(A.N_Cols, Allocator.Temp);
             DenseTransMatVec(in dense, in x, ref ytRef);
-            var yt = arena.floatVec(A.N_Cols);
+            var yt = new floatN(A.N_Cols, Allocator.Temp);
             BSR.spMVT(in A, in x, ref yt);
-            Assert.IsTrue(Analysis.isZero(yt - ytRef, Tol()));
-
-            arena.Dispose();
+            var diff2 = new floatN(in yt, Allocator.Temp);
+            floatComp.subInPlace(diff2, ytRef);
+            Assert.IsTrue(Analysis.isZero(diff2, Tol()));
         }
     }
 

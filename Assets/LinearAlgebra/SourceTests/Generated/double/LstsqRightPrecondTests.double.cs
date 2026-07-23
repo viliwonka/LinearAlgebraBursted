@@ -61,13 +61,13 @@ public class doubleLstsqRightPrecondTests
         // columns, so it is the canonical STRONG least-squares right preconditioner (Blendenpik/LSRN
         // shape) -- and non-symmetric (upper-triangular). Built by upper-triangular back-substitution
         // solving R·Rinv = I column by column.
-        static doubleMxN BuildRinv(ref Arena arena, in doubleMxN A)
+        static doubleMxN BuildRinv(in doubleMxN A)
         {
             int n = A.N_Cols;
-            var Q = arena.doubleMat(A.M_Rows, n);
-            var R = arena.doubleMat(n);
+            var Q = new doubleMxN(A.M_Rows, n, Allocator.Temp);
+            var R = new doubleMxN(n, n, Allocator.Temp);
             QR.decomp(in A, ref Q, ref R);
-            var Rinv = arena.doubleMat(n);
+            var Rinv = new doubleMxN(n, n, Allocator.Temp);
             for (int c = 0; c < n; c++)
                 for (int i = n - 1; i >= 0; i--)
                 {
@@ -81,10 +81,10 @@ public class doubleLstsqRightPrecondTests
         // A genuinely non-symmetric, well-conditioned invertible N = I + 0.25·(strictly-lower random):
         // unit diagonal over a nilpotent lower part, so every eigenvalue is 1 (invertible) and
         // N != N^T. Exercises the wrapper's N^T (ApplyT) path, which the symmetric path never touches.
-        static doubleMxN BuildNonSym(ref Arena arena, int n, uint seed)
+        static doubleMxN BuildNonSym(int n, uint seed)
         {
-            var W = arena.doubleRandomMat(n, n, -1f, 1f, seed);
-            var Nmat = arena.doubleMat(n);
+            var W = GenerateOP.doubleRandomMat(n, n, -1f, 1f, seed);
+            var Nmat = new doubleMxN(n, n, Allocator.Temp);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
                     Nmat[i, j] = (i == j) ? (double)1 : (j < i ? (double)0.25 * W[i, j] : (double)0);
@@ -93,9 +93,9 @@ public class doubleLstsqRightPrecondTests
 
         // Random m x n A with columns geometrically scaled to condition number ~1e2 -- ill-scaled
         // enough that a column preconditioner earns its keep, mild enough to stay inside the float band.
-        static doubleMxN BuildIllScaled(ref Arena arena, int m, int n, uint seed)
+        static doubleMxN BuildIllScaled(int m, int n, uint seed)
         {
-            var A = arena.doubleRandomMat(m, n, -1f, 1f, seed);
+            var A = GenerateOP.doubleRandomMat(m, n, -1f, 1f, seed);
             for (int j = 0; j < n; j++)
             {
                 double scale = math.pow((double)10, (double)2 * j / (double)(n - 1));
@@ -105,26 +105,26 @@ public class doubleLstsqRightPrecondTests
         }
 
         // Direct dense least-squares reference via QR (A full column rank, M_Rows >= N_Cols).
-        static doubleN ReferenceSolveLstsq(ref Arena arena, in doubleMxN A, in doubleN b)
+        static doubleN ReferenceSolveLstsq(in doubleMxN A, in doubleN b)
         {
-            var Q = arena.doubleMat(A.M_Rows, A.N_Cols);
-            var R = arena.doubleMat(A.N_Cols);
+            var Q = new doubleMxN(A.M_Rows, A.N_Cols, Allocator.Temp);
+            var R = new doubleMxN(A.N_Cols, A.N_Cols, Allocator.Temp);
             QR.decomp(in A, ref Q, ref R);
             doubleN bLocal = b;
-            var xRef = arena.doubleVec(A.N_Cols);
+            var xRef = new doubleN(A.N_Cols, Allocator.Temp);
             QR.decompSolve(ref Q, ref R, ref bLocal, ref xRef);
             return xRef;
         }
 
         // 1x1-block BSR copy of a dense matrix (scalar AddValue per nonzero).
-        static doubleBSR DenseToBSR(ref Arena arena, in doubleMxN A)
+        static doubleBSR DenseToBSR(in doubleMxN A)
         {
-            var builder = arena.doubleBSRBuilder(A.M_Rows, A.N_Cols, 1, 1, A.M_Rows * A.N_Cols);
+            var builder = new doubleBSRBuilder(A.M_Rows, A.N_Cols, 1, 1, Allocator.Temp, A.M_Rows * A.N_Cols);
             for (int r = 0; r < A.M_Rows; r++)
                 for (int c = 0; c < A.N_Cols; c++)
                     if (A[r, c] != (double)0)
                         builder.AddValue(r, c, A[r, c]);
-            return builder.ToBSR(ref arena);
+            return builder.ToBSR(Allocator.Temp);
         }
 
         static void AssertClose(double got, double expected, double tol)
@@ -133,16 +133,16 @@ public class doubleLstsqRightPrecondTests
         // Shared checks on a solved system: converged, exact recomputed ||A^T r|| small on the
         // fixed ||A^T b|| scale (100x headroom over tol covers cond(N) mapping the y-space
         // stopping test back to original coordinates), elementwise agreement with the QR oracle.
-        static void CheckSolution(ref Arena arena, in doubleMxN A, in doubleN b, in doubleN x, in LstsqInfo info, double tol)
+        static void CheckSolution(in doubleMxN A, in doubleN b, in doubleN x, in LstsqInfo info, double tol)
         {
             Assert.IsTrue(info.Solved);
 
-            var atb = arena.doubleVec(A.N_Cols);
+            var atb = new doubleN(A.N_Cols, Allocator.Temp);
             Blas.dot(in b, in A, ref atb);                    // A^T b
             double atbNorm = math.sqrt(Blas.dot(atb, atb));
             Assert.IsTrue((double)info.Arnorm <= (double)100 * tol * math.max(atbNorm, (double)1e-30));
 
-            var xRef = ReferenceSolveLstsq(ref arena, in A, in b);
+            var xRef = ReferenceSolveLstsq(in A, in b);
             for (int j = 0; j < A.N_Cols; j++)
                 AssertClose(x[j], xRef[j], Band());
         }
@@ -150,96 +150,76 @@ public class doubleLstsqRightPrecondTests
         // ---- 1./2. dense lsqr/lsmr with a non-diagonal SPD N match the QR oracle ----
         void LsqrRightPreSpdDense()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 20, n = 6;
-            var A = arena.doubleRandomMat(m, n, -1f, 1f, 63001);
-            var b = arena.doubleRandomVec(m, -1f, 1f, 63002);
-            var pre = new doubleDenseSpdPreconditioner { Nmat = doubleKrylovBatteryOracles.BuildDenseSpd(ref arena, n, 63003, (double)n) };
+            var A = GenerateOP.doubleRandomMat(m, n, -1f, 1f, 63001);
+            var b = GenerateOP.doubleRandomVec(m, -1f, 1f, 63002);
+            var pre = new doubleDenseSpdPreconditioner { Nmat = doubleKrylovBatteryOracles.BuildDenseSpd(n, 63003, (double)n) };
 
             double tol = Consts.doubleSqrtEps;
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
             var info = Krylov.lsqrRightPre(in A, in pre, in b, ref x, 20 * n, tol);
-            CheckSolution(ref arena, in A, in b, in x, in info, tol);
-
-            arena.Dispose();
+            CheckSolution(in A, in b, in x, in info, tol);
         }
 
         void LsmrRightPreSpdDense()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 20, n = 6;
-            var A = arena.doubleRandomMat(m, n, -1f, 1f, 63101);
-            var b = arena.doubleRandomVec(m, -1f, 1f, 63102);
-            var pre = new doubleDenseSpdPreconditioner { Nmat = doubleKrylovBatteryOracles.BuildDenseSpd(ref arena, n, 63103, (double)n) };
+            var A = GenerateOP.doubleRandomMat(m, n, -1f, 1f, 63101);
+            var b = GenerateOP.doubleRandomVec(m, -1f, 1f, 63102);
+            var pre = new doubleDenseSpdPreconditioner { Nmat = doubleKrylovBatteryOracles.BuildDenseSpd(n, 63103, (double)n) };
 
             double tol = Consts.doubleSqrtEps;
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
             var info = Krylov.lsmrRightPre(in A, in pre, in b, ref x, 20 * n, tol);
-            CheckSolution(ref arena, in A, in b, in x, in info, tol);
-
-            arena.Dispose();
+            CheckSolution(in A, in b, in x, in info, tol);
         }
 
         // ---- 3./4. BSR entry points: same SPD N, same oracle ----
         void LsqrRightPreSpdBSR()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 20, n = 6;
-            var A = arena.doubleRandomMat(m, n, -1f, 1f, 63201);
-            var b = arena.doubleRandomVec(m, -1f, 1f, 63202);
-            var bsm = DenseToBSR(ref arena, in A);
-            var pre = new doubleDenseSpdPreconditioner { Nmat = doubleKrylovBatteryOracles.BuildDenseSpd(ref arena, n, 63203, (double)n) };
+            var A = GenerateOP.doubleRandomMat(m, n, -1f, 1f, 63201);
+            var b = GenerateOP.doubleRandomVec(m, -1f, 1f, 63202);
+            var bsm = DenseToBSR(in A);
+            var pre = new doubleDenseSpdPreconditioner { Nmat = doubleKrylovBatteryOracles.BuildDenseSpd(n, 63203, (double)n) };
 
             double tol = Consts.doubleSqrtEps;
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
             var info = Krylov.lsqrRightPre(in bsm, in pre, in b, ref x, 20 * n, tol);
-            CheckSolution(ref arena, in A, in b, in x, in info, tol);
-
-            arena.Dispose();
+            CheckSolution(in A, in b, in x, in info, tol);
         }
 
         void LsmrRightPreSpdBSR()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 20, n = 6;
-            var A = arena.doubleRandomMat(m, n, -1f, 1f, 63301);
-            var b = arena.doubleRandomVec(m, -1f, 1f, 63302);
-            var bsm = DenseToBSR(ref arena, in A);
-            var pre = new doubleDenseSpdPreconditioner { Nmat = doubleKrylovBatteryOracles.BuildDenseSpd(ref arena, n, 63303, (double)n) };
+            var A = GenerateOP.doubleRandomMat(m, n, -1f, 1f, 63301);
+            var b = GenerateOP.doubleRandomVec(m, -1f, 1f, 63302);
+            var bsm = DenseToBSR(in A);
+            var pre = new doubleDenseSpdPreconditioner { Nmat = doubleKrylovBatteryOracles.BuildDenseSpd(n, 63303, (double)n) };
 
             double tol = Consts.doubleSqrtEps;
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
             var info = Krylov.lsmrRightPre(in bsm, in pre, in b, ref x, 20 * n, tol);
-            CheckSolution(ref arena, in A, in b, in x, in info, tol);
-
-            arena.Dispose();
+            CheckSolution(in A, in b, in x, in info, tol);
         }
 
         // ---- 5. lsqrJacobi / lsmrJacobi (now the diagonal case of the RightPre path) still
         // match the QR oracle ----
         void JacobiWrappersMatchOracle()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 20, n = 6;
-            var A = arena.doubleRandomMat(m, n, -1f, 1f, 63401);
-            var b = arena.doubleRandomVec(m, -1f, 1f, 63402);
+            var A = GenerateOP.doubleRandomMat(m, n, -1f, 1f, 63401);
+            var b = GenerateOP.doubleRandomVec(m, -1f, 1f, 63402);
 
             double tol = Consts.doubleSqrtEps;
 
-            var xLsqr = arena.doubleVec(n);
+            var xLsqr = new doubleN(n, Allocator.Temp);
             var infoLsqr = Krylov.lsqrJacobi(in A, in b, ref xLsqr, 20 * n, tol);
-            CheckSolution(ref arena, in A, in b, in xLsqr, in infoLsqr, tol);
+            CheckSolution(in A, in b, in xLsqr, in infoLsqr, tol);
 
-            var xLsmr = arena.doubleVec(n);
+            var xLsmr = new doubleN(n, Allocator.Temp);
             var infoLsmr = Krylov.lsmrJacobi(in A, in b, ref xLsmr, 20 * n, tol);
-            CheckSolution(ref arena, in A, in b, in xLsmr, in infoLsmr, tol);
-
-            arena.Dispose();
+            CheckSolution(in A, in b, in xLsmr, in infoLsmr, tol);
         }
 
         // ---- 6./7. general (operator-valued) right preconditioner N = R^-1: A·N is orthonormal, so
@@ -247,37 +227,29 @@ public class doubleLstsqRightPrecondTests
         // land on the QR oracle. Proves both the non-symmetric wrapper AND its strength. ----
         void LsqrRightPreOpRinvDense()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 24, n = 6;
-            var A = BuildIllScaled(ref arena, m, n, 63501);
-            var b = arena.doubleRandomVec(m, -1f, 1f, 63502);
-            var Rinv = BuildRinv(ref arena, in A);
+            var A = BuildIllScaled(m, n, 63501);
+            var b = GenerateOP.doubleRandomVec(m, -1f, 1f, 63502);
+            var Rinv = BuildRinv(in A);
 
             double tol = Consts.doubleSqrtEps;
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
             // budget = n: converges only because A·R^-1 is (near-)orthonormal; CheckSolution asserts Solved.
             var info = Krylov.lsqrRightPreOp(in A, new doubleDenseOperator(in Rinv), in b, ref x, n, tol);
-            CheckSolution(ref arena, in A, in b, in x, in info, tol);
-
-            arena.Dispose();
+            CheckSolution(in A, in b, in x, in info, tol);
         }
 
         void LsmrRightPreOpRinvDense()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 24, n = 6;
-            var A = BuildIllScaled(ref arena, m, n, 63511);
-            var b = arena.doubleRandomVec(m, -1f, 1f, 63512);
-            var Rinv = BuildRinv(ref arena, in A);
+            var A = BuildIllScaled(m, n, 63511);
+            var b = GenerateOP.doubleRandomVec(m, -1f, 1f, 63512);
+            var Rinv = BuildRinv(in A);
 
             double tol = Consts.doubleSqrtEps;
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
             var info = Krylov.lsmrRightPreOp(in A, new doubleDenseOperator(in Rinv), in b, ref x, n, tol);
-            CheckSolution(ref arena, in A, in b, in x, in info, tol);
-
-            arena.Dispose();
+            CheckSolution(in A, in b, in x, in info, tol);
         }
 
         // ---- 8./9. general non-symmetric N (N != N^T): the wrapped transpose must use N^T, so a
@@ -285,37 +257,29 @@ public class doubleLstsqRightPrecondTests
         // and BSR entry points. ----
         void LsqrRightPreOpNonSymDense()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 20, n = 6;
-            var A = arena.doubleRandomMat(m, n, -1f, 1f, 63601);
-            var b = arena.doubleRandomVec(m, -1f, 1f, 63602);
-            var Nmat = BuildNonSym(ref arena, n, 63603);
+            var A = GenerateOP.doubleRandomMat(m, n, -1f, 1f, 63601);
+            var b = GenerateOP.doubleRandomVec(m, -1f, 1f, 63602);
+            var Nmat = BuildNonSym(n, 63603);
 
             double tol = Consts.doubleSqrtEps;
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
             var info = Krylov.lsqrRightPreOp(in A, new doubleDenseOperator(in Nmat), in b, ref x, 20 * n, tol);
-            CheckSolution(ref arena, in A, in b, in x, in info, tol);
-
-            arena.Dispose();
+            CheckSolution(in A, in b, in x, in info, tol);
         }
 
         void LsqrRightPreOpNonSymBSR()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 20, n = 6;
-            var A = arena.doubleRandomMat(m, n, -1f, 1f, 63701);
-            var b = arena.doubleRandomVec(m, -1f, 1f, 63702);
-            var bsm = DenseToBSR(ref arena, in A);
-            var Nmat = BuildNonSym(ref arena, n, 63703);
+            var A = GenerateOP.doubleRandomMat(m, n, -1f, 1f, 63701);
+            var b = GenerateOP.doubleRandomVec(m, -1f, 1f, 63702);
+            var bsm = DenseToBSR(in A);
+            var Nmat = BuildNonSym(n, 63703);
 
             double tol = Consts.doubleSqrtEps;
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
             var info = Krylov.lsqrRightPreOp(in bsm, new doubleDenseOperator(in Nmat), in b, ref x, 20 * n, tol);
-            CheckSolution(ref arena, in A, in b, in x, in info, tol);
-
-            arena.Dispose();
+            CheckSolution(in A, in b, in x, in info, tol);
         }
     }
 

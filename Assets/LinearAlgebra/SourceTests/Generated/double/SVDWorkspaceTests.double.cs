@@ -49,130 +49,126 @@ public class doubleSVDWorkspaceTests
         // pinvSolve scratch overload must match the allocating wrapper bit-for-bit. k = min(m,n).
         void PinvEquiv(int m, int n)
         {
-            var arena = new Arena(Allocator.Persistent);
             int k = m < n ? m : n;
 
-            var A0 = arena.doubleRandomMat(m, n, -5f, 5f, 778231);
+            var A0 = GenerateOP.doubleRandomMat(m, n, -5f, 5f, 778231, allocator: Allocator.Temp);
             for (int d = 0; d < k; d++)   // boost leading diagonal block for conditioning
                 A0[d, d] += (double)10f;
 
-            var b = arena.doubleRandomVec(m, -5f, 5f, 9090);   // read-only in pinvSolve
+            var b = GenerateOP.doubleRandomVec(m, -5f, 5f, 9090, allocator: Allocator.Temp);   // read-only in pinvSolve
 
             // allocating reference (A is no longer modified, but keep per-call copies for clarity)
             var Aa = A0.Copy();
-            var xa = arena.doubleVec(n);
+            var xa = new doubleN(n, Allocator.Temp);
             RankInfo infoA = SVD.pinvSolve(ref Aa, in b, ref xa);
             bool ca = infoA;
             int ra = infoA.rank;
 
             // caller-scratch form (same defaults: relTol = -1 auto, maxSweeps = 30)
             var Ab = A0.Copy();
-            var xb = arena.doubleVec(n);
-            var S = arena.doubleVec(k);
-            var M = arena.doubleMat(k, k);
-            var U = arena.doubleMat(m < n ? n : m, k);
+            var xb = new doubleN(n, Allocator.Temp);
+            var S = new doubleN(k, Allocator.Temp);
+            var M = new doubleMxN(k, k, Allocator.Temp);
+            var U = new doubleMxN(m < n ? n : m, k, Allocator.Temp);
             doubleMxN At = default;
             if (m < n)
-                At = arena.doubleMat(n, m);
+                At = new doubleMxN(n, m, Allocator.Temp);
             RankInfo infoB = SVD.pinvSolve(ref Ab, in b, ref xb, (double)(-1), 30, ref S, ref M, ref U, ref At);
             bool cb = infoB;
             int rb = infoB.rank;
 
             Assert.IsTrue(ra == rb);
             Assert.IsTrue(ca == cb);
-            Assert.IsTrue(Analysis.isZero(xa - xb, Tol()));
+            var xDiffAB = new doubleN(in xa, Allocator.Temp); xDiffAB.subInPlace(xb);
+            Assert.IsTrue(Analysis.isZero(xDiffAB, Tol()));
 
             // workspace-struct form (default relTol/maxSweeps) must match the raw-scratch form
             var Aw = A0.Copy();
-            var xw = arena.doubleVec(n);
-            var ws = arena.doubleSVDCache(m, n);
+            var xw = new doubleN(n, Allocator.Temp);
+            var ws = new doubleSVDCache(m, n, Allocator.Temp);
             RankInfo infoW = SVD.pinvSolve(ref Aw, in b, ref xw, ref ws);
             bool cw = infoW;
             int rw = infoW.rank;
 
             Assert.IsTrue(rw == rb);
             Assert.IsTrue(cw == cb);
-            Assert.IsTrue(Analysis.isZero(xw - xb, Tol()));
-
-            arena.Dispose();
+            var xDiffWB = new doubleN(in xw, Allocator.Temp); xDiffWB.subInPlace(xb);
+            Assert.IsTrue(Analysis.isZero(xDiffWB, Tol()));
         }
 
         // pseudoInverse scratch overload must match the allocating wrapper bit-for-bit.
         void PseudoEquiv(int m, int n)
         {
-            var arena = new Arena(Allocator.Persistent);
             int k = m < n ? m : n;
 
-            var A0 = arena.doubleRandomMat(m, n, -5f, 5f, 314221);
+            var A0 = GenerateOP.doubleRandomMat(m, n, -5f, 5f, 314221, allocator: Allocator.Temp);
             for (int d = 0; d < k; d++)
                 A0[d, d] += (double)10f;
 
             // allocating reference (Aplus is N_Cols x M_Rows = n x m)
             var Aa = A0.Copy();
-            var Pa = arena.doubleMat(n, m);
+            var Pa = new doubleMxN(n, m, Allocator.Temp);
             RankInfo ia = SVD.pseudoInverse(ref Aa, ref Pa);
             int ra = ia.rank; bool ca = ia;
 
             // caller-scratch form
             var Ab = A0.Copy();
-            var Pb = arena.doubleMat(n, m);
-            var S = arena.doubleVec(k);
-            var M = arena.doubleMat(k, k);
-            var U = arena.doubleMat(m < n ? n : m, k);
+            var Pb = new doubleMxN(n, m, Allocator.Temp);
+            var S = new doubleN(k, Allocator.Temp);
+            var M = new doubleMxN(k, k, Allocator.Temp);
+            var U = new doubleMxN(m < n ? n : m, k, Allocator.Temp);
             doubleMxN At = default;
             if (m < n)
-                At = arena.doubleMat(n, m);
+                At = new doubleMxN(n, m, Allocator.Temp);
             RankInfo ib = SVD.pseudoInverse(ref Ab, ref Pb, (double)(-1), Consts.sweepBudget(k), ref S, ref M, ref U, ref At);
             int rb = ib.rank; bool cb = ib;
 
             Assert.IsTrue(ra == rb);
             Assert.IsTrue(ca == cb);
-            Assert.IsTrue(Analysis.isZero(Pa - Pb, Tol()));
+            var PDiffAB = new doubleMxN(in Pa, Allocator.Temp); PDiffAB.subInPlace(Pb);
+            Assert.IsTrue(Analysis.isZero(PDiffAB, Tol()));
 
             var Aw = A0.Copy();
-            var Pw = arena.doubleMat(n, m);
-            var ws = arena.doubleSVDCache(m, n);
+            var Pw = new doubleMxN(n, m, Allocator.Temp);
+            var ws = new doubleSVDCache(m, n, Allocator.Temp);
             RankInfo iw = SVD.pseudoInverse(ref Aw, ref Pw, ref ws);
             int rw = iw.rank; bool cw = iw;
 
             Assert.IsTrue(rw == rb);
             Assert.IsTrue(cw == cb);
-            Assert.IsTrue(Analysis.isZero(Pw - Pb, Tol()));
-
-            arena.Dispose();
+            var PDiffWB = new doubleMxN(in Pw, Allocator.Temp); PDiffWB.subInPlace(Pb);
+            Assert.IsTrue(Analysis.isZero(PDiffWB, Tol()));
         }
 
         // Reuse ONE workspace across several consecutive solves (the feature's whole purpose):
         // each solve must match a fresh allocating solve, proving no stale state survives reuse.
         void WorkspaceReuse()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 8, n = 4;
 
-            var A0 = arena.doubleRandomMat(m, n, -5f, 5f, 24681);
+            var A0 = GenerateOP.doubleRandomMat(m, n, -5f, 5f, 24681, allocator: Allocator.Temp);
             for (int d = 0; d < n; d++)
                 A0[d, d] += (double)10f;
 
-            var ws = arena.doubleSVDCache(m, n);   // allocated ONCE, reused below
+            var ws = new doubleSVDCache(m, n, Allocator.Temp);   // allocated ONCE, reused below
 
             for (int t = 0; t < 3; t++)
             {
-                var b = arena.doubleRandomVec(m, -5f, 5f, (uint)(1000 + t * 7));
+                var b = GenerateOP.doubleRandomVec(m, -5f, 5f, (uint)(1000 + t * 7), allocator: Allocator.Temp);
 
                 // allocating reference (fresh internal scratch each call)
                 var Aa = A0.Copy();
-                var xa = arena.doubleVec(n);
+                var xa = new doubleN(n, Allocator.Temp);
                 SVD.pinvSolve(ref Aa, in b, ref xa);
 
                 // reused workspace
                 var Aw = A0.Copy();
-                var xw = arena.doubleVec(n);
+                var xw = new doubleN(n, Allocator.Temp);
                 SVD.pinvSolve(ref Aw, in b, ref xw, ref ws);
 
-                Assert.IsTrue(Analysis.isZero(xa - xw, Tol()));
+                var xDiff = new doubleN(in xa, Allocator.Temp); xDiff.subInPlace(xw);
+                Assert.IsTrue(Analysis.isZero(xDiff, Tol()));
             }
-
-            arena.Dispose();
         }
     }
 
@@ -189,122 +185,92 @@ public class doubleSVDWorkspaceTests
     [Test]
     public void Pinv_BadScratchS_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = arena.doubleMat(4, 3);     // tall, k = 3
-            var b = arena.doubleVec(4);
-            var x = arena.doubleVec(3);
-            var S = arena.doubleVec(2);        // must be length 3
-            var M = arena.doubleMat(3, 3);
-            var U = arena.doubleMat(4, 3);
-            doubleMxN At = default;
-            Assert.Throws<ArgumentException>(
-                () => SVD.pinvSolve(ref A, in b, ref x, (double)(-1), 30, ref S, ref M, ref U, ref At));
-        }
-        finally { arena.Dispose(); }
+        var A = new doubleMxN(4, 3, Allocator.Temp);     // tall, k = 3
+        var b = new doubleN(4, Allocator.Temp);
+        var x = new doubleN(3, Allocator.Temp);
+        var S = new doubleN(2, Allocator.Temp);        // must be length 3
+        var M = new doubleMxN(3, 3, Allocator.Temp);
+        var U = new doubleMxN(4, 3, Allocator.Temp);
+        doubleMxN At = default;
+        Assert.Throws<ArgumentException>(
+            () => SVD.pinvSolve(ref A, in b, ref x, (double)(-1), 30, ref S, ref M, ref U, ref At));
     }
 
     [Test]
     public void Pinv_BadScratchM_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = arena.doubleMat(4, 3);     // tall, k = 3
-            var b = arena.doubleVec(4);
-            var x = arena.doubleVec(3);
-            var S = arena.doubleVec(3);
-            var M = arena.doubleMat(3, 2);     // must be 3 x 3
-            var U = arena.doubleMat(4, 3);
-            doubleMxN At = default;
-            Assert.Throws<ArgumentException>(
-                () => SVD.pinvSolve(ref A, in b, ref x, (double)(-1), 30, ref S, ref M, ref U, ref At));
-        }
-        finally { arena.Dispose(); }
+        var A = new doubleMxN(4, 3, Allocator.Temp);     // tall, k = 3
+        var b = new doubleN(4, Allocator.Temp);
+        var x = new doubleN(3, Allocator.Temp);
+        var S = new doubleN(3, Allocator.Temp);
+        var M = new doubleMxN(3, 2, Allocator.Temp);     // must be 3 x 3
+        var U = new doubleMxN(4, 3, Allocator.Temp);
+        doubleMxN At = default;
+        Assert.Throws<ArgumentException>(
+            () => SVD.pinvSolve(ref A, in b, ref x, (double)(-1), 30, ref S, ref M, ref U, ref At));
     }
 
     [Test]
     public void Pinv_BadScratchU_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = arena.doubleMat(4, 3);     // tall, k = 3, big = 4 -> U must be 4 x 3
-            var b = arena.doubleVec(4);
-            var x = arena.doubleVec(3);
-            var S = arena.doubleVec(3);
-            var M = arena.doubleMat(3, 3);
-            var U = arena.doubleMat(3, 3);     // wrong: must be 4 x 3
-            doubleMxN At = default;
-            Assert.Throws<ArgumentException>(
-                () => SVD.pinvSolve(ref A, in b, ref x, (double)(-1), 30, ref S, ref M, ref U, ref At));
-        }
-        finally { arena.Dispose(); }
+        var A = new doubleMxN(4, 3, Allocator.Temp);     // tall, k = 3, big = 4 -> U must be 4 x 3
+        var b = new doubleN(4, Allocator.Temp);
+        var x = new doubleN(3, Allocator.Temp);
+        var S = new doubleN(3, Allocator.Temp);
+        var M = new doubleMxN(3, 3, Allocator.Temp);
+        var U = new doubleMxN(3, 3, Allocator.Temp);     // wrong: must be 4 x 3
+        doubleMxN At = default;
+        Assert.Throws<ArgumentException>(
+            () => SVD.pinvSolve(ref A, in b, ref x, (double)(-1), 30, ref S, ref M, ref U, ref At));
     }
 
     [Test]
     public void Pinv_WideMissingAt_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = arena.doubleMat(3, 5);     // wide, k = 3, needs At = 5 x 3
-            var b = arena.doubleVec(3);
-            var x = arena.doubleVec(5);
-            var S = arena.doubleVec(3);
-            var M = arena.doubleMat(3, 3);
-            var U = arena.doubleMat(5, 3);
-            doubleMxN At = default;            // missing (0 x 0) -> must throw
-            Assert.Throws<ArgumentException>(
-                () => SVD.pinvSolve(ref A, in b, ref x, (double)(-1), 30, ref S, ref M, ref U, ref At));
-        }
-        finally { arena.Dispose(); }
+        var A = new doubleMxN(3, 5, Allocator.Temp);     // wide, k = 3, needs At = 5 x 3
+        var b = new doubleN(3, Allocator.Temp);
+        var x = new doubleN(5, Allocator.Temp);
+        var S = new doubleN(3, Allocator.Temp);
+        var M = new doubleMxN(3, 3, Allocator.Temp);
+        var U = new doubleMxN(5, 3, Allocator.Temp);
+        doubleMxN At = default;            // missing (0 x 0) -> must throw
+        Assert.Throws<ArgumentException>(
+            () => SVD.pinvSolve(ref A, in b, ref x, (double)(-1), 30, ref S, ref M, ref U, ref At));
     }
 
-    // Arena.doubleSVDCache(m, n) must size S (k), M (k x k), and At (n x m only when wide).
+    // Standalone doubleSVDCache(m, n, allocator) must size S (k), M (k x k), and At (n x m only when wide).
     [Test]
     public void SvdWorkspace_Factory_SizesCorrectly()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            // tall: k = n, big = m; U = big x k = 7 x 4; At unused (left default).
-            var wsTall = arena.doubleSVDCache(7, 4);
-            Assert.AreEqual(4, wsTall.S.N);
-            Assert.AreEqual(4, wsTall.M.M_Rows);
-            Assert.AreEqual(4, wsTall.M.N_Cols);
-            Assert.AreEqual(7, wsTall.U.M_Rows);
-            Assert.AreEqual(4, wsTall.U.N_Cols);
+        // tall: k = n, big = m; U = big x k = 7 x 4; At unused (left default).
+        var wsTall = new doubleSVDCache(7, 4, Allocator.Temp);
+        Assert.AreEqual(4, wsTall.S.N);
+        Assert.AreEqual(4, wsTall.M.M_Rows);
+        Assert.AreEqual(4, wsTall.M.N_Cols);
+        Assert.AreEqual(7, wsTall.U.M_Rows);
+        Assert.AreEqual(4, wsTall.U.N_Cols);
 
-            // wide: k = m, big = n; U = big x k = 8 x 3; At = n x m
-            var wsWide = arena.doubleSVDCache(3, 8);
-            Assert.AreEqual(3, wsWide.S.N);
-            Assert.AreEqual(3, wsWide.M.M_Rows);
-            Assert.AreEqual(3, wsWide.M.N_Cols);
-            Assert.AreEqual(8, wsWide.U.M_Rows);
-            Assert.AreEqual(3, wsWide.U.N_Cols);
-            Assert.AreEqual(8, wsWide.At.M_Rows);
-            Assert.AreEqual(3, wsWide.At.N_Cols);
-        }
-        finally { arena.Dispose(); }
+        // wide: k = m, big = n; U = big x k = 8 x 3; At = n x m
+        var wsWide = new doubleSVDCache(3, 8, Allocator.Temp);
+        Assert.AreEqual(3, wsWide.S.N);
+        Assert.AreEqual(3, wsWide.M.M_Rows);
+        Assert.AreEqual(3, wsWide.M.N_Cols);
+        Assert.AreEqual(8, wsWide.U.M_Rows);
+        Assert.AreEqual(3, wsWide.U.N_Cols);
+        Assert.AreEqual(8, wsWide.At.M_Rows);
+        Assert.AreEqual(3, wsWide.At.N_Cols);
     }
 
     [Test]
     public void PseudoInverse_WideBadAt_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = arena.doubleMat(3, 5);     // wide, k = 3, needs At = 5 x 3
-            var Aplus = arena.doubleMat(5, 3); // N_Cols x M_Rows
-            var S = arena.doubleVec(3);
-            var M = arena.doubleMat(3, 3);
-            var U = arena.doubleMat(5, 3);
-            var At = arena.doubleMat(3, 5);    // wrong shape (must be 5 x 3) -> must throw
-            Assert.Throws<ArgumentException>(
-                () => SVD.pseudoInverse(ref A, ref Aplus, (double)(-1), 30, ref S, ref M, ref U, ref At));
-        }
-        finally { arena.Dispose(); }
+        var A = new doubleMxN(3, 5, Allocator.Temp);     // wide, k = 3, needs At = 5 x 3
+        var Aplus = new doubleMxN(5, 3, Allocator.Temp); // N_Cols x M_Rows
+        var S = new doubleN(3, Allocator.Temp);
+        var M = new doubleMxN(3, 3, Allocator.Temp);
+        var U = new doubleMxN(5, 3, Allocator.Temp);
+        var At = new doubleMxN(3, 5, Allocator.Temp);    // wrong shape (must be 5 x 3) -> must throw
+        Assert.Throws<ArgumentException>(
+            () => SVD.pseudoInverse(ref A, ref Aplus, (double)(-1), 30, ref S, ref M, ref U, ref At));
     }
 }

@@ -45,9 +45,7 @@ public class floatFullStatsTests
         // mean=15, variance(population)=25, stdDev=5, min=10, max=20, range=10.
         void TwoElements()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var v = arena.floatVec(2);
+            var v = new floatN(2, Allocator.Temp);
             v[0] = (float)20; v[1] = (float)10;   // unsorted on purpose
 
             var s = Stats.meanMinMaxRange_medianIQRstdDevVariance(in v);
@@ -62,17 +60,13 @@ public class floatFullStatsTests
             AssertClose(s.min, (float)10, (float)1E-4);
             AssertClose(s.max, (float)20, (float)1E-4);
             AssertClose(s.range, (float)10, (float)1E-4);
-
-            arena.Dispose();
         }
 
         // [3,1,4,2] -> sorted [1,2,3,4]. median=2.5, q1=1.75, q3=3.25, iqr=1.5, mean=2.5,
         // variance(population)=1.25, stdDev=sqrt(1.25).
         void FourElements()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var v = arena.floatVec(4);
+            var v = new floatN(4, Allocator.Temp);
             v[0] = (float)3; v[1] = (float)1; v[2] = (float)4; v[3] = (float)2;
 
             var s = Stats.meanMinMaxRange_medianIQRstdDevVariance(in v);
@@ -84,24 +78,18 @@ public class floatFullStatsTests
             AssertClose(s.mean, (float)2.5, (float)1E-4);
             AssertClose(s.variance, (float)1.25, (float)1E-4);
             AssertClose(s.stdDev, math.sqrt((float)1.25), (float)1E-4);
-
-            arena.Dispose();
         }
 
         // standalone median: odd [1,2,3] -> 2; even [1,2,3,4] -> 2.5.
         void MedianOddEven()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var odd = arena.floatVec(3);
+            var odd = new floatN(3, Allocator.Temp);
             odd[0] = (float)3; odd[1] = (float)1; odd[2] = (float)2;
             AssertClose(Stats.median(in odd), (float)2, (float)1E-4);
 
-            var even = arena.floatVec(4);
+            var even = new floatN(4, Allocator.Temp);
             even[0] = (float)4; even[1] = (float)2; even[2] = (float)1; even[3] = (float)3;
             AssertClose(Stats.median(in even), (float)2.5, (float)1E-4);
-
-            arena.Dispose();
         }
 
         void AssertClose(float a, float b, float precision)

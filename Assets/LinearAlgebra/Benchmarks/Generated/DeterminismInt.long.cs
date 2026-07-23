@@ -66,15 +66,14 @@ namespace LinearAlgebra.Benchmarks
     {
         public static (string id, uint hash)[] Case_IntFamilyCoreLong()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2654435761u ^ 0x0019u);
 
             const int n = 48;
             // Non-negative range: this case runs for uint too (unlike the norms/stats job below,
             // which is skipped for uint), and a negative long literal wraps to a huge value under
             // unsigned arithmetic, which would violate Rand.nextUniformInPlace's min <= max contract.
-            var a = arena.longVec(n);
-            var b = arena.longVec(n);
+            var a = new longN(n, Allocator.Persistent);
+            var b = new longN(n, Allocator.Persistent);
             // Small range: n=48 values in [0,10) keeps the worst-case dot-product sum (4800) well
             // inside `short`'s range (Blas.dot accumulates in the element's own width, unwidened).
             // Rand.nextUniformInPlace has no uint instantiation (RandomOP.long.cs does not opt
@@ -88,7 +87,7 @@ namespace LinearAlgebra.Benchmarks
 
             var pivot = new Pivot(8, Allocator.Persistent);
 
-            var randDest = arena.longVec(n);
+            var randDest = new longN(n, Allocator.Persistent);
             
             Rand.nextUniformInPlace(ref rng, ref randDest, (long)0, (long)1000);
             
@@ -106,18 +105,17 @@ namespace LinearAlgebra.Benchmarks
             };
             hashOut.Dispose();
             pivot.Dispose();
-            arena.Dispose();
+            a.Dispose(); b.Dispose(); randDest.Dispose();
             return result;
         }
 
         
         public static (string id, uint hash)[] Case_IntFamilyNormsStatsLong()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2654435761u ^ 0x001Au);
 
             const int n = 48;
-            var vec = arena.longVec(n);
+            var vec = new longN(n, Allocator.Persistent);
             Rand.nextUniformInPlace(ref rng, ref vec, (long)(-50), (long)50);
 
             var hashOut = new NativeArray<uint>(1, Allocator.Persistent);
@@ -126,7 +124,7 @@ namespace LinearAlgebra.Benchmarks
 
             var result = new[] { ("int-family/norms-stats.long.n48", hashOut[0]) };
             hashOut.Dispose();
-            arena.Dispose();
+            vec.Dispose();
             return result;
         }
         

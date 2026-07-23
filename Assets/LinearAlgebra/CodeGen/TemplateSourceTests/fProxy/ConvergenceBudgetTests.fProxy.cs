@@ -98,17 +98,17 @@ public class fProxyConvergenceBudgetTests
             Out[3] = info.converged;
         }
 
-        static fProxyN GradedSpectrum(ref Arena arena, int n, fProxy ratio)
+        static fProxyN GradedSpectrum(int n, fProxy ratio)
         {
-            var s = arena.fProxyVec(n);
+            var s = new fProxyN(n, Allocator.Temp);
             fProxy v = (fProxy)100;
             for (int i = 0; i < n; i++) { s[i] = v; v *= ratio; }
             return s;
         }
 
-        static fProxyN ClusteredSpectrum(ref Arena arena, int n)
+        static fProxyN ClusteredSpectrum(int n)
         {
-            var s = arena.fProxyVec(n);
+            var s = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++)
             {
                 int cluster = i % 5;
@@ -125,10 +125,10 @@ public class fProxyConvergenceBudgetTests
             return s;
         }
 
-        static fProxyN RandomSpectrum(ref Arena arena, int n, uint seed)
+        static fProxyN RandomSpectrum(int n, uint seed)
         {
             var rng = new Random(seed);
-            var s = arena.fProxyVec(n);
+            var s = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) s[i] = (fProxy)(0.01 + rng.NextDouble() * 99.99);
             for (int j = 0; j < n; j++)
             {
@@ -140,18 +140,18 @@ public class fProxyConvergenceBudgetTests
         }
 
         // A = G * diag(sigma) * V^T, G/V independent Haar-orthogonal -> known singular values.
-        static fProxyMxN BuildGeneral(ref Arena arena, int n, in fProxyN sigma, uint seed)
+        static fProxyMxN BuildGeneral(int n, in fProxyN sigma, uint seed)
         {
             var rng = new Random(seed);
-            var G = arena.fProxyMat(n, n);
-            var Rm = arena.fProxyMat(n, n);
+            var G = new fProxyMxN(n, n, Allocator.Temp);
+            var Rm = new fProxyMxN(n, n, Allocator.Temp);
             var gauss = new fProxyGaussian((fProxy)0, (fProxy)1);
             Rand.randomInPlace(ref rng, ref G, ref gauss);
             QR.decompInPlace(ref G, ref Rm);
-            var V = arena.fProxyMat(n, n);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
             Rand.orthogonalInPlace(ref rng, ref V);
 
-            var A = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Temp);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
                 {
@@ -164,13 +164,13 @@ public class fProxyConvergenceBudgetTests
         }
 
         // A = Q * diag(sigma) * Q^T, Q Haar-orthogonal -> known SYMMETRIC eigenvalues.
-        static fProxyMxN BuildSymmetric(ref Arena arena, int n, in fProxyN sigma, uint seed)
+        static fProxyMxN BuildSymmetric(int n, in fProxyN sigma, uint seed)
         {
             var rng = new Random(seed);
-            var Q = arena.fProxyMat(n, n);
+            var Q = new fProxyMxN(n, n, Allocator.Temp);
             Rand.orthogonalInPlace(ref rng, ref Q);
 
-            var A = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Temp);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
                 {
@@ -185,143 +185,123 @@ public class fProxyConvergenceBudgetTests
         public void Graded95Thin()
         {
             int n = N;
-            var arena = new Arena(Allocator.Persistent);
-            var sigma = GradedSpectrum(ref arena, n, (fProxy)0.95f);
-            var A = BuildGeneral(ref arena, n, in sigma, 0xC0FFEEu + (uint)n);
-            var U = arena.fProxyMat(n, n);
-            var S = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var sigma = GradedSpectrum(n, (fProxy)0.95f);
+            var A = BuildGeneral(n, in sigma, 0xC0FFEEu + (uint)n);
+            var U = new fProxyMxN(n, n, Allocator.Temp);
+            var S = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
             int budget = Consts.sweepBudget(n);
             var info = SVD.thin(in A, ref U, ref S, ref V, budget);
             Store(in info, budget);
-            arena.Dispose();
         }
 
         public void Graded95Values()
         {
             int n = N;
-            var arena = new Arena(Allocator.Persistent);
-            var sigma = GradedSpectrum(ref arena, n, (fProxy)0.95f);
-            var A = BuildGeneral(ref arena, n, in sigma, 0xBADC0DEu + (uint)n);
-            var S = arena.fProxyVec(n);
+            var sigma = GradedSpectrum(n, (fProxy)0.95f);
+            var A = BuildGeneral(n, in sigma, 0xBADC0DEu + (uint)n);
+            var S = new fProxyN(n, Allocator.Temp);
             int budget = Consts.sweepBudget(n);
             var info = SVD.values(in A, ref S, budget, Consts.fProxyZeroThreshold);
             Store(in info, budget);
-            arena.Dispose();
         }
 
         public void Graded95ValuesSymmetric()
         {
             int n = N;
-            var arena = new Arena(Allocator.Persistent);
-            var sigma = GradedSpectrum(ref arena, n, (fProxy)0.95f);
-            var A = BuildSymmetric(ref arena, n, in sigma, 0x5EED0001u + (uint)n);
-            var eig = arena.fProxyVec(n);
+            var sigma = GradedSpectrum(n, (fProxy)0.95f);
+            var A = BuildSymmetric(n, in sigma, 0x5EED0001u + (uint)n);
+            var eig = new fProxyN(n, Allocator.Temp);
             int budget = Consts.sweepBudget(n);
             var info = Eigen.valuesSymmetricInPlace(ref A, ref eig, budget, Consts.fProxyZeroThreshold);
             Store(in info, budget);
-            arena.Dispose();
         }
 
         public void Graded95Symmetric()
         {
             int n = N;
-            var arena = new Arena(Allocator.Persistent);
-            var sigma = GradedSpectrum(ref arena, n, (fProxy)0.95f);
-            var A = BuildSymmetric(ref arena, n, in sigma, 0x5EED0002u + (uint)n);
-            var eig = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var sigma = GradedSpectrum(n, (fProxy)0.95f);
+            var A = BuildSymmetric(n, in sigma, 0x5EED0002u + (uint)n);
+            var eig = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
             int budget = Consts.sweepBudget(n);
             var info = Eigen.symmetricInPlace(ref A, ref eig, ref V, budget, Consts.fProxyZeroThreshold);
             Store(in info, budget);
-            arena.Dispose();
         }
 
         public void Graded99Thin()
         {
             int n = N;
-            var arena = new Arena(Allocator.Persistent);
-            var sigma = GradedSpectrum(ref arena, n, (fProxy)0.99f);
-            var A = BuildGeneral(ref arena, n, in sigma, 0x99000001u);
-            var U = arena.fProxyMat(n, n);
-            var S = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var sigma = GradedSpectrum(n, (fProxy)0.99f);
+            var A = BuildGeneral(n, in sigma, 0x99000001u);
+            var U = new fProxyMxN(n, n, Allocator.Temp);
+            var S = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
             int budget = Consts.sweepBudget(n);
             var info = SVD.thin(in A, ref U, ref S, ref V, budget);
             Store(in info, budget);
-            arena.Dispose();
         }
 
         public void Graded99Symmetric()
         {
             int n = N;
-            var arena = new Arena(Allocator.Persistent);
-            var sigma = GradedSpectrum(ref arena, n, (fProxy)0.99f);
-            var A = BuildSymmetric(ref arena, n, in sigma, 0x99000002u);
-            var eig = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var sigma = GradedSpectrum(n, (fProxy)0.99f);
+            var A = BuildSymmetric(n, in sigma, 0x99000002u);
+            var eig = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
             int budget = Consts.sweepBudget(n);
             var info = Eigen.symmetricInPlace(ref A, ref eig, ref V, budget, Consts.fProxyZeroThreshold);
             Store(in info, budget);
-            arena.Dispose();
         }
 
         public void ClusteredThin()
         {
             int n = N;
-            var arena = new Arena(Allocator.Persistent);
-            var sigma = ClusteredSpectrum(ref arena, n);
-            var A = BuildGeneral(ref arena, n, in sigma, 0xC1000001u);
-            var U = arena.fProxyMat(n, n);
-            var S = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var sigma = ClusteredSpectrum(n);
+            var A = BuildGeneral(n, in sigma, 0xC1000001u);
+            var U = new fProxyMxN(n, n, Allocator.Temp);
+            var S = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
             int budget = Consts.sweepBudget(n);
             var info = SVD.thin(in A, ref U, ref S, ref V, budget);
             Store(in info, budget);
-            arena.Dispose();
         }
 
         public void ClusteredSymmetric()
         {
             int n = N;
-            var arena = new Arena(Allocator.Persistent);
-            var sigma = ClusteredSpectrum(ref arena, n);
-            var A = BuildSymmetric(ref arena, n, in sigma, 0xC1000002u);
-            var eig = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var sigma = ClusteredSpectrum(n);
+            var A = BuildSymmetric(n, in sigma, 0xC1000002u);
+            var eig = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
             int budget = Consts.sweepBudget(n);
             var info = Eigen.symmetricInPlace(ref A, ref eig, ref V, budget, Consts.fProxyZeroThreshold);
             Store(in info, budget);
-            arena.Dispose();
         }
 
         public void RandomThin()
         {
             int n = N;
-            var arena = new Arena(Allocator.Persistent);
-            var sigma = RandomSpectrum(ref arena, n, 0xF00D0001u);
-            var A = BuildGeneral(ref arena, n, in sigma, 0xF00D0011u);
-            var U = arena.fProxyMat(n, n);
-            var S = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var sigma = RandomSpectrum(n, 0xF00D0001u);
+            var A = BuildGeneral(n, in sigma, 0xF00D0011u);
+            var U = new fProxyMxN(n, n, Allocator.Temp);
+            var S = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
             int budget = Consts.sweepBudget(n);
             var info = SVD.thin(in A, ref U, ref S, ref V, budget);
             Store(in info, budget);
-            arena.Dispose();
         }
 
         public void RandomSymmetric()
         {
             int n = N;
-            var arena = new Arena(Allocator.Persistent);
-            var sigma = RandomSpectrum(ref arena, n, 0xF00D0002u);
-            var A = BuildSymmetric(ref arena, n, in sigma, 0xF00D0022u);
-            var eig = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var sigma = RandomSpectrum(n, 0xF00D0002u);
+            var A = BuildSymmetric(n, in sigma, 0xF00D0022u);
+            var eig = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
             int budget = Consts.sweepBudget(n);
             var info = Eigen.symmetricInPlace(ref A, ref eig, ref V, budget, Consts.fProxyZeroThreshold);
             Store(in info, budget);
-            arena.Dispose();
         }
     }
 

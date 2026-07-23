@@ -52,11 +52,11 @@ public class fProxySparseIC0Tests
         // SPD block-tridiagonal chain: diagonal blocks 2*BR*I + ones-perturbation (symmetric,
         // strongly diagonally dominant), off-diagonal coupling blocks -I. Block-tridiagonal
         // patterns are fill-free under Cholesky, so IC(0) == exact Cholesky here.
-        static fProxyBSR BuildBlockTridiag(ref Arena arena, int nb, int BR)
+        static fProxyBSR BuildBlockTridiag(int nb, int BR)
         {
-            var builder = arena.fProxyBSRBuilder(nb, nb, BR, BR);
-            var diag = arena.fProxyMat(BR, BR);
-            var off = arena.fProxyMat(BR, BR);
+            var builder = new fProxyBSRBuilder(nb, nb, BR, BR, Allocator.Temp);
+            var diag = new fProxyMxN(BR, BR, Allocator.Temp);
+            var off = new fProxyMxN(BR, BR, Allocator.Temp);
 
             for (int r = 0; r < BR; r++)
                 for (int c = 0; c < BR; c++)
@@ -74,100 +74,88 @@ public class fProxySparseIC0Tests
                     builder.AddBlock(i, i + 1, in off);
                 }
             }
-            return builder.ToBSR(ref arena);
+            return builder.ToBSR(Allocator.Temp);
         }
 
         void ExactOnBlockTridiagonal()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             const int nb = 6, BR = 3;
-            var A = BuildBlockTridiag(ref arena, nb, BR);
+            var A = BuildBlockTridiag(nb, BR);
             int n = A.M_Rows;
 
-            var M = arena.fProxyIC0(in A);
+            var M = new fProxyIC0(in A, Allocator.Temp);
             Assert.IsTrue(M.Shift == (fProxy)0);   // clean factorization, no shift needed
 
-            var r = arena.fProxyRandomVec(n, -1f, 1f, 831001u);
-            var z = arena.fProxyVec(n);
+            var r = GenerateOP.fProxyRandomVec(n, -1f, 1f, 831001u);
+            var z = new fProxyN(n, Allocator.Temp);
             M.Apply(in r, ref z);
 
             // Dense Cholesky oracle: z must equal A^-1 r because IC(0) is exact on this pattern.
-            var D = A.ToDense(ref arena);
-            var zRef = arena.fProxyVec(n);
+            var D = A.ToDense(Allocator.Temp);
+            var zRef = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) zRef[i] = r[i];
             var info = CHO.solveInPlace(ref D, ref zRef);
             Assert.IsTrue(info.Solved);
 
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(math.abs(z[i] - zRef[i]) < Tol() * ((fProxy)1 + math.abs(zRef[i])));
-
-            arena.Dispose();
         }
 
         void BeatsJacobiOnLaplacian()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyLaplacian2D(4, 16);
-            var bJ = arena.fProxyBlockJacobi(in A);
-            var ic0 = arena.fProxyIC0(in A);
+            var A = fProxyGallery.fProxyLaplacian2D(4, 16);
+            var bJ = new fProxyBlockJacobi(in A, Allocator.Temp);
+            var ic0 = new fProxyIC0(in A, Allocator.Temp);
             int n = A.M_Rows;
 
-            var xTrue = arena.fProxyRandomVec(n, 0.5f, 1.5f, 831002u);
+            var xTrue = GenerateOP.fProxyRandomVec(n, 0.5f, 1.5f, 831002u);
             var b = BSR.spMV(in A, in xTrue);
             fProxy tol = Consts.fProxySqrtEps;
             int maxIter = 8 * n;
 
-            var xJ = arena.fProxyVec(n);
+            var xJ = new fProxyN(n, Allocator.Temp);
             var infoJ = Krylov.cg(in A, in bJ, in b, ref xJ, maxIter, tol);
             Assert.IsTrue(infoJ.Solved);
 
-            var xI = arena.fProxyVec(n);
+            var xI = new fProxyN(n, Allocator.Temp);
             var infoI = Krylov.cg(in A, in ic0, in b, ref xI, maxIter, tol);
             Assert.IsTrue(infoI.Solved);
 
             Assert.IsTrue((double)infoI.iterations <= (double)infoJ.iterations * 0.9);
-
-            arena.Dispose();
         }
 
         void BeatsJacobiOnRandomSparseSPD()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyRandomSparseSPD(30, 3, (fProxy)0.35, 831003u);
-            var bJ = arena.fProxyBlockJacobi(in A);
-            var ic0 = arena.fProxyIC0(in A);
+            var A = fProxyGallery.fProxyRandomSparseSPD(30, 3, (fProxy)0.35, 831003u);
+            var bJ = new fProxyBlockJacobi(in A, Allocator.Temp);
+            var ic0 = new fProxyIC0(in A, Allocator.Temp);
             int n = A.M_Rows;
 
-            var xTrue = arena.fProxyRandomVec(n, 0.5f, 1.5f, 831004u);
+            var xTrue = GenerateOP.fProxyRandomVec(n, 0.5f, 1.5f, 831004u);
             var b = BSR.spMV(in A, in xTrue);
             fProxy tol = Consts.fProxySqrtEps;
             int maxIter = 8 * n;
 
-            var xJ = arena.fProxyVec(n);
+            var xJ = new fProxyN(n, Allocator.Temp);
             var infoJ = Krylov.cg(in A, in bJ, in b, ref xJ, maxIter, tol);
             Assert.IsTrue(infoJ.Solved);
 
-            var xI = arena.fProxyVec(n);
+            var xI = new fProxyN(n, Allocator.Temp);
             var infoI = Krylov.cg(in A, in ic0, in b, ref xI, maxIter, tol);
             Assert.IsTrue(infoI.Solved);
 
             Assert.IsTrue((double)infoI.iterations <= (double)infoJ.iterations * 0.9);
-
-            arena.Dispose();
         }
 
         void SymmetricStorageMatchesFull()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // Build the same SPD matrix twice: full storage and symmetric (lower) storage.
             const int nb = 4, BR = 2;
-            var full = BuildBlockTridiag(ref arena, nb, BR);
+            var full = BuildBlockTridiag(nb, BR);
 
-            var builder = arena.fProxyBSRBuilder(nb, nb, BR, BR);
-            var diag = arena.fProxyMat(BR, BR);
-            var off = arena.fProxyMat(BR, BR);
+            var builder = new fProxyBSRBuilder(nb, nb, BR, BR, Allocator.Temp);
+            var diag = new fProxyMxN(BR, BR, Allocator.Temp);
+            var off = new fProxyMxN(BR, BR, Allocator.Temp);
             for (int r = 0; r < BR; r++)
                 for (int c = 0; c < BR; c++)
                 {
@@ -179,35 +167,32 @@ public class fProxySparseIC0Tests
                 builder.AddBlock(i, i, in diag);
                 if (i + 1 < nb) builder.AddBlock(i + 1, i, in off);   // lower triangle only
             }
-            var sym = builder.ToBSRSymmetric(ref arena);
+            var sym = builder.ToBSRSymmetric(Allocator.Temp);
 
-            var mFull = arena.fProxyIC0(in full);
-            var mSym = arena.fProxyIC0(in sym);
+            var mFull = new fProxyIC0(in full, Allocator.Temp);
+            var mSym = new fProxyIC0(in sym, Allocator.Temp);
 
             int n = full.M_Rows;
-            var r2 = arena.fProxyRandomVec(n, -1f, 1f, 831005u);
-            var zF = arena.fProxyVec(n);
-            var zS = arena.fProxyVec(n);
+            var r2 = GenerateOP.fProxyRandomVec(n, -1f, 1f, 831005u);
+            var zF = new fProxyN(n, Allocator.Temp);
+            var zS = new fProxyN(n, Allocator.Temp);
             mFull.Apply(in r2, ref zF);
             mSym.Apply(in r2, ref zS);
 
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(math.abs(zF[i] - zS[i]) < Tol() * ((fProxy)1 + math.abs(zF[i])));
-
-            arena.Dispose();
         }
 
         void ApplyIsSymmetric()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyRandomSparseSPD(20, 3, (fProxy)0.3, 831006u);
-            var M = arena.fProxyIC0(in A);
+            var A = fProxyGallery.fProxyRandomSparseSPD(20, 3, (fProxy)0.3, 831006u);
+            var M = new fProxyIC0(in A, Allocator.Temp);
             int n = A.M_Rows;
 
-            var u = arena.fProxyRandomVec(n, -1f, 1f, 831007u);
-            var v = arena.fProxyRandomVec(n, -1f, 1f, 831008u);
-            var Mu = arena.fProxyVec(n);
-            var Mv = arena.fProxyVec(n);
+            var u = GenerateOP.fProxyRandomVec(n, -1f, 1f, 831007u);
+            var v = GenerateOP.fProxyRandomVec(n, -1f, 1f, 831008u);
+            var Mu = new fProxyN(n, Allocator.Temp);
+            var Mv = new fProxyN(n, Allocator.Temp);
             M.Apply(in u, ref Mu);
             M.Apply(in v, ref Mv);
 
@@ -216,8 +201,6 @@ public class fProxySparseIC0Tests
             fProxy bb = Blas.dot(v, Mu);
             fProxy scale = (fProxy)1 + math.abs(a) + math.abs(bb);
             Assert.IsTrue(math.abs(a - bb) < Tol() * scale);
-
-            arena.Dispose();
         }
     }
 
@@ -248,51 +231,36 @@ public class fProxySparseIC0Tests
     [Test]
     public void NonSquareThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var builder = arena.fProxyBSRBuilder(2, 3, 2, 2);
-            var block = arena.fProxyMat(2, 2, (fProxy)1);
-            builder.AddBlock(0, 0, in block);
-            var A = builder.ToBSR(ref arena);
-            Assert.Throws<ArgumentException>(() => { var m = arena.fProxyIC0(in A); });
-        }
-        finally { arena.Dispose(); }
+        var builder = new fProxyBSRBuilder(2, 3, 2, 2, Allocator.Temp);
+        var block = GenerateOP.fProxyMat(2, 2, (fProxy)1);
+        builder.AddBlock(0, 0, in block);
+        var A = builder.ToBSR(Allocator.Temp);
+        Assert.Throws<ArgumentException>(() => { var m = new fProxyIC0(in A, Allocator.Temp); });
     }
 
     [Test]
     public void MissingDiagonalThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var builder = arena.fProxyBSRBuilder(2, 2, 2, 2);
-            var block = arena.fProxyMat(2, 2, (fProxy)1);
-            builder.AddBlock(0, 0, in block);
-            builder.AddBlock(1, 0, in block);   // no (1,1) diagonal block
-            var A = builder.ToBSR(ref arena);
-            Assert.Throws<ArgumentException>(() => { var m = arena.fProxyIC0(in A); });
-        }
-        finally { arena.Dispose(); }
+        var builder = new fProxyBSRBuilder(2, 2, 2, 2, Allocator.Temp);
+        var block = GenerateOP.fProxyMat(2, 2, (fProxy)1);
+        builder.AddBlock(0, 0, in block);
+        builder.AddBlock(1, 0, in block);   // no (1,1) diagonal block
+        var A = builder.ToBSR(Allocator.Temp);
+        Assert.Throws<ArgumentException>(() => { var m = new fProxyIC0(in A, Allocator.Temp); });
     }
 
     [Test]
     public void ApplyAliasThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var builder = arena.fProxyBSRBuilder(2, 2, 2, 2);
-            var diag = arena.fProxyMat(2, 2);
-            diag[0, 0] = (fProxy)4; diag[1, 1] = (fProxy)4;
-            builder.AddBlock(0, 0, in diag);
-            builder.AddBlock(1, 1, in diag);
-            var A = builder.ToBSR(ref arena);
-            var M = arena.fProxyIC0(in A);
+        var builder = new fProxyBSRBuilder(2, 2, 2, 2, Allocator.Temp);
+        var diag = new fProxyMxN(2, 2, Allocator.Temp);
+        diag[0, 0] = (fProxy)4; diag[1, 1] = (fProxy)4;
+        builder.AddBlock(0, 0, in diag);
+        builder.AddBlock(1, 1, in diag);
+        var A = builder.ToBSR(Allocator.Temp);
+        var M = new fProxyIC0(in A, Allocator.Temp);
 
-            var r = arena.fProxyVec(A.M_Rows, (fProxy)1);
-            Assert.Throws<ArgumentException>(() => M.Apply(in r, ref r));
-        }
-        finally { arena.Dispose(); }
+        var r = GenerateOP.fProxyVec(A.M_Rows, (fProxy)1);
+        Assert.Throws<ArgumentException>(() => M.Apply(in r, ref r));
     }
 }

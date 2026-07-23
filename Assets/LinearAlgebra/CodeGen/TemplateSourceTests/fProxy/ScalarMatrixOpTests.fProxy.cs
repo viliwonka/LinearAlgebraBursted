@@ -42,68 +42,57 @@ public class fProxyScalarMatrixOpTests
         // 0 / M is a valid operation (= 0 where M != 0); it must NOT throw.
         void ZeroDivMatrix()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.fProxyMat(2, 2);
+            var A = new fProxyMxN(2, 2, Allocator.Temp);
             A[0, 0] = (fProxy)1; A[0, 1] = (fProxy)2;
             A[1, 0] = (fProxy)4; A[1, 1] = (fProxy)5;
 
-            fProxyMxN R = (fProxy)0 / A;   // must not throw DivideByZeroException
+            fProxyMxN R = A.Copy();
+            fProxyComp.divInPlace((fProxy)0, R);   // must not throw DivideByZeroException
 
             AssertClose(R[0, 0], (fProxy)0, (fProxy)1E-6);
             AssertClose(R[0, 1], (fProxy)0, (fProxy)1E-6);
             AssertClose(R[1, 0], (fProxy)0, (fProxy)1E-6);
             AssertClose(R[1, 1], (fProxy)0, (fProxy)1E-6);
-
-            arena.Dispose();
         }
 
         // 5 - [[1,2],[3,4]] must be [[4,3],[2,1]] (NOT the negated [[-4,-3],[-2,-1]]).
         void ScalarMinusMatrix()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.fProxyMat(2, 2);
+            var A = new fProxyMxN(2, 2, Allocator.Temp);
             A[0, 0] = (fProxy)1; A[0, 1] = (fProxy)2;
             A[1, 0] = (fProxy)3; A[1, 1] = (fProxy)4;
 
-            fProxyMxN R = (fProxy)5 - A;
+            fProxyMxN R = A.Copy();
+            fProxyComp.subInPlace((fProxy)5, R);
 
             AssertClose(R[0, 0], (fProxy)4, (fProxy)1E-5);
             AssertClose(R[0, 1], (fProxy)3, (fProxy)1E-5);
             AssertClose(R[1, 0], (fProxy)2, (fProxy)1E-5);
             AssertClose(R[1, 1], (fProxy)1, (fProxy)1E-5);
 
-            // A must be unchanged (operator works on a copy)
+            // A must be unchanged (operates on a copy)
             AssertClose(A[0, 0], (fProxy)1, (fProxy)1E-6);
-
-            arena.Dispose();
         }
 
         // 5 - [1,2,3] must be [4,3,2] (the vector form was already correct; guard against regression).
         void ScalarMinusVector()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var v = arena.fProxyVec(3);
+            var v = new fProxyN(3, Allocator.Temp);
             v[0] = (fProxy)1; v[1] = (fProxy)2; v[2] = (fProxy)3;
 
-            fProxyN r = (fProxy)5 - v;
+            fProxyN r = v.Copy();
+            fProxyComp.subInPlace((fProxy)5, r);
 
             AssertClose(r[0], (fProxy)4, (fProxy)1E-5);
             AssertClose(r[1], (fProxy)3, (fProxy)1E-5);
             AssertClose(r[2], (fProxy)2, (fProxy)1E-5);
-
-            arena.Dispose();
         }
 
         // L3 norm of [-1, 2, -2] = (|−1|³+|2|³+|−2|³)^(1/3) = 17^(1/3) ≈ 2.5713 — finite, no NaN.
         // (Without abs, (-1)³+2³+(-2)³ = -1 then (-1)^(1/3) = NaN.)
         void NormalizeLPNegatives()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var v = arena.fProxyVec(3);
+            var v = new fProxyN(3, Allocator.Temp);
             v[0] = (fProxy)(-1); v[1] = (fProxy)2; v[2] = (fProxy)(-2);
 
             fProxy norm = Norms.normalizeLP(in v, (fProxy)3);
@@ -113,8 +102,6 @@ public class fProxyScalarMatrixOpTests
                 Fail[0] = (fProxy)1; Fail[1] = norm; Fail[2] = (fProxy)2.5713; Fail[3] = norm;
             }
             AssertClose(norm, (fProxy)math.pow((fProxy)17, (fProxy)1 / (fProxy)3), (fProxy)1E-3);
-
-            arena.Dispose();
         }
 
         void AssertClose(fProxy a, fProxy b, fProxy precision)

@@ -343,30 +343,49 @@ public class floatArenaWiringTests
         finally { arena.Dispose(); }
     }
 
-    // STANDALONE Copy()/TempCopy() throw contract. A standalone (Allocator-ctor) vector has a null
-    // record, so Copy()/TempCopy() have no owning arena to allocate through: they must throw the SAME
-    // InvalidOperationException as the pre-migration code did (which threw via the null _arena handle
-    // path) -- NOT a NullReferenceException from dereferencing a null record/core.
+    // STANDALONE Copy()/TempCopy() contract: with no owning arena, both return an independent
+    // standalone Allocator.Temp-backed copy (content-equal; writes to the copy never reach the
+    // source).
     [Test]
-    public void StandaloneVector_CopyAndTempCopy_Throw()
+    public void StandaloneVector_CopyAndTempCopy_ReturnIndependentCopies()
     {
         var v = new floatN(4, Allocator.Temp);
         try
         {
-            Assert.Throws<InvalidOperationException>(() => v.Copy());
-            Assert.Throws<InvalidOperationException>(() => v.TempCopy());
+            v[1] = 2f;
+            var c = v.Copy();
+            var t = v.TempCopy();
+            Assert.IsTrue(c.N == 4);
+            Assert.IsTrue(t.N == 4);
+            Assert.IsTrue(c[1] == 2f);
+            Assert.IsTrue(t[1] == 2f);
+            c[1] = 5f;
+            t[1] = 7f;
+            Assert.IsTrue(v[1] == 2f);
+            c.Dispose();
+            t.Dispose();
         }
         finally { v.Dispose(); }
     }
 
     [Test]
-    public void StandaloneMatrix_CopyAndTempCopy_Throw()
+    public void StandaloneMatrix_CopyAndTempCopy_ReturnIndependentCopies()
     {
         var m = new floatMxN(3, 3, Allocator.Temp);
         try
         {
-            Assert.Throws<InvalidOperationException>(() => m.Copy());
-            Assert.Throws<InvalidOperationException>(() => m.TempCopy());
+            m[1, 2] = 3f;
+            var c = m.Copy();
+            var t = m.TempCopy();
+            Assert.IsTrue(c.M_Rows == 3 && c.N_Cols == 3);
+            Assert.IsTrue(t.M_Rows == 3 && t.N_Cols == 3);
+            Assert.IsTrue(c[1, 2] == 3f);
+            Assert.IsTrue(t[1, 2] == 3f);
+            c[1, 2] = 5f;
+            t[1, 2] = 7f;
+            Assert.IsTrue(m[1, 2] == 3f);
+            c.Dispose();
+            t.Dispose();
         }
         finally { m.Dispose(); }
     }

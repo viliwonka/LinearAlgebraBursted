@@ -26,13 +26,11 @@ public class doubleLOBPCGSmokeTests
     [Test]
     public void DiagonalSmallestTwoMatchKnownValues()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int n = 6;
-        var A = arena.doubleMat(n, n);
+        var A = new doubleMxN(n, n, Allocator.Temp);
         for (int i = 0; i < n; i++) A[i, i] = (double)(i + 1); // eigenvalues 1..6
 
-        var eig = Eigen.lobpcg(ref arena, in A, 2, out var vecs, out var info);
+        var eig = Eigen.lobpcg(in A, 2, out var vecs, out var info);
 
         Assert.IsTrue(info.Solved, info.ToString());
         Assert.AreEqual(2, info.converged);
@@ -51,19 +49,15 @@ public class doubleLOBPCGSmokeTests
             }
             Assert.LessOrEqual((double)maxAbs, 1e-3);
         }
-
-        arena.Dispose();
     }
 
     [Test]
     public void Laplacian1DThreeSmallestMatchAnalytic()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int n = 12;
-        var A = arena.doubleLaplacian1D(n);
+        var A = doubleGallery.doubleLaplacian1D(n);
 
-        var eig = Eigen.lobpcg(ref arena, in A, 3, out var vecs, out var info);
+        var eig = Eigen.lobpcg(in A, 3, out var vecs, out var info);
 
         Assert.IsTrue(info.Solved, info.ToString());
 
@@ -72,28 +66,22 @@ public class doubleLOBPCGSmokeTests
             double analytic = 2.0 - 2.0 * math.cos(j * math.PI_DBL / (n + 1));
             Assert.AreEqual(analytic, (double)eig[j - 1], 1e-2);
         }
-
-        arena.Dispose();
     }
 
     [Test]
     public void KEqualsOneMatchesInversePowerIteration()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int n = 10;
-        var A = arena.doubleLaplacian1D(n);
+        var A = doubleGallery.doubleLaplacian1D(n);
 
-        var eig = Eigen.lobpcg(ref arena, in A, 1, out _, out var info);
+        var eig = Eigen.lobpcg(in A, 1, out _, out var info);
         Assert.IsTrue(info.Solved);
 
-        var v = arena.doubleVec(n);
+        var v = new doubleN(n, Allocator.Temp);
         var ok = Eigen.inversePowerIteration(in A, ref v, out double lambdaIPI);
         Assert.IsTrue(ok);
 
         Assert.AreEqual((double)lambdaIPI, (double)eig[0], 1e-2);
-
-        arena.Dispose();
     }
 
     [Test]
@@ -102,11 +90,9 @@ public class doubleLOBPCGSmokeTests
         // 4x4 blocks (BR=4) on a small BSR with a strong diagonal so block-Jacobi is meaningfully
         // better conditioned than the raw system -- built directly as a block-diagonal-dominant
         // BSR via the builder (a tridiagonal-of-blocks Laplacian-like operator).
-        var arena = new Arena(Allocator.Persistent);
-
         int blocks = 6, br = 3;
         int n = blocks * br;
-        var builder = arena.doubleBSRBuilder(blocks, blocks, br, br);
+        var builder = new doubleBSRBuilder(blocks, blocks, br, br, Allocator.Temp);
 
         for (int b = 0; b < blocks; b++)
         {
@@ -129,15 +115,15 @@ public class doubleLOBPCGSmokeTests
             }
         }
 
-        var A = builder.ToBSR(ref arena);
+        var A = builder.ToBSR(Allocator.Temp);
         var M = new doubleBlockJacobi(in A, Allocator.Persistent);
 
         int k = 2;
 
-        var wsUnprecond = arena.doubleLOBPCGCache(n, k);
+        var wsUnprecond = new doubleLOBPCGCache(n, k, Allocator.Temp);
         var infoUnprecond = Eigen.lobpcg(in A, ref wsUnprecond, k, Consts.doubleSqrtEps, 500);
 
-        var wsPrecond = arena.doubleLOBPCGCache(n, k);
+        var wsPrecond = new doubleLOBPCGCache(n, k, Allocator.Temp);
         var infoPrecond = Eigen.lobpcg(in A, in M, ref wsPrecond, k, Consts.doubleSqrtEps, 500);
 
         Assert.IsTrue(infoUnprecond.Solved, infoUnprecond.ToString());
@@ -145,7 +131,6 @@ public class doubleLOBPCGSmokeTests
         Assert.Less(infoPrecond.iterations, infoUnprecond.iterations);
 
         M.Dispose();
-        arena.Dispose();
     }
 
     // k == n/2 -> 3k = 12 > n = 8, so the combined [X,W,P] Gram is EXACTLY rank-deficient (at
@@ -162,13 +147,11 @@ public class doubleLOBPCGSmokeTests
     [Test]
     public void RankDeficiencyStressDoesNotNaNOrDiverge()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int n = 8;
         int k = 4;
-        var A = arena.doubleLaplacian1D(n);
+        var A = doubleGallery.doubleLaplacian1D(n);
 
-        var eig = Eigen.lobpcg(ref arena, in A, k, out var vecs, out var info, Consts.doubleSqrtEps, 300);
+        var eig = Eigen.lobpcg(in A, k, out var vecs, out var info, Consts.doubleSqrtEps, 300);
 
         Assert.AreNotEqual(IterativeSolveStatus.Breakdown, info.status);
 
@@ -178,8 +161,6 @@ public class doubleLOBPCGSmokeTests
             for (int c = 0; c < n; c++)
                 Assert.IsTrue(math.isfinite((float)vecs[i, c]));
         }
-
-        arena.Dispose();
     }
 
     // Regression guard: the deterministic initial-X fill must be non-periodic so a seeded block of
@@ -189,21 +170,17 @@ public class doubleLOBPCGSmokeTests
     [Test]
     public void DiagonalTwentySmallestSixMatchAnalyticAscending()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int n = 20, k = 6;
-        var A = arena.doubleMat(n, n);
+        var A = new doubleMxN(n, n, Allocator.Temp);
         for (int i = 0; i < n; i++) A[i, i] = (double)(i + 1); // eigenvalues 1..20
 
-        var eig = Eigen.lobpcg(ref arena, in A, k, out _, out var info);
+        var eig = Eigen.lobpcg(in A, k, out _, out var info);
 
         Assert.IsTrue(info.Solved, info.ToString());
         Assert.AreEqual(k, info.converged);
 
         for (int j = 0; j < k; j++)
             Assert.AreEqual((double)(j + 1), eig[j], Tol());
-
-        arena.Dispose();
     }
 
     // Cross-check against the full dense solver: LOBPCG's k smallest Ritz values must match
@@ -212,23 +189,19 @@ public class doubleLOBPCGSmokeTests
     [Test]
     public void MatchesEigenSymmetricSmallestFour()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int n = 16, k = 4;
-        var A = arena.doubleLehmer(n);
+        var A = doubleGallery.doubleLehmer(n);
 
-        var Afull = A.Copy();
-        var eigAll = arena.doubleVec(n);
-        var Vall = arena.doubleMat(n, n);
+        var Afull = new doubleMxN(in A, Allocator.Temp);
+        var eigAll = new doubleN(n, Allocator.Temp);
+        var Vall = new doubleMxN(n, n, Allocator.Temp);
         Assert.IsTrue(Eigen.symmetricInPlace(ref Afull, ref eigAll, ref Vall));
 
-        var eig = Eigen.lobpcg(ref arena, in A, k, out _, out var info);
+        var eig = Eigen.lobpcg(in A, k, out _, out var info);
         Assert.IsTrue(info.Solved, info.ToString());
 
         for (int j = 0; j < k; j++)
             Assert.AreEqual((double)eigAll[n - 1 - j], (double)eig[j], 1e-2);
-
-        arena.Dispose();
     }
 
     // Output eigenvectors must be mutually orthonormal after the solve: X X^T ≈ I (unit norm rows,
@@ -236,12 +209,10 @@ public class doubleLOBPCGSmokeTests
     [Test]
     public void EigenvectorsAreOrthonormalAfterSolve()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int n = 12, k = 4;
-        var A = arena.doubleLaplacian1D(n);
+        var A = doubleGallery.doubleLaplacian1D(n);
 
-        var eig = Eigen.lobpcg(ref arena, in A, k, out var vecs, out var info);
+        var eig = Eigen.lobpcg(in A, k, out var vecs, out var info);
         Assert.IsTrue(info.Solved, info.ToString());
 
         for (int i = 0; i < k; i++)
@@ -251,8 +222,6 @@ public class doubleLOBPCGSmokeTests
                 for (int c = 0; c < n; c++) dot += vecs[i, c] * vecs[j, c];
                 Assert.AreEqual(i == j ? (double)1 : 0.0, (double)dot, 1e-2);
             }
-
-        arena.Dispose();
     }
 
     // Multiplicity: a repeated smallest eigenvalue (1,1,2,3,...) with k=2 must return BOTH copies
@@ -261,15 +230,13 @@ public class doubleLOBPCGSmokeTests
     [Test]
     public void MultiplicityBothConvergeToRepeatedEigenvalueOrthogonally()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int n = 8, k = 2;
-        var A = arena.doubleMat(n, n);
+        var A = new doubleMxN(n, n, Allocator.Temp);
         A[0, 0] = (double)1;
         A[1, 1] = (double)1;
         for (int i = 2; i < n; i++) A[i, i] = (double)i; // 2,3,4,5,6,7
 
-        var eig = Eigen.lobpcg(ref arena, in A, k, out var vecs, out var info);
+        var eig = Eigen.lobpcg(in A, k, out var vecs, out var info);
         Assert.IsTrue(info.Solved, info.ToString());
 
         Assert.AreEqual((double)1, eig[0], Tol());
@@ -278,8 +245,6 @@ public class doubleLOBPCGSmokeTests
         double dot = (double)0;
         for (int c = 0; c < n; c++) dot += vecs[0, c] * vecs[1, c];
         Assert.AreEqual(0.0, (double)dot, 1e-2);
-
-        arena.Dispose();
     }
 
     // ======================================================================================
@@ -300,34 +265,30 @@ public class doubleLOBPCGSmokeTests
     [Test]
     public void GeneralizedLaplacianDiagBMatchesDenseReduction()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int n = 8, k = 2;
-        var A = arena.doubleLaplacian1D(n);
-        var B = arena.doubleMat(n, n);
+        var A = doubleGallery.doubleLaplacian1D(n);
+        var B = new doubleMxN(n, n, Allocator.Temp);
         for (int i = 0; i < n; i++) B[i, i] = (double)(i + 1); // SPD diagonal, 1..8
 
-        var Bcopy = B.Copy();
-        var L = arena.doubleMat(n, n);
+        var Bcopy = new doubleMxN(in B, Allocator.Temp);
+        var L = new doubleMxN(n, n, Allocator.Temp);
         Assert.IsTrue(CHO.decomp(in Bcopy, ref L).Solved);
 
-        var Ahat = arena.doubleMat(n, n);
+        var Ahat = new doubleMxN(n, n, Allocator.Temp);
         for (int i = 0; i < n; i++)
             for (int j = 0; j < n; j++)
                 Ahat[i, j] = A[i, j] / (L[i, i] * L[j, j]);
 
-        var eigAll = arena.doubleVec(n);
-        var Vall = arena.doubleMat(n, n);
+        var eigAll = new doubleN(n, Allocator.Temp);
+        var Vall = new doubleMxN(n, n, Allocator.Temp);
         Assert.IsTrue(Eigen.symmetricInPlace(ref Ahat, ref eigAll, ref Vall));
 
-        var ws = arena.doubleLOBPCGCache(n, k);
+        var ws = new doubleLOBPCGCache(n, k, Allocator.Temp);
         var info = Eigen.lobpcg(in A, in B, ref ws, k, Consts.doubleSqrtEps, 1000);
         Assert.IsTrue(info.Solved, info.ToString());
 
         for (int j = 0; j < k; j++)
             Assert.AreEqual((double)eigAll[n - 1 - j], (double)ws.lambda[j], 1e-2);
-
-        arena.Dispose();
     }
 
     // STRUCTURAL generalized eigenproblem (A x = lambda B x) with a CLOSED-FORM spectrum: axial
@@ -344,11 +305,9 @@ public class doubleLOBPCGSmokeTests
     [Test]
     public void GeneralizedBarConsistentMassMatchesClosedFormSpectrum()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int n = 12, k = 4;
-        var A = arena.doubleLaplacian1D(n);                 // K = tridiag(-1, 2, -1)
-        var B = arena.doubleMat(n, n);                      // M = (1/6) tridiag(1, 4, 1), SPD
+        var A = doubleGallery.doubleLaplacian1D(n);          // K = tridiag(-1, 2, -1)
+        var B = new doubleMxN(n, n, Allocator.Temp);         // M = (1/6) tridiag(1, 4, 1), SPD
         for (int i = 0; i < n; i++)
         {
             B[i, i] = (double)(4.0 / 6.0);
@@ -356,7 +315,7 @@ public class doubleLOBPCGSmokeTests
             if (i < n - 1) B[i, i + 1] = (double)(1.0 / 6.0);
         }
 
-        var ws = arena.doubleLOBPCGCache(n, k);
+        var ws = new doubleLOBPCGCache(n, k, Allocator.Temp);
         var info = Eigen.lobpcg(in A, in B, ref ws, k, Consts.doubleSqrtEps, 1000);
         Assert.IsTrue(info.Solved, info.ToString());
 
@@ -366,8 +325,6 @@ public class doubleLOBPCGSmokeTests
             double lambda = (2.0 - 2.0 * math.cos(t)) / ((4.0 + 2.0 * math.cos(t)) / 6.0);
             Assert.AreEqual(lambda, (double)ws.lambda[j - 1], 1e-2);
         }
-
-        arena.Dispose();
     }
 
     // B=I regression / internal-consistency check: the generalized dense entry point called with
@@ -384,16 +341,14 @@ public class doubleLOBPCGSmokeTests
     [Test]
     public void GeneralizedWithExplicitIdentityMatrixMatchesStandardPathExactly()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int n = 10, k = 3;
-        var A = arena.doubleLaplacian1D(n);
+        var A = doubleGallery.doubleLaplacian1D(n);
 
-        var I = arena.doubleMat(n, n);
+        var I = new doubleMxN(n, n, Allocator.Temp);
         for (int i = 0; i < n; i++) I[i, i] = (double)1;
 
-        var eigStd = Eigen.lobpcg(ref arena, in A, k, out var vecsStd, out var infoStd);
-        var eigGen = Eigen.lobpcg(ref arena, in A, in I, k, out var vecsGen, out var infoGen);
+        var eigStd = Eigen.lobpcg(in A, k, out var vecsStd, out var infoStd);
+        var eigGen = Eigen.lobpcg(in A, in I, k, out var vecsGen, out var infoGen);
 
         Assert.IsTrue(infoStd.Solved, infoStd.ToString());
         Assert.IsTrue(infoGen.Solved, infoGen.ToString());
@@ -404,8 +359,6 @@ public class doubleLOBPCGSmokeTests
             for (int c = 0; c < n; c++)
                 Assert.AreEqual(vecsStd[j, c], vecsGen[j, c]);
         }
-
-        arena.Dispose();
     }
 
     // Buckling mapping worked example (see the LOBPCG class doc's "Buckling mapping" note): builds
@@ -420,8 +373,6 @@ public class doubleLOBPCGSmokeTests
     [Test]
     public void BucklingMappingRecoversKnownCriticalLoadFromCongruentPencil()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int n = 4;
         double[] dg = { (double)(-3), (double)(-1), (double)2, (double)5 };
         double[] de = { (double)3, (double)2, (double)1, (double)4 };
@@ -432,8 +383,8 @@ public class doubleLOBPCGSmokeTests
         for (int i = 0; i < n; i++) T[i, i] = (double)1;
         for (int i = 1; i < n; i++) T[i, i - 1] = (double)1;
 
-        var Kg = arena.doubleMat(n, n); // geometric stiffness (indefinite) -- the A slot
-        var Ke = arena.doubleMat(n, n); // elastic stiffness (SPD) -- the B slot
+        var Kg = new doubleMxN(n, n, Allocator.Temp); // geometric stiffness (indefinite) -- the A slot
+        var Ke = new doubleMxN(n, n, Allocator.Temp); // elastic stiffness (SPD) -- the B slot
 
         for (int i = 0; i < n; i++)
             for (int j = 0; j < n; j++)
@@ -449,7 +400,7 @@ public class doubleLOBPCGSmokeTests
             }
 
         int k = 2;
-        var ws = arena.doubleLOBPCGCache(n, k);
+        var ws = new doubleLOBPCGCache(n, k, Allocator.Temp);
         var info = Eigen.lobpcg(in Kg, in Ke, ref ws, k, Consts.doubleSqrtEps, 2000);
         Assert.IsTrue(info.Solved, info.ToString());
 
@@ -459,27 +410,23 @@ public class doubleLOBPCGSmokeTests
         // Buckling recipe: lambda_cr = -1/mu for mu < 0 -- both returned modes qualify here.
         Assert.AreEqual(1.0, -1.0 / (double)ws.lambda[0], 1e-2);
         Assert.AreEqual(2.0, -1.0 / (double)ws.lambda[1], 1e-2);
-
-        arena.Dispose();
     }
 
     // B-orthogonality of the output: X^T B X = I within tol (X_i^T B X_j = delta_ij).
     [Test]
     public void GeneralizedOutputIsBOrthonormal()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int n = 10, k = 3;
-        var A = arena.doubleLaplacian1D(n);
-        var B = arena.doubleMat(n, n);
+        var A = doubleGallery.doubleLaplacian1D(n);
+        var B = new doubleMxN(n, n, Allocator.Temp);
         for (int i = 0; i < n; i++) B[i, i] = (double)(i + 1);
 
-        var ws = arena.doubleLOBPCGCache(n, k);
+        var ws = new doubleLOBPCGCache(n, k, Allocator.Temp);
         var info = Eigen.lobpcg(in A, in B, ref ws, k, Consts.doubleSqrtEps, 1000);
         Assert.IsTrue(info.Solved, info.ToString());
 
-        var xi = arena.doubleVec(n);
-        var Bxi = arena.doubleVec(n);
+        var xi = new doubleN(n, Allocator.Temp);
+        var Bxi = new doubleN(n, Allocator.Temp);
         for (int i = 0; i < k; i++)
         {
             for (int c = 0; c < n; c++) xi[c] = ws.X[i, c];
@@ -492,8 +439,6 @@ public class doubleLOBPCGSmokeTests
                 Assert.AreEqual(i == j ? (double)1 : 0.0, (double)dot, 1e-2);
             }
         }
-
-        arena.Dispose();
     }
 
     // Basic compile+run sanity for the BSR/BSR generalized entry point (a distinct code path --
@@ -503,13 +448,11 @@ public class doubleLOBPCGSmokeTests
     [Test]
     public void GeneralizedBSRSmokeRunsAndConverges()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int blocks = 5, br = 2;
         int n = blocks * br;
 
-        var builderA = arena.doubleBSRBuilder(blocks, blocks, br, br);
-        var builderB = arena.doubleBSRBuilder(blocks, blocks, br, br);
+        var builderA = new doubleBSRBuilder(blocks, blocks, br, br, Allocator.Temp);
+        var builderB = new doubleBSRBuilder(blocks, blocks, br, br, Allocator.Temp);
 
         for (int b = 0; b < blocks; b++)
         {
@@ -538,18 +481,16 @@ public class doubleLOBPCGSmokeTests
             }
         }
 
-        var A = builderA.ToBSR(ref arena);
-        var B = builderB.ToBSR(ref arena);
+        var A = builderA.ToBSR(Allocator.Temp);
+        var B = builderB.ToBSR(Allocator.Temp);
 
         int k = 2;
-        var ws = arena.doubleLOBPCGCache(n, k);
+        var ws = new doubleLOBPCGCache(n, k, Allocator.Temp);
         var info = Eigen.lobpcg(in A, in B, ref ws, k, Consts.doubleSqrtEps, 1000);
 
         Assert.IsTrue(info.Solved, info.ToString());
         for (int i = 0; i < k; i++)
             Assert.IsTrue(math.isfinite((float)ws.lambda[i]));
-
-        arena.Dispose();
     }
 
     // ======================================================================================
@@ -579,13 +520,11 @@ public class doubleLOBPCGSmokeTests
     [Test]
     public void Laplacian2DGuardedMatchesAnalyticSmallest()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int g = 6;                     // 6x6 grid -> n=36, block size BR=6
-        var A = arena.doubleLaplacian2D(g, g);
+        var A = doubleGallery.doubleLaplacian2D(g, g);
 
         int k = 3;
-        var eig = Eigen.lobpcg(ref arena, in A, k, 4, out var vecs, out var info, Consts.doubleSqrtEps, 1000);
+        var eig = Eigen.lobpcg(in A, k, 4, out var vecs, out var info, Consts.doubleSqrtEps, 1000);
 
         Assert.IsTrue(info.Solved, info.ToString());
         Assert.AreEqual(k, info.converged);
@@ -602,8 +541,6 @@ public class doubleLOBPCGSmokeTests
                 for (int c = 0; c < g * g; c++) dot += vecs[i, c] * vecs[j, c];
                 Assert.AreEqual(i == j ? (double)1 : 0.0, (double)dot, 1e-2);
             }
-
-        arena.Dispose();
     }
 
     // The case guard vectors exist for: k=2 on a SQUARE grid cuts THROUGH the multiplicity-2 pair
@@ -613,13 +550,11 @@ public class doubleLOBPCGSmokeTests
     [Test]
     public void Laplacian2DDegenerateSplitGuardedSolves()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int g = 6;
-        var A = arena.doubleLaplacian2D(g, g);
+        var A = doubleGallery.doubleLaplacian2D(g, g);
 
         int k = 2;
-        var eig = Eigen.lobpcg(ref arena, in A, k, 4, out _, out var info, Consts.doubleSqrtEps, 2000);
+        var eig = Eigen.lobpcg(in A, k, 4, out _, out var info, Consts.doubleSqrtEps, 2000);
 
         Assert.IsTrue(info.Solved, info.ToString());
         Assert.AreEqual(k, info.converged);
@@ -627,8 +562,6 @@ public class doubleLOBPCGSmokeTests
         var analytic = SmallestLaplacian2D(g, g, k);
         for (int j = 0; j < k; j++)
             Assert.AreEqual(analytic[j], (double)eig[j], 1e-2);
-
-        arena.Dispose();
     }
 
     // Structural guarantee: the guarded overload with guard == 0 allocates a cache of exactly k rows
@@ -637,13 +570,11 @@ public class doubleLOBPCGSmokeTests
     [Test]
     public void GuardZeroMatchesPlainOverloadExactly()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int n = 12, k = 3;
-        var A = arena.doubleLaplacian1D(n);
+        var A = doubleGallery.doubleLaplacian1D(n);
 
-        var eigP = Eigen.lobpcg(ref arena, in A, k, out var vecsP, out var infoP);
-        var eigG = Eigen.lobpcg(ref arena, in A, k, 0, out var vecsG, out var infoG);
+        var eigP = Eigen.lobpcg(in A, k, out var vecsP, out var infoP);
+        var eigG = Eigen.lobpcg(in A, k, 0, out var vecsG, out var infoG);
 
         Assert.IsTrue(infoP.Solved, infoP.ToString());
         Assert.AreEqual(infoP.iterations, infoG.iterations);
@@ -654,8 +585,6 @@ public class doubleLOBPCGSmokeTests
             for (int c = 0; c < n; c++)
                 Assert.AreEqual(vecsP[j, c], vecsG[j, c]);
         }
-
-        arena.Dispose();
     }
 
     // ======================================================================================
@@ -686,11 +615,10 @@ public class doubleLOBPCGSmokeTests
     [Test]
     public void JobbedClusteredSpectrumLeavesCorrectVectorsInCache()
     {
-        var arena = new Arena(Allocator.Persistent);
         int gx = 4, gy = 4, n = gx * gy, k = 4;
-        var A = arena.doubleLaplacian2D(gx, gy);
+        var A = doubleGallery.doubleLaplacian2D(gx, gy);
         var M = new doubleBlockJacobi(in A, Allocator.Persistent);
-        var ws = arena.doubleLOBPCGCache(n, k);
+        var ws = new doubleLOBPCGCache(n, k, Allocator.Temp);
         var converged = new NativeArray<int>(1, Allocator.TempJob);
 
         var job = new JobbedLobpcg { A = A, M = M, Cache = ws, K = k, Converged = converged };
@@ -717,6 +645,6 @@ public class doubleLOBPCGSmokeTests
             Assert.Less((double)rel, 1e-2, $"eigenpair {i} (lambda={ws.lambda[i]}) residual {rel} too large -- cache.X holds stale/mispaired vectors");
         }
 
-        phi.Dispose(); Aphi.Dispose(); converged.Dispose(); M.Dispose(); arena.Dispose();
+        phi.Dispose(); Aphi.Dispose(); converged.Dispose(); M.Dispose();
     }
 }

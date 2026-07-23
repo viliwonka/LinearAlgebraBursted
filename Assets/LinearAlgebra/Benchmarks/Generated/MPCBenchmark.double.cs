@@ -117,26 +117,26 @@ namespace LinearAlgebra.Benchmarks
         // Trivially stabilizable random plant (diagonal in [0.2,0.4), off-diagonal scaled 0.2/n) -- the
         // SAME recipe LQRBenchmark.double.cs's own BuildInstanceDouble uses, so the terminal DARE
         // doubleMPCState's constructor solves is guaranteed to converge at every size below. Q=I, R=I.
-        static void BuildPlantDouble(int n, int m, uint seed, in Arena arena,
+        static void BuildPlantDouble(int n, int m, uint seed,
                                      out doubleMxN A, out doubleMxN B, out doubleMxN Q, out doubleMxN R)
         {
             var rng = new Unity.Mathematics.Random(seed);
             double off = (double)(0.2 / n);
 
-            A = arena.doubleMat(n, n);
+            A = new doubleMxN(n, n, Allocator.Persistent);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
                     A[i, j] = (i == j) ? rng.NextDouble(0.2f, 0.4f) : rng.NextDouble(-1f, 1f) * off;
 
-            B = arena.doubleMat(n, m);
+            B = new doubleMxN(n, m, Allocator.Persistent);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < m; j++)
                     B[i, j] = rng.NextDouble(-1f, 1f);
 
-            Q = arena.doubleMat(n, n);
+            Q = new doubleMxN(n, n, Allocator.Persistent);
             for (int i = 0; i < n; i++) Q[i, i] = (double)1;
 
-            R = arena.doubleMat(m, m);
+            R = new doubleMxN(m, m, Allocator.Persistent);
             for (int i = 0; i < m; i++) R[i, i] = (double)1;
         }
 
@@ -147,32 +147,33 @@ namespace LinearAlgebra.Benchmarks
         // it near the origin.
         static doubleMPCState BuildStateDouble(int n, int m, int N, in doubleMxN A, in doubleMxN B,
                                                in doubleMxN Q, in doubleMxN R, in doubleN uLo, in doubleN uHi,
-                                               in Arena arena, bool softWall)
+                                               bool softWall)
         {
             if (!softWall)
                 return new doubleMPCState(n, m, N, Allocator.Persistent, in A, in B, in Q, in R, in uLo, in uHi);
 
-            var C = arena.doubleMat(1, n);
+            var C = new doubleMxN(1, n, Allocator.Persistent);
             C[0, 0] = (double)1;
-            var d = arena.doubleVec(1, (double)2);
-            return new doubleMPCState(n, m, N, Allocator.Persistent, in A, in B, in Q, in R, in uLo, in uHi, in C, in d);
+            var d = GenerateOP.doubleVec(1, (double)2, Allocator.Persistent);
+            var s = new doubleMPCState(n, m, N, Allocator.Persistent, in A, in B, in Q, in R, in uLo, in uHi, in C, in d);
+            C.Dispose(); d.Dispose();
+            return s;
         }
 
         // ==== Section 1: warm steady-state per-frame cost (the headline) ====
         static string WarmFrameDouble(int N, int n, int m, uint seed, bool softWall)
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildPlantDouble(n, m, seed, in arena, out var A, out var B, out var Q, out var R);
-            var uLo = arena.doubleVec(m, (double)(-1));
-            var uHi = arena.doubleVec(m, (double)1);
-            var s = BuildStateDouble(n, m, N, in A, in B, in Q, in R, in uLo, in uHi, in arena, softWall);
+            BuildPlantDouble(n, m, seed, out var A, out var B, out var Q, out var R);
+            var uLo = GenerateOP.doubleVec(m, (double)(-1), Allocator.Persistent);
+            var uHi = GenerateOP.doubleVec(m, (double)1, Allocator.Persistent);
+            var s = BuildStateDouble(n, m, N, in A, in B, in Q, in R, in uLo, in uHi, softWall);
 
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Persistent);
             x[0] = (double)4;
-            var reference = arena.doubleVec(n);   // zero -- track to the origin
-            var u0 = arena.doubleVec(m, true);
-            var xNext = arena.doubleVec(n, true);
-            var Bu = arena.doubleVec(n, true);
+            var reference = new doubleN(n, Allocator.Persistent);   // zero -- track to the origin
+            var u0 = new doubleN(m, Allocator.Persistent, true);
+            var xNext = new doubleN(n, Allocator.Persistent, true);
+            var Bu = new doubleN(n, Allocator.Persistent, true);
 
             var itersOut = new NativeArray<int>(1, Allocator.Persistent);
             var changesOut = new NativeArray<int>(1, Allocator.Persistent);
@@ -191,23 +192,24 @@ namespace LinearAlgebra.Benchmarks
                                              itersOut[0], changesOut[0], statusOut[0]);
 
             itersOut.Dispose(); changesOut.Dispose(); statusOut.Dispose();
-            s.Dispose(); arena.Dispose();
+            s.Dispose();
+            A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); uLo.Dispose(); uHi.Dispose();
+            x.Dispose(); reference.Dispose(); u0.Dispose(); xNext.Dispose(); Bu.Dispose();
             return row;
         }
 
         // ==== Section 2: cold solve cost (fresh warm-start carry every call) ====
         static string ColdSolveDouble(int N, int n, int m, uint seed, int reps, bool softWall)
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildPlantDouble(n, m, seed, in arena, out var A, out var B, out var Q, out var R);
-            var uLo = arena.doubleVec(m, (double)(-1));
-            var uHi = arena.doubleVec(m, (double)1);
-            var s = BuildStateDouble(n, m, N, in A, in B, in Q, in R, in uLo, in uHi, in arena, softWall);
+            BuildPlantDouble(n, m, seed, out var A, out var B, out var Q, out var R);
+            var uLo = GenerateOP.doubleVec(m, (double)(-1), Allocator.Persistent);
+            var uHi = GenerateOP.doubleVec(m, (double)1, Allocator.Persistent);
+            var s = BuildStateDouble(n, m, N, in A, in B, in Q, in R, in uLo, in uHi, softWall);
 
-            var x0 = arena.doubleVec(n);
+            var x0 = new doubleN(n, Allocator.Persistent);
             x0[0] = (double)4;
-            var reference = arena.doubleVec(n);
-            var u0 = arena.doubleVec(m, true);
+            var reference = new doubleN(n, Allocator.Persistent);
+            var u0 = new doubleN(m, Allocator.Persistent, true);
 
             var itersOut = new NativeArray<int>(1, Allocator.Persistent);
             var changesOut = new NativeArray<int>(1, Allocator.Persistent);
@@ -222,24 +224,26 @@ namespace LinearAlgebra.Benchmarks
                                              itersOut[0], changesOut[0], statusOut[0]);
 
             itersOut.Dispose(); changesOut.Dispose(); statusOut.Dispose();
-            s.Dispose(); arena.Dispose();
+            s.Dispose();
+            A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); uLo.Dispose(); uHi.Dispose();
+            x0.Dispose(); reference.Dispose(); u0.Dispose();
             return row;
         }
 
         // ==== Section 3: doubleMPCState construction cost (one-shot) ====
         static string ConstructDouble(int N, int n, int m, uint seed, int reps)
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildPlantDouble(n, m, seed, in arena, out var A, out var B, out var Q, out var R);
-            var uLo = arena.doubleVec(m, (double)(-1));
-            var uHi = arena.doubleVec(m, (double)1);
+            BuildPlantDouble(n, m, seed, out var A, out var B, out var Q, out var R);
+            var uLo = GenerateOP.doubleVec(m, (double)(-1), Allocator.Persistent);
+            var uHi = GenerateOP.doubleVec(m, (double)1, Allocator.Persistent);
 
             var checksumOut = new NativeArray<double>(1, Allocator.Persistent);
             var job = new MpcConstructJobDouble { A = A, B = B, Q = Q, R = R, uLo = uLo, uHi = uHi, N = N, reps = reps, checksumOut = checksumOut };
             var stat = Bench.Time(() => job.Run());
             string row = MPCBenchmarkFmt.ConstructionRow("double", N, n, m, reps, stat);
 
-            checksumOut.Dispose(); arena.Dispose();
+            checksumOut.Dispose();
+            A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); uLo.Dispose(); uHi.Dispose();
             return row;
         }
     }

@@ -101,16 +101,14 @@ public class doubleSparseBSRTests
         // ---- 1. hand-built small BSR: 2x2 grid of 3x3 blocks, some blocks omitted ---------
         void HandBuiltSmall()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             const int BR = 3, BC = 3;
-            var builder = arena.doubleBSRBuilder(2, 2, BR, BC);
+            var builder = new doubleBSRBuilder(2, 2, BR, BC, Allocator.Temp);
 
             // Three distinct blocks placed at (0,0), (0,1), (1,1). Block (1,0) intentionally
             // omitted -> must expand to a zero 3x3 region.
-            var b00 = arena.doubleMat(BR, BC);
-            var b01 = arena.doubleMat(BR, BC);
-            var b11 = arena.doubleMat(BR, BC);
+            var b00 = new doubleMxN(BR, BC, Allocator.Temp);
+            var b01 = new doubleMxN(BR, BC, Allocator.Temp);
+            var b11 = new doubleMxN(BR, BC, Allocator.Temp);
             for (int r = 0; r < BR; r++)
                 for (int c = 0; c < BC; c++)
                 {
@@ -123,7 +121,7 @@ public class doubleSparseBSRTests
             builder.AddBlock(0, 1, in b01);
             builder.AddBlock(1, 1, in b11);
 
-            var A = builder.ToBSR(ref arena);
+            var A = builder.ToBSR(Allocator.Temp);
 
             // Structural expectations.
             Assert.IsTrue(A.M_Rows == 6);
@@ -134,121 +132,117 @@ public class doubleSparseBSRTests
             Assert.IsTrue(A.RowPtr.Length == 3); // BlockRows + 1
 
             // Independent reference dense (manual scatter, zeros elsewhere).
-            var expected = arena.doubleMat(6, 6);
+            var expected = new doubleMxN(6, 6, Allocator.Temp);
             Scatter(ref expected, 0, 0, in b00);
             Scatter(ref expected, 0, 1, in b01);
             Scatter(ref expected, 1, 1, in b11);
 
-            var dense = A.ToDense(ref arena);
+            var dense = A.ToDense(Allocator.Temp);
             AssertMatEq(in dense, in expected, Tol());
-
-            arena.Dispose();
         }
 
         // Build a random BSR on a 3x3 block grid of 3x3 blocks (9x9), a handful of blocks.
-        static doubleBSR BuildRandom(ref Arena arena)
+        static doubleBSR BuildRandom()
         {
             const int BR = 3, BC = 3;
-            var builder = arena.doubleBSRBuilder(3, 3, BR, BC);
-            builder.AddBlock(0, 0, arena.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 1001));
-            builder.AddBlock(0, 2, arena.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 1002));
-            builder.AddBlock(1, 1, arena.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 1003));
-            builder.AddBlock(2, 0, arena.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 1004));
-            builder.AddBlock(2, 2, arena.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 1005));
-            return builder.ToBSR(ref arena);
+            var builder = new doubleBSRBuilder(3, 3, BR, BC, Allocator.Temp);
+            builder.AddBlock(0, 0, GenerateOP.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 1001));
+            builder.AddBlock(0, 2, GenerateOP.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 1002));
+            builder.AddBlock(1, 1, GenerateOP.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 1003));
+            builder.AddBlock(2, 0, GenerateOP.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 1004));
+            builder.AddBlock(2, 2, GenerateOP.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 1005));
+            return builder.ToBSR(Allocator.Temp);
         }
 
         // ---- 2. random BSR: spMV(A,x) == dense(A)*x --------------------------------------
         void RandomSpMV()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = BuildRandom(ref arena);
-            var dense = A.ToDense(ref arena);
-            var x = arena.doubleRandomVec(A.N_Cols, (double)(-1f), (double)1f, 7777);
+            var A = BuildRandom();
+            var dense = A.ToDense(Allocator.Temp);
+            var x = GenerateOP.doubleRandomVec(A.N_Cols, (double)(-1f), (double)1f, 7777);
 
             // ref-dest overload.
-            var y = arena.doubleVec(A.M_Rows);
+            var y = new doubleN(A.M_Rows, Allocator.Temp);
             BSR.spMV(in A, in x, ref y);
 
             var yRef = Blas.dot(dense, x);
-            Assert.IsTrue(Analysis.isZero(y - yRef, Tol()));
+            var diff = new doubleN(in y, Allocator.Temp);
+            doubleComp.subInPlace(diff, yRef);
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
 
             // allocating overload must agree with the ref-dest overload.
             var y2 = BSR.spMV(in A, in x);
-            Assert.IsTrue(Analysis.isZero(y2 - yRef, Tol()));
-
-            arena.Dispose();
+            var diff2 = new doubleN(in y2, Allocator.Temp);
+            doubleComp.subInPlace(diff2, yRef);
+            Assert.IsTrue(Analysis.isZero(diff2, Tol()));
         }
 
         // ---- 3. random BSR: spMVT(A,x) == dense(A)^T * x ---------------------------------
         void RandomSpMVT()
         {
-            var arena = new Arena(Allocator.Persistent);
+            var A = BuildRandom();
+            var dense = A.ToDense(Allocator.Temp);
+            var x = GenerateOP.doubleRandomVec(A.M_Rows, (double)(-1f), (double)1f, 8888);
 
-            var A = BuildRandom(ref arena);
-            var dense = A.ToDense(ref arena);
-            var x = arena.doubleRandomVec(A.M_Rows, (double)(-1f), (double)1f, 8888);
-
-            var y = arena.doubleVec(A.N_Cols);
+            var y = new doubleN(A.N_Cols, Allocator.Temp);
             BSR.spMVT(in A, in x, ref y);
 
-            var yRef = arena.doubleVec(A.N_Cols);
+            var yRef = new doubleN(A.N_Cols, Allocator.Temp);
             DenseTransMatVec(in dense, in x, ref yRef);
-            Assert.IsTrue(Analysis.isZero(y - yRef, Tol()));
+            var diff = new doubleN(in y, Allocator.Temp);
+            doubleComp.subInPlace(diff, yRef);
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
 
             var y2 = BSR.spMVT(in A, in x);
-            Assert.IsTrue(Analysis.isZero(y2 - yRef, Tol()));
-
-            arena.Dispose();
+            var diff2 = new doubleN(in y2, Allocator.Temp);
+            doubleComp.subInPlace(diff2, yRef);
+            Assert.IsTrue(Analysis.isZero(diff2, Tol()));
         }
 
         // ---- 4. rectangular blocks BR != BC: dims + spMV + spMVT -------------------------
         void RectangularBlocks()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             const int BR = 2, BC = 3;
-            var builder = arena.doubleBSRBuilder(2, 3, BR, BC); // 4 x 9 dense
-            builder.AddBlock(0, 0, arena.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 2001));
-            builder.AddBlock(0, 2, arena.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 2002));
-            builder.AddBlock(1, 1, arena.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 2003));
-            var A = builder.ToBSR(ref arena);
+            var builder = new doubleBSRBuilder(2, 3, BR, BC, Allocator.Temp); // 4 x 9 dense
+            builder.AddBlock(0, 0, GenerateOP.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 2001));
+            builder.AddBlock(0, 2, GenerateOP.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 2002));
+            builder.AddBlock(1, 1, GenerateOP.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 2003));
+            var A = builder.ToBSR(Allocator.Temp);
 
             Assert.IsTrue(A.M_Rows == 4);
             Assert.IsTrue(A.N_Cols == 9);
 
-            var dense = A.ToDense(ref arena);
+            var dense = A.ToDense(Allocator.Temp);
             Assert.IsTrue(dense.M_Rows == 4);
             Assert.IsTrue(dense.N_Cols == 9);
 
             // spMV: x has N_Cols, y has M_Rows.
-            var x = arena.doubleRandomVec(A.N_Cols, (double)(-1f), (double)1f, 2100);
-            var y = arena.doubleVec(A.M_Rows);
+            var x = GenerateOP.doubleRandomVec(A.N_Cols, (double)(-1f), (double)1f, 2100);
+            var y = new doubleN(A.M_Rows, Allocator.Temp);
             BSR.spMV(in A, in x, ref y);
-            Assert.IsTrue(Analysis.isZero(y - Blas.dot(dense, x), Tol()));
+            var diff = new doubleN(in y, Allocator.Temp);
+            doubleComp.subInPlace(diff, Blas.dot(dense, x));
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
 
             // spMVT: x has M_Rows, y has N_Cols.
-            var xt = arena.doubleRandomVec(A.M_Rows, (double)(-1f), (double)1f, 2200);
-            var yt = arena.doubleVec(A.N_Cols);
+            var xt = GenerateOP.doubleRandomVec(A.M_Rows, (double)(-1f), (double)1f, 2200);
+            var yt = new doubleN(A.N_Cols, Allocator.Temp);
             BSR.spMVT(in A, in xt, ref yt);
-            var ytRef = arena.doubleVec(A.N_Cols);
+            var ytRef = new doubleN(A.N_Cols, Allocator.Temp);
             DenseTransMatVec(in dense, in xt, ref ytRef);
-            Assert.IsTrue(Analysis.isZero(yt - ytRef, Tol()));
-
-            arena.Dispose();
+            var diff2 = new doubleN(in yt, Allocator.Temp);
+            doubleComp.subInPlace(diff2, ytRef);
+            Assert.IsTrue(Analysis.isZero(diff2, Tol()));
         }
 
         // ---- 5. builder duplicate summation: same (br,bc) twice + AddValue twice ---------
         void DuplicateSummation()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             const int BR = 2, BC = 2;
-            var builder = arena.doubleBSRBuilder(2, 2, BR, BC); // 4 x 4 dense
+            var builder = new doubleBSRBuilder(2, 2, BR, BC, Allocator.Temp); // 4 x 4 dense
 
-            var blkA = arena.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 3001);
-            var blkB = arena.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 3002);
+            var blkA = GenerateOP.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 3001);
+            var blkB = GenerateOP.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 3002);
 
             builder.AddBlock(0, 0, in blkA);
             builder.AddBlock(0, 0, in blkB);           // duplicate block -> summed
@@ -259,38 +253,34 @@ public class doubleSparseBSRTests
 
             Assert.IsTrue(builder.TripletCount == 4);   // pre-compression: 2 blocks + 2 scalars
 
-            var A = builder.ToBSR(ref arena);
+            var A = builder.ToBSR(Allocator.Temp);
             Assert.IsTrue(A.Nnzb == 1);                 // all four triplets collapse to one block
 
             // Independent reference: sum blkA + blkB, then add 12 to local (1,0) == global (1,0).
-            var expected = arena.doubleMat(4, 4);
-            var sum = arena.doubleMat(BR, BC);
+            var expected = new doubleMxN(4, 4, Allocator.Temp);
+            var sum = new doubleMxN(BR, BC, Allocator.Temp);
             for (int r = 0; r < BR; r++)
                 for (int c = 0; c < BC; c++)
                     sum[r, c] = blkA[r, c] + blkB[r, c];
             sum[1, 0] += (double)12;
             Scatter(ref expected, 0, 0, in sum);
 
-            var dense = A.ToDense(ref arena);
+            var dense = A.ToDense(Allocator.Temp);
             AssertMatEq(in dense, in expected, Tol());
-
-            arena.Dispose();
         }
 
         // ---- 6. out-of-order triplets: ColInd must come out ascending within each row ----
         void OutOfOrderTriplets()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             const int BR = 2, BC = 2;
-            var builder = arena.doubleBSRBuilder(2, 3, BR, BC); // 4 x 6 dense
+            var builder = new doubleBSRBuilder(2, 3, BR, BC, Allocator.Temp); // 4 x 6 dense
 
             // Scrambled (br,bc) insertion order across both rows.
-            var b_1_2 = arena.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 4001);
-            var b_0_2 = arena.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 4002);
-            var b_1_0 = arena.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 4003);
-            var b_0_0 = arena.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 4004);
-            var b_0_1 = arena.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 4005);
+            var b_1_2 = GenerateOP.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 4001);
+            var b_0_2 = GenerateOP.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 4002);
+            var b_1_0 = GenerateOP.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 4003);
+            var b_0_0 = GenerateOP.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 4004);
+            var b_0_1 = GenerateOP.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 4005);
 
             builder.AddBlock(1, 2, in b_1_2);
             builder.AddBlock(0, 2, in b_0_2);
@@ -298,7 +288,7 @@ public class doubleSparseBSRTests
             builder.AddBlock(0, 0, in b_0_0);
             builder.AddBlock(0, 1, in b_0_1);
 
-            var A = builder.ToBSR(ref arena);
+            var A = builder.ToBSR(Allocator.Temp);
 
             // ColInd strictly ascending within each block-row.
             for (int row = 0; row < A.BlockRows; row++)
@@ -310,25 +300,21 @@ public class doubleSparseBSRTests
             }
 
             // ...and the expansion is correct regardless of insertion order.
-            var expected = arena.doubleMat(4, 6);
+            var expected = new doubleMxN(4, 6, Allocator.Temp);
             Scatter(ref expected, 0, 0, in b_0_0);
             Scatter(ref expected, 0, 1, in b_0_1);
             Scatter(ref expected, 0, 2, in b_0_2);
             Scatter(ref expected, 1, 0, in b_1_0);
             Scatter(ref expected, 1, 2, in b_1_2);
 
-            var dense = A.ToDense(ref arena);
+            var dense = A.ToDense(Allocator.Temp);
             AssertMatEq(in dense, in expected, Tol());
-
-            arena.Dispose();
         }
 
         // ---- 7. 1x1-block BSR == plain sparse scalar matrix ------------------------------
         void OneByOneBlocks()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var builder = arena.doubleBSRBuilder(4, 4, 1, 1); // 4 x 4 scalar sparse
+            var builder = new doubleBSRBuilder(4, 4, 1, 1, Allocator.Temp); // 4 x 4 scalar sparse
 
             // Scatter of scalar entries (some rows empty, one duplicate to also exercise sum).
             builder.AddValue(0, 0, (double)2);
@@ -337,28 +323,28 @@ public class doubleSparseBSRTests
             builder.AddValue(3, 3, (double)5);
             builder.AddValue(0, 0, (double)1); // duplicate at (0,0) -> 2 + 1 = 3
 
-            var A = builder.ToBSR(ref arena);
+            var A = builder.ToBSR(Allocator.Temp);
             Assert.IsTrue(A.M_Rows == 4);
             Assert.IsTrue(A.N_Cols == 4);
             Assert.IsTrue(A.BR == 1);
             Assert.IsTrue(A.BC == 1);
 
-            var expected = arena.doubleMat(4, 4);
+            var expected = new doubleMxN(4, 4, Allocator.Temp);
             expected[0, 0] = (double)3;
             expected[0, 3] = (double)(-1);
             expected[2, 1] = (double)4;
             expected[3, 3] = (double)5;
 
-            var dense = A.ToDense(ref arena);
+            var dense = A.ToDense(Allocator.Temp);
             AssertMatEq(in dense, in expected, Tol());
 
             // spMV must match the dense reference too.
-            var x = arena.doubleRandomVec(4, (double)(-1f), (double)1f, 5050);
-            var y = arena.doubleVec(4);
+            var x = GenerateOP.doubleRandomVec(4, (double)(-1f), (double)1f, 5050);
+            var y = new doubleN(4, Allocator.Temp);
             BSR.spMV(in A, in x, ref y);
-            Assert.IsTrue(Analysis.isZero(y - Blas.dot(expected, x), Tol()));
-
-            arena.Dispose();
+            var diff = new doubleN(in y, Allocator.Temp);
+            doubleComp.subInPlace(diff, Blas.dot(expected, x));
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
         }
 
         // ---- helper: fully-dense NxN 1x1-block builder assembled cell-by-cell via AddValue. --
@@ -369,32 +355,30 @@ public class doubleSparseBSRTests
         // 225 triplets, i.e. five reallocations past the initial capacity -- this is the growth
         // path the regression tests pin. Values come from `refDense`; the caller keeps `refDense`
         // as the independent dense reference.
-        static doubleBSR BuildDenseGrown(ref Arena arena, in doubleMxN refDense, out int tripletCount)
+        static doubleBSR BuildDenseGrown(in doubleMxN refDense, out int tripletCount)
         {
             int N = refDense.M_Rows;
-            var builder = arena.doubleBSRBuilder(N, N, 1, 1); // DEFAULT capacityHint = 8
+            var builder = new doubleBSRBuilder(N, N, 1, 1, Allocator.Temp); // DEFAULT capacityHint = 8
             for (int r = 0; r < N; r++)
                 for (int c = 0; c < N; c++)
                     builder.AddValue(r, c, refDense[r, c]);
 
             tripletCount = builder.TripletCount;
-            return builder.ToBSR(ref arena);
+            return builder.ToBSR(Allocator.Temp);
         }
 
-        // ---- 8. growth past capacityHint then arena.Dispose(), plus correctness ---------------
+        // ---- 8. growth past capacityHint, plus correctness -------------------------------
         //
         // A builder created with the default capacityHint=8 is grown to 225 triplets (15x15
-        // dense, 1x1 blocks) via AddValue, forcing ~5 UnsafeList reallocations. arena.Dispose()
-        // below must dispose cleanly. Correctness after all those reallocations is asserted BOTH
-        // ways: ToDense == dense reference, and spMV == dense dot.
+        // dense, 1x1 blocks) via AddValue, forcing ~5 UnsafeList reallocations. Correctness
+        // after all those reallocations is asserted BOTH ways: ToDense == dense reference, and
+        // spMV == dense dot -- this is the growth path the regression tests pin.
         void GrowthThenDispose()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             const int N = 15;
-            var refDense = arena.doubleRandomMat(N, N, (double)(-1f), (double)1f, 74101);
+            var refDense = GenerateOP.doubleRandomMat(N, N, (double)(-1f), (double)1f, 74101);
 
-            var A = BuildDenseGrown(ref arena, in refDense, out int tripletCount);
+            var A = BuildDenseGrown(in refDense, out int tripletCount);
 
             Assert.IsTrue(tripletCount == N * N);         // 225 triplets -> grew well past 8
             Assert.IsTrue(A.M_Rows == N);
@@ -402,56 +386,47 @@ public class doubleSparseBSRTests
             Assert.IsTrue(A.Nnzb == N * N);               // every cell distinct -> one block each
 
             // Correctness #1: dense expansion matches the reference we assembled from.
-            var dense = A.ToDense(ref arena);
+            var dense = A.ToDense(Allocator.Temp);
             AssertMatEq(in dense, in refDense, Tol());
 
             // Correctness #2: spMV after growth matches the dense matvec.
-            var x = arena.doubleRandomVec(N, (double)(-1f), (double)1f, 74202);
-            var y = arena.doubleVec(N);
+            var x = GenerateOP.doubleRandomVec(N, (double)(-1f), (double)1f, 74202);
+            var y = new doubleN(N, Allocator.Temp);
             BSR.spMV(in A, in x, ref y);
-            Assert.IsTrue(Analysis.isZero(y - Blas.dot(refDense, x), Tol()));
-
-            // The whole point: this must NOT crash / corrupt the heap.
-            arena.Dispose();
+            var diff = new doubleN(in y, Allocator.Temp);
+            doubleComp.subInPlace(diff, Blas.dot(refDense, x));
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
         }
 
-        // ---- 9. Clear() then reallocate a second grown builder in the SAME arena -------------
+        // ---- 9. two independently grown builders, back to back ---------------------------
         //
-        // Proves the arena's builder-tracking list is safely reusable after Clear(): grow a
-        // first builder past capacityHint, ToBSR, Clear() (disposes the first builder's shared
-        // state and empties the tracking list WITHOUT tearing down the arena), then build and
-        // grow a SECOND builder in the same arena and verify its correctness too. Final
-        // arena.Dispose() at the very end must also be clean.
+        // Builds and verifies a first grown builder, then a second, independent grown builder,
+        // proving growth-past-capacityHint correctness is not a one-shot fluke.
         void ClearThenReallocate()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             const int N = 15;
 
             // First grown builder.
-            var refA = arena.doubleRandomMat(N, N, (double)(-1f), (double)1f, 75101);
-            var A = BuildDenseGrown(ref arena, in refA, out int tripletCountA);
+            var refA = GenerateOP.doubleRandomMat(N, N, (double)(-1f), (double)1f, 75101);
+            var A = BuildDenseGrown(in refA, out int tripletCountA);
             Assert.IsTrue(tripletCountA == N * N);
-            var denseA = A.ToDense(ref arena);
+            var denseA = A.ToDense(Allocator.Temp);
             AssertMatEq(in denseA, in refA, Tol());
 
-            // Reuse the arena: disposes A / refA / builder-A's state, keeps the arena usable.
-            arena.Clear();
-
-            // Second grown builder in the SAME arena.
-            var refB = arena.doubleRandomMat(N, N, (double)(-1f), (double)1f, 75202);
-            var B = BuildDenseGrown(ref arena, in refB, out int tripletCountB);
+            // Second, independent grown builder.
+            var refB = GenerateOP.doubleRandomMat(N, N, (double)(-1f), (double)1f, 75202);
+            var B = BuildDenseGrown(in refB, out int tripletCountB);
             Assert.IsTrue(tripletCountB == N * N);
-            var denseB = B.ToDense(ref arena);
+            var denseB = B.ToDense(Allocator.Temp);
             AssertMatEq(in denseB, in refB, Tol());
 
-            // spMV correctness on the post-Clear builder too.
-            var x = arena.doubleRandomVec(N, (double)(-1f), (double)1f, 75303);
-            var y = arena.doubleVec(N);
+            // spMV correctness on the second builder too.
+            var x = GenerateOP.doubleRandomVec(N, (double)(-1f), (double)1f, 75303);
+            var y = new doubleN(N, Allocator.Temp);
             BSR.spMV(in B, in x, ref y);
-            Assert.IsTrue(Analysis.isZero(y - Blas.dot(refB, x), Tol()));
-
-            arena.Dispose();
+            var diff = new doubleN(in y, Allocator.Temp);
+            doubleComp.subInPlace(diff, Blas.dot(refB, x));
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
         }
 
         // ---- 10. empty BSR (zero triplets) + minimal 1x1 single-element BSR round-trip -------
@@ -460,57 +435,53 @@ public class doubleSparseBSRTests
         // BSR (Nnzb == 0): every block-row's RowPtr range is empty so bsrMatVec/bsrMatVecT never
         // dereference the (possibly-null-Ptr) zero-length ColInd/Values buffers. ToDense must
         // produce the all-zero matrix and spMV/spMVT the zero vector for any x. Mirrors the
-        // codebase's established zero-length-vector pattern (arena.doubleVec(0) etc.). Also folds
+        // codebase's established zero-length-vector pattern (new doubleN(0, allocator) etc.). Also folds
         // in the smallest non-empty edge: a 1x1-grid, 1x1-block, single-triplet BSR (one scalar).
         void EmptyBSRRoundTrip()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // --- empty BSR: 3x3 block grid of 2x2 blocks (6x6 dense) with NO triplets ---
             const int BR = 2, BC = 2;
-            var builder = arena.doubleBSRBuilder(3, 3, BR, BC);
-            var A = builder.ToBSR(ref arena);
+            var builder = new doubleBSRBuilder(3, 3, BR, BC, Allocator.Temp);
+            var A = builder.ToBSR(Allocator.Temp);
 
             Assert.IsTrue(A.Nnzb == 0);
             Assert.IsTrue(A.M_Rows == 6);
             Assert.IsTrue(A.N_Cols == 6);
 
             // ToDense of an empty BSR == the all-zero matrix of the right dims.
-            var dense = A.ToDense(ref arena);
-            var zero = arena.doubleMat(6, 6);
+            var dense = A.ToDense(Allocator.Temp);
+            var zero = new doubleMxN(6, 6, Allocator.Temp);
             AssertMatEq(in dense, in zero, Tol());
 
             // spMV of an empty BSR == the zero vector, for a random nonzero x.
-            var x = arena.doubleRandomVec(A.N_Cols, (double)(-1f), (double)1f, 9201);
-            var y = arena.doubleVec(A.M_Rows);
+            var x = GenerateOP.doubleRandomVec(A.N_Cols, (double)(-1f), (double)1f, 9201);
+            var y = new doubleN(A.M_Rows, Allocator.Temp);
             BSR.spMV(in A, in x, ref y);
             Assert.IsTrue(Analysis.isZero(y, Tol()));
 
             // spMVT too (transpose path's empty-row loop is separate code).
-            var xt = arena.doubleRandomVec(A.M_Rows, (double)(-1f), (double)1f, 9202);
-            var yt = arena.doubleVec(A.N_Cols);
+            var xt = GenerateOP.doubleRandomVec(A.M_Rows, (double)(-1f), (double)1f, 9202);
+            var yt = new doubleN(A.N_Cols, Allocator.Temp);
             BSR.spMVT(in A, in xt, ref yt);
             Assert.IsTrue(Analysis.isZero(yt, Tol()));
 
             // --- minimal non-empty edge: 1x1 grid, 1x1 block, one triplet == a single scalar ---
-            var oneBuilder = arena.doubleBSRBuilder(1, 1, 1, 1);
+            var oneBuilder = new doubleBSRBuilder(1, 1, 1, 1, Allocator.Temp);
             oneBuilder.AddValue(0, 0, (double)7);
-            var one = oneBuilder.ToBSR(ref arena);
+            var one = oneBuilder.ToBSR(Allocator.Temp);
 
             Assert.IsTrue(one.Nnzb == 1);
             Assert.IsTrue(one.M_Rows == 1);
             Assert.IsTrue(one.N_Cols == 1);
 
-            var oneDense = one.ToDense(ref arena);
+            var oneDense = one.ToDense(Allocator.Temp);
             Assert.IsTrue(math.abs(oneDense[0, 0] - (double)7) < Tol());
 
-            var ox = arena.doubleVec(1);
+            var ox = new doubleN(1, Allocator.Temp);
             ox[0] = (double)3;
-            var oy = arena.doubleVec(1);
+            var oy = new doubleN(1, Allocator.Temp);
             BSR.spMV(in one, in ox, ref oy);
             Assert.IsTrue(math.abs(oy[0] - (double)21) < Tol()); // 7 * 3
-
-            arena.Dispose();
         }
     }
 
@@ -544,13 +515,13 @@ public class doubleSparseBSRTests
     public void OneByOneBlocksTest()
         => new SparseBSRTestJob { Type = SparseBSRTestJob.TestType.OneByOneBlocks }.Run();
 
-    // Regression guard: builder grown far past capacityHint (default 8), then arena.Dispose() --
-    // this is the growth path the regression tests pin.
+    // Regression guard: builder grown far past capacityHint (default 8) -- this is the growth
+    // path the regression tests pin.
     [Test]
     public void GrowthThenDisposeTest()
         => new SparseBSRTestJob { Type = SparseBSRTestJob.TestType.GrowthThenDispose }.Run();
 
-    // Regression: arena.Clear() then a second grown builder in the same arena.
+    // Regression: two independently grown builders built back to back.
     [Test]
     public void ClearThenReallocateTest()
         => new SparseBSRTestJob { Type = SparseBSRTestJob.TestType.ClearThenReallocate }.Run();
@@ -560,58 +531,22 @@ public class doubleSparseBSRTests
     public void EmptyBSRRoundTripTest()
         => new SparseBSRTestJob { Type = SparseBSRTestJob.TestType.EmptyBSRRoundTrip }.Run();
 
-    // doubleBSR.ToDense and doubleBSRBuilder.ToBSR take `ref Arena arena` (matching how
-    // ArenaExtensions factory methods take `this ref Arena`, not `this in Arena`) so the result's
-    // internal arena pointer stays valid to allocate through. This test checks that the
-    // trans(ToDense(...)) recipe -- BSR.spMVT(A,x) vs Blas.dot(Blas.trans(ToDense(A)), x) --
-    // works end to end.
+    // This test checks that the trans(ToDense(...)) recipe -- BSR.spMVT(A,x) vs
+    // Blas.dot(Blas.trans(ToDense(A)), x) -- works end to end.
     [Test]
     public void ToDense_TransposeReference_Works()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = BuildSquare(ref arena);
-            var dense = A.ToDense(ref arena);
-            var x = arena.doubleRandomVec(A.M_Rows, (double)(-1f), (double)1f, 12321);
+        var A = BuildSquare();
+        var dense = A.ToDense(Allocator.Temp);
+        var x = GenerateOP.doubleRandomVec(A.M_Rows, (double)(-1f), (double)1f, 12321);
 
-            var yRef = Blas.dot(Blas.trans(dense), x);
+        var yRef = Blas.dot(Blas.trans(dense), x);
 
-            var y = arena.doubleVec(A.N_Cols);
-            BSR.spMVT(in A, in x, ref y);
-            Assert.IsTrue(Analysis.isZero(y - yRef, (double)1e-4f));
-        }
-        finally { arena.Dispose(); }
-    }
-
-    // ---- Clear() then Dispose() must not double-dispose (managed thread) ------------------
-    //
-    // A builder grown past capacityHint (225 AddValue on a 15x15 1x1-block grid, ~5 UnsafeList
-    // reallocations) is disposed via arena.Clear() and then arena.Dispose() (whose own trailing
-    // Clear() pass runs again). The builder's Dispose() is idempotent via its _state null-guard,
-    // so the sequence is safe. Runs on the managed thread so Assert.DoesNotThrow can wrap the
-    // dispose sequence.
-    [Test]
-    public void GrowthClearThenDispose_NoDoubleDispose()
-    {
-        var arena = new Arena(Allocator.Persistent);
-
-        const int N = 15;
-        var builder = arena.doubleBSRBuilder(N, N, 1, 1); // DEFAULT capacityHint = 8
-        for (int r = 0; r < N; r++)
-            for (int c = 0; c < N; c++)
-                builder.AddValue(r, c, (double)(r * N + c));
-
-        Assert.IsTrue(builder.TripletCount == N * N); // 225 -> grew well past 8
-        builder.ToBSR(ref arena);
-
-        // Clear() disposes the builder's shared state once and empties the tracking list;
-        // Dispose() then runs Clear() again internally. Neither may double-free / crash.
-        Assert.DoesNotThrow(() =>
-        {
-            arena.Clear();
-            arena.Dispose();
-        });
+        var y = new doubleN(A.N_Cols, Allocator.Temp);
+        BSR.spMVT(in A, in x, ref y);
+        var diff = new doubleN(in y, Allocator.Temp);
+        doubleComp.subInPlace(diff, yRef);
+        Assert.IsTrue(Analysis.isZero(diff, (double)1e-4f));
     }
 
     // ---- 8. bounds-check throws (managed thread; Assert.Throws can't run inside Burst) ----
@@ -619,57 +554,37 @@ public class doubleSparseBSRTests
     [Test]
     public void AddBlock_BlockRowOutOfBounds_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var builder = arena.doubleBSRBuilder(2, 2, 3, 3);
-            var block = arena.doubleMat(3, 3);
-            Assert.Throws<ArgumentException>(() => builder.AddBlock(2, 0, in block));  // br == BlockRows
-            Assert.Throws<ArgumentException>(() => builder.AddBlock(-1, 0, in block));
-        }
-        finally { arena.Dispose(); }
+        var builder = new doubleBSRBuilder(2, 2, 3, 3, Allocator.Temp);
+        var block = new doubleMxN(3, 3, Allocator.Temp);
+        Assert.Throws<ArgumentException>(() => builder.AddBlock(2, 0, in block));  // br == BlockRows
+        Assert.Throws<ArgumentException>(() => builder.AddBlock(-1, 0, in block));
     }
 
     [Test]
     public void AddBlock_BlockColOutOfBounds_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var builder = arena.doubleBSRBuilder(2, 2, 3, 3);
-            var block = arena.doubleMat(3, 3);
-            Assert.Throws<ArgumentException>(() => builder.AddBlock(0, 2, in block));  // bc == BlockCols
-            Assert.Throws<ArgumentException>(() => builder.AddBlock(0, -1, in block));
-        }
-        finally { arena.Dispose(); }
+        var builder = new doubleBSRBuilder(2, 2, 3, 3, Allocator.Temp);
+        var block = new doubleMxN(3, 3, Allocator.Temp);
+        Assert.Throws<ArgumentException>(() => builder.AddBlock(0, 2, in block));  // bc == BlockCols
+        Assert.Throws<ArgumentException>(() => builder.AddBlock(0, -1, in block));
     }
 
     [Test]
     public void AddBlock_WrongBlockDimensions_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var builder = arena.doubleBSRBuilder(2, 2, 3, 3);
-            var wrong = arena.doubleMat(2, 3); // not 3 x 3
-            Assert.Throws<ArgumentException>(() => builder.AddBlock(0, 0, in wrong));
-        }
-        finally { arena.Dispose(); }
+        var builder = new doubleBSRBuilder(2, 2, 3, 3, Allocator.Temp);
+        var wrong = new doubleMxN(2, 3, Allocator.Temp); // not 3 x 3
+        Assert.Throws<ArgumentException>(() => builder.AddBlock(0, 0, in wrong));
     }
 
     [Test]
     public void AddValue_GlobalIndexOutOfBounds_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var builder = arena.doubleBSRBuilder(2, 2, 3, 3); // 6 x 6
-            Assert.Throws<ArgumentException>(() => builder.AddValue(6, 0, (double)1)); // row == M_Rows
-            Assert.Throws<ArgumentException>(() => builder.AddValue(-1, 0, (double)1));
-            Assert.Throws<ArgumentException>(() => builder.AddValue(0, 6, (double)1)); // col == N_Cols
-            Assert.Throws<ArgumentException>(() => builder.AddValue(0, -1, (double)1));
-        }
-        finally { arena.Dispose(); }
+        var builder = new doubleBSRBuilder(2, 2, 3, 3, Allocator.Temp); // 6 x 6
+        Assert.Throws<ArgumentException>(() => builder.AddValue(6, 0, (double)1)); // row == M_Rows
+        Assert.Throws<ArgumentException>(() => builder.AddValue(-1, 0, (double)1));
+        Assert.Throws<ArgumentException>(() => builder.AddValue(0, 6, (double)1)); // col == N_Cols
+        Assert.Throws<ArgumentException>(() => builder.AddValue(0, -1, (double)1));
     }
 
     // ---- 9. alias guard: y must not alias x ----------------------------------------------
@@ -677,29 +592,19 @@ public class doubleSparseBSRTests
     [Test]
     public void SpMV_AliasingY_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = BuildSquare(ref arena);          // 4 x 4 (M_Rows == N_Cols)
-            var x = arena.doubleRandomVec(A.N_Cols, (double)(-1f), (double)1f, 9001);
-            var yAlias = x;                          // struct copy shares Data.Ptr with x
-            Assert.Throws<ArgumentException>(() => BSR.spMV(in A, in x, ref yAlias));
-        }
-        finally { arena.Dispose(); }
+        var A = BuildSquare();          // 4 x 4 (M_Rows == N_Cols)
+        var x = GenerateOP.doubleRandomVec(A.N_Cols, (double)(-1f), (double)1f, 9001);
+        var yAlias = x;                          // struct copy shares Data.Ptr with x
+        Assert.Throws<ArgumentException>(() => BSR.spMV(in A, in x, ref yAlias));
     }
 
     [Test]
     public void SpMVT_AliasingY_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = BuildSquare(ref arena);
-            var x = arena.doubleRandomVec(A.M_Rows, (double)(-1f), (double)1f, 9002);
-            var yAlias = x;
-            Assert.Throws<ArgumentException>(() => BSR.spMVT(in A, in x, ref yAlias));
-        }
-        finally { arena.Dispose(); }
+        var A = BuildSquare();
+        var x = GenerateOP.doubleRandomVec(A.M_Rows, (double)(-1f), (double)1f, 9002);
+        var yAlias = x;
+        Assert.Throws<ArgumentException>(() => BSR.spMVT(in A, in x, ref yAlias));
     }
 
     // doubleBlockJacobi.Apply's z-must-not-alias-r guard (each z_i draws on the full r_i block;
@@ -707,16 +612,11 @@ public class doubleSparseBSRTests
     [Test]
     public void BlockJacobiApply_AliasingZ_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = BuildSquare(ref arena);          // square BSR, both diagonal blocks present
-            var M = arena.doubleBlockJacobi(in A);
-            var r = arena.doubleRandomVec(A.M_Rows, (double)(-1f), (double)1f, 9003);
-            var zAlias = r;                          // struct copy shares Data.Ptr with r
-            Assert.Throws<ArgumentException>(() => M.Apply(in r, ref zAlias));
-        }
-        finally { arena.Dispose(); }
+        var A = BuildSquare();          // square BSR, both diagonal blocks present
+        var M = new doubleBlockJacobi(in A, Allocator.Temp);
+        var r = GenerateOP.doubleRandomVec(A.M_Rows, (double)(-1f), (double)1f, 9003);
+        var zAlias = r;                          // struct copy shares Data.Ptr with r
+        Assert.Throws<ArgumentException>(() => M.Apply(in r, ref zAlias));
     }
 
     // ---- 10. dimension-mismatch guard ----------------------------------------------------
@@ -724,49 +624,39 @@ public class doubleSparseBSRTests
     [Test]
     public void SpMV_DimensionMismatch_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = BuildSquare(ref arena); // 4 x 4
-            // wrong x length (must equal N_Cols).
-            var badX = arena.doubleVec(A.N_Cols + 1);
-            var y = arena.doubleVec(A.M_Rows);
-            Assert.Throws<ArgumentException>(() => BSR.spMV(in A, in badX, ref y));
+        var A = BuildSquare(); // 4 x 4
+        // wrong x length (must equal N_Cols).
+        var badX = new doubleN(A.N_Cols + 1, Allocator.Temp);
+        var y = new doubleN(A.M_Rows, Allocator.Temp);
+        Assert.Throws<ArgumentException>(() => BSR.spMV(in A, in badX, ref y));
 
-            // wrong y length (must equal M_Rows).
-            var x = arena.doubleVec(A.N_Cols);
-            var badY = arena.doubleVec(A.M_Rows + 1);
-            Assert.Throws<ArgumentException>(() => BSR.spMV(in A, in x, ref badY));
-        }
-        finally { arena.Dispose(); }
+        // wrong y length (must equal M_Rows).
+        var x = new doubleN(A.N_Cols, Allocator.Temp);
+        var badY = new doubleN(A.M_Rows + 1, Allocator.Temp);
+        Assert.Throws<ArgumentException>(() => BSR.spMV(in A, in x, ref badY));
     }
 
     [Test]
     public void SpMVT_DimensionMismatch_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = BuildSquare(ref arena); // 4 x 4
-            // spMVT: x must equal M_Rows, y must equal N_Cols.
-            var badX = arena.doubleVec(A.M_Rows + 1);
-            var y = arena.doubleVec(A.N_Cols);
-            Assert.Throws<ArgumentException>(() => BSR.spMVT(in A, in badX, ref y));
+        var A = BuildSquare(); // 4 x 4
+        // spMVT: x must equal M_Rows, y must equal N_Cols.
+        var badX = new doubleN(A.M_Rows + 1, Allocator.Temp);
+        var y = new doubleN(A.N_Cols, Allocator.Temp);
+        Assert.Throws<ArgumentException>(() => BSR.spMVT(in A, in badX, ref y));
 
-            var x = arena.doubleVec(A.M_Rows);
-            var badY = arena.doubleVec(A.N_Cols + 1);
-            Assert.Throws<ArgumentException>(() => BSR.spMVT(in A, in x, ref badY));
-        }
-        finally { arena.Dispose(); }
+        var x = new doubleN(A.M_Rows, Allocator.Temp);
+        var badY = new doubleN(A.N_Cols + 1, Allocator.Temp);
+        Assert.Throws<ArgumentException>(() => BSR.spMVT(in A, in x, ref badY));
     }
 
     // Small square (4x4) BSR used by the guard tests. Managed helper (no Burst).
-    static doubleBSR BuildSquare(ref Arena arena)
+    static doubleBSR BuildSquare()
     {
         const int BR = 2, BC = 2;
-        var builder = arena.doubleBSRBuilder(2, 2, BR, BC);
-        builder.AddBlock(0, 0, arena.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 6001));
-        builder.AddBlock(1, 1, arena.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 6002));
-        return builder.ToBSR(ref arena);
+        var builder = new doubleBSRBuilder(2, 2, BR, BC, Allocator.Temp);
+        builder.AddBlock(0, 0, GenerateOP.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 6001));
+        builder.AddBlock(1, 1, GenerateOP.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 6002));
+        return builder.ToBSR(Allocator.Temp);
     }
 }

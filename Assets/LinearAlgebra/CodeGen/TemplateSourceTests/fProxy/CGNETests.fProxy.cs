@@ -64,9 +64,9 @@ public class fProxyCGNETests
 
         // Full-(row-)rank test matrix: random with a diagonal boost (mirrors CRAIGTests / the
         // LQMinNormInPlace fixtures). The +10 boost forces AAᵀ ≈ (100+ε)·I -> κ≈1, so cond(A)²≈1.
-        static fProxyMxN BuildA(ref Arena arena, int m, int n, uint seed)
+        static fProxyMxN BuildA(int m, int n, uint seed)
         {
-            var A = arena.fProxyRandomMat(m, n, -1f, 1f, seed);
+            var A = GenerateOP.fProxyRandomMat(m, n, -1f, 1f, seed, Allocator.Temp);
             for (int d = 0; d < m; d++)
                 A[d, d] += (fProxy)10;
             return A;
@@ -79,32 +79,34 @@ public class fProxyCGNETests
         // oracle xRef (and x is verifiably NOT the arbitrary x_true used to build b).
         void RectangularMinNorm()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 5, n = 9;
-            var A = BuildA(ref arena, m, n, 51001);
+            var A = BuildA(m, n, 51001);
 
             // Arbitrary true solution; b = A x_true makes the system consistent. x_true is generally
             // NOT in row(A), so the min-norm solution differs from it.
-            var xTrue = arena.fProxyRandomVec(n, -5f, 5f, 51002);
-            var b = arena.fProxyVec(m);
+            var xTrue = GenerateOP.fProxyRandomVec(n, -5f, 5f, 51002, Allocator.Temp);
+            var b = new fProxyN(m, Allocator.Temp);
             Blas.dot(in A, in xTrue, ref b);
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             var info = Krylov.cgne(in A, in b, ref x, MaxIter(in A), SolveTol());
             Assert.IsTrue(info.Solved);
 
             // (a) Ax ≈ b — necessary but not sufficient.
-            var Ax = arena.fProxyVec(m);
+            var Ax = new fProxyN(m, Allocator.Temp);
             Blas.dot(in A, in x, ref Ax);
-            Assert.IsTrue(Analysis.isZero(b - Ax, Tol()));
+            var bMinusAx = new fProxyN(in b, Allocator.Temp);
+            fProxyComp.subInPlace(bMinusAx, Ax);
+            Assert.IsTrue(Analysis.isZero(bMinusAx, Tol()));
 
             // (b) THE POINT: x matches the exact min-2-norm solution from the LQ oracle. This is what
             // separates a correct CGNE from any solver that merely satisfies Ax=b -- a generic
             // (non-min-norm) solution fails here.
-            var xRef = arena.fProxyVec(n);
+            var xRef = new fProxyN(n, Allocator.Temp);
             LQ.minNormSolve(in A, in b, ref xRef);
-            Assert.IsTrue(Analysis.isZero(xRef - x, Tol()));
+            var xRefMinusX = new fProxyN(in xRef, Allocator.Temp);
+            fProxyComp.subInPlace(xRefMinusX, x);
+            Assert.IsTrue(Analysis.isZero(xRefMinusX, Tol()));
 
             // (b, softer) ‖x‖ <= ‖x_true‖ (x is minimal among all solutions incl. x_true).
             fProxy nx = Norm(in x);
@@ -113,35 +115,35 @@ public class fProxyCGNETests
 
             // (b, negative guard) cgne did NOT merely echo x_true or some arbitrary solution:
             // x_true is a solution but not the min-norm one, so x != x_true at any sane tolerance.
-            Assert.IsFalse(Analysis.isZero(xTrue - x, (fProxy)0.1));
-
-            arena.Dispose();
+            var xTrueMinusX = new fProxyN(in xTrue, Allocator.Temp);
+            fProxyComp.subInPlace(xTrueMinusX, x);
+            Assert.IsFalse(Analysis.isZero(xTrueMinusX, (fProxy)0.1));
         }
 
         // ---- Square full-rank: the system has a UNIQUE solution, so cgne must recover x_true. ----
         void SquareFullRank()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int nn = 7;
-            var A = BuildA(ref arena, nn, nn, 52001);
+            var A = BuildA(nn, nn, 52001);
 
-            var xTrue = arena.fProxyRandomVec(nn, -5f, 5f, 52002);
-            var b = arena.fProxyVec(nn);
+            var xTrue = GenerateOP.fProxyRandomVec(nn, -5f, 5f, 52002, Allocator.Temp);
+            var b = new fProxyN(nn, Allocator.Temp);
             Blas.dot(in A, in xTrue, ref b);
 
-            var x = arena.fProxyVec(nn);
+            var x = new fProxyN(nn, Allocator.Temp);
             var info = Krylov.cgne(in A, in b, ref x, MaxIter(in A), SolveTol());
             Assert.IsTrue(info.Solved);
 
-            var Ax = arena.fProxyVec(nn);
+            var Ax = new fProxyN(nn, Allocator.Temp);
             Blas.dot(in A, in x, ref Ax);
-            Assert.IsTrue(Analysis.isZero(b - Ax, Tol()));
+            var bMinusAx = new fProxyN(in b, Allocator.Temp);
+            fProxyComp.subInPlace(bMinusAx, Ax);
+            Assert.IsTrue(Analysis.isZero(bMinusAx, Tol()));
 
             // Unique solution: x IS x_true (direct comparison, unlike the rectangular case).
-            Assert.IsTrue(Analysis.isZero(xTrue - x, Tol()));
-
-            arena.Dispose();
+            var xTrueMinusX = new fProxyN(in xTrue, Allocator.Temp);
+            fProxyComp.subInPlace(xTrueMinusX, x);
+            Assert.IsTrue(Analysis.isZero(xTrueMinusX, Tol()));
         }
 
         // ---- Explicit-scratch overload driven through the IJob struct: exercises the
@@ -149,34 +151,34 @@ public class fProxyCGNETests
         // solver's scratch state) on the rectangular min-norm case. ----
         void ExplicitScratchInJob()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 6, n = 11;
-            var A = BuildA(ref arena, m, n, 53001);
+            var A = BuildA(m, n, 53001);
 
-            var xTrue = arena.fProxyRandomVec(n, -4f, 4f, 53002);
-            var b = arena.fProxyVec(m);
+            var xTrue = GenerateOP.fProxyRandomVec(n, -4f, 4f, 53002, Allocator.Temp);
+            var b = new fProxyN(m, Allocator.Temp);
             Blas.dot(in A, in xTrue, ref b);
 
             // Caller-provided scratch (lengths: r,Ap = Rows; p,tmpN = Cols).
-            var r    = arena.fProxyVec(m);
-            var p    = arena.fProxyVec(n);
-            var Ap   = arena.fProxyVec(m);
-            var tmpN = arena.fProxyVec(n);
-            var x    = arena.fProxyVec(n);
+            var r    = new fProxyN(m, Allocator.Temp);
+            var p    = new fProxyN(n, Allocator.Temp);
+            var Ap   = new fProxyN(m, Allocator.Temp);
+            var tmpN = new fProxyN(n, Allocator.Temp);
+            var x    = new fProxyN(n, Allocator.Temp);
 
             var info = Krylov.cgne(in A, in b, ref x, ref r, ref p, ref Ap, ref tmpN, MaxIter(in A), SolveTol());
             Assert.IsTrue(info.Solved);
 
-            var Ax = arena.fProxyVec(m);
+            var Ax = new fProxyN(m, Allocator.Temp);
             Blas.dot(in A, in x, ref Ax);
-            Assert.IsTrue(Analysis.isZero(b - Ax, Tol()));
+            var bMinusAx = new fProxyN(in b, Allocator.Temp);
+            fProxyComp.subInPlace(bMinusAx, Ax);
+            Assert.IsTrue(Analysis.isZero(bMinusAx, Tol()));
 
-            var xRef = arena.fProxyVec(n);
+            var xRef = new fProxyN(n, Allocator.Temp);
             LQ.minNormSolve(in A, in b, ref xRef);
-            Assert.IsTrue(Analysis.isZero(xRef - x, Tol()));
-
-            arena.Dispose();
+            var xRefMinusX = new fProxyN(in xRef, Allocator.Temp);
+            fProxyComp.subInPlace(xRefMinusX, x);
+            Assert.IsTrue(Analysis.isZero(xRefMinusX, Tol()));
         }
 
         // ---- Zero RHS: min-norm solution is exactly x = 0, returned on the early-out path with
@@ -184,22 +186,18 @@ public class fProxyCGNETests
         // internally (no warm start) by seeding it with garbage first. ----
         void ZeroRhs()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 5, n = 9;
-            var A = BuildA(ref arena, m, n, 54001);
-            var b = arena.fProxyVec(m); // all zeros
+            var A = BuildA(m, n, 54001);
+            var b = new fProxyN(m, Allocator.Temp); // all zeros
 
             // Seed x with garbage to prove cgne zeroes it internally (no warm start).
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             for (int j = 0; j < n; j++) x[j] = (fProxy)7;
 
             var info = Krylov.cgne(in A, in b, ref x);
             Assert.IsTrue(info.Solved);
             Assert.IsTrue(info.iterations == 0);
             Assert.IsTrue(Analysis.isZero(x, (fProxy)0));
-
-            arena.Dispose();
         }
 
         // ---- BONUS: rank-deficient A (row 1 all zeros) with b nonzero ONLY in that zero row's
@@ -210,27 +208,23 @@ public class fProxyCGNETests
         // so it is NOT asserted. ----
         void RankDeficientBreakdown()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 2, n = 4;
-            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 55001);
+            var A = GenerateOP.fProxyRandomMat(m, n, -1f, 1f, 55001, Allocator.Temp);
             for (int j = 0; j < n; j++)
                 A[1, j] = (fProxy)0; // row 1 = 0 -> rank-deficient (not full row rank)
 
             // b = e_2: nonzero only where A's row is zero, so Aᵀ(b) = (row 1 of A)ᵀ = 0 exactly on
             // the very first step -> p collapses (pp == 0) at iteration 0.
-            var b = arena.fProxyVec(m);
+            var b = new fProxyN(m, Allocator.Temp);
             b[1] = (fProxy)1;
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             var info = Krylov.cgne(in A, in b, ref x);
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Breakdown);
             Assert.IsTrue(info.iterations == 0);
             // Norms are finite (no NaN escapes the collapse path).
             Assert.IsFalse(double.IsNaN(info.rnorm));
-
-            arena.Dispose();
         }
     }
 

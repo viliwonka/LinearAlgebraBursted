@@ -140,30 +140,29 @@ namespace LinearAlgebra.Benchmarks
             foreach (var n in QPBenchmarkFmt.SizesN)
             {
                 int m = n / 2;
-                var arena = new Arena(Allocator.Persistent);
                 var rng = new Random((uint)(n * 2654435761u + 97));
 
-                var Q = arena.floatMat(n, n);
+                var Q = new floatMxN(n, n, Allocator.Persistent);
                 Rand.spdInPlace(ref rng, ref Q, (float)1, (float)10);
-                var c = arena.floatRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5));
+                var c = GenerateOP.floatRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5), Allocator.Persistent);
 
-                var A = arena.floatRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11));
-                var x0 = arena.floatRandomVec(n, (float)0.2, (float)0.8, (uint)(n * 104729 + 7));
-                var Ax0 = arena.floatVec(m);
+                var A = GenerateOP.floatRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11), Allocator.Persistent);
+                var x0 = GenerateOP.floatRandomVec(n, (float)0.2, (float)0.8, (uint)(n * 104729 + 7), Allocator.Persistent);
+                var Ax0 = new floatN(m, Allocator.Persistent);
                 Blas.dot(in A, in x0, ref Ax0);
-                var b = arena.floatVec(m);
+                var b = new floatN(m, Allocator.Persistent);
                 var slackRng = new Random((uint)(n * 1299709 + 3));
                 for (int i = 0; i < m; i++) b[i] = Ax0[i] + slackRng.NextFloat((float)0.1, (float)1);
                 var senses = new NativeArray<ConstraintSense>(m, Allocator.Persistent);
                 for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
 
-                var xl = arena.floatVec(n);                 // 0
-                var xu = arena.floatVec(n, (float)3);       // 3
+                var xl = new floatN(n, Allocator.Persistent);                 // 0
+                var xu = GenerateOP.floatVec(n, (float)3, Allocator.Persistent);       // 3
 
                 var objOut = new NativeArray<double>(1, Allocator.Persistent);
                 var itersOut = new NativeArray<int>(1, Allocator.Persistent);
                 var statusOut = new NativeArray<int>(1, Allocator.Persistent);
-                var x = arena.floatVec(n);
+                var x = new floatN(n, Allocator.Persistent);
 
                 for (int variant = 0; variant < 2; variant++)
                 {
@@ -181,7 +180,8 @@ namespace LinearAlgebra.Benchmarks
 
                 objOut.Dispose(); itersOut.Dispose(); statusOut.Dispose();
                 senses.Dispose();
-                arena.Dispose();
+                Q.Dispose(); c.Dispose(); A.Dispose(); x0.Dispose(); Ax0.Dispose(); b.Dispose();
+                xl.Dispose(); xu.Dispose(); x.Dispose();
             }
         }
 
@@ -200,35 +200,34 @@ namespace LinearAlgebra.Benchmarks
             foreach (var n in QPBenchmarkFmt.SizesN)
             {
                 int m = n / 2;
-                var arena = new Arena(Allocator.Persistent);
                 var rng = new Random((uint)(n * 2654435761u + 97));
 
-                var Q = arena.floatMat(n, n);
+                var Q = new floatMxN(n, n, Allocator.Persistent);
                 Rand.spdInPlace(ref rng, ref Q, (float)1, (float)10);
-                var c = arena.floatRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5));
+                var c = GenerateOP.floatRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5), Allocator.Persistent);
 
-                var A = arena.floatRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11));
-                var x0 = arena.floatRandomVec(n, (float)0.2, (float)0.8, (uint)(n * 104729 + 7));
+                var A = GenerateOP.floatRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11), Allocator.Persistent);
+                var x0 = GenerateOP.floatRandomVec(n, (float)0.2, (float)0.8, (uint)(n * 104729 + 7), Allocator.Persistent);
                 // One-off setup matvec (NOT timed) -- n stays <= 192 here (unlike LPBenchmark's n=384
                 // sizes), so a plain managed Blas.dot call is negligible and a dedicated Burst warm-up
                 // job is not worth the extra code.
-                var Ax0 = arena.floatVec(m);
+                var Ax0 = new floatN(m, Allocator.Persistent);
                 Blas.dot(in A, in x0, ref Ax0);
-                var b = arena.floatVec(m);
+                var b = new floatN(m, Allocator.Persistent);
                 var slackRng = new Random((uint)(n * 1299709 + 3));
                 for (int i = 0; i < m; i++) b[i] = Ax0[i] + slackRng.NextFloat((float)0.1, (float)1);
                 var senses = new NativeArray<ConstraintSense>(m, Allocator.Persistent);
                 for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
 
-                var xl = arena.floatVec(n);                 // 0
-                var xu = arena.floatVec(n, (float)3);       // 3
+                var xl = new floatN(n, Allocator.Persistent);                 // 0
+                var xu = GenerateOP.floatVec(n, (float)3, Allocator.Persistent);       // 3
 
                 var objOut = new NativeArray<double>(1, Allocator.Persistent);
                 var itersOut = new NativeArray<int>(1, Allocator.Persistent);
                 var statusOut = new NativeArray<int>(1, Allocator.Persistent);
                 var kktOut = new NativeArray<double>(1, Allocator.Persistent);
 
-                var x = arena.floatVec(n);   // entry contents ignored by QP.solve (phase 1 overwrites)
+                var x = new floatN(n, Allocator.Persistent);   // entry contents ignored by QP.solve (phase 1 overwrites)
                 var job = new QpSolveJobFloat
                 {
                     Q = Q, c = c, A = A, b = b, senses = senses, xl = xl, xu = xu, x = x, maxIter = 0,
@@ -239,7 +238,8 @@ namespace LinearAlgebra.Benchmarks
 
                 objOut.Dispose(); itersOut.Dispose(); statusOut.Dispose(); kktOut.Dispose();
                 senses.Dispose();
-                arena.Dispose();
+                Q.Dispose(); c.Dispose(); A.Dispose(); x0.Dispose(); Ax0.Dispose(); b.Dispose();
+                xl.Dispose(); xu.Dispose(); x.Dispose();
             }
         }
     }

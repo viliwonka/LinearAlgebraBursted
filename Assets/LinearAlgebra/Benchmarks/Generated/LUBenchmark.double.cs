@@ -50,10 +50,9 @@ namespace LinearAlgebra.Benchmarks
     {
         static string BenchDouble(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var U = arena.doubleMat(n, n);
-            var L = arena.doubleMat(n, n);
-            var Src = arena.doubleMat(n, n);
+            var U = new doubleMxN(n, n, Allocator.Persistent);
+            var L = new doubleMxN(n, n, Allocator.Persistent);
+            var Src = new doubleMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -65,16 +64,17 @@ namespace LinearAlgebra.Benchmarks
             var job = new LUJobDouble { U = U, L = L, Src = Src };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            U.Dispose();
+            L.Dispose();
+            Src.Dispose();
             return Bench.Row("double", n, stat, flops);
         }
 
         static string BenchNoPivotDouble(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var U = arena.doubleMat(n, n);
-            var L = arena.doubleMat(n, n);
-            var Src = arena.doubleMat(n, n);
+            var U = new doubleMxN(n, n, Allocator.Persistent);
+            var L = new doubleMxN(n, n, Allocator.Persistent);
+            var Src = new doubleMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -86,7 +86,9 @@ namespace LinearAlgebra.Benchmarks
             var job = new LUNoPivotJobDouble { U = U, L = L, Src = Src };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            U.Dispose();
+            L.Dispose();
+            Src.Dispose();
             return Bench.Row("double", n, stat, flops);
         }
     }

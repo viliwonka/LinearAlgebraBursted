@@ -59,100 +59,92 @@ public class doubleDotSymTests
         // Symmetric product by construction: W = S·A with S = MᵀM symmetric, then AᵀW = AᵀSA.
         void DotSymMatchesFullKernel(int m, int rows, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.doubleRandomMat(rows, m, -1f, 1f, seed);
-            var M = arena.doubleRandomMat(rows, rows, -1f, 1f, seed + 1);
-            var S = arena.doubleMat(rows, rows);
+            var A = GenerateOP.doubleRandomMat(rows, m, -1f, 1f, seed);
+            var M = GenerateOP.doubleRandomMat(rows, rows, -1f, 1f, seed + 1);
+            var S = new doubleMxN(rows, rows, Allocator.Temp);
             Blas.dot(in M, in M, ref S, transposeA: true);   // S = MᵀM, symmetric
 
-            var W = arena.doubleMat(rows, m);
+            var W = new doubleMxN(rows, m, Allocator.Temp);
             Blas.dot(in S, in A, ref W);                     // W = S·A
 
-            var Cref = arena.doubleMat(m, m);
+            var Cref = new doubleMxN(m, m, Allocator.Temp);
             Blas.dot(in A, in W, ref Cref, transposeA: true);
 
-            var Csym = arena.doubleMat(m, m);
+            var Csym = new doubleMxN(m, m, Allocator.Temp);
             Blas.dotSym(in A, in W, ref Csym);
 
-            Assert.IsTrue(Analysis.isZero(Cref - Csym, Tol()));
+            var diff = new doubleMxN(in Cref, Allocator.Temp);
+            doubleComp.subInPlace(diff, Csym);
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
 
             // Exact symmetry (mirrored, not just numerically close).
             for (int r = 0; r < m; r++)
                 for (int c = 0; c < r; c++)
                     Assert.IsTrue(Csym[r, c] == Csym[c, r]);
-
-            arena.Dispose();
         }
 
         // C = A·Bᵀ through the TransB kernel must match the trans + dot route it replaces.
         // A is mA x n, B is kB x n, C is mA x kB.
         void TransBMatchesTransRoute(int mA, int n, int kB, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
+            var A = GenerateOP.doubleRandomMat(mA, n, -1f, 1f, seed);
+            var B = GenerateOP.doubleRandomMat(kB, n, -1f, 1f, seed + 1);
 
-            var A = arena.doubleRandomMat(mA, n, -1f, 1f, seed);
-            var B = arena.doubleRandomMat(kB, n, -1f, 1f, seed + 1);
-
-            var Bt = arena.doubleMat(n, kB);
+            var Bt = new doubleMxN(n, kB, Allocator.Temp);
             Blas.trans(in B, ref Bt);
-            var Cref = arena.doubleMat(mA, kB);
+            var Cref = new doubleMxN(mA, kB, Allocator.Temp);
             Blas.dot(in A, in Bt, ref Cref);
 
-            var C = arena.doubleMat(mA, kB);
+            var C = new doubleMxN(mA, kB, Allocator.Temp);
             Blas.dot(in A, in B, ref C, transposeA: false, transposeB: true);
 
-            Assert.IsTrue(Analysis.isZero(Cref - C, Tol()));
-
-            arena.Dispose();
+            var diff = new doubleMxN(in Cref, Allocator.Temp);
+            doubleComp.subInPlace(diff, C);
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
         }
 
         // C = Aᵀ·Bᵀ (both flags) must match the two-explicit-transposes route.
         void TransATransBMatchesTransRoute()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int mA = 7, n = 5, kB = 4;
-            var A = arena.doubleRandomMat(mA, n, -1f, 1f, 75001);   // Aᵀ is n x mA
-            var B = arena.doubleRandomMat(kB, mA, -1f, 1f, 75002);  // Bᵀ is mA x kB
+            var A = GenerateOP.doubleRandomMat(mA, n, -1f, 1f, 75001);   // Aᵀ is n x mA
+            var B = GenerateOP.doubleRandomMat(kB, mA, -1f, 1f, 75002);  // Bᵀ is mA x kB
 
-            var At = arena.doubleMat(n, mA);
+            var At = new doubleMxN(n, mA, Allocator.Temp);
             Blas.trans(in A, ref At);
-            var Bt = arena.doubleMat(mA, kB);
+            var Bt = new doubleMxN(mA, kB, Allocator.Temp);
             Blas.trans(in B, ref Bt);
-            var Cref = arena.doubleMat(n, kB);
+            var Cref = new doubleMxN(n, kB, Allocator.Temp);
             Blas.dot(in At, in Bt, ref Cref);
 
-            var C = arena.doubleMat(n, kB);
+            var C = new doubleMxN(n, kB, Allocator.Temp);
             Blas.dot(in A, in B, ref C, transposeA: true, transposeB: true);
 
-            Assert.IsTrue(Analysis.isZero(Cref - C, Tol()));
-
-            arena.Dispose();
+            var diff = new doubleMxN(in Cref, Allocator.Temp);
+            doubleComp.subInPlace(diff, C);
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
         }
 
         // dot(A, A, transposeB) routes through the symmetric matAAt; it must match the full
         // TransB kernel fed two DISTINCT buffers holding the same values, exactly symmetric.
         void AAtMatchesDistinctBufferKernel()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int rows = 41, n = 23;
-            var A = arena.doubleRandomMat(rows, n, -1f, 1f, 76001);
-            var A2 = A.Copy();
+            var A = GenerateOP.doubleRandomMat(rows, n, -1f, 1f, 76001);
+            var A2 = new doubleMxN(in A, Allocator.Temp);
 
-            var Cref = arena.doubleMat(rows, rows);
+            var Cref = new doubleMxN(rows, rows, Allocator.Temp);
             Blas.dot(in A, in A2, ref Cref, transposeA: false, transposeB: true);   // distinct buffers: full kernel
 
-            var C = arena.doubleMat(rows, rows);
+            var C = new doubleMxN(rows, rows, Allocator.Temp);
             Blas.dot(in A, in A, ref C, transposeA: false, transposeB: true);        // same buffer: matAAt route
 
-            Assert.IsTrue(Analysis.isZero(Cref - C, Tol()));
+            var diff = new doubleMxN(in Cref, Allocator.Temp);
+            doubleComp.subInPlace(diff, C);
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
             for (int r = 0; r < rows; r++)
                 for (int c = 0; c < r; c++)
                     Assert.IsTrue(C[r, c] == C[c, r]);
-
-            arena.Dispose();
         }
 
         // Symmetric-by-construction A·Bᵀ: with S = MᵀM symmetric, a = b·S gives
@@ -160,28 +152,26 @@ public class doubleDotSymTests
         // exactly symmetric.
         void DotSymTMatchesFullKernel(int rows, int n, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var b = arena.doubleRandomMat(rows, n, -1f, 1f, seed);
-            var M = arena.doubleRandomMat(n, n, -1f, 1f, seed + 1);
-            var S = arena.doubleMat(n, n);
+            var b = GenerateOP.doubleRandomMat(rows, n, -1f, 1f, seed);
+            var M = GenerateOP.doubleRandomMat(n, n, -1f, 1f, seed + 1);
+            var S = new doubleMxN(n, n, Allocator.Temp);
             Blas.dot(in M, in M, ref S, transposeA: true);   // S = MᵀM, symmetric
 
-            var a = arena.doubleMat(rows, n);
+            var a = new doubleMxN(rows, n, Allocator.Temp);
             Blas.dot(in b, in S, ref a);                     // a = b·S, so a·bᵀ = b S bᵀ symmetric
 
-            var Cref = arena.doubleMat(rows, rows);
+            var Cref = new doubleMxN(rows, rows, Allocator.Temp);
             Blas.dot(in a, in b, ref Cref, transposeA: false, transposeB: true);
 
-            var C = arena.doubleMat(rows, rows);
+            var C = new doubleMxN(rows, rows, Allocator.Temp);
             Blas.dotSymT(in a, in b, ref C);
 
-            Assert.IsTrue(Analysis.isZero(Cref - C, Tol()));
+            var diff = new doubleMxN(in Cref, Allocator.Temp);
+            doubleComp.subInPlace(diff, C);
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
             for (int r = 0; r < rows; r++)
                 for (int c = 0; c < r; c++)
                     Assert.IsTrue(C[r, c] == C[c, r]);
-
-            arena.Dispose();
         }
 
         // The packed (cache-blocked) GEMM route must be BIT-IDENTICAL to the direct tiled route:
@@ -192,18 +182,16 @@ public class doubleDotSymTests
         // ragged edges on every dimension (m, k not tile multiples; n not a panel multiple).
         void PackedMatchesUnpackedBitExactlyCase()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 1051;
             int n = 1080;
             int kk = m;
-            var A = arena.doubleRandomMat(m, n, -1f, 1f, 77001);
-            var B = arena.doubleRandomMat(n, kk, -1f, 1f, 77002);
+            var A = GenerateOP.doubleRandomMat(m, n, -1f, 1f, 77001);
+            var B = GenerateOP.doubleRandomMat(n, kk, -1f, 1f, 77002);
 
-            var Cpacked = arena.doubleMat(m, kk);
+            var Cpacked = new doubleMxN(m, kk, Allocator.Temp);
             Blas.dot(in A, in B, ref Cpacked);   // above the gate: packed route
 
-            var Cdirect = arena.doubleMat(m, kk);
+            var Cdirect = new doubleMxN(m, kk, Allocator.Temp);
             Cdirect.zeroInPlace();
             unsafe
             {
@@ -213,32 +201,28 @@ public class doubleDotSymTests
             for (int r = 0; r < m; r++)
                 for (int c = 0; c < kk; c++)
                     Assert.IsTrue(Cpacked[r, c] == Cdirect[r, c]);
-
-            arena.Dispose();
         }
 
         // dot(A, A, transposeA) routes through the symmetric matAtA; it must match the full
         // TransA kernel fed two DISTINCT buffers holding the same values.
         void AtAMatchesDistinctBufferKernel()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int rows = 41, m = 23;
-            var A = arena.doubleRandomMat(rows, m, -1f, 1f, 72001);
-            var A2 = A.Copy();
+            var A = GenerateOP.doubleRandomMat(rows, m, -1f, 1f, 72001);
+            var A2 = new doubleMxN(in A, Allocator.Temp);
 
-            var Cref = arena.doubleMat(m, m);
+            var Cref = new doubleMxN(m, m, Allocator.Temp);
             Blas.dot(in A, in A2, ref Cref, transposeA: true);   // distinct buffers: full kernel
 
-            var C = arena.doubleMat(m, m);
+            var C = new doubleMxN(m, m, Allocator.Temp);
             Blas.dot(in A, in A, ref C, transposeA: true);        // same buffer: matAtA route
 
-            Assert.IsTrue(Analysis.isZero(Cref - C, Tol()));
+            var diff = new doubleMxN(in Cref, Allocator.Temp);
+            doubleComp.subInPlace(diff, C);
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
             for (int r = 0; r < m; r++)
                 for (int c = 0; c < r; c++)
                     Assert.IsTrue(C[r, c] == C[c, r]);
-
-            arena.Dispose();
         }
     }
 

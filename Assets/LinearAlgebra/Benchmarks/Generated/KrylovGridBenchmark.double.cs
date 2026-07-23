@@ -227,10 +227,10 @@ namespace LinearAlgebra.Benchmarks
         // Scalar (BR=1) 2D 5-point UPWIND convection-diffusion stencil on a gx x gy grid, Peclet
         // number pe. Nonsymmetric (west coefficient != east); diagonally dominant M-matrix
         // (Dirichlet boundaries make it nonsingular).
-        static doubleBSR ConvDiff2DDouble(ref Arena arena, int gx, int gy, double pe)
+        static doubleBSR ConvDiff2DDouble(int gx, int gy, double pe)
         {
             int n = gx * gy;
-            var b = arena.doubleBSRBuilder(n, n, 1, 1, 5 * n);
+            var b = new doubleBSRBuilder(n, n, 1, 1, Allocator.Persistent, 5 * n);
             for (int y = 0; y < gy; y++)
                 for (int x = 0; x < gx; x++)
                 {
@@ -241,17 +241,18 @@ namespace LinearAlgebra.Benchmarks
                     if (y > 0) b.AddValue(i, i - gx, (double)(-1));
                     if (y < gy - 1) b.AddValue(i, i + gx, (double)(-1));
                 }
-            return b.ToBSR(ref arena);
+            var result = b.ToBSR(Allocator.Persistent);
+            b.Dispose();
+            return result;
         }
 
         // Every square solver applies on an SPD gallery -- times all nine.
         static string BenchSpdDouble(int restart, int s, int recycle, int k)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleLaplacian2D(64, 64);   // 64x64 scalar Laplacian grid (N=4096); benchmark-local size, not a gallery enum
+            var A = doubleGallery.doubleLaplacian2D(64, 64, Allocator.Persistent);   // 64x64 scalar Laplacian grid (N=4096); benchmark-local size, not a gallery enum
             int n = A.M_Rows;
-            var b = arena.doubleRandomVec(n, (double)(-1), (double)1, 0xD100u);
-            var x = arena.doubleVec(n);
+            var b = GenerateOP.doubleRandomVec(n, (double)(-1), (double)1, 0xD100u, Allocator.Persistent);
+            var x = new doubleN(n, Allocator.Persistent);
             var o = new NativeArray<int>(2, Allocator.Persistent);   // required construction; unread in fixed-K
             var sb = new StringBuilder();
 
@@ -283,7 +284,9 @@ namespace LinearAlgebra.Benchmarks
             sb.Append(RowDouble("SPD", "gcrodr", n, Bench.Time(() => gcrodrJob.Run()), ResidualDouble(in A, in x, in b)));
 
             o.Dispose();
-            arena.Dispose();
+            A.Dispose();
+            b.Dispose();
+            x.Dispose();
             return sb.ToString();
         }
 
@@ -291,11 +294,10 @@ namespace LinearAlgebra.Benchmarks
         // require/forbid symmetry -- see MatrixProfile.Nonsymmetric in KrylovBatteryProfile.cs).
         static string BenchNonsymDouble(int restart, int s, int recycle, int k)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleRandomSparse(80, 80, 1, (double)0.1, 0x5EED1u);   // same construction as GalleryBSRMatrix.RandomSparseNonsym_80
+            var A = doubleGallery.doubleRandomSparse(80, 80, 1, (double)0.1, 0x5EED1u, Allocator.Persistent);   // same construction as GalleryBSRMatrix.RandomSparseNonsym_80
             int n = A.M_Rows;
-            var b = arena.doubleRandomVec(n, (double)(-1), (double)1, 0xD101u);
-            var x = arena.doubleVec(n);
+            var b = GenerateOP.doubleRandomVec(n, (double)(-1), (double)1, 0xD101u, Allocator.Persistent);
+            var x = new doubleN(n, Allocator.Persistent);
             var o = new NativeArray<int>(2, Allocator.Persistent);   // required construction; unread in fixed-K
             var sb = new StringBuilder();
 
@@ -318,7 +320,9 @@ namespace LinearAlgebra.Benchmarks
             sb.Append(RowDouble("Nonsym", "gcrodr", n, Bench.Time(() => gcrodrJob.Run()), ResidualDouble(in A, in x, in b)));
 
             o.Dispose();
-            arena.Dispose();
+            A.Dispose();
+            b.Dispose();
+            x.Dispose();
             return sb.ToString();
         }
 
@@ -326,13 +330,12 @@ namespace LinearAlgebra.Benchmarks
         // generous cap) and report iterations + status + time-to-solution.
         static string BenchSpdConvergeDouble(int restart, int s, int recycle)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleLaplacian2D(64, 64);   // 64x64 scalar Laplacian grid (N=4096); benchmark-local size, not a gallery enum
+            var A = doubleGallery.doubleLaplacian2D(64, 64, Allocator.Persistent);   // 64x64 scalar Laplacian grid (N=4096); benchmark-local size, not a gallery enum
             int n = A.M_Rows;
             double tol = Consts.doubleSqrtEps;
             int maxIter = 4 * n;
-            var b = arena.doubleRandomVec(n, (double)(-1), (double)1, 0xD100u);
-            var x = arena.doubleVec(n);
+            var b = GenerateOP.doubleRandomVec(n, (double)(-1), (double)1, 0xD100u, Allocator.Persistent);
+            var x = new doubleN(n, Allocator.Persistent);
             var o = new NativeArray<int>(2, Allocator.Persistent);
             var sb = new StringBuilder();
 
@@ -373,20 +376,21 @@ namespace LinearAlgebra.Benchmarks
             sb.Append(RowConvDouble("SPD", "gcrodr", n, o[0], StatusNameDouble(o[1]), st, ResidualDouble(in A, in x, in b)));
 
             o.Dispose();
-            arena.Dispose();
+            A.Dispose();
+            b.Dispose();
+            x.Dispose();
             return sb.ToString();
         }
 
         // CONVERGE regime, nonsymmetric gallery: only the general-square solvers apply.
         static string BenchNonsymConvergeDouble(int restart, int s, int recycle)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleRandomSparse(80, 80, 1, (double)0.1, 0x5EED1u);
+            var A = doubleGallery.doubleRandomSparse(80, 80, 1, (double)0.1, 0x5EED1u, Allocator.Persistent);
             int n = A.M_Rows;
             double tol = Consts.doubleSqrtEps;
             int maxIter = 4 * n;
-            var b = arena.doubleRandomVec(n, (double)(-1), (double)1, 0xD101u);
-            var x = arena.doubleVec(n);
+            var b = GenerateOP.doubleRandomVec(n, (double)(-1), (double)1, 0xD101u, Allocator.Persistent);
+            var x = new doubleN(n, Allocator.Persistent);
             var o = new NativeArray<int>(2, Allocator.Persistent);
             var sb = new StringBuilder();
 
@@ -415,7 +419,9 @@ namespace LinearAlgebra.Benchmarks
             sb.Append(RowConvDouble("Nonsym", "gcrodr", n, o[0], StatusNameDouble(o[1]), st, ResidualDouble(in A, in x, in b)));
 
             o.Dispose();
-            arena.Dispose();
+            A.Dispose();
+            b.Dispose();
+            x.Dispose();
             return sb.ToString();
         }
 
@@ -425,13 +431,12 @@ namespace LinearAlgebra.Benchmarks
         // recycled subspace deflation is meant to show.
         static string BenchHardConvergeDouble(int restart, int s, int recycle)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = ConvDiff2DDouble(ref arena, 64, 64, (double)8);
+            var A = ConvDiff2DDouble(64, 64, (double)8);
             int n = A.M_Rows;
             double tol = Consts.doubleSqrtEps;
             int maxIter = 4 * n;
-            var b = arena.doubleRandomVec(n, (double)(-1), (double)1, 0xD102u);
-            var x = arena.doubleVec(n);
+            var b = GenerateOP.doubleRandomVec(n, (double)(-1), (double)1, 0xD102u, Allocator.Persistent);
+            var x = new doubleN(n, Allocator.Persistent);
             var o = new NativeArray<int>(2, Allocator.Persistent);
             var sb = new StringBuilder();
 
@@ -460,7 +465,9 @@ namespace LinearAlgebra.Benchmarks
             sb.Append(RowConvDouble("ConvDiff", "gcrodr", n, o[0], StatusNameDouble(o[1]), st, ResidualDouble(in A, in x, in b)));
 
             o.Dispose();
-            arena.Dispose();
+            A.Dispose();
+            b.Dispose();
+            x.Dispose();
             return sb.ToString();
         }
     }

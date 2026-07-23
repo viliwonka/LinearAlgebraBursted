@@ -17,52 +17,56 @@ public class doubleOperationsTest {
     {
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int vecLen = 16;
 
             double s = 1f;
-            doubleN a = arena.doubleVec(vecLen, 10f);
+            doubleN a = GenerateOP.doubleVec(vecLen, 10f, Allocator.Temp);
 
 
-            Assert.AreEqual(vecLen, a.N); 
+            Assert.AreEqual(vecLen, a.N);
 
-            doubleN b = arena.doubleVec(vecLen, 10f);
+            doubleN b = GenerateOP.doubleVec(vecLen, 10f, Allocator.Temp);
 
             Assert.IsTrue(b[vecLen/2] == a[vecLen/2]);
-            
-            Assert.AreEqual(2, arena.AllocationsCount);
 
             doubleN result = default;
 
-            result = a + s;
+            result = new doubleN(in a, Allocator.Temp);
+            doubleComp.addInPlace(result, s);
 
-            result = s + a;
+            result = new doubleN(in a, Allocator.Temp);
+            doubleComp.addInPlace(result, s);
 
-            result = a - s;
-            result = s - a;
+            result = new doubleN(in a, Allocator.Temp);
+            doubleComp.addInPlace(result, -s);
+            result = new doubleN(in a, Allocator.Temp);
+            doubleComp.subInPlace(s, result);
 
-            Assert.AreEqual(4, arena.TempAllocationsCount);
+            result = new doubleN(in a, Allocator.Temp);
+            doubleComp.mulInPlace(result, s);
+            result = new doubleN(in a, Allocator.Temp);
+            doubleComp.mulInPlace(result, s);
 
-            arena.ClearTemp();
+            result = new doubleN(in a, Allocator.Temp);
+            doubleComp.divInPlace(result, s);
+            result = new doubleN(in a, Allocator.Temp);
+            doubleComp.modInPlace(result, s);
+            result = new doubleN(in a, Allocator.Temp);
+            doubleComp.divInPlace(s, result);
+            result = new doubleN(in a, Allocator.Temp);
+            doubleComp.modInPlace(s, result);
 
-            result = a * s;
-            result = s * a;
-
-            result = a / s;
-            result = a % s;
-            result = s / a;
-            result = s % a;
-
-            result = a + b;
-            result = a - b;
-            result = a * b;
-            result = a / b;
-            result = a % b;
-
-            Assert.AreEqual(11, arena.TempAllocationsCount);
-
-            arena.Dispose();
+            result = new doubleN(in a, Allocator.Temp);
+            doubleComp.addInPlace(result, b);
+            result = new doubleN(in a, Allocator.Temp);
+            doubleComp.subInPlace(result, b);
+            result = new doubleN(in a, Allocator.Temp);
+            doubleComp.mulInPlace(result, b);
+            result = new doubleN(in a, Allocator.Temp);
+            doubleComp.divInPlace(result, b);
+            result = new doubleN(in a, Allocator.Temp);
+            doubleComp.modInPlace(result, b);
         }
     }
 
@@ -77,7 +81,6 @@ public class doubleOperationsTest {
     {
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int rows = 8;
             int cols = 8;
@@ -85,34 +88,47 @@ public class doubleOperationsTest {
             int elements = rows * cols;
 
             double s = 1f;
-            doubleMxN a = arena.doubleMat(rows, cols, 10f);
+            doubleMxN a = GenerateOP.doubleMat(rows, cols, 10f, Allocator.Temp);
 
-            doubleMxN b = arena.doubleMat(rows, cols, 10f);
+            doubleMxN b = GenerateOP.doubleMat(rows, cols, 10f, Allocator.Temp);
 
             doubleMxN result = default;
 
-            result = a + s;
+            result = new doubleMxN(in a, Allocator.Temp);
+            doubleComp.addInPlace(result, s);
 
-            result = s + a;
+            result = new doubleMxN(in a, Allocator.Temp);
+            doubleComp.addInPlace(result, s);
 
-            result = a - s;
-            result = s - a;
+            result = new doubleMxN(in a, Allocator.Temp);
+            doubleComp.addInPlace(result, -s);
+            result = new doubleMxN(in a, Allocator.Temp);
+            doubleComp.subInPlace(s, result);
 
-            result = a * s;
-            result = s * a;
+            result = new doubleMxN(in a, Allocator.Temp);
+            doubleComp.mulInPlace(result, s);
+            result = new doubleMxN(in a, Allocator.Temp);
+            doubleComp.mulInPlace(result, s);
 
-            result = a / s;
-            result = a % s;
-            result = s / a;
-            result = s % a;
+            result = new doubleMxN(in a, Allocator.Temp);
+            doubleComp.divInPlace(result, s);
+            result = new doubleMxN(in a, Allocator.Temp);
+            doubleComp.modInPlace(result, s);
+            result = new doubleMxN(in a, Allocator.Temp);
+            doubleComp.divInPlace(s, result);
+            result = new doubleMxN(in a, Allocator.Temp);
+            doubleComp.modInPlace(s, result);
 
-            result = a + b;
-            result = a - b;
-            result = a * b;
-            result = a / b;
-            result = a % b;
-
-            arena.Dispose();
+            result = new doubleMxN(in a, Allocator.Temp);
+            doubleComp.addInPlace(result, b);
+            result = new doubleMxN(in a, Allocator.Temp);
+            doubleComp.subInPlace(result, b);
+            result = new doubleMxN(in a, Allocator.Temp);
+            doubleComp.mulInPlace(result, b);
+            result = new doubleMxN(in a, Allocator.Temp);
+            doubleComp.divInPlace(result, b);
+            result = new doubleMxN(in a, Allocator.Temp);
+            doubleComp.modInPlace(result, b);
         }
     }
 
@@ -121,7 +137,7 @@ public class doubleOperationsTest {
     {
         new BasicMatOpTestJob().Run();
     }
-    
+
     [BurstCompile(CompileSynchronously = true)]
     public struct BasicPreciseOPTestJob : IJob
     {
@@ -195,146 +211,136 @@ public class doubleOperationsTest {
 
         public void SignFlipVec()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int vecLen = 16;
 
-            doubleN a = arena.doubleVec(vecLen, 10f);
+            doubleN a = GenerateOP.doubleVec(vecLen, 10f, Allocator.Temp);
 
-            a = -a;
+            doubleComp.signFlipInPlace(a);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == -(double)10f);
-
-            arena.Dispose();
         }
 
         public void AddVec()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int vecLen = 16;
 
-            doubleN a = arena.doubleVec(vecLen, 10f);
+            doubleN a = GenerateOP.doubleVec(vecLen, 10f, Allocator.Temp);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (double)10d);
 
-            a += 1f;
+            doubleComp.addInPlace(a, 1f);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (double)11d);
 
-            doubleN r = arena.doubleVec(vecLen, 5f);
+            doubleN r = GenerateOP.doubleVec(vecLen, 5f, Allocator.Temp);
 
-            a += r;
+            doubleComp.addInPlace(a, r);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (double)16);
-
-            arena.Dispose();
         }
 
         public void SubVec()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int vecLen = 16;
 
-            doubleN a = arena.doubleVec(vecLen, 10f);
+            doubleN a = GenerateOP.doubleVec(vecLen, 10f, Allocator.Temp);
 
-            a -= 1f;
+            doubleComp.addInPlace(a, -1f);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (double)9f);
 
-            doubleN r = arena.doubleVec(vecLen, 5f);
+            doubleN r = GenerateOP.doubleVec(vecLen, 5f, Allocator.Temp);
 
-            a -= r;
+            doubleComp.subInPlace(a, r);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (double)4d);
 
-            a = arena.doubleVec(vecLen, 10f);
+            a = GenerateOP.doubleVec(vecLen, 10f, Allocator.Temp);
 
-            a = 1f - a;
+            doubleComp.subInPlace(1f, a);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == -(double)9d);
-
-            arena.Dispose();
         }
 
         public void MulVec()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int vecLen = 16;
 
-            doubleN a = arena.doubleVec(vecLen, 1f);
+            doubleN a = GenerateOP.doubleVec(vecLen, 1f, Allocator.Temp);
 
-            a *= 1f;
+            doubleComp.mulInPlace(a, 1f);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (double)1d);
 
-            a *= 2f;
+            doubleComp.mulInPlace(a, 2f);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (double)2d);
 
-            a = arena.doubleIndexZeroVec(vecLen);
+            a = GenerateOP.doubleIndexZeroVec(vecLen);
 
-            a *= 2f;
+            doubleComp.mulInPlace(a, 2f);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (double)(2d*i));
 
-            a = arena.doubleIndexZeroVec(vecLen);
-            doubleN b = arena.doubleIndexZeroVec(vecLen);
+            a = GenerateOP.doubleIndexZeroVec(vecLen);
+            doubleN b = GenerateOP.doubleIndexZeroVec(vecLen);
 
-            var c = a * b;
+            var c = new doubleN(in a, Allocator.Temp);
+            doubleComp.mulInPlace(c, b);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(c[i] == (double)(i * i));
-
-            arena.Dispose();
         }
 
         public void DivVec()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int vecLen = 16;
 
-            doubleN a = arena.doubleVec(vecLen, 1f);
+            doubleN a = GenerateOP.doubleVec(vecLen, 1f, Allocator.Temp);
 
-            a /= 1f;
+            doubleComp.divInPlace(a, 1f);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (double)1f);
 
-            a /= 2f;
+            doubleComp.divInPlace(a, 2f);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (double)0.5f);
 
-            a = arena.doubleIndexZeroVec(vecLen);
+            a = GenerateOP.doubleIndexZeroVec(vecLen);
 
-            a /= 2f;
+            doubleComp.divInPlace(a, 2f);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (double)0.5f * i);
 
-            a = arena.doubleIndexZeroVec(vecLen);
-            doubleN b = arena.doubleIndexZeroVec(vecLen);
+            a = GenerateOP.doubleIndexZeroVec(vecLen);
+            doubleN b = GenerateOP.doubleIndexZeroVec(vecLen);
 
             // add 1 so no division by zero
-            a += 1f;
-            b += 1f;
+            doubleComp.addInPlace(a, 1f);
+            doubleComp.addInPlace(b, 1f);
 
-            var c0 = a / b;
-            var c1 = b / a;
+            var c0 = new doubleN(in a, Allocator.Temp);
+            doubleComp.divInPlace(c0, b);
+            var c1 = new doubleN(in b, Allocator.Temp);
+            doubleComp.divInPlace(c1, a);
 
             for (int i = 0; i < vecLen; i++)
             {
@@ -342,210 +348,191 @@ public class doubleOperationsTest {
                 Assert.IsTrue(c1[i] == (double)1f);
             }
 
-            a = arena.doubleVec(vecLen, 2f);
+            a = GenerateOP.doubleVec(vecLen, 2f, Allocator.Temp);
 
-            a = 2f / a;
+            doubleComp.divInPlace(2f, a);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (double)1f);
-
-            arena.Dispose();
         }
 
         public void ModVec()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int vecLen = 16;
 
-            doubleN a = arena.doubleVec(vecLen, 10f);
+            doubleN a = GenerateOP.doubleVec(vecLen, 10f, Allocator.Temp);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (double)10f);
 
-            a %= 2f;
+            doubleComp.modInPlace(a, 2f);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (double)0f);
 
-            a = arena.doubleIndexZeroVec(vecLen);
+            a = GenerateOP.doubleIndexZeroVec(vecLen);
 
-            a %= 2f;
+            doubleComp.modInPlace(a, 2f);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (double)(i % (double)2d));
 
-            a = arena.doubleIndexZeroVec(vecLen);
-            doubleN b = arena.doubleIndexZeroVec(vecLen);
+            a = GenerateOP.doubleIndexZeroVec(vecLen);
+            doubleN b = GenerateOP.doubleIndexZeroVec(vecLen);
 
             // add 1 so no division by zero
-            a += 1f;
-            b += 1f;
+            doubleComp.addInPlace(a, 1f);
+            doubleComp.addInPlace(b, 1f);
 
-            var c0 = a % b;
-            var c1 = b % a;
+            var c0 = new doubleN(in a, Allocator.Temp);
+            doubleComp.modInPlace(c0, b);
+            var c1 = new doubleN(in b, Allocator.Temp);
+            doubleComp.modInPlace(c1, a);
 
             for (int i = 0; i < vecLen; i++)
             {
                 Assert.IsTrue(c0[i] == (double)0f);
                 Assert.IsTrue(c1[i] == (double)0f);
             }
-
-            arena.Dispose();
         }
 
         public void SignFlipMat()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int vecLen = 16;
             int totalElements = vecLen * vecLen;
-            doubleMxN a = arena.doubleMat(vecLen, vecLen, 10f);
+            doubleMxN a = GenerateOP.doubleMat(vecLen, vecLen, 10f, Allocator.Temp);
 
-            a = -a;
+            doubleComp.signFlipInPlace(a);
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == -(double)10f);
-
-            arena.Dispose();
         }
 
         public void AddMat()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int rows = 8;
             int cols = 8;
             int totalElements = rows * cols;
 
-            doubleMxN a = arena.doubleMat(rows, cols, 10f);
+            doubleMxN a = GenerateOP.doubleMat(rows, cols, 10f, Allocator.Temp);
 
             // Element-wise addition with scalar
-            a += 1f;
+            doubleComp.addInPlace(a, 1f);
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (double)11f);
-
-            arena.Dispose();
         }
 
         public void SubMat()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int rows = 8;
             int cols = 8;
             int totalElements = rows * cols;
 
-            doubleMxN a = arena.doubleMat(rows, cols, 10f);
+            doubleMxN a = GenerateOP.doubleMat(rows, cols, 10f, Allocator.Temp);
 
             // Element-wise subtraction with scalar
-            a -= 5f;
+            doubleComp.addInPlace(a, -5f);
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (double)5f);
-
-            arena.Dispose();
         }
 
         public void MulMat()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int rows = 8;
             int cols = 8;
             int totalElements = rows * cols;
 
-            doubleMxN a = arena.doubleMat(rows, cols, 2f);
+            doubleMxN a = GenerateOP.doubleMat(rows, cols, 2f, Allocator.Temp);
 
             // Element-wise multiplication with scalar
-            a *= 3f;
+            doubleComp.mulInPlace(a, 3f);
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (double)6f);
 
-            a = 3f * a;
+            doubleComp.mulInPlace(a, 3f);
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (double)18f);
 
-            var b = arena.doubleMat(rows, cols, 0.5f);
+            var b = GenerateOP.doubleMat(rows, cols, 0.5f, Allocator.Temp);
 
-            a = a * b;
+            doubleComp.mulInPlace(a, b);
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (double)9f);
-
-            arena.Dispose();
         }
 
         public void DivMat()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int rows = 8;
             int cols = 8;
             int totalElements = rows * cols;
 
-            doubleMxN a = arena.doubleMat(rows, cols, 10f);
+            doubleMxN a = GenerateOP.doubleMat(rows, cols, 10f, Allocator.Temp);
 
             // Element-wise division with scalar
-            a /= 2f;
+            doubleComp.divInPlace(a, 2f);
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (double)5f);
 
-            a = 5f / a;
+            doubleComp.divInPlace(5f, a);
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (double)1f);
 
-            doubleMxN b = arena.doubleMat(rows, cols, 0.5f);
+            doubleMxN b = GenerateOP.doubleMat(rows, cols, 0.5f, Allocator.Temp);
 
-            var c0 = a / b;
-            var c1 = b / a;
+            var c0 = new doubleMxN(in a, Allocator.Temp);
+            doubleComp.divInPlace(c0, b);
+            var c1 = new doubleMxN(in b, Allocator.Temp);
+            doubleComp.divInPlace(c1, a);
 
             for (int i = 0; i < totalElements; i++)
             {
                 Assert.IsTrue(c0[i] == (double)2f);
                 Assert.IsTrue(c1[i] == (double)0.5f);
             }
-
-            arena.Dispose();
         }
 
         public void ModMat()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int rows = 8;
             int cols = 8;
             int totalElements = rows * cols;
 
-            doubleMxN a = arena.doubleMat(rows, cols, 10f);
+            doubleMxN a = GenerateOP.doubleMat(rows, cols, 10f, Allocator.Temp);
 
             // Element-wise modulo with scalar
-            a %= 3f;
+            doubleComp.modInPlace(a, 3f);
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (double)1f);
 
-            a = arena.doubleMat(rows, cols, 4f);
+            a = GenerateOP.doubleMat(rows, cols, 4f, Allocator.Temp);
 
-            a = 4f % a;
+            doubleComp.modInPlace(4f, a);
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (double)0f);
 
-            a = arena.doubleMat(rows, cols, 3f);
-            doubleMxN b = arena.doubleMat(rows, cols, 2f);
+            a = GenerateOP.doubleMat(rows, cols, 3f, Allocator.Temp);
+            doubleMxN b = GenerateOP.doubleMat(rows, cols, 2f, Allocator.Temp);
 
-            a = a % b;
+            doubleComp.modInPlace(a, b);
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (double)1f);
-
-            arena.Dispose();
         }
     }
 

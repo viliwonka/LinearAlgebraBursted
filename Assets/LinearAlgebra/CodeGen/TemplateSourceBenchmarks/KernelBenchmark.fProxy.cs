@@ -91,43 +91,40 @@ namespace LinearAlgebra.Benchmarks
         // ---- Level-1 reduction runners ----
         static string ReduceFProxy(int n, int kind, double flopPerElem, int reps)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var a = arena.fProxyVec(n);
-            var b = arena.fProxyVec(n);
-            var sink = arena.fProxyVec(1);
+            var a = new fProxyN(n, Allocator.Persistent);
+            var b = new fProxyN(n, Allocator.Persistent);
+            var sink = new fProxyN(1, Allocator.Persistent);
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++) { a[i] = rng.NextFProxy(-1f, 1f); b[i] = rng.NextFProxy(-1f, 1f); }
 
             var job = new ReduceJobFProxy { a = a, b = b, sink = sink, kind = kind, reps = reps };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            a.Dispose(); b.Dispose(); sink.Dispose();
             return Bench.Row("fProxy", n, stat, reps * flopPerElem * n);
         }
 
         // ---- Level-1 axpy runners (2 flops/elem: one multiply + one add) ----
         static string AxpyFProxy(int n, int reps)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var x = arena.fProxyVec(n);
-            var y = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Persistent);
+            var y = new fProxyN(n, Allocator.Persistent);
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++) { x[i] = rng.NextFProxy(-1f, 1f); y[i] = rng.NextFProxy(-1f, 1f); }
 
             var job = new AxpyJobFProxy { x = x, y = y, alpha = (fProxy)0.001, reps = reps };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            x.Dispose(); y.Dispose();
             return Bench.Row("fProxy", n, stat, reps * 2.0 * n);
         }
 
         // ---- Level-2 matrix-vector runners (2 N^2 flops/call) ----
         static string MatVecFProxy(int n, int kind, int reps)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyMat(n, n);
-            var x = arena.fProxyVec(n);
-            var y = arena.fProxyVec(n);
+            var A = new fProxyMxN(n, n, Allocator.Persistent);
+            var x = new fProxyN(n, Allocator.Persistent);
+            var y = new fProxyN(n, Allocator.Persistent);
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             fProxy s = (fProxy)1 / Unity.Mathematics.math.sqrt(n); // norm-preserving scale: keeps the ping-pong finite
             for (int i = 0; i < n; i++)
@@ -139,7 +136,7 @@ namespace LinearAlgebra.Benchmarks
             var job = new MatVecJobFProxy { A = A, x = x, y = y, kind = kind, reps = reps };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); x.Dispose(); y.Dispose();
             return Bench.Row("fProxy", n, stat, reps * 2.0 * n * n);
         }
     }

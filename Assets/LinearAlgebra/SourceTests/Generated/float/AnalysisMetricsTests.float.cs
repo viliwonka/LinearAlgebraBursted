@@ -71,65 +71,47 @@ public class floatAnalysisMetricsTests
         // L1 = Σ|xᵢ| (NOT averaged); LInf = max|xᵢ|. v = [3, -4, 0, 1] -> L1 = 8, LInf = 4.
         void VectorL1AndLInf()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var v = arena.floatVec(4);
+            var v = new floatN(4, Allocator.Temp);
             v[0] = (float)3; v[1] = (float)(-4); v[2] = (float)0; v[3] = (float)1;
 
             AssertClose(Norms.L1(in v), (float)8, (float)1E-5);
             AssertClose(Norms.LInf(in v), (float)4, (float)1E-5);
-
-            arena.Dispose();
         }
 
         // trace([[1,2],[3,4]]) = 1 + 4 = 5.
         void Trace()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.floatMat(2, 2);
+            var A = new floatMxN(2, 2, Allocator.Temp);
             A[0, 0] = (float)1; A[0, 1] = (float)2;
             A[1, 0] = (float)3; A[1, 1] = (float)4;
 
             AssertClose(Analysis.trace(in A), (float)5, (float)1E-5);
-
-            arena.Dispose();
         }
 
         // ‖A‖₁ = max abs column sum. A = [[1,-2],[-3,4]] -> cols {4, 6} -> 6.
         void MatrixL1()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.floatMat(2, 2);
+            var A = new floatMxN(2, 2, Allocator.Temp);
             A[0, 0] = (float)1; A[0, 1] = (float)(-2);
             A[1, 0] = (float)(-3); A[1, 1] = (float)4;
 
             AssertClose(Norms.matrixL1(in A), (float)6, (float)1E-5);
-
-            arena.Dispose();
         }
 
         // ‖A‖∞ = max abs row sum. Same A -> rows {3, 7} -> 7.
         void MatrixLInf()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.floatMat(2, 2);
+            var A = new floatMxN(2, 2, Allocator.Temp);
             A[0, 0] = (float)1; A[0, 1] = (float)(-2);
             A[1, 0] = (float)(-3); A[1, 1] = (float)4;
 
             AssertClose(Norms.matrixLInf(in A), (float)7, (float)1E-5);
-
-            arena.Dispose();
         }
 
         // ‖A‖₂ = σ_max. diag(5, 2) -> σ_max = 5.
         void SpectralNorm()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.floatMat(2, 2);
+            var A = new floatMxN(2, 2, Allocator.Temp);
             A[0, 0] = (float)5; A[1, 1] = (float)2;
 
             AssertClose(Norms.matrixL2(in A), (float)5, (float)1E-4);
@@ -137,8 +119,6 @@ public class floatAnalysisMetricsTests
             // tall/square branch must NOT modify A (it decomposes a TempCopy, not A itself)
             AssertClose(A[0, 0], (float)5, (float)1E-6);
             AssertClose(A[1, 1], (float)2, (float)1E-6);
-
-            arena.Dispose();
         }
 
         // Wide matrix (m < n) exercises singularValues' transpose branch. A = [[3,0,0],[0,4,0]]
@@ -146,9 +126,7 @@ public class floatAnalysisMetricsTests
         // left unmodified (the metric calls must decompose a transpose, not A in place).
         void WideMatrix()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.floatMat(2, 3);
+            var A = new floatMxN(2, 3, Allocator.Temp);
             A[0, 0] = (float)3;
             A[1, 1] = (float)4;
 
@@ -158,112 +136,86 @@ public class floatAnalysisMetricsTests
 
             AssertClose(A[0, 0], (float)3, (float)1E-6);
             AssertClose(A[1, 1], (float)4, (float)1E-6);
-
-            arena.Dispose();
         }
 
         // cond(diag(4, 1)) = 4 / 1 = 4.
         void Cond()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.floatMat(2, 2);
+            var A = new floatMxN(2, 2, Allocator.Temp);
             A[0, 0] = (float)4; A[1, 1] = (float)1;
 
             AssertClose(Analysis.cond(in A), (float)4, (float)1E-4);
-
-            arena.Dispose();
         }
 
         // cond(I) = 1 (the canonical perfectly-conditioned case).
         void CondIdentity()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.floatIdentityMat(3);
+            var A = GenerateOP.floatIdentityMat(3);
             AssertClose(Analysis.cond(in A), (float)1, (float)1E-4);
-
-            arena.Dispose();
         }
 
         // cond(zeros) -> +infinity (σ_max == σ_min == 0; the !(sMin>0) guard). Pins the design
         // choice (this library returns +inf, unlike MATLAB's NaN).
         void CondZero()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.floatMat(2, 2);   // all zeros
+            var A = new floatMxN(2, 2, Allocator.Temp);   // all zeros
             AssertGreater(Analysis.cond(in A), (float)1E6);
-
-            arena.Dispose();
         }
 
         // Induced 1/∞-norms on a NON-square matrix. A = [[1,-2],[3,-4],[5,6]] (3x2):
         // columns {9, 12} -> ‖A‖₁ = 12; rows {3, 7, 11} -> ‖A‖∞ = 11.
         void MatrixNormsNonSquare()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.floatMat(3, 2);
+            var A = new floatMxN(3, 2, Allocator.Temp);
             A[0, 0] = (float)1;  A[0, 1] = (float)(-2);
             A[1, 0] = (float)3;  A[1, 1] = (float)(-4);
             A[2, 0] = (float)5;  A[2, 1] = (float)6;
 
             AssertClose(Norms.matrixL1(in A), (float)12, (float)1E-5);
             AssertClose(Norms.matrixLInf(in A), (float)11, (float)1E-5);
-
-            arena.Dispose();
         }
 
         // Singular matrix [[3,0],[4,0]] (rank 1, σ_min = 0) -> cond = +infinity.
         void CondSingular()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.floatMat(2, 2);
+            var A = new floatMxN(2, 2, Allocator.Temp);
             A[0, 0] = (float)3; A[1, 0] = (float)4;   // column 1 is zero
 
             float c = Analysis.cond(in A);
             // true value is +inf; accept anything astronomically large (NaN-safe via the record below)
             AssertGreater(c, (float)1E6);
-
-            arena.Dispose();
         }
 
         enum RankShape { Full, Deficient, Zero }
 
         void RankCase(RankShape shape)
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int expected;
             floatMxN A;
 
             if (shape == RankShape.Full)
             {
                 // diag(2, 3, 5) -> rank 3
-                A = arena.floatMat(3, 3);
+                A = new floatMxN(3, 3, Allocator.Temp);
                 A[0, 0] = (float)2; A[1, 1] = (float)3; A[2, 2] = (float)5;
                 expected = 3;
             }
             else if (shape == RankShape.Deficient)
             {
                 // all-ones 4x2 (both columns identical) -> rank 1
-                A = arena.floatMat(4, 2);
+                A = new floatMxN(4, 2, Allocator.Temp);
                 for (int i = 0; i < 4; i++) { A[i, 0] = (float)1; A[i, 1] = (float)1; }
                 expected = 1;
             }
             else
             {
                 // zero 3x2 -> rank 0
-                A = arena.floatMat(3, 2);
+                A = new floatMxN(3, 2, Allocator.Temp);
                 expected = 0;
             }
 
             int r = Analysis.rank(in A);
             AssertIntEqual(r, expected);
-
-            arena.Dispose();
         }
 
         // Non-diagonal symmetric A = [[2,1],[1,2]] has eigenvalues {3,1} = singular values (PSD),
@@ -271,48 +223,36 @@ public class floatAnalysisMetricsTests
         // != 0), unlike the diagonal cond/spectral tests above.
         void CondNonDiagonal()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.floatMat(2, 2);
+            var A = new floatMxN(2, 2, Allocator.Temp);
             A[0, 0] = (float)2; A[0, 1] = (float)1;
             A[1, 0] = (float)1; A[1, 1] = (float)2;
 
             AssertClose(Analysis.cond(in A), (float)3, (float)1E-4);
             AssertClose(Norms.matrixL2(in A), (float)3, (float)1E-4);
-
-            arena.Dispose();
         }
 
         // 1x1 matrix [[7]] -> trace 7, cond 1, rank 1, σ_max 7. Exercises the n==1 path
         // (Jacobi inner sweep is empty).
         void OneByOne()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.floatMat(1, 1);
+            var A = new floatMxN(1, 1, Allocator.Temp);
             A[0, 0] = (float)7;
 
             AssertClose(Analysis.trace(in A), (float)7, (float)1E-5);
             AssertClose(Analysis.cond(in A), (float)1, (float)1E-4);
             AssertIntEqual(Analysis.rank(in A), 1);
             AssertClose(Norms.matrixL2(in A), (float)7, (float)1E-4);
-
-            arena.Dispose();
         }
 
         // rank with an explicit relTol must change the cutoff. A = diag(1, 1e-5):
         // auto tolerance keeps both (rank 2); a loose relTol = 1e-2 drops the small one (rank 1).
         void RankExplicitTol()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.floatMat(2, 2);
+            var A = new floatMxN(2, 2, Allocator.Temp);
             A[0, 0] = (float)1; A[1, 1] = (float)1E-5;
 
             AssertIntEqual(Analysis.rank(in A), 2);                       // auto tol
             AssertIntEqual(Analysis.rank(in A, (float)1E-2), 1);         // loose tol drops σ=1e-5
-
-            arena.Dispose();
         }
 
         // ---- recording asserts ----
@@ -371,12 +311,7 @@ public class floatAnalysisMetricsTests
     [Test]
     public void Trace_NonSquare_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = arena.floatMat(2, 3);
-            Assert.Throws<ArgumentException>(() => Analysis.trace(in A));
-        }
-        finally { arena.Dispose(); }
+        var A = new floatMxN(2, 3, Allocator.Temp);
+        Assert.Throws<ArgumentException>(() => Analysis.trace(in A));
     }
 }

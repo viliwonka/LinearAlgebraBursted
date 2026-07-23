@@ -52,38 +52,38 @@ public class doubleBlockIDRTests
 
         // Dense nonsymmetric, diagonally dominant (well-conditioned, nonsingular): random entries + a
         // heavy diagonal. NOT symmetrized (off-diagonals differ across the diagonal) -- do NOT form M^T M.
-        static doubleMxN DenseNonsym(ref Arena arena, int n, uint seed)
+        static doubleMxN DenseNonsym(int n, uint seed)
         {
-            var A = arena.doubleRandomMat(n, n, (double)(-1f), (double)1f, seed);
+            var A = GenerateOP.doubleRandomMat(n, n, (double)(-1f), (double)1f, seed, Allocator.Temp);
             for (int i = 0; i < n; i++) A[i, i] += (double)(2 * n);
             return A;
         }
 
         // Scalar 1D convection-diffusion: diagonal 6, super -1, sub -3 -- nonsymmetric, diagonally
         // dominant. Full storage BSR.
-        static doubleBSR ConvDiff1D(ref Arena arena, int n)
+        static doubleBSR ConvDiff1D(int n)
         {
-            var b = arena.doubleBSRBuilder(n, n, 1, 1, 3 * n);
+            var b = new doubleBSRBuilder(n, n, 1, 1, Allocator.Temp, 3 * n);
             for (int i = 0; i < n; i++)
             {
                 b.AddValue(i, i, (double)6);
                 if (i > 0) b.AddValue(i, i - 1, (double)(-3));
                 if (i < n - 1) b.AddValue(i, i + 1, (double)(-1));
             }
-            return b.ToBSR(ref arena);
+            return b.ToBSR(Allocator.Temp);
         }
 
-        static doubleN Row(ref Arena arena, in doubleMxN B, int j, int n)
+        static doubleN Row(in doubleMxN B, int j, int n)
         {
-            var v = arena.doubleVec(n);
+            var v = new doubleN(n, Allocator.Temp);
             for (int c = 0; c < n; c++) v[c] = B[j, c];
             return v;
         }
 
         // Per-row relative residual ||A X[j] - B[j]|| / ||B[j]|| of a dense block solve, checked <= tol.
-        static bool BlockResidualDenseOK(ref Arena arena, in doubleMxN A, in doubleMxN X, in doubleMxN B, int m, int n, double tol)
+        static bool BlockResidualDenseOK(in doubleMxN A, in doubleMxN X, in doubleMxN B, int m, int n, double tol)
         {
-            var AX = arena.doubleMat(m, n);
+            var AX = new doubleMxN(m, n, Allocator.Temp);
             new doubleDenseOperatorGeneral(in A).ApplyBlock(in X, ref AX, m);
             for (int j = 0; j < m; j++)
             {
@@ -94,9 +94,9 @@ public class doubleBlockIDRTests
             return true;
         }
 
-        static bool BlockResidualBSROK(ref Arena arena, in doubleBSR A, in doubleMxN X, in doubleMxN B, int m, int n, double tol)
+        static bool BlockResidualBSROK(in doubleBSR A, in doubleMxN X, in doubleMxN B, int m, int n, double tol)
         {
-            var AX = arena.doubleMat(m, n);
+            var AX = new doubleMxN(m, n, Allocator.Temp);
             new doubleBSROperator(in A).ApplyBlock(in X, ref AX, m);
             for (int j = 0; j < m; j++)
             {
@@ -128,42 +128,34 @@ public class doubleBlockIDRTests
         // Basic convergence of the block solve on a dense nonsymmetric square system.
         void SolvesDenseNonsym()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 30, m = 4, sDepth = 4;
-            var A = DenseNonsym(ref arena, n, 0x1B01u);
-            var B = arena.doubleRandomMat(m, n, (double)(-1f), (double)1f, 0x1B02u);
+            var A = DenseNonsym(n, 0x1B01u);
+            var B = GenerateOP.doubleRandomMat(m, n, (double)(-1f), (double)1f, 0x1B02u, Allocator.Temp);
 
-            var X = arena.doubleMat(m, n);                  // zero initial guess
+            var X = new doubleMxN(m, n, Allocator.Temp);                  // zero initial guess
             var info = Krylov.bidr(in A, in B, ref X, sDepth, 20 * n, ResTol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(info.Solved);
             Assert.AreEqual(m, info.converged);
             Assert.AreEqual(m, info.rhs);
-            Assert.IsTrue(BlockResidualDenseOK(ref arena, in A, in X, in B, m, n, ResTol()));
-
-            arena.Dispose();
+            Assert.IsTrue(BlockResidualDenseOK(in A, in X, in B, m, n, ResTol()));
         }
 
         // Basic convergence of the block solve over a BSR nonsymmetric A.
         void SolvesBSRNonsym()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 80, m = 3, sDepth = 4;
-            var A = ConvDiff1D(ref arena, n);
-            var B = arena.doubleRandomMat(m, n, (double)(-1f), (double)1f, 0x1B12u);
+            var A = ConvDiff1D(n);
+            var B = GenerateOP.doubleRandomMat(m, n, (double)(-1f), (double)1f, 0x1B12u, Allocator.Temp);
 
-            var X = arena.doubleMat(m, n);
+            var X = new doubleMxN(m, n, Allocator.Temp);
             var info = Krylov.bidr(in A, in B, ref X, sDepth, 20 * n, ResTol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(info.Solved);
             Assert.AreEqual(m, info.converged);
-            Assert.IsTrue(BlockResidualBSROK(ref arena, in A, in X, in B, m, n, ResTol()));
-
-            arena.Dispose();
+            Assert.IsTrue(BlockResidualBSROK(in A, in X, in B, m, n, ResTol()));
         }
 
         // Each column of the block solution matches an independent scalar idr solve of that column, and
@@ -171,16 +163,14 @@ public class doubleBlockIDRTests
         // wide Tol() band, but both routes converge to the same unique solution.
         void MatchesScalarIdrPerColumn()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 24, m = 4, sDepth = 4;
-            var A = DenseNonsym(ref arena, n, 0x1B21u);
-            var B = arena.doubleRandomMat(m, n, (double)(-1f), (double)1f, 0x1B22u);
+            var A = DenseNonsym(n, 0x1B21u);
+            var B = GenerateOP.doubleRandomMat(m, n, (double)(-1f), (double)1f, 0x1B22u, Allocator.Temp);
 
             int maxIter = 20 * n;
             double tol = ResTol();
 
-            var X = arena.doubleMat(m, n);                  // zero initial guess
+            var X = new doubleMxN(m, n, Allocator.Temp);                  // zero initial guess
             var info = Krylov.bidr(in A, in B, ref X, sDepth, maxIter, tol);
 
             Assert.IsTrue(info.Solved);
@@ -189,8 +179,8 @@ public class doubleBlockIDRTests
 
             for (int j = 0; j < m; j++)
             {
-                var bj = Row(ref arena, in B, j, n);
-                var xj = arena.doubleVec(n);
+                var bj = Row(in B, j, n);
+                var xj = new doubleN(n, Allocator.Temp);
                 for (int c = 0; c < n; c++) xj[c] = (double)0;
                 Assert.IsTrue(Krylov.idr(in A, in bj, ref xj, sDepth, maxIter, tol).Solved);
 
@@ -198,8 +188,6 @@ public class doubleBlockIDRTests
                 for (int c = 0; c < n; c++)
                     Assert.IsTrue(math.abs((double)X[j, c] - (double)xj[c]) <= Tol() * (1.0 + math.abs((double)xj[c])));
             }
-
-            arena.Dispose();
         }
 
         // Independent of any other solver: pick a KNOWN block solution Xk, form B = A Xk via the GENERAL
@@ -207,24 +195,20 @@ public class doubleBlockIDRTests
         // non-symmetric A and would build the WRONG B here), solve, and recover Xk.
         void KnownSolutionRecovered()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 24, m = 5, sDepth = 4;
-            var A = DenseNonsym(ref arena, n, 0x1B31u);
-            var Xk = arena.doubleRandomMat(m, n, (double)(-1f), (double)1f, 0x1B32u);   // known solution
+            var A = DenseNonsym(n, 0x1B31u);
+            var Xk = GenerateOP.doubleRandomMat(m, n, (double)(-1f), (double)1f, 0x1B32u, Allocator.Temp);   // known solution
 
-            var B = arena.doubleMat(m, n);
+            var B = new doubleMxN(m, n, Allocator.Temp);
             new doubleDenseOperatorGeneral(in A).ApplyBlock(in Xk, ref B, m);           // B[j,:] = A Xk[j,:]
 
-            var X = arena.doubleMat(m, n);
+            var X = new doubleMxN(m, n, Allocator.Temp);
             var info = Krylov.bidr(in A, in B, ref X, sDepth, 20 * n, ResTol());
             Assert.IsTrue(info.Solved);
 
             for (int j = 0; j < m; j++)
                 for (int c = 0; c < n; c++)
                     Assert.IsTrue(math.abs((double)X[j, c] - (double)Xk[j, c]) <= Tol() * (1.0 + math.abs((double)Xk[j, c])));
-
-            arena.Dispose();
         }
 
         // The explicit-identity-preconditioner generic core must fold to EXACTLY the unpreconditioned
@@ -232,11 +216,9 @@ public class doubleBlockIDRTests
         // so no external scratch buffers are threaded in.
         void IdentityFoldBitIdentical()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 20, m = 3, sDepth = 4;
-            var A = DenseNonsym(ref arena, n, 0x1B41u);
-            var B = arena.doubleRandomMat(m, n, (double)(-1f), (double)1f, 0x1B42u);
+            var A = DenseNonsym(n, 0x1B41u);
+            var B = GenerateOP.doubleRandomMat(m, n, (double)(-1f), (double)1f, 0x1B42u, Allocator.Temp);
             int maxIter = 12 * n;
             double tol = ResTol();
             uint seed = 0x1234ABCDu;
@@ -244,12 +226,12 @@ public class doubleBlockIDRTests
             var opA = new doubleDenseOperatorGeneral(in A);   // readonly struct -- construct once, reuse
 
             // Explicit identity preconditioner via the generic core.
-            var X1 = arena.doubleMat(m, n);
+            var X1 = new doubleMxN(m, n, Allocator.Temp);
             var info1 = Krylov.bidr<doubleDenseOperatorGeneral, doubleIdentityPreconditioner>(
                 in opA, default(doubleIdentityPreconditioner), in B, ref X1, sDepth, maxIter, tol, seed);
 
             // Unpreconditioned overload (folds to the identity core internally).
-            var X2 = arena.doubleMat(m, n);
+            var X2 = new doubleMxN(m, n, Allocator.Temp);
             var info2 = Krylov.bidr<doubleDenseOperatorGeneral>(
                 in opA, in B, ref X2, sDepth, maxIter, tol, seed);
 
@@ -259,8 +241,6 @@ public class doubleBlockIDRTests
             for (int i = 0; i < m; i++)
                 for (int c = 0; c < n; c++)
                     Assert.IsTrue(X1[i, c] == X2[i, c]);
-
-            arena.Dispose();
         }
 
         // A rank-deficient RHS block (several identical rows) makes an m x m block coefficient singular
@@ -269,16 +249,14 @@ public class doubleBlockIDRTests
         // rather than throwing or silently claiming Convergence.
         void RankDeficientRHSBlockBreaksDownGracefully()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 16, m = 5, sDepth = 4;
-            var A = DenseNonsym(ref arena, n, 0x1B51u);
-            var B = arena.doubleRandomMat(m, n, (double)(-1f), (double)1f, 0x1B52u);
+            var A = DenseNonsym(n, 0x1B51u);
+            var B = GenerateOP.doubleRandomMat(m, n, (double)(-1f), (double)1f, 0x1B52u, Allocator.Temp);
             // Force rows 0, 2, 4 bit-identical -> block rank <= 3; the shadow Gram blocks inherit the
             // duplicated rows -> a genuinely singular m x m block solve.
             for (int c = 0; c < n; c++) { B[2, c] = B[0, c]; B[4, c] = B[0, c]; }
 
-            var X = arena.doubleMat(m, n);
+            var X = new doubleMxN(m, n, Allocator.Temp);
             var info = Krylov.bidr(in A, in B, ref X, sDepth, 8 * n, ResTol());
 
             // Finite, no NaN -- last committed iterate is returned, never garbage.
@@ -289,25 +267,21 @@ public class doubleBlockIDRTests
             // Rank-deficient block coefficient is DEFINED behavior -> Breakdown (not Solved).
             Assert.IsTrue(info.status == IterativeSolveStatus.Breakdown);
             Assert.IsFalse(info.Solved);
-
-            arena.Dispose();
         }
 
         // (3) Determinism with an explicit seed: two independent solves from the same zero initial X must
         // produce a BIT-IDENTICAL X (the seeded shadow space is the only randomness) and equal iterations.
         void DeterminismExplicitSeed()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 40, m = 3, sDepth = 4;
-            var A = ConvDiff1D(ref arena, n);
-            var B = arena.doubleRandomMat(m, n, (double)(-1f), (double)1f, 0x1B62u);
+            var A = ConvDiff1D(n);
+            var B = GenerateOP.doubleRandomMat(m, n, (double)(-1f), (double)1f, 0x1B62u, Allocator.Temp);
             uint seed = 0x1234ABCDu;
 
-            var X1 = arena.doubleMat(m, n);
+            var X1 = new doubleMxN(m, n, Allocator.Temp);
             var i1 = Krylov.bidr(in A, in B, ref X1, sDepth, 20 * n, ResTol(), seed);
 
-            var X2 = arena.doubleMat(m, n);
+            var X2 = new doubleMxN(m, n, Allocator.Temp);
             var i2 = Krylov.bidr(in A, in B, ref X2, sDepth, 20 * n, ResTol(), seed);
 
             Assert.IsTrue(i1.status == IterativeSolveStatus.Converged);
@@ -316,86 +290,70 @@ public class doubleBlockIDRTests
             for (int i = 0; i < m; i++)
                 for (int c = 0; c < n; c++)
                     Assert.IsTrue(X1[i, c] == X2[i, c]);   // EXACT, bit-identical
-
-            arena.Dispose();
         }
 
         // (3) Determinism with the DEFAULT seed (omitted, via the zero-arg-tail overload): two solves must
         // still produce a bit-identical X.
         void DeterminismDefaultSeed()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 40, m = 3;
-            var A = ConvDiff1D(ref arena, n);
-            var B = arena.doubleRandomMat(m, n, (double)(-1f), (double)1f, 0x1B72u);
+            var A = ConvDiff1D(n);
+            var B = GenerateOP.doubleRandomMat(m, n, (double)(-1f), (double)1f, 0x1B72u, Allocator.Temp);
 
-            var X1 = arena.doubleMat(m, n);
+            var X1 = new doubleMxN(m, n, Allocator.Temp);
             Krylov.bidr(in A, in B, ref X1);
 
-            var X2 = arena.doubleMat(m, n);
+            var X2 = new doubleMxN(m, n, Allocator.Temp);
             Krylov.bidr(in A, in B, ref X2);
 
             for (int i = 0; i < m; i++)
                 for (int c = 0; c < n; c++)
                     Assert.IsTrue(X1[i, c] == X2[i, c]);   // EXACT, bit-identical
-
-            arena.Dispose();
         }
 
         // (6) ILU0-right-preconditioned BSR block solve converges.
         void PreconditionedILU0()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 120, m = 3, sDepth = 4;
-            var A = ConvDiff1D(ref arena, n);
-            var B = arena.doubleRandomMat(m, n, (double)(-1f), (double)1f, 0x1B82u);
-            var M = arena.doubleILU0(in A);
+            var A = ConvDiff1D(n);
+            var B = GenerateOP.doubleRandomMat(m, n, (double)(-1f), (double)1f, 0x1B82u, Allocator.Temp);
+            var M = new doubleILU0(in A, Allocator.Temp);
 
-            var X = arena.doubleMat(m, n);
+            var X = new doubleMxN(m, n, Allocator.Temp);
             var info = Krylov.bidr(in A, in M, in B, ref X, sDepth, 20 * n, ResTol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.AreEqual(m, info.converged);
-            Assert.IsTrue(BlockResidualBSROK(ref arena, in A, in X, in B, m, n, ResTol()));
-
-            arena.Dispose();
+            Assert.IsTrue(BlockResidualBSROK(in A, in X, in B, m, n, ResTol()));
         }
 
         // (6) BlockJacobi-right-preconditioned BSR block solve converges.
         void PreconditionedBlockJacobi()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 120, m = 3, sDepth = 4;
-            var A = ConvDiff1D(ref arena, n);
-            var B = arena.doubleRandomMat(m, n, (double)(-1f), (double)1f, 0x1B92u);
-            var M = arena.doubleBlockJacobi(in A);
+            var A = ConvDiff1D(n);
+            var B = GenerateOP.doubleRandomMat(m, n, (double)(-1f), (double)1f, 0x1B92u, Allocator.Temp);
+            var M = new doubleBlockJacobi(in A, Allocator.Temp);
 
-            var X = arena.doubleMat(m, n);
+            var X = new doubleMxN(m, n, Allocator.Temp);
             var info = Krylov.bidr(in A, in M, in B, ref X, sDepth, 20 * n, ResTol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.AreEqual(m, info.converged);
-            Assert.IsTrue(BlockResidualBSROK(ref arena, in A, in X, in B, m, n, ResTol()));
-
-            arena.Dispose();
+            Assert.IsTrue(BlockResidualBSROK(in A, in X, in B, m, n, ResTol()));
         }
 
         // Edge: all-zero B (with a non-zero initial X) -> immediate Converged, iterations == 0, X reset
         // to exactly zero (bit-identical).
         void ZeroRhs()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 20, m = 3, sDepth = 4;
-            var A = ConvDiff1D(ref arena, n);
-            var B = arena.doubleMat(m, n);
+            var A = ConvDiff1D(n);
+            var B = new doubleMxN(m, n, Allocator.Temp);
             for (int i = 0; i < m; i++)
                 for (int c = 0; c < n; c++) B[i, c] = (double)0;
 
-            var X = arena.doubleMat(m, n);
+            var X = new doubleMxN(m, n, Allocator.Temp);
             for (int i = 0; i < m; i++)
                 for (int c = 0; c < n; c++) X[i, c] = (double)5;
 
@@ -406,8 +364,6 @@ public class doubleBlockIDRTests
             for (int i = 0; i < m; i++)
                 for (int c = 0; c < n; c++)
                     Assert.IsTrue(X[i, c] == (double)0);
-
-            arena.Dispose();
         }
     }
 

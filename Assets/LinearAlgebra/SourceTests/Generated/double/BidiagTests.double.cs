@@ -103,16 +103,20 @@ public class doubleBidiagTests
         // Full suite for a single bidiagonalization result: reconstruction, bidiagonal band,
         // and U/V orthonormality (numbered inline below).
         private void AssertBidiag(in doubleMxN A, in doubleMxN U, in doubleMxN B, in doubleMxN V,
-                                   ref Arena arena, double tol)
+                                   double tol)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
 
             // 1. Reconstruction: A ≈ U * B * Vᵀ
-            var Vt   = Blas.trans(V);
-            var UB   = Blas.dot(U, B);
-            var UBVt = Blas.dot(UB, Vt);
-            var diff = A - UBVt;
+            var Vt = new doubleMxN(V.N_Cols, V.M_Rows, Allocator.Temp);
+            Blas.trans(in V, ref Vt);
+            var UB = new doubleMxN(U.M_Rows, B.N_Cols, Allocator.Temp);
+            Blas.dot(in U, in B, ref UB);
+            var UBVt = new doubleMxN(UB.M_Rows, Vt.N_Cols, Allocator.Temp);
+            Blas.dot(in UB, in Vt, ref UBVt);
+            var diff = new doubleMxN(in A, Allocator.Temp);
+            doubleComp.subInPlace(diff, UBVt);
 
             if (Analysis.isAnyNan(in diff))
                 throw new System.Exception("BidiagTests: NaN in reconstruction");
@@ -133,102 +137,89 @@ public class doubleBidiagTests
 
         void IdentitySquare()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 6;
-            var A = arena.doubleIdentityMat(n);
-            var U = arena.doubleMat(n, n);
-            var B = arena.doubleMat(n, n);
-            var V = arena.doubleMat(n, n);
+            var A = GenerateOP.doubleIdentityMat(n);
+            var U = new doubleMxN(n, n, Allocator.Temp);
+            var B = new doubleMxN(n, n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
             Bidiag.decomp(in A, ref U, ref B, ref V);
-            AssertBidiag(in A, in U, in B, in V, ref arena, (double)1E-4f);
-            arena.Dispose();
+            AssertBidiag(in A, in U, in B, in V, (double)1E-4f);
         }
 
         void DiagonalSquare()
         {
             // Diagonal input: A is already bidiagonal; B should ≈ A (up to signs), U,V ≈ I (up to signs)
-            var arena = new Arena(Allocator.Persistent);
             int n = 6;
-            var A = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Temp);
             A[0, 0] = (double)3f;
             A[1, 1] = (double)1f;
             A[2, 2] = (double)4f;
             A[3, 3] = (double)1f;
             A[4, 4] = (double)5f;
             A[5, 5] = (double)9f;
-            var U = arena.doubleMat(n, n);
-            var B = arena.doubleMat(n, n);
-            var V = arena.doubleMat(n, n);
+            var U = new doubleMxN(n, n, Allocator.Temp);
+            var B = new doubleMxN(n, n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
             Bidiag.decomp(in A, ref U, ref B, ref V);
-            AssertBidiag(in A, in U, in B, in V, ref arena, (double)1E-4f);
-            arena.Dispose();
+            AssertBidiag(in A, in U, in B, in V, (double)1E-4f);
         }
 
         void RandomSquare6x6()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 6;
-            var A = arena.doubleRandomMat(n, n, (double)(-2f), (double)2f, 314159);
-            var U = arena.doubleMat(n, n);
-            var B = arena.doubleMat(n, n);
-            var V = arena.doubleMat(n, n);
+            var A = GenerateOP.doubleRandomMat(n, n, (double)(-2f), (double)2f, 314159);
+            var U = new doubleMxN(n, n, Allocator.Temp);
+            var B = new doubleMxN(n, n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
             Bidiag.decomp(in A, ref U, ref B, ref V);
-            AssertBidiag(in A, in U, in B, in V, ref arena, (double)1E-4f);
-            arena.Dispose();
+            AssertBidiag(in A, in U, in B, in V, (double)1E-4f);
         }
 
         void RandomSquare8x8()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 8;
-            var A = arena.doubleRandomMat(n, n, (double)(-5f), (double)5f, 271828);
-            var U = arena.doubleMat(n, n);
-            var B = arena.doubleMat(n, n);
-            var V = arena.doubleMat(n, n);
+            var A = GenerateOP.doubleRandomMat(n, n, (double)(-5f), (double)5f, 271828);
+            var U = new doubleMxN(n, n, Allocator.Temp);
+            var B = new doubleMxN(n, n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
             Bidiag.decomp(in A, ref U, ref B, ref V);
-            AssertBidiag(in A, in U, in B, in V, ref arena, (double)1E-4f);
-            arena.Dispose();
+            AssertBidiag(in A, in U, in B, in V, (double)1E-4f);
         }
 
         void RandomTall10x6()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 10, n = 6;
-            var A = arena.doubleRandomMat(m, n, (double)(-3f), (double)3f, 112358);
-            var U = arena.doubleMat(m, n);
-            var B = arena.doubleMat(n, n);
-            var V = arena.doubleMat(n, n);
+            var A = GenerateOP.doubleRandomMat(m, n, (double)(-3f), (double)3f, 112358);
+            var U = new doubleMxN(m, n, Allocator.Temp);
+            var B = new doubleMxN(n, n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
             Bidiag.decomp(in A, ref U, ref B, ref V);
-            AssertBidiag(in A, in U, in B, in V, ref arena, (double)1E-4f);
-            arena.Dispose();
+            AssertBidiag(in A, in U, in B, in V, (double)1E-4f);
         }
 
         void RandomTall12x4()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 12, n = 4;
-            var A = arena.doubleRandomMat(m, n, (double)(-1f), (double)1f, 999421);
-            var U = arena.doubleMat(m, n);
-            var B = arena.doubleMat(n, n);
-            var V = arena.doubleMat(n, n);
+            var A = GenerateOP.doubleRandomMat(m, n, (double)(-1f), (double)1f, 999421);
+            var U = new doubleMxN(m, n, Allocator.Temp);
+            var B = new doubleMxN(n, n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
             Bidiag.decomp(in A, ref U, ref B, ref V);
-            AssertBidiag(in A, in U, in B, in V, ref arena, (double)1E-4f);
-            arena.Dispose();
+            AssertBidiag(in A, in U, in B, in V, (double)1E-4f);
         }
 
         // Bidiag.values must produce EXACTLY the bidiagonal bands of the full Bidiag.decomp:
         // both use identical reflectors/applies, so d[k]=B[k,k], e[0]=0, e[k]=B[k-1,k].
         void CheckValuesMatchFull(int m, int n, double lo, double hi, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleRandomMat(m, n, lo, hi, seed);
-            var U = arena.doubleMat(m, n);
-            var B = arena.doubleMat(n, n);
-            var V = arena.doubleMat(n, n);
+            var A = GenerateOP.doubleRandomMat(m, n, lo, hi, seed);
+            var U = new doubleMxN(m, n, Allocator.Temp);
+            var B = new doubleMxN(n, n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
             Bidiag.decomp(in A, ref U, ref B, ref V);
 
-            var d = arena.doubleVec(n);
-            var e = arena.doubleVec(n);
+            var d = new doubleN(n, Allocator.Temp);
+            var e = new doubleN(n, Allocator.Temp);
             Bidiag.values(in A, ref d, ref e);
 
             for (int k = 0; k < n; k++)
@@ -236,22 +227,18 @@ public class doubleBidiagTests
             AssertClose(e[0], (double)0, (double)1E-4f);
             for (int k = 1; k < n; k++)
                 AssertClose(e[k], B[k - 1, k], (double)1E-4f);
-
-            arena.Dispose();
         }
 
         void RandomTall5x1()
         {
             // Single column: B is 1x1, U is 5x1 unit vector, V is 1x1 = [[±1]]
-            var arena = new Arena(Allocator.Persistent);
             int m = 5, n = 1;
-            var A = arena.doubleRandomMat(m, n, (double)(-2f), (double)2f, 77777);
-            var U = arena.doubleMat(m, n);
-            var B = arena.doubleMat(n, n);
-            var V = arena.doubleMat(n, n);
+            var A = GenerateOP.doubleRandomMat(m, n, (double)(-2f), (double)2f, 77777);
+            var U = new doubleMxN(m, n, Allocator.Temp);
+            var B = new doubleMxN(n, n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
             Bidiag.decomp(in A, ref U, ref B, ref V);
-            AssertBidiag(in A, in U, in B, in V, ref arena, (double)1E-4f);
-            arena.Dispose();
+            AssertBidiag(in A, in U, in B, in V, (double)1E-4f);
         }
     }
 
@@ -286,70 +273,58 @@ public class doubleBidiagTests
     [Test]
     public void BidiagThrowsOnWideMatrix()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.doubleMat(3, 5);
-        var U = arena.doubleMat(3, 5);
-        var B = arena.doubleMat(5, 5);
-        var V = arena.doubleMat(5, 5);
+        var A = new doubleMxN(3, 5, Allocator.Temp);
+        var U = new doubleMxN(3, 5, Allocator.Temp);
+        var B = new doubleMxN(5, 5, Allocator.Temp);
+        var V = new doubleMxN(5, 5, Allocator.Temp);
         Assert.Catch<ArgumentException>(() => Bidiag.decomp(in A, ref U, ref B, ref V));
-        arena.Dispose();
     }
 
     [Test]
     public void BidiagThrowsOnWrongUShape()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.doubleMat(6, 4);
-        var U = arena.doubleMat(6, 3);   // wrong: should be 6x4
-        var B = arena.doubleMat(4, 4);
-        var V = arena.doubleMat(4, 4);
+        var A = new doubleMxN(6, 4, Allocator.Temp);
+        var U = new doubleMxN(6, 3, Allocator.Temp);   // wrong: should be 6x4
+        var B = new doubleMxN(4, 4, Allocator.Temp);
+        var V = new doubleMxN(4, 4, Allocator.Temp);
         Assert.Catch<ArgumentException>(() => Bidiag.decomp(in A, ref U, ref B, ref V));
-        arena.Dispose();
     }
 
     [Test]
     public void BidiagThrowsOnWrongBShape()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.doubleMat(6, 4);
-        var U = arena.doubleMat(6, 4);
-        var B = arena.doubleMat(3, 4);   // wrong: should be 4x4
-        var V = arena.doubleMat(4, 4);
+        var A = new doubleMxN(6, 4, Allocator.Temp);
+        var U = new doubleMxN(6, 4, Allocator.Temp);
+        var B = new doubleMxN(3, 4, Allocator.Temp);   // wrong: should be 4x4
+        var V = new doubleMxN(4, 4, Allocator.Temp);
         Assert.Catch<ArgumentException>(() => Bidiag.decomp(in A, ref U, ref B, ref V));
-        arena.Dispose();
     }
 
     [Test]
     public void BidiagValuesThrowsOnWideMatrix()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.doubleMat(3, 5);
-        var d = arena.doubleVec(5);
-        var e = arena.doubleVec(5);
+        var A = new doubleMxN(3, 5, Allocator.Temp);
+        var d = new doubleN(5, Allocator.Temp);
+        var e = new doubleN(5, Allocator.Temp);
         Assert.Catch<ArgumentException>(() => Bidiag.values(in A, ref d, ref e));
-        arena.Dispose();
     }
 
     [Test]
     public void BidiagValuesThrowsOnWrongVectorLength()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.doubleMat(6, 4);
-        var d = arena.doubleVec(3);   // wrong: should be length 4
-        var e = arena.doubleVec(4);
+        var A = new doubleMxN(6, 4, Allocator.Temp);
+        var d = new doubleN(3, Allocator.Temp);   // wrong: should be length 4
+        var e = new doubleN(4, Allocator.Temp);
         Assert.Catch<ArgumentException>(() => Bidiag.values(in A, ref d, ref e));
-        arena.Dispose();
     }
 
     [Test]
     public void BidiagThrowsOnWrongVShape()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.doubleMat(6, 4);
-        var U = arena.doubleMat(6, 4);
-        var B = arena.doubleMat(4, 4);
-        var V = arena.doubleMat(3, 3);   // wrong: should be 4x4
+        var A = new doubleMxN(6, 4, Allocator.Temp);
+        var U = new doubleMxN(6, 4, Allocator.Temp);
+        var B = new doubleMxN(4, 4, Allocator.Temp);
+        var V = new doubleMxN(3, 3, Allocator.Temp);   // wrong: should be 4x4
         Assert.Catch<ArgumentException>(() => Bidiag.decomp(in A, ref U, ref B, ref V));
-        arena.Dispose();
     }
 }

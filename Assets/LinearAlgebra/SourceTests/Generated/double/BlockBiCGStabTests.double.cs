@@ -57,16 +57,16 @@ public class doubleBlockBiCGStabTests
 
         // Diagonally dominant (so nonsingular) but NOT symmetrized -> genuinely non-symmetric. Do NOT
         // form M^T M (that would make it symmetric, defeating the point of a BiCGSTAB test).
-        static doubleMxN BuildDenseNonSym(ref Arena arena, int dim, uint seed)
+        static doubleMxN BuildDenseNonSym(int dim, uint seed)
         {
-            var A = arena.doubleRandomMat(dim, dim, (double)(-1f), (double)1f, seed);
+            var A = GenerateOP.doubleRandomMat(dim, dim, (double)(-1f), (double)1f, seed);
             for (int d = 0; d < dim; d++) A[d, d] += dim;   // diagonally dominant -> nonsingular, nonsymmetric
             return A;
         }
 
-        static doubleN Row(ref Arena arena, in doubleMxN B, int j, int n)
+        static doubleN Row(in doubleMxN B, int j, int n)
         {
-            var v = arena.doubleVec(n);
+            var v = new doubleN(n, Allocator.Temp);
             for (int c = 0; c < n; c++) v[c] = B[j, c];
             return v;
         }
@@ -75,16 +75,14 @@ public class doubleBlockBiCGStabTests
         // column, and every column reached tolerance.
         void MatchesScalarBiCGStabPerColumn()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 20, s = 4;
-            var A = BuildDenseNonSym(ref arena, n, 81001u);
-            var B = arena.doubleRandomMat(s, n, (double)(-1f), (double)1f, 81002u);
+            var A = BuildDenseNonSym(n, 81001u);
+            var B = GenerateOP.doubleRandomMat(s, n, (double)(-1f), (double)1f, 81002u);
 
             int maxIter = 12 * n;                            // generous: BiCGSTAB convergence isn't monotone
             double tol = Consts.doubleSqrtEps;
 
-            var X = arena.doubleMat(s, n);                   // zero initial guess
+            var X = new doubleMxN(s, n, Allocator.Temp);     // zero initial guess
             var info = Krylov.bbiCGStab(in A, in B, ref X, maxIter, tol);
 
             Assert.IsTrue(info.Solved);
@@ -93,16 +91,14 @@ public class doubleBlockBiCGStabTests
 
             for (int j = 0; j < s; j++)
             {
-                var bj = Row(ref arena, in B, j, n);
-                var xj = arena.doubleVec(n);
+                var bj = Row(in B, j, n);
+                var xj = new doubleN(n, Allocator.Temp);
                 Assert.IsTrue(Krylov.biCGStab(in A, in bj, ref xj, maxIter, tol).Solved);
 
                 // Block column j matches the scalar solve (both converged to the same unique solution).
                 for (int c = 0; c < n; c++)
                     Assert.IsTrue(math.abs((double)X[j, c] - (double)xj[c]) <= Tol() * (1.0 + math.abs((double)xj[c])));
             }
-
-            arena.Dispose();
         }
 
         // Independent of any other solver: pick a KNOWN block solution Xk, form B = A Xk via the
@@ -110,24 +106,20 @@ public class doubleBlockBiCGStabTests
         // A^T for a non-symmetric A and would build the WRONG B here), solve, and recover Xk.
         void KnownSolutionRecovered()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 20, s = 5;
-            var A = BuildDenseNonSym(ref arena, n, 82001u);
-            var Xk = arena.doubleRandomMat(s, n, (double)(-1f), (double)1f, 82002u);   // known solution
+            var A = BuildDenseNonSym(n, 82001u);
+            var Xk = GenerateOP.doubleRandomMat(s, n, (double)(-1f), (double)1f, 82002u);   // known solution
 
-            var B = arena.doubleMat(s, n);
+            var B = new doubleMxN(s, n, Allocator.Temp);
             new doubleDenseOperatorGeneral(in A).ApplyBlock(in Xk, ref B, s);          // B[j,:] = A Xk[j,:]
 
-            var X = arena.doubleMat(s, n);
+            var X = new doubleMxN(s, n, Allocator.Temp);
             var info = Krylov.bbiCGStab(in A, in B, ref X, 12 * n, Consts.doubleSqrtEps);
             Assert.IsTrue(info.Solved);
 
             for (int j = 0; j < s; j++)
                 for (int c = 0; c < n; c++)
                     Assert.IsTrue(math.abs((double)X[j, c] - (double)Xk[j, c]) <= Tol() * (1.0 + math.abs((double)Xk[j, c])));
-
-            arena.Dispose();
         }
 
         // The explicit-identity-preconditioner generic core must fold to EXACTLY the unpreconditioned
@@ -136,36 +128,34 @@ public class doubleBlockBiCGStabTests
         // them).
         void IdentityFoldBitIdentical()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 16, s = 3;
-            var A = BuildDenseNonSym(ref arena, n, 83001u);
-            var B = arena.doubleRandomMat(s, n, (double)(-1f), (double)1f, 83002u);
+            var A = BuildDenseNonSym(n, 83001u);
+            var B = GenerateOP.doubleRandomMat(s, n, (double)(-1f), (double)1f, 83002u);
             int maxIter = 8 * n;
             double tol = Consts.doubleSqrtEps;
 
             var opA = new doubleDenseOperatorGeneral(in A);   // readonly struct -- construct once, reuse the value
 
             // Explicit identity preconditioner (preconditioned-shape overload -> needs Phat/Shat).
-            var X1     = arena.doubleMat(s, n);
-            var R1     = arena.doubleMat(s, n);
-            var Rhat01 = arena.doubleMat(s, n);
-            var P1     = arena.doubleMat(s, n);
-            var V1     = arena.doubleMat(s, n);
-            var T1     = arena.doubleMat(s, n);
-            var Phat1  = arena.doubleMat(s, n);
-            var Shat1  = arena.doubleMat(s, n);
+            var X1     = new doubleMxN(s, n, Allocator.Temp);
+            var R1     = new doubleMxN(s, n, Allocator.Temp);
+            var Rhat01 = new doubleMxN(s, n, Allocator.Temp);
+            var P1     = new doubleMxN(s, n, Allocator.Temp);
+            var V1     = new doubleMxN(s, n, Allocator.Temp);
+            var T1     = new doubleMxN(s, n, Allocator.Temp);
+            var Phat1  = new doubleMxN(s, n, Allocator.Temp);
+            var Shat1  = new doubleMxN(s, n, Allocator.Temp);
             var info1 = Krylov.bbiCGStab<doubleDenseOperatorGeneral, doubleIdentityPreconditioner>(
                 in opA, default(doubleIdentityPreconditioner), in B, ref X1,
                 ref R1, ref Rhat01, ref P1, ref V1, ref T1, ref Phat1, ref Shat1, maxIter, tol);
 
             // Unpreconditioned overload (no Phat/Shat).
-            var X2     = arena.doubleMat(s, n);
-            var R2     = arena.doubleMat(s, n);
-            var Rhat02 = arena.doubleMat(s, n);
-            var P2     = arena.doubleMat(s, n);
-            var V2     = arena.doubleMat(s, n);
-            var T2     = arena.doubleMat(s, n);
+            var X2     = new doubleMxN(s, n, Allocator.Temp);
+            var R2     = new doubleMxN(s, n, Allocator.Temp);
+            var Rhat02 = new doubleMxN(s, n, Allocator.Temp);
+            var P2     = new doubleMxN(s, n, Allocator.Temp);
+            var V2     = new doubleMxN(s, n, Allocator.Temp);
+            var T2     = new doubleMxN(s, n, Allocator.Temp);
             var info2 = Krylov.bbiCGStab<doubleDenseOperatorGeneral>(
                 in opA, in B, ref X2, ref R2, ref Rhat02, ref P2, ref V2, ref T2, maxIter, tol);
 
@@ -176,8 +166,6 @@ public class doubleBlockBiCGStabTests
             for (int i = 0; i < s; i++)
                 for (int c = 0; c < n; c++)
                     Assert.IsTrue(X1[i, c] == X2[i, c]);
-
-            arena.Dispose();
         }
 
         // A rank-deficient RHS block (several identical rows) makes the s x s block coefficient
@@ -186,16 +174,14 @@ public class doubleBlockBiCGStabTests
         // solver reports Breakdown rather than throwing or silently claiming Convergence.
         void RankDeficientRHSBlockBreaksDownGracefully()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 16, s = 5;
-            var A = BuildDenseNonSym(ref arena, n, 84001u);
-            var B = arena.doubleRandomMat(s, n, (double)(-1f), (double)1f, 84002u);
+            var A = BuildDenseNonSym(n, 84001u);
+            var B = GenerateOP.doubleRandomMat(s, n, (double)(-1f), (double)1f, 84002u);
             // Force rows 0, 2, 4 identical -> block rank <= 3, and the shadow residual Rhat0 (= initial
             // R = B, since X0 = 0) inherits those identical rows -> a genuinely singular s x s coeff.
             for (int c = 0; c < n; c++) { B[2, c] = B[0, c]; B[4, c] = B[0, c]; }
 
-            var X = arena.doubleMat(s, n);
+            var X = new doubleMxN(s, n, Allocator.Temp);
             var info = Krylov.bbiCGStab(in A, in B, ref X, 8 * n, Consts.doubleSqrtEps);
 
             // Finite, no NaN -- last committed iterate (here the zero start) is returned, never garbage.
@@ -205,8 +191,6 @@ public class doubleBlockBiCGStabTests
 
             // Rank-deficient block coefficient is DEFINED behavior -> Breakdown (not Solved).
             Assert.IsTrue(info.status == IterativeSolveStatus.Breakdown);
-
-            arena.Dispose();
         }
 
         // BSR non-symmetric diagonally-dominant A + Restricted Additive Schwarz (RAS, non-symmetric,
@@ -214,33 +198,29 @@ public class doubleBlockBiCGStabTests
         // biCGStab.
         void PreconditionedMatchesScalar()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.doubleRandomSparse(16, 16, 2, (double)0.4, 85001u);   // 32 dof, nonsymmetric diag-dominant
+            var A = doubleGallery.doubleRandomSparse(16, 16, 2, (double)0.4, 85001u);   // 32 dof, nonsymmetric diag-dominant
             int n = A.M_Rows;
             int s = 3;
             var opts = new SchwarzOptions { subdomainSize = 12, overlap = 1 };  // multiple subdomains
-            var M = arena.doubleRestrictedSchwarz(in A, in opts);
-            var B = arena.doubleRandomMat(s, n, (double)(-1f), (double)1f, 85002u);
+            var M = new doubleRestrictedSchwarz(in A, Allocator.Temp, in opts);
+            var B = GenerateOP.doubleRandomMat(s, n, (double)(-1f), (double)1f, 85002u);
 
             int maxIter = 20 * n;
             double tol = Consts.doubleSqrtEps;
 
-            var X = arena.doubleMat(s, n);
+            var X = new doubleMxN(s, n, Allocator.Temp);
             var info = Krylov.bbiCGStab(in A, in M, in B, ref X, maxIter, tol);
             Assert.IsTrue(info.Solved);
             Assert.AreEqual(s, info.converged);
 
             for (int j = 0; j < s; j++)
             {
-                var bj = Row(ref arena, in B, j, n);
-                var xj = arena.doubleVec(n);
+                var bj = Row(in B, j, n);
+                var xj = new doubleN(n, Allocator.Temp);
                 Assert.IsTrue(Krylov.biCGStab(in A, in M, in bj, ref xj, maxIter, tol).Solved);
                 for (int c = 0; c < n; c++)
                     Assert.IsTrue(math.abs((double)X[j, c] - (double)xj[c]) <= Tol() * (1.0 + math.abs((double)xj[c])));
             }
-
-            arena.Dispose();
         }
 
         // A tiny iteration budget on a system that genuinely needs more must report an HONEST
@@ -248,16 +228,14 @@ public class doubleBlockBiCGStabTests
         // still finite -- no throw.
         void MaxIterBudgetHonestStatus()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 32, s = 4;
-            var A = BuildDenseNonSym(ref arena, n, 86001u);
-            var B = arena.doubleRandomMat(s, n, (double)(-1f), (double)1f, 86002u);
+            var A = BuildDenseNonSym(n, 86001u);
+            var B = GenerateOP.doubleRandomMat(s, n, (double)(-1f), (double)1f, 86002u);
 
             // maxIter = 1 is a degree-2 polynomial in A; the Chebyshev floor over this system's
             // eigenvalue cluster (~2e-2 relative residual) sits ~3000x above float's sqrtEps threshold,
             // so a single iteration provably CANNOT converge -> a robust, non-flaky MaxIterations check.
-            var X = arena.doubleMat(s, n);
+            var X = new doubleMxN(s, n, Allocator.Temp);
             var info = Krylov.bbiCGStab(in A, in B, ref X, 1, Consts.doubleSqrtEps);   // deliberately tiny budget
 
             Assert.IsTrue(info.status == IterativeSolveStatus.MaxIterations);
@@ -266,8 +244,6 @@ public class doubleBlockBiCGStabTests
             for (int j = 0; j < s; j++)
                 for (int c = 0; c < n; c++)
                     Assert.IsFalse(double.IsNaN((double)X[j, c]) || double.IsInfinity((double)X[j, c]));
-
-            arena.Dispose();
         }
     }
 

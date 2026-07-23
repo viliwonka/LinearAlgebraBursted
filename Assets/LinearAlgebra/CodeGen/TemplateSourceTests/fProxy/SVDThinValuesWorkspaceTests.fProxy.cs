@@ -45,101 +45,98 @@ public class fProxySVDThinValuesWorkspaceTests
         // thin scratch overload must match the allocating wrapper.
         void SvdThinEquiv(int m, int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A0 = arena.fProxyRandomMat(m, n, -5f, 5f, 55123);
+            var A0 = GenerateOP.fProxyRandomMat(m, n, -5f, 5f, 55123, allocator: Allocator.Temp);
             for (int d = 0; d < n; d++)   // boost leading diagonal block for conditioning
                 A0[d, d] += (fProxy)10f;
 
             // allocating reference
             var Aa = A0.Copy();
-            var Ua = arena.fProxyMat(m, n);
-            var Sa = arena.fProxyVec(n);
-            var Va = arena.fProxyMat(n, n);
+            var Ua = new fProxyMxN(m, n, Allocator.Temp);
+            var Sa = new fProxyN(n, Allocator.Temp);
+            var Va = new fProxyMxN(n, n, Allocator.Temp);
             bool oka = SVD.thin(in Aa, ref Ua, ref Sa, ref Va);
 
             // workspace-struct form (default maxIter/eps) must match the allocating form
             var Ab = A0.Copy();
-            var Ub = arena.fProxyMat(m, n);
-            var Sb = arena.fProxyVec(n);
-            var Vb = arena.fProxyMat(n, n);
-            var ws = arena.fProxySVDThinCache(m, n);
+            var Ub = new fProxyMxN(m, n, Allocator.Temp);
+            var Sb = new fProxyN(n, Allocator.Temp);
+            var Vb = new fProxyMxN(n, n, Allocator.Temp);
+            var ws = new fProxySVDThinCache(m, n, Allocator.Temp);
             bool okb = SVD.thin(in Ab, ref Ub, ref Sb, ref Vb, ref ws);
 
             Assert.IsTrue(oka == okb);
-            Assert.IsTrue(Analysis.isZero(Sa - Sb, Tol()));
-            Assert.IsTrue(Analysis.isZero(Ua - Ub, Tol()));
-            Assert.IsTrue(Analysis.isZero(Va - Vb, Tol()));
-
-            arena.Dispose();
+            var SDiff = new fProxyN(in Sa, Allocator.Temp); SDiff.subInPlace(Sb);
+            Assert.IsTrue(Analysis.isZero(SDiff, Tol()));
+            var UDiff = new fProxyMxN(in Ua, Allocator.Temp); UDiff.subInPlace(Ub);
+            Assert.IsTrue(Analysis.isZero(UDiff, Tol()));
+            var VDiff = new fProxyMxN(in Va, Allocator.Temp); VDiff.subInPlace(Vb);
+            Assert.IsTrue(Analysis.isZero(VDiff, Tol()));
         }
 
         // values scratch overload must match the allocating wrapper.
         void SvdValuesEquiv(int m, int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A0 = arena.fProxyRandomMat(m, n, -5f, 5f, 90210);
+            var A0 = GenerateOP.fProxyRandomMat(m, n, -5f, 5f, 90210, allocator: Allocator.Temp);
             for (int d = 0; d < n; d++)
                 A0[d, d] += (fProxy)10f;
 
-            var Sa = arena.fProxyVec(n);
+            var Sa = new fProxyN(n, Allocator.Temp);
             bool oka = SVD.values(in A0, ref Sa);
 
-            var Sb = arena.fProxyVec(n);
-            var ws = arena.fProxySVDValuesCache(m, n);
+            var Sb = new fProxyN(n, Allocator.Temp);
+            var ws = new fProxySVDValuesCache(m, n, Allocator.Temp);
             bool okb = SVD.values(in A0, ref Sb, ref ws);
 
             Assert.IsTrue(oka == okb);
-            Assert.IsTrue(Analysis.isZero(Sa - Sb, Tol()));
-
-            arena.Dispose();
+            var SDiff = new fProxyN(in Sa, Allocator.Temp); SDiff.subInPlace(Sb);
+            Assert.IsTrue(Analysis.isZero(SDiff, Tol()));
         }
 
         // Reuse ONE workspace (of each kind) across several consecutive solves: each solve must
         // match a fresh allocating solve, proving no stale state survives reuse.
         void WorkspaceReuse()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 8, n = 4;
 
-            var thinWs = arena.fProxySVDThinCache(m, n);     // allocated ONCE, reused below
-            var valuesWs = arena.fProxySVDValuesCache(m, n); // allocated ONCE, reused below
+            var thinWs = new fProxySVDThinCache(m, n, Allocator.Temp);     // allocated ONCE, reused below
+            var valuesWs = new fProxySVDValuesCache(m, n, Allocator.Temp); // allocated ONCE, reused below
 
             for (int t = 0; t < 3; t++)
             {
-                var A0 = arena.fProxyRandomMat(m, n, -5f, 5f, (uint)(2000 + t * 11));
+                var A0 = GenerateOP.fProxyRandomMat(m, n, -5f, 5f, (uint)(2000 + t * 11), allocator: Allocator.Temp);
                 for (int d = 0; d < n; d++)
                     A0[d, d] += (fProxy)10f;
 
                 // thin: allocating reference vs reused workspace
                 var Aa = A0.Copy();
-                var Ua = arena.fProxyMat(m, n);
-                var Sa = arena.fProxyVec(n);
-                var Va = arena.fProxyMat(n, n);
+                var Ua = new fProxyMxN(m, n, Allocator.Temp);
+                var Sa = new fProxyN(n, Allocator.Temp);
+                var Va = new fProxyMxN(n, n, Allocator.Temp);
                 SVD.thin(in Aa, ref Ua, ref Sa, ref Va);
 
                 var Aw = A0.Copy();
-                var Uw = arena.fProxyMat(m, n);
-                var Sw = arena.fProxyVec(n);
-                var Vw = arena.fProxyMat(n, n);
+                var Uw = new fProxyMxN(m, n, Allocator.Temp);
+                var Sw = new fProxyN(n, Allocator.Temp);
+                var Vw = new fProxyMxN(n, n, Allocator.Temp);
                 SVD.thin(in Aw, ref Uw, ref Sw, ref Vw, ref thinWs);
 
-                Assert.IsTrue(Analysis.isZero(Sa - Sw, Tol()));
-                Assert.IsTrue(Analysis.isZero(Ua - Uw, Tol()));
-                Assert.IsTrue(Analysis.isZero(Va - Vw, Tol()));
+                var SDiff = new fProxyN(in Sa, Allocator.Temp); SDiff.subInPlace(Sw);
+                Assert.IsTrue(Analysis.isZero(SDiff, Tol()));
+                var UDiff = new fProxyMxN(in Ua, Allocator.Temp); UDiff.subInPlace(Uw);
+                Assert.IsTrue(Analysis.isZero(UDiff, Tol()));
+                var VDiff = new fProxyMxN(in Va, Allocator.Temp); VDiff.subInPlace(Vw);
+                Assert.IsTrue(Analysis.isZero(VDiff, Tol()));
 
                 // values: allocating reference vs reused workspace
-                var Sva = arena.fProxyVec(n);
+                var Sva = new fProxyN(n, Allocator.Temp);
                 SVD.values(in A0, ref Sva);
 
-                var Svw = arena.fProxyVec(n);
+                var Svw = new fProxyN(n, Allocator.Temp);
                 SVD.values(in A0, ref Svw, ref valuesWs);
 
-                Assert.IsTrue(Analysis.isZero(Sva - Svw, Tol()));
+                var SvDiff = new fProxyN(in Sva, Allocator.Temp); SvDiff.subInPlace(Svw);
+                Assert.IsTrue(Analysis.isZero(SvDiff, Tol()));
             }
-
-            arena.Dispose();
         }
     }
 
@@ -156,77 +153,58 @@ public class fProxySVDThinValuesWorkspaceTests
     [Test]
     public void SvdThin_BadScratchB_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = arena.fProxyMat(6, 4);
-            var U = arena.fProxyMat(6, 4);
-            var S = arena.fProxyVec(4);
-            var V = arena.fProxyMat(4, 4);
-            var ws = arena.fProxySVDThinCache(6, 4);
-            ws.B = arena.fProxyMat(3, 3);   // wrong: must be 4 x 4
-            Assert.Throws<ArgumentException>(() => SVD.thin(in A, ref U, ref S, ref V, ref ws));
-        }
-        finally { arena.Dispose(); }
+        var A = new fProxyMxN(6, 4, Allocator.Temp);
+        var U = new fProxyMxN(6, 4, Allocator.Temp);
+        var S = new fProxyN(4, Allocator.Temp);
+        var V = new fProxyMxN(4, 4, Allocator.Temp);
+        var ws = new fProxySVDThinCache(6, 4, Allocator.Temp);
+        ws.B = new fProxyMxN(3, 3, Allocator.Temp);   // wrong: must be 4 x 4
+        Assert.Throws<ArgumentException>(() => SVD.thin(in A, ref U, ref S, ref V, ref ws));
     }
 
     [Test]
     public void SvdThin_BadScratchUt_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = arena.fProxyMat(6, 4);
-            var U = arena.fProxyMat(6, 4);
-            var S = arena.fProxyVec(4);
-            var V = arena.fProxyMat(4, 4);
-            var ws = arena.fProxySVDThinCache(6, 4);
-            ws.Ut = arena.fProxyMat(4, 5);  // wrong: must be n x m = 4 x 6
-            Assert.Throws<ArgumentException>(() => SVD.thin(in A, ref U, ref S, ref V, ref ws));
-        }
-        finally { arena.Dispose(); }
+        var A = new fProxyMxN(6, 4, Allocator.Temp);
+        var U = new fProxyMxN(6, 4, Allocator.Temp);
+        var S = new fProxyN(4, Allocator.Temp);
+        var V = new fProxyMxN(4, 4, Allocator.Temp);
+        var ws = new fProxySVDThinCache(6, 4, Allocator.Temp);
+        ws.Ut = new fProxyMxN(4, 5, Allocator.Temp);  // wrong: must be n x m = 4 x 6
+        Assert.Throws<ArgumentException>(() => SVD.thin(in A, ref U, ref S, ref V, ref ws));
     }
 
     [Test]
     public void SvdValues_BadScratchD_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = arena.fProxyMat(6, 4);
-            var S = arena.fProxyVec(4);
-            var ws = arena.fProxySVDValuesCache(6, 4);
-            ws.dVec = arena.fProxyVec(3);   // wrong: must be length 4
-            Assert.Throws<ArgumentException>(() => SVD.values(in A, ref S, ref ws));
-        }
-        finally { arena.Dispose(); }
+        var A = new fProxyMxN(6, 4, Allocator.Temp);
+        var S = new fProxyN(4, Allocator.Temp);
+        var ws = new fProxySVDValuesCache(6, 4, Allocator.Temp);
+        ws.dVec = new fProxyN(3, Allocator.Temp);   // wrong: must be length 4
+        Assert.Throws<ArgumentException>(() => SVD.values(in A, ref S, ref ws));
     }
 
-    // Arena.fProxySVDThinCache(m, n) / fProxySVDValuesCache(m, n) must size every field for m x n.
+    // Standalone fProxySVDThinCache(m, n, allocator) / fProxySVDValuesCache(m, n, allocator) must
+    // size every field for m x n.
     [Test]
     public void SvdThinValuesWorkspace_Factory_SizesCorrectly()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var thinWs = arena.fProxySVDThinCache(7, 4);
-            Assert.AreEqual(4, thinWs.B.M_Rows);
-            Assert.AreEqual(4, thinWs.B.N_Cols);
-            Assert.AreEqual(4, thinWs.dVec.N);
-            Assert.AreEqual(4, thinWs.eVec.N);
-            Assert.AreEqual(4, thinWs.Ut.M_Rows);
-            Assert.AreEqual(7, thinWs.Ut.N_Cols);
-            Assert.AreEqual(4, thinWs.Vt.M_Rows);
-            Assert.AreEqual(4, thinWs.Vt.N_Cols);
-            Assert.AreEqual(7, thinWs.BidiagWs.W.M_Rows);
-            Assert.AreEqual(4, thinWs.BidiagWs.W.N_Cols);
+        var thinWs = new fProxySVDThinCache(7, 4, Allocator.Temp);
+        Assert.AreEqual(4, thinWs.B.M_Rows);
+        Assert.AreEqual(4, thinWs.B.N_Cols);
+        Assert.AreEqual(4, thinWs.dVec.N);
+        Assert.AreEqual(4, thinWs.eVec.N);
+        Assert.AreEqual(4, thinWs.Ut.M_Rows);
+        Assert.AreEqual(7, thinWs.Ut.N_Cols);
+        Assert.AreEqual(4, thinWs.Vt.M_Rows);
+        Assert.AreEqual(4, thinWs.Vt.N_Cols);
+        Assert.AreEqual(7, thinWs.BidiagWs.W.M_Rows);
+        Assert.AreEqual(4, thinWs.BidiagWs.W.N_Cols);
 
-            var valuesWs = arena.fProxySVDValuesCache(7, 4);
-            Assert.AreEqual(4, valuesWs.dVec.N);
-            Assert.AreEqual(4, valuesWs.eVec.N);
-            Assert.AreEqual(7, valuesWs.BidiagWs.W.M_Rows);
-            Assert.AreEqual(4, valuesWs.BidiagWs.W.N_Cols);
-        }
-        finally { arena.Dispose(); }
+        var valuesWs = new fProxySVDValuesCache(7, 4, Allocator.Temp);
+        Assert.AreEqual(4, valuesWs.dVec.N);
+        Assert.AreEqual(4, valuesWs.eVec.N);
+        Assert.AreEqual(7, valuesWs.BidiagWs.W.M_Rows);
+        Assert.AreEqual(4, valuesWs.BidiagWs.W.N_Cols);
     }
 }

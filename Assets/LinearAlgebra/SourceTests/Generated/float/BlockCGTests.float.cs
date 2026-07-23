@@ -44,9 +44,9 @@ public class floatBlockCGTests
 
         static float Tol() => 2e-2f;
 
-        static floatN Row(ref Arena arena, in floatMxN B, int j, int n)
+        static floatN Row(in floatMxN B, int j, int n)
         {
-            var v = arena.floatVec(n);
+            var v = new floatN(n, Allocator.Temp);
             for (int c = 0; c < n; c++) v[c] = B[j, c];
             return v;
         }
@@ -55,13 +55,11 @@ public class floatBlockCGTests
         // every column reached tolerance.
         void MatchesScalarCgPerColumn()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 20, s = 4;
-            var A = floatKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 71001u);
-            var B = arena.floatRandomMat(s, n, (float)(-1f), (float)1f, 71002u);
+            var A = floatKrylovBatteryOracles.BuildDenseSpdSystem(n, 71001u);
+            var B = GenerateOP.floatRandomMat(s, n, (float)(-1f), (float)1f, 71002u);
 
-            var X = arena.floatMat(s, n);                      // zero initial guess
+            var X = new floatMxN(s, n, Allocator.Temp);        // zero initial guess
             var info = Krylov.bcg(in A, in B, ref X, 8 * n, Consts.floatSqrtEps);
 
             Assert.IsTrue(info.Solved);
@@ -70,39 +68,35 @@ public class floatBlockCGTests
 
             for (int j = 0; j < s; j++)
             {
-                var bj = Row(ref arena, in B, j, n);
-                var xj = arena.floatVec(n);
+                var bj = Row(in B, j, n);
+                var xj = new floatN(n, Allocator.Temp);
                 Assert.IsTrue(Krylov.cg(in A, in bj, ref xj, 8 * n, Consts.floatSqrtEps));
 
                 // Block column j matches the scalar solve (both converged to the same unique solution).
                 for (int c = 0; c < n; c++)
                     Assert.IsTrue(math.abs((double)X[j, c] - (double)xj[c]) <= Tol() * (1.0 + math.abs((double)xj[c])));
             }
-
-            arena.Dispose();
         }
 
         // The block solve converges in <= the worst single-column scalar iteration count (the block
         // advantage: all RHS share the richer block Krylov subspace).
         void BlockAdvantageIterations()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 24, s = 5;
-            var A = floatKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 72001u);
-            var B = arena.floatRandomMat(s, n, (float)(-1f), (float)1f, 72002u);
+            var A = floatKrylovBatteryOracles.BuildDenseSpdSystem(n, 72001u);
+            var B = GenerateOP.floatRandomMat(s, n, (float)(-1f), (float)1f, 72002u);
             float tol = Consts.floatSqrtEps;
             int budget = 8 * n;
 
-            var X = arena.floatMat(s, n);
+            var X = new floatMxN(s, n, Allocator.Temp);
             var blockInfo = Krylov.bcg(in A, in B, ref X, budget, tol);
             Assert.IsTrue(blockInfo.Solved);
 
             int worstScalar = 0;
             for (int j = 0; j < s; j++)
             {
-                var bj = Row(ref arena, in B, j, n);
-                var xj = arena.floatVec(n);
+                var bj = Row(in B, j, n);
+                var xj = new floatN(n, Allocator.Temp);
                 var si = Krylov.cg(in A, in bj, ref xj, budget, tol);
                 Assert.IsTrue(si.Solved);
                 if (si.iterations > worstScalar) worstScalar = si.iterations;
@@ -110,23 +104,19 @@ public class floatBlockCGTests
 
             // block iters must be <= the worst single-column scalar iters (the block advantage)
             Assert.IsTrue(blockInfo.iterations <= worstScalar);
-
-            arena.Dispose();
         }
 
         // A rank-deficient RHS block (two identical columns) must NOT NaN or throw -- the ridge-
         // regularized s x s solve deflates the dependent direction and still solves every column.
         void RankDeficientBlockDeflates()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 16, s = 4;
-            var A = floatKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 73001u);
-            var B = arena.floatRandomMat(s, n, (float)(-1f), (float)1f, 73002u);
+            var A = floatKrylovBatteryOracles.BuildDenseSpdSystem(n, 73001u);
+            var B = GenerateOP.floatRandomMat(s, n, (float)(-1f), (float)1f, 73002u);
             // Force columns 1 and 3 identical -> block rank <= 3.
             for (int c = 0; c < n; c++) B[3, c] = B[1, c];
 
-            var X = arena.floatMat(s, n);
+            var X = new floatMxN(s, n, Allocator.Temp);
             var info = Krylov.bcg(in A, in B, ref X, 8 * n, Consts.floatSqrtEps);
 
             // Finite, no NaN, and every column solved (system is consistent for each column).
@@ -138,35 +128,29 @@ public class floatBlockCGTests
             // The two identical RHS get the same solution.
             for (int c = 0; c < n; c++)
                 Assert.IsTrue(math.abs((double)X[1, c] - (double)X[3, c]) <= Tol() * (1.0 + math.abs((double)X[1, c])));
-
-            arena.Dispose();
         }
 
         // Block-Jacobi-preconditioned block-CG over a BSR SPD system matches per-column scalar pcg.
         void PreconditionedMatchesScalar()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 18, s = 3;
-            var Adense = floatKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 74001u);
-            var A = floatKrylovBatteryOracles.DenseToBSR1x1(ref arena, in Adense);
-            var M = arena.floatBlockJacobi(in A);
-            var B = arena.floatRandomMat(s, n, (float)(-1f), (float)1f, 74002u);
+            var Adense = floatKrylovBatteryOracles.BuildDenseSpdSystem(n, 74001u);
+            var A = floatKrylovBatteryOracles.DenseToBSR1x1(in Adense);
+            var M = new floatBlockJacobi(in A, Allocator.Temp);
+            var B = GenerateOP.floatRandomMat(s, n, (float)(-1f), (float)1f, 74002u);
 
-            var X = arena.floatMat(s, n);
+            var X = new floatMxN(s, n, Allocator.Temp);
             var info = Krylov.bcg(in A, in M, in B, ref X, 8 * n, Consts.floatSqrtEps);
             Assert.IsTrue(info.Solved);
 
             for (int j = 0; j < s; j++)
             {
-                var bj = Row(ref arena, in B, j, n);
-                var xj = arena.floatVec(n);
+                var bj = Row(in B, j, n);
+                var xj = new floatN(n, Allocator.Temp);
                 Assert.IsTrue(Krylov.cg(in A, in M, in bj, ref xj, 8 * n, Consts.floatSqrtEps));
                 for (int c = 0; c < n; c++)
                     Assert.IsTrue(math.abs((double)X[j, c] - (double)xj[c]) <= Tol() * (1.0 + math.abs((double)xj[c])));
             }
-
-            arena.Dispose();
         }
 
         // Independent of the scalar solver: pick a KNOWN block solution Xk, form B = A Xk (via the
@@ -174,24 +158,20 @@ public class floatBlockCGTests
         // against a ground-truth solution, not against another solver.
         void KnownSolutionRecovered()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 20, s = 5;
-            var A = floatKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 75001u);
-            var Xk = arena.floatRandomMat(s, n, (float)(-1f), (float)1f, 75002u);   // known solution
+            var A = floatKrylovBatteryOracles.BuildDenseSpdSystem(n, 75001u);
+            var Xk = GenerateOP.floatRandomMat(s, n, (float)(-1f), (float)1f, 75002u);   // known solution
 
-            var B = arena.floatMat(s, n);
+            var B = new floatMxN(s, n, Allocator.Temp);
             new floatDenseOperator(in A).ApplyBlock(in Xk, ref B, s);                 // B[j,:] = A Xk[j,:]
 
-            var X = arena.floatMat(s, n);
+            var X = new floatMxN(s, n, Allocator.Temp);
             var info = Krylov.bcg(in A, in B, ref X, 8 * n, Consts.floatSqrtEps);
             Assert.IsTrue(info.Solved);
 
             for (int j = 0; j < s; j++)
                 for (int c = 0; c < n; c++)
                     Assert.IsTrue(math.abs((double)X[j, c] - (double)Xk[j, c]) <= Tol() * (1.0 + math.abs((double)Xk[j, c])));
-
-            arena.Dispose();
         }
     }
 

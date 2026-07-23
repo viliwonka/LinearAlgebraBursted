@@ -100,7 +100,8 @@ public class doubleSparseSolverTests
         static void AssertLeastSquaresOptimal(in doubleMxN A, in doubleN x, in doubleN b, double relTol)
         {
             var Ax  = Blas.dot(A, x);
-            var res = Ax - b;                 // r = A x - b     (length m)
+            var res = new doubleN(in Ax, Allocator.Temp);
+            doubleComp.subInPlace(res, b);    // r = A x - b     (length m)
             var atr = Blas.dot(res, A);  // A^T r           (length n)  -- vector*matrix == A^T r
             var atb = Blas.dot(b, A);    // A^T b           (scale reference)
             double atrNorm = math.sqrt(Blas.dot(atr, atr));
@@ -156,9 +157,9 @@ public class doubleSparseSolverTests
 
         // Same recipe as doubleConjugateGradientTests.BuildSPD: A = M^T M + dim*I (strictly SPD,
         // diagonally dominant).
-        static doubleMxN BuildDenseSPD(ref Arena arena, int dim, uint seed)
+        static doubleMxN BuildDenseSPD(int dim, uint seed)
         {
-            var M = arena.doubleRandomMat(dim, dim, -1f, 1f, seed);
+            var M = GenerateOP.doubleRandomMat(dim, dim, -1f, 1f, seed);
             var A = Blas.dot(M, M, true);
             for (int d = 0; d < dim; d++)
                 A[d, d] += dim;
@@ -170,23 +171,25 @@ public class doubleSparseSolverTests
         // as a perf choice -- it avoids a few reallocations of the builder's internal growable
         // lists, nothing more. Growing the builder's lists past capacityHint (triggering one or
         // more UnsafeList reallocations) is safe: the builder's mutable triplet state lives
-        // behind a single heap-allocated pointer shared by every value-copy of the struct
-        // (including the arena's own tracked copy), so a reallocation on one copy is visible to
-        // all of them. See the growth regression tests in SparseBSRTests.double.cs, which build
+        // behind a single heap-allocated pointer shared by every value-copy of the struct, so a
+        // reallocation on one copy is visible to all of them. See the growth regression tests in
+        // SparseBSRTests.double.cs, which build
         // via many-reallocation growth on purpose to prove this.
-        static doubleBSR DenseToBSR1x1(ref Arena arena, in doubleMxN A, int nnzHint)
+        static doubleBSR DenseToBSR1x1(in doubleMxN A, int nnzHint)
         {
-            var builder = arena.doubleBSRBuilder(A.M_Rows, A.N_Cols, 1, 1, math.max(nnzHint, 1));
+            var builder = new doubleBSRBuilder(A.M_Rows, A.N_Cols, 1, 1, Allocator.Temp, math.max(nnzHint, 1));
             for (int r = 0; r < A.M_Rows; r++)
                 for (int c = 0; c < A.N_Cols; c++)
                     if (A[r, c] != (double)0)
                         builder.AddValue(r, c, A[r, c]);
-            return builder.ToBSR(ref arena);
+            return builder.ToBSR(Allocator.Temp);
         }
 
         static void AssertVecEq(in doubleN a, in doubleN b, double tol)
         {
-            Assert.IsTrue(Analysis.isZero(a - b, tol));
+            var diff = new doubleN(in a, Allocator.Temp);
+            doubleComp.subInPlace(diff, b);
+            Assert.IsTrue(Analysis.isZero(diff, tol));
         }
 
         // got/expected are double so the result-struct norm fields (now double regardless of the
@@ -198,20 +201,18 @@ public class doubleSparseSolverTests
         // ---- 1. 1D Laplacian tridiagonal as a 1x1-block BSR: CG matches dense CG -----------
         void Laplacian1DBSRCGMatchesDenseCG()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 16;
-            var A = arena.doubleLaplacian1D(dim);
+            var A = doubleGallery.doubleLaplacian1D(dim);
             // Tridiagonal: at most 3 nonzeros/row -> 3*dim is a safe upper bound.
-            var bsm = DenseToBSR1x1(ref arena, in A, 3 * dim);
+            var bsm = DenseToBSR1x1(in A, 3 * dim);
 
-            var b = arena.doubleRandomVec(dim, -1f, 1f, 4242);
+            var b = GenerateOP.doubleRandomVec(dim, -1f, 1f, 4242);
 
-            var xDense = arena.doubleVec(dim);
+            var xDense = new doubleN(dim, Allocator.Temp);
             bool okDense = Krylov.cg(in A, in b, ref xDense, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okDense);
 
-            var xBsr = arena.doubleVec(dim);
+            var xBsr = new doubleN(dim, Allocator.Temp);
             bool okBsr = Krylov.cg(in bsm, in b, ref xBsr, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okBsr);
 
@@ -220,8 +221,6 @@ public class doubleSparseSolverTests
             // A*x ~= b for the BSR solve too (spec's explicit acceptance criterion).
             var Ax = BSR.spMV(in bsm, in xBsr);
             AssertVecEq(in Ax, in b, Tol());
-
-            arena.Dispose();
         }
 
         // ---- 2. 3x3-block SPD system: CG converges, residual within tol -------------------
@@ -233,39 +232,37 @@ public class doubleSparseSolverTests
         // scalars.
         void ThreeByThreeBlockSPDConverges()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             const int BR = 3;
             const int nb = 3; // 9x9
             int dim = BR * nb;
 
-            var mb = arena.doubleBSRBuilder(nb, nb, BR, BR, nb * nb);
-            mb.AddBlock(0, 0, arena.doubleRandomMat(BR, BR, -1f, 1f, 8001));
-            mb.AddBlock(0, 1, arena.doubleRandomMat(BR, BR, -1f, 1f, 8002));
-            mb.AddBlock(1, 1, arena.doubleRandomMat(BR, BR, -1f, 1f, 8003));
-            mb.AddBlock(1, 2, arena.doubleRandomMat(BR, BR, -1f, 1f, 8004));
-            mb.AddBlock(2, 2, arena.doubleRandomMat(BR, BR, -1f, 1f, 8005));
-            mb.AddBlock(2, 0, arena.doubleRandomMat(BR, BR, -1f, 1f, 8006));
-            var Mdense = mb.ToBSR(ref arena).ToDense(ref arena);
+            var mb = new doubleBSRBuilder(nb, nb, BR, BR, Allocator.Temp, nb * nb);
+            mb.AddBlock(0, 0, GenerateOP.doubleRandomMat(BR, BR, -1f, 1f, 8001));
+            mb.AddBlock(0, 1, GenerateOP.doubleRandomMat(BR, BR, -1f, 1f, 8002));
+            mb.AddBlock(1, 1, GenerateOP.doubleRandomMat(BR, BR, -1f, 1f, 8003));
+            mb.AddBlock(1, 2, GenerateOP.doubleRandomMat(BR, BR, -1f, 1f, 8004));
+            mb.AddBlock(2, 2, GenerateOP.doubleRandomMat(BR, BR, -1f, 1f, 8005));
+            mb.AddBlock(2, 0, GenerateOP.doubleRandomMat(BR, BR, -1f, 1f, 8006));
+            var Mdense = mb.ToBSR(Allocator.Temp).ToDense(Allocator.Temp);
 
             var A = Blas.dot(Mdense, Mdense, true);
             for (int i = 0; i < dim; i++)
                 A[i, i] += dim;
 
-            var ab = arena.doubleBSRBuilder(nb, nb, BR, BR, nb * nb);
+            var ab = new doubleBSRBuilder(nb, nb, BR, BR, Allocator.Temp, nb * nb);
             for (int bi = 0; bi < nb; bi++)
                 for (int bj = 0; bj < nb; bj++)
                 {
-                    var blk = arena.doubleMat(BR, BR);
+                    var blk = new doubleMxN(BR, BR, Allocator.Temp);
                     for (int r = 0; r < BR; r++)
                         for (int c = 0; c < BR; c++)
                             blk[r, c] = A[bi * BR + r, bj * BR + c];
                     ab.AddBlock(bi, bj, in blk);
                 }
-            var Absm = ab.ToBSR(ref arena);
+            var Absm = ab.ToBSR(Allocator.Temp);
 
-            var b = arena.doubleRandomVec(dim, -1f, 1f, 8100);
-            var x = arena.doubleVec(dim);
+            var b = GenerateOP.doubleRandomVec(dim, -1f, 1f, 8100);
+            var x = new doubleN(dim, Allocator.Temp);
             bool ok = Krylov.cg(in Absm, in b, ref x);
             Assert.IsTrue(ok);
 
@@ -273,26 +270,22 @@ public class doubleSparseSolverTests
             AssertVecEq(in Ax, in b, Tol());
 
             // Cross-check against the dense reference too.
-            var xDense = arena.doubleVec(dim);
+            var xDense = new doubleN(dim, Allocator.Temp);
             bool okDense = Krylov.cg(in A, in b, ref xDense);
             Assert.IsTrue(okDense);
             AssertVecEq(in x, in xDense, Tol());
-
-            arena.Dispose();
         }
 
         // ---- 3. Dense forwarding unchanged: guards the cg(in doubleMxN,...) ----
         //         refactor into cg<doubleDenseOperator> -----------------------------------------
         void DenseForwardingUnchanged()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 12;
-            var A = BuildDenseSPD(ref arena, dim, 90125);
-            var b = arena.doubleRandomVec(dim, -1f, 1f, 4242);
+            var A = BuildDenseSPD(dim, 90125);
+            var b = GenerateOP.doubleRandomVec(dim, -1f, 1f, 4242);
 
             // The (unchanged, public) concrete entry point.
-            var xConcrete = arena.doubleVec(dim);
+            var xConcrete = new doubleN(dim, Allocator.Temp);
             bool okConcrete = Krylov.cg(in A, in b, ref xConcrete);
             Assert.IsTrue(okConcrete);
 
@@ -300,10 +293,10 @@ public class doubleSparseSolverTests
             // result -- this is the single source of truth the concrete overload now forwards
             // into.
             var op = new doubleDenseOperator(in A);
-            var xGeneric = arena.doubleVec(dim);
-            var r = arena.doubleVec(dim);
-            var p = arena.doubleVec(dim);
-            var Ap = arena.doubleVec(dim);
+            var xGeneric = new doubleN(dim, Allocator.Temp);
+            var r = new doubleN(dim, Allocator.Temp);
+            var p = new doubleN(dim, Allocator.Temp);
+            var Ap = new doubleN(dim, Allocator.Temp);
             bool okGeneric = Krylov.cg(in op, in b, ref xGeneric, ref r, ref p, ref Ap, dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okGeneric);
 
@@ -319,35 +312,29 @@ public class doubleSparseSolverTests
             // A and b), so it MUST run on fresh copies, not the A/b the CG calls used.
             var A2 = A.Copy();
             var b2 = b.Copy();
-            var xQR = arena.doubleVec(dim);
+            var xQR = new doubleN(dim, Allocator.Temp);
             QR.solveInPlace(ref A2, ref b2, ref xQR);
             AssertVecEq(in xConcrete, in xQR, Tol());
-
-            arena.Dispose();
         }
 
         // ---- 4. PCG correctness: matches CG's solution -------------------------------------
         void PCGMatchesCG()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 12;
-            var A = BuildDenseSPD(ref arena, dim, 6001);
-            var bsm = DenseToBSR1x1(ref arena, in A, dim * dim);
-            var M = arena.doubleBlockJacobi(in bsm);
-            var b = arena.doubleRandomVec(dim, -1f, 1f, 6002);
+            var A = BuildDenseSPD(dim, 6001);
+            var bsm = DenseToBSR1x1(in A, dim * dim);
+            var M = new doubleBlockJacobi(in bsm, Allocator.Temp);
+            var b = GenerateOP.doubleRandomVec(dim, -1f, 1f, 6002);
 
-            var xCG = arena.doubleVec(dim);
+            var xCG = new doubleN(dim, Allocator.Temp);
             bool okCG = Krylov.cg(in bsm, in b, ref xCG);
             Assert.IsTrue(okCG);
 
-            var xPCG = arena.doubleVec(dim);
+            var xPCG = new doubleN(dim, Allocator.Temp);
             bool okPCG = Krylov.cg(in bsm, in M, in b, ref xPCG);
             Assert.IsTrue(okPCG);
 
             AssertVecEq(in xCG, in xPCG, Tol());
-
-            arena.Dispose();
         }
 
         // The merged single-body cg<TOp,TPre> with the identity preconditioner must be BIT-IDENTICAL
@@ -357,24 +344,22 @@ public class doubleSparseSolverTests
         // two bodies is safe. z is passed as `default` on the identity path (never dereferenced).
         void MergedCgIdentityMatchesPlainCg()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 12;
-            var A = BuildDenseSPD(ref arena, dim, 6101);
-            var bsm = DenseToBSR1x1(ref arena, in A, dim * dim);
-            var b = arena.doubleRandomVec(dim, -1f, 1f, 6102);
+            var A = BuildDenseSPD(dim, 6101);
+            var bsm = DenseToBSR1x1(in A, dim * dim);
+            var b = GenerateOP.doubleRandomVec(dim, -1f, 1f, 6102);
 
             int maxIter = 4 * dim;
             double tol = Consts.doubleSqrtEps;
 
             // Reference: plain cg<TOp> (explicit scratch).
-            var xPlain = arena.doubleVec(dim);
-            var rP = arena.doubleVec(dim); var pP = arena.doubleVec(dim); var ApP = arena.doubleVec(dim);
+            var xPlain = new doubleN(dim, Allocator.Temp);
+            var rP = new doubleN(dim, Allocator.Temp); var pP = new doubleN(dim, Allocator.Temp); var ApP = new doubleN(dim, Allocator.Temp);
             var infoPlain = Krylov.cg(in bsm, in b, ref xPlain, ref rP, ref pP, ref ApP, maxIter, tol);
 
             // Merged: cg<TOp,TPre> with the identity preconditioner; z = default (unused when identity).
-            var xMerged = arena.doubleVec(dim);
-            var rM = arena.doubleVec(dim); var pM = arena.doubleVec(dim); var ApM = arena.doubleVec(dim);
+            var xMerged = new doubleN(dim, Allocator.Temp);
+            var rM = new doubleN(dim, Allocator.Temp); var pM = new doubleN(dim, Allocator.Temp); var ApM = new doubleN(dim, Allocator.Temp);
             doubleN zM = default;
             var op = new doubleBSROperator(in bsm);
             var id = new doubleIdentityPreconditioner();
@@ -389,8 +374,6 @@ public class doubleSparseSolverTests
             Assert.AreEqual(infoPlain.iterations, infoMerged.iterations);
             Assert.AreEqual((int)infoPlain.status, (int)infoMerged.status);
             Assert.AreEqual(infoPlain.rnorm, infoMerged.rnorm);
-
-            arena.Dispose();
         }
 
         // ---- 5. Block-Jacobi PCG needs <= iterations of plain CG on an ill-conditioned,
@@ -406,18 +389,16 @@ public class doubleSparseSolverTests
         // GalleryLaplacian1D/MinIJ CG tests use).
         void PCGBeatsCGIllConditioned()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 16;
-            var S = BuildDenseSPD(ref arena, dim, 7001);
+            var S = BuildDenseSPD(dim, 7001);
 
-            var Sym = arena.doubleMat(dim, dim);
+            var Sym = new doubleMxN(dim, dim, Allocator.Temp);
             for (int r = 0; r < dim; r++)
                 for (int c = 0; c < dim; c++)
                     Sym[r, c] = S[r, c] / math.sqrt(S[r, r] * S[c, c]);
 
-            var A = arena.doubleMat(dim, dim);
-            var d = arena.doubleVec(dim);
+            var A = new doubleMxN(dim, dim, Allocator.Temp);
+            var d = new doubleN(dim, Allocator.Temp);
             for (int i = 0; i < dim; i++)
                 d[i] = (i % 2 == 0) ? (double)1 : (double)100; // alternating 1,100
 
@@ -425,9 +406,9 @@ public class doubleSparseSolverTests
                 for (int c = 0; c < dim; c++)
                     A[r, c] = d[r] * Sym[r, c] * d[c];
 
-            var bsm = DenseToBSR1x1(ref arena, in A, dim * dim);
-            var M = arena.doubleBlockJacobi(in bsm);
-            var b = arena.doubleRandomVec(dim, -1f, 1f, 7002);
+            var bsm = DenseToBSR1x1(in A, dim * dim);
+            var M = new doubleBlockJacobi(in bsm, Allocator.Temp);
+            var b = GenerateOP.doubleRandomVec(dim, -1f, 1f, 7002);
 
             int maxBudget = 4 * dim;
             int minCG = -1, minPCG = -1;
@@ -435,13 +416,13 @@ public class doubleSparseSolverTests
             {
                 if (minCG < 0)
                 {
-                    var xCG = arena.doubleVec(dim);
+                    var xCG = new doubleN(dim, Allocator.Temp);
                     if (Krylov.cg(in bsm, in b, ref xCG, budget, Consts.doubleSqrtEps))
                         minCG = budget;
                 }
                 if (minPCG < 0)
                 {
-                    var xPCG = arena.doubleVec(dim);
+                    var xPCG = new doubleN(dim, Allocator.Temp);
                     if (Krylov.cg(in bsm, in M, in b, ref xPCG, budget, Consts.doubleSqrtEps))
                         minPCG = budget;
                 }
@@ -450,32 +431,28 @@ public class doubleSparseSolverTests
             Assert.IsTrue(minCG > 0);
             Assert.IsTrue(minPCG > 0);
             Assert.IsTrue(minPCG <= minCG);
-
-            arena.Dispose();
         }
 
         // ---- 6. Block-Jacobi Apply matches a hand-computed block-diagonal inverse ----------
         void BlockJacobiApplyHandComputed()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             const int BR = 2;
-            var builder = arena.doubleBSRBuilder(2, 2, BR, BR, 2);
-            var d0 = arena.doubleMat(BR, BR);
+            var builder = new doubleBSRBuilder(2, 2, BR, BR, Allocator.Temp, 2);
+            var d0 = new doubleMxN(BR, BR, Allocator.Temp);
             d0[0, 0] = 4f; d0[0, 1] = 1f;
             d0[1, 0] = 1f; d0[1, 1] = 3f;
-            var d1 = arena.doubleMat(BR, BR);
+            var d1 = new doubleMxN(BR, BR, Allocator.Temp);
             d1[0, 0] = 2f; d1[0, 1] = 0f;
             d1[1, 0] = 0f; d1[1, 1] = 5f;
             builder.AddBlock(0, 0, in d0);
             builder.AddBlock(1, 1, in d1);
-            var A = builder.ToBSR(ref arena);
+            var A = builder.ToBSR(Allocator.Temp);
 
-            var M = arena.doubleBlockJacobi(in A);
+            var M = new doubleBlockJacobi(in A, Allocator.Temp);
 
-            var r = arena.doubleVec(4);
+            var r = new doubleN(4, Allocator.Temp);
             r[0] = 1f; r[1] = 2f; r[2] = 3f; r[3] = 4f;
-            var z = arena.doubleVec(4);
+            var z = new doubleN(4, Allocator.Temp);
             M.Apply(in r, ref z);
 
             // Hand inverse of d0=[[4,1],[1,3]]: det=11, inv = (1/11)*[[3,-1],[-1,4]].
@@ -490,22 +467,18 @@ public class doubleSparseSolverTests
             Assert.IsTrue(math.abs(z[1] - z1) < Tol());
             Assert.IsTrue(math.abs(z[2] - z2) < Tol());
             Assert.IsTrue(math.abs(z[3] - z3) < Tol());
-
-            arena.Dispose();
         }
 
         // ---- 7. Warm start: seeding x with the exact solution converges immediately --------
         void WarmStart()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 10;
-            var A = BuildDenseSPD(ref arena, dim, 9001);
-            var bsm = DenseToBSR1x1(ref arena, in A, dim * dim);
-            var M = arena.doubleBlockJacobi(in bsm);
-            var b = arena.doubleRandomVec(dim, -1f, 1f, 9002);
+            var A = BuildDenseSPD(dim, 9001);
+            var bsm = DenseToBSR1x1(in A, dim * dim);
+            var M = new doubleBlockJacobi(in bsm, Allocator.Temp);
+            var b = GenerateOP.doubleRandomVec(dim, -1f, 1f, 9002);
 
-            var x = arena.doubleVec(dim);
+            var x = new doubleN(dim, Allocator.Temp);
             bool ok = Krylov.cg(in bsm, in M, in b, ref x);
             Assert.IsTrue(ok);
 
@@ -518,15 +491,13 @@ public class doubleSparseSolverTests
             AssertVecEq(in x, in xWarm, Tol());
 
             // Same check for plain (unpreconditioned) CG.
-            var xCG = arena.doubleVec(dim);
+            var xCG = new doubleN(dim, Allocator.Temp);
             bool okCG = Krylov.cg(in bsm, in b, ref xCG);
             Assert.IsTrue(okCG);
             var xCGWarm = xCG.Copy();
             bool okCGWarm = Krylov.cg(in bsm, in b, ref xCGWarm, 1, Consts.doubleSqrtEps);
             Assert.IsTrue(okCGWarm);
             AssertVecEq(in xCG, in xCGWarm, Tol());
-
-            arena.Dispose();
         }
 
         // Note: the old "non-SPD preconditioner breaks down" case was removed when IdoublePreconditioner
@@ -547,16 +518,14 @@ public class doubleSparseSolverTests
         // this cleanly where CG's p.Ap>0 curvature requirement would break down.
         void MinresIndefiniteDenseAndBSR()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 16;
-            var A = arena.doubleLaplacian1D(dim);
+            var A = doubleGallery.doubleLaplacian1D(dim);
             for (int i = 0; i < dim; i++)
                 A[i, i] -= (double)2;          // shift diag 2 -> 0: mixed-sign spectrum, indefinite
 
-            var b = arena.doubleRandomVec(dim, -1f, 1f, 31001);
+            var b = GenerateOP.doubleRandomVec(dim, -1f, 1f, 31001);
 
-            var xDense = arena.doubleVec(dim);
+            var xDense = new doubleN(dim, Allocator.Temp);
             bool okDense = Krylov.minres(in A, in b, ref xDense, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okDense);
 
@@ -578,8 +547,8 @@ public class doubleSparseSolverTests
             pivot.Dispose();
 
             // Same system as a 1x1-block BSR: minres(BSR) must agree with minres(dense).
-            var bsm = DenseToBSR1x1(ref arena, in A, 3 * dim);   // tridiagonal (shifted diag=0 dropped)
-            var xBsr = arena.doubleVec(dim);
+            var bsm = DenseToBSR1x1(in A, 3 * dim);   // tridiagonal (shifted diag=0 dropped)
+            var xBsr = new doubleN(dim, Allocator.Temp);
             bool okBsr = Krylov.minres(in bsm, in b, ref xBsr, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okBsr);
             AssertVecEq(in xDense, in xBsr, LooseTol());
@@ -591,24 +560,20 @@ public class doubleSparseSolverTests
             // down -- Krylov.cg's p.Ap>0 curvature guard fails / returns a much
             // worse residual. MINRES succeeding where CG cannot is the whole point of this case;
             // asserting CG's failure mode is fiddly and left as a documented expectation.
-
-            arena.Dispose();
         }
 
         // ---- MINRES on a plain SPD system agrees with CG (dense + BSR) --------------------
         void MinresSpdMatchesCG()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 12;
-            var A = BuildDenseSPD(ref arena, dim, 32001);
-            var b = arena.doubleRandomVec(dim, -1f, 1f, 32002);
+            var A = BuildDenseSPD(dim, 32001);
+            var b = GenerateOP.doubleRandomVec(dim, -1f, 1f, 32002);
 
-            var xCG = arena.doubleVec(dim);
+            var xCG = new doubleN(dim, Allocator.Temp);
             bool okCG = Krylov.cg(in A, in b, ref xCG, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okCG);
 
-            var xMin = arena.doubleVec(dim);
+            var xMin = new doubleN(dim, Allocator.Temp);
             bool okMin = Krylov.minres(in A, in b, ref xMin, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okMin);
             AssertVecEq(in xCG, in xMin, LooseTol());       // MINRES == CG on an SPD system
@@ -617,13 +582,11 @@ public class doubleSparseSolverTests
             AssertVecEq(in Ax, in b, LooseTol());
 
             // BSR minres agrees with dense minres.
-            var bsm = DenseToBSR1x1(ref arena, in A, dim * dim);
-            var xMinBsr = arena.doubleVec(dim);
+            var bsm = DenseToBSR1x1(in A, dim * dim);
+            var xMinBsr = new doubleN(dim, Allocator.Temp);
             bool okMinBsr = Krylov.minres(in bsm, in b, ref xMinBsr, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okMinBsr);
             AssertVecEq(in xMin, in xMinBsr, LooseTol());
-
-            arena.Dispose();
         }
 
         // ---- BiCGSTAB on a NON-symmetric (diagonally-dominant) system --------------------
@@ -633,16 +596,14 @@ public class doubleSparseSolverTests
         // symmetrized. Cross-checked against a dense DIRECT LU solve on the SAME matrix.
         void BiCGStabNonSymmetricMatchesLU()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 8;
-            var A = arena.doubleRandomMat(dim, dim, -1f, 1f, 33001);
+            var A = GenerateOP.doubleRandomMat(dim, dim, -1f, 1f, 33001);
             for (int i = 0; i < dim; i++)
                 A[i, i] += (double)(dim + 1);   // strict diagonal dominance
 
-            var b = arena.doubleRandomVec(dim, -1f, 1f, 33002);
+            var b = GenerateOP.doubleRandomVec(dim, -1f, 1f, 33002);
 
-            var xBcg = arena.doubleVec(dim);
+            var xBcg = new doubleN(dim, Allocator.Temp);
             bool okBcg = Krylov.biCGStab(in A, in b, ref xBcg, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okBcg);
             var Ax = Blas.dot(A, xBcg);
@@ -659,26 +620,22 @@ public class doubleSparseSolverTests
             pivot.Dispose();
 
             // BSR form agrees with the dense BiCGSTAB solve.
-            var bsm = DenseToBSR1x1(ref arena, in A, dim * dim);
-            var xBcgBsr = arena.doubleVec(dim);
+            var bsm = DenseToBSR1x1(in A, dim * dim);
+            var xBcgBsr = new doubleN(dim, Allocator.Temp);
             bool okBcgBsr = Krylov.biCGStab(in bsm, in b, ref xBcgBsr, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okBcgBsr);
             AssertVecEq(in xBcg, in xBcgBsr, LooseTol());
-
-            arena.Dispose();
         }
 
         // ---- LSQR on an overdetermined CONSISTENT least-squares problem (dense + BSR) ------
         void LsqrOverdeterminedConsistentDenseAndBSR()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 10, n = 4;
-            var A = arena.doubleRandomMat(m, n, -1f, 1f, 35001);
-            var xTrue = arena.doubleRandomVec(n, -1f, 1f, 35002);
+            var A = GenerateOP.doubleRandomMat(m, n, -1f, 1f, 35001);
+            var xTrue = GenerateOP.doubleRandomVec(n, -1f, 1f, 35002);
             var b = Blas.dot(A, xTrue);      // consistent
 
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
             bool ok = Krylov.lsqr(in A, in b, ref x, 8 * n, Consts.doubleSqrtEps);
             Assert.IsTrue(ok);
             AssertVecEq(in x, in xTrue, LooseTol());
@@ -686,25 +643,21 @@ public class doubleSparseSolverTests
             var Ax = Blas.dot(A, x);
             AssertVecEq(in Ax, in b, LooseTol());
 
-            var bsm = DenseToBSR1x1(ref arena, in A, m * n);
-            var xBsr = arena.doubleVec(n);
+            var bsm = DenseToBSR1x1(in A, m * n);
+            var xBsr = new doubleN(n, Allocator.Temp);
             bool okBsr = Krylov.lsqr(in bsm, in b, ref xBsr, 8 * n, Consts.doubleSqrtEps);
             Assert.IsTrue(okBsr);
             AssertVecEq(in x, in xBsr, LooseTol());
-
-            arena.Dispose();
         }
 
         // ---- LSQR on an overdetermined INCONSISTENT problem: normal-equation optimality ----
         void LsqrInconsistentMatchesQR()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 10, n = 4;
-            var A = arena.doubleRandomMat(m, n, -1f, 1f, 37001);
-            var b = arena.doubleRandomVec(m, -1f, 1f, 37002);   // inconsistent
+            var A = GenerateOP.doubleRandomMat(m, n, -1f, 1f, 37001);
+            var b = GenerateOP.doubleRandomVec(m, -1f, 1f, 37002);   // inconsistent
 
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
             bool ok = Krylov.lsqr(in A, in b, ref x, 8 * n, Consts.doubleSqrtEps);
             Assert.IsTrue(ok);
 
@@ -712,17 +665,15 @@ public class doubleSparseSolverTests
 
             var A2 = A.Copy();
             var b2 = b.Copy();
-            var xQR = arena.doubleVec(n);
+            var xQR = new doubleN(n, Allocator.Temp);
             QR.solveInPlace(ref A2, ref b2, ref xQR);
             AssertVecEq(in x, in xQR, LooseTol());
 
-            var bsm = DenseToBSR1x1(ref arena, in A, m * n);
-            var xBsr = arena.doubleVec(n);
+            var bsm = DenseToBSR1x1(in A, m * n);
+            var xBsr = new doubleN(n, Allocator.Temp);
             bool okBsr = Krylov.lsqr(in bsm, in b, ref xBsr, 8 * n, Consts.doubleSqrtEps);
             Assert.IsTrue(okBsr);
             AssertVecEq(in x, in xBsr, LooseTol());
-
-            arena.Dispose();
         }
 
         // ---- LSQR on an underdetermined (m < n) CONSISTENT problem (min-norm, nice-to-have) ---
@@ -731,20 +682,16 @@ public class doubleSparseSolverTests
         // converges to the (minimum-norm) solution; assert the easy-to-verify property A x ~= b.
         void LsqrUnderdeterminedConsistent()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 4, n = 10;
-            var A = arena.doubleRandomMat(m, n, -1f, 1f, 38001);
-            var xGen = arena.doubleRandomVec(n, -1f, 1f, 38002);
+            var A = GenerateOP.doubleRandomMat(m, n, -1f, 1f, 38001);
+            var xGen = GenerateOP.doubleRandomVec(n, -1f, 1f, 38002);
             var b = Blas.dot(A, xGen);      // consistent
 
-            var xL = arena.doubleVec(n);
+            var xL = new doubleN(n, Allocator.Temp);
             bool okL = Krylov.lsqr(in A, in b, ref xL, 8 * n, Consts.doubleSqrtEps);
             Assert.IsTrue(okL);
             var AxL = Blas.dot(A, xL);
             AssertVecEq(in AxL, in b, LooseTol());
-
-            arena.Dispose();
         }
 
         // =================================================================================
@@ -763,13 +710,11 @@ public class doubleSparseSolverTests
         // ---- MINRES warm start (SPD system, sufficient for the warm-start plumbing) ----
         void MinresWarmStart()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 12;
-            var A = BuildDenseSPD(ref arena, dim, 41001);
-            var b = arena.doubleRandomVec(dim, -1f, 1f, 41002);
+            var A = BuildDenseSPD(dim, 41001);
+            var b = GenerateOP.doubleRandomVec(dim, -1f, 1f, 41002);
 
-            var x = arena.doubleVec(dim);
+            var x = new doubleN(dim, Allocator.Temp);
             bool ok = Krylov.minres(in A, in b, ref x, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(ok);
 
@@ -779,23 +724,19 @@ public class doubleSparseSolverTests
             bool okWarm = Krylov.minres(in A, in b, ref xWarm, 1, Consts.doubleSqrtEps);
             Assert.IsTrue(okWarm);
             AssertVecEq(in x, in xWarm, LooseTol());
-
-            arena.Dispose();
         }
 
         // ---- BiCGSTAB warm start (random diagonally-dominant non-symmetric A) ----
         void BiCGStabWarmStart()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 8;
-            var A = arena.doubleRandomMat(dim, dim, -1f, 1f, 41101);
+            var A = GenerateOP.doubleRandomMat(dim, dim, -1f, 1f, 41101);
             for (int i = 0; i < dim; i++)
                 A[i, i] += (double)(dim + 1);   // strict diagonal dominance
 
-            var b = arena.doubleRandomVec(dim, -1f, 1f, 41102);
+            var b = GenerateOP.doubleRandomVec(dim, -1f, 1f, 41102);
 
-            var x = arena.doubleVec(dim);
+            var x = new doubleN(dim, Allocator.Temp);
             bool ok = Krylov.biCGStab(in A, in b, ref x, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(ok);
 
@@ -803,21 +744,17 @@ public class doubleSparseSolverTests
             bool okWarm = Krylov.biCGStab(in A, in b, ref xWarm, 1, Consts.doubleSqrtEps);
             Assert.IsTrue(okWarm);
             AssertVecEq(in x, in xWarm, LooseTol());
-
-            arena.Dispose();
         }
 
         // ---- LSQR warm start (overdetermined m>n CONSISTENT system, b = A*xTrue) ----
         void LsqrWarmStart()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 10, n = 4;
-            var A = arena.doubleRandomMat(m, n, -1f, 1f, 41301);
-            var xTrue = arena.doubleRandomVec(n, -1f, 1f, 41302);
+            var A = GenerateOP.doubleRandomMat(m, n, -1f, 1f, 41301);
+            var xTrue = GenerateOP.doubleRandomVec(n, -1f, 1f, 41302);
             var b = Blas.dot(A, xTrue);      // consistent
 
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
             bool ok = Krylov.lsqr(in A, in b, ref x, 8 * n, Consts.doubleSqrtEps);
             Assert.IsTrue(ok);
 
@@ -825,8 +762,6 @@ public class doubleSparseSolverTests
             bool okWarm = Krylov.lsqr(in A, in b, ref xWarm, 1, Consts.doubleSqrtEps);
             Assert.IsTrue(okWarm);
             AssertVecEq(in x, in xWarm, LooseTol());
-
-            arena.Dispose();
         }
 
         // ---- LSMR on an overdetermined CONSISTENT least-squares problem (dense + BSR) ------
@@ -834,14 +769,12 @@ public class doubleSparseSolverTests
         // Same fixture and acceptance criterion as LsqrOverdeterminedConsistentDenseAndBSR above.
         void LsmrOverdeterminedConsistentDenseAndBSR()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 10, n = 4;
-            var A = arena.doubleRandomMat(m, n, -1f, 1f, 42001);
-            var xTrue = arena.doubleRandomVec(n, -1f, 1f, 42002);
+            var A = GenerateOP.doubleRandomMat(m, n, -1f, 1f, 42001);
+            var xTrue = GenerateOP.doubleRandomVec(n, -1f, 1f, 42002);
             var b = Blas.dot(A, xTrue);      // consistent
 
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
             bool ok = Krylov.lsmr(in A, in b, ref x, 8 * n, Consts.doubleSqrtEps);
             Assert.IsTrue(ok);
             AssertVecEq(in x, in xTrue, LooseTol());
@@ -849,13 +782,11 @@ public class doubleSparseSolverTests
             var Ax = Blas.dot(A, x);
             AssertVecEq(in Ax, in b, LooseTol());
 
-            var bsm = DenseToBSR1x1(ref arena, in A, m * n);
-            var xBsr = arena.doubleVec(n);
+            var bsm = DenseToBSR1x1(in A, m * n);
+            var xBsr = new doubleN(n, Allocator.Temp);
             bool okBsr = Krylov.lsmr(in bsm, in b, ref xBsr, 8 * n, Consts.doubleSqrtEps);
             Assert.IsTrue(okBsr);
             AssertVecEq(in x, in xBsr, LooseTol());
-
-            arena.Dispose();
         }
 
         // ---- LSMR on an overdetermined INCONSISTENT problem: normal-equation optimality ----
@@ -865,13 +796,11 @@ public class doubleSparseSolverTests
         // same oracle as the LSQR inconsistent test, so LSMR must land on the same x.
         void LsmrInconsistentMatchesQR()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 10, n = 4;
-            var A = arena.doubleRandomMat(m, n, -1f, 1f, 42101);
-            var b = arena.doubleRandomVec(m, -1f, 1f, 42102);   // inconsistent
+            var A = GenerateOP.doubleRandomMat(m, n, -1f, 1f, 42101);
+            var b = GenerateOP.doubleRandomVec(m, -1f, 1f, 42102);   // inconsistent
 
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
             bool ok = Krylov.lsmr(in A, in b, ref x, 8 * n, Consts.doubleSqrtEps);
             Assert.IsTrue(ok);
 
@@ -879,17 +808,15 @@ public class doubleSparseSolverTests
 
             var A2 = A.Copy();
             var b2 = b.Copy();
-            var xQR = arena.doubleVec(n);
+            var xQR = new doubleN(n, Allocator.Temp);
             QR.solveInPlace(ref A2, ref b2, ref xQR);
             AssertVecEq(in x, in xQR, LooseTol());
 
-            var bsm = DenseToBSR1x1(ref arena, in A, m * n);
-            var xBsr = arena.doubleVec(n);
+            var bsm = DenseToBSR1x1(in A, m * n);
+            var xBsr = new doubleN(n, Allocator.Temp);
             bool okBsr = Krylov.lsmr(in bsm, in b, ref xBsr, 8 * n, Consts.doubleSqrtEps);
             Assert.IsTrue(okBsr);
             AssertVecEq(in x, in xBsr, LooseTol());
-
-            arena.Dispose();
         }
 
         // ---- LSMR on an underdetermined (m < n) CONSISTENT problem: matches LSQR ----
@@ -898,39 +825,33 @@ public class doubleSparseSolverTests
         // cross-checked against the already-tested LSQR solution.
         void LsmrUnderdeterminedMatchesLsqr()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 4, n = 10;
-            var A = arena.doubleRandomMat(m, n, -1f, 1f, 42201);
-            var xGen = arena.doubleRandomVec(n, -1f, 1f, 42202);
+            var A = GenerateOP.doubleRandomMat(m, n, -1f, 1f, 42201);
+            var xGen = GenerateOP.doubleRandomVec(n, -1f, 1f, 42202);
             var b = Blas.dot(A, xGen);      // consistent
 
-            var xM = arena.doubleVec(n);
+            var xM = new doubleN(n, Allocator.Temp);
             bool okM = Krylov.lsmr(in A, in b, ref xM, 8 * n, Consts.doubleSqrtEps);
             Assert.IsTrue(okM);
             var AxM = Blas.dot(A, xM);
             AssertVecEq(in AxM, in b, LooseTol());
 
-            var xL = arena.doubleVec(n);
+            var xL = new doubleN(n, Allocator.Temp);
             bool okL = Krylov.lsqr(in A, in b, ref xL, 8 * n, Consts.doubleSqrtEps);
             Assert.IsTrue(okL);
 
             AssertVecEq(in xM, in xL, LooseTol());   // both land on the unique minimum-norm solution
-
-            arena.Dispose();
         }
 
         // ---- LSMR warm start (overdetermined m>n CONSISTENT system, b = A*xTrue) ----
         void LsmrWarmStart()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 10, n = 4;
-            var A = arena.doubleRandomMat(m, n, -1f, 1f, 42301);
-            var xTrue = arena.doubleRandomVec(n, -1f, 1f, 42302);
+            var A = GenerateOP.doubleRandomMat(m, n, -1f, 1f, 42301);
+            var xTrue = GenerateOP.doubleRandomVec(n, -1f, 1f, 42302);
             var b = Blas.dot(A, xTrue);      // consistent
 
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
             bool ok = Krylov.lsmr(in A, in b, ref x, 8 * n, Consts.doubleSqrtEps);
             Assert.IsTrue(ok);
 
@@ -938,8 +859,6 @@ public class doubleSparseSolverTests
             bool okWarm = Krylov.lsmr(in A, in b, ref xWarm, 1, Consts.doubleSqrtEps);
             Assert.IsTrue(okWarm);
             AssertVecEq(in x, in xWarm, LooseTol());
-
-            arena.Dispose();
         }
 
         // ---- LSMR monotone ||A^T r|| (its distinguishing property vs LSQR) ----
@@ -953,27 +872,25 @@ public class doubleSparseSolverTests
         // (a real bug) exceeds it.
         void LsmrMonotonicArnorm()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 12, n = 6;
-            var A = arena.doubleRandomMat(m, n, -1f, 1f, 43101);
-            var b = arena.doubleRandomVec(m, -1f, 1f, 43102);   // inconsistent -> ||A^T r|| > 0 for a while
+            var A = GenerateOP.doubleRandomMat(m, n, -1f, 1f, 43101);
+            var b = GenerateOP.doubleRandomVec(m, -1f, 1f, 43102);   // inconsistent -> ||A^T r|| > 0 for a while
 
             double prev = double.MaxValue;
             for (int k = 1; k <= n; k++)
             {
-                var x = arena.doubleVec(n);                     // fresh zero start
+                var x = new doubleN(n, Allocator.Temp);                     // fresh zero start
                 Krylov.lsmr(in A, in b, ref x, k, (double)0);  // tol 0 -> runs exactly k iterations
 
-                var res = Blas.dot(A, x) - b;              // A x - b   (length m)
+                var Ax = Blas.dot(A, x);
+                var res = new doubleN(in Ax, Allocator.Temp);
+                doubleComp.subInPlace(res, b);             // res = A x - b   (length m)
                 var atr = Blas.dot(res, A);                // A^T res   (length n)
                 double nrm = math.sqrt(Blas.dot(atr, atr));
 
                 Assert.IsTrue(nrm <= prev + (double)0.02 * prev + (double)1e-4);   // non-increasing (+ fp slack)
                 prev = nrm;
             }
-
-            arena.Dispose();
         }
 
         // ---- Tikhonov damping: LSQR / LSMR both solve min ||Ax-b||^2 + damp^2||x||^2 ----
@@ -985,36 +902,32 @@ public class doubleSparseSolverTests
         // regime where the regularization is numerically significant but the system stays solvable.
         void TikhonovDampingMatchesAugmentedQR()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 10, n = 4;
-            var A = arena.doubleRandomMat(m, n, -1f, 1f, 43201);
-            var b = arena.doubleRandomVec(m, -1f, 1f, 43202);   // inconsistent
+            var A = GenerateOP.doubleRandomMat(m, n, -1f, 1f, 43201);
+            var b = GenerateOP.doubleRandomVec(m, -1f, 1f, 43202);   // inconsistent
             double damp = (double)0.5;
 
-            var xref = DampedReferenceQR(ref arena, in A, in b, damp);
+            var xref = DampedReferenceQR(in A, in b, damp);
 
             // dense damped solvers
-            var xL = arena.doubleVec(n);
+            var xL = new doubleN(n, Allocator.Temp);
             Assert.IsTrue(Krylov.lsqr(in A, in b, ref xL, 16 * n, Consts.doubleSqrtEps, damp));
             AssertVecEq(in xL, in xref, LooseTol());
 
-            var xM = arena.doubleVec(n);
+            var xM = new doubleN(n, Allocator.Temp);
             Assert.IsTrue(Krylov.lsmr(in A, in b, ref xM, 16 * n, Consts.doubleSqrtEps, damp));
             AssertVecEq(in xM, in xref, LooseTol());
 
             // 1x1-BSR damped solvers agree with the same reference
-            var bsm = DenseToBSR1x1(ref arena, in A, m * n);
+            var bsm = DenseToBSR1x1(in A, m * n);
 
-            var xLb = arena.doubleVec(n);
+            var xLb = new doubleN(n, Allocator.Temp);
             Assert.IsTrue(Krylov.lsqr(in bsm, in b, ref xLb, 16 * n, Consts.doubleSqrtEps, damp));
             AssertVecEq(in xLb, in xref, LooseTol());
 
-            var xMb = arena.doubleVec(n);
+            var xMb = new doubleN(n, Allocator.Temp);
             Assert.IsTrue(Krylov.lsmr(in bsm, in b, ref xMb, 16 * n, Consts.doubleSqrtEps, damp));
             AssertVecEq(in xMb, in xref, LooseTol());
-
-            arena.Dispose();
         }
 
         // ================== LS diagnostics (LstsqInfo) ==================
@@ -1027,7 +940,8 @@ public class doubleSparseSolverTests
                                       in LstsqInfo info, double tol)
         {
             var Ax  = Blas.dot(A, x);
-            var res = Ax - b;                        // Ax - b  (= -r), length m
+            var res = new doubleN(in Ax, Allocator.Temp);
+            doubleComp.subInPlace(res, b);            // Ax - b  (= -r), length m
             double rnorm = math.sqrt(Blas.dot(res, res));
             Assert.IsTrue(math.abs(rnorm - info.rnorm) <= tol * ((double)1 + rnorm));
 
@@ -1045,20 +959,18 @@ public class doubleSparseSolverTests
         // INCONSISTENT over-determined system (so rnorm is meaningfully nonzero while Arnorm -> 0).
         void LstsqInfoMatchesIndependentRecompute()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 12, n = 5;
-            var A = arena.doubleRandomMat(m, n, -1f, 1f, 51001);
-            var b = arena.doubleRandomVec(m, -1f, 1f, 51002);   // random rhs -> inconsistent
+            var A = GenerateOP.doubleRandomMat(m, n, -1f, 1f, 51001);
+            var b = GenerateOP.doubleRandomVec(m, -1f, 1f, 51002);   // random rhs -> inconsistent
             int maxIter = 8 * n;
 
-            var xL = arena.doubleVec(n);
+            var xL = new doubleN(n, Allocator.Temp);
             var infoL = Krylov.lsqr(in A, in b, ref xL, maxIter, Consts.doubleSqrtEps, (double)0);
             Assert.IsTrue(infoL.Solved);
             Assert.IsTrue(infoL.iterations >= 1 && infoL.iterations <= maxIter);
             AssertInfoMatches(in A, in b, in xL, (double)0, in infoL, LooseTol());
 
-            var xM = arena.doubleVec(n);
+            var xM = new doubleN(n, Allocator.Temp);
             var infoM = Krylov.lsmr(in A, in b, ref xM, maxIter, Consts.doubleSqrtEps, (double)0);
             Assert.IsTrue(infoM.Solved);
             Assert.IsTrue(infoM.iterations >= 1 && infoM.iterations <= maxIter);
@@ -1067,33 +979,27 @@ public class doubleSparseSolverTests
             // Inconsistent system: residual is nonzero but the normal-equation residual vanishes.
             Assert.IsTrue(infoL.rnorm > (double)0.01);
             Assert.IsTrue(infoL.Arnorm <= LooseTol() * ((double)1 + infoL.rnorm));
-
-            arena.Dispose();
         }
 
         // Damped diagnostics: with damp != 0 the reported Arnorm is the DAMPED normal-equation
         // residual ||A^T r - damp^2 x||, which the independent recompute must reproduce.
         void LstsqInfoDampedArnorm()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 12, n = 5;
-            var A = arena.doubleRandomMat(m, n, -1f, 1f, 51101);
-            var b = arena.doubleRandomVec(m, -1f, 1f, 51102);
+            var A = GenerateOP.doubleRandomMat(m, n, -1f, 1f, 51101);
+            var b = GenerateOP.doubleRandomVec(m, -1f, 1f, 51102);
             double damp = (double)0.3;
             int maxIter = 8 * n;
 
-            var xL = arena.doubleVec(n);
+            var xL = new doubleN(n, Allocator.Temp);
             var infoL = Krylov.lsqr(in A, in b, ref xL, maxIter, Consts.doubleSqrtEps, damp);
             Assert.IsTrue(infoL.Solved);
             AssertInfoMatches(in A, in b, in xL, damp, in infoL, LooseTol());
 
-            var xM = arena.doubleVec(n);
+            var xM = new doubleN(n, Allocator.Temp);
             var infoM = Krylov.lsmr(in A, in b, ref xM, maxIter, Consts.doubleSqrtEps, damp);
             Assert.IsTrue(infoM.Solved);
             AssertInfoMatches(in A, in b, in xM, damp, in infoM, LooseTol());
-
-            arena.Dispose();
         }
 
         // The LSMR ‖r‖ figure is the one genuinely subtle piece of the free diagnostics: LSMR never
@@ -1104,29 +1010,27 @@ public class doubleSparseSolverTests
         // likely to expose a recurrence bug.
         void LsmrRnormMatchesExact()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 16, n = 6;
-            var A = arena.doubleRandomMat(m, n, -1f, 1f, 51401);
+            var A = GenerateOP.doubleRandomMat(m, n, -1f, 1f, 51401);
 
             // (a) consistent: b = A x* for a known x* -> exact recovery, rnorm -> 0.
-            var xStar = arena.doubleRandomVec(n, -1f, 1f, 51402);
+            var xStar = GenerateOP.doubleRandomVec(n, -1f, 1f, 51402);
             var bCons = Blas.dot(A, xStar);                // bCons = A x*  (consistent)
 
             // (b) inconsistent: random rhs -> nonzero least-squares residual.
-            var bInc = arena.doubleRandomVec(m, -1f, 1f, 51403);
+            var bInc = GenerateOP.doubleRandomVec(m, -1f, 1f, 51403);
 
             int maxIter = 8 * n;
-            var rS = arena.doubleVec(m);
-            var sS = arena.doubleVec(n);
+            var rS = new doubleN(m, Allocator.Temp);
+            var sS = new doubleN(n, Allocator.Temp);
 
-            var xc = arena.doubleVec(n);
+            var xc = new doubleN(n, Allocator.Temp);
             var ic = Krylov.lsmr(in A, in bCons, ref xc, maxIter, Consts.doubleSqrtEps, (double)0);
             Assert.IsTrue(ic.Solved);
             var exC = Krylov.lstsqResidual(new doubleDenseOperator(in A), in bCons, in xc, (double)0, ref rS, ref sS);
             AssertClose(ic.rnorm, exC.rnorm, LooseTol());
 
-            var xi = arena.doubleVec(n);
+            var xi = new doubleN(n, Allocator.Temp);
             var ii = Krylov.lsmr(in A, in bInc, ref xi, maxIter, Consts.doubleSqrtEps, (double)0);
             Assert.IsTrue(ii.Solved);
             var exI = Krylov.lstsqResidual(new doubleDenseOperator(in A), in bInc, in xi, (double)0, ref rS, ref sS);
@@ -1136,13 +1040,11 @@ public class doubleSparseSolverTests
             // (c) mid-flight: force MaxIterations (maxIter=2) so the ‖r‖ recurrence is pinned BEFORE
             // convergence -- where the dnorm += betacheck² accumulation would drift if transcribed
             // wrong. rnorm must still equal the exact residual of the (un-converged) iterate.
-            var xf = arena.doubleVec(n);
+            var xf = new doubleN(n, Allocator.Temp);
             var if2 = Krylov.lsmr(in A, in bInc, ref xf, 2, Consts.doubleSqrtEps, (double)0);
             Assert.IsTrue(!if2.Solved && if2.iterations == 2);   // genuinely stopped mid-flight
             var exF = Krylov.lstsqResidual(new doubleDenseOperator(in A), in bInc, in xf, (double)0, ref rS, ref sS);
             AssertClose(if2.rnorm, exF.rnorm, LooseTol());
-
-            arena.Dispose();
         }
 
         // The BSR diagnostic overload reports the same diagnostics (up to iterative tolerance) as the
@@ -1150,19 +1052,17 @@ public class doubleSparseSolverTests
         // lstsqInfo identically.
         void LstsqInfoBSRMatchesDense()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 12, n = 5;
-            var A = arena.doubleRandomMat(m, n, -1f, 1f, 51301);
-            var b = arena.doubleRandomVec(m, -1f, 1f, 51302);
-            var bsm = DenseToBSR1x1(ref arena, in A, m * n);
+            var A = GenerateOP.doubleRandomMat(m, n, -1f, 1f, 51301);
+            var b = GenerateOP.doubleRandomVec(m, -1f, 1f, 51302);
+            var bsm = DenseToBSR1x1(in A, m * n);
             int maxIter = 8 * n;
 
-            var xD = arena.doubleVec(n);
+            var xD = new doubleN(n, Allocator.Temp);
             var infoD = Krylov.lsqr(in A, in b, ref xD, maxIter, Consts.doubleSqrtEps, (double)0);
             Assert.IsTrue(infoD.Solved);
 
-            var xB = arena.doubleVec(n);
+            var xB = new doubleN(n, Allocator.Temp);
             var infoB = Krylov.lsqr(in bsm, in b, ref xB, maxIter, Consts.doubleSqrtEps, (double)0);
             Assert.IsTrue(infoB.Solved);
 
@@ -1171,8 +1071,6 @@ public class doubleSparseSolverTests
             Assert.IsTrue(math.abs(infoD.rnorm  - infoB.rnorm)  <= LooseTol() * sr);
             Assert.IsTrue(math.abs(infoD.Arnorm - infoB.Arnorm) <= LooseTol() * ((double)1 + infoD.Arnorm));
             Assert.IsTrue(math.abs(infoD.xnorm  - infoB.xnorm)  <= LooseTol() * ((double)1 + infoD.xnorm));
-
-            arena.Dispose();
         }
 
         // ================== AᵀA-Jacobi preconditioner ==================
@@ -1181,13 +1079,13 @@ public class doubleSparseSolverTests
         // magnitudes (2^0..2^(n-1)). AᵀA = diag(s²) is badly scaled: the plain solve sees n distinct
         // eigenvalues (needs ~n Krylov steps), while column-Jacobi maps A·D = Q (unit-conditioned),
         // so the preconditioned solve converges almost immediately.
-        static doubleMxN BuildBadlyScaledOrthonormal(ref Arena arena, int m, int n, uint seed)
+        static doubleMxN BuildBadlyScaledOrthonormal(int m, int n, uint seed)
         {
-            var Q = arena.doubleRandomMat(m, n, -1f, 1f, seed);
-            var R = arena.doubleMat(n, n);
+            var Q = GenerateOP.doubleRandomMat(m, n, -1f, 1f, seed);
+            var R = new doubleMxN(n, n, Allocator.Temp);
             QR.decompInPlace(ref Q, ref R);           // Q now has orthonormal columns
 
-            var A = arena.doubleMat(m, n);
+            var A = new doubleMxN(m, n, Allocator.Temp);
             for (int j = 0; j < n; j++)
             {
                 double s = math.pow((double)2, (double)j);
@@ -1200,34 +1098,32 @@ public class doubleSparseSolverTests
         // least-squares optimum, and the lsqrJacobi convenience wrapper matches the composable path.
         void JacobiPreconditionerReducesIterations()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 30, n = 12;
-            var A = BuildBadlyScaledOrthonormal(ref arena, m, n, 52001);
-            var b = arena.doubleRandomVec(m, -1f, 1f, 52002);
+            var A = BuildBadlyScaledOrthonormal(m, n, 52001);
+            var b = GenerateOP.doubleRandomVec(m, -1f, 1f, 52002);
             int maxIter = 4 * n;
             double tol = Consts.doubleSqrtEps;
 
             // plain lsqr with diagnostics
-            var xPlain = arena.doubleVec(n);
+            var xPlain = new doubleN(n, Allocator.Temp);
             var infoPlain = Krylov.lsqr(in A, in b, ref xPlain, maxIter, tol, (double)0);
             Assert.IsTrue(infoPlain.Solved);
 
             // preconditioned via the composable diagnostic path (to read the iteration count)
-            var d2 = arena.doubleVec(n); Blas.columnNormsSquared(in A, ref d2);
-            var d  = arena.doubleVec(n); Blas.buildJacobiScale(in d2, ref d);
-            var scratch = arena.doubleVec(n);
+            var d2 = new doubleN(n, Allocator.Temp); Blas.columnNormsSquared(in A, ref d2);
+            var d  = new doubleN(n, Allocator.Temp); Blas.buildJacobiScale(in d2, ref d);
+            var scratch = new doubleN(n, Allocator.Temp);
             var op = new doubleColScaledOperator<doubleDenseOperator>(new doubleDenseOperator(in A), d, scratch);
 
-            var y    = arena.doubleVec(n);
-            var u    = arena.doubleVec(m);
-            var v    = arena.doubleVec(n);
-            var w    = arena.doubleVec(n);
-            var tmpM = arena.doubleVec(m);
-            var tmpN = arena.doubleVec(n);
+            var y    = new doubleN(n, Allocator.Temp);
+            var u    = new doubleN(m, Allocator.Temp);
+            var v    = new doubleN(n, Allocator.Temp);
+            var w    = new doubleN(n, Allocator.Temp);
+            var tmpM = new doubleN(m, Allocator.Temp);
+            var tmpN = new doubleN(n, Allocator.Temp);
             var infoJac = Krylov.lsqr(op, in b, ref y, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIter, tol, (double)0);
             Assert.IsTrue(infoJac.Solved);
-            var xComp = arena.doubleVec(n);
+            var xComp = new doubleN(n, Allocator.Temp);
             for (int j = 0; j < n; j++) xComp[j] = d[j] * y[j];
 
             Assert.IsTrue(infoJac.iterations < infoPlain.iterations);   // the preconditioner's payoff
@@ -1238,43 +1134,37 @@ public class doubleSparseSolverTests
             AssertLeastSquaresOptimal(in A, in xPlain, in b, LooseTol());
 
             // The convenience wrapper reproduces the composable path exactly.
-            var xConv = arena.doubleVec(n);
+            var xConv = new doubleN(n, Allocator.Temp);
             Assert.IsTrue(Krylov.lsqrJacobi(in A, in b, ref xConv, maxIter, tol));
             AssertVecEq(in xConv, in xComp, LooseTol());
-
-            arena.Dispose();
         }
 
         // Every *Jacobi convenience wrapper (lsqr/lsmr, dense AND 1x1-BSR) solves the
         // badly-scaled system to least-squares optimality, and the BSR form matches the dense form.
         void JacobiConvenienceSolversLSOptimalDenseAndBSR()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 24, n = 8;
-            var A = BuildBadlyScaledOrthonormal(ref arena, m, n, 52101);
-            var b = arena.doubleRandomVec(m, -1f, 1f, 52102);
-            var bsm = DenseToBSR1x1(ref arena, in A, m * n);
+            var A = BuildBadlyScaledOrthonormal(m, n, 52101);
+            var b = GenerateOP.doubleRandomVec(m, -1f, 1f, 52102);
+            var bsm = DenseToBSR1x1(in A, m * n);
             int maxIter = 4 * n;
             double tol = Consts.doubleSqrtEps;
 
             // lsqr
-            var xLd = arena.doubleVec(n);
+            var xLd = new doubleN(n, Allocator.Temp);
             Assert.IsTrue(Krylov.lsqrJacobi(in A, in b, ref xLd, maxIter, tol));
             AssertLeastSquaresOptimal(in A, in xLd, in b, LooseTol());
-            var xLb = arena.doubleVec(n);
+            var xLb = new doubleN(n, Allocator.Temp);
             Assert.IsTrue(Krylov.lsqrJacobi(in bsm, in b, ref xLb, maxIter, tol));
             AssertVecEq(in xLd, in xLb, LooseTol());
 
             // lsmr
-            var xMd = arena.doubleVec(n);
+            var xMd = new doubleN(n, Allocator.Temp);
             Assert.IsTrue(Krylov.lsmrJacobi(in A, in b, ref xMd, maxIter, tol));
             AssertLeastSquaresOptimal(in A, in xMd, in b, LooseTol());
-            var xMb = arena.doubleVec(n);
+            var xMb = new doubleN(n, Allocator.Temp);
             Assert.IsTrue(Krylov.lsmrJacobi(in bsm, in b, ref xMb, maxIter, tol));
             AssertVecEq(in xMd, in xMb, LooseTol());
-
-            arena.Dispose();
         }
 
         // LITERATURE GROUND TRUTH (Strang, Introduction to Linear Algebra -- best-fit line):
@@ -1285,13 +1175,11 @@ public class doubleSparseSolverTests
         // ground truth), not another solver.
         void LstsqInfoStrangLineFitExact()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.doubleMat(3, 2);
+            var A = new doubleMxN(3, 2, Allocator.Temp);
             A[0, 0] = (double)1; A[0, 1] = (double)0;
             A[1, 0] = (double)1; A[1, 1] = (double)1;
             A[2, 0] = (double)1; A[2, 1] = (double)2;
-            var b = arena.doubleVec(3);
+            var b = new doubleN(3, Allocator.Temp);
             b[0] = (double)6; b[1] = (double)0; b[2] = (double)0;
 
             double tol = Consts.doubleSqrtEps;
@@ -1301,7 +1189,7 @@ public class doubleSparseSolverTests
             // Both solvers must reproduce x = (5,-3) and the exact diagnostics.
             for (int which = 0; which < 2; which++)
             {
-                var x = arena.doubleVec(2);
+                var x = new doubleN(2, Allocator.Temp);
                 LstsqInfo info;
                 if (which == 0) info = Krylov.lsqr(in A, in b, ref x, 50, tol, (double)0);
                 else            info = Krylov.lsmr(in A, in b, ref x, 50, tol, (double)0);
@@ -1313,8 +1201,6 @@ public class doubleSparseSolverTests
                 Assert.IsTrue(info.Arnorm <= LooseTol() * ((double)1 + expRnorm));   // Aᵀr = 0 exactly
                 AssertClose(info.xnorm, expXnorm, LooseTol());
             }
-
-            arena.Dispose();
         }
 
         // Independently recompute ‖b - A x‖ (one real matvec) and check the solver's FREE rnorm
@@ -1347,38 +1233,37 @@ public class doubleSparseSolverTests
         // the un-converged iterate (that path returns √rsold, the post-update recurrence residual).
         void SolveInfoRnormMatchesResidual()
         {
-            var arena = new Arena(Allocator.Persistent);
             double tol = LooseTol();
 
             // ---- SPD system: cg (plain and block-Jacobi over BSR), minres ----
             int n = 12;
-            var Aspd = BuildDenseSPD(ref arena, n, 52001);
-            var bspd = arena.doubleRandomVec(n, -1f, 1f, 52002);
-            var bsm = DenseToBSR1x1(ref arena, in Aspd, n * n);
-            var M = arena.doubleBlockJacobi(in bsm);
+            var Aspd = BuildDenseSPD(n, 52001);
+            var bspd = GenerateOP.doubleRandomVec(n, -1f, 1f, 52002);
+            var bsm = DenseToBSR1x1(in Aspd, n * n);
+            var M = new doubleBlockJacobi(in bsm, Allocator.Temp);
             int maxIter = 4 * n;
 
-            var xg = arena.doubleVec(n);
+            var xg = new doubleN(n, Allocator.Temp);
             var ig = Krylov.cg(in Aspd, in bspd, ref xg, maxIter, Consts.doubleSqrtEps);
             Assert.IsTrue(ig.Solved && ig.iterations >= 1 && ig.iterations <= maxIter);
             AssertResidualNorm(in Aspd, in bspd, in xg, ig.rnorm, tol);
 
-            var xp = arena.doubleVec(n);
+            var xp = new doubleN(n, Allocator.Temp);
             var ip = Krylov.cg(in bsm, in M, in bspd, ref xp, maxIter, Consts.doubleSqrtEps);
             Assert.IsTrue(ip.Solved && ip.iterations >= 1);
             AssertResidualNormBSR(in bsm, in bspd, in xp, ip.rnorm, tol);   // BSR solve -> BSR recompute
 
-            var xm = arena.doubleVec(n);
+            var xm = new doubleN(n, Allocator.Temp);
             var im = Krylov.minres(in Aspd, in bspd, ref xm, maxIter, Consts.doubleSqrtEps);
             Assert.IsTrue(im.Solved && im.iterations >= 1);
             AssertResidualNorm(in Aspd, in bspd, in xm, im.rnorm, tol);
 
             // ---- Non-symmetric diagonally-dominant system: biCGStab ----
             int d = 8;
-            var Ansym = arena.doubleRandomMat(d, d, -1f, 1f, 52101);
+            var Ansym = GenerateOP.doubleRandomMat(d, d, -1f, 1f, 52101);
             for (int i = 0; i < d; i++) Ansym[i, i] += (double)(d + 1);   // strict diagonal dominance
-            var bns = arena.doubleRandomVec(d, -1f, 1f, 52102);
-            var xb = arena.doubleVec(d);
+            var bns = GenerateOP.doubleRandomVec(d, -1f, 1f, 52102);
+            var xb = new doubleN(d, Allocator.Temp);
             var ib = Krylov.biCGStab(in Ansym, in bns, ref xb, 4 * d, Consts.doubleSqrtEps);
             Assert.IsTrue(ib.Solved && ib.iterations >= 1);
             AssertResidualNorm(in Ansym, in bns, in xb, ib.rnorm, tol);
@@ -1387,22 +1272,22 @@ public class doubleSparseSolverTests
             //      converge, yet rnorm must still equal ‖b - A x‖ of the (updated) un-converged
             //      iterate -- the contract that on MaxIterations x is a valid last iterate, not
             //      undefined. Each returns √(tracked residual) with x fully advanced. ----
-            var xh = arena.doubleVec(n);
+            var xh = new doubleN(n, Allocator.Temp);
             var ih = Krylov.cg(in Aspd, in bspd, ref xh, 1, Consts.doubleSqrtEps);
             Assert.IsTrue(!ih.Solved && ih.status == IterativeSolveStatus.MaxIterations && ih.iterations == 1);
             AssertResidualNorm(in Aspd, in bspd, in xh, ih.rnorm, tol);
 
-            var xhp = arena.doubleVec(n);
+            var xhp = new doubleN(n, Allocator.Temp);
             var ihp = Krylov.cg(in bsm, in M, in bspd, ref xhp, 1, Consts.doubleSqrtEps);
             Assert.IsTrue(ihp.status == IterativeSolveStatus.MaxIterations && ihp.iterations == 1);
             AssertResidualNormBSR(in bsm, in bspd, in xhp, ihp.rnorm, tol);
 
-            var xhm = arena.doubleVec(n);
+            var xhm = new doubleN(n, Allocator.Temp);
             var ihm = Krylov.minres(in Aspd, in bspd, ref xhm, 1, Consts.doubleSqrtEps);
             Assert.IsTrue(ihm.status == IterativeSolveStatus.MaxIterations && ihm.iterations == 1);
             AssertResidualNorm(in Aspd, in bspd, in xhm, ihm.rnorm, tol);
 
-            var xhb = arena.doubleVec(d);
+            var xhb = new doubleN(d, Allocator.Temp);
             var ihb = Krylov.biCGStab(in Ansym, in bns, ref xhb, 1, Consts.doubleSqrtEps);
             Assert.IsTrue(ihb.status == IterativeSolveStatus.MaxIterations && ihb.iterations == 1);
             AssertResidualNorm(in Ansym, in bns, in xhb, ihb.rnorm, tol);
@@ -1410,11 +1295,11 @@ public class doubleSparseSolverTests
             // ---- Breakdown path: CG on the indefinite A = diag(1,-1) with b = (1,1) and x₀ = 0
             //      hits p·Ap = 1·1 + 1·(-1) = 0 on the very first step -> Breakdown at iterations=0,
             //      x untouched (= 0). rnorm must be the residual of that x: ‖b - A·0‖ = ‖b‖ = √2. ----
-            var Aind = arena.doubleMat(2, 2);
+            var Aind = new doubleMxN(2, 2, Allocator.Temp);
             Aind[0, 0] = (double)1; Aind[0, 1] = (double)0;
             Aind[1, 0] = (double)0; Aind[1, 1] = (double)(-1);
-            var bind = arena.doubleVec(2); bind[0] = (double)1; bind[1] = (double)1;
-            var xind = arena.doubleVec(2); xind[0] = (double)0; xind[1] = (double)0;
+            var bind = new doubleN(2, Allocator.Temp); bind[0] = (double)1; bind[1] = (double)1;
+            var xind = new doubleN(2, Allocator.Temp); xind[0] = (double)0; xind[1] = (double)0;
             var iind = Krylov.cg(in Aind, in bind, ref xind, 10, Consts.doubleSqrtEps);
             Assert.IsTrue(iind.status == IterativeSolveStatus.Breakdown && iind.iterations == 0);
             AssertResidualNorm(in Aind, in bind, in xind, iind.rnorm, tol);
@@ -1422,23 +1307,21 @@ public class doubleSparseSolverTests
 
             // ---- b == 0 shortcut: the unique solution is x = 0, reported as Converged at
             //      iterations=0 with rnorm exactly 0 (no matvec, b copied through). ----
-            var bzero = arena.doubleVec(n);
+            var bzero = new doubleN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) bzero[i] = (double)0;
-            var xzero = arena.doubleVec(n);
+            var xzero = new doubleN(n, Allocator.Temp);
             var izero = Krylov.cg(in Aspd, in bzero, ref xzero, maxIter, Consts.doubleSqrtEps);
             Assert.IsTrue(izero.Solved && izero.iterations == 0);
             AssertClose(izero.rnorm, (double)0, tol);
-
-            arena.Dispose();
         }
 
         // Damped least-squares reference: min ||Ax-b||^2 + damp^2||x||^2 == the plain least-squares
         // solution of the augmented system [A; damp*I] x ~= [b; 0], solved with dense QR. QR.solveInPlace
         // is DESTRUCTIVE, so the augmented matrix/rhs are fresh temporaries.
-        static doubleN DampedReferenceQR(ref Arena arena, in doubleMxN A, in doubleN b, double damp)
+        static doubleN DampedReferenceQR(in doubleMxN A, in doubleN b, double damp)
         {
             int m = A.M_Rows, n = A.N_Cols;
-            var Atil = arena.doubleMat(m + n, n);
+            var Atil = new doubleMxN(m + n, n, Allocator.Temp);
             for (int i = 0; i < m; i++)
                 for (int j = 0; j < n; j++)
                     Atil[i, j] = A[i, j];
@@ -1446,11 +1329,11 @@ public class doubleSparseSolverTests
                 for (int j = 0; j < n; j++)
                     Atil[m + i, j] = (i == j) ? damp : (double)0;
 
-            var btil = arena.doubleVec(m + n);
+            var btil = new doubleN(m + n, Allocator.Temp);
             for (int i = 0; i < m; i++) btil[i] = b[i];
             for (int i = 0; i < n; i++) btil[m + i] = (double)0;
 
-            var xref = arena.doubleVec(n);
+            var xref = new doubleN(n, Allocator.Temp);
             QR.solveInPlace(ref Atil, ref btil, ref xref);
             return xref;
         }
@@ -1592,30 +1475,25 @@ public class doubleSparseSolverTests
 
     // ---- guard / exception cases (managed thread; Assert.Throws can't run inside Burst) ----
 
-    static doubleBSR BuildSquareBSR(ref Arena arena)
+    static doubleBSR BuildSquareBSR()
     {
         const int BR = 2, BC = 2;
-        var builder = arena.doubleBSRBuilder(2, 2, BR, BC, 2);
-        builder.AddBlock(0, 0, arena.doubleRandomMat(BR, BC, -1f, 1f, 6101));
-        builder.AddBlock(1, 1, arena.doubleRandomMat(BR, BC, -1f, 1f, 6102));
-        return builder.ToBSR(ref arena);
+        var builder = new doubleBSRBuilder(2, 2, BR, BC, Allocator.Temp, 2);
+        builder.AddBlock(0, 0, GenerateOP.doubleRandomMat(BR, BC, -1f, 1f, 6101));
+        builder.AddBlock(1, 1, GenerateOP.doubleRandomMat(BR, BC, -1f, 1f, 6102));
+        return builder.ToBSR(Allocator.Temp);
     }
 
     [Test]
     public void BlockJacobi_MissingDiagonalBlock_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            const int BR = 2;
-            // Only an off-diagonal block -- no block at (0,0) or (1,1).
-            var builder = arena.doubleBSRBuilder(2, 2, BR, BR, 1);
-            builder.AddBlock(0, 1, arena.doubleRandomMat(BR, BR, -1f, 1f, 6201));
-            var A = builder.ToBSR(ref arena);
+        const int BR = 2;
+        // Only an off-diagonal block -- no block at (0,0) or (1,1).
+        var builder = new doubleBSRBuilder(2, 2, BR, BR, Allocator.Temp, 1);
+        builder.AddBlock(0, 1, GenerateOP.doubleRandomMat(BR, BR, -1f, 1f, 6201));
+        var A = builder.ToBSR(Allocator.Temp);
 
-            Assert.Throws<ArgumentException>(() => arena.doubleBlockJacobi(in A));
-        }
-        finally { arena.Dispose(); }
+        Assert.Throws<ArgumentException>(() => new doubleBlockJacobi(in A, Allocator.Temp));
     }
 
     // Numerical breakdown reporting: the out-info overloads return a DirectSolveInfo instead of
@@ -1623,89 +1501,69 @@ public class doubleSparseSolverTests
     [Test]
     public void BlockJacobi_SingularDiagonalBlock_StatusAndThrow()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            const int BR = 2;
-            var builder = arena.doubleBSRBuilder(2, 2, BR, BR, 2);
-            builder.AddBlock(0, 0, arena.doubleDiagonalMat(BR, (double)4));
-            builder.AddBlock(1, 1, arena.doubleMat(BR, BR));   // all-zero diagonal block: singular
-            var A = builder.ToBSR(ref arena);
+        const int BR = 2;
+        var builder = new doubleBSRBuilder(2, 2, BR, BR, Allocator.Temp, 2);
+        builder.AddBlock(0, 0, GenerateOP.doubleDiagonalMat(BR, (double)4));
+        builder.AddBlock(1, 1, new doubleMxN(BR, BR, Allocator.Temp));   // all-zero diagonal block: singular
+        var A = builder.ToBSR(Allocator.Temp);
 
-            var M = arena.doubleBlockJacobi(in A, out PreconditionerInfo info);
-            Assert.IsFalse(info.Solved);
+        var M = new doubleBlockJacobi(in A, Allocator.Temp, out PreconditionerInfo info);
+        Assert.IsFalse(info.Solved);
 
-            Assert.Throws<ArgumentException>(() => arena.doubleBlockJacobi(in A));
-        }
-        finally { arena.Dispose(); }
+        Assert.Throws<ArgumentException>(() => new doubleBlockJacobi(in A, Allocator.Temp));
     }
 
     [Test]
     public void Preconditioner_StatusOverloads_SuccessPath()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            const int BR = 2;
-            var builder = arena.doubleBSRBuilder(2, 2, BR, BR, 2);
-            builder.AddBlock(0, 0, arena.doubleDiagonalMat(BR, (double)4));
-            builder.AddBlock(1, 1, arena.doubleDiagonalMat(BR, (double)9));
-            var A = builder.ToBSR(ref arena);
+        const int BR = 2;
+        var builder = new doubleBSRBuilder(2, 2, BR, BR, Allocator.Temp, 2);
+        builder.AddBlock(0, 0, GenerateOP.doubleDiagonalMat(BR, (double)4));
+        builder.AddBlock(1, 1, GenerateOP.doubleDiagonalMat(BR, (double)9));
+        var A = builder.ToBSR(Allocator.Temp);
 
-            var mJ = arena.doubleBlockJacobi(in A, out PreconditionerInfo infoJ);
-            Assert.IsTrue(infoJ.Solved);
-            Assert.IsTrue(infoJ.attempts == 1);
-            var mI = arena.doubleIC0(in A, out PreconditionerInfo infoI);
-            Assert.IsTrue(infoI.Solved);
-            Assert.IsTrue(infoI.shift == 0.0);   // clean SPD build: no rescue shift
-            var mL = arena.doubleILU0(in A, out PreconditionerInfo infoL);
-            Assert.IsTrue(infoL.Solved);
-            Assert.IsTrue(infoL.attempts == 1);
+        var mJ = new doubleBlockJacobi(in A, Allocator.Temp, out PreconditionerInfo infoJ);
+        Assert.IsTrue(infoJ.Solved);
+        Assert.IsTrue(infoJ.attempts == 1);
+        var mI = new doubleIC0(in A, Allocator.Temp, out PreconditionerInfo infoI);
+        Assert.IsTrue(infoI.Solved);
+        Assert.IsTrue(infoI.shift == 0.0);   // clean SPD build: no rescue shift
+        var mL = new doubleILU0(in A, Allocator.Temp, out PreconditionerInfo infoL);
+        Assert.IsTrue(infoL.Solved);
+        Assert.IsTrue(infoL.attempts == 1);
 
-            // The successfully-built Jacobi is usable: z = M^-1 r on the 4x4 system.
-            var r = arena.doubleVec(2 * BR, (double)1);
-            var z = arena.doubleVec(2 * BR);
-            mJ.Apply(in r, ref z);
-            Assert.IsTrue(math.abs((float)(z[0] - (double)0.25)) < 1e-6f);
-            Assert.IsTrue(math.abs((float)(z[2 * BR - 1] - (double)(1.0 / 9.0))) < 1e-6f);
-        }
-        finally { arena.Dispose(); }
+        // The successfully-built Jacobi is usable: z = M^-1 r on the 4x4 system.
+        var r = GenerateOP.doubleVec(2 * BR, (double)1);
+        var z = new doubleN(2 * BR, Allocator.Temp);
+        mJ.Apply(in r, ref z);
+        Assert.IsTrue(math.abs((float)(z[0] - (double)0.25)) < 1e-6f);
+        Assert.IsTrue(math.abs((float)(z[2 * BR - 1] - (double)(1.0 / 9.0))) < 1e-6f);
     }
 
     [Test]
     public void BlockJacobi_NonSquareBSR_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            const int BR = 2, BC = 3;
-            var builder = arena.doubleBSRBuilder(2, 2, BR, BC, 1); // BR != BC
-            builder.AddBlock(0, 0, arena.doubleRandomMat(BR, BC, -1f, 1f, 6301));
-            var A = builder.ToBSR(ref arena);
+        const int BR = 2, BC = 3;
+        var builder = new doubleBSRBuilder(2, 2, BR, BC, Allocator.Temp, 1); // BR != BC
+        builder.AddBlock(0, 0, GenerateOP.doubleRandomMat(BR, BC, -1f, 1f, 6301));
+        var A = builder.ToBSR(Allocator.Temp);
 
-            Assert.Throws<ArgumentException>(() => arena.doubleBlockJacobi(in A));
-        }
-        finally { arena.Dispose(); }
+        Assert.Throws<ArgumentException>(() => new doubleBlockJacobi(in A, Allocator.Temp));
     }
 
     [Test]
     public void Cg_NonSquareDenseOperator_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = arena.doubleMat(3, 4); // non-square
-            var op = new doubleDenseOperator(in A);
-            var b = arena.doubleVec(3);
-            var x = arena.doubleVec(4);
-            var r = arena.doubleVec(3);
-            var p = arena.doubleVec(3);
-            var Ap = arena.doubleVec(3);
+        var A = new doubleMxN(3, 4, Allocator.Temp); // non-square
+        var op = new doubleDenseOperator(in A);
+        var b = new doubleN(3, Allocator.Temp);
+        var x = new doubleN(4, Allocator.Temp);
+        var r = new doubleN(3, Allocator.Temp);
+        var p = new doubleN(3, Allocator.Temp);
+        var Ap = new doubleN(3, Allocator.Temp);
 
-            Assert.Throws<ArgumentException>(() =>
-                Krylov.cg(in op, in b, ref x, ref r, ref p, ref Ap, 4, Consts.doubleSqrtEps));
-        }
-        finally { arena.Dispose(); }
+        Assert.Throws<ArgumentException>(() =>
+            Krylov.cg(in op, in b, ref x, ref r, ref p, ref Ap, 4, Consts.doubleSqrtEps));
     }
 
     // ---- scratch-aliasing guards for cg / cg --------------------------------------------
@@ -1719,83 +1577,63 @@ public class doubleSparseSolverTests
     [Test]
     public void Cg_AliasingRAndAp_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            const int dim = 4;
-            var A = arena.doubleMat(dim, dim); // square; guard fires before A is read
-            var op = new doubleDenseOperator(in A);
-            var b = arena.doubleRandomVec(dim, -1f, 1f, 6501);
-            var x = arena.doubleVec(dim);
-            var p = arena.doubleVec(dim);
-            var Ap = arena.doubleVec(dim);
-            var rAlias = Ap; // r aliases Ap (would turn r -= Ap into r -= r == 0: false convergence)
-            Assert.Throws<ArgumentException>(() =>
-                Krylov.cg(in op, in b, ref x, ref rAlias, ref p, ref Ap, dim, Consts.doubleSqrtEps));
-        }
-        finally { arena.Dispose(); }
+        const int dim = 4;
+        var A = new doubleMxN(dim, dim, Allocator.Temp); // square; guard fires before A is read
+        var op = new doubleDenseOperator(in A);
+        var b = GenerateOP.doubleRandomVec(dim, -1f, 1f, 6501);
+        var x = new doubleN(dim, Allocator.Temp);
+        var p = new doubleN(dim, Allocator.Temp);
+        var Ap = new doubleN(dim, Allocator.Temp);
+        var rAlias = Ap; // r aliases Ap (would turn r -= Ap into r -= r == 0: false convergence)
+        Assert.Throws<ArgumentException>(() =>
+            Krylov.cg(in op, in b, ref x, ref rAlias, ref p, ref Ap, dim, Consts.doubleSqrtEps));
     }
 
     [Test]
     public void Cg_AliasingRAndX_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            const int dim = 4;
-            var A = arena.doubleMat(dim, dim);
-            var op = new doubleDenseOperator(in A);
-            var b = arena.doubleRandomVec(dim, -1f, 1f, 6511);
-            var x = arena.doubleVec(dim);
-            var p = arena.doubleVec(dim);
-            var Ap = arena.doubleVec(dim);
-            var rAlias = x; // r aliases x (r.CopyFrom(b) would silently clobber the initial guess)
-            Assert.Throws<ArgumentException>(() =>
-                Krylov.cg(in op, in b, ref x, ref rAlias, ref p, ref Ap, dim, Consts.doubleSqrtEps));
-        }
-        finally { arena.Dispose(); }
+        const int dim = 4;
+        var A = new doubleMxN(dim, dim, Allocator.Temp);
+        var op = new doubleDenseOperator(in A);
+        var b = GenerateOP.doubleRandomVec(dim, -1f, 1f, 6511);
+        var x = new doubleN(dim, Allocator.Temp);
+        var p = new doubleN(dim, Allocator.Temp);
+        var Ap = new doubleN(dim, Allocator.Temp);
+        var rAlias = x; // r aliases x (r.CopyFrom(b) would silently clobber the initial guess)
+        Assert.Throws<ArgumentException>(() =>
+            Krylov.cg(in op, in b, ref x, ref rAlias, ref p, ref Ap, dim, Consts.doubleSqrtEps));
     }
 
     [Test]
     public void Pcg_AliasingRAndX_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = BuildSquareBSR(ref arena);       // 4 x 4, both diagonal blocks present
-            var M = arena.doubleBlockJacobi(in A);
-            int dim = A.M_Rows;
-            var b = arena.doubleRandomVec(dim, -1f, 1f, 6521);
-            var x = arena.doubleVec(dim);
-            var p = arena.doubleVec(dim);
-            var Ap = arena.doubleVec(dim);
-            var z = arena.doubleVec(dim);
-            var rAlias = x; // r aliases x
-            Assert.Throws<ArgumentException>(() =>
-                Krylov.cg(in A, in M, in b, ref x, ref rAlias, ref p, ref Ap, ref z, dim, Consts.doubleSqrtEps));
-        }
-        finally { arena.Dispose(); }
+        var A = BuildSquareBSR();       // 4 x 4, both diagonal blocks present
+        var M = new doubleBlockJacobi(in A, Allocator.Temp);
+        int dim = A.M_Rows;
+        var b = GenerateOP.doubleRandomVec(dim, -1f, 1f, 6521);
+        var x = new doubleN(dim, Allocator.Temp);
+        var p = new doubleN(dim, Allocator.Temp);
+        var Ap = new doubleN(dim, Allocator.Temp);
+        var z = new doubleN(dim, Allocator.Temp);
+        var rAlias = x; // r aliases x
+        Assert.Throws<ArgumentException>(() =>
+            Krylov.cg(in A, in M, in b, ref x, ref rAlias, ref p, ref Ap, ref z, dim, Consts.doubleSqrtEps));
     }
 
     [Test]
     public void Pcg_AliasingZAndX_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = BuildSquareBSR(ref arena);
-            var M = arena.doubleBlockJacobi(in A);
-            int dim = A.M_Rows;
-            var b = arena.doubleRandomVec(dim, -1f, 1f, 6531);
-            var x = arena.doubleVec(dim);
-            var r = arena.doubleVec(dim);
-            var p = arena.doubleVec(dim);
-            var Ap = arena.doubleVec(dim);
-            var zAlias = x; // z aliases x (not caught by M.Apply's own r/z guard)
-            Assert.Throws<ArgumentException>(() =>
-                Krylov.cg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref zAlias, dim, Consts.doubleSqrtEps));
-        }
-        finally { arena.Dispose(); }
+        var A = BuildSquareBSR();
+        var M = new doubleBlockJacobi(in A, Allocator.Temp);
+        int dim = A.M_Rows;
+        var b = GenerateOP.doubleRandomVec(dim, -1f, 1f, 6531);
+        var x = new doubleN(dim, Allocator.Temp);
+        var r = new doubleN(dim, Allocator.Temp);
+        var p = new doubleN(dim, Allocator.Temp);
+        var Ap = new doubleN(dim, Allocator.Temp);
+        var zAlias = x; // z aliases x (not caught by M.Apply's own r/z guard)
+        Assert.Throws<ArgumentException>(() =>
+            Krylov.cg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref zAlias, dim, Consts.doubleSqrtEps));
     }
 
     // x aliasing b: the final pair among {r,p,Ap,x,b} / {r,p,Ap,z,x,b}. Benign in the current loop
@@ -1805,42 +1643,32 @@ public class doubleSparseSolverTests
     [Test]
     public void Cg_AliasingXAndB_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            const int dim = 4;
-            var A = arena.doubleMat(dim, dim); // square; guard fires before A is read
-            var op = new doubleDenseOperator(in A);
-            var b = arena.doubleRandomVec(dim, -1f, 1f, 6541);
-            var xAlias = b; // x aliases b (struct copy shares Data.Ptr)
-            var r = arena.doubleVec(dim);
-            var p = arena.doubleVec(dim);
-            var Ap = arena.doubleVec(dim);
-            Assert.Throws<ArgumentException>(() =>
-                Krylov.cg(in op, in b, ref xAlias, ref r, ref p, ref Ap, dim, Consts.doubleSqrtEps));
-        }
-        finally { arena.Dispose(); }
+        const int dim = 4;
+        var A = new doubleMxN(dim, dim, Allocator.Temp); // square; guard fires before A is read
+        var op = new doubleDenseOperator(in A);
+        var b = GenerateOP.doubleRandomVec(dim, -1f, 1f, 6541);
+        var xAlias = b; // x aliases b (struct copy shares Data.Ptr)
+        var r = new doubleN(dim, Allocator.Temp);
+        var p = new doubleN(dim, Allocator.Temp);
+        var Ap = new doubleN(dim, Allocator.Temp);
+        Assert.Throws<ArgumentException>(() =>
+            Krylov.cg(in op, in b, ref xAlias, ref r, ref p, ref Ap, dim, Consts.doubleSqrtEps));
     }
 
     [Test]
     public void Pcg_AliasingXAndB_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = BuildSquareBSR(ref arena);
-            var M = arena.doubleBlockJacobi(in A);
-            int dim = A.M_Rows;
-            var b = arena.doubleRandomVec(dim, -1f, 1f, 6551);
-            var xAlias = b; // x aliases b (struct copy shares Data.Ptr)
-            var r = arena.doubleVec(dim);
-            var p = arena.doubleVec(dim);
-            var Ap = arena.doubleVec(dim);
-            var z = arena.doubleVec(dim);
-            Assert.Throws<ArgumentException>(() =>
-                Krylov.cg(in A, in M, in b, ref xAlias, ref r, ref p, ref Ap, ref z, dim, Consts.doubleSqrtEps));
-        }
-        finally { arena.Dispose(); }
+        var A = BuildSquareBSR();
+        var M = new doubleBlockJacobi(in A, Allocator.Temp);
+        int dim = A.M_Rows;
+        var b = GenerateOP.doubleRandomVec(dim, -1f, 1f, 6551);
+        var xAlias = b; // x aliases b (struct copy shares Data.Ptr)
+        var r = new doubleN(dim, Allocator.Temp);
+        var p = new doubleN(dim, Allocator.Temp);
+        var Ap = new doubleN(dim, Allocator.Temp);
+        var z = new doubleN(dim, Allocator.Temp);
+        Assert.Throws<ArgumentException>(() =>
+            Krylov.cg(in A, in M, in b, ref xAlias, ref r, ref p, ref Ap, ref z, dim, Consts.doubleSqrtEps));
     }
 
     // ---- Phase 3 guard / aliasing cases (managed thread; Assert.Throws can't run in Burst) ----
@@ -1854,103 +1682,78 @@ public class doubleSparseSolverTests
     [Test]
     public void Minres_NonSquareDense_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = arena.doubleMat(3, 4); // non-square -> minres's A.Rows!=A.Cols guard fires first
-            var b = arena.doubleVec(3);
-            var x = arena.doubleVec(3);
-            var y  = arena.doubleVec(3); var r1 = arena.doubleVec(3); var r2 = arena.doubleVec(3);
-            var v  = arena.doubleVec(3); var w  = arena.doubleVec(3);
-            var w1 = arena.doubleVec(3); var w2 = arena.doubleVec(3);
-            Assert.Throws<ArgumentException>(() =>
-                Krylov.minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, 3, Consts.doubleSqrtEps));
-        }
-        finally { arena.Dispose(); }
+        var A = new doubleMxN(3, 4, Allocator.Temp); // non-square -> minres's A.Rows!=A.Cols guard fires first
+        var b = new doubleN(3, Allocator.Temp);
+        var x = new doubleN(3, Allocator.Temp);
+        var y  = new doubleN(3, Allocator.Temp); var r1 = new doubleN(3, Allocator.Temp); var r2 = new doubleN(3, Allocator.Temp);
+        var v  = new doubleN(3, Allocator.Temp); var w  = new doubleN(3, Allocator.Temp);
+        var w1 = new doubleN(3, Allocator.Temp); var w2 = new doubleN(3, Allocator.Temp);
+        Assert.Throws<ArgumentException>(() =>
+            Krylov.minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, 3, Consts.doubleSqrtEps));
     }
 
     [Test]
     public void Minres_AliasingR1AndR2_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            const int dim = 4;
-            var A = arena.doubleMat(dim, dim); // square; guard fires before A is read
-            var b = arena.doubleRandomVec(dim, -1f, 1f, 39001);
-            var x = arena.doubleVec(dim);
-            var y  = arena.doubleVec(dim);
-            var r1 = arena.doubleVec(dim);
-            var v  = arena.doubleVec(dim);
-            var w  = arena.doubleVec(dim);
-            var w1 = arena.doubleVec(dim);
-            var w2 = arena.doubleVec(dim);
-            var r2Alias = r1; // r2 aliases r1
-            Assert.Throws<ArgumentException>(() =>
-                Krylov.minres(in A, in b, ref x, ref y, ref r1, ref r2Alias, ref v, ref w, ref w1, ref w2, dim, Consts.doubleSqrtEps));
-        }
-        finally { arena.Dispose(); }
+        const int dim = 4;
+        var A = new doubleMxN(dim, dim, Allocator.Temp); // square; guard fires before A is read
+        var b = GenerateOP.doubleRandomVec(dim, -1f, 1f, 39001);
+        var x = new doubleN(dim, Allocator.Temp);
+        var y  = new doubleN(dim, Allocator.Temp);
+        var r1 = new doubleN(dim, Allocator.Temp);
+        var v  = new doubleN(dim, Allocator.Temp);
+        var w  = new doubleN(dim, Allocator.Temp);
+        var w1 = new doubleN(dim, Allocator.Temp);
+        var w2 = new doubleN(dim, Allocator.Temp);
+        var r2Alias = r1; // r2 aliases r1
+        Assert.Throws<ArgumentException>(() =>
+            Krylov.minres(in A, in b, ref x, ref y, ref r1, ref r2Alias, ref v, ref w, ref w1, ref w2, dim, Consts.doubleSqrtEps));
     }
 
     [Test]
     public void BiCGStab_AliasingXAndB_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            const int dim = 4;
-            var A = arena.doubleMat(dim, dim);
-            var b = arena.doubleRandomVec(dim, -1f, 1f, 39101);
-            var xAlias = b; // x aliases b (struct copy shares Data.Ptr)
-            var r = arena.doubleVec(dim); var rHat0 = arena.doubleVec(dim); var p = arena.doubleVec(dim);
-            var v = arena.doubleVec(dim); var t = arena.doubleVec(dim);
-            Assert.Throws<ArgumentException>(() =>
-                Krylov.biCGStab(in A, in b, ref xAlias, ref r, ref rHat0, ref p, ref v, ref t, dim, Consts.doubleSqrtEps));
-        }
-        finally { arena.Dispose(); }
+        const int dim = 4;
+        var A = new doubleMxN(dim, dim, Allocator.Temp);
+        var b = GenerateOP.doubleRandomVec(dim, -1f, 1f, 39101);
+        var xAlias = b; // x aliases b (struct copy shares Data.Ptr)
+        var r = new doubleN(dim, Allocator.Temp); var rHat0 = new doubleN(dim, Allocator.Temp); var p = new doubleN(dim, Allocator.Temp);
+        var v = new doubleN(dim, Allocator.Temp); var t = new doubleN(dim, Allocator.Temp);
+        Assert.Throws<ArgumentException>(() =>
+            Krylov.biCGStab(in A, in b, ref xAlias, ref r, ref rHat0, ref p, ref v, ref t, dim, Consts.doubleSqrtEps));
     }
 
     [Test]
     public void Lsqr_AliasingUAndTmpM_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            int m = 5, n = 3;
-            var A = arena.doubleMat(m, n);
-            var b = arena.doubleRandomVec(m, -1f, 1f, 39301);
-            var x = arena.doubleVec(n);
-            var u = arena.doubleVec(m);
-            var v = arena.doubleVec(n);
-            var w = arena.doubleVec(n);
-            var tmpN = arena.doubleVec(n);
-            var tmpMAlias = u; // tmpM aliases u (both length m)
-            Assert.Throws<ArgumentException>(() =>
-                Krylov.lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpMAlias, ref tmpN, n, Consts.doubleSqrtEps));
-        }
-        finally { arena.Dispose(); }
+        int m = 5, n = 3;
+        var A = new doubleMxN(m, n, Allocator.Temp);
+        var b = GenerateOP.doubleRandomVec(m, -1f, 1f, 39301);
+        var x = new doubleN(n, Allocator.Temp);
+        var u = new doubleN(m, Allocator.Temp);
+        var v = new doubleN(n, Allocator.Temp);
+        var w = new doubleN(n, Allocator.Temp);
+        var tmpN = new doubleN(n, Allocator.Temp);
+        var tmpMAlias = u; // tmpM aliases u (both length m)
+        Assert.Throws<ArgumentException>(() =>
+            Krylov.lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpMAlias, ref tmpN, n, Consts.doubleSqrtEps));
     }
 
     [Test]
     public void Lsmr_AliasingHAndHbar_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            int m = 5, n = 3;
-            var A = arena.doubleMat(m, n);
-            var b = arena.doubleRandomVec(m, -1f, 1f, 39401);
-            var x = arena.doubleVec(n);
-            var u = arena.doubleVec(m);
-            var v = arena.doubleVec(n);
-            var h = arena.doubleVec(n);
-            var tmpM = arena.doubleVec(m);
-            var tmpN = arena.doubleVec(n);
-            var hbarAlias = h; // hbar aliases h (both length n)
-            Assert.Throws<ArgumentException>(() =>
-                Krylov.lsmr(in A, in b, ref x, ref u, ref v, ref h, ref hbarAlias, ref tmpM, ref tmpN, n, Consts.doubleSqrtEps));
-        }
-        finally { arena.Dispose(); }
+        int m = 5, n = 3;
+        var A = new doubleMxN(m, n, Allocator.Temp);
+        var b = GenerateOP.doubleRandomVec(m, -1f, 1f, 39401);
+        var x = new doubleN(n, Allocator.Temp);
+        var u = new doubleN(m, Allocator.Temp);
+        var v = new doubleN(n, Allocator.Temp);
+        var h = new doubleN(n, Allocator.Temp);
+        var tmpM = new doubleN(m, Allocator.Temp);
+        var tmpN = new doubleN(n, Allocator.Temp);
+        var hbarAlias = h; // hbar aliases h (both length n)
+        Assert.Throws<ArgumentException>(() =>
+            Krylov.lsmr(in A, in b, ref x, ref u, ref v, ref h, ref hbarAlias, ref tmpM, ref tmpN, n, Consts.doubleSqrtEps));
     }
 
 }

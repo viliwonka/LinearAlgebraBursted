@@ -32,11 +32,10 @@ namespace LinearAlgebra.Benchmarks
     {
         static string BenchFProxy(int n, int D, int K)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var X = arena.fProxyMat(n, D);
-            var centroids = arena.fProxyMat(K, D);
-            var assignment = arena.Indices(n);
-            var ws = arena.fProxyKMeansCache(n, D, K);
+            var X = new fProxyMxN(n, D, Allocator.Persistent);
+            var centroids = new fProxyMxN(K, D, Allocator.Persistent);
+            var assignment = new Indices(n, Allocator.Persistent);
+            var ws = new fProxyKMeansCache(n, D, K, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -46,7 +45,7 @@ namespace LinearAlgebra.Benchmarks
             var job = new KMeansJobFProxy { X = X, centroids = centroids, assignment = assignment, ws = ws, K = K };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            X.Dispose(); centroids.Dispose(); assignment.Dispose(); ws.Dispose();
             return Bench.RowTime("fProxy", n, stat);
         }
     }

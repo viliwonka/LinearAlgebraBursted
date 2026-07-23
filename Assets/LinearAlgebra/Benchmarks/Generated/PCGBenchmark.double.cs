@@ -235,10 +235,10 @@ namespace LinearAlgebra.Benchmarks
         // Scalar 5-point 2D Poisson (BR=1): unlike the block-tridiagonal gallery Laplacian2D, IC(0)
         // is a GENUINELY incomplete factorization here, so every point-preconditioner's iteration
         // count grows ~O(sqrt(N)) while AMG stays ~flat -- the fair grid-independence comparison.
-        static doubleBSR ScalarPoisson2DDouble(ref Arena arena, int gx, int gy)
+        static doubleBSR ScalarPoisson2DDouble(int gx, int gy)
         {
             int n = gx * gy;
-            var bld = arena.doubleBSRBuilder(n, n, 1, 1, 5 * n);
+            var bld = new doubleBSRBuilder(n, n, 1, 1, Allocator.Persistent, 5 * n);
             for (int y = 0; y < gy; y++)
                 for (int x = 0; x < gx; x++)
                 {
@@ -249,63 +249,64 @@ namespace LinearAlgebra.Benchmarks
                     if (y > 0) bld.AddValue(i, i - gx, (double)(-1));
                     if (y < gy - 1) bld.AddValue(i, i + gx, (double)(-1));
                 }
-            return bld.ToBSR(ref arena);
+            var result = bld.ToBSR(Allocator.Persistent);
+            bld.Dispose();
+            return result;
         }
 
         // kind: 0 = block Laplacian2D gallery, 1 = random-sparse SPD, 2 = scalar 5-point Poisson.
         static string BenchPrecondCoreDouble(int p1, int p2, int kind, float density, uint seed = 0)
         {
             const string fmt = "{0,-7} {1,-6} {2,-12} {3,11:F4} {4,11:F4} {5,7} {6,14:E3}";
-            var arena = new Arena(Allocator.Persistent);
-            var A = kind == 0 ? arena.doubleLaplacian2D(p1, p2)
-                  : kind == 1 ? arena.doubleRandomSparseSPD(p1, p2, (double)density, seed)
-                              : ScalarPoisson2DDouble(ref arena, p1, p2);
+            var A = kind == 0 ? doubleGallery.doubleLaplacian2D(p1, p2, Allocator.Persistent)
+                  : kind == 1 ? doubleGallery.doubleRandomSparseSPD(p1, p2, (double)density, seed, Allocator.Persistent)
+                              : ScalarPoisson2DDouble(p1, p2);
             int n = A.M_Rows;
-            var b = arena.doubleRandomVec(n, -1f, 1f, 0xC002Du);
+            var b = GenerateOP.doubleRandomVec(n, -1f, 1f, 0xC002Du, Allocator.Persistent);
             double tol = Consts.doubleSqrtEps;
             int cap = 8 * n;
-            var iters = arena.Indices(1);
+            var iters = new Indices(1, Allocator.Persistent);
             var sb = new StringBuilder();
 
-            var x = arena.doubleVec(n); var r = arena.doubleVec(n); var p = arena.doubleVec(n);
-            var Ap = arena.doubleVec(n); var z = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Persistent); var r = new doubleN(n, Allocator.Persistent); var p = new doubleN(n, Allocator.Persistent);
+            var Ap = new doubleN(n, Allocator.Persistent); var z = new doubleN(n, Allocator.Persistent);
 
             var cgJob = new CgTolJobDouble { A = A, b = b, x = x, r = r, p = p, Ap = Ap, K = cap, Tol = tol, Iters = iters };
             var cgStat = Bench.Time(() => cgJob.Run());
             sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                 "double", n, "CG(plain)", cgStat.Median, cgStat.Min, iters[0], Residual(in A, in x, in b)));
 
-            var mJ = arena.doubleBlockJacobi(in A);
+            var mJ = new doubleBlockJacobi(in A, Allocator.Persistent);
             var jJob = new PcgJacobiTolJobDouble { A = A, M = mJ, b = b, x = x, r = r, p = p, Ap = Ap, z = z, K = cap, Tol = tol, Iters = iters };
             var jStat = Bench.Time(() => jJob.Run());
             sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                 "double", n, "PCG-Jacobi", jStat.Median, jStat.Min, iters[0], Residual(in A, in x, in b)));
 
-            var mS = arena.doubleSSOR(in A);
+            var mS = new doubleSSOR(in A, Allocator.Persistent);
             var sJob = new PcgSsorTolJobDouble { A = A, M = mS, b = b, x = x, r = r, p = p, Ap = Ap, z = z, K = cap, Tol = tol, Iters = iters };
             var sStat = Bench.Time(() => sJob.Run());
             sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                 "double", n, "PCG-SSOR", sStat.Median, sStat.Min, iters[0], Residual(in A, in x, in b)));
 
-            var mI = arena.doubleIC0(in A);
+            var mI = new doubleIC0(in A, Allocator.Persistent);
             var iJob = new PcgIC0TolJobDouble { A = A, M = mI, b = b, x = x, r = r, p = p, Ap = Ap, z = z, K = cap, Tol = tol, Iters = iters };
             var iStat = Bench.Time(() => iJob.Run());
             sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                 "double", n, "PCG-IC0", iStat.Median, iStat.Min, iters[0], Residual(in A, in x, in b)));
 
-            var mW = arena.doubleAdditiveSchwarz(in A);
+            var mW = new doubleAdditiveSchwarz(in A, Allocator.Persistent);
             var wJob = new PcgSchwarzTolJobDouble { A = A, M = mW, b = b, x = x, r = r, p = p, Ap = Ap, z = z, K = cap, Tol = tol, Iters = iters };
             var wStat = Bench.Time(() => wJob.Run());
             sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                 "double", n, "PCG-Schwarz", wStat.Median, wStat.Min, iters[0], Residual(in A, in x, in b)));
 
-            var mC = arena.doubleChebyshev(in A);
+            var mC = new doubleChebyshev(in A, Allocator.Persistent);
             var cJob = new PcgChebyshevTolJobDouble { A = A, M = mC, b = b, x = x, r = r, p = p, Ap = Ap, z = z, K = cap, Tol = tol, Iters = iters };
             var cStat = Bench.Time(() => cJob.Run());
             sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                 "double", n, "PCG-Cheby", cStat.Median, cStat.Min, iters[0], Residual(in A, in x, in b)));
 
-            var mF = arena.doubleFSAI(in A);
+            var mF = new doubleFSAI(in A, Allocator.Persistent);
             var fJob = new PcgFSAITolJobDouble { A = A, M = mF, b = b, x = x, r = r, p = p, Ap = Ap, z = z, K = cap, Tol = tol, Iters = iters };
             var fStat = Bench.Time(() => fJob.Run());
             sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
@@ -313,7 +314,7 @@ namespace LinearAlgebra.Benchmarks
 
             // AMG hierarchy built once outside the timed solve (mirrors the other build-then-solve
             // rows); the solve times one V-cycle-preconditioned CG. Setup cost is not in this number.
-            var amgH = arena.doubleAMG(in A, out _);
+            var amgH = new doubleAMG(in A, out _, Allocator.Persistent);
             var mAmg = new doubleAMGPreconditioner(in amgH);
             var aJob = new PcgAMGTolJobDouble { A = A, M = mAmg, b = b, x = x, r = r, p = p, Ap = Ap, z = z, K = cap, Tol = tol, Iters = iters };
             var aStat = Bench.Time(() => aJob.Run());
@@ -322,8 +323,8 @@ namespace LinearAlgebra.Benchmarks
 
             // K-cycle AMG: per-level Krylov acceleration, driven by fcg (the K-cycle is a variable
             // operator). Compare its iteration count against PCG-AMG-V above.
-            var rOld = arena.doubleVec(n);
-            var amgK = arena.doubleAMG(in A, new AMGOptions { cycle = MGCycle.K, theta = 0, pre = 1, post = 1, coarseMax = 48, maxLevels = 20 }, out _);
+            var rOld = new doubleN(n, Allocator.Persistent);
+            var amgK = new doubleAMG(in A, new AMGOptions { cycle = MGCycle.K, theta = 0, pre = 1, post = 1, coarseMax = 48, maxLevels = 20 }, out _, Allocator.Persistent);
             var mAmgK = new doubleAMGPreconditioner(in amgK);
             var akJob = new FcgAMGKTolJobDouble { A = A, M = mAmgK, b = b, x = x, r = r, p = p, Ap = Ap, z = z, rOld = rOld, K = cap, Tol = tol, Iters = iters };
             var akStat = Bench.Time(() => akJob.Run());
@@ -332,22 +333,27 @@ namespace LinearAlgebra.Benchmarks
 
             amgK.Dispose();
             amgH.Dispose();
-            arena.Dispose();
+            A.Dispose();
+            b.Dispose();
+            iters.Dispose();
+            x.Dispose(); r.Dispose(); p.Dispose(); Ap.Dispose(); z.Dispose();
+            rOld.Dispose();
+            mJ.Dispose(); mS.Dispose(); mI.Dispose(); mW.Dispose(); mC.Dispose(); mF.Dispose();
             return sb.ToString();
         }
 
-        static void BuildTridiagBlockSPDDouble(ref Arena arena, int NB, int BR, out doubleBSR sparse, out int n)
+        static void BuildTridiagBlockSPDDouble(int NB, int BR, out doubleBSR sparse, out int n)
         {
             n = NB * BR;
             int nnzb = NB + 2 * (NB - 1);
-            var builder = arena.doubleBSRBuilder(NB, NB, BR, BR, nnzb);
+            var builder = new doubleBSRBuilder(NB, NB, BR, BR, Allocator.Persistent, nnzb);
             var rng = new Random(0x51ED270Bu);
 
             for (int i = 0; i < NB; i++)
             {
                 // Diagonal block must be SYMMETRIC (mirror the noise) or the assembled matrix
                 // is not actually SPD and the residual column loses its meaning.
-                var Di = arena.doubleMat(BR, BR);
+                var Di = new doubleMxN(BR, BR, Allocator.Persistent);
                 for (int r = 0; r < BR; r++)
                     for (int c = r; c < BR; c++)
                     {
@@ -356,24 +362,28 @@ namespace LinearAlgebra.Benchmarks
                         Di[c, r] = v;
                     }
                 builder.AddBlock(i, i, in Di);
+                Di.Dispose();
 
                 if (i > 0)
                 {
-                    var off = arena.doubleMat(BR, BR);
+                    var off = new doubleMxN(BR, BR, Allocator.Persistent);
                     for (int r = 0; r < BR; r++)
                         for (int c = 0; c < BR; c++)
                             off[r, c] = rng.NextFloat(-0.3f, 0.3f);
                     builder.AddBlock(i, i - 1, in off);
 
-                    var offT = arena.doubleMat(BR, BR);
+                    var offT = new doubleMxN(BR, BR, Allocator.Persistent);
                     for (int r = 0; r < BR; r++)
                         for (int c = 0; c < BR; c++)
                             offT[r, c] = off[c, r];
                     builder.AddBlock(i - 1, i, in offT);
+                    off.Dispose();
+                    offT.Dispose();
                 }
             }
 
-            sparse = builder.ToBSR(ref arena);
+            sparse = builder.ToBSR(Allocator.Persistent);
+            builder.Dispose();
         }
 
         static double Residual(in doubleBSR A, in doubleN x, in doubleN b)
@@ -406,13 +416,12 @@ namespace LinearAlgebra.Benchmarks
         static string BenchJacobiBuildDouble(int BR, int NB)
         {
             const string fmt = "{0,-7} {1,-6} {2,-3} {3,11:F4} {4,11:F4}";
-            var arena = new Arena(Allocator.Persistent);
-            BuildTridiagBlockSPDDouble(ref arena, NB, BR, out var A, out int n);
+            BuildTridiagBlockSPDDouble(NB, BR, out var A, out int n);
 
             var job = new JacobiBuildJobDouble { A = A };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose();
             return string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                 "double", n, BR, stat.Median, stat.Min);
         }
@@ -420,25 +429,28 @@ namespace LinearAlgebra.Benchmarks
         static string BenchDouble(int BR, int NB, int K)
         {
             const string fmt = "{0,-7} {1,-6} {2,-12} {3,11:F4} {4,11:F4} {5,14:E3}";
-            var arena = new Arena(Allocator.Persistent);
-            BuildTridiagBlockSPDDouble(ref arena, NB, BR, out var A, out int n);
-            var M = arena.doubleBlockJacobi(in A);
-            var b = arena.doubleRandomVec(n, -1f, 1f, 0xC001Du);
+            BuildTridiagBlockSPDDouble(NB, BR, out var A, out int n);
+            var M = new doubleBlockJacobi(in A, Allocator.Persistent);
+            var b = GenerateOP.doubleRandomVec(n, -1f, 1f, 0xC001Du, Allocator.Persistent);
 
-            var xCg = arena.doubleVec(n); var rCg = arena.doubleVec(n); var pCg = arena.doubleVec(n); var ApCg = arena.doubleVec(n);
+            var xCg = new doubleN(n, Allocator.Persistent); var rCg = new doubleN(n, Allocator.Persistent); var pCg = new doubleN(n, Allocator.Persistent); var ApCg = new doubleN(n, Allocator.Persistent);
             var cgJob = new CgBsrJobDouble { A = A, b = b, x = xCg, r = rCg, p = pCg, Ap = ApCg, K = K };
             var cgStat = Bench.Time(() => cgJob.Run());
             var sb = new StringBuilder();
             sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                 "double", n, "CG", cgStat.Median, cgStat.Min, Residual(in A, in xCg, in b)));
 
-            var xPcg = arena.doubleVec(n); var rPcg = arena.doubleVec(n); var pPcg = arena.doubleVec(n); var ApPcg = arena.doubleVec(n); var zPcg = arena.doubleVec(n);
+            var xPcg = new doubleN(n, Allocator.Persistent); var rPcg = new doubleN(n, Allocator.Persistent); var pPcg = new doubleN(n, Allocator.Persistent); var ApPcg = new doubleN(n, Allocator.Persistent); var zPcg = new doubleN(n, Allocator.Persistent);
             var pcgJob = new PcgBsrJobDouble { A = A, M = M, b = b, x = xPcg, r = rPcg, p = pPcg, Ap = ApPcg, z = zPcg, K = K };
             var pcgStat = Bench.Time(() => pcgJob.Run());
             sb.Append(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                 "double", n, "PCG-Jacobi", pcgStat.Median, pcgStat.Min, Residual(in A, in xPcg, in b)));
 
-            arena.Dispose();
+            A.Dispose();
+            M.Dispose();
+            b.Dispose();
+            xCg.Dispose(); rCg.Dispose(); pCg.Dispose(); ApCg.Dispose();
+            xPcg.Dispose(); rPcg.Dispose(); pPcg.Dispose(); ApPcg.Dispose(); zPcg.Dispose();
             return sb.ToString();
         }
     }

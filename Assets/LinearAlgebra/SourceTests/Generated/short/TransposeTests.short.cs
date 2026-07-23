@@ -39,11 +39,9 @@ public class shortTransposeTests
 
         public void TransSquare()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 16;
-            
-            shortMxN A = arena.shortRandomMat(dim, dim);
+
+            shortMxN A = GenerateOP.shortRandomMat(dim, dim);
 
             shortMxN B = Blas.trans(A);
 
@@ -53,18 +51,14 @@ public class shortTransposeTests
             for (int r = 0; r < dim; r++)
             for (int c = 0; c < dim; c++)
                 Assert.IsTrue(B[c, r] == A[r, c]);
-
-            arena.Dispose();
         }
 
         public void TransNonSquare()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            int rows = 8; 
+            int rows = 8;
             int cols = 32;
 
-            shortMxN A = arena.shortRandomMat(rows, cols);
+            shortMxN A = GenerateOP.shortRandomMat(rows, cols);
 
             shortMxN B = Blas.trans(A);
 
@@ -74,8 +68,6 @@ public class shortTransposeTests
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
                 Assert.IsTrue(B[c, r] == A[r, c]);
-
-            arena.Dispose();
         }
     }
 

@@ -71,7 +71,6 @@ public class doubleQRCPTests
 
         void ReconstructRandomTall()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int m = 12, n = 6;
             var P = new Pivot(n, Allocator.Persistent); // size fixed across iterations; reset internally
@@ -79,23 +78,20 @@ public class doubleQRCPTests
             {
                 for (uint t = 0; t < 16; t++)
                 {
-                    var Q = arena.doubleRandomMat(m, n, -3f, 3f, 7001 + t * 13);
-                    var R = arena.doubleMat(n);
-                    var A = Q.Copy();
+                    var Q = GenerateOP.doubleRandomMat(m, n, -3f, 3f, 7001 + t * 13);
+                    var R = new doubleMxN(n, n, Allocator.Temp);
+                    var A = new doubleMxN(in Q, Allocator.Temp);
 
                     QRCP.decompInPlace(ref Q, ref R, ref P);
 
                     AssertQRCP(in A, in Q, in R, in P, (double)1E-4f);
-
-                    arena.Clear();
                 }
             }
-            finally { P.Dispose(); arena.Dispose(); }
+            finally { P.Dispose(); }
         }
 
         void ReconstructRandomSquare()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int dim = 8;
             var P = new Pivot(dim, Allocator.Persistent);
@@ -103,27 +99,24 @@ public class doubleQRCPTests
             {
                 for (uint t = 0; t < 16; t++)
                 {
-                    var Q = arena.doubleRandomMat(dim, dim, -3f, 3f, 4220 + t * 7);
-                    var R = arena.doubleMat(dim);
-                    var A = Q.Copy();
+                    var Q = GenerateOP.doubleRandomMat(dim, dim, -3f, 3f, 4220 + t * 7);
+                    var R = new doubleMxN(dim, dim, Allocator.Temp);
+                    var A = new doubleMxN(in Q, Allocator.Temp);
 
                     QRCP.decompInPlace(ref Q, ref R, ref P);
 
                     AssertQRCP(in A, in Q, in R, in P, (double)1E-4f);
-
-                    arena.Clear();
                 }
             }
-            finally { P.Dispose(); arena.Dispose(); }
+            finally { P.Dispose(); }
         }
 
         // Greedy rule: P[0] selects the original column of largest 2-norm.
         void FirstPivotLargestColumn()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int m = 7, n = 4;
-            var Q = arena.doubleRandomMat(m, n, -1f, 1f, 31337);
+            var Q = GenerateOP.doubleRandomMat(m, n, -1f, 1f, 31337);
 
             // Scale columns to distinct magnitudes; column 2 is unambiguously the largest.
             for (int r = 0; r < m; r++)
@@ -134,9 +127,9 @@ public class doubleQRCPTests
                 Q[r, 3] *= (double)2f;
             }
 
-            var R = arena.doubleMat(n);
+            var R = new doubleMxN(n, n, Allocator.Temp);
             var P = new Pivot(n, Allocator.Persistent);
-            var A = Q.Copy();
+            var A = new doubleMxN(in Q, Allocator.Temp);
 
             QRCP.decompInPlace(ref Q, ref R, ref P);
 
@@ -146,7 +139,6 @@ public class doubleQRCPTests
             RecordEq(P[0], 2);
 
             P.Dispose();
-            arena.Dispose();
         }
 
         // A rank-3 matrix built as 5 columns with 2 exact linear dependencies. Column pivoting
@@ -154,10 +146,9 @@ public class doubleQRCPTests
         // the trailing 2 to ~0.
         void RankRevealingDeficient()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int m = 6, n = 5;
-            var Q = arena.doubleRandomMat(m, n, -1f, 1f, 90210);
+            var Q = GenerateOP.doubleRandomMat(m, n, -1f, 1f, 90210);
 
             // col3 = 2*col0 - col1 ; col4 = col0 + col2  => exact rank 3.
             for (int r = 0; r < m; r++)
@@ -166,9 +157,9 @@ public class doubleQRCPTests
                 Q[r, 4] = Q[r, 0] + Q[r, 2];
             }
 
-            var R = arena.doubleMat(n);
+            var R = new doubleMxN(n, n, Allocator.Temp);
             var P = new Pivot(n, Allocator.Persistent);
-            var A = Q.Copy();
+            var A = new doubleMxN(in Q, Allocator.Temp);
 
             QRCP.decompInPlace(ref Q, ref R, ref P);
 
@@ -188,7 +179,6 @@ public class doubleQRCPTests
             RecordEq(rank, 3);
 
             P.Dispose();
-            arena.Dispose();
         }
 
         // Kahan matrix K = S*U, S=diag(s^i), U upper-tri with 1 on diagonal and -c above.
@@ -196,13 +186,12 @@ public class doubleQRCPTests
         // no permutation should occur (P is the identity).
         void KahanNoPivot()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int dim = 6;
             double c = (double)0.2f;
             double s = math.sqrt((double)1f - c * c);
 
-            var Q = arena.doubleMat(dim, dim); // zero-initialised
+            var Q = new doubleMxN(dim, dim, Allocator.Temp); // zero-initialised
             double si = 1f;                    // s^i
             for (int i = 0; i < dim; i++)
             {
@@ -212,9 +201,9 @@ public class doubleQRCPTests
                 si *= s;
             }
 
-            var R = arena.doubleMat(dim);
+            var R = new doubleMxN(dim, dim, Allocator.Temp);
             var P = new Pivot(dim, Allocator.Persistent);
-            var A = Q.Copy();
+            var A = new doubleMxN(in Q, Allocator.Temp);
 
             QRCP.decompInPlace(ref Q, ref R, ref P);
 
@@ -225,7 +214,6 @@ public class doubleQRCPTests
                 RecordEq(P[d], d);
 
             P.Dispose();
-            arena.Dispose();
         }
 
         // GALLERY KNOWN-ANSWER (Gallery.Special): n=8 Kahan matrix via the gallery generator (built
@@ -235,34 +223,31 @@ public class doubleQRCPTests
         // (all checked by AssertQRCP). Uses a different n/theta than KahanNoPivot for extra coverage.
         void KahanGalleryReconstruct()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int dim = 8;
             double c = (double)0.36235775f; // cos(1.2): c and s = sqrt(1-c^2) both well away from 0
 
-            var Q = arena.doubleKahan(dim, c);
-            var R = arena.doubleMat(dim);
+            var Q = doubleGallery.doubleKahan(dim, c);
+            var R = new doubleMxN(dim, dim, Allocator.Temp);
             var P = new Pivot(dim, Allocator.Persistent);
-            var A = Q.Copy();
+            var A = new doubleMxN(in Q, Allocator.Temp);
 
             QRCP.decompInPlace(ref Q, ref R, ref P);
 
             AssertQRCP(in A, in Q, in R, in P, (double)1E-4f);
 
             P.Dispose();
-            arena.Dispose();
         }
 
         // Degenerate 1x1 input: Q = [+/-1], R = [+/-a], P = [0]; reconstruction must hold.
         void SingleElement()
         {
-            var arena = new Arena(Allocator.Persistent);
 
-            var Q = arena.doubleMat(1, 1);
+            var Q = new doubleMxN(1, 1, Allocator.Temp);
             Q[0, 0] = (double)5f;
-            var R = arena.doubleMat(1);
+            var R = new doubleMxN(1, 1, Allocator.Temp);
             var P = new Pivot(1, Allocator.Persistent);
-            var A = Q.Copy();
+            var A = new doubleMxN(in Q, Allocator.Temp);
 
             QRCP.decompInPlace(ref Q, ref R, ref P);
 
@@ -270,7 +255,6 @@ public class doubleQRCPTests
             RecordEq(P[0], 0);
 
             P.Dispose();
-            arena.Dispose();
         }
 
         // Fully zero matrix: no column has any norm, so no pivot ever fires (P stays identity),
@@ -278,13 +262,12 @@ public class doubleQRCPTests
         // degenerate-reflector branch at every step).
         void AllZero()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int m = 4, n = 3;
-            var Q = arena.doubleMat(m, n); // zero-initialised
-            var R = arena.doubleMat(n);
+            var Q = new doubleMxN(m, n, Allocator.Temp); // zero-initialised
+            var R = new doubleMxN(n, n, Allocator.Temp);
             var P = new Pivot(n, Allocator.Persistent);
-            var A = Q.Copy();
+            var A = new doubleMxN(in Q, Allocator.Temp);
 
             QRCP.decompInPlace(ref Q, ref R, ref P);
 
@@ -293,7 +276,6 @@ public class doubleQRCPTests
                 RecordEq(P[d], d);
 
             P.Dispose();
-            arena.Dispose();
         }
 
         // An exact zero column in the middle must be pivoted to the LAST position (it has the
@@ -301,19 +283,18 @@ public class doubleQRCPTests
         // 1 zero, 2 medium => expected pivot order P = [0, 2, 1].
         void ZeroColumnMiddle()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int m = 5, n = 3;
-            var Q = arena.doubleMat(m, n); // zero-initialised
+            var Q = new doubleMxN(m, n, Allocator.Temp); // zero-initialised
             // column 0: large norm
             Q[0, 0] = (double)6f; Q[1, 0] = (double)6f; Q[2, 0] = (double)6f;
             // column 1: exact zero (left as 0)
             // column 2: medium norm (< column 0)
             Q[0, 2] = (double)2f; Q[3, 2] = (double)2f;
 
-            var R = arena.doubleMat(n);
+            var R = new doubleMxN(n, n, Allocator.Temp);
             var P = new Pivot(n, Allocator.Persistent);
-            var A = Q.Copy();
+            var A = new doubleMxN(in Q, Allocator.Temp);
 
             QRCP.decompInPlace(ref Q, ref R, ref P);
 
@@ -322,23 +303,21 @@ public class doubleQRCPTests
             RecordEq(P[2], 1); // zero column pushed last
 
             P.Dispose();
-            arena.Dispose();
         }
 
         // Two identical columns => rank deficiency by 1. Tie handling must stay deterministic and
         // the duplicate must reduce to a near-zero trailing diagonal (numerical rank = 2 of 3).
         void DuplicateColumns()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int m = 4, n = 3;
-            var Q = arena.doubleRandomMat(m, n, -1f, 1f, 13579);
+            var Q = GenerateOP.doubleRandomMat(m, n, -1f, 1f, 13579);
             for (int r = 0; r < m; r++)
                 Q[r, 2] = Q[r, 0]; // column 2 == column 0
 
-            var R = arena.doubleMat(n);
+            var R = new doubleMxN(n, n, Allocator.Temp);
             var P = new Pivot(n, Allocator.Persistent);
-            var A = Q.Copy();
+            var A = new doubleMxN(in Q, Allocator.Temp);
 
             QRCP.decompInPlace(ref Q, ref R, ref P);
 
@@ -353,24 +332,22 @@ public class doubleQRCPTests
             RecordEq(rank, 2);
 
             P.Dispose();
-            arena.Dispose();
         }
 
         // QRCP.decomp must not modify A. Checksum (position-weighted
         // sum, so a permutation or a single altered entry both trip it) before/after the call.
         void DecompPreservesA()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int m = 10, n = 5;
-            var A = arena.doubleRandomMat(m, n, -3f, 3f, 606060);
+            var A = GenerateOP.doubleRandomMat(m, n, -3f, 3f, 606060);
             for (int d = 0; d < n; d++) A[d, d] += 4f;
 
             double checksumBefore = (double)0;
             for (int i = 0; i < A.Length; i++) checksumBefore += A[i] * (double)(i + 1);
 
-            var Q = arena.doubleMat(m, n);
-            var R = arena.doubleMat(n);
+            var Q = new doubleMxN(m, n, Allocator.Temp);
+            var R = new doubleMxN(n, n, Allocator.Temp);
             var P = new Pivot(n, Allocator.Persistent);
             QRCP.decomp(in A, ref Q, ref R, ref P);
 
@@ -390,7 +367,6 @@ public class doubleQRCPTests
             AssertQRCP(in A, in Q, in R, in P, (double)1E-4f);
 
             P.Dispose();
-            arena.Dispose();
         }
 
         // Reconstruction (A permuted by P == Q*R), R upper-triangular, Q orthogonal, and the
@@ -400,14 +376,15 @@ public class doubleQRCPTests
             int m = A.M_Rows;
             int n = A.N_Cols;
 
-            // Build A permuted by P: column j == original column P[j]. Copy() gives a same-shape
-            // arena matrix; we overwrite every entry from the (untouched) original A.
-            var Aperm = A.Copy();
+            // Build A permuted by P: column j == original column P[j]. The copy ctor gives a
+            // same-shape matrix; we overwrite every entry from the (untouched) original A.
+            var Aperm = new doubleMxN(in A, Allocator.Temp);
             for (int r = 0; r < m; r++)
                 for (int j = 0; j < n; j++)
                     Aperm[r, j] = A[r, P[j]];
 
-            doubleMxN shouldBeZero = Aperm - Blas.dot(Q, R);
+            doubleMxN shouldBeZero = new doubleMxN(in Aperm, Allocator.Temp);
+            doubleComp.subInPlace(shouldBeZero, Blas.dot(Q, R));
 
             if (Analysis.isAnyNan(in shouldBeZero))
                 throw new System.Exception("TestJob: NaN detected");
@@ -572,56 +549,52 @@ public class doubleQRCPTests
         // detected rank must be the full n. Uses the ALLOCATING default overload.
         void FullRankAgreesWithQR()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int m = 12, n = 4;
-            var A = arena.doubleRandomMat(m, n, -5f, 5f, 778231);
+            var A = GenerateOP.doubleRandomMat(m, n, -5f, 5f, 778231);
             for (int d = 0; d < n; d++)
                 A[d, d] += (double)10f; // boost leading block -> full column rank, good conditioning
 
             // generic b (not in range(A)) so it is a genuine least-squares (not exact) problem
-            var b = arena.doubleRandomVec(m, -5f, 5f, 9091);
-            var A_pristine = A.Copy(); // solveInPlace destroys A (reflectors, NOT Q now); preserve for the QR reference
-            var bqr = b.Copy();        // solveInPlace destroys b too (overwritten with Qᵀb); copy for the QR reference
+            var b = GenerateOP.doubleRandomVec(m, -5f, 5f, 9091);
+            var A_pristine = new doubleMxN(in A, Allocator.Temp); // solveInPlace destroys A (reflectors, NOT Q now); preserve for the QR reference
+            var bqr = new doubleN(in b, Allocator.Temp);        // solveInPlace destroys b too (overwritten with Qᵀb); copy for the QR reference
 
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
             int rank = QRCP.solveInPlace(ref A, ref b, ref x).rank; // A and b BOTH destroyed (fused fast path)
 
             RecordEq(rank, n);
             if (Analysis.isAnyNan(in x)) { Fail0(0, 0); return; }
 
             // reference: ordinary QR-LS (destroys its inputs -> Aqr copy + bqr copy above)
-            var Aqr = A_pristine.Copy();
-            var xRef = arena.doubleVec(n);
+            var Aqr = new doubleMxN(in A_pristine, Allocator.Temp);
+            var xRef = new doubleN(n, Allocator.Temp);
             QR.solveInPlace(ref Aqr, ref bqr, ref xRef);
 
             double tol = (double)Consts.doubleSqrtEps * (double)10;
             for (int k = 0; k < n; k++)
                 AssertClose(x[k], xRef[k], tol * (math.abs(xRef[k]) + (double)1));
-
-            arena.Dispose();
         }
 
         // (2) Square full-rank: the basic solution solves A x = b exactly (residual ~ 0).
         // Uses the PRIMITIVE default-tolerance overload (R/P/u scratch; A_to_Q and b both destroyed).
         void FullRankSquare()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int dim = 8;
-            var A = arena.doubleRandomMat(dim, dim, -5f, 5f, 314221);
+            var A = GenerateOP.doubleRandomMat(dim, dim, -5f, 5f, 314221);
             for (int d = 0; d < dim; d++)
                 A[d, d] += (double)10f;
 
-            var xOrig = arena.doubleRandomVec(dim, -3f, 3f, 1337);
+            var xOrig = GenerateOP.doubleRandomVec(dim, -3f, 3f, 1337);
             var b = Blas.dot(A, xOrig); // b in range(A) -> exact solution exists
-            var A_copy = A.Copy();          // for residual check after the solve
-            var b0 = b.Copy();              // solveInPlace destroys b (fused); keep original for the residual
+            var A_copy = new doubleMxN(in A, Allocator.Temp);          // for residual check after the solve
+            var b0 = new doubleN(in b, Allocator.Temp);              // solveInPlace destroys b (fused); keep original for the residual
 
-            var R = arena.doubleMat(dim);
+            var R = new doubleMxN(dim, dim, Allocator.Temp);
             var P = new Pivot(dim, Allocator.Persistent);
-            var u = arena.doubleVec(dim);
-            var x = arena.doubleVec(dim);
+            var u = new doubleN(dim, Allocator.Temp);
+            var x = new doubleN(dim, Allocator.Temp);
 
             int rank = QRCP.solveInPlace(ref A, ref b, ref x, ref R, ref P, ref u).rank;
 
@@ -638,7 +611,6 @@ public class doubleQRCPTests
             }
 
             P.Dispose();
-            arena.Dispose();
         }
 
         // (3) Rank-deficient by an EXACT linear dependency (col3 = col0 + col1). Detected rank must
@@ -647,18 +619,17 @@ public class doubleQRCPTests
         // >= the minimum-norm pinv solution. Uses the ALLOCATING default overload.
         void RankDeficientResidual()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int m = 6, n = 4;
-            var A = arena.doubleRandomMat(m, n, -3f, 3f, 90211);
+            var A = GenerateOP.doubleRandomMat(m, n, -3f, 3f, 90211);
             for (int r = 0; r < m; r++)
                 A[r, 3] = A[r, 0] + A[r, 1]; // exact dependency -> true rank 3
-            var A_copy = A.Copy();
+            var A_copy = new doubleMxN(in A, Allocator.Temp);
 
-            var b = arena.doubleRandomVec(m, -3f, 3f, 5511);
-            var b0 = b.Copy();   // solveInPlace destroys b (fused); keep original for residual/pinv
+            var b = GenerateOP.doubleRandomVec(m, -3f, 3f, 5511);
+            var b0 = new doubleN(in b, Allocator.Temp);   // solveInPlace destroys b (fused); keep original for residual/pinv
 
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
             int rank = QRCP.solveInPlace(ref A, ref b, ref x).rank;
 
             RecordEq(rank, 3);
@@ -668,8 +639,8 @@ public class doubleQRCPTests
             double normQrcp = VecNorm(in x);
 
             // pinv reference (no longer modifies A) — same residual, minimum norm
-            var Apinv = A_copy.Copy();
-            var xPinv = arena.doubleVec(n);
+            var Apinv = new doubleMxN(in A_copy, Allocator.Temp);
+            var xPinv = new doubleN(n, Allocator.Temp);
             RankInfo pinvInfo = SVD.pinvSolve(ref Apinv, in b0, ref xPinv);
             bool converged = pinvInfo;
             int pinvRank = pinvInfo.rank;
@@ -686,8 +657,6 @@ public class doubleQRCPTests
             // (b) basic solution is NOT minimum-norm: ‖x_pinv‖ <= ‖x_qrcp‖ (with slack).
             double normSlack = (double)Consts.doubleSqrtEps * (double)10 * (normQrcp + (double)1);
             RecordBound(normPinv - normQrcp, normSlack);
-
-            arena.Dispose();
         }
 
         // (4) Rank-1 with n>1 (truncation + un-permute both exercised). Pei(4,0) is the all-ones
@@ -696,19 +665,18 @@ public class doubleQRCPTests
         // the residual must be minimal (pinv cross-check), and ‖x_pinv‖ <= ‖x_qrcp‖.
         void Rank1Projection()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int dim = 4;
-            var A = arena.doublePei(dim, (double)0); // all-ones, rank 1
-            var A_copy = A.Copy();
+            var A = doubleGallery.doublePei(dim, (double)0); // all-ones, rank 1
+            var A_copy = new doubleMxN(in A, Allocator.Temp);
 
-            var b = arena.doubleRandomVec(dim, -4f, 4f, 24680);
-            var b0 = b.Copy();   // solveInPlace destroys b (fused); keep original for residual/pinv
+            var b = GenerateOP.doubleRandomVec(dim, -4f, 4f, 24680);
+            var b0 = new doubleN(in b, Allocator.Temp);   // solveInPlace destroys b (fused); keep original for residual/pinv
             double mean = (double)0;
             for (int i = 0; i < dim; i++) mean += b[i];
             mean /= (double)dim;
 
-            var x = arena.doubleVec(dim);
+            var x = new doubleN(dim, Allocator.Temp);
             int rank = QRCP.solveInPlace(ref A, ref b, ref x).rank;
 
             RecordEq(rank, 1);
@@ -724,8 +692,8 @@ public class doubleQRCPTests
             double resQrcp = ResidualNorm(in A_copy, in x, in b0);
             double normQrcp = VecNorm(in x);
 
-            var Apinv = A_copy.Copy();
-            var xPinv = arena.doubleVec(dim);
+            var Apinv = new doubleMxN(in A_copy, Allocator.Temp);
+            var xPinv = new doubleN(dim, Allocator.Temp);
             RankInfo pinvInfo = SVD.pinvSolve(ref Apinv, in b0, ref xPinv);
             bool converged = pinvInfo;
             int pinvRank = pinvInfo.rank;
@@ -735,8 +703,6 @@ public class doubleQRCPTests
 
             AssertClose(resQrcp, resPinv, (double)Consts.doubleSqrtEps * (double)4 * (resPinv + (double)1));
             RecordBound(normPinv - normQrcp, (double)Consts.doubleSqrtEps * (double)10 * (normQrcp + (double)1));
-
-            arena.Dispose();
         }
 
         // (5) Overdetermined (m > n) AND rank-deficient (r < n) via two exact dependencies
@@ -744,24 +710,23 @@ public class doubleQRCPTests
         // Uses the PRIMITIVE with an explicit positive tolerance (= the library default).
         void OverdeterminedDeficient()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int m = 8, n = 5;
-            var A = arena.doubleRandomMat(m, n, -2f, 2f, 90210);
+            var A = GenerateOP.doubleRandomMat(m, n, -2f, 2f, 90210);
             for (int r = 0; r < m; r++)
             {
                 A[r, 3] = (double)2f * A[r, 0] - A[r, 1];
                 A[r, 4] = A[r, 0] + A[r, 2];
             }
-            var A_copy = A.Copy();
+            var A_copy = new doubleMxN(in A, Allocator.Temp);
 
-            var b = arena.doubleRandomVec(m, -2f, 2f, 1212);
-            var b0 = b.Copy();   // solveInPlace destroys b (fused); keep original for residual/pinv
+            var b = GenerateOP.doubleRandomVec(m, -2f, 2f, 1212);
+            var b0 = new doubleN(in b, Allocator.Temp);   // solveInPlace destroys b (fused); keep original for residual/pinv
 
-            var R = arena.doubleMat(n);
+            var R = new doubleMxN(n, n, Allocator.Temp);
             var P = new Pivot(n, Allocator.Persistent);
-            var u = arena.doubleVec(m);
-            var x = arena.doubleVec(n);
+            var u = new doubleN(m, Allocator.Temp);
+            var x = new doubleN(n, Allocator.Temp);
 
             double explicitTol = (double)(math.max(m, n)) * (double)Consts.doubleZeroThreshold;
             int rank = QRCP.solveInPlace(ref A, ref b, ref x, ref R, ref P, ref u, explicitTol).rank;
@@ -771,8 +736,8 @@ public class doubleQRCPTests
 
             double resQrcp = ResidualNorm(in A_copy, in x, in b0);
 
-            var Apinv = A_copy.Copy();
-            var xPinv = arena.doubleVec(n);
+            var Apinv = new doubleMxN(in A_copy, Allocator.Temp);
+            var xPinv = new doubleN(n, Allocator.Temp);
             RankInfo pinvInfo = SVD.pinvSolve(ref Apinv, in b0, ref xPinv);
             bool converged = pinvInfo;
             int pinvRank = pinvInfo.rank;
@@ -786,44 +751,39 @@ public class doubleQRCPTests
                         (double)Consts.doubleSqrtEps * (double)10 * (VecNorm(in x) + (double)1));
 
             P.Dispose();
-            arena.Dispose();
         }
 
         // (6) Zero matrix (m=5, n=3): no column has any norm -> rank 0 and x is all zeros (no NaN).
         void ZeroMatrix()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int m = 5, n = 3;
-            var A = arena.doubleMat(m, n);                          // zero-initialised
-            var b = arena.doubleRandomVec(m, -5f, 5f, 5151);
+            var A = new doubleMxN(m, n, Allocator.Temp);                          // zero-initialised
+            var b = GenerateOP.doubleRandomVec(m, -5f, 5f, 5151);
 
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
             int rank = QRCP.solveInPlace(ref A, ref b, ref x).rank;
 
             RecordEq(rank, 0);
             if (Analysis.isAnyNan(in x)) { Fail0(1, 0); return; }
             for (int k = 0; k < n; k++)
                 AssertClose(x[k], (double)0, (double)Consts.doubleSqrtEps);
-
-            arena.Dispose();
         }
 
         // (7) 1x1 system A=[a], b=[β]: the only column has full rank, so x[0] = (a·β)/(a·a) = β/a
         // (the projection formula). Pick a=4, β=10 -> x=2.5, residual 0, rank 1.
         void OneByOne()
         {
-            var arena = new Arena(Allocator.Persistent);
 
-            var A = arena.doubleMat(1, 1);
+            var A = new doubleMxN(1, 1, Allocator.Temp);
             A[0, 0] = (double)4f;
-            var A_copy = A.Copy();
+            var A_copy = new doubleMxN(in A, Allocator.Temp);
 
-            var b = arena.doubleVec(1);
+            var b = new doubleN(1, Allocator.Temp);
             b[0] = (double)10f;
-            var b0 = b.Copy();   // solveInPlace destroys b (fused); keep original for the residual
+            var b0 = new doubleN(in b, Allocator.Temp);   // solveInPlace destroys b (fused); keep original for the residual
 
-            var x = arena.doubleVec(1);
+            var x = new doubleN(1, Allocator.Temp);
             int rank = QRCP.solveInPlace(ref A, ref b, ref x).rank;
 
             RecordEq(rank, 1);
@@ -831,8 +791,6 @@ public class doubleQRCPTests
 
             AssertClose(x[0], (double)2.5f, (double)Consts.doubleSqrtEps * (double)10);
             RecordBound(ResidualNorm(in A_copy, in x, in b0), (double)Consts.doubleSqrtEps * (double)10);
-
-            arena.Dispose();
         }
 
         // (8) Auto sentinel: relTol = -1 must select the documented default
@@ -841,27 +799,26 @@ public class doubleQRCPTests
         // (identical code path). Exercised on a rank-deficient system so rank/truncation matter.
         void AutoSentinel()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int m = 6, n = 4;
-            var A = arena.doubleRandomMat(m, n, -3f, 3f, 4242);
+            var A = GenerateOP.doubleRandomMat(m, n, -3f, 3f, 4242);
             for (int r = 0; r < m; r++)
                 A[r, 2] = A[r, 0] - A[r, 1]; // rank 3
-            var b = arena.doubleRandomVec(m, -3f, 3f, 2424);
+            var b = GenerateOP.doubleRandomVec(m, -3f, 3f, 2424);
 
             // solveInPlace destroys BOTH A and b (fused fast path) -- each call needs its own pristine
             // A copy AND its own b copy so all three exercise the IDENTICAL input.
-            var xAuto = arena.doubleVec(n);
-            var Aauto = A.Copy(); var bAuto = b.Copy();
+            var xAuto = new doubleN(n, Allocator.Temp);
+            var Aauto = new doubleMxN(in A, Allocator.Temp); var bAuto = new doubleN(in b, Allocator.Temp);
             int rankAuto = QRCP.solveInPlace(ref Aauto, ref bAuto, ref xAuto).rank; // default overload
 
-            var xNeg = arena.doubleVec(n);
-            var Aneg = A.Copy(); var bNeg = b.Copy();
+            var xNeg = new doubleN(n, Allocator.Temp);
+            var Aneg = new doubleMxN(in A, Allocator.Temp); var bNeg = new doubleN(in b, Allocator.Temp);
             int rankNeg = QRCP.solveInPlace(ref Aneg, ref bNeg, ref xNeg, (double)(-1)).rank; // sentinel
 
             double explicitTol = (double)(math.max(m, n)) * (double)Consts.doubleZeroThreshold;
-            var xExpl = arena.doubleVec(n);
-            var Aexpl = A.Copy(); var bExpl = b.Copy();
+            var xExpl = new doubleN(n, Allocator.Temp);
+            var Aexpl = new doubleMxN(in A, Allocator.Temp); var bExpl = new doubleN(in b, Allocator.Temp);
             int rankExpl = QRCP.solveInPlace(ref Aexpl, ref bExpl, ref xExpl, explicitTol).rank;
 
             RecordEq(rankNeg, rankAuto);
@@ -873,8 +830,6 @@ public class doubleQRCPTests
                 AssertClose(xNeg[k], xAuto[k], (double)0);
                 AssertClose(xExpl[k], xAuto[k], (double)0);
             }
-
-            arena.Dispose();
         }
 
         // (9) KNOWN-VALUE regression. A = [[1,2],[0,0],[0,0]] (3x2): col1 = 2*col0 -> rank 1, and
@@ -884,21 +839,20 @@ public class doubleQRCPTests
         // = sqrt(2). This pins truncation + un-permute against a hand-computed answer.
         void KnownValueRegression()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int m = 3, n = 2;
-            var A = arena.doubleMat(m, n);  // zero-initialised
+            var A = new doubleMxN(m, n, Allocator.Temp);  // zero-initialised
             A[0, 0] = (double)1f; A[0, 1] = (double)2f; // only row 0 is nonzero
-            var A_copy = A.Copy();
+            var A_copy = new doubleMxN(in A, Allocator.Temp);
 
-            var b = arena.doubleVec(m);
+            var b = new doubleN(m, Allocator.Temp);
             b[0] = (double)6f; b[1] = (double)1f; b[2] = (double)1f;
-            var b0 = b.Copy();   // solveInPlace destroys b (fused); keep original for the residual
+            var b0 = new doubleN(in b, Allocator.Temp);   // solveInPlace destroys b (fused); keep original for the residual
 
-            var R = arena.doubleMat(n);
+            var R = new doubleMxN(n, n, Allocator.Temp);
             var P = new Pivot(n, Allocator.Persistent);
-            var u = arena.doubleVec(m);
-            var x = arena.doubleVec(n);
+            var u = new doubleN(m, Allocator.Temp);
+            var x = new doubleN(n, Allocator.Temp);
 
             int rank = QRCP.solveInPlace(ref A, ref b, ref x, ref R, ref P, ref u, (double)(-1)).rank;
 
@@ -913,7 +867,6 @@ public class doubleQRCPTests
             AssertClose(res, math.sqrt((double)2f), tol);
 
             P.Dispose();
-            arena.Dispose();
         }
 
         // (10) Direct-solve-status coverage: on a rank-deficient A (exact linear
@@ -922,15 +875,14 @@ public class doubleQRCPTests
         // rank-deficient basic solution is still usable) -- distinct from a hard failure.
         void RankInfoStatus()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int m = 6, n = 4;
-            var A = arena.doubleRandomMat(m, n, -3f, 3f, 90211);
+            var A = GenerateOP.doubleRandomMat(m, n, -3f, 3f, 90211);
             for (int r = 0; r < m; r++)
                 A[r, 3] = A[r, 0] + A[r, 1]; // exact dependency -> true rank 3
 
-            var b = arena.doubleRandomVec(m, -3f, 3f, 5511);
-            var x = arena.doubleVec(n);
+            var b = GenerateOP.doubleRandomVec(m, -3f, 3f, 5511);
+            var x = new doubleN(n, Allocator.Temp);
 
             RankInfo info = QRCP.solveInPlace(ref A, ref b, ref x);
 
@@ -938,8 +890,6 @@ public class doubleQRCPTests
             RecordEq((int)info.status, (int)DirectSolveStatus.RankDeficient);
             RecordEq(info.Solved ? 1 : 0, 1);
             RecordEq(info ? 1 : 0, 1); // implicit bool must also be true
-
-            arena.Dispose();
         }
 
         // (11)/(12) no-copy optimization: solveInPlace factors A_to_Q's own buffer directly (no
@@ -953,28 +903,27 @@ public class doubleQRCPTests
 
         void NoCopyEquivalence(int m, int n, uint seed, bool rankDeficient)
         {
-            var arena = new Arena(Allocator.Persistent);
 
-            var A0 = arena.doubleRandomMat(m, n, -3f, 3f, seed);
+            var A0 = GenerateOP.doubleRandomMat(m, n, -3f, 3f, seed);
             for (int d = 0; d < n; d++) A0[d, d] += 6f;
             if (rankDeficient)
                 for (int r = 0; r < m; r++)
                     A0[r, n - 1] = A0[r, 0] + A0[r, 1]; // exact dependency -> rank n-1
 
-            var b0 = arena.doubleRandomVec(m, -3f, 3f, seed + 1);
+            var b0 = GenerateOP.doubleRandomVec(m, -3f, 3f, seed + 1);
 
             // Path 1: solveInPlace on one independent (A, b) copy pair.
-            var Adirect = A0.Copy();
-            var bDirect = b0.Copy();
-            var xDirect = arena.doubleVec(n);
+            var Adirect = new doubleMxN(in A0, Allocator.Temp);
+            var bDirect = new doubleN(in b0, Allocator.Temp);
+            var xDirect = new doubleN(n, Allocator.Temp);
             RankInfo infoDirect = QRCP.solveInPlace(ref Adirect, ref bDirect, ref xDirect);
 
             // Path 2: solveInPlace on a SEPARATE independent copy pair -- proves buffer identity is
             // irrelevant to the result. (The fused fast path destroys BOTH A and b, so each run needs
             // its own pair; the old b-is-read-only reuse no longer holds.)
-            var Acopy = A0.Copy();
-            var bCopy = b0.Copy();
-            var xCopy = arena.doubleVec(n);
+            var Acopy = new doubleMxN(in A0, Allocator.Temp);
+            var bCopy = new doubleN(in b0, Allocator.Temp);
+            var xCopy = new doubleN(n, Allocator.Temp);
             RankInfo infoCopy = QRCP.solveInPlace(ref Acopy, ref bCopy, ref xCopy);
 
             RecordEq((int)infoDirect.status, (int)infoCopy.status);
@@ -994,8 +943,6 @@ public class doubleQRCPTests
             // produced by QRCP.decompInPlace and covered by the decomposition tests, not here.)
             for (int i = 0; i < Adirect.Length; i++)
                 AssertBitIdentical(Adirect[i], Acopy[i]);
-
-            arena.Dispose();
         }
 
         // (13) Large n (m=200, n=96 >= 2*QRCP_BLOCK): forces the fused BLOCKED solve path
@@ -1004,27 +951,26 @@ public class doubleQRCPTests
         // solution must equal ordinary QR least-squares and be residual-minimal, and rank must be n.
         void BlockedFusedSolve()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int m = 200, n = 96;
-            var A = arena.doubleRandomMat(m, n, -2f, 2f, 0xF0DE71u);
+            var A = GenerateOP.doubleRandomMat(m, n, -2f, 2f, 0xF0DE71u);
             for (int d = 0; d < n; d++)
                 A[d, d] += (double)n; // diagonally dominant -> full column rank, well-conditioned
-            var A_copy = A.Copy();
+            var A_copy = new doubleMxN(in A, Allocator.Temp);
 
-            var b = arena.doubleRandomVec(m, -2f, 2f, 0x5013u);
-            var b0 = b.Copy();  // solveInPlace destroys b (fused); keep original for residual + QR ref
+            var b = GenerateOP.doubleRandomVec(m, -2f, 2f, 0x5013u);
+            var b0 = new doubleN(in b, Allocator.Temp);  // solveInPlace destroys b (fused); keep original for residual + QR ref
 
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
             int rank = QRCP.solveInPlace(ref A, ref b, ref x).rank;
 
             RecordEq(rank, n);
             if (Analysis.isAnyNan(in x)) { Fail0(1, 0); return; }
 
             // reference: ordinary (un-pivoted) QR least-squares on copies (it destroys its inputs).
-            var Aqr = A_copy.Copy();
-            var bqr = b0.Copy();
-            var xRef = arena.doubleVec(n);
+            var Aqr = new doubleMxN(in A_copy, Allocator.Temp);
+            var bqr = new doubleN(in b0, Allocator.Temp);
+            var xRef = new doubleN(n, Allocator.Temp);
             QR.solveInPlace(ref Aqr, ref bqr, ref xRef);
 
             double tol = (double)Consts.doubleSqrtEps * (double)20;
@@ -1035,8 +981,6 @@ public class doubleQRCPTests
             double resQrcp = ResidualNorm(in A_copy, in x, in b0);
             double resQr = ResidualNorm(in A_copy, in xRef, in b0);
             AssertClose(resQrcp, resQr, tol * (resQr + (double)1));
-
-            arena.Dispose();
         }
 
         // ---- COD (minNormSolveInPlace): minimum-norm / pseudoinverse least-squares ----
@@ -1049,23 +993,22 @@ public class doubleQRCPTests
         //       construction gives a large basic-vs-min-norm gap (see docs / the benchmark probe).
         void MinNormRankDeficientTall()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int m = 12, n = 8, r = 5;
-            var A = arena.doubleRandomMat(m, n, -3f, 3f, 0xC0D1u);
+            var A = GenerateOP.doubleRandomMat(m, n, -3f, 3f, 0xC0D1u);
             for (int row = 0; row < m; row++)
             {
                 A[row, 5] = A[row, 0] + A[row, 1];               // 3 exact dependencies -> rank 5
                 A[row, 6] = (double)2f * A[row, 2] - A[row, 3];
                 A[row, 7] = A[row, 0] - A[row, 4];
             }
-            var A0 = A.Copy();
-            var b = arena.doubleRandomVec(m, -3f, 3f, 0xB1Au);
-            var b0 = b.Copy();
+            var A0 = new doubleMxN(in A, Allocator.Temp);
+            var b = GenerateOP.doubleRandomVec(m, -3f, 3f, 0xB1Au);
+            var b0 = new doubleN(in b, Allocator.Temp);
 
             // COD min-norm
-            var Acod = A0.Copy(); var bcod = b0.Copy();
-            var xCod = arena.doubleVec(n);
+            var Acod = new doubleMxN(in A0, Allocator.Temp); var bcod = new doubleN(in b0, Allocator.Temp);
+            var xCod = new doubleN(n, Allocator.Temp);
             RankInfo codInfo = QRCP.minNormSolveInPlace(ref Acod, ref bcod, ref xCod);
             RecordEq(codInfo.rank, r);
             if (Analysis.isAnyNan(in xCod)) { Fail0(14, 0); return; }
@@ -1073,15 +1016,15 @@ public class doubleQRCPTests
             double resCod = ResidualNorm(in A0, in xCod, in b0);
 
             // basic (truncated) solution
-            var Abas = A0.Copy(); var bbas = b0.Copy();
-            var xBas = arena.doubleVec(n);
+            var Abas = new doubleMxN(in A0, Allocator.Temp); var bbas = new doubleN(in b0, Allocator.Temp);
+            var xBas = new doubleN(n, Allocator.Temp);
             QRCP.solveInPlace(ref Abas, ref bbas, ref xBas);
             double normBas = VecNorm(in xBas);
             double resBas = ResidualNorm(in A0, in xBas, in b0);
 
             // SVD pseudoinverse oracle
-            var Apinv = A0.Copy();
-            var xPinv = arena.doubleVec(n);
+            var Apinv = new doubleMxN(in A0, Allocator.Temp);
+            var xPinv = new doubleN(n, Allocator.Temp);
             RankInfo pinvInfo = SVD.pinvSolve(ref Apinv, in b0, ref xPinv);
             RecordEq(pinvInfo.rank, r);
             double normPinv = VecNorm(in xPinv);
@@ -1101,8 +1044,6 @@ public class doubleQRCPTests
             // precision — the real gap is far bigger on high-deficiency problems, see the benchmark
             // probe — so this floors only at "clearly nonzero", not a fixed fraction.)
             RecordBound((double)100 * Consts.doubleSqrtEps * (normCod + (double)1), normBas - normCod);
-
-            arena.Dispose();
         }
 
         // (15) Full COLUMN rank tall: there are no free variables, so the min-norm solution IS the basic
@@ -1110,51 +1051,47 @@ public class doubleQRCPTests
         // solveInPlace, so the two must be BIT-IDENTICAL (not merely close).
         void MinNormFullRankEqualsBasic()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int m = 10, n = 5;
-            var A = arena.doubleRandomMat(m, n, -4f, 4f, 0x0F0Fu);
+            var A = GenerateOP.doubleRandomMat(m, n, -4f, 4f, 0x0F0Fu);
             for (int d = 0; d < n; d++) A[d, d] += (double)8f;   // full column rank, well-conditioned
-            var A0 = A.Copy();
-            var b = arena.doubleRandomVec(m, -4f, 4f, 0x7A7Au);
-            var b0 = b.Copy();
+            var A0 = new doubleMxN(in A, Allocator.Temp);
+            var b = GenerateOP.doubleRandomVec(m, -4f, 4f, 0x7A7Au);
+            var b0 = new doubleN(in b, Allocator.Temp);
 
-            var Amin = A0.Copy(); var bmin = b0.Copy();
-            var xMin = arena.doubleVec(n);
+            var Amin = new doubleMxN(in A0, Allocator.Temp); var bmin = new doubleN(in b0, Allocator.Temp);
+            var xMin = new doubleN(n, Allocator.Temp);
             int rankMin = QRCP.minNormSolveInPlace(ref Amin, ref bmin, ref xMin).rank;
 
-            var Abas = A0.Copy(); var bbas = b0.Copy();
-            var xBas = arena.doubleVec(n);
+            var Abas = new doubleMxN(in A0, Allocator.Temp); var bbas = new doubleN(in b0, Allocator.Temp);
+            var xBas = new doubleN(n, Allocator.Temp);
             int rankBas = QRCP.solveInPlace(ref Abas, ref bbas, ref xBas).rank;
 
             RecordEq(rankMin, n);
             RecordEq(rankBas, n);
             for (int k = 0; k < n; k++)
                 AssertBitIdentical(xMin[k], xBas[k]);
-
-            arena.Dispose();
         }
 
         // (16) Rank-deficient with a CONSISTENT b (b = A·xTrue): the min-norm solution must reconstruct b
         // (residual ~ 0) and match the SVD pseudoinverse norm.
         void MinNormConsistent()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int m = 7, n = 5, r = 3;
-            var A = arena.doubleRandomMat(m, n, -3f, 3f, 0x5A5Au);
+            var A = GenerateOP.doubleRandomMat(m, n, -3f, 3f, 0x5A5Au);
             for (int row = 0; row < m; row++)
             {
                 A[row, 3] = A[row, 0] + A[row, 1];               // rank 3 (2 dependencies)
                 A[row, 4] = A[row, 0] - A[row, 2];
             }
-            var A0 = A.Copy();
-            var xTrue = arena.doubleRandomVec(n, -2f, 2f, 0x1234u);
+            var A0 = new doubleMxN(in A, Allocator.Temp);
+            var xTrue = GenerateOP.doubleRandomVec(n, -2f, 2f, 0x1234u);
             var b = Blas.dot(A, xTrue);                          // consistent
-            var b0 = b.Copy();
+            var b0 = new doubleN(in b, Allocator.Temp);
 
-            var Acod = A0.Copy(); var bcod = b0.Copy();
-            var xCod = arena.doubleVec(n);
+            var Acod = new doubleMxN(in A0, Allocator.Temp); var bcod = new doubleN(in b0, Allocator.Temp);
+            var xCod = new doubleN(n, Allocator.Temp);
             int rank = QRCP.minNormSolveInPlace(ref Acod, ref bcod, ref xCod).rank;
             RecordEq(rank, r);
             if (Analysis.isAnyNan(in xCod)) { Fail0(16, 0); return; }
@@ -1165,35 +1102,32 @@ public class doubleQRCPTests
             RecordBound(res, tol * ((double)1 + VecNorm(in b0)));
 
             // norm matches the SVD pseudoinverse
-            var Apinv = A0.Copy();
-            var xPinv = arena.doubleVec(n);
+            var Apinv = new doubleMxN(in A0, Allocator.Temp);
+            var xPinv = new doubleN(n, Allocator.Temp);
             SVD.pinvSolve(ref Apinv, in b0, ref xPinv);
             AssertClose(VecNorm(in xCod), VecNorm(in xPinv), tol * (VecNorm(in xPinv) + (double)1));
-
-            arena.Dispose();
         }
 
         // (17) The allocating overload and the explicit-scratch primitive must produce bit-identical
         // results on a rank-deficient system (same factor + COD path; only scratch ownership differs).
         void MinNormScratchEquivalence()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int m = 9, n = 6;
-            var A = arena.doubleRandomMat(m, n, -3f, 3f, 0x2468u);
+            var A = GenerateOP.doubleRandomMat(m, n, -3f, 3f, 0x2468u);
             for (int row = 0; row < m; row++)
                 A[row, 5] = (double)2f * A[row, 0] - A[row, 1];  // rank 5
-            var A0 = A.Copy();
-            var b = arena.doubleRandomVec(m, -3f, 3f, 0x1357u);
-            var b0 = b.Copy();
+            var A0 = new doubleMxN(in A, Allocator.Temp);
+            var b = GenerateOP.doubleRandomVec(m, -3f, 3f, 0x1357u);
+            var b0 = new doubleN(in b, Allocator.Temp);
 
-            var A1 = A0.Copy(); var b1 = b0.Copy(); var x1 = arena.doubleVec(n);
+            var A1 = new doubleMxN(in A0, Allocator.Temp); var b1 = new doubleN(in b0, Allocator.Temp); var x1 = new doubleN(n, Allocator.Temp);
             RankInfo info1 = QRCP.minNormSolveInPlace(ref A1, ref b1, ref x1);   // allocating
 
-            var A2 = A0.Copy(); var b2 = b0.Copy(); var x2 = arena.doubleVec(n);
-            var R = arena.doubleMat(n);
+            var A2 = new doubleMxN(in A0, Allocator.Temp); var b2 = new doubleN(in b0, Allocator.Temp); var x2 = new doubleN(n, Allocator.Temp);
+            var R = new doubleMxN(n, n, Allocator.Temp);
             var P = new Pivot(n, Allocator.Persistent);
-            var u = arena.doubleVec(m);
+            var u = new doubleN(m, Allocator.Temp);
             RankInfo info2 = QRCP.minNormSolveInPlace(ref A2, ref b2, ref x2, ref R, ref P, ref u);   // primitive
 
             RecordEq(info1.rank, info2.rank);
@@ -1201,7 +1135,6 @@ public class doubleQRCPTests
                 AssertBitIdentical(x1[k], x2[k]);
 
             P.Dispose();
-            arena.Dispose();
         }
 
         // (18) Large n (m=180, n=80 >= 2*QRCP_BLOCK) rank-deficient: forces the BLOCKED fused factor
@@ -1209,51 +1142,45 @@ public class doubleQRCPTests
         // pseudoinverse on norm and residual.
         void MinNormBlocked()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int m = 180, n = 80;
-            var A = arena.doubleRandomMat(m, n, -2f, 2f, 0xB10Cu);
+            var A = GenerateOP.doubleRandomMat(m, n, -2f, 2f, 0xB10Cu);
             for (int d = 0; d < n; d++) A[d, d] += (double)n;    // well-conditioned...
             for (int row = 0; row < m; row++)
                 A[row, n - 1] = A[row, 0] + A[row, 1];           // ...except one exact dependency -> rank n-1
-            var A0 = A.Copy();
-            var b = arena.doubleRandomVec(m, -2f, 2f, 0x50C0u);
-            var b0 = b.Copy();
+            var A0 = new doubleMxN(in A, Allocator.Temp);
+            var b = GenerateOP.doubleRandomVec(m, -2f, 2f, 0x50C0u);
+            var b0 = new doubleN(in b, Allocator.Temp);
 
-            var Acod = A0.Copy(); var bcod = b0.Copy();
-            var xCod = arena.doubleVec(n);
+            var Acod = new doubleMxN(in A0, Allocator.Temp); var bcod = new doubleN(in b0, Allocator.Temp);
+            var xCod = new doubleN(n, Allocator.Temp);
             int rank = QRCP.minNormSolveInPlace(ref Acod, ref bcod, ref xCod).rank;
             RecordEq(rank, n - 1);
             if (Analysis.isAnyNan(in xCod)) { Fail0(18, 0); return; }
 
-            var Apinv = A0.Copy();
-            var xPinv = arena.doubleVec(n);
+            var Apinv = new doubleMxN(in A0, Allocator.Temp);
+            var xPinv = new doubleN(n, Allocator.Temp);
             SVD.pinvSolve(ref Apinv, in b0, ref xPinv);
 
             double tol = (double)Consts.doubleSqrtEps * (double)40;
             AssertClose(VecNorm(in xCod), VecNorm(in xPinv), tol * (VecNorm(in xPinv) + (double)1));
             AssertClose(ResidualNorm(in A0, in xCod, in b0), ResidualNorm(in A0, in xPinv, in b0),
                         tol * (ResidualNorm(in A0, in xPinv, in b0) + (double)1));
-
-            arena.Dispose();
         }
 
         // (19) Zero matrix: rank 0, x all zeros (degenerate COD path — never enters the LQ compress).
         void MinNormZeroMatrix()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int m = 5, n = 3;
-            var A = arena.doubleMat(m, n);                       // zero-initialised
-            var b = arena.doubleRandomVec(m, -1f, 1f, 0x000Fu);
-            var x = arena.doubleVec(n);
+            var A = new doubleMxN(m, n, Allocator.Temp);                       // zero-initialised
+            var b = GenerateOP.doubleRandomVec(m, -1f, 1f, 0x000Fu);
+            var x = new doubleN(n, Allocator.Temp);
 
             int rank = QRCP.minNormSolveInPlace(ref A, ref b, ref x).rank;
             RecordEq(rank, 0);
             for (int j = 0; j < n; j++)
                 AssertBitIdentical(x[j], (double)0);
-
-            arena.Dispose();
         }
 
         // (20) KNOWN-ANSWER (external ground truth, not our own SVD). Rank-1 A = [[1,0],[2,0]] has the
@@ -1262,24 +1189,21 @@ public class doubleQRCPTests
         // x = A+ b = [ (b0 + 2 b1)/5 , 0 ]. For b = [1, 3] that is x = [7/5, 0] = [1.4, 0] exactly.
         void MinNormKnownRank1()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int m = 2, n = 2;
-            var A = arena.doubleMat(m, n);
+            var A = new doubleMxN(m, n, Allocator.Temp);
             A[0, 0] = (double)1; A[0, 1] = (double)0;
             A[1, 0] = (double)2; A[1, 1] = (double)0;
-            var b = arena.doubleVec(m);
+            var b = new doubleN(m, Allocator.Temp);
             b[0] = (double)1; b[1] = (double)3;
 
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
             int rank = QRCP.minNormSolveInPlace(ref A, ref b, ref x).rank;
 
             RecordEq(rank, 1);
             double tol = (double)Consts.doubleSqrtEps * (double)20;
             AssertClose(x[0], (double)7 / (double)5, tol);   // 1.4
             AssertClose(x[1], (double)0, tol);
-
-            arena.Dispose();
         }
 
         // (21) KNOWN-ANSWER, rank-2 TALL and INCONSISTENT. Matrix from the R MASS::ginv tutorial
@@ -1291,19 +1215,18 @@ public class doubleQRCPTests
         //   x = [ 10/87, 97/87, 107/87 ] ≈ [0.114943, 1.114943, 1.229885].
         void MinNormKnownRank2TallInconsistent()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int m = 4, n = 3;
-            var A = arena.doubleMat(m, n);
+            var A = new doubleMxN(m, n, Allocator.Temp);
             A[0, 0] = (double)1; A[0, 1] = (double)2; A[0, 2] = (double)3;
             A[1, 0] = (double)2; A[1, 1] = (double)1; A[1, 2] = (double)3;
             A[2, 0] = (double)3; A[2, 1] = (double)3; A[2, 2] = (double)6;
             A[3, 0] = (double)1; A[3, 1] = (double)1; A[3, 2] = (double)2;
-            var b = arena.doubleVec(m);
+            var b = new doubleN(m, Allocator.Temp);
             b[0] = (double)6; b[1] = (double)5; b[2] = (double)11; b[3] = (double)4;
-            var A0 = A.Copy(); var b0 = b.Copy();
+            var A0 = new doubleMxN(in A, Allocator.Temp); var b0 = new doubleN(in b, Allocator.Temp);
 
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
             int rank = QRCP.minNormSolveInPlace(ref A, ref b, ref x).rank;
 
             RecordEq(rank, 2);
@@ -1313,75 +1236,69 @@ public class doubleQRCPTests
             AssertClose(x[2], (double)107 / (double)87, tol);  // 1.229885
 
             // Cross-check it really is the LS optimum: residual equals the SVD pseudoinverse residual.
-            var Apinv = A0.Copy();
-            var xPinv = arena.doubleVec(n);
+            var Apinv = new doubleMxN(in A0, Allocator.Temp);
+            var xPinv = new doubleN(n, Allocator.Temp);
             SVD.pinvSolve(ref Apinv, in b0, ref xPinv);
             AssertClose(ResidualNorm(in A0, in x, in b0), ResidualNorm(in A0, in xPinv, in b0),
                         (double)Consts.doubleSqrtEps * (double)20);
-
-            arena.Dispose();
         }
 
         // (22) Multi-RHS COD == per-column single-RHS COD. Since single-RHS COD is already validated
         // against SVD + literature vectors, this transitively validates the block path.
         void MinNormMultiRHSMatchesSingle()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int m = 10, n = 6, k = 4;
-            var A = arena.doubleRandomMat(m, n, -3f, 3f, 0xB10Cu);
+            var A = GenerateOP.doubleRandomMat(m, n, -3f, 3f, 0xB10Cu);
             for (int row = 0; row < m; row++)
             {
                 A[row, 4] = A[row, 0] + A[row, 1];               // rank 4
                 A[row, 5] = A[row, 2] - A[row, 3];
             }
-            var A0 = A.Copy();
-            var B = arena.doubleRandomMat(m, k, -3f, 3f, 0x5013u);
+            var A0 = new doubleMxN(in A, Allocator.Temp);
+            var B = GenerateOP.doubleRandomMat(m, k, -3f, 3f, 0x5013u);
 
-            var Ablk = A0.Copy(); var Bblk = B.Copy();
-            var Xblk = arena.doubleMat(n, k);
+            var Ablk = new doubleMxN(in A0, Allocator.Temp); var Bblk = new doubleMxN(in B, Allocator.Temp);
+            var Xblk = new doubleMxN(n, k, Allocator.Temp);
             int rankBlk = QRCP.minNormSolveInPlace(ref Ablk, ref Bblk, ref Xblk).rank;
             RecordEq(rankBlk, 4);
 
             double tol = (double)Consts.doubleSqrtEps * (double)50;
             for (int j = 0; j < k; j++)
             {
-                var Aj = A0.Copy();
-                var bj = arena.doubleVec(m);
+                var Aj = new doubleMxN(in A0, Allocator.Temp);
+                var bj = new doubleN(m, Allocator.Temp);
                 for (int i = 0; i < m; i++) bj[i] = B[i, j];
-                var xj = arena.doubleVec(n);
+                var xj = new doubleN(n, Allocator.Temp);
                 QRCP.minNormSolveInPlace(ref Aj, ref bj, ref xj);
                 for (int i = 0; i < n; i++)
                     AssertClose(Xblk[i, j], xj[i], tol * (math.abs(xj[i]) + (double)1));
             }
-
-            arena.Dispose();
         }
 
         // (23) Factor-reuse minNormDecompSolve (from a precomputed A·P=Q·R) == the fused block COD.
         void MinNormDecompSolveMatchesFused()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int m = 9, n = 5, k = 3;
-            var A = arena.doubleRandomMat(m, n, -3f, 3f, 0x2468u);
+            var A = GenerateOP.doubleRandomMat(m, n, -3f, 3f, 0x2468u);
             for (int row = 0; row < m; row++)
                 A[row, 4] = (double)2f * A[row, 0] - A[row, 1];  // rank 4
-            var A0 = A.Copy();
-            var B = arena.doubleRandomMat(m, k, -3f, 3f, 0x1357u);
+            var A0 = new doubleMxN(in A, Allocator.Temp);
+            var B = GenerateOP.doubleRandomMat(m, k, -3f, 3f, 0x1357u);
 
             // fused block COD (destroys A + B)
-            var Afu = A0.Copy(); var Bfu = B.Copy();
-            var Xfu = arena.doubleMat(n, k);
+            var Afu = new doubleMxN(in A0, Allocator.Temp); var Bfu = new doubleMxN(in B, Allocator.Temp);
+            var Xfu = new doubleMxN(n, k, Allocator.Temp);
             QRCP.minNormSolveInPlace(ref Afu, ref Bfu, ref Xfu);
 
             // factor-reuse: decompose once (A preserved into Q), then minNormDecompSolve (B preserved)
-            var Q = arena.doubleMat(m, n);
-            var R = arena.doubleMat(n, n);
+            var Q = new doubleMxN(m, n, Allocator.Temp);
+            var R = new doubleMxN(n, n, Allocator.Temp);
             var Pp = new Pivot(n, Allocator.Persistent);
             QRCP.decomp(in A0, ref Q, ref R, ref Pp);
-            var Xre = arena.doubleMat(n, k);
-            var Bre = B.Copy();
+            var Xre = new doubleMxN(n, k, Allocator.Temp);
+            var Bre = new doubleMxN(in B, Allocator.Temp);
             QRCP.minNormDecompSolve(ref Q, ref R, in Pp, ref Bre, ref Xre);
 
             double tol = (double)Consts.doubleSqrtEps * (double)50;
@@ -1390,24 +1307,22 @@ public class doubleQRCPTests
                     AssertClose(Xre[i, j], Xfu[i, j], tol * (math.abs(Xfu[i, j]) + (double)1));
 
             Pp.Dispose();
-            arena.Dispose();
         }
 
         // (24) B = I -> X = A+ (the pseudoinverse itself). Verify the Penrose identity A A+ A == A.
         void MinNormPseudoinverseIdentity()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int m = 8, n = 5;
-            var A = arena.doubleRandomMat(m, n, -3f, 3f, 0xF00Du);
+            var A = GenerateOP.doubleRandomMat(m, n, -3f, 3f, 0xF00Du);
             for (int row = 0; row < m; row++)
                 A[row, 4] = A[row, 0] + A[row, 2];               // rank 4
-            var A0 = A.Copy();
+            var A0 = new doubleMxN(in A, Allocator.Temp);
 
             // B = I_m ; X = A+ (n x m)
-            var B = arena.doubleMat(m, m);
+            var B = new doubleMxN(m, m, Allocator.Temp);
             for (int i = 0; i < m; i++) B[i, i] = (double)1;
-            var Apinvmat = arena.doubleMat(n, m);
+            var Apinvmat = new doubleMxN(n, m, Allocator.Temp);
             int rank = QRCP.minNormSolveInPlace(ref A, ref B, ref Apinvmat).rank;
             RecordEq(rank, 4);
 
@@ -1418,38 +1333,35 @@ public class doubleQRCPTests
             for (int i = 0; i < m; i++)
                 for (int j = 0; j < n; j++)
                     AssertClose(AApA[i, j], A0[i, j], tol * (math.abs(A0[i, j]) + (double)1));
-
-            arena.Dispose();
         }
 
         // (25) Single-RHS factor-reuse (basic decompSolve + min-norm minNormDecompSolve) must match the
         // fused single-RHS solveInPlace / minNormSolveInPlace on the same rank-deficient inconsistent b.
         void SingleRHSFactorReuseMatchesFused()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int m = 9, n = 5;
-            var A = arena.doubleRandomMat(m, n, -3f, 3f, 0xD00Du);
+            var A = GenerateOP.doubleRandomMat(m, n, -3f, 3f, 0xD00Du);
             for (int row = 0; row < m; row++)
                 A[row, 4] = A[row, 0] + A[row, 2];               // rank 4
-            var A0 = A.Copy();
-            var b = arena.doubleRandomVec(m, -3f, 3f, 0x0B0Bu);  // inconsistent
+            var A0 = new doubleMxN(in A, Allocator.Temp);
+            var b = GenerateOP.doubleRandomVec(m, -3f, 3f, 0x0B0Bu);  // inconsistent
 
             // fused single-RHS references (destroy A and b -> feed copies)
-            var Ab = A0.Copy(); var bb = b.Copy(); var xBasFu = arena.doubleVec(n);
+            var Ab = new doubleMxN(in A0, Allocator.Temp); var bb = new doubleN(in b, Allocator.Temp); var xBasFu = new doubleN(n, Allocator.Temp);
             QRCP.solveInPlace(ref Ab, ref bb, ref xBasFu);
-            var Am = A0.Copy(); var bm = b.Copy(); var xMinFu = arena.doubleVec(n);
+            var Am = new doubleMxN(in A0, Allocator.Temp); var bm = new doubleN(in b, Allocator.Temp); var xMinFu = new doubleN(n, Allocator.Temp);
             QRCP.minNormSolveInPlace(ref Am, ref bm, ref xMinFu);
 
             // factor once (A preserved into Q), then the single-RHS factor-reuse solves (b preserved)
-            var Q = arena.doubleMat(m, n);
-            var R = arena.doubleMat(n, n);
+            var Q = new doubleMxN(m, n, Allocator.Temp);
+            var R = new doubleMxN(n, n, Allocator.Temp);
             var Pp = new Pivot(n, Allocator.Persistent);
             QRCP.decomp(in A0, ref Q, ref R, ref Pp);
 
-            var xBasRe = arena.doubleVec(n);
+            var xBasRe = new doubleN(n, Allocator.Temp);
             QRCP.decompSolve(ref Q, ref R, in Pp, ref b, ref xBasRe);
-            var xMinRe = arena.doubleVec(n);
+            var xMinRe = new doubleN(n, Allocator.Temp);
             QRCP.minNormDecompSolve(ref Q, ref R, in Pp, ref b, ref xMinRe);
 
             double tol = (double)Consts.doubleSqrtEps * (double)50;
@@ -1460,7 +1372,6 @@ public class doubleQRCPTests
             }
 
             Pp.Dispose();
-            arena.Dispose();
         }
 
         void AssertBitIdentical(double a, double b)
@@ -1581,33 +1492,27 @@ public class doubleQRCPTests
     [Test]
     public void QrcpSolveThrowsOnShortMatrix() // m < n is rejected
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.doubleMat(2, 3);
-        var b = arena.doubleVec(2);
-        var x = arena.doubleVec(3);
+        var A = new doubleMxN(2, 3, Allocator.Temp);
+        var b = new doubleN(2, Allocator.Temp);
+        var x = new doubleN(3, Allocator.Temp);
         Assert.Catch<ArgumentException>(() => QRCP.solveInPlace(ref A, ref b, ref x));
-        arena.Dispose();
     }
 
     [Test]
     public void QrcpSolveThrowsOnWrongBLength()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.doubleMat(4, 3);
-        var b = arena.doubleVec(3); // should be 4
-        var x = arena.doubleVec(3);
+        var A = new doubleMxN(4, 3, Allocator.Temp);
+        var b = new doubleN(3, Allocator.Temp); // should be 4
+        var x = new doubleN(3, Allocator.Temp);
         Assert.Catch<ArgumentException>(() => QRCP.solveInPlace(ref A, ref b, ref x));
-        arena.Dispose();
     }
 
     [Test]
     public void QrcpSolveThrowsOnWrongXLength()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.doubleMat(4, 3);
-        var b = arena.doubleVec(4);
-        var x = arena.doubleVec(2); // should be 3
+        var A = new doubleMxN(4, 3, Allocator.Temp);
+        var b = new doubleN(4, Allocator.Temp);
+        var x = new doubleN(2, Allocator.Temp); // should be 3
         Assert.Catch<ArgumentException>(() => QRCP.solveInPlace(ref A, ref b, ref x));
-        arena.Dispose();
     }
 }

@@ -50,25 +50,25 @@ public class floatTFQMRTests
 
         // Dense nonsymmetric, diagonally dominant (well-conditioned, nonsingular): random entries +
         // a heavy diagonal. Not symmetric (random off-diagonals differ across the diagonal).
-        static floatMxN DenseNonsym(ref Arena arena, int n, uint seed)
+        static floatMxN DenseNonsym(int n, uint seed)
         {
-            var A = arena.floatRandomMat(n, n, -1f, 1f, seed);
+            var A = GenerateOP.floatRandomMat(n, n, -1f, 1f, seed);
             for (int i = 0; i < n; i++) A[i, i] += (float)(2 * n);
             return A;
         }
 
         // Scalar 1D convection-diffusion: diagonal 6, super -1, sub -3 — nonsymmetric, diagonally
         // dominant. Full storage.
-        static floatBSR ConvDiff1D(ref Arena arena, int n)
+        static floatBSR ConvDiff1D(int n)
         {
-            var b = arena.floatBSRBuilder(n, n, 1, 1, 3 * n);
+            var b = new floatBSRBuilder(n, n, 1, 1, Allocator.Temp, 3 * n);
             for (int i = 0; i < n; i++)
             {
                 b.AddValue(i, i, (float)6);
                 if (i > 0) b.AddValue(i, i - 1, (float)(-3));
                 if (i < n - 1) b.AddValue(i, i + 1, (float)(-1));
             }
-            return b.ToBSR(ref arena);
+            return b.ToBSR(Allocator.Temp);
         }
 
         static float RelResidualDense(in floatMxN A, in floatN x, in floatN b)
@@ -105,51 +105,44 @@ public class floatTFQMRTests
         // Basic convergence on a nonsymmetric dense square system + fresh residual check.
         void SolvesDenseNonsym()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 40;
-            var A = DenseNonsym(ref arena, n, 0x7F01u);
-            var b = arena.floatRandomVec(n, -1f, 1f, 0x7F02u);
+            var A = DenseNonsym(n, 0x7F01u);
+            var b = GenerateOP.floatRandomVec(n, -1f, 1f, 0x7F02u);
 
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (float)0;
             var info = Krylov.tfqmr(in A, in b, ref x, MaxIter(n), Tol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(info.Solved);
             Assert.IsTrue(RelResidualDense(in A, in x, in b) <= Tol());
-
-            arena.Dispose();
         }
 
         // Required #1: known-solution recovery. b = A*xTrue -> recovered x ~ xTrue elementwise.
         void KnownSolution()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 32;
-            var A = DenseNonsym(ref arena, n, 0x7F11u);
-            var xTrue = arena.floatRandomVec(n, -1f, 1f, 0x7F12u);
+            var A = DenseNonsym(n, 0x7F11u);
+            var xTrue = GenerateOP.floatRandomVec(n, -1f, 1f, 0x7F12u);
             var b = Blas.dot(A, xTrue);
 
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (float)0;
             var info = Krylov.tfqmr(in A, in b, ref x, MaxIter(n), Tol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(math.abs(x[i] - xTrue[i]) <= SolTol() * ((float)1 + math.abs(xTrue[i])));
-
-            arena.Dispose();
         }
 
         // Required #2: agreement with an independent direct LU solve on the SAME random (A, b).
         void MatchesDirectSolve()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 30;
-            var A = DenseNonsym(ref arena, n, 0x7F21u);
-            var b = arena.floatRandomVec(n, -1f, 1f, 0x7F22u);
+            var A = DenseNonsym(n, 0x7F21u);
+            var b = GenerateOP.floatRandomVec(n, -1f, 1f, 0x7F22u);
 
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (float)0;
             var info = Krylov.tfqmr(in A, in b, ref x, MaxIter(n), Tol());
 
@@ -165,45 +158,37 @@ public class floatTFQMRTests
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(math.abs(x[i] - xRef[i]) <= MatchTol() * ((float)1 + math.abs(xRef[i])));
-
-            arena.Dispose();
         }
 
         // BSR nonsymmetric convergence + fresh residual check.
         void SolvesBSRNonsym()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 120;
-            var A = ConvDiff1D(ref arena, n);
-            var b = arena.floatRandomVec(n, -1f, 1f, 0x7F32u);
+            var A = ConvDiff1D(n);
+            var b = GenerateOP.floatRandomVec(n, -1f, 1f, 0x7F32u);
 
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (float)0;
             var info = Krylov.tfqmr(in A, in b, ref x, MaxIter(n), Tol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(RelResidualBSR(in A, in x, in b) <= Tol());
-
-            arena.Dispose();
         }
 
         // ILU(0)-right-preconditioned BSR converges.
         void PreconditionedILU0()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 150;
-            var A = ConvDiff1D(ref arena, n);
-            var b = arena.floatRandomVec(n, -1f, 1f, 0x7F42u);
-            var M = arena.floatILU0(in A);
+            var A = ConvDiff1D(n);
+            var b = GenerateOP.floatRandomVec(n, -1f, 1f, 0x7F42u);
+            var M = new floatILU0(in A, Allocator.Temp);
 
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (float)0;
             var info = Krylov.tfqmr(in A, in M, in b, ref x, MaxIter(n), Tol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(RelResidualBSR(in A, in x, in b) <= Tol());
-
-            arena.Dispose();
         }
 
         // Required #3: identity-fold BIT-IDENTICAL. The unpreconditioned generic entry point and the
@@ -212,44 +197,41 @@ public class floatTFQMRTests
         // is allocated but never read/written under the identity fold.
         void IdentityFold()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 36;
-            var A = DenseNonsym(ref arena, n, 0x7F51u);
-            var b = arena.floatRandomVec(n, -1f, 1f, 0x7F52u);
+            var A = DenseNonsym(n, 0x7F51u);
+            var b = GenerateOP.floatRandomVec(n, -1f, 1f, 0x7F52u);
             var Aop = new floatDenseOperator(in A);
             int maxIter = MaxIter(n);
             float tol = Tol();
 
             // Path A: unpreconditioned generic entry (six buffers, no uHat).
-            var xa = arena.floatVec(n);
+            var xa = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) xa[i] = (float)0;
-            var rHat0a = arena.floatVec(n);
-            var ua = arena.floatVec(n);
-            var wa = arena.floatVec(n);
-            var va = arena.floatVec(n);
-            var aua = arena.floatVec(n);
-            var da = arena.floatVec(n);
+            var rHat0a = new floatN(n, Allocator.Temp);
+            var ua = new floatN(n, Allocator.Temp);
+            var wa = new floatN(n, Allocator.Temp);
+            var va = new floatN(n, Allocator.Temp);
+            var aua = new floatN(n, Allocator.Temp);
+            var da = new floatN(n, Allocator.Temp);
             var infoA = Krylov.tfqmr(in Aop, in b, ref xa,
                 ref rHat0a, ref ua, ref wa, ref va, ref aua, ref da, maxIter, tol);
 
             // Path B: merged generic entry with an explicit identity preconditioner (+ uHat, unused).
-            var xb = arena.floatVec(n);
+            var xb = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) xb[i] = (float)0;
-            var rHat0b = arena.floatVec(n);
-            var ub = arena.floatVec(n);
-            var wb = arena.floatVec(n);
-            var vb = arena.floatVec(n);
-            var aub = arena.floatVec(n);
-            var db = arena.floatVec(n);
-            var uHat = arena.floatVec(n);
+            var rHat0b = new floatN(n, Allocator.Temp);
+            var ub = new floatN(n, Allocator.Temp);
+            var wb = new floatN(n, Allocator.Temp);
+            var vb = new floatN(n, Allocator.Temp);
+            var aub = new floatN(n, Allocator.Temp);
+            var db = new floatN(n, Allocator.Temp);
+            var uHat = new floatN(n, Allocator.Temp);
             var infoB = Krylov.tfqmr(in Aop, default(floatIdentityPreconditioner), in b, ref xb,
                 ref rHat0b, ref ub, ref wb, ref vb, ref aub, ref db, ref uHat, maxIter, tol);
 
             Assert.IsTrue(infoA.iterations == infoB.iterations);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(xa[i] == xb[i]);   // EXACT, bit-identical
-
-            arena.Dispose();
         }
 
         // Required #4: job-struct-copy safety / no hidden state between calls. Two independent solves
@@ -257,16 +239,15 @@ public class floatTFQMRTests
         // identical iteration counts (TFQMR keeps all state in caller-supplied buffers).
         void Determinism()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 60;
-            var A = ConvDiff1D(ref arena, n);
-            var b = arena.floatRandomVec(n, -1f, 1f, 0x7F62u);
+            var A = ConvDiff1D(n);
+            var b = GenerateOP.floatRandomVec(n, -1f, 1f, 0x7F62u);
 
-            var x1 = arena.floatVec(n);
+            var x1 = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x1[i] = (float)0;
             var i1 = Krylov.tfqmr(in A, in b, ref x1, MaxIter(n), Tol());
 
-            var x2 = arena.floatVec(n);
+            var x2 = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x2[i] = (float)0;
             var i2 = Krylov.tfqmr(in A, in b, ref x2, MaxIter(n), Tol());
 
@@ -275,28 +256,23 @@ public class floatTFQMRTests
             Assert.IsTrue(i1.iterations == i2.iterations);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(x1[i] == x2[i]);   // EXACT, bit-identical
-
-            arena.Dispose();
         }
 
         // Edge: zero rhs -> immediate converged, x set to zero, no iterations.
         void ZeroRhs()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 30;
-            var A = ConvDiff1D(ref arena, n);
-            var b = arena.floatVec(n);
+            var A = ConvDiff1D(n);
+            var b = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) b[i] = (float)0;
 
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (float)5;
             var info = Krylov.tfqmr(in A, in b, ref x, MaxIter(n), Tol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(info.iterations == 0);
             for (int i = 0; i < n; i++) Assert.IsTrue(x[i] == (float)0);
-
-            arena.Dispose();
         }
     }
 

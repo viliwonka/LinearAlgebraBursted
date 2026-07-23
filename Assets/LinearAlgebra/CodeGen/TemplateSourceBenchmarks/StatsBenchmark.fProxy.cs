@@ -56,9 +56,9 @@ namespace LinearAlgebra.Benchmarks
 
     public static partial class StatsBenchmark
     {
-        static fProxyMxN FillFProxy(Arena arena, int n)
+        static fProxyMxN FillFProxy(Allocator allocator, int n)
         {
-            var A = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, allocator);
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
                 for (int c = 0; c < n; c++)
@@ -68,54 +68,49 @@ namespace LinearAlgebra.Benchmarks
 
         static string RowSumFProxy(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = FillFProxy(arena, n);
-            var dest = arena.fProxyVec(n);
+            var A = FillFProxy(Allocator.Persistent, n);
+            var dest = new fProxyN(n, Allocator.Persistent);
             var job = new StatsRowSumJobFProxy { A = A, Dest = dest };
             var stat = Bench.Time(() => job.Run());
-            arena.Dispose();
+            A.Dispose(); dest.Dispose();
             return Bench.Row("fProxy", n, stat, flops);
         }
 
         static string ColSumFProxy(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = FillFProxy(arena, n);
-            var dest = arena.fProxyVec(n);
+            var A = FillFProxy(Allocator.Persistent, n);
+            var dest = new fProxyN(n, Allocator.Persistent);
             var job = new StatsColSumJobFProxy { A = A, Dest = dest };
             var stat = Bench.Time(() => job.Run());
-            arena.Dispose();
+            A.Dispose(); dest.Dispose();
             return Bench.Row("fProxy", n, stat, flops);
         }
 
         static string RowVarFProxy(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = FillFProxy(arena, n);
-            var dest = arena.fProxyVec(n);
+            var A = FillFProxy(Allocator.Persistent, n);
+            var dest = new fProxyN(n, Allocator.Persistent);
             var job = new StatsRowVarJobFProxy { A = A, Dest = dest };
             var stat = Bench.Time(() => job.Run());
-            arena.Dispose();
+            A.Dispose(); dest.Dispose();
             return Bench.Row("fProxy", n, stat, flops);
         }
 
         static string StdRowsFProxy(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = FillFProxy(arena, n);
+            var A = FillFProxy(Allocator.Persistent, n);
             var job = new StatsStdRowsJobFProxy { A = A };
             var stat = Bench.Time(() => job.Run());
-            arena.Dispose();
+            A.Dispose();
             return Bench.Row("fProxy", n, stat, flops);
         }
 
         static string SoftmaxRowsFProxy(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = FillFProxy(arena, n);
+            var A = FillFProxy(Allocator.Persistent, n);
             var job = new StatsSoftmaxRowsJobFProxy { A = A };
             var stat = Bench.Time(() => job.Run());
-            arena.Dispose();
+            A.Dispose();
             return Bench.Row("fProxy", n, stat, flops);
         }
     }

@@ -16,12 +16,12 @@ using Unity.Mathematics;
 // non-trivial (sine) eigenvectors. Plus an eigenpair-residual check ‖A v - λ v‖. Managed [Test]s.
 public class floatEigNearShiftTests
 {
-    static double RelResidual(in floatMxN A, in floatMxN vectors, int row, float lam, ref Arena arena)
+    static double RelResidual(in floatMxN A, in floatMxN vectors, int row, float lam)
     {
         int n = A.M_Rows;
-        var v = arena.floatVec(n);
+        var v = new floatN(n, Allocator.Temp);
         for (int i = 0; i < n; i++) v[i] = vectors[row, i];
-        var Av = arena.floatVec(n);
+        var Av = new floatN(n, Allocator.Temp);
         new floatDenseOperator(in A).Apply(in v, ref Av);
         double num = 0, den = 0;
         for (int i = 0; i < n; i++) { double e = (double)Av[i] - (double)lam * (double)v[i]; num += e * e; den += (double)v[i] * (double)v[i]; }
@@ -57,20 +57,18 @@ public class floatEigNearShiftTests
     [Test]
     public void EigNearShiftDiagonalExactNearest()
     {
-        var arena = new Arena(Allocator.Persistent);
         int n = 20;
-        var A = arena.floatMat(n, n);
+        var A = new floatMxN(n, n, Allocator.Temp);
         var spectrum = new double[n];
         for (int i = 0; i < n; i++) { A[i, i] = (float)i; spectrum[i] = i; }
         float shift = (float)8.3;
         int k = 3;
 
-        Eigen.eigNearShift(ref arena, in A, shift, k, out var vals, out var vecs);
+        Eigen.eigNearShift(in A, shift, k, out var vals, out var vecs);
 
         AssertNearestSet(spectrum, in vals, (double)shift, k, 1e-2);
         for (int s = 0; s < k; s++)
-            Assert.LessOrEqual(RelResidual(in A, in vecs, s, vals[s], ref arena), 3e-2, $"residual of pair #{s}");
-        arena.Dispose();
+            Assert.LessOrEqual(RelResidual(in A, in vecs, s, vals[s]), 3e-2, $"residual of pair #{s}");
     }
 
     // (2) 1D Laplacian tridiagonal (2 on diag, -1 off): non-trivial (sine) eigenvectors, exact known
@@ -79,9 +77,8 @@ public class floatEigNearShiftTests
     [Test]
     public void EigNearShiftLaplacian1DExactNearest()
     {
-        var arena = new Arena(Allocator.Persistent);
         int n = 24;
-        var A = arena.floatMat(n, n);
+        var A = new floatMxN(n, n, Allocator.Temp);
         for (int i = 0; i < n; i++)
         {
             A[i, i] = (float)2;
@@ -93,11 +90,10 @@ public class floatEigNearShiftTests
         float shift = (float)2.0;
         int k = 2;
 
-        Eigen.eigNearShift(ref arena, in A, shift, k, out var vals, out var vecs);
+        Eigen.eigNearShift(in A, shift, k, out var vals, out var vecs);
 
         AssertNearestSet(spectrum, in vals, (double)shift, k, 1e-2);
         for (int s = 0; s < k; s++)
-            Assert.LessOrEqual(RelResidual(in A, in vecs, s, vals[s], ref arena), 3e-2, $"residual of pair #{s}");
-        arena.Dispose();
+            Assert.LessOrEqual(RelResidual(in A, in vecs, s, vals[s]), 3e-2, $"residual of pair #{s}");
     }
 }

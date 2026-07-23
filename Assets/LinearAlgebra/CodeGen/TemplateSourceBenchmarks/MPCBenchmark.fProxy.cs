@@ -113,26 +113,26 @@ namespace LinearAlgebra.Benchmarks
         // Trivially stabilizable random plant (diagonal in [0.2,0.4), off-diagonal scaled 0.2/n) -- the
         // SAME recipe LQRBenchmark.fProxy.cs's own BuildInstanceFProxy uses, so the terminal DARE
         // fProxyMPCState's constructor solves is guaranteed to converge at every size below. Q=I, R=I.
-        static void BuildPlantFProxy(int n, int m, uint seed, in Arena arena,
+        static void BuildPlantFProxy(int n, int m, uint seed,
                                      out fProxyMxN A, out fProxyMxN B, out fProxyMxN Q, out fProxyMxN R)
         {
             var rng = new Unity.Mathematics.Random(seed);
             fProxy off = (fProxy)(0.2 / n);
 
-            A = arena.fProxyMat(n, n);
+            A = new fProxyMxN(n, n, Allocator.Persistent);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
                     A[i, j] = (i == j) ? rng.NextFProxy(0.2f, 0.4f) : rng.NextFProxy(-1f, 1f) * off;
 
-            B = arena.fProxyMat(n, m);
+            B = new fProxyMxN(n, m, Allocator.Persistent);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < m; j++)
                     B[i, j] = rng.NextFProxy(-1f, 1f);
 
-            Q = arena.fProxyMat(n, n);
+            Q = new fProxyMxN(n, n, Allocator.Persistent);
             for (int i = 0; i < n; i++) Q[i, i] = (fProxy)1;
 
-            R = arena.fProxyMat(m, m);
+            R = new fProxyMxN(m, m, Allocator.Persistent);
             for (int i = 0; i < m; i++) R[i, i] = (fProxy)1;
         }
 
@@ -143,32 +143,33 @@ namespace LinearAlgebra.Benchmarks
         // it near the origin.
         static fProxyMPCState BuildStateFProxy(int n, int m, int N, in fProxyMxN A, in fProxyMxN B,
                                                in fProxyMxN Q, in fProxyMxN R, in fProxyN uLo, in fProxyN uHi,
-                                               in Arena arena, bool softWall)
+                                               bool softWall)
         {
             if (!softWall)
                 return new fProxyMPCState(n, m, N, Allocator.Persistent, in A, in B, in Q, in R, in uLo, in uHi);
 
-            var C = arena.fProxyMat(1, n);
+            var C = new fProxyMxN(1, n, Allocator.Persistent);
             C[0, 0] = (fProxy)1;
-            var d = arena.fProxyVec(1, (fProxy)2);
-            return new fProxyMPCState(n, m, N, Allocator.Persistent, in A, in B, in Q, in R, in uLo, in uHi, in C, in d);
+            var d = GenerateOP.fProxyVec(1, (fProxy)2, Allocator.Persistent);
+            var s = new fProxyMPCState(n, m, N, Allocator.Persistent, in A, in B, in Q, in R, in uLo, in uHi, in C, in d);
+            C.Dispose(); d.Dispose();
+            return s;
         }
 
         // ==== Section 1: warm steady-state per-frame cost (the headline) ====
         static string WarmFrameFProxy(int N, int n, int m, uint seed, bool softWall)
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildPlantFProxy(n, m, seed, in arena, out var A, out var B, out var Q, out var R);
-            var uLo = arena.fProxyVec(m, (fProxy)(-1));
-            var uHi = arena.fProxyVec(m, (fProxy)1);
-            var s = BuildStateFProxy(n, m, N, in A, in B, in Q, in R, in uLo, in uHi, in arena, softWall);
+            BuildPlantFProxy(n, m, seed, out var A, out var B, out var Q, out var R);
+            var uLo = GenerateOP.fProxyVec(m, (fProxy)(-1), Allocator.Persistent);
+            var uHi = GenerateOP.fProxyVec(m, (fProxy)1, Allocator.Persistent);
+            var s = BuildStateFProxy(n, m, N, in A, in B, in Q, in R, in uLo, in uHi, softWall);
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Persistent);
             x[0] = (fProxy)4;
-            var reference = arena.fProxyVec(n);   // zero -- track to the origin
-            var u0 = arena.fProxyVec(m, true);
-            var xNext = arena.fProxyVec(n, true);
-            var Bu = arena.fProxyVec(n, true);
+            var reference = new fProxyN(n, Allocator.Persistent);   // zero -- track to the origin
+            var u0 = new fProxyN(m, Allocator.Persistent, true);
+            var xNext = new fProxyN(n, Allocator.Persistent, true);
+            var Bu = new fProxyN(n, Allocator.Persistent, true);
 
             var itersOut = new NativeArray<int>(1, Allocator.Persistent);
             var changesOut = new NativeArray<int>(1, Allocator.Persistent);
@@ -187,23 +188,24 @@ namespace LinearAlgebra.Benchmarks
                                              itersOut[0], changesOut[0], statusOut[0]);
 
             itersOut.Dispose(); changesOut.Dispose(); statusOut.Dispose();
-            s.Dispose(); arena.Dispose();
+            s.Dispose();
+            A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); uLo.Dispose(); uHi.Dispose();
+            x.Dispose(); reference.Dispose(); u0.Dispose(); xNext.Dispose(); Bu.Dispose();
             return row;
         }
 
         // ==== Section 2: cold solve cost (fresh warm-start carry every call) ====
         static string ColdSolveFProxy(int N, int n, int m, uint seed, int reps, bool softWall)
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildPlantFProxy(n, m, seed, in arena, out var A, out var B, out var Q, out var R);
-            var uLo = arena.fProxyVec(m, (fProxy)(-1));
-            var uHi = arena.fProxyVec(m, (fProxy)1);
-            var s = BuildStateFProxy(n, m, N, in A, in B, in Q, in R, in uLo, in uHi, in arena, softWall);
+            BuildPlantFProxy(n, m, seed, out var A, out var B, out var Q, out var R);
+            var uLo = GenerateOP.fProxyVec(m, (fProxy)(-1), Allocator.Persistent);
+            var uHi = GenerateOP.fProxyVec(m, (fProxy)1, Allocator.Persistent);
+            var s = BuildStateFProxy(n, m, N, in A, in B, in Q, in R, in uLo, in uHi, softWall);
 
-            var x0 = arena.fProxyVec(n);
+            var x0 = new fProxyN(n, Allocator.Persistent);
             x0[0] = (fProxy)4;
-            var reference = arena.fProxyVec(n);
-            var u0 = arena.fProxyVec(m, true);
+            var reference = new fProxyN(n, Allocator.Persistent);
+            var u0 = new fProxyN(m, Allocator.Persistent, true);
 
             var itersOut = new NativeArray<int>(1, Allocator.Persistent);
             var changesOut = new NativeArray<int>(1, Allocator.Persistent);
@@ -218,24 +220,26 @@ namespace LinearAlgebra.Benchmarks
                                              itersOut[0], changesOut[0], statusOut[0]);
 
             itersOut.Dispose(); changesOut.Dispose(); statusOut.Dispose();
-            s.Dispose(); arena.Dispose();
+            s.Dispose();
+            A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); uLo.Dispose(); uHi.Dispose();
+            x0.Dispose(); reference.Dispose(); u0.Dispose();
             return row;
         }
 
         // ==== Section 3: fProxyMPCState construction cost (one-shot) ====
         static string ConstructFProxy(int N, int n, int m, uint seed, int reps)
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildPlantFProxy(n, m, seed, in arena, out var A, out var B, out var Q, out var R);
-            var uLo = arena.fProxyVec(m, (fProxy)(-1));
-            var uHi = arena.fProxyVec(m, (fProxy)1);
+            BuildPlantFProxy(n, m, seed, out var A, out var B, out var Q, out var R);
+            var uLo = GenerateOP.fProxyVec(m, (fProxy)(-1), Allocator.Persistent);
+            var uHi = GenerateOP.fProxyVec(m, (fProxy)1, Allocator.Persistent);
 
             var checksumOut = new NativeArray<double>(1, Allocator.Persistent);
             var job = new MpcConstructJobFProxy { A = A, B = B, Q = Q, R = R, uLo = uLo, uHi = uHi, N = N, reps = reps, checksumOut = checksumOut };
             var stat = Bench.Time(() => job.Run());
             string row = MPCBenchmarkFmt.ConstructionRow("fProxy", N, n, m, reps, stat);
 
-            checksumOut.Dispose(); arena.Dispose();
+            checksumOut.Dispose();
+            A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); uLo.Dispose(); uHi.Dispose();
             return row;
         }
     }

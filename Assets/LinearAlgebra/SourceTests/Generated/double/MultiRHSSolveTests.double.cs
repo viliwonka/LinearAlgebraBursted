@@ -5,7 +5,7 @@
 using System;
 
 using LinearAlgebra;
-using LinearAlgebra.Gallery;   // opt-in: arena.doubleLaplacian1D(n), arena.doubleLauchli(n,eps), ...
+using LinearAlgebra.Gallery;   // opt-in: doubleGallery.doubleLaplacian1D(n), doubleGallery.doubleLauchli(n,eps), ...
 
 using NUnit.Framework;
 using Unity.Burst;
@@ -74,13 +74,12 @@ public class doubleMultiRHSSolveTests
 
         void BlasTrsmUpperLower()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int n = 6, k = 3;
 
             // Well-conditioned upper- and lower-triangular factors (unit-ish diagonal + small off-diag).
-            var U = arena.doubleMat(n, n);   // zero-init
-            var L = arena.doubleMat(n, n);
+            var U = new doubleMxN(n, n, Allocator.Temp);   // zero-init
+            var L = new doubleMxN(n, n, Allocator.Temp);
             for (int i = 0; i < n; i++)
             {
                 U[i, i] = (double)(i + 2);
@@ -89,23 +88,21 @@ public class doubleMultiRHSSolveTests
                 for (int j = 0; j < i; j++)     L[i, j] = (double)0.5 / (double)(i - j + 1);
             }
 
-            var Xtrue = MakeX(ref arena, n, k);
+            var Xtrue = MakeX(n, k);
 
             // Upper: B = U·Xtrue, solve U X = B, check.
-            var Bu = arena.doubleMat(n, k); Blas.dot(in U, in Xtrue, ref Bu);
-            var Xu = Bu.Copy();
+            var Bu = new doubleMxN(n, k, Allocator.Temp); Blas.dot(in U, in Xtrue, ref Bu);
+            var Xu = new doubleMxN(in Bu, Allocator.Temp);
             Blas.triUpper(ref U, ref Xu);
             CheckMatClose(in Xu, in Xtrue, Band(in U, (double)200));
-            CheckResidual(ref arena, in U, in Xu, in Bu, (double)200);
+            CheckResidual(in U, in Xu, in Bu, (double)200);
 
             // Lower: B = L·Xtrue, solve L X = B, check.
-            var Bl = arena.doubleMat(n, k); Blas.dot(in L, in Xtrue, ref Bl);
-            var Xl = Bl.Copy();
+            var Bl = new doubleMxN(n, k, Allocator.Temp); Blas.dot(in L, in Xtrue, ref Bl);
+            var Xl = new doubleMxN(in Bl, Allocator.Temp);
             Blas.triLower(ref L, ref Xl);
             CheckMatClose(in Xl, in Xtrue, Band(in L, (double)200));
-            CheckResidual(ref arena, in L, in Xl, in Bl, (double)200);
-
-            arena.Dispose();
+            CheckResidual(in L, in Xl, in Bl, (double)200);
         }
 
         // =====================================================================
@@ -114,41 +111,39 @@ public class doubleMultiRHSSolveTests
 
         void LUMultiRHS()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int n = 6, k = 3;
-            var A = arena.doubleLaplacian1D(n);
-            var Xtrue = MakeX(ref arena, n, k);
-            var B = arena.doubleMat(n, k); Blas.dot(in A, in Xtrue, ref B);
+            var A = doubleGallery.doubleLaplacian1D(n);
+            var Xtrue = MakeX(n, k);
+            var B = new doubleMxN(n, k, Allocator.Temp); Blas.dot(in A, in Xtrue, ref B);
 
             // decompInPlace once, decompSolve on the whole block.
-            var LUm = A.Copy();
+            var LUm = new doubleMxN(in A, Allocator.Temp);
             var P = new Pivot(n, Allocator.Temp);
             LU.decompInPlace(ref LUm, ref P);
-            var X = B.Copy();
+            var X = new doubleMxN(in B, Allocator.Temp);
             LU.decompSolve(ref LUm, in P, ref X);
 
             CheckMatClose(in X, in Xtrue, Band(in A, (double)200));
-            CheckResidual(ref arena, in A, in X, in B, (double)200);
+            CheckResidual(in A, in X, in B, (double)200);
 
             // Column cross-check vs the vector decompSolve (same factor).
             for (int c = 0; c < k; c++)
             {
-                var bc = GetCol(ref arena, in B, c);
+                var bc = GetCol(in B, c);
                 LU.decompSolve(ref LUm, in P, ref bc);   // bc := column solution
                 CheckColClose(in X, c, in bc, Band(in A, (double)200));
             }
 
             // solveInPlace (factor+solve fused) matches too.
-            var A2 = A.Copy();
+            var A2 = new doubleMxN(in A, Allocator.Temp);
             var P2 = new Pivot(n, Allocator.Temp);
-            var X2 = B.Copy();
+            var X2 = new doubleMxN(in B, Allocator.Temp);
             LU.solveInPlace(ref A2, ref P2, ref X2);
             CheckMatClose(in X2, in X, Band(in A, (double)200));
 
             P2.Dispose();
             P.Dispose();
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -157,34 +152,31 @@ public class doubleMultiRHSSolveTests
 
         void CHOMultiRHS()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int n = 6, k = 3;
-            var A = arena.doubleLaplacian1D(n);
-            var Xtrue = MakeX(ref arena, n, k);
-            var B = arena.doubleMat(n, k); Blas.dot(in A, in Xtrue, ref B);
+            var A = doubleGallery.doubleLaplacian1D(n);
+            var Xtrue = MakeX(n, k);
+            var B = new doubleMxN(n, k, Allocator.Temp); Blas.dot(in A, in Xtrue, ref B);
 
-            var L = arena.doubleMat(n, n);
+            var L = new doubleMxN(n, n, Allocator.Temp);
             AssertTrue(CHO.decomp(in A, ref L));
-            var X = B.Copy();
+            var X = new doubleMxN(in B, Allocator.Temp);
             CHO.decompSolve(ref L, ref X);
 
             CheckMatClose(in X, in Xtrue, Band(in A, (double)200));
-            CheckResidual(ref arena, in A, in X, in B, (double)200);
+            CheckResidual(in A, in X, in B, (double)200);
 
             for (int c = 0; c < k; c++)
             {
-                var bc = GetCol(ref arena, in B, c);
+                var bc = GetCol(in B, c);
                 CHO.decompSolve(ref L, ref bc);
                 CheckColClose(in X, c, in bc, Band(in A, (double)200));
             }
 
-            var A2 = A.Copy();
-            var X2 = B.Copy();
+            var A2 = new doubleMxN(in A, Allocator.Temp);
+            var X2 = new doubleMxN(in B, Allocator.Temp);
             AssertTrue(CHO.solveInPlace(ref A2, ref X2));
             CheckMatClose(in X2, in X, Band(in A, (double)200));
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -193,70 +185,64 @@ public class doubleMultiRHSSolveTests
 
         void QRMultiRHSSquare()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int n = 6, k = 3;
-            var A = arena.doubleLaplacian1D(n);
-            var Xtrue = MakeX(ref arena, n, k);
-            var B = arena.doubleMat(n, k); Blas.dot(in A, in Xtrue, ref B);
+            var A = doubleGallery.doubleLaplacian1D(n);
+            var Xtrue = MakeX(n, k);
+            var B = new doubleMxN(n, k, Allocator.Temp); Blas.dot(in A, in Xtrue, ref B);
 
             // decompSolve from a precomputed QR (B preserved).
-            var Q = A.Copy();
-            var R = arena.doubleMat(n, n);
+            var Q = new doubleMxN(in A, Allocator.Temp);
+            var R = new doubleMxN(n, n, Allocator.Temp);
             QR.decompInPlace(ref Q, ref R);
-            var Xd = arena.doubleMat(n, k);
+            var Xd = new doubleMxN(n, k, Allocator.Temp);
             QR.decompSolve(ref Q, ref R, ref B, ref Xd);
             CheckMatClose(in Xd, in Xtrue, Band(in A, (double)300));
-            CheckResidual(ref arena, in A, in Xd, in B, (double)300);
+            CheckResidual(in A, in Xd, in B, (double)300);
 
             // fused solveInPlace (destroys A and B) matches, and matches the vector path per column.
-            var Aw = A.Copy();
-            var Bw = B.Copy();
-            var Xs = arena.doubleMat(n, k);
+            var Aw = new doubleMxN(in A, Allocator.Temp);
+            var Bw = new doubleMxN(in B, Allocator.Temp);
+            var Xs = new doubleMxN(n, k, Allocator.Temp);
             QR.solveInPlace(ref Aw, ref Bw, ref Xs);
             CheckMatClose(in Xs, in Xd, Band(in A, (double)300));
 
             for (int c = 0; c < k; c++)
             {
-                var Ac = A.Copy();
-                var bc = GetCol(ref arena, in B, c);
-                var xc = arena.doubleVec(n);
+                var Ac = new doubleMxN(in A, Allocator.Temp);
+                var bc = GetCol(in B, c);
+                var xc = new doubleN(n, Allocator.Temp);
                 QR.solveInPlace(ref Ac, ref bc, ref xc);
                 CheckColClose(in Xd, c, in xc, Band(in A, (double)300));
             }
-
-            arena.Dispose();
         }
 
         void QRMultiRHSTall()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int nc = 4, k = 3;
-            var A = arena.doubleLauchli(nc, (double)0.5);   // (nc+1) x nc, tall full-column-rank
+            var A = doubleGallery.doubleLauchli(nc, (double)0.5);   // (nc+1) x nc, tall full-column-rank
             int m = A.M_Rows;
-            var Xtrue = MakeX(ref arena, nc, k);
-            var B = arena.doubleMat(m, k); Blas.dot(in A, in Xtrue, ref B);   // consistent, in range(A)
+            var Xtrue = MakeX(nc, k);
+            var B = new doubleMxN(m, k, Allocator.Temp); Blas.dot(in A, in Xtrue, ref B);   // consistent, in range(A)
 
-            var Aw = A.Copy();
-            var Bw = B.Copy();
-            var X = arena.doubleMat(nc, k);
+            var Aw = new doubleMxN(in A, Allocator.Temp);
+            var Bw = new doubleMxN(in B, Allocator.Temp);
+            var X = new doubleMxN(nc, k, Allocator.Temp);
             QR.solveInPlace(ref Aw, ref Bw, ref X);
 
             // consistent LS ⇒ solution is exactly Xtrue, residual ≈ 0.
             CheckMatClose(in X, in Xtrue, Band(in A, (double)100));
-            CheckResidual(ref arena, in A, in X, in B, (double)100);
+            CheckResidual(in A, in X, in B, (double)100);
 
             for (int c = 0; c < k; c++)
             {
-                var Ac = A.Copy();
-                var bc = GetCol(ref arena, in B, c);
-                var xc = arena.doubleVec(nc);
+                var Ac = new doubleMxN(in A, Allocator.Temp);
+                var bc = GetCol(in B, c);
+                var xc = new doubleN(nc, Allocator.Temp);
                 QR.solveInPlace(ref Ac, ref bc, ref xc);
                 CheckColClose(in X, c, in xc, Band(in A, (double)100));
             }
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -265,108 +251,99 @@ public class doubleMultiRHSSolveTests
 
         void QRCPMultiRHS()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int nc = 4, k = 3;
-            var A = arena.doubleLauchli(nc, (double)0.5);   // tall full rank
+            var A = doubleGallery.doubleLauchli(nc, (double)0.5);   // tall full rank
             int m = A.M_Rows;
-            var Xtrue = MakeX(ref arena, nc, k);
-            var B = arena.doubleMat(m, k); Blas.dot(in A, in Xtrue, ref B);   // reference, kept
+            var Xtrue = MakeX(nc, k);
+            var B = new doubleMxN(m, k, Allocator.Temp); Blas.dot(in A, in Xtrue, ref B);   // reference, kept
 
             // Fused solveInPlace DESTROYS A and B (like QR) — use copies.
-            var Aq = A.Copy();
-            var Bq = B.Copy();
-            var X = arena.doubleMat(nc, k);
+            var Aq = new doubleMxN(in A, Allocator.Temp);
+            var Bq = new doubleMxN(in B, Allocator.Temp);
+            var X = new doubleMxN(nc, k, Allocator.Temp);
             RankInfo info = QRCP.solveInPlace(ref Aq, ref Bq, ref X);
             AssertTrue(info.Solved);
             RecordEq(info.rank, nc);
 
             CheckMatClose(in X, in Xtrue, Band(in A, (double)300));
-            CheckResidual(ref arena, in A, in X, in B, (double)300);   // original A, B
+            CheckResidual(in A, in X, in B, (double)300);   // original A, B
 
             // Cross-check vs the vector fused solveInPlace per column (each destroys its own copies).
             for (int c = 0; c < k; c++)
             {
-                var Ac = A.Copy();
-                var bc = GetCol(ref arena, in B, c);
-                var xc = arena.doubleVec(nc);
+                var Ac = new doubleMxN(in A, Allocator.Temp);
+                var bc = GetCol(in B, c);
+                var xc = new doubleN(nc, Allocator.Temp);
                 QRCP.solveInPlace(ref Ac, ref bc, ref xc);
                 CheckColClose(in X, c, in xc, Band(in A, (double)300));
             }
 
             // decompSolve (preserved-B route, from a precomputed factorization) matches the fused result.
-            var Q = A.Copy();
-            var R = arena.doubleMat(nc, nc);
+            var Q = new doubleMxN(in A, Allocator.Temp);
+            var R = new doubleMxN(nc, nc, Allocator.Temp);
             var P = new Pivot(nc, Allocator.Temp);
             QRCP.decompInPlace(ref Q, ref R, ref P);
-            var Xd = arena.doubleMat(nc, k);
+            var Xd = new doubleMxN(nc, k, Allocator.Temp);
             QRCP.decompSolve(ref Q, ref R, in P, ref B, ref Xd, (double)(-1));   // B preserved
             CheckMatClose(in Xd, in X, Band(in A, (double)300));
             P.Dispose();
-
-            arena.Dispose();
         }
 
         void QRCPMultiRHSRankDeficient()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int n = 4, k = 2;
-            var A = arena.doublePei(n, (double)0);   // all-ones, rank 1
-            var B = MakeX(ref arena, n, k);           // arbitrary RHS, kept
+            var A = doubleGallery.doublePei(n, (double)0);   // all-ones, rank 1
+            var B = MakeX(n, k);           // arbitrary RHS, kept
 
             // Fused solveInPlace destroys A and B — use copies.
-            var Aq = A.Copy();
-            var Bq = B.Copy();
-            var X = arena.doubleMat(n, k);
+            var Aq = new doubleMxN(in A, Allocator.Temp);
+            var Bq = new doubleMxN(in B, Allocator.Temp);
+            var X = new doubleMxN(n, k, Allocator.Temp);
             RankInfo info = QRCP.solveInPlace(ref Aq, ref Bq, ref X);
             RecordEq(info.rank, 1);
 
             // Cross-check vs the vector path per column — the truncated (basic) solution must agree.
             for (int c = 0; c < k; c++)
             {
-                var Ac = A.Copy();
-                var bc = GetCol(ref arena, in B, c);
-                var xc = arena.doubleVec(n);
+                var Ac = new doubleMxN(in A, Allocator.Temp);
+                var bc = GetCol(in B, c);
+                var xc = new doubleN(n, Allocator.Temp);
                 QRCP.solveInPlace(ref Ac, ref bc, ref xc);
                 CheckColClose(in X, c, in xc, Band(in A, (double)300));
             }
-
-            arena.Dispose();
         }
 
         // Large enough (n >= 2·QRCP_BLOCK) to drive the BLOCKED fused core's multi-RHS reflector apply.
         void QRCPMultiRHSBlocked()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int nc = 80, k = 3;
-            var A = arena.doubleLauchli(nc, (double)0.5);   // 81 x 80, tall full rank, blocked path
+            var A = doubleGallery.doubleLauchli(nc, (double)0.5);   // 81 x 80, tall full rank, blocked path
             int m = A.M_Rows;
-            var Xtrue = MakeX(ref arena, nc, k);
-            var B = arena.doubleMat(m, k); Blas.dot(in A, in Xtrue, ref B);
+            var Xtrue = MakeX(nc, k);
+            var B = new doubleMxN(m, k, Allocator.Temp); Blas.dot(in A, in Xtrue, ref B);
 
-            var Aq = A.Copy();
-            var Bq = B.Copy();
-            var X = arena.doubleMat(nc, k);
+            var Aq = new doubleMxN(in A, Allocator.Temp);
+            var Bq = new doubleMxN(in B, Allocator.Temp);
+            var X = new doubleMxN(nc, k, Allocator.Temp);
             RankInfo info = QRCP.solveInPlace(ref Aq, ref Bq, ref X);
             AssertTrue(info.Solved);
             RecordEq(info.rank, nc);
 
             CheckMatClose(in X, in Xtrue, Band(in A, (double)2000));
-            CheckResidual(ref arena, in A, in X, in B, (double)2000);
+            CheckResidual(in A, in X, in B, (double)2000);
 
             // Cross-check vs the vector fused solveInPlace (also blocked) per column.
             for (int c = 0; c < k; c++)
             {
-                var Ac = A.Copy();
-                var bc = GetCol(ref arena, in B, c);
-                var xc = arena.doubleVec(nc);
+                var Ac = new doubleMxN(in A, Allocator.Temp);
+                var bc = GetCol(in B, c);
+                var xc = new doubleN(nc, Allocator.Temp);
                 QRCP.solveInPlace(ref Ac, ref bc, ref xc);
                 CheckColClose(in X, c, in xc, Band(in A, (double)2000));
             }
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -375,31 +352,28 @@ public class doubleMultiRHSSolveTests
 
         void LQMultiRHSMinNorm()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int k = 3;
-            var Tall = arena.doubleLauchli(4, (double)0.5);   // 5 x 4
-            var A = arena.doubleMat(Tall.N_Cols, Tall.M_Rows); // 4 x 5, wide full row rank
+            var Tall = doubleGallery.doubleLauchli(4, (double)0.5);   // 5 x 4
+            var A = new doubleMxN(Tall.N_Cols, Tall.M_Rows, Allocator.Temp); // 4 x 5, wide full row rank
             Blas.trans(in Tall, ref A);
             int m = A.M_Rows;   // 4
             int n = A.N_Cols;   // 5
 
-            var B = MakeX(ref arena, m, k);   // any RHS (A full row rank ⇒ consistent)
+            var B = MakeX(m, k);   // any RHS (A full row rank ⇒ consistent)
 
-            var X = arena.doubleMat(n, k);
+            var X = new doubleMxN(n, k, Allocator.Temp);
             LQ.minNormSolve(in A, in B, ref X);
 
-            CheckResidual(ref arena, in A, in X, in B, (double)200);   // A·X ≈ B
+            CheckResidual(in A, in X, in B, (double)200);   // A·X ≈ B
 
             for (int c = 0; c < k; c++)
             {
-                var bc = GetCol(ref arena, in B, c);
-                var xc = arena.doubleVec(n);
+                var bc = GetCol(in B, c);
+                var xc = new doubleN(n, Allocator.Temp);
                 LQ.minNormSolve(in A, in bc, ref xc);   // A not modified
                 CheckColClose(in X, c, in xc, Band(in A, (double)200));
             }
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -408,65 +382,61 @@ public class doubleMultiRHSSolveTests
 
         void CHOPMultiRHSFullRank()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int n = 6, k = 3;
-            var A = arena.doubleLaplacian1D(n);   // SPD full rank
-            var Xtrue = MakeX(ref arena, n, k);
-            var B = arena.doubleMat(n, k); Blas.dot(in A, in Xtrue, ref B);
+            var A = doubleGallery.doubleLaplacian1D(n);   // SPD full rank
+            var Xtrue = MakeX(n, k);
+            var B = new doubleMxN(n, k, Allocator.Temp); Blas.dot(in A, in Xtrue, ref B);
 
-            var Aw = A.Copy();
+            var Aw = new doubleMxN(in A, Allocator.Temp);
             var P = new Pivot(n, Allocator.Temp);
-            var X = B.Copy();
+            var X = new doubleMxN(in B, Allocator.Temp);
             RankInfo info = CHOP.solveInPlace(ref Aw, ref P, ref X);
             AssertTrue(info.Solved);
             RecordEq(info.rank, n);
 
             CheckMatClose(in X, in Xtrue, Band(in A, (double)300));
-            CheckResidual(ref arena, in A, in X, in B, (double)300);
+            CheckResidual(in A, in X, in B, (double)300);
 
             // Cross-check vs the vector solveInPlace per column.
             for (int c = 0; c < k; c++)
             {
-                var Ac = A.Copy();
+                var Ac = new doubleMxN(in A, Allocator.Temp);
                 var Pc = new Pivot(n, Allocator.Temp);
-                var bc = GetCol(ref arena, in B, c);
+                var bc = GetCol(in B, c);
                 CHOP.solveInPlace(ref Ac, ref Pc, ref bc);
                 CheckColClose(in X, c, in bc, Band(in A, (double)300));
                 Pc.Dispose();
             }
 
             P.Dispose();
-            arena.Dispose();
         }
 
         void CHOPMultiRHSRankDeficient()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int n = 4, k = 2;
-            var A = arena.doublePei(n, (double)0);   // all-ones PSD, rank 1
-            var B = MakeX(ref arena, n, k);
+            var A = doubleGallery.doublePei(n, (double)0);   // all-ones PSD, rank 1
+            var B = MakeX(n, k);
 
-            var Aw = A.Copy();
+            var Aw = new doubleMxN(in A, Allocator.Temp);
             var P = new Pivot(n, Allocator.Temp);
-            var X = B.Copy();
+            var X = new doubleMxN(in B, Allocator.Temp);
             RankInfo info = CHOP.solveInPlace(ref Aw, ref P, ref X);
             RecordEq(info.rank, 1);
 
             // Cross-check vs the vector min-norm path per column.
             for (int c = 0; c < k; c++)
             {
-                var Ac = A.Copy();
+                var Ac = new doubleMxN(in A, Allocator.Temp);
                 var Pc = new Pivot(n, Allocator.Temp);
-                var bc = GetCol(ref arena, in B, c);
+                var bc = GetCol(in B, c);
                 CHOP.solveInPlace(ref Ac, ref Pc, ref bc);
                 CheckColClose(in X, c, in bc, Band(in A, (double)300));
                 Pc.Dispose();
             }
 
             P.Dispose();
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -475,82 +445,76 @@ public class doubleMultiRHSSolveTests
 
         void SVDMultiRHSTall()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int nc = 4, k = 3;
-            var A = arena.doubleLauchli(nc, (double)1E-2);   // (nc+1) x nc tall
+            var A = doubleGallery.doubleLauchli(nc, (double)1E-2);   // (nc+1) x nc tall
             int m = A.M_Rows;
-            var Xtrue = MakeX(ref arena, nc, k);
-            var B = arena.doubleMat(m, k); Blas.dot(in A, in Xtrue, ref B);
+            var Xtrue = MakeX(nc, k);
+            var B = new doubleMxN(m, k, Allocator.Temp); Blas.dot(in A, in Xtrue, ref B);
 
-            var Aw = A.Copy();
-            var X = arena.doubleMat(nc, k);
+            var Aw = new doubleMxN(in A, Allocator.Temp);
+            var X = new doubleMxN(nc, k, Allocator.Temp);
             RankInfo info = SVD.pinvSolve(ref Aw, in B, ref X);
             AssertTrue(info.Solved);
 
-            CheckResidual(ref arena, in A, in X, in B, (double)500);
+            CheckResidual(in A, in X, in B, (double)500);
 
             for (int c = 0; c < k; c++)
             {
-                var Ac = A.Copy();
-                var bc = GetCol(ref arena, in B, c);
-                var xc = arena.doubleVec(nc);
+                var Ac = new doubleMxN(in A, Allocator.Temp);
+                var bc = GetCol(in B, c);
+                var xc = new doubleN(nc, Allocator.Temp);
                 SVD.pinvSolve(ref Ac, in bc, ref xc);
                 CheckColClose(in X, c, in xc, Band(in A, (double)500));
             }
-
-            arena.Dispose();
         }
 
         void SVDMultiRHSWide()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int k = 3;
-            var Tall = arena.doubleLauchli(4, (double)0.5);   // 5 x 4
-            var A = arena.doubleMat(Tall.N_Cols, Tall.M_Rows); // 4 x 5 wide
+            var Tall = doubleGallery.doubleLauchli(4, (double)0.5);   // 5 x 4
+            var A = new doubleMxN(Tall.N_Cols, Tall.M_Rows, Allocator.Temp); // 4 x 5 wide
             Blas.trans(in Tall, ref A);
             int m = A.M_Rows;
             int n = A.N_Cols;
 
-            var B = MakeX(ref arena, m, k);
+            var B = MakeX(m, k);
 
-            var Aw = A.Copy();
-            var X = arena.doubleMat(n, k);
+            var Aw = new doubleMxN(in A, Allocator.Temp);
+            var X = new doubleMxN(n, k, Allocator.Temp);
             RankInfo info = SVD.pinvSolve(ref Aw, in B, ref X);
             AssertTrue(info.Solved);
 
-            CheckResidual(ref arena, in A, in X, in B, (double)500);   // consistent underdetermined
+            CheckResidual(in A, in X, in B, (double)500);   // consistent underdetermined
 
             for (int c = 0; c < k; c++)
             {
-                var Ac = A.Copy();
-                var bc = GetCol(ref arena, in B, c);
-                var xc = arena.doubleVec(n);
+                var Ac = new doubleMxN(in A, Allocator.Temp);
+                var bc = GetCol(in B, c);
+                var xc = new doubleN(n, Allocator.Temp);
                 SVD.pinvSolve(ref Ac, in bc, ref xc);
                 CheckColClose(in X, c, in xc, Band(in A, (double)500));
             }
-
-            arena.Dispose();
         }
 
         // =====================================================================
         // helpers
         // =====================================================================
 
-        doubleMxN MakeX(ref Arena arena, int n, int k)
+        doubleMxN MakeX(int n, int k)
         {
-            var X = arena.doubleMat(n, k);
+            var X = new doubleMxN(n, k, Allocator.Temp);
             for (int i = 0; i < n; i++)
                 for (int c = 0; c < k; c++)
                     X[i, c] = (double)(1 + i - (double)0.5 * c + (double)0.25 * (c + 1) * (i % 3));
             return X;
         }
 
-        doubleN GetCol(ref Arena arena, in doubleMxN M, int c)
+        doubleN GetCol(in doubleMxN M, int c)
         {
             int n = M.M_Rows;
-            var v = arena.doubleVec(n);
+            var v = new doubleN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) v[i] = M[i, c];
             return v;
         }
@@ -587,9 +551,9 @@ public class doubleMultiRHSSolveTests
         }
 
         // ‖A·X − B‖ (max abs entry) ≤ band.
-        void CheckResidual(ref Arena arena, in doubleMxN A, in doubleMxN X, in doubleMxN B, double factor)
+        void CheckResidual(in doubleMxN A, in doubleMxN X, in doubleMxN B, double factor)
         {
-            var AX = arena.doubleMat(A.M_Rows, X.N_Cols);
+            var AX = new doubleMxN(A.M_Rows, X.N_Cols, Allocator.Temp);
             Blas.dot(in A, in X, ref AX);
             double tol = Band(in A, factor);
             for (int i = 0; i < B.M_Rows; i++)

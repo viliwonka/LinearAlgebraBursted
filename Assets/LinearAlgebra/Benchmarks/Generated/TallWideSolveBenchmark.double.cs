@@ -156,10 +156,9 @@ namespace LinearAlgebra.Benchmarks
         static string TallQRDouble(int k, double flops)
         {
             int m = 2 * k, n = k;
-            var arena = new Arena(Allocator.Persistent);
-            var Q = arena.doubleMat(m, n);
-            var R = arena.doubleMat(n, n);
-            var Src = arena.doubleMat(m, n);
+            var Q = new doubleMxN(m, n, Allocator.Persistent);
+            var R = new doubleMxN(n, n, Allocator.Persistent);
+            var Src = new doubleMxN(m, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)k);
             for (int r = 0; r < m; r++)
@@ -171,7 +170,7 @@ namespace LinearAlgebra.Benchmarks
             var job = new TallQRJobDouble { Q = Q, R = R, Src = Src };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            Q.Dispose(); R.Dispose(); Src.Dispose();
             return Bench.Row("double", k, stat, flops);
         }
 
@@ -179,12 +178,11 @@ namespace LinearAlgebra.Benchmarks
         static string TallLSDouble(int k, double flops)
         {
             int m = 2 * k, n = k;
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(m, n);
-            var Src = arena.doubleMat(m, n);
-            var b = arena.doubleVec(m);
-            var bSrc = arena.doubleVec(m);
-            var x = arena.doubleVec(n);
+            var A = new doubleMxN(m, n, Allocator.Persistent);
+            var Src = new doubleMxN(m, n, Allocator.Persistent);
+            var b = new doubleN(m, Allocator.Persistent);
+            var bSrc = new doubleN(m, Allocator.Persistent);
+            var x = new doubleN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)k);
             for (int r = 0; r < m; r++)
@@ -199,7 +197,7 @@ namespace LinearAlgebra.Benchmarks
             var job = new TallLSJobDouble { A = A, Src = Src, b = b, bSrc = bSrc, x = x };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); Src.Dispose(); b.Dispose(); bSrc.Dispose(); x.Dispose();
             return Bench.Row("double", k, stat, flops);
         }
 
@@ -207,10 +205,9 @@ namespace LinearAlgebra.Benchmarks
         static string WideLQDouble(int k, double flops)
         {
             int m = k, n = 2 * k;
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(m, n);
-            var L = arena.doubleMat(m, m);
-            var Q = arena.doubleMat(m, n);
+            var A = new doubleMxN(m, n, Allocator.Persistent);
+            var L = new doubleMxN(m, m, Allocator.Persistent);
+            var Q = new doubleMxN(m, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)k);
             for (int r = 0; r < m; r++)
@@ -222,7 +219,7 @@ namespace LinearAlgebra.Benchmarks
             var job = new WideLQJobDouble { A = A, L = L, Q = Q };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); L.Dispose(); Q.Dispose();
             return Bench.Row("double", k, stat, flops);
         }
 
@@ -230,10 +227,9 @@ namespace LinearAlgebra.Benchmarks
         static string WideMinNormDouble(int k, double flops)
         {
             int m = k, n = 2 * k;
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(m, n);
-            var b = arena.doubleVec(m);
-            var x = arena.doubleVec(n);
+            var A = new doubleMxN(m, n, Allocator.Persistent);
+            var b = new doubleN(m, Allocator.Persistent);
+            var x = new doubleN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)k);
             for (int r = 0; r < m; r++)
@@ -248,7 +244,7 @@ namespace LinearAlgebra.Benchmarks
             var job = new WideMinNormJobDouble { A = A, b = b, x = x };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); b.Dispose(); x.Dispose();
             return Bench.Row("double", k, stat, flops);
         }
 
@@ -256,11 +252,10 @@ namespace LinearAlgebra.Benchmarks
         //      LQRP (rank-revealing COD); both DESTROY A and return the minimum-2-norm solution ----
         static string WideMinNormMNDouble(int m, int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(m, n);
-            var Src = arena.doubleMat(m, n);
-            var b = arena.doubleVec(m);
-            var x = arena.doubleVec(n);
+            var A = new doubleMxN(m, n, Allocator.Persistent);
+            var Src = new doubleMxN(m, n, Allocator.Persistent);
+            var b = new doubleN(m, Allocator.Persistent);
+            var x = new doubleN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < m; r++)
@@ -275,17 +270,16 @@ namespace LinearAlgebra.Benchmarks
             var job = new WideMinNormInPlaceJobDouble { A = A, Src = Src, b = b, x = x };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); Src.Dispose(); b.Dispose(); x.Dispose();
             return TallWideFmt.RowKernel("double", "LQ.minNormSolveInPlace", m, stat, 0);
         }
 
         static string WideLQRPMinNormMNDouble(int m, int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(m, n);
-            var Src = arena.doubleMat(m, n);
-            var b = arena.doubleVec(m);
-            var x = arena.doubleVec(n);
+            var A = new doubleMxN(m, n, Allocator.Persistent);
+            var Src = new doubleMxN(m, n, Allocator.Persistent);
+            var b = new doubleN(m, Allocator.Persistent);
+            var x = new doubleN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < m; r++)
@@ -300,7 +294,7 @@ namespace LinearAlgebra.Benchmarks
             var job = new WideLQRPMinNormJobDouble { A = A, Src = Src, b = b, x = x };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); Src.Dispose(); b.Dispose(); x.Dispose();
             return TallWideFmt.RowKernel("double", "LQRP.minNormSolveInPlace", m, stat, 0);
         }
 
@@ -308,10 +302,9 @@ namespace LinearAlgebra.Benchmarks
         static string WideLQRPDecompDouble(int k, double flops)
         {
             int m = k, n = 2 * k;
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(m, n);
-            var L = arena.doubleMat(m, m);
-            var Q = arena.doubleMat(m, n);
+            var A = new doubleMxN(m, n, Allocator.Persistent);
+            var L = new doubleMxN(m, m, Allocator.Persistent);
+            var Q = new doubleMxN(m, n, Allocator.Persistent);
             var P = new Pivot(m, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)k);
@@ -325,7 +318,7 @@ namespace LinearAlgebra.Benchmarks
             var stat = Bench.Time(() => job.Run());
 
             P.Dispose();
-            arena.Dispose();
+            A.Dispose(); L.Dispose(); Q.Dispose();
             return Bench.Row("double", k, stat, flops);
         }
 
@@ -333,11 +326,10 @@ namespace LinearAlgebra.Benchmarks
         static string WideLQRPSolveDouble(int k, double flops)
         {
             int m = k, n = 2 * k;
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(m, n);
-            var Src = arena.doubleMat(m, n);
-            var b = arena.doubleVec(m);
-            var x = arena.doubleVec(n);
+            var A = new doubleMxN(m, n, Allocator.Persistent);
+            var Src = new doubleMxN(m, n, Allocator.Persistent);
+            var b = new doubleN(m, Allocator.Persistent);
+            var x = new doubleN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)k);
             for (int r = 0; r < m; r++)
@@ -352,7 +344,7 @@ namespace LinearAlgebra.Benchmarks
             var job = new WideLQRPSolveJobDouble { A = A, Src = Src, b = b, x = x };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); Src.Dispose(); b.Dispose(); x.Dispose();
             return Bench.Row("double", k, stat, flops);
         }
 
@@ -361,11 +353,10 @@ namespace LinearAlgebra.Benchmarks
         static string WideLQRPRankDefDouble(int k, double flops)
         {
             int m = k, n = 2 * k, rank = (3 * k) / 4;
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(m, n);
-            var Src = arena.doubleMat(m, n);
-            var b = arena.doubleVec(m);
-            var x = arena.doubleVec(n);
+            var A = new doubleMxN(m, n, Allocator.Persistent);
+            var Src = new doubleMxN(m, n, Allocator.Persistent);
+            var b = new doubleN(m, Allocator.Persistent);
+            var x = new doubleN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)k);
             for (int r = 0; r < rank; r++)
@@ -382,7 +373,7 @@ namespace LinearAlgebra.Benchmarks
             var cod = new WideLQRPMinNormJobDouble { A = A, Src = Src, b = b, x = x };
             var sC = Bench.Time(() => cod.Run());
 
-            arena.Dispose();
+            A.Dispose(); Src.Dispose(); b.Dispose(); x.Dispose();
             return TallWideFmt.RowKernel("double", "basic solveInPlace", k, sB, flops)
                  + "\n" + TallWideFmt.RowKernel("double", "COD minNormSolveInPlace", k, sC, flops);
         }

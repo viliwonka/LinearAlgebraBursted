@@ -96,7 +96,7 @@ namespace LinearAlgebra.Benchmarks
         // Trivially stabilizable random instance (already stable, so any n/m/seed combination is a
         // valid LQR instance without needing a controllability check): diagonal in [0.2,0.4), off-
         // diagonal magnitude scaled 0.2/n so the Gershgorin bound stays under ~0.6 at EVERY n. Q=I, R=I.
-        static void BuildInstanceFProxy(int n, int m, uint seed, bool nearMarginal, in Arena arena,
+        static void BuildInstanceFProxy(int n, int m, uint seed, bool nearMarginal,
                                         out fProxyMxN A, out fProxyMxN B, out fProxyMxN Q, out fProxyMxN R)
         {
             var rng = new Unity.Mathematics.Random(seed);
@@ -105,30 +105,29 @@ namespace LinearAlgebra.Benchmarks
             // convergence is supposed to earn its keep. Off-diagonal shrunk with it to stay stable.
             fProxy off = (fProxy)((nearMarginal ? 0.02 : 0.2) / n);
 
-            A = arena.fProxyMat(n, n);
+            A = new fProxyMxN(n, n, Allocator.Persistent);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
                     A[i, j] = (i == j)
                         ? (nearMarginal ? rng.NextFProxy(0.90f, 0.98f) : rng.NextFProxy(0.2f, 0.4f))
                         : rng.NextFProxy(-1f, 1f) * off;
 
-            B = arena.fProxyMat(n, m);
+            B = new fProxyMxN(n, m, Allocator.Persistent);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < m; j++)
                     B[i, j] = rng.NextFProxy(-1f, 1f);
 
-            Q = arena.fProxyMat(n, n);
+            Q = new fProxyMxN(n, n, Allocator.Persistent);
             for (int i = 0; i < n; i++) Q[i, i] = (fProxy)1;
 
-            R = arena.fProxyMat(m, m);
+            R = new fProxyMxN(m, m, Allocator.Persistent);
             for (int i = 0; i < m; i++) R[i, i] = (fProxy)1;
         }
 
         static string ColdSdaFProxy(int n, int m, int reps, uint seed, bool nearMarginal = false)
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildInstanceFProxy(n, m, seed, nearMarginal, in arena, out var A, out var B, out var Q, out var R);
-            var K = arena.fProxyMat(m, n);
+            BuildInstanceFProxy(n, m, seed, nearMarginal, out var A, out var B, out var Q, out var R);
+            var K = new fProxyMxN(m, n, Allocator.Persistent);
 
             var itersOut = new NativeArray<int>(1, Allocator.Persistent);
             var statusOut = new NativeArray<int>(1, Allocator.Persistent);
@@ -136,15 +135,15 @@ namespace LinearAlgebra.Benchmarks
             var stat = Bench.Time(() => job.Run());
             string row = LQRBenchmarkFmt.Row("fProxy", nearMarginal ? "cold-SDA(marg)" : "cold-SDA", n, m, reps, stat, itersOut[0], statusOut[0]);
 
-            itersOut.Dispose(); statusOut.Dispose(); arena.Dispose();
+            itersOut.Dispose(); statusOut.Dispose();
+            A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); K.Dispose();
             return row;
         }
 
         static string ColdRecursionFProxy(int n, int m, int reps, uint seed, bool nearMarginal = false)
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildInstanceFProxy(n, m, seed, nearMarginal, in arena, out var A, out var B, out var Q, out var R);
-            var K = arena.fProxyMat(m, n);
+            BuildInstanceFProxy(n, m, seed, nearMarginal, out var A, out var B, out var Q, out var R);
+            var K = new fProxyMxN(m, n, Allocator.Persistent);
 
             var itersOut = new NativeArray<int>(1, Allocator.Persistent);
             var statusOut = new NativeArray<int>(1, Allocator.Persistent);
@@ -152,27 +151,27 @@ namespace LinearAlgebra.Benchmarks
             var stat = Bench.Time(() => job.Run());
             string row = LQRBenchmarkFmt.Row("fProxy", nearMarginal ? "cold-rec(marg)" : "cold-recursion", n, m, reps, stat, itersOut[0], statusOut[0]);
 
-            itersOut.Dispose(); statusOut.Dispose(); arena.Dispose();
+            itersOut.Dispose(); statusOut.Dispose();
+            A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); K.Dispose();
             return row;
         }
 
         static string WarmFProxy(int n, int m, int reps, uint seed, bool nearMarginal = false)
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildInstanceFProxy(n, m, seed, nearMarginal, in arena, out var A, out var B, out var Q, out var R);
-            var K = arena.fProxyMat(m, n);
+            BuildInstanceFProxy(n, m, seed, nearMarginal, out var A, out var B, out var Q, out var R);
+            var K = new fProxyMxN(m, n, Allocator.Persistent);
 
             // untimed setup (managed thread -- LQR.lqr is plain Burst-compatible code, just not
             // Burst-JITted here; only the warm re-solve below is measured): cold-solve the unperturbed
             // system for its converged S, then perturb A by ~1e-3 relative per entry.
             var coldState = new fProxyLQRState(n, Allocator.Persistent);
             LQR.lqr(in A, in B, in Q, in R, ref K, ref coldState);
-            var Sprev = arena.fProxyMat(n, n);
+            var Sprev = new fProxyMxN(n, n, Allocator.Persistent);
             Sprev.Data.CopyFrom(coldState.S.Data);
             coldState.Dispose();
 
             var rng = new Unity.Mathematics.Random(seed ^ 0x9E3779B9u);
-            var Aperturbed = arena.fProxyMat(n, n);
+            var Aperturbed = new fProxyMxN(n, n, Allocator.Persistent);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
                 {
@@ -187,7 +186,9 @@ namespace LinearAlgebra.Benchmarks
             var stat = Bench.Time(() => job.Run());
             string row = LQRBenchmarkFmt.Row("fProxy", nearMarginal ? "warm(marg)" : "warm(1e-3 pert)", n, m, reps, stat, itersOut[0], statusOut[0]);
 
-            itersOut.Dispose(); statusOut.Dispose(); arena.Dispose();
+            itersOut.Dispose(); statusOut.Dispose();
+            A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); K.Dispose();
+            Sprev.Dispose(); Aperturbed.Dispose();
             return row;
         }
     }

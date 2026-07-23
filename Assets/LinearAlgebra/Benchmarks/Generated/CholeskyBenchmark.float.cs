@@ -114,9 +114,8 @@ namespace LinearAlgebra.Benchmarks
 
         static string FaceOffCholFloat(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var Src = arena.floatMat(n, n);
-            var A = arena.floatMat(n, n);
+            var Src = new floatMxN(n, n, Allocator.Persistent);
+            var A = new floatMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n ^ 0x9E3779B9u);
             for (int i = 0; i < n; i++)
@@ -132,16 +131,15 @@ namespace LinearAlgebra.Benchmarks
             var job = new CholInPlaceJobFloat { A = A, Src = Src };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            Src.Dispose(); A.Dispose();
             return Bench.Row("float", n, stat, flops);
         }
 
         static string FaceOffCholPivotFloat(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var Src = arena.floatMat(n, n);
-            var A = arena.floatMat(n, n);
-            var ws = arena.floatCHOPCache(n);
+            var Src = new floatMxN(n, n, Allocator.Persistent);
+            var A = new floatMxN(n, n, Allocator.Persistent);
+            var ws = new floatCHOPCache(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n ^ 0x9E3779B9u);
             for (int i = 0; i < n; i++)
@@ -157,15 +155,14 @@ namespace LinearAlgebra.Benchmarks
             var job = new CholPivotInPlaceJobFloat { A = A, Src = Src, ws = ws };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            Src.Dispose(); A.Dispose(); ws.Dispose();
             return Bench.Row("float", n, stat, flops);
         }
 
         static string FaceOffLUFloat(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var Src = arena.floatMat(n, n);
-            var A = arena.floatMat(n, n);
+            var Src = new floatMxN(n, n, Allocator.Persistent);
+            var A = new floatMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n ^ 0x9E3779B9u);
             for (int i = 0; i < n; i++)
@@ -181,15 +178,14 @@ namespace LinearAlgebra.Benchmarks
             var job = new LUFaceOffInPlaceJobFloat { A = A, Src = Src };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            Src.Dispose(); A.Dispose();
             return Bench.Row("float", n, stat, flops);
         }
 
         static string BenchFloat(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(n, n);
-            var L = arena.floatMat(n, n);
+            var A = new floatMxN(n, n, Allocator.Persistent);
+            var L = new floatMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -205,16 +201,15 @@ namespace LinearAlgebra.Benchmarks
             var job = new CholJobFloat { A = A, L = L };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); L.Dispose();
             return Bench.Row("float", n, stat, flops);
         }
 
         static string PivotFloat(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(n, n);
-            var L = arena.floatMat(n, n);
-            var ws = arena.floatCHOPCache(n);
+            var A = new floatMxN(n, n, Allocator.Persistent);
+            var L = new floatMxN(n, n, Allocator.Persistent);
+            var ws = new floatCHOPCache(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -230,7 +225,7 @@ namespace LinearAlgebra.Benchmarks
             var job = new CholPivotJobFloat { A = A, L = L, ws = ws };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); L.Dispose(); ws.Dispose();
             return Bench.Row("float", n, stat, flops);
         }
     }

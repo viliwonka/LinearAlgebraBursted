@@ -67,16 +67,15 @@ public class floatQPEqpTests
 
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random((uint)Seed | 1u);
             int n = N, k = K;
 
-            var Q = arena.floatMat(n, n);
-            var c = arena.floatVec(n);
-            var A = arena.floatMat(k, n);
-            var b = arena.floatVec(k);
-            var x = arena.floatVec(n, true);
-            var lam = arena.floatVec(k, true);
+            var Q = new floatMxN(n, n, Allocator.Temp);
+            var c = new floatN(n, Allocator.Temp);
+            var A = new floatMxN(k, n, Allocator.Temp);
+            var b = new floatN(k, Allocator.Temp);
+            var x = new floatN(n, Allocator.Temp, true);
+            var lam = new floatN(k, Allocator.Temp, true);
 
             // A_W = the first k rows of a Haar-uniform random n x n orthogonal matrix: random and
             // independent as the spec asks, but well-conditioned (all singular values 1), so the
@@ -84,7 +83,7 @@ public class floatQPEqpTests
             // faithful even at k -> n. (A random *Gaussian* square A_W is ill-conditioned near k = n,
             // which makes λ recovered via QR vs LU diverge by cond(A_W)·eps though both still satisfy
             // the KKT residual -- an oracle-sensitivity artifact, not a kernel error.)
-            var Qo = arena.floatMat(n, n);
+            var Qo = new floatMxN(n, n, Allocator.Temp);
             Rand.orthogonalInPlace(ref rng, ref Qo);
             for (int i = 0; i < k; i++)
                 for (int j = 0; j < n; j++)
@@ -100,13 +99,13 @@ public class floatQPEqpTests
             else
             {
                 int r = math.max(1, n / 2);
-                var L = arena.floatMat(r, n);
+                var L = new floatMxN(r, n, Allocator.Temp);
                 for (int i = 0; i < r; i++)
                     for (int j = 0; j < n; j++)
                         L[i, j] = rng.NextFloat(-1f, 1f);
                 Blas.dot(in L, in L, ref Q, transposeA: true);   // Q = LᵀL, symmetric PSD, rank r
 
-                var xf = arena.floatVec(n);
+                var xf = new floatN(n, Allocator.Temp);
                 LQ.minNormSolve(in A, in b, ref xf);             // min-norm feasible point = kernel's start
                 // Target a DIFFERENT feasible optimum xt = xf + w, w in null(A_W), so the null-space step
                 // is nontrivial and the regularized-Cholesky path actually runs. A_W has orthonormal rows,
@@ -114,18 +113,18 @@ public class floatQPEqpTests
                 // a global unconstrained minimizer (grad Qxt + c = 0) that is also feasible => the
                 // constrained optimum, with known objective -½ xtᵀQ xt (independent of which minimizer is
                 // returned when Q is singular along null(A_W)).
-                var rr = arena.floatVec(n);
+                var rr = new floatN(n, Allocator.Temp);
                 for (int i = 0; i < n; i++) rr[i] = rng.NextFloat(-1f, 1f);
-                var Ar = arena.floatVec(k);
+                var Ar = new floatN(k, Allocator.Temp);
                 Blas.dot(in A, in rr, ref Ar);                   // A_W r
-                var xt = arena.floatVec(n);
+                var xt = new floatN(n, Allocator.Temp);
                 for (int i = 0; i < n; i++)
                 {
                     double atr = 0;
                     for (int j = 0; j < k; j++) atr += (double)A[j, i] * (double)Ar[j];
                     xt[i] = xf[i] + rr[i] - (float)atr;          // xf + (I - A_Wᵀ A_W) r
                 }
-                var Qxt = arena.floatVec(n);
+                var Qxt = new floatN(n, Allocator.Temp);
                 Blas.dot(in Q, in xt, ref Qxt);
                 for (int i = 0; i < n; i++) c[i] = -Qxt[i];       // c = -Q xt
                 double q = 0;
@@ -136,13 +135,13 @@ public class floatQPEqpTests
             var info = QP.eqpSolve(in Q, in c, in A, in b, ref x, ref lam);
 
             AssertTrue(1, info.status == QPStatus.Optimal);
-            if (info.status != QPStatus.Optimal) { arena.Dispose(); return; }
+            if (info.status != QPStatus.Optimal) { return; }
 
             double normQ = (double)Norms.LInf(in Q);
             double scale = 1.0 + normQ;
 
             // ---- Independently recomputed KKT residuals (both modes, oracle-free) ----
-            var Qx = arena.floatVec(n);
+            var Qx = new floatN(n, Allocator.Temp);
             Blas.dot(in Q, in x, ref Qx);
             double statRes = 0;
             for (int i = 0; i < n; i++)
@@ -152,7 +151,7 @@ public class floatQPEqpTests
                 for (int j = 0; j < k; j++) atl += (double)A[j, i] * (double)lam[j];
                 statRes = math.max(statRes, math.abs(gi - atl));
             }
-            var Ax = arena.floatVec(k);
+            var Ax = new floatN(k, Allocator.Temp);
             Blas.dot(in A, in x, ref Ax);
             double feasRes = 0;
             for (int i = 0; i < k; i++) feasRes = math.max(feasRes, math.abs((double)Ax[i] - (double)b[i]));
@@ -175,7 +174,7 @@ public class floatQPEqpTests
             {
                 // ---- KKT-LU oracle: componentwise (x, lambda) agreement ----
                 int m = n + k;
-                var Kk = arena.floatMat(m, m);          // zero-initialized (bottom-right 0 block stays 0)
+                var Kk = new floatMxN(m, m, Allocator.Temp);          // zero-initialized (bottom-right 0 block stays 0)
                 for (int i = 0; i < n; i++)
                     for (int j = 0; j < n; j++)
                         Kk[i, j] = Q[i, j];
@@ -185,10 +184,10 @@ public class floatQPEqpTests
                         Kk[i, n + j] = -A[j, i];        // top-right -A_Wᵀ
                         Kk[n + j, i] = A[j, i];         // bottom-left A_W
                     }
-                var rhs = arena.floatVec(m);
+                var rhs = new floatN(m, Allocator.Temp);
                 for (int i = 0; i < n; i++) rhs[i] = -c[i];
                 for (int j = 0; j < k; j++) rhs[n + j] = b[j];
-                var piv = arena.Pivot(m);
+                var piv = new Pivot(m, Allocator.Temp);
                 var lu = LU.solveInPlace(ref Kk, ref piv, ref rhs);
                 AssertTrue(6, lu.Solved);
 
@@ -207,8 +206,6 @@ public class floatQPEqpTests
                 AssertCloseD(9, info.objective, objStar, objTol);
                 AssertTrue(10, math.isfinite((float)info.objective));
             }
-
-            arena.Dispose();
         }
 
         void RecordFail(int id, double got, double limit, double diff)
@@ -298,17 +295,14 @@ public class floatQPEqpTests
     [Test]
     public void Eqp_ThrowsOnEmptyWorkingSet()
     {
-        var arena = new Arena(Allocator.Persistent);
         int n = 4;
-        var Q = arena.floatMat(n, n);
-        var c = arena.floatVec(n);
-        var A = arena.floatMat(0, n);   // k = 0
-        var b = arena.floatVec(0);
-        var x = arena.floatVec(n);      // zero -> feasible for an empty working set
-        var lam = arena.floatVec(0);
+        var Q = new floatMxN(n, n, Allocator.Temp);
+        var c = new floatN(n, Allocator.Temp);
+        var A = new floatMxN(0, n, Allocator.Temp);   // k = 0
+        var b = new floatN(0, Allocator.Temp);
+        var x = new floatN(n, Allocator.Temp);      // zero -> feasible for an empty working set
+        var lam = new floatN(0, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() => QP.eqpNullSpaceStep(in Q, in c, in A, in b, ref x, ref lam));
-
-        arena.Dispose();
     }
 }

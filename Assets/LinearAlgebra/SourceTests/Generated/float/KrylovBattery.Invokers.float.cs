@@ -2,6 +2,8 @@
 //   Generated from Assets/LinearAlgebra/CodeGen/TemplateSourceTests/fProxy/KrylovBattery.Invokers.fProxy.cs
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
+using Unity.Collections;
+
 namespace LinearAlgebra
 {
     /// <summary>
@@ -22,7 +24,7 @@ namespace LinearAlgebra
         /// Allocate/resize any caller-owned scratch vectors for an n x n system. No-op for
         /// solvers whose production entry point self-allocates from Allocator.Temp (gmres,
         /// fgmres, idr). Called once per gallery matrix, before any Solve* call.
-        void Init(ref Arena arena, int n);
+        void Init(int n);
 
         SolveInfo Solve<TOp>(in TOp A, in floatN b, ref floatN x)
             where TOp : struct, IfloatLinearOperator;
@@ -51,7 +53,7 @@ namespace LinearAlgebra
         /// are unaffected (floatBSROperator.ApplyBlock -> BSR.spMM is general).
         bool NeedsGeneralDenseOperator { get; }
 
-        void Init(ref Arena arena, int n, int s);   // s = block width (RHS count)
+        void Init(int n, int s);   // s = block width (RHS count)
 
         BlockSolveInfo Solve<TOp>(in TOp A, in floatMxN B, ref floatMxN X)
             where TOp : struct, IfloatLinearOperator;
@@ -79,7 +81,7 @@ namespace LinearAlgebra
         float Tol { get; }
         int MaxIter(int rows, int cols);
 
-        void Init(ref Arena arena, int rows, int cols);
+        void Init(int rows, int cols);
 
         /// damp: 0 for the plain-solve checks; the damped-path check calls this a second time
         /// with damp > 0.
@@ -106,7 +108,7 @@ namespace LinearAlgebra
         float Tol { get; }
         int MaxIter(int rows, int cols);
 
-        void Init(ref Arena arena, int rows, int cols, int s);
+        void Init(int rows, int cols, int s);
 
         BlockSolveInfo Solve<TOp>(in TOp A, in floatMxN B, ref floatMxN X, int maxIter)
             where TOp : struct, IfloatLinearOperator;
@@ -139,12 +141,12 @@ namespace LinearAlgebra
         public float Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n)
+        public void Init(int n)
         {
-            r = arena.floatVec(n);
-            p = arena.floatVec(n);
-            Ap = arena.floatVec(n);
-            z = arena.floatVec(n);
+            r = new floatN(n, Allocator.Temp);
+            p = new floatN(n, Allocator.Temp);
+            Ap = new floatN(n, Allocator.Temp);
+            z = new floatN(n, Allocator.Temp);
         }
 
         public SolveInfo Solve<TOp>(in TOp A, in floatN b, ref floatN x)
@@ -175,13 +177,13 @@ namespace LinearAlgebra
         public float Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n)
+        public void Init(int n)
         {
-            r = arena.floatVec(n);
-            p = arena.floatVec(n);
-            Ap = arena.floatVec(n);
-            z = arena.floatVec(n);
-            rOld = arena.floatVec(n);
+            r = new floatN(n, Allocator.Temp);
+            p = new floatN(n, Allocator.Temp);
+            Ap = new floatN(n, Allocator.Temp);
+            z = new floatN(n, Allocator.Temp);
+            rOld = new floatN(n, Allocator.Temp);
         }
 
         public SolveInfo Solve<TOp>(in TOp A, in floatN b, ref floatN x)
@@ -216,16 +218,16 @@ namespace LinearAlgebra
         public float Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n)
+        public void Init(int n)
         {
-            y = arena.floatVec(n);
-            r1 = arena.floatVec(n);
-            r2 = arena.floatVec(n);
-            v = arena.floatVec(n);
-            w = arena.floatVec(n);
-            w1 = arena.floatVec(n);
-            w2 = arena.floatVec(n);
-            z = arena.floatVec(n);
+            y = new floatN(n, Allocator.Temp);
+            r1 = new floatN(n, Allocator.Temp);
+            r2 = new floatN(n, Allocator.Temp);
+            v = new floatN(n, Allocator.Temp);
+            w = new floatN(n, Allocator.Temp);
+            w1 = new floatN(n, Allocator.Temp);
+            w2 = new floatN(n, Allocator.Temp);
+            z = new floatN(n, Allocator.Temp);
         }
 
         public SolveInfo Solve<TOp>(in TOp A, in floatN b, ref floatN x)
@@ -266,17 +268,17 @@ namespace LinearAlgebra
         float SolveTol => TolValue * (float)0.02;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n)
+        public void Init(int n)
         {
-            v = arena.floatVec(n);
-            r1 = arena.floatVec(n);
-            r2 = arena.floatVec(n);
-            r3 = arena.floatVec(n);
-            w = arena.floatVec(n);
-            wl = arena.floatVec(n);
-            wl2 = arena.floatVec(n);
-            xl2 = arena.floatVec(n);
-            t1 = arena.floatVec(n);
+            v = new floatN(n, Allocator.Temp);
+            r1 = new floatN(n, Allocator.Temp);
+            r2 = new floatN(n, Allocator.Temp);
+            r3 = new floatN(n, Allocator.Temp);
+            w = new floatN(n, Allocator.Temp);
+            wl = new floatN(n, Allocator.Temp);
+            wl2 = new floatN(n, Allocator.Temp);
+            xl2 = new floatN(n, Allocator.Temp);
+            t1 = new floatN(n, Allocator.Temp);
         }
 
         public SolveInfo Solve<TOp>(in TOp A, in floatN b, ref floatN x)
@@ -311,15 +313,15 @@ namespace LinearAlgebra
         public float Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n)
+        public void Init(int n)
         {
-            r = arena.floatVec(n);
-            rHat0 = arena.floatVec(n);
-            p = arena.floatVec(n);
-            v = arena.floatVec(n);
-            t = arena.floatVec(n);
-            pHat = arena.floatVec(n);
-            sHat = arena.floatVec(n);
+            r = new floatN(n, Allocator.Temp);
+            rHat0 = new floatN(n, Allocator.Temp);
+            p = new floatN(n, Allocator.Temp);
+            v = new floatN(n, Allocator.Temp);
+            t = new floatN(n, Allocator.Temp);
+            pHat = new floatN(n, Allocator.Temp);
+            sHat = new floatN(n, Allocator.Temp);
         }
 
         public SolveInfo Solve<TOp>(in TOp A, in floatN b, ref floatN x)
@@ -351,7 +353,7 @@ namespace LinearAlgebra
         public float Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n) { }
+        public void Init(int n) { }
 
         public SolveInfo Solve<TOp>(in TOp A, in floatN b, ref floatN x)
             where TOp : struct, IfloatLinearOperator
@@ -383,7 +385,7 @@ namespace LinearAlgebra
         public float Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n) { }
+        public void Init(int n) { }
 
         public SolveInfo Solve<TOp>(in TOp A, in floatN b, ref floatN x)
             where TOp : struct, IfloatLinearOperator
@@ -418,7 +420,7 @@ namespace LinearAlgebra
         public float Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n) { }
+        public void Init(int n) { }
 
         public SolveInfo Solve<TOp>(in TOp A, in floatN b, ref floatN x)
             where TOp : struct, IfloatLinearOperator
@@ -451,7 +453,7 @@ namespace LinearAlgebra
         public float Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n) { }
+        public void Init(int n) { }
 
         public SolveInfo Solve<TOp>(in TOp A, in floatN b, ref floatN x)
             where TOp : struct, IfloatLinearOperator
@@ -487,15 +489,15 @@ namespace LinearAlgebra
         public float Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n)
+        public void Init(int n)
         {
-            rHat0 = arena.floatVec(n);
-            u = arena.floatVec(n);
-            w = arena.floatVec(n);
-            v = arena.floatVec(n);
-            au = arena.floatVec(n);
-            d = arena.floatVec(n);
-            uHat = arena.floatVec(n);
+            rHat0 = new floatN(n, Allocator.Temp);
+            u = new floatN(n, Allocator.Temp);
+            w = new floatN(n, Allocator.Temp);
+            v = new floatN(n, Allocator.Temp);
+            au = new floatN(n, Allocator.Temp);
+            d = new floatN(n, Allocator.Temp);
+            uHat = new floatN(n, Allocator.Temp);
         }
 
         public SolveInfo Solve<TOp>(in TOp A, in floatN b, ref floatN x)
@@ -534,12 +536,12 @@ namespace LinearAlgebra
         public float Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n, int s)
+        public void Init(int n, int s)
         {
-            R = arena.floatMat(s, n);
-            P = arena.floatMat(s, n);
-            Q = arena.floatMat(s, n);
-            Z = arena.floatMat(s, n);
+            R = new floatMxN(s, n, Allocator.Temp);
+            P = new floatMxN(s, n, Allocator.Temp);
+            Q = new floatMxN(s, n, Allocator.Temp);
+            Z = new floatMxN(s, n, Allocator.Temp);
         }
 
         public BlockSolveInfo Solve<TOp>(in TOp A, in floatMxN B, ref floatMxN X)
@@ -575,13 +577,13 @@ namespace LinearAlgebra
         public float Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n, int s)
+        public void Init(int n, int s)
         {
-            R = arena.floatMat(s, n);
-            P = arena.floatMat(s, n);
-            AP = arena.floatMat(s, n);
-            Pa = arena.floatMat(s, n);
-            Z = arena.floatMat(s, n);
+            R = new floatMxN(s, n, Allocator.Temp);
+            P = new floatMxN(s, n, Allocator.Temp);
+            AP = new floatMxN(s, n, Allocator.Temp);
+            Pa = new floatMxN(s, n, Allocator.Temp);
+            Z = new floatMxN(s, n, Allocator.Temp);
         }
 
         public BlockSolveInfo Solve<TOp>(in TOp A, in floatMxN B, ref floatMxN X)
@@ -617,13 +619,13 @@ namespace LinearAlgebra
         public float Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n, int s)
+        public void Init(int n, int s)
         {
-            R = arena.floatMat(s, n);
-            P = arena.floatMat(s, n);
-            AP = arena.floatMat(s, n);
-            Pa = arena.floatMat(s, n);
-            Z = arena.floatMat(s, n);
+            R = new floatMxN(s, n, Allocator.Temp);
+            P = new floatMxN(s, n, Allocator.Temp);
+            AP = new floatMxN(s, n, Allocator.Temp);
+            Pa = new floatMxN(s, n, Allocator.Temp);
+            Z = new floatMxN(s, n, Allocator.Temp);
         }
 
         public BlockSolveInfo Solve<TOp>(in TOp A, in floatMxN B, ref floatMxN X)
@@ -661,15 +663,15 @@ namespace LinearAlgebra
         public float Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n, int s)
+        public void Init(int n, int s)
         {
-            Vprev = arena.floatMat(s, n);
-            Vcur = arena.floatMat(s, n);
-            Wk = arena.floatMat(s, n);
-            W = arena.floatMat(s, n);
-            W1 = arena.floatMat(s, n);
-            W2 = arena.floatMat(s, n);
-            Z = arena.floatMat(s, n);
+            Vprev = new floatMxN(s, n, Allocator.Temp);
+            Vcur = new floatMxN(s, n, Allocator.Temp);
+            Wk = new floatMxN(s, n, Allocator.Temp);
+            W = new floatMxN(s, n, Allocator.Temp);
+            W1 = new floatMxN(s, n, Allocator.Temp);
+            W2 = new floatMxN(s, n, Allocator.Temp);
+            Z = new floatMxN(s, n, Allocator.Temp);
         }
 
         public BlockSolveInfo Solve<TOp>(in TOp A, in floatMxN B, ref floatMxN X)
@@ -706,15 +708,15 @@ namespace LinearAlgebra
         public float Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n, int s)
+        public void Init(int n, int s)
         {
-            R = arena.floatMat(s, n);
-            Rhat0 = arena.floatMat(s, n);
-            P = arena.floatMat(s, n);
-            V = arena.floatMat(s, n);
-            T = arena.floatMat(s, n);
-            Phat = arena.floatMat(s, n);
-            Shat = arena.floatMat(s, n);
+            R = new floatMxN(s, n, Allocator.Temp);
+            Rhat0 = new floatMxN(s, n, Allocator.Temp);
+            P = new floatMxN(s, n, Allocator.Temp);
+            V = new floatMxN(s, n, Allocator.Temp);
+            T = new floatMxN(s, n, Allocator.Temp);
+            Phat = new floatMxN(s, n, Allocator.Temp);
+            Shat = new floatMxN(s, n, Allocator.Temp);
         }
 
         public BlockSolveInfo Solve<TOp>(in TOp A, in floatMxN B, ref floatMxN X)
@@ -752,7 +754,7 @@ namespace LinearAlgebra
         public float Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n, int s) { }
+        public void Init(int n, int s) { }
 
         public BlockSolveInfo Solve<TOp>(in TOp A, in floatMxN B, ref floatMxN X)
             where TOp : struct, IfloatLinearOperator
@@ -786,7 +788,7 @@ namespace LinearAlgebra
         public float Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n, int s) { }
+        public void Init(int n, int s) { }
 
         public BlockSolveInfo Solve<TOp>(in TOp A, in floatMxN B, ref floatMxN X)
             where TOp : struct, IfloatLinearOperator
@@ -823,7 +825,7 @@ namespace LinearAlgebra
         public float Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n, int s) { }
+        public void Init(int n, int s) { }
 
         public BlockSolveInfo Solve<TOp>(in TOp A, in floatMxN B, ref floatMxN X)
             where TOp : struct, IfloatLinearOperator
@@ -860,7 +862,7 @@ namespace LinearAlgebra
         public float Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n, int s) { }
+        public void Init(int n, int s) { }
 
         public BlockSolveInfo Solve<TOp>(in TOp A, in floatMxN B, ref floatMxN X)
             where TOp : struct, IfloatLinearOperator
@@ -897,15 +899,15 @@ namespace LinearAlgebra
         public float Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n, int s)
+        public void Init(int n, int s)
         {
-            Rhat0 = arena.floatMat(s, n);
-            U = arena.floatMat(s, n);
-            W = arena.floatMat(s, n);
-            V = arena.floatMat(s, n);
-            AU = arena.floatMat(s, n);
-            D = arena.floatMat(s, n);
-            UHat = arena.floatMat(s, n);
+            Rhat0 = new floatMxN(s, n, Allocator.Temp);
+            U = new floatMxN(s, n, Allocator.Temp);
+            W = new floatMxN(s, n, Allocator.Temp);
+            V = new floatMxN(s, n, Allocator.Temp);
+            AU = new floatMxN(s, n, Allocator.Temp);
+            D = new floatMxN(s, n, Allocator.Temp);
+            UHat = new floatMxN(s, n, Allocator.Temp);
         }
 
         public BlockSolveInfo Solve<TOp>(in TOp A, in floatMxN B, ref floatMxN X)
@@ -939,13 +941,13 @@ namespace LinearAlgebra
         public float Tol => TolValue;
         public int MaxIter(int rows, int cols) => MaxIterMul * (rows < cols ? rows : cols);
 
-        public void Init(ref Arena arena, int rows, int cols)
+        public void Init(int rows, int cols)
         {
-            u = arena.floatVec(rows);
-            v = arena.floatVec(cols);
-            w = arena.floatVec(cols);
-            tmpM = arena.floatVec(rows);
-            tmpN = arena.floatVec(cols);
+            u = new floatN(rows, Allocator.Temp);
+            v = new floatN(cols, Allocator.Temp);
+            w = new floatN(cols, Allocator.Temp);
+            tmpM = new floatN(rows, Allocator.Temp);
+            tmpN = new floatN(cols, Allocator.Temp);
         }
 
         public LstsqInfo Solve<TOp>(in TOp A, in floatN b, ref floatN x, float damp)
@@ -972,14 +974,14 @@ namespace LinearAlgebra
         public float Tol => TolValue;
         public int MaxIter(int rows, int cols) => MaxIterMul * (rows < cols ? rows : cols);
 
-        public void Init(ref Arena arena, int rows, int cols)
+        public void Init(int rows, int cols)
         {
-            u = arena.floatVec(rows);
-            v = arena.floatVec(cols);
-            h = arena.floatVec(cols);
-            hbar = arena.floatVec(cols);
-            tmpM = arena.floatVec(rows);
-            tmpN = arena.floatVec(cols);
+            u = new floatN(rows, Allocator.Temp);
+            v = new floatN(cols, Allocator.Temp);
+            h = new floatN(cols, Allocator.Temp);
+            hbar = new floatN(cols, Allocator.Temp);
+            tmpM = new floatN(rows, Allocator.Temp);
+            tmpN = new floatN(cols, Allocator.Temp);
         }
 
         public LstsqInfo Solve<TOp>(in TOp A, in floatN b, ref floatN x, float damp)
@@ -1007,12 +1009,12 @@ namespace LinearAlgebra
         public float Tol => TolValue;
         public int MaxIter(int rows, int cols) => MaxIterMul * (rows < cols ? rows : cols);
 
-        public void Init(ref Arena arena, int rows, int cols)
+        public void Init(int rows, int cols)
         {
-            u = arena.floatVec(rows);
-            v = arena.floatVec(cols);
-            tmpM = arena.floatVec(rows);
-            tmpN = arena.floatVec(cols);
+            u = new floatN(rows, Allocator.Temp);
+            v = new floatN(cols, Allocator.Temp);
+            tmpM = new floatN(rows, Allocator.Temp);
+            tmpN = new floatN(cols, Allocator.Temp);
         }
 
         /// damp is ignored: craig has no Tikhonov-damped production entry point (a consistent
@@ -1046,12 +1048,12 @@ namespace LinearAlgebra
         public float Tol => TolValue;
         public int MaxIter(int rows, int cols) => MaxIterMul * (rows < cols ? rows : cols);
 
-        public void Init(ref Arena arena, int rows, int cols)
+        public void Init(int rows, int cols)
         {
-            u = arena.floatVec(rows);
-            v = arena.floatVec(cols);
-            tmpM = arena.floatVec(rows);
-            tmpN = arena.floatVec(cols);
+            u = new floatN(rows, Allocator.Temp);
+            v = new floatN(cols, Allocator.Temp);
+            tmpM = new floatN(rows, Allocator.Temp);
+            tmpN = new floatN(cols, Allocator.Temp);
         }
 
         /// damp is ignored: lnlq, like craig, has no Tikhonov-damped entry point (a consistent
@@ -1095,12 +1097,12 @@ namespace LinearAlgebra
         public float Tol => TolValue;
         public int MaxIter(int rows, int cols) => MaxIterMul * (rows < cols ? rows : cols);
 
-        public void Init(ref Arena arena, int rows, int cols)
+        public void Init(int rows, int cols)
         {
-            r = arena.floatVec(rows);
-            p = arena.floatVec(cols);
-            Ap = arena.floatVec(rows);
-            tmpN = arena.floatVec(cols);
+            r = new floatN(rows, Allocator.Temp);
+            p = new floatN(cols, Allocator.Temp);
+            Ap = new floatN(rows, Allocator.Temp);
+            tmpN = new floatN(cols, Allocator.Temp);
         }
 
         /// damp is ignored: cgne has no Tikhonov-damped production entry point (a consistent
@@ -1130,13 +1132,13 @@ namespace LinearAlgebra
         public float Tol => TolValue;
         public int MaxIter(int rows, int cols) => MaxIterMul * (rows < cols ? rows : cols);
 
-        public void Init(ref Arena arena, int rows, int cols)
+        public void Init(int rows, int cols)
         {
-            u = arena.floatVec(rows);
-            v = arena.floatVec(cols);
-            d = arena.floatVec(cols);
-            tmpM = arena.floatVec(rows);
-            tmpN = arena.floatVec(cols);
+            u = new floatN(rows, Allocator.Temp);
+            v = new floatN(cols, Allocator.Temp);
+            d = new floatN(cols, Allocator.Temp);
+            tmpM = new floatN(rows, Allocator.Temp);
+            tmpN = new floatN(cols, Allocator.Temp);
         }
 
         public LstsqInfo Solve<TOp>(in TOp A, in floatN b, ref floatN x, float damp)
@@ -1162,7 +1164,7 @@ namespace LinearAlgebra
         public float Tol => TolValue;
         public int MaxIter(int rows, int cols) => MaxIterMul * cols;
 
-        public void Init(ref Arena arena, int rows, int cols, int s) { }
+        public void Init(int rows, int cols, int s) { }
 
         public BlockSolveInfo Solve<TOp>(in TOp A, in floatMxN B, ref floatMxN X, int maxIter)
             where TOp : struct, IfloatLinearOperator
@@ -1192,7 +1194,7 @@ namespace LinearAlgebra
         public float Tol => TolValue;
         public int MaxIter(int rows, int cols) => MaxIterMul * cols;
 
-        public void Init(ref Arena arena, int rows, int cols, int s) { }
+        public void Init(int rows, int cols, int s) { }
 
         public BlockSolveInfo Solve<TOp>(in TOp A, in floatMxN B, ref floatMxN X, int maxIter)
             where TOp : struct, IfloatLinearOperator
@@ -1224,7 +1226,7 @@ namespace LinearAlgebra
         public float Tol => TolValue;
         public int MaxIter(int rows, int cols) => MaxIterMul * cols;
 
-        public void Init(ref Arena arena, int rows, int cols, int s) { }
+        public void Init(int rows, int cols, int s) { }
 
         public BlockSolveInfo Solve<TOp>(in TOp A, in floatMxN B, ref floatMxN X, int maxIter)
             where TOp : struct, IfloatLinearOperator
@@ -1255,7 +1257,7 @@ namespace LinearAlgebra
         public float Tol => TolValue;
         public int MaxIter(int rows, int cols) => MaxIterMul * cols;
 
-        public void Init(ref Arena arena, int rows, int cols, int s) { }
+        public void Init(int rows, int cols, int s) { }
 
         public BlockSolveInfo Solve<TOp>(in TOp A, in floatMxN B, ref floatMxN X, int maxIter)
             where TOp : struct, IfloatLinearOperator

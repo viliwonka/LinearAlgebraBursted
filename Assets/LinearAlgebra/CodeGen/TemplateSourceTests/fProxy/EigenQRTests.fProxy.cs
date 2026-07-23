@@ -68,14 +68,12 @@ public class fProxyEigenQRTests
         // diag(5,3,-2,0.5) -> eigenvalues {5,3,0.5,-2} (sorted desc), all imag 0.
         void DiagonalReal()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 4;
-            var A = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Temp);
             A[0, 0] = 5f; A[1, 1] = 3f; A[2, 2] = -2f; A[3, 3] = 0.5f;
 
-            var re = arena.fProxyVec(n);
-            var im = arena.fProxyVec(n);
+            var re = new fProxyN(n, Allocator.Temp);
+            var im = new fProxyN(n, Allocator.Temp);
             bool ok = Eigen.valuesQRInPlace(ref A, ref re, ref im);
             RecordEq(ok ? 1 : 0, 1);
 
@@ -83,49 +81,41 @@ public class fProxyEigenQRTests
             AssertClose(re[0], 5f, tol); AssertClose(re[1], 3f, tol);
             AssertClose(re[2], 0.5f, tol); AssertClose(re[3], -2f, tol);
             for (int i = 0; i < n; i++) AssertClose(im[i], 0f, tol);
-
-            arena.Dispose();
         }
 
         // Upper triangular: eigenvalues are the diagonal entries {4,3,2} regardless of the
         // (nonzero) superdiagonal content.
         void UpperTriangular()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 3;
-            var A = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Temp);
             A[0, 0] = 2f; A[0, 1] = 7f; A[0, 2] = -3f;
             A[1, 1] = 4f; A[1, 2] = 5f;
             A[2, 2] = 3f;
 
-            var re = arena.fProxyVec(n);
-            var im = arena.fProxyVec(n);
+            var re = new fProxyN(n, Allocator.Temp);
+            var im = new fProxyN(n, Allocator.Temp);
             bool ok = Eigen.valuesQRInPlace(ref A, ref re, ref im);
             RecordEq(ok ? 1 : 0, 1);
 
             fProxy tol = (fProxy)1E-3f;
             AssertClose(re[0], 4f, tol); AssertClose(re[1], 3f, tol); AssertClose(re[2], 2f, tol);
             for (int i = 0; i < n; i++) AssertClose(im[i], 0f, tol);
-
-            arena.Dispose();
         }
 
         // Companion matrix of (x-1)(x-2)(x-3)(x-4) = x^4 -10x^3 +35x^2 -50x +24.
         // Last column holds -c_i; eigenvalues are the roots {4,3,2,1}.
         void CompanionKnownRoots()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 4;
-            var A = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Temp);
             // subdiagonal ones
             A[1, 0] = 1f; A[2, 1] = 1f; A[3, 2] = 1f;
             // last column: -c0,-c1,-c2,-c3 = -24, 50, -35, 10
             A[0, 3] = -24f; A[1, 3] = 50f; A[2, 3] = -35f; A[3, 3] = 10f;
 
-            var re = arena.fProxyVec(n);
-            var im = arena.fProxyVec(n);
+            var re = new fProxyN(n, Allocator.Temp);
+            var im = new fProxyN(n, Allocator.Temp);
             bool ok = Eigen.valuesQRInPlace(ref A, ref re, ref im);
             RecordEq(ok ? 1 : 0, 1);
 
@@ -134,22 +124,18 @@ public class fProxyEigenQRTests
             AssertClose(re[0], 4f, tol); AssertClose(re[1], 3f, tol);
             AssertClose(re[2], 2f, tol); AssertClose(re[3], 1f, tol);
             for (int i = 0; i < n; i++) AssertClose(im[i], 0f, tol);
-
-            arena.Dispose();
         }
 
         // [[0,-1],[1,0]]: eigenvalues are 0 ± i. Sorted desc by (real, imag) => (0,+1) then (0,-1).
         void PureImaginaryPair()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 2;
-            var A = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Temp);
             A[0, 0] = 0f; A[0, 1] = -1f;
             A[1, 0] = 1f; A[1, 1] = 0f;
 
-            var re = arena.fProxyVec(n);
-            var im = arena.fProxyVec(n);
+            var re = new fProxyN(n, Allocator.Temp);
+            var im = new fProxyN(n, Allocator.Temp);
             bool ok = Eigen.valuesQRInPlace(ref A, ref re, ref im);
             RecordEq(ok ? 1 : 0, 1);
 
@@ -157,25 +143,21 @@ public class fProxyEigenQRTests
             AssertClose(re[0], 0f, tol); AssertClose(re[1], 0f, tol);
             AssertClose(im[0], 1f, tol);   // +i first
             AssertClose(im[1], -1f, tol);  // -i second
-
-            arena.Dispose();
         }
 
         // Rotation by θ=π/4: eigenvalues cos θ ± i sin θ = 0.70710678 ± 0.70710678 i.
         void RotationComplexPair()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 2;
             fProxy c = (fProxy)math.cos(math.PI_DBL / 4.0);
             fProxy s = (fProxy)math.sin(math.PI_DBL / 4.0);
 
-            var A = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Temp);
             A[0, 0] = c; A[0, 1] = -s;
             A[1, 0] = s; A[1, 1] = c;
 
-            var re = arena.fProxyVec(n);
-            var im = arena.fProxyVec(n);
+            var re = new fProxyN(n, Allocator.Temp);
+            var im = new fProxyN(n, Allocator.Temp);
             bool ok = Eigen.valuesQRInPlace(ref A, ref re, ref im);
             RecordEq(ok ? 1 : 0, 1);
 
@@ -183,23 +165,19 @@ public class fProxyEigenQRTests
             AssertClose(re[0], c, tol); AssertClose(re[1], c, tol);
             AssertClose(im[0], s, tol);    // +sin first
             AssertClose(im[1], -s, tol);
-
-            arena.Dispose();
         }
 
         // Block diag( [2], [[0,-1],[1,0]] ): a real eigenvalue 2 alongside the pair 0 ± i.
         void RealPlusComplexBlock()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 3;
-            var A = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Temp);
             A[0, 0] = 2f;
             A[1, 1] = 0f; A[1, 2] = -1f;
             A[2, 1] = 1f; A[2, 2] = 0f;
 
-            var re = arena.fProxyVec(n);
-            var im = arena.fProxyVec(n);
+            var re = new fProxyN(n, Allocator.Temp);
+            var im = new fProxyN(n, Allocator.Temp);
             bool ok = Eigen.valuesQRInPlace(ref A, ref re, ref im);
             RecordEq(ok ? 1 : 0, 1);
 
@@ -208,20 +186,16 @@ public class fProxyEigenQRTests
             AssertClose(re[0], 2f, tol); AssertClose(im[0], 0f, tol);
             AssertClose(re[1], 0f, tol); AssertClose(im[1], 1f, tol);
             AssertClose(re[2], 0f, tol); AssertClose(im[2], -1f, tol);
-
-            arena.Dispose();
         }
 
         // Random symmetric matrix: all eigenvalues real; cross-check valuesQRInPlace against the
         // symmetric Jacobi decompInPlace (both sorted descending by value).
         void SymmetricCrossCheckJacobi()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             for (uint t = 0; t < 8; t++)
             {
                 int n = 6;
-                var A = arena.fProxyRandomMat(n, n, -3f, 3f, 30000 + t * 13);
+                var A = GenerateOP.fProxyRandomMat(n, n, -3f, 3f, 30000 + t * 13);
                 for (int i = 0; i < n; i++)
                     for (int j = i + 1; j < n; j++)
                     {
@@ -229,16 +203,16 @@ public class fProxyEigenQRTests
                         A[i, j] = avg; A[j, i] = avg;
                     }
 
-                var Aqr = A.Copy();
-                var Ajac = A.Copy();
+                var Aqr = new fProxyMxN(in A, Allocator.Temp);
+                var Ajac = new fProxyMxN(in A, Allocator.Temp);
 
-                var re = arena.fProxyVec(n);
-                var im = arena.fProxyVec(n);
+                var re = new fProxyN(n, Allocator.Temp);
+                var im = new fProxyN(n, Allocator.Temp);
                 bool ok = Eigen.valuesQRInPlace(ref Aqr, ref re, ref im);
                 RecordEq(ok ? 1 : 0, 1);
 
-                var jac = arena.fProxyVec(n);
-                var V = arena.fProxyMat(n, n);
+                var jac = new fProxyN(n, Allocator.Temp);
+                var V = new fProxyMxN(n, n, Allocator.Temp);
                 Eigen.decompInPlace(ref Ajac, ref jac, ref V); // sorts desc by value
 
                 fProxy tol = (fProxy)1E-3f;
@@ -248,28 +222,22 @@ public class fProxyEigenQRTests
                     fProxy scale = (fProxy)1 + math.abs(jac[i]);
                     AssertClose(re[i], jac[i], tol * scale);     // matches Jacobi, same order
                 }
-
-                arena.Clear();
             }
-
-            arena.Dispose();
         }
 
         // Random general (non-symmetric) matrix: sum of eigenvalue real parts == trace(A), and the
         // imaginary parts sum to 0 (complex eigenvalues occur in conjugate pairs).
         void TraceInvariant()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             for (uint t = 0; t < 12; t++)
             {
                 int n = 7;
-                var A = arena.fProxyRandomMat(n, n, -2f, 2f, 40000 + t * 17);
+                var A = GenerateOP.fProxyRandomMat(n, n, -2f, 2f, 40000 + t * 17);
                 fProxy trace = 0;
                 for (int i = 0; i < n; i++) trace += A[i, i];
 
-                var re = arena.fProxyVec(n);
-                var im = arena.fProxyVec(n);
+                var re = new fProxyN(n, Allocator.Temp);
+                var im = new fProxyN(n, Allocator.Temp);
                 bool ok = Eigen.valuesQRInPlace(ref A, ref re, ref im);
                 RecordEq(ok ? 1 : 0, 1);
 
@@ -279,11 +247,7 @@ public class fProxyEigenQRTests
                 fProxy tol = (fProxy)1E-3f * ((fProxy)1 + math.abs(trace));
                 AssertClose(sumRe, trace, tol);
                 AssertClose(sumIm, 0f, tol);
-
-                arena.Clear();
             }
-
-            arena.Dispose();
         }
 
         // Defective (non-diagonalizable) NILPOTENT Jordan blocks: a 3x3 [[0,1,0],[0,0,1],[0,0,0]]
@@ -293,16 +257,14 @@ public class fProxyEigenQRTests
         // p,q,r normalization can hit s2 == 0.
         void NilpotentJordan()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // 3x3 Jordan block.
             {
                 int n = 3;
-                var A = arena.fProxyMat(n, n);
+                var A = new fProxyMxN(n, n, Allocator.Temp);
                 A[0, 1] = 1f; A[1, 2] = 1f; // ones on the superdiagonal, all else zero
 
-                var re = arena.fProxyVec(n);
-                var im = arena.fProxyVec(n);
+                var re = new fProxyN(n, Allocator.Temp);
+                var im = new fProxyN(n, Allocator.Temp);
                 bool ok = Eigen.valuesQRInPlace(ref A, ref re, ref im);
                 RecordEq(ok ? 1 : 0, 1);
                 for (int i = 0; i < n; i++)
@@ -315,11 +277,11 @@ public class fProxyEigenQRTests
             // 2x2 Jordan block.
             {
                 int n = 2;
-                var A = arena.fProxyMat(n, n);
+                var A = new fProxyMxN(n, n, Allocator.Temp);
                 A[0, 1] = 1f;
 
-                var re = arena.fProxyVec(n);
-                var im = arena.fProxyVec(n);
+                var re = new fProxyN(n, Allocator.Temp);
+                var im = new fProxyN(n, Allocator.Temp);
                 bool ok = Eigen.valuesQRInPlace(ref A, ref re, ref im);
                 RecordEq(ok ? 1 : 0, 1);
                 for (int i = 0; i < n; i++)
@@ -328,8 +290,6 @@ public class fProxyEigenQRTests
                     AssertClose(im[i], 0f, (fProxy)1E-5f);
                 }
             }
-
-            arena.Dispose();
         }
 
         // GALLERY KNOWN-ANSWER (Gallery.Special): n=5 Frank matrix — upper Hessenberg, det=1.
@@ -338,17 +298,15 @@ public class fProxyEigenQRTests
         // ~0.0994, so a 1E-2 positivity band is robust under float QR. Also checks sum(re)==trace.
         void FrankRealPositive()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
-            var A = arena.fProxyFrank(n);
+            var A = fProxyGallery.fProxyFrank(n);
 
             // trace must be read before valuesQRInPlace destroys A.
             fProxy trace = 0;
             for (int i = 0; i < n; i++) trace += A[i, i];
 
-            var re = arena.fProxyVec(n);
-            var im = arena.fProxyVec(n);
+            var re = new fProxyN(n, Allocator.Temp);
+            var im = new fProxyN(n, Allocator.Temp);
             bool ok = Eigen.valuesQRInPlace(ref A, ref re, ref im);
             RecordEq(ok ? 1 : 0, 1);
 
@@ -372,8 +330,6 @@ public class fProxyEigenQRTests
             }
 
             AssertClose(sumRe, trace, (fProxy)1E-2f * ((fProxy)1 + math.abs(trace)));
-
-            arena.Dispose();
         }
 
         // GALLERY KNOWN-ANSWER (Gallery.Special): companion matrix of the monic polynomial
@@ -381,16 +337,14 @@ public class fProxyEigenQRTests
         // from coeffs {24,-50,35,-10}. Eigenvalues equal the roots {1,2,3,4}; sorted desc -> {4,3,2,1}.
         void CompanionGalleryRoots()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 4;
-            var coeffs = arena.fProxyVec(n);
+            var coeffs = new fProxyN(n, Allocator.Temp);
             coeffs[0] = 24f; coeffs[1] = -50f; coeffs[2] = 35f; coeffs[3] = -10f;
 
-            var A = arena.fProxyCompanion(in coeffs);
+            var A = fProxyGallery.fProxyCompanion(in coeffs);
 
-            var re = arena.fProxyVec(n);
-            var im = arena.fProxyVec(n);
+            var re = new fProxyN(n, Allocator.Temp);
+            var im = new fProxyN(n, Allocator.Temp);
             bool ok = Eigen.valuesQRInPlace(ref A, ref re, ref im);
             RecordEq(ok ? 1 : 0, 1);
 
@@ -399,8 +353,6 @@ public class fProxyEigenQRTests
             AssertClose(re[0], 4f, tol); AssertClose(re[1], 3f, tol);
             AssertClose(re[2], 2f, tol); AssertClose(re[3], 1f, tol);
             for (int i = 0; i < n; i++) AssertClose(im[i], 0f, tol);
-
-            arena.Dispose();
         }
 
         void AssertClose(fProxy got, fProxy expected, fProxy tol)

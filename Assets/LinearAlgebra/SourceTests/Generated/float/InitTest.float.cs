@@ -16,22 +16,11 @@ public class floatInitTest
     {
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            Assert.AreEqual(0, arena.AllocationsCount);
-
             int vecLen = 7;
 
-            floatN vec = arena.floatVec(vecLen);
+            floatN vec = new floatN(vecLen, Allocator.Temp);
 
             Assert.AreEqual(vecLen, vec.N);
-            Assert.AreEqual(1, arena.AllocationsCount);
-            
-            arena.Clear();
-
-            Assert.AreEqual(0, arena.AllocationsCount);
-
-            arena.Dispose();
         }
     }
 
@@ -46,20 +35,12 @@ public class floatInitTest
     {
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int lenRows = 7;
             int lenColumns = 7;
 
-            floatMxN vec = arena.floatMat(lenRows, lenColumns);
+            floatMxN vec = new floatMxN(lenRows, lenColumns, Allocator.Temp);
 
             Assert.AreEqual(lenRows * lenColumns, vec.Length);
-            Assert.AreEqual(1, arena.AllocationsCount);
-
-            arena.Dispose();
-
-            Assert.AreEqual(0, arena.AllocationsCount);
-
         }
     }
 

@@ -50,9 +50,9 @@ public class doubleBlockCGrQTests
 
         // A = M^T M with M's columns geometrically scaled across [1, condSpan] -- stretches A's singular
         // spectrum (cond(A) ~ condSpan^2) without a Hilbert matrix's extreme growth.
-        static doubleMxN BuildStretchedSPD(ref Arena arena, int dim, uint seed, double condSpan)
+        static doubleMxN BuildStretchedSPD(int dim, uint seed, double condSpan)
         {
-            var M = arena.doubleRandomMat(dim, dim, (double)(-1f), (double)1f, seed);
+            var M = GenerateOP.doubleRandomMat(dim, dim, (double)(-1f), (double)1f, seed);
             for (int j = 0; j < dim; j++)
             {
                 double t = dim > 1 ? (double)j / (double)(dim - 1) : (double)0;
@@ -62,9 +62,9 @@ public class doubleBlockCGrQTests
             return Blas.dot(M, M, true);                        // M^T M, SPD
         }
 
-        static doubleN Row(ref Arena arena, in doubleMxN B, int j, int n)
+        static doubleN Row(in doubleMxN B, int j, int n)
         {
-            var v = arena.doubleVec(n);
+            var v = new doubleN(n, Allocator.Temp);
             for (int c = 0; c < n; c++) v[c] = B[j, c];
             return v;
         }
@@ -91,13 +91,11 @@ public class doubleBlockCGrQTests
         // column, and every column reached tolerance.
         void MatchesScalarCgPerColumn()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 20, s = 4;
-            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 81001u);
-            var B = arena.doubleRandomMat(s, n, (double)(-1f), (double)1f, 81002u);
+            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(n, 81001u);
+            var B = GenerateOP.doubleRandomMat(s, n, (double)(-1f), (double)1f, 81002u);
 
-            var X = arena.doubleMat(s, n);                      // zero initial guess
+            var X = new doubleMxN(s, n, Allocator.Temp);        // zero initial guess
             var info = Krylov.bcgrq(in A, in B, ref X, 8 * n, Consts.doubleSqrtEps);
 
             Assert.IsTrue(info.Solved);
@@ -106,39 +104,33 @@ public class doubleBlockCGrQTests
 
             for (int j = 0; j < s; j++)
             {
-                var bj = Row(ref arena, in B, j, n);
-                var xj = arena.doubleVec(n);
+                var bj = Row(in B, j, n);
+                var xj = new doubleN(n, Allocator.Temp);
                 Assert.IsTrue(Krylov.cg(in A, in bj, ref xj, 8 * n, Consts.doubleSqrtEps));
 
                 for (int c = 0; c < n; c++)
                     Assert.IsTrue(math.abs((double)X[j, c] - (double)xj[c]) <= Tol() * (1.0 + math.abs((double)xj[c])));
             }
-
-            arena.Dispose();
         }
 
         // Independent of the scalar solver: pick a KNOWN block solution Xk, form B = A Xk (via the
         // operator's own ApplyBlock), solve with bcgrq, and recover Xk.
         void KnownSolutionRecovered()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 20, s = 5;
-            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 82001u);
-            var Xk = arena.doubleRandomMat(s, n, (double)(-1f), (double)1f, 82002u);   // known solution
+            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(n, 82001u);
+            var Xk = GenerateOP.doubleRandomMat(s, n, (double)(-1f), (double)1f, 82002u);   // known solution
 
-            var B = arena.doubleMat(s, n);
+            var B = new doubleMxN(s, n, Allocator.Temp);
             new doubleDenseOperator(in A).ApplyBlock(in Xk, ref B, s);                 // B[j,:] = A Xk[j,:]
 
-            var X = arena.doubleMat(s, n);
+            var X = new doubleMxN(s, n, Allocator.Temp);
             var info = Krylov.bcgrq(in A, in B, ref X, 8 * n, Consts.doubleSqrtEps);
             Assert.IsTrue(info.Solved);
 
             for (int j = 0; j < s; j++)
                 for (int c = 0; c < n; c++)
                     Assert.IsTrue(math.abs((double)X[j, c] - (double)Xk[j, c]) <= Tol() * (1.0 + math.abs((double)Xk[j, c])));
-
-            arena.Dispose();
         }
 
         // A rank-deficient RHS block (two identical columns) must NOT NaN or throw, must still solve
@@ -146,15 +138,13 @@ public class doubleBlockCGrQTests
         // deflation must reveal the rank loss via minActive < rhs.
         void RankDeficientBlockDeflatesAndReportsMinActive()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 16, s = 4;
-            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 83001u);
-            var B = arena.doubleRandomMat(s, n, (double)(-1f), (double)1f, 83002u);
+            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(n, 83001u);
+            var B = GenerateOP.doubleRandomMat(s, n, (double)(-1f), (double)1f, 83002u);
             // Force columns 1 and 3 identical -> block rank <= 3.
             for (int c = 0; c < n; c++) B[3, c] = B[1, c];
 
-            var X = arena.doubleMat(s, n);
+            var X = new doubleMxN(s, n, Allocator.Temp);
             var info = Krylov.bcgrq(in A, in B, ref X, 8 * n, Consts.doubleSqrtEps);
 
             for (int j = 0; j < s; j++)
@@ -166,35 +156,29 @@ public class doubleBlockCGrQTests
                 Assert.IsTrue(math.abs((double)X[1, c] - (double)X[3, c]) <= Tol() * (1.0 + math.abs((double)X[1, c])));
 
             Assert.IsTrue(info.minActive < info.rhs);
-
-            arena.Dispose();
         }
 
         // Block-Jacobi-preconditioned bcgrq over a BSR SPD system matches per-column scalar pcg.
         void PreconditionedMatchesScalar()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 18, s = 3;
-            var Adense = doubleKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 84001u);
-            var A = doubleKrylovBatteryOracles.DenseToBSR1x1(ref arena, in Adense);
-            var M = arena.doubleBlockJacobi(in A);
-            var B = arena.doubleRandomMat(s, n, (double)(-1f), (double)1f, 84002u);
+            var Adense = doubleKrylovBatteryOracles.BuildDenseSpdSystem(n, 84001u);
+            var A = doubleKrylovBatteryOracles.DenseToBSR1x1(in Adense);
+            var M = new doubleBlockJacobi(in A, Allocator.Temp);
+            var B = GenerateOP.doubleRandomMat(s, n, (double)(-1f), (double)1f, 84002u);
 
-            var X = arena.doubleMat(s, n);
+            var X = new doubleMxN(s, n, Allocator.Temp);
             var info = Krylov.bcgrq(in A, in M, in B, ref X, 8 * n, Consts.doubleSqrtEps);
             Assert.IsTrue(info.Solved);
 
             for (int j = 0; j < s; j++)
             {
-                var bj = Row(ref arena, in B, j, n);
-                var xj = arena.doubleVec(n);
+                var bj = Row(in B, j, n);
+                var xj = new doubleN(n, Allocator.Temp);
                 Assert.IsTrue(Krylov.cg(in A, in M, in bj, ref xj, 8 * n, Consts.doubleSqrtEps));
                 for (int c = 0; c < n; c++)
                     Assert.IsTrue(math.abs((double)X[j, c] - (double)xj[c]) <= Tol() * (1.0 + math.abs((double)xj[c])));
             }
-
-            arena.Dispose();
         }
 
         // The identity preconditioner fold must be bit-identical to the unpreconditioned rung: same
@@ -203,25 +187,23 @@ public class doubleBlockCGrQTests
         // iterations and status -- no tolerance.
         void IdentityFoldBitIdentical()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 16, s = 4;
-            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 85001u);
-            var B = arena.doubleRandomMat(s, n, (double)(-1f), (double)1f, 85002u);
+            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(n, 85001u);
+            var B = GenerateOP.doubleRandomMat(s, n, (double)(-1f), (double)1f, 85002u);
             int maxIter = 8 * n;
             double tol = Consts.doubleSqrtEps;
             var op = new doubleDenseOperator(in A);
 
             // Unpreconditioned rung (identity folds out at compile time).
-            var Xplain = arena.doubleMat(s, n);
-            var Rp = arena.doubleMat(s, n); var Pp = arena.doubleMat(s, n);
-            var APp = arena.doubleMat(s, n); var Pap = arena.doubleMat(s, n);
+            var Xplain = new doubleMxN(s, n, Allocator.Temp);
+            var Rp = new doubleMxN(s, n, Allocator.Temp); var Pp = new doubleMxN(s, n, Allocator.Temp);
+            var APp = new doubleMxN(s, n, Allocator.Temp); var Pap = new doubleMxN(s, n, Allocator.Temp);
             var infoPlain = Krylov.bcgrq(in op, in B, ref Xplain, ref Rp, ref Pp, ref APp, ref Pap, maxIter, tol);
 
             // Explicit identity preconditioner through the merged core; Z = default (unused when identity).
-            var Xmerged = arena.doubleMat(s, n);
-            var Rm = arena.doubleMat(s, n); var Pm = arena.doubleMat(s, n);
-            var APm = arena.doubleMat(s, n); var Pam = arena.doubleMat(s, n);
+            var Xmerged = new doubleMxN(s, n, Allocator.Temp);
+            var Rm = new doubleMxN(s, n, Allocator.Temp); var Pm = new doubleMxN(s, n, Allocator.Temp);
+            var APm = new doubleMxN(s, n, Allocator.Temp); var Pam = new doubleMxN(s, n, Allocator.Temp);
             doubleMxN Zm = default;
             var id = new doubleIdentityPreconditioner();
             var infoMerged = Krylov.bcgrq(in op, in id, in B, ref Xmerged, ref Rm, ref Pm, ref APm, ref Pam, ref Zm, maxIter, tol);
@@ -232,8 +214,6 @@ public class doubleBlockCGrQTests
 
             Assert.AreEqual(infoPlain.iterations, infoMerged.iterations);
             Assert.AreEqual((int)infoPlain.status, (int)infoMerged.status);
-
-            arena.Dispose();
         }
 
         // On an ill-conditioned SPD system (stretched singular spectrum), bcgrq must be NO WORSE than
@@ -248,32 +228,28 @@ public class doubleBlockCGrQTests
 
         void IllConditionedSPDNeverWorseThanRidge()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 20, s = 4;
             double condSpan = (double)8;
-            var A = BuildStretchedSPD(ref arena, n, 86001u, condSpan);
-            var Xk = arena.doubleRandomMat(s, n, (double)(-1f), (double)1f, 86002u);
+            var A = BuildStretchedSPD(n, 86001u, condSpan);
+            var Xk = GenerateOP.doubleRandomMat(s, n, (double)(-1f), (double)1f, 86002u);
 
-            var B = arena.doubleMat(s, n);
+            var B = new doubleMxN(s, n, Allocator.Temp);
             new doubleDenseOperator(in A).ApplyBlock(in Xk, ref B, s);
 
             int maxIter = 3000;
             double tol = Consts.doubleSqrtEps;
 
-            var Xridge = arena.doubleMat(s, n);
+            var Xridge = new doubleMxN(s, n, Allocator.Temp);
             var ridgeInfo = Krylov.bcg(in A, in B, ref Xridge, maxIter, tol);
             double ridgeFwdErr = MaxForwardError(in Xridge, in Xk, s, n);
 
-            var Xrq = arena.doubleMat(s, n);
+            var Xrq = new doubleMxN(s, n, Allocator.Temp);
             var rqInfo = Krylov.bcgrq(in A, in B, ref Xrq, maxIter, tol);
             double rqFwdErr = MaxForwardError(in Xrq, in Xk, s, n);
 
             Assert.IsTrue(rqInfo.maxRnorm <= ridgeInfo.maxRnorm * ResidualSlack());
             Assert.IsTrue((double)rqFwdErr <= (double)ridgeFwdErr * ResidualSlack());
             Assert.IsTrue(rqInfo.iterations <= ridgeInfo.iterations * 2 + 2);
-
-            arena.Dispose();
         }
 
         // Same comparison as above, but the ill-conditioning source is the RHS block: a well-conditioned
@@ -283,36 +259,32 @@ public class doubleBlockCGrQTests
         // directly, which would silently change column 1's true solution away from Xk[1,:]).
         void NearParallelRHSNeverWorseThanRidge()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 20, s = 4;
-            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 87001u);
-            var Xk = arena.doubleRandomMat(s, n, (double)(-1f), (double)1f, 87002u);
+            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(n, 87001u);
+            var Xk = GenerateOP.doubleRandomMat(s, n, (double)(-1f), (double)1f, 87002u);
 
             double epsScale = 1e-10;
             var rng = new Unity.Mathematics.Random(87003u);
             for (int c = 0; c < n; c++)
                 Xk[1, c] = Xk[0, c] + epsScale * rng.NextDouble(-1f, 1f);
 
-            var B = arena.doubleMat(s, n);
+            var B = new doubleMxN(s, n, Allocator.Temp);
             new doubleDenseOperator(in A).ApplyBlock(in Xk, ref B, s);
 
             int maxIter = 20 * n;
             double tol = Consts.doubleSqrtEps;
 
-            var Xridge = arena.doubleMat(s, n);
+            var Xridge = new doubleMxN(s, n, Allocator.Temp);
             var ridgeInfo = Krylov.bcg(in A, in B, ref Xridge, maxIter, tol);
             double ridgeFwdErr = MaxForwardError(in Xridge, in Xk, s, n);
 
-            var Xrq = arena.doubleMat(s, n);
+            var Xrq = new doubleMxN(s, n, Allocator.Temp);
             var rqInfo = Krylov.bcgrq(in A, in B, ref Xrq, maxIter, tol);
             double rqFwdErr = MaxForwardError(in Xrq, in Xk, s, n);
 
             Assert.IsTrue(rqInfo.maxRnorm <= ridgeInfo.maxRnorm * ResidualSlack());
             Assert.IsTrue((double)rqFwdErr <= (double)ridgeFwdErr * ResidualSlack());
             Assert.IsTrue(rqInfo.iterations <= ridgeInfo.iterations * 2 + 2);
-
-            arena.Dispose();
         }
     }
 

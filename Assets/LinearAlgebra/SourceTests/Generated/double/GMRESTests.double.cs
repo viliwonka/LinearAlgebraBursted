@@ -35,25 +35,25 @@ public class doubleGMRESTests
 
         // Dense nonsymmetric, diagonally dominant (well-conditioned, nonsingular): random entries + a
         // heavy diagonal. Not symmetric (random off-diagonals differ across the diagonal).
-        static doubleMxN DenseNonsym(ref Arena arena, int n, uint seed)
+        static doubleMxN DenseNonsym(int n, uint seed)
         {
-            var A = arena.doubleRandomMat(n, n, -1f, 1f, seed);
+            var A = GenerateOP.doubleRandomMat(n, n, -1f, 1f, seed);
             for (int i = 0; i < n; i++) A[i, i] += (double)(2 * n);
             return A;
         }
 
         // Scalar 1D convection-diffusion (BR=1): diagonal 6, super -1, sub -3 — nonsymmetric,
         // diagonally dominant. Full storage.
-        static doubleBSR ConvDiff1D(ref Arena arena, int n)
+        static doubleBSR ConvDiff1D(int n)
         {
-            var b = arena.doubleBSRBuilder(n, n, 1, 1, 3 * n);
+            var b = new doubleBSRBuilder(n, n, 1, 1, Allocator.Temp, 3 * n);
             for (int i = 0; i < n; i++)
             {
                 b.AddValue(i, i, (double)6);
                 if (i > 0) b.AddValue(i, i - 1, (double)(-3));
                 if (i < n - 1) b.AddValue(i, i + 1, (double)(-1));
             }
-            return b.ToBSR(ref arena);
+            return b.ToBSR(Allocator.Temp);
         }
 
         public void Execute()
@@ -71,70 +71,60 @@ public class doubleGMRESTests
 
         void SolvesDenseNonsym()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 40;
-            var A = DenseNonsym(ref arena, n, 0x9E01u);
-            var xTrue = arena.doubleRandomVec(n, -1f, 1f, 0x9E02u);
+            var A = DenseNonsym(n, 0x9E01u);
+            var xTrue = GenerateOP.doubleRandomVec(n, -1f, 1f, 0x9E02u);
             var b = Blas.dot(A, xTrue);
 
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (double)0;
             var info = Krylov.gmres(in A, in b, ref x, n, 4 * n, Tol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(doubleKrylovBatteryOracles.RelResidualDense(in A, in x, in b) <= Tol());
-
-            arena.Dispose();
         }
 
         void SolvesBSRNonsym()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 120;
-            var A = ConvDiff1D(ref arena, n);
-            var xTrue = arena.doubleRandomVec(n, -1f, 1f, 0x9E12u);
+            var A = ConvDiff1D(n);
+            var xTrue = GenerateOP.doubleRandomVec(n, -1f, 1f, 0x9E12u);
             var b = BSR.spMV(in A, in xTrue);
 
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (double)0;
             var info = Krylov.gmres(in A, in b, ref x, 40, 4 * n, Tol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(doubleKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
-
-            arena.Dispose();
         }
 
         // A restart well below n must still converge (multiple restart cycles).
         void RestartConverges()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 120;
-            var A = ConvDiff1D(ref arena, n);
-            var b = arena.doubleRandomVec(n, -1f, 1f, 0x9E22u);
+            var A = ConvDiff1D(n);
+            var b = GenerateOP.doubleRandomVec(n, -1f, 1f, 0x9E22u);
 
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (double)0;
             var info = Krylov.gmres(in A, in b, ref x, 10, 20 * n, Tol());   // restart 10 << n
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(doubleKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
-
-            arena.Dispose();
         }
 
         void MatchesBiCGStab()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 100;
-            var A = ConvDiff1D(ref arena, n);
-            var b = arena.doubleRandomVec(n, -1f, 1f, 0x9E32u);
+            var A = ConvDiff1D(n);
+            var b = GenerateOP.doubleRandomVec(n, -1f, 1f, 0x9E32u);
 
-            var xG = arena.doubleVec(n);
+            var xG = new doubleN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) xG[i] = (double)0;
             var gi = Krylov.gmres(in A, in b, ref xG, n, 4 * n, Tol());
 
-            var xB = arena.doubleVec(n);
+            var xB = new doubleN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) xB[i] = (double)0;
             var bi = Krylov.biCGStab(in A, in b, ref xB, 8 * n, Tol());
 
@@ -143,25 +133,22 @@ public class doubleGMRESTests
             // Both solve the same well-conditioned system -> solutions agree.
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(math.abs(xG[i] - xB[i]) <= MatchTol() * ((double)1 + math.abs(xB[i])));
-
-            arena.Dispose();
         }
 
         // ILU(0)-right-preconditioned GMRES converges AND in fewer inner iterations than plain GMRES.
         void PreconditionedFewerIters()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 200;
-            var A = ConvDiff1D(ref arena, n);
-            var b = arena.doubleRandomVec(n, -1f, 1f, 0x9E42u);
+            var A = ConvDiff1D(n);
+            var b = GenerateOP.doubleRandomVec(n, -1f, 1f, 0x9E42u);
             double tol = Tol();
 
-            var xG = arena.doubleVec(n);
+            var xG = new doubleN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) xG[i] = (double)0;
             var gi = Krylov.gmres(in A, in b, ref xG, 20, 8 * n, tol);
 
-            var M = arena.doubleILU0(in A);
-            var xP = arena.doubleVec(n);
+            var M = new doubleILU0(in A, Allocator.Temp);
+            var xP = new doubleN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) xP[i] = (double)0;
             var pi = Krylov.gmres(in A, in M, in b, ref xP, 20, 8 * n, tol);
 
@@ -169,27 +156,22 @@ public class doubleGMRESTests
             Assert.IsTrue(pi.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(doubleKrylovBatteryOracles.RelResidualBSR(in A, in xP, in b) <= tol);
             Assert.IsTrue(pi.iterations < gi.iterations);
-
-            arena.Dispose();
         }
 
         void ZeroRhs()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 30;
-            var A = ConvDiff1D(ref arena, n);
-            var b = arena.doubleVec(n);
+            var A = ConvDiff1D(n);
+            var b = new doubleN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) b[i] = (double)0;
 
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (double)5;
             var info = Krylov.gmres(in A, in b, ref x, 20, 4 * n, Tol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(info.iterations == 0);
             for (int i = 0; i < n; i++) Assert.IsTrue(x[i] == (double)0);
-
-            arena.Dispose();
         }
     }
 

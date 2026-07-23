@@ -64,19 +64,17 @@ public class fProxyDotOperationTests
 
         public void VecVecDot()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int vecLen = 32;
 
-            fProxyN x = arena.fProxyVec(vecLen, 1f);
-            fProxyN y = arena.fProxyVec(vecLen, 1f);
+            fProxyN x = GenerateOP.fProxyVec(vecLen, 1f);
+            fProxyN y = GenerateOP.fProxyVec(vecLen, 1f);
 
             fProxy b = Blas.dot(x, y);
 
             Assert.IsTrue(b == (fProxy)vecLen);
 
-            x = arena.fProxyVec(vecLen);
-            y = arena.fProxyVec(vecLen);
+            x = new fProxyN(vecLen, Allocator.Temp);
+            y = new fProxyN(vecLen, Allocator.Temp);
 
             for(int i = 0; i < vecLen; i++)
             {
@@ -87,20 +85,16 @@ public class fProxyDotOperationTests
             b = Blas.dot(x, y);
 
             Assert.IsTrue(b == (fProxy)0f);
-
-            arena.Dispose();
         }
 
         public void MatVecDot()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int inVecLen = 20;
             int outVecLen = 5;
 
             // A[i,j] = i+1 against an all-ones x: b[i] must be exactly (i+1) * inVecLen.
-            fProxyN x = arena.fProxyVec(inVecLen, 1f);
-            fProxyMxN A = arena.fProxyMat(outVecLen, inVecLen);
+            fProxyN x = GenerateOP.fProxyVec(inVecLen, 1f);
+            fProxyMxN A = new fProxyMxN(outVecLen, inVecLen, Allocator.Temp);
             for (int i = 0; i < outVecLen; i++)
                 for (int j = 0; j < inVecLen; j++)
                     A[i, j] = (fProxy)(i + 1);
@@ -110,44 +104,36 @@ public class fProxyDotOperationTests
             Assert.AreEqual(outVecLen, b.N);
             for (int i = 0; i < outVecLen; i++)
                 Assert.IsTrue(b[i] == (fProxy)((i + 1) * inVecLen));
-
-            arena.Dispose();
         }
 
         public void VecMatDot()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int vecLen = 20;
 
-            fProxyN x = arena.fProxyRandomUnitVec(vecLen);
-            fProxyMxN A = arena.fProxyIdentityMat(vecLen);
+            fProxyN x = GenerateOP.fProxyRandomUnitVec(vecLen);
+            fProxyMxN A = GenerateOP.fProxyIdentityMat(vecLen);
 
             fProxyN b = Blas.dot(x, A);
 
             Assert.AreEqual(vecLen, b.N);
-            
+
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(b[i] == x[i]);
 
-            x = arena.fProxyIndexZeroVec(vecLen);
+            x = GenerateOP.fProxyIndexZeroVec(vecLen);
 
             b = Blas.dot(x, A);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(b[i] == (fProxy)i);
-
-            arena.Dispose();
         }
 
         public void MatMatDot()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int matLen = 16;
 
-            fProxyMxN A = arena.fProxyIdentityMat(matLen);
-            fProxyMxN B = arena.fProxyIdentityMat(matLen);
+            fProxyMxN A = GenerateOP.fProxyIdentityMat(matLen);
+            fProxyMxN B = GenerateOP.fProxyIdentityMat(matLen);
 
             fProxyMxN C = Blas.dot(A, B);
 
@@ -160,7 +146,7 @@ public class fProxyDotOperationTests
                     Assert.IsTrue(C[i, j] == (fProxy)0f);
             }
 
-            fProxyMxN R = arena.fProxyRandomMat(matLen, matLen);
+            fProxyMxN R = GenerateOP.fProxyRandomMat(matLen, matLen);
 
             C = Blas.dot(A, R);
 
@@ -170,7 +156,7 @@ public class fProxyDotOperationTests
                 Assert.IsTrue(C[i, j] == R[i, j]);
             }
 
-            C = arena.fProxyIdentityMat(matLen);
+            C = GenerateOP.fProxyIdentityMat(matLen);
 
             fProxyMxN D = Blas.dot(C, C);
 
@@ -182,21 +168,17 @@ public class fProxyDotOperationTests
                 else
                     Assert.IsTrue(D[i, j] == (fProxy)0f);
             }
-
-            arena.Dispose();
         }
 
         public void MatVecDotNonSquare()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int inVecLen = 64;
             int outVecLen = 16;
 
             // A[i,j] = i+1 against an all-ones x: b[i] must be exactly (i+1) * inVecLen
             // (small integers: exact in float, so == comparison is safe).
-            fProxyN x = arena.fProxyVec(inVecLen, 1f);
-            fProxyMxN A = arena.fProxyMat(outVecLen, inVecLen);
+            fProxyN x = GenerateOP.fProxyVec(inVecLen, 1f);
+            fProxyMxN A = new fProxyMxN(outVecLen, inVecLen, Allocator.Temp);
             for (int i = 0; i < outVecLen; i++)
                 for (int j = 0; j < inVecLen; j++)
                     A[i, j] = (fProxy)(i + 1);
@@ -206,37 +188,29 @@ public class fProxyDotOperationTests
             Assert.AreEqual(outVecLen, b.N);
             for (int i = 0; i < outVecLen; i++)
                 Assert.IsTrue(b[i] == (fProxy)((i + 1) * inVecLen));
-
-            arena.Dispose();
         }
 
         public void VecMatDotNonSquare()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int inVecLen = 64;
             int outVecLen = 16;
 
-            fProxyN x = arena.fProxyVec(inVecLen, 1f);
-            fProxyMxN A = arena.fProxyRandomMat(inVecLen, outVecLen, -0.01f, 0.01f);
+            fProxyN x = GenerateOP.fProxyVec(inVecLen, 1f);
+            fProxyMxN A = GenerateOP.fProxyRandomMat(inVecLen, outVecLen, -0.01f, 0.01f);
 
             fProxyN b = Blas.dot(x, A);
-            
-            Assert.AreEqual(outVecLen, b.N);
 
-            arena.Dispose();
+            Assert.AreEqual(outVecLen, b.N);
         }
 
         public void MatMatDotNonSquare()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int M = 8;
             int K = 24;
             int N = 16;
 
-            fProxyMxN Id = arena.fProxyIdentityMat(K);
-            fProxyMxN R = arena.fProxyRandomMat(K, N);
+            fProxyMxN Id = GenerateOP.fProxyIdentityMat(K);
+            fProxyMxN R = GenerateOP.fProxyRandomMat(K, N);
 
             fProxyMxN C = Blas.dot(Id, R);
 
@@ -247,7 +221,7 @@ public class fProxyDotOperationTests
             for (int j = 0; j < N; j++)
                 Assert.IsTrue(C[i, j] == R[i, j]);
 
-            fProxyMxN R2 = arena.fProxyRandomMat(M, K);
+            fProxyMxN R2 = GenerateOP.fProxyRandomMat(M, K);
 
             fProxyMxN D = Blas.dot(R2, Id);
 
@@ -257,19 +231,15 @@ public class fProxyDotOperationTests
             for (int i = 0; i < M; i++)
             for (int j = 0; j < K; j++)
                 Assert.IsTrue(D[i, j] == R2[i, j]);
-
-            arena.Dispose();
         }
 
         public void OuterDot()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int vecM = 32;
             int vecN = 64;
 
-            fProxyN x = arena.fProxyVec(vecM, 1f);
-            fProxyN y = arena.fProxyVec(vecN, 1f);
+            fProxyN x = GenerateOP.fProxyVec(vecM, 1f);
+            fProxyN y = GenerateOP.fProxyVec(vecN, 1f);
 
             fProxyMxN A = Blas.outerDot(x, y);
 
@@ -287,16 +257,14 @@ public class fProxyDotOperationTests
             for (int i = 0; i < B.Length; i++)
                 Assert.IsTrue(B[i] == (fProxy)1f);
 
-            x = arena.fProxyLinVec(vecM, 0f, 2f);
-            y = arena.fProxyLinVec(vecN, 0f, 2f);
+            x = GenerateOP.fProxyLinVec(vecM, 0f, 2f);
+            y = GenerateOP.fProxyLinVec(vecN, 0f, 2f);
 
             fProxyMxN C = Blas.outerDot(x, y);
 
             for (int i = 0; i < vecM; i++)
                 for (int j = 0; j < vecN; j++)
                     Assert.IsTrue(C[i, j] == x[i] * y[j]);
-
-            arena.Dispose();
         }
     }
 

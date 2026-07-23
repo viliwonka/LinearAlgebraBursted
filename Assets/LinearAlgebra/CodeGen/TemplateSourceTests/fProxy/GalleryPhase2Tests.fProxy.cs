@@ -2,7 +2,7 @@ using System;
 #pragma warning disable 618 // intentionally exercises the deprecated cyclic-Jacobi Eigen.decompInPlace (kept for reference)
 
 using LinearAlgebra;
-using LinearAlgebra.Gallery;   // opt-in: arena.fProxyCauchy(x,y), arena.fProxyMagic(n), ...
+using LinearAlgebra.Gallery;   // opt-in: fProxyGallery.fProxyCauchy(x,y), fProxyGallery.fProxyMagic(n), ...
 
 using NUnit.Framework;
 using Unity.Burst;
@@ -73,20 +73,16 @@ public class fProxyGalleryPhase2Tests
         // which is exactly the Hilbert matrix entrywise.
         void CauchyHilbertCrossCheck()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 3;
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             x[0] = (fProxy)0.5; x[1] = (fProxy)1.5; x[2] = (fProxy)2.5;
 
-            var C = arena.fProxyCauchy(in x, in x);
-            var H = arena.fProxyHilbert(n);
+            var C = fProxyGallery.fProxyCauchy(in x, in x);
+            var H = fProxyGallery.fProxyHilbert(n);
 
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
                     AssertClose(C[i, j], H[i, j], (fProxy)1E-5);
-
-            arena.Dispose();
         }
 
         // det via LU equals the Cauchy determinant formula
@@ -94,15 +90,13 @@ public class fProxyGalleryPhase2Tests
         // for x = {1,2,3}, y = {0.5,1.5,2.5}. Reference is computed with plain scalar loops.
         void CauchyDet()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 3;
-            var x = arena.fProxyVec(n);
-            var y = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
+            var y = new fProxyN(n, Allocator.Temp);
             x[0] = (fProxy)1;   x[1] = (fProxy)2;   x[2] = (fProxy)3;
             y[0] = (fProxy)0.5; y[1] = (fProxy)1.5; y[2] = (fProxy)2.5;
 
-            var C = arena.fProxyCauchy(in x, in y);
+            var C = fProxyGallery.fProxyCauchy(in x, in y);
 
             // reference Cauchy determinant via scalar loops
             fProxy num = (fProxy)1;
@@ -118,8 +112,6 @@ public class fProxyGalleryPhase2Tests
             // det is tiny (~9e-5); use a relative band with a small absolute floor.
             fProxy tol = math.abs(expected) * (fProxy)0.05 + (fProxy)1E-9;
             AssertClose(Determinant(in C), expected, tol);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -129,37 +121,31 @@ public class fProxyGalleryPhase2Tests
         // Symmetric; SPD (Cholesky succeeds); det = ∏_{k=1}^n φ(k). n=4 ⇒ 4, n=5 ⇒ 16.
         void GCDProps()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // n = 4: det = φ(1)φ(2)φ(3)φ(4) = 1·1·2·2 = 4
-            var A4 = arena.fProxyGCD(4);
+            var A4 = fProxyGallery.fProxyGCD(4);
             AssertSymmetric(in A4, (fProxy)1E-5);
-            AssertCholeskyOk(ref arena, in A4);
+            AssertCholeskyOk(in A4);
             AssertClose(Determinant(in A4), (fProxy)TotientProduct(4), (fProxy)200 * Consts.fProxySqrtEps);
 
             // n = 5: det = ·φ(5) = 4·4 = 16
-            var A5 = arena.fProxyGCD(5);
+            var A5 = fProxyGallery.fProxyGCD(5);
             AssertSymmetric(in A5, (fProxy)1E-5);
-            AssertCholeskyOk(ref arena, in A5);
+            AssertCholeskyOk(in A5);
             AssertClose(Determinant(in A5), (fProxy)TotientProduct(5), (fProxy)2000 * Consts.fProxySqrtEps);
-
-            arena.Dispose();
         }
 
         // Algorithm-exercise: GCD is SPD ⇒ CG solves A·x = b accurately. n = 5.
         void GCDSolve()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
-            var A = arena.fProxyGCD(n);
+            var A = fProxyGallery.fProxyGCD(n);
 
-            var xTrue = arena.fProxyVec(n);
+            var xTrue = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) xTrue[i] = (fProxy)(i + 1);
 
             var b = Blas.dot(A, xTrue);   // consistent RHS
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             bool conv = Krylov.cg(in A, in b, ref x, 500, Consts.fProxySqrtEps);
             AssertTrue(conv);
 
@@ -167,8 +153,6 @@ public class fProxyGalleryPhase2Tests
             fProxy tol = (fProxy)2000 * Consts.fProxySqrtEps;
             for (int i = 0; i < n; i++)
                 AssertClose(x[i], xTrue[i], tol);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -178,21 +162,17 @@ public class fProxyGalleryPhase2Tests
         // M(1..5) = 1, 0, −1, −1, −2.
         void RedhefferDet()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            // Mertens M(n) for n = 1..5 (Burst: no managed array, use an arena vec).
-            var mertens = arena.fProxyVec(5);
+            // Mertens M(n) for n = 1..5 (Burst: no managed array, use a plain vec).
+            var mertens = new fProxyN(5, Allocator.Temp);
             mertens[0] = (fProxy)1; mertens[1] = (fProxy)0; mertens[2] = (fProxy)(-1);
             mertens[3] = (fProxy)(-1); mertens[4] = (fProxy)(-2);
 
             for (int n = 1; n <= 5; n++)
             {
-                var R = arena.fProxyRedheffer(n);
+                var R = fProxyGallery.fProxyRedheffer(n);
                 // integer-valued small determinants; modest precision-scaled band.
                 AssertClose(Determinant(in R), mertens[n - 1], (fProxy)200 * Consts.fProxySqrtEps);
             }
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -202,10 +182,8 @@ public class fProxyGalleryPhase2Tests
         // n=3 equals [[8,1,6],[3,5,7],[4,9,2]] exactly; n=5 every row/col/both-diagonal sum == 65.
         void MagicProps()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // n = 3 exact entries [[8,1,6],[3,5,7],[4,9,2]] (inline literals; Burst has no managed arrays)
-            var M3 = arena.fProxyMagic(3);
+            var M3 = fProxyGallery.fProxyMagic(3);
             AssertClose(M3[0, 0], (fProxy)8, (fProxy)1E-5); AssertClose(M3[0, 1], (fProxy)1, (fProxy)1E-5); AssertClose(M3[0, 2], (fProxy)6, (fProxy)1E-5);
             AssertClose(M3[1, 0], (fProxy)3, (fProxy)1E-5); AssertClose(M3[1, 1], (fProxy)5, (fProxy)1E-5); AssertClose(M3[1, 2], (fProxy)7, (fProxy)1E-5);
             AssertClose(M3[2, 0], (fProxy)4, (fProxy)1E-5); AssertClose(M3[2, 1], (fProxy)9, (fProxy)1E-5); AssertClose(M3[2, 2], (fProxy)2, (fProxy)1E-5);
@@ -213,7 +191,7 @@ public class fProxyGalleryPhase2Tests
             // n = 5 magic constant = n(n²+1)/2 = 65
             int n = 5;
             fProxy magic = (fProxy)(n * (n * n + 1) / 2);
-            var M5 = arena.fProxyMagic(n);
+            var M5 = fProxyGallery.fProxyMagic(n);
 
             // rows
             for (int i = 0; i < n; i++)
@@ -234,8 +212,6 @@ public class fProxyGalleryPhase2Tests
             for (int i = 0; i < n; i++) { d += M5[i, i]; ad += M5[i, n - 1 - i]; }
             AssertClose(d, magic, (fProxy)1E-4);
             AssertClose(ad, magic, (fProxy)1E-4);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -246,9 +222,7 @@ public class fProxyGalleryPhase2Tests
         // (tight for double, generous for float — the near-pairs near 0, 1000, 1020 are hard in float).
         void RosserProps()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.fProxyRosser();
+            var A = fProxyGallery.fProxyRosser();
             AssertSymmetric(in A, (fProxy)1E-4);
 
             // trace = 4040 (exact integer diagonal)
@@ -257,7 +231,7 @@ public class fProxyGalleryPhase2Tests
             AssertClose(tr, (fProxy)4040, (fProxy)1E-3);
 
             // documented spectrum, DESCENDING (Eigen.decompInPlace returns descending)
-            var expected = arena.fProxyVec(8);
+            var expected = new fProxyN(8, Allocator.Temp);
             expected[0] = (fProxy)1020.4202;
             expected[1] = (fProxy)1019.9936;
             expected[2] = (fProxy)1019.5244;
@@ -267,9 +241,9 @@ public class fProxyGalleryPhase2Tests
             expected[6] = (fProxy)(-0.1705);
             expected[7] = (fProxy)(-1020.0532);
 
-            var Ac = A.Copy();
-            var eig = arena.fProxyVec(8);
-            var V = arena.fProxyMat(8, 8);
+            var Ac = new fProxyMxN(in A, Allocator.Temp);
+            var eig = new fProxyN(8, Allocator.Temp);
+            var V = new fProxyMxN(8, 8, Allocator.Temp);
             AssertTrue(Eigen.decompInPlace(ref Ac, ref eig, ref V));
 
             // sum of eigenvalues equals trace regardless of precision (robust invariant).
@@ -281,8 +255,6 @@ public class fProxyGalleryPhase2Tests
             fProxy band = IsDouble() ? (fProxy)0.5 : (fProxy)3.0;
             for (int i = 0; i < 8; i++)
                 AssertClose(eig[i], expected[i], band);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -292,15 +264,13 @@ public class fProxyGalleryPhase2Tests
         // nonsymmetric; singular values cluster near π, all < π. n = 8.
         void ParterProps()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 8;
-            var A = arena.fProxyParter(n);
+            var A = fProxyGallery.fProxyParter(n);
 
             // nonsymmetric: A[0,1] != A[1,0]
             AssertTrue(math.abs(A[0, 1] - A[1, 0]) > (fProxy)1E-3);
 
-            var S = arena.fProxyVec(n);   // length min(m,n) = n, descending
+            var S = new fProxyN(n, Allocator.Temp);   // length min(m,n) = n, descending
             SVD.singularValues(in A, ref S);
 
             fProxy pi = (fProxy)math.PI_DBL;
@@ -311,8 +281,6 @@ public class fProxyGalleryPhase2Tests
 
             // largest clusters near π
             AssertTrue(S[0] > pi - (fProxy)0.5);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -323,15 +291,13 @@ public class fProxyGalleryPhase2Tests
         // can dip slightly negative in float). n = 8, w = 0.25.
         void ProlateProps()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 8;
-            var A = arena.fProxyProlate(n, (fProxy)0.25);
+            var A = fProxyGallery.fProxyProlate(n, (fProxy)0.25);
             AssertSymmetric(in A, (fProxy)1E-5);
 
-            var Ac = A.Copy();
-            var eig = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var Ac = new fProxyMxN(in A, Allocator.Temp);
+            var eig = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
             AssertTrue(Eigen.decompInPlace(ref Ac, ref eig, ref V));
 
             // documented (0,1): allow a precision-gated margin on both ends.
@@ -342,8 +308,6 @@ public class fProxyGalleryPhase2Tests
                 AssertTrue(eig[i] >= -lo);
                 AssertTrue(eig[i] <= (fProxy)1 + hi);
             }
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -354,12 +318,8 @@ public class fProxyGalleryPhase2Tests
         // nonsymmetric. Tested for default k=3 and k=2.
         void GrcarStructure()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            CheckGrcar(arena.fProxyGrcar(8), 8, 3);        // default k = 3
-            CheckGrcar(arena.fProxyGrcar(8, 2), 8, 2);     // k = 2
-
-            arena.Dispose();
+            CheckGrcar(fProxyGallery.fProxyGrcar(8), 8, 3);        // default k = 3
+            CheckGrcar(fProxyGallery.fProxyGrcar(8, 2), 8, 2);     // k = 2
         }
 
         void CheckGrcar(fProxyMxN A, int n, int k)
@@ -390,10 +350,8 @@ public class fProxyGalleryPhase2Tests
         // row 0 all ones; rows i≥1 equal the Hilbert pattern 1/(i+j+1); nonsymmetric.
         void LotkinStructure()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
-            var A = arena.fProxyLotkin(n);
+            var A = fProxyGallery.fProxyLotkin(n);
 
             // row 0 all ones
             for (int j = 0; j < n; j++)
@@ -406,8 +364,6 @@ public class fProxyGalleryPhase2Tests
 
             // nonsymmetric: A[0,1] = 1, A[1,0] = 1/2
             AssertTrue(math.abs(A[0, 1] - A[1, 0]) > (fProxy)1E-3);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -441,7 +397,7 @@ public class fProxyGalleryPhase2Tests
         fProxy Determinant(in fProxyMxN M)
         {
             int n = M.M_Rows;
-            var LUmat = M.Copy();
+            var LUmat = new fProxyMxN(in M, Allocator.Temp);
             var pivot = new Pivot(n, Allocator.Temp);
             LU.decompInPlace(ref LUmat, ref pivot);
             fProxy det = Analysis.determinant(in LUmat, in pivot);
@@ -457,9 +413,9 @@ public class fProxyGalleryPhase2Tests
                     AssertClose(A[r, c], A[c, r], tol);
         }
 
-        void AssertCholeskyOk(ref Arena arena, in fProxyMxN A)
+        void AssertCholeskyOk(in fProxyMxN A)
         {
-            var L = arena.fProxyMat(A.M_Rows, A.N_Cols);
+            var L = new fProxyMxN(A.M_Rows, A.N_Cols, Allocator.Temp);
             AssertTrue(CHO.decomp(in A, ref L));
         }
 
@@ -510,48 +466,33 @@ public class fProxyGalleryPhase2Tests
     [Test]
     public void CauchyInvalidArgsThrow()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            // x.N != y.N
-            var x2 = arena.fProxyVec(2);
-            var y3 = arena.fProxyVec(3);
-            Assert.Throws<ArgumentException>(() => arena.fProxyCauchy(in x2, in y3));
+        // x.N != y.N
+        var x2 = new fProxyN(2, Allocator.Temp);
+        var y3 = new fProxyN(3, Allocator.Temp);
+        Assert.Throws<ArgumentException>(() => fProxyGallery.fProxyCauchy(in x2, in y3));
 
-            // zero denominator: x[0] + y[0] = 1 + (−1) = 0
-            var x1 = arena.fProxyVec(1);
-            var y1 = arena.fProxyVec(1);
-            x1[0] = (fProxy)1; y1[0] = (fProxy)(-1);
-            Assert.Throws<ArgumentException>(() => arena.fProxyCauchy(in x1, in y1));
-        }
-        finally { arena.Dispose(); }
+        // zero denominator: x[0] + y[0] = 1 + (−1) = 0
+        var x1 = new fProxyN(1, Allocator.Temp);
+        var y1 = new fProxyN(1, Allocator.Temp);
+        x1[0] = (fProxy)1; y1[0] = (fProxy)(-1);
+        Assert.Throws<ArgumentException>(() => fProxyGallery.fProxyCauchy(in x1, in y1));
     }
 
     // Magic requires a positive ODD n (even n throws).
     [Test]
     public void MagicEvenNThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            Assert.Throws<ArgumentException>(() => arena.fProxyMagic(4));
-            Assert.Throws<ArgumentException>(() => arena.fProxyMagic(2));
-        }
-        finally { arena.Dispose(); }
+        Assert.Throws<ArgumentException>(() => fProxyGallery.fProxyMagic(4));
+        Assert.Throws<ArgumentException>(() => fProxyGallery.fProxyMagic(2));
     }
 
     // Prolate requires 0 < w < 0.5.
     [Test]
     public void ProlateInvalidWThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            Assert.Throws<ArgumentException>(() => arena.fProxyProlate(4, (fProxy)0));      // w <= 0
-            Assert.Throws<ArgumentException>(() => arena.fProxyProlate(4, (fProxy)(-0.1))); // w < 0
-            Assert.Throws<ArgumentException>(() => arena.fProxyProlate(4, (fProxy)0.5));    // w >= 0.5
-            Assert.Throws<ArgumentException>(() => arena.fProxyProlate(4, (fProxy)0.6));    // w > 0.5
-        }
-        finally { arena.Dispose(); }
+        Assert.Throws<ArgumentException>(() => fProxyGallery.fProxyProlate(4, (fProxy)0));      // w <= 0
+        Assert.Throws<ArgumentException>(() => fProxyGallery.fProxyProlate(4, (fProxy)(-0.1))); // w < 0
+        Assert.Throws<ArgumentException>(() => fProxyGallery.fProxyProlate(4, (fProxy)0.5));    // w >= 0.5
+        Assert.Throws<ArgumentException>(() => fProxyGallery.fProxyProlate(4, (fProxy)0.6));    // w > 0.5
     }
 }

@@ -22,13 +22,12 @@ public class fProxyLadFrischNewtonQuantileTests
     [Test]
     public void TauHalfMatchesCore()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.fProxyMat(5, 2);
-        var b = arena.fProxyVec(5);
+        var A = new fProxyMxN(5, 2, Allocator.Temp);
+        var b = new fProxyN(5, Allocator.Temp);
         for (int i = 0; i < 5; i++) { A[i, 0] = 1f; A[i, 1] = i; b[i] = i; }
         b[2] = 10f;
-        var xFN = arena.fProxyVec(2);
-        var xCore = arena.fProxyVec(2);
+        var xFN = new fProxyN(2, Allocator.Temp);
+        var xCore = new fProxyN(2, Allocator.Temp);
 
         LP.ladFN(in A, in b, ref xFN, out double objFN);
         LP.ladFrischNewtonCore(in A, in b, 0.5, ref xCore, out double objCore, 0);
@@ -41,8 +40,6 @@ public class fProxyLadFrischNewtonQuantileTests
         Assert.That((double)xFN[0], Is.EqualTo(0.0).Within(/*+choose[5e-2|1e-2]*/5e-2/*-choose*/), "intercept");
         Assert.That((double)xFN[1], Is.EqualTo(1.0).Within(/*+choose[5e-2|1e-2]*/5e-2/*-choose*/), "slope");
         Assert.That(objFN, Is.EqualTo(8.0).Within(/*+choose[1e-1|1e-2]*/1e-1/*-choose*/), "L1 residual");
-
-        arena.Dispose();
     }
 
     // ---- Quantile-regression semantics at tau=0.25. At the fitted tau line, the fraction of NEGATIVE
@@ -55,10 +52,9 @@ public class fProxyLadFrischNewtonQuantileTests
     [Test]
     public void TauQuarterResidualSign()
     {
-        var arena = new Arena(Allocator.Persistent);
         int m = 80;
-        var A = arena.fProxyMat(m, 2);
-        var b = arena.fProxyVec(m);
+        var A = new fProxyMxN(m, 2, Allocator.Temp);
+        var b = new fProxyN(m, Allocator.Temp);
         var rng = new Unity.Mathematics.Random(20260709u);
         for (int i = 0; i < m; i++)
         {
@@ -66,7 +62,7 @@ public class fProxyLadFrischNewtonQuantileTests
             A[i, 0] = 1f; A[i, 1] = t;
             b[i] = 1f + 2f * t + rng.NextFProxy(-3f, 3f);   // symmetric noise about the true line
         }
-        var x = arena.fProxyVec(2);
+        var x = new fProxyN(2, Allocator.Temp);
         LP.ladFrischNewtonCore(in A, in b, 0.25, ref x, out double obj, 0);
 
         int neg = 0;
@@ -78,7 +74,5 @@ public class fProxyLadFrischNewtonQuantileTests
         double target = 0.25 * m;   // 20
         Assert.That(neg, Is.EqualTo(target).Within(0.20 * m),
             $"tau=0.25: {neg}/{m} residuals negative, expected ~{target} (+/-{0.20 * m})");
-
-        arena.Dispose();
     }
 }

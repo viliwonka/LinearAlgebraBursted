@@ -21,21 +21,18 @@ public class longScalarMatrixOpTests
 
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // 5 - [[1,2],[3,4]] must be [[4,3],[2,1]] (NOT [[-4,-3],[-2,-1]]).
-            var A = arena.longMat(2, 2);
+            var A = new longMxN(2, 2, Allocator.Temp);
             A[0, 0] = (long)1; A[0, 1] = (long)2;
             A[1, 0] = (long)3; A[1, 1] = (long)4;
 
-            longMxN R = (long)5 - A;
+            longMxN R = new longMxN(in A, Allocator.Temp);
+            longComp.subInPlace((long)5, R);
 
             AssertEqual(R[0, 0], (long)4);
             AssertEqual(R[0, 1], (long)3);
             AssertEqual(R[1, 0], (long)2);
             AssertEqual(R[1, 1], (long)1);
-
-            arena.Dispose();
         }
 
         void AssertEqual(long got, long expected)

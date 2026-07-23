@@ -134,10 +134,9 @@ namespace LinearAlgebra.Benchmarks
     {
         static string BenchTransBFloat(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(n, n);
-            var B = arena.floatMat(n, n);
-            var C = arena.floatMat(n, n);
+            var A = new floatMxN(n, n, Allocator.Persistent);
+            var B = new floatMxN(n, n, Allocator.Persistent);
+            var C = new floatMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -150,16 +149,15 @@ namespace LinearAlgebra.Benchmarks
             var job = new GemmTransBJobFloat { A = A, B = B, C = C };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); B.Dispose(); C.Dispose();
             return Bench.Row("float", n, stat, flops);
         }
 
         static string BenchTransBViaTransFloat(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(n, n);
-            var B = arena.floatMat(n, n);
-            var C = arena.floatMat(n, n);
+            var A = new floatMxN(n, n, Allocator.Persistent);
+            var B = new floatMxN(n, n, Allocator.Persistent);
+            var C = new floatMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -172,16 +170,15 @@ namespace LinearAlgebra.Benchmarks
             var job = new GemmTransBViaTransJobFloat { A = A, B = B, C = C };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); B.Dispose(); C.Dispose();
             return Bench.Row("float", n, stat, flops);
         }
 
         static string BenchScalarTileFloat(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(n, n);
-            var B = arena.floatMat(n, n);
-            var C = arena.floatMat(n, n);
+            var A = new floatMxN(n, n, Allocator.Persistent);
+            var B = new floatMxN(n, n, Allocator.Persistent);
+            var C = new floatMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -194,16 +191,15 @@ namespace LinearAlgebra.Benchmarks
             var job = new GemmScalarTileJobFloat { A = A, B = B, C = C };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); B.Dispose(); C.Dispose();
             return Bench.Row("float", n, stat, flops);
         }
 
         static string BenchPackedFloat(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(n, n);
-            var B = arena.floatMat(n, n);
-            var C = arena.floatMat(n, n);
+            var A = new floatMxN(n, n, Allocator.Persistent);
+            var B = new floatMxN(n, n, Allocator.Persistent);
+            var C = new floatMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -216,15 +212,14 @@ namespace LinearAlgebra.Benchmarks
             var job = new GemmPackedJobFloat { A = A, B = B, C = C };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); B.Dispose(); C.Dispose();
             return Bench.Row("float", n, stat, flops);
         }
 
         static string BenchTransFloat(int n, double elems)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(n, n);
-            var T = arena.floatMat(n, n);
+            var A = new floatMxN(n, n, Allocator.Persistent);
+            var T = new floatMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -234,15 +229,14 @@ namespace LinearAlgebra.Benchmarks
             var job = new TransJobFloat { A = A, T = T };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); T.Dispose();
             return Bench.Row("float", n, stat, elems);
         }
 
         static string BenchAAtFloat(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(n, n);
-            var C = arena.floatMat(n, n);
+            var A = new floatMxN(n, n, Allocator.Persistent);
+            var C = new floatMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -252,15 +246,14 @@ namespace LinearAlgebra.Benchmarks
             var job = new GemmAAtJobFloat { A = A, C = C };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); C.Dispose();
             return Bench.Row("float", n, stat, flops);
         }
 
         static string BenchAtAFloat(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(n, n);
-            var C = arena.floatMat(n, n);
+            var A = new floatMxN(n, n, Allocator.Persistent);
+            var C = new floatMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -270,16 +263,15 @@ namespace LinearAlgebra.Benchmarks
             var job = new GemmAtAJobFloat { A = A, C = C };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); C.Dispose();
             return Bench.Row("float", n, stat, flops);
         }
 
         static string BenchFloat(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(n, n);
-            var B = arena.floatMat(n, n);
-            var C = arena.floatMat(n, n);
+            var A = new floatMxN(n, n, Allocator.Persistent);
+            var B = new floatMxN(n, n, Allocator.Persistent);
+            var C = new floatMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -292,16 +284,15 @@ namespace LinearAlgebra.Benchmarks
             var job = new GemmJobFloat { A = A, B = B, C = C };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); B.Dispose(); C.Dispose();
             return Bench.Row("float", n, stat, flops);
         }
 
         static string BenchTransAFloat(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(n, n);
-            var B = arena.floatMat(n, n);
-            var C = arena.floatMat(n, n);
+            var A = new floatMxN(n, n, Allocator.Persistent);
+            var B = new floatMxN(n, n, Allocator.Persistent);
+            var C = new floatMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -314,7 +305,7 @@ namespace LinearAlgebra.Benchmarks
             var job = new GemmTransAJobFloat { A = A, B = B, C = C };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); B.Dispose(); C.Dispose();
             return Bench.Row("float", n, stat, flops);
         }
     }

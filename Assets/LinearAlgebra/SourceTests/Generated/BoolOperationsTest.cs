@@ -44,77 +44,69 @@ public class BoolOperationsTest
 
         public void Execute()
         {
-            Arena arena = new Arena(Allocator.Persistent);
-
-            try {
-
-                switch (Type)
-                {
-                    case OPType.NotVec:
-                        NotVec(ref arena);
-                        break;
-                    case OPType.NotMat:
-                        NotMat(ref arena);
-                        break;
-                    case OPType.EqualsVec:
-                        EqualsVec(ref arena);
-                        break;
-                    case OPType.NotEqualsVec:
-                        NotEqualsVec(ref arena);
-                        break;
-                    case OPType.AndVec:
-                        AndVec(ref arena);
-                        break;
-                    case OPType.OrVec:
-                        OrVec(ref arena);
-                        break;
-                    case OPType.XorVec:
-                        XorVec(ref arena);
-                        break;
-                    case OPType.EqualsMat:
-                        EqualsMat(ref arena);
-                        break;
-                    case OPType.NotEqualsMat:       
-                        NotEqualsMat(ref arena);
-                        break;
-                    case OPType.AndMat:
-                        AndMat(ref arena);
-                        break;
-                    case OPType.OrMat:
-                        OrMat(ref arena);
-                        break;
-                    case OPType.XorMat:
-                        XorMat(ref arena);
-                        break;
-                    case OPType.EqualsVecVec:
-                        EqualsVecVec(ref arena);
+            switch (Type)
+            {
+                case OPType.NotVec:
+                    NotVec();
                     break;
-                    case OPType.NotEqualsVecVec:
-                        NotEqualsVecVec(ref arena);
+                case OPType.NotMat:
+                    NotMat();
                     break;
-                    case OPType.AndVecVec:
-                        AndVecVec(ref arena);
+                case OPType.EqualsVec:
+                    EqualsVec();
                     break;
-                    case OPType.OrVecVec:
-                        OrVecVec(ref arena);
+                case OPType.NotEqualsVec:
+                    NotEqualsVec();
                     break;
-                    case OPType.XorVecVec:
-                        XorVecVec(ref arena);
+                case OPType.AndVec:
+                    AndVec();
                     break;
-                    default:
-                        throw new NotImplementedException();
-                }
-            }
-            finally {
-                arena.Dispose();
+                case OPType.OrVec:
+                    OrVec();
+                    break;
+                case OPType.XorVec:
+                    XorVec();
+                    break;
+                case OPType.EqualsMat:
+                    EqualsMat();
+                    break;
+                case OPType.NotEqualsMat:
+                    NotEqualsMat();
+                    break;
+                case OPType.AndMat:
+                    AndMat();
+                    break;
+                case OPType.OrMat:
+                    OrMat();
+                    break;
+                case OPType.XorMat:
+                    XorMat();
+                    break;
+                case OPType.EqualsVecVec:
+                    EqualsVecVec();
+                break;
+                case OPType.NotEqualsVecVec:
+                    NotEqualsVecVec();
+                break;
+                case OPType.AndVecVec:
+                    AndVecVec();
+                break;
+                case OPType.OrVecVec:
+                    OrVecVec();
+                break;
+                case OPType.XorVecVec:
+                    XorVecVec();
+                break;
+                default:
+                    throw new NotImplementedException();
             }
         }
 
-        public void NotVec(ref Arena arena)
+        public void NotVec()
         {
             int vecLen = 16;
 
-            boolN a = arena.boolRandomVec(vecLen);
+            boolN a = GenerateOP.boolRandomVec(vecLen);
 
             boolN b = !a;
 
@@ -122,12 +114,12 @@ public class BoolOperationsTest
                 Assert.IsTrue(a[i] != b[i]);
         }
 
-        public void NotMat(ref Arena arena)
+        public void NotMat()
         {
             int rows = 16;
             int cols = 16;
 
-            boolMxN a = arena.boolRandomMat(rows, cols);
+            boolMxN a = GenerateOP.boolRandomMat(rows, cols);
 
             boolMxN b = !a;
 
@@ -136,11 +128,11 @@ public class BoolOperationsTest
                     Assert.IsTrue(a[i, j] != b[i, j]);
         }
 
-        public void EqualsVec(ref Arena arena)
+        public void EqualsVec()
         {
             int vecLen = 16;
 
-            boolN a = arena.boolRandomVec(vecLen);
+            boolN a = GenerateOP.boolRandomVec(vecLen);
             
             boolN b = a == true;
             
@@ -148,11 +140,11 @@ public class BoolOperationsTest
                 Assert.IsTrue(b[i] == a[i]);
         }
 
-        public void NotEqualsVec(ref Arena arena)
+        public void NotEqualsVec()
         {
             int vecLen = 16;
 
-            boolN a = arena.boolRandomVec(vecLen);
+            boolN a = GenerateOP.boolRandomVec(vecLen);
             
             boolN b = a != true;
             
@@ -160,11 +152,11 @@ public class BoolOperationsTest
                 Assert.IsTrue(b[i] == !a[i]);
         }
 
-        public void AndVec(ref Arena arena)
+        public void AndVec()
         {
             int vecLen = 16;
 
-            boolN a = arena.boolRandomVec(vecLen);
+            boolN a = GenerateOP.boolRandomVec(vecLen);
             
             boolN b = a & true;
             
@@ -177,11 +169,11 @@ public class BoolOperationsTest
                 Assert.IsTrue(b[i] == false);
         }
 
-        public void OrVec(ref Arena arena)
+        public void OrVec()
         {
             int vecLen = 16;
 
-            boolN a = arena.boolRandomVec(vecLen);
+            boolN a = GenerateOP.boolRandomVec(vecLen);
             
             boolN b = a | true;
             
@@ -194,11 +186,11 @@ public class BoolOperationsTest
                 Assert.IsTrue(b[i] == a[i]);
         }
 
-        public void XorVec(ref Arena arena)
+        public void XorVec()
         {
             int vecLen = 16;
 
-            boolN a = arena.boolRandomVec(vecLen);
+            boolN a = GenerateOP.boolRandomVec(vecLen);
             
             boolN b = a ^ true;
             
@@ -211,12 +203,12 @@ public class BoolOperationsTest
                 Assert.IsTrue(b[i] == a[i]);
         }
 
-        public void EqualsMat(ref Arena arena)
+        public void EqualsMat()
         {
             int rows = 16;
             int cols = 16;
 
-            boolMxN a = arena.boolRandomMat(rows, cols);
+            boolMxN a = GenerateOP.boolRandomMat(rows, cols);
             
             boolMxN b = a == true;
             
@@ -225,12 +217,12 @@ public class BoolOperationsTest
                     Assert.IsTrue(b[i, j] == a[i, j]);
         }
 
-        public void NotEqualsMat(ref Arena arena)
+        public void NotEqualsMat()
         {
             int rows = 16;
             int cols = 16;
 
-            boolMxN a = arena.boolRandomMat(rows, cols);
+            boolMxN a = GenerateOP.boolRandomMat(rows, cols);
             
             boolMxN b = a != true;
             
@@ -239,12 +231,12 @@ public class BoolOperationsTest
                     Assert.IsTrue(b[i, j] == !a[i, j]);
         }
 
-        public void AndMat(ref Arena arena)
+        public void AndMat()
         {
             int rows = 16;
             int cols = 16;
 
-            boolMxN a = arena.boolRandomMat(rows, cols);
+            boolMxN a = GenerateOP.boolRandomMat(rows, cols);
             
             boolMxN b = a & true;
             
@@ -259,12 +251,12 @@ public class BoolOperationsTest
                     Assert.IsTrue(b[i, j] == false);
         }
 
-        public void OrMat(ref Arena arena)
+        public void OrMat()
         {
             int rows = 16;
             int cols = 16;
 
-            boolMxN a = arena.boolRandomMat(rows, cols);
+            boolMxN a = GenerateOP.boolRandomMat(rows, cols);
             
             boolMxN b = a | true;
             
@@ -279,12 +271,12 @@ public class BoolOperationsTest
                     Assert.IsTrue(b[i, j] == a[i, j]);
         }
 
-        public void XorMat(ref Arena arena)
+        public void XorMat()
         {
             int rows = 16;
             int cols = 16;
 
-            boolMxN a = arena.boolRandomMat(rows, cols);
+            boolMxN a = GenerateOP.boolRandomMat(rows, cols);
             
             boolMxN b = a ^ true;
             
@@ -299,12 +291,12 @@ public class BoolOperationsTest
                     Assert.IsTrue(b[i, j] == a[i, j]);
         }
 
-        public void EqualsVecVec(ref Arena arena)
+        public void EqualsVecVec()
         {
             int vecLen = 16;
 
-            boolN a = arena.boolRandomVec(vecLen);
-            boolN b = arena.boolRandomVec(vecLen);
+            boolN a = GenerateOP.boolRandomVec(vecLen);
+            boolN b = GenerateOP.boolRandomVec(vecLen);
 
             boolN c = a == b;
 
@@ -312,48 +304,48 @@ public class BoolOperationsTest
                 Assert.IsTrue((a[i] == b[i]) == c[i]);
         }
 
-        public void NotEqualsVecVec(ref Arena arena)
+        public void NotEqualsVecVec()
         {
             int vecLen = 16;
 
-            boolN a = arena.boolRandomVec(vecLen);
-            boolN b = arena.boolRandomVec(vecLen);
+            boolN a = GenerateOP.boolRandomVec(vecLen);
+            boolN b = GenerateOP.boolRandomVec(vecLen);
             boolN c = a != b;
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue((a[i] != b[i]) == c[i]);
         }
 
-        public void AndVecVec(ref Arena arena)
+        public void AndVecVec()
         {
             int vecLen = 16;
 
-            boolN a = arena.boolRandomVec(vecLen);
-            boolN b = arena.boolRandomVec(vecLen);
+            boolN a = GenerateOP.boolRandomVec(vecLen);
+            boolN b = GenerateOP.boolRandomVec(vecLen);
             boolN c = a & b;
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue((a[i] & b[i]) == c[i]);
         }
 
-        public void OrVecVec(ref Arena arena)
+        public void OrVecVec()
         {
             int vecLen = 16;
 
-            boolN a = arena.boolRandomVec(vecLen);
-            boolN b = arena.boolRandomVec(vecLen);
+            boolN a = GenerateOP.boolRandomVec(vecLen);
+            boolN b = GenerateOP.boolRandomVec(vecLen);
             boolN c = a | b;
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue((a[i] | b[i]) == c[i]);
         }
 
-        public void XorVecVec(ref Arena arena)
+        public void XorVecVec()
         {
             int vecLen = 16;
 
-            boolN a = arena.boolRandomVec(vecLen);
-            boolN b = arena.boolRandomVec(vecLen);
+            boolN a = GenerateOP.boolRandomVec(vecLen);
+            boolN b = GenerateOP.boolRandomVec(vecLen);
             boolN c = a ^ b;
 
             for (int i = 0; i < vecLen; i++)

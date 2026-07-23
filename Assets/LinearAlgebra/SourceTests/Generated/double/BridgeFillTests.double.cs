@@ -12,7 +12,7 @@ using Unity.Jobs;
 
 // Coverage for the realtime-interop surface:
 //  - doubleComp.zeroInPlace / fillInPlace (generic over vectors and matrices)
-//  - IsCreated on doubleN / doubleMxN (standalone and arena-tracked lifecycles)
+//  - IsCreated on doubleN / doubleMxN (standalone lifecycle)
 //  - NativeArray bridge: view constructors + CopyTo/CopyFrom(NativeArray), and the
 //    matrix-level CopyTo/CopyFrom(in doubleMxN) parity members.
 // The view path is also exercised INSIDE a Burst job (solving straight into a
@@ -53,28 +53,6 @@ public class doubleBridgeFillTests
         Assert.IsTrue(m.IsCreated);
         m.Dispose();
         Assert.IsFalse(m.IsCreated);
-    }
-
-    [Test]
-    public void IsCreated_ArenaTracked_FalseAfterRecordDispose()
-    {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var v = arena.doubleVec(3);
-            Assert.IsTrue(v.IsCreated);
-            v.Dispose();   // frees the record slot; the table itself stays alive
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-            Assert.IsFalse(v.IsCreated);
-#endif
-            var m = arena.doubleMat(2, 2);
-            Assert.IsTrue(m.IsCreated);
-            m.Dispose();
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-            Assert.IsFalse(m.IsCreated);
-#endif
-        }
-        finally { arena.Dispose(); }
     }
 
     [Test]

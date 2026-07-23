@@ -52,25 +52,23 @@ public class doubleJacobiPrecondTests
         // ---- helpers ----
 
         // BR x BC-block BSR built from a dense matrix's nonzero entries via scalar AddValue.
-        static doubleBSR DenseToBSR(ref Arena arena, in doubleMxN A, int BR, int BC, int nnzHint)
+        static doubleBSR DenseToBSR(in doubleMxN A, int BR, int BC, int nnzHint)
         {
-            var builder = arena.doubleBSRBuilder(A.M_Rows / BR, A.N_Cols / BC, BR, BC, math.max(nnzHint, 1));
+            var builder = new doubleBSRBuilder(A.M_Rows / BR, A.N_Cols / BC, BR, BC, Allocator.Temp, math.max(nnzHint, 1));
             for (int r = 0; r < A.M_Rows; r++)
                 for (int c = 0; c < A.N_Cols; c++)
                     if (A[r, c] != (double)0)
                         builder.AddValue(r, c, A[r, c]);
-            return builder.ToBSR(ref arena);
+            return builder.ToBSR(Allocator.Temp);
         }
 
         // ---- 1. dense columnNormsSquared == diag(AᵀA) ----
         void ColumnNormsSquaredDenseMatchesReference()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 9, n = 6;
-            var A = arena.doubleRandomMat(m, n, -1f, 1f, 61001);
+            var A = GenerateOP.doubleRandomMat(m, n, -1f, 1f, 61001);
 
-            var d2 = arena.doubleVec(n);
+            var d2 = new doubleN(n, Allocator.Temp);
             Blas.columnNormsSquared(in A, ref d2);
 
             for (int c = 0; c < n; c++)
@@ -79,54 +77,46 @@ public class doubleJacobiPrecondTests
                 for (int r = 0; r < m; r++) refv += A[r, c] * A[r, c];
                 doubleKrylovTestAsserts.AssertClose(d2[c], refv, Tight());
             }
-
-            arena.Dispose();
         }
 
         // ---- 2. BSR columnNormsSquared (1x1 and 3x3 blocks) matches dense ----
         void ColumnNormsSquaredBSRMatchesDense()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 9, n = 6;                                 // multiples of 3 for the 3x3 case
-            var A = arena.doubleRandomMat(m, n, -1f, 1f, 61101);
+            var A = GenerateOP.doubleRandomMat(m, n, -1f, 1f, 61101);
 
-            var d2Dense = arena.doubleVec(n);
+            var d2Dense = new doubleN(n, Allocator.Temp);
             Blas.columnNormsSquared(in A, ref d2Dense);
 
-            var bsm1 = DenseToBSR(ref arena, in A, 1, 1, m * n);
-            var d2b1 = arena.doubleVec(n);
+            var bsm1 = DenseToBSR(in A, 1, 1, m * n);
+            var d2b1 = new doubleN(n, Allocator.Temp);
             BSR.columnNormsSquared(in bsm1, ref d2b1);
             for (int c = 0; c < n; c++) doubleKrylovTestAsserts.AssertClose(d2b1[c], d2Dense[c], Tight());
 
-            var bsm3 = DenseToBSR(ref arena, in A, 3, 3, m * n);
-            var d2b3 = arena.doubleVec(n);
+            var bsm3 = DenseToBSR(in A, 3, 3, m * n);
+            var d2b3 = new doubleN(n, Allocator.Temp);
             BSR.columnNormsSquared(in bsm3, ref d2b3);
             for (int c = 0; c < n; c++) doubleKrylovTestAsserts.AssertClose(d2b3[c], d2Dense[c], Tight());
 
             // RECTANGULAR blocks BR=2, BC=3 (would catch a BR/BC swap in the block-column indexing
             // that square blocks cannot). Fresh matrix sized to the block grid: 4x9 -> 2x3 grid.
             int m2 = 4, n2 = 9;
-            var A2 = arena.doubleRandomMat(m2, n2, -1f, 1f, 61102);
-            var d2Dense2 = arena.doubleVec(n2);
+            var A2 = GenerateOP.doubleRandomMat(m2, n2, -1f, 1f, 61102);
+            var d2Dense2 = new doubleN(n2, Allocator.Temp);
             Blas.columnNormsSquared(in A2, ref d2Dense2);
 
-            var bsm23 = DenseToBSR(ref arena, in A2, 2, 3, m2 * n2);
-            var d2b23 = arena.doubleVec(n2);
+            var bsm23 = DenseToBSR(in A2, 2, 3, m2 * n2);
+            var d2b23 = new doubleN(n2, Allocator.Temp);
             BSR.columnNormsSquared(in bsm23, ref d2b23);
             for (int c = 0; c < n2; c++) doubleKrylovTestAsserts.AssertClose(d2b23[c], d2Dense2[c], Tight());
-
-            arena.Dispose();
         }
 
         // ---- 3. buildJacobiScale: d = 1/sqrt(colNorm2), zero column -> d = 1 ----
         void BuildJacobiScaleZeroColumnGuard()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var c2 = arena.doubleVec(4);
+            var c2 = new doubleN(4, Allocator.Temp);
             c2[0] = (double)4;    c2[1] = (double)0;    c2[2] = (double)9;   c2[3] = (double)0.25;
-            var d = arena.doubleVec(4);
+            var d = new doubleN(4, Allocator.Temp);
             Blas.buildJacobiScale(in c2, ref d);
 
             doubleKrylovTestAsserts.AssertClose(d[0], (double)0.5, Tight());        // 1/sqrt(4)
@@ -135,103 +125,89 @@ public class doubleJacobiPrecondTests
             doubleKrylovTestAsserts.AssertClose(d[3], (double)2,   Tight());        // 1/sqrt(0.25)
 
             for (int j = 0; j < 4; j++) Assert.IsTrue(math.isfinite(d[j]));
-
-            arena.Dispose();
         }
 
         // ---- 4. adjoint identity <(AD)v, u> == <v, (AD)^T u> ----
         void ColScaledOperatorAdjointIdentity()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 9, n = 6;
-            var A = arena.doubleRandomMat(m, n, -1f, 1f, 61301);
-            var d2 = arena.doubleVec(n);
+            var A = GenerateOP.doubleRandomMat(m, n, -1f, 1f, 61301);
+            var d2 = new doubleN(n, Allocator.Temp);
             Blas.columnNormsSquared(in A, ref d2);
-            var d = arena.doubleVec(n);
+            var d = new doubleN(n, Allocator.Temp);
             Blas.buildJacobiScale(in d2, ref d);
-            var scratch = arena.doubleVec(n);
+            var scratch = new doubleN(n, Allocator.Temp);
 
             var op = new doubleColScaledOperator<doubleDenseOperator>(new doubleDenseOperator(in A), d, scratch);
 
-            var u = arena.doubleRandomVec(m, -1f, 1f, 61302);
-            var v = arena.doubleRandomVec(n, -1f, 1f, 61303);
+            var u = GenerateOP.doubleRandomVec(m, -1f, 1f, 61302);
+            var v = GenerateOP.doubleRandomVec(n, -1f, 1f, 61303);
 
-            var y1 = arena.doubleVec(m);
+            var y1 = new doubleN(m, Allocator.Temp);
             op.Apply(in v, ref y1);                 // (AD) v
             double lhs = Blas.dot(y1, u);
 
-            var y2 = arena.doubleVec(n);
+            var y2 = new doubleN(n, Allocator.Temp);
             op.ApplyT(in u, ref y2);                // (AD)^T u
             double rhs = Blas.dot(v, y2);
 
             doubleKrylovTestAsserts.AssertClose(lhs, rhs, LooseTol());
-
-            arena.Dispose();
         }
 
         // ---- 5. equilibration: columns of A*D have unit norm ----
         void ColScaledEquilibrationUnitColumns()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 12, n = 5;
-            var A = arena.doubleRandomMat(m, n, -1f, 1f, 61401);
-            var d2 = arena.doubleVec(n);
+            var A = GenerateOP.doubleRandomMat(m, n, -1f, 1f, 61401);
+            var d2 = new doubleN(n, Allocator.Temp);
             Blas.columnNormsSquared(in A, ref d2);
-            var d = arena.doubleVec(n);
+            var d = new doubleN(n, Allocator.Temp);
             Blas.buildJacobiScale(in d2, ref d);
 
             // Materialize A*D (scale column j by d[j]) and re-measure its column norms.
-            var AD = arena.doubleMat(m, n);
+            var AD = new doubleMxN(m, n, Allocator.Temp);
             for (int r = 0; r < m; r++)
                 for (int c = 0; c < n; c++)
                     AD[r, c] = A[r, c] * d[c];
 
-            var d2s = arena.doubleVec(n);
+            var d2s = new doubleN(n, Allocator.Temp);
             Blas.columnNormsSquared(in AD, ref d2s);
             for (int c = 0; c < n; c++) doubleKrylovTestAsserts.AssertClose(d2s[c], (double)1, LooseTol());  // random cols are nonzero
-
-            arena.Dispose();
         }
 
         // ---- 6. composability: preconditioned lsqr solves a consistent over-determined system ----
         // Solve (A D) y = b with the wrapped operator, recover x = D y; x must equal x_true and A x == b.
         void ColScaledOperatorSolvesConsistent()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 10, n = 4;
-            var A = arena.doubleRandomMat(m, n, -1f, 1f, 61501);
-            var xTrue = arena.doubleRandomVec(n, -1f, 1f, 61502);
+            var A = GenerateOP.doubleRandomMat(m, n, -1f, 1f, 61501);
+            var xTrue = GenerateOP.doubleRandomVec(n, -1f, 1f, 61502);
             var b = Blas.dot(A, xTrue);        // consistent
 
-            var d2 = arena.doubleVec(n);
+            var d2 = new doubleN(n, Allocator.Temp);
             Blas.columnNormsSquared(in A, ref d2);
-            var d = arena.doubleVec(n);
+            var d = new doubleN(n, Allocator.Temp);
             Blas.buildJacobiScale(in d2, ref d);
-            var scratch = arena.doubleVec(n);
+            var scratch = new doubleN(n, Allocator.Temp);
 
             var op = new doubleColScaledOperator<doubleDenseOperator>(new doubleDenseOperator(in A), d, scratch);
 
-            var y    = arena.doubleVec(n);
-            var u    = arena.doubleVec(m);
-            var vv   = arena.doubleVec(n);
-            var w    = arena.doubleVec(n);
-            var tmpM = arena.doubleVec(m);
-            var tmpN = arena.doubleVec(n);
+            var y    = new doubleN(n, Allocator.Temp);
+            var u    = new doubleN(m, Allocator.Temp);
+            var vv   = new doubleN(n, Allocator.Temp);
+            var w    = new doubleN(n, Allocator.Temp);
+            var tmpM = new doubleN(m, Allocator.Temp);
+            var tmpN = new doubleN(n, Allocator.Temp);
             bool ok = Krylov.lsqr(op, in b, ref y, ref u, ref vv, ref w, ref tmpM, ref tmpN, 8 * n, Consts.doubleSqrtEps);
             Assert.IsTrue(ok);
 
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
             for (int j = 0; j < n; j++) x[j] = d[j] * y[j];    // unscale
 
             for (int j = 0; j < n; j++) doubleKrylovTestAsserts.AssertClose(x[j], xTrue[j], LooseTol());
 
             var Ax = Blas.dot(A, x);
             for (int i = 0; i < m; i++) doubleKrylovTestAsserts.AssertClose(Ax[i], b[i], LooseTol());
-
-            arena.Dispose();
         }
     }
 
@@ -263,18 +239,14 @@ public class doubleJacobiPrecondTests
     [Test]
     public void ColumnNormsSquaredBSRSymmetricThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         // A diagonal 1x1-block matrix is trivially symmetric -> ToBSRSymmetric accepts it.
-        var s = arena.doubleBSRBuilder(3, 3, 1, 1, 3);
+        var s = new doubleBSRBuilder(3, 3, 1, 1, Allocator.Temp, 3);
         s.AddValue(0, 0, (double)2);
         s.AddValue(1, 1, (double)3);
         s.AddValue(2, 2, (double)4);
-        var sym = s.ToBSRSymmetric(ref arena);
+        var sym = s.ToBSRSymmetric(Allocator.Temp);
 
-        var d2 = arena.doubleVec(3);
+        var d2 = new doubleN(3, Allocator.Temp);
         Assert.Throws<ArgumentException>(() => BSR.columnNormsSquared(in sym, ref d2));
-
-        arena.Dispose();
     }
 }

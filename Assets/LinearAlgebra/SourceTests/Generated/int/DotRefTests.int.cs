@@ -84,19 +84,17 @@ public class intDotRefTests
         // ref==alloc equality test misses when the destination is freshly allocated.
         void DirtyDest()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int M = 6;
             int N = 4;
             int K = 5;
 
             // mat·vec
             {
-                var A = arena.intRandomMat(M, N, -9, 9, 12321);
-                var x = arena.intRandomVec(N, -9, 9, 45654);
+                var A = GenerateOP.intRandomMat(M, N, -9, 9, 12321);
+                var x = GenerateOP.intRandomVec(N, -9, 9, 45654);
                 var R = Blas.dot(A, x);
 
-                var D = arena.intVec(M);
+                var D = new intN(M, Allocator.Temp);
                 intComp.addInPlace(D, (int)999);   // dirty the destination
                 Blas.dot(in A, in x, ref D);
                 Assert.IsTrue(ExactEqual(in R, in D));
@@ -104,11 +102,11 @@ public class intDotRefTests
 
             // vec·mat
             {
-                var y = arena.intRandomVec(M, -9, 9, 11221);
-                var A = arena.intRandomMat(M, N, -9, 9, 33443);
+                var y = GenerateOP.intRandomVec(M, -9, 9, 11221);
+                var A = GenerateOP.intRandomMat(M, N, -9, 9, 33443);
                 var R = Blas.dot(y, A);
 
-                var D = arena.intVec(N);
+                var D = new intN(N, Allocator.Temp);
                 intComp.addInPlace(D, (int)999);
                 Blas.dot(in y, in A, ref D);
                 Assert.IsTrue(ExactEqual(in R, in D));
@@ -116,123 +114,103 @@ public class intDotRefTests
 
             // mat·mat
             {
-                var a = arena.intRandomMat(M, K, -9, 9, 32123);
-                var b = arena.intRandomMat(K, N, -9, 9, 65456);
+                var a = GenerateOP.intRandomMat(M, K, -9, 9, 32123);
+                var b = GenerateOP.intRandomMat(K, N, -9, 9, 65456);
                 var R = Blas.dot(a, b, false);
 
-                var D = arena.intMat(M, N);
+                var D = new intMxN(M, N, Allocator.Temp);
                 intComp.addInPlace(D, (int)999);
                 Blas.dot(in a, in b, ref D, false);
                 Assert.IsTrue(ExactEqual(in R, in D));
             }
-
-            arena.Dispose();
         }
 
         // outer product: a (col, length M) * b (row, length N) -> M x N
         void OuterDot()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int M = 5;
             int N = 7;
 
-            var a = arena.intRandomVec(M, -9, 9, 11111);
-            var b = arena.intRandomVec(N, -9, 9, 22222);
+            var a = GenerateOP.intRandomVec(M, -9, 9, 11111);
+            var b = GenerateOP.intRandomVec(N, -9, 9, 22222);
 
             // allocating reference
             var R = Blas.outerDot(a, b);
 
             // ref-dest into a preallocated M x N destination
-            var D = arena.intMat(M, N);
+            var D = new intMxN(M, N, Allocator.Temp);
             Blas.outerDot(in a, in b, ref D);
 
             Assert.IsTrue(ExactEqual(in R, in D));
-
-            arena.Dispose();
         }
 
         // matrix (M x N) * vector (length N) -> vector (length M)
         void MatVec()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int M = 6;
             int N = 4;
 
-            var A = arena.intRandomMat(M, N, -9, 9, 33333);
-            var x = arena.intRandomVec(N, -9, 9, 44444);
+            var A = GenerateOP.intRandomMat(M, N, -9, 9, 33333);
+            var x = GenerateOP.intRandomVec(N, -9, 9, 44444);
 
             var R = Blas.dot(A, x);
 
-            var D = arena.intVec(M);
+            var D = new intN(M, Allocator.Temp);
             Blas.dot(in A, in x, ref D);
 
             Assert.IsTrue(ExactEqual(in R, in D));
-
-            arena.Dispose();
         }
 
         // vector (length M) * matrix (M x N) -> vector (length N)
         void VecMat()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int M = 6;
             int N = 4;
 
-            var y = arena.intRandomVec(M, -9, 9, 55555);
-            var A = arena.intRandomMat(M, N, -9, 9, 66666);
+            var y = GenerateOP.intRandomVec(M, -9, 9, 55555);
+            var A = GenerateOP.intRandomMat(M, N, -9, 9, 66666);
 
             var R = Blas.dot(y, A);
 
-            var D = arena.intVec(N);
+            var D = new intN(N, Allocator.Temp);
             Blas.dot(in y, in A, ref D);
 
             Assert.IsTrue(ExactEqual(in R, in D));
-
-            arena.Dispose();
         }
 
         // matrix (M x K) * matrix (K x N) -> matrix (M x N), transposeA = false
         void MatMat()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int M = 5;
             int K = 3;
             int N = 7;
 
-            var a = arena.intRandomMat(M, K, -9, 9, 77777);
-            var b = arena.intRandomMat(K, N, -9, 9, 88888);
+            var a = GenerateOP.intRandomMat(M, K, -9, 9, 77777);
+            var b = GenerateOP.intRandomMat(K, N, -9, 9, 88888);
 
             var R = Blas.dot(a, b, false);
 
-            var D = arena.intMat(M, N);
+            var D = new intMxN(M, N, Allocator.Temp);
             Blas.dot(in a, in b, ref D, false);
 
             Assert.IsTrue(ExactEqual(in R, in D));
-
-            arena.Dispose();
         }
 
         // matrix Aᵀ * matrix b: a is (K x M), b is (K x N) -> (M x N), transposeA = true.
         // K is the contracted dim = a.M_Rows = b.M_Rows.
         void MatMatTransA()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int K = 4;
             int M = 5;
             int N = 6;
 
-            var a = arena.intRandomMat(K, M, -9, 9, 99999);
-            var b = arena.intRandomMat(K, N, -9, 9, 10101);
+            var a = GenerateOP.intRandomMat(K, M, -9, 9, 99999);
+            var b = GenerateOP.intRandomMat(K, N, -9, 9, 10101);
 
             var R = Blas.dot(a, b, true);
 
             // result is M x N (a.N_Cols x b.N_Cols)
-            var D = arena.intMat(M, N);
+            var D = new intMxN(M, N, Allocator.Temp);
             Blas.dot(in a, in b, ref D, true);
 
             // ref == allocating (delegation check)
@@ -242,28 +220,22 @@ public class intDotRefTests
             // which exercises a different code path than the fused transposeA kernel.
             var oracle = Blas.dot(Blas.trans(a), b);
             Assert.IsTrue(ExactEqual(in R, in oracle));
-
-            arena.Dispose();
         }
 
         // transpose of a non-square matrix (M x N) -> (N x M)
         void Trans()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int M = 5;
             int N = 8;
 
-            var A = arena.intRandomMat(M, N, -9, 9, 20202);
+            var A = GenerateOP.intRandomMat(M, N, -9, 9, 20202);
 
             var R = Blas.trans(A);
 
-            var D = arena.intMat(N, M);
+            var D = new intMxN(N, M, Allocator.Temp);
             Blas.trans(in A, ref D);
 
             Assert.IsTrue(ExactEqual(in R, in D));
-
-            arena.Dispose();
         }
     }
 

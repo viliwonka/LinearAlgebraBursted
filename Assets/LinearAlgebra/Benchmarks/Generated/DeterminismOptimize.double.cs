@@ -278,47 +278,46 @@ namespace LinearAlgebra.Benchmarks
     {
         public static (string id, uint hash)[] Case_LpLadDouble()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2654435761u ^ 0x0011u);
 
             const int m = 20, n = 30;
-            var A = arena.doubleMat(m, n);
+            var A = new doubleMxN(m, n, Allocator.Persistent);
             for (int r = 0; r < m; r++) for (int cc = 0; cc < n; cc++) A[r, cc] = rng.NextDouble(0f, 1f);
-            var x0 = arena.doubleVec(n); for (int i = 0; i < n; i++) x0[i] = rng.NextDouble(0f, 1f);
-            var Ax0 = arena.doubleVec(m); Blas.dot(in A, in x0, ref Ax0);
-            var b = arena.doubleVec(m); for (int i = 0; i < m; i++) b[i] = Ax0[i] + rng.NextDouble(0.1f, 1f);
-            var c = arena.doubleVec(n); for (int i = 0; i < n; i++) c[i] = rng.NextDouble(-1f, 1f);
+            var x0 = new doubleN(n, Allocator.Persistent); for (int i = 0; i < n; i++) x0[i] = rng.NextDouble(0f, 1f);
+            var Ax0 = new doubleN(m, Allocator.Persistent); Blas.dot(in A, in x0, ref Ax0);
+            var b = new doubleN(m, Allocator.Persistent); for (int i = 0; i < m; i++) b[i] = Ax0[i] + rng.NextDouble(0.1f, 1f);
+            var c = new doubleN(n, Allocator.Persistent); for (int i = 0; i < n; i++) c[i] = rng.NextDouble(-1f, 1f);
             var senses = new NativeArray<ConstraintSense>(m, Allocator.Persistent);
             for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
-            var x = arena.doubleVec(n, true);
+            var x = new doubleN(n, Allocator.Persistent, true);
 
             const int mBr = 120, nBr = 5;
-            var ABr = arena.doubleMat(mBr, nBr);
+            var ABr = new doubleMxN(mBr, nBr, Allocator.Persistent);
             for (int r = 0; r < mBr; r++) for (int cc = 0; cc < nBr; cc++) ABr[r, cc] = (cc == 0) ? (double)1 : rng.NextDouble(-1f, 1f);
-            var xtBr = arena.doubleVec(nBr); for (int i = 0; i < nBr; i++) xtBr[i] = rng.NextDouble(-1f, 1f);
-            var AxtBr = arena.doubleVec(mBr); Blas.dot(in ABr, in xtBr, ref AxtBr);
-            var bBr = arena.doubleVec(mBr);
+            var xtBr = new doubleN(nBr, Allocator.Persistent); for (int i = 0; i < nBr; i++) xtBr[i] = rng.NextDouble(-1f, 1f);
+            var AxtBr = new doubleN(mBr, Allocator.Persistent); Blas.dot(in ABr, in xtBr, ref AxtBr);
+            var bBr = new doubleN(mBr, Allocator.Persistent);
             for (int i = 0; i < mBr; i++)
             {
                 double v = AxtBr[i] + rng.NextDouble(-(double)0.05, (double)0.05);
                 if (i % 10 == 0) v += (double)5;
                 bBr[i] = v;
             }
-            var xBr = arena.doubleVec(nBr, true);
+            var xBr = new doubleN(nBr, Allocator.Persistent, true);
 
             const int mFn = 600, nFn = 5;
-            var AFn = arena.doubleMat(mFn, nFn);
+            var AFn = new doubleMxN(mFn, nFn, Allocator.Persistent);
             for (int r = 0; r < mFn; r++) for (int cc = 0; cc < nFn; cc++) AFn[r, cc] = (cc == 0) ? (double)1 : rng.NextDouble(-1f, 1f);
-            var xtFn = arena.doubleVec(nFn); for (int i = 0; i < nFn; i++) xtFn[i] = rng.NextDouble(-1f, 1f);
-            var AxtFn = arena.doubleVec(mFn); Blas.dot(in AFn, in xtFn, ref AxtFn);
-            var bFn = arena.doubleVec(mFn);
+            var xtFn = new doubleN(nFn, Allocator.Persistent); for (int i = 0; i < nFn; i++) xtFn[i] = rng.NextDouble(-1f, 1f);
+            var AxtFn = new doubleN(mFn, Allocator.Persistent); Blas.dot(in AFn, in xtFn, ref AxtFn);
+            var bFn = new doubleN(mFn, Allocator.Persistent);
             for (int i = 0; i < mFn; i++)
             {
                 double v = AxtFn[i] + rng.NextDouble(-(double)0.05, (double)0.05);
                 if (i % 10 == 0) v += (double)5;
                 bFn[i] = v;
             }
-            var xFn = arena.doubleVec(nFn, true);
+            var xFn = new doubleN(nFn, Allocator.Persistent, true);
 
             var hashOut = new NativeArray<uint>(3, Allocator.Persistent);
             var job = new DetLpLadJobDouble
@@ -336,33 +335,34 @@ namespace LinearAlgebra.Benchmarks
                 ("lp-lad/lad.ladFN.double.600x5", hashOut[2]),
             };
             hashOut.Dispose(); senses.Dispose();
-            arena.Dispose();
+            A.Dispose(); x0.Dispose(); Ax0.Dispose(); b.Dispose(); c.Dispose(); x.Dispose();
+            ABr.Dispose(); xtBr.Dispose(); AxtBr.Dispose(); bBr.Dispose(); xBr.Dispose();
+            AFn.Dispose(); xtFn.Dispose(); AxtFn.Dispose(); bFn.Dispose(); xFn.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_QpDouble()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2654435761u ^ 0x0012u);
 
             const int n = 24, m = 6;
-            var Mfac = arena.doubleMat(n, n);
+            var Mfac = new doubleMxN(n, n, Allocator.Persistent);
             for (int r = 0; r < n; r++) for (int cc = 0; cc < n; cc++) Mfac[r, cc] = rng.NextDouble(-1f, 1f);
-            var Q = arena.doubleMat(n, n);
+            var Q = new doubleMxN(n, n, Allocator.Persistent);
             Blas.dot(in Mfac, in Mfac, ref Q, transposeA: true);
             for (int d = 0; d < n; d++) Q[d, d] += (double)n;
 
-            var c = arena.doubleVec(n); for (int i = 0; i < n; i++) c[i] = rng.NextDouble(-1f, 1f);
-            var A = arena.doubleMat(m, n);
+            var c = new doubleN(n, Allocator.Persistent); for (int i = 0; i < n; i++) c[i] = rng.NextDouble(-1f, 1f);
+            var A = new doubleMxN(m, n, Allocator.Persistent);
             for (int r = 0; r < m; r++) for (int cc = 0; cc < n; cc++) A[r, cc] = rng.NextDouble(0f, 1f);
-            var x0 = arena.doubleVec(n); for (int i = 0; i < n; i++) x0[i] = rng.NextDouble(0.2f, 0.8f);
-            var Ax0 = arena.doubleVec(m); Blas.dot(in A, in x0, ref Ax0);
-            var b = arena.doubleVec(m); for (int i = 0; i < m; i++) b[i] = Ax0[i] + rng.NextDouble(0.1f, 1f);
+            var x0 = new doubleN(n, Allocator.Persistent); for (int i = 0; i < n; i++) x0[i] = rng.NextDouble(0.2f, 0.8f);
+            var Ax0 = new doubleN(m, Allocator.Persistent); Blas.dot(in A, in x0, ref Ax0);
+            var b = new doubleN(m, Allocator.Persistent); for (int i = 0; i < m; i++) b[i] = Ax0[i] + rng.NextDouble(0.1f, 1f);
             var senses = new NativeArray<ConstraintSense>(m, Allocator.Persistent);
             for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
-            var xl = arena.doubleVec(n);
-            var xu = arena.doubleVec(n, (double)3);
-            var x = arena.doubleVec(n, true);
+            var xl = new doubleN(n, Allocator.Persistent);
+            var xu = GenerateOP.doubleVec(n, (double)3, Allocator.Persistent);
+            var x = new doubleN(n, Allocator.Persistent, true);
 
             var hashOut = new NativeArray<uint>(1, Allocator.Persistent);
             var job = new DetQpJobDouble { Q = Q, c = c, A = A, b = b, senses = senses, xl = xl, xu = xu, x = x, HashOut = hashOut };
@@ -370,18 +370,17 @@ namespace LinearAlgebra.Benchmarks
 
             var result = new[] { ("qp/qp.solve.double.n24m6", hashOut[0]) };
             hashOut.Dispose(); senses.Dispose();
-            arena.Dispose();
+            Mfac.Dispose(); Q.Dispose(); c.Dispose(); A.Dispose(); x0.Dispose(); Ax0.Dispose(); b.Dispose();
+            xl.Dispose(); xu.Dispose(); x.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_MipDouble()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // stein9-class set-cover instance: 9 binaries, 13 rows (12 triples covering each pair,
             // + a "select >= 4 of 9" cut row), objective = minimize count. Known optimum 5.
             const int n = 9, m = 13;
-            var A = arena.doubleMat(m, n);
+            var A = new doubleMxN(m, n, Allocator.Persistent);
             int[,] triples =
             {
                 {0,1,2},{0,3,4},{0,5,6},{0,7,8},
@@ -397,19 +396,19 @@ namespace LinearAlgebra.Benchmarks
             }
             for (int j = 0; j < n; j++) A[12, j] = (double)1;
 
-            var b = arena.doubleVec(m);
+            var b = new doubleN(m, Allocator.Persistent);
             for (int row = 0; row < 12; row++) b[row] = (double)1;
             b[12] = (double)4;
 
             var senses = new NativeArray<ConstraintSense>(m, Allocator.Persistent);
             for (int i = 0; i < m; i++) senses[i] = ConstraintSense.GreaterEqual;
 
-            var c = arena.doubleVec(n, (double)1);
-            var xl = arena.doubleVec(n);
-            var xu = arena.doubleVec(n, (double)1);
+            var c = GenerateOP.doubleVec(n, (double)1, Allocator.Persistent);
+            var xl = new doubleN(n, Allocator.Persistent);
+            var xu = GenerateOP.doubleVec(n, (double)1, Allocator.Persistent);
             var integrality = new NativeArray<byte>(n, Allocator.Persistent);
             for (int i = 0; i < n; i++) integrality[i] = 1;
-            var x = arena.doubleVec(n, true);
+            var x = new doubleN(n, Allocator.Persistent, true);
 
             var hashOut = new NativeArray<uint>(1, Allocator.Persistent);
             var job = new DetMipJobDouble { A = A, b = b, c = c, senses = senses, xl = xl, xu = xu, integrality = integrality, x = x, HashOut = hashOut };
@@ -417,59 +416,61 @@ namespace LinearAlgebra.Benchmarks
 
             var result = new[] { ("mip/mip.solve.double.stein9", hashOut[0]) };
             hashOut.Dispose(); senses.Dispose(); integrality.Dispose();
-            arena.Dispose();
+            A.Dispose(); b.Dispose(); c.Dispose(); xl.Dispose(); xu.Dispose(); x.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_ControlDouble()
         {
-            var arena = new Arena(Allocator.Persistent);
             const int n = 4, m = 2;
 
-            var A = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Persistent);
             A[0, 0] = (double)0.9; A[0, 1] = (double)0.1; A[0, 2] = (double)0; A[0, 3] = (double)0;
             A[1, 0] = (double)0; A[1, 1] = (double)0.9; A[1, 2] = (double)0.1; A[1, 3] = (double)0;
             A[2, 0] = (double)0; A[2, 1] = (double)0; A[2, 2] = (double)0.9; A[2, 3] = (double)0.1;
             A[3, 0] = (double)0.05; A[3, 1] = (double)0; A[3, 2] = (double)0; A[3, 3] = (double)0.85;
 
-            var B = arena.doubleMat(n, m);
+            var B = new doubleMxN(n, m, Allocator.Persistent);
             B[0, 0] = (double)0.5; B[0, 1] = (double)0;
             B[1, 0] = (double)0; B[1, 1] = (double)0.5;
             B[2, 0] = (double)0.2; B[2, 1] = (double)0.1;
             B[3, 0] = (double)0.1; B[3, 1] = (double)0.2;
 
-            var Qc = arena.doubleMat(n, n); for (int i = 0; i < n; i++) Qc[i, i] = (double)1;
-            var Rc = arena.doubleMat(m, m); for (int i = 0; i < m; i++) Rc[i, i] = (double)1;
-            var K = arena.doubleMat(m, n);
-            var Sdare = arena.doubleMat(n, n);
+            var Qc = new doubleMxN(n, n, Allocator.Persistent); for (int i = 0; i < n; i++) Qc[i, i] = (double)1;
+            var Rc = new doubleMxN(m, m, Allocator.Persistent); for (int i = 0; i < m; i++) Rc[i, i] = (double)1;
+            var K = new doubleMxN(m, n, Allocator.Persistent);
+            var Sdare = new doubleMxN(n, n, Allocator.Persistent);
 
             var kfState = new doubleKFState(n, m, Allocator.Persistent);
             for (int i = 0; i < n; i++) kfState.x[i] = (double)1;
             for (int i = 0; i < n; i++) kfState.P[i, i] = (double)1;
 
-            var Hmat = arena.doubleMat(m, n);
+            var Hmat = new doubleMxN(m, n, Allocator.Persistent);
             Hmat[0, 0] = (double)1; Hmat[1, 2] = (double)1;
-            var Qkf = arena.doubleMat(n, n); for (int i = 0; i < n; i++) Qkf[i, i] = (double)0.01;
-            var Rkf = arena.doubleMat(m, m); for (int i = 0; i < m; i++) Rkf[i, i] = (double)0.1;
-            var z1 = arena.doubleVec(m); z1[0] = (double)0.9; z1[1] = (double)0.05;
-            var z2 = arena.doubleVec(m); z2[0] = (double)0.8; z2[1] = (double)0.1;
-            var Kss = arena.doubleMat(n, m);
+            var Qkf = new doubleMxN(n, n, Allocator.Persistent); for (int i = 0; i < n; i++) Qkf[i, i] = (double)0.01;
+            var Rkf = new doubleMxN(m, m, Allocator.Persistent); for (int i = 0; i < m; i++) Rkf[i, i] = (double)0.1;
+            var z1 = new doubleN(m, Allocator.Persistent); z1[0] = (double)0.9; z1[1] = (double)0.05;
+            var z2 = new doubleN(m, Allocator.Persistent); z2[0] = (double)0.8; z2[1] = (double)0.1;
+            var Kss = new doubleMxN(n, m, Allocator.Persistent);
 
+            var mpcUlo = GenerateOP.doubleVec(m, (double)(-1), Allocator.Persistent);
+            var mpcUhi = GenerateOP.doubleVec(m, (double)1, Allocator.Persistent);
             var mpcState = new doubleMPCState(n, m, 5, Allocator.Persistent, in A, in B, in Qc, in Rc,
-                                              arena.doubleVec(m, (double)(-1)), arena.doubleVec(m, (double)1));
-            var x0 = arena.doubleVec(n); x0[0] = (double)1;
-            var reference = arena.doubleVec(n);
-            var u0out = arena.doubleVec(m, true);
+                                              mpcUlo, mpcUhi);
+            var x0 = new doubleN(n, Allocator.Persistent); x0[0] = (double)1;
+            var reference = new doubleN(n, Allocator.Persistent);
+            var u0out = new doubleN(m, Allocator.Persistent, true);
 
             var ukfState = new doubleKFState(n, m, Allocator.Persistent);
             for (int i = 0; i < n; i++) ukfState.x[i] = (double)1;
             for (int i = 0; i < n; i++) ukfState.P[i, i] = (double)1;
             var ukfCache = new doubleUKFCache(n, Allocator.Persistent);
-            var model = new DetLinearKFModelDouble { A = A, B = B, Scratch = arena.doubleVec(n) };
+            var modelScratch = new doubleN(n, Allocator.Persistent);
+            var model = new DetLinearKFModelDouble { A = A, B = B, Scratch = modelScratch };
             var meas = new DetLinearKFMeasDouble { Hmat = Hmat };
             var Qukf = Qkf;
-            var uZero = arena.doubleVec(m);
-            var zUkf = arena.doubleVec(m); zUkf[0] = (double)0.9; zUkf[1] = (double)0.05;
+            var uZero = new doubleN(m, Allocator.Persistent);
+            var zUkf = new doubleN(m, Allocator.Persistent); zUkf[0] = (double)0.9; zUkf[1] = (double)0.05;
 
             var hashOut = new NativeArray<uint>(6, Allocator.Persistent);
             var job = new DetControlJobDouble
@@ -492,17 +493,19 @@ namespace LinearAlgebra.Benchmarks
                 ("control/kalman.ukfLinear.double.n4m2", hashOut[5]),
             };
             hashOut.Dispose();
-            arena.Dispose();
+            A.Dispose(); B.Dispose(); Qc.Dispose(); Rc.Dispose(); K.Dispose(); Sdare.Dispose();
+            kfState.Dispose(); Hmat.Dispose(); Qkf.Dispose(); Rkf.Dispose(); z1.Dispose(); z2.Dispose(); Kss.Dispose();
+            mpcState.Dispose(); mpcUlo.Dispose(); mpcUhi.Dispose(); x0.Dispose(); reference.Dispose(); u0out.Dispose();
+            ukfState.Dispose(); ukfCache.Dispose(); modelScratch.Dispose(); uZero.Dispose(); zUkf.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_NlsOptimizeDouble()
         {
-            var arena = new Arena(Allocator.Persistent);
             const int mData = 12;
 
-            var xdata = arena.doubleVec(mData);
-            var ydata = arena.doubleVec(mData);
+            var xdata = new doubleN(mData, Allocator.Persistent);
+            var ydata = new doubleN(mData, Allocator.Persistent);
             for (int i = 0; i < mData; i++) xdata[i] = (double)(i - mData / 2);
             for (int i = 0; i < mData; i++)
             {
@@ -511,17 +514,17 @@ namespace LinearAlgebra.Benchmarks
             }
 
             var residual = new DetPolyResidualDouble { X = xdata, Y = ydata };
-            var pNls = arena.doubleVec(3);
+            var pNls = new doubleN(3, Allocator.Persistent);
 
             var curveModel = new DetPolyCurveModelDouble();
-            var pCurve = arena.doubleVec(3);
+            var pCurve = new doubleN(3, Allocator.Persistent);
 
             const int nCoef = 3;
-            var AIrls = arena.doubleMat(mData, nCoef);
+            var AIrls = new doubleMxN(mData, nCoef, Allocator.Persistent);
             for (int i = 0; i < mData; i++) { AIrls[i, 0] = (double)1; AIrls[i, 1] = xdata[i]; AIrls[i, 2] = xdata[i] * xdata[i]; }
-            var bIrls = arena.doubleVec(mData);
+            var bIrls = new doubleN(mData, Allocator.Persistent);
             for (int i = 0; i < mData; i++) bIrls[i] = ydata[i] + ((i == 3) ? (double)2 : (double)0); // one outlier row
-            var xIrls = arena.doubleVec(nCoef, true);
+            var xIrls = new doubleN(nCoef, Allocator.Persistent, true);
 
             var hashOut = new NativeArray<uint>(3, Allocator.Persistent);
             var job = new DetNlsOptimizeJobDouble
@@ -539,7 +542,8 @@ namespace LinearAlgebra.Benchmarks
                 ("nls-optimize/ladIRLS.double.n12", hashOut[2]),
             };
             hashOut.Dispose();
-            arena.Dispose();
+            xdata.Dispose(); ydata.Dispose(); pNls.Dispose(); pCurve.Dispose();
+            AIrls.Dispose(); bIrls.Dispose(); xIrls.Dispose();
             return result;
         }
     }

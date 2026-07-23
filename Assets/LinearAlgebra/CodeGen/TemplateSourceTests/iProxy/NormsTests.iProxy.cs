@@ -40,34 +40,26 @@ public class iProxyNormsTests
 
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
-            try
+            switch (Type)
             {
-                switch (Type)
-                {
-                    case TestType.BasicVector: BasicVector(ref arena); break;
-                    case TestType.PythagoreanTriple: PythagoreanTriple(ref arena); break;
-                    case TestType.AllNegative: AllNegative(ref arena); break;
-                    case TestType.Matrix: Matrix(ref arena); break;
-                    case TestType.AllZero: AllZero(ref arena); break;
-                    case TestType.Empty: Empty(ref arena); break;
-                    case TestType.MinValueAbsOverflow: MinValueAbsOverflow(ref arena); break;
-                    case TestType.MinValueMixedInput: MinValueMixedInput(ref arena); break;
-                    default: throw new NotImplementedException();
-                }
-            }
-            finally
-            {
-                arena.Dispose();
+                case TestType.BasicVector: BasicVector(); break;
+                case TestType.PythagoreanTriple: PythagoreanTriple(); break;
+                case TestType.AllNegative: AllNegative(); break;
+                case TestType.Matrix: Matrix(); break;
+                case TestType.AllZero: AllZero(); break;
+                case TestType.Empty: Empty(); break;
+                case TestType.MinValueAbsOverflow: MinValueAbsOverflow(); break;
+                case TestType.MinValueMixedInput: MinValueMixedInput(); break;
+                default: throw new NotImplementedException();
             }
         }
 
         bool Close(double a, double b) => math.abs(a - b) < 1e-9;
 
         // {3,-4}: L1 = 3+4 = 7, LInf = 4, L2 = sqrt(9+16) = 5.
-        void BasicVector(ref Arena arena)
+        void BasicVector()
         {
-            var v = arena.iProxyVec(2);
+            var v = new iProxyN(2, Allocator.Temp);
             v[0] = (iProxy)3; v[1] = (iProxy)(-4);
             Assert.IsTrue(Norms.L1(in v) == 7L);
             Assert.IsTrue(Norms.LInf(in v) == 4L);
@@ -75,23 +67,23 @@ public class iProxyNormsTests
         }
 
         // {1,2,2}: L1 = 5, LInf = 2, L2 = sqrt(1+4+4) = 3 (exact).
-        void PythagoreanTriple(ref Arena arena)
+        void PythagoreanTriple()
         {
-            var v = arena.iProxyVec(3);
+            var v = new iProxyN(3, Allocator.Temp);
             v[0] = (iProxy)1; v[1] = (iProxy)2; v[2] = (iProxy)2;
             Assert.IsTrue(Norms.L1(in v) == 5L);
             Assert.IsTrue(Norms.LInf(in v) == 2L);
             Assert.IsTrue(Close(Norms.L2(in v), 3.0));
 
             // Irrational case {1,1}: L2 = sqrt(2).
-            var w = arena.iProxyVec(2, (iProxy)1);
+            var w = GenerateOP.iProxyVec(2, (iProxy)1);
             Assert.IsTrue(Close(Norms.L2(in w), math.sqrt(2.0)));
         }
 
         // Abs is applied: {-1,-2,-2} matches {1,2,2}: L1 = 5, LInf = 2, L2 = 3.
-        void AllNegative(ref Arena arena)
+        void AllNegative()
         {
-            var v = arena.iProxyVec(3);
+            var v = new iProxyN(3, Allocator.Temp);
             v[0] = (iProxy)(-1); v[1] = (iProxy)(-2); v[2] = (iProxy)(-2);
             Assert.IsTrue(Norms.L1(in v) == 5L);
             Assert.IsTrue(Norms.LInf(in v) == 2L);
@@ -99,9 +91,9 @@ public class iProxyNormsTests
         }
 
         // Matrix treated as one flat distribution {{3,-4},{0,0}} == {3,-4,0,0}: L1=7, LInf=4, L2=5.
-        void Matrix(ref Arena arena)
+        void Matrix()
         {
-            var A = arena.iProxyMat(2, 2, (iProxy)0);
+            var A = GenerateOP.iProxyMat(2, 2, (iProxy)0);
             A[0, 0] = (iProxy)3; A[0, 1] = (iProxy)(-4);
             Assert.IsTrue(Norms.L1(in A) == 7L);
             Assert.IsTrue(Norms.LInf(in A) == 4L);
@@ -109,9 +101,9 @@ public class iProxyNormsTests
         }
 
         // All-zero -> every norm 0.
-        void AllZero(ref Arena arena)
+        void AllZero()
         {
-            var v = arena.iProxyVec(4, (iProxy)0);
+            var v = GenerateOP.iProxyVec(4, (iProxy)0);
             Assert.IsTrue(Norms.L1(in v) == 0L);
             Assert.IsTrue(Norms.LInf(in v) == 0L);
             Assert.IsTrue(Close(Norms.L2(in v), 0.0));
@@ -119,9 +111,9 @@ public class iProxyNormsTests
 
         // Empty vector: norms return 0 / 0.0 GRACEFULLY (no throw -- the accumulation loop just
         // never runs). This is the documented contrast with Stats, which throws on empty.
-        void Empty(ref Arena arena)
+        void Empty()
         {
-            var v = arena.iProxyVec(0);
+            var v = new iProxyN(0, Allocator.Temp);
             Assert.IsTrue(Norms.L1(in v) == 0L);
             Assert.IsTrue(Norms.LInf(in v) == 0L);
             Assert.IsTrue(Close(Norms.L2(in v), 0.0));
@@ -141,9 +133,9 @@ public class iProxyNormsTests
         //     long.MinValue, consistent with L1.
         // The mathematically-true magnitude 2^63 fits in NEITHER long branch, so we pin the actual
         // (broken-but-expected) outputs rather than an unrepresentable "correct" value.
-        void MinValueAbsOverflow(ref Arena arena)
+        void MinValueAbsOverflow()
         {
-            var v = arena.iProxyVec(1);
+            var v = new iProxyN(1, Allocator.Temp);
             v[0] = (iProxy)iProxy.MinValue;
 
             long expectedL1 = /*+choose[2147483648L|32768L|long.MinValue]*/2147483648L/*-choose*/;
@@ -163,9 +155,9 @@ public class iProxyNormsTests
         //   * LInf silently DROPS it -> 5 (the legitimate abs(5)==5 beats the wrapped-negative
         //     "abs" of long.MinValue, so the huge-magnitude element is invisible to the result).
         // Both current (documented, not-fixable-without-a-wider-type) behaviors are pinned here.
-        void MinValueMixedInput(ref Arena arena)
+        void MinValueMixedInput()
         {
-            var v = arena.iProxyVec(2);
+            var v = new iProxyN(2, Allocator.Temp);
             v[0] = (iProxy)iProxy.MinValue;
             v[1] = (iProxy)5;
 

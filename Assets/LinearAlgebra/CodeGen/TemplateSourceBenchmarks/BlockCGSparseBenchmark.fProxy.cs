@@ -130,49 +130,48 @@ namespace LinearAlgebra.Benchmarks
     {
         static string BenchFProxy(int grid, int s)
         {
-            var arena = new Arena(Allocator.Persistent);
             const string fmt = "{0,-7}{1,-7}{2,-4}{3,-14}{4,10:F4}{5,12:F4}{6,8}{7,8}";
 
-            var A = arena.fProxyLaplacian2D(grid, grid);       // n = grid*grid, ~5 nonzeros/row
+            var A = fProxyGallery.fProxyLaplacian2D(grid, grid, Allocator.Persistent);       // n = grid*grid, ~5 nonzeros/row
             int n = A.M_Rows;
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)(grid * 131 + s));
 
-            var B = arena.fProxyMat(s, n);                     // independent random RHS
+            var B = new fProxyMxN(s, n, Allocator.Persistent);                     // independent random RHS
             for (int i = 0; i < s; i++)
                 for (int c = 0; c < n; c++) B[i, c] = rng.NextFProxy(-1f, 1f);
 
             fProxy tol = Consts.fProxySqrtEps;
             int cap = 4 * n;
-            var outv = arena.Indices(2);
+            var outv = new Indices(2, Allocator.Persistent);
             var sb = new StringBuilder();
 
             // block-CG
-            var X = arena.fProxyMat(s, n); var R = arena.fProxyMat(s, n);
-            var P = arena.fProxyMat(s, n); var Q = arena.fProxyMat(s, n);
+            var X = new fProxyMxN(s, n, Allocator.Persistent); var R = new fProxyMxN(s, n, Allocator.Persistent);
+            var P = new fProxyMxN(s, n, Allocator.Persistent); var Q = new fProxyMxN(s, n, Allocator.Persistent);
             var blockJob = new BlockCgSparseJobFProxy { A = A, B = B, X = X, R = R, P = P, Q = Q, K = cap, Tol = tol, Out = outv };
             var blockStat = Bench.Time(() => blockJob.Run());
             sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                 "fProxy", n, s, "block-CG", blockStat.Median, blockStat.Min, outv[0], outv[1]));
 
             // bcgrq
-            var Xrq = arena.fProxyMat(s, n); var Rrq = arena.fProxyMat(s, n);
-            var Prq = arena.fProxyMat(s, n); var APrq = arena.fProxyMat(s, n); var Parq = arena.fProxyMat(s, n);
+            var Xrq = new fProxyMxN(s, n, Allocator.Persistent); var Rrq = new fProxyMxN(s, n, Allocator.Persistent);
+            var Prq = new fProxyMxN(s, n, Allocator.Persistent); var APrq = new fProxyMxN(s, n, Allocator.Persistent); var Parq = new fProxyMxN(s, n, Allocator.Persistent);
             var rqJob = new BlockCgrQSparseJobFProxy { A = A, B = B, X = Xrq, R = Rrq, P = Prq, AP = APrq, Pa = Parq, K = cap, Tol = tol, Out = outv };
             var rqStat = Bench.Time(() => rqJob.Run());
             sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                 "fProxy", n, s, "bcgrq", rqStat.Median, rqStat.Min, outv[0], outv[1]));
 
             // bfbcg
-            var Xbf = arena.fProxyMat(s, n); var Rbf = arena.fProxyMat(s, n);
-            var Pbf = arena.fProxyMat(s, n); var APbf = arena.fProxyMat(s, n); var Pabf = arena.fProxyMat(s, n);
+            var Xbf = new fProxyMxN(s, n, Allocator.Persistent); var Rbf = new fProxyMxN(s, n, Allocator.Persistent);
+            var Pbf = new fProxyMxN(s, n, Allocator.Persistent); var APbf = new fProxyMxN(s, n, Allocator.Persistent); var Pabf = new fProxyMxN(s, n, Allocator.Persistent);
             var bfJob = new BlockBfbcgSparseJobFProxy { A = A, B = B, X = Xbf, R = Rbf, P = Pbf, AP = APbf, Pa = Pabf, K = cap, Tol = tol, Out = outv };
             var bfStat = Bench.Time(() => bfJob.Run());
             sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                 "fProxy", n, s, "bfbcg", bfStat.Median, bfStat.Min, outv[0], outv[1]));
 
             // scalar loop
-            var x = arena.fProxyVec(n); var r = arena.fProxyVec(n); var p = arena.fProxyVec(n);
-            var Ap = arena.fProxyVec(n); var bcol = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Persistent); var r = new fProxyN(n, Allocator.Persistent); var p = new fProxyN(n, Allocator.Persistent);
+            var Ap = new fProxyN(n, Allocator.Persistent); var bcol = new fProxyN(n, Allocator.Persistent);
             var loopJob = new ScalarLoopSparseJobFProxy { A = A, B = B, x = x, r = r, p = p, Ap = Ap, bcol = bcol, S = s, K = cap, Tol = tol, Out = outv };
             var loopStat = Bench.Time(() => loopJob.Run());
             sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
@@ -180,19 +179,24 @@ namespace LinearAlgebra.Benchmarks
 
             // matvec-only layout probe (Reps = 50 fixed)
             int reps = 50;
-            var AV = arena.fProxyMat(s, n);
+            var AV = new fProxyMxN(s, n, Allocator.Persistent);
             var mmJob = new SpMMProbeJobFProxy { A = A, V = B, AV = AV, S = s, Reps = reps };
             var mmStat = Bench.Time(() => mmJob.Run());
             sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                 "fProxy", n, s, "spMM x50", mmStat.Median, mmStat.Min, reps, 0));
 
-            var yv = arena.fProxyVec(n);
+            var yv = new fProxyN(n, Allocator.Persistent);
             var mvJob = new SpMVLoopProbeJobFProxy { A = A, V = B, x = x, y = yv, S = s, Reps = reps };
             var mvStat = Bench.Time(() => mvJob.Run());
             sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                 "fProxy", n, s, "spMVx s x50", mvStat.Median, mvStat.Min, reps * s, 0));
 
-            arena.Dispose();
+            A.Dispose(); B.Dispose(); outv.Dispose();
+            X.Dispose(); R.Dispose(); P.Dispose(); Q.Dispose();
+            Xrq.Dispose(); Rrq.Dispose(); Prq.Dispose(); APrq.Dispose(); Parq.Dispose();
+            Xbf.Dispose(); Rbf.Dispose(); Pbf.Dispose(); APbf.Dispose(); Pabf.Dispose();
+            x.Dispose(); r.Dispose(); p.Dispose(); Ap.Dispose(); bcol.Dispose();
+            AV.Dispose(); yv.Dispose();
             return sb.ToString();
         }
     }

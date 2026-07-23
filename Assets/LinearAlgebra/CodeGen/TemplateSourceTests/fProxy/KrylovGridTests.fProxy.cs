@@ -65,7 +65,7 @@ public class fProxyKrylovGridTests
 
         // Runs one solver across every applicable preconditioner column on this gallery. The solver
         // is Skipped wholesale on a gallery it does not accept (rule 1); each surviving precond column
-        // is a fresh per-cell arena.
+        // builds a fresh Allocator.Temp matrix/preconditioner per cell.
         void RunSolver<TInv>(TInv inv, GridSolver solver, MatrixProfile tags) where TInv : struct, IfProxySquareSolverInvoker
         {
             if (!MatrixProfileMatch.Applicable(inv.Requires, inv.Forbids, tags)) return;   // whole solver Skipped
@@ -75,25 +75,22 @@ public class fProxyKrylovGridTests
                 var precond = (GridPrecond)pi;
                 if (!PrecondApplicable(inv.PrecondKind, precond, tags)) continue;           // cell Skipped
 
-                var arena = new Arena(Allocator.Persistent);
-                var A = fProxyKrylovBatteryGallery.Build(ref arena, Gallery);
+                var A = fProxyKrylovBatteryGallery.Build(Gallery);
                 int n = A.M_Rows;
                 var op = new fProxyBSROperator(in A);
                 uint seed = 0xC000u + (uint)Gallery * 1000u + (uint)solver * 100u + (uint)precond;
-                var b = arena.fProxyRandomVec(n, (fProxy)(-1), (fProxy)1, seed);
-                inv.Init(ref arena, n);
-                var x = arena.fProxyVec(n);
+                var b = GenerateOP.fProxyRandomVec(n, (fProxy)(-1), (fProxy)1, seed);
+                inv.Init(n);
+                var x = new fProxyN(n, Allocator.Temp);
                 for (int i = 0; i < n; i++) x[i] = (fProxy)0;
 
-                CellOutcome outcome = RunCell(inv, in A, in op, in b, ref x, precond, ref arena, out fProxy resid);
+                CellOutcome outcome = RunCell(inv, in A, in op, in b, ref x, precond, out fProxy resid);
 
                 bool primaryOk = outcome != CellOutcome.Errored && outcome != CellOutcome.FalseConverged;
                 Record(primaryOk, (fProxy)0, (int)solver, (int)precond, outcome, resid);
 
                 if (IsKnownGoodCombo(solver, precond, tags))
                     Record(outcome == CellOutcome.Converged, (fProxy)1, (int)solver, (int)precond, outcome, resid);
-
-                arena.Dispose();
             }
         }
 
@@ -119,25 +116,26 @@ public class fProxyKrylovGridTests
             (precond == GridPrecond.IC0 || precond == GridPrecond.FSAI || precond == GridPrecond.AMG || precond == GridPrecond.BlockJacobi);
 
         // Builds the requested preconditioner (Identity => plain Solve), runs the solve, classifies.
-        // TPre is inferred per arm so no boxing. AMG owns a separate Dispose from the arena.
+        // TPre is inferred per arm so no boxing. All allocations are Allocator.Temp (job/frame scope
+        // frees them; no Dispose needed, AMG included).
         static CellOutcome RunCell<TInv>(TInv inv, in fProxyBSR A, in fProxyBSROperator op, in fProxyN b,
-                                         ref fProxyN x, GridPrecond pk, ref Arena arena, out fProxy resid)
+                                         ref fProxyN x, GridPrecond pk, out fProxy resid)
             where TInv : struct, IfProxySquareSolverInvoker
         {
             SolveInfo info;
             switch (pk)
             {
                 case GridPrecond.Identity:        info = inv.Solve(in op, in b, ref x); break;
-                case GridPrecond.BlockJacobi:     { var M = arena.fProxyBlockJacobi(in A);     info = inv.SolveWithPrecond(in op, in M, in b, ref x); } break;
-                case GridPrecond.SSOR:            { var M = arena.fProxySSOR(in A);            info = inv.SolveWithPrecond(in op, in M, in b, ref x); } break;
-                case GridPrecond.IC0:             { var M = arena.fProxyIC0(in A);             info = inv.SolveWithPrecond(in op, in M, in b, ref x); } break;
-                case GridPrecond.Chebyshev:       { var M = arena.fProxyChebyshev(in A);       info = inv.SolveWithPrecond(in op, in M, in b, ref x); } break;
-                case GridPrecond.FSAI:            { var M = arena.fProxyFSAI(in A);            info = inv.SolveWithPrecond(in op, in M, in b, ref x); } break;
-                case GridPrecond.AdditiveSchwarz: { var M = arena.fProxyAdditiveSchwarz(in A); info = inv.SolveWithPrecond(in op, in M, in b, ref x); } break;
-                case GridPrecond.AMG:             { var amg = arena.fProxyAMG(in A, out _); var M = new fProxyAMGPreconditioner(in amg); info = inv.SolveWithPrecond(in op, in M, in b, ref x); amg.Dispose(); } break;
-                case GridPrecond.ILU0:            { var M = arena.fProxyILU0(in A);            info = inv.SolveWithPrecond(in op, in M, in b, ref x); } break;
-                case GridPrecond.SPAI:            { var M = arena.fProxySPAI(in A);            info = inv.SolveWithPrecond(in op, in M, in b, ref x); } break;
-                case GridPrecond.RestrictedSchwarz: { var M = arena.fProxyRestrictedSchwarz(in A); info = inv.SolveWithPrecond(in op, in M, in b, ref x); } break;
+                case GridPrecond.BlockJacobi:     { var M = new fProxyBlockJacobi(in A, Allocator.Temp);     info = inv.SolveWithPrecond(in op, in M, in b, ref x); } break;
+                case GridPrecond.SSOR:            { var M = new fProxySSOR(in A, Allocator.Temp);            info = inv.SolveWithPrecond(in op, in M, in b, ref x); } break;
+                case GridPrecond.IC0:             { var M = new fProxyIC0(in A, Allocator.Temp);             info = inv.SolveWithPrecond(in op, in M, in b, ref x); } break;
+                case GridPrecond.Chebyshev:       { var M = new fProxyChebyshev(in A, Allocator.Temp);       info = inv.SolveWithPrecond(in op, in M, in b, ref x); } break;
+                case GridPrecond.FSAI:            { var M = new fProxyFSAI(in A, Allocator.Temp);            info = inv.SolveWithPrecond(in op, in M, in b, ref x); } break;
+                case GridPrecond.AdditiveSchwarz: { var M = new fProxyAdditiveSchwarz(in A, Allocator.Temp); info = inv.SolveWithPrecond(in op, in M, in b, ref x); } break;
+                case GridPrecond.AMG:             { var amg = new fProxyAMG(in A, out _, Allocator.Temp); var M = new fProxyAMGPreconditioner(in amg); info = inv.SolveWithPrecond(in op, in M, in b, ref x); } break;
+                case GridPrecond.ILU0:            { var M = new fProxyILU0(in A, Allocator.Temp);            info = inv.SolveWithPrecond(in op, in M, in b, ref x); } break;
+                case GridPrecond.SPAI:            { var M = new fProxySPAI(in A, Allocator.Temp);            info = inv.SolveWithPrecond(in op, in M, in b, ref x); } break;
+                case GridPrecond.RestrictedSchwarz: { var M = new fProxyRestrictedSchwarz(in A, Allocator.Temp); info = inv.SolveWithPrecond(in op, in M, in b, ref x); } break;
                 default: info = default; break;
             }
             return Classify(info, in A, in x, in b, inv.Tol, out resid);

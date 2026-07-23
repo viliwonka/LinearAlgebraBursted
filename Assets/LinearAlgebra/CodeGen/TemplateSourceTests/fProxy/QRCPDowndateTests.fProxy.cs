@@ -110,7 +110,6 @@ public class fProxyQRCPDowndateTests
         //    no-permutation pin below is scoped to n=16, where it is a genuine, stable invariant.
         void KahanSweep()
         {
-            var arena = new Arena(Allocator.Persistent);
             try
             {
                 for (int ni = 0; ni < 3; ni++)
@@ -123,11 +122,11 @@ public class fProxyQRCPDowndateTests
                              : ti == 2 ? (fProxy)0.54030231f
                              :           (fProxy)0.36235775f;
 
-                    var A0 = arena.fProxyKahan(dim, c);
-                    var Q = A0.Copy();
-                    var R = arena.fProxyMat(dim);
+                    var A0 = fProxyGallery.fProxyKahan(dim, c);
+                    var Q = new fProxyMxN(in A0, Allocator.Temp);
+                    var R = new fProxyMxN(dim, dim, Allocator.Temp);
                     var P = new Pivot(dim, Allocator.Temp);
-                    var u = arena.fProxyVec(dim);
+                    var u = new fProxyN(dim, Allocator.Temp);
 
                     QRCP.decompInPlace(ref Q, ref R, ref P, ref u);
                     TierP(in A0, in Q, in R, in P);
@@ -140,10 +139,9 @@ public class fProxyQRCPDowndateTests
                             RecordEq(P[d], d);
 
                     P.Dispose();
-                    arena.Clear();
                 }
             }
-            finally { arena.Dispose(); }
+            finally { }
         }
 
         // ── Case 1 (rank cross-check): on a genuinely WELL-CONDITIONED, full-rank Kahan instance
@@ -156,19 +154,18 @@ public class fProxyQRCPDowndateTests
         //    of the algorithm, not a downdating bug.
         void KahanRankCrossCheck()
         {
-            var arena = new Arena(Allocator.Persistent);
             try
             {
                 int dim = 16;
-                var A0 = arena.fProxyKahan(dim, (fProxy)0.36235775f);
+                var A0 = fProxyGallery.fProxyKahan(dim, (fProxy)0.36235775f);
 
                 int svdRank = Analysis.rank(in A0);   // SVD-based numerical rank (auto tol)
                 RecordEq(svdRank, dim);               // sanity: this instance is genuinely full rank
 
-                var Q = A0.Copy();
-                var R = arena.fProxyMat(dim);
+                var Q = new fProxyMxN(in A0, Allocator.Temp);
+                var R = new fProxyMxN(dim, dim, Allocator.Temp);
                 var P = new Pivot(dim, Allocator.Temp);
-                var u = arena.fProxyVec(dim);
+                var u = new fProxyN(dim, Allocator.Temp);
                 QRCP.decompInPlace(ref Q, ref R, ref P, ref u);
                 TierP(in A0, in Q, in R, in P);
 
@@ -177,7 +174,7 @@ public class fProxyQRCPDowndateTests
 
                 P.Dispose();
             }
-            finally { arena.Dispose(); }
+            finally { }
         }
 
         // ── Case 2: norm-collapse ladder. A = [B | B·X + eps·noise] — k independent columns plus k
@@ -187,7 +184,6 @@ public class fProxyQRCPDowndateTests
         //    threshold for BOTH float and double (a single template, both types must hold).
         void NormCollapseLadder()
         {
-            var arena = new Arena(Allocator.Persistent);
             try
             {
                 int m = 20, k = 4, n = 2 * k;
@@ -205,12 +201,12 @@ public class fProxyQRCPDowndateTests
                                :          (fProxy)1e-3f * zt; // clearly below -> rank k
                     int pinAbs = e == 0 ? 2 * k : (e == 3 ? k : -1);
 
-                    var B     = arena.fProxyRandomMat(m, k, -1f, 1f, 424200u + (uint)e);
-                    var X     = arena.fProxyRandomMat(k, k, -1f, 1f, 990000u + (uint)e);
-                    var noise = arena.fProxyRandomMat(m, k, -1f, 1f, 133700u + (uint)e);
+                    var B     = GenerateOP.fProxyRandomMat(m, k, -1f, 1f, 424200u + (uint)e);
+                    var X     = GenerateOP.fProxyRandomMat(k, k, -1f, 1f, 990000u + (uint)e);
+                    var noise = GenerateOP.fProxyRandomMat(m, k, -1f, 1f, 133700u + (uint)e);
                     var D     = Blas.dot(B, X); // m×k dependent block (exactly in span(B))
 
-                    var A0 = arena.fProxyMat(m, n);
+                    var A0 = new fProxyMxN(m, n, Allocator.Temp);
                     for (int r = 0; r < m; r++)
                     {
                         for (int c = 0; c < k; c++) A0[r, c]     = B[r, c];
@@ -219,10 +215,10 @@ public class fProxyQRCPDowndateTests
 
                     int svdRank = Analysis.rank(in A0);
 
-                    var Q = A0.Copy();
-                    var R = arena.fProxyMat(n);
+                    var Q = new fProxyMxN(in A0, Allocator.Temp);
+                    var R = new fProxyMxN(n, n, Allocator.Temp);
                     var P = new Pivot(n, Allocator.Temp);
-                    var u = arena.fProxyVec(m);
+                    var u = new fProxyN(m, Allocator.Temp);
                     QRCP.decompInPlace(ref Q, ref R, ref P, ref u);
                     TierP(in A0, in Q, in R, in P);
 
@@ -244,10 +240,9 @@ public class fProxyQRCPDowndateTests
                     }
 
                     P.Dispose();
-                    arena.Clear();
                 }
             }
-            finally { arena.Dispose(); }
+            finally { }
         }
 
         // ── Case 3: mass-cancellation. Every column ≈ a scalar multiple of ONE pivot direction plus a
@@ -255,21 +250,20 @@ public class fProxyQRCPDowndateTests
         //    must fire repeatedly. Tier P + detected rank == 1 at the AUTO relTol (default overload).
         void MassCancellation()
         {
-            var arena = new Arena(Allocator.Persistent);
             try
             {
                 int m = 20, n = 8;
                 var rng = new Unity.Mathematics.Random(0x3A55u);
 
                 // Pivot direction v (m-vector), O(1) entries.
-                var v = arena.fProxyVec(m);
+                var v = new fProxyN(m, Allocator.Temp);
                 for (int r = 0; r < m; r++) v[r] = (fProxy)(rng.NextFloat(-1f, 1f));
 
                 // Noise floor scaled off the type zero-threshold so it stays BELOW the auto rank
                 // tolerance for BOTH float and double (0.01·zeroThreshold ≪ max(m,n)·zeroThreshold).
                 fProxy noiseScale = (fProxy)0.01f * Consts.fProxyZeroThreshold;
 
-                var A0 = arena.fProxyMat(m, n);
+                var A0 = new fProxyMxN(m, n, Allocator.Temp);
                 for (int c = 0; c < n; c++)
                 {
                     fProxy alpha = (fProxy)(rng.NextFloat(0.25f, 4f)); // distinct scalar per column
@@ -277,26 +271,26 @@ public class fProxyQRCPDowndateTests
                         A0[r, c] = alpha * v[r] + noiseScale * (fProxy)(rng.NextFloat(-1f, 1f));
                 }
 
-                var Q = A0.Copy();
-                var R = arena.fProxyMat(n);
+                var Q = new fProxyMxN(in A0, Allocator.Temp);
+                var R = new fProxyMxN(n, n, Allocator.Temp);
                 var P = new Pivot(n, Allocator.Temp);
-                var u = arena.fProxyVec(m);
+                var u = new fProxyN(m, Allocator.Temp);
                 QRCP.decompInPlace(ref Q, ref R, ref P, ref u);
                 TierP(in A0, in Q, in R, in P);
 
                 RecordEq(RankFromR(in R, m, n), 1);
 
                 // Also via the AUTO-tol solve path (independent rank consumer, default overload).
-                var As = A0.Copy();
-                var b  = arena.fProxyVec(m);
+                var As = new fProxyMxN(in A0, Allocator.Temp);
+                var b  = new fProxyN(m, Allocator.Temp);
                 for (int r = 0; r < m; r++) b[r] = (fProxy)(rng.NextFloat(-1f, 1f));
-                var x  = arena.fProxyVec(n);
+                var x  = new fProxyN(n, Allocator.Temp);
                 int solveRank = QRCP.solveInPlace(ref As, ref b, ref x).rank;
                 RecordEq(solveRank, 1);
 
                 P.Dispose();
             }
-            finally { arena.Dispose(); }
+            finally { }
         }
 
         // ── Case 4: gradual-decay attack. A random matrix with a slowly-decaying geometric singular
@@ -324,7 +318,6 @@ public class fProxyQRCPDowndateTests
         //    transcription. A dedicated Tier-E regression test for this ONE guard remains open coverage.
         void GradualDecay()
         {
-            var arena = new Arena(Allocator.Persistent);
             try
             {
                 int m = 160, n = 128, k = n; // min(m,n) = 128
@@ -332,7 +325,7 @@ public class fProxyQRCPDowndateTests
                 // ratio = cond^(-1/(k-1)) = 0.95  =>  cond = 0.95^-(k-1).
                 fProxy cond = math.pow((fProxy)0.95f, (fProxy)(-(k - 1)));
 
-                var A0  = arena.fProxyMat(m, n);
+                var A0  = new fProxyMxN(m, n, Allocator.Temp);
                 var rng = new Unity.Mathematics.Random(0x9DEC0095u);
                 Rand.conditionedInPlace(ref rng, ref A0, cond);
 
@@ -340,16 +333,16 @@ public class fProxyQRCPDowndateTests
                 // construction genuinely stresses cumulative decay — guards against a mis-set cond.
                 RecordBound((fProxy)500, cond);
 
-                var Q = A0.Copy();
-                var R = arena.fProxyMat(n);
+                var Q = new fProxyMxN(in A0, Allocator.Temp);
+                var R = new fProxyMxN(n, n, Allocator.Temp);
                 var P = new Pivot(n, Allocator.Temp);
-                var u = arena.fProxyVec(m);
+                var u = new fProxyN(m, Allocator.Temp);
                 QRCP.decompInPlace(ref Q, ref R, ref P, ref u);
                 TierP(in A0, in Q, in R, in P);
 
                 P.Dispose();
             }
-            finally { arena.Dispose(); }
+            finally { }
         }
 
         // ── Case 5: ties. Exact-duplicate columns AND a 1-ulp-apart-norm column. Tier P (which tie
@@ -357,11 +350,10 @@ public class fProxyQRCPDowndateTests
         //    twice must yield bit-identical P, Q, R.
         void Ties()
         {
-            var arena = new Arena(Allocator.Persistent);
             try
             {
                 int m = 8, n = 5;
-                var A0 = arena.fProxyRandomMat(m, n, -2f, 2f, 0x71E5u);
+                var A0 = GenerateOP.fProxyRandomMat(m, n, -2f, 2f, 0x71E5u);
                 // column 2 := exact duplicate of column 0.
                 for (int r = 0; r < m; r++) A0[r, 2] = A0[r, 0];
                 // column 4 := column 1 scaled by (1 + 2·eps): a ~1-ulp-apart NORM tie (no math.nextafter
@@ -370,18 +362,18 @@ public class fProxyQRCPDowndateTests
                 for (int r = 0; r < m; r++) A0[r, 4] = A0[r, 1] * ulpish;
 
                 // Run 1.
-                var Q1 = A0.Copy();
-                var R1 = arena.fProxyMat(n);
+                var Q1 = new fProxyMxN(in A0, Allocator.Temp);
+                var R1 = new fProxyMxN(n, n, Allocator.Temp);
                 var P1 = new Pivot(n, Allocator.Temp);
-                var u1 = arena.fProxyVec(m);
+                var u1 = new fProxyN(m, Allocator.Temp);
                 QRCP.decompInPlace(ref Q1, ref R1, ref P1, ref u1);
                 TierP(in A0, in Q1, in R1, in P1);
 
                 // Run 2 (independent copy, identical overload).
-                var Q2 = A0.Copy();
-                var R2 = arena.fProxyMat(n);
+                var Q2 = new fProxyMxN(in A0, Allocator.Temp);
+                var R2 = new fProxyMxN(n, n, Allocator.Temp);
                 var P2 = new Pivot(n, Allocator.Temp);
-                var u2 = arena.fProxyVec(m);
+                var u2 = new fProxyN(m, Allocator.Temp);
                 QRCP.decompInPlace(ref Q2, ref R2, ref P2, ref u2);
 
                 for (int j = 0; j < n; j++) RecordEq(P1[j], P2[j]);
@@ -390,18 +382,17 @@ public class fProxyQRCPDowndateTests
 
                 P1.Dispose(); P2.Dispose();
             }
-            finally { arena.Dispose(); }
+            finally { }
         }
 
         // ── Case 6a: scale extremes. Column 2-norms spanning many orders of magnitude within ONE
         //    matrix. Tier P: no NaN/Inf, reconstruction holds (relative), monotone diagonal.
         void ScaleExtremes()
         {
-            var arena = new Arena(Allocator.Persistent);
             try
             {
                 int m = 10, n = 6;
-                var A0 = arena.fProxyRandomMat(m, n, -1f, 1f, 0x5CA1E5u);
+                var A0 = GenerateOP.fProxyRandomMat(m, n, -1f, 1f, 0x5CA1E5u);
                 // per-column scale factors from ~1e-6 to ~1e6 (12 orders of dynamic range — safe for
                 // float, and equally exercised for double).
                 for (int c = 0; c < n; c++)
@@ -416,16 +407,16 @@ public class fProxyQRCPDowndateTests
                         A0[r, c] *= scale;
                 }
 
-                var Q = A0.Copy();
-                var R = arena.fProxyMat(n);
+                var Q = new fProxyMxN(in A0, Allocator.Temp);
+                var R = new fProxyMxN(n, n, Allocator.Temp);
                 var P = new Pivot(n, Allocator.Temp);
-                var u = arena.fProxyVec(m);
+                var u = new fProxyN(m, Allocator.Temp);
                 QRCP.decompInPlace(ref Q, ref R, ref P, ref u);
                 TierP(in A0, in Q, in R, in P);
 
                 P.Dispose();
             }
-            finally { arena.Dispose(); }
+            finally { }
         }
 
         // ── Case 6b: degenerate shapes. Fully-zero matrix (rank 0), zero columns mixed in (rank ==
@@ -433,21 +424,19 @@ public class fProxyQRCPDowndateTests
         //    zero cases. No NaN anywhere.
         void ZeroAndTinySizes()
         {
-            var arena = new Arena(Allocator.Persistent);
             try
             {
                 // (a) fully zero 5×3 -> rank 0.
                 {
-                    var A0 = arena.fProxyMat(5, 3);
-                    var Q = A0.Copy();
-                    var R = arena.fProxyMat(3);
+                    var A0 = new fProxyMxN(5, 3, Allocator.Temp);
+                    var Q = new fProxyMxN(in A0, Allocator.Temp);
+                    var R = new fProxyMxN(3, 3, Allocator.Temp);
                     var P = new Pivot(3, Allocator.Temp);
-                    var u = arena.fProxyVec(5);
+                    var u = new fProxyN(5, Allocator.Temp);
                     QRCP.decompInPlace(ref Q, ref R, ref P, ref u);
                     TierP(in A0, in Q, in R, in P);
                     RecordEq(RankFromR(in R, 5, 3), 0);
                     P.Dispose();
-                    arena.Clear();
                 }
 
                 // (b) zero columns mixed in: cols 0,3 nonzero AND linearly independent (col0 varies
@@ -456,18 +445,17 @@ public class fProxyQRCPDowndateTests
                 //     i.e. parallel -> rank 1; hence col0/col3 must be non-parallel.)
                 {
                     int m = 6, n = 5;
-                    var A0 = arena.fProxyMat(m, n);
+                    var A0 = new fProxyMxN(m, n, Allocator.Temp);
                     for (int r = 0; r < m; r++) A0[r, 0] = (fProxy)(r + 1); // (1,2,3,4,5,6)
                     A0[0, 3] = (fProxy)2f; A0[3, 3] = (fProxy)2f;           // supported on rows 0,3 only
-                    var Q = A0.Copy();
-                    var R = arena.fProxyMat(n);
+                    var Q = new fProxyMxN(in A0, Allocator.Temp);
+                    var R = new fProxyMxN(n, n, Allocator.Temp);
                     var P = new Pivot(n, Allocator.Temp);
-                    var u = arena.fProxyVec(m);
+                    var u = new fProxyN(m, Allocator.Temp);
                     QRCP.decompInPlace(ref Q, ref R, ref P, ref u);
                     TierP(in A0, in Q, in R, in P);
                     RecordEq(RankFromR(in R, m, n), 2);
                     P.Dispose();
-                    arena.Clear();
                 }
 
                 // (c) single-column tall (n=1), a few different m.
@@ -475,18 +463,17 @@ public class fProxyQRCPDowndateTests
                     for (int mi = 0; mi < 3; mi++)
                     {
                         int m = mi == 0 ? 1 : (mi == 1 ? 4 : 9);
-                        var A0 = arena.fProxyMat(m, 1);
+                        var A0 = new fProxyMxN(m, 1, Allocator.Temp);
                         for (int r = 0; r < m; r++) A0[r, 0] = (fProxy)(r + 1);
-                        var Q = A0.Copy();
-                        var R = arena.fProxyMat(1);
+                        var Q = new fProxyMxN(in A0, Allocator.Temp);
+                        var R = new fProxyMxN(1, 1, Allocator.Temp);
                         var P = new Pivot(1, Allocator.Temp);
-                        var u = arena.fProxyVec(m);
+                        var u = new fProxyN(m, Allocator.Temp);
                         QRCP.decompInPlace(ref Q, ref R, ref P, ref u);
                         TierP(in A0, in Q, in R, in P);
                         RecordEq(P[0], 0);
                         RecordEq(RankFromR(in R, m, 1), 1);
                         P.Dispose();
-                        arena.Clear();
                     }
                 }
 
@@ -496,21 +483,20 @@ public class fProxyQRCPDowndateTests
                     for (int mi = 0; mi < 2; mi++)
                     {
                         int m = mi == 0 ? n : n + 2;
-                        var A0 = arena.fProxyRandomMat(m, n, -3f, 3f, 0x717Au + (uint)(n * 7 + mi));
+                        var A0 = GenerateOP.fProxyRandomMat(m, n, -3f, 3f, 0x717Au + (uint)(n * 7 + mi));
                         for (int d = 0; d < n; d++) A0[d, d] += (fProxy)6f; // ensure full rank
-                        var Q = A0.Copy();
-                        var R = arena.fProxyMat(n);
+                        var Q = new fProxyMxN(in A0, Allocator.Temp);
+                        var R = new fProxyMxN(n, n, Allocator.Temp);
                         var P = new Pivot(n, Allocator.Temp);
-                        var u = arena.fProxyVec(m);
+                        var u = new fProxyN(m, Allocator.Temp);
                         QRCP.decompInPlace(ref Q, ref R, ref P, ref u);
                         TierP(in A0, in Q, in R, in P);
                         RecordEq(RankFromR(in R, m, n), n);
                         P.Dispose();
-                        arena.Clear();
                     }
                 }
             }
-            finally { arena.Dispose(); }
+            finally { }
         }
 
         // ── Tier E demonstrator: a construction ENGINEERED to be well-separated at every step (random
@@ -522,11 +508,10 @@ public class fProxyQRCPDowndateTests
         //    factors match to the last bit.
         void TierEDistinctMagnitudes()
         {
-            var arena = new Arena(Allocator.Persistent);
             try
             {
                 int m = 10, n = 5;
-                var A0 = arena.fProxyRandomMat(m, n, -1f, 1f, 0x7E5700u);
+                var A0 = GenerateOP.fProxyRandomMat(m, n, -1f, 1f, 0x7E5700u);
                 fProxy sc = (fProxy)1;
                 for (int c = 0; c < n; c++)
                 {
@@ -534,10 +519,10 @@ public class fProxyQRCPDowndateTests
                     sc *= (fProxy)8; // 1, 8, 64, 512, 4096 -> hugely staggered column norms
                 }
 
-                bool sep = ProdAndOracle(ref arena, in A0, out int _);
+                bool sep = ProdAndOracle(in A0, out int _);
                 RecordEq(sep ? 1 : 0, 1); // MUST be Tier-E-eligible or the demonstrator is not demonstrating
             }
-            finally { arena.Dispose(); }
+            finally { }
         }
 
         // ── Cache-overload equivalence: the zero-alloc cache overloads (Arena.fProxyQRCPCache) must be
@@ -545,21 +530,20 @@ public class fProxyQRCPDowndateTests
         //    for both decompInPlace and solveInPlace (P/Q/R/x/rank), full-rank AND rank-deficient.
         void CacheEquivalence(int m, int n, uint seed, bool rankDeficient)
         {
-            var arena = new Arena(Allocator.Persistent);
             try
             {
-                var A0 = arena.fProxyRandomMat(m, n, -3f, 3f, seed);
+                var A0 = GenerateOP.fProxyRandomMat(m, n, -3f, 3f, seed);
                 for (int d = 0; d < n; d++) A0[d, d] += (fProxy)6f;
                 if (rankDeficient)
                     for (int r = 0; r < m; r++)
                         A0[r, n - 1] = A0[r, 0] + A0[r, 1]; // exact dependency -> rank n-1
 
                 // decompInPlace: non-cache vs cache.
-                var Anc = A0.Copy(); var Rnc = arena.fProxyMat(n); var Pnc = new Pivot(n, Allocator.Temp); var unc = arena.fProxyVec(m);
+                var Anc = new fProxyMxN(in A0, Allocator.Temp); var Rnc = new fProxyMxN(n, n, Allocator.Temp); var Pnc = new Pivot(n, Allocator.Temp); var unc = new fProxyN(m, Allocator.Temp);
                 QRCP.decompInPlace(ref Anc, ref Rnc, ref Pnc, ref unc);
 
-                var Ac = A0.Copy(); var Rc = arena.fProxyMat(n); var Pc = new Pivot(n, Allocator.Temp); var uc = arena.fProxyVec(m);
-                var cache = arena.fProxyQRCPCache(n);
+                var Ac = new fProxyMxN(in A0, Allocator.Temp); var Rc = new fProxyMxN(n, n, Allocator.Temp); var Pc = new Pivot(n, Allocator.Temp); var uc = new fProxyN(m, Allocator.Temp);
+                var cache = new fProxyQRCPCache(n, Allocator.Temp);
                 QRCP.decompInPlace(ref Ac, ref Rc, ref Pc, ref uc, ref cache);
 
                 for (int j = 0; j < n; j++) RecordEq(Pnc[j], Pc[j]);
@@ -568,13 +552,13 @@ public class fProxyQRCPDowndateTests
 
                 // solveInPlace: non-cache vs cache (default relTol both). solveInPlace destroys b
                 // (fused), so each call gets its own copy of the identical RHS.
-                var b0 = arena.fProxyRandomVec(m, -3f, 3f, seed + 1u);
+                var b0 = GenerateOP.fProxyRandomVec(m, -3f, 3f, seed + 1u);
 
-                var As1 = A0.Copy(); var b1 = b0.Copy(); var Rs1 = arena.fProxyMat(n); var Ps1 = new Pivot(n, Allocator.Temp); var us1 = arena.fProxyVec(m); var x1 = arena.fProxyVec(n);
+                var As1 = new fProxyMxN(in A0, Allocator.Temp); var b1 = new fProxyN(in b0, Allocator.Temp); var Rs1 = new fProxyMxN(n, n, Allocator.Temp); var Ps1 = new Pivot(n, Allocator.Temp); var us1 = new fProxyN(m, Allocator.Temp); var x1 = new fProxyN(n, Allocator.Temp);
                 RankInfo info1 = QRCP.solveInPlace(ref As1, ref b1, ref x1, ref Rs1, ref Ps1, ref us1);
 
-                var As2 = A0.Copy(); var b2 = b0.Copy(); var Rs2 = arena.fProxyMat(n); var Ps2 = new Pivot(n, Allocator.Temp); var us2 = arena.fProxyVec(m); var x2 = arena.fProxyVec(n);
-                var cache2 = arena.fProxyQRCPCache(n);
+                var As2 = new fProxyMxN(in A0, Allocator.Temp); var b2 = new fProxyN(in b0, Allocator.Temp); var Rs2 = new fProxyMxN(n, n, Allocator.Temp); var Ps2 = new Pivot(n, Allocator.Temp); var us2 = new fProxyN(m, Allocator.Temp); var x2 = new fProxyN(n, Allocator.Temp);
+                var cache2 = new fProxyQRCPCache(n, Allocator.Temp);
                 RankInfo info2 = QRCP.solveInPlace(ref As2, ref b2, ref x2, ref Rs2, ref Ps2, ref us2, ref cache2);
 
                 RecordEq((int)info1.status, (int)info2.status);
@@ -585,7 +569,7 @@ public class fProxyQRCPDowndateTests
 
                 Pnc.Dispose(); Pc.Dispose(); Ps1.Dispose(); Ps2.Dispose();
             }
-            finally { arena.Dispose(); }
+            finally { }
         }
 
         // ── Blocked (level-3 dlaqps panel) core. Everything above tops out at n = 128 in ONE case
@@ -607,7 +591,6 @@ public class fProxyQRCPDowndateTests
         //        re-sum branch that the unblocked core does NOT have. Rank must collapse to 1 (auto tol).
         void BlockedPanels()
         {
-            var arena = new Arena(Allocator.Persistent);
             try
             {
                 // (a) panel-boundary shapes, staggered well-separated norms. n = 64 (2*NB), 65 (2*NB+1),
@@ -618,7 +601,7 @@ public class fProxyQRCPDowndateTests
                 {
                     int n = s == 0 ? 64 : s == 1 ? 65 : s == 2 ? 96 : s == 3 ? 96 : s == 4 ? 128 : 128;
                     int m = s == 0 ? 64 : s == 1 ? 65 : s == 2 ? 96 : s == 3 ? 140 : s == 4 ? 128 : 200;
-                    var A0 = arena.fProxyRandomMat(m, n, -1f, 1f, 0xB10C0000u + (uint)s);
+                    var A0 = GenerateOP.fProxyRandomMat(m, n, -1f, 1f, 0xB10C0000u + (uint)s);
                     // Scale column c to a geometric norm target 1 .. 1e3 (ratio 1e3^(1/(n-1)) between
                     // neighbours — above the Tier-E separation margin, yet a modest enough total range
                     // that the scale-relative zero-column threshold (1e-6·LInf ≈ 1e-3 here) stays well
@@ -632,8 +615,7 @@ public class fProxyQRCPDowndateTests
                         fProxy scale = math.pow((fProxy)1e3f, t);
                         for (int r = 0; r < m; r++) A0[r, c] *= scale;
                     }
-                    if (ProdVsOracleTol(ref arena, in A0, (fProxy)1e-3f)) eligible++;
-                    arena.Clear();
+                    if (ProdVsOracleTol(in A0, (fProxy)1e-3f)) eligible++;
                 }
                 // The staggered construction is engineered to be Tier-E-eligible; require the tight
                 // pivot/Q/R check to have actually run at least once (else it is not testing the
@@ -644,11 +626,11 @@ public class fProxyQRCPDowndateTests
                 {
                     int m = 100, n = 80;
                     var rng = new Unity.Mathematics.Random(0x6C07u);
-                    var v = arena.fProxyVec(m);
+                    var v = new fProxyN(m, Allocator.Temp);
                     for (int r = 0; r < m; r++) v[r] = (fProxy)(rng.NextFloat(-1f, 1f));
                     fProxy noiseScale = (fProxy)0.01f * Consts.fProxyZeroThreshold;
 
-                    var A0 = arena.fProxyMat(m, n);
+                    var A0 = new fProxyMxN(m, n, Allocator.Temp);
                     for (int c = 0; c < n; c++)
                     {
                         fProxy alpha = (fProxy)(rng.NextFloat(0.25f, 4f));
@@ -656,17 +638,17 @@ public class fProxyQRCPDowndateTests
                             A0[r, c] = alpha * v[r] + noiseScale * (fProxy)(rng.NextFloat(-1f, 1f));
                     }
 
-                    var Q = A0.Copy();
-                    var R = arena.fProxyMat(n);
+                    var Q = new fProxyMxN(in A0, Allocator.Temp);
+                    var R = new fProxyMxN(n, n, Allocator.Temp);
                     var P = new Pivot(n, Allocator.Temp);
-                    var u = arena.fProxyVec(m);
+                    var u = new fProxyN(m, Allocator.Temp);
                     QRCP.decompInPlace(ref Q, ref R, ref P, ref u);   // blocked (n = 80 >= 64)
                     TierP(in A0, in Q, in R, in P);
                     RecordEq(RankFromR(in R, m, n), 1);
                     P.Dispose();
                 }
             }
-            finally { arena.Dispose(); }
+            finally { }
         }
 
         // Blocked-vs-oracle for a Tier-E-eligible input: production decompInPlace (BLOCKED at these
@@ -675,16 +657,16 @@ public class fProxyQRCPDowndateTests
         // oracle's separation flag; the tight asserts only fire when it certifies eligibility. This is
         // the toleranced sibling of ProdAndOracle (which demands bit-identity — valid only for the
         // unblocked path, whose summation order matches the oracle's).
-        bool ProdVsOracleTol(ref Arena arena, in fProxyMxN A0, fProxy relTol)
+        bool ProdVsOracleTol(in fProxyMxN A0, fProxy relTol)
         {
             int m = A0.M_Rows;
             int n = A0.N_Cols;
 
-            var Qp = A0.Copy(); var Rp = arena.fProxyMat(n); var Pp = new Pivot(n, Allocator.Temp); var up = arena.fProxyVec(m);
+            var Qp = new fProxyMxN(in A0, Allocator.Temp); var Rp = new fProxyMxN(n, n, Allocator.Temp); var Pp = new Pivot(n, Allocator.Temp); var up = new fProxyN(m, Allocator.Temp);
             QRCP.decompInPlace(ref Qp, ref Rp, ref Pp, ref up);
             TierP(in A0, in Qp, in Rp, in Pp);
 
-            var Qo = A0.Copy(); var Ro = arena.fProxyMat(n); var Po = new Pivot(n, Allocator.Temp); var uo = arena.fProxyVec(m);
+            var Qo = new fProxyMxN(in A0, Allocator.Temp); var Ro = new fProxyMxN(n, n, Allocator.Temp); var Po = new Pivot(n, Allocator.Temp); var uo = new fProxyN(m, Allocator.Temp);
             bool sep = OracleDecompInPlace(ref Qo, ref Ro, ref Po, ref uo);
 
             if (sep)
@@ -736,12 +718,13 @@ public class fProxyQRCPDowndateTests
             fProxy scale = Norms.LInf(in A0) + (fProxy)1;
 
             // reconstruction: A permuted by P == Q·R.
-            var Aperm = A0.Copy();
+            var Aperm = new fProxyMxN(in A0, Allocator.Temp);
             for (int r = 0; r < m; r++)
                 for (int j = 0; j < n; j++)
                     Aperm[r, j] = A0[r, P[j]];
 
-            fProxyMxN diff = Aperm - Blas.dot(Q, R);
+            fProxyMxN diff = new fProxyMxN(in Aperm, Allocator.Temp);
+            fProxyComp.subInPlace(diff, Blas.dot(Q, R));
             if (Analysis.isAnyNan(in diff))
                 throw new System.Exception("QRCPDowndateTests: NaN detected in reconstruction");
             RecordBound(Analysis.MaxZeroError(diff), tol * scale);
@@ -799,17 +782,17 @@ public class fProxyQRCPDowndateTests
         // well-separated), additionally asserts the pivot sequence AND Q AND R are bit-identical.
         // Returns the separation flag (and, out, the detected rank from production's R). PUBLIC so the
         // fuzz job can drive it with a shared Fail array.
-        public bool ProdAndOracle(ref Arena arena, in fProxyMxN A0, out int prodRank)
+        public bool ProdAndOracle(in fProxyMxN A0, out int prodRank)
         {
             int m = A0.M_Rows;
             int n = A0.N_Cols;
 
-            var Qp = A0.Copy(); var Rp = arena.fProxyMat(n); var Pp = new Pivot(n, Allocator.Temp); var up = arena.fProxyVec(m);
+            var Qp = new fProxyMxN(in A0, Allocator.Temp); var Rp = new fProxyMxN(n, n, Allocator.Temp); var Pp = new Pivot(n, Allocator.Temp); var up = new fProxyN(m, Allocator.Temp);
             QRCP.decompInPlace(ref Qp, ref Rp, ref Pp, ref up);
             TierP(in A0, in Qp, in Rp, in Pp);
             prodRank = RankFromR(in Rp, m, n);
 
-            var Qo = A0.Copy(); var Ro = arena.fProxyMat(n); var Po = new Pivot(n, Allocator.Temp); var uo = arena.fProxyVec(m);
+            var Qo = new fProxyMxN(in A0, Allocator.Temp); var Ro = new fProxyMxN(n, n, Allocator.Temp); var Po = new Pivot(n, Allocator.Temp); var uo = new fProxyN(m, Allocator.Temp);
             bool sep = OracleDecompInPlace(ref Qo, ref Ro, ref Po, ref uo);
 
             if (sep)
@@ -1043,7 +1026,6 @@ public class fProxyQRCPDowndateTests
         public void Execute()
         {
             var job = new TestJob { Fail = Fail };
-            var arena = new Arena(Allocator.Persistent);
             try
             {
                 int total = 72;
@@ -1058,7 +1040,7 @@ public class fProxyQRCPDowndateTests
                     int m = n + (t % 25);        // square..moderately tall
                     if (t % 9 == 0) m = n + 120; // occasional very tall
 
-                    var A0 = arena.fProxyRandomMat(m, n, -3f, 3f, seed);
+                    var A0 = GenerateOP.fProxyRandomMat(m, n, -3f, 3f, seed);
 
                     // Inject rank deficiency on ~1/3 of seeds (mix exact and near-exact).
                     int mode = t % 3;
@@ -1075,21 +1057,19 @@ public class fProxyQRCPDowndateTests
                                          + near * (fProxy)((r % 5) - 2); // near-exact dependency
                     }
 
-                    bool sep = job.ProdAndOracle(ref arena, in A0, out int _);
+                    bool sep = job.ProdAndOracle(in A0, out int _);
                     if (sep)
                     {
                         eligible++;
                         if (Fail[0] == (fProxy)0) tierEpass++; // no bit-mismatch recorded so far
                     }
-
-                    arena.Clear();
                 }
 
                 Counts[0] = eligible;
                 Counts[1] = total;
                 Counts[2] = tierEpass;
             }
-            finally { arena.Dispose(); }
+            finally { }
         }
     }
 
@@ -1119,14 +1099,12 @@ public class fProxyQRCPDowndateTests
     [Test]
     public void QrcpCacheThrowsOnWrongSize()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.fProxyRandomMat(5, 3, -1f, 1f, 12345u);
-        var R = arena.fProxyMat(3);
+        var A = GenerateOP.fProxyRandomMat(5, 3, -1f, 1f, 12345u);
+        var R = new fProxyMxN(3, 3, Allocator.Temp);
         var P = new Pivot(3, Allocator.Persistent);
-        var u = arena.fProxyVec(5);
-        var cache = arena.fProxyQRCPCache(2); // wrong: must be sized for n == 3
+        var u = new fProxyN(5, Allocator.Temp);
+        var cache = new fProxyQRCPCache(2, Allocator.Temp); // wrong: must be sized for n == 3
         Assert.Catch<ArgumentException>(() => QRCP.decompInPlace(ref A, ref R, ref P, ref u, ref cache));
         P.Dispose();
-        arena.Dispose();
     }
 }

@@ -56,11 +56,11 @@ public class doubleSparseIC0Tests
         // SPD block-tridiagonal chain: diagonal blocks 2*BR*I + ones-perturbation (symmetric,
         // strongly diagonally dominant), off-diagonal coupling blocks -I. Block-tridiagonal
         // patterns are fill-free under Cholesky, so IC(0) == exact Cholesky here.
-        static doubleBSR BuildBlockTridiag(ref Arena arena, int nb, int BR)
+        static doubleBSR BuildBlockTridiag(int nb, int BR)
         {
-            var builder = arena.doubleBSRBuilder(nb, nb, BR, BR);
-            var diag = arena.doubleMat(BR, BR);
-            var off = arena.doubleMat(BR, BR);
+            var builder = new doubleBSRBuilder(nb, nb, BR, BR, Allocator.Temp);
+            var diag = new doubleMxN(BR, BR, Allocator.Temp);
+            var off = new doubleMxN(BR, BR, Allocator.Temp);
 
             for (int r = 0; r < BR; r++)
                 for (int c = 0; c < BR; c++)
@@ -78,100 +78,88 @@ public class doubleSparseIC0Tests
                     builder.AddBlock(i, i + 1, in off);
                 }
             }
-            return builder.ToBSR(ref arena);
+            return builder.ToBSR(Allocator.Temp);
         }
 
         void ExactOnBlockTridiagonal()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             const int nb = 6, BR = 3;
-            var A = BuildBlockTridiag(ref arena, nb, BR);
+            var A = BuildBlockTridiag(nb, BR);
             int n = A.M_Rows;
 
-            var M = arena.doubleIC0(in A);
+            var M = new doubleIC0(in A, Allocator.Temp);
             Assert.IsTrue(M.Shift == (double)0);   // clean factorization, no shift needed
 
-            var r = arena.doubleRandomVec(n, -1f, 1f, 831001u);
-            var z = arena.doubleVec(n);
+            var r = GenerateOP.doubleRandomVec(n, -1f, 1f, 831001u);
+            var z = new doubleN(n, Allocator.Temp);
             M.Apply(in r, ref z);
 
             // Dense Cholesky oracle: z must equal A^-1 r because IC(0) is exact on this pattern.
-            var D = A.ToDense(ref arena);
-            var zRef = arena.doubleVec(n);
+            var D = A.ToDense(Allocator.Temp);
+            var zRef = new doubleN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) zRef[i] = r[i];
             var info = CHO.solveInPlace(ref D, ref zRef);
             Assert.IsTrue(info.Solved);
 
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(math.abs(z[i] - zRef[i]) < Tol() * ((double)1 + math.abs(zRef[i])));
-
-            arena.Dispose();
         }
 
         void BeatsJacobiOnLaplacian()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleLaplacian2D(4, 16);
-            var bJ = arena.doubleBlockJacobi(in A);
-            var ic0 = arena.doubleIC0(in A);
+            var A = doubleGallery.doubleLaplacian2D(4, 16);
+            var bJ = new doubleBlockJacobi(in A, Allocator.Temp);
+            var ic0 = new doubleIC0(in A, Allocator.Temp);
             int n = A.M_Rows;
 
-            var xTrue = arena.doubleRandomVec(n, 0.5f, 1.5f, 831002u);
+            var xTrue = GenerateOP.doubleRandomVec(n, 0.5f, 1.5f, 831002u);
             var b = BSR.spMV(in A, in xTrue);
             double tol = Consts.doubleSqrtEps;
             int maxIter = 8 * n;
 
-            var xJ = arena.doubleVec(n);
+            var xJ = new doubleN(n, Allocator.Temp);
             var infoJ = Krylov.cg(in A, in bJ, in b, ref xJ, maxIter, tol);
             Assert.IsTrue(infoJ.Solved);
 
-            var xI = arena.doubleVec(n);
+            var xI = new doubleN(n, Allocator.Temp);
             var infoI = Krylov.cg(in A, in ic0, in b, ref xI, maxIter, tol);
             Assert.IsTrue(infoI.Solved);
 
             Assert.IsTrue((double)infoI.iterations <= (double)infoJ.iterations * 0.9);
-
-            arena.Dispose();
         }
 
         void BeatsJacobiOnRandomSparseSPD()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleRandomSparseSPD(30, 3, (double)0.35, 831003u);
-            var bJ = arena.doubleBlockJacobi(in A);
-            var ic0 = arena.doubleIC0(in A);
+            var A = doubleGallery.doubleRandomSparseSPD(30, 3, (double)0.35, 831003u);
+            var bJ = new doubleBlockJacobi(in A, Allocator.Temp);
+            var ic0 = new doubleIC0(in A, Allocator.Temp);
             int n = A.M_Rows;
 
-            var xTrue = arena.doubleRandomVec(n, 0.5f, 1.5f, 831004u);
+            var xTrue = GenerateOP.doubleRandomVec(n, 0.5f, 1.5f, 831004u);
             var b = BSR.spMV(in A, in xTrue);
             double tol = Consts.doubleSqrtEps;
             int maxIter = 8 * n;
 
-            var xJ = arena.doubleVec(n);
+            var xJ = new doubleN(n, Allocator.Temp);
             var infoJ = Krylov.cg(in A, in bJ, in b, ref xJ, maxIter, tol);
             Assert.IsTrue(infoJ.Solved);
 
-            var xI = arena.doubleVec(n);
+            var xI = new doubleN(n, Allocator.Temp);
             var infoI = Krylov.cg(in A, in ic0, in b, ref xI, maxIter, tol);
             Assert.IsTrue(infoI.Solved);
 
             Assert.IsTrue((double)infoI.iterations <= (double)infoJ.iterations * 0.9);
-
-            arena.Dispose();
         }
 
         void SymmetricStorageMatchesFull()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // Build the same SPD matrix twice: full storage and symmetric (lower) storage.
             const int nb = 4, BR = 2;
-            var full = BuildBlockTridiag(ref arena, nb, BR);
+            var full = BuildBlockTridiag(nb, BR);
 
-            var builder = arena.doubleBSRBuilder(nb, nb, BR, BR);
-            var diag = arena.doubleMat(BR, BR);
-            var off = arena.doubleMat(BR, BR);
+            var builder = new doubleBSRBuilder(nb, nb, BR, BR, Allocator.Temp);
+            var diag = new doubleMxN(BR, BR, Allocator.Temp);
+            var off = new doubleMxN(BR, BR, Allocator.Temp);
             for (int r = 0; r < BR; r++)
                 for (int c = 0; c < BR; c++)
                 {
@@ -183,35 +171,32 @@ public class doubleSparseIC0Tests
                 builder.AddBlock(i, i, in diag);
                 if (i + 1 < nb) builder.AddBlock(i + 1, i, in off);   // lower triangle only
             }
-            var sym = builder.ToBSRSymmetric(ref arena);
+            var sym = builder.ToBSRSymmetric(Allocator.Temp);
 
-            var mFull = arena.doubleIC0(in full);
-            var mSym = arena.doubleIC0(in sym);
+            var mFull = new doubleIC0(in full, Allocator.Temp);
+            var mSym = new doubleIC0(in sym, Allocator.Temp);
 
             int n = full.M_Rows;
-            var r2 = arena.doubleRandomVec(n, -1f, 1f, 831005u);
-            var zF = arena.doubleVec(n);
-            var zS = arena.doubleVec(n);
+            var r2 = GenerateOP.doubleRandomVec(n, -1f, 1f, 831005u);
+            var zF = new doubleN(n, Allocator.Temp);
+            var zS = new doubleN(n, Allocator.Temp);
             mFull.Apply(in r2, ref zF);
             mSym.Apply(in r2, ref zS);
 
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(math.abs(zF[i] - zS[i]) < Tol() * ((double)1 + math.abs(zF[i])));
-
-            arena.Dispose();
         }
 
         void ApplyIsSymmetric()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleRandomSparseSPD(20, 3, (double)0.3, 831006u);
-            var M = arena.doubleIC0(in A);
+            var A = doubleGallery.doubleRandomSparseSPD(20, 3, (double)0.3, 831006u);
+            var M = new doubleIC0(in A, Allocator.Temp);
             int n = A.M_Rows;
 
-            var u = arena.doubleRandomVec(n, -1f, 1f, 831007u);
-            var v = arena.doubleRandomVec(n, -1f, 1f, 831008u);
-            var Mu = arena.doubleVec(n);
-            var Mv = arena.doubleVec(n);
+            var u = GenerateOP.doubleRandomVec(n, -1f, 1f, 831007u);
+            var v = GenerateOP.doubleRandomVec(n, -1f, 1f, 831008u);
+            var Mu = new doubleN(n, Allocator.Temp);
+            var Mv = new doubleN(n, Allocator.Temp);
             M.Apply(in u, ref Mu);
             M.Apply(in v, ref Mv);
 
@@ -220,8 +205,6 @@ public class doubleSparseIC0Tests
             double bb = Blas.dot(v, Mu);
             double scale = (double)1 + math.abs(a) + math.abs(bb);
             Assert.IsTrue(math.abs(a - bb) < Tol() * scale);
-
-            arena.Dispose();
         }
     }
 
@@ -252,51 +235,36 @@ public class doubleSparseIC0Tests
     [Test]
     public void NonSquareThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var builder = arena.doubleBSRBuilder(2, 3, 2, 2);
-            var block = arena.doubleMat(2, 2, (double)1);
-            builder.AddBlock(0, 0, in block);
-            var A = builder.ToBSR(ref arena);
-            Assert.Throws<ArgumentException>(() => { var m = arena.doubleIC0(in A); });
-        }
-        finally { arena.Dispose(); }
+        var builder = new doubleBSRBuilder(2, 3, 2, 2, Allocator.Temp);
+        var block = GenerateOP.doubleMat(2, 2, (double)1);
+        builder.AddBlock(0, 0, in block);
+        var A = builder.ToBSR(Allocator.Temp);
+        Assert.Throws<ArgumentException>(() => { var m = new doubleIC0(in A, Allocator.Temp); });
     }
 
     [Test]
     public void MissingDiagonalThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var builder = arena.doubleBSRBuilder(2, 2, 2, 2);
-            var block = arena.doubleMat(2, 2, (double)1);
-            builder.AddBlock(0, 0, in block);
-            builder.AddBlock(1, 0, in block);   // no (1,1) diagonal block
-            var A = builder.ToBSR(ref arena);
-            Assert.Throws<ArgumentException>(() => { var m = arena.doubleIC0(in A); });
-        }
-        finally { arena.Dispose(); }
+        var builder = new doubleBSRBuilder(2, 2, 2, 2, Allocator.Temp);
+        var block = GenerateOP.doubleMat(2, 2, (double)1);
+        builder.AddBlock(0, 0, in block);
+        builder.AddBlock(1, 0, in block);   // no (1,1) diagonal block
+        var A = builder.ToBSR(Allocator.Temp);
+        Assert.Throws<ArgumentException>(() => { var m = new doubleIC0(in A, Allocator.Temp); });
     }
 
     [Test]
     public void ApplyAliasThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var builder = arena.doubleBSRBuilder(2, 2, 2, 2);
-            var diag = arena.doubleMat(2, 2);
-            diag[0, 0] = (double)4; diag[1, 1] = (double)4;
-            builder.AddBlock(0, 0, in diag);
-            builder.AddBlock(1, 1, in diag);
-            var A = builder.ToBSR(ref arena);
-            var M = arena.doubleIC0(in A);
+        var builder = new doubleBSRBuilder(2, 2, 2, 2, Allocator.Temp);
+        var diag = new doubleMxN(2, 2, Allocator.Temp);
+        diag[0, 0] = (double)4; diag[1, 1] = (double)4;
+        builder.AddBlock(0, 0, in diag);
+        builder.AddBlock(1, 1, in diag);
+        var A = builder.ToBSR(Allocator.Temp);
+        var M = new doubleIC0(in A, Allocator.Temp);
 
-            var r = arena.doubleVec(A.M_Rows, (double)1);
-            Assert.Throws<ArgumentException>(() => M.Apply(in r, ref r));
-        }
-        finally { arena.Dispose(); }
+        var r = GenerateOP.doubleVec(A.M_Rows, (double)1);
+        Assert.Throws<ArgumentException>(() => M.Apply(in r, ref r));
     }
 }

@@ -21,21 +21,18 @@ public class shortScalarMatrixOpTests
 
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // 5 - [[1,2],[3,4]] must be [[4,3],[2,1]] (NOT [[-4,-3],[-2,-1]]).
-            var A = arena.shortMat(2, 2);
+            var A = new shortMxN(2, 2, Allocator.Temp);
             A[0, 0] = (short)1; A[0, 1] = (short)2;
             A[1, 0] = (short)3; A[1, 1] = (short)4;
 
-            shortMxN R = (short)5 - A;
+            shortMxN R = new shortMxN(in A, Allocator.Temp);
+            shortComp.subInPlace((short)5, R);
 
             AssertEqual(R[0, 0], (short)4);
             AssertEqual(R[0, 1], (short)3);
             AssertEqual(R[1, 0], (short)2);
             AssertEqual(R[1, 1], (short)1);
-
-            arena.Dispose();
         }
 
         void AssertEqual(short got, short expected)

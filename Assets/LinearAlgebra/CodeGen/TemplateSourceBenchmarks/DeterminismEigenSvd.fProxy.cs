@@ -185,19 +185,18 @@ namespace LinearAlgebra.Benchmarks
     {
         public static (string id, uint hash)[] Case_EigenSymFProxy()
         {
-            var arena = new Arena(Allocator.Persistent);
             const int n = 47; // fProxyWilkinsonPlus requires odd n >= 3
-            var W = arena.fProxyWilkinsonPlus(n);
+            var W = fProxyGallery.fProxyWilkinsonPlus(n, Allocator.Persistent);
 
-            var A1 = arena.fProxyMat(n, n);
-            var A2 = arena.fProxyMat(n, n);
+            var A1 = new fProxyMxN(n, n, Allocator.Persistent);
+            var A2 = new fProxyMxN(n, n, Allocator.Persistent);
             for (int r = 0; r < n; r++) for (int c = 0; c < n; c++) { A1[r, c] = W[r, c]; A2[r, c] = W[r, c]; }
 
-            var eigenvalues1 = arena.fProxyVec(n);
-            var eigenvalues2 = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
-            var lws = arena.fProxyLanczosCache(n, n);
-            var lanczosEigenvalues = arena.fProxyVec(n);
+            var eigenvalues1 = new fProxyN(n, Allocator.Persistent);
+            var eigenvalues2 = new fProxyN(n, Allocator.Persistent);
+            var V = new fProxyMxN(n, n, Allocator.Persistent);
+            var lws = new fProxyLanczosCache(n, n, Allocator.Persistent);
+            var lanczosEigenvalues = new fProxyN(n, Allocator.Persistent);
 
             var hashOut = new NativeArray<uint>(3, Allocator.Persistent);
             var job = new DetEigenSymJobFProxy
@@ -214,25 +213,25 @@ namespace LinearAlgebra.Benchmarks
                 ("eigen-sym/lanczos.fProxy.n47", hashOut[2]),
             };
             hashOut.Dispose();
-            arena.Dispose();
+            W.Dispose(); A1.Dispose(); A2.Dispose(); eigenvalues1.Dispose(); eigenvalues2.Dispose();
+            V.Dispose(); lws.Dispose(); lanczosEigenvalues.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_EigenNonsymFProxy()
         {
-            var arena = new Arena(Allocator.Persistent);
             const int n = 32;
-            var Frank = arena.fProxyFrank(n);
-            var Grcar = arena.fProxyGrcar(n);
-            var Spd = arena.fProxyLaplacian1D(n);
+            var Frank = fProxyGallery.fProxyFrank(n, Allocator.Persistent);
+            var Grcar = fProxyGallery.fProxyGrcar(n, allocator: Allocator.Persistent);
+            var Spd = fProxyGallery.fProxyLaplacian1D(n, Allocator.Persistent);
 
-            var Afrank = arena.fProxyMat(n, n);
+            var Afrank = new fProxyMxN(n, n, Allocator.Persistent);
             for (int r = 0; r < n; r++) for (int c = 0; c < n; c++) Afrank[r, c] = Frank[r, c];
-            var eigRe = arena.fProxyVec(n); var eigIm = arena.fProxyVec(n);
+            var eigRe = new fProxyN(n, Allocator.Persistent); var eigIm = new fProxyN(n, Allocator.Persistent);
 
-            var pv = arena.fProxyVec(n, (fProxy)1); var pw = arena.fProxyVec(n);
-            var gv = arena.fProxyVec(n, (fProxy)1); var gw = arena.fProxyVec(n);
-            var ipv = arena.fProxyVec(n, (fProxy)1);
+            var pv = GenerateOP.fProxyVec(n, (fProxy)1, Allocator.Persistent); var pw = new fProxyN(n, Allocator.Persistent);
+            var gv = GenerateOP.fProxyVec(n, (fProxy)1, Allocator.Persistent); var gw = new fProxyN(n, Allocator.Persistent);
+            var ipv = GenerateOP.fProxyVec(n, (fProxy)1, Allocator.Persistent);
 
             var hashOut = new NativeArray<uint>(4, Allocator.Persistent);
             var job = new DetEigenNonsymJobFProxy
@@ -252,41 +251,41 @@ namespace LinearAlgebra.Benchmarks
                 ("eigen-nonsym/inversePowerIteration.fProxy.spd.n32", hashOut[3]),
             };
             hashOut.Dispose();
-            arena.Dispose();
+            Frank.Dispose(); Grcar.Dispose(); Spd.Dispose(); Afrank.Dispose(); eigRe.Dispose(); eigIm.Dispose();
+            pv.Dispose(); pw.Dispose(); gv.Dispose(); gw.Dispose(); ipv.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_SvdFProxy()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2654435761u ^ 0x000Bu);
 
             const int m = 53, n = 37, k = 16;
-            var A = arena.fProxyMat(m, n);
+            var A = new fProxyMxN(m, n, Allocator.Persistent);
             for (int r = 0; r < m; r++) for (int c = 0; c < n; c++) A[r, c] = rng.NextFProxy(-1f, 1f);
 
-            var U = arena.fProxyMat(m, n); var S = arena.fProxyVec(n); var V = arena.fProxyMat(n, n);
-            var Svalues = arena.fProxyVec(n);
+            var U = new fProxyMxN(m, n, Allocator.Persistent); var S = new fProxyN(n, Allocator.Persistent); var V = new fProxyMxN(n, n, Allocator.Persistent);
+            var Svalues = new fProxyN(n, Allocator.Persistent);
 
-            var Uk = arena.fProxyMat(m, k); var Sk = arena.fProxyVec(k); var Vk = arena.fProxyMat(n, k);
-            var wsT = arena.fProxySVDTruncatedCache(m, n, k);
+            var Uk = new fProxyMxN(m, k, Allocator.Persistent); var Sk = new fProxyN(k, Allocator.Persistent); var Vk = new fProxyMxN(n, k, Allocator.Persistent);
+            var wsT = new fProxySVDTruncatedCache(m, n, k, Allocator.Persistent);
 
-            var Uk2 = arena.fProxyMat(m, k); var Sk2 = arena.fProxyVec(k); var Vk2 = arena.fProxyMat(n, k);
-            var wsR = arena.fProxySVDRandomizedCache(m, n, k);
+            var Uk2 = new fProxyMxN(m, k, Allocator.Persistent); var Sk2 = new fProxyN(k, Allocator.Persistent); var Vk2 = new fProxyMxN(n, k, Allocator.Persistent);
+            var wsR = new fProxySVDRandomizedCache(m, n, k, Allocator.Persistent);
 
-            var Apinv = arena.fProxyMat(m, n);
+            var Apinv = new fProxyMxN(m, n, Allocator.Persistent);
             for (int r = 0; r < m; r++) for (int c = 0; c < n; c++) Apinv[r, c] = A[r, c];
-            var bPinv = arena.fProxyVec(m); for (int i = 0; i < m; i++) bPinv[i] = rng.NextFProxy(-1f, 1f);
-            var xPinv = arena.fProxyVec(n);
-            var wsS = arena.fProxySVDCache(m, n);
+            var bPinv = new fProxyN(m, Allocator.Persistent); for (int i = 0; i < m; i++) bPinv[i] = rng.NextFProxy(-1f, 1f);
+            var xPinv = new fProxyN(n, Allocator.Persistent);
+            var wsS = new fProxySVDCache(m, n, Allocator.Persistent);
 
-            var Apinv2 = arena.fProxyMat(m, n);
+            var Apinv2 = new fProxyMxN(m, n, Allocator.Persistent);
             for (int r = 0; r < m; r++) for (int c = 0; c < n; c++) Apinv2[r, c] = A[r, c];
-            var Aplus = arena.fProxyMat(n, m);
-            var wsS2 = arena.fProxySVDCache(m, n);
+            var Aplus = new fProxyMxN(n, m, Allocator.Persistent);
+            var wsS2 = new fProxySVDCache(m, n, Allocator.Persistent);
 
-            var Lauchli = arena.fProxyLauchli(n, (fProxy)1e-6);
-            var basis = arena.fProxyMat(n, n);
+            var Lauchli = fProxyGallery.fProxyLauchli(n, (fProxy)1e-6, Allocator.Persistent);
+            var basis = new fProxyMxN(n, n, Allocator.Persistent);
 
             var hashOut = new NativeArray<uint>(7, Allocator.Persistent);
             var job = new DetSvdJobFProxy
@@ -311,16 +310,20 @@ namespace LinearAlgebra.Benchmarks
                 ("svd/nullspaceBasis.fProxy.lauchli.n37", hashOut[6]),
             };
             hashOut.Dispose();
-            arena.Dispose();
+            A.Dispose(); U.Dispose(); S.Dispose(); V.Dispose(); Svalues.Dispose();
+            Uk.Dispose(); Sk.Dispose(); Vk.Dispose(); wsT.Dispose();
+            Uk2.Dispose(); Sk2.Dispose(); Vk2.Dispose(); wsR.Dispose();
+            Apinv.Dispose(); bPinv.Dispose(); xPinv.Dispose(); wsS.Dispose();
+            Apinv2.Dispose(); Aplus.Dispose(); wsS2.Dispose();
+            Lauchli.Dispose(); basis.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_LobpcgFProxy()
         {
-            var arena = new Arena(Allocator.Persistent);
             const int n = 48, k = 4;
-            var A = arena.fProxyLaplacian1D(n);
-            var ws = arena.fProxyLOBPCGCache(n, k);
+            var A = fProxyGallery.fProxyLaplacian1D(n, Allocator.Persistent);
+            var ws = new fProxyLOBPCGCache(n, k, Allocator.Persistent);
 
             var hashOut = new NativeArray<uint>(1, Allocator.Persistent);
             var job = new DetLobpcgJobFProxy { A = A, ws = ws, K = k, HashOut = hashOut };
@@ -328,7 +331,7 @@ namespace LinearAlgebra.Benchmarks
 
             var result = new[] { ("lobpcg/lobpcg.fProxy.laplacian1d.n48.k4", hashOut[0]) };
             hashOut.Dispose();
-            arena.Dispose();
+            A.Dispose(); ws.Dispose();
             return result;
         }
     }

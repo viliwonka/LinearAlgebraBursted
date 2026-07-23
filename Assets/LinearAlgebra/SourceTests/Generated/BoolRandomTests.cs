@@ -58,35 +58,32 @@ public class BoolRandomTests
         // p = 0 => every element false.
         void BernoulliP0AllFalse()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(1234567u);
-            var v = arena.boolVec(N);
+            var v = new boolN(N, Allocator.Persistent);
             for (int i = 0; i < v.N; i++) v[i] = true;   // poison true
             Rand.nextBernoulliInPlace(ref rng, ref v, 0f);
             for (int i = 0; i < v.N; i++)
                 AssertTrue(v[i] == false);
-            arena.Dispose();
+            v.Dispose();
         }
 
         // p = 1 => every element true.
         void BernoulliP1AllTrue()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2468013u);
-            var v = arena.boolVec(N);
+            var v = new boolN(N, Allocator.Persistent);
             for (int i = 0; i < v.N; i++) v[i] = false;  // poison false
             Rand.nextBernoulliInPlace(ref rng, ref v, 1f);
             for (int i = 0; i < v.N; i++)
                 AssertTrue(v[i] == true);
-            arena.Dispose();
+            v.Dispose();
         }
 
         // p = 0.5 over a large fill: empirical true-fraction ~ 0.5 within a loose tolerance.
         void BernoulliHalfFraction()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(13572468u);
-            var v = arena.boolVec(N);
+            var v = new boolN(N, Allocator.Persistent);
             Rand.nextBernoulliInPlace(ref rng, ref v, 0.5f);
 
             int trues = 0;
@@ -94,32 +91,29 @@ public class BoolRandomTests
                 if (v[i]) trues++;
             float frac = (float)trues / v.N;
             AssertClose(frac, 0.5f, 0.03f);
-            arena.Dispose();
+            v.Dispose();
         }
 
         // Same seed + same p => identical buffer.
         void BernoulliDeterminism()
         {
-            var arena = new Arena(Allocator.Persistent);
             var r1 = new Random(99u);
-            var v1 = arena.boolVec(512);
+            var v1 = new boolN(512, Allocator.Temp);
             Rand.nextBernoulliInPlace(ref r1, ref v1, 0.3f);
 
             var r2 = new Random(99u);
-            var v2 = arena.boolVec(512);
+            var v2 = new boolN(512, Allocator.Temp);
             Rand.nextBernoulliInPlace(ref r2, ref v2, 0.3f);
 
             for (int i = 0; i < v1.N; i++)
                 AssertTrue(v1[i] == v2[i]);
-            arena.Dispose();
         }
 
         // nextBoolInPlace (fair coin) produces a mix: both true and false present.
         void NextBoolMix()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(97531864u);
-            var v = arena.boolVec(N);
+            var v = new boolN(N, Allocator.Persistent);
             Rand.nextBoolInPlace(ref rng, ref v);
 
             int trues = 0;
@@ -131,29 +125,27 @@ public class BoolRandomTests
             // and roughly fair
             float frac = (float)trues / v.N;
             AssertClose(frac, 0.5f, 0.03f);
-            arena.Dispose();
+            v.Dispose();
         }
 
         // Matrix overloads: Bernoulli(p=1) all true; nextBool produces a mix; all M*N written.
         void MatrixOverloads()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(20240626u);
 
-            var M = arena.boolMat(8, 16);
+            var M = new boolMxN(8, 16, Allocator.Temp);
             for (int i = 0; i < M.Length; i++) M[i] = false;
             Rand.nextBernoulliInPlace(ref rng, ref M, 1f);
             AssertTrue(M.Length == 128);
             for (int i = 0; i < M.Length; i++)
                 AssertTrue(M[i] == true);
 
-            var Mb = arena.boolMat(8, 16);
+            var Mb = new boolMxN(8, 16, Allocator.Temp);
             Rand.nextBoolInPlace(ref rng, ref Mb);
             int trues = 0;
             for (int i = 0; i < Mb.Length; i++)
                 if (Mb[i]) trues++;
             AssertTrue(trues > 0 && trues < Mb.Length);
-            arena.Dispose();
         }
 
         // ---------------- helpers ----------------
@@ -217,17 +209,14 @@ public class BoolRandomTests
     [Test]
     public void BernoulliPOutOfRangeThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
         Random rng = new Random(1u);
 
-        var v = arena.boolVec(8);
+        var v = new boolN(8, Allocator.Temp);
         Assert.Throws<ArgumentException>(() => Rand.nextBernoulliInPlace(ref rng, ref v, -0.01f));
         Assert.Throws<ArgumentException>(() => Rand.nextBernoulliInPlace(ref rng, ref v, 1.01f));
 
-        var M = arena.boolMat(3, 3);
+        var M = new boolMxN(3, 3, Allocator.Temp);
         Assert.Throws<ArgumentException>(() => Rand.nextBernoulliInPlace(ref rng, ref M, -1f));
         Assert.Throws<ArgumentException>(() => Rand.nextBernoulliInPlace(ref rng, ref M, 2f));
-
-        arena.Dispose();
     }
 }

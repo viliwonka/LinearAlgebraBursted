@@ -80,14 +80,12 @@ public class doubleKMeansTests
         // coincident points each → blob mean == center, SSE == 0.
         void SeparableBlobs()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var X = Blobs3(ref arena);   // 12×2, k target 3
+            var X = Blobs3();   // 12×2, k target 3
             int k = 3, D = 2;
 
-            var centroids = arena.doubleMat(k, D);
-            var assign    = arena.Indices(12);
-            var ws        = arena.doubleKMeansCache(12, D, k);
+            var centroids = new doubleMxN(k, D, Allocator.Temp);
+            var assign    = new Indices(12, Allocator.Temp);
+            var ws        = new doubleKMeansCache(12, D, k, Allocator.Temp);
             KMeans.fit(in X, k, 1u, 20, ref centroids, ref assign, out double inertia, out int iters, ref ws);
 
             // each of the three centers is matched by exactly one centroid (tight band)
@@ -103,8 +101,6 @@ public class doubleKMeansTests
 
             // sanity: converged in a bounded number of iters
             AssertTrue(iters >= 1 && iters <= 20);
-
-            arena.Dispose();
         }
 
         // T2 — assignment == brute-force nearest centroid (the final-sync contract).
@@ -112,24 +108,20 @@ public class doubleKMeansTests
         // the non-converged exit) and at maxIter=20.
         void BruteForceNearest()
         {
-            var arena = new Arena(Allocator.Persistent);
+            var X = TwoSpreadClusters(); // 6×2, well separated, k target 2
+            CheckBruteForce(in X, 2, 11u, 1);   // non-converged path
+            CheckBruteForce(in X, 2, 11u, 20);  // converged path
 
-            var X = TwoSpreadClusters(ref arena); // 6×2, well separated, k target 2
-            CheckBruteForce(ref arena, in X, 2, 11u, 1);   // non-converged path
-            CheckBruteForce(ref arena, in X, 2, 11u, 20);  // converged path
-
-            var B = Blobs3(ref arena);            // 12×2, k target 3
-            CheckBruteForce(ref arena, in B, 3, 5u, 20);
-
-            arena.Dispose();
+            var B = Blobs3();            // 12×2, k target 3
+            CheckBruteForce(in B, 3, 5u, 20);
         }
 
-        void CheckBruteForce(ref Arena arena, in doubleMxN X, int k, uint seed, int maxIter)
+        void CheckBruteForce(in doubleMxN X, int k, uint seed, int maxIter)
         {
             int N = X.M_Rows, D = X.N_Cols;
-            var centroids = arena.doubleMat(k, D);
-            var assign    = arena.Indices(N);
-            var ws        = arena.doubleKMeansCache(N, D, k);
+            var centroids = new doubleMxN(k, D, Allocator.Temp);
+            var assign    = new Indices(N, Allocator.Temp);
+            var ws        = new doubleKMeansCache(N, D, k, Allocator.Temp);
             KMeans.fit(in X, k, seed, maxIter, ref centroids, ref assign, out _, out _, ref ws);
 
             for (int n = 0; n < N; n++)
@@ -144,15 +136,13 @@ public class doubleKMeansTests
         // On separable blobs it is exactly 0.
         void InertiaRecompute()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // (a) spread clusters → positive inertia, must match recompute
-            var X = TwoSpreadClusters(ref arena);
+            var X = TwoSpreadClusters();
             {
                 int N = X.M_Rows, D = X.N_Cols, k = 2;
-                var centroids = arena.doubleMat(k, D);
-                var assign    = arena.Indices(N);
-                var ws        = arena.doubleKMeansCache(N, D, k);
+                var centroids = new doubleMxN(k, D, Allocator.Temp);
+                var assign    = new Indices(N, Allocator.Temp);
+                var ws        = new doubleKMeansCache(N, D, k, Allocator.Temp);
                 KMeans.fit(in X, k, 3u, 20, ref centroids, ref assign, out double inertia, out _, ref ws);
 
                 AssertTrue(inertia >= (double)0);
@@ -162,30 +152,26 @@ public class doubleKMeansTests
             }
 
             // (b) coincident blobs → inertia exactly 0
-            var B = Blobs3(ref arena);
+            var B = Blobs3();
             {
                 int N = B.M_Rows, D = B.N_Cols, k = 3;
-                var centroids = arena.doubleMat(k, D);
-                var assign    = arena.Indices(N);
-                var ws        = arena.doubleKMeansCache(N, D, k);
+                var centroids = new doubleMxN(k, D, Allocator.Temp);
+                var assign    = new Indices(N, Allocator.Temp);
+                var ws        = new doubleKMeansCache(N, D, k, Allocator.Temp);
                 KMeans.fit(in B, k, 9u, 20, ref centroids, ref assign, out double inertia, out _, ref ws);
 
                 AssertTrue(inertia >= (double)0);
                 AssertClose(inertia, (double)0, (double)100 * Consts.doubleSqrtEps);
             }
-
-            arena.Dispose();
         }
 
         // T4 — k == 1: the single centroid is the global mean (colMean). Guards
         // against returning a seed point. inertia == Σ‖xₙ − mean‖².
         void KEqualsOneMean()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // 6 points with an easy-to-mean spread.
             int N = 6, D = 2;
-            var X = arena.doubleMat(N, D);
+            var X = new doubleMxN(N, D, Allocator.Temp);
             X[0, 0] = (double)1;  X[0, 1] = (double)2;
             X[1, 0] = (double)3;  X[1, 1] = (double)(-4);
             X[2, 0] = (double)5;  X[2, 1] = (double)6;
@@ -194,9 +180,9 @@ public class doubleKMeansTests
             X[5, 0] = (double)2;  X[5, 1] = (double)(-1);
 
             int k = 1;
-            var centroids = arena.doubleMat(k, D);
-            var assign    = arena.Indices(N);
-            var ws        = arena.doubleKMeansCache(N, D, k);
+            var centroids = new doubleMxN(k, D, Allocator.Temp);
+            var assign    = new Indices(N, Allocator.Temp);
+            var ws        = new doubleKMeansCache(N, D, k, Allocator.Temp);
             KMeans.fit(in X, k, 1u, 20, ref centroids, ref assign, out double inertia, out _, ref ws);
 
             var mean = Stats.colMean(in X);   // length D
@@ -219,18 +205,14 @@ public class doubleKMeansTests
             double itol = (sse + (double)1) * (double)200 * Consts.doubleSqrtEps;
             AssertTrue(inertia >= (double)0);
             AssertClose(inertia, sse, itol);
-
-            arena.Dispose();
         }
 
         // T5 — k ≥ N: k clamps to N, every point is its own cluster (sits on its
         // centroid), inertia ≈ 0, iters ≤ 2, assignment is a bijection.
         void KGreaterEqualN()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int N = 5, D = 2;
-            var X = arena.doubleMat(N, D);
+            var X = new doubleMxN(N, D, Allocator.Temp);
             X[0, 0] = (double)0;   X[0, 1] = (double)0;
             X[1, 0] = (double)100; X[1, 1] = (double)0;
             X[2, 0] = (double)0;   X[2, 1] = (double)100;
@@ -238,8 +220,8 @@ public class doubleKMeansTests
             X[4, 0] = (double)50;  X[4, 1] = (double)200;
 
             // allocating wrapper clamps internally to kk = min(10, 5) = 5
-            KMeans.fit(ref arena, in X, 10, 7u, 20,
-                out doubleMxN centroids, out Indices assign, out double inertia, out int iters);
+            KMeans.fit(in X, 10, 7u, 20,
+                out doubleMxN centroids, out Indices assign, out double inertia, out int iters, Allocator.Temp);
 
             RecordEq(centroids.M_Rows, N);   // clamped to N rows
             AssertTrue(iters <= 2);
@@ -252,22 +234,18 @@ public class doubleKMeansTests
 
             // assignment is a bijection (all N labels distinct)
             RecordEq(DistinctCount(in assign, N), N);
-
-            arena.Dispose();
         }
 
         // T6 — determinism: two runs with identical seed/init produce bit-identical
         // centroids, assignment, inertia, and iters. Exercised for both inits.
         void Determinism(KMeansInit init)
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var X = TwoSpreadClusters(ref arena);  // 6×2
+            var X = TwoSpreadClusters();  // 6×2
             int N = X.M_Rows, D = X.N_Cols, k = 2;
             uint seed = 1234u;
 
-            var c1 = arena.doubleMat(k, D); var a1 = arena.Indices(N); var w1 = arena.doubleKMeansCache(N, D, k);
-            var c2 = arena.doubleMat(k, D); var a2 = arena.Indices(N); var w2 = arena.doubleKMeansCache(N, D, k);
+            var c1 = new doubleMxN(k, D, Allocator.Temp); var a1 = new Indices(N, Allocator.Temp); var w1 = new doubleKMeansCache(N, D, k, Allocator.Temp);
+            var c2 = new doubleMxN(k, D, Allocator.Temp); var a2 = new Indices(N, Allocator.Temp); var w2 = new doubleKMeansCache(N, D, k, Allocator.Temp);
 
             KMeans.fit(in X, k, seed, 20, init, ref c1, ref a1, out double in1, out int it1, ref w1);
             KMeans.fit(in X, k, seed, 20, init, ref c2, ref a2, out double in2, out int it2, ref w2);
@@ -278,25 +256,21 @@ public class doubleKMeansTests
             for (int j = 0; j < k; j++)
                 for (int f = 0; f < D; f++)
                     AssertExact(c1[j, f], c2[j, f]);
-
-            arena.Dispose();
         }
 
         // T7 — workspace (primitive + factory ws) and allocating wrapper agree
         // bit-exactly for identical inputs/seed/init.
         void WorkspaceVsAllocating()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var X = TwoSpreadClusters(ref arena);  // 6×2
+            var X = TwoSpreadClusters();  // 6×2
             int N = X.M_Rows, D = X.N_Cols, k = 2;
             uint seed = 99u;
 
-            var cP = arena.doubleMat(k, D); var aP = arena.Indices(N); var ws = arena.doubleKMeansCache(N, D, k);
+            var cP = new doubleMxN(k, D, Allocator.Temp); var aP = new Indices(N, Allocator.Temp); var ws = new doubleKMeansCache(N, D, k, Allocator.Temp);
             KMeans.fit(in X, k, seed, 20, KMeansInit.KMeansPlusPlus, ref cP, ref aP, out double inP, out int itP, ref ws);
 
-            KMeans.fit(ref arena, in X, k, seed, 20, KMeansInit.KMeansPlusPlus,
-                out doubleMxN cA, out Indices aA, out double inA, out int itA);
+            KMeans.fit(in X, k, seed, 20, KMeansInit.KMeansPlusPlus,
+                out doubleMxN cA, out Indices aA, out double inA, out int itA, Allocator.Temp);
 
             RecordEq(itP, itA);
             AssertExact(inP, inA);
@@ -304,8 +278,6 @@ public class doubleKMeansTests
             for (int j = 0; j < k; j++)
                 for (int f = 0; f < D; f++)
                     AssertExact(cP[j, f], cA[j, f]);
-
-            arena.Dispose();
         }
 
         // T8 — empty-cluster reseed: a 2-location duplicate-point set with k=4
@@ -314,19 +286,17 @@ public class doubleKMeansTests
         // Assert: no throw, all centroid components finite, ≥2 distinct centroids.
         void EmptyClusterReseed()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // 4 points at only 2 distinct locations → with k=4, two clusters end up empty.
             int N = 4, D = 2, k = 4;
-            var X = arena.doubleMat(N, D);
+            var X = new doubleMxN(N, D, Allocator.Temp);
             X[0, 0] = (double)0;  X[0, 1] = (double)0;
             X[1, 0] = (double)0;  X[1, 1] = (double)0;
             X[2, 0] = (double)10; X[2, 1] = (double)10;
             X[3, 0] = (double)10; X[3, 1] = (double)10;
 
-            var centroids = arena.doubleMat(k, D);
-            var assign    = arena.Indices(N);
-            var ws        = arena.doubleKMeansCache(N, D, k);
+            var centroids = new doubleMxN(k, D, Allocator.Temp);
+            var assign    = new Indices(N, Allocator.Temp);
+            var ws        = new doubleKMeansCache(N, D, k, Allocator.Temp);
             KMeans.fit(in X, k, 2u, 20, ref centroids, ref assign, out double inertia, out _, ref ws);
 
             // every centroid component finite (reseed must not produce NaN/Inf via divide-by-zero)
@@ -338,28 +308,22 @@ public class doubleKMeansTests
             AssertTrue(math.isfinite(inertia));
 
             AssertTrue(DistinctCentroidCount(in centroids, k, D) >= 2);
-
-            arena.Dispose();
         }
 
         // T9 — both seeding modes converge to inertia ≈ 0 on the separable blobs.
         void BothInitsValid()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var X = Blobs3(ref arena);  // 12×2
-            CheckZeroInertia(ref arena, in X, 3, 4u, KMeansInit.KMeansPlusPlus);
-            CheckZeroInertia(ref arena, in X, 3, 4u, KMeansInit.Uniform);
-
-            arena.Dispose();
+            var X = Blobs3();  // 12×2
+            CheckZeroInertia(in X, 3, 4u, KMeansInit.KMeansPlusPlus);
+            CheckZeroInertia(in X, 3, 4u, KMeansInit.Uniform);
         }
 
-        void CheckZeroInertia(ref Arena arena, in doubleMxN X, int k, uint seed, KMeansInit init)
+        void CheckZeroInertia(in doubleMxN X, int k, uint seed, KMeansInit init)
         {
             int N = X.M_Rows, D = X.N_Cols;
-            var centroids = arena.doubleMat(k, D);
-            var assign    = arena.Indices(N);
-            var ws        = arena.doubleKMeansCache(N, D, k);
+            var centroids = new doubleMxN(k, D, Allocator.Temp);
+            var assign    = new Indices(N, Allocator.Temp);
+            var ws        = new doubleKMeansCache(N, D, k, Allocator.Temp);
             KMeans.fit(in X, k, seed, 30, init, ref centroids, ref assign, out double inertia, out _, ref ws);
 
             AssertTrue(inertia >= (double)0);
@@ -369,9 +333,9 @@ public class doubleKMeansTests
         // datasets
 
         // 12×2: three coincident blobs of 4 points each at (0,0),(10,0),(0,10).
-        doubleMxN Blobs3(ref Arena arena)
+        doubleMxN Blobs3()
         {
-            var X = arena.doubleMat(12, 2);
+            var X = new doubleMxN(12, 2, Allocator.Temp);
             for (int i = 0; i < 4; i++)  { X[i, 0] = (double)0;  X[i, 1] = (double)0; }
             for (int i = 4; i < 8; i++)  { X[i, 0] = (double)10; X[i, 1] = (double)0; }
             for (int i = 8; i < 12; i++) { X[i, 0] = (double)0;  X[i, 1] = (double)10; }
@@ -379,9 +343,9 @@ public class doubleKMeansTests
         }
 
         // 6×2: two well-separated spread clusters (gap ≫ intra-cluster spread).
-        doubleMxN TwoSpreadClusters(ref Arena arena)
+        doubleMxN TwoSpreadClusters()
         {
-            var X = arena.doubleMat(6, 2);
+            var X = new doubleMxN(6, 2, Allocator.Temp);
             X[0, 0] = (double)0;  X[0, 1] = (double)0;
             X[1, 0] = (double)1;  X[1, 1] = (double)0;
             X[2, 0] = (double)0;  X[2, 1] = (double)1;
@@ -532,75 +496,63 @@ public class doubleKMeansTests
     [Test]
     public void EmptyXThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var X = arena.doubleMat(0, 2);   // N == 0
+        var X = new doubleMxN(0, 2, Allocator.Temp);   // N == 0
         Assert.Throws<InvalidOperationException>(() =>
-            KMeans.fit(ref arena, in X, 2, 1u, 10,
-                out doubleMxN c, out Indices a, out double inertia, out int iters));
-        arena.Dispose();
+            KMeans.fit(in X, 2, 1u, 10,
+                out doubleMxN c, out Indices a, out double inertia, out int iters, Allocator.Temp));
     }
 
     [Test]
     public void NonPositiveKThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var X = arena.doubleMat(4, 2);
+        var X = new doubleMxN(4, 2, Allocator.Temp);
         Assert.Throws<ArgumentException>(() =>
-            KMeans.fit(ref arena, in X, 0, 1u, 10,
-                out doubleMxN c, out Indices a, out double inertia, out int iters));
-        arena.Dispose();
+            KMeans.fit(in X, 0, 1u, 10,
+                out doubleMxN c, out Indices a, out double inertia, out int iters, Allocator.Temp));
     }
 
     [Test]
     public void NonPositiveMaxIterThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var X = arena.doubleMat(4, 2);
+        var X = new doubleMxN(4, 2, Allocator.Temp);
         Assert.Throws<ArgumentException>(() =>
-            KMeans.fit(ref arena, in X, 2, 1u, 0,
-                out doubleMxN c, out Indices a, out double inertia, out int iters));
-        arena.Dispose();
+            KMeans.fit(in X, 2, 1u, 0,
+                out doubleMxN c, out Indices a, out double inertia, out int iters, Allocator.Temp));
     }
 
     [Test]
     public void CentroidShapeMismatchThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
         int N = 6, D = 2, k = 2;
-        var X  = arena.doubleMat(N, D);
-        var ws = arena.doubleKMeansCache(N, D, k);
-        var assign = arena.Indices(N);
-        var badCentroids = arena.doubleMat(k + 1, D);   // wrong row count
+        var X  = new doubleMxN(N, D, Allocator.Temp);
+        var ws = new doubleKMeansCache(N, D, k, Allocator.Temp);
+        var assign = new Indices(N, Allocator.Temp);
+        var badCentroids = new doubleMxN(k + 1, D, Allocator.Temp);   // wrong row count
         Assert.Throws<ArgumentException>(() =>
             KMeans.fit(in X, k, 1u, 10, ref badCentroids, ref assign, out double inertia, out int iters, ref ws));
-        arena.Dispose();
     }
 
     [Test]
     public void AssignmentSizeMismatchThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
         int N = 6, D = 2, k = 2;
-        var X  = arena.doubleMat(N, D);
-        var ws = arena.doubleKMeansCache(N, D, k);
-        var centroids = arena.doubleMat(k, D);
-        var badAssign = arena.Indices(N + 1);           // wrong length
+        var X  = new doubleMxN(N, D, Allocator.Temp);
+        var ws = new doubleKMeansCache(N, D, k, Allocator.Temp);
+        var centroids = new doubleMxN(k, D, Allocator.Temp);
+        var badAssign = new Indices(N + 1, Allocator.Temp);           // wrong length
         Assert.Throws<ArgumentException>(() =>
             KMeans.fit(in X, k, 1u, 10, ref centroids, ref badAssign, out double inertia, out int iters, ref ws));
-        arena.Dispose();
     }
 
     [Test]
     public void WorkspaceShapeMismatchThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
         int N = 6, D = 2, k = 2;
-        var X  = arena.doubleMat(N, D);
-        var centroids = arena.doubleMat(k, D);
-        var assign    = arena.Indices(N);
-        var badWs = arena.doubleKMeansCache(N, D, k + 1);   // ws sized for wrong k
+        var X  = new doubleMxN(N, D, Allocator.Temp);
+        var centroids = new doubleMxN(k, D, Allocator.Temp);
+        var assign    = new Indices(N, Allocator.Temp);
+        var badWs = new doubleKMeansCache(N, D, k + 1, Allocator.Temp);   // ws sized for wrong k
         Assert.Throws<ArgumentException>(() =>
             KMeans.fit(in X, k, 1u, 10, ref centroids, ref assign, out double inertia, out int iters, ref badWs));
-        arena.Dispose();
     }
 }

@@ -125,17 +125,15 @@ public class doubleAccuracySweepTests
         // ---------------------------------------------------------------------------------------
         void RunQR(int m, int n, uint seed, bool hilbert)
         {
-            var arena = new Arena(Allocator.Persistent);
-
             doubleMxN A;
             if (hilbert)
-                A = arena.doubleHilbert(n);                  // SPD, totally positive, κ ≫ 1/ε.
+                A = doubleGallery.doubleHilbert(n);           // SPD, totally positive, κ ≫ 1/ε.
             else
-                A = WellCondSquare(ref arena, n, seed);      // diagonally dominant, κ ~ O(1).
+                A = WellCondSquare(n, seed);                  // diagonally dominant, κ ~ O(1).
 
             // Blocked path: the allocating overload routes to the compact-WY level-3 core at n>=64.
-            var Qb = A.Copy();
-            var Rb = arena.doubleMat(n, n);
+            var Qb = new doubleMxN(in A, Allocator.Temp);
+            var Rb = new doubleMxN(n, n, Allocator.Temp);
             QR.decompInPlace(ref Qb, ref Rb);
             Assert.IsFalse(Analysis.isAnyNan(in Qb));
             Assert.IsFalse(Analysis.isAnyNan(in Rb));
@@ -144,9 +142,9 @@ public class doubleAccuracySweepTests
             // QR.double.cs comment) — it runs the classic rank-1 Householder sweep, giving an independent
             // in-test oracle at the SAME size without any production "force unblocked" flag. This is the
             // direct blocked-vs-unblocked accuracy comparison the sweep is really after.
-            var Qr = A.Copy();
-            var Rr = arena.doubleMat(n, n);
-            var u  = arena.doubleVec(m);
+            var Qr = new doubleMxN(in A, Allocator.Temp);
+            var Rr = new doubleMxN(n, n, Allocator.Temp);
+            var u  = new doubleN(m, Allocator.Temp);
             QR.decompInPlace(ref Qr, ref Rr, ref u);
 
             double recon    = ReconResidual2(in A, in Qb, in Rb); // ‖A − Q·R‖_F / ‖A‖_F (blocked), double.
@@ -170,8 +168,6 @@ public class doubleAccuracySweepTests
             // of a fixed tiny bound that would false-fail on this exact input.
             AssertLE(recon, math.max(ReconBound(n), 16.0 * reconRef));
             AssertLE(orth,  math.max(ReconBound(n), 16.0 * orthRef));
-
-            arena.Dispose();
         }
 
         // ---------------------------------------------------------------------------------------
@@ -180,10 +176,8 @@ public class doubleAccuracySweepTests
         // ---------------------------------------------------------------------------------------
         void RunLQ(int m, int n, uint seed, int mode)
         {
-            var arena = new Arena(Allocator.Persistent);
-
             var random = new Unity.Mathematics.Random(seed);
-            var A = arena.doubleRandomMat(m, n, -5f, 5f, seed);
+            var A = GenerateOP.doubleRandomMat(m, n, -5f, 5f, seed);
             for (int d = 0; d < m; d++)
                 A[d, d] += 5.1f + 10f * random.NextDouble();
 
@@ -199,9 +193,9 @@ public class doubleAccuracySweepTests
                 }
             }
 
-            var origA = A.Copy();
-            var L = arena.doubleMat(m, m);
-            var Q = arena.doubleMat(m, n);
+            var origA = new doubleMxN(in A, Allocator.Temp);
+            var L = new doubleMxN(m, m, Allocator.Temp);
+            var Q = new doubleMxN(m, n, Allocator.Temp);
 
             LQ.decomp(in A, ref L, ref Q);
 
@@ -217,8 +211,6 @@ public class doubleAccuracySweepTests
             // Reconstruction (right-multiply GEMM) is backward stable; orthonormal-rows error tiny.
             AssertLE(recon, ReconBound(n));
             AssertLE(orth,  ReconBound(m));
-
-            arena.Dispose();
         }
 
         // ---------------------------------------------------------------------------------------
@@ -226,12 +218,10 @@ public class doubleAccuracySweepTests
         // ---------------------------------------------------------------------------------------
         void RunChol(int n, uint seed, bool lehmer)
         {
-            var arena = new Arena(Allocator.Persistent);
+            doubleMxN A = lehmer ? doubleGallery.doubleLehmer(n)   // SPD, κ < 4n² (~2.6e5 at n=256).
+                                 : BuildSPD(n, seed);
 
-            doubleMxN A = lehmer ? arena.doubleLehmer(n)     // SPD, κ < 4n² (~2.6e5 at n=256).
-                                 : BuildSPD(ref arena, n, seed);
-
-            var L = arena.doubleMat(n, n);
+            var L = new doubleMxN(n, n, Allocator.Temp);
 
             bool ok = CHO.decomp(in A, ref L);
             Assert.IsTrue(ok);                               // Lehmer stays numerically PD.
@@ -244,8 +234,6 @@ public class doubleAccuracySweepTests
 
             // Cholesky is backward stable for SPD A: residual O(n·ε) even for ill-cond Lehmer.
             AssertLE(recon, ReconBound(n));
-
-            arena.Dispose();
         }
 
         // ---------------------------------------------------------------------------------------
@@ -253,13 +241,11 @@ public class doubleAccuracySweepTests
         // ---------------------------------------------------------------------------------------
         void RunLU(int n, uint seed, bool lehmer)
         {
-            var arena = new Arena(Allocator.Persistent);
+            doubleMxN A = lehmer ? doubleGallery.doubleLehmer(n)   // κ ~ 1e5, LU hits no zero pivot.
+                                 : WellCondLU(n, seed);
 
-            doubleMxN A = lehmer ? arena.doubleLehmer(n)     // κ ~ 1e5, LU hits no zero pivot.
-                                 : WellCondLU(ref arena, n, seed);
-
-            var U = arena.doubleMat(n, n);
-            var L = arena.doubleIdentityMat(n);
+            var U = new doubleMxN(n, n, Allocator.Temp);
+            var L = GenerateOP.doubleIdentityMat(n);
             var pivot = new Pivot(n, Allocator.Temp);
 
             bool ok = LU.decomp(in A, ref L, ref U, ref pivot);
@@ -276,7 +262,6 @@ public class doubleAccuracySweepTests
             AssertLE(recon, ReconBound(n));
 
             pivot.Dispose();
-            arena.Dispose();
         }
 
         // ---------------------------------------------------------------------------------------
@@ -284,22 +269,21 @@ public class doubleAccuracySweepTests
         // ---------------------------------------------------------------------------------------
         void RunLUSolve(int n, uint seed, bool lehmer)
         {
-            var arena = new Arena(Allocator.Persistent);
+            doubleMxN A = lehmer ? doubleGallery.doubleLehmer(n)
+                                 : WellCondLU(n, seed);
 
-            doubleMxN A = lehmer ? arena.doubleLehmer(n)
-                                 : WellCondLU(ref arena, n, seed);
+            var xTrue = GenerateOP.doubleRandomVec(n, 1f, 10f, seed == 0 ? 424242u : seed + 1u);
+            var b = new doubleN(A.M_Rows, Allocator.Temp);
+            Blas.dot(in A, in xTrue, ref b);
 
-            var xTrue = arena.doubleRandomVec(n, 1f, 10f, seed == 0 ? 424242u : seed + 1u);
-            var b = Blas.dot(A, xTrue);
-
-            var U = arena.doubleMat(n, n);
-            var L = arena.doubleIdentityMat(n);
+            var U = new doubleMxN(n, n, Allocator.Temp);
+            var L = GenerateOP.doubleIdentityMat(n);
             var pivot = new Pivot(n, Allocator.Temp);
 
             bool ok = LU.decomp(in A, ref L, ref U, ref pivot);
             Assert.IsTrue(ok);
 
-            var x = b.Copy();
+            var x = new doubleN(in b, Allocator.Temp);
             LU.decompSolve(ref L, ref U, in pivot, ref x);
             Assert.IsFalse(Analysis.isAnyNan(in x));
 
@@ -339,24 +323,23 @@ public class doubleAccuracySweepTests
             AssertLE(bwd, ReconBound(n));
 
             pivot.Dispose();
-            arena.Dispose();
         }
 
         // ===== builders ========================================================================
 
         // Diagonally-dominant square random -> well-conditioned (κ ~ O(1)).
-        static doubleMxN WellCondSquare(ref Arena arena, int n, uint seed)
+        static doubleMxN WellCondSquare(int n, uint seed)
         {
-            var A = arena.doubleRandomMat(n, n, -1f, 1f, seed);
+            var A = GenerateOP.doubleRandomMat(n, n, -1f, 1f, seed);
             for (int d = 0; d < n; d++)
                 A[d, d] += (double)(2 * n);
             return A;
         }
 
         // Random with a boosted diagonal and a modest spread (well-conditioned, needs some pivoting).
-        static doubleMxN WellCondLU(ref Arena arena, int n, uint seed)
+        static doubleMxN WellCondLU(int n, uint seed)
         {
-            var A = arena.doubleRandomMat(n, n, -10f, 10f, seed);
+            var A = GenerateOP.doubleRandomMat(n, n, -10f, 10f, seed);
             for (int d = 0; d < n; d++)
             {
                 A[d, d] *= 2f;
@@ -367,10 +350,11 @@ public class doubleAccuracySweepTests
         }
 
         // SPD via A = MᵀM + n·I (strictly PD, diagonally dominant -> Cholesky must succeed).
-        static doubleMxN BuildSPD(ref Arena arena, int n, uint seed)
+        static doubleMxN BuildSPD(int n, uint seed)
         {
-            var M = arena.doubleRandomMat(n, n, -1f, 1f, seed);
-            var A = Blas.dot(M, M, true);   // Mᵀ·M
+            var M = GenerateOP.doubleRandomMat(n, n, -1f, 1f, seed);
+            var A = new doubleMxN(n, n, Allocator.Temp);
+            Blas.dot(in M, in M, ref A, true);   // Mᵀ·M
             for (int d = 0; d < n; d++)
                 A[d, d] += n;
             return A;

@@ -93,13 +93,13 @@ public class doubleSVDSubspaceTests
         }
 
         // Full property check for one matrix of known rank.
-        void CheckSubspaces(in doubleMxN A, int expectedRank, ref Arena arena, double tol)
+        void CheckSubspaces(in doubleMxN A, int expectedRank, double tol)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
 
             // ---- nullspace ----
-            var nbasis = arena.doubleMat(n, n);
+            var nbasis = new doubleMxN(n, n, Allocator.Temp);
             RankInfo nInfo = SVD.nullspaceBasis(in A, ref nbasis);
             bool cN = nInfo;
             int dim = n - nInfo.rank;
@@ -121,7 +121,7 @@ public class doubleSVDSubspaceTests
             AssertOrthoCols(in nbasis, n, dim, tol);
 
             // ---- range ----
-            var rbasis = arena.doubleMat(m, n);
+            var rbasis = new doubleMxN(m, n, Allocator.Temp);
             RankInfo rInfo = SVD.rangeBasis(in A, ref rbasis);
             bool cR = rInfo;
             int rank = rInfo.rank;
@@ -130,7 +130,7 @@ public class doubleSVDSubspaceTests
             AssertOrthoCols(in rbasis, m, rank, tol);
 
             // Every column of A lies in span(range basis): Q Qᵀ a_c ≈ a_c.
-            var coeff = arena.doubleVec(n);
+            var coeff = new doubleN(n, Allocator.Temp);
             for (int col = 0; col < n; col++)
             {
                 for (int k = 0; k < rank; k++)
@@ -152,64 +152,52 @@ public class doubleSVDSubspaceTests
 
         void FullRankSquare6()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 6;
-            var A = arena.doubleRandomMat(n, n, (double)(-2f), (double)2f, 9001);
+            var A = GenerateOP.doubleRandomMat(n, n, (double)(-2f), (double)2f, 9001, allocator: Allocator.Temp);
             for (int d = 0; d < n; d++) A[d, d] += (double)8f;   // ensure full rank / conditioning
-            CheckSubspaces(in A, n, ref arena, (double)1E-3f);
-            arena.Dispose();
+            CheckSubspaces(in A, n, (double)1E-3f);
         }
 
         void Rank1_8x5()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 8, n = 5;
-            var u = arena.doubleRandomVec(m, (double)(-2f), (double)2f, 4242);
-            var v = arena.doubleRandomVec(n, (double)(-2f), (double)2f, 2424);
-            var A = arena.doubleMat(m, n);
+            var u = GenerateOP.doubleRandomVec(m, (double)(-2f), (double)2f, 4242, allocator: Allocator.Temp);
+            var v = GenerateOP.doubleRandomVec(n, (double)(-2f), (double)2f, 2424, allocator: Allocator.Temp);
+            var A = new doubleMxN(m, n, Allocator.Temp);
             for (int i = 0; i < m; i++)
                 for (int j = 0; j < n; j++)
                     A[i, j] = u[i] * v[j];   // rank 1
-            CheckSubspaces(in A, 1, ref arena, (double)1E-3f);
-            arena.Dispose();
+            CheckSubspaces(in A, 1, (double)1E-3f);
         }
 
         void RankDeficient8x5r3()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 8, n = 5, r = 3;
-            var B = arena.doubleRandomMat(m, r, (double)(-2f), (double)2f, 13579);
-            var C = arena.doubleRandomMat(r, n, (double)(-2f), (double)2f, 24680);
+            var B = GenerateOP.doubleRandomMat(m, r, (double)(-2f), (double)2f, 13579, allocator: Allocator.Temp);
+            var C = GenerateOP.doubleRandomMat(r, n, (double)(-2f), (double)2f, 24680, allocator: Allocator.Temp);
             var A = Blas.dot(B, C);   // m x n, rank r (generic)
-            CheckSubspaces(in A, r, ref arena, (double)1E-3f);
-            arena.Dispose();
+            CheckSubspaces(in A, r, (double)1E-3f);
         }
 
         void ZeroMatrix7x4()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 7, n = 4;
-            var A = arena.doubleMat(m, n);   // all zeros
-            CheckSubspaces(in A, 0, ref arena, (double)1E-3f);
-            arena.Dispose();
+            var A = new doubleMxN(m, n, Allocator.Temp);   // all zeros
+            CheckSubspaces(in A, 0, (double)1E-3f);
         }
 
         void Identity6()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 6;
-            var A = arena.doubleIdentityMat(n);
-            CheckSubspaces(in A, n, ref arena, (double)1E-3f);
-            arena.Dispose();
+            var A = GenerateOP.doubleIdentityMat(n, allocator: Allocator.Temp);
+            CheckSubspaces(in A, n, (double)1E-3f);
         }
 
         void TallFullRank10x4()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 10, n = 4;
-            var A = arena.doubleRandomMat(m, n, (double)(-3f), (double)3f, 271828);
-            CheckSubspaces(in A, n, ref arena, (double)1E-3f);
-            arena.Dispose();
+            var A = GenerateOP.doubleRandomMat(m, n, (double)(-3f), (double)3f, 271828, allocator: Allocator.Temp);
+            CheckSubspaces(in A, n, (double)1E-3f);
         }
     }
 
@@ -242,40 +230,32 @@ public class doubleSVDSubspaceTests
     [Test]
     public void NullspaceThrowsOnWideMatrix()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.doubleMat(3, 5);
-        var basis = arena.doubleMat(5, 5);
+        var A = new doubleMxN(3, 5, Allocator.Temp);
+        var basis = new doubleMxN(5, 5, Allocator.Temp);
         Assert.Catch<ArgumentException>(() => SVD.nullspaceBasis(in A, ref basis));
-        arena.Dispose();
     }
 
     [Test]
     public void NullspaceThrowsOnWrongBasisShape()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.doubleMat(6, 4);
-        var basis = arena.doubleMat(6, 4);   // must be n x n = 4 x 4
+        var A = new doubleMxN(6, 4, Allocator.Temp);
+        var basis = new doubleMxN(6, 4, Allocator.Temp);   // must be n x n = 4 x 4
         Assert.Catch<ArgumentException>(() => SVD.nullspaceBasis(in A, ref basis));
-        arena.Dispose();
     }
 
     [Test]
     public void RangeThrowsOnWideMatrix()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.doubleMat(3, 5);
-        var basis = arena.doubleMat(3, 5);
+        var A = new doubleMxN(3, 5, Allocator.Temp);
+        var basis = new doubleMxN(3, 5, Allocator.Temp);
         Assert.Catch<ArgumentException>(() => SVD.rangeBasis(in A, ref basis));
-        arena.Dispose();
     }
 
     [Test]
     public void RangeThrowsOnWrongBasisShape()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.doubleMat(6, 4);
-        var basis = arena.doubleMat(4, 4);   // must be m x n = 6 x 4
+        var A = new doubleMxN(6, 4, Allocator.Temp);
+        var basis = new doubleMxN(4, 4, Allocator.Temp);   // must be m x n = 6 x 4
         Assert.Catch<ArgumentException>(() => SVD.rangeBasis(in A, ref basis));
-        arena.Dispose();
     }
 }

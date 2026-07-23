@@ -102,21 +102,21 @@ public class fProxySVDRandomizedTests
         }
 
         void CheckRandomized(in fProxyMxN A, int k, int oversample, int powerIters, uint seed,
-                             bool expectExact, ref Arena arena)
+                             bool expectExact)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
 
             // oracle spectrum + ||A||_F
-            var fullS = arena.fProxyVec(n);
+            var fullS = new fProxyN(n, Allocator.Temp);
             SVD.values(in A, ref fullS);
             fProxy normA = (fProxy)0;
             for (int i = 0; i < n; i++) normA += fullS[i] * fullS[i];
             normA = math.sqrt(normA);
 
-            var Uk = arena.fProxyMat(m, k);
-            var Sk = arena.fProxyVec(k);
-            var Vk = arena.fProxyMat(n, k);
+            var Uk = new fProxyMxN(m, k, Allocator.Temp);
+            var Sk = new fProxyN(k, Allocator.Temp);
+            var Vk = new fProxyMxN(n, k, Allocator.Temp);
             bool ok = SVD.randomized(in A, ref Uk, ref Sk, ref Vk, k, oversample, powerIters, seed, 75);
             Assert.IsTrue(ok);
 
@@ -150,34 +150,28 @@ public class fProxySVDRandomizedTests
 
         void ExactRank3_24x12()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 24, n = 12, r = 3;
-            var B = arena.fProxyRandomMat(m, r, (fProxy)(-2f), (fProxy)2f, 1001);
-            var C = arena.fProxyRandomMat(r, n, (fProxy)(-2f), (fProxy)2f, 2002);
+            var B = GenerateOP.fProxyRandomMat(m, r, (fProxy)(-2f), (fProxy)2f, 1001, allocator: Allocator.Temp);
+            var C = GenerateOP.fProxyRandomMat(r, n, (fProxy)(-2f), (fProxy)2f, 2002, allocator: Allocator.Temp);
             var A = Blas.dot(B, C);   // rank 3
-            CheckRandomized(in A, 3, 6, 2, 12345u, true, ref arena);
-            arena.Dispose();
+            CheckRandomized(in A, 3, 6, 2, 12345u, true);
         }
 
         void ExactRank5_40x16()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 40, n = 16, r = 5;
-            var B = arena.fProxyRandomMat(m, r, (fProxy)(-2f), (fProxy)2f, 3003);
-            var C = arena.fProxyRandomMat(r, n, (fProxy)(-2f), (fProxy)2f, 4004);
+            var B = GenerateOP.fProxyRandomMat(m, r, (fProxy)(-2f), (fProxy)2f, 3003, allocator: Allocator.Temp);
+            var C = GenerateOP.fProxyRandomMat(r, n, (fProxy)(-2f), (fProxy)2f, 4004, allocator: Allocator.Temp);
             var A = Blas.dot(B, C);   // rank 5
-            CheckRandomized(in A, 5, 8, 2, 67890u, true, ref arena);
-            arena.Dispose();
+            CheckRandomized(in A, 5, 8, 2, 67890u, true);
         }
 
         void GeneralRandom20x10()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 20, n = 10;
-            var A = arena.fProxyRandomMat(m, n, (fProxy)(-2f), (fProxy)2f, 555);
+            var A = GenerateOP.fProxyRandomMat(m, n, (fProxy)(-2f), (fProxy)2f, 555, allocator: Allocator.Temp);
             // flat-ish spectrum: only assert invariants + leading value (power iters sharpen it).
-            CheckRandomized(in A, 4, 8, 3, 24680u, false, ref arena);
-            arena.Dispose();
+            CheckRandomized(in A, 4, 8, 3, 24680u, false);
         }
 
         // ============================================================================================
@@ -192,21 +186,20 @@ public class fProxySVDRandomizedTests
         // Recovered top-k σ must be within RELATIVE error relTol of prescribed σ.
         void RandSvdGeometricAccuracy_120x40()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 120, n = 40, k = 8;
 
-            var sigma = arena.fProxyVec(n);
+            var sigma = new fProxyN(n, Allocator.Temp);
             double rho = 0.7;
             double s = 1.0;
             for (int i = 0; i < n; i++) { sigma[i] = (fProxy)s; s *= rho; }   // 1, 0.7, 0.49, ...
 
-            var A = arena.fProxyMat(m, n);
+            var A = new fProxyMxN(m, n, Allocator.Temp);
             var rng = new Unity.Mathematics.Random(0xA11CE5EDu);
             BuildRandSvd(ref rng, m, n, in sigma, ref A);
 
-            var Uk = arena.fProxyMat(m, k);
-            var Sk = arena.fProxyVec(k);
-            var Vk = arena.fProxyMat(n, k);
+            var Uk = new fProxyMxN(m, k, Allocator.Temp);
+            var Sk = new fProxyN(k, Allocator.Temp);
+            var Vk = new fProxyMxN(n, k, Allocator.Temp);
             // oversample 10 (p=18), powerIters 2 — HMT-recommended regime.
             bool ok = SVD.randomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0xBEEF0001u, 75);
             Assert.IsTrue(ok);
@@ -235,8 +228,6 @@ public class fProxySVDRandomizedTests
             }
             if (!(worst <= relTol)) Record(Sk[worstIdx], sigma[worstIdx], worst);
             Assert.IsTrue(worst <= relTol);
-
-            arena.Dispose();
         }
 
         // Reconstruction near-optimal: ‖A − Uk diag(Sk) Vkᵀ‖_F must be within a small factor of the
@@ -245,20 +236,19 @@ public class fProxySVDRandomizedTests
         // drive the factor toward 1. We allow ≤ 1.25× the optimum (q=2, oversample 10).
         void RandSvdReconNearOptimal_120x40()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 120, n = 40, k = 8;
 
-            var sigma = arena.fProxyVec(n);
+            var sigma = new fProxyN(n, Allocator.Temp);
             double rho = 0.7, s = 1.0;
             for (int i = 0; i < n; i++) { sigma[i] = (fProxy)s; s *= rho; }
 
-            var A = arena.fProxyMat(m, n);
+            var A = new fProxyMxN(m, n, Allocator.Temp);
             var rng = new Unity.Mathematics.Random(0xA11CE5EDu);
             BuildRandSvd(ref rng, m, n, in sigma, ref A);
 
-            var Uk = arena.fProxyMat(m, k);
-            var Sk = arena.fProxyVec(k);
-            var Vk = arena.fProxyMat(n, k);
+            var Uk = new fProxyMxN(m, k, Allocator.Temp);
+            var Sk = new fProxyN(k, Allocator.Temp);
+            var Vk = new fProxyMxN(n, k, Allocator.Temp);
             bool ok = SVD.randomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0xBEEF0002u, 75);
             Assert.IsTrue(ok);
 
@@ -281,32 +271,29 @@ public class fProxySVDRandomizedTests
             // 1.05 catches any real suboptimality while tolerating rounding and seed variation.
             if (!(ratio <= (fProxy)1.05f)) Record(errF, optF, ratio);
             Assert.IsTrue(ratio <= (fProxy)1.05f);
-
-            arena.Dispose();
         }
 
         // Power-iteration improvement (HMT): on a SLOWLY-decaying spectrum, q=2 must recover the top-k
         // singular values strictly more accurately than q=0. Same matrix, same sketch seed.
         void RandSvdPowerImproves_100x50()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 100, n = 50, k = 6;
 
-            var sigma = arena.fProxyVec(n);
+            var sigma = new fProxyN(n, Allocator.Temp);
             double rho = 0.92, s = 1.0;   // slow decay → q=0 leaves visible error, q=2 sharpens it
             for (int i = 0; i < n; i++) { sigma[i] = (fProxy)s; s *= rho; }
 
-            var A = arena.fProxyMat(m, n);
+            var A = new fProxyMxN(m, n, Allocator.Temp);
             var rng = new Unity.Mathematics.Random(0xC0FFEE11u);
             BuildRandSvd(ref rng, m, n, in sigma, ref A);
 
             uint sketchSeed = 0xD0D0BEEFu;
 
-            var Uk0 = arena.fProxyMat(m, k); var Sk0 = arena.fProxyVec(k); var Vk0 = arena.fProxyMat(n, k);
+            var Uk0 = new fProxyMxN(m, k, Allocator.Temp); var Sk0 = new fProxyN(k, Allocator.Temp); var Vk0 = new fProxyMxN(n, k, Allocator.Temp);
             bool ok0 = SVD.randomized(in A, ref Uk0, ref Sk0, ref Vk0, k, 10, 0, sketchSeed, 75);
             Assert.IsTrue(ok0);
 
-            var Uk2 = arena.fProxyMat(m, k); var Sk2 = arena.fProxyVec(k); var Vk2 = arena.fProxyMat(n, k);
+            var Uk2 = new fProxyMxN(m, k, Allocator.Temp); var Sk2 = new fProxyN(k, Allocator.Temp); var Vk2 = new fProxyMxN(n, k, Allocator.Temp);
             bool ok2 = SVD.randomized(in A, ref Uk2, ref Sk2, ref Vk2, k, 10, 2, sketchSeed, 75);
             Assert.IsTrue(ok2);
 
@@ -325,17 +312,14 @@ public class fProxySVDRandomizedTests
             // And q=2 should actually be accurate (each σ within ~2% on this slow spectrum).
             for (int t = 0; t < k; t++)
                 AssertLE(math.abs(Sk2[t] - sigma[t]) / sigma[t], (fProxy)0.02f);
-
-            arena.Dispose();
         }
 
         // Orthonormality of returned Uk/Vk columns on a known-Σ matrix (clustered + decaying).
         void RandSvdOrthonormal_Known_140x40()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 140, n = 40, k = 7;
 
-            var sigma = arena.fProxyVec(n);
+            var sigma = new fProxyN(n, Allocator.Temp);
             // clustered top then decay: [20,20,20, 8,5,3,2, then geometric tail]
             double tail = 2.0;
             for (int i = 0; i < n; i++)
@@ -350,13 +334,13 @@ public class fProxySVDRandomizedTests
                 sigma[i] = (fProxy)sg;
             }
 
-            var A = arena.fProxyMat(m, n);
+            var A = new fProxyMxN(m, n, Allocator.Temp);
             var rng = new Unity.Mathematics.Random(0x5EED1234u);
             BuildRandSvd(ref rng, m, n, in sigma, ref A);
 
-            var Uk = arena.fProxyMat(m, k);
-            var Sk = arena.fProxyVec(k);
-            var Vk = arena.fProxyMat(n, k);
+            var Uk = new fProxyMxN(m, k, Allocator.Temp);
+            var Sk = new fProxyN(k, Allocator.Temp);
+            var Vk = new fProxyMxN(n, k, Allocator.Temp);
             bool ok = SVD.randomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0x9ABCDEF0u, 75);
             Assert.IsTrue(ok);
 
@@ -367,8 +351,6 @@ public class fProxySVDRandomizedTests
             for (int t = 1; t < k; t++) AssertGE(Sk[t - 1] + (fProxy)1E-4f * (sigma[0] + (fProxy)1), Sk[t]);
             for (int t = 3; t < k; t++)
                 AssertLE(math.abs(Sk[t] - sigma[t]) / sigma[t], (fProxy)0.05f);
-
-            arena.Dispose();
         }
     }
 
@@ -401,24 +383,20 @@ public class fProxySVDRandomizedTests
     [Test]
     public void RandomizedThrowsOnBadK()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.fProxyMat(6, 4);
-        var Uk = arena.fProxyMat(6, 5);
-        var Sk = arena.fProxyVec(5);
-        var Vk = arena.fProxyMat(4, 5);
+        var A = new fProxyMxN(6, 4, Allocator.Temp);
+        var Uk = new fProxyMxN(6, 5, Allocator.Temp);
+        var Sk = new fProxyN(5, Allocator.Temp);
+        var Vk = new fProxyMxN(4, 5, Allocator.Temp);
         Assert.Catch<ArgumentException>(() => SVD.randomized(in A, ref Uk, ref Sk, ref Vk, 5)); // k=5 > n=4
-        arena.Dispose();
     }
 
     [Test]
     public void RandomizedThrowsOnWideMatrix()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.fProxyMat(3, 5);
-        var Uk = arena.fProxyMat(3, 2);
-        var Sk = arena.fProxyVec(2);
-        var Vk = arena.fProxyMat(5, 2);
+        var A = new fProxyMxN(3, 5, Allocator.Temp);
+        var Uk = new fProxyMxN(3, 2, Allocator.Temp);
+        var Sk = new fProxyN(2, Allocator.Temp);
+        var Vk = new fProxyMxN(5, 2, Allocator.Temp);
         Assert.Catch<ArgumentException>(() => SVD.randomized(in A, ref Uk, ref Sk, ref Vk, 2));
-        arena.Dispose();
     }
 }

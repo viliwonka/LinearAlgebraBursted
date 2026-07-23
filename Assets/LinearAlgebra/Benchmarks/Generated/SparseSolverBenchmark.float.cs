@@ -291,31 +291,33 @@ namespace LinearAlgebra.Benchmarks
         static double ResidualLS(in floatMxN A, in floatN x, in floatN b)
         {
             var Ax = Blas.dot(A, x);
-            var res = Ax - b;
+            var res = new floatN(in Ax, Allocator.Persistent);
+            floatComp.subInPlace(res, b);
             var atr = Blas.dot(res, A);
             var atb = Blas.dot(b, A);
             double num = 0, den = 0;
             for (int i = 0; i < atr.N; i++) num += (double)atr[i] * (double)atr[i];
             for (int i = 0; i < atb.N; i++) den += (double)atb[i] * (double)atb[i];
+            res.Dispose();
             return math.sqrt(num) / math.sqrt(math.max(den, 1e-30));
         }
 
         // ==== block-matrix builders ====================================================================
 
-        static void BuildBlockSPDFloat(ref Arena arena, int nb, float density, uint seed, out floatMxN dense, out floatBSR sparse)
+        static void BuildBlockSPDFloat(int nb, float density, uint seed, out floatMxN dense, out floatBSR sparse)
         {
             const int BR = SparseSolverFmt.BR;
             int dim = nb * BR;
-            dense = arena.floatMat(dim, dim);
+            dense = new floatMxN(dim, dim, Allocator.Persistent);
             var pairs = SparseSolverFmt.ChooseOffDiagPairsSymmetric(nb, density, seed, out int nnzb);
-            var builder = arena.floatBSRBuilder(nb, nb, BR, BR, nnzb);
+            var builder = new floatBSRBuilder(nb, nb, BR, BR, Allocator.Persistent, nnzb);
             var rng = new Random(seed ^ 0x9E3779B9u);
             float strong = dim;
             float offScale = (float)0.3;
 
             for (int i = 0; i < nb; i++)
             {
-                var Mi = arena.floatMat(BR, BR);
+                var Mi = new floatMxN(BR, BR, Allocator.Persistent);
                 for (int r = 0; r < BR; r++)
                     for (int c = 0; c < BR; c++)
                         Mi[r, c] = rng.NextFloat(-1f, 1f);
@@ -326,12 +328,14 @@ namespace LinearAlgebra.Benchmarks
                 for (int r = 0; r < BR; r++)
                     for (int c = 0; c < BR; c++)
                         dense[i * BR + r, i * BR + c] = Di[r, c];
+
+                Mi.Dispose();
             }
 
             foreach (var pos in pairs)
             {
                 int bi = pos.Bi, bj = pos.Bj;
-                var block = arena.floatMat(BR, BR);
+                var block = new floatMxN(BR, BR, Allocator.Persistent);
                 for (int r = 0; r < BR; r++)
                     for (int c = 0; c < BR; c++)
                         block[r, c] = rng.NextFloat(-offScale, offScale);
@@ -341,7 +345,7 @@ namespace LinearAlgebra.Benchmarks
                     for (int c = 0; c < BR; c++)
                         dense[bi * BR + r, bj * BR + c] = block[r, c];
 
-                var blockT = arena.floatMat(BR, BR);
+                var blockT = new floatMxN(BR, BR, Allocator.Persistent);
                 for (int r = 0; r < BR; r++)
                     for (int c = 0; c < BR; c++)
                         blockT[r, c] = block[c, r];
@@ -350,32 +354,36 @@ namespace LinearAlgebra.Benchmarks
                 for (int r = 0; r < BR; r++)
                     for (int c = 0; c < BR; c++)
                         dense[bj * BR + r, bi * BR + c] = blockT[r, c];
+
+                block.Dispose();
+                blockT.Dispose();
             }
 
-            sparse = builder.ToBSR(ref arena);
+            sparse = builder.ToBSR(Allocator.Persistent);
+            builder.Dispose();
         }
 
         // Same recipe as BuildBlockSPDFloat (identical rng sequence), but assembles TWO block-CSR encodings
         // of the SAME dense SPD matrix side by side: `full` (every stored block, incl. the explicit mirrored
         // upper block) and `sym` (lower-triangle + diagonal ONLY, via ToBSRSymmetric). Used by Section 0b to
         // isolate the symmetric-storage spMV win on a byte-for-byte identical matrix.
-        static void BuildBlockSPDPairFloat(ref Arena arena, int nb, float density, uint seed,
+        static void BuildBlockSPDPairFloat(int nb, float density, uint seed,
                                             out floatMxN dense, out floatBSR full, out floatBSR sym)
         {
             const int BR = SparseSolverFmt.BR;
             int dim = nb * BR;
-            dense = arena.floatMat(dim, dim);
+            dense = new floatMxN(dim, dim, Allocator.Persistent);
             var pairs = SparseSolverFmt.ChooseOffDiagPairsSymmetric(nb, density, seed, out int nnzbFull);
             int nnzbSym = nb + pairs.Count;
-            var fullBuilder = arena.floatBSRBuilder(nb, nb, BR, BR, nnzbFull);
-            var symBuilder = arena.floatBSRBuilder(nb, nb, BR, BR, nnzbSym);
+            var fullBuilder = new floatBSRBuilder(nb, nb, BR, BR, Allocator.Persistent, nnzbFull);
+            var symBuilder = new floatBSRBuilder(nb, nb, BR, BR, Allocator.Persistent, nnzbSym);
             var rng = new Random(seed ^ 0x9E3779B9u);
             float strong = dim;
             float offScale = (float)0.3;
 
             for (int i = 0; i < nb; i++)
             {
-                var Mi = arena.floatMat(BR, BR);
+                var Mi = new floatMxN(BR, BR, Allocator.Persistent);
                 for (int r = 0; r < BR; r++)
                     for (int c = 0; c < BR; c++)
                         Mi[r, c] = rng.NextFloat(-1f, 1f);
@@ -387,12 +395,14 @@ namespace LinearAlgebra.Benchmarks
                 for (int r = 0; r < BR; r++)
                     for (int c = 0; c < BR; c++)
                         dense[i * BR + r, i * BR + c] = Di[r, c];
+
+                Mi.Dispose();
             }
 
             foreach (var pos in pairs)
             {
                 int bi = pos.Bi, bj = pos.Bj;
-                var block = arena.floatMat(BR, BR);
+                var block = new floatMxN(BR, BR, Allocator.Persistent);
                 for (int r = 0; r < BR; r++)
                     for (int c = 0; c < BR; c++)
                         block[r, c] = rng.NextFloat(-offScale, offScale);
@@ -402,7 +412,7 @@ namespace LinearAlgebra.Benchmarks
                     for (int c = 0; c < BR; c++)
                         dense[bi * BR + r, bj * BR + c] = block[r, c];
 
-                var blockT = arena.floatMat(BR, BR);
+                var blockT = new floatMxN(BR, BR, Allocator.Persistent);
                 for (int r = 0; r < BR; r++)
                     for (int c = 0; c < BR; c++)
                         blockT[r, c] = block[c, r];
@@ -412,26 +422,31 @@ namespace LinearAlgebra.Benchmarks
                 for (int r = 0; r < BR; r++)
                     for (int c = 0; c < BR; c++)
                         dense[bj * BR + r, bi * BR + c] = blockT[r, c];
+
+                block.Dispose();
+                blockT.Dispose();
             }
 
-            full = fullBuilder.ToBSR(ref arena);
-            sym = symBuilder.ToBSRSymmetric(ref arena);
+            full = fullBuilder.ToBSR(Allocator.Persistent);
+            sym = symBuilder.ToBSRSymmetric(Allocator.Persistent);
+            fullBuilder.Dispose();
+            symBuilder.Dispose();
         }
 
-        static void BuildBlockNonSymFloat(ref Arena arena, int nb, float density, uint seed, out floatMxN dense, out floatBSR sparse)
+        static void BuildBlockNonSymFloat(int nb, float density, uint seed, out floatMxN dense, out floatBSR sparse)
         {
             const int BR = SparseSolverFmt.BR;
             int dim = nb * BR;
-            dense = arena.floatMat(dim, dim);
+            dense = new floatMxN(dim, dim, Allocator.Persistent);
             var pairs = SparseSolverFmt.ChooseOffDiagPairsAsymmetric(nb, density, seed, out int nnzb);
-            var builder = arena.floatBSRBuilder(nb, nb, BR, BR, nnzb);
+            var builder = new floatBSRBuilder(nb, nb, BR, BR, Allocator.Persistent, nnzb);
             var rng = new Random(seed ^ 0x9E3779B9u);
             float strong = dim;
             float offScale = (float)0.3;
 
             for (int i = 0; i < nb; i++)
             {
-                var Mi = arena.floatMat(BR, BR);
+                var Mi = new floatMxN(BR, BR, Allocator.Persistent);
                 for (int r = 0; r < BR; r++)
                     for (int c = 0; c < BR; c++)
                         Mi[r, c] = rng.NextFloat(-1f, 1f);
@@ -442,12 +457,14 @@ namespace LinearAlgebra.Benchmarks
                 for (int r = 0; r < BR; r++)
                     for (int c = 0; c < BR; c++)
                         dense[i * BR + r, i * BR + c] = Di[r, c];
+
+                Mi.Dispose();
             }
 
             foreach (var pos in pairs)
             {
                 int bi = pos.Bi, bj = pos.Bj;
-                var block = arena.floatMat(BR, BR);
+                var block = new floatMxN(BR, BR, Allocator.Persistent);
                 for (int r = 0; r < BR; r++)
                     for (int c = 0; c < BR; c++)
                         block[r, c] = rng.NextFloat(-offScale, offScale);
@@ -456,24 +473,27 @@ namespace LinearAlgebra.Benchmarks
                 for (int r = 0; r < BR; r++)
                     for (int c = 0; c < BR; c++)
                         dense[bi * BR + r, bj * BR + c] = block[r, c];
+
+                block.Dispose();
             }
 
-            sparse = builder.ToBSR(ref arena);
+            sparse = builder.ToBSR(Allocator.Persistent);
+            builder.Dispose();
         }
 
-        static void BuildBlockRectFloat(ref Arena arena, int mb, int nb, float density, uint seed, out floatMxN dense, out floatBSR sparse)
+        static void BuildBlockRectFloat(int mb, int nb, float density, uint seed, out floatMxN dense, out floatBSR sparse)
         {
             const int BR = SparseSolverFmt.BR;
             int rows = mb * BR, cols = nb * BR;
-            dense = arena.floatMat(rows, cols);
+            dense = new floatMxN(rows, cols, Allocator.Persistent);
             int diagCount = math.min(mb, nb);
             var pairs = SparseSolverFmt.ChooseOffDiagPairsRect(mb, nb, density, seed, out int nnzb);
-            var builder = arena.floatBSRBuilder(mb, nb, BR, BR, nnzb);
+            var builder = new floatBSRBuilder(mb, nb, BR, BR, Allocator.Persistent, nnzb);
             var rng = new Random(seed ^ 0x9E3779B9u);
 
             for (int i = 0; i < diagCount; i++)
             {
-                var block = arena.floatMat(BR, BR);
+                var block = new floatMxN(BR, BR, Allocator.Persistent);
                 for (int r = 0; r < BR; r++)
                     for (int c = 0; c < BR; c++)
                         block[r, c] = (r == c ? (float)2 : (float)0) + rng.NextFloat(-(float)0.2, (float)0.2);
@@ -482,12 +502,14 @@ namespace LinearAlgebra.Benchmarks
                 for (int r = 0; r < BR; r++)
                     for (int c = 0; c < BR; c++)
                         dense[i * BR + r, i * BR + c] = block[r, c];
+
+                block.Dispose();
             }
 
             foreach (var pos in pairs)
             {
                 int bi = pos.Bi, bj = pos.Bj;
-                var block = arena.floatMat(BR, BR);
+                var block = new floatMxN(BR, BR, Allocator.Persistent);
                 for (int r = 0; r < BR; r++)
                     for (int c = 0; c < BR; c++)
                         block[r, c] = rng.NextFloat(-(float)0.3, (float)0.3);
@@ -496,27 +518,30 @@ namespace LinearAlgebra.Benchmarks
                 for (int r = 0; r < BR; r++)
                     for (int c = 0; c < BR; c++)
                         dense[bi * BR + r, bj * BR + c] = block[r, c];
+
+                block.Dispose();
             }
 
-            sparse = builder.ToBSR(ref arena);
+            sparse = builder.ToBSR(Allocator.Persistent);
+            builder.Dispose();
         }
 
         // Block-matrix builder, parameterized block size (used ONLY by the dedicated b=4/N=1024 Section 1x --
         // Section 1's builders keep BR hardcoded since their numbers are cited in docs). Same recipe as
         // BuildBlockSPDFloat, generalized so the block size isn't tied to the file-wide BR=3 constant.
-        static void BuildBlockSPDFloatSized(ref Arena arena, int nb, int br, float density, uint seed, out floatMxN dense, out floatBSR sparse)
+        static void BuildBlockSPDFloatSized(int nb, int br, float density, uint seed, out floatMxN dense, out floatBSR sparse)
         {
             int dim = nb * br;
-            dense = arena.floatMat(dim, dim);
+            dense = new floatMxN(dim, dim, Allocator.Persistent);
             var pairs = SparseSolverFmt.ChooseOffDiagPairsSymmetric(nb, density, seed, out int nnzb);
-            var builder = arena.floatBSRBuilder(nb, nb, br, br, nnzb);
+            var builder = new floatBSRBuilder(nb, nb, br, br, Allocator.Persistent, nnzb);
             var rng = new Random(seed ^ 0x9E3779B9u);
             float strong = dim;
             float offScale = (float)0.3;
 
             for (int i = 0; i < nb; i++)
             {
-                var Mi = arena.floatMat(br, br);
+                var Mi = new floatMxN(br, br, Allocator.Persistent);
                 for (int r = 0; r < br; r++)
                     for (int c = 0; c < br; c++)
                         Mi[r, c] = rng.NextFloat(-1f, 1f);
@@ -527,12 +552,14 @@ namespace LinearAlgebra.Benchmarks
                 for (int r = 0; r < br; r++)
                     for (int c = 0; c < br; c++)
                         dense[i * br + r, i * br + c] = Di[r, c];
+
+                Mi.Dispose();
             }
 
             foreach (var pos in pairs)
             {
                 int bi = pos.Bi, bj = pos.Bj;
-                var block = arena.floatMat(br, br);
+                var block = new floatMxN(br, br, Allocator.Persistent);
                 for (int r = 0; r < br; r++)
                     for (int c = 0; c < br; c++)
                         block[r, c] = rng.NextFloat(-offScale, offScale);
@@ -542,7 +569,7 @@ namespace LinearAlgebra.Benchmarks
                     for (int c = 0; c < br; c++)
                         dense[bi * br + r, bj * br + c] = block[r, c];
 
-                var blockT = arena.floatMat(br, br);
+                var blockT = new floatMxN(br, br, Allocator.Persistent);
                 for (int r = 0; r < br; r++)
                     for (int c = 0; c < br; c++)
                         blockT[r, c] = block[c, r];
@@ -551,9 +578,13 @@ namespace LinearAlgebra.Benchmarks
                 for (int r = 0; r < br; r++)
                     for (int c = 0; c < br; c++)
                         dense[bj * br + r, bi * br + c] = blockT[r, c];
+
+                block.Dispose();
+                blockT.Dispose();
             }
 
-            sparse = builder.ToBSR(ref arena);
+            sparse = builder.ToBSR(Allocator.Persistent);
+            builder.Dispose();
         }
 
         // ==== Section 0: operator matvec throughput (dense GEMV vs sparse spMV) =========================
@@ -571,23 +602,22 @@ namespace LinearAlgebra.Benchmarks
                 int nb = n / BR;
                 foreach (var density in SparseSolverFmt.Densities)
                 {
-                    var arena = new Arena(Allocator.Persistent);
-                    BuildBlockSPDFloat(ref arena, nb, density, SparseSolverFmt.Seed(n, density, 91), out var dense, out var sparse);
+                    BuildBlockSPDFloat(nb, density, SparseSolverFmt.Seed(n, density, 91), out var dense, out var sparse);
                     uint sx = SparseSolverFmt.Seed(n, density, 92);
 
-                    var xd = arena.floatRandomVec(n, -1f, 1f, sx);   // ping-pong clobbers input -> fresh copy per timing
-                    var yd = arena.floatVec(n);
+                    var xd = GenerateOP.floatRandomVec(n, -1f, 1f, sx, Allocator.Persistent);   // ping-pong clobbers input -> fresh copy per timing
+                    var yd = new floatN(n, Allocator.Persistent);
                     var denseJob = new MatvecDenseJobFloat { A = dense, x = xd, y = yd, reps = REPS };
                     var denseStat = Bench.Time(() => denseJob.Run());
                     sb.AppendLine(SparseSolverFmt.MatvecRow("float", n, density, "GEMV-dense", denseStat, 1.0, null));
 
-                    var xs = arena.floatRandomVec(n, -1f, 1f, sx);   // identical contents to xd
-                    var ys = arena.floatVec(n);
+                    var xs = GenerateOP.floatRandomVec(n, -1f, 1f, sx, Allocator.Persistent);   // identical contents to xd
+                    var ys = new floatN(n, Allocator.Persistent);
                     var sparseJob = new MatvecSparseJobFloat { A = sparse, x = xs, y = ys, reps = REPS };
                     var sparseStat = Bench.Time(() => sparseJob.Run());
 
                     // clean single-matvec numerical cross-check (untimed; identical input)
-                    var xc = arena.floatRandomVec(n, -1f, 1f, sx);
+                    var xc = GenerateOP.floatRandomVec(n, -1f, 1f, sx, Allocator.Persistent);
                     var yDc = Blas.dot(dense, xc);
                     var ySc = BSR.spMV(sparse, xc);
                     double md = 0;
@@ -595,7 +625,13 @@ namespace LinearAlgebra.Benchmarks
                     double speedup = denseStat.Median / math.max(sparseStat.Median, 1e-30);
                     sb.AppendLine(SparseSolverFmt.MatvecRow("float", n, density, "spMV-sparse", sparseStat, speedup, md));
 
-                    arena.Dispose();
+                    dense.Dispose();
+                    sparse.Dispose();
+                    xd.Dispose();
+                    yd.Dispose();
+                    xs.Dispose();
+                    ys.Dispose();
+                    xc.Dispose();
                 }
             }
         }
@@ -620,23 +656,22 @@ namespace LinearAlgebra.Benchmarks
                 int nb = n / BR;
                 foreach (var density in SparseSolverFmt.Densities)
                 {
-                    var arena = new Arena(Allocator.Persistent);
-                    BuildBlockSPDPairFloat(ref arena, nb, density, SparseSolverFmt.Seed(n, density, 95), out _, out var full, out var sym);
+                    BuildBlockSPDPairFloat(nb, density, SparseSolverFmt.Seed(n, density, 95), out var dense, out var full, out var sym);
                     uint sx = SparseSolverFmt.Seed(n, density, 96);
 
-                    var xf = arena.floatRandomVec(n, -1f, 1f, sx);
-                    var yf = arena.floatVec(n);
+                    var xf = GenerateOP.floatRandomVec(n, -1f, 1f, sx, Allocator.Persistent);
+                    var yf = new floatN(n, Allocator.Persistent);
                     var fullJob = new MatvecSparseJobFloat { A = full, x = xf, y = yf, reps = REPS };
                     var fullStat = Bench.Time(() => fullJob.Run());
                     sb.AppendLine(SparseSolverFmt.MatvecRow("float", n, density, "spMV-full", fullStat, 1.0, null));
 
-                    var xs = arena.floatRandomVec(n, -1f, 1f, sx);   // identical contents to xf
-                    var ys = arena.floatVec(n);
+                    var xs = GenerateOP.floatRandomVec(n, -1f, 1f, sx, Allocator.Persistent);   // identical contents to xf
+                    var ys = new floatN(n, Allocator.Persistent);
                     var symJob = new MatvecSparseJobFloat { A = sym, x = xs, y = ys, reps = REPS };
                     var symStat = Bench.Time(() => symJob.Run());
 
                     // clean single-matvec numerical cross-check (untimed; identical input)
-                    var xc = arena.floatRandomVec(n, -1f, 1f, sx);
+                    var xc = GenerateOP.floatRandomVec(n, -1f, 1f, sx, Allocator.Persistent);
                     var yFc = BSR.spMV(full, xc);
                     var ySc = BSR.spMV(sym, xc);
                     double md = 0;
@@ -644,7 +679,14 @@ namespace LinearAlgebra.Benchmarks
                     double speedup = fullStat.Median / math.max(symStat.Median, 1e-30);
                     sb.AppendLine(SparseSolverFmt.MatvecRow("float", n, density, "spMV-sym", symStat, speedup, md));
 
-                    arena.Dispose();
+                    dense.Dispose();
+                    full.Dispose();
+                    sym.Dispose();
+                    xf.Dispose();
+                    yf.Dispose();
+                    xs.Dispose();
+                    ys.Dispose();
+                    xc.Dispose();
                 }
             }
         }
@@ -664,35 +706,38 @@ namespace LinearAlgebra.Benchmarks
                 int nb = n / BR;
                 foreach (var density in SparseSolverFmt.Densities)
                 {
-                    var arena = new Arena(Allocator.Persistent);
-                    BuildBlockSPDFloat(ref arena, nb, density, SparseSolverFmt.Seed(n, density, 11), out var dense, out var sparse);
-                    var b = arena.floatRandomVec(n, -1f, 1f, SparseSolverFmt.Seed(n, density, 12));
+                    BuildBlockSPDFloat(nb, density, SparseSolverFmt.Seed(n, density, 11), out var dense, out var sparse);
+                    var b = GenerateOP.floatRandomVec(n, -1f, 1f, SparseSolverFmt.Seed(n, density, 12), Allocator.Persistent);
 
-                    var xCgD = arena.floatVec(n); var rCgD = arena.floatVec(n); var pCgD = arena.floatVec(n); var ApCgD = arena.floatVec(n);
+                    var xCgD = new floatN(n, Allocator.Persistent); var rCgD = new floatN(n, Allocator.Persistent); var pCgD = new floatN(n, Allocator.Persistent); var ApCgD = new floatN(n, Allocator.Persistent);
                     var cgDenseJob = new CGDenseJobFloat { A = dense, b = b, x = xCgD, r = rCgD, p = pCgD, Ap = ApCgD, K = K };
                     var cgDenseStat = Bench.Time(() => cgDenseJob.Run());
                     sb.AppendLine(SparseSolverFmt.Row("float", n, density, "CG-dense", cgDenseStat, ResidualLinSys(in dense, in xCgD, in b)));
 
-                    var xCgS = arena.floatVec(n); var rCgS = arena.floatVec(n); var pCgS = arena.floatVec(n); var ApCgS = arena.floatVec(n);
+                    var xCgS = new floatN(n, Allocator.Persistent); var rCgS = new floatN(n, Allocator.Persistent); var pCgS = new floatN(n, Allocator.Persistent); var ApCgS = new floatN(n, Allocator.Persistent);
                     var cgSparseJob = new CGSparseJobFloat { A = sparse, b = b, x = xCgS, r = rCgS, p = pCgS, Ap = ApCgS, K = K };
                     var cgSparseStat = Bench.Time(() => cgSparseJob.Run());
                     sb.AppendLine(SparseSolverFmt.Row("float", n, density, "CG-sparse", cgSparseStat, ResidualLinSys(in dense, in xCgS, in b)));
 
-                    var xMrD = arena.floatVec(n);
-                    var yD = arena.floatVec(n); var r1D = arena.floatVec(n); var r2D = arena.floatVec(n); var vD = arena.floatVec(n);
-                    var wD = arena.floatVec(n); var w1D = arena.floatVec(n); var w2D = arena.floatVec(n);
+                    var xMrD = new floatN(n, Allocator.Persistent);
+                    var yD = new floatN(n, Allocator.Persistent); var r1D = new floatN(n, Allocator.Persistent); var r2D = new floatN(n, Allocator.Persistent); var vD = new floatN(n, Allocator.Persistent);
+                    var wD = new floatN(n, Allocator.Persistent); var w1D = new floatN(n, Allocator.Persistent); var w2D = new floatN(n, Allocator.Persistent);
                     var mrDenseJob = new MinresDenseJobFloat { A = dense, b = b, x = xMrD, y = yD, r1 = r1D, r2 = r2D, v = vD, w = wD, w1 = w1D, w2 = w2D, K = K };
                     var mrDenseStat = Bench.Time(() => mrDenseJob.Run());
                     sb.AppendLine(SparseSolverFmt.Row("float", n, density, "MINRES-dense", mrDenseStat, ResidualLinSys(in dense, in xMrD, in b)));
 
-                    var xMrS = arena.floatVec(n);
-                    var yS = arena.floatVec(n); var r1S = arena.floatVec(n); var r2S = arena.floatVec(n); var vS = arena.floatVec(n);
-                    var wS = arena.floatVec(n); var w1S = arena.floatVec(n); var w2S = arena.floatVec(n);
+                    var xMrS = new floatN(n, Allocator.Persistent);
+                    var yS = new floatN(n, Allocator.Persistent); var r1S = new floatN(n, Allocator.Persistent); var r2S = new floatN(n, Allocator.Persistent); var vS = new floatN(n, Allocator.Persistent);
+                    var wS = new floatN(n, Allocator.Persistent); var w1S = new floatN(n, Allocator.Persistent); var w2S = new floatN(n, Allocator.Persistent);
                     var mrSparseJob = new MinresSparseJobFloat { A = sparse, b = b, x = xMrS, y = yS, r1 = r1S, r2 = r2S, v = vS, w = wS, w1 = w1S, w2 = w2S, K = K };
                     var mrSparseStat = Bench.Time(() => mrSparseJob.Run());
                     sb.AppendLine(SparseSolverFmt.Row("float", n, density, "MINRES-sparse", mrSparseStat, ResidualLinSys(in dense, in xMrS, in b)));
 
-                    arena.Dispose();
+                    dense.Dispose(); sparse.Dispose(); b.Dispose();
+                    xCgD.Dispose(); rCgD.Dispose(); pCgD.Dispose(); ApCgD.Dispose();
+                    xCgS.Dispose(); rCgS.Dispose(); pCgS.Dispose(); ApCgS.Dispose();
+                    xMrD.Dispose(); yD.Dispose(); r1D.Dispose(); r2D.Dispose(); vD.Dispose(); wD.Dispose(); w1D.Dispose(); w2D.Dispose();
+                    xMrS.Dispose(); yS.Dispose(); r1S.Dispose(); r2S.Dispose(); vS.Dispose(); wS.Dispose(); w1S.Dispose(); w2S.Dispose();
                 }
             }
         }
@@ -713,21 +758,22 @@ namespace LinearAlgebra.Benchmarks
                 "--- 1x. SPD block-sparse (b={0}, N={1}): cg, K={2}, tol=0 [float] ---", BR4, N, K));
             sb.AppendLine(SparseSolverFmt.RowHeader());
 
-            var arena = new Arena(Allocator.Persistent);
-            BuildBlockSPDFloatSized(ref arena, NB, BR4, density, SparseSolverFmt.Seed(N, density, 111), out var dense, out var sparse);
-            var b = arena.floatRandomVec(N, -1f, 1f, SparseSolverFmt.Seed(N, density, 112));
+            BuildBlockSPDFloatSized(NB, BR4, density, SparseSolverFmt.Seed(N, density, 111), out var dense, out var sparse);
+            var b = GenerateOP.floatRandomVec(N, -1f, 1f, SparseSolverFmt.Seed(N, density, 112), Allocator.Persistent);
 
-            var xCgD = arena.floatVec(N); var rCgD = arena.floatVec(N); var pCgD = arena.floatVec(N); var ApCgD = arena.floatVec(N);
+            var xCgD = new floatN(N, Allocator.Persistent); var rCgD = new floatN(N, Allocator.Persistent); var pCgD = new floatN(N, Allocator.Persistent); var ApCgD = new floatN(N, Allocator.Persistent);
             var cgDenseJob = new CGDenseJobFloat { A = dense, b = b, x = xCgD, r = rCgD, p = pCgD, Ap = ApCgD, K = K };
             var cgDenseStat = Bench.Time(() => cgDenseJob.Run());
             sb.AppendLine(SparseSolverFmt.Row("float", N, density, "CG-dense", cgDenseStat, ResidualLinSys(in dense, in xCgD, in b)));
 
-            var xCgS = arena.floatVec(N); var rCgS = arena.floatVec(N); var pCgS = arena.floatVec(N); var ApCgS = arena.floatVec(N);
+            var xCgS = new floatN(N, Allocator.Persistent); var rCgS = new floatN(N, Allocator.Persistent); var pCgS = new floatN(N, Allocator.Persistent); var ApCgS = new floatN(N, Allocator.Persistent);
             var cgSparseJob = new CGSparseJobFloat { A = sparse, b = b, x = xCgS, r = rCgS, p = pCgS, Ap = ApCgS, K = K };
             var cgSparseStat = Bench.Time(() => cgSparseJob.Run());
             sb.AppendLine(SparseSolverFmt.Row("float", N, density, "CG-sparse", cgSparseStat, ResidualLinSys(in dense, in xCgS, in b)));
 
-            arena.Dispose();
+            dense.Dispose(); sparse.Dispose(); b.Dispose();
+            xCgD.Dispose(); rCgD.Dispose(); pCgD.Dispose(); ApCgD.Dispose();
+            xCgS.Dispose(); rCgS.Dispose(); pCgS.Dispose(); ApCgS.Dispose();
         }
 
         // ==== Section 2: non-symmetric -> biCGStab =====================================================
@@ -745,23 +791,24 @@ namespace LinearAlgebra.Benchmarks
                 int nb = n / BR;
                 foreach (var density in SparseSolverFmt.Densities)
                 {
-                    var arena = new Arena(Allocator.Persistent);
-                    BuildBlockNonSymFloat(ref arena, nb, density, SparseSolverFmt.Seed(n, density, 21), out var dense, out var sparse);
-                    var b = arena.floatRandomVec(n, -1f, 1f, SparseSolverFmt.Seed(n, density, 22));
+                    BuildBlockNonSymFloat(nb, density, SparseSolverFmt.Seed(n, density, 21), out var dense, out var sparse);
+                    var b = GenerateOP.floatRandomVec(n, -1f, 1f, SparseSolverFmt.Seed(n, density, 22), Allocator.Persistent);
 
-                    var xD = arena.floatVec(n); var rD = arena.floatVec(n); var rh0D = arena.floatVec(n);
-                    var pD = arena.floatVec(n); var vD = arena.floatVec(n); var tD = arena.floatVec(n);
+                    var xD = new floatN(n, Allocator.Persistent); var rD = new floatN(n, Allocator.Persistent); var rh0D = new floatN(n, Allocator.Persistent);
+                    var pD = new floatN(n, Allocator.Persistent); var vD = new floatN(n, Allocator.Persistent); var tD = new floatN(n, Allocator.Persistent);
                     var jobD = new BiCGStabDenseJobFloat { A = dense, b = b, x = xD, r = rD, rHat0 = rh0D, p = pD, v = vD, t = tD, K = K };
                     var statD = Bench.Time(() => jobD.Run());
                     sb.AppendLine(SparseSolverFmt.Row("float", n, density, "BiCGStab-dense", statD, ResidualLinSys(in dense, in xD, in b)));
 
-                    var xS = arena.floatVec(n); var rS = arena.floatVec(n); var rh0S = arena.floatVec(n);
-                    var pS = arena.floatVec(n); var vS = arena.floatVec(n); var tS = arena.floatVec(n);
+                    var xS = new floatN(n, Allocator.Persistent); var rS = new floatN(n, Allocator.Persistent); var rh0S = new floatN(n, Allocator.Persistent);
+                    var pS = new floatN(n, Allocator.Persistent); var vS = new floatN(n, Allocator.Persistent); var tS = new floatN(n, Allocator.Persistent);
                     var jobS = new BiCGStabSparseJobFloat { A = sparse, b = b, x = xS, r = rS, rHat0 = rh0S, p = pS, v = vS, t = tS, K = K };
                     var statS = Bench.Time(() => jobS.Run());
                     sb.AppendLine(SparseSolverFmt.Row("float", n, density, "BiCGStab-sparse", statS, ResidualLinSys(in dense, in xS, in b)));
 
-                    arena.Dispose();
+                    dense.Dispose(); sparse.Dispose(); b.Dispose();
+                    xD.Dispose(); rD.Dispose(); rh0D.Dispose(); pD.Dispose(); vD.Dispose(); tD.Dispose();
+                    xS.Dispose(); rS.Dispose(); rh0S.Dispose(); pS.Dispose(); vS.Dispose(); tS.Dispose();
                 }
             }
         }
@@ -771,34 +818,36 @@ namespace LinearAlgebra.Benchmarks
         static void RunRectCaseFloat(int nRef, int mb, int nb, float density, string tag, int tagSeed, StringBuilder sb)
         {
             int BR = SparseSolverFmt.BR, K = SparseSolverFmt.K_LS;
-            var arena = new Arena(Allocator.Persistent);
-            BuildBlockRectFloat(ref arena, mb, nb, density, SparseSolverFmt.Seed(nRef, density, tagSeed), out var dense, out var sparse);
+            BuildBlockRectFloat(mb, nb, density, SparseSolverFmt.Seed(nRef, density, tagSeed), out var dense, out var sparse);
             int rows = mb * BR, cols = nb * BR;
-            var b = arena.floatRandomVec(rows, -1f, 1f, SparseSolverFmt.Seed(nRef, density, tagSeed + 1));
+            var b = GenerateOP.floatRandomVec(rows, -1f, 1f, SparseSolverFmt.Seed(nRef, density, tagSeed + 1), Allocator.Persistent);
 
-            var xLD = arena.floatVec(cols); var uLD = arena.floatVec(rows); var vLD = arena.floatVec(cols); var wLD = arena.floatVec(cols);
-            var tmMLD = arena.floatVec(rows); var tmNLD = arena.floatVec(cols);
+            var xLD = new floatN(cols, Allocator.Persistent); var uLD = new floatN(rows, Allocator.Persistent); var vLD = new floatN(cols, Allocator.Persistent); var wLD = new floatN(cols, Allocator.Persistent);
+            var tmMLD = new floatN(rows, Allocator.Persistent); var tmNLD = new floatN(cols, Allocator.Persistent);
             var lsqrDenseJob = new LsqrDenseJobFloat { A = dense, b = b, x = xLD, u = uLD, v = vLD, w = wLD, tmpM = tmMLD, tmpN = tmNLD, K = K };
             var lsqrDenseStat = Bench.Time(() => lsqrDenseJob.Run());
             sb.AppendLine(SparseSolverFmt.Row("float", nRef, density, "LSQR-dense-" + tag, lsqrDenseStat, ResidualLS(in dense, in xLD, in b)));
 
-            var xLS = arena.floatVec(cols); var uLS = arena.floatVec(rows); var vLS = arena.floatVec(cols); var wLS = arena.floatVec(cols);
-            var tmMLS = arena.floatVec(rows); var tmNLS = arena.floatVec(cols);
+            var xLS = new floatN(cols, Allocator.Persistent); var uLS = new floatN(rows, Allocator.Persistent); var vLS = new floatN(cols, Allocator.Persistent); var wLS = new floatN(cols, Allocator.Persistent);
+            var tmMLS = new floatN(rows, Allocator.Persistent); var tmNLS = new floatN(cols, Allocator.Persistent);
             var lsqrSparseJob = new LsqrSparseJobFloat { A = sparse, b = b, x = xLS, u = uLS, v = vLS, w = wLS, tmpM = tmMLS, tmpN = tmNLS, K = K };
             var lsqrSparseStat = Bench.Time(() => lsqrSparseJob.Run());
             sb.AppendLine(SparseSolverFmt.Row("float", nRef, density, "LSQR-sparse-" + tag, lsqrSparseStat, ResidualLS(in dense, in xLS, in b)));
 
             // Transpose-optimized variants -- Aᵀ materialized ONCE (outside timing), ApplyT
             // becomes a forward spMV over Aᵀ. Compare "sparseT" rows against the "sparse" rows above.
-            var AT = arena.floatBSRTranspose(in sparse);
+            var AT = sparse.Transpose(Allocator.Persistent);
 
-            var xLST = arena.floatVec(cols); var uLST = arena.floatVec(rows); var vLST = arena.floatVec(cols); var wLST = arena.floatVec(cols);
-            var tmMLST = arena.floatVec(rows); var tmNLST = arena.floatVec(cols);
+            var xLST = new floatN(cols, Allocator.Persistent); var uLST = new floatN(rows, Allocator.Persistent); var vLST = new floatN(cols, Allocator.Persistent); var wLST = new floatN(cols, Allocator.Persistent);
+            var tmMLST = new floatN(rows, Allocator.Persistent); var tmNLST = new floatN(cols, Allocator.Persistent);
             var lsqrSparseTJob = new LsqrSparseTJobFloat { A = sparse, AT = AT, b = b, x = xLST, u = uLST, v = vLST, w = wLST, tmpM = tmMLST, tmpN = tmNLST, K = K };
             var lsqrSparseTStat = Bench.Time(() => lsqrSparseTJob.Run());
             sb.AppendLine(SparseSolverFmt.Row("float", nRef, density, "LSQR-sparseT-" + tag, lsqrSparseTStat, ResidualLS(in dense, in xLST, in b)));
 
-            arena.Dispose();
+            dense.Dispose(); sparse.Dispose(); AT.Dispose(); b.Dispose();
+            xLD.Dispose(); uLD.Dispose(); vLD.Dispose(); wLD.Dispose(); tmMLD.Dispose(); tmNLD.Dispose();
+            xLS.Dispose(); uLS.Dispose(); vLS.Dispose(); wLS.Dispose(); tmMLS.Dispose(); tmNLS.Dispose();
+            xLST.Dispose(); uLST.Dispose(); vLST.Dispose(); wLST.Dispose(); tmMLST.Dispose(); tmNLST.Dispose();
         }
 
         static void Section3Float(StringBuilder sb)
@@ -844,17 +893,16 @@ namespace LinearAlgebra.Benchmarks
 
             foreach (var n in SparseSolverFmt.BlockSizesN)
             {
-                var arena = new Arena(Allocator.Persistent);
-                var M = arena.floatRandomMat(n, n, -1f, 1f, SparseSolverFmt.Seed(n, 0f, 41));
+                var M = GenerateOP.floatRandomMat(n, n, -1f, 1f, SparseSolverFmt.Seed(n, 0f, 41), Allocator.Persistent);
                 var A = Blas.dot(M, M, true);
                 for (int d = 0; d < n; d++) A[d, d] += n;
-                var b = arena.floatRandomVec(n, -1f, 1f, SparseSolverFmt.Seed(n, 0f, 42));
+                var b = GenerateOP.floatRandomVec(n, -1f, 1f, SparseSolverFmt.Seed(n, 0f, 42), Allocator.Persistent);
 
-                var xG = arena.floatVec(n); var rG = arena.floatVec(n); var pG = arena.floatVec(n); var ApG = arena.floatVec(n);
+                var xG = new floatN(n, Allocator.Persistent); var rG = new floatN(n, Allocator.Persistent); var pG = new floatN(n, Allocator.Persistent); var ApG = new floatN(n, Allocator.Persistent);
                 var genericJob = new CGDenseJobFloat { A = A, b = b, x = xG, r = rG, p = pG, Ap = ApG, K = K };
                 var genericStat = Bench.Time(() => genericJob.Run());
 
-                var xH = arena.floatVec(n); var rH = arena.floatVec(n); var pH = arena.floatVec(n); var ApH = arena.floatVec(n);
+                var xH = new floatN(n, Allocator.Persistent); var rH = new floatN(n, Allocator.Persistent); var pH = new floatN(n, Allocator.Persistent); var ApH = new floatN(n, Allocator.Persistent);
                 var handJob = new CGHandInlinedJobFloat { A = A, b = b, x = xH, r = rH, p = pH, Ap = ApH, K = K };
                 var handStat = Bench.Time(() => handJob.Run());
 
@@ -864,7 +912,9 @@ namespace LinearAlgebra.Benchmarks
                 sb.AppendLine(string.Format(CultureInfo.InvariantCulture, "{0,-7} {1,-6} {2,-16} {3,11:F4} {4,11:F4} {5,10}",
                     "float", n, "hand-inlined", handStat.Median, handStat.Min, "--"));
 
-                arena.Dispose();
+                M.Dispose(); b.Dispose();
+                xG.Dispose(); rG.Dispose(); pG.Dispose(); ApG.Dispose();
+                xH.Dispose(); rH.Dispose(); pH.Dispose(); ApH.Dispose();
             }
         }
     }

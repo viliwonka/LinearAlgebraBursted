@@ -57,13 +57,13 @@ public class fProxyLstsqRightPrecondTests
         // columns, so it is the canonical STRONG least-squares right preconditioner (Blendenpik/LSRN
         // shape) -- and non-symmetric (upper-triangular). Built by upper-triangular back-substitution
         // solving R·Rinv = I column by column.
-        static fProxyMxN BuildRinv(ref Arena arena, in fProxyMxN A)
+        static fProxyMxN BuildRinv(in fProxyMxN A)
         {
             int n = A.N_Cols;
-            var Q = arena.fProxyMat(A.M_Rows, n);
-            var R = arena.fProxyMat(n);
+            var Q = new fProxyMxN(A.M_Rows, n, Allocator.Temp);
+            var R = new fProxyMxN(n, n, Allocator.Temp);
             QR.decomp(in A, ref Q, ref R);
-            var Rinv = arena.fProxyMat(n);
+            var Rinv = new fProxyMxN(n, n, Allocator.Temp);
             for (int c = 0; c < n; c++)
                 for (int i = n - 1; i >= 0; i--)
                 {
@@ -77,10 +77,10 @@ public class fProxyLstsqRightPrecondTests
         // A genuinely non-symmetric, well-conditioned invertible N = I + 0.25·(strictly-lower random):
         // unit diagonal over a nilpotent lower part, so every eigenvalue is 1 (invertible) and
         // N != N^T. Exercises the wrapper's N^T (ApplyT) path, which the symmetric path never touches.
-        static fProxyMxN BuildNonSym(ref Arena arena, int n, uint seed)
+        static fProxyMxN BuildNonSym(int n, uint seed)
         {
-            var W = arena.fProxyRandomMat(n, n, -1f, 1f, seed);
-            var Nmat = arena.fProxyMat(n);
+            var W = GenerateOP.fProxyRandomMat(n, n, -1f, 1f, seed);
+            var Nmat = new fProxyMxN(n, n, Allocator.Temp);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
                     Nmat[i, j] = (i == j) ? (fProxy)1 : (j < i ? (fProxy)0.25 * W[i, j] : (fProxy)0);
@@ -89,9 +89,9 @@ public class fProxyLstsqRightPrecondTests
 
         // Random m x n A with columns geometrically scaled to condition number ~1e2 -- ill-scaled
         // enough that a column preconditioner earns its keep, mild enough to stay inside the float band.
-        static fProxyMxN BuildIllScaled(ref Arena arena, int m, int n, uint seed)
+        static fProxyMxN BuildIllScaled(int m, int n, uint seed)
         {
-            var A = arena.fProxyRandomMat(m, n, -1f, 1f, seed);
+            var A = GenerateOP.fProxyRandomMat(m, n, -1f, 1f, seed);
             for (int j = 0; j < n; j++)
             {
                 fProxy scale = math.pow((fProxy)10, (fProxy)2 * j / (fProxy)(n - 1));
@@ -101,26 +101,26 @@ public class fProxyLstsqRightPrecondTests
         }
 
         // Direct dense least-squares reference via QR (A full column rank, M_Rows >= N_Cols).
-        static fProxyN ReferenceSolveLstsq(ref Arena arena, in fProxyMxN A, in fProxyN b)
+        static fProxyN ReferenceSolveLstsq(in fProxyMxN A, in fProxyN b)
         {
-            var Q = arena.fProxyMat(A.M_Rows, A.N_Cols);
-            var R = arena.fProxyMat(A.N_Cols);
+            var Q = new fProxyMxN(A.M_Rows, A.N_Cols, Allocator.Temp);
+            var R = new fProxyMxN(A.N_Cols, A.N_Cols, Allocator.Temp);
             QR.decomp(in A, ref Q, ref R);
             fProxyN bLocal = b;
-            var xRef = arena.fProxyVec(A.N_Cols);
+            var xRef = new fProxyN(A.N_Cols, Allocator.Temp);
             QR.decompSolve(ref Q, ref R, ref bLocal, ref xRef);
             return xRef;
         }
 
         // 1x1-block BSR copy of a dense matrix (scalar AddValue per nonzero).
-        static fProxyBSR DenseToBSR(ref Arena arena, in fProxyMxN A)
+        static fProxyBSR DenseToBSR(in fProxyMxN A)
         {
-            var builder = arena.fProxyBSRBuilder(A.M_Rows, A.N_Cols, 1, 1, A.M_Rows * A.N_Cols);
+            var builder = new fProxyBSRBuilder(A.M_Rows, A.N_Cols, 1, 1, Allocator.Temp, A.M_Rows * A.N_Cols);
             for (int r = 0; r < A.M_Rows; r++)
                 for (int c = 0; c < A.N_Cols; c++)
                     if (A[r, c] != (fProxy)0)
                         builder.AddValue(r, c, A[r, c]);
-            return builder.ToBSR(ref arena);
+            return builder.ToBSR(Allocator.Temp);
         }
 
         static void AssertClose(fProxy got, fProxy expected, fProxy tol)
@@ -129,16 +129,16 @@ public class fProxyLstsqRightPrecondTests
         // Shared checks on a solved system: converged, exact recomputed ||A^T r|| small on the
         // fixed ||A^T b|| scale (100x headroom over tol covers cond(N) mapping the y-space
         // stopping test back to original coordinates), elementwise agreement with the QR oracle.
-        static void CheckSolution(ref Arena arena, in fProxyMxN A, in fProxyN b, in fProxyN x, in LstsqInfo info, fProxy tol)
+        static void CheckSolution(in fProxyMxN A, in fProxyN b, in fProxyN x, in LstsqInfo info, fProxy tol)
         {
             Assert.IsTrue(info.Solved);
 
-            var atb = arena.fProxyVec(A.N_Cols);
+            var atb = new fProxyN(A.N_Cols, Allocator.Temp);
             Blas.dot(in b, in A, ref atb);                    // A^T b
             fProxy atbNorm = math.sqrt(Blas.dot(atb, atb));
             Assert.IsTrue((fProxy)info.Arnorm <= (fProxy)100 * tol * math.max(atbNorm, (fProxy)1e-30));
 
-            var xRef = ReferenceSolveLstsq(ref arena, in A, in b);
+            var xRef = ReferenceSolveLstsq(in A, in b);
             for (int j = 0; j < A.N_Cols; j++)
                 AssertClose(x[j], xRef[j], Band());
         }
@@ -146,96 +146,76 @@ public class fProxyLstsqRightPrecondTests
         // ---- 1./2. dense lsqr/lsmr with a non-diagonal SPD N match the QR oracle ----
         void LsqrRightPreSpdDense()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 20, n = 6;
-            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 63001);
-            var b = arena.fProxyRandomVec(m, -1f, 1f, 63002);
-            var pre = new fProxyDenseSpdPreconditioner { Nmat = fProxyKrylovBatteryOracles.BuildDenseSpd(ref arena, n, 63003, (fProxy)n) };
+            var A = GenerateOP.fProxyRandomMat(m, n, -1f, 1f, 63001);
+            var b = GenerateOP.fProxyRandomVec(m, -1f, 1f, 63002);
+            var pre = new fProxyDenseSpdPreconditioner { Nmat = fProxyKrylovBatteryOracles.BuildDenseSpd(n, 63003, (fProxy)n) };
 
             fProxy tol = Consts.fProxySqrtEps;
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             var info = Krylov.lsqrRightPre(in A, in pre, in b, ref x, 20 * n, tol);
-            CheckSolution(ref arena, in A, in b, in x, in info, tol);
-
-            arena.Dispose();
+            CheckSolution(in A, in b, in x, in info, tol);
         }
 
         void LsmrRightPreSpdDense()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 20, n = 6;
-            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 63101);
-            var b = arena.fProxyRandomVec(m, -1f, 1f, 63102);
-            var pre = new fProxyDenseSpdPreconditioner { Nmat = fProxyKrylovBatteryOracles.BuildDenseSpd(ref arena, n, 63103, (fProxy)n) };
+            var A = GenerateOP.fProxyRandomMat(m, n, -1f, 1f, 63101);
+            var b = GenerateOP.fProxyRandomVec(m, -1f, 1f, 63102);
+            var pre = new fProxyDenseSpdPreconditioner { Nmat = fProxyKrylovBatteryOracles.BuildDenseSpd(n, 63103, (fProxy)n) };
 
             fProxy tol = Consts.fProxySqrtEps;
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             var info = Krylov.lsmrRightPre(in A, in pre, in b, ref x, 20 * n, tol);
-            CheckSolution(ref arena, in A, in b, in x, in info, tol);
-
-            arena.Dispose();
+            CheckSolution(in A, in b, in x, in info, tol);
         }
 
         // ---- 3./4. BSR entry points: same SPD N, same oracle ----
         void LsqrRightPreSpdBSR()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 20, n = 6;
-            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 63201);
-            var b = arena.fProxyRandomVec(m, -1f, 1f, 63202);
-            var bsm = DenseToBSR(ref arena, in A);
-            var pre = new fProxyDenseSpdPreconditioner { Nmat = fProxyKrylovBatteryOracles.BuildDenseSpd(ref arena, n, 63203, (fProxy)n) };
+            var A = GenerateOP.fProxyRandomMat(m, n, -1f, 1f, 63201);
+            var b = GenerateOP.fProxyRandomVec(m, -1f, 1f, 63202);
+            var bsm = DenseToBSR(in A);
+            var pre = new fProxyDenseSpdPreconditioner { Nmat = fProxyKrylovBatteryOracles.BuildDenseSpd(n, 63203, (fProxy)n) };
 
             fProxy tol = Consts.fProxySqrtEps;
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             var info = Krylov.lsqrRightPre(in bsm, in pre, in b, ref x, 20 * n, tol);
-            CheckSolution(ref arena, in A, in b, in x, in info, tol);
-
-            arena.Dispose();
+            CheckSolution(in A, in b, in x, in info, tol);
         }
 
         void LsmrRightPreSpdBSR()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 20, n = 6;
-            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 63301);
-            var b = arena.fProxyRandomVec(m, -1f, 1f, 63302);
-            var bsm = DenseToBSR(ref arena, in A);
-            var pre = new fProxyDenseSpdPreconditioner { Nmat = fProxyKrylovBatteryOracles.BuildDenseSpd(ref arena, n, 63303, (fProxy)n) };
+            var A = GenerateOP.fProxyRandomMat(m, n, -1f, 1f, 63301);
+            var b = GenerateOP.fProxyRandomVec(m, -1f, 1f, 63302);
+            var bsm = DenseToBSR(in A);
+            var pre = new fProxyDenseSpdPreconditioner { Nmat = fProxyKrylovBatteryOracles.BuildDenseSpd(n, 63303, (fProxy)n) };
 
             fProxy tol = Consts.fProxySqrtEps;
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             var info = Krylov.lsmrRightPre(in bsm, in pre, in b, ref x, 20 * n, tol);
-            CheckSolution(ref arena, in A, in b, in x, in info, tol);
-
-            arena.Dispose();
+            CheckSolution(in A, in b, in x, in info, tol);
         }
 
         // ---- 5. lsqrJacobi / lsmrJacobi (now the diagonal case of the RightPre path) still
         // match the QR oracle ----
         void JacobiWrappersMatchOracle()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 20, n = 6;
-            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 63401);
-            var b = arena.fProxyRandomVec(m, -1f, 1f, 63402);
+            var A = GenerateOP.fProxyRandomMat(m, n, -1f, 1f, 63401);
+            var b = GenerateOP.fProxyRandomVec(m, -1f, 1f, 63402);
 
             fProxy tol = Consts.fProxySqrtEps;
 
-            var xLsqr = arena.fProxyVec(n);
+            var xLsqr = new fProxyN(n, Allocator.Temp);
             var infoLsqr = Krylov.lsqrJacobi(in A, in b, ref xLsqr, 20 * n, tol);
-            CheckSolution(ref arena, in A, in b, in xLsqr, in infoLsqr, tol);
+            CheckSolution(in A, in b, in xLsqr, in infoLsqr, tol);
 
-            var xLsmr = arena.fProxyVec(n);
+            var xLsmr = new fProxyN(n, Allocator.Temp);
             var infoLsmr = Krylov.lsmrJacobi(in A, in b, ref xLsmr, 20 * n, tol);
-            CheckSolution(ref arena, in A, in b, in xLsmr, in infoLsmr, tol);
-
-            arena.Dispose();
+            CheckSolution(in A, in b, in xLsmr, in infoLsmr, tol);
         }
 
         // ---- 6./7. general (operator-valued) right preconditioner N = R^-1: A·N is orthonormal, so
@@ -243,37 +223,29 @@ public class fProxyLstsqRightPrecondTests
         // land on the QR oracle. Proves both the non-symmetric wrapper AND its strength. ----
         void LsqrRightPreOpRinvDense()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 24, n = 6;
-            var A = BuildIllScaled(ref arena, m, n, 63501);
-            var b = arena.fProxyRandomVec(m, -1f, 1f, 63502);
-            var Rinv = BuildRinv(ref arena, in A);
+            var A = BuildIllScaled(m, n, 63501);
+            var b = GenerateOP.fProxyRandomVec(m, -1f, 1f, 63502);
+            var Rinv = BuildRinv(in A);
 
             fProxy tol = Consts.fProxySqrtEps;
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             // budget = n: converges only because A·R^-1 is (near-)orthonormal; CheckSolution asserts Solved.
             var info = Krylov.lsqrRightPreOp(in A, new fProxyDenseOperator(in Rinv), in b, ref x, n, tol);
-            CheckSolution(ref arena, in A, in b, in x, in info, tol);
-
-            arena.Dispose();
+            CheckSolution(in A, in b, in x, in info, tol);
         }
 
         void LsmrRightPreOpRinvDense()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 24, n = 6;
-            var A = BuildIllScaled(ref arena, m, n, 63511);
-            var b = arena.fProxyRandomVec(m, -1f, 1f, 63512);
-            var Rinv = BuildRinv(ref arena, in A);
+            var A = BuildIllScaled(m, n, 63511);
+            var b = GenerateOP.fProxyRandomVec(m, -1f, 1f, 63512);
+            var Rinv = BuildRinv(in A);
 
             fProxy tol = Consts.fProxySqrtEps;
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             var info = Krylov.lsmrRightPreOp(in A, new fProxyDenseOperator(in Rinv), in b, ref x, n, tol);
-            CheckSolution(ref arena, in A, in b, in x, in info, tol);
-
-            arena.Dispose();
+            CheckSolution(in A, in b, in x, in info, tol);
         }
 
         // ---- 8./9. general non-symmetric N (N != N^T): the wrapped transpose must use N^T, so a
@@ -281,37 +253,29 @@ public class fProxyLstsqRightPrecondTests
         // and BSR entry points. ----
         void LsqrRightPreOpNonSymDense()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 20, n = 6;
-            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 63601);
-            var b = arena.fProxyRandomVec(m, -1f, 1f, 63602);
-            var Nmat = BuildNonSym(ref arena, n, 63603);
+            var A = GenerateOP.fProxyRandomMat(m, n, -1f, 1f, 63601);
+            var b = GenerateOP.fProxyRandomVec(m, -1f, 1f, 63602);
+            var Nmat = BuildNonSym(n, 63603);
 
             fProxy tol = Consts.fProxySqrtEps;
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             var info = Krylov.lsqrRightPreOp(in A, new fProxyDenseOperator(in Nmat), in b, ref x, 20 * n, tol);
-            CheckSolution(ref arena, in A, in b, in x, in info, tol);
-
-            arena.Dispose();
+            CheckSolution(in A, in b, in x, in info, tol);
         }
 
         void LsqrRightPreOpNonSymBSR()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 20, n = 6;
-            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 63701);
-            var b = arena.fProxyRandomVec(m, -1f, 1f, 63702);
-            var bsm = DenseToBSR(ref arena, in A);
-            var Nmat = BuildNonSym(ref arena, n, 63703);
+            var A = GenerateOP.fProxyRandomMat(m, n, -1f, 1f, 63701);
+            var b = GenerateOP.fProxyRandomVec(m, -1f, 1f, 63702);
+            var bsm = DenseToBSR(in A);
+            var Nmat = BuildNonSym(n, 63703);
 
             fProxy tol = Consts.fProxySqrtEps;
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             var info = Krylov.lsqrRightPreOp(in bsm, new fProxyDenseOperator(in Nmat), in b, ref x, 20 * n, tol);
-            CheckSolution(ref arena, in A, in b, in x, in info, tol);
-
-            arena.Dispose();
+            CheckSolution(in A, in b, in x, in info, tol);
         }
     }
 

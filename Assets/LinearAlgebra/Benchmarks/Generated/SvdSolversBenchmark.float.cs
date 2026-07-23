@@ -62,12 +62,11 @@ namespace LinearAlgebra.Benchmarks
         static string SvdRandFloat(int n)
         {
             const int k = 16;
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(n, n);
-            var Uk = arena.floatMat(n, k);
-            var Sk = arena.floatVec(k);
-            var Vk = arena.floatMat(n, k);
-            var ws = arena.floatSVDRandomizedCache(n, n, k);
+            var A = new floatMxN(n, n, Allocator.Persistent);
+            var Uk = new floatMxN(n, k, Allocator.Persistent);
+            var Sk = new floatN(k, Allocator.Persistent);
+            var Vk = new floatMxN(n, k, Allocator.Persistent);
+            var ws = new floatSVDRandomizedCache(n, n, k, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -77,18 +76,17 @@ namespace LinearAlgebra.Benchmarks
             var job = new SvdRandomizedJobFloat { A = A, Uk = Uk, Sk = Sk, Vk = Vk, ws = ws };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); Uk.Dispose(); Sk.Dispose(); Vk.Dispose(); ws.Dispose();
             return Bench.RowTime("float", n, stat);
         }
 
         // ---- pinvSolve ----
         static string PinvFloat(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(n, n);
-            var b = arena.floatVec(n);
-            var x = arena.floatVec(n);
-            var ws = arena.floatSVDCache(n, n);
+            var A = new floatMxN(n, n, Allocator.Persistent);
+            var b = new floatN(n, Allocator.Persistent);
+            var x = new floatN(n, Allocator.Persistent);
+            var ws = new floatSVDCache(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -102,17 +100,16 @@ namespace LinearAlgebra.Benchmarks
             var job = new PinvSolveJobFloat { A = A, b = b, x = x, ws = ws };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); b.Dispose(); x.Dispose(); ws.Dispose();
             return Bench.RowTime("float", n, stat);
         }
 
         // ---- pseudoInverse ----
         static string PseudoInvFloat(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(n, n);
-            var Aplus = arena.floatMat(n, n);
-            var ws = arena.floatSVDCache(n, n);
+            var A = new floatMxN(n, n, Allocator.Persistent);
+            var Aplus = new floatMxN(n, n, Allocator.Persistent);
+            var ws = new floatSVDCache(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -124,7 +121,7 @@ namespace LinearAlgebra.Benchmarks
             var job = new PseudoInverseJobFloat { A = A, Aplus = Aplus, ws = ws };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); Aplus.Dispose(); ws.Dispose();
             return Bench.RowTime("float", n, stat);
         }
     }

@@ -159,23 +159,22 @@ namespace LinearAlgebra.Benchmarks
     {
         public static (string id, uint hash)[] Case_KrylovDenseFProxy()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2654435761u ^ 0x000Du);
 
             const int n = 64;
-            var M = arena.fProxyMat(n, n);
+            var M = new fProxyMxN(n, n, Allocator.Persistent);
             for (int r = 0; r < n; r++) for (int c = 0; c < n; c++) M[r, c] = rng.NextFProxy(-1f, 1f);
-            var Aspd = arena.fProxyMat(n, n);
+            var Aspd = new fProxyMxN(n, n, Allocator.Persistent);
             Blas.dot(in M, in M, ref Aspd, transposeA: true);
             for (int d = 0; d < n; d++) Aspd[d, d] += (fProxy)n;
-            var bSpd = arena.fProxyVec(n); for (int i = 0; i < n; i++) bSpd[i] = rng.NextFProxy(-1f, 1f);
-            var xCg = arena.fProxyVec(n, true); var xMinres = arena.fProxyVec(n, true); var xBicg = arena.fProxyVec(n, true);
+            var bSpd = new fProxyN(n, Allocator.Persistent); for (int i = 0; i < n; i++) bSpd[i] = rng.NextFProxy(-1f, 1f);
+            var xCg = new fProxyN(n, Allocator.Persistent, true); var xMinres = new fProxyN(n, Allocator.Persistent, true); var xBicg = new fProxyN(n, Allocator.Persistent, true);
 
             const int mLs = 96, nLs = 48;
-            var Als = arena.fProxyMat(mLs, nLs);
+            var Als = new fProxyMxN(mLs, nLs, Allocator.Persistent);
             for (int r = 0; r < mLs; r++) for (int c = 0; c < nLs; c++) Als[r, c] = rng.NextFProxy(-1f, 1f);
-            var bLs = arena.fProxyVec(mLs); for (int i = 0; i < mLs; i++) bLs[i] = rng.NextFProxy(-1f, 1f);
-            var xLsqr = arena.fProxyVec(nLs, true); var xLsmr = arena.fProxyVec(nLs, true);
+            var bLs = new fProxyN(mLs, Allocator.Persistent); for (int i = 0; i < mLs; i++) bLs[i] = rng.NextFProxy(-1f, 1f);
+            var xLsqr = new fProxyN(nLs, Allocator.Persistent, true); var xLsmr = new fProxyN(nLs, Allocator.Persistent, true);
 
             var hashOut = new NativeArray<uint>(5, Allocator.Persistent);
             var job = new DetKrylovDenseJobFProxy
@@ -194,41 +193,42 @@ namespace LinearAlgebra.Benchmarks
                 ("krylov-dense/lsmr.fProxy.96x48", hashOut[4]),
             };
             hashOut.Dispose();
-            arena.Dispose();
+            M.Dispose(); Aspd.Dispose(); bSpd.Dispose(); xCg.Dispose(); xMinres.Dispose(); xBicg.Dispose();
+            Als.Dispose(); bLs.Dispose(); xLsqr.Dispose(); xLsmr.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_SparseBsrFProxy()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyLaplacian2D(32, 32); // N=1024
+            var A = fProxyGallery.fProxyLaplacian2D(32, 32, Allocator.Persistent); // N=1024
             int n = A.M_Rows;
-            var Jac = arena.fProxyBlockJacobi(in A);
+            var Jac = new fProxyBlockJacobi(in A, Allocator.Persistent);
 
             var rng = new Random(2654435761u ^ 0x000Eu);
-            var x = arena.fProxyVec(n); for (int i = 0; i < n; i++) x[i] = rng.NextFProxy(-1f, 1f);
-            var y = arena.fProxyVec(n); var yT = arena.fProxyVec(n);
-            var sweepLowerOut = arena.fProxyVec(n); var sweepUpperOut = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Persistent); for (int i = 0; i < n; i++) x[i] = rng.NextFProxy(-1f, 1f);
+            var y = new fProxyN(n, Allocator.Persistent); var yT = new fProxyN(n, Allocator.Persistent);
+            var sweepLowerOut = new fProxyN(n, Allocator.Persistent); var sweepUpperOut = new fProxyN(n, Allocator.Persistent);
 
-            var Vrows = arena.fProxyMat(4, n);
+            var Vrows = new fProxyMxN(4, n, Allocator.Persistent);
             for (int r = 0; r < 4; r++) for (int c = 0; c < n; c++) Vrows[r, c] = rng.NextFProxy(-1f, 1f);
-            var AVrows = arena.fProxyMat(4, n);
+            var AVrows = new fProxyMxN(4, n, Allocator.Persistent);
 
             // Small manually-assembled BSR: hashes the assembly buffers themselves (block CSR
             // RowPtr/ColInd/Values), independent of any gallery generator.
-            var builder = arena.fProxyBSRBuilder(3, 3, 2, 2, 5);
-            var diag = arena.fProxyMat(2, 2);
+            var builder = new fProxyBSRBuilder(3, 3, 2, 2, Allocator.Persistent, 5);
+            var diag = new fProxyMxN(2, 2, Allocator.Persistent);
             diag[0, 0] = (fProxy)4; diag[0, 1] = (fProxy)1; diag[1, 0] = (fProxy)1; diag[1, 1] = (fProxy)4;
             builder.AddBlock(0, 0, in diag); builder.AddBlock(1, 1, in diag); builder.AddBlock(2, 2, in diag);
-            var off = arena.fProxyMat(2, 2);
+            var off = new fProxyMxN(2, 2, Allocator.Persistent);
             off[0, 0] = (fProxy)(-1); off[0, 1] = (fProxy)0; off[1, 0] = (fProxy)0; off[1, 1] = (fProxy)(-1);
             builder.AddBlock(1, 0, in off); builder.AddBlock(2, 1, in off);
-            var built = builder.ToBSR(ref arena);
+            var built = builder.ToBSR(Allocator.Persistent);
+            builder.Dispose();
 
-            var randomSpd = arena.fProxyRandomSparseSPD(12, 4, (fProxy)0.3, 0xC0FFEEu); // 48x48-ish
-            var xRandom = arena.fProxyVec(randomSpd.M_Rows);
+            var randomSpd = fProxyGallery.fProxyRandomSparseSPD(12, 4, (fProxy)0.3, 0xC0FFEEu, Allocator.Persistent); // 48x48-ish
+            var xRandom = new fProxyN(randomSpd.M_Rows, Allocator.Persistent);
             for (int i = 0; i < xRandom.N; i++) xRandom[i] = rng.NextFProxy(-1f, 1f);
-            var yRandom = arena.fProxyVec(randomSpd.M_Rows);
+            var yRandom = new fProxyN(randomSpd.M_Rows, Allocator.Persistent);
 
             var hashOut = new NativeArray<uint>(7, Allocator.Persistent);
             var job = new DetSparseBsrJobFProxy
@@ -250,26 +250,27 @@ namespace LinearAlgebra.Benchmarks
                 ("sparse-bsr/spMV.fProxy.randomSparseSPD", hashOut[6]),
             };
             hashOut.Dispose();
-            arena.Dispose();
+            A.Dispose(); Jac.Dispose(); x.Dispose(); y.Dispose(); yT.Dispose();
+            sweepLowerOut.Dispose(); sweepUpperOut.Dispose(); Vrows.Dispose(); AVrows.Dispose();
+            diag.Dispose(); off.Dispose(); built.Dispose(); randomSpd.Dispose(); xRandom.Dispose(); yRandom.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_KrylovSparsePrecondFProxy()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyLaplacian2D(8, 128); // N=1024, BR=8 (IC0/ILU0 cap block size at 16)
+            var A = fProxyGallery.fProxyLaplacian2D(8, 128, Allocator.Persistent); // N=1024, BR=8 (IC0/ILU0 cap block size at 16)
             int n = A.M_Rows;
             var rng = new Random(2654435761u ^ 0x000Fu);
-            var b = arena.fProxyVec(n); for (int i = 0; i < n; i++) b[i] = rng.NextFProxy(-1f, 1f);
+            var b = new fProxyN(n, Allocator.Persistent); for (int i = 0; i < n; i++) b[i] = rng.NextFProxy(-1f, 1f);
 
-            var MJacobi = arena.fProxyBlockJacobi(in A);
-            var xJacobi = arena.fProxyVec(n, true);
-            var MSsor = arena.fProxySSOR(in A);
-            var xSsor = arena.fProxyVec(n, true);
-            var MIc0 = arena.fProxyIC0(in A);
-            var xIc0 = arena.fProxyVec(n, true);
-            var MIlu0 = arena.fProxyILU0(in A);
-            var xIlu0 = arena.fProxyVec(n, true);
+            var MJacobi = new fProxyBlockJacobi(in A, Allocator.Persistent);
+            var xJacobi = new fProxyN(n, Allocator.Persistent, true);
+            var MSsor = new fProxySSOR(in A, Allocator.Persistent);
+            var xSsor = new fProxyN(n, Allocator.Persistent, true);
+            var MIc0 = new fProxyIC0(in A, Allocator.Persistent);
+            var xIc0 = new fProxyN(n, Allocator.Persistent, true);
+            var MIlu0 = new fProxyILU0(in A, Allocator.Persistent);
+            var xIlu0 = new fProxyN(n, Allocator.Persistent, true);
 
             var hashOut = new NativeArray<uint>(4, Allocator.Persistent);
             var job = new DetKrylovSparsePrecondJobFProxy
@@ -291,7 +292,9 @@ namespace LinearAlgebra.Benchmarks
                 ("krylov-sparse-precond/biCGStab.ilu0.fProxy.laplacian2d.n1024", hashOut[3]),
             };
             hashOut.Dispose();
-            arena.Dispose();
+            A.Dispose(); b.Dispose();
+            MJacobi.Dispose(); xJacobi.Dispose(); MSsor.Dispose(); xSsor.Dispose();
+            MIc0.Dispose(); xIc0.Dispose(); MIlu0.Dispose(); xIlu0.Dispose();
             return result;
         }
     }

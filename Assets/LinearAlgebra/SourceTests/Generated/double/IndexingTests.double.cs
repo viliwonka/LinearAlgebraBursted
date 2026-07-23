@@ -44,17 +44,15 @@ public class doubleIndexingTests {
                     break;
                 case TestType.RandomCalc:
                     RandomCalc();
-                break; 
+                break;
             }
         }
 
         public void VectorIndexing()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 16;
 
-            doubleN vec = arena.doubleVec(dim);
+            doubleN vec = new doubleN(dim, Allocator.Temp);
 
             // Forward-fill DISTINCT ground-truth values via the plain int indexer (oracle).
             for (int i = 0; i < dim; i++)
@@ -77,17 +75,13 @@ public class doubleIndexingTests {
 
             for (int k = 1; k <= dim; k++)
                 Assert.IsTrue(vec[dim - k] == (double)(1000 + k));
-
-            arena.Dispose();
         }
 
         public void MatrixIndexing1D()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 16;
 
-            doubleMxN mat = arena.doubleMat(dim, dim);
+            doubleMxN mat = new doubleMxN(dim, dim, Allocator.Temp);
 
             int len = dim * dim;
 
@@ -108,18 +102,14 @@ public class doubleIndexingTests {
 
             for (int k = 1; k <= len; k++)
                 Assert.IsTrue(mat[len - k] == (double)(1000 + k));
-
-            arena.Dispose();
         }
 
         public void MatrixIndexing2D()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int rows = 8;
             int cols = 16;
 
-            doubleMxN mat = arena.doubleMat(rows, cols);
+            doubleMxN mat = new doubleMxN(rows, cols, Allocator.Temp);
 
             // Same oracle pattern, via the plain [r, c] indexer; from-end checked per axis below.
             for (int r = 0; r < rows; r++)
@@ -154,18 +144,14 @@ public class doubleIndexingTests {
             for (int r = 1; r <= rows; r++)
             for (int c = 1; c <= cols; c++)
                 Assert.IsTrue(mat[rows - r, cols - c] == (double)(1000 + r * cols + c));
-
-            arena.Dispose();
         }
 
         public void RandomCalc()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int rows = 8;
             int cols = 16;
 
-            doubleMxN mat = arena.doubleMat(rows, cols);
+            doubleMxN mat = new doubleMxN(rows, cols, Allocator.Temp);
 
             for(int r = 0; r < rows; r++)
             for(int c = 0; c < cols; c++)
@@ -178,8 +164,6 @@ public class doubleIndexingTests {
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
                 Assert.IsTrue(mat[r, c] == (double)(r * c * 2));
-
-            arena.Dispose();
         }
     }
 
@@ -195,7 +179,7 @@ public class doubleIndexingTests {
     {
         new IndexingTestJob() { TestType = TestType.TestMatrix1D }.Run();
     }
-    
+
     [Test]
     public void MatrixIndexing2DTest()
     {

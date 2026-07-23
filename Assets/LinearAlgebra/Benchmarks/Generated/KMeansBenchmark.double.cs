@@ -36,11 +36,10 @@ namespace LinearAlgebra.Benchmarks
     {
         static string BenchDouble(int n, int D, int K)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var X = arena.doubleMat(n, D);
-            var centroids = arena.doubleMat(K, D);
-            var assignment = arena.Indices(n);
-            var ws = arena.doubleKMeansCache(n, D, K);
+            var X = new doubleMxN(n, D, Allocator.Persistent);
+            var centroids = new doubleMxN(K, D, Allocator.Persistent);
+            var assignment = new Indices(n, Allocator.Persistent);
+            var ws = new doubleKMeansCache(n, D, K, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -50,7 +49,7 @@ namespace LinearAlgebra.Benchmarks
             var job = new KMeansJobDouble { X = X, centroids = centroids, assignment = assignment, ws = ws, K = K };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            X.Dispose(); centroids.Dispose(); assignment.Dispose(); ws.Dispose();
             return Bench.RowTime("double", n, stat);
         }
     }

@@ -50,19 +50,18 @@ public class doubleQRLeastSquaresResidualTests
         // Known closed-form answer: x = [5, -3], residual r = [1, -2, 1], Aᵀr = 0.
         void StrangBestFitLine()
         {
-            var arena = new Arena(Allocator.Persistent);
 
-            var A = arena.doubleMat(3, 2);
+            var A = new doubleMxN(3, 2, Allocator.Temp);
             A[0, 0] = 1f; A[0, 1] = 0f;
             A[1, 0] = 1f; A[1, 1] = 1f;
             A[2, 0] = 1f; A[2, 1] = 2f;
 
-            var b = arena.doubleVec(3);
+            var b = new doubleN(3, Allocator.Temp);
             b[0] = 6f; b[1] = 0f; b[2] = 0f;
 
-            var Awork = A.Copy();   // solveInPlace destroys A and b
-            var bwork = b.Copy();
-            var x = arena.doubleVec(2);
+            var Awork = new doubleMxN(in A, Allocator.Temp);   // solveInPlace destroys A and b
+            var bwork = new doubleN(in b, Allocator.Temp);
+            var x = new doubleN(2, Allocator.Temp);
 
             QR.solveInPlace(ref Awork, ref bwork, ref x);
 
@@ -72,7 +71,8 @@ public class doubleQRLeastSquaresResidualTests
             RecordBound(math.abs(x[0] - (double)5f), (double)1E-4f);
             RecordBound(math.abs(x[1] - (double)(-3f)), (double)1E-4f);
 
-            doubleN r = b - Blas.dot(A, x);
+            doubleN r = new doubleN(in b, Allocator.Temp);
+            doubleComp.subInPlace(r, Blas.dot(A, x));
             RecordBound(math.abs(r[0] - (double)1f), (double)1E-4f);
             RecordBound(math.abs(r[1] - (double)(-2f)), (double)1E-4f);
             RecordBound(math.abs(r[2] - (double)1f), (double)1E-4f);
@@ -80,33 +80,31 @@ public class doubleQRLeastSquaresResidualTests
             // normal equations: Aᵀr == 0
             doubleN AtR = Blas.dot(r, A);
             RecordBound(Analysis.MaxZeroError(AtR), (double)1E-4f);
-
-            arena.Dispose();
         }
 
         // For random inconsistent tall systems, the QR least-squares solution must make the residual
         // orthogonal to every column of A (normal equations), to within conditioning.
         void RandomOverdeterminedNormalEquations()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             for (uint t = 0; t < 24; t++)
             {
                 int m = 24, n = 6;
-                var A = arena.doubleRandomMat(m, n, -2f, 2f, 5500 + t * 17);
+                var A = GenerateOP.doubleRandomMat(m, n, -2f, 2f, 5500 + t * 17);
                 // b is independent random — generically NOT in the column space => non-zero residual.
-                var b = arena.doubleRandomVec(m, -2f, 2f, 99000 + t * 23);
+                var b = GenerateOP.doubleRandomVec(m, -2f, 2f, 99000 + t * 23);
 
-                var Awork = A.Copy();
-                var bwork = b.Copy();
-                var x = arena.doubleVec(n);
+                var Awork = new doubleMxN(in A, Allocator.Temp);
+                var bwork = new doubleN(in b, Allocator.Temp);
+                var x = new doubleN(n, Allocator.Temp);
 
                 QR.solveInPlace(ref Awork, ref bwork, ref x);
 
                 if (Analysis.isAnyNan(in x))
                     throw new System.Exception("TestJob: NaN detected");
 
-                doubleN r = b - Blas.dot(A, x);
+                doubleN r = new doubleN(in b, Allocator.Temp);
+                doubleComp.subInPlace(r, Blas.dot(A, x));
                 doubleN AtR = Blas.dot(r, A);
 
                 // scale-relative: ||Aᵀr||_inf small vs ||Aᵀb||_inf (the un-projected scale).
@@ -123,35 +121,32 @@ public class doubleQRLeastSquaresResidualTests
                     Fail[2] = (double)1E-2f;
                     Fail[3] = rNorm;
                 }
-
-                arena.Clear();
             }
-
-            arena.Dispose();
         }
 
         // The LS solution is the minimizer: perturbing x in any coordinate must not reduce the
         // residual sum of squares.
         void RandomOverdeterminedOptimality()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             for (uint t = 0; t < 12; t++)
             {
                 int m = 16, n = 4;
-                var A = arena.doubleRandomMat(m, n, -2f, 2f, 1200 + t * 11);
-                var b = arena.doubleRandomVec(m, -2f, 2f, 64000 + t * 29);
+                var A = GenerateOP.doubleRandomMat(m, n, -2f, 2f, 1200 + t * 11);
+                var b = GenerateOP.doubleRandomVec(m, -2f, 2f, 64000 + t * 29);
 
-                var Awork = A.Copy();
-                var bwork = b.Copy();
-                var x = arena.doubleVec(n);
+                var Awork = new doubleMxN(in A, Allocator.Temp);
+                var bwork = new doubleN(in b, Allocator.Temp);
+                var x = new doubleN(n, Allocator.Temp);
 
                 QR.solveInPlace(ref Awork, ref bwork, ref x);
 
                 if (Analysis.isAnyNan(in x))
                     throw new System.Exception("TestJob: NaN detected");
 
-                double r0 = SumSq(b - Blas.dot(A, x));
+                var resid0 = new doubleN(in b, Allocator.Temp);
+                doubleComp.subInPlace(resid0, Blas.dot(A, x));
+                double r0 = SumSq(resid0);
 
                 double delta = (double)0.05f;
                 for (int k = 0; k < n; k++)
@@ -159,9 +154,13 @@ public class doubleQRLeastSquaresResidualTests
                     double saved = x[k];
 
                     x[k] = saved + delta;
-                    double rp = SumSq(b - Blas.dot(A, x));
+                    var residP = new doubleN(in b, Allocator.Temp);
+                    doubleComp.subInPlace(residP, Blas.dot(A, x));
+                    double rp = SumSq(residP);
                     x[k] = saved - delta;
-                    double rm = SumSq(b - Blas.dot(A, x));
+                    var residM = new doubleN(in b, Allocator.Temp);
+                    doubleComp.subInPlace(residM, Blas.dot(A, x));
+                    double rm = SumSq(residM);
                     x[k] = saved;
 
                     // both perturbations must be >= the optimum (minus tiny float slack).
@@ -174,11 +173,7 @@ public class doubleQRLeastSquaresResidualTests
                         Fail[3] = math.min(rp, rm) - r0;
                     }
                 }
-
-                arena.Clear();
             }
-
-            arena.Dispose();
         }
 
         static double SumSq(in doubleN v)

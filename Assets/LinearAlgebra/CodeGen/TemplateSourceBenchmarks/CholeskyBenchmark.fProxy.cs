@@ -110,9 +110,8 @@ namespace LinearAlgebra.Benchmarks
 
         static string FaceOffCholFProxy(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var Src = arena.fProxyMat(n, n);
-            var A = arena.fProxyMat(n, n);
+            var Src = new fProxyMxN(n, n, Allocator.Persistent);
+            var A = new fProxyMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n ^ 0x9E3779B9u);
             for (int i = 0; i < n; i++)
@@ -128,16 +127,15 @@ namespace LinearAlgebra.Benchmarks
             var job = new CholInPlaceJobFProxy { A = A, Src = Src };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            Src.Dispose(); A.Dispose();
             return Bench.Row("fProxy", n, stat, flops);
         }
 
         static string FaceOffCholPivotFProxy(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var Src = arena.fProxyMat(n, n);
-            var A = arena.fProxyMat(n, n);
-            var ws = arena.fProxyCHOPCache(n);
+            var Src = new fProxyMxN(n, n, Allocator.Persistent);
+            var A = new fProxyMxN(n, n, Allocator.Persistent);
+            var ws = new fProxyCHOPCache(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n ^ 0x9E3779B9u);
             for (int i = 0; i < n; i++)
@@ -153,15 +151,14 @@ namespace LinearAlgebra.Benchmarks
             var job = new CholPivotInPlaceJobFProxy { A = A, Src = Src, ws = ws };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            Src.Dispose(); A.Dispose(); ws.Dispose();
             return Bench.Row("fProxy", n, stat, flops);
         }
 
         static string FaceOffLUFProxy(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var Src = arena.fProxyMat(n, n);
-            var A = arena.fProxyMat(n, n);
+            var Src = new fProxyMxN(n, n, Allocator.Persistent);
+            var A = new fProxyMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n ^ 0x9E3779B9u);
             for (int i = 0; i < n; i++)
@@ -177,15 +174,14 @@ namespace LinearAlgebra.Benchmarks
             var job = new LUFaceOffInPlaceJobFProxy { A = A, Src = Src };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            Src.Dispose(); A.Dispose();
             return Bench.Row("fProxy", n, stat, flops);
         }
 
         static string BenchFProxy(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyMat(n, n);
-            var L = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Persistent);
+            var L = new fProxyMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -201,16 +197,15 @@ namespace LinearAlgebra.Benchmarks
             var job = new CholJobFProxy { A = A, L = L };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); L.Dispose();
             return Bench.Row("fProxy", n, stat, flops);
         }
 
         static string PivotFProxy(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyMat(n, n);
-            var L = arena.fProxyMat(n, n);
-            var ws = arena.fProxyCHOPCache(n);
+            var A = new fProxyMxN(n, n, Allocator.Persistent);
+            var L = new fProxyMxN(n, n, Allocator.Persistent);
+            var ws = new fProxyCHOPCache(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -226,7 +221,7 @@ namespace LinearAlgebra.Benchmarks
             var job = new CholPivotJobFProxy { A = A, L = L, ws = ws };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); L.Dispose(); ws.Dispose();
             return Bench.Row("fProxy", n, stat, flops);
         }
     }

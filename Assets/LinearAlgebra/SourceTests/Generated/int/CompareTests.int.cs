@@ -14,7 +14,7 @@ using Unity.Jobs;
 public class intCompareTests
 {
     [BurstCompile(CompileSynchronously = true)]
-    public struct TestsJob : IJob 
+    public struct TestsJob : IJob
     {
         public enum TestType
         {
@@ -61,126 +61,117 @@ public class intCompareTests
 
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
-            try
+            switch (Type)
             {
+                case TestType.VecEquals:
+                    VecEquals();
+                    break;
+                case TestType.VecNotEquals:
+                    VecNotEquals();
+                    break;
+                case TestType.VecLess:
+                    VecLess();
+                    break;
+                case TestType.VecLessOrEqual:
+                    VecLessOrEqual();
+                    break;
+                case TestType.VecGreater:
+                    VecGreater();
+                    break;
+                case TestType.VecGreaterOrEqual:
+                    VecGreaterOrEqual();
+                    break;
+                case TestType.VecRandom:
+                    VecRandom();
+                    break;
 
-                switch (Type)
-                {
-                    case TestType.VecEquals:
-                        VecEquals(ref arena);
-                        break;
-                    case TestType.VecNotEquals:
-                        VecNotEquals(ref arena);
-                        break;
-                    case TestType.VecLess:
-                        VecLess(ref arena);
-                        break;
-                    case TestType.VecLessOrEqual:
-                        VecLessOrEqual(ref arena);
-                        break;
-                    case TestType.VecGreater:
-                        VecGreater(ref arena);
-                        break;
-                    case TestType.VecGreaterOrEqual:
-                        VecGreaterOrEqual(ref arena);
-                        break;
-                    case TestType.VecRandom:
-                        VecRandom(ref arena);
-                        break;
+                case TestType.MatEquals:
+                    MatEquals();
+                    break;
+                case TestType.MatNotEquals:
+                    MatNotEquals();
+                    break;
+                case TestType.MatLess:
+                    MatLess();
+                    break;
+                case TestType.MatLessOrEqual:
+                    MatLessOrEqual();
+                    break;
+                case TestType.MatGreater:
+                    MatGreater();
+                    break;
+                case TestType.MatGreaterOrEqual:
+                    MatGreaterOrEqual();
+                    break;
 
-                    case TestType.MatEquals:
-                        MatEquals(ref arena);
-                        break;
-                    case TestType.MatNotEquals:
-                        MatNotEquals(ref arena);
-                        break;
-                    case TestType.MatLess:
-                        MatLess(ref arena);
-                        break;
-                    case TestType.MatLessOrEqual:
-                        MatLessOrEqual(ref arena);
-                        break;
-                    case TestType.MatGreater:
-                        MatGreater(ref arena);
-                        break;
-                    case TestType.MatGreaterOrEqual:
-                        MatGreaterOrEqual(ref arena);
-                        break;
+                case TestType.MatRandom:
+                    MatRandom();
+                    break;
+                case TestType.MatDiagonal:
+                    MatDiagonal();
+                    break;
 
-                    case TestType.MatRandom:
-                        MatRandom(ref arena);
-                        break;
-                    case TestType.MatDiagonal:
-                        MatDiagonal(ref arena);
-                        break;
+                case TestType.VecVecEquals:
+                    VecVecEquals();
+                    break;
+                case TestType.VecVecNotEquals:
+                    VecVecNotEquals();
+                    break;
+                case TestType.VecVecLess:
+                    VecVecLess();
+                    break;
+                case TestType.VecVecLessOrEqual:
+                    VecVecLessOrEqual();
+                    break;
+                case TestType.VecVecGreater:
+                    VecVecGreater();
+                    break;
+                case TestType.VecVecGreaterOrEqual:
+                    VecVecGreaterOrEqual();
+                    break;
+                case TestType.VecVecRandom:
+                    VecVecRandom();
+                    break;
 
-                    case TestType.VecVecEquals:
-                        VecVecEquals(ref arena);
-                        break;
-                    case TestType.VecVecNotEquals:
-                        VecVecNotEquals(ref arena);
-                        break;
-                    case TestType.VecVecLess:
-                        VecVecLess(ref arena);
-                        break;
-                    case TestType.VecVecLessOrEqual:
-                        VecVecLessOrEqual(ref arena);
-                        break;
-                    case TestType.VecVecGreater:
-                        VecVecGreater(ref arena);
-                        break;
-                    case TestType.VecVecGreaterOrEqual:
-                        VecVecGreaterOrEqual(ref arena);
-                        break;
-                    case TestType.VecVecRandom:
-                        VecVecRandom(ref arena);
-                        break;
-                    
-                    case TestType.MatMatEquals:
-                        MatMatEquals(ref arena);
-                        break;
-                    case TestType.MatMatNotEquals:
-                        MatMatNotEquals(ref arena);
-                        break;
-                    case TestType.MatMatLess:
-                        MatMatLess(ref arena);
-                        break;
-                    case TestType.MatMatLessOrEqual:
-                        MatMatLessOrEqual(ref arena);
-                        break;
-                    case TestType.MatMatGreater:
-                        MatMatGreater(ref arena);
-                        break;
-                    case TestType.MatMatGreaterOrEqual:
-                        MatMatGreaterOrEqual(ref arena);
-                        break;
-                    case TestType.MatMatRandom:
-                        MatMatRandom(ref arena);
-                        break;
+                case TestType.MatMatEquals:
+                    MatMatEquals();
+                    break;
+                case TestType.MatMatNotEquals:
+                    MatMatNotEquals();
+                    break;
+                case TestType.MatMatLess:
+                    MatMatLess();
+                    break;
+                case TestType.MatMatLessOrEqual:
+                    MatMatLessOrEqual();
+                    break;
+                case TestType.MatMatGreater:
+                    MatMatGreater();
+                    break;
+                case TestType.MatMatGreaterOrEqual:
+                    MatMatGreaterOrEqual();
+                    break;
+                case TestType.MatMatRandom:
+                    MatMatRandom();
+                    break;
 
-                    case TestType.VecIsPow2:
-                        VecIsPow2(ref arena);
-                        break;
-                    case TestType.MatIsPow2:
-                        MatIsPow2(ref arena);
-                        break;
+                case TestType.VecIsPow2:
+                    VecIsPow2();
+                    break;
+                case TestType.MatIsPow2:
+                    MatIsPow2();
+                    break;
 
-                    default:
-                        throw new System.NotImplementedException();
-                }
-            }
-            finally
-            {
-                arena.Dispose();
+                default:
+                    throw new System.NotImplementedException();
             }
         }
 
-        public void VecEquals(ref Arena arena)
+        public void VecEquals()
         {
             int dim = 16;
-            
-            intN v = arena.intVec(dim);
+
+            intN v = new intN(dim, Allocator.Temp);
 
             var boolVec = v == 0;
             Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
@@ -189,11 +180,11 @@ public class intCompareTests
             Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
         }
 
-        public void VecNotEquals(ref Arena arena)
+        public void VecNotEquals()
         {
             int dim = 16;
-            
-            intN v = arena.intVec(dim);
+
+            intN v = new intN(dim, Allocator.Temp);
 
             var boolVec = v != 0;
             Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
@@ -202,11 +193,11 @@ public class intCompareTests
             Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
         }
 
-        public void VecLess(ref Arena arena)
+        public void VecLess()
         {
             int dim = 16;
-            
-            intN v = arena.intVec(dim);
+
+            intN v = new intN(dim, Allocator.Temp);
 
             var boolVec = v < 0;
             Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
@@ -215,11 +206,11 @@ public class intCompareTests
             Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
         }
 
-        public void VecLessOrEqual(ref Arena arena)
+        public void VecLessOrEqual()
         {
             int dim = 16;
-            
-            intN v = arena.intVec(dim);
+
+            intN v = new intN(dim, Allocator.Temp);
 
             var boolVec = v <= 0;
 
@@ -232,11 +223,11 @@ public class intCompareTests
             Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
         }
 
-        public void VecGreater(ref Arena arena)
+        public void VecGreater()
         {
             int dim = 16;
-            
-            intN v = arena.intVec(dim);
+
+            intN v = new intN(dim, Allocator.Temp);
 
             var boolVec = v > 0;
             Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
@@ -245,11 +236,11 @@ public class intCompareTests
             Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
         }
 
-        public void VecGreaterOrEqual(ref Arena arena)
+        public void VecGreaterOrEqual()
         {
             int dim = 16;
-            
-            intN v = arena.intVec(dim);
+
+            intN v = new intN(dim, Allocator.Temp);
 
             var boolVec = v >= 0;
             Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
@@ -261,11 +252,11 @@ public class intCompareTests
             Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
         }
 
-        public void MatEquals(ref Arena arena)
+        public void MatEquals()
         {
             int dim = 16;
-            
-            intMxN m = arena.intMat(dim, dim);
+
+            intMxN m = new intMxN(dim, dim, Allocator.Temp);
 
             var boolMat = m == 0;
             Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
@@ -274,11 +265,11 @@ public class intCompareTests
             Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
         }
 
-        public void MatNotEquals(ref Arena arena)
+        public void MatNotEquals()
         {
             int dim = 16;
-            
-            intMxN m = arena.intMat(dim, dim);
+
+            intMxN m = new intMxN(dim, dim, Allocator.Temp);
 
             var boolMat = m != 0;
             Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
@@ -287,11 +278,11 @@ public class intCompareTests
             Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
         }
 
-        public void MatLess(ref Arena arena)
+        public void MatLess()
         {
             int dim = 16;
-            
-            intMxN m = arena.intMat(dim, dim);
+
+            intMxN m = new intMxN(dim, dim, Allocator.Temp);
 
             var boolMat = m < 0;
             Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
@@ -300,11 +291,11 @@ public class intCompareTests
             Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
         }
 
-        public void MatLessOrEqual(ref Arena arena)
+        public void MatLessOrEqual()
         {
             int dim = 16;
-            
-            intMxN m = arena.intMat(dim, dim);
+
+            intMxN m = new intMxN(dim, dim, Allocator.Temp);
 
             var boolMat = m <= 0;
             Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
@@ -316,11 +307,11 @@ public class intCompareTests
             Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
         }
 
-        public void MatGreater(ref Arena arena)
+        public void MatGreater()
         {
             int dim = 16;
-            
-            intMxN m = arena.intMat(dim, dim);
+
+            intMxN m = new intMxN(dim, dim, Allocator.Temp);
 
             var boolMat = m > 0;
             Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
@@ -329,11 +320,11 @@ public class intCompareTests
             Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
         }
 
-        public void MatGreaterOrEqual(ref Arena arena)
+        public void MatGreaterOrEqual()
         {
             int dim = 16;
-            
-            intMxN m = arena.intMat(dim, dim);
+
+            intMxN m = new intMxN(dim, dim, Allocator.Temp);
 
             var boolMat = m >= 0;
             Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
@@ -345,11 +336,11 @@ public class intCompareTests
             Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
         }
 
-        public void VecRandom(ref Arena arena)
+        public void VecRandom()
         {
             int dim = 64;
 
-            intN v = arena.intRandomVec(dim, -100, 100, 1451);
+            intN v = GenerateOP.intRandomVec(dim, -100, 100, 1451);
             v[0] = 0;
 
             var boolVec = v == 0;
@@ -372,11 +363,11 @@ public class intCompareTests
             Assert.IsFalse(Analysis.IsAllSame(boolVec));
         }
 
-        public void MatRandom(ref Arena arena)
+        public void MatRandom()
         {
             int dim = 32;
 
-            intMxN m = arena.intRandomMat(dim, dim, -100, 100, 1451);
+            intMxN m = GenerateOP.intRandomMat(dim, dim, -100, 100, 1451);
             m[0,0] = 0;
 
             var boolMat = m == 0;
@@ -399,12 +390,12 @@ public class intCompareTests
             Assert.IsFalse(Analysis.IsAllSame(boolMat));
         }
 
-        public void MatDiagonal(ref Arena arena)
+        public void MatDiagonal()
         {
             int dim = 32;
 
-            intMxN m0 = arena.intDiagonalMat(dim, 1);
-            
+            intMxN m0 = GenerateOP.intDiagonalMat(dim, 1);
+
             var boolMat = m0 == 1;
 
             Assert.IsTrue(Analysis.isDiagonal(boolMat));
@@ -412,12 +403,12 @@ public class intCompareTests
             Assert.IsFalse(Analysis.IsAllEqualTo(boolMat, false));
         }
 
-        public void VecVecEquals(ref Arena arena)
+        public void VecVecEquals()
         {
             int dim = 16;
-            
-            intN v0 = arena.intLinVec(dim, 0, 100);
-            intN v1 = arena.intLinVec(dim, 0, 100);
+
+            intN v0 = GenerateOP.intLinVec(dim, 0, 100);
+            intN v1 = GenerateOP.intLinVec(dim, 0, 100);
 
             var boolVec = v0 == v1;
 
@@ -430,12 +421,12 @@ public class intCompareTests
             Assert.IsFalse(Analysis.IsAllSame(boolVec));
         }
 
-        public void VecVecNotEquals(ref Arena arena)
+        public void VecVecNotEquals()
         {
             int dim = 16;
-            
-            intN v0 = arena.intLinVec(dim, 0, 100);
-            intN v1 = arena.intLinVec(dim, 200, 300);
+
+            intN v0 = GenerateOP.intLinVec(dim, 0, 100);
+            intN v1 = GenerateOP.intLinVec(dim, 200, 300);
 
             var boolVec = v0 != v1;
 
@@ -448,13 +439,13 @@ public class intCompareTests
             Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
         }
 
-        public void VecVecLess(ref Arena arena)
+        public void VecVecLess()
         {
 
             int dim = 16;
-            
-            intN v0 = arena.intLinVec(dim, 0, 100);
-            intN v1 = arena.intLinVec(dim, 200, 300);
+
+            intN v0 = GenerateOP.intLinVec(dim, 0, 100);
+            intN v1 = GenerateOP.intLinVec(dim, 200, 300);
 
             var boolVec = v0 < v1;
             Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
@@ -465,12 +456,12 @@ public class intCompareTests
             Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
         }
 
-        public void VecVecLessOrEqual(ref Arena arena)
+        public void VecVecLessOrEqual()
         {
             int dim = 16;
-            
-            intN v0 = arena.intLinVec(dim, 0, 100);
-            intN v1 = arena.intLinVec(dim, 200, 300);
+
+            intN v0 = GenerateOP.intLinVec(dim, 0, 100);
+            intN v1 = GenerateOP.intLinVec(dim, 200, 300);
 
             var boolVec = v0 <= v1;
 
@@ -482,20 +473,20 @@ public class intCompareTests
 
             Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
 
-            v0 = arena.intLinVec(dim, 0, 100);
-            v1 = arena.intLinVec(dim, 100, 0);
+            v0 = GenerateOP.intLinVec(dim, 0, 100);
+            v1 = GenerateOP.intLinVec(dim, 100, 0);
 
             boolVec = v0 <= v1;
 
             Assert.IsFalse(Analysis.IsAllSame(boolVec));
         }
 
-        public void VecVecGreater(ref Arena arena)
+        public void VecVecGreater()
         {
             int dim = 16;
-            
-            intN v0 = arena.intLinVec(dim, 0, 100);
-            intN v1 = arena.intLinVec(dim, 200, 300);
+
+            intN v0 = GenerateOP.intLinVec(dim, 0, 100);
+            intN v1 = GenerateOP.intLinVec(dim, 200, 300);
 
             var boolVec = v0 > v1;
 
@@ -507,8 +498,8 @@ public class intCompareTests
 
             Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
 
-            v0 = arena.intLinVec(dim, 100, 0);
-            v1 = arena.intLinVec(dim, 0, 100);
+            v0 = GenerateOP.intLinVec(dim, 100, 0);
+            v1 = GenerateOP.intLinVec(dim, 0, 100);
 
             boolVec = v0 > v1;
             Assert.IsFalse(Analysis.IsAllSame(boolVec));
@@ -517,12 +508,12 @@ public class intCompareTests
             Assert.IsFalse(Analysis.IsAllSame(boolVec));
         }
 
-        public void VecVecGreaterOrEqual(ref Arena arena)
+        public void VecVecGreaterOrEqual()
         {
             int dim = 16;
-            
-            intN v0 = arena.intLinVec(dim, 0, 100);
-            intN v1 = arena.intLinVec(dim, 200, 300);
+
+            intN v0 = GenerateOP.intLinVec(dim, 0, 100);
+            intN v1 = GenerateOP.intLinVec(dim, 200, 300);
 
             var boolVec = v0 >= v1;
 
@@ -532,18 +523,18 @@ public class intCompareTests
             boolVec = v0 >= v1;
             Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
 
-            v0 = arena.intLinVec(dim, 1, 0);
+            v0 = GenerateOP.intLinVec(dim, 1, 0);
 
             boolVec = v0 >= v1;
             Assert.IsTrue(Analysis.IsAllSame(boolVec));
         }
 
-        public void VecVecRandom(ref Arena arena)
+        public void VecVecRandom()
         {
             int dim = 64;
 
-            intN v0 = arena.intRandomVec(dim, -100, 100, 1451);
-            intN v1 = arena.intRandomVec(dim, -100, 100, 6421);
+            intN v0 = GenerateOP.intRandomVec(dim, -100, 100, 1451);
+            intN v1 = GenerateOP.intRandomVec(dim, -100, 100, 6421);
 
             v0[0] = v1[0];
             v0[1] = (int)(1-v1[1]);
@@ -567,12 +558,12 @@ public class intCompareTests
             Assert.IsFalse(Analysis.IsAllSame(boolVec));
         }
 
-        public void MatMatEquals(ref Arena arena)
+        public void MatMatEquals()
         {
             int dim = 16;
-            
-            intMxN m0 = arena.intRandomMat(dim, dim, 0, 100);
-            intMxN m1 = arena.intRandomMat(dim, dim, 0, 100);
+
+            intMxN m0 = GenerateOP.intRandomMat(dim, dim, 0, 100);
+            intMxN m1 = GenerateOP.intRandomMat(dim, dim, 0, 100);
 
             var boolMat = m0 == m1;
             Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
@@ -586,28 +577,28 @@ public class intCompareTests
             Assert.IsFalse(Analysis.IsAllSame(boolMat));
         }
 
-        public void MatMatNotEquals(ref Arena arena)
+        public void MatMatNotEquals()
         {
             int dim = 16;
-            
-            intMxN m0 = arena.intRandomMat(dim, dim, 0, 100, 2131);
-            intMxN m1 = arena.intRandomMat(dim, dim, 0, 100, 2131);
+
+            intMxN m0 = GenerateOP.intRandomMat(dim, dim, 0, 100, 2131);
+            intMxN m1 = GenerateOP.intRandomMat(dim, dim, 0, 100, 2131);
 
             var boolMat = m0 != m1;
             Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
 
-            m1 = arena.intRandomMat(dim, dim, 200, 300, 2131);
+            m1 = GenerateOP.intRandomMat(dim, dim, 200, 300, 2131);
 
             boolMat = m0 != m1;
             Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
         }
 
-        public void MatMatLess(ref Arena arena)
+        public void MatMatLess()
         {
             int dim = 16;
-            
-            intMxN m0 = arena.intRandomMat(dim, dim, 000, 100, 2131);
-            intMxN m1 = arena.intRandomMat(dim, dim, 200, 300, 2131);
+
+            intMxN m0 = GenerateOP.intRandomMat(dim, dim, 000, 100, 2131);
+            intMxN m1 = GenerateOP.intRandomMat(dim, dim, 200, 300, 2131);
 
             var boolMat = m0 < m1;
             Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
@@ -618,12 +609,12 @@ public class intCompareTests
             Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
         }
 
-        public void MatMatLessOrEqual(ref Arena arena)
+        public void MatMatLessOrEqual()
         {
             int dim = 16;
-            
-            intMxN m0 = arena.intRandomMat(dim, dim, 0, 100, 2131);
-            intMxN m1 = arena.intRandomMat(dim, dim, 200, 300, 2131);
+
+            intMxN m0 = GenerateOP.intRandomMat(dim, dim, 0, 100, 2131);
+            intMxN m1 = GenerateOP.intRandomMat(dim, dim, 200, 300, 2131);
 
             var boolMat = m0 <= m1;
 
@@ -634,20 +625,20 @@ public class intCompareTests
             boolMat = m0 <= m1;
             Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
 
-            m0 = arena.intRandomMat(dim, dim, 100, 0, 2131);
-            m1 = arena.intRandomMat(dim, dim, 0, 100, 2131);
+            m0 = GenerateOP.intRandomMat(dim, dim, 100, 0, 2131);
+            m1 = GenerateOP.intRandomMat(dim, dim, 0, 100, 2131);
 
             boolMat = m0 <= m1;
 
             Assert.IsFalse(Analysis.IsAllSame(boolMat));
         }
 
-        public void MatMatGreater(ref Arena arena)
+        public void MatMatGreater()
         {
             int dim = 16;
-            
-            intMxN m0 = arena.intRandomMat(dim, dim, 0, 100, 2131);
-            intMxN m1 = arena.intRandomMat(dim, dim, 200, 300, 2131);
+
+            intMxN m0 = GenerateOP.intRandomMat(dim, dim, 0, 100, 2131);
+            intMxN m1 = GenerateOP.intRandomMat(dim, dim, 200, 300, 2131);
 
             var boolMat = m0 > m1;
             Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
@@ -657,8 +648,8 @@ public class intCompareTests
             boolMat = m0 > m1;
             Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
 
-            m0 = arena.intRandomMat(dim, dim, 100, 0, 2131);
-            m1 = arena.intRandomMat(dim, dim, 0, 100, 2131);
+            m0 = GenerateOP.intRandomMat(dim, dim, 100, 0, 2131);
+            m1 = GenerateOP.intRandomMat(dim, dim, 0, 100, 2131);
 
             boolMat = m0 > m1;
             Assert.IsFalse(Analysis.IsAllSame(boolMat));
@@ -667,12 +658,12 @@ public class intCompareTests
             Assert.IsFalse(Analysis.IsAllSame(boolMat));
         }
 
-        public void MatMatGreaterOrEqual(ref Arena arena)
+        public void MatMatGreaterOrEqual()
         {
             int dim = 16;
-            
-            intMxN m0 = arena.intRandomMat(dim, dim, 0, 100, 2131);
-            intMxN m1 = arena.intRandomMat(dim, dim, 200, 300, 2131);
+
+            intMxN m0 = GenerateOP.intRandomMat(dim, dim, 0, 100, 2131);
+            intMxN m1 = GenerateOP.intRandomMat(dim, dim, 200, 300, 2131);
 
             var boolMat = m0 >= m1;
             Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
@@ -682,18 +673,18 @@ public class intCompareTests
             boolMat = m0 >= m1;
 
             Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
-            m0 = arena.intRandomMat(dim, dim, 100, 0, 2131);
+            m0 = GenerateOP.intRandomMat(dim, dim, 100, 0, 2131);
 
             boolMat = m0 >= m1;
             Assert.IsTrue(Analysis.IsAllSame(boolMat));
         }
 
-        public void MatMatRandom(ref Arena arena)
+        public void MatMatRandom()
         {
             int dim = 32;
 
-            intMxN m0 = arena.intRandomMat(dim, dim, -100, 100, 1451);
-            intMxN m1 = arena.intRandomMat(dim, dim, -100, 100, 6421);
+            intMxN m0 = GenerateOP.intRandomMat(dim, dim, -100, 100, 1451);
+            intMxN m1 = GenerateOP.intRandomMat(dim, dim, -100, 100, 6421);
 
             m0[0,0] = m1[0,0];
             m0[0,1] = (int)(1 - m1[0,1]);
@@ -721,11 +712,11 @@ public class intCompareTests
         // it lives here alongside the rest of the boolN/boolMxN-producing comparator surface rather
         // than in intCompMathTests/intCompBitsTests - see UnsafeBoolOP.int.cs's ispow2
         // kernel and intN.Comparators.cs/intMxN.Comparators.cs's public ispow2() methods.
-        public void VecIsPow2(ref Arena arena)
+        public void VecIsPow2()
         {
             int n = 7;
 
-            intN v = arena.intVec(n);
+            intN v = new intN(n, Allocator.Temp);
             v[0] = 0;   // not a power of two
             v[1] = 1;   // 2^0
             v[2] = 2;   // 2^1
@@ -748,11 +739,11 @@ public class intCompareTests
             Assert.IsFalse(b[6]);
         }
 
-        public void MatIsPow2(ref Arena arena)
+        public void MatIsPow2()
         {
             int dim = 4;
 
-            intMxN m = arena.intMat(dim, dim);
+            intMxN m = new intMxN(dim, dim, Allocator.Temp);
             for (int i = 0; i < m.Length; i++)
                 m[i] = (int)(i + 1); // 1..16 - several exact powers of two among them (1,2,4,8,16)
 

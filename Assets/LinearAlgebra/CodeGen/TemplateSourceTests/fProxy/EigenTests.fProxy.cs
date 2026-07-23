@@ -191,13 +191,11 @@ public class fProxyEigenTests
         // eigenvalue tolerance 100*ZeroThreshold is comfortably above float Jacobi noise.
         public void EigenIdentity()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 4;
 
-            var A = arena.fProxyIdentityMat(n);
-            var eig = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var A = GenerateOP.fProxyIdentityMat(n);
+            var eig = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
 
             bool converged = Eigen.decompInPlace(ref A, ref eig, ref V);
 
@@ -207,26 +205,22 @@ public class fProxyEigenTests
                 AssertClose(eig[i], (fProxy)1, (fProxy)100 * Consts.fProxyZeroThreshold);
 
             Assert.IsTrue(Analysis.isOrthogonal(V, (fProxy)100 * Consts.fProxyZeroThreshold));
-
-            arena.Dispose();
         }
 
         // diag(3, -2, 0.5, 5): eigenvalues are the diagonal, sorted DESCENDING BY VALUE
         // -> (5, 3, 0.5, -2). V orthogonal. Diagonal input is exact, tolerance generous.
         public void EigenDiagonal()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 4;
 
-            var A = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Temp);
             A[0, 0] = (fProxy)3;
             A[1, 1] = (fProxy)(-2);
             A[2, 2] = (fProxy)0.5;
             A[3, 3] = (fProxy)5;
 
-            var eig = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var eig = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
 
             bool converged = Eigen.decompInPlace(ref A, ref eig, ref V);
 
@@ -240,26 +234,22 @@ public class fProxyEigenTests
             AssertDescending(in eig, n);
 
             Assert.IsTrue(Analysis.isOrthogonal(V, (fProxy)100 * Consts.fProxyZeroThreshold));
-
-            arena.Dispose();
         }
 
         // [[2,1],[1,2]]: eigenvalues 3 (vector (1,1)/sqrt2) and 1 (vector (1,-1)/sqrt2).
         // Sign-agnostic: assert A_orig * v_k ~= lambda_k * v_k for each column.
         public void EigenKnown2x2()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 2;
 
-            var A = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Temp);
             A[0, 0] = (fProxy)2; A[0, 1] = (fProxy)1;
             A[1, 0] = (fProxy)1; A[1, 1] = (fProxy)2;
 
-            var Aorig = A.Copy();
+            var Aorig = new fProxyMxN(in A, Allocator.Temp);
 
-            var eig = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var eig = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
 
             bool converged = Eigen.decompInPlace(ref A, ref eig, ref V);
 
@@ -275,8 +265,6 @@ public class fProxyEigenTests
 
             // V orthogonal
             Assert.IsTrue(Analysis.isOrthogonal(V, (fProxy)100 * Consts.fProxyZeroThreshold));
-
-            arena.Dispose();
         }
 
         // 8x8 random symmetric (values ~ +-5). Check: converged, V orthogonal, eigenvalues
@@ -285,11 +273,9 @@ public class fProxyEigenTests
         // float Jacobi residual ~ few * 1e-5 absolute -> 1000*ZeroThreshold*(1+|lambda|).
         public void EigenRandomSymmetric()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 8;
 
-            var A = arena.fProxyRandomMat(n, n, (fProxy)(-5), (fProxy)5, 8123451);
+            var A = GenerateOP.fProxyRandomMat(n, n, (fProxy)(-5), (fProxy)5, 8123451);
             // symmetrize in place
             for (int i = 0; i < n; i++)
                 for (int j = i + 1; j < n; j++)
@@ -299,10 +285,10 @@ public class fProxyEigenTests
                     A[j, i] = avg;
                 }
 
-            var Aorig = A.Copy();
+            var Aorig = new fProxyMxN(in A, Allocator.Temp);
 
-            var eig = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var eig = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
 
             bool converged = Eigen.decompInPlace(ref A, ref eig, ref V);
 
@@ -326,8 +312,6 @@ public class fProxyEigenTests
                 sumEig += eig[i];
             // trace magnitude up to ~8*5 = 40; allow magnitude-scaled tolerance.
             AssertClose(trace, sumEig, (fProxy)1000 * Consts.fProxyZeroThreshold);
-
-            arena.Dispose();
         }
 
         // Same setup as EigenRandomSymmetric (different seed): reconstruct V*diag(lambda)*V^T
@@ -335,11 +319,9 @@ public class fProxyEigenTests
         // 8x8 with entries up to ~5 lands around 1e-5..1e-4 absolute -> 1000*ZeroThreshold.
         public void EigenReconstruct()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 8;
 
-            var A = arena.fProxyRandomMat(n, n, (fProxy)(-5), (fProxy)5, 5571903);
+            var A = GenerateOP.fProxyRandomMat(n, n, (fProxy)(-5), (fProxy)5, 5571903);
             for (int i = 0; i < n; i++)
                 for (int j = i + 1; j < n; j++)
                 {
@@ -348,22 +330,23 @@ public class fProxyEigenTests
                     A[j, i] = avg;
                 }
 
-            var Aorig = A.Copy();
+            var Aorig = new fProxyMxN(in A, Allocator.Temp);
 
-            var eig = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var eig = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
 
             bool converged = Eigen.decompInPlace(ref A, ref eig, ref V);
 
             Assert.IsTrue(converged);
 
             // Reconstruct: recon = V * diag(eig) * V^T
-            var diagE = arena.fProxyDiagonalMat(in eig);
+            var diagE = GenerateOP.fProxyDiagonalMat(in eig);
             var Vd = Blas.dot(V, diagE);
             var Vt = Blas.trans(V);
             var recon = Blas.dot(Vd, Vt);
 
-            fProxyMxN shouldBeZero = Aorig - recon;
+            var shouldBeZero = new fProxyMxN(in Aorig, Allocator.Temp);
+            fProxyComp.subInPlace(shouldBeZero, recon);
 
             if (Analysis.isAnyNan(in shouldBeZero))
                 throw new System.Exception("TestJob: NaN detected");
@@ -378,8 +361,6 @@ public class fProxyEigenTests
                 Fail[3] = zeroError - precision;
             }
             Assert.IsTrue(Analysis.isZero(in shouldBeZero, precision));
-
-            arena.Dispose();
         }
 
         // 6x6 PSD matrix A = B^T B. Eigenvalues must all be >= -tol and equal the singular
@@ -389,14 +370,12 @@ public class fProxyEigenTests
         // A = B^T B with B entries ~ +-3 -> eigenvalues up to ~ order 100; scale tolerance.
         public void EigenPSDvsSVD()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 6;
 
-            var B = arena.fProxyRandomMat(n, n, (fProxy)(-3), (fProxy)3, 9920017);
+            var B = GenerateOP.fProxyRandomMat(n, n, (fProxy)(-3), (fProxy)3, 9920017);
 
             // A = B^T B (manual), symmetric PSD
-            var A = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Temp);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
                 {
@@ -414,10 +393,10 @@ public class fProxyEigenTests
                     A[j, i] = avg;
                 }
 
-            var Aeig = A.Copy();   // destroyed by Eigen.decompInPlace
+            var Aeig = new fProxyMxN(in A, Allocator.Temp);   // destroyed by Eigen.decompInPlace
 
-            var eig = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var eig = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
 
             bool converged = Eigen.decompInPlace(ref Aeig, ref eig, ref V);
             Assert.IsTrue(converged);
@@ -438,7 +417,7 @@ public class fProxyEigenTests
             }
 
             // singular values via SVD.values on the untouched A (preserved, no copy needed)
-            var S = arena.fProxyVec(n);
+            var S = new fProxyN(n, Allocator.Temp);
             bool svdOk = SVD.values(in A, ref S);
             Assert.IsTrue(svdOk);
 
@@ -457,21 +436,16 @@ public class fProxyEigenTests
                     Fail[3] = diff;
                 }
                 Assert.IsTrue(diff <= tol);
-            }
-
-            arena.Dispose();
-        }
+            }        }
 
         // 5x5 zero matrix: converged, all eigenvalues 0, V orthogonal (stays identity).
         public void EigenZero()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
 
-            var A = arena.fProxyMat(n, n);
-            var eig = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Temp);
+            var eig = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
 
             bool converged = Eigen.decompInPlace(ref A, ref eig, ref V);
 
@@ -484,8 +458,6 @@ public class fProxyEigenTests
                 AssertClose(eig[i], (fProxy)0, (fProxy)100 * Consts.fProxyZeroThreshold);
 
             Assert.IsTrue(Analysis.isOrthogonal(V, (fProxy)100 * Consts.fProxyZeroThreshold));
-
-            arena.Dispose();
         }
 
         // Rank-1 projection A = v*vᵀ (v = (1,2,3,1)): SINGULAR symmetric matrix whose eigenvalues
@@ -495,23 +467,21 @@ public class fProxyEigenTests
         // the trailing (null-space) eigenvectors still form an orthonormal V.
         public void EigenRank1Projection()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 4;
 
-            var v = arena.fProxyVec(n);
+            var v = new fProxyN(n, Allocator.Temp);
             v[0] = (fProxy)1; v[1] = (fProxy)2; v[2] = (fProxy)3; v[3] = (fProxy)1;
             fProxy vv = (fProxy)0;
             for (int i = 0; i < n; i++) vv += v[i] * v[i]; // = 15
 
-            var A = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Temp);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
                     A[i, j] = v[i] * v[j];
 
-            var Aorig = A.Copy();
-            var eig = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var Aorig = new fProxyMxN(in A, Allocator.Temp);
+            var eig = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
 
             bool converged = Eigen.decompInPlace(ref A, ref eig, ref V);
             Assert.IsTrue(converged);
@@ -527,8 +497,6 @@ public class fProxyEigenTests
             AssertDescending(in eig, n);
             AssertEigenResidual(in Aorig, in V, in eig, n);
             Assert.IsTrue(Analysis.isOrthogonal(V, tol));
-
-            arena.Dispose();
         }
 
         // Triangle-graph Laplacian L = [[2,-1,-1],[-1,2,-1],[-1,-1,2]]: a classic SINGULAR symmetric
@@ -536,18 +504,16 @@ public class fProxyEigenTests
         // known literature vector exercising a zero eigenvalue plus a repeated nonzero one.
         public void EigenLaplacianSingular()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 3;
 
-            var A = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Temp);
             A[0, 0] = (fProxy)2; A[0, 1] = (fProxy)(-1); A[0, 2] = (fProxy)(-1);
             A[1, 0] = (fProxy)(-1); A[1, 1] = (fProxy)2; A[1, 2] = (fProxy)(-1);
             A[2, 0] = (fProxy)(-1); A[2, 1] = (fProxy)(-1); A[2, 2] = (fProxy)2;
 
-            var Aorig = A.Copy();
-            var eig = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var Aorig = new fProxyMxN(in A, Allocator.Temp);
+            var eig = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
 
             bool converged = Eigen.decompInPlace(ref A, ref eig, ref V);
             Assert.IsTrue(converged);
@@ -561,8 +527,6 @@ public class fProxyEigenTests
             AssertDescending(in eig, n);
             AssertEigenResidual(in Aorig, in V, in eig, n);
             Assert.IsTrue(Analysis.isOrthogonal(V, tol));
-
-            arena.Dispose();
         }
 
         // GALLERY KNOWN-ANSWER (Gallery.Special): n=5 Clement matrix — symmetric tridiagonal with
@@ -571,15 +535,13 @@ public class fProxyEigenTests
         // 1000*ZeroThreshold absolute tolerance comfortably covers float Jacobi noise.
         public void EigenClement()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
 
-            var A = arena.fProxyClement(n);
-            var Aorig = A.Copy();
+            var A = fProxyGallery.fProxyClement(n);
+            var Aorig = new fProxyMxN(in A, Allocator.Temp);
 
-            var eig = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var eig = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
 
             bool converged = Eigen.decompInPlace(ref A, ref eig, ref V);
             Assert.IsTrue(converged);
@@ -596,8 +558,6 @@ public class fProxyEigenTests
             AssertDescending(in eig, n);
             AssertEigenResidual(in Aorig, in V, in eig, n);
             Assert.IsTrue(Analysis.isOrthogonal(V, tol));
-
-            arena.Dispose();
         }
 
         // GALLERY KNOWN-ANSWER (Gallery.Special): n=5 Fiedler distance matrix F[i,j]=|i-j|. Known
@@ -607,15 +567,13 @@ public class fProxyEigenTests
         // means the single positive value lands at eig[0].
         public void EigenFiedler()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
 
-            var A = arena.fProxyFiedler(n);
-            var Aorig = A.Copy();
+            var A = fProxyGallery.fProxyFiedler(n);
+            var Aorig = new fProxyMxN(in A, Allocator.Temp);
 
-            var eig = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var eig = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
 
             bool converged = Eigen.decompInPlace(ref A, ref eig, ref V);
             Assert.IsTrue(converged);
@@ -652,8 +610,6 @@ public class fProxyEigenTests
             AssertDescending(in eig, n);
             AssertEigenResidual(in Aorig, in V, in eig, n);
             Assert.IsTrue(Analysis.isOrthogonal(V, (fProxy)1000 * Consts.fProxyZeroThreshold));
-
-            arena.Dispose();
         }
 
         // GALLERY KNOWN-ANSWER (Gallery.Special): n=5 DingDong symmetric Hankel matrix. Known
@@ -662,15 +618,13 @@ public class fProxyEigenTests
         // absorbs Jacobi error while still asserting the bound is not exceeded.
         public void EigenDingDong()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
 
-            var A = arena.fProxyDingDong(n);
-            var Aorig = A.Copy();
+            var A = fProxyGallery.fProxyDingDong(n);
+            var Aorig = new fProxyMxN(in A, Allocator.Temp);
 
-            var eig = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var eig = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
 
             bool converged = Eigen.decompInPlace(ref A, ref eig, ref V);
             Assert.IsTrue(converged);
@@ -696,21 +650,17 @@ public class fProxyEigenTests
             AssertDescending(in eig, n);
             AssertEigenResidual(in Aorig, in V, in eig, n);
             Assert.IsTrue(Analysis.isOrthogonal(V, margin));
-
-            arena.Dispose();
         }
 
         // Hilbert-like symmetric matrix with maxSweeps = 1: regardless of returned bool,
         // outputs must be finite (no NaN) and eigenvalues descending.
         public void EigenNonConvergence()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 8;
 
-            var A = arena.fProxyHilbertMat(n);
-            var eig = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var A = GenerateOP.fProxyHilbertMat(n);
+            var eig = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
 
             // maxSweeps = 1: convergence not asserted.
             Eigen.decompInPlace(ref A, ref eig, ref V, 1);
@@ -719,8 +669,6 @@ public class fProxyEigenTests
             Assert.IsFalse(Analysis.isAnyNan(in V));
 
             AssertDescending(in eig, n);
-
-            arena.Dispose();
         }
 
         // ---------------------------------------------------------------------
@@ -731,18 +679,16 @@ public class fProxyEigenTests
         // lambda ~= 5 (dominant), residual property ||A*v - lambda*v||_inf <= tol*max(1,|lambda|).
         public void PowerDiagonalDominant()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 4;
 
-            var A = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Temp);
             A[0, 0] = (fProxy)5;
             A[1, 1] = (fProxy)3;
             A[2, 2] = (fProxy)1;
             A[3, 3] = (fProxy)0.5;
 
-            var v = arena.fProxyVec(n);   // zero vector -> deterministic seeding
-            var w = arena.fProxyVec(n);
+            var v = new fProxyN(n, Allocator.Temp);   // zero vector -> deterministic seeding
+            var w = new fProxyN(n, Allocator.Temp);
 
             fProxy tol = (fProxy)10 * Consts.fProxyZeroThreshold;
             bool ok = Eigen.powerIteration(in A, ref v, ref w, out fProxy lambda, tol, 1000);
@@ -752,24 +698,20 @@ public class fProxyEigenTests
             AssertClose(lambda, (fProxy)5, (fProxy)100 * Consts.fProxyZeroThreshold);
 
             AssertPowerResidual(in A, in v, lambda, tol, n);
-
-            arena.Dispose();
         }
 
         // diag(-7, 2, 1): dominant BY MAGNITUDE is -7. lambda ~= -7, |v[0]| ~= 1 (e0 dir).
         public void PowerNegativeDominant()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 3;
 
-            var A = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Temp);
             A[0, 0] = (fProxy)(-7);
             A[1, 1] = (fProxy)2;
             A[2, 2] = (fProxy)1;
 
-            var v = arena.fProxyVec(n);
-            var w = arena.fProxyVec(n);
+            var v = new fProxyN(n, Allocator.Temp);
+            var w = new fProxyN(n, Allocator.Temp);
 
             fProxy tol = (fProxy)10 * Consts.fProxyZeroThreshold;
             bool ok = Eigen.powerIteration(in A, ref v, ref w, out fProxy lambda, tol, 1000);
@@ -782,8 +724,6 @@ public class fProxyEigenTests
             AssertClose(Unity.Mathematics.math.abs(v[0]), (fProxy)1, (fProxy)100 * Consts.fProxyZeroThreshold);
 
             AssertPowerResidual(in A, in v, lambda, tol, n);
-
-            arena.Dispose();
         }
 
         // 6x6 random symmetric with a forced clear dominant eigenvalue (+12 boost on one
@@ -792,11 +732,9 @@ public class fProxyEigenTests
         // value and magnitude, so the reference is eig[0] (largest by value == largest |.|).
         public void PowerSymmetricCrossCheck()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 6;
 
-            var A = arena.fProxyRandomMat(n, n, (fProxy)(-4), (fProxy)4, 4471123);
+            var A = GenerateOP.fProxyRandomMat(n, n, (fProxy)(-4), (fProxy)4, 4471123);
             for (int i = 0; i < n; i++)
                 for (int j = i + 1; j < n; j++)
                 {
@@ -807,12 +745,12 @@ public class fProxyEigenTests
             // Force a clearly dominant positive eigenvalue (well separated in magnitude).
             A[0, 0] = A[0, 0] + (fProxy)12;
 
-            var Apow = A.Copy();
-            var Aeig = A.Copy();
+            var Apow = new fProxyMxN(in A, Allocator.Temp);
+            var Aeig = new fProxyMxN(in A, Allocator.Temp);
 
             // reference: dominant eigenvalue by value (== by magnitude here, well separated)
-            var eig = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var eig = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
             bool econv = Eigen.decompInPlace(ref Aeig, ref eig, ref V);
             Assert.IsTrue(econv);
 
@@ -821,8 +759,8 @@ public class fProxyEigenTests
             if (Unity.Mathematics.math.abs(eig[n - 1]) > Unity.Mathematics.math.abs(eig[0]))
                 reference = eig[n - 1];
 
-            var v = arena.fProxyVec(n);
-            var w = arena.fProxyVec(n);
+            var v = new fProxyN(n, Allocator.Temp);
+            var w = new fProxyN(n, Allocator.Temp);
 
             fProxy tol = (fProxy)10 * Consts.fProxyZeroThreshold;
             bool ok = Eigen.powerIteration(in Apow, ref v, ref w, out fProxy lambda, tol, 2000);
@@ -833,24 +771,20 @@ public class fProxyEigenTests
             // magnitude up to ~16; scale tolerance by (1+|reference|).
             fProxy scale = (fProxy)1 + Unity.Mathematics.math.abs(reference);
             AssertClose(lambda, reference, (fProxy)1000 * Consts.fProxyZeroThreshold * scale);
-
-            arena.Dispose();
         }
 
         // 2x2 rotation [[0,-1],[1,0]] (eigenvalues +-i): power iteration cannot converge,
         // returns false; v finite, lambda finite (no NaN).
         public void PowerComplexPair()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 2;
 
-            var A = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Temp);
             A[0, 0] = (fProxy)0; A[0, 1] = (fProxy)(-1);
             A[1, 0] = (fProxy)1; A[1, 1] = (fProxy)0;
 
-            var v = arena.fProxyVec(n);
-            var w = arena.fProxyVec(n);
+            var v = new fProxyN(n, Allocator.Temp);
+            var w = new fProxyN(n, Allocator.Temp);
 
             fProxy tol = (fProxy)10 * Consts.fProxyZeroThreshold;
             bool ok = Eigen.powerIteration(in A, ref v, ref w, out fProxy lambda, tol, 200);
@@ -859,21 +793,17 @@ public class fProxyEigenTests
             AssertFinite(lambda);
             for (int i = 0; i < n; i++)
                 AssertFinite(v[i]);
-
-            arena.Dispose();
         }
 
         // 3x3 zero matrix: A*v == 0, ||w|| == 0 path -> lambda set to 0, returns true.
         public void PowerZeroMatrix()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 3;
 
-            var A = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Temp);
 
-            var v = arena.fProxyVec(n);
-            var w = arena.fProxyVec(n);
+            var v = new fProxyN(n, Allocator.Temp);
+            var w = new fProxyN(n, Allocator.Temp);
 
             fProxy tol = (fProxy)10 * Consts.fProxyZeroThreshold;
             bool ok = Eigen.powerIteration(in A, ref v, ref w, out fProxy lambda, tol, 1000);
@@ -881,8 +811,6 @@ public class fProxyEigenTests
             Assert.IsTrue(ok);
             AssertFinite(lambda);
             AssertClose(lambda, (fProxy)0, (fProxy)100 * Consts.fProxyZeroThreshold);
-
-            arena.Dispose();
         }
 
         // ---------------------------------------------------------------------
@@ -900,18 +828,16 @@ public class fProxyEigenTests
         // returns Converged on) -- and that at least one iteration was counted.
         public void PowerConvergedInfo()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 4;
 
-            var A = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Temp);
             A[0, 0] = (fProxy)5;
             A[1, 1] = (fProxy)3;
             A[2, 2] = (fProxy)1;
             A[3, 3] = (fProxy)0.5;
 
-            var v = arena.fProxyVec(n);   // zero -> deterministic seeding
-            var w = arena.fProxyVec(n);
+            var v = new fProxyN(n, Allocator.Temp);   // zero -> deterministic seeding
+            var w = new fProxyN(n, Allocator.Temp);
 
             fProxy tol = (fProxy)10 * Consts.fProxyZeroThreshold;
             var info = Eigen.powerIteration(in A, ref v, ref w, out fProxy lambda, tol, 1000);
@@ -934,8 +860,6 @@ public class fProxyEigenTests
 
             // Converged counts the converging iteration too -> iterations >= 1.
             AssertTrue(info.iterations >= 1, (fProxy)7);
-
-            arena.Dispose();
         }
 
         // powerIteration MAX-ITERATIONS field check (deterministic non-convergence). The 2x2 real
@@ -945,16 +869,14 @@ public class fProxyEigenTests
         // and iterations == maxIter exactly.
         public void PowerMaxIterationsInfo()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 2;
 
-            var A = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Temp);
             A[0, 0] = (fProxy)0; A[0, 1] = (fProxy)(-1);
             A[1, 0] = (fProxy)1; A[1, 1] = (fProxy)0;
 
-            var v = arena.fProxyVec(n);
-            var w = arena.fProxyVec(n);
+            var v = new fProxyN(n, Allocator.Temp);
+            var w = new fProxyN(n, Allocator.Temp);
 
             int maxIter = 200;
             fProxy tol = (fProxy)10 * Consts.fProxyZeroThreshold;
@@ -966,8 +888,6 @@ public class fProxyEigenTests
             AssertTrue(info.iterations == maxIter, (fProxy)4);
             // residual on a MaxIterations return is still the finite last-iterate residual (NOT NaN).
             AssertTrue(Unity.Mathematics.math.isfinite(info.residual), (fProxy)5);
-
-            arena.Dispose();
         }
 
         // inversePowerIteration BREAKDOWN field check (deterministic). A = diag(1,-1) is INDEFINITE
@@ -977,14 +897,12 @@ public class fProxyEigenTests
         // !Solved, status == Breakdown, and residual == NaN (the documented Breakdown residual).
         public void InversePowerBreakdownInfo()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 2;
 
-            var A = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Temp);
             A[0, 0] = (fProxy)1; A[1, 1] = (fProxy)(-1);   // indefinite -> CG breakdown
 
-            var v = arena.fProxyVec(n);   // zero -> deterministic (1,2) seeding
+            var v = new fProxyN(n, Allocator.Temp);   // zero -> deterministic (1,2) seeding
 
             var info = Eigen.inversePowerIteration(in A, ref v, out fProxy lambda);
 
@@ -994,8 +912,6 @@ public class fProxyEigenTests
             // residual is double.NaN on a Breakdown return. Use the Burst-safe double isnan overload
             // (self-inequality residual != residual is an equally valid check under FloatMode.Default).
             AssertTrue(Unity.Mathematics.math.isnan(info.residual), (fProxy)4);
-
-            arena.Dispose();
         }
 
         // inversePowerIteration CONVERGED-residual check on an SPD operator that converges. The 1D
@@ -1008,18 +924,16 @@ public class fProxyEigenTests
         // still catches an O(1)/NaN residual regression while staying above the honest cgTol floor.
         public void InversePowerConvergedInfo()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 12;
 
-            var A = arena.fProxyLaplacian1D(n);
+            var A = fProxyGallery.fProxyLaplacian1D(n);
 
             // tol a multiple of cgTol (see inversePowerIteration's doc comment): consecutive
             // eigenpair estimates each come from a fresh CG solve accurate only to ~cgTol.
             fProxy cgTol = Consts.fProxySqrtEps;
             fProxy tol = (fProxy)10 * cgTol;
 
-            var v = arena.fProxyVec(n);   // zero -> deterministic seeding
+            var v = new fProxyN(n, Allocator.Temp);   // zero -> deterministic seeding
 
             var info = Eigen.inversePowerIteration(in A, ref v, out fProxy lambda, tol, 200, n, cgTol);
 
@@ -1037,8 +951,6 @@ public class fProxyEigenTests
             AssertTrue(info.residual <= limit, (fProxy)5);
 
             AssertTrue(info.iterations >= 1, (fProxy)6);
-
-            arena.Dispose();
         }
 
         // ---------------------------------------------------------------------
@@ -1048,12 +960,10 @@ public class fProxyEigenTests
         // n=5 identity: same oracle as EigenIdentity (eigenvalues == 1); QL variant, A is DESTROYED.
         public void EvSymIdentity()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
 
-            var A = arena.fProxyIdentityMat(n);
-            var eig = arena.fProxyVec(n);
+            var A = GenerateOP.fProxyIdentityMat(n);
+            var eig = new fProxyN(n, Allocator.Temp);
 
             bool ok = Eigen.valuesSymmetricInPlace(ref A, ref eig);
 
@@ -1064,19 +974,15 @@ public class fProxyEigenTests
                 AssertClose(eig[i], (fProxy)1, (fProxy)100 * Consts.fProxyZeroThreshold);
 
             AssertDescending(in eig, n);
-
-            arena.Dispose();
         }
 
         // diag(3, -2, 0.5, 5, -7, 1): eigenvalues == diagonal, sorted descending -> (5, 3, 1, 0.5, -2, -7)
         // (same oracle as EigenDiagonal; Householder leaves the diagonal untouched). A is DESTROYED.
         public void EvSymDiagonal()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 6;
 
-            var A = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Temp);
             A[0, 0] = (fProxy)3;
             A[1, 1] = (fProxy)(-2);
             A[2, 2] = (fProxy)0.5;
@@ -1084,7 +990,7 @@ public class fProxyEigenTests
             A[4, 4] = (fProxy)(-7);
             A[5, 5] = (fProxy)1;
 
-            var eig = arena.fProxyVec(n);
+            var eig = new fProxyN(n, Allocator.Temp);
 
             bool ok = Eigen.valuesSymmetricInPlace(ref A, ref eig);
 
@@ -1100,22 +1006,18 @@ public class fProxyEigenTests
             AssertClose(eig[5], (fProxy)(-7), tol);
 
             AssertDescending(in eig, n);
-
-            arena.Dispose();
         }
 
         // [[2,1],[1,2]]: same oracle as EigenKnown2x2 (eigenvalues 3, 1). A is DESTROYED.
         public void EvSymKnown2x2()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 2;
 
-            var A = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Temp);
             A[0, 0] = (fProxy)2; A[0, 1] = (fProxy)1;
             A[1, 0] = (fProxy)1; A[1, 1] = (fProxy)2;
 
-            var eig = arena.fProxyVec(n);
+            var eig = new fProxyN(n, Allocator.Temp);
 
             bool ok = Eigen.valuesSymmetricInPlace(ref A, ref eig);
 
@@ -1126,28 +1028,22 @@ public class fProxyEigenTests
             AssertClose(eig[1], (fProxy)1, (fProxy)100 * Consts.fProxyZeroThreshold);
 
             AssertDescending(in eig, n);
-
-            arena.Dispose();
         }
 
         // n=1 trivial: the sole eigenvalue equals the single entry (early-return path, no iteration).
         public void EvSymN1()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 1;
 
-            var A = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Temp);
             A[0, 0] = (fProxy)(-3.25);
 
-            var eig = arena.fProxyVec(n);
+            var eig = new fProxyN(n, Allocator.Temp);
 
             bool ok = Eigen.valuesSymmetricInPlace(ref A, ref eig);
 
             Assert.IsTrue(ok);
             AssertClose(eig[0], (fProxy)(-3.25), (fProxy)100 * Consts.fProxyZeroThreshold);
-
-            arena.Dispose();
         }
 
         // CROSS-CHECK vs the Jacobi Eigen.decompInPlace: for n=6 and n=8 random SYMMETRIC matrices,
@@ -1162,9 +1058,7 @@ public class fProxyEigenTests
 
         private void CrossCheckOne(int n, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.fProxyRandomMat(n, n, (fProxy)(-5), (fProxy)5, seed);
+            var A = GenerateOP.fProxyRandomMat(n, n, (fProxy)(-5), (fProxy)5, seed);
             for (int i = 0; i < n; i++)
                 for (int j = i + 1; j < n; j++)
                 {
@@ -1173,15 +1067,15 @@ public class fProxyEigenTests
                     A[j, i] = avg;
                 }
 
-            var Ajac = A.Copy();   // destroyed by Eigen.decompInPlace
-            var Aql = A.Copy();    // destroyed by Eigen.valuesSymmetricInPlace
+            var Ajac = new fProxyMxN(in A, Allocator.Temp);   // destroyed by Eigen.decompInPlace
+            var Aql = new fProxyMxN(in A, Allocator.Temp);    // destroyed by Eigen.valuesSymmetricInPlace
 
-            var eigJac = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var eigJac = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
             bool jacOk = Eigen.decompInPlace(ref Ajac, ref eigJac, ref V);
             Assert.IsTrue(jacOk);
 
-            var eigQL = arena.fProxyVec(n);
+            var eigQL = new fProxyN(n, Allocator.Temp);
             bool qlOk = Eigen.valuesSymmetricInPlace(ref Aql, ref eigQL);
             Assert.IsTrue(qlOk);
 
@@ -1202,10 +1096,7 @@ public class fProxyEigenTests
                     Fail[3] = diff;
                 }
                 Assert.IsTrue(diff <= tol);
-            }
-
-            arena.Dispose();
-        }
+            }        }
 
         // LITERATURE KNOWN-ANSWER: n=6 path-graph (1D Laplacian) tridiagonal with diag 2 and
         // off-diagonal -1. Eigenvalues are EXACTLY lambda_k = 2 - 2*cos(k*pi/(n+1)), k=1..n. Sorted
@@ -1213,11 +1104,9 @@ public class fProxyEigenTests
         // absolute tolerance covers float QL noise.
         public void EvSymLaplacian()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 6;
 
-            var A = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Temp);
             for (int i = 0; i < n; i++)
             {
                 A[i, i] = (fProxy)2;
@@ -1228,7 +1117,7 @@ public class fProxyEigenTests
                 }
             }
 
-            var eig = arena.fProxyVec(n);
+            var eig = new fProxyN(n, Allocator.Temp);
 
             bool ok = Eigen.valuesSymmetricInPlace(ref A, ref eig);
 
@@ -1245,8 +1134,6 @@ public class fProxyEigenTests
             }
 
             AssertDescending(in eig, n);
-
-            arena.Dispose();
         }
 
         // ---------------------------------------------------------------------
@@ -1256,13 +1143,11 @@ public class fProxyEigenTests
         // n=5 identity: same oracle as EigenIdentity; tred2/tql2 variant, A is DESTROYED.
         public void EsymIdentity()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
 
-            var A = arena.fProxyIdentityMat(n);
-            var eig = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var A = GenerateOP.fProxyIdentityMat(n);
+            var eig = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
 
             bool ok = Eigen.symmetricInPlace(ref A, ref eig, ref V);
 
@@ -1276,8 +1161,6 @@ public class fProxyEigenTests
             AssertDescending(in eig, n);
 
             Assert.IsTrue(Analysis.isOrthogonal(V, (fProxy)100 * Consts.fProxyZeroThreshold));
-
-            arena.Dispose();
         }
 
         // diag(3, -2, 0.5, 5, -7): eigenvalues == diagonal, sorted descending -> (5, 3, 0.5, -2, -7)
@@ -1285,21 +1168,19 @@ public class fProxyEigenTests
         // pin exact V we verify the decomposition reconstructs A = V*diag(eig)*V^T and that V is orthogonal.
         public void EsymDiagonal()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
 
-            var A = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Temp);
             A[0, 0] = (fProxy)3;
             A[1, 1] = (fProxy)(-2);
             A[2, 2] = (fProxy)0.5;
             A[3, 3] = (fProxy)5;
             A[4, 4] = (fProxy)(-7);
 
-            var Aorig = A.Copy();
+            var Aorig = new fProxyMxN(in A, Allocator.Temp);
 
-            var eig = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var eig = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
 
             bool ok = Eigen.symmetricInPlace(ref A, ref eig, ref V);
 
@@ -1320,25 +1201,21 @@ public class fProxyEigenTests
             AssertReconstruction(in Aorig, in V, in eig, n, (fProxy)1000 * Consts.fProxyZeroThreshold);
 
             Assert.IsTrue(Analysis.isOrthogonal(V, tol));
-
-            arena.Dispose();
         }
 
         // [[2,1],[1,2]]: same oracle as EigenKnown2x2 (eigenvalues 3, 1); sign-agnostic eigenvector check.
         public void EsymKnown2x2()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 2;
 
-            var A = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Temp);
             A[0, 0] = (fProxy)2; A[0, 1] = (fProxy)1;
             A[1, 0] = (fProxy)1; A[1, 1] = (fProxy)2;
 
-            var Aorig = A.Copy();
+            var Aorig = new fProxyMxN(in A, Allocator.Temp);
 
-            var eig = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var eig = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
 
             bool ok = Eigen.symmetricInPlace(ref A, ref eig, ref V);
 
@@ -1352,8 +1229,6 @@ public class fProxyEigenTests
             AssertEigenResidual(in Aorig, in V, in eig, n);
 
             Assert.IsTrue(Analysis.isOrthogonal(V, (fProxy)100 * Consts.fProxyZeroThreshold));
-
-            arena.Dispose();
         }
 
         // RECONSTRUCTION on random symmetric matrices (n=6, n=8): keep a copy of A before it is
@@ -1366,13 +1241,11 @@ public class fProxyEigenTests
 
         private void ReconstructOne(int n, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
+            var A = MakeRandomSymmetric(n, seed);
+            var Aorig = new fProxyMxN(in A, Allocator.Temp);
 
-            var A = MakeRandomSymmetric(ref arena, n, seed);
-            var Aorig = A.Copy();
-
-            var eig = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var eig = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
 
             bool ok = Eigen.symmetricInPlace(ref A, ref eig, ref V);
 
@@ -1381,8 +1254,6 @@ public class fProxyEigenTests
             Assert.IsFalse(Analysis.isAnyNan(in V));
 
             AssertReconstruction(in Aorig, in V, in eig, n, (fProxy)1000 * Consts.fProxyZeroThreshold);
-
-            arena.Dispose();
         }
 
         // ORTHOGONALITY on random symmetric matrices (n=6, n=8): ||V^T V - I|| small.
@@ -1394,12 +1265,10 @@ public class fProxyEigenTests
 
         private void OrthogonalityOne(int n, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
+            var A = MakeRandomSymmetric(n, seed);
 
-            var A = MakeRandomSymmetric(ref arena, n, seed);
-
-            var eig = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var eig = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
 
             bool ok = Eigen.symmetricInPlace(ref A, ref eig, ref V);
 
@@ -1430,8 +1299,6 @@ public class fProxyEigenTests
             Assert.IsTrue(maxErr <= precision);
 
             Assert.IsTrue(Analysis.isOrthogonal(V, precision));
-
-            arena.Dispose();
         }
 
         // EIGENPAIR residual on random symmetric matrices (n=6, n=8): for each i,
@@ -1444,13 +1311,11 @@ public class fProxyEigenTests
 
         private void EigenpairOne(int n, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
+            var A = MakeRandomSymmetric(n, seed);
+            var Aorig = new fProxyMxN(in A, Allocator.Temp);
 
-            var A = MakeRandomSymmetric(ref arena, n, seed);
-            var Aorig = A.Copy();
-
-            var eig = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var eig = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
 
             bool ok = Eigen.symmetricInPlace(ref A, ref eig, ref V);
 
@@ -1460,8 +1325,6 @@ public class fProxyEigenTests
 
             AssertDescending(in eig, n);
             AssertEigenResidual(in Aorig, in V, in eig, n);
-
-            arena.Dispose();
         }
 
         // CROSS-CHECK eigenvalues vs the trusted values-only Eigen.valuesSymmetricInPlace on the SAME
@@ -1475,19 +1338,17 @@ public class fProxyEigenTests
 
         private void CrossCheckValuesOne(int n, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
+            var A = MakeRandomSymmetric(n, seed);
 
-            var A = MakeRandomSymmetric(ref arena, n, seed);
+            var Asym = new fProxyMxN(in A, Allocator.Temp);   // destroyed by Eigen.symmetricInPlace
+            var Aval = new fProxyMxN(in A, Allocator.Temp);   // destroyed by Eigen.valuesSymmetricInPlace
 
-            var Asym = A.Copy();   // destroyed by Eigen.symmetricInPlace
-            var Aval = A.Copy();   // destroyed by Eigen.valuesSymmetricInPlace
-
-            var eigSym = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var eigSym = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
             bool symOk = Eigen.symmetricInPlace(ref Asym, ref eigSym, ref V);
             Assert.IsTrue(symOk);
 
-            var eigVal = arena.fProxyVec(n);
+            var eigVal = new fProxyN(n, Allocator.Temp);
             bool valOk = Eigen.valuesSymmetricInPlace(ref Aval, ref eigVal);
             Assert.IsTrue(valOk);
 
@@ -1507,20 +1368,15 @@ public class fProxyEigenTests
                     Fail[3] = diff;
                 }
                 Assert.IsTrue(diff <= tol);
-            }
-
-            arena.Dispose();
-        }
+            }        }
 
         // n=6 1D-Laplacian: same known-answer oracle as EvSymLaplacian (lambda_k = 2-2cos(k*pi/(n+1))).
         // Also verifies the eigenpairs and orthogonality of the computed V.
         public void EsymLaplacian()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 6;
 
-            var A = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Temp);
             for (int i = 0; i < n; i++)
             {
                 A[i, i] = (fProxy)2;
@@ -1531,10 +1387,10 @@ public class fProxyEigenTests
                 }
             }
 
-            var Aorig = A.Copy();
+            var Aorig = new fProxyMxN(in A, Allocator.Temp);
 
-            var eig = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var eig = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
 
             bool ok = Eigen.symmetricInPlace(ref A, ref eig, ref V);
 
@@ -1553,8 +1409,6 @@ public class fProxyEigenTests
             AssertDescending(in eig, n);
             AssertEigenResidual(in Aorig, in V, in eig, n);
             Assert.IsTrue(Analysis.isOrthogonal(V, tol));
-
-            arena.Dispose();
         }
 
         // ---------------------------------------------------------------------
@@ -1562,9 +1416,9 @@ public class fProxyEigenTests
         // ---------------------------------------------------------------------
 
         // Allocate a random matrix (entries ~ +-5) and symmetrize it in place.
-        private fProxyMxN MakeRandomSymmetric(ref Arena arena, int n, uint seed)
+        private fProxyMxN MakeRandomSymmetric(int n, uint seed)
         {
-            var A = arena.fProxyRandomMat(n, n, (fProxy)(-5), (fProxy)5, seed);
+            var A = GenerateOP.fProxyRandomMat(n, n, (fProxy)(-5), (fProxy)5, seed);
             for (int i = 0; i < n; i++)
                 for (int j = i + 1; j < n; j++)
                 {
@@ -1576,7 +1430,7 @@ public class fProxyEigenTests
         }
 
         // Reconstruct recon = V*diag(eig)*V^T element-by-element and assert ||A - recon||_max small.
-        // No arena allocation (caller's arena is busy with A copy); uses a stack-free triple loop.
+        // Uses a stack-free triple loop.
         private void AssertReconstruction(in fProxyMxN A, in fProxyMxN V, in fProxyN eig, int n, fProxy precision)
         {
             fProxy maxErr = (fProxy)0;
@@ -1749,235 +1603,171 @@ public class fProxyEigenTests
     [Test]
     public void EigenThrowsOnNonSquare()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.fProxyMat(3, 4);
-        var eig = arena.fProxyVec(4);
-        var V = arena.fProxyMat(4, 4);
+        var A = new fProxyMxN(3, 4, Allocator.Temp);
+        var eig = new fProxyN(4, Allocator.Temp);
+        var V = new fProxyMxN(4, 4, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() => Eigen.decompInPlace(ref A, ref eig, ref V));
-
-        arena.Dispose();
     }
 
     [Test]
     public void EigenThrowsOnWrongEigenvalueLength()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.fProxyMat(4, 4);
-        var eig = arena.fProxyVec(3);
-        var V = arena.fProxyMat(4, 4);
+        var A = new fProxyMxN(4, 4, Allocator.Temp);
+        var eig = new fProxyN(3, Allocator.Temp);
+        var V = new fProxyMxN(4, 4, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() => Eigen.decompInPlace(ref A, ref eig, ref V));
-
-        arena.Dispose();
     }
 
     [Test]
     public void EigenThrowsOnWrongVShape()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.fProxyMat(4, 4);
-        var eig = arena.fProxyVec(4);
-        var V = arena.fProxyMat(3, 3);
+        var A = new fProxyMxN(4, 4, Allocator.Temp);
+        var eig = new fProxyN(4, Allocator.Temp);
+        var V = new fProxyMxN(3, 3, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() => Eigen.decompInPlace(ref A, ref eig, ref V));
-
-        arena.Dispose();
     }
 
     [Test]
     public void EigenThrowsOnBadMaxSweeps()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.fProxyMat(4, 4);
-        var eig = arena.fProxyVec(4);
-        var V = arena.fProxyMat(4, 4);
+        var A = new fProxyMxN(4, 4, Allocator.Temp);
+        var eig = new fProxyN(4, Allocator.Temp);
+        var V = new fProxyMxN(4, 4, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() => Eigen.decompInPlace(ref A, ref eig, ref V, 0));
-
-        arena.Dispose();
     }
 
     [Test]
     public void EigenThrowsOnNonSymmetric()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.fProxyMat(2, 2);
+        var A = new fProxyMxN(2, 2, Allocator.Temp);
         A[0, 0] = (fProxy)1; A[0, 1] = (fProxy)2;
         A[1, 0] = (fProxy)0; A[1, 1] = (fProxy)1;
 
-        var eig = arena.fProxyVec(2);
-        var V = arena.fProxyMat(2, 2);
+        var eig = new fProxyN(2, Allocator.Temp);
+        var V = new fProxyMxN(2, 2, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() => Eigen.decompInPlace(ref A, ref eig, ref V));
-
-        arena.Dispose();
     }
 
     [Test]
     public void EvSymThrowsOnNonSymmetric()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.fProxyMat(2, 2);
+        var A = new fProxyMxN(2, 2, Allocator.Temp);
         A[0, 0] = (fProxy)1; A[0, 1] = (fProxy)2;
         A[1, 0] = (fProxy)0; A[1, 1] = (fProxy)1;
 
-        var eig = arena.fProxyVec(2);
+        var eig = new fProxyN(2, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() => Eigen.valuesSymmetricInPlace(ref A, ref eig));
-
-        arena.Dispose();
     }
 
     [Test]
     public void EvSymThrowsOnNonSquare()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.fProxyMat(3, 4);
-        var eig = arena.fProxyVec(4);
+        var A = new fProxyMxN(3, 4, Allocator.Temp);
+        var eig = new fProxyN(4, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() => Eigen.valuesSymmetricInPlace(ref A, ref eig));
-
-        arena.Dispose();
     }
 
     [Test]
     public void EvSymThrowsOnWrongEigenvalueLength()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.fProxyMat(4, 4);
-        var eig = arena.fProxyVec(3);
+        var A = new fProxyMxN(4, 4, Allocator.Temp);
+        var eig = new fProxyN(3, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() => Eigen.valuesSymmetricInPlace(ref A, ref eig));
-
-        arena.Dispose();
     }
 
     [Test]
     public void EsymThrowsOnNonSquare()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.fProxyMat(3, 4);
-        var eig = arena.fProxyVec(4);
-        var V = arena.fProxyMat(4, 4);
+        var A = new fProxyMxN(3, 4, Allocator.Temp);
+        var eig = new fProxyN(4, Allocator.Temp);
+        var V = new fProxyMxN(4, 4, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() => Eigen.symmetricInPlace(ref A, ref eig, ref V));
-
-        arena.Dispose();
     }
 
     [Test]
     public void EsymThrowsOnNonSymmetric()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.fProxyMat(2, 2);
+        var A = new fProxyMxN(2, 2, Allocator.Temp);
         A[0, 0] = (fProxy)1; A[0, 1] = (fProxy)2;
         A[1, 0] = (fProxy)0; A[1, 1] = (fProxy)1;
 
-        var eig = arena.fProxyVec(2);
-        var V = arena.fProxyMat(2, 2);
+        var eig = new fProxyN(2, Allocator.Temp);
+        var V = new fProxyMxN(2, 2, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() => Eigen.symmetricInPlace(ref A, ref eig, ref V));
-
-        arena.Dispose();
     }
 
     [Test]
     public void EsymThrowsOnWrongEigenvalueLength()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.fProxyMat(4, 4);
-        var eig = arena.fProxyVec(3);
-        var V = arena.fProxyMat(4, 4);
+        var A = new fProxyMxN(4, 4, Allocator.Temp);
+        var eig = new fProxyN(3, Allocator.Temp);
+        var V = new fProxyMxN(4, 4, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() => Eigen.symmetricInPlace(ref A, ref eig, ref V));
-
-        arena.Dispose();
     }
 
     [Test]
     public void EsymThrowsOnWrongVShape()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.fProxyMat(4, 4);
-        var eig = arena.fProxyVec(4);
-        var V = arena.fProxyMat(3, 3);
+        var A = new fProxyMxN(4, 4, Allocator.Temp);
+        var eig = new fProxyN(4, Allocator.Temp);
+        var V = new fProxyMxN(3, 3, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() => Eigen.symmetricInPlace(ref A, ref eig, ref V));
-
-        arena.Dispose();
     }
 
     [Test]
     public void PowerThrowsOnNonSquare()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.fProxyMat(3, 4);
-        var v = arena.fProxyVec(4);
-        var w = arena.fProxyVec(4);
+        var A = new fProxyMxN(3, 4, Allocator.Temp);
+        var v = new fProxyN(4, Allocator.Temp);
+        var w = new fProxyN(4, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() =>
             Eigen.powerIteration(in A, ref v, ref w, out fProxy lambda, Consts.fProxyZeroThreshold, 1000));
-
-        arena.Dispose();
     }
 
     [Test]
     public void PowerThrowsOnWrongVLength()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.fProxyMat(4, 4);
-        var v = arena.fProxyVec(3);
-        var w = arena.fProxyVec(4);
+        var A = new fProxyMxN(4, 4, Allocator.Temp);
+        var v = new fProxyN(3, Allocator.Temp);
+        var w = new fProxyN(4, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() =>
             Eigen.powerIteration(in A, ref v, ref w, out fProxy lambda, Consts.fProxyZeroThreshold, 1000));
-
-        arena.Dispose();
     }
 
     [Test]
     public void PowerThrowsOnWrongWLength()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.fProxyMat(4, 4);
-        var v = arena.fProxyVec(4);
-        var w = arena.fProxyVec(3);
+        var A = new fProxyMxN(4, 4, Allocator.Temp);
+        var v = new fProxyN(4, Allocator.Temp);
+        var w = new fProxyN(3, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() =>
             Eigen.powerIteration(in A, ref v, ref w, out fProxy lambda, Consts.fProxyZeroThreshold, 1000));
-
-        arena.Dispose();
     }
 
     [Test]
     public void PowerThrowsOnBadMaxIter()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.fProxyMat(4, 4);
-        var v = arena.fProxyVec(4);
-        var w = arena.fProxyVec(4);
+        var A = new fProxyMxN(4, 4, Allocator.Temp);
+        var v = new fProxyN(4, Allocator.Temp);
+        var w = new fProxyN(4, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() =>
             Eigen.powerIteration(in A, ref v, ref w, out fProxy lambda, Consts.fProxyZeroThreshold, 0));
-
-        arena.Dispose();
     }
 
 }

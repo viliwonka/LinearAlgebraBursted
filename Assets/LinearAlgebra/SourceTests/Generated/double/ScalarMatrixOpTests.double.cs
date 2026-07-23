@@ -46,68 +46,57 @@ public class doubleScalarMatrixOpTests
         // 0 / M is a valid operation (= 0 where M != 0); it must NOT throw.
         void ZeroDivMatrix()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.doubleMat(2, 2);
+            var A = new doubleMxN(2, 2, Allocator.Temp);
             A[0, 0] = (double)1; A[0, 1] = (double)2;
             A[1, 0] = (double)4; A[1, 1] = (double)5;
 
-            doubleMxN R = (double)0 / A;   // must not throw DivideByZeroException
+            doubleMxN R = A.Copy();
+            doubleComp.divInPlace((double)0, R);   // must not throw DivideByZeroException
 
             AssertClose(R[0, 0], (double)0, (double)1E-6);
             AssertClose(R[0, 1], (double)0, (double)1E-6);
             AssertClose(R[1, 0], (double)0, (double)1E-6);
             AssertClose(R[1, 1], (double)0, (double)1E-6);
-
-            arena.Dispose();
         }
 
         // 5 - [[1,2],[3,4]] must be [[4,3],[2,1]] (NOT the negated [[-4,-3],[-2,-1]]).
         void ScalarMinusMatrix()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.doubleMat(2, 2);
+            var A = new doubleMxN(2, 2, Allocator.Temp);
             A[0, 0] = (double)1; A[0, 1] = (double)2;
             A[1, 0] = (double)3; A[1, 1] = (double)4;
 
-            doubleMxN R = (double)5 - A;
+            doubleMxN R = A.Copy();
+            doubleComp.subInPlace((double)5, R);
 
             AssertClose(R[0, 0], (double)4, (double)1E-5);
             AssertClose(R[0, 1], (double)3, (double)1E-5);
             AssertClose(R[1, 0], (double)2, (double)1E-5);
             AssertClose(R[1, 1], (double)1, (double)1E-5);
 
-            // A must be unchanged (operator works on a copy)
+            // A must be unchanged (operates on a copy)
             AssertClose(A[0, 0], (double)1, (double)1E-6);
-
-            arena.Dispose();
         }
 
         // 5 - [1,2,3] must be [4,3,2] (the vector form was already correct; guard against regression).
         void ScalarMinusVector()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var v = arena.doubleVec(3);
+            var v = new doubleN(3, Allocator.Temp);
             v[0] = (double)1; v[1] = (double)2; v[2] = (double)3;
 
-            doubleN r = (double)5 - v;
+            doubleN r = v.Copy();
+            doubleComp.subInPlace((double)5, r);
 
             AssertClose(r[0], (double)4, (double)1E-5);
             AssertClose(r[1], (double)3, (double)1E-5);
             AssertClose(r[2], (double)2, (double)1E-5);
-
-            arena.Dispose();
         }
 
         // L3 norm of [-1, 2, -2] = (|−1|³+|2|³+|−2|³)^(1/3) = 17^(1/3) ≈ 2.5713 — finite, no NaN.
         // (Without abs, (-1)³+2³+(-2)³ = -1 then (-1)^(1/3) = NaN.)
         void NormalizeLPNegatives()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var v = arena.doubleVec(3);
+            var v = new doubleN(3, Allocator.Temp);
             v[0] = (double)(-1); v[1] = (double)2; v[2] = (double)(-2);
 
             double norm = Norms.normalizeLP(in v, (double)3);
@@ -117,8 +106,6 @@ public class doubleScalarMatrixOpTests
                 Fail[0] = (double)1; Fail[1] = norm; Fail[2] = (double)2.5713; Fail[3] = norm;
             }
             AssertClose(norm, (double)math.pow((double)17, (double)1 / (double)3), (double)1E-3);
-
-            arena.Dispose();
         }
 
         void AssertClose(double a, double b, double precision)

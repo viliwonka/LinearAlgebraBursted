@@ -59,11 +59,11 @@ public class floatSparseSPAITests
 
         // Diagonally dominant NONSYMMETRIC block-tridiagonal system (fill-free pattern) -- the same
         // construction the ILU0 test uses, so SPAI converges where ILU0's testbed converges.
-        static floatBSR BuildNonsymTridiag(ref Arena arena, int nb, int BR, uint seed)
+        static floatBSR BuildNonsymTridiag(int nb, int BR, uint seed)
         {
-            var builder = arena.floatBSRBuilder(nb, nb, BR, BR);
+            var builder = new floatBSRBuilder(nb, nb, BR, BR, Allocator.Temp);
             var rng = new Unity.Mathematics.Random(seed);
-            var blk = arena.floatMat(BR, BR);
+            var blk = new floatMxN(BR, BR, Allocator.Temp);
 
             for (int i = 0; i < nb; i++)
             {
@@ -85,7 +85,7 @@ public class floatSparseSPAITests
                     builder.AddBlock(i, i + 1, in blk);
                 }
             }
-            return builder.ToBSR(ref arena);
+            return builder.ToBSR(Allocator.Temp);
         }
 
         // ||X - I||_F for a square X.
@@ -107,27 +107,26 @@ public class floatSparseSPAITests
 
         void ResidualBeatsJacobi()
         {
-            var arena = new Arena(Allocator.Persistent);
             const int nb = 8, BR = 3;
-            var A = BuildNonsymTridiag(ref arena, nb, BR, 851001u);
+            var A = BuildNonsymTridiag(nb, BR, 851001u);
             int n = A.M_Rows;
 
-            var spai = arena.floatSPAI(in A);
+            var spai = new floatSPAI(in A, Allocator.Temp);
             Assert.IsTrue(spai.Shift == (float)0);
 
-            var Adense = A.ToDense(ref arena);
-            var Mdense = spai.M.ToDense(ref arena);
+            var Adense = A.ToDense(Allocator.Temp);
+            var Mdense = spai.M.ToDense(Allocator.Temp);
 
             // ||M A - I||_F
-            var MA = arena.floatMat(n, n);
+            var MA = new floatMxN(n, n, Allocator.Temp);
             Blas.dot(in Mdense, in Adense, ref MA);   // plain product M*A
             float froSpai = FrobeniusMinusI(in MA);
 
             // ||D^-1 A - I||_F, with D^-1 the block-Jacobi (diagonal-block inverse) scaling.
-            var jac = arena.floatBlockJacobi(in A);
-            var DinvA = arena.floatMat(n, n);
-            var col = arena.floatVec(n);
-            var outc = arena.floatVec(n);
+            var jac = new floatBlockJacobi(in A, Allocator.Temp);
+            var DinvA = new floatMxN(n, n, Allocator.Temp);
+            var col = new floatN(n, Allocator.Temp);
+            var outc = new floatN(n, Allocator.Temp);
             for (int j = 0; j < n; j++)
             {
                 for (int i = 0; i < n; i++) col[i] = Adense[i, j];
@@ -137,30 +136,25 @@ public class floatSparseSPAITests
             float froJac = FrobeniusMinusI(in DinvA);
 
             Assert.IsTrue(froSpai < froJac);
-
-            arena.Dispose();
         }
 
         void PbiCGStabConverges()
         {
-            var arena = new Arena(Allocator.Persistent);
             const int nb = 40, BR = 3;
-            var A = BuildNonsymTridiag(ref arena, nb, BR, 852001u);
+            var A = BuildNonsymTridiag(nb, BR, 852001u);
             int n = A.M_Rows;
 
-            var xTrue = arena.floatRandomVec(n, 0.5f, 1.5f, 852002u);
+            var xTrue = GenerateOP.floatRandomVec(n, 0.5f, 1.5f, 852002u);
             var b = BSR.spMV(in A, in xTrue);
             float tol = Consts.floatSqrtEps;
             int maxIter = 4 * n;
 
-            var M = arena.floatSPAI(in A);
-            var x = arena.floatVec(n);
+            var M = new floatSPAI(in A, Allocator.Temp);
+            var x = new floatN(n, Allocator.Temp);
             var info = Krylov.biCGStab(in A, in M, in b, ref x, maxIter, tol);
             Assert.IsTrue(info.Solved);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(math.abs(x[i] - xTrue[i]) < SolveTol() * ((float)1 + math.abs(xTrue[i])));
-
-            arena.Dispose();
         }
 
         // ================================================================================
@@ -169,14 +163,12 @@ public class floatSparseSPAITests
 
         void CleanBuildReportsSuccess()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatRandomSparse(24, 24, 3, (float)0.4, 853001u);  // square, DD nonsymmetric
-            var M = arena.floatSPAI(in A, out PreconditionerInfo info);
+            var A = floatGallery.floatRandomSparse(24, 24, 3, (float)0.4, 853001u);  // square, DD nonsymmetric
+            var M = new floatSPAI(in A, Allocator.Temp, out PreconditionerInfo info);
             Assert.IsTrue(info.Solved);
             Assert.IsTrue(info.status == DirectSolveStatus.Success);
             Assert.IsTrue(M.Shift == (float)0);
             Assert.AreEqual(1, info.attempts);
-            arena.Dispose();
         }
     }
 
@@ -213,18 +205,17 @@ public class floatSparseSPAITests
     [Test]
     public void ThroughIJobDeterminismTest()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.floatRandomSparse(20, 20, 3, (float)0.4, 854001u);
-        var M = arena.floatSPAI(in A);
+        var A = floatGallery.floatRandomSparse(20, 20, 3, (float)0.4, 854001u);
+        var M = new floatSPAI(in A, Allocator.Temp);
         int n = A.M_Rows;
 
-        var xTrue = arena.floatRandomVec(n, 0.5f, 1.5f, 854002u);
+        var xTrue = GenerateOP.floatRandomVec(n, 0.5f, 1.5f, 854002u);
         var b = BSR.spMV(in A, in xTrue);
         float tol = Consts.floatSqrtEps;
         int maxIter = 8 * n;
 
-        var x1 = arena.floatVec(n);
-        var x2 = arena.floatVec(n);
+        var x1 = new floatN(n, Allocator.Temp);
+        var x2 = new floatN(n, Allocator.Temp);
         var it1 = new NativeArray<int>(1, Allocator.Persistent);
         var it2 = new NativeArray<int>(1, Allocator.Persistent);
 
@@ -235,7 +226,7 @@ public class floatSparseSPAITests
         for (int i = 0; i < n; i++)
             Assert.IsTrue(x1[i] == x2[i]);
 
-        var x3 = arena.floatVec(n);
+        var x3 = new floatN(n, Allocator.Temp);
         var infoM = Krylov.biCGStab(in A, in M, in b, ref x3, maxIter, tol);
         Assert.IsTrue(infoM.Solved);
         float consistencyTol = 1e-3f;
@@ -244,7 +235,6 @@ public class floatSparseSPAITests
 
         it1.Dispose();
         it2.Dispose();
-        arena.Dispose();
     }
 
     // ---- (6) guard cases (managed thread) ------------------------------------------------
@@ -252,51 +242,36 @@ public class floatSparseSPAITests
     [Test]
     public void NonSquareThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var builder = arena.floatBSRBuilder(2, 3, 2, 2);
-            var block = arena.floatMat(2, 2, (float)1);
-            builder.AddBlock(0, 0, in block);
-            var A = builder.ToBSR(ref arena);
-            Assert.Throws<ArgumentException>(() => { var m = arena.floatSPAI(in A); });
-        }
-        finally { arena.Dispose(); }
+        var builder = new floatBSRBuilder(2, 3, 2, 2, Allocator.Temp);
+        var block = GenerateOP.floatMat(2, 2, (float)1);
+        builder.AddBlock(0, 0, in block);
+        var A = builder.ToBSR(Allocator.Temp);
+        Assert.Throws<ArgumentException>(() => { var m = new floatSPAI(in A, Allocator.Temp); });
     }
 
     [Test]
     public void MissingDiagonalThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var builder = arena.floatBSRBuilder(2, 2, 2, 2);
-            var block = arena.floatMat(2, 2, (float)1);
-            builder.AddBlock(0, 0, in block);
-            builder.AddBlock(1, 0, in block);   // no (1,1) diagonal block
-            var A = builder.ToBSR(ref arena);
-            Assert.Throws<ArgumentException>(() => { var m = arena.floatSPAI(in A); });
-        }
-        finally { arena.Dispose(); }
+        var builder = new floatBSRBuilder(2, 2, 2, 2, Allocator.Temp);
+        var block = GenerateOP.floatMat(2, 2, (float)1);
+        builder.AddBlock(0, 0, in block);
+        builder.AddBlock(1, 0, in block);   // no (1,1) diagonal block
+        var A = builder.ToBSR(Allocator.Temp);
+        Assert.Throws<ArgumentException>(() => { var m = new floatSPAI(in A, Allocator.Temp); });
     }
 
     [Test]
     public void ApplyAliasThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var builder = arena.floatBSRBuilder(2, 2, 2, 2);
-            var diag = arena.floatMat(2, 2);
-            diag[0, 0] = (float)4; diag[1, 1] = (float)4;
-            builder.AddBlock(0, 0, in diag);
-            builder.AddBlock(1, 1, in diag);
-            var A = builder.ToBSR(ref arena);
-            var M = arena.floatSPAI(in A);
+        var builder = new floatBSRBuilder(2, 2, 2, 2, Allocator.Temp);
+        var diag = new floatMxN(2, 2, Allocator.Temp);
+        diag[0, 0] = (float)4; diag[1, 1] = (float)4;
+        builder.AddBlock(0, 0, in diag);
+        builder.AddBlock(1, 1, in diag);
+        var A = builder.ToBSR(Allocator.Temp);
+        var M = new floatSPAI(in A, Allocator.Temp);
 
-            var r = arena.floatVec(A.M_Rows, (float)1);
-            Assert.Throws<ArgumentException>(() => M.Apply(in r, ref r));
-        }
-        finally { arena.Dispose(); }
+        var r = GenerateOP.floatVec(A.M_Rows, (float)1);
+        Assert.Throws<ArgumentException>(() => M.Apply(in r, ref r));
     }
 }

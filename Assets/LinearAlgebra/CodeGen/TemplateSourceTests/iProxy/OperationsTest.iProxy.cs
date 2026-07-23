@@ -13,44 +13,36 @@ public class iProxyOperationsTest {
     {
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int vecLen = 16;
 
             iProxy s = 1;
-            iProxyN a = arena.iProxyVec(vecLen, 10);
+            iProxyN a = GenerateOP.iProxyVec(vecLen, 10);
 
 
-            Assert.AreEqual(vecLen, a.N); 
+            Assert.AreEqual(vecLen, a.N);
 
-            iProxyN b = arena.iProxyVec(vecLen, 10);
+            iProxyN b = GenerateOP.iProxyVec(vecLen, 10);
 
             Assert.IsTrue(b[vecLen/2] == a[vecLen/2]);
-            
-            Assert.AreEqual(2, arena.AllocationsCount);
 
             iProxyN result = default;
 
-            result = a + s;
+            result = new iProxyN(in a, Allocator.Temp); iProxyComp.addInPlace(result, s);   // a + s
 
-            result = s + a;
+            result = new iProxyN(in a, Allocator.Temp); iProxyComp.addInPlace(result, s);   // s + a
 
-            result = a - s;
-            result = s - a;
-
-            Assert.AreEqual(4, arena.TempAllocationsCount);
+            result = new iProxyN(in a, Allocator.Temp); iProxyComp.subInPlace(result, s);   // a - s
+            result = new iProxyN(in a, Allocator.Temp); iProxyComp.subInPlace(s, result);   // s - a
 
             result = ~a;
 
-            arena.ClearTemp();
+            result = new iProxyN(in a, Allocator.Temp); iProxyComp.mulInPlace(result, s);   // a * s
+            result = new iProxyN(in a, Allocator.Temp); iProxyComp.mulInPlace(result, s);   // s * a
 
-            result = a * s;
-            result = s * a;
-
-            result = a / s;
-            result = a % s;
-            result = s / a;
-            result = s % a;
+            result = new iProxyN(in a, Allocator.Temp); iProxyComp.divInPlace(result, s);   // a / s
+            result = new iProxyN(in a, Allocator.Temp); iProxyComp.modInPlace(result, s);   // a % s
+            result = new iProxyN(in a, Allocator.Temp); iProxyComp.divInPlace(s, result);   // s / a
+            result = new iProxyN(in a, Allocator.Temp); iProxyComp.modInPlace(s, result);   // s % a
 
             result = a | s;
             result = s | a;
@@ -64,17 +56,15 @@ public class iProxyOperationsTest {
             result = result << 5;
             result = result >> 5;
 
-            result = a + b;
-            result = a - b;
-            result = a * b;
-            result = a / b;
-            result = a % b;
+            result = new iProxyN(in a, Allocator.Temp); iProxyComp.addInPlace(result, b);   // a + b
+            result = new iProxyN(in a, Allocator.Temp); iProxyComp.subInPlace(result, b);   // a - b
+            result = new iProxyN(in a, Allocator.Temp); iProxyComp.mulInPlace(result, b);   // a * b
+            result = new iProxyN(in a, Allocator.Temp); iProxyComp.divInPlace(result, b);   // a / b
+            result = new iProxyN(in a, Allocator.Temp); iProxyComp.modInPlace(result, b);   // a % b
 
             result = a | b;
             result = a & b;
             result = a ^ b;
-
-            arena.Dispose();
         }
     }
 
@@ -89,42 +79,38 @@ public class iProxyOperationsTest {
     {
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int rows = 8;
             int cols = 8;
 
             int elements = rows * cols;
 
             iProxy s = 1;
-            iProxyMxN a = arena.iProxyMat(rows, cols, 10);
+            iProxyMxN a = GenerateOP.iProxyMat(rows, cols, 10);
 
-            iProxyMxN b = arena.iProxyMat(rows, cols, 10);
+            iProxyMxN b = GenerateOP.iProxyMat(rows, cols, 10);
 
             iProxyMxN result = default;
 
-            result = a + s;
+            result = new iProxyMxN(in a, Allocator.Temp); iProxyComp.addInPlace(result, s);   // a + s
 
-            result = s + a;
+            result = new iProxyMxN(in a, Allocator.Temp); iProxyComp.addInPlace(result, s);   // s + a
 
-            result = a - s;
-            result = s - a;
+            result = new iProxyMxN(in a, Allocator.Temp); iProxyComp.subInPlace(result, s);   // a - s
+            result = new iProxyMxN(in a, Allocator.Temp); iProxyComp.subInPlace(s, result);   // s - a
 
-            result = a * s;
-            result = s * a;
+            result = new iProxyMxN(in a, Allocator.Temp); iProxyComp.mulInPlace(result, s);   // a * s
+            result = new iProxyMxN(in a, Allocator.Temp); iProxyComp.mulInPlace(result, s);   // s * a
 
-            result = a / s;
-            result = a % s;
-            result = s / a;
-            result = s % a;
+            result = new iProxyMxN(in a, Allocator.Temp); iProxyComp.divInPlace(result, s);   // a / s
+            result = new iProxyMxN(in a, Allocator.Temp); iProxyComp.modInPlace(result, s);   // a % s
+            result = new iProxyMxN(in a, Allocator.Temp); iProxyComp.divInPlace(s, result);   // s / a
+            result = new iProxyMxN(in a, Allocator.Temp); iProxyComp.modInPlace(s, result);   // s % a
 
-            result = a + b;
-            result = a - b;
-            result = a * b;
-            result = a / b;
-            result = a % b;
-
-            arena.Dispose();
+            result = new iProxyMxN(in a, Allocator.Temp); iProxyComp.addInPlace(result, b);   // a + b
+            result = new iProxyMxN(in a, Allocator.Temp); iProxyComp.subInPlace(result, b);   // a - b
+            result = new iProxyMxN(in a, Allocator.Temp); iProxyComp.mulInPlace(result, b);   // a * b
+            result = new iProxyMxN(in a, Allocator.Temp); iProxyComp.divInPlace(result, b);   // a / b
+            result = new iProxyMxN(in a, Allocator.Temp); iProxyComp.modInPlace(result, b);   // a % b
         }
     }
 
@@ -133,7 +119,7 @@ public class iProxyOperationsTest {
     {
         new BasicMatOpTestJob().Run();
     }
-    
+
     [BurstCompile(CompileSynchronously = true)]
     public struct BasicPreciseOPTestJob : IJob
     {
@@ -206,146 +192,128 @@ public class iProxyOperationsTest {
 
         public void SignFlipVec()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int vecLen = 16;
 
-            iProxyN a = arena.iProxyVec(vecLen, 10);
+            iProxyN a = GenerateOP.iProxyVec(vecLen, 10);
 
-            a = -a;
+            iProxyComp.signFlipInPlace(a); // a = -a
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == -(iProxy)10f);
-
-            arena.Dispose();
         }
 
         public void AddVec()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int vecLen = 16;
 
-            iProxyN a = arena.iProxyVec(vecLen, 10);
+            iProxyN a = GenerateOP.iProxyVec(vecLen, 10);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (iProxy)10d);
 
-            a += 1;
+            iProxyComp.addInPlace(a, 1); // a += 1
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (iProxy)11d);
 
-            iProxyN r = arena.iProxyVec(vecLen, 5);
+            iProxyN r = GenerateOP.iProxyVec(vecLen, 5);
 
-            a += r;
+            iProxyComp.addInPlace(a, r); // a += r
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (iProxy)16);
-
-            arena.Dispose();
         }
 
         public void SubVec()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int vecLen = 16;
 
-            iProxyN a = arena.iProxyVec(vecLen, 10);
+            iProxyN a = GenerateOP.iProxyVec(vecLen, 10);
 
-            a -= 1;
+            iProxyComp.subInPlace(a, 1); // a -= 1
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (iProxy)9f);
 
-            iProxyN r = arena.iProxyVec(vecLen, 5);
+            iProxyN r = GenerateOP.iProxyVec(vecLen, 5);
 
-            a -= r;
+            iProxyComp.subInPlace(a, r); // a -= r
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (iProxy)4d);
 
-            a = arena.iProxyVec(vecLen, 10);
+            a = GenerateOP.iProxyVec(vecLen, 10);
 
-            a = 1 - a;
+            iProxyComp.subInPlace(1, a); // a = 1 - a
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == -(iProxy)9d);
-
-            arena.Dispose();
         }
 
         public void MulVec()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int vecLen = 16;
 
-            iProxyN a = arena.iProxyVec(vecLen, 1);
+            iProxyN a = GenerateOP.iProxyVec(vecLen, 1);
 
-            a *= 1;
+            iProxyComp.mulInPlace(a, 1); // a *= 1
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (iProxy)1d);
 
-            a *= 2;
+            iProxyComp.mulInPlace(a, 2); // a *= 2
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (iProxy)2d);
 
-            a = arena.iProxyIndexZeroVec(vecLen);
+            a = GenerateOP.iProxyIndexZeroVec(vecLen);
 
-            a *= 2;
+            iProxyComp.mulInPlace(a, 2); // a *= 2
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (iProxy)(2d*i));
 
-            a = arena.iProxyIndexZeroVec(vecLen);
-            iProxyN b = arena.iProxyIndexZeroVec(vecLen);
+            a = GenerateOP.iProxyIndexZeroVec(vecLen);
+            iProxyN b = GenerateOP.iProxyIndexZeroVec(vecLen);
 
-            var c = a * b;
+            var c = new iProxyN(in a, Allocator.Temp); iProxyComp.mulInPlace(c, b); // c = a * b
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(c[i] == (iProxy)(i * i));
-
-            arena.Dispose();
         }
 
         public void DivVec()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int vecLen = 16;
 
-            iProxyN a = arena.iProxyVec(vecLen, 2);
+            iProxyN a = GenerateOP.iProxyVec(vecLen, 2);
 
-            a /= 2;
-
-            for (int i = 0; i < vecLen; i++)
-                Assert.IsTrue(a[i] == (iProxy)1);
-
-            a /= 1;
+            iProxyComp.divInPlace(a, 2); // a /= 2
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (iProxy)1);
 
-            a = arena.iProxyIndexZeroVec(vecLen);
+            iProxyComp.divInPlace(a, 1); // a /= 1
 
-            a /= 2;
+            for (int i = 0; i < vecLen; i++)
+                Assert.IsTrue(a[i] == (iProxy)1);
+
+            a = GenerateOP.iProxyIndexZeroVec(vecLen);
+
+            iProxyComp.divInPlace(a, 2); // a /= 2
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (iProxy)(0.5 * i));
 
-            a = arena.iProxyIndexZeroVec(vecLen);
-            iProxyN b = arena.iProxyIndexZeroVec(vecLen);
+            a = GenerateOP.iProxyIndexZeroVec(vecLen);
+            iProxyN b = GenerateOP.iProxyIndexZeroVec(vecLen);
 
             // add 1 so no division by zero
-            a += 1;
-            b += 1;
+            iProxyComp.addInPlace(a, 1);
+            iProxyComp.addInPlace(b, 1);
 
-            var c0 = a / b;
-            var c1 = b / a;
+            var c0 = new iProxyN(in a, Allocator.Temp); iProxyComp.divInPlace(c0, b); // c0 = a / b
+            var c1 = new iProxyN(in b, Allocator.Temp); iProxyComp.divInPlace(c1, a); // c1 = b / a
 
             for (int i = 0; i < vecLen; i++)
             {
@@ -353,186 +321,156 @@ public class iProxyOperationsTest {
                 Assert.IsTrue(c1[i] == (iProxy)1);
             }
 
-            a = arena.iProxyVec(vecLen, 2);
+            a = GenerateOP.iProxyVec(vecLen, 2);
 
-            a = 2 / a;
+            iProxyComp.divInPlace(2, a); // a = 2 / a
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (iProxy)1);
-
-            arena.Dispose();
         }
 
         public void ModVec()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int vecLen = 16;
 
-            iProxyN a = arena.iProxyVec(vecLen, 10);
+            iProxyN a = GenerateOP.iProxyVec(vecLen, 10);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (iProxy)10);
 
-            a %= 2;
+            iProxyComp.modInPlace(a, 2); // a %= 2
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (iProxy)0);
 
-            a = arena.iProxyIndexZeroVec(vecLen);
+            a = GenerateOP.iProxyIndexZeroVec(vecLen);
 
-            a %= 2;
+            iProxyComp.modInPlace(a, 2); // a %= 2
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (iProxy)(i % (iProxy)2));
 
-            a = arena.iProxyIndexZeroVec(vecLen);
-            iProxyN b = arena.iProxyIndexZeroVec(vecLen);
+            a = GenerateOP.iProxyIndexZeroVec(vecLen);
+            iProxyN b = GenerateOP.iProxyIndexZeroVec(vecLen);
 
-            a += 1;
-            b += 1;
+            iProxyComp.addInPlace(a, 1);
+            iProxyComp.addInPlace(b, 1);
 
-            var c0 = a % b;
-            var c1 = b % a;
+            var c0 = new iProxyN(in a, Allocator.Temp); iProxyComp.modInPlace(c0, b); // c0 = a % b
+            var c1 = new iProxyN(in b, Allocator.Temp); iProxyComp.modInPlace(c1, a); // c1 = b % a
 
             for (int i = 0; i < vecLen; i++)
             {
                 Assert.IsTrue(c0[i] == (iProxy)0);
                 Assert.IsTrue(c1[i] == (iProxy)0);
             }
-
-            arena.Dispose();
         }
 
         public void SignFlipMat()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int vecLen = 16;
             int totalElements = vecLen * vecLen;
-            iProxyMxN a = arena.iProxyMat(vecLen, vecLen, 10);
+            iProxyMxN a = GenerateOP.iProxyMat(vecLen, vecLen, 10);
 
-            a = -a;
+            iProxyComp.signFlipInPlace(a); // a = -a
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == -(iProxy)10f);
-
-            arena.Dispose();
         }
 
         public void AddMat()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int rows = 8;
             int cols = 8;
             int totalElements = rows * cols;
 
-            iProxyMxN a = arena.iProxyMat(rows, cols, 10);
+            iProxyMxN a = GenerateOP.iProxyMat(rows, cols, 10);
 
-            a += 1;
+            iProxyComp.addInPlace(a, 1); // a += 1
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (iProxy)11f);
-
-            arena.Dispose();
         }
 
         public void SubMat()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int rows = 8;
             int cols = 8;
             int totalElements = rows * cols;
 
-            iProxyMxN a = arena.iProxyMat(rows, cols, 10);
+            iProxyMxN a = GenerateOP.iProxyMat(rows, cols, 10);
 
-            a -= 5;
+            iProxyComp.subInPlace(a, 5); // a -= 5
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (iProxy)5f);
-
-            arena.Dispose();
         }
 
         public void MulMat()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int rows = 8;
             int cols = 8;
             int totalElements = rows * cols;
 
-            iProxyMxN a = arena.iProxyMat(rows, cols, 2);
+            iProxyMxN a = GenerateOP.iProxyMat(rows, cols, 2);
 
-            a *= 3;
+            iProxyComp.mulInPlace(a, 3); // a *= 3
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (iProxy)6f);
 
-            a = 3 * a;
+            iProxyComp.mulInPlace(a, 3); // a = 3 * a
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (iProxy)18f);
-
-            arena.Dispose();
         }
 
         public void DivMat()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int rows = 8;
             int cols = 8;
             int totalElements = rows * cols;
 
-            iProxyMxN a = arena.iProxyMat(rows, cols, 10);
+            iProxyMxN a = GenerateOP.iProxyMat(rows, cols, 10);
 
-            a /= 2;
+            iProxyComp.divInPlace(a, 2); // a /= 2
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (iProxy)5);
 
-            a = 5 / a;
+            iProxyComp.divInPlace(5, a); // a = 5 / a
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (iProxy)1);
-
-            arena.Dispose();
         }
 
         public void ModMat()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int rows = 8;
             int cols = 8;
             int totalElements = rows * cols;
 
-            iProxyMxN a = arena.iProxyMat(rows, cols, 10);
+            iProxyMxN a = GenerateOP.iProxyMat(rows, cols, 10);
 
-            a %= 3;
+            iProxyComp.modInPlace(a, 3); // a %= 3
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (iProxy)1f);
 
-            a = arena.iProxyMat(rows, cols, 4);
+            a = GenerateOP.iProxyMat(rows, cols, 4);
 
-            a = 4 % a;
+            iProxyComp.modInPlace(4, a); // a = 4 % a
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (iProxy)0f);
 
-            a = arena.iProxyMat(rows, cols, 3);
-            iProxyMxN b = arena.iProxyMat(rows, cols, 2);
+            a = GenerateOP.iProxyMat(rows, cols, 3);
+            iProxyMxN b = GenerateOP.iProxyMat(rows, cols, 2);
 
-            a = a % b;
+            iProxyComp.modInPlace(a, b); // a = a % b
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (iProxy)1f);
-
-            arena.Dispose();
         }
     }
 

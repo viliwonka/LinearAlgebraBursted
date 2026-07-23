@@ -67,9 +67,7 @@ public class fProxyKrylovLstsqBatteryTests
         // (damped path) only runs for Overdetermined invokers.
         void CheckDense<TInvoker>(TInvoker inv, GalleryDenseMatrix gm) where TInvoker : struct, IfProxyLstsqSolverInvoker
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = fProxyKrylovBatteryGallery.Build(ref arena, gm);
+            var A = fProxyKrylovBatteryGallery.Build(gm);
             int m = A.M_Rows, n = A.N_Cols;
             var Aop = new fProxyDenseOperator(in A);
             MatrixProfile tags = GalleryProfiles.Of(gm);
@@ -77,12 +75,12 @@ public class fProxyKrylovLstsqBatteryTests
             bool overdetermined = (tags & MatrixProfile.Overdetermined) != 0;
             int checkId = overdetermined ? 10 : 11;
 
-            var b = arena.fProxyRandomVec(m, (fProxy)(-1), (fProxy)1, 0xD200u + (uint)gm);
+            var b = GenerateOP.fProxyRandomVec(m, (fProxy)(-1), (fProxy)1, 0xD200u + (uint)gm);
 
-            inv.Init(ref arena, m, n);
+            inv.Init(m, n);
 
-            var rScratch = arena.fProxyVec(m);
-            var sScratch = arena.fProxyVec(n);
+            var rScratch = new fProxyN(m, Allocator.Temp);
+            var sScratch = new fProxyN(n, Allocator.Temp);
 
             // Fixed scale references matching each family's own internal stopping test: ||A^T b||
             // for lsqr/lsmr's normal-equations criterion, ||b|| for craig/craigmr's residual one.
@@ -93,7 +91,7 @@ public class fProxyKrylovLstsqBatteryTests
                 ? (fProxy)10 * inv.Tol * math.max(atbNorm, (fProxy)1e-30)
                 : (fProxy)10 * inv.Tol * math.max(bNorm, (fProxy)1e-30);
 
-            var x1 = arena.fProxyVec(n);
+            var x1 = new fProxyN(n, Allocator.Temp);
             LstsqInfo info1 = inv.Solve(in Aop, in b, ref x1, (fProxy)0);
             bool statusOk1 = info1.status == IterativeSolveStatus.Converged || info1.status == IterativeSolveStatus.MaxIterations;
             Record(statusOk1, (int)gm, checkId, (fProxy)(int)info1.status, (fProxy)0);
@@ -107,7 +105,7 @@ public class fProxyKrylovLstsqBatteryTests
                 // plus elementwise agreement with a direct dense QR least-squares solve.
                 Record((fProxy)audit1.Arnorm <= thresh, (int)gm, 10, (fProxy)audit1.Arnorm, thresh);
 
-                var xRef = ReferenceSolveLstsq(ref arena, in A, in b);
+                var xRef = ReferenceSolveLstsq(in A, in b);
                 for (int i = 0; i < n; i++)
                     Record(math.abs(x1[i] - xRef[i]) <= tolBand * ((fProxy)1 + math.abs(xRef[i])), (int)gm, 10, x1[i], xRef[i]);
 
@@ -115,13 +113,13 @@ public class fProxyKrylovLstsqBatteryTests
                 // damp>0 drives the damped optimality residual under the same threshold (lsqr/
                 // lsmr's internal stopping test compares the damped residual against this same
                 // fixed ||A^T b|| scale, undiminished by damp).
-                var x12a = arena.fProxyVec(n);
+                var x12a = new fProxyN(n, Allocator.Temp);
                 LstsqInfo info12a = inv.Solve(in Aop, in b, ref x12a, (fProxy)0);
                 for (int i = 0; i < n; i++)
                     Record(x1[i] == x12a[i], (int)gm, 12, x1[i], x12a[i]);
 
                 fProxy damp = (fProxy)0.1;
-                var x12b = arena.fProxyVec(n);
+                var x12b = new fProxyN(n, Allocator.Temp);
                 LstsqInfo info12b = inv.Solve(in Aop, in b, ref x12b, damp);
                 bool statusOk12 = info12b.status == IterativeSolveStatus.Converged || info12b.status == IterativeSolveStatus.MaxIterations;
                 Record(statusOk12, (int)gm, 12, (fProxy)(int)info12b.status, (fProxy)0);
@@ -136,24 +134,22 @@ public class fProxyKrylovLstsqBatteryTests
                 // (the exact minimum-2-norm solution).
                 Record((fProxy)audit1.rnorm <= thresh, (int)gm, 11, (fProxy)audit1.rnorm, thresh);
 
-                var xRef = arena.fProxyVec(n);
+                var xRef = new fProxyN(n, Allocator.Temp);
                 LQ.minNormSolve(in A, in b, ref xRef);
                 for (int i = 0; i < n; i++)
                     Record(math.abs(x1[i] - xRef[i]) <= tolBand * ((fProxy)1 + math.abs(xRef[i])), (int)gm, 11, x1[i], xRef[i]);
             }
-
-            arena.Dispose();
         }
 
         // Direct dense least-squares reference via QR (A must have full column rank, M_Rows >=
         // N_Cols) -- the oracle check #10 compares lsqr/lsmr's iterative solution against.
-        fProxyN ReferenceSolveLstsq(ref Arena arena, in fProxyMxN A, in fProxyN b)
+        fProxyN ReferenceSolveLstsq(in fProxyMxN A, in fProxyN b)
         {
-            var Q = arena.fProxyMat(A.M_Rows, A.N_Cols);
-            var R = arena.fProxyMat(A.N_Cols);
+            var Q = new fProxyMxN(A.M_Rows, A.N_Cols, Allocator.Temp);
+            var R = new fProxyMxN(A.N_Cols, A.N_Cols, Allocator.Temp);
             QR.decomp(in A, ref Q, ref R);
             fProxyN bLocal = b;
-            var xRef = arena.fProxyVec(A.N_Cols);
+            var xRef = new fProxyN(A.N_Cols, Allocator.Temp);
             QR.decompSolve(ref Q, ref R, ref bLocal, ref xRef);
             return xRef;
         }

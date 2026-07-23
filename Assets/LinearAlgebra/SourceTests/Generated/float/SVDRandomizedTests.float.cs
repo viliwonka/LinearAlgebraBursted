@@ -106,21 +106,21 @@ public class floatSVDRandomizedTests
         }
 
         void CheckRandomized(in floatMxN A, int k, int oversample, int powerIters, uint seed,
-                             bool expectExact, ref Arena arena)
+                             bool expectExact)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
 
             // oracle spectrum + ||A||_F
-            var fullS = arena.floatVec(n);
+            var fullS = new floatN(n, Allocator.Temp);
             SVD.values(in A, ref fullS);
             float normA = (float)0;
             for (int i = 0; i < n; i++) normA += fullS[i] * fullS[i];
             normA = math.sqrt(normA);
 
-            var Uk = arena.floatMat(m, k);
-            var Sk = arena.floatVec(k);
-            var Vk = arena.floatMat(n, k);
+            var Uk = new floatMxN(m, k, Allocator.Temp);
+            var Sk = new floatN(k, Allocator.Temp);
+            var Vk = new floatMxN(n, k, Allocator.Temp);
             bool ok = SVD.randomized(in A, ref Uk, ref Sk, ref Vk, k, oversample, powerIters, seed, 75);
             Assert.IsTrue(ok);
 
@@ -154,34 +154,28 @@ public class floatSVDRandomizedTests
 
         void ExactRank3_24x12()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 24, n = 12, r = 3;
-            var B = arena.floatRandomMat(m, r, (float)(-2f), (float)2f, 1001);
-            var C = arena.floatRandomMat(r, n, (float)(-2f), (float)2f, 2002);
+            var B = GenerateOP.floatRandomMat(m, r, (float)(-2f), (float)2f, 1001, allocator: Allocator.Temp);
+            var C = GenerateOP.floatRandomMat(r, n, (float)(-2f), (float)2f, 2002, allocator: Allocator.Temp);
             var A = Blas.dot(B, C);   // rank 3
-            CheckRandomized(in A, 3, 6, 2, 12345u, true, ref arena);
-            arena.Dispose();
+            CheckRandomized(in A, 3, 6, 2, 12345u, true);
         }
 
         void ExactRank5_40x16()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 40, n = 16, r = 5;
-            var B = arena.floatRandomMat(m, r, (float)(-2f), (float)2f, 3003);
-            var C = arena.floatRandomMat(r, n, (float)(-2f), (float)2f, 4004);
+            var B = GenerateOP.floatRandomMat(m, r, (float)(-2f), (float)2f, 3003, allocator: Allocator.Temp);
+            var C = GenerateOP.floatRandomMat(r, n, (float)(-2f), (float)2f, 4004, allocator: Allocator.Temp);
             var A = Blas.dot(B, C);   // rank 5
-            CheckRandomized(in A, 5, 8, 2, 67890u, true, ref arena);
-            arena.Dispose();
+            CheckRandomized(in A, 5, 8, 2, 67890u, true);
         }
 
         void GeneralRandom20x10()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 20, n = 10;
-            var A = arena.floatRandomMat(m, n, (float)(-2f), (float)2f, 555);
+            var A = GenerateOP.floatRandomMat(m, n, (float)(-2f), (float)2f, 555, allocator: Allocator.Temp);
             // flat-ish spectrum: only assert invariants + leading value (power iters sharpen it).
-            CheckRandomized(in A, 4, 8, 3, 24680u, false, ref arena);
-            arena.Dispose();
+            CheckRandomized(in A, 4, 8, 3, 24680u, false);
         }
 
         // ============================================================================================
@@ -196,21 +190,20 @@ public class floatSVDRandomizedTests
         // Recovered top-k σ must be within RELATIVE error relTol of prescribed σ.
         void RandSvdGeometricAccuracy_120x40()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 120, n = 40, k = 8;
 
-            var sigma = arena.floatVec(n);
+            var sigma = new floatN(n, Allocator.Temp);
             double rho = 0.7;
             double s = 1.0;
             for (int i = 0; i < n; i++) { sigma[i] = (float)s; s *= rho; }   // 1, 0.7, 0.49, ...
 
-            var A = arena.floatMat(m, n);
+            var A = new floatMxN(m, n, Allocator.Temp);
             var rng = new Unity.Mathematics.Random(0xA11CE5EDu);
             BuildRandSvd(ref rng, m, n, in sigma, ref A);
 
-            var Uk = arena.floatMat(m, k);
-            var Sk = arena.floatVec(k);
-            var Vk = arena.floatMat(n, k);
+            var Uk = new floatMxN(m, k, Allocator.Temp);
+            var Sk = new floatN(k, Allocator.Temp);
+            var Vk = new floatMxN(n, k, Allocator.Temp);
             // oversample 10 (p=18), powerIters 2 — HMT-recommended regime.
             bool ok = SVD.randomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0xBEEF0001u, 75);
             Assert.IsTrue(ok);
@@ -239,8 +232,6 @@ public class floatSVDRandomizedTests
             }
             if (!(worst <= relTol)) Record(Sk[worstIdx], sigma[worstIdx], worst);
             Assert.IsTrue(worst <= relTol);
-
-            arena.Dispose();
         }
 
         // Reconstruction near-optimal: ‖A − Uk diag(Sk) Vkᵀ‖_F must be within a small factor of the
@@ -249,20 +240,19 @@ public class floatSVDRandomizedTests
         // drive the factor toward 1. We allow ≤ 1.25× the optimum (q=2, oversample 10).
         void RandSvdReconNearOptimal_120x40()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 120, n = 40, k = 8;
 
-            var sigma = arena.floatVec(n);
+            var sigma = new floatN(n, Allocator.Temp);
             double rho = 0.7, s = 1.0;
             for (int i = 0; i < n; i++) { sigma[i] = (float)s; s *= rho; }
 
-            var A = arena.floatMat(m, n);
+            var A = new floatMxN(m, n, Allocator.Temp);
             var rng = new Unity.Mathematics.Random(0xA11CE5EDu);
             BuildRandSvd(ref rng, m, n, in sigma, ref A);
 
-            var Uk = arena.floatMat(m, k);
-            var Sk = arena.floatVec(k);
-            var Vk = arena.floatMat(n, k);
+            var Uk = new floatMxN(m, k, Allocator.Temp);
+            var Sk = new floatN(k, Allocator.Temp);
+            var Vk = new floatMxN(n, k, Allocator.Temp);
             bool ok = SVD.randomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0xBEEF0002u, 75);
             Assert.IsTrue(ok);
 
@@ -285,32 +275,29 @@ public class floatSVDRandomizedTests
             // 1.05 catches any real suboptimality while tolerating rounding and seed variation.
             if (!(ratio <= (float)1.05f)) Record(errF, optF, ratio);
             Assert.IsTrue(ratio <= (float)1.05f);
-
-            arena.Dispose();
         }
 
         // Power-iteration improvement (HMT): on a SLOWLY-decaying spectrum, q=2 must recover the top-k
         // singular values strictly more accurately than q=0. Same matrix, same sketch seed.
         void RandSvdPowerImproves_100x50()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 100, n = 50, k = 6;
 
-            var sigma = arena.floatVec(n);
+            var sigma = new floatN(n, Allocator.Temp);
             double rho = 0.92, s = 1.0;   // slow decay → q=0 leaves visible error, q=2 sharpens it
             for (int i = 0; i < n; i++) { sigma[i] = (float)s; s *= rho; }
 
-            var A = arena.floatMat(m, n);
+            var A = new floatMxN(m, n, Allocator.Temp);
             var rng = new Unity.Mathematics.Random(0xC0FFEE11u);
             BuildRandSvd(ref rng, m, n, in sigma, ref A);
 
             uint sketchSeed = 0xD0D0BEEFu;
 
-            var Uk0 = arena.floatMat(m, k); var Sk0 = arena.floatVec(k); var Vk0 = arena.floatMat(n, k);
+            var Uk0 = new floatMxN(m, k, Allocator.Temp); var Sk0 = new floatN(k, Allocator.Temp); var Vk0 = new floatMxN(n, k, Allocator.Temp);
             bool ok0 = SVD.randomized(in A, ref Uk0, ref Sk0, ref Vk0, k, 10, 0, sketchSeed, 75);
             Assert.IsTrue(ok0);
 
-            var Uk2 = arena.floatMat(m, k); var Sk2 = arena.floatVec(k); var Vk2 = arena.floatMat(n, k);
+            var Uk2 = new floatMxN(m, k, Allocator.Temp); var Sk2 = new floatN(k, Allocator.Temp); var Vk2 = new floatMxN(n, k, Allocator.Temp);
             bool ok2 = SVD.randomized(in A, ref Uk2, ref Sk2, ref Vk2, k, 10, 2, sketchSeed, 75);
             Assert.IsTrue(ok2);
 
@@ -329,17 +316,14 @@ public class floatSVDRandomizedTests
             // And q=2 should actually be accurate (each σ within ~2% on this slow spectrum).
             for (int t = 0; t < k; t++)
                 AssertLE(math.abs(Sk2[t] - sigma[t]) / sigma[t], (float)0.02f);
-
-            arena.Dispose();
         }
 
         // Orthonormality of returned Uk/Vk columns on a known-Σ matrix (clustered + decaying).
         void RandSvdOrthonormal_Known_140x40()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 140, n = 40, k = 7;
 
-            var sigma = arena.floatVec(n);
+            var sigma = new floatN(n, Allocator.Temp);
             // clustered top then decay: [20,20,20, 8,5,3,2, then geometric tail]
             double tail = 2.0;
             for (int i = 0; i < n; i++)
@@ -354,13 +338,13 @@ public class floatSVDRandomizedTests
                 sigma[i] = (float)sg;
             }
 
-            var A = arena.floatMat(m, n);
+            var A = new floatMxN(m, n, Allocator.Temp);
             var rng = new Unity.Mathematics.Random(0x5EED1234u);
             BuildRandSvd(ref rng, m, n, in sigma, ref A);
 
-            var Uk = arena.floatMat(m, k);
-            var Sk = arena.floatVec(k);
-            var Vk = arena.floatMat(n, k);
+            var Uk = new floatMxN(m, k, Allocator.Temp);
+            var Sk = new floatN(k, Allocator.Temp);
+            var Vk = new floatMxN(n, k, Allocator.Temp);
             bool ok = SVD.randomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0x9ABCDEF0u, 75);
             Assert.IsTrue(ok);
 
@@ -371,8 +355,6 @@ public class floatSVDRandomizedTests
             for (int t = 1; t < k; t++) AssertGE(Sk[t - 1] + (float)1E-4f * (sigma[0] + (float)1), Sk[t]);
             for (int t = 3; t < k; t++)
                 AssertLE(math.abs(Sk[t] - sigma[t]) / sigma[t], (float)0.05f);
-
-            arena.Dispose();
         }
     }
 
@@ -405,24 +387,20 @@ public class floatSVDRandomizedTests
     [Test]
     public void RandomizedThrowsOnBadK()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.floatMat(6, 4);
-        var Uk = arena.floatMat(6, 5);
-        var Sk = arena.floatVec(5);
-        var Vk = arena.floatMat(4, 5);
+        var A = new floatMxN(6, 4, Allocator.Temp);
+        var Uk = new floatMxN(6, 5, Allocator.Temp);
+        var Sk = new floatN(5, Allocator.Temp);
+        var Vk = new floatMxN(4, 5, Allocator.Temp);
         Assert.Catch<ArgumentException>(() => SVD.randomized(in A, ref Uk, ref Sk, ref Vk, 5)); // k=5 > n=4
-        arena.Dispose();
     }
 
     [Test]
     public void RandomizedThrowsOnWideMatrix()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.floatMat(3, 5);
-        var Uk = arena.floatMat(3, 2);
-        var Sk = arena.floatVec(2);
-        var Vk = arena.floatMat(5, 2);
+        var A = new floatMxN(3, 5, Allocator.Temp);
+        var Uk = new floatMxN(3, 2, Allocator.Temp);
+        var Sk = new floatN(2, Allocator.Temp);
+        var Vk = new floatMxN(5, 2, Allocator.Temp);
         Assert.Catch<ArgumentException>(() => SVD.randomized(in A, ref Uk, ref Sk, ref Vk, 2));
-        arena.Dispose();
     }
 }

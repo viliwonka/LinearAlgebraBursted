@@ -78,9 +78,9 @@ public class doubleSparseFSAITests
         // ---- helpers ---------------------------------------------------------------------
 
         // SPD BR x BR block D = M^T M + BR*I: well-conditioned, Cholesky-invertible.
-        static doubleMxN SpdBlock(ref Arena arena, int BR, uint seed)
+        static doubleMxN SpdBlock(int BR, uint seed)
         {
-            var M = arena.doubleRandomMat(BR, BR, -1f, 1f, seed);
+            var M = GenerateOP.doubleRandomMat(BR, BR, -1f, 1f, seed);
             var D = Blas.dot(M, M, true);
             for (int d = 0; d < BR; d++) D[d, d] += (double)BR;
             return D;
@@ -88,35 +88,35 @@ public class doubleSparseFSAITests
 
         // Block-DIAGONAL SPD BSR (only (i,i) blocks). FSAI's lower pattern is then exactly the
         // diagonal, so G is block-diagonal and M = A^-1 exactly.
-        static doubleBSR BuildBlockDiagonal(ref Arena arena, int nb, int BR, uint seed)
+        static doubleBSR BuildBlockDiagonal(int nb, int BR, uint seed)
         {
-            var builder = arena.doubleBSRBuilder(nb, nb, BR, BR, nb);
+            var builder = new doubleBSRBuilder(nb, nb, BR, BR, Allocator.Temp, nb);
             for (int i = 0; i < nb; i++)
-                builder.AddBlock(i, i, SpdBlock(ref arena, BR, seed + (uint)i + 1u));
-            return builder.ToBSR(ref arena);
+                builder.AddBlock(i, i, SpdBlock(BR, seed + (uint)i + 1u));
+            return builder.ToBSR(Allocator.Temp);
         }
 
         // Dense SPD (M^T M + dim*I), returned as a 1x1-block BSR carrying every nonzero scalar
         // (dense SPD is fully populated -> FULL lower-triangle pattern for FSAI).
-        static doubleBSR BuildDenseSpdAsBSR1x1(ref Arena arena, int dim, uint seed)
+        static doubleBSR BuildDenseSpdAsBSR1x1(int dim, uint seed)
         {
-            var M = arena.doubleRandomMat(dim, dim, -1f, 1f, seed);
+            var M = GenerateOP.doubleRandomMat(dim, dim, -1f, 1f, seed);
             var A = Blas.dot(M, M, true);
             for (int d = 0; d < dim; d++) A[d, d] += (double)dim;
 
-            var builder = arena.doubleBSRBuilder(dim, dim, 1, 1, dim * dim);
+            var builder = new doubleBSRBuilder(dim, dim, 1, 1, Allocator.Temp, dim * dim);
             for (int r = 0; r < dim; r++)
                 for (int c = 0; c < dim; c++)
                     builder.AddValue(r, c, A[r, c]);
-            return builder.ToBSR(ref arena);
+            return builder.ToBSR(Allocator.Temp);
         }
 
         // SPD block-tridiagonal chain (fill-free), built either full or symmetric (lower) storage.
-        static doubleBSR BuildBlockTridiag(ref Arena arena, int nb, int BR, bool symmetric)
+        static doubleBSR BuildBlockTridiag(int nb, int BR, bool symmetric)
         {
-            var builder = arena.doubleBSRBuilder(nb, nb, BR, BR);
-            var diag = arena.doubleMat(BR, BR);
-            var off = arena.doubleMat(BR, BR);
+            var builder = new doubleBSRBuilder(nb, nb, BR, BR, Allocator.Temp);
+            var diag = new doubleMxN(BR, BR, Allocator.Temp);
+            var off = new doubleMxN(BR, BR, Allocator.Temp);
             for (int r = 0; r < BR; r++)
                 for (int c = 0; c < BR; c++)
                 {
@@ -133,14 +133,14 @@ public class doubleSparseFSAITests
                     if (!symmetric) builder.AddBlock(i, i + 1, in off);   // upper (symmetric of the above)
                 }
             }
-            return symmetric ? builder.ToBSRSymmetric(ref arena) : builder.ToBSR(ref arena);
+            return symmetric ? builder.ToBSRSymmetric(Allocator.Temp) : builder.ToBSR(Allocator.Temp);
         }
 
-        static void AssertVecMatchesInverse(in doubleN got, in doubleMxN Adense, in doubleN r, ref Arena arena, double tol)
+        static void AssertVecMatchesInverse(in doubleN got, in doubleMxN Adense, in doubleN r, double tol)
         {
             int n = r.N;
             var D = Adense.Copy();
-            var zRef = arena.doubleVec(n);
+            var zRef = new doubleN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) zRef[i] = r[i];
             var info = CHO.solveInPlace(ref D, ref zRef);
             Assert.IsTrue(info.Solved);
@@ -154,61 +154,53 @@ public class doubleSparseFSAITests
 
         void ExactOnDiagonalBlocks()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             const int nb = 5, BR = 3;
-            var A = BuildBlockDiagonal(ref arena, nb, BR, 901001u);
+            var A = BuildBlockDiagonal(nb, BR, 901001u);
             int n = A.M_Rows;
 
-            var M = arena.doubleFSAI(in A);
+            var M = new doubleFSAI(in A, Allocator.Temp);
             Assert.IsTrue(M.Shift == (double)0);          // clean build, no shift
             Assert.AreEqual(nb, M.G.Nnzb);                // G is block-diagonal (only diagonal blocks)
 
-            var r = arena.doubleRandomVec(n, -1f, 1f, 901002u);
-            var z = arena.doubleVec(n);
+            var r = GenerateOP.doubleRandomVec(n, -1f, 1f, 901002u);
+            var z = new doubleN(n, Allocator.Temp);
             M.Apply(in r, ref z);
 
-            var Adense = A.ToDense(ref arena);
-            AssertVecMatchesInverse(in z, in Adense, in r, ref arena, Tol());  // M == A^-1 exactly
+            var Adense = A.ToDense(Allocator.Temp);
+            AssertVecMatchesInverse(in z, in Adense, in r, Tol());  // M == A^-1 exactly
 
             // Exact preconditioner -> preconditioned operator is identity -> cg converges in 1 step.
-            var xTrue = arena.doubleRandomVec(n, 0.5f, 1.5f, 901003u);
+            var xTrue = GenerateOP.doubleRandomVec(n, 0.5f, 1.5f, 901003u);
             var b = BSR.spMV(in A, in xTrue);
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
             var info = Krylov.cg(in A, in M, in b, ref x, 4 * n, Consts.doubleSqrtEps);
             Assert.IsTrue(info.Solved);
             Assert.IsTrue(info.iterations <= 1);
-
-            arena.Dispose();
         }
 
         void ExactOnFullLowerPattern()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             const int dim = 6;
-            var A = BuildDenseSpdAsBSR1x1(ref arena, dim, 902001u);   // BR=1, full pattern
+            var A = BuildDenseSpdAsBSR1x1(dim, 902001u);   // BR=1, full pattern
             int n = A.M_Rows;
 
-            var M = arena.doubleFSAI(in A);
+            var M = new doubleFSAI(in A, Allocator.Temp);
             Assert.IsTrue(M.Shift == (double)0);
 
             // FULL lower-triangle pattern reconstructs the exact inverse factor (G == chol(A)^-1),
             // hence M == A^-1: Apply must reproduce a dense Cholesky solve.
-            var r = arena.doubleRandomVec(n, -1f, 1f, 902002u);
-            var z = arena.doubleVec(n);
+            var r = GenerateOP.doubleRandomVec(n, -1f, 1f, 902002u);
+            var z = new doubleN(n, Allocator.Temp);
             M.Apply(in r, ref z);
-            var Adense = A.ToDense(ref arena);
-            AssertVecMatchesInverse(in z, in Adense, in r, ref arena, Tol());
+            var Adense = A.ToDense(Allocator.Temp);
+            AssertVecMatchesInverse(in z, in Adense, in r, Tol());
 
-            var xTrue = arena.doubleRandomVec(n, 0.5f, 1.5f, 902003u);
+            var xTrue = GenerateOP.doubleRandomVec(n, 0.5f, 1.5f, 902003u);
             var b = BSR.spMV(in A, in xTrue);
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
             var info = Krylov.cg(in A, in M, in b, ref x, 4 * n, Consts.doubleSqrtEps);
             Assert.IsTrue(info.Solved);
             Assert.IsTrue(info.iterations <= 2);
-
-            arena.Dispose();
         }
 
         // ================================================================================
@@ -217,18 +209,17 @@ public class doubleSparseFSAITests
 
         void SpdPreservation()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleRandomSparseSPD(24, 3, (double)0.35, 903001u);
-            var M = arena.doubleFSAI(in A);
+            var A = doubleGallery.doubleRandomSparseSPD(24, 3, (double)0.35, 903001u);
+            var M = new doubleFSAI(in A, Allocator.Temp);
             int n = A.M_Rows;
 
             // Symmetry: <r1, M r2> == <r2, M r1> for several random pairs.
             for (int t = 0; t < 4; t++)
             {
-                var r1 = arena.doubleRandomVec(n, -1f, 1f, 903100u + (uint)t);
-                var r2 = arena.doubleRandomVec(n, -1f, 1f, 903200u + (uint)t);
-                var Mr1 = arena.doubleVec(n);
-                var Mr2 = arena.doubleVec(n);
+                var r1 = GenerateOP.doubleRandomVec(n, -1f, 1f, 903100u + (uint)t);
+                var r2 = GenerateOP.doubleRandomVec(n, -1f, 1f, 903200u + (uint)t);
+                var Mr1 = new doubleN(n, Allocator.Temp);
+                var Mr2 = new doubleN(n, Allocator.Temp);
                 M.Apply(in r1, ref Mr1);
                 M.Apply(in r2, ref Mr2);
                 double a = Blas.dot(r1, Mr2);
@@ -240,13 +231,11 @@ public class doubleSparseFSAITests
             // Positive definiteness: <r, M r> > 0 for several random r.
             for (int t = 0; t < 5; t++)
             {
-                var r = arena.doubleRandomVec(n, -1f, 1f, 903300u + (uint)t);
-                var Mr = arena.doubleVec(n);
+                var r = GenerateOP.doubleRandomVec(n, -1f, 1f, 903300u + (uint)t);
+                var Mr = new doubleN(n, Allocator.Temp);
                 M.Apply(in r, ref Mr);
                 Assert.IsTrue(Blas.dot(r, Mr) > (double)0);
             }
-
-            arena.Dispose();
         }
 
         // ================================================================================
@@ -255,27 +244,26 @@ public class doubleSparseFSAITests
 
         void BeatsJacobiOnLaplacian()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleLaplacian2D(4, 16);   // 64 dof, spread spectrum
-            var bJ = arena.doubleBlockJacobi(in A);
-            var ic0 = arena.doubleIC0(in A);
-            var fsai = arena.doubleFSAI(in A);
+            var A = doubleGallery.doubleLaplacian2D(4, 16);   // 64 dof, spread spectrum
+            var bJ = new doubleBlockJacobi(in A, Allocator.Temp);
+            var ic0 = new doubleIC0(in A, Allocator.Temp);
+            var fsai = new doubleFSAI(in A, Allocator.Temp);
             int n = A.M_Rows;
 
-            var xTrue = arena.doubleRandomVec(n, 0.5f, 1.5f, 904001u);
+            var xTrue = GenerateOP.doubleRandomVec(n, 0.5f, 1.5f, 904001u);
             var b = BSR.spMV(in A, in xTrue);
             double tol = Consts.doubleSqrtEps;
             int maxIter = 8 * n;
 
-            var xJ = arena.doubleVec(n);
+            var xJ = new doubleN(n, Allocator.Temp);
             var infoJ = Krylov.cg(in A, in bJ, in b, ref xJ, maxIter, tol);
             Assert.IsTrue(infoJ.Solved);
 
-            var xC = arena.doubleVec(n);
+            var xC = new doubleN(n, Allocator.Temp);
             var infoC = Krylov.cg(in A, in ic0, in b, ref xC, maxIter, tol);
             Assert.IsTrue(infoC.Solved);
 
-            var xF = arena.doubleVec(n);
+            var xF = new doubleN(n, Allocator.Temp);
             var infoF = Krylov.cg(in A, in fsai, in b, ref xF, maxIter, tol);
             Assert.IsTrue(infoF.Solved);
 
@@ -286,9 +274,9 @@ public class doubleSparseFSAITests
             // any cond(A) > 1; see DEVLOG). cg's Solved already means the TRUE residual is below
             // tol (verify-at-exit); reconfirm independently via a fresh spMV:
             // ||b - A xF|| <= RESIDUAL_C * tol * ||b||.
-            var AxF = arena.doubleVec(n);
+            var AxF = new doubleN(n, Allocator.Temp);
             BSR.spMV(in A, in xF, ref AxF);
-            var resid = arena.doubleVec(n);
+            var resid = new doubleN(n, Allocator.Temp);
             resid.Data.CopyFrom(b.Data);
             resid.addScaledInPlace((double)(-1), AxF);
             double resNormSq = Blas.dot(resid, resid);
@@ -300,8 +288,6 @@ public class doubleSparseFSAITests
             // class than FSAI (an approximate inverse) and legitimately needs fewer iterations,
             // so a "FSAI comparable to IC0" bound is the wrong expectation. FSAI's contract here
             // is: converges (Solved + residual above) and beats block-Jacobi (asserted above).
-
-            arena.Dispose();
         }
 
         // ================================================================================
@@ -310,13 +296,12 @@ public class doubleSparseFSAITests
 
         void SymmetricStorageMatchesFull()
         {
-            var arena = new Arena(Allocator.Persistent);
             const int nb = 5, BR = 2;
-            var full = BuildBlockTridiag(ref arena, nb, BR, false);
-            var sym = BuildBlockTridiag(ref arena, nb, BR, true);
+            var full = BuildBlockTridiag(nb, BR, false);
+            var sym = BuildBlockTridiag(nb, BR, true);
 
-            var mFull = arena.doubleFSAI(in full);
-            var mSym = arena.doubleFSAI(in sym);
+            var mFull = new doubleFSAI(in full, Allocator.Temp);
+            var mSym = new doubleFSAI(in sym, Allocator.Temp);
 
             var gF = mFull.G;
             var gS = mSym.G;
@@ -331,8 +316,6 @@ public class doubleSparseFSAITests
             int vlen = gF.Nnzb * gF.BR * gF.BC;
             for (int t = 0; t < vlen; t++)
                 Assert.IsTrue(gF.Values[t] == gS.Values[t]);
-
-            arena.Dispose();
         }
 
         // ================================================================================
@@ -341,21 +324,18 @@ public class doubleSparseFSAITests
 
         void PminresConverges()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleLaplacian2D(4, 12);   // 48 dof SPD
-            var M = arena.doubleFSAI(in A);
+            var A = doubleGallery.doubleLaplacian2D(4, 12);   // 48 dof SPD
+            var M = new doubleFSAI(in A, Allocator.Temp);
             int n = A.M_Rows;
 
-            var xTrue = arena.doubleRandomVec(n, 0.5f, 1.5f, 906001u);
+            var xTrue = GenerateOP.doubleRandomVec(n, 0.5f, 1.5f, 906001u);
             var b = BSR.spMV(in A, in xTrue);
 
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
             var info = Krylov.minres(in A, in M, in b, ref x, 8 * n, Consts.doubleSqrtEps);
             Assert.IsTrue(info.Solved);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(math.abs(x[i] - xTrue[i]) < SolveTol() * ((double)1 + math.abs(xTrue[i])));
-
-            arena.Dispose();
         }
     }
 
@@ -367,7 +347,7 @@ public class doubleSparseFSAITests
         public doubleBSR A;
         public doubleFSAI M;
         public doubleN b;
-        public doubleN x;                 // output (arena-backed; written through its pointer)
+        public doubleN x;                 // output (written through its pointer)
         public NativeArray<int> iters;    // length 1: iteration count out
         public int maxIter;
         public double tol;
@@ -413,12 +393,10 @@ public class doubleSparseFSAITests
 
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.doublePenalizedGrid3D(2, 2, 1, (double)1, (double)10);
-            var bJ = arena.doubleBlockJacobi(in A);
-            var fsai = arena.doubleFSAI(in A, out PreconditionerInfo info);
-            var ic0 = arena.doubleIC0(in A);
+            var A = doubleGallery.doublePenalizedGrid3D(2, 2, 1, (double)1, (double)10);
+            var bJ = new doubleBlockJacobi(in A, Allocator.Temp);
+            var fsai = new doubleFSAI(in A, Allocator.Temp, out PreconditionerInfo info);
+            var ic0 = new doubleIC0(in A, Allocator.Temp);
             int n = A.M_Rows;
 
             fsaiInfo[0] = info.attempts;
@@ -428,24 +406,22 @@ public class doubleSparseFSAITests
             double tol = Consts.doubleSqrtEps;
             int maxIter = 20 * n;
 
-            RunTrial(arena, in A, in bJ, in fsai, in ic0, n, maxIter, tol, 0, 905001u, (double)0.5, (double)1.5);
-            RunTrial(arena, in A, in bJ, in fsai, in ic0, n, maxIter, tol, 1, 905011u, (double)(-1), (double)1);
-            RunTrial(arena, in A, in bJ, in fsai, in ic0, n, maxIter, tol, 2, 905021u, (double)(-3), (double)3);
-
-            arena.Dispose();
+            RunTrial(in A, in bJ, in fsai, in ic0, n, maxIter, tol, 0, 905001u, (double)0.5, (double)1.5);
+            RunTrial(in A, in bJ, in fsai, in ic0, n, maxIter, tol, 1, 905011u, (double)(-1), (double)1);
+            RunTrial(in A, in bJ, in fsai, in ic0, n, maxIter, tol, 2, 905021u, (double)(-3), (double)3);
         }
 
-        void RunTrial(Arena arena, in doubleBSR A, in doubleBlockJacobi bJ, in doubleFSAI fsai, in doubleIC0 ic0,
+        void RunTrial(in doubleBSR A, in doubleBlockJacobi bJ, in doubleFSAI fsai, in doubleIC0 ic0,
                       int n, int maxIter, double tol, int trial, uint seed, double lo, double hi)
         {
-            var xTrue = arena.doubleRandomVec(n, lo, hi, seed);
+            var xTrue = GenerateOP.doubleRandomVec(n, lo, hi, seed);
             var b = BSR.spMV(in A, in xTrue);
 
-            var xJ = arena.doubleVec(n);
+            var xJ = new doubleN(n, Allocator.Temp);
             var infoJ = Krylov.cg(in A, in bJ, in b, ref xJ, maxIter, tol);
-            var xF = arena.doubleVec(n);
+            var xF = new doubleN(n, Allocator.Temp);
             var infoF = Krylov.cg(in A, in fsai, in b, ref xF, maxIter, tol);
-            var xC = arena.doubleVec(n);
+            var xC = new doubleN(n, Allocator.Temp);
             var infoC = Krylov.cg(in A, in ic0, in b, ref xC, maxIter, tol);
 
             iters[trial * 3 + 0] = infoJ.iterations;
@@ -458,9 +434,9 @@ public class doubleSparseFSAITests
             // Residual check (conditioning-independent -- see BeatsJacobiOnLaplacian's matching
             // comment and the DEVLOG: a per-element solution-error bound against cg's tol is not
             // well-posed for any cond(A) > 1). ||b - A xF|| <= RESIDUAL_C * tol * ||b||.
-            var AxF = arena.doubleVec(n);
+            var AxF = new doubleN(n, Allocator.Temp);
             BSR.spMV(in A, in xF, ref AxF);
-            var resid = arena.doubleVec(n);
+            var resid = new doubleN(n, Allocator.Temp);
             resid.Data.CopyFrom(b.Data);
             resid.addScaledInPlace((double)(-1), AxF);
             double resNormSq = Blas.dot(resid, resid);
@@ -532,18 +508,17 @@ public class doubleSparseFSAITests
     [Test]
     public void ThroughIJobDeterminismTest()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.doubleLaplacian2D(4, 10);   // 40 dof SPD
-        var M = arena.doubleFSAI(in A);
+        var A = doubleGallery.doubleLaplacian2D(4, 10);   // 40 dof SPD
+        var M = new doubleFSAI(in A, Allocator.Temp);
         int n = A.M_Rows;
 
-        var xTrue = arena.doubleRandomVec(n, 0.5f, 1.5f, 907001u);
+        var xTrue = GenerateOP.doubleRandomVec(n, 0.5f, 1.5f, 907001u);
         var b = BSR.spMV(in A, in xTrue);
         double tol = Consts.doubleSqrtEps;
         int maxIter = 8 * n;
 
-        var x1 = arena.doubleVec(n);
-        var x2 = arena.doubleVec(n);
+        var x1 = new doubleN(n, Allocator.Temp);
+        var x2 = new doubleN(n, Allocator.Temp);
         var it1 = new NativeArray<int>(1, Allocator.Persistent);
         var it2 = new NativeArray<int>(1, Allocator.Persistent);
 
@@ -556,7 +531,7 @@ public class doubleSparseFSAITests
             Assert.IsTrue(x1[i] == x2[i]);
 
         // Managed (non-Burst) path: consistent to tolerance (SIMD reassociation may differ).
-        var x3 = arena.doubleVec(n);
+        var x3 = new doubleN(n, Allocator.Temp);
         var infoM = Krylov.cg(in A, in M, in b, ref x3, maxIter, tol);
         Assert.IsTrue(infoM.Solved);
         double consistencyTol = 1e-9;
@@ -565,7 +540,6 @@ public class doubleSparseFSAITests
 
         it1.Dispose();
         it2.Dispose();
-        arena.Dispose();
     }
 
     // ---- (5) non-throwing twin vs throwing overload on an unrescuable indefinite A --------
@@ -573,28 +547,23 @@ public class doubleSparseFSAITests
     [Test]
     public void IndefiniteBuildBreaksDown()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            // Symmetric INDEFINITE 2x2 (BR=1): [[1,20],[20,1]] has eigenvalues 21, -19. diagMax=1,
-            // so the largest rescue shift (10*diagMax) leaves row 1's local system indefinite ->
-            // CHO breaks down at every shift -> build fails.
-            var builder = arena.doubleBSRBuilder(2, 2, 1, 1, 4);
-            builder.AddValue(0, 0, (double)1);
-            builder.AddValue(0, 1, (double)20);
-            builder.AddValue(1, 0, (double)20);
-            builder.AddValue(1, 1, (double)1);
-            var A = builder.ToBSR(ref arena);
+        // Symmetric INDEFINITE 2x2 (BR=1): [[1,20],[20,1]] has eigenvalues 21, -19. diagMax=1,
+        // so the largest rescue shift (10*diagMax) leaves row 1's local system indefinite ->
+        // CHO breaks down at every shift -> build fails.
+        var builder = new doubleBSRBuilder(2, 2, 1, 1, Allocator.Temp, 4);
+        builder.AddValue(0, 0, (double)1);
+        builder.AddValue(0, 1, (double)20);
+        builder.AddValue(1, 0, (double)20);
+        builder.AddValue(1, 1, (double)1);
+        var A = builder.ToBSR(Allocator.Temp);
 
-            // Non-throwing twin: reports the failure, does not throw.
-            var M = arena.doubleFSAI(in A, out PreconditionerInfo info);
-            Assert.IsFalse(info.Solved);
-            Assert.IsTrue(info.status == DirectSolveStatus.NotPositiveDefinite);
+        // Non-throwing twin: reports the failure, does not throw.
+        var M = new doubleFSAI(in A, Allocator.Temp, out PreconditionerInfo info);
+        Assert.IsFalse(info.Solved);
+        Assert.IsTrue(info.status == DirectSolveStatus.NotPositiveDefinite);
 
-            // Throwing overload: throws on the same input.
-            Assert.Throws<ArgumentException>(() => { var m2 = arena.doubleFSAI(in A); });
-        }
-        finally { arena.Dispose(); }
+        // Throwing overload: throws on the same input.
+        Assert.Throws<ArgumentException>(() => { var m2 = new doubleFSAI(in A, Allocator.Temp); });
     }
 
     // ---- (6) guard cases (managed thread) ------------------------------------------------
@@ -602,60 +571,45 @@ public class doubleSparseFSAITests
     [Test]
     public void NonSquareThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var builder = arena.doubleBSRBuilder(2, 3, 2, 2);
-            var block = arena.doubleMat(2, 2, (double)1);
-            builder.AddBlock(0, 0, in block);
-            var A = builder.ToBSR(ref arena);
-            Assert.Throws<ArgumentException>(() => { var m = arena.doubleFSAI(in A); });
-        }
-        finally { arena.Dispose(); }
+        var builder = new doubleBSRBuilder(2, 3, 2, 2, Allocator.Temp);
+        var block = GenerateOP.doubleMat(2, 2, (double)1);
+        builder.AddBlock(0, 0, in block);
+        var A = builder.ToBSR(Allocator.Temp);
+        Assert.Throws<ArgumentException>(() => { var m = new doubleFSAI(in A, Allocator.Temp); });
     }
 
     [Test]
     public void MissingDiagonalThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var builder = arena.doubleBSRBuilder(2, 2, 2, 2);
-            var block = arena.doubleMat(2, 2, (double)1);
-            builder.AddBlock(0, 0, in block);
-            builder.AddBlock(1, 0, in block);   // no (1,1) diagonal block
-            var A = builder.ToBSR(ref arena);
-            Assert.Throws<ArgumentException>(() => { var m = arena.doubleFSAI(in A); });
-        }
-        finally { arena.Dispose(); }
+        var builder = new doubleBSRBuilder(2, 2, 2, 2, Allocator.Temp);
+        var block = GenerateOP.doubleMat(2, 2, (double)1);
+        builder.AddBlock(0, 0, in block);
+        builder.AddBlock(1, 0, in block);   // no (1,1) diagonal block
+        var A = builder.ToBSR(Allocator.Temp);
+        Assert.Throws<ArgumentException>(() => { var m = new doubleFSAI(in A, Allocator.Temp); });
     }
 
     [Test]
     public void ApplyAliasingThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var builder = arena.doubleBSRBuilder(2, 2, 2, 2);
-            var diag = arena.doubleMat(2, 2);
-            diag[0, 0] = (double)4; diag[1, 1] = (double)4;
-            builder.AddBlock(0, 0, in diag);
-            builder.AddBlock(1, 1, in diag);
-            var A = builder.ToBSR(ref arena);
-            var M = arena.doubleFSAI(in A);
-            int n = A.M_Rows;
+        var builder = new doubleBSRBuilder(2, 2, 2, 2, Allocator.Temp);
+        var diag = new doubleMxN(2, 2, Allocator.Temp);
+        diag[0, 0] = (double)4; diag[1, 1] = (double)4;
+        builder.AddBlock(0, 0, in diag);
+        builder.AddBlock(1, 1, in diag);
+        var A = builder.ToBSR(Allocator.Temp);
+        var M = new doubleFSAI(in A, Allocator.Temp);
+        int n = A.M_Rows;
 
-            var r = arena.doubleVec(n, (double)1);
-            var z = arena.doubleVec(n);
+        var r = GenerateOP.doubleVec(n, (double)1);
+        var z = new doubleN(n, Allocator.Temp);
 
-            // z aliases r.
-            Assert.Throws<ArgumentException>(() => M.Apply(in r, ref r));
-            // z aliases the owned Scratch.
-            var scratch = M.Scratch;
-            Assert.Throws<ArgumentException>(() => M.Apply(in r, ref scratch));
-            // r aliases the owned Scratch (z distinct).
-            Assert.Throws<ArgumentException>(() => M.Apply(in scratch, ref z));
-        }
-        finally { arena.Dispose(); }
+        // z aliases r.
+        Assert.Throws<ArgumentException>(() => M.Apply(in r, ref r));
+        // z aliases the owned Scratch.
+        var scratch = M.Scratch;
+        Assert.Throws<ArgumentException>(() => M.Apply(in r, ref scratch));
+        // r aliases the owned Scratch (z distinct).
+        Assert.Throws<ArgumentException>(() => M.Apply(in scratch, ref z));
     }
 }

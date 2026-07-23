@@ -50,9 +50,9 @@ public class doubleBlockGCRODRTests
         static double Tol() => 1e-9;
         static double TightTol() => 1e-8;
 
-        static doubleMxN DenseNonsym(ref Arena arena, int n, uint seed)
+        static doubleMxN DenseNonsym(int n, uint seed)
         {
-            var A = arena.doubleRandomMat(n, n, -1f, 1f, seed);
+            var A = GenerateOP.doubleRandomMat(n, n, -1f, 1f, seed, Allocator.Temp);
             for (int i = 0; i < n; i++) A[i, i] += (double)(2 * n);
             return A;
         }
@@ -60,9 +60,9 @@ public class doubleBlockGCRODRTests
         // Same construction as scalar GCRODRTests' SmallIsolatedEig -- a handful of small, well-
         // isolated eigenvalues below a well-separated O(1) cluster, mild strictly-upper nonsymmetric
         // perturbation. The textbook GCRO-DR win, block-shaped.
-        static doubleMxN SmallIsolatedEig(ref Arena arena, int n, uint seed)
+        static doubleMxN SmallIsolatedEig(int n, uint seed)
         {
-            var A = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Temp);
             A[0, 0] = (double)0.01;
             A[1, 1] = (double)0.03;
             A[2, 2] = (double)0.06;
@@ -79,9 +79,9 @@ public class doubleBlockGCRODRTests
         // A SINGLE small isolated eigenvalue below a well-separated O(1) cluster -- the simplest
         // possible harmonic-Ritz deflation target (no subset-selection ambiguity among several
         // near-isolated values), for the block distinguishing test's own robustness.
-        static doubleMxN OneIsolatedEig(ref Arena arena, int n, uint seed)
+        static doubleMxN OneIsolatedEig(int n, uint seed)
         {
-            var A = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Temp);
             A[0, 0] = (double)0.01;
             for (int i = 1; i < n; i++)
                 A[i, i] = (double)(4.0 + 6.0 * (i - 1) / (double)(n - 2));
@@ -116,20 +116,19 @@ public class doubleBlockGCRODRTests
         // solvers' iteration counts landing right at a restart-cycle boundary. ----
         void RecyclingBeatsBgmres()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 60, s = 3;
             int m = 2, k = 1;      // tight per-cycle Krylov budget (m*s=6); recycle the single isolated value
             double tol = Tol();    // standard tol: reliably reached in every dtype on this spectrum
             int generousBudget = 60 * n;
 
-            var A = OneIsolatedEig(ref arena, n, 0x7C0Du);
+            var A = OneIsolatedEig(n, 0x7C0Du);
             var Aop = new doubleDenseOperatorGeneral(in A);
-            var B = arena.doubleRandomMat(s, n, -1f, 1f, 0x7C0Eu);
+            var B = GenerateOP.doubleRandomMat(s, n, -1f, 1f, 0x7C0Eu, Allocator.Temp);
 
-            var XG = arena.doubleMat(s, n);
+            var XG = new doubleMxN(s, n, Allocator.Temp);
             var giG = Krylov.bgmres(in Aop, in B, ref XG, m, generousBudget, tol);
 
-            var XR = arena.doubleMat(s, n);
+            var XR = new doubleMxN(s, n, Allocator.Temp);
             var giR = Krylov.bgcrodr(in Aop, in B, ref XR, m, k, generousBudget, tol);
 
             Assert.IsTrue(giR.status == IterativeSolveStatus.Converged);
@@ -143,61 +142,55 @@ public class doubleBlockGCRODRTests
             // verifies correctness (converged + residual) above.
             if (false)
                 Assert.IsTrue(giR.iterations < giG.iterations);
-
-            arena.Dispose();
         }
 
         void MatchesLUOracle()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 28, s = 3;
-            var A = DenseNonsym(ref arena, n, 0x7C11u);
+            var A = DenseNonsym(n, 0x7C11u);
             var Aop = new doubleDenseOperatorGeneral(in A);
-            var Xtrue = arena.doubleRandomMat(s, n, -1f, 1f, 0x7C12u);
+            var Xtrue = GenerateOP.doubleRandomMat(s, n, -1f, 1f, 0x7C12u, Allocator.Temp);
 
-            var B = arena.doubleMat(s, n);
+            var B = new doubleMxN(s, n, Allocator.Temp);
             for (int j = 0; j < s; j++)
             {
-                var xj = arena.doubleVec(n);
+                var xj = new doubleN(n, Allocator.Temp);
                 for (int c = 0; c < n; c++) xj[c] = Xtrue[j, c];
                 var bj = Blas.dot(A, xj);
                 for (int c = 0; c < n; c++) B[j, c] = bj[c];
             }
 
-            var X = arena.doubleMat(s, n);
+            var X = new doubleMxN(s, n, Allocator.Temp);
             var info = Krylov.bgcrodr(in Aop, in B, ref X, 16, 4, 8 * n, Tol());
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(doubleKrylovBatteryOracles.RelResidualBlockDense(in A, in X, in B) <= Tol());
 
             for (int j = 0; j < s; j++)
             {
-                var LUcopy = A.Copy();
+                var LUcopy = new doubleMxN(in A, Allocator.Temp);
                 var pivot = new Pivot(n, Allocator.Temp);
                 LU.decompInPlace(ref LUcopy, ref pivot);
-                var bj = arena.doubleVec(n);
+                var bj = new doubleN(n, Allocator.Temp);
                 for (int c = 0; c < n; c++) bj[c] = B[j, c];
                 LU.decompSolve(ref LUcopy, in pivot, ref bj);
                 pivot.Dispose();
                 for (int c = 0; c < n; c++)
                     Assert.IsTrue(math.abs(X[j, c] - bj[c]) <= Tol() * ((double)1 + math.abs(bj[c])));
             }
-
-            arena.Dispose();
         }
 
         void IdentityFoldBitExact()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 36, s = 3;
             int m = 12, k = 4;
-            var A = DenseNonsym(ref arena, n, 0x7C21u);
+            var A = DenseNonsym(n, 0x7C21u);
             var Aop = new doubleDenseOperatorGeneral(in A);
-            var B = arena.doubleRandomMat(s, n, -1f, 1f, 0x7C22u);
+            var B = GenerateOP.doubleRandomMat(s, n, -1f, 1f, 0x7C22u, Allocator.Temp);
 
-            var XImplicit = arena.doubleMat(s, n);
+            var XImplicit = new doubleMxN(s, n, Allocator.Temp);
             var i0 = Krylov.bgcrodr(in Aop, in B, ref XImplicit, m, k, 8 * n, Tol());
 
-            var XExplicit = arena.doubleMat(s, n);
+            var XExplicit = new doubleMxN(s, n, Allocator.Temp);
             var i1 = Krylov.bgcrodr(in Aop, default(doubleIdentityPreconditioner), in B, ref XExplicit, m, k, 8 * n, Tol());
 
             Assert.IsTrue(i0.status == IterativeSolveStatus.Converged);
@@ -205,25 +198,22 @@ public class doubleBlockGCRODRTests
             for (int j = 0; j < s; j++)
                 for (int c = 0; c < n; c++)
                     Assert.IsTrue(XImplicit[j, c] == XExplicit[j, c]);
-
-            arena.Dispose();
         }
 
         // ---- Determinism: two runs from X0=0 on identical (A,B) with recycle > 0 give bit-identical
         // output, iteration count included (the recycling deflation path exercised). ----
         void Deterministic()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 44, s = 3;
             int m = 12, k = 3;
-            var A = SmallIsolatedEig(ref arena, n, 0x7C41u);
+            var A = SmallIsolatedEig(n, 0x7C41u);
             var Aop = new doubleDenseOperatorGeneral(in A);
-            var B = arena.doubleRandomMat(s, n, -1f, 1f, 0x7C42u);
+            var B = GenerateOP.doubleRandomMat(s, n, -1f, 1f, 0x7C42u, Allocator.Temp);
 
-            var X1 = arena.doubleMat(s, n);
+            var X1 = new doubleMxN(s, n, Allocator.Temp);
             var i1 = Krylov.bgcrodr(in Aop, in B, ref X1, m, k, 40 * n, Tol());
 
-            var X2 = arena.doubleMat(s, n);
+            var X2 = new doubleMxN(s, n, Allocator.Temp);
             var i2 = Krylov.bgcrodr(in Aop, in B, ref X2, m, k, 40 * n, Tol());
 
             Assert.IsTrue(i1.status == IterativeSolveStatus.Converged);
@@ -231,20 +221,17 @@ public class doubleBlockGCRODRTests
             for (int j = 0; j < s; j++)
                 for (int c = 0; c < n; c++)
                     Assert.IsTrue(X1[j, c] == X2[j, c]);
-
-            arena.Dispose();
         }
 
         // ---- Zero RHS from X0=0: the very first fresh residual is exactly 0, so CountConverged
         // trips before any Arnoldi step runs -- Converged, zero iterations, X stays exactly 0. ----
         void ZeroRhs()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 24, s = 3;
-            var A = DenseNonsym(ref arena, n, 0x7C51u);
+            var A = DenseNonsym(n, 0x7C51u);
             var Aop = new doubleDenseOperatorGeneral(in A);
-            var B = arena.doubleMat(s, n);   // all zeros
-            var X = arena.doubleMat(s, n);   // all zeros (warm-start x0 = 0)
+            var B = new doubleMxN(s, n, Allocator.Temp);   // all zeros
+            var X = new doubleMxN(s, n, Allocator.Temp);   // all zeros (warm-start x0 = 0)
 
             var info = Krylov.bgcrodr(in Aop, in B, ref X, 10, 3, 4 * n, Tol());
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
@@ -252,8 +239,6 @@ public class doubleBlockGCRODRTests
             for (int j = 0; j < s; j++)
                 for (int c = 0; c < n; c++)
                     Assert.IsTrue(X[j, c] == (double)0);
-
-            arena.Dispose();
         }
 
         // ---- Singular operator (all-zero A): 0 X = B has no solution for B != 0, so the block-Arnoldi
@@ -261,19 +246,16 @@ public class doubleBlockGCRODRTests
         // MaxIterations, never a false Converged), no NaN. ----
         void SingularBreakdown()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 10, s = 3;
-            var A = arena.doubleMat(n, n);   // all zeros -> singular
+            var A = new doubleMxN(n, n, Allocator.Temp);   // all zeros -> singular
             var Aop = new doubleDenseOperatorGeneral(in A);
-            var B = arena.doubleRandomMat(s, n, 1f, 2f, 0x7C61u);   // nonzero, not in range(A)
+            var B = GenerateOP.doubleRandomMat(s, n, 1f, 2f, 0x7C61u, Allocator.Temp);   // nonzero, not in range(A)
 
-            var X = arena.doubleMat(s, n);
+            var X = new doubleMxN(s, n, Allocator.Temp);
             var info = Krylov.bgcrodr(in Aop, in B, ref X, 5, 2, 4 * n, Tol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Breakdown || info.status == IterativeSolveStatus.MaxIterations);
             Assert.IsFalse(double.IsNaN(info.maxRnorm));
-
-            arena.Dispose();
         }
 
         // ---- Recycling active across several restart cycles must produce a finite, converged X. The
@@ -285,14 +267,13 @@ public class doubleBlockGCRODRTests
         // no NaN/Inf and honest convergence. ----
         void RecycleRebuildStaysFinite()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 50, s = 2;
             int m = 5, k = 3;    // small per-cycle Krylov space forces many restart cycles; k>0 recycles
-            var A = SmallIsolatedEig(ref arena, n, 0x7C71u);
+            var A = SmallIsolatedEig(n, 0x7C71u);
             var Aop = new doubleDenseOperatorGeneral(in A);
-            var B = arena.doubleRandomMat(s, n, -1f, 1f, 0x7C72u);
+            var B = GenerateOP.doubleRandomMat(s, n, -1f, 1f, 0x7C72u, Allocator.Temp);
 
-            var X = arena.doubleMat(s, n);
+            var X = new doubleMxN(s, n, Allocator.Temp);
             var info = Krylov.bgcrodr(in Aop, in B, ref X, m, k, 80 * n, Tol());
 
             for (int j = 0; j < s; j++)
@@ -301,8 +282,6 @@ public class doubleBlockGCRODRTests
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(doubleKrylovBatteryOracles.RelResidualBlockDense(in A, in X, in B) <= Tol());
-
-            arena.Dispose();
         }
 
         // ---- The Ru recycle-guard was ||B||-scaled but guards Ru diagonals that scale with ||A|| --
@@ -314,25 +293,24 @@ public class doubleBlockGCRODRTests
         // this scale, exactly as it does at O(1) scale. ----
         void SmallScaleWellConditioned()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 60, s = 3;
             int m = 2, k = 1;
             double tol = Tol();
             int generousBudget = 60 * n;
             double c = 1e-12;
 
-            var Abase = OneIsolatedEig(ref arena, n, 0x7C91u);
-            var A = arena.doubleMat(n, n);
+            var Abase = OneIsolatedEig(n, 0x7C91u);
+            var A = new doubleMxN(n, n, Allocator.Temp);
             for (int r = 0; r < n; r++)
                 for (int cc = 0; cc < n; cc++)
                     A[r, cc] = Abase[r, cc] * c;
             var Aop = new doubleDenseOperatorGeneral(in A);
-            var B = arena.doubleRandomMat(s, n, -1f, 1f, 0x7C92u);
+            var B = GenerateOP.doubleRandomMat(s, n, -1f, 1f, 0x7C92u, Allocator.Temp);
 
-            var XG = arena.doubleMat(s, n);
+            var XG = new doubleMxN(s, n, Allocator.Temp);
             var giG = Krylov.bgmres(in Aop, in B, ref XG, m, generousBudget, tol);
 
-            var XR = arena.doubleMat(s, n);
+            var XR = new doubleMxN(s, n, Allocator.Temp);
             var giR = Krylov.bgcrodr(in Aop, in B, ref XR, m, k, generousBudget, tol);
 
             Assert.IsTrue(giR.status == IterativeSolveStatus.Converged);
@@ -343,8 +321,6 @@ public class doubleBlockGCRODRTests
             // ITERATION advantage is a separate claim -- fragile at this extreme scale (float cannot
             // resolve the c-scaled isolated eigenvalue well enough for deflation to help) -- and is
             // asserted at O(1) scale by RecyclingBeatsBgmres, so it is not re-asserted here.
-
-            arena.Dispose();
         }
     }
 

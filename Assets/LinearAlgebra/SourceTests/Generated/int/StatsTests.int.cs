@@ -46,52 +46,44 @@ public class intStatsTests
 
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
-            try
+            switch (Type)
             {
-                switch (Type)
-                {
-                    case TestType.SumVector: SumVector(ref arena); break;
-                    case TestType.SumMatrix: SumMatrix(ref arena); break;
-                    case TestType.MeanFractional: MeanFractional(ref arena); break;
-                    case TestType.VarianceStdDev: VarianceStdDev(ref arena); break;
-                    case TestType.SingleElementVariance: SingleElementVariance(ref arena); break;
-                    case TestType.MedianOdd: MedianOdd(ref arena); break;
-                    case TestType.MedianEven2: MedianEven2(ref arena); break;
-                    case TestType.MedianEven4: MedianEven4(ref arena); break;
-                    case TestType.MinMaxArg: MinMaxArg(ref arena); break;
-                    case TestType.MinMaxNegatives: MinMaxNegatives(ref arena); break;
-                    case TestType.AllEqual: AllEqual(ref arena); break;
-                    case TestType.MatrixReductions: MatrixReductions(ref arena); break;
-                    case TestType.WidenedSumNoOverflow: WidenedSumNoOverflow(ref arena); break;
-                    case TestType.SumAccumulatorOwnOverflow: SumAccumulatorOwnOverflow(ref arena); break;
-                    default: throw new NotImplementedException();
-                }
-            }
-            finally
-            {
-                arena.Dispose();
+                case TestType.SumVector: SumVector(); break;
+                case TestType.SumMatrix: SumMatrix(); break;
+                case TestType.MeanFractional: MeanFractional(); break;
+                case TestType.VarianceStdDev: VarianceStdDev(); break;
+                case TestType.SingleElementVariance: SingleElementVariance(); break;
+                case TestType.MedianOdd: MedianOdd(); break;
+                case TestType.MedianEven2: MedianEven2(); break;
+                case TestType.MedianEven4: MedianEven4(); break;
+                case TestType.MinMaxArg: MinMaxArg(); break;
+                case TestType.MinMaxNegatives: MinMaxNegatives(); break;
+                case TestType.AllEqual: AllEqual(); break;
+                case TestType.MatrixReductions: MatrixReductions(); break;
+                case TestType.WidenedSumNoOverflow: WidenedSumNoOverflow(); break;
+                case TestType.SumAccumulatorOwnOverflow: SumAccumulatorOwnOverflow(); break;
+                default: throw new NotImplementedException();
             }
         }
 
         bool Close(double a, double b) => math.abs(a - b) < 1e-9;
 
         // sum is a WIDENED long accumulator. {1,2,3,4,5} -> 15. Also a mixed-sign case summing to 0.
-        void SumVector(ref Arena arena)
+        void SumVector()
         {
-            var v = arena.intVec(5);
+            var v = new intN(5, Allocator.Temp);
             v[0] = (int)1; v[1] = (int)2; v[2] = (int)3; v[3] = (int)4; v[4] = (int)5;
             Assert.IsTrue(Stats.sum(in v) == 15L);
 
-            var w = arena.intVec(3);
+            var w = new intN(3, Allocator.Temp);
             w[0] = (int)(-2); w[1] = (int)(-3); w[2] = (int)5;
             Assert.IsTrue(Stats.sum(in w) == 0L);
         }
 
         // Matrix flat-sum: {{1,2,3},{4,5,6}} -> 21.
-        void SumMatrix(ref Arena arena)
+        void SumMatrix()
         {
-            var A = arena.intMat(2, 3);
+            var A = new intMxN(2, 3, Allocator.Temp);
             A[0, 0] = (int)1; A[0, 1] = (int)2; A[0, 2] = (int)3;
             A[1, 0] = (int)4; A[1, 1] = (int)5; A[1, 2] = (int)6;
             Assert.IsTrue(Stats.sum(in A) == 21L);
@@ -99,9 +91,9 @@ public class intStatsTests
 
         // mean returns DOUBLE, not the truncated integer: {1,2} -> 1.5 (a bug here would return 1).
         // Population variance/stdDev/sample variance for the same 2-element vector are exact fractions.
-        void MeanFractional(ref Arena arena)
+        void MeanFractional()
         {
-            var v = arena.intVec(2);
+            var v = new intN(2, Allocator.Temp);
             v[0] = (int)1; v[1] = (int)2;
 
             Assert.IsTrue(Close(Stats.mean(in v), 1.5));           // NOT 1.0
@@ -113,9 +105,9 @@ public class intStatsTests
 
         // Classic oracle {2,4,4,4,5,5,7,9} (n=8): mean=5, variance(pop)=4, stdDev=2,
         // varianceSample=32/7, stdDevSample=sqrt(32/7). All safe for short (max value 9).
-        void VarianceStdDev(ref Arena arena)
+        void VarianceStdDev()
         {
-            var v = arena.intVec(8);
+            var v = new intN(8, Allocator.Temp);
             v[0] = (int)2; v[1] = (int)4; v[2] = (int)4; v[3] = (int)4;
             v[4] = (int)5; v[5] = (int)5; v[6] = (int)7; v[7] = (int)9;
 
@@ -127,9 +119,9 @@ public class intStatsTests
         }
 
         // Single element: population variance/stdDev == 0 (no throw). (Sample variance throws -- managed.)
-        void SingleElementVariance(ref Arena arena)
+        void SingleElementVariance()
         {
-            var v = arena.intVec(1);
+            var v = new intN(1, Allocator.Temp);
             v[0] = (int)3;
             Assert.IsTrue(Close(Stats.variance(in v), 0.0));
             Assert.IsTrue(Close(Stats.stdDev(in v), 0.0));
@@ -137,33 +129,33 @@ public class intStatsTests
         }
 
         // median (odd n): unsorted {3,1,2} -> 2.0 (exercises the internal sort).
-        void MedianOdd(ref Arena arena)
+        void MedianOdd()
         {
-            var v = arena.intVec(3);
+            var v = new intN(3, Allocator.Temp);
             v[0] = (int)3; v[1] = (int)1; v[2] = (int)2;
             Assert.IsTrue(Close(Stats.median(in v), 2.0));
         }
 
         // median (even n=2): unsorted {2,1} -> average of the two middles = 1.5 (double, not truncated).
-        void MedianEven2(ref Arena arena)
+        void MedianEven2()
         {
-            var v = arena.intVec(2);
+            var v = new intN(2, Allocator.Temp);
             v[0] = (int)2; v[1] = (int)1;
             Assert.IsTrue(Close(Stats.median(in v), 1.5));
         }
 
         // median (even n=4): unsorted {4,1,3,2} -> sorted {1,2,3,4} -> (2+3)/2 = 2.5.
-        void MedianEven4(ref Arena arena)
+        void MedianEven4()
         {
-            var v = arena.intVec(4);
+            var v = new intN(4, Allocator.Temp);
             v[0] = (int)4; v[1] = (int)1; v[2] = (int)3; v[3] = (int)2;
             Assert.IsTrue(Close(Stats.median(in v), 2.5));
         }
 
         // min/max/argmin/argmax on {3,1,4,1,5,9,2,6}: min=1 (first tie at index 1), max=9 (index 5).
-        void MinMaxArg(ref Arena arena)
+        void MinMaxArg()
         {
-            var v = arena.intVec(8);
+            var v = new intN(8, Allocator.Temp);
             v[0] = (int)3; v[1] = (int)1; v[2] = (int)4; v[3] = (int)1;
             v[4] = (int)5; v[5] = (int)9; v[6] = (int)2; v[7] = (int)6;
 
@@ -174,9 +166,9 @@ public class intStatsTests
         }
 
         // All-negative {-5,-2,-9,-1}: min=-9 (index 2), max=-1 (index 3).
-        void MinMaxNegatives(ref Arena arena)
+        void MinMaxNegatives()
         {
-            var v = arena.intVec(4);
+            var v = new intN(4, Allocator.Temp);
             v[0] = (int)(-5); v[1] = (int)(-2); v[2] = (int)(-9); v[3] = (int)(-1);
 
             Assert.IsTrue(Stats.min(in v) == (int)(-9));
@@ -186,9 +178,9 @@ public class intStatsTests
         }
 
         // Ties: {7,7,7} -> argmin==argmax==0 (first occurrence).
-        void AllEqual(ref Arena arena)
+        void AllEqual()
         {
-            var v = arena.intVec(3, (int)7);
+            var v = GenerateOP.intVec(3, (int)7);
             Assert.IsTrue(Stats.argmin(in v) == 0);
             Assert.IsTrue(Stats.argmax(in v) == 0);
             Assert.IsTrue(Stats.min(in v) == (int)7);
@@ -197,9 +189,9 @@ public class intStatsTests
 
         // Matrix treated as one flat row-major distribution {{1,2,3},{4,6,8}}:
         // sum=24, mean=4, min=1, max=8, argmin=0, argmax=5 (linear index).
-        void MatrixReductions(ref Arena arena)
+        void MatrixReductions()
         {
-            var A = arena.intMat(2, 3);
+            var A = new intMxN(2, 3, Allocator.Temp);
             A[0, 0] = (int)1; A[0, 1] = (int)2; A[0, 2] = (int)3;
             A[1, 0] = (int)4; A[1, 1] = (int)6; A[1, 2] = (int)8;
 
@@ -218,10 +210,10 @@ public class intStatsTests
         // count=1: a trivial identity (sum==long.MaxValue) that does NOT exercise overflow-avoidance.
         // That asymmetry is intentional, not a forgotten case. Expected is computed entirely in `long`
         // (n*MaxValue), which never overflows for the chosen (n, type) pairs.
-        void WidenedSumNoOverflow(ref Arena arena)
+        void WidenedSumNoOverflow()
         {
             int n = 3;
-            var v = arena.intVec(n, (int)int.MaxValue);
+            var v = GenerateOP.intVec(n, (int)int.MaxValue);
 
             long expected = (long)n * (long)int.MaxValue;
             Assert.IsTrue(Stats.sum(in v) == expected);
@@ -235,9 +227,9 @@ public class intStatsTests
         // (the widest available type) and silently wraps via ordinary two's-complement addition:
         // long.MaxValue + long.MaxValue == 2^64 - 2, which reinterpreted as a signed 64-bit value
         // is -2 -- a documented, not-fixed garbage-in result for the long variant specifically.
-        void SumAccumulatorOwnOverflow(ref Arena arena)
+        void SumAccumulatorOwnOverflow()
         {
-            var v = arena.intVec(2, (int)int.MaxValue);
+            var v = GenerateOP.intVec(2, (int)int.MaxValue);
 
             long expected = 4294967294L;
             Assert.IsTrue(Stats.sum(in v) == expected);
@@ -257,65 +249,41 @@ public class intStatsTests
     [Test]
     public void EmptyVectorReductionsThrow()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var v = arena.intVec(0);
+        var v = new intN(0, Allocator.Temp);
 
-            Assert.Throws<InvalidOperationException>(() => Stats.sum(in v));
-            Assert.Throws<InvalidOperationException>(() => Stats.mean(in v));
-            Assert.Throws<InvalidOperationException>(() => Stats.variance(in v));
-            Assert.Throws<InvalidOperationException>(() => Stats.stdDev(in v));
-            Assert.Throws<InvalidOperationException>(() => Stats.varianceSample(in v));
-            Assert.Throws<InvalidOperationException>(() => Stats.stdDevSample(in v));
-            Assert.Throws<InvalidOperationException>(() => Stats.median(in v));
-            Assert.Throws<InvalidOperationException>(() => Stats.min(in v));
-            Assert.Throws<InvalidOperationException>(() => Stats.max(in v));
-            Assert.Throws<InvalidOperationException>(() => Stats.argmin(in v));
-            Assert.Throws<InvalidOperationException>(() => Stats.argmax(in v));
-        }
-        finally
-        {
-            arena.Dispose();
-        }
+        Assert.Throws<InvalidOperationException>(() => Stats.sum(in v));
+        Assert.Throws<InvalidOperationException>(() => Stats.mean(in v));
+        Assert.Throws<InvalidOperationException>(() => Stats.variance(in v));
+        Assert.Throws<InvalidOperationException>(() => Stats.stdDev(in v));
+        Assert.Throws<InvalidOperationException>(() => Stats.varianceSample(in v));
+        Assert.Throws<InvalidOperationException>(() => Stats.stdDevSample(in v));
+        Assert.Throws<InvalidOperationException>(() => Stats.median(in v));
+        Assert.Throws<InvalidOperationException>(() => Stats.min(in v));
+        Assert.Throws<InvalidOperationException>(() => Stats.max(in v));
+        Assert.Throws<InvalidOperationException>(() => Stats.argmin(in v));
+        Assert.Throws<InvalidOperationException>(() => Stats.argmax(in v));
     }
 
     [Test]
     public void EmptyMatrixReductionsThrow()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            // 0-row matrix (3 cols) is constructible; flat reductions over it must throw.
-            var A = arena.intMat(0, 3);
+        // 0-row matrix (3 cols) is constructible; flat reductions over it must throw.
+        var A = new intMxN(0, 3, Allocator.Temp);
 
-            Assert.Throws<InvalidOperationException>(() => Stats.sum(in A));
-            Assert.Throws<InvalidOperationException>(() => Stats.mean(in A));
-            Assert.Throws<InvalidOperationException>(() => Stats.min(in A));
-            Assert.Throws<InvalidOperationException>(() => Stats.argmax(in A));
-        }
-        finally
-        {
-            arena.Dispose();
-        }
+        Assert.Throws<InvalidOperationException>(() => Stats.sum(in A));
+        Assert.Throws<InvalidOperationException>(() => Stats.mean(in A));
+        Assert.Throws<InvalidOperationException>(() => Stats.min(in A));
+        Assert.Throws<InvalidOperationException>(() => Stats.argmax(in A));
     }
 
     // Sample variance requires n >= 2: n==1 throws (distinct from population variance, which returns 0).
     [Test]
     public void VarianceSampleSingleElementThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var v = arena.intVec(1);
-            v[0] = (int)5;
+        var v = new intN(1, Allocator.Temp);
+        v[0] = (int)5;
 
-            Assert.Throws<InvalidOperationException>(() => Stats.varianceSample(in v));
-            Assert.Throws<InvalidOperationException>(() => Stats.stdDevSample(in v));
-        }
-        finally
-        {
-            arena.Dispose();
-        }
+        Assert.Throws<InvalidOperationException>(() => Stats.varianceSample(in v));
+        Assert.Throws<InvalidOperationException>(() => Stats.stdDevSample(in v));
     }
 }

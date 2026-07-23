@@ -1,3 +1,5 @@
+using Unity.Collections;
+
 namespace LinearAlgebra
 {
     /// <summary>
@@ -18,7 +20,7 @@ namespace LinearAlgebra
         /// Allocate/resize any caller-owned scratch vectors for an n x n system. No-op for
         /// solvers whose production entry point self-allocates from Allocator.Temp (gmres,
         /// fgmres, idr). Called once per gallery matrix, before any Solve* call.
-        void Init(ref Arena arena, int n);
+        void Init(int n);
 
         SolveInfo Solve<TOp>(in TOp A, in fProxyN b, ref fProxyN x)
             where TOp : struct, IfProxyLinearOperator;
@@ -47,7 +49,7 @@ namespace LinearAlgebra
         /// are unaffected (fProxyBSROperator.ApplyBlock -> BSR.spMM is general).
         bool NeedsGeneralDenseOperator { get; }
 
-        void Init(ref Arena arena, int n, int s);   // s = block width (RHS count)
+        void Init(int n, int s);   // s = block width (RHS count)
 
         BlockSolveInfo Solve<TOp>(in TOp A, in fProxyMxN B, ref fProxyMxN X)
             where TOp : struct, IfProxyLinearOperator;
@@ -75,7 +77,7 @@ namespace LinearAlgebra
         fProxy Tol { get; }
         int MaxIter(int rows, int cols);
 
-        void Init(ref Arena arena, int rows, int cols);
+        void Init(int rows, int cols);
 
         /// damp: 0 for the plain-solve checks; the damped-path check calls this a second time
         /// with damp > 0.
@@ -102,7 +104,7 @@ namespace LinearAlgebra
         fProxy Tol { get; }
         int MaxIter(int rows, int cols);
 
-        void Init(ref Arena arena, int rows, int cols, int s);
+        void Init(int rows, int cols, int s);
 
         BlockSolveInfo Solve<TOp>(in TOp A, in fProxyMxN B, ref fProxyMxN X, int maxIter)
             where TOp : struct, IfProxyLinearOperator;
@@ -135,12 +137,12 @@ namespace LinearAlgebra
         public fProxy Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n)
+        public void Init(int n)
         {
-            r = arena.fProxyVec(n);
-            p = arena.fProxyVec(n);
-            Ap = arena.fProxyVec(n);
-            z = arena.fProxyVec(n);
+            r = new fProxyN(n, Allocator.Temp);
+            p = new fProxyN(n, Allocator.Temp);
+            Ap = new fProxyN(n, Allocator.Temp);
+            z = new fProxyN(n, Allocator.Temp);
         }
 
         public SolveInfo Solve<TOp>(in TOp A, in fProxyN b, ref fProxyN x)
@@ -171,13 +173,13 @@ namespace LinearAlgebra
         public fProxy Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n)
+        public void Init(int n)
         {
-            r = arena.fProxyVec(n);
-            p = arena.fProxyVec(n);
-            Ap = arena.fProxyVec(n);
-            z = arena.fProxyVec(n);
-            rOld = arena.fProxyVec(n);
+            r = new fProxyN(n, Allocator.Temp);
+            p = new fProxyN(n, Allocator.Temp);
+            Ap = new fProxyN(n, Allocator.Temp);
+            z = new fProxyN(n, Allocator.Temp);
+            rOld = new fProxyN(n, Allocator.Temp);
         }
 
         public SolveInfo Solve<TOp>(in TOp A, in fProxyN b, ref fProxyN x)
@@ -212,16 +214,16 @@ namespace LinearAlgebra
         public fProxy Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n)
+        public void Init(int n)
         {
-            y = arena.fProxyVec(n);
-            r1 = arena.fProxyVec(n);
-            r2 = arena.fProxyVec(n);
-            v = arena.fProxyVec(n);
-            w = arena.fProxyVec(n);
-            w1 = arena.fProxyVec(n);
-            w2 = arena.fProxyVec(n);
-            z = arena.fProxyVec(n);
+            y = new fProxyN(n, Allocator.Temp);
+            r1 = new fProxyN(n, Allocator.Temp);
+            r2 = new fProxyN(n, Allocator.Temp);
+            v = new fProxyN(n, Allocator.Temp);
+            w = new fProxyN(n, Allocator.Temp);
+            w1 = new fProxyN(n, Allocator.Temp);
+            w2 = new fProxyN(n, Allocator.Temp);
+            z = new fProxyN(n, Allocator.Temp);
         }
 
         public SolveInfo Solve<TOp>(in TOp A, in fProxyN b, ref fProxyN x)
@@ -262,17 +264,17 @@ namespace LinearAlgebra
         fProxy SolveTol => TolValue * (fProxy)0.02;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n)
+        public void Init(int n)
         {
-            v = arena.fProxyVec(n);
-            r1 = arena.fProxyVec(n);
-            r2 = arena.fProxyVec(n);
-            r3 = arena.fProxyVec(n);
-            w = arena.fProxyVec(n);
-            wl = arena.fProxyVec(n);
-            wl2 = arena.fProxyVec(n);
-            xl2 = arena.fProxyVec(n);
-            t1 = arena.fProxyVec(n);
+            v = new fProxyN(n, Allocator.Temp);
+            r1 = new fProxyN(n, Allocator.Temp);
+            r2 = new fProxyN(n, Allocator.Temp);
+            r3 = new fProxyN(n, Allocator.Temp);
+            w = new fProxyN(n, Allocator.Temp);
+            wl = new fProxyN(n, Allocator.Temp);
+            wl2 = new fProxyN(n, Allocator.Temp);
+            xl2 = new fProxyN(n, Allocator.Temp);
+            t1 = new fProxyN(n, Allocator.Temp);
         }
 
         public SolveInfo Solve<TOp>(in TOp A, in fProxyN b, ref fProxyN x)
@@ -307,15 +309,15 @@ namespace LinearAlgebra
         public fProxy Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n)
+        public void Init(int n)
         {
-            r = arena.fProxyVec(n);
-            rHat0 = arena.fProxyVec(n);
-            p = arena.fProxyVec(n);
-            v = arena.fProxyVec(n);
-            t = arena.fProxyVec(n);
-            pHat = arena.fProxyVec(n);
-            sHat = arena.fProxyVec(n);
+            r = new fProxyN(n, Allocator.Temp);
+            rHat0 = new fProxyN(n, Allocator.Temp);
+            p = new fProxyN(n, Allocator.Temp);
+            v = new fProxyN(n, Allocator.Temp);
+            t = new fProxyN(n, Allocator.Temp);
+            pHat = new fProxyN(n, Allocator.Temp);
+            sHat = new fProxyN(n, Allocator.Temp);
         }
 
         public SolveInfo Solve<TOp>(in TOp A, in fProxyN b, ref fProxyN x)
@@ -347,7 +349,7 @@ namespace LinearAlgebra
         public fProxy Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n) { }
+        public void Init(int n) { }
 
         public SolveInfo Solve<TOp>(in TOp A, in fProxyN b, ref fProxyN x)
             where TOp : struct, IfProxyLinearOperator
@@ -379,7 +381,7 @@ namespace LinearAlgebra
         public fProxy Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n) { }
+        public void Init(int n) { }
 
         public SolveInfo Solve<TOp>(in TOp A, in fProxyN b, ref fProxyN x)
             where TOp : struct, IfProxyLinearOperator
@@ -414,7 +416,7 @@ namespace LinearAlgebra
         public fProxy Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n) { }
+        public void Init(int n) { }
 
         public SolveInfo Solve<TOp>(in TOp A, in fProxyN b, ref fProxyN x)
             where TOp : struct, IfProxyLinearOperator
@@ -447,7 +449,7 @@ namespace LinearAlgebra
         public fProxy Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n) { }
+        public void Init(int n) { }
 
         public SolveInfo Solve<TOp>(in TOp A, in fProxyN b, ref fProxyN x)
             where TOp : struct, IfProxyLinearOperator
@@ -483,15 +485,15 @@ namespace LinearAlgebra
         public fProxy Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n)
+        public void Init(int n)
         {
-            rHat0 = arena.fProxyVec(n);
-            u = arena.fProxyVec(n);
-            w = arena.fProxyVec(n);
-            v = arena.fProxyVec(n);
-            au = arena.fProxyVec(n);
-            d = arena.fProxyVec(n);
-            uHat = arena.fProxyVec(n);
+            rHat0 = new fProxyN(n, Allocator.Temp);
+            u = new fProxyN(n, Allocator.Temp);
+            w = new fProxyN(n, Allocator.Temp);
+            v = new fProxyN(n, Allocator.Temp);
+            au = new fProxyN(n, Allocator.Temp);
+            d = new fProxyN(n, Allocator.Temp);
+            uHat = new fProxyN(n, Allocator.Temp);
         }
 
         public SolveInfo Solve<TOp>(in TOp A, in fProxyN b, ref fProxyN x)
@@ -530,12 +532,12 @@ namespace LinearAlgebra
         public fProxy Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n, int s)
+        public void Init(int n, int s)
         {
-            R = arena.fProxyMat(s, n);
-            P = arena.fProxyMat(s, n);
-            Q = arena.fProxyMat(s, n);
-            Z = arena.fProxyMat(s, n);
+            R = new fProxyMxN(s, n, Allocator.Temp);
+            P = new fProxyMxN(s, n, Allocator.Temp);
+            Q = new fProxyMxN(s, n, Allocator.Temp);
+            Z = new fProxyMxN(s, n, Allocator.Temp);
         }
 
         public BlockSolveInfo Solve<TOp>(in TOp A, in fProxyMxN B, ref fProxyMxN X)
@@ -571,13 +573,13 @@ namespace LinearAlgebra
         public fProxy Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n, int s)
+        public void Init(int n, int s)
         {
-            R = arena.fProxyMat(s, n);
-            P = arena.fProxyMat(s, n);
-            AP = arena.fProxyMat(s, n);
-            Pa = arena.fProxyMat(s, n);
-            Z = arena.fProxyMat(s, n);
+            R = new fProxyMxN(s, n, Allocator.Temp);
+            P = new fProxyMxN(s, n, Allocator.Temp);
+            AP = new fProxyMxN(s, n, Allocator.Temp);
+            Pa = new fProxyMxN(s, n, Allocator.Temp);
+            Z = new fProxyMxN(s, n, Allocator.Temp);
         }
 
         public BlockSolveInfo Solve<TOp>(in TOp A, in fProxyMxN B, ref fProxyMxN X)
@@ -613,13 +615,13 @@ namespace LinearAlgebra
         public fProxy Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n, int s)
+        public void Init(int n, int s)
         {
-            R = arena.fProxyMat(s, n);
-            P = arena.fProxyMat(s, n);
-            AP = arena.fProxyMat(s, n);
-            Pa = arena.fProxyMat(s, n);
-            Z = arena.fProxyMat(s, n);
+            R = new fProxyMxN(s, n, Allocator.Temp);
+            P = new fProxyMxN(s, n, Allocator.Temp);
+            AP = new fProxyMxN(s, n, Allocator.Temp);
+            Pa = new fProxyMxN(s, n, Allocator.Temp);
+            Z = new fProxyMxN(s, n, Allocator.Temp);
         }
 
         public BlockSolveInfo Solve<TOp>(in TOp A, in fProxyMxN B, ref fProxyMxN X)
@@ -657,15 +659,15 @@ namespace LinearAlgebra
         public fProxy Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n, int s)
+        public void Init(int n, int s)
         {
-            Vprev = arena.fProxyMat(s, n);
-            Vcur = arena.fProxyMat(s, n);
-            Wk = arena.fProxyMat(s, n);
-            W = arena.fProxyMat(s, n);
-            W1 = arena.fProxyMat(s, n);
-            W2 = arena.fProxyMat(s, n);
-            Z = arena.fProxyMat(s, n);
+            Vprev = new fProxyMxN(s, n, Allocator.Temp);
+            Vcur = new fProxyMxN(s, n, Allocator.Temp);
+            Wk = new fProxyMxN(s, n, Allocator.Temp);
+            W = new fProxyMxN(s, n, Allocator.Temp);
+            W1 = new fProxyMxN(s, n, Allocator.Temp);
+            W2 = new fProxyMxN(s, n, Allocator.Temp);
+            Z = new fProxyMxN(s, n, Allocator.Temp);
         }
 
         public BlockSolveInfo Solve<TOp>(in TOp A, in fProxyMxN B, ref fProxyMxN X)
@@ -702,15 +704,15 @@ namespace LinearAlgebra
         public fProxy Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n, int s)
+        public void Init(int n, int s)
         {
-            R = arena.fProxyMat(s, n);
-            Rhat0 = arena.fProxyMat(s, n);
-            P = arena.fProxyMat(s, n);
-            V = arena.fProxyMat(s, n);
-            T = arena.fProxyMat(s, n);
-            Phat = arena.fProxyMat(s, n);
-            Shat = arena.fProxyMat(s, n);
+            R = new fProxyMxN(s, n, Allocator.Temp);
+            Rhat0 = new fProxyMxN(s, n, Allocator.Temp);
+            P = new fProxyMxN(s, n, Allocator.Temp);
+            V = new fProxyMxN(s, n, Allocator.Temp);
+            T = new fProxyMxN(s, n, Allocator.Temp);
+            Phat = new fProxyMxN(s, n, Allocator.Temp);
+            Shat = new fProxyMxN(s, n, Allocator.Temp);
         }
 
         public BlockSolveInfo Solve<TOp>(in TOp A, in fProxyMxN B, ref fProxyMxN X)
@@ -748,7 +750,7 @@ namespace LinearAlgebra
         public fProxy Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n, int s) { }
+        public void Init(int n, int s) { }
 
         public BlockSolveInfo Solve<TOp>(in TOp A, in fProxyMxN B, ref fProxyMxN X)
             where TOp : struct, IfProxyLinearOperator
@@ -782,7 +784,7 @@ namespace LinearAlgebra
         public fProxy Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n, int s) { }
+        public void Init(int n, int s) { }
 
         public BlockSolveInfo Solve<TOp>(in TOp A, in fProxyMxN B, ref fProxyMxN X)
             where TOp : struct, IfProxyLinearOperator
@@ -819,7 +821,7 @@ namespace LinearAlgebra
         public fProxy Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n, int s) { }
+        public void Init(int n, int s) { }
 
         public BlockSolveInfo Solve<TOp>(in TOp A, in fProxyMxN B, ref fProxyMxN X)
             where TOp : struct, IfProxyLinearOperator
@@ -856,7 +858,7 @@ namespace LinearAlgebra
         public fProxy Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n, int s) { }
+        public void Init(int n, int s) { }
 
         public BlockSolveInfo Solve<TOp>(in TOp A, in fProxyMxN B, ref fProxyMxN X)
             where TOp : struct, IfProxyLinearOperator
@@ -893,15 +895,15 @@ namespace LinearAlgebra
         public fProxy Tol => TolValue;
         public int MaxIter(int n) => MaxIterMul * n;
 
-        public void Init(ref Arena arena, int n, int s)
+        public void Init(int n, int s)
         {
-            Rhat0 = arena.fProxyMat(s, n);
-            U = arena.fProxyMat(s, n);
-            W = arena.fProxyMat(s, n);
-            V = arena.fProxyMat(s, n);
-            AU = arena.fProxyMat(s, n);
-            D = arena.fProxyMat(s, n);
-            UHat = arena.fProxyMat(s, n);
+            Rhat0 = new fProxyMxN(s, n, Allocator.Temp);
+            U = new fProxyMxN(s, n, Allocator.Temp);
+            W = new fProxyMxN(s, n, Allocator.Temp);
+            V = new fProxyMxN(s, n, Allocator.Temp);
+            AU = new fProxyMxN(s, n, Allocator.Temp);
+            D = new fProxyMxN(s, n, Allocator.Temp);
+            UHat = new fProxyMxN(s, n, Allocator.Temp);
         }
 
         public BlockSolveInfo Solve<TOp>(in TOp A, in fProxyMxN B, ref fProxyMxN X)
@@ -935,13 +937,13 @@ namespace LinearAlgebra
         public fProxy Tol => TolValue;
         public int MaxIter(int rows, int cols) => MaxIterMul * (rows < cols ? rows : cols);
 
-        public void Init(ref Arena arena, int rows, int cols)
+        public void Init(int rows, int cols)
         {
-            u = arena.fProxyVec(rows);
-            v = arena.fProxyVec(cols);
-            w = arena.fProxyVec(cols);
-            tmpM = arena.fProxyVec(rows);
-            tmpN = arena.fProxyVec(cols);
+            u = new fProxyN(rows, Allocator.Temp);
+            v = new fProxyN(cols, Allocator.Temp);
+            w = new fProxyN(cols, Allocator.Temp);
+            tmpM = new fProxyN(rows, Allocator.Temp);
+            tmpN = new fProxyN(cols, Allocator.Temp);
         }
 
         public LstsqInfo Solve<TOp>(in TOp A, in fProxyN b, ref fProxyN x, fProxy damp)
@@ -968,14 +970,14 @@ namespace LinearAlgebra
         public fProxy Tol => TolValue;
         public int MaxIter(int rows, int cols) => MaxIterMul * (rows < cols ? rows : cols);
 
-        public void Init(ref Arena arena, int rows, int cols)
+        public void Init(int rows, int cols)
         {
-            u = arena.fProxyVec(rows);
-            v = arena.fProxyVec(cols);
-            h = arena.fProxyVec(cols);
-            hbar = arena.fProxyVec(cols);
-            tmpM = arena.fProxyVec(rows);
-            tmpN = arena.fProxyVec(cols);
+            u = new fProxyN(rows, Allocator.Temp);
+            v = new fProxyN(cols, Allocator.Temp);
+            h = new fProxyN(cols, Allocator.Temp);
+            hbar = new fProxyN(cols, Allocator.Temp);
+            tmpM = new fProxyN(rows, Allocator.Temp);
+            tmpN = new fProxyN(cols, Allocator.Temp);
         }
 
         public LstsqInfo Solve<TOp>(in TOp A, in fProxyN b, ref fProxyN x, fProxy damp)
@@ -1003,12 +1005,12 @@ namespace LinearAlgebra
         public fProxy Tol => TolValue;
         public int MaxIter(int rows, int cols) => MaxIterMul * (rows < cols ? rows : cols);
 
-        public void Init(ref Arena arena, int rows, int cols)
+        public void Init(int rows, int cols)
         {
-            u = arena.fProxyVec(rows);
-            v = arena.fProxyVec(cols);
-            tmpM = arena.fProxyVec(rows);
-            tmpN = arena.fProxyVec(cols);
+            u = new fProxyN(rows, Allocator.Temp);
+            v = new fProxyN(cols, Allocator.Temp);
+            tmpM = new fProxyN(rows, Allocator.Temp);
+            tmpN = new fProxyN(cols, Allocator.Temp);
         }
 
         /// damp is ignored: craig has no Tikhonov-damped production entry point (a consistent
@@ -1042,12 +1044,12 @@ namespace LinearAlgebra
         public fProxy Tol => TolValue;
         public int MaxIter(int rows, int cols) => MaxIterMul * (rows < cols ? rows : cols);
 
-        public void Init(ref Arena arena, int rows, int cols)
+        public void Init(int rows, int cols)
         {
-            u = arena.fProxyVec(rows);
-            v = arena.fProxyVec(cols);
-            tmpM = arena.fProxyVec(rows);
-            tmpN = arena.fProxyVec(cols);
+            u = new fProxyN(rows, Allocator.Temp);
+            v = new fProxyN(cols, Allocator.Temp);
+            tmpM = new fProxyN(rows, Allocator.Temp);
+            tmpN = new fProxyN(cols, Allocator.Temp);
         }
 
         /// damp is ignored: lnlq, like craig, has no Tikhonov-damped entry point (a consistent
@@ -1091,12 +1093,12 @@ namespace LinearAlgebra
         public fProxy Tol => TolValue;
         public int MaxIter(int rows, int cols) => MaxIterMul * (rows < cols ? rows : cols);
 
-        public void Init(ref Arena arena, int rows, int cols)
+        public void Init(int rows, int cols)
         {
-            r = arena.fProxyVec(rows);
-            p = arena.fProxyVec(cols);
-            Ap = arena.fProxyVec(rows);
-            tmpN = arena.fProxyVec(cols);
+            r = new fProxyN(rows, Allocator.Temp);
+            p = new fProxyN(cols, Allocator.Temp);
+            Ap = new fProxyN(rows, Allocator.Temp);
+            tmpN = new fProxyN(cols, Allocator.Temp);
         }
 
         /// damp is ignored: cgne has no Tikhonov-damped production entry point (a consistent
@@ -1126,13 +1128,13 @@ namespace LinearAlgebra
         public fProxy Tol => TolValue;
         public int MaxIter(int rows, int cols) => MaxIterMul * (rows < cols ? rows : cols);
 
-        public void Init(ref Arena arena, int rows, int cols)
+        public void Init(int rows, int cols)
         {
-            u = arena.fProxyVec(rows);
-            v = arena.fProxyVec(cols);
-            d = arena.fProxyVec(cols);
-            tmpM = arena.fProxyVec(rows);
-            tmpN = arena.fProxyVec(cols);
+            u = new fProxyN(rows, Allocator.Temp);
+            v = new fProxyN(cols, Allocator.Temp);
+            d = new fProxyN(cols, Allocator.Temp);
+            tmpM = new fProxyN(rows, Allocator.Temp);
+            tmpN = new fProxyN(cols, Allocator.Temp);
         }
 
         public LstsqInfo Solve<TOp>(in TOp A, in fProxyN b, ref fProxyN x, fProxy damp)
@@ -1158,7 +1160,7 @@ namespace LinearAlgebra
         public fProxy Tol => TolValue;
         public int MaxIter(int rows, int cols) => MaxIterMul * cols;
 
-        public void Init(ref Arena arena, int rows, int cols, int s) { }
+        public void Init(int rows, int cols, int s) { }
 
         public BlockSolveInfo Solve<TOp>(in TOp A, in fProxyMxN B, ref fProxyMxN X, int maxIter)
             where TOp : struct, IfProxyLinearOperator
@@ -1188,7 +1190,7 @@ namespace LinearAlgebra
         public fProxy Tol => TolValue;
         public int MaxIter(int rows, int cols) => MaxIterMul * cols;
 
-        public void Init(ref Arena arena, int rows, int cols, int s) { }
+        public void Init(int rows, int cols, int s) { }
 
         public BlockSolveInfo Solve<TOp>(in TOp A, in fProxyMxN B, ref fProxyMxN X, int maxIter)
             where TOp : struct, IfProxyLinearOperator
@@ -1220,7 +1222,7 @@ namespace LinearAlgebra
         public fProxy Tol => TolValue;
         public int MaxIter(int rows, int cols) => MaxIterMul * cols;
 
-        public void Init(ref Arena arena, int rows, int cols, int s) { }
+        public void Init(int rows, int cols, int s) { }
 
         public BlockSolveInfo Solve<TOp>(in TOp A, in fProxyMxN B, ref fProxyMxN X, int maxIter)
             where TOp : struct, IfProxyLinearOperator
@@ -1251,7 +1253,7 @@ namespace LinearAlgebra
         public fProxy Tol => TolValue;
         public int MaxIter(int rows, int cols) => MaxIterMul * cols;
 
-        public void Init(ref Arena arena, int rows, int cols, int s) { }
+        public void Init(int rows, int cols, int s) { }
 
         public BlockSolveInfo Solve<TOp>(in TOp A, in fProxyMxN B, ref fProxyMxN X, int maxIter)
             where TOp : struct, IfProxyLinearOperator

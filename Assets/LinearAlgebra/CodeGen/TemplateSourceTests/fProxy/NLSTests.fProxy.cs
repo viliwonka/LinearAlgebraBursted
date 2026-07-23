@@ -138,10 +138,9 @@ public class fProxyNLSTests
         // 9-point exponential decay: a=2.5, b=1.3, c=0.5, small fixed (non-random) wobble.
         void ExpDecayFit()
         {
-            var arena = new Arena(Allocator.Persistent);
 
-            var X = arena.fProxyVec(9);
-            var Y = arena.fProxyVec(9);
+            var X = new fProxyN(9, Allocator.Temp);
+            var Y = new fProxyN(9, Allocator.Temp);
             SetXY(X, Y, 0, (fProxy)0.0, (fProxy)3.01); SetXY(X, Y, 1, (fProxy)0.5, (fProxy)1.7971);
             SetXY(X, Y, 2, (fProxy)1.0, (fProxy)1.1963); SetXY(X, Y, 3, (fProxy)1.5, (fProxy)0.8507);
             SetXY(X, Y, 4, (fProxy)2.0, (fProxy)0.7057); SetXY(X, Y, 5, (fProxy)2.5, (fProxy)0.5849);
@@ -149,7 +148,7 @@ public class fProxyNLSTests
             SetXY(X, Y, 8, (fProxy)4.0, (fProxy)0.5238);
 
             var f = new ExpDecayResidual { X = X, Y = Y };
-            var p = arena.fProxyVec(3);
+            var p = new fProxyN(3, Allocator.Temp);
             p[0] = (fProxy)1; p[1] = (fProxy)1; p[2] = (fProxy)0;
 
             var info = Optimize.nlsSolve(ref f, ref p, 9);
@@ -159,17 +158,14 @@ public class fProxyNLSTests
             AssertClose(p[0], (fProxy)2.5, (fProxy)0.02);
             AssertClose(p[1], (fProxy)1.3, (fProxy)0.02);
             AssertClose(p[2], (fProxy)0.5, (fProxy)0.02);
-
-            arena.Dispose();
         }
 
         // 14-point sine: A=3, w=2, phi=0.4, off=1, small fixed wobble.
         void SineFit()
         {
-            var arena = new Arena(Allocator.Persistent);
 
-            var T = arena.fProxyVec(14);
-            var Y = arena.fProxyVec(14);
+            var T = new fProxyN(14, Allocator.Temp);
+            var Y = new fProxyN(14, Allocator.Temp);
             SetXY(T, Y, 0, (fProxy)0.0, (fProxy)2.1883); SetXY(T, Y, 1, (fProxy)0.5, (fProxy)3.9413);
             SetXY(T, Y, 2, (fProxy)1.0, (fProxy)3.0364); SetXY(T, Y, 3, (fProxy)1.5, (fProxy)0.2134);
             SetXY(T, Y, 4, (fProxy)2.0, (fProxy)(-1.8398)); SetXY(T, Y, 5, (fProxy)2.5, (fProxy)(-1.3283));
@@ -179,7 +175,7 @@ public class fProxyNLSTests
             SetXY(T, Y, 12, (fProxy)6.0, (fProxy)0.5232); SetXY(T, Y, 13, (fProxy)6.5, (fProxy)3.2061);
 
             var f = new SineResidual { T = T, Y = Y };
-            var p = arena.fProxyVec(4);
+            var p = new fProxyN(4, Allocator.Temp);
             p[0] = (fProxy)1; p[1] = (fProxy)1.8; p[2] = (fProxy)0; p[3] = (fProxy)0;
 
             var info = Optimize.nlsSolve(ref f, ref p, 14, Consts.fProxySqrtEps, Consts.fProxyEpsilon, 500, NLSJacobianMode.Forward, (fProxy)0);
@@ -190,8 +186,6 @@ public class fProxyNLSTests
             AssertClose(p[1], (fProxy)2.0, (fProxy)0.02);
             AssertClose(p[2], (fProxy)0.4, (fProxy)0.02);
             AssertClose(p[3], (fProxy)1.0, (fProxy)0.02);
-
-            arena.Dispose();
         }
 
         // NIST StRD Chwirut2 (54 observations, https://www.itl.nist.gov/div898/strd/nls/data/chwirut2.shtml):
@@ -199,10 +193,9 @@ public class fProxyNLSTests
         // Start1 = (0.1, 0.01, 0.02) (NIST-prescribed).
         void Chwirut2NIST()
         {
-            var arena = new Arena(Allocator.Persistent);
 
-            var X = arena.fProxyVec(54);
-            var Y = arena.fProxyVec(54);
+            var X = new fProxyN(54, Allocator.Temp);
+            var Y = new fProxyN(54, Allocator.Temp);
             SetXY(X, Y, 0, (fProxy)0.5, (fProxy)92.9); SetXY(X, Y, 1, (fProxy)1.0, (fProxy)57.1); SetXY(X, Y, 2, (fProxy)1.75, (fProxy)31.05);
             SetXY(X, Y, 3, (fProxy)3.75, (fProxy)11.5875); SetXY(X, Y, 4, (fProxy)5.75, (fProxy)8.025); SetXY(X, Y, 5, (fProxy)0.875, (fProxy)63.6);
             SetXY(X, Y, 6, (fProxy)2.25, (fProxy)21.4); SetXY(X, Y, 7, (fProxy)3.25, (fProxy)14.25); SetXY(X, Y, 8, (fProxy)5.25, (fProxy)8.475);
@@ -223,7 +216,7 @@ public class fProxyNLSTests
             SetXY(X, Y, 51, (fProxy)2.75, (fProxy)17.17); SetXY(X, Y, 52, (fProxy)0.5, (fProxy)81.3); SetXY(X, Y, 53, (fProxy)1.75, (fProxy)28.9);
 
             var f = new Chwirut2Residual { X = X, Y = Y };
-            var p = arena.fProxyVec(3);
+            var p = new fProxyN(3, Allocator.Temp);
             p[0] = (fProxy)0.1; p[1] = (fProxy)0.01; p[2] = (fProxy)0.02;
 
             var info = Optimize.nlsSolve(ref f, ref p, 54);
@@ -233,8 +226,6 @@ public class fProxyNLSTests
             AssertClose(p[0], (fProxy)1.6657666537e-1, (fProxy)5e-3);
             AssertClose(p[1], (fProxy)5.1653291286e-3, (fProxy)5e-3);
             AssertClose(p[2], (fProxy)1.2150007096e-2, (fProxy)5e-3);
-
-            arena.Dispose();
         }
 
         // Reuses the ExpDecayFit dataset with an extra unused 4th parameter: its Jacobian column is
@@ -242,10 +233,9 @@ public class fProxyNLSTests
         // blow up) regardless of that value's magnitude, while a/b/c converge as in ExpDecayFit.
         void FlatParameterNoBlowup()
         {
-            var arena = new Arena(Allocator.Persistent);
 
-            var X = arena.fProxyVec(9);
-            var Y = arena.fProxyVec(9);
+            var X = new fProxyN(9, Allocator.Temp);
+            var Y = new fProxyN(9, Allocator.Temp);
             SetXY(X, Y, 0, (fProxy)0.0, (fProxy)3.01); SetXY(X, Y, 1, (fProxy)0.5, (fProxy)1.7971);
             SetXY(X, Y, 2, (fProxy)1.0, (fProxy)1.1963); SetXY(X, Y, 3, (fProxy)1.5, (fProxy)0.8507);
             SetXY(X, Y, 4, (fProxy)2.0, (fProxy)0.7057); SetXY(X, Y, 5, (fProxy)2.5, (fProxy)0.5849);
@@ -254,7 +244,7 @@ public class fProxyNLSTests
 
             var f = new FlatParamResidual { X = X, Y = Y };
 
-            var p1 = arena.fProxyVec(4);
+            var p1 = new fProxyN(4, Allocator.Temp);
             p1[0] = (fProxy)1; p1[1] = (fProxy)1; p1[2] = (fProxy)0; p1[3] = (fProxy)0;
             var info1 = Optimize.nlsSolve(ref f, ref p1, 9);
             AssertSolved(info1);
@@ -264,25 +254,22 @@ public class fProxyNLSTests
             AssertClose(p1[2], (fProxy)0.5, (fProxy)0.02);
             AssertClose(p1[3], (fProxy)0, (fProxy)0); // untouched: exactly its starting value
 
-            var p2 = arena.fProxyVec(4);
+            var p2 = new fProxyN(4, Allocator.Temp);
             p2[0] = (fProxy)1; p2[1] = (fProxy)1; p2[2] = (fProxy)0; p2[3] = (fProxy)(-1000000);
             var info2 = Optimize.nlsSolve(ref f, ref p2, 9);
             AssertSolved(info2);
             AssertFinite(p2[0]); AssertFinite(p2[1]); AssertFinite(p2[2]); AssertFinite(p2[3]);
             AssertClose(p2[0], (fProxy)2.5, (fProxy)0.02);
             AssertClose(p2[3], (fProxy)(-1000000), (fProxy)0); // untouched, even from a wild start
-
-            arena.Dispose();
         }
 
         // 12-point line (m=2, b=-1) with 2 gross outliers (magnitude ~20-30 on a 0-22 range): plain
         // L2 is visibly pulled off the true line, Huber/Tukey both recover it.
         void RobustLossBeatsL2()
         {
-            var arena = new Arena(Allocator.Persistent);
 
-            var X = arena.fProxyVec(12);
-            var Y = arena.fProxyVec(12);
+            var X = new fProxyN(12, Allocator.Temp);
+            var Y = new fProxyN(12, Allocator.Temp);
             SetXY(X, Y, 0, (fProxy)0, (fProxy)(-0.95)); SetXY(X, Y, 1, (fProxy)1, (fProxy)0.97);
             SetXY(X, Y, 2, (fProxy)2, (fProxy)3.02); SetXY(X, Y, 3, (fProxy)3, (fProxy)29.96); // outlier
             SetXY(X, Y, 4, (fProxy)4, (fProxy)7.03); SetXY(X, Y, 5, (fProxy)5, (fProxy)8.98);
@@ -293,14 +280,14 @@ public class fProxyNLSTests
             fProxy mTrue = (fProxy)2, bTrue = (fProxy)(-1);
 
             var fL2 = new LinearResidual { X = X, Y = Y };
-            var pL2 = arena.fProxyVec(2);
+            var pL2 = new fProxyN(2, Allocator.Temp);
             pL2[0] = (fProxy)1.5; pL2[1] = (fProxy)(-0.5);
             var infoL2 = Optimize.nlsSolve(ref fL2, ref pL2, 12);
             AssertSolved(infoL2);
             fProxy relL2 = RelErr2(pL2[0], pL2[1], mTrue, bTrue);
 
             var fHuber = new LinearResidual { X = X, Y = Y };
-            var pHuber = arena.fProxyVec(2);
+            var pHuber = new fProxyN(2, Allocator.Temp);
             pHuber[0] = (fProxy)1.5; pHuber[1] = (fProxy)(-0.5);
             var huberLoss = new fProxyHuberLoss((fProxy)0.3);
             var infoHuber = Optimize.nlsSolve(ref fHuber, ref pHuber, 12, in huberLoss);
@@ -308,7 +295,7 @@ public class fProxyNLSTests
             fProxy relHuber = RelErr2(pHuber[0], pHuber[1], mTrue, bTrue);
 
             var fTukey = new LinearResidual { X = X, Y = Y };
-            var pTukey = arena.fProxyVec(2);
+            var pTukey = new fProxyN(2, Allocator.Temp);
             pTukey[0] = (fProxy)1.5; pTukey[1] = (fProxy)(-0.5);
             var tukeyLoss = new fProxyTukeyLoss((fProxy)4.685);
             var infoTukey = Optimize.nlsSolve(ref fTukey, ref pTukey, 12, in tukeyLoss);
@@ -323,18 +310,15 @@ public class fProxyNLSTests
             AssertLess(relTukey, (fProxy)0.05);
             AssertLess(relHuber, relL2);
             AssertLess(relTukey, relL2);
-
-            arena.Dispose();
         }
 
         // Numeric (forward AND central) vs analytic Jacobian on the ExpDecayFit dataset: all three
         // must reach essentially the same optimum.
         void NumericVsAnalyticJacobian()
         {
-            var arena = new Arena(Allocator.Persistent);
 
-            var X = arena.fProxyVec(9);
-            var Y = arena.fProxyVec(9);
+            var X = new fProxyN(9, Allocator.Temp);
+            var Y = new fProxyN(9, Allocator.Temp);
             SetXY(X, Y, 0, (fProxy)0.0, (fProxy)3.01); SetXY(X, Y, 1, (fProxy)0.5, (fProxy)1.7971);
             SetXY(X, Y, 2, (fProxy)1.0, (fProxy)1.1963); SetXY(X, Y, 3, (fProxy)1.5, (fProxy)0.8507);
             SetXY(X, Y, 4, (fProxy)2.0, (fProxy)0.7057); SetXY(X, Y, 5, (fProxy)2.5, (fProxy)0.5849);
@@ -342,19 +326,19 @@ public class fProxyNLSTests
             SetXY(X, Y, 8, (fProxy)4.0, (fProxy)0.5238);
 
             var fNum = new ExpDecayResidual { X = X, Y = Y };
-            var pNum = arena.fProxyVec(3);
+            var pNum = new fProxyN(3, Allocator.Temp);
             pNum[0] = (fProxy)1; pNum[1] = (fProxy)1; pNum[2] = (fProxy)0;
             var infoNum = Optimize.nlsSolve(ref fNum, ref pNum, 9, Consts.fProxySqrtEps, Consts.fProxyEpsilon, 200, NLSJacobianMode.Forward, (fProxy)0);
             AssertSolved(infoNum);
 
             var fCentral = new ExpDecayResidual { X = X, Y = Y };
-            var pCentral = arena.fProxyVec(3);
+            var pCentral = new fProxyN(3, Allocator.Temp);
             pCentral[0] = (fProxy)1; pCentral[1] = (fProxy)1; pCentral[2] = (fProxy)0;
             var infoCentral = Optimize.nlsSolve(ref fCentral, ref pCentral, 9, Consts.fProxySqrtEps, Consts.fProxyEpsilon, 200, NLSJacobianMode.Central, (fProxy)0);
             AssertSolved(infoCentral);
 
             var fAna = new ExpDecayJacobian { X = X, Y = Y };
-            var pAna = arena.fProxyVec(3);
+            var pAna = new fProxyN(3, Allocator.Temp);
             pAna[0] = (fProxy)1; pAna[1] = (fProxy)1; pAna[2] = (fProxy)0;
             var infoAna = Optimize.nlsSolve(ref fAna, ref pAna, 9, Consts.fProxySqrtEps, Consts.fProxyEpsilon, 200);
             AssertSolved(infoAna);
@@ -365,23 +349,20 @@ public class fProxyNLSTests
             AssertClose(pCentral[0], pAna[0], (fProxy)1e-4);
             AssertClose(pCentral[1], pAna[1], (fProxy)1e-4);
             AssertClose(pCentral[2], pAna[2], (fProxy)1e-4);
-
-            arena.Dispose();
         }
 
         // curveFit facade happy path: y = 2x + 1, tiny fixed wobble.
         void CurveFitHappyPath()
         {
-            var arena = new Arena(Allocator.Persistent);
 
-            var xdata = arena.fProxyVec(5);
-            var ydata = arena.fProxyVec(5);
+            var xdata = new fProxyN(5, Allocator.Temp);
+            var ydata = new fProxyN(5, Allocator.Temp);
             SetXY(xdata, ydata, 0, (fProxy)0, (fProxy)1.01); SetXY(xdata, ydata, 1, (fProxy)1, (fProxy)2.98);
             SetXY(xdata, ydata, 2, (fProxy)2, (fProxy)5.015); SetXY(xdata, ydata, 3, (fProxy)3, (fProxy)6.99);
             SetXY(xdata, ydata, 4, (fProxy)4, (fProxy)9.005);
 
             var model = new LinModel();
-            var p = arena.fProxyVec(2);
+            var p = new fProxyN(2, Allocator.Temp);
             p[0] = (fProxy)0; p[1] = (fProxy)0;
 
             var info = Optimize.curveFit(in xdata, in ydata, ref model, ref p);
@@ -390,26 +371,23 @@ public class fProxyNLSTests
             AssertFinite(p[0]); AssertFinite(p[1]);
             AssertClose(p[0], (fProxy)2, (fProxy)0.01);
             AssertClose(p[1], (fProxy)1, (fProxy)0.01);
-
-            arena.Dispose();
         }
 
         // Weighted curveFit (uniform sigma == unweighted) reproduces CurveFitHappyPath's result.
         void CurveFitWeightedHappyPath()
         {
-            var arena = new Arena(Allocator.Persistent);
 
-            var xdata = arena.fProxyVec(5);
-            var ydata = arena.fProxyVec(5);
+            var xdata = new fProxyN(5, Allocator.Temp);
+            var ydata = new fProxyN(5, Allocator.Temp);
             SetXY(xdata, ydata, 0, (fProxy)0, (fProxy)1.01); SetXY(xdata, ydata, 1, (fProxy)1, (fProxy)2.98);
             SetXY(xdata, ydata, 2, (fProxy)2, (fProxy)5.015); SetXY(xdata, ydata, 3, (fProxy)3, (fProxy)6.99);
             SetXY(xdata, ydata, 4, (fProxy)4, (fProxy)9.005);
 
-            var sigma = arena.fProxyVec(5);
+            var sigma = new fProxyN(5, Allocator.Temp);
             for (int i = 0; i < 5; i++) sigma[i] = (fProxy)1;
 
             var model = new LinModel();
-            var p = arena.fProxyVec(2);
+            var p = new fProxyN(2, Allocator.Temp);
             p[0] = (fProxy)0; p[1] = (fProxy)0;
 
             var info = Optimize.curveFit(in xdata, in ydata, in sigma, ref model, ref p);
@@ -417,8 +395,6 @@ public class fProxyNLSTests
             AssertSolved(info);
             AssertClose(p[0], (fProxy)2, (fProxy)0.01);
             AssertClose(p[1], (fProxy)1, (fProxy)0.01);
-
-            arena.Dispose();
         }
 
         // Calls curveFit 30 times in a row on the same small dataset: repeated-call state
@@ -426,16 +402,15 @@ public class fProxyNLSTests
         // reliably caught by Unity's collections checks inside a Burst job).
         void RepeatedCallsNoLeak()
         {
-            var arena = new Arena(Allocator.Persistent);
 
-            var xdata = arena.fProxyVec(5);
-            var ydata = arena.fProxyVec(5);
+            var xdata = new fProxyN(5, Allocator.Temp);
+            var ydata = new fProxyN(5, Allocator.Temp);
             SetXY(xdata, ydata, 0, (fProxy)0, (fProxy)1.01); SetXY(xdata, ydata, 1, (fProxy)1, (fProxy)2.98);
             SetXY(xdata, ydata, 2, (fProxy)2, (fProxy)5.015); SetXY(xdata, ydata, 3, (fProxy)3, (fProxy)6.99);
             SetXY(xdata, ydata, 4, (fProxy)4, (fProxy)9.005);
 
             var model = new LinModel();
-            var p = arena.fProxyVec(2);
+            var p = new fProxyN(2, Allocator.Temp);
 
             for (int rep = 0; rep < 30; rep++)
             {
@@ -445,8 +420,6 @@ public class fProxyNLSTests
                 AssertClose(p[0], (fProxy)2, (fProxy)0.01);
                 AssertClose(p[1], (fProxy)1, (fProxy)0.01);
             }
-
-            arena.Dispose();
         }
 
         static void SetXY(fProxyN X, fProxyN Y, int i, fProxy x, fProxy y)
@@ -558,65 +531,53 @@ public class fProxyNLSTests
     [Test]
     public void CurveFitThrowsOnDimMismatch()
     {
-        var arena = new Arena(Allocator.Persistent);
 
-        var xdata = arena.fProxyVec(3);
-        var ydata = arena.fProxyVec(4);
+        var xdata = new fProxyN(3, Allocator.Temp);
+        var ydata = new fProxyN(4, Allocator.Temp);
         var model = new LinModel();
-        var p = arena.fProxyVec(2);
+        var p = new fProxyN(2, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() =>
             Optimize.curveFit(in xdata, in ydata, ref model, ref p));
-
-        arena.Dispose();
     }
 
     [Test]
     public void CurveFitWeightedThrowsOnSigmaMismatch()
     {
-        var arena = new Arena(Allocator.Persistent);
 
-        var xdata = arena.fProxyVec(3);
-        var ydata = arena.fProxyVec(3);
-        var sigma = arena.fProxyVec(4);
+        var xdata = new fProxyN(3, Allocator.Temp);
+        var ydata = new fProxyN(3, Allocator.Temp);
+        var sigma = new fProxyN(4, Allocator.Temp);
         var model = new LinModel();
-        var p = arena.fProxyVec(2);
+        var p = new fProxyN(2, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() =>
             Optimize.curveFit(in xdata, in ydata, in sigma, ref model, ref p));
-
-        arena.Dispose();
     }
 
     [Test]
     public void NlsSolveThrowsOnMaxIterZero()
     {
-        var arena = new Arena(Allocator.Persistent);
 
-        var X = arena.fProxyVec(3);
-        var Y = arena.fProxyVec(3);
+        var X = new fProxyN(3, Allocator.Temp);
+        var Y = new fProxyN(3, Allocator.Temp);
         var f = new ExpDecayResidual { X = X, Y = Y };
-        var p = arena.fProxyVec(3);
+        var p = new fProxyN(3, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() =>
             Optimize.nlsSolve(ref f, ref p, 3, Consts.fProxySqrtEps, Consts.fProxyEpsilon, 0, NLSJacobianMode.Forward, (fProxy)0));
-
-        arena.Dispose();
     }
 
     [Test]
     public void NlsSolveThrowsOnNonPositiveM()
     {
-        var arena = new Arena(Allocator.Persistent);
 
-        var X = arena.fProxyVec(3);
-        var Y = arena.fProxyVec(3);
+        var X = new fProxyN(3, Allocator.Temp);
+        var Y = new fProxyN(3, Allocator.Temp);
         var f = new ExpDecayResidual { X = X, Y = Y };
-        var p = arena.fProxyVec(3);
+        var p = new fProxyN(3, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() => Optimize.nlsSolve(ref f, ref p, 0));
-
-        arena.Dispose();
     }
 
     [Test]

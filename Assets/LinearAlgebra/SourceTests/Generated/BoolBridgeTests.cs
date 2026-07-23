@@ -18,21 +18,16 @@ public class BoolBridgeTests
         boolN defVec = default;
         Assert.IsFalse(defVec.IsCreated);
 
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var v = arena.boolVec(3);
-            Assert.IsTrue(v.IsCreated);
-            v.Dispose();
+        var v = new boolN(3, Allocator.Temp);
+        Assert.IsTrue(v.IsCreated);
+        v.Dispose();
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
-            Assert.IsFalse(v.IsCreated);
+        Assert.IsFalse(v.IsCreated);
 #endif
-            boolMxN defMat = default;
-            Assert.IsFalse(defMat.IsCreated);
-            var m = arena.boolMat(2, 2);
-            Assert.IsTrue(m.IsCreated);
-        }
-        finally { arena.Dispose(); }
+        boolMxN defMat = default;
+        Assert.IsFalse(defMat.IsCreated);
+        var m = new boolMxN(2, 2, Allocator.Temp);
+        Assert.IsTrue(m.IsCreated);
     }
 
     [Test]

@@ -124,25 +124,27 @@ namespace LinearAlgebra.Benchmarks
 
             foreach (int N in Ns)
             {
-                var arena = new Arena(Allocator.Persistent);
                 int nb = N / BR;
-                var A = arena.fProxyRandomSparseSPD(nb, BR, density, 0x5A17u);
-                var M = arena.fProxyBlockJacobi(in A);
-                var ssor = arena.fProxySSOR(in A);
-                var xKnown = arena.fProxyRandomVec(N, 0.5f, 1.5f, 0xB0Bu);
-                var b = arena.fProxyVec(N); BSR.spMV(in A, in xKnown, ref b);
+                var A = fProxyGallery.fProxyRandomSparseSPD(nb, BR, density, 0x5A17u, Allocator.Persistent);
+                var M = new fProxyBlockJacobi(in A, Allocator.Persistent);
+                var ssor = new fProxySSOR(in A, Allocator.Persistent);
+                var xKnown = GenerateOP.fProxyRandomVec(N, 0.5f, 1.5f, 0xB0Bu, Allocator.Persistent);
+                var b = new fProxyN(N, Allocator.Persistent); BSR.spMV(in A, in xKnown, ref b);
                 string sz = N.ToString();
 
-                var x = arena.fProxyVec(N);
-                var cgJob = new SpCgJobFProxy { A = A, b = b, x = x, r = arena.fProxyVec(N), p = arena.fProxyVec(N), Ap = arena.fProxyVec(N), K = K, outInfo = oi };
+                var x = new fProxyN(N, Allocator.Persistent);
+                var cgR = new fProxyN(N, Allocator.Persistent); var cgP = new fProxyN(N, Allocator.Persistent); var cgAp = new fProxyN(N, Allocator.Persistent);
+                var cgJob = new SpCgJobFProxy { A = A, b = b, x = x, r = cgR, p = cgP, Ap = cgAp, K = K, outInfo = oi };
                 var cgStat = Bench.Time(() => cgJob.Run());
                 sb.AppendLine(LargeSparseFmt.Row("fProxy", sz, "CG", cgStat, Res(in A, in x, in b), (int)oi[1], (int)oi[0]));
-                var xp = arena.fProxyVec(N);
-                var pcgJob = new SpPcgJobFProxy { A = A, M = M, b = b, x = xp, r = arena.fProxyVec(N), p = arena.fProxyVec(N), Ap = arena.fProxyVec(N), z = arena.fProxyVec(N), K = K, outInfo = oi };
+                var xp = new fProxyN(N, Allocator.Persistent);
+                var pcgR = new fProxyN(N, Allocator.Persistent); var pcgP = new fProxyN(N, Allocator.Persistent); var pcgAp = new fProxyN(N, Allocator.Persistent); var pcgZ = new fProxyN(N, Allocator.Persistent);
+                var pcgJob = new SpPcgJobFProxy { A = A, M = M, b = b, x = xp, r = pcgR, p = pcgP, Ap = pcgAp, z = pcgZ, K = K, outInfo = oi };
                 var pcgStat = Bench.Time(() => pcgJob.Run());
                 sb.AppendLine(LargeSparseFmt.Row("fProxy", sz, "PCG-Jacobi", pcgStat, Res(in A, in xp, in b), (int)oi[1], (int)oi[0]));
-                var xs = arena.fProxyVec(N);
-                var ssorJob = new SpPcgSSORJobFProxy { A = A, M = ssor, b = b, x = xs, r = arena.fProxyVec(N), p = arena.fProxyVec(N), Ap = arena.fProxyVec(N), z = arena.fProxyVec(N), K = K, outInfo = oi };
+                var xs = new fProxyN(N, Allocator.Persistent);
+                var ssorR = new fProxyN(N, Allocator.Persistent); var ssorP = new fProxyN(N, Allocator.Persistent); var ssorAp = new fProxyN(N, Allocator.Persistent); var ssorZ = new fProxyN(N, Allocator.Persistent);
+                var ssorJob = new SpPcgSSORJobFProxy { A = A, M = ssor, b = b, x = xs, r = ssorR, p = ssorP, Ap = ssorAp, z = ssorZ, K = K, outInfo = oi };
                 var ssorStat = Bench.Time(() => ssorJob.Run());
                 sb.AppendLine(LargeSparseFmt.Row("fProxy", sz, "PCG-SSOR", ssorStat, Res(in A, in xs, in b), (int)oi[1], (int)oi[0]));
 
@@ -150,53 +152,82 @@ namespace LinearAlgebra.Benchmarks
                 // (largest N: the trend is visible at one size; budget discipline). This is the
                 // row set where SSOR's iteration-count win is visible; the fixed-K/tol=0 rows
                 // above cannot show it (every solver there runs the full K by construction).
-                if (N == Ns[Ns.Length - 1])
+                fProxyN xc1 = default, cgConvR = default, cgConvP = default, cgConvAp = default;
+                fProxyN xc2 = default, pcgConvR = default, pcgConvP = default, pcgConvAp = default, pcgConvZ = default;
+                fProxyN xc3 = default, ssorConvR = default, ssorConvP = default, ssorConvAp = default, ssorConvZ = default;
+                bool ranConv = N == Ns[Ns.Length - 1];
+                if (ranConv)
                 {
                     fProxy convTol = Consts.fProxySqrtEps;
                     int convMaxIter = 8 * N;
 
-                    var xc1 = arena.fProxyVec(N);
-                    var cgConvJob = new SpCgJobFProxy { A = A, b = b, x = xc1, r = arena.fProxyVec(N), p = arena.fProxyVec(N), Ap = arena.fProxyVec(N), K = convMaxIter, tol = convTol, outInfo = oi };
+                    xc1 = new fProxyN(N, Allocator.Persistent);
+                    cgConvR = new fProxyN(N, Allocator.Persistent); cgConvP = new fProxyN(N, Allocator.Persistent); cgConvAp = new fProxyN(N, Allocator.Persistent);
+                    var cgConvJob = new SpCgJobFProxy { A = A, b = b, x = xc1, r = cgConvR, p = cgConvP, Ap = cgConvAp, K = convMaxIter, tol = convTol, outInfo = oi };
                     var cgConvStat = Bench.Time(() => cgConvJob.Run());
                     sb.AppendLine(LargeSparseFmt.Row("fProxy", sz, "CG@tol", cgConvStat, Res(in A, in xc1, in b), (int)oi[1], (int)oi[0]));
 
-                    var xc2 = arena.fProxyVec(N);
-                    var pcgConvJob = new SpPcgJobFProxy { A = A, M = M, b = b, x = xc2, r = arena.fProxyVec(N), p = arena.fProxyVec(N), Ap = arena.fProxyVec(N), z = arena.fProxyVec(N), K = convMaxIter, tol = convTol, outInfo = oi };
+                    xc2 = new fProxyN(N, Allocator.Persistent);
+                    pcgConvR = new fProxyN(N, Allocator.Persistent); pcgConvP = new fProxyN(N, Allocator.Persistent); pcgConvAp = new fProxyN(N, Allocator.Persistent); pcgConvZ = new fProxyN(N, Allocator.Persistent);
+                    var pcgConvJob = new SpPcgJobFProxy { A = A, M = M, b = b, x = xc2, r = pcgConvR, p = pcgConvP, Ap = pcgConvAp, z = pcgConvZ, K = convMaxIter, tol = convTol, outInfo = oi };
                     var pcgConvStat = Bench.Time(() => pcgConvJob.Run());
                     sb.AppendLine(LargeSparseFmt.Row("fProxy", sz, "PCG-Jacobi@tol", pcgConvStat, Res(in A, in xc2, in b), (int)oi[1], (int)oi[0]));
 
-                    var xc3 = arena.fProxyVec(N);
-                    var ssorConvJob = new SpPcgSSORJobFProxy { A = A, M = ssor, b = b, x = xc3, r = arena.fProxyVec(N), p = arena.fProxyVec(N), Ap = arena.fProxyVec(N), z = arena.fProxyVec(N), K = convMaxIter, tol = convTol, outInfo = oi };
+                    xc3 = new fProxyN(N, Allocator.Persistent);
+                    ssorConvR = new fProxyN(N, Allocator.Persistent); ssorConvP = new fProxyN(N, Allocator.Persistent); ssorConvAp = new fProxyN(N, Allocator.Persistent); ssorConvZ = new fProxyN(N, Allocator.Persistent);
+                    var ssorConvJob = new SpPcgSSORJobFProxy { A = A, M = ssor, b = b, x = xc3, r = ssorConvR, p = ssorConvP, Ap = ssorConvAp, z = ssorConvZ, K = convMaxIter, tol = convTol, outInfo = oi };
                     var ssorConvStat = Bench.Time(() => ssorConvJob.Run());
                     sb.AppendLine(LargeSparseFmt.Row("fProxy", sz, "PCG-SSOR@tol", ssorConvStat, Res(in A, in xc3, in b), (int)oi[1], (int)oi[0]));
                 }
 
-                var xm = arena.fProxyVec(N);
-                var mrJob = new SpMinresJobFProxy { A = A, b = b, x = xm, y = arena.fProxyVec(N), r1 = arena.fProxyVec(N), r2 = arena.fProxyVec(N), v = arena.fProxyVec(N), w = arena.fProxyVec(N), w1 = arena.fProxyVec(N), w2 = arena.fProxyVec(N), K = K, outInfo = oi };
+                var xm = new fProxyN(N, Allocator.Persistent);
+                var mrY = new fProxyN(N, Allocator.Persistent); var mrR1 = new fProxyN(N, Allocator.Persistent); var mrR2 = new fProxyN(N, Allocator.Persistent);
+                var mrV = new fProxyN(N, Allocator.Persistent); var mrW = new fProxyN(N, Allocator.Persistent); var mrW1 = new fProxyN(N, Allocator.Persistent); var mrW2 = new fProxyN(N, Allocator.Persistent);
+                var mrJob = new SpMinresJobFProxy { A = A, b = b, x = xm, y = mrY, r1 = mrR1, r2 = mrR2, v = mrV, w = mrW, w1 = mrW1, w2 = mrW2, K = K, outInfo = oi };
                 var mrStat = Bench.Time(() => mrJob.Run());
                 sb.AppendLine(LargeSparseFmt.Row("fProxy", sz, "MINRES", mrStat, Res(in A, in xm, in b), (int)oi[1], (int)oi[0]));
 
-                var An = arena.fProxyRandomSparse(nb, nb, BR, density, 0x1234u);
-                var bn = arena.fProxyVec(N); BSR.spMV(in An, in xKnown, ref bn);
-                var xn = arena.fProxyVec(N);
-                var bicgJob = new SpBicgJobFProxy { A = An, b = bn, x = xn, r = arena.fProxyVec(N), rHat0 = arena.fProxyVec(N), p = arena.fProxyVec(N), v = arena.fProxyVec(N), t = arena.fProxyVec(N), K = K, outInfo = oi };
+                var An = fProxyGallery.fProxyRandomSparse(nb, nb, BR, density, 0x1234u, Allocator.Persistent);
+                var bn = new fProxyN(N, Allocator.Persistent); BSR.spMV(in An, in xKnown, ref bn);
+                var xn = new fProxyN(N, Allocator.Persistent);
+                var bicgR = new fProxyN(N, Allocator.Persistent); var bicgRHat0 = new fProxyN(N, Allocator.Persistent); var bicgP = new fProxyN(N, Allocator.Persistent);
+                var bicgV = new fProxyN(N, Allocator.Persistent); var bicgT = new fProxyN(N, Allocator.Persistent);
+                var bicgJob = new SpBicgJobFProxy { A = An, b = bn, x = xn, r = bicgR, rHat0 = bicgRHat0, p = bicgP, v = bicgV, t = bicgT, K = K, outInfo = oi };
                 var bicgStat = Bench.Time(() => bicgJob.Run());
                 sb.AppendLine(LargeSparseFmt.Row("fProxy", sz, "BiCGStab", bicgStat, Res(in An, in xn, in bn), (int)oi[1], (int)oi[0]));
 
                 int mb = 2 * nb, m = mb * BR;
-                var At = arena.fProxyRandomSparse(mb, nb, BR, density, 0xC0DEu);
-                var bt = arena.fProxyVec(m); BSR.spMV(in At, in xKnown, ref bt);
+                var At = fProxyGallery.fProxyRandomSparse(mb, nb, BR, density, 0xC0DEu, Allocator.Persistent);
+                var bt = new fProxyN(m, Allocator.Persistent); BSR.spMV(in At, in xKnown, ref bt);
                 string rsz = m + "x" + N;
-                var xl = arena.fProxyVec(N);
-                var lsqrJob = new SpLsqrJobFProxy { A = At, b = bt, x = xl, u = arena.fProxyVec(m), v = arena.fProxyVec(N), w = arena.fProxyVec(N), tmpM = arena.fProxyVec(m), tmpN = arena.fProxyVec(N), K = K, outInfo = oi };
+                var xl = new fProxyN(N, Allocator.Persistent);
+                var lsqrU = new fProxyN(m, Allocator.Persistent); var lsqrV = new fProxyN(N, Allocator.Persistent); var lsqrW = new fProxyN(N, Allocator.Persistent);
+                var lsqrTmpM = new fProxyN(m, Allocator.Persistent); var lsqrTmpN = new fProxyN(N, Allocator.Persistent);
+                var lsqrJob = new SpLsqrJobFProxy { A = At, b = bt, x = xl, u = lsqrU, v = lsqrV, w = lsqrW, tmpM = lsqrTmpM, tmpN = lsqrTmpN, K = K, outInfo = oi };
                 var lsqrStat = Bench.Time(() => lsqrJob.Run());
                 sb.AppendLine(LargeSparseFmt.Row("fProxy", rsz, "LSQR", lsqrStat, Res(in At, in xl, in bt), (int)oi[1], (int)oi[0]));
-                var xr = arena.fProxyVec(N);
-                var lsmrJob = new SpLsmrJobFProxy { A = At, b = bt, x = xr, u = arena.fProxyVec(m), v = arena.fProxyVec(N), h = arena.fProxyVec(N), hbar = arena.fProxyVec(N), tmpM = arena.fProxyVec(m), tmpN = arena.fProxyVec(N), K = K, outInfo = oi };
+                var xr = new fProxyN(N, Allocator.Persistent);
+                var lsmrU = new fProxyN(m, Allocator.Persistent); var lsmrV = new fProxyN(N, Allocator.Persistent); var lsmrH = new fProxyN(N, Allocator.Persistent); var lsmrHbar = new fProxyN(N, Allocator.Persistent);
+                var lsmrTmpM = new fProxyN(m, Allocator.Persistent); var lsmrTmpN = new fProxyN(N, Allocator.Persistent);
+                var lsmrJob = new SpLsmrJobFProxy { A = At, b = bt, x = xr, u = lsmrU, v = lsmrV, h = lsmrH, hbar = lsmrHbar, tmpM = lsmrTmpM, tmpN = lsmrTmpN, K = K, outInfo = oi };
                 var lsmrStat = Bench.Time(() => lsmrJob.Run());
                 sb.AppendLine(LargeSparseFmt.Row("fProxy", rsz, "LSMR", lsmrStat, Res(in At, in xr, in bt), (int)oi[1], (int)oi[0]));
 
-                arena.Dispose();
+                A.Dispose(); M.Dispose(); ssor.Dispose(); xKnown.Dispose(); b.Dispose();
+                x.Dispose(); cgR.Dispose(); cgP.Dispose(); cgAp.Dispose();
+                xp.Dispose(); pcgR.Dispose(); pcgP.Dispose(); pcgAp.Dispose(); pcgZ.Dispose();
+                xs.Dispose(); ssorR.Dispose(); ssorP.Dispose(); ssorAp.Dispose(); ssorZ.Dispose();
+                if (ranConv)
+                {
+                    xc1.Dispose(); cgConvR.Dispose(); cgConvP.Dispose(); cgConvAp.Dispose();
+                    xc2.Dispose(); pcgConvR.Dispose(); pcgConvP.Dispose(); pcgConvAp.Dispose(); pcgConvZ.Dispose();
+                    xc3.Dispose(); ssorConvR.Dispose(); ssorConvP.Dispose(); ssorConvAp.Dispose(); ssorConvZ.Dispose();
+                }
+                xm.Dispose(); mrY.Dispose(); mrR1.Dispose(); mrR2.Dispose(); mrV.Dispose(); mrW.Dispose(); mrW1.Dispose(); mrW2.Dispose();
+                An.Dispose(); bn.Dispose(); xn.Dispose(); bicgR.Dispose(); bicgRHat0.Dispose(); bicgP.Dispose(); bicgV.Dispose(); bicgT.Dispose();
+                At.Dispose(); bt.Dispose();
+                xl.Dispose(); lsqrU.Dispose(); lsqrV.Dispose(); lsqrW.Dispose(); lsqrTmpM.Dispose(); lsqrTmpN.Dispose();
+                xr.Dispose(); lsmrU.Dispose(); lsmrV.Dispose(); lsmrH.Dispose(); lsmrHbar.Dispose(); lsmrTmpM.Dispose(); lsmrTmpN.Dispose();
             }
 
             oi.Dispose();
@@ -216,53 +247,74 @@ namespace LinearAlgebra.Benchmarks
 
             foreach (int N in Ns)
             {
-                var arena = new Arena(Allocator.Persistent);
-                var A = arena.fProxyLaplacian2D(1, N);
-                var M = arena.fProxyBlockJacobi(in A);
-                var ssor = arena.fProxySSOR(in A);
-                var xKnown = arena.fProxyRandomVec(N, 0.5f, 1.5f, 0xB0Bu);
-                var b = arena.fProxyVec(N); BSR.spMV(in A, in xKnown, ref b);
+                var A = fProxyGallery.fProxyLaplacian2D(1, N, Allocator.Persistent);
+                var M = new fProxyBlockJacobi(in A, Allocator.Persistent);
+                var ssor = new fProxySSOR(in A, Allocator.Persistent);
+                var xKnown = GenerateOP.fProxyRandomVec(N, 0.5f, 1.5f, 0xB0Bu, Allocator.Persistent);
+                var b = new fProxyN(N, Allocator.Persistent); BSR.spMV(in A, in xKnown, ref b);
                 string sz = N.ToString();
 
-                var x = arena.fProxyVec(N);
-                var cgJob = new SpCgJobFProxy { A = A, b = b, x = x, r = arena.fProxyVec(N), p = arena.fProxyVec(N), Ap = arena.fProxyVec(N), K = K, outInfo = oi };
+                var x = new fProxyN(N, Allocator.Persistent);
+                var cgR = new fProxyN(N, Allocator.Persistent); var cgP = new fProxyN(N, Allocator.Persistent); var cgAp = new fProxyN(N, Allocator.Persistent);
+                var cgJob = new SpCgJobFProxy { A = A, b = b, x = x, r = cgR, p = cgP, Ap = cgAp, K = K, outInfo = oi };
                 var cgStat = Bench.Time(() => cgJob.Run());
                 sb.AppendLine(LargeSparseFmt.Row("fProxy", sz, "CG", cgStat, Res(in A, in x, in b), (int)oi[1], (int)oi[0]));
-                var xp = arena.fProxyVec(N);
-                var pcgJob = new SpPcgJobFProxy { A = A, M = M, b = b, x = xp, r = arena.fProxyVec(N), p = arena.fProxyVec(N), Ap = arena.fProxyVec(N), z = arena.fProxyVec(N), K = K, outInfo = oi };
+                var xp = new fProxyN(N, Allocator.Persistent);
+                var pcgR = new fProxyN(N, Allocator.Persistent); var pcgP = new fProxyN(N, Allocator.Persistent); var pcgAp = new fProxyN(N, Allocator.Persistent); var pcgZ = new fProxyN(N, Allocator.Persistent);
+                var pcgJob = new SpPcgJobFProxy { A = A, M = M, b = b, x = xp, r = pcgR, p = pcgP, Ap = pcgAp, z = pcgZ, K = K, outInfo = oi };
                 var pcgStat = Bench.Time(() => pcgJob.Run());
                 sb.AppendLine(LargeSparseFmt.Row("fProxy", sz, "PCG-Jacobi", pcgStat, Res(in A, in xp, in b), (int)oi[1], (int)oi[0]));
-                var xs = arena.fProxyVec(N);
-                var ssorJob = new SpPcgSSORJobFProxy { A = A, M = ssor, b = b, x = xs, r = arena.fProxyVec(N), p = arena.fProxyVec(N), Ap = arena.fProxyVec(N), z = arena.fProxyVec(N), K = K, outInfo = oi };
+                var xs = new fProxyN(N, Allocator.Persistent);
+                var ssorR = new fProxyN(N, Allocator.Persistent); var ssorP = new fProxyN(N, Allocator.Persistent); var ssorAp = new fProxyN(N, Allocator.Persistent); var ssorZ = new fProxyN(N, Allocator.Persistent);
+                var ssorJob = new SpPcgSSORJobFProxy { A = A, M = ssor, b = b, x = xs, r = ssorR, p = ssorP, Ap = ssorAp, z = ssorZ, K = K, outInfo = oi };
                 var ssorStat = Bench.Time(() => ssorJob.Run());
                 sb.AppendLine(LargeSparseFmt.Row("fProxy", sz, "PCG-SSOR", ssorStat, Res(in A, in xs, in b), (int)oi[1], (int)oi[0]));
-                var xm = arena.fProxyVec(N);
-                var mrJob = new SpMinresJobFProxy { A = A, b = b, x = xm, y = arena.fProxyVec(N), r1 = arena.fProxyVec(N), r2 = arena.fProxyVec(N), v = arena.fProxyVec(N), w = arena.fProxyVec(N), w1 = arena.fProxyVec(N), w2 = arena.fProxyVec(N), K = K, outInfo = oi };
+                var xm = new fProxyN(N, Allocator.Persistent);
+                var mrY = new fProxyN(N, Allocator.Persistent); var mrR1 = new fProxyN(N, Allocator.Persistent); var mrR2 = new fProxyN(N, Allocator.Persistent);
+                var mrV = new fProxyN(N, Allocator.Persistent); var mrW = new fProxyN(N, Allocator.Persistent); var mrW1 = new fProxyN(N, Allocator.Persistent); var mrW2 = new fProxyN(N, Allocator.Persistent);
+                var mrJob = new SpMinresJobFProxy { A = A, b = b, x = xm, y = mrY, r1 = mrR1, r2 = mrR2, v = mrV, w = mrW, w1 = mrW1, w2 = mrW2, K = K, outInfo = oi };
                 var mrStat = Bench.Time(() => mrJob.Run());
                 sb.AppendLine(LargeSparseFmt.Row("fProxy", sz, "MINRES", mrStat, Res(in A, in xm, in b), (int)oi[1], (int)oi[0]));
 
-                if (N == Ns[Ns.Length - 1])
+                fProxyN xc1 = default, cgConvR = default, cgConvP = default, cgConvAp = default;
+                fProxyN xc2 = default, pcgConvR = default, pcgConvP = default, pcgConvAp = default, pcgConvZ = default;
+                fProxyN xc3 = default, ssorConvR = default, ssorConvP = default, ssorConvAp = default, ssorConvZ = default;
+                bool ranConv = N == Ns[Ns.Length - 1];
+                if (ranConv)
                 {
                     fProxy convTol = Consts.fProxySqrtEps;
                     int convMaxIter = 8 * N;
 
-                    var xc1 = arena.fProxyVec(N);
-                    var cgConvJob = new SpCgJobFProxy { A = A, b = b, x = xc1, r = arena.fProxyVec(N), p = arena.fProxyVec(N), Ap = arena.fProxyVec(N), K = convMaxIter, tol = convTol, outInfo = oi };
+                    xc1 = new fProxyN(N, Allocator.Persistent);
+                    cgConvR = new fProxyN(N, Allocator.Persistent); cgConvP = new fProxyN(N, Allocator.Persistent); cgConvAp = new fProxyN(N, Allocator.Persistent);
+                    var cgConvJob = new SpCgJobFProxy { A = A, b = b, x = xc1, r = cgConvR, p = cgConvP, Ap = cgConvAp, K = convMaxIter, tol = convTol, outInfo = oi };
                     var cgConvStat = Bench.Time(() => cgConvJob.Run());
                     sb.AppendLine(LargeSparseFmt.Row("fProxy", sz, "CG@tol", cgConvStat, Res(in A, in xc1, in b), (int)oi[1], (int)oi[0]));
 
-                    var xc2 = arena.fProxyVec(N);
-                    var pcgConvJob = new SpPcgJobFProxy { A = A, M = M, b = b, x = xc2, r = arena.fProxyVec(N), p = arena.fProxyVec(N), Ap = arena.fProxyVec(N), z = arena.fProxyVec(N), K = convMaxIter, tol = convTol, outInfo = oi };
+                    xc2 = new fProxyN(N, Allocator.Persistent);
+                    pcgConvR = new fProxyN(N, Allocator.Persistent); pcgConvP = new fProxyN(N, Allocator.Persistent); pcgConvAp = new fProxyN(N, Allocator.Persistent); pcgConvZ = new fProxyN(N, Allocator.Persistent);
+                    var pcgConvJob = new SpPcgJobFProxy { A = A, M = M, b = b, x = xc2, r = pcgConvR, p = pcgConvP, Ap = pcgConvAp, z = pcgConvZ, K = convMaxIter, tol = convTol, outInfo = oi };
                     var pcgConvStat = Bench.Time(() => pcgConvJob.Run());
                     sb.AppendLine(LargeSparseFmt.Row("fProxy", sz, "PCG-Jacobi@tol", pcgConvStat, Res(in A, in xc2, in b), (int)oi[1], (int)oi[0]));
 
-                    var xc3 = arena.fProxyVec(N);
-                    var ssorConvJob = new SpPcgSSORJobFProxy { A = A, M = ssor, b = b, x = xc3, r = arena.fProxyVec(N), p = arena.fProxyVec(N), Ap = arena.fProxyVec(N), z = arena.fProxyVec(N), K = convMaxIter, tol = convTol, outInfo = oi };
+                    xc3 = new fProxyN(N, Allocator.Persistent);
+                    ssorConvR = new fProxyN(N, Allocator.Persistent); ssorConvP = new fProxyN(N, Allocator.Persistent); ssorConvAp = new fProxyN(N, Allocator.Persistent); ssorConvZ = new fProxyN(N, Allocator.Persistent);
+                    var ssorConvJob = new SpPcgSSORJobFProxy { A = A, M = ssor, b = b, x = xc3, r = ssorConvR, p = ssorConvP, Ap = ssorConvAp, z = ssorConvZ, K = convMaxIter, tol = convTol, outInfo = oi };
                     var ssorConvStat = Bench.Time(() => ssorConvJob.Run());
                     sb.AppendLine(LargeSparseFmt.Row("fProxy", sz, "PCG-SSOR@tol", ssorConvStat, Res(in A, in xc3, in b), (int)oi[1], (int)oi[0]));
                 }
 
-                arena.Dispose();
+                A.Dispose(); M.Dispose(); ssor.Dispose(); xKnown.Dispose(); b.Dispose();
+                x.Dispose(); cgR.Dispose(); cgP.Dispose(); cgAp.Dispose();
+                xp.Dispose(); pcgR.Dispose(); pcgP.Dispose(); pcgAp.Dispose(); pcgZ.Dispose();
+                xs.Dispose(); ssorR.Dispose(); ssorP.Dispose(); ssorAp.Dispose(); ssorZ.Dispose();
+                xm.Dispose(); mrY.Dispose(); mrR1.Dispose(); mrR2.Dispose(); mrV.Dispose(); mrW.Dispose(); mrW1.Dispose(); mrW2.Dispose();
+                if (ranConv)
+                {
+                    xc1.Dispose(); cgConvR.Dispose(); cgConvP.Dispose(); cgConvAp.Dispose();
+                    xc2.Dispose(); pcgConvR.Dispose(); pcgConvP.Dispose(); pcgConvAp.Dispose(); pcgConvZ.Dispose();
+                    xc3.Dispose(); ssorConvR.Dispose(); ssorConvP.Dispose(); ssorConvAp.Dispose(); ssorConvZ.Dispose();
+                }
             }
 
             oi.Dispose();
@@ -272,20 +324,19 @@ namespace LinearAlgebra.Benchmarks
         {
             foreach (int N in Ns)
             {
-                var arena = new Arena(Allocator.Persistent);
                 int nb = N / BR;
-                var A = arena.fProxyRandomSparseSPD(nb, BR, density, 0x5A17u);
+                var A = fProxyGallery.fProxyRandomSparseSPD(nb, BR, density, 0x5A17u, Allocator.Persistent);
                 string sz = N.ToString();
                 var outInfo = new NativeArray<double>(3, Allocator.Persistent);
 
-                var lws = arena.fProxyLanczosCache(N, lanczosSteps);
-                var lvals = arena.fProxyVec(lanczosSteps);
+                var lws = new fProxyLanczosCache(N, lanczosSteps, Allocator.Persistent);
+                var lvals = new fProxyN(lanczosSteps, Allocator.Persistent);
                 var lanJob = new SpLanczosJobFProxy { A = A, ws = lws, vals = lvals, steps = lanczosSteps, outInfo = outInfo };
                 var lanStat = Bench.Time(() => lanJob.Run());
                 sb.AppendLine(LargeSparseFmt.EigRow("fProxy", sz, "Lanczos s=" + lanczosSteps, lanStat, new[] { outInfo[0], outInfo[1], outInfo[2] }));
 
                 outInfo.Dispose();
-                arena.Dispose();
+                A.Dispose(); lws.Dispose(); lvals.Dispose();
             }
         }
 
@@ -297,33 +348,37 @@ namespace LinearAlgebra.Benchmarks
         {
             foreach (int g in eigGrids)
             {
-                var arena = new Arena(Allocator.Persistent);
                 int n = g * g;
-                var A = arena.fProxyLaplacian2D(g, g);
-                var M = arena.fProxyBlockJacobi(in A);
-                var ssor = arena.fProxySSOR(in A);
+                var A = fProxyGallery.fProxyLaplacian2D(g, g, Allocator.Persistent);
+                var M = new fProxyBlockJacobi(in A, Allocator.Persistent);
+                var ssor = new fProxySSOR(in A, Allocator.Persistent);
                 string grid = g + "x" + g + "(" + n + ")";
                 var oi = new NativeArray<double>(5, Allocator.Persistent);
                 fProxy tol = Consts.fProxySqrtEps;
 
-                var noneJob = new SpLobpcgJobFProxy { A = A, ws = arena.fProxyLOBPCGCache(n, lobpcgK), k = lobpcgK, tol = tol, maxIter = lobpcgMaxIter, outInfo = oi };
+                var noneWs = new fProxyLOBPCGCache(n, lobpcgK, Allocator.Persistent);
+                var noneJob = new SpLobpcgJobFProxy { A = A, ws = noneWs, k = lobpcgK, tol = tol, maxIter = lobpcgMaxIter, outInfo = oi };
                 var noneStat = Bench.Time(() => noneJob.Run());
                 LargeSparseFmt.LobRow(sb, "fProxy", grid, "none", 0, noneStat, LargeSparseFmt.Snap(oi));
 
-                var jacJob = new SpLobpcgPrecJobFProxy { A = A, M = M, ws = arena.fProxyLOBPCGCache(n, lobpcgK), k = lobpcgK, tol = tol, maxIter = lobpcgMaxIter, outInfo = oi };
+                var jacWs = new fProxyLOBPCGCache(n, lobpcgK, Allocator.Persistent);
+                var jacJob = new SpLobpcgPrecJobFProxy { A = A, M = M, ws = jacWs, k = lobpcgK, tol = tol, maxIter = lobpcgMaxIter, outInfo = oi };
                 var jacStat = Bench.Time(() => jacJob.Run());
                 LargeSparseFmt.LobRow(sb, "fProxy", grid, "blockJac", 0, jacStat, LargeSparseFmt.Snap(oi));
 
-                var ssorJob = new SpLobpcgSSORJobFProxy { A = A, M = ssor, ws = arena.fProxyLOBPCGCache(n, lobpcgK), k = lobpcgK, tol = tol, maxIter = lobpcgMaxIter, outInfo = oi };
+                var ssorWs = new fProxyLOBPCGCache(n, lobpcgK, Allocator.Persistent);
+                var ssorJob = new SpLobpcgSSORJobFProxy { A = A, M = ssor, ws = ssorWs, k = lobpcgK, tol = tol, maxIter = lobpcgMaxIter, outInfo = oi };
                 var ssorStat = Bench.Time(() => ssorJob.Run());
                 LargeSparseFmt.LobRow(sb, "fProxy", grid, "SSOR", 0, ssorStat, LargeSparseFmt.Snap(oi));
 
-                var jacGuardJob = new SpLobpcgPrecJobFProxy { A = A, M = M, ws = arena.fProxyLOBPCGCache(n, lobpcgK + lobpcgGuard), k = lobpcgK, tol = tol, maxIter = lobpcgMaxIter, outInfo = oi };
+                var jacGuardWs = new fProxyLOBPCGCache(n, lobpcgK + lobpcgGuard, Allocator.Persistent);
+                var jacGuardJob = new SpLobpcgPrecJobFProxy { A = A, M = M, ws = jacGuardWs, k = lobpcgK, tol = tol, maxIter = lobpcgMaxIter, outInfo = oi };
                 var jacGuardStat = Bench.Time(() => jacGuardJob.Run());
                 LargeSparseFmt.LobRow(sb, "fProxy", grid, "blockJac", lobpcgGuard, jacGuardStat, LargeSparseFmt.Snap(oi));
 
                 oi.Dispose();
-                arena.Dispose();
+                A.Dispose(); M.Dispose(); ssor.Dispose();
+                noneWs.Dispose(); jacWs.Dispose(); ssorWs.Dispose(); jacGuardWs.Dispose();
             }
         }
     }

@@ -28,11 +28,11 @@ public class fProxyAMGProlongatorTests
         static fProxy Tol() => /*+choose[1e-4f|1e-10]*/1e-4f/*-choose*/;
 
         // BR x BR-block chain: diagonal 2·I, symmetric off-diagonal -I to each neighbor (full).
-        static fProxyBSR BlockChain(ref Arena arena, int nb, int BR)
+        static fProxyBSR BlockChain(int nb, int BR)
         {
-            var b = arena.fProxyBSRBuilder(nb, nb, BR, BR, 3 * nb);
-            var diag = arena.fProxyMat(BR, BR);
-            var off = arena.fProxyMat(BR, BR);
+            var b = new fProxyBSRBuilder(nb, nb, BR, BR, Allocator.Temp, 3 * nb);
+            var diag = new fProxyMxN(BR, BR, Allocator.Temp);
+            var off = new fProxyMxN(BR, BR, Allocator.Temp);
             for (int r = 0; r < BR; r++)
                 for (int c = 0; c < BR; c++)
                 { diag[r, c] = r == c ? (fProxy)2 : (fProxy)0; off[r, c] = r == c ? (fProxy)(-1) : (fProxy)0; }
@@ -42,7 +42,7 @@ public class fProxyAMGProlongatorTests
                 if (i > 0) b.AddBlock(i, i - 1, in off);
                 if (i < nb - 1) b.AddBlock(i, i + 1, in off);
             }
-            return b.ToBSR(ref arena);
+            return b.ToBSR(Allocator.Temp);
         }
 
         // (T·Bcoarse)[i-block row r, col c]; T has exactly one A.BR x m block per block-row.
@@ -77,34 +77,30 @@ public class fProxyAMGProlongatorTests
         // m = 1 default (B = ones): T·Bcoarse must equal the all-ones vector exactly.
         void ReconstructsConstant()
         {
-            var arena = new Arena(Allocator.Persistent);
             int nb = 12;
-            var A = BlockChain(ref arena, nb, 1);
-            var aggId = arena.Indices(nb);
+            var A = BlockChain(nb, 1);
+            var aggId = new Indices(nb, Allocator.Temp);
             AMG.aggregate(in A, (fProxy)0, ref aggId, out int numAgg);
 
-            var T = AMG.tentativeProlongator(in A, in aggId, numAgg, ref arena, out var Bc);
+            var T = AMG.tentativeProlongator(in A, in aggId, numAgg, out var Bc);
             AssertOneBlockPerRow(in T, nb);
 
             for (int i = 0; i < nb; i++)
                 Assert.IsTrue(math.abs(TBcoarse(in T, in Bc, i, 1, 1, 0, 0) - (fProxy)1) <= Tol());
-
-            arena.Dispose();
         }
 
         // General near-nullspace (BR=2, m=2, random B): T·Bcoarse must reproduce B row-for-row.
         void ReconstructsGeneralB()
         {
-            var arena = new Arena(Allocator.Persistent);
             int nb = 10, BR = 2, m = 2;
-            var A = BlockChain(ref arena, nb, BR);
+            var A = BlockChain(nb, BR);
             int n = nb * BR;
-            var B = arena.fProxyRandomMat(n, m, -1f, 1f, 0xB0A7u);
+            var B = GenerateOP.fProxyRandomMat(n, m, -1f, 1f, 0xB0A7u);
 
-            var aggId = arena.Indices(nb);
+            var aggId = new Indices(nb, Allocator.Temp);
             AMG.aggregate(in A, (fProxy)0, ref aggId, out int numAgg);
 
-            var T = AMG.tentativeProlongator(in A, in aggId, numAgg, in B, ref arena, out var Bc);
+            var T = AMG.tentativeProlongator(in A, in aggId, numAgg, in B, out var Bc);
             AssertOneBlockPerRow(in T, nb);
 
             for (int i = 0; i < nb; i++)
@@ -114,22 +110,19 @@ public class fProxyAMGProlongatorTests
                         fProxy got = TBcoarse(in T, in Bc, i, BR, m, r, c);
                         Assert.IsTrue(math.abs(got - B[i * BR + r, c]) <= Tol() * ((fProxy)1 + math.abs(B[i * BR + r, c])));
                     }
-
-            arena.Dispose();
         }
 
         // Within each aggregate the stacked T blocks have orthonormal columns: sum_i QiᵀQi = I_m.
         void OrthonormalColumns()
         {
-            var arena = new Arena(Allocator.Persistent);
             int nb = 10, BR = 2, m = 2;
-            var A = BlockChain(ref arena, nb, BR);
+            var A = BlockChain(nb, BR);
             int n = nb * BR;
-            var B = arena.fProxyRandomMat(n, m, -1f, 1f, 0xC0C0u);
+            var B = GenerateOP.fProxyRandomMat(n, m, -1f, 1f, 0xC0C0u);
 
-            var aggId = arena.Indices(nb);
+            var aggId = new Indices(nb, Allocator.Temp);
             AMG.aggregate(in A, (fProxy)0, ref aggId, out int numAgg);
-            var T = AMG.tentativeProlongator(in A, in aggId, numAgg, in B, ref arena, out _);
+            var T = AMG.tentativeProlongator(in A, in aggId, numAgg, in B, out _);
 
             int blockLen = BR * m;
             for (int a = 0; a < numAgg; a++)
@@ -149,22 +142,19 @@ public class fProxyAMGProlongatorTests
                         Assert.IsTrue(math.abs(g - (p == q ? (fProxy)1 : (fProxy)0)) <= Tol());
                     }
             }
-
-            arena.Dispose();
         }
 
         void Deterministic()
         {
-            var arena = new Arena(Allocator.Persistent);
             int nb = 14, BR = 2, m = 2;
-            var A = BlockChain(ref arena, nb, BR);
+            var A = BlockChain(nb, BR);
             int n = nb * BR;
-            var B = arena.fProxyRandomMat(n, m, -1f, 1f, 0xD37Du);
-            var aggId = arena.Indices(nb);
+            var B = GenerateOP.fProxyRandomMat(n, m, -1f, 1f, 0xD37Du);
+            var aggId = new Indices(nb, Allocator.Temp);
             AMG.aggregate(in A, (fProxy)0, ref aggId, out int numAgg);
 
-            var T1 = AMG.tentativeProlongator(in A, in aggId, numAgg, in B, ref arena, out var Bc1);
-            var T2 = AMG.tentativeProlongator(in A, in aggId, numAgg, in B, ref arena, out var Bc2);
+            var T1 = AMG.tentativeProlongator(in A, in aggId, numAgg, in B, out var Bc1);
+            var T2 = AMG.tentativeProlongator(in A, in aggId, numAgg, in B, out var Bc2);
 
             Assert.IsTrue(T1.Nnzb == T2.Nnzb);
             int blockLen = BR * m;
@@ -173,8 +163,6 @@ public class fProxyAMGProlongatorTests
             for (int r = 0; r < numAgg * m; r++)
                 for (int c = 0; c < m; c++)
                     Assert.IsTrue(Bc1[r, c] == Bc2[r, c]);
-
-            arena.Dispose();
         }
     }
 

@@ -66,10 +66,9 @@ namespace LinearAlgebra.Benchmarks
     {
         static string BenchDouble(int n, int s, int restart, int maxIter, int recycle)
         {
-            var arena = new Arena(Allocator.Persistent);
             const string fmt = "{0,-7}{1,-6}{2,-4}{3,-10}{4,-9}{5,10:F4}{6,12:F4}{7,8}{8,8}{9,14}";
 
-            var A = arena.doubleRandomMat(n, n, (double)(-1), (double)1, 0x5EED1u ^ (uint)(n * 131 + s));
+            var A = GenerateOP.doubleRandomMat(n, n, (double)(-1), (double)1, 0x5EED1u ^ (uint)(n * 131 + s), Allocator.Persistent);
             for (int d = 0; d < n; d++) A[d, d] += (double)(2 * n);   // diagonally dominant, nonsymmetric
 
             double tol = Consts.doubleSqrtEps;
@@ -77,29 +76,31 @@ namespace LinearAlgebra.Benchmarks
 
             void RunPair(string tag, in doubleMxN B)
             {
-                var Xg = arena.doubleMat(s, n);
-                var outGm = arena.Indices(3);
+                var Xg = new doubleMxN(s, n, Allocator.Persistent);
+                var outGm = new Indices(3, Allocator.Persistent);
                 var jobGm = new BgmresBlockJobDouble { A = A, B = B, X = Xg, Restart = restart, MaxIter = maxIter, Tol = tol, Out = outGm };
                 var stGm = Bench.Time(() => jobGm.Run());
                 sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                     "double", n, s, tag, "bgmres", stGm.Median, stGm.Min, outGm[0], outGm[1], (IterativeSolveStatus)outGm[2]));
 
-                var Xc = arena.doubleMat(s, n);
-                var outGc = arena.Indices(3);
+                var Xc = new doubleMxN(s, n, Allocator.Persistent);
+                var outGc = new Indices(3, Allocator.Persistent);
                 var jobGc = new BgcrodrBlockJobDouble { A = A, B = B, X = Xc, Restart = restart, Recycle = recycle, MaxIter = maxIter, Tol = tol, Out = outGc };
                 var stGc = Bench.Time(() => jobGc.Run());
                 sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                     "double", n, s, tag, "bgcrodr", stGc.Median, stGc.Min, outGc[0], outGc[1], (IterativeSolveStatus)outGc[2]));
+
+                Xg.Dispose(); outGm.Dispose(); Xc.Dispose(); outGc.Dispose();
             }
 
-            var Bdistinct = arena.doubleRandomMat(s, n, (double)(-1), (double)1, 0xB10c1u ^ (uint)(n * 131 + s));
+            var Bdistinct = GenerateOP.doubleRandomMat(s, n, (double)(-1), (double)1, 0xB10c1u ^ (uint)(n * 131 + s), Allocator.Persistent);
             RunPair("distinct", in Bdistinct);
 
-            var Bdup = arena.doubleRandomMat(s, n, (double)(-1), (double)1, 0xB10c2u ^ (uint)(n * 131 + s));
+            var Bdup = GenerateOP.doubleRandomMat(s, n, (double)(-1), (double)1, 0xB10c2u ^ (uint)(n * 131 + s), Allocator.Persistent);
             for (int c = 0; c < n; c++) Bdup[s - 1, c] = Bdup[0, c];
             RunPair("dup", in Bdup);
 
-            arena.Dispose();
+            A.Dispose(); Bdistinct.Dispose(); Bdup.Dispose();
             return sb.ToString();
         }
     }

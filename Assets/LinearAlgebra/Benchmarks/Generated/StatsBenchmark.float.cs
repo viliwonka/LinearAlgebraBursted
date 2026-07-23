@@ -60,9 +60,9 @@ namespace LinearAlgebra.Benchmarks
 
     public static partial class StatsBenchmark
     {
-        static floatMxN FillFloat(Arena arena, int n)
+        static floatMxN FillFloat(Allocator allocator, int n)
         {
-            var A = arena.floatMat(n, n);
+            var A = new floatMxN(n, n, allocator);
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
                 for (int c = 0; c < n; c++)
@@ -72,54 +72,49 @@ namespace LinearAlgebra.Benchmarks
 
         static string RowSumFloat(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = FillFloat(arena, n);
-            var dest = arena.floatVec(n);
+            var A = FillFloat(Allocator.Persistent, n);
+            var dest = new floatN(n, Allocator.Persistent);
             var job = new StatsRowSumJobFloat { A = A, Dest = dest };
             var stat = Bench.Time(() => job.Run());
-            arena.Dispose();
+            A.Dispose(); dest.Dispose();
             return Bench.Row("float", n, stat, flops);
         }
 
         static string ColSumFloat(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = FillFloat(arena, n);
-            var dest = arena.floatVec(n);
+            var A = FillFloat(Allocator.Persistent, n);
+            var dest = new floatN(n, Allocator.Persistent);
             var job = new StatsColSumJobFloat { A = A, Dest = dest };
             var stat = Bench.Time(() => job.Run());
-            arena.Dispose();
+            A.Dispose(); dest.Dispose();
             return Bench.Row("float", n, stat, flops);
         }
 
         static string RowVarFloat(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = FillFloat(arena, n);
-            var dest = arena.floatVec(n);
+            var A = FillFloat(Allocator.Persistent, n);
+            var dest = new floatN(n, Allocator.Persistent);
             var job = new StatsRowVarJobFloat { A = A, Dest = dest };
             var stat = Bench.Time(() => job.Run());
-            arena.Dispose();
+            A.Dispose(); dest.Dispose();
             return Bench.Row("float", n, stat, flops);
         }
 
         static string StdRowsFloat(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = FillFloat(arena, n);
+            var A = FillFloat(Allocator.Persistent, n);
             var job = new StatsStdRowsJobFloat { A = A };
             var stat = Bench.Time(() => job.Run());
-            arena.Dispose();
+            A.Dispose();
             return Bench.Row("float", n, stat, flops);
         }
 
         static string SoftmaxRowsFloat(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = FillFloat(arena, n);
+            var A = FillFloat(Allocator.Persistent, n);
             var job = new StatsSoftmaxRowsJobFloat { A = A };
             var stat = Bench.Time(() => job.Run());
-            arena.Dispose();
+            A.Dispose();
             return Bench.Row("float", n, stat, flops);
         }
     }

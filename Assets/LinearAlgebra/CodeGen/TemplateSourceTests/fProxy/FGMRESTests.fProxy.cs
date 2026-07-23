@@ -61,25 +61,25 @@ public class fProxyFGMRESTests
 
         // Dense nonsymmetric, diagonally dominant (well-conditioned, nonsingular): random entries +
         // a heavy diagonal. Not symmetric (random off-diagonals differ across the diagonal).
-        static fProxyMxN DenseNonsym(ref Arena arena, int n, uint seed)
+        static fProxyMxN DenseNonsym(int n, uint seed)
         {
-            var A = arena.fProxyRandomMat(n, n, -1f, 1f, seed);
+            var A = GenerateOP.fProxyRandomMat(n, n, -1f, 1f, seed);
             for (int i = 0; i < n; i++) A[i, i] += (fProxy)(2 * n);
             return A;
         }
 
         // Scalar 1D convection-diffusion (BR=1): diagonal 6, super -1, sub -3 -- nonsymmetric,
         // diagonally dominant. Full storage.
-        static fProxyBSR ConvDiff1D(ref Arena arena, int n)
+        static fProxyBSR ConvDiff1D(int n)
         {
-            var b = arena.fProxyBSRBuilder(n, n, 1, 1, 3 * n);
+            var b = new fProxyBSRBuilder(n, n, 1, 1, Allocator.Temp, 3 * n);
             for (int i = 0; i < n; i++)
             {
                 b.AddValue(i, i, (fProxy)6);
                 if (i > 0) b.AddValue(i, i - 1, (fProxy)(-3));
                 if (i < n - 1) b.AddValue(i, i + 1, (fProxy)(-1));
             }
-            return b.ToBSR(ref arena);
+            return b.ToBSR(Allocator.Temp);
         }
 
         public void Execute()
@@ -100,16 +100,15 @@ public class fProxyFGMRESTests
         // close. Assert exact equality on iterations, rnorm, and every x component.
         void MatchesGmresConstantPrecond()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 150;
-            var A = ConvDiff1D(ref arena, n);
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0xFA01u);
-            var M = arena.fProxyBlockJacobi(in A);
+            var A = ConvDiff1D(n);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0xFA01u);
+            var M = new fProxyBlockJacobi(in A, Allocator.Temp);
             var op = new fProxyBSROperator(in A);
             fProxy tol = Tol();
 
-            var xG = arena.fProxyVec(n);
-            var xF = arena.fProxyVec(n);
+            var xG = new fProxyN(n, Allocator.Temp);
+            var xF = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) { xG[i] = (fProxy)0; xF[i] = (fProxy)0; }
 
             var gi = Krylov.gmres(in op, in M, in b, ref xG, 20, 8 * n, tol);
@@ -122,22 +121,19 @@ public class fProxyFGMRESTests
             Assert.IsTrue(fi.rnorm == gi.rnorm);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(xF[i] == xG[i]);
-
-            arena.Dispose();
         }
 
         // Unpreconditioned fgmres reduces to plain gmres under the IsIdentity fold: identical code
         // path (no Z workspace, solution accumulated straight into V), so bit-for-bit equal.
         void MatchesGmresIdentity()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 40;
-            var A = DenseNonsym(ref arena, n, 0xFA11u);
-            var xTrue = arena.fProxyRandomVec(n, -1f, 1f, 0xFA12u);
+            var A = DenseNonsym(n, 0xFA11u);
+            var xTrue = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0xFA12u);
             var b = Blas.dot(A, xTrue);
 
-            var xG = arena.fProxyVec(n);
-            var xF = arena.fProxyVec(n);
+            var xG = new fProxyN(n, Allocator.Temp);
+            var xF = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) { xG[i] = (fProxy)0; xF[i] = (fProxy)0; }
 
             var gi = Krylov.gmres(in A, in b, ref xG, n, 4 * n, Tol());
@@ -149,63 +145,52 @@ public class fProxyFGMRESTests
             Assert.AreEqual(gi.iterations, fi.iterations);
             Assert.AreEqual(gi.rnorm, fi.rnorm);
             for (int i = 0; i < n; i++) Assert.IsTrue(xG[i] == xF[i]);
-
-            arena.Dispose();
         }
 
         void KnownSolutionRecovery()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 120;
-            var A = ConvDiff1D(ref arena, n);
-            var xTrue = arena.fProxyRandomVec(n, -1f, 1f, 0xFA21u);
+            var A = ConvDiff1D(n);
+            var xTrue = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0xFA21u);
             var b = BSR.spMV(in A, in xTrue);
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (fProxy)0;
             var info = Krylov.fgmres(in A, in b, ref x, 40, 4 * n, Tol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(fProxyKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
-
-            arena.Dispose();
         }
 
         // A restart well below n must still converge (multiple restart cycles).
         void RestartConverges()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 120;
-            var A = ConvDiff1D(ref arena, n);
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0xFA31u);
+            var A = ConvDiff1D(n);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0xFA31u);
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (fProxy)0;
             var info = Krylov.fgmres(in A, in b, ref x, 10, 20 * n, Tol());   // restart 10 << n
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(fProxyKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
-
-            arena.Dispose();
         }
 
         void VariableInnerGmresConverges()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 150;
-            var A = ConvDiff1D(ref arena, n);
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0xFA41u);
+            var A = ConvDiff1D(n);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0xFA41u);
             var op = new fProxyBSROperator(in A);
             var M = new InnerGmresPreconditioner(in A, 5, 3);   // 3 fixed unpreconditioned-GMRES steps
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (fProxy)0;
 
             var info = Krylov.fgmres(in op, in M, in b, ref x, 20, 8 * n, Tol());
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(fProxyKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
-
-            arena.Dispose();
         }
     }
 

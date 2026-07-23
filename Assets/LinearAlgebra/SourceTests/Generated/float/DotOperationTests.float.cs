@@ -68,19 +68,17 @@ public class floatDotOperationTests
 
         public void VecVecDot()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int vecLen = 32;
 
-            floatN x = arena.floatVec(vecLen, 1f);
-            floatN y = arena.floatVec(vecLen, 1f);
+            floatN x = GenerateOP.floatVec(vecLen, 1f);
+            floatN y = GenerateOP.floatVec(vecLen, 1f);
 
             float b = Blas.dot(x, y);
 
             Assert.IsTrue(b == (float)vecLen);
 
-            x = arena.floatVec(vecLen);
-            y = arena.floatVec(vecLen);
+            x = new floatN(vecLen, Allocator.Temp);
+            y = new floatN(vecLen, Allocator.Temp);
 
             for(int i = 0; i < vecLen; i++)
             {
@@ -91,20 +89,16 @@ public class floatDotOperationTests
             b = Blas.dot(x, y);
 
             Assert.IsTrue(b == (float)0f);
-
-            arena.Dispose();
         }
 
         public void MatVecDot()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int inVecLen = 20;
             int outVecLen = 5;
 
             // A[i,j] = i+1 against an all-ones x: b[i] must be exactly (i+1) * inVecLen.
-            floatN x = arena.floatVec(inVecLen, 1f);
-            floatMxN A = arena.floatMat(outVecLen, inVecLen);
+            floatN x = GenerateOP.floatVec(inVecLen, 1f);
+            floatMxN A = new floatMxN(outVecLen, inVecLen, Allocator.Temp);
             for (int i = 0; i < outVecLen; i++)
                 for (int j = 0; j < inVecLen; j++)
                     A[i, j] = (float)(i + 1);
@@ -114,44 +108,36 @@ public class floatDotOperationTests
             Assert.AreEqual(outVecLen, b.N);
             for (int i = 0; i < outVecLen; i++)
                 Assert.IsTrue(b[i] == (float)((i + 1) * inVecLen));
-
-            arena.Dispose();
         }
 
         public void VecMatDot()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int vecLen = 20;
 
-            floatN x = arena.floatRandomUnitVec(vecLen);
-            floatMxN A = arena.floatIdentityMat(vecLen);
+            floatN x = GenerateOP.floatRandomUnitVec(vecLen);
+            floatMxN A = GenerateOP.floatIdentityMat(vecLen);
 
             floatN b = Blas.dot(x, A);
 
             Assert.AreEqual(vecLen, b.N);
-            
+
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(b[i] == x[i]);
 
-            x = arena.floatIndexZeroVec(vecLen);
+            x = GenerateOP.floatIndexZeroVec(vecLen);
 
             b = Blas.dot(x, A);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(b[i] == (float)i);
-
-            arena.Dispose();
         }
 
         public void MatMatDot()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int matLen = 16;
 
-            floatMxN A = arena.floatIdentityMat(matLen);
-            floatMxN B = arena.floatIdentityMat(matLen);
+            floatMxN A = GenerateOP.floatIdentityMat(matLen);
+            floatMxN B = GenerateOP.floatIdentityMat(matLen);
 
             floatMxN C = Blas.dot(A, B);
 
@@ -164,7 +150,7 @@ public class floatDotOperationTests
                     Assert.IsTrue(C[i, j] == (float)0f);
             }
 
-            floatMxN R = arena.floatRandomMat(matLen, matLen);
+            floatMxN R = GenerateOP.floatRandomMat(matLen, matLen);
 
             C = Blas.dot(A, R);
 
@@ -174,7 +160,7 @@ public class floatDotOperationTests
                 Assert.IsTrue(C[i, j] == R[i, j]);
             }
 
-            C = arena.floatIdentityMat(matLen);
+            C = GenerateOP.floatIdentityMat(matLen);
 
             floatMxN D = Blas.dot(C, C);
 
@@ -186,21 +172,17 @@ public class floatDotOperationTests
                 else
                     Assert.IsTrue(D[i, j] == (float)0f);
             }
-
-            arena.Dispose();
         }
 
         public void MatVecDotNonSquare()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int inVecLen = 64;
             int outVecLen = 16;
 
             // A[i,j] = i+1 against an all-ones x: b[i] must be exactly (i+1) * inVecLen
             // (small integers: exact in float, so == comparison is safe).
-            floatN x = arena.floatVec(inVecLen, 1f);
-            floatMxN A = arena.floatMat(outVecLen, inVecLen);
+            floatN x = GenerateOP.floatVec(inVecLen, 1f);
+            floatMxN A = new floatMxN(outVecLen, inVecLen, Allocator.Temp);
             for (int i = 0; i < outVecLen; i++)
                 for (int j = 0; j < inVecLen; j++)
                     A[i, j] = (float)(i + 1);
@@ -210,37 +192,29 @@ public class floatDotOperationTests
             Assert.AreEqual(outVecLen, b.N);
             for (int i = 0; i < outVecLen; i++)
                 Assert.IsTrue(b[i] == (float)((i + 1) * inVecLen));
-
-            arena.Dispose();
         }
 
         public void VecMatDotNonSquare()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int inVecLen = 64;
             int outVecLen = 16;
 
-            floatN x = arena.floatVec(inVecLen, 1f);
-            floatMxN A = arena.floatRandomMat(inVecLen, outVecLen, -0.01f, 0.01f);
+            floatN x = GenerateOP.floatVec(inVecLen, 1f);
+            floatMxN A = GenerateOP.floatRandomMat(inVecLen, outVecLen, -0.01f, 0.01f);
 
             floatN b = Blas.dot(x, A);
-            
-            Assert.AreEqual(outVecLen, b.N);
 
-            arena.Dispose();
+            Assert.AreEqual(outVecLen, b.N);
         }
 
         public void MatMatDotNonSquare()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int M = 8;
             int K = 24;
             int N = 16;
 
-            floatMxN Id = arena.floatIdentityMat(K);
-            floatMxN R = arena.floatRandomMat(K, N);
+            floatMxN Id = GenerateOP.floatIdentityMat(K);
+            floatMxN R = GenerateOP.floatRandomMat(K, N);
 
             floatMxN C = Blas.dot(Id, R);
 
@@ -251,7 +225,7 @@ public class floatDotOperationTests
             for (int j = 0; j < N; j++)
                 Assert.IsTrue(C[i, j] == R[i, j]);
 
-            floatMxN R2 = arena.floatRandomMat(M, K);
+            floatMxN R2 = GenerateOP.floatRandomMat(M, K);
 
             floatMxN D = Blas.dot(R2, Id);
 
@@ -261,19 +235,15 @@ public class floatDotOperationTests
             for (int i = 0; i < M; i++)
             for (int j = 0; j < K; j++)
                 Assert.IsTrue(D[i, j] == R2[i, j]);
-
-            arena.Dispose();
         }
 
         public void OuterDot()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int vecM = 32;
             int vecN = 64;
 
-            floatN x = arena.floatVec(vecM, 1f);
-            floatN y = arena.floatVec(vecN, 1f);
+            floatN x = GenerateOP.floatVec(vecM, 1f);
+            floatN y = GenerateOP.floatVec(vecN, 1f);
 
             floatMxN A = Blas.outerDot(x, y);
 
@@ -291,16 +261,14 @@ public class floatDotOperationTests
             for (int i = 0; i < B.Length; i++)
                 Assert.IsTrue(B[i] == (float)1f);
 
-            x = arena.floatLinVec(vecM, 0f, 2f);
-            y = arena.floatLinVec(vecN, 0f, 2f);
+            x = GenerateOP.floatLinVec(vecM, 0f, 2f);
+            y = GenerateOP.floatLinVec(vecN, 0f, 2f);
 
             floatMxN C = Blas.outerDot(x, y);
 
             for (int i = 0; i < vecM; i++)
                 for (int j = 0; j < vecN; j++)
                     Assert.IsTrue(C[i, j] == x[i] * y[j]);
-
-            arena.Dispose();
         }
     }
 

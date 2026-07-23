@@ -26,7 +26,7 @@ using Unity.Mathematics;
 //   4 — Value/mask: findValue, nonzero/countNonzero (tol=0 and tol>0).
 //   MinValue edge — the iAbs() off-by-one fix: argMaxAbs maps MinValue -> MaxValue, countNonzero
 //       counts it, findValue matches it.
-//   Arena wrappers — each allocating wrapper matches the zero-alloc primitive (incl. NEW
+//   Standalone allocators — each allocating wrapper matches the zero-alloc primitive (incl. NEW
 //       iProxyKFarthestRows / iProxyKFarthestColumns).
 //
 // Burst-compatible computational tests live in TestJob (message-free asserts + Fail-buffer
@@ -95,9 +95,7 @@ public class iProxyQueryTests
         // argMaxAbs/argMinAbs over a vector: value + flat index; ties -> first occurrence.
         void ArgMaxMinAbsVector()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var v = arena.iProxyVec(6);
+            var v = new iProxyN(6, Allocator.Temp);
             // |.| = 2, 5, 5, 1, 1, 4  => maxAbs first at index 1 (tie with 2), minAbs first at index 3.
             v[0] = (iProxy)(-2); v[1] = (iProxy)5; v[2] = (iProxy)(-5);
             v[3] = (iProxy)1;    v[4] = (iProxy)(-1); v[5] = (iProxy)4;
@@ -111,22 +109,18 @@ public class iProxyQueryTests
             AssertEqV(minVal, (iProxy)1);
 
             // 1x1 / single-element vector: index 0, value = |element|.
-            var one = arena.iProxyVec(1);
+            var one = new iProxyN(1, Allocator.Temp);
             one[0] = (iProxy)(-7);
             Query.argMaxAbs(in one, out iProxy ov, out int oi);
             AssertEqI(oi, 0);
             AssertEqV(ov, (iProxy)7);
-
-            arena.Dispose();
         }
 
         // argMaxAbs/argMinAbs over a matrix: index is row-major flat. (decodeIndex is float-only,
         // so the (r,c) split is checked by hand: flat 4 -> (1,1); flat 3 -> (1,0) for N_Cols=3.)
         void ArgMaxMinAbsMatrix()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.iProxyMat(2, 3);
+            var A = new iProxyMxN(2, 3, Allocator.Temp);
             // row 0: 1 -3  2
             // row 1: 0  4 -4      flat: [1,-3,2,0,4,-4]; maxAbs first |4| at flat 4 (r1,c1).
             A[0, 0] = (iProxy)1;  A[0, 1] = (iProxy)(-3); A[0, 2] = (iProxy)2;
@@ -140,26 +134,22 @@ public class iProxyQueryTests
             Query.argMinAbs(in A, out iProxy minVal, out int minIdx);
             AssertEqI(minIdx, 3);                  // (r,c) = (3/3, 3%3) = (1,0)
             AssertEqV(minVal, (iProxy)0);
-
-            arena.Dispose();
         }
 
         // rowArgMin/Max + colArgMin/Max value+index AND index-only forms vs a hand-built oracle.
         void RowColArgMinMax()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // 3x3:
             //  3  1  2     rowMin@c1=1   rowMax@c0=3
             //  9  7  8     rowMin@c1=7   rowMax@c0=9
             //  0  5  4     rowMin@c0=0   rowMax@c1=5
-            var A = arena.iProxyMat(3, 3);
+            var A = new iProxyMxN(3, 3, Allocator.Temp);
             A[0, 0] = (iProxy)3; A[0, 1] = (iProxy)1; A[0, 2] = (iProxy)2;
             A[1, 0] = (iProxy)9; A[1, 1] = (iProxy)7; A[1, 2] = (iProxy)8;
             A[2, 0] = (iProxy)0; A[2, 1] = (iProxy)5; A[2, 2] = (iProxy)4;
 
-            var idxR = arena.Indices(3);
-            var valR = arena.iProxyVec(3);
+            var idxR = new Indices(3, Allocator.Temp);
+            var valR = new iProxyN(3, Allocator.Temp);
 
             int nr = Query.rowArgMin(in A, ref idxR, ref valR);
             AssertEqI(nr, 3);
@@ -168,7 +158,7 @@ public class iProxyQueryTests
             AssertEqI(idxR[2], 0); AssertEqV(valR[2], (iProxy)0);
 
             // index-only form must match.
-            var idxR2 = arena.Indices(3);
+            var idxR2 = new Indices(3, Allocator.Temp);
             Query.rowArgMin(in A, ref idxR2);
             AssertEqI(idxR2[0], 1); AssertEqI(idxR2[1], 1); AssertEqI(idxR2[2], 0);
 
@@ -177,20 +167,20 @@ public class iProxyQueryTests
             AssertEqI(idxR[1], 0); AssertEqV(valR[1], (iProxy)9);
             AssertEqI(idxR[2], 1); AssertEqV(valR[2], (iProxy)5);
 
-            var idxR3 = arena.Indices(3);
+            var idxR3 = new Indices(3, Allocator.Temp);
             Query.rowArgMax(in A, ref idxR3);
             AssertEqI(idxR3[0], 0); AssertEqI(idxR3[1], 0); AssertEqI(idxR3[2], 1);
 
             // columns: colMin per column -> rows {2,0,0}; colMax per column -> rows {1,1,1}.
-            var idxC = arena.Indices(3);
-            var valC = arena.iProxyVec(3);
+            var idxC = new Indices(3, Allocator.Temp);
+            var valC = new iProxyN(3, Allocator.Temp);
             int nc = Query.colArgMin(in A, ref idxC, ref valC);
             AssertEqI(nc, 3);
             AssertEqI(idxC[0], 2); AssertEqV(valC[0], (iProxy)0);
             AssertEqI(idxC[1], 0); AssertEqV(valC[1], (iProxy)1);
             AssertEqI(idxC[2], 0); AssertEqV(valC[2], (iProxy)2);
 
-            var idxC2 = arena.Indices(3);
+            var idxC2 = new Indices(3, Allocator.Temp);
             Query.colArgMin(in A, ref idxC2);
             AssertEqI(idxC2[0], 2); AssertEqI(idxC2[1], 0); AssertEqI(idxC2[2], 0);
 
@@ -199,33 +189,29 @@ public class iProxyQueryTests
             AssertEqI(idxC[1], 1); AssertEqV(valC[1], (iProxy)7);
             AssertEqI(idxC[2], 1); AssertEqV(valC[2], (iProxy)8);
 
-            var idxC3 = arena.Indices(3);
+            var idxC3 = new Indices(3, Allocator.Temp);
             Query.colArgMax(in A, ref idxC3);
             AssertEqI(idxC3[0], 1); AssertEqI(idxC3[1], 1); AssertEqI(idxC3[2], 1);
-
-            arena.Dispose();
         }
 
         // Strided-column correctness: a non-square matrix where a row-major misread would give a
         // different answer than the true strided column scan.
         void ColArgStrided()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // 4x2. Column 0 (strided indices 0,2,4,6), column 1 (1,3,5,7).
             //  r0:  1   8
             //  r1:  2   6
             //  r2:  9   7
             //  r3:  3   4
             // col0 min@r0(1) max@r2(9); col1 min@r3(4) max@r0(8).
-            var A = arena.iProxyMat(4, 2);
+            var A = new iProxyMxN(4, 2, Allocator.Temp);
             A[0, 0] = (iProxy)1; A[0, 1] = (iProxy)8;
             A[1, 0] = (iProxy)2; A[1, 1] = (iProxy)6;
             A[2, 0] = (iProxy)9; A[2, 1] = (iProxy)7;
             A[3, 0] = (iProxy)3; A[3, 1] = (iProxy)4;
 
-            var idxC = arena.Indices(2);
-            var valC = arena.iProxyVec(2);
+            var idxC = new Indices(2, Allocator.Temp);
+            var valC = new iProxyN(2, Allocator.Temp);
 
             Query.colArgMin(in A, ref idxC, ref valC);
             AssertEqI(idxC[0], 0); AssertEqV(valC[0], (iProxy)1);
@@ -234,8 +220,6 @@ public class iProxyQueryTests
             Query.colArgMax(in A, ref idxC, ref valC);
             AssertEqI(idxC[0], 2); AssertEqV(valC[0], (iProxy)9);
             AssertEqI(idxC[1], 0); AssertEqV(valC[1], (iProxy)8);
-
-            arena.Dispose();
         }
 
         // ---------------------------------------------------------------------
@@ -244,14 +228,12 @@ public class iProxyQueryTests
 
         void ArgMaxRowNorm()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // 3x3 with hand-computed row norms:
             //  r0:  3  0  0  -> L1=3,  Linf=3
             //  r1:  1  1  1  -> L1=3,  Linf=1
             //  r2: -2  2  0  -> L1=4,  Linf=2
             // L1 max -> r2 ; Linf max -> r0.
-            var A = arena.iProxyMat(3, 3);
+            var A = new iProxyMxN(3, 3, Allocator.Temp);
             A[0, 0] = (iProxy)3;    A[0, 1] = (iProxy)0; A[0, 2] = (iProxy)0;
             A[1, 0] = (iProxy)1;    A[1, 1] = (iProxy)1; A[1, 2] = (iProxy)1;
             A[2, 0] = (iProxy)(-2); A[2, 1] = (iProxy)2; A[2, 2] = (iProxy)0;
@@ -260,32 +242,26 @@ public class iProxyQueryTests
             AssertEqI(Query.argMaxRowNorm(in A, Norm.Linf), 0);
 
             // Tie -> first occurrence. Two rows of identical L1 norm 5; first is row 0.
-            var T = arena.iProxyMat(2, 2);
+            var T = new iProxyMxN(2, 2, Allocator.Temp);
             T[0, 0] = (iProxy)5; T[0, 1] = (iProxy)0;
             T[1, 0] = (iProxy)0; T[1, 1] = (iProxy)5;
             AssertEqI(Query.argMaxRowNorm(in T, Norm.L1), 0);
-
-            arena.Dispose();
         }
 
         void ArgMaxColNorm()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             //  cols (each length 3):
             //   c0:  3, 1, -2   -> L1=6, Linf=3
             //   c1:  0, 1,  2   -> L1=3, Linf=2
             //   c2:  4, 0,  0   -> L1=4, Linf=4
             // L1 max -> c0 ; Linf max -> c2.
-            var A = arena.iProxyMat(3, 3);
+            var A = new iProxyMxN(3, 3, Allocator.Temp);
             A[0, 0] = (iProxy)3;    A[0, 1] = (iProxy)0; A[0, 2] = (iProxy)4;
             A[1, 0] = (iProxy)1;    A[1, 1] = (iProxy)1; A[1, 2] = (iProxy)0;
             A[2, 0] = (iProxy)(-2); A[2, 1] = (iProxy)2; A[2, 2] = (iProxy)0;
 
             AssertEqI(Query.argMaxColNorm(in A, Norm.L1), 0);
             AssertEqI(Query.argMaxColNorm(in A, Norm.Linf), 2);
-
-            arena.Dispose();
         }
 
         // ---------------------------------------------------------------------
@@ -295,18 +271,16 @@ public class iProxyQueryTests
         // distancesToRow for each integer metric against hand-computed distances.
         void DistancesToRowAllMetrics()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // 2 rows, 2 cols; query q = (0,0).
             //  r0 = (3, 4)
             //  r1 = (1, 0)
-            var A = arena.iProxyMat(2, 2);
+            var A = new iProxyMxN(2, 2, Allocator.Temp);
             A[0, 0] = (iProxy)3; A[0, 1] = (iProxy)4;
             A[1, 0] = (iProxy)1; A[1, 1] = (iProxy)0;
-            var q = arena.iProxyVec(2);
+            var q = new iProxyN(2, Allocator.Temp);
             q[0] = (iProxy)0; q[1] = (iProxy)0;
 
-            var d = arena.iProxyVec(2);
+            var d = new iProxyN(2, Allocator.Temp);
 
             // Manhattan: |3|+|4|=7 ; |1|+|0|=1
             Query.distancesToRow(in A, in q, Metric.Manhattan, ref d);
@@ -325,28 +299,24 @@ public class iProxyQueryTests
             AssertEqV(d[0], (iProxy)0); AssertEqV(d[1], (iProxy)0);
 
             // Dot with q2=(3,4): r0.q2 = 9+16 = 25 ; r1.q2 = 3+0 = 3.
-            var q2 = arena.iProxyVec(2);
+            var q2 = new iProxyN(2, Allocator.Temp);
             q2[0] = (iProxy)3; q2[1] = (iProxy)4;
             Query.distancesToRow(in A, in q2, Metric.Dot, ref d);
             AssertEqV(d[0], (iProxy)25); AssertEqV(d[1], (iProxy)3);
-
-            arena.Dispose();
         }
 
         // distancesToColumn for each integer metric. Columns are strided.
         void DistancesToColumnAllMetrics()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // 2 rows, 2 cols; query q (length M_Rows = 2) = (0,0).
             //  c0 = (3,1)   c1 = (4,0)
-            var A = arena.iProxyMat(2, 2);
+            var A = new iProxyMxN(2, 2, Allocator.Temp);
             A[0, 0] = (iProxy)3; A[0, 1] = (iProxy)4;
             A[1, 0] = (iProxy)1; A[1, 1] = (iProxy)0;
-            var q = arena.iProxyVec(2);
+            var q = new iProxyN(2, Allocator.Temp);
             q[0] = (iProxy)0; q[1] = (iProxy)0;
 
-            var d = arena.iProxyVec(2);
+            var d = new iProxyN(2, Allocator.Temp);
 
             // Manhattan: c0=4, c1=4
             Query.distancesToColumn(in A, in q, Metric.Manhattan, ref d);
@@ -363,21 +333,17 @@ public class iProxyQueryTests
             // Dot with q=(0,0) is 0 for every column.
             Query.distancesToColumn(in A, in q, Metric.Dot, ref d);
             AssertEqV(d[0], (iProxy)0); AssertEqV(d[1], (iProxy)0);
-
-            arena.Dispose();
         }
 
         // nearest=min / farthest=max for DISTANCE metrics, with score in metric units.
         void NearestFarthestDistance()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             //  r0=(0,0) r1=(3,4) r2=(1,1); q=(0,0).
-            var A = arena.iProxyMat(3, 2);
+            var A = new iProxyMxN(3, 2, Allocator.Temp);
             A[0, 0] = (iProxy)0; A[0, 1] = (iProxy)0;
             A[1, 0] = (iProxy)3; A[1, 1] = (iProxy)4;
             A[2, 0] = (iProxy)1; A[2, 1] = (iProxy)1;
-            var q = arena.iProxyVec(2);
+            var q = new iProxyN(2, Allocator.Temp);
             q[0] = (iProxy)0; q[1] = (iProxy)0;
 
             // SqEuclidean: distances 0, 25, 2. nearest=r0 (score 0), farthest=r1 (score 25, squared).
@@ -392,22 +358,18 @@ public class iProxyQueryTests
             AssertEqI(ni2, 0); AssertEqV(ns2, (iProxy)0);
             Query.farthestRow(in A, in q, Metric.Manhattan, out int fi2, out iProxy fs2);
             AssertEqI(fi2, 1); AssertEqV(fs2, (iProxy)7);
-
-            arena.Dispose();
         }
 
         // The KEY direction flip: similarity metric (Dot) -> nearest = MAX, farthest = MIN.
         void NearestFarthestSimilarity()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             //  r0=(1,0) r1=(10,0) r2=(-5,0); q=(1,0).
             //  Dot: 1, 10, -5  -> nearest(max)=r1, farthest(min)=r2.
-            var A = arena.iProxyMat(3, 2);
+            var A = new iProxyMxN(3, 2, Allocator.Temp);
             A[0, 0] = (iProxy)1;    A[0, 1] = (iProxy)0;
             A[1, 0] = (iProxy)10;   A[1, 1] = (iProxy)0;
             A[2, 0] = (iProxy)(-5); A[2, 1] = (iProxy)0;
-            var q = arena.iProxyVec(2);
+            var q = new iProxyN(2, Allocator.Temp);
             q[0] = (iProxy)1; q[1] = (iProxy)0;
 
             Query.nearestRow(in A, in q, Metric.Dot, out int ni, out iProxy ns);
@@ -418,36 +380,32 @@ public class iProxyQueryTests
 
             // Column twins: columns of A as vectors of length 3: c0=(1,10,-5), c1=(0,0,0). q3=(1,0,0).
             // Dot: c0.q3 = 1 ; c1.q3 = 0 -> nearest(max)=c0, farthest(min)=c1.
-            var q3 = arena.iProxyVec(3);
+            var q3 = new iProxyN(3, Allocator.Temp);
             q3[0] = (iProxy)1; q3[1] = (iProxy)0; q3[2] = (iProxy)0;
             Query.nearestColumn(in A, in q3, Metric.Dot, out int cni, out iProxy cns);
             AssertEqI(cni, 0); AssertEqV(cns, (iProxy)1);
             Query.farthestColumn(in A, in q3, Metric.Dot, out int cfi, out iProxy cfs);
             AssertEqI(cfi, 1); AssertEqV(cfs, (iProxy)0);
-
-            arena.Dispose();
         }
 
         // kNearestRows + kNearestColumns vs brute-force reference, sorted best-first.
         void KNearestBruteForce()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // Small range keeps integer SqEuclidean/Dot inside short.MaxValue.
             int M = 6, N = 3;
-            var A = arena.iProxyRandomMat(M, N, (iProxy)(-3), (iProxy)4, 424242);
-            var q = arena.iProxyVec(N);
+            var A = GenerateOP.iProxyRandomMat(M, N, (iProxy)(-3), (iProxy)4, 424242);
+            var q = new iProxyN(N, Allocator.Temp);
             q[0] = (iProxy)1; q[1] = (iProxy)(-2); q[2] = (iProxy)2;
 
             int k = 3;
-            var idx = arena.Indices(k);
-            var scores = arena.iProxyVec(k);
+            var idx = new Indices(k, Allocator.Temp);
+            var scores = new iProxyN(k, Allocator.Temp);
 
             // --- distance metric (SqEuclidean): best-first = ASCENDING ---
             int cnt = Query.kNearestRows(in A, in q, k, Metric.SqEuclidean, ref idx, ref scores);
             AssertEqI(cnt, k);
 
-            var all = arena.iProxyVec(M);
+            var all = new iProxyN(M, Allocator.Temp);
             Query.distancesToRow(in A, in q, Metric.SqEuclidean, ref all);
             for (int i = 0; i + 1 < cnt; i++)
                 AssertTrue(scores[i] <= scores[i + 1]);
@@ -462,11 +420,11 @@ public class iProxyQueryTests
             }
 
             // --- similarity metric (Dot): best-first = DESCENDING ---
-            var idx2 = arena.Indices(k);
-            var scores2 = arena.iProxyVec(k);
+            var idx2 = new Indices(k, Allocator.Temp);
+            var scores2 = new iProxyN(k, Allocator.Temp);
             int cnt2 = Query.kNearestRows(in A, in q, k, Metric.Dot, ref idx2, ref scores2);
             AssertEqI(cnt2, k);
-            var allDot = arena.iProxyVec(M);
+            var allDot = new iProxyN(M, Allocator.Temp);
             Query.distancesToRow(in A, in q, Metric.Dot, ref allDot);
             for (int i = 0; i + 1 < cnt2; i++)
                 AssertTrue(scores2[i] >= scores2[i + 1]);
@@ -481,14 +439,14 @@ public class iProxyQueryTests
             }
 
             // --- kNearestColumns (SqEuclidean): q length = M_Rows ---
-            var qc = arena.iProxyVec(M);
+            var qc = new iProxyN(M, Allocator.Temp);
             for (int i = 0; i < M; i++) qc[i] = (iProxy)(i - 3);
             int kc = 2;
-            var idxC = arena.Indices(kc);
-            var scoresC = arena.iProxyVec(kc);
+            var idxC = new Indices(kc, Allocator.Temp);
+            var scoresC = new iProxyN(kc, Allocator.Temp);
             int cntC = Query.kNearestColumns(in A, in qc, kc, Metric.SqEuclidean, ref idxC, ref scoresC);
             AssertEqI(cntC, kc);
-            var allC = arena.iProxyVec(N);
+            var allC = new iProxyN(N, Allocator.Temp);
             Query.distancesToColumn(in A, in qc, Metric.SqEuclidean, ref allC);
             for (int i = 0; i + 1 < cntC; i++)
                 AssertTrue(scoresC[i] <= scoresC[i + 1]);
@@ -501,28 +459,24 @@ public class iProxyQueryTests
                 for (int i = 0; i < cntC; i++) if (idxC[i] == c) selected = true;
                 if (!selected) AssertTrue(allC[c] >= kthC);
             }
-
-            arena.Dispose();
         }
 
         // k > M_Rows clamps to count; k=0 returns 0; pure-tie keeps first-seen order.
         void KNearestClampAndZero()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int M = 3, N = 2;
-            var A = arena.iProxyMat(M, N);
+            var A = new iProxyMxN(M, N, Allocator.Temp);
             // all rows at SqEuclidean distance 1 from q -> a full tie.
             A[0, 0] = (iProxy)1;    A[0, 1] = (iProxy)0;
             A[1, 0] = (iProxy)0;    A[1, 1] = (iProxy)1;
             A[2, 0] = (iProxy)(-1); A[2, 1] = (iProxy)0;
-            var q = arena.iProxyVec(N);
+            var q = new iProxyN(N, Allocator.Temp);
             q[0] = (iProxy)0; q[1] = (iProxy)0;
 
             // k = 10 > M -> clamp to 3.
             int k = 10;
-            var idx = arena.Indices(k);
-            var scores = arena.iProxyVec(k);
+            var idx = new Indices(k, Allocator.Temp);
+            var scores = new iProxyN(k, Allocator.Temp);
             int cnt = Query.kNearestRows(in A, in q, k, Metric.SqEuclidean, ref idx, ref scores);
             AssertEqI(cnt, 3);
             for (int i = 0; i < cnt; i++) AssertEqV(scores[i], (iProxy)1);
@@ -532,27 +486,23 @@ public class iProxyQueryTests
             // k = 0 -> returns 0, writes nothing.
             int z = Query.kNearestRows(in A, in q, 0, Metric.SqEuclidean, ref idx, ref scores);
             AssertEqI(z, 0);
-
-            arena.Dispose();
         }
 
         // kFarthestRows + kFarthestColumns: farthest-first ordering vs brute force.
         void KFarthest()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int M = 5, N = 2;
-            var A = arena.iProxyRandomMat(M, N, (iProxy)(-2), (iProxy)3, 99887);
-            var q = arena.iProxyVec(N);
+            var A = GenerateOP.iProxyRandomMat(M, N, (iProxy)(-2), (iProxy)3, 99887);
+            var q = new iProxyN(N, Allocator.Temp);
             q[0] = (iProxy)1; q[1] = (iProxy)(-1);
 
             int k = 2;
-            var idx = arena.Indices(k);
-            var scores = arena.iProxyVec(k);
+            var idx = new Indices(k, Allocator.Temp);
+            var scores = new iProxyN(k, Allocator.Temp);
             int cnt = Query.kFarthestRows(in A, in q, k, Metric.SqEuclidean, ref idx, ref scores);
             AssertEqI(cnt, k);
 
-            var all = arena.iProxyVec(M);
+            var all = new iProxyN(M, Allocator.Temp);
             Query.distancesToRow(in A, in q, Metric.SqEuclidean, ref all);
             // farthest-first => descending distance
             for (int i = 0; i + 1 < cnt; i++)
@@ -568,39 +518,35 @@ public class iProxyQueryTests
             }
 
             // kFarthestColumns twin (SqEuclidean), q length = M_Rows.
-            var qc = arena.iProxyVec(M);
+            var qc = new iProxyN(M, Allocator.Temp);
             for (int i = 0; i < M; i++) qc[i] = (iProxy)(i - 2);
             int kc = 1;
-            var idxC = arena.Indices(kc);
-            var scoresC = arena.iProxyVec(kc);
+            var idxC = new Indices(kc, Allocator.Temp);
+            var scoresC = new iProxyN(kc, Allocator.Temp);
             int cntC = Query.kFarthestColumns(in A, in qc, kc, Metric.SqEuclidean, ref idxC, ref scoresC);
             AssertEqI(cntC, kc);
-            var allC = arena.iProxyVec(N);
+            var allC = new iProxyN(N, Allocator.Temp);
             Query.distancesToColumn(in A, in qc, Metric.SqEuclidean, ref allC);
             // the single farthest column must equal the max distance.
             iProxy maxC = allC[0];
             for (int c = 1; c < N; c++) if (allC[c] > maxC) maxC = allC[c];
             AssertEqV(scoresC[0], maxC);
             AssertEqV(allC[idxC[0]], maxC);
-
-            arena.Dispose();
         }
 
         // within-radius: inclusive boundary (<= r distance, >= r similarity); buffer fill matches count.
         void WithinRadiusBoundary()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             //  r0=(0,0) r1=(3,4) r2=(1,1) ; q=(0,0).  SqEuclidean distances: 0, 25, 2.
-            var A = arena.iProxyMat(3, 2);
+            var A = new iProxyMxN(3, 2, Allocator.Temp);
             A[0, 0] = (iProxy)0; A[0, 1] = (iProxy)0;
             A[1, 0] = (iProxy)3; A[1, 1] = (iProxy)4;
             A[2, 0] = (iProxy)1; A[2, 1] = (iProxy)1;
-            var q = arena.iProxyVec(2);
+            var q = new iProxyN(2, Allocator.Temp);
             q[0] = (iProxy)0; q[1] = (iProxy)0;
 
             // radius exactly 25 (boundary): inclusive -> all three rows qualify.
-            var idx = arena.Indices(3);
+            var idx = new Indices(3, Allocator.Temp);
             int cnt = Query.rowsWithinRadius(in A, in q, (iProxy)25, Metric.SqEuclidean, ref idx);
             int ccnt = Query.countWithinRadius(in A, in q, (iProxy)25, Metric.SqEuclidean);
             AssertEqI(cnt, 3); AssertEqI(ccnt, 3);
@@ -613,7 +559,7 @@ public class iProxyQueryTests
             AssertEqI(Query.countWithinRadius(in A, in q, (iProxy)24, Metric.SqEuclidean), 2);
 
             // similarity metric (Dot): inclusive >= r. q2=(1,0): dots 0, 3, 1.
-            var q2 = arena.iProxyVec(2);
+            var q2 = new iProxyN(2, Allocator.Temp);
             q2[0] = (iProxy)1; q2[1] = (iProxy)0;
             // threshold exactly 1 -> rows with dot >= 1: r1(3) and r2(1). r0(0) excluded.
             int cnt3 = Query.rowsWithinRadius(in A, in q2, (iProxy)1, Metric.Dot, ref idx);
@@ -622,15 +568,13 @@ public class iProxyQueryTests
             AssertEqI(Query.countWithinRadius(in A, in q2, (iProxy)1, Metric.Dot), 2);
 
             // Column twins. Columns of A length 3: c0=(0,3,1) c1=(0,4,1). qcol=(0,0,0).
-            var qcol = arena.iProxyVec(3);
+            var qcol = new iProxyN(3, Allocator.Temp);
             qcol[0] = (iProxy)0; qcol[1] = (iProxy)0; qcol[2] = (iProxy)0;
             // SqEuclidean: c0=0+9+1=10, c1=0+16+1=17. radius 10 inclusive -> only c0.
-            var idxc = arena.Indices(2);
+            var idxc = new Indices(2, Allocator.Temp);
             int ccol = Query.columnsWithinRadius(in A, in qcol, (iProxy)10, Metric.SqEuclidean, ref idxc);
             AssertEqI(ccol, 1); AssertEqI(idxc[0], 0);
             AssertEqI(Query.countWithinColumnRadius(in A, in qcol, (iProxy)10, Metric.SqEuclidean), 1);
-
-            arena.Dispose();
         }
 
         // ---------------------------------------------------------------------
@@ -639,9 +583,7 @@ public class iProxyQueryTests
 
         void FindValue()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var v = arena.iProxyVec(5);
+            var v = new iProxyN(5, Allocator.Temp);
             v[0] = (iProxy)1; v[1] = (iProxy)2; v[2] = (iProxy)2; v[3] = (iProxy)3; v[4] = (iProxy)2;
 
             // first match (tol 0) at index 1
@@ -654,25 +596,21 @@ public class iProxyQueryTests
             AssertEqI(Query.findValue(in v, (iProxy)4, (iProxy)0), -1);
 
             // matrix overload (flat index). 2x2 = [5, 6; 7, 6]; first 6 at flat 1.
-            var A = arena.iProxyMat(2, 2);
+            var A = new iProxyMxN(2, 2, Allocator.Temp);
             A[0, 0] = (iProxy)5; A[0, 1] = (iProxy)6;
             A[1, 0] = (iProxy)7; A[1, 1] = (iProxy)6;
             AssertEqI(Query.findValue(in A, (iProxy)6, (iProxy)0), 1);
-
-            arena.Dispose();
         }
 
         void NonzeroCountNonzero()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var v = arena.iProxyVec(6);
+            var v = new iProxyN(6, Allocator.Temp);
             v[0] = (iProxy)0; v[1] = (iProxy)2;    v[2] = (iProxy)0;
             v[3] = (iProxy)(-3); v[4] = (iProxy)1; v[5] = (iProxy)0;
 
             // tol=0: nonzero are indices 1,3,4 -> count 3
             AssertEqI(Query.countNonzero(in v, (iProxy)0), 3);
-            var idx = arena.Indices(6);
+            var idx = new Indices(6, Allocator.Temp);
             int c = Query.nonzero(in v, (iProxy)0, ref idx);
             AssertEqI(c, 3);
             AssertEqI(idx[0], 1); AssertEqI(idx[1], 3); AssertEqI(idx[2], 4);
@@ -684,15 +622,13 @@ public class iProxyQueryTests
             AssertEqI(idx[0], 1); AssertEqI(idx[1], 3);
 
             // matrix overload, flat indices. 2x2 = [0,2;0,0] -> one nonzero at flat 1.
-            var A = arena.iProxyMat(2, 2);
+            var A = new iProxyMxN(2, 2, Allocator.Temp);
             A[0, 0] = (iProxy)0; A[0, 1] = (iProxy)2;
             A[1, 0] = (iProxy)0; A[1, 1] = (iProxy)0;
             AssertEqI(Query.countNonzero(in A, (iProxy)0), 1);
-            var idxA = arena.Indices(4);
+            var idxA = new Indices(4, Allocator.Temp);
             int ca = Query.nonzero(in A, (iProxy)0, ref idxA);
             AssertEqI(ca, 1); AssertEqI(idxA[0], 1);
-
-            arena.Dispose();
         }
 
         // ---------------------------------------------------------------------
@@ -701,11 +637,9 @@ public class iProxyQueryTests
 
         void MinValueEdge()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // MinValue at flat 0 so findValue returns before any other (potentially overflowing)
             // subtraction is evaluated. Other elements are small and non-extreme.
-            var v = arena.iProxyVec(4);
+            var v = new iProxyN(4, Allocator.Temp);
             v[0] = (iProxy)iProxy.MinValue; v[1] = (iProxy)3; v[2] = (iProxy)0; v[3] = (iProxy)(-2);
 
             // argMaxAbs: |MinValue| saturates to MaxValue (the documented off-by-one) and wins.
@@ -718,66 +652,62 @@ public class iProxyQueryTests
 
             // findValue(target = MinValue, tol = 0): exact match at flat 0.
             AssertEqI(Query.findValue(in v, (iProxy)iProxy.MinValue, (iProxy)0), 0);
-
-            arena.Dispose();
         }
 
         // ---------------------------------------------------------------------
-        // ARENA WRAPPERS — each allocating wrapper matches the zero-alloc primitive.
+        // STANDALONE ALLOCATORS — each allocating wrapper matches the zero-alloc primitive.
         // ---------------------------------------------------------------------
 
         void ArenaWrappers()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // Small range keeps integer SqEuclidean inside short.MaxValue.
             int M = 6, N = 4;
-            var A = arena.iProxyRandomMat(M, N, (iProxy)(-2), (iProxy)3, 7777);
-            var q = arena.iProxyVec(N);
+            var A = GenerateOP.iProxyRandomMat(M, N, (iProxy)(-2), (iProxy)3, 7777);
+            var q = new iProxyN(N, Allocator.Temp);
             for (int i = 0; i < N; i++) q[i] = (iProxy)(i - 2);
 
             // --- iProxyDistancesToRow / Column wrappers vs primitive ---
-            var dr = ArenaExtensions.iProxyDistancesToRow(in A, in q, Metric.SqEuclidean);
-            var drRef = arena.iProxyVec(M);
+            var dr = Query.iProxyDistancesToRow(in A, in q, Metric.SqEuclidean);
+            var drRef = new iProxyN(M, Allocator.Temp);
             Query.distancesToRow(in A, in q, Metric.SqEuclidean, ref drRef);
             AssertEqI(dr.N, M);
             for (int i = 0; i < M; i++) AssertEqV(dr[i], drRef[i]);
 
-            var qc = arena.iProxyVec(M);
+            var qc = new iProxyN(M, Allocator.Temp);
             for (int i = 0; i < M; i++) qc[i] = (iProxy)(i - 3);
-            var dcol = ArenaExtensions.iProxyDistancesToColumn(in A, in qc, Metric.SqEuclidean);
-            var dcolRef = arena.iProxyVec(N);
+            var dcol = Query.iProxyDistancesToColumn(in A, in qc, Metric.SqEuclidean);
+            var dcolRef = new iProxyN(N, Allocator.Temp);
             Query.distancesToColumn(in A, in qc, Metric.SqEuclidean, ref dcolRef);
             AssertEqI(dcol.N, N);
             for (int j = 0; j < N; j++) AssertEqV(dcol[j], dcolRef[j]);
 
             // --- iProxyNonzeroIndices: exact-sized, contents match the primitive ---
-            var idxNz = arena.iProxyNonzeroIndices(in A, (iProxy)0);
-            var refNz = arena.Indices(M * N);
+            var idxNz = Query.iProxyNonzeroIndices(in A, (iProxy)0);
+            var refNz = new Indices(M * N, Allocator.Temp);
             int refCnt = Query.nonzero(in A, (iProxy)0, ref refNz);
             AssertEqI(idxNz.N, refCnt);
             for (int i = 0; i < refCnt; i++) AssertEqI(idxNz[i], refNz[i]);
 
             // --- iProxyRowsWithinRadius: exact-sized, contents match the primitive ---
             iProxy radius = (iProxy)20;
-            var idxRR = arena.iProxyRowsWithinRadius(in A, in q, radius, Metric.SqEuclidean);
-            var refRR = arena.Indices(M);
+            var idxRR = Query.iProxyRowsWithinRadius(in A, in q, radius, Metric.SqEuclidean);
+            var refRR = new Indices(M, Allocator.Temp);
             int refRRcnt = Query.rowsWithinRadius(in A, in q, radius, Metric.SqEuclidean, ref refRR);
             AssertEqI(idxRR.N, refRRcnt);
             for (int i = 0; i < refRRcnt; i++) AssertEqI(idxRR[i], refRR[i]);
 
             // --- iProxyColumnsWithinRadius ---
-            var idxCR = arena.iProxyColumnsWithinRadius(in A, in qc, (iProxy)40, Metric.SqEuclidean);
-            var refCR = arena.Indices(N);
+            var idxCR = Query.iProxyColumnsWithinRadius(in A, in qc, (iProxy)40, Metric.SqEuclidean);
+            var refCR = new Indices(N, Allocator.Temp);
             int refCRcnt = Query.columnsWithinRadius(in A, in qc, (iProxy)40, Metric.SqEuclidean, ref refCR);
             AssertEqI(idxCR.N, refCRcnt);
             for (int i = 0; i < refCRcnt; i++) AssertEqI(idxCR[i], refCR[i]);
 
             // --- iProxyKNearestRows: idx + scores match the primitive ---
             int k = 3;
-            var idxK = arena.iProxyKNearestRows(in A, in q, k, Metric.SqEuclidean, out iProxyN scoresK, out int cntK);
-            var refIdxK = arena.Indices(k);
-            var refScoresK = arena.iProxyVec(k);
+            var idxK = Query.iProxyKNearestRows(in A, in q, k, Metric.SqEuclidean, out iProxyN scoresK, out int cntK);
+            var refIdxK = new Indices(k, Allocator.Temp);
+            var refScoresK = new iProxyN(k, Allocator.Temp);
             int refCntK = Query.kNearestRows(in A, in q, k, Metric.SqEuclidean, ref refIdxK, ref refScoresK);
             AssertEqI(cntK, refCntK);
             AssertEqI(idxK.N, refCntK);
@@ -788,9 +718,9 @@ public class iProxyQueryTests
             }
 
             // --- iProxyKNearestColumns ---
-            var idxKC = arena.iProxyKNearestColumns(in A, in qc, k, Metric.SqEuclidean, out iProxyN scoresKC, out int cntKC);
-            var refIdxKC = arena.Indices(k);
-            var refScoresKC = arena.iProxyVec(k);
+            var idxKC = Query.iProxyKNearestColumns(in A, in qc, k, Metric.SqEuclidean, out iProxyN scoresKC, out int cntKC);
+            var refIdxKC = new Indices(k, Allocator.Temp);
+            var refScoresKC = new iProxyN(k, Allocator.Temp);
             int refCntKC = Query.kNearestColumns(in A, in qc, k, Metric.SqEuclidean, ref refIdxKC, ref refScoresKC);
             AssertEqI(cntKC, refCntKC);
             for (int i = 0; i < refCntKC; i++)
@@ -800,9 +730,9 @@ public class iProxyQueryTests
             }
 
             // --- NEW iProxyKFarthestRows ---
-            var idxKF = arena.iProxyKFarthestRows(in A, in q, k, Metric.SqEuclidean, out iProxyN scoresKF, out int cntKF);
-            var refIdxKF = arena.Indices(k);
-            var refScoresKF = arena.iProxyVec(k);
+            var idxKF = Query.iProxyKFarthestRows(in A, in q, k, Metric.SqEuclidean, out iProxyN scoresKF, out int cntKF);
+            var refIdxKF = new Indices(k, Allocator.Temp);
+            var refScoresKF = new iProxyN(k, Allocator.Temp);
             int refCntKF = Query.kFarthestRows(in A, in q, k, Metric.SqEuclidean, ref refIdxKF, ref refScoresKF);
             AssertEqI(cntKF, refCntKF);
             AssertEqI(idxKF.N, refCntKF);
@@ -813,9 +743,9 @@ public class iProxyQueryTests
             }
 
             // --- NEW iProxyKFarthestColumns ---
-            var idxKFC = arena.iProxyKFarthestColumns(in A, in qc, k, Metric.SqEuclidean, out iProxyN scoresKFC, out int cntKFC);
-            var refIdxKFC = arena.Indices(k);
-            var refScoresKFC = arena.iProxyVec(k);
+            var idxKFC = Query.iProxyKFarthestColumns(in A, in qc, k, Metric.SqEuclidean, out iProxyN scoresKFC, out int cntKFC);
+            var refIdxKFC = new Indices(k, Allocator.Temp);
+            var refScoresKFC = new iProxyN(k, Allocator.Temp);
             int refCntKFC = Query.kFarthestColumns(in A, in qc, k, Metric.SqEuclidean, ref refIdxKFC, ref refScoresKFC);
             AssertEqI(cntKFC, refCntKFC);
             for (int i = 0; i < refCntKFC; i++)
@@ -823,8 +753,6 @@ public class iProxyQueryTests
                 AssertEqI(idxKFC[i], refIdxKFC[i]);
                 AssertEqV(scoresKFC[i], refScoresKFC[i]);
             }
-
-            arena.Dispose();
         }
 
         // ---------------------------------------------------------------------
@@ -918,8 +846,7 @@ public class iProxyQueryTests
     [Test]
     public void NormL2ThrowsTest()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.iProxyMat(3, 3);
+        var A = new iProxyMxN(3, 3, Allocator.Temp);
         A[0, 0] = (iProxy)1; A[0, 1] = (iProxy)2; A[0, 2] = (iProxy)3;
         A[1, 0] = (iProxy)4; A[1, 1] = (iProxy)5; A[1, 2] = (iProxy)6;
         A[2, 0] = (iProxy)7; A[2, 1] = (iProxy)8; A[2, 2] = (iProxy)9;
@@ -929,24 +856,21 @@ public class iProxyQueryTests
         // L1 / Linf must NOT throw.
         Assert.DoesNotThrow(() => Query.argMaxRowNorm(in A, Norm.L1));
         Assert.DoesNotThrow(() => Query.argMaxColNorm(in A, Norm.Linf));
-
-        arena.Dispose();
     }
 
     // Metric.Euclidean and Metric.Cosine are float-only -> ArgumentException on the integer ops.
     [Test]
     public void MetricEuclideanCosineThrowTest()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.iProxyMat(3, 2);
+        var A = new iProxyMxN(3, 2, Allocator.Temp);
         A[0, 0] = (iProxy)1; A[0, 1] = (iProxy)2;
         A[1, 0] = (iProxy)3; A[1, 1] = (iProxy)4;
         A[2, 0] = (iProxy)5; A[2, 1] = (iProxy)6;
-        var q = arena.iProxyVec(2);
+        var q = new iProxyN(2, Allocator.Temp);
         q[0] = (iProxy)0; q[1] = (iProxy)0;
-        var dest = arena.iProxyVec(3);
-        var idx = arena.Indices(3);
-        var scores = arena.iProxyVec(2);
+        var dest = new iProxyN(3, Allocator.Temp);
+        var idx = new Indices(3, Allocator.Temp);
+        var scores = new iProxyN(2, Allocator.Temp);
 
         Assert.Throws<ArgumentException>(() =>
             Query.distancesToRow(in A, in q, Metric.Euclidean, ref dest));
@@ -964,30 +888,25 @@ public class iProxyQueryTests
             Query.rowsWithinRadius(in A, in q, (iProxy)1, Metric.Euclidean, ref idx));
         Assert.Throws<ArgumentException>(() =>
             Query.countWithinRadius(in A, in q, (iProxy)1, Metric.Cosine));
-
-        arena.Dispose();
     }
 
     // Dimension-mismatch contracts: q length must match the relevant axis.
     [Test]
     public void DimensionMismatchThrowTest()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.iProxyMat(3, 4);            // row ops need q.N == N_Cols == 4; col ops need q.N == M_Rows == 3
-        var qBadRow = arena.iProxyVec(3);         // wrong for row ops
-        var destRow = arena.iProxyVec(3);
+        var A = new iProxyMxN(3, 4, Allocator.Temp);            // row ops need q.N == N_Cols == 4; col ops need q.N == M_Rows == 3
+        var qBadRow = new iProxyN(3, Allocator.Temp);         // wrong for row ops
+        var destRow = new iProxyN(3, Allocator.Temp);
         Assert.Throws<ArgumentException>(() =>
             Query.distancesToRow(in A, in qBadRow, Metric.SqEuclidean, ref destRow));
         Assert.Throws<ArgumentException>(() =>
             Query.nearestRow(in A, in qBadRow, Metric.SqEuclidean, out int _, out iProxy _));
 
-        var qBadCol = arena.iProxyVec(4);         // wrong for col ops
-        var destCol = arena.iProxyVec(4);
+        var qBadCol = new iProxyN(4, Allocator.Temp);         // wrong for col ops
+        var destCol = new iProxyN(4, Allocator.Temp);
         Assert.Throws<ArgumentException>(() =>
             Query.distancesToColumn(in A, in qBadCol, Metric.SqEuclidean, ref destCol));
         Assert.Throws<ArgumentException>(() =>
             Query.countWithinColumnRadius(in A, in qBadCol, (iProxy)1, Metric.SqEuclidean));
-
-        arena.Dispose();
     }
 }

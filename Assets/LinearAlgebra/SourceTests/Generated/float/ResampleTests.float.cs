@@ -80,18 +80,14 @@ public class floatResampleTests
         // self; Linear has frac==0; Cubic has t==0 -> 0.5*2*p1 == p1). Bit-exact.
         void IntegerPositionsAllInterps()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
-            var data = arena.floatVec(n);
+            var data = new floatN(n, Allocator.Temp);
             data[0] = (float)10; data[1] = (float)20; data[2] = (float)30;
             data[3] = (float)40; data[4] = (float)50;
 
             CheckIntegerPos(in data, 0);
             CheckIntegerPos(in data, 1);
             CheckIntegerPos(in data, n - 1);
-
-            arena.Dispose();
         }
 
         void CheckIntegerPos(in floatN data, int ix)
@@ -105,9 +101,7 @@ public class floatResampleTests
         // Linear at pos=0.5 -> exact mean of the two neighbors.
         void LinearMidpointMean()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var data = arena.floatVec(4);
+            var data = new floatN(4, Allocator.Temp);
             data[0] = (float)10; data[1] = (float)20; data[2] = (float)33; data[3] = (float)40;
 
             float mid01 = Resample.sampleAt(in data, (float)0.5, Interp.Linear, EdgeMode.Clamp);
@@ -115,8 +109,6 @@ public class floatResampleTests
 
             float mid12 = Resample.sampleAt(in data, (float)1.5, Interp.Linear, EdgeMode.Clamp);
             AssertClose(mid12, (float)26.5, (float)10 * Consts.floatSqrtEps); // (20+33)/2
-
-            arena.Dispose();
         }
 
         // Catmull-Rom (Keys cubic convolution, a=-0.5) is third-order accurate: it reproduces
@@ -126,18 +118,14 @@ public class floatResampleTests
         // non-integer positions (all 4 taps in-range, so the edge mode is irrelevant) and compare to f.
         void CubicReproducesPolynomial()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 6;
-            var data = arena.floatVec(n);
+            var data = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) data[i] = Quad((float)i);
 
             float tol = (float)100 * Consts.floatSqrtEps;   // float ~3.5e-2, double ~1.5e-6
             CheckQuadAt(in data, (float)1.3, tol);
             CheckQuadAt(in data, (float)2.5, tol);
             CheckQuadAt(in data, (float)3.4, tol);
-
-            arena.Dispose();
         }
 
         void CheckQuadAt(in floatN data, float pos, float tol)
@@ -153,47 +141,38 @@ public class floatResampleTests
         // back distinct data values. data[i] = i+1 over N=5.
         void EdgeModeClampTaps()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var data = Ramp(ref arena, 5);   // {1,2,3,4,5}
+            var data = Ramp(5);   // {1,2,3,4,5}
 
             // Clamp repeats the edge: idx(-1)=0, idx(7)=4.
             AssertClose(Near(in data, -1, EdgeMode.Clamp), (float)1, (float)0);
             AssertClose(Near(in data, -3, EdgeMode.Clamp), (float)1, (float)0);
             AssertClose(Near(in data,  7, EdgeMode.Clamp), (float)5, (float)0);
-
-            arena.Dispose();
         }
 
         void EdgeModeWrapTaps()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var data = Ramp(ref arena, 5);
+            var data = Ramp(5);
 
             // Wrap is periodic: idx(-1)=4, idx(5)=0, idx(6)=1.
             AssertClose(Near(in data, -1, EdgeMode.Wrap), (float)5, (float)0);
             AssertClose(Near(in data,  5, EdgeMode.Wrap), (float)1, (float)0);
             AssertClose(Near(in data,  6, EdgeMode.Wrap), (float)2, (float)0);
-
-            arena.Dispose();
         }
 
         void EdgeModeMirrorTaps()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var data = Ramp(ref arena, 5);
+            var data = Ramp(5);
 
             // Mirror reflect101 (N=5): idx(-1)=1, idx(5)=3, idx(8)=0, idx(-4)=4.
             AssertClose(Near(in data, -1, EdgeMode.Mirror), (float)2, (float)0);
             AssertClose(Near(in data,  5, EdgeMode.Mirror), (float)4, (float)0);
             AssertClose(Near(in data,  8, EdgeMode.Mirror), (float)1, (float)0);
             AssertClose(Near(in data, -4, EdgeMode.Mirror), (float)5, (float)0);
-
-            arena.Dispose();
         }
 
-        floatN Ramp(ref Arena arena, int n)
+        floatN Ramp(int n)
         {
-            var v = arena.floatVec(n);
+            var v = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) v[i] = (float)(i + 1);
             return v;
         }
@@ -209,21 +188,19 @@ public class floatResampleTests
         // Gather matches per-position sampleAt, element for element.
         void SampleAtIntoGather()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 6;
-            var data = arena.floatVec(n);
+            var data = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) data[i] = (float)(i * i);   // 0,1,4,9,16,25
 
             int k = 5;
-            var positions = arena.floatVec(k);
+            var positions = new floatN(k, Allocator.Temp);
             positions[0] = (float)0;
             positions[1] = (float)1.5;
             positions[2] = (float)2.25;
             positions[3] = (float)4.0;
             positions[4] = (float)(-1);   // exercises the edge mode
 
-            var dest = arena.floatVec(k);
+            var dest = new floatN(k, Allocator.Temp);
             Resample.sampleAtInto(in data, in positions, ref dest, Interp.Cubic, EdgeMode.Mirror);
 
             for (int j = 0; j < k; j++)
@@ -231,8 +208,6 @@ public class floatResampleTests
                 float expected = Resample.sampleAt(in data, positions[j], Interp.Cubic, EdgeMode.Mirror);
                 AssertClose(dest[j], expected, (float)0);   // identical code path -> bit-exact
             }
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -242,59 +217,49 @@ public class floatResampleTests
         // dst.N == src.N -> pos(j) == j (integer), so Linear AND Cubic reproduce the input exactly.
         void ResampleIdentityAlignedGrid()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
-            var src = arena.floatVec(n);
+            var src = new floatN(n, Allocator.Temp);
             src[0] = (float)2.5; src[1] = (float)(-1.0); src[2] = (float)3.7;
             src[3] = (float)0.2; src[4] = (float)5.5;
 
-            var dstL = arena.floatVec(n);
+            var dstL = new floatN(n, Allocator.Temp);
             Resample.resampleInto(in src, ref dstL, Interp.Linear, EdgeMode.Clamp);
             for (int i = 0; i < n; i++) AssertClose(dstL[i], src[i], (float)0);
 
-            var dstC = arena.floatVec(n);
+            var dstC = new floatN(n, Allocator.Temp);
             Resample.resampleInto(in src, ref dstC, Interp.Cubic, EdgeMode.Clamp);
             for (int i = 0; i < n; i++) AssertClose(dstC[i], src[i], (float)0);
-
-            arena.Dispose();
         }
 
         // Endpoints pinned bit-exact on both up- and down-sample: dst[0]==src[0], dst[last]==src[last].
         void ResampleEndpointsPreserved()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // upsample 4 -> 9
-            var up = arena.floatVec(4);
+            var up = new floatN(4, Allocator.Temp);
             up[0] = (float)10; up[1] = (float)20; up[2] = (float)30; up[3] = (float)40;
-            var dstUp = arena.floatVec(9);
+            var dstUp = new floatN(9, Allocator.Temp);
             Resample.resampleInto(in up, ref dstUp, Interp.Cubic, EdgeMode.Clamp);
             AssertClose(dstUp[0], up[0], (float)0);
             AssertClose(dstUp[8], up[3], (float)0);
 
             // downsample 9 -> 4
-            var down = arena.floatVec(9);
+            var down = new floatN(9, Allocator.Temp);
             for (int i = 0; i < 9; i++) down[i] = (float)(i * i);
-            var dstDown = arena.floatVec(4);
+            var dstDown = new floatN(4, Allocator.Temp);
             Resample.resampleInto(in down, ref dstDown, Interp.Linear, EdgeMode.Clamp);
             AssertClose(dstDown[0], down[0], (float)0);
             AssertClose(dstDown[3], down[8], (float)0);
-
-            arena.Dispose();
         }
 
         // Linear upsample of a linear ramp stays linear: dst[j] == a*pos(j)+b, pos(j)=j*(srcN-1)/(dstN-1).
         void ResampleLinearRampStaysLinear()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             float a = (float)2, b = (float)(-1);
             int srcN = 4, dstN = 10;
-            var src = arena.floatVec(srcN);
+            var src = new floatN(srcN, Allocator.Temp);
             for (int i = 0; i < srcN; i++) src[i] = a * (float)i + b;   // -1,1,3,5
 
-            var dst = arena.floatVec(dstN);
+            var dst = new floatN(dstN, Allocator.Temp);
             Resample.resampleInto(in src, ref dst, Interp.Linear, EdgeMode.Clamp);
 
             float scale = (float)(srcN - 1) / (float)(dstN - 1);
@@ -304,23 +269,17 @@ public class floatResampleTests
                 float pos = (float)j * scale;
                 AssertClose(dst[j], a * pos + b, tol);
             }
-
-            arena.Dispose();
         }
 
         // dst.N == 1 -> dst[0] == src[0].
         void ResampleSingleDest()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var src = arena.floatVec(3);
+            var src = new floatN(3, Allocator.Temp);
             src[0] = (float)5; src[1] = (float)6; src[2] = (float)7;
 
-            var dst = arena.floatVec(1);
+            var dst = new floatN(1, Allocator.Temp);
             Resample.resampleInto(in src, ref dst, Interp.Linear, EdgeMode.Clamp);
             AssertClose(dst[0], src[0], (float)0);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -330,24 +289,20 @@ public class floatResampleTests
         // M x N -> M x N: aligned grid, so Nearest/Linear/Cubic all reproduce the source exactly.
         void Resample2DIdentity()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 3, n = 4;
-            var src = arena.floatMat(m, n);
+            var src = new floatMxN(m, n, Allocator.Temp);
             for (int r = 0; r < m; r++)
                 for (int c = 0; c < n; c++)
                     src[r, c] = (float)(r * 10 + c) - (float)3.5;
 
-            CheckIdentity2D(ref arena, in src, Interp.Nearest);
-            CheckIdentity2D(ref arena, in src, Interp.Linear);
-            CheckIdentity2D(ref arena, in src, Interp.Cubic);
-
-            arena.Dispose();
+            CheckIdentity2D(in src, Interp.Nearest);
+            CheckIdentity2D(in src, Interp.Linear);
+            CheckIdentity2D(in src, Interp.Cubic);
         }
 
-        void CheckIdentity2D(ref Arena arena, in floatMxN src, Interp interp)
+        void CheckIdentity2D(in floatMxN src, Interp interp)
         {
-            var dst = arena.floatMat(src.M_Rows, src.N_Cols);
+            var dst = new floatMxN(src.M_Rows, src.N_Cols, Allocator.Temp);
             Resample.resample2DInto(in src, ref dst, interp, EdgeMode.Clamp);
             for (int r = 0; r < src.M_Rows; r++)
                 for (int c = 0; c < src.N_Cols; c++)
@@ -357,41 +312,35 @@ public class floatResampleTests
         // The 4 corners are pinned exactly on an arbitrary resize.
         void Resample2DCornersPreserved()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 3, n = 4;
-            var src = arena.floatMat(m, n);
+            var src = new floatMxN(m, n, Allocator.Temp);
             for (int r = 0; r < m; r++)
                 for (int c = 0; c < n; c++)
                     src[r, c] = (float)(r * 7 - c * 3) + (float)0.25;
 
             int M2 = 5, N2 = 7;
-            var dst = arena.floatMat(M2, N2);
+            var dst = new floatMxN(M2, N2, Allocator.Temp);
             Resample.resample2DInto(in src, ref dst, Interp.Cubic, EdgeMode.Clamp);
 
             AssertClose(dst[0, 0],        src[0, 0],         (float)0);
             AssertClose(dst[0, N2 - 1],   src[0, n - 1],     (float)0);
             AssertClose(dst[M2 - 1, 0],   src[m - 1, 0],     (float)0);
             AssertClose(dst[M2 - 1, N2-1],src[m - 1, n - 1], (float)0);
-
-            arena.Dispose();
         }
 
         // Bilinear (Linear, two separable passes) of a planar field f(r,c)=a*r+b*c+d is exact within
         // a per-precision tolerance. src 4x5 -> dst 7x9: rowPos(i)=i*0.5, colPos(j)=j*0.5.
         void Resample2DBilinearPlanar()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             float a = (float)1.5, b = (float)(-0.7), d = (float)2;
             int m = 4, n = 5;
-            var src = arena.floatMat(m, n);
+            var src = new floatMxN(m, n, Allocator.Temp);
             for (int r = 0; r < m; r++)
                 for (int c = 0; c < n; c++)
                     src[r, c] = a * (float)r + b * (float)c + d;
 
             int M2 = 7, N2 = 9;
-            var dst = arena.floatMat(M2, N2);
+            var dst = new floatMxN(M2, N2, Allocator.Temp);
             Resample.resample2DInto(in src, ref dst, Interp.Linear, EdgeMode.Clamp);
 
             float rScale = (float)(m - 1) / (float)(M2 - 1);
@@ -404,8 +353,6 @@ public class floatResampleTests
                     float cp = (float)j * cScale;
                     AssertClose(dst[i, j], a * rp + b * cp + d, tol);
                 }
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -455,84 +402,64 @@ public class floatResampleTests
     [Test]
     public void SampleAtEmptyThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var empty = arena.floatVec(0);
-            Assert.Throws<ArgumentException>(
-                () => Resample.sampleAt(in empty, (float)0, Interp.Linear, EdgeMode.Clamp));
-        }
-        finally { arena.Dispose(); }
+        var empty = new floatN(0, Allocator.Temp);
+        Assert.Throws<ArgumentException>(
+            () => Resample.sampleAt(in empty, (float)0, Interp.Linear, EdgeMode.Clamp));
     }
 
     [Test]
     public void SampleAtIntoValidates()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var data = arena.floatVec(5);
-            for (int i = 0; i < 5; i++) data[i] = (float)i;
+        var data = new floatN(5, Allocator.Temp);
+        for (int i = 0; i < 5; i++) data[i] = (float)i;
 
-            // dest.N != positions.N
-            var positions = arena.floatVec(3);
-            var destBad = arena.floatVec(4);
-            Assert.Throws<ArgumentException>(
-                () => Resample.sampleAtInto(in data, in positions, ref destBad, Interp.Linear, EdgeMode.Clamp));
+        // dest.N != positions.N
+        var positions = new floatN(3, Allocator.Temp);
+        var destBad = new floatN(4, Allocator.Temp);
+        Assert.Throws<ArgumentException>(
+            () => Resample.sampleAtInto(in data, in positions, ref destBad, Interp.Linear, EdgeMode.Clamp));
 
-            // empty data (dest.N == positions.N so it reaches the data check) -> "sampleAtInto:" message
-            var emptyData = arena.floatVec(0);
-            var dest = arena.floatVec(3);
-            var ex = Assert.Throws<ArgumentException>(
-                () => Resample.sampleAtInto(in emptyData, in positions, ref dest, Interp.Linear, EdgeMode.Clamp));
-            StringAssert.Contains("sampleAtInto:", ex.Message);
-        }
-        finally { arena.Dispose(); }
+        // empty data (dest.N == positions.N so it reaches the data check) -> "sampleAtInto:" message
+        var emptyData = new floatN(0, Allocator.Temp);
+        var dest = new floatN(3, Allocator.Temp);
+        var ex = Assert.Throws<ArgumentException>(
+            () => Resample.sampleAtInto(in emptyData, in positions, ref dest, Interp.Linear, EdgeMode.Clamp));
+        StringAssert.Contains("sampleAtInto:", ex.Message);
     }
 
     [Test]
     public void ResampleIntoValidates()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var src = arena.floatVec(4);
-            var emptyDst = arena.floatVec(0);
-            Assert.Throws<ArgumentException>(
-                () => Resample.resampleInto(in src, ref emptyDst, Interp.Linear, EdgeMode.Clamp));
+        var src = new floatN(4, Allocator.Temp);
+        var emptyDst = new floatN(0, Allocator.Temp);
+        Assert.Throws<ArgumentException>(
+            () => Resample.resampleInto(in src, ref emptyDst, Interp.Linear, EdgeMode.Clamp));
 
-            var emptySrc = arena.floatVec(0);
-            var dst = arena.floatVec(4);
-            Assert.Throws<ArgumentException>(
-                () => Resample.resampleInto(in emptySrc, ref dst, Interp.Linear, EdgeMode.Clamp));
-        }
-        finally { arena.Dispose(); }
+        var emptySrc = new floatN(0, Allocator.Temp);
+        var dst = new floatN(4, Allocator.Temp);
+        Assert.Throws<ArgumentException>(
+            () => Resample.resampleInto(in emptySrc, ref dst, Interp.Linear, EdgeMode.Clamp));
     }
 
     [Test]
     public void Resample2DIntoValidates()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var src = arena.floatMat(3, 3);
+        var src = new floatMxN(3, 3, Allocator.Temp);
 
-            // dst with 0 rows
-            var dstNoRows = arena.floatMat(0, 3);
-            Assert.Throws<ArgumentException>(
-                () => Resample.resample2DInto(in src, ref dstNoRows, Interp.Linear, EdgeMode.Clamp));
+        // dst with 0 rows
+        var dstNoRows = new floatMxN(0, 3, Allocator.Temp);
+        Assert.Throws<ArgumentException>(
+            () => Resample.resample2DInto(in src, ref dstNoRows, Interp.Linear, EdgeMode.Clamp));
 
-            // dst with 0 cols
-            var dstNoCols = arena.floatMat(3, 0);
-            Assert.Throws<ArgumentException>(
-                () => Resample.resample2DInto(in src, ref dstNoCols, Interp.Linear, EdgeMode.Clamp));
+        // dst with 0 cols
+        var dstNoCols = new floatMxN(3, 0, Allocator.Temp);
+        Assert.Throws<ArgumentException>(
+            () => Resample.resample2DInto(in src, ref dstNoCols, Interp.Linear, EdgeMode.Clamp));
 
-            // src 0x0 (validated before any scratch allocation)
-            var emptySrc = arena.floatMat(0, 0);
-            var dst = arena.floatMat(2, 2);
-            Assert.Throws<ArgumentException>(
-                () => Resample.resample2DInto(in emptySrc, ref dst, Interp.Linear, EdgeMode.Clamp));
-        }
-        finally { arena.Dispose(); }
+        // src 0x0 (validated before any scratch allocation)
+        var emptySrc = new floatMxN(0, 0, Allocator.Temp);
+        var dst = new floatMxN(2, 2, Allocator.Temp);
+        Assert.Throws<ArgumentException>(
+            () => Resample.resample2DInto(in emptySrc, ref dst, Interp.Linear, EdgeMode.Clamp));
     }
 }

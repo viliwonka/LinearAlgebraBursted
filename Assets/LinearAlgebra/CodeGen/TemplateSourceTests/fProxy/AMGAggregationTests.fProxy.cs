@@ -27,16 +27,16 @@ public class fProxyAMGAggregationTests
         public TestType Type;
 
         // 1x1-block chain: diagonal 2, symmetric off-diagonal -offMag to each neighbor (full storage).
-        static fProxyBSR Chain(ref Arena arena, int nb, fProxy offMag)
+        static fProxyBSR Chain(int nb, fProxy offMag)
         {
-            var b = arena.fProxyBSRBuilder(nb, nb, 1, 1, 3 * nb);
+            var b = new fProxyBSRBuilder(nb, nb, 1, 1, Allocator.Temp, 3 * nb);
             for (int i = 0; i < nb; i++)
             {
                 b.AddValue(i, i, (fProxy)2);
                 if (i > 0) b.AddValue(i, i - 1, -offMag);
                 if (i < nb - 1) b.AddValue(i, i + 1, -offMag);
             }
-            return b.ToBSR(ref arena);
+            return b.ToBSR(Allocator.Temp);
         }
 
         // Every block-row assigned to some aggregate in [0, numAgg); numAgg >= 1.
@@ -68,10 +68,9 @@ public class fProxyAMGAggregationTests
 
         void ChainPartitionsAndCoarsens()
         {
-            var arena = new Arena(Allocator.Persistent);
             int nb = 12;
-            var A = Chain(ref arena, nb, (fProxy)1);
-            var aggId = arena.Indices(nb);
+            var A = Chain(nb, (fProxy)1);
+            var aggId = new Indices(nb, Allocator.Temp);
 
             AMG.aggregate(in A, (fProxy)0, ref aggId, out int numAgg);
 
@@ -87,33 +86,27 @@ public class fProxyAMGAggregationTests
                 if (c > maxSize) maxSize = c;
             }
             Assert.IsTrue(maxSize >= 2);
-
-            arena.Dispose();
         }
 
         void DiagonalOnlyAllSingletons()
         {
-            var arena = new Arena(Allocator.Persistent);
             int nb = 8;
-            var b = arena.fProxyBSRBuilder(nb, nb, 1, 1, nb);
+            var b = new fProxyBSRBuilder(nb, nb, 1, 1, Allocator.Temp, nb);
             for (int i = 0; i < nb; i++) b.AddValue(i, i, (fProxy)3);
-            var A = b.ToBSR(ref arena);
-            var aggId = arena.Indices(nb);
+            var A = b.ToBSR(Allocator.Temp);
+            var aggId = new Indices(nb, Allocator.Temp);
 
             AMG.aggregate(in A, (fProxy)0, ref aggId, out int numAgg);
 
             AssertValidPartition(in aggId, nb, numAgg);
             Assert.IsTrue(numAgg == nb);                // no connections -> every node its own aggregate
-
-            arena.Dispose();
         }
 
         void HighThetaWeakLinksAllSingletons()
         {
-            var arena = new Arena(Allocator.Persistent);
             int nb = 10;
-            var A = Chain(ref arena, nb, (fProxy)0.01);   // off-diagonals tiny vs diagonal 2
-            var aggId = arena.Indices(nb);
+            var A = Chain(nb, (fProxy)0.01);   // off-diagonals tiny vs diagonal 2
+            var aggId = new Indices(nb, Allocator.Temp);
 
             // threshold = theta*sqrt(2*2) = 1.0 >> 0.01 -> all links weak -> all singletons.
             AMG.aggregate(in A, (fProxy)0.5, ref aggId, out int numAgg);
@@ -122,11 +115,9 @@ public class fProxyAMGAggregationTests
             Assert.IsTrue(numAgg == nb);
 
             // Same matrix with theta = 0 keeps the links -> coarsens.
-            var aggId0 = arena.Indices(nb);
+            var aggId0 = new Indices(nb, Allocator.Temp);
             AMG.aggregate(in A, (fProxy)0, ref aggId0, out int numAgg0);
             Assert.IsTrue(numAgg0 < nb);
-
-            arena.Dispose();
         }
 
         // A zero-diagonal block (constraint/interface row) has undefined strength; with theta>0 its
@@ -135,18 +126,17 @@ public class fProxyAMGAggregationTests
         // made every incident edge spuriously strong.)
         void ZeroDiagonalNodeIsolated()
         {
-            var arena = new Arena(Allocator.Persistent);
             int nb = 5;
             // Chain with node 2 given a ZERO diagonal; off-diagonals -1 everywhere.
-            var b = arena.fProxyBSRBuilder(nb, nb, 1, 1, 3 * nb);
+            var b = new fProxyBSRBuilder(nb, nb, 1, 1, Allocator.Temp, 3 * nb);
             for (int i = 0; i < nb; i++)
             {
                 b.AddValue(i, i, i == 2 ? (fProxy)0 : (fProxy)2);
                 if (i > 0) b.AddValue(i, i - 1, (fProxy)(-1));
                 if (i < nb - 1) b.AddValue(i, i + 1, (fProxy)(-1));
             }
-            var A = b.ToBSR(ref arena);
-            var aggId = arena.Indices(nb);
+            var A = b.ToBSR(Allocator.Temp);
+            var aggId = new Indices(nb, Allocator.Temp);
 
             // theta=0.5: real-DOF edges (|off|=1 vs threshold 0.5*sqrt(2)*sqrt(2)≈1) are strong;
             // edges incident to the zero-diagonal node 2 are weak.
@@ -159,25 +149,20 @@ public class fProxyAMGAggregationTests
             int size = 0;
             for (int i = 0; i < nb; i++) if (aggId[i] == a2) size++;
             Assert.IsTrue(size == 1);
-
-            arena.Dispose();
         }
 
         void Deterministic()
         {
-            var arena = new Arena(Allocator.Persistent);
             int nb = 16;
-            var A = Chain(ref arena, nb, (fProxy)1);
-            var a1 = arena.Indices(nb);
-            var a2 = arena.Indices(nb);
+            var A = Chain(nb, (fProxy)1);
+            var a1 = new Indices(nb, Allocator.Temp);
+            var a2 = new Indices(nb, Allocator.Temp);
 
             AMG.aggregate(in A, (fProxy)0, ref a1, out int n1);
             AMG.aggregate(in A, (fProxy)0, ref a2, out int n2);
 
             Assert.IsTrue(n1 == n2);
             for (int i = 0; i < nb; i++) Assert.IsTrue(a1[i] == a2[i]);
-
-            arena.Dispose();
         }
     }
 

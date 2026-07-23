@@ -184,11 +184,11 @@ public class floatSVDTests
         }
 
         // Core known-Σ thin check: recovered S == prescribed σ (svTol), UᵀU=I, VᵀV=I, A == U diag(S) Vᵀ.
-        void CheckThinKnown(in floatMxN A, in floatN sigma, int m, int n, ref Arena arena)
+        void CheckThinKnown(in floatMxN A, in floatN sigma, int m, int n)
         {
-            var U = arena.floatMat(m, n);
-            var S = arena.floatVec(n);
-            var V = arena.floatMat(n, n);
+            var U = new floatMxN(m, n, Allocator.Temp);
+            var S = new floatN(n, Allocator.Temp);
+            var V = new floatMxN(n, n, Allocator.Temp);
             Assert.IsTrue(SVD.thin(in A, ref U, ref S, ref V));
             Assert.IsFalse(Analysis.isAnyNan(in S));
 
@@ -200,75 +200,65 @@ public class floatSVDTests
             AssertDescendingNonNegative(in S, n);
             AssertOrthoColsLocal(in U, m, n, (float)32 * Consts.floatSqrtEps);
             AssertOrthoColsLocal(in V, n, n, (float)32 * Consts.floatSqrtEps);
-            AssertReconstruct(in A, in U, in S, in V, ref arena, svTol);
+            AssertReconstruct(in A, in U, in S, in V, svTol);
         }
 
         void ThinKnownGeometric_30x10()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 30, n = 10;
-            var sigma = arena.floatVec(n);
+            var sigma = new floatN(n, Allocator.Temp);
             double s = 1.0; for (int i = 0; i < n; i++) { sigma[i] = (float)s; s *= 0.6; }
-            var A = arena.floatMat(m, n);
+            var A = new floatMxN(m, n, Allocator.Temp);
             var rng = new Unity.Mathematics.Random(0x7A0A0001u);
             BuildRandSvd(ref rng, m, n, in sigma, ref A);
-            CheckThinKnown(in A, in sigma, m, n, ref arena);
-            arena.Dispose();
+            CheckThinKnown(in A, in sigma, m, n);
         }
 
         void ThinKnownArithmetic_24x8()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 24, n = 8;
-            var sigma = arena.floatVec(n);
+            var sigma = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) sigma[i] = (float)(10.0 - i);   // 10,9,...,3 (descending)
-            var A = arena.floatMat(m, n);
+            var A = new floatMxN(m, n, Allocator.Temp);
             var rng = new Unity.Mathematics.Random(0x7A0A0002u);
             BuildRandSvd(ref rng, m, n, in sigma, ref A);
-            CheckThinKnown(in A, in sigma, m, n, ref arena);
-            arena.Dispose();
+            CheckThinKnown(in A, in sigma, m, n);
         }
 
         void ThinKnownOneSmall_10x10()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 10, n = 10;
-            var sigma = arena.floatVec(n);
+            var sigma = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) sigma[i] = (i == n - 1) ? (float)1E-4f : (float)1;  // κ=1e4
-            var A = arena.floatMat(m, n);
+            var A = new floatMxN(m, n, Allocator.Temp);
             var rng = new Unity.Mathematics.Random(0x7A0A0003u);
             BuildRandSvd(ref rng, m, n, in sigma, ref A);
-            CheckThinKnown(in A, in sigma, m, n, ref arena);
-            arena.Dispose();
+            CheckThinKnown(in A, in sigma, m, n);
         }
 
         void ThinKnownClustered_20x8()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 20, n = 8;
-            var sigma = arena.floatVec(n);
+            var sigma = new floatN(n, Allocator.Temp);
             // [10,10,10, 3,2,1,0.5,0.25]
             sigma[0]=(float)10; sigma[1]=(float)10; sigma[2]=(float)10; sigma[3]=(float)3;
             sigma[4]=(float)2;  sigma[5]=(float)1;  sigma[6]=(float)0.5f; sigma[7]=(float)0.25f;
-            var A = arena.floatMat(m, n);
+            var A = new floatMxN(m, n, Allocator.Temp);
             var rng = new Unity.Mathematics.Random(0x7A0A0004u);
             BuildRandSvd(ref rng, m, n, in sigma, ref A);
-            CheckThinKnown(in A, in sigma, m, n, ref arena);
-            arena.Dispose();
+            CheckThinKnown(in A, in sigma, m, n);
         }
 
         void ThinKnownFlatCliff_40x12()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 40, n = 12;
-            var sigma = arena.floatVec(n);
+            var sigma = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++)
                 sigma[i] = (i == 0) ? (float)100 : (i == 1) ? (float)80 : (i == 2) ? (float)60 : (float)1E-3f;
-            var A = arena.floatMat(m, n);
+            var A = new floatMxN(m, n, Allocator.Temp);
             var rng = new Unity.Mathematics.Random(0x7A0A0005u);
             BuildRandSvd(ref rng, m, n, in sigma, ref A);
-            CheckThinKnown(in A, in sigma, m, n, ref arena);
-            arena.Dispose();
+            CheckThinKnown(in A, in sigma, m, n);
         }
 
         // WIDE aspect: build a tall T (15×6) with known Σ; T = Wᵀ for the wide W = Tᵀ (6×15). thin
@@ -276,21 +266,19 @@ public class floatSVDTests
         // which must recover W's singular values. Validates the transpose contract for wide inputs.
         void ThinKnownWideViaTranspose_6x15()
         {
-            var arena = new Arena(Allocator.Persistent);
             int rows = 6, cols = 15;        // wide W is rows×cols
             int m = cols, n = rows;         // tall T = Wᵀ is cols×rows = 15×6
-            var sigma = arena.floatVec(n);
+            var sigma = new floatN(n, Allocator.Temp);
             double s = 1.0; for (int i = 0; i < n; i++) { sigma[i] = (float)s; s *= 0.55; }
-            var T = arena.floatMat(m, n);
+            var T = new floatMxN(m, n, Allocator.Temp);
             var rng = new Unity.Mathematics.Random(0x7A0A0006u);
             BuildRandSvd(ref rng, m, n, in sigma, ref T);   // T (15×6), its transpose is the 6×15 wide W
 
-            var W = arena.floatMat(rows, cols);            // build the actual WIDE matrix
+            var W = new floatMxN(rows, cols, Allocator.Temp);            // build the actual WIDE matrix
             Blas.trans(in T, ref W);
 
             var TFromW = Blas.trans(W);                     // the documented route: thin(in trans(W))
-            CheckThinKnown(in TFromW, in sigma, m, n, ref arena);
-            arena.Dispose();
+            CheckThinKnown(in TFromW, in sigma, m, n);
         }
 
         // Gallery ill-conditioned (Hilbert): assert σ sorted-descending positive, condition number
@@ -298,12 +286,11 @@ public class floatSVDTests
         // ≳1e6 before hitting its own precision floor), and reconstruction holds.
         void ThinGalleryHilbert_8()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 8;
-            var A = arena.floatHilbert(n);
-            var U = arena.floatMat(n, n);
-            var S = arena.floatVec(n);
-            var V = arena.floatMat(n, n);
+            var A = floatGallery.floatHilbert(n, allocator: Allocator.Temp);
+            var U = new floatMxN(n, n, Allocator.Temp);
+            var S = new floatN(n, Allocator.Temp);
+            var V = new floatMxN(n, n, Allocator.Temp);
             Assert.IsTrue(SVD.thin(in A, ref U, ref S, ref V));
             Assert.IsFalse(Analysis.isAnyNan(in S));
 
@@ -314,20 +301,18 @@ public class floatSVDTests
             float cond = S[0] / S[n - 1];
             AssertGEf(cond, (float)1E3f);
 
-            AssertReconstruct(in A, in U, in S, in V, ref arena, (float)8 * Consts.floatSqrtEps * (S[0] + (float)1));
-            arena.Dispose();
+            AssertReconstruct(in A, in U, in S, in V, (float)8 * Consts.floatSqrtEps * (S[0] + (float)1));
         }
 
         // Gallery ill-conditioned (Kahan, θ=1.2): upper-triangular classic QRCP counterexample.
         // Assert σ sorted-descending positive, κ large, reconstruction holds.
         void ThinGalleryKahan_12()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 12;
-            var A = arena.floatKahan(n, (float)0.36235775f);
-            var U = arena.floatMat(n, n);
-            var S = arena.floatVec(n);
-            var V = arena.floatMat(n, n);
+            var A = floatGallery.floatKahan(n, (float)0.36235775f, allocator: Allocator.Temp);
+            var U = new floatMxN(n, n, Allocator.Temp);
+            var S = new floatN(n, Allocator.Temp);
+            var V = new floatMxN(n, n, Allocator.Temp);
             Assert.IsTrue(SVD.thin(in A, ref U, ref S, ref V));
             Assert.IsFalse(Analysis.isAnyNan(in S));
 
@@ -337,24 +322,21 @@ public class floatSVDTests
             float cond = S[0] / S[n - 1];
             AssertGEf(cond, (float)10f);   // Kahan is ill-conditioned; lenient bound holds for both types
 
-            AssertReconstruct(in A, in U, in S, in V, ref arena, (float)8 * Consts.floatSqrtEps * (S[0] + (float)1));
-            arena.Dispose();
+            AssertReconstruct(in A, in U, in S, in V, (float)8 * Consts.floatSqrtEps * (S[0] + (float)1));
         }
 
         // SVD.pinvSolve must treat x as OUTPUT ONLY -- prior garbage
         // (here, NaN sentinels) must not survive into the result.
         void PinvSolveUninitXContract()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 8, n = 4;
-            var A = arena.floatRandomMat(m, n, -5f, 5f, 434343);
+            var A = GenerateOP.floatRandomMat(m, n, -5f, 5f, 434343, allocator: Allocator.Temp);
             for (int d = 0; d < n; d++) A[d, d] += (float)10f;
-            var xKnown = arena.floatRandomVec(n, -3f, 3f, 545454);
-            var b = arena.floatVec(m);
+            var xKnown = GenerateOP.floatRandomVec(n, -3f, 3f, 545454, allocator: Allocator.Temp);
+            var b = new floatN(m, Allocator.Temp);
             Blas.dot(in A, in xKnown, ref b);
 
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = float.NaN;
 
             RankInfo pinvInfo = SVD.pinvSolve(ref A, in b, ref x);
@@ -375,8 +357,6 @@ public class floatSVDTests
                 }
                 Assert.IsTrue(diff <= tol);
             }
-
-            arena.Dispose();
         }
 
         // ================================================================================
@@ -390,31 +370,27 @@ public class floatSVDTests
         // ALSO checks the Frobenius identity Σσ_i^2 == ‖A‖_F^2 (free, holds for ANY A).
         void CrossCheckEigenRandom(int m, int n, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatRandomMat(m, n, -5f, 5f, seed);
-            CrossCheckEigenCore(ref arena, in A, m, n);
-            arena.Dispose();
+            var A = GenerateOP.floatRandomMat(m, n, -5f, 5f, seed, allocator: Allocator.Temp);
+            CrossCheckEigenCore(in A, m, n);
         }
 
         // Clustered-σ variant: [10,10,10,3,2,1,0.5,0.25] embedded in a 12x8 A via Haar U/V (randsvd).
         void CrossCheckEigenClustered12x8()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 12, n = 8;
-            var sigma = arena.floatVec(n);
+            var sigma = new floatN(n, Allocator.Temp);
             sigma[0]=(float)10; sigma[1]=(float)10; sigma[2]=(float)10; sigma[3]=(float)3;
             sigma[4]=(float)2;  sigma[5]=(float)1;  sigma[6]=(float)0.5f; sigma[7]=(float)0.25f;
-            var A = arena.floatMat(m, n);
+            var A = new floatMxN(m, n, Allocator.Temp);
             var rng = new Unity.Mathematics.Random(0x5EED0013u);
             BuildRandSvd(ref rng, m, n, in sigma, ref A);
-            CrossCheckEigenCore(ref arena, in A, m, n);
-            arena.Dispose();
+            CrossCheckEigenCore(in A, m, n);
         }
 
-        void CrossCheckEigenCore(ref Arena arena, in floatMxN A, int m, int n)
+        void CrossCheckEigenCore(in floatMxN A, int m, int n)
         {
             // (1) singular values via Golub-Kahan; A preserved.
-            var S = arena.floatVec(n);
+            var S = new floatN(n, Allocator.Temp);
             Assert.IsTrue(SVD.values(in A, ref S));
             Assert.IsFalse(Analysis.isAnyNan(in S));
             AssertDescendingNonNegative(in S, n);
@@ -424,7 +400,7 @@ public class floatSVDTests
             var AtA = Blas.dot(At, A);
 
             // (3) eigenvalues of AᵀA (DESTROYS AtA; sorted DESCENDING -- same convention as S).
-            var lambda = arena.floatVec(n);
+            var lambda = new floatN(n, Allocator.Temp);
             Assert.IsTrue(Eigen.valuesSymmetricInPlace(ref AtA, ref lambda));
 
             // (4) σ_i^2 ≈ λ_i, LOOSE tolerance scaled by σ_0^2 (squaring roughly squares κ, so tiny
@@ -475,12 +451,11 @@ public class floatSVDTests
         // descending σ = [10,4,1]; SVD.thin must recover exactly those (+ zeros).
         void KnownSigmaGramSchmidtCoherent()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 12, n = 10, k = 3;
 
             // coherent overlapping-ramp raw vectors (independent, so MGS yields a full rank-k basis).
-            var Umat = arena.floatMat(m, k);
-            var Vmat = arena.floatMat(n, k);
+            var Umat = new floatMxN(m, k, Allocator.Temp);
+            var Vmat = new floatMxN(n, k, Allocator.Temp);
             for (int c = 0; c < k; c++)
             {
                 for (int i = 0; i < m; i++) Umat[i, c] = (float)math.max(0, i - 2 * c + 3);
@@ -489,10 +464,10 @@ public class floatSVDTests
             GramSchmidtColumns(ref Umat, m, k);
             GramSchmidtColumns(ref Vmat, n, k);
 
-            var sigma3 = arena.floatVec(k);
+            var sigma3 = new floatN(k, Allocator.Temp);
             sigma3[0] = (float)10; sigma3[1] = (float)4; sigma3[2] = (float)1;
 
-            var A = arena.floatMat(m, n);
+            var A = new floatMxN(m, n, Allocator.Temp);
             for (int i = 0; i < m; i++)
                 for (int j = 0; j < n; j++)
                 {
@@ -502,9 +477,9 @@ public class floatSVDTests
                     A[i, j] = (float)acc;
                 }
 
-            var U = arena.floatMat(m, n);
-            var S = arena.floatVec(n);
-            var V = arena.floatMat(n, n);
+            var U = new floatMxN(m, n, Allocator.Temp);
+            var S = new floatN(n, Allocator.Temp);
+            var V = new floatMxN(n, n, Allocator.Temp);
             Assert.IsTrue(SVD.thin(in A, ref U, ref S, ref V));
             Assert.IsFalse(Analysis.isAnyNan(in S));
             AssertDescendingNonNegative(in S, n);
@@ -515,9 +490,7 @@ public class floatSVDTests
             AssertClose(S[2], (float)1,  svTol);
             for (int i = k; i < n; i++) AssertClose(S[i], (float)0, svTol);
 
-            AssertReconstruct(in A, in U, in S, in V, ref arena, svTol);
-
-            arena.Dispose();
+            AssertReconstruct(in A, in U, in S, in V, svTol);
         }
 
         // Modified Gram-Schmidt orthonormalization of the k COLUMNS of M (rows x k), in place.
@@ -543,16 +516,15 @@ public class floatSVDTests
         // A = [[3,0],[4,5]] -> singular values sqrt(45)≈6.7082039, sqrt(5)≈2.2360680 (descending).
         void Known2x2GolubKahan()
         {
-            var arena = new Arena(Allocator.Persistent);
             int dim = 2;
 
-            var A = arena.floatMat(dim, dim);
+            var A = new floatMxN(dim, dim, Allocator.Temp);
             A[0, 0] = 3f; A[0, 1] = 0f;
             A[1, 0] = 4f; A[1, 1] = 5f;
 
-            var U = arena.floatMat(dim, dim);
-            var S = arena.floatVec(dim);
-            var V = arena.floatMat(dim, dim);
+            var U = new floatMxN(dim, dim, Allocator.Temp);
+            var S = new floatN(dim, Allocator.Temp);
+            var V = new floatMxN(dim, dim, Allocator.Temp);
             Assert.IsTrue(SVD.thin(in A, ref U, ref S, ref V));
             Assert.IsFalse(Analysis.isAnyNan(in S));
 
@@ -561,24 +533,21 @@ public class floatSVDTests
             AssertDescendingNonNegative(in S, dim);
             Assert.IsTrue(Analysis.isOrthogonal(U, (float)1E-4f));
             Assert.IsTrue(Analysis.isOrthogonal(V, (float)1E-4f));
-            AssertReconstruct(in A, in U, in S, in V, ref arena, (float)1E-4f);
-
-            arena.Dispose();
+            AssertReconstruct(in A, in U, in S, in V, (float)1E-4f);
         }
 
         // (2d) Known-value oracle. 5x1 column [1,2,3,4,5]: single singular value
         // = column 2-norm = sqrt(55)≈7.4161985 (m=5 >= n=1 satisfies thin's requirement).
         void SingleColumn5x1()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 5, n = 1;
 
-            var A = arena.floatMat(m, n);
+            var A = new floatMxN(m, n, Allocator.Temp);
             A[0, 0] = 1f; A[1, 0] = 2f; A[2, 0] = 3f; A[3, 0] = 4f; A[4, 0] = 5f;
 
-            var U = arena.floatMat(m, n);
-            var S = arena.floatVec(n);
-            var V = arena.floatMat(n, n);
+            var U = new floatMxN(m, n, Allocator.Temp);
+            var S = new floatN(n, Allocator.Temp);
+            var V = new floatMxN(n, n, Allocator.Temp);
             Assert.IsTrue(SVD.thin(in A, ref U, ref S, ref V));
             Assert.IsFalse(Analysis.isAnyNan(in S));
 
@@ -589,9 +558,7 @@ public class floatSVDTests
             for (int i = 0; i < m; i++) normSq += U[i, 0] * U[i, 0];
             AssertClose(normSq, (float)1f, (float)1E-4f);
 
-            AssertReconstruct(in A, in U, in S, in V, ref arena, (float)1E-4f);
-
-            arena.Dispose();
+            AssertReconstruct(in A, in U, in S, in V, (float)1E-4f);
         }
 
         // (2d) Non-convergence regression guard, against the CURRENT Golub-Kahan
@@ -604,14 +571,13 @@ public class floatSVDTests
         // hard-asserted (matching the deleted test's own choice).
         void NonConvergenceHilbert8()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 8;
-            var A = arena.floatHilbert(n);
+            var A = floatGallery.floatHilbert(n, allocator: Allocator.Temp);
 
             // pre-fill outputs with normal (zero) starting values, NOT a NaN sentinel.
-            var U = arena.floatMat(n, n);
-            var S = arena.floatVec(n);
-            var V = arena.floatMat(n, n);
+            var U = new floatMxN(n, n, Allocator.Temp);
+            var S = new floatN(n, Allocator.Temp);
+            var V = new floatMxN(n, n, Allocator.Temp);
 
             SVD.thin(in A, ref U, ref S, ref V, 1);
 
@@ -624,13 +590,11 @@ public class floatSVDTests
             AssertDescendingNonNegative(in S, n);
 
             // Same guarantee for the values-only path.
-            var S2 = arena.floatVec(n);
+            var S2 = new floatN(n, Allocator.Temp);
             SVD.values(in A, ref S2, 1, Consts.floatZeroThreshold);
             Assert.IsFalse(Analysis.isAnyNan(in S2));
             Assert.IsFalse(Analysis.isAnyInf(in S2));
             AssertDescendingNonNegative(in S2, n);
-
-            arena.Dispose();
         }
 
         // (2e) Determinant invariant: for a well-conditioned square A, |det A| == Π σ_i. det via LU
@@ -638,11 +602,10 @@ public class floatSVDTests
         // tolerance growing mildly with n (accumulated product of n rounded factors).
         void DetEqualsProductSingularValues()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 7;
 
             // well-conditioned: diagonal-boosted random (avoids singular/near-singular).
-            var A = arena.floatRandomMat(n, n, -3f, 3f, 6543210);
+            var A = GenerateOP.floatRandomMat(n, n, -3f, 3f, 6543210, allocator: Allocator.Temp);
             for (int d = 0; d < n; d++) A[d, d] += (float)(2 * n);
 
             // |det| via LU on a COPY.
@@ -653,7 +616,7 @@ public class floatSVDTests
             pivot.Dispose();
 
             // Π σ_i via SVD.values on the ORIGINAL untouched A.
-            var S = arena.floatVec(n);
+            var S = new floatN(n, Allocator.Temp);
             Assert.IsTrue(SVD.values(in A, ref S));
             float prod = (float)1;
             for (int i = 0; i < n; i++) prod *= S[i];
@@ -666,8 +629,6 @@ public class floatSVDTests
                 Fail[0] = (float)1; Fail[1] = detAbs; Fail[2] = prod; Fail[3] = relDiff;
             }
             Assert.IsTrue(relDiff <= relTol);
-
-            arena.Dispose();
         }
 
         void RecordEq(int got, int expected)
@@ -700,12 +661,10 @@ public class floatSVDTests
         // Uses SVD.singularValues (A is not modified, S is sorted descending).
         public void SVDGalleryHadamard()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 4;
 
-            var A = arena.floatHadamard(n);
-            var S = arena.floatVec(n);
+            var A = floatGallery.floatHadamard(n, allocator: Allocator.Temp);
+            var S = new floatN(n, Allocator.Temp);
 
             var info = SVD.singularValues(in A, ref S);
             Assert.IsTrue(info.Solved);
@@ -718,8 +677,6 @@ public class floatSVDTests
                 AssertClose(S[i], (float)2f, 1E-4f);
 
             AssertDescendingNonNegative(in S, n);
-
-            arena.Dispose();
         }
 
         // GALLERY KNOWN-ANSWER (Gallery.Phase2): the 8x8 Parter matrix (Toeplitz 1/(i-j+0.5)) has
@@ -728,12 +685,10 @@ public class floatSVDTests
         // bound is asserted with a scale-aware margin that still rejects any gross overshoot.
         public void SVDGalleryParter()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 8;
 
-            var A = arena.floatParter(n);
-            var S = arena.floatVec(n);
+            var A = floatGallery.floatParter(n, allocator: Allocator.Temp);
+            var S = new floatN(n, Allocator.Temp);
 
             SVD.singularValues(in A, ref S);
 
@@ -760,8 +715,6 @@ public class floatSVDTests
             AssertClose(S[0], pi, margin);
 
             AssertDescendingNonNegative(in S, n);
-
-            arena.Dispose();
         }
 
         // ---- values (singular VALUES only, A unmodified) ----
@@ -769,12 +722,10 @@ public class floatSVDTests
         // Identity n=5 -> all singular values 1.
         public void SVValuesIdentity()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
 
-            var A = arena.floatIdentityMat(n);
-            var S = arena.floatVec(n);
+            var A = GenerateOP.floatIdentityMat(n, allocator: Allocator.Temp);
+            var S = new floatN(n, Allocator.Temp);
 
             bool ok = SVD.values(in A, ref S);
             Assert.IsTrue(ok);
@@ -788,18 +739,14 @@ public class floatSVDTests
 
             // A must be unchanged (still identity).
             Assert.IsTrue(Analysis.isIdentity(in A, 1E-5f));
-
-            arena.Dispose();
         }
 
         // Diagonal diag(d) -> singular values = |d_i| sorted descending.
         public void SVValuesDiagonal()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
 
-            var A = arena.floatMat(n, n);
+            var A = new floatMxN(n, n, Allocator.Temp);
             A[0, 0] = 3f;
             A[1, 1] = -2f;
             A[2, 2] = 0.5f;
@@ -808,7 +755,7 @@ public class floatSVDTests
 
             var Apristine = A.Copy();
 
-            var S = arena.floatVec(n);
+            var S = new floatN(n, Allocator.Temp);
 
             bool ok = SVD.values(in A, ref S);
             Assert.IsTrue(ok);
@@ -826,22 +773,18 @@ public class floatSVDTests
 
             // A must be unmodified.
             AssertMatrixUnchanged(in A, in Apristine, n, n);
-
-            arena.Dispose();
         }
 
         // Known small matrix [[3,0],[0,-4]] -> singular values 4, 3.
         public void SVValuesKnown2x2()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 2;
 
-            var A = arena.floatMat(n, n);
+            var A = new floatMxN(n, n, Allocator.Temp);
             A[0, 0] = 3f; A[0, 1] = 0f;
             A[1, 0] = 0f; A[1, 1] = -4f;
 
-            var S = arena.floatVec(n);
+            var S = new floatN(n, Allocator.Temp);
 
             bool ok = SVD.values(in A, ref S);
             Assert.IsTrue(ok);
@@ -852,26 +795,22 @@ public class floatSVDTests
             AssertClose(S[1], (float)3f, 1E-4f);
 
             AssertDescendingNonNegative(in S, n);
-
-            arena.Dispose();
         }
 
         // Rank-1 outer product u*v^T -> exactly one positive singular value (= |u|*|v|), rest ~0.
         public void SVValuesRankDeficient()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
 
-            var u = arena.floatVec(n);
+            var u = new floatN(n, Allocator.Temp);
             u[0] = 1f; u[1] = -2f; u[2] = 3f; u[3] = 0.5f; u[4] = -1.5f;
-            var v = arena.floatVec(n);
+            var v = new floatN(n, Allocator.Temp);
             v[0] = 2f; v[1] = 1f; v[2] = -1f; v[3] = 4f; v[4] = 0.25f;
 
-            var A = arena.floatOuter(in u, in v);
+            var A = GenerateOP.floatOuter(in u, in v, allocator: Allocator.Temp);
             var Apristine = A.Copy();
 
-            var S = arena.floatVec(n);
+            var S = new floatN(n, Allocator.Temp);
 
             bool ok = SVD.values(in A, ref S);
             Assert.IsTrue(ok);
@@ -892,29 +831,25 @@ public class floatSVDTests
             AssertDescendingNonNegative(in S, n);
 
             AssertMatrixUnchanged(in A, in Apristine, n, n);
-
-            arena.Dispose();
         }
 
         // Cross-check values vs the trusted Golub-Kahan full SVD (SVD.thin) for m >= n (square AND
         // tall). thin factors a copy of A; values takes A `in` (must be unmodified).
         public void SVValuesCross(int m, int n, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.floatRandomMat(m, n, -10f, 10f, seed);
+            var A = GenerateOP.floatRandomMat(m, n, -10f, 10f, seed, allocator: Allocator.Temp);
             var Apristine = A.Copy();
 
             // reference path: full thin SVD on a copy of A
             var Aref = A.Copy();
-            var U = arena.floatMat(m, n);
-            var Sref = arena.floatVec(n);
-            var V = arena.floatMat(n, n);
+            var U = new floatMxN(m, n, Allocator.Temp);
+            var Sref = new floatN(n, Allocator.Temp);
+            var V = new floatMxN(n, n, Allocator.Temp);
             bool okRef = SVD.thin(in Aref, ref U, ref Sref, ref V);
             Assert.IsTrue(okRef);
 
             // values-only path on the untouched A
-            var S = arena.floatVec(n);
+            var S = new floatN(n, Allocator.Temp);
             bool ok = SVD.values(in A, ref S);
             Assert.IsTrue(ok);
 
@@ -934,8 +869,6 @@ public class floatSVDTests
 
             // values must NOT have modified A.
             AssertMatrixUnchanged(in A, in Apristine, m, n);
-
-            arena.Dispose();
         }
 
         // Validates the Golub-Kahan full SVD (SVD.thin) via reconstruction A = U diag(S) Vᵀ and
@@ -944,14 +877,12 @@ public class floatSVDTests
         // oracle needed (see ThinKnown* for the known-Σ variant of this same guarantee).
         public void GolubKahanCross(int m, int n, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.floatRandomMat(m, n, -10f, 10f, seed);
+            var A = GenerateOP.floatRandomMat(m, n, -10f, 10f, seed, allocator: Allocator.Temp);
             var Apristine = A.Copy();
 
-            var U = arena.floatMat(m, n);
-            var S = arena.floatVec(n);
-            var V = arena.floatMat(n, n);
+            var U = new floatMxN(m, n, Allocator.Temp);
+            var S = new floatN(n, Allocator.Temp);
+            var V = new floatMxN(n, n, Allocator.Temp);
             bool ok = SVD.thin(in A, ref U, ref S, ref V);
             Assert.IsTrue(ok);
 
@@ -959,33 +890,29 @@ public class floatSVDTests
             AssertDescendingNonNegative(in S, n);
 
             float reconTol = (float)1E-3f + (float)1E-4f * math.abs(S[0]);
-            AssertReconstruct(in A, in U, in S, in V, ref arena, reconTol);
+            AssertReconstruct(in A, in U, in S, in V, reconTol);
             Assert.IsTrue(Analysis.isOrthogonal(U, (float)1E-3f));
             Assert.IsTrue(Analysis.isOrthogonal(V, (float)1E-3f));
 
             AssertMatrixUnchanged(in A, in Apristine, m, n);
-
-            arena.Dispose();
         }
 
         // Rank-1 (rank-deficient) matrix: one nonzero singular value ||u||*||v||, the rest ~0.
         // Exercises the clustered-zero deflation in the bidiagonal QR.
         public void GolubKahanRankDeficient()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
-            var u = arena.floatVec(n);
+            var u = new floatN(n, Allocator.Temp);
             u[0] = 1f; u[1] = -2f; u[2] = 3f; u[3] = 0.5f; u[4] = -1.5f;
-            var v = arena.floatVec(n);
+            var v = new floatN(n, Allocator.Temp);
             v[0] = 2f; v[1] = 1f; v[2] = -1f; v[3] = 4f; v[4] = 0.25f;
 
-            var A = arena.floatOuter(in u, in v);
+            var A = GenerateOP.floatOuter(in u, in v, allocator: Allocator.Temp);
             var Apristine = A.Copy();
 
-            var U = arena.floatMat(n, n);
-            var S = arena.floatVec(n);
-            var V = arena.floatMat(n, n);
+            var U = new floatMxN(n, n, Allocator.Temp);
+            var S = new floatN(n, Allocator.Temp);
+            var V = new floatMxN(n, n, Allocator.Temp);
             bool ok = SVD.thin(in A, ref U, ref S, ref V);
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.isAnyNan(in S));
@@ -999,25 +926,21 @@ public class floatSVDTests
                 AssertClose(S[i], (float)0f, (float)1E-3f + (float)1E-3f * sigma);
 
             AssertDescendingNonNegative(in S, n);
-            AssertReconstruct(in A, in U, in S, in V, ref arena, (float)1E-3f + (float)1E-4f * sigma);
+            AssertReconstruct(in A, in U, in S, in V, (float)1E-3f + (float)1E-4f * sigma);
             AssertMatrixUnchanged(in A, in Apristine, n, n);
-
-            arena.Dispose();
         }
 
         // Fully clustered spectrum: A = 3*I has all singular values equal to 3. Stresses deflation.
         public void GolubKahanClustered()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 6;
-            var A = arena.floatMat(n, n);
+            var A = new floatMxN(n, n, Allocator.Temp);
             for (int i = 0; i < n; i++) A[i, i] = (float)3f;
             var Apristine = A.Copy();
 
-            var U = arena.floatMat(n, n);
-            var S = arena.floatVec(n);
-            var V = arena.floatMat(n, n);
+            var U = new floatMxN(n, n, Allocator.Temp);
+            var S = new floatN(n, Allocator.Temp);
+            var V = new floatMxN(n, n, Allocator.Temp);
             bool ok = SVD.thin(in A, ref U, ref S, ref V);
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.isAnyNan(in S));
@@ -1025,57 +948,49 @@ public class floatSVDTests
             for (int i = 0; i < n; i++)
                 AssertClose(S[i], (float)3f, (float)1E-3f);
 
-            AssertReconstruct(in A, in U, in S, in V, ref arena, (float)1E-3f);
+            AssertReconstruct(in A, in U, in S, in V, (float)1E-3f);
             Assert.IsTrue(Analysis.isOrthogonal(U, (float)1E-3f));
             Assert.IsTrue(Analysis.isOrthogonal(V, (float)1E-3f));
             AssertMatrixUnchanged(in A, in Apristine, n, n);
-
-            arena.Dispose();
         }
 
         // Zero matrix: anorm == 0 → deflation threshold 0; must still converge (no NaN), S all 0.
         public void GolubKahanZero()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
-            var A = arena.floatMat(n, n);   // all zeros
+            var A = new floatMxN(n, n, Allocator.Temp);   // all zeros
 
-            var U = arena.floatMat(n, n);
-            var S = arena.floatVec(n);
-            var V = arena.floatMat(n, n);
+            var U = new floatMxN(n, n, Allocator.Temp);
+            var S = new floatN(n, Allocator.Temp);
+            var V = new floatMxN(n, n, Allocator.Temp);
             bool ok = SVD.thin(in A, ref U, ref S, ref V);
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.isAnyNan(in S));
             for (int i = 0; i < n; i++)
                 AssertClose(S[i], (float)0f, (float)1E-5f);
-
-            arena.Dispose();
         }
 
         // Rank-3 6x6 (sum of three independent outer products) → 3 nonzero + 3 zero singular values.
         // The INTERIOR zeros exercise the cancellation branch (|d[nm]| <= thresh) of the bidiagonal QR.
         public void GolubKahanRank3()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 6;
-            var u1 = arena.floatVec(n); u1[0]=1f; u1[1]=0f; u1[2]=0f; u1[3]=1f; u1[4]=0f; u1[5]=0f;
-            var v1 = arena.floatVec(n); v1[0]=1f; v1[1]=2f; v1[2]=0f; v1[3]=0f; v1[4]=0f; v1[5]=0f;
-            var u2 = arena.floatVec(n); u2[0]=0f; u2[1]=1f; u2[2]=0f; u2[3]=0f; u2[4]=1f; u2[5]=0f;
-            var v2 = arena.floatVec(n); v2[0]=0f; v2[1]=0f; v2[2]=1f; v2[3]=3f; v2[4]=0f; v2[5]=0f;
-            var u3 = arena.floatVec(n); u3[0]=0f; u3[1]=0f; u3[2]=1f; u3[3]=0f; u3[4]=0f; u3[5]=1f;
-            var v3 = arena.floatVec(n); v3[0]=0f; v3[1]=0f; v3[2]=0f; v3[3]=0f; v3[4]=1f; v3[5]=2f;
+            var u1 = new floatN(n, Allocator.Temp); u1[0]=1f; u1[1]=0f; u1[2]=0f; u1[3]=1f; u1[4]=0f; u1[5]=0f;
+            var v1 = new floatN(n, Allocator.Temp); v1[0]=1f; v1[1]=2f; v1[2]=0f; v1[3]=0f; v1[4]=0f; v1[5]=0f;
+            var u2 = new floatN(n, Allocator.Temp); u2[0]=0f; u2[1]=1f; u2[2]=0f; u2[3]=0f; u2[4]=1f; u2[5]=0f;
+            var v2 = new floatN(n, Allocator.Temp); v2[0]=0f; v2[1]=0f; v2[2]=1f; v2[3]=3f; v2[4]=0f; v2[5]=0f;
+            var u3 = new floatN(n, Allocator.Temp); u3[0]=0f; u3[1]=0f; u3[2]=1f; u3[3]=0f; u3[4]=0f; u3[5]=1f;
+            var v3 = new floatN(n, Allocator.Temp); v3[0]=0f; v3[1]=0f; v3[2]=0f; v3[3]=0f; v3[4]=1f; v3[5]=2f;
 
-            var A = arena.floatMat(n, n);
+            var A = new floatMxN(n, n, Allocator.Temp);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
                     A[i, j] = u1[i] * v1[j] + u2[i] * v2[j] + u3[i] * v3[j];
             var Apristine = A.Copy();
 
-            var U = arena.floatMat(n, n);
-            var S = arena.floatVec(n);
-            var V = arena.floatMat(n, n);
+            var U = new floatMxN(n, n, Allocator.Temp);
+            var S = new floatN(n, Allocator.Temp);
+            var V = new floatMxN(n, n, Allocator.Temp);
             bool ok = SVD.thin(in A, ref U, ref S, ref V);
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.isAnyNan(in S));
@@ -1085,7 +1000,7 @@ public class floatSVDTests
             for (int i = 3; i < n; i++)
                 AssertClose(S[i], (float)0f, (float)1E-3f + (float)1E-3f * S[0]);
 
-            AssertReconstruct(in A, in U, in S, in V, ref arena, (float)1E-3f + (float)1E-4f * S[0]);
+            AssertReconstruct(in A, in U, in S, in V, (float)1E-3f + (float)1E-4f * S[0]);
             Assert.IsTrue(Analysis.isOrthogonal(U, (float)1E-3f));
             Assert.IsTrue(Analysis.isOrthogonal(V, (float)1E-3f));
             AssertMatrixUnchanged(in A, in Apristine, n, n);
@@ -1106,8 +1021,6 @@ public class floatSVDTests
 
             // (2c-ii) Frobenius identity Σσ_i^2 == ‖A‖_F^2 (holds for ANY A).
             AssertFrobeniusIdentity(in A, in S, n, (float)64 * Consts.floatSqrtEps);
-
-            arena.Dispose();
         }
 
         // Fail layout: [1]=A[i,j], [2]=ref[i,j], [3]=diff
@@ -1129,14 +1042,15 @@ public class floatSVDTests
                 }
         }
 
-        private void AssertReconstruct(in floatMxN A, in floatMxN U, in floatN S, in floatMxN V, ref Arena arena, float precision)
+        private void AssertReconstruct(in floatMxN A, in floatMxN U, in floatN S, in floatMxN V, float precision)
         {
-            var diagS = arena.floatDiagonalMat(in S);
+            var diagS = GenerateOP.floatDiagonalMat(in S, allocator: Allocator.Temp);
             var US = Blas.dot(U, diagS);
             var Vt = Blas.trans(V);
             var recon = Blas.dot(US, Vt);
 
-            floatMxN shouldBeZero = A - recon;
+            floatMxN shouldBeZero = new floatMxN(in A, Allocator.Temp);
+            shouldBeZero.subInPlace(recon);
 
             if (Analysis.isAnyNan(in shouldBeZero))
                 throw new System.Exception("TestJob: NaN detected");
@@ -1230,27 +1144,19 @@ public class floatSVDTests
     [Test]
     public void SVValuesThrowsOnWideMatrix()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.floatMat(2, 3);
-        var S = arena.floatVec(3);
+        var A = new floatMxN(2, 3, Allocator.Temp);
+        var S = new floatN(3, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() => SVD.values(in A, ref S));
-
-        arena.Dispose();
     }
 
     [Test]
     public void SVValuesThrowsOnWrongSLength()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.floatMat(4, 3);
-        var S = arena.floatVec(2);
+        var A = new floatMxN(4, 3, Allocator.Temp);
+        var S = new floatN(2, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() => SVD.values(in A, ref S));
-
-        arena.Dispose();
     }
 
 }

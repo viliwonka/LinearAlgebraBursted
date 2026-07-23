@@ -35,11 +35,9 @@ public class fProxyTransposeTests
 
         public void TransSquare()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 16;
-            
-            fProxyMxN A = arena.fProxyRandomMat(dim, dim);
+
+            fProxyMxN A = GenerateOP.fProxyRandomMat(dim, dim);
 
             fProxyMxN B = Blas.trans(A);
 
@@ -49,18 +47,14 @@ public class fProxyTransposeTests
             for (int r = 0; r < dim; r++)
             for (int c = 0; c < dim; c++)
                 Assert.IsTrue(B[c, r] == A[r, c]);
-
-            arena.Dispose();
         }
 
         public void TransNonSquare()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            int rows = 8; 
+            int rows = 8;
             int cols = 32;
 
-            fProxyMxN A = arena.fProxyRandomMat(rows, cols);
+            fProxyMxN A = GenerateOP.fProxyRandomMat(rows, cols);
 
             fProxyMxN B = Blas.trans(A);
 
@@ -70,8 +64,6 @@ public class fProxyTransposeTests
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
                 Assert.IsTrue(B[c, r] == A[r, c]);
-
-            arena.Dispose();
         }
     }
 

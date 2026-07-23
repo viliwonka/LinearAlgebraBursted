@@ -46,10 +46,9 @@ namespace LinearAlgebra.Benchmarks
     {
         static string BenchFProxy(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var U = arena.fProxyMat(n, n);
-            var L = arena.fProxyMat(n, n);
-            var Src = arena.fProxyMat(n, n);
+            var U = new fProxyMxN(n, n, Allocator.Persistent);
+            var L = new fProxyMxN(n, n, Allocator.Persistent);
+            var Src = new fProxyMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -61,16 +60,17 @@ namespace LinearAlgebra.Benchmarks
             var job = new LUJobFProxy { U = U, L = L, Src = Src };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            U.Dispose();
+            L.Dispose();
+            Src.Dispose();
             return Bench.Row("fProxy", n, stat, flops);
         }
 
         static string BenchNoPivotFProxy(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var U = arena.fProxyMat(n, n);
-            var L = arena.fProxyMat(n, n);
-            var Src = arena.fProxyMat(n, n);
+            var U = new fProxyMxN(n, n, Allocator.Persistent);
+            var L = new fProxyMxN(n, n, Allocator.Persistent);
+            var Src = new fProxyMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -82,7 +82,9 @@ namespace LinearAlgebra.Benchmarks
             var job = new LUNoPivotJobFProxy { U = U, L = L, Src = Src };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            U.Dispose();
+            L.Dispose();
+            Src.Dispose();
             return Bench.Row("fProxy", n, stat, flops);
         }
     }

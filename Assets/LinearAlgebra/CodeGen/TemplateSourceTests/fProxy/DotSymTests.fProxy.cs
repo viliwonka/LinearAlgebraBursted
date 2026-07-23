@@ -55,100 +55,92 @@ public class fProxyDotSymTests
         // Symmetric product by construction: W = S·A with S = MᵀM symmetric, then AᵀW = AᵀSA.
         void DotSymMatchesFullKernel(int m, int rows, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.fProxyRandomMat(rows, m, -1f, 1f, seed);
-            var M = arena.fProxyRandomMat(rows, rows, -1f, 1f, seed + 1);
-            var S = arena.fProxyMat(rows, rows);
+            var A = GenerateOP.fProxyRandomMat(rows, m, -1f, 1f, seed);
+            var M = GenerateOP.fProxyRandomMat(rows, rows, -1f, 1f, seed + 1);
+            var S = new fProxyMxN(rows, rows, Allocator.Temp);
             Blas.dot(in M, in M, ref S, transposeA: true);   // S = MᵀM, symmetric
 
-            var W = arena.fProxyMat(rows, m);
+            var W = new fProxyMxN(rows, m, Allocator.Temp);
             Blas.dot(in S, in A, ref W);                     // W = S·A
 
-            var Cref = arena.fProxyMat(m, m);
+            var Cref = new fProxyMxN(m, m, Allocator.Temp);
             Blas.dot(in A, in W, ref Cref, transposeA: true);
 
-            var Csym = arena.fProxyMat(m, m);
+            var Csym = new fProxyMxN(m, m, Allocator.Temp);
             Blas.dotSym(in A, in W, ref Csym);
 
-            Assert.IsTrue(Analysis.isZero(Cref - Csym, Tol()));
+            var diff = new fProxyMxN(in Cref, Allocator.Temp);
+            fProxyComp.subInPlace(diff, Csym);
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
 
             // Exact symmetry (mirrored, not just numerically close).
             for (int r = 0; r < m; r++)
                 for (int c = 0; c < r; c++)
                     Assert.IsTrue(Csym[r, c] == Csym[c, r]);
-
-            arena.Dispose();
         }
 
         // C = A·Bᵀ through the TransB kernel must match the trans + dot route it replaces.
         // A is mA x n, B is kB x n, C is mA x kB.
         void TransBMatchesTransRoute(int mA, int n, int kB, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
+            var A = GenerateOP.fProxyRandomMat(mA, n, -1f, 1f, seed);
+            var B = GenerateOP.fProxyRandomMat(kB, n, -1f, 1f, seed + 1);
 
-            var A = arena.fProxyRandomMat(mA, n, -1f, 1f, seed);
-            var B = arena.fProxyRandomMat(kB, n, -1f, 1f, seed + 1);
-
-            var Bt = arena.fProxyMat(n, kB);
+            var Bt = new fProxyMxN(n, kB, Allocator.Temp);
             Blas.trans(in B, ref Bt);
-            var Cref = arena.fProxyMat(mA, kB);
+            var Cref = new fProxyMxN(mA, kB, Allocator.Temp);
             Blas.dot(in A, in Bt, ref Cref);
 
-            var C = arena.fProxyMat(mA, kB);
+            var C = new fProxyMxN(mA, kB, Allocator.Temp);
             Blas.dot(in A, in B, ref C, transposeA: false, transposeB: true);
 
-            Assert.IsTrue(Analysis.isZero(Cref - C, Tol()));
-
-            arena.Dispose();
+            var diff = new fProxyMxN(in Cref, Allocator.Temp);
+            fProxyComp.subInPlace(diff, C);
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
         }
 
         // C = Aᵀ·Bᵀ (both flags) must match the two-explicit-transposes route.
         void TransATransBMatchesTransRoute()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int mA = 7, n = 5, kB = 4;
-            var A = arena.fProxyRandomMat(mA, n, -1f, 1f, 75001);   // Aᵀ is n x mA
-            var B = arena.fProxyRandomMat(kB, mA, -1f, 1f, 75002);  // Bᵀ is mA x kB
+            var A = GenerateOP.fProxyRandomMat(mA, n, -1f, 1f, 75001);   // Aᵀ is n x mA
+            var B = GenerateOP.fProxyRandomMat(kB, mA, -1f, 1f, 75002);  // Bᵀ is mA x kB
 
-            var At = arena.fProxyMat(n, mA);
+            var At = new fProxyMxN(n, mA, Allocator.Temp);
             Blas.trans(in A, ref At);
-            var Bt = arena.fProxyMat(mA, kB);
+            var Bt = new fProxyMxN(mA, kB, Allocator.Temp);
             Blas.trans(in B, ref Bt);
-            var Cref = arena.fProxyMat(n, kB);
+            var Cref = new fProxyMxN(n, kB, Allocator.Temp);
             Blas.dot(in At, in Bt, ref Cref);
 
-            var C = arena.fProxyMat(n, kB);
+            var C = new fProxyMxN(n, kB, Allocator.Temp);
             Blas.dot(in A, in B, ref C, transposeA: true, transposeB: true);
 
-            Assert.IsTrue(Analysis.isZero(Cref - C, Tol()));
-
-            arena.Dispose();
+            var diff = new fProxyMxN(in Cref, Allocator.Temp);
+            fProxyComp.subInPlace(diff, C);
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
         }
 
         // dot(A, A, transposeB) routes through the symmetric matAAt; it must match the full
         // TransB kernel fed two DISTINCT buffers holding the same values, exactly symmetric.
         void AAtMatchesDistinctBufferKernel()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int rows = 41, n = 23;
-            var A = arena.fProxyRandomMat(rows, n, -1f, 1f, 76001);
-            var A2 = A.Copy();
+            var A = GenerateOP.fProxyRandomMat(rows, n, -1f, 1f, 76001);
+            var A2 = new fProxyMxN(in A, Allocator.Temp);
 
-            var Cref = arena.fProxyMat(rows, rows);
+            var Cref = new fProxyMxN(rows, rows, Allocator.Temp);
             Blas.dot(in A, in A2, ref Cref, transposeA: false, transposeB: true);   // distinct buffers: full kernel
 
-            var C = arena.fProxyMat(rows, rows);
+            var C = new fProxyMxN(rows, rows, Allocator.Temp);
             Blas.dot(in A, in A, ref C, transposeA: false, transposeB: true);        // same buffer: matAAt route
 
-            Assert.IsTrue(Analysis.isZero(Cref - C, Tol()));
+            var diff = new fProxyMxN(in Cref, Allocator.Temp);
+            fProxyComp.subInPlace(diff, C);
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
             for (int r = 0; r < rows; r++)
                 for (int c = 0; c < r; c++)
                     Assert.IsTrue(C[r, c] == C[c, r]);
-
-            arena.Dispose();
         }
 
         // Symmetric-by-construction A·Bᵀ: with S = MᵀM symmetric, a = b·S gives
@@ -156,28 +148,26 @@ public class fProxyDotSymTests
         // exactly symmetric.
         void DotSymTMatchesFullKernel(int rows, int n, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var b = arena.fProxyRandomMat(rows, n, -1f, 1f, seed);
-            var M = arena.fProxyRandomMat(n, n, -1f, 1f, seed + 1);
-            var S = arena.fProxyMat(n, n);
+            var b = GenerateOP.fProxyRandomMat(rows, n, -1f, 1f, seed);
+            var M = GenerateOP.fProxyRandomMat(n, n, -1f, 1f, seed + 1);
+            var S = new fProxyMxN(n, n, Allocator.Temp);
             Blas.dot(in M, in M, ref S, transposeA: true);   // S = MᵀM, symmetric
 
-            var a = arena.fProxyMat(rows, n);
+            var a = new fProxyMxN(rows, n, Allocator.Temp);
             Blas.dot(in b, in S, ref a);                     // a = b·S, so a·bᵀ = b S bᵀ symmetric
 
-            var Cref = arena.fProxyMat(rows, rows);
+            var Cref = new fProxyMxN(rows, rows, Allocator.Temp);
             Blas.dot(in a, in b, ref Cref, transposeA: false, transposeB: true);
 
-            var C = arena.fProxyMat(rows, rows);
+            var C = new fProxyMxN(rows, rows, Allocator.Temp);
             Blas.dotSymT(in a, in b, ref C);
 
-            Assert.IsTrue(Analysis.isZero(Cref - C, Tol()));
+            var diff = new fProxyMxN(in Cref, Allocator.Temp);
+            fProxyComp.subInPlace(diff, C);
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
             for (int r = 0; r < rows; r++)
                 for (int c = 0; c < r; c++)
                     Assert.IsTrue(C[r, c] == C[c, r]);
-
-            arena.Dispose();
         }
 
         // The packed (cache-blocked) GEMM route must be BIT-IDENTICAL to the direct tiled route:
@@ -188,18 +178,16 @@ public class fProxyDotSymTests
         // ragged edges on every dimension (m, k not tile multiples; n not a panel multiple).
         void PackedMatchesUnpackedBitExactlyCase()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = /*+choose[1451|1051]*/1451/*-choose*/;
             int n = /*+choose[1480|1080]*/1480/*-choose*/;
             int kk = m;
-            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 77001);
-            var B = arena.fProxyRandomMat(n, kk, -1f, 1f, 77002);
+            var A = GenerateOP.fProxyRandomMat(m, n, -1f, 1f, 77001);
+            var B = GenerateOP.fProxyRandomMat(n, kk, -1f, 1f, 77002);
 
-            var Cpacked = arena.fProxyMat(m, kk);
+            var Cpacked = new fProxyMxN(m, kk, Allocator.Temp);
             Blas.dot(in A, in B, ref Cpacked);   // above the gate: packed route
 
-            var Cdirect = arena.fProxyMat(m, kk);
+            var Cdirect = new fProxyMxN(m, kk, Allocator.Temp);
             Cdirect.zeroInPlace();
             unsafe
             {
@@ -209,32 +197,28 @@ public class fProxyDotSymTests
             for (int r = 0; r < m; r++)
                 for (int c = 0; c < kk; c++)
                     Assert.IsTrue(Cpacked[r, c] == Cdirect[r, c]);
-
-            arena.Dispose();
         }
 
         // dot(A, A, transposeA) routes through the symmetric matAtA; it must match the full
         // TransA kernel fed two DISTINCT buffers holding the same values.
         void AtAMatchesDistinctBufferKernel()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int rows = 41, m = 23;
-            var A = arena.fProxyRandomMat(rows, m, -1f, 1f, 72001);
-            var A2 = A.Copy();
+            var A = GenerateOP.fProxyRandomMat(rows, m, -1f, 1f, 72001);
+            var A2 = new fProxyMxN(in A, Allocator.Temp);
 
-            var Cref = arena.fProxyMat(m, m);
+            var Cref = new fProxyMxN(m, m, Allocator.Temp);
             Blas.dot(in A, in A2, ref Cref, transposeA: true);   // distinct buffers: full kernel
 
-            var C = arena.fProxyMat(m, m);
+            var C = new fProxyMxN(m, m, Allocator.Temp);
             Blas.dot(in A, in A, ref C, transposeA: true);        // same buffer: matAtA route
 
-            Assert.IsTrue(Analysis.isZero(Cref - C, Tol()));
+            var diff = new fProxyMxN(in Cref, Allocator.Temp);
+            fProxyComp.subInPlace(diff, C);
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
             for (int r = 0; r < m; r++)
                 for (int c = 0; c < r; c++)
                     Assert.IsTrue(C[r, c] == C[c, r]);
-
-            arena.Dispose();
         }
     }
 

@@ -52,10 +52,8 @@ public class iProxyQueryPredicateTests
 
         void GroupAScalar()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // v = [-2, 0, 3, 1, 4, 2]; threshold 2 -> {3@2, 4@4} pass.
-            var v = arena.iProxyVec(6);
+            var v = new iProxyN(6, Allocator.Temp);
             v[0] = (iProxy)(-2); v[1] = (iProxy)0; v[2] = (iProxy)3;
             v[3] = (iProxy)1;    v[4] = (iProxy)4; v[5] = (iProxy)2;
 
@@ -66,7 +64,7 @@ public class iProxyQueryPredicateTests
             // not all > 2 (e.g. the -2 fails) -> all == false.
             AssertTrue(!Query.all(in v, ref pass));
 
-            var idx = arena.Indices(6);
+            var idx = new Indices(6, Allocator.Temp);
             int fc = Query.findAll(in v, ref pass, ref idx);
             AssertEqI(fc, 2);
             AssertEqI(idx[0], 2); AssertEqI(idx[1], 4);
@@ -85,28 +83,26 @@ public class iProxyQueryPredicateTests
             AssertTrue(Query.any(in v, ref allPass));
 
             // Empty vector: findFirst -1, count 0, any false, all true (vacuous), findAll 0.
-            var v0 = arena.iProxyVec(0);
+            var v0 = new iProxyN(0, Allocator.Temp);
             AssertEqI(Query.findFirst(in v0, ref pass), -1);
             AssertEqI(Query.count(in v0, ref pass), 0);
             AssertTrue(!Query.any(in v0, ref pass));
             AssertTrue(Query.all(in v0, ref pass));
-            var idx0 = arena.Indices(1);
+            var idx0 = new Indices(1, Allocator.Temp);
             AssertEqI(Query.findAll(in v0, ref pass, ref idx0), 0);
 
             // Matrix flat-index variant (generic T over iProxyMxN, row-major flat order).
             // A = [1 5; 2 5] -> flat [1,5,2,5]; threshold 4 -> {5@1, 5@3}.
-            var A = arena.iProxyMat(2, 2);
+            var A = new iProxyMxN(2, 2, Allocator.Temp);
             A[0, 0] = (iProxy)1; A[0, 1] = (iProxy)5;
             A[1, 0] = (iProxy)2; A[1, 1] = (iProxy)5;
             var matPass = new GreaterThanInt { t = (iProxy)4 };
             AssertEqI(Query.findFirst(in A, ref matPass), 1);
             AssertEqI(Query.count(in A, ref matPass), 2);
-            var idxM = arena.Indices(4);
+            var idxM = new Indices(4, Allocator.Temp);
             int mc = Query.findAll(in A, ref matPass, ref idxM);
             AssertEqI(mc, 2);
             AssertEqI(idxM[0], 1); AssertEqI(idxM[1], 3);
-
-            arena.Dispose();
         }
 
         // ---------------------------------------------------------------------
@@ -169,11 +165,9 @@ public class iProxyQueryPredicateTests
     [Test]
     public void FindAllUndersizedThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var v = arena.iProxyVec(5);
+        var v = new iProxyN(5, Allocator.Temp);
         var gt = new GreaterThanInt { t = (iProxy)0 };
-        var small = arena.Indices(4);   // < v.Data.Length (5)
+        var small = new Indices(4, Allocator.Temp);   // < v.Data.Length (5)
         Assert.Throws<ArgumentException>(() => Query.findAll(in v, ref gt, ref small));
-        arena.Dispose();
     }
 }

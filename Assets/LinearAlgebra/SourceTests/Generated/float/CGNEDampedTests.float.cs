@@ -20,44 +20,42 @@ public class floatCGNEDampedTests
 {
     // Full-row-rank underdetermined A (m<=n) with a diagonal boost -> AAᵀ well-conditioned, so the
     // κ² sensitivity of CGNE does not muddy the damping check (mirrors floatCGNETests' builder).
-    static floatMxN BuildWide(ref Arena arena, int m, int n, uint seed)
+    static floatMxN BuildWide(int m, int n, uint seed)
     {
-        var A = arena.floatRandomMat(m, n, (float)(-1f), (float)1f, seed);
+        var A = GenerateOP.floatRandomMat(m, n, (float)(-1f), (float)1f, seed, Allocator.Temp);
         for (int d = 0; d < m; d++) A[d, d] += (float)10;
         return A;
     }
 
     // Ground-truth damped least-norm solution x* = Aᵀ (A Aᵀ + damp²·I)⁻¹ b via dense Cholesky.
-    static void DampedOracle(ref Arena arena, in floatMxN A, in floatN b, float damp, ref floatN xOut)
+    static void DampedOracle(in floatMxN A, in floatN b, float damp, ref floatN xOut)
     {
         int m = A.M_Rows;
-        var G = new floatMxN(m, m, Allocator.Persistent, false);
+        var G = new floatMxN(m, m, Allocator.Temp, false);
         Blas.dot(in A, in A, ref G, false, true);         // G = A Aᵀ  (m×m)
         float lam2 = damp * damp;
         for (int d = 0; d < m; d++) G[d, d] += lam2;       // G = A Aᵀ + damp²·I
-        var y = arena.floatVec(m);
+        var y = new floatN(m, Allocator.Temp);
         y.CopyFrom(in b);
         CHO.solveInPlace(ref G, ref y);                    // y = G⁻¹ b  (destroys G)
         var op = new floatDenseOperator(in A);
         op.ApplyT(in y, ref xOut);                          // x* = Aᵀ y
-        G.Dispose();
     }
 
     // (1) Damped cgne matches the dense ground-truth solution.
     [Test]
     public void DampedMatchesDenseOracle()
     {
-        var arena = new Arena(Allocator.Persistent);
         int m = 6, n = 10;
-        var A = BuildWide(ref arena, m, n, 0xDA57u);
-        var b = arena.floatRandomVec(m, (float)(-2f), (float)2f, 0x0Bu);
+        var A = BuildWide(m, n, 0xDA57u);
+        var b = GenerateOP.floatRandomVec(m, (float)(-2f), (float)2f, 0x0Bu, Allocator.Temp);
         float damp = (float)0.5;
 
-        var x = arena.floatVec(n);
+        var x = new floatN(n, Allocator.Temp);
         var info = Krylov.cgne(in A, in b, ref x, 8 * m, Consts.floatSqrtEps, damp);
 
-        var xOracle = arena.floatVec(n);
-        DampedOracle(ref arena, in A, in b, damp, ref xOracle);
+        var xOracle = new floatN(n, Allocator.Temp);
+        DampedOracle(in A, in b, damp, ref xOracle);
 
         float num = (float)0, den = (float)0;
         for (int i = 0; i < n; i++)
@@ -73,8 +71,6 @@ public class floatCGNEDampedTests
         // Arnorm is the Tikhonov gradient ‖Aᵀr - damp²x‖ (→0 at the optimum), so it is the small
         // convergence cert -- distinct from rnorm = ‖b-Ax‖ which stays O(‖b‖) here.
         Assert.Less((double)info.Arnorm, 0.1 * (1.0 + (double)info.rnorm), "damped Arnorm (‖Aᵀr-damp²x‖) must →0");
-
-        arena.Dispose();
     }
 
     // (2) At the damped optimum A x != b (the undamped residual is damp²·(AAᵀ+damp²I)⁻¹b, not 0).
@@ -83,20 +79,19 @@ public class floatCGNEDampedTests
     [Test]
     public void DampedReportedResidualIsNonzeroButBounded()
     {
-        var arena = new Arena(Allocator.Persistent);
         int m = 6, n = 10;
-        var A = BuildWide(ref arena, m, n, 0x9F3u);
-        var b = arena.floatRandomVec(m, (float)(-2f), (float)2f, 0x22u);
+        var A = BuildWide(m, n, 0x9F3u);
+        var b = GenerateOP.floatRandomVec(m, (float)(-2f), (float)2f, 0x22u, Allocator.Temp);
         float damp = (float)1.0;
 
-        var x = arena.floatVec(n);
+        var x = new floatN(n, Allocator.Temp);
         var info = Krylov.cgne(in A, in b, ref x, 8 * m, Consts.floatSqrtEps, damp);
 
         // The damped optimum has A x != b (undamped residual = damp²·(AAᵀ+damp²I)⁻¹ b). Verify the
         // reported rnorm equals the freshly recomputed ‖b - A x‖ (the Info audit's own quantity),
         // and that it is bounded by ‖b‖ (a sane, nonzero regularized residual).
         var op = new floatDenseOperator(in A);
-        var Ax = arena.floatVec(m);
+        var Ax = new floatN(m, Allocator.Temp);
         op.Apply(in x, ref Ax);
         float rs = (float)0;
         for (int i = 0; i < m; i++) { float e = b[i] - Ax[i]; rs += e * e; }
@@ -106,28 +101,23 @@ public class floatCGNEDampedTests
         Assert.AreEqual(trueUndamped, (double)info.rnorm, 1e-4 * (1.0 + trueUndamped),
             "reported rnorm must be the true undamped ‖b-Ax‖");
         Assert.Greater(trueUndamped, 1e-6, "damped optimum has a genuinely nonzero undamped residual");
-
-        arena.Dispose();
     }
 
     // (3) damp == 0 delegates to the undamped primitive: bit-identical solution.
     [Test]
     public void ZeroDampMatchesUndamped()
     {
-        var arena = new Arena(Allocator.Persistent);
         int m = 6, n = 10;
-        var A = BuildWide(ref arena, m, n, 0x1C0u);
-        var b = arena.floatRandomVec(m, (float)(-2f), (float)2f, 0x33u);
+        var A = BuildWide(m, n, 0x1C0u);
+        var b = GenerateOP.floatRandomVec(m, (float)(-2f), (float)2f, 0x33u, Allocator.Temp);
 
-        var xUn = arena.floatVec(n);
-        var xZero = arena.floatVec(n);
+        var xUn = new floatN(n, Allocator.Temp);
+        var xZero = new floatN(n, Allocator.Temp);
         Krylov.cgne(in A, in b, ref xUn, 8 * m, Consts.floatSqrtEps);
         Krylov.cgne(in A, in b, ref xZero, 8 * m, Consts.floatSqrtEps, (float)0);
 
         for (int i = 0; i < n; i++)
             Assert.AreEqual((double)xUn[i], (double)xZero[i], "damp==0 must be bit-identical to undamped cgne");
-
-        arena.Dispose();
     }
 
     // (4) Regularization makes a RANK-DEFICIENT A well-posed (AAᵀ+damp²I is SPD even when AAᵀ is
@@ -136,18 +126,17 @@ public class floatCGNEDampedTests
     [Test]
     public void DampedHandlesRankDeficient()
     {
-        var arena = new Arena(Allocator.Persistent);
         int m = 6, n = 10;
-        var A = BuildWide(ref arena, m, n, 0x4A11u);
+        var A = BuildWide(m, n, 0x4A11u);
         for (int j = 0; j < n; j++) A[1, j] = A[0, j];   // row 1 := row 0 -> AAᵀ singular
-        var b = arena.floatRandomVec(m, (float)(-2f), (float)2f, 0x55u);
+        var b = GenerateOP.floatRandomVec(m, (float)(-2f), (float)2f, 0x55u, Allocator.Temp);
         float damp = (float)0.5;
 
-        var x = arena.floatVec(n);
+        var x = new floatN(n, Allocator.Temp);
         var info = Krylov.cgne(in A, in b, ref x, 8 * m, Consts.floatSqrtEps, damp);
 
-        var xOracle = arena.floatVec(n);
-        DampedOracle(ref arena, in A, in b, damp, ref xOracle);
+        var xOracle = new floatN(n, Allocator.Temp);
+        DampedOracle(in A, in b, damp, ref xOracle);
 
         float num = (float)0, den = (float)0;
         for (int i = 0; i < n; i++)
@@ -158,8 +147,6 @@ public class floatCGNEDampedTests
         double rel = math.sqrt((double)num / math.max((double)den, 1e-300));
         Assert.IsTrue(info.status == IterativeSolveStatus.Converged, "damped cgne must converge on a rank-deficient A");
         Assert.LessOrEqual(rel, 1e-3, "damped cgne on rank-deficient A must match the dense oracle");
-
-        arena.Dispose();
     }
 
     // (5) BSR path: exercises floatBSROperator Apply/ApplyT + the materialized-transpose ctor. Square
@@ -168,18 +155,15 @@ public class floatCGNEDampedTests
     [Test]
     public void DampedBSRPathConverges()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.floatLaplacian2D(4, 4);   // 16x16 SPD (Rows == Cols, valid for cgne)
+        var A = floatGallery.floatLaplacian2D(4, 4, Allocator.Temp);   // 16x16 SPD (Rows == Cols, valid for cgne)
         int n = A.M_Rows;
-        var b = arena.floatRandomVec(n, (float)(-1f), (float)1f, 0xB5Bu);
+        var b = GenerateOP.floatRandomVec(n, (float)(-1f), (float)1f, 0xB5Bu, Allocator.Temp);
         float damp = (float)0.75;
 
-        var x = arena.floatVec(n);
+        var x = new floatN(n, Allocator.Temp);
         var info = Krylov.cgne(in A, in b, ref x, 8 * n, Consts.floatSqrtEps, damp);
 
         Assert.IsTrue(info.status == IterativeSolveStatus.Converged, "damped BSR cgne should converge");
         Assert.Less((double)info.Arnorm, 0.1 * (1.0 + (double)info.rnorm), "BSR damped Arnorm must →0");
-
-        arena.Dispose();
     }
 }

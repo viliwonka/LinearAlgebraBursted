@@ -62,12 +62,11 @@ namespace LinearAlgebra.Benchmarks
         static string SvdRandDouble(int n)
         {
             const int k = 16;
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(n, n);
-            var Uk = arena.doubleMat(n, k);
-            var Sk = arena.doubleVec(k);
-            var Vk = arena.doubleMat(n, k);
-            var ws = arena.doubleSVDRandomizedCache(n, n, k);
+            var A = new doubleMxN(n, n, Allocator.Persistent);
+            var Uk = new doubleMxN(n, k, Allocator.Persistent);
+            var Sk = new doubleN(k, Allocator.Persistent);
+            var Vk = new doubleMxN(n, k, Allocator.Persistent);
+            var ws = new doubleSVDRandomizedCache(n, n, k, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -77,18 +76,17 @@ namespace LinearAlgebra.Benchmarks
             var job = new SvdRandomizedJobDouble { A = A, Uk = Uk, Sk = Sk, Vk = Vk, ws = ws };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); Uk.Dispose(); Sk.Dispose(); Vk.Dispose(); ws.Dispose();
             return Bench.RowTime("double", n, stat);
         }
 
         // ---- pinvSolve ----
         static string PinvDouble(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(n, n);
-            var b = arena.doubleVec(n);
-            var x = arena.doubleVec(n);
-            var ws = arena.doubleSVDCache(n, n);
+            var A = new doubleMxN(n, n, Allocator.Persistent);
+            var b = new doubleN(n, Allocator.Persistent);
+            var x = new doubleN(n, Allocator.Persistent);
+            var ws = new doubleSVDCache(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -102,17 +100,16 @@ namespace LinearAlgebra.Benchmarks
             var job = new PinvSolveJobDouble { A = A, b = b, x = x, ws = ws };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); b.Dispose(); x.Dispose(); ws.Dispose();
             return Bench.RowTime("double", n, stat);
         }
 
         // ---- pseudoInverse ----
         static string PseudoInvDouble(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(n, n);
-            var Aplus = arena.doubleMat(n, n);
-            var ws = arena.doubleSVDCache(n, n);
+            var A = new doubleMxN(n, n, Allocator.Persistent);
+            var Aplus = new doubleMxN(n, n, Allocator.Persistent);
+            var ws = new doubleSVDCache(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -124,7 +121,7 @@ namespace LinearAlgebra.Benchmarks
             var job = new PseudoInverseJobDouble { A = A, Aplus = Aplus, ws = ws };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); Aplus.Dispose(); ws.Dispose();
             return Bench.RowTime("double", n, stat);
         }
     }

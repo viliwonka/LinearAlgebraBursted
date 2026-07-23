@@ -94,11 +94,10 @@ namespace LinearAlgebra.Benchmarks
     {
         static string SvdGKFloat(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(n, n);
-            var U = arena.floatMat(n, n);
-            var S = arena.floatVec(n);
-            var V = arena.floatMat(n, n);
+            var A = new floatMxN(n, n, Allocator.Persistent);
+            var U = new floatMxN(n, n, Allocator.Persistent);
+            var S = new floatN(n, Allocator.Persistent);
+            var V = new floatMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -108,15 +107,14 @@ namespace LinearAlgebra.Benchmarks
             var job = new SvdGKJobFloat { A = A, U = U, S = S, V = V };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); U.Dispose(); S.Dispose(); V.Dispose();
             return Bench.RowTime("float", n, stat);
         }
 
         static string SvdValsFloat(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(n, n);
-            var S = arena.floatVec(n);
+            var A = new floatMxN(n, n, Allocator.Persistent);
+            var S = new floatN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -126,16 +124,15 @@ namespace LinearAlgebra.Benchmarks
             var job = new SvdValuesJobFloat { A = A, S = S };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); S.Dispose();
             return Bench.RowTime("float", n, stat);
         }
 
         static string EigSymFloat(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(n, n);
-            var Src = arena.floatMat(n, n);
-            var E = arena.floatVec(n);
+            var A = new floatMxN(n, n, Allocator.Persistent);
+            var Src = new floatMxN(n, n, Allocator.Persistent);
+            var E = new floatN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -149,17 +146,16 @@ namespace LinearAlgebra.Benchmarks
             var job = new EigSymJobFloat { A = A, Src = Src, E = E };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); Src.Dispose(); E.Dispose();
             return Bench.RowTime("float", n, stat);
         }
 
         static string EigSymVecFloat(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(n, n);
-            var Src = arena.floatMat(n, n);
-            var E = arena.floatVec(n);
-            var V = arena.floatMat(n, n);
+            var A = new floatMxN(n, n, Allocator.Persistent);
+            var Src = new floatMxN(n, n, Allocator.Persistent);
+            var E = new floatN(n, Allocator.Persistent);
+            var V = new floatMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -173,17 +169,16 @@ namespace LinearAlgebra.Benchmarks
             var job = new EigSymVecJobFloat { A = A, Src = Src, E = E, V = V };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); Src.Dispose(); E.Dispose(); V.Dispose();
             return Bench.RowTime("float", n, stat);
         }
 
         static string EigQRFloat(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(n, n);
-            var Src = arena.floatMat(n, n);
-            var Re = arena.floatVec(n);
-            var Im = arena.floatVec(n);
+            var A = new floatMxN(n, n, Allocator.Persistent);
+            var Src = new floatMxN(n, n, Allocator.Persistent);
+            var Re = new floatN(n, Allocator.Persistent);
+            var Im = new floatN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -193,7 +188,7 @@ namespace LinearAlgebra.Benchmarks
             var job = new EigQRJobFloat { A = A, Src = Src, Re = Re, Im = Im };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); Src.Dispose(); Re.Dispose(); Im.Dispose();
             return Bench.RowTime("float", n, stat);
         }
     }

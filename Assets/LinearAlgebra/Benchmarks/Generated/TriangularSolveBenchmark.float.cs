@@ -147,15 +147,14 @@ namespace LinearAlgebra.Benchmarks
             // in LU.float.cs for the same convention).
             const int K = 8;
 
-            var arena = new Arena(Allocator.Persistent);
-            var Src = arena.floatMat(n, n);
-            var A = arena.floatMat(n, n);
+            var Src = new floatMxN(n, n, Allocator.Persistent);
+            var A = new floatMxN(n, n, Allocator.Persistent);
             var P = new Pivot(n, Allocator.Persistent);
 
-            var b = arena.floatVec(n);
-            var bSrc = arena.floatVec(n);
-            var BX = arena.floatMat(n, K);
-            var BXsrc = arena.floatMat(n, K);
+            var b = new floatN(n, Allocator.Persistent);
+            var bSrc = new floatN(n, Allocator.Persistent);
+            var BX = new floatMxN(n, K, Allocator.Persistent);
+            var BXsrc = new floatMxN(n, K, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -180,7 +179,12 @@ namespace LinearAlgebra.Benchmarks
             var kernelTransAVec = Bench.Time(() => new TriSolveKernelTransAVecJobFloat { A = A, P = P, b = b, bSrc = bSrc }.Run());
 
             P.Dispose();
-            arena.Dispose();
+            Src.Dispose();
+            A.Dispose();
+            b.Dispose();
+            bSrc.Dispose();
+            BX.Dispose();
+            BXsrc.Dispose();
 
             return TriSolveFmt.RowKernel("float", "LU solve fwd (vec)", n, fwdVec)
                  + "\n" + TriSolveFmt.RowKernel("float", "LU solve TransA (vec)", n, transAVec)

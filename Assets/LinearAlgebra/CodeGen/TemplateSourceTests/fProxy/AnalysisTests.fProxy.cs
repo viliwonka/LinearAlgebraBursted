@@ -76,180 +76,146 @@ public class fProxyAnalysisTests
 
         void isIdentity()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 16;
-            
-            fProxyMxN A = arena.fProxyIdentityMat(dim);
+
+            fProxyMxN A = GenerateOP.fProxyIdentityMat(dim);
 
             Assert.IsTrue(Analysis.isIdentity(A));
-
-            arena.Dispose();
         }
 
         void IsIdentityEpsilon()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 16;
-            
-            fProxyMxN A = arena.fProxyIdentityMat(dim);
+
+            fProxyMxN A = GenerateOP.fProxyIdentityMat(dim);
 
             Assert.IsTrue(Analysis.isIdentity(A, 0.0001f));
 
-            A += arena.fProxyRandomMat(dim, dim, -0.001f, 0.001f);
+            A.addInPlace(GenerateOP.fProxyRandomMat(dim, dim, -0.001f, 0.001f));
 
             Assert.IsTrue(Analysis.isIdentity(A, 0.002f));
-
-            arena.Dispose();
         }
 
         void isSymmetric()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 8;
-            
-            fProxyMxN A = arena.fProxyIdentityMat(dim);
+
+            fProxyMxN A = GenerateOP.fProxyIdentityMat(dim);
 
             Assert.IsTrue(Analysis.isSymmetric(A));
 
-            A = arena.fProxyRandomMat(dim, dim * 2);
+            A = GenerateOP.fProxyRandomMat(dim, dim * 2);
 
             fProxyMxN C = Blas.dot(A, A, true);
 
             Assert.IsTrue(Analysis.isSymmetric(C));
-
-            arena.Dispose();
         }
 
         void IsSymmetricEpsilon()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 16;
-            
-            fProxyMxN A = arena.fProxyIdentityMat(dim);
+
+            fProxyMxN A = GenerateOP.fProxyIdentityMat(dim);
 
             Assert.IsTrue(Analysis.isSymmetric(A, 0.000001f));
 
-            A += arena.fProxyRandomMat(dim, dim, -0.001f, 0.001f);
+            A.addInPlace(GenerateOP.fProxyRandomMat(dim, dim, -0.001f, 0.001f));
 
             Assert.IsTrue(Analysis.isSymmetric(A, 0.002f));
 
             fProxyMxN C = Blas.dot(A, A, true);
 
-            C += arena.fProxyRandomMat(dim, dim, -0.001f, 0.001f);
+            C.addInPlace(GenerateOP.fProxyRandomMat(dim, dim, -0.001f, 0.001f));
 
             Assert.IsTrue(Analysis.isSymmetric(C, 0.002f));
-
-            arena.Dispose();
         }
-        
+
         void isDiagonal()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 16;
-            
-            fProxyMxN A = arena.fProxyIdentityMat(dim);
+
+            fProxyMxN A = GenerateOP.fProxyIdentityMat(dim);
 
             Assert.IsTrue(Analysis.isDiagonal(A));
 
-            A += arena.fProxyRandomMat(dim, dim, -0.001f, 0.001f);
+            A.addInPlace(GenerateOP.fProxyRandomMat(dim, dim, -0.001f, 0.001f));
 
             Assert.IsFalse(Analysis.isDiagonal(A));
-
-            arena.Dispose();
         }
 
         void IsDiagonalEpsilon()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 16;
-            
-            fProxyMxN A = arena.fProxyIdentityMat(dim);
+
+            fProxyMxN A = GenerateOP.fProxyIdentityMat(dim);
 
             Assert.IsTrue(Analysis.isDiagonal(A, 0.000001f));
 
-            A += arena.fProxyRandomMat(dim, dim, -0.001f, 0.001f);
+            A.addInPlace(GenerateOP.fProxyRandomMat(dim, dim, -0.001f, 0.001f));
 
             Assert.IsTrue(Analysis.isDiagonal(A, 0.002f));
 
-            A = arena.fProxyRandomDiagonalMat(dim, -1f, -1f);
+            A = GenerateOP.fProxyRandomDiagonalMat(dim, -1f, -1f);
 
             Assert.IsTrue(Analysis.isDiagonal(A, 0.000001f));
-
-            arena.Dispose();
         }
 
         void isUpperTriangular()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 16;
-            
-            fProxyMxN A = arena.fProxyIdentityMat(dim);
+
+            fProxyMxN A = GenerateOP.fProxyIdentityMat(dim);
 
             Assert.IsTrue(Analysis.isUpperTriangular(A));
-            
-            A += arena.fProxyRandomMat(dim, dim, -0.001f, 0.001f);
+
+            A.addInPlace(GenerateOP.fProxyRandomMat(dim, dim, -0.001f, 0.001f));
 
             Assert.IsFalse(Analysis.isUpperTriangular(A));
 
-            A = arena.fProxyIdentityMat(dim);
+            A = GenerateOP.fProxyIdentityMat(dim);
 
             for (int c = 1; c < dim; c++)
             for (int r = 0; r < c; r++)
                 A[r, c] = 5f;
 
             Assert.IsTrue(Analysis.isUpperTriangular(A));
-
-            arena.Dispose();
         }
 
         void IsUpperTriangularEpsilon()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 16;
-            
-            fProxyMxN A = arena.fProxyIdentityMat(dim);
+
+            fProxyMxN A = GenerateOP.fProxyIdentityMat(dim);
 
             Assert.IsTrue(Analysis.isUpperTriangular(A, 0.000001f));
 
-            A += arena.fProxyRandomMat(dim, dim, -0.001f, 0.001f);
+            A.addInPlace(GenerateOP.fProxyRandomMat(dim, dim, -0.001f, 0.001f));
 
             Assert.IsTrue(Analysis.isUpperTriangular(A, 0.002f));
 
-            A = arena.fProxyIdentityMat(dim);
+            A = GenerateOP.fProxyIdentityMat(dim);
 
             for(int c = 1; c < dim; c++)
             for(int r = 0; r < c; r++)
                 A[r, c] = 5f;
 
-            A += arena.fProxyRandomMat(dim, dim, -0.001f, 0.001f);
+            A.addInPlace(GenerateOP.fProxyRandomMat(dim, dim, -0.001f, 0.001f));
 
             Assert.IsTrue(Analysis.isUpperTriangular(A, 0.002f));
-                        
-            arena.Dispose();   
         }
 
         void isLowerTriangular()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 16;
 
-            fProxyMxN A = arena.fProxyIdentityMat(dim);
+            fProxyMxN A = GenerateOP.fProxyIdentityMat(dim);
 
             Assert.IsTrue(Analysis.isLowerTriangular(A));
 
-            A += arena.fProxyRandomMat(dim, dim, -0.001f, 0.001f);
+            A.addInPlace(GenerateOP.fProxyRandomMat(dim, dim, -0.001f, 0.001f));
             Assert.IsFalse(Analysis.isLowerTriangular(A));
 
-            A = arena.fProxyIdentityMat(dim);
+            A = GenerateOP.fProxyIdentityMat(dim);
 
             // Fill elements below the diagonal with a non-zero value; still lower triangular
             for (int r = 1; r < dim; r++)
@@ -257,63 +223,55 @@ public class fProxyAnalysisTests
                     A[r, c] = 5f;
 
             Assert.IsTrue(Analysis.isLowerTriangular(A));
-
-            arena.Dispose();
         }
 
         void IsLowerTriangularEpsilon()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 16;
 
-            fProxyMxN A = arena.fProxyIdentityMat(dim);
+            fProxyMxN A = GenerateOP.fProxyIdentityMat(dim);
 
             Assert.IsTrue(Analysis.isLowerTriangular(A, 0.000001f));
 
-            A += arena.fProxyRandomMat(dim, dim, -0.001f, 0.001f);
+            A.addInPlace(GenerateOP.fProxyRandomMat(dim, dim, -0.001f, 0.001f));
             Assert.IsTrue(Analysis.isLowerTriangular(A, 0.002f));
 
-            A = arena.fProxyIdentityMat(dim);
+            A = GenerateOP.fProxyIdentityMat(dim);
 
             // Fill elements below the diagonal with a non-zero value
             for (int r = 1; r < dim; r++)
                 for (int c = 0; c < r; c++)
                     A[r, c] = 5f;
 
-            A += arena.fProxyRandomMat(dim, dim, -0.001f, 0.001f);
+            A.addInPlace(GenerateOP.fProxyRandomMat(dim, dim, -0.001f, 0.001f));
 
             Assert.IsTrue(Analysis.isLowerTriangular(A, 0.002f));
-
-            arena.Dispose();
         }
 
         void isOrthogonal()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 16;
 
-            fProxyMxN A = arena.fProxyIdentityMat(dim);
+            fProxyMxN A = GenerateOP.fProxyIdentityMat(dim);
 
             Assert.IsTrue(Analysis.isOrthogonal(A, 0.00001f));
 
-            A = Blas.dot(arena.fProxyPermutationMat(dim, 5, 13), A);
+            A = Blas.dot(GenerateOP.fProxyPermutationMat(dim, 5, 13), A);
 
             Assert.IsTrue(Analysis.isOrthogonal(A, 0.00001f));
 
-            A = Blas.dot(arena.fProxyRotationMat(dim, 3, 15, math.PI/4f ), A);
+            A = Blas.dot(GenerateOP.fProxyRotationMat(dim, 3, 15, math.PI/4f ), A);
 
             Assert.IsTrue(Analysis.isOrthogonal(A, 0.00001f));
 
-            fProxyN reflect = arena.fProxyRandomVec(dim, -1f, 1f);
+            fProxyN reflect = GenerateOP.fProxyRandomVec(dim, -1f, 1f);
 
-            A = Blas.dot(arena.fProxyHouseholderMat(dim, reflect), A);
+            A = Blas.dot(GenerateOP.fProxyHouseholderMat(dim, reflect), A);
 
             Assert.IsTrue(Analysis.isOrthogonal(A, 0.00001f));
 
-            reflect = arena.fProxyRandomVec(dim, -1f, 1f, 50301);
-            A = Blas.dot(arena.fProxyHouseholderMat(dim, reflect), A);
+            reflect = GenerateOP.fProxyRandomVec(dim, -1f, 1f, 50301);
+            A = Blas.dot(GenerateOP.fProxyHouseholderMat(dim, reflect), A);
 
             Assert.IsTrue(Analysis.isOrthogonal(A, 0.00001f));
 
@@ -324,18 +282,14 @@ public class fProxyAnalysisTests
             A = Blas.dot(A, A, true);
 
             Assert.IsTrue(Analysis.isIdentity(A, 0.00001f));
-
-            arena.Dispose();
         }
 
         void Determinant()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // identity -> det = 1 (matrix-in path; A must be left intact, like cond/rank)
             {
                 int dim = 5;
-                fProxyMxN A = arena.fProxyIdentityMat(dim);
+                fProxyMxN A = GenerateOP.fProxyIdentityMat(dim);
                 Assert.IsTrue(math.abs(Analysis.determinant(in A) - (fProxy)1) < (fProxy)1E-4f);
                 Assert.IsTrue(Analysis.isIdentity(A, 1E-6f));           // A not modified
             }
@@ -343,7 +297,7 @@ public class fProxyAnalysisTests
             // diagonal [2,-3,0.5,4] -> det = -12
             {
                 int dim = 4;
-                fProxyMxN A = arena.fProxyMat(dim, dim);
+                fProxyMxN A = new fProxyMxN(dim, dim, Allocator.Temp);
                 A[0, 0] = 2f; A[1, 1] = -3f; A[2, 2] = 0.5f; A[3, 3] = 4f;
                 Assert.IsTrue(math.abs(Analysis.determinant(in A) - (fProxy)(-12f)) < (fProxy)1E-3f);
             }
@@ -351,7 +305,7 @@ public class fProxyAnalysisTests
             // matrix-in path agrees with the zero-alloc from-factor overload on the same A
             {
                 int dim = 6;
-                fProxyMxN A = arena.fProxyRandomMat(dim, dim, -2f, 2f);
+                fProxyMxN A = GenerateOP.fProxyRandomMat(dim, dim, -2f, 2f);
                 fProxy viaMatrix = Analysis.determinant(in A);
 
                 fProxyMxN lu = A.Copy();
@@ -366,24 +320,20 @@ public class fProxyAnalysisTests
             // singular (row 0 == row 1) -> det = 0
             {
                 int dim = 3;
-                fProxyMxN A = arena.fProxyMat(dim, dim);
+                fProxyMxN A = new fProxyMxN(dim, dim, Allocator.Temp);
                 A[0, 0] = 1f; A[0, 1] = 2f; A[0, 2] = 3f;
                 A[1, 0] = 1f; A[1, 1] = 2f; A[1, 2] = 3f;
                 A[2, 0] = 4f; A[2, 1] = 5f; A[2, 2] = 7f;
                 Assert.IsTrue(math.abs(Analysis.determinant(in A)) < (fProxy)1E-4f);
             }
-
-            arena.Dispose();
         }
 
         void LogDeterminant()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // identity -> log|det| = 0, sign = +1
             {
                 int dim = 5;
-                fProxyMxN A = arena.fProxyIdentityMat(dim);
+                fProxyMxN A = GenerateOP.fProxyIdentityMat(dim);
                 fProxy logAbs = Analysis.logDeterminant(in A, out fProxy sign);
                 Assert.IsTrue(math.abs(logAbs) < (fProxy)1E-4f);
                 Assert.IsTrue(math.abs(sign - (fProxy)1) < (fProxy)1E-6f);
@@ -392,7 +342,7 @@ public class fProxyAnalysisTests
             // diagonal [2,-3,0.5,4] -> det = -12: sign = -1, sign*exp(logAbs) recovers det
             {
                 int dim = 4;
-                fProxyMxN A = arena.fProxyMat(dim, dim);
+                fProxyMxN A = new fProxyMxN(dim, dim, Allocator.Temp);
                 A[0, 0] = 2f; A[1, 1] = -3f; A[2, 2] = 0.5f; A[3, 3] = 4f;
                 fProxy logAbs = Analysis.logDeterminant(in A, out fProxy sign);
                 Assert.IsTrue(math.abs(sign - (fProxy)(-1f)) < (fProxy)1E-6f);
@@ -403,7 +353,7 @@ public class fProxyAnalysisTests
             // singular (row 1 == 2*row 0) -> sign = 0, log|det| = -infinity
             {
                 int dim = 3;
-                fProxyMxN A = arena.fProxyMat(dim, dim);
+                fProxyMxN A = new fProxyMxN(dim, dim, Allocator.Temp);
                 A[0, 0] = 1f; A[0, 1] = 2f; A[0, 2] = 3f;
                 A[1, 0] = 2f; A[1, 1] = 4f; A[1, 2] = 6f;
                 A[2, 0] = 4f; A[2, 1] = 5f; A[2, 2] = 7f;
@@ -416,7 +366,7 @@ public class fProxyAnalysisTests
             // 10*I at dim 400 -> det = 10^400, past both float (~1e38) and double (~1e308) range.
             {
                 int dim = 400;
-                fProxyMxN A = arena.fProxyMat(dim, dim);
+                fProxyMxN A = new fProxyMxN(dim, dim, Allocator.Temp);
                 for (int i = 0; i < dim; i++)
                     A[i, i] = (fProxy)10f;
 
@@ -428,8 +378,6 @@ public class fProxyAnalysisTests
                 Assert.IsTrue(math.abs(logAbs - expected) < (fProxy)0.5f);
                 Assert.IsTrue(math.abs(sign - (fProxy)1) < (fProxy)1E-6f);
             }
-
-            arena.Dispose();
         }
 
     }

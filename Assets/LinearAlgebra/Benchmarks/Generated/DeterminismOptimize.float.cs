@@ -278,47 +278,46 @@ namespace LinearAlgebra.Benchmarks
     {
         public static (string id, uint hash)[] Case_LpLadFloat()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2654435761u ^ 0x0011u);
 
             const int m = 20, n = 30;
-            var A = arena.floatMat(m, n);
+            var A = new floatMxN(m, n, Allocator.Persistent);
             for (int r = 0; r < m; r++) for (int cc = 0; cc < n; cc++) A[r, cc] = rng.NextFloat(0f, 1f);
-            var x0 = arena.floatVec(n); for (int i = 0; i < n; i++) x0[i] = rng.NextFloat(0f, 1f);
-            var Ax0 = arena.floatVec(m); Blas.dot(in A, in x0, ref Ax0);
-            var b = arena.floatVec(m); for (int i = 0; i < m; i++) b[i] = Ax0[i] + rng.NextFloat(0.1f, 1f);
-            var c = arena.floatVec(n); for (int i = 0; i < n; i++) c[i] = rng.NextFloat(-1f, 1f);
+            var x0 = new floatN(n, Allocator.Persistent); for (int i = 0; i < n; i++) x0[i] = rng.NextFloat(0f, 1f);
+            var Ax0 = new floatN(m, Allocator.Persistent); Blas.dot(in A, in x0, ref Ax0);
+            var b = new floatN(m, Allocator.Persistent); for (int i = 0; i < m; i++) b[i] = Ax0[i] + rng.NextFloat(0.1f, 1f);
+            var c = new floatN(n, Allocator.Persistent); for (int i = 0; i < n; i++) c[i] = rng.NextFloat(-1f, 1f);
             var senses = new NativeArray<ConstraintSense>(m, Allocator.Persistent);
             for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
-            var x = arena.floatVec(n, true);
+            var x = new floatN(n, Allocator.Persistent, true);
 
             const int mBr = 120, nBr = 5;
-            var ABr = arena.floatMat(mBr, nBr);
+            var ABr = new floatMxN(mBr, nBr, Allocator.Persistent);
             for (int r = 0; r < mBr; r++) for (int cc = 0; cc < nBr; cc++) ABr[r, cc] = (cc == 0) ? (float)1 : rng.NextFloat(-1f, 1f);
-            var xtBr = arena.floatVec(nBr); for (int i = 0; i < nBr; i++) xtBr[i] = rng.NextFloat(-1f, 1f);
-            var AxtBr = arena.floatVec(mBr); Blas.dot(in ABr, in xtBr, ref AxtBr);
-            var bBr = arena.floatVec(mBr);
+            var xtBr = new floatN(nBr, Allocator.Persistent); for (int i = 0; i < nBr; i++) xtBr[i] = rng.NextFloat(-1f, 1f);
+            var AxtBr = new floatN(mBr, Allocator.Persistent); Blas.dot(in ABr, in xtBr, ref AxtBr);
+            var bBr = new floatN(mBr, Allocator.Persistent);
             for (int i = 0; i < mBr; i++)
             {
                 float v = AxtBr[i] + rng.NextFloat(-(float)0.05, (float)0.05);
                 if (i % 10 == 0) v += (float)5;
                 bBr[i] = v;
             }
-            var xBr = arena.floatVec(nBr, true);
+            var xBr = new floatN(nBr, Allocator.Persistent, true);
 
             const int mFn = 600, nFn = 5;
-            var AFn = arena.floatMat(mFn, nFn);
+            var AFn = new floatMxN(mFn, nFn, Allocator.Persistent);
             for (int r = 0; r < mFn; r++) for (int cc = 0; cc < nFn; cc++) AFn[r, cc] = (cc == 0) ? (float)1 : rng.NextFloat(-1f, 1f);
-            var xtFn = arena.floatVec(nFn); for (int i = 0; i < nFn; i++) xtFn[i] = rng.NextFloat(-1f, 1f);
-            var AxtFn = arena.floatVec(mFn); Blas.dot(in AFn, in xtFn, ref AxtFn);
-            var bFn = arena.floatVec(mFn);
+            var xtFn = new floatN(nFn, Allocator.Persistent); for (int i = 0; i < nFn; i++) xtFn[i] = rng.NextFloat(-1f, 1f);
+            var AxtFn = new floatN(mFn, Allocator.Persistent); Blas.dot(in AFn, in xtFn, ref AxtFn);
+            var bFn = new floatN(mFn, Allocator.Persistent);
             for (int i = 0; i < mFn; i++)
             {
                 float v = AxtFn[i] + rng.NextFloat(-(float)0.05, (float)0.05);
                 if (i % 10 == 0) v += (float)5;
                 bFn[i] = v;
             }
-            var xFn = arena.floatVec(nFn, true);
+            var xFn = new floatN(nFn, Allocator.Persistent, true);
 
             var hashOut = new NativeArray<uint>(3, Allocator.Persistent);
             var job = new DetLpLadJobFloat
@@ -336,33 +335,34 @@ namespace LinearAlgebra.Benchmarks
                 ("lp-lad/lad.ladFN.float.600x5", hashOut[2]),
             };
             hashOut.Dispose(); senses.Dispose();
-            arena.Dispose();
+            A.Dispose(); x0.Dispose(); Ax0.Dispose(); b.Dispose(); c.Dispose(); x.Dispose();
+            ABr.Dispose(); xtBr.Dispose(); AxtBr.Dispose(); bBr.Dispose(); xBr.Dispose();
+            AFn.Dispose(); xtFn.Dispose(); AxtFn.Dispose(); bFn.Dispose(); xFn.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_QpFloat()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2654435761u ^ 0x0012u);
 
             const int n = 24, m = 6;
-            var Mfac = arena.floatMat(n, n);
+            var Mfac = new floatMxN(n, n, Allocator.Persistent);
             for (int r = 0; r < n; r++) for (int cc = 0; cc < n; cc++) Mfac[r, cc] = rng.NextFloat(-1f, 1f);
-            var Q = arena.floatMat(n, n);
+            var Q = new floatMxN(n, n, Allocator.Persistent);
             Blas.dot(in Mfac, in Mfac, ref Q, transposeA: true);
             for (int d = 0; d < n; d++) Q[d, d] += (float)n;
 
-            var c = arena.floatVec(n); for (int i = 0; i < n; i++) c[i] = rng.NextFloat(-1f, 1f);
-            var A = arena.floatMat(m, n);
+            var c = new floatN(n, Allocator.Persistent); for (int i = 0; i < n; i++) c[i] = rng.NextFloat(-1f, 1f);
+            var A = new floatMxN(m, n, Allocator.Persistent);
             for (int r = 0; r < m; r++) for (int cc = 0; cc < n; cc++) A[r, cc] = rng.NextFloat(0f, 1f);
-            var x0 = arena.floatVec(n); for (int i = 0; i < n; i++) x0[i] = rng.NextFloat(0.2f, 0.8f);
-            var Ax0 = arena.floatVec(m); Blas.dot(in A, in x0, ref Ax0);
-            var b = arena.floatVec(m); for (int i = 0; i < m; i++) b[i] = Ax0[i] + rng.NextFloat(0.1f, 1f);
+            var x0 = new floatN(n, Allocator.Persistent); for (int i = 0; i < n; i++) x0[i] = rng.NextFloat(0.2f, 0.8f);
+            var Ax0 = new floatN(m, Allocator.Persistent); Blas.dot(in A, in x0, ref Ax0);
+            var b = new floatN(m, Allocator.Persistent); for (int i = 0; i < m; i++) b[i] = Ax0[i] + rng.NextFloat(0.1f, 1f);
             var senses = new NativeArray<ConstraintSense>(m, Allocator.Persistent);
             for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
-            var xl = arena.floatVec(n);
-            var xu = arena.floatVec(n, (float)3);
-            var x = arena.floatVec(n, true);
+            var xl = new floatN(n, Allocator.Persistent);
+            var xu = GenerateOP.floatVec(n, (float)3, Allocator.Persistent);
+            var x = new floatN(n, Allocator.Persistent, true);
 
             var hashOut = new NativeArray<uint>(1, Allocator.Persistent);
             var job = new DetQpJobFloat { Q = Q, c = c, A = A, b = b, senses = senses, xl = xl, xu = xu, x = x, HashOut = hashOut };
@@ -370,18 +370,17 @@ namespace LinearAlgebra.Benchmarks
 
             var result = new[] { ("qp/qp.solve.float.n24m6", hashOut[0]) };
             hashOut.Dispose(); senses.Dispose();
-            arena.Dispose();
+            Mfac.Dispose(); Q.Dispose(); c.Dispose(); A.Dispose(); x0.Dispose(); Ax0.Dispose(); b.Dispose();
+            xl.Dispose(); xu.Dispose(); x.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_MipFloat()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // stein9-class set-cover instance: 9 binaries, 13 rows (12 triples covering each pair,
             // + a "select >= 4 of 9" cut row), objective = minimize count. Known optimum 5.
             const int n = 9, m = 13;
-            var A = arena.floatMat(m, n);
+            var A = new floatMxN(m, n, Allocator.Persistent);
             int[,] triples =
             {
                 {0,1,2},{0,3,4},{0,5,6},{0,7,8},
@@ -397,19 +396,19 @@ namespace LinearAlgebra.Benchmarks
             }
             for (int j = 0; j < n; j++) A[12, j] = (float)1;
 
-            var b = arena.floatVec(m);
+            var b = new floatN(m, Allocator.Persistent);
             for (int row = 0; row < 12; row++) b[row] = (float)1;
             b[12] = (float)4;
 
             var senses = new NativeArray<ConstraintSense>(m, Allocator.Persistent);
             for (int i = 0; i < m; i++) senses[i] = ConstraintSense.GreaterEqual;
 
-            var c = arena.floatVec(n, (float)1);
-            var xl = arena.floatVec(n);
-            var xu = arena.floatVec(n, (float)1);
+            var c = GenerateOP.floatVec(n, (float)1, Allocator.Persistent);
+            var xl = new floatN(n, Allocator.Persistent);
+            var xu = GenerateOP.floatVec(n, (float)1, Allocator.Persistent);
             var integrality = new NativeArray<byte>(n, Allocator.Persistent);
             for (int i = 0; i < n; i++) integrality[i] = 1;
-            var x = arena.floatVec(n, true);
+            var x = new floatN(n, Allocator.Persistent, true);
 
             var hashOut = new NativeArray<uint>(1, Allocator.Persistent);
             var job = new DetMipJobFloat { A = A, b = b, c = c, senses = senses, xl = xl, xu = xu, integrality = integrality, x = x, HashOut = hashOut };
@@ -417,59 +416,61 @@ namespace LinearAlgebra.Benchmarks
 
             var result = new[] { ("mip/mip.solve.float.stein9", hashOut[0]) };
             hashOut.Dispose(); senses.Dispose(); integrality.Dispose();
-            arena.Dispose();
+            A.Dispose(); b.Dispose(); c.Dispose(); xl.Dispose(); xu.Dispose(); x.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_ControlFloat()
         {
-            var arena = new Arena(Allocator.Persistent);
             const int n = 4, m = 2;
 
-            var A = arena.floatMat(n, n);
+            var A = new floatMxN(n, n, Allocator.Persistent);
             A[0, 0] = (float)0.9; A[0, 1] = (float)0.1; A[0, 2] = (float)0; A[0, 3] = (float)0;
             A[1, 0] = (float)0; A[1, 1] = (float)0.9; A[1, 2] = (float)0.1; A[1, 3] = (float)0;
             A[2, 0] = (float)0; A[2, 1] = (float)0; A[2, 2] = (float)0.9; A[2, 3] = (float)0.1;
             A[3, 0] = (float)0.05; A[3, 1] = (float)0; A[3, 2] = (float)0; A[3, 3] = (float)0.85;
 
-            var B = arena.floatMat(n, m);
+            var B = new floatMxN(n, m, Allocator.Persistent);
             B[0, 0] = (float)0.5; B[0, 1] = (float)0;
             B[1, 0] = (float)0; B[1, 1] = (float)0.5;
             B[2, 0] = (float)0.2; B[2, 1] = (float)0.1;
             B[3, 0] = (float)0.1; B[3, 1] = (float)0.2;
 
-            var Qc = arena.floatMat(n, n); for (int i = 0; i < n; i++) Qc[i, i] = (float)1;
-            var Rc = arena.floatMat(m, m); for (int i = 0; i < m; i++) Rc[i, i] = (float)1;
-            var K = arena.floatMat(m, n);
-            var Sdare = arena.floatMat(n, n);
+            var Qc = new floatMxN(n, n, Allocator.Persistent); for (int i = 0; i < n; i++) Qc[i, i] = (float)1;
+            var Rc = new floatMxN(m, m, Allocator.Persistent); for (int i = 0; i < m; i++) Rc[i, i] = (float)1;
+            var K = new floatMxN(m, n, Allocator.Persistent);
+            var Sdare = new floatMxN(n, n, Allocator.Persistent);
 
             var kfState = new floatKFState(n, m, Allocator.Persistent);
             for (int i = 0; i < n; i++) kfState.x[i] = (float)1;
             for (int i = 0; i < n; i++) kfState.P[i, i] = (float)1;
 
-            var Hmat = arena.floatMat(m, n);
+            var Hmat = new floatMxN(m, n, Allocator.Persistent);
             Hmat[0, 0] = (float)1; Hmat[1, 2] = (float)1;
-            var Qkf = arena.floatMat(n, n); for (int i = 0; i < n; i++) Qkf[i, i] = (float)0.01;
-            var Rkf = arena.floatMat(m, m); for (int i = 0; i < m; i++) Rkf[i, i] = (float)0.1;
-            var z1 = arena.floatVec(m); z1[0] = (float)0.9; z1[1] = (float)0.05;
-            var z2 = arena.floatVec(m); z2[0] = (float)0.8; z2[1] = (float)0.1;
-            var Kss = arena.floatMat(n, m);
+            var Qkf = new floatMxN(n, n, Allocator.Persistent); for (int i = 0; i < n; i++) Qkf[i, i] = (float)0.01;
+            var Rkf = new floatMxN(m, m, Allocator.Persistent); for (int i = 0; i < m; i++) Rkf[i, i] = (float)0.1;
+            var z1 = new floatN(m, Allocator.Persistent); z1[0] = (float)0.9; z1[1] = (float)0.05;
+            var z2 = new floatN(m, Allocator.Persistent); z2[0] = (float)0.8; z2[1] = (float)0.1;
+            var Kss = new floatMxN(n, m, Allocator.Persistent);
 
+            var mpcUlo = GenerateOP.floatVec(m, (float)(-1), Allocator.Persistent);
+            var mpcUhi = GenerateOP.floatVec(m, (float)1, Allocator.Persistent);
             var mpcState = new floatMPCState(n, m, 5, Allocator.Persistent, in A, in B, in Qc, in Rc,
-                                              arena.floatVec(m, (float)(-1)), arena.floatVec(m, (float)1));
-            var x0 = arena.floatVec(n); x0[0] = (float)1;
-            var reference = arena.floatVec(n);
-            var u0out = arena.floatVec(m, true);
+                                              mpcUlo, mpcUhi);
+            var x0 = new floatN(n, Allocator.Persistent); x0[0] = (float)1;
+            var reference = new floatN(n, Allocator.Persistent);
+            var u0out = new floatN(m, Allocator.Persistent, true);
 
             var ukfState = new floatKFState(n, m, Allocator.Persistent);
             for (int i = 0; i < n; i++) ukfState.x[i] = (float)1;
             for (int i = 0; i < n; i++) ukfState.P[i, i] = (float)1;
             var ukfCache = new floatUKFCache(n, Allocator.Persistent);
-            var model = new DetLinearKFModelFloat { A = A, B = B, Scratch = arena.floatVec(n) };
+            var modelScratch = new floatN(n, Allocator.Persistent);
+            var model = new DetLinearKFModelFloat { A = A, B = B, Scratch = modelScratch };
             var meas = new DetLinearKFMeasFloat { Hmat = Hmat };
             var Qukf = Qkf;
-            var uZero = arena.floatVec(m);
-            var zUkf = arena.floatVec(m); zUkf[0] = (float)0.9; zUkf[1] = (float)0.05;
+            var uZero = new floatN(m, Allocator.Persistent);
+            var zUkf = new floatN(m, Allocator.Persistent); zUkf[0] = (float)0.9; zUkf[1] = (float)0.05;
 
             var hashOut = new NativeArray<uint>(6, Allocator.Persistent);
             var job = new DetControlJobFloat
@@ -492,17 +493,19 @@ namespace LinearAlgebra.Benchmarks
                 ("control/kalman.ukfLinear.float.n4m2", hashOut[5]),
             };
             hashOut.Dispose();
-            arena.Dispose();
+            A.Dispose(); B.Dispose(); Qc.Dispose(); Rc.Dispose(); K.Dispose(); Sdare.Dispose();
+            kfState.Dispose(); Hmat.Dispose(); Qkf.Dispose(); Rkf.Dispose(); z1.Dispose(); z2.Dispose(); Kss.Dispose();
+            mpcState.Dispose(); mpcUlo.Dispose(); mpcUhi.Dispose(); x0.Dispose(); reference.Dispose(); u0out.Dispose();
+            ukfState.Dispose(); ukfCache.Dispose(); modelScratch.Dispose(); uZero.Dispose(); zUkf.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_NlsOptimizeFloat()
         {
-            var arena = new Arena(Allocator.Persistent);
             const int mData = 12;
 
-            var xdata = arena.floatVec(mData);
-            var ydata = arena.floatVec(mData);
+            var xdata = new floatN(mData, Allocator.Persistent);
+            var ydata = new floatN(mData, Allocator.Persistent);
             for (int i = 0; i < mData; i++) xdata[i] = (float)(i - mData / 2);
             for (int i = 0; i < mData; i++)
             {
@@ -511,17 +514,17 @@ namespace LinearAlgebra.Benchmarks
             }
 
             var residual = new DetPolyResidualFloat { X = xdata, Y = ydata };
-            var pNls = arena.floatVec(3);
+            var pNls = new floatN(3, Allocator.Persistent);
 
             var curveModel = new DetPolyCurveModelFloat();
-            var pCurve = arena.floatVec(3);
+            var pCurve = new floatN(3, Allocator.Persistent);
 
             const int nCoef = 3;
-            var AIrls = arena.floatMat(mData, nCoef);
+            var AIrls = new floatMxN(mData, nCoef, Allocator.Persistent);
             for (int i = 0; i < mData; i++) { AIrls[i, 0] = (float)1; AIrls[i, 1] = xdata[i]; AIrls[i, 2] = xdata[i] * xdata[i]; }
-            var bIrls = arena.floatVec(mData);
+            var bIrls = new floatN(mData, Allocator.Persistent);
             for (int i = 0; i < mData; i++) bIrls[i] = ydata[i] + ((i == 3) ? (float)2 : (float)0); // one outlier row
-            var xIrls = arena.floatVec(nCoef, true);
+            var xIrls = new floatN(nCoef, Allocator.Persistent, true);
 
             var hashOut = new NativeArray<uint>(3, Allocator.Persistent);
             var job = new DetNlsOptimizeJobFloat
@@ -539,7 +542,8 @@ namespace LinearAlgebra.Benchmarks
                 ("nls-optimize/ladIRLS.float.n12", hashOut[2]),
             };
             hashOut.Dispose();
-            arena.Dispose();
+            xdata.Dispose(); ydata.Dispose(); pNls.Dispose(); pCurve.Dispose();
+            AIrls.Dispose(); bIrls.Dispose(); xIrls.Dispose();
             return result;
         }
     }

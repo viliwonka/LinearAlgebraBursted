@@ -221,17 +221,16 @@ public class doubleQPFactorStateTests
         public void Execute()
         {
             const int n = 12;
-            var arena = new Arena(Allocator.Persistent);
 
-            var Q = arena.doubleMat(n, n);
+            var Q = new doubleMxN(n, n, Allocator.Temp);
             for (int i = 0; i < n; i++) Q[i, i] = 1f;
-            var c = arena.doubleVec(n, (double)(-2));
-            var A = arena.doubleMat(0, n);
-            var b = arena.doubleVec(0);
+            var c = GenerateOP.doubleVec(n, (double)(-2), Allocator.Temp);
+            var A = new doubleMxN(0, n, Allocator.Temp);
+            var b = new doubleN(0, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(0, Allocator.Temp);
-            var xl = arena.doubleVec(n);                  // 0
-            var xu = arena.doubleVec(n, (double)10);
-            var x = arena.doubleVec(n);                   // x0 = 0: every lower bound tight
+            var xl = new doubleN(n, Allocator.Temp);                  // 0
+            var xu = GenerateOP.doubleVec(n, (double)10, Allocator.Temp);
+            var x = new doubleN(n, Allocator.Temp);                   // x0 = 0: every lower bound tight
 
             var info = QP.qpActiveSetCore(in Q, in c, in A, in b, senses, in xl, in xu, ref x, out double obj, 0);
 
@@ -243,7 +242,6 @@ public class doubleQPFactorStateTests
             H.AssertLE(Fail, 4, math.abs(obj - (-2.0 * n)), tol * n);
 
             senses.Dispose();
-            arena.Dispose();
         }
     }
 

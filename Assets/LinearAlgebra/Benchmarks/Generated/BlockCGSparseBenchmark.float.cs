@@ -134,49 +134,48 @@ namespace LinearAlgebra.Benchmarks
     {
         static string BenchFloat(int grid, int s)
         {
-            var arena = new Arena(Allocator.Persistent);
             const string fmt = "{0,-7}{1,-7}{2,-4}{3,-14}{4,10:F4}{5,12:F4}{6,8}{7,8}";
 
-            var A = arena.floatLaplacian2D(grid, grid);       // n = grid*grid, ~5 nonzeros/row
+            var A = floatGallery.floatLaplacian2D(grid, grid, Allocator.Persistent);       // n = grid*grid, ~5 nonzeros/row
             int n = A.M_Rows;
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)(grid * 131 + s));
 
-            var B = arena.floatMat(s, n);                     // independent random RHS
+            var B = new floatMxN(s, n, Allocator.Persistent);                     // independent random RHS
             for (int i = 0; i < s; i++)
                 for (int c = 0; c < n; c++) B[i, c] = rng.NextFloat(-1f, 1f);
 
             float tol = Consts.floatSqrtEps;
             int cap = 4 * n;
-            var outv = arena.Indices(2);
+            var outv = new Indices(2, Allocator.Persistent);
             var sb = new StringBuilder();
 
             // block-CG
-            var X = arena.floatMat(s, n); var R = arena.floatMat(s, n);
-            var P = arena.floatMat(s, n); var Q = arena.floatMat(s, n);
+            var X = new floatMxN(s, n, Allocator.Persistent); var R = new floatMxN(s, n, Allocator.Persistent);
+            var P = new floatMxN(s, n, Allocator.Persistent); var Q = new floatMxN(s, n, Allocator.Persistent);
             var blockJob = new BlockCgSparseJobFloat { A = A, B = B, X = X, R = R, P = P, Q = Q, K = cap, Tol = tol, Out = outv };
             var blockStat = Bench.Time(() => blockJob.Run());
             sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                 "float", n, s, "block-CG", blockStat.Median, blockStat.Min, outv[0], outv[1]));
 
             // bcgrq
-            var Xrq = arena.floatMat(s, n); var Rrq = arena.floatMat(s, n);
-            var Prq = arena.floatMat(s, n); var APrq = arena.floatMat(s, n); var Parq = arena.floatMat(s, n);
+            var Xrq = new floatMxN(s, n, Allocator.Persistent); var Rrq = new floatMxN(s, n, Allocator.Persistent);
+            var Prq = new floatMxN(s, n, Allocator.Persistent); var APrq = new floatMxN(s, n, Allocator.Persistent); var Parq = new floatMxN(s, n, Allocator.Persistent);
             var rqJob = new BlockCgrQSparseJobFloat { A = A, B = B, X = Xrq, R = Rrq, P = Prq, AP = APrq, Pa = Parq, K = cap, Tol = tol, Out = outv };
             var rqStat = Bench.Time(() => rqJob.Run());
             sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                 "float", n, s, "bcgrq", rqStat.Median, rqStat.Min, outv[0], outv[1]));
 
             // bfbcg
-            var Xbf = arena.floatMat(s, n); var Rbf = arena.floatMat(s, n);
-            var Pbf = arena.floatMat(s, n); var APbf = arena.floatMat(s, n); var Pabf = arena.floatMat(s, n);
+            var Xbf = new floatMxN(s, n, Allocator.Persistent); var Rbf = new floatMxN(s, n, Allocator.Persistent);
+            var Pbf = new floatMxN(s, n, Allocator.Persistent); var APbf = new floatMxN(s, n, Allocator.Persistent); var Pabf = new floatMxN(s, n, Allocator.Persistent);
             var bfJob = new BlockBfbcgSparseJobFloat { A = A, B = B, X = Xbf, R = Rbf, P = Pbf, AP = APbf, Pa = Pabf, K = cap, Tol = tol, Out = outv };
             var bfStat = Bench.Time(() => bfJob.Run());
             sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                 "float", n, s, "bfbcg", bfStat.Median, bfStat.Min, outv[0], outv[1]));
 
             // scalar loop
-            var x = arena.floatVec(n); var r = arena.floatVec(n); var p = arena.floatVec(n);
-            var Ap = arena.floatVec(n); var bcol = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Persistent); var r = new floatN(n, Allocator.Persistent); var p = new floatN(n, Allocator.Persistent);
+            var Ap = new floatN(n, Allocator.Persistent); var bcol = new floatN(n, Allocator.Persistent);
             var loopJob = new ScalarLoopSparseJobFloat { A = A, B = B, x = x, r = r, p = p, Ap = Ap, bcol = bcol, S = s, K = cap, Tol = tol, Out = outv };
             var loopStat = Bench.Time(() => loopJob.Run());
             sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
@@ -184,19 +183,24 @@ namespace LinearAlgebra.Benchmarks
 
             // matvec-only layout probe (Reps = 50 fixed)
             int reps = 50;
-            var AV = arena.floatMat(s, n);
+            var AV = new floatMxN(s, n, Allocator.Persistent);
             var mmJob = new SpMMProbeJobFloat { A = A, V = B, AV = AV, S = s, Reps = reps };
             var mmStat = Bench.Time(() => mmJob.Run());
             sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                 "float", n, s, "spMM x50", mmStat.Median, mmStat.Min, reps, 0));
 
-            var yv = arena.floatVec(n);
+            var yv = new floatN(n, Allocator.Persistent);
             var mvJob = new SpMVLoopProbeJobFloat { A = A, V = B, x = x, y = yv, S = s, Reps = reps };
             var mvStat = Bench.Time(() => mvJob.Run());
             sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                 "float", n, s, "spMVx s x50", mvStat.Median, mvStat.Min, reps * s, 0));
 
-            arena.Dispose();
+            A.Dispose(); B.Dispose(); outv.Dispose();
+            X.Dispose(); R.Dispose(); P.Dispose(); Q.Dispose();
+            Xrq.Dispose(); Rrq.Dispose(); Prq.Dispose(); APrq.Dispose(); Parq.Dispose();
+            Xbf.Dispose(); Rbf.Dispose(); Pbf.Dispose(); APbf.Dispose(); Pabf.Dispose();
+            x.Dispose(); r.Dispose(); p.Dispose(); Ap.Dispose(); bcol.Dispose();
+            AV.Dispose(); yv.Dispose();
             return sb.ToString();
         }
     }

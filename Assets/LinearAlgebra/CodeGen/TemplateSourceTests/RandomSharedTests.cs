@@ -64,15 +64,14 @@ public class RandomSharedTests
         // randomPermutationInPlace yields a bijection of 0..N-1, and a Copy preserves contents+Sign.
         void PermutationIsBijection()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 16;
-            var p = arena.Pivot(n);
+            var p = new Pivot(n, Allocator.Temp);
             var rng = new Random(1234567u);
             Rand.randomPermutationInPlace(ref p, ref rng);
 
             AssertTrue(p.N == n);
             // Each value in 0..n-1 appears exactly once.
-            var seen = arena.Indices(n);
+            var seen = new Indices(n, Allocator.Temp);
             for (int i = 0; i < n; i++) seen[i] = 0;
             for (int i = 0; i < n; i++)
             {
@@ -90,41 +89,35 @@ public class RandomSharedTests
             for (int i = 0; i < n; i++)
                 AssertTrue(copy[i] == p[i]);
             copy.Dispose();
-
-            arena.Dispose();
         }
 
         // N == 1 => identity, even parity.
         void PermutationN1Identity()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var p = arena.Pivot(1);
+            var p = new Pivot(1, Allocator.Temp);
             var rng = new Random(99u);
             Rand.randomPermutationInPlace(ref p, ref rng);
             AssertTrue(p[0] == 0);
             AssertTrue(p.Sign == 1);
-            arena.Dispose();
         }
 
         // Pivot.Sign parity must equal the inversion-count parity of the resulting permutation.
         // (No managed arrays: Burst forbids them, so the (n, seed) grid is walked arithmetically.)
         void PermutationSignMatchesParity()
         {
-            var arena = new Arena(Allocator.Persistent);
             for (int n = 2; n <= 13; n++)
             {
                 for (uint k = 0; k < 6; k++)
                 {
                     uint seed = (uint)(n * 131) + k * 2654435761u + 1u;
-                    CheckSignParity(ref arena, n, seed);
+                    CheckSignParity(n, seed);
                 }
             }
-            arena.Dispose();
         }
 
-        void CheckSignParity(ref Arena arena, int n, uint seed)
+        void CheckSignParity(int n, uint seed)
         {
-            var p = arena.Pivot(n);
+            var p = new Pivot(n, Allocator.Temp);
             var rng = new Random(seed);
             Rand.randomPermutationInPlace(ref p, ref rng);
 
@@ -141,30 +134,27 @@ public class RandomSharedTests
         // Over a few seeds, at least one permutation of 0..N-1 is non-identity.
         void PermutationNonIdentity()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 8;
             bool anyNonIdentity = false;
             for (uint s = 1; s <= 8; s++)
             {
-                var p = arena.Pivot(n);
+                var p = new Pivot(n, Allocator.Temp);
                 var rng = new Random(s * 2654435761u + 1u);
                 Rand.randomPermutationInPlace(ref p, ref rng);
                 for (int i = 0; i < n; i++)
                     if (p[i] != i) { anyNonIdentity = true; break; }
             }
             AssertTrue(anyNonIdentity);
-            arena.Dispose();
         }
 
         // shuffleInPlace keeps the multiset of contents (incl. duplicates), only reordering.
         void ShuffleMultisetEqual()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 8;
 
             // Known multiset with duplicates (set element-wise; Burst forbids managed arrays).
-            var idx = arena.Indices(n);
-            var pre = arena.Indices(n);
+            var idx = new Indices(n, Allocator.Temp);
+            var pre = new Indices(n, Allocator.Temp);
             idx[0] = 3; idx[1] = 3; idx[2] = 1; idx[3] = 7;
             idx[4] = 7; idx[5] = 2; idx[6] = 9; idx[7] = 0;
             for (int i = 0; i < n; i++) pre[i] = idx[i];
@@ -177,28 +167,23 @@ public class RandomSharedTests
             InsertionSort(ref idx);
             for (int i = 0; i < n; i++)
                 AssertEq(idx[i], pre[i]);
-
-            arena.Dispose();
         }
 
         // N == 1 shuffle leaves the single element unchanged.
         void ShuffleN1Unchanged()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var idx = arena.Indices(1);
+            var idx = new Indices(1, Allocator.Temp);
             idx[0] = 42;
             var rng = new Random(7u);
             Rand.shuffleInPlace(ref idx, ref rng);
             AssertEq(idx[0], 42);
-            arena.Dispose();
         }
 
         // sampleK: dest.N distinct indices in [0, n).
         void SampleKDistinct()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 20, k = 5;
-            var dest = arena.Indices(k);
+            var dest = new Indices(k, Allocator.Temp);
             var rng = new Random(13572468u);
             Rand.sampleKWithoutReplacementInPlace(ref dest, n, ref rng);
 
@@ -208,19 +193,17 @@ public class RandomSharedTests
                 for (int j = i + 1; j < k; j++)
                     AssertTrue(dest[i] != dest[j]);
             }
-            arena.Dispose();
         }
 
         // k == n => a full permutation of 0..n-1.
         void SampleKFullPermutation()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 8;
-            var dest = arena.Indices(n);
+            var dest = new Indices(n, Allocator.Temp);
             var rng = new Random(97531864u);
             Rand.sampleKWithoutReplacementInPlace(ref dest, n, ref rng);
 
-            var seen = arena.Indices(n);
+            var seen = new Indices(n, Allocator.Temp);
             for (int i = 0; i < n; i++) seen[i] = 0;
             for (int i = 0; i < n; i++)
             {
@@ -229,36 +212,31 @@ public class RandomSharedTests
             }
             for (int i = 0; i < n; i++)
                 AssertEq(seen[i], 1);
-            arena.Dispose();
         }
 
         // dest.N == 0 returns without alloc/throw.
         void SampleKZeroNoThrow()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var dest = arena.Indices(0);
+            var dest = new Indices(0, Allocator.Temp);
             var rng = new Random(1u);
             Rand.sampleKWithoutReplacementInPlace(ref dest, 5, ref rng);
             AssertEq(dest.N, 0);
-            arena.Dispose();
         }
 
         // Fixed seed => identical sample.
         void SampleKDeterminism()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 50, k = 10;
-            var d1 = arena.Indices(k);
+            var d1 = new Indices(k, Allocator.Temp);
             var r1 = new Random(555u);
             Rand.sampleKWithoutReplacementInPlace(ref d1, n, ref r1);
 
-            var d2 = arena.Indices(k);
+            var d2 = new Indices(k, Allocator.Temp);
             var r2 = new Random(555u);
             Rand.sampleKWithoutReplacementInPlace(ref d2, n, ref r2);
 
             for (int i = 0; i < k; i++)
                 AssertEq(d1[i], d2[i]);
-            arena.Dispose();
         }
 
         // ---------------- helpers ----------------
@@ -341,18 +319,15 @@ public class RandomSharedTests
     [Test]
     public void SampleKInvalidArgsThrow()
     {
-        var arena = new Arena(Allocator.Persistent);
         Random rng = new Random(1u);
 
         // n <= 0 throws.
-        var dest = arena.Indices(3);
+        var dest = new Indices(3, Allocator.Temp);
         Assert.Throws<ArgumentException>(() => Rand.sampleKWithoutReplacementInPlace(ref dest, 0, ref rng));
         Assert.Throws<ArgumentException>(() => Rand.sampleKWithoutReplacementInPlace(ref dest, -1, ref rng));
 
         // dest.N > n throws.
-        var big = arena.Indices(5);
+        var big = new Indices(5, Allocator.Temp);
         Assert.Throws<ArgumentException>(() => Rand.sampleKWithoutReplacementInPlace(ref big, 3, ref rng));
-
-        arena.Dispose();
     }
 }

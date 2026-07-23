@@ -77,21 +77,19 @@ public class doubleSVDSolverTests
         // checks use the saved copy.
         public void PinvSquareFullRank()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 8;
 
-            var A = arena.doubleRandomMat(dim, dim, -5f, 5f, 314221);
+            var A = GenerateOP.doubleRandomMat(dim, dim, -5f, 5f, 314221, allocator: Allocator.Temp);
             // boost the diagonal to ensure good conditioning (see QRTests / SolversTests)
             for (int d = 0; d < dim; d++)
                 A[d, d] += (double)10f;
 
             var A_copy = A.Copy();
 
-            var xOrig = arena.doubleRandomVec(dim, -3f, 3f, 1337);
+            var xOrig = GenerateOP.doubleRandomVec(dim, -3f, 3f, 1337, allocator: Allocator.Temp);
             var b = Blas.dot(A_copy, xOrig);
 
-            var x = arena.doubleVec(dim);
+            var x = new doubleN(dim, Allocator.Temp);
 
             RankInfo pinvInfo = SVD.pinvSolve(ref A, in b, ref x);
             bool converged = pinvInfo;
@@ -104,29 +102,25 @@ public class doubleSVDSolverTests
 
             for (int k = 0; k < dim; k++)
                 AssertClose(x[k], xOrig[k], 1E-3f);
-
-            arena.Dispose();
         }
 
         // Case 2a: Overdetermined full column rank, b exactly in range(A). x recovers x_orig.
         public void PinvOverdeterminedFullRank()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 12;
             int n = 4;
 
-            var A = arena.doubleRandomMat(m, n, -5f, 5f, 778231);
+            var A = GenerateOP.doubleRandomMat(m, n, -5f, 5f, 778231, allocator: Allocator.Temp);
             // boost the leading diagonal block to ensure full column rank / conditioning
             for (int d = 0; d < n; d++)
                 A[d, d] += (double)10f;
 
             var A_copy = A.Copy();
 
-            var xOrig = arena.doubleRandomVec(n, -3f, 3f, 4242);
+            var xOrig = GenerateOP.doubleRandomVec(n, -3f, 3f, 4242, allocator: Allocator.Temp);
             var b = Blas.dot(A_copy, xOrig);
 
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
 
             RankInfo pinvInfo = SVD.pinvSolve(ref A, in b, ref x);
             bool converged = pinvInfo;
@@ -139,30 +133,26 @@ public class doubleSVDSolverTests
 
             for (int k = 0; k < n; k++)
                 AssertClose(x[k], xOrig[k], 1E-3f);
-
-            arena.Dispose();
         }
 
         // Case 2b: Overdetermined, b has a component outside range(A). Least-squares solution
         // must satisfy the normal equations: A^T (A x - b) = 0. Check ||A^T r||_inf < 1e-2.
         public void PinvOverdeterminedResidual()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 12;
             int n = 4;
 
-            var A = arena.doubleRandomMat(m, n, -5f, 5f, 778231);
+            var A = GenerateOP.doubleRandomMat(m, n, -5f, 5f, 778231, allocator: Allocator.Temp);
             for (int d = 0; d < n; d++)
                 A[d, d] += (double)10f;
 
             var A_copy = A.Copy();
 
             // b is a generic random vector in R^m, almost surely not in range(A)
-            var b = arena.doubleRandomVec(m, -5f, 5f, 9090);
+            var b = GenerateOP.doubleRandomVec(m, -5f, 5f, 9090, allocator: Allocator.Temp);
             var b_copy = b.Copy();
 
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
 
             RankInfo pinvInfo = SVD.pinvSolve(ref A, in b, ref x);
             bool converged = pinvInfo;
@@ -175,7 +165,7 @@ public class doubleSVDSolverTests
 
             // residual r = A x - b   (length m), using the saved copy of A
             var Ax = Blas.dot(A_copy, x);
-            doubleN r = arena.doubleVec(m);
+            doubleN r = new doubleN(m, Allocator.Temp);
             for (int i = 0; i < m; i++)
                 r[i] = Ax[i] - b_copy[i];
 
@@ -196,8 +186,6 @@ public class doubleSVDSolverTests
                 Fail[3] = maxAbs - (double)1E-2f;
             }
             Assert.IsTrue(maxAbs < (double)1E-2f);
-
-            arena.Dispose();
         }
 
         // Case 3: Rank-deficient minimum-norm. A = 4x2, both columns = (1,1,1,1)^T,
@@ -205,23 +193,21 @@ public class doubleSVDSolverTests
         // the minimum-norm solution is x = (0.5, 0.5).
         public void PinvRankDeficientMinNorm()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 4;
             int n = 2;
 
-            var A = arena.doubleMat(m, n);
+            var A = new doubleMxN(m, n, Allocator.Temp);
             for (int i = 0; i < m; i++)
             {
                 A[i, 0] = (double)1f;
                 A[i, 1] = (double)1f;
             }
 
-            var b = arena.doubleVec(m);
+            var b = new doubleN(m, Allocator.Temp);
             for (int i = 0; i < m; i++)
                 b[i] = (double)1f;
 
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
 
             RankInfo pinvInfo = SVD.pinvSolve(ref A, in b, ref x);
             bool converged = pinvInfo;
@@ -234,28 +220,24 @@ public class doubleSVDSolverTests
 
             AssertClose(x[0], (double)0.5f, 1E-4f);
             AssertClose(x[1], (double)0.5f, 1E-4f);
-
-            arena.Dispose();
         }
 
         // Case 4: Underdetermined (m < n branch). A = [[1,0,0],[0,1,0]] (2x3), b = (2,3)
         // -> minimum-norm x = (2,3,0), rank 2.
         public void PinvUnderdetermined()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 2;
             int n = 3;
 
-            var A = arena.doubleMat(m, n);
+            var A = new doubleMxN(m, n, Allocator.Temp);
             A[0, 0] = (double)1f;
             A[1, 1] = (double)1f;
 
-            var b = arena.doubleVec(m);
+            var b = new doubleN(m, Allocator.Temp);
             b[0] = (double)2f;
             b[1] = (double)3f;
 
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
 
             RankInfo pinvInfo = SVD.pinvSolve(ref A, in b, ref x);
             bool converged = pinvInfo;
@@ -269,23 +251,19 @@ public class doubleSVDSolverTests
             AssertClose(x[0], (double)2f, 1E-4f);
             AssertClose(x[1], (double)3f, 1E-4f);
             AssertClose(x[2], (double)0f, 1E-4f);
-
-            arena.Dispose();
         }
 
         // Case 5: Zero matrix 5x3 -> rank 0, x all zeros, converged true, no NaN/Inf.
         public void PinvZeroMatrix()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 5;
             int n = 3;
 
-            var A = arena.doubleMat(m, n);
+            var A = new doubleMxN(m, n, Allocator.Temp);
 
-            var b = arena.doubleRandomVec(m, -5f, 5f, 5151);
+            var b = GenerateOP.doubleRandomVec(m, -5f, 5f, 5151, allocator: Allocator.Temp);
 
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
 
             RankInfo pinvInfo = SVD.pinvSolve(ref A, in b, ref x);
             bool converged = pinvInfo;
@@ -298,27 +276,23 @@ public class doubleSVDSolverTests
 
             for (int k = 0; k < n; k++)
                 AssertClose(x[k], (double)0f, 1E-4f);
-
-            arena.Dispose();
         }
 
         // Case 6: pseudoInverse of a square invertible 3x3. Aplus ~= A^{-1},
         // verified by A_copy * Aplus ~= I, rank 3.
         public void PseudoInverseSquareInvertible()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 3;
 
             // simple well-conditioned invertible matrix
-            var A = arena.doubleMat(dim, dim);
+            var A = new doubleMxN(dim, dim, Allocator.Temp);
             A[0, 0] = (double)4f; A[0, 1] = (double)1f; A[0, 2] = (double)0f;
             A[1, 0] = (double)1f; A[1, 1] = (double)3f; A[1, 2] = (double)1f;
             A[2, 0] = (double)0f; A[2, 1] = (double)1f; A[2, 2] = (double)2f;
 
             var A_copy = A.Copy();
 
-            var Aplus = arena.doubleMat(dim, dim);
+            var Aplus = new doubleMxN(dim, dim, Allocator.Temp);
 
             RankInfo pinvInfo = SVD.pseudoInverse(ref A, ref Aplus);
             bool converged = pinvInfo;
@@ -332,22 +306,18 @@ public class doubleSVDSolverTests
 
             var prod = Blas.dot(A_copy, Aplus);
             Assert.IsTrue(Analysis.isIdentity(in prod, 1E-3f));
-
-            arena.Dispose();
         }
 
         // Case 7: pseudoInverse of diag(2, 0) 2x2 -> diag(0.5, 0), rank 1, no NaN.
         public void PseudoInverseDiag()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 2;
 
-            var A = arena.doubleMat(dim, dim);
+            var A = new doubleMxN(dim, dim, Allocator.Temp);
             A[0, 0] = (double)2f;
             A[1, 1] = (double)0f;
 
-            var Aplus = arena.doubleMat(dim, dim);
+            var Aplus = new doubleMxN(dim, dim, Allocator.Temp);
 
             RankInfo pinvInfo = SVD.pseudoInverse(ref A, ref Aplus);
             bool converged = pinvInfo;
@@ -363,20 +333,16 @@ public class doubleSVDSolverTests
             AssertClose(Aplus[0, 1], (double)0f, 1E-4f);
             AssertClose(Aplus[1, 0], (double)0f, 1E-4f);
             AssertClose(Aplus[1, 1], (double)0f, 1E-4f);
-
-            arena.Dispose();
         }
 
         // Case 8: Moore-Penrose property on a rank-deficient case (case 3's A, 4x2 rank 1):
         // Aplus * A_copy * Aplus ~= Aplus.
         public void PseudoInverseMoorePenrose()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 4;
             int n = 2;
 
-            var A = arena.doubleMat(m, n);
+            var A = new doubleMxN(m, n, Allocator.Temp);
             for (int i = 0; i < m; i++)
             {
                 A[i, 0] = (double)1f;
@@ -386,7 +352,7 @@ public class doubleSVDSolverTests
             var A_copy = A.Copy();
 
             // Aplus is n x m
-            var Aplus = arena.doubleMat(n, m);
+            var Aplus = new doubleMxN(n, m, Allocator.Temp);
 
             RankInfo pinvInfo = SVD.pseudoInverse(ref A, ref Aplus);
             bool converged = pinvInfo;
@@ -401,10 +367,9 @@ public class doubleSVDSolverTests
             var AplusA = Blas.dot(Aplus, A_copy);          // n x n
             var AplusAAplus = Blas.dot(AplusA, Aplus);     // n x m
 
-            doubleMxN shouldBeZero = Aplus - AplusAAplus;
+            doubleMxN shouldBeZero = new doubleMxN(in Aplus, Allocator.Temp);
+            shouldBeZero.subInPlace(AplusAAplus);
             Assert.IsTrue(Analysis.isZero(in shouldBeZero, 1E-3f));
-
-            arena.Dispose();
         }
 
         private void AssertClose(double a, double b, double precision)
@@ -453,69 +418,49 @@ public class doubleSVDSolverTests
     [Test]
     public void PinvThrowsOnWrongBLength()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.doubleMat(4, 3);
-        var b = arena.doubleVec(3); // should be 4
-        var x = arena.doubleVec(3);
+        var A = new doubleMxN(4, 3, Allocator.Temp);
+        var b = new doubleN(3, Allocator.Temp); // should be 4
+        var x = new doubleN(3, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() => SVD.pinvSolve(ref A, in b, ref x));
-
-        arena.Dispose();
     }
 
     [Test]
     public void PinvThrowsOnWrongXLength()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.doubleMat(4, 3);
-        var b = arena.doubleVec(4);
-        var x = arena.doubleVec(2); // should be 3
+        var A = new doubleMxN(4, 3, Allocator.Temp);
+        var b = new doubleN(4, Allocator.Temp);
+        var x = new doubleN(2, Allocator.Temp); // should be 3
 
         Assert.Catch<ArgumentException>(() => SVD.pinvSolve(ref A, in b, ref x));
-
-        arena.Dispose();
     }
 
     [Test]
     public void PinvThrowsOnBadMaxSweeps()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.doubleMat(4, 3);
-        var b = arena.doubleVec(4);
-        var x = arena.doubleVec(3);
+        var A = new doubleMxN(4, 3, Allocator.Temp);
+        var b = new doubleN(4, Allocator.Temp);
+        var x = new doubleN(3, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() => SVD.pinvSolve(ref A, in b, ref x, (double)(-1f), 0));
-
-        arena.Dispose();
     }
 
     [Test]
     public void PseudoInverseThrowsOnWrongShape()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.doubleMat(4, 3);
-        var Aplus = arena.doubleMat(4, 3); // should be 3 x 4
+        var A = new doubleMxN(4, 3, Allocator.Temp);
+        var Aplus = new doubleMxN(4, 3, Allocator.Temp); // should be 3 x 4
 
         Assert.Catch<ArgumentException>(() => SVD.pseudoInverse(ref A, ref Aplus));
-
-        arena.Dispose();
     }
 
     [Test]
     public void PseudoInverseThrowsOnBadMaxSweeps()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.doubleMat(4, 3);
-        var Aplus = arena.doubleMat(3, 4);
+        var A = new doubleMxN(4, 3, Allocator.Temp);
+        var Aplus = new doubleMxN(3, 4, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() => SVD.pseudoInverse(ref A, ref Aplus, (double)(-1f), 0));
-
-        arena.Dispose();
     }
 
 }

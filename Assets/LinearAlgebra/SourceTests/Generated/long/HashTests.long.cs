@@ -43,71 +43,63 @@ public class longHashTests
 
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
-            try
+            switch (Type)
             {
-                switch (Type)
-                {
-                    case TestType.DeterminismVectorMatrix: DeterminismVectorMatrix(ref arena); break;
-                    case TestType.SeedSensitivity: SeedSensitivity(ref arena); break;
-                    case TestType.AvalancheElement: AvalancheElement(ref arena); break;
-                    case TestType.LengthSensitivity: LengthSensitivity(ref arena); break;
-                    case TestType.EmptyDeterministicSeedDependent: EmptyDeterministicSeedDependent(ref arena); break;
-                    case TestType.RowHashesConsistency: RowHashesConsistency(ref arena); break;
-                    case TestType.ColHashesConsistency: ColHashesConsistency(ref arena); break;
-                    default: throw new NotImplementedException();
-                }
-            }
-            finally
-            {
-                arena.Dispose();
+                case TestType.DeterminismVectorMatrix: DeterminismVectorMatrix(); break;
+                case TestType.SeedSensitivity: SeedSensitivity(); break;
+                case TestType.AvalancheElement: AvalancheElement(); break;
+                case TestType.LengthSensitivity: LengthSensitivity(); break;
+                case TestType.EmptyDeterministicSeedDependent: EmptyDeterministicSeedDependent(); break;
+                case TestType.RowHashesConsistency: RowHashesConsistency(); break;
+                case TestType.ColHashesConsistency: ColHashesConsistency(); break;
+                default: throw new NotImplementedException();
             }
         }
 
         // Small non-negative whole-number fills (uint-safe, short-safe).
-        longN MakeVec(ref Arena arena, int n)
+        longN MakeVec(int n)
         {
-            var v = arena.longVec(n);
+            var v = new longN(n, Allocator.Temp);
             for (int i = 0; i < n; i++)
                 v[i] = (long)((i * 3 + 1) % 50);
             return v;
         }
 
-        longMxN MakeMat(ref Arena arena, int m, int n)
+        longMxN MakeMat(int m, int n)
         {
-            var A = arena.longMat(m, n);
+            var A = new longMxN(m, n, Allocator.Temp);
             for (int r = 0; r < m; r++)
                 for (int c = 0; c < n; c++)
                     A[r, c] = (long)((r * 7 + c * 2 + 1) % 50);
             return A;
         }
 
-        void DeterminismVectorMatrix(ref Arena arena)
+        void DeterminismVectorMatrix()
         {
-            var v = MakeVec(ref arena, 7);
+            var v = MakeVec(7);
             Assert.IsTrue(Hash.hash(in v, 0u) == Hash.hash(in v, 0u));
             Assert.IsTrue(Hash.hash(in v, 12345u) == Hash.hash(in v, 12345u));
 
-            var A = MakeMat(ref arena, 4, 5);
+            var A = MakeMat(4, 5);
             Assert.IsTrue(Hash.hash(in A, 0u) == Hash.hash(in A, 0u));
             Assert.IsTrue(Hash.hash(in A, 777u) == Hash.hash(in A, 777u));
         }
 
-        void SeedSensitivity(ref Arena arena)
+        void SeedSensitivity()
         {
-            var v = MakeVec(ref arena, 7);
+            var v = MakeVec(7);
             Assert.IsTrue(Hash.hash(in v, 0u) != Hash.hash(in v, 1u));
             Assert.IsTrue(Hash.hash(in v, 1u) != Hash.hash(in v, 2u));
             Assert.IsTrue(Hash.hash(in v, 0u) != Hash.hash(in v, 987654321u));
 
-            var A = MakeMat(ref arena, 3, 4);
+            var A = MakeMat(3, 4);
             Assert.IsTrue(Hash.hash(in A, 0u) != Hash.hash(in A, 42u));
         }
 
         // Changing a single element changes the hash.
-        void AvalancheElement(ref Arena arena)
+        void AvalancheElement()
         {
-            var v = MakeVec(ref arena, 6);
+            var v = MakeVec(6);
             uint before = Hash.hash(in v, 0u);
             v[3] = (long)(v[3] + (long)1); // perturb one element (cast: short+short widens to int)
             uint after = Hash.hash(in v, 0u);
@@ -115,20 +107,20 @@ public class longHashTests
         }
 
         // {1,2} vs {1,2,0}: the trailing zero is real input.
-        void LengthSensitivity(ref Arena arena)
+        void LengthSensitivity()
         {
-            var v2 = arena.longVec(2);
+            var v2 = new longN(2, Allocator.Temp);
             v2[0] = (long)1; v2[1] = (long)2;
 
-            var v3 = arena.longVec(3);
+            var v3 = new longN(3, Allocator.Temp);
             v3[0] = (long)1; v3[1] = (long)2; v3[2] = (long)0;
 
             Assert.IsTrue(Hash.hash(in v2, 0u) != Hash.hash(in v3, 0u));
         }
 
-        void EmptyDeterministicSeedDependent(ref Arena arena)
+        void EmptyDeterministicSeedDependent()
         {
-            var e = arena.longVec(0);
+            var e = new longN(0, Allocator.Temp);
             Assert.IsTrue(Hash.hash(in e, 0u) == Hash.hash(in e, 0u));
             Assert.IsTrue(Hash.hash(in e, 0u) != Hash.hash(in e, 12345u));
         }
@@ -140,10 +132,10 @@ public class longHashTests
         // loop (2 leftover bytes after one 4-byte group) for the short expansion of this shared
         // template. int/long/uint don't need it here (they're covered by other tests), but 3 columns
         // is a valid row width for all of them too, so the same dimensions serve every type.
-        void RowHashesConsistency(ref Arena arena)
+        void RowHashesConsistency()
         {
             const uint seed = 20240704u;
-            var A = MakeMat(ref arena, 5, 3);
+            var A = MakeMat(5, 3);
 
             var alloc = Hash.rowHashes(in A, seed);
             Assert.IsTrue(alloc.N == A.M_Rows);
@@ -151,7 +143,7 @@ public class longHashTests
             var refDest = Hash.rowHashes(in A, seed + 999u);
             Hash.rowHashes(in A, ref refDest, seed);
 
-            var row = arena.longVec(A.N_Cols);
+            var row = new longN(A.N_Cols, Allocator.Temp);
             for (int r = 0; r < A.M_Rows; r++)
             {
                 for (int c = 0; c < A.N_Cols; c++)
@@ -163,10 +155,10 @@ public class longHashTests
         }
 
         // colHashes[c] == hash(column c gathered into a standalone contiguous vector), SAME seed.
-        void ColHashesConsistency(ref Arena arena)
+        void ColHashesConsistency()
         {
             const uint seed = 13579u;
-            var A = MakeMat(ref arena, 6, 3);
+            var A = MakeMat(6, 3);
 
             var alloc = Hash.colHashes(in A, seed);
             Assert.IsTrue(alloc.N == A.N_Cols);
@@ -174,7 +166,7 @@ public class longHashTests
             var refDest = Hash.colHashes(in A, seed + 999u);
             Hash.colHashes(in A, ref refDest, seed);
 
-            var col = arena.longVec(A.M_Rows);
+            var col = new longN(A.M_Rows, Allocator.Temp);
             for (int c = 0; c < A.N_Cols; c++)
             {
                 for (int r = 0; r < A.M_Rows; r++)
@@ -199,40 +191,24 @@ public class longHashTests
     [Test]
     public void RowColHashesWrongDestThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = arena.longMat(3, 4);
-            for (int r = 0; r < 3; r++)
-                for (int c = 0; c < 4; c++)
-                    A[r, c] = (long)(r + c);
+        var A = new longMxN(3, 4, Allocator.Temp);
+        for (int r = 0; r < 3; r++)
+            for (int c = 0; c < 4; c++)
+                A[r, c] = (long)(r + c);
 
-            var sizeRows = Hash.rowHashes(in A); // N == 3
-            var sizeCols = Hash.colHashes(in A); // N == 4
+        var sizeRows = Hash.rowHashes(in A); // N == 3
+        var sizeCols = Hash.colHashes(in A); // N == 4
 
-            Assert.Throws<ArgumentException>(() => Hash.rowHashes(in A, ref sizeCols, 0u));
-            Assert.Throws<ArgumentException>(() => Hash.colHashes(in A, ref sizeRows, 0u));
-        }
-        finally
-        {
-            arena.Dispose();
-        }
+        Assert.Throws<ArgumentException>(() => Hash.rowHashes(in A, ref sizeCols, 0u));
+        Assert.Throws<ArgumentException>(() => Hash.colHashes(in A, ref sizeRows, 0u));
     }
 
     [Test]
     public void ColHashesZeroColumnsReturnsEmpty()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = arena.longMat(4, 0);
-            var d = Hash.colHashes(in A, 0u);
-            Assert.AreEqual(0, d.N);
-        }
-        finally
-        {
-            arena.Dispose();
-        }
+        var A = new longMxN(4, 0, Allocator.Temp);
+        var d = Hash.colHashes(in A, 0u);
+        Assert.AreEqual(0, d.N);
     }
 
     // Symmetric with ColHashesZeroColumnsReturnsEmpty: a matrix with zero rows. rowHashes has no
@@ -241,16 +217,8 @@ public class longHashTests
     [Test]
     public void RowHashesZeroRowsReturnsEmpty()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = arena.longMat(0, 4);
-            var d = Hash.rowHashes(in A, 0u);
-            Assert.AreEqual(0, d.N);
-        }
-        finally
-        {
-            arena.Dispose();
-        }
+        var A = new longMxN(0, 4, Allocator.Temp);
+        var d = Hash.rowHashes(in A, 0u);
+        Assert.AreEqual(0, d.N);
     }
 }

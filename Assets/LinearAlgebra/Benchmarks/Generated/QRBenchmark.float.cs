@@ -39,10 +39,9 @@ namespace LinearAlgebra.Benchmarks
     {
         static string BenchFloat(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var Q = arena.floatMat(n, n);
-            var R = arena.floatMat(n, n);
-            var Src = arena.floatMat(n, n);
+            var Q = new floatMxN(n, n, Allocator.Persistent);
+            var R = new floatMxN(n, n, Allocator.Persistent);
+            var Src = new floatMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -54,7 +53,9 @@ namespace LinearAlgebra.Benchmarks
             var job = new QRJobFloat { Q = Q, R = R, Src = Src };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            Q.Dispose();
+            R.Dispose();
+            Src.Dispose();
             return Bench.Row("float", n, stat, flops);
         }
     }

@@ -70,11 +70,11 @@ public class doubleSparseChebyshevTests
 
         // SPD block-tridiagonal chain: diagonal blocks (2*BR+2)*I + 0.25 (symmetric, strongly
         // diagonally dominant -> SPD), off-diagonal coupling blocks -I. Same recipe as SparseIC0Tests.
-        static doubleBSR BuildBlockTridiag(ref Arena arena, int nb, int BR)
+        static doubleBSR BuildBlockTridiag(int nb, int BR)
         {
-            var builder = arena.doubleBSRBuilder(nb, nb, BR, BR);
-            var diag = arena.doubleMat(BR, BR);
-            var off = arena.doubleMat(BR, BR);
+            var builder = new doubleBSRBuilder(nb, nb, BR, BR, Allocator.Temp);
+            var diag = new doubleMxN(BR, BR, Allocator.Temp);
+            var off = new doubleMxN(BR, BR, Allocator.Temp);
 
             for (int r = 0; r < BR; r++)
                 for (int c = 0; c < BR; c++)
@@ -92,89 +92,79 @@ public class doubleSparseChebyshevTests
                     builder.AddBlock(i, i + 1, in off);
                 }
             }
-            return builder.ToBSR(ref arena);
+            return builder.ToBSR(Allocator.Temp);
         }
 
         // ---- 1. Poisson outer-iteration ordering: Chebyshev(d=3) < block-Jacobi < plain CG -------
         void PoissonIterationOrdering()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // g = 32 -> n = 1024, comfortably above the default eigSteps = 10.
-            var A = arena.doubleLaplacian2D(32, 32);
+            var A = doubleGallery.doubleLaplacian2D(32, 32);
             int n = A.M_Rows;
 
-            var xTrue = arena.doubleRandomVec(n, 0.5f, 1.5f, 851001u);
+            var xTrue = GenerateOP.doubleRandomVec(n, 0.5f, 1.5f, 851001u);
             var b = BSR.spMV(in A, in xTrue);
             double tol = Consts.doubleSqrtEps;
             int maxIter = 4 * n;
 
-            var Mc = arena.doubleChebyshev(in A);                 // Default: degree 3
-            var Mj = arena.doubleBlockJacobi(in A);
+            var Mc = new doubleChebyshev(in A, Allocator.Temp);                 // Default: degree 3
+            var Mj = new doubleBlockJacobi(in A, Allocator.Temp);
 
-            var xC = arena.doubleVec(n);
+            var xC = new doubleN(n, Allocator.Temp);
             var infoC = Krylov.cg(in A, in Mc, in b, ref xC, maxIter, tol);
             Assert.IsTrue(infoC.Solved);
 
-            var xJ = arena.doubleVec(n);
+            var xJ = new doubleN(n, Allocator.Temp);
             var infoJ = Krylov.cg(in A, in Mj, in b, ref xJ, maxIter, tol);
             Assert.IsTrue(infoJ.Solved);
 
-            var xG = arena.doubleVec(n);
+            var xG = new doubleN(n, Allocator.Temp);
             var infoG = Krylov.cg(in A, in b, ref xG, maxIter, tol);
             Assert.IsTrue(infoG.Solved);
 
             // Spec Section 9.1: strictly decreasing outer-iteration counts, all to the same tol.
             Assert.IsTrue(infoC.iterations < infoJ.iterations);
             Assert.IsTrue(infoJ.iterations < infoG.iterations);
-
-            arena.Dispose();
         }
 
         // ---- 3. Solution correctness: cg+Chebyshev matches the dense direct (Cholesky) solve -----
         void SolutionMatchesDirect()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             const int nb = 8, BR = 2;                            // n = 16 > eigSteps
-            var A = BuildBlockTridiag(ref arena, nb, BR);
+            var A = BuildBlockTridiag(nb, BR);
             int n = A.M_Rows;
 
-            var M = arena.doubleChebyshev(in A);
-            var xTrue = arena.doubleRandomVec(n, 0.5f, 1.5f, 851201u);
+            var M = new doubleChebyshev(in A, Allocator.Temp);
+            var xTrue = GenerateOP.doubleRandomVec(n, 0.5f, 1.5f, 851201u);
             var b = BSR.spMV(in A, in xTrue);
 
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
             var info = Krylov.cg(in A, in M, in b, ref x, 8 * n, Consts.doubleSqrtEps);
             Assert.IsTrue(info.Solved);
 
             // Dense Cholesky oracle on the same system (independent code path). CHO.solveInPlace is
             // destructive, so it runs on the dense copy with b copied into the rhs slot.
-            var D = A.ToDense(ref arena);
-            var xRef = arena.doubleVec(n);
+            var D = A.ToDense(Allocator.Temp);
+            var xRef = new doubleN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) xRef[i] = b[i];
             var choInfo = CHO.solveInPlace(ref D, ref xRef);
             Assert.IsTrue(choInfo.Solved);
 
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(math.abs(x[i] - xRef[i]) < Tol() * ((double)1 + math.abs(xRef[i])));
-
-            arena.Dispose();
         }
 
         // ---- 4. SPD spot check: M^-1 symmetric AND positive definite -------------------------------
         void ApplyIsSymmetricAndPositive()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.doubleRandomSparseSPD(20, 3, (double)0.3, 851301u);   // n = 60
-            var M = arena.doubleChebyshev(in A);
+            var A = doubleGallery.doubleRandomSparseSPD(20, 3, (double)0.3, 851301u);   // n = 60
+            var M = new doubleChebyshev(in A, Allocator.Temp);
             int n = A.M_Rows;
 
-            var u = arena.doubleRandomVec(n, -1f, 1f, 851302u);
-            var v = arena.doubleRandomVec(n, -1f, 1f, 851303u);
-            var Mu = arena.doubleVec(n);
-            var Mv = arena.doubleVec(n);
+            var u = GenerateOP.doubleRandomVec(n, -1f, 1f, 851302u);
+            var v = GenerateOP.doubleRandomVec(n, -1f, 1f, 851303u);
+            var Mu = new doubleN(n, Allocator.Temp);
+            var Mv = new doubleN(n, Allocator.Temp);
             M.Apply(in u, ref Mu);
             M.Apply(in v, ref Mv);
 
@@ -187,37 +177,31 @@ public class doubleSparseChebyshevTests
             // Positive definiteness: <v, M^-1 v> > 0 for v != 0.
             double q = Blas.dot(v, Mv);
             Assert.IsTrue(q > (double)0);
-
-            arena.Dispose();
         }
 
         // ---- 6. Determinism: two identical solves are bit-identical (Apply is dot-free) ------------
         void DeterministicSolve()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.doubleLaplacian2D(16, 16);              // n = 256
+            var A = doubleGallery.doubleLaplacian2D(16, 16);              // n = 256
             int n = A.M_Rows;
 
-            var M = arena.doubleChebyshev(in A);
-            var xTrue = arena.doubleRandomVec(n, 0.5f, 1.5f, 851401u);
+            var M = new doubleChebyshev(in A, Allocator.Temp);
+            var xTrue = GenerateOP.doubleRandomVec(n, 0.5f, 1.5f, 851401u);
             var b = BSR.spMV(in A, in xTrue);
             double tol = Consts.doubleSqrtEps;
             int maxIter = 4 * n;
 
-            var x1 = arena.doubleVec(n);
+            var x1 = new doubleN(n, Allocator.Temp);
             var i1 = Krylov.cg(in A, in M, in b, ref x1, maxIter, tol);
             Assert.IsTrue(i1.Solved);
 
-            var x2 = arena.doubleVec(n);
+            var x2 = new doubleN(n, Allocator.Temp);
             var i2 = Krylov.cg(in A, in M, in b, ref x2, maxIter, tol);
             Assert.IsTrue(i2.Solved);
 
             Assert.IsTrue(i1.iterations == i2.iterations);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(x1[i] == x2[i]);                   // bit-identical (==, not within-tolerance)
-
-            arena.Dispose();
         }
 
         // ---- 8. Storage-mode equivalence: Symmetric-stored A vs full-stored twin, same Apply -------
@@ -228,14 +212,12 @@ public class doubleSparseChebyshevTests
         // agree to a tight tolerance rather than bitwise.
         void SymmetricStorageMatchesFull()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             const int nb = 6, BR = 2;                            // n = 12 > eigSteps
-            var full = BuildBlockTridiag(ref arena, nb, BR);
+            var full = BuildBlockTridiag(nb, BR);
 
-            var builder = arena.doubleBSRBuilder(nb, nb, BR, BR);
-            var diag = arena.doubleMat(BR, BR);
-            var off = arena.doubleMat(BR, BR);
+            var builder = new doubleBSRBuilder(nb, nb, BR, BR, Allocator.Temp);
+            var diag = new doubleMxN(BR, BR, Allocator.Temp);
+            var off = new doubleMxN(BR, BR, Allocator.Temp);
             for (int r = 0; r < BR; r++)
                 for (int c = 0; c < BR; c++)
                 {
@@ -247,22 +229,20 @@ public class doubleSparseChebyshevTests
                 builder.AddBlock(i, i, in diag);
                 if (i + 1 < nb) builder.AddBlock(i + 1, i, in off);   // lower triangle only
             }
-            var sym = builder.ToBSRSymmetric(ref arena);
+            var sym = builder.ToBSRSymmetric(Allocator.Temp);
 
-            var mFull = arena.doubleChebyshev(in full);
-            var mSym = arena.doubleChebyshev(in sym);
+            var mFull = new doubleChebyshev(in full, Allocator.Temp);
+            var mSym = new doubleChebyshev(in sym, Allocator.Temp);
 
             int n = full.M_Rows;
-            var r2 = arena.doubleRandomVec(n, -1f, 1f, 851501u);
-            var zF = arena.doubleVec(n);
-            var zS = arena.doubleVec(n);
+            var r2 = GenerateOP.doubleRandomVec(n, -1f, 1f, 851501u);
+            var zF = new doubleN(n, Allocator.Temp);
+            var zS = new doubleN(n, Allocator.Temp);
             mFull.Apply(in r2, ref zF);
             mSym.Apply(in r2, ref zS);
 
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(math.abs(zF[i] - zS[i]) < Tol() * ((double)1 + math.abs(zF[i])));
-
-            arena.Dispose();
         }
     }
 
@@ -293,7 +273,7 @@ public class doubleSparseChebyshevTests
     // The preconditioner is built on the managed thread, then handed BY VALUE into a Burst IJob that
     // runs the full cg solve. .Run() executes on a struct COPY of doubleChebyshev -- the path that
     // would expose a stale self-pointer or a lost post-construction write (the LOBPCG IJob cache-copy
-    // lesson). The struct is readonly/arena-backed, so the jobbed solve must reproduce the managed
+    // lesson). The struct is readonly/standalone-allocated, so the jobbed solve must reproduce the managed
     // solve (managed Mono vs Burst -> agree to tolerance, not bitwise) and satisfy A x ~= b.
     [BurstCompile(CompileSynchronously = true)]
     struct JobbedChebyshevSolve : IJob
@@ -319,25 +299,23 @@ public class doubleSparseChebyshevTests
     [Test]
     public void JobbedBuildSolveMatchesManaged()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.doubleLaplacian2D(16, 16);                 // n = 256
+        var A = doubleGallery.doubleLaplacian2D(16, 16);                 // n = 256
         int n = A.M_Rows;
 
-        var M = arena.doubleChebyshev(in A);                     // built on the MANAGED thread
-        var xTrue = arena.doubleRandomVec(n, 0.5f, 1.5f, 852001u);
+        var M = new doubleChebyshev(in A, Allocator.Temp);                     // built on the MANAGED thread
+        var xTrue = GenerateOP.doubleRandomVec(n, 0.5f, 1.5f, 852001u);
         var b = BSR.spMV(in A, in xTrue);
         double tol = Consts.doubleSqrtEps;
         int maxIter = 8 * n;
 
         // Managed-thread reference solve.
-        var xManaged = arena.doubleVec(n);
+        var xManaged = new doubleN(n, Allocator.Temp);
         var infoM = Krylov.cg(in A, in M, in b, ref xManaged, maxIter, tol);
         Assert.IsTrue(infoM.Solved);
 
         // Same struct copied INTO a Burst job (runs AFTER the managed solve; M's owned scratch is
         // reused sequentially, never concurrently).
-        var xJob = arena.doubleVec(n);
+        var xJob = new doubleN(n, Allocator.Temp);
         var outp = new NativeArray<int>(2, Allocator.TempJob);
         new JobbedChebyshevSolve { A = A, M = M, b = b, x = xJob, Out = outp, MaxIter = maxIter, Tol = tol }.Run();
         Assert.IsTrue(outp[0] == 1);
@@ -352,7 +330,6 @@ public class doubleSparseChebyshevTests
             Assert.IsTrue(math.abs(Ax[i] - b[i]) <= JobTol() * ((double)1 + math.abs(b[i])));
 
         outp.Dispose();
-        arena.Dispose();
     }
 
     // ---- 9. Small system (n < default eigSteps): builds and converges ----------------------
@@ -367,11 +344,11 @@ public class doubleSparseChebyshevTests
         public NativeArray<double> OutR;   // [0] = ‖b-Ax‖², [1] = ‖b‖²
         public NativeArray<int> OutI;      // [0] = solved flag (1/0), [1] = iterations
 
-        static doubleBSR BuildBlockTridiag(ref Arena arena, int nb, int BR)
+        static doubleBSR BuildBlockTridiag(int nb, int BR)
         {
-            var builder = arena.doubleBSRBuilder(nb, nb, BR, BR);
-            var diag = arena.doubleMat(BR, BR);
-            var off = arena.doubleMat(BR, BR);
+            var builder = new doubleBSRBuilder(nb, nb, BR, BR, Allocator.Temp);
+            var diag = new doubleMxN(BR, BR, Allocator.Temp);
+            var off = new doubleMxN(BR, BR, Allocator.Temp);
             for (int r = 0; r < BR; r++)
                 for (int c = 0; c < BR; c++)
                 {
@@ -387,24 +364,22 @@ public class doubleSparseChebyshevTests
                     builder.AddBlock(i, i + 1, in off);
                 }
             }
-            return builder.ToBSR(ref arena);
+            return builder.ToBSR(Allocator.Temp);
         }
 
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             const int nb = 4, BR = 2;                            // n = 8 < default eigSteps (10)
-            var A = BuildBlockTridiag(ref arena, nb, BR);
+            var A = BuildBlockTridiag(nb, BR);
             int n = A.M_Rows;
 
-            var M = arena.doubleChebyshev(in A);                 // must not throw (eigSteps clamped to n)
-            var xTrue = arena.doubleRandomVec(n, 0.5f, 1.5f, 853001u);
+            var M = new doubleChebyshev(in A, Allocator.Temp);                 // must not throw (eigSteps clamped to n)
+            var xTrue = GenerateOP.doubleRandomVec(n, 0.5f, 1.5f, 853001u);
             var b = BSR.spMV(in A, in xTrue);
             double tol = Consts.doubleSqrtEps;
             int maxIter = 8 * n;
 
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
             var info = Krylov.cg(in A, in M, in b, ref x, maxIter, tol);
 
             var Ax = BSR.spMV(in A, in x);
@@ -420,8 +395,6 @@ public class doubleSparseChebyshevTests
             OutR[1] = bb;
             OutI[0] = info.Solved ? 1 : 0;
             OutI[1] = info.iterations;
-
-            arena.Dispose();
         }
     }
 
@@ -460,12 +433,10 @@ public class doubleSparseChebyshevTests
 
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.doubleLaplacian2D(16, 16);              // n = 256 > eigSteps
+            var A = doubleGallery.doubleLaplacian2D(16, 16);              // n = 256 > eigSteps
             int n = A.M_Rows;
 
-            var xTrue = arena.doubleRandomVec(n, 0.5f, 1.5f, 851101u);
+            var xTrue = GenerateOP.doubleRandomVec(n, 0.5f, 1.5f, 851101u);
             var b = BSR.spMV(in A, in xTrue);
             double tol = Consts.doubleSqrtEps;
             int maxIter = 4 * n;
@@ -474,15 +445,13 @@ public class doubleSparseChebyshevTests
             {
                 var opt = doubleChebyshevOptions.Default;
                 opt.degree = d;
-                var M = arena.doubleChebyshev(in A, in opt);
+                var M = new doubleChebyshev(in A, in opt, Allocator.Temp);
 
-                var x = arena.doubleVec(n);
+                var x = new doubleN(n, Allocator.Temp);
                 var info = Krylov.cg(in A, in M, in b, ref x, maxIter, tol);
                 Out[d - 1] = info.iterations;
                 Out[4 + d - 1] = info.Solved ? 1 : 0;
             }
-
-            arena.Dispose();
         }
     }
 
@@ -516,12 +485,12 @@ public class doubleSparseChebyshevTests
 
     // A valid SPD block-tridiagonal with n >= default eigSteps (10) -> the ctor's Lanczos run
     // succeeds, so a built preconditioner is available for the Apply-guard tests.
-    static doubleBSR BuildValidSPD(ref Arena arena)
+    static doubleBSR BuildValidSPD()
     {
         const int nb = 6, BR = 2;                                // n = 12
-        var builder = arena.doubleBSRBuilder(nb, nb, BR, BR);
-        var diag = arena.doubleMat(BR, BR);
-        var off = arena.doubleMat(BR, BR);
+        var builder = new doubleBSRBuilder(nb, nb, BR, BR, Allocator.Temp);
+        var diag = new doubleMxN(BR, BR, Allocator.Temp);
+        var off = new doubleMxN(BR, BR, Allocator.Temp);
         for (int r = 0; r < BR; r++)
             for (int c = 0; c < BR; c++)
             {
@@ -537,172 +506,117 @@ public class doubleSparseChebyshevTests
                 builder.AddBlock(i, i + 1, in off);
             }
         }
-        return builder.ToBSR(ref arena);
+        return builder.ToBSR(Allocator.Temp);
     }
 
     // A small square 1x1-block BSR with the given scalar diagonal values (every diagonal block present).
-    static doubleBSR BuildDiag1x1(ref Arena arena, double d0, double d1)
+    static doubleBSR BuildDiag1x1(double d0, double d1)
     {
-        var builder = arena.doubleBSRBuilder(2, 2, 1, 1);
-        var b0 = arena.doubleMat(1, 1); b0[0, 0] = d0;
-        var b1 = arena.doubleMat(1, 1); b1[0, 0] = d1;
+        var builder = new doubleBSRBuilder(2, 2, 1, 1, Allocator.Temp);
+        var b0 = new doubleMxN(1, 1, Allocator.Temp); b0[0, 0] = d0;
+        var b1 = new doubleMxN(1, 1, Allocator.Temp); b1[0, 0] = d1;
         builder.AddBlock(0, 0, in b0);
         builder.AddBlock(1, 1, in b1);
-        return builder.ToBSR(ref arena);
+        return builder.ToBSR(Allocator.Temp);
     }
 
     [Test]
     public void NonSquareThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var builder = arena.doubleBSRBuilder(2, 3, 2, 2);        // BlockRows != BlockCols
-            var block = arena.doubleMat(2, 2, (double)1);
-            builder.AddBlock(0, 0, in block);
-            var A = builder.ToBSR(ref arena);
-            Assert.Throws<ArgumentException>(() => { var m = arena.doubleChebyshev(in A); });
-        }
-        finally { arena.Dispose(); }
+        var builder = new doubleBSRBuilder(2, 3, 2, 2, Allocator.Temp);        // BlockRows != BlockCols
+        var block = GenerateOP.doubleMat(2, 2, (double)1);
+        builder.AddBlock(0, 0, in block);
+        var A = builder.ToBSR(Allocator.Temp);
+        Assert.Throws<ArgumentException>(() => { var m = new doubleChebyshev(in A, Allocator.Temp); });
     }
 
     [Test]
     public void MissingDiagonalThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var builder = arena.doubleBSRBuilder(2, 2, 2, 2);
-            var block = arena.doubleMat(2, 2, (double)1);
-            builder.AddBlock(0, 0, in block);
-            builder.AddBlock(1, 0, in block);                       // no (1,1) diagonal block
-            var A = builder.ToBSR(ref arena);
-            Assert.Throws<ArgumentException>(() => { var m = arena.doubleChebyshev(in A); });
-        }
-        finally { arena.Dispose(); }
+        var builder = new doubleBSRBuilder(2, 2, 2, 2, Allocator.Temp);
+        var block = GenerateOP.doubleMat(2, 2, (double)1);
+        builder.AddBlock(0, 0, in block);
+        builder.AddBlock(1, 0, in block);                       // no (1,1) diagonal block
+        var A = builder.ToBSR(Allocator.Temp);
+        Assert.Throws<ArgumentException>(() => { var m = new doubleChebyshev(in A, Allocator.Temp); });
     }
 
     [Test]
     public void ZeroDiagonalThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = BuildDiag1x1(ref arena, (double)4, (double)0);   // A[1,1] == 0 -> not SPD
-            Assert.Throws<ArgumentException>(() => { var m = arena.doubleChebyshev(in A); });
-        }
-        finally { arena.Dispose(); }
+        var A = BuildDiag1x1((double)4, (double)0);   // A[1,1] == 0 -> not SPD
+        Assert.Throws<ArgumentException>(() => { var m = new doubleChebyshev(in A, Allocator.Temp); });
     }
 
     [Test]
     public void NegativeDiagonalThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = BuildDiag1x1(ref arena, (double)4, (double)(-1));   // A[1,1] < 0 -> not SPD
-            Assert.Throws<ArgumentException>(() => { var m = arena.doubleChebyshev(in A); });
-        }
-        finally { arena.Dispose(); }
+        var A = BuildDiag1x1((double)4, (double)(-1));   // A[1,1] < 0 -> not SPD
+        Assert.Throws<ArgumentException>(() => { var m = new doubleChebyshev(in A, Allocator.Temp); });
     }
 
     [Test]
     public void DegreeZeroThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = BuildDiag1x1(ref arena, (double)4, (double)4);
-            var opt = doubleChebyshevOptions.Default;
-            opt.degree = 0;                                          // must be >= 1
-            Assert.Throws<ArgumentException>(() => { var m = arena.doubleChebyshev(in A, in opt); });
-        }
-        finally { arena.Dispose(); }
+        var A = BuildDiag1x1((double)4, (double)4);
+        var opt = doubleChebyshevOptions.Default;
+        opt.degree = 0;                                          // must be >= 1
+        Assert.Throws<ArgumentException>(() => { var m = new doubleChebyshev(in A, in opt, Allocator.Temp); });
     }
 
     [Test]
     public void KappaTooSmallThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = BuildDiag1x1(ref arena, (double)4, (double)4);
-            var opt = doubleChebyshevOptions.Default;
-            opt.kappa = (double)1;                                   // must be > 1
-            Assert.Throws<ArgumentException>(() => { var m = arena.doubleChebyshev(in A, in opt); });
-        }
-        finally { arena.Dispose(); }
+        var A = BuildDiag1x1((double)4, (double)4);
+        var opt = doubleChebyshevOptions.Default;
+        opt.kappa = (double)1;                                   // must be > 1
+        Assert.Throws<ArgumentException>(() => { var m = new doubleChebyshev(in A, in opt, Allocator.Temp); });
     }
 
     [Test]
     public void EigStepsZeroThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = BuildDiag1x1(ref arena, (double)4, (double)4);
-            var opt = doubleChebyshevOptions.Default;
-            opt.eigSteps = 0;                                        // must be >= 1
-            Assert.Throws<ArgumentException>(() => { var m = arena.doubleChebyshev(in A, in opt); });
-        }
-        finally { arena.Dispose(); }
+        var A = BuildDiag1x1((double)4, (double)4);
+        var opt = doubleChebyshevOptions.Default;
+        opt.eigSteps = 0;                                        // must be >= 1
+        Assert.Throws<ArgumentException>(() => { var m = new doubleChebyshev(in A, in opt, Allocator.Temp); });
     }
 
     [Test]
     public void SafetyTooSmallThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = BuildDiag1x1(ref arena, (double)4, (double)4);
-            var opt = doubleChebyshevOptions.Default;
-            opt.safety = (double)0.5;                                // must be >= 1
-            Assert.Throws<ArgumentException>(() => { var m = arena.doubleChebyshev(in A, in opt); });
-        }
-        finally { arena.Dispose(); }
+        var A = BuildDiag1x1((double)4, (double)4);
+        var opt = doubleChebyshevOptions.Default;
+        opt.safety = (double)0.5;                                // must be >= 1
+        Assert.Throws<ArgumentException>(() => { var m = new doubleChebyshev(in A, in opt, Allocator.Temp); });
     }
 
     [Test]
     public void ApplyAliasThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = BuildValidSPD(ref arena);
-            var M = arena.doubleChebyshev(in A);
-            var r = arena.doubleVec(A.M_Rows, (double)1);
-            Assert.Throws<ArgumentException>(() => M.Apply(in r, ref r));   // z aliases r
-        }
-        finally { arena.Dispose(); }
+        var A = BuildValidSPD();
+        var M = new doubleChebyshev(in A, Allocator.Temp);
+        var r = GenerateOP.doubleVec(A.M_Rows, (double)1);
+        Assert.Throws<ArgumentException>(() => M.Apply(in r, ref r));   // z aliases r
     }
 
     [Test]
     public void ApplyWrongResidualSizeThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = BuildValidSPD(ref arena);
-            var M = arena.doubleChebyshev(in A);
-            var r = arena.doubleVec(A.M_Rows - 1, (double)1);      // r.N != Rows
-            var z = arena.doubleVec(A.M_Rows);
-            Assert.Throws<ArgumentException>(() => M.Apply(in r, ref z));
-        }
-        finally { arena.Dispose(); }
+        var A = BuildValidSPD();
+        var M = new doubleChebyshev(in A, Allocator.Temp);
+        var r = GenerateOP.doubleVec(A.M_Rows - 1, (double)1);      // r.N != Rows
+        var z = new doubleN(A.M_Rows, Allocator.Temp);
+        Assert.Throws<ArgumentException>(() => M.Apply(in r, ref z));
     }
 
     [Test]
     public void ApplyWrongOutputSizeThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = BuildValidSPD(ref arena);
-            var M = arena.doubleChebyshev(in A);
-            var r = arena.doubleVec(A.M_Rows, (double)1);
-            var z = arena.doubleVec(A.M_Rows - 1);                 // z.N != Rows
-            Assert.Throws<ArgumentException>(() => M.Apply(in r, ref z));
-        }
-        finally { arena.Dispose(); }
+        var A = BuildValidSPD();
+        var M = new doubleChebyshev(in A, Allocator.Temp);
+        var r = GenerateOP.doubleVec(A.M_Rows, (double)1);
+        var z = new doubleN(A.M_Rows - 1, Allocator.Temp);                 // z.N != Rows
+        Assert.Throws<ArgumentException>(() => M.Apply(in r, ref z));
     }
 }

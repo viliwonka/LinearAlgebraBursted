@@ -152,14 +152,13 @@ public class floatMIPTests
         // optimum is {item0, item2} (weight 4+2=6, value 6+4=10). Reformulated as min -6x1-5x2-4x3.
         void Knapsack3()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(1, 3);
+            var A = new floatMxN(1, 3, Allocator.Temp);
             A[0, 0] = (float)4; A[0, 1] = (float)3; A[0, 2] = (float)2;
-            var b = arena.floatVec(1); b[0] = (float)6;
-            var c = arena.floatVec(3); c[0] = (float)(-6); c[1] = (float)(-5); c[2] = (float)(-4);
-            var xl = arena.floatVec(3);
-            var xu = arena.floatVec(3); for (int j = 0; j < 3; j++) xu[j] = (float)1;
-            var x = arena.floatVec(3);
+            var b = new floatN(1, Allocator.Temp); b[0] = (float)6;
+            var c = new floatN(3, Allocator.Temp); c[0] = (float)(-6); c[1] = (float)(-5); c[2] = (float)(-4);
+            var xl = new floatN(3, Allocator.Temp);
+            var xu = new floatN(3, Allocator.Temp); for (int j = 0; j < 3; j++) xu[j] = (float)1;
+            var x = new floatN(3, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(1, Allocator.Temp);
             senses[0] = ConstraintSense.LessEqual;
             var integ = new NativeArray<byte>(3, Allocator.Temp); for (int j = 0; j < 3; j++) integ[j] = 1;
@@ -176,7 +175,7 @@ public class floatMIPTests
             AssertCloseD(info.dualBound, -10.0, 1e-3);
             AssertCloseD(info.gap, 0.0, 1e-9);
 
-            senses.Dispose(); integ.Dispose(); arena.Dispose();
+            senses.Dispose(); integ.Dispose();
         }
 
         // max 10x1+13x2+18x3+31x4+7x5+15x6  s.t.  2x1+3x2+4x3+7x4+x5+3x6 <= 10,  x binary. Brute force
@@ -184,17 +183,16 @@ public class floatMIPTests
         // objective (potential alternate optima). Reformulated as min of the negated values.
         void Knapsack6()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(1, 6);
+            var A = new floatMxN(1, 6, Allocator.Temp);
             A[0, 0] = (float)2; A[0, 1] = (float)3; A[0, 2] = (float)4;
             A[0, 3] = (float)7; A[0, 4] = (float)1; A[0, 5] = (float)3;
-            var b = arena.floatVec(1); b[0] = (float)10;
-            var c = arena.floatVec(6);
+            var b = new floatN(1, Allocator.Temp); b[0] = (float)10;
+            var c = new floatN(6, Allocator.Temp);
             c[0] = (float)(-10); c[1] = (float)(-13); c[2] = (float)(-18);
             c[3] = (float)(-31); c[4] = (float)(-7); c[5] = (float)(-15);
-            var xl = arena.floatVec(6);
-            var xu = arena.floatVec(6); for (int j = 0; j < 6; j++) xu[j] = (float)1;
-            var x = arena.floatVec(6);
+            var xl = new floatN(6, Allocator.Temp);
+            var xu = new floatN(6, Allocator.Temp); for (int j = 0; j < 6; j++) xu[j] = (float)1;
+            var x = new floatN(6, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(1, Allocator.Temp);
             senses[0] = ConstraintSense.LessEqual;
             var integ = new NativeArray<byte>(6, Allocator.Temp); for (int j = 0; j < 6; j++) integ[j] = 1;
@@ -208,7 +206,7 @@ public class floatMIPTests
             double wt = 0; for (int j = 0; j < 6; j++) wt += (double)A[0, j] * (double)x[j];
             AssertTrue(wt <= 10.0 + 1e-3);
 
-            senses.Dispose(); integ.Dispose(); arena.Dispose();
+            senses.Dispose(); integ.Dispose();
         }
 
         // ==== (b) assignment problem -- totally unimodular constraint matrix (bipartite incidence),
@@ -221,19 +219,18 @@ public class floatMIPTests
         // i*3+j, binary; 3 row-sum + 3 col-sum equality constraints.
         void AssignmentRootIntegral()
         {
-            var arena = new Arena(Allocator.Persistent);
             int nv = 9;
-            var A = arena.floatMat(6, nv);   // zero-initialized
+            var A = new floatMxN(6, nv, Allocator.Temp);   // zero-initialized
             // rows 0..2: each source i assigned exactly once (sum_j x_{ij} = 1)
             for (int i = 0; i < 3; i++) for (int j = 0; j < 3; j++) A[i, i * 3 + j] = (float)1;
             // rows 3..5: each target j receives exactly once (sum_i x_{ij} = 1)
             for (int j = 0; j < 3; j++) for (int i = 0; i < 3; i++) A[3 + j, i * 3 + j] = (float)1;
-            var b = arena.floatVec(6); for (int i = 0; i < 6; i++) b[i] = (float)1;
-            var c = arena.floatVec(nv);
+            var b = new floatN(6, Allocator.Temp); for (int i = 0; i < 6; i++) b[i] = (float)1;
+            var c = new floatN(nv, Allocator.Temp);
             for (int i = 0; i < 3; i++) for (int j = 0; j < 3; j++) c[i * 3 + j] = (float)(i == j ? 1 : 7);
-            var xl = arena.floatVec(nv);
-            var xu = arena.floatVec(nv); for (int j = 0; j < nv; j++) xu[j] = (float)1;
-            var x = arena.floatVec(nv);
+            var xl = new floatN(nv, Allocator.Temp);
+            var xu = new floatN(nv, Allocator.Temp); for (int j = 0; j < nv; j++) xu[j] = (float)1;
+            var x = new floatN(nv, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(6, Allocator.Temp);
             for (int i = 0; i < 6; i++) senses[i] = ConstraintSense.Equal;
             var integ = new NativeArray<byte>(nv, Allocator.Temp); for (int j = 0; j < nv; j++) integ[j] = 1;
@@ -244,7 +241,7 @@ public class floatMIPTests
             AssertCloseD(obj, 3.0, 1e-3);
             AssertNodes(info, 1);   // the canary: TU relaxation is integral, so NO branching
 
-            senses.Dispose(); integ.Dispose(); arena.Dispose();
+            senses.Dispose(); integ.Dispose();
         }
 
         // ==== (c) classic Gomory/Wolsey textbook IP. Source: L. A. Wolsey, "Integer Programming"
@@ -257,15 +254,14 @@ public class floatMIPTests
         //         optimum (5, 0), value 40. MIP.solve minimizes, so negate to min -8x1-5x2 -> obj -40.
         void GomoryWolsey()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(2, 2);
+            var A = new floatMxN(2, 2, Allocator.Temp);
             A[0, 0] = (float)1; A[0, 1] = (float)1;
             A[1, 0] = (float)9; A[1, 1] = (float)5;
-            var b = arena.floatVec(2); b[0] = (float)6; b[1] = (float)45;
-            var c = arena.floatVec(2); c[0] = (float)(-8); c[1] = (float)(-5);
-            var xl = arena.floatVec(2);
-            var xu = arena.floatVec(2); xu[0] = (float)10; xu[1] = (float)10;
-            var x = arena.floatVec(2);
+            var b = new floatN(2, Allocator.Temp); b[0] = (float)6; b[1] = (float)45;
+            var c = new floatN(2, Allocator.Temp); c[0] = (float)(-8); c[1] = (float)(-5);
+            var xl = new floatN(2, Allocator.Temp);
+            var xu = new floatN(2, Allocator.Temp); xu[0] = (float)10; xu[1] = (float)10;
+            var x = new floatN(2, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(2, Allocator.Temp);
             senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.LessEqual;
             var integ = new NativeArray<byte>(2, Allocator.Temp); integ[0] = 1; integ[1] = 1;
@@ -279,7 +275,7 @@ public class floatMIPTests
             AssertCloseD(info.dualBound, -40.0, 1e-3);     // proven: dualBound closes to the incumbent
             AssertCloseD(info.gap, 0.0, 1e-9);
 
-            senses.Dispose(); integ.Dispose(); arena.Dispose();
+            senses.Dispose(); integ.Dispose();
         }
 
         // Regression for the "1e30 UB-row rhs inflates dataScale/artificialBound" bug: the SAME
@@ -293,15 +289,14 @@ public class floatMIPTests
         // Optimal, (5,0), obj -40, dualBound -40, gap 0 -- identical to GomoryWolsey.
         void GomoryWolseyTrueInfiniteBound()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(2, 2);
+            var A = new floatMxN(2, 2, Allocator.Temp);
             A[0, 0] = (float)1; A[0, 1] = (float)1;
             A[1, 0] = (float)9; A[1, 1] = (float)5;
-            var b = arena.floatVec(2); b[0] = (float)6; b[1] = (float)45;
-            var c = arena.floatVec(2); c[0] = (float)(-8); c[1] = (float)(-5);
-            var xl = arena.floatVec(2);
-            var xu = arena.floatVec(2); xu[0] = (float)1e30; xu[1] = (float)1e30;   // true +inf sentinel
-            var x = arena.floatVec(2);
+            var b = new floatN(2, Allocator.Temp); b[0] = (float)6; b[1] = (float)45;
+            var c = new floatN(2, Allocator.Temp); c[0] = (float)(-8); c[1] = (float)(-5);
+            var xl = new floatN(2, Allocator.Temp);
+            var xu = new floatN(2, Allocator.Temp); xu[0] = (float)1e30; xu[1] = (float)1e30;   // true +inf sentinel
+            var x = new floatN(2, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(2, Allocator.Temp);
             senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.LessEqual;
             var integ = new NativeArray<byte>(2, Allocator.Temp); integ[0] = 1; integ[1] = 1;
@@ -315,7 +310,7 @@ public class floatMIPTests
             AssertCloseD(info.dualBound, -40.0, 1e-3);
             AssertCloseD(info.gap, 0.0, 1e-9);
 
-            senses.Dispose(); integ.Dispose(); arena.Dispose();
+            senses.Dispose(); integ.Dispose();
         }
 
         // ==== (d) infeasible / unbounded ====
@@ -328,13 +323,12 @@ public class floatMIPTests
         // gap all NaN, x all zeros.
         void InfeasibleNoIntInRange()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(1, 1); A[0, 0] = (float)1;   // redundant row x <= 100
-            var b = arena.floatVec(1); b[0] = (float)100;
-            var c = arena.floatVec(1); c[0] = (float)1;
-            var xl = arena.floatVec(1); xl[0] = (float)2.1;
-            var xu = arena.floatVec(1); xu[0] = (float)2.9;
-            var x = arena.floatVec(1);
+            var A = new floatMxN(1, 1, Allocator.Temp); A[0, 0] = (float)1;   // redundant row x <= 100
+            var b = new floatN(1, Allocator.Temp); b[0] = (float)100;
+            var c = new floatN(1, Allocator.Temp); c[0] = (float)1;
+            var xl = new floatN(1, Allocator.Temp); xl[0] = (float)2.1;
+            var xu = new floatN(1, Allocator.Temp); xu[0] = (float)2.9;
+            var x = new floatN(1, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(1, Allocator.Temp);
             senses[0] = ConstraintSense.LessEqual;
             var integ = new NativeArray<byte>(1, Allocator.Temp); integ[0] = 1;
@@ -349,20 +343,19 @@ public class floatMIPTests
             AssertClose(x[0], (float)0, (float)0);
             AssertTrue(info.nodes >= 1);   // still a meaningful count
 
-            senses.Dispose(); integ.Dispose(); arena.Dispose();
+            senses.Dispose(); integ.Dispose();
         }
 
         // x + y = 1 with x >= 1 and y >= 1 (both integer): x + y >= 2 contradicts the equality, so the
         // ROOT LP relaxation itself is infeasible -> Infeasible detected at node 1. Same NaN contract.
         void InfeasibleRootLP()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(1, 2); A[0, 0] = (float)1; A[0, 1] = (float)1;
-            var b = arena.floatVec(1); b[0] = (float)1;
-            var c = arena.floatVec(2); c[0] = (float)1; c[1] = (float)1;
-            var xl = arena.floatVec(2); xl[0] = (float)1; xl[1] = (float)1;
-            var xu = arena.floatVec(2); xu[0] = (float)10; xu[1] = (float)10;
-            var x = arena.floatVec(2);
+            var A = new floatMxN(1, 2, Allocator.Temp); A[0, 0] = (float)1; A[0, 1] = (float)1;
+            var b = new floatN(1, Allocator.Temp); b[0] = (float)1;
+            var c = new floatN(2, Allocator.Temp); c[0] = (float)1; c[1] = (float)1;
+            var xl = new floatN(2, Allocator.Temp); xl[0] = (float)1; xl[1] = (float)1;
+            var xu = new floatN(2, Allocator.Temp); xu[0] = (float)10; xu[1] = (float)10;
+            var x = new floatN(2, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(1, Allocator.Temp);
             senses[0] = ConstraintSense.Equal;
             var integ = new NativeArray<byte>(2, Allocator.Temp); integ[0] = 1; integ[1] = 1;
@@ -377,7 +370,7 @@ public class floatMIPTests
             AssertClose(x[0], (float)0, (float)0);
             AssertClose(x[1], (float)0, (float)0);
 
-            senses.Dispose(); integ.Dispose(); arena.Dispose();
+            senses.Dispose(); integ.Dispose();
         }
 
         // min -x  s.t.  x >= 0,  x integer,  xu = +inf (1e30 sentinel): the objective decreases without
@@ -385,13 +378,12 @@ public class floatMIPTests
         // the root -> Unbounded, nodes == 1, all-NaN contract.
         void UnboundedRoot()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(1, 1); A[0, 0] = (float)1;   // x >= 0 (redundant with the bound)
-            var b = arena.floatVec(1); b[0] = (float)0;
-            var c = arena.floatVec(1); c[0] = (float)(-1);
-            var xl = arena.floatVec(1); xl[0] = (float)0;        // finite lower (required for integer)
-            var xu = arena.floatVec(1); xu[0] = (float)1e30;     // unbounded above
-            var x = arena.floatVec(1);
+            var A = new floatMxN(1, 1, Allocator.Temp); A[0, 0] = (float)1;   // x >= 0 (redundant with the bound)
+            var b = new floatN(1, Allocator.Temp); b[0] = (float)0;
+            var c = new floatN(1, Allocator.Temp); c[0] = (float)(-1);
+            var xl = new floatN(1, Allocator.Temp); xl[0] = (float)0;        // finite lower (required for integer)
+            var xu = new floatN(1, Allocator.Temp); xu[0] = (float)1e30;     // unbounded above
+            var x = new floatN(1, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(1, Allocator.Temp);
             senses[0] = ConstraintSense.GreaterEqual;
             var integ = new NativeArray<byte>(1, Allocator.Temp); integ[0] = 1;
@@ -406,7 +398,7 @@ public class floatMIPTests
             AssertNodes(info, 1);
             AssertClose(x[0], (float)0, (float)0);
 
-            senses.Dispose(); integ.Dispose(); arena.Dispose();
+            senses.Dispose(); integ.Dispose();
         }
 
         // ==== (e) exhaustive-enumeration cross-check. Random tiny all-integer MIPs on the box [0,3]^n:
@@ -429,10 +421,9 @@ public class floatMIPTests
 
         void RunEnumCase(int n, int m, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Unity.Mathematics.Random(seed == 0u ? 1u : seed);
 
-            var A = arena.floatMat(m, n);
+            var A = new floatMxN(m, n, Allocator.Temp);
             for (int i = 0; i < m; i++)
                 for (int j = 0; j < n; j++)
                     A[i, j] = (float)rng.NextInt(-2, 3);   // integer coeff in {-2,-1,0,1,2}
@@ -441,7 +432,7 @@ public class floatMIPTests
             var xstar = new NativeArray<int>(n, Allocator.Temp);
             for (int j = 0; j < n; j++) xstar[j] = rng.NextInt(0, 4);
 
-            var b = arena.floatVec(m);
+            var b = new floatN(m, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(m, Allocator.Temp);
             for (int i = 0; i < m; i++)
             {
@@ -454,12 +445,12 @@ public class floatMIPTests
                 else { senses[i] = ConstraintSense.Equal; b[i] = (float)act; }
             }
 
-            var c = arena.floatVec(n);
+            var c = new floatN(n, Allocator.Temp);
             for (int j = 0; j < n; j++) c[j] = (float)rng.NextInt(-3, 4);
-            var xl = arena.floatVec(n);
-            var xu = arena.floatVec(n); for (int j = 0; j < n; j++) xu[j] = (float)3;
+            var xl = new floatN(n, Allocator.Temp);
+            var xu = new floatN(n, Allocator.Temp); for (int j = 0; j < n; j++) xu[j] = (float)3;
             var integ = new NativeArray<byte>(n, Allocator.Temp); for (int j = 0; j < n; j++) integ[j] = 1;
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
 
             var info = MIP.solve(in A, in b, in c, in senses, in xl, in xu, in integ, ref x, out double obj);
 
@@ -492,7 +483,7 @@ public class floatMIPTests
             AssertTrue(info.status == MIPStatus.Optimal);
             AssertCloseD(info.objective, best, 1e-3 * (1.0 + math.abs(best)));
 
-            xstar.Dispose(); senses.Dispose(); integ.Dispose(); arena.Dispose();
+            xstar.Dispose(); senses.Dispose(); integ.Dispose();
         }
 
         // ==== extra coverage ====
@@ -507,13 +498,12 @@ public class floatMIPTests
         // case of activity-based bound tightening; nodes==1 is a hard invariant for this exact instance.
         void GeneralIntBounds()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(1, 1); A[0, 0] = (float)1;
-            var b = arena.floatVec(1); b[0] = (float)7.5;
-            var c = arena.floatVec(1); c[0] = (float)(-1);
-            var xl = arena.floatVec(1); xl[0] = (float)3;
-            var xu = arena.floatVec(1); xu[0] = (float)10;
-            var x = arena.floatVec(1);
+            var A = new floatMxN(1, 1, Allocator.Temp); A[0, 0] = (float)1;
+            var b = new floatN(1, Allocator.Temp); b[0] = (float)7.5;
+            var c = new floatN(1, Allocator.Temp); c[0] = (float)(-1);
+            var xl = new floatN(1, Allocator.Temp); xl[0] = (float)3;
+            var xu = new floatN(1, Allocator.Temp); xu[0] = (float)10;
+            var x = new floatN(1, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(1, Allocator.Temp);
             senses[0] = ConstraintSense.LessEqual;
             var integ = new NativeArray<byte>(1, Allocator.Temp); integ[0] = 1;
@@ -525,7 +515,7 @@ public class floatMIPTests
             AssertCloseD(obj, -7.0, 1e-3);
             AssertNodes(info, 1);   // propagation closes the root at 1 node (see method comment)
 
-            senses.Dispose(); integ.Dispose(); arena.Dispose();
+            senses.Dispose(); integ.Dispose();
         }
 
         // maxNodes = 1 on the Gomory instance (whose root LP is fractional): the budget is exhausted
@@ -535,15 +525,14 @@ public class floatMIPTests
         // finite (the root LP value ~ -41.25, never NaN).
         void NodeLimitPartialResult()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(2, 2);
+            var A = new floatMxN(2, 2, Allocator.Temp);
             A[0, 0] = (float)1; A[0, 1] = (float)1;
             A[1, 0] = (float)9; A[1, 1] = (float)5;
-            var b = arena.floatVec(2); b[0] = (float)6; b[1] = (float)45;
-            var c = arena.floatVec(2); c[0] = (float)(-8); c[1] = (float)(-5);
-            var xl = arena.floatVec(2);
-            var xu = arena.floatVec(2); xu[0] = (float)10; xu[1] = (float)10;
-            var x = arena.floatVec(2);
+            var b = new floatN(2, Allocator.Temp); b[0] = (float)6; b[1] = (float)45;
+            var c = new floatN(2, Allocator.Temp); c[0] = (float)(-8); c[1] = (float)(-5);
+            var xl = new floatN(2, Allocator.Temp);
+            var xu = new floatN(2, Allocator.Temp); xu[0] = (float)10; xu[1] = (float)10;
+            var x = new floatN(2, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(2, Allocator.Temp);
             senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.LessEqual;
             var integ = new NativeArray<byte>(2, Allocator.Temp); integ[0] = 1; integ[1] = 1;
@@ -557,7 +546,7 @@ public class floatMIPTests
             AssertCloseD(info.dualBound, -41.25, 1e-2);         // the fractional root LP value
             AssertPartialIncumbent(in info, obj, x);
 
-            senses.Dispose(); integ.Dispose(); arena.Dispose();
+            senses.Dispose(); integ.Dispose();
         }
 
         // Shared partial-result incumbent checks for the limit tests: the root's rounding heuristic
@@ -581,15 +570,14 @@ public class floatMIPTests
         // after node 1, same partial-result contract as NodeLimitPartialResult.
         void IterLimitPartialResult()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(2, 2);
+            var A = new floatMxN(2, 2, Allocator.Temp);
             A[0, 0] = (float)1; A[0, 1] = (float)1;
             A[1, 0] = (float)9; A[1, 1] = (float)5;
-            var b = arena.floatVec(2); b[0] = (float)6; b[1] = (float)45;
-            var c = arena.floatVec(2); c[0] = (float)(-8); c[1] = (float)(-5);
-            var xl = arena.floatVec(2);
-            var xu = arena.floatVec(2); xu[0] = (float)10; xu[1] = (float)10;
-            var x = arena.floatVec(2);
+            var b = new floatN(2, Allocator.Temp); b[0] = (float)6; b[1] = (float)45;
+            var c = new floatN(2, Allocator.Temp); c[0] = (float)(-8); c[1] = (float)(-5);
+            var xl = new floatN(2, Allocator.Temp);
+            var xu = new floatN(2, Allocator.Temp); xu[0] = (float)10; xu[1] = (float)10;
+            var x = new floatN(2, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(2, Allocator.Temp);
             senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.LessEqual;
             var integ = new NativeArray<byte>(2, Allocator.Temp); integ[0] = 1; integ[1] = 1;
@@ -602,7 +590,7 @@ public class floatMIPTests
             AssertCloseD(info.dualBound, -41.25, 1e-2);
             AssertPartialIncumbent(in info, obj, x);
 
-            senses.Dispose(); integ.Dispose(); arena.Dispose();
+            senses.Dispose(); integ.Dispose();
         }
 
         // ==== (f) pseudocost/reliability-branching node-count regression + determinism ====
@@ -612,17 +600,16 @@ public class floatMIPTests
         // identical in both dtypes. Also re-checks the optimum value survives (obj -50).
         void Stage3NodesKnapsack6()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(1, 6);
+            var A = new floatMxN(1, 6, Allocator.Temp);
             A[0, 0] = (float)2; A[0, 1] = (float)3; A[0, 2] = (float)4;
             A[0, 3] = (float)7; A[0, 4] = (float)1; A[0, 5] = (float)3;
-            var b = arena.floatVec(1); b[0] = (float)10;
-            var c = arena.floatVec(6);
+            var b = new floatN(1, Allocator.Temp); b[0] = (float)10;
+            var c = new floatN(6, Allocator.Temp);
             c[0] = (float)(-10); c[1] = (float)(-13); c[2] = (float)(-18);
             c[3] = (float)(-31); c[4] = (float)(-7); c[5] = (float)(-15);
-            var xl = arena.floatVec(6);
-            var xu = arena.floatVec(6); for (int j = 0; j < 6; j++) xu[j] = (float)1;
-            var x = arena.floatVec(6);
+            var xl = new floatN(6, Allocator.Temp);
+            var xu = new floatN(6, Allocator.Temp); for (int j = 0; j < 6; j++) xu[j] = (float)1;
+            var x = new floatN(6, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(1, Allocator.Temp);
             senses[0] = ConstraintSense.LessEqual;
             var integ = new NativeArray<byte>(6, Allocator.Temp); for (int j = 0; j < 6; j++) integ[j] = 1;
@@ -633,7 +620,7 @@ public class floatMIPTests
             AssertCloseD(obj, -50.0, 1e-3);
             AssertNodesLE(info, 1);   // stage-2 baseline = 1 node; stage 3 must not exceed it
 
-            senses.Dispose(); integ.Dispose(); arena.Dispose();
+            senses.Dispose(); integ.Dispose();
         }
 
         // GomoryWolsey (same instance as GomoryWolsey() above). Stage 2 = 7 nodes; stage 3 = 7 nodes with
@@ -642,15 +629,14 @@ public class floatMIPTests
         // is expected to rise and is deliberately not asserted. Optimum (obj -40) must survive.
         void Stage3NodesGomoryWolsey()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(2, 2);
+            var A = new floatMxN(2, 2, Allocator.Temp);
             A[0, 0] = (float)1; A[0, 1] = (float)1;
             A[1, 0] = (float)9; A[1, 1] = (float)5;
-            var b = arena.floatVec(2); b[0] = (float)6; b[1] = (float)45;
-            var c = arena.floatVec(2); c[0] = (float)(-8); c[1] = (float)(-5);
-            var xl = arena.floatVec(2);
-            var xu = arena.floatVec(2); xu[0] = (float)10; xu[1] = (float)10;
-            var x = arena.floatVec(2);
+            var b = new floatN(2, Allocator.Temp); b[0] = (float)6; b[1] = (float)45;
+            var c = new floatN(2, Allocator.Temp); c[0] = (float)(-8); c[1] = (float)(-5);
+            var xl = new floatN(2, Allocator.Temp);
+            var xu = new floatN(2, Allocator.Temp); xu[0] = (float)10; xu[1] = (float)10;
+            var x = new floatN(2, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(2, Allocator.Temp);
             senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.LessEqual;
             var integ = new NativeArray<byte>(2, Allocator.Temp); integ[0] = 1; integ[1] = 1;
@@ -661,7 +647,7 @@ public class floatMIPTests
             AssertCloseD(obj, -40.0, 1e-3);
             AssertNodesLE(info, 7);   // must not regress past the prior branching strategy's node count
 
-            senses.Dispose(); integ.Dispose(); arena.Dispose();
+            senses.Dispose(); integ.Dispose();
         }
 
         // Random "branchy" MIP on the integer box [0,3]^12, n=12, m=6, seed 424242 -- built with the
@@ -679,10 +665,9 @@ public class floatMIPTests
             int cases = 0;
             for (int s = 0; s < cases; s++)
             {
-                var arena = new Arena(Allocator.Persistent);
-                BuildBranchy12(in arena, out var A, out var b, out var c, out var senses,
+                BuildBranchy12(out var A, out var b, out var c, out var senses,
                                out var xl, out var xu, out var integ);
-                var x = arena.floatVec(12);
+                var x = new floatN(12, Allocator.Temp);
 
                 var info = MIP.solve(in A, in b, in c, in senses, in xl, in xu, in integ, ref x, out double obj);
 
@@ -691,7 +676,7 @@ public class floatMIPTests
                 AssertCloseD(obj, 6.0, 1e-6);
                 AssertNodesLE(info, 267);   // must not regress past the prior branching strategy's node count
 
-                senses.Dispose(); integ.Dispose(); arena.Dispose();
+                senses.Dispose(); integ.Dispose();
             }
         }
 
@@ -701,16 +686,15 @@ public class floatMIPTests
         // exists to VERIFY it rather than assume it. Runs in both dtypes.
         void Stage3Determinism()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(2, 2);
+            var A = new floatMxN(2, 2, Allocator.Temp);
             A[0, 0] = (float)1; A[0, 1] = (float)1;
             A[1, 0] = (float)9; A[1, 1] = (float)5;
-            var b = arena.floatVec(2); b[0] = (float)6; b[1] = (float)45;
-            var c = arena.floatVec(2); c[0] = (float)(-8); c[1] = (float)(-5);
-            var xl = arena.floatVec(2);
-            var xu = arena.floatVec(2); xu[0] = (float)10; xu[1] = (float)10;
-            var x1 = arena.floatVec(2);
-            var x2 = arena.floatVec(2);
+            var b = new floatN(2, Allocator.Temp); b[0] = (float)6; b[1] = (float)45;
+            var c = new floatN(2, Allocator.Temp); c[0] = (float)(-8); c[1] = (float)(-5);
+            var xl = new floatN(2, Allocator.Temp);
+            var xu = new floatN(2, Allocator.Temp); xu[0] = (float)10; xu[1] = (float)10;
+            var x1 = new floatN(2, Allocator.Temp);
+            var x2 = new floatN(2, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(2, Allocator.Temp);
             senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.LessEqual;
             var integ = new NativeArray<byte>(2, Allocator.Temp); integ[0] = 1; integ[1] = 1;
@@ -725,7 +709,7 @@ public class floatMIPTests
             AssertEqExactD(o1, o2);
             for (int j = 0; j < 2; j++) AssertClose(x1[j], x2[j], (float)0);   // exact: precision 0
 
-            senses.Dispose(); integ.Dispose(); arena.Dispose();
+            senses.Dispose(); integ.Dispose();
         }
 
         // Determinism on the big branchy n=12 search -- a real many-node plunge + queue-jump sequence, so
@@ -736,11 +720,10 @@ public class floatMIPTests
             int cases = 0;
             for (int s = 0; s < cases; s++)
             {
-                var arena = new Arena(Allocator.Persistent);
-                BuildBranchy12(in arena, out var A, out var b, out var c, out var senses,
+                BuildBranchy12(out var A, out var b, out var c, out var senses,
                                out var xl, out var xu, out var integ);
-                var x1 = arena.floatVec(12);
-                var x2 = arena.floatVec(12);
+                var x1 = new floatN(12, Allocator.Temp);
+                var x2 = new floatN(12, Allocator.Temp);
 
                 var i1 = MIP.solve(in A, in b, in c, in senses, in xl, in xu, in integ, ref x1, out double o1);
                 var i2 = MIP.solve(in A, in b, in c, in senses, in xl, in xu, in integ, ref x2, out double o2);
@@ -752,22 +735,22 @@ public class floatMIPTests
                 AssertEqExactD(o1, o2);
                 for (int j = 0; j < 12; j++) AssertClose(x1[j], x2[j], (float)0);
 
-                senses.Dispose(); integ.Dispose(); arena.Dispose();
+                senses.Dispose(); integ.Dispose();
             }
         }
 
-        // Builds the branchy n=12/m=6/seed-424242 instance into arena-owned A/b/c/xl/xu (caller disposes
-        // the arena) and Temp-owned senses/integ (caller disposes both). Replicates RunEnumCase's EXACT
-        // RNG draw order (A row-major, then x*, then per-row sense/rhs, then c) so the generated instance
-        // is identical to the one the stage-2/stage-3 baselines were measured on.
-        void BuildBranchy12(in Arena arena, out floatMxN A, out floatN b, out floatN c,
+        // Builds the branchy n=12/m=6/seed-424242 instance into Temp-owned A/b/c/xl/xu/senses/integ.
+        // Replicates RunEnumCase's EXACT RNG draw order (A row-major, then x*, then per-row sense/rhs,
+        // then c) so the generated instance is identical to the one the stage-2/stage-3 baselines were
+        // measured on.
+        void BuildBranchy12(out floatMxN A, out floatN b, out floatN c,
                             out NativeArray<ConstraintSense> senses, out floatN xl, out floatN xu,
                             out NativeArray<byte> integ)
         {
             const int n = 12, m = 6;
             var rng = new Unity.Mathematics.Random(424242u);
 
-            A = arena.floatMat(m, n);
+            A = new floatMxN(m, n, Allocator.Temp);
             for (int i = 0; i < m; i++)
                 for (int j = 0; j < n; j++)
                     A[i, j] = (float)rng.NextInt(-2, 3);
@@ -775,7 +758,7 @@ public class floatMIPTests
             var xstar = new NativeArray<int>(n, Allocator.Temp);
             for (int j = 0; j < n; j++) xstar[j] = rng.NextInt(0, 4);
 
-            b = arena.floatVec(m);
+            b = new floatN(m, Allocator.Temp);
             senses = new NativeArray<ConstraintSense>(m, Allocator.Temp);
             for (int i = 0; i < m; i++)
             {
@@ -788,10 +771,10 @@ public class floatMIPTests
                 else { senses[i] = ConstraintSense.Equal; b[i] = (float)act; }
             }
 
-            c = arena.floatVec(n);
+            c = new floatN(n, Allocator.Temp);
             for (int j = 0; j < n; j++) c[j] = (float)rng.NextInt(-3, 4);
-            xl = arena.floatVec(n);
-            xu = arena.floatVec(n); for (int j = 0; j < n; j++) xu[j] = (float)3;
+            xl = new floatN(n, Allocator.Temp);
+            xu = new floatN(n, Allocator.Temp); for (int j = 0; j < n; j++) xu[j] = (float)3;
             integ = new NativeArray<byte>(n, Allocator.Temp); for (int j = 0; j < n; j++) integ[j] = 1;
 
             xstar.Dispose();
@@ -809,32 +792,31 @@ public class floatMIPTests
         // "Two computationally difficult set covering problems...", Math. Prog. Study 2, 1974; MIPLIB 3 /
         // miplib.zib.de). 9 binaries, minimize the count sum_j x_j; rows 0-11 are the covering triples
         // (each >= 1), row 12 is the OB2 "at least 4 of 9" cut (all vars >= 4). Proven optimum 5.
-        void BuildStein9(in Arena arena, out floatMxN A, out floatN b, out floatN c,
+        void BuildStein9(out floatMxN A, out floatN b, out floatN c,
                          out NativeArray<ConstraintSense> senses, out floatN xl, out floatN xu,
                          out NativeArray<byte> integ)
         {
             const int n = 9, m = 13;
-            A = arena.floatMat(m, n);   // zero-initialized
+            A = new floatMxN(m, n, Allocator.Temp);   // zero-initialized
             SetTriple(A, 0, 1, 2, 3); SetTriple(A, 1, 0, 2, 4); SetTriple(A, 2, 0, 1, 5); SetTriple(A, 3, 4, 5, 6);
             SetTriple(A, 4, 3, 5, 7); SetTriple(A, 5, 3, 4, 8); SetTriple(A, 6, 0, 7, 8); SetTriple(A, 7, 1, 6, 8);
             SetTriple(A, 8, 2, 6, 7); SetTriple(A, 9, 0, 3, 6); SetTriple(A, 10, 1, 4, 7); SetTriple(A, 11, 2, 5, 8);
             for (int j = 0; j < n; j++) A[12, j] = (float)1;   // all 9 vars
 
-            b = arena.floatVec(m); for (int i = 0; i < 12; i++) b[i] = (float)1; b[12] = (float)4;
+            b = new floatN(m, Allocator.Temp); for (int i = 0; i < 12; i++) b[i] = (float)1; b[12] = (float)4;
             senses = new NativeArray<ConstraintSense>(m, Allocator.Temp);
             for (int i = 0; i < m; i++) senses[i] = ConstraintSense.GreaterEqual;
-            c = arena.floatVec(n); for (int j = 0; j < n; j++) c[j] = (float)1;
-            xl = arena.floatVec(n);
-            xu = arena.floatVec(n); for (int j = 0; j < n; j++) xu[j] = (float)1;
+            c = new floatN(n, Allocator.Temp); for (int j = 0; j < n; j++) c[j] = (float)1;
+            xl = new floatN(n, Allocator.Temp);
+            xu = new floatN(n, Allocator.Temp); for (int j = 0; j < n; j++) xu[j] = (float)1;
             integ = new NativeArray<byte>(n, Allocator.Temp); for (int j = 0; j < n; j++) integ[j] = 1;
         }
 
         // stein9 known-answer: proven optimum 5, proven-optimal contract (gap 0). Both dtypes.
         void Stein9()
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildStein9(in arena, out var A, out var b, out var c, out var senses, out var xl, out var xu, out var integ);
-            var x = arena.floatVec(9);
+            BuildStein9(out var A, out var b, out var c, out var senses, out var xl, out var xu, out var integ);
+            var x = new floatN(9, Allocator.Temp);
 
             var info = MIP.solve(in A, in b, in c, in senses, in xl, in xu, in integ, ref x, out double obj);
 
@@ -843,7 +825,7 @@ public class floatMIPTests
             AssertCloseD(info.objective, 5.0, 1e-3);
             AssertCloseD(info.gap, 0.0, 1e-9);
 
-            senses.Dispose(); integ.Dispose(); arena.Dispose();
+            senses.Dispose(); integ.Dispose();
         }
 
         // MIPLIB "stein15" (same Steiner-triple family/source as stein9). 15 binaries, minimize the count;
@@ -856,9 +838,8 @@ public class floatMIPTests
             int cases = 0;
             for (int s = 0; s < cases; s++)
             {
-                var arena = new Arena(Allocator.Persistent);
                 const int n = 15, m = 36;
-                var A = arena.floatMat(m, n);   // zero-initialized
+                var A = new floatMxN(m, n, Allocator.Temp);   // zero-initialized
                 SetTriple(A, 0, 2, 3, 5);   SetTriple(A, 1, 3, 4, 6);   SetTriple(A, 2, 0, 4, 7);   SetTriple(A, 3, 0, 1, 8);   SetTriple(A, 4, 1, 2, 9);
                 SetTriple(A, 5, 1, 4, 5);   SetTriple(A, 6, 0, 2, 6);   SetTriple(A, 7, 1, 3, 7);   SetTriple(A, 8, 2, 4, 8);   SetTriple(A, 9, 0, 3, 9);
                 SetTriple(A, 10, 7, 8, 10); SetTriple(A, 11, 8, 9, 11); SetTriple(A, 12, 5, 9, 12); SetTriple(A, 13, 5, 6, 13); SetTriple(A, 14, 6, 7, 14);
@@ -868,14 +849,14 @@ public class floatMIPTests
                 SetTriple(A, 30, 0, 5, 10); SetTriple(A, 31, 1, 6, 11); SetTriple(A, 32, 2, 7, 12); SetTriple(A, 33, 3, 8, 13); SetTriple(A, 34, 4, 9, 14);
                 for (int j = 0; j < n; j++) A[35, j] = (float)1;
 
-                var b = arena.floatVec(m); for (int i = 0; i < 35; i++) b[i] = (float)1; b[35] = (float)7;
+                var b = new floatN(m, Allocator.Temp); for (int i = 0; i < 35; i++) b[i] = (float)1; b[35] = (float)7;
                 var senses = new NativeArray<ConstraintSense>(m, Allocator.Temp);
                 for (int i = 0; i < m; i++) senses[i] = ConstraintSense.GreaterEqual;
-                var c = arena.floatVec(n); for (int j = 0; j < n; j++) c[j] = (float)1;
-                var xl = arena.floatVec(n);
-                var xu = arena.floatVec(n); for (int j = 0; j < n; j++) xu[j] = (float)1;
+                var c = new floatN(n, Allocator.Temp); for (int j = 0; j < n; j++) c[j] = (float)1;
+                var xl = new floatN(n, Allocator.Temp);
+                var xu = new floatN(n, Allocator.Temp); for (int j = 0; j < n; j++) xu[j] = (float)1;
                 var integ = new NativeArray<byte>(n, Allocator.Temp); for (int j = 0; j < n; j++) integ[j] = 1;
-                var x = arena.floatVec(n);
+                var x = new floatN(n, Allocator.Temp);
 
                 var info = MIP.solve(in A, in b, in c, in senses, in xl, in xu, in integ, ref x, out double obj, maxNodes: 200000);
 
@@ -883,7 +864,7 @@ public class floatMIPTests
                 AssertCloseD(obj, 9.0, 1e-3);
                 AssertCloseD(info.gap, 0.0, 1e-9);
 
-                senses.Dispose(); integ.Dispose(); arena.Dispose();
+                senses.Dispose(); integ.Dispose();
             }
         }
 
@@ -898,10 +879,9 @@ public class floatMIPTests
             int cases = 0;
             for (int s = 0; s < cases; s++)
             {
-                var arena = new Arena(Allocator.Persistent);
                 const int n = 33, m = 15;
-                var A = arena.floatMat(m, n);   // zero-initialized
-                var c = arena.floatVec(n);
+                var A = new floatMxN(m, n, Allocator.Temp);   // zero-initialized
+                var c = new floatN(n, Allocator.Temp);
                 c[0] = (float)171; c[1] = (float)171; c[2] = (float)171; c[3] = (float)171; c[4] = (float)163;
                 c[5] = (float)162; c[6] = (float)163; c[7] = (float)69; c[8] = (float)69; c[9] = (float)183;
                 c[10] = (float)183; c[11] = (float)183; c[12] = (float)183; c[13] = (float)49; c[14] = (float)183;
@@ -936,17 +916,17 @@ public class floatMIPTests
                 A[13, 20] = (float)(-400);
                 A[14, 6] = (float)(-285); A[14, 31] = (float)(-200); A[14, 32] = (float)(-400);
 
-                var b = arena.floatVec(m);
+                var b = new floatN(m, Allocator.Temp);
                 b[0] = (float)1; b[1] = (float)1; b[2] = (float)1; b[3] = (float)1; b[4] = (float)(-5);
                 b[5] = (float)2700; b[6] = (float)(-2600); b[7] = (float)(-100); b[8] = (float)(-900);
                 b[9] = (float)(-1656); b[10] = (float)(-335); b[11] = (float)(-1026); b[12] = (float)(-5);
                 b[13] = (float)(-500); b[14] = (float)(-270);
                 var senses = new NativeArray<ConstraintSense>(m, Allocator.Temp);
                 for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
-                var xl = arena.floatVec(n);
-                var xu = arena.floatVec(n); for (int j = 0; j < n; j++) xu[j] = (float)1;
+                var xl = new floatN(n, Allocator.Temp);
+                var xu = new floatN(n, Allocator.Temp); for (int j = 0; j < n; j++) xu[j] = (float)1;
                 var integ = new NativeArray<byte>(n, Allocator.Temp); for (int j = 0; j < n; j++) integ[j] = 1;
-                var x = arena.floatVec(n);
+                var x = new floatN(n, Allocator.Temp);
 
                 var info = MIP.solve(in A, in b, in c, in senses, in xl, in xu, in integ, ref x, out double obj, maxNodes: 200000);
 
@@ -955,7 +935,7 @@ public class floatMIPTests
                 AssertCloseD(info.objective, 3089.0, 1e-3);
                 AssertCloseD(info.gap, 0.0, 1e-9);
 
-                senses.Dispose(); integ.Dispose(); arena.Dispose();
+                senses.Dispose(); integ.Dispose();
             }
         }
 
@@ -966,15 +946,14 @@ public class floatMIPTests
         // is a hard invariant per dtype.
         void Stage4NodesGomoryWolsey()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(2, 2);
+            var A = new floatMxN(2, 2, Allocator.Temp);
             A[0, 0] = (float)1; A[0, 1] = (float)1;
             A[1, 0] = (float)9; A[1, 1] = (float)5;
-            var b = arena.floatVec(2); b[0] = (float)6; b[1] = (float)45;
-            var c = arena.floatVec(2); c[0] = (float)(-8); c[1] = (float)(-5);
-            var xl = arena.floatVec(2);
-            var xu = arena.floatVec(2); xu[0] = (float)10; xu[1] = (float)10;
-            var x = arena.floatVec(2);
+            var b = new floatN(2, Allocator.Temp); b[0] = (float)6; b[1] = (float)45;
+            var c = new floatN(2, Allocator.Temp); c[0] = (float)(-8); c[1] = (float)(-5);
+            var xl = new floatN(2, Allocator.Temp);
+            var xu = new floatN(2, Allocator.Temp); xu[0] = (float)10; xu[1] = (float)10;
+            var x = new floatN(2, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(2, Allocator.Temp);
             senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.LessEqual;
             var integ = new NativeArray<byte>(2, Allocator.Temp); integ[0] = 1; integ[1] = 1;
@@ -985,7 +964,7 @@ public class floatMIPTests
             AssertCloseD(obj, -40.0, 1e-3);
             AssertNodes(info, 7);   // float 7 (unchanged), double 5 (7 -> 5 drop)
 
-            senses.Dispose(); integ.Dispose(); arena.Dispose();
+            senses.Dispose(); integ.Dispose();
         }
 
         // Propagation, plus floatLPCache's persisted DSE weights (same optimum, but pricing at a
@@ -999,10 +978,9 @@ public class floatMIPTests
             int cases = 0;
             for (int s = 0; s < cases; s++)
             {
-                var arena = new Arena(Allocator.Persistent);
-                BuildBranchy12(in arena, out var A, out var b, out var c, out var senses,
+                BuildBranchy12(out var A, out var b, out var c, out var senses,
                                out var xl, out var xu, out var integ);
-                var x = arena.floatVec(12);
+                var x = new floatN(12, Allocator.Temp);
 
                 var info = MIP.solve(in A, in b, in c, in senses, in xl, in xu, in integ, ref x, out double obj);
 
@@ -1010,7 +988,7 @@ public class floatMIPTests
                 AssertCloseD(info.objective, 6.0, 1e-6);
                 AssertNodes(info, 199);   // exact node count under propagation + persisted-DSE-weight warm pricing
 
-                senses.Dispose(); integ.Dispose(); arena.Dispose();
+                senses.Dispose(); integ.Dispose();
             }
         }
 
@@ -1023,13 +1001,12 @@ public class floatMIPTests
         // InfeasibleRootLP). Also re-verifies the Infeasible NaN contract. Both dtypes (exact integer data).
         void Stage4PropagationInfeasible()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(1, 2); A[0, 0] = (float)2; A[0, 1] = (float)2;
-            var b = arena.floatVec(1); b[0] = (float)3;
-            var c = arena.floatVec(2); c[0] = (float)(-1); c[1] = (float)(-1);
-            var xl = arena.floatVec(2);
-            var xu = arena.floatVec(2); xu[0] = (float)2; xu[1] = (float)2;
-            var x = arena.floatVec(2);
+            var A = new floatMxN(1, 2, Allocator.Temp); A[0, 0] = (float)2; A[0, 1] = (float)2;
+            var b = new floatN(1, Allocator.Temp); b[0] = (float)3;
+            var c = new floatN(2, Allocator.Temp); c[0] = (float)(-1); c[1] = (float)(-1);
+            var xl = new floatN(2, Allocator.Temp);
+            var xu = new floatN(2, Allocator.Temp); xu[0] = (float)2; xu[1] = (float)2;
+            var x = new floatN(2, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(1, Allocator.Temp);
             senses[0] = ConstraintSense.Equal;
             var integ = new NativeArray<byte>(2, Allocator.Temp); integ[0] = 1; integ[1] = 1;
@@ -1045,7 +1022,7 @@ public class floatMIPTests
             AssertClose(x[0], (float)0, (float)0);
             AssertClose(x[1], (float)0, (float)0);
 
-            senses.Dispose(); integ.Dispose(); arena.Dispose();
+            senses.Dispose(); integ.Dispose();
         }
 
         // Gap limit: the branchy n=12 search stopped early via relGap=0.3 before the tree is fully explored
@@ -1057,10 +1034,9 @@ public class floatMIPTests
             int cases = 0;
             for (int s = 0; s < cases; s++)
             {
-                var arena = new Arena(Allocator.Persistent);
-                BuildBranchy12(in arena, out var A, out var b, out var c, out var senses,
+                BuildBranchy12(out var A, out var b, out var c, out var senses,
                                out var xl, out var xu, out var integ);
-                var x = arena.floatVec(12);
+                var x = new floatN(12, Allocator.Temp);
                 const double relGap = 0.3;
 
                 var info = MIP.solve(in A, in b, in c, in senses, in xl, in xu, in integ, ref x, out double obj,
@@ -1075,7 +1051,7 @@ public class floatMIPTests
                 double nz = 0; for (int j = 0; j < 12; j++) nz += math.abs((double)x[j]);
                 AssertTrue(nz > 0);                                           // incumbent not all-zero (opt 6, x=0 infeasible)
 
-                senses.Dispose(); integ.Dispose(); arena.Dispose();
+                senses.Dispose(); integ.Dispose();
             }
         }
 
@@ -1084,15 +1060,14 @@ public class floatMIPTests
         // perturbing the default path. Both dtypes.
         void GapLimitPassThrough()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(2, 2);
+            var A = new floatMxN(2, 2, Allocator.Temp);
             A[0, 0] = (float)1; A[0, 1] = (float)1;
             A[1, 0] = (float)9; A[1, 1] = (float)5;
-            var b = arena.floatVec(2); b[0] = (float)6; b[1] = (float)45;
-            var c = arena.floatVec(2); c[0] = (float)(-8); c[1] = (float)(-5);
-            var xl = arena.floatVec(2);
-            var xu = arena.floatVec(2); xu[0] = (float)10; xu[1] = (float)10;
-            var x = arena.floatVec(2);
+            var b = new floatN(2, Allocator.Temp); b[0] = (float)6; b[1] = (float)45;
+            var c = new floatN(2, Allocator.Temp); c[0] = (float)(-8); c[1] = (float)(-5);
+            var xl = new floatN(2, Allocator.Temp);
+            var xu = new floatN(2, Allocator.Temp); xu[0] = (float)10; xu[1] = (float)10;
+            var x = new floatN(2, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(2, Allocator.Temp);
             senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.LessEqual;
             var integ = new NativeArray<byte>(2, Allocator.Temp); integ[0] = 1; integ[1] = 1;
@@ -1104,7 +1079,7 @@ public class floatMIPTests
             AssertCloseD(obj, -40.0, 1e-3);
             AssertCloseD(info.gap, 0.0, 1e-9);
 
-            senses.Dispose(); integ.Dispose(); arena.Dispose();
+            senses.Dispose(); integ.Dispose();
         }
 
         // Determinism with the rounding heuristic AND propagation both active: stein9 installs incumbents
@@ -1112,10 +1087,9 @@ public class floatMIPTests
         // identical solves must still be bit-for-bit identical (nodes/iter/obj/bound/x). Both dtypes (cheap).
         void Stage4DeterminismStein9()
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildStein9(in arena, out var A, out var b, out var c, out var senses, out var xl, out var xu, out var integ);
-            var x1 = arena.floatVec(9);
-            var x2 = arena.floatVec(9);
+            BuildStein9(out var A, out var b, out var c, out var senses, out var xl, out var xu, out var integ);
+            var x1 = new floatN(9, Allocator.Temp);
+            var x2 = new floatN(9, Allocator.Temp);
 
             var i1 = MIP.solve(in A, in b, in c, in senses, in xl, in xu, in integ, ref x1, out double o1);
             var i2 = MIP.solve(in A, in b, in c, in senses, in xl, in xu, in integ, ref x2, out double o2);
@@ -1127,7 +1101,7 @@ public class floatMIPTests
             AssertEqExactD(o1, o2);
             for (int j = 0; j < 9; j++) AssertClose(x1[j], x2[j], (float)0);
 
-            senses.Dispose(); integ.Dispose(); arena.Dispose();
+            senses.Dispose(); integ.Dispose();
         }
 
         // Determinism with an active gap limit: two identical relGap-triggering solves must stop at the
@@ -1137,11 +1111,10 @@ public class floatMIPTests
             int cases = 0;
             for (int s = 0; s < cases; s++)
             {
-                var arena = new Arena(Allocator.Persistent);
-                BuildBranchy12(in arena, out var A, out var b, out var c, out var senses,
+                BuildBranchy12(out var A, out var b, out var c, out var senses,
                                out var xl, out var xu, out var integ);
-                var x1 = arena.floatVec(12);
-                var x2 = arena.floatVec(12);
+                var x1 = new floatN(12, Allocator.Temp);
+                var x2 = new floatN(12, Allocator.Temp);
                 const double relGap = 0.3;
 
                 var i1 = MIP.solve(in A, in b, in c, in senses, in xl, in xu, in integ, ref x1, out double o1,
@@ -1159,7 +1132,7 @@ public class floatMIPTests
                 AssertEqExactD(o1, o2);
                 for (int j = 0; j < 12; j++) AssertClose(x1[j], x2[j], (float)0);
 
-                senses.Dispose(); integ.Dispose(); arena.Dispose();
+                senses.Dispose(); integ.Dispose();
             }
         }
 
@@ -1177,15 +1150,14 @@ public class floatMIPTests
             int cases = 0;
             for (int s = 0; s < cases; s++)
             {
-                var arena = new Arena(Allocator.Persistent);
-                var A = arena.floatMat(2, 2);
+                var A = new floatMxN(2, 2, Allocator.Temp);
                 A[0, 0] = (float)1; A[0, 1] = (float)1;
                 A[1, 0] = (float)9; A[1, 1] = (float)5;
-                var b = arena.floatVec(2); b[0] = (float)1200000.5; b[1] = (float)9000000;
-                var c = arena.floatVec(2); c[0] = (float)(-8); c[1] = (float)(-5);
-                var xl = arena.floatVec(2);
-                var xu = arena.floatVec(2); xu[0] = (float)1000000; xu[1] = (float)1000000;
-                var x = arena.floatVec(2);
+                var b = new floatN(2, Allocator.Temp); b[0] = (float)1200000.5; b[1] = (float)9000000;
+                var c = new floatN(2, Allocator.Temp); c[0] = (float)(-8); c[1] = (float)(-5);
+                var xl = new floatN(2, Allocator.Temp);
+                var xu = new floatN(2, Allocator.Temp); xu[0] = (float)1000000; xu[1] = (float)1000000;
+                var x = new floatN(2, Allocator.Temp);
                 var senses = new NativeArray<ConstraintSense>(2, Allocator.Temp);
                 senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.LessEqual;
                 var integ = new NativeArray<byte>(2, Allocator.Temp); integ[0] = 1; integ[1] = 1;
@@ -1197,7 +1169,7 @@ public class floatMIPTests
                 AssertClose(x[1], (float)450000, (float)1e-3);
                 AssertCloseD(obj, -8250000.0, 1e-3);
 
-                senses.Dispose(); integ.Dispose(); arena.Dispose();
+                senses.Dispose(); integ.Dispose();
             }
         }
 
@@ -1281,51 +1253,49 @@ public class floatMIPTests
     [Test]
     public void SolveThrowsOnDimensionMismatch()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.floatMat(2, 2);
-        var b = arena.floatVec(2);
-        var c = arena.floatVec(2);
-        var xl = arena.floatVec(2);
-        var xu = arena.floatVec(2); for (int j = 0; j < 2; j++) xu[j] = (float)1;
-        var x = arena.floatVec(2);
+        var A = new floatMxN(2, 2, Allocator.Temp);
+        var b = new floatN(2, Allocator.Temp);
+        var c = new floatN(2, Allocator.Temp);
+        var xl = new floatN(2, Allocator.Temp);
+        var xu = new floatN(2, Allocator.Temp); for (int j = 0; j < 2; j++) xu[j] = (float)1;
+        var x = new floatN(2, Allocator.Temp);
         var senses = new NativeArray<ConstraintSense>(2, Allocator.Temp);
         var integ = new NativeArray<byte>(2, Allocator.Temp);   // all continuous
 
-        var bBad = arena.floatVec(3);
+        var bBad = new floatN(3, Allocator.Temp);
         Assert.Catch<ArgumentException>(() => MIP.solve(in A, in bBad, in c, in senses, in xl, in xu, in integ, ref x, out double o));
-        var cBad = arena.floatVec(3);
+        var cBad = new floatN(3, Allocator.Temp);
         Assert.Catch<ArgumentException>(() => MIP.solve(in A, in b, in cBad, in senses, in xl, in xu, in integ, ref x, out double o));
         var sensesBad = new NativeArray<ConstraintSense>(3, Allocator.Temp);
         Assert.Catch<ArgumentException>(() => MIP.solve(in A, in b, in c, in sensesBad, in xl, in xu, in integ, ref x, out double o));
-        var xlBad = arena.floatVec(3);
+        var xlBad = new floatN(3, Allocator.Temp);
         Assert.Catch<ArgumentException>(() => MIP.solve(in A, in b, in c, in senses, in xlBad, in xu, in integ, ref x, out double o));
-        var xuBad = arena.floatVec(3);
+        var xuBad = new floatN(3, Allocator.Temp);
         Assert.Catch<ArgumentException>(() => MIP.solve(in A, in b, in c, in senses, in xl, in xuBad, in integ, ref x, out double o));
         var integBad = new NativeArray<byte>(3, Allocator.Temp);
         Assert.Catch<ArgumentException>(() => MIP.solve(in A, in b, in c, in senses, in xl, in xu, in integBad, ref x, out double o));
-        var xBad = arena.floatVec(3);
+        var xBad = new floatN(3, Allocator.Temp);
         Assert.Catch<ArgumentException>(() => MIP.solve(in A, in b, in c, in senses, in xl, in xu, in integ, ref xBad, out double o));
 
-        sensesBad.Dispose(); integBad.Dispose(); senses.Dispose(); integ.Dispose(); arena.Dispose();
+        sensesBad.Dispose(); integBad.Dispose(); senses.Dispose(); integ.Dispose();
     }
 
     // xl[j] > xu[j] componentwise is an input-sanity error -> ArgumentException (NOT a solver outcome).
     [Test]
     public void SolveThrowsOnLowerAboveUpper()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.floatMat(2, 2);
-        var b = arena.floatVec(2);
-        var c = arena.floatVec(2);
-        var xl = arena.floatVec(2); xl[0] = (float)5; xl[1] = (float)0;   // xl[0] > xu[0]
-        var xu = arena.floatVec(2); xu[0] = (float)1; xu[1] = (float)1;
-        var x = arena.floatVec(2);
+        var A = new floatMxN(2, 2, Allocator.Temp);
+        var b = new floatN(2, Allocator.Temp);
+        var c = new floatN(2, Allocator.Temp);
+        var xl = new floatN(2, Allocator.Temp); xl[0] = (float)5; xl[1] = (float)0;   // xl[0] > xu[0]
+        var xu = new floatN(2, Allocator.Temp); xu[0] = (float)1; xu[1] = (float)1;
+        var x = new floatN(2, Allocator.Temp);
         var senses = new NativeArray<ConstraintSense>(2, Allocator.Temp);
         var integ = new NativeArray<byte>(2, Allocator.Temp);   // continuous
 
         Assert.Catch<ArgumentException>(() => MIP.solve(in A, in b, in c, in senses, in xl, in xu, in integ, ref x, out double o));
 
-        senses.Dispose(); integ.Dispose(); arena.Dispose();
+        senses.Dispose(); integ.Dispose();
     }
 
     // Stage-2 restriction: an INTEGER variable with a non-finite lower bound (xl <= -1e29) must throw
@@ -1333,18 +1303,17 @@ public class floatMIPTests
     [Test]
     public void SolveThrowsOnIntegerVariableWithInfiniteLowerBound()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.floatMat(2, 2);
-        var b = arena.floatVec(2);
-        var c = arena.floatVec(2);
-        var xl = arena.floatVec(2); xl[0] = (float)(-1e30); xl[1] = (float)0;
-        var xu = arena.floatVec(2); xu[0] = (float)1; xu[1] = (float)1;
-        var x = arena.floatVec(2);
+        var A = new floatMxN(2, 2, Allocator.Temp);
+        var b = new floatN(2, Allocator.Temp);
+        var c = new floatN(2, Allocator.Temp);
+        var xl = new floatN(2, Allocator.Temp); xl[0] = (float)(-1e30); xl[1] = (float)0;
+        var xu = new floatN(2, Allocator.Temp); xu[0] = (float)1; xu[1] = (float)1;
+        var x = new floatN(2, Allocator.Temp);
         var senses = new NativeArray<ConstraintSense>(2, Allocator.Temp);
         var integ = new NativeArray<byte>(2, Allocator.Temp); integ[0] = 1; integ[1] = 0;
 
         Assert.Catch<ArgumentException>(() => MIP.solve(in A, in b, in c, in senses, in xl, in xu, in integ, ref x, out double o));
 
-        senses.Dispose(); integ.Dispose(); arena.Dispose();
+        senses.Dispose(); integ.Dispose();
     }
 }

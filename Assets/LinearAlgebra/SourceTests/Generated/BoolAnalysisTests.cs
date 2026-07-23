@@ -30,43 +30,35 @@ public class BoolAnalysisTests
 
         public void Execute()
         {
-            Arena arena = new Arena(Allocator.Temp);
-            try 
+            switch (Type)
             {
-                switch (Type) 
-                {
-                    case TestType.isDiagonal:
-                        isDiagonal(ref arena);
-                        break;
-                    case TestType.IsAllSame:
-                        IsAllSame(ref arena);
-                        break;
-                    case TestType.IsAllEqualTo:
-                        IsAllEqualTo(ref arena);
-                        break;
-                    case TestType.IsAnyEqualTo:
-                        IsAnyEqualTo(ref arena);
+                case TestType.isDiagonal:
+                    isDiagonal();
                     break;
-                    case TestType.any:
-                        any(ref arena);
-                        break;
-                    case TestType.all:
-                        all(ref arena);
-                        break;
-                    default:
-                        throw new NotImplementedException();
-                }
-            }
-            finally
-            {
-                arena.Dispose();
+                case TestType.IsAllSame:
+                    IsAllSame();
+                    break;
+                case TestType.IsAllEqualTo:
+                    IsAllEqualTo();
+                    break;
+                case TestType.IsAnyEqualTo:
+                    IsAnyEqualTo();
+                    break;
+                case TestType.any:
+                    any();
+                    break;
+                case TestType.all:
+                    all();
+                    break;
+                default:
+                    throw new NotImplementedException();
             }
         }
 
-        void isDiagonal(ref Arena arena)
+        void isDiagonal()
         {
             int dim = 4;
-            boolMxN m = arena.boolMat(dim, dim);
+            boolMxN m = new boolMxN(dim, dim, Allocator.Temp);
 
             // All-false square matrix: no off-diagonal trues -> diagonal.
             Assert.IsTrue(Analysis.isDiagonal(m));
@@ -85,15 +77,15 @@ public class BoolAnalysisTests
             m[0, 1] = false;
 
             // Non-square is never diagonal, even with an identity-like pattern.
-            boolMxN rect = arena.boolMat(2, 3);
+            boolMxN rect = new boolMxN(2, 3, Allocator.Temp);
             rect[0, 0] = true; rect[1, 1] = true;
             Assert.IsFalse(Analysis.isDiagonal(rect));
         }
 
-        void IsAllSame(ref Arena arena)
+        void IsAllSame()
         {
             int dim = 64;
-            boolN v = arena.boolRandomVec(dim);
+            boolN v = GenerateOP.boolRandomVec(dim);
 
             Assert.IsFalse(Analysis.IsAllSame(v));
 
@@ -102,23 +94,23 @@ public class BoolAnalysisTests
             Assert.IsTrue(Analysis.IsAllSame(v));
         }
 
-        void IsAllEqualTo(ref Arena arena)
+        void IsAllEqualTo()
         {
             int dim = 64;
-            boolN v = arena.boolRandomVec(dim);
+            boolN v = GenerateOP.boolRandomVec(dim);
 
             Assert.IsFalse(Analysis.IsAllEqualTo(v, true));
             Assert.IsFalse(Analysis.IsAllEqualTo(v, false));
 
             v |= true;
-            
+
             Assert.IsTrue(Analysis.IsAllEqualTo(v, true));
         }
 
-        void IsAnyEqualTo(ref Arena arena)
+        void IsAnyEqualTo()
         {
             int dim = 64;
-            boolN v = arena.boolVec(dim);
+            boolN v = new boolN(dim, Allocator.Temp);
 
             Assert.IsFalse(Analysis.IsAnyEqualTo(v, true));
 
@@ -131,110 +123,110 @@ public class BoolAnalysisTests
         // Empty semantics (vacuous truth, matching math.any/math.all):
         //   any(empty) == false, all(empty) == true.
 
-        void any(ref Arena arena)
+        void any()
         {
             int dim = 8;
 
             // --- vectors ---
             // all-false
-            boolN allFalse = arena.boolVec(dim);
+            boolN allFalse = new boolN(dim, Allocator.Temp);
             Assert.IsFalse(Analysis.any(allFalse));
 
             // all-true
-            boolN allTrue = arena.boolVec(dim);
+            boolN allTrue = new boolN(dim, Allocator.Temp);
             allTrue |= true;
             Assert.IsTrue(Analysis.any(allTrue));
 
             // mixed (single true element among falses)
-            boolN mixed = arena.boolVec(dim);
+            boolN mixed = new boolN(dim, Allocator.Temp);
             mixed[dim - 1] = true;
             Assert.IsTrue(Analysis.any(mixed));
 
             // single-element
-            boolN oneTrue = arena.boolVec(1);
+            boolN oneTrue = new boolN(1, Allocator.Temp);
             oneTrue[0] = true;
             Assert.IsTrue(Analysis.any(oneTrue));
-            boolN oneFalse = arena.boolVec(1);
+            boolN oneFalse = new boolN(1, Allocator.Temp);
             Assert.IsFalse(Analysis.any(oneFalse));
 
             // empty vector -> false (nothing to short-circuit on)
-            boolN emptyVec = arena.boolVec(0);
+            boolN emptyVec = new boolN(0, Allocator.Temp);
             Assert.IsFalse(Analysis.any(emptyVec));
 
             // --- matrices ---
             // all-false
-            boolMxN mAllFalse = arena.boolMat(dim, dim);
+            boolMxN mAllFalse = new boolMxN(dim, dim, Allocator.Temp);
             Assert.IsFalse(Analysis.any(mAllFalse));
 
             // all-true
-            boolMxN mAllTrue = arena.boolMat(dim, dim);
+            boolMxN mAllTrue = new boolMxN(dim, dim, Allocator.Temp);
             for (int i = 0; i < dim; i++)
                 for (int j = 0; j < dim; j++)
                     mAllTrue[i, j] = true;
             Assert.IsTrue(Analysis.any(mAllTrue));
 
             // mixed (single true)
-            boolMxN mMixed = arena.boolMat(dim, dim);
+            boolMxN mMixed = new boolMxN(dim, dim, Allocator.Temp);
             mMixed[dim - 1, dim - 1] = true;
             Assert.IsTrue(Analysis.any(mMixed));
 
             // single-element matrix
-            boolMxN mOneTrue = arena.boolMat(1, 1);
+            boolMxN mOneTrue = new boolMxN(1, 1, Allocator.Temp);
             mOneTrue[0, 0] = true;
             Assert.IsTrue(Analysis.any(mOneTrue));
-            boolMxN mOneFalse = arena.boolMat(1, 1);
+            boolMxN mOneFalse = new boolMxN(1, 1, Allocator.Temp);
             Assert.IsFalse(Analysis.any(mOneFalse));
 
             // empty matrix -> false
-            boolMxN emptyMat = arena.boolMat(0, 0);
+            boolMxN emptyMat = new boolMxN(0, 0, Allocator.Temp);
             Assert.IsFalse(Analysis.any(emptyMat));
         }
 
-        void all(ref Arena arena)
+        void all()
         {
             int dim = 8;
 
             // --- vectors ---
             // all-true
-            boolN allTrue = arena.boolVec(dim);
+            boolN allTrue = new boolN(dim, Allocator.Temp);
             allTrue |= true;
             Assert.IsTrue(Analysis.all(allTrue));
 
             // all-false
-            boolN allFalse = arena.boolVec(dim);
+            boolN allFalse = new boolN(dim, Allocator.Temp);
             Assert.IsFalse(Analysis.all(allFalse));
 
             // mixed (all true except one) -> false
-            boolN mixed = arena.boolVec(dim);
+            boolN mixed = new boolN(dim, Allocator.Temp);
             mixed |= true;
             mixed[dim - 1] = false;
             Assert.IsFalse(Analysis.all(mixed));
 
             // single-element
-            boolN oneTrue = arena.boolVec(1);
+            boolN oneTrue = new boolN(1, Allocator.Temp);
             oneTrue[0] = true;
             Assert.IsTrue(Analysis.all(oneTrue));
-            boolN oneFalse = arena.boolVec(1);
+            boolN oneFalse = new boolN(1, Allocator.Temp);
             Assert.IsFalse(Analysis.all(oneFalse));
 
             // empty vector -> true (vacuous truth, no counterexample)
-            boolN emptyVec = arena.boolVec(0);
+            boolN emptyVec = new boolN(0, Allocator.Temp);
             Assert.IsTrue(Analysis.all(emptyVec));
 
             // --- matrices ---
             // all-true
-            boolMxN mAllTrue = arena.boolMat(dim, dim);
+            boolMxN mAllTrue = new boolMxN(dim, dim, Allocator.Temp);
             for (int i = 0; i < dim; i++)
                 for (int j = 0; j < dim; j++)
                     mAllTrue[i, j] = true;
             Assert.IsTrue(Analysis.all(mAllTrue));
 
             // all-false
-            boolMxN mAllFalse = arena.boolMat(dim, dim);
+            boolMxN mAllFalse = new boolMxN(dim, dim, Allocator.Temp);
             Assert.IsFalse(Analysis.all(mAllFalse));
 
             // mixed (all true except one) -> false
-            boolMxN mMixed = arena.boolMat(dim, dim);
+            boolMxN mMixed = new boolMxN(dim, dim, Allocator.Temp);
             for (int i = 0; i < dim; i++)
                 for (int j = 0; j < dim; j++)
                     mMixed[i, j] = true;
@@ -242,14 +234,14 @@ public class BoolAnalysisTests
             Assert.IsFalse(Analysis.all(mMixed));
 
             // single-element matrix
-            boolMxN mOneTrue = arena.boolMat(1, 1);
+            boolMxN mOneTrue = new boolMxN(1, 1, Allocator.Temp);
             mOneTrue[0, 0] = true;
             Assert.IsTrue(Analysis.all(mOneTrue));
-            boolMxN mOneFalse = arena.boolMat(1, 1);
+            boolMxN mOneFalse = new boolMxN(1, 1, Allocator.Temp);
             Assert.IsFalse(Analysis.all(mOneFalse));
 
             // empty matrix -> true
-            boolMxN emptyMat = arena.boolMat(0, 0);
+            boolMxN emptyMat = new boolMxN(0, 0, Allocator.Temp);
             Assert.IsTrue(Analysis.all(emptyMat));
         }
     }

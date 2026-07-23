@@ -116,9 +116,9 @@ public class floatSparseEigenTests
         // Same recipe as floatSparseSolverTests.BuildDenseSPD: A = M^T M + dim*I -> strictly SPD /
         // diagonally dominant, so it has a single clearly dominant (positive) eigenvalue that power
         // iteration converges to unambiguously.
-        static floatMxN BuildDenseSPD(ref Arena arena, int dim, uint seed)
+        static floatMxN BuildDenseSPD(int dim, uint seed)
         {
-            var M = arena.floatRandomMat(dim, dim, -1f, 1f, seed);
+            var M = GenerateOP.floatRandomMat(dim, dim, -1f, 1f, seed);
             var A = Blas.dot(M, M, true);
             for (int d = 0; d < dim; d++)
                 A[d, d] += dim;
@@ -130,14 +130,14 @@ public class floatSparseEigenTests
         // a perf hint; growth past it is safe (the builder's triplet state lives behind a shared
         // heap pointer). Encodes the SAME numeric operator as the dense form, so spMV(bsm,.) and the
         // dense matvec agree up to floating-point reassociation only.
-        static floatBSR DenseToBSR1x1(ref Arena arena, in floatMxN A, int nnzHint)
+        static floatBSR DenseToBSR1x1(in floatMxN A, int nnzHint)
         {
-            var builder = arena.floatBSRBuilder(A.M_Rows, A.N_Cols, 1, 1, math.max(nnzHint, 1));
+            var builder = new floatBSRBuilder(A.M_Rows, A.N_Cols, 1, 1, Allocator.Temp, math.max(nnzHint, 1));
             for (int r = 0; r < A.M_Rows; r++)
                 for (int c = 0; c < A.N_Cols; c++)
                     if (A[r, c] != (float)0)
                         builder.AddValue(r, c, A[r, c]);
-            return builder.ToBSR(ref arena);
+            return builder.ToBSR(Allocator.Temp);
         }
 
         // Fail layout: [0]=flag, [1]=got, [2]=expected/limit, [3]=diff
@@ -231,23 +231,21 @@ public class floatSparseEigenTests
         // the BSR overload must reproduce the trusted dense overload's dominant eigenpair.
         void DenseVsSparseCrossCheck()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 12;
-            var A = BuildDenseSPD(ref arena, dim, 20240702);
-            var bsm = DenseToBSR1x1(ref arena, in A, dim * dim);
+            var A = BuildDenseSPD(dim, 20240702);
+            var bsm = DenseToBSR1x1(in A, dim * dim);
 
             float tol = (float)10 * Consts.floatZeroThreshold;
 
             // Dense reference (v starts at zero -> deterministic seeding).
-            var vDense = arena.floatVec(dim);
-            var wDense = arena.floatVec(dim);
+            var vDense = new floatN(dim, Allocator.Temp);
+            var wDense = new floatN(dim, Allocator.Temp);
             bool okDense = Eigen.powerIteration(in A, ref vDense, ref wDense, out float lamDense, tol, 2000);
             AssertTrue(okDense, (float)1);
 
             // Sparse (BSR) path from an identically zero-seeded v.
-            var vSparse = arena.floatVec(dim);
-            var wSparse = arena.floatVec(dim);
+            var vSparse = new floatN(dim, Allocator.Temp);
+            var wSparse = new floatN(dim, Allocator.Temp);
             bool okSparse = Eigen.powerIteration(in bsm, ref vSparse, ref wSparse, out float lamSparse, tol, 2000);
             AssertTrue(okSparse, (float)2);
 
@@ -257,8 +255,6 @@ public class floatSparseEigenTests
 
             // Eigenvectors agree up to an overall sign (both are unit vectors).
             AssertVecEqUpToSign(in vDense, in vSparse, dim, LooseTol());
-
-            arena.Dispose();
         }
 
         // ---- (b) literature known-spectrum on the BSR path -------------------------------
@@ -271,16 +267,14 @@ public class floatSparseEigenTests
         // using BSR.spMV on the BSR itself.
         void LaplacianKnownSpectrum()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 16;
-            var A = arena.floatLaplacian1D(n);
-            var bsm = DenseToBSR1x1(ref arena, in A, 3 * n);
+            var A = floatGallery.floatLaplacian1D(n);
+            var bsm = DenseToBSR1x1(in A, 3 * n);
 
             float tol = (float)10 * Consts.floatZeroThreshold;
 
-            var v = arena.floatVec(n);   // zero -> deterministic seeding
-            var w = arena.floatVec(n);
+            var v = new floatN(n, Allocator.Temp);   // zero -> deterministic seeding
+            var w = new floatN(n, Allocator.Temp);
             bool ok = Eigen.powerIteration(in bsm, ref v, ref w, out float lambda, tol, 4000);
             AssertTrue(ok, (float)1);
 
@@ -292,8 +286,6 @@ public class floatSparseEigenTests
             // Residual property on the BSR operator: A*v ~= lambda*v (A*v via spMV on the BSR).
             var Av = BSR.spMV(in bsm, in v);
             AssertResidual(in Av, in v, lambda, (float)100 * Consts.floatZeroThreshold, n);
-
-            arena.Dispose();
         }
 
         // ---- Milestone C2: Eigen.inversePowerIteration<TOp> (smallest eigenpair, generic over
@@ -322,11 +314,9 @@ public class floatSparseEigenTests
         // eigenpair floor is many orders coarser than a solver that only ever does matvecs.
         void InverseLaplacianCrossCheck()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 12;
-            var Adense = arena.floatLaplacian1D(n);
-            var bsm = DenseToBSR1x1(ref arena, in Adense, 3 * n);
+            var Adense = floatGallery.floatLaplacian1D(n);
+            var bsm = DenseToBSR1x1(in Adense, 3 * n);
 
             // tol is a multiple of cgTol (not the much tighter Consts.floatZeroThreshold): the
             // outer convergence checks compare consecutive eigenpair estimates, each from its own
@@ -341,13 +331,13 @@ public class floatSparseEigenTests
             float scale = (float)1 + math.abs((float)lamD);
 
             // Dense inverse power iteration (v starts at zero -> deterministic seeding).
-            var vDense = arena.floatVec(n);
+            var vDense = new floatN(n, Allocator.Temp);
             bool okDense = Eigen.inversePowerIteration(in Adense, ref vDense, out float lamDense, tol, 200, n, cgTol);
             AssertTrue(okDense, (float)1);
             AssertClose(lamDense, (float)lamD, LooseTol() * scale);
 
             // Sparse (BSR) inverse power iteration, from an identically zero-seeded v.
-            var vSparse = arena.floatVec(n);
+            var vSparse = new floatN(n, Allocator.Temp);
             bool okSparse = Eigen.inversePowerIteration(in bsm, ref vSparse, out float lamSparse, tol, 200, n, cgTol);
             AssertTrue(okSparse, (float)2);
             AssertClose(lamSparse, (float)lamD, LooseTol() * scale);
@@ -358,8 +348,6 @@ public class floatSparseEigenTests
             // Residual property on the BSR operator: A*v ~= lambda*v (A*v via spMV on the BSR).
             var Av = BSR.spMV(in bsm, in vSparse);
             AssertResidual(in Av, in vSparse, lamSparse, LooseTol(), n);
-
-            arena.Dispose();
         }
 
         // ---- (c) cross-check inversePowerIteration's lambda_min against the dense full-spectrum
@@ -369,21 +357,19 @@ public class floatSparseEigenTests
         // yields two separate floatMxN instances encoding the identical numeric operator.
         void InverseVsEigenvaluesSymmetric()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 10;
-            var A = arena.floatLaplacian1D(n);
-            var ARef = arena.floatLaplacian1D(n);   // independent copy; destroyed below
+            var A = floatGallery.floatLaplacian1D(n);
+            var ARef = floatGallery.floatLaplacian1D(n);   // independent copy; destroyed below
 
             // tol rationale (multiple of cgTol, not zeroThreshold): see InverseLaplacianCrossCheck above.
             float cgTol = Consts.floatSqrtEps;
             float tol = (float)10 * cgTol;
 
-            var v = arena.floatVec(n);   // zero -> deterministic seeding
+            var v = new floatN(n, Allocator.Temp);   // zero -> deterministic seeding
             bool ok = Eigen.inversePowerIteration(in A, ref v, out float lambda, tol, 200, n, cgTol);
             AssertTrue(ok, (float)1);
 
-            var eigenvalues = arena.floatVec(n);
+            var eigenvalues = new floatN(n, Allocator.Temp);
             bool okEig = Eigen.valuesSymmetricInPlace(ref ARef, ref eigenvalues);
             AssertTrue(okEig, (float)2);
 
@@ -392,8 +378,6 @@ public class floatSparseEigenTests
 
             float scale = (float)1 + math.abs(smallestRef);
             AssertClose(lambda, smallestRef, LooseTol() * scale);
-
-            arena.Dispose();
         }
 
         // ---- Milestone C3: Eigen.lanczos (symmetric Lanczos tridiagonalization + Ritz values via
@@ -414,24 +398,22 @@ public class floatSparseEigenTests
         // so a second call yields a separate instance encoding the identical operator).
         void LanczosFullSpectrum()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 16;
-            var Adense = arena.floatLaplacian1D(n);
-            var bsm    = DenseToBSR1x1(ref arena, in Adense, 3 * n);
-            var ARef   = arena.floatLaplacian1D(n);   // independent copy; destroyed by eigenvaluesSymmetric below
+            var Adense = floatGallery.floatLaplacian1D(n);
+            var bsm    = DenseToBSR1x1(in Adense, 3 * n);
+            var ARef   = floatGallery.floatLaplacian1D(n);   // independent copy; destroyed by eigenvaluesSymmetric below
 
             // Full spectrum: steps == n.
-            var eigDense = Eigen.lanczos(ref arena, in Adense, n, out LanczosInfo infoDense);
+            var eigDense = Eigen.lanczos(in Adense, n, out LanczosInfo infoDense, Allocator.Temp);
             AssertTrue(infoDense, (float)1);
             AssertTrue(infoDense.produced == n, (float)2);
 
-            var eigBsr = Eigen.lanczos(ref arena, in bsm, n, out LanczosInfo infoBsr);
+            var eigBsr = Eigen.lanczos(in bsm, n, out LanczosInfo infoBsr, Allocator.Temp);
             AssertTrue(infoBsr, (float)3);
             AssertTrue(infoBsr.produced == n, (float)4);
 
             // Trusted dense reference spectrum on the independent copy.
-            var eigRef = arena.floatVec(n);
+            var eigRef = new floatN(n, Allocator.Temp);
             bool okEig = Eigen.valuesSymmetricInPlace(ref ARef, ref eigRef);
             AssertTrue(okEig, (float)5);
 
@@ -449,8 +431,6 @@ public class floatSparseEigenTests
                 // closed form, so their mutual difference is bounded by 2x that.
                 AssertClose(eigDense[i], eigRef[i], (float)2 * FullSpectrumTol() * scale);
             }
-
-            arena.Dispose();
         }
 
         // (b) PARTIAL-SPECTRUM EXTREMAL CONVERGENCE. Same Laplacian, but steps ~= n/2 < n. No
@@ -461,13 +441,11 @@ public class floatSparseEigenTests
         // full-spectrum case).
         void LanczosPartialExtremal()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 16;
             int steps = n / 2;   // 8
-            var A = arena.floatLaplacian1D(n);
+            var A = floatGallery.floatLaplacian1D(n);
 
-            var eig = Eigen.lanczos(ref arena, in A, steps, out LanczosInfo info);
+            var eig = Eigen.lanczos(in A, steps, out LanczosInfo info, Allocator.Temp);
             AssertTrue(info, (float)1);
             AssertTrue(info.produced == steps, (float)2);
 
@@ -480,8 +458,6 @@ public class floatSparseEigenTests
             double lamMinD = 2.0 - 2.0 * math.cos(1.0 * math.PI_DBL / (n + 1));
             float scaleMin = (float)1 + math.abs((float)lamMinD);
             AssertClose(eig[info.produced - 1], (float)lamMinD, PartialExtremalTol() * scaleMin);
-
-            arena.Dispose();
         }
 
         // (c) DENSE-vs-BSR AGREEMENT on the partial-spectrum run. The dense and BSR forms encode the
@@ -492,17 +468,15 @@ public class floatSparseEigenTests
         // cross-check band).
         void LanczosDenseVsBSR()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 16;
             int steps = n / 2;   // 8
-            var Adense = arena.floatLaplacian1D(n);
-            var bsm    = DenseToBSR1x1(ref arena, in Adense, 3 * n);
+            var Adense = floatGallery.floatLaplacian1D(n);
+            var bsm    = DenseToBSR1x1(in Adense, 3 * n);
 
-            var eigDense = Eigen.lanczos(ref arena, in Adense, steps, out LanczosInfo infoDense);
+            var eigDense = Eigen.lanczos(in Adense, steps, out LanczosInfo infoDense, Allocator.Temp);
             AssertTrue(infoDense, (float)1);
 
-            var eigBsr = Eigen.lanczos(ref arena, in bsm, steps, out LanczosInfo infoBsr);
+            var eigBsr = Eigen.lanczos(in bsm, steps, out LanczosInfo infoBsr, Allocator.Temp);
             AssertTrue(infoBsr, (float)2);
 
             AssertTrue(infoDense.produced == infoBsr.produced, (float)3);
@@ -512,8 +486,6 @@ public class floatSparseEigenTests
                 float scale = (float)1 + math.abs(eigDense[i]);
                 AssertClose(eigDense[i], eigBsr[i], LooseTol() * scale);
             }
-
-            arena.Dispose();
         }
 
         // (d) EARLY-BREAKDOWN + GERSHGORIN-PADDING PATH. The Laplacian tests always run to
@@ -530,12 +502,10 @@ public class floatSparseEigenTests
         // BOTH the dense and 1x1-BSR encodings so the sparse eigensolver path is covered too.
         void LanczosEarlyBreakdownPadding()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 6;
             int steps = 4;
 
-            var A = arena.floatMat(n, n);
+            var A = new floatMxN(n, n, Allocator.Temp);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
                     A[i, j] = (float)0;
@@ -545,7 +515,7 @@ public class floatSparseEigenTests
             float bTol = BreakdownTol();
 
             // --- dense path ---
-            var eig = Eigen.lanczos(ref arena, in A, steps, out LanczosInfo info, bTol);
+            var eig = Eigen.lanczos(in A, steps, out LanczosInfo info, bTol, Allocator.Temp);
 
             AssertTrue(info.produced == 2, (float)1);            // breakdown detected at the true grade
             // An early invariant-subspace breakdown is NOT a failure: LanczosInfo still reports
@@ -565,8 +535,8 @@ public class floatSparseEigenTests
             AssertTrue(eig[3] < eig[2], (float)4);               // padding slots strictly, distinctly ordered
 
             // --- sparse (1x1-BSR) path: same operator, same breakdown, same real Ritz values ---
-            var bsm = DenseToBSR1x1(ref arena, in A, n);
-            var eigB = Eigen.lanczos(ref arena, in bsm, steps, out LanczosInfo infoB, bTol);
+            var bsm = DenseToBSR1x1(in A, n);
+            var eigB = Eigen.lanczos(in bsm, steps, out LanczosInfo infoB, bTol, Allocator.Temp);
 
             AssertTrue(infoB.produced == 2, (float)5);
             AssertTrue(infoB, (float)9);                         // Solved despite breakdown
@@ -574,8 +544,6 @@ public class floatSparseEigenTests
             AssertTrue(infoB.produced < steps, (float)11);
             AssertClose(eigB[0], (float)0.7, BreakdownRitzTol());
             AssertClose(eigB[1], (float)0.2, BreakdownRitzTol());
-
-            arena.Dispose();
         }
 
         // (e) NEGATIVE-DOMINANT POWER ITERATION. Every other power-iteration fixture is SPD
@@ -587,29 +555,27 @@ public class floatSparseEigenTests
         // eigenvaluesSymmetric run on an independent copy (descending sort -> index dim-1).
         void PowerNegativeDominant()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 10;
-            var A = BuildDenseSPD(ref arena, dim, 7714);   // dominant eigenvalue lamMax > 0
+            var A = BuildDenseSPD(dim, 7714);   // dominant eigenvalue lamMax > 0
             for (int i = 0; i < dim; i++)
                 for (int j = 0; j < dim; j++)
                     A[i, j] = -A[i, j];                    // now dominant-magnitude eigenvalue is -lamMax < 0
 
             // Independent copy for the trusted reference spectrum (eigenvaluesSymmetric destroys it).
-            var ARef = BuildDenseSPD(ref arena, dim, 7714);
+            var ARef = BuildDenseSPD(dim, 7714);
             for (int i = 0; i < dim; i++)
                 for (int j = 0; j < dim; j++)
                     ARef[i, j] = -ARef[i, j];
 
-            var v = arena.floatVec(dim);   // zero -> internal deterministic seeding
-            var w = arena.floatVec(dim);
+            var v = new floatN(dim, Allocator.Temp);   // zero -> internal deterministic seeding
+            var w = new floatN(dim, Allocator.Temp);
             float tol = (float)10 * Consts.floatZeroThreshold;
             bool ok = Eigen.powerIteration(in A, ref v, ref w, out float lambda, tol, 4000);
 
             AssertTrue(ok, (float)1);
             AssertTrue(lambda < (float)0, (float)2);   // sign branch: dominant eigenvalue is negative
 
-            var eigRef = arena.floatVec(dim);
+            var eigRef = new floatN(dim, Allocator.Temp);
             bool okEig = Eigen.valuesSymmetricInPlace(ref ARef, ref eigRef);
             AssertTrue(okEig, (float)3);
 
@@ -617,8 +583,6 @@ public class floatSparseEigenTests
             float lamRef = eigRef[dim - 1];
             float scale = (float)1 + math.abs(lamRef);
             AssertClose(lambda, lamRef, LooseTol() * scale);
-
-            arena.Dispose();
         }
 
         // ---- Ritz VECTORS (lanczosVectors): approximate eigenvectors ---------------------
@@ -630,16 +594,14 @@ public class floatSparseEigenTests
         // eigenSymmetric + Ritz-combination path.
         void LanczosVectorsResidualAndOrthonormal()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 12;
-            var A = arena.floatLaplacian1D(n);
+            var A = floatGallery.floatLaplacian1D(n);
 
-            var eig = Eigen.lanczosVectors(ref arena, in A, n, out var ritz, out LanczosInfo info);
+            var eig = Eigen.lanczosVectors(in A, n, out var ritz, out LanczosInfo info, Allocator.Temp);
             AssertTrue(info, (float)1);
             AssertTrue(info.produced == n, (float)2);
 
-            var v = arena.floatVec(n);
+            var v = new floatN(n, Allocator.Temp);
             for (int i = 0; i < info.produced; i++)
             {
                 for (int c = 0; c < n; c++) v[c] = ritz[i, c];
@@ -670,8 +632,6 @@ public class floatSparseEigenTests
                     for (int c = 0; c < n; c++) d += ritz[i, c] * ritz[j, c];
                     AssertClose(d, (float)0, VecTol());
                 }
-
-            arena.Dispose();
         }
 
         // Dense and 1x1-BSR encodings of the same Laplacian must yield the SAME Ritz values and
@@ -679,20 +639,18 @@ public class floatSparseEigenTests
         // lanczosVectors identically to the dense path.
         void LanczosVectorsDenseVsBSR()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 12;
-            var Adense = arena.floatLaplacian1D(n);
-            var bsm    = DenseToBSR1x1(ref arena, in Adense, 3 * n);
+            var Adense = floatGallery.floatLaplacian1D(n);
+            var bsm    = DenseToBSR1x1(in Adense, 3 * n);
 
-            var eigD = Eigen.lanczosVectors(ref arena, in Adense, n, out var ritzD, out LanczosInfo infoD);
+            var eigD = Eigen.lanczosVectors(in Adense, n, out var ritzD, out LanczosInfo infoD, Allocator.Temp);
             AssertTrue(infoD, (float)1);
-            var eigB = Eigen.lanczosVectors(ref arena, in bsm, n, out var ritzB, out LanczosInfo infoB);
+            var eigB = Eigen.lanczosVectors(in bsm, n, out var ritzB, out LanczosInfo infoB, Allocator.Temp);
             AssertTrue(infoB, (float)2);
             AssertTrue(infoD.produced == infoB.produced, (float)3);
 
-            var vD = arena.floatVec(n);
-            var vB = arena.floatVec(n);
+            var vD = new floatN(n, Allocator.Temp);
+            var vB = new floatN(n, Allocator.Temp);
             for (int i = 0; i < infoD.produced; i++)
             {
                 float scale = (float)1 + math.abs(eigD[i]);
@@ -701,8 +659,6 @@ public class floatSparseEigenTests
                 for (int c = 0; c < n; c++) { vD[c] = ritzD[i, c]; vB[c] = ritzB[i, c]; }
                 AssertVecEqUpToSign(in vD, in vB, n, LooseTol());
             }
-
-            arena.Dispose();
         }
 
         // EARLY-BREAKDOWN Ritz vectors: the diagonal operator with only two distinct eigenvalues
@@ -710,26 +666,24 @@ public class floatSparseEigenTests
         // steps==4. The two produced Ritz vectors must be EXACT eigenpairs (each eigenspace is
         // invariant, so the seed's projection onto it is a true eigenvector -> zero residual), and
         // the padded rows [produced, steps) must now be ZEROED (fail-loud contract) rather than
-        // holding arena garbage. This is the Ritz-vector analogue of LanczosEarlyBreakdownPadding,
+        // holding uninitialized garbage. This is the Ritz-vector analogue of LanczosEarlyBreakdownPadding,
         // which only covered the VALUES path.
         void LanczosVectorsEarlyBreakdown()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 6;
             int steps = 4;
 
-            var A = arena.floatMat(n, n);
+            var A = new floatMxN(n, n, Allocator.Temp);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
                     A[i, j] = (float)0;
             for (int i = 0; i < n; i++)
                 A[i, i] = i < 3 ? (float)0.2 : (float)0.7;
 
-            var ws  = arena.floatLanczosCache(n, steps);
-            var Yt  = arena.floatMat(steps, steps);
-            var eig = arena.floatVec(steps);
-            var ritz = arena.floatMat(steps, n);
+            var ws  = new floatLanczosCache(n, steps, Allocator.Temp);
+            var Yt  = new floatMxN(steps, steps, Allocator.Temp);
+            var eig = new floatN(steps, Allocator.Temp);
+            var ritz = new floatMxN(steps, n, Allocator.Temp);
 
             LanczosInfo info = Eigen.lanczosVectors(new floatDenseOperator(in A), ref ws, ref Yt, ref eig, ref ritz,
                                            steps, BreakdownTol());
@@ -737,7 +691,7 @@ public class floatSparseEigenTests
             AssertTrue(info.produced == 2, (float)2);            // grade-2 breakdown before steps
 
             // The two produced Ritz vectors are exact eigenpairs: unit norm + zero residual.
-            var v = arena.floatVec(n);
+            var v = new floatN(n, Allocator.Temp);
             for (int i = 0; i < info.produced; i++)
             {
                 for (int c = 0; c < n; c++) v[c] = ritz[i, c];
@@ -756,12 +710,10 @@ public class floatSparseEigenTests
                 AssertClose(maxRes, (float)0, VecTol());
             }
 
-            // Fail-loud contract: rows [produced, steps) are zeroed, NOT arena garbage.
+            // Fail-loud contract: rows [produced, steps) are zeroed, NOT uninitialized garbage.
             for (int i = info.produced; i < steps; i++)
                 for (int c = 0; c < n; c++)
                     AssertClose(ritz[i, c], (float)0, (float)0);
-
-            arena.Dispose();
         }
 
         // LITERATURE / ANALYTIC GROUND TRUTH for the Ritz VECTORS. The 1D Dirichlet Laplacian
@@ -773,17 +725,15 @@ public class floatSparseEigenTests
         // DOUBLE (math.PI_DBL) so the float/double reference is full precision.
         void LanczosVectorsClosedFormLaplacian()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 8;
-            var A = arena.floatLaplacian1D(n);
+            var A = floatGallery.floatLaplacian1D(n);
 
-            var eig = Eigen.lanczosVectors(ref arena, in A, n, out var ritz, out LanczosInfo info);
+            var eig = Eigen.lanczosVectors(in A, n, out var ritz, out LanczosInfo info, Allocator.Temp);
             AssertTrue(info, (float)1);
             AssertTrue(info.produced == n, (float)2);
 
-            var vk = arena.floatVec(n);   // analytic eigenvector for the current mode
-            var vr = arena.floatVec(n);   // Ritz vector (row i of ritz)
+            var vk = new floatN(n, Allocator.Temp);   // analytic eigenvector for the current mode
+            var vr = new floatN(n, Allocator.Temp);   // Ritz vector (row i of ritz)
             for (int i = 0; i < n; i++)
             {
                 int k = n - i;             // descending eig -> mode k = n - i
@@ -806,8 +756,6 @@ public class floatSparseEigenTests
                 for (int j = 0; j < n; j++) vr[j] = ritz[i, j];
                 AssertVecEqUpToSign(in vr, in vk, n, VecTol());
             }
-
-            arena.Dispose();
         }
     }
 
@@ -893,79 +841,59 @@ public class floatSparseEigenTests
     // entry point (matching floatEigenTests' Power* throw tests, but via floatBSR).
 
     // A square 4x4 (two 2x2 diagonal blocks) BSR -- both diagonal blocks present, well-formed.
-    static floatBSR BuildSquareBSR(ref Arena arena)
+    static floatBSR BuildSquareBSR()
     {
         const int BR = 2, BC = 2;
-        var builder = arena.floatBSRBuilder(2, 2, BR, BC, 2);
-        builder.AddBlock(0, 0, arena.floatRandomMat(BR, BC, -1f, 1f, 71001));
-        builder.AddBlock(1, 1, arena.floatRandomMat(BR, BC, -1f, 1f, 71002));
-        return builder.ToBSR(ref arena);
+        var builder = new floatBSRBuilder(2, 2, BR, BC, Allocator.Temp, 2);
+        builder.AddBlock(0, 0, GenerateOP.floatRandomMat(BR, BC, -1f, 1f, 71001));
+        builder.AddBlock(1, 1, GenerateOP.floatRandomMat(BR, BC, -1f, 1f, 71002));
+        return builder.ToBSR(Allocator.Temp);
     }
 
     [Test]
     public void Power_NonSquareBSR_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            // 2x3 block grid of 2x2 blocks -> 4x6 (Rows != Cols). One block suffices; the
-            // Rows != Cols guard fires before v/w are examined.
-            const int BR = 2, BC = 2;
-            var builder = arena.floatBSRBuilder(2, 3, BR, BC, 1);
-            builder.AddBlock(0, 0, arena.floatRandomMat(BR, BC, -1f, 1f, 71101));
-            var A = builder.ToBSR(ref arena);
+        // 2x3 block grid of 2x2 blocks -> 4x6 (Rows != Cols). One block suffices; the
+        // Rows != Cols guard fires before v/w are examined.
+        const int BR = 2, BC = 2;
+        var builder = new floatBSRBuilder(2, 3, BR, BC, Allocator.Temp, 1);
+        builder.AddBlock(0, 0, GenerateOP.floatRandomMat(BR, BC, -1f, 1f, 71101));
+        var A = builder.ToBSR(Allocator.Temp);
 
-            var v = arena.floatVec(A.M_Rows);
-            var w = arena.floatVec(A.M_Rows);
-            Assert.Throws<ArgumentException>(() =>
-                Eigen.powerIteration(in A, ref v, ref w, out float lambda, Consts.floatZeroThreshold, 1000));
-        }
-        finally { arena.Dispose(); }
+        var v = new floatN(A.M_Rows, Allocator.Temp);
+        var w = new floatN(A.M_Rows, Allocator.Temp);
+        Assert.Throws<ArgumentException>(() =>
+            Eigen.powerIteration(in A, ref v, ref w, out float lambda, Consts.floatZeroThreshold, 1000));
     }
 
     [Test]
     public void Power_WrongVLength_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = BuildSquareBSR(ref arena);   // 4x4
-            var v = arena.floatVec(A.M_Rows - 1); // wrong length
-            var w = arena.floatVec(A.M_Rows);
-            Assert.Throws<ArgumentException>(() =>
-                Eigen.powerIteration(in A, ref v, ref w, out float lambda, Consts.floatZeroThreshold, 1000));
-        }
-        finally { arena.Dispose(); }
+        var A = BuildSquareBSR();   // 4x4
+        var v = new floatN(A.M_Rows - 1, Allocator.Temp); // wrong length
+        var w = new floatN(A.M_Rows, Allocator.Temp);
+        Assert.Throws<ArgumentException>(() =>
+            Eigen.powerIteration(in A, ref v, ref w, out float lambda, Consts.floatZeroThreshold, 1000));
     }
 
     [Test]
     public void Power_AliasingVAndW_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = BuildSquareBSR(ref arena);   // 4x4
-            var v = arena.floatVec(A.M_Rows);
-            var wAlias = v; // w aliases v (struct copy shares Data.Ptr) -> guard must fire
-            Assert.Throws<ArgumentException>(() =>
-                Eigen.powerIteration(in A, ref v, ref wAlias, out float lambda, Consts.floatZeroThreshold, 1000));
-        }
-        finally { arena.Dispose(); }
+        var A = BuildSquareBSR();   // 4x4
+        var v = new floatN(A.M_Rows, Allocator.Temp);
+        var wAlias = v; // w aliases v (struct copy shares Data.Ptr) -> guard must fire
+        Assert.Throws<ArgumentException>(() =>
+            Eigen.powerIteration(in A, ref v, ref wAlias, out float lambda, Consts.floatZeroThreshold, 1000));
     }
 
     [Test]
     public void Power_BadMaxIter_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = BuildSquareBSR(ref arena);   // 4x4
-            var v = arena.floatVec(A.M_Rows);
-            var w = arena.floatVec(A.M_Rows);
-            Assert.Throws<ArgumentException>(() =>
-                Eigen.powerIteration(in A, ref v, ref w, out float lambda, Consts.floatZeroThreshold, 0));
-        }
-        finally { arena.Dispose(); }
+        var A = BuildSquareBSR();   // 4x4
+        var v = new floatN(A.M_Rows, Allocator.Temp);
+        var w = new floatN(A.M_Rows, Allocator.Temp);
+        Assert.Throws<ArgumentException>(() =>
+            Eigen.powerIteration(in A, ref v, ref w, out float lambda, Consts.floatZeroThreshold, 0));
     }
 
     // ---- inversePowerIteration guard / exception cases (managed thread) -------------------
@@ -978,69 +906,49 @@ public class floatSparseEigenTests
     [Test]
     public void InversePower_NonSquareBSR_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            // 2x3 block grid of 2x2 blocks -> 4x6 (Rows != Cols). One block suffices; the
-            // Rows != Cols guard fires before v is examined.
-            const int BR = 2, BC = 2;
-            var builder = arena.floatBSRBuilder(2, 3, BR, BC, 1);
-            builder.AddBlock(0, 0, arena.floatRandomMat(BR, BC, -1f, 1f, 71201));
-            var A = builder.ToBSR(ref arena);
+        // 2x3 block grid of 2x2 blocks -> 4x6 (Rows != Cols). One block suffices; the
+        // Rows != Cols guard fires before v is examined.
+        const int BR = 2, BC = 2;
+        var builder = new floatBSRBuilder(2, 3, BR, BC, Allocator.Temp, 1);
+        builder.AddBlock(0, 0, GenerateOP.floatRandomMat(BR, BC, -1f, 1f, 71201));
+        var A = builder.ToBSR(Allocator.Temp);
 
-            var v = arena.floatVec(A.M_Rows);
-            Assert.Throws<ArgumentException>(() =>
-                Eigen.inversePowerIteration(in A, ref v, out float lambda));
-        }
-        finally { arena.Dispose(); }
+        var v = new floatN(A.M_Rows, Allocator.Temp);
+        Assert.Throws<ArgumentException>(() =>
+            Eigen.inversePowerIteration(in A, ref v, out float lambda));
     }
 
     [Test]
     public void InversePower_WrongVLength_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = BuildSquareBSR(ref arena);      // 4x4
-            var v = arena.floatVec(A.M_Rows - 1);  // wrong length
-            Assert.Throws<ArgumentException>(() =>
-                Eigen.inversePowerIteration(in A, ref v, out float lambda));
-        }
-        finally { arena.Dispose(); }
+        var A = BuildSquareBSR();      // 4x4
+        var v = new floatN(A.M_Rows - 1, Allocator.Temp);  // wrong length
+        Assert.Throws<ArgumentException>(() =>
+            Eigen.inversePowerIteration(in A, ref v, out float lambda));
     }
 
     [Test]
     public void InversePower_AliasingVAndY_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = BuildSquareBSR(ref arena);   // 4x4
-            var v  = arena.floatVec(A.M_Rows);
-            var r  = arena.floatVec(A.M_Rows);
-            var p  = arena.floatVec(A.M_Rows);
-            var Ap = arena.floatVec(A.M_Rows);
-            var yAlias = v; // y aliases v (struct copy shares Data.Ptr) -> guard must fire
-            Assert.Throws<ArgumentException>(() =>
-                Eigen.inversePowerIteration(in A, ref v, ref yAlias, ref r, ref p, ref Ap, out float lambda,
-                    Consts.floatZeroThreshold, 1000, A.M_Rows, Consts.floatSqrtEps));
-        }
-        finally { arena.Dispose(); }
+        var A = BuildSquareBSR();   // 4x4
+        var v  = new floatN(A.M_Rows, Allocator.Temp);
+        var r  = new floatN(A.M_Rows, Allocator.Temp);
+        var p  = new floatN(A.M_Rows, Allocator.Temp);
+        var Ap = new floatN(A.M_Rows, Allocator.Temp);
+        var yAlias = v; // y aliases v (struct copy shares Data.Ptr) -> guard must fire
+        Assert.Throws<ArgumentException>(() =>
+            Eigen.inversePowerIteration(in A, ref v, ref yAlias, ref r, ref p, ref Ap, out float lambda,
+                Consts.floatZeroThreshold, 1000, A.M_Rows, Consts.floatSqrtEps));
     }
 
     [Test]
     public void InversePower_BadMaxIter_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = BuildSquareBSR(ref arena);   // 4x4
-            var v = arena.floatVec(A.M_Rows);
-            Assert.Throws<ArgumentException>(() =>
-                Eigen.inversePowerIteration(in A, ref v, out float lambda,
-                    Consts.floatZeroThreshold, 0, A.M_Rows, Consts.floatSqrtEps));
-        }
-        finally { arena.Dispose(); }
+        var A = BuildSquareBSR();   // 4x4
+        var v = new floatN(A.M_Rows, Allocator.Temp);
+        Assert.Throws<ArgumentException>(() =>
+            Eigen.inversePowerIteration(in A, ref v, out float lambda,
+                Consts.floatZeroThreshold, 0, A.M_Rows, Consts.floatSqrtEps));
     }
 
     // ---- lanczos guard / exception cases (managed thread; Assert.Throws can't run in Burst) ----
@@ -1055,84 +963,59 @@ public class floatSparseEigenTests
     [Test]
     public void Lanczos_NonSquareDense_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = arena.floatMat(3, 4);                 // Rows != Cols
-            var ws = arena.floatLanczosCache(A.M_Rows, 1);  // sized for n = 3, steps = 1
-            var eig = arena.floatVec(1);
-            // Square guard fires before the workspace/eigenvalues shape is examined.
-            Assert.Throws<ArgumentException>(() =>
-                Eigen.lanczos(in A, ref ws, ref eig, 1));
-        }
-        finally { arena.Dispose(); }
+        var A = new floatMxN(3, 4, Allocator.Temp);                 // Rows != Cols
+        var ws = new floatLanczosCache(A.M_Rows, 1, Allocator.Temp);  // sized for n = 3, steps = 1
+        var eig = new floatN(1, Allocator.Temp);
+        // Square guard fires before the workspace/eigenvalues shape is examined.
+        Assert.Throws<ArgumentException>(() =>
+            Eigen.lanczos(in A, ref ws, ref eig, 1));
     }
 
     [Test]
     public void Lanczos_NonSquareBSR_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            // 2x3 block grid of 2x2 blocks -> 4x6 (Rows != Cols). One block suffices.
-            const int BR = 2, BC = 2;
-            var builder = arena.floatBSRBuilder(2, 3, BR, BC, 1);
-            builder.AddBlock(0, 0, arena.floatRandomMat(BR, BC, -1f, 1f, 73001));
-            var A = builder.ToBSR(ref arena);
+        // 2x3 block grid of 2x2 blocks -> 4x6 (Rows != Cols). One block suffices.
+        const int BR = 2, BC = 2;
+        var builder = new floatBSRBuilder(2, 3, BR, BC, Allocator.Temp, 1);
+        builder.AddBlock(0, 0, GenerateOP.floatRandomMat(BR, BC, -1f, 1f, 73001));
+        var A = builder.ToBSR(Allocator.Temp);
 
-            var ws = arena.floatLanczosCache(A.M_Rows, 1);  // n = 4, steps = 1
-            var eig = arena.floatVec(1);
-            Assert.Throws<ArgumentException>(() =>
-                Eigen.lanczos(in A, ref ws, ref eig, 1));
-        }
-        finally { arena.Dispose(); }
+        var ws = new floatLanczosCache(A.M_Rows, 1, Allocator.Temp);  // n = 4, steps = 1
+        var eig = new floatN(1, Allocator.Temp);
+        Assert.Throws<ArgumentException>(() =>
+            Eigen.lanczos(in A, ref ws, ref eig, 1));
     }
 
     [Test]
     public void Lanczos_StepsTooSmall_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = arena.floatLaplacian1D(4);            // square
-            var ws = arena.floatLanczosCache(4, 1);
-            var eig = arena.floatVec(1);
-            // steps = 0 < 1: the [1, A.Rows] guard fires before workspace/eigenvalues are checked.
-            Assert.Throws<ArgumentException>(() =>
-                Eigen.lanczos(in A, ref ws, ref eig, 0));
-        }
-        finally { arena.Dispose(); }
+        var A = floatGallery.floatLaplacian1D(4);            // square
+        var ws = new floatLanczosCache(4, 1, Allocator.Temp);
+        var eig = new floatN(1, Allocator.Temp);
+        // steps = 0 < 1: the [1, A.Rows] guard fires before workspace/eigenvalues are checked.
+        Assert.Throws<ArgumentException>(() =>
+            Eigen.lanczos(in A, ref ws, ref eig, 0));
     }
 
     [Test]
     public void Lanczos_StepsTooLarge_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = arena.floatLaplacian1D(4);            // square, n = 4
-            var ws = arena.floatLanczosCache(4, 5);         // workspace validly sized for steps = 5
-            var eig = arena.floatVec(5);
-            // steps = 5 > A.Rows = 4: the [1, A.Rows] guard fires.
-            Assert.Throws<ArgumentException>(() =>
-                Eigen.lanczos(in A, ref ws, ref eig, 5));
-        }
-        finally { arena.Dispose(); }
+        var A = floatGallery.floatLaplacian1D(4);            // square, n = 4
+        var ws = new floatLanczosCache(4, 5, Allocator.Temp);         // workspace validly sized for steps = 5
+        var eig = new floatN(5, Allocator.Temp);
+        // steps = 5 > A.Rows = 4: the [1, A.Rows] guard fires.
+        Assert.Throws<ArgumentException>(() =>
+            Eigen.lanczos(in A, ref ws, ref eig, 5));
     }
 
     [Test]
     public void Lanczos_NegativeBreakdownTol_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = arena.floatLaplacian1D(4);            // square
-            var ws = arena.floatLanczosCache(4, 2);
-            var eig = arena.floatVec(2);
-            // breakdownTol < 0: guard fires (this is the breakdownTol-taking overload).
-            Assert.Throws<ArgumentException>(() =>
-                Eigen.lanczos(in A, ref ws, ref eig, 2, (float)(-1)));
-        }
-        finally { arena.Dispose(); }
+        var A = floatGallery.floatLaplacian1D(4);            // square
+        var ws = new floatLanczosCache(4, 2, Allocator.Temp);
+        var eig = new floatN(2, Allocator.Temp);
+        // breakdownTol < 0: guard fires (this is the breakdownTol-taking overload).
+        Assert.Throws<ArgumentException>(() =>
+            Eigen.lanczos(in A, ref ws, ref eig, 2, (float)(-1)));
     }
 }

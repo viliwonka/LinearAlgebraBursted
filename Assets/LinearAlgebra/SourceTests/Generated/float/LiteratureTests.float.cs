@@ -58,22 +58,19 @@ public class floatLiteratureTests
         // = (1)(2)(3)(1)(2)(1) = 12. Tests LU determinant on a non-trivial (ill-conditioned) matrix.
         void VandermondeDet()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int n = 4;
-            var nodes = arena.floatVec(n);
+            var nodes = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) nodes[i] = (float)(i + 1);   // nodes 1,2,3,4
-            var V = arena.floatVandermonde(in nodes);
+            var V = floatGallery.floatVandermonde(in nodes);
 
-            var LUmat = V.Copy();
+            var LUmat = new floatMxN(in V, Allocator.Temp);
             var pivot = new Pivot(n, Allocator.Temp);
             LU.decompInPlace(ref LUmat, ref pivot);
             float det = Analysis.determinant(in LUmat, in pivot);
             pivot.Dispose();
 
             AssertClose(det, (float)12, (float)1E-1);
-
-            arena.Dispose();
         }
 
         // Non-symmetric A = [[0,2],[-1,0]]: eigenvalues are ±i√2 (complex), but singular values are
@@ -81,21 +78,18 @@ public class floatLiteratureTests
         // values (not |eigenvalues|): σ_max=2, σ_min=1, ‖A‖₂=2, cond=2.
         void NonsymmetricSVD()
         {
-            var arena = new Arena(Allocator.Persistent);
 
-            var A = arena.floatMat(2, 2);
+            var A = new floatMxN(2, 2, Allocator.Temp);
             A[0, 0] = (float)0; A[0, 1] = (float)2;
             A[1, 0] = (float)(-1); A[1, 1] = (float)0;
 
-            var S = arena.floatVec(2);
+            var S = new floatN(2, Allocator.Temp);
             SVD.singularValues(in A, ref S);   // descending
             AssertClose(S[0], (float)2, (float)1E-4);
             AssertClose(S[1], (float)1, (float)1E-4);
 
             AssertClose(Norms.matrixL2(in A), (float)2, (float)1E-4);
             AssertClose(Analysis.cond(in A), (float)2, (float)1E-4);
-
-            arena.Dispose();
         }
 
         // Läuchli matrix A = [[1,1,1],[ε,0,0],[0,ε,0],[0,0,ε]] (4x3): columns are barely independent
@@ -104,16 +98,15 @@ public class floatLiteratureTests
         // normal-equations solve (cond ≈ 1/ε²) would lose ~6 digits.
         void LauchliLeastSquares()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             float eps = (float)1E-3;
-            var xTrue = arena.floatVec(3);
+            var xTrue = new floatN(3, Allocator.Temp);
             xTrue[0] = (float)1; xTrue[1] = (float)2; xTrue[2] = (float)3;
 
             // --- SVD pseudo-inverse solve (pinvSolve no longer modifies A or b) ---
-            var A1 = arena.floatLauchli(3, eps);   // (3+1)x3 = 4x3
+            var A1 = floatGallery.floatLauchli(3, eps);   // (3+1)x3 = 4x3
             var b1 = Blas.dot(A1, xTrue);   // length 4, exactly in range(A)
-            var xSvd = arena.floatVec(3);
+            var xSvd = new floatN(3, Allocator.Temp);
             RankInfo pinvInfo = SVD.pinvSolve(ref A1, in b1, ref xSvd);
             bool converged = pinvInfo;
             AssertTrue(converged);
@@ -121,53 +114,45 @@ public class floatLiteratureTests
                 AssertClose(xSvd[k], xTrue[k], (float)1E-2);
 
             // --- QR direct solve (destroys A and b) ---
-            var A2 = arena.floatLauchli(3, eps);   // (3+1)x3 = 4x3
+            var A2 = floatGallery.floatLauchli(3, eps);   // (3+1)x3 = 4x3
             var b2 = Blas.dot(A2, xTrue);
-            var xQr = arena.floatVec(3);
+            var xQr = new floatN(3, Allocator.Temp);
             QR.solveInPlace(ref A2, ref b2, ref xQr);
             for (int k = 0; k < 3; k++)
                 AssertClose(xQr[k], xTrue[k], (float)1E-2);
-
-            arena.Dispose();
         }
 
         // Symmetric Pascal matrix P[i,j] = P[i-1,j] + P[i,j-1] (P[i,0]=P[0,j]=1). Known: det(P) = 1
         // for all n, and P is SPD. Tests LU determinant against an exact integer result + Cholesky.
         void PascalDetAndCholesky()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int n = 4;
-            var P = arena.floatPascal(n);
+            var P = floatGallery.floatPascal(n);
 
-            var L = arena.floatMat(n, n);
+            var L = new floatMxN(n, n, Allocator.Temp);
             AssertTrue(CHO.decomp(in P, ref L));
 
             // det(Pascal) = 1 (LU destroys its input, so factor a copy)
-            var LUmat = P.Copy();
+            var LUmat = new floatMxN(in P, Allocator.Temp);
             var pivot = new Pivot(n, Allocator.Temp);
             LU.decompInPlace(ref LUmat, ref pivot);
             float det = Analysis.determinant(in LUmat, in pivot);
             pivot.Dispose();
 
             AssertClose(det, (float)1, (float)1E-2);
-
-            arena.Dispose();
         }
 
         // Hilbert matrix — the canonical ill-conditioned test matrix. cond₂(H_3) ≈ 524.06 (pinned),
         // and cond grows explosively: cond₂(H_5) ≈ 4.77e5 (assert merely "huge", float can't nail it).
         void HilbertCond()
         {
-            var arena = new Arena(Allocator.Persistent);
 
-            var H3 = arena.floatHilbert(3);
+            var H3 = floatGallery.floatHilbert(3);
             AssertClose(Analysis.cond(in H3), (float)524.0568, (float)5);
 
-            var H5 = arena.floatHilbert(5);
+            var H5 = floatGallery.floatHilbert(5);
             AssertBelow((float)1E5, Analysis.cond(in H5));   // cond(H_5) ≈ 4.77e5, comfortably > 1e5
-
-            arena.Dispose();
         }
 
         // Wilkinson W21+ : symmetric tridiagonal, diag |i-10|, off-diag 1. Famous near-pair: the two
@@ -175,13 +160,12 @@ public class floatLiteratureTests
         // on near-degenerate eigenvalues (power iteration could not separate them). Trace = 110.
         void WilkinsonEigen()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int n = 21;
-            var W = arena.floatWilkinsonPlus(n);   // symmetric tridiag, diag |10-i|, off 1
+            var W = floatGallery.floatWilkinsonPlus(n);   // symmetric tridiag, diag |10-i|, off 1
 
-            var eig = arena.floatVec(n);
-            var V = arena.floatMat(n, n);
+            var eig = new floatN(n, Allocator.Temp);
+            var V = new floatMxN(n, n, Allocator.Temp);
             AssertTrue(Eigen.decompInPlace(ref W, ref eig, ref V, 100));   // destroys W; must converge
 
             AssertTrue(Analysis.isOrthogonal(V, (float)1E-3));
@@ -196,8 +180,6 @@ public class floatLiteratureTests
             // the documented near-pair (two largest)
             AssertClose(eig[0], (float)10.74619, (float)1E-2);
             AssertClose(eig[1], (float)10.74619, (float)1E-2);
-
-            arena.Dispose();
         }
 
         // 1D Laplacian / second-difference tridiagonal T_n (diag 2, off-diag -1), SPD. Exact
@@ -205,10 +187,9 @@ public class floatLiteratureTests
         // (= λ_max/λ_min since symmetric PD), and Cholesky (SPD succeeds) in one case.
         void Laplacian1D()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int n = 6;
-            var T = arena.floatLaplacian1D(n);   // diag 2, off-diag -1
+            var T = floatGallery.floatLaplacian1D(n);   // diag 2, off-diag -1
 
             float pi = (float)math.PI_DBL;
             float lamMax = (float)2 - (float)2 * math.cos((float)n * pi / (float)(n + 1));
@@ -217,13 +198,13 @@ public class floatLiteratureTests
             // condition number (read-only on T)
             AssertClose(Analysis.cond(in T), lamMax / lamMin, (float)1E-2);
 
-            var L = arena.floatMat(n, n);
+            var L = new floatMxN(n, n, Allocator.Temp);
             AssertTrue(CHO.decomp(in T, ref L));
 
             // eigenvalues match the closed form, descending: eig[i] = 2 - 2cos((n-i)π/(n+1))
-            var Tc = T.Copy();           // eigenDecomposition destroys its input
-            var eig = arena.floatVec(n);
-            var V = arena.floatMat(n, n);
+            var Tc = new floatMxN(in T, Allocator.Temp);           // eigenDecomposition destroys its input
+            var eig = new floatN(n, Allocator.Temp);
+            var V = new floatMxN(n, n, Allocator.Temp);
             AssertTrue(Eigen.decompInPlace(ref Tc, ref eig, ref V));   // must converge
 
             AssertTrue(Analysis.isOrthogonal(V, (float)1E-3));
@@ -233,8 +214,6 @@ public class floatLiteratureTests
                 float expected = (float)2 - (float)2 * math.cos((float)(n - i) * pi / (float)(n + 1));
                 AssertClose(eig[i], expected, (float)1E-3);
             }
-
-            arena.Dispose();
         }
 
         // QR must be scale-invariant: scaling A by 1e-7 must not change that A = Q·R reconstructs.
@@ -242,37 +221,35 @@ public class floatLiteratureTests
         // uniformly tiny matrix read as "zero" and QR produced garbage.)
         void QRScaleInvariance()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int n = 6;
             float scale = (float)1E-7;
 
-            var A = arena.floatRandomMat(n, n, -1f, 1f, 90211);
+            var A = GenerateOP.floatRandomMat(n, n, -1f, 1f, 90211);
             floatComp.mulInPlace(A, scale);   // entries now ~1e-7
 
-            var Q = A.Copy();
-            var R = arena.floatMat(n, n);
+            var Q = new floatMxN(in A, Allocator.Temp);
+            var R = new floatMxN(n, n, Allocator.Temp);
             QR.decompInPlace(ref Q, ref R);
 
             floatMxN recon = Blas.dot(Q, R);
-            float err = Analysis.MaxZeroError(A - recon);
+            var diff = new floatMxN(in A, Allocator.Temp);
+            floatComp.subInPlace(diff, recon);
+            float err = Analysis.MaxZeroError(diff);
 
             // relative to the matrix scale; pre-fix this was O(scale) (total garbage)
             AssertBelow(err / scale, (float)1E-3);
-
-            arena.Dispose();
         }
 
         // [[1,2],[2,1]] is symmetric but indefinite (eigenvalues 3, -1): Cholesky MUST return false.
         void IndefiniteCholeskyFails()
         {
-            var arena = new Arena(Allocator.Persistent);
 
-            var A = arena.floatMat(2, 2);
+            var A = new floatMxN(2, 2, Allocator.Temp);
             A[0, 0] = (float)1; A[0, 1] = (float)2;
             A[1, 0] = (float)2; A[1, 1] = (float)1;
 
-            var L = arena.floatMat(2, 2);
+            var L = new floatMxN(2, 2, Allocator.Temp);
             bool spd = CHO.decomp(in A, ref L);
 
             if (spd && Fail[0] == (float)0)
@@ -280,8 +257,6 @@ public class floatLiteratureTests
                 Fail[0] = (float)1; Fail[1] = (float)1; Fail[2] = (float)0; Fail[3] = (float)1;
             }
             Assert.IsFalse(spd);
-
-            arena.Dispose();
         }
 
         void AssertClose(float a, float b, float precision)

@@ -8,7 +8,7 @@ using Unity.Jobs;
 using Unity.Mathematics;
 
 // Milestone B test suite for the materialized-transpose optimization on fProxyBSR (block-CSR):
-//   * Arena.fProxyBSRTranspose(in A)         -- builds A^T as its own compressed BSR
+//   * A.Transpose(Allocator)                  -- builds A^T as its own compressed BSR
 //   * fProxyBSROperator(in A, in AT) two-arg  -- ApplyT forwards to spMV(AT, .) instead of spMVT(A, .)
 //
 // The whole point of the optimization is that y = A^T x is computed IDENTICALLY, just via a
@@ -63,44 +63,46 @@ public class fProxySparseTransposeTests
 
         static void AssertVecEq(in fProxyN a, in fProxyN b, fProxy tol)
         {
-            Assert.IsTrue(Analysis.isZero(a - b, tol));
+            var diff = new fProxyN(in a, Allocator.Temp);
+            fProxyComp.subInPlace(diff, b);
+            Assert.IsTrue(Analysis.isZero(diff, tol));
         }
 
         // A random rectangular BSR on a 3x2 block grid of 3x2 (BR x BC) blocks -> dense 9x4 (m > n).
         // BR != BC deliberately exercises the block-interior dimension swap (3x2 -> 2x3) in
         // fProxyBSRTranspose. Only 4 of the 6 block positions are filled (leaving (1,0) and (2,1)
         // empty) so genuine block sparsity -- not a dense grid -- is transposed.
-        static fProxyBSR BuildTallRectBSR(ref Arena arena)
+        static fProxyBSR BuildTallRectBSR()
         {
             const int blockRows = 3, blockCols = 2, BR = 3, BC = 2;
-            var b = arena.fProxyBSRBuilder(blockRows, blockCols, BR, BC, 4);
-            b.AddBlock(0, 0, arena.fProxyRandomMat(BR, BC, -1f, 1f, 70001));
-            b.AddBlock(0, 1, arena.fProxyRandomMat(BR, BC, -1f, 1f, 70002));
-            b.AddBlock(1, 1, arena.fProxyRandomMat(BR, BC, -1f, 1f, 70003));
-            b.AddBlock(2, 0, arena.fProxyRandomMat(BR, BC, -1f, 1f, 70004));
-            return b.ToBSR(ref arena);
+            var b = new fProxyBSRBuilder(blockRows, blockCols, BR, BC, Allocator.Temp, 4);
+            b.AddBlock(0, 0, GenerateOP.fProxyRandomMat(BR, BC, -1f, 1f, 70001));
+            b.AddBlock(0, 1, GenerateOP.fProxyRandomMat(BR, BC, -1f, 1f, 70002));
+            b.AddBlock(1, 1, GenerateOP.fProxyRandomMat(BR, BC, -1f, 1f, 70003));
+            b.AddBlock(2, 0, GenerateOP.fProxyRandomMat(BR, BC, -1f, 1f, 70004));
+            return b.ToBSR(Allocator.Temp);
         }
 
         // A random rectangular BSR on a 2x3 block grid of 2x3 (BR x BC) blocks -> dense 4x9 (m < n).
         // Block-interior transpose here is 2x3 -> 3x2. Again 4 of 6 block positions filled.
-        static fProxyBSR BuildWideRectBSR(ref Arena arena)
+        static fProxyBSR BuildWideRectBSR()
         {
             const int blockRows = 2, blockCols = 3, BR = 2, BC = 3;
-            var b = arena.fProxyBSRBuilder(blockRows, blockCols, BR, BC, 4);
-            b.AddBlock(0, 0, arena.fProxyRandomMat(BR, BC, -1f, 1f, 71001));
-            b.AddBlock(0, 2, arena.fProxyRandomMat(BR, BC, -1f, 1f, 71002));
-            b.AddBlock(1, 0, arena.fProxyRandomMat(BR, BC, -1f, 1f, 71003));
-            b.AddBlock(1, 1, arena.fProxyRandomMat(BR, BC, -1f, 1f, 71004));
-            return b.ToBSR(ref arena);
+            var b = new fProxyBSRBuilder(blockRows, blockCols, BR, BC, Allocator.Temp, 4);
+            b.AddBlock(0, 0, GenerateOP.fProxyRandomMat(BR, BC, -1f, 1f, 71001));
+            b.AddBlock(0, 2, GenerateOP.fProxyRandomMat(BR, BC, -1f, 1f, 71002));
+            b.AddBlock(1, 0, GenerateOP.fProxyRandomMat(BR, BC, -1f, 1f, 71003));
+            b.AddBlock(1, 1, GenerateOP.fProxyRandomMat(BR, BC, -1f, 1f, 71004));
+            return b.ToBSR(Allocator.Temp);
         }
 
         // Core cross-check shared by the tall/wide cases: materialize AT, and for a random x of
         // length A.M_Rows (both A^T x paths consume an m-vector: spMVT asserts SameDim(A.M_Rows, x.N)
         // and AT.N_Cols == A.M_Rows) prove spMV(AT, x) == spMVT(A, x). Also pin the transpose's
         // outer dimensions.
-        static void CrossCheckTranspose(ref Arena arena, in fProxyBSR A, uint seed)
+        static void CrossCheckTranspose(in fProxyBSR A, uint seed)
         {
-            var AT = arena.fProxyBSRTranspose(in A);
+            var AT = A.Transpose(Allocator.Temp);
 
             // Outer dimensions swap: A is m x n -> AT is n x m.
             Assert.IsTrue(AT.M_Rows == A.N_Cols);
@@ -108,7 +110,7 @@ public class fProxySparseTransposeTests
             // No blocks lost or gained by the (non-symmetric) transpose rebuild.
             Assert.IsTrue(AT.Nnzb == A.Nnzb);
 
-            var x = arena.fProxyRandomVec(A.M_Rows, -1f, 1f, seed);
+            var x = GenerateOP.fProxyRandomVec(A.M_Rows, -1f, 1f, seed);
 
             var y1 = BSR.spMV(in AT, in x);    // new cache-friendly forward traversal of A^T
             var y2 = BSR.spMVT(in A, in x);    // old on-the-fly scatter traversal
@@ -121,21 +123,17 @@ public class fProxySparseTransposeTests
         // ---- 1a. tall block grid (m > n) ----
         void TransposeMatchesSpMVT_TallBlockGrid()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = BuildTallRectBSR(ref arena);
+            var A = BuildTallRectBSR();
             Assert.IsTrue(A.M_Rows > A.N_Cols);       // genuinely m > n
-            CrossCheckTranspose(ref arena, in A, 72001u);
-            arena.Dispose();
+            CrossCheckTranspose(in A, 72001u);
         }
 
         // ---- 1b. wide block grid (m < n) ----
         void TransposeMatchesSpMVT_WideBlockGrid()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = BuildWideRectBSR(ref arena);
+            var A = BuildWideRectBSR();
             Assert.IsTrue(A.M_Rows < A.N_Cols);       // genuinely m < n
-            CrossCheckTranspose(ref arena, in A, 72101u);
-            arena.Dispose();
+            CrossCheckTranspose(in A, 72101u);
         }
 
         // ---- 2. operator ApplyT parity: one-arg (spMVT) vs two-arg (spMV over AT) ----
@@ -146,32 +144,29 @@ public class fProxySparseTransposeTests
         // one-line Apply cross-check guards against the extra field perturbing the forward path.
         void OperatorApplyTParity()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = BuildTallRectBSR(ref arena);      // 9 x 4
-            var AT = arena.fProxyBSRTranspose(in A);
+            var A = BuildTallRectBSR();      // 9 x 4
+            var AT = A.Transpose(Allocator.Temp);
 
             var op1 = new fProxyBSROperator(in A);        // one-arg: ApplyT == on-the-fly spMVT(A, .)
             var op2 = new fProxyBSROperator(in A, in AT); // two-arg: ApplyT == spMV(AT, .)
 
             // ApplyT: y = A^T x, x length m = A.M_Rows, y length n = A.N_Cols. y must not alias x,
             // and each operator needs its own destination.
-            var xT = arena.fProxyRandomVec(A.M_Rows, -1f, 1f, 73001);
-            var yT1 = arena.fProxyVec(A.N_Cols);
-            var yT2 = arena.fProxyVec(A.N_Cols);
+            var xT = GenerateOP.fProxyRandomVec(A.M_Rows, -1f, 1f, 73001);
+            var yT1 = new fProxyN(A.N_Cols, Allocator.Temp);
+            var yT2 = new fProxyN(A.N_Cols, Allocator.Temp);
             op1.ApplyT(in xT, ref yT1);
             op2.ApplyT(in xT, ref yT2);
             AssertVecEq(in yT1, in yT2, Tol());
 
             // Apply: y = A x, x length n = A.N_Cols, y length m = A.M_Rows. Should be identical
             // between the two operators (both call spMV(A, .)).
-            var xF = arena.fProxyRandomVec(A.N_Cols, -1f, 1f, 73002);
-            var yF1 = arena.fProxyVec(A.M_Rows);
-            var yF2 = arena.fProxyVec(A.M_Rows);
+            var xF = GenerateOP.fProxyRandomVec(A.N_Cols, -1f, 1f, 73002);
+            var yF1 = new fProxyN(A.M_Rows, Allocator.Temp);
+            var yF2 = new fProxyN(A.M_Rows, Allocator.Temp);
             op1.Apply(in xF, ref yF1);
             op2.Apply(in xF, ref yF2);
             AssertVecEq(in yF1, in yF2, Tol());
-
-            arena.Dispose();
         }
 
         // ---- 3. symmetric BSR: transpose is a value-identical no-op ----
@@ -182,19 +177,17 @@ public class fProxySparseTransposeTests
         // Symmetric flag) are a cheap confirmation that no needless rebuild happened.
         void SymmetricNoOp()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             const int BR = 2, nb = 3;                 // 3x3 block grid of 2x2 blocks -> 6x6 dense
             int dim = BR * nb;
             fProxy strong = (fProxy)dim;
 
-            var s = arena.fProxyBSRBuilder(nb, nb, BR, BR, nb + 2);
+            var s = new fProxyBSRBuilder(nb, nb, BR, BR, Allocator.Temp, nb + 2);
 
             // Diagonal blocks: D_i = M_i^T M_i + strong*I is genuinely symmetric, so the assembled
             // matrix is a true symmetric matrix (not merely symmetric STORAGE of an asymmetric one).
             for (int i = 0; i < nb; i++)
             {
-                var Mi = arena.fProxyRandomMat(BR, BR, -1f, 1f, (uint)(74000 + i));
+                var Mi = GenerateOP.fProxyRandomMat(BR, BR, -1f, 1f, (uint)(74000 + i));
                 var Di = Blas.dot(Mi, Mi, true);
                 for (int d = 0; d < BR; d++)
                     Di[d, d] += strong;
@@ -202,13 +195,13 @@ public class fProxySparseTransposeTests
             }
 
             // Two lower off-diagonal blocks (blockCol < blockRow, as ToBSRSymmetric requires).
-            s.AddBlock(1, 0, arena.fProxyRandomMat(BR, BR, -0.2f, 0.2f, 74100));
-            s.AddBlock(2, 1, arena.fProxyRandomMat(BR, BR, -0.2f, 0.2f, 74101));
+            s.AddBlock(1, 0, GenerateOP.fProxyRandomMat(BR, BR, -0.2f, 0.2f, 74100));
+            s.AddBlock(2, 1, GenerateOP.fProxyRandomMat(BR, BR, -0.2f, 0.2f, 74101));
 
-            var A = s.ToBSRSymmetric(ref arena);
+            var A = s.ToBSRSymmetric(Allocator.Temp);
             Assert.IsTrue(A.Symmetric);
 
-            var AT = arena.fProxyBSRTranspose(in A);
+            var AT = A.Transpose(Allocator.Temp);
 
             // No-op: same structure (returned A unchanged, no rebuild).
             Assert.IsTrue(AT.Symmetric);
@@ -219,12 +212,10 @@ public class fProxySparseTransposeTests
 
             // Numerical no-op: transposing a symmetric matrix leaves spMV unchanged (square -> x
             // length dim = N_Cols = M_Rows).
-            var x = arena.fProxyRandomVec(dim, -1f, 1f, 74200);
+            var x = GenerateOP.fProxyRandomVec(dim, -1f, 1f, 74200);
             var yA = BSR.spMV(in A, in x);
             var yAT = BSR.spMV(in AT, in x);
             AssertVecEq(in yAT, in yA, Tol());
-
-            arena.Dispose();
         }
     }
 

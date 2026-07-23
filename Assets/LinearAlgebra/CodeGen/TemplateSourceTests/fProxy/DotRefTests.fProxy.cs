@@ -62,185 +62,177 @@ public class fProxyDotRefTests
         // ref==alloc equality test misses when the destination is freshly allocated.
         void DirtyDest()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int M = 6;
             int N = 4;
             int K = 5;
 
             // mat·vec
             {
-                var A = arena.fProxyRandomMat(M, N, -1f, 1f, 12321);
-                var x = arena.fProxyRandomVec(N, -1f, 1f, 45654);
+                var A = GenerateOP.fProxyRandomMat(M, N, -1f, 1f, 12321);
+                var x = GenerateOP.fProxyRandomVec(N, -1f, 1f, 45654);
                 var R = Blas.dot(A, x);
 
-                var D = arena.fProxyVec(M);
+                var D = new fProxyN(M, Allocator.Temp);
                 fProxyComp.addInPlace(D, (fProxy)999);   // dirty the destination
                 Blas.dot(in A, in x, ref D);
-                Assert.IsTrue(Analysis.isZero(R - D, Tol()));
+                var diff = new fProxyN(in R, Allocator.Temp);
+                fProxyComp.subInPlace(diff, D);
+                Assert.IsTrue(Analysis.isZero(diff, Tol()));
             }
 
             // vec·mat
             {
-                var y = arena.fProxyRandomVec(M, -1f, 1f, 11221);
-                var A = arena.fProxyRandomMat(M, N, -1f, 1f, 33443);
+                var y = GenerateOP.fProxyRandomVec(M, -1f, 1f, 11221);
+                var A = GenerateOP.fProxyRandomMat(M, N, -1f, 1f, 33443);
                 var R = Blas.dot(y, A);
 
-                var D = arena.fProxyVec(N);
+                var D = new fProxyN(N, Allocator.Temp);
                 fProxyComp.addInPlace(D, (fProxy)999);
                 Blas.dot(in y, in A, ref D);
-                Assert.IsTrue(Analysis.isZero(R - D, Tol()));
+                var diff = new fProxyN(in R, Allocator.Temp);
+                fProxyComp.subInPlace(diff, D);
+                Assert.IsTrue(Analysis.isZero(diff, Tol()));
             }
 
             // mat·mat
             {
-                var a = arena.fProxyRandomMat(M, K, -1f, 1f, 32123);
-                var b = arena.fProxyRandomMat(K, N, -1f, 1f, 65456);
+                var a = GenerateOP.fProxyRandomMat(M, K, -1f, 1f, 32123);
+                var b = GenerateOP.fProxyRandomMat(K, N, -1f, 1f, 65456);
                 var R = Blas.dot(a, b, false);
 
-                var D = arena.fProxyMat(M, N);
+                var D = new fProxyMxN(M, N, Allocator.Temp);
                 fProxyComp.addInPlace(D, (fProxy)999);
                 Blas.dot(in a, in b, ref D, false);
-                Assert.IsTrue(Analysis.isZero(R - D, Tol()));
+                var diff = new fProxyMxN(in R, Allocator.Temp);
+                fProxyComp.subInPlace(diff, D);
+                Assert.IsTrue(Analysis.isZero(diff, Tol()));
             }
-
-            arena.Dispose();
         }
 
         // outer product: a (col, length M) * b (row, length N) -> M x N
         void OuterDot()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int M = 5;
             int N = 7;
 
-            var a = arena.fProxyRandomVec(M, -1f, 1f, 11111);
-            var b = arena.fProxyRandomVec(N, -1f, 1f, 22222);
+            var a = GenerateOP.fProxyRandomVec(M, -1f, 1f, 11111);
+            var b = GenerateOP.fProxyRandomVec(N, -1f, 1f, 22222);
 
             // allocating reference
             var R = Blas.outerDot(a, b);
 
             // ref-dest into a preallocated M x N destination
-            var D = arena.fProxyMat(M, N);
+            var D = new fProxyMxN(M, N, Allocator.Temp);
             Blas.outerDot(in a, in b, ref D);
 
-            Assert.IsTrue(Analysis.isZero(R - D, Tol()));
-
-            arena.Dispose();
+            var diff = new fProxyMxN(in R, Allocator.Temp);
+            fProxyComp.subInPlace(diff, D);
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
         }
 
         // matrix (M x N) * vector (length N) -> vector (length M)
         void MatVec()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int M = 6;
             int N = 4;
 
-            var A = arena.fProxyRandomMat(M, N, -1f, 1f, 33333);
-            var x = arena.fProxyRandomVec(N, -1f, 1f, 44444);
+            var A = GenerateOP.fProxyRandomMat(M, N, -1f, 1f, 33333);
+            var x = GenerateOP.fProxyRandomVec(N, -1f, 1f, 44444);
 
             var R = Blas.dot(A, x);
 
-            var D = arena.fProxyVec(M);
+            var D = new fProxyN(M, Allocator.Temp);
             Blas.dot(in A, in x, ref D);
 
-            Assert.IsTrue(Analysis.isZero(R - D, Tol()));
-
-            arena.Dispose();
+            var diff = new fProxyN(in R, Allocator.Temp);
+            fProxyComp.subInPlace(diff, D);
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
         }
 
         // vector (length M) * matrix (M x N) -> vector (length N)
         void VecMat()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int M = 6;
             int N = 4;
 
-            var y = arena.fProxyRandomVec(M, -1f, 1f, 55555);
-            var A = arena.fProxyRandomMat(M, N, -1f, 1f, 66666);
+            var y = GenerateOP.fProxyRandomVec(M, -1f, 1f, 55555);
+            var A = GenerateOP.fProxyRandomMat(M, N, -1f, 1f, 66666);
 
             var R = Blas.dot(y, A);
 
-            var D = arena.fProxyVec(N);
+            var D = new fProxyN(N, Allocator.Temp);
             Blas.dot(in y, in A, ref D);
 
-            Assert.IsTrue(Analysis.isZero(R - D, Tol()));
-
-            arena.Dispose();
+            var diff = new fProxyN(in R, Allocator.Temp);
+            fProxyComp.subInPlace(diff, D);
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
         }
 
         // matrix (M x K) * matrix (K x N) -> matrix (M x N), transposeA = false
         void MatMat()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int M = 5;
             int K = 3;
             int N = 7;
 
-            var a = arena.fProxyRandomMat(M, K, -1f, 1f, 77777);
-            var b = arena.fProxyRandomMat(K, N, -1f, 1f, 88888);
+            var a = GenerateOP.fProxyRandomMat(M, K, -1f, 1f, 77777);
+            var b = GenerateOP.fProxyRandomMat(K, N, -1f, 1f, 88888);
 
             var R = Blas.dot(a, b, false);
 
-            var D = arena.fProxyMat(M, N);
+            var D = new fProxyMxN(M, N, Allocator.Temp);
             Blas.dot(in a, in b, ref D, false);
 
-            Assert.IsTrue(Analysis.isZero(R - D, Tol()));
-
-            arena.Dispose();
+            var diff = new fProxyMxN(in R, Allocator.Temp);
+            fProxyComp.subInPlace(diff, D);
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
         }
 
         // matrix Aᵀ * matrix b: a is (K x M), b is (K x N) -> (M x N), transposeA = true
         void MatMatTransA()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int K = 4;
             int M = 5;
             int N = 6;
 
-            var a = arena.fProxyRandomMat(K, M, -1f, 1f, 99999);
-            var b = arena.fProxyRandomMat(K, N, -1f, 1f, 10101);
+            var a = GenerateOP.fProxyRandomMat(K, M, -1f, 1f, 99999);
+            var b = GenerateOP.fProxyRandomMat(K, N, -1f, 1f, 10101);
 
             var R = Blas.dot(a, b, true);
 
             // result is M x N (a.N_Cols x b.N_Cols)
-            var D = arena.fProxyMat(M, N);
+            var D = new fProxyMxN(M, N, Allocator.Temp);
             Blas.dot(in a, in b, ref D, true);
 
             // ref == allocating (delegation check)
-            Assert.IsTrue(Analysis.isZero(R - D, Tol()));
+            var diff1 = new fProxyMxN(in R, Allocator.Temp);
+            fProxyComp.subInPlace(diff1, D);
+            Assert.IsTrue(Analysis.isZero(diff1, Tol()));
 
             // Independent oracle: Aᵀ·B computed via an explicit transpose + plain matmul,
             // which exercises a different code path than the fused transposeA kernel.
             var oracle = Blas.dot(Blas.trans(a), b);
-            Assert.IsTrue(Analysis.isZero(R - oracle, Tol()));
-
-            arena.Dispose();
+            var diff2 = new fProxyMxN(in R, Allocator.Temp);
+            fProxyComp.subInPlace(diff2, oracle);
+            Assert.IsTrue(Analysis.isZero(diff2, Tol()));
         }
 
         // transpose of a non-square matrix (M x N) -> (N x M)
         void Trans()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int M = 5;
             int N = 8;
 
-            var A = arena.fProxyRandomMat(M, N, -1f, 1f, 20202);
+            var A = GenerateOP.fProxyRandomMat(M, N, -1f, 1f, 20202);
 
             var R = Blas.trans(A);
 
-            var D = arena.fProxyMat(N, M);
+            var D = new fProxyMxN(N, M, Allocator.Temp);
             Blas.trans(in A, ref D);
 
-            Assert.IsTrue(Analysis.isZero(R - D, Tol()));
-
-            arena.Dispose();
+            var diff = new fProxyMxN(in R, Allocator.Temp);
+            fProxyComp.subInPlace(diff, D);
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
         }
     }
 

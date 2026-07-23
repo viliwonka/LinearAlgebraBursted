@@ -195,13 +195,11 @@ public class doubleEigenTests
         // eigenvalue tolerance 100*ZeroThreshold is comfortably above float Jacobi noise.
         public void EigenIdentity()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 4;
 
-            var A = arena.doubleIdentityMat(n);
-            var eig = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var A = GenerateOP.doubleIdentityMat(n);
+            var eig = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
 
             bool converged = Eigen.decompInPlace(ref A, ref eig, ref V);
 
@@ -211,26 +209,22 @@ public class doubleEigenTests
                 AssertClose(eig[i], (double)1, (double)100 * Consts.doubleZeroThreshold);
 
             Assert.IsTrue(Analysis.isOrthogonal(V, (double)100 * Consts.doubleZeroThreshold));
-
-            arena.Dispose();
         }
 
         // diag(3, -2, 0.5, 5): eigenvalues are the diagonal, sorted DESCENDING BY VALUE
         // -> (5, 3, 0.5, -2). V orthogonal. Diagonal input is exact, tolerance generous.
         public void EigenDiagonal()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 4;
 
-            var A = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Temp);
             A[0, 0] = (double)3;
             A[1, 1] = (double)(-2);
             A[2, 2] = (double)0.5;
             A[3, 3] = (double)5;
 
-            var eig = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var eig = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
 
             bool converged = Eigen.decompInPlace(ref A, ref eig, ref V);
 
@@ -244,26 +238,22 @@ public class doubleEigenTests
             AssertDescending(in eig, n);
 
             Assert.IsTrue(Analysis.isOrthogonal(V, (double)100 * Consts.doubleZeroThreshold));
-
-            arena.Dispose();
         }
 
         // [[2,1],[1,2]]: eigenvalues 3 (vector (1,1)/sqrt2) and 1 (vector (1,-1)/sqrt2).
         // Sign-agnostic: assert A_orig * v_k ~= lambda_k * v_k for each column.
         public void EigenKnown2x2()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 2;
 
-            var A = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Temp);
             A[0, 0] = (double)2; A[0, 1] = (double)1;
             A[1, 0] = (double)1; A[1, 1] = (double)2;
 
-            var Aorig = A.Copy();
+            var Aorig = new doubleMxN(in A, Allocator.Temp);
 
-            var eig = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var eig = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
 
             bool converged = Eigen.decompInPlace(ref A, ref eig, ref V);
 
@@ -279,8 +269,6 @@ public class doubleEigenTests
 
             // V orthogonal
             Assert.IsTrue(Analysis.isOrthogonal(V, (double)100 * Consts.doubleZeroThreshold));
-
-            arena.Dispose();
         }
 
         // 8x8 random symmetric (values ~ +-5). Check: converged, V orthogonal, eigenvalues
@@ -289,11 +277,9 @@ public class doubleEigenTests
         // float Jacobi residual ~ few * 1e-5 absolute -> 1000*ZeroThreshold*(1+|lambda|).
         public void EigenRandomSymmetric()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 8;
 
-            var A = arena.doubleRandomMat(n, n, (double)(-5), (double)5, 8123451);
+            var A = GenerateOP.doubleRandomMat(n, n, (double)(-5), (double)5, 8123451);
             // symmetrize in place
             for (int i = 0; i < n; i++)
                 for (int j = i + 1; j < n; j++)
@@ -303,10 +289,10 @@ public class doubleEigenTests
                     A[j, i] = avg;
                 }
 
-            var Aorig = A.Copy();
+            var Aorig = new doubleMxN(in A, Allocator.Temp);
 
-            var eig = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var eig = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
 
             bool converged = Eigen.decompInPlace(ref A, ref eig, ref V);
 
@@ -330,8 +316,6 @@ public class doubleEigenTests
                 sumEig += eig[i];
             // trace magnitude up to ~8*5 = 40; allow magnitude-scaled tolerance.
             AssertClose(trace, sumEig, (double)1000 * Consts.doubleZeroThreshold);
-
-            arena.Dispose();
         }
 
         // Same setup as EigenRandomSymmetric (different seed): reconstruct V*diag(lambda)*V^T
@@ -339,11 +323,9 @@ public class doubleEigenTests
         // 8x8 with entries up to ~5 lands around 1e-5..1e-4 absolute -> 1000*ZeroThreshold.
         public void EigenReconstruct()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 8;
 
-            var A = arena.doubleRandomMat(n, n, (double)(-5), (double)5, 5571903);
+            var A = GenerateOP.doubleRandomMat(n, n, (double)(-5), (double)5, 5571903);
             for (int i = 0; i < n; i++)
                 for (int j = i + 1; j < n; j++)
                 {
@@ -352,22 +334,23 @@ public class doubleEigenTests
                     A[j, i] = avg;
                 }
 
-            var Aorig = A.Copy();
+            var Aorig = new doubleMxN(in A, Allocator.Temp);
 
-            var eig = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var eig = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
 
             bool converged = Eigen.decompInPlace(ref A, ref eig, ref V);
 
             Assert.IsTrue(converged);
 
             // Reconstruct: recon = V * diag(eig) * V^T
-            var diagE = arena.doubleDiagonalMat(in eig);
+            var diagE = GenerateOP.doubleDiagonalMat(in eig);
             var Vd = Blas.dot(V, diagE);
             var Vt = Blas.trans(V);
             var recon = Blas.dot(Vd, Vt);
 
-            doubleMxN shouldBeZero = Aorig - recon;
+            var shouldBeZero = new doubleMxN(in Aorig, Allocator.Temp);
+            doubleComp.subInPlace(shouldBeZero, recon);
 
             if (Analysis.isAnyNan(in shouldBeZero))
                 throw new System.Exception("TestJob: NaN detected");
@@ -382,8 +365,6 @@ public class doubleEigenTests
                 Fail[3] = zeroError - precision;
             }
             Assert.IsTrue(Analysis.isZero(in shouldBeZero, precision));
-
-            arena.Dispose();
         }
 
         // 6x6 PSD matrix A = B^T B. Eigenvalues must all be >= -tol and equal the singular
@@ -393,14 +374,12 @@ public class doubleEigenTests
         // A = B^T B with B entries ~ +-3 -> eigenvalues up to ~ order 100; scale tolerance.
         public void EigenPSDvsSVD()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 6;
 
-            var B = arena.doubleRandomMat(n, n, (double)(-3), (double)3, 9920017);
+            var B = GenerateOP.doubleRandomMat(n, n, (double)(-3), (double)3, 9920017);
 
             // A = B^T B (manual), symmetric PSD
-            var A = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Temp);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
                 {
@@ -418,10 +397,10 @@ public class doubleEigenTests
                     A[j, i] = avg;
                 }
 
-            var Aeig = A.Copy();   // destroyed by Eigen.decompInPlace
+            var Aeig = new doubleMxN(in A, Allocator.Temp);   // destroyed by Eigen.decompInPlace
 
-            var eig = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var eig = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
 
             bool converged = Eigen.decompInPlace(ref Aeig, ref eig, ref V);
             Assert.IsTrue(converged);
@@ -442,7 +421,7 @@ public class doubleEigenTests
             }
 
             // singular values via SVD.values on the untouched A (preserved, no copy needed)
-            var S = arena.doubleVec(n);
+            var S = new doubleN(n, Allocator.Temp);
             bool svdOk = SVD.values(in A, ref S);
             Assert.IsTrue(svdOk);
 
@@ -461,21 +440,16 @@ public class doubleEigenTests
                     Fail[3] = diff;
                 }
                 Assert.IsTrue(diff <= tol);
-            }
-
-            arena.Dispose();
-        }
+            }        }
 
         // 5x5 zero matrix: converged, all eigenvalues 0, V orthogonal (stays identity).
         public void EigenZero()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
 
-            var A = arena.doubleMat(n, n);
-            var eig = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Temp);
+            var eig = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
 
             bool converged = Eigen.decompInPlace(ref A, ref eig, ref V);
 
@@ -488,8 +462,6 @@ public class doubleEigenTests
                 AssertClose(eig[i], (double)0, (double)100 * Consts.doubleZeroThreshold);
 
             Assert.IsTrue(Analysis.isOrthogonal(V, (double)100 * Consts.doubleZeroThreshold));
-
-            arena.Dispose();
         }
 
         // Rank-1 projection A = v*vᵀ (v = (1,2,3,1)): SINGULAR symmetric matrix whose eigenvalues
@@ -499,23 +471,21 @@ public class doubleEigenTests
         // the trailing (null-space) eigenvectors still form an orthonormal V.
         public void EigenRank1Projection()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 4;
 
-            var v = arena.doubleVec(n);
+            var v = new doubleN(n, Allocator.Temp);
             v[0] = (double)1; v[1] = (double)2; v[2] = (double)3; v[3] = (double)1;
             double vv = (double)0;
             for (int i = 0; i < n; i++) vv += v[i] * v[i]; // = 15
 
-            var A = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Temp);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
                     A[i, j] = v[i] * v[j];
 
-            var Aorig = A.Copy();
-            var eig = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var Aorig = new doubleMxN(in A, Allocator.Temp);
+            var eig = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
 
             bool converged = Eigen.decompInPlace(ref A, ref eig, ref V);
             Assert.IsTrue(converged);
@@ -531,8 +501,6 @@ public class doubleEigenTests
             AssertDescending(in eig, n);
             AssertEigenResidual(in Aorig, in V, in eig, n);
             Assert.IsTrue(Analysis.isOrthogonal(V, tol));
-
-            arena.Dispose();
         }
 
         // Triangle-graph Laplacian L = [[2,-1,-1],[-1,2,-1],[-1,-1,2]]: a classic SINGULAR symmetric
@@ -540,18 +508,16 @@ public class doubleEigenTests
         // known literature vector exercising a zero eigenvalue plus a repeated nonzero one.
         public void EigenLaplacianSingular()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 3;
 
-            var A = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Temp);
             A[0, 0] = (double)2; A[0, 1] = (double)(-1); A[0, 2] = (double)(-1);
             A[1, 0] = (double)(-1); A[1, 1] = (double)2; A[1, 2] = (double)(-1);
             A[2, 0] = (double)(-1); A[2, 1] = (double)(-1); A[2, 2] = (double)2;
 
-            var Aorig = A.Copy();
-            var eig = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var Aorig = new doubleMxN(in A, Allocator.Temp);
+            var eig = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
 
             bool converged = Eigen.decompInPlace(ref A, ref eig, ref V);
             Assert.IsTrue(converged);
@@ -565,8 +531,6 @@ public class doubleEigenTests
             AssertDescending(in eig, n);
             AssertEigenResidual(in Aorig, in V, in eig, n);
             Assert.IsTrue(Analysis.isOrthogonal(V, tol));
-
-            arena.Dispose();
         }
 
         // GALLERY KNOWN-ANSWER (Gallery.Special): n=5 Clement matrix — symmetric tridiagonal with
@@ -575,15 +539,13 @@ public class doubleEigenTests
         // 1000*ZeroThreshold absolute tolerance comfortably covers float Jacobi noise.
         public void EigenClement()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
 
-            var A = arena.doubleClement(n);
-            var Aorig = A.Copy();
+            var A = doubleGallery.doubleClement(n);
+            var Aorig = new doubleMxN(in A, Allocator.Temp);
 
-            var eig = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var eig = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
 
             bool converged = Eigen.decompInPlace(ref A, ref eig, ref V);
             Assert.IsTrue(converged);
@@ -600,8 +562,6 @@ public class doubleEigenTests
             AssertDescending(in eig, n);
             AssertEigenResidual(in Aorig, in V, in eig, n);
             Assert.IsTrue(Analysis.isOrthogonal(V, tol));
-
-            arena.Dispose();
         }
 
         // GALLERY KNOWN-ANSWER (Gallery.Special): n=5 Fiedler distance matrix F[i,j]=|i-j|. Known
@@ -611,15 +571,13 @@ public class doubleEigenTests
         // means the single positive value lands at eig[0].
         public void EigenFiedler()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
 
-            var A = arena.doubleFiedler(n);
-            var Aorig = A.Copy();
+            var A = doubleGallery.doubleFiedler(n);
+            var Aorig = new doubleMxN(in A, Allocator.Temp);
 
-            var eig = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var eig = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
 
             bool converged = Eigen.decompInPlace(ref A, ref eig, ref V);
             Assert.IsTrue(converged);
@@ -656,8 +614,6 @@ public class doubleEigenTests
             AssertDescending(in eig, n);
             AssertEigenResidual(in Aorig, in V, in eig, n);
             Assert.IsTrue(Analysis.isOrthogonal(V, (double)1000 * Consts.doubleZeroThreshold));
-
-            arena.Dispose();
         }
 
         // GALLERY KNOWN-ANSWER (Gallery.Special): n=5 DingDong symmetric Hankel matrix. Known
@@ -666,15 +622,13 @@ public class doubleEigenTests
         // absorbs Jacobi error while still asserting the bound is not exceeded.
         public void EigenDingDong()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
 
-            var A = arena.doubleDingDong(n);
-            var Aorig = A.Copy();
+            var A = doubleGallery.doubleDingDong(n);
+            var Aorig = new doubleMxN(in A, Allocator.Temp);
 
-            var eig = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var eig = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
 
             bool converged = Eigen.decompInPlace(ref A, ref eig, ref V);
             Assert.IsTrue(converged);
@@ -700,21 +654,17 @@ public class doubleEigenTests
             AssertDescending(in eig, n);
             AssertEigenResidual(in Aorig, in V, in eig, n);
             Assert.IsTrue(Analysis.isOrthogonal(V, margin));
-
-            arena.Dispose();
         }
 
         // Hilbert-like symmetric matrix with maxSweeps = 1: regardless of returned bool,
         // outputs must be finite (no NaN) and eigenvalues descending.
         public void EigenNonConvergence()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 8;
 
-            var A = arena.doubleHilbertMat(n);
-            var eig = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var A = GenerateOP.doubleHilbertMat(n);
+            var eig = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
 
             // maxSweeps = 1: convergence not asserted.
             Eigen.decompInPlace(ref A, ref eig, ref V, 1);
@@ -723,8 +673,6 @@ public class doubleEigenTests
             Assert.IsFalse(Analysis.isAnyNan(in V));
 
             AssertDescending(in eig, n);
-
-            arena.Dispose();
         }
 
         // ---------------------------------------------------------------------
@@ -735,18 +683,16 @@ public class doubleEigenTests
         // lambda ~= 5 (dominant), residual property ||A*v - lambda*v||_inf <= tol*max(1,|lambda|).
         public void PowerDiagonalDominant()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 4;
 
-            var A = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Temp);
             A[0, 0] = (double)5;
             A[1, 1] = (double)3;
             A[2, 2] = (double)1;
             A[3, 3] = (double)0.5;
 
-            var v = arena.doubleVec(n);   // zero vector -> deterministic seeding
-            var w = arena.doubleVec(n);
+            var v = new doubleN(n, Allocator.Temp);   // zero vector -> deterministic seeding
+            var w = new doubleN(n, Allocator.Temp);
 
             double tol = (double)10 * Consts.doubleZeroThreshold;
             bool ok = Eigen.powerIteration(in A, ref v, ref w, out double lambda, tol, 1000);
@@ -756,24 +702,20 @@ public class doubleEigenTests
             AssertClose(lambda, (double)5, (double)100 * Consts.doubleZeroThreshold);
 
             AssertPowerResidual(in A, in v, lambda, tol, n);
-
-            arena.Dispose();
         }
 
         // diag(-7, 2, 1): dominant BY MAGNITUDE is -7. lambda ~= -7, |v[0]| ~= 1 (e0 dir).
         public void PowerNegativeDominant()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 3;
 
-            var A = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Temp);
             A[0, 0] = (double)(-7);
             A[1, 1] = (double)2;
             A[2, 2] = (double)1;
 
-            var v = arena.doubleVec(n);
-            var w = arena.doubleVec(n);
+            var v = new doubleN(n, Allocator.Temp);
+            var w = new doubleN(n, Allocator.Temp);
 
             double tol = (double)10 * Consts.doubleZeroThreshold;
             bool ok = Eigen.powerIteration(in A, ref v, ref w, out double lambda, tol, 1000);
@@ -786,8 +728,6 @@ public class doubleEigenTests
             AssertClose(Unity.Mathematics.math.abs(v[0]), (double)1, (double)100 * Consts.doubleZeroThreshold);
 
             AssertPowerResidual(in A, in v, lambda, tol, n);
-
-            arena.Dispose();
         }
 
         // 6x6 random symmetric with a forced clear dominant eigenvalue (+12 boost on one
@@ -796,11 +736,9 @@ public class doubleEigenTests
         // value and magnitude, so the reference is eig[0] (largest by value == largest |.|).
         public void PowerSymmetricCrossCheck()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 6;
 
-            var A = arena.doubleRandomMat(n, n, (double)(-4), (double)4, 4471123);
+            var A = GenerateOP.doubleRandomMat(n, n, (double)(-4), (double)4, 4471123);
             for (int i = 0; i < n; i++)
                 for (int j = i + 1; j < n; j++)
                 {
@@ -811,12 +749,12 @@ public class doubleEigenTests
             // Force a clearly dominant positive eigenvalue (well separated in magnitude).
             A[0, 0] = A[0, 0] + (double)12;
 
-            var Apow = A.Copy();
-            var Aeig = A.Copy();
+            var Apow = new doubleMxN(in A, Allocator.Temp);
+            var Aeig = new doubleMxN(in A, Allocator.Temp);
 
             // reference: dominant eigenvalue by value (== by magnitude here, well separated)
-            var eig = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var eig = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
             bool econv = Eigen.decompInPlace(ref Aeig, ref eig, ref V);
             Assert.IsTrue(econv);
 
@@ -825,8 +763,8 @@ public class doubleEigenTests
             if (Unity.Mathematics.math.abs(eig[n - 1]) > Unity.Mathematics.math.abs(eig[0]))
                 reference = eig[n - 1];
 
-            var v = arena.doubleVec(n);
-            var w = arena.doubleVec(n);
+            var v = new doubleN(n, Allocator.Temp);
+            var w = new doubleN(n, Allocator.Temp);
 
             double tol = (double)10 * Consts.doubleZeroThreshold;
             bool ok = Eigen.powerIteration(in Apow, ref v, ref w, out double lambda, tol, 2000);
@@ -837,24 +775,20 @@ public class doubleEigenTests
             // magnitude up to ~16; scale tolerance by (1+|reference|).
             double scale = (double)1 + Unity.Mathematics.math.abs(reference);
             AssertClose(lambda, reference, (double)1000 * Consts.doubleZeroThreshold * scale);
-
-            arena.Dispose();
         }
 
         // 2x2 rotation [[0,-1],[1,0]] (eigenvalues +-i): power iteration cannot converge,
         // returns false; v finite, lambda finite (no NaN).
         public void PowerComplexPair()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 2;
 
-            var A = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Temp);
             A[0, 0] = (double)0; A[0, 1] = (double)(-1);
             A[1, 0] = (double)1; A[1, 1] = (double)0;
 
-            var v = arena.doubleVec(n);
-            var w = arena.doubleVec(n);
+            var v = new doubleN(n, Allocator.Temp);
+            var w = new doubleN(n, Allocator.Temp);
 
             double tol = (double)10 * Consts.doubleZeroThreshold;
             bool ok = Eigen.powerIteration(in A, ref v, ref w, out double lambda, tol, 200);
@@ -863,21 +797,17 @@ public class doubleEigenTests
             AssertFinite(lambda);
             for (int i = 0; i < n; i++)
                 AssertFinite(v[i]);
-
-            arena.Dispose();
         }
 
         // 3x3 zero matrix: A*v == 0, ||w|| == 0 path -> lambda set to 0, returns true.
         public void PowerZeroMatrix()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 3;
 
-            var A = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Temp);
 
-            var v = arena.doubleVec(n);
-            var w = arena.doubleVec(n);
+            var v = new doubleN(n, Allocator.Temp);
+            var w = new doubleN(n, Allocator.Temp);
 
             double tol = (double)10 * Consts.doubleZeroThreshold;
             bool ok = Eigen.powerIteration(in A, ref v, ref w, out double lambda, tol, 1000);
@@ -885,8 +815,6 @@ public class doubleEigenTests
             Assert.IsTrue(ok);
             AssertFinite(lambda);
             AssertClose(lambda, (double)0, (double)100 * Consts.doubleZeroThreshold);
-
-            arena.Dispose();
         }
 
         // ---------------------------------------------------------------------
@@ -904,18 +832,16 @@ public class doubleEigenTests
         // returns Converged on) -- and that at least one iteration was counted.
         public void PowerConvergedInfo()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 4;
 
-            var A = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Temp);
             A[0, 0] = (double)5;
             A[1, 1] = (double)3;
             A[2, 2] = (double)1;
             A[3, 3] = (double)0.5;
 
-            var v = arena.doubleVec(n);   // zero -> deterministic seeding
-            var w = arena.doubleVec(n);
+            var v = new doubleN(n, Allocator.Temp);   // zero -> deterministic seeding
+            var w = new doubleN(n, Allocator.Temp);
 
             double tol = (double)10 * Consts.doubleZeroThreshold;
             var info = Eigen.powerIteration(in A, ref v, ref w, out double lambda, tol, 1000);
@@ -938,8 +864,6 @@ public class doubleEigenTests
 
             // Converged counts the converging iteration too -> iterations >= 1.
             AssertTrue(info.iterations >= 1, (double)7);
-
-            arena.Dispose();
         }
 
         // powerIteration MAX-ITERATIONS field check (deterministic non-convergence). The 2x2 real
@@ -949,16 +873,14 @@ public class doubleEigenTests
         // and iterations == maxIter exactly.
         public void PowerMaxIterationsInfo()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 2;
 
-            var A = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Temp);
             A[0, 0] = (double)0; A[0, 1] = (double)(-1);
             A[1, 0] = (double)1; A[1, 1] = (double)0;
 
-            var v = arena.doubleVec(n);
-            var w = arena.doubleVec(n);
+            var v = new doubleN(n, Allocator.Temp);
+            var w = new doubleN(n, Allocator.Temp);
 
             int maxIter = 200;
             double tol = (double)10 * Consts.doubleZeroThreshold;
@@ -970,8 +892,6 @@ public class doubleEigenTests
             AssertTrue(info.iterations == maxIter, (double)4);
             // residual on a MaxIterations return is still the finite last-iterate residual (NOT NaN).
             AssertTrue(Unity.Mathematics.math.isfinite(info.residual), (double)5);
-
-            arena.Dispose();
         }
 
         // inversePowerIteration BREAKDOWN field check (deterministic). A = diag(1,-1) is INDEFINITE
@@ -981,14 +901,12 @@ public class doubleEigenTests
         // !Solved, status == Breakdown, and residual == NaN (the documented Breakdown residual).
         public void InversePowerBreakdownInfo()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 2;
 
-            var A = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Temp);
             A[0, 0] = (double)1; A[1, 1] = (double)(-1);   // indefinite -> CG breakdown
 
-            var v = arena.doubleVec(n);   // zero -> deterministic (1,2) seeding
+            var v = new doubleN(n, Allocator.Temp);   // zero -> deterministic (1,2) seeding
 
             var info = Eigen.inversePowerIteration(in A, ref v, out double lambda);
 
@@ -998,8 +916,6 @@ public class doubleEigenTests
             // residual is double.NaN on a Breakdown return. Use the Burst-safe double isnan overload
             // (self-inequality residual != residual is an equally valid check under FloatMode.Default).
             AssertTrue(Unity.Mathematics.math.isnan(info.residual), (double)4);
-
-            arena.Dispose();
         }
 
         // inversePowerIteration CONVERGED-residual check on an SPD operator that converges. The 1D
@@ -1012,18 +928,16 @@ public class doubleEigenTests
         // still catches an O(1)/NaN residual regression while staying above the honest cgTol floor.
         public void InversePowerConvergedInfo()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 12;
 
-            var A = arena.doubleLaplacian1D(n);
+            var A = doubleGallery.doubleLaplacian1D(n);
 
             // tol a multiple of cgTol (see inversePowerIteration's doc comment): consecutive
             // eigenpair estimates each come from a fresh CG solve accurate only to ~cgTol.
             double cgTol = Consts.doubleSqrtEps;
             double tol = (double)10 * cgTol;
 
-            var v = arena.doubleVec(n);   // zero -> deterministic seeding
+            var v = new doubleN(n, Allocator.Temp);   // zero -> deterministic seeding
 
             var info = Eigen.inversePowerIteration(in A, ref v, out double lambda, tol, 200, n, cgTol);
 
@@ -1041,8 +955,6 @@ public class doubleEigenTests
             AssertTrue(info.residual <= limit, (double)5);
 
             AssertTrue(info.iterations >= 1, (double)6);
-
-            arena.Dispose();
         }
 
         // ---------------------------------------------------------------------
@@ -1052,12 +964,10 @@ public class doubleEigenTests
         // n=5 identity: same oracle as EigenIdentity (eigenvalues == 1); QL variant, A is DESTROYED.
         public void EvSymIdentity()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
 
-            var A = arena.doubleIdentityMat(n);
-            var eig = arena.doubleVec(n);
+            var A = GenerateOP.doubleIdentityMat(n);
+            var eig = new doubleN(n, Allocator.Temp);
 
             bool ok = Eigen.valuesSymmetricInPlace(ref A, ref eig);
 
@@ -1068,19 +978,15 @@ public class doubleEigenTests
                 AssertClose(eig[i], (double)1, (double)100 * Consts.doubleZeroThreshold);
 
             AssertDescending(in eig, n);
-
-            arena.Dispose();
         }
 
         // diag(3, -2, 0.5, 5, -7, 1): eigenvalues == diagonal, sorted descending -> (5, 3, 1, 0.5, -2, -7)
         // (same oracle as EigenDiagonal; Householder leaves the diagonal untouched). A is DESTROYED.
         public void EvSymDiagonal()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 6;
 
-            var A = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Temp);
             A[0, 0] = (double)3;
             A[1, 1] = (double)(-2);
             A[2, 2] = (double)0.5;
@@ -1088,7 +994,7 @@ public class doubleEigenTests
             A[4, 4] = (double)(-7);
             A[5, 5] = (double)1;
 
-            var eig = arena.doubleVec(n);
+            var eig = new doubleN(n, Allocator.Temp);
 
             bool ok = Eigen.valuesSymmetricInPlace(ref A, ref eig);
 
@@ -1104,22 +1010,18 @@ public class doubleEigenTests
             AssertClose(eig[5], (double)(-7), tol);
 
             AssertDescending(in eig, n);
-
-            arena.Dispose();
         }
 
         // [[2,1],[1,2]]: same oracle as EigenKnown2x2 (eigenvalues 3, 1). A is DESTROYED.
         public void EvSymKnown2x2()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 2;
 
-            var A = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Temp);
             A[0, 0] = (double)2; A[0, 1] = (double)1;
             A[1, 0] = (double)1; A[1, 1] = (double)2;
 
-            var eig = arena.doubleVec(n);
+            var eig = new doubleN(n, Allocator.Temp);
 
             bool ok = Eigen.valuesSymmetricInPlace(ref A, ref eig);
 
@@ -1130,28 +1032,22 @@ public class doubleEigenTests
             AssertClose(eig[1], (double)1, (double)100 * Consts.doubleZeroThreshold);
 
             AssertDescending(in eig, n);
-
-            arena.Dispose();
         }
 
         // n=1 trivial: the sole eigenvalue equals the single entry (early-return path, no iteration).
         public void EvSymN1()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 1;
 
-            var A = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Temp);
             A[0, 0] = (double)(-3.25);
 
-            var eig = arena.doubleVec(n);
+            var eig = new doubleN(n, Allocator.Temp);
 
             bool ok = Eigen.valuesSymmetricInPlace(ref A, ref eig);
 
             Assert.IsTrue(ok);
             AssertClose(eig[0], (double)(-3.25), (double)100 * Consts.doubleZeroThreshold);
-
-            arena.Dispose();
         }
 
         // CROSS-CHECK vs the Jacobi Eigen.decompInPlace: for n=6 and n=8 random SYMMETRIC matrices,
@@ -1166,9 +1062,7 @@ public class doubleEigenTests
 
         private void CrossCheckOne(int n, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.doubleRandomMat(n, n, (double)(-5), (double)5, seed);
+            var A = GenerateOP.doubleRandomMat(n, n, (double)(-5), (double)5, seed);
             for (int i = 0; i < n; i++)
                 for (int j = i + 1; j < n; j++)
                 {
@@ -1177,15 +1071,15 @@ public class doubleEigenTests
                     A[j, i] = avg;
                 }
 
-            var Ajac = A.Copy();   // destroyed by Eigen.decompInPlace
-            var Aql = A.Copy();    // destroyed by Eigen.valuesSymmetricInPlace
+            var Ajac = new doubleMxN(in A, Allocator.Temp);   // destroyed by Eigen.decompInPlace
+            var Aql = new doubleMxN(in A, Allocator.Temp);    // destroyed by Eigen.valuesSymmetricInPlace
 
-            var eigJac = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var eigJac = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
             bool jacOk = Eigen.decompInPlace(ref Ajac, ref eigJac, ref V);
             Assert.IsTrue(jacOk);
 
-            var eigQL = arena.doubleVec(n);
+            var eigQL = new doubleN(n, Allocator.Temp);
             bool qlOk = Eigen.valuesSymmetricInPlace(ref Aql, ref eigQL);
             Assert.IsTrue(qlOk);
 
@@ -1206,10 +1100,7 @@ public class doubleEigenTests
                     Fail[3] = diff;
                 }
                 Assert.IsTrue(diff <= tol);
-            }
-
-            arena.Dispose();
-        }
+            }        }
 
         // LITERATURE KNOWN-ANSWER: n=6 path-graph (1D Laplacian) tridiagonal with diag 2 and
         // off-diagonal -1. Eigenvalues are EXACTLY lambda_k = 2 - 2*cos(k*pi/(n+1)), k=1..n. Sorted
@@ -1217,11 +1108,9 @@ public class doubleEigenTests
         // absolute tolerance covers float QL noise.
         public void EvSymLaplacian()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 6;
 
-            var A = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Temp);
             for (int i = 0; i < n; i++)
             {
                 A[i, i] = (double)2;
@@ -1232,7 +1121,7 @@ public class doubleEigenTests
                 }
             }
 
-            var eig = arena.doubleVec(n);
+            var eig = new doubleN(n, Allocator.Temp);
 
             bool ok = Eigen.valuesSymmetricInPlace(ref A, ref eig);
 
@@ -1249,8 +1138,6 @@ public class doubleEigenTests
             }
 
             AssertDescending(in eig, n);
-
-            arena.Dispose();
         }
 
         // ---------------------------------------------------------------------
@@ -1260,13 +1147,11 @@ public class doubleEigenTests
         // n=5 identity: same oracle as EigenIdentity; tred2/tql2 variant, A is DESTROYED.
         public void EsymIdentity()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
 
-            var A = arena.doubleIdentityMat(n);
-            var eig = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var A = GenerateOP.doubleIdentityMat(n);
+            var eig = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
 
             bool ok = Eigen.symmetricInPlace(ref A, ref eig, ref V);
 
@@ -1280,8 +1165,6 @@ public class doubleEigenTests
             AssertDescending(in eig, n);
 
             Assert.IsTrue(Analysis.isOrthogonal(V, (double)100 * Consts.doubleZeroThreshold));
-
-            arena.Dispose();
         }
 
         // diag(3, -2, 0.5, 5, -7): eigenvalues == diagonal, sorted descending -> (5, 3, 0.5, -2, -7)
@@ -1289,21 +1172,19 @@ public class doubleEigenTests
         // pin exact V we verify the decomposition reconstructs A = V*diag(eig)*V^T and that V is orthogonal.
         public void EsymDiagonal()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
 
-            var A = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Temp);
             A[0, 0] = (double)3;
             A[1, 1] = (double)(-2);
             A[2, 2] = (double)0.5;
             A[3, 3] = (double)5;
             A[4, 4] = (double)(-7);
 
-            var Aorig = A.Copy();
+            var Aorig = new doubleMxN(in A, Allocator.Temp);
 
-            var eig = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var eig = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
 
             bool ok = Eigen.symmetricInPlace(ref A, ref eig, ref V);
 
@@ -1324,25 +1205,21 @@ public class doubleEigenTests
             AssertReconstruction(in Aorig, in V, in eig, n, (double)1000 * Consts.doubleZeroThreshold);
 
             Assert.IsTrue(Analysis.isOrthogonal(V, tol));
-
-            arena.Dispose();
         }
 
         // [[2,1],[1,2]]: same oracle as EigenKnown2x2 (eigenvalues 3, 1); sign-agnostic eigenvector check.
         public void EsymKnown2x2()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 2;
 
-            var A = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Temp);
             A[0, 0] = (double)2; A[0, 1] = (double)1;
             A[1, 0] = (double)1; A[1, 1] = (double)2;
 
-            var Aorig = A.Copy();
+            var Aorig = new doubleMxN(in A, Allocator.Temp);
 
-            var eig = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var eig = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
 
             bool ok = Eigen.symmetricInPlace(ref A, ref eig, ref V);
 
@@ -1356,8 +1233,6 @@ public class doubleEigenTests
             AssertEigenResidual(in Aorig, in V, in eig, n);
 
             Assert.IsTrue(Analysis.isOrthogonal(V, (double)100 * Consts.doubleZeroThreshold));
-
-            arena.Dispose();
         }
 
         // RECONSTRUCTION on random symmetric matrices (n=6, n=8): keep a copy of A before it is
@@ -1370,13 +1245,11 @@ public class doubleEigenTests
 
         private void ReconstructOne(int n, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
+            var A = MakeRandomSymmetric(n, seed);
+            var Aorig = new doubleMxN(in A, Allocator.Temp);
 
-            var A = MakeRandomSymmetric(ref arena, n, seed);
-            var Aorig = A.Copy();
-
-            var eig = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var eig = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
 
             bool ok = Eigen.symmetricInPlace(ref A, ref eig, ref V);
 
@@ -1385,8 +1258,6 @@ public class doubleEigenTests
             Assert.IsFalse(Analysis.isAnyNan(in V));
 
             AssertReconstruction(in Aorig, in V, in eig, n, (double)1000 * Consts.doubleZeroThreshold);
-
-            arena.Dispose();
         }
 
         // ORTHOGONALITY on random symmetric matrices (n=6, n=8): ||V^T V - I|| small.
@@ -1398,12 +1269,10 @@ public class doubleEigenTests
 
         private void OrthogonalityOne(int n, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
+            var A = MakeRandomSymmetric(n, seed);
 
-            var A = MakeRandomSymmetric(ref arena, n, seed);
-
-            var eig = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var eig = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
 
             bool ok = Eigen.symmetricInPlace(ref A, ref eig, ref V);
 
@@ -1434,8 +1303,6 @@ public class doubleEigenTests
             Assert.IsTrue(maxErr <= precision);
 
             Assert.IsTrue(Analysis.isOrthogonal(V, precision));
-
-            arena.Dispose();
         }
 
         // EIGENPAIR residual on random symmetric matrices (n=6, n=8): for each i,
@@ -1448,13 +1315,11 @@ public class doubleEigenTests
 
         private void EigenpairOne(int n, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
+            var A = MakeRandomSymmetric(n, seed);
+            var Aorig = new doubleMxN(in A, Allocator.Temp);
 
-            var A = MakeRandomSymmetric(ref arena, n, seed);
-            var Aorig = A.Copy();
-
-            var eig = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var eig = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
 
             bool ok = Eigen.symmetricInPlace(ref A, ref eig, ref V);
 
@@ -1464,8 +1329,6 @@ public class doubleEigenTests
 
             AssertDescending(in eig, n);
             AssertEigenResidual(in Aorig, in V, in eig, n);
-
-            arena.Dispose();
         }
 
         // CROSS-CHECK eigenvalues vs the trusted values-only Eigen.valuesSymmetricInPlace on the SAME
@@ -1479,19 +1342,17 @@ public class doubleEigenTests
 
         private void CrossCheckValuesOne(int n, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
+            var A = MakeRandomSymmetric(n, seed);
 
-            var A = MakeRandomSymmetric(ref arena, n, seed);
+            var Asym = new doubleMxN(in A, Allocator.Temp);   // destroyed by Eigen.symmetricInPlace
+            var Aval = new doubleMxN(in A, Allocator.Temp);   // destroyed by Eigen.valuesSymmetricInPlace
 
-            var Asym = A.Copy();   // destroyed by Eigen.symmetricInPlace
-            var Aval = A.Copy();   // destroyed by Eigen.valuesSymmetricInPlace
-
-            var eigSym = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var eigSym = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
             bool symOk = Eigen.symmetricInPlace(ref Asym, ref eigSym, ref V);
             Assert.IsTrue(symOk);
 
-            var eigVal = arena.doubleVec(n);
+            var eigVal = new doubleN(n, Allocator.Temp);
             bool valOk = Eigen.valuesSymmetricInPlace(ref Aval, ref eigVal);
             Assert.IsTrue(valOk);
 
@@ -1511,20 +1372,15 @@ public class doubleEigenTests
                     Fail[3] = diff;
                 }
                 Assert.IsTrue(diff <= tol);
-            }
-
-            arena.Dispose();
-        }
+            }        }
 
         // n=6 1D-Laplacian: same known-answer oracle as EvSymLaplacian (lambda_k = 2-2cos(k*pi/(n+1))).
         // Also verifies the eigenpairs and orthogonality of the computed V.
         public void EsymLaplacian()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 6;
 
-            var A = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Temp);
             for (int i = 0; i < n; i++)
             {
                 A[i, i] = (double)2;
@@ -1535,10 +1391,10 @@ public class doubleEigenTests
                 }
             }
 
-            var Aorig = A.Copy();
+            var Aorig = new doubleMxN(in A, Allocator.Temp);
 
-            var eig = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var eig = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
 
             bool ok = Eigen.symmetricInPlace(ref A, ref eig, ref V);
 
@@ -1557,8 +1413,6 @@ public class doubleEigenTests
             AssertDescending(in eig, n);
             AssertEigenResidual(in Aorig, in V, in eig, n);
             Assert.IsTrue(Analysis.isOrthogonal(V, tol));
-
-            arena.Dispose();
         }
 
         // ---------------------------------------------------------------------
@@ -1566,9 +1420,9 @@ public class doubleEigenTests
         // ---------------------------------------------------------------------
 
         // Allocate a random matrix (entries ~ +-5) and symmetrize it in place.
-        private doubleMxN MakeRandomSymmetric(ref Arena arena, int n, uint seed)
+        private doubleMxN MakeRandomSymmetric(int n, uint seed)
         {
-            var A = arena.doubleRandomMat(n, n, (double)(-5), (double)5, seed);
+            var A = GenerateOP.doubleRandomMat(n, n, (double)(-5), (double)5, seed);
             for (int i = 0; i < n; i++)
                 for (int j = i + 1; j < n; j++)
                 {
@@ -1580,7 +1434,7 @@ public class doubleEigenTests
         }
 
         // Reconstruct recon = V*diag(eig)*V^T element-by-element and assert ||A - recon||_max small.
-        // No arena allocation (caller's arena is busy with A copy); uses a stack-free triple loop.
+        // Uses a stack-free triple loop.
         private void AssertReconstruction(in doubleMxN A, in doubleMxN V, in doubleN eig, int n, double precision)
         {
             double maxErr = (double)0;
@@ -1753,235 +1607,171 @@ public class doubleEigenTests
     [Test]
     public void EigenThrowsOnNonSquare()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.doubleMat(3, 4);
-        var eig = arena.doubleVec(4);
-        var V = arena.doubleMat(4, 4);
+        var A = new doubleMxN(3, 4, Allocator.Temp);
+        var eig = new doubleN(4, Allocator.Temp);
+        var V = new doubleMxN(4, 4, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() => Eigen.decompInPlace(ref A, ref eig, ref V));
-
-        arena.Dispose();
     }
 
     [Test]
     public void EigenThrowsOnWrongEigenvalueLength()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.doubleMat(4, 4);
-        var eig = arena.doubleVec(3);
-        var V = arena.doubleMat(4, 4);
+        var A = new doubleMxN(4, 4, Allocator.Temp);
+        var eig = new doubleN(3, Allocator.Temp);
+        var V = new doubleMxN(4, 4, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() => Eigen.decompInPlace(ref A, ref eig, ref V));
-
-        arena.Dispose();
     }
 
     [Test]
     public void EigenThrowsOnWrongVShape()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.doubleMat(4, 4);
-        var eig = arena.doubleVec(4);
-        var V = arena.doubleMat(3, 3);
+        var A = new doubleMxN(4, 4, Allocator.Temp);
+        var eig = new doubleN(4, Allocator.Temp);
+        var V = new doubleMxN(3, 3, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() => Eigen.decompInPlace(ref A, ref eig, ref V));
-
-        arena.Dispose();
     }
 
     [Test]
     public void EigenThrowsOnBadMaxSweeps()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.doubleMat(4, 4);
-        var eig = arena.doubleVec(4);
-        var V = arena.doubleMat(4, 4);
+        var A = new doubleMxN(4, 4, Allocator.Temp);
+        var eig = new doubleN(4, Allocator.Temp);
+        var V = new doubleMxN(4, 4, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() => Eigen.decompInPlace(ref A, ref eig, ref V, 0));
-
-        arena.Dispose();
     }
 
     [Test]
     public void EigenThrowsOnNonSymmetric()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.doubleMat(2, 2);
+        var A = new doubleMxN(2, 2, Allocator.Temp);
         A[0, 0] = (double)1; A[0, 1] = (double)2;
         A[1, 0] = (double)0; A[1, 1] = (double)1;
 
-        var eig = arena.doubleVec(2);
-        var V = arena.doubleMat(2, 2);
+        var eig = new doubleN(2, Allocator.Temp);
+        var V = new doubleMxN(2, 2, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() => Eigen.decompInPlace(ref A, ref eig, ref V));
-
-        arena.Dispose();
     }
 
     [Test]
     public void EvSymThrowsOnNonSymmetric()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.doubleMat(2, 2);
+        var A = new doubleMxN(2, 2, Allocator.Temp);
         A[0, 0] = (double)1; A[0, 1] = (double)2;
         A[1, 0] = (double)0; A[1, 1] = (double)1;
 
-        var eig = arena.doubleVec(2);
+        var eig = new doubleN(2, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() => Eigen.valuesSymmetricInPlace(ref A, ref eig));
-
-        arena.Dispose();
     }
 
     [Test]
     public void EvSymThrowsOnNonSquare()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.doubleMat(3, 4);
-        var eig = arena.doubleVec(4);
+        var A = new doubleMxN(3, 4, Allocator.Temp);
+        var eig = new doubleN(4, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() => Eigen.valuesSymmetricInPlace(ref A, ref eig));
-
-        arena.Dispose();
     }
 
     [Test]
     public void EvSymThrowsOnWrongEigenvalueLength()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.doubleMat(4, 4);
-        var eig = arena.doubleVec(3);
+        var A = new doubleMxN(4, 4, Allocator.Temp);
+        var eig = new doubleN(3, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() => Eigen.valuesSymmetricInPlace(ref A, ref eig));
-
-        arena.Dispose();
     }
 
     [Test]
     public void EsymThrowsOnNonSquare()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.doubleMat(3, 4);
-        var eig = arena.doubleVec(4);
-        var V = arena.doubleMat(4, 4);
+        var A = new doubleMxN(3, 4, Allocator.Temp);
+        var eig = new doubleN(4, Allocator.Temp);
+        var V = new doubleMxN(4, 4, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() => Eigen.symmetricInPlace(ref A, ref eig, ref V));
-
-        arena.Dispose();
     }
 
     [Test]
     public void EsymThrowsOnNonSymmetric()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.doubleMat(2, 2);
+        var A = new doubleMxN(2, 2, Allocator.Temp);
         A[0, 0] = (double)1; A[0, 1] = (double)2;
         A[1, 0] = (double)0; A[1, 1] = (double)1;
 
-        var eig = arena.doubleVec(2);
-        var V = arena.doubleMat(2, 2);
+        var eig = new doubleN(2, Allocator.Temp);
+        var V = new doubleMxN(2, 2, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() => Eigen.symmetricInPlace(ref A, ref eig, ref V));
-
-        arena.Dispose();
     }
 
     [Test]
     public void EsymThrowsOnWrongEigenvalueLength()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.doubleMat(4, 4);
-        var eig = arena.doubleVec(3);
-        var V = arena.doubleMat(4, 4);
+        var A = new doubleMxN(4, 4, Allocator.Temp);
+        var eig = new doubleN(3, Allocator.Temp);
+        var V = new doubleMxN(4, 4, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() => Eigen.symmetricInPlace(ref A, ref eig, ref V));
-
-        arena.Dispose();
     }
 
     [Test]
     public void EsymThrowsOnWrongVShape()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.doubleMat(4, 4);
-        var eig = arena.doubleVec(4);
-        var V = arena.doubleMat(3, 3);
+        var A = new doubleMxN(4, 4, Allocator.Temp);
+        var eig = new doubleN(4, Allocator.Temp);
+        var V = new doubleMxN(3, 3, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() => Eigen.symmetricInPlace(ref A, ref eig, ref V));
-
-        arena.Dispose();
     }
 
     [Test]
     public void PowerThrowsOnNonSquare()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.doubleMat(3, 4);
-        var v = arena.doubleVec(4);
-        var w = arena.doubleVec(4);
+        var A = new doubleMxN(3, 4, Allocator.Temp);
+        var v = new doubleN(4, Allocator.Temp);
+        var w = new doubleN(4, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() =>
             Eigen.powerIteration(in A, ref v, ref w, out double lambda, Consts.doubleZeroThreshold, 1000));
-
-        arena.Dispose();
     }
 
     [Test]
     public void PowerThrowsOnWrongVLength()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.doubleMat(4, 4);
-        var v = arena.doubleVec(3);
-        var w = arena.doubleVec(4);
+        var A = new doubleMxN(4, 4, Allocator.Temp);
+        var v = new doubleN(3, Allocator.Temp);
+        var w = new doubleN(4, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() =>
             Eigen.powerIteration(in A, ref v, ref w, out double lambda, Consts.doubleZeroThreshold, 1000));
-
-        arena.Dispose();
     }
 
     [Test]
     public void PowerThrowsOnWrongWLength()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.doubleMat(4, 4);
-        var v = arena.doubleVec(4);
-        var w = arena.doubleVec(3);
+        var A = new doubleMxN(4, 4, Allocator.Temp);
+        var v = new doubleN(4, Allocator.Temp);
+        var w = new doubleN(3, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() =>
             Eigen.powerIteration(in A, ref v, ref w, out double lambda, Consts.doubleZeroThreshold, 1000));
-
-        arena.Dispose();
     }
 
     [Test]
     public void PowerThrowsOnBadMaxIter()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.doubleMat(4, 4);
-        var v = arena.doubleVec(4);
-        var w = arena.doubleVec(4);
+        var A = new doubleMxN(4, 4, Allocator.Temp);
+        var v = new doubleN(4, Allocator.Temp);
+        var w = new doubleN(4, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() =>
             Eigen.powerIteration(in A, ref v, ref w, out double lambda, Consts.doubleZeroThreshold, 0));
-
-        arena.Dispose();
     }
 
 }

@@ -39,14 +39,13 @@ namespace LinearAlgebra.Benchmarks
     {
         static string BenchFloat(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var M   = arena.floatMat(n, n);    // scratch to build MᵀM
-            var A   = arena.floatMat(n, n);    // SPD A = MᵀM + I
-            var b   = arena.floatVec(n);
-            var x   = arena.floatVec(n);
-            var r   = arena.floatVec(n);
-            var p   = arena.floatVec(n);
-            var Ap  = arena.floatVec(n);
+            var M   = new floatMxN(n, n, Allocator.Persistent);    // scratch to build MᵀM
+            var A   = new floatMxN(n, n, Allocator.Persistent);    // SPD A = MᵀM + I
+            var b   = new floatN(n, Allocator.Persistent);
+            var x   = new floatN(n, Allocator.Persistent);
+            var r   = new floatN(n, Allocator.Persistent);
+            var p   = new floatN(n, Allocator.Persistent);
+            var Ap  = new floatN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int row = 0; row < n; row++)
@@ -64,7 +63,7 @@ namespace LinearAlgebra.Benchmarks
             var job = new CGJobFloat { A = A, b = b, x = x, r = r, p = p, Ap = Ap };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            M.Dispose(); A.Dispose(); b.Dispose(); x.Dispose(); r.Dispose(); p.Dispose(); Ap.Dispose();
             return Bench.RowTime("float", n, stat);
         }
     }

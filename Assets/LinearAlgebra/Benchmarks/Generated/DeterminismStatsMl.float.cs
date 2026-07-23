@@ -255,22 +255,21 @@ namespace LinearAlgebra.Benchmarks
     {
         public static (string id, uint hash)[] Case_StatsCoreFloat()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2654435761u ^ 0x0005u);
 
             const int n = 200, p = 7;
-            var vec = arena.floatVec(n); for (int i = 0; i < n; i++) vec[i] = rng.NextFloat(-10f, 10f);
-            var A = arena.floatMat(n, p);
+            var vec = new floatN(n, Allocator.Persistent); for (int i = 0; i < n; i++) vec[i] = rng.NextFloat(-10f, 10f);
+            var A = new floatMxN(n, p, Allocator.Persistent);
             for (int r = 0; r < n; r++) for (int c = 0; c < p; c++) A[r, c] = rng.NextFloat(-5f, 5f);
 
-            var Cov = arena.floatMat(p, p);
-            var Corr = arena.floatMat(p, p);
-            var rowMeanOut = arena.floatVec(n);
-            var colStdDevOut = arena.floatVec(p);
+            var Cov = new floatMxN(p, p, Allocator.Persistent);
+            var Corr = new floatMxN(p, p, Allocator.Persistent);
+            var rowMeanOut = new floatN(n, Allocator.Persistent);
+            var colStdDevOut = new floatN(p, Allocator.Persistent);
 
-            var standardizeVec = arena.floatVec(n); for (int i = 0; i < n; i++) standardizeVec[i] = vec[i];
-            var centerVec = arena.floatVec(n); for (int i = 0; i < n; i++) centerVec[i] = vec[i];
-            var rescaleVec = arena.floatVec(n); for (int i = 0; i < n; i++) rescaleVec[i] = vec[i];
+            var standardizeVec = new floatN(n, Allocator.Persistent); for (int i = 0; i < n; i++) standardizeVec[i] = vec[i];
+            var centerVec = new floatN(n, Allocator.Persistent); for (int i = 0; i < n; i++) centerVec[i] = vec[i];
+            var rescaleVec = new floatN(n, Allocator.Persistent); for (int i = 0; i < n; i++) rescaleVec[i] = vec[i];
 
             var hashOut = new NativeArray<uint>(8, Allocator.Persistent);
             var job = new DetStatsCoreJobFloat
@@ -292,28 +291,28 @@ namespace LinearAlgebra.Benchmarks
                 ("stats-core/rescale.float.n200", hashOut[7]),
             };
             hashOut.Dispose();
-            arena.Dispose();
+            vec.Dispose(); A.Dispose(); Cov.Dispose(); Corr.Dispose(); rowMeanOut.Dispose(); colStdDevOut.Dispose();
+            standardizeVec.Dispose(); centerVec.Dispose(); rescaleVec.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_FftFloat()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2654435761u ^ 0x000Cu);
 
             const int n256 = 256, n128 = 128;
-            var re256 = arena.floatVec(n256); var im256 = arena.floatVec(n256);
+            var re256 = new floatN(n256, Allocator.Persistent); var im256 = new floatN(n256, Allocator.Persistent);
             for (int i = 0; i < n256; i++) { re256[i] = rng.NextFloat(-1f, 1f); im256[i] = (float)0; }
-            var ws256 = arena.floatFFTCache(n256);
-            var mag = arena.floatVec(n256); var pow = arena.floatVec(n256);
+            var ws256 = new floatFFTCache(n256, Allocator.Persistent);
+            var mag = new floatN(n256, Allocator.Persistent); var pow = new floatN(n256, Allocator.Persistent);
 
-            var realSignal256 = arena.floatVec(n256); for (int i = 0; i < n256; i++) realSignal256[i] = rng.NextFloat(-1f, 1f);
-            var reReal = arena.floatVec(n256 / 2 + 1); var imReal = arena.floatVec(n256 / 2 + 1);
-            var realOut256 = arena.floatVec(n256);
+            var realSignal256 = new floatN(n256, Allocator.Persistent); for (int i = 0; i < n256; i++) realSignal256[i] = rng.NextFloat(-1f, 1f);
+            var reReal = new floatN(n256 / 2 + 1, Allocator.Persistent); var imReal = new floatN(n256 / 2 + 1, Allocator.Persistent);
+            var realOut256 = new floatN(n256, Allocator.Persistent);
 
-            var re128 = arena.floatVec(n128); var im128 = arena.floatVec(n128);
+            var re128 = new floatN(n128, Allocator.Persistent); var im128 = new floatN(n128, Allocator.Persistent);
             for (int i = 0; i < n128; i++) { re128[i] = rng.NextFloat(-1f, 1f); im128[i] = (float)0; }
-            var ws128 = arena.floatFFTCache(n128);
+            var ws128 = new floatFFTCache(n128, Allocator.Persistent);
 
             var hashOut = new NativeArray<uint>(7, Allocator.Persistent);
             var job = new DetFftJobFloat
@@ -335,27 +334,28 @@ namespace LinearAlgebra.Benchmarks
                 ("fft/fft.float.n128.mixed", hashOut[6]),
             };
             hashOut.Dispose();
-            arena.Dispose();
+            re256.Dispose(); im256.Dispose(); ws256.Dispose(); mag.Dispose(); pow.Dispose();
+            realSignal256.Dispose(); reReal.Dispose(); imReal.Dispose(); realOut256.Dispose();
+            re128.Dispose(); im128.Dispose(); ws128.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_MlFloat()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2654435761u ^ 0x0016u);
 
             const int n = 200, d = 8, k = 5, kPca = 4;
-            var X = arena.floatMat(n, d);
+            var X = new floatMxN(n, d, Allocator.Persistent);
             for (int r = 0; r < n; r++) for (int c = 0; c < d; c++) X[r, c] = rng.NextFloat(-3f, 3f);
 
-            var kmWs = arena.floatKMeansCache(n, d, k);
-            var centroids = arena.floatMat(k, d);
+            var kmWs = new floatKMeansCache(n, d, k, Allocator.Persistent);
+            var centroids = new floatMxN(k, d, Allocator.Persistent);
             var assignment = new Indices(n, Allocator.Persistent);
-            var modelCov = arena.floatPCAModel(d, d);
-            var modelSvd = arena.floatPCAModel(d, d);
-            var modelTrunc = arena.floatPCAModel(d, kPca);
-            var modelRand = arena.floatPCAModel(d, kPca);
-            var scores = arena.floatMat(n, d);
+            var modelCov = new floatPCAModel(d, d, Allocator.Persistent);
+            var modelSvd = new floatPCAModel(d, d, Allocator.Persistent);
+            var modelTrunc = new floatPCAModel(d, kPca, Allocator.Persistent);
+            var modelRand = new floatPCAModel(d, kPca, Allocator.Persistent);
+            var scores = new floatMxN(n, d, Allocator.Persistent);
 
             var hashOut = new NativeArray<uint>(6, Allocator.Persistent);
             var job = new DetMlJobFloat
@@ -376,43 +376,42 @@ namespace LinearAlgebra.Benchmarks
                 ("ml/pca.transform.float.200x8", hashOut[5]),
             };
             hashOut.Dispose();
-            assignment.Dispose();
-            arena.Dispose();
+            X.Dispose(); kmWs.Dispose(); centroids.Dispose(); assignment.Dispose();
+            modelCov.Dispose(); modelSvd.Dispose(); modelTrunc.Dispose(); modelRand.Dispose(); scores.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_HistogramResampleQueryFloat()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2654435761u ^ 0x0017u);
 
             const int n = 500;
-            var data = arena.floatVec(n); for (int i = 0; i < n; i++) data[i] = rng.NextFloat(-3f, 3f);
+            var data = new floatN(n, Allocator.Persistent); for (int i = 0; i < n; i++) data[i] = rng.NextFloat(-3f, 3f);
             var counts = new Indices(20, Allocator.Persistent);
-            var cdf = arena.floatVec(n);
+            var cdf = new floatN(n, Allocator.Persistent);
 
             const int srcLen = 40, dstLen = 100;
-            var resampleSrc = arena.floatVec(srcLen); for (int i = 0; i < srcLen; i++) resampleSrc[i] = rng.NextFloat(-1f, 1f);
-            var resampleDstNearest = arena.floatVec(dstLen);
-            var resampleDstLinear = arena.floatVec(dstLen);
-            var resampleDstCubic = arena.floatVec(dstLen);
+            var resampleSrc = new floatN(srcLen, Allocator.Persistent); for (int i = 0; i < srcLen; i++) resampleSrc[i] = rng.NextFloat(-1f, 1f);
+            var resampleDstNearest = new floatN(dstLen, Allocator.Persistent);
+            var resampleDstLinear = new floatN(dstLen, Allocator.Persistent);
+            var resampleDstCubic = new floatN(dstLen, Allocator.Persistent);
 
             const int rows = 53, cols = 8;
-            var Arows = arena.floatMat(rows, cols);
+            var Arows = new floatMxN(rows, cols, Allocator.Persistent);
             for (int r = 0; r < rows; r++) for (int c = 0; c < cols; c++) Arows[r, c] = rng.NextFloat(-5f, 5f);
-            var q = arena.floatVec(cols); for (int i = 0; i < cols; i++) q[i] = rng.NextFloat(-5f, 5f);
+            var q = new floatN(cols, Allocator.Persistent); for (int i = 0; i < cols; i++) q[i] = rng.NextFloat(-5f, 5f);
 
             const int k = 5;
             var kIdx = new Indices(k, Allocator.Persistent);
-            var kScores = arena.floatVec(k);
+            var kScores = new floatN(k, Allocator.Persistent);
             var argMaxIdx = new Indices(rows, Allocator.Persistent);
-            var argMaxVal = arena.floatVec(rows);
+            var argMaxVal = new floatN(rows, Allocator.Persistent);
             var radiusIdx = new Indices(rows, Allocator.Persistent);
 
             const int selN = 64;
-            var selA = arena.floatVec(selN); var selB = arena.floatVec(selN);
-            var selC = arena.boolVec(selN);
-            var selDest = arena.floatVec(selN);
+            var selA = new floatN(selN, Allocator.Persistent); var selB = new floatN(selN, Allocator.Persistent);
+            var selC = new boolN(selN, Allocator.Persistent);
+            var selDest = new floatN(selN, Allocator.Persistent);
             for (int i = 0; i < selN; i++) { selA[i] = rng.NextFloat(-1f, 1f); selB[i] = rng.NextFloat(-1f, 1f); selC[i] = (i % 3 == 0); }
 
             var hashOut = new NativeArray<uint>(10, Allocator.Persistent);
@@ -440,21 +439,23 @@ namespace LinearAlgebra.Benchmarks
             };
             hashOut.Dispose();
             counts.Dispose(); kIdx.Dispose(); argMaxIdx.Dispose(); radiusIdx.Dispose();
-            arena.Dispose();
+            data.Dispose(); cdf.Dispose();
+            resampleSrc.Dispose(); resampleDstNearest.Dispose(); resampleDstLinear.Dispose(); resampleDstCubic.Dispose();
+            Arows.Dispose(); q.Dispose(); kScores.Dispose(); argMaxVal.Dispose();
+            selA.Dispose(); selB.Dispose(); selC.Dispose(); selDest.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_GalleryAnalysisFloat()
         {
-            var arena = new Arena(Allocator.Persistent);
             const int n = 32;
-            var hilbert = arena.floatHilbert(n);
-            var pascal = arena.floatPascal(n);
-            var lehmer = arena.floatLehmer(n);
-            var minij = arena.floatMinIJ(n);
-            var kms = arena.floatKMS(n, (float)0.5);
-            var lap1d = arena.floatLaplacian1D(n);
-            var lap2d = arena.floatLaplacian2D(6, 6);
+            var hilbert = floatGallery.floatHilbert(n, Allocator.Persistent);
+            var pascal = floatGallery.floatPascal(n, Allocator.Persistent);
+            var lehmer = floatGallery.floatLehmer(n, Allocator.Persistent);
+            var minij = floatGallery.floatMinIJ(n, Allocator.Persistent);
+            var kms = floatGallery.floatKMS(n, (float)0.5, Allocator.Persistent);
+            var lap1d = floatGallery.floatLaplacian1D(n, Allocator.Persistent);
+            var lap2d = floatGallery.floatLaplacian2D(6, 6, Allocator.Persistent);
 
             var hashOut = new NativeArray<uint>(9, Allocator.Persistent);
             var job = new DetGalleryAnalysisJobFloat
@@ -477,7 +478,8 @@ namespace LinearAlgebra.Benchmarks
                 ("gallery-analysis/isOrthogonalIsDiagonal.float", hashOut[8]),
             };
             hashOut.Dispose();
-            arena.Dispose();
+            hilbert.Dispose(); pascal.Dispose(); lehmer.Dispose(); minij.Dispose(); kms.Dispose();
+            lap1d.Dispose(); lap2d.Dispose();
             return result;
         }
     }

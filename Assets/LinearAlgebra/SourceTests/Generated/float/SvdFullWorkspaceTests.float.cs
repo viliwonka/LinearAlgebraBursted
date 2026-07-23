@@ -57,157 +57,156 @@ public class floatSVDFullWorkspaceTests
         }
 
         // A = B (m x r) * C (r x n) -> m x n of generic rank r (r <= n <= m).
-        static floatMxN RankDeficient(ref Arena arena, int m, int n, int r, uint seed)
+        static floatMxN RankDeficient(int m, int n, int r, uint seed)
         {
-            var B = arena.floatRandomMat(m, r, (float)(-2f), (float)2f, seed);
-            var C = arena.floatRandomMat(r, n, (float)(-2f), (float)2f, seed + 7u);
+            var B = GenerateOP.floatRandomMat(m, r, (float)(-2f), (float)2f, seed, allocator: Allocator.Temp);
+            var C = GenerateOP.floatRandomMat(r, n, (float)(-2f), (float)2f, seed + 7u, allocator: Allocator.Temp);
             return Blas.dot(B, C);
         }
 
         void NullspaceEquiv()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 6, n = 4;
-            var A = RankDeficient(ref arena, m, n, 2, 1001);   // rank 2 -> nullspace dim 2
+            var A = RankDeficient(m, n, 2, 1001);   // rank 2 -> nullspace dim 2
 
-            var basisA = arena.floatMat(n, n);
+            var basisA = new floatMxN(n, n, Allocator.Temp);
             RankInfo infoA = SVD.nullspaceBasis(in A, ref basisA);
             bool cA = infoA;
             int dimA = n - infoA.rank;
 
-            var ws = arena.floatSVDFullCache(m, n);
-            var basisW = arena.floatMat(n, n);
+            var ws = new floatSVDFullCache(m, n, Allocator.Temp);
+            var basisW = new floatMxN(n, n, Allocator.Temp);
             RankInfo infoW = SVD.nullspaceBasis(in A, ref basisW, ref ws);
             bool cW = infoW;
             int dimW = n - infoW.rank;
 
             Assert.IsTrue(dimA == dimW);
             Assert.IsTrue(cA == cW);
-            Assert.IsTrue(Analysis.isZero(basisA - basisW, Tol()));
-
-            arena.Dispose();
+            var basisDiff = new floatMxN(in basisA, Allocator.Temp);
+            basisDiff.subInPlace(basisW);
+            Assert.IsTrue(Analysis.isZero(basisDiff, Tol()));
         }
 
         void RangeEquiv()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 6, n = 4;
-            var A = RankDeficient(ref arena, m, n, 3, 2002);   // rank 3 -> range rank 3
+            var A = RankDeficient(m, n, 3, 2002);   // rank 3 -> range rank 3
 
-            var basisA = arena.floatMat(m, n);
+            var basisA = new floatMxN(m, n, Allocator.Temp);
             RankInfo infoA = SVD.rangeBasis(in A, ref basisA);
             bool cA = infoA;
             int rankA = infoA.rank;
 
-            var ws = arena.floatSVDFullCache(m, n);
-            var basisW = arena.floatMat(m, n);
+            var ws = new floatSVDFullCache(m, n, Allocator.Temp);
+            var basisW = new floatMxN(m, n, Allocator.Temp);
             RankInfo infoW = SVD.rangeBasis(in A, ref basisW, ref ws);
             bool cW = infoW;
             int rankW = infoW.rank;
 
             Assert.IsTrue(rankA == rankW);
             Assert.IsTrue(cA == cW);
-            Assert.IsTrue(Analysis.isZero(basisA - basisW, Tol()));
-
-            arena.Dispose();
+            var basisDiff = new floatMxN(in basisA, Allocator.Temp);
+            basisDiff.subInPlace(basisW);
+            Assert.IsTrue(Analysis.isZero(basisDiff, Tol()));
         }
 
         void TruncatedEquiv()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 6, n = 4, k = 2;
-            var A = arena.floatRandomMat(m, n, (float)(-3f), (float)3f, 3003);
+            var A = GenerateOP.floatRandomMat(m, n, (float)(-3f), (float)3f, 3003, allocator: Allocator.Temp);
 
-            var UkA = arena.floatMat(m, k); var SkA = arena.floatVec(k); var VkA = arena.floatMat(n, k);
+            var UkA = new floatMxN(m, k, Allocator.Temp); var SkA = new floatN(k, Allocator.Temp); var VkA = new floatMxN(n, k, Allocator.Temp);
             SVDInfo cA = SVD.truncated(in A, ref UkA, ref SkA, ref VkA, k);
 
-            var ws = arena.floatSVDTruncatedCache(m, n, k);
-            var UkW = arena.floatMat(m, k); var SkW = arena.floatVec(k); var VkW = arena.floatMat(n, k);
+            var ws = new floatSVDTruncatedCache(m, n, k, Allocator.Temp);
+            var UkW = new floatMxN(m, k, Allocator.Temp); var SkW = new floatN(k, Allocator.Temp); var VkW = new floatMxN(n, k, Allocator.Temp);
             SVDInfo cW = SVD.truncated(in A, ref UkW, ref SkW, ref VkW, k, ref ws);
 
             Assert.IsTrue(cA == cW);
-            Assert.IsTrue(Analysis.isZero(SkA - SkW, Tol()));
-            Assert.IsTrue(Analysis.isZero(UkA - UkW, Tol()));
-            Assert.IsTrue(Analysis.isZero(VkA - VkW, Tol()));
-
-            arena.Dispose();
+            var SDiff = new floatN(in SkA, Allocator.Temp); SDiff.subInPlace(SkW);
+            Assert.IsTrue(Analysis.isZero(SDiff, Tol()));
+            var UDiff = new floatMxN(in UkA, Allocator.Temp); UDiff.subInPlace(UkW);
+            Assert.IsTrue(Analysis.isZero(UDiff, Tol()));
+            var VDiff = new floatMxN(in VkA, Allocator.Temp); VDiff.subInPlace(VkW);
+            Assert.IsTrue(Analysis.isZero(VDiff, Tol()));
         }
 
         void LowRankEquiv()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 6, n = 4, k = 2;
-            var A = arena.floatRandomMat(m, n, (float)(-3f), (float)3f, 4004);
+            var A = GenerateOP.floatRandomMat(m, n, (float)(-3f), (float)3f, 4004, allocator: Allocator.Temp);
 
-            var AkA = arena.floatMat(m, n);
+            var AkA = new floatMxN(m, n, Allocator.Temp);
             bool cA = SVD.lowRankApprox(in A, ref AkA, k);
 
-            var ws = arena.floatSVDFullCache(m, n);
-            var AkW = arena.floatMat(m, n);
+            var ws = new floatSVDFullCache(m, n, Allocator.Temp);
+            var AkW = new floatMxN(m, n, Allocator.Temp);
             bool cW = SVD.lowRankApprox(in A, ref AkW, k, ref ws);
 
             Assert.IsTrue(cA == cW);
-            Assert.IsTrue(Analysis.isZero(AkA - AkW, Tol()));
-
-            arena.Dispose();
+            var AkDiff = new floatMxN(in AkA, Allocator.Temp); AkDiff.subInPlace(AkW);
+            Assert.IsTrue(Analysis.isZero(AkDiff, Tol()));
         }
 
         // Reuse workspaces across two different (same-shape) inputs and every family op; each
         // second-input result must match a fresh allocating call -> no stale data survives reuse.
         void ReuseAllOps()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 6, n = 4, k = 2;
 
-            var A1 = RankDeficient(ref arena, m, n, 2, 5005);
-            var A2 = RankDeficient(ref arena, m, n, 3, 6006);
+            var A1 = RankDeficient(m, n, 2, 5005);
+            var A2 = RankDeficient(m, n, 3, 6006);
 
-            var ws = arena.floatSVDFullCache(m, n);           // for nullspace / range / lowRank
-            var wsTrunc = arena.floatSVDTruncatedCache(m, n, k);  // for truncated (GKL)
+            var ws = new floatSVDFullCache(m, n, Allocator.Temp);           // for nullspace / range / lowRank
+            var wsTrunc = new floatSVDTruncatedCache(m, n, k, Allocator.Temp);  // for truncated (GKL)
 
             // ---- nullspace ----
-            var nb1 = arena.floatMat(n, n);
+            var nb1 = new floatMxN(n, n, Allocator.Temp);
             SVD.nullspaceBasis(in A1, ref nb1, ref ws);          // warm the workspace on A1
-            var nbW = arena.floatMat(n, n);
+            var nbW = new floatMxN(n, n, Allocator.Temp);
             RankInfo nbWInfo = SVD.nullspaceBasis(in A2, ref nbW, ref ws);
             int dimW = n - nbWInfo.rank;
-            var nbA = arena.floatMat(n, n);
+            var nbA = new floatMxN(n, n, Allocator.Temp);
             RankInfo nbAInfo = SVD.nullspaceBasis(in A2, ref nbA);
             int dimA = n - nbAInfo.rank;
             Assert.IsTrue(dimW == dimA);
-            Assert.IsTrue(Analysis.isZero(nbW - nbA, Tol()));
+            var nbDiff = new floatMxN(in nbW, Allocator.Temp); nbDiff.subInPlace(nbA);
+            Assert.IsTrue(Analysis.isZero(nbDiff, Tol()));
 
             // ---- range ----
-            var rb1 = arena.floatMat(m, n);
+            var rb1 = new floatMxN(m, n, Allocator.Temp);
             SVD.rangeBasis(in A1, ref rb1, ref ws);
-            var rbW = arena.floatMat(m, n);
+            var rbW = new floatMxN(m, n, Allocator.Temp);
             int rkW = SVD.rangeBasis(in A2, ref rbW, ref ws).rank;
-            var rbA = arena.floatMat(m, n);
+            var rbA = new floatMxN(m, n, Allocator.Temp);
             int rkA = SVD.rangeBasis(in A2, ref rbA).rank;
             Assert.IsTrue(rkW == rkA);
-            Assert.IsTrue(Analysis.isZero(rbW - rbA, Tol()));
+            var rbDiff = new floatMxN(in rbW, Allocator.Temp); rbDiff.subInPlace(rbA);
+            Assert.IsTrue(Analysis.isZero(rbDiff, Tol()));
 
             // ---- truncated ----
-            var U1 = arena.floatMat(m, k); var S1 = arena.floatVec(k); var V1 = arena.floatMat(n, k);
+            var U1 = new floatMxN(m, k, Allocator.Temp); var S1 = new floatN(k, Allocator.Temp); var V1 = new floatMxN(n, k, Allocator.Temp);
             SVD.truncated(in A1, ref U1, ref S1, ref V1, k, ref wsTrunc);
-            var UW = arena.floatMat(m, k); var SW = arena.floatVec(k); var VW = arena.floatMat(n, k);
+            var UW = new floatMxN(m, k, Allocator.Temp); var SW = new floatN(k, Allocator.Temp); var VW = new floatMxN(n, k, Allocator.Temp);
             SVD.truncated(in A2, ref UW, ref SW, ref VW, k, ref wsTrunc);
-            var UA = arena.floatMat(m, k); var SA = arena.floatVec(k); var VA = arena.floatMat(n, k);
+            var UA = new floatMxN(m, k, Allocator.Temp); var SA = new floatN(k, Allocator.Temp); var VA = new floatMxN(n, k, Allocator.Temp);
             SVD.truncated(in A2, ref UA, ref SA, ref VA, k);
-            Assert.IsTrue(Analysis.isZero(SW - SA, Tol()));
-            Assert.IsTrue(Analysis.isZero(UW - UA, Tol()));
-            Assert.IsTrue(Analysis.isZero(VW - VA, Tol()));
+            var SDiff2 = new floatN(in SW, Allocator.Temp); SDiff2.subInPlace(SA);
+            Assert.IsTrue(Analysis.isZero(SDiff2, Tol()));
+            var UDiff2 = new floatMxN(in UW, Allocator.Temp); UDiff2.subInPlace(UA);
+            Assert.IsTrue(Analysis.isZero(UDiff2, Tol()));
+            var VDiff2 = new floatMxN(in VW, Allocator.Temp); VDiff2.subInPlace(VA);
+            Assert.IsTrue(Analysis.isZero(VDiff2, Tol()));
 
             // ---- low rank ----
-            var Ak1 = arena.floatMat(m, n);
+            var Ak1 = new floatMxN(m, n, Allocator.Temp);
             SVD.lowRankApprox(in A1, ref Ak1, k, ref ws);
-            var AkW = arena.floatMat(m, n);
+            var AkW = new floatMxN(m, n, Allocator.Temp);
             SVD.lowRankApprox(in A2, ref AkW, k, ref ws);
-            var AkA = arena.floatMat(m, n);
+            var AkA = new floatMxN(m, n, Allocator.Temp);
             SVD.lowRankApprox(in A2, ref AkA, k);
-            Assert.IsTrue(Analysis.isZero(AkW - AkA, Tol()));
-
-            arena.Dispose();
+            var AkDiff = new floatMxN(in AkW, Allocator.Temp); AkDiff.subInPlace(AkA);
+            Assert.IsTrue(Analysis.isZero(AkDiff, Tol()));
         }
     }
 
@@ -224,77 +223,52 @@ public class floatSVDFullWorkspaceTests
     [Test]
     public void Nullspace_BadWorkspace_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = arena.floatMat(6, 4);
-            var basis = arena.floatMat(4, 4);
-            var ws = arena.floatSVDFullCache(5, 4);   // wrong m
-            Assert.Throws<ArgumentException>(
-                () => SVD.nullspaceBasis(in A, ref basis, ref ws));
-        }
-        finally { arena.Dispose(); }
+        var A = new floatMxN(6, 4, Allocator.Temp);
+        var basis = new floatMxN(4, 4, Allocator.Temp);
+        var ws = new floatSVDFullCache(5, 4, Allocator.Temp);   // wrong m
+        Assert.Throws<ArgumentException>(
+            () => SVD.nullspaceBasis(in A, ref basis, ref ws));
     }
 
     [Test]
     public void Range_BadWorkspace_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = arena.floatMat(6, 4);
-            var basis = arena.floatMat(6, 4);
-            var ws = arena.floatSVDFullCache(6, 3);   // wrong n
-            Assert.Throws<ArgumentException>(
-                () => SVD.rangeBasis(in A, ref basis, ref ws));
-        }
-        finally { arena.Dispose(); }
+        var A = new floatMxN(6, 4, Allocator.Temp);
+        var basis = new floatMxN(6, 4, Allocator.Temp);
+        var ws = new floatSVDFullCache(6, 3, Allocator.Temp);   // wrong n
+        Assert.Throws<ArgumentException>(
+            () => SVD.rangeBasis(in A, ref basis, ref ws));
     }
 
     [Test]
     public void Truncated_BadWorkspace_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = arena.floatMat(6, 4);
-            var Uk = arena.floatMat(6, 2); var Sk = arena.floatVec(2); var Vk = arena.floatMat(4, 2);
-            var ws = arena.floatSVDTruncatedCache(7, 4, 2);   // wrong m (7 vs A's 6)
-            Assert.Throws<ArgumentException>(
-                () => SVD.truncated(in A, ref Uk, ref Sk, ref Vk, 2, ref ws));
-        }
-        finally { arena.Dispose(); }
+        var A = new floatMxN(6, 4, Allocator.Temp);
+        var Uk = new floatMxN(6, 2, Allocator.Temp); var Sk = new floatN(2, Allocator.Temp); var Vk = new floatMxN(4, 2, Allocator.Temp);
+        var ws = new floatSVDTruncatedCache(7, 4, 2, Allocator.Temp);   // wrong m (7 vs A's 6)
+        Assert.Throws<ArgumentException>(
+            () => SVD.truncated(in A, ref Uk, ref Sk, ref Vk, 2, ref ws));
     }
 
     [Test]
     public void LowRank_BadWorkspace_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = arena.floatMat(6, 4);
-            var Ak = arena.floatMat(6, 4);
-            var ws = arena.floatSVDFullCache(6, 5);   // wrong n
-            Assert.Throws<ArgumentException>(
-                () => SVD.lowRankApprox(in A, ref Ak, 2, ref ws));
-        }
-        finally { arena.Dispose(); }
+        var A = new floatMxN(6, 4, Allocator.Temp);
+        var Ak = new floatMxN(6, 4, Allocator.Temp);
+        var ws = new floatSVDFullCache(6, 5, Allocator.Temp);   // wrong n
+        Assert.Throws<ArgumentException>(
+            () => SVD.lowRankApprox(in A, ref Ak, 2, ref ws));
     }
 
-    // Arena.floatSVDFullCache(m, n) must size U (m x n), S (n), V (n x n).
+    // Standalone floatSVDFullCache(m, n, allocator) must size U (m x n), S (n), V (n x n).
     [Test]
     public void SvdFullWorkspace_Factory_SizesCorrectly()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var ws = arena.floatSVDFullCache(7, 4);
-            Assert.AreEqual(7, ws.U.M_Rows);
-            Assert.AreEqual(4, ws.U.N_Cols);
-            Assert.AreEqual(4, ws.S.N);
-            Assert.AreEqual(4, ws.V.M_Rows);
-            Assert.AreEqual(4, ws.V.N_Cols);
-        }
-        finally { arena.Dispose(); }
+        var ws = new floatSVDFullCache(7, 4, Allocator.Temp);
+        Assert.AreEqual(7, ws.U.M_Rows);
+        Assert.AreEqual(4, ws.U.N_Cols);
+        Assert.AreEqual(4, ws.S.N);
+        Assert.AreEqual(4, ws.V.M_Rows);
+        Assert.AreEqual(4, ws.V.N_Cols);
     }
 }

@@ -21,18 +21,18 @@ public class floatMinresQLPShiftTests
 {
     // SPD via M^T M + n*I (same recipe as floatKrylovVerifyAtExitTests.BuildDenseSPD). With a
     // NEGATIVE shift, A - shift*I = A + |shift|*I stays SPD and well-conditioned.
-    static floatMxN BuildDenseSPD(ref Arena arena, int dim, uint seed)
+    static floatMxN BuildDenseSPD(int dim, uint seed)
     {
-        var M = arena.floatRandomMat(dim, dim, (float)(-1f), (float)1f, seed);
+        var M = GenerateOP.floatRandomMat(dim, dim, (float)(-1f), (float)1f, seed);
         var A = Blas.dot(M, M, true);
         for (int d = 0; d < dim; d++) A[d, d] += dim;
         return A;
     }
 
     // A - shift*I as a fresh dense matrix (A itself is left intact).
-    static floatMxN ExplicitShift(ref Arena arena, in floatMxN A, float shift)
+    static floatMxN ExplicitShift(in floatMxN A, float shift)
     {
-        var S = A.Copy();
+        var S = new floatMxN(in A, Allocator.Temp);
         for (int d = 0; d < S.M_Rows; d++) S[d, d] -= shift;
         return S;
     }
@@ -51,11 +51,10 @@ public class floatMinresQLPShiftTests
     [Test]
     public void ShiftSolvesShiftedSystemDense()
     {
-        var arena = new Arena(Allocator.Persistent);
         int n = 12;
-        var A = BuildDenseSPD(ref arena, n, 0xB1A5u);
-        var b = arena.floatRandomVec(n, (float)(-1f), (float)1f, 0x51u);
-        var x = arena.floatVec(n);
+        var A = BuildDenseSPD(n, 0xB1A5u);
+        var b = GenerateOP.floatRandomVec(n, (float)(-1f), (float)1f, 0x51u);
+        var x = new floatN(n, Allocator.Temp);
         for (int i = 0; i < n; i++) x[i] = (float)0;
 
         float shift = (float)(-0.5);
@@ -63,34 +62,31 @@ public class floatMinresQLPShiftTests
         var info = Krylov.minresQLP(in A, in b, ref x, 4 * n, tol, shift);
 
         var op = new floatDenseOperator(in A);
-        var scratch = arena.floatVec(n);
+        var scratch = new floatN(n, Allocator.Temp);
         float rsq = ShiftedResidualSq(in op, shift, in b, in x, ref scratch);
         float bb = Blas.dot(b, b);
         float bound = (float)64 * tol; bound = bound * bound * bb;
 
         Assert.AreEqual(IterativeSolveStatus.Converged, info.status, "shifted SPD system should converge");
         Assert.LessOrEqual((double)rsq, (double)bound * 4.0, "‖(A-σI)x - b‖ must meet the minresQLP residual bound");
-
-        arena.Dispose();
     }
 
     // (2) The shift overload matches an unshifted solve of the explicitly formed A - shift*I.
     [Test]
     public void ShiftMatchesExplicitShiftDense()
     {
-        var arena = new Arena(Allocator.Persistent);
         int n = 12;
-        var A = BuildDenseSPD(ref arena, n, 0x2C0Du);
-        var b = arena.floatRandomVec(n, (float)(-1f), (float)1f, 0x77u);
+        var A = BuildDenseSPD(n, 0x2C0Du);
+        var b = GenerateOP.floatRandomVec(n, (float)(-1f), (float)1f, 0x77u);
         float shift = (float)(-0.75);
         float tol = Consts.floatSqrtEps;
 
-        var xShift = arena.floatVec(n);
+        var xShift = new floatN(n, Allocator.Temp);
         for (int i = 0; i < n; i++) xShift[i] = (float)0;
         Krylov.minresQLP(in A, in b, ref xShift, 4 * n, tol, shift);
 
-        var S = ExplicitShift(ref arena, in A, shift);
-        var xExpl = arena.floatVec(n);
+        var S = ExplicitShift(in A, shift);
+        var xExpl = new floatN(n, Allocator.Temp);
         for (int i = 0; i < n; i++) xExpl[i] = (float)0;
         Krylov.minresQLP(in S, in b, ref xExpl, 4 * n, tol);
 
@@ -106,21 +102,18 @@ public class floatMinresQLPShiftTests
         }
         double rel = math.sqrt((double)num / math.max((double)den, 1e-300));
         Assert.LessOrEqual(rel, 1e-2, "shift overload must match the explicit A-σI solve");
-
-        arena.Dispose();
     }
 
     // (3) shift == 0 folds away: bit-identical to the plain overload.
     [Test]
     public void ZeroShiftMatchesUnshifted()
     {
-        var arena = new Arena(Allocator.Persistent);
         int n = 10;
-        var A = BuildDenseSPD(ref arena, n, 0x0FFu);
-        var b = arena.floatRandomVec(n, (float)(-1f), (float)1f, 0x9Au);
+        var A = BuildDenseSPD(n, 0x0FFu);
+        var b = GenerateOP.floatRandomVec(n, (float)(-1f), (float)1f, 0x9Au);
 
-        var xNo = arena.floatVec(n);
-        var xZero = arena.floatVec(n);
+        var xNo = new floatN(n, Allocator.Temp);
+        var xZero = new floatN(n, Allocator.Temp);
         for (int i = 0; i < n; i++) { xNo[i] = (float)0; xZero[i] = (float)0; }
 
         Krylov.minresQLP(in A, in b, ref xNo, 4 * n, Consts.floatSqrtEps);
@@ -128,19 +121,16 @@ public class floatMinresQLPShiftTests
 
         for (int i = 0; i < n; i++)
             Assert.AreEqual((double)xNo[i], (double)xZero[i], "shift==0 must be bit-identical to the unshifted solve");
-
-        arena.Dispose();
     }
 
     // (4) BSR path: the shifted overload over a block-sparse operator certifies its residual.
     [Test]
     public void ShiftSolvesShiftedSystemBSR()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.floatLaplacian2D(5, 5);   // SPD, 25x25
+        var A = floatGallery.floatLaplacian2D(5, 5);   // SPD, 25x25
         int n = A.M_Rows;
-        var b = arena.floatRandomVec(n, (float)(-1f), (float)1f, 0x1234u);
-        var x = arena.floatVec(n);
+        var b = GenerateOP.floatRandomVec(n, (float)(-1f), (float)1f, 0x1234u);
+        var x = new floatN(n, Allocator.Temp);
         for (int i = 0; i < n; i++) x[i] = (float)0;
 
         float shift = (float)(-1.0);   // Laplacian2D is SPD; -1 keeps A-σI SPD
@@ -148,15 +138,13 @@ public class floatMinresQLPShiftTests
         var info = Krylov.minresQLP(in A, in b, ref x, 4 * n, tol, shift);
 
         var op = new floatBSROperator(in A);
-        var scratch = arena.floatVec(n);
+        var scratch = new floatN(n, Allocator.Temp);
         float rsq = ShiftedResidualSq(in op, shift, in b, in x, ref scratch);
         float bb = Blas.dot(b, b);
         float bound = (float)64 * tol; bound = bound * bound * bb;
 
         Assert.AreEqual(IterativeSolveStatus.Converged, info.status, "shifted SPD BSR system should converge");
         Assert.LessOrEqual((double)rsq, (double)bound * 4.0, "BSR ‖(A-σI)x - b‖ must meet the residual bound");
-
-        arena.Dispose();
     }
 
     // (5) Warm start (x0 != 0) exercises the initial-residual shift site r0 = b - (A-σI)x0. A wrong
@@ -167,26 +155,23 @@ public class floatMinresQLPShiftTests
     [Test]
     public void ShiftWarmStartCertifiesResidual()
     {
-        var arena = new Arena(Allocator.Persistent);
         int n = 12;
-        var A = BuildDenseSPD(ref arena, n, 0x5EEDu);
-        var b = arena.floatRandomVec(n, (float)(-1f), (float)1f, 0x42u);
+        var A = BuildDenseSPD(n, 0x5EEDu);
+        var b = GenerateOP.floatRandomVec(n, (float)(-1f), (float)1f, 0x42u);
         float shift = (float)(-0.6);
         float tol = Consts.floatSqrtEps;
 
-        var x = arena.floatRandomVec(n, (float)(-1f), (float)1f, 0xA11u);   // nonzero warm start
+        var x = GenerateOP.floatRandomVec(n, (float)(-1f), (float)1f, 0xA11u);   // nonzero warm start
         var info = Krylov.minresQLP(in A, in b, ref x, 4 * n, tol, shift);
 
         var op = new floatDenseOperator(in A);
-        var scratch = arena.floatVec(n);
+        var scratch = new floatN(n, Allocator.Temp);
         float rsq = ShiftedResidualSq(in op, shift, in b, in x, ref scratch);
         float bb = Blas.dot(b, b);
         float bound = (float)64 * tol; bound = bound * bound * bb;
 
         Assert.AreEqual(IterativeSolveStatus.Converged, info.status, "warm-started shifted solve should converge");
         Assert.LessOrEqual((double)rsq, (double)bound * 4.0, "warm-started ‖(A-σI)x - b‖ must be ~0 (wrong x0 sign would leave ~2σ‖x0‖)");
-
-        arena.Dispose();
     }
 
     // (6) Shift on an INDEFINITE operator (the raison d'être of MINRES-QLP over CG). A positive
@@ -199,7 +184,6 @@ public class floatMinresQLPShiftTests
     [Test]
     public void ShiftIndefiniteMatchesExplicitShift()
     {
-        var arena = new Arena(Allocator.Persistent);
         int n = 8;
         // Symmetric indefinite: eigenvalues {-4,-3,-2,-1,1,2,3,4}; shift 0.5 keeps it indefinite.
         var d = new float[] { (float)(-4f), (float)(-3f), (float)(-2f), (float)(-1f), (float)1f, (float)2f, (float)3f, (float)4f };
@@ -208,17 +192,16 @@ public class floatMinresQLPShiftTests
 
         var A = new floatMxN(n, n, Allocator.Persistent, true);   // cleared -> zeros off-diagonal
         for (int i = 0; i < n; i++) A[i, i] = d[i];
-        var b = arena.floatRandomVec(n, (float)(-1f), (float)1f, 0x7u);
+        var b = GenerateOP.floatRandomVec(n, (float)(-1f), (float)1f, 0x7u);
 
-        var xShift = arena.floatVec(n);
+        var xShift = new floatN(n, Allocator.Temp);
         for (int i = 0; i < n; i++) xShift[i] = (float)0;
         Krylov.minresQLP(in A, in b, ref xShift, 4 * n, tol, shift);
 
-        // Explicit A - shift*I as a standalone copy (A is not arena-backed, so ExplicitShift's
-        // arena Copy() can't be used here).
+        // Explicit A - shift*I as a standalone copy.
         var S = new floatMxN(in A, Allocator.Persistent);
         for (int i = 0; i < n; i++) S[i, i] -= shift;
-        var xExpl = arena.floatVec(n);
+        var xExpl = new floatN(n, Allocator.Temp);
         for (int i = 0; i < n; i++) xExpl[i] = (float)0;
         Krylov.minresQLP(in S, in b, ref xExpl, 4 * n, tol);
 
@@ -233,6 +216,5 @@ public class floatMinresQLPShiftTests
 
         S.Dispose();
         A.Dispose();
-        arena.Dispose();
     }
 }

@@ -8,14 +8,19 @@ namespace LinearAlgebra.Sparse
 {
     /// <summary>
     /// Unsmoothed nodal-aggregation algebraic multigrid hierarchy over a square SPD BSR. Built once on
-    /// the main thread (<see cref="Arena.fProxyAMG(in fProxyBSR, in AMGOptions, out AMGSetupInfo)"/>);
-    /// each level carries its operator A_l, tentative prolongator P_l (level l+1 -> l), a Chebyshev
-    /// smoother, and scratch vectors, with the coarsest level solved by a dense Cholesky. Applies a
-    /// symmetric V-cycle as a standalone solver (<see cref="MG.solve(in fProxyAMG, in fProxyN, ref fProxyN, int, fProxy)"/>)
-    /// or as an SPD preconditioner (<see cref="fProxyAMGPreconditioner"/>).
+    /// the main thread (<see cref="Arena.fProxyAMG(in fProxyBSR, in AMGOptions, out AMGSetupInfo)"/> or,
+    /// standalone, the <c>Allocator</c> constructors below); each level carries its operator A_l,
+    /// tentative prolongator P_l (level l+1 -> l), a Chebyshev smoother, and scratch vectors, with the
+    /// coarsest level solved by a dense Cholesky. Applies a symmetric V-cycle as a standalone solver
+    /// (<see cref="MG.solve(in fProxyAMG, in fProxyN, ref fProxyN, int, fProxy)"/>) or as an SPD
+    /// preconditioner (<see cref="fProxyAMGPreconditioner"/>).
     ///
-    /// The level DATA (operators, prolongators, smoothers, vectors) is arena-owned; only the small
-    /// per-level handle CONTAINERS are held directly and released by <see cref="Dispose"/>. No mutable
+    /// Built via an <c>arena.fProxyAMG(...)</c> factory, the level DATA (operators, prolongators,
+    /// smoothers, vectors) is arena-owned; only the small per-level handle CONTAINERS are held
+    /// directly and released by <see cref="Dispose"/> -- do not call Dispose() to free the level data
+    /// itself, the arena does that. Built via an <c>Allocator</c> constructor, this instance owns the
+    /// level data standalone and <see cref="Dispose"/> frees every level's buffers too; never call
+    /// Dispose() on an arena-built instance and never skip it on a standalone-built one. No mutable
     /// scalar fields — all cycle state lives in the vector buffers, so an IJob struct copy is safe.
     /// </summary>
     public struct fProxyAMG : IDisposable
@@ -39,6 +44,12 @@ namespace LinearAlgebra.Sparse
         int _cycle;                     // 0 = V, 1 = K
         bool _usable;                   // false when the coarsest Cholesky failed (do not solve)
         Allocator _alloc;
+
+        // Standalone-build bookkeeping (unused/false for an arena-built instance): _standalone gates
+        // the deep per-level free in Dispose(); _ownsLevel0 tells Dispose() whether _A[0] is a fresh
+        // MirrorToFull copy (owned) or an alias of the caller's own input BSR (never disposed).
+        bool _standalone;
+        bool _ownsLevel0;
 
         public int Levels => _levels;
         public int Rows => _A[0].M_Rows;
@@ -71,17 +82,42 @@ namespace LinearAlgebra.Sparse
             UnsafeList<fProxyN> X, UnsafeList<fProxyN> B, UnsafeList<fProxyN> R, UnsafeList<fProxyN> Z,
             UnsafeList<fProxyN> krc, UnsafeList<fProxyN> kc1, UnsafeList<fProxyN> kc2,
             UnsafeList<fProxyN> kv1, UnsafeList<fProxyN> kv2, UnsafeList<fProxyN> ke,
-            fProxyMxN coarseChol, fProxyN coarseRhs, int levels, int pre, int post, int cycle, bool usable, Allocator alloc)
+            fProxyMxN coarseChol, fProxyN coarseRhs, int levels, int pre, int post, int cycle, bool usable, Allocator alloc,
+            bool standalone = false, bool ownsLevel0 = false)
         {
             _A = A; _P = P; _S = S; _X = X; _B = B; _R = R; _Z = Z;
             _krc = krc; _kc1 = kc1; _kc2 = kc2; _kv1 = kv1; _kv2 = kv2; _ke = ke;
             _coarseChol = coarseChol; _coarseRhs = coarseRhs;
             _levels = levels; _pre = pre; _post = post; _cycle = cycle; _usable = usable; _alloc = alloc;
+            _standalone = standalone; _ownsLevel0 = ownsLevel0;
         }
 
-        /// <summary>Frees the per-level handle containers (not the arena-owned level data).</summary>
+        /// <summary>
+        /// Frees the per-level handle containers. For an arena-built hierarchy the level DATA
+        /// (operators, prolongators, smoothers, vectors) is arena-owned and left untouched here. For a
+        /// standalone (Allocator-built) hierarchy this ALSO frees every level's own buffers first --
+        /// _A[0] is skipped when it aliases the caller's input BSR (see <see cref="_ownsLevel0"/>).
+        /// Only call Dispose on a standalone-built instance; an arena-built instance is arena-owned.
+        /// </summary>
         public void Dispose()
         {
+            if (_standalone)
+            {
+                if (_A.IsCreated)
+                    for (int l = 0; l < _A.Length; l++)
+                        if (l > 0 || _ownsLevel0) _A[l].Dispose();
+                if (_P.IsCreated)
+                    for (int l = 0; l < _P.Length; l++) _P[l].Dispose();
+                if (_S.IsCreated)
+                    for (int l = 0; l < _S.Length; l++) _S[l].Dispose();
+                if (_X.IsCreated)
+                    for (int l = 0; l < _X.Length; l++) { _X[l].Dispose(); _B[l].Dispose(); _R[l].Dispose(); _Z[l].Dispose(); }
+                if (_krc.IsCreated)
+                    for (int l = 0; l < _krc.Length; l++) { _krc[l].Dispose(); _kc1[l].Dispose(); _kc2[l].Dispose(); _kv1[l].Dispose(); _kv2[l].Dispose(); _ke[l].Dispose(); }
+                _coarseChol.Dispose();
+                _coarseRhs.Dispose();
+            }
+
             if (_A.IsCreated) _A.Dispose();
             if (_P.IsCreated) _P.Dispose();
             if (_S.IsCreated) _S.Dispose();
@@ -95,6 +131,238 @@ namespace LinearAlgebra.Sparse
             if (_kv1.IsCreated) _kv1.Dispose();
             if (_kv2.IsCreated) _kv2.Dispose();
             if (_ke.IsCreated) _ke.Dispose();
+        }
+
+        /// <summary>
+        /// Standalone twin of <see cref="Arena.fProxyAMGBuild"/> / the near-nullspace
+        /// <c>arena.fProxyAMG</c> overload: builds the hierarchy from <paramref name="allocator"/>
+        /// instead of an arena, with the SAME coarsening/aggregation/Galerkin/Chebyshev-smoother/
+        /// coarsest-Cholesky construction. Every owned buffer -- operators (levels 1+), tentative
+        /// prolongators, smoothers, per-level solution/rhs/residual/correction vectors, the K-cycle
+        /// scratch (if any), and the coarsest dense Cholesky factor -- is allocated from
+        /// <paramref name="allocator"/>. Level 0's operator is the caller's own <paramref name="A"/>
+        /// UNCHANGED (aliased, not owned) when it is already full storage, or a fresh full-storage
+        /// mirror (owned) when <paramref name="A"/> is Symmetric storage. info.status is Success, or
+        /// NotPositiveDefinite when the coarsest Cholesky fails. Throws under the same conditions as
+        /// the arena build (A not square, B0 malformed, opts out of range); on a thrown exception,
+        /// every level fully built so far is freed before the exception propagates. The result must be
+        /// Disposed -- only call Dispose on an instance built via an Allocator ctor.
+        /// </summary>
+        static fProxyAMG BuildStandalone(in fProxyBSR A, in fProxyMxN B0, in AMGOptions opts, out AMGSetupInfo info, Allocator allocator)
+        {
+            if (A.BlockRows != A.BlockCols || A.BR != A.BC)
+                throw new ArgumentException("fProxyAMG: A must be square (BlockRows==BlockCols, BR==BC)");
+            if (B0.M_Rows != A.M_Rows || B0.N_Cols < 1)
+                throw new ArgumentException("fProxyAMG: near-nullspace B must be A.M_Rows x m with m >= 1");
+            if (opts.pre < 0 || opts.post < 0)
+                throw new ArgumentException("fProxyAMG: pre/post must be >= 0");
+            if (opts.coarseMax < 1 || opts.maxLevels < 1)
+                throw new ArgumentException("fProxyAMG: coarseMax/maxLevels must be >= 1");
+
+            // Declared up front so the finally can deep-free them (containers AND, for this
+            // standalone build, every level's own buffers) if a level build throws before the
+            // hierarchy is constructed -- nothing else will reclaim this memory.
+            var levA = default(UnsafeList<fProxyBSR>);
+            var levP = default(UnsafeList<fProxyBSR>);
+            var levS = default(UnsafeList<fProxyChebyshev>);
+            var levX = default(UnsafeList<fProxyN>);
+            var levB = default(UnsafeList<fProxyN>);
+            var levR = default(UnsafeList<fProxyN>);
+            var levZ = default(UnsafeList<fProxyN>);
+            var kRc = default(UnsafeList<fProxyN>);
+            var kC1 = default(UnsafeList<fProxyN>);
+            var kC2 = default(UnsafeList<fProxyN>);
+            var kV1 = default(UnsafeList<fProxyN>);
+            var kV2 = default(UnsafeList<fProxyN>);
+            var kE = default(UnsafeList<fProxyN>);
+            bool ownsLevel0 = false;
+            bool ok = false;
+            try
+            {
+                levA = new UnsafeList<fProxyBSR>(4, allocator);
+                levP = new UnsafeList<fProxyBSR>(4, allocator);
+                levS = new UnsafeList<fProxyChebyshev>(4, allocator);
+
+                ownsLevel0 = A.Symmetric;
+                fProxyBSR A0 = ownsLevel0 ? A.MirrorToFull(allocator) : A;
+                levA.Add(A0);
+
+                fProxyMxN Bcur = B0;          // level-0 near-nullspace; B0 is caller-owned, never disposed here
+                bool bcurOwned = false;        // true once Bcur is our own Temp-lifetime coarse nullspace
+
+                while (levA[levA.Length - 1].M_Rows > opts.coarseMax && levA.Length < opts.maxLevels)
+                {
+                    fProxyBSR cur = levA[levA.Length - 1];
+                    var aggId = new Indices(cur.BlockRows, Allocator.Temp);
+                    AMG.aggregate(in cur, (fProxy)opts.theta, ref aggId, out int numAgg);
+                    if (numAgg >= cur.BlockRows) { aggId.Dispose(); break; }    // aggregation did not coarsen -> stop
+
+                    // T/Ac/sm are built into locals before any is stored -- on a mid-build throw (e.g.
+                    // fProxyChebyshev rejecting a non-SPD level), the finally frees exactly what had
+                    // already succeeded, so nothing built here leaks. try/finally with a success flag,
+                    // NOT try/catch -- Burst rejects `catch` (BC1006); under Burst the cleanup degrades
+                    // to a no-op on the throw path.
+                    fProxyBSR T = default, Ac = default;
+                    fProxyMxN Bc = default;
+                    fProxyChebyshev sm = default;
+                    bool tOk = false, acOk = false, iterOk = false;
+                    try
+                    {
+                        T = AMG.tentativeProlongator(in cur, in aggId, numAgg, in Bcur, out Bc, allocator);
+                        tOk = true;
+                        Ac = AMG.galerkinRAP(in cur, in T, in aggId, numAgg, allocator);
+                        acOk = true;
+                        sm = new fProxyChebyshev(in cur, allocator);   // smoother for the CURRENT level
+                        iterOk = true;
+                    }
+                    finally
+                    {
+                        if (!iterOk)
+                        {
+                            if (acOk) Ac.Dispose();
+                            if (tOk) { T.Dispose(); Bc.Dispose(); }
+                        }
+                        aggId.Dispose();
+                    }
+
+                    levP.Add(T);
+                    levS.Add(sm);
+                    levA.Add(Ac);
+                    if (bcurOwned) Bcur.Dispose();   // previous level's throwaway coarse nullspace
+                    Bcur = Bc;
+                    bcurOwned = true;
+                }
+                if (bcurOwned) Bcur.Dispose();       // coarsest level's nullspace: consumed by nobody
+
+                int L = levA.Length;
+                fProxyBSR coarse = levA[L - 1];
+                fProxyMxN chol = coarse.ToDense(allocator);
+                var cinfo = CHO.decompInPlace(ref chol);
+
+                levX = new UnsafeList<fProxyN>(L, allocator);
+                levB = new UnsafeList<fProxyN>(L, allocator);
+                levR = new UnsafeList<fProxyN>(L, allocator);
+                levZ = new UnsafeList<fProxyN>(L, allocator);
+                for (int l = 0; l < L; l++)
+                {
+                    int nl = levA[l].M_Rows;
+                    levX.Add(new fProxyN(nl, allocator));
+                    levB.Add(new fProxyN(nl, allocator));
+                    levR.Add(new fProxyN(nl, allocator));
+                    levZ.Add(new fProxyN(nl, allocator));
+                }
+                var coarseRhs = new fProxyN(coarse.M_Rows, allocator);
+
+                int cycle = opts.cycle == MGCycle.K ? 1 : 0;
+                if (cycle == 1)
+                {
+                    // Per-level 2-step-FCG scratch (level 0's slot is unused but kept for indexing).
+                    kRc = new UnsafeList<fProxyN>(L, allocator);
+                    kC1 = new UnsafeList<fProxyN>(L, allocator);
+                    kC2 = new UnsafeList<fProxyN>(L, allocator);
+                    kV1 = new UnsafeList<fProxyN>(L, allocator);
+                    kV2 = new UnsafeList<fProxyN>(L, allocator);
+                    kE = new UnsafeList<fProxyN>(L, allocator);
+                    for (int l = 0; l < L; l++)
+                    {
+                        int nl = levA[l].M_Rows;
+                        kRc.Add(new fProxyN(nl, allocator));
+                        kC1.Add(new fProxyN(nl, allocator));
+                        kC2.Add(new fProxyN(nl, allocator));
+                        kV1.Add(new fProxyN(nl, allocator));
+                        kV2.Add(new fProxyN(nl, allocator));
+                        kE.Add(new fProxyN(nl, allocator));
+                    }
+                }
+
+                info = new AMGSetupInfo
+                {
+                    levels = L,
+                    coarseRows = coarse.M_Rows,
+                    status = cinfo.Solved ? DirectSolveStatus.Success : DirectSolveStatus.NotPositiveDefinite,
+                };
+
+                var result = new fProxyAMG(levA, levP, levS, levX, levB, levR, levZ,
+                    kRc, kC1, kC2, kV1, kV2, kE, chol, coarseRhs,
+                    L, opts.pre, opts.post, cycle, cinfo.Solved, allocator, true, ownsLevel0);
+                ok = true;
+                return result;
+            }
+            finally
+            {
+                if (!ok)
+                {
+                    // Deep-free whatever level data was fully committed before the failure. levA
+                    // always leads levP/levS by exactly one committed entry (a level's operator/
+                    // prolongator/smoother are added together, only after all three succeed), so
+                    // their Lengths bound what is safe to walk here.
+                    if (levA.IsCreated)
+                        for (int l = 0; l < levA.Length; l++)
+                            if (l > 0 || ownsLevel0) levA[l].Dispose();
+                    if (levP.IsCreated)
+                        for (int l = 0; l < levP.Length; l++) levP[l].Dispose();
+                    if (levS.IsCreated)
+                        for (int l = 0; l < levS.Length; l++) levS[l].Dispose();
+                    if (levX.IsCreated)
+                        for (int l = 0; l < levX.Length; l++) { levX[l].Dispose(); levB[l].Dispose(); levR[l].Dispose(); levZ[l].Dispose(); }
+                    if (kRc.IsCreated)
+                        for (int l = 0; l < kRc.Length; l++) { kRc[l].Dispose(); kC1[l].Dispose(); kC2[l].Dispose(); kV1[l].Dispose(); kV2[l].Dispose(); kE[l].Dispose(); }
+
+                    if (levA.IsCreated) levA.Dispose();
+                    if (levP.IsCreated) levP.Dispose();
+                    if (levS.IsCreated) levS.Dispose();
+                    if (levX.IsCreated) levX.Dispose();
+                    if (levB.IsCreated) levB.Dispose();
+                    if (levR.IsCreated) levR.Dispose();
+                    if (levZ.IsCreated) levZ.Dispose();
+                    if (kRc.IsCreated) kRc.Dispose();
+                    if (kC1.IsCreated) kC1.Dispose();
+                    if (kC2.IsCreated) kC2.Dispose();
+                    if (kV1.IsCreated) kV1.Dispose();
+                    if (kV2.IsCreated) kV2.Dispose();
+                    if (kE.IsCreated) kE.Dispose();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Builds an AMG hierarchy with the SCALAR default near-nullspace (B = the constant vector,
+        /// m = 1) from <paramref name="allocator"/> instead of an arena -- standalone twin of
+        /// <see cref="Arena.fProxyAMG(in fProxyBSR, in AMGOptions, out AMGSetupInfo)"/>. See
+        /// <see cref="BuildStandalone"/> for the full construction/ownership/throw contract.
+        /// </summary>
+        public fProxyAMG(in fProxyBSR A, in AMGOptions opts, out AMGSetupInfo info, Allocator allocator)
+        {
+            int n = A.M_Rows;
+            var ones = new fProxyMxN(n, 1, Allocator.Temp);
+            for (int i = 0; i < n; i++) ones[i, 0] = (fProxy)1;
+            this = BuildStandalone(in A, in ones, in opts, out info, allocator);
+            ones.Dispose();
+        }
+
+        /// <summary>Standalone twin of <see cref="Arena.fProxyAMG(in fProxyBSR, out AMGSetupInfo)"/>:
+        /// scalar-default near-nullspace AMG with <see cref="AMGOptions.Default"/>.</summary>
+        public fProxyAMG(in fProxyBSR A, out AMGSetupInfo info, Allocator allocator)
+        {
+            this = new fProxyAMG(in A, AMGOptions.Default, out info, allocator);
+        }
+
+        /// <summary>
+        /// Builds an AMG hierarchy with a user-supplied near-nullspace <paramref name="Bnear"/> from
+        /// <paramref name="allocator"/> instead of an arena -- standalone twin of
+        /// <see cref="Arena.fProxyAMG(in fProxyBSR, in fProxyMxN, in AMGOptions, out AMGSetupInfo)"/>.
+        /// See <see cref="BuildStandalone"/> for the full construction/ownership/throw contract.
+        /// </summary>
+        public fProxyAMG(in fProxyBSR A, in fProxyMxN Bnear, in AMGOptions opts, out AMGSetupInfo info, Allocator allocator)
+        {
+            this = BuildStandalone(in A, in Bnear, in opts, out info, allocator);
+        }
+
+        /// <summary>Standalone twin of <see cref="Arena.fProxyAMG(in fProxyBSR, in fProxyMxN, out AMGSetupInfo)"/>:
+        /// near-nullspace AMG with <see cref="AMGOptions.Default"/>.</summary>
+        public fProxyAMG(in fProxyBSR A, in fProxyMxN Bnear, out AMGSetupInfo info, Allocator allocator)
+        {
+            this = new fProxyAMG(in A, in Bnear, AMGOptions.Default, out info, allocator);
         }
 
         // One smoothing sweep on level l: X += M^-1 (B - A X), M the level's Chebyshev smoother.

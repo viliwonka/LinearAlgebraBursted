@@ -64,35 +64,35 @@ namespace LinearAlgebra.Benchmarks
 
         // MIPLIB "stein9" -- SAME literal instance data as MIPTests.double.cs's BuildStein9 (Fulkerson,
         // Nemhauser & Trotter 1974; MIPLIB 3), not re-derived. 9 binaries, minimize count, proven optimum 5.
-        static void BuildStein9Double(in Arena arena, out doubleMxN A, out doubleN b, out doubleN c,
+        static void BuildStein9Double(Allocator allocator, out doubleMxN A, out doubleN b, out doubleN c,
                                       out NativeArray<ConstraintSense> senses, out doubleN xl, out doubleN xu,
                                       out NativeArray<byte> integ)
         {
             const int n = 9, m = 13;
-            A = arena.doubleMat(m, n);   // zero-initialized
+            A = new doubleMxN(m, n, allocator);   // zero-initialized
             SetTripleDouble(A, 0, 1, 2, 3); SetTripleDouble(A, 1, 0, 2, 4); SetTripleDouble(A, 2, 0, 1, 5); SetTripleDouble(A, 3, 4, 5, 6);
             SetTripleDouble(A, 4, 3, 5, 7); SetTripleDouble(A, 5, 3, 4, 8); SetTripleDouble(A, 6, 0, 7, 8); SetTripleDouble(A, 7, 1, 6, 8);
             SetTripleDouble(A, 8, 2, 6, 7); SetTripleDouble(A, 9, 0, 3, 6); SetTripleDouble(A, 10, 1, 4, 7); SetTripleDouble(A, 11, 2, 5, 8);
             for (int j = 0; j < n; j++) A[12, j] = (double)1;   // the OB2 "at least 4 of 9" cut
 
-            b = arena.doubleVec(m); for (int i = 0; i < 12; i++) b[i] = (double)1; b[12] = (double)4;
+            b = new doubleN(m, allocator); for (int i = 0; i < 12; i++) b[i] = (double)1; b[12] = (double)4;
             senses = new NativeArray<ConstraintSense>(m, Allocator.Persistent);
             for (int i = 0; i < m; i++) senses[i] = ConstraintSense.GreaterEqual;
-            c = arena.doubleVec(n); for (int j = 0; j < n; j++) c[j] = (double)1;
-            xl = arena.doubleVec(n);
-            xu = arena.doubleVec(n); for (int j = 0; j < n; j++) xu[j] = (double)1;
+            c = new doubleN(n, allocator); for (int j = 0; j < n; j++) c[j] = (double)1;
+            xl = new doubleN(n, allocator);
+            xu = new doubleN(n, allocator); for (int j = 0; j < n; j++) xu[j] = (double)1;
             integ = new NativeArray<byte>(n, Allocator.Persistent); for (int j = 0; j < n; j++) integ[j] = 1;
         }
 
         // MIPLIB "stein15" -- SAME literal instance data as MIPTests.double.cs's Stein15, not re-derived.
         // 15 binaries, minimize count, proven optimum 9 (double: ~275 nodes / ~4307 LP iterations per the
         // test file's own measured baseline).
-        static void BuildStein15Double(in Arena arena, out doubleMxN A, out doubleN b, out doubleN c,
+        static void BuildStein15Double(Allocator allocator, out doubleMxN A, out doubleN b, out doubleN c,
                                        out NativeArray<ConstraintSense> senses, out doubleN xl, out doubleN xu,
                                        out NativeArray<byte> integ)
         {
             const int n = 15, m = 36;
-            A = arena.doubleMat(m, n);   // zero-initialized
+            A = new doubleMxN(m, n, allocator);   // zero-initialized
             SetTripleDouble(A, 0, 2, 3, 5);   SetTripleDouble(A, 1, 3, 4, 6);   SetTripleDouble(A, 2, 0, 4, 7);   SetTripleDouble(A, 3, 0, 1, 8);   SetTripleDouble(A, 4, 1, 2, 9);
             SetTripleDouble(A, 5, 1, 4, 5);   SetTripleDouble(A, 6, 0, 2, 6);   SetTripleDouble(A, 7, 1, 3, 7);   SetTripleDouble(A, 8, 2, 4, 8);   SetTripleDouble(A, 9, 0, 3, 9);
             SetTripleDouble(A, 10, 7, 8, 10); SetTripleDouble(A, 11, 8, 9, 11); SetTripleDouble(A, 12, 5, 9, 12); SetTripleDouble(A, 13, 5, 6, 13); SetTripleDouble(A, 14, 6, 7, 14);
@@ -102,24 +102,24 @@ namespace LinearAlgebra.Benchmarks
             SetTripleDouble(A, 30, 0, 5, 10); SetTripleDouble(A, 31, 1, 6, 11); SetTripleDouble(A, 32, 2, 7, 12); SetTripleDouble(A, 33, 3, 8, 13); SetTripleDouble(A, 34, 4, 9, 14);
             for (int j = 0; j < n; j++) A[35, j] = (double)1;   // the "at least 7 of 15" cut
 
-            b = arena.doubleVec(m); for (int i = 0; i < 35; i++) b[i] = (double)1; b[35] = (double)7;
+            b = new doubleN(m, allocator); for (int i = 0; i < 35; i++) b[i] = (double)1; b[35] = (double)7;
             senses = new NativeArray<ConstraintSense>(m, Allocator.Persistent);
             for (int i = 0; i < m; i++) senses[i] = ConstraintSense.GreaterEqual;
-            c = arena.doubleVec(n); for (int j = 0; j < n; j++) c[j] = (double)1;
-            xl = arena.doubleVec(n);
-            xu = arena.doubleVec(n); for (int j = 0; j < n; j++) xu[j] = (double)1;
+            c = new doubleN(n, allocator); for (int j = 0; j < n; j++) c[j] = (double)1;
+            xl = new doubleN(n, allocator);
+            xu = new doubleN(n, allocator); for (int j = 0; j < n; j++) xu[j] = (double)1;
             integ = new NativeArray<byte>(n, Allocator.Persistent); for (int j = 0; j < n; j++) integ[j] = 1;
         }
 
         // MIPLIB "p0033" -- SAME literal instance data as MIPTests.double.cs's P0033 (Crowder, Johnson &
         // Padberg 1983), not re-derived. 33 binaries, 15 LessEqual rows, proven optimum 3089.
-        static void BuildP0033Double(in Arena arena, out doubleMxN A, out doubleN b, out doubleN c,
+        static void BuildP0033Double(Allocator allocator, out doubleMxN A, out doubleN b, out doubleN c,
                                      out NativeArray<ConstraintSense> senses, out doubleN xl, out doubleN xu,
                                      out NativeArray<byte> integ)
         {
             const int n = 33, m = 15;
-            A = arena.doubleMat(m, n);   // zero-initialized
-            c = arena.doubleVec(n);
+            A = new doubleMxN(m, n, allocator);   // zero-initialized
+            c = new doubleN(n, allocator);
             c[0] = (double)171; c[1] = (double)171; c[2] = (double)171; c[3] = (double)171; c[4] = (double)163;
             c[5] = (double)162; c[6] = (double)163; c[7] = (double)69; c[8] = (double)69; c[9] = (double)183;
             c[10] = (double)183; c[11] = (double)183; c[12] = (double)183; c[13] = (double)49; c[14] = (double)183;
@@ -154,15 +154,15 @@ namespace LinearAlgebra.Benchmarks
             A[13, 20] = (double)(-400);
             A[14, 6] = (double)(-285); A[14, 31] = (double)(-200); A[14, 32] = (double)(-400);
 
-            b = arena.doubleVec(m);
+            b = new doubleN(m, allocator);
             b[0] = (double)1; b[1] = (double)1; b[2] = (double)1; b[3] = (double)1; b[4] = (double)(-5);
             b[5] = (double)2700; b[6] = (double)(-2600); b[7] = (double)(-100); b[8] = (double)(-900);
             b[9] = (double)(-1656); b[10] = (double)(-335); b[11] = (double)(-1026); b[12] = (double)(-5);
             b[13] = (double)(-500); b[14] = (double)(-270);
             senses = new NativeArray<ConstraintSense>(m, Allocator.Persistent);
             for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
-            xl = arena.doubleVec(n);
-            xu = arena.doubleVec(n); for (int j = 0; j < n; j++) xu[j] = (double)1;
+            xl = new doubleN(n, allocator);
+            xu = new doubleN(n, allocator); for (int j = 0; j < n; j++) xu[j] = (double)1;
             integ = new NativeArray<byte>(n, Allocator.Persistent); for (int j = 0; j < n; j++) integ[j] = 1;
         }
 
@@ -170,12 +170,12 @@ namespace LinearAlgebra.Benchmarks
         // generalized to any (n, m, seed): integer A/b/c built around a random feasible integer point x*
         // (guarantees feasible + bounded), box [0,3]^n, every variable integer. n=12 with seed 424242
         // exactly reproduces the test suite's own Branchy12 instance.
-        static void BuildBranchyDouble(int n, int m, uint seed, in Arena arena, out doubleMxN A, out doubleN b, out doubleN c,
+        static void BuildBranchyDouble(int n, int m, uint seed, Allocator allocator, out doubleMxN A, out doubleN b, out doubleN c,
                                        out NativeArray<ConstraintSense> senses, out doubleN xl, out doubleN xu,
                                        out NativeArray<byte> integ)
         {
             var rng = new Random(seed);
-            A = arena.doubleMat(m, n);
+            A = new doubleMxN(m, n, allocator);
             for (int i = 0; i < m; i++)
                 for (int j = 0; j < n; j++)
                     A[i, j] = (double)rng.NextInt(-2, 3);
@@ -183,7 +183,7 @@ namespace LinearAlgebra.Benchmarks
             var xstar = new NativeArray<int>(n, Allocator.Temp);
             for (int j = 0; j < n; j++) xstar[j] = rng.NextInt(0, 4);
 
-            b = arena.doubleVec(m);
+            b = new doubleN(m, allocator);
             senses = new NativeArray<ConstraintSense>(m, Allocator.Persistent);
             for (int i = 0; i < m; i++)
             {
@@ -196,10 +196,10 @@ namespace LinearAlgebra.Benchmarks
                 else { senses[i] = ConstraintSense.Equal; b[i] = (double)act; }
             }
 
-            c = arena.doubleVec(n);
+            c = new doubleN(n, allocator);
             for (int j = 0; j < n; j++) c[j] = (double)rng.NextInt(-3, 4);
-            xl = arena.doubleVec(n);
-            xu = arena.doubleVec(n); for (int j = 0; j < n; j++) xu[j] = (double)3;
+            xl = new doubleN(n, allocator);
+            xu = new doubleN(n, allocator); for (int j = 0; j < n; j++) xu[j] = (double)3;
             integ = new NativeArray<byte>(n, Allocator.Persistent); for (int j = 0; j < n; j++) integ[j] = 1;
 
             xstar.Dispose();
@@ -214,9 +214,8 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine(MIPBenchmarkFmt.Header());
 
             {
-                var arena = new Arena(Allocator.Persistent);
-                BuildStein9Double(in arena, out var A, out var b, out var c, out var senses, out var xl, out var xu, out var integ);
-                var x = arena.doubleVec(9);
+                BuildStein9Double(Allocator.Persistent, out var A, out var b, out var c, out var senses, out var xl, out var xu, out var integ);
+                var x = new doubleN(9, Allocator.Persistent);
 
                 var objOut = new NativeArray<double>(1, Allocator.Persistent);
                 var nodesOut = new NativeArray<int>(1, Allocator.Persistent);
@@ -235,7 +234,8 @@ namespace LinearAlgebra.Benchmarks
                 sb.AppendLine(MIPBenchmarkFmt.Row("double", "stein9", 9, 13, stat, nodesOut[0], itersOut[0], statusOut[0], objOut[0]));
 
                 objOut.Dispose(); nodesOut.Dispose(); itersOut.Dispose(); statusOut.Dispose(); dualBoundOut.Dispose(); gapOut.Dispose();
-                senses.Dispose(); integ.Dispose(); arena.Dispose();
+                senses.Dispose(); integ.Dispose();
+                A.Dispose(); b.Dispose(); c.Dispose(); xl.Dispose(); xu.Dispose(); x.Dispose();
             }
 
             // stein15 / p0033: double only (float known not to converge / not to prove optimality within a
@@ -243,9 +243,8 @@ namespace LinearAlgebra.Benchmarks
             int cases = 1;
             for (int s = 0; s < cases; s++)
             {
-                var arena = new Arena(Allocator.Persistent);
-                BuildStein15Double(in arena, out var A, out var b, out var c, out var senses, out var xl, out var xu, out var integ);
-                var x = arena.doubleVec(15);
+                BuildStein15Double(Allocator.Persistent, out var A, out var b, out var c, out var senses, out var xl, out var xu, out var integ);
+                var x = new doubleN(15, Allocator.Persistent);
 
                 var objOut = new NativeArray<double>(1, Allocator.Persistent);
                 var nodesOut = new NativeArray<int>(1, Allocator.Persistent);
@@ -264,13 +263,13 @@ namespace LinearAlgebra.Benchmarks
                 sb.AppendLine(MIPBenchmarkFmt.Row("double", "stein15", 15, 36, stat, nodesOut[0], itersOut[0], statusOut[0], objOut[0]));
 
                 objOut.Dispose(); nodesOut.Dispose(); itersOut.Dispose(); statusOut.Dispose(); dualBoundOut.Dispose(); gapOut.Dispose();
-                senses.Dispose(); integ.Dispose(); arena.Dispose();
+                senses.Dispose(); integ.Dispose();
+                A.Dispose(); b.Dispose(); c.Dispose(); xl.Dispose(); xu.Dispose(); x.Dispose();
             }
             for (int s = 0; s < cases; s++)
             {
-                var arena = new Arena(Allocator.Persistent);
-                BuildP0033Double(in arena, out var A, out var b, out var c, out var senses, out var xl, out var xu, out var integ);
-                var x = arena.doubleVec(33);
+                BuildP0033Double(Allocator.Persistent, out var A, out var b, out var c, out var senses, out var xl, out var xu, out var integ);
+                var x = new doubleN(33, Allocator.Persistent);
 
                 var objOut = new NativeArray<double>(1, Allocator.Persistent);
                 var nodesOut = new NativeArray<int>(1, Allocator.Persistent);
@@ -289,7 +288,8 @@ namespace LinearAlgebra.Benchmarks
                 sb.AppendLine(MIPBenchmarkFmt.Row("double", "p0033", 33, 15, stat, nodesOut[0], itersOut[0], statusOut[0], objOut[0]));
 
                 objOut.Dispose(); nodesOut.Dispose(); itersOut.Dispose(); statusOut.Dispose(); dualBoundOut.Dispose(); gapOut.Dispose();
-                senses.Dispose(); integ.Dispose(); arena.Dispose();
+                senses.Dispose(); integ.Dispose();
+                A.Dispose(); b.Dispose(); c.Dispose(); xl.Dispose(); xu.Dispose(); x.Dispose();
             }
         }
 
@@ -312,9 +312,8 @@ namespace LinearAlgebra.Benchmarks
                 int m = n / 2;
                 uint seed = MIPBenchmarkFmt.ScalingSeed[idx];
 
-                var arena = new Arena(Allocator.Persistent);
-                BuildBranchyDouble(n, m, seed, in arena, out var A, out var b, out var c, out var senses, out var xl, out var xu, out var integ);
-                var x = arena.doubleVec(n);
+                BuildBranchyDouble(n, m, seed, Allocator.Persistent, out var A, out var b, out var c, out var senses, out var xl, out var xu, out var integ);
+                var x = new doubleN(n, Allocator.Persistent);
 
                 var objOut = new NativeArray<double>(1, Allocator.Persistent);
                 var nodesOut = new NativeArray<int>(1, Allocator.Persistent);
@@ -333,7 +332,8 @@ namespace LinearAlgebra.Benchmarks
                 sb.AppendLine(MIPBenchmarkFmt.Row("double", "branchy" + n, n, m, stat, nodesOut[0], itersOut[0], statusOut[0], objOut[0]));
 
                 objOut.Dispose(); nodesOut.Dispose(); itersOut.Dispose(); statusOut.Dispose(); dualBoundOut.Dispose(); gapOut.Dispose();
-                senses.Dispose(); integ.Dispose(); arena.Dispose();
+                senses.Dispose(); integ.Dispose();
+                A.Dispose(); b.Dispose(); c.Dispose(); xl.Dispose(); xu.Dispose(); x.Dispose();
             }
         }
 
@@ -353,9 +353,8 @@ namespace LinearAlgebra.Benchmarks
 
                 foreach (var relGap in MIPBenchmarkFmt.GapRelGaps)
                 {
-                    var arena = new Arena(Allocator.Persistent);
-                    BuildP0033Double(in arena, out var A, out var b, out var c, out var senses, out var xl, out var xu, out var integ);
-                    var x = arena.doubleVec(33);
+                    BuildP0033Double(Allocator.Persistent, out var A, out var b, out var c, out var senses, out var xl, out var xu, out var integ);
+                    var x = new doubleN(33, Allocator.Persistent);
 
                     var objOut = new NativeArray<double>(1, Allocator.Persistent);
                     var nodesOut = new NativeArray<int>(1, Allocator.Persistent);
@@ -374,7 +373,8 @@ namespace LinearAlgebra.Benchmarks
                     sb.AppendLine(MIPBenchmarkFmt.GapRow("double", "p0033", relGap, stat, nodesOut[0], itersOut[0], statusOut[0], objOut[0], gapOut[0]));
 
                     objOut.Dispose(); nodesOut.Dispose(); itersOut.Dispose(); statusOut.Dispose(); dualBoundOut.Dispose(); gapOut.Dispose();
-                    senses.Dispose(); integ.Dispose(); arena.Dispose();
+                    senses.Dispose(); integ.Dispose();
+                    A.Dispose(); b.Dispose(); c.Dispose(); xl.Dispose(); xu.Dispose(); x.Dispose();
                 }
             }
         }
@@ -394,9 +394,8 @@ namespace LinearAlgebra.Benchmarks
                               "average simplex pivots per warm-started node re-solve [double] ---");
                 sb.AppendLine(MIPBenchmarkFmt.Header());
 
-                var arena = new Arena(Allocator.Persistent);
-                BuildStein15Double(in arena, out var A, out var b, out var c, out var senses, out var xl, out var xu, out var integ);
-                var x = arena.doubleVec(15);
+                BuildStein15Double(Allocator.Persistent, out var A, out var b, out var c, out var senses, out var xl, out var xu, out var integ);
+                var x = new doubleN(15, Allocator.Persistent);
 
                 var objOut = new NativeArray<double>(1, Allocator.Persistent);
                 var nodesOut = new NativeArray<int>(1, Allocator.Persistent);
@@ -416,7 +415,8 @@ namespace LinearAlgebra.Benchmarks
                 sb.AppendLine(MIPBenchmarkFmt.RatioLine("double", itersOut[0], nodesOut[0]));
 
                 objOut.Dispose(); nodesOut.Dispose(); itersOut.Dispose(); statusOut.Dispose(); dualBoundOut.Dispose(); gapOut.Dispose();
-                senses.Dispose(); integ.Dispose(); arena.Dispose();
+                senses.Dispose(); integ.Dispose();
+                A.Dispose(); b.Dispose(); c.Dispose(); xl.Dispose(); xu.Dispose(); x.Dispose();
             }
         }
     }

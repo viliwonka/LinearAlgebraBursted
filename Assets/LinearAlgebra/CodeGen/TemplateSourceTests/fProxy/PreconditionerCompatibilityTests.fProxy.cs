@@ -14,7 +14,7 @@ public class fProxyPreconditionerCompatibilityTests
 {
     static fProxy Tol() => Consts.fProxySqrtEps;
 
-    static fProxyBSR SmallSpd(ref Arena arena) => arena.fProxyLaplacian2D(4, 4);
+    static fProxyBSR SmallSpd() => fProxyGallery.fProxyLaplacian2D(4, 4);
 
     // ---- flag values on a representative set of preconditioners ----
 
@@ -29,34 +29,28 @@ public class fProxyPreconditionerCompatibilityTests
     [Test]
     public void BlockJacobiFlagsAreSpdAndConstant()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = SmallSpd(ref arena);
-        var M = arena.fProxyBlockJacobi(in A);
+        var A = SmallSpd();
+        var M = new fProxyBlockJacobi(in A, Allocator.Temp);
         Assert.IsTrue(M.IsSpd);
         Assert.IsTrue(M.IsConstant);
-        arena.Dispose();
     }
 
     [Test]
     public void IC0FlagsAreSpdAndConstant()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = SmallSpd(ref arena);
-        var M = arena.fProxyIC0(in A);
+        var A = SmallSpd();
+        var M = new fProxyIC0(in A, Allocator.Temp);
         Assert.IsTrue(M.IsSpd);
         Assert.IsTrue(M.IsConstant);
-        arena.Dispose();
     }
 
     [Test]
     public void ILU0FlagsAreNonSpdAndConstant()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = SmallSpd(ref arena);
-        var M = arena.fProxyILU0(in A);
+        var A = SmallSpd();
+        var M = new fProxyILU0(in A, Allocator.Temp);
         Assert.IsFalse(M.IsSpd);
         Assert.IsTrue(M.IsConstant);
-        arena.Dispose();
     }
 
     // ---- entry-point compatibility checks ----
@@ -64,50 +58,41 @@ public class fProxyPreconditionerCompatibilityTests
     [Test]
     public void CgRejectsIlu0()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = SmallSpd(ref arena);
+        var A = SmallSpd();
         int n = A.M_Rows;
-        var M = arena.fProxyILU0(in A);
-        var b = arena.fProxyRandomVec(n, -1f, 1f, 0x9001u);
-        var x = arena.fProxyVec(n);
+        var M = new fProxyILU0(in A, Allocator.Temp);
+        var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x9001u);
+        var x = new fProxyN(n, Allocator.Temp);
         for (int i = 0; i < n; i++) x[i] = (fProxy)0;
 
         Assert.Throws<ArgumentException>(() => { Krylov.cg(in A, in M, in b, ref x, n, Tol()); });
-
-        arena.Dispose();
     }
 
     [Test]
     public void MinresRejectsIlu0()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = SmallSpd(ref arena);
+        var A = SmallSpd();
         int n = A.M_Rows;
-        var M = arena.fProxyILU0(in A);
-        var b = arena.fProxyRandomVec(n, -1f, 1f, 0x9002u);
-        var x = arena.fProxyVec(n);
+        var M = new fProxyILU0(in A, Allocator.Temp);
+        var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x9002u);
+        var x = new fProxyN(n, Allocator.Temp);
         for (int i = 0; i < n; i++) x[i] = (fProxy)0;
 
         Assert.Throws<ArgumentException>(() => { Krylov.minres(in A, in M, in b, ref x, n, Tol()); });
-
-        arena.Dispose();
     }
 
     [Test]
     public void FcgRejectsIlu0()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = SmallSpd(ref arena);
+        var A = SmallSpd();
         int n = A.M_Rows;
         var op = new fProxyBSROperator(in A);
-        var M = arena.fProxyILU0(in A);
-        var b = arena.fProxyRandomVec(n, -1f, 1f, 0x9003u);
-        var x = arena.fProxyVec(n);
+        var M = new fProxyILU0(in A, Allocator.Temp);
+        var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x9003u);
+        var x = new fProxyN(n, Allocator.Temp);
         for (int i = 0; i < n; i++) x[i] = (fProxy)0;
 
         Assert.Throws<ArgumentException>(() => { Krylov.fcg(in op, in M, in b, ref x, n, Tol()); });
-
-        arena.Dispose();
     }
 
     // biCGStab requires only a CONSTANT preconditioner (not SPD) -- ILU0 (non-SPD, constant) is a
@@ -116,37 +101,31 @@ public class fProxyPreconditionerCompatibilityTests
     [Test]
     public void BiCGStabAcceptsIlu0()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = SmallSpd(ref arena);
+        var A = SmallSpd();
         int n = A.M_Rows;
-        var M = arena.fProxyILU0(in A);
-        var b = arena.fProxyRandomVec(n, -1f, 1f, 0x9004u);
-        var x = arena.fProxyVec(n);
+        var M = new fProxyILU0(in A, Allocator.Temp);
+        var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x9004u);
+        var x = new fProxyN(n, Allocator.Temp);
         for (int i = 0; i < n; i++) x[i] = (fProxy)0;
 
         SolveInfo info = default;
         Assert.DoesNotThrow(() => { info = Krylov.biCGStab(in A, in M, in b, ref x, n, Tol()); });
         Assert.IsTrue(info.status == IterativeSolveStatus.Converged || info.status == IterativeSolveStatus.MaxIterations);
-
-        arena.Dispose();
     }
 
     // gmres also requires only IsConstant -- same ILU0 pairing, different solver family.
     [Test]
     public void GmresAcceptsIlu0()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = SmallSpd(ref arena);
+        var A = SmallSpd();
         int n = A.M_Rows;
-        var M = arena.fProxyILU0(in A);
-        var b = arena.fProxyRandomVec(n, -1f, 1f, 0x9005u);
-        var x = arena.fProxyVec(n);
+        var M = new fProxyILU0(in A, Allocator.Temp);
+        var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x9005u);
+        var x = new fProxyN(n, Allocator.Temp);
         for (int i = 0; i < n; i++) x[i] = (fProxy)0;
 
         SolveInfo info = default;
         Assert.DoesNotThrow(() => { info = Krylov.gmres(in A, in M, in b, ref x, math.min(30, n), n, Tol()); });
         Assert.IsTrue(info.status == IterativeSolveStatus.Converged || info.status == IterativeSolveStatus.MaxIterations);
-
-        arena.Dispose();
     }
 }

@@ -69,29 +69,25 @@ public class intRandomTests
         // Every element of a large fill lands in [min, max).
         void RangeVector()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(1234567u);
             int min = (int)(-5), max = (int)10;
 
-            var v = arena.intVec(N);
+            var v = new intN(N, Allocator.Temp);
             for (int i = 0; i < v.N; i++) v[i] = (int)999;   // poison
             Rand.nextUniformInPlace(ref rng, ref v, min, max);
 
             for (int i = 0; i < v.N; i++)
                 AssertTrue(v[i] >= min && v[i] < max);
-
-            arena.Dispose();
         }
 
         // A non-degenerate range actually varies: at least two distinct values, and both the
         // minimum value (min) and a value near the top are reachable over a large fill.
         void RangeVariety()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(0xBEEFu);
             int min = (int)0, max = (int)4;   // {0,1,2,3}
 
-            var v = arena.intVec(N);
+            var v = new intN(N, Allocator.Temp);
             Rand.nextUniformInPlace(ref rng, ref v, min, max);
 
             bool sawDistinct = false;
@@ -106,18 +102,15 @@ public class intRandomTests
             AssertTrue(sawDistinct);
             AssertTrue(sawMin);
             AssertTrue(sawTop);
-
-            arena.Dispose();
         }
 
         // min == max fills the constant min and does NOT advance the rng stream.
         void ConstantFillNoAdvance()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(424242u);
             int c = (int)7;
 
-            var v = arena.intVec(64);
+            var v = new intN(64, Allocator.Temp);
             for (int i = 0; i < v.N; i++) v[i] = (int)0;
             uint before = rng.state;
             Rand.nextUniformInPlace(ref rng, ref v, c, c);
@@ -126,42 +119,36 @@ public class intRandomTests
             for (int i = 0; i < v.N; i++)
                 AssertTrue(v[i] == c);
             AssertTrue(before == after);    // no rng advance on the constant-fill path
-
-            arena.Dispose();
         }
 
         // Same seed + same bounds => identical buffer, element-wise exact.
         void Determinism()
         {
-            var arena = new Arena(Allocator.Persistent);
             int min = (int)(-3), max = (int)9;
 
             var r1 = new Random(55u);
-            var v1 = arena.intVec(256);
+            var v1 = new intN(256, Allocator.Temp);
             Rand.nextUniformInPlace(ref r1, ref v1, min, max);
 
             var r2 = new Random(55u);
-            var v2 = arena.intVec(256);
+            var v2 = new intN(256, Allocator.Temp);
             Rand.nextUniformInPlace(ref r2, ref v2, min, max);
 
             for (int i = 0; i < v1.N; i++)
                 AssertTrue(v1[i] == v2[i]);
-
-            arena.Dispose();
         }
 
         // Two consecutive fills over the SAME rng advance the stream => buffers differ;
         // re-seeding reproduces the first buffer.
         void StreamAdvance()
         {
-            var arena = new Arena(Allocator.Persistent);
             int min = (int)0, max = (int)1000;
             int n = 256;
             var rng = new Random(7777u);
 
-            var v1 = arena.intVec(n);
+            var v1 = new intN(n, Allocator.Temp);
             Rand.nextUniformInPlace(ref rng, ref v1, min, max);
-            var v2 = arena.intVec(n);
+            var v2 = new intN(n, Allocator.Temp);
             Rand.nextUniformInPlace(ref rng, ref v2, min, max);
 
             bool anyDiff = false;
@@ -170,60 +157,51 @@ public class intRandomTests
             AssertTrue(anyDiff);
 
             var rng3 = new Random(7777u);
-            var v3 = arena.intVec(n);
+            var v3 = new intN(n, Allocator.Temp);
             Rand.nextUniformInPlace(ref rng3, ref v3, min, max);
             for (int i = 0; i < n; i++)
                 AssertTrue(v1[i] == v3[i]);
-
-            arena.Dispose();
         }
 
         // Empty vector fills nothing (no throw); a single-element vector lands in range.
         void EmptyAndSingle()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(909090u);
 
-            var empty = arena.intVec(0);
+            var empty = new intN(0, Allocator.Temp);
             Rand.nextUniformInPlace(ref rng, ref empty, (int)(-2), (int)2);
             AssertTrue(empty.N == 0);
 
             int min = (int)5, max = (int)6;   // {5}
-            var one = arena.intVec(1);
+            var one = new intN(1, Allocator.Temp);
             Rand.nextUniformInPlace(ref rng, ref one, min, max);
             AssertTrue(one.N == 1);
             AssertTrue(one[0] >= min && one[0] < max);
             AssertTrue(one[0] == (int)5);
-
-            arena.Dispose();
         }
 
         // Matrix overload fills all M*N flat elements, all in [min, max).
         void MatrixRange()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(20240626u);
             int min = (int)(-1), max = (int)8;
 
-            var M = arena.intMat(4, 5);
+            var M = new intMxN(4, 5, Allocator.Temp);
             for (int i = 0; i < M.Length; i++) M[i] = (int)999;   // poison
             Rand.nextUniformInPlace(ref rng, ref M, min, max);
 
             AssertTrue(M.Length == 20);
             for (int i = 0; i < M.Length; i++)
                 AssertTrue(M[i] >= min && M[i] < max);
-
-            arena.Dispose();
         }
 
         // Matrix min == max constant-fill.
         void MatrixConstant()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(11u);
             int c = (int)(-4);
 
-            var M = arena.intMat(3, 3);
+            var M = new intMxN(3, 3, Allocator.Temp);
             uint before = rng.state;
             Rand.nextUniformInPlace(ref rng, ref M, c, c);
             uint after = rng.state;
@@ -231,8 +209,6 @@ public class intRandomTests
             for (int i = 0; i < M.Length; i++)
                 AssertTrue(M[i] == c);
             AssertTrue(before == after);
-
-            arena.Dispose();
         }
 
         // ---------------- helpers ----------------
@@ -285,15 +261,11 @@ public class intRandomTests
     [Test]
     public void NextUniformInPlaceMinGreaterMaxThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var v = arena.intVec(8);
+        var v = new intN(8, Allocator.Temp);
         Random rng = new Random(1u);
         Assert.Throws<ArgumentException>(() => Rand.nextUniformInPlace(ref rng, ref v, (int)5, (int)1));
 
-        var M = arena.intMat(3, 3);
+        var M = new intMxN(3, 3, Allocator.Temp);
         Assert.Throws<ArgumentException>(() => Rand.nextUniformInPlace(ref rng, ref M, (int)5, (int)1));
-
-        arena.Dispose();
     }
 }

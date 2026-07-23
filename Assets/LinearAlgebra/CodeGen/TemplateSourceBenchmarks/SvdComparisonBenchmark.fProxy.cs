@@ -105,69 +105,73 @@ namespace LinearAlgebra.Benchmarks
         // ---- full k-sweep for one size ----
         static void BenchSizeFProxy(StringBuilder sb, int m, int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A         = arena.fProxyMat(m, n);
-            var sigmaTrue = arena.fProxyVec(n);
+            var A         = new fProxyMxN(m, n, Allocator.Persistent);
+            var sigmaTrue = new fProxyN(n, Allocator.Persistent);
 
             new SvdCmpBuildJobFProxy { A = A, SigmaTrue = sigmaTrue, seed = SvdCmpFmt.BuildSeed }.Run();
             double normA = FNormFProxy(A);
 
             // thin — k = n (full decomposition)
             {
-                var U = arena.fProxyMat(m, n);
-                var S = arena.fProxyVec(n);
-                var V = arena.fProxyMat(n, n);
+                var U = new fProxyMxN(m, n, Allocator.Persistent);
+                var S = new fProxyN(n, Allocator.Persistent);
+                var V = new fProxyMxN(n, n, Allocator.Persistent);
                 var job  = new SvdCmpThinJobFProxy { A = A, U = U, S = S, V = V };
                 var stat = Bench.Time(() => job.Run());
                 double sigErr   = SigErrFProxy(S, sigmaTrue, n);
                 double reconErr = ReconErrFProxy(A, U, S, V, n, normA);
                 double eyOpt    = EYOptFProxy(sigmaTrue, n, normA);
                 sb.AppendLine(SvdCmpFmt.CmpRow("fProxy", "thin", m, n, n, stat, sigErr, reconErr, eyOpt));
+                U.Dispose(); S.Dispose(); V.Dispose();
             }
 
             foreach (int k in SvdCmpFmt.KVals(n))
             {
-                var Uk = arena.fProxyMat(m, k);
-                var Sk = arena.fProxyVec(k);
-                var Vk = arena.fProxyMat(n, k);
+                var Uk = new fProxyMxN(m, k, Allocator.Persistent);
+                var Sk = new fProxyN(k, Allocator.Persistent);
+                var Vk = new fProxyMxN(n, k, Allocator.Persistent);
 
                 // truncated (GKL)
                 {
-                    var ws   = arena.fProxySVDTruncatedCache(m, n, k);
+                    var ws   = new fProxySVDTruncatedCache(m, n, k, Allocator.Persistent);
                     var job  = new SvdCmpTruncJobFProxy { A = A, Uk = Uk, Sk = Sk, Vk = Vk, k = k, ws = ws };
                     var stat = Bench.Time(() => job.Run());
                     double sigErr   = SigErrFProxy(Sk, sigmaTrue, k);
                     double reconErr = ReconErrFProxy(A, Uk, Sk, Vk, k, normA);
                     double eyOpt    = EYOptFProxy(sigmaTrue, k, normA);
                     sb.AppendLine(SvdCmpFmt.CmpRow("fProxy", "svdTrunc", m, n, k, stat, sigErr, reconErr, eyOpt));
+                    ws.Dispose();
                 }
 
                 // randomized (HMT, oversample=10 matches workspace default)
                 {
-                    var ws   = arena.fProxySVDRandomizedCache(m, n, k);
+                    var ws   = new fProxySVDRandomizedCache(m, n, k, Allocator.Persistent);
                     var job  = new SvdCmpRandJobFProxy { A = A, Uk = Uk, Sk = Sk, Vk = Vk, k = k, ws = ws };
                     var stat = Bench.Time(() => job.Run());
                     double sigErr   = SigErrFProxy(Sk, sigmaTrue, k);
                     double reconErr = ReconErrFProxy(A, Uk, Sk, Vk, k, normA);
                     double eyOpt    = EYOptFProxy(sigmaTrue, k, normA);
                     sb.AppendLine(SvdCmpFmt.CmpRow("fProxy", "svdRand", m, n, k, stat, sigErr, reconErr, eyOpt));
+                    ws.Dispose();
                 }
+
+                Uk.Dispose(); Sk.Dispose(); Vk.Dispose();
             }
 
-            arena.Dispose();
+            A.Dispose();
+            sigmaTrue.Dispose();
         }
 
         static void BenchThinDedicatedFProxy(StringBuilder sb, int m, int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A         = arena.fProxyMat(m, n);
-            var sigmaTrue = arena.fProxyVec(n);
+            var A         = new fProxyMxN(m, n, Allocator.Persistent);
+            var sigmaTrue = new fProxyN(n, Allocator.Persistent);
             new SvdCmpBuildJobFProxy { A = A, SigmaTrue = sigmaTrue, seed = SvdCmpFmt.BuildSeed }.Run();
             double normA = FNormFProxy(A);
 
-            var U = arena.fProxyMat(m, n);
-            var S = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var U = new fProxyMxN(m, n, Allocator.Persistent);
+            var S = new fProxyN(n, Allocator.Persistent);
+            var V = new fProxyMxN(n, n, Allocator.Persistent);
             var job  = new SvdCmpThinJobFProxy { A = A, U = U, S = S, V = V };
             var stat = Bench.Time(() => job.Run());
             double sigErr   = SigErrFProxy(S, sigmaTrue, n);
@@ -175,21 +179,21 @@ namespace LinearAlgebra.Benchmarks
             double eyOpt    = EYOptFProxy(sigmaTrue, n, normA);
             sb.AppendLine(SvdCmpFmt.CmpRow("fProxy", "svdThin", m, n, n, stat, sigErr, reconErr, eyOpt));
 
-            arena.Dispose();
+            A.Dispose(); sigmaTrue.Dispose();
+            U.Dispose(); S.Dispose(); V.Dispose();
         }
 
         static void BenchRandDedicatedFProxy(StringBuilder sb, int m, int n, int k)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A         = arena.fProxyMat(m, n);
-            var sigmaTrue = arena.fProxyVec(n);
+            var A         = new fProxyMxN(m, n, Allocator.Persistent);
+            var sigmaTrue = new fProxyN(n, Allocator.Persistent);
             new SvdCmpBuildJobFProxy { A = A, SigmaTrue = sigmaTrue, seed = SvdCmpFmt.BuildSeed }.Run();
             double normA = FNormFProxy(A);
 
-            var Uk = arena.fProxyMat(m, k);
-            var Sk = arena.fProxyVec(k);
-            var Vk = arena.fProxyMat(n, k);
-            var ws   = arena.fProxySVDRandomizedCache(m, n, k);
+            var Uk = new fProxyMxN(m, k, Allocator.Persistent);
+            var Sk = new fProxyN(k, Allocator.Persistent);
+            var Vk = new fProxyMxN(n, k, Allocator.Persistent);
+            var ws   = new fProxySVDRandomizedCache(m, n, k, Allocator.Persistent);
             var job  = new SvdCmpRandJobFProxy { A = A, Uk = Uk, Sk = Sk, Vk = Vk, k = k, ws = ws };
             var stat = Bench.Time(() => job.Run());
             double sigErr   = SigErrFProxy(Sk, sigmaTrue, k);
@@ -197,21 +201,21 @@ namespace LinearAlgebra.Benchmarks
             double eyOpt    = EYOptFProxy(sigmaTrue, k, normA);
             sb.AppendLine(SvdCmpFmt.CmpRow("fProxy", "svdRand", m, n, k, stat, sigErr, reconErr, eyOpt));
 
-            arena.Dispose();
+            A.Dispose(); sigmaTrue.Dispose();
+            Uk.Dispose(); Sk.Dispose(); Vk.Dispose(); ws.Dispose();
         }
 
         static void BenchTrunc1024FProxy(StringBuilder sb, int m, int n, int k)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A         = arena.fProxyMat(m, n);
-            var sigmaTrue = arena.fProxyVec(n);
+            var A         = new fProxyMxN(m, n, Allocator.Persistent);
+            var sigmaTrue = new fProxyN(n, Allocator.Persistent);
             new SvdCmpBuildJobFProxy { A = A, SigmaTrue = sigmaTrue, seed = SvdCmpFmt.BuildSeed }.Run();
             double normA = FNormFProxy(A);
 
-            var Uk = arena.fProxyMat(m, k);
-            var Sk = arena.fProxyVec(k);
-            var Vk = arena.fProxyMat(n, k);
-            var ws   = arena.fProxySVDTruncatedCache(m, n, k);
+            var Uk = new fProxyMxN(m, k, Allocator.Persistent);
+            var Sk = new fProxyN(k, Allocator.Persistent);
+            var Vk = new fProxyMxN(n, k, Allocator.Persistent);
+            var ws   = new fProxySVDTruncatedCache(m, n, k, Allocator.Persistent);
             var job  = new SvdCmpTruncJobFProxy { A = A, Uk = Uk, Sk = Sk, Vk = Vk, k = k, ws = ws };
             var stat = Bench.Time(() => job.Run());
             double sigErr   = SigErrFProxy(Sk, sigmaTrue, k);
@@ -219,7 +223,8 @@ namespace LinearAlgebra.Benchmarks
             double eyOpt    = EYOptFProxy(sigmaTrue, k, normA);
             sb.AppendLine(SvdCmpFmt.CmpRow("fProxy", "svdTrunc", m, n, k, stat, sigErr, reconErr, eyOpt));
 
-            arena.Dispose();
+            A.Dispose(); sigmaTrue.Dispose();
+            Uk.Dispose(); Sk.Dispose(); Vk.Dispose(); ws.Dispose();
         }
 
         // ---- accuracy helpers (managed, not Burst) ----

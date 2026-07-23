@@ -31,30 +31,22 @@ public class intCompMathTests
 
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
-            try
+            switch (Type)
             {
-                switch (Type)
-                {
-                    case TestType.Abs: AbsTest(ref arena); break;
-                    case TestType.Relu: ReluTest(ref arena); break;
-                    case TestType.MinBuf: MinBufTest(ref arena); break;
-                    case TestType.MaxBuf: MaxBufTest(ref arena); break;
-                    case TestType.Mad: MadTest(ref arena); break;
-                    case TestType.SingleElement: SingleElementTest(ref arena); break;
-                    default: throw new NotImplementedException();
-                }
-            }
-            finally
-            {
-                arena.Dispose();
+                case TestType.Abs: AbsTest(); break;
+                case TestType.Relu: ReluTest(); break;
+                case TestType.MinBuf: MinBufTest(); break;
+                case TestType.MaxBuf: MaxBufTest(); break;
+                case TestType.Mad: MadTest(); break;
+                case TestType.SingleElement: SingleElementTest(); break;
+                default: throw new NotImplementedException();
             }
         }
 
-        private void AbsTest(ref Arena arena)
+        private void AbsTest()
         {
             int n = 11;
-            intN v = arena.intVec(n);
+            intN v = new intN(n, Allocator.Temp);
             for (int i = 0; i < n; i++)
                 v[i] = (int)(i - 5); // -5 .. 5, includes 0
 
@@ -68,10 +60,10 @@ public class intCompMathTests
             }
         }
 
-        private void ReluTest(ref Arena arena)
+        private void ReluTest()
         {
             int n = 11;
-            intN v = arena.intVec(n);
+            intN v = new intN(n, Allocator.Temp);
             for (int i = 0; i < n; i++)
                 v[i] = (int)(i - 5);
 
@@ -85,11 +77,11 @@ public class intCompMathTests
             }
         }
 
-        private void MinBufTest(ref Arena arena)
+        private void MinBufTest()
         {
             int n = 11;
-            intN x = arena.intVec(n);
-            intN y = arena.intVec(n);
+            intN x = new intN(n, Allocator.Temp);
+            intN y = new intN(n, Allocator.Temp);
             for (int i = 0; i < n; i++)
             {
                 x[i] = (int)(i - 5);   // -5 .. 5
@@ -107,11 +99,11 @@ public class intCompMathTests
             }
         }
 
-        private void MaxBufTest(ref Arena arena)
+        private void MaxBufTest()
         {
             int n = 11;
-            intN x = arena.intVec(n);
-            intN y = arena.intVec(n);
+            intN x = new intN(n, Allocator.Temp);
+            intN y = new intN(n, Allocator.Temp);
             for (int i = 0; i < n; i++)
             {
                 x[i] = (int)(i - 5);
@@ -129,12 +121,12 @@ public class intCompMathTests
             }
         }
 
-        private void MadTest(ref Arena arena)
+        private void MadTest()
         {
             int n = 12;
-            intN a = arena.intVec(n);
-            intN b = arena.intVec(n);
-            intN c = arena.intVec(n);
+            intN a = new intN(n, Allocator.Temp);
+            intN b = new intN(n, Allocator.Temp);
+            intN c = new intN(n, Allocator.Temp);
             for (int i = 0; i < n; i++)
             {
                 a[i] = (int)((i % 3) - 1); // -1,0,1
@@ -155,16 +147,16 @@ public class intCompMathTests
             }
         }
 
-        private void SingleElementTest(ref Arena arena)
+        private void SingleElementTest()
         {
-            intN v = arena.intVec(1);
+            intN v = new intN(1, Allocator.Temp);
             v[0] = (int)(-4);
             v.absInPlace();
             Assert.IsTrue(v[0] == (int)4);
 
-            intN a = arena.intVec(1, (int)3);
-            intN b = arena.intVec(1, (int)5);
-            intN c = arena.intVec(1, (int)2);
+            intN a = GenerateOP.intVec(1, (int)3);
+            intN b = GenerateOP.intVec(1, (int)5);
+            intN c = GenerateOP.intVec(1, (int)2);
             a.madInPlace(b, c);
             Assert.IsTrue(a[0] == (int)17); // 3*5 + 2
             Assert.IsTrue(b[0] == (int)5);

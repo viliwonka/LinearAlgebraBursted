@@ -68,43 +68,44 @@ namespace LinearAlgebra.Benchmarks
     {
         static string BenchFloat(int n, int s)
         {
-            var arena = new Arena(Allocator.Persistent);
             const string fmt = "{0,-7}{1,-7}{2,-4}{3,-14}{4,10:F4}{5,12:F4}{6,8}";
 
-            var M = arena.floatMat(n, n);
-            var A = arena.floatMat(n, n);
+            var M = new floatMxN(n, n, Allocator.Persistent);
+            var A = new floatMxN(n, n, Allocator.Persistent);
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)(n * 131 + s));
             for (int row = 0; row < n; row++)
                 for (int col = 0; col < n; col++) M[row, col] = rng.NextFloat(-1f, 1f);
             Blas.dot(in M, in M, ref A, true);                    // A = M^T M
             for (int d = 0; d < n; d++) A[d, d] += n;             // + n I  -> SPD, cond grows with n
 
-            var B = arena.floatMat(s, n);
+            var B = new floatMxN(s, n, Allocator.Persistent);
             for (int i = 0; i < s; i++)
                 for (int c = 0; c < n; c++) B[i, c] = rng.NextFloat(-1f, 1f);
 
             float tol = Consts.floatSqrtEps;
             int cap = 4 * n;
-            var iters = arena.Indices(1);
+            var iters = new Indices(1, Allocator.Persistent);
             var sb = new StringBuilder();
 
             // block-CG
-            var X = arena.floatMat(s, n); var R = arena.floatMat(s, n);
-            var P = arena.floatMat(s, n); var Q = arena.floatMat(s, n);
+            var X = new floatMxN(s, n, Allocator.Persistent); var R = new floatMxN(s, n, Allocator.Persistent);
+            var P = new floatMxN(s, n, Allocator.Persistent); var Q = new floatMxN(s, n, Allocator.Persistent);
             var blockJob = new BlockCgTolJobFloat { A = A, B = B, X = X, R = R, P = P, Q = Q, K = cap, Tol = tol, Iters = iters };
             var blockStat = Bench.Time(() => blockJob.Run());
             sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                 "float", n, s, "block-CG", blockStat.Median, blockStat.Min, iters[0]));
 
             // scalar loop of s independent cg solves
-            var x = arena.floatVec(n); var r = arena.floatVec(n); var p = arena.floatVec(n);
-            var Ap = arena.floatVec(n); var bcol = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Persistent); var r = new floatN(n, Allocator.Persistent); var p = new floatN(n, Allocator.Persistent);
+            var Ap = new floatN(n, Allocator.Persistent); var bcol = new floatN(n, Allocator.Persistent);
             var loopJob = new ScalarLoopTolJobFloat { A = A, B = B, x = x, r = r, p = p, Ap = Ap, bcol = bcol, S = s, K = cap, Tol = tol, Iters = iters };
             var loopStat = Bench.Time(() => loopJob.Run());
             sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                 "float", n, s, "scalar x s", loopStat.Median, loopStat.Min, iters[0]));
 
-            arena.Dispose();
+            M.Dispose(); A.Dispose(); B.Dispose(); iters.Dispose();
+            X.Dispose(); R.Dispose(); P.Dispose(); Q.Dispose();
+            x.Dispose(); r.Dispose(); p.Dispose(); Ap.Dispose(); bcol.Dispose();
             return sb.ToString();
         }
     }

@@ -19,8 +19,8 @@ namespace LinearAlgebra.Benchmarks
     //
     // Every job below hashes its own outputs INSIDE Execute() (never after readback) and runs via
     // .Run() from its Case_*Float() builder, which is plain (non-Burst) code that seeds fixed
-    // literal/RNG inputs into arena buffers, executes the job once, and returns (id, hash) pairs in
-    // registration order.
+    // literal/RNG inputs into standalone Allocator.Persistent buffers, executes the job once, and
+    // returns (id, hash) pairs in registration order.
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Strict)]
     public struct DetHashSelfTestJobFloat : IJob
@@ -345,19 +345,17 @@ namespace LinearAlgebra.Benchmarks
     {
         public static (string id, uint hash)[] Case_HashSelfTestFloat()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var vec5 = arena.floatVec(5);
+            var vec5 = new floatN(5, Allocator.Persistent);
             vec5[0] = (float)1; vec5[1] = (float)(-2.5); vec5[2] = (float)0;
             vec5[3] = -(float)0; vec5[4] = float.NaN;
 
-            var mat43 = arena.floatMat(4, 3);
+            var mat43 = new floatMxN(4, 3, Allocator.Persistent);
             for (int r = 0; r < 4; r++)
                 for (int c = 0; c < 3; c++)
                     mat43[r, c] = (float)(r * 3 + c) - (float)6;
 
-            var rowH = arena.uintVec(4);
-            var colH = arena.uintVec(3);
+            var rowH = new uintN(4, Allocator.Persistent);
+            var colH = new uintN(3, Allocator.Persistent);
             var hashOut = new NativeArray<uint>(3, Allocator.Persistent);
 
             var job = new DetHashSelfTestJobFloat { vec5 = vec5, mat43 = mat43, rowH = rowH, colH = colH, HashOut = hashOut };
@@ -370,34 +368,33 @@ namespace LinearAlgebra.Benchmarks
                 ("hash-selftest/combine-chain.float", hashOut[2]),
             };
             hashOut.Dispose();
-            arena.Dispose();
+            vec5.Dispose(); mat43.Dispose(); rowH.Dispose(); colH.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_BlasDenseFloat()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2654435761u ^ 0x0002u);
 
-            var vecA = arena.floatVec(64); var vecB = arena.floatVec(64);
+            var vecA = new floatN(64, Allocator.Persistent); var vecB = new floatN(64, Allocator.Persistent);
             for (int i = 0; i < 64; i++) { vecA[i] = rng.NextFloat(-1f, 1f); vecB[i] = rng.NextFloat(-1f, 1f); }
 
-            var P = arena.floatMat(53, 37);
+            var P = new floatMxN(53, 37, Allocator.Persistent);
             for (int r = 0; r < 53; r++) for (int c = 0; c < 37; c++) P[r, c] = rng.NextFloat(-1f, 1f);
 
-            var xVec37 = arena.floatVec(37); for (int i = 0; i < 37; i++) xVec37[i] = rng.NextFloat(-1f, 1f);
-            var yVec53 = arena.floatVec(53); for (int i = 0; i < 53; i++) yVec53[i] = rng.NextFloat(-1f, 1f);
-            var matvecOut = arena.floatVec(53);
-            var vecmatOut = arena.floatVec(37);
+            var xVec37 = new floatN(37, Allocator.Persistent); for (int i = 0; i < 37; i++) xVec37[i] = rng.NextFloat(-1f, 1f);
+            var yVec53 = new floatN(53, Allocator.Persistent); for (int i = 0; i < 53; i++) yVec53[i] = rng.NextFloat(-1f, 1f);
+            var matvecOut = new floatN(53, Allocator.Persistent);
+            var vecmatOut = new floatN(37, Allocator.Persistent);
 
-            var gA = arena.floatMat(37, 37); var gB = arena.floatMat(37, 37); var gC = arena.floatMat(37, 37);
+            var gA = new floatMxN(37, 37, Allocator.Persistent); var gB = new floatMxN(37, 37, Allocator.Persistent); var gC = new floatMxN(37, 37, Allocator.Persistent);
             for (int r = 0; r < 37; r++) for (int c = 0; c < 37; c++) { gA[r, c] = rng.NextFloat(-1f, 1f); gB[r, c] = rng.NextFloat(-1f, 1f); }
 
-            var dotSymC = arena.floatMat(37, 37);
-            var outerU = arena.floatVec(53); for (int i = 0; i < 53; i++) outerU[i] = rng.NextFloat(-1f, 1f);
-            var outerV = arena.floatVec(37); for (int i = 0; i < 37; i++) outerV[i] = rng.NextFloat(-1f, 1f);
-            var outerC = arena.floatMat(53, 37);
-            var transT = arena.floatMat(37, 53);
+            var dotSymC = new floatMxN(37, 37, Allocator.Persistent);
+            var outerU = new floatN(53, Allocator.Persistent); for (int i = 0; i < 53; i++) outerU[i] = rng.NextFloat(-1f, 1f);
+            var outerV = new floatN(37, Allocator.Persistent); for (int i = 0; i < 37; i++) outerV[i] = rng.NextFloat(-1f, 1f);
+            var outerC = new floatMxN(53, 37, Allocator.Persistent);
+            var transT = new floatMxN(37, 53, Allocator.Persistent);
 
             var hashOut = new NativeArray<uint>(10, Allocator.Persistent);
             var job = new DetBlasDenseJobFloat
@@ -424,21 +421,22 @@ namespace LinearAlgebra.Benchmarks
                 ("blas-dense/trans.float.53x37", hashOut[9]),
             };
             hashOut.Dispose();
-            arena.Dispose();
+            vecA.Dispose(); vecB.Dispose(); P.Dispose(); xVec37.Dispose(); yVec53.Dispose();
+            matvecOut.Dispose(); vecmatOut.Dispose(); gA.Dispose(); gB.Dispose(); gC.Dispose();
+            dotSymC.Dispose(); outerU.Dispose(); outerV.Dispose(); outerC.Dispose(); transT.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_ElementwiseCoreFloat()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2654435761u ^ 0x0003u);
 
             const int n = 1000;
-            var baseVec = arena.floatVec(n);
-            var otherVec = arena.floatVec(n);
-            var otherVec2 = arena.floatVec(n);
-            var nonNegVec = arena.floatVec(n);
-            var scratch = arena.floatVec(n);
+            var baseVec = new floatN(n, Allocator.Persistent);
+            var otherVec = new floatN(n, Allocator.Persistent);
+            var otherVec2 = new floatN(n, Allocator.Persistent);
+            var nonNegVec = new floatN(n, Allocator.Persistent);
+            var scratch = new floatN(n, Allocator.Persistent);
 
             for (int i = 0; i < n; i++)
             {
@@ -476,21 +474,20 @@ namespace LinearAlgebra.Benchmarks
                 ("elementwise-core/saturate.float.n1000", hashOut[11]),
             };
             hashOut.Dispose();
-            arena.Dispose();
+            baseVec.Dispose(); otherVec.Dispose(); otherVec2.Dispose(); nonNegVec.Dispose(); scratch.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_NormsFloat()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2654435761u ^ 0x0004u);
 
-            var vecX = arena.floatVec(37); for (int i = 0; i < 37; i++) vecX[i] = rng.NextFloat(-3f, 3f);
-            var A = arena.floatMat(53, 37);
+            var vecX = new floatN(37, Allocator.Persistent); for (int i = 0; i < 37; i++) vecX[i] = rng.NextFloat(-3f, 3f);
+            var A = new floatMxN(53, 37, Allocator.Persistent);
             for (int r = 0; r < 53; r++) for (int c = 0; c < 37; c++) A[r, c] = rng.NextFloat(-3f, 3f);
 
-            var normalizeVec = arena.floatVec(37); for (int i = 0; i < 37; i++) normalizeVec[i] = vecX[i];
-            var normColsMat = arena.floatMat(53, 37);
+            var normalizeVec = new floatN(37, Allocator.Persistent); for (int i = 0; i < 37; i++) normalizeVec[i] = vecX[i];
+            var normColsMat = new floatMxN(53, 37, Allocator.Persistent);
             for (int r = 0; r < 53; r++) for (int c = 0; c < 37; c++) normColsMat[r, c] = A[r, c];
 
             var hashOut = new NativeArray<uint>(7, Allocator.Persistent);
@@ -511,41 +508,40 @@ namespace LinearAlgebra.Benchmarks
                 ("norms/normalizeColumns.float.53x37", hashOut[6]),
             };
             hashOut.Dispose();
-            arena.Dispose();
+            vecX.Dispose(); A.Dispose(); normalizeVec.Dispose(); normColsMat.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_QrFamilyFloat()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2654435761u ^ 0x0006u);
 
-            var Atall = arena.floatMat(53, 37);
+            var Atall = new floatMxN(53, 37, Allocator.Persistent);
             for (int r = 0; r < 53; r++) for (int c = 0; c < 37; c++) Atall[r, c] = rng.NextFloat(-1f, 1f);
-            var Q1 = arena.floatMat(53, 37); var R1 = arena.floatMat(37, 37);
-            var bTall = arena.floatVec(53); for (int i = 0; i < 53; i++) bTall[i] = rng.NextFloat(-1f, 1f);
-            var xTall1 = arena.floatVec(37);
+            var Q1 = new floatMxN(53, 37, Allocator.Persistent); var R1 = new floatMxN(37, 37, Allocator.Persistent);
+            var bTall = new floatN(53, Allocator.Persistent); for (int i = 0; i < 53; i++) bTall[i] = rng.NextFloat(-1f, 1f);
+            var xTall1 = new floatN(37, Allocator.Persistent);
 
-            var Q2 = arena.floatMat(53, 37); var R2 = arena.floatMat(37, 37);
+            var Q2 = new floatMxN(53, 37, Allocator.Persistent); var R2 = new floatMxN(37, 37, Allocator.Persistent);
             var P1 = new Pivot(37, Allocator.Persistent);
-            var bTall2 = arena.floatVec(53); for (int i = 0; i < 53; i++) bTall2[i] = rng.NextFloat(-1f, 1f);
-            var xTall2 = arena.floatVec(37);
+            var bTall2 = new floatN(53, Allocator.Persistent); for (int i = 0; i < 53; i++) bTall2[i] = rng.NextFloat(-1f, 1f);
+            var xTall2 = new floatN(37, Allocator.Persistent);
 
-            var AforMinNorm = arena.floatMat(53, 37);
+            var AforMinNorm = new floatMxN(53, 37, Allocator.Persistent);
             for (int r = 0; r < 53; r++) for (int c = 0; c < 37; c++) AforMinNorm[r, c] = Atall[r, c];
-            var bTall3 = arena.floatVec(53); for (int i = 0; i < 53; i++) bTall3[i] = rng.NextFloat(-1f, 1f);
-            var xTall3 = arena.floatVec(37);
+            var bTall3 = new floatN(53, Allocator.Persistent); for (int i = 0; i < 53; i++) bTall3[i] = rng.NextFloat(-1f, 1f);
+            var xTall3 = new floatN(37, Allocator.Persistent);
 
-            var Awide = arena.floatMat(37, 53);
+            var Awide = new floatMxN(37, 53, Allocator.Persistent);
             for (int r = 0; r < 37; r++) for (int c = 0; c < 53; c++) Awide[r, c] = rng.NextFloat(-1f, 1f);
-            var L1 = arena.floatMat(37, 37); var Qw1 = arena.floatMat(37, 53);
-            var bWide1 = arena.floatVec(37); for (int i = 0; i < 37; i++) bWide1[i] = rng.NextFloat(-1f, 1f);
-            var xWide1 = arena.floatVec(53);
+            var L1 = new floatMxN(37, 37, Allocator.Persistent); var Qw1 = new floatMxN(37, 53, Allocator.Persistent);
+            var bWide1 = new floatN(37, Allocator.Persistent); for (int i = 0; i < 37; i++) bWide1[i] = rng.NextFloat(-1f, 1f);
+            var xWide1 = new floatN(53, Allocator.Persistent);
 
-            var L2 = arena.floatMat(37, 37); var Qw2 = arena.floatMat(37, 53);
+            var L2 = new floatMxN(37, 37, Allocator.Persistent); var Qw2 = new floatMxN(37, 53, Allocator.Persistent);
             var P2 = new Pivot(37, Allocator.Persistent);
-            var Bwide = arena.floatMat(37, 1); for (int i = 0; i < 37; i++) Bwide[i, 0] = rng.NextFloat(-1f, 1f);
-            var Xwide = arena.floatMat(53, 1);
+            var Bwide = new floatMxN(37, 1, Allocator.Persistent); for (int i = 0; i < 37; i++) Bwide[i, 0] = rng.NextFloat(-1f, 1f);
+            var Xwide = new floatMxN(53, 1, Allocator.Persistent);
 
             var hashOut = new NativeArray<uint>(9, Allocator.Persistent);
             var job = new DetQrFamilyJobFloat
@@ -573,29 +569,32 @@ namespace LinearAlgebra.Benchmarks
             };
             hashOut.Dispose();
             P1.Dispose(); P2.Dispose();
-            arena.Dispose();
+            Atall.Dispose(); Q1.Dispose(); R1.Dispose(); bTall.Dispose(); xTall1.Dispose();
+            Q2.Dispose(); R2.Dispose(); bTall2.Dispose(); xTall2.Dispose();
+            AforMinNorm.Dispose(); bTall3.Dispose(); xTall3.Dispose();
+            Awide.Dispose(); L1.Dispose(); Qw1.Dispose(); bWide1.Dispose(); xWide1.Dispose();
+            L2.Dispose(); Qw2.Dispose(); Bwide.Dispose(); Xwide.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_LuFloat()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2654435761u ^ 0x0007u);
 
             const int n = 48;
-            var A = arena.floatMat(n, n);
+            var A = new floatMxN(n, n, Allocator.Persistent);
             for (int r = 0; r < n; r++) for (int c = 0; c < n; c++) A[r, c] = rng.NextFloat(-1f, 1f);
             for (int d = 0; d < n; d++) A[d, d] += (float)n;
 
-            var L = arena.floatMat(n, n); var U = arena.floatMat(n, n);
+            var L = new floatMxN(n, n, Allocator.Persistent); var U = new floatMxN(n, n, Allocator.Persistent);
             var P1 = new Pivot(n, Allocator.Persistent);
 
-            var LUPacked = arena.floatMat(n, n);
+            var LUPacked = new floatMxN(n, n, Allocator.Persistent);
             for (int r = 0; r < n; r++) for (int c = 0; c < n; c++) LUPacked[r, c] = A[r, c];
             var P2 = new Pivot(n, Allocator.Persistent);
 
-            var bSolve = arena.floatVec(n); for (int i = 0; i < n; i++) bSolve[i] = rng.NextFloat(-1f, 1f);
-            var bSolveTransA = arena.floatVec(n); for (int i = 0; i < n; i++) bSolveTransA[i] = rng.NextFloat(-1f, 1f);
+            var bSolve = new floatN(n, Allocator.Persistent); for (int i = 0; i < n; i++) bSolve[i] = rng.NextFloat(-1f, 1f);
+            var bSolveTransA = new floatN(n, Allocator.Persistent); for (int i = 0; i < n; i++) bSolveTransA[i] = rng.NextFloat(-1f, 1f);
 
             var hashOut = new NativeArray<uint>(4, Allocator.Persistent);
             var job = new DetLuJobFloat
@@ -614,17 +613,16 @@ namespace LinearAlgebra.Benchmarks
             };
             hashOut.Dispose();
             P1.Dispose(); P2.Dispose();
-            arena.Dispose();
+            A.Dispose(); L.Dispose(); U.Dispose(); LUPacked.Dispose(); bSolve.Dispose(); bSolveTransA.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_CholeskyFloat()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2654435761u ^ 0x0008u);
 
             const int n = 48;
-            var A = arena.floatMat(n, n);
+            var A = new floatMxN(n, n, Allocator.Persistent);
             for (int i = 0; i < n; i++)
                 for (int j = i; j < n; j++)
                 {
@@ -633,16 +631,16 @@ namespace LinearAlgebra.Benchmarks
                 }
             for (int d = 0; d < n; d++) A[d, d] += (float)n;
 
-            var L = arena.floatMat(n, n);
-            var bSolve = arena.floatVec(n); for (int i = 0; i < n; i++) bSolve[i] = rng.NextFloat(-1f, 1f);
+            var L = new floatMxN(n, n, Allocator.Persistent);
+            var bSolve = new floatN(n, Allocator.Persistent); for (int i = 0; i < n; i++) bSolve[i] = rng.NextFloat(-1f, 1f);
 
-            var Lp = arena.floatMat(n, n);
+            var Lp = new floatMxN(n, n, Allocator.Persistent);
             var P1 = new Pivot(n, Allocator.Persistent);
 
-            var AtoL = arena.floatMat(n, n);
+            var AtoL = new floatMxN(n, n, Allocator.Persistent);
             for (int r = 0; r < n; r++) for (int c = 0; c < n; c++) AtoL[r, c] = A[r, c];
             var P2 = new Pivot(n, Allocator.Persistent);
-            var bSolveInPlace = arena.floatVec(n); for (int i = 0; i < n; i++) bSolveInPlace[i] = rng.NextFloat(-1f, 1f);
+            var bSolveInPlace = new floatN(n, Allocator.Persistent); for (int i = 0; i < n; i++) bSolveInPlace[i] = rng.NextFloat(-1f, 1f);
 
             var hashOut = new NativeArray<uint>(4, Allocator.Persistent);
             var job = new DetCholeskyJobFloat
@@ -661,7 +659,7 @@ namespace LinearAlgebra.Benchmarks
             };
             hashOut.Dispose();
             P1.Dispose(); P2.Dispose();
-            arena.Dispose();
+            A.Dispose(); L.Dispose(); bSolve.Dispose(); Lp.Dispose(); AtoL.Dispose(); bSolveInPlace.Dispose();
             return result;
         }
     }

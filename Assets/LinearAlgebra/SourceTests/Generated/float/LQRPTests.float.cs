@@ -72,57 +72,47 @@ public class floatLQRPTests
 
         void ReconstructRandomWide()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 6, n = 12;
             var P = new Pivot(m, Allocator.Persistent);
             try
             {
                 for (uint t = 0; t < 16; t++)
                 {
-                    var A = arena.floatRandomMat(m, n, -3f, 3f, 7001 + t * 13);
-                    var L = arena.floatMat(m, m);
-                    var Q = arena.floatMat(m, n);
+                    var A = GenerateOP.floatRandomMat(m, n, -3f, 3f, 7001 + t * 13);
+                    var L = new floatMxN(m, m, Allocator.Temp);
+                    var Q = new floatMxN(m, n, Allocator.Temp);
 
                     LQRP.decomp(in A, ref L, ref Q, ref P);
                     AssertLQRP(in A, in L, in Q, in P, (float)1E-4f);
-
-                    arena.Clear();
                 }
             }
-            finally { P.Dispose(); arena.Dispose(); }
+            finally { P.Dispose(); }
         }
 
         void ReconstructRandomSquare()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 8;
             var P = new Pivot(dim, Allocator.Persistent);
             try
             {
                 for (uint t = 0; t < 16; t++)
                 {
-                    var A = arena.floatRandomMat(dim, dim, -3f, 3f, 4220 + t * 7);
-                    var L = arena.floatMat(dim, dim);
-                    var Q = arena.floatMat(dim, dim);
+                    var A = GenerateOP.floatRandomMat(dim, dim, -3f, 3f, 4220 + t * 7);
+                    var L = new floatMxN(dim, dim, Allocator.Temp);
+                    var Q = new floatMxN(dim, dim, Allocator.Temp);
 
                     LQRP.decomp(in A, ref L, ref Q, ref P);
                     AssertLQRP(in A, in L, in Q, in P, (float)1E-4f);
-
-                    arena.Clear();
                 }
             }
-            finally { P.Dispose(); arena.Dispose(); }
+            finally { P.Dispose(); }
         }
 
         // Greedy rule: P[0] selects the original ROW of largest 2-norm.
         void FirstPivotLargestRow()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 4, n = 7;
-            var A = arena.floatRandomMat(m, n, -1f, 1f, 31337);
+            var A = GenerateOP.floatRandomMat(m, n, -1f, 1f, 31337);
 
             // Scale rows to distinct magnitudes; row 2 is unambiguously the largest.
             for (int c = 0; c < n; c++)
@@ -133,8 +123,8 @@ public class floatLQRPTests
                 A[3, c] *= (float)2f;
             }
 
-            var L = arena.floatMat(m, m);
-            var Q = arena.floatMat(m, n);
+            var L = new floatMxN(m, m, Allocator.Temp);
+            var Q = new floatMxN(m, n, Allocator.Temp);
             var P = new Pivot(m, Allocator.Persistent);
 
             LQRP.decomp(in A, ref L, ref Q, ref P);
@@ -143,17 +133,14 @@ public class floatLQRPTests
             RecordEq(P[0], 2); // first pivot is original row 2
 
             P.Dispose();
-            arena.Dispose();
         }
 
         // A row-rank-3 matrix built as 5 rows with 2 exact linear dependencies. Row pivoting must
         // surface exactly 3 non-negligible L diagonal entries (numerical row rank = 3).
         void RankRevealingDeficient()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 5, n = 6;
-            var A = arena.floatRandomMat(m, n, -1f, 1f, 90210);
+            var A = GenerateOP.floatRandomMat(m, n, -1f, 1f, 90210);
 
             // row3 = 2*row0 - row1 ; row4 = row0 + row2  => exact row rank 3.
             for (int c = 0; c < n; c++)
@@ -162,8 +149,8 @@ public class floatLQRPTests
                 A[4, c] = A[0, c] + A[2, c];
             }
 
-            var L = arena.floatMat(m, m);
-            var Q = arena.floatMat(m, n);
+            var L = new floatMxN(m, m, Allocator.Temp);
+            var Q = new floatMxN(m, n, Allocator.Temp);
             var P = new Pivot(m, Allocator.Persistent);
 
             LQRP.decomp(in A, ref L, ref Q, ref P);
@@ -178,18 +165,15 @@ public class floatLQRPTests
             RecordEq(rank, 3);
 
             P.Dispose();
-            arena.Dispose();
         }
 
         // Degenerate 1x1 input.
         void SingleElement()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.floatMat(1, 1);
+            var A = new floatMxN(1, 1, Allocator.Temp);
             A[0, 0] = (float)5f;
-            var L = arena.floatMat(1, 1);
-            var Q = arena.floatMat(1, 1);
+            var L = new floatMxN(1, 1, Allocator.Temp);
+            var Q = new floatMxN(1, 1, Allocator.Temp);
             var P = new Pivot(1, Allocator.Persistent);
 
             LQRP.decomp(in A, ref L, ref Q, ref P);
@@ -197,19 +181,16 @@ public class floatLQRPTests
             RecordEq(P[0], 0);
 
             P.Dispose();
-            arena.Dispose();
         }
 
         // Fully zero matrix: no row has any norm, so no pivot ever fires (P stays identity), L is
         // all-zero, Q stays orthonormal, nothing NaNs (exercises the degenerate-reflector branch).
         void AllZero()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 3, n = 4;
-            var A = arena.floatMat(m, n); // zero-initialised
-            var L = arena.floatMat(m, m);
-            var Q = arena.floatMat(m, n);
+            var A = new floatMxN(m, n, Allocator.Temp); // zero-initialised
+            var L = new floatMxN(m, m, Allocator.Temp);
+            var Q = new floatMxN(m, n, Allocator.Temp);
             var P = new Pivot(m, Allocator.Persistent);
 
             LQRP.decomp(in A, ref L, ref Q, ref P);
@@ -218,25 +199,22 @@ public class floatLQRPTests
                 RecordEq(P[d], d);
 
             P.Dispose();
-            arena.Dispose();
         }
 
         // An exact zero ROW in the middle must be pivoted to the LAST position (smallest — zero —
         // norm), and P must remain a valid permutation. Rows: 0 large, 1 zero, 2 medium => P = [0,2,1].
         void ZeroRowMiddle()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 3, n = 5;
-            var A = arena.floatMat(m, n); // zero-initialised
+            var A = new floatMxN(m, n, Allocator.Temp); // zero-initialised
             // row 0: large norm
             A[0, 0] = (float)6f; A[0, 1] = (float)6f; A[0, 2] = (float)6f;
             // row 1: exact zero (left as 0)
             // row 2: medium norm (< row 0)
             A[2, 0] = (float)2f; A[2, 3] = (float)2f;
 
-            var L = arena.floatMat(m, m);
-            var Q = arena.floatMat(m, n);
+            var L = new floatMxN(m, m, Allocator.Temp);
+            var Q = new floatMxN(m, n, Allocator.Temp);
             var P = new Pivot(m, Allocator.Persistent);
 
             LQRP.decomp(in A, ref L, ref Q, ref P);
@@ -245,22 +223,19 @@ public class floatLQRPTests
             RecordEq(P[2], 1); // zero row pushed last
 
             P.Dispose();
-            arena.Dispose();
         }
 
         // Two identical rows => row-rank deficiency by 1. The duplicate must reduce to a near-zero
         // trailing diagonal (numerical row rank = 2 of 3).
         void DuplicateRows()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 3, n = 4;
-            var A = arena.floatRandomMat(m, n, -1f, 1f, 13579);
+            var A = GenerateOP.floatRandomMat(m, n, -1f, 1f, 13579);
             for (int c = 0; c < n; c++)
                 A[2, c] = A[0, c]; // row 2 == row 0
 
-            var L = arena.floatMat(m, m);
-            var Q = arena.floatMat(m, n);
+            var L = new floatMxN(m, m, Allocator.Temp);
+            var Q = new floatMxN(m, n, Allocator.Temp);
             var P = new Pivot(m, Allocator.Persistent);
 
             LQRP.decomp(in A, ref L, ref Q, ref P);
@@ -275,23 +250,20 @@ public class floatLQRPTests
             RecordEq(rank, 2);
 
             P.Dispose();
-            arena.Dispose();
         }
 
         // LQRP.decomp must not modify A. Position-weighted checksum before/after.
         void DecompPreservesA()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 5, n = 10;
-            var A = arena.floatRandomMat(m, n, -3f, 3f, 606060);
+            var A = GenerateOP.floatRandomMat(m, n, -3f, 3f, 606060);
             for (int d = 0; d < m; d++) A[d, d] += 4f;
 
             float checksumBefore = (float)0;
             for (int i = 0; i < A.Length; i++) checksumBefore += A[i] * (float)(i + 1);
 
-            var L = arena.floatMat(m, m);
-            var Q = arena.floatMat(m, n);
+            var L = new floatMxN(m, m, Allocator.Temp);
+            var Q = new floatMxN(m, n, Allocator.Temp);
             var P = new Pivot(m, Allocator.Persistent);
             LQRP.decomp(in A, ref L, ref Q, ref P);
 
@@ -310,24 +282,21 @@ public class floatLQRPTests
             AssertLQRP(in A, in L, in Q, in P, (float)1E-4f);
 
             P.Dispose();
-            arena.Dispose();
         }
 
         // Zero-alloc cache overload must match the allocating overload bit-for-bit (same unblocked
         // kernel, same scratch semantics).
         void CacheEquivalence()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 6, n = 11;
-            var A = arena.floatRandomMat(m, n, -3f, 3f, 246810);
+            var A = GenerateOP.floatRandomMat(m, n, -3f, 3f, 246810);
 
-            var L1 = arena.floatMat(m, m); var Q1 = arena.floatMat(m, n); var P1 = new Pivot(m, Allocator.Persistent);
-            var L2 = arena.floatMat(m, m); var Q2 = arena.floatMat(m, n); var P2 = new Pivot(m, Allocator.Persistent);
+            var L1 = new floatMxN(m, m, Allocator.Temp); var Q1 = new floatMxN(m, n, Allocator.Temp); var P1 = new Pivot(m, Allocator.Persistent);
+            var L2 = new floatMxN(m, m, Allocator.Temp); var Q2 = new floatMxN(m, n, Allocator.Temp); var P2 = new Pivot(m, Allocator.Persistent);
 
             LQRP.decomp(in A, ref L1, ref Q1, ref P1);
 
-            var ws = arena.floatLQRPCache(m, n);
+            var ws = new floatLQRPCache(m, n, Allocator.Temp);
             LQRP.decomp(in A, ref L2, ref Q2, ref P2, ref ws);
 
             for (int i = 0; i < L1.Length; i++) RecordExact(L2[i], L1[i]);
@@ -335,7 +304,6 @@ public class floatLQRPTests
             for (int j = 0; j < m; j++) RecordEq(P2[j], P1[j]);
 
             P1.Dispose(); P2.Dispose();
-            arena.Dispose();
         }
 
         // Regression: a "narrowed view" whose M_Rows is smaller than its backing buffer's row count
@@ -346,10 +314,8 @@ public class floatLQRPTests
         // view's logical m x n content correctly, not silently degrade to an all-zero L/Q.
         void DecompInPlaceNarrowedView()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int bigM = 10, m = 4, n = 6;
-            var big = arena.floatRandomMat(bigM, n, -3f, 3f, 24681357);
+            var big = GenerateOP.floatRandomMat(bigM, n, -3f, 3f, 24681357);
 
             // Leading-rows narrowed view: same backing buffer (bigM x n row-major), M_Rows overwritten
             // to m -- mirrors Krylov.Block.float.cs's RowsView / LOBPCG.float.cs's RowsView.
@@ -357,12 +323,12 @@ public class floatLQRPTests
             view.M_Rows = m;
 
             // Snapshot the view's logical m x n content before decompInPlace overwrites it with Q.
-            var Aorig = arena.floatMat(m, n);
+            var Aorig = new floatMxN(m, n, Allocator.Temp);
             for (int r = 0; r < m; r++)
                 for (int c = 0; c < n; c++)
                     Aorig[r, c] = view[r, c];
 
-            var L = arena.floatMat(m, m);
+            var L = new floatMxN(m, m, Allocator.Temp);
             var P = new Pivot(m, Allocator.Persistent);
 
             LQRP.decompInPlace(ref view, ref L, ref P);
@@ -379,7 +345,6 @@ public class floatLQRPTests
             RecordEq(rank, m);
 
             P.Dispose();
-            arena.Dispose();
         }
 
         // Reconstruction (A permuted by rows == L*Q), L lower-triangular, Q orthonormal rows, and
@@ -390,12 +355,16 @@ public class floatLQRPTests
             int n = A.N_Cols;
 
             // Build A permuted by P: row j == original row P[j].
-            var Aperm = A.Copy();
+            var Aperm = new floatMxN(in A, Allocator.Temp);
             for (int j = 0; j < m; j++)
                 for (int c = 0; c < n; c++)
                     Aperm[j, c] = A[P[j], c];
 
-            floatMxN shouldBeZero = Aperm - Blas.dot(L, Q);
+            var LQmat = new floatMxN(m, n, Allocator.Temp);
+            Blas.dot(in L, in Q, ref LQmat);
+
+            var shouldBeZero = new floatMxN(in Aperm, Allocator.Temp);
+            floatComp.subInPlace(shouldBeZero, LQmat);
 
             if (Analysis.isAnyNan(in shouldBeZero))
                 throw new System.Exception("TestJob: NaN detected");
@@ -407,7 +376,8 @@ public class floatLQRPTests
             Assert.IsTrue(Analysis.isLowerTriangular(L, precision));
 
             // Q orthonormal rows: isOrthogonal(Qᵀ) checks (Qᵀ)ᵀ(Qᵀ) = QQᵀ = I_m.
-            floatMxN Qt = Blas.trans(Q);
+            var Qt = new floatMxN(n, m, Allocator.Temp);
+            Blas.trans(in Q, ref Qt);
             Assert.IsTrue(Analysis.isOrthogonal(in Qt, precision));
 
             // |L[d,d]| non-increasing (guaranteed by greedy row pivoting).
@@ -549,49 +519,43 @@ public class floatLQRPTests
         // minimum-norm solution (both min-norm here), and rank must be m. Allocating default overload.
         void FullRowRankMatchesLQ()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 4, n = 12;
-            var A = arena.floatRandomMat(m, n, -5f, 5f, 778231);
+            var A = GenerateOP.floatRandomMat(m, n, -5f, 5f, 778231);
             for (int d = 0; d < m; d++) A[d, d] += (float)10f; // full row rank, well conditioned
 
-            var b = arena.floatRandomVec(m, -5f, 5f, 9091);
+            var b = GenerateOP.floatRandomVec(m, -5f, 5f, 9091);
 
-            var Alqrp = A.Copy(); // solveInPlace destroys A
-            var x = arena.floatVec(n);
+            var Alqrp = new floatMxN(in A, Allocator.Temp); // solveInPlace destroys A
+            var x = new floatN(n, Allocator.Temp);
             int rank = LQRP.solveInPlace(ref Alqrp, ref b, ref x).rank;
 
             RecordEq(rank, m);
             if (Analysis.isAnyNan(in x)) { Fail0(0, 0); return; }
 
             // reference: LQ.minNormSolve (min-norm; does not modify A)
-            var Alq = A.Copy();
-            var xRef = arena.floatVec(n);
+            var Alq = new floatMxN(in A, Allocator.Temp);
+            var xRef = new floatN(n, Allocator.Temp);
             LQ.minNormSolve(in Alq, in b, ref xRef);
 
             float tol = (float)Consts.floatSqrtEps * (float)10;
             for (int k = 0; k < n; k++)
                 AssertClose(x[k], xRef[k], tol * (math.abs(xRef[k]) + (float)1));
-
-            arena.Dispose();
         }
 
         // (2) Full row rank, consistent b = A*xTrue: the basic solution reproduces b exactly.
         void FullRowRankConsistent()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 5, n = 9;
-            var A = arena.floatRandomMat(m, n, -3f, 3f, 314221);
+            var A = GenerateOP.floatRandomMat(m, n, -3f, 3f, 314221);
             for (int d = 0; d < m; d++) A[d, d] += (float)8f;
 
-            var xTrue = arena.floatRandomVec(n, -2f, 2f, 1337);
-            var b = arena.floatVec(m);
+            var xTrue = GenerateOP.floatRandomVec(n, -2f, 2f, 1337);
+            var b = new floatN(m, Allocator.Temp);
             Blas.dot(in A, in xTrue, ref b);
 
-            var A_copy = A.Copy();
-            var b0 = b.Copy();
-            var x = arena.floatVec(n);
+            var A_copy = new floatMxN(in A, Allocator.Temp);
+            var b0 = new floatN(in b, Allocator.Temp);
+            var x = new floatN(n, Allocator.Temp);
             int rank = LQRP.solveInPlace(ref A, ref b, ref x).rank;
 
             RecordEq(rank, m);
@@ -601,8 +565,6 @@ public class floatLQRPTests
                 float res = ResidualNorm(in A_copy, in x, in b0);
                 RecordBound(res, tol * ((float)1 + VecNorm(in b0)));
             }
-
-            arena.Dispose();
         }
 
         // (3) Rank-deficient by an exact row dependency (row m-1 = row0 + row1), consistent b. Detected
@@ -610,20 +572,18 @@ public class floatLQRPTests
         // linear combo of independent ones, so consistency carries over).
         void RankDeficientConsistent()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 4, n = 10;
-            var A = arena.floatRandomMat(m, n, -3f, 3f, 90211);
+            var A = GenerateOP.floatRandomMat(m, n, -3f, 3f, 90211);
             for (int c = 0; c < n; c++)
                 A[m - 1, c] = A[0, c] + A[1, c]; // exact row dependency -> row rank m-1
 
-            var xTrue = arena.floatRandomVec(n, -2f, 2f, 4242);
-            var b = arena.floatVec(m);
+            var xTrue = GenerateOP.floatRandomVec(n, -2f, 2f, 4242);
+            var b = new floatN(m, Allocator.Temp);
             Blas.dot(in A, in xTrue, ref b); // consistent RHS
 
-            var A_copy = A.Copy();
-            var b0 = b.Copy();
-            var x = arena.floatVec(n);
+            var A_copy = new floatMxN(in A, Allocator.Temp);
+            var b0 = new floatN(in b, Allocator.Temp);
+            var x = new floatN(n, Allocator.Temp);
             int rank = LQRP.solveInPlace(ref A, ref b, ref x).rank;
 
             RecordEq(rank, m - 1);
@@ -633,8 +593,6 @@ public class floatLQRPTests
                 float res = ResidualNorm(in A_copy, in x, in b0);
                 RecordBound(res, tol * ((float)1 + VecNorm(in b0)));
             }
-
-            arena.Dispose();
         }
 
         // (4) CONSISTENT b: the basic solveInPlace IS already the minimum-norm solution — it matches
@@ -643,34 +601,31 @@ public class floatLQRPTests
         // against a PRESERVED copy of A (solveInPlace destroys its input).
         void ConsistentBasicIsMinNorm()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 4, n = 8;
-            var A = arena.floatRandomMat(m, n, -3f, 3f, 55123);
+            var A = GenerateOP.floatRandomMat(m, n, -3f, 3f, 55123);
             for (int c = 0; c < n; c++)
                 A[m - 1, c] = (float)2f * A[0, c] - A[1, c]; // exact row dependency -> rank m-1
 
-            var xTrue = arena.floatRandomVec(n, -2f, 2f, 771);
-            var b = arena.floatVec(m);
+            var xTrue = GenerateOP.floatRandomVec(n, -2f, 2f, 771);
+            var b = new floatN(m, Allocator.Temp);
             Blas.dot(in A, in xTrue, ref b);                  // consistent RHS
-            var b0 = b.Copy();
-            var A0 = A.Copy();
+            var b0 = new floatN(in b, Allocator.Temp);
+            var A0 = new floatMxN(in A, Allocator.Temp);
 
-            var Albrp = A.Copy();
-            var x = arena.floatVec(n);
+            var Albrp = new floatMxN(in A, Allocator.Temp);
+            var x = new floatN(n, Allocator.Temp);
             LQRP.solveInPlace(ref Albrp, ref b, ref x);
             if (Analysis.isAnyNan(in x)) { Fail0(1, 0); return; }
 
-            var Apinv = A.Copy();
-            var xPinv = arena.floatVec(n);
-            SVD.pinvSolve(ref Apinv, in b0, ref xPinv);
+            var Apinv = new floatMxN(in A, Allocator.Temp);
+            var xPinv = new floatN(n, Allocator.Temp);
+            var svdWs = new floatSVDCache(m, n, Allocator.Temp);
+            SVD.pinvSolve(ref Apinv, in b0, ref xPinv, ref svdWs);
 
             float tol = (float)2E-3f;
             AssertClose(VecNorm(in x), VecNorm(in xPinv), tol * (VecNorm(in xPinv) + (float)1));
             AssertClose(ResidualNorm(in A0, in x, in b0), ResidualNorm(in A0, in xPinv, in b0),
                         tol * (VecNorm(in b0) + (float)1));
-
-            arena.Dispose();
         }
 
         // (4b) INCONSISTENT b (genuine least-squares): here the basic solveInPlace is NOT minimum-norm —
@@ -681,36 +636,35 @@ public class floatLQRPTests
         // negligible, only its trailing DIAGONAL is.)
         void MinNormInconsistent()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 4, n = 8;
-            var A = arena.floatRandomMat(m, n, -3f, 3f, 55123);
+            var A = GenerateOP.floatRandomMat(m, n, -3f, 3f, 55123);
             for (int c = 0; c < n; c++)
                 A[m - 1, c] = (float)2f * A[0, c] - A[1, c]; // exact row dependency -> rank m-1
 
             // b NOT in range(A): random RHS, almost surely outside the (m-1)-dim range.
-            var b = arena.floatRandomVec(m, -3f, 3f, 8899);
-            var b0 = b.Copy();
-            var A0 = A.Copy();
+            var b = GenerateOP.floatRandomVec(m, -3f, 3f, 8899);
+            var b0 = new floatN(in b, Allocator.Temp);
+            var A0 = new floatMxN(in A, Allocator.Temp);
 
             // COD min-norm
-            var Acod = A.Copy();
-            var xCod = arena.floatVec(n);
+            var Acod = new floatMxN(in A, Allocator.Temp);
+            var xCod = new floatN(n, Allocator.Temp);
             LQRP.minNormSolveInPlace(ref Acod, ref b, ref xCod);
             if (Analysis.isAnyNan(in xCod)) { Fail0(2, 0); return; }
             float normCod = VecNorm(in xCod);
             float resCod = ResidualNorm(in A0, in xCod, in b0);
 
             // basic solveInPlace (NOT min-norm here)
-            var Abas = A.Copy();
-            var xBas = arena.floatVec(n);
+            var Abas = new floatMxN(in A, Allocator.Temp);
+            var xBas = new floatN(n, Allocator.Temp);
             LQRP.solveInPlace(ref Abas, ref b, ref xBas);
             float normBas = VecNorm(in xBas);
 
             // SVD pseudoinverse oracle
-            var Apinv = A.Copy();
-            var xPinv = arena.floatVec(n);
-            SVD.pinvSolve(ref Apinv, in b0, ref xPinv);
+            var Apinv = new floatMxN(in A, Allocator.Temp);
+            var xPinv = new floatN(n, Allocator.Temp);
+            var svdWs = new floatSVDCache(m, n, Allocator.Temp);
+            SVD.pinvSolve(ref Apinv, in b0, ref xPinv, ref svdWs);
             float normMin = VecNorm(in xPinv);
             float resMin = ResidualNorm(in A0, in xPinv, in b0);
 
@@ -721,41 +675,33 @@ public class floatLQRPTests
             // COD is no larger than basic, and here DISTINGUISHABLY smaller (basic is not min-norm).
             RecordBound(normCod - normBas, (float)1E-4f * (normBas + (float)1));
             RecordBound((float)1E-3f * (normCod + (float)1), normBas - normCod);
-
-            arena.Dispose();
         }
 
         // (5) Zero matrix: rank 0, x all zeros.
         void ZeroMatrix()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 3, n = 6;
-            var A = arena.floatMat(m, n);
-            var b = arena.floatRandomVec(m, -1f, 1f, 42);
-            var x = arena.floatVec(n);
+            var A = new floatMxN(m, n, Allocator.Temp);
+            var b = GenerateOP.floatRandomVec(m, -1f, 1f, 42);
+            var x = new floatN(n, Allocator.Temp);
 
             int rank = LQRP.solveInPlace(ref A, ref b, ref x).rank;
             RecordEq(rank, 0);
             for (int j = 0; j < n; j++)
                 RecordExact(x[j], (float)0);
-
-            arena.Dispose();
         }
 
         // (6) 1 x n system: x = min-norm solution of a·xᵀ = b0; A x reproduces b0.
         void OneByOne()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 1, n = 3;
-            var A = arena.floatRandomMat(m, n, -2f, 2f, 191);
+            var A = GenerateOP.floatRandomMat(m, n, -2f, 2f, 191);
             A[0, 0] += (float)5f;
-            var b = arena.floatRandomVec(m, -2f, 2f, 202);
-            var A_copy = A.Copy();
-            var b0 = b.Copy();
+            var b = GenerateOP.floatRandomVec(m, -2f, 2f, 202);
+            var A_copy = new floatMxN(in A, Allocator.Temp);
+            var b0 = new floatN(in b, Allocator.Temp);
 
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             int rank = LQRP.solveInPlace(ref A, ref b, ref x).rank;
             RecordEq(rank, 1);
             if (!Analysis.isAnyNan(in x))
@@ -764,74 +710,63 @@ public class floatLQRPTests
                 float res = ResidualNorm(in A_copy, in x, in b0);
                 RecordBound(res, tol * ((float)1 + VecNorm(in b0)));
             }
-
-            arena.Dispose();
         }
 
         // (7) Primitive explicit-scratch overload must agree with the allocating overload.
         void ExplicitScratchOverload()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 4, n = 9;
-            var A = arena.floatRandomMat(m, n, -3f, 3f, 30303);
+            var A = GenerateOP.floatRandomMat(m, n, -3f, 3f, 30303);
             for (int d = 0; d < m; d++) A[d, d] += (float)7f;
-            var b = arena.floatRandomVec(m, -3f, 3f, 40404);
+            var b = GenerateOP.floatRandomVec(m, -3f, 3f, 40404);
 
-            var A1 = A.Copy(); var x1 = arena.floatVec(n);
+            var A1 = new floatMxN(in A, Allocator.Temp); var x1 = new floatN(n, Allocator.Temp);
             LQRP.solveInPlace(ref A1, ref b, ref x1);
 
-            var A2 = A.Copy(); var x2 = arena.floatVec(n);
-            var L = arena.floatMat(m, m);
+            var A2 = new floatMxN(in A, Allocator.Temp); var x2 = new floatN(n, Allocator.Temp);
+            var L = new floatMxN(m, m, Allocator.Temp);
             var P = new Pivot(m, Allocator.Persistent);
-            var v = arena.floatVec(n);
+            var v = new floatN(n, Allocator.Temp);
             LQRP.solveInPlace(ref A2, ref b, ref x2, ref L, ref P, ref v);
 
             for (int k = 0; k < n; k++) RecordExact(x2[k], x1[k]);
 
             P.Dispose();
-            arena.Dispose();
         }
 
         // (8) Uninit-x contract: prior NaN garbage in x must not survive.
         void UninitXContract()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 3, n = 7;
-            var A = arena.floatRandomMat(m, n, -2f, 2f, 6363);
+            var A = GenerateOP.floatRandomMat(m, n, -2f, 2f, 6363);
             for (int d = 0; d < m; d++) A[d, d] += (float)5f;
-            var b = arena.floatRandomVec(m, -1f, 1f, 7474);
-            var x = arena.floatVec(n);
+            var b = GenerateOP.floatRandomVec(m, -1f, 1f, 7474);
+            var x = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = float.NaN;
 
             LQRP.solveInPlace(ref A, ref b, ref x);
             Assert.IsFalse(Analysis.isAnyNan(in x));
-
-            arena.Dispose();
         }
 
         // (9) COD on a CONSISTENT rank-deficient system must reproduce the basic solveInPlace result
         // (both are min-norm there): the coupled QR-LS on K = [L11; L21] reduces to the exact solve.
         void MinNormConsistentEqualsBasic()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 5, n = 11;
-            var A = arena.floatRandomMat(m, n, -3f, 3f, 0x9A9Au);
+            var A = GenerateOP.floatRandomMat(m, n, -3f, 3f, 0x9A9Au);
             for (int c = 0; c < n; c++)
             {
                 A[m - 1, c] = A[0, c] + A[1, c];              // 2 dependencies -> rank m-2
                 A[m - 2, c] = A[0, c] - A[2, c];
             }
-            var xTrue = arena.floatRandomVec(n, -2f, 2f, 0x4321u);
-            var b = arena.floatVec(m);
+            var xTrue = GenerateOP.floatRandomVec(n, -2f, 2f, 0x4321u);
+            var b = new floatN(m, Allocator.Temp);
             Blas.dot(in A, in xTrue, ref b);                  // consistent
 
-            var Acod = A.Copy(); var xCod = arena.floatVec(n);
+            var Acod = new floatMxN(in A, Allocator.Temp); var xCod = new floatN(n, Allocator.Temp);
             int rankCod = LQRP.minNormSolveInPlace(ref Acod, ref b, ref xCod).rank;
 
-            var Abas = A.Copy(); var xBas = arena.floatVec(n);
+            var Abas = new floatMxN(in A, Allocator.Temp); var xBas = new floatN(n, Allocator.Temp);
             int rankBas = LQRP.solveInPlace(ref Abas, ref b, ref xBas).rank;
 
             RecordEq(rankCod, rankBas);
@@ -839,29 +774,25 @@ public class floatLQRPTests
             float tol = (float)Consts.floatSqrtEps * (float)40;
             for (int k = 0; k < n; k++)
                 AssertClose(xCod[k], xBas[k], tol * (math.abs(xBas[k]) + (float)1));
-
-            arena.Dispose();
         }
 
         // (10) COD allocating overload == explicit-scratch primitive (bit-identical) on an inconsistent
         // rank-deficient system.
         void MinNormScratchEquivalence()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 5, n = 10;
-            var A = arena.floatRandomMat(m, n, -3f, 3f, 0x2468u);
+            var A = GenerateOP.floatRandomMat(m, n, -3f, 3f, 0x2468u);
             for (int c = 0; c < n; c++)
                 A[m - 1, c] = (float)2f * A[0, c] - A[1, c]; // rank m-1
-            var b = arena.floatRandomVec(m, -3f, 3f, 0x1357u); // inconsistent
+            var b = GenerateOP.floatRandomVec(m, -3f, 3f, 0x1357u); // inconsistent
 
-            var A1 = A.Copy(); var x1 = arena.floatVec(n);
+            var A1 = new floatMxN(in A, Allocator.Temp); var x1 = new floatN(n, Allocator.Temp);
             RankInfo info1 = LQRP.minNormSolveInPlace(ref A1, ref b, ref x1);   // allocating
 
-            var A2 = A.Copy(); var x2 = arena.floatVec(n);
-            var L = arena.floatMat(m, m);
+            var A2 = new floatMxN(in A, Allocator.Temp); var x2 = new floatN(n, Allocator.Temp);
+            var L = new floatMxN(m, m, Allocator.Temp);
             var P = new Pivot(m, Allocator.Persistent);
-            var v = arena.floatVec(n);
+            var v = new floatN(n, Allocator.Temp);
             RankInfo info2 = LQRP.minNormSolveInPlace(ref A2, ref b, ref x2, ref L, ref P, ref v);   // primitive
 
             RecordEq(info1.rank, info2.rank);
@@ -869,25 +800,20 @@ public class floatLQRPTests
                 RecordExact(x2[k], x1[k]);
 
             P.Dispose();
-            arena.Dispose();
         }
 
         // (11) COD on a zero matrix: rank 0, x all zeros (never enters the QR-LS block).
         void MinNormZeroMatrix()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 3, n = 6;
-            var A = arena.floatMat(m, n);                    // zero-initialised
-            var b = arena.floatRandomVec(m, -1f, 1f, 0x000Fu);
-            var x = arena.floatVec(n);
+            var A = new floatMxN(m, n, Allocator.Temp);                    // zero-initialised
+            var b = GenerateOP.floatRandomVec(m, -1f, 1f, 0x000Fu);
+            var x = new floatN(n, Allocator.Temp);
 
             int rank = LQRP.minNormSolveInPlace(ref A, ref b, ref x).rank;
             RecordEq(rank, 0);
             for (int j = 0; j < n; j++)
                 RecordExact(x[j], (float)0);
-
-            arena.Dispose();
         }
 
         // (12) KNOWN-ANSWER (external ground truth). Rank-1 WIDE A = u vᵀ with u=[1,2], v=[1,0,2]:
@@ -897,16 +823,14 @@ public class floatLQRPTests
         //   (b is not in range(A)=span(u), so this genuinely exercises the inconsistent COD path.)
         void MinNormKnownRank1Wide()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 2, n = 3;
-            var A = arena.floatMat(m, n);
+            var A = new floatMxN(m, n, Allocator.Temp);
             A[0, 0] = (float)1; A[0, 1] = (float)0; A[0, 2] = (float)2;
             A[1, 0] = (float)2; A[1, 1] = (float)0; A[1, 2] = (float)4;
-            var b = arena.floatVec(m);
+            var b = new floatN(m, Allocator.Temp);
             b[0] = (float)1; b[1] = (float)3;
 
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             int rank = LQRP.minNormSolveInPlace(ref A, ref b, ref x).rank;
 
             RecordEq(rank, 1);
@@ -914,100 +838,89 @@ public class floatLQRPTests
             AssertClose(x[0], (float)7 / (float)25, tol);    // 0.28
             AssertClose(x[1], (float)0, tol);
             AssertClose(x[2], (float)14 / (float)25, tol);   // 0.56
-
-            arena.Dispose();
         }
 
         // (13) Multi-RHS BASIC == per-column single-RHS basic (consistent B, so basic is well-defined).
         void MultiRHSBasicMatchesSingle()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 5, n = 11, k = 4;
-            var A = arena.floatRandomMat(m, n, -3f, 3f, 0x9A9Au);
+            var A = GenerateOP.floatRandomMat(m, n, -3f, 3f, 0x9A9Au);
             for (int c = 0; c < n; c++)
                 A[m - 1, c] = A[0, c] + A[1, c];                 // rank m-1
-            var A0 = A.Copy();
+            var A0 = new floatMxN(in A, Allocator.Temp);
             // consistent B = A * Xtrue
-            var Xtrue = arena.floatRandomMat(n, k, -2f, 2f, 0x4321u);
-            var B = Blas.dot(A0, Xtrue);                          // m x k
+            var Xtrue = GenerateOP.floatRandomMat(n, k, -2f, 2f, 0x4321u);
+            var B = new floatMxN(m, k, Allocator.Temp);
+            Blas.dot(in A0, in Xtrue, ref B);                     // m x k
 
-            var Ablk = A0.Copy();
-            var Xblk = arena.floatMat(n, k);
+            var Ablk = new floatMxN(in A0, Allocator.Temp);
+            var Xblk = new floatMxN(n, k, Allocator.Temp);
             int rankBlk = LQRP.solveInPlace(ref Ablk, ref B, ref Xblk).rank;
             RecordEq(rankBlk, m - 1);
 
             float tol = (float)Consts.floatSqrtEps * (float)50;
             for (int j = 0; j < k; j++)
             {
-                var Aj = A0.Copy();
-                var bj = arena.floatVec(m);
+                var Aj = new floatMxN(in A0, Allocator.Temp);
+                var bj = new floatN(m, Allocator.Temp);
                 for (int i = 0; i < m; i++) bj[i] = B[i, j];
-                var xj = arena.floatVec(n);
+                var xj = new floatN(n, Allocator.Temp);
                 LQRP.solveInPlace(ref Aj, ref bj, ref xj);
                 for (int i = 0; i < n; i++)
                     AssertClose(Xblk[i, j], xj[i], tol * (math.abs(xj[i]) + (float)1));
             }
-
-            arena.Dispose();
         }
 
         // (14) Multi-RHS COD == per-column single-RHS COD (inconsistent B; single-RHS COD already
         // validated vs SVD + literature, so this transitively validates the block path).
         void MinNormMultiRHSMatchesSingle()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 5, n = 10, k = 4;
-            var A = arena.floatRandomMat(m, n, -3f, 3f, 0x2468u);
+            var A = GenerateOP.floatRandomMat(m, n, -3f, 3f, 0x2468u);
             for (int c = 0; c < n; c++)
                 A[m - 1, c] = (float)2f * A[0, c] - A[1, c];    // rank m-1
-            var A0 = A.Copy();
-            var B = arena.floatRandomMat(m, k, -3f, 3f, 0x1357u); // inconsistent
+            var A0 = new floatMxN(in A, Allocator.Temp);
+            var B = GenerateOP.floatRandomMat(m, k, -3f, 3f, 0x1357u); // inconsistent
 
-            var Ablk = A0.Copy();
-            var Xblk = arena.floatMat(n, k);
+            var Ablk = new floatMxN(in A0, Allocator.Temp);
+            var Xblk = new floatMxN(n, k, Allocator.Temp);
             int rankBlk = LQRP.minNormSolveInPlace(ref Ablk, ref B, ref Xblk).rank;
             RecordEq(rankBlk, m - 1);
 
             float tol = (float)Consts.floatSqrtEps * (float)50;
             for (int j = 0; j < k; j++)
             {
-                var Aj = A0.Copy();
-                var bj = arena.floatVec(m);
+                var Aj = new floatMxN(in A0, Allocator.Temp);
+                var bj = new floatN(m, Allocator.Temp);
                 for (int i = 0; i < m; i++) bj[i] = B[i, j];
-                var xj = arena.floatVec(n);
+                var xj = new floatN(n, Allocator.Temp);
                 LQRP.minNormSolveInPlace(ref Aj, ref bj, ref xj);
                 for (int i = 0; i < n; i++)
                     AssertClose(Xblk[i, j], xj[i], tol * (math.abs(xj[i]) + (float)1));
             }
-
-            arena.Dispose();
         }
 
         // (15) Factor-reuse minNormDecompSolve (from a precomputed P·A=L·Q) == the fused block COD.
         void MinNormDecompSolveMatchesFused()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 5, n = 9, k = 3;
-            var A = arena.floatRandomMat(m, n, -3f, 3f, 0x30303u);
+            var A = GenerateOP.floatRandomMat(m, n, -3f, 3f, 0x30303u);
             for (int c = 0; c < n; c++)
                 A[m - 1, c] = A[0, c] - A[2, c];                 // rank m-1
-            var A0 = A.Copy();
-            var B = arena.floatRandomMat(m, k, -3f, 3f, 0x40404u); // inconsistent
+            var A0 = new floatMxN(in A, Allocator.Temp);
+            var B = GenerateOP.floatRandomMat(m, k, -3f, 3f, 0x40404u); // inconsistent
 
             // fused block COD (destroys A)
-            var Afu = A0.Copy();
-            var Xfu = arena.floatMat(n, k);
+            var Afu = new floatMxN(in A0, Allocator.Temp);
+            var Xfu = new floatMxN(n, k, Allocator.Temp);
             LQRP.minNormSolveInPlace(ref Afu, ref B, ref Xfu);
 
             // factor-reuse: decompose once (A preserved), then minNormDecompSolve (B preserved)
-            var L = arena.floatMat(m, m);
-            var Q = arena.floatMat(m, n);
+            var L = new floatMxN(m, m, Allocator.Temp);
+            var Q = new floatMxN(m, n, Allocator.Temp);
             var Pp = new Pivot(m, Allocator.Persistent);
             LQRP.decomp(in A0, ref L, ref Q, ref Pp);
-            var Xre = arena.floatMat(n, k);
+            var Xre = new floatMxN(n, k, Allocator.Temp);
             LQRP.minNormDecompSolve(ref L, ref Q, in Pp, ref B, ref Xre);
 
             float tol = (float)Consts.floatSqrtEps * (float)50;
@@ -1016,27 +929,24 @@ public class floatLQRPTests
                     AssertClose(Xre[i, j], Xfu[i, j], tol * (math.abs(Xfu[i, j]) + (float)1));
 
             Pp.Dispose();
-            arena.Dispose();
         }
 
         // (16) decompInPlace (A becomes Q) must reproduce decomp's L, Q, P exactly (same kernel), and
         // satisfy the reconstruction A[P[j], :] == (L·Q)[j, :].
         void DecompInPlaceMatchesDecomp()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 5, n = 11;
-            var A = arena.floatRandomMat(m, n, -4f, 4f, 0x51A1u);
+            var A = GenerateOP.floatRandomMat(m, n, -4f, 4f, 0x51A1u);
 
             // reference: A-preserving decomp
-            var Lref = arena.floatMat(m, m);
-            var Qref = arena.floatMat(m, n);
+            var Lref = new floatMxN(m, m, Allocator.Temp);
+            var Qref = new floatMxN(m, n, Allocator.Temp);
             var Pref = new Pivot(m, Allocator.Persistent);
             LQRP.decomp(in A, ref Lref, ref Qref, ref Pref);
 
             // in-place: A becomes Q
-            var Aip = A.Copy();
-            var Lip = arena.floatMat(m, m);
+            var Aip = new floatMxN(in A, Allocator.Temp);
+            var Lip = new floatMxN(m, m, Allocator.Temp);
             var Pip = new Pivot(m, Allocator.Persistent);
             LQRP.decompInPlace(ref Aip, ref Lip, ref Pip);
 
@@ -1060,32 +970,30 @@ public class floatLQRPTests
 
             Pip.Dispose();
             Pref.Dispose();
-            arena.Dispose();
         }
 
         // (17) Factor-reuse BASIC decompSolve (from a precomputed P·A=L·Q) == the fused basic block
         // solveInPlace. Consistent B so the basic solution is well-defined.
         void BasicDecompSolveMatchesFused()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 5, n = 10, k = 3;
-            var A = arena.floatRandomMat(m, n, -3f, 3f, 0x7A7Au);
+            var A = GenerateOP.floatRandomMat(m, n, -3f, 3f, 0x7A7Au);
             for (int c = 0; c < n; c++)
                 A[m - 1, c] = A[0, c] + A[2, c];                 // rank m-1
-            var A0 = A.Copy();
-            var Xtrue = arena.floatRandomMat(n, k, -2f, 2f, 0xB0B0u);
-            var B = Blas.dot(A0, Xtrue);                         // consistent m x k
+            var A0 = new floatMxN(in A, Allocator.Temp);
+            var Xtrue = GenerateOP.floatRandomMat(n, k, -2f, 2f, 0xB0B0u);
+            var B = new floatMxN(m, k, Allocator.Temp);
+            Blas.dot(in A0, in Xtrue, ref B);                     // consistent m x k
 
-            var Afu = A0.Copy();
-            var Xfu = arena.floatMat(n, k);
+            var Afu = new floatMxN(in A0, Allocator.Temp);
+            var Xfu = new floatMxN(n, k, Allocator.Temp);
             LQRP.solveInPlace(ref Afu, ref B, ref Xfu);          // fused basic (B preserved)
 
-            var L = arena.floatMat(m, m);
-            var Q = arena.floatMat(m, n);
+            var L = new floatMxN(m, m, Allocator.Temp);
+            var Q = new floatMxN(m, n, Allocator.Temp);
             var Pp = new Pivot(m, Allocator.Persistent);
             LQRP.decomp(in A0, ref L, ref Q, ref Pp);
-            var Xre = arena.floatMat(n, k);
+            var Xre = new floatMxN(n, k, Allocator.Temp);
             LQRP.decompSolve(ref L, ref Q, in Pp, ref B, ref Xre);
 
             float tol = (float)Consts.floatSqrtEps * (float)50;
@@ -1094,35 +1002,32 @@ public class floatLQRPTests
                     AssertClose(Xre[i, j], Xfu[i, j], tol * (math.abs(Xfu[i, j]) + (float)1));
 
             Pp.Dispose();
-            arena.Dispose();
         }
 
         // (18) Single-RHS factor-reuse (basic decompSolve + min-norm minNormDecompSolve) must match the
         // fused single-RHS solveInPlace / minNormSolveInPlace on the same rank-deficient inconsistent b.
         void SingleRHSFactorReuseMatchesFused()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 4, n = 9;
-            var A = arena.floatRandomMat(m, n, -3f, 3f, 0xC0FFu);
+            var A = GenerateOP.floatRandomMat(m, n, -3f, 3f, 0xC0FFu);
             for (int c = 0; c < n; c++)
                 A[m - 1, c] = A[0, c] - A[1, c];                 // rank m-1
-            var A0 = A.Copy();
-            var b = arena.floatRandomVec(m, -3f, 3f, 0xBEEFu);  // inconsistent
+            var A0 = new floatMxN(in A, Allocator.Temp);
+            var b = GenerateOP.floatRandomVec(m, -3f, 3f, 0xBEEFu);  // inconsistent
 
-            var Ab = A0.Copy(); var xBasFu = arena.floatVec(n);
+            var Ab = new floatMxN(in A0, Allocator.Temp); var xBasFu = new floatN(n, Allocator.Temp);
             LQRP.solveInPlace(ref Ab, ref b, ref xBasFu);
-            var Am = A0.Copy(); var xMinFu = arena.floatVec(n);
+            var Am = new floatMxN(in A0, Allocator.Temp); var xMinFu = new floatN(n, Allocator.Temp);
             LQRP.minNormSolveInPlace(ref Am, ref b, ref xMinFu);
 
-            var L = arena.floatMat(m, m);
-            var Q = arena.floatMat(m, n);
+            var L = new floatMxN(m, m, Allocator.Temp);
+            var Q = new floatMxN(m, n, Allocator.Temp);
             var Pp = new Pivot(m, Allocator.Persistent);
             LQRP.decomp(in A0, ref L, ref Q, ref Pp);
 
-            var xBasRe = arena.floatVec(n);
+            var xBasRe = new floatN(n, Allocator.Temp);
             LQRP.decompSolve(ref L, ref Q, in Pp, ref b, ref xBasRe);
-            var xMinRe = arena.floatVec(n);
+            var xMinRe = new floatN(n, Allocator.Temp);
             LQRP.minNormDecompSolve(ref L, ref Q, in Pp, ref b, ref xMinRe);
 
             float tol = (float)Consts.floatSqrtEps * (float)50;
@@ -1133,7 +1038,6 @@ public class floatLQRPTests
             }
 
             Pp.Dispose();
-            arena.Dispose();
         }
 
         // ---- helpers ----

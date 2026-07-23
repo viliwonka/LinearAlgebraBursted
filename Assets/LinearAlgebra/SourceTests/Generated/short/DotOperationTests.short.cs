@@ -68,19 +68,17 @@ public class shortDotOperationTests
 
         public void VecVecDot()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int vecLen = 32;
 
-            shortN x = arena.shortVec(vecLen, 1);
-            shortN y = arena.shortVec(vecLen, 1);
+            shortN x = GenerateOP.shortVec(vecLen, 1);
+            shortN y = GenerateOP.shortVec(vecLen, 1);
 
             short b = Blas.dot(x, y);
 
             Assert.IsTrue(b == (short)vecLen);
 
-            x = arena.shortVec(vecLen);
-            y = arena.shortVec(vecLen);
+            x = new shortN(vecLen, Allocator.Temp);
+            y = new shortN(vecLen, Allocator.Temp);
 
             for(int i = 0; i < vecLen; i++)
             {
@@ -91,20 +89,16 @@ public class shortDotOperationTests
             b = Blas.dot(x, y);
 
             Assert.IsTrue(b == (short)0f);
-
-            arena.Dispose();
         }
 
         public void MatVecDot()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int inVecLen = 20;
             int outVecLen = 5;
 
             // A[i,j] = i+1 against an all-ones x: b[i] must be exactly (i+1) * inVecLen.
-            shortN x = arena.shortVec(inVecLen, 1);
-            shortMxN A = arena.shortMat(outVecLen, inVecLen);
+            shortN x = GenerateOP.shortVec(inVecLen, 1);
+            shortMxN A = new shortMxN(outVecLen, inVecLen, Allocator.Temp);
             for (int i = 0; i < outVecLen; i++)
                 for (int j = 0; j < inVecLen; j++)
                     A[i, j] = (short)(i + 1);
@@ -114,44 +108,36 @@ public class shortDotOperationTests
             Assert.AreEqual(outVecLen, b.N);
             for (int i = 0; i < outVecLen; i++)
                 Assert.IsTrue(b[i] == (short)((i + 1) * inVecLen));
-
-            arena.Dispose();
         }
 
         public void VecMatDot()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int vecLen = 20;
 
-            shortN x = arena.shortIndexOneVec(vecLen);
-            shortMxN A = arena.shortIdentityMat(vecLen);
+            shortN x = GenerateOP.shortIndexOneVec(vecLen);
+            shortMxN A = GenerateOP.shortIdentityMat(vecLen);
 
             shortN b = Blas.dot(x, A);
 
             Assert.AreEqual(vecLen, b.N);
-            
+
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(b[i] == x[i]);
 
-            x = arena.shortIndexZeroVec(vecLen);
+            x = GenerateOP.shortIndexZeroVec(vecLen);
 
             b = Blas.dot(x, A);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(b[i] == (short)i);
-
-            arena.Dispose();
         }
 
         public void MatMatDot()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int matLen = 16;
 
-            shortMxN A = arena.shortIdentityMat(matLen);
-            shortMxN B = arena.shortIdentityMat(matLen);
+            shortMxN A = GenerateOP.shortIdentityMat(matLen);
+            shortMxN B = GenerateOP.shortIdentityMat(matLen);
 
             shortMxN C = Blas.dot(A, B);
 
@@ -164,7 +150,7 @@ public class shortDotOperationTests
                     Assert.IsTrue(C[i, j] == (short)0f);
             }
 
-            shortMxN R = arena.shortRandomMat(matLen, matLen);
+            shortMxN R = GenerateOP.shortRandomMat(matLen, matLen);
 
             C = Blas.dot(A, R);
 
@@ -174,7 +160,7 @@ public class shortDotOperationTests
                 Assert.IsTrue(C[i, j] == R[i, j]);
             }
 
-            C = arena.shortIdentityMat(matLen);
+            C = GenerateOP.shortIdentityMat(matLen);
 
             shortMxN D = Blas.dot(C, C);
 
@@ -186,20 +172,16 @@ public class shortDotOperationTests
                 else
                     Assert.IsTrue(D[i, j] == (short)0f);
             }
-
-            arena.Dispose();
         }
 
         public void MatVecDotNonSquare()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int inVecLen = 64;
             int outVecLen = 16;
 
             // A[i,j] = i+1 against an all-ones x: b[i] must be exactly (i+1) * inVecLen.
-            shortN x = arena.shortVec(inVecLen, 1);
-            shortMxN A = arena.shortMat(outVecLen, inVecLen);
+            shortN x = GenerateOP.shortVec(inVecLen, 1);
+            shortMxN A = new shortMxN(outVecLen, inVecLen, Allocator.Temp);
             for (int i = 0; i < outVecLen; i++)
                 for (int j = 0; j < inVecLen; j++)
                     A[i, j] = (short)(i + 1);
@@ -209,37 +191,29 @@ public class shortDotOperationTests
             Assert.AreEqual(outVecLen, b.N);
             for (int i = 0; i < outVecLen; i++)
                 Assert.IsTrue(b[i] == (short)((i + 1) * inVecLen));
-
-            arena.Dispose();
         }
 
         public void VecMatDotNonSquare()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int inVecLen = 64;
             int outVecLen = 16;
 
-            shortN x = arena.shortVec(inVecLen, 1);
-            shortMxN A = arena.shortRandomMat(inVecLen, outVecLen, -100, +100);
+            shortN x = GenerateOP.shortVec(inVecLen, 1);
+            shortMxN A = GenerateOP.shortRandomMat(inVecLen, outVecLen, -100, +100);
 
             shortN b = Blas.dot(x, A);
-            
-            Assert.AreEqual(outVecLen, b.N);
 
-            arena.Dispose();
+            Assert.AreEqual(outVecLen, b.N);
         }
 
         public void MatMatDotNonSquare()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int M = 8;
             int K = 24;
             int N = 16;
 
-            shortMxN Id = arena.shortIdentityMat(K);
-            shortMxN R = arena.shortRandomMat(K, N, -100, +100);
+            shortMxN Id = GenerateOP.shortIdentityMat(K);
+            shortMxN R = GenerateOP.shortRandomMat(K, N, -100, +100);
 
             shortMxN C = Blas.dot(Id, R);
 
@@ -250,7 +224,7 @@ public class shortDotOperationTests
             for (int j = 0; j < N; j++)
                 Assert.IsTrue(C[i, j] == R[i, j]);
 
-            shortMxN R2 = arena.shortRandomMat(M, K, -100, +100);
+            shortMxN R2 = GenerateOP.shortRandomMat(M, K, -100, +100);
 
             shortMxN D = Blas.dot(R2, Id);
 
@@ -260,19 +234,15 @@ public class shortDotOperationTests
             for (int i = 0; i < M; i++)
             for (int j = 0; j < K; j++)
                 Assert.IsTrue(D[i, j] == R2[i, j]);
-
-            arena.Dispose();
         }
 
         public void OuterDot()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int vecM = 16;
             int vecN = 32;
 
-            shortN x = arena.shortVec(vecM, 1);
-            shortN y = arena.shortVec(vecN, 1);
+            shortN x = GenerateOP.shortVec(vecM, 1);
+            shortN y = GenerateOP.shortVec(vecN, 1);
 
             shortMxN A = Blas.outerDot(x, y);
 
@@ -290,16 +260,14 @@ public class shortDotOperationTests
             for (int i = 0; i < B.Length; i++)
                 Assert.IsTrue(B[i] == (short)1);
 
-            x = arena.shortLinVec(vecM, 0, 20);
-            y = arena.shortLinVec(vecN, 0, 20);
+            x = GenerateOP.shortLinVec(vecM, 0, 20);
+            y = GenerateOP.shortLinVec(vecN, 0, 20);
 
             shortMxN C = Blas.outerDot(x, y);
 
             for (int i = 0; i < vecM; i++)
                 for (int j = 0; j < vecN; j++)
                     Assert.IsTrue((short)C[i, j] == (short)x[i] * y[j]);
-
-            arena.Dispose();
         }
     }
 

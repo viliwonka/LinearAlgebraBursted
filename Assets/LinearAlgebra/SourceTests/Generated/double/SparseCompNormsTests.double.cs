@@ -48,14 +48,14 @@ public class doubleSparseCompNormsTests
 
         // 2x2 grid of 2x2 blocks with block (1,0) omitted; values include negatives so the
         // abs-based norms are actually exercised.
-        static doubleBSR BuildTestBSR(ref Arena arena, double scale)
+        static doubleBSR BuildTestBSR(double scale)
         {
             const int BR = 2, BC = 2;
-            var builder = arena.doubleBSRBuilder(2, 2, BR, BC);
+            var builder = new doubleBSRBuilder(2, 2, BR, BC, Allocator.Temp);
 
-            var b00 = arena.doubleMat(BR, BC);
-            var b01 = arena.doubleMat(BR, BC);
-            var b11 = arena.doubleMat(BR, BC);
+            var b00 = new doubleMxN(BR, BC, Allocator.Temp);
+            var b01 = new doubleMxN(BR, BC, Allocator.Temp);
+            var b11 = new doubleMxN(BR, BC, Allocator.Temp);
             for (int r = 0; r < BR; r++)
                 for (int c = 0; c < BC; c++)
                 {
@@ -67,7 +67,7 @@ public class doubleSparseCompNormsTests
             builder.AddBlock(0, 0, in b00);
             builder.AddBlock(0, 1, in b01);
             builder.AddBlock(1, 1, in b11);
-            return builder.ToBSR(ref arena);
+            return builder.ToBSR(Allocator.Temp);
         }
 
         // Dense entrywise references computed directly on the expansion.
@@ -87,85 +87,69 @@ public class doubleSparseCompNormsTests
 
         void NormsMatchDense()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = BuildTestBSR(ref arena, (double)1);
-            var dense = A.ToDense(ref arena);
+            var A = BuildTestBSR((double)1);
+            var dense = A.ToDense(Allocator.Temp);
             DenseEntrywiseNorms(in dense, out double l1, out double l2, out double lInf);
 
             Assert.IsTrue(math.abs(Norms.L1(in A) - l1) < Tol() * l1);
             Assert.IsTrue(math.abs(Norms.L2(in A) - l2) < Tol() * l2);
             Assert.IsTrue(math.abs(Norms.LInf(in A) - lInf) < Tol() * lInf);
-
-            arena.Dispose();
         }
 
         void ScaleFlipAbs()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // mulInPlace: A *= -3, compare against dense expansion scaled the same way.
-            var A = BuildTestBSR(ref arena, (double)1);
-            var reference = A.ToDense(ref arena);
+            var A = BuildTestBSR((double)1);
+            var reference = A.ToDense(Allocator.Temp);
             A.mulInPlace((double)(-3));
-            var scaled = A.ToDense(ref arena);
+            var scaled = A.ToDense(Allocator.Temp);
             for (int i = 0; i < reference.M_Rows; i++)
                 for (int j = 0; j < reference.N_Cols; j++)
                     Assert.IsTrue(math.abs(scaled[i, j] - (double)(-3) * reference[i, j]) < Tol());
 
             // signFlipInPlace: back to +3 * reference.
             A.signFlipInPlace();
-            var flipped = A.ToDense(ref arena);
+            var flipped = A.ToDense(Allocator.Temp);
             for (int i = 0; i < reference.M_Rows; i++)
                 for (int j = 0; j < reference.N_Cols; j++)
                     Assert.IsTrue(math.abs(flipped[i, j] - (double)3 * reference[i, j]) < Tol());
 
             // absInPlace: |3 * reference|.
             A.absInPlace();
-            var abs = A.ToDense(ref arena);
+            var abs = A.ToDense(Allocator.Temp);
             for (int i = 0; i < reference.M_Rows; i++)
                 for (int j = 0; j < reference.N_Cols; j++)
                     Assert.IsTrue(math.abs(abs[i, j] - math.abs((double)3 * reference[i, j])) < Tol());
-
-            arena.Dispose();
         }
 
         void AddScaledSamePattern()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // Same builder recipe twice -> identical pattern, different values via scale.
-            var y = BuildTestBSR(ref arena, (double)1);
-            var x = BuildTestBSR(ref arena, (double)10);
+            var y = BuildTestBSR((double)1);
+            var x = BuildTestBSR((double)10);
             Assert.IsTrue(BSR.samePattern(in y, in x));
 
-            var yDense = y.ToDense(ref arena);
-            var xDense = x.ToDense(ref arena);
+            var yDense = y.ToDense(Allocator.Temp);
+            var xDense = x.ToDense(Allocator.Temp);
 
             double a = (double)0.5f;
             y.addScaledInPlace(a, in x);
 
-            var result = y.ToDense(ref arena);
+            var result = y.ToDense(Allocator.Temp);
             for (int i = 0; i < result.M_Rows; i++)
                 for (int j = 0; j < result.N_Cols; j++)
                     Assert.IsTrue(math.abs(result[i, j] - (yDense[i, j] + a * xDense[i, j])) < Tol());
-
-            arena.Dispose();
         }
 
         void EmptyMatrixNorms()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // No blocks added: all-zero matrix, all norms exactly 0.
-            var builder = arena.doubleBSRBuilder(2, 2, 2, 2);
-            var A = builder.ToBSR(ref arena);
+            var builder = new doubleBSRBuilder(2, 2, 2, 2, Allocator.Temp);
+            var A = builder.ToBSR(Allocator.Temp);
 
             Assert.IsTrue(Norms.L1(in A) == (double)0);
             Assert.IsTrue(Norms.L2(in A) == (double)0);
             Assert.IsTrue(Norms.LInf(in A) == (double)0);
-
-            arena.Dispose();
         }
     }
 
@@ -192,26 +176,18 @@ public class doubleSparseCompNormsTests
     [Test]
     public void AddScaledPatternMismatchThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            const int BR = 2, BC = 2;
-            var by = arena.doubleBSRBuilder(2, 2, BR, BC);
-            var bx = arena.doubleBSRBuilder(2, 2, BR, BC);
-            var block = arena.doubleMat(BR, BC, (double)1);
+        const int BR = 2, BC = 2;
+        var by = new doubleBSRBuilder(2, 2, BR, BC, Allocator.Temp);
+        var bx = new doubleBSRBuilder(2, 2, BR, BC, Allocator.Temp);
+        var block = GenerateOP.doubleMat(BR, BC, (double)1);
 
-            by.AddBlock(0, 0, in block);
-            bx.AddBlock(1, 1, in block);   // same count, different placement
+        by.AddBlock(0, 0, in block);
+        bx.AddBlock(1, 1, in block);   // same count, different placement
 
-            var y = by.ToBSR(ref arena);
-            var x = bx.ToBSR(ref arena);
+        var y = by.ToBSR(Allocator.Temp);
+        var x = bx.ToBSR(Allocator.Temp);
 
-            Assert.IsFalse(BSR.samePattern(in y, in x));
-            Assert.Throws<ArgumentException>(() => y.addScaledInPlace((double)1, in x));
-        }
-        finally
-        {
-            arena.Dispose();
-        }
+        Assert.IsFalse(BSR.samePattern(in y, in x));
+        Assert.Throws<ArgumentException>(() => y.addScaledInPlace((double)1, in x));
     }
 }

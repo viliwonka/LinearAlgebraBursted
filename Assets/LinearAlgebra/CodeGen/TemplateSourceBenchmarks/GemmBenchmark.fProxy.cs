@@ -130,10 +130,9 @@ namespace LinearAlgebra.Benchmarks
     {
         static string BenchTransBFProxy(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyMat(n, n);
-            var B = arena.fProxyMat(n, n);
-            var C = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Persistent);
+            var B = new fProxyMxN(n, n, Allocator.Persistent);
+            var C = new fProxyMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -146,16 +145,15 @@ namespace LinearAlgebra.Benchmarks
             var job = new GemmTransBJobFProxy { A = A, B = B, C = C };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); B.Dispose(); C.Dispose();
             return Bench.Row("fProxy", n, stat, flops);
         }
 
         static string BenchTransBViaTransFProxy(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyMat(n, n);
-            var B = arena.fProxyMat(n, n);
-            var C = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Persistent);
+            var B = new fProxyMxN(n, n, Allocator.Persistent);
+            var C = new fProxyMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -168,16 +166,15 @@ namespace LinearAlgebra.Benchmarks
             var job = new GemmTransBViaTransJobFProxy { A = A, B = B, C = C };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); B.Dispose(); C.Dispose();
             return Bench.Row("fProxy", n, stat, flops);
         }
 
         static string BenchScalarTileFProxy(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyMat(n, n);
-            var B = arena.fProxyMat(n, n);
-            var C = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Persistent);
+            var B = new fProxyMxN(n, n, Allocator.Persistent);
+            var C = new fProxyMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -190,16 +187,15 @@ namespace LinearAlgebra.Benchmarks
             var job = new GemmScalarTileJobFProxy { A = A, B = B, C = C };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); B.Dispose(); C.Dispose();
             return Bench.Row("fProxy", n, stat, flops);
         }
 
         static string BenchPackedFProxy(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyMat(n, n);
-            var B = arena.fProxyMat(n, n);
-            var C = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Persistent);
+            var B = new fProxyMxN(n, n, Allocator.Persistent);
+            var C = new fProxyMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -212,15 +208,14 @@ namespace LinearAlgebra.Benchmarks
             var job = new GemmPackedJobFProxy { A = A, B = B, C = C };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); B.Dispose(); C.Dispose();
             return Bench.Row("fProxy", n, stat, flops);
         }
 
         static string BenchTransFProxy(int n, double elems)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyMat(n, n);
-            var T = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Persistent);
+            var T = new fProxyMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -230,15 +225,14 @@ namespace LinearAlgebra.Benchmarks
             var job = new TransJobFProxy { A = A, T = T };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); T.Dispose();
             return Bench.Row("fProxy", n, stat, elems);
         }
 
         static string BenchAAtFProxy(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyMat(n, n);
-            var C = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Persistent);
+            var C = new fProxyMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -248,15 +242,14 @@ namespace LinearAlgebra.Benchmarks
             var job = new GemmAAtJobFProxy { A = A, C = C };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); C.Dispose();
             return Bench.Row("fProxy", n, stat, flops);
         }
 
         static string BenchAtAFProxy(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyMat(n, n);
-            var C = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Persistent);
+            var C = new fProxyMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -266,16 +259,15 @@ namespace LinearAlgebra.Benchmarks
             var job = new GemmAtAJobFProxy { A = A, C = C };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); C.Dispose();
             return Bench.Row("fProxy", n, stat, flops);
         }
 
         static string BenchFProxy(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyMat(n, n);
-            var B = arena.fProxyMat(n, n);
-            var C = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Persistent);
+            var B = new fProxyMxN(n, n, Allocator.Persistent);
+            var C = new fProxyMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -288,16 +280,15 @@ namespace LinearAlgebra.Benchmarks
             var job = new GemmJobFProxy { A = A, B = B, C = C };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); B.Dispose(); C.Dispose();
             return Bench.Row("fProxy", n, stat, flops);
         }
 
         static string BenchTransAFProxy(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyMat(n, n);
-            var B = arena.fProxyMat(n, n);
-            var C = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Persistent);
+            var B = new fProxyMxN(n, n, Allocator.Persistent);
+            var C = new fProxyMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -310,7 +301,7 @@ namespace LinearAlgebra.Benchmarks
             var job = new GemmTransAJobFProxy { A = A, B = B, C = C };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); B.Dispose(); C.Dispose();
             return Bench.Row("fProxy", n, stat, flops);
         }
     }

@@ -530,14 +530,13 @@ namespace LinearAlgebra.Benchmarks
     {
         static string SinCosRowFProxy(int variant, bool single, string label, int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var src = arena.fProxyVec(n);
-            var dst = arena.fProxyVec(n);
+            var src = new fProxyN(n, Allocator.Persistent);
+            var dst = new fProxyN(n, Allocator.Persistent);
             var rng = new Unity.Mathematics.Random(0x51C0u ^ (uint)variant);
             for (int i = 0; i < n; i++) src[i] = rng.NextFProxy(-10f, 10f);
             var job = new SinCosCompareJobFProxy { src = src, dst = dst, variant = variant, single = single ? 1 : 0 };
             var stat = Bench.Time(() => job.Run());
-            arena.Dispose();
+            src.Dispose(); dst.Dispose();
             return string.Format(CultureInfo.InvariantCulture,
                 "{0,-20} {1,-10} {2,11:F4} {3,11:F4} {4,11:F4}", label, n, stat.Min, stat.Median, stat.Mean);
         }
@@ -546,9 +545,8 @@ namespace LinearAlgebra.Benchmarks
         // the hand-written harness attaches the names.
         static double[] DerivedVerifyFProxy()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 100000;
-            var src = arena.fProxyVec(n);
+            var src = new fProxyN(n, Allocator.Persistent);
             var rng = new Unity.Mathematics.Random(0xDE71u);
             for (int i = 0; i < n; i++) src[i] = rng.NextFProxy(0.2f, 0.9f);
             var maxUlp = new NativeArray<double>(11, Allocator.Persistent);
@@ -556,7 +554,7 @@ namespace LinearAlgebra.Benchmarks
             var result = new double[11];
             for (int k = 0; k < 11; k++) result[k] = maxUlp[k];
             maxUlp.Dispose();
-            arena.Dispose();
+            src.Dispose();
             return result;
         }
     }
@@ -723,9 +721,8 @@ namespace LinearAlgebra.Benchmarks
     {
         static string AtanRowFProxy(int variant, bool single, string label, int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var src = arena.fProxyVec(n);
-            var dst = arena.fProxyVec(n);
+            var src = new fProxyN(n, Allocator.Persistent);
+            var dst = new fProxyN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(0xA7A11u ^ (uint)variant);
             for (int i = 0; i < n; i++) src[i] = rng.NextFProxy(-20f, 20f);   // exercises both folds
@@ -743,7 +740,7 @@ namespace LinearAlgebra.Benchmarks
                     if (err > maxAbs) maxAbs = err;
                 }
             }
-            arena.Dispose();
+            src.Dispose(); dst.Dispose();
 
             double eps = /*+choose[1.1920929e-7|2.220446049250313e-16]*/1.1920929e-7/*-choose*/;
             string errStr = single ? "(chain)" : maxAbs.ToString("E3", CultureInfo.InvariantCulture);
@@ -755,9 +752,8 @@ namespace LinearAlgebra.Benchmarks
 
         static string LogRowFProxy(int variant, bool single, string label, int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var src = arena.fProxyVec(n);
-            var dst = arena.fProxyVec(n);
+            var src = new fProxyN(n, Allocator.Persistent);
+            var dst = new fProxyN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(0x106106u ^ (uint)variant);
             for (int i = 0; i < n; i++) src[i] = rng.NextFProxy(0.1f, 10f);   // x > 0
@@ -775,7 +771,7 @@ namespace LinearAlgebra.Benchmarks
                     if (err > maxAbs) maxAbs = err;
                 }
             }
-            arena.Dispose();
+            src.Dispose(); dst.Dispose();
 
             double eps = /*+choose[1.1920929e-7|2.220446049250313e-16]*/1.1920929e-7/*-choose*/;
             string errStr = single ? "(chain)" : maxAbs.ToString("E3", CultureInfo.InvariantCulture);
@@ -787,9 +783,8 @@ namespace LinearAlgebra.Benchmarks
 
         static string TrigRowFProxy(int variant, bool single, string label, int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var src = arena.fProxyVec(n);
-            var dst = arena.fProxyVec(n);
+            var src = new fProxyN(n, Allocator.Persistent);
+            var dst = new fProxyN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(0x5EED1234u ^ (uint)variant);
             for (int i = 0; i < n; i++) src[i] = rng.NextFProxy(-10f, 10f);
@@ -808,7 +803,7 @@ namespace LinearAlgebra.Benchmarks
                     if (err > maxAbs) maxAbs = err;
                 }
             }
-            arena.Dispose();
+            src.Dispose(); dst.Dispose();
 
             double eps = /*+choose[1.1920929e-7|2.220446049250313e-16]*/1.1920929e-7/*-choose*/;
             string errStr = single ? "(chain)" : maxAbs.ToString("E3", CultureInfo.InvariantCulture);
@@ -820,9 +815,8 @@ namespace LinearAlgebra.Benchmarks
 
         static string MathThroughputFProxy(int func, string label, int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var src = arena.fProxyVec(n);
-            var dst = arena.fProxyVec(n);
+            var src = new fProxyN(n, Allocator.Persistent);
+            var dst = new fProxyN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)func ^ 0x9E3779B9u);
             for (int i = 0; i < n; i++) src[i] = rng.NextFProxy(0.5f, 3f);
@@ -830,15 +824,14 @@ namespace LinearAlgebra.Benchmarks
             var job = new MathFuncThroughputJobFProxy { src = src, dst = dst, func = func };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            src.Dispose(); dst.Dispose();
             return Bench.RowTime(label, n, stat);
         }
 
         static string ExpRowFProxy(int variant, bool single, string label, int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var src = arena.fProxyVec(n);
-            var dst = arena.fProxyVec(n);
+            var src = new fProxyN(n, Allocator.Persistent);
+            var dst = new fProxyN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(0xB16B00B5u ^ (uint)variant);
             for (int i = 0; i < n; i++) src[i] = rng.NextFProxy(-10f, 10f);
@@ -859,7 +852,7 @@ namespace LinearAlgebra.Benchmarks
                     if (rel > maxRel) maxRel = rel;
                 }
             }
-            arena.Dispose();
+            src.Dispose(); dst.Dispose();
 
             double eps = /*+choose[1.1920929e-7|2.220446049250313e-16]*/1.1920929e-7/*-choose*/;
             string relStr = single ? "(chain)" : maxRel.ToString("E3", CultureInfo.InvariantCulture);

@@ -6,7 +6,7 @@ using System;
 #pragma warning disable 618 // intentionally exercises the deprecated cyclic-Jacobi Eigen.decompInPlace (kept for reference)
 
 using LinearAlgebra;
-using LinearAlgebra.Gallery;   // opt-in: arena.floatHilbert(n), arena.floatKahan(n,θ), ...
+using LinearAlgebra.Gallery;   // opt-in: floatGallery.floatHilbert(n), floatGallery.floatKahan(n,θ), ...
 
 using NUnit.Framework;
 using Unity.Burst;
@@ -111,31 +111,27 @@ public class floatSolverBatteryTests
         // ill-conditioned Hilbert/Moler at these small n).
         void CholeskySPDBattery()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var H = arena.floatHilbert(4);            CheckCholeskyReconstruct(ref arena, in H, (float)50);
-            var P = arena.floatPascal(5);             CheckCholeskyReconstruct(ref arena, in P, (float)50);
-            var L = arena.floatLehmer(5);             CheckCholeskyReconstruct(ref arena, in L, (float)50);
-            var M = arena.floatMinIJ(5);              CheckCholeskyReconstruct(ref arena, in M, (float)50);
-            var Pe = arena.floatPei(5, (float)2);    CheckCholeskyReconstruct(ref arena, in Pe, (float)50);
-            var Mo = arena.floatMoler(5);             CheckCholeskyReconstruct(ref arena, in Mo, (float)100);
-            var T = arena.floatLaplacian1D(6);        CheckCholeskyReconstruct(ref arena, in T, (float)50);
-            var G = arena.floatGCD(5);                CheckCholeskyReconstruct(ref arena, in G, (float)50);
-
-            arena.Dispose();
+            var H = floatGallery.floatHilbert(4);            CheckCholeskyReconstruct(in H, (float)50);
+            var P = floatGallery.floatPascal(5);             CheckCholeskyReconstruct(in P, (float)50);
+            var L = floatGallery.floatLehmer(5);             CheckCholeskyReconstruct(in L, (float)50);
+            var M = floatGallery.floatMinIJ(5);              CheckCholeskyReconstruct(in M, (float)50);
+            var Pe = floatGallery.floatPei(5, (float)2);    CheckCholeskyReconstruct(in Pe, (float)50);
+            var Mo = floatGallery.floatMoler(5);             CheckCholeskyReconstruct(in Mo, (float)100);
+            var T = floatGallery.floatLaplacian1D(6);        CheckCholeskyReconstruct(in T, (float)50);
+            var G = floatGallery.floatGCD(5);                CheckCholeskyReconstruct(in G, (float)50);
         }
 
-        void CheckCholeskyReconstruct(ref Arena arena, in floatMxN A, float factor)
+        void CheckCholeskyReconstruct(in floatMxN A, float factor)
         {
             int n = A.M_Rows;
 
-            var L = arena.floatMat(n, n);
+            var L = new floatMxN(n, n, Allocator.Temp);
             AssertTrue(CHO.decomp(in A, ref L));
 
             // rec = L · Lᵀ
-            var Lt = arena.floatMat(n, n);
+            var Lt = new floatMxN(n, n, Allocator.Temp);
             Blas.trans(in L, ref Lt);
-            var rec = arena.floatMat(n, n);
+            var rec = new floatMxN(n, n, Allocator.Temp);
             Blas.dot(in L, in Lt, ref rec);
 
             float tol = (MatMaxAbs(in A) + (float)1) * Consts.floatSqrtEps * factor;
@@ -147,21 +143,17 @@ public class floatSolverBatteryTests
         // (negative eigenvalues) → a later pivot goes non-positive.
         void CholeskyRejectIndefinite()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var F = arena.floatFiedler(3);
-            var Lf = arena.floatMat(3, 3);
+            var F = floatGallery.floatFiedler(3);
+            var Lf = new floatMxN(3, 3, Allocator.Temp);
             AssertTrue(!CHO.decomp(in F, ref Lf));
 
-            var C = arena.floatClement(3);
-            var Lc = arena.floatMat(3, 3);
+            var C = floatGallery.floatClement(3);
+            var Lc = new floatMxN(3, 3, Allocator.Temp);
             AssertTrue(!CHO.decomp(in C, ref Lc));
 
-            var R = arena.floatRosser();
-            var Lr = arena.floatMat(8, 8);
+            var R = floatGallery.floatRosser();
+            var Lr = new floatMxN(8, 8, Allocator.Temp);
             AssertTrue(!CHO.decomp(in R, ref Lr));
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -175,57 +167,49 @@ public class floatSolverBatteryTests
         //   Redheffer(5) = Mertens M(5) = −2.
         void LUDeterminantBattery()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var P = arena.floatPascal(5);
+            var P = floatGallery.floatPascal(5);
             AssertClose(Determinant(in P), (float)1, (float)150 * Consts.floatSqrtEps);
 
-            var M = arena.floatMinIJ(5);
+            var M = floatGallery.floatMinIJ(5);
             AssertClose(Determinant(in M), (float)1, (float)50 * Consts.floatSqrtEps);
 
-            var Mo = arena.floatMoler(5);
+            var Mo = floatGallery.floatMoler(5);
             AssertClose(Determinant(in Mo), (float)1, (float)150 * Consts.floatSqrtEps);
 
-            var Fr = arena.floatFrank(4);
+            var Fr = floatGallery.floatFrank(4);
             AssertClose(Determinant(in Fr), (float)1, (float)0.05);
 
-            var Tw = arena.floatTriw(5, (float)(-2));
+            var Tw = floatGallery.floatTriw(5, (float)(-2));
             AssertClose(Determinant(in Tw), (float)1, (float)1E-3);
 
-            var nodes = arena.floatVec(4);
+            var nodes = new floatN(4, Allocator.Temp);
             nodes[0] = (float)1; nodes[1] = (float)2; nodes[2] = (float)3; nodes[3] = (float)4;
-            var V = arena.floatVandermonde(in nodes);
+            var V = floatGallery.floatVandermonde(in nodes);
             AssertClose(Determinant(in V), (float)12, (float)0.2);
 
-            var G = arena.floatGCD(5);
+            var G = floatGallery.floatGCD(5);
             AssertClose(Determinant(in G), (float)16, (float)0.5);
 
-            var Rh = arena.floatRedheffer(5);
+            var Rh = floatGallery.floatRedheffer(5);
             AssertClose(Determinant(in Rh), (float)(-2), (float)0.1);
-
-            arena.Dispose();
         }
 
         // LU-solve reconstructs x on well-conditioned matrices (Laplacian1D, Pascal).
         // xtol is cond-amplified: Pascal(5) (cond ≈ 8.5e3) needs a looser band than Laplacian1D.
         void LUSolveBattery()
         {
-            var arena = new Arena(Allocator.Persistent);
+            var T = floatGallery.floatLaplacian1D(8);
+            CheckLUSolve(in T, (float)200 * Consts.floatSqrtEps);
 
-            var T = arena.floatLaplacian1D(8);
-            CheckLUSolve(ref arena, in T, (float)200 * Consts.floatSqrtEps);
-
-            var P = arena.floatPascal(5);
-            CheckLUSolve(ref arena, in P, (float)5E-2);
-
-            arena.Dispose();
+            var P = floatGallery.floatPascal(5);
+            CheckLUSolve(in P, (float)5E-2);
         }
 
-        void CheckLUSolve(ref Arena arena, in floatMxN A, float xtol)
+        void CheckLUSolve(in floatMxN A, float xtol)
         {
             int n = A.M_Rows;
 
-            var xTrue = arena.floatVec(n);
+            var xTrue = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) xTrue[i] = (float)(i + 1);
 
             var b = Blas.dot(A, xTrue);   // consistent RHS
@@ -255,29 +239,25 @@ public class floatSolverBatteryTests
         // Laplacian1D(8) (cond ≈ 41) and Pei(5,2) (eigenvalues {7,2,2,2,2}, cond ≈ 3.5).
         void QRDirectSolveSquare()
         {
-            var arena = new Arena(Allocator.Persistent);
+            var T = floatGallery.floatLaplacian1D(8);
+            CheckQRSquare(in T, (float)200 * Consts.floatSqrtEps);
 
-            var T = arena.floatLaplacian1D(8);
-            CheckQRSquare(ref arena, in T, (float)200 * Consts.floatSqrtEps);
-
-            var Pe = arena.floatPei(5, (float)2);
-            CheckQRSquare(ref arena, in Pe, (float)50 * Consts.floatSqrtEps);
-
-            arena.Dispose();
+            var Pe = floatGallery.floatPei(5, (float)2);
+            CheckQRSquare(in Pe, (float)50 * Consts.floatSqrtEps);
         }
 
-        void CheckQRSquare(ref Arena arena, in floatMxN A, float xtol)
+        void CheckQRSquare(in floatMxN A, float xtol)
         {
             int n = A.M_Rows;
 
-            var xTrue = arena.floatVec(n);
+            var xTrue = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) xTrue[i] = (float)(i + 1);
 
             var b = Blas.dot(A, xTrue);
 
             var Aw = A.Copy();   // solveInPlace destroys A and b
             var bw = b.Copy();
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             QR.solveInPlace(ref Aw, ref bw, ref x);
 
             float resTol = (MatMaxAbs(in A) + (float)1) * (float)100 * Consts.floatSqrtEps;
@@ -292,19 +272,17 @@ public class floatSolverBatteryTests
         // exactly xTrue and the residual is ≈ 0.
         void QRLeastSquares()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 3;
-            var A = arena.floatLauchli(n, (float)0.5);   // 4×3
+            var A = floatGallery.floatLauchli(n, (float)0.5);   // 4×3
 
-            var xTrue = arena.floatVec(n);
+            var xTrue = new floatN(n, Allocator.Temp);
             xTrue[0] = (float)1; xTrue[1] = (float)(-2); xTrue[2] = (float)3;
 
             var b = Blas.dot(A, xTrue);   // length 4, in range(A)
 
             var Aw = A.Copy();
             var bw = b.Copy();
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             QR.solveInPlace(ref Aw, ref bw, ref x);   // x has length A.N_Cols = 3
 
             float xtol = (float)50 * Consts.floatSqrtEps;
@@ -314,8 +292,6 @@ public class floatSolverBatteryTests
             // residual ‖A x − b‖ ≈ 0 for a consistent system
             float resTol = (MatMaxAbs(in A) + (float)1) * (float)100 * Consts.floatSqrtEps;
             AssertTrue(ResidualNorm(in A, in x, in b) <= resTol);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -327,28 +303,22 @@ public class floatSolverBatteryTests
         // ≥ … (the rank-revealing diagonal ordering).
         void QRCPKahan()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
-            var A = arena.floatKahan(n, (float)0.36235775);
-            CheckQRCPReconstruct(ref arena, in A);
-
-            arena.Dispose();
+            var A = floatGallery.floatKahan(n, (float)0.36235775);
+            CheckQRCPReconstruct(in A);
         }
 
         // Rank-deficient input: Pei(4, 0) = αI + J with α = 0 is the all-ones matrix (rank 1). QRCP must
         // reconstruct A·P ≈ Q·R, keep |R diag| non-increasing, and drive R[1,1]… to ≈ 0 (revealing rank 1).
         void QRCPRankDeficient()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 4;
-            var A = arena.floatPei(n, (float)0);   // all-ones, rank 1
-            CheckQRCPReconstruct(ref arena, in A);
+            var A = floatGallery.floatPei(n, (float)0);   // all-ones, rank 1
+            CheckQRCPReconstruct(in A);
 
             // rank 1 ⇒ trailing diagonal entries are numerically zero
             var Q = A.Copy();
-            var R = arena.floatMat(n, n);
+            var R = new floatMxN(n, n, Allocator.Temp);
             var P = new Pivot(n, Allocator.Temp);
             QRCP.decompInPlace(ref Q, ref R, ref P);
 
@@ -357,23 +327,22 @@ public class floatSolverBatteryTests
                 AssertTrue(math.abs(R[d, d]) <= rankTol);
 
             P.Dispose();
-            arena.Dispose();
         }
 
         // A·P ≈ Q·R reconstruction + non-increasing |R diag|. Result column j is original column P[j],
         // so (Q·R)[:, j] must equal A[:, P[j]].
-        void CheckQRCPReconstruct(ref Arena arena, in floatMxN A)
+        void CheckQRCPReconstruct(in floatMxN A)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
 
             var Q = A.Copy();   // overwritten with Q (m × n)
-            var R = arena.floatMat(n, n);
+            var R = new floatMxN(n, n, Allocator.Temp);
             var P = new Pivot(n, Allocator.Temp);
             QRCP.decompInPlace(ref Q, ref R, ref P);
 
             // QRProduct = Q · R (m × n)
-            var QRProduct = arena.floatMat(m, n);
+            var QRProduct = new floatMxN(m, n, Allocator.Temp);
             Blas.dot(in Q, in R, ref QRProduct);
 
             float tol = (MatMaxAbs(in A) + (float)1) * (float)100 * Consts.floatSqrtEps;
@@ -396,19 +365,15 @@ public class floatSolverBatteryTests
         // Hadamard: HᵀH = n·I ⇒ every singular value = √n and cond = 1 exactly. n = 4 and n = 8.
         void SVDHadamardSigma()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            CheckHadamardSVD(ref arena, 4);
-            CheckHadamardSVD(ref arena, 8);
-
-            arena.Dispose();
+            CheckHadamardSVD(4);
+            CheckHadamardSVD(8);
         }
 
-        void CheckHadamardSVD(ref Arena arena, int n)
+        void CheckHadamardSVD(int n)
         {
-            var A = arena.floatHadamard(n);
+            var A = floatGallery.floatHadamard(n);
 
-            var S = arena.floatVec(n);
+            var S = new floatN(n, Allocator.Temp);
             SVD.singularValues(in A, ref S);
 
             float sq = math.sqrt((float)n);
@@ -423,12 +388,10 @@ public class floatSolverBatteryTests
         // Parter: nonsymmetric Toeplitz; all singular values < π and cluster near π. n = 8.
         void SVDParterCluster()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 8;
-            var A = arena.floatParter(n);
+            var A = floatGallery.floatParter(n);
 
-            var S = arena.floatVec(n);
+            var S = new floatN(n, Allocator.Temp);
             SVD.singularValues(in A, ref S);
 
             float pi = (float)math.PI_DBL;
@@ -437,8 +400,6 @@ public class floatSolverBatteryTests
                 AssertTrue(S[i] < pi + band);
 
             AssertTrue(S[0] > pi - (float)0.5);   // largest clusters near π
-
-            arena.Dispose();
         }
 
         // Läuchli rank-stress: A = (n+1)×n, σ = {√(n+ε²), ε, …, ε}. SVD resolves the tiny ε singular
@@ -447,14 +408,12 @@ public class floatSolverBatteryTests
         // (κ ≈ √n/ε). pinv accuracy is precision-gated.
         void SVDLauchliRankStress()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 3;
             float eps = (float)1E-3;
-            var A = arena.floatLauchli(n, eps);   // 4×3
+            var A = floatGallery.floatLauchli(n, eps);   // 4×3
 
             // singular values
-            var S = arena.floatVec(n);
+            var S = new floatN(n, Allocator.Temp);
             SVD.singularValues(in A, ref S);
 
             float sMax = math.sqrt((float)n + eps * eps);
@@ -466,13 +425,13 @@ public class floatSolverBatteryTests
             RecordEq(Analysis.rank(in A), n);
 
             // pinv least squares recovers a consistent xTrue
-            var xTrue = arena.floatVec(n);
+            var xTrue = new floatN(n, Allocator.Temp);
             xTrue[0] = (float)1; xTrue[1] = (float)2; xTrue[2] = (float)3;
 
             var b = Blas.dot(A, xTrue);   // length 4, in range(A)
 
             var Aw = A.Copy();                // pinvSolve no longer modifies A (copy kept for clarity)
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             RankInfo pinvInfo = SVD.pinvSolve(ref Aw, in b, ref x);
             bool conv = pinvInfo;
             int r = pinvInfo.rank;
@@ -482,8 +441,6 @@ public class floatSolverBatteryTests
             float xtol = IsDouble() ? (float)1E-7 : (float)1E-2;
             for (int i = 0; i < n; i++)
                 AssertClose(x[i], xTrue[i], xtol);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -493,26 +450,22 @@ public class floatSolverBatteryTests
         // Reconstruct V·diag(λ)·Vᵀ ≈ A and orthogonality VᵀV ≈ I on SPD/symmetric inputs.
         void EigenSymmetricReconstruct()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var T = arena.floatLaplacian1D(6);     CheckEigenReconstruct(ref arena, in T);
-            var Pe = arena.floatPei(5, (float)2);  CheckEigenReconstruct(ref arena, in Pe);
-            var P = arena.floatPascal(5);           CheckEigenReconstruct(ref arena, in P);
-
-            arena.Dispose();
+            var T = floatGallery.floatLaplacian1D(6);     CheckEigenReconstruct(in T);
+            var Pe = floatGallery.floatPei(5, (float)2);  CheckEigenReconstruct(in Pe);
+            var P = floatGallery.floatPascal(5);           CheckEigenReconstruct(in P);
         }
 
-        void CheckEigenReconstruct(ref Arena arena, in floatMxN A)
+        void CheckEigenReconstruct(in floatMxN A)
         {
             int n = A.M_Rows;
 
             var Ac = A.Copy();
-            var eig = arena.floatVec(n);
-            var V = arena.floatMat(n, n);
+            var eig = new floatN(n, Allocator.Temp);
+            var V = new floatMxN(n, n, Allocator.Temp);
             AssertTrue(Eigen.decompInPlace(ref Ac, ref eig, ref V));
 
             // VᵀV ≈ I
-            var VtV = arena.floatMat(n, n);
+            var VtV = new floatMxN(n, n, Allocator.Temp);
             Blas.dot(in V, in V, ref VtV, transposeA: true);
             float orthoTol = (float)50 * Consts.floatSqrtEps;
             for (int i = 0; i < n; i++)
@@ -520,13 +473,13 @@ public class floatSolverBatteryTests
                     AssertClose(VtV[i, j], (i == j) ? (float)1 : (float)0, orthoTol);
 
             // rec = V · diag(eig) · Vᵀ
-            var D = arena.floatMat(n, n);   // zero-initialized
+            var D = new floatMxN(n, n, Allocator.Temp);   // zero-initialized
             for (int i = 0; i < n; i++) D[i, i] = eig[i];
-            var VD = arena.floatMat(n, n);
+            var VD = new floatMxN(n, n, Allocator.Temp);
             Blas.dot(in V, in D, ref VD);
-            var Vt = arena.floatMat(n, n);
+            var Vt = new floatMxN(n, n, Allocator.Temp);
             Blas.trans(in V, ref Vt);
-            var rec = arena.floatMat(n, n);
+            var rec = new floatMxN(n, n, Allocator.Temp);
             Blas.dot(in VD, in Vt, ref rec);
 
             float tol = (MatMaxAbs(in A) + (float)1) * (float)50 * Consts.floatSqrtEps;
@@ -538,14 +491,12 @@ public class floatSolverBatteryTests
         // Laplacian1D eigenvalues λ_k = 2 − 2cos(kπ/(n+1)). n = 6 (descending).
         void EigenLaplacianSpectrum()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 6;
-            var T = arena.floatLaplacian1D(n);
+            var T = floatGallery.floatLaplacian1D(n);
 
             var Tc = T.Copy();
-            var eig = arena.floatVec(n);
-            var V = arena.floatMat(n, n);
+            var eig = new floatN(n, Allocator.Temp);
+            var V = new floatMxN(n, n, Allocator.Temp);
             AssertTrue(Eigen.decompInPlace(ref Tc, ref eig, ref V));
 
             float pi = (float)math.PI_DBL;
@@ -555,21 +506,17 @@ public class floatSolverBatteryTests
                 float expected = (float)2 - (float)2 * math.cos((float)(n - i) * pi / (float)(n + 1));
                 AssertClose(eig[i], expected, tol);
             }
-
-            arena.Dispose();
         }
 
         // Clement: eigenvalues exactly {n−1, n−3, …, −(n−1)}. n = 4 ⇒ {3, 1, −1, −3}.
         void EigenClementSpectrum()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 4;
-            var C = arena.floatClement(n);
+            var C = floatGallery.floatClement(n);
 
             var Cc = C.Copy();
-            var eig = arena.floatVec(n);
-            var V = arena.floatMat(n, n);
+            var eig = new floatN(n, Allocator.Temp);
+            var V = new floatMxN(n, n, Allocator.Temp);
             AssertTrue(Eigen.decompInPlace(ref Cc, ref eig, ref V));
 
             float tol = (float)50 * Consts.floatSqrtEps;
@@ -577,21 +524,17 @@ public class floatSolverBatteryTests
             AssertClose(eig[1], (float)1, tol);
             AssertClose(eig[2], (float)(-1), tol);
             AssertClose(eig[3], (float)(-3), tol);
-
-            arena.Dispose();
         }
 
         // Fiedler: exactly one positive eigenvalue, n−1 negative (indefinite inertia). n = 5.
         void EigenFiedlerInertia()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
-            var F = arena.floatFiedler(n);
+            var F = floatGallery.floatFiedler(n);
 
             var Fc = F.Copy();
-            var eig = arena.floatVec(n);
-            var V = arena.floatMat(n, n);
+            var eig = new floatN(n, Allocator.Temp);
+            var V = new floatMxN(n, n, Allocator.Temp);
             AssertTrue(Eigen.decompInPlace(ref Fc, ref eig, ref V));
 
             // smallest |λ| ≈ 0.56 ⇒ a small gate cleanly separates signs.
@@ -604,21 +547,17 @@ public class floatSolverBatteryTests
             }
             RecordEq(pos, 1);
             RecordEq(neg, n - 1);
-
-            arena.Dispose();
         }
 
         // DingDong: all eigenvalues in (−π/2, π/2), clustering near ±π/2. n = 6.
         void EigenDingDongBand()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 6;
-            var D = arena.floatDingDong(n);
+            var D = floatGallery.floatDingDong(n);
 
             var Dc = D.Copy();
-            var eig = arena.floatVec(n);
-            var V = arena.floatMat(n, n);
+            var eig = new floatN(n, Allocator.Temp);
+            var V = new floatMxN(n, n, Allocator.Temp);
             AssertTrue(Eigen.decompInPlace(ref Dc, ref eig, ref V));
 
             float halfPi = (float)(math.PI_DBL * 0.5);
@@ -630,8 +569,6 @@ public class floatSolverBatteryTests
             }
             AssertTrue(eig[0] > halfPi - (float)0.1);
             AssertTrue(eig[n - 1] < -halfPi + (float)0.1);
-
-            arena.Dispose();
         }
 
         // Rosser 8×8: near-degenerate spectrum, the canonical eigensolver stress test. Documented
@@ -639,11 +576,9 @@ public class floatSolverBatteryTests
         // robust invariant Σλ = trace = 4040.
         void EigenRosserSpectrum()
         {
-            var arena = new Arena(Allocator.Persistent);
+            var A = floatGallery.floatRosser();
 
-            var A = arena.floatRosser();
-
-            var expected = arena.floatVec(8);
+            var expected = new floatN(8, Allocator.Temp);
             expected[0] = (float)1020.4202;
             expected[1] = (float)1019.9936;
             expected[2] = (float)1019.5244;
@@ -654,8 +589,8 @@ public class floatSolverBatteryTests
             expected[7] = (float)(-1020.0532);
 
             var Ac = A.Copy();
-            var eig = arena.floatVec(8);
-            var V = arena.floatMat(8, 8);
+            var eig = new floatN(8, Allocator.Temp);
+            var V = new floatMxN(8, 8, Allocator.Temp);
             AssertTrue(Eigen.decompInPlace(ref Ac, ref eig, ref V));
 
             float esum = (float)0;
@@ -665,8 +600,6 @@ public class floatSolverBatteryTests
             float band = IsDouble() ? (float)0.5 : (float)3.0;
             for (int i = 0; i < 8; i++)
                 AssertClose(eig[i], expected[i], band);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -676,14 +609,12 @@ public class floatSolverBatteryTests
         // Frank(4): all eigenvalues real (imag ≈ 0) and positive (≈ {7.31, 2.07, 0.48, 0.137}).
         void EigenQRFrank()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 4;
-            var F = arena.floatFrank(n);
+            var F = floatGallery.floatFrank(n);
 
             var Fc = F.Copy();
-            var re = arena.floatVec(n);
-            var im = arena.floatVec(n);
+            var re = new floatN(n, Allocator.Temp);
+            var im = new floatN(n, Allocator.Temp);
             AssertTrue(Eigen.valuesQRInPlace(ref Fc, ref re, ref im));
 
             for (int i = 0; i < n; i++)
@@ -691,22 +622,18 @@ public class floatSolverBatteryTests
                 AssertClose(im[i], (float)0, (float)1E-2);
                 AssertTrue(re[i] > (float)0);
             }
-
-            arena.Dispose();
         }
 
         // Companion of (x−1)(x−2)(x−3) = x³ − 6x² + 11x − 6 ⇒ coeffs {−6, 11, −6}.
         // valuesQRInPlace returns the roots {3, 2, 1} (descending, real).
         void EigenQRCompanion()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var coeffs = arena.floatVec(3);
+            var coeffs = new floatN(3, Allocator.Temp);
             coeffs[0] = (float)(-6); coeffs[1] = (float)11; coeffs[2] = (float)(-6);
-            var C = arena.floatCompanion(in coeffs);
+            var C = floatGallery.floatCompanion(in coeffs);
 
-            var re = arena.floatVec(3);
-            var im = arena.floatVec(3);
+            var re = new floatN(3, Allocator.Temp);
+            var im = new floatN(3, Allocator.Temp);
             AssertTrue(Eigen.valuesQRInPlace(ref C, ref re, ref im));
 
             float tol = (float)1E-2;
@@ -714,8 +641,6 @@ public class floatSolverBatteryTests
             AssertClose(re[1], (float)2, tol);
             AssertClose(re[2], (float)1, tol);
             for (int i = 0; i < 3; i++) AssertClose(im[i], (float)0, tol);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -726,32 +651,28 @@ public class floatSolverBatteryTests
         // small relative to ‖b‖. xtol is cond-amplified per matrix.
         void CGSPDBattery()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var T = arena.floatLaplacian1D(8);
-            CheckCG(ref arena, in T, (float)200 * Consts.floatSqrtEps);
+            var T = floatGallery.floatLaplacian1D(8);
+            CheckCG(in T, (float)200 * Consts.floatSqrtEps);
 
             // MinIJ(5) cond ≈ 44 ⇒ the CG solution error is cond-amplified (the rigorous check here is
             // the residual norm inside CheckCG; this per-component band is a generous sanity bound).
-            var M = arena.floatMinIJ(5);
-            CheckCG(ref arena, in M, (float)5E-2);
+            var M = floatGallery.floatMinIJ(5);
+            CheckCG(in M, (float)5E-2);
 
-            var Pe = arena.floatPei(5, (float)2);
-            CheckCG(ref arena, in Pe, (float)50 * Consts.floatSqrtEps);
-
-            arena.Dispose();
+            var Pe = floatGallery.floatPei(5, (float)2);
+            CheckCG(in Pe, (float)50 * Consts.floatSqrtEps);
         }
 
-        void CheckCG(ref Arena arena, in floatMxN A, float xtol)
+        void CheckCG(in floatMxN A, float xtol)
         {
             int n = A.M_Rows;
 
-            var xTrue = arena.floatVec(n);
+            var xTrue = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) xTrue[i] = (float)(i + 1);
 
             var b = Blas.dot(A, xTrue);
 
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             bool conv = Krylov.cg(in A, in b, ref x, 200, Consts.floatSqrtEps);
             AssertTrue(conv);
 
@@ -770,16 +691,12 @@ public class floatSolverBatteryTests
         // Hadamard cond = 1 (orthogonal up to scale); Hilbert cond grows fast: cond(H₃) ≈ 524.06.
         void CondBattery()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var Hd = arena.floatHadamard(4);
+            var Hd = floatGallery.floatHadamard(4);
             AssertClose(Analysis.cond(in Hd), (float)1, IsDouble() ? (float)1E-5 : (float)1E-2);
 
-            var H3 = arena.floatHilbert(3);
+            var H3 = floatGallery.floatHilbert(3);
             float c = Analysis.cond(in H3);
             AssertClose(c, (float)524.0568, IsDouble() ? (float)1 : (float)10);
-
-            arena.Dispose();
         }
 
         // =====================================================================

@@ -49,54 +49,46 @@ public class fProxyCompMathTests
 
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
-            try
+            switch (Type)
             {
-                switch (Type)
-                {
-                    // unary ops all share one body
-                    case TestType.Abs: case TestType.Sign: case TestType.Sqrt:
-                    case TestType.Rsqrt: case TestType.Acos: case TestType.Asin:
-                    case TestType.Atan: case TestType.Acosh: case TestType.Ceil:
-                    case TestType.Floor: case TestType.Round: case TestType.Cos:
-                    case TestType.Cosh: case TestType.Sin: case TestType.Sinh:
-                    case TestType.Tan: case TestType.Tanh: case TestType.Exp:
-                    case TestType.Exp2: case TestType.Exp10: case TestType.Log:
-                    case TestType.Log2: case TestType.Log10: case TestType.Saturate:
-                    case TestType.Frac: case TestType.Rcp: case TestType.Relu:
-                        Unary(Type, ref arena);
-                        break;
+                // unary ops all share one body
+                case TestType.Abs: case TestType.Sign: case TestType.Sqrt:
+                case TestType.Rsqrt: case TestType.Acos: case TestType.Asin:
+                case TestType.Atan: case TestType.Acosh: case TestType.Ceil:
+                case TestType.Floor: case TestType.Round: case TestType.Cos:
+                case TestType.Cosh: case TestType.Sin: case TestType.Sinh:
+                case TestType.Tan: case TestType.Tanh: case TestType.Exp:
+                case TestType.Exp2: case TestType.Exp10: case TestType.Log:
+                case TestType.Log2: case TestType.Log10: case TestType.Saturate:
+                case TestType.Frac: case TestType.Rcp: case TestType.Relu:
+                    Unary(Type);
+                    break;
 
-                    case TestType.PowExponents: PowExponents(ref arena); break;
+                case TestType.PowExponents: PowExponents(); break;
 
-                    case TestType.Lerp: LerpTest(ref arena); break;
-                    case TestType.Unlerp: UnlerpTest(ref arena); break;
-                    case TestType.SmoothstepBuffers: SmoothstepBuffersTest(ref arena); break;
-                    case TestType.SmoothstepScalarEdges: SmoothstepScalarEdgesTest(ref arena); break;
-                    case TestType.Step: StepTest(ref arena); break;
-                    case TestType.Mad: MadTest(ref arena); break;
-                    case TestType.Remap: RemapTest(ref arena); break;
-                    case TestType.DegreesRadians: DegreesRadiansTest(ref arena); break;
-                    case TestType.Atan2: Atan2Test(ref arena); break;
-                    case TestType.MinBuf: MinBufTest(ref arena); break;
-                    case TestType.MaxBuf: MaxBufTest(ref arena); break;
-                    case TestType.Sincos: SincosTest(ref arena); break;
-                    case TestType.AbsDiff: AbsDiffTest(ref arena); break;
-                    case TestType.SqrDiff: SqrDiffTest(ref arena); break;
+                case TestType.Lerp: LerpTest(); break;
+                case TestType.Unlerp: UnlerpTest(); break;
+                case TestType.SmoothstepBuffers: SmoothstepBuffersTest(); break;
+                case TestType.SmoothstepScalarEdges: SmoothstepScalarEdgesTest(); break;
+                case TestType.Step: StepTest(); break;
+                case TestType.Mad: MadTest(); break;
+                case TestType.Remap: RemapTest(); break;
+                case TestType.DegreesRadians: DegreesRadiansTest(); break;
+                case TestType.Atan2: Atan2Test(); break;
+                case TestType.MinBuf: MinBufTest(); break;
+                case TestType.MaxBuf: MaxBufTest(); break;
+                case TestType.Sincos: SincosTest(); break;
+                case TestType.AbsDiff: AbsDiffTest(); break;
+                case TestType.SqrDiff: SqrDiffTest(); break;
 
-                    case TestType.MatrixAbs: MatrixAbsTest(ref arena); break;
-                    case TestType.MatrixExp: MatrixExpTest(ref arena); break;
-                    case TestType.MatrixMad: MatrixMadTest(ref arena); break;
+                case TestType.MatrixAbs: MatrixAbsTest(); break;
+                case TestType.MatrixExp: MatrixExpTest(); break;
+                case TestType.MatrixMad: MatrixMadTest(); break;
 
-                    case TestType.SingleElement: SingleElementTest(ref arena); break;
-                    case TestType.EmptyBuffer: EmptyBufferTest(ref arena); break;
+                case TestType.SingleElement: SingleElementTest(); break;
+                case TestType.EmptyBuffer: EmptyBufferTest(); break;
 
-                    default: throw new NotImplementedException();
-                }
-            }
-            finally
-            {
-                arena.Dispose();
+                default: throw new NotImplementedException();
             }
         }
 
@@ -115,7 +107,7 @@ public class fProxyCompMathTests
 
         // Domain-safe deterministic input per unary op (sqrt/log need x>0, acos/asin need [-1,1],
         // acosh needs x>=1, tan avoids +/-pi/2, exp10 kept small so 10^x doesn't overflow).
-        private fProxyN MakeUnaryInput(ref Arena arena, TestType k, int n)
+        private fProxyN MakeUnaryInput(TestType k, int n)
         {
             switch (k)
             {
@@ -123,50 +115,50 @@ public class fProxyCompMathTests
                 case TestType.Log:
                 case TestType.Log2:
                 case TestType.Log10:
-                    return arena.fProxyLinVec(n, (fProxy)0.02, (fProxy)9);
+                    return GenerateOP.fProxyLinVec(n, (fProxy)0.02, (fProxy)9, Allocator.Temp);
 
                 case TestType.Rsqrt:
                 case TestType.Rcp:
-                    return arena.fProxyLinVec(n, (fProxy)0.05, (fProxy)6);
+                    return GenerateOP.fProxyLinVec(n, (fProxy)0.05, (fProxy)6, Allocator.Temp);
 
                 case TestType.Acos:
                 case TestType.Asin:
-                    return arena.fProxyLinVec(n, (fProxy)(-0.95), (fProxy)0.95);
+                    return GenerateOP.fProxyLinVec(n, (fProxy)(-0.95), (fProxy)0.95, Allocator.Temp);
 
                 case TestType.Acosh:
-                    return arena.fProxyLinVec(n, (fProxy)1, (fProxy)4);
+                    return GenerateOP.fProxyLinVec(n, (fProxy)1, (fProxy)4, Allocator.Temp);
 
                 case TestType.Tan:
-                    return arena.fProxyLinVec(n, (fProxy)(-1.2), (fProxy)1.2);
+                    return GenerateOP.fProxyLinVec(n, (fProxy)(-1.2), (fProxy)1.2, Allocator.Temp);
 
                 case TestType.Exp10:
-                    return arena.fProxyLinVec(n, (fProxy)(-2), (fProxy)3);
+                    return GenerateOP.fProxyLinVec(n, (fProxy)(-2), (fProxy)3, Allocator.Temp);
 
                 case TestType.Exp:
                 case TestType.Exp2:
-                    return arena.fProxyLinVec(n, (fProxy)(-3), (fProxy)4);
+                    return GenerateOP.fProxyLinVec(n, (fProxy)(-3), (fProxy)4, Allocator.Temp);
 
                 case TestType.Abs:
                 case TestType.Sign:
                 case TestType.Relu:
                 {
                     // span negatives .. positives and pin an exact zero (sign/relu boundary).
-                    var v = arena.fProxyLinVec(n, (fProxy)(-3), (fProxy)3);
+                    var v = GenerateOP.fProxyLinVec(n, (fProxy)(-3), (fProxy)3, Allocator.Temp);
                     v[0] = (fProxy)0;
                     return v;
                 }
 
                 default:
                     // ceil/floor/round/cos/cosh/sin/sinh/tanh/atan/saturate/frac: any real ok.
-                    return arena.fProxyLinVec(n, (fProxy)(-3.3), (fProxy)3.7);
+                    return GenerateOP.fProxyLinVec(n, (fProxy)(-3.3), (fProxy)3.7, Allocator.Temp);
             }
         }
 
-        private void Unary(TestType k, ref Arena arena)
+        private void Unary(TestType k)
         {
             int n = 37; // odd, not a SIMD multiple -> exercises the scalar tail
-            fProxyN x = MakeUnaryInput(ref arena, k, n);
-            fProxyN orig = x.Copy();
+            fProxyN x = MakeUnaryInput(k, n);
+            fProxyN orig = new fProxyN(in x, Allocator.Temp);
 
             switch (k)
             {
@@ -243,21 +235,21 @@ public class fProxyCompMathTests
 
         // ---- pow: int exponent (0,1,2,3 and negatives). Positive bases keep math.pow well-defined
         //      for the reciprocal-power (negative-exponent) cases. ----
-        private void PowExponents(ref Arena arena)
+        private void PowExponents()
         {
-            CheckPow(ref arena, 0);
-            CheckPow(ref arena, 1);
-            CheckPow(ref arena, 2);
-            CheckPow(ref arena, 3);
-            CheckPow(ref arena, -1);
-            CheckPow(ref arena, -2);
+            CheckPow(0);
+            CheckPow(1);
+            CheckPow(2);
+            CheckPow(3);
+            CheckPow(-1);
+            CheckPow(-2);
         }
 
-        private void CheckPow(ref Arena arena, int e)
+        private void CheckPow(int e)
         {
             int n = 16;
-            fProxyN x = arena.fProxyLinVec(n, (fProxy)0.3, (fProxy)3.5);
-            fProxyN orig = x.Copy();
+            fProxyN x = GenerateOP.fProxyLinVec(n, (fProxy)0.3, (fProxy)3.5, Allocator.Temp);
+            fProxyN orig = new fProxyN(in x, Allocator.Temp);
             x.powInPlace(e);
             for (int i = 0; i < n; i++)
                 AssertClose(x[i], math.pow(orig[i], (fProxy)e)); // exponent 0 -> 1, negative -> reciprocal power
@@ -265,13 +257,13 @@ public class fProxyCompMathTests
 
         // ---- interpolation / edges / fused ----
 
-        private void LerpTest(ref Arena arena)
+        private void LerpTest()
         {
             int n = 24;
-            fProxyN a = arena.fProxyLinVec(n, (fProxy)(-2), (fProxy)5);
-            fProxyN b = arena.fProxyLinVec(n, (fProxy)3, (fProxy)9);
-            fProxyN a0 = a.Copy();
-            fProxyN b0 = b.Copy();
+            fProxyN a = GenerateOP.fProxyLinVec(n, (fProxy)(-2), (fProxy)5, Allocator.Temp);
+            fProxyN b = GenerateOP.fProxyLinVec(n, (fProxy)3, (fProxy)9, Allocator.Temp);
+            fProxyN a0 = new fProxyN(in a, Allocator.Temp);
+            fProxyN b0 = new fProxyN(in b, Allocator.Temp);
             fProxy t = (fProxy)0.35;
 
             a.lerpInPlace(b, t); // a[i] = lerp(a[i], b[i], t); a mutated, b untouched
@@ -283,13 +275,13 @@ public class fProxyCompMathTests
             }
         }
 
-        private void UnlerpTest(ref Arena arena)
+        private void UnlerpTest()
         {
             int n = 24;
-            fProxyN a = arena.fProxyLinVec(n, (fProxy)(-2), (fProxy)1);
-            fProxyN b = arena.fProxyLinVec(n, (fProxy)6, (fProxy)12); // b != a everywhere (no /0)
-            fProxyN a0 = a.Copy();
-            fProxyN b0 = b.Copy();
+            fProxyN a = GenerateOP.fProxyLinVec(n, (fProxy)(-2), (fProxy)1, Allocator.Temp);
+            fProxyN b = GenerateOP.fProxyLinVec(n, (fProxy)6, (fProxy)12, Allocator.Temp); // b != a everywhere (no /0)
+            fProxyN a0 = new fProxyN(in a, Allocator.Temp);
+            fProxyN b0 = new fProxyN(in b, Allocator.Temp);
             fProxy t = (fProxy)0.4;
 
             a.unlerpInPlace(b, t);
@@ -301,13 +293,13 @@ public class fProxyCompMathTests
             }
         }
 
-        private void SmoothstepBuffersTest(ref Arena arena)
+        private void SmoothstepBuffersTest()
         {
             int n = 24;
-            fProxyN a = arena.fProxyLinVec(n, (fProxy)(-1), (fProxy)1); // edge0 buffer
-            fProxyN b = arena.fProxyLinVec(n, (fProxy)2, (fProxy)4);    // edge1 buffer (> edge0)
-            fProxyN a0 = a.Copy();
-            fProxyN b0 = b.Copy();
+            fProxyN a = GenerateOP.fProxyLinVec(n, (fProxy)(-1), (fProxy)1, Allocator.Temp); // edge0 buffer
+            fProxyN b = GenerateOP.fProxyLinVec(n, (fProxy)2, (fProxy)4, Allocator.Temp);    // edge1 buffer (> edge0)
+            fProxyN a0 = new fProxyN(in a, Allocator.Temp);
+            fProxyN b0 = new fProxyN(in b, Allocator.Temp);
             fProxy t = (fProxy)0.5;
 
             a.smoothstepInPlace(b, t); // a[i] = smoothstep(a[i], b[i], t)
@@ -319,11 +311,11 @@ public class fProxyCompMathTests
             }
         }
 
-        private void SmoothstepScalarEdgesTest(ref Arena arena)
+        private void SmoothstepScalarEdgesTest()
         {
             int n = 24;
-            fProxyN x = arena.fProxyLinVec(n, (fProxy)(-0.5), (fProxy)1.5); // spans below/above edges
-            fProxyN x0 = x.Copy();
+            fProxyN x = GenerateOP.fProxyLinVec(n, (fProxy)(-0.5), (fProxy)1.5, Allocator.Temp); // spans below/above edges
+            fProxyN x0 = new fProxyN(in x, Allocator.Temp);
             fProxy edge0 = (fProxy)0;
             fProxy edge1 = (fProxy)1;
 
@@ -333,11 +325,11 @@ public class fProxyCompMathTests
                 AssertClose(x[i], math.smoothstep(edge0, edge1, x0[i]));
         }
 
-        private void StepTest(ref Arena arena)
+        private void StepTest()
         {
             int n = 24;
-            fProxyN x = arena.fProxyLinVec(n, (fProxy)(-1), (fProxy)2);
-            fProxyN x0 = x.Copy();
+            fProxyN x = GenerateOP.fProxyLinVec(n, (fProxy)(-1), (fProxy)2, Allocator.Temp);
+            fProxyN x0 = new fProxyN(in x, Allocator.Temp);
             fProxy edge = (fProxy)0.5;
 
             x.stepInPlace(edge); // x[i] = step(edge, x[i]) == (x >= edge ? 1 : 0)
@@ -346,15 +338,15 @@ public class fProxyCompMathTests
                 AssertClose(x[i], math.step(edge, x0[i]));
         }
 
-        private void MadTest(ref Arena arena)
+        private void MadTest()
         {
             int n = 24;
-            fProxyN a = arena.fProxyLinVec(n, (fProxy)(-2), (fProxy)2);
-            fProxyN b = arena.fProxyLinVec(n, (fProxy)1, (fProxy)3);
-            fProxyN c = arena.fProxyLinVec(n, (fProxy)(-1), (fProxy)1);
-            fProxyN a0 = a.Copy();
-            fProxyN b0 = b.Copy();
-            fProxyN c0 = c.Copy();
+            fProxyN a = GenerateOP.fProxyLinVec(n, (fProxy)(-2), (fProxy)2, Allocator.Temp);
+            fProxyN b = GenerateOP.fProxyLinVec(n, (fProxy)1, (fProxy)3, Allocator.Temp);
+            fProxyN c = GenerateOP.fProxyLinVec(n, (fProxy)(-1), (fProxy)1, Allocator.Temp);
+            fProxyN a0 = new fProxyN(in a, Allocator.Temp);
+            fProxyN b0 = new fProxyN(in b, Allocator.Temp);
+            fProxyN c0 = new fProxyN(in c, Allocator.Temp);
 
             a.madInPlace(b, c); // a[i] = a*b + c ; ONLY a is mutated
 
@@ -366,11 +358,11 @@ public class fProxyCompMathTests
             }
         }
 
-        private void RemapTest(ref Arena arena)
+        private void RemapTest()
         {
             int n = 24;
-            fProxyN x = arena.fProxyLinVec(n, (fProxy)1, (fProxy)9); // strictly inside [oldMin,oldMax]
-            fProxyN x0 = x.Copy();
+            fProxyN x = GenerateOP.fProxyLinVec(n, (fProxy)1, (fProxy)9, Allocator.Temp); // strictly inside [oldMin,oldMax]
+            fProxyN x0 = new fProxyN(in x, Allocator.Temp);
             fProxy oldMin = (fProxy)0, oldMax = (fProxy)10, newMin = (fProxy)(-1), newMax = (fProxy)1;
 
             x.remapInPlace(oldMin, oldMax, newMin, newMax);
@@ -381,14 +373,14 @@ public class fProxyCompMathTests
                 AssertClose(x[i], math.remap(oldMin, oldMax, newMin, newMax, x0[i]));
         }
 
-        private void DegreesRadiansTest(ref Arena arena)
+        private void DegreesRadiansTest()
         {
             int n = 20;
 
             // degreesInPlace vs math.degrees
-            fProxyN r = arena.fProxyLinVec(n, (fProxy)(-3), (fProxy)3);
-            fProxyN r0 = r.Copy();
-            fProxyN d = r.Copy();
+            fProxyN r = GenerateOP.fProxyLinVec(n, (fProxy)(-3), (fProxy)3, Allocator.Temp);
+            fProxyN r0 = new fProxyN(in r, Allocator.Temp);
+            fProxyN d = new fProxyN(in r, Allocator.Temp);
             d.degreesInPlace();
             for (int i = 0; i < n; i++)
                 AssertClose(d[i], math.degrees(r0[i]));
@@ -399,21 +391,21 @@ public class fProxyCompMathTests
                 AssertClose(d[i], r0[i]);
 
             // radiansInPlace vs math.radians on a degree-scale input
-            fProxyN deg = arena.fProxyLinVec(n, (fProxy)(-180), (fProxy)180);
-            fProxyN deg0 = deg.Copy();
+            fProxyN deg = GenerateOP.fProxyLinVec(n, (fProxy)(-180), (fProxy)180, Allocator.Temp);
+            fProxyN deg0 = new fProxyN(in deg, Allocator.Temp);
             deg.radiansInPlace();
             for (int i = 0; i < n; i++)
                 AssertClose(deg[i], math.radians(deg0[i]));
         }
 
-        private void Atan2Test(ref Arena arena)
+        private void Atan2Test()
         {
             int n = 24;
             // receiver is y (numerator), argument is x (denominator): atan2InPlace(y, x) == atan2(y, x).
-            fProxyN y = arena.fProxyLinVec(n, (fProxy)(-3), (fProxy)3);
-            fProxyN x = arena.fProxyLinVec(n, (fProxy)0.5, (fProxy)4); // x > 0 (principal branch)
-            fProxyN y0 = y.Copy();
-            fProxyN x0 = x.Copy();
+            fProxyN y = GenerateOP.fProxyLinVec(n, (fProxy)(-3), (fProxy)3, Allocator.Temp);
+            fProxyN x = GenerateOP.fProxyLinVec(n, (fProxy)0.5, (fProxy)4, Allocator.Temp); // x > 0 (principal branch)
+            fProxyN y0 = new fProxyN(in y, Allocator.Temp);
+            fProxyN x0 = new fProxyN(in x, Allocator.Temp);
 
             y.atan2InPlace(x); // y[i] = atan2(y[i], x[i]) ; x untouched
 
@@ -424,13 +416,13 @@ public class fProxyCompMathTests
             }
         }
 
-        private void MinBufTest(ref Arena arena)
+        private void MinBufTest()
         {
             int n = 24;
-            fProxyN x = arena.fProxyLinVec(n, (fProxy)(-2), (fProxy)5);
-            fProxyN y = arena.fProxyLinVec(n, (fProxy)4, (fProxy)(-1)); // crosses x so both branches hit
-            fProxyN x0 = x.Copy();
-            fProxyN y0 = y.Copy();
+            fProxyN x = GenerateOP.fProxyLinVec(n, (fProxy)(-2), (fProxy)5, Allocator.Temp);
+            fProxyN y = GenerateOP.fProxyLinVec(n, (fProxy)4, (fProxy)(-1), Allocator.Temp); // crosses x so both branches hit
+            fProxyN x0 = new fProxyN(in x, Allocator.Temp);
+            fProxyN y0 = new fProxyN(in y, Allocator.Temp);
 
             x.minInPlace(y); // x[i] = min(x[i], y[i]) ; y untouched
 
@@ -441,13 +433,13 @@ public class fProxyCompMathTests
             }
         }
 
-        private void MaxBufTest(ref Arena arena)
+        private void MaxBufTest()
         {
             int n = 24;
-            fProxyN x = arena.fProxyLinVec(n, (fProxy)(-2), (fProxy)5);
-            fProxyN y = arena.fProxyLinVec(n, (fProxy)4, (fProxy)(-1));
-            fProxyN x0 = x.Copy();
-            fProxyN y0 = y.Copy();
+            fProxyN x = GenerateOP.fProxyLinVec(n, (fProxy)(-2), (fProxy)5, Allocator.Temp);
+            fProxyN y = GenerateOP.fProxyLinVec(n, (fProxy)4, (fProxy)(-1), Allocator.Temp);
+            fProxyN x0 = new fProxyN(in x, Allocator.Temp);
+            fProxyN y0 = new fProxyN(in y, Allocator.Temp);
 
             x.maxInPlace(y); // x[i] = max(x[i], y[i]) ; y untouched
 
@@ -463,13 +455,13 @@ public class fProxyCompMathTests
         //      not via math.distance/math.distancesq, so the test doesn't just re-assert the kernel's
         //      own implementation. ----
 
-        private void AbsDiffTest(ref Arena arena)
+        private void AbsDiffTest()
         {
             int n = 24;
-            fProxyN x = arena.fProxyLinVec(n, (fProxy)(-2), (fProxy)5);
-            fProxyN y = arena.fProxyLinVec(n, (fProxy)4, (fProxy)(-1)); // crosses x so sign of (x-y) varies
-            fProxyN x0 = x.Copy();
-            fProxyN y0 = y.Copy();
+            fProxyN x = GenerateOP.fProxyLinVec(n, (fProxy)(-2), (fProxy)5, Allocator.Temp);
+            fProxyN y = GenerateOP.fProxyLinVec(n, (fProxy)4, (fProxy)(-1), Allocator.Temp); // crosses x so sign of (x-y) varies
+            fProxyN x0 = new fProxyN(in x, Allocator.Temp);
+            fProxyN y0 = new fProxyN(in y, Allocator.Temp);
 
             x.absDiffInPlace(y); // x[i] = |x[i] - y[i]| ; y untouched
 
@@ -480,13 +472,13 @@ public class fProxyCompMathTests
             }
         }
 
-        private void SqrDiffTest(ref Arena arena)
+        private void SqrDiffTest()
         {
             int n = 24;
-            fProxyN x = arena.fProxyLinVec(n, (fProxy)(-2), (fProxy)5);
-            fProxyN y = arena.fProxyLinVec(n, (fProxy)4, (fProxy)(-1));
-            fProxyN x0 = x.Copy();
-            fProxyN y0 = y.Copy();
+            fProxyN x = GenerateOP.fProxyLinVec(n, (fProxy)(-2), (fProxy)5, Allocator.Temp);
+            fProxyN y = GenerateOP.fProxyLinVec(n, (fProxy)4, (fProxy)(-1), Allocator.Temp);
+            fProxyN x0 = new fProxyN(in x, Allocator.Temp);
+            fProxyN y0 = new fProxyN(in y, Allocator.Temp);
 
             x.sqrDiffInPlace(y); // x[i] = (x[i] - y[i])^2 ; y untouched
 
@@ -497,13 +489,13 @@ public class fProxyCompMathTests
             }
         }
 
-        private void SincosTest(ref Arena arena)
+        private void SincosTest()
         {
             int n = 30;
-            fProxyN x = arena.fProxyLinVec(n, (fProxy)(-3), (fProxy)3);
-            fProxyN x0 = x.Copy();
-            fProxyN s = arena.fProxyVec(n);
-            fProxyN c = arena.fProxyVec(n);
+            fProxyN x = GenerateOP.fProxyLinVec(n, (fProxy)(-3), (fProxy)3, Allocator.Temp);
+            fProxyN x0 = new fProxyN(in x, Allocator.Temp);
+            fProxyN s = new fProxyN(n, Allocator.Temp);
+            fProxyN c = new fProxyN(n, Allocator.Temp);
 
             x.sincos(s, c); // x is NOT mutated; s <- sin(x), c <- cos(x).
 
@@ -518,13 +510,13 @@ public class fProxyCompMathTests
         // ---- matrix path: proves the generic IUnsafefProxyArray constraint covers fProxyMxN.
         //      Non-square (5x7) so the flat length, not a square dim, drives the loop. ----
 
-        private void MatrixAbsTest(ref Arena arena)
+        private void MatrixAbsTest()
         {
             int rows = 5, cols = 7;
-            fProxyMxN m = arena.fProxyMat(rows, cols);
+            fProxyMxN m = new fProxyMxN(rows, cols, Allocator.Temp);
             for (int i = 0; i < m.Length; i++)
                 m[i] = (fProxy)(i - 15) * (fProxy)0.5; // negatives and positives
-            fProxyMxN m0 = m.Copy();
+            fProxyMxN m0 = new fProxyMxN(in m, Allocator.Temp);
 
             m.absInPlace();
 
@@ -532,13 +524,13 @@ public class fProxyCompMathTests
                 AssertClose(m[i], math.abs(m0[i]));
         }
 
-        private void MatrixExpTest(ref Arena arena)
+        private void MatrixExpTest()
         {
             int rows = 5, cols = 7;
-            fProxyMxN m = arena.fProxyMat(rows, cols);
+            fProxyMxN m = new fProxyMxN(rows, cols, Allocator.Temp);
             for (int i = 0; i < m.Length; i++)
                 m[i] = (fProxy)(i - 15) * (fProxy)0.1;
-            fProxyMxN m0 = m.Copy();
+            fProxyMxN m0 = new fProxyMxN(in m, Allocator.Temp);
 
             m.expInPlace();
 
@@ -546,21 +538,21 @@ public class fProxyCompMathTests
                 AssertClose(m[i], math.exp(m0[i]));
         }
 
-        private void MatrixMadTest(ref Arena arena)
+        private void MatrixMadTest()
         {
             int rows = 5, cols = 7;
-            fProxyMxN a = arena.fProxyMat(rows, cols);
-            fProxyMxN b = arena.fProxyMat(rows, cols);
-            fProxyMxN c = arena.fProxyMat(rows, cols);
+            fProxyMxN a = new fProxyMxN(rows, cols, Allocator.Temp);
+            fProxyMxN b = new fProxyMxN(rows, cols, Allocator.Temp);
+            fProxyMxN c = new fProxyMxN(rows, cols, Allocator.Temp);
             for (int i = 0; i < a.Length; i++)
             {
                 a[i] = (fProxy)(i - 15) * (fProxy)0.2;
                 b[i] = (fProxy)(i) * (fProxy)0.3 - (fProxy)1;
                 c[i] = (fProxy)2 - (fProxy)i * (fProxy)0.1;
             }
-            fProxyMxN a0 = a.Copy();
-            fProxyMxN b0 = b.Copy();
-            fProxyMxN c0 = c.Copy();
+            fProxyMxN a0 = new fProxyMxN(in a, Allocator.Temp);
+            fProxyMxN b0 = new fProxyMxN(in b, Allocator.Temp);
+            fProxyMxN c0 = new fProxyMxN(in c, Allocator.Temp);
 
             a.madInPlace(b, c); // a = a*b + c ; only a mutated
 
@@ -574,32 +566,32 @@ public class fProxyCompMathTests
 
         // ---- degenerate shapes ----
 
-        private void SingleElementTest(ref Arena arena)
+        private void SingleElementTest()
         {
-            fProxyN v = arena.fProxyVec(1, (fProxy)(-2.5));
+            fProxyN v = GenerateOP.fProxyVec(1, (fProxy)(-2.5), Allocator.Temp);
             v.absInPlace();
             AssertClose(v[0], (fProxy)2.5);
 
-            fProxyN a = arena.fProxyVec(1, (fProxy)3);
-            fProxyN b = arena.fProxyVec(1, (fProxy)4);
-            fProxyN c = arena.fProxyVec(1, (fProxy)5);
+            fProxyN a = GenerateOP.fProxyVec(1, (fProxy)3, Allocator.Temp);
+            fProxyN b = GenerateOP.fProxyVec(1, (fProxy)4, Allocator.Temp);
+            fProxyN c = GenerateOP.fProxyVec(1, (fProxy)5, Allocator.Temp);
             a.madInPlace(b, c);
             AssertClose(a[0], (fProxy)17); // 3*4 + 5
 
-            fProxyN x = arena.fProxyVec(1, (fProxy)0.7);
-            fProxyN s = arena.fProxyVec(1);
-            fProxyN co = arena.fProxyVec(1);
+            fProxyN x = GenerateOP.fProxyVec(1, (fProxy)0.7, Allocator.Temp);
+            fProxyN s = new fProxyN(1, Allocator.Temp);
+            fProxyN co = new fProxyN(1, Allocator.Temp);
             x.sincos(s, co);
             AssertClose(x[0], (fProxy)0.7);
             AssertClose(s[0], math.sin((fProxy)0.7));
             AssertClose(co[0], math.cos((fProxy)0.7));
         }
 
-        private void EmptyBufferTest(ref Arena arena)
+        private void EmptyBufferTest()
         {
             // zero-length buffers: kernels loop zero times, must not touch memory / throw.
-            fProxyN v = arena.fProxyVec(0);
-            fProxyN y = arena.fProxyVec(0);
+            fProxyN v = new fProxyN(0, Allocator.Temp);
+            fProxyN y = new fProxyN(0, Allocator.Temp);
             v.absInPlace();
             v.sinInPlace();
             v.reluInPlace();

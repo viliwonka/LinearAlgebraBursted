@@ -69,11 +69,11 @@ public class doubleKrylovPMinresTests
         // Dense LU oracle on COPIES (decompInPlace/decompSolve are destructive). Returns A^-1 b.
         static doubleN DenseSolve(in doubleMxN A, in doubleN b)
         {
-            var LUcopy = A.Copy();
+            var LUcopy = new doubleMxN(in A, Allocator.Temp);
             var pivot = new Pivot(A.M_Rows, Allocator.Temp);
             bool okLU = LU.decompInPlace(ref LUcopy, ref pivot);
             Assert.IsTrue(okLU);
-            var x = b.Copy();
+            var x = new doubleN(in b, Allocator.Temp);
             LU.decompSolve(ref LUcopy, in pivot, ref x);
             pivot.Dispose();
             return x;
@@ -87,26 +87,22 @@ public class doubleKrylovPMinresTests
         // SPD operator lands on the LU solution and satisfies A x ~= b.
         void SpdIdentityMatchesLU()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 14;
-            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 97001u);
+            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(n, 97001u);
             var op = new doubleDenseOperator(in A);
-            var b = arena.doubleRandomVec(n, -1f, 1f, 97002u);
+            var b = GenerateOP.doubleRandomVec(n, -1f, 1f, 97002u);
 
             var xLU = DenseSolve(in A, in b);
 
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
             var info = Krylov.minres(op, new doubleIdentityPreconditioner(), in b, ref x, 4 * n, Consts.doubleSqrtEps);
             Assert.IsTrue(info.Solved);
 
             doubleKrylovTestAsserts.AssertVecClose(in x, in xLU, SolveTol());
 
-            var Ax = arena.doubleVec(n);
+            var Ax = new doubleN(n, Allocator.Temp);
             Blas.dot(in A, in x, ref Ax);
             doubleKrylovTestAsserts.AssertVecClose(in Ax, in b, SolveTol());
-
-            arena.Dispose();
         }
 
         // Real Jacobi-style preconditioner: block-Jacobi over a 1x1-block BSR wrapping of the dense
@@ -114,17 +110,15 @@ public class doubleKrylovPMinresTests
         // minres(in doubleBSR, in doubleBlockJacobi, ...) rung end-to-end.
         void SpdBlockJacobiMatchesLU()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 12;
-            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, dim, 97101u);
-            var bsm = doubleKrylovBatteryOracles.DenseToBSR1x1(ref arena, in A);
-            var M = arena.doubleBlockJacobi(in bsm);
-            var b = arena.doubleRandomVec(dim, -1f, 1f, 97102u);
+            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(dim, 97101u);
+            var bsm = doubleKrylovBatteryOracles.DenseToBSR1x1(in A);
+            var M = new doubleBlockJacobi(in bsm, Allocator.Temp);
+            var b = GenerateOP.doubleRandomVec(dim, -1f, 1f, 97102u);
 
             var xLU = DenseSolve(in A, in b);
 
-            var x = arena.doubleVec(dim);
+            var x = new doubleN(dim, Allocator.Temp);
             var info = Krylov.minres(in bsm, in M, in b, ref x, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(info.Solved);
 
@@ -132,8 +126,6 @@ public class doubleKrylovPMinresTests
 
             var Ax = BSR.spMV(in bsm, in x);
             doubleKrylovTestAsserts.AssertVecClose(in Ax, in b, SolveTol());
-
-            arena.Dispose();
         }
 
         // ==============================================================================
@@ -145,13 +137,11 @@ public class doubleKrylovPMinresTests
         // ==============================================================================
         void IndefiniteCgFailsPminresWins()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 6;                                   // even -> {5,3,1,-1,-3,-5}, indefinite, nonsingular
-            var A = arena.doubleClement(n);
+            var A = doubleGallery.doubleClement(n);
 
-            var xTrue = arena.doubleRandomVec(n, 0.5f, 1.5f, 97201u);
-            var b = arena.doubleVec(n);
+            var xTrue = GenerateOP.doubleRandomVec(n, 0.5f, 1.5f, 97201u);
+            var b = new doubleN(n, Allocator.Temp);
             Blas.dot(in A, in xTrue, ref b);             // consistent RHS b = A xTrue
 
             double tol = Consts.doubleSqrtEps;
@@ -161,18 +151,16 @@ public class doubleKrylovPMinresTests
             // guard trips (Breakdown) or it stagnates (MaxIterations) -- either way, NOT Solved. (CG's
             // verify-at-exit means a Converged claim would be honest, so a genuinely indefinite A
             // must not report Solved.)
-            var xCg = arena.doubleVec(n);
+            var xCg = new doubleN(n, Allocator.Temp);
             var infoCg = Krylov.cg(in A, in b, ref xCg, maxIter, tol);
             Assert.IsTrue(!infoCg.Solved);
 
             // minres (identity preconditioner) DOES converge and recovers xTrue.
-            var xP = arena.doubleVec(n);
+            var xP = new doubleN(n, Allocator.Temp);
             var infoP = Krylov.minres(new doubleDenseOperator(in A), new doubleIdentityPreconditioner(),
                                        in b, ref xP, maxIter, tol);
             Assert.IsTrue(infoP.Solved);
             doubleKrylovTestAsserts.AssertVecClose(in xP, in xTrue, IndefTol());
-
-            arena.Dispose();
         }
 
         // ==============================================================================
@@ -183,22 +171,20 @@ public class doubleKrylovPMinresTests
         // ==============================================================================
         void BlockJacobiBeatsPlainMinres()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.doubleLaplacian2D(4, 16);      // BR=4 (unrolled path), 64 dof, spread spectrum
+            var A = doubleGallery.doubleLaplacian2D(4, 16);      // BR=4 (unrolled path), 64 dof, spread spectrum
             int n = A.M_Rows;
-            var M = arena.doubleBlockJacobi(in A);
+            var M = new doubleBlockJacobi(in A, Allocator.Temp);
 
-            var xTrue = arena.doubleRandomVec(n, 0.5f, 1.5f, 97301u);
+            var xTrue = GenerateOP.doubleRandomVec(n, 0.5f, 1.5f, 97301u);
             var b = BSR.spMV(in A, in xTrue);
             double tol = Consts.doubleSqrtEps;
             int maxIter = 8 * n;
 
-            var xPlain = arena.doubleVec(n);
+            var xPlain = new doubleN(n, Allocator.Temp);
             var infoPlain = Krylov.minres(in A, in b, ref xPlain, maxIter, tol);
             Assert.IsTrue(infoPlain.Solved);
 
-            var xP = arena.doubleVec(n);
+            var xP = new doubleN(n, Allocator.Temp);
             var infoP = Krylov.minres(in A, in M, in b, ref xP, maxIter, tol);
             Assert.IsTrue(infoP.Solved);
 
@@ -207,8 +193,6 @@ public class doubleKrylovPMinresTests
             // both land on the same (true) solution
             doubleKrylovTestAsserts.AssertVecClose(in xPlain, in xTrue, LooseTol());
             doubleKrylovTestAsserts.AssertVecClose(in xP, in xTrue, LooseTol());
-
-            arena.Dispose();
         }
 
         // ==============================================================================
@@ -219,33 +203,27 @@ public class doubleKrylovPMinresTests
         // at 0 iterations, even from a nonzero initial guess.
         void ZeroRhsConvergesAtZeroIters()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 10;
-            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 97501u);
+            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(n, 97501u);
             var op = new doubleDenseOperator(in A);
-            var b = arena.doubleVec(n);                  // all zero
-            var x = arena.doubleRandomVec(n, -1f, 1f, 97502u);   // nonzero seed, must be overwritten
+            var b = new doubleN(n, Allocator.Temp);                  // all zero
+            var x = GenerateOP.doubleRandomVec(n, -1f, 1f, 97502u);   // nonzero seed, must be overwritten
 
             var info = Krylov.minres(op, new doubleIdentityPreconditioner(), in b, ref x, 4 * n, Consts.doubleSqrtEps);
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.AreEqual(0, info.iterations);
             for (int i = 0; i < n; i++) Assert.AreEqual(0.0, (double)x[i]);   // x <- b == 0
-
-            arena.Dispose();
         }
 
         // Already-converged initial guess: seeding x with the exact (LU) solution makes the initial
         // residual b - A x0 already below tolerance -> Converged at 0 iterations (no Lanczos step).
         void AlreadyConvergedX0AtZeroIters()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 12;
-            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 97601u);
+            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(n, 97601u);
             var op = new doubleDenseOperator(in A);
-            var b = arena.doubleRandomVec(n, -1f, 1f, 97602u);
+            var b = GenerateOP.doubleRandomVec(n, -1f, 1f, 97602u);
 
             var x = DenseSolve(in A, in b);              // seed x = A^-1 b (accurate to ~eps << sqrtEps)
 
@@ -253,8 +231,6 @@ public class doubleKrylovPMinresTests
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.AreEqual(0, info.iterations);
-
-            arena.Dispose();
         }
     }
 
@@ -297,24 +273,20 @@ public class doubleKrylovPMinresTests
     [Test]
     public void PminresConvergedRnormIsHonest()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int n = 16;
-        var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 98001u);
-        var b = arena.doubleRandomVec(n, (double)(-1f), (double)1f, 98002u);
+        var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(n, 98001u);
+        var b = GenerateOP.doubleRandomVec(n, (double)(-1f), (double)1f, 98002u);
 
         var op = new doubleDenseOperator(in A);
-        var x = arena.doubleVec(n);
+        var x = new doubleN(n, Allocator.Temp);
         var info = Krylov.minres(op, new doubleIdentityPreconditioner(), in b, ref x, 4 * n, Consts.doubleSqrtEps);
         Assert.IsTrue(info.Solved, info.ToString());
 
-        var scratch = arena.doubleVec(n);
+        var scratch = new doubleN(n, Allocator.Temp);
         double trueRs = TrueResidualSq(in A, in b, in x, ref scratch);
         double threshold = Consts.doubleSqrtEps * Consts.doubleSqrtEps * Blas.dot(b, b);
         Assert.LessOrEqual((double)trueRs, (double)threshold);
         Assert.AreEqual((double)math.sqrt(trueRs), info.rnorm, 1e-6 * (1.0 + info.rnorm));
-
-        arena.Dispose();
     }
 
     // On a MAXITERATIONS exit minres ALSO reports a freshly computed true residual (one extra
@@ -323,104 +295,85 @@ public class doubleKrylovPMinresTests
     [Test]
     public void PminresMaxIterationsRnormIsTrueResidual()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int n = 12;
-        var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 98101u);
-        var b = arena.doubleRandomVec(n, (double)(-1f), (double)1f, 98102u);
+        var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(n, 98101u);
+        var b = GenerateOP.doubleRandomVec(n, (double)(-1f), (double)1f, 98102u);
 
         var op = new doubleDenseOperator(in A);
-        var x = arena.doubleVec(n);
+        var x = new doubleN(n, Allocator.Temp);
         var info = Krylov.minres(op, new doubleIdentityPreconditioner(), in b, ref x, 1, (double)1e-30f);
         Assert.IsTrue(info.status == IterativeSolveStatus.MaxIterations, info.ToString());
         Assert.AreEqual(1, info.iterations);
 
-        var scratch = arena.doubleVec(n);
+        var scratch = new doubleN(n, Allocator.Temp);
         double trueRs = TrueResidualSq(in A, in b, in x, ref scratch);
         Assert.AreEqual((double)math.sqrt(trueRs), info.rnorm, 1e-6 * (1.0 + info.rnorm));
-
-        arena.Dispose();
     }
 
     // Aliasing guard: two scratch buffers sharing an allocation must be rejected (RequireDistinctBuffers).
     [Test]
     public void AliasedScratchThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            int n = 8;
-            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 98201u);
-            var op = new doubleDenseOperator(in A);
-            var M = new doubleIdentityPreconditioner();
-            var b = arena.doubleRandomVec(n, (double)(-1f), (double)1f, 98202u);
+        int n = 8;
+        var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(n, 98201u);
+        var op = new doubleDenseOperator(in A);
+        var M = new doubleIdentityPreconditioner();
+        var b = GenerateOP.doubleRandomVec(n, (double)(-1f), (double)1f, 98202u);
 
-            var x  = arena.doubleVec(n);
-            var y  = arena.doubleVec(n);
-            var r1 = arena.doubleVec(n);
-            var r2 = arena.doubleVec(n);
-            var v  = arena.doubleVec(n);
-            var w  = arena.doubleVec(n);
-            var w1 = arena.doubleVec(n);
-            var w2 = w1;   // ALIASES w1 (a required buffer) -> distinct-buffer guard must fire
-                           // (z is exempt from the guard under the identity preconditioner)
-            var z  = arena.doubleVec(n);
+        var x  = new doubleN(n, Allocator.Temp);
+        var y  = new doubleN(n, Allocator.Temp);
+        var r1 = new doubleN(n, Allocator.Temp);
+        var r2 = new doubleN(n, Allocator.Temp);
+        var v  = new doubleN(n, Allocator.Temp);
+        var w  = new doubleN(n, Allocator.Temp);
+        var w1 = new doubleN(n, Allocator.Temp);
+        var w2 = w1;   // ALIASES w1 (a required buffer) -> distinct-buffer guard must fire
+                       // (z is exempt from the guard under the identity preconditioner)
+        var z  = new doubleN(n, Allocator.Temp);
 
-            Assert.Throws<ArgumentException>(() =>
-                Krylov.minres(op, M, in b, ref x, ref y, ref r1, ref r2, ref v,
-                               ref w, ref w1, ref w2, ref z, 4 * n, Consts.doubleSqrtEps));
-        }
-        finally { arena.Dispose(); }
+        Assert.Throws<ArgumentException>(() =>
+            Krylov.minres(op, M, in b, ref x, ref y, ref r1, ref r2, ref v,
+                           ref w, ref w1, ref w2, ref z, 4 * n, Consts.doubleSqrtEps));
     }
 
     // Dimension guard: a wrong-length scratch vector must be rejected before any iteration.
     [Test]
     public void WrongLengthScratchThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            int n = 8;
-            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 98301u);
-            var op = new doubleDenseOperator(in A);
-            var M = new doubleIdentityPreconditioner();
-            var b = arena.doubleRandomVec(n, (double)(-1f), (double)1f, 98302u);
+        int n = 8;
+        var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(n, 98301u);
+        var op = new doubleDenseOperator(in A);
+        var M = new doubleIdentityPreconditioner();
+        var b = GenerateOP.doubleRandomVec(n, (double)(-1f), (double)1f, 98302u);
 
-            var x  = arena.doubleVec(n);
-            var y  = arena.doubleVec(n);
-            var r1 = arena.doubleVec(n);
-            var r2 = arena.doubleVec(n);
-            var v  = arena.doubleVec(n);
-            var w  = arena.doubleVec(n);
-            var w1 = arena.doubleVec(n);
-            var w2 = arena.doubleVec(n + 1);   // wrong length (a required buffer -- always validated;
-                                               // z is exempt under the identity preconditioner)
-            var z  = arena.doubleVec(n);
+        var x  = new doubleN(n, Allocator.Temp);
+        var y  = new doubleN(n, Allocator.Temp);
+        var r1 = new doubleN(n, Allocator.Temp);
+        var r2 = new doubleN(n, Allocator.Temp);
+        var v  = new doubleN(n, Allocator.Temp);
+        var w  = new doubleN(n, Allocator.Temp);
+        var w1 = new doubleN(n, Allocator.Temp);
+        var w2 = new doubleN(n + 1, Allocator.Temp);   // wrong length (a required buffer -- always validated;
+                                           // z is exempt under the identity preconditioner)
+        var z  = new doubleN(n, Allocator.Temp);
 
-            Assert.Throws<ArgumentException>(() =>
-                Krylov.minres(op, M, in b, ref x, ref y, ref r1, ref r2, ref v,
-                               ref w, ref w1, ref w2, ref z, 4 * n, Consts.doubleSqrtEps));
-        }
-        finally { arena.Dispose(); }
+        Assert.Throws<ArgumentException>(() =>
+            Krylov.minres(op, M, in b, ref x, ref y, ref r1, ref r2, ref v,
+                           ref w, ref w1, ref w2, ref z, 4 * n, Consts.doubleSqrtEps));
     }
 
     // Non-square operator must be rejected up front ("A must be square").
     [Test]
     public void NonSquareOperatorThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            int m = 7, k = 4;
-            var A = arena.doubleRandomMat(m, k, (double)(-1f), (double)1f, 98401u);   // rectangular
-            var op = new doubleDenseOperator(in A);                                   // Rows=7 != Cols=4
-            var M = new doubleIdentityPreconditioner();
-            var b = arena.doubleVec(m);
-            var x = arena.doubleVec(m);
+        int m = 7, k = 4;
+        var A = GenerateOP.doubleRandomMat(m, k, (double)(-1f), (double)1f, 98401u);   // rectangular
+        var op = new doubleDenseOperator(in A);                                   // Rows=7 != Cols=4
+        var M = new doubleIdentityPreconditioner();
+        var b = new doubleN(m, Allocator.Temp);
+        var x = new doubleN(m, Allocator.Temp);
 
-            Assert.Throws<ArgumentException>(() =>
-                Krylov.minres(op, M, in b, ref x, m, Consts.doubleSqrtEps));
-        }
-        finally { arena.Dispose(); }
+        Assert.Throws<ArgumentException>(() =>
+            Krylov.minres(op, M, in b, ref x, m, Consts.doubleSqrtEps));
     }
 }

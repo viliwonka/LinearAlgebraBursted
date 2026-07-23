@@ -51,56 +51,55 @@ public class doubleQRWorkspaceTests
         // decompInPlace(ref Q, ref R, ref u) must equal decompInPlace(ref Q, ref R).
         void DecompEquiv(int M, int N)
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.doubleRandomMat(M, N, -1f, 1f, 73101);
+            var A = GenerateOP.doubleRandomMat(M, N, -1f, 1f, 73101, allocator: Allocator.Temp);
 
             // allocating reference
             var Qa = A.Copy();
-            var Ra = arena.doubleMat(N);
+            var Ra = new doubleMxN(N, N, Allocator.Temp);
             QR.decompInPlace(ref Qa, ref Ra);
 
             // caller-scratch form
             var Qb = A.Copy();
-            var Rb = arena.doubleMat(N);
-            var u = arena.doubleVec(M);
+            var Rb = new doubleMxN(N, N, Allocator.Temp);
+            var u = new doubleN(M, Allocator.Temp);
             QR.decompInPlace(ref Qb, ref Rb, ref u);
 
-            Assert.IsTrue(Analysis.isZero(Qa - Qb, Tol()));
-            Assert.IsTrue(Analysis.isZero(Ra - Rb, Tol()));
+            var QDiff = new doubleMxN(in Qa, Allocator.Temp);
+            QDiff.subInPlace(Qb);
+            Assert.IsTrue(Analysis.isZero(QDiff, Tol()));
 
-            arena.Dispose();
+            var RDiff = new doubleMxN(in Ra, Allocator.Temp);
+            RDiff.subInPlace(Rb);
+            Assert.IsTrue(Analysis.isZero(RDiff, Tol()));
         }
 
         // solveInPlace(ref A, ref b, ref x, ref u) must equal solveInPlace(ref A, ref b, ref x).
         void DirectSolveEquiv()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 16;
-            var A0 = arena.doubleRandomMat(dim, dim, -1f, 1f, 51237);
+            var A0 = GenerateOP.doubleRandomMat(dim, dim, -1f, 1f, 51237, allocator: Allocator.Temp);
             // make well-conditioned
             for (int d = 0; d < dim; d++)
                 A0[d, d] += 5f;
 
-            var xOrig = arena.doubleRandomVec(dim, -3f, 3f, 99001);
+            var xOrig = GenerateOP.doubleRandomVec(dim, -3f, 3f, 99001, allocator: Allocator.Temp);
 
             // allocating reference (solveInPlace destroys A and b, so use fresh copies)
             var Aa = A0.Copy();
             var ba = Blas.dot(A0, xOrig);
-            var xa = arena.doubleVec(dim);
+            var xa = new doubleN(dim, Allocator.Temp);
             QR.solveInPlace(ref Aa, ref ba, ref xa);
 
             // caller-scratch form
             var Ab = A0.Copy();
             var bb = Blas.dot(A0, xOrig);
-            var xb = arena.doubleVec(dim);
-            var u = arena.doubleVec(dim);
+            var xb = new doubleN(dim, Allocator.Temp);
+            var u = new doubleN(dim, Allocator.Temp);
             QR.solveInPlace(ref Ab, ref bb, ref xb, ref u);
 
-            Assert.IsTrue(Analysis.isZero(xa - xb, Tol()));
-
-            arena.Dispose();
+            var xDiff = new doubleN(in xa, Allocator.Temp);
+            xDiff.subInPlace(xb);
+            Assert.IsTrue(Analysis.isZero(xDiff, Tol()));
         }
 
         // QR.decompSolve (precomputed-QR path): the ref-dest overload must recover xOrig from a
@@ -108,30 +107,30 @@ public class doubleQRWorkspaceTests
         // convenience must agree with it bit-for-bit. xOrig has length N (= Q.N_Cols).
         void SolveQRSolve(int M, int N)
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.doubleRandomMat(M, N, -1f, 1f, 33417);
+            var A = GenerateOP.doubleRandomMat(M, N, -1f, 1f, 33417, allocator: Allocator.Temp);
             for (int d = 0; d < N; d++)   // well-conditioned columns
                 A[d, d] += 5f;
 
-            var xOrig = arena.doubleRandomVec(N, -3f, 3f, 60221);
+            var xOrig = GenerateOP.doubleRandomVec(N, -3f, 3f, 60221, allocator: Allocator.Temp);
             var b = Blas.dot(A, xOrig);   // consistent RHS; read-only in decompSolve, reusable
 
             // Precompute QR of A (decompInPlace overwrites Q with the orthogonal factor)
             var Q = A.Copy();
-            var R = arena.doubleMat(N);
+            var R = new doubleMxN(N, N, Allocator.Temp);
             QR.decompInPlace(ref Q, ref R);
 
             // ref-destination overload recovers x (length N)
-            var x = arena.doubleVec(N);
+            var x = new doubleN(N, Allocator.Temp);
             QR.decompSolve(ref Q, ref R, ref b, ref x);
-            Assert.IsTrue(Analysis.isZero(x - xOrig, SolveTol()));
+            var xVsOrig = new doubleN(in x, Allocator.Temp);
+            xVsOrig.subInPlace(xOrig);
+            Assert.IsTrue(Analysis.isZero(xVsOrig, SolveTol()));
 
             // allocating convenience must match the ref form exactly (same kernel)
             var xc = QR.decompSolve(ref Q, ref R, ref b);
-            Assert.IsTrue(Analysis.isZero(xc - x, Tol()));
-
-            arena.Dispose();
+            var xcVsX = new doubleN(in xc, Allocator.Temp);
+            xcVsX.subInPlace(x);
+            Assert.IsTrue(Analysis.isZero(xcVsX, Tol()));
         }
     }
 
@@ -148,69 +147,49 @@ public class doubleQRWorkspaceTests
     [Test]
     public void QrDecomp_BadScratchSize_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var Q = arena.doubleMat(6, 4);
-            var R = arena.doubleMat(4);
-            var badU = arena.doubleVec(3);   // must be length 6 (Q.M_Rows)
-            Assert.Throws<ArgumentException>(() => QR.decompInPlace(ref Q, ref R, ref badU));
-        }
-        finally { arena.Dispose(); }
+        var Q = new doubleMxN(6, 4, Allocator.Temp);
+        var R = new doubleMxN(4, 4, Allocator.Temp);
+        var badU = new doubleN(3, Allocator.Temp);   // must be length 6 (Q.M_Rows)
+        Assert.Throws<ArgumentException>(() => QR.decompInPlace(ref Q, ref R, ref badU));
     }
 
     [Test]
     public void QrDirectSolve_BadScratchSize_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = arena.doubleMat(6, 4);
-            var b = arena.doubleVec(6);
-            var x = arena.doubleVec(4);
-            var badU = arena.doubleVec(4);   // must be length 6 (A.M_Rows)
-            Assert.Throws<ArgumentException>(() => QR.solveInPlace(ref A, ref b, ref x, ref badU));
-        }
-        finally { arena.Dispose(); }
+        var A = new doubleMxN(6, 4, Allocator.Temp);
+        var b = new doubleN(6, Allocator.Temp);
+        var x = new doubleN(4, Allocator.Temp);
+        var badU = new doubleN(4, Allocator.Temp);   // must be length 6 (A.M_Rows)
+        Assert.Throws<ArgumentException>(() => QR.solveInPlace(ref A, ref b, ref x, ref badU));
     }
 
     // decompSolve ref-dest: destination x of the wrong length must throw (Solvers guard x.N != Q.N_Cols).
     [Test]
     public void SolveQR_BadDestSize_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = arena.doubleMat(4, 4);
-            for (int d = 0; d < 4; d++) A[d, d] = 2f;   // nonsingular so QR is well-defined
-            var Q = A.Copy();
-            var R = arena.doubleMat(4);
-            QR.decompInPlace(ref Q, ref R);
+        var A = new doubleMxN(4, 4, Allocator.Temp);
+        for (int d = 0; d < 4; d++) A[d, d] = 2f;   // nonsingular so QR is well-defined
+        var Q = A.Copy();
+        var R = new doubleMxN(4, 4, Allocator.Temp);
+        QR.decompInPlace(ref Q, ref R);
 
-            var b = arena.doubleVec(4);
-            var badX = arena.doubleVec(3);   // must be length 4 (Q.N_Cols)
-            Assert.Throws<ArgumentException>(() => QR.decompSolve(ref Q, ref R, ref b, ref badX));
-        }
-        finally { arena.Dispose(); }
+        var b = new doubleN(4, Allocator.Temp);
+        var badX = new doubleN(3, Allocator.Temp);   // must be length 4 (Q.N_Cols)
+        Assert.Throws<ArgumentException>(() => QR.decompSolve(ref Q, ref R, ref b, ref badX));
     }
 
     // decompSolve ref-dest: x must not alias b (the underlying ref-dest vec·mat dot guards this).
     [Test]
     public void SolveQR_DestAliasesB_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = arena.doubleMat(4, 4);
-            for (int d = 0; d < 4; d++) A[d, d] = 2f;
-            var Q = A.Copy();
-            var R = arena.doubleMat(4);
-            QR.decompInPlace(ref Q, ref R);
+        var A = new doubleMxN(4, 4, Allocator.Temp);
+        for (int d = 0; d < 4; d++) A[d, d] = 2f;
+        var Q = A.Copy();
+        var R = new doubleMxN(4, 4, Allocator.Temp);
+        QR.decompInPlace(ref Q, ref R);
 
-            var b = arena.doubleVec(4);
-            var aliasB = b;   // shares b's buffer; length 4 == Q.N_Cols so it passes the dim guard
-            Assert.Throws<ArgumentException>(() => QR.decompSolve(ref Q, ref R, ref b, ref aliasB));
-        }
-        finally { arena.Dispose(); }
+        var b = new doubleN(4, Allocator.Temp);
+        var aliasB = b;   // shares b's buffer; length 4 == Q.N_Cols so it passes the dim guard
+        Assert.Throws<ArgumentException>(() => QR.decompSolve(ref Q, ref R, ref b, ref aliasB));
     }
 }

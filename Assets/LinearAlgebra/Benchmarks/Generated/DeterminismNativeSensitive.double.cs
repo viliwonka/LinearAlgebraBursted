@@ -251,10 +251,9 @@ namespace LinearAlgebra.Benchmarks
     {
         public static (string id, uint hash)[] Case_DetMathDouble()
         {
-            var arena = new Arena(Allocator.Persistent);
             const int n = 16;
-            var grid = arena.doubleVec(n); var gridPos = arena.doubleVec(n);
-            var gridUnit = arena.doubleVec(n); var gridGeOne = arena.doubleVec(n);
+            var grid = new doubleN(n, Allocator.Persistent); var gridPos = new doubleN(n, Allocator.Persistent);
+            var gridUnit = new doubleN(n, Allocator.Persistent); var gridGeOne = new doubleN(n, Allocator.Persistent);
             for (int i = 0; i < n; i++)
             {
                 double t = (double)i / (double)(n - 1);           // [0,1]
@@ -264,7 +263,7 @@ namespace LinearAlgebra.Benchmarks
                 gridUnit[i] = g / (double)3.5;                    // (-1,1)
                 gridGeOne[i] = math.abs(g) + (double)1;
             }
-            var outVec = arena.doubleVec(n); var sinOut = arena.doubleVec(n); var cosOut = arena.doubleVec(n);
+            var outVec = new doubleN(n, Allocator.Persistent); var sinOut = new doubleN(n, Allocator.Persistent); var cosOut = new doubleN(n, Allocator.Persistent);
 
             var hashOut = new NativeArray<uint>(20, Allocator.Persistent);
             var job = new DetMathGridJobDouble
@@ -298,18 +297,18 @@ namespace LinearAlgebra.Benchmarks
                 ("detmath/acosh.double", hashOut[19]),
             };
             hashOut.Dispose();
-            arena.Dispose();
+            grid.Dispose(); gridPos.Dispose(); gridUnit.Dispose(); gridGeOne.Dispose();
+            outVec.Dispose(); sinOut.Dispose(); cosOut.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_ElementwiseTranscendentalDouble()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2654435761u ^ 0x001Bu);
 
             const int n = 256;
-            var general = arena.doubleVec(n); var positive = arena.doubleVec(n);
-            var unit = arena.doubleVec(n); var geOne = arena.doubleVec(n);
+            var general = new doubleN(n, Allocator.Persistent); var positive = new doubleN(n, Allocator.Persistent);
+            var unit = new doubleN(n, Allocator.Persistent); var geOne = new doubleN(n, Allocator.Persistent);
             for (int i = 0; i < n; i++)
             {
                 double g = rng.NextDouble(-3f, 3f);
@@ -318,7 +317,7 @@ namespace LinearAlgebra.Benchmarks
                 unit[i] = g / (double)3.5;
                 geOne[i] = math.abs(g) + (double)1;
             }
-            var scratch = arena.doubleVec(n);
+            var scratch = new doubleN(n, Allocator.Persistent);
 
             var hashOut = new NativeArray<uint>(20, Allocator.Persistent);
             var job = new DetElementwiseTranscendentalJobDouble
@@ -351,30 +350,29 @@ namespace LinearAlgebra.Benchmarks
                 ("elementwise-transcendental/fmod.double.n256", hashOut[19]),
             };
             hashOut.Dispose();
-            arena.Dispose();
+            general.Dispose(); positive.Dispose(); unit.Dispose(); geOne.Dispose(); scratch.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_RandomSamplersDouble()
         {
-            var arena = new Arena(Allocator.Persistent);
             const int n = 16;
-            var uGrid = arena.doubleVec(n);
+            var uGrid = new doubleN(n, Allocator.Persistent);
             for (int i = 0; i < n; i++) uGrid[i] = (double)(i + 1) / (double)(n + 1); // (0,1), avoid exact 0/1
-            var outVec = arena.doubleVec(n);
+            var outVec = new doubleN(n, Allocator.Persistent);
 
             const int dim = 5;
-            var cholL = arena.doubleMat(dim, dim);
+            var cholL = new doubleMxN(dim, dim, Allocator.Persistent);
             for (int i = 0; i < dim; i++) cholL[i, i] = (double)1; // identity Cholesky factor
-            var mvnMean = arena.doubleVec(dim);
-            var mvnDest = arena.doubleVec(dim);
-            var mvnScratch = arena.doubleVec(dim);
+            var mvnMean = new doubleN(dim, Allocator.Persistent);
+            var mvnDest = new doubleN(dim, Allocator.Persistent);
+            var mvnScratch = new doubleN(dim, Allocator.Persistent);
 
             const int md = 8;
-            var orthoMat = arena.doubleMat(md, md);
-            var spdMat = arena.doubleMat(md, md);
-            var condMat = arena.doubleMat(md, md);
-            var rankMat = arena.doubleMat(md, md);
+            var orthoMat = new doubleMxN(md, md, Allocator.Persistent);
+            var spdMat = new doubleMxN(md, md, Allocator.Persistent);
+            var condMat = new doubleMxN(md, md, Allocator.Persistent);
+            var rankMat = new doubleMxN(md, md, Allocator.Persistent);
 
             var hashOut = new NativeArray<uint>(13, Allocator.Persistent);
             var job = new DetRandomSamplersJobDouble
@@ -402,19 +400,19 @@ namespace LinearAlgebra.Benchmarks
                 ("random-samplers/withRankInPlace.double.n8", hashOut[12]),
             };
             hashOut.Dispose();
-            arena.Dispose();
+            uGrid.Dispose(); outVec.Dispose(); cholL.Dispose(); mvnMean.Dispose(); mvnDest.Dispose(); mvnScratch.Dispose();
+            orthoMat.Dispose(); spdMat.Dispose(); condMat.Dispose(); rankMat.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_SoftmaxDouble()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2654435761u ^ 0x001Du);
 
             const int m = 53, n = 37;
-            var A = arena.doubleMat(m, n);
-            var Arows = arena.doubleMat(m, n);
-            var Acols = arena.doubleMat(m, n);
+            var A = new doubleMxN(m, n, Allocator.Persistent);
+            var Arows = new doubleMxN(m, n, Allocator.Persistent);
+            var Acols = new doubleMxN(m, n, Allocator.Persistent);
             for (int r = 0; r < m; r++) for (int c = 0; c < n; c++)
             {
                 double v = rng.NextDouble(-3f, 3f);
@@ -432,37 +430,36 @@ namespace LinearAlgebra.Benchmarks
                 ("softmax/softmaxColumns.double.53x37", hashOut[2]),
             };
             hashOut.Dispose();
-            arena.Dispose();
+            A.Dispose(); Arows.Dispose(); Acols.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_DftSignalDouble()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2654435761u ^ 0x001Eu);
 
             const int n = 32;
-            var dftInRe = arena.doubleVec(n); var dftInIm = arena.doubleVec(n);
+            var dftInRe = new doubleN(n, Allocator.Persistent); var dftInIm = new doubleN(n, Allocator.Persistent);
             for (int i = 0; i < n; i++) { dftInRe[i] = rng.NextDouble(-1f, 1f); dftInIm[i] = (double)0; }
-            var dftOutRe = arena.doubleVec(n); var dftOutIm = arena.doubleVec(n);
-            var idftOutRe = arena.doubleVec(n); var idftOutIm = arena.doubleVec(n);
+            var dftOutRe = new doubleN(n, Allocator.Persistent); var dftOutIm = new doubleN(n, Allocator.Persistent);
+            var idftOutRe = new doubleN(n, Allocator.Persistent); var idftOutIm = new doubleN(n, Allocator.Persistent);
 
             const int nPhase = 16;
-            var phaseRe = arena.doubleVec(nPhase); var phaseIm = arena.doubleVec(nPhase);
+            var phaseRe = new doubleN(nPhase, Allocator.Persistent); var phaseIm = new doubleN(nPhase, Allocator.Persistent);
             for (int i = 0; i < nPhase; i++) { phaseRe[i] = rng.NextDouble(-1f, 1f); phaseIm[i] = rng.NextDouble(-1f, 1f); }
-            var phaseDest = arena.doubleVec(nPhase);
+            var phaseDest = new doubleN(nPhase, Allocator.Persistent);
 
-            var windowDest = arena.doubleVec(n);
-            var gaussKernel = arena.doubleVec(15);
-            var gaussKernel2D = arena.doubleMat(7, 7);
-            var prolate = arena.doubleProlate(16, (double)0.25);
+            var windowDest = new doubleN(n, Allocator.Persistent);
+            var gaussKernel = new doubleN(15, Allocator.Persistent);
+            var gaussKernel2D = new doubleMxN(7, 7, Allocator.Persistent);
+            var prolate = doubleGallery.doubleProlate(16, (double)0.25, Allocator.Persistent);
 
-            var waveDest = arena.doubleVec(n);
+            var waveDest = new doubleN(n, Allocator.Persistent);
             var waveFn = new doubleWave.Sine { Cycles = (double)2, Phase = (double)0 };
 
-            var easingDest1 = arena.doubleVec(n);
-            var easingDest2 = arena.doubleVec(n);
-            var easingDest3 = arena.doubleVec(n);
+            var easingDest1 = new doubleN(n, Allocator.Persistent);
+            var easingDest2 = new doubleN(n, Allocator.Persistent);
+            var easingDest3 = new doubleN(n, Allocator.Persistent);
             var easeSine = new doubleEasing.EaseInSine();
             var easeExpo = new doubleEasing.EaseInExpo();
             var easeElastic = new doubleEasing.EaseInElastic();
@@ -494,7 +491,11 @@ namespace LinearAlgebra.Benchmarks
                 ("dft-signal/easing.sine-expo-elastic.double.n32", hashOut[8]),
             };
             hashOut.Dispose();
-            arena.Dispose();
+            dftInRe.Dispose(); dftInIm.Dispose(); dftOutRe.Dispose(); dftOutIm.Dispose();
+            idftOutRe.Dispose(); idftOutIm.Dispose();
+            phaseRe.Dispose(); phaseIm.Dispose(); phaseDest.Dispose();
+            windowDest.Dispose(); gaussKernel.Dispose(); gaussKernel2D.Dispose(); prolate.Dispose();
+            waveDest.Dispose(); easingDest1.Dispose(); easingDest2.Dispose(); easingDest3.Dispose();
             return result;
         }
     }

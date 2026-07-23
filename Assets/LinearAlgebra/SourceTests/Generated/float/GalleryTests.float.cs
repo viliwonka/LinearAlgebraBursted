@@ -6,7 +6,7 @@ using System;
 #pragma warning disable 618 // intentionally exercises the deprecated cyclic-Jacobi Eigen.decompInPlace (kept for reference)
 
 using LinearAlgebra;
-using LinearAlgebra.Gallery;   // opt-in: arena.floatPascal(n), arena.floatFrank(n), ...
+using LinearAlgebra.Gallery;   // opt-in: floatGallery.floatPascal(n), floatGallery.floatFrank(n), ...
 
 using NUnit.Framework;
 using Unity.Burst;
@@ -96,74 +96,60 @@ public class floatGalleryTests
         // Pascal: symmetric, det = 1 (exact integer), SPD (Cholesky succeeds). n = 5.
         void PascalProps()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
-            var P = arena.floatPascal(n);
+            var P = floatGallery.floatPascal(n);
 
             AssertSymmetric(in P, (float)1E-5);
-            AssertCholeskyOk(ref arena, in P);
+            AssertCholeskyOk(in P);
 
             // det = 1; Pascal(5) cond ≈ 8.5e3, so float det error ≈ a few e-3.
             AssertClose(Determinant(in P), (float)1, (float)150 * Consts.floatSqrtEps);
-
-            arena.Dispose();
         }
 
         // MinIJ A[i,j]=min(i,j)+1: symmetric, det = 1, SPD. n = 5.
         void MinIJProps()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
-            var A = arena.floatMinIJ(n);
+            var A = floatGallery.floatMinIJ(n);
 
             AssertSymmetric(in A, (float)1E-5);
-            AssertCholeskyOk(ref arena, in A);
+            AssertCholeskyOk(in A);
             AssertClose(Determinant(in A), (float)1, (float)50 * Consts.floatSqrtEps);
-
-            arena.Dispose();
         }
 
         // Moler = UᵀU (U = triw 1-diag, α-super): SPD and det = 1 for ALL α.
         // α = −1 (mild, n = 5) for the det assert; α = 2 (n = 4) just for SPD + det with a looser band.
         void MolerProps()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // α = −1 (default overload), n = 5
-            var M1 = arena.floatMoler(5);
+            var M1 = floatGallery.floatMoler(5);
             AssertSymmetric(in M1, (float)1E-5);
-            AssertCholeskyOk(ref arena, in M1);
+            AssertCholeskyOk(in M1);
             AssertClose(Determinant(in M1), (float)1, (float)150 * Consts.floatSqrtEps);
 
             // α = 2, n = 4 — still SPD with det = 1 (more ill-conditioned ⇒ looser det band)
-            var M2 = arena.floatMoler(4, (float)2);
+            var M2 = floatGallery.floatMoler(4, (float)2);
             AssertSymmetric(in M2, (float)1E-5);
-            AssertCholeskyOk(ref arena, in M2);
+            AssertCholeskyOk(in M2);
             AssertClose(Determinant(in M2), (float)1, (float)300 * Consts.floatSqrtEps);
-
-            arena.Dispose();
         }
 
         // Laplacian1D (Strang 2nd-difference): SPD, det = n+1, eigenvalues 2−2cos(kπ/(n+1)). n = 6.
         void Laplacian1DProps()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 6;
-            var T = arena.floatLaplacian1D(n);
+            var T = floatGallery.floatLaplacian1D(n);
 
             AssertSymmetric(in T, (float)1E-5);
-            AssertCholeskyOk(ref arena, in T);
+            AssertCholeskyOk(in T);
 
             // det = n + 1 = 7 (read-only path destroys a copy inside Determinant)
             AssertClose(Determinant(in T), (float)(n + 1), (float)0.05);
 
             // eigenvalues (descending) eig[i] = 2 − 2cos((n−i)π/(n+1))
-            var Tc = T.Copy();
-            var eig = arena.floatVec(n);
-            var V = arena.floatMat(n, n);
+            var Tc = new floatMxN(in T, Allocator.Temp);
+            var eig = new floatN(n, Allocator.Temp);
+            var V = new floatMxN(n, n, Allocator.Temp);
             AssertTrue(Eigen.decompInPlace(ref Tc, ref eig, ref V));
 
             float pi = (float)math.PI_DBL;
@@ -172,76 +158,62 @@ public class floatGalleryTests
                 float expected = (float)2 - (float)2 * math.cos((float)(n - i) * pi / (float)(n + 1));
                 AssertClose(eig[i], expected, (float)50 * Consts.floatSqrtEps);
             }
-
-            arena.Dispose();
         }
 
         // KMS A[i,j]=ρ^|i−j|: det = (1−ρ²)^(n−1) for ρ = 0.5 (SPD); and the integer-power path produces
         // sign-correct negative entries for ρ = −0.5.
         void KMSProps()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // ρ = 0.5, n = 5: det = (1 − 0.25)^4 = 0.31640625; SPD ⇒ Cholesky succeeds.
             int n = 5;
-            var A = arena.floatKMS(n, (float)0.5);
+            var A = floatGallery.floatKMS(n, (float)0.5);
             AssertSymmetric(in A, (float)1E-5);
-            AssertCholeskyOk(ref arena, in A);
+            AssertCholeskyOk(in A);
 
             float expDet = (float)1;
             for (int k = 0; k < n - 1; k++) expDet *= (float)0.75;   // (1 − ρ²)^(n−1)
             AssertClose(Determinant(in A), expDet, (float)50 * Consts.floatSqrtEps);
 
             // ρ = −0.5, n = 3: K[0,1] = ρ^1 = −0.5, K[0,2] = ρ^2 = +0.25 (post-fix integer power).
-            var B = arena.floatKMS(3, (float)(-0.5));
+            var B = floatGallery.floatKMS(3, (float)(-0.5));
             AssertClose(B[0, 1], (float)(-0.5), (float)1E-5);
             AssertClose(B[0, 2], (float)0.25, (float)1E-5);
             AssertClose(B[1, 2], (float)(-0.5), (float)1E-5);
-
-            arena.Dispose();
         }
 
         // Pei = αI + J: eigenvalues {α+n (×1), α (×n−1)}; det = αⁿ⁻¹(α+n). α = 2, n = 5 ⇒ {7,2,2,2,2}, det 112.
         void PeiProps()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
             float alpha = (float)2;
-            var A = arena.floatPei(n, alpha);
+            var A = floatGallery.floatPei(n, alpha);
 
             AssertSymmetric(in A, (float)1E-5);
 
             // det = α^(n−1)·(α+n) = 16·7 = 112
             AssertClose(Determinant(in A), (float)112, (float)0.5);
 
-            var Ac = A.Copy();
-            var eig = arena.floatVec(n);
-            var V = arena.floatMat(n, n);
+            var Ac = new floatMxN(in A, Allocator.Temp);
+            var eig = new floatN(n, Allocator.Temp);
+            var V = new floatMxN(n, n, Allocator.Temp);
             AssertTrue(Eigen.decompInPlace(ref Ac, ref eig, ref V));
 
             float tol = (float)50 * Consts.floatSqrtEps;
             AssertClose(eig[0], alpha + (float)n, tol);   // α + n = 7
             for (int i = 1; i < n; i++)
                 AssertClose(eig[i], alpha, tol);           // α = 2
-
-            arena.Dispose();
         }
 
         // Lehmer and Hilbert: both SPD at small n ⇒ symmetric and Cholesky succeeds.
         void LehmerHilbertSpd()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var L = arena.floatLehmer(5);
+            var L = floatGallery.floatLehmer(5);
             AssertSymmetric(in L, (float)1E-5);
-            AssertCholeskyOk(ref arena, in L);
+            AssertCholeskyOk(in L);
 
-            var H = arena.floatHilbert(4);
+            var H = floatGallery.floatHilbert(4);
             AssertSymmetric(in H, (float)1E-5);
-            AssertCholeskyOk(ref arena, in H);
-
-            arena.Dispose();
+            AssertCholeskyOk(in H);
         }
 
         // =====================================================================
@@ -252,10 +224,8 @@ public class floatGalleryTests
         // n = 4 ⇒ {3,1,−1,−3}.
         void ClementEig()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 4;
-            var C = arena.floatClement(n);
+            var C = floatGallery.floatClement(n);
 
             AssertSymmetric(in C, (float)1E-5);
 
@@ -264,9 +234,9 @@ public class floatGalleryTests
             for (int i = 0; i < n; i++) tr += C[i, i];
             AssertClose(tr, (float)0, (float)1E-5);
 
-            var Cc = C.Copy();
-            var eig = arena.floatVec(n);
-            var V = arena.floatMat(n, n);
+            var Cc = new floatMxN(in C, Allocator.Temp);
+            var eig = new floatN(n, Allocator.Temp);
+            var V = new floatMxN(n, n, Allocator.Temp);
             AssertTrue(Eigen.decompInPlace(ref Cc, ref eig, ref V));
 
             float tol = (float)50 * Consts.floatSqrtEps;
@@ -274,25 +244,21 @@ public class floatGalleryTests
             AssertClose(eig[1], (float)1, tol);
             AssertClose(eig[2], (float)(-1), tol);
             AssertClose(eig[3], (float)(-3), tol);
-
-            arena.Dispose();
         }
 
         // Fiedler F[i,j]=|i−j|: symmetric; exactly one positive eigenvalue, n−1 negative;
         // det = (−1)^(n−1)(n−1)2^(n−2). n = 5 ⇒ 1 positive / 4 negative, det = 4·8 = 32.
         void FiedlerProps()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
-            var F = arena.floatFiedler(n);
+            var F = floatGallery.floatFiedler(n);
 
             AssertSymmetric(in F, (float)1E-5);
             AssertClose(Determinant(in F), (float)32, (float)0.5);
 
-            var Fc = F.Copy();
-            var eig = arena.floatVec(n);
-            var V = arena.floatMat(n, n);
+            var Fc = new floatMxN(in F, Allocator.Temp);
+            var eig = new floatN(n, Allocator.Temp);
+            var V = new floatMxN(n, n, Allocator.Temp);
             AssertTrue(Eigen.decompInPlace(ref Fc, ref eig, ref V));
 
             // eigenvalues are bounded away from 0 (smallest |λ| ≈ 0.56), so a small gate is safe.
@@ -305,23 +271,19 @@ public class floatGalleryTests
             }
             RecordEq(pos, 1);
             RecordEq(neg, n - 1);
-
-            arena.Dispose();
         }
 
         // DingDong: symmetric Hankel; all eigenvalues in (−π/2, π/2), clustering near ±π/2.
         // The extreme eigenvalues sit ~1e-7 from ±π/2, so bound by π/2 + tol (numerical) rather than strictly.
         void DingDongEig()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 6;
-            var D = arena.floatDingDong(n);
+            var D = floatGallery.floatDingDong(n);
             AssertSymmetric(in D, (float)1E-5);
 
-            var Dc = D.Copy();
-            var eig = arena.floatVec(n);
-            var V = arena.floatMat(n, n);
+            var Dc = new floatMxN(in D, Allocator.Temp);
+            var eig = new floatN(n, Allocator.Temp);
+            var V = new floatMxN(n, n, Allocator.Temp);
             AssertTrue(Eigen.decompInPlace(ref Dc, ref eig, ref V));
 
             float halfPi = (float)(math.PI_DBL * 0.5);
@@ -334,73 +296,61 @@ public class floatGalleryTests
             // clustering near ±π/2: the extreme eigenvalues are within 0.1 of ±π/2
             AssertTrue(eig[0] > halfPi - (float)0.1);
             AssertTrue(eig[n - 1] < -halfPi + (float)0.1);
-
-            arena.Dispose();
         }
 
         // Frank: upper Hessenberg, det = 1, eigenvalues real + positive. n=3 entries exact; det at n=4;
         // Eigen.valuesQRInPlace at n=4 returns all-real all-positive.
         void FrankProps()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // n = 3 exact matrix [[3,2,1],[2,2,1],[0,1,1]]
-            var F3 = arena.floatFrank(3);
+            var F3 = floatGallery.floatFrank(3);
             AssertClose(F3[0, 0], (float)3, (float)1E-5); AssertClose(F3[0, 1], (float)2, (float)1E-5); AssertClose(F3[0, 2], (float)1, (float)1E-5);
             AssertClose(F3[1, 0], (float)2, (float)1E-5); AssertClose(F3[1, 1], (float)2, (float)1E-5); AssertClose(F3[1, 2], (float)1, (float)1E-5);
             AssertClose(F3[2, 0], (float)0, (float)1E-5); AssertClose(F3[2, 1], (float)1, (float)1E-5); AssertClose(F3[2, 2], (float)1, (float)1E-5);
 
             // det = 1 at n = 4
-            var F4 = arena.floatFrank(4);
+            var F4 = floatGallery.floatFrank(4);
             AssertClose(Determinant(in F4), (float)1, (float)0.05);
 
             // Eigen.valuesQRInPlace: all real (imag ≈ 0) and positive (Frank4 ≈ {7.31, 2.07, 0.48, 0.137})
-            var Fc = F4.Copy();
-            var re = arena.floatVec(4);
-            var im = arena.floatVec(4);
+            var Fc = new floatMxN(in F4, Allocator.Temp);
+            var re = new floatN(4, Allocator.Temp);
+            var im = new floatN(4, Allocator.Temp);
             AssertTrue(Eigen.valuesQRInPlace(ref Fc, ref re, ref im));
             for (int i = 0; i < 4; i++)
             {
                 AssertClose(im[i], (float)0, (float)1E-2);   // real spectrum
                 AssertTrue(re[i] > (float)0);                 // positive
             }
-
-            arena.Dispose();
         }
 
         // Vandermonde: det = ∏_{i<j}(nodes[j]−nodes[i]). nodes {1,2,3,4} ⇒ 12.
         // A node = 0 still yields an all-ones column 0 (the 0⁰ = 1 path).
         void VandermondeDet()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var nodes = arena.floatVec(4);
+            var nodes = new floatN(4, Allocator.Temp);
             nodes[0] = (float)1; nodes[1] = (float)2; nodes[2] = (float)3; nodes[3] = (float)4;
-            var V = arena.floatVandermonde(in nodes);
+            var V = floatGallery.floatVandermonde(in nodes);
             AssertClose(Determinant(in V), (float)12, (float)0.2);
 
             // node 0 ⇒ column 0 is all ones (0^0 = 1)
-            var nodes0 = arena.floatVec(3);
+            var nodes0 = new floatN(3, Allocator.Temp);
             nodes0[0] = (float)0; nodes0[1] = (float)1; nodes0[2] = (float)2;
-            var V0 = arena.floatVandermonde(in nodes0);
+            var V0 = floatGallery.floatVandermonde(in nodes0);
             for (int i = 0; i < 3; i++)
                 AssertClose(V0[i, 0], (float)1, (float)1E-6);
-
-            arena.Dispose();
         }
 
         // Companion of (x−1)(x−2)(x−3) = x³ − 6x² + 11x − 6 ⇒ coeffs {−6, 11, −6} (coeffs[k] = coeff of xᵏ).
         // Eigen.valuesQRInPlace returns the roots {3,2,1} (descending, real).
         void CompanionEig()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var coeffs = arena.floatVec(3);
+            var coeffs = new floatN(3, Allocator.Temp);
             coeffs[0] = (float)(-6); coeffs[1] = (float)11; coeffs[2] = (float)(-6);
-            var C = arena.floatCompanion(in coeffs);
+            var C = floatGallery.floatCompanion(in coeffs);
 
-            var re = arena.floatVec(3);
-            var im = arena.floatVec(3);
+            var re = new floatN(3, Allocator.Temp);
+            var im = new floatN(3, Allocator.Temp);
             AssertTrue(Eigen.valuesQRInPlace(ref C, ref re, ref im));
 
             float tol = (float)1E-2;
@@ -408,8 +358,6 @@ public class floatGalleryTests
             AssertClose(re[1], (float)2, tol);
             AssertClose(re[2], (float)1, tol);
             for (int i = 0; i < 3; i++) AssertClose(im[i], (float)0, tol);
-
-            arena.Dispose();
         }
 
         // Hadamard: HᵀH = n·I exactly (entries ±1, exact in float for n ≤ 8). n = 4 and n = 8.
@@ -421,12 +369,10 @@ public class floatGalleryTests
 
         void CheckHadamard(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var H = arena.floatHadamard(n);
+            var H = floatGallery.floatHadamard(n);
 
             // HᵀH
-            var HtH = arena.floatMat(n, n);
+            var HtH = new floatMxN(n, n, Allocator.Temp);
             Blas.dot(in H, in H, ref HtH, transposeA: true);
 
             float tol = (float)1E-4;   // exact arithmetic; tiny tolerance
@@ -436,8 +382,6 @@ public class floatGalleryTests
                     float expected = (r == c) ? (float)n : (float)0;
                     AssertClose(HtH[r, c], expected, tol);
                 }
-
-            arena.Dispose();
         }
 
         // Circulant ↔ FFT cross-check. Using a SYMMETRIC first row (c[k]=c[n−k]) makes the spectrum REAL,
@@ -445,14 +389,12 @@ public class floatGalleryTests
         // Also: every row sum equals sum(c).
         void CirculantFFT()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 4;
-            var c = arena.floatVec(n);
+            var c = new floatN(n, Allocator.Temp);
             c[0] = (float)2; c[1] = (float)0.5; c[2] = (float)(-0.3); c[3] = (float)0.5;   // symmetric: c[1]==c[3]
             float csum = (float)2 + (float)0.5 - (float)0.3 + (float)0.5;                  // 2.7
 
-            var C = arena.floatCirculant(in c);
+            var C = floatGallery.floatCirculant(in c);
 
             // every row sums to sum(c)
             for (int i = 0; i < n; i++)
@@ -463,15 +405,15 @@ public class floatGalleryTests
             }
 
             // eigenvalues via QR (matrix destroyed ⇒ copy)
-            var Cc = C.Copy();
-            var evRe = arena.floatVec(n);
-            var evIm = arena.floatVec(n);
+            var Cc = new floatMxN(in C, Allocator.Temp);
+            var evRe = new floatN(n, Allocator.Temp);
+            var evIm = new floatN(n, Allocator.Temp);
             AssertTrue(Eigen.valuesQRInPlace(ref Cc, ref evRe, ref evIm));
 
             // DFT of c via the library FFT (in place ⇒ copy the real part, zero imag)
-            var fRe = c.Copy();
-            var fIm = arena.floatVec(n);
-            var fftWs = arena.floatFFTCache(n);
+            var fRe = new floatN(in c, Allocator.Temp);
+            var fIm = new floatN(n, Allocator.Temp);
+            var fftWs = new floatFFTCache(n, Allocator.Temp);
             FFT.fft(ref fRe, ref fIm, in fftWs);
 
             float spectralTol = (float)100 * Consts.floatSqrtEps;
@@ -488,48 +430,40 @@ public class floatGalleryTests
             SortDescending(ref fRe);
             for (int i = 0; i < n; i++)
                 AssertClose(evRe[i], fRe[i], spectralTol);
-
-            arena.Dispose();
         }
 
         // Triw: upper-triangular, 1-diagonal, α super. det = 1; all eigenvalues = 1. n = 5, α = −2.
         void TriwProps()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
-            var T = arena.floatTriw(n, (float)(-2));
+            var T = floatGallery.floatTriw(n, (float)(-2));
 
             // det = product of unit diagonal = 1 (triangular ⇒ exact)
             AssertClose(Determinant(in T), (float)1, (float)1E-3);
 
             // eigenvalues: matrix is already upper-triangular (real Schur form) ⇒ diagonal = all 1
-            var Tc = T.Copy();
-            var re = arena.floatVec(n);
-            var im = arena.floatVec(n);
+            var Tc = new floatMxN(in T, Allocator.Temp);
+            var re = new floatN(n, Allocator.Temp);
+            var im = new floatN(n, Allocator.Temp);
             AssertTrue(Eigen.valuesQRInPlace(ref Tc, ref re, ref im));
             for (int i = 0; i < n; i++)
             {
                 AssertClose(re[i], (float)1, (float)1E-3);
                 AssertClose(im[i], (float)0, (float)1E-3);
             }
-
-            arena.Dispose();
         }
 
         // WilkinsonPlus (n odd ≥ 3): the two largest eigenvalues form a near-pair. n = 7:
         // reference eig ≈ {3.7616, 3.7321, 2.3633, …} ⇒ top gap ≈ 0.0295, next gap ≈ 1.37.
         void WilkinsonNearPair()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 7;
-            var W = arena.floatWilkinsonPlus(n);
+            var W = floatGallery.floatWilkinsonPlus(n);
             AssertSymmetric(in W, (float)1E-5);
 
-            var Wc = W.Copy();
-            var eig = arena.floatVec(n);
-            var V = arena.floatMat(n, n);
+            var Wc = new floatMxN(in W, Allocator.Temp);
+            var eig = new floatN(n, Allocator.Temp);
+            var V = new floatMxN(n, n, Allocator.Temp);
             AssertTrue(Eigen.decompInPlace(ref Wc, ref eig, ref V));
 
             // near-pair: the top two are far closer to each other than to the third eigenvalue.
@@ -537,18 +471,14 @@ public class floatGalleryTests
             float nextGap = eig[1] - eig[2];
             AssertTrue(topGap < (float)0.05);
             AssertTrue(nextGap > (float)1);
-
-            arena.Dispose();
         }
 
         // Läuchli is rectangular (n+1)×n with row 0 ones and rows 1..n = ε·I.
         void LauchliDims()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 3;
             float eps = (float)1E-3;
-            var A = arena.floatLauchli(n, eps);
+            var A = floatGallery.floatLauchli(n, eps);
 
             RecordEq(A.M_Rows, n + 1);
             RecordEq(A.N_Cols, n);
@@ -559,8 +489,6 @@ public class floatGalleryTests
             for (int r = 1; r <= n; r++)
                 for (int j = 0; j < n; j++)
                     AssertClose(A[r, j], (r - 1 == j) ? eps : (float)0, (float)1E-6);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -570,25 +498,21 @@ public class floatGalleryTests
         // CG solves Laplacian1D·x = b accurately (SPD, well-conditioned at n = 8).
         void CGLaplacian()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 8;
-            var A = arena.floatLaplacian1D(n);
+            var A = floatGallery.floatLaplacian1D(n);
 
-            var xTrue = arena.floatVec(n);
+            var xTrue = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) xTrue[i] = (float)(i + 1);   // 1,2,...,n
 
             var b = Blas.dot(A, xTrue);   // consistent RHS
 
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             bool conv = Krylov.cg(in A, in b, ref x, 200, Consts.floatSqrtEps);
             AssertTrue(conv);
 
             float tol = (float)100 * Consts.floatSqrtEps;
             for (int i = 0; i < n; i++)
                 AssertClose(x[i], xTrue[i], tol);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -599,7 +523,7 @@ public class floatGalleryTests
         float Determinant(in floatMxN M)
         {
             int n = M.M_Rows;
-            var LUmat = M.Copy();
+            var LUmat = new floatMxN(in M, Allocator.Temp);
             var pivot = new Pivot(n, Allocator.Temp);
             LU.decompInPlace(ref LUmat, ref pivot);
             float det = Analysis.determinant(in LUmat, in pivot);
@@ -615,9 +539,9 @@ public class floatGalleryTests
                     AssertClose(A[r, c], A[c, r], tol);
         }
 
-        void AssertCholeskyOk(ref Arena arena, in floatMxN A)
+        void AssertCholeskyOk(in floatMxN A)
         {
-            var L = arena.floatMat(A.M_Rows, A.N_Cols);
+            var L = new floatMxN(A.M_Rows, A.N_Cols, Allocator.Temp);
             AssertTrue(CHO.decomp(in A, ref L));
         }
 
@@ -693,27 +617,17 @@ public class floatGalleryTests
     [Test]
     public void HadamardNonPowerOfTwoThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            Assert.Throws<ArgumentException>(() => arena.floatHadamard(3));
-            Assert.Throws<ArgumentException>(() => arena.floatHadamard(0));
-            Assert.Throws<ArgumentException>(() => arena.floatHadamard(6));
-        }
-        finally { arena.Dispose(); }
+        Assert.Throws<ArgumentException>(() => floatGallery.floatHadamard(3));
+        Assert.Throws<ArgumentException>(() => floatGallery.floatHadamard(0));
+        Assert.Throws<ArgumentException>(() => floatGallery.floatHadamard(6));
     }
 
     // WilkinsonPlus requires n odd and >= 3.
     [Test]
     public void WilkinsonPlusInvalidNThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            Assert.Throws<ArgumentException>(() => arena.floatWilkinsonPlus(1));  // < 3
-            Assert.Throws<ArgumentException>(() => arena.floatWilkinsonPlus(2));  // even
-            Assert.Throws<ArgumentException>(() => arena.floatWilkinsonPlus(4));  // even
-        }
-        finally { arena.Dispose(); }
+        Assert.Throws<ArgumentException>(() => floatGallery.floatWilkinsonPlus(1));  // < 3
+        Assert.Throws<ArgumentException>(() => floatGallery.floatWilkinsonPlus(2));  // even
+        Assert.Throws<ArgumentException>(() => floatGallery.floatWilkinsonPlus(4));  // even
     }
 }

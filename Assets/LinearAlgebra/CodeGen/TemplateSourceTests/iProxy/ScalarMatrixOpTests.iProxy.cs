@@ -17,21 +17,18 @@ public class iProxyScalarMatrixOpTests
 
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // 5 - [[1,2],[3,4]] must be [[4,3],[2,1]] (NOT [[-4,-3],[-2,-1]]).
-            var A = arena.iProxyMat(2, 2);
+            var A = new iProxyMxN(2, 2, Allocator.Temp);
             A[0, 0] = (iProxy)1; A[0, 1] = (iProxy)2;
             A[1, 0] = (iProxy)3; A[1, 1] = (iProxy)4;
 
-            iProxyMxN R = (iProxy)5 - A;
+            iProxyMxN R = new iProxyMxN(in A, Allocator.Temp);
+            iProxyComp.subInPlace((iProxy)5, R);
 
             AssertEqual(R[0, 0], (iProxy)4);
             AssertEqual(R[0, 1], (iProxy)3);
             AssertEqual(R[1, 0], (iProxy)2);
             AssertEqual(R[1, 1], (iProxy)1);
-
-            arena.Dispose();
         }
 
         void AssertEqual(iProxy got, iProxy expected)

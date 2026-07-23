@@ -41,8 +41,7 @@ public class shortClampTests
 
         void ClampVector()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var v = arena.shortVec(6, 0);
+            var v = GenerateOP.shortVec(6, 0);
             v[0] = (short)(-5); v[1] = (short)(-2); v[2] = (short)0;
             v[3] = (short)2;    v[4] = (short)7;    v[5] = (short)2;
 
@@ -54,13 +53,11 @@ public class shortClampTests
             Assert.IsTrue(v[3] == (short)2);
             Assert.IsTrue(v[4] == (short)5);
             Assert.IsTrue(v[5] == (short)2);
-            arena.Dispose();
         }
 
         void ClampMatrix()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.shortMat(2, 2, 0);
+            var A = GenerateOP.shortMat(2, 2, 0);
             A[0, 0] = (short)(-10); A[0, 1] = (short)3;
             A[1, 0] = (short)5;     A[1, 1] = (short)20;
 
@@ -70,17 +67,14 @@ public class shortClampTests
             Assert.IsTrue(A[0, 1] == (short)3);
             Assert.IsTrue(A[1, 0] == (short)5);
             Assert.IsTrue(A[1, 1] == (short)10);
-            arena.Dispose();
         }
 
         void ClampNoOpInRange()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var v = arena.shortVec(4, 3); // all 3, inside [0,5]
+            var v = GenerateOP.shortVec(4, 3); // all 3, inside [0,5]
             shortComp.clampInPlace(v, (short)0, (short)5);
             for (int i = 0; i < 4; i++)
                 Assert.IsTrue(v[i] == (short)3);
-            arena.Dispose();
         }
     }
 
@@ -96,10 +90,8 @@ public class shortClampTests
     [Test]
     public void ClampLoGreaterThanHiThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var v = arena.shortVec(3, 0);
+        var v = new shortN(3, Allocator.Temp);
         v[0] = (short)(-4); v[1] = (short)0; v[2] = (short)9;
         Assert.Throws<ArgumentException>(() => shortComp.clampInPlace(v, (short)6, (short)(-1)));
-        arena.Dispose();
     }
 }

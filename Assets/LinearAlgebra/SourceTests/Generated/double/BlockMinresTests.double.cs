@@ -55,10 +55,10 @@ public class doubleBlockMinresTests
         // disks) -- indefinite by construction, but without the near-zero eigenvalues an unshifted
         // random symmetric matrix could produce (which would make a residual-tolerance solve and a
         // tight X-comparison disagree for reasons having nothing to do with solver correctness).
-        static doubleMxN BuildDenseSymIndefinite(ref Arena arena, int dim, uint seed)
+        static doubleMxN BuildDenseSymIndefinite(int dim, uint seed)
         {
-            var M = arena.doubleRandomMat(dim, dim, (double)(-1f), (double)1f, seed);
-            var A = arena.doubleMat(dim, dim);
+            var M = GenerateOP.doubleRandomMat(dim, dim, (double)(-1f), (double)1f, seed, Allocator.Temp);
+            var A = new doubleMxN(dim, dim, Allocator.Temp);
             for (int r = 0; r < dim; r++)
                 for (int c = 0; c < dim; c++)
                     A[r, c] = (double)0.5 * (M[r, c] + M[c, r]);
@@ -67,9 +67,9 @@ public class doubleBlockMinresTests
             return A;
         }
 
-        static doubleN Row(ref Arena arena, in doubleMxN B, int j, int n)
+        static doubleN Row(in doubleMxN B, int j, int n)
         {
-            var v = arena.doubleVec(n);
+            var v = new doubleN(n, Allocator.Temp);
             for (int c = 0; c < n; c++) v[c] = B[j, c];
             return v;
         }
@@ -78,42 +78,36 @@ public class doubleBlockMinresTests
         // bminres must trace scalar minres's X to round-off on the same single-column system.
         void MatchesScalarAtS1()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 20, s = 1;
-            var A = BuildDenseSymIndefinite(ref arena, n, 91001u);
-            var B = arena.doubleRandomMat(s, n, (double)(-1f), (double)1f, 91002u);
+            var A = BuildDenseSymIndefinite(n, 91001u);
+            var B = GenerateOP.doubleRandomMat(s, n, (double)(-1f), (double)1f, 91002u, Allocator.Temp);
             int maxIter = 8 * n;
             double tol = Consts.doubleSqrtEps;
 
-            var X = arena.doubleMat(s, n);
+            var X = new doubleMxN(s, n, Allocator.Temp);
             var infoBlock = Krylov.bminres(in A, in B, ref X, maxIter, tol);
 
-            var b = Row(ref arena, in B, 0, n);
-            var x = arena.doubleVec(n);
+            var b = Row(in B, 0, n);
+            var x = new doubleN(n, Allocator.Temp);
             var infoScalar = Krylov.minres(in A, in b, ref x, maxIter, tol);
 
             Assert.IsTrue(infoBlock.Solved);
             Assert.IsTrue(infoScalar.Solved);
             for (int c = 0; c < n; c++)
                 Assert.IsTrue(math.abs((double)X[0, c] - (double)x[c]) <= Tol() * (1.0 + math.abs((double)x[c])));
-
-            arena.Dispose();
         }
 
         // Each column of the block solution matches an independent scalar minres solve of that
         // column, and every column reached tolerance.
         void MatchesScalarMinresPerColumn()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 20, s = 4;
-            var A = BuildDenseSymIndefinite(ref arena, n, 92001u);
-            var B = arena.doubleRandomMat(s, n, (double)(-1f), (double)1f, 92002u);
+            var A = BuildDenseSymIndefinite(n, 92001u);
+            var B = GenerateOP.doubleRandomMat(s, n, (double)(-1f), (double)1f, 92002u, Allocator.Temp);
             int maxIter = 8 * n;
             double tol = Consts.doubleSqrtEps;
 
-            var X = arena.doubleMat(s, n);
+            var X = new doubleMxN(s, n, Allocator.Temp);
             var info = Krylov.bminres(in A, in B, ref X, maxIter, tol);
 
             Assert.IsTrue(info.Solved);
@@ -122,39 +116,33 @@ public class doubleBlockMinresTests
 
             for (int j = 0; j < s; j++)
             {
-                var bj = Row(ref arena, in B, j, n);
-                var xj = arena.doubleVec(n);
+                var bj = Row(in B, j, n);
+                var xj = new doubleN(n, Allocator.Temp);
                 Assert.IsTrue(Krylov.minres(in A, in bj, ref xj, maxIter, tol));
 
                 for (int c = 0; c < n; c++)
                     Assert.IsTrue(math.abs((double)X[j, c] - (double)xj[c]) <= Tol() * (1.0 + math.abs((double)xj[c])));
             }
-
-            arena.Dispose();
         }
 
         // Independent of the scalar solver: pick a KNOWN block solution Xk, form B = A Xk (via the
         // operator's own ApplyBlock), solve, and recover Xk, on a symmetric INDEFINITE A.
         void KnownSolutionRecovered()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 20, s = 5;
-            var A = BuildDenseSymIndefinite(ref arena, n, 93001u);
-            var Xk = arena.doubleRandomMat(s, n, (double)(-1f), (double)1f, 93002u);
+            var A = BuildDenseSymIndefinite(n, 93001u);
+            var Xk = GenerateOP.doubleRandomMat(s, n, (double)(-1f), (double)1f, 93002u, Allocator.Temp);
 
-            var B = arena.doubleMat(s, n);
+            var B = new doubleMxN(s, n, Allocator.Temp);
             new doubleDenseOperator(in A).ApplyBlock(in Xk, ref B, s);
 
-            var X = arena.doubleMat(s, n);
+            var X = new doubleMxN(s, n, Allocator.Temp);
             var info = Krylov.bminres(in A, in B, ref X, 8 * n, Consts.doubleSqrtEps);
             Assert.IsTrue(info.Solved);
 
             for (int j = 0; j < s; j++)
                 for (int c = 0; c < n; c++)
                     Assert.IsTrue(math.abs((double)X[j, c] - (double)Xk[j, c]) <= Tol() * (1.0 + math.abs((double)Xk[j, c])));
-
-            arena.Dispose();
         }
 
         // The block solve converges in <= the worst single-column scalar iteration count (the block
@@ -163,66 +151,60 @@ public class doubleBlockMinresTests
         // forces a deflation is a separate, deferred robustness question (see OP/DEVLOG.md).
         void BlockAdvantageIterations()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 20, s = 5;
-            var A = BuildDenseSymIndefinite(ref arena, n, 94001u);
-            var B = arena.doubleRandomMat(s, n, (double)(-1f), (double)1f, 94002u);
+            var A = BuildDenseSymIndefinite(n, 94001u);
+            var B = GenerateOP.doubleRandomMat(s, n, (double)(-1f), (double)1f, 94002u, Allocator.Temp);
             double tol = Consts.doubleSqrtEps;
             int budget = 8 * n;
 
-            var X = arena.doubleMat(s, n);
+            var X = new doubleMxN(s, n, Allocator.Temp);
             var blockInfo = Krylov.bminres(in A, in B, ref X, budget, tol);
             Assert.IsTrue(blockInfo.Solved);
 
             int worstScalar = 0;
             for (int j = 0; j < s; j++)
             {
-                var bj = Row(ref arena, in B, j, n);
-                var xj = arena.doubleVec(n);
+                var bj = Row(in B, j, n);
+                var xj = new doubleN(n, Allocator.Temp);
                 var si = Krylov.minres(in A, in bj, ref xj, budget, tol);
                 Assert.IsTrue(si.Solved);
                 if (si.iterations > worstScalar) worstScalar = si.iterations;
             }
 
             Assert.IsTrue(blockInfo.iterations <= worstScalar);
-
-            arena.Dispose();
         }
 
         // bminres<TOp, doubleIdentityPreconditioner> (explicit identity) must be BIT-IDENTICAL to the
         // unpreconditioned bminres<TOp> overload on the same fixed-seed system.
         void IdentityFoldBitIdentical()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 16, s = 3;
-            var A = BuildDenseSymIndefinite(ref arena, n, 97001u);
-            var B = arena.doubleRandomMat(s, n, (double)(-1f), (double)1f, 97002u);
+            var A = BuildDenseSymIndefinite(n, 97001u);
+            var B = GenerateOP.doubleRandomMat(s, n, (double)(-1f), (double)1f, 97002u, Allocator.Temp);
             int maxIter = 8 * n;
             double tol = Consts.doubleSqrtEps;
 
             var opA = new doubleDenseOperator(in A);
 
-            var X1 = arena.doubleMat(s, n);
-            var Vprev1 = arena.doubleMat(s, n);
-            var Vcur1  = arena.doubleMat(s, n);
-            var Wk1    = arena.doubleMat(s, n);
-            var Wb1    = arena.doubleMat(s, n);
-            var W1a1   = arena.doubleMat(s, n);
-            var W2a1   = arena.doubleMat(s, n);
-            var Z1     = arena.doubleMat(s, n);
+            var X1 = new doubleMxN(s, n, Allocator.Temp);
+            var Vprev1 = new doubleMxN(s, n, Allocator.Temp);
+            var Vcur1  = new doubleMxN(s, n, Allocator.Temp);
+            var Wk1    = new doubleMxN(s, n, Allocator.Temp);
+            var Wb1    = new doubleMxN(s, n, Allocator.Temp);
+            var W1a1   = new doubleMxN(s, n, Allocator.Temp);
+            var W2a1   = new doubleMxN(s, n, Allocator.Temp);
+            var Z1     = new doubleMxN(s, n, Allocator.Temp);
             var info1 = Krylov.bminres<doubleDenseOperator, doubleIdentityPreconditioner>(
                 in opA, default(doubleIdentityPreconditioner), in B, ref X1,
                 ref Vprev1, ref Vcur1, ref Wk1, ref Wb1, ref W1a1, ref W2a1, ref Z1, maxIter, tol);
 
-            var X2 = arena.doubleMat(s, n);
-            var Vprev2 = arena.doubleMat(s, n);
-            var Vcur2  = arena.doubleMat(s, n);
-            var Wk2    = arena.doubleMat(s, n);
-            var Wb2    = arena.doubleMat(s, n);
-            var W1a2   = arena.doubleMat(s, n);
-            var W2a2   = arena.doubleMat(s, n);
+            var X2 = new doubleMxN(s, n, Allocator.Temp);
+            var Vprev2 = new doubleMxN(s, n, Allocator.Temp);
+            var Vcur2  = new doubleMxN(s, n, Allocator.Temp);
+            var Wk2    = new doubleMxN(s, n, Allocator.Temp);
+            var Wb2    = new doubleMxN(s, n, Allocator.Temp);
+            var W1a2   = new doubleMxN(s, n, Allocator.Temp);
+            var W2a2   = new doubleMxN(s, n, Allocator.Temp);
             var info2 = Krylov.bminres<doubleDenseOperator>(
                 in opA, in B, ref X2, ref Vprev2, ref Vcur2, ref Wk2, ref Wb2, ref W1a2, ref W2a2, maxIter, tol);
 
@@ -231,8 +213,6 @@ public class doubleBlockMinresTests
             for (int i = 0; i < s; i++)
                 for (int c = 0; c < n; c++)
                     Assert.IsTrue(X1[i, c] == X2[i, c]);
-
-            arena.Dispose();
         }
 
         // The B==0 early-out is keyed on B being genuinely zero, not on tol*tol*||B[j]||^2 == 0 (also
@@ -243,17 +223,15 @@ public class doubleBlockMinresTests
         // genuinely converge (true residual small) or run out to MaxIterations/Breakdown.
         void ZeroTolShortcutOnlyFiresOnGenuineZeroB()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 12, s = 3;
-            var A = BuildDenseSymIndefinite(ref arena, n, 95001u);
+            var A = BuildDenseSymIndefinite(n, 95001u);
             var opA = new doubleDenseOperator(in A);
-            var Bnz = arena.doubleRandomMat(s, n, (double)(-1f), (double)1f, 95002u);
-            var Bz  = arena.doubleMat(s, n);   // zeroed by allocation
+            var Bnz = GenerateOP.doubleRandomMat(s, n, (double)(-1f), (double)1f, 95002u, Allocator.Temp);
+            var Bz  = new doubleMxN(s, n, Allocator.Temp);   // zeroed by allocation
 
             // (tol==0, B==0): shortcut must still fire -- exact X=0, zero iterations.
             {
-                var X = arena.doubleMat(s, n);
+                var X = new doubleMxN(s, n, Allocator.Temp);
                 var info = Krylov.bminres(in A, in Bz, ref X, 8 * n, (double)0);
                 Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
                 Assert.IsTrue(info.iterations == 0);
@@ -264,7 +242,7 @@ public class doubleBlockMinresTests
 
             // (tol>0, B==0): shortcut must still fire -- exact X=0, zero iterations.
             {
-                var X = arena.doubleMat(s, n);
+                var X = new doubleMxN(s, n, Allocator.Temp);
                 var info = Krylov.bminres(in A, in Bz, ref X, 8 * n, Consts.doubleSqrtEps);
                 Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
                 Assert.IsTrue(info.iterations == 0);
@@ -275,7 +253,7 @@ public class doubleBlockMinresTests
 
             // (tol==0, B nonzero): THE BUG -- must not silently report Converged with X==B.
             {
-                var X = arena.doubleMat(s, n);
+                var X = new doubleMxN(s, n, Allocator.Temp);
                 var info = Krylov.bminres(in A, in Bnz, ref X, 8 * n, (double)0);
 
                 bool xEqualsB = true;
@@ -286,7 +264,7 @@ public class doubleBlockMinresTests
 
                 if (info.status == IterativeSolveStatus.Converged)
                 {
-                    var AX = arena.doubleMat(s, n);
+                    var AX = new doubleMxN(s, n, Allocator.Temp);
                     opA.ApplyBlock(in X, ref AX, s);
                     double maxResSq = (double)0;
                     for (int j = 0; j < s; j++)
@@ -305,12 +283,10 @@ public class doubleBlockMinresTests
 
             // (tol>0, B nonzero): ordinary path, unaffected -- must converge normally.
             {
-                var X = arena.doubleMat(s, n);
+                var X = new doubleMxN(s, n, Allocator.Temp);
                 var info = Krylov.bminres(in A, in Bnz, ref X, 8 * n, Consts.doubleSqrtEps);
                 Assert.IsTrue(info.Solved);
             }
-
-            arena.Dispose();
         }
 
         // ---- BuildOmega's Gamma singularity check was an ABSOLUTE threshold (scale-dependent): a
@@ -319,25 +295,23 @@ public class doubleBlockMinresTests
         // as its O(1) counterpart. ----
         void SmallScaleWellConditioned()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 4, s = 2;
             double c = 1e-15;
-            var Abase = BuildDenseSymIndefinite(ref arena, n, 98001u);
-            var A = arena.doubleMat(n, n);
+            var Abase = BuildDenseSymIndefinite(n, 98001u);
+            var A = new doubleMxN(n, n, Allocator.Temp);
             for (int r = 0; r < n; r++)
                 for (int cc = 0; cc < n; cc++)
                     A[r, cc] = Abase[r, cc] * c;
-            var B = arena.doubleRandomMat(s, n, (double)(-1f), (double)1f, 98002u);
+            var B = GenerateOP.doubleRandomMat(s, n, (double)(-1f), (double)1f, 98002u, Allocator.Temp);
             int maxIter = 8 * n;
             double tol = Consts.doubleSqrtEps;
 
-            var X = arena.doubleMat(s, n);
+            var X = new doubleMxN(s, n, Allocator.Temp);
             var info = Krylov.bminres(in A, in B, ref X, maxIter, tol);
 
             Assert.IsTrue(info.Solved);
 
-            var AX = arena.doubleMat(s, n);
+            var AX = new doubleMxN(s, n, Allocator.Temp);
             new doubleDenseOperator(in A).ApplyBlock(in X, ref AX, s);
             double num = (double)0, den = (double)0;
             for (int j = 0; j < s; j++)
@@ -349,8 +323,6 @@ public class doubleBlockMinresTests
                 }
             double relRes = math.sqrt(num) / math.sqrt(math.max(den, (double)1e-30));
             Assert.IsTrue(relRes <= Tol());
-
-            arena.Dispose();
         }
     }
 

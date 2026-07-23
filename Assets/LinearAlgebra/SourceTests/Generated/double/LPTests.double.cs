@@ -169,13 +169,12 @@ public class doubleLPTests
         // --- min -2x-3y  s.t.  x+y<=4, x+3y<=6, x,y>=0  ->  optimal vertex (3,1), obj -9 ---
         void LpMax2Var()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(2, 2);
+            var A = new doubleMxN(2, 2, Allocator.Temp);
             A[0, 0] = (double)1; A[0, 1] = (double)1;
             A[1, 0] = (double)1; A[1, 1] = (double)3;
-            var b = arena.doubleVec(2); b[0] = (double)4; b[1] = (double)6;
-            var c = arena.doubleVec(2); c[0] = (double)(-2); c[1] = (double)(-3);
-            var x = arena.doubleVec(2);
+            var b = new doubleN(2, Allocator.Temp); b[0] = (double)4; b[1] = (double)6;
+            var c = new doubleN(2, Allocator.Temp); c[0] = (double)(-2); c[1] = (double)(-3);
+            var x = new doubleN(2, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(2, Allocator.Temp);
             senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.LessEqual;
 
@@ -186,17 +185,16 @@ public class doubleLPTests
             AssertClose(x[1], (double)1, (double)1e-3);
             AssertCloseD(obj, -9.0, 1e-3);
 
-            senses.Dispose(); arena.Dispose();
+            senses.Dispose();
         }
 
         // --- min 2x+y  s.t.  x+y=2, x,y>=0  ->  (0,2), obj 2 (exercises equality -> phase-1 artificial) ---
         void LpEquality()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(1, 2); A[0, 0] = (double)1; A[0, 1] = (double)1;
-            var b = arena.doubleVec(1); b[0] = (double)2;
-            var c = arena.doubleVec(2); c[0] = (double)2; c[1] = (double)1;
-            var x = arena.doubleVec(2);
+            var A = new doubleMxN(1, 2, Allocator.Temp); A[0, 0] = (double)1; A[0, 1] = (double)1;
+            var b = new doubleN(1, Allocator.Temp); b[0] = (double)2;
+            var c = new doubleN(2, Allocator.Temp); c[0] = (double)2; c[1] = (double)1;
+            var x = new doubleN(2, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(1, Allocator.Temp);
             senses[0] = ConstraintSense.Equal;
 
@@ -207,17 +205,16 @@ public class doubleLPTests
             AssertClose(x[1], (double)2, (double)1e-3);
             AssertCloseD(obj, 2.0, 1e-3);
 
-            senses.Dispose(); arena.Dispose();
+            senses.Dispose();
         }
 
         // --- min x+2y  s.t.  x+y>=3, x,y>=0  ->  (3,0), obj 3 (exercises surplus + artificial) ---
         void LpGreaterEqual()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(1, 2); A[0, 0] = (double)1; A[0, 1] = (double)1;
-            var b = arena.doubleVec(1); b[0] = (double)3;
-            var c = arena.doubleVec(2); c[0] = (double)1; c[1] = (double)2;
-            var x = arena.doubleVec(2);
+            var A = new doubleMxN(1, 2, Allocator.Temp); A[0, 0] = (double)1; A[0, 1] = (double)1;
+            var b = new doubleN(1, Allocator.Temp); b[0] = (double)3;
+            var c = new doubleN(2, Allocator.Temp); c[0] = (double)1; c[1] = (double)2;
+            var x = new doubleN(2, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(1, Allocator.Temp);
             senses[0] = ConstraintSense.GreaterEqual;
 
@@ -228,17 +225,16 @@ public class doubleLPTests
             AssertClose(x[1], (double)0, (double)1e-3);
             AssertCloseD(obj, 3.0, 1e-3);
 
-            senses.Dispose(); arena.Dispose();
+            senses.Dispose();
         }
 
         // --- min x+y  s.t.  -x-y <= -2 (negative rhs -> internal row negation to x+y>=2) -> obj 2 ---
         void LpNegativeRhs()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(1, 2); A[0, 0] = (double)(-1); A[0, 1] = (double)(-1);
-            var b = arena.doubleVec(1); b[0] = (double)(-2);
-            var c = arena.doubleVec(2); c[0] = (double)1; c[1] = (double)1;
-            var x = arena.doubleVec(2);
+            var A = new doubleMxN(1, 2, Allocator.Temp); A[0, 0] = (double)(-1); A[0, 1] = (double)(-1);
+            var b = new doubleN(1, Allocator.Temp); b[0] = (double)(-2);
+            var c = new doubleN(2, Allocator.Temp); c[0] = (double)1; c[1] = (double)1;
+            var x = new doubleN(2, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(1, Allocator.Temp);
             senses[0] = ConstraintSense.LessEqual;
 
@@ -249,19 +245,18 @@ public class doubleLPTests
             AssertCloseD((double)x[0] + (double)x[1], 2.0, 1e-3);            // x+y = 2 (any vertex on the edge)
             AssertCloseD(obj, 2.0, 1e-3);
 
-            senses.Dispose(); arena.Dispose();
+            senses.Dispose();
         }
 
         // --- x+y<=1 AND x+y>=3: empty feasible region -> Infeasible ---
         void LpInfeasible()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(2, 2);
+            var A = new doubleMxN(2, 2, Allocator.Temp);
             A[0, 0] = (double)1; A[0, 1] = (double)1;
             A[1, 0] = (double)1; A[1, 1] = (double)1;
-            var b = arena.doubleVec(2); b[0] = (double)1; b[1] = (double)3;
-            var c = arena.doubleVec(2); c[0] = (double)1; c[1] = (double)1;
-            var x = arena.doubleVec(2);
+            var b = new doubleN(2, Allocator.Temp); b[0] = (double)1; b[1] = (double)3;
+            var c = new doubleN(2, Allocator.Temp); c[0] = (double)1; c[1] = (double)1;
+            var x = new doubleN(2, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(2, Allocator.Temp);
             senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.GreaterEqual;
 
@@ -269,17 +264,16 @@ public class doubleLPTests
 
             AssertTrue(info.status == LPStatus.Infeasible);
 
-            senses.Dispose(); arena.Dispose();
+            senses.Dispose();
         }
 
         // --- min -x  s.t.  x-y<=1, x,y>=0: x grows without bound (y=x-1) -> Unbounded ---
         void LpUnbounded()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(1, 2); A[0, 0] = (double)1; A[0, 1] = (double)(-1);
-            var b = arena.doubleVec(1); b[0] = (double)1;
-            var c = arena.doubleVec(2); c[0] = (double)(-1); c[1] = (double)0;
-            var x = arena.doubleVec(2);
+            var A = new doubleMxN(1, 2, Allocator.Temp); A[0, 0] = (double)1; A[0, 1] = (double)(-1);
+            var b = new doubleN(1, Allocator.Temp); b[0] = (double)1;
+            var c = new doubleN(2, Allocator.Temp); c[0] = (double)(-1); c[1] = (double)0;
+            var x = new doubleN(2, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(1, Allocator.Temp);
             senses[0] = ConstraintSense.LessEqual;
 
@@ -287,15 +281,15 @@ public class doubleLPTests
 
             AssertTrue(info.status == LPStatus.Unbounded);
 
-            senses.Dispose(); arena.Dispose();
+            senses.Dispose();
         }
 
         // Build the 2-column design A=[1, t] and observations b for the LAD/IRLS fit tests.
-        static void BuildLine(ref Arena arena, out doubleMxN A, out doubleN b, bool outlier)
+        static void BuildLine(out doubleMxN A, out doubleN b, bool outlier)
         {
             int m = outlier ? 5 : 4;
-            A = arena.doubleMat(m, 2);
-            b = arena.doubleVec(m);
+            A = new doubleMxN(m, 2, Allocator.Temp);
+            b = new doubleN(m, Allocator.Temp);
             if (!outlier)
             {
                 // exact line b = 1 + 2t at t = 0,1,2,3
@@ -312,9 +306,8 @@ public class doubleLPTests
         // --- LAD on an exactly-collinear set: residual 0, coefficients (1,2) ---
         void LadExactFit()
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildLine(ref arena, out var A, out var b, false);
-            var x = arena.doubleVec(2);
+            BuildLine(out var A, out var b, false);
+            var x = new doubleN(2, Allocator.Temp);
 
             var info = LP.lad(in A, in b, ref x, out double obj);
 
@@ -322,17 +315,14 @@ public class doubleLPTests
             AssertClose(x[0], (double)1, (double)1e-2);
             AssertClose(x[1], (double)2, (double)1e-2);
             AssertCloseD(obj, 0.0, 1e-2);
-
-            arena.Dispose();
         }
 
         // --- LAD with 4 collinear points + 1 gross outlier: robustly ignores it ->
         //     line b=t (coeffs 0,1), L1 residual = |10-2| = 8 ---
         void LadOutlier()
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildLine(ref arena, out var A, out var b, true);
-            var x = arena.doubleVec(2);
+            BuildLine(out var A, out var b, true);
+            var x = new doubleN(2, Allocator.Temp);
 
             var info = LP.lad(in A, in b, ref x, out double obj);
 
@@ -340,16 +330,13 @@ public class doubleLPTests
             AssertClose(x[0], (double)0, (double)1e-2);
             AssertClose(x[1], (double)1, (double)1e-2);
             AssertCloseD(obj, 8.0, 1e-2);
-
-            arena.Dispose();
         }
 
         // --- IRLS on the exact line: approximate but should nail a zero-residual fit ---
         void IRLSExactFit()
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildLine(ref arena, out var A, out var b, false);
-            var x = arena.doubleVec(2);   // zero start
+            BuildLine(out var A, out var b, false);
+            var x = new doubleN(2, Allocator.Temp);   // zero start
 
             var info = Optimize.ladIRLS(in A, in b, ref x);
 
@@ -357,16 +344,13 @@ public class doubleLPTests
             AssertClose(x[0], (double)1, (double)1e-2);
             AssertClose(x[1], (double)2, (double)1e-2);
             AssertCloseD(info.objective, 0.0, 1e-2);
-
-            arena.Dispose();
         }
 
         // --- IRLS on the outlier set: down-weights the outlier, approaches the LAD line (0,1) ---
         void IRLSOutlier()
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildLine(ref arena, out var A, out var b, true);
-            var x = arena.doubleVec(2);
+            BuildLine(out var A, out var b, true);
+            var x = new doubleN(2, Allocator.Temp);
 
             var info = Optimize.ladIRLS(in A, in b, ref x);
 
@@ -374,21 +358,18 @@ public class doubleLPTests
             AssertClose(x[0], (double)0, (double)5e-2);
             AssertClose(x[1], (double)1, (double)5e-2);
             AssertCloseD(info.objective, 8.0, 2e-1);
-
-            arena.Dispose();
         }
 
         // ==== interior-point backend: same optima as simplex, looser (interior) tolerances ====
 
         void IpMax2Var()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(2, 2);
+            var A = new doubleMxN(2, 2, Allocator.Temp);
             A[0, 0] = (double)1; A[0, 1] = (double)1;
             A[1, 0] = (double)1; A[1, 1] = (double)3;
-            var b = arena.doubleVec(2); b[0] = (double)4; b[1] = (double)6;
-            var c = arena.doubleVec(2); c[0] = (double)(-2); c[1] = (double)(-3);
-            var x = arena.doubleVec(2);
+            var b = new doubleN(2, Allocator.Temp); b[0] = (double)4; b[1] = (double)6;
+            var c = new doubleN(2, Allocator.Temp); c[0] = (double)(-2); c[1] = (double)(-3);
+            var x = new doubleN(2, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(2, Allocator.Temp);
             senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.LessEqual;
 
@@ -399,16 +380,15 @@ public class doubleLPTests
             AssertClose(x[1], (double)1, (double)3e-2);
             AssertCloseD(obj, -9.0, 3e-2);
 
-            senses.Dispose(); arena.Dispose();
+            senses.Dispose();
         }
 
         void IpEquality()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(1, 2); A[0, 0] = (double)1; A[0, 1] = (double)1;
-            var b = arena.doubleVec(1); b[0] = (double)2;
-            var c = arena.doubleVec(2); c[0] = (double)2; c[1] = (double)1;
-            var x = arena.doubleVec(2);
+            var A = new doubleMxN(1, 2, Allocator.Temp); A[0, 0] = (double)1; A[0, 1] = (double)1;
+            var b = new doubleN(1, Allocator.Temp); b[0] = (double)2;
+            var c = new doubleN(2, Allocator.Temp); c[0] = (double)2; c[1] = (double)1;
+            var x = new doubleN(2, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(1, Allocator.Temp);
             senses[0] = ConstraintSense.Equal;
 
@@ -419,16 +399,15 @@ public class doubleLPTests
             AssertClose(x[1], (double)2, (double)3e-2);
             AssertCloseD(obj, 2.0, 3e-2);
 
-            senses.Dispose(); arena.Dispose();
+            senses.Dispose();
         }
 
         void IpGreaterEqual()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(1, 2); A[0, 0] = (double)1; A[0, 1] = (double)1;
-            var b = arena.doubleVec(1); b[0] = (double)3;
-            var c = arena.doubleVec(2); c[0] = (double)1; c[1] = (double)2;
-            var x = arena.doubleVec(2);
+            var A = new doubleMxN(1, 2, Allocator.Temp); A[0, 0] = (double)1; A[0, 1] = (double)1;
+            var b = new doubleN(1, Allocator.Temp); b[0] = (double)3;
+            var c = new doubleN(2, Allocator.Temp); c[0] = (double)1; c[1] = (double)2;
+            var x = new doubleN(2, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(1, Allocator.Temp);
             senses[0] = ConstraintSense.GreaterEqual;
 
@@ -439,14 +418,13 @@ public class doubleLPTests
             AssertClose(x[1], (double)0, (double)3e-2);
             AssertCloseD(obj, 3.0, 3e-2);
 
-            senses.Dispose(); arena.Dispose();
+            senses.Dispose();
         }
 
         void IpLadExactFit()
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildLine(ref arena, out var A, out var b, false);
-            var x = arena.doubleVec(2);
+            BuildLine(out var A, out var b, false);
+            var x = new doubleN(2, Allocator.Temp);
 
             // LAD LPs are highly degenerate; interior point may stop just shy of the tight tolerance
             // while still landing on an accurate solution -- assert on the solution, not the status.
@@ -455,23 +433,18 @@ public class doubleLPTests
             AssertClose(x[0], (double)1, (double)5e-2);
             AssertClose(x[1], (double)2, (double)5e-2);
             AssertCloseD(obj, 0.0, 5e-2);
-
-            arena.Dispose();
         }
 
         void IpLadOutlier()
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildLine(ref arena, out var A, out var b, true);
-            var x = arena.doubleVec(2);
+            BuildLine(out var A, out var b, true);
+            var x = new doubleN(2, Allocator.Temp);
 
             var info = LP.lad(in A, in b, ref x, out double obj, LPMethod.InteriorPoint);
 
             AssertClose(x[0], (double)0, (double)5e-2);
             AssertClose(x[1], (double)1, (double)5e-2);
             AssertCloseD(obj, 8.0, 1e-1);
-
-            arena.Dispose();
         }
 
         // ==== literature known-answer vectors ====
@@ -481,14 +454,13 @@ public class doubleLPTests
         // Optimal vertex (2, 6), Z = 36. Solved as a minimization of -3x1 - 5x2 (obj -36).
         void WyndorGlass()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(3, 2);
+            var A = new doubleMxN(3, 2, Allocator.Temp);
             A[0, 0] = (double)1; A[0, 1] = (double)0;
             A[1, 0] = (double)0; A[1, 1] = (double)2;
             A[2, 0] = (double)3; A[2, 1] = (double)2;
-            var b = arena.doubleVec(3); b[0] = (double)4; b[1] = (double)12; b[2] = (double)18;
-            var c = arena.doubleVec(2); c[0] = (double)(-3); c[1] = (double)(-5);
-            var x = arena.doubleVec(2);
+            var b = new doubleN(3, Allocator.Temp); b[0] = (double)4; b[1] = (double)12; b[2] = (double)18;
+            var c = new doubleN(2, Allocator.Temp); c[0] = (double)(-3); c[1] = (double)(-5);
+            var x = new doubleN(2, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(3, Allocator.Temp);
             senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.LessEqual; senses[2] = ConstraintSense.LessEqual;
 
@@ -499,7 +471,7 @@ public class doubleLPTests
             AssertClose(x[1], (double)6, (double)1e-3);
             AssertCloseD(obj, -36.0, 1e-3);
 
-            senses.Dispose(); arena.Dispose();
+            senses.Dispose();
         }
 
         // Brownlee's stack-loss plant data (R `stackloss`, 21 obs). LAD (L1) regression coefficients,
@@ -508,9 +480,8 @@ public class doubleLPTests
         // vertex (hence these coefficients) is exact -- float reaches it comfortably within 5e-2.
         void LadStackloss()
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildStackloss(ref arena, out var A, out var b);
-            var x = arena.doubleVec(4);
+            BuildStackloss(out var A, out var b);
+            var x = new doubleN(4, Allocator.Temp);
 
             var info = LP.lad(in A, in b, ref x, out double obj);
 
@@ -519,15 +490,13 @@ public class doubleLPTests
             AssertClose(x[1], (double)0.83188406, (double)5e-2);       // Air.Flow
             AssertClose(x[2], (double)0.57391304, (double)5e-2);       // Water.Temp
             AssertClose(x[3], (double)(-0.06086957), (double)5e-2);    // Acid.Conc.
-
-            arena.Dispose();
         }
 
         // A = [1, AirFlow, WaterTemp, AcidConc], b = stack.loss. All 21 rows are integer-valued.
-        static void BuildStackloss(ref Arena arena, out doubleMxN A, out doubleN b)
+        static void BuildStackloss(out doubleMxN A, out doubleN b)
         {
-            A = arena.doubleMat(21, 4);
-            b = arena.doubleVec(21);
+            A = new doubleMxN(21, 4, Allocator.Temp);
+            b = new doubleN(21, Allocator.Temp);
             SetObs(A, b, 0, 80, 27, 89, 42); SetObs(A, b, 1, 80, 27, 88, 37); SetObs(A, b, 2, 75, 25, 90, 37);
             SetObs(A, b, 3, 62, 24, 87, 28); SetObs(A, b, 4, 62, 22, 87, 18); SetObs(A, b, 5, 62, 23, 87, 18);
             SetObs(A, b, 6, 62, 24, 93, 19); SetObs(A, b, 7, 62, 24, 93, 20); SetObs(A, b, 8, 58, 23, 87, 15);
@@ -547,49 +516,45 @@ public class doubleLPTests
 
         // Convert a dense matrix to BSR with 1×1 blocks (nonzeros only) -- exercises the sparse LAD
         // path (doubleLadOperator / matrix-free interior point) on data whose dense answer is known.
-        static doubleBSR BuildBSR1x1(ref Arena arena, in doubleMxN dense)
+        static doubleBSR BuildBSR1x1(in doubleMxN dense)
         {
             int m = dense.M_Rows, n = dense.N_Cols;
             int nnz = 0;
             for (int i = 0; i < m; i++) for (int j = 0; j < n; j++) if (dense[i, j] != (double)0) nnz++;
-            var builder = arena.doubleBSRBuilder(m, n, 1, 1, nnz);
+            var builder = new doubleBSRBuilder(m, n, 1, 1, Allocator.Temp, nnz);
             for (int i = 0; i < m; i++)
                 for (int j = 0; j < n; j++)
                     if (dense[i, j] != (double)0)
                     {
-                        var blk = arena.doubleMat(1, 1);
+                        var blk = new doubleMxN(1, 1, Allocator.Temp);
                         blk[0, 0] = dense[i, j];
                         builder.AddBlock(i, j, in blk);
                     }
-            return builder.ToBSR(ref arena);
+            return builder.ToBSR(Allocator.Temp);
         }
 
         // Sparse LAD on an exactly-collinear set: matrix-free interior point recovers (1,2), residual ~0.
         void SparseLadExactFit()
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildLine(ref arena, out var A, out var b, false);
-            var As = BuildBSR1x1(ref arena, in A);
-            var x = arena.doubleVec(2);
+            BuildLine(out var A, out var b, false);
+            var As = BuildBSR1x1(in A);
+            var x = new doubleN(2, Allocator.Temp);
 
             var info = LP.lad(in As, in b, ref x, out double obj);
 
             AssertClose(x[0], (double)1, (double)1e-1);
             AssertClose(x[1], (double)2, (double)1e-1);
             AssertCloseD(obj, 0.0, 1e-1);
-
-            arena.Dispose();
         }
 
         // The sparse (matrix-free interior-point) LAD must reach the SAME L1 optimum as the exact dense
         // LP.lad on the identical outlier-laden data -- objective and coefficients agree.
         void SparseVsDenseLad()
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildLine(ref arena, out var A, out var b, true);
-            var As = BuildBSR1x1(ref arena, in A);
-            var xd = arena.doubleVec(2);
-            var xs = arena.doubleVec(2);
+            BuildLine(out var A, out var b, true);
+            var As = BuildBSR1x1(in A);
+            var xd = new doubleN(2, Allocator.Temp);
+            var xs = new doubleN(2, Allocator.Temp);
 
             var infoD = LP.lad(in A, in b, ref xd, out double objD);     // dense, exact
             var infoS = LP.lad(in As, in b, ref xs, out double objS);    // sparse, matrix-free IP
@@ -598,18 +563,15 @@ public class doubleLPTests
             AssertCloseD(objS, objD, 0.08 * (1.0 + objD));
             AssertClose(xs[0], xd[0], (double)2e-1);
             AssertClose(xs[1], xd[1], (double)2e-1);
-
-            arena.Dispose();
         }
 
         // Sparse LAD on the real stack-loss data must match the dense LAD L1 residual.
         void SparseLadStackloss()
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildStackloss(ref arena, out var A, out var b);
-            var As = BuildBSR1x1(ref arena, in A);
-            var xd = arena.doubleVec(4);
-            var xs = arena.doubleVec(4);
+            BuildStackloss(out var A, out var b);
+            var As = BuildBSR1x1(in A);
+            var xd = new doubleN(4, Allocator.Temp);
+            var xs = new doubleN(4, Allocator.Temp);
 
             var infoD = LP.lad(in A, in b, ref xd, out double objD);
             var infoS = LP.lad(in As, in b, ref xs, out double objS);
@@ -629,8 +591,6 @@ public class doubleLPTests
                 AssertTrue(objS >= objD - 0.5);
                 AssertTrue(objS <= 3.0 * objD);
             }
-
-            arena.Dispose();
         }
 
         // ==== sparse (BSR) matrix-free interior-point general LP.solve (slack-augmented operator) ====
@@ -639,15 +599,14 @@ public class doubleLPTests
         // dense simplex -- exercises the slack-augmented operator (all-≤ inequalities).
         void SparseWyndorGlass()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(3, 2);
+            var A = new doubleMxN(3, 2, Allocator.Temp);
             A[0, 0] = (double)1; A[0, 1] = (double)0;
             A[1, 0] = (double)0; A[1, 1] = (double)2;
             A[2, 0] = (double)3; A[2, 1] = (double)2;
-            var b = arena.doubleVec(3); b[0] = (double)4; b[1] = (double)12; b[2] = (double)18;
-            var c = arena.doubleVec(2); c[0] = (double)(-3); c[1] = (double)(-5);
-            var As = BuildBSR1x1(ref arena, in A);
-            var x = arena.doubleVec(2);
+            var b = new doubleN(3, Allocator.Temp); b[0] = (double)4; b[1] = (double)12; b[2] = (double)18;
+            var c = new doubleN(2, Allocator.Temp); c[0] = (double)(-3); c[1] = (double)(-5);
+            var As = BuildBSR1x1(in A);
+            var x = new doubleN(2, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(3, Allocator.Temp);
             senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.LessEqual; senses[2] = ConstraintSense.LessEqual;
 
@@ -657,25 +616,24 @@ public class doubleLPTests
             AssertClose(x[1], (double)6, (double)2e-1);
             AssertCloseD(obj, -36.0, 0.05 * (1.0 + 36.0));
 
-            senses.Dispose(); arena.Dispose();
+            senses.Dispose();
         }
 
         // General sparse LP.solve (matrix-free interior point) must reach the SAME optimum as the dense
         // LP.solve on an identical LP with MIXED senses (<= and >=): min -x-2y s.t. x+y<=4, x+y>=1, y<=3.
         void SparseVsDenseLp()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(3, 2);
+            var A = new doubleMxN(3, 2, Allocator.Temp);
             A[0, 0] = (double)1; A[0, 1] = (double)1;   // x + y <= 4
             A[1, 0] = (double)1; A[1, 1] = (double)1;   // x + y >= 1
             A[2, 0] = (double)0; A[2, 1] = (double)1;   // y <= 3
-            var b = arena.doubleVec(3); b[0] = (double)4; b[1] = (double)1; b[2] = (double)3;
-            var c = arena.doubleVec(2); c[0] = (double)(-1); c[1] = (double)(-2);
+            var b = new doubleN(3, Allocator.Temp); b[0] = (double)4; b[1] = (double)1; b[2] = (double)3;
+            var c = new doubleN(2, Allocator.Temp); c[0] = (double)(-1); c[1] = (double)(-2);
             var senses = new NativeArray<ConstraintSense>(3, Allocator.Temp);
             senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.GreaterEqual; senses[2] = ConstraintSense.LessEqual;
-            var As = BuildBSR1x1(ref arena, in A);
-            var xd = arena.doubleVec(2);
-            var xs = arena.doubleVec(2);
+            var As = BuildBSR1x1(in A);
+            var xd = new doubleN(2, Allocator.Temp);
+            var xs = new doubleN(2, Allocator.Temp);
 
             var infoD = LP.solve(in A, in b, in c, in senses, ref xd, out double objD);   // dense simplex
             var infoS = LP.solve(in As, in b, in c, in senses, ref xs, out double objS);  // sparse IP
@@ -685,7 +643,7 @@ public class doubleLPTests
             AssertClose(xs[0], xd[0], (double)2e-1);
             AssertClose(xs[1], xd[1], (double)2e-1);
 
-            senses.Dispose(); arena.Dispose();
+            senses.Dispose();
         }
 
         // ==== LPMethod.RevisedSimplex (bounded-variable primal revised simplex) -- validated against
@@ -694,14 +652,13 @@ public class doubleLPTests
         // Wyndor Glass known-answer vertex, via the revised-simplex backend instead of the tableau.
         void RevisedWyndorGlass()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(3, 2);
+            var A = new doubleMxN(3, 2, Allocator.Temp);
             A[0, 0] = (double)1; A[0, 1] = (double)0;
             A[1, 0] = (double)0; A[1, 1] = (double)2;
             A[2, 0] = (double)3; A[2, 1] = (double)2;
-            var b = arena.doubleVec(3); b[0] = (double)4; b[1] = (double)12; b[2] = (double)18;
-            var c = arena.doubleVec(2); c[0] = (double)(-3); c[1] = (double)(-5);
-            var x = arena.doubleVec(2);
+            var b = new doubleN(3, Allocator.Temp); b[0] = (double)4; b[1] = (double)12; b[2] = (double)18;
+            var c = new doubleN(2, Allocator.Temp); c[0] = (double)(-3); c[1] = (double)(-5);
+            var x = new doubleN(2, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(3, Allocator.Temp);
             senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.LessEqual; senses[2] = ConstraintSense.LessEqual;
 
@@ -712,7 +669,7 @@ public class doubleLPTests
             AssertClose(x[1], (double)6, (double)1e-3);
             AssertCloseD(obj, -36.0, 1e-3);
 
-            senses.Dispose(); arena.Dispose();
+            senses.Dispose();
         }
 
         // Section-1-style random feasible LP (see LPBenchmark.double.cs): m = n/2, A in [0,1] (random,
@@ -723,20 +680,19 @@ public class doubleLPTests
         void RevisedVsSimplexRandom(int n)
         {
             int m = n / 2;
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11));
-            var x0 = arena.doubleRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7));
+            var A = GenerateOP.doubleRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11));
+            var x0 = GenerateOP.doubleRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7));
             var Ax0 = Blas.dot(A, x0);
-            var b = arena.doubleVec(m);
+            var b = new doubleN(m, Allocator.Temp);
             var rng = new Unity.Mathematics.Random((uint)(n * 1299709 + 3));
             for (int i = 0; i < m; i++) b[i] = Ax0[i] + rng.NextDouble((double)0.1, (double)1);
-            var c = arena.doubleRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5));
+            var c = GenerateOP.doubleRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5));
             var senses = new NativeArray<ConstraintSense>(m, Allocator.Temp);
             for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
 
-            var xS = arena.doubleVec(n);
+            var xS = new doubleN(n, Allocator.Temp);
             var infoS = LP.solve(in A, in b, in c, in senses, ref xS, out double objS, LPMethod.Simplex);
-            var xR = arena.doubleVec(n);
+            var xR = new doubleN(n, Allocator.Temp);
             var infoR = LP.solve(in A, in b, in c, in senses, ref xR, out double objR, LPMethod.RevisedSimplex);
 
             AssertTrue(infoS.status == LPStatus.Optimal);
@@ -745,7 +701,7 @@ public class doubleLPTests
             double relTol = 1e-6;
             AssertCloseD(objR, objS, relTol * (1.0 + math.abs(objS)));
 
-            senses.Dispose(); arena.Dispose();
+            senses.Dispose();
         }
 
         // Mixed-sense instance (<=, >=, <=) -- the >= row lacks a natural unit-column basis, forcing
@@ -754,14 +710,13 @@ public class doubleLPTests
         // larger coefficient exhausting its cap first: (x,y)=(1,3), obj -7.
         void RevisedMixedSense()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(3, 2);
+            var A = new doubleMxN(3, 2, Allocator.Temp);
             A[0, 0] = (double)1; A[0, 1] = (double)1;   // x + y <= 4
             A[1, 0] = (double)1; A[1, 1] = (double)1;   // x + y >= 1
             A[2, 0] = (double)0; A[2, 1] = (double)1;   // y <= 3
-            var b = arena.doubleVec(3); b[0] = (double)4; b[1] = (double)1; b[2] = (double)3;
-            var c = arena.doubleVec(2); c[0] = (double)(-1); c[1] = (double)(-2);
-            var x = arena.doubleVec(2);
+            var b = new doubleN(3, Allocator.Temp); b[0] = (double)4; b[1] = (double)1; b[2] = (double)3;
+            var c = new doubleN(2, Allocator.Temp); c[0] = (double)(-1); c[1] = (double)(-2);
+            var x = new doubleN(2, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(3, Allocator.Temp);
             senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.GreaterEqual; senses[2] = ConstraintSense.LessEqual;
 
@@ -772,7 +727,7 @@ public class doubleLPTests
             AssertClose(x[1], (double)3, (double)1e-3);
             AssertCloseD(obj, -7.0, 1e-3);
 
-            senses.Dispose(); arena.Dispose();
+            senses.Dispose();
         }
 
         // LP.lad via the revised-simplex backend must reach the SAME L1 residual as the tableau-simplex
@@ -780,10 +735,9 @@ public class doubleLPTests
         // outlier -> line b=t, L1 residual |10-2| = 8).
         void RevisedLad()
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildLine(ref arena, out var A, out var b, true);
-            var xS = arena.doubleVec(2);
-            var xR = arena.doubleVec(2);
+            BuildLine(out var A, out var b, true);
+            var xS = new doubleN(2, Allocator.Temp);
+            var xR = new doubleN(2, Allocator.Temp);
 
             var infoS = LP.lad(in A, in b, ref xS, out double objS, LPMethod.Simplex);
             var infoR = LP.lad(in A, in b, ref xR, out double objR, LPMethod.RevisedSimplex);
@@ -793,8 +747,6 @@ public class doubleLPTests
             AssertClose(xR[0], (double)0, (double)1e-2);
             AssertClose(xR[1], (double)1, (double)1e-2);
             AssertCloseD(objR, objS, 1e-2);
-
-            arena.Dispose();
         }
 
         // ==== LPMethod.DualSimplex (bounded-variable dual revised simplex) -- dual steepest edge +
@@ -804,14 +756,13 @@ public class doubleLPTests
         // Wyndor Glass known-answer vertex, via the dual-simplex backend.
         void DualWyndorGlass()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(3, 2);
+            var A = new doubleMxN(3, 2, Allocator.Temp);
             A[0, 0] = (double)1; A[0, 1] = (double)0;
             A[1, 0] = (double)0; A[1, 1] = (double)2;
             A[2, 0] = (double)3; A[2, 1] = (double)2;
-            var b = arena.doubleVec(3); b[0] = (double)4; b[1] = (double)12; b[2] = (double)18;
-            var c = arena.doubleVec(2); c[0] = (double)(-3); c[1] = (double)(-5);
-            var x = arena.doubleVec(2);
+            var b = new doubleN(3, Allocator.Temp); b[0] = (double)4; b[1] = (double)12; b[2] = (double)18;
+            var c = new doubleN(2, Allocator.Temp); c[0] = (double)(-3); c[1] = (double)(-5);
+            var x = new doubleN(2, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(3, Allocator.Temp);
             senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.LessEqual; senses[2] = ConstraintSense.LessEqual;
 
@@ -822,7 +773,7 @@ public class doubleLPTests
             AssertClose(x[1], (double)6, (double)1e-3);
             AssertCloseD(obj, -36.0, 1e-3);
 
-            senses.Dispose(); arena.Dispose();
+            senses.Dispose();
         }
 
         // Same Section-1-style random feasible LP family as RevisedVsSimplexRandom -- see that method's
@@ -832,20 +783,19 @@ public class doubleLPTests
         void DualVsSimplexRandom(int n)
         {
             int m = n / 2;
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11));
-            var x0 = arena.doubleRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7));
+            var A = GenerateOP.doubleRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11));
+            var x0 = GenerateOP.doubleRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7));
             var Ax0 = Blas.dot(A, x0);
-            var b = arena.doubleVec(m);
+            var b = new doubleN(m, Allocator.Temp);
             var rng = new Unity.Mathematics.Random((uint)(n * 1299709 + 3));
             for (int i = 0; i < m; i++) b[i] = Ax0[i] + rng.NextDouble((double)0.1, (double)1);
-            var c = arena.doubleRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5));
+            var c = GenerateOP.doubleRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5));
             var senses = new NativeArray<ConstraintSense>(m, Allocator.Temp);
             for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
 
-            var xS = arena.doubleVec(n);
+            var xS = new doubleN(n, Allocator.Temp);
             var infoS = LP.solve(in A, in b, in c, in senses, ref xS, out double objS, LPMethod.Simplex);
-            var xD = arena.doubleVec(n);
+            var xD = new doubleN(n, Allocator.Temp);
             var infoD = LP.solve(in A, in b, in c, in senses, ref xD, out double objD, LPMethod.DualSimplex);
 
             AssertTrue(infoS.status == LPStatus.Optimal);
@@ -854,7 +804,7 @@ public class doubleLPTests
             double relTol = 1e-6;
             AssertCloseD(objD, objS, relTol * (1.0 + math.abs(objS)));
 
-            senses.Dispose(); arena.Dispose();
+            senses.Dispose();
         }
 
         // Mixed-sense instance (<=, >=, <=) -- the >= row's logical has bounds (-INF,0], forcing the
@@ -862,14 +812,13 @@ public class doubleLPTests
         // x+y>=1, y<=3, x,y>=0 -> (x,y)=(1,3), obj -7.
         void DualMixedSense()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(3, 2);
+            var A = new doubleMxN(3, 2, Allocator.Temp);
             A[0, 0] = (double)1; A[0, 1] = (double)1;   // x + y <= 4
             A[1, 0] = (double)1; A[1, 1] = (double)1;   // x + y >= 1
             A[2, 0] = (double)0; A[2, 1] = (double)1;   // y <= 3
-            var b = arena.doubleVec(3); b[0] = (double)4; b[1] = (double)1; b[2] = (double)3;
-            var c = arena.doubleVec(2); c[0] = (double)(-1); c[1] = (double)(-2);
-            var x = arena.doubleVec(2);
+            var b = new doubleN(3, Allocator.Temp); b[0] = (double)4; b[1] = (double)1; b[2] = (double)3;
+            var c = new doubleN(2, Allocator.Temp); c[0] = (double)(-1); c[1] = (double)(-2);
+            var x = new doubleN(2, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(3, Allocator.Temp);
             senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.GreaterEqual; senses[2] = ConstraintSense.LessEqual;
 
@@ -880,7 +829,7 @@ public class doubleLPTests
             AssertClose(x[1], (double)3, (double)1e-3);
             AssertCloseD(obj, -7.0, 1e-3);
 
-            senses.Dispose(); arena.Dispose();
+            senses.Dispose();
         }
 
         // All-structural-costs-negative LP: every structural has c_j < 0 and (in this computational
@@ -896,27 +845,26 @@ public class doubleLPTests
         // cross-validation is the established pattern throughout this test suite).
         void DualBoxedFlips()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(2, 6);
+            var A = new doubleMxN(2, 6, Allocator.Temp);
             for (int j = 0; j < 6; j++) A[0, j] = (double)1;              // sum x_j <= 10
             A[1, 0] = (double)1; A[1, 2] = (double)1; A[1, 4] = (double)1; // x1+x3+x5 <= 6
-            var b = arena.doubleVec(2); b[0] = (double)10; b[1] = (double)6;
-            var c = arena.doubleVec(6);
+            var b = new doubleN(2, Allocator.Temp); b[0] = (double)10; b[1] = (double)6;
+            var c = new doubleN(6, Allocator.Temp);
             c[0] = (double)(-3); c[1] = (double)(-2); c[2] = (double)(-4);
             c[3] = (double)(-1); c[4] = (double)(-5); c[5] = (double)(-2);
             var senses = new NativeArray<ConstraintSense>(2, Allocator.Temp);
             senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.LessEqual;
 
-            var xS = arena.doubleVec(6);
+            var xS = new doubleN(6, Allocator.Temp);
             var infoS = LP.solve(in A, in b, in c, in senses, ref xS, out double objS, LPMethod.Simplex);
-            var xD = arena.doubleVec(6);
+            var xD = new doubleN(6, Allocator.Temp);
             var infoD = LP.solve(in A, in b, in c, in senses, ref xD, out double objD, LPMethod.DualSimplex);
 
             AssertTrue(infoS.status == LPStatus.Optimal);
             AssertTrue(infoD.status == LPStatus.Optimal);
             AssertCloseD(objD, objS, 1e-2 * (1.0 + math.abs(objS)));
 
-            senses.Dispose(); arena.Dispose();
+            senses.Dispose();
         }
 
         // Degenerate instance (a duplicated constraint row -- the redundant row makes the basis
@@ -927,21 +875,20 @@ public class doubleLPTests
         // one test.
         void DegenerateDuplicatedRows()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(4, 2);
+            var A = new doubleMxN(4, 2, Allocator.Temp);
             A[0, 0] = (double)1; A[0, 1] = (double)0;
             A[1, 0] = (double)0; A[1, 1] = (double)2;
             A[2, 0] = (double)0; A[2, 1] = (double)2;   // duplicate of row 1
             A[3, 0] = (double)3; A[3, 1] = (double)2;
-            var b = arena.doubleVec(4); b[0] = (double)4; b[1] = (double)12; b[2] = (double)12; b[3] = (double)18;
-            var c = arena.doubleVec(2); c[0] = (double)(-3); c[1] = (double)(-5);
+            var b = new doubleN(4, Allocator.Temp); b[0] = (double)4; b[1] = (double)12; b[2] = (double)12; b[3] = (double)18;
+            var c = new doubleN(2, Allocator.Temp); c[0] = (double)(-3); c[1] = (double)(-5);
             var senses = new NativeArray<ConstraintSense>(4, Allocator.Temp);
             senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.LessEqual;
             senses[2] = ConstraintSense.LessEqual; senses[3] = ConstraintSense.LessEqual;
 
-            var xR = arena.doubleVec(2);
+            var xR = new doubleN(2, Allocator.Temp);
             var infoR = LP.solve(in A, in b, in c, in senses, ref xR, out double objR, LPMethod.RevisedSimplex);
-            var xD = arena.doubleVec(2);
+            var xD = new doubleN(2, Allocator.Temp);
             var infoD = LP.solve(in A, in b, in c, in senses, ref xD, out double objD, LPMethod.DualSimplex);
 
             AssertTrue(infoR.status == LPStatus.Optimal);
@@ -953,7 +900,7 @@ public class doubleLPTests
             AssertClose(xD[1], (double)6, (double)1e-3);
             AssertCloseD(objD, -36.0, 1e-3);
 
-            senses.Dispose(); arena.Dispose();
+            senses.Dispose();
         }
 
         // LP.lad via the dual-simplex backend must reach the SAME L1 residual as the tableau-simplex
@@ -961,10 +908,9 @@ public class doubleLPTests
         // outlier -> line b=t, L1 residual |10-2| = 8).
         void DualLad()
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildLine(ref arena, out var A, out var b, true);
-            var xS = arena.doubleVec(2);
-            var xD = arena.doubleVec(2);
+            BuildLine(out var A, out var b, true);
+            var xS = new doubleN(2, Allocator.Temp);
+            var xD = new doubleN(2, Allocator.Temp);
 
             var infoS = LP.lad(in A, in b, ref xS, out double objS, LPMethod.Simplex);
             var infoD = LP.lad(in A, in b, ref xD, out double objD, LPMethod.DualSimplex);
@@ -974,8 +920,6 @@ public class doubleLPTests
             AssertClose(xD[0], (double)0, (double)1e-2);
             AssertClose(xD[1], (double)1, (double)1e-2);
             AssertCloseD(objD, objS, 1e-2);
-
-            arena.Dispose();
         }
 
         // Section-1-style random feasible LP at n=96 (m=48, N=n+m=144) -- large enough to force MORE
@@ -994,23 +938,22 @@ public class doubleLPTests
 
             for (int s = 0; s < 3; s++)
             {
-                var arena = new Arena(Allocator.Persistent);
-                var A = arena.doubleRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11) + (uint)s * seedStride);
-                var x0 = arena.doubleRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7) + (uint)s * seedStride);
+                var A = GenerateOP.doubleRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11) + (uint)s * seedStride);
+                var x0 = GenerateOP.doubleRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7) + (uint)s * seedStride);
                 var Ax0 = Blas.dot(A, x0);
-                var b = arena.doubleVec(m);
+                var b = new doubleN(m, Allocator.Temp);
                 uint rngSeed = (uint)(n * 1299709 + 3) + (uint)s * seedStride;
                 var rng = new Unity.Mathematics.Random(rngSeed == 0u ? 1u : rngSeed);   // Random() rejects seed 0
                 for (int i = 0; i < m; i++) b[i] = Ax0[i] + rng.NextDouble((double)0.1, (double)1);
-                var c = arena.doubleRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5) + (uint)s * seedStride);
+                var c = GenerateOP.doubleRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5) + (uint)s * seedStride);
                 var senses = new NativeArray<ConstraintSense>(m, Allocator.Temp);
                 for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
 
-                var xS = arena.doubleVec(n);
+                var xS = new doubleN(n, Allocator.Temp);
                 var infoS = LP.solve(in A, in b, in c, in senses, ref xS, out double objS, LPMethod.Simplex);
-                var xR = arena.doubleVec(n);
+                var xR = new doubleN(n, Allocator.Temp);
                 var infoR = LP.solve(in A, in b, in c, in senses, ref xR, out double objR, LPMethod.RevisedSimplex);
-                var xD = arena.doubleVec(n);
+                var xD = new doubleN(n, Allocator.Temp);
                 var infoD = LP.solve(in A, in b, in c, in senses, ref xD, out double objD, LPMethod.DualSimplex);
 
                 AssertTrue(infoS.status == LPStatus.Optimal);
@@ -1024,7 +967,7 @@ public class doubleLPTests
                 AssertCloseD(objR, objS, relTol * (1.0 + math.abs(objS)));
                 AssertCloseD(objD, objS, relTol * (1.0 + math.abs(objS)));
 
-                senses.Dispose(); arena.Dispose();
+                senses.Dispose();
             }
         }
 
@@ -1039,30 +982,29 @@ public class doubleLPTests
         void RevisedDenseCovering()
         {
             int n = 6, m = 6;
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Unity.Mathematics.Random(2166136261u);
 
-            var A = arena.doubleMat(m, n);
+            var A = new doubleMxN(m, n, Allocator.Temp);
             for (int i = 0; i < m; i++)
                 for (int j = 0; j < n; j++)
                     A[i, j] = (double)0.1 + rng.NextDouble(0f, 1f) * (double)0.9;   // in (0.1, 1]
-            var b = arena.doubleVec(m);
+            var b = new doubleN(m, Allocator.Temp);
             for (int i = 0; i < m; i++) b[i] = (double)0.5 + rng.NextDouble(0f, 1f) * (double)0.5;  // in (0.5, 1]
-            var c = arena.doubleVec(n);
+            var c = new doubleN(n, Allocator.Temp);
             for (int j = 0; j < n; j++) c[j] = (double)0.5 + rng.NextDouble(0f, 1f) * (double)0.5;  // in (0.5, 1]
             var senses = new NativeArray<ConstraintSense>(m, Allocator.Temp);
             for (int i = 0; i < m; i++) senses[i] = ConstraintSense.GreaterEqual;
 
-            var xS = arena.doubleVec(n);
+            var xS = new doubleN(n, Allocator.Temp);
             var infoS = LP.solve(in A, in b, in c, in senses, ref xS, out double objS, LPMethod.Simplex);
-            var xR = arena.doubleVec(n);
+            var xR = new doubleN(n, Allocator.Temp);
             var infoR = LP.solve(in A, in b, in c, in senses, ref xR, out double objR, LPMethod.RevisedSimplex);
 
             AssertTrue(infoS.status == LPStatus.Optimal);
             AssertTrue(infoR.status == LPStatus.Optimal);
             AssertCloseD(objR, objS, 1e-6 * (1.0 + math.abs(objS)));
 
-            senses.Dispose(); arena.Dispose();
+            senses.Dispose();
         }
 
         // ==== LPBasis warm-start ====
@@ -1083,20 +1025,19 @@ public class doubleLPTests
         void DualWarmVsColdPerturbed()
         {
             const int n = 48, m = n / 2;
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11));
-            var x0 = arena.doubleRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7));
+            var A = GenerateOP.doubleRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11));
+            var x0 = GenerateOP.doubleRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7));
             var Ax0 = Blas.dot(A, x0);
-            var b = arena.doubleVec(m);
+            var b = new doubleN(m, Allocator.Temp);
             var rng = new Unity.Mathematics.Random((uint)(n * 1299709 + 3));
             for (int i = 0; i < m; i++) b[i] = Ax0[i] + rng.NextDouble((double)0.1, (double)1);
-            var c = arena.doubleRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5));
+            var c = GenerateOP.doubleRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5));
             var senses = new NativeArray<ConstraintSense>(m, Allocator.Temp);
             for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
 
             // 1) cold solve of the ORIGINAL LP via the job-safe unpopulated-Temp basis: LP.solve seeds the
             //    all-logical start in place (no alloc) and populates `basis` with the terminal vertex.
-            var x1 = arena.doubleVec(n);
+            var x1 = new doubleN(n, Allocator.Temp);
             var basis = new LPBasis(n, m, Allocator.Temp);
             var info1 = LP.solve(in A, in b, in c, in senses, ref x1, out double obj1, ref basis);
             AssertTrue(info1.status == LPStatus.Optimal);
@@ -1112,7 +1053,7 @@ public class doubleLPTests
                 double slack = (double)b[i] - rowDot;
                 if (slack > bestSlack) { bestSlack = slack; istar = i; }
             }
-            var b2 = arena.doubleVec(m);
+            var b2 = new doubleN(m, Allocator.Temp);
             for (int i = 0; i < m; i++) b2[i] = b[i];
             double actIstar = 0;
             for (int j = 0; j < n; j++) actIstar += (double)A[istar, j] * (double)x1[j];
@@ -1120,13 +1061,13 @@ public class doubleLPTests
 
             // 3) WARM re-solve of the perturbed LP reusing `basis` (populated, dual-feasible seed) --
             //    terminal basis written back in place (same buffers, no reallocation).
-            var x2 = arena.doubleVec(n);
+            var x2 = new doubleN(n, Allocator.Temp);
             var info2 = LP.solve(in A, in b2, in c, in senses, ref x2, out double obj2, ref basis);
             AssertTrue(info2.status == LPStatus.Optimal);
 
             // 4) COLD solve of the SAME perturbed LP (plain LPMethod.DualSimplex) -- a fair iteration
             //    baseline, counted the same way (dual pivots + primal cleanup) as the warm call.
-            var xC = arena.doubleVec(n);
+            var xC = new doubleN(n, Allocator.Temp);
             var infoC = LP.solve(in A, in b2, in c, in senses, ref xC, out double objC, LPMethod.DualSimplex);
             AssertTrue(infoC.status == LPStatus.Optimal);
 
@@ -1141,7 +1082,7 @@ public class doubleLPTests
             { Fail[0] = (double)1; Fail[1] = (double)info2.iterations; Fail[2] = (double)infoC.iterations; Fail[3] = (double)0; }
             Assert.IsTrue(info2.iterations < infoC.iterations);
 
-            basis.Dispose(); senses.Dispose(); arena.Dispose();
+            basis.Dispose(); senses.Dispose();
         }
 
         // (c) The created-but-unpopulated Temp cold-seed path must be BIT-IDENTICAL to the plain
@@ -1152,22 +1093,21 @@ public class doubleLPTests
         void DualWarmEmptyBitIdentical()
         {
             const int n = 24, m = n / 2;
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11));
-            var x0 = arena.doubleRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7));
+            var A = GenerateOP.doubleRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11));
+            var x0 = GenerateOP.doubleRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7));
             var Ax0 = Blas.dot(A, x0);
-            var b = arena.doubleVec(m);
+            var b = new doubleN(m, Allocator.Temp);
             var rng = new Unity.Mathematics.Random((uint)(n * 1299709 + 3));
             for (int i = 0; i < m; i++) b[i] = Ax0[i] + rng.NextDouble((double)0.1, (double)1);
-            var c = arena.doubleRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5));
+            var c = GenerateOP.doubleRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5));
             var senses = new NativeArray<ConstraintSense>(m, Allocator.Temp);
             for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
 
-            var xE = arena.doubleVec(n);
+            var xE = new doubleN(n, Allocator.Temp);
             var basis = new LPBasis(n, m, Allocator.Temp);   // created-but-unpopulated -> job-safe cold seed
             var infoE = LP.solve(in A, in b, in c, in senses, ref xE, out double objE, ref basis);
 
-            var xD = arena.doubleVec(n);
+            var xD = new doubleN(n, Allocator.Temp);
             var infoD = LP.solve(in A, in b, in c, in senses, ref xD, out double objD, LPMethod.DualSimplex);
 
             AssertTrue(infoE.status == infoD.status);
@@ -1175,7 +1115,7 @@ public class doubleLPTests
             AssertTrue(objE == objD);                              // exact double equality
             for (int j = 0; j < n; j++) AssertTrue(xE[j] == xD[j]); // exact per-element equality
 
-            basis.Dispose(); senses.Dispose(); arena.Dispose();
+            basis.Dispose(); senses.Dispose();
         }
 
         // (e) Correctness with a GARBAGE/STALE basis: seed the warm solve of LP_B with LP_A's terminal
@@ -1185,50 +1125,49 @@ public class doubleLPTests
         void DualWarmStaleBasisCorrect()
         {
             const int n = 48, m = n / 2;
-            var arena = new Arena(Allocator.Persistent);
 
             // LP_A -- the instance whose terminal basis we (mis)use as a seed.
-            var A = arena.doubleRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11));
-            var xa0 = arena.doubleRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7));
+            var A = GenerateOP.doubleRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11));
+            var xa0 = GenerateOP.doubleRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7));
             var Axa0 = Blas.dot(A, xa0);
-            var ba = arena.doubleVec(m);
+            var ba = new doubleN(m, Allocator.Temp);
             var rngA = new Unity.Mathematics.Random((uint)(n * 1299709 + 3));
             for (int i = 0; i < m; i++) ba[i] = Axa0[i] + rngA.NextDouble((double)0.1, (double)1);
-            var ca = arena.doubleRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5));
+            var ca = GenerateOP.doubleRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5));
 
             // LP_B -- an UNRELATED same-shape (n, m) instance (every random draw shifted by a large prime).
             const uint off = 777777773u;
-            var B = arena.doubleRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11) + off);
-            var xb0 = arena.doubleRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7) + off);
+            var B = GenerateOP.doubleRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11) + off);
+            var xb0 = GenerateOP.doubleRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7) + off);
             var Axb0 = Blas.dot(B, xb0);
-            var bb = arena.doubleVec(m);
+            var bb = new doubleN(m, Allocator.Temp);
             var rngB = new Unity.Mathematics.Random((uint)(n * 1299709 + 3) + off);
             for (int i = 0; i < m; i++) bb[i] = Axb0[i] + rngB.NextDouble((double)0.1, (double)1);
-            var cb = arena.doubleRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5) + off);
+            var cb = GenerateOP.doubleRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5) + off);
 
             var senses = new NativeArray<ConstraintSense>(m, Allocator.Temp);
             for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
 
             // solve LP_A -> populate basisA (job-safe unpopulated-Temp cold-seed path)
-            var xa = arena.doubleVec(n);
+            var xa = new doubleN(n, Allocator.Temp);
             var basisA = new LPBasis(n, m, Allocator.Temp);
             var infoA = LP.solve(in A, in ba, in ca, in senses, ref xa, out double objA, ref basisA);
             AssertTrue(infoA.status == LPStatus.Optimal);
 
             // warm-solve LP_B seeded with LP_A's (now populated but stale/meaningless-for-B) basis
-            var xbWarm = arena.doubleVec(n);
+            var xbWarm = new doubleN(n, Allocator.Temp);
             var infoBWarm = LP.solve(in B, in bb, in cb, in senses, ref xbWarm, out double objBWarm, ref basisA);
             AssertTrue(infoBWarm.status == LPStatus.Optimal);
 
             // oracle: an ordinary cold solve of LP_B
-            var xbCold = arena.doubleVec(n);
+            var xbCold = new doubleN(n, Allocator.Temp);
             var infoBCold = LP.solve(in B, in bb, in cb, in senses, ref xbCold, out double objBCold, LPMethod.DualSimplex);
             AssertTrue(infoBCold.status == LPStatus.Optimal);
 
             double relTol = 1e-6;
             AssertCloseD(objBWarm, objBCold, relTol * (1.0 + math.abs(objBCold)));
 
-            basisA.Dispose(); senses.Dispose(); arena.Dispose();
+            basisA.Dispose(); senses.Dispose();
         }
 
         // ==== doubleLPCache factor/weight persistence ====
@@ -1246,23 +1185,22 @@ public class doubleLPTests
         void DualWarmCacheChainEquivalence()
         {
             const int n = 48, m = n / 2;
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11));
-            var x0 = arena.doubleRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7));
+            var A = GenerateOP.doubleRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11));
+            var x0 = GenerateOP.doubleRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7));
             var Ax0 = Blas.dot(A, x0);
-            var b0 = arena.doubleVec(m);
+            var b0 = new doubleN(m, Allocator.Temp);
             var rng = new Unity.Mathematics.Random((uint)(n * 1299709 + 3));
             for (int i = 0; i < m; i++) b0[i] = Ax0[i] + rng.NextDouble((double)0.1, (double)1);
-            var c = arena.doubleRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5));
+            var c = GenerateOP.doubleRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5));
             var senses = new NativeArray<ConstraintSense>(m, Allocator.Temp);
             for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
 
             // cold-seed both chains from the ORIGINAL LP (job-safe unpopulated-Temp basis).
-            var xCache = arena.doubleVec(n);
+            var xCache = new doubleN(n, Allocator.Temp);
             var basisCache = new LPBasis(n, m, Allocator.Temp);
             var cache = new doubleLPCache(n, m, Allocator.Temp);
             var infoC0 = LP.solve(in A, in b0, in c, in senses, ref xCache, out double objC0, ref basisCache, ref cache);
-            var xRef = arena.doubleVec(n);
+            var xRef = new doubleN(n, Allocator.Temp);
             var basisRef = new LPBasis(n, m, Allocator.Temp);
             var infoR0 = LP.solve(in A, in b0, in c, in senses, ref xRef, out double objR0, ref basisRef);
 
@@ -1274,7 +1212,7 @@ public class doubleLPTests
             // rhs-only perturbation chain: scale every b entry by a per-step factor in [0.91, 1.15]. b
             // stays positive -> x=0 feasible, A,x>=0 with Ax<=b keeps it bounded -> Optimal throughout.
             // matrixVersion is left ALONE (rhs-only), so each warm re-solve is a cache hit.
-            var bk = arena.doubleVec(m);
+            var bk = new doubleN(m, Allocator.Temp);
             for (int step = 1; step <= 5; step++)
             {
                 double factor = (double)(0.85 + 0.06 * step);
@@ -1288,7 +1226,7 @@ public class doubleLPTests
                 AssertCloseD(objC, objR, relTol * (1.0 + math.abs(objR)));
             }
 
-            cache.Dispose(); basisCache.Dispose(); basisRef.Dispose(); senses.Dispose(); arena.Dispose();
+            cache.Dispose(); basisCache.Dispose(); basisRef.Dispose(); senses.Dispose();
         }
 
         // (3c) DETERMINISM: two identical cache-threaded re-solve chains, run in the SAME Burst job, must
@@ -1298,28 +1236,27 @@ public class doubleLPTests
         void DualWarmCacheDeterministic()
         {
             const int n = 24, m = n / 2;
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11));
-            var x0 = arena.doubleRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7));
+            var A = GenerateOP.doubleRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11));
+            var x0 = GenerateOP.doubleRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7));
             var Ax0 = Blas.dot(A, x0);
-            var b0 = arena.doubleVec(m);
+            var b0 = new doubleN(m, Allocator.Temp);
             var rng = new Unity.Mathematics.Random((uint)(n * 1299709 + 3));
             for (int i = 0; i < m; i++) b0[i] = Ax0[i] + rng.NextDouble((double)0.1, (double)1);
-            var c = arena.doubleRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5));
+            var c = GenerateOP.doubleRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5));
             var senses = new NativeArray<ConstraintSense>(m, Allocator.Temp);
             for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
 
             // two independent (basis, cache) pairs, identical inputs -> identical deterministic work.
-            var xA = arena.doubleVec(n);
+            var xA = new doubleN(n, Allocator.Temp);
             var basisA = new LPBasis(n, m, Allocator.Temp);
             var cacheA = new doubleLPCache(n, m, Allocator.Temp);
             LP.solve(in A, in b0, in c, in senses, ref xA, out double _, ref basisA, ref cacheA);
-            var xB = arena.doubleVec(n);
+            var xB = new doubleN(n, Allocator.Temp);
             var basisB = new LPBasis(n, m, Allocator.Temp);
             var cacheB = new doubleLPCache(n, m, Allocator.Temp);
             LP.solve(in A, in b0, in c, in senses, ref xB, out double _, ref basisB, ref cacheB);
 
-            var bk = arena.doubleVec(m);
+            var bk = new doubleN(m, Allocator.Temp);
             for (int step = 1; step <= 5; step++)
             {
                 double factor = (double)(0.85 + 0.06 * step);
@@ -1334,7 +1271,7 @@ public class doubleLPTests
                 for (int j = 0; j < n; j++) AssertTrue(xA[j] == xB[j]); // exact per-element equality
             }
 
-            cacheA.Dispose(); cacheB.Dispose(); basisA.Dispose(); basisB.Dispose(); senses.Dispose(); arena.Dispose();
+            cacheA.Dispose(); cacheB.Dispose(); basisA.Dispose(); basisB.Dispose(); senses.Dispose();
         }
 
         // (3d) CROSS-PROBLEM FALLBACK: a populated (basis, cache) pair from LP_A, reused on a DIFFERENT
@@ -1344,32 +1281,31 @@ public class doubleLPTests
         void DualWarmCacheCrossProblemFallback()
         {
             const int n = 48, m = n / 2;
-            var arena = new Arena(Allocator.Persistent);
 
             // LP_A -- the instance we populate (basis, cache) from.
-            var A = arena.doubleRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11));
-            var xa0 = arena.doubleRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7));
+            var A = GenerateOP.doubleRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11));
+            var xa0 = GenerateOP.doubleRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7));
             var Axa0 = Blas.dot(A, xa0);
-            var ba = arena.doubleVec(m);
+            var ba = new doubleN(m, Allocator.Temp);
             var rngA = new Unity.Mathematics.Random((uint)(n * 1299709 + 3));
             for (int i = 0; i < m; i++) ba[i] = Axa0[i] + rngA.NextDouble((double)0.1, (double)1);
-            var ca = arena.doubleRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5));
+            var ca = GenerateOP.doubleRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5));
 
             // LP_B -- an UNRELATED same-shape (n, m) instance (every draw shifted by a large prime).
             const uint off = 777777773u;
-            var B = arena.doubleRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11) + off);
-            var xb0 = arena.doubleRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7) + off);
+            var B = GenerateOP.doubleRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11) + off);
+            var xb0 = GenerateOP.doubleRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7) + off);
             var Axb0 = Blas.dot(B, xb0);
-            var bb = arena.doubleVec(m);
+            var bb = new doubleN(m, Allocator.Temp);
             var rngB = new Unity.Mathematics.Random((uint)(n * 1299709 + 3) + off);
             for (int i = 0; i < m; i++) bb[i] = Axb0[i] + rngB.NextDouble((double)0.1, (double)1);
-            var cb = arena.doubleRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5) + off);
+            var cb = GenerateOP.doubleRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5) + off);
 
             var senses = new NativeArray<ConstraintSense>(m, Allocator.Temp);
             for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
 
             // solve LP_A -> populate (basisAB, cache) via the job-safe unpopulated-Temp cold-seed path.
-            var xa = arena.doubleVec(n);
+            var xa = new doubleN(n, Allocator.Temp);
             var basisAB = new LPBasis(n, m, Allocator.Temp);
             var cache = new doubleLPCache(n, m, Allocator.Temp);
             var infoA = LP.solve(in A, in ba, in ca, in senses, ref xa, out double _, ref basisAB, ref cache);
@@ -1379,19 +1315,19 @@ public class doubleLPTests
             // -> cold rebuild of M into the cache buffers + refactorize (stale basis handled by the dual
             // repair / singular-basis fallback, same as DualWarmStaleBasisCorrect).
             cache.matrixVersion++;
-            var xbWarm = arena.doubleVec(n);
+            var xbWarm = new doubleN(n, Allocator.Temp);
             var infoBWarm = LP.solve(in B, in bb, in cb, in senses, ref xbWarm, out double objBWarm, ref basisAB, ref cache);
             AssertTrue(infoBWarm.status == LPStatus.Optimal);
 
             // oracle: an ordinary cold solve of LP_B.
-            var xbCold = arena.doubleVec(n);
+            var xbCold = new doubleN(n, Allocator.Temp);
             var infoBCold = LP.solve(in B, in bb, in cb, in senses, ref xbCold, out double objBCold, LPMethod.DualSimplex);
             AssertTrue(infoBCold.status == LPStatus.Optimal);
 
             double relTol = 1e-6;
             AssertCloseD(objBWarm, objBCold, relTol * (1.0 + math.abs(objBCold)));
 
-            cache.Dispose(); basisAB.Dispose(); senses.Dispose(); arena.Dispose();
+            cache.Dispose(); basisAB.Dispose(); senses.Dispose();
         }
 
         // ==== Frisch-Newton exact LAD / quantile regression (LP.ladFN, LP.ladFrischNewtonCore) ====
@@ -1408,11 +1344,10 @@ public class doubleLPTests
         void LadFNvsOracle(int m)
         {
             int n = 4;
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleRandomMat(m, n, -1f, 1f, (uint)(m * 7919 + 13));
-            var xt = arena.doubleRandomVec(n, -1f, 1f, (uint)(m * 104729 + 17));
+            var A = GenerateOP.doubleRandomMat(m, n, -1f, 1f, (uint)(m * 7919 + 13));
+            var xt = GenerateOP.doubleRandomVec(n, -1f, 1f, (uint)(m * 104729 + 17));
             var Axt = Blas.dot(A, xt);
-            var b = arena.doubleVec(m);
+            var b = new doubleN(m, Allocator.Temp);
             var rng = new Unity.Mathematics.Random((uint)(m * 1299709 + 19));
             for (int i = 0; i < m; i++)
             {
@@ -1421,10 +1356,10 @@ public class doubleLPTests
                 b[i] = val;
             }
 
-            var xf = arena.doubleVec(n);
+            var xf = new doubleN(n, Allocator.Temp);
             var infoF = LP.ladFN(in A, in b, ref xf, out double objF);
 
-            var xo = arena.doubleVec(n);                        // exact oracle: revised-simplex LP.lad
+            var xo = new doubleN(n, Allocator.Temp);                        // exact oracle: revised-simplex LP.lad
             var infoO = LP.lad(in A, in b, ref xo, out double objO, LPMethod.RevisedSimplex);
 
             AssertTrue(infoO.status == LPStatus.Optimal);
@@ -1436,17 +1371,14 @@ public class doubleLPTests
             // RevisedAndDualRandomN96; double is unaffected (gap floor ~1.49e-8).
             double relTol = 1e-6;
             AssertCloseD(objF, objO, relTol * (1.0 + math.abs(objO)));
-
-            arena.Dispose();
         }
 
         // Item 2. Brownlee stack-loss known-answer (the same literature vector + tolerances as
         // LadStackloss), solved via the Frisch-Newton route.
         void LadFNStackloss()
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildStackloss(ref arena, out var A, out var b);
-            var x = arena.doubleVec(4);
+            BuildStackloss(out var A, out var b);
+            var x = new doubleN(4, Allocator.Temp);
 
             var info = LP.ladFN(in A, in b, ref x, out double obj);
 
@@ -1454,8 +1386,6 @@ public class doubleLPTests
             AssertClose(x[1], (double)0.83188406, (double)5e-2);       // Air.Flow
             AssertClose(x[2], (double)0.57391304, (double)5e-2);       // Water.Temp
             AssertClose(x[3], (double)(-0.06086957), (double)5e-2);    // Acid.Conc.
-
-            arena.Dispose();
         }
 
         // Item 4. Degenerate exact-fit: b = A*x_true EXACTLY (no noise) -> ALL residuals collapse to ~0
@@ -1465,9 +1395,8 @@ public class doubleLPTests
         // an IPM approaches but doesn't exactly land on a degenerate vertex).
         void LadFNDegenerateExactFit()
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildLine(ref arena, out var A, out var b, false);   // b = 1 + 2t exactly, coeffs (1,2)
-            var x = arena.doubleVec(2);
+            BuildLine(out var A, out var b, false);   // b = 1 + 2t exactly, coeffs (1,2)
+            var x = new doubleN(2, Allocator.Temp);
 
             var info = LP.ladFN(in A, in b, ref x, out double obj);
 
@@ -1479,8 +1408,6 @@ public class doubleLPTests
             AssertClose(x[0], (double)1, (double)5e-2);
             AssertClose(x[1], (double)2, (double)5e-2);
             AssertCloseD(obj, 0.0, 5e-2);
-
-            arena.Dispose();
         }
 
         // ==== Barrodale-Roberts exact LAD (LP.ladBR, LP.ladBarrodaleRobertsCore) ====
@@ -1499,11 +1426,10 @@ public class doubleLPTests
         void LadBRvsOracle(int m)
         {
             int n = 4;
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleRandomMat(m, n, -1f, 1f, (uint)(m * 7919 + 13));
-            var xt = arena.doubleRandomVec(n, -1f, 1f, (uint)(m * 104729 + 17));
+            var A = GenerateOP.doubleRandomMat(m, n, -1f, 1f, (uint)(m * 7919 + 13));
+            var xt = GenerateOP.doubleRandomVec(n, -1f, 1f, (uint)(m * 104729 + 17));
             var Axt = Blas.dot(A, xt);
-            var b = arena.doubleVec(m);
+            var b = new doubleN(m, Allocator.Temp);
             var rng = new Unity.Mathematics.Random((uint)(m * 1299709 + 19));
             for (int i = 0; i < m; i++)
             {
@@ -1512,13 +1438,13 @@ public class doubleLPTests
                 b[i] = val;
             }
 
-            var xbr = arena.doubleVec(n);
+            var xbr = new doubleN(n, Allocator.Temp);
             var infoBR = LP.ladBR(in A, in b, ref xbr, out double objBR);
 
-            var xf = arena.doubleVec(n);                        // interior-point cross-check
+            var xf = new doubleN(n, Allocator.Temp);                        // interior-point cross-check
             var infoF = LP.ladFN(in A, in b, ref xf, out double objF);
 
-            var xo = arena.doubleVec(n);                        // exact oracle: revised-simplex LP.lad
+            var xo = new doubleN(n, Allocator.Temp);                        // exact oracle: revised-simplex LP.lad
             var infoO = LP.lad(in A, in b, ref xo, out double objO, LPMethod.RevisedSimplex);
 
             AssertTrue(infoBR.status == LPStatus.Optimal);
@@ -1531,8 +1457,6 @@ public class doubleLPTests
             double relTol = 1e-6;
             AssertCloseD(objBR, objO, relTol * (1.0 + math.abs(objO)));   // BR (exact) == oracle (exact)
             AssertCloseD(objF, objO, relTol * (1.0 + math.abs(objO)));    // FN (interior) == oracle
-
-            arena.Dispose();
         }
 
         // Item 2. Brownlee stack-loss known-answer (the same literature vector + 5e-2 tolerance as
@@ -1541,9 +1465,8 @@ public class doubleLPTests
         // literature tests for cross-comparability.
         void LadBRStackloss()
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildStackloss(ref arena, out var A, out var b);
-            var x = arena.doubleVec(4);
+            BuildStackloss(out var A, out var b);
+            var x = new doubleN(4, Allocator.Temp);
 
             var info = LP.ladBR(in A, in b, ref x, out double obj);
 
@@ -1561,8 +1484,6 @@ public class doubleLPTests
             // LAD/L1 published-coefficient dataset is encoded here rather than fabricate a "known answer";
             // Stackloss above (cross-verified across R quantreg + ROI) remains the literature anchor, and
             // item 1's three-way BR/FN/oracle agreement supplies the additional external cross-checks.
-
-            arena.Dispose();
         }
 
         // Item 4. Vertex property (BR-specific, non-negotiable): at the BR optimum the fit interpolates
@@ -1572,10 +1493,9 @@ public class doubleLPTests
         // residuals cluster near but never hit zero; only an exact-vertex simplex like BR lands on it.
         void LadBRVertexProperty()
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildStackloss(ref arena, out var A, out var b);
+            BuildStackloss(out var A, out var b);
             int m = A.M_Rows, n = A.N_Cols;
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
 
             var info = LP.ladBR(in A, in b, ref x, out double obj);
             AssertTrue(info.status == LPStatus.Optimal);
@@ -1597,8 +1517,6 @@ public class doubleLPTests
             // record the observed count in the diagnostics slot on failure (>= n is the assertion)
             if (zeroCount < n && Fail[0] == (double)0) { Fail[0] = (double)1; Fail[1] = (double)zeroCount; Fail[2] = (double)n; Fail[3] = (double)0; }
             Assert.IsTrue(zeroCount >= n);
-
-            arena.Dispose();
         }
 
         // Item 5. Degenerate exact-fit: b = A*x_true EXACTLY (no noise), b = 1 + 2t, coeffs (1,2). A
@@ -1608,9 +1526,8 @@ public class doubleLPTests
         // 1e-3 float / 1e-6 double on this small integer-valued line, far tighter than FN's 5e-2.
         void LadBRDegenerateExactFit()
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildLine(ref arena, out var A, out var b, false);   // b = 1 + 2t exactly, coeffs (1,2)
-            var x = arena.doubleVec(2);
+            BuildLine(out var A, out var b, false);   // b = 1 + 2t exactly, coeffs (1,2)
+            var x = new doubleN(2, Allocator.Temp);
 
             var info = LP.ladBR(in A, in b, ref x, out double obj);
 
@@ -1623,8 +1540,6 @@ public class doubleLPTests
             AssertClose(x[0], (double)1, tol);
             AssertClose(x[1], (double)2, tol);
             AssertCloseD(obj, 0.0, (double)tol);
-
-            arena.Dispose();
         }
 
         // Item 6. Failure case -- maxIter=1: the iteration budget is exhausted after a single pivot, so
@@ -1634,17 +1549,14 @@ public class doubleLPTests
         // needs many more than 1 iteration, guaranteeing the cutoff fires.
         void LadBRMaxIterOneCase()
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildStackloss(ref arena, out var A, out var b);
-            var x = arena.doubleVec(4);
+            BuildStackloss(out var A, out var b);
+            var x = new doubleN(4, Allocator.Temp);
 
             var info = LP.ladBR(in A, in b, ref x, out double obj, maxIter: 1);
 
             AssertTrue(info.status == LPStatus.MaxIterations);
             AssertTrue(math.isfinite(x[0]) && math.isfinite(x[1]) && math.isfinite(x[2]) && math.isfinite(x[3]));
             AssertTrue(math.isfinite((double)obj));
-
-            arena.Dispose();
         }
 
         // Large-m correctness of the SORT-BASED ratio-test fast path (LP.BarrodaleRoberts.double.cs's
@@ -1670,11 +1582,10 @@ public class doubleLPTests
         void LadBRLargeMSortPath()
         {
             int m = 1000, n = 4;
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleRandomMat(m, n, -1f, 1f, (uint)(m * 7919 + 13));
-            var xt = arena.doubleRandomVec(n, -1f, 1f, (uint)(m * 104729 + 17));
+            var A = GenerateOP.doubleRandomMat(m, n, -1f, 1f, (uint)(m * 7919 + 13));
+            var xt = GenerateOP.doubleRandomVec(n, -1f, 1f, (uint)(m * 104729 + 17));
             var Axt = Blas.dot(A, xt);
-            var b = arena.doubleVec(m);
+            var b = new doubleN(m, Allocator.Temp);
             var rng = new Unity.Mathematics.Random((uint)(m * 1299709 + 19));
             for (int i = 0; i < m; i++)
             {
@@ -1683,10 +1594,10 @@ public class doubleLPTests
                 b[i] = val;
             }
 
-            var xbr = arena.doubleVec(n);
+            var xbr = new doubleN(n, Allocator.Temp);
             var infoBR = LP.ladBR(in A, in b, ref xbr, out double objBR);
 
-            var xf = arena.doubleVec(n);                        // interior-point cross-check
+            var xf = new doubleN(n, Allocator.Temp);                        // interior-point cross-check
             var infoF = LP.ladFN(in A, in b, ref xf, out double objF);
 
             AssertTrue(infoBR.status == LPStatus.Optimal);
@@ -1712,8 +1623,6 @@ public class doubleLPTests
             }
             if (zeroCount < n && Fail[0] == (double)0) { Fail[0] = (double)1; Fail[1] = (double)zeroCount; Fail[2] = (double)n; Fail[3] = (double)0; }
             Assert.IsTrue(zeroCount >= n);
-
-            arena.Dispose();
         }
 
         // ---- diagnostics-recording assert helpers (Burst-legal: Assert.Fail(string) is not) ----
@@ -1768,29 +1677,25 @@ public class doubleLPTests
     [Test]
     public void SolveThrowsOnDimensionMismatch()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.doubleMat(2, 2);
-        var b = arena.doubleVec(2);
-        var c = arena.doubleVec(2);
-        var x = arena.doubleVec(3);   // wrong length
+        var A = new doubleMxN(2, 2, Allocator.Temp);
+        var b = new doubleN(2, Allocator.Temp);
+        var c = new doubleN(2, Allocator.Temp);
+        var x = new doubleN(3, Allocator.Temp);   // wrong length
         var senses = new NativeArray<ConstraintSense>(2, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() => LP.solve(in A, in b, in c, in senses, ref x, out double obj));
 
-        senses.Dispose(); arena.Dispose();
+        senses.Dispose();
     }
 
     [Test]
     public void LadThrowsOnDimensionMismatch()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.doubleMat(4, 2);
-        var b = arena.doubleVec(3);   // wrong length (should be 4)
-        var x = arena.doubleVec(2);
+        var A = new doubleMxN(4, 2, Allocator.Temp);
+        var b = new doubleN(3, Allocator.Temp);   // wrong length (should be 4)
+        var x = new doubleN(2, Allocator.Temp);
 
         Assert.Catch<ArgumentException>(() => LP.lad(in A, in b, ref x, out double obj));
-
-        arena.Dispose();
     }
 
     // (d) The ref-LPBasis warm-start overload must reject a NON-EMPTY basis whose dimensions do not match
@@ -1801,17 +1706,16 @@ public class doubleLPTests
     [Test]
     public void WarmSolveThrowsOnBasisDimensionMismatch()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.doubleMat(2, 2);
-        var b = arena.doubleVec(2);
-        var c = arena.doubleVec(2);
-        var x = arena.doubleVec(2);
+        var A = new doubleMxN(2, 2, Allocator.Temp);
+        var b = new doubleN(2, Allocator.Temp);
+        var c = new doubleN(2, Allocator.Temp);
+        var x = new doubleN(2, Allocator.Temp);
         var senses = new NativeArray<ConstraintSense>(2, Allocator.Temp);
         var basis = new LPBasis(3, 5, Allocator.Temp);   // non-empty but !IsValid(2, 2)
 
         Assert.Catch<ArgumentException>(() => LP.solve(in A, in b, in c, in senses, ref x, out double obj, ref basis));
 
-        basis.Dispose(); senses.Dispose(); arena.Dispose();
+        basis.Dispose(); senses.Dispose();
     }
 
     // (3b) CONTRACT VIOLATION: mutating an A coefficient WITHOUT
@@ -1827,14 +1731,13 @@ public class doubleLPTests
     [Test]
     public void WarmSolveCacheDetectsUnbumpedCoefficientChange()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.doubleMat(3, 2);   // Wyndor Glass structure
+        var A = new doubleMxN(3, 2, Allocator.Temp);   // Wyndor Glass structure
         A[0, 0] = (double)1; A[0, 1] = (double)0;
         A[1, 0] = (double)0; A[1, 1] = (double)2;
         A[2, 0] = (double)3; A[2, 1] = (double)2;
-        var b = arena.doubleVec(3); b[0] = (double)4; b[1] = (double)12; b[2] = (double)18;
-        var c = arena.doubleVec(2); c[0] = (double)(-3); c[1] = (double)(-5);
-        var x = arena.doubleVec(2);
+        var b = new doubleN(3, Allocator.Temp); b[0] = (double)4; b[1] = (double)12; b[2] = (double)18;
+        var c = new doubleN(2, Allocator.Temp); c[0] = (double)(-3); c[1] = (double)(-5);
+        var x = new doubleN(2, Allocator.Temp);
         var senses = new NativeArray<ConstraintSense>(3, Allocator.Temp);
         senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.LessEqual; senses[2] = ConstraintSense.LessEqual;
 
@@ -1852,23 +1755,23 @@ public class doubleLPTests
         // structural change (A coefficient) WITHOUT the required matrixVersion bump -> contract violation.
         A[2, 0] = (double)5;
 
-        var x2 = arena.doubleVec(2);
+        var x2 = new doubleN(2, Allocator.Temp);
         Assert.Catch<InvalidOperationException>(
             () => LP.solve(in A, in b, in c, in senses, ref x2, out double _, ref basis, ref cache));
 
         // with the bump, the same re-solve takes the cold rebuild path and solves the MUTATED LP; its
         // objective matches a plain cold DualSimplex oracle on the mutated data.
         cache.matrixVersion++;
-        var x3 = arena.doubleVec(2);
+        var x3 = new doubleN(2, Allocator.Temp);
         var info3 = LP.solve(in A, in b, in c, in senses, ref x3, out double obj3, ref basis, ref cache);
         Assert.IsTrue(info3.status == LPStatus.Optimal);
 
-        var xo = arena.doubleVec(2);
+        var xo = new doubleN(2, Allocator.Temp);
         var infoO = LP.solve(in A, in b, in c, in senses, ref xo, out double objO, LPMethod.DualSimplex);
         Assert.IsTrue(infoO.status == LPStatus.Optimal);
         Assert.That(obj3, Is.EqualTo(objO).Within(1e-2 * (1.0 + math.abs(objO))));
 
-        cache.Dispose(); basis.Dispose(); senses.Dispose(); arena.Dispose();
+        cache.Dispose(); basis.Dispose(); senses.Dispose();
     }
 
     // Diagnostic: the matrix-free normal operator M = Aₛ diag(D) Aₛᵀ (with D = 1) must reproduce the
@@ -1876,9 +1779,8 @@ public class doubleLPTests
     [Test]
     public void SparseNormalOperatorMatchesDense()
     {
-        var arena = new Arena(Allocator.Persistent);
         int m = 3, n = 2, nv = 2 * n + 2 * m;
-        var Ad = arena.doubleMat(m, n);
+        var Ad = new doubleMxN(m, n, Allocator.Temp);
         Ad[0, 0] = (double)1; Ad[0, 1] = (double)2;
         Ad[1, 0] = (double)3; Ad[1, 1] = (double)(-1);
         Ad[2, 0] = (double)0; Ad[2, 1] = (double)4;
@@ -1886,19 +1788,19 @@ public class doubleLPTests
         // dense BSR (1×1 blocks, nonzeros only)
         int nnz = 0;
         for (int i = 0; i < m; i++) for (int j = 0; j < n; j++) if (Ad[i, j] != (double)0) nnz++;
-        var builder = arena.doubleBSRBuilder(m, n, 1, 1, nnz);
+        var builder = new doubleBSRBuilder(m, n, 1, 1, Allocator.Temp, nnz);
         for (int i = 0; i < m; i++)
             for (int j = 0; j < n; j++)
-                if (Ad[i, j] != (double)0) { var blk = arena.doubleMat(1, 1); blk[0, 0] = Ad[i, j]; builder.AddBlock(i, j, in blk); }
-        var As = builder.ToBSR(ref arena);
+                if (Ad[i, j] != (double)0) { var blk = new doubleMxN(1, 1, Allocator.Temp); blk[0, 0] = Ad[i, j]; builder.AddBlock(i, j, in blk); }
+        var As = builder.ToBSR(Allocator.Temp);
 
-        var ladSp = arena.doubleVec(n); var ladTm = arena.doubleVec(m); var ladAtr = arena.doubleVec(n);
-        var d = arena.doubleVec(nv); for (int j = 0; j < nv; j++) d[j] = (double)1;
-        var normNV = arena.doubleVec(nv);
+        var ladSp = new doubleN(n, Allocator.Temp); var ladTm = new doubleN(m, Allocator.Temp); var ladAtr = new doubleN(n, Allocator.Temp);
+        var d = new doubleN(nv, Allocator.Temp); for (int j = 0; j < nv; j++) d[j] = (double)1;
+        var normNV = new doubleN(nv, Allocator.Temp);
         var lad = new doubleLadOperator(in As, in ladSp, in ladTm, in ladAtr);
         var Mop = new doubleNormalOperator<doubleLadOperator>(in lad, in d, in normNV, (double)0);
 
-        var v = arena.doubleVec(m); var y = arena.doubleVec(m);
+        var v = new doubleN(m, Allocator.Temp); var y = new doubleN(m, Allocator.Temp);
         for (int i = 0; i < m; i++)
         {
             for (int k = 0; k < m; k++) v[k] = (double)0;
@@ -1912,7 +1814,6 @@ public class doubleLPTests
                 Assert.That((double)y[k], Is.EqualTo(expected).Within(1e-3), $"M[{k},{i}]");
             }
         }
-        arena.Dispose();
     }
 
     // Simplex and interior point must agree on the objective of a feasible bounded LP (they reach the
@@ -1920,14 +1821,13 @@ public class doubleLPTests
     [Test]
     public void SimplexAndInteriorPointAgree()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.doubleMat(2, 2);
+        var A = new doubleMxN(2, 2, Allocator.Temp);
         A[0, 0] = (double)1; A[0, 1] = (double)1;
         A[1, 0] = (double)1; A[1, 1] = (double)3;
-        var b = arena.doubleVec(2); b[0] = (double)4; b[1] = (double)6;
-        var c = arena.doubleVec(2); c[0] = (double)(-2); c[1] = (double)(-3);
-        var xs = arena.doubleVec(2);
-        var xi = arena.doubleVec(2);
+        var b = new doubleN(2, Allocator.Temp); b[0] = (double)4; b[1] = (double)6;
+        var c = new doubleN(2, Allocator.Temp); c[0] = (double)(-2); c[1] = (double)(-3);
+        var xs = new doubleN(2, Allocator.Temp);
+        var xi = new doubleN(2, Allocator.Temp);
         var senses = new NativeArray<ConstraintSense>(2, Allocator.Temp);
         senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.LessEqual;
 
@@ -1938,6 +1838,6 @@ public class doubleLPTests
         Assert.IsTrue(ii.status == LPStatus.Optimal);
         Assert.That(objI, Is.EqualTo(objS).Within(3e-2), $"simplex obj {objS} vs interior-point obj {objI}");
 
-        senses.Dispose(); arena.Dispose();
+        senses.Dispose();
     }
 }

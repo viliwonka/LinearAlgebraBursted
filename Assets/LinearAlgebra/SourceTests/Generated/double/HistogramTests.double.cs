@@ -84,9 +84,7 @@ public class doubleHistogramTests
         // lands in the LAST bin (closed upper edge).
         void ExplicitCounts()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var data = arena.doubleVec(11);
+            var data = new doubleN(11, Allocator.Temp);
             data[0] = (double)0;      // ->bin0 (== lo)
             data[1] = (double)1;      // ->bin0
             data[2] = (double)2;      // ->bin1
@@ -99,7 +97,7 @@ public class doubleHistogramTests
             data[9] = (double)(-0.5); // dropped (< lo)
             data[10] = (double)10.5;  // dropped (> hi)
 
-            var counts = arena.Indices(5);
+            var counts = new Indices(5, Allocator.Temp);
             for (int b = 0; b < 5; b++) counts[b] = 999;   // garbage; must be overwritten
 
             Histogram.histogramInto(in data, (double)0, (double)10, ref counts);
@@ -110,17 +108,13 @@ public class doubleHistogramTests
             RecordEq(counts[3], 1);
             RecordEq(counts[4], 3);
             RecordEq(Sum(in counts), 9);   // 2 of 11 dropped
-
-            arena.Dispose();
         }
 
         // NaN, +Inf, -Inf injected among the 9 in-range samples: all three are DROPPED. Total counted
         // == finite-in-range count (9), and bin0 is NOT inflated by the non-finite values.
         void NaNInfDropped()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var data = arena.doubleVec(12);
+            var data = new doubleN(12, Allocator.Temp);
             // First 9 values match ExplicitCounts's fixture (same bins); [9..11] are non-finite.
             data[0] = (double)0;
             data[1] = (double)1;
@@ -135,7 +129,7 @@ public class doubleHistogramTests
             data[10] = (double)float.PositiveInfinity; // dropped
             data[11] = (double)float.NegativeInfinity; // dropped
 
-            var counts = arena.Indices(5);
+            var counts = new Indices(5, Allocator.Temp);
             Histogram.histogramInto(in data, (double)0, (double)10, ref counts);
 
             RecordEq(counts[0], 2);   // exactly the two finite samples 0 and 1 — not inflated
@@ -144,20 +138,16 @@ public class doubleHistogramTests
             RecordEq(counts[3], 1);
             RecordEq(counts[4], 3);
             RecordEq(Sum(in counts), 9);   // 3 non-finite dropped
-
-            arena.Dispose();
         }
 
         // counts is zeroed even when no sample lands in a bin and the buffer holds garbage.
         void ZeroedFromGarbage()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var data = arena.doubleVec(2);
+            var data = new doubleN(2, Allocator.Temp);
             data[0] = (double)0.1;   // bin0
             data[1] = (double)0.2;   // bin0
 
-            var counts = arena.Indices(4);
+            var counts = new Indices(4, Allocator.Temp);
             for (int b = 0; b < 4; b++) counts[b] = 777;   // garbage
 
             Histogram.histogramInto(in data, (double)0, (double)4, ref counts);
@@ -166,8 +156,6 @@ public class doubleHistogramTests
             RecordEq(counts[1], 0);   // garbage was cleared
             RecordEq(counts[2], 0);
             RecordEq(counts[3], 0);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -178,12 +166,10 @@ public class doubleHistogramTests
         // Auto-range guarantees NO drops: sum of counts == number of finite samples (5).
         void AutoRangeFullSpan()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var data = arena.doubleVec(5);
+            var data = new doubleN(5, Allocator.Temp);
             for (int i = 0; i < 5; i++) data[i] = (double)(i + 1);
 
-            var counts = arena.Indices(4);
+            var counts = new Indices(4, Allocator.Temp);
             Histogram.histogramInto(in data, ref counts);
 
             RecordEq(counts[0], 1);
@@ -191,19 +177,15 @@ public class doubleHistogramTests
             RecordEq(counts[2], 1);
             RecordEq(counts[3], 2);   // 4 and 5 (==hi) both here
             RecordEq(Sum(in counts), 5);   // no drops
-
-            arena.Dispose();
         }
 
         // Constant finite data (max == min): all finite samples land in bin0 (no div-by-zero).
         void AutoRangeConstant()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var data = arena.doubleVec(3);
+            var data = new doubleN(3, Allocator.Temp);
             data[0] = (double)3; data[1] = (double)3; data[2] = (double)3;
 
-            var counts = arena.Indices(4);
+            var counts = new Indices(4, Allocator.Temp);
             for (int b = 0; b < 4; b++) counts[b] = 5;   // garbage
             Histogram.histogramInto(in data, ref counts);
 
@@ -211,38 +193,30 @@ public class doubleHistogramTests
             RecordEq(counts[1], 0);
             RecordEq(counts[2], 0);
             RecordEq(counts[3], 0);
-
-            arena.Dispose();
         }
 
         // All-NaN data -> all-zero counts, no throw.
         void AutoRangeAllNaN()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var data = arena.doubleVec(4);
+            var data = new doubleN(4, Allocator.Temp);
             for (int i = 0; i < 4; i++) data[i] = (double)float.NaN;
 
-            var counts = arena.Indices(4);
+            var counts = new Indices(4, Allocator.Temp);
             for (int b = 0; b < 4; b++) counts[b] = 9;   // garbage
             Histogram.histogramInto(in data, ref counts);
 
             for (int b = 0; b < 4; b++) RecordEq(counts[b], 0);
-
-            arena.Dispose();
         }
 
         // Leading NaN does not throw and the finite remainder {1,2,3,4,5} bins exactly as the full-span
         // case (min/max computed over finite samples only).
         void AutoRangeLeadingNaN()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var data = arena.doubleVec(6);
+            var data = new doubleN(6, Allocator.Temp);
             data[0] = (double)float.NaN;
             for (int i = 1; i < 6; i++) data[i] = (double)i;   // 1..5
 
-            var counts = arena.Indices(4);
+            var counts = new Indices(4, Allocator.Temp);
             Histogram.histogramInto(in data, ref counts);
 
             RecordEq(counts[0], 1);
@@ -250,8 +224,6 @@ public class doubleHistogramTests
             RecordEq(counts[2], 1);
             RecordEq(counts[3], 2);
             RecordEq(Sum(in counts), 5);   // 5 finite, none dropped
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -261,38 +233,32 @@ public class doubleHistogramTests
         // All samples in range -> Sigma dest[b]*w == 1 (proper density integrating to 1).
         void DensitySumsToOne()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var data = arena.doubleVec(5);
+            var data = new doubleN(5, Allocator.Temp);
             for (int i = 0; i < 5; i++) data[i] = (double)(i + 1);   // 1..5, all within [1,5]
 
             int K = 4;
             double lo = (double)1, hi = (double)5;
             double w = (hi - lo) / (double)K;
-            var dest = arena.doubleVec(K);
+            var dest = new doubleN(K, Allocator.Temp);
             Histogram.densityInto(in data, lo, hi, ref dest);
 
             double integral = (double)0;
             for (int b = 0; b < K; b++) integral += dest[b] * w;
 
             AssertClose(integral, (double)1, (double)10 * Consts.doubleSqrtEps);
-
-            arena.Dispose();
         }
 
         // Some samples dropped -> integral strictly < 1 (drops reduce the mass).
         // {1,2,3,4,5} over [2,4]: 1 and 5 dropped, 3 of 5 kept -> integral == 3/5 == 0.6.
         void DensityDropsBelowOne()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var data = arena.doubleVec(5);
+            var data = new doubleN(5, Allocator.Temp);
             for (int i = 0; i < 5; i++) data[i] = (double)(i + 1);
 
             int K = 4;
             double lo = (double)2, hi = (double)4;
             double w = (hi - lo) / (double)K;
-            var dest = arena.doubleVec(K);
+            var dest = new doubleN(K, Allocator.Temp);
             Histogram.densityInto(in data, lo, hi, ref dest);
 
             double integral = (double)0;
@@ -300,8 +266,6 @@ public class doubleHistogramTests
 
             AssertTrue(integral < (double)1);                       // strictly below 1
             AssertClose(integral, (double)0.6, (double)10 * Consts.doubleSqrtEps);  // 3/5 kept
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -311,13 +275,11 @@ public class doubleHistogramTests
         // Monotone non-decreasing; dest[K-1] == 1 EXACTLY (post-fix pins it).
         void CdfMonotoneLastExactlyOne()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var data = arena.doubleVec(5);
+            var data = new doubleN(5, Allocator.Temp);
             for (int i = 0; i < 5; i++) data[i] = (double)(i + 1);   // counts [1,1,1,2]
 
             int K = 4;
-            var dest = arena.doubleVec(K);
+            var dest = new doubleN(K, Allocator.Temp);
             Histogram.cdfInto(in data, (double)1, (double)5, ref dest);
 
             // monotone non-decreasing
@@ -326,27 +288,23 @@ public class doubleHistogramTests
 
             // last bin pinned to bit-exact 1 (assert EXACT equality, not tolerance)
             AssertClose(dest[K - 1], (double)1, (double)0);
-
-            arena.Dispose();
         }
 
         // dest[b] == (cumulative count_i, i<=b) / inRangeTotal, matched against independently computed
         // counts. counts [1,1,1,2], total 5 -> cdf [0.2,0.4,0.6,1.0].
         void CdfMatchesCumulativeCounts()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var data = arena.doubleVec(5);
+            var data = new doubleN(5, Allocator.Temp);
             for (int i = 0; i < 5; i++) data[i] = (double)(i + 1);
 
             int K = 4;
             double lo = (double)1, hi = (double)5;
 
-            var counts = arena.Indices(K);
+            var counts = new Indices(K, Allocator.Temp);
             Histogram.histogramInto(in data, lo, hi, ref counts);
             int total = Sum(in counts);
 
-            var dest = arena.doubleVec(K);
+            var dest = new doubleN(K, Allocator.Temp);
             Histogram.cdfInto(in data, lo, hi, ref dest);
 
             int cum = 0;
@@ -356,27 +314,21 @@ public class doubleHistogramTests
                 cum += counts[b];
                 AssertClose(dest[b], (double)cum / (double)total, tol);
             }
-
-            arena.Dispose();
         }
 
         // All samples dropped (range disjoint from data) -> all-zero CDF, no throw.
         void CdfAllDropped()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var data = arena.doubleVec(5);
+            var data = new doubleN(5, Allocator.Temp);
             for (int i = 0; i < 5; i++) data[i] = (double)(i + 1);   // 1..5, all below [10,20]
 
             int K = 4;
-            var dest = arena.doubleVec(K);
+            var dest = new doubleN(K, Allocator.Temp);
             for (int b = 0; b < K; b++) dest[b] = (double)123;   // garbage
             Histogram.cdfInto(in data, (double)10, (double)20, ref dest);
 
             for (int b = 0; b < K; b++)
                 AssertClose(dest[b], (double)0, (double)0);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -388,10 +340,8 @@ public class doubleHistogramTests
         // with NaN on Y is dropped.
         void Histogram2DCells()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var dataX = arena.doubleVec(6);
-            var dataY = arena.doubleVec(6);
+            var dataX = new doubleN(6, Allocator.Temp);
+            var dataY = new doubleN(6, Allocator.Temp);
             dataX[0] = (double)0.5; dataY[0] = (double)0.5;   // (bx0,by0)
             dataX[1] = (double)1.0; dataY[1] = (double)5.0;   // (bx0,by2)
             dataX[2] = (double)3.0; dataY[2] = (double)3.0;   // (bx1,by1)
@@ -399,7 +349,7 @@ public class doubleHistogramTests
             dataX[4] = (double)5.0; dataY[4] = (double)1.0;   // X out of range -> dropped
             dataX[5] = (double)1.0; dataY[5] = (double)float.NaN;     // Y NaN -> dropped
 
-            var counts = arena.doubleMat(2, 3);
+            var counts = new doubleMxN(2, 3, Allocator.Temp);
             for (int i = 0; i < counts.Length; i++) counts[i] = (double)999;   // garbage
 
             Histogram.histogram2DInto(in dataX, in dataY,
@@ -417,8 +367,6 @@ public class doubleHistogramTests
             AssertClose(counts[1, 0], (double)0, (double)0);
             AssertClose(counts[1, 1], (double)1, (double)0);
             AssertClose(counts[1, 2], (double)1, (double)0);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -429,16 +377,14 @@ public class doubleHistogramTests
         // with a seeded Random. Every picked bin index must be in [0, K).
         void WeightedPickBridge()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var data = arena.doubleVec(5);
+            var data = new doubleN(5, Allocator.Temp);
             for (int i = 0; i < 5; i++) data[i] = (double)(i + 1);
 
             int K = 4;
-            var counts = arena.Indices(K);
+            var counts = new Indices(K, Allocator.Temp);
             Histogram.histogramInto(in data, (double)1, (double)5, ref counts);   // [1,1,1,2]
 
-            var weights = arena.doubleVec(K);
+            var weights = new doubleN(K, Allocator.Temp);
             for (int b = 0; b < K; b++) weights[b] = (double)counts[b];
 
             var rng = new Random(20240627u);
@@ -447,8 +393,6 @@ public class doubleHistogramTests
                 int pick = Rand.weightedPick(in weights, ref rng);
                 AssertTrue(pick >= 0 && pick < K);
             }
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -529,102 +473,82 @@ public class doubleHistogramTests
     [Test]
     public void HistogramIntoValidates()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var data = arena.doubleVec(4);
-            for (int i = 0; i < 4; i++) data[i] = (double)i;
+        var data = new doubleN(4, Allocator.Temp);
+        for (int i = 0; i < 4; i++) data[i] = (double)i;
 
-            // K < 1 (empty counts)
-            var empty = arena.Indices(0);
-            Assert.Throws<ArgumentException>(
-                () => Histogram.histogramInto(in data, (double)0, (double)1, ref empty));
+        // K < 1 (empty counts)
+        var empty = new Indices(0, Allocator.Temp);
+        Assert.Throws<ArgumentException>(
+            () => Histogram.histogramInto(in data, (double)0, (double)1, ref empty));
 
-            // !(hi > lo): equal, and inverted
-            var counts = arena.Indices(4);
-            Assert.Throws<ArgumentException>(
-                () => Histogram.histogramInto(in data, (double)1, (double)1, ref counts));
-            Assert.Throws<ArgumentException>(
-                () => Histogram.histogramInto(in data, (double)5, (double)1, ref counts));
+        // !(hi > lo): equal, and inverted
+        var counts = new Indices(4, Allocator.Temp);
+        Assert.Throws<ArgumentException>(
+            () => Histogram.histogramInto(in data, (double)1, (double)1, ref counts));
+        Assert.Throws<ArgumentException>(
+            () => Histogram.histogramInto(in data, (double)5, (double)1, ref counts));
 
-            // auto-range overload also rejects K < 1
-            Assert.Throws<ArgumentException>(
-                () => Histogram.histogramInto(in data, ref empty));
-        }
-        finally { arena.Dispose(); }
+        // auto-range overload also rejects K < 1
+        Assert.Throws<ArgumentException>(
+            () => Histogram.histogramInto(in data, ref empty));
     }
 
     [Test]
     public void DensityIntoValidates()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var data = arena.doubleVec(4);
-            for (int i = 0; i < 4; i++) data[i] = (double)i;
-            var dest = arena.doubleVec(4);
+        var data = new doubleN(4, Allocator.Temp);
+        for (int i = 0; i < 4; i++) data[i] = (double)i;
+        var dest = new doubleN(4, Allocator.Temp);
 
-            // hi <= lo
-            Assert.Throws<ArgumentException>(
-                () => Histogram.densityInto(in data, (double)1, (double)1, ref dest));
+        // hi <= lo
+        Assert.Throws<ArgumentException>(
+            () => Histogram.densityInto(in data, (double)1, (double)1, ref dest));
 
-            // empty data (cannot normalize)
-            var emptyData = arena.doubleVec(0);
-            Assert.Throws<ArgumentException>(
-                () => Histogram.densityInto(in emptyData, (double)0, (double)1, ref dest));
+        // empty data (cannot normalize)
+        var emptyData = new doubleN(0, Allocator.Temp);
+        Assert.Throws<ArgumentException>(
+            () => Histogram.densityInto(in emptyData, (double)0, (double)1, ref dest));
 
-            // K < 1
-            var emptyDest = arena.doubleVec(0);
-            Assert.Throws<ArgumentException>(
-                () => Histogram.densityInto(in data, (double)0, (double)1, ref emptyDest));
-        }
-        finally { arena.Dispose(); }
+        // K < 1
+        var emptyDest = new doubleN(0, Allocator.Temp);
+        Assert.Throws<ArgumentException>(
+            () => Histogram.densityInto(in data, (double)0, (double)1, ref emptyDest));
     }
 
     [Test]
     public void CdfIntoValidates()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var data = arena.doubleVec(4);
-            for (int i = 0; i < 4; i++) data[i] = (double)i;
-            var dest = arena.doubleVec(4);
+        var data = new doubleN(4, Allocator.Temp);
+        for (int i = 0; i < 4; i++) data[i] = (double)i;
+        var dest = new doubleN(4, Allocator.Temp);
 
-            Assert.Throws<ArgumentException>(
-                () => Histogram.cdfInto(in data, (double)2, (double)1, ref dest));
+        Assert.Throws<ArgumentException>(
+            () => Histogram.cdfInto(in data, (double)2, (double)1, ref dest));
 
-            var emptyDest = arena.doubleVec(0);
-            Assert.Throws<ArgumentException>(
-                () => Histogram.cdfInto(in data, (double)0, (double)1, ref emptyDest));
-        }
-        finally { arena.Dispose(); }
+        var emptyDest = new doubleN(0, Allocator.Temp);
+        Assert.Throws<ArgumentException>(
+            () => Histogram.cdfInto(in data, (double)0, (double)1, ref emptyDest));
     }
 
     [Test]
     public void Histogram2DIntoValidates()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var dataX = arena.doubleVec(5);
-            var dataY = arena.doubleVec(4);   // mismatched length
-            var counts = arena.doubleMat(2, 2);
+        var dataX = new doubleN(5, Allocator.Temp);
+        var dataY = new doubleN(4, Allocator.Temp);   // mismatched length
+        var counts = new doubleMxN(2, 2, Allocator.Temp);
 
-            // mismatched dataX / dataY lengths
-            Assert.Throws<ArgumentException>(
-                () => Histogram.histogram2DInto(in dataX, in dataY,
-                    (double)0, (double)1, (double)0, (double)1, ref counts));
+        // mismatched dataX / dataY lengths
+        Assert.Throws<ArgumentException>(
+            () => Histogram.histogram2DInto(in dataX, in dataY,
+                (double)0, (double)1, (double)0, (double)1, ref counts));
 
-            // paired (equal-length) but invalid ranges
-            var dY = arena.doubleVec(5);
-            Assert.Throws<ArgumentException>(
-                () => Histogram.histogram2DInto(in dataX, in dY,
-                    (double)1, (double)1, (double)0, (double)1, ref counts));   // hiX <= loX
-            Assert.Throws<ArgumentException>(
-                () => Histogram.histogram2DInto(in dataX, in dY,
-                    (double)0, (double)1, (double)2, (double)1, ref counts));   // hiY <= loY
-        }
-        finally { arena.Dispose(); }
+        // paired (equal-length) but invalid ranges
+        var dY = new doubleN(5, Allocator.Temp);
+        Assert.Throws<ArgumentException>(
+            () => Histogram.histogram2DInto(in dataX, in dY,
+                (double)1, (double)1, (double)0, (double)1, ref counts));   // hiX <= loX
+        Assert.Throws<ArgumentException>(
+            () => Histogram.histogram2DInto(in dataX, in dY,
+                (double)0, (double)1, (double)2, (double)1, ref counts));   // hiY <= loY
     }
 }

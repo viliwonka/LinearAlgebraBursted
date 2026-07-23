@@ -18,7 +18,7 @@ using Unity.Mathematics;
 //   - Tall generator: build A (m > n), form a CONSISTENT b = A*x_known, solve the least-squares problem
 //     with LSQR -> recovers x_known. That requires full column rank, so success proves it.
 // Runs inside a [BurstCompile] IJob (matches doubleSparseSolverTests); the generators are themselves
-// Burst-compatible (no managed collections -- Unity.Mathematics.Random + arena/builder only).
+// Burst-compatible (no managed collections -- Unity.Mathematics.Random + builder only).
 public class doubleSparseGalleryTests
 {
     [BurstCompile(CompileSynchronously = true)]
@@ -49,42 +49,38 @@ public class doubleSparseGalleryTests
 
         void RandomSparseSPDRecoversViaCG()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int blockRows = 10, BR = 3;
             int n = blockRows * BR;
-            var A = arena.doubleRandomSparseSPD(blockRows, BR, (double)0.5f, 20260708u);
+            var A = doubleGallery.doubleRandomSparseSPD(blockRows, BR, (double)0.5f, 20260708u);
 
-            var xKnown = arena.doubleRandomVec(n, 1f, 3f, 777);
+            var xKnown = GenerateOP.doubleRandomVec(n, 1f, 3f, 777);
             var b = BSR.spMV(in A, in xKnown);
 
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
             bool ok = Krylov.cg(in A, in b, ref x, 8 * n, Consts.doubleSqrtEps);
             Assert.IsTrue(ok);                                   // CG converged => A is SPD
 
-            Assert.IsTrue(Analysis.isZero(xKnown - x, Tol()));   // and recovered the exact solution
-
-            arena.Dispose();
+            var diff = new doubleN(in xKnown, Allocator.Temp);
+            doubleComp.subInPlace(diff, x);
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));         // and recovered the exact solution
         }
 
         void RandomSparseTallRecoversViaLsqr()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int blockRows = 16, blockCols = 8, BR = 2;           // 32 x 16 tall
             int n = blockCols * BR;
-            var A = arena.doubleRandomSparse(blockRows, blockCols, BR, (double)0.5f, 4242u);
+            var A = doubleGallery.doubleRandomSparse(blockRows, blockCols, BR, (double)0.5f, 4242u);
 
-            var xKnown = arena.doubleRandomVec(n, 1f, 3f, 99);
+            var xKnown = GenerateOP.doubleRandomVec(n, 1f, 3f, 99);
             var b = BSR.spMV(in A, in xKnown);                   // consistent (b in range(A))
 
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
             bool ok = Krylov.lsqr(in A, in b, ref x, 16 * n, Consts.doubleSqrtEps);
             Assert.IsTrue(ok);                                   // LSQR converged => full column rank
 
-            Assert.IsTrue(Analysis.isZero(xKnown - x, Tol()));
-
-            arena.Dispose();
+            var diff = new doubleN(in xKnown, Allocator.Temp);
+            doubleComp.subInPlace(diff, x);
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
         }
     }
 

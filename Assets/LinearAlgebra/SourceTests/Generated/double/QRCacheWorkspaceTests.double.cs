@@ -73,56 +73,55 @@ public class doubleQRCacheWorkspaceTests
         // (same kernel, same block gate) AND be a valid QR (A ≈ Q*R, Q orthonormal, R upper triangular).
         void DecompCacheEquiv(int m, int n, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
 
-            var A = arena.doubleRandomMat(m, n, -1f, 1f, seed);
+            var A = GenerateOP.doubleRandomMat(m, n, -1f, 1f, seed);
             for (int d = 0; d < n; d++)   // boost leading diagonal for conditioning
                 A[d, d] += (double)5f;
 
             // allocating reference (routes through the blocked core once N_Cols clears the per-type gate)
-            var Qa = A.Copy();
-            var Ra = arena.doubleMat(n);
+            var Qa = new doubleMxN(in A, Allocator.Temp);
+            var Ra = new doubleMxN(n, n, Allocator.Temp);
             QR.decompInPlace(ref Qa, ref Ra);
 
-            // cache overload — same kernel, arena-owned scratch
-            var Qb = A.Copy();
-            var Rb = arena.doubleMat(n);
-            var cache = arena.doubleQRCache(m, n);
+            // cache overload — same kernel, caller-owned scratch
+            var Qb = new doubleMxN(in A, Allocator.Temp);
+            var Rb = new doubleMxN(n, n, Allocator.Temp);
+            var cache = new doubleQRCache(m, n, Allocator.Temp);
             QR.decompInPlace(ref Qb, ref Rb, ref cache);
 
             // bit-identity vs the allocating overload
-            Assert.IsTrue(Analysis.isZero(Qa - Qb, Tol()));
-            Assert.IsTrue(Analysis.isZero(Ra - Rb, Tol()));
+            var diffQ = new doubleMxN(in Qa, Allocator.Temp); doubleComp.subInPlace(diffQ, Qb);
+            Assert.IsTrue(Analysis.isZero(diffQ, Tol()));
+            var diffR = new doubleMxN(in Ra, Allocator.Temp); doubleComp.subInPlace(diffR, Rb);
+            Assert.IsTrue(Analysis.isZero(diffR, Tol()));
 
             // and a genuinely valid QR of A
-            Assert.IsTrue(Analysis.isZero(A - Blas.dot(Qb, Rb), ReconTol()));
+            var diffRecon = new doubleMxN(in A, Allocator.Temp); doubleComp.subInPlace(diffRecon, Blas.dot(Qb, Rb));
+            Assert.IsTrue(Analysis.isZero(diffRecon, ReconTol()));
             Assert.IsTrue(Analysis.isOrthogonal(Qb, ReconTol()));
             Assert.IsTrue(Analysis.isUpperTriangular(Rb, ReconTol()));
-
-            arena.Dispose();
         }
 
         // A-preserving decomp(in A, ref Q, ref R, ref cache): A must be untouched, and Q/R must match
         // the allocating decomp(in A, ref Q, ref R) bit-for-bit.
         void DecompPreservingCacheEquiv(int m, int n, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
 
-            var A = arena.doubleRandomMat(m, n, -3f, 3f, seed);
+            var A = GenerateOP.doubleRandomMat(m, n, -3f, 3f, seed);
             for (int d = 0; d < n; d++) A[d, d] += (double)5f;
 
             double checksumBefore = (double)0;
             for (int i = 0; i < A.Length; i++) checksumBefore += A[i] * (double)(i + 1);
 
             // allocating reference
-            var Qa = arena.doubleMat(m, n);
-            var Ra = arena.doubleMat(n);
+            var Qa = new doubleMxN(m, n, Allocator.Temp);
+            var Ra = new doubleMxN(n, n, Allocator.Temp);
             QR.decomp(in A, ref Qa, ref Ra);
 
             // cache overload
-            var Qb = arena.doubleMat(m, n);
-            var Rb = arena.doubleMat(n);
-            var cache = arena.doubleQRCache(m, n);
+            var Qb = new doubleMxN(m, n, Allocator.Temp);
+            var Rb = new doubleMxN(n, n, Allocator.Temp);
+            var cache = new doubleQRCache(m, n, Allocator.Temp);
             QR.decomp(in A, ref Qb, ref Rb, ref cache);
 
             // A preserved by the cache overload (position-weighted checksum catches any mutation)
@@ -131,12 +130,13 @@ public class doubleQRCacheWorkspaceTests
             Assert.IsTrue(checksumAfter == checksumBefore);
 
             // bit-identity vs the allocating decomp, and a valid QR of A
-            Assert.IsTrue(Analysis.isZero(Qa - Qb, Tol()));
-            Assert.IsTrue(Analysis.isZero(Ra - Rb, Tol()));
-            Assert.IsTrue(Analysis.isZero(A - Blas.dot(Qb, Rb), ReconTol()));
+            var diffQ = new doubleMxN(in Qa, Allocator.Temp); doubleComp.subInPlace(diffQ, Qb);
+            Assert.IsTrue(Analysis.isZero(diffQ, Tol()));
+            var diffR = new doubleMxN(in Ra, Allocator.Temp); doubleComp.subInPlace(diffR, Rb);
+            Assert.IsTrue(Analysis.isZero(diffR, Tol()));
+            var diffRecon = new doubleMxN(in A, Allocator.Temp); doubleComp.subInPlace(diffRecon, Blas.dot(Qb, Rb));
+            Assert.IsTrue(Analysis.isZero(diffRecon, ReconTol()));
             Assert.IsTrue(Analysis.isOrthogonal(Qb, ReconTol()));
-
-            arena.Dispose();
         }
 
         // solveInPlace(ref A, ref b, ref x, ref cache) must equal solveInPlace(ref A, ref b, ref x)
@@ -144,33 +144,32 @@ public class doubleQRCacheWorkspaceTests
         // from a consistent RHS b = A xOrig (square or overdetermined-consistent).
         void SolveCacheEquiv(int m, int n, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
 
-            var A0 = arena.doubleRandomMat(m, n, -1f, 1f, seed);
+            var A0 = GenerateOP.doubleRandomMat(m, n, -1f, 1f, seed);
             for (int d = 0; d < n; d++)   // well-conditioned columns
                 A0[d, d] += (double)5f;
 
-            var xOrig = arena.doubleRandomVec(n, -3f, 3f, seed ^ 0x9E3779B9u);
+            var xOrig = GenerateOP.doubleRandomVec(n, -3f, 3f, seed ^ 0x9E3779B9u);
             var bOrig = Blas.dot(A0, xOrig);   // consistent RHS (length m)
 
             // allocating reference
-            var Aa = A0.Copy();
-            var ba = bOrig.Copy();
-            var xa = arena.doubleVec(n);
+            var Aa = new doubleMxN(in A0, Allocator.Temp);
+            var ba = new doubleN(in bOrig, Allocator.Temp);
+            var xa = new doubleN(n, Allocator.Temp);
             QR.solveInPlace(ref Aa, ref ba, ref xa);
 
             // cache overload
-            var Ab = A0.Copy();
-            var bb = bOrig.Copy();
-            var xb = arena.doubleVec(n);
-            var cache = arena.doubleQRCache(m, n);
+            var Ab = new doubleMxN(in A0, Allocator.Temp);
+            var bb = new doubleN(in bOrig, Allocator.Temp);
+            var xb = new doubleN(n, Allocator.Temp);
+            var cache = new doubleQRCache(m, n, Allocator.Temp);
             QR.solveInPlace(ref Ab, ref bb, ref xb, ref cache);
 
             // bit-identity vs the allocating overload, and correct recovery of xOrig
-            Assert.IsTrue(Analysis.isZero(xa - xb, Tol()));
-            Assert.IsTrue(Analysis.isZero(xb - xOrig, SolveTol()));
-
-            arena.Dispose();
+            var diffX = new doubleN(in xa, Allocator.Temp); doubleComp.subInPlace(diffX, xb);
+            Assert.IsTrue(Analysis.isZero(diffX, Tol()));
+            var diffXOrig = new doubleN(in xb, Allocator.Temp); doubleComp.subInPlace(diffXOrig, xOrig);
+            Assert.IsTrue(Analysis.isZero(diffXOrig, SolveTol()));
         }
 
         // Reuse ONE cache across several consecutive decomp AND solve calls with fresh random matrices:
@@ -179,47 +178,47 @@ public class doubleQRCacheWorkspaceTests
         // covers the blocked-WY buffers' bit-identity on a single call.
         void WorkspaceReuse()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 96, n = 96;
 
-            var cache = arena.doubleQRCache(m, n);   // allocated ONCE, reused across every call below
+            var cache = new doubleQRCache(m, n, Allocator.Temp);   // allocated ONCE, reused across every call below
 
             for (int t = 0; t < 3; t++)
             {
-                var A0 = arena.doubleRandomMat(m, n, -1f, 1f, (uint)(3000 + t * 13));
+                var A0 = GenerateOP.doubleRandomMat(m, n, -1f, 1f, (uint)(3000 + t * 13));
                 for (int d = 0; d < n; d++)
                     A0[d, d] += (double)5f;
 
                 // decompInPlace: allocating reference vs reused cache
-                var Qa = A0.Copy();
-                var Ra = arena.doubleMat(n);
+                var Qa = new doubleMxN(in A0, Allocator.Temp);
+                var Ra = new doubleMxN(n, n, Allocator.Temp);
                 QR.decompInPlace(ref Qa, ref Ra);
 
-                var Qw = A0.Copy();
-                var Rw = arena.doubleMat(n);
+                var Qw = new doubleMxN(in A0, Allocator.Temp);
+                var Rw = new doubleMxN(n, n, Allocator.Temp);
                 QR.decompInPlace(ref Qw, ref Rw, ref cache);
 
-                Assert.IsTrue(Analysis.isZero(Qa - Qw, Tol()));
-                Assert.IsTrue(Analysis.isZero(Ra - Rw, Tol()));
+                var diffQ = new doubleMxN(in Qa, Allocator.Temp); doubleComp.subInPlace(diffQ, Qw);
+                Assert.IsTrue(Analysis.isZero(diffQ, Tol()));
+                var diffR = new doubleMxN(in Ra, Allocator.Temp); doubleComp.subInPlace(diffR, Rw);
+                Assert.IsTrue(Analysis.isZero(diffR, Tol()));
 
                 // solveInPlace: allocating reference vs the SAME reused cache
-                var xOrig = arena.doubleRandomVec(n, -3f, 3f, (uint)(4000 + t * 17));
+                var xOrig = GenerateOP.doubleRandomVec(n, -3f, 3f, (uint)(4000 + t * 17));
                 var bOrig = Blas.dot(A0, xOrig);
 
-                var Asa = A0.Copy();
-                var ba = bOrig.Copy();
-                var xa = arena.doubleVec(n);
+                var Asa = new doubleMxN(in A0, Allocator.Temp);
+                var ba = new doubleN(in bOrig, Allocator.Temp);
+                var xa = new doubleN(n, Allocator.Temp);
                 QR.solveInPlace(ref Asa, ref ba, ref xa);
 
-                var Asw = A0.Copy();
-                var bw = bOrig.Copy();
-                var xw = arena.doubleVec(n);
+                var Asw = new doubleMxN(in A0, Allocator.Temp);
+                var bw = new doubleN(in bOrig, Allocator.Temp);
+                var xw = new doubleN(n, Allocator.Temp);
                 QR.solveInPlace(ref Asw, ref bw, ref xw, ref cache);
 
-                Assert.IsTrue(Analysis.isZero(xa - xw, Tol()));
+                var diffX = new doubleN(in xa, Allocator.Temp); doubleComp.subInPlace(diffX, xw);
+                Assert.IsTrue(Analysis.isZero(diffX, Tol()));
             }
-
-            arena.Dispose();
         }
     }
 
@@ -241,31 +240,29 @@ public class doubleQRCacheWorkspaceTests
     [Test]
     public void QrDecompCache_BadU_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
         try
         {
-            var Q = arena.doubleMat(6, 4);
-            var R = arena.doubleMat(4);
-            var cache = arena.doubleQRCache(6, 4);
-            cache.u = arena.doubleVec(5);   // wrong: must be length m = 6
+            var Q = new doubleMxN(6, 4, Allocator.Temp);
+            var R = new doubleMxN(4, 4, Allocator.Temp);
+            var cache = new doubleQRCache(6, 4, Allocator.Temp);
+            cache.u = new doubleN(5, Allocator.Temp);   // wrong: must be length m = 6
             Assert.Throws<ArgumentException>(() => QR.decompInPlace(ref Q, ref R, ref cache));
         }
-        finally { arena.Dispose(); }
+        finally { }
     }
 
     [Test]
     public void QrDecompCache_BadW_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
         try
         {
-            var Q = arena.doubleMat(6, 4);
-            var R = arena.doubleMat(4);
-            var cache = arena.doubleQRCache(6, 4);
-            cache.w = arena.doubleVec(3);   // wrong: must be length n = 4
+            var Q = new doubleMxN(6, 4, Allocator.Temp);
+            var R = new doubleMxN(4, 4, Allocator.Temp);
+            var cache = new doubleQRCache(6, 4, Allocator.Temp);
+            cache.w = new doubleN(3, Allocator.Temp);   // wrong: must be length n = 4
             Assert.Throws<ArgumentException>(() => QR.decompInPlace(ref Q, ref R, ref cache));
         }
-        finally { arena.Dispose(); }
+        finally { }
     }
 
     // The five blocked-WY buffers are validated ONLY when the per-type block gate engages
@@ -274,76 +271,71 @@ public class doubleQRCacheWorkspaceTests
     [Test]
     public void QrDecompCache_BadVpanel_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
         try
         {
-            var Q = arena.doubleMat(512, 512);
-            var R = arena.doubleMat(512);
-            var cache = arena.doubleQRCache(512, 512);
-            cache.Vpanel = arena.doubleVec(100);   // wrong: must be m*32 = 2048
+            var Q = new doubleMxN(512, 512, Allocator.Temp);
+            var R = new doubleMxN(512, 512, Allocator.Temp);
+            var cache = new doubleQRCache(512, 512, Allocator.Temp);
+            cache.Vpanel = new doubleN(100, Allocator.Temp);   // wrong: must be m*32 = 2048
             Assert.Throws<ArgumentException>(() => QR.decompInPlace(ref Q, ref R, ref cache));
         }
-        finally { arena.Dispose(); }
+        finally { }
     }
 
     [Test]
     public void QrDecompCache_BadTbuf_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
         try
         {
-            var Q = arena.doubleMat(512, 512);
-            var R = arena.doubleMat(512);
-            var cache = arena.doubleQRCache(512, 512);
-            cache.Tbuf = arena.doubleVec(100);   // wrong: must be 32*32 = 1024
+            var Q = new doubleMxN(512, 512, Allocator.Temp);
+            var R = new doubleMxN(512, 512, Allocator.Temp);
+            var cache = new doubleQRCache(512, 512, Allocator.Temp);
+            cache.Tbuf = new doubleN(100, Allocator.Temp);   // wrong: must be 32*32 = 1024
             Assert.Throws<ArgumentException>(() => QR.decompInPlace(ref Q, ref R, ref cache));
         }
-        finally { arena.Dispose(); }
+        finally { }
     }
 
     [Test]
     public void QrDecompCache_BadWbuf_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
         try
         {
-            var Q = arena.doubleMat(512, 512);
-            var R = arena.doubleMat(512);
-            var cache = arena.doubleQRCache(512, 512);
-            cache.Wbuf = arena.doubleVec(100);   // wrong: must be 32*n = 2048
+            var Q = new doubleMxN(512, 512, Allocator.Temp);
+            var R = new doubleMxN(512, 512, Allocator.Temp);
+            var cache = new doubleQRCache(512, 512, Allocator.Temp);
+            cache.Wbuf = new doubleN(100, Allocator.Temp);   // wrong: must be 32*n = 2048
             Assert.Throws<ArgumentException>(() => QR.decompInPlace(ref Q, ref R, ref cache));
         }
-        finally { arena.Dispose(); }
+        finally { }
     }
 
     [Test]
     public void QrDecompCache_BadTcolBuf_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
         try
         {
-            var Q = arena.doubleMat(512, 512);
-            var R = arena.doubleMat(512);
-            var cache = arena.doubleQRCache(512, 512);
-            cache.tcolBuf = arena.doubleVec(16);   // wrong: must be 32
+            var Q = new doubleMxN(512, 512, Allocator.Temp);
+            var R = new doubleMxN(512, 512, Allocator.Temp);
+            var cache = new doubleQRCache(512, 512, Allocator.Temp);
+            cache.tcolBuf = new doubleN(16, Allocator.Temp);   // wrong: must be 32
             Assert.Throws<ArgumentException>(() => QR.decompInPlace(ref Q, ref R, ref cache));
         }
-        finally { arena.Dispose(); }
+        finally { }
     }
 
     [Test]
     public void QrDecompCache_BadVfullBuf_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
         try
         {
-            var Q = arena.doubleMat(512, 512);
-            var R = arena.doubleMat(512);
-            var cache = arena.doubleQRCache(512, 512);
-            cache.VfullBuf = arena.doubleVec(100);   // wrong: must be m*n = 4096
+            var Q = new doubleMxN(512, 512, Allocator.Temp);
+            var R = new doubleMxN(512, 512, Allocator.Temp);
+            var cache = new doubleQRCache(512, 512, Allocator.Temp);
+            cache.VfullBuf = new doubleN(100, Allocator.Temp);   // wrong: must be m*n = 4096
             Assert.Throws<ArgumentException>(() => QR.decompInPlace(ref Q, ref R, ref cache));
         }
-        finally { arena.Dispose(); }
+        finally { }
     }
 
     // Design asymmetry #1: BELOW the block gate (N_Cols < 64) the blocked-WY buffers are NEVER touched,
@@ -351,50 +343,47 @@ public class doubleQRCacheWorkspaceTests
     [Test]
     public void QrDecompCache_BelowGate_BadBlockedBuffer_DoesNotThrow()
     {
-        var arena = new Arena(Allocator.Persistent);
         try
         {
-            var Q = arena.doubleMat(16, 16);
+            var Q = new doubleMxN(16, 16, Allocator.Temp);
             for (int d = 0; d < 16; d++) Q[d, d] += (double)5f;
-            var R = arena.doubleMat(16);
-            var cache = arena.doubleQRCache(16, 16);
-            cache.Vpanel = arena.doubleVec(3);   // garbage size, but unblocked path never reads it
+            var R = new doubleMxN(16, 16, Allocator.Temp);
+            var cache = new doubleQRCache(16, 16, Allocator.Temp);
+            cache.Vpanel = new doubleN(3, Allocator.Temp);   // garbage size, but unblocked path never reads it
             Assert.DoesNotThrow(() => QR.decompInPlace(ref Q, ref R, ref cache));
         }
-        finally { arena.Dispose(); }
+        finally { }
     }
 
     // solveInPlace validates u & w (at any size)...
     [Test]
     public void QrSolveInPlaceCache_BadU_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
         try
         {
-            var A = arena.doubleMat(6, 4);
-            var b = arena.doubleVec(6);
-            var x = arena.doubleVec(4);
-            var cache = arena.doubleQRCache(6, 4);
-            cache.u = arena.doubleVec(5);   // wrong: must be length A.M_Rows = 6
+            var A = new doubleMxN(6, 4, Allocator.Temp);
+            var b = new doubleN(6, Allocator.Temp);
+            var x = new doubleN(4, Allocator.Temp);
+            var cache = new doubleQRCache(6, 4, Allocator.Temp);
+            cache.u = new doubleN(5, Allocator.Temp);   // wrong: must be length A.M_Rows = 6
             Assert.Throws<ArgumentException>(() => QR.solveInPlace(ref A, ref b, ref x, ref cache));
         }
-        finally { arena.Dispose(); }
+        finally { }
     }
 
     [Test]
     public void QrSolveInPlaceCache_BadW_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
         try
         {
-            var A = arena.doubleMat(6, 4);
-            var b = arena.doubleVec(6);
-            var x = arena.doubleVec(4);
-            var cache = arena.doubleQRCache(6, 4);
-            cache.w = arena.doubleVec(3);   // wrong: must be length A.N_Cols = 4
+            var A = new doubleMxN(6, 4, Allocator.Temp);
+            var b = new doubleN(6, Allocator.Temp);
+            var x = new doubleN(4, Allocator.Temp);
+            var cache = new doubleQRCache(6, 4, Allocator.Temp);
+            cache.w = new doubleN(3, Allocator.Temp);   // wrong: must be length A.N_Cols = 4
             Assert.Throws<ArgumentException>(() => QR.solveInPlace(ref A, ref b, ref x, ref cache));
         }
-        finally { arena.Dispose(); }
+        finally { }
     }
 
     // Design asymmetry #2: solveInPlace's fused kernel NEVER forms Q, so it never validates or reads
@@ -402,18 +391,17 @@ public class doubleQRCacheWorkspaceTests
     [Test]
     public void QrSolveInPlaceCache_BadBlockedBuffer_DoesNotThrow()
     {
-        var arena = new Arena(Allocator.Persistent);
         try
         {
-            var A = arena.doubleMat(80, 80);
+            var A = new doubleMxN(80, 80, Allocator.Temp);
             for (int d = 0; d < 80; d++) A[d, d] += (double)5f;   // well-conditioned so the solve is finite
-            var b = arena.doubleVec(80);
-            var x = arena.doubleVec(80);
-            var cache = arena.doubleQRCache(80, 80);
-            cache.Vpanel = arena.doubleVec(3);   // garbage size, but solveInPlace never reads it
+            var b = new doubleN(80, Allocator.Temp);
+            var x = new doubleN(80, Allocator.Temp);
+            var cache = new doubleQRCache(80, 80, Allocator.Temp);
+            cache.Vpanel = new doubleN(3, Allocator.Temp);   // garbage size, but solveInPlace never reads it
             Assert.DoesNotThrow(() => QR.solveInPlace(ref A, ref b, ref x, ref cache));
         }
-        finally { arena.Dispose(); }
+        finally { }
     }
 
     // Arena.doubleQRCache(m, n) must size every field: u=m, w=n, Vpanel=m*32, Tbuf=32*32,
@@ -421,12 +409,11 @@ public class doubleQRCacheWorkspaceTests
     [Test]
     public void QRCacheWorkspace_Factory_SizesCorrectly()
     {
-        var arena = new Arena(Allocator.Persistent);
         try
         {
             const int QR_BLOCK = 32;
             int m = 10, n = 6;
-            var cache = arena.doubleQRCache(m, n);
+            var cache = new doubleQRCache(m, n, Allocator.Temp);
             Assert.AreEqual(m, cache.u.N);
             Assert.AreEqual(n, cache.w.N);
             Assert.AreEqual(m * QR_BLOCK, cache.Vpanel.N);
@@ -435,6 +422,6 @@ public class doubleQRCacheWorkspaceTests
             Assert.AreEqual(QR_BLOCK, cache.tcolBuf.N);
             Assert.AreEqual(m * n, cache.VfullBuf.N);
         }
-        finally { arena.Dispose(); }
+        finally { }
     }
 }

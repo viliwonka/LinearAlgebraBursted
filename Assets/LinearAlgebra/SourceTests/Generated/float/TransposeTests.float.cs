@@ -39,11 +39,9 @@ public class floatTransposeTests
 
         public void TransSquare()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 16;
-            
-            floatMxN A = arena.floatRandomMat(dim, dim);
+
+            floatMxN A = GenerateOP.floatRandomMat(dim, dim);
 
             floatMxN B = Blas.trans(A);
 
@@ -53,18 +51,14 @@ public class floatTransposeTests
             for (int r = 0; r < dim; r++)
             for (int c = 0; c < dim; c++)
                 Assert.IsTrue(B[c, r] == A[r, c]);
-
-            arena.Dispose();
         }
 
         public void TransNonSquare()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            int rows = 8; 
+            int rows = 8;
             int cols = 32;
 
-            floatMxN A = arena.floatRandomMat(rows, cols);
+            floatMxN A = GenerateOP.floatRandomMat(rows, cols);
 
             floatMxN B = Blas.trans(A);
 
@@ -74,8 +68,6 @@ public class floatTransposeTests
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
                 Assert.IsTrue(B[c, r] == A[r, c]);
-
-            arena.Dispose();
         }
     }
 

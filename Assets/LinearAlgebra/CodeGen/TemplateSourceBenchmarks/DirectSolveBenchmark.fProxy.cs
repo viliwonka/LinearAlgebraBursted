@@ -128,12 +128,11 @@ namespace LinearAlgebra.Benchmarks
     {
         static string LuSolveFProxy(int N)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var U = arena.fProxyMat(N, N);
-            var L = arena.fProxyMat(N, N);
-            var Src = arena.fProxyMat(N, N);
-            var b = arena.fProxyVec(N);
-            var bSrc = arena.fProxyVec(N);
+            var U = new fProxyMxN(N, N, Allocator.Persistent);
+            var L = new fProxyMxN(N, N, Allocator.Persistent);
+            var Src = new fProxyMxN(N, N, Allocator.Persistent);
+            var b = new fProxyN(N, Allocator.Persistent);
+            var bSrc = new fProxyN(N, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)N);
             for (int r = 0; r < N; r++)
@@ -146,17 +145,16 @@ namespace LinearAlgebra.Benchmarks
             var job = new LuSolveJobFProxy { U = U, L = L, Src = Src, b = b, bSrc = bSrc };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            U.Dispose(); L.Dispose(); Src.Dispose(); b.Dispose(); bSrc.Dispose();
             return Bench.RowTime("LU fProxy", N, stat);
         }
 
         static string LuSolveTransAFProxy(int N)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyMat(N, N);
-            var Src = arena.fProxyMat(N, N);
-            var b = arena.fProxyVec(N);
-            var bSrc = arena.fProxyVec(N);
+            var A = new fProxyMxN(N, N, Allocator.Persistent);
+            var Src = new fProxyMxN(N, N, Allocator.Persistent);
+            var b = new fProxyN(N, Allocator.Persistent);
+            var bSrc = new fProxyN(N, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)N);
             for (int r = 0; r < N; r++)
@@ -169,17 +167,16 @@ namespace LinearAlgebra.Benchmarks
             var job = new LuSolveTransAJobFProxy { A = A, Src = Src, b = b, bSrc = bSrc };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); Src.Dispose(); b.Dispose(); bSrc.Dispose();
             return Bench.RowTime("LU fProxy (TransA)", N, stat);
         }
 
         static string CholSolveFProxy(int N)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyMat(N, N);
-            var L = arena.fProxyMat(N, N);
-            var b = arena.fProxyVec(N);
-            var bSrc = arena.fProxyVec(N);
+            var A = new fProxyMxN(N, N, Allocator.Persistent);
+            var L = new fProxyMxN(N, N, Allocator.Persistent);
+            var b = new fProxyN(N, Allocator.Persistent);
+            var bSrc = new fProxyN(N, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)N);
             for (int i = 0; i < N; i++)
@@ -195,18 +192,17 @@ namespace LinearAlgebra.Benchmarks
             var job = new CholSolveJobFProxy { A = A, L = L, b = b, bSrc = bSrc };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); L.Dispose(); b.Dispose(); bSrc.Dispose();
             return Bench.RowTime("Cholesky fProxy", N, stat);
         }
 
         static string QrSolveFProxy(int N)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyMat(N, N);
-            var Src = arena.fProxyMat(N, N);
-            var b = arena.fProxyVec(N);
-            var bSrc = arena.fProxyVec(N);
-            var x = arena.fProxyVec(N);
+            var A = new fProxyMxN(N, N, Allocator.Persistent);
+            var Src = new fProxyMxN(N, N, Allocator.Persistent);
+            var b = new fProxyN(N, Allocator.Persistent);
+            var bSrc = new fProxyN(N, Allocator.Persistent);
+            var x = new fProxyN(N, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)N);
             for (int r = 0; r < N; r++)
@@ -218,19 +214,18 @@ namespace LinearAlgebra.Benchmarks
             var job = new QrSquareSolveJobFProxy { A = A, Src = Src, b = b, bSrc = bSrc, x = x };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); Src.Dispose(); b.Dispose(); bSrc.Dispose(); x.Dispose();
             return Bench.RowTime("QR fProxy", N, stat);
         }
 
         static string QrSolveCacheFProxy(int N)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyMat(N, N);
-            var Src = arena.fProxyMat(N, N);
-            var b = arena.fProxyVec(N);
-            var bSrc = arena.fProxyVec(N);
-            var x = arena.fProxyVec(N);
-            var cache = arena.fProxyQRCache(N, N);
+            var A = new fProxyMxN(N, N, Allocator.Persistent);
+            var Src = new fProxyMxN(N, N, Allocator.Persistent);
+            var b = new fProxyN(N, Allocator.Persistent);
+            var bSrc = new fProxyN(N, Allocator.Persistent);
+            var x = new fProxyN(N, Allocator.Persistent);
+            var cache = new fProxyQRCache(N, N, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)N);
             for (int r = 0; r < N; r++)
@@ -242,7 +237,7 @@ namespace LinearAlgebra.Benchmarks
             var job = new QrSquareSolveCacheJobFProxy { A = A, Src = Src, b = b, bSrc = bSrc, x = x, Cache = cache };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); Src.Dispose(); b.Dispose(); bSrc.Dispose(); x.Dispose(); cache.Dispose();
             return Bench.RowTime("QR fProxy (cache)", N, stat);
         }
     }

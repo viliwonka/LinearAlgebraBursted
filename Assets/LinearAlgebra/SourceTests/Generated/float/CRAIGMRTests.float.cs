@@ -61,9 +61,9 @@ public class floatCRAIGMRTests
         static float SolveTol() => 1e-5f;
 
         // Full-(row-)rank test matrix: random with a diagonal boost (mirrors CRAIGTests).
-        static floatMxN BuildA(ref Arena arena, int m, int n, uint seed)
+        static floatMxN BuildA(int m, int n, uint seed)
         {
-            var A = arena.floatRandomMat(m, n, -1f, 1f, seed);
+            var A = GenerateOP.floatRandomMat(m, n, -1f, 1f, seed, Allocator.Temp);
             for (int d = 0; d < m; d++)
                 A[d, d] += (float)10;
             return A;
@@ -76,30 +76,32 @@ public class floatCRAIGMRTests
         // oracle xRef (and x is verifiably NOT the arbitrary x_true used to build b).
         void RectangularMinNorm()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 5, n = 9;
-            var A = BuildA(ref arena, m, n, 61001);
+            var A = BuildA(m, n, 61001);
 
             // Arbitrary true solution; b = A x_true makes the system consistent. x_true is generally
             // NOT in row(A), so the min-norm solution differs from it.
-            var xTrue = arena.floatRandomVec(n, -5f, 5f, 61002);
-            var b = arena.floatVec(m);
+            var xTrue = GenerateOP.floatRandomVec(n, -5f, 5f, 61002, Allocator.Temp);
+            var b = new floatN(m, Allocator.Temp);
             Blas.dot(in A, in xTrue, ref b);
 
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             var info = Krylov.craigmr(in A, in b, ref x, A.M_Rows, SolveTol());
             Assert.IsTrue(info.Solved);
 
             // (a) Ax ≈ b — necessary but not sufficient.
-            var Ax = arena.floatVec(m);
+            var Ax = new floatN(m, Allocator.Temp);
             Blas.dot(in A, in x, ref Ax);
-            Assert.IsTrue(Analysis.isZero(b - Ax, Tol()));
+            var bMinusAx = new floatN(in b, Allocator.Temp);
+            floatComp.subInPlace(bMinusAx, Ax);
+            Assert.IsTrue(Analysis.isZero(bMinusAx, Tol()));
 
             // (b) THE POINT: x matches the exact min-2-norm solution from the LQ oracle.
-            var xRef = arena.floatVec(n);
+            var xRef = new floatN(n, Allocator.Temp);
             LQ.minNormSolve(in A, in b, ref xRef);
-            Assert.IsTrue(Analysis.isZero(xRef - x, Tol()));
+            var xRefMinusX = new floatN(in xRef, Allocator.Temp);
+            floatComp.subInPlace(xRefMinusX, x);
+            Assert.IsTrue(Analysis.isZero(xRefMinusX, Tol()));
 
             // (b, softer) ‖x‖ <= ‖x_true‖ (x is minimal among all solutions incl. x_true).
             float nx = Norm(in x);
@@ -108,35 +110,35 @@ public class floatCRAIGMRTests
 
             // (b, negative guard) craigmr did NOT merely echo x_true or some arbitrary solution:
             // x_true is a solution but not the min-norm one, so x != x_true at any sane tolerance.
-            Assert.IsFalse(Analysis.isZero(xTrue - x, (float)0.1));
-
-            arena.Dispose();
+            var xTrueMinusX = new floatN(in xTrue, Allocator.Temp);
+            floatComp.subInPlace(xTrueMinusX, x);
+            Assert.IsFalse(Analysis.isZero(xTrueMinusX, (float)0.1));
         }
 
         // ---- Square full-rank: the system has a UNIQUE solution, so craigmr must recover x_true. ----
         void SquareFullRank()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int nn = 7;
-            var A = BuildA(ref arena, nn, nn, 62001);
+            var A = BuildA(nn, nn, 62001);
 
-            var xTrue = arena.floatRandomVec(nn, -5f, 5f, 62002);
-            var b = arena.floatVec(nn);
+            var xTrue = GenerateOP.floatRandomVec(nn, -5f, 5f, 62002, Allocator.Temp);
+            var b = new floatN(nn, Allocator.Temp);
             Blas.dot(in A, in xTrue, ref b);
 
-            var x = arena.floatVec(nn);
+            var x = new floatN(nn, Allocator.Temp);
             var info = Krylov.craigmr(in A, in b, ref x, A.M_Rows, SolveTol());
             Assert.IsTrue(info.Solved);
 
-            var Ax = arena.floatVec(nn);
+            var Ax = new floatN(nn, Allocator.Temp);
             Blas.dot(in A, in x, ref Ax);
-            Assert.IsTrue(Analysis.isZero(b - Ax, Tol()));
+            var bMinusAx = new floatN(in b, Allocator.Temp);
+            floatComp.subInPlace(bMinusAx, Ax);
+            Assert.IsTrue(Analysis.isZero(bMinusAx, Tol()));
 
             // Unique solution: x IS x_true (direct comparison, unlike the rectangular case).
-            Assert.IsTrue(Analysis.isZero(xTrue - x, Tol()));
-
-            arena.Dispose();
+            var xTrueMinusX = new floatN(in xTrue, Allocator.Temp);
+            floatComp.subInPlace(xTrueMinusX, x);
+            Assert.IsTrue(Analysis.isZero(xTrueMinusX, Tol()));
         }
 
         // ---- Explicit-scratch overload driven through the IJob struct: exercises the
@@ -144,57 +146,53 @@ public class floatCRAIGMRTests
         // the solver's internal ping-pong buffers) on the rectangular min-norm case. ----
         void ExplicitScratchInJob()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 6, n = 11;
-            var A = BuildA(ref arena, m, n, 63001);
+            var A = BuildA(m, n, 63001);
 
-            var xTrue = arena.floatRandomVec(n, -4f, 4f, 63002);
-            var b = arena.floatVec(m);
+            var xTrue = GenerateOP.floatRandomVec(n, -4f, 4f, 63002, Allocator.Temp);
+            var b = new floatN(m, Allocator.Temp);
             Blas.dot(in A, in xTrue, ref b);
 
             // Caller-provided scratch (lengths: u,tmpM = Rows; v,d,tmpN = Cols).
-            var u    = arena.floatVec(m);
-            var v    = arena.floatVec(n);
-            var d    = arena.floatVec(n);
-            var tmpM = arena.floatVec(m);
-            var tmpN = arena.floatVec(n);
-            var x    = arena.floatVec(n);
+            var u    = new floatN(m, Allocator.Temp);
+            var v    = new floatN(n, Allocator.Temp);
+            var d    = new floatN(n, Allocator.Temp);
+            var tmpM = new floatN(m, Allocator.Temp);
+            var tmpN = new floatN(n, Allocator.Temp);
+            var x    = new floatN(n, Allocator.Temp);
 
             var info = Krylov.craigmr(in A, in b, ref x, ref u, ref v, ref d, ref tmpM, ref tmpN, A.M_Rows, SolveTol());
             Assert.IsTrue(info.Solved);
 
-            var Ax = arena.floatVec(m);
+            var Ax = new floatN(m, Allocator.Temp);
             Blas.dot(in A, in x, ref Ax);
-            Assert.IsTrue(Analysis.isZero(b - Ax, Tol()));
+            var bMinusAx = new floatN(in b, Allocator.Temp);
+            floatComp.subInPlace(bMinusAx, Ax);
+            Assert.IsTrue(Analysis.isZero(bMinusAx, Tol()));
 
-            var xRef = arena.floatVec(n);
+            var xRef = new floatN(n, Allocator.Temp);
             LQ.minNormSolve(in A, in b, ref xRef);
-            Assert.IsTrue(Analysis.isZero(xRef - x, Tol()));
-
-            arena.Dispose();
+            var xRefMinusX = new floatN(in xRef, Allocator.Temp);
+            floatComp.subInPlace(xRefMinusX, x);
+            Assert.IsTrue(Analysis.isZero(xRefMinusX, Tol()));
         }
 
         // ---- Zero RHS: min-norm solution is exactly x = 0, returned on the early-out path with
         // zero iterations. Assertions are EXACT, not approximate. ----
         void ZeroRhs()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 5, n = 9;
-            var A = BuildA(ref arena, m, n, 64001);
-            var b = arena.floatVec(m); // all zeros
+            var A = BuildA(m, n, 64001);
+            var b = new floatN(m, Allocator.Temp); // all zeros
 
             // Seed x with garbage to prove craigmr zeroes it internally (no warm start).
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             for (int j = 0; j < n; j++) x[j] = (float)7;
 
             var info = Krylov.craigmr(in A, in b, ref x);
             Assert.IsTrue(info.Solved);
             Assert.IsTrue(info.iterations == 0);
             Assert.IsTrue(Analysis.isZero(x, (float)0));
-
-            arena.Dispose();
         }
 
         // ---- BONUS: rank-deficient A with b ∉ range(A) -> the very first Aᵀu step collapses
@@ -205,26 +203,22 @@ public class floatCRAIGMRTests
         // is NOT asserted. ----
         void RankDeficientBreakdown()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 2, n = 4;
-            var A = arena.floatRandomMat(m, n, -1f, 1f, 65001);
+            var A = GenerateOP.floatRandomMat(m, n, -1f, 1f, 65001, Allocator.Temp);
             for (int j = 0; j < n; j++)
                 A[1, j] = (float)0; // row 1 = 0 -> rank-deficient (not full row rank)
 
             // b = e_2: nonzero only where A's row is zero, so b is orthogonal to range(A) and
             // u1 = b/‖b‖ makes Aᵀu1 = 0 exactly on the first bidiagonalization step.
-            var b = arena.floatVec(m);
+            var b = new floatN(m, Allocator.Temp);
             b[1] = (float)1;
 
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             var info = Krylov.craigmr(in A, in b, ref x);
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Breakdown);
             // Norms are finite (no NaN escapes the collapse path).
             Assert.IsFalse(double.IsNaN(info.rnorm));
-
-            arena.Dispose();
         }
 
         // ---- THE DISTINGUISHING PROPERTY: ‖b-Ax‖ decreases MONOTONICALLY across increasing
@@ -234,13 +228,11 @@ public class floatCRAIGMRTests
         // exists over craig, so it is asserted directly here (not merely implied by convergence). ----
         void MonotonicResidual()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 6, n = 14;
-            var A = BuildA(ref arena, m, n, 66001);
+            var A = BuildA(m, n, 66001);
 
-            var xTrue = arena.floatRandomVec(n, -5f, 5f, 66002);
-            var b = arena.floatVec(m);
+            var xTrue = GenerateOP.floatRandomVec(n, -5f, 5f, 66002, Allocator.Temp);
+            var b = new floatN(m, Allocator.Temp);
             Blas.dot(in A, in xTrue, ref b);
 
             // Zero tol so every budget runs to exactly maxIter steps (no early Converged exit) --
@@ -251,7 +243,7 @@ public class floatCRAIGMRTests
             double prevRnorm = double.MaxValue;
             for (int maxIter = 1; maxIter <= A.M_Rows; maxIter++)
             {
-                var x = arena.floatVec(n);
+                var x = new floatN(n, Allocator.Temp);
                 var info = Krylov.craigmr(in A, in b, ref x, maxIter, zeroTol);
 
                 // Never NaN, never a false Converged before genuinely reaching the (zero) tolerance
@@ -272,8 +264,6 @@ public class floatCRAIGMRTests
             // Sanity: by the last budget tried, the residual actually got small (the trajectory is
             // not merely flat/trivial).
             Assert.IsTrue(prevRnorm <= (double)Tol());
-
-            arena.Dispose();
         }
 
         // ---- ITERATE-0 IDENTITY: ArNorm = alpha_1*beta_1 = ‖Aᵀb‖ exactly (u_1 = b/beta_1, so
@@ -284,29 +274,25 @@ public class floatCRAIGMRTests
         // runs -- exercising the returned Arnorm's PRE-LOOP value directly. ----
         void IterateZeroArnormMatchesAtb()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 5, n = 9;
-            var A = BuildA(ref arena, m, n, 67001);
+            var A = BuildA(m, n, 67001);
 
-            var xTrue = arena.floatRandomVec(n, -5f, 5f, 67002);
-            var b = arena.floatVec(m);
+            var xTrue = GenerateOP.floatRandomVec(n, -5f, 5f, 67002, Allocator.Temp);
+            var b = new floatN(m, Allocator.Temp);
             Blas.dot(in A, in xTrue, ref b);
 
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             var info = Krylov.craigmr(in A, in b, ref x, A.M_Rows, (float)1.5);
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(info.iterations == 1);   // converged within the k=0 pass -> 1 iteration reported
 
             var Aop = new floatDenseOperator(in A);
-            var atb = arena.floatVec(n);
+            var atb = new floatN(n, Allocator.Temp);
             Aop.ApplyT(in b, ref atb);
             float expectedArnorm = Norm(in atb);
 
             Assert.IsTrue(math.abs(info.Arnorm - (double)expectedArnorm) <= (double)Tol() * (1.0 + (double)expectedArnorm));
-
-            arena.Dispose();
         }
     }
 

@@ -163,23 +163,22 @@ namespace LinearAlgebra.Benchmarks
     {
         public static (string id, uint hash)[] Case_KrylovDenseFloat()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2654435761u ^ 0x000Du);
 
             const int n = 64;
-            var M = arena.floatMat(n, n);
+            var M = new floatMxN(n, n, Allocator.Persistent);
             for (int r = 0; r < n; r++) for (int c = 0; c < n; c++) M[r, c] = rng.NextFloat(-1f, 1f);
-            var Aspd = arena.floatMat(n, n);
+            var Aspd = new floatMxN(n, n, Allocator.Persistent);
             Blas.dot(in M, in M, ref Aspd, transposeA: true);
             for (int d = 0; d < n; d++) Aspd[d, d] += (float)n;
-            var bSpd = arena.floatVec(n); for (int i = 0; i < n; i++) bSpd[i] = rng.NextFloat(-1f, 1f);
-            var xCg = arena.floatVec(n, true); var xMinres = arena.floatVec(n, true); var xBicg = arena.floatVec(n, true);
+            var bSpd = new floatN(n, Allocator.Persistent); for (int i = 0; i < n; i++) bSpd[i] = rng.NextFloat(-1f, 1f);
+            var xCg = new floatN(n, Allocator.Persistent, true); var xMinres = new floatN(n, Allocator.Persistent, true); var xBicg = new floatN(n, Allocator.Persistent, true);
 
             const int mLs = 96, nLs = 48;
-            var Als = arena.floatMat(mLs, nLs);
+            var Als = new floatMxN(mLs, nLs, Allocator.Persistent);
             for (int r = 0; r < mLs; r++) for (int c = 0; c < nLs; c++) Als[r, c] = rng.NextFloat(-1f, 1f);
-            var bLs = arena.floatVec(mLs); for (int i = 0; i < mLs; i++) bLs[i] = rng.NextFloat(-1f, 1f);
-            var xLsqr = arena.floatVec(nLs, true); var xLsmr = arena.floatVec(nLs, true);
+            var bLs = new floatN(mLs, Allocator.Persistent); for (int i = 0; i < mLs; i++) bLs[i] = rng.NextFloat(-1f, 1f);
+            var xLsqr = new floatN(nLs, Allocator.Persistent, true); var xLsmr = new floatN(nLs, Allocator.Persistent, true);
 
             var hashOut = new NativeArray<uint>(5, Allocator.Persistent);
             var job = new DetKrylovDenseJobFloat
@@ -198,41 +197,42 @@ namespace LinearAlgebra.Benchmarks
                 ("krylov-dense/lsmr.float.96x48", hashOut[4]),
             };
             hashOut.Dispose();
-            arena.Dispose();
+            M.Dispose(); Aspd.Dispose(); bSpd.Dispose(); xCg.Dispose(); xMinres.Dispose(); xBicg.Dispose();
+            Als.Dispose(); bLs.Dispose(); xLsqr.Dispose(); xLsmr.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_SparseBsrFloat()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatLaplacian2D(32, 32); // N=1024
+            var A = floatGallery.floatLaplacian2D(32, 32, Allocator.Persistent); // N=1024
             int n = A.M_Rows;
-            var Jac = arena.floatBlockJacobi(in A);
+            var Jac = new floatBlockJacobi(in A, Allocator.Persistent);
 
             var rng = new Random(2654435761u ^ 0x000Eu);
-            var x = arena.floatVec(n); for (int i = 0; i < n; i++) x[i] = rng.NextFloat(-1f, 1f);
-            var y = arena.floatVec(n); var yT = arena.floatVec(n);
-            var sweepLowerOut = arena.floatVec(n); var sweepUpperOut = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Persistent); for (int i = 0; i < n; i++) x[i] = rng.NextFloat(-1f, 1f);
+            var y = new floatN(n, Allocator.Persistent); var yT = new floatN(n, Allocator.Persistent);
+            var sweepLowerOut = new floatN(n, Allocator.Persistent); var sweepUpperOut = new floatN(n, Allocator.Persistent);
 
-            var Vrows = arena.floatMat(4, n);
+            var Vrows = new floatMxN(4, n, Allocator.Persistent);
             for (int r = 0; r < 4; r++) for (int c = 0; c < n; c++) Vrows[r, c] = rng.NextFloat(-1f, 1f);
-            var AVrows = arena.floatMat(4, n);
+            var AVrows = new floatMxN(4, n, Allocator.Persistent);
 
             // Small manually-assembled BSR: hashes the assembly buffers themselves (block CSR
             // RowPtr/ColInd/Values), independent of any gallery generator.
-            var builder = arena.floatBSRBuilder(3, 3, 2, 2, 5);
-            var diag = arena.floatMat(2, 2);
+            var builder = new floatBSRBuilder(3, 3, 2, 2, Allocator.Persistent, 5);
+            var diag = new floatMxN(2, 2, Allocator.Persistent);
             diag[0, 0] = (float)4; diag[0, 1] = (float)1; diag[1, 0] = (float)1; diag[1, 1] = (float)4;
             builder.AddBlock(0, 0, in diag); builder.AddBlock(1, 1, in diag); builder.AddBlock(2, 2, in diag);
-            var off = arena.floatMat(2, 2);
+            var off = new floatMxN(2, 2, Allocator.Persistent);
             off[0, 0] = (float)(-1); off[0, 1] = (float)0; off[1, 0] = (float)0; off[1, 1] = (float)(-1);
             builder.AddBlock(1, 0, in off); builder.AddBlock(2, 1, in off);
-            var built = builder.ToBSR(ref arena);
+            var built = builder.ToBSR(Allocator.Persistent);
+            builder.Dispose();
 
-            var randomSpd = arena.floatRandomSparseSPD(12, 4, (float)0.3, 0xC0FFEEu); // 48x48-ish
-            var xRandom = arena.floatVec(randomSpd.M_Rows);
+            var randomSpd = floatGallery.floatRandomSparseSPD(12, 4, (float)0.3, 0xC0FFEEu, Allocator.Persistent); // 48x48-ish
+            var xRandom = new floatN(randomSpd.M_Rows, Allocator.Persistent);
             for (int i = 0; i < xRandom.N; i++) xRandom[i] = rng.NextFloat(-1f, 1f);
-            var yRandom = arena.floatVec(randomSpd.M_Rows);
+            var yRandom = new floatN(randomSpd.M_Rows, Allocator.Persistent);
 
             var hashOut = new NativeArray<uint>(7, Allocator.Persistent);
             var job = new DetSparseBsrJobFloat
@@ -254,26 +254,27 @@ namespace LinearAlgebra.Benchmarks
                 ("sparse-bsr/spMV.float.randomSparseSPD", hashOut[6]),
             };
             hashOut.Dispose();
-            arena.Dispose();
+            A.Dispose(); Jac.Dispose(); x.Dispose(); y.Dispose(); yT.Dispose();
+            sweepLowerOut.Dispose(); sweepUpperOut.Dispose(); Vrows.Dispose(); AVrows.Dispose();
+            diag.Dispose(); off.Dispose(); built.Dispose(); randomSpd.Dispose(); xRandom.Dispose(); yRandom.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_KrylovSparsePrecondFloat()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatLaplacian2D(8, 128); // N=1024, BR=8 (IC0/ILU0 cap block size at 16)
+            var A = floatGallery.floatLaplacian2D(8, 128, Allocator.Persistent); // N=1024, BR=8 (IC0/ILU0 cap block size at 16)
             int n = A.M_Rows;
             var rng = new Random(2654435761u ^ 0x000Fu);
-            var b = arena.floatVec(n); for (int i = 0; i < n; i++) b[i] = rng.NextFloat(-1f, 1f);
+            var b = new floatN(n, Allocator.Persistent); for (int i = 0; i < n; i++) b[i] = rng.NextFloat(-1f, 1f);
 
-            var MJacobi = arena.floatBlockJacobi(in A);
-            var xJacobi = arena.floatVec(n, true);
-            var MSsor = arena.floatSSOR(in A);
-            var xSsor = arena.floatVec(n, true);
-            var MIc0 = arena.floatIC0(in A);
-            var xIc0 = arena.floatVec(n, true);
-            var MIlu0 = arena.floatILU0(in A);
-            var xIlu0 = arena.floatVec(n, true);
+            var MJacobi = new floatBlockJacobi(in A, Allocator.Persistent);
+            var xJacobi = new floatN(n, Allocator.Persistent, true);
+            var MSsor = new floatSSOR(in A, Allocator.Persistent);
+            var xSsor = new floatN(n, Allocator.Persistent, true);
+            var MIc0 = new floatIC0(in A, Allocator.Persistent);
+            var xIc0 = new floatN(n, Allocator.Persistent, true);
+            var MIlu0 = new floatILU0(in A, Allocator.Persistent);
+            var xIlu0 = new floatN(n, Allocator.Persistent, true);
 
             var hashOut = new NativeArray<uint>(4, Allocator.Persistent);
             var job = new DetKrylovSparsePrecondJobFloat
@@ -295,7 +296,9 @@ namespace LinearAlgebra.Benchmarks
                 ("krylov-sparse-precond/biCGStab.ilu0.float.laplacian2d.n1024", hashOut[3]),
             };
             hashOut.Dispose();
-            arena.Dispose();
+            A.Dispose(); b.Dispose();
+            MJacobi.Dispose(); xJacobi.Dispose(); MSsor.Dispose(); xSsor.Dispose();
+            MIc0.Dispose(); xIc0.Dispose(); MIlu0.Dispose(); xIlu0.Dispose();
             return result;
         }
     }

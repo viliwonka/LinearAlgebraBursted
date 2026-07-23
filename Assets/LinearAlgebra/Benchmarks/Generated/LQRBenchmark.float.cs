@@ -100,7 +100,7 @@ namespace LinearAlgebra.Benchmarks
         // Trivially stabilizable random instance (already stable, so any n/m/seed combination is a
         // valid LQR instance without needing a controllability check): diagonal in [0.2,0.4), off-
         // diagonal magnitude scaled 0.2/n so the Gershgorin bound stays under ~0.6 at EVERY n. Q=I, R=I.
-        static void BuildInstanceFloat(int n, int m, uint seed, bool nearMarginal, in Arena arena,
+        static void BuildInstanceFloat(int n, int m, uint seed, bool nearMarginal,
                                         out floatMxN A, out floatMxN B, out floatMxN Q, out floatMxN R)
         {
             var rng = new Unity.Mathematics.Random(seed);
@@ -109,30 +109,29 @@ namespace LinearAlgebra.Benchmarks
             // convergence is supposed to earn its keep. Off-diagonal shrunk with it to stay stable.
             float off = (float)((nearMarginal ? 0.02 : 0.2) / n);
 
-            A = arena.floatMat(n, n);
+            A = new floatMxN(n, n, Allocator.Persistent);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
                     A[i, j] = (i == j)
                         ? (nearMarginal ? rng.NextFloat(0.90f, 0.98f) : rng.NextFloat(0.2f, 0.4f))
                         : rng.NextFloat(-1f, 1f) * off;
 
-            B = arena.floatMat(n, m);
+            B = new floatMxN(n, m, Allocator.Persistent);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < m; j++)
                     B[i, j] = rng.NextFloat(-1f, 1f);
 
-            Q = arena.floatMat(n, n);
+            Q = new floatMxN(n, n, Allocator.Persistent);
             for (int i = 0; i < n; i++) Q[i, i] = (float)1;
 
-            R = arena.floatMat(m, m);
+            R = new floatMxN(m, m, Allocator.Persistent);
             for (int i = 0; i < m; i++) R[i, i] = (float)1;
         }
 
         static string ColdSdaFloat(int n, int m, int reps, uint seed, bool nearMarginal = false)
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildInstanceFloat(n, m, seed, nearMarginal, in arena, out var A, out var B, out var Q, out var R);
-            var K = arena.floatMat(m, n);
+            BuildInstanceFloat(n, m, seed, nearMarginal, out var A, out var B, out var Q, out var R);
+            var K = new floatMxN(m, n, Allocator.Persistent);
 
             var itersOut = new NativeArray<int>(1, Allocator.Persistent);
             var statusOut = new NativeArray<int>(1, Allocator.Persistent);
@@ -140,15 +139,15 @@ namespace LinearAlgebra.Benchmarks
             var stat = Bench.Time(() => job.Run());
             string row = LQRBenchmarkFmt.Row("float", nearMarginal ? "cold-SDA(marg)" : "cold-SDA", n, m, reps, stat, itersOut[0], statusOut[0]);
 
-            itersOut.Dispose(); statusOut.Dispose(); arena.Dispose();
+            itersOut.Dispose(); statusOut.Dispose();
+            A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); K.Dispose();
             return row;
         }
 
         static string ColdRecursionFloat(int n, int m, int reps, uint seed, bool nearMarginal = false)
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildInstanceFloat(n, m, seed, nearMarginal, in arena, out var A, out var B, out var Q, out var R);
-            var K = arena.floatMat(m, n);
+            BuildInstanceFloat(n, m, seed, nearMarginal, out var A, out var B, out var Q, out var R);
+            var K = new floatMxN(m, n, Allocator.Persistent);
 
             var itersOut = new NativeArray<int>(1, Allocator.Persistent);
             var statusOut = new NativeArray<int>(1, Allocator.Persistent);
@@ -156,27 +155,27 @@ namespace LinearAlgebra.Benchmarks
             var stat = Bench.Time(() => job.Run());
             string row = LQRBenchmarkFmt.Row("float", nearMarginal ? "cold-rec(marg)" : "cold-recursion", n, m, reps, stat, itersOut[0], statusOut[0]);
 
-            itersOut.Dispose(); statusOut.Dispose(); arena.Dispose();
+            itersOut.Dispose(); statusOut.Dispose();
+            A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); K.Dispose();
             return row;
         }
 
         static string WarmFloat(int n, int m, int reps, uint seed, bool nearMarginal = false)
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildInstanceFloat(n, m, seed, nearMarginal, in arena, out var A, out var B, out var Q, out var R);
-            var K = arena.floatMat(m, n);
+            BuildInstanceFloat(n, m, seed, nearMarginal, out var A, out var B, out var Q, out var R);
+            var K = new floatMxN(m, n, Allocator.Persistent);
 
             // untimed setup (managed thread -- LQR.lqr is plain Burst-compatible code, just not
             // Burst-JITted here; only the warm re-solve below is measured): cold-solve the unperturbed
             // system for its converged S, then perturb A by ~1e-3 relative per entry.
             var coldState = new floatLQRState(n, Allocator.Persistent);
             LQR.lqr(in A, in B, in Q, in R, ref K, ref coldState);
-            var Sprev = arena.floatMat(n, n);
+            var Sprev = new floatMxN(n, n, Allocator.Persistent);
             Sprev.Data.CopyFrom(coldState.S.Data);
             coldState.Dispose();
 
             var rng = new Unity.Mathematics.Random(seed ^ 0x9E3779B9u);
-            var Aperturbed = arena.floatMat(n, n);
+            var Aperturbed = new floatMxN(n, n, Allocator.Persistent);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
                 {
@@ -191,7 +190,9 @@ namespace LinearAlgebra.Benchmarks
             var stat = Bench.Time(() => job.Run());
             string row = LQRBenchmarkFmt.Row("float", nearMarginal ? "warm(marg)" : "warm(1e-3 pert)", n, m, reps, stat, itersOut[0], statusOut[0]);
 
-            itersOut.Dispose(); statusOut.Dispose(); arena.Dispose();
+            itersOut.Dispose(); statusOut.Dispose();
+            A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); K.Dispose();
+            Sprev.Dispose(); Aperturbed.Dispose();
             return row;
         }
     }

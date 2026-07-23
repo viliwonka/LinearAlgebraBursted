@@ -36,18 +36,17 @@ public class fProxyQRSolveTests {
 
         public void QRSolve()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int dim = 8;
 
-            var Q = arena.fProxyIdentityMat(dim);
-            var R = arena.fProxyMat(dim);
+            var Q = GenerateOP.fProxyIdentityMat(dim);
+            var R = new fProxyMxN(dim, dim, Allocator.Temp);
 
-            var A = Q.Copy();
+            var A = new fProxyMxN(in Q, Allocator.Temp);
 
             QR.decompInPlace(ref Q, ref R);
 
-            var b = arena.fProxyRandomVec(dim, -1f, 1f);
+            var b = GenerateOP.fProxyRandomVec(dim, -1f, 1f);
 
             var y = Blas.dot(b, Q);
 
@@ -55,9 +54,9 @@ public class fProxyQRSolveTests {
 
             var Ax = Blas.dot(A, y);
 
-            Assert.IsTrue(Analysis.isZero(b - Ax, 1E-6f));
-
-            arena.Dispose();
+            var resid = new fProxyN(in b, Allocator.Temp);
+            fProxyComp.subInPlace(resid, Ax);
+            Assert.IsTrue(Analysis.isZero(resid, 1E-6f));
         }
 
     }

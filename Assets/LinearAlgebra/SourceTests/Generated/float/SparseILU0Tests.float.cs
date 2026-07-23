@@ -40,11 +40,11 @@ public class floatSparseILU0Tests
         }
 
         // Diagonally dominant NONSYMMETRIC block-tridiagonal system (fill-free pattern).
-        static floatBSR BuildNonsymTridiag(ref Arena arena, int nb, int BR, uint seed)
+        static floatBSR BuildNonsymTridiag(int nb, int BR, uint seed)
         {
-            var builder = arena.floatBSRBuilder(nb, nb, BR, BR);
+            var builder = new floatBSRBuilder(nb, nb, BR, BR, Allocator.Temp);
             var rng = new Unity.Mathematics.Random(seed);
-            var blk = arena.floatMat(BR, BR);
+            var blk = new floatMxN(BR, BR, Allocator.Temp);
 
             for (int i = 0; i < nb; i++)
             {
@@ -66,27 +66,25 @@ public class floatSparseILU0Tests
                     builder.AddBlock(i, i + 1, in blk);
                 }
             }
-            return builder.ToBSR(ref arena);
+            return builder.ToBSR(Allocator.Temp);
         }
 
         void ExactOnBlockTridiagonal()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             const int nb = 6, BR = 3;
-            var A = BuildNonsymTridiag(ref arena, nb, BR, 841001u);
+            var A = BuildNonsymTridiag(nb, BR, 841001u);
             int n = A.M_Rows;
 
-            var M = arena.floatILU0(in A);
+            var M = new floatILU0(in A, Allocator.Temp);
             Assert.IsTrue(M.Shift == (float)0);
 
-            var r = arena.floatRandomVec(n, -1f, 1f, 841002u);
-            var z = arena.floatVec(n);
+            var r = GenerateOP.floatRandomVec(n, -1f, 1f, 841002u);
+            var z = new floatN(n, Allocator.Temp);
             M.Apply(in r, ref z);
 
             // Dense LU oracle: on a fill-free pattern ILU(0) is exact, so z == A^-1 r.
-            var D = A.ToDense(ref arena);
-            var zRef = arena.floatVec(n);
+            var D = A.ToDense(Allocator.Temp);
+            var zRef = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) zRef[i] = r[i];
             var P = new Pivot(n, Allocator.Temp);
             var info = LU.solveInPlace(ref D, ref P, ref zRef);
@@ -94,42 +92,36 @@ public class floatSparseILU0Tests
 
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(math.abs(z[i] - zRef[i]) < Tol() * ((float)1 + math.abs(zRef[i])));
-
-            arena.Dispose();
         }
 
         void PbiCGStabConvergesAndBeatsPlain()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             const int nb = 40, BR = 3;
-            var A = BuildNonsymTridiag(ref arena, nb, BR, 841003u);
+            var A = BuildNonsymTridiag(nb, BR, 841003u);
             int n = A.M_Rows;
 
-            var xTrue = arena.floatRandomVec(n, 0.5f, 1.5f, 841004u);
+            var xTrue = GenerateOP.floatRandomVec(n, 0.5f, 1.5f, 841004u);
             var b = BSR.spMV(in A, in xTrue);
             float tol = Consts.floatSqrtEps;
             int maxIter = 4 * n;
 
             // Plain BiCGSTAB baseline.
-            var xP = arena.floatVec(n);
-            var rP = arena.floatVec(n); var rh = arena.floatVec(n); var pP = arena.floatVec(n);
-            var vP = arena.floatVec(n); var tP = arena.floatVec(n);
+            var xP = new floatN(n, Allocator.Temp);
+            var rP = new floatN(n, Allocator.Temp); var rh = new floatN(n, Allocator.Temp); var pP = new floatN(n, Allocator.Temp);
+            var vP = new floatN(n, Allocator.Temp); var tP = new floatN(n, Allocator.Temp);
             var op = new floatBSROperator(in A);
             var infoPlain = Krylov.biCGStab(in op, in b, ref xP, ref rP, ref rh, ref pP, ref vP, ref tP, maxIter, tol);
             Assert.IsTrue(infoPlain.Solved);
 
             // ILU(0)-preconditioned.
-            var M = arena.floatILU0(in A);
-            var xI = arena.floatVec(n);
+            var M = new floatILU0(in A, Allocator.Temp);
+            var xI = new floatN(n, Allocator.Temp);
             var infoIlu = Krylov.biCGStab(in A, in M, in b, ref xI, maxIter, tol);
             Assert.IsTrue(infoIlu.Solved);
             Assert.IsTrue((double)infoIlu.iterations <= (double)infoPlain.iterations * 0.9);
 
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(math.abs(xI[i] - xTrue[i]) < Tol() * ((float)1 + math.abs(xTrue[i])));
-
-            arena.Dispose();
         }
     }
 
@@ -144,16 +136,11 @@ public class floatSparseILU0Tests
     [Test]
     public void MissingDiagonalThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var builder = arena.floatBSRBuilder(2, 2, 2, 2);
-            var block = arena.floatMat(2, 2, (float)1);
-            builder.AddBlock(0, 0, in block);
-            builder.AddBlock(1, 0, in block);
-            var A = builder.ToBSR(ref arena);
-            Assert.Throws<ArgumentException>(() => { var m = arena.floatILU0(in A); });
-        }
-        finally { arena.Dispose(); }
+        var builder = new floatBSRBuilder(2, 2, 2, 2, Allocator.Temp);
+        var block = GenerateOP.floatMat(2, 2, (float)1);
+        builder.AddBlock(0, 0, in block);
+        builder.AddBlock(1, 0, in block);
+        var A = builder.ToBSR(Allocator.Temp);
+        Assert.Throws<ArgumentException>(() => { var m = new floatILU0(in A, Allocator.Temp); });
     }
 }

@@ -20,7 +20,7 @@ public class fProxyFlexibleCGTests
     // Variable preconditioner: z = (a few CG steps on A z = r from z = 0). k fixed steps of CG
     // is a NONLINEAR (data-dependent) operator in r, so the effective M changes per outer
     // iteration -- exactly what fcg is designed to tolerate and cg is not. Scratch vectors are
-    // arena-owned (built on the main thread), so Apply allocates nothing.
+    // pre-allocated once (not per outer iteration), so Apply allocates nothing.
     readonly struct InnerCgPreconditioner : IfProxyPreconditioner
     {
         readonly fProxyBSR A;
@@ -77,21 +77,18 @@ public class fProxyFlexibleCGTests
 
         void SolvesSpdBlockJacobi()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyLaplacian2D(16, 16);
+            var A = fProxyGallery.fProxyLaplacian2D(16, 16, Allocator.Temp);
             int n = A.M_Rows;
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0xF01u);
-            var M = arena.fProxyBlockJacobi(in A);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0xF01u);
+            var M = new fProxyBlockJacobi(in A, Allocator.Temp);
             var op = new fProxyBSROperator(in A);
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (fProxy)0;
 
             var info = Krylov.fcg(in op, in M, in b, ref x, 4 * n, Tol());
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(fProxyKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
-
-            arena.Dispose();
         }
 
         // Constant SPD preconditioner: fcg's Polak–Ribière beta reduces to cg's Fletcher–Reeves
@@ -100,15 +97,14 @@ public class fProxyFlexibleCGTests
         // solution compare whose error scales with cond(A)·residual. Both must also converge.
         void MatchesPcgConstantM()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyLaplacian2D(12, 12);
+            var A = fProxyGallery.fProxyLaplacian2D(12, 12, Allocator.Temp);
             int n = A.M_Rows;
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0xF02u);
-            var M = arena.fProxyBlockJacobi(in A);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0xF02u);
+            var M = new fProxyBlockJacobi(in A, Allocator.Temp);
             var op = new fProxyBSROperator(in A);
 
-            var xF = arena.fProxyVec(n);
-            var xP = arena.fProxyVec(n);
+            var xF = new fProxyN(n, Allocator.Temp);
+            var xP = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) { xF[i] = (fProxy)0; xP[i] = (fProxy)0; }
 
             var infoF = Krylov.fcg(in op, in M, in b, ref xF, 4 * n, Tol());
@@ -120,50 +116,42 @@ public class fProxyFlexibleCGTests
             // Same convergence trajectory for constant M (allow a small floating-point slack from
             // fcg's extra cross-term dot).
             Assert.IsTrue(math.abs(infoF.iterations - infoP.iterations) <= 2);
-
-            arena.Dispose();
         }
 
         void VariableInnerCgConverges()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyLaplacian2D(16, 16);
+            var A = fProxyGallery.fProxyLaplacian2D(16, 16, Allocator.Temp);
             int n = A.M_Rows;
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0xF03u);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0xF03u);
             var op = new fProxyBSROperator(in A);
 
-            var sr = arena.fProxyVec(n); var sp = arena.fProxyVec(n); var sAp = arena.fProxyVec(n);
+            var sr = new fProxyN(n, Allocator.Temp); var sp = new fProxyN(n, Allocator.Temp); var sAp = new fProxyN(n, Allocator.Temp);
             var M = new InnerCgPreconditioner(in A, sr, sp, sAp, 3);
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (fProxy)0;
 
             var info = Krylov.fcg(in op, in M, in b, ref x, 4 * n, Tol());
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(fProxyKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
-
-            arena.Dispose();
         }
 
         void ZeroRhsConverges()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyLaplacian2D(8, 8);
+            var A = fProxyGallery.fProxyLaplacian2D(8, 8, Allocator.Temp);
             int n = A.M_Rows;
-            var b = arena.fProxyVec(n);
+            var b = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) b[i] = (fProxy)0;
-            var M = arena.fProxyBlockJacobi(in A);
+            var M = new fProxyBlockJacobi(in A, Allocator.Temp);
             var op = new fProxyBSROperator(in A);
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (fProxy)7;   // nonzero start -> must be driven to 0
 
             var info = Krylov.fcg(in op, in M, in b, ref x, 4 * n, Tol());
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(info.iterations == 0);
             for (int i = 0; i < n; i++) Assert.IsTrue(x[i] == (fProxy)0);
-
-            arena.Dispose();
         }
     }
 

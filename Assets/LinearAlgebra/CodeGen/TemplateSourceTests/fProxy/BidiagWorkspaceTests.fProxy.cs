@@ -7,7 +7,7 @@ using Unity.Collections;
 using Unity.Jobs;
 
 // Workspace-overload tests for Bidiag.decomp / values and their shared workspace
-// fProxyBidiagCache (Arena.fProxyBidiagCache(m, n)).
+// fProxyBidiagCache (new fProxyBidiagCache(m, n, Allocator)).
 //
 // The ws overload is the real body (caller-owned W/leftU/uVec/vVec/wScratch); the allocating overload
 // delegates with Temp scratch, so for identical inputs the outputs are bit-identical. Tests:
@@ -46,73 +46,74 @@ public class fProxyBidiagWorkspaceTests
 
         void BidiagEquiv(int m, int n, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyRandomMat(m, n, (fProxy)(-3f), (fProxy)3f, seed);
+            var A = GenerateOP.fProxyRandomMat(m, n, (fProxy)(-3f), (fProxy)3f, seed);
 
-            var Ua = arena.fProxyMat(m, n); var Ba = arena.fProxyMat(n, n); var Va = arena.fProxyMat(n, n);
+            var Ua = new fProxyMxN(m, n, Allocator.Temp); var Ba = new fProxyMxN(n, n, Allocator.Temp); var Va = new fProxyMxN(n, n, Allocator.Temp);
             Bidiag.decomp(in A, ref Ua, ref Ba, ref Va);
 
-            var ws = arena.fProxyBidiagCache(m, n);
-            var Uw = arena.fProxyMat(m, n); var Bw = arena.fProxyMat(n, n); var Vw = arena.fProxyMat(n, n);
+            var ws = new fProxyBidiagCache(m, n, Allocator.Temp);
+            var Uw = new fProxyMxN(m, n, Allocator.Temp); var Bw = new fProxyMxN(n, n, Allocator.Temp); var Vw = new fProxyMxN(n, n, Allocator.Temp);
             Bidiag.decomp(in A, ref Uw, ref Bw, ref Vw, ref ws);
 
-            Assert.IsTrue(Analysis.isZero(Ua - Uw, Tol()));
-            Assert.IsTrue(Analysis.isZero(Ba - Bw, Tol()));
-            Assert.IsTrue(Analysis.isZero(Va - Vw, Tol()));
-
-            arena.Dispose();
+            var dU = new fProxyMxN(in Ua, Allocator.Temp); fProxyComp.subInPlace(dU, Uw);
+            var dB = new fProxyMxN(in Ba, Allocator.Temp); fProxyComp.subInPlace(dB, Bw);
+            var dV = new fProxyMxN(in Va, Allocator.Temp); fProxyComp.subInPlace(dV, Vw);
+            Assert.IsTrue(Analysis.isZero(dU, Tol()));
+            Assert.IsTrue(Analysis.isZero(dB, Tol()));
+            Assert.IsTrue(Analysis.isZero(dV, Tol()));
         }
 
         void ValuesEquiv(int m, int n, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyRandomMat(m, n, (fProxy)(-3f), (fProxy)3f, seed);
+            var A = GenerateOP.fProxyRandomMat(m, n, (fProxy)(-3f), (fProxy)3f, seed);
 
-            var da = arena.fProxyVec(n); var ea = arena.fProxyVec(n);
+            var da = new fProxyN(n, Allocator.Temp); var ea = new fProxyN(n, Allocator.Temp);
             Bidiag.values(in A, ref da, ref ea);
 
-            var ws = arena.fProxyBidiagCache(m, n);
-            var dw = arena.fProxyVec(n); var ew = arena.fProxyVec(n);
+            var ws = new fProxyBidiagCache(m, n, Allocator.Temp);
+            var dw = new fProxyN(n, Allocator.Temp); var ew = new fProxyN(n, Allocator.Temp);
             Bidiag.values(in A, ref dw, ref ew, ref ws);
 
-            Assert.IsTrue(Analysis.isZero(da - dw, Tol()));
-            Assert.IsTrue(Analysis.isZero(ea - ew, Tol()));
-
-            arena.Dispose();
+            var dd = new fProxyN(in da, Allocator.Temp); fProxyComp.subInPlace(dd, dw);
+            var de = new fProxyN(in ea, Allocator.Temp); fProxyComp.subInPlace(de, ew);
+            Assert.IsTrue(Analysis.isZero(dd, Tol()));
+            Assert.IsTrue(Analysis.isZero(de, Tol()));
         }
 
         void ReuseBoth()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 8, n = 5;
 
-            var A1 = arena.fProxyRandomMat(m, n, (fProxy)(-3f), (fProxy)3f, 4004);
-            var A2 = arena.fProxyRandomMat(m, n, (fProxy)(-2f), (fProxy)2f, 5005);
+            var A1 = GenerateOP.fProxyRandomMat(m, n, (fProxy)(-3f), (fProxy)3f, 4004);
+            var A2 = GenerateOP.fProxyRandomMat(m, n, (fProxy)(-2f), (fProxy)2f, 5005);
 
-            var ws = arena.fProxyBidiagCache(m, n);   // allocated ONCE
+            var ws = new fProxyBidiagCache(m, n, Allocator.Temp);   // allocated ONCE
 
             // full bidiagonalize: warm on A1, reuse on A2, compare to fresh allocating on A2.
-            var U1 = arena.fProxyMat(m, n); var B1 = arena.fProxyMat(n, n); var V1 = arena.fProxyMat(n, n);
+            var U1 = new fProxyMxN(m, n, Allocator.Temp); var B1 = new fProxyMxN(n, n, Allocator.Temp); var V1 = new fProxyMxN(n, n, Allocator.Temp);
             Bidiag.decomp(in A1, ref U1, ref B1, ref V1, ref ws);
-            var Uw = arena.fProxyMat(m, n); var Bw = arena.fProxyMat(n, n); var Vw = arena.fProxyMat(n, n);
+            var Uw = new fProxyMxN(m, n, Allocator.Temp); var Bw = new fProxyMxN(n, n, Allocator.Temp); var Vw = new fProxyMxN(n, n, Allocator.Temp);
             Bidiag.decomp(in A2, ref Uw, ref Bw, ref Vw, ref ws);
-            var Ua = arena.fProxyMat(m, n); var Ba = arena.fProxyMat(n, n); var Va = arena.fProxyMat(n, n);
+            var Ua = new fProxyMxN(m, n, Allocator.Temp); var Ba = new fProxyMxN(n, n, Allocator.Temp); var Va = new fProxyMxN(n, n, Allocator.Temp);
             Bidiag.decomp(in A2, ref Ua, ref Ba, ref Va);
-            Assert.IsTrue(Analysis.isZero(Uw - Ua, Tol()));
-            Assert.IsTrue(Analysis.isZero(Bw - Ba, Tol()));
-            Assert.IsTrue(Analysis.isZero(Vw - Va, Tol()));
+            var dU = new fProxyMxN(in Uw, Allocator.Temp); fProxyComp.subInPlace(dU, Ua);
+            var dB = new fProxyMxN(in Bw, Allocator.Temp); fProxyComp.subInPlace(dB, Ba);
+            var dV = new fProxyMxN(in Vw, Allocator.Temp); fProxyComp.subInPlace(dV, Va);
+            Assert.IsTrue(Analysis.isZero(dU, Tol()));
+            Assert.IsTrue(Analysis.isZero(dB, Tol()));
+            Assert.IsTrue(Analysis.isZero(dV, Tol()));
 
             // values: same reused workspace.
-            var d1 = arena.fProxyVec(n); var e1 = arena.fProxyVec(n);
+            var d1 = new fProxyN(n, Allocator.Temp); var e1 = new fProxyN(n, Allocator.Temp);
             Bidiag.values(in A1, ref d1, ref e1, ref ws);
-            var dw = arena.fProxyVec(n); var ew = arena.fProxyVec(n);
+            var dw = new fProxyN(n, Allocator.Temp); var ew = new fProxyN(n, Allocator.Temp);
             Bidiag.values(in A2, ref dw, ref ew, ref ws);
-            var da = arena.fProxyVec(n); var ea = arena.fProxyVec(n);
+            var da = new fProxyN(n, Allocator.Temp); var ea = new fProxyN(n, Allocator.Temp);
             Bidiag.values(in A2, ref da, ref ea);
-            Assert.IsTrue(Analysis.isZero(dw - da, Tol()));
-            Assert.IsTrue(Analysis.isZero(ew - ea, Tol()));
-
-            arena.Dispose();
+            var dd = new fProxyN(in dw, Allocator.Temp); fProxyComp.subInPlace(dd, da);
+            var de = new fProxyN(in ew, Allocator.Temp); fProxyComp.subInPlace(de, ea);
+            Assert.IsTrue(Analysis.isZero(dd, Tol()));
+            Assert.IsTrue(Analysis.isZero(de, Tol()));
         }
     }
 
@@ -129,33 +130,23 @@ public class fProxyBidiagWorkspaceTests
     [Test]
     public void Bidiagonalize_BadWorkspace_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            int m = 6, n = 4;
-            var A = arena.fProxyMat(m, n);
-            var U = arena.fProxyMat(m, n); var B = arena.fProxyMat(n, n); var V = arena.fProxyMat(n, n);
-            var ws = arena.fProxyBidiagCache(m + 1, n);   // wrong m
-            Assert.Throws<ArgumentException>(
-                () => Bidiag.decomp(in A, ref U, ref B, ref V, ref ws));
-        }
-        finally { arena.Dispose(); }
+        int m = 6, n = 4;
+        var A = new fProxyMxN(m, n, Allocator.Temp);
+        var U = new fProxyMxN(m, n, Allocator.Temp); var B = new fProxyMxN(n, n, Allocator.Temp); var V = new fProxyMxN(n, n, Allocator.Temp);
+        var ws = new fProxyBidiagCache(m + 1, n, Allocator.Temp);   // wrong m
+        Assert.Throws<ArgumentException>(
+            () => Bidiag.decomp(in A, ref U, ref B, ref V, ref ws));
     }
 
     [Test]
     public void BidiagonalizeValues_BadWorkspace_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            int m = 6, n = 4;
-            var A = arena.fProxyMat(m, n);
-            var d = arena.fProxyVec(n); var e = arena.fProxyVec(n);
-            var ws = arena.fProxyBidiagCache(m, n + 1);   // wrong n (W/vVec/wScratch all wrong)
-            Assert.Throws<ArgumentException>(
-                () => Bidiag.values(in A, ref d, ref e, ref ws));
-        }
-        finally { arena.Dispose(); }
+        int m = 6, n = 4;
+        var A = new fProxyMxN(m, n, Allocator.Temp);
+        var d = new fProxyN(n, Allocator.Temp); var e = new fProxyN(n, Allocator.Temp);
+        var ws = new fProxyBidiagCache(m, n + 1, Allocator.Temp);   // wrong n (W/vVec/wScratch all wrong)
+        Assert.Throws<ArgumentException>(
+            () => Bidiag.values(in A, ref d, ref e, ref ws));
     }
 
     // needLeftU subtlety: Bidiag.values never touches leftU, so a leftU-less workspace (common
@@ -164,46 +155,36 @@ public class fProxyBidiagWorkspaceTests
     [Test]
     public void Values_LeftULessWorkspace_DoesNotThrow_ButBidiagonalizeDoes()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
+        int m = 6, n = 4;
+        var A = GenerateOP.fProxyRandomMat(m, n, (fProxy)(-2f), (fProxy)2f, 6006);
+
+        var ws = new fProxyBidiagCache
         {
-            int m = 6, n = 4;
-            var A = arena.fProxyRandomMat(m, n, (fProxy)(-2f), (fProxy)2f, 6006);
+            W = new fProxyMxN(m, n, Allocator.Temp),
+            leftU = default,                 // intentionally absent
+            uVec = new fProxyN(m, Allocator.Temp),
+            vVec = new fProxyN(n, Allocator.Temp),
+            wScratch = new fProxyN(n, Allocator.Temp)
+        };
 
-            var ws = new fProxyBidiagCache
-            {
-                W = arena.fProxyMat(m, n),
-                leftU = default,                 // intentionally absent
-                uVec = arena.fProxyVec(m),
-                vVec = arena.fProxyVec(n),
-                wScratch = arena.fProxyVec(n)
-            };
+        var d = new fProxyN(n, Allocator.Temp); var e = new fProxyN(n, Allocator.Temp);
+        Assert.DoesNotThrow(() => Bidiag.values(in A, ref d, ref e, ref ws));
 
-            var d = arena.fProxyVec(n); var e = arena.fProxyVec(n);
-            Assert.DoesNotThrow(() => Bidiag.values(in A, ref d, ref e, ref ws));
-
-            // same workspace fails the full bidiagonalize (needs leftU).
-            var U = arena.fProxyMat(m, n); var B = arena.fProxyMat(n, n); var V = arena.fProxyMat(n, n);
-            Assert.Throws<ArgumentException>(
-                () => Bidiag.decomp(in A, ref U, ref B, ref V, ref ws));
-        }
-        finally { arena.Dispose(); }
+        // same workspace fails the full bidiagonalize (needs leftU).
+        var U = new fProxyMxN(m, n, Allocator.Temp); var B = new fProxyMxN(n, n, Allocator.Temp); var V = new fProxyMxN(n, n, Allocator.Temp);
+        Assert.Throws<ArgumentException>(
+            () => Bidiag.decomp(in A, ref U, ref B, ref V, ref ws));
     }
 
-    // Arena.fProxyBidiagCache(m, n): W (m x n), leftU (m x n), uVec (m), vVec (n), wScratch (n).
+    // fProxyBidiagCache(m, n, Allocator): W (m x n), leftU (m x n), uVec (m), vVec (n), wScratch (n).
     [Test]
     public void BidiagWorkspace_Factory_SizesCorrectly()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var ws = arena.fProxyBidiagCache(9, 4);
-            Assert.AreEqual(9, ws.W.M_Rows);     Assert.AreEqual(4, ws.W.N_Cols);
-            Assert.AreEqual(9, ws.leftU.M_Rows); Assert.AreEqual(4, ws.leftU.N_Cols);
-            Assert.AreEqual(9, ws.uVec.N);
-            Assert.AreEqual(4, ws.vVec.N);
-            Assert.AreEqual(4, ws.wScratch.N);
-        }
-        finally { arena.Dispose(); }
+        var ws = new fProxyBidiagCache(9, 4, Allocator.Temp);
+        Assert.AreEqual(9, ws.W.M_Rows);     Assert.AreEqual(4, ws.W.N_Cols);
+        Assert.AreEqual(9, ws.leftU.M_Rows); Assert.AreEqual(4, ws.leftU.N_Cols);
+        Assert.AreEqual(9, ws.uVec.N);
+        Assert.AreEqual(4, ws.vVec.N);
+        Assert.AreEqual(4, ws.wScratch.N);
     }
 }

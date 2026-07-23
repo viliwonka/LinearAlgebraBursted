@@ -2,7 +2,7 @@ using System;
 #pragma warning disable 618 // intentionally exercises the deprecated cyclic-Jacobi Eigen.decompInPlace (kept for reference)
 
 using LinearAlgebra;
-using LinearAlgebra.Gallery;   // opt-in: arena.fProxyHilbert(n), arena.fProxyKahan(n,θ), ...
+using LinearAlgebra.Gallery;   // opt-in: fProxyGallery.fProxyHilbert(n), fProxyGallery.fProxyKahan(n,θ), ...
 
 using NUnit.Framework;
 using Unity.Burst;
@@ -107,31 +107,27 @@ public class fProxySolverBatteryTests
         // ill-conditioned Hilbert/Moler at these small n).
         void CholeskySPDBattery()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var H = arena.fProxyHilbert(4);            CheckCholeskyReconstruct(ref arena, in H, (fProxy)50);
-            var P = arena.fProxyPascal(5);             CheckCholeskyReconstruct(ref arena, in P, (fProxy)50);
-            var L = arena.fProxyLehmer(5);             CheckCholeskyReconstruct(ref arena, in L, (fProxy)50);
-            var M = arena.fProxyMinIJ(5);              CheckCholeskyReconstruct(ref arena, in M, (fProxy)50);
-            var Pe = arena.fProxyPei(5, (fProxy)2);    CheckCholeskyReconstruct(ref arena, in Pe, (fProxy)50);
-            var Mo = arena.fProxyMoler(5);             CheckCholeskyReconstruct(ref arena, in Mo, (fProxy)100);
-            var T = arena.fProxyLaplacian1D(6);        CheckCholeskyReconstruct(ref arena, in T, (fProxy)50);
-            var G = arena.fProxyGCD(5);                CheckCholeskyReconstruct(ref arena, in G, (fProxy)50);
-
-            arena.Dispose();
+            var H = fProxyGallery.fProxyHilbert(4);            CheckCholeskyReconstruct(in H, (fProxy)50);
+            var P = fProxyGallery.fProxyPascal(5);             CheckCholeskyReconstruct(in P, (fProxy)50);
+            var L = fProxyGallery.fProxyLehmer(5);             CheckCholeskyReconstruct(in L, (fProxy)50);
+            var M = fProxyGallery.fProxyMinIJ(5);              CheckCholeskyReconstruct(in M, (fProxy)50);
+            var Pe = fProxyGallery.fProxyPei(5, (fProxy)2);    CheckCholeskyReconstruct(in Pe, (fProxy)50);
+            var Mo = fProxyGallery.fProxyMoler(5);             CheckCholeskyReconstruct(in Mo, (fProxy)100);
+            var T = fProxyGallery.fProxyLaplacian1D(6);        CheckCholeskyReconstruct(in T, (fProxy)50);
+            var G = fProxyGallery.fProxyGCD(5);                CheckCholeskyReconstruct(in G, (fProxy)50);
         }
 
-        void CheckCholeskyReconstruct(ref Arena arena, in fProxyMxN A, fProxy factor)
+        void CheckCholeskyReconstruct(in fProxyMxN A, fProxy factor)
         {
             int n = A.M_Rows;
 
-            var L = arena.fProxyMat(n, n);
+            var L = new fProxyMxN(n, n, Allocator.Temp);
             AssertTrue(CHO.decomp(in A, ref L));
 
             // rec = L · Lᵀ
-            var Lt = arena.fProxyMat(n, n);
+            var Lt = new fProxyMxN(n, n, Allocator.Temp);
             Blas.trans(in L, ref Lt);
-            var rec = arena.fProxyMat(n, n);
+            var rec = new fProxyMxN(n, n, Allocator.Temp);
             Blas.dot(in L, in Lt, ref rec);
 
             fProxy tol = (MatMaxAbs(in A) + (fProxy)1) * Consts.fProxySqrtEps * factor;
@@ -143,21 +139,17 @@ public class fProxySolverBatteryTests
         // (negative eigenvalues) → a later pivot goes non-positive.
         void CholeskyRejectIndefinite()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var F = arena.fProxyFiedler(3);
-            var Lf = arena.fProxyMat(3, 3);
+            var F = fProxyGallery.fProxyFiedler(3);
+            var Lf = new fProxyMxN(3, 3, Allocator.Temp);
             AssertTrue(!CHO.decomp(in F, ref Lf));
 
-            var C = arena.fProxyClement(3);
-            var Lc = arena.fProxyMat(3, 3);
+            var C = fProxyGallery.fProxyClement(3);
+            var Lc = new fProxyMxN(3, 3, Allocator.Temp);
             AssertTrue(!CHO.decomp(in C, ref Lc));
 
-            var R = arena.fProxyRosser();
-            var Lr = arena.fProxyMat(8, 8);
+            var R = fProxyGallery.fProxyRosser();
+            var Lr = new fProxyMxN(8, 8, Allocator.Temp);
             AssertTrue(!CHO.decomp(in R, ref Lr));
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -171,57 +163,49 @@ public class fProxySolverBatteryTests
         //   Redheffer(5) = Mertens M(5) = −2.
         void LUDeterminantBattery()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var P = arena.fProxyPascal(5);
+            var P = fProxyGallery.fProxyPascal(5);
             AssertClose(Determinant(in P), (fProxy)1, (fProxy)150 * Consts.fProxySqrtEps);
 
-            var M = arena.fProxyMinIJ(5);
+            var M = fProxyGallery.fProxyMinIJ(5);
             AssertClose(Determinant(in M), (fProxy)1, (fProxy)50 * Consts.fProxySqrtEps);
 
-            var Mo = arena.fProxyMoler(5);
+            var Mo = fProxyGallery.fProxyMoler(5);
             AssertClose(Determinant(in Mo), (fProxy)1, (fProxy)150 * Consts.fProxySqrtEps);
 
-            var Fr = arena.fProxyFrank(4);
+            var Fr = fProxyGallery.fProxyFrank(4);
             AssertClose(Determinant(in Fr), (fProxy)1, (fProxy)0.05);
 
-            var Tw = arena.fProxyTriw(5, (fProxy)(-2));
+            var Tw = fProxyGallery.fProxyTriw(5, (fProxy)(-2));
             AssertClose(Determinant(in Tw), (fProxy)1, (fProxy)1E-3);
 
-            var nodes = arena.fProxyVec(4);
+            var nodes = new fProxyN(4, Allocator.Temp);
             nodes[0] = (fProxy)1; nodes[1] = (fProxy)2; nodes[2] = (fProxy)3; nodes[3] = (fProxy)4;
-            var V = arena.fProxyVandermonde(in nodes);
+            var V = fProxyGallery.fProxyVandermonde(in nodes);
             AssertClose(Determinant(in V), (fProxy)12, (fProxy)0.2);
 
-            var G = arena.fProxyGCD(5);
+            var G = fProxyGallery.fProxyGCD(5);
             AssertClose(Determinant(in G), (fProxy)16, (fProxy)0.5);
 
-            var Rh = arena.fProxyRedheffer(5);
+            var Rh = fProxyGallery.fProxyRedheffer(5);
             AssertClose(Determinant(in Rh), (fProxy)(-2), (fProxy)0.1);
-
-            arena.Dispose();
         }
 
         // LU-solve reconstructs x on well-conditioned matrices (Laplacian1D, Pascal).
         // xtol is cond-amplified: Pascal(5) (cond ≈ 8.5e3) needs a looser band than Laplacian1D.
         void LUSolveBattery()
         {
-            var arena = new Arena(Allocator.Persistent);
+            var T = fProxyGallery.fProxyLaplacian1D(8);
+            CheckLUSolve(in T, (fProxy)200 * Consts.fProxySqrtEps);
 
-            var T = arena.fProxyLaplacian1D(8);
-            CheckLUSolve(ref arena, in T, (fProxy)200 * Consts.fProxySqrtEps);
-
-            var P = arena.fProxyPascal(5);
-            CheckLUSolve(ref arena, in P, (fProxy)5E-2);
-
-            arena.Dispose();
+            var P = fProxyGallery.fProxyPascal(5);
+            CheckLUSolve(in P, (fProxy)5E-2);
         }
 
-        void CheckLUSolve(ref Arena arena, in fProxyMxN A, fProxy xtol)
+        void CheckLUSolve(in fProxyMxN A, fProxy xtol)
         {
             int n = A.M_Rows;
 
-            var xTrue = arena.fProxyVec(n);
+            var xTrue = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) xTrue[i] = (fProxy)(i + 1);
 
             var b = Blas.dot(A, xTrue);   // consistent RHS
@@ -251,29 +235,25 @@ public class fProxySolverBatteryTests
         // Laplacian1D(8) (cond ≈ 41) and Pei(5,2) (eigenvalues {7,2,2,2,2}, cond ≈ 3.5).
         void QRDirectSolveSquare()
         {
-            var arena = new Arena(Allocator.Persistent);
+            var T = fProxyGallery.fProxyLaplacian1D(8);
+            CheckQRSquare(in T, (fProxy)200 * Consts.fProxySqrtEps);
 
-            var T = arena.fProxyLaplacian1D(8);
-            CheckQRSquare(ref arena, in T, (fProxy)200 * Consts.fProxySqrtEps);
-
-            var Pe = arena.fProxyPei(5, (fProxy)2);
-            CheckQRSquare(ref arena, in Pe, (fProxy)50 * Consts.fProxySqrtEps);
-
-            arena.Dispose();
+            var Pe = fProxyGallery.fProxyPei(5, (fProxy)2);
+            CheckQRSquare(in Pe, (fProxy)50 * Consts.fProxySqrtEps);
         }
 
-        void CheckQRSquare(ref Arena arena, in fProxyMxN A, fProxy xtol)
+        void CheckQRSquare(in fProxyMxN A, fProxy xtol)
         {
             int n = A.M_Rows;
 
-            var xTrue = arena.fProxyVec(n);
+            var xTrue = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) xTrue[i] = (fProxy)(i + 1);
 
             var b = Blas.dot(A, xTrue);
 
             var Aw = A.Copy();   // solveInPlace destroys A and b
             var bw = b.Copy();
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             QR.solveInPlace(ref Aw, ref bw, ref x);
 
             fProxy resTol = (MatMaxAbs(in A) + (fProxy)1) * (fProxy)100 * Consts.fProxySqrtEps;
@@ -288,19 +268,17 @@ public class fProxySolverBatteryTests
         // exactly xTrue and the residual is ≈ 0.
         void QRLeastSquares()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 3;
-            var A = arena.fProxyLauchli(n, (fProxy)0.5);   // 4×3
+            var A = fProxyGallery.fProxyLauchli(n, (fProxy)0.5);   // 4×3
 
-            var xTrue = arena.fProxyVec(n);
+            var xTrue = new fProxyN(n, Allocator.Temp);
             xTrue[0] = (fProxy)1; xTrue[1] = (fProxy)(-2); xTrue[2] = (fProxy)3;
 
             var b = Blas.dot(A, xTrue);   // length 4, in range(A)
 
             var Aw = A.Copy();
             var bw = b.Copy();
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             QR.solveInPlace(ref Aw, ref bw, ref x);   // x has length A.N_Cols = 3
 
             fProxy xtol = (fProxy)50 * Consts.fProxySqrtEps;
@@ -310,8 +288,6 @@ public class fProxySolverBatteryTests
             // residual ‖A x − b‖ ≈ 0 for a consistent system
             fProxy resTol = (MatMaxAbs(in A) + (fProxy)1) * (fProxy)100 * Consts.fProxySqrtEps;
             AssertTrue(ResidualNorm(in A, in x, in b) <= resTol);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -323,28 +299,22 @@ public class fProxySolverBatteryTests
         // ≥ … (the rank-revealing diagonal ordering).
         void QRCPKahan()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
-            var A = arena.fProxyKahan(n, (fProxy)0.36235775);
-            CheckQRCPReconstruct(ref arena, in A);
-
-            arena.Dispose();
+            var A = fProxyGallery.fProxyKahan(n, (fProxy)0.36235775);
+            CheckQRCPReconstruct(in A);
         }
 
         // Rank-deficient input: Pei(4, 0) = αI + J with α = 0 is the all-ones matrix (rank 1). QRCP must
         // reconstruct A·P ≈ Q·R, keep |R diag| non-increasing, and drive R[1,1]… to ≈ 0 (revealing rank 1).
         void QRCPRankDeficient()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 4;
-            var A = arena.fProxyPei(n, (fProxy)0);   // all-ones, rank 1
-            CheckQRCPReconstruct(ref arena, in A);
+            var A = fProxyGallery.fProxyPei(n, (fProxy)0);   // all-ones, rank 1
+            CheckQRCPReconstruct(in A);
 
             // rank 1 ⇒ trailing diagonal entries are numerically zero
             var Q = A.Copy();
-            var R = arena.fProxyMat(n, n);
+            var R = new fProxyMxN(n, n, Allocator.Temp);
             var P = new Pivot(n, Allocator.Temp);
             QRCP.decompInPlace(ref Q, ref R, ref P);
 
@@ -353,23 +323,22 @@ public class fProxySolverBatteryTests
                 AssertTrue(math.abs(R[d, d]) <= rankTol);
 
             P.Dispose();
-            arena.Dispose();
         }
 
         // A·P ≈ Q·R reconstruction + non-increasing |R diag|. Result column j is original column P[j],
         // so (Q·R)[:, j] must equal A[:, P[j]].
-        void CheckQRCPReconstruct(ref Arena arena, in fProxyMxN A)
+        void CheckQRCPReconstruct(in fProxyMxN A)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
 
             var Q = A.Copy();   // overwritten with Q (m × n)
-            var R = arena.fProxyMat(n, n);
+            var R = new fProxyMxN(n, n, Allocator.Temp);
             var P = new Pivot(n, Allocator.Temp);
             QRCP.decompInPlace(ref Q, ref R, ref P);
 
             // QRProduct = Q · R (m × n)
-            var QRProduct = arena.fProxyMat(m, n);
+            var QRProduct = new fProxyMxN(m, n, Allocator.Temp);
             Blas.dot(in Q, in R, ref QRProduct);
 
             fProxy tol = (MatMaxAbs(in A) + (fProxy)1) * (fProxy)100 * Consts.fProxySqrtEps;
@@ -392,19 +361,15 @@ public class fProxySolverBatteryTests
         // Hadamard: HᵀH = n·I ⇒ every singular value = √n and cond = 1 exactly. n = 4 and n = 8.
         void SVDHadamardSigma()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            CheckHadamardSVD(ref arena, 4);
-            CheckHadamardSVD(ref arena, 8);
-
-            arena.Dispose();
+            CheckHadamardSVD(4);
+            CheckHadamardSVD(8);
         }
 
-        void CheckHadamardSVD(ref Arena arena, int n)
+        void CheckHadamardSVD(int n)
         {
-            var A = arena.fProxyHadamard(n);
+            var A = fProxyGallery.fProxyHadamard(n);
 
-            var S = arena.fProxyVec(n);
+            var S = new fProxyN(n, Allocator.Temp);
             SVD.singularValues(in A, ref S);
 
             fProxy sq = math.sqrt((fProxy)n);
@@ -419,12 +384,10 @@ public class fProxySolverBatteryTests
         // Parter: nonsymmetric Toeplitz; all singular values < π and cluster near π. n = 8.
         void SVDParterCluster()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 8;
-            var A = arena.fProxyParter(n);
+            var A = fProxyGallery.fProxyParter(n);
 
-            var S = arena.fProxyVec(n);
+            var S = new fProxyN(n, Allocator.Temp);
             SVD.singularValues(in A, ref S);
 
             fProxy pi = (fProxy)math.PI_DBL;
@@ -433,8 +396,6 @@ public class fProxySolverBatteryTests
                 AssertTrue(S[i] < pi + band);
 
             AssertTrue(S[0] > pi - (fProxy)0.5);   // largest clusters near π
-
-            arena.Dispose();
         }
 
         // Läuchli rank-stress: A = (n+1)×n, σ = {√(n+ε²), ε, …, ε}. SVD resolves the tiny ε singular
@@ -443,14 +404,12 @@ public class fProxySolverBatteryTests
         // (κ ≈ √n/ε). pinv accuracy is precision-gated.
         void SVDLauchliRankStress()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 3;
             fProxy eps = (fProxy)1E-3;
-            var A = arena.fProxyLauchli(n, eps);   // 4×3
+            var A = fProxyGallery.fProxyLauchli(n, eps);   // 4×3
 
             // singular values
-            var S = arena.fProxyVec(n);
+            var S = new fProxyN(n, Allocator.Temp);
             SVD.singularValues(in A, ref S);
 
             fProxy sMax = math.sqrt((fProxy)n + eps * eps);
@@ -462,13 +421,13 @@ public class fProxySolverBatteryTests
             RecordEq(Analysis.rank(in A), n);
 
             // pinv least squares recovers a consistent xTrue
-            var xTrue = arena.fProxyVec(n);
+            var xTrue = new fProxyN(n, Allocator.Temp);
             xTrue[0] = (fProxy)1; xTrue[1] = (fProxy)2; xTrue[2] = (fProxy)3;
 
             var b = Blas.dot(A, xTrue);   // length 4, in range(A)
 
             var Aw = A.Copy();                // pinvSolve no longer modifies A (copy kept for clarity)
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             RankInfo pinvInfo = SVD.pinvSolve(ref Aw, in b, ref x);
             bool conv = pinvInfo;
             int r = pinvInfo.rank;
@@ -478,8 +437,6 @@ public class fProxySolverBatteryTests
             fProxy xtol = IsDouble() ? (fProxy)1E-7 : (fProxy)1E-2;
             for (int i = 0; i < n; i++)
                 AssertClose(x[i], xTrue[i], xtol);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -489,26 +446,22 @@ public class fProxySolverBatteryTests
         // Reconstruct V·diag(λ)·Vᵀ ≈ A and orthogonality VᵀV ≈ I on SPD/symmetric inputs.
         void EigenSymmetricReconstruct()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var T = arena.fProxyLaplacian1D(6);     CheckEigenReconstruct(ref arena, in T);
-            var Pe = arena.fProxyPei(5, (fProxy)2);  CheckEigenReconstruct(ref arena, in Pe);
-            var P = arena.fProxyPascal(5);           CheckEigenReconstruct(ref arena, in P);
-
-            arena.Dispose();
+            var T = fProxyGallery.fProxyLaplacian1D(6);     CheckEigenReconstruct(in T);
+            var Pe = fProxyGallery.fProxyPei(5, (fProxy)2);  CheckEigenReconstruct(in Pe);
+            var P = fProxyGallery.fProxyPascal(5);           CheckEigenReconstruct(in P);
         }
 
-        void CheckEigenReconstruct(ref Arena arena, in fProxyMxN A)
+        void CheckEigenReconstruct(in fProxyMxN A)
         {
             int n = A.M_Rows;
 
             var Ac = A.Copy();
-            var eig = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var eig = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
             AssertTrue(Eigen.decompInPlace(ref Ac, ref eig, ref V));
 
             // VᵀV ≈ I
-            var VtV = arena.fProxyMat(n, n);
+            var VtV = new fProxyMxN(n, n, Allocator.Temp);
             Blas.dot(in V, in V, ref VtV, transposeA: true);
             fProxy orthoTol = (fProxy)50 * Consts.fProxySqrtEps;
             for (int i = 0; i < n; i++)
@@ -516,13 +469,13 @@ public class fProxySolverBatteryTests
                     AssertClose(VtV[i, j], (i == j) ? (fProxy)1 : (fProxy)0, orthoTol);
 
             // rec = V · diag(eig) · Vᵀ
-            var D = arena.fProxyMat(n, n);   // zero-initialized
+            var D = new fProxyMxN(n, n, Allocator.Temp);   // zero-initialized
             for (int i = 0; i < n; i++) D[i, i] = eig[i];
-            var VD = arena.fProxyMat(n, n);
+            var VD = new fProxyMxN(n, n, Allocator.Temp);
             Blas.dot(in V, in D, ref VD);
-            var Vt = arena.fProxyMat(n, n);
+            var Vt = new fProxyMxN(n, n, Allocator.Temp);
             Blas.trans(in V, ref Vt);
-            var rec = arena.fProxyMat(n, n);
+            var rec = new fProxyMxN(n, n, Allocator.Temp);
             Blas.dot(in VD, in Vt, ref rec);
 
             fProxy tol = (MatMaxAbs(in A) + (fProxy)1) * (fProxy)50 * Consts.fProxySqrtEps;
@@ -534,14 +487,12 @@ public class fProxySolverBatteryTests
         // Laplacian1D eigenvalues λ_k = 2 − 2cos(kπ/(n+1)). n = 6 (descending).
         void EigenLaplacianSpectrum()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 6;
-            var T = arena.fProxyLaplacian1D(n);
+            var T = fProxyGallery.fProxyLaplacian1D(n);
 
             var Tc = T.Copy();
-            var eig = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var eig = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
             AssertTrue(Eigen.decompInPlace(ref Tc, ref eig, ref V));
 
             fProxy pi = (fProxy)math.PI_DBL;
@@ -551,21 +502,17 @@ public class fProxySolverBatteryTests
                 fProxy expected = (fProxy)2 - (fProxy)2 * math.cos((fProxy)(n - i) * pi / (fProxy)(n + 1));
                 AssertClose(eig[i], expected, tol);
             }
-
-            arena.Dispose();
         }
 
         // Clement: eigenvalues exactly {n−1, n−3, …, −(n−1)}. n = 4 ⇒ {3, 1, −1, −3}.
         void EigenClementSpectrum()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 4;
-            var C = arena.fProxyClement(n);
+            var C = fProxyGallery.fProxyClement(n);
 
             var Cc = C.Copy();
-            var eig = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var eig = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
             AssertTrue(Eigen.decompInPlace(ref Cc, ref eig, ref V));
 
             fProxy tol = (fProxy)50 * Consts.fProxySqrtEps;
@@ -573,21 +520,17 @@ public class fProxySolverBatteryTests
             AssertClose(eig[1], (fProxy)1, tol);
             AssertClose(eig[2], (fProxy)(-1), tol);
             AssertClose(eig[3], (fProxy)(-3), tol);
-
-            arena.Dispose();
         }
 
         // Fiedler: exactly one positive eigenvalue, n−1 negative (indefinite inertia). n = 5.
         void EigenFiedlerInertia()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
-            var F = arena.fProxyFiedler(n);
+            var F = fProxyGallery.fProxyFiedler(n);
 
             var Fc = F.Copy();
-            var eig = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var eig = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
             AssertTrue(Eigen.decompInPlace(ref Fc, ref eig, ref V));
 
             // smallest |λ| ≈ 0.56 ⇒ a small gate cleanly separates signs.
@@ -600,21 +543,17 @@ public class fProxySolverBatteryTests
             }
             RecordEq(pos, 1);
             RecordEq(neg, n - 1);
-
-            arena.Dispose();
         }
 
         // DingDong: all eigenvalues in (−π/2, π/2), clustering near ±π/2. n = 6.
         void EigenDingDongBand()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 6;
-            var D = arena.fProxyDingDong(n);
+            var D = fProxyGallery.fProxyDingDong(n);
 
             var Dc = D.Copy();
-            var eig = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var eig = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
             AssertTrue(Eigen.decompInPlace(ref Dc, ref eig, ref V));
 
             fProxy halfPi = (fProxy)(math.PI_DBL * 0.5);
@@ -626,8 +565,6 @@ public class fProxySolverBatteryTests
             }
             AssertTrue(eig[0] > halfPi - (fProxy)0.1);
             AssertTrue(eig[n - 1] < -halfPi + (fProxy)0.1);
-
-            arena.Dispose();
         }
 
         // Rosser 8×8: near-degenerate spectrum, the canonical eigensolver stress test. Documented
@@ -635,11 +572,9 @@ public class fProxySolverBatteryTests
         // robust invariant Σλ = trace = 4040.
         void EigenRosserSpectrum()
         {
-            var arena = new Arena(Allocator.Persistent);
+            var A = fProxyGallery.fProxyRosser();
 
-            var A = arena.fProxyRosser();
-
-            var expected = arena.fProxyVec(8);
+            var expected = new fProxyN(8, Allocator.Temp);
             expected[0] = (fProxy)1020.4202;
             expected[1] = (fProxy)1019.9936;
             expected[2] = (fProxy)1019.5244;
@@ -650,8 +585,8 @@ public class fProxySolverBatteryTests
             expected[7] = (fProxy)(-1020.0532);
 
             var Ac = A.Copy();
-            var eig = arena.fProxyVec(8);
-            var V = arena.fProxyMat(8, 8);
+            var eig = new fProxyN(8, Allocator.Temp);
+            var V = new fProxyMxN(8, 8, Allocator.Temp);
             AssertTrue(Eigen.decompInPlace(ref Ac, ref eig, ref V));
 
             fProxy esum = (fProxy)0;
@@ -661,8 +596,6 @@ public class fProxySolverBatteryTests
             fProxy band = IsDouble() ? (fProxy)0.5 : (fProxy)3.0;
             for (int i = 0; i < 8; i++)
                 AssertClose(eig[i], expected[i], band);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -672,14 +605,12 @@ public class fProxySolverBatteryTests
         // Frank(4): all eigenvalues real (imag ≈ 0) and positive (≈ {7.31, 2.07, 0.48, 0.137}).
         void EigenQRFrank()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 4;
-            var F = arena.fProxyFrank(n);
+            var F = fProxyGallery.fProxyFrank(n);
 
             var Fc = F.Copy();
-            var re = arena.fProxyVec(n);
-            var im = arena.fProxyVec(n);
+            var re = new fProxyN(n, Allocator.Temp);
+            var im = new fProxyN(n, Allocator.Temp);
             AssertTrue(Eigen.valuesQRInPlace(ref Fc, ref re, ref im));
 
             for (int i = 0; i < n; i++)
@@ -687,22 +618,18 @@ public class fProxySolverBatteryTests
                 AssertClose(im[i], (fProxy)0, (fProxy)1E-2);
                 AssertTrue(re[i] > (fProxy)0);
             }
-
-            arena.Dispose();
         }
 
         // Companion of (x−1)(x−2)(x−3) = x³ − 6x² + 11x − 6 ⇒ coeffs {−6, 11, −6}.
         // valuesQRInPlace returns the roots {3, 2, 1} (descending, real).
         void EigenQRCompanion()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var coeffs = arena.fProxyVec(3);
+            var coeffs = new fProxyN(3, Allocator.Temp);
             coeffs[0] = (fProxy)(-6); coeffs[1] = (fProxy)11; coeffs[2] = (fProxy)(-6);
-            var C = arena.fProxyCompanion(in coeffs);
+            var C = fProxyGallery.fProxyCompanion(in coeffs);
 
-            var re = arena.fProxyVec(3);
-            var im = arena.fProxyVec(3);
+            var re = new fProxyN(3, Allocator.Temp);
+            var im = new fProxyN(3, Allocator.Temp);
             AssertTrue(Eigen.valuesQRInPlace(ref C, ref re, ref im));
 
             fProxy tol = (fProxy)1E-2;
@@ -710,8 +637,6 @@ public class fProxySolverBatteryTests
             AssertClose(re[1], (fProxy)2, tol);
             AssertClose(re[2], (fProxy)1, tol);
             for (int i = 0; i < 3; i++) AssertClose(im[i], (fProxy)0, tol);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -722,32 +647,28 @@ public class fProxySolverBatteryTests
         // small relative to ‖b‖. xtol is cond-amplified per matrix.
         void CGSPDBattery()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var T = arena.fProxyLaplacian1D(8);
-            CheckCG(ref arena, in T, (fProxy)200 * Consts.fProxySqrtEps);
+            var T = fProxyGallery.fProxyLaplacian1D(8);
+            CheckCG(in T, (fProxy)200 * Consts.fProxySqrtEps);
 
             // MinIJ(5) cond ≈ 44 ⇒ the CG solution error is cond-amplified (the rigorous check here is
             // the residual norm inside CheckCG; this per-component band is a generous sanity bound).
-            var M = arena.fProxyMinIJ(5);
-            CheckCG(ref arena, in M, (fProxy)5E-2);
+            var M = fProxyGallery.fProxyMinIJ(5);
+            CheckCG(in M, (fProxy)5E-2);
 
-            var Pe = arena.fProxyPei(5, (fProxy)2);
-            CheckCG(ref arena, in Pe, (fProxy)50 * Consts.fProxySqrtEps);
-
-            arena.Dispose();
+            var Pe = fProxyGallery.fProxyPei(5, (fProxy)2);
+            CheckCG(in Pe, (fProxy)50 * Consts.fProxySqrtEps);
         }
 
-        void CheckCG(ref Arena arena, in fProxyMxN A, fProxy xtol)
+        void CheckCG(in fProxyMxN A, fProxy xtol)
         {
             int n = A.M_Rows;
 
-            var xTrue = arena.fProxyVec(n);
+            var xTrue = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) xTrue[i] = (fProxy)(i + 1);
 
             var b = Blas.dot(A, xTrue);
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             bool conv = Krylov.cg(in A, in b, ref x, 200, Consts.fProxySqrtEps);
             AssertTrue(conv);
 
@@ -766,16 +687,12 @@ public class fProxySolverBatteryTests
         // Hadamard cond = 1 (orthogonal up to scale); Hilbert cond grows fast: cond(H₃) ≈ 524.06.
         void CondBattery()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var Hd = arena.fProxyHadamard(4);
+            var Hd = fProxyGallery.fProxyHadamard(4);
             AssertClose(Analysis.cond(in Hd), (fProxy)1, IsDouble() ? (fProxy)1E-5 : (fProxy)1E-2);
 
-            var H3 = arena.fProxyHilbert(3);
+            var H3 = fProxyGallery.fProxyHilbert(3);
             fProxy c = Analysis.cond(in H3);
             AssertClose(c, (fProxy)524.0568, IsDouble() ? (fProxy)1 : (fProxy)10);
-
-            arena.Dispose();
         }
 
         // =====================================================================

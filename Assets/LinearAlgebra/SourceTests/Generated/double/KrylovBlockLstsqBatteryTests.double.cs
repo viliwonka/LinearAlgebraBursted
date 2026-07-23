@@ -119,25 +119,23 @@ public class doubleKrylovBlockLstsqBatteryTests
             where TInvoker : struct, IdoubleBlockLstsqSolverInvoker
             where TScalar : struct, IdoubleLstsqSolverInvoker
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = doubleKrylovBatteryGallery.Build(ref arena, gm);
+            var A = doubleKrylovBatteryGallery.Build(gm);
             int m = A.M_Rows, n = A.N_Cols;
             var Aop = new doubleDenseOperator(in A);
             MatrixProfile tags = GalleryProfiles.Of(gm);
             double tolBand = TolBand(tags);
             bool underdetermined = (tags & MatrixProfile.Underdetermined) != 0;
 
-            inv.Init(ref arena, m, n, S);
-            scalarInv.Init(ref arena, m, n);
+            inv.Init(m, n, S);
+            scalarInv.Init(m, n);
 
-            var rScratch = arena.doubleVec(m);
-            var sScratch = arena.doubleVec(n);
+            var rScratch = new doubleN(m, Allocator.Temp);
+            var sScratch = new doubleN(n, Allocator.Temp);
 
             // 1. Converges: Solved or MaxIterations on a random block RHS. (A has full row rank, so a
             // random s x m block RHS is always consistent for the underdetermined shape too.)
-            var B = arena.doubleRandomMat(S, m, (double)(-1), (double)1, 0xD300u + (uint)gm);
-            var X = arena.doubleMat(S, n);
+            var B = GenerateOP.doubleRandomMat(S, m, (double)(-1), (double)1, 0xD300u + (uint)gm);
+            var X = new doubleMxN(S, n, Allocator.Temp);
             BlockSolveInfo info = inv.Solve(in Aop, in B, ref X, inv.MaxIter(m, n));
             bool statusOk = info.status == IterativeSolveStatus.Converged || info.status == IterativeSolveStatus.MaxIterations;
             Record(statusOk, (int)gm, 1, (double)(int)info.status, (double)0);
@@ -145,8 +143,8 @@ public class doubleKrylovBlockLstsqBatteryTests
             // 2/3: per column of the same (A, B, X), oracle branched by shape.
             for (int j = 0; j < S; j++)
             {
-                var bj = doubleKrylovBatteryOracles.Row(ref arena, in B, j, m);
-                var xj = doubleKrylovBatteryOracles.Row(ref arena, in X, j, n);
+                var bj = doubleKrylovBatteryOracles.Row(in B, j, m);
+                var xj = doubleKrylovBatteryOracles.Row(in X, j, n);
 
                 var audit = Krylov.lstsqResidual(in Aop, in bj, in xj, (double)0, ref rScratch, ref sScratch);
 
@@ -160,7 +158,7 @@ public class doubleKrylovBlockLstsqBatteryTests
                     double thresh = (double)10 * inv.Tol * math.max(bNorm, (double)1e-30);
                     Record((double)audit.rnorm <= thresh, (int)gm, 2, (double)audit.rnorm, thresh);
 
-                    var xRef = arena.doubleVec(n);
+                    var xRef = new doubleN(n, Allocator.Temp);
                     LQ.minNormSolve(in A, in bj, ref xRef);
                     for (int c = 0; c < n; c++)
                         Record(math.abs(X[j, c] - xRef[c]) <= tolBand * ((double)1 + math.abs(xRef[c])), (int)gm, 2, X[j, c], xRef[c]);
@@ -177,7 +175,7 @@ public class doubleKrylovBlockLstsqBatteryTests
 
                 // Agreement with the scalar sibling's solve of that same column (same problem, one RHS
                 // at a time -- scalar lsmr for the tall shape, scalar craig for the wide shape).
-                var xjScalar = arena.doubleVec(n);
+                var xjScalar = new doubleN(n, Allocator.Temp);
                 LstsqInfo infoScalar = scalarInv.Solve(in Aop, in bj, ref xjScalar, (double)0);
                 bool scalarOk = infoScalar.status == IterativeSolveStatus.Converged || infoScalar.status == IterativeSolveStatus.MaxIterations;
                 Record(scalarOk, (int)gm, 3, (double)(int)infoScalar.status, (double)0);
@@ -188,23 +186,23 @@ public class doubleKrylovBlockLstsqBatteryTests
             // 4. Consistent (zero-residual) system B = A Xk. Overdetermined: recovers Xk exactly (the
             // finite-termination property). Underdetermined: the random Xk used to build B is NOT
             // itself minimum-norm, so the correct target is LQ.minNormSolve(A, Bc_j) per row, not Xk.
-            var Xk = arena.doubleRandomMat(S, n, (double)(-1), (double)1, 0xD400u + (uint)gm);
-            var Bc = arena.doubleMat(S, m);
+            var Xk = GenerateOP.doubleRandomMat(S, n, (double)(-1), (double)1, 0xD400u + (uint)gm);
+            var Bc = new doubleMxN(S, m, Allocator.Temp);
             for (int j = 0; j < S; j++)
             {
-                var xkj = doubleKrylovBatteryOracles.Row(ref arena, in Xk, j, n);
-                var bcj = arena.doubleVec(m);
+                var xkj = doubleKrylovBatteryOracles.Row(in Xk, j, n);
+                var bcj = new doubleN(m, Allocator.Temp);
                 Aop.Apply(in xkj, ref bcj);
                 for (int c = 0; c < m; c++) Bc[j, c] = bcj[c];
             }
-            var Xc = arena.doubleMat(S, n);
+            var Xc = new doubleMxN(S, n, Allocator.Temp);
             BlockSolveInfo infoC = inv.Solve(in Aop, in Bc, ref Xc, inv.MaxIter(m, n));
             if (underdetermined)
             {
                 for (int j = 0; j < S; j++)
                 {
-                    var bcj = doubleKrylovBatteryOracles.Row(ref arena, in Bc, j, m);
-                    var xRef = arena.doubleVec(n);
+                    var bcj = doubleKrylovBatteryOracles.Row(in Bc, j, m);
+                    var xRef = new doubleN(n, Allocator.Temp);
                     LQ.minNormSolve(in A, in bcj, ref xRef);
                     for (int c = 0; c < n; c++)
                         Record(math.abs(Xc[j, c] - xRef[c]) <= tolBand * ((double)1 + math.abs(xRef[c])), (int)gm, 4, Xc[j, c], xRef[c]);
@@ -220,8 +218,8 @@ public class doubleKrylovBlockLstsqBatteryTests
                 Record(infoC.Solved && infoC.converged == S, (int)gm, 4, (double)infoC.converged, (double)S);
 
             // 5. Zero RHS converges immediately: X = 0, zero iterations.
-            var B0 = arena.doubleMat(S, m);   // zeroed by allocation
-            var X0 = arena.doubleMat(S, n);
+            var B0 = new doubleMxN(S, m, Allocator.Temp);   // zeroed by allocation
+            var X0 = new doubleMxN(S, n, Allocator.Temp);
             BlockSolveInfo info0 = inv.Solve(in Aop, in B0, ref X0, inv.MaxIter(m, n));
             Record(info0.Solved, (int)gm, 5, (double)(int)info0.status, (double)0);
             Record(info0.iterations == 0, (int)gm, 5, (double)info0.iterations, (double)0);
@@ -230,16 +228,14 @@ public class doubleKrylovBlockLstsqBatteryTests
                     Record(X0[j, c] == (double)0, (int)gm, 5, X0[j, c], (double)0);
 
             // 6. A tiny maxIter (forcing MaxIterations before full convergence) never NaN/Inf X.
-            var B6 = arena.doubleRandomMat(S, m, (double)(-1), (double)1, 0xD500u + (uint)gm);
-            var X6 = arena.doubleMat(S, n);
+            var B6 = GenerateOP.doubleRandomMat(S, m, (double)(-1), (double)1, 0xD500u + (uint)gm);
+            var X6 = new doubleMxN(S, n, Allocator.Temp);
             inv.Solve(in Aop, in B6, ref X6, 1);
             bool anyBad = false;
             for (int j = 0; j < S; j++)
                 for (int c = 0; c < n; c++)
                     if (math.isnan(X6[j, c]) || math.isinf(X6[j, c])) anyBad = true;
             Record(!anyBad, (int)gm, 6, anyBad ? (double)1 : (double)0, (double)0);
-
-            arena.Dispose();
         }
 
         static bool IsDouble() => (double)Consts.doubleEpsilon < 1e-10;

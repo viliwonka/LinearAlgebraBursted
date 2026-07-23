@@ -61,15 +61,14 @@ namespace LinearAlgebra.Benchmarks
 
         // Builds the workspace from scratch (the cos/sin table build, Burst-compiled) then runs one
         // transform — the true one-shot cost of the table path, vs the reuse rows that build once.
-        // The in-job Persistent arena is deliberate: its alloc/free is part of the one-shot cost
+        // The in-job Persistent allocation is deliberate: its alloc/free is part of the one-shot cost
         // this row measures.
         public void Execute()
         {
-            var a = new Arena(Allocator.Persistent);
-            var ws = a.fProxyFFTCache(n);
+            var ws = new fProxyFFTCache(n, Allocator.Persistent);
             for (int i = 0; i < n; i++) { re[i] = srcRe[i]; im[i] = srcIm[i]; }
             FFT.fft(ref re, ref im, in ws);
-            a.Dispose();
+            ws.Dispose();
         }
     }
 
@@ -114,12 +113,11 @@ namespace LinearAlgebra.Benchmarks
         // ---- table FFT helpers ----
         static string FftTableFProxy(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var re    = arena.fProxyVec(n);
-            var im    = arena.fProxyVec(n);
-            var srcRe = arena.fProxyVec(n);
-            var srcIm = arena.fProxyVec(n);
-            var ws    = arena.fProxyFFTCache(n);   // built ONCE outside the timed loop
+            var re    = new fProxyN(n, Allocator.Persistent);
+            var im    = new fProxyN(n, Allocator.Persistent);
+            var srcRe = new fProxyN(n, Allocator.Persistent);
+            var srcIm = new fProxyN(n, Allocator.Persistent);
+            var ws    = new fProxyFFTCache(n, Allocator.Persistent);   // built ONCE outside the timed loop
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -131,19 +129,18 @@ namespace LinearAlgebra.Benchmarks
             var job = new FftTableJobFProxy { re = re, im = im, srcRe = srcRe, srcIm = srcIm, ws = ws };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            re.Dispose(); im.Dispose(); srcRe.Dispose(); srcIm.Dispose(); ws.Dispose();
             return Bench.RowTime("fProxy(ws)", n, stat);
         }
 
         // ---- table complex inverse FFT helpers ----
         static string IfftTableFProxy(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var re    = arena.fProxyVec(n);
-            var im    = arena.fProxyVec(n);
-            var srcRe = arena.fProxyVec(n);
-            var srcIm = arena.fProxyVec(n);
-            var ws    = arena.fProxyFFTCache(n);   // built ONCE outside the timed loop
+            var re    = new fProxyN(n, Allocator.Persistent);
+            var im    = new fProxyN(n, Allocator.Persistent);
+            var srcRe = new fProxyN(n, Allocator.Persistent);
+            var srcIm = new fProxyN(n, Allocator.Persistent);
+            var ws    = new fProxyFFTCache(n, Allocator.Persistent);   // built ONCE outside the timed loop
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -155,18 +152,17 @@ namespace LinearAlgebra.Benchmarks
             var job = new IfftTableJobFProxy { re = re, im = im, srcRe = srcRe, srcIm = srcIm, ws = ws };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            re.Dispose(); im.Dispose(); srcRe.Dispose(); srcIm.Dispose(); ws.Dispose();
             return Bench.RowTime("fProxy(ws)", n, stat);
         }
 
         // ---- table FFT WITH build included (one-shot, build clocked in Burst) ----
         static string FftTableBuiltFProxy(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var re    = arena.fProxyVec(n);
-            var im    = arena.fProxyVec(n);
-            var srcRe = arena.fProxyVec(n);
-            var srcIm = arena.fProxyVec(n);
+            var re    = new fProxyN(n, Allocator.Persistent);
+            var im    = new fProxyN(n, Allocator.Persistent);
+            var srcRe = new fProxyN(n, Allocator.Persistent);
+            var srcIm = new fProxyN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -178,18 +174,17 @@ namespace LinearAlgebra.Benchmarks
             var job = new FftBuildRunJobFProxy { re = re, im = im, srcRe = srcRe, srcIm = srcIm, n = n };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            re.Dispose(); im.Dispose(); srcRe.Dispose(); srcIm.Dispose();
             return Bench.RowTime("fProxy(ws+build)", n, stat);
         }
 
         // ---- table rfft helpers ----
         static string RfftTableFProxy(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var real  = arena.fProxyVec(n);
-            var re    = arena.fProxyVec(n / 2 + 1);
-            var im    = arena.fProxyVec(n / 2 + 1);
-            var ws    = arena.fProxyFFTCache(n);   // built ONCE outside the timed loop
+            var real  = new fProxyN(n, Allocator.Persistent);
+            var re    = new fProxyN(n / 2 + 1, Allocator.Persistent);
+            var im    = new fProxyN(n / 2 + 1, Allocator.Persistent);
+            var ws    = new fProxyFFTCache(n, Allocator.Persistent);   // built ONCE outside the timed loop
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n ^ 0xDEADBEEFu);
             for (int i = 0; i < n; i++)
@@ -198,19 +193,18 @@ namespace LinearAlgebra.Benchmarks
             var job = new RfftTableJobFProxy { real = real, re = re, im = im, ws = ws };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            real.Dispose(); re.Dispose(); im.Dispose(); ws.Dispose();
             return Bench.RowTime("fProxy(ws)", n, stat);
         }
 
         // ---- table real inverse irfft helpers ----
         static string IrfftTableFProxy(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
             int h     = n / 2 + 1;
-            var re    = arena.fProxyVec(h);
-            var im    = arena.fProxyVec(h);
-            var real  = arena.fProxyVec(n);
-            var ws    = arena.fProxyFFTCache(n);   // built ONCE outside the timed loop
+            var re    = new fProxyN(h, Allocator.Persistent);
+            var im    = new fProxyN(h, Allocator.Persistent);
+            var real  = new fProxyN(n, Allocator.Persistent);
+            var ws    = new fProxyFFTCache(n, Allocator.Persistent);   // built ONCE outside the timed loop
 
             // Arbitrary half-spectrum input (exact Hermitian validity is irrelevant to timing).
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n ^ 0xB16B00B5u);
@@ -223,18 +217,17 @@ namespace LinearAlgebra.Benchmarks
             var job = new IrfftTableJobFProxy { re = re, im = im, real = real, ws = ws };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            re.Dispose(); im.Dispose(); real.Dispose(); ws.Dispose();
             return Bench.RowTime("fProxy(ws)", n, stat);
         }
 
         // ---- DFT helpers ----
         static string DftFProxy(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var inRe  = arena.fProxyVec(n);
-            var inIm  = arena.fProxyVec(n);
-            var outRe = arena.fProxyVec(n);
-            var outIm = arena.fProxyVec(n);
+            var inRe  = new fProxyN(n, Allocator.Persistent);
+            var inIm  = new fProxyN(n, Allocator.Persistent);
+            var outRe = new fProxyN(n, Allocator.Persistent);
+            var outIm = new fProxyN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -246,7 +239,7 @@ namespace LinearAlgebra.Benchmarks
             var job = new DftJobFProxy { inRe = inRe, inIm = inIm, outRe = outRe, outIm = outIm };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            inRe.Dispose(); inIm.Dispose(); outRe.Dispose(); outIm.Dispose();
             return Bench.RowTime("fProxy", n, stat);
         }
     }

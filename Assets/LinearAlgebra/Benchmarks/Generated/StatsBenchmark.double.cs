@@ -60,9 +60,9 @@ namespace LinearAlgebra.Benchmarks
 
     public static partial class StatsBenchmark
     {
-        static doubleMxN FillDouble(Arena arena, int n)
+        static doubleMxN FillDouble(Allocator allocator, int n)
         {
-            var A = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, allocator);
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
                 for (int c = 0; c < n; c++)
@@ -72,54 +72,49 @@ namespace LinearAlgebra.Benchmarks
 
         static string RowSumDouble(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = FillDouble(arena, n);
-            var dest = arena.doubleVec(n);
+            var A = FillDouble(Allocator.Persistent, n);
+            var dest = new doubleN(n, Allocator.Persistent);
             var job = new StatsRowSumJobDouble { A = A, Dest = dest };
             var stat = Bench.Time(() => job.Run());
-            arena.Dispose();
+            A.Dispose(); dest.Dispose();
             return Bench.Row("double", n, stat, flops);
         }
 
         static string ColSumDouble(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = FillDouble(arena, n);
-            var dest = arena.doubleVec(n);
+            var A = FillDouble(Allocator.Persistent, n);
+            var dest = new doubleN(n, Allocator.Persistent);
             var job = new StatsColSumJobDouble { A = A, Dest = dest };
             var stat = Bench.Time(() => job.Run());
-            arena.Dispose();
+            A.Dispose(); dest.Dispose();
             return Bench.Row("double", n, stat, flops);
         }
 
         static string RowVarDouble(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = FillDouble(arena, n);
-            var dest = arena.doubleVec(n);
+            var A = FillDouble(Allocator.Persistent, n);
+            var dest = new doubleN(n, Allocator.Persistent);
             var job = new StatsRowVarJobDouble { A = A, Dest = dest };
             var stat = Bench.Time(() => job.Run());
-            arena.Dispose();
+            A.Dispose(); dest.Dispose();
             return Bench.Row("double", n, stat, flops);
         }
 
         static string StdRowsDouble(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = FillDouble(arena, n);
+            var A = FillDouble(Allocator.Persistent, n);
             var job = new StatsStdRowsJobDouble { A = A };
             var stat = Bench.Time(() => job.Run());
-            arena.Dispose();
+            A.Dispose();
             return Bench.Row("double", n, stat, flops);
         }
 
         static string SoftmaxRowsDouble(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = FillDouble(arena, n);
+            var A = FillDouble(Allocator.Persistent, n);
             var job = new StatsSoftmaxRowsJobDouble { A = A };
             var stat = Bench.Time(() => job.Run());
-            arena.Dispose();
+            A.Dispose();
             return Bench.Row("double", n, stat, flops);
         }
     }

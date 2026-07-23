@@ -37,7 +37,7 @@ using Unity.Mathematics;
 //        a hand-computed ((X-mean)/scale)·components matches, scores shape n×k.
 //   SignDeterminismNegate    — #7a negate an input column, refit ⇒ identical components (axis-aligned,
 //        well-separated spectrum).
-//   RandomizedBitwise        — #7b pcaRandomized(arena,X,k) twice ⇒ bitwise-identical (fixed seed).
+//   RandomizedBitwise        — #7b pcaRandomized(X,k) twice ⇒ bitwise-identical (fixed seed).
 //   WideCovariance           — #8 pcaCovariance works for p>n; trailing (p−rank) eigenvalues ≈ 0.
 //   [Test] guards            — #9 n<2 / pcaSVD,pcaSVDTruncated,pcaRandomized on wide p>n / k out of
 //        range / stale-k pcaTransform / mis-sized ref-form model+scores → ArgumentException.
@@ -101,13 +101,11 @@ public class doublePCATests
         // =====================================================================
         void CrossRoute(PCAScaling scaling)
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 50, p = 6;
-            var X = BuildCorrelated(ref arena, n, p);
+            var X = BuildCorrelated(n, p);
 
-            var mCov = PCA.fitCov(ref arena, in X, scaling);
-            var mSvd = PCA.fitSvd(ref arena, in X, scaling);
+            var mCov = PCA.fitCov(in X, scaling);
+            var mSvd = PCA.fitSvd(in X, scaling);
 
             AssertTrue(mCov.converged);
             AssertTrue(mSvd.converged);
@@ -133,8 +131,6 @@ public class doublePCATests
                 for (int r = 0; r < p; r++)
                     AssertClose(math.abs(mCov.components[r, c]), math.abs(mSvd.components[r, c]), ctol);
             }
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -144,12 +140,10 @@ public class doublePCATests
         // =====================================================================
         void KnownSpectrum()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var X = BuildDiagonal(ref arena);   // 4×3, sample cov == diag(9,4,1)
+            var X = BuildDiagonal();   // 4×3, sample cov == diag(9,4,1)
             int p = 3;
 
-            var m = PCA.fitCov(ref arena, in X);   // Covariance
+            var m = PCA.fitCov(in X);   // Covariance
             AssertTrue(m.converged);
             RecordEq(m.k, p);
 
@@ -167,8 +161,6 @@ public class doublePCATests
             // scale is all-ones in Covariance mode.
             for (int j = 0; j < p; j++)
                 AssertClose(m.scale[j], (double)1, ctol);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -177,12 +169,10 @@ public class doublePCATests
         // =====================================================================
         void VarianceRatioAndOrder()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 50, p = 6;
-            var X = BuildCorrelated(ref arena, n, p);
+            var X = BuildCorrelated(n, p);
 
-            var m = PCA.fitCov(ref arena, in X);   // full route
+            var m = PCA.fitCov(in X);   // full route
             AssertTrue(m.converged);
 
             double sumRatio = (double)0;
@@ -202,8 +192,6 @@ public class doublePCATests
             for (int i = 0; i < p; i++)
                 AssertClose(m.explainedVarianceRatio[i], m.explainedVariance[i] / total,
                             (double)50 * Consts.doubleSqrtEps);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -216,14 +204,12 @@ public class doublePCATests
         // =====================================================================
         void CorrelationDegenerate()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 50, p = 6, deg = 3;   // feature `deg` is constant
-            var X = BuildCorrelated(ref arena, n, p);
+            var X = BuildCorrelated(n, p);
             for (int r = 0; r < n; r++) X[r, deg] = (double)7;   // zero-variance column
 
-            var mCov = PCA.fitCov(ref arena, in X, PCAScaling.Correlation);
-            var mSvd = PCA.fitSvd(ref arena, in X, PCAScaling.Correlation);
+            var mCov = PCA.fitCov(in X, PCAScaling.Correlation);
+            var mSvd = PCA.fitSvd(in X, PCAScaling.Correlation);
             AssertTrue(mCov.converged);
             AssertTrue(mSvd.converged);
 
@@ -254,8 +240,6 @@ public class doublePCATests
             for (int i = 0; i < p; i++)
                 AssertClose(mCov.explainedVariance[i], mSvd.explainedVariance[i],
                             EvTol(mSvd.explainedVariance[i]));
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -264,13 +248,11 @@ public class doublePCATests
         // =====================================================================
         void TopKExactMatchesFull()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 50, p = 6, k = 3;
-            var X = BuildCorrelated(ref arena, n, p);
+            var X = BuildCorrelated(n, p);
 
-            var full = PCA.fitSvd(ref arena, in X);              // k == p
-            var trunc = PCA.fitSvdTruncated(ref arena, in X, k); // k == 3
+            var full = PCA.fitSvd(in X);              // k == p
+            var trunc = PCA.fitSvdTruncated(in X, k); // k == 3
             AssertTrue(full.converged);
             AssertTrue(trunc.converged);
             RecordEq(trunc.k, k);
@@ -293,8 +275,6 @@ public class doublePCATests
             for (int i = 0; i < k; i++) sumRatio += trunc.explainedVarianceRatio[i];
             AssertTrue(sumRatio < (double)0.99f);
             AssertTrue(sumRatio > (double)0);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -303,13 +283,11 @@ public class doublePCATests
         // =====================================================================
         void TopKRandomizedApprox()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 50, p = 6, k = 3;
-            var X = BuildCorrelated(ref arena, n, p);
+            var X = BuildCorrelated(n, p);
 
-            var full = PCA.fitSvd(ref arena, in X);
-            var rnd = PCA.fitRandomized(ref arena, in X, k);
+            var full = PCA.fitSvd(in X);
+            var rnd = PCA.fitRandomized(in X, k);
             AssertTrue(full.converged);
             AssertTrue(rnd.converged);
             RecordEq(rnd.k, k);
@@ -331,8 +309,6 @@ public class doublePCATests
             for (int i = 0; i < k; i++) sumRatio += rnd.explainedVarianceRatio[i];
             AssertTrue(sumRatio < (double)0.99f);
             AssertTrue(sumRatio > (double)0);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -342,15 +318,13 @@ public class doublePCATests
         // =====================================================================
         void TransformScores()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 50, p = 6;
-            var X = BuildCorrelated(ref arena, n, p);
+            var X = BuildCorrelated(n, p);
 
-            var m = PCA.fitCov(ref arena, in X);   // Covariance, scale == 1
+            var m = PCA.fitCov(in X);   // Covariance, scale == 1
             AssertTrue(m.converged);
 
-            var scores = PCA.transform(ref arena, in X, in m);
+            var scores = PCA.transform(in X, in m);
 
             RecordEq(scores.M_Rows, n);
             RecordEq(scores.N_Cols, m.k);
@@ -380,8 +354,6 @@ public class doublePCATests
                         acc += ((X[r, f] - m.mean[f]) / m.scale[f]) * m.components[f, c];
                     AssertClose(scores[r, c], acc, (math.abs(acc) + (double)1) * mtol);
                 }
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -391,18 +363,16 @@ public class doublePCATests
         // =====================================================================
         void SignDeterminismNegate()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var X1 = BuildDiagonal(ref arena);   // 4×3, cov == diag(9,4,1), components == I
+            var X1 = BuildDiagonal();   // 4×3, cov == diag(9,4,1), components == I
             int n = X1.M_Rows, p = X1.N_Cols;
 
-            var X2 = arena.doubleMat(n, p);
+            var X2 = new doubleMxN(n, p, Allocator.Temp);
             for (int r = 0; r < n; r++)
                 for (int c = 0; c < p; c++)
                     X2[r, c] = (c == 0) ? -X1[r, c] : X1[r, c];
 
-            var m1 = PCA.fitCov(ref arena, in X1);
-            var m2 = PCA.fitCov(ref arena, in X2);
+            var m1 = PCA.fitCov(in X1);
+            var m2 = PCA.fitCov(in X2);
             AssertTrue(m1.converged);
             AssertTrue(m2.converged);
 
@@ -412,23 +382,19 @@ public class doublePCATests
             for (int c = 0; c < p; c++)
                 for (int r = 0; r < p; r++)
                     AssertClose(m1.components[r, c], m2.components[r, c], ctol);
-
-            arena.Dispose();
         }
 
         // =====================================================================
-        // #7b — pcaRandomized(arena, X, k) called twice with the default seed
+        // #7b — pcaRandomized(X, k) called twice with the default seed
         //       (0x9E3779B1u) is BITWISE-identical (components + variances + ratios).
         // =====================================================================
         void RandomizedBitwise()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 50, p = 6, k = 3;
-            var X = BuildCorrelated(ref arena, n, p);
+            var X = BuildCorrelated(n, p);
 
-            var a = PCA.fitRandomized(ref arena, in X, k);
-            var b = PCA.fitRandomized(ref arena, in X, k);
+            var a = PCA.fitRandomized(in X, k);
+            var b = PCA.fitRandomized(in X, k);
             AssertTrue(a.converged);
             AssertTrue(b.converged);
 
@@ -440,8 +406,6 @@ public class doublePCATests
             for (int c = 0; c < k; c++)
                 for (int r = 0; r < p; r++)
                     AssertExact(a.components[r, c], b.components[r, c]);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -451,12 +415,10 @@ public class doublePCATests
         // =====================================================================
         void WideCovariance()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 4, p = 6;                            // wide: p > n
-            var X = arena.doubleRandomMat(n, p, (double)(-2), (double)2, 20240703u);
+            var X = GenerateOP.doubleRandomMat(n, p, (double)(-2), (double)2, 20240703u);
 
-            var m = PCA.fitCov(ref arena, in X);
+            var m = PCA.fitCov(in X);
             AssertTrue(m.converged);
             RecordEq(m.k, p);
             RecordEq(m.components.M_Rows, p);
@@ -468,8 +430,6 @@ public class doublePCATests
             double zeroTol = (double)1E-3f * (m.explainedVariance[0] + (double)1);
             for (int i = n - 1; i < p; i++)
                 AssertClose(m.explainedVariance[i], (double)0, zeroTol);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -481,15 +441,15 @@ public class doublePCATests
         // w_k = p−k (6,5,4,3,2,1) → covariance ≈ V diag(w²·varG) Vᵀ with clearly-separated eigenvalues
         // (≈ 12, 8.3, 5.3, 3, 1.3, 0.33) and genuinely correlated features (so the correlation-matrix
         // spectrum is non-trivial too). Deterministic (fixed seeds).
-        doubleMxN BuildCorrelated(ref Arena arena, int n, int p)
+        doubleMxN BuildCorrelated(int n, int p)
         {
-            var G = arena.doubleRandomMat(n, p, (double)(-1), (double)1, 20240702u);
+            var G = GenerateOP.doubleRandomMat(n, p, (double)(-1), (double)1, 20240702u);
 
-            var V = arena.doubleMat(p, p);
+            var V = new doubleMxN(p, p, Allocator.Temp);
             var rng = new Unity.Mathematics.Random(0x01234567u);
             Rand.orthogonalInPlace(ref rng, ref V);
 
-            var X = arena.doubleMat(n, p);
+            var X = new doubleMxN(n, p, Allocator.Temp);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < p; j++)
                 {
@@ -508,9 +468,9 @@ public class doublePCATests
         // ±1 columns (each orthogonal to the all-ones vector), scaled by a_j = sqrt(3·v_j/4) so that
         // (Σ h² )/(n−1) = 4·a_j²/3 = v_j. Cross-covariances are exactly 0 (integer ±1 dot products) →
         // covariance == diag(9,4,1), eigenvectors == the standard basis.
-        doubleMxN BuildDiagonal(ref Arena arena)
+        doubleMxN BuildDiagonal()
         {
-            var X = arena.doubleMat(4, 3);
+            var X = new doubleMxN(4, 3, Allocator.Temp);
             double a0 = math.sqrt((double)(3.0 * 9.0 / 4.0));   // variance 9
             double a1 = math.sqrt((double)(3.0 * 4.0 / 4.0));   // variance 4
             double a2 = math.sqrt((double)(3.0 * 1.0 / 4.0));   // variance 1
@@ -609,87 +569,69 @@ public class doublePCATests
     [Test]
     public void NLessThanTwoThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var X = arena.doubleMat(1, 3);   // n == 1 < 2 (variance undefined)
-        Assert.Throws<ArgumentException>(() => PCA.fitCov(ref arena, in X));
-        arena.Dispose();
+        var X = new doubleMxN(1, 3, Allocator.Temp);   // n == 1 < 2 (variance undefined)
+        Assert.Throws<ArgumentException>(() => PCA.fitCov(in X));
     }
 
     [Test]
     public void SvdWideThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var X = arena.doubleMat(3, 5);   // wide: p > n
-        Assert.Throws<ArgumentException>(() => PCA.fitSvd(ref arena, in X));
-        arena.Dispose();
+        var X = new doubleMxN(3, 5, Allocator.Temp);   // wide: p > n
+        Assert.Throws<ArgumentException>(() => PCA.fitSvd(in X));
     }
 
     [Test]
     public void SvdTruncatedWideThrows()
     {
         // pcaSVDTruncated requires n >= p; it throws on wide data (p > n) just like pcaSVD/pcaRandomized.
-        var arena = new Arena(Allocator.Persistent);
-        var X = arena.doubleMat(3, 5);
-        Assert.Throws<ArgumentException>(() => PCA.fitSvdTruncated(ref arena, in X, 2));
-        arena.Dispose();
+        var X = new doubleMxN(3, 5, Allocator.Temp);
+        Assert.Throws<ArgumentException>(() => PCA.fitSvdTruncated(in X, 2));
     }
 
     [Test]
     public void RandomizedWideThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var X = arena.doubleMat(3, 5);
-        Assert.Throws<ArgumentException>(() => PCA.fitRandomized(ref arena, in X, 2));
-        arena.Dispose();
+        var X = new doubleMxN(3, 5, Allocator.Temp);
+        Assert.Throws<ArgumentException>(() => PCA.fitRandomized(in X, 2));
     }
 
     [Test]
     public void TruncatedKZeroThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var X = arena.doubleMat(10, 4);
-        Assert.Throws<ArgumentException>(() => PCA.fitSvdTruncated(ref arena, in X, 0));   // k <= 0
-        arena.Dispose();
+        var X = new doubleMxN(10, 4, Allocator.Temp);
+        Assert.Throws<ArgumentException>(() => PCA.fitSvdTruncated(in X, 0));   // k <= 0
     }
 
     [Test]
     public void TruncatedKTooLargeThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var X = arena.doubleMat(10, 4);
-        Assert.Throws<ArgumentException>(() => PCA.fitSvdTruncated(ref arena, in X, 5));   // k > min(n,p)=4
-        arena.Dispose();
+        var X = new doubleMxN(10, 4, Allocator.Temp);
+        Assert.Throws<ArgumentException>(() => PCA.fitSvdTruncated(in X, 5));   // k > min(n,p)=4
     }
 
     [Test]
     public void RefModelWrongShapeThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var X = arena.doubleMat(10, 4);              // p == 4
-        var model = arena.doublePCAModel(3, 3);      // sized for p == 3 (wrong)
+        var X = new doubleMxN(10, 4, Allocator.Temp);              // p == 4
+        var model = new doublePCAModel(3, 3, Allocator.Temp);      // sized for p == 3 (wrong)
         Assert.Throws<ArgumentException>(() => PCA.fitCov(in X, ref model));
-        arena.Dispose();
     }
 
     [Test]
     public void TransformStaleKThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var X = arena.doubleMat(10, 4);
-        var model = PCA.fitCov(ref arena, in X);   // k == 4 == components.N_Cols
+        var X = new doubleMxN(10, 4, Allocator.Temp);
+        var model = PCA.fitCov(in X);   // k == 4 == components.N_Cols
         model.k = model.components.N_Cols + 1;                     // stale / hand-tampered
-        Assert.Throws<ArgumentException>(() => PCA.transform(ref arena, in X, in model));
-        arena.Dispose();
+        Assert.Throws<ArgumentException>(() => PCA.transform(in X, in model));
     }
 
     [Test]
     public void TransformMisSizedScoresThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var X = arena.doubleMat(10, 4);
-        var model = PCA.fitCov(ref arena, in X);   // k == 4
-        var badScores = arena.doubleMat(10, 3);                    // wrong column count (should be k == 4)
+        var X = new doubleMxN(10, 4, Allocator.Temp);
+        var model = PCA.fitCov(in X);   // k == 4
+        var badScores = new doubleMxN(10, 3, Allocator.Temp);                    // wrong column count (should be k == 4)
         Assert.Throws<ArgumentException>(() => PCA.transform(in X, in model, ref badScores));
-        arena.Dispose();
     }
 }

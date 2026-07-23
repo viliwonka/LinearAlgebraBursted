@@ -251,15 +251,14 @@ namespace LinearAlgebra.Benchmarks
             foreach (var n in LPBenchmarkFmt.SolveVarsN)
             {
                 int m = n / 2;
-                var arena = new Arena(Allocator.Persistent);
-                var A = arena.floatRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11));      // nonneg -> bounded
-                var x0 = arena.floatRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7));
-                var Ax0 = arena.floatVec(m);
+                var A = GenerateOP.floatRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11), Allocator.Persistent);      // nonneg -> bounded
+                var x0 = GenerateOP.floatRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7), Allocator.Persistent);
+                var Ax0 = new floatN(m, Allocator.Persistent);
                 new LpRhsMatVecJobFloat { A = A, x = x0, result = Ax0 }.Run();                // Burst-native, not Mono
-                var b = arena.floatVec(m);
+                var b = new floatN(m, Allocator.Persistent);
                 var rng = new Random((uint)(n * 1299709 + 3));
                 for (int i = 0; i < m; i++) b[i] = Ax0[i] + rng.NextFloat((float)0.1, (float)1);  // slack -> x0 feasible
-                var c = arena.floatRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5));
+                var c = GenerateOP.floatRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5), Allocator.Persistent);
                 var senses = new NativeArray<ConstraintSense>(m, Allocator.Persistent);
                 for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
 
@@ -267,29 +266,30 @@ namespace LinearAlgebra.Benchmarks
                 var itersOut = new NativeArray<int>(1, Allocator.Persistent);
                 var statusOut = new NativeArray<int>(1, Allocator.Persistent);
 
-                var xS = arena.floatVec(n);
+                var xS = new floatN(n, Allocator.Persistent);
                 var jobS = new LpSolveJobFloat { A = A, b = b, c = c, senses = senses, x = xS, method = LPMethod.Simplex, maxIter = 0, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statS = Bench.Time(() => jobS.Run());
                 sb.AppendLine(LPBenchmarkFmt.SolveRow("float", n, m, "simplex", statS, itersOut[0], objOut[0]));
 
-                var xI = arena.floatVec(n);
+                var xI = new floatN(n, Allocator.Persistent);
                 var jobI = new LpSolveJobFloat { A = A, b = b, c = c, senses = senses, x = xI, method = LPMethod.InteriorPoint, maxIter = 0, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statI = Bench.Time(() => jobI.Run());
                 sb.AppendLine(LPBenchmarkFmt.SolveRow("float", n, m, "interior-point", statI, itersOut[0], objOut[0]));
 
-                var xR = arena.floatVec(n);
+                var xR = new floatN(n, Allocator.Persistent);
                 var jobR = new LpSolveJobFloat { A = A, b = b, c = c, senses = senses, x = xR, method = LPMethod.RevisedSimplex, maxIter = 0, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statR = Bench.Time(() => jobR.Run());
                 sb.AppendLine(LPBenchmarkFmt.SolveRow("float", n, m, "revised-primal", statR, itersOut[0], objOut[0]));
 
-                var xD = arena.floatVec(n);
+                var xD = new floatN(n, Allocator.Persistent);
                 var jobD = new LpSolveJobFloat { A = A, b = b, c = c, senses = senses, x = xD, method = LPMethod.DualSimplex, maxIter = 0, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statD = Bench.Time(() => jobD.Run());
                 sb.AppendLine(LPBenchmarkFmt.SolveRow("float", n, m, "dual-simplex", statD, itersOut[0], objOut[0]));
 
                 objOut.Dispose(); itersOut.Dispose(); statusOut.Dispose();
                 senses.Dispose();
-                arena.Dispose();
+                A.Dispose(); x0.Dispose(); Ax0.Dispose(); b.Dispose(); c.Dispose();
+                xS.Dispose(); xI.Dispose(); xR.Dispose(); xD.Dispose();
             }
         }
 
@@ -306,15 +306,14 @@ namespace LinearAlgebra.Benchmarks
             foreach (var n in LPBenchmarkFmt.WarmVarsN)
             {
                 int m = n / 2;
-                var arena = new Arena(Allocator.Persistent);
-                var A = arena.floatRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11));
-                var x0 = arena.floatRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7));
-                var Ax0 = arena.floatVec(m);
+                var A = GenerateOP.floatRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11), Allocator.Persistent);
+                var x0 = GenerateOP.floatRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7), Allocator.Persistent);
+                var Ax0 = new floatN(m, Allocator.Persistent);
                 new LpRhsMatVecJobFloat { A = A, x = x0, result = Ax0 }.Run();
-                var bBase = arena.floatVec(m);
+                var bBase = new floatN(m, Allocator.Persistent);
                 var rng = new Random((uint)(n * 1299709 + 3));
                 for (int i = 0; i < m; i++) bBase[i] = Ax0[i] + rng.NextFloat((float)0.1, (float)1);
-                var c = arena.floatRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5));
+                var c = GenerateOP.floatRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5), Allocator.Persistent);
                 var senses = new NativeArray<ConstraintSense>(m, Allocator.Persistent);
                 for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
 
@@ -322,10 +321,10 @@ namespace LinearAlgebra.Benchmarks
                 var itersOut = new NativeArray<int>(1, Allocator.Persistent);
                 var statusOut = new NativeArray<int>(1, Allocator.Persistent);
 
-                var bScratch = arena.floatVec(m);
+                var bScratch = new floatN(m, Allocator.Persistent);
                 for (int mode = 0; mode <= 2; mode++)
                 {
-                    var xW = arena.floatVec(n);
+                    var xW = new floatN(n, Allocator.Persistent);
                     var job = new LpWarmResolveJobFloat
                     {
                         A = A, bBase = bBase, b = bScratch, c = c, senses = senses, x = xW,
@@ -335,11 +334,12 @@ namespace LinearAlgebra.Benchmarks
                     var stat = Bench.Time(() => job.Run());
                     string label = mode == 0 ? "cold" : (mode == 1 ? "warm-basis" : "warm+cache");
                     sb.AppendLine(LPBenchmarkFmt.WarmRow("float", n, m, label, stat, itersOut[0], objOut[0]));
+                    xW.Dispose();   // per-mode allocation -- must free inside the loop, not once after it
                 }
 
                 objOut.Dispose(); itersOut.Dispose(); statusOut.Dispose();
                 senses.Dispose();
-                arena.Dispose();
+                A.Dispose(); x0.Dispose(); Ax0.Dispose(); bBase.Dispose(); c.Dispose(); bScratch.Dispose();
             }
         }
 
@@ -354,11 +354,10 @@ namespace LinearAlgebra.Benchmarks
             int n = LPBenchmarkFmt.NCoef;
             foreach (var m in LPBenchmarkFmt.LadRowsM)
             {
-                var arena = new Arena(Allocator.Persistent);
-                var A = arena.floatRandomMat(m, n, -1f, 1f, (uint)(m * 7919 + 13));
-                var xt = arena.floatRandomVec(n, -1f, 1f, (uint)(m * 104729 + 17));
+                var A = GenerateOP.floatRandomMat(m, n, -1f, 1f, (uint)(m * 7919 + 13), Allocator.Persistent);
+                var xt = GenerateOP.floatRandomVec(n, -1f, 1f, (uint)(m * 104729 + 17), Allocator.Persistent);
                 var Axt = Blas.dot(A, xt);
-                var b = arena.floatVec(m);
+                var b = new floatN(m, Allocator.Persistent);
                 var rng = new Random((uint)(m * 1299709 + 19));
                 for (int i = 0; i < m; i++)
                 {
@@ -376,44 +375,46 @@ namespace LinearAlgebra.Benchmarks
                 // m=192, double), the way SparseLadDenseCap caps Section 3's dense interior baseline.
                 if (m <= LPBenchmarkFmt.LadSimplexCap)
                 {
-                    var xLs = arena.floatVec(n);
+                    var xLs = new floatN(n, Allocator.Persistent);
                     var jobLs = new LadJobFloat { A = A, b = b, x = xLs, method = LPMethod.Simplex, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                     var statLs = Bench.Time(() => jobLs.Run());
                     sb.AppendLine(LPBenchmarkFmt.LadRow("float", m, n, "LP.lad-simplex", statLs, itersOut[0], objOut[0]));
+                    xLs.Dispose();
                 }
 
-                var xLi = arena.floatVec(n);
+                var xLi = new floatN(n, Allocator.Persistent);
                 var jobLi = new LadJobFloat { A = A, b = b, x = xLi, method = LPMethod.InteriorPoint, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statLi = Bench.Time(() => jobLi.Run());
                 sb.AppendLine(LPBenchmarkFmt.LadRow("float", m, n, "LP.lad-interior", statLi, itersOut[0], objOut[0]));
 
-                var xLr = arena.floatVec(n);
+                var xLr = new floatN(n, Allocator.Persistent);
                 var jobLr = new LadJobFloat { A = A, b = b, x = xLr, method = LPMethod.RevisedSimplex, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statLr = Bench.Time(() => jobLr.Run());
                 sb.AppendLine(LPBenchmarkFmt.LadRow("float", m, n, "LP.lad-revised", statLr, itersOut[0], objOut[0]));
 
-                var xLd = arena.floatVec(n);
+                var xLd = new floatN(n, Allocator.Persistent);
                 var jobLd = new LadJobFloat { A = A, b = b, x = xLd, method = LPMethod.DualSimplex, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statLd = Bench.Time(() => jobLd.Run());
                 sb.AppendLine(LPBenchmarkFmt.LadRow("float", m, n, "LP.lad-dual", statLd, itersOut[0], objOut[0]));
 
-                var xLf = arena.floatVec(n);
+                var xLf = new floatN(n, Allocator.Persistent);
                 var jobLf = new LadFNJobFloat { A = A, b = b, x = xLf, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statLf = Bench.Time(() => jobLf.Run());
                 sb.AppendLine(LPBenchmarkFmt.LadRow("float", m, n, "LP.ladFN", statLf, itersOut[0], objOut[0]));
 
-                var xBr = arena.floatVec(n);
+                var xBr = new floatN(n, Allocator.Persistent);
                 var jobBr = new LadBRJobFloat { A = A, b = b, x = xBr, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statBr = Bench.Time(() => jobBr.Run());
                 sb.AppendLine(LPBenchmarkFmt.LadRow("float", m, n, "LP.ladBR", statBr, itersOut[0], objOut[0]));
 
-                var xIr = arena.floatVec(n);
+                var xIr = new floatN(n, Allocator.Persistent);
                 var jobIr = new IrlsJobFloat { A = A, b = b, x = xIr, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statIr = Bench.Time(() => jobIr.Run());
                 sb.AppendLine(LPBenchmarkFmt.LadRow("float", m, n, "ladIRLS", statIr, itersOut[0], objOut[0]));
 
                 objOut.Dispose(); itersOut.Dispose(); statusOut.Dispose();
-                arena.Dispose();
+                A.Dispose(); xt.Dispose(); b.Dispose();
+                xLi.Dispose(); xLr.Dispose(); xLd.Dispose(); xLf.Dispose(); xBr.Dispose(); xIr.Dispose();
             }
 
             // ==== Section 2b: LAD fast-route-only sweep -- extended m range, ladFN/ladBR/IRLS ONLY ====
@@ -441,11 +442,10 @@ namespace LinearAlgebra.Benchmarks
 
             foreach (var m in LPBenchmarkFmt.LadFastRowsM)
             {
-                var arena = new Arena(Allocator.Persistent);
-                var A = arena.floatRandomMat(m, n, -1f, 1f, (uint)(m * 7919 + 13));
-                var xt = arena.floatRandomVec(n, -1f, 1f, (uint)(m * 104729 + 17));
+                var A = GenerateOP.floatRandomMat(m, n, -1f, 1f, (uint)(m * 7919 + 13), Allocator.Persistent);
+                var xt = GenerateOP.floatRandomVec(n, -1f, 1f, (uint)(m * 104729 + 17), Allocator.Persistent);
                 var Axt = Blas.dot(A, xt);
-                var b = arena.floatVec(m);
+                var b = new floatN(m, Allocator.Persistent);
                 var rng = new Random((uint)(m * 1299709 + 19));
                 for (int i = 0; i < m; i++)
                 {
@@ -458,23 +458,24 @@ namespace LinearAlgebra.Benchmarks
                 var itersOut = new NativeArray<int>(1, Allocator.Persistent);
                 var statusOut = new NativeArray<int>(1, Allocator.Persistent);
 
-                var xLf = arena.floatVec(n);
+                var xLf = new floatN(n, Allocator.Persistent);
                 var jobLf = new LadFNJobFloat { A = A, b = b, x = xLf, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statLf = Bench.Time(() => jobLf.Run());
                 sb.AppendLine(LPBenchmarkFmt.LadRow("float", m, n, "LP.ladFN", statLf, itersOut[0], objOut[0]));
 
-                var xBr = arena.floatVec(n);
+                var xBr = new floatN(n, Allocator.Persistent);
                 var jobBr = new LadBRJobFloat { A = A, b = b, x = xBr, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statBr = Bench.Time(() => jobBr.Run());
                 sb.AppendLine(LPBenchmarkFmt.LadRow("float", m, n, "LP.ladBR", statBr, itersOut[0], objOut[0]));
 
-                var xIr = arena.floatVec(n);
+                var xIr = new floatN(n, Allocator.Persistent);
                 var jobIr = new IrlsJobFloat { A = A, b = b, x = xIr, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statIr = Bench.Time(() => jobIr.Run());
                 sb.AppendLine(LPBenchmarkFmt.LadRow("float", m, n, "ladIRLS", statIr, itersOut[0], objOut[0]));
 
                 objOut.Dispose(); itersOut.Dispose(); statusOut.Dispose();
-                arena.Dispose();
+                A.Dispose(); xt.Dispose(); b.Dispose();
+                xLf.Dispose(); xBr.Dispose(); xIr.Dispose();
             }
         }
 
@@ -490,14 +491,13 @@ namespace LinearAlgebra.Benchmarks
             float density = (float)8 / (float)n;       // ~8 nonzeros per row
             foreach (var m in LPBenchmarkFmt.SparseLadRowsM)
             {
-                var arena = new Arena(Allocator.Persistent);
-                var As = arena.floatRandomSparse(m, n, 1, density, (uint)(m * 7919 + 23));   // tall, full column rank
+                var As = floatGallery.floatRandomSparse(m, n, 1, density, (uint)(m * 7919 + 23), Allocator.Persistent);   // tall, full column rank
 
                 // b = A x_true + small noise + a gross outlier every 10th row
-                var xt = arena.floatRandomVec(n, -1f, 1f, (uint)(m * 104729 + 29));
-                var bx = arena.floatVec(m);
+                var xt = GenerateOP.floatRandomVec(n, -1f, 1f, (uint)(m * 104729 + 29), Allocator.Persistent);
+                var bx = new floatN(m, Allocator.Persistent);
                 BSR.spMV(in As, in xt, ref bx);
-                var b = arena.floatVec(m);
+                var b = new floatN(m, Allocator.Persistent);
                 var rng = new Random((uint)(m * 1299709 + 31));
                 for (int i = 0; i < m; i++)
                 {
@@ -515,20 +515,21 @@ namespace LinearAlgebra.Benchmarks
                 //  it is already benchmarked at appropriate sizes in Section 2)
                 if (m <= LPBenchmarkFmt.SparseLadDenseCap)
                 {
-                    var Ad = As.ToDense(ref arena);
-                    var xd = arena.floatVec(n);
+                    var Ad = As.ToDense(Allocator.Persistent);
+                    var xd = new floatN(n, Allocator.Persistent);
                     var jobD = new LadJobFloat { A = Ad, b = b, x = xd, method = LPMethod.InteriorPoint, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                     var statD = Bench.Time(() => jobD.Run());
                     sb.AppendLine(LPBenchmarkFmt.LadRow("float", m, n, "dense LP.lad-ip", statD, itersOut[0], objOut[0]));
+                    Ad.Dispose(); xd.Dispose();
                 }
 
-                var xs = arena.floatVec(n);
+                var xs = new floatN(n, Allocator.Persistent);
                 var jobS = new SparseLadJobFloat { A = As, b = b, x = xs, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statS = Bench.Time(() => jobS.Run());
                 sb.AppendLine(LPBenchmarkFmt.LadRow("float", m, n, "sparse LP.lad", statS, itersOut[0], objOut[0]));
 
                 objOut.Dispose(); itersOut.Dispose(); statusOut.Dispose();
-                arena.Dispose();
+                As.Dispose(); xt.Dispose(); bx.Dispose(); b.Dispose(); xs.Dispose();
             }
         }
 
@@ -553,16 +554,15 @@ namespace LinearAlgebra.Benchmarks
             foreach (var n in LPBenchmarkFmt.MidVarsN)
             {
                 int m = n;                                        // square covering LP
-                var arena = new Arena(Allocator.Persistent);
                 var rng = new Random((uint)(n * 2654435761u + 43));
 
-                var A = arena.floatMat(m, n);
+                var A = new floatMxN(m, n, Allocator.Persistent);
                 for (int i = 0; i < m; i++)
                     for (int j = 0; j < n; j++)
                         A[i, j] = (float)0.1 + rng.NextFloat(0f, 1f) * (float)0.9;   // in (0.1, 1]
-                var b = arena.floatVec(m);
+                var b = new floatN(m, Allocator.Persistent);
                 for (int i = 0; i < m; i++) b[i] = (float)1 + rng.NextFloat(0f, 1f);      // demand in [1, 2]
-                var c = arena.floatVec(n);
+                var c = new floatN(n, Allocator.Persistent);
                 for (int j = 0; j < n; j++) c[j] = (float)0.5 + rng.NextFloat(0f, 1f);    // cost in [0.5, 1.5]
                 var senses = new NativeArray<ConstraintSense>(m, Allocator.Persistent);
                 for (int i = 0; i < m; i++) senses[i] = ConstraintSense.GreaterEqual;
@@ -571,29 +571,30 @@ namespace LinearAlgebra.Benchmarks
                 var itersOut = new NativeArray<int>(1, Allocator.Persistent);
                 var statusOut = new NativeArray<int>(1, Allocator.Persistent);
 
-                var xS = arena.floatVec(n);
+                var xS = new floatN(n, Allocator.Persistent);
                 var jobS = new LpSolveJobFloat { A = A, b = b, c = c, senses = senses, x = xS, method = LPMethod.Simplex, maxIter = 0, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statS = Bench.Time(() => jobS.Run());
                 sb.AppendLine(LPBenchmarkFmt.SolveRow("float", n, m, "simplex", statS, itersOut[0], objOut[0]));
 
-                var xI = arena.floatVec(n);
+                var xI = new floatN(n, Allocator.Persistent);
                 var jobI = new LpSolveJobFloat { A = A, b = b, c = c, senses = senses, x = xI, method = LPMethod.InteriorPoint, maxIter = 0, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statI = Bench.Time(() => jobI.Run());
                 sb.AppendLine(LPBenchmarkFmt.SolveRow("float", n, m, "interior-point", statI, itersOut[0], objOut[0]));
 
-                var xR = arena.floatVec(n);
+                var xR = new floatN(n, Allocator.Persistent);
                 var jobR = new LpSolveJobFloat { A = A, b = b, c = c, senses = senses, x = xR, method = LPMethod.RevisedSimplex, maxIter = 0, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statR = Bench.Time(() => jobR.Run());
                 sb.AppendLine(LPBenchmarkFmt.SolveRow("float", n, m, "revised-primal", statR, itersOut[0], objOut[0]));
 
-                var xD = arena.floatVec(n);
+                var xD = new floatN(n, Allocator.Persistent);
                 var jobD = new LpSolveJobFloat { A = A, b = b, c = c, senses = senses, x = xD, method = LPMethod.DualSimplex, maxIter = 0, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statD = Bench.Time(() => jobD.Run());
                 sb.AppendLine(LPBenchmarkFmt.SolveRow("float", n, m, "dual-simplex", statD, itersOut[0], objOut[0]));
 
                 objOut.Dispose(); itersOut.Dispose(); statusOut.Dispose();
                 senses.Dispose();
-                arena.Dispose();
+                A.Dispose(); b.Dispose(); c.Dispose();
+                xS.Dispose(); xI.Dispose(); xR.Dispose(); xD.Dispose();
             }
         }
 
@@ -616,21 +617,20 @@ namespace LinearAlgebra.Benchmarks
             foreach (var n in LPBenchmarkFmt.MidVarsN)
             {
                 int m = n / 2;
-                var arena = new Arena(Allocator.Persistent);
-                var Abase = arena.floatRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11));
-                var x0 = arena.floatRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7));
-                var Ax0 = arena.floatVec(m);
+                var Abase = GenerateOP.floatRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11), Allocator.Persistent);
+                var x0 = GenerateOP.floatRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7), Allocator.Persistent);
+                var Ax0 = new floatN(m, Allocator.Persistent);
                 new LpRhsMatVecJobFloat { A = Abase, x = x0, result = Ax0 }.Run();            // Burst-native, not Mono
-                var bbase = arena.floatVec(m);
+                var bbase = new floatN(m, Allocator.Persistent);
                 var rng = new Random((uint)(n * 1299709 + 3));
                 for (int i = 0; i < m; i++) bbase[i] = Ax0[i] + rng.NextFloat((float)0.1, (float)1);
-                var c = arena.floatRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5));
+                var c = GenerateOP.floatRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5), Allocator.Persistent);
 
                 int mAug = m + 1;
-                var A = arena.floatMat(mAug, n);
+                var A = new floatMxN(mAug, n, Allocator.Persistent);
                 for (int i = 0; i < m; i++) for (int j = 0; j < n; j++) A[i, j] = Abase[i, j];
                 for (int j = 0; j < n; j++) A[m, j] = Abase[0, j];              // duplicate row 0
-                var b = arena.floatVec(mAug);
+                var b = new floatN(mAug, Allocator.Persistent);
                 for (int i = 0; i < m; i++) b[i] = bbase[i];
                 b[m] = bbase[0] + (float)10;                                    // contradicts row 0 -> infeasible
                 var senses = new NativeArray<ConstraintSense>(mAug, Allocator.Persistent);
@@ -646,29 +646,31 @@ namespace LinearAlgebra.Benchmarks
                 // LPStatus and formats the name there. See InfeasRow's doc comment for why the int
                 // (not the enum, not a template-built string) is what crosses the template/harness
                 // assembly boundary.
-                var xS = arena.floatVec(n);
+                var xS = new floatN(n, Allocator.Persistent);
                 var jobS = new LpSolveJobFloat { A = A, b = b, c = c, senses = senses, x = xS, method = LPMethod.Simplex, maxIter = 0, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statS = Bench.Time(() => jobS.Run());
                 sb.AppendLine(LPBenchmarkFmt.InfeasRow("float", n, mAug, "simplex", statS, itersOut[0], statusOut[0]));
 
-                var xI = arena.floatVec(n);
+                var xI = new floatN(n, Allocator.Persistent);
                 var jobI = new LpSolveJobFloat { A = A, b = b, c = c, senses = senses, x = xI, method = LPMethod.InteriorPoint, maxIter = 0, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statI = Bench.Time(() => jobI.Run());
                 sb.AppendLine(LPBenchmarkFmt.InfeasRow("float", n, mAug, "interior-point", statI, itersOut[0], statusOut[0]));
 
-                var xR = arena.floatVec(n);
+                var xR = new floatN(n, Allocator.Persistent);
                 var jobR = new LpSolveJobFloat { A = A, b = b, c = c, senses = senses, x = xR, method = LPMethod.RevisedSimplex, maxIter = 0, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statR = Bench.Time(() => jobR.Run());
                 sb.AppendLine(LPBenchmarkFmt.InfeasRow("float", n, mAug, "revised-primal", statR, itersOut[0], statusOut[0]));
 
-                var xD = arena.floatVec(n);
+                var xD = new floatN(n, Allocator.Persistent);
                 var jobD = new LpSolveJobFloat { A = A, b = b, c = c, senses = senses, x = xD, method = LPMethod.DualSimplex, maxIter = 0, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statD = Bench.Time(() => jobD.Run());
                 sb.AppendLine(LPBenchmarkFmt.InfeasRow("float", n, mAug, "dual-simplex", statD, itersOut[0], statusOut[0]));
 
                 objOut.Dispose(); itersOut.Dispose(); statusOut.Dispose();
                 senses.Dispose();
-                arena.Dispose();
+                Abase.Dispose(); x0.Dispose(); Ax0.Dispose(); bbase.Dispose(); c.Dispose();
+                A.Dispose(); b.Dispose();
+                xS.Dispose(); xI.Dispose(); xR.Dispose(); xD.Dispose();
             }
         }
     }

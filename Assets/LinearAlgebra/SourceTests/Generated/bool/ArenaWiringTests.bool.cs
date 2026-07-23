@@ -306,38 +306,49 @@ public class boolArenaWiringTests
         finally { arena.Dispose(); }
     }
 
-    // STANDALONE Copy()/TempCopy() throw contract. boolN has NO public standalone (Allocator-only)
-    // ctor, so a standalone instance is made via the copy ctor `new boolN(in orig, allocator)`, which
-    // unconditionally sets _rec = null -> the result is standalone by construction. With a null
-    // record, Copy()/TempCopy() have no owning arena to allocate through and must throw
-    // InvalidOperationException -- NOT a NullReferenceException from dereferencing a null record/core.
+    // STANDALONE Copy()/TempCopy() contract: with no owning arena, both return an independent
+    // standalone Allocator.Temp-backed copy (content-equal; writes to the copy never reach the
+    // source).
     [Test]
-    public void StandaloneVector_CopyAndTempCopy_Throw()
+    public void StandaloneVector_CopyAndTempCopy_ReturnIndependentCopies()
     {
-        var arena = new Arena(Allocator.Persistent);
+        var v = new boolN(4, Allocator.Temp);
         try
         {
-            var orig = arena.boolVec(4);              // arena-backed source
-            var standalone = new boolN(in orig, Allocator.Temp);   // copy ctor -> _rec == null (standalone)
-            try
-            {
-                Assert.Throws<InvalidOperationException>(() => standalone.Copy());
-                Assert.Throws<InvalidOperationException>(() => standalone.TempCopy());
-            }
-            finally { standalone.Dispose(); }
+            v[1] = true;
+            var c = v.Copy();
+            var t = v.TempCopy();
+            Assert.IsTrue(c.N == 4);
+            Assert.IsTrue(t.N == 4);
+            Assert.IsTrue(c[1]);
+            Assert.IsTrue(t[1]);
+            c[1] = false;
+            t[1] = false;
+            Assert.IsTrue(v[1]);
+            c.Dispose();
+            t.Dispose();
         }
-        finally { arena.Dispose(); }
+        finally { v.Dispose(); }
     }
 
-    // boolMxN DOES have a public standalone (Allocator-only) ctor, so construct it directly.
     [Test]
-    public void StandaloneMatrix_CopyAndTempCopy_Throw()
+    public void StandaloneMatrix_CopyAndTempCopy_ReturnIndependentCopies()
     {
         var m = new boolMxN(3, 3, Allocator.Temp);
         try
         {
-            Assert.Throws<InvalidOperationException>(() => m.Copy());
-            Assert.Throws<InvalidOperationException>(() => m.TempCopy());
+            m[1, 2] = true;
+            var c = m.Copy();
+            var t = m.TempCopy();
+            Assert.IsTrue(c.M_Rows == 3 && c.N_Cols == 3);
+            Assert.IsTrue(t.M_Rows == 3 && t.N_Cols == 3);
+            Assert.IsTrue(c[1, 2]);
+            Assert.IsTrue(t[1, 2]);
+            c[1, 2] = false;
+            t[1, 2] = false;
+            Assert.IsTrue(m[1, 2]);
+            c.Dispose();
+            t.Dispose();
         }
         finally { m.Dispose(); }
     }

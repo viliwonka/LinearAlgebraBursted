@@ -153,60 +153,53 @@ public class fProxyLUTests
             }
         }
 
-        private fProxyMxN GetRandomMatrix(ref Arena arena, int dim, fProxy min, fProxy max, uint seed) {
+        private fProxyMxN GetRandomMatrix(int dim, fProxy min, fProxy max, uint seed) {
 
-            var mat = arena.fProxyRandomMat(dim, dim, min, max, seed);
+            var mat = GenerateOP.fProxyRandomMat(dim, dim, min, max, seed);
 
             return mat;
         }
 
         public void LUDecompIdentity()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int dim = 8;
 
-            var U = arena.fProxyIdentityMat(dim);
-            var L = arena.fProxyIdentityMat(dim);
+            var U = GenerateOP.fProxyIdentityMat(dim);
+            var L = GenerateOP.fProxyIdentityMat(dim);
 
-            var A = U.Copy();
+            var A = new fProxyMxN(in U, Allocator.Temp);
 
             bool success = LU.decompNoPivot(in A, ref L, ref U);
 
             Assert.IsTrue(success);
 
             AssertLU(in A, in L, in U, false);
-
-            arena.Dispose();
         }
         public void LUDecompRandomDiagonal()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int dim = 8;
 
-            var U = arena.fProxyRandomDiagonalMat(dim, 1f, 3f);
-            var L = arena.fProxyIdentityMat(dim);
+            var U = GenerateOP.fProxyRandomDiagonalMat(dim, 1f, 3f);
+            var L = GenerateOP.fProxyIdentityMat(dim);
 
-            var A = U.Copy();
+            var A = new fProxyMxN(in U, Allocator.Temp);
 
             bool success = LU.decompNoPivot(in A, ref L, ref U);
 
             Assert.IsTrue(success);
 
             AssertLU(in A, in L, in U, false);
-
-            arena.Dispose();
         }
 
         public void LUDecompPredefined() {
 
-            var arena = new Arena(Allocator.Persistent);
 
             var dim = 5;
 
-            var U = arena.fProxyMat(dim);
-            var L = arena.fProxyIdentityMat(dim);
+            var U = new fProxyMxN(dim, dim, Allocator.Temp);
+            var L = GenerateOP.fProxyIdentityMat(dim);
 
             U[0] = -2f;
             U[1] = 1f;
@@ -238,7 +231,7 @@ public class fProxyLUTests
             U[23] = 7f;
             U[24] = 1f;
 
-            var A = U.Copy();
+            var A = new fProxyMxN(in U, Allocator.Temp);
 
             var pivot = new Pivot(dim, Allocator.Temp);
 
@@ -252,23 +245,20 @@ public class fProxyLUTests
             AssertLU(in A, in L, in U, true, 1E-5f);
 
             pivot.Dispose();
-
-            arena.Dispose();
         }
 
         public void LUDecompRandom()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int dim = 18;
 
-            var U = arena.fProxyRandomMat(dim, dim, 1f, 10f, 314221);
-            var L = arena.fProxyIdentityMat(dim);
+            var U = GenerateOP.fProxyRandomMat(dim, dim, 1f, 10f, 314221);
+            var L = GenerateOP.fProxyIdentityMat(dim);
 
             for(int d = 0; d < dim; d++)
                 U[d, d] += 5f;
 
-            var A = U.Copy();
+            var A = new fProxyMxN(in U, Allocator.Temp);
 
             var pivot = new Pivot(dim, Allocator.Temp);
 
@@ -281,37 +271,34 @@ public class fProxyLUTests
             pivot.Dispose();
 
             AssertLU(in A, in L, in U, true, 1E-05f);
-
-            arena.Dispose();
         }
 
         public void LUDecompSingular()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int dim = 8;
 
             // Case 1: zero matrix is singular -> all variants must return false.
             {
-                var A = arena.fProxyMat(dim, dim);
-                var L = arena.fProxyIdentityMat(dim);
-                var U = arena.fProxyMat(dim, dim);
+                var A = new fProxyMxN(dim, dim, Allocator.Temp);
+                var L = GenerateOP.fProxyIdentityMat(dim);
+                var U = new fProxyMxN(dim, dim, Allocator.Temp);
 
                 bool noPivot = LU.decompNoPivot(in A, ref L, ref U);
                 Assert.IsFalse(noPivot);
                 Assert.IsFalse(Analysis.isAnyNan(in U));
                 Assert.IsFalse(Analysis.isAnyNan(in L));
 
-                var Ap = arena.fProxyMat(dim, dim);
-                var Lp = arena.fProxyIdentityMat(dim);
-                var Up = arena.fProxyMat(dim, dim);
+                var Ap = new fProxyMxN(dim, dim, Allocator.Temp);
+                var Lp = GenerateOP.fProxyIdentityMat(dim);
+                var Up = new fProxyMxN(dim, dim, Allocator.Temp);
                 var pivot = new Pivot(dim, Allocator.Temp);
                 bool pivoted = LU.decomp(in Ap, ref Lp, ref Up, ref pivot);
                 Assert.IsFalse(pivoted);
                 Assert.IsFalse(Analysis.isAnyNan(in Up));
                 Assert.IsFalse(Analysis.isAnyNan(in Lp));
 
-                var LUmat = arena.fProxyMat(dim, dim);
+                var LUmat = new fProxyMxN(dim, dim, Allocator.Temp);
                 bool inPlace = LU.decompInPlace(ref LUmat, ref pivot);
                 Assert.IsFalse(inPlace);
                 Assert.IsFalse(Analysis.isAnyNan(in LUmat));
@@ -321,7 +308,7 @@ public class fProxyLUTests
 
             // Case 2: two identical rows -> rank deficient -> all variants return false.
             {
-                var A = arena.fProxyRandomMat(dim, dim, 1f, 10f, 8821);
+                var A = GenerateOP.fProxyRandomMat(dim, dim, 1f, 10f, 8821);
                 // force diagonal dominance so only the duplicated rows cause singularity
                 for (int d = 0; d < dim; d++)
                     A[d, d] += 20f;
@@ -329,23 +316,23 @@ public class fProxyLUTests
                 for (int c = 0; c < dim; c++)
                     A[5, c] = A[2, c];
 
-                var L = arena.fProxyIdentityMat(dim);
-                var U = arena.fProxyMat(dim, dim);
+                var L = GenerateOP.fProxyIdentityMat(dim);
+                var U = new fProxyMxN(dim, dim, Allocator.Temp);
 
                 bool noPivot = LU.decompNoPivot(in A, ref L, ref U);
                 Assert.IsFalse(noPivot);
                 Assert.IsFalse(Analysis.isAnyNan(in U));
                 Assert.IsFalse(Analysis.isAnyNan(in L));
 
-                var Lp = arena.fProxyIdentityMat(dim);
-                var Up = arena.fProxyMat(dim, dim);
+                var Lp = GenerateOP.fProxyIdentityMat(dim);
+                var Up = new fProxyMxN(dim, dim, Allocator.Temp);
                 var pivot = new Pivot(dim, Allocator.Temp);
                 bool pivoted = LU.decomp(in A, ref Lp, ref Up, ref pivot);
                 Assert.IsFalse(pivoted);
                 Assert.IsFalse(Analysis.isAnyNan(in Up));
                 Assert.IsFalse(Analysis.isAnyNan(in Lp));
 
-                var LUmat = A.Copy();
+                var LUmat = new fProxyMxN(in A, Allocator.Temp);
                 bool inPlace = LU.decompInPlace(ref LUmat, ref pivot);
                 Assert.IsFalse(inPlace);
                 Assert.IsFalse(Analysis.isAnyNan(in LUmat));
@@ -356,17 +343,17 @@ public class fProxyLUTests
             // Case 3: [[0,1],[1,0]] : no-pivot fails on zero leading pivot,
             // but in-place (with partial pivoting) succeeds.
             {
-                var A = arena.fProxyMat(2, 2);
+                var A = new fProxyMxN(2, 2, Allocator.Temp);
                 A[0, 0] = 0f; A[0, 1] = 1f;
                 A[1, 0] = 1f; A[1, 1] = 0f;
 
-                var L = arena.fProxyIdentityMat(2);
-                var Unp = arena.fProxyMat(2, 2);
+                var L = GenerateOP.fProxyIdentityMat(2);
+                var Unp = new fProxyMxN(2, 2, Allocator.Temp);
 
                 bool noPivot = LU.decompNoPivot(in A, ref L, ref Unp);
                 Assert.IsFalse(noPivot);
 
-                var LUmat = A.Copy();
+                var LUmat = new fProxyMxN(in A, Allocator.Temp);
                 var pivot = new Pivot(2, Allocator.Temp);
                 bool inPlace = LU.decompInPlace(ref LUmat, ref pivot);
                 Assert.IsTrue(inPlace);
@@ -374,8 +361,6 @@ public class fProxyLUTests
 
                 pivot.Dispose();
             }
-
-            arena.Dispose();
         }
 
         // Direct-solve-status coverage: a singular matrix must report
@@ -383,59 +368,56 @@ public class fProxyLUTests
         // decomposition entry points, and DirectSolveInfo.Solved must be false.
         public void LUDecompSingularStatus()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int dim = 8;
-            var A = arena.fProxyMat(dim, dim); // zero matrix -> singular
-            var L = arena.fProxyIdentityMat(dim);
-            var U = arena.fProxyMat(dim, dim);
+            var A = new fProxyMxN(dim, dim, Allocator.Temp); // zero matrix -> singular
+            var L = GenerateOP.fProxyIdentityMat(dim);
+            var U = new fProxyMxN(dim, dim, Allocator.Temp);
 
             DirectSolveInfo noPivotInfo = LU.decompNoPivot(in A, ref L, ref U);
             Assert.IsTrue(noPivotInfo.status == DirectSolveStatus.Singular);
             Assert.IsFalse(noPivotInfo.Solved);
             Assert.IsFalse(noPivotInfo);
 
-            var Lp = arena.fProxyIdentityMat(dim);
-            var Up = arena.fProxyMat(dim, dim);
+            var Lp = GenerateOP.fProxyIdentityMat(dim);
+            var Up = new fProxyMxN(dim, dim, Allocator.Temp);
             var pivot = new Pivot(dim, Allocator.Temp);
             DirectSolveInfo pivotedInfo = LU.decomp(in A, ref Lp, ref Up, ref pivot);
             Assert.IsTrue(pivotedInfo.status == DirectSolveStatus.Singular);
             Assert.IsFalse(pivotedInfo.Solved);
 
-            var LUmat = arena.fProxyMat(dim, dim);
+            var LUmat = new fProxyMxN(dim, dim, Allocator.Temp);
             DirectSolveInfo inPlaceInfo = LU.decompInPlace(ref LUmat, ref pivot);
             Assert.IsTrue(inPlaceInfo.status == DirectSolveStatus.Singular);
             Assert.IsFalse(inPlaceInfo.Solved);
 
             pivot.Dispose();
-            arena.Dispose();
         }
 
         public void LUDecompPivotRequired()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             // Case A: 3x3 with A[0,0] == 0 but nonsingular, requires pivoting.
             {
                 int dim = 3;
-                var A = arena.fProxyMat(dim, dim);
+                var A = new fProxyMxN(dim, dim, Allocator.Temp);
                 // A[0,0] == 0 forces a row swap
                 A[0, 0] = 0f; A[0, 1] = 2f; A[0, 2] = 1f;
                 A[1, 0] = 1f; A[1, 1] = 1f; A[1, 2] = 1f;
                 A[2, 0] = 2f; A[2, 1] = 1f; A[2, 2] = 0f;
 
-                var x_Known = arena.fProxyVec(dim);
+                var x_Known = new fProxyN(dim, Allocator.Temp);
                 x_Known[0] = 3f; x_Known[1] = -2f; x_Known[2] = 5f;
 
                 var b = Blas.dot(A, x_Known);
 
-                var LUmat = A.Copy();
+                var LUmat = new fProxyMxN(in A, Allocator.Temp);
                 var pivot = new Pivot(dim, Allocator.Temp);
 
                 bool success = LU.decompInPlace(ref LUmat, ref pivot);
                 Assert.IsTrue(success);
 
-                var x_Solved = b.Copy();
+                var x_Solved = new fProxyN(in b, Allocator.Temp);
                 LU.decompSolve(ref LUmat, in pivot, ref x_Solved);
 
                 Assert.IsFalse(Analysis.isAnyNan(in x_Solved));
@@ -451,18 +433,18 @@ public class fProxyLUTests
             // search always selects the last remaining row -> a long cycle, not pair swaps.
             {
                 int dim = 4;
-                var A = arena.fProxyMat(dim, dim);
+                var A = new fProxyMxN(dim, dim, Allocator.Temp);
                 A[0, 0] = 1f; A[0, 1] = 2f; A[0, 2] = 0f; A[0, 3] = 1f;
                 A[1, 0] = 2f; A[1, 1] = 1f; A[1, 2] = 3f; A[1, 3] = 0f;
                 A[2, 0] = 4f; A[2, 1] = 0f; A[2, 2] = 1f; A[2, 3] = 2f;
                 A[3, 0] = 8f; A[3, 1] = 3f; A[3, 2] = 2f; A[3, 3] = 1f;
 
-                var x_Known = arena.fProxyVec(dim);
+                var x_Known = new fProxyN(dim, Allocator.Temp);
                 x_Known[0] = 1f; x_Known[1] = -3f; x_Known[2] = 2f; x_Known[3] = 4f;
 
                 var b = Blas.dot(A, x_Known);
 
-                var LUmat = A.Copy();
+                var LUmat = new fProxyMxN(in A, Allocator.Temp);
                 var pivot = new Pivot(dim, Allocator.Temp);
 
                 bool success = LU.decompInPlace(ref LUmat, ref pivot);
@@ -476,7 +458,7 @@ public class fProxyLUTests
                         isInvolution = false;
                 Assert.IsFalse(isInvolution);
 
-                var x_Solved = b.Copy();
+                var x_Solved = new fProxyN(in b, Allocator.Temp);
                 LU.decompSolve(ref LUmat, in pivot, ref x_Solved);
 
                 Assert.IsFalse(Analysis.isAnyNan(in x_Solved));
@@ -485,18 +467,15 @@ public class fProxyLUTests
 
                 pivot.Dispose();
             }
-
-            arena.Dispose();
         }
 
         public void LUDeterminant()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             // identity -> det = 1
             {
                 int dim = 6;
-                var I = arena.fProxyIdentityMat(dim);
+                var I = GenerateOP.fProxyIdentityMat(dim);
                 var pivot = new Pivot(dim, Allocator.Temp);
 
                 bool success = LU.decompInPlace(ref I, ref pivot);
@@ -511,7 +490,7 @@ public class fProxyLUTests
             // diagonal -> det = product of diagonal
             {
                 int dim = 4;
-                var D = arena.fProxyMat(dim, dim);
+                var D = new fProxyMxN(dim, dim, Allocator.Temp);
                 D[0, 0] = 2f;
                 D[1, 1] = -3f;
                 D[2, 2] = 0.5f;
@@ -532,7 +511,7 @@ public class fProxyLUTests
             // A = [[0,2,1],[1,1,1],[2,1,0]]; det = 3 (hand computed, nonsingular).
             {
                 int dim = 3;
-                var A = arena.fProxyMat(dim, dim);
+                var A = new fProxyMxN(dim, dim, Allocator.Temp);
                 A[0, 0] = 0f; A[0, 1] = 2f; A[0, 2] = 1f;
                 A[1, 0] = 1f; A[1, 1] = 1f; A[1, 2] = 1f;
                 A[2, 0] = 2f; A[2, 1] = 1f; A[2, 2] = 0f;
@@ -551,7 +530,7 @@ public class fProxyLUTests
             // single transposition (rows 0 and 2 swapped) -> det = -1.
             {
                 int dim = 3;
-                var P = arena.fProxyMat(dim, dim);
+                var P = new fProxyMxN(dim, dim, Allocator.Temp);
                 P[0, 2] = 1f;
                 P[1, 1] = 1f;
                 P[2, 0] = 1f;
@@ -565,8 +544,6 @@ public class fProxyLUTests
 
                 pivot.Dispose();
             }
-
-            arena.Dispose();
         }
 
         // GALLERY KNOWN-ANSWER: famous unit-determinant matrices. det is computed via
@@ -577,12 +554,11 @@ public class fProxyLUTests
         //                float LU stays accurate — relerr ~1e-6 in single precision).
         public void LUDeterminantGallery()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             // Pascal(5): det = 1
             {
                 int dim = 5;
-                var A = arena.fProxyPascal(dim);
+                var A = fProxyGallery.fProxyPascal(dim);
                 var pivot = new Pivot(dim, Allocator.Temp);
                 bool success = LU.decompInPlace(ref A, ref pivot);
                 Assert.IsTrue(success);
@@ -596,7 +572,7 @@ public class fProxyLUTests
             // MinIJ(5): det = 1
             {
                 int dim = 5;
-                var A = arena.fProxyMinIJ(dim);
+                var A = fProxyGallery.fProxyMinIJ(dim);
                 var pivot = new Pivot(dim, Allocator.Temp);
                 bool success = LU.decompInPlace(ref A, ref pivot);
                 Assert.IsTrue(success);
@@ -610,7 +586,7 @@ public class fProxyLUTests
             // Frank(5): det = 1
             {
                 int dim = 5;
-                var A = arena.fProxyFrank(dim);
+                var A = fProxyGallery.fProxyFrank(dim);
                 var pivot = new Pivot(dim, Allocator.Temp);
                 bool success = LU.decompInPlace(ref A, ref pivot);
                 Assert.IsTrue(success);
@@ -620,42 +596,39 @@ public class fProxyLUTests
 
                 pivot.Dispose();
             }
-
-            arena.Dispose();
         }
 
         public void LUReusePivot()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int dim = 6;
 
             var pivot = new Pivot(dim, Allocator.Temp);
 
             // First decomposition with the pivot - permutes it.
-            var A1 = arena.fProxyRandomMat(dim, dim, -5f, 5f, 7777);
+            var A1 = GenerateOP.fProxyRandomMat(dim, dim, -5f, 5f, 7777);
             for (int d = 0; d < dim; d++)
                 A1[d, d] += 15f;
-            var LU1 = A1.Copy();
+            var LU1 = new fProxyMxN(in A1, Allocator.Temp);
             bool s1 = LU.decompInPlace(ref LU1, ref pivot);
             Assert.IsTrue(s1);
 
             // Second decomposition reuses the SAME pivot object; Reset() must clean it.
-            var A2 = arena.fProxyRandomMat(dim, dim, -5f, 5f, 9999);
+            var A2 = GenerateOP.fProxyRandomMat(dim, dim, -5f, 5f, 9999);
             for (int d = 0; d < dim; d++)
                 A2[d, d] += 15f;
 
-            var x_Known = arena.fProxyVec(dim);
+            var x_Known = new fProxyN(dim, Allocator.Temp);
             for (int i = 0; i < dim; i++)
                 x_Known[i] = (fProxy)(i + 1);
 
             var b = Blas.dot(A2, x_Known);
 
-            var LU2 = A2.Copy();
+            var LU2 = new fProxyMxN(in A2, Allocator.Temp);
             bool s2 = LU.decompInPlace(ref LU2, ref pivot);
             Assert.IsTrue(s2);
 
-            var x_Solved = b.Copy();
+            var x_Solved = new fProxyN(in b, Allocator.Temp);
             LU.decompSolve(ref LU2, in pivot, ref x_Solved);
 
             Assert.IsFalse(Analysis.isAnyNan(in x_Solved));
@@ -663,18 +636,15 @@ public class fProxyLUTests
             AssertVecClose(in x_Known, in x_Solved, dim, 1E-3f);
 
             pivot.Dispose();
-
-            arena.Dispose();
         }
 
         public void SwapOPTest()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             // Swap.Rows with default start/end swaps full rows.
             {
                 int dim = 3;
-                var mat = arena.fProxyMat(dim, dim);
+                var mat = new fProxyMxN(dim, dim, Allocator.Temp);
                 for (int r = 0; r < dim; r++)
                     for (int c = 0; c < dim; c++)
                         mat[r, c] = (fProxy)(r * 10 + c);
@@ -691,7 +661,7 @@ public class fProxyLUTests
             // Swap.Columns with explicit start/end swaps only that row-range.
             {
                 int dim = 4;
-                var mat = arena.fProxyMat(dim, dim);
+                var mat = new fProxyMxN(dim, dim, Allocator.Temp);
                 for (int r = 0; r < dim; r++)
                     for (int c = 0; c < dim; c++)
                         mat[r, c] = (fProxy)(r * 10 + c);
@@ -712,17 +682,14 @@ public class fProxyLUTests
                 AssertClose(mat[1, 2], (fProxy)(12), 1E-6f);
                 AssertClose(mat[2, 3], (fProxy)(23), 1E-6f);
             }
-
-            arena.Dispose();
         }
 
         public void SolveSystem() {
 
-            var arena = new Arena(Allocator.Persistent);
 
             int dim = 512;
 
-            var A = arena.fProxyRandomMat(dim, dim, -10f, 10f, 314221);
+            var A = GenerateOP.fProxyRandomMat(dim, dim, -10f, 10f, 314221);
 
             for (int d = 0; d < dim; d++) {
                 A[d, d] *= 2f;
@@ -730,12 +697,12 @@ public class fProxyLUTests
                     A[d, d] *= 10f;
             }
 
-            var x_Known = arena.fProxyRandomVec(dim, 1f, 10f, 901);
+            var x_Known = GenerateOP.fProxyRandomVec(dim, 1f, 10f, 901);
 
             var b = Blas.dot(A, x_Known);
 
-            var U = arena.fProxyMat(dim, dim);
-            var L = arena.fProxyIdentityMat(dim);
+            var U = new fProxyMxN(dim, dim, Allocator.Temp);
+            var L = GenerateOP.fProxyIdentityMat(dim);
 
             var pivot = new Pivot(dim, Allocator.Temp);
 
@@ -743,7 +710,7 @@ public class fProxyLUTests
 
             Assert.IsTrue(success);
 
-            var x_Solved = b.Copy();
+            var x_Solved = new fProxyN(in b, Allocator.Temp);
 
             LU.decompSolve(ref L, ref U, in pivot, ref x_Solved);
 
@@ -756,11 +723,14 @@ public class fProxyLUTests
             // the induced inf-norm: eta = ||r||inf / (||A||inf*||x||inf + ||b||inf). For backward-stable
             // LU this is O(n*u) -- ~1E-5 float, ~1E-14 double -- so one 1E-4 ceiling covers both precisions
             // with margin. The forward error stays only as a loose sanity bound.
-            var resid = Blas.dot(A, x_Solved) - b;
+            var resid = Blas.dot(A, x_Solved);
+            fProxyComp.subInPlace(resid, b);
             fProxy eta = Norms.LInf(in resid)
                        / (Norms.matrixLInf(in A) * Norms.LInf(in x_Solved) + Norms.LInf(in b));
 
-            var zeroError = Analysis.MaxZeroError(x_Known - x_Solved);
+            var diffKnownSolved = new fProxyN(in x_Known, Allocator.Temp);
+            fProxyComp.subInPlace(diffKnownSolved, x_Solved);
+            var zeroError = Analysis.MaxZeroError(diffKnownSolved);
             fProxy relFwd = zeroError / Norms.LInf(in x_Known);
 
             // Fail layout: [1]=residual eta, [2]=limit, [3]=diff
@@ -775,18 +745,15 @@ public class fProxyLUTests
             Assert.IsTrue(relFwd < 1E-02f);
 
             pivot.Dispose();
-
-            arena.Dispose();
         }
 
         // Same Fail-layout convention as SolveSystem above (see there).
         public void SolveSystemInPlace() {
 
-            var arena = new Arena(Allocator.Persistent);
 
             int dim = 512;
 
-            var A = arena.fProxyRandomMat(dim, dim, -10f, 10f, 314221);
+            var A = GenerateOP.fProxyRandomMat(dim, dim, -10f, 10f, 314221);
 
             for (int d = 0; d < dim; d++) {
                 A[d, d] *= 2f;
@@ -794,11 +761,11 @@ public class fProxyLUTests
                     A[d, d] *= 10f;
             }
 
-            var x_Known = arena.fProxyRandomVec(dim, 1f, 10f, 901);
+            var x_Known = GenerateOP.fProxyRandomVec(dim, 1f, 10f, 901);
 
             var b = Blas.dot(A, x_Known);
 
-            var LUmat = A.Copy();
+            var LUmat = new fProxyMxN(in A, Allocator.Temp);
 
             var pivot = new Pivot(dim, Allocator.Temp);
 
@@ -806,7 +773,7 @@ public class fProxyLUTests
 
             Assert.IsTrue(success);
 
-            var x_Solved = b.Copy();
+            var x_Solved = new fProxyN(in b, Allocator.Temp);
 
             LU.decompSolve(ref LUmat, in pivot, ref x_Solved);
 
@@ -816,11 +783,14 @@ public class fProxyLUTests
             // Backward-error (residual) gate; see SolveSystem for the full rationale. A is preserved
             // (LUmat is a copy), so eta = ||A*x_solved - b||inf / (||A||inf*||x||inf + ||b||inf) is the
             // kappa-free O(n*u) backward error; forward error kept only as a loose sanity bound.
-            var resid = Blas.dot(A, x_Solved) - b;
+            var resid = Blas.dot(A, x_Solved);
+            fProxyComp.subInPlace(resid, b);
             fProxy eta = Norms.LInf(in resid)
                        / (Norms.matrixLInf(in A) * Norms.LInf(in x_Solved) + Norms.LInf(in b));
 
-            var zeroError = Analysis.MaxZeroError(x_Known - x_Solved);
+            var diffKnownSolved = new fProxyN(in x_Known, Allocator.Temp);
+            fProxyComp.subInPlace(diffKnownSolved, x_Solved);
+            var zeroError = Analysis.MaxZeroError(diffKnownSolved);
             fProxy relFwd = zeroError / Norms.LInf(in x_Known);
 
             if (!(eta < (fProxy)1E-04f) && Fail[0] == (fProxy)0)
@@ -834,8 +804,6 @@ public class fProxyLUTests
             Assert.IsTrue(relFwd < 1E-02f);
 
             pivot.Dispose();
-
-            arena.Dispose();
         }
 
         // ================================================================================
@@ -856,21 +824,17 @@ public class fProxyLUTests
         // (1) N=256: 8 aligned panels of LU_BLOCK=32 — exactly at the gate.
         public void LUBlockedRefAccuracy256()
         {
-            var arena = new Arena(Allocator.Persistent);
             int dim = 256;
-            var A = MakeWellConditionedPivoting(ref arena, dim, 260871);
-            BlockedVsReference(ref arena, in A);
-            arena.Dispose();
+            var A = MakeWellConditionedPivoting(dim, 260871);
+            BlockedVsReference(in A);
         }
 
         // (2) N=300 = 9*32 + 12 — non-aligned last panel.
         public void LUBlockedRefAccuracy300()
         {
-            var arena = new Arena(Allocator.Persistent);
             int dim = 300;
-            var A = MakeWellConditionedPivoting(ref arena, dim, 771013);
-            BlockedVsReference(ref arena, in A);
-            arena.Dispose();
+            var A = MakeWellConditionedPivoting(dim, 771013);
+            BlockedVsReference(in A);
         }
 
         // (3) Ill-conditioned N=256: Lehmer (SPD, totally nonnegative, cond < 4n^2 ~ 2.6e5 —
@@ -879,11 +843,9 @@ public class fProxyLUTests
         // the unblocked reference's residual on the SAME matrix, i.e. blocking did not amplify error.
         public void LUBlockedIllConditioned256()
         {
-            var arena = new Arena(Allocator.Persistent);
             int dim = 256;
-            var A = arena.fProxyLehmer(dim);
-            IllConditionedResidual(ref arena, in A);
-            arena.Dispose();
+            var A = fProxyGallery.fProxyLehmer(dim);
+            IllConditionedResidual(in A);
         }
 
         // (4) Singular N=256: an exact duplicate row makes the matrix rank-deficient. Because the two
@@ -892,10 +854,9 @@ public class fProxyLUTests
         // NaN/Inf written.
         public void LUBlockedSingular256()
         {
-            var arena = new Arena(Allocator.Persistent);
             int dim = 256;
 
-            var A = arena.fProxyRandomMat(dim, dim, 1f, 10f, 55221);
+            var A = GenerateOP.fProxyRandomMat(dim, dim, 1f, 10f, 55221);
             // strong diagonal dominance so ONLY the duplicated rows cause singularity
             for (int d = 0; d < dim; d++)
                 A[d, d] += (fProxy)(2 * dim);
@@ -903,8 +864,8 @@ public class fProxyLUTests
             for (int c = 0; c < dim; c++)
                 A[137, c] = A[42, c];
 
-            var U = arena.fProxyMat(dim, dim);
-            var L = arena.fProxyIdentityMat(dim);
+            var U = new fProxyMxN(dim, dim, Allocator.Temp);
+            var L = GenerateOP.fProxyIdentityMat(dim);
             var pivot = new Pivot(dim, Allocator.Temp);
 
             bool ok = LU.decomp(in A, ref L, ref U, ref pivot);
@@ -916,17 +877,15 @@ public class fProxyLUTests
             Assert.IsFalse(Analysis.isAnyInf(in L));
 
             pivot.Dispose();
-            arena.Dispose();
         }
 
         // (5) Solve round-trip N=300 (non-aligned last panel) using the separate-L/U blocked path.
         // Same recipe / tolerance as the existing dim=512 SolveSystem test.
         public void LUBlockedSolve300()
         {
-            var arena = new Arena(Allocator.Persistent);
             int dim = 300;
 
-            var A = arena.fProxyRandomMat(dim, dim, -10f, 10f, 314221);
+            var A = GenerateOP.fProxyRandomMat(dim, dim, -10f, 10f, 314221);
 
             for (int d = 0; d < dim; d++) {
                 A[d, d] *= 2f;
@@ -934,12 +893,12 @@ public class fProxyLUTests
                     A[d, d] *= 10f;
             }
 
-            var x_Known = arena.fProxyRandomVec(dim, 1f, 10f, 901);
+            var x_Known = GenerateOP.fProxyRandomVec(dim, 1f, 10f, 901);
 
             var b = Blas.dot(A, x_Known);
 
-            var U = arena.fProxyMat(dim, dim);
-            var L = arena.fProxyIdentityMat(dim);
+            var U = new fProxyMxN(dim, dim, Allocator.Temp);
+            var L = GenerateOP.fProxyIdentityMat(dim);
 
             var pivot = new Pivot(dim, Allocator.Temp);
 
@@ -947,14 +906,16 @@ public class fProxyLUTests
 
             Assert.IsTrue(success);
 
-            var x_Solved = b.Copy();
+            var x_Solved = new fProxyN(in b, Allocator.Temp);
 
             LU.decompSolve(ref L, ref U, in pivot, ref x_Solved);
 
             if (Analysis.isAnyNan(in x_Solved))
                 throw new System.Exception("TestJob: NaN detected");
 
-            var zeroError = Analysis.MaxZeroError(x_Known - x_Solved);
+            var diffKnownSolved = new fProxyN(in x_Known, Allocator.Temp);
+            fProxyComp.subInPlace(diffKnownSolved, x_Solved);
+            var zeroError = Analysis.MaxZeroError(diffKnownSolved);
 
             // x-accuracy is condition-number-amplified (NOT the backward error, which stays ~eps·‖A‖).
             // This fixed random draw at n=300 (cond a few·10^3) lands at ~1.2e-3 max error in float —
@@ -972,7 +933,6 @@ public class fProxyLUTests
             Assert.IsTrue(zeroError < xtol);
 
             pivot.Dispose();
-            arena.Dispose();
         }
 
         // (6) decompInPlace's OWN blocked (level-3) path vs decomp's blocked path — FULL EQUIVALENCE.
@@ -1005,13 +965,11 @@ public class fProxyLUTests
             {
                 int dim = (s == 0) ? sizeBoundary : sizePastBoundary;
 
-                var arena = new Arena(Allocator.Persistent);
                 // Well-conditioned but NON-trivially pivoting (row-reversed diagonally-dominant), with
                 // a column-wise gap wide enough that blocked-vs-unblocked summation rounding cannot
                 // flip the argmax -> both paths must pick the SAME pivots (float and double alike).
-                var A = MakeWellConditionedPivoting(ref arena, dim, (uint)(9090711 + s));
-                BlockedVsReference(ref arena, in A);
-                arena.Dispose();
+                var A = MakeWellConditionedPivoting(dim, (uint)(9090711 + s));
+                BlockedVsReference(in A);
             }
         }
 
@@ -1024,17 +982,16 @@ public class fProxyLUTests
         // permutation or a single altered entry both trip it) before/after each call.
         void LUDecompVariantsPreserveA()
         {
-            var arena = new Arena(Allocator.Persistent);
             int dim = 9;
 
             // LU.decomp (pivoted, safe)
             {
-                var A = arena.fProxyRandomMat(dim, dim, -5f, 5f, 424242);
+                var A = GenerateOP.fProxyRandomMat(dim, dim, -5f, 5f, 424242);
                 for (int d = 0; d < dim; d++) A[d, d] += 15f;
                 fProxy checksumBefore = Checksum(in A);
 
-                var L = arena.fProxyIdentityMat(dim);
-                var U = arena.fProxyMat(dim, dim);
+                var L = GenerateOP.fProxyIdentityMat(dim);
+                var U = new fProxyMxN(dim, dim, Allocator.Temp);
                 var pivot = new Pivot(dim, Allocator.Temp);
                 bool ok = LU.decomp(in A, ref L, ref U, ref pivot);
                 Assert.IsTrue(ok);
@@ -1045,19 +1002,17 @@ public class fProxyLUTests
 
             // LU.decompNoPivot (safe)
             {
-                var A = arena.fProxyRandomMat(dim, dim, -5f, 5f, 535353);
+                var A = GenerateOP.fProxyRandomMat(dim, dim, -5f, 5f, 535353);
                 for (int d = 0; d < dim; d++) A[d, d] += 15f;
                 fProxy checksumBefore = Checksum(in A);
 
-                var L = arena.fProxyIdentityMat(dim);
-                var U = arena.fProxyMat(dim, dim);
+                var L = GenerateOP.fProxyIdentityMat(dim);
+                var U = new fProxyMxN(dim, dim, Allocator.Temp);
                 bool ok = LU.decompNoPivot(in A, ref L, ref U);
                 Assert.IsTrue(ok);
 
                 AssertExactEqual(checksumBefore, Checksum(in A));
             }
-
-            arena.Dispose();
         }
 
         // LU.solveInPlace's exit (A_to_LU, P) must be a valid decompSolve input: solving a SECOND
@@ -1065,37 +1020,36 @@ public class fProxyLUTests
         // decompInPlace + decompSolve on the same original matrix.
         void LUSolveInPlaceExitIsUsableFactor()
         {
-            var arena = new Arena(Allocator.Persistent);
             int dim = 10;
 
             // Non-trivial pivoting: MakeWellConditionedPivoting row-reverses a diagonally-dominant
             // matrix, so partial pivoting must undo a genuine (non-identity) permutation. A plain
             // diagonally-dominant fill would swap no rows, hiding any pivot-indexing bug in the fused
             // solveInPlace vs the independent decompInPlace+decompSolve oracle.
-            var A = MakeWellConditionedPivoting(ref arena, dim, 314159);
+            var A = MakeWellConditionedPivoting(dim, 314159);
 
-            var xKnown1 = arena.fProxyRandomVec(dim, 1f, 5f, 111);
+            var xKnown1 = GenerateOP.fProxyRandomVec(dim, 1f, 5f, 111);
             var b1 = Blas.dot(A, xKnown1);
-            var xKnown2 = arena.fProxyRandomVec(dim, 1f, 5f, 222);
+            var xKnown2 = GenerateOP.fProxyRandomVec(dim, 1f, 5f, 222);
             var b2 = Blas.dot(A, xKnown2);
 
             // path under test: solveInPlace (first RHS), then decompSolve (second RHS) off its exit.
-            var Afused = A.Copy();
+            var Afused = new fProxyMxN(in A, Allocator.Temp);
             var pivotFused = new Pivot(dim, Allocator.Temp);
-            var x1 = b1.Copy();
+            var x1 = new fProxyN(in b1, Allocator.Temp);
             var info = LU.solveInPlace(ref Afused, ref pivotFused, ref x1);
             Assert.IsTrue(info.Solved);
 
-            var x2 = b2.Copy();
+            var x2 = new fProxyN(in b2, Allocator.Temp);
             LU.decompSolve(ref Afused, in pivotFused, ref x2);
 
             // oracle: fresh decompInPlace + decompSolve on an independent copy, same second RHS.
-            var Aref = A.Copy();
+            var Aref = new fProxyMxN(in A, Allocator.Temp);
             var pivotRef = new Pivot(dim, Allocator.Temp);
             var infoRef = LU.decompInPlace(ref Aref, ref pivotRef);
             Assert.IsTrue(infoRef.Solved);
 
-            var x2ref = b2.Copy();
+            var x2ref = new fProxyN(in b2, Allocator.Temp);
             LU.decompSolve(ref Aref, in pivotRef, ref x2ref);
 
             for (int i = 0; i < dim; i++)
@@ -1103,7 +1057,6 @@ public class fProxyLUTests
 
             pivotFused.Dispose();
             pivotRef.Dispose();
-            arena.Dispose();
         }
 
         // (2a) Driver short-circuit purity: LU.solveInPlace on a SINGULAR matrix must (a) report the
@@ -1113,17 +1066,16 @@ public class fProxyLUTests
         // b_to_x.
         void LUSolveInPlaceShortCircuitPurity()
         {
-            var arena = new Arena(Allocator.Persistent);
             int dim = 8;
 
             // Singular: two identical rows (row 5 == row 2), diagonally boosted so ONLY that
             // duplication causes singularity (reuses LUDecompSingular's construction).
-            var A = arena.fProxyRandomMat(dim, dim, 1f, 10f, 8821);
+            var A = GenerateOP.fProxyRandomMat(dim, dim, 1f, 10f, 8821);
             for (int d = 0; d < dim; d++) A[d, d] += 20f;
             for (int c = 0; c < dim; c++) A[5, c] = A[2, c];
 
-            var b = arena.fProxyRandomVec(dim, -3f, 3f, 246810);
-            var bSnapshot = b.Copy(); // capture BEFORE the call
+            var b = GenerateOP.fProxyRandomVec(dim, -3f, 3f, 246810);
+            var bSnapshot = new fProxyN(in b, Allocator.Temp); // capture BEFORE the call
 
             var pivot = new Pivot(dim, Allocator.Temp);
             DirectSolveInfo info = LU.solveInPlace(ref A, ref pivot, ref b);
@@ -1142,7 +1094,6 @@ public class fProxyLUTests
                 AssertExactEqual(bSnapshot[i], b[i]);
 
             pivot.Dispose();
-            arena.Dispose();
         }
 
         // (2f-i) Blocked-path A-preservation: LU.decomp at dim=256 engages the level-3 blocked
@@ -1151,14 +1102,13 @@ public class fProxyLUTests
         // only reaches the unblocked path (dim=9).
         void LUDecompPreservesABlocked()
         {
-            var arena = new Arena(Allocator.Persistent);
             int dim = 256;
 
-            var A = MakeWellConditionedPivoting(ref arena, dim, 424243);
+            var A = MakeWellConditionedPivoting(dim, 424243);
             fProxy checksumBefore = Checksum(in A);
 
-            var L = arena.fProxyIdentityMat(dim);
-            var U = arena.fProxyMat(dim, dim);
+            var L = GenerateOP.fProxyIdentityMat(dim);
+            var U = new fProxyMxN(dim, dim, Allocator.Temp);
             var pivot = new Pivot(dim, Allocator.Temp);
             bool ok = LU.decomp(in A, ref L, ref U, ref pivot);
             Assert.IsTrue(ok);
@@ -1166,7 +1116,6 @@ public class fProxyLUTests
             AssertExactEqual(checksumBefore, Checksum(in A));
 
             pivot.Dispose();
-            arena.Dispose();
         }
 
         // ================================================================================
@@ -1183,34 +1132,34 @@ public class fProxyLUTests
         // that must land on the same x.
         void LUDecompSolveTransA()
         {
-            var arena = new Arena(Allocator.Persistent);
             int dim = 12;
 
             // Non-trivial pivoting (see MakeWellConditionedPivoting's own doc) so decompInPlace on A
             // really exercises the pivot, not just an identity permutation.
-            var A = MakeWellConditionedPivoting(ref arena, dim, 555001);
+            var A = MakeWellConditionedPivoting(dim, 555001);
 
-            var At = arena.fProxyMat(dim, dim);
+            var At = new fProxyMxN(dim, dim, Allocator.Temp);
             for (int r = 0; r < dim; r++)
                 for (int c = 0; c < dim; c++)
                     At[r, c] = A[c, r];
 
-            var xKnown = arena.fProxyRandomVec(dim, 1f, 5f, 777);
+            var xKnown = GenerateOP.fProxyRandomVec(dim, 1f, 5f, 777);
             var b = Blas.dot(At, xKnown);
 
             // ---- path under test: factor A (not At!), solve the TRANSPOSED system ----
-            var LUmat = A.Copy();
+            var LUmat = new fProxyMxN(in A, Allocator.Temp);
             var pivot = new Pivot(dim, Allocator.Temp);
             var info = LU.decompInPlace(ref LUmat, ref pivot);
             Assert.IsTrue(info.Solved);
 
-            var xSolved = b.Copy();
+            var xSolved = new fProxyN(in b, Allocator.Temp);
             LU.decompSolveTransA(ref LUmat, in pivot, ref xSolved);
 
             Assert.IsFalse(Analysis.isAnyNan(in xSolved));
 
             // (i) backward-error residual (same recipe as SolveSystem elsewhere in this file).
-            var resid = Blas.dot(At, xSolved) - b;
+            var resid = Blas.dot(At, xSolved);
+            fProxyComp.subInPlace(resid, b);
             fProxy eta = Norms.LInf(in resid)
                        / (Norms.matrixLInf(in At) * Norms.LInf(in xSolved) + Norms.LInf(in b));
 
@@ -1222,19 +1171,18 @@ public class fProxyLUTests
 
             // (ii) independent reference: ordinary forward decompInPlace + decompSolve on an
             // EXPLICITLY transposed copy of A.
-            var AtCopy = At.Copy();
+            var AtCopy = new fProxyMxN(in At, Allocator.Temp);
             var pivotRef = new Pivot(dim, Allocator.Temp);
             var infoRef = LU.decompInPlace(ref AtCopy, ref pivotRef);
             Assert.IsTrue(infoRef.Solved);
 
-            var xRef = b.Copy();
+            var xRef = new fProxyN(in b, Allocator.Temp);
             LU.decompSolve(ref AtCopy, in pivotRef, ref xRef);
 
             AssertVecClose(in xRef, in xSolved, dim, 1E-3f);
 
             pivot.Dispose();
             pivotRef.Dispose();
-            arena.Dispose();
         }
 
         // (b) Matrix-RHS overload consistency: decompSolveTransA(matrix) against the SAME factor,
@@ -1246,24 +1194,23 @@ public class fProxyLUTests
         // so this is a tight tolerance (single-ULP-scale), not an exact, comparison.
         void LUDecompSolveTransAMatrix()
         {
-            var arena = new Arena(Allocator.Persistent);
             int dim = 10;
             int rhsCount = 4;
 
-            var A = MakeWellConditionedPivoting(ref arena, dim, 4242);
-            var B = arena.fProxyRandomMat(dim, rhsCount, -3f, 3f, 13131);
+            var A = MakeWellConditionedPivoting(dim, 4242);
+            var B = GenerateOP.fProxyRandomMat(dim, rhsCount, -3f, 3f, 13131);
 
             // matrix path
-            var LUmatM = A.Copy();
+            var LUmatM = new fProxyMxN(in A, Allocator.Temp);
             var pivotM = new Pivot(dim, Allocator.Temp);
             var infoM0 = LU.decompInPlace(ref LUmatM, ref pivotM);
             Assert.IsTrue(infoM0.Solved);
 
-            var Bsolved = B.Copy();
+            var Bsolved = new fProxyMxN(in B, Allocator.Temp);
             LU.decompSolveTransA(ref LUmatM, in pivotM, ref Bsolved);
 
             // vector path, column-by-column, against an independently-factored copy
-            var LUmatV = A.Copy();
+            var LUmatV = new fProxyMxN(in A, Allocator.Temp);
             var pivotV = new Pivot(dim, Allocator.Temp);
             var infoV0 = LU.decompInPlace(ref LUmatV, ref pivotV);
             Assert.IsTrue(infoV0.Solved);
@@ -1271,7 +1218,7 @@ public class fProxyLUTests
             fProxy tol = IsDouble() ? (fProxy)1E-10 : (fProxy)1E-5f;
             for (int c = 0; c < rhsCount; c++)
             {
-                var col = arena.fProxyVec(dim);
+                var col = new fProxyN(dim, Allocator.Temp);
                 for (int r = 0; r < dim; r++) col[r] = B[r, c];
 
                 LU.decompSolveTransA(ref LUmatV, in pivotV, ref col);
@@ -1282,7 +1229,6 @@ public class fProxyLUTests
 
             pivotM.Dispose();
             pivotV.Dispose();
-            arena.Dispose();
         }
 
         // (c) solveInPlaceTransA one-shot (GESV-style: factor + solve in one call) must be
@@ -1290,25 +1236,24 @@ public class fProxyLUTests
         // vector and matrix-RHS overloads.
         void LUSolveInPlaceTransAMatchesDecompSolve()
         {
-            var arena = new Arena(Allocator.Persistent);
             int dim = 9;
 
-            var A = MakeWellConditionedPivoting(ref arena, dim, 90909);
+            var A = MakeWellConditionedPivoting(dim, 90909);
 
             // ---- vector ----
-            var b = arena.fProxyRandomVec(dim, -4f, 4f, 13579);
+            var b = GenerateOP.fProxyRandomVec(dim, -4f, 4f, 13579);
 
-            var Afused = A.Copy();
+            var Afused = new fProxyMxN(in A, Allocator.Temp);
             var pivotFused = new Pivot(dim, Allocator.Temp);
-            var xFused = b.Copy();
+            var xFused = new fProxyN(in b, Allocator.Temp);
             var info = LU.solveInPlaceTransA(ref Afused, ref pivotFused, ref xFused);
             Assert.IsTrue(info.Solved);
 
-            var Aref = A.Copy();
+            var Aref = new fProxyMxN(in A, Allocator.Temp);
             var pivotRef = new Pivot(dim, Allocator.Temp);
             var infoRef0 = LU.decompInPlace(ref Aref, ref pivotRef);
             Assert.IsTrue(infoRef0.Solved);
-            var xRef = b.Copy();
+            var xRef = new fProxyN(in b, Allocator.Temp);
             LU.decompSolveTransA(ref Aref, in pivotRef, ref xRef);
 
             for (int i = 0; i < dim; i++)
@@ -1316,19 +1261,19 @@ public class fProxyLUTests
 
             // ---- matrix ----
             int rhsCount = 3;
-            var B = arena.fProxyRandomMat(dim, rhsCount, -4f, 4f, 24680);
+            var B = GenerateOP.fProxyRandomMat(dim, rhsCount, -4f, 4f, 24680);
 
-            var Afused2 = A.Copy();
+            var Afused2 = new fProxyMxN(in A, Allocator.Temp);
             var pivotFused2 = new Pivot(dim, Allocator.Temp);
-            var Bfused = B.Copy();
+            var Bfused = new fProxyMxN(in B, Allocator.Temp);
             var infoM = LU.solveInPlaceTransA(ref Afused2, ref pivotFused2, ref Bfused);
             Assert.IsTrue(infoM.Solved);
 
-            var Aref2 = A.Copy();
+            var Aref2 = new fProxyMxN(in A, Allocator.Temp);
             var pivotRef2 = new Pivot(dim, Allocator.Temp);
             var infoRefM0 = LU.decompInPlace(ref Aref2, ref pivotRef2);
             Assert.IsTrue(infoRefM0.Solved);
-            var Bref = B.Copy();
+            var Bref = new fProxyMxN(in B, Allocator.Temp);
             LU.decompSolveTransA(ref Aref2, in pivotRef2, ref Bref);
 
             for (int r = 0; r < dim; r++)
@@ -1339,7 +1284,6 @@ public class fProxyLUTests
             pivotRef.Dispose();
             pivotFused2.Dispose();
             pivotRef2.Dispose();
-            arena.Dispose();
         }
 
         // (d) Singular-matrix handling parity with decompSolve/solveInPlace: solveInPlaceTransA on a
@@ -1349,16 +1293,15 @@ public class fProxyLUTests
         // direction) -- for both the vector and matrix-RHS overloads.
         void LUSolveInPlaceTransASingularParity()
         {
-            var arena = new Arena(Allocator.Persistent);
             int dim = 8;
 
             // ---- vector ----
-            var A = arena.fProxyRandomMat(dim, dim, 1f, 10f, 8821);
+            var A = GenerateOP.fProxyRandomMat(dim, dim, 1f, 10f, 8821);
             for (int d = 0; d < dim; d++) A[d, d] += 20f;
             for (int c = 0; c < dim; c++) A[5, c] = A[2, c];   // exact duplicate row -> singular
 
-            var b = arena.fProxyRandomVec(dim, -3f, 3f, 135791);
-            var bSnapshot = b.Copy();
+            var b = GenerateOP.fProxyRandomVec(dim, -3f, 3f, 135791);
+            var bSnapshot = new fProxyN(in b, Allocator.Temp);
 
             var pivot = new Pivot(dim, Allocator.Temp);
             DirectSolveInfo info = LU.solveInPlaceTransA(ref A, ref pivot, ref b);
@@ -1375,12 +1318,12 @@ public class fProxyLUTests
                 AssertExactEqual(bSnapshot[i], b[i]);
 
             // ---- matrix ----
-            var A2 = arena.fProxyRandomMat(dim, dim, 1f, 10f, 8821);
+            var A2 = GenerateOP.fProxyRandomMat(dim, dim, 1f, 10f, 8821);
             for (int d = 0; d < dim; d++) A2[d, d] += 20f;
             for (int c = 0; c < dim; c++) A2[5, c] = A2[2, c];
 
-            var B = arena.fProxyRandomMat(dim, 3, -3f, 3f, 246813);
-            var Bsnapshot = B.Copy();
+            var B = GenerateOP.fProxyRandomMat(dim, 3, -3f, 3f, 246813);
+            var Bsnapshot = new fProxyMxN(in B, Allocator.Temp);
 
             var pivot2 = new Pivot(dim, Allocator.Temp);
             DirectSolveInfo infoM = LU.solveInPlaceTransA(ref A2, ref pivot2, ref B);
@@ -1394,7 +1337,6 @@ public class fProxyLUTests
 
             pivot.Dispose();
             pivot2.Dispose();
-            arena.Dispose();
         }
 
         // Position-weighted sum: differs if ANY entry changes or two entries are transposed.
@@ -1427,9 +1369,9 @@ public class fProxyLUTests
         // small) with its rows reversed. Partial pivoting must undo the reversal; the huge column-wise
         // gap (~2*dim vs ~1) means the argmax is robust to GEMM-vs-scalar summation-order rounding, so
         // the blocked and unblocked factorizations pick the SAME pivots for BOTH float and double.
-        private fProxyMxN MakeWellConditionedPivoting(ref Arena arena, int dim, uint seed)
+        private fProxyMxN MakeWellConditionedPivoting(int dim, uint seed)
         {
-            var A = arena.fProxyRandomMat(dim, dim, -1f, 1f, seed);
+            var A = GenerateOP.fProxyRandomMat(dim, dim, -1f, 1f, seed);
             for (int d = 0; d < dim; d++)
                 A[d, d] += (fProxy)(2 * dim);
             for (int i = 0; i < dim / 2; i++)
@@ -1439,13 +1381,13 @@ public class fProxyLUTests
 
         // Points (1)/(2): blocked LU.decomp (in A, ref L, ref U, ref P) vs unblocked compact LU.decompInPlace (2-arg) oracle.
         // Asserts identical pivots, matching L/U factors, and no backward-error regression.
-        private void BlockedVsReference(ref Arena arena, in fProxyMxN A)
+        private void BlockedVsReference(in fProxyMxN A)
         {
             int dim = A.M_Rows;
 
             // --- blocked path (separate L, U, P) ---
-            var U = arena.fProxyMat(dim, dim);
-            var L = arena.fProxyIdentityMat(dim);
+            var U = new fProxyMxN(dim, dim, Allocator.Temp);
+            var L = GenerateOP.fProxyIdentityMat(dim);
             var pB = new Pivot(dim, Allocator.Temp);
             bool okB = LU.decomp(in A, ref L, ref U, ref pB);
             Assert.IsTrue(okB);
@@ -1453,7 +1395,7 @@ public class fProxyLUTests
             Assert.IsFalse(Analysis.isAnyNan(in L));
 
             // --- reference: independent unblocked compact in-place factorization ---
-            var LUref = A.Copy();
+            var LUref = new fProxyMxN(in A, Allocator.Temp);
             var pR = new Pivot(dim, Allocator.Temp);
             bool okR = LU.decompInPlace(ref LUref, ref pR);
             Assert.IsTrue(okR);
@@ -1482,10 +1424,10 @@ public class fProxyLUTests
             Assert.IsTrue(maxFactorDiff <= factorTol);
 
             // (c) backward error: ||P A - L U|| for blocked vs reference (rebuilt from compact form).
-            fProxy resBlocked = ResidualPALU(ref arena, in A, in L, in U, in pB);
+            fProxy resBlocked = ResidualPALU(in A, in L, in U, in pB);
 
-            var refL = arena.fProxyIdentityMat(dim);
-            var refU = arena.fProxyMat(dim, dim);
+            var refL = GenerateOP.fProxyIdentityMat(dim);
+            var refU = new fProxyMxN(dim, dim, Allocator.Temp);
             for (int i = 0; i < dim; i++) {
                 int prow = pR[i];
                 for (int j = 0; j < dim; j++) {
@@ -1493,7 +1435,7 @@ public class fProxyLUTests
                     else       refU[i, j] = LUref[prow, j];
                 }
             }
-            fProxy resRef = ResidualPALU(ref arena, in A, in refL, in refU, in pR);
+            fProxy resRef = ResidualPALU(in A, in refL, in refU, in pR);
 
             AssertResidualNotWorse(dim, aScale, resBlocked, resRef);
 
@@ -1503,27 +1445,27 @@ public class fProxyLUTests
 
         // Point (3): ill-conditioned residual comparison ONLY (no pivot/factor identity, since a
         // rounding-induced pivot flip is legitimate on a near-degenerate matrix).
-        private void IllConditionedResidual(ref Arena arena, in fProxyMxN A)
+        private void IllConditionedResidual(in fProxyMxN A)
         {
             int dim = A.M_Rows;
 
-            var U = arena.fProxyMat(dim, dim);
-            var L = arena.fProxyIdentityMat(dim);
+            var U = new fProxyMxN(dim, dim, Allocator.Temp);
+            var L = GenerateOP.fProxyIdentityMat(dim);
             var pB = new Pivot(dim, Allocator.Temp);
             bool okB = LU.decomp(in A, ref L, ref U, ref pB);
             Assert.IsTrue(okB);
             Assert.IsFalse(Analysis.isAnyNan(in U));
             Assert.IsFalse(Analysis.isAnyNan(in L));
 
-            var LUref = A.Copy();
+            var LUref = new fProxyMxN(in A, Allocator.Temp);
             var pR = new Pivot(dim, Allocator.Temp);
             bool okR = LU.decompInPlace(ref LUref, ref pR);
             Assert.IsTrue(okR);
 
-            fProxy resBlocked = ResidualPALU(ref arena, in A, in L, in U, in pB);
+            fProxy resBlocked = ResidualPALU(in A, in L, in U, in pB);
 
-            var refL = arena.fProxyIdentityMat(dim);
-            var refU = arena.fProxyMat(dim, dim);
+            var refL = GenerateOP.fProxyIdentityMat(dim);
+            var refU = new fProxyMxN(dim, dim, Allocator.Temp);
             for (int i = 0; i < dim; i++) {
                 int prow = pR[i];
                 for (int j = 0; j < dim; j++) {
@@ -1531,7 +1473,7 @@ public class fProxyLUTests
                     else       refU[i, j] = LUref[prow, j];
                 }
             }
-            fProxy resRef = ResidualPALU(ref arena, in A, in refL, in refU, in pR);
+            fProxy resRef = ResidualPALU(in A, in refL, in refU, in pR);
 
             fProxy aScale = MatMaxAbs(in A);
             AssertResidualNotWorse(dim, aScale, resBlocked, resRef);
@@ -1563,11 +1505,12 @@ public class fProxyLUTests
 
         // ||P A - L U||_max : apply the inverse row pivot to a copy of A (PA = LU convention, matching
         // AssertLU's usage) then compare against L*U.
-        private fProxy ResidualPALU(ref Arena arena, in fProxyMxN A, in fProxyMxN L, in fProxyMxN U, in Pivot P)
+        private fProxy ResidualPALU(in fProxyMxN A, in fProxyMxN L, in fProxyMxN U, in Pivot P)
         {
-            var Aperm = A.Copy();
+            var Aperm = new fProxyMxN(in A, Allocator.Temp);
             P.ApplyInverseRow(ref Aperm);
-            var shouldBeZero = Aperm - Blas.dot(L, U);
+            var shouldBeZero = new fProxyMxN(in Aperm, Allocator.Temp);
+            fProxyComp.subInPlace(shouldBeZero, Blas.dot(L, U));
             return Analysis.MaxZeroError(shouldBeZero);
         }
 

@@ -39,10 +39,9 @@ namespace LinearAlgebra.Benchmarks
     {
         static string BenchDouble(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var Q = arena.doubleMat(n, n);
-            var R = arena.doubleMat(n, n);
-            var Src = arena.doubleMat(n, n);
+            var Q = new doubleMxN(n, n, Allocator.Persistent);
+            var R = new doubleMxN(n, n, Allocator.Persistent);
+            var Src = new doubleMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -54,7 +53,9 @@ namespace LinearAlgebra.Benchmarks
             var job = new QRJobDouble { Q = Q, R = R, Src = Src };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            Q.Dispose();
+            R.Dispose();
+            Src.Dispose();
             return Bench.Row("double", n, stat, flops);
         }
     }

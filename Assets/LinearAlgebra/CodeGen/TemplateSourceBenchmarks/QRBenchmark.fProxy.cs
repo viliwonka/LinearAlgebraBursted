@@ -35,10 +35,9 @@ namespace LinearAlgebra.Benchmarks
     {
         static string BenchFProxy(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var Q = arena.fProxyMat(n, n);
-            var R = arena.fProxyMat(n, n);
-            var Src = arena.fProxyMat(n, n);
+            var Q = new fProxyMxN(n, n, Allocator.Persistent);
+            var R = new fProxyMxN(n, n, Allocator.Persistent);
+            var Src = new fProxyMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -50,7 +49,9 @@ namespace LinearAlgebra.Benchmarks
             var job = new QRJobFProxy { Q = Q, R = R, Src = Src };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            Q.Dispose();
+            R.Dispose();
+            Src.Dispose();
             return Bench.Row("fProxy", n, stat, flops);
         }
     }

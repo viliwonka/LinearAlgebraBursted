@@ -114,9 +114,8 @@ namespace LinearAlgebra.Benchmarks
 
         static string FaceOffCholDouble(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var Src = arena.doubleMat(n, n);
-            var A = arena.doubleMat(n, n);
+            var Src = new doubleMxN(n, n, Allocator.Persistent);
+            var A = new doubleMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n ^ 0x9E3779B9u);
             for (int i = 0; i < n; i++)
@@ -132,16 +131,15 @@ namespace LinearAlgebra.Benchmarks
             var job = new CholInPlaceJobDouble { A = A, Src = Src };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            Src.Dispose(); A.Dispose();
             return Bench.Row("double", n, stat, flops);
         }
 
         static string FaceOffCholPivotDouble(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var Src = arena.doubleMat(n, n);
-            var A = arena.doubleMat(n, n);
-            var ws = arena.doubleCHOPCache(n);
+            var Src = new doubleMxN(n, n, Allocator.Persistent);
+            var A = new doubleMxN(n, n, Allocator.Persistent);
+            var ws = new doubleCHOPCache(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n ^ 0x9E3779B9u);
             for (int i = 0; i < n; i++)
@@ -157,15 +155,14 @@ namespace LinearAlgebra.Benchmarks
             var job = new CholPivotInPlaceJobDouble { A = A, Src = Src, ws = ws };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            Src.Dispose(); A.Dispose(); ws.Dispose();
             return Bench.Row("double", n, stat, flops);
         }
 
         static string FaceOffLUDouble(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var Src = arena.doubleMat(n, n);
-            var A = arena.doubleMat(n, n);
+            var Src = new doubleMxN(n, n, Allocator.Persistent);
+            var A = new doubleMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n ^ 0x9E3779B9u);
             for (int i = 0; i < n; i++)
@@ -181,15 +178,14 @@ namespace LinearAlgebra.Benchmarks
             var job = new LUFaceOffInPlaceJobDouble { A = A, Src = Src };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            Src.Dispose(); A.Dispose();
             return Bench.Row("double", n, stat, flops);
         }
 
         static string BenchDouble(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(n, n);
-            var L = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Persistent);
+            var L = new doubleMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -205,16 +201,15 @@ namespace LinearAlgebra.Benchmarks
             var job = new CholJobDouble { A = A, L = L };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); L.Dispose();
             return Bench.Row("double", n, stat, flops);
         }
 
         static string PivotDouble(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(n, n);
-            var L = arena.doubleMat(n, n);
-            var ws = arena.doubleCHOPCache(n);
+            var A = new doubleMxN(n, n, Allocator.Persistent);
+            var L = new doubleMxN(n, n, Allocator.Persistent);
+            var ws = new doubleCHOPCache(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -230,7 +225,7 @@ namespace LinearAlgebra.Benchmarks
             var job = new CholPivotJobDouble { A = A, L = L, ws = ws };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); L.Dispose(); ws.Dispose();
             return Bench.Row("double", n, stat, flops);
         }
     }

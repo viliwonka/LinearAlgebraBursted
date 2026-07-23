@@ -96,7 +96,8 @@ public class fProxySparseSolverTests
         static void AssertLeastSquaresOptimal(in fProxyMxN A, in fProxyN x, in fProxyN b, fProxy relTol)
         {
             var Ax  = Blas.dot(A, x);
-            var res = Ax - b;                 // r = A x - b     (length m)
+            var res = new fProxyN(in Ax, Allocator.Temp);
+            fProxyComp.subInPlace(res, b);    // r = A x - b     (length m)
             var atr = Blas.dot(res, A);  // A^T r           (length n)  -- vector*matrix == A^T r
             var atb = Blas.dot(b, A);    // A^T b           (scale reference)
             fProxy atrNorm = math.sqrt(Blas.dot(atr, atr));
@@ -152,9 +153,9 @@ public class fProxySparseSolverTests
 
         // Same recipe as fProxyConjugateGradientTests.BuildSPD: A = M^T M + dim*I (strictly SPD,
         // diagonally dominant).
-        static fProxyMxN BuildDenseSPD(ref Arena arena, int dim, uint seed)
+        static fProxyMxN BuildDenseSPD(int dim, uint seed)
         {
-            var M = arena.fProxyRandomMat(dim, dim, -1f, 1f, seed);
+            var M = GenerateOP.fProxyRandomMat(dim, dim, -1f, 1f, seed);
             var A = Blas.dot(M, M, true);
             for (int d = 0; d < dim; d++)
                 A[d, d] += dim;
@@ -166,23 +167,25 @@ public class fProxySparseSolverTests
         // as a perf choice -- it avoids a few reallocations of the builder's internal growable
         // lists, nothing more. Growing the builder's lists past capacityHint (triggering one or
         // more UnsafeList reallocations) is safe: the builder's mutable triplet state lives
-        // behind a single heap-allocated pointer shared by every value-copy of the struct
-        // (including the arena's own tracked copy), so a reallocation on one copy is visible to
-        // all of them. See the growth regression tests in SparseBSRTests.fProxy.cs, which build
+        // behind a single heap-allocated pointer shared by every value-copy of the struct, so a
+        // reallocation on one copy is visible to all of them. See the growth regression tests in
+        // SparseBSRTests.fProxy.cs, which build
         // via many-reallocation growth on purpose to prove this.
-        static fProxyBSR DenseToBSR1x1(ref Arena arena, in fProxyMxN A, int nnzHint)
+        static fProxyBSR DenseToBSR1x1(in fProxyMxN A, int nnzHint)
         {
-            var builder = arena.fProxyBSRBuilder(A.M_Rows, A.N_Cols, 1, 1, math.max(nnzHint, 1));
+            var builder = new fProxyBSRBuilder(A.M_Rows, A.N_Cols, 1, 1, Allocator.Temp, math.max(nnzHint, 1));
             for (int r = 0; r < A.M_Rows; r++)
                 for (int c = 0; c < A.N_Cols; c++)
                     if (A[r, c] != (fProxy)0)
                         builder.AddValue(r, c, A[r, c]);
-            return builder.ToBSR(ref arena);
+            return builder.ToBSR(Allocator.Temp);
         }
 
         static void AssertVecEq(in fProxyN a, in fProxyN b, fProxy tol)
         {
-            Assert.IsTrue(Analysis.isZero(a - b, tol));
+            var diff = new fProxyN(in a, Allocator.Temp);
+            fProxyComp.subInPlace(diff, b);
+            Assert.IsTrue(Analysis.isZero(diff, tol));
         }
 
         // got/expected are double so the result-struct norm fields (now double regardless of the
@@ -194,20 +197,18 @@ public class fProxySparseSolverTests
         // ---- 1. 1D Laplacian tridiagonal as a 1x1-block BSR: CG matches dense CG -----------
         void Laplacian1DBSRCGMatchesDenseCG()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 16;
-            var A = arena.fProxyLaplacian1D(dim);
+            var A = fProxyGallery.fProxyLaplacian1D(dim);
             // Tridiagonal: at most 3 nonzeros/row -> 3*dim is a safe upper bound.
-            var bsm = DenseToBSR1x1(ref arena, in A, 3 * dim);
+            var bsm = DenseToBSR1x1(in A, 3 * dim);
 
-            var b = arena.fProxyRandomVec(dim, -1f, 1f, 4242);
+            var b = GenerateOP.fProxyRandomVec(dim, -1f, 1f, 4242);
 
-            var xDense = arena.fProxyVec(dim);
+            var xDense = new fProxyN(dim, Allocator.Temp);
             bool okDense = Krylov.cg(in A, in b, ref xDense, 4 * dim, Consts.fProxySqrtEps);
             Assert.IsTrue(okDense);
 
-            var xBsr = arena.fProxyVec(dim);
+            var xBsr = new fProxyN(dim, Allocator.Temp);
             bool okBsr = Krylov.cg(in bsm, in b, ref xBsr, 4 * dim, Consts.fProxySqrtEps);
             Assert.IsTrue(okBsr);
 
@@ -216,8 +217,6 @@ public class fProxySparseSolverTests
             // A*x ~= b for the BSR solve too (spec's explicit acceptance criterion).
             var Ax = BSR.spMV(in bsm, in xBsr);
             AssertVecEq(in Ax, in b, Tol());
-
-            arena.Dispose();
         }
 
         // ---- 2. 3x3-block SPD system: CG converges, residual within tol -------------------
@@ -229,39 +228,37 @@ public class fProxySparseSolverTests
         // scalars.
         void ThreeByThreeBlockSPDConverges()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             const int BR = 3;
             const int nb = 3; // 9x9
             int dim = BR * nb;
 
-            var mb = arena.fProxyBSRBuilder(nb, nb, BR, BR, nb * nb);
-            mb.AddBlock(0, 0, arena.fProxyRandomMat(BR, BR, -1f, 1f, 8001));
-            mb.AddBlock(0, 1, arena.fProxyRandomMat(BR, BR, -1f, 1f, 8002));
-            mb.AddBlock(1, 1, arena.fProxyRandomMat(BR, BR, -1f, 1f, 8003));
-            mb.AddBlock(1, 2, arena.fProxyRandomMat(BR, BR, -1f, 1f, 8004));
-            mb.AddBlock(2, 2, arena.fProxyRandomMat(BR, BR, -1f, 1f, 8005));
-            mb.AddBlock(2, 0, arena.fProxyRandomMat(BR, BR, -1f, 1f, 8006));
-            var Mdense = mb.ToBSR(ref arena).ToDense(ref arena);
+            var mb = new fProxyBSRBuilder(nb, nb, BR, BR, Allocator.Temp, nb * nb);
+            mb.AddBlock(0, 0, GenerateOP.fProxyRandomMat(BR, BR, -1f, 1f, 8001));
+            mb.AddBlock(0, 1, GenerateOP.fProxyRandomMat(BR, BR, -1f, 1f, 8002));
+            mb.AddBlock(1, 1, GenerateOP.fProxyRandomMat(BR, BR, -1f, 1f, 8003));
+            mb.AddBlock(1, 2, GenerateOP.fProxyRandomMat(BR, BR, -1f, 1f, 8004));
+            mb.AddBlock(2, 2, GenerateOP.fProxyRandomMat(BR, BR, -1f, 1f, 8005));
+            mb.AddBlock(2, 0, GenerateOP.fProxyRandomMat(BR, BR, -1f, 1f, 8006));
+            var Mdense = mb.ToBSR(Allocator.Temp).ToDense(Allocator.Temp);
 
             var A = Blas.dot(Mdense, Mdense, true);
             for (int i = 0; i < dim; i++)
                 A[i, i] += dim;
 
-            var ab = arena.fProxyBSRBuilder(nb, nb, BR, BR, nb * nb);
+            var ab = new fProxyBSRBuilder(nb, nb, BR, BR, Allocator.Temp, nb * nb);
             for (int bi = 0; bi < nb; bi++)
                 for (int bj = 0; bj < nb; bj++)
                 {
-                    var blk = arena.fProxyMat(BR, BR);
+                    var blk = new fProxyMxN(BR, BR, Allocator.Temp);
                     for (int r = 0; r < BR; r++)
                         for (int c = 0; c < BR; c++)
                             blk[r, c] = A[bi * BR + r, bj * BR + c];
                     ab.AddBlock(bi, bj, in blk);
                 }
-            var Absm = ab.ToBSR(ref arena);
+            var Absm = ab.ToBSR(Allocator.Temp);
 
-            var b = arena.fProxyRandomVec(dim, -1f, 1f, 8100);
-            var x = arena.fProxyVec(dim);
+            var b = GenerateOP.fProxyRandomVec(dim, -1f, 1f, 8100);
+            var x = new fProxyN(dim, Allocator.Temp);
             bool ok = Krylov.cg(in Absm, in b, ref x);
             Assert.IsTrue(ok);
 
@@ -269,26 +266,22 @@ public class fProxySparseSolverTests
             AssertVecEq(in Ax, in b, Tol());
 
             // Cross-check against the dense reference too.
-            var xDense = arena.fProxyVec(dim);
+            var xDense = new fProxyN(dim, Allocator.Temp);
             bool okDense = Krylov.cg(in A, in b, ref xDense);
             Assert.IsTrue(okDense);
             AssertVecEq(in x, in xDense, Tol());
-
-            arena.Dispose();
         }
 
         // ---- 3. Dense forwarding unchanged: guards the cg(in fProxyMxN,...) ----
         //         refactor into cg<fProxyDenseOperator> -----------------------------------------
         void DenseForwardingUnchanged()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 12;
-            var A = BuildDenseSPD(ref arena, dim, 90125);
-            var b = arena.fProxyRandomVec(dim, -1f, 1f, 4242);
+            var A = BuildDenseSPD(dim, 90125);
+            var b = GenerateOP.fProxyRandomVec(dim, -1f, 1f, 4242);
 
             // The (unchanged, public) concrete entry point.
-            var xConcrete = arena.fProxyVec(dim);
+            var xConcrete = new fProxyN(dim, Allocator.Temp);
             bool okConcrete = Krylov.cg(in A, in b, ref xConcrete);
             Assert.IsTrue(okConcrete);
 
@@ -296,10 +289,10 @@ public class fProxySparseSolverTests
             // result -- this is the single source of truth the concrete overload now forwards
             // into.
             var op = new fProxyDenseOperator(in A);
-            var xGeneric = arena.fProxyVec(dim);
-            var r = arena.fProxyVec(dim);
-            var p = arena.fProxyVec(dim);
-            var Ap = arena.fProxyVec(dim);
+            var xGeneric = new fProxyN(dim, Allocator.Temp);
+            var r = new fProxyN(dim, Allocator.Temp);
+            var p = new fProxyN(dim, Allocator.Temp);
+            var Ap = new fProxyN(dim, Allocator.Temp);
             bool okGeneric = Krylov.cg(in op, in b, ref xGeneric, ref r, ref p, ref Ap, dim, Consts.fProxySqrtEps);
             Assert.IsTrue(okGeneric);
 
@@ -315,35 +308,29 @@ public class fProxySparseSolverTests
             // A and b), so it MUST run on fresh copies, not the A/b the CG calls used.
             var A2 = A.Copy();
             var b2 = b.Copy();
-            var xQR = arena.fProxyVec(dim);
+            var xQR = new fProxyN(dim, Allocator.Temp);
             QR.solveInPlace(ref A2, ref b2, ref xQR);
             AssertVecEq(in xConcrete, in xQR, Tol());
-
-            arena.Dispose();
         }
 
         // ---- 4. PCG correctness: matches CG's solution -------------------------------------
         void PCGMatchesCG()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 12;
-            var A = BuildDenseSPD(ref arena, dim, 6001);
-            var bsm = DenseToBSR1x1(ref arena, in A, dim * dim);
-            var M = arena.fProxyBlockJacobi(in bsm);
-            var b = arena.fProxyRandomVec(dim, -1f, 1f, 6002);
+            var A = BuildDenseSPD(dim, 6001);
+            var bsm = DenseToBSR1x1(in A, dim * dim);
+            var M = new fProxyBlockJacobi(in bsm, Allocator.Temp);
+            var b = GenerateOP.fProxyRandomVec(dim, -1f, 1f, 6002);
 
-            var xCG = arena.fProxyVec(dim);
+            var xCG = new fProxyN(dim, Allocator.Temp);
             bool okCG = Krylov.cg(in bsm, in b, ref xCG);
             Assert.IsTrue(okCG);
 
-            var xPCG = arena.fProxyVec(dim);
+            var xPCG = new fProxyN(dim, Allocator.Temp);
             bool okPCG = Krylov.cg(in bsm, in M, in b, ref xPCG);
             Assert.IsTrue(okPCG);
 
             AssertVecEq(in xCG, in xPCG, Tol());
-
-            arena.Dispose();
         }
 
         // The merged single-body cg<TOp,TPre> with the identity preconditioner must be BIT-IDENTICAL
@@ -353,24 +340,22 @@ public class fProxySparseSolverTests
         // two bodies is safe. z is passed as `default` on the identity path (never dereferenced).
         void MergedCgIdentityMatchesPlainCg()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 12;
-            var A = BuildDenseSPD(ref arena, dim, 6101);
-            var bsm = DenseToBSR1x1(ref arena, in A, dim * dim);
-            var b = arena.fProxyRandomVec(dim, -1f, 1f, 6102);
+            var A = BuildDenseSPD(dim, 6101);
+            var bsm = DenseToBSR1x1(in A, dim * dim);
+            var b = GenerateOP.fProxyRandomVec(dim, -1f, 1f, 6102);
 
             int maxIter = 4 * dim;
             fProxy tol = Consts.fProxySqrtEps;
 
             // Reference: plain cg<TOp> (explicit scratch).
-            var xPlain = arena.fProxyVec(dim);
-            var rP = arena.fProxyVec(dim); var pP = arena.fProxyVec(dim); var ApP = arena.fProxyVec(dim);
+            var xPlain = new fProxyN(dim, Allocator.Temp);
+            var rP = new fProxyN(dim, Allocator.Temp); var pP = new fProxyN(dim, Allocator.Temp); var ApP = new fProxyN(dim, Allocator.Temp);
             var infoPlain = Krylov.cg(in bsm, in b, ref xPlain, ref rP, ref pP, ref ApP, maxIter, tol);
 
             // Merged: cg<TOp,TPre> with the identity preconditioner; z = default (unused when identity).
-            var xMerged = arena.fProxyVec(dim);
-            var rM = arena.fProxyVec(dim); var pM = arena.fProxyVec(dim); var ApM = arena.fProxyVec(dim);
+            var xMerged = new fProxyN(dim, Allocator.Temp);
+            var rM = new fProxyN(dim, Allocator.Temp); var pM = new fProxyN(dim, Allocator.Temp); var ApM = new fProxyN(dim, Allocator.Temp);
             fProxyN zM = default;
             var op = new fProxyBSROperator(in bsm);
             var id = new fProxyIdentityPreconditioner();
@@ -385,8 +370,6 @@ public class fProxySparseSolverTests
             Assert.AreEqual(infoPlain.iterations, infoMerged.iterations);
             Assert.AreEqual((int)infoPlain.status, (int)infoMerged.status);
             Assert.AreEqual(infoPlain.rnorm, infoMerged.rnorm);
-
-            arena.Dispose();
         }
 
         // ---- 5. Block-Jacobi PCG needs <= iterations of plain CG on an ill-conditioned,
@@ -402,18 +385,16 @@ public class fProxySparseSolverTests
         // GalleryLaplacian1D/MinIJ CG tests use).
         void PCGBeatsCGIllConditioned()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 16;
-            var S = BuildDenseSPD(ref arena, dim, 7001);
+            var S = BuildDenseSPD(dim, 7001);
 
-            var Sym = arena.fProxyMat(dim, dim);
+            var Sym = new fProxyMxN(dim, dim, Allocator.Temp);
             for (int r = 0; r < dim; r++)
                 for (int c = 0; c < dim; c++)
                     Sym[r, c] = S[r, c] / math.sqrt(S[r, r] * S[c, c]);
 
-            var A = arena.fProxyMat(dim, dim);
-            var d = arena.fProxyVec(dim);
+            var A = new fProxyMxN(dim, dim, Allocator.Temp);
+            var d = new fProxyN(dim, Allocator.Temp);
             for (int i = 0; i < dim; i++)
                 d[i] = (i % 2 == 0) ? (fProxy)1 : (fProxy)100; // alternating 1,100
 
@@ -421,9 +402,9 @@ public class fProxySparseSolverTests
                 for (int c = 0; c < dim; c++)
                     A[r, c] = d[r] * Sym[r, c] * d[c];
 
-            var bsm = DenseToBSR1x1(ref arena, in A, dim * dim);
-            var M = arena.fProxyBlockJacobi(in bsm);
-            var b = arena.fProxyRandomVec(dim, -1f, 1f, 7002);
+            var bsm = DenseToBSR1x1(in A, dim * dim);
+            var M = new fProxyBlockJacobi(in bsm, Allocator.Temp);
+            var b = GenerateOP.fProxyRandomVec(dim, -1f, 1f, 7002);
 
             int maxBudget = 4 * dim;
             int minCG = -1, minPCG = -1;
@@ -431,13 +412,13 @@ public class fProxySparseSolverTests
             {
                 if (minCG < 0)
                 {
-                    var xCG = arena.fProxyVec(dim);
+                    var xCG = new fProxyN(dim, Allocator.Temp);
                     if (Krylov.cg(in bsm, in b, ref xCG, budget, Consts.fProxySqrtEps))
                         minCG = budget;
                 }
                 if (minPCG < 0)
                 {
-                    var xPCG = arena.fProxyVec(dim);
+                    var xPCG = new fProxyN(dim, Allocator.Temp);
                     if (Krylov.cg(in bsm, in M, in b, ref xPCG, budget, Consts.fProxySqrtEps))
                         minPCG = budget;
                 }
@@ -446,32 +427,28 @@ public class fProxySparseSolverTests
             Assert.IsTrue(minCG > 0);
             Assert.IsTrue(minPCG > 0);
             Assert.IsTrue(minPCG <= minCG);
-
-            arena.Dispose();
         }
 
         // ---- 6. Block-Jacobi Apply matches a hand-computed block-diagonal inverse ----------
         void BlockJacobiApplyHandComputed()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             const int BR = 2;
-            var builder = arena.fProxyBSRBuilder(2, 2, BR, BR, 2);
-            var d0 = arena.fProxyMat(BR, BR);
+            var builder = new fProxyBSRBuilder(2, 2, BR, BR, Allocator.Temp, 2);
+            var d0 = new fProxyMxN(BR, BR, Allocator.Temp);
             d0[0, 0] = 4f; d0[0, 1] = 1f;
             d0[1, 0] = 1f; d0[1, 1] = 3f;
-            var d1 = arena.fProxyMat(BR, BR);
+            var d1 = new fProxyMxN(BR, BR, Allocator.Temp);
             d1[0, 0] = 2f; d1[0, 1] = 0f;
             d1[1, 0] = 0f; d1[1, 1] = 5f;
             builder.AddBlock(0, 0, in d0);
             builder.AddBlock(1, 1, in d1);
-            var A = builder.ToBSR(ref arena);
+            var A = builder.ToBSR(Allocator.Temp);
 
-            var M = arena.fProxyBlockJacobi(in A);
+            var M = new fProxyBlockJacobi(in A, Allocator.Temp);
 
-            var r = arena.fProxyVec(4);
+            var r = new fProxyN(4, Allocator.Temp);
             r[0] = 1f; r[1] = 2f; r[2] = 3f; r[3] = 4f;
-            var z = arena.fProxyVec(4);
+            var z = new fProxyN(4, Allocator.Temp);
             M.Apply(in r, ref z);
 
             // Hand inverse of d0=[[4,1],[1,3]]: det=11, inv = (1/11)*[[3,-1],[-1,4]].
@@ -486,22 +463,18 @@ public class fProxySparseSolverTests
             Assert.IsTrue(math.abs(z[1] - z1) < Tol());
             Assert.IsTrue(math.abs(z[2] - z2) < Tol());
             Assert.IsTrue(math.abs(z[3] - z3) < Tol());
-
-            arena.Dispose();
         }
 
         // ---- 7. Warm start: seeding x with the exact solution converges immediately --------
         void WarmStart()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 10;
-            var A = BuildDenseSPD(ref arena, dim, 9001);
-            var bsm = DenseToBSR1x1(ref arena, in A, dim * dim);
-            var M = arena.fProxyBlockJacobi(in bsm);
-            var b = arena.fProxyRandomVec(dim, -1f, 1f, 9002);
+            var A = BuildDenseSPD(dim, 9001);
+            var bsm = DenseToBSR1x1(in A, dim * dim);
+            var M = new fProxyBlockJacobi(in bsm, Allocator.Temp);
+            var b = GenerateOP.fProxyRandomVec(dim, -1f, 1f, 9002);
 
-            var x = arena.fProxyVec(dim);
+            var x = new fProxyN(dim, Allocator.Temp);
             bool ok = Krylov.cg(in bsm, in M, in b, ref x);
             Assert.IsTrue(ok);
 
@@ -514,15 +487,13 @@ public class fProxySparseSolverTests
             AssertVecEq(in x, in xWarm, Tol());
 
             // Same check for plain (unpreconditioned) CG.
-            var xCG = arena.fProxyVec(dim);
+            var xCG = new fProxyN(dim, Allocator.Temp);
             bool okCG = Krylov.cg(in bsm, in b, ref xCG);
             Assert.IsTrue(okCG);
             var xCGWarm = xCG.Copy();
             bool okCGWarm = Krylov.cg(in bsm, in b, ref xCGWarm, 1, Consts.fProxySqrtEps);
             Assert.IsTrue(okCGWarm);
             AssertVecEq(in xCG, in xCGWarm, Tol());
-
-            arena.Dispose();
         }
 
         // Note: the old "non-SPD preconditioner breaks down" case was removed when IfProxyPreconditioner
@@ -543,16 +514,14 @@ public class fProxySparseSolverTests
         // this cleanly where CG's p.Ap>0 curvature requirement would break down.
         void MinresIndefiniteDenseAndBSR()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 16;
-            var A = arena.fProxyLaplacian1D(dim);
+            var A = fProxyGallery.fProxyLaplacian1D(dim);
             for (int i = 0; i < dim; i++)
                 A[i, i] -= (fProxy)2;          // shift diag 2 -> 0: mixed-sign spectrum, indefinite
 
-            var b = arena.fProxyRandomVec(dim, -1f, 1f, 31001);
+            var b = GenerateOP.fProxyRandomVec(dim, -1f, 1f, 31001);
 
-            var xDense = arena.fProxyVec(dim);
+            var xDense = new fProxyN(dim, Allocator.Temp);
             bool okDense = Krylov.minres(in A, in b, ref xDense, 4 * dim, Consts.fProxySqrtEps);
             Assert.IsTrue(okDense);
 
@@ -574,8 +543,8 @@ public class fProxySparseSolverTests
             pivot.Dispose();
 
             // Same system as a 1x1-block BSR: minres(BSR) must agree with minres(dense).
-            var bsm = DenseToBSR1x1(ref arena, in A, 3 * dim);   // tridiagonal (shifted diag=0 dropped)
-            var xBsr = arena.fProxyVec(dim);
+            var bsm = DenseToBSR1x1(in A, 3 * dim);   // tridiagonal (shifted diag=0 dropped)
+            var xBsr = new fProxyN(dim, Allocator.Temp);
             bool okBsr = Krylov.minres(in bsm, in b, ref xBsr, 4 * dim, Consts.fProxySqrtEps);
             Assert.IsTrue(okBsr);
             AssertVecEq(in xDense, in xBsr, LooseTol());
@@ -587,24 +556,20 @@ public class fProxySparseSolverTests
             // down -- Krylov.cg's p.Ap>0 curvature guard fails / returns a much
             // worse residual. MINRES succeeding where CG cannot is the whole point of this case;
             // asserting CG's failure mode is fiddly and left as a documented expectation.
-
-            arena.Dispose();
         }
 
         // ---- MINRES on a plain SPD system agrees with CG (dense + BSR) --------------------
         void MinresSpdMatchesCG()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 12;
-            var A = BuildDenseSPD(ref arena, dim, 32001);
-            var b = arena.fProxyRandomVec(dim, -1f, 1f, 32002);
+            var A = BuildDenseSPD(dim, 32001);
+            var b = GenerateOP.fProxyRandomVec(dim, -1f, 1f, 32002);
 
-            var xCG = arena.fProxyVec(dim);
+            var xCG = new fProxyN(dim, Allocator.Temp);
             bool okCG = Krylov.cg(in A, in b, ref xCG, 4 * dim, Consts.fProxySqrtEps);
             Assert.IsTrue(okCG);
 
-            var xMin = arena.fProxyVec(dim);
+            var xMin = new fProxyN(dim, Allocator.Temp);
             bool okMin = Krylov.minres(in A, in b, ref xMin, 4 * dim, Consts.fProxySqrtEps);
             Assert.IsTrue(okMin);
             AssertVecEq(in xCG, in xMin, LooseTol());       // MINRES == CG on an SPD system
@@ -613,13 +578,11 @@ public class fProxySparseSolverTests
             AssertVecEq(in Ax, in b, LooseTol());
 
             // BSR minres agrees with dense minres.
-            var bsm = DenseToBSR1x1(ref arena, in A, dim * dim);
-            var xMinBsr = arena.fProxyVec(dim);
+            var bsm = DenseToBSR1x1(in A, dim * dim);
+            var xMinBsr = new fProxyN(dim, Allocator.Temp);
             bool okMinBsr = Krylov.minres(in bsm, in b, ref xMinBsr, 4 * dim, Consts.fProxySqrtEps);
             Assert.IsTrue(okMinBsr);
             AssertVecEq(in xMin, in xMinBsr, LooseTol());
-
-            arena.Dispose();
         }
 
         // ---- BiCGSTAB on a NON-symmetric (diagonally-dominant) system --------------------
@@ -629,16 +592,14 @@ public class fProxySparseSolverTests
         // symmetrized. Cross-checked against a dense DIRECT LU solve on the SAME matrix.
         void BiCGStabNonSymmetricMatchesLU()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 8;
-            var A = arena.fProxyRandomMat(dim, dim, -1f, 1f, 33001);
+            var A = GenerateOP.fProxyRandomMat(dim, dim, -1f, 1f, 33001);
             for (int i = 0; i < dim; i++)
                 A[i, i] += (fProxy)(dim + 1);   // strict diagonal dominance
 
-            var b = arena.fProxyRandomVec(dim, -1f, 1f, 33002);
+            var b = GenerateOP.fProxyRandomVec(dim, -1f, 1f, 33002);
 
-            var xBcg = arena.fProxyVec(dim);
+            var xBcg = new fProxyN(dim, Allocator.Temp);
             bool okBcg = Krylov.biCGStab(in A, in b, ref xBcg, 4 * dim, Consts.fProxySqrtEps);
             Assert.IsTrue(okBcg);
             var Ax = Blas.dot(A, xBcg);
@@ -655,26 +616,22 @@ public class fProxySparseSolverTests
             pivot.Dispose();
 
             // BSR form agrees with the dense BiCGSTAB solve.
-            var bsm = DenseToBSR1x1(ref arena, in A, dim * dim);
-            var xBcgBsr = arena.fProxyVec(dim);
+            var bsm = DenseToBSR1x1(in A, dim * dim);
+            var xBcgBsr = new fProxyN(dim, Allocator.Temp);
             bool okBcgBsr = Krylov.biCGStab(in bsm, in b, ref xBcgBsr, 4 * dim, Consts.fProxySqrtEps);
             Assert.IsTrue(okBcgBsr);
             AssertVecEq(in xBcg, in xBcgBsr, LooseTol());
-
-            arena.Dispose();
         }
 
         // ---- LSQR on an overdetermined CONSISTENT least-squares problem (dense + BSR) ------
         void LsqrOverdeterminedConsistentDenseAndBSR()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 10, n = 4;
-            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 35001);
-            var xTrue = arena.fProxyRandomVec(n, -1f, 1f, 35002);
+            var A = GenerateOP.fProxyRandomMat(m, n, -1f, 1f, 35001);
+            var xTrue = GenerateOP.fProxyRandomVec(n, -1f, 1f, 35002);
             var b = Blas.dot(A, xTrue);      // consistent
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             bool ok = Krylov.lsqr(in A, in b, ref x, 8 * n, Consts.fProxySqrtEps);
             Assert.IsTrue(ok);
             AssertVecEq(in x, in xTrue, LooseTol());
@@ -682,25 +639,21 @@ public class fProxySparseSolverTests
             var Ax = Blas.dot(A, x);
             AssertVecEq(in Ax, in b, LooseTol());
 
-            var bsm = DenseToBSR1x1(ref arena, in A, m * n);
-            var xBsr = arena.fProxyVec(n);
+            var bsm = DenseToBSR1x1(in A, m * n);
+            var xBsr = new fProxyN(n, Allocator.Temp);
             bool okBsr = Krylov.lsqr(in bsm, in b, ref xBsr, 8 * n, Consts.fProxySqrtEps);
             Assert.IsTrue(okBsr);
             AssertVecEq(in x, in xBsr, LooseTol());
-
-            arena.Dispose();
         }
 
         // ---- LSQR on an overdetermined INCONSISTENT problem: normal-equation optimality ----
         void LsqrInconsistentMatchesQR()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 10, n = 4;
-            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 37001);
-            var b = arena.fProxyRandomVec(m, -1f, 1f, 37002);   // inconsistent
+            var A = GenerateOP.fProxyRandomMat(m, n, -1f, 1f, 37001);
+            var b = GenerateOP.fProxyRandomVec(m, -1f, 1f, 37002);   // inconsistent
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             bool ok = Krylov.lsqr(in A, in b, ref x, 8 * n, Consts.fProxySqrtEps);
             Assert.IsTrue(ok);
 
@@ -708,17 +661,15 @@ public class fProxySparseSolverTests
 
             var A2 = A.Copy();
             var b2 = b.Copy();
-            var xQR = arena.fProxyVec(n);
+            var xQR = new fProxyN(n, Allocator.Temp);
             QR.solveInPlace(ref A2, ref b2, ref xQR);
             AssertVecEq(in x, in xQR, LooseTol());
 
-            var bsm = DenseToBSR1x1(ref arena, in A, m * n);
-            var xBsr = arena.fProxyVec(n);
+            var bsm = DenseToBSR1x1(in A, m * n);
+            var xBsr = new fProxyN(n, Allocator.Temp);
             bool okBsr = Krylov.lsqr(in bsm, in b, ref xBsr, 8 * n, Consts.fProxySqrtEps);
             Assert.IsTrue(okBsr);
             AssertVecEq(in x, in xBsr, LooseTol());
-
-            arena.Dispose();
         }
 
         // ---- LSQR on an underdetermined (m < n) CONSISTENT problem (min-norm, nice-to-have) ---
@@ -727,20 +678,16 @@ public class fProxySparseSolverTests
         // converges to the (minimum-norm) solution; assert the easy-to-verify property A x ~= b.
         void LsqrUnderdeterminedConsistent()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 4, n = 10;
-            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 38001);
-            var xGen = arena.fProxyRandomVec(n, -1f, 1f, 38002);
+            var A = GenerateOP.fProxyRandomMat(m, n, -1f, 1f, 38001);
+            var xGen = GenerateOP.fProxyRandomVec(n, -1f, 1f, 38002);
             var b = Blas.dot(A, xGen);      // consistent
 
-            var xL = arena.fProxyVec(n);
+            var xL = new fProxyN(n, Allocator.Temp);
             bool okL = Krylov.lsqr(in A, in b, ref xL, 8 * n, Consts.fProxySqrtEps);
             Assert.IsTrue(okL);
             var AxL = Blas.dot(A, xL);
             AssertVecEq(in AxL, in b, LooseTol());
-
-            arena.Dispose();
         }
 
         // =================================================================================
@@ -759,13 +706,11 @@ public class fProxySparseSolverTests
         // ---- MINRES warm start (SPD system, sufficient for the warm-start plumbing) ----
         void MinresWarmStart()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 12;
-            var A = BuildDenseSPD(ref arena, dim, 41001);
-            var b = arena.fProxyRandomVec(dim, -1f, 1f, 41002);
+            var A = BuildDenseSPD(dim, 41001);
+            var b = GenerateOP.fProxyRandomVec(dim, -1f, 1f, 41002);
 
-            var x = arena.fProxyVec(dim);
+            var x = new fProxyN(dim, Allocator.Temp);
             bool ok = Krylov.minres(in A, in b, ref x, 4 * dim, Consts.fProxySqrtEps);
             Assert.IsTrue(ok);
 
@@ -775,23 +720,19 @@ public class fProxySparseSolverTests
             bool okWarm = Krylov.minres(in A, in b, ref xWarm, 1, Consts.fProxySqrtEps);
             Assert.IsTrue(okWarm);
             AssertVecEq(in x, in xWarm, LooseTol());
-
-            arena.Dispose();
         }
 
         // ---- BiCGSTAB warm start (random diagonally-dominant non-symmetric A) ----
         void BiCGStabWarmStart()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 8;
-            var A = arena.fProxyRandomMat(dim, dim, -1f, 1f, 41101);
+            var A = GenerateOP.fProxyRandomMat(dim, dim, -1f, 1f, 41101);
             for (int i = 0; i < dim; i++)
                 A[i, i] += (fProxy)(dim + 1);   // strict diagonal dominance
 
-            var b = arena.fProxyRandomVec(dim, -1f, 1f, 41102);
+            var b = GenerateOP.fProxyRandomVec(dim, -1f, 1f, 41102);
 
-            var x = arena.fProxyVec(dim);
+            var x = new fProxyN(dim, Allocator.Temp);
             bool ok = Krylov.biCGStab(in A, in b, ref x, 4 * dim, Consts.fProxySqrtEps);
             Assert.IsTrue(ok);
 
@@ -799,21 +740,17 @@ public class fProxySparseSolverTests
             bool okWarm = Krylov.biCGStab(in A, in b, ref xWarm, 1, Consts.fProxySqrtEps);
             Assert.IsTrue(okWarm);
             AssertVecEq(in x, in xWarm, LooseTol());
-
-            arena.Dispose();
         }
 
         // ---- LSQR warm start (overdetermined m>n CONSISTENT system, b = A*xTrue) ----
         void LsqrWarmStart()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 10, n = 4;
-            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 41301);
-            var xTrue = arena.fProxyRandomVec(n, -1f, 1f, 41302);
+            var A = GenerateOP.fProxyRandomMat(m, n, -1f, 1f, 41301);
+            var xTrue = GenerateOP.fProxyRandomVec(n, -1f, 1f, 41302);
             var b = Blas.dot(A, xTrue);      // consistent
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             bool ok = Krylov.lsqr(in A, in b, ref x, 8 * n, Consts.fProxySqrtEps);
             Assert.IsTrue(ok);
 
@@ -821,8 +758,6 @@ public class fProxySparseSolverTests
             bool okWarm = Krylov.lsqr(in A, in b, ref xWarm, 1, Consts.fProxySqrtEps);
             Assert.IsTrue(okWarm);
             AssertVecEq(in x, in xWarm, LooseTol());
-
-            arena.Dispose();
         }
 
         // ---- LSMR on an overdetermined CONSISTENT least-squares problem (dense + BSR) ------
@@ -830,14 +765,12 @@ public class fProxySparseSolverTests
         // Same fixture and acceptance criterion as LsqrOverdeterminedConsistentDenseAndBSR above.
         void LsmrOverdeterminedConsistentDenseAndBSR()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 10, n = 4;
-            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 42001);
-            var xTrue = arena.fProxyRandomVec(n, -1f, 1f, 42002);
+            var A = GenerateOP.fProxyRandomMat(m, n, -1f, 1f, 42001);
+            var xTrue = GenerateOP.fProxyRandomVec(n, -1f, 1f, 42002);
             var b = Blas.dot(A, xTrue);      // consistent
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             bool ok = Krylov.lsmr(in A, in b, ref x, 8 * n, Consts.fProxySqrtEps);
             Assert.IsTrue(ok);
             AssertVecEq(in x, in xTrue, LooseTol());
@@ -845,13 +778,11 @@ public class fProxySparseSolverTests
             var Ax = Blas.dot(A, x);
             AssertVecEq(in Ax, in b, LooseTol());
 
-            var bsm = DenseToBSR1x1(ref arena, in A, m * n);
-            var xBsr = arena.fProxyVec(n);
+            var bsm = DenseToBSR1x1(in A, m * n);
+            var xBsr = new fProxyN(n, Allocator.Temp);
             bool okBsr = Krylov.lsmr(in bsm, in b, ref xBsr, 8 * n, Consts.fProxySqrtEps);
             Assert.IsTrue(okBsr);
             AssertVecEq(in x, in xBsr, LooseTol());
-
-            arena.Dispose();
         }
 
         // ---- LSMR on an overdetermined INCONSISTENT problem: normal-equation optimality ----
@@ -861,13 +792,11 @@ public class fProxySparseSolverTests
         // same oracle as the LSQR inconsistent test, so LSMR must land on the same x.
         void LsmrInconsistentMatchesQR()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 10, n = 4;
-            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 42101);
-            var b = arena.fProxyRandomVec(m, -1f, 1f, 42102);   // inconsistent
+            var A = GenerateOP.fProxyRandomMat(m, n, -1f, 1f, 42101);
+            var b = GenerateOP.fProxyRandomVec(m, -1f, 1f, 42102);   // inconsistent
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             bool ok = Krylov.lsmr(in A, in b, ref x, 8 * n, Consts.fProxySqrtEps);
             Assert.IsTrue(ok);
 
@@ -875,17 +804,15 @@ public class fProxySparseSolverTests
 
             var A2 = A.Copy();
             var b2 = b.Copy();
-            var xQR = arena.fProxyVec(n);
+            var xQR = new fProxyN(n, Allocator.Temp);
             QR.solveInPlace(ref A2, ref b2, ref xQR);
             AssertVecEq(in x, in xQR, LooseTol());
 
-            var bsm = DenseToBSR1x1(ref arena, in A, m * n);
-            var xBsr = arena.fProxyVec(n);
+            var bsm = DenseToBSR1x1(in A, m * n);
+            var xBsr = new fProxyN(n, Allocator.Temp);
             bool okBsr = Krylov.lsmr(in bsm, in b, ref xBsr, 8 * n, Consts.fProxySqrtEps);
             Assert.IsTrue(okBsr);
             AssertVecEq(in x, in xBsr, LooseTol());
-
-            arena.Dispose();
         }
 
         // ---- LSMR on an underdetermined (m < n) CONSISTENT problem: matches LSQR ----
@@ -894,39 +821,33 @@ public class fProxySparseSolverTests
         // cross-checked against the already-tested LSQR solution.
         void LsmrUnderdeterminedMatchesLsqr()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 4, n = 10;
-            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 42201);
-            var xGen = arena.fProxyRandomVec(n, -1f, 1f, 42202);
+            var A = GenerateOP.fProxyRandomMat(m, n, -1f, 1f, 42201);
+            var xGen = GenerateOP.fProxyRandomVec(n, -1f, 1f, 42202);
             var b = Blas.dot(A, xGen);      // consistent
 
-            var xM = arena.fProxyVec(n);
+            var xM = new fProxyN(n, Allocator.Temp);
             bool okM = Krylov.lsmr(in A, in b, ref xM, 8 * n, Consts.fProxySqrtEps);
             Assert.IsTrue(okM);
             var AxM = Blas.dot(A, xM);
             AssertVecEq(in AxM, in b, LooseTol());
 
-            var xL = arena.fProxyVec(n);
+            var xL = new fProxyN(n, Allocator.Temp);
             bool okL = Krylov.lsqr(in A, in b, ref xL, 8 * n, Consts.fProxySqrtEps);
             Assert.IsTrue(okL);
 
             AssertVecEq(in xM, in xL, LooseTol());   // both land on the unique minimum-norm solution
-
-            arena.Dispose();
         }
 
         // ---- LSMR warm start (overdetermined m>n CONSISTENT system, b = A*xTrue) ----
         void LsmrWarmStart()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 10, n = 4;
-            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 42301);
-            var xTrue = arena.fProxyRandomVec(n, -1f, 1f, 42302);
+            var A = GenerateOP.fProxyRandomMat(m, n, -1f, 1f, 42301);
+            var xTrue = GenerateOP.fProxyRandomVec(n, -1f, 1f, 42302);
             var b = Blas.dot(A, xTrue);      // consistent
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             bool ok = Krylov.lsmr(in A, in b, ref x, 8 * n, Consts.fProxySqrtEps);
             Assert.IsTrue(ok);
 
@@ -934,8 +855,6 @@ public class fProxySparseSolverTests
             bool okWarm = Krylov.lsmr(in A, in b, ref xWarm, 1, Consts.fProxySqrtEps);
             Assert.IsTrue(okWarm);
             AssertVecEq(in x, in xWarm, LooseTol());
-
-            arena.Dispose();
         }
 
         // ---- LSMR monotone ||A^T r|| (its distinguishing property vs LSQR) ----
@@ -949,27 +868,25 @@ public class fProxySparseSolverTests
         // (a real bug) exceeds it.
         void LsmrMonotonicArnorm()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 12, n = 6;
-            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 43101);
-            var b = arena.fProxyRandomVec(m, -1f, 1f, 43102);   // inconsistent -> ||A^T r|| > 0 for a while
+            var A = GenerateOP.fProxyRandomMat(m, n, -1f, 1f, 43101);
+            var b = GenerateOP.fProxyRandomVec(m, -1f, 1f, 43102);   // inconsistent -> ||A^T r|| > 0 for a while
 
             fProxy prev = fProxy.MaxValue;
             for (int k = 1; k <= n; k++)
             {
-                var x = arena.fProxyVec(n);                     // fresh zero start
+                var x = new fProxyN(n, Allocator.Temp);                     // fresh zero start
                 Krylov.lsmr(in A, in b, ref x, k, (fProxy)0);  // tol 0 -> runs exactly k iterations
 
-                var res = Blas.dot(A, x) - b;              // A x - b   (length m)
+                var Ax = Blas.dot(A, x);
+                var res = new fProxyN(in Ax, Allocator.Temp);
+                fProxyComp.subInPlace(res, b);             // res = A x - b   (length m)
                 var atr = Blas.dot(res, A);                // A^T res   (length n)
                 fProxy nrm = math.sqrt(Blas.dot(atr, atr));
 
                 Assert.IsTrue(nrm <= prev + (fProxy)0.02 * prev + (fProxy)1e-4);   // non-increasing (+ fp slack)
                 prev = nrm;
             }
-
-            arena.Dispose();
         }
 
         // ---- Tikhonov damping: LSQR / LSMR both solve min ||Ax-b||^2 + damp^2||x||^2 ----
@@ -981,36 +898,32 @@ public class fProxySparseSolverTests
         // regime where the regularization is numerically significant but the system stays solvable.
         void TikhonovDampingMatchesAugmentedQR()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 10, n = 4;
-            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 43201);
-            var b = arena.fProxyRandomVec(m, -1f, 1f, 43202);   // inconsistent
+            var A = GenerateOP.fProxyRandomMat(m, n, -1f, 1f, 43201);
+            var b = GenerateOP.fProxyRandomVec(m, -1f, 1f, 43202);   // inconsistent
             fProxy damp = (fProxy)0.5;
 
-            var xref = DampedReferenceQR(ref arena, in A, in b, damp);
+            var xref = DampedReferenceQR(in A, in b, damp);
 
             // dense damped solvers
-            var xL = arena.fProxyVec(n);
+            var xL = new fProxyN(n, Allocator.Temp);
             Assert.IsTrue(Krylov.lsqr(in A, in b, ref xL, 16 * n, Consts.fProxySqrtEps, damp));
             AssertVecEq(in xL, in xref, LooseTol());
 
-            var xM = arena.fProxyVec(n);
+            var xM = new fProxyN(n, Allocator.Temp);
             Assert.IsTrue(Krylov.lsmr(in A, in b, ref xM, 16 * n, Consts.fProxySqrtEps, damp));
             AssertVecEq(in xM, in xref, LooseTol());
 
             // 1x1-BSR damped solvers agree with the same reference
-            var bsm = DenseToBSR1x1(ref arena, in A, m * n);
+            var bsm = DenseToBSR1x1(in A, m * n);
 
-            var xLb = arena.fProxyVec(n);
+            var xLb = new fProxyN(n, Allocator.Temp);
             Assert.IsTrue(Krylov.lsqr(in bsm, in b, ref xLb, 16 * n, Consts.fProxySqrtEps, damp));
             AssertVecEq(in xLb, in xref, LooseTol());
 
-            var xMb = arena.fProxyVec(n);
+            var xMb = new fProxyN(n, Allocator.Temp);
             Assert.IsTrue(Krylov.lsmr(in bsm, in b, ref xMb, 16 * n, Consts.fProxySqrtEps, damp));
             AssertVecEq(in xMb, in xref, LooseTol());
-
-            arena.Dispose();
         }
 
         // ================== LS diagnostics (LstsqInfo) ==================
@@ -1023,7 +936,8 @@ public class fProxySparseSolverTests
                                       in LstsqInfo info, fProxy tol)
         {
             var Ax  = Blas.dot(A, x);
-            var res = Ax - b;                        // Ax - b  (= -r), length m
+            var res = new fProxyN(in Ax, Allocator.Temp);
+            fProxyComp.subInPlace(res, b);            // Ax - b  (= -r), length m
             fProxy rnorm = math.sqrt(Blas.dot(res, res));
             Assert.IsTrue(math.abs(rnorm - info.rnorm) <= tol * ((fProxy)1 + rnorm));
 
@@ -1041,20 +955,18 @@ public class fProxySparseSolverTests
         // INCONSISTENT over-determined system (so rnorm is meaningfully nonzero while Arnorm -> 0).
         void LstsqInfoMatchesIndependentRecompute()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 12, n = 5;
-            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 51001);
-            var b = arena.fProxyRandomVec(m, -1f, 1f, 51002);   // random rhs -> inconsistent
+            var A = GenerateOP.fProxyRandomMat(m, n, -1f, 1f, 51001);
+            var b = GenerateOP.fProxyRandomVec(m, -1f, 1f, 51002);   // random rhs -> inconsistent
             int maxIter = 8 * n;
 
-            var xL = arena.fProxyVec(n);
+            var xL = new fProxyN(n, Allocator.Temp);
             var infoL = Krylov.lsqr(in A, in b, ref xL, maxIter, Consts.fProxySqrtEps, (fProxy)0);
             Assert.IsTrue(infoL.Solved);
             Assert.IsTrue(infoL.iterations >= 1 && infoL.iterations <= maxIter);
             AssertInfoMatches(in A, in b, in xL, (fProxy)0, in infoL, LooseTol());
 
-            var xM = arena.fProxyVec(n);
+            var xM = new fProxyN(n, Allocator.Temp);
             var infoM = Krylov.lsmr(in A, in b, ref xM, maxIter, Consts.fProxySqrtEps, (fProxy)0);
             Assert.IsTrue(infoM.Solved);
             Assert.IsTrue(infoM.iterations >= 1 && infoM.iterations <= maxIter);
@@ -1063,33 +975,27 @@ public class fProxySparseSolverTests
             // Inconsistent system: residual is nonzero but the normal-equation residual vanishes.
             Assert.IsTrue(infoL.rnorm > (fProxy)0.01);
             Assert.IsTrue(infoL.Arnorm <= LooseTol() * ((fProxy)1 + infoL.rnorm));
-
-            arena.Dispose();
         }
 
         // Damped diagnostics: with damp != 0 the reported Arnorm is the DAMPED normal-equation
         // residual ||A^T r - damp^2 x||, which the independent recompute must reproduce.
         void LstsqInfoDampedArnorm()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 12, n = 5;
-            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 51101);
-            var b = arena.fProxyRandomVec(m, -1f, 1f, 51102);
+            var A = GenerateOP.fProxyRandomMat(m, n, -1f, 1f, 51101);
+            var b = GenerateOP.fProxyRandomVec(m, -1f, 1f, 51102);
             fProxy damp = (fProxy)0.3;
             int maxIter = 8 * n;
 
-            var xL = arena.fProxyVec(n);
+            var xL = new fProxyN(n, Allocator.Temp);
             var infoL = Krylov.lsqr(in A, in b, ref xL, maxIter, Consts.fProxySqrtEps, damp);
             Assert.IsTrue(infoL.Solved);
             AssertInfoMatches(in A, in b, in xL, damp, in infoL, LooseTol());
 
-            var xM = arena.fProxyVec(n);
+            var xM = new fProxyN(n, Allocator.Temp);
             var infoM = Krylov.lsmr(in A, in b, ref xM, maxIter, Consts.fProxySqrtEps, damp);
             Assert.IsTrue(infoM.Solved);
             AssertInfoMatches(in A, in b, in xM, damp, in infoM, LooseTol());
-
-            arena.Dispose();
         }
 
         // The LSMR ‖r‖ figure is the one genuinely subtle piece of the free diagnostics: LSMR never
@@ -1100,29 +1006,27 @@ public class fProxySparseSolverTests
         // likely to expose a recurrence bug.
         void LsmrRnormMatchesExact()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 16, n = 6;
-            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 51401);
+            var A = GenerateOP.fProxyRandomMat(m, n, -1f, 1f, 51401);
 
             // (a) consistent: b = A x* for a known x* -> exact recovery, rnorm -> 0.
-            var xStar = arena.fProxyRandomVec(n, -1f, 1f, 51402);
+            var xStar = GenerateOP.fProxyRandomVec(n, -1f, 1f, 51402);
             var bCons = Blas.dot(A, xStar);                // bCons = A x*  (consistent)
 
             // (b) inconsistent: random rhs -> nonzero least-squares residual.
-            var bInc = arena.fProxyRandomVec(m, -1f, 1f, 51403);
+            var bInc = GenerateOP.fProxyRandomVec(m, -1f, 1f, 51403);
 
             int maxIter = 8 * n;
-            var rS = arena.fProxyVec(m);
-            var sS = arena.fProxyVec(n);
+            var rS = new fProxyN(m, Allocator.Temp);
+            var sS = new fProxyN(n, Allocator.Temp);
 
-            var xc = arena.fProxyVec(n);
+            var xc = new fProxyN(n, Allocator.Temp);
             var ic = Krylov.lsmr(in A, in bCons, ref xc, maxIter, Consts.fProxySqrtEps, (fProxy)0);
             Assert.IsTrue(ic.Solved);
             var exC = Krylov.lstsqResidual(new fProxyDenseOperator(in A), in bCons, in xc, (fProxy)0, ref rS, ref sS);
             AssertClose(ic.rnorm, exC.rnorm, LooseTol());
 
-            var xi = arena.fProxyVec(n);
+            var xi = new fProxyN(n, Allocator.Temp);
             var ii = Krylov.lsmr(in A, in bInc, ref xi, maxIter, Consts.fProxySqrtEps, (fProxy)0);
             Assert.IsTrue(ii.Solved);
             var exI = Krylov.lstsqResidual(new fProxyDenseOperator(in A), in bInc, in xi, (fProxy)0, ref rS, ref sS);
@@ -1132,13 +1036,11 @@ public class fProxySparseSolverTests
             // (c) mid-flight: force MaxIterations (maxIter=2) so the ‖r‖ recurrence is pinned BEFORE
             // convergence -- where the dnorm += betacheck² accumulation would drift if transcribed
             // wrong. rnorm must still equal the exact residual of the (un-converged) iterate.
-            var xf = arena.fProxyVec(n);
+            var xf = new fProxyN(n, Allocator.Temp);
             var if2 = Krylov.lsmr(in A, in bInc, ref xf, 2, Consts.fProxySqrtEps, (fProxy)0);
             Assert.IsTrue(!if2.Solved && if2.iterations == 2);   // genuinely stopped mid-flight
             var exF = Krylov.lstsqResidual(new fProxyDenseOperator(in A), in bInc, in xf, (fProxy)0, ref rS, ref sS);
             AssertClose(if2.rnorm, exF.rnorm, LooseTol());
-
-            arena.Dispose();
         }
 
         // The BSR diagnostic overload reports the same diagnostics (up to iterative tolerance) as the
@@ -1146,19 +1048,17 @@ public class fProxySparseSolverTests
         // lstsqInfo identically.
         void LstsqInfoBSRMatchesDense()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 12, n = 5;
-            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 51301);
-            var b = arena.fProxyRandomVec(m, -1f, 1f, 51302);
-            var bsm = DenseToBSR1x1(ref arena, in A, m * n);
+            var A = GenerateOP.fProxyRandomMat(m, n, -1f, 1f, 51301);
+            var b = GenerateOP.fProxyRandomVec(m, -1f, 1f, 51302);
+            var bsm = DenseToBSR1x1(in A, m * n);
             int maxIter = 8 * n;
 
-            var xD = arena.fProxyVec(n);
+            var xD = new fProxyN(n, Allocator.Temp);
             var infoD = Krylov.lsqr(in A, in b, ref xD, maxIter, Consts.fProxySqrtEps, (fProxy)0);
             Assert.IsTrue(infoD.Solved);
 
-            var xB = arena.fProxyVec(n);
+            var xB = new fProxyN(n, Allocator.Temp);
             var infoB = Krylov.lsqr(in bsm, in b, ref xB, maxIter, Consts.fProxySqrtEps, (fProxy)0);
             Assert.IsTrue(infoB.Solved);
 
@@ -1167,8 +1067,6 @@ public class fProxySparseSolverTests
             Assert.IsTrue(math.abs(infoD.rnorm  - infoB.rnorm)  <= LooseTol() * sr);
             Assert.IsTrue(math.abs(infoD.Arnorm - infoB.Arnorm) <= LooseTol() * ((fProxy)1 + infoD.Arnorm));
             Assert.IsTrue(math.abs(infoD.xnorm  - infoB.xnorm)  <= LooseTol() * ((fProxy)1 + infoD.xnorm));
-
-            arena.Dispose();
         }
 
         // ================== AᵀA-Jacobi preconditioner ==================
@@ -1177,13 +1075,13 @@ public class fProxySparseSolverTests
         // magnitudes (2^0..2^(n-1)). AᵀA = diag(s²) is badly scaled: the plain solve sees n distinct
         // eigenvalues (needs ~n Krylov steps), while column-Jacobi maps A·D = Q (unit-conditioned),
         // so the preconditioned solve converges almost immediately.
-        static fProxyMxN BuildBadlyScaledOrthonormal(ref Arena arena, int m, int n, uint seed)
+        static fProxyMxN BuildBadlyScaledOrthonormal(int m, int n, uint seed)
         {
-            var Q = arena.fProxyRandomMat(m, n, -1f, 1f, seed);
-            var R = arena.fProxyMat(n, n);
+            var Q = GenerateOP.fProxyRandomMat(m, n, -1f, 1f, seed);
+            var R = new fProxyMxN(n, n, Allocator.Temp);
             QR.decompInPlace(ref Q, ref R);           // Q now has orthonormal columns
 
-            var A = arena.fProxyMat(m, n);
+            var A = new fProxyMxN(m, n, Allocator.Temp);
             for (int j = 0; j < n; j++)
             {
                 fProxy s = math.pow((fProxy)2, (fProxy)j);
@@ -1196,34 +1094,32 @@ public class fProxySparseSolverTests
         // least-squares optimum, and the lsqrJacobi convenience wrapper matches the composable path.
         void JacobiPreconditionerReducesIterations()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 30, n = 12;
-            var A = BuildBadlyScaledOrthonormal(ref arena, m, n, 52001);
-            var b = arena.fProxyRandomVec(m, -1f, 1f, 52002);
+            var A = BuildBadlyScaledOrthonormal(m, n, 52001);
+            var b = GenerateOP.fProxyRandomVec(m, -1f, 1f, 52002);
             int maxIter = 4 * n;
             fProxy tol = Consts.fProxySqrtEps;
 
             // plain lsqr with diagnostics
-            var xPlain = arena.fProxyVec(n);
+            var xPlain = new fProxyN(n, Allocator.Temp);
             var infoPlain = Krylov.lsqr(in A, in b, ref xPlain, maxIter, tol, (fProxy)0);
             Assert.IsTrue(infoPlain.Solved);
 
             // preconditioned via the composable diagnostic path (to read the iteration count)
-            var d2 = arena.fProxyVec(n); Blas.columnNormsSquared(in A, ref d2);
-            var d  = arena.fProxyVec(n); Blas.buildJacobiScale(in d2, ref d);
-            var scratch = arena.fProxyVec(n);
+            var d2 = new fProxyN(n, Allocator.Temp); Blas.columnNormsSquared(in A, ref d2);
+            var d  = new fProxyN(n, Allocator.Temp); Blas.buildJacobiScale(in d2, ref d);
+            var scratch = new fProxyN(n, Allocator.Temp);
             var op = new fProxyColScaledOperator<fProxyDenseOperator>(new fProxyDenseOperator(in A), d, scratch);
 
-            var y    = arena.fProxyVec(n);
-            var u    = arena.fProxyVec(m);
-            var v    = arena.fProxyVec(n);
-            var w    = arena.fProxyVec(n);
-            var tmpM = arena.fProxyVec(m);
-            var tmpN = arena.fProxyVec(n);
+            var y    = new fProxyN(n, Allocator.Temp);
+            var u    = new fProxyN(m, Allocator.Temp);
+            var v    = new fProxyN(n, Allocator.Temp);
+            var w    = new fProxyN(n, Allocator.Temp);
+            var tmpM = new fProxyN(m, Allocator.Temp);
+            var tmpN = new fProxyN(n, Allocator.Temp);
             var infoJac = Krylov.lsqr(op, in b, ref y, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIter, tol, (fProxy)0);
             Assert.IsTrue(infoJac.Solved);
-            var xComp = arena.fProxyVec(n);
+            var xComp = new fProxyN(n, Allocator.Temp);
             for (int j = 0; j < n; j++) xComp[j] = d[j] * y[j];
 
             Assert.IsTrue(infoJac.iterations < infoPlain.iterations);   // the preconditioner's payoff
@@ -1234,43 +1130,37 @@ public class fProxySparseSolverTests
             AssertLeastSquaresOptimal(in A, in xPlain, in b, LooseTol());
 
             // The convenience wrapper reproduces the composable path exactly.
-            var xConv = arena.fProxyVec(n);
+            var xConv = new fProxyN(n, Allocator.Temp);
             Assert.IsTrue(Krylov.lsqrJacobi(in A, in b, ref xConv, maxIter, tol));
             AssertVecEq(in xConv, in xComp, LooseTol());
-
-            arena.Dispose();
         }
 
         // Every *Jacobi convenience wrapper (lsqr/lsmr, dense AND 1x1-BSR) solves the
         // badly-scaled system to least-squares optimality, and the BSR form matches the dense form.
         void JacobiConvenienceSolversLSOptimalDenseAndBSR()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 24, n = 8;
-            var A = BuildBadlyScaledOrthonormal(ref arena, m, n, 52101);
-            var b = arena.fProxyRandomVec(m, -1f, 1f, 52102);
-            var bsm = DenseToBSR1x1(ref arena, in A, m * n);
+            var A = BuildBadlyScaledOrthonormal(m, n, 52101);
+            var b = GenerateOP.fProxyRandomVec(m, -1f, 1f, 52102);
+            var bsm = DenseToBSR1x1(in A, m * n);
             int maxIter = 4 * n;
             fProxy tol = Consts.fProxySqrtEps;
 
             // lsqr
-            var xLd = arena.fProxyVec(n);
+            var xLd = new fProxyN(n, Allocator.Temp);
             Assert.IsTrue(Krylov.lsqrJacobi(in A, in b, ref xLd, maxIter, tol));
             AssertLeastSquaresOptimal(in A, in xLd, in b, LooseTol());
-            var xLb = arena.fProxyVec(n);
+            var xLb = new fProxyN(n, Allocator.Temp);
             Assert.IsTrue(Krylov.lsqrJacobi(in bsm, in b, ref xLb, maxIter, tol));
             AssertVecEq(in xLd, in xLb, LooseTol());
 
             // lsmr
-            var xMd = arena.fProxyVec(n);
+            var xMd = new fProxyN(n, Allocator.Temp);
             Assert.IsTrue(Krylov.lsmrJacobi(in A, in b, ref xMd, maxIter, tol));
             AssertLeastSquaresOptimal(in A, in xMd, in b, LooseTol());
-            var xMb = arena.fProxyVec(n);
+            var xMb = new fProxyN(n, Allocator.Temp);
             Assert.IsTrue(Krylov.lsmrJacobi(in bsm, in b, ref xMb, maxIter, tol));
             AssertVecEq(in xMd, in xMb, LooseTol());
-
-            arena.Dispose();
         }
 
         // LITERATURE GROUND TRUTH (Strang, Introduction to Linear Algebra -- best-fit line):
@@ -1281,13 +1171,11 @@ public class fProxySparseSolverTests
         // ground truth), not another solver.
         void LstsqInfoStrangLineFitExact()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.fProxyMat(3, 2);
+            var A = new fProxyMxN(3, 2, Allocator.Temp);
             A[0, 0] = (fProxy)1; A[0, 1] = (fProxy)0;
             A[1, 0] = (fProxy)1; A[1, 1] = (fProxy)1;
             A[2, 0] = (fProxy)1; A[2, 1] = (fProxy)2;
-            var b = arena.fProxyVec(3);
+            var b = new fProxyN(3, Allocator.Temp);
             b[0] = (fProxy)6; b[1] = (fProxy)0; b[2] = (fProxy)0;
 
             fProxy tol = Consts.fProxySqrtEps;
@@ -1297,7 +1185,7 @@ public class fProxySparseSolverTests
             // Both solvers must reproduce x = (5,-3) and the exact diagnostics.
             for (int which = 0; which < 2; which++)
             {
-                var x = arena.fProxyVec(2);
+                var x = new fProxyN(2, Allocator.Temp);
                 LstsqInfo info;
                 if (which == 0) info = Krylov.lsqr(in A, in b, ref x, 50, tol, (fProxy)0);
                 else            info = Krylov.lsmr(in A, in b, ref x, 50, tol, (fProxy)0);
@@ -1309,8 +1197,6 @@ public class fProxySparseSolverTests
                 Assert.IsTrue(info.Arnorm <= LooseTol() * ((fProxy)1 + expRnorm));   // Aᵀr = 0 exactly
                 AssertClose(info.xnorm, expXnorm, LooseTol());
             }
-
-            arena.Dispose();
         }
 
         // Independently recompute ‖b - A x‖ (one real matvec) and check the solver's FREE rnorm
@@ -1343,38 +1229,37 @@ public class fProxySparseSolverTests
         // the un-converged iterate (that path returns √rsold, the post-update recurrence residual).
         void SolveInfoRnormMatchesResidual()
         {
-            var arena = new Arena(Allocator.Persistent);
             fProxy tol = LooseTol();
 
             // ---- SPD system: cg (plain and block-Jacobi over BSR), minres ----
             int n = 12;
-            var Aspd = BuildDenseSPD(ref arena, n, 52001);
-            var bspd = arena.fProxyRandomVec(n, -1f, 1f, 52002);
-            var bsm = DenseToBSR1x1(ref arena, in Aspd, n * n);
-            var M = arena.fProxyBlockJacobi(in bsm);
+            var Aspd = BuildDenseSPD(n, 52001);
+            var bspd = GenerateOP.fProxyRandomVec(n, -1f, 1f, 52002);
+            var bsm = DenseToBSR1x1(in Aspd, n * n);
+            var M = new fProxyBlockJacobi(in bsm, Allocator.Temp);
             int maxIter = 4 * n;
 
-            var xg = arena.fProxyVec(n);
+            var xg = new fProxyN(n, Allocator.Temp);
             var ig = Krylov.cg(in Aspd, in bspd, ref xg, maxIter, Consts.fProxySqrtEps);
             Assert.IsTrue(ig.Solved && ig.iterations >= 1 && ig.iterations <= maxIter);
             AssertResidualNorm(in Aspd, in bspd, in xg, ig.rnorm, tol);
 
-            var xp = arena.fProxyVec(n);
+            var xp = new fProxyN(n, Allocator.Temp);
             var ip = Krylov.cg(in bsm, in M, in bspd, ref xp, maxIter, Consts.fProxySqrtEps);
             Assert.IsTrue(ip.Solved && ip.iterations >= 1);
             AssertResidualNormBSR(in bsm, in bspd, in xp, ip.rnorm, tol);   // BSR solve -> BSR recompute
 
-            var xm = arena.fProxyVec(n);
+            var xm = new fProxyN(n, Allocator.Temp);
             var im = Krylov.minres(in Aspd, in bspd, ref xm, maxIter, Consts.fProxySqrtEps);
             Assert.IsTrue(im.Solved && im.iterations >= 1);
             AssertResidualNorm(in Aspd, in bspd, in xm, im.rnorm, tol);
 
             // ---- Non-symmetric diagonally-dominant system: biCGStab ----
             int d = 8;
-            var Ansym = arena.fProxyRandomMat(d, d, -1f, 1f, 52101);
+            var Ansym = GenerateOP.fProxyRandomMat(d, d, -1f, 1f, 52101);
             for (int i = 0; i < d; i++) Ansym[i, i] += (fProxy)(d + 1);   // strict diagonal dominance
-            var bns = arena.fProxyRandomVec(d, -1f, 1f, 52102);
-            var xb = arena.fProxyVec(d);
+            var bns = GenerateOP.fProxyRandomVec(d, -1f, 1f, 52102);
+            var xb = new fProxyN(d, Allocator.Temp);
             var ib = Krylov.biCGStab(in Ansym, in bns, ref xb, 4 * d, Consts.fProxySqrtEps);
             Assert.IsTrue(ib.Solved && ib.iterations >= 1);
             AssertResidualNorm(in Ansym, in bns, in xb, ib.rnorm, tol);
@@ -1383,22 +1268,22 @@ public class fProxySparseSolverTests
             //      converge, yet rnorm must still equal ‖b - A x‖ of the (updated) un-converged
             //      iterate -- the contract that on MaxIterations x is a valid last iterate, not
             //      undefined. Each returns √(tracked residual) with x fully advanced. ----
-            var xh = arena.fProxyVec(n);
+            var xh = new fProxyN(n, Allocator.Temp);
             var ih = Krylov.cg(in Aspd, in bspd, ref xh, 1, Consts.fProxySqrtEps);
             Assert.IsTrue(!ih.Solved && ih.status == IterativeSolveStatus.MaxIterations && ih.iterations == 1);
             AssertResidualNorm(in Aspd, in bspd, in xh, ih.rnorm, tol);
 
-            var xhp = arena.fProxyVec(n);
+            var xhp = new fProxyN(n, Allocator.Temp);
             var ihp = Krylov.cg(in bsm, in M, in bspd, ref xhp, 1, Consts.fProxySqrtEps);
             Assert.IsTrue(ihp.status == IterativeSolveStatus.MaxIterations && ihp.iterations == 1);
             AssertResidualNormBSR(in bsm, in bspd, in xhp, ihp.rnorm, tol);
 
-            var xhm = arena.fProxyVec(n);
+            var xhm = new fProxyN(n, Allocator.Temp);
             var ihm = Krylov.minres(in Aspd, in bspd, ref xhm, 1, Consts.fProxySqrtEps);
             Assert.IsTrue(ihm.status == IterativeSolveStatus.MaxIterations && ihm.iterations == 1);
             AssertResidualNorm(in Aspd, in bspd, in xhm, ihm.rnorm, tol);
 
-            var xhb = arena.fProxyVec(d);
+            var xhb = new fProxyN(d, Allocator.Temp);
             var ihb = Krylov.biCGStab(in Ansym, in bns, ref xhb, 1, Consts.fProxySqrtEps);
             Assert.IsTrue(ihb.status == IterativeSolveStatus.MaxIterations && ihb.iterations == 1);
             AssertResidualNorm(in Ansym, in bns, in xhb, ihb.rnorm, tol);
@@ -1406,11 +1291,11 @@ public class fProxySparseSolverTests
             // ---- Breakdown path: CG on the indefinite A = diag(1,-1) with b = (1,1) and x₀ = 0
             //      hits p·Ap = 1·1 + 1·(-1) = 0 on the very first step -> Breakdown at iterations=0,
             //      x untouched (= 0). rnorm must be the residual of that x: ‖b - A·0‖ = ‖b‖ = √2. ----
-            var Aind = arena.fProxyMat(2, 2);
+            var Aind = new fProxyMxN(2, 2, Allocator.Temp);
             Aind[0, 0] = (fProxy)1; Aind[0, 1] = (fProxy)0;
             Aind[1, 0] = (fProxy)0; Aind[1, 1] = (fProxy)(-1);
-            var bind = arena.fProxyVec(2); bind[0] = (fProxy)1; bind[1] = (fProxy)1;
-            var xind = arena.fProxyVec(2); xind[0] = (fProxy)0; xind[1] = (fProxy)0;
+            var bind = new fProxyN(2, Allocator.Temp); bind[0] = (fProxy)1; bind[1] = (fProxy)1;
+            var xind = new fProxyN(2, Allocator.Temp); xind[0] = (fProxy)0; xind[1] = (fProxy)0;
             var iind = Krylov.cg(in Aind, in bind, ref xind, 10, Consts.fProxySqrtEps);
             Assert.IsTrue(iind.status == IterativeSolveStatus.Breakdown && iind.iterations == 0);
             AssertResidualNorm(in Aind, in bind, in xind, iind.rnorm, tol);
@@ -1418,23 +1303,21 @@ public class fProxySparseSolverTests
 
             // ---- b == 0 shortcut: the unique solution is x = 0, reported as Converged at
             //      iterations=0 with rnorm exactly 0 (no matvec, b copied through). ----
-            var bzero = arena.fProxyVec(n);
+            var bzero = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) bzero[i] = (fProxy)0;
-            var xzero = arena.fProxyVec(n);
+            var xzero = new fProxyN(n, Allocator.Temp);
             var izero = Krylov.cg(in Aspd, in bzero, ref xzero, maxIter, Consts.fProxySqrtEps);
             Assert.IsTrue(izero.Solved && izero.iterations == 0);
             AssertClose(izero.rnorm, (fProxy)0, tol);
-
-            arena.Dispose();
         }
 
         // Damped least-squares reference: min ||Ax-b||^2 + damp^2||x||^2 == the plain least-squares
         // solution of the augmented system [A; damp*I] x ~= [b; 0], solved with dense QR. QR.solveInPlace
         // is DESTRUCTIVE, so the augmented matrix/rhs are fresh temporaries.
-        static fProxyN DampedReferenceQR(ref Arena arena, in fProxyMxN A, in fProxyN b, fProxy damp)
+        static fProxyN DampedReferenceQR(in fProxyMxN A, in fProxyN b, fProxy damp)
         {
             int m = A.M_Rows, n = A.N_Cols;
-            var Atil = arena.fProxyMat(m + n, n);
+            var Atil = new fProxyMxN(m + n, n, Allocator.Temp);
             for (int i = 0; i < m; i++)
                 for (int j = 0; j < n; j++)
                     Atil[i, j] = A[i, j];
@@ -1442,11 +1325,11 @@ public class fProxySparseSolverTests
                 for (int j = 0; j < n; j++)
                     Atil[m + i, j] = (i == j) ? damp : (fProxy)0;
 
-            var btil = arena.fProxyVec(m + n);
+            var btil = new fProxyN(m + n, Allocator.Temp);
             for (int i = 0; i < m; i++) btil[i] = b[i];
             for (int i = 0; i < n; i++) btil[m + i] = (fProxy)0;
 
-            var xref = arena.fProxyVec(n);
+            var xref = new fProxyN(n, Allocator.Temp);
             QR.solveInPlace(ref Atil, ref btil, ref xref);
             return xref;
         }
@@ -1588,30 +1471,25 @@ public class fProxySparseSolverTests
 
     // ---- guard / exception cases (managed thread; Assert.Throws can't run inside Burst) ----
 
-    static fProxyBSR BuildSquareBSR(ref Arena arena)
+    static fProxyBSR BuildSquareBSR()
     {
         const int BR = 2, BC = 2;
-        var builder = arena.fProxyBSRBuilder(2, 2, BR, BC, 2);
-        builder.AddBlock(0, 0, arena.fProxyRandomMat(BR, BC, -1f, 1f, 6101));
-        builder.AddBlock(1, 1, arena.fProxyRandomMat(BR, BC, -1f, 1f, 6102));
-        return builder.ToBSR(ref arena);
+        var builder = new fProxyBSRBuilder(2, 2, BR, BC, Allocator.Temp, 2);
+        builder.AddBlock(0, 0, GenerateOP.fProxyRandomMat(BR, BC, -1f, 1f, 6101));
+        builder.AddBlock(1, 1, GenerateOP.fProxyRandomMat(BR, BC, -1f, 1f, 6102));
+        return builder.ToBSR(Allocator.Temp);
     }
 
     [Test]
     public void BlockJacobi_MissingDiagonalBlock_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            const int BR = 2;
-            // Only an off-diagonal block -- no block at (0,0) or (1,1).
-            var builder = arena.fProxyBSRBuilder(2, 2, BR, BR, 1);
-            builder.AddBlock(0, 1, arena.fProxyRandomMat(BR, BR, -1f, 1f, 6201));
-            var A = builder.ToBSR(ref arena);
+        const int BR = 2;
+        // Only an off-diagonal block -- no block at (0,0) or (1,1).
+        var builder = new fProxyBSRBuilder(2, 2, BR, BR, Allocator.Temp, 1);
+        builder.AddBlock(0, 1, GenerateOP.fProxyRandomMat(BR, BR, -1f, 1f, 6201));
+        var A = builder.ToBSR(Allocator.Temp);
 
-            Assert.Throws<ArgumentException>(() => arena.fProxyBlockJacobi(in A));
-        }
-        finally { arena.Dispose(); }
+        Assert.Throws<ArgumentException>(() => new fProxyBlockJacobi(in A, Allocator.Temp));
     }
 
     // Numerical breakdown reporting: the out-info overloads return a DirectSolveInfo instead of
@@ -1619,89 +1497,69 @@ public class fProxySparseSolverTests
     [Test]
     public void BlockJacobi_SingularDiagonalBlock_StatusAndThrow()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            const int BR = 2;
-            var builder = arena.fProxyBSRBuilder(2, 2, BR, BR, 2);
-            builder.AddBlock(0, 0, arena.fProxyDiagonalMat(BR, (fProxy)4));
-            builder.AddBlock(1, 1, arena.fProxyMat(BR, BR));   // all-zero diagonal block: singular
-            var A = builder.ToBSR(ref arena);
+        const int BR = 2;
+        var builder = new fProxyBSRBuilder(2, 2, BR, BR, Allocator.Temp, 2);
+        builder.AddBlock(0, 0, GenerateOP.fProxyDiagonalMat(BR, (fProxy)4));
+        builder.AddBlock(1, 1, new fProxyMxN(BR, BR, Allocator.Temp));   // all-zero diagonal block: singular
+        var A = builder.ToBSR(Allocator.Temp);
 
-            var M = arena.fProxyBlockJacobi(in A, out PreconditionerInfo info);
-            Assert.IsFalse(info.Solved);
+        var M = new fProxyBlockJacobi(in A, Allocator.Temp, out PreconditionerInfo info);
+        Assert.IsFalse(info.Solved);
 
-            Assert.Throws<ArgumentException>(() => arena.fProxyBlockJacobi(in A));
-        }
-        finally { arena.Dispose(); }
+        Assert.Throws<ArgumentException>(() => new fProxyBlockJacobi(in A, Allocator.Temp));
     }
 
     [Test]
     public void Preconditioner_StatusOverloads_SuccessPath()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            const int BR = 2;
-            var builder = arena.fProxyBSRBuilder(2, 2, BR, BR, 2);
-            builder.AddBlock(0, 0, arena.fProxyDiagonalMat(BR, (fProxy)4));
-            builder.AddBlock(1, 1, arena.fProxyDiagonalMat(BR, (fProxy)9));
-            var A = builder.ToBSR(ref arena);
+        const int BR = 2;
+        var builder = new fProxyBSRBuilder(2, 2, BR, BR, Allocator.Temp, 2);
+        builder.AddBlock(0, 0, GenerateOP.fProxyDiagonalMat(BR, (fProxy)4));
+        builder.AddBlock(1, 1, GenerateOP.fProxyDiagonalMat(BR, (fProxy)9));
+        var A = builder.ToBSR(Allocator.Temp);
 
-            var mJ = arena.fProxyBlockJacobi(in A, out PreconditionerInfo infoJ);
-            Assert.IsTrue(infoJ.Solved);
-            Assert.IsTrue(infoJ.attempts == 1);
-            var mI = arena.fProxyIC0(in A, out PreconditionerInfo infoI);
-            Assert.IsTrue(infoI.Solved);
-            Assert.IsTrue(infoI.shift == 0.0);   // clean SPD build: no rescue shift
-            var mL = arena.fProxyILU0(in A, out PreconditionerInfo infoL);
-            Assert.IsTrue(infoL.Solved);
-            Assert.IsTrue(infoL.attempts == 1);
+        var mJ = new fProxyBlockJacobi(in A, Allocator.Temp, out PreconditionerInfo infoJ);
+        Assert.IsTrue(infoJ.Solved);
+        Assert.IsTrue(infoJ.attempts == 1);
+        var mI = new fProxyIC0(in A, Allocator.Temp, out PreconditionerInfo infoI);
+        Assert.IsTrue(infoI.Solved);
+        Assert.IsTrue(infoI.shift == 0.0);   // clean SPD build: no rescue shift
+        var mL = new fProxyILU0(in A, Allocator.Temp, out PreconditionerInfo infoL);
+        Assert.IsTrue(infoL.Solved);
+        Assert.IsTrue(infoL.attempts == 1);
 
-            // The successfully-built Jacobi is usable: z = M^-1 r on the 4x4 system.
-            var r = arena.fProxyVec(2 * BR, (fProxy)1);
-            var z = arena.fProxyVec(2 * BR);
-            mJ.Apply(in r, ref z);
-            Assert.IsTrue(math.abs((float)(z[0] - (fProxy)0.25)) < 1e-6f);
-            Assert.IsTrue(math.abs((float)(z[2 * BR - 1] - (fProxy)(1.0 / 9.0))) < 1e-6f);
-        }
-        finally { arena.Dispose(); }
+        // The successfully-built Jacobi is usable: z = M^-1 r on the 4x4 system.
+        var r = GenerateOP.fProxyVec(2 * BR, (fProxy)1);
+        var z = new fProxyN(2 * BR, Allocator.Temp);
+        mJ.Apply(in r, ref z);
+        Assert.IsTrue(math.abs((float)(z[0] - (fProxy)0.25)) < 1e-6f);
+        Assert.IsTrue(math.abs((float)(z[2 * BR - 1] - (fProxy)(1.0 / 9.0))) < 1e-6f);
     }
 
     [Test]
     public void BlockJacobi_NonSquareBSR_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            const int BR = 2, BC = 3;
-            var builder = arena.fProxyBSRBuilder(2, 2, BR, BC, 1); // BR != BC
-            builder.AddBlock(0, 0, arena.fProxyRandomMat(BR, BC, -1f, 1f, 6301));
-            var A = builder.ToBSR(ref arena);
+        const int BR = 2, BC = 3;
+        var builder = new fProxyBSRBuilder(2, 2, BR, BC, Allocator.Temp, 1); // BR != BC
+        builder.AddBlock(0, 0, GenerateOP.fProxyRandomMat(BR, BC, -1f, 1f, 6301));
+        var A = builder.ToBSR(Allocator.Temp);
 
-            Assert.Throws<ArgumentException>(() => arena.fProxyBlockJacobi(in A));
-        }
-        finally { arena.Dispose(); }
+        Assert.Throws<ArgumentException>(() => new fProxyBlockJacobi(in A, Allocator.Temp));
     }
 
     [Test]
     public void Cg_NonSquareDenseOperator_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = arena.fProxyMat(3, 4); // non-square
-            var op = new fProxyDenseOperator(in A);
-            var b = arena.fProxyVec(3);
-            var x = arena.fProxyVec(4);
-            var r = arena.fProxyVec(3);
-            var p = arena.fProxyVec(3);
-            var Ap = arena.fProxyVec(3);
+        var A = new fProxyMxN(3, 4, Allocator.Temp); // non-square
+        var op = new fProxyDenseOperator(in A);
+        var b = new fProxyN(3, Allocator.Temp);
+        var x = new fProxyN(4, Allocator.Temp);
+        var r = new fProxyN(3, Allocator.Temp);
+        var p = new fProxyN(3, Allocator.Temp);
+        var Ap = new fProxyN(3, Allocator.Temp);
 
-            Assert.Throws<ArgumentException>(() =>
-                Krylov.cg(in op, in b, ref x, ref r, ref p, ref Ap, 4, Consts.fProxySqrtEps));
-        }
-        finally { arena.Dispose(); }
+        Assert.Throws<ArgumentException>(() =>
+            Krylov.cg(in op, in b, ref x, ref r, ref p, ref Ap, 4, Consts.fProxySqrtEps));
     }
 
     // ---- scratch-aliasing guards for cg / cg --------------------------------------------
@@ -1715,83 +1573,63 @@ public class fProxySparseSolverTests
     [Test]
     public void Cg_AliasingRAndAp_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            const int dim = 4;
-            var A = arena.fProxyMat(dim, dim); // square; guard fires before A is read
-            var op = new fProxyDenseOperator(in A);
-            var b = arena.fProxyRandomVec(dim, -1f, 1f, 6501);
-            var x = arena.fProxyVec(dim);
-            var p = arena.fProxyVec(dim);
-            var Ap = arena.fProxyVec(dim);
-            var rAlias = Ap; // r aliases Ap (would turn r -= Ap into r -= r == 0: false convergence)
-            Assert.Throws<ArgumentException>(() =>
-                Krylov.cg(in op, in b, ref x, ref rAlias, ref p, ref Ap, dim, Consts.fProxySqrtEps));
-        }
-        finally { arena.Dispose(); }
+        const int dim = 4;
+        var A = new fProxyMxN(dim, dim, Allocator.Temp); // square; guard fires before A is read
+        var op = new fProxyDenseOperator(in A);
+        var b = GenerateOP.fProxyRandomVec(dim, -1f, 1f, 6501);
+        var x = new fProxyN(dim, Allocator.Temp);
+        var p = new fProxyN(dim, Allocator.Temp);
+        var Ap = new fProxyN(dim, Allocator.Temp);
+        var rAlias = Ap; // r aliases Ap (would turn r -= Ap into r -= r == 0: false convergence)
+        Assert.Throws<ArgumentException>(() =>
+            Krylov.cg(in op, in b, ref x, ref rAlias, ref p, ref Ap, dim, Consts.fProxySqrtEps));
     }
 
     [Test]
     public void Cg_AliasingRAndX_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            const int dim = 4;
-            var A = arena.fProxyMat(dim, dim);
-            var op = new fProxyDenseOperator(in A);
-            var b = arena.fProxyRandomVec(dim, -1f, 1f, 6511);
-            var x = arena.fProxyVec(dim);
-            var p = arena.fProxyVec(dim);
-            var Ap = arena.fProxyVec(dim);
-            var rAlias = x; // r aliases x (r.CopyFrom(b) would silently clobber the initial guess)
-            Assert.Throws<ArgumentException>(() =>
-                Krylov.cg(in op, in b, ref x, ref rAlias, ref p, ref Ap, dim, Consts.fProxySqrtEps));
-        }
-        finally { arena.Dispose(); }
+        const int dim = 4;
+        var A = new fProxyMxN(dim, dim, Allocator.Temp);
+        var op = new fProxyDenseOperator(in A);
+        var b = GenerateOP.fProxyRandomVec(dim, -1f, 1f, 6511);
+        var x = new fProxyN(dim, Allocator.Temp);
+        var p = new fProxyN(dim, Allocator.Temp);
+        var Ap = new fProxyN(dim, Allocator.Temp);
+        var rAlias = x; // r aliases x (r.CopyFrom(b) would silently clobber the initial guess)
+        Assert.Throws<ArgumentException>(() =>
+            Krylov.cg(in op, in b, ref x, ref rAlias, ref p, ref Ap, dim, Consts.fProxySqrtEps));
     }
 
     [Test]
     public void Pcg_AliasingRAndX_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = BuildSquareBSR(ref arena);       // 4 x 4, both diagonal blocks present
-            var M = arena.fProxyBlockJacobi(in A);
-            int dim = A.M_Rows;
-            var b = arena.fProxyRandomVec(dim, -1f, 1f, 6521);
-            var x = arena.fProxyVec(dim);
-            var p = arena.fProxyVec(dim);
-            var Ap = arena.fProxyVec(dim);
-            var z = arena.fProxyVec(dim);
-            var rAlias = x; // r aliases x
-            Assert.Throws<ArgumentException>(() =>
-                Krylov.cg(in A, in M, in b, ref x, ref rAlias, ref p, ref Ap, ref z, dim, Consts.fProxySqrtEps));
-        }
-        finally { arena.Dispose(); }
+        var A = BuildSquareBSR();       // 4 x 4, both diagonal blocks present
+        var M = new fProxyBlockJacobi(in A, Allocator.Temp);
+        int dim = A.M_Rows;
+        var b = GenerateOP.fProxyRandomVec(dim, -1f, 1f, 6521);
+        var x = new fProxyN(dim, Allocator.Temp);
+        var p = new fProxyN(dim, Allocator.Temp);
+        var Ap = new fProxyN(dim, Allocator.Temp);
+        var z = new fProxyN(dim, Allocator.Temp);
+        var rAlias = x; // r aliases x
+        Assert.Throws<ArgumentException>(() =>
+            Krylov.cg(in A, in M, in b, ref x, ref rAlias, ref p, ref Ap, ref z, dim, Consts.fProxySqrtEps));
     }
 
     [Test]
     public void Pcg_AliasingZAndX_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = BuildSquareBSR(ref arena);
-            var M = arena.fProxyBlockJacobi(in A);
-            int dim = A.M_Rows;
-            var b = arena.fProxyRandomVec(dim, -1f, 1f, 6531);
-            var x = arena.fProxyVec(dim);
-            var r = arena.fProxyVec(dim);
-            var p = arena.fProxyVec(dim);
-            var Ap = arena.fProxyVec(dim);
-            var zAlias = x; // z aliases x (not caught by M.Apply's own r/z guard)
-            Assert.Throws<ArgumentException>(() =>
-                Krylov.cg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref zAlias, dim, Consts.fProxySqrtEps));
-        }
-        finally { arena.Dispose(); }
+        var A = BuildSquareBSR();
+        var M = new fProxyBlockJacobi(in A, Allocator.Temp);
+        int dim = A.M_Rows;
+        var b = GenerateOP.fProxyRandomVec(dim, -1f, 1f, 6531);
+        var x = new fProxyN(dim, Allocator.Temp);
+        var r = new fProxyN(dim, Allocator.Temp);
+        var p = new fProxyN(dim, Allocator.Temp);
+        var Ap = new fProxyN(dim, Allocator.Temp);
+        var zAlias = x; // z aliases x (not caught by M.Apply's own r/z guard)
+        Assert.Throws<ArgumentException>(() =>
+            Krylov.cg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref zAlias, dim, Consts.fProxySqrtEps));
     }
 
     // x aliasing b: the final pair among {r,p,Ap,x,b} / {r,p,Ap,z,x,b}. Benign in the current loop
@@ -1801,42 +1639,32 @@ public class fProxySparseSolverTests
     [Test]
     public void Cg_AliasingXAndB_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            const int dim = 4;
-            var A = arena.fProxyMat(dim, dim); // square; guard fires before A is read
-            var op = new fProxyDenseOperator(in A);
-            var b = arena.fProxyRandomVec(dim, -1f, 1f, 6541);
-            var xAlias = b; // x aliases b (struct copy shares Data.Ptr)
-            var r = arena.fProxyVec(dim);
-            var p = arena.fProxyVec(dim);
-            var Ap = arena.fProxyVec(dim);
-            Assert.Throws<ArgumentException>(() =>
-                Krylov.cg(in op, in b, ref xAlias, ref r, ref p, ref Ap, dim, Consts.fProxySqrtEps));
-        }
-        finally { arena.Dispose(); }
+        const int dim = 4;
+        var A = new fProxyMxN(dim, dim, Allocator.Temp); // square; guard fires before A is read
+        var op = new fProxyDenseOperator(in A);
+        var b = GenerateOP.fProxyRandomVec(dim, -1f, 1f, 6541);
+        var xAlias = b; // x aliases b (struct copy shares Data.Ptr)
+        var r = new fProxyN(dim, Allocator.Temp);
+        var p = new fProxyN(dim, Allocator.Temp);
+        var Ap = new fProxyN(dim, Allocator.Temp);
+        Assert.Throws<ArgumentException>(() =>
+            Krylov.cg(in op, in b, ref xAlias, ref r, ref p, ref Ap, dim, Consts.fProxySqrtEps));
     }
 
     [Test]
     public void Pcg_AliasingXAndB_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = BuildSquareBSR(ref arena);
-            var M = arena.fProxyBlockJacobi(in A);
-            int dim = A.M_Rows;
-            var b = arena.fProxyRandomVec(dim, -1f, 1f, 6551);
-            var xAlias = b; // x aliases b (struct copy shares Data.Ptr)
-            var r = arena.fProxyVec(dim);
-            var p = arena.fProxyVec(dim);
-            var Ap = arena.fProxyVec(dim);
-            var z = arena.fProxyVec(dim);
-            Assert.Throws<ArgumentException>(() =>
-                Krylov.cg(in A, in M, in b, ref xAlias, ref r, ref p, ref Ap, ref z, dim, Consts.fProxySqrtEps));
-        }
-        finally { arena.Dispose(); }
+        var A = BuildSquareBSR();
+        var M = new fProxyBlockJacobi(in A, Allocator.Temp);
+        int dim = A.M_Rows;
+        var b = GenerateOP.fProxyRandomVec(dim, -1f, 1f, 6551);
+        var xAlias = b; // x aliases b (struct copy shares Data.Ptr)
+        var r = new fProxyN(dim, Allocator.Temp);
+        var p = new fProxyN(dim, Allocator.Temp);
+        var Ap = new fProxyN(dim, Allocator.Temp);
+        var z = new fProxyN(dim, Allocator.Temp);
+        Assert.Throws<ArgumentException>(() =>
+            Krylov.cg(in A, in M, in b, ref xAlias, ref r, ref p, ref Ap, ref z, dim, Consts.fProxySqrtEps));
     }
 
     // ---- Phase 3 guard / aliasing cases (managed thread; Assert.Throws can't run in Burst) ----
@@ -1850,103 +1678,78 @@ public class fProxySparseSolverTests
     [Test]
     public void Minres_NonSquareDense_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = arena.fProxyMat(3, 4); // non-square -> minres's A.Rows!=A.Cols guard fires first
-            var b = arena.fProxyVec(3);
-            var x = arena.fProxyVec(3);
-            var y  = arena.fProxyVec(3); var r1 = arena.fProxyVec(3); var r2 = arena.fProxyVec(3);
-            var v  = arena.fProxyVec(3); var w  = arena.fProxyVec(3);
-            var w1 = arena.fProxyVec(3); var w2 = arena.fProxyVec(3);
-            Assert.Throws<ArgumentException>(() =>
-                Krylov.minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, 3, Consts.fProxySqrtEps));
-        }
-        finally { arena.Dispose(); }
+        var A = new fProxyMxN(3, 4, Allocator.Temp); // non-square -> minres's A.Rows!=A.Cols guard fires first
+        var b = new fProxyN(3, Allocator.Temp);
+        var x = new fProxyN(3, Allocator.Temp);
+        var y  = new fProxyN(3, Allocator.Temp); var r1 = new fProxyN(3, Allocator.Temp); var r2 = new fProxyN(3, Allocator.Temp);
+        var v  = new fProxyN(3, Allocator.Temp); var w  = new fProxyN(3, Allocator.Temp);
+        var w1 = new fProxyN(3, Allocator.Temp); var w2 = new fProxyN(3, Allocator.Temp);
+        Assert.Throws<ArgumentException>(() =>
+            Krylov.minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, 3, Consts.fProxySqrtEps));
     }
 
     [Test]
     public void Minres_AliasingR1AndR2_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            const int dim = 4;
-            var A = arena.fProxyMat(dim, dim); // square; guard fires before A is read
-            var b = arena.fProxyRandomVec(dim, -1f, 1f, 39001);
-            var x = arena.fProxyVec(dim);
-            var y  = arena.fProxyVec(dim);
-            var r1 = arena.fProxyVec(dim);
-            var v  = arena.fProxyVec(dim);
-            var w  = arena.fProxyVec(dim);
-            var w1 = arena.fProxyVec(dim);
-            var w2 = arena.fProxyVec(dim);
-            var r2Alias = r1; // r2 aliases r1
-            Assert.Throws<ArgumentException>(() =>
-                Krylov.minres(in A, in b, ref x, ref y, ref r1, ref r2Alias, ref v, ref w, ref w1, ref w2, dim, Consts.fProxySqrtEps));
-        }
-        finally { arena.Dispose(); }
+        const int dim = 4;
+        var A = new fProxyMxN(dim, dim, Allocator.Temp); // square; guard fires before A is read
+        var b = GenerateOP.fProxyRandomVec(dim, -1f, 1f, 39001);
+        var x = new fProxyN(dim, Allocator.Temp);
+        var y  = new fProxyN(dim, Allocator.Temp);
+        var r1 = new fProxyN(dim, Allocator.Temp);
+        var v  = new fProxyN(dim, Allocator.Temp);
+        var w  = new fProxyN(dim, Allocator.Temp);
+        var w1 = new fProxyN(dim, Allocator.Temp);
+        var w2 = new fProxyN(dim, Allocator.Temp);
+        var r2Alias = r1; // r2 aliases r1
+        Assert.Throws<ArgumentException>(() =>
+            Krylov.minres(in A, in b, ref x, ref y, ref r1, ref r2Alias, ref v, ref w, ref w1, ref w2, dim, Consts.fProxySqrtEps));
     }
 
     [Test]
     public void BiCGStab_AliasingXAndB_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            const int dim = 4;
-            var A = arena.fProxyMat(dim, dim);
-            var b = arena.fProxyRandomVec(dim, -1f, 1f, 39101);
-            var xAlias = b; // x aliases b (struct copy shares Data.Ptr)
-            var r = arena.fProxyVec(dim); var rHat0 = arena.fProxyVec(dim); var p = arena.fProxyVec(dim);
-            var v = arena.fProxyVec(dim); var t = arena.fProxyVec(dim);
-            Assert.Throws<ArgumentException>(() =>
-                Krylov.biCGStab(in A, in b, ref xAlias, ref r, ref rHat0, ref p, ref v, ref t, dim, Consts.fProxySqrtEps));
-        }
-        finally { arena.Dispose(); }
+        const int dim = 4;
+        var A = new fProxyMxN(dim, dim, Allocator.Temp);
+        var b = GenerateOP.fProxyRandomVec(dim, -1f, 1f, 39101);
+        var xAlias = b; // x aliases b (struct copy shares Data.Ptr)
+        var r = new fProxyN(dim, Allocator.Temp); var rHat0 = new fProxyN(dim, Allocator.Temp); var p = new fProxyN(dim, Allocator.Temp);
+        var v = new fProxyN(dim, Allocator.Temp); var t = new fProxyN(dim, Allocator.Temp);
+        Assert.Throws<ArgumentException>(() =>
+            Krylov.biCGStab(in A, in b, ref xAlias, ref r, ref rHat0, ref p, ref v, ref t, dim, Consts.fProxySqrtEps));
     }
 
     [Test]
     public void Lsqr_AliasingUAndTmpM_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            int m = 5, n = 3;
-            var A = arena.fProxyMat(m, n);
-            var b = arena.fProxyRandomVec(m, -1f, 1f, 39301);
-            var x = arena.fProxyVec(n);
-            var u = arena.fProxyVec(m);
-            var v = arena.fProxyVec(n);
-            var w = arena.fProxyVec(n);
-            var tmpN = arena.fProxyVec(n);
-            var tmpMAlias = u; // tmpM aliases u (both length m)
-            Assert.Throws<ArgumentException>(() =>
-                Krylov.lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpMAlias, ref tmpN, n, Consts.fProxySqrtEps));
-        }
-        finally { arena.Dispose(); }
+        int m = 5, n = 3;
+        var A = new fProxyMxN(m, n, Allocator.Temp);
+        var b = GenerateOP.fProxyRandomVec(m, -1f, 1f, 39301);
+        var x = new fProxyN(n, Allocator.Temp);
+        var u = new fProxyN(m, Allocator.Temp);
+        var v = new fProxyN(n, Allocator.Temp);
+        var w = new fProxyN(n, Allocator.Temp);
+        var tmpN = new fProxyN(n, Allocator.Temp);
+        var tmpMAlias = u; // tmpM aliases u (both length m)
+        Assert.Throws<ArgumentException>(() =>
+            Krylov.lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpMAlias, ref tmpN, n, Consts.fProxySqrtEps));
     }
 
     [Test]
     public void Lsmr_AliasingHAndHbar_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            int m = 5, n = 3;
-            var A = arena.fProxyMat(m, n);
-            var b = arena.fProxyRandomVec(m, -1f, 1f, 39401);
-            var x = arena.fProxyVec(n);
-            var u = arena.fProxyVec(m);
-            var v = arena.fProxyVec(n);
-            var h = arena.fProxyVec(n);
-            var tmpM = arena.fProxyVec(m);
-            var tmpN = arena.fProxyVec(n);
-            var hbarAlias = h; // hbar aliases h (both length n)
-            Assert.Throws<ArgumentException>(() =>
-                Krylov.lsmr(in A, in b, ref x, ref u, ref v, ref h, ref hbarAlias, ref tmpM, ref tmpN, n, Consts.fProxySqrtEps));
-        }
-        finally { arena.Dispose(); }
+        int m = 5, n = 3;
+        var A = new fProxyMxN(m, n, Allocator.Temp);
+        var b = GenerateOP.fProxyRandomVec(m, -1f, 1f, 39401);
+        var x = new fProxyN(n, Allocator.Temp);
+        var u = new fProxyN(m, Allocator.Temp);
+        var v = new fProxyN(n, Allocator.Temp);
+        var h = new fProxyN(n, Allocator.Temp);
+        var tmpM = new fProxyN(m, Allocator.Temp);
+        var tmpN = new fProxyN(n, Allocator.Temp);
+        var hbarAlias = h; // hbar aliases h (both length n)
+        Assert.Throws<ArgumentException>(() =>
+            Krylov.lsmr(in A, in b, ref x, ref u, ref v, ref h, ref hbarAlias, ref tmpM, ref tmpN, n, Consts.fProxySqrtEps));
     }
 
 }

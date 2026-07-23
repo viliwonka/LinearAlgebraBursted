@@ -65,25 +65,25 @@ public class floatFGMRESTests
 
         // Dense nonsymmetric, diagonally dominant (well-conditioned, nonsingular): random entries +
         // a heavy diagonal. Not symmetric (random off-diagonals differ across the diagonal).
-        static floatMxN DenseNonsym(ref Arena arena, int n, uint seed)
+        static floatMxN DenseNonsym(int n, uint seed)
         {
-            var A = arena.floatRandomMat(n, n, -1f, 1f, seed);
+            var A = GenerateOP.floatRandomMat(n, n, -1f, 1f, seed);
             for (int i = 0; i < n; i++) A[i, i] += (float)(2 * n);
             return A;
         }
 
         // Scalar 1D convection-diffusion (BR=1): diagonal 6, super -1, sub -3 -- nonsymmetric,
         // diagonally dominant. Full storage.
-        static floatBSR ConvDiff1D(ref Arena arena, int n)
+        static floatBSR ConvDiff1D(int n)
         {
-            var b = arena.floatBSRBuilder(n, n, 1, 1, 3 * n);
+            var b = new floatBSRBuilder(n, n, 1, 1, Allocator.Temp, 3 * n);
             for (int i = 0; i < n; i++)
             {
                 b.AddValue(i, i, (float)6);
                 if (i > 0) b.AddValue(i, i - 1, (float)(-3));
                 if (i < n - 1) b.AddValue(i, i + 1, (float)(-1));
             }
-            return b.ToBSR(ref arena);
+            return b.ToBSR(Allocator.Temp);
         }
 
         public void Execute()
@@ -104,16 +104,15 @@ public class floatFGMRESTests
         // close. Assert exact equality on iterations, rnorm, and every x component.
         void MatchesGmresConstantPrecond()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 150;
-            var A = ConvDiff1D(ref arena, n);
-            var b = arena.floatRandomVec(n, -1f, 1f, 0xFA01u);
-            var M = arena.floatBlockJacobi(in A);
+            var A = ConvDiff1D(n);
+            var b = GenerateOP.floatRandomVec(n, -1f, 1f, 0xFA01u);
+            var M = new floatBlockJacobi(in A, Allocator.Temp);
             var op = new floatBSROperator(in A);
             float tol = Tol();
 
-            var xG = arena.floatVec(n);
-            var xF = arena.floatVec(n);
+            var xG = new floatN(n, Allocator.Temp);
+            var xF = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) { xG[i] = (float)0; xF[i] = (float)0; }
 
             var gi = Krylov.gmres(in op, in M, in b, ref xG, 20, 8 * n, tol);
@@ -126,22 +125,19 @@ public class floatFGMRESTests
             Assert.IsTrue(fi.rnorm == gi.rnorm);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(xF[i] == xG[i]);
-
-            arena.Dispose();
         }
 
         // Unpreconditioned fgmres reduces to plain gmres under the IsIdentity fold: identical code
         // path (no Z workspace, solution accumulated straight into V), so bit-for-bit equal.
         void MatchesGmresIdentity()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 40;
-            var A = DenseNonsym(ref arena, n, 0xFA11u);
-            var xTrue = arena.floatRandomVec(n, -1f, 1f, 0xFA12u);
+            var A = DenseNonsym(n, 0xFA11u);
+            var xTrue = GenerateOP.floatRandomVec(n, -1f, 1f, 0xFA12u);
             var b = Blas.dot(A, xTrue);
 
-            var xG = arena.floatVec(n);
-            var xF = arena.floatVec(n);
+            var xG = new floatN(n, Allocator.Temp);
+            var xF = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) { xG[i] = (float)0; xF[i] = (float)0; }
 
             var gi = Krylov.gmres(in A, in b, ref xG, n, 4 * n, Tol());
@@ -153,63 +149,52 @@ public class floatFGMRESTests
             Assert.AreEqual(gi.iterations, fi.iterations);
             Assert.AreEqual(gi.rnorm, fi.rnorm);
             for (int i = 0; i < n; i++) Assert.IsTrue(xG[i] == xF[i]);
-
-            arena.Dispose();
         }
 
         void KnownSolutionRecovery()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 120;
-            var A = ConvDiff1D(ref arena, n);
-            var xTrue = arena.floatRandomVec(n, -1f, 1f, 0xFA21u);
+            var A = ConvDiff1D(n);
+            var xTrue = GenerateOP.floatRandomVec(n, -1f, 1f, 0xFA21u);
             var b = BSR.spMV(in A, in xTrue);
 
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (float)0;
             var info = Krylov.fgmres(in A, in b, ref x, 40, 4 * n, Tol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(floatKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
-
-            arena.Dispose();
         }
 
         // A restart well below n must still converge (multiple restart cycles).
         void RestartConverges()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 120;
-            var A = ConvDiff1D(ref arena, n);
-            var b = arena.floatRandomVec(n, -1f, 1f, 0xFA31u);
+            var A = ConvDiff1D(n);
+            var b = GenerateOP.floatRandomVec(n, -1f, 1f, 0xFA31u);
 
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (float)0;
             var info = Krylov.fgmres(in A, in b, ref x, 10, 20 * n, Tol());   // restart 10 << n
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(floatKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
-
-            arena.Dispose();
         }
 
         void VariableInnerGmresConverges()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 150;
-            var A = ConvDiff1D(ref arena, n);
-            var b = arena.floatRandomVec(n, -1f, 1f, 0xFA41u);
+            var A = ConvDiff1D(n);
+            var b = GenerateOP.floatRandomVec(n, -1f, 1f, 0xFA41u);
             var op = new floatBSROperator(in A);
             var M = new InnerGmresPreconditioner(in A, 5, 3);   // 3 fixed unpreconditioned-GMRES steps
 
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (float)0;
 
             var info = Krylov.fgmres(in op, in M, in b, ref x, 20, 8 * n, Tol());
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(floatKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
-
-            arena.Dispose();
         }
     }
 

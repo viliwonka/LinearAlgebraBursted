@@ -49,101 +49,98 @@ public class floatSVDThinValuesWorkspaceTests
         // thin scratch overload must match the allocating wrapper.
         void SvdThinEquiv(int m, int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A0 = arena.floatRandomMat(m, n, -5f, 5f, 55123);
+            var A0 = GenerateOP.floatRandomMat(m, n, -5f, 5f, 55123, allocator: Allocator.Temp);
             for (int d = 0; d < n; d++)   // boost leading diagonal block for conditioning
                 A0[d, d] += (float)10f;
 
             // allocating reference
             var Aa = A0.Copy();
-            var Ua = arena.floatMat(m, n);
-            var Sa = arena.floatVec(n);
-            var Va = arena.floatMat(n, n);
+            var Ua = new floatMxN(m, n, Allocator.Temp);
+            var Sa = new floatN(n, Allocator.Temp);
+            var Va = new floatMxN(n, n, Allocator.Temp);
             bool oka = SVD.thin(in Aa, ref Ua, ref Sa, ref Va);
 
             // workspace-struct form (default maxIter/eps) must match the allocating form
             var Ab = A0.Copy();
-            var Ub = arena.floatMat(m, n);
-            var Sb = arena.floatVec(n);
-            var Vb = arena.floatMat(n, n);
-            var ws = arena.floatSVDThinCache(m, n);
+            var Ub = new floatMxN(m, n, Allocator.Temp);
+            var Sb = new floatN(n, Allocator.Temp);
+            var Vb = new floatMxN(n, n, Allocator.Temp);
+            var ws = new floatSVDThinCache(m, n, Allocator.Temp);
             bool okb = SVD.thin(in Ab, ref Ub, ref Sb, ref Vb, ref ws);
 
             Assert.IsTrue(oka == okb);
-            Assert.IsTrue(Analysis.isZero(Sa - Sb, Tol()));
-            Assert.IsTrue(Analysis.isZero(Ua - Ub, Tol()));
-            Assert.IsTrue(Analysis.isZero(Va - Vb, Tol()));
-
-            arena.Dispose();
+            var SDiff = new floatN(in Sa, Allocator.Temp); SDiff.subInPlace(Sb);
+            Assert.IsTrue(Analysis.isZero(SDiff, Tol()));
+            var UDiff = new floatMxN(in Ua, Allocator.Temp); UDiff.subInPlace(Ub);
+            Assert.IsTrue(Analysis.isZero(UDiff, Tol()));
+            var VDiff = new floatMxN(in Va, Allocator.Temp); VDiff.subInPlace(Vb);
+            Assert.IsTrue(Analysis.isZero(VDiff, Tol()));
         }
 
         // values scratch overload must match the allocating wrapper.
         void SvdValuesEquiv(int m, int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A0 = arena.floatRandomMat(m, n, -5f, 5f, 90210);
+            var A0 = GenerateOP.floatRandomMat(m, n, -5f, 5f, 90210, allocator: Allocator.Temp);
             for (int d = 0; d < n; d++)
                 A0[d, d] += (float)10f;
 
-            var Sa = arena.floatVec(n);
+            var Sa = new floatN(n, Allocator.Temp);
             bool oka = SVD.values(in A0, ref Sa);
 
-            var Sb = arena.floatVec(n);
-            var ws = arena.floatSVDValuesCache(m, n);
+            var Sb = new floatN(n, Allocator.Temp);
+            var ws = new floatSVDValuesCache(m, n, Allocator.Temp);
             bool okb = SVD.values(in A0, ref Sb, ref ws);
 
             Assert.IsTrue(oka == okb);
-            Assert.IsTrue(Analysis.isZero(Sa - Sb, Tol()));
-
-            arena.Dispose();
+            var SDiff = new floatN(in Sa, Allocator.Temp); SDiff.subInPlace(Sb);
+            Assert.IsTrue(Analysis.isZero(SDiff, Tol()));
         }
 
         // Reuse ONE workspace (of each kind) across several consecutive solves: each solve must
         // match a fresh allocating solve, proving no stale state survives reuse.
         void WorkspaceReuse()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 8, n = 4;
 
-            var thinWs = arena.floatSVDThinCache(m, n);     // allocated ONCE, reused below
-            var valuesWs = arena.floatSVDValuesCache(m, n); // allocated ONCE, reused below
+            var thinWs = new floatSVDThinCache(m, n, Allocator.Temp);     // allocated ONCE, reused below
+            var valuesWs = new floatSVDValuesCache(m, n, Allocator.Temp); // allocated ONCE, reused below
 
             for (int t = 0; t < 3; t++)
             {
-                var A0 = arena.floatRandomMat(m, n, -5f, 5f, (uint)(2000 + t * 11));
+                var A0 = GenerateOP.floatRandomMat(m, n, -5f, 5f, (uint)(2000 + t * 11), allocator: Allocator.Temp);
                 for (int d = 0; d < n; d++)
                     A0[d, d] += (float)10f;
 
                 // thin: allocating reference vs reused workspace
                 var Aa = A0.Copy();
-                var Ua = arena.floatMat(m, n);
-                var Sa = arena.floatVec(n);
-                var Va = arena.floatMat(n, n);
+                var Ua = new floatMxN(m, n, Allocator.Temp);
+                var Sa = new floatN(n, Allocator.Temp);
+                var Va = new floatMxN(n, n, Allocator.Temp);
                 SVD.thin(in Aa, ref Ua, ref Sa, ref Va);
 
                 var Aw = A0.Copy();
-                var Uw = arena.floatMat(m, n);
-                var Sw = arena.floatVec(n);
-                var Vw = arena.floatMat(n, n);
+                var Uw = new floatMxN(m, n, Allocator.Temp);
+                var Sw = new floatN(n, Allocator.Temp);
+                var Vw = new floatMxN(n, n, Allocator.Temp);
                 SVD.thin(in Aw, ref Uw, ref Sw, ref Vw, ref thinWs);
 
-                Assert.IsTrue(Analysis.isZero(Sa - Sw, Tol()));
-                Assert.IsTrue(Analysis.isZero(Ua - Uw, Tol()));
-                Assert.IsTrue(Analysis.isZero(Va - Vw, Tol()));
+                var SDiff = new floatN(in Sa, Allocator.Temp); SDiff.subInPlace(Sw);
+                Assert.IsTrue(Analysis.isZero(SDiff, Tol()));
+                var UDiff = new floatMxN(in Ua, Allocator.Temp); UDiff.subInPlace(Uw);
+                Assert.IsTrue(Analysis.isZero(UDiff, Tol()));
+                var VDiff = new floatMxN(in Va, Allocator.Temp); VDiff.subInPlace(Vw);
+                Assert.IsTrue(Analysis.isZero(VDiff, Tol()));
 
                 // values: allocating reference vs reused workspace
-                var Sva = arena.floatVec(n);
+                var Sva = new floatN(n, Allocator.Temp);
                 SVD.values(in A0, ref Sva);
 
-                var Svw = arena.floatVec(n);
+                var Svw = new floatN(n, Allocator.Temp);
                 SVD.values(in A0, ref Svw, ref valuesWs);
 
-                Assert.IsTrue(Analysis.isZero(Sva - Svw, Tol()));
+                var SvDiff = new floatN(in Sva, Allocator.Temp); SvDiff.subInPlace(Svw);
+                Assert.IsTrue(Analysis.isZero(SvDiff, Tol()));
             }
-
-            arena.Dispose();
         }
     }
 
@@ -160,77 +157,58 @@ public class floatSVDThinValuesWorkspaceTests
     [Test]
     public void SvdThin_BadScratchB_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = arena.floatMat(6, 4);
-            var U = arena.floatMat(6, 4);
-            var S = arena.floatVec(4);
-            var V = arena.floatMat(4, 4);
-            var ws = arena.floatSVDThinCache(6, 4);
-            ws.B = arena.floatMat(3, 3);   // wrong: must be 4 x 4
-            Assert.Throws<ArgumentException>(() => SVD.thin(in A, ref U, ref S, ref V, ref ws));
-        }
-        finally { arena.Dispose(); }
+        var A = new floatMxN(6, 4, Allocator.Temp);
+        var U = new floatMxN(6, 4, Allocator.Temp);
+        var S = new floatN(4, Allocator.Temp);
+        var V = new floatMxN(4, 4, Allocator.Temp);
+        var ws = new floatSVDThinCache(6, 4, Allocator.Temp);
+        ws.B = new floatMxN(3, 3, Allocator.Temp);   // wrong: must be 4 x 4
+        Assert.Throws<ArgumentException>(() => SVD.thin(in A, ref U, ref S, ref V, ref ws));
     }
 
     [Test]
     public void SvdThin_BadScratchUt_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = arena.floatMat(6, 4);
-            var U = arena.floatMat(6, 4);
-            var S = arena.floatVec(4);
-            var V = arena.floatMat(4, 4);
-            var ws = arena.floatSVDThinCache(6, 4);
-            ws.Ut = arena.floatMat(4, 5);  // wrong: must be n x m = 4 x 6
-            Assert.Throws<ArgumentException>(() => SVD.thin(in A, ref U, ref S, ref V, ref ws));
-        }
-        finally { arena.Dispose(); }
+        var A = new floatMxN(6, 4, Allocator.Temp);
+        var U = new floatMxN(6, 4, Allocator.Temp);
+        var S = new floatN(4, Allocator.Temp);
+        var V = new floatMxN(4, 4, Allocator.Temp);
+        var ws = new floatSVDThinCache(6, 4, Allocator.Temp);
+        ws.Ut = new floatMxN(4, 5, Allocator.Temp);  // wrong: must be n x m = 4 x 6
+        Assert.Throws<ArgumentException>(() => SVD.thin(in A, ref U, ref S, ref V, ref ws));
     }
 
     [Test]
     public void SvdValues_BadScratchD_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = arena.floatMat(6, 4);
-            var S = arena.floatVec(4);
-            var ws = arena.floatSVDValuesCache(6, 4);
-            ws.dVec = arena.floatVec(3);   // wrong: must be length 4
-            Assert.Throws<ArgumentException>(() => SVD.values(in A, ref S, ref ws));
-        }
-        finally { arena.Dispose(); }
+        var A = new floatMxN(6, 4, Allocator.Temp);
+        var S = new floatN(4, Allocator.Temp);
+        var ws = new floatSVDValuesCache(6, 4, Allocator.Temp);
+        ws.dVec = new floatN(3, Allocator.Temp);   // wrong: must be length 4
+        Assert.Throws<ArgumentException>(() => SVD.values(in A, ref S, ref ws));
     }
 
-    // Arena.floatSVDThinCache(m, n) / floatSVDValuesCache(m, n) must size every field for m x n.
+    // Standalone floatSVDThinCache(m, n, allocator) / floatSVDValuesCache(m, n, allocator) must
+    // size every field for m x n.
     [Test]
     public void SvdThinValuesWorkspace_Factory_SizesCorrectly()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var thinWs = arena.floatSVDThinCache(7, 4);
-            Assert.AreEqual(4, thinWs.B.M_Rows);
-            Assert.AreEqual(4, thinWs.B.N_Cols);
-            Assert.AreEqual(4, thinWs.dVec.N);
-            Assert.AreEqual(4, thinWs.eVec.N);
-            Assert.AreEqual(4, thinWs.Ut.M_Rows);
-            Assert.AreEqual(7, thinWs.Ut.N_Cols);
-            Assert.AreEqual(4, thinWs.Vt.M_Rows);
-            Assert.AreEqual(4, thinWs.Vt.N_Cols);
-            Assert.AreEqual(7, thinWs.BidiagWs.W.M_Rows);
-            Assert.AreEqual(4, thinWs.BidiagWs.W.N_Cols);
+        var thinWs = new floatSVDThinCache(7, 4, Allocator.Temp);
+        Assert.AreEqual(4, thinWs.B.M_Rows);
+        Assert.AreEqual(4, thinWs.B.N_Cols);
+        Assert.AreEqual(4, thinWs.dVec.N);
+        Assert.AreEqual(4, thinWs.eVec.N);
+        Assert.AreEqual(4, thinWs.Ut.M_Rows);
+        Assert.AreEqual(7, thinWs.Ut.N_Cols);
+        Assert.AreEqual(4, thinWs.Vt.M_Rows);
+        Assert.AreEqual(4, thinWs.Vt.N_Cols);
+        Assert.AreEqual(7, thinWs.BidiagWs.W.M_Rows);
+        Assert.AreEqual(4, thinWs.BidiagWs.W.N_Cols);
 
-            var valuesWs = arena.floatSVDValuesCache(7, 4);
-            Assert.AreEqual(4, valuesWs.dVec.N);
-            Assert.AreEqual(4, valuesWs.eVec.N);
-            Assert.AreEqual(7, valuesWs.BidiagWs.W.M_Rows);
-            Assert.AreEqual(4, valuesWs.BidiagWs.W.N_Cols);
-        }
-        finally { arena.Dispose(); }
+        var valuesWs = new floatSVDValuesCache(7, 4, Allocator.Temp);
+        Assert.AreEqual(4, valuesWs.dVec.N);
+        Assert.AreEqual(4, valuesWs.eVec.N);
+        Assert.AreEqual(7, valuesWs.BidiagWs.W.M_Rows);
+        Assert.AreEqual(4, valuesWs.BidiagWs.W.N_Cols);
     }
 }

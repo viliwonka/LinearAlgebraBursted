@@ -109,69 +109,73 @@ namespace LinearAlgebra.Benchmarks
         // ---- full k-sweep for one size ----
         static void BenchSizeFloat(StringBuilder sb, int m, int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A         = arena.floatMat(m, n);
-            var sigmaTrue = arena.floatVec(n);
+            var A         = new floatMxN(m, n, Allocator.Persistent);
+            var sigmaTrue = new floatN(n, Allocator.Persistent);
 
             new SvdCmpBuildJobFloat { A = A, SigmaTrue = sigmaTrue, seed = SvdCmpFmt.BuildSeed }.Run();
             double normA = FNormFloat(A);
 
             // thin — k = n (full decomposition)
             {
-                var U = arena.floatMat(m, n);
-                var S = arena.floatVec(n);
-                var V = arena.floatMat(n, n);
+                var U = new floatMxN(m, n, Allocator.Persistent);
+                var S = new floatN(n, Allocator.Persistent);
+                var V = new floatMxN(n, n, Allocator.Persistent);
                 var job  = new SvdCmpThinJobFloat { A = A, U = U, S = S, V = V };
                 var stat = Bench.Time(() => job.Run());
                 double sigErr   = SigErrFloat(S, sigmaTrue, n);
                 double reconErr = ReconErrFloat(A, U, S, V, n, normA);
                 double eyOpt    = EYOptFloat(sigmaTrue, n, normA);
                 sb.AppendLine(SvdCmpFmt.CmpRow("float", "thin", m, n, n, stat, sigErr, reconErr, eyOpt));
+                U.Dispose(); S.Dispose(); V.Dispose();
             }
 
             foreach (int k in SvdCmpFmt.KVals(n))
             {
-                var Uk = arena.floatMat(m, k);
-                var Sk = arena.floatVec(k);
-                var Vk = arena.floatMat(n, k);
+                var Uk = new floatMxN(m, k, Allocator.Persistent);
+                var Sk = new floatN(k, Allocator.Persistent);
+                var Vk = new floatMxN(n, k, Allocator.Persistent);
 
                 // truncated (GKL)
                 {
-                    var ws   = arena.floatSVDTruncatedCache(m, n, k);
+                    var ws   = new floatSVDTruncatedCache(m, n, k, Allocator.Persistent);
                     var job  = new SvdCmpTruncJobFloat { A = A, Uk = Uk, Sk = Sk, Vk = Vk, k = k, ws = ws };
                     var stat = Bench.Time(() => job.Run());
                     double sigErr   = SigErrFloat(Sk, sigmaTrue, k);
                     double reconErr = ReconErrFloat(A, Uk, Sk, Vk, k, normA);
                     double eyOpt    = EYOptFloat(sigmaTrue, k, normA);
                     sb.AppendLine(SvdCmpFmt.CmpRow("float", "svdTrunc", m, n, k, stat, sigErr, reconErr, eyOpt));
+                    ws.Dispose();
                 }
 
                 // randomized (HMT, oversample=10 matches workspace default)
                 {
-                    var ws   = arena.floatSVDRandomizedCache(m, n, k);
+                    var ws   = new floatSVDRandomizedCache(m, n, k, Allocator.Persistent);
                     var job  = new SvdCmpRandJobFloat { A = A, Uk = Uk, Sk = Sk, Vk = Vk, k = k, ws = ws };
                     var stat = Bench.Time(() => job.Run());
                     double sigErr   = SigErrFloat(Sk, sigmaTrue, k);
                     double reconErr = ReconErrFloat(A, Uk, Sk, Vk, k, normA);
                     double eyOpt    = EYOptFloat(sigmaTrue, k, normA);
                     sb.AppendLine(SvdCmpFmt.CmpRow("float", "svdRand", m, n, k, stat, sigErr, reconErr, eyOpt));
+                    ws.Dispose();
                 }
+
+                Uk.Dispose(); Sk.Dispose(); Vk.Dispose();
             }
 
-            arena.Dispose();
+            A.Dispose();
+            sigmaTrue.Dispose();
         }
 
         static void BenchThinDedicatedFloat(StringBuilder sb, int m, int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A         = arena.floatMat(m, n);
-            var sigmaTrue = arena.floatVec(n);
+            var A         = new floatMxN(m, n, Allocator.Persistent);
+            var sigmaTrue = new floatN(n, Allocator.Persistent);
             new SvdCmpBuildJobFloat { A = A, SigmaTrue = sigmaTrue, seed = SvdCmpFmt.BuildSeed }.Run();
             double normA = FNormFloat(A);
 
-            var U = arena.floatMat(m, n);
-            var S = arena.floatVec(n);
-            var V = arena.floatMat(n, n);
+            var U = new floatMxN(m, n, Allocator.Persistent);
+            var S = new floatN(n, Allocator.Persistent);
+            var V = new floatMxN(n, n, Allocator.Persistent);
             var job  = new SvdCmpThinJobFloat { A = A, U = U, S = S, V = V };
             var stat = Bench.Time(() => job.Run());
             double sigErr   = SigErrFloat(S, sigmaTrue, n);
@@ -179,21 +183,21 @@ namespace LinearAlgebra.Benchmarks
             double eyOpt    = EYOptFloat(sigmaTrue, n, normA);
             sb.AppendLine(SvdCmpFmt.CmpRow("float", "svdThin", m, n, n, stat, sigErr, reconErr, eyOpt));
 
-            arena.Dispose();
+            A.Dispose(); sigmaTrue.Dispose();
+            U.Dispose(); S.Dispose(); V.Dispose();
         }
 
         static void BenchRandDedicatedFloat(StringBuilder sb, int m, int n, int k)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A         = arena.floatMat(m, n);
-            var sigmaTrue = arena.floatVec(n);
+            var A         = new floatMxN(m, n, Allocator.Persistent);
+            var sigmaTrue = new floatN(n, Allocator.Persistent);
             new SvdCmpBuildJobFloat { A = A, SigmaTrue = sigmaTrue, seed = SvdCmpFmt.BuildSeed }.Run();
             double normA = FNormFloat(A);
 
-            var Uk = arena.floatMat(m, k);
-            var Sk = arena.floatVec(k);
-            var Vk = arena.floatMat(n, k);
-            var ws   = arena.floatSVDRandomizedCache(m, n, k);
+            var Uk = new floatMxN(m, k, Allocator.Persistent);
+            var Sk = new floatN(k, Allocator.Persistent);
+            var Vk = new floatMxN(n, k, Allocator.Persistent);
+            var ws   = new floatSVDRandomizedCache(m, n, k, Allocator.Persistent);
             var job  = new SvdCmpRandJobFloat { A = A, Uk = Uk, Sk = Sk, Vk = Vk, k = k, ws = ws };
             var stat = Bench.Time(() => job.Run());
             double sigErr   = SigErrFloat(Sk, sigmaTrue, k);
@@ -201,21 +205,21 @@ namespace LinearAlgebra.Benchmarks
             double eyOpt    = EYOptFloat(sigmaTrue, k, normA);
             sb.AppendLine(SvdCmpFmt.CmpRow("float", "svdRand", m, n, k, stat, sigErr, reconErr, eyOpt));
 
-            arena.Dispose();
+            A.Dispose(); sigmaTrue.Dispose();
+            Uk.Dispose(); Sk.Dispose(); Vk.Dispose(); ws.Dispose();
         }
 
         static void BenchTrunc1024Float(StringBuilder sb, int m, int n, int k)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A         = arena.floatMat(m, n);
-            var sigmaTrue = arena.floatVec(n);
+            var A         = new floatMxN(m, n, Allocator.Persistent);
+            var sigmaTrue = new floatN(n, Allocator.Persistent);
             new SvdCmpBuildJobFloat { A = A, SigmaTrue = sigmaTrue, seed = SvdCmpFmt.BuildSeed }.Run();
             double normA = FNormFloat(A);
 
-            var Uk = arena.floatMat(m, k);
-            var Sk = arena.floatVec(k);
-            var Vk = arena.floatMat(n, k);
-            var ws   = arena.floatSVDTruncatedCache(m, n, k);
+            var Uk = new floatMxN(m, k, Allocator.Persistent);
+            var Sk = new floatN(k, Allocator.Persistent);
+            var Vk = new floatMxN(n, k, Allocator.Persistent);
+            var ws   = new floatSVDTruncatedCache(m, n, k, Allocator.Persistent);
             var job  = new SvdCmpTruncJobFloat { A = A, Uk = Uk, Sk = Sk, Vk = Vk, k = k, ws = ws };
             var stat = Bench.Time(() => job.Run());
             double sigErr   = SigErrFloat(Sk, sigmaTrue, k);
@@ -223,7 +227,8 @@ namespace LinearAlgebra.Benchmarks
             double eyOpt    = EYOptFloat(sigmaTrue, k, normA);
             sb.AppendLine(SvdCmpFmt.CmpRow("float", "svdTrunc", m, n, k, stat, sigErr, reconErr, eyOpt));
 
-            arena.Dispose();
+            A.Dispose(); sigmaTrue.Dispose();
+            Uk.Dispose(); Sk.Dispose(); Vk.Dispose(); ws.Dispose();
         }
 
         // ---- accuracy helpers (managed, not Burst) ----

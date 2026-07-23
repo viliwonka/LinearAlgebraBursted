@@ -11,7 +11,7 @@ using Unity.Collections;
 using Unity.Jobs;
 
 // Workspace-overload tests for Eigen.valuesSymmetricInPlace and its workspace doubleEigenSymCache
-// (Arena.doubleEigenSymCache(n)). eigenvaluesSymmetric DESTROYS its input matrix, so every call
+// (doubleEigenSymCache(n, Allocator)). eigenvaluesSymmetric DESTROYS its input matrix, so every call
 // runs on a private copy.
 //
 // The ws overload is the real body (caller-owned eVec/vVec/pVec); the allocating overload delegates
@@ -47,9 +47,9 @@ public class doubleEigenSymWorkspaceTests
         }
 
         // n x n random symmetric matrix.
-        static doubleMxN Symmetric(ref Arena arena, int n, uint seed)
+        static doubleMxN Symmetric(int n, uint seed)
         {
-            var A = arena.doubleRandomMat(n, n, (double)(-5f), (double)5f, seed);
+            var A = GenerateOP.doubleRandomMat(n, n, (double)(-5f), (double)5f, seed);
             for (int i = 0; i < n; i++)
                 for (int j = i + 1; j < n; j++)
                 {
@@ -62,53 +62,51 @@ public class doubleEigenSymWorkspaceTests
 
         void Equiv(int n, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = Symmetric(ref arena, n, seed);
+            var A = Symmetric(n, seed);
 
-            var Aa = A.Copy();
-            var eigA = arena.doubleVec(n);
+            var Aa = new doubleMxN(in A, Allocator.Temp);
+            var eigA = new doubleN(n, Allocator.Temp);
             bool okA = Eigen.valuesSymmetricInPlace(ref Aa, ref eigA);
 
-            var Aw = A.Copy();
-            var eigW = arena.doubleVec(n);
-            var ws = arena.doubleEigenSymCache(n);
+            var Aw = new doubleMxN(in A, Allocator.Temp);
+            var eigW = new doubleN(n, Allocator.Temp);
+            var ws = new doubleEigenSymCache(n, Allocator.Temp);
             bool okW = Eigen.valuesSymmetricInPlace(ref Aw, ref eigW, ref ws);
 
             Assert.IsTrue(okA == okW);
-            Assert.IsTrue(Analysis.isZero(eigA - eigW, Tol()));
-
-            arena.Dispose();
+            var diff = new doubleN(in eigA, Allocator.Temp);
+            doubleComp.subInPlace(diff, eigW);
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
         }
 
         void WorkspaceReuse()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 6;
 
-            var A1 = Symmetric(ref arena, n, 8801);
-            var A2 = Symmetric(ref arena, n, 9902);
+            var A1 = Symmetric(n, 8801);
+            var A2 = Symmetric(n, 9902);
 
-            var ws = arena.doubleEigenSymCache(n);   // allocated ONCE
+            var ws = new doubleEigenSymCache(n, Allocator.Temp);   // allocated ONCE
 
             // warm on A1
-            var A1c = A1.Copy();
-            var eig1 = arena.doubleVec(n);
+            var A1c = new doubleMxN(in A1, Allocator.Temp);
+            var eig1 = new doubleN(n, Allocator.Temp);
             Eigen.valuesSymmetricInPlace(ref A1c, ref eig1, ref ws);
 
             // reuse on A2
-            var A2w = A2.Copy();
-            var eigW = arena.doubleVec(n);
+            var A2w = new doubleMxN(in A2, Allocator.Temp);
+            var eigW = new doubleN(n, Allocator.Temp);
             bool okW = Eigen.valuesSymmetricInPlace(ref A2w, ref eigW, ref ws);
 
             // fresh allocating reference on A2
-            var A2a = A2.Copy();
-            var eigA = arena.doubleVec(n);
+            var A2a = new doubleMxN(in A2, Allocator.Temp);
+            var eigA = new doubleN(n, Allocator.Temp);
             bool okA = Eigen.valuesSymmetricInPlace(ref A2a, ref eigA);
 
             Assert.IsTrue(okW == okA);
-            Assert.IsTrue(Analysis.isZero(eigW - eigA, Tol()));
-
-            arena.Dispose();
+            var diff = new doubleN(in eigW, Allocator.Temp);
+            doubleComp.subInPlace(diff, eigA);
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
         }
     }
 
@@ -125,31 +123,21 @@ public class doubleEigenSymWorkspaceTests
     [Test]
     public void EigenSym_BadWorkspace_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            int n = 5;
-            var A = arena.doubleIdentityMat(n);   // symmetric -> passes the symmetry guard
-            var eig = arena.doubleVec(n);
-            var ws = arena.doubleEigenSymCache(n + 1);   // wrong n
-            Assert.Throws<ArgumentException>(
-                () => Eigen.valuesSymmetricInPlace(ref A, ref eig, ref ws));
-        }
-        finally { arena.Dispose(); }
+        int n = 5;
+        var A = GenerateOP.doubleIdentityMat(n);   // symmetric -> passes the symmetry guard
+        var eig = new doubleN(n, Allocator.Temp);
+        var ws = new doubleEigenSymCache(n + 1, Allocator.Temp);   // wrong n
+        Assert.Throws<ArgumentException>(
+            () => Eigen.valuesSymmetricInPlace(ref A, ref eig, ref ws));
     }
 
-    // Arena.doubleEigenSymCache(n): three length-n vectors.
+    // doubleEigenSymCache(n, Allocator): three length-n vectors.
     [Test]
     public void EigenSymWorkspace_Factory_SizesCorrectly()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var ws = arena.doubleEigenSymCache(7);
-            Assert.AreEqual(7, ws.eVec.N);
-            Assert.AreEqual(7, ws.vVec.N);
-            Assert.AreEqual(7, ws.pVec.N);
-        }
-        finally { arena.Dispose(); }
+        var ws = new doubleEigenSymCache(7, Allocator.Temp);
+        Assert.AreEqual(7, ws.eVec.N);
+        Assert.AreEqual(7, ws.vVec.N);
+        Assert.AreEqual(7, ws.pVec.N);
     }
 }

@@ -189,19 +189,18 @@ namespace LinearAlgebra.Benchmarks
     {
         public static (string id, uint hash)[] Case_EigenSymFloat()
         {
-            var arena = new Arena(Allocator.Persistent);
             const int n = 47; // floatWilkinsonPlus requires odd n >= 3
-            var W = arena.floatWilkinsonPlus(n);
+            var W = floatGallery.floatWilkinsonPlus(n, Allocator.Persistent);
 
-            var A1 = arena.floatMat(n, n);
-            var A2 = arena.floatMat(n, n);
+            var A1 = new floatMxN(n, n, Allocator.Persistent);
+            var A2 = new floatMxN(n, n, Allocator.Persistent);
             for (int r = 0; r < n; r++) for (int c = 0; c < n; c++) { A1[r, c] = W[r, c]; A2[r, c] = W[r, c]; }
 
-            var eigenvalues1 = arena.floatVec(n);
-            var eigenvalues2 = arena.floatVec(n);
-            var V = arena.floatMat(n, n);
-            var lws = arena.floatLanczosCache(n, n);
-            var lanczosEigenvalues = arena.floatVec(n);
+            var eigenvalues1 = new floatN(n, Allocator.Persistent);
+            var eigenvalues2 = new floatN(n, Allocator.Persistent);
+            var V = new floatMxN(n, n, Allocator.Persistent);
+            var lws = new floatLanczosCache(n, n, Allocator.Persistent);
+            var lanczosEigenvalues = new floatN(n, Allocator.Persistent);
 
             var hashOut = new NativeArray<uint>(3, Allocator.Persistent);
             var job = new DetEigenSymJobFloat
@@ -218,25 +217,25 @@ namespace LinearAlgebra.Benchmarks
                 ("eigen-sym/lanczos.float.n47", hashOut[2]),
             };
             hashOut.Dispose();
-            arena.Dispose();
+            W.Dispose(); A1.Dispose(); A2.Dispose(); eigenvalues1.Dispose(); eigenvalues2.Dispose();
+            V.Dispose(); lws.Dispose(); lanczosEigenvalues.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_EigenNonsymFloat()
         {
-            var arena = new Arena(Allocator.Persistent);
             const int n = 32;
-            var Frank = arena.floatFrank(n);
-            var Grcar = arena.floatGrcar(n);
-            var Spd = arena.floatLaplacian1D(n);
+            var Frank = floatGallery.floatFrank(n, Allocator.Persistent);
+            var Grcar = floatGallery.floatGrcar(n, allocator: Allocator.Persistent);
+            var Spd = floatGallery.floatLaplacian1D(n, Allocator.Persistent);
 
-            var Afrank = arena.floatMat(n, n);
+            var Afrank = new floatMxN(n, n, Allocator.Persistent);
             for (int r = 0; r < n; r++) for (int c = 0; c < n; c++) Afrank[r, c] = Frank[r, c];
-            var eigRe = arena.floatVec(n); var eigIm = arena.floatVec(n);
+            var eigRe = new floatN(n, Allocator.Persistent); var eigIm = new floatN(n, Allocator.Persistent);
 
-            var pv = arena.floatVec(n, (float)1); var pw = arena.floatVec(n);
-            var gv = arena.floatVec(n, (float)1); var gw = arena.floatVec(n);
-            var ipv = arena.floatVec(n, (float)1);
+            var pv = GenerateOP.floatVec(n, (float)1, Allocator.Persistent); var pw = new floatN(n, Allocator.Persistent);
+            var gv = GenerateOP.floatVec(n, (float)1, Allocator.Persistent); var gw = new floatN(n, Allocator.Persistent);
+            var ipv = GenerateOP.floatVec(n, (float)1, Allocator.Persistent);
 
             var hashOut = new NativeArray<uint>(4, Allocator.Persistent);
             var job = new DetEigenNonsymJobFloat
@@ -256,41 +255,41 @@ namespace LinearAlgebra.Benchmarks
                 ("eigen-nonsym/inversePowerIteration.float.spd.n32", hashOut[3]),
             };
             hashOut.Dispose();
-            arena.Dispose();
+            Frank.Dispose(); Grcar.Dispose(); Spd.Dispose(); Afrank.Dispose(); eigRe.Dispose(); eigIm.Dispose();
+            pv.Dispose(); pw.Dispose(); gv.Dispose(); gw.Dispose(); ipv.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_SvdFloat()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2654435761u ^ 0x000Bu);
 
             const int m = 53, n = 37, k = 16;
-            var A = arena.floatMat(m, n);
+            var A = new floatMxN(m, n, Allocator.Persistent);
             for (int r = 0; r < m; r++) for (int c = 0; c < n; c++) A[r, c] = rng.NextFloat(-1f, 1f);
 
-            var U = arena.floatMat(m, n); var S = arena.floatVec(n); var V = arena.floatMat(n, n);
-            var Svalues = arena.floatVec(n);
+            var U = new floatMxN(m, n, Allocator.Persistent); var S = new floatN(n, Allocator.Persistent); var V = new floatMxN(n, n, Allocator.Persistent);
+            var Svalues = new floatN(n, Allocator.Persistent);
 
-            var Uk = arena.floatMat(m, k); var Sk = arena.floatVec(k); var Vk = arena.floatMat(n, k);
-            var wsT = arena.floatSVDTruncatedCache(m, n, k);
+            var Uk = new floatMxN(m, k, Allocator.Persistent); var Sk = new floatN(k, Allocator.Persistent); var Vk = new floatMxN(n, k, Allocator.Persistent);
+            var wsT = new floatSVDTruncatedCache(m, n, k, Allocator.Persistent);
 
-            var Uk2 = arena.floatMat(m, k); var Sk2 = arena.floatVec(k); var Vk2 = arena.floatMat(n, k);
-            var wsR = arena.floatSVDRandomizedCache(m, n, k);
+            var Uk2 = new floatMxN(m, k, Allocator.Persistent); var Sk2 = new floatN(k, Allocator.Persistent); var Vk2 = new floatMxN(n, k, Allocator.Persistent);
+            var wsR = new floatSVDRandomizedCache(m, n, k, Allocator.Persistent);
 
-            var Apinv = arena.floatMat(m, n);
+            var Apinv = new floatMxN(m, n, Allocator.Persistent);
             for (int r = 0; r < m; r++) for (int c = 0; c < n; c++) Apinv[r, c] = A[r, c];
-            var bPinv = arena.floatVec(m); for (int i = 0; i < m; i++) bPinv[i] = rng.NextFloat(-1f, 1f);
-            var xPinv = arena.floatVec(n);
-            var wsS = arena.floatSVDCache(m, n);
+            var bPinv = new floatN(m, Allocator.Persistent); for (int i = 0; i < m; i++) bPinv[i] = rng.NextFloat(-1f, 1f);
+            var xPinv = new floatN(n, Allocator.Persistent);
+            var wsS = new floatSVDCache(m, n, Allocator.Persistent);
 
-            var Apinv2 = arena.floatMat(m, n);
+            var Apinv2 = new floatMxN(m, n, Allocator.Persistent);
             for (int r = 0; r < m; r++) for (int c = 0; c < n; c++) Apinv2[r, c] = A[r, c];
-            var Aplus = arena.floatMat(n, m);
-            var wsS2 = arena.floatSVDCache(m, n);
+            var Aplus = new floatMxN(n, m, Allocator.Persistent);
+            var wsS2 = new floatSVDCache(m, n, Allocator.Persistent);
 
-            var Lauchli = arena.floatLauchli(n, (float)1e-6);
-            var basis = arena.floatMat(n, n);
+            var Lauchli = floatGallery.floatLauchli(n, (float)1e-6, Allocator.Persistent);
+            var basis = new floatMxN(n, n, Allocator.Persistent);
 
             var hashOut = new NativeArray<uint>(7, Allocator.Persistent);
             var job = new DetSvdJobFloat
@@ -315,16 +314,20 @@ namespace LinearAlgebra.Benchmarks
                 ("svd/nullspaceBasis.float.lauchli.n37", hashOut[6]),
             };
             hashOut.Dispose();
-            arena.Dispose();
+            A.Dispose(); U.Dispose(); S.Dispose(); V.Dispose(); Svalues.Dispose();
+            Uk.Dispose(); Sk.Dispose(); Vk.Dispose(); wsT.Dispose();
+            Uk2.Dispose(); Sk2.Dispose(); Vk2.Dispose(); wsR.Dispose();
+            Apinv.Dispose(); bPinv.Dispose(); xPinv.Dispose(); wsS.Dispose();
+            Apinv2.Dispose(); Aplus.Dispose(); wsS2.Dispose();
+            Lauchli.Dispose(); basis.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_LobpcgFloat()
         {
-            var arena = new Arena(Allocator.Persistent);
             const int n = 48, k = 4;
-            var A = arena.floatLaplacian1D(n);
-            var ws = arena.floatLOBPCGCache(n, k);
+            var A = floatGallery.floatLaplacian1D(n, Allocator.Persistent);
+            var ws = new floatLOBPCGCache(n, k, Allocator.Persistent);
 
             var hashOut = new NativeArray<uint>(1, Allocator.Persistent);
             var job = new DetLobpcgJobFloat { A = A, ws = ws, K = k, HashOut = hashOut };
@@ -332,7 +335,7 @@ namespace LinearAlgebra.Benchmarks
 
             var result = new[] { ("lobpcg/lobpcg.float.laplacian1d.n48.k4", hashOut[0]) };
             hashOut.Dispose();
-            arena.Dispose();
+            A.Dispose(); ws.Dispose();
             return result;
         }
     }

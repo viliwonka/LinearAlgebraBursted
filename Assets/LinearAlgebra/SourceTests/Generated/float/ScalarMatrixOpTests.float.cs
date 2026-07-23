@@ -46,68 +46,57 @@ public class floatScalarMatrixOpTests
         // 0 / M is a valid operation (= 0 where M != 0); it must NOT throw.
         void ZeroDivMatrix()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.floatMat(2, 2);
+            var A = new floatMxN(2, 2, Allocator.Temp);
             A[0, 0] = (float)1; A[0, 1] = (float)2;
             A[1, 0] = (float)4; A[1, 1] = (float)5;
 
-            floatMxN R = (float)0 / A;   // must not throw DivideByZeroException
+            floatMxN R = A.Copy();
+            floatComp.divInPlace((float)0, R);   // must not throw DivideByZeroException
 
             AssertClose(R[0, 0], (float)0, (float)1E-6);
             AssertClose(R[0, 1], (float)0, (float)1E-6);
             AssertClose(R[1, 0], (float)0, (float)1E-6);
             AssertClose(R[1, 1], (float)0, (float)1E-6);
-
-            arena.Dispose();
         }
 
         // 5 - [[1,2],[3,4]] must be [[4,3],[2,1]] (NOT the negated [[-4,-3],[-2,-1]]).
         void ScalarMinusMatrix()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.floatMat(2, 2);
+            var A = new floatMxN(2, 2, Allocator.Temp);
             A[0, 0] = (float)1; A[0, 1] = (float)2;
             A[1, 0] = (float)3; A[1, 1] = (float)4;
 
-            floatMxN R = (float)5 - A;
+            floatMxN R = A.Copy();
+            floatComp.subInPlace((float)5, R);
 
             AssertClose(R[0, 0], (float)4, (float)1E-5);
             AssertClose(R[0, 1], (float)3, (float)1E-5);
             AssertClose(R[1, 0], (float)2, (float)1E-5);
             AssertClose(R[1, 1], (float)1, (float)1E-5);
 
-            // A must be unchanged (operator works on a copy)
+            // A must be unchanged (operates on a copy)
             AssertClose(A[0, 0], (float)1, (float)1E-6);
-
-            arena.Dispose();
         }
 
         // 5 - [1,2,3] must be [4,3,2] (the vector form was already correct; guard against regression).
         void ScalarMinusVector()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var v = arena.floatVec(3);
+            var v = new floatN(3, Allocator.Temp);
             v[0] = (float)1; v[1] = (float)2; v[2] = (float)3;
 
-            floatN r = (float)5 - v;
+            floatN r = v.Copy();
+            floatComp.subInPlace((float)5, r);
 
             AssertClose(r[0], (float)4, (float)1E-5);
             AssertClose(r[1], (float)3, (float)1E-5);
             AssertClose(r[2], (float)2, (float)1E-5);
-
-            arena.Dispose();
         }
 
         // L3 norm of [-1, 2, -2] = (|−1|³+|2|³+|−2|³)^(1/3) = 17^(1/3) ≈ 2.5713 — finite, no NaN.
         // (Without abs, (-1)³+2³+(-2)³ = -1 then (-1)^(1/3) = NaN.)
         void NormalizeLPNegatives()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var v = arena.floatVec(3);
+            var v = new floatN(3, Allocator.Temp);
             v[0] = (float)(-1); v[1] = (float)2; v[2] = (float)(-2);
 
             float norm = Norms.normalizeLP(in v, (float)3);
@@ -117,8 +106,6 @@ public class floatScalarMatrixOpTests
                 Fail[0] = (float)1; Fail[1] = norm; Fail[2] = (float)2.5713; Fail[3] = norm;
             }
             AssertClose(norm, (float)math.pow((float)17, (float)1 / (float)3), (float)1E-3);
-
-            arena.Dispose();
         }
 
         void AssertClose(float a, float b, float precision)

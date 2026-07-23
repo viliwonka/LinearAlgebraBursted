@@ -51,11 +51,10 @@ public class fProxyRollingWindowTests
         // Count×Features returns the right sample value (feature axis included, not just feature 0).
         void IndexerFeatureBounds()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var w = arena.fProxyRollingWindow(3, 2);
+            var w = new fProxyRollingWindow(3, 2, Allocator.Temp);
 
             // Distinct per (sample, feature) values: sample s, feature f -> 10*s + f.
-            var s = arena.fProxyVec(2);
+            var s = new fProxyN(2, Allocator.Temp);
             s[0] = 10f; s[1] = 11f; w.Push(in s); // sample 0
             s[0] = 20f; s[1] = 21f; w.Push(in s); // sample 1
             s[0] = 30f; s[1] = 31f; w.Push(in s); // sample 2
@@ -66,15 +65,12 @@ public class fProxyRollingWindowTests
             for (int i = 0; i < w.Count; i++)
                 for (int f = 0; f < w.Features; f++)
                     AssertClose(w[i, f], (fProxy)(10f * (i + 1) + f), 1E-6f);
-
-            arena.Dispose();
         }
 
-        // Helper: push a single 1-feature sample value. arena is taken by ref — fProxyVec mutates the
-        // arena's tracking list, so an `in` parameter would mutate a defensive copy instead.
-        static void Push1(ref fProxyRollingWindow w, ref Arena arena, fProxy v)
+        // Helper: push a single 1-feature sample value.
+        static void Push1(ref fProxyRollingWindow w, fProxy v)
         {
-            var s = arena.fProxyVec(1);
+            var s = new fProxyN(1, Allocator.Temp);
             s[0] = v;
             w.Push(in s);
         }
@@ -82,13 +78,12 @@ public class fProxyRollingWindowTests
         // Partly-filled window keeps insertion order; oldest=this[0], newest=this[Count-1].
         void PushAndOrderNotFull()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var w = arena.fProxyRollingWindow(4, 2);
+            var w = new fProxyRollingWindow(4, 2, Allocator.Temp);
 
             AssertTrue(w.IsEmpty);
             AssertEqI(0, w.Count);
 
-            var s = arena.fProxyVec(2);
+            var s = new fProxyN(2, Allocator.Temp);
             s[0] = 1f; s[1] = 10f; w.Push(in s);
             s[0] = 2f; s[1] = 20f; w.Push(in s);
             s[0] = 3f; s[1] = 30f; w.Push(in s);
@@ -101,38 +96,32 @@ public class fProxyRollingWindowTests
 
             AssertClose(w[0, 0], 1f, 1E-6f); AssertClose(w[0, 1], 10f, 1E-6f); // oldest
             AssertClose(w[2, 0], 3f, 1E-6f); AssertClose(w[2, 1], 30f, 1E-6f); // newest
-
-            arena.Dispose();
         }
 
         // Once full, Push overwrites the oldest; logical order stays oldest→newest.
         // cap=3, push 1..5 -> window holds [3,4,5].
         void WrapAroundOrder()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var w = arena.fProxyRollingWindow(3, 1);
+            var w = new fProxyRollingWindow(3, 1, Allocator.Temp);
 
             for (int v = 1; v <= 5; v++)
-                Push1(ref w, ref arena, (fProxy)v);
+                Push1(ref w, (fProxy)v);
 
             AssertTrue(w.IsFull);
             AssertEqI(3, w.Count);
             AssertClose(w[0, 0], 3f, 1E-6f);
             AssertClose(w[1, 0], 4f, 1E-6f);
             AssertClose(w[2, 0], 5f, 1E-6f);
-
-            arena.Dispose();
         }
 
         // AsMatrix is time-ordered (row 0 = oldest); ref form and allocating form agree.
         void AsMatrixTimeOrder()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var w = arena.fProxyRollingWindow(3, 1);
+            var w = new fProxyRollingWindow(3, 1, Allocator.Temp);
             for (int v = 1; v <= 5; v++) // wraps -> [3,4,5]
-                Push1(ref w, ref arena, (fProxy)v);
+                Push1(ref w, (fProxy)v);
 
-            var M = arena.fProxyMat(w.Count, w.Features);
+            var M = new fProxyMxN(w.Count, w.Features, Allocator.Temp);
             w.AsMatrix(ref M);
             AssertClose(M[0, 0], 3f, 1E-6f);
             AssertClose(M[1, 0], 4f, 1E-6f);
@@ -143,23 +132,20 @@ public class fProxyRollingWindowTests
             AssertEqI(1, Ma.N_Cols);
             for (int i = 0; i < 3; i++)
                 AssertClose(Ma[i, 0], M[i, 0], 0f);
-
-            arena.Dispose();
         }
 
         // Mean = per-feature moving average. cap=4 feat=2, push 4 -> mean; then wrap -> mean shifts.
         void MovingAverage()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var w = arena.fProxyRollingWindow(4, 2);
+            var w = new fProxyRollingWindow(4, 2, Allocator.Temp);
 
-            var s = arena.fProxyVec(2);
+            var s = new fProxyN(2, Allocator.Temp);
             s[0] = 1f; s[1] = 10f; w.Push(in s);
             s[0] = 2f; s[1] = 20f; w.Push(in s);
             s[0] = 3f; s[1] = 30f; w.Push(in s);
             s[0] = 4f; s[1] = 40f; w.Push(in s);
 
-            var m = arena.fProxyVec(2);
+            var m = new fProxyN(2, Allocator.Temp);
             w.Mean(ref m);
             AssertClose(m[0], 2.5f, 1E-5f);   // mean(1,2,3,4)
             AssertClose(m[1], 25f, 1E-5f);    // mean(10,20,30,40)
@@ -174,23 +160,20 @@ public class fProxyRollingWindowTests
             var ma = w.Mean();
             AssertClose(ma[0], 3.5f, 1E-5f);
             AssertClose(ma[1], 35f, 1E-5f);
-
-            arena.Dispose();
         }
 
         // window.Covariance() must equal StatsOP.covariance(window.AsMatrix()).
         // Samples {{1,2},{3,6},{5,4}} -> covariance {{4,2},{2,4}} (same oracle as StatsTests).
         void CovarianceMatchesStatsOP()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var w = arena.fProxyRollingWindow(3, 2);
+            var w = new fProxyRollingWindow(3, 2, Allocator.Temp);
 
-            var s = arena.fProxyVec(2);
+            var s = new fProxyN(2, Allocator.Temp);
             s[0] = 1f; s[1] = 2f; w.Push(in s);
             s[0] = 3f; s[1] = 6f; w.Push(in s);
             s[0] = 5f; s[1] = 4f; w.Push(in s);
 
-            var C = arena.fProxyMat(2, 2);
+            var C = new fProxyMxN(2, 2, Allocator.Temp);
             w.Covariance(ref C);
 
             AssertClose(C[0, 0], 4f, 1E-5f);
@@ -203,21 +186,18 @@ public class fProxyRollingWindowTests
             for (int i = 0; i < 2; i++)
                 for (int j = 0; j < 2; j++)
                     AssertClose(C[i, j], viaStats[i, j], 1E-5f);
-
-            arena.Dispose();
         }
 
         // GetSample copies a row; matches the [i,f] indexer.
         void GetSampleAndIndexer()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var w = arena.fProxyRollingWindow(3, 2);
+            var w = new fProxyRollingWindow(3, 2, Allocator.Temp);
 
-            var s = arena.fProxyVec(2);
+            var s = new fProxyN(2, Allocator.Temp);
             s[0] = 7f; s[1] = 8f; w.Push(in s);
             s[0] = 9f; s[1] = 1f; w.Push(in s);
 
-            var got = arena.fProxyVec(2);
+            var got = new fProxyN(2, Allocator.Temp);
             w.GetSample(0, ref got);
             AssertClose(got[0], w[0, 0], 0f);
             AssertClose(got[1], w[0, 1], 0f);
@@ -226,17 +206,14 @@ public class fProxyRollingWindowTests
             w.GetSample(1, ref got);
             AssertClose(got[0], 9f, 1E-6f);
             AssertClose(got[1], 1f, 1E-6f);
-
-            arena.Dispose();
         }
 
         // Clear empties logically without touching capacity/features.
         void ClearResets()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var w = arena.fProxyRollingWindow(3, 1);
-            Push1(ref w, ref arena, 1f);
-            Push1(ref w, ref arena, 2f);
+            var w = new fProxyRollingWindow(3, 1, Allocator.Temp);
+            Push1(ref w, 1f);
+            Push1(ref w, 2f);
             AssertEqI(2, w.Count);
 
             w.Clear();
@@ -245,11 +222,9 @@ public class fProxyRollingWindowTests
             AssertEqI(3, w.Capacity);
 
             // reusable after clear
-            Push1(ref w, ref arena, 9f);
+            Push1(ref w, 9f);
             AssertEqI(1, w.Count);
             AssertClose(w[0, 0], 9f, 1E-6f);
-
-            arena.Dispose();
         }
 
         // ---- Fail-array diagnostics (layout: [0]=flag, [1]=got, [2]=expected, [3]=diff) ----
@@ -317,55 +292,45 @@ public class fProxyRollingWindowTests
     [Test]
     public void FactoryBadDimsThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        Assert.Throws<ArgumentException>(() => arena.fProxyRollingWindow(0, 2));
-        Assert.Throws<ArgumentException>(() => arena.fProxyRollingWindow(4, 0));
-        arena.Dispose();
+        Assert.Throws<ArgumentException>(() => new fProxyRollingWindow(0, 2, Allocator.Temp));
+        Assert.Throws<ArgumentException>(() => new fProxyRollingWindow(4, 0, Allocator.Temp));
     }
 
     [Test]
     public void PushWrongLengthThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var w = arena.fProxyRollingWindow(4, 3);
-        var bad = arena.fProxyVec(2);
+        var w = new fProxyRollingWindow(4, 3, Allocator.Temp);
+        var bad = new fProxyN(2, Allocator.Temp);
         Assert.Throws<ArgumentException>(() => w.Push(in bad));
-        arena.Dispose();
     }
 
     [Test]
     public void CovarianceTooFewSamplesThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var w = arena.fProxyRollingWindow(4, 2);
-        var s = arena.fProxyVec(2);
+        var w = new fProxyRollingWindow(4, 2, Allocator.Temp);
+        var s = new fProxyN(2, Allocator.Temp);
         s[0] = 1f; s[1] = 2f; w.Push(in s); // only 1 sample
-        var C = arena.fProxyMat(2, 2);
+        var C = new fProxyMxN(2, 2, Allocator.Temp);
         Assert.Throws<InvalidOperationException>(() => w.Covariance(ref C));
-        arena.Dispose();
     }
 
     [Test]
     public void MeanEmptyThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var w = arena.fProxyRollingWindow(4, 2);
-        var m = arena.fProxyVec(2);
+        var w = new fProxyRollingWindow(4, 2, Allocator.Temp);
+        var m = new fProxyN(2, Allocator.Temp);
         Assert.Throws<InvalidOperationException>(() => w.Mean(ref m));
-        arena.Dispose();
     }
 
     [Test]
     public void AsMatrixWrongSizeThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var w = arena.fProxyRollingWindow(4, 2);
-        var s = arena.fProxyVec(2);
+        var w = new fProxyRollingWindow(4, 2, Allocator.Temp);
+        var s = new fProxyN(2, Allocator.Temp);
         s[0] = 1f; s[1] = 2f; w.Push(in s);
         s[0] = 3f; s[1] = 4f; w.Push(in s);
-        var wrong = arena.fProxyMat(3, 2); // Count is 2, not 3
+        var wrong = new fProxyMxN(3, 2, Allocator.Temp); // Count is 2, not 3
         Assert.Throws<ArgumentException>(() => w.AsMatrix(ref wrong));
-        arena.Dispose();
     }
 
     // The [i,f] indexer validates BOTH axes via Assume.IndexInsideBounds, which throws
@@ -376,9 +341,8 @@ public class fProxyRollingWindowTests
     [Test]
     public void IndexerFeatureOutOfRangeThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var w = arena.fProxyRollingWindow(3, 2);
-        var s = arena.fProxyVec(2);
+        var w = new fProxyRollingWindow(3, 2, Allocator.Temp);
+        var s = new fProxyN(2, Allocator.Temp);
         s[0] = 1f; s[1] = 2f; w.Push(in s);
         s[0] = 3f; s[1] = 4f; w.Push(in s);
 
@@ -386,16 +350,13 @@ public class fProxyRollingWindowTests
         Assert.Throws<ArgumentException>(() => { var _ = w[0, w.Features]; });
         // negative feature index also rejected.
         Assert.Throws<ArgumentException>(() => { var _ = w[0, -1]; });
-
-        arena.Dispose();
     }
 
     [Test]
     public void IndexerSampleOutOfRangeThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var w = arena.fProxyRollingWindow(3, 2);
-        var s = arena.fProxyVec(2);
+        var w = new fProxyRollingWindow(3, 2, Allocator.Temp);
+        var s = new fProxyN(2, Allocator.Temp);
         s[0] = 1f; s[1] = 2f; w.Push(in s);
         s[0] = 3f; s[1] = 4f; w.Push(in s);
 
@@ -403,8 +364,6 @@ public class fProxyRollingWindowTests
         Assert.Throws<ArgumentException>(() => { var _ = w[w.Count, 0]; });
         // negative sample index also rejected.
         Assert.Throws<ArgumentException>(() => { var _ = w[-1, 0]; });
-
-        arena.Dispose();
     }
 #endif
 }

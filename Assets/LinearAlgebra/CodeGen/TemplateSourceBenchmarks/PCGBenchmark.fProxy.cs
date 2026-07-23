@@ -231,10 +231,10 @@ namespace LinearAlgebra.Benchmarks
         // Scalar 5-point 2D Poisson (BR=1): unlike the block-tridiagonal gallery Laplacian2D, IC(0)
         // is a GENUINELY incomplete factorization here, so every point-preconditioner's iteration
         // count grows ~O(sqrt(N)) while AMG stays ~flat -- the fair grid-independence comparison.
-        static fProxyBSR ScalarPoisson2DFProxy(ref Arena arena, int gx, int gy)
+        static fProxyBSR ScalarPoisson2DFProxy(int gx, int gy)
         {
             int n = gx * gy;
-            var bld = arena.fProxyBSRBuilder(n, n, 1, 1, 5 * n);
+            var bld = new fProxyBSRBuilder(n, n, 1, 1, Allocator.Persistent, 5 * n);
             for (int y = 0; y < gy; y++)
                 for (int x = 0; x < gx; x++)
                 {
@@ -245,63 +245,64 @@ namespace LinearAlgebra.Benchmarks
                     if (y > 0) bld.AddValue(i, i - gx, (fProxy)(-1));
                     if (y < gy - 1) bld.AddValue(i, i + gx, (fProxy)(-1));
                 }
-            return bld.ToBSR(ref arena);
+            var result = bld.ToBSR(Allocator.Persistent);
+            bld.Dispose();
+            return result;
         }
 
         // kind: 0 = block Laplacian2D gallery, 1 = random-sparse SPD, 2 = scalar 5-point Poisson.
         static string BenchPrecondCoreFProxy(int p1, int p2, int kind, float density, uint seed = 0)
         {
             const string fmt = "{0,-7} {1,-6} {2,-12} {3,11:F4} {4,11:F4} {5,7} {6,14:E3}";
-            var arena = new Arena(Allocator.Persistent);
-            var A = kind == 0 ? arena.fProxyLaplacian2D(p1, p2)
-                  : kind == 1 ? arena.fProxyRandomSparseSPD(p1, p2, (fProxy)density, seed)
-                              : ScalarPoisson2DFProxy(ref arena, p1, p2);
+            var A = kind == 0 ? fProxyGallery.fProxyLaplacian2D(p1, p2, Allocator.Persistent)
+                  : kind == 1 ? fProxyGallery.fProxyRandomSparseSPD(p1, p2, (fProxy)density, seed, Allocator.Persistent)
+                              : ScalarPoisson2DFProxy(p1, p2);
             int n = A.M_Rows;
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0xC002Du);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0xC002Du, Allocator.Persistent);
             fProxy tol = Consts.fProxySqrtEps;
             int cap = 8 * n;
-            var iters = arena.Indices(1);
+            var iters = new Indices(1, Allocator.Persistent);
             var sb = new StringBuilder();
 
-            var x = arena.fProxyVec(n); var r = arena.fProxyVec(n); var p = arena.fProxyVec(n);
-            var Ap = arena.fProxyVec(n); var z = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Persistent); var r = new fProxyN(n, Allocator.Persistent); var p = new fProxyN(n, Allocator.Persistent);
+            var Ap = new fProxyN(n, Allocator.Persistent); var z = new fProxyN(n, Allocator.Persistent);
 
             var cgJob = new CgTolJobFProxy { A = A, b = b, x = x, r = r, p = p, Ap = Ap, K = cap, Tol = tol, Iters = iters };
             var cgStat = Bench.Time(() => cgJob.Run());
             sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                 "fProxy", n, "CG(plain)", cgStat.Median, cgStat.Min, iters[0], Residual(in A, in x, in b)));
 
-            var mJ = arena.fProxyBlockJacobi(in A);
+            var mJ = new fProxyBlockJacobi(in A, Allocator.Persistent);
             var jJob = new PcgJacobiTolJobFProxy { A = A, M = mJ, b = b, x = x, r = r, p = p, Ap = Ap, z = z, K = cap, Tol = tol, Iters = iters };
             var jStat = Bench.Time(() => jJob.Run());
             sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                 "fProxy", n, "PCG-Jacobi", jStat.Median, jStat.Min, iters[0], Residual(in A, in x, in b)));
 
-            var mS = arena.fProxySSOR(in A);
+            var mS = new fProxySSOR(in A, Allocator.Persistent);
             var sJob = new PcgSsorTolJobFProxy { A = A, M = mS, b = b, x = x, r = r, p = p, Ap = Ap, z = z, K = cap, Tol = tol, Iters = iters };
             var sStat = Bench.Time(() => sJob.Run());
             sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                 "fProxy", n, "PCG-SSOR", sStat.Median, sStat.Min, iters[0], Residual(in A, in x, in b)));
 
-            var mI = arena.fProxyIC0(in A);
+            var mI = new fProxyIC0(in A, Allocator.Persistent);
             var iJob = new PcgIC0TolJobFProxy { A = A, M = mI, b = b, x = x, r = r, p = p, Ap = Ap, z = z, K = cap, Tol = tol, Iters = iters };
             var iStat = Bench.Time(() => iJob.Run());
             sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                 "fProxy", n, "PCG-IC0", iStat.Median, iStat.Min, iters[0], Residual(in A, in x, in b)));
 
-            var mW = arena.fProxyAdditiveSchwarz(in A);
+            var mW = new fProxyAdditiveSchwarz(in A, Allocator.Persistent);
             var wJob = new PcgSchwarzTolJobFProxy { A = A, M = mW, b = b, x = x, r = r, p = p, Ap = Ap, z = z, K = cap, Tol = tol, Iters = iters };
             var wStat = Bench.Time(() => wJob.Run());
             sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                 "fProxy", n, "PCG-Schwarz", wStat.Median, wStat.Min, iters[0], Residual(in A, in x, in b)));
 
-            var mC = arena.fProxyChebyshev(in A);
+            var mC = new fProxyChebyshev(in A, Allocator.Persistent);
             var cJob = new PcgChebyshevTolJobFProxy { A = A, M = mC, b = b, x = x, r = r, p = p, Ap = Ap, z = z, K = cap, Tol = tol, Iters = iters };
             var cStat = Bench.Time(() => cJob.Run());
             sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                 "fProxy", n, "PCG-Cheby", cStat.Median, cStat.Min, iters[0], Residual(in A, in x, in b)));
 
-            var mF = arena.fProxyFSAI(in A);
+            var mF = new fProxyFSAI(in A, Allocator.Persistent);
             var fJob = new PcgFSAITolJobFProxy { A = A, M = mF, b = b, x = x, r = r, p = p, Ap = Ap, z = z, K = cap, Tol = tol, Iters = iters };
             var fStat = Bench.Time(() => fJob.Run());
             sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
@@ -309,7 +310,7 @@ namespace LinearAlgebra.Benchmarks
 
             // AMG hierarchy built once outside the timed solve (mirrors the other build-then-solve
             // rows); the solve times one V-cycle-preconditioned CG. Setup cost is not in this number.
-            var amgH = arena.fProxyAMG(in A, out _);
+            var amgH = new fProxyAMG(in A, out _, Allocator.Persistent);
             var mAmg = new fProxyAMGPreconditioner(in amgH);
             var aJob = new PcgAMGTolJobFProxy { A = A, M = mAmg, b = b, x = x, r = r, p = p, Ap = Ap, z = z, K = cap, Tol = tol, Iters = iters };
             var aStat = Bench.Time(() => aJob.Run());
@@ -318,8 +319,8 @@ namespace LinearAlgebra.Benchmarks
 
             // K-cycle AMG: per-level Krylov acceleration, driven by fcg (the K-cycle is a variable
             // operator). Compare its iteration count against PCG-AMG-V above.
-            var rOld = arena.fProxyVec(n);
-            var amgK = arena.fProxyAMG(in A, new AMGOptions { cycle = MGCycle.K, theta = 0, pre = 1, post = 1, coarseMax = 48, maxLevels = 20 }, out _);
+            var rOld = new fProxyN(n, Allocator.Persistent);
+            var amgK = new fProxyAMG(in A, new AMGOptions { cycle = MGCycle.K, theta = 0, pre = 1, post = 1, coarseMax = 48, maxLevels = 20 }, out _, Allocator.Persistent);
             var mAmgK = new fProxyAMGPreconditioner(in amgK);
             var akJob = new FcgAMGKTolJobFProxy { A = A, M = mAmgK, b = b, x = x, r = r, p = p, Ap = Ap, z = z, rOld = rOld, K = cap, Tol = tol, Iters = iters };
             var akStat = Bench.Time(() => akJob.Run());
@@ -328,22 +329,27 @@ namespace LinearAlgebra.Benchmarks
 
             amgK.Dispose();
             amgH.Dispose();
-            arena.Dispose();
+            A.Dispose();
+            b.Dispose();
+            iters.Dispose();
+            x.Dispose(); r.Dispose(); p.Dispose(); Ap.Dispose(); z.Dispose();
+            rOld.Dispose();
+            mJ.Dispose(); mS.Dispose(); mI.Dispose(); mW.Dispose(); mC.Dispose(); mF.Dispose();
             return sb.ToString();
         }
 
-        static void BuildTridiagBlockSPDFProxy(ref Arena arena, int NB, int BR, out fProxyBSR sparse, out int n)
+        static void BuildTridiagBlockSPDFProxy(int NB, int BR, out fProxyBSR sparse, out int n)
         {
             n = NB * BR;
             int nnzb = NB + 2 * (NB - 1);
-            var builder = arena.fProxyBSRBuilder(NB, NB, BR, BR, nnzb);
+            var builder = new fProxyBSRBuilder(NB, NB, BR, BR, Allocator.Persistent, nnzb);
             var rng = new Random(0x51ED270Bu);
 
             for (int i = 0; i < NB; i++)
             {
                 // Diagonal block must be SYMMETRIC (mirror the noise) or the assembled matrix
                 // is not actually SPD and the residual column loses its meaning.
-                var Di = arena.fProxyMat(BR, BR);
+                var Di = new fProxyMxN(BR, BR, Allocator.Persistent);
                 for (int r = 0; r < BR; r++)
                     for (int c = r; c < BR; c++)
                     {
@@ -352,24 +358,28 @@ namespace LinearAlgebra.Benchmarks
                         Di[c, r] = v;
                     }
                 builder.AddBlock(i, i, in Di);
+                Di.Dispose();
 
                 if (i > 0)
                 {
-                    var off = arena.fProxyMat(BR, BR);
+                    var off = new fProxyMxN(BR, BR, Allocator.Persistent);
                     for (int r = 0; r < BR; r++)
                         for (int c = 0; c < BR; c++)
                             off[r, c] = rng.NextFloat(-0.3f, 0.3f);
                     builder.AddBlock(i, i - 1, in off);
 
-                    var offT = arena.fProxyMat(BR, BR);
+                    var offT = new fProxyMxN(BR, BR, Allocator.Persistent);
                     for (int r = 0; r < BR; r++)
                         for (int c = 0; c < BR; c++)
                             offT[r, c] = off[c, r];
                     builder.AddBlock(i - 1, i, in offT);
+                    off.Dispose();
+                    offT.Dispose();
                 }
             }
 
-            sparse = builder.ToBSR(ref arena);
+            sparse = builder.ToBSR(Allocator.Persistent);
+            builder.Dispose();
         }
 
         static double Residual(in fProxyBSR A, in fProxyN x, in fProxyN b)
@@ -402,13 +412,12 @@ namespace LinearAlgebra.Benchmarks
         static string BenchJacobiBuildFProxy(int BR, int NB)
         {
             const string fmt = "{0,-7} {1,-6} {2,-3} {3,11:F4} {4,11:F4}";
-            var arena = new Arena(Allocator.Persistent);
-            BuildTridiagBlockSPDFProxy(ref arena, NB, BR, out var A, out int n);
+            BuildTridiagBlockSPDFProxy(NB, BR, out var A, out int n);
 
             var job = new JacobiBuildJobFProxy { A = A };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose();
             return string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                 "fProxy", n, BR, stat.Median, stat.Min);
         }
@@ -416,25 +425,28 @@ namespace LinearAlgebra.Benchmarks
         static string BenchFProxy(int BR, int NB, int K)
         {
             const string fmt = "{0,-7} {1,-6} {2,-12} {3,11:F4} {4,11:F4} {5,14:E3}";
-            var arena = new Arena(Allocator.Persistent);
-            BuildTridiagBlockSPDFProxy(ref arena, NB, BR, out var A, out int n);
-            var M = arena.fProxyBlockJacobi(in A);
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0xC001Du);
+            BuildTridiagBlockSPDFProxy(NB, BR, out var A, out int n);
+            var M = new fProxyBlockJacobi(in A, Allocator.Persistent);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0xC001Du, Allocator.Persistent);
 
-            var xCg = arena.fProxyVec(n); var rCg = arena.fProxyVec(n); var pCg = arena.fProxyVec(n); var ApCg = arena.fProxyVec(n);
+            var xCg = new fProxyN(n, Allocator.Persistent); var rCg = new fProxyN(n, Allocator.Persistent); var pCg = new fProxyN(n, Allocator.Persistent); var ApCg = new fProxyN(n, Allocator.Persistent);
             var cgJob = new CgBsrJobFProxy { A = A, b = b, x = xCg, r = rCg, p = pCg, Ap = ApCg, K = K };
             var cgStat = Bench.Time(() => cgJob.Run());
             var sb = new StringBuilder();
             sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                 "fProxy", n, "CG", cgStat.Median, cgStat.Min, Residual(in A, in xCg, in b)));
 
-            var xPcg = arena.fProxyVec(n); var rPcg = arena.fProxyVec(n); var pPcg = arena.fProxyVec(n); var ApPcg = arena.fProxyVec(n); var zPcg = arena.fProxyVec(n);
+            var xPcg = new fProxyN(n, Allocator.Persistent); var rPcg = new fProxyN(n, Allocator.Persistent); var pPcg = new fProxyN(n, Allocator.Persistent); var ApPcg = new fProxyN(n, Allocator.Persistent); var zPcg = new fProxyN(n, Allocator.Persistent);
             var pcgJob = new PcgBsrJobFProxy { A = A, M = M, b = b, x = xPcg, r = rPcg, p = pPcg, Ap = ApPcg, z = zPcg, K = K };
             var pcgStat = Bench.Time(() => pcgJob.Run());
             sb.Append(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                 "fProxy", n, "PCG-Jacobi", pcgStat.Median, pcgStat.Min, Residual(in A, in xPcg, in b)));
 
-            arena.Dispose();
+            A.Dispose();
+            M.Dispose();
+            b.Dispose();
+            xCg.Dispose(); rCg.Dispose(); pCg.Dispose(); ApCg.Dispose();
+            xPcg.Dispose(); rPcg.Dispose(); pPcg.Dispose(); ApPcg.Dispose(); zPcg.Dispose();
             return sb.ToString();
         }
     }

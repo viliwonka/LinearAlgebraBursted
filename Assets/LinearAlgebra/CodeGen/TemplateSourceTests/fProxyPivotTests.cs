@@ -31,52 +31,44 @@ public class fProxyPivotTests
 
         public void Execute()
         {
-            Arena arena = new Arena(Allocator.Temp);
-            try 
+            switch (Type)
             {
-                switch (Type) 
-                {
-                    case TestType.PivotSimpleTest:
-                        Test(ref arena);
-                        break;
-                    case TestType.RowPivotIdentityMatTest:
-                        RowIdentityMatTest(ref arena);
-                        break;
-                    case TestType.ColumnPivotIdentityMatTest:
-                        ColumnIdentityMatTest(ref arena);
-                        break; 
-                    case TestType.ColumnPivotLargeIdentityMatTest:
-                        ColumnLargeIdentityMatTest(ref arena);
-                        break;
-                    case TestType.RowPivotLargeIdentityMatTest:
-                        RowLargeIdentityMatTest(ref arena);
-                        break;
-                    case TestType.RowPivotPermutationMatTest:
-                        RowPermutationMatTest(ref arena);
-                        break;
-                    case TestType.ColumnPivotPermutationMatTest:
-                        ColumnPermutationMatTest(ref arena);
-                        break;
-                    case TestType.RowPivotVecTest:
-                        PivotVecTest(ref arena);
-                        break;
-                    case TestType.PivotSignTest:
-                        SignTest(ref arena);
-                        break;
-                    case TestType.PivotArenaTest:
-                        ArenaPivotTest(ref arena);
-                        break;
-                    default:
-                        throw new NotImplementedException();
-                }
-            }
-            finally
-            {
-                arena.Dispose();
+                case TestType.PivotSimpleTest:
+                    Test();
+                    break;
+                case TestType.RowPivotIdentityMatTest:
+                    RowIdentityMatTest();
+                    break;
+                case TestType.ColumnPivotIdentityMatTest:
+                    ColumnIdentityMatTest();
+                    break;
+                case TestType.ColumnPivotLargeIdentityMatTest:
+                    ColumnLargeIdentityMatTest();
+                    break;
+                case TestType.RowPivotLargeIdentityMatTest:
+                    RowLargeIdentityMatTest();
+                    break;
+                case TestType.RowPivotPermutationMatTest:
+                    RowPermutationMatTest();
+                    break;
+                case TestType.ColumnPivotPermutationMatTest:
+                    ColumnPermutationMatTest();
+                    break;
+                case TestType.RowPivotVecTest:
+                    PivotVecTest();
+                    break;
+                case TestType.PivotSignTest:
+                    SignTest();
+                    break;
+                case TestType.PivotArenaTest:
+                    ArenaPivotTest();
+                    break;
+                default:
+                    throw new NotImplementedException();
             }
         }
 
-        void Test(ref Arena arena)
+        void Test()
         {
             Pivot pivot = new Pivot(4, Allocator.Temp);
 
@@ -96,14 +88,14 @@ public class fProxyPivotTests
             pivot.Dispose();
         }
 
-        void RowIdentityMatTest(ref Arena arena) {
+        void RowIdentityMatTest() {
 
             Pivot pivot = new Pivot(4, Allocator.Temp);
 
             pivot.Swap(0, 1);
             pivot.Swap(2, 3);
 
-            var identity = arena.fProxyIdentityMat(4);
+            var identity = GenerateOP.fProxyIdentityMat(4);
 
             pivot.ApplyRow(ref identity);
 
@@ -122,7 +114,7 @@ public class fProxyPivotTests
             pivot.Dispose();
         }
 
-        void RowLargeIdentityMatTest(ref Arena arena) {
+        void RowLargeIdentityMatTest() {
 
             int dim = 256;
 
@@ -134,7 +126,7 @@ public class fProxyPivotTests
                 pivot.Swap(rand.NextInt(0, dim), rand.NextInt(0, dim));
             }
 
-            var identity = arena.fProxyIdentityMat(dim);
+            var identity = GenerateOP.fProxyIdentityMat(dim);
 
             Assert.IsTrue(Analysis.isIdentity(identity));
 
@@ -157,14 +149,14 @@ public class fProxyPivotTests
             pivot.Dispose();
         }
 
-        void ColumnIdentityMatTest(ref Arena arena) {
+        void ColumnIdentityMatTest() {
 
             Pivot pivot = new Pivot(4, Allocator.Temp);
 
             pivot.Swap(0, 1);
             pivot.Swap(2, 3);
 
-            var identity = arena.fProxyIdentityMat(4);
+            var identity = GenerateOP.fProxyIdentityMat(4);
 
             pivot.ApplyColumn(ref identity);
 
@@ -183,7 +175,7 @@ public class fProxyPivotTests
             pivot.Dispose();
         }
 
-        void ColumnLargeIdentityMatTest(ref Arena arena) {
+        void ColumnLargeIdentityMatTest() {
 
             int dim = 256;
 
@@ -195,7 +187,7 @@ public class fProxyPivotTests
                 pivot.Swap(rand.NextInt(0, dim), rand.NextInt(0, dim));
             }
 
-            var identity = arena.fProxyIdentityMat(dim);
+            var identity = GenerateOP.fProxyIdentityMat(dim);
 
             Assert.IsTrue(Analysis.isIdentity(identity));
 
@@ -218,13 +210,13 @@ public class fProxyPivotTests
             pivot.Dispose();
         }
 
-        void RowPermutationMatTest(ref Arena arena) {
+        void RowPermutationMatTest() {
 
-            var permutationMatrix = arena.fProxyPermutationMat(8, 2, 3);
+            var permutationMatrix = GenerateOP.fProxyPermutationMat(8, 2, 3);
 
-            permutationMatrix = Blas.dot(permutationMatrix, arena.fProxyPermutationMat(8, 3, 6));
-            permutationMatrix = Blas.dot(permutationMatrix, arena.fProxyPermutationMat(8, 6, 7));
-            permutationMatrix = Blas.dot(permutationMatrix, arena.fProxyPermutationMat(8, 1, 4));
+            permutationMatrix = Blas.dot(permutationMatrix, GenerateOP.fProxyPermutationMat(8, 3, 6));
+            permutationMatrix = Blas.dot(permutationMatrix, GenerateOP.fProxyPermutationMat(8, 6, 7));
+            permutationMatrix = Blas.dot(permutationMatrix, GenerateOP.fProxyPermutationMat(8, 1, 4));
 
             Pivot pivot = new Pivot(8, Allocator.Temp);
 
@@ -241,13 +233,13 @@ public class fProxyPivotTests
             pivot.Dispose();
         }
 
-        void ColumnPermutationMatTest(ref Arena arena) {
+        void ColumnPermutationMatTest() {
 
-            var permutationMatrix = arena.fProxyPermutationMat(8, 2, 3);
+            var permutationMatrix = GenerateOP.fProxyPermutationMat(8, 2, 3);
 
-            permutationMatrix = Blas.dot(permutationMatrix, arena.fProxyPermutationMat(8, 3, 6));
-            permutationMatrix = Blas.dot(permutationMatrix, arena.fProxyPermutationMat(8, 6, 7));
-            permutationMatrix = Blas.dot(permutationMatrix, arena.fProxyPermutationMat(8, 1, 4));
+            permutationMatrix = Blas.dot(permutationMatrix, GenerateOP.fProxyPermutationMat(8, 3, 6));
+            permutationMatrix = Blas.dot(permutationMatrix, GenerateOP.fProxyPermutationMat(8, 6, 7));
+            permutationMatrix = Blas.dot(permutationMatrix, GenerateOP.fProxyPermutationMat(8, 1, 4));
 
             permutationMatrix = Blas.trans(permutationMatrix);
 
@@ -262,18 +254,18 @@ public class fProxyPivotTests
             pivot.ApplyInverseColumn(ref permutationMatrix);
 
             Assert.IsTrue(Analysis.isIdentity(permutationMatrix));
-              
+
             pivot.Dispose();
         }
 
-        void PivotVecTest(ref Arena arena) {
-            
+        void PivotVecTest() {
+
             Pivot pivot = new Pivot(4, Allocator.Temp);
 
             pivot.Swap(1, 2);
 
             // [1, 0, 0, 0]
-            var vec = arena.fProxyBasisVec(4, 0);
+            var vec = GenerateOP.fProxyBasisVec(4, 0);
 
             Print.Log(vec);
 
@@ -302,7 +294,7 @@ public class fProxyPivotTests
             pivot.Dispose();
         }
 
-        void SignTest(ref Arena arena) {
+        void SignTest() {
 
             Pivot pivot = new Pivot(4, Allocator.Temp);
 
@@ -342,17 +334,16 @@ public class fProxyPivotTests
             pivot.Dispose();
         }
 
-        void ArenaPivotTest(ref Arena arena) {
+        void ArenaPivotTest() {
 
-            // Arena-tracked pivot: do NOT dispose it manually.
-            var pivot = arena.Pivot(8);
+            var pivot = new Pivot(8, Allocator.Temp);
 
             Assert.AreEqual(8, pivot.N);
 
             pivot.Swap(1, 5);
             pivot.Swap(2, 7);
 
-            var identity = arena.fProxyIdentityMat(8);
+            var identity = GenerateOP.fProxyIdentityMat(8);
 
             pivot.ApplyRow(ref identity);
 
@@ -362,7 +353,7 @@ public class fProxyPivotTests
 
             Assert.IsTrue(Analysis.isIdentity(identity));
 
-            // intentionally NOT disposing pivot - arena.Dispose() owns it (in Execute's finally).
+            pivot.Dispose();
         }
     }
 

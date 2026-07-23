@@ -24,7 +24,7 @@ public class floatFlexibleCGTests
     // Variable preconditioner: z = (a few CG steps on A z = r from z = 0). k fixed steps of CG
     // is a NONLINEAR (data-dependent) operator in r, so the effective M changes per outer
     // iteration -- exactly what fcg is designed to tolerate and cg is not. Scratch vectors are
-    // arena-owned (built on the main thread), so Apply allocates nothing.
+    // pre-allocated once (not per outer iteration), so Apply allocates nothing.
     readonly struct InnerCgPreconditioner : IfloatPreconditioner
     {
         readonly floatBSR A;
@@ -81,21 +81,18 @@ public class floatFlexibleCGTests
 
         void SolvesSpdBlockJacobi()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatLaplacian2D(16, 16);
+            var A = floatGallery.floatLaplacian2D(16, 16, Allocator.Temp);
             int n = A.M_Rows;
-            var b = arena.floatRandomVec(n, -1f, 1f, 0xF01u);
-            var M = arena.floatBlockJacobi(in A);
+            var b = GenerateOP.floatRandomVec(n, -1f, 1f, 0xF01u);
+            var M = new floatBlockJacobi(in A, Allocator.Temp);
             var op = new floatBSROperator(in A);
 
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (float)0;
 
             var info = Krylov.fcg(in op, in M, in b, ref x, 4 * n, Tol());
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(floatKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
-
-            arena.Dispose();
         }
 
         // Constant SPD preconditioner: fcg's Polak–Ribière beta reduces to cg's Fletcher–Reeves
@@ -104,15 +101,14 @@ public class floatFlexibleCGTests
         // solution compare whose error scales with cond(A)·residual. Both must also converge.
         void MatchesPcgConstantM()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatLaplacian2D(12, 12);
+            var A = floatGallery.floatLaplacian2D(12, 12, Allocator.Temp);
             int n = A.M_Rows;
-            var b = arena.floatRandomVec(n, -1f, 1f, 0xF02u);
-            var M = arena.floatBlockJacobi(in A);
+            var b = GenerateOP.floatRandomVec(n, -1f, 1f, 0xF02u);
+            var M = new floatBlockJacobi(in A, Allocator.Temp);
             var op = new floatBSROperator(in A);
 
-            var xF = arena.floatVec(n);
-            var xP = arena.floatVec(n);
+            var xF = new floatN(n, Allocator.Temp);
+            var xP = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) { xF[i] = (float)0; xP[i] = (float)0; }
 
             var infoF = Krylov.fcg(in op, in M, in b, ref xF, 4 * n, Tol());
@@ -124,50 +120,42 @@ public class floatFlexibleCGTests
             // Same convergence trajectory for constant M (allow a small floating-point slack from
             // fcg's extra cross-term dot).
             Assert.IsTrue(math.abs(infoF.iterations - infoP.iterations) <= 2);
-
-            arena.Dispose();
         }
 
         void VariableInnerCgConverges()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatLaplacian2D(16, 16);
+            var A = floatGallery.floatLaplacian2D(16, 16, Allocator.Temp);
             int n = A.M_Rows;
-            var b = arena.floatRandomVec(n, -1f, 1f, 0xF03u);
+            var b = GenerateOP.floatRandomVec(n, -1f, 1f, 0xF03u);
             var op = new floatBSROperator(in A);
 
-            var sr = arena.floatVec(n); var sp = arena.floatVec(n); var sAp = arena.floatVec(n);
+            var sr = new floatN(n, Allocator.Temp); var sp = new floatN(n, Allocator.Temp); var sAp = new floatN(n, Allocator.Temp);
             var M = new InnerCgPreconditioner(in A, sr, sp, sAp, 3);
 
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (float)0;
 
             var info = Krylov.fcg(in op, in M, in b, ref x, 4 * n, Tol());
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(floatKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
-
-            arena.Dispose();
         }
 
         void ZeroRhsConverges()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatLaplacian2D(8, 8);
+            var A = floatGallery.floatLaplacian2D(8, 8, Allocator.Temp);
             int n = A.M_Rows;
-            var b = arena.floatVec(n);
+            var b = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) b[i] = (float)0;
-            var M = arena.floatBlockJacobi(in A);
+            var M = new floatBlockJacobi(in A, Allocator.Temp);
             var op = new floatBSROperator(in A);
 
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (float)7;   // nonzero start -> must be driven to 0
 
             var info = Krylov.fcg(in op, in M, in b, ref x, 4 * n, Tol());
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(info.iterations == 0);
             for (int i = 0; i < n; i++) Assert.IsTrue(x[i] == (float)0);
-
-            arena.Dispose();
         }
     }
 

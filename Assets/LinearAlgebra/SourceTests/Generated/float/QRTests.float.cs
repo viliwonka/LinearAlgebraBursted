@@ -118,30 +118,24 @@ public class floatQRTests
 
         public void QRDecompIdentity()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 8;
 
-            var Q = arena.floatIdentityMat(dim);
-            var R = arena.floatMat(dim);
+            var Q = GenerateOP.floatIdentityMat(dim, allocator: Allocator.Temp);
+            var R = new floatMxN(dim, dim, Allocator.Temp);
 
             var A = Q.Copy();
 
             QR.decompInPlace(ref Q, ref R);
 
             AssertQR(in A, in Q, in R);
-
-            arena.Dispose();
         }
 
         public void QRDecompIdentityNonSquare()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 8;
 
-            var Q = arena.floatMat(dim*2, dim);
-            var R = arena.floatMat(dim);
+            var Q = new floatMxN(dim*2, dim, Allocator.Temp);
+            var R = new floatMxN(dim, dim, Allocator.Temp);
 
             for(int i = 0; i < dim; i++)
                 Q[i, i] = 1f;
@@ -152,85 +146,65 @@ public class floatQRTests
 
 
             AssertQR(in A, in Q, in R);
-
-            arena.Dispose();
         }
 
         public void QRDecompRandomDiagonal()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 8;
 
-            var Q = arena.floatRandomDiagonalMat(dim, 1f, 3f);
-            var R = arena.floatMat(dim);
+            var Q = GenerateOP.floatRandomDiagonalMat(dim, 1f, 3f, allocator: Allocator.Temp);
+            var R = new floatMxN(dim, dim, Allocator.Temp);
 
             var A = Q.Copy();
 
             QR.decompInPlace(ref Q, ref R);
 
             AssertQR(in A, in Q, in R);
-
-            arena.Dispose();
         }
 
         public void QRDecompRandom()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 8;
 
-            var R = arena.floatMat(dim);
-            var Q = arena.floatRandomMat(dim*2, dim, -0.5f, 0.5f, 94221);
+            var R = new floatMxN(dim, dim, Allocator.Temp);
+            var Q = GenerateOP.floatRandomMat(dim*2, dim, -0.5f, 0.5f, 94221, allocator: Allocator.Temp);
 
             var A = Q.Copy();
 
             QR.decompInPlace(ref Q, ref R);
 
             AssertQR(in A, in Q, in R, 1E-05f);
-
-            arena.Dispose();
         }
 
         public void QRDecompRandomLarge()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 512;
 
-            var R = arena.floatMat(dim);
-            var Q = arena.floatRandomMat(dim * 2, dim, -5f, 5f, 9612221);
+            var R = new floatMxN(dim, dim, Allocator.Temp);
+            var Q = GenerateOP.floatRandomMat(dim * 2, dim, -5f, 5f, 9612221, allocator: Allocator.Temp);
 
             var A = Q.Copy();
 
             QR.decompInPlace(ref Q, ref R);
 
             AssertQR(in A, in Q, in R, 1E-03f);
-
-            arena.Dispose();
         }
 
         public void QRDecompHilbert()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 20;
 
-            var Q = arena.floatHilbertMat(dim);
-            var R = arena.floatMat(dim);
+            var Q = GenerateOP.floatHilbertMat(dim, allocator: Allocator.Temp);
+            var R = new floatMxN(dim, dim, Allocator.Temp);
 
             var A = Q.Copy();
 
             QR.decompInPlace(ref Q, ref R);
 
             AssertQR(in A, in Q, in R);
-
-            arena.Dispose();
         }
 
         public void QRDecompPermutation() {
-
-            var arena = new Arena(Allocator.Persistent);
 
             int tests = 32;
             int dim = 16;
@@ -245,7 +219,7 @@ public class floatQRTests
                     p1 = rand.NextInt(0, dim);
                 }
 
-                var Q = arena.floatPermutationMat(dim, p0, p1);
+                var Q = GenerateOP.floatPermutationMat(dim, p0, p1, allocator: Allocator.Temp);
 
                 p0 = rand.NextInt(0, dim);
                 p1 = rand.NextInt(0, dim);
@@ -254,9 +228,9 @@ public class floatQRTests
                     p1 = rand.NextInt(0, dim);
                 }
 
-                Q = Blas.dot(arena.floatPermutationMat(dim, p0, p1), Q);
+                Q = Blas.dot(GenerateOP.floatPermutationMat(dim, p0, p1, allocator: Allocator.Temp), Q);
 
-                var R = arena.floatMat(dim);
+                var R = new floatMxN(dim, dim, Allocator.Temp);
 
                 var A = Q.Copy();
 
@@ -264,24 +238,19 @@ public class floatQRTests
 
                 AssertQR(in A, in Q, in R);
             }
-            arena.Dispose();
         }
 
         public void QRDecompZero() {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 8;
 
-            var Q = arena.floatMat(dim, dim);
-            var R = arena.floatMat(dim);
+            var Q = new floatMxN(dim, dim, Allocator.Temp);
+            var R = new floatMxN(dim, dim, Allocator.Temp);
 
             var A = Q.Copy();
 
             QR.decompInPlace(ref Q, ref R);
 
             AssertQR(in A, in Q, in R);
-
-            arena.Dispose();
         }
 
         // Rank-deficient tall matrix (column 3 == column 0): the DECOMPOSITION must still be valid —
@@ -290,21 +259,17 @@ public class floatQRTests
         // that is deliberately not exercised here; QRCP / SVD / pivoted-Cholesky cover the solve).
         public void QRDecompRankDeficient()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 10, n = 5;
-            var Q = arena.floatRandomMat(m, n, -1f, 1f, 555123);
+            var Q = GenerateOP.floatRandomMat(m, n, -1f, 1f, 555123, allocator: Allocator.Temp);
             for (int r = 0; r < m; r++)
                 Q[r, 3] = Q[r, 0]; // make column 3 a duplicate of column 0 -> rank deficient
 
-            var R = arena.floatMat(n);
+            var R = new floatMxN(n, n, Allocator.Temp);
             var A = Q.Copy();
 
             QR.decompInPlace(ref Q, ref R);
 
             AssertQR(in A, in Q, in R, 1E-4f);
-
-            arena.Dispose();
         }
 
         // Exercises the BLOCKED QR path (engaged per-type when N_Cols >= Consts.floatQrBlockMinN=128
@@ -315,38 +280,32 @@ public class floatQRTests
         // QᵀQ ≈ I (orthonormal columns), R upper-triangular.
         void QRDecompBlockedNonAligned(int m, int n, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
-
             var random = new Unity.Mathematics.Random(seed);
-            var Q = arena.floatRandomMat(m, n, -5f, 5f, seed);
+            var Q = GenerateOP.floatRandomMat(m, n, -5f, 5f, seed, allocator: Allocator.Temp);
             for (int d = 0; d < n; d++)
                 Q[d, d] += 5.1f + 10f * random.NextFloat();
 
-            var R = arena.floatMat(n);
+            var R = new floatMxN(n, n, Allocator.Temp);
             var A = Q.Copy();
 
             QR.decompInPlace(ref Q, ref R);
 
             AssertQR(in A, in Q, in R, 1E-3f);
-
-            arena.Dispose();
         }
 
         // QR.decomp must not modify A. Checksum (position-weighted
         // sum, so a permutation or a single altered entry both trip it) before/after the call.
         void QRDecompPreservesA()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 12, n = 6;
-            var A = arena.floatRandomMat(m, n, -3f, 3f, 909090);
+            var A = GenerateOP.floatRandomMat(m, n, -3f, 3f, 909090, allocator: Allocator.Temp);
             for (int d = 0; d < n; d++) A[d, d] += 5f;
 
             float checksumBefore = (float)0;
             for (int i = 0; i < A.Length; i++) checksumBefore += A[i] * (float)(i + 1);
 
-            var Q = arena.floatMat(m, n);
-            var R = arena.floatMat(n);
+            var Q = new floatMxN(m, n, Allocator.Temp);
+            var R = new floatMxN(n, n, Allocator.Temp);
             QR.decomp(in A, ref Q, ref R);
 
             float checksumAfter = (float)0;
@@ -363,27 +322,23 @@ public class floatQRTests
 
             // and the decomposition itself must still be correct (A intact, matches Q*R).
             AssertQR(in A, in Q, in R, 1E-4f);
-
-            arena.Dispose();
         }
 
         // Uninit-x contract: QR.solveInPlace and QR.decompSolve must treat x as OUTPUT ONLY -- prior
         // garbage (here, NaN sentinels) must not survive into the result.
         void QRUninitXContract()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 8;
-            var A = arena.floatRandomMat(dim, dim, -5f, 5f, 13131);
+            var A = GenerateOP.floatRandomMat(dim, dim, -5f, 5f, 13131, allocator: Allocator.Temp);
             for (int d = 0; d < dim; d++) A[d, d] += 10f;
-            var xKnown = arena.floatRandomVec(dim, -3f, 3f, 24242);
+            var xKnown = GenerateOP.floatRandomVec(dim, -3f, 3f, 24242, allocator: Allocator.Temp);
             var b = Blas.dot(A, xKnown);
 
             // QR.solveInPlace: x pre-filled with NaN.
             {
                 var Awork = A.Copy();
                 var bwork = b.Copy();
-                var x = arena.floatVec(dim);
+                var x = new floatN(dim, Allocator.Temp);
                 for (int i = 0; i < dim; i++) x[i] = float.NaN;
 
                 QR.solveInPlace(ref Awork, ref bwork, ref x);
@@ -403,10 +358,10 @@ public class floatQRTests
             // QR.decompSolve: x pre-filled with NaN, Q/R from a fresh decompInPlace.
             {
                 var Q = A.Copy();
-                var R = arena.floatMat(dim);
+                var R = new floatMxN(dim, dim, Allocator.Temp);
                 QR.decompInPlace(ref Q, ref R);
 
-                var x = arena.floatVec(dim);
+                var x = new floatN(dim, Allocator.Temp);
                 for (int i = 0; i < dim; i++) x[i] = float.NaN;
                 var bcopy = b.Copy();
 
@@ -423,8 +378,6 @@ public class floatQRTests
                     Assert.IsTrue(diff <= (float)1E-3f);
                 }
             }
-
-            arena.Dispose();
         }
 
         // Blocked-path A-preservation: QR.decomp at N_Cols >= Consts.floatQrBlockMinN=128 /
@@ -434,19 +387,17 @@ public class floatQRTests
         // only reaches the unblocked path (12x6).
         void QRDecompPreservesABlocked()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 576, n = 512;
             var random = new Unity.Mathematics.Random(576512);
-            var A = arena.floatRandomMat(m, n, -5f, 5f, 576512);
+            var A = GenerateOP.floatRandomMat(m, n, -5f, 5f, 576512, allocator: Allocator.Temp);
             for (int d = 0; d < n; d++)
                 A[d, d] += 5.1f + 10f * random.NextFloat();
 
             float checksumBefore = (float)0;
             for (int i = 0; i < A.Length; i++) checksumBefore += A[i] * (float)(i + 1);
 
-            var Q = arena.floatMat(m, n);
-            var R = arena.floatMat(n);
+            var Q = new floatMxN(m, n, Allocator.Temp);
+            var R = new floatMxN(n, n, Allocator.Temp);
             QR.decomp(in A, ref Q, ref R);
 
             float checksumAfter = (float)0;
@@ -463,14 +414,13 @@ public class floatQRTests
 
             // decomposition itself must still be correct (A intact, matches Q*R).
             AssertQR(in A, in Q, in R, 1E-3f);
-
-            arena.Dispose();
         }
 
         private void AssertQR(in floatMxN A, in floatMxN Q, in floatMxN R) => AssertQR(in A, in Q, in R, 1E-6f);
         private void AssertQR(in floatMxN A, in floatMxN Q, in floatMxN R, float precision)
         {
-            floatMxN shouldBeZero = A - Blas.dot(Q, R);
+            floatMxN shouldBeZero = new floatMxN(in A, Allocator.Temp);
+            shouldBeZero.subInPlace(Blas.dot(Q, R));
 
             var zeroError = Analysis.MaxZeroError(shouldBeZero);
 
@@ -503,8 +453,6 @@ public class floatQRTests
 
         public void Execute() {
 
-            var arena = new Arena(Allocator.Persistent);
-
             int tests = 64;
             float errorSum = 0;
 
@@ -515,28 +463,25 @@ public class floatQRTests
                 floatMxN A;
 
                 if(Type == TestType.RandomDiagonal)
-                    A = arena.floatRandomDiagonalMat(dim, 1f, 3f, 21410 + i*i + i*7);
+                    A = GenerateOP.floatRandomDiagonalMat(dim, 1f, 3f, 21410 + i*i + i*7, allocator: Allocator.Temp);
                 else
-                    A = arena.floatRandomMat(dim*2, dim, -25f, +25f, 21410 + i*i + i*7);
+                    A = GenerateOP.floatRandomMat(dim*2, dim, -25f, +25f, 21410 + i*i + i*7, allocator: Allocator.Temp);
 
                 var Q = A.Copy();
-                var R = arena.floatMat(dim);
+                var R = new floatMxN(dim, dim, Allocator.Temp);
 
                 QR.decompInPlace(ref Q, ref R);
 
                 errorSum += ErrorCheckQR(in A, in Q, in R);
-
-                arena.Clear();
             }
 
             float avgError = errorSum / tests;
-
-            arena.Dispose();
         }
 
         private float ErrorCheckQR(in floatMxN A, in floatMxN Q, in floatMxN R) {
 
-            floatMxN shouldBeZero = A - Blas.dot(Q, R);
+            floatMxN shouldBeZero = new floatMxN(in A, Allocator.Temp);
+            shouldBeZero.subInPlace(Blas.dot(Q, R));
 
             if(Analysis.isAnyNan(in shouldBeZero))
                 throw new System.Exception("PrecisionReconstructTestJob: NaN detected");
@@ -584,8 +529,6 @@ public class floatQRTests
 
         void SquareFullRank() {
 
-            var arena = new Arena(Allocator.Persistent);
-
             int systemDim = 128;
             int randomMatTests = 128;
             int randomVecTests = 32;
@@ -595,19 +538,19 @@ public class floatQRTests
 
             for (uint i = 0; i < randomMatTests; i++) {
 
-                floatMxN A = arena.floatRandomMat(systemDim, systemDim, -5, +5, 420 + i * 7);
+                floatMxN A = GenerateOP.floatRandomMat(systemDim, systemDim, -5, +5, 420 + i * 7, allocator: Allocator.Temp);
 
                 for(int d = 0; d < systemDim; d++)
                     A[d, d] += 5.1f + 10f*random.NextFloat();
 
                 var Q = A.Copy();
-                var R = arena.floatMat(systemDim);
+                var R = new floatMxN(systemDim, systemDim, Allocator.Temp);
 
                 QR.decompInPlace(ref Q, ref R);
 
                 for(uint j = 0; j < randomVecTests; j++) {
 
-                    floatN xOrig = arena.floatRandomVec(systemDim, -25, +25, 1337 + i * i + j * 5);
+                    floatN xOrig = GenerateOP.floatRandomVec(systemDim, -25, +25, 1337 + i * i + j * 5, allocator: Allocator.Temp);
                     floatN b = Blas.dot(A, xOrig);
                     floatN y = Blas.dot(b, Q);
 
@@ -632,8 +575,6 @@ public class floatQRTests
 
             // average bound, scaled per precision (see Consts.floatSqrtEps)
             AssertBound(avgError, (float)150 * Consts.floatSqrtEps);
-
-            arena.Dispose();
         }
 
         void OverdeterminedFullRank() {
@@ -649,20 +590,19 @@ public class floatQRTests
 
             for (uint i = 0; i < randomMatTests; i++) {
 
-                var arena = new Arena(Allocator.Persistent);
-                floatMxN A = arena.floatRandomMat(sysDimM, sysDimN, -5, +5, 420 + i * 7);
+                floatMxN A = GenerateOP.floatRandomMat(sysDimM, sysDimN, -5, +5, 420 + i * 7, allocator: Allocator.Temp);
 
                 for (int d = 0; d < sysDimN; d++)
                     A[d, d] += 5.1f + 10f * random.NextFloat();
 
                 var Q = A.Copy();
-                var R = arena.floatMat(sysDimN);
+                var R = new floatMxN(sysDimN, sysDimN, Allocator.Temp);
 
                 QR.decompInPlace(ref Q, ref R);
 
                 for (uint j = 0; j < randomVecTests; j++) {
 
-                    floatN xOrig = arena.floatRandomVec(sysDimN, -25, +25, 1337 + i * i + j * 5);
+                    floatN xOrig = GenerateOP.floatRandomVec(sysDimN, -25, +25, 1337 + i * i + j * 5, allocator: Allocator.Temp);
                     floatN b = Blas.dot(A, xOrig);
                     floatN y = Blas.dot(b, Q);
 
@@ -680,7 +620,6 @@ public class floatQRTests
 
                     errorSum += zeroError;
                 }
-                arena.Dispose();
             }
 
             float avgError = errorSum / (randomMatTests * randomVecTests);
@@ -690,8 +629,6 @@ public class floatQRTests
 
         void SquareFullRankDirect() {
 
-            var arena = new Arena(Allocator.Persistent);
-
             int systemDim = 128;
             int randomMatTests = 128;
             float errorSum = 0;
@@ -700,14 +637,14 @@ public class floatQRTests
 
             for (uint i = 0; i < randomMatTests; i++) {
 
-                floatMxN A = arena.floatRandomMat(systemDim, systemDim, -5, +5, 420 + i * 7);
+                floatMxN A = GenerateOP.floatRandomMat(systemDim, systemDim, -5, +5, 420 + i * 7, allocator: Allocator.Temp);
 
                 for (int d = 0; d < systemDim; d++)
                     A[d, d] += 5.1f + 10f * random.NextFloat();
 
-                floatN xOrig = arena.floatRandomVec(systemDim, -25, +25, 1337 + i * i + i * 5);
+                floatN xOrig = GenerateOP.floatRandomVec(systemDim, -25, +25, 1337 + i * i + i * 5, allocator: Allocator.Temp);
                 floatN b = Blas.dot(A, xOrig);
-                floatN x = arena.floatVec(systemDim);
+                floatN x = new floatN(systemDim, Allocator.Temp);
 
                 QR.solveInPlace(ref A, ref b, ref x);
 
@@ -722,15 +659,11 @@ public class floatQRTests
                 AssertBound(zeroError, (float)2000 * Consts.floatSqrtEps);
 
                 errorSum += zeroError;
-
-                arena.Clear();
             }
 
             float avgError = errorSum / (randomMatTests);
 
             AssertBound(avgError, (float)150 * Consts.floatSqrtEps);
-
-            arena.Dispose();
         }
 
         void OverdeterminedFullRankDirect() {
@@ -745,15 +678,14 @@ public class floatQRTests
 
             for (uint i = 0; i < randomMatTests; i++) {
 
-                var arena = new Arena(Allocator.Persistent);
-                floatMxN A = arena.floatRandomMat(sysDimM, sysDimN, -5, +5, 420 + i * 7);
+                floatMxN A = GenerateOP.floatRandomMat(sysDimM, sysDimN, -5, +5, 420 + i * 7, allocator: Allocator.Temp);
 
                 for (int d = 0; d < sysDimN; d++)
                     A[d, d] += 5.1f + 10f * random.NextFloat();
 
-                floatN xOrig = arena.floatRandomVec(sysDimN, -25, +25, 1337 + i * i + i * 5);
+                floatN xOrig = GenerateOP.floatRandomVec(sysDimN, -25, +25, 1337 + i * i + i * 5, allocator: Allocator.Temp);
                 floatN b = Blas.dot(A, xOrig);
-                floatN x = arena.floatVec(sysDimN);
+                floatN x = new floatN(sysDimN, Allocator.Temp);
 
                 QR.solveInPlace(ref A, ref b, ref x);
 
@@ -769,7 +701,6 @@ public class floatQRTests
                 AssertBound(zeroError, (float)2000 * Consts.floatSqrtEps);
 
                 errorSum += zeroError;
-                arena.Dispose();
             }
 
             float avgError = errorSum / (randomMatTests);
@@ -957,70 +888,60 @@ public class floatQRTests
 
         void LQDecompIdentitySquare()
         {
-            var arena = new Arena(Allocator.Persistent);
             int dim = 8;
-            var A    = arena.floatIdentityMat(dim);
+            var A    = GenerateOP.floatIdentityMat(dim, allocator: Allocator.Temp);
             var origA = A.Copy();
-            var L    = arena.floatMat(dim, dim);
-            var Q    = arena.floatMat(dim, dim);
+            var L    = new floatMxN(dim, dim, Allocator.Temp);
+            var Q    = new floatMxN(dim, dim, Allocator.Temp);
             LQ.decomp(in A, ref L, ref Q);
             AssertLQ(in origA, in L, in Q, 1E-6f);
-            arena.Dispose();
         }
 
         void LQDecompRandomSquare()
         {
-            var arena = new Arena(Allocator.Persistent);
             int dim = 8;
-            var A    = arena.floatRandomMat(dim, dim, -0.5f, 0.5f, 77123);
+            var A    = GenerateOP.floatRandomMat(dim, dim, -0.5f, 0.5f, 77123, allocator: Allocator.Temp);
             var origA = A.Copy();
-            var L    = arena.floatMat(dim, dim);
-            var Q    = arena.floatMat(dim, dim);
+            var L    = new floatMxN(dim, dim, Allocator.Temp);
+            var Q    = new floatMxN(dim, dim, Allocator.Temp);
             LQ.decomp(in A, ref L, ref Q);
             AssertLQ(in origA, in L, in Q, 1E-4f);
-            arena.Dispose();
         }
 
         void LQDecompRandomWide_4x9()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 4, n = 9;
-            var A    = arena.floatRandomMat(m, n, -0.5f, 0.5f, 94221);
+            var A    = GenerateOP.floatRandomMat(m, n, -0.5f, 0.5f, 94221, allocator: Allocator.Temp);
             var origA = A.Copy();
-            var L    = arena.floatMat(m, m);
-            var Q    = arena.floatMat(m, n);
+            var L    = new floatMxN(m, m, Allocator.Temp);
+            var Q    = new floatMxN(m, n, Allocator.Temp);
             LQ.decomp(in A, ref L, ref Q);
             AssertLQ(in origA, in L, in Q, 1E-4f);
-            arena.Dispose();
         }
 
         void LQDecompRandomWide_8x16()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 8, n = 16;
-            var A    = arena.floatRandomMat(m, n, -1f, 1f, 12345);
+            var A    = GenerateOP.floatRandomMat(m, n, -1f, 1f, 12345, allocator: Allocator.Temp);
             var origA = A.Copy();
-            var L    = arena.floatMat(m, m);
-            var Q    = arena.floatMat(m, n);
+            var L    = new floatMxN(m, m, Allocator.Temp);
+            var Q    = new floatMxN(m, n, Allocator.Temp);
             LQ.decomp(in A, ref L, ref Q);
             AssertLQ(in origA, in L, in Q, 1E-4f);
-            arena.Dispose();
         }
 
         void LQDecompDiagonalWide()
         {
             // 4 x 8: leading 4 x 4 block = 2*I, remaining columns = 0
-            var arena = new Arena(Allocator.Persistent);
             int m = 4, n = 8;
-            var A    = arena.floatMat(m, n);
+            var A    = new floatMxN(m, n, Allocator.Temp);
             for (int i = 0; i < m; i++)
                 A[i, i] = (float)2;
             var origA = A.Copy();
-            var L    = arena.floatMat(m, m);
-            var Q    = arena.floatMat(m, n);
+            var L    = new floatMxN(m, m, Allocator.Temp);
+            var Q    = new floatMxN(m, n, Allocator.Temp);
             LQ.decomp(in A, ref L, ref Q);
             AssertLQ(in origA, in L, in Q, 1E-4f);
-            arena.Dispose();
         }
 
         // Exercises the BLOCKED LQ path (engaged only when m = M_Rows >= LQ_BLOCK_MIN_M = 512; the
@@ -1035,22 +956,18 @@ public class floatQRTests
         // reconstruction off by O(1)) still trips this bound loudly.
         void LQDecompBlockedRandom(int m, int n, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
-
             var random = new Unity.Mathematics.Random(seed);
-            var A = arena.floatRandomMat(m, n, -5f, 5f, seed);
+            var A = GenerateOP.floatRandomMat(m, n, -5f, 5f, seed, allocator: Allocator.Temp);
             for (int d = 0; d < m; d++)
                 A[d, d] += 5.1f + 10f * random.NextFloat();
 
             var origA = A.Copy();
-            var L = arena.floatMat(m, m);
-            var Q = arena.floatMat(m, n);
+            var L = new floatMxN(m, m, Allocator.Temp);
+            var Q = new floatMxN(m, n, Allocator.Temp);
 
             LQ.decomp(in A, ref L, ref Q);
 
             AssertLQ(in origA, in L, in Q, 1E-2f);
-
-            arena.Dispose();
         }
 
         // Checks A ≈ L*Q, L lower-triangular, Q has orthonormal rows (QQᵀ = I_m).
@@ -1058,7 +975,8 @@ public class floatQRTests
         {
             // 1. Reconstruction: A ≈ L * Q
             floatMxN LQProduct = Blas.dot(L, Q);
-            floatMxN diff = A - LQProduct;
+            floatMxN diff = new floatMxN(in A, Allocator.Temp);
+            diff.subInPlace(LQProduct);
 
             if (Analysis.isAnyNan(in diff))
                 throw new System.Exception("AssertLQ: NaN in reconstruction");
@@ -1126,66 +1044,59 @@ public class floatQRTests
         // x_true is the unique min-norm solution because it lies in row(A) and satisfies Ax = b.
         void KnownSolutionSmall()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 3, n = 6;
-            var A    = arena.floatRandomMat(m, n, -1f, 1f, 11111);
-            var c    = arena.floatRandomVec(m, -1f, 1f, 22222);
+            var A    = GenerateOP.floatRandomMat(m, n, -1f, 1f, 11111, allocator: Allocator.Temp);
+            var c    = GenerateOP.floatRandomVec(m, -1f, 1f, 22222, allocator: Allocator.Temp);
             // x_true = Aᵀ c  (dot(c, A) computes cᵀA = (Aᵀc)ᵀ → same n-vector values)
-            var xTrue = arena.floatVec(n);
+            var xTrue = new floatN(n, Allocator.Temp);
             Blas.dot(in c, in A, ref xTrue);
             // b = A x_true
-            var b = arena.floatVec(m);
+            var b = new floatN(m, Allocator.Temp);
             Blas.dot(in A, in xTrue, ref b);
             // solve
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             LQ.minNormSolve(in A, in b, ref x);
             AssertClose(in x, in xTrue, 1E-4f);
-            arena.Dispose();
         }
 
         void KnownSolutionWide_4x9()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 4, n = 9;
-            var A    = arena.floatRandomMat(m, n, -1f, 1f, 33333);
-            var c    = arena.floatRandomVec(m, -1f, 1f, 44444);
-            var xTrue = arena.floatVec(n);
+            var A    = GenerateOP.floatRandomMat(m, n, -1f, 1f, 33333, allocator: Allocator.Temp);
+            var c    = GenerateOP.floatRandomVec(m, -1f, 1f, 44444, allocator: Allocator.Temp);
+            var xTrue = new floatN(n, Allocator.Temp);
             Blas.dot(in c, in A, ref xTrue);
-            var b = arena.floatVec(m);
+            var b = new floatN(m, Allocator.Temp);
             Blas.dot(in A, in xTrue, ref b);
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             LQ.minNormSolve(in A, in b, ref x);
             AssertClose(in x, in xTrue, 1E-4f);
-            arena.Dispose();
         }
 
         void KnownSolutionWide_8x16()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 8, n = 16;
-            var A    = arena.floatRandomMat(m, n, -1f, 1f, 55555);
-            var c    = arena.floatRandomVec(m, -1f, 1f, 66666);
-            var xTrue = arena.floatVec(n);
+            var A    = GenerateOP.floatRandomMat(m, n, -1f, 1f, 55555, allocator: Allocator.Temp);
+            var c    = GenerateOP.floatRandomVec(m, -1f, 1f, 66666, allocator: Allocator.Temp);
+            var xTrue = new floatN(n, Allocator.Temp);
             Blas.dot(in c, in A, ref xTrue);
-            var b = arena.floatVec(m);
+            var b = new floatN(m, Allocator.Temp);
             Blas.dot(in A, in xTrue, ref b);
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             LQ.minNormSolve(in A, in b, ref x);
             AssertClose(in x, in xTrue, 1E-4f);
-            arena.Dispose();
         }
 
         // Verify that A*x ≈ b (residual is small) independently of the known-solution construction.
         void ResidualCheck()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 5, n = 12;
-            var A = arena.floatRandomMat(m, n, -2f, 2f, 77777);
-            var b = arena.floatRandomVec(m, -1f, 1f, 88888);
-            var x = arena.floatVec(n);
+            var A = GenerateOP.floatRandomMat(m, n, -2f, 2f, 77777, allocator: Allocator.Temp);
+            var b = GenerateOP.floatRandomVec(m, -1f, 1f, 88888, allocator: Allocator.Temp);
+            var x = new floatN(n, Allocator.Temp);
             LQ.minNormSolve(in A, in b, ref x);
             // residual = A x - b
-            var Ax   = arena.floatVec(m);
+            var Ax   = new floatN(m, Allocator.Temp);
             Blas.dot(in A, in x, ref Ax);
             Ax.subInPlace(b);
             float residual = Analysis.MaxZeroError(Ax);
@@ -1197,7 +1108,6 @@ public class floatQRTests
                 Fail[3] = residual - (float)1E-4f;
             }
             Assert.IsTrue(residual <= (float)1E-4f);
-            arena.Dispose();
         }
 
         // Same residual check but at m >= LQ_BLOCK_MIN_M so lqFactorInPlace takes the blocked
@@ -1205,15 +1115,14 @@ public class floatQRTests
         // diagonal is boosted for conditioning so the residual stays tight at float precision.
         void ResidualCheckLargeBlocked()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 520, n = 640;   // m > 512 = LQ_BLOCK_MIN_M -> blocked path
-            var A = arena.floatRandomMat(m, n, -2f, 2f, 131313);
+            var A = GenerateOP.floatRandomMat(m, n, -2f, 2f, 131313, allocator: Allocator.Temp);
             for (int d = 0; d < m; d++)
                 A[d, d] += (float)20f;
-            var b = arena.floatRandomVec(m, -1f, 1f, 141414);
-            var x = arena.floatVec(n);
+            var b = GenerateOP.floatRandomVec(m, -1f, 1f, 141414, allocator: Allocator.Temp);
+            var x = new floatN(n, Allocator.Temp);
             LQ.minNormSolve(in A, in b, ref x);
-            var Ax = arena.floatVec(m);
+            var Ax = new floatN(m, Allocator.Temp);
             Blas.dot(in A, in x, ref Ax);
             Ax.subInPlace(b);
             float residual = Analysis.MaxZeroError(Ax);
@@ -1226,7 +1135,6 @@ public class floatQRTests
                 Fail[3] = residual - tol;
             }
             Assert.IsTrue(residual <= tol);
-            arena.Dispose();
         }
 
         // Residual check at 256 <= m < 512: float routes to the BLOCKED core (floatLqBlockMinM=256)
@@ -1234,15 +1142,14 @@ public class floatQRTests
         // routes each type correctly and both produce a valid min-norm solution at the divergence size.
         void ResidualCheckMidBlocked()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 300, n = 400;   // 256 <= m < 512 -> float blocked, double unblocked
-            var A = arena.floatRandomMat(m, n, -2f, 2f, 151617);
+            var A = GenerateOP.floatRandomMat(m, n, -2f, 2f, 151617, allocator: Allocator.Temp);
             for (int d = 0; d < m; d++)
                 A[d, d] += (float)20f;
-            var b = arena.floatRandomVec(m, -1f, 1f, 181920);
-            var x = arena.floatVec(n);
+            var b = GenerateOP.floatRandomVec(m, -1f, 1f, 181920, allocator: Allocator.Temp);
+            var x = new floatN(n, Allocator.Temp);
             LQ.minNormSolve(in A, in b, ref x);
-            var Ax = arena.floatVec(m);
+            var Ax = new floatN(m, Allocator.Temp);
             Blas.dot(in A, in x, ref Ax);
             Ax.subInPlace(b);
             float residual = Analysis.MaxZeroError(Ax);
@@ -1255,26 +1162,24 @@ public class floatQRTests
                 Fail[3] = residual - tol;
             }
             Assert.IsTrue(residual <= tol);
-            arena.Dispose();
         }
 
         // Uninit-x contract: LQ.minNormSolve must treat x as OUTPUT ONLY -- prior garbage (here, NaN
         // sentinels) must not survive into the result.
         void UninitXContract()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 5, n = 12;
-            var A = arena.floatRandomMat(m, n, -2f, 2f, 191919);
-            var b = arena.floatRandomVec(m, -1f, 1f, 292929);
+            var A = GenerateOP.floatRandomMat(m, n, -2f, 2f, 191919, allocator: Allocator.Temp);
+            var b = GenerateOP.floatRandomVec(m, -1f, 1f, 292929, allocator: Allocator.Temp);
 
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = float.NaN;
 
             LQ.minNormSolve(in A, in b, ref x);
 
             Assert.IsFalse(Analysis.isAnyNan(in x));
 
-            var Ax = arena.floatVec(m);
+            var Ax = new floatN(m, Allocator.Temp);
             Blas.dot(in A, in x, ref Ax);
             Ax.subInPlace(b);
             float residual = Analysis.MaxZeroError(Ax);
@@ -1286,13 +1191,13 @@ public class floatQRTests
                 Fail[3] = residual - (float)1E-4f;
             }
             Assert.IsTrue(residual <= (float)1E-4f);
-            arena.Dispose();
         }
 
         // Checks that every entry of got matches expected within precision.
         private void AssertClose(in floatN got, in floatN expected, float precision)
         {
-            floatN diff = got - expected;
+            floatN diff = new floatN(in got, Allocator.Temp);
+            diff.subInPlace(expected);
 
             if (Analysis.isAnyNan(in diff))
                 throw new System.Exception("AssertClose: NaN detected");

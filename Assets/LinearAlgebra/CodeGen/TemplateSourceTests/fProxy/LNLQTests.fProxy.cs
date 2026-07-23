@@ -61,9 +61,9 @@ public class fProxyLNLQTests
         static int MaxIter(in fProxyMxN A) => 4 * A.M_Rows;
 
         // Full-(row-)rank test matrix: random with a +10 diagonal boost -> AAᵀ ≈ (100+ε)·I -> κ≈1.
-        static fProxyMxN BuildA(ref Arena arena, int m, int n, uint seed)
+        static fProxyMxN BuildA(int m, int n, uint seed)
         {
-            var A = arena.fProxyRandomMat(m, n, -1f, 1f, seed);
+            var A = GenerateOP.fProxyRandomMat(m, n, -1f, 1f, seed);
             for (int d = 0; d < m; d++)
                 A[d, d] += (fProxy)10;
             return A;
@@ -76,73 +76,77 @@ public class fProxyLNLQTests
         // x ≈ craig's own iterate (same x^C point), and x is verifiably NOT the arbitrary x_true. ----
         void RectangularMinNorm()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 5, n = 9;
-            var A = BuildA(ref arena, m, n, 61001);
+            var A = BuildA(m, n, 61001);
 
             // Arbitrary true solution; b = A x_true makes the system consistent. x_true is generally
             // NOT in row(A), so the min-norm solution differs from it.
-            var xTrue = arena.fProxyRandomVec(n, -5f, 5f, 61002);
-            var b = arena.fProxyVec(m);
+            var xTrue = GenerateOP.fProxyRandomVec(n, -5f, 5f, 61002);
+            var b = new fProxyN(m, Allocator.Temp);
             Blas.dot(in A, in xTrue, ref b);
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             var info = Krylov.lnlq(in A, in b, ref x, MaxIter(in A), SolveTol());
             Assert.IsTrue(info.Solved);
 
             // (a) Ax ≈ b — necessary but not sufficient.
-            var Ax = arena.fProxyVec(m);
+            var Ax = new fProxyN(m, Allocator.Temp);
             Blas.dot(in A, in x, ref Ax);
-            Assert.IsTrue(Analysis.isZero(b - Ax, Tol()));
+            var bMinusAx = new fProxyN(in b, Allocator.Temp);
+            fProxyComp.subInPlace(bMinusAx, Ax);
+            Assert.IsTrue(Analysis.isZero(bMinusAx, Tol()));
 
             // (b) THE POINT: x matches the exact min-2-norm solution from the LQ oracle -- separates a
             // correct LNLQ from any solver that merely satisfies Ax=b.
-            var xRef = arena.fProxyVec(n);
+            var xRef = new fProxyN(n, Allocator.Temp);
             LQ.minNormSolve(in A, in b, ref xRef);
-            Assert.IsTrue(Analysis.isZero(xRef - x, Tol()));
+            var xRefMinusX = new fProxyN(in xRef, Allocator.Temp);
+            fProxyComp.subInPlace(xRefMinusX, x);
+            Assert.IsTrue(Analysis.isZero(xRefMinusX, Tol()));
 
             // (c) Cross-solver oracle: LNLQ's x^C is CRAIG's point, so craig must agree to tolerance.
-            var xCraig = arena.fProxyVec(n);
+            var xCraig = new fProxyN(n, Allocator.Temp);
             Krylov.craig(in A, in b, ref xCraig, MaxIter(in A), SolveTol());
-            Assert.IsTrue(Analysis.isZero(xCraig - x, Tol()));
+            var xCraigMinusX = new fProxyN(in xCraig, Allocator.Temp);
+            fProxyComp.subInPlace(xCraigMinusX, x);
+            Assert.IsTrue(Analysis.isZero(xCraigMinusX, Tol()));
 
             // (d, softer) ‖x‖ <= ‖x_true‖ (x is minimal among all solutions incl. x_true).
             Assert.IsTrue(Norm(in x) <= Norm(in xTrue) + Tol());
 
             // (e, negative guard) lnlq did NOT merely echo x_true: it is a solution but not min-norm.
-            Assert.IsFalse(Analysis.isZero(xTrue - x, (fProxy)0.1));
+            var xTrueMinusX = new fProxyN(in xTrue, Allocator.Temp);
+            fProxyComp.subInPlace(xTrueMinusX, x);
+            Assert.IsFalse(Analysis.isZero(xTrueMinusX, (fProxy)0.1));
 
             // xErrBound is NaN on the plain overloads (no σ_min estimate supplied).
             Assert.IsTrue(double.IsNaN(info.xErrBound));
-
-            arena.Dispose();
         }
 
         // ---- Square full-rank: the system has a UNIQUE solution, so lnlq must recover x_true. ----
         void SquareFullRank()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int nn = 7;
-            var A = BuildA(ref arena, nn, nn, 62001);
+            var A = BuildA(nn, nn, 62001);
 
-            var xTrue = arena.fProxyRandomVec(nn, -5f, 5f, 62002);
-            var b = arena.fProxyVec(nn);
+            var xTrue = GenerateOP.fProxyRandomVec(nn, -5f, 5f, 62002);
+            var b = new fProxyN(nn, Allocator.Temp);
             Blas.dot(in A, in xTrue, ref b);
 
-            var x = arena.fProxyVec(nn);
+            var x = new fProxyN(nn, Allocator.Temp);
             var info = Krylov.lnlq(in A, in b, ref x, MaxIter(in A), SolveTol());
             Assert.IsTrue(info.Solved);
 
-            var Ax = arena.fProxyVec(nn);
+            var Ax = new fProxyN(nn, Allocator.Temp);
             Blas.dot(in A, in x, ref Ax);
-            Assert.IsTrue(Analysis.isZero(b - Ax, Tol()));
+            var bMinusAx = new fProxyN(in b, Allocator.Temp);
+            fProxyComp.subInPlace(bMinusAx, Ax);
+            Assert.IsTrue(Analysis.isZero(bMinusAx, Tol()));
 
             // Unique solution: x IS x_true (direct comparison, unlike the rectangular case).
-            Assert.IsTrue(Analysis.isZero(xTrue - x, Tol()));
-
-            arena.Dispose();
+            var xTrueMinusX = new fProxyN(in xTrue, Allocator.Temp);
+            fProxyComp.subInPlace(xTrueMinusX, x);
+            Assert.IsTrue(Analysis.isZero(xTrueMinusX, Tol()));
         }
 
         // ---- Explicit-scratch overload driven through the IJob struct: exercises the caller-provided
@@ -150,55 +154,51 @@ public class fProxyLNLQTests
         // min-norm case. ----
         void ExplicitScratchInJob()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 6, n = 11;
-            var A = BuildA(ref arena, m, n, 63001);
+            var A = BuildA(m, n, 63001);
 
-            var xTrue = arena.fProxyRandomVec(n, -4f, 4f, 63002);
-            var b = arena.fProxyVec(m);
+            var xTrue = GenerateOP.fProxyRandomVec(n, -4f, 4f, 63002);
+            var b = new fProxyN(m, Allocator.Temp);
             Blas.dot(in A, in xTrue, ref b);
 
             // Caller-provided scratch (lengths: u,tmpM = Rows; v,tmpN = Cols).
-            var u    = arena.fProxyVec(m);
-            var v    = arena.fProxyVec(n);
-            var tmpM = arena.fProxyVec(m);
-            var tmpN = arena.fProxyVec(n);
-            var x    = arena.fProxyVec(n);
+            var u    = new fProxyN(m, Allocator.Temp);
+            var v    = new fProxyN(n, Allocator.Temp);
+            var tmpM = new fProxyN(m, Allocator.Temp);
+            var tmpN = new fProxyN(n, Allocator.Temp);
+            var x    = new fProxyN(n, Allocator.Temp);
 
             var info = Krylov.lnlq(in A, in b, ref x, ref u, ref v, ref tmpM, ref tmpN, MaxIter(in A), SolveTol());
             Assert.IsTrue(info.Solved);
 
-            var Ax = arena.fProxyVec(m);
+            var Ax = new fProxyN(m, Allocator.Temp);
             Blas.dot(in A, in x, ref Ax);
-            Assert.IsTrue(Analysis.isZero(b - Ax, Tol()));
+            var bMinusAx = new fProxyN(in b, Allocator.Temp);
+            fProxyComp.subInPlace(bMinusAx, Ax);
+            Assert.IsTrue(Analysis.isZero(bMinusAx, Tol()));
 
-            var xRef = arena.fProxyVec(n);
+            var xRef = new fProxyN(n, Allocator.Temp);
             LQ.minNormSolve(in A, in b, ref xRef);
-            Assert.IsTrue(Analysis.isZero(xRef - x, Tol()));
-
-            arena.Dispose();
+            var xRefMinusX = new fProxyN(in xRef, Allocator.Temp);
+            fProxyComp.subInPlace(xRefMinusX, x);
+            Assert.IsTrue(Analysis.isZero(xRefMinusX, Tol()));
         }
 
         // ---- Zero RHS: min-norm solution is exactly x = 0 on the early-out path with zero iterations.
         // Assertions are EXACT. Also proves lnlq zeroes x internally (no warm start) by seeding garbage. ----
         void ZeroRhs()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 5, n = 9;
-            var A = BuildA(ref arena, m, n, 64001);
-            var b = arena.fProxyVec(m); // all zeros
+            var A = BuildA(m, n, 64001);
+            var b = new fProxyN(m, Allocator.Temp); // all zeros
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             for (int j = 0; j < n; j++) x[j] = (fProxy)7;
 
             var info = Krylov.lnlq(in A, in b, ref x);
             Assert.IsTrue(info.Solved);
             Assert.IsTrue(info.iterations == 0);
             Assert.IsTrue(Analysis.isZero(x, (fProxy)0));
-
-            arena.Dispose();
         }
 
         // ---- Rank-deficient A (row 1 all zeros) with b nonzero only in that zero row: u_1 = b selects
@@ -207,24 +207,20 @@ public class fProxyLNLQTests
         // UNDEFINED per the Breakdown contract, so it is NOT asserted. ----
         void RankDeficientBreakdown()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 2, n = 4;
-            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 65001);
+            var A = GenerateOP.fProxyRandomMat(m, n, -1f, 1f, 65001);
             for (int j = 0; j < n; j++)
                 A[1, j] = (fProxy)0; // row 1 = 0 -> rank-deficient (not full row rank)
 
-            var b = arena.fProxyVec(m);
+            var b = new fProxyN(m, Allocator.Temp);
             b[1] = (fProxy)1; // nonzero only where A's row is zero -> Aᵀb = 0 on the first step
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             var info = Krylov.lnlq(in A, in b, ref x);
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Breakdown);
             // Norms are finite (no NaN escapes the collapse path).
             Assert.IsFalse(double.IsNaN(info.rnorm));
-
-            arena.Dispose();
         }
 
         // ---- HEADLINE: the certified Gauss-Radau forward-error bound. Checked at a MID-convergence
@@ -235,20 +231,18 @@ public class fProxyLNLQTests
         // crude residual/σ_min bound would fail. ----
         void BoundIsUpperBound()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 6, n = 11;
-            var A = BuildA(ref arena, m, n, 66001);
-            var xTrue = arena.fProxyRandomVec(n, -4f, 4f, 66002);
-            var b = arena.fProxyVec(m);
+            var A = BuildA(m, n, 66001);
+            var xTrue = GenerateOP.fProxyRandomVec(n, -4f, 4f, 66002);
+            var b = new fProxyN(m, Allocator.Temp);
             Blas.dot(in A, in xTrue, ref b);
 
             // σ_min(A) via SVD of Aᵀ (n×m tall -> m singular values = A's).
-            var At = arena.fProxyMat(n, m);
+            var At = new fProxyMxN(n, m, Allocator.Temp);
             for (int i = 0; i < m; i++)
                 for (int j = 0; j < n; j++)
                     At[j, i] = A[i, j];
-            var svals = arena.fProxyVec(m);
+            var svals = new fProxyN(m, Allocator.Temp);
             SVD.values(in At, ref svals);
             fProxy smin = svals[0];
             for (int i = 1; i < m; i++) smin = math.min(smin, svals[i]);
@@ -257,14 +251,15 @@ public class fProxyLNLQTests
             // 1e-10 would round away in float and let sigmaEst exceed σ_min(A), breaking the bound.
             double sigmaEst = (1.0 - 1e-4) * (double)smin;
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             var info = Krylov.lnlq(in A, in b, ref x, 2, SolveTol(), sigmaEst);
             // 2 iterations cannot reach the 1e-5 residual tol on a 6-row system: mid-convergence.
             Assert.IsTrue(info.status == IterativeSolveStatus.MaxIterations);
 
-            var xRef = arena.fProxyVec(n);
+            var xRef = new fProxyN(n, Allocator.Temp);
             LQ.minNormSolve(in A, in b, ref xRef);
-            var diff = xRef - x;
+            var diff = new fProxyN(in xRef, Allocator.Temp);
+            fProxyComp.subInPlace(diff, x);
             double trueErr = (double)Norm(in diff);
 
             // (a) the reported bound is a VALID UPPER bound on the true error (a wrong recurrence that
@@ -275,13 +270,11 @@ public class fProxyLNLQTests
             Assert.IsTrue(info.xErrBound <= trueErr * 10.0);
 
             // Estimate gates the machinery: no σ_est (default) -> NaN bound, same solve.
-            var x2 = arena.fProxyVec(n);
+            var x2 = new fProxyN(n, Allocator.Temp);
             var info2 = Krylov.lnlq(in A, in b, ref x2, 2, SolveTol());
             Assert.IsTrue(double.IsNaN(info2.xErrBound));
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(x[i] == x2[i]);   // bound machinery does not perturb the solve
-
-            arena.Dispose();
         }
     }
 

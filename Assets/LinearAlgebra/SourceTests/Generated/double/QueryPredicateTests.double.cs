@@ -129,10 +129,8 @@ public class doubleQueryPredicateTests
 
         void GroupAScalar()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // v = [-2, 0, 3, 1, 4, 2]; threshold 2.5 -> {3@2, 4@4} pass.
-            var v = arena.doubleVec(6);
+            var v = new doubleN(6, Allocator.Temp);
             v[0] = (double)(-2); v[1] = (double)0; v[2] = (double)3;
             v[3] = (double)1;    v[4] = (double)4; v[5] = (double)2;
 
@@ -143,7 +141,7 @@ public class doubleQueryPredicateTests
             // not all > 2.5 (the -2 fails) -> all == false.
             AssertTrue(!Query.all(in v, ref pass));
 
-            var idx = arena.Indices(6);
+            var idx = new Indices(6, Allocator.Temp);
             int fc = Query.findAll(in v, ref pass, ref idx);
             AssertEqI(fc, 2);
             AssertEqI(idx[0], 2); AssertEqI(idx[1], 4);
@@ -163,28 +161,26 @@ public class doubleQueryPredicateTests
             AssertTrue(Query.any(in v, ref allPass));
 
             // Empty vector: findFirst -1, count 0, any false, all true (vacuous), findAll 0.
-            var v0 = arena.doubleVec(0);
+            var v0 = new doubleN(0, Allocator.Temp);
             AssertEqI(Query.findFirst(in v0, ref pass), -1);
             AssertEqI(Query.count(in v0, ref pass), 0);
             AssertTrue(!Query.any(in v0, ref pass));
             AssertTrue(Query.all(in v0, ref pass));
-            var idx0 = arena.Indices(1);
+            var idx0 = new Indices(1, Allocator.Temp);
             AssertEqI(Query.findAll(in v0, ref pass, ref idx0), 0);
 
             // Matrix flat-index variant (generic T over doubleMxN, row-major flat order).
             // A = [1 5; 2 5] -> flat [1,5,2,5]; threshold 4 -> {5@1, 5@3}.
-            var A = arena.doubleMat(2, 2);
+            var A = new doubleMxN(2, 2, Allocator.Temp);
             A[0, 0] = (double)1; A[0, 1] = (double)5;
             A[1, 0] = (double)2; A[1, 1] = (double)5;
             var matPass = new GreaterThanScalar { t = (double)4 };
             AssertEqI(Query.findFirst(in A, ref matPass), 1);
             AssertEqI(Query.count(in A, ref matPass), 2);
-            var idxM = arena.Indices(4);
+            var idxM = new Indices(4, Allocator.Temp);
             int mc = Query.findAll(in A, ref matPass, ref idxM);
             AssertEqI(mc, 2);
             AssertEqI(idxM[0], 1); AssertEqI(idxM[1], 3);
-
-            arena.Dispose();
         }
 
         // ---------------------------------------------------------------------
@@ -193,15 +189,13 @@ public class doubleQueryPredicateTests
 
         void GroupBFilter()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // 4x3 with known row + column sums:
             //  r0: 1 0 0  -> sum 1
             //  r1: 2 2 0  -> sum 4
             //  r2: 0 0 0  -> sum 0
             //  r3: 3 1 1  -> sum 5
             //  col sums: c0=6, c1=3, c2=1.
-            var A = arena.doubleMat(4, 3);
+            var A = new doubleMxN(4, 3, Allocator.Temp);
             A[0, 0] = (double)1; A[0, 1] = (double)0; A[0, 2] = (double)0;
             A[1, 0] = (double)2; A[1, 1] = (double)2; A[1, 2] = (double)0;
             A[2, 0] = (double)0; A[2, 1] = (double)0; A[2, 2] = (double)0;
@@ -209,7 +203,7 @@ public class doubleQueryPredicateTests
 
             // EvenRow -> rows {0,2}.
             var even = new EvenRow();
-            var idxR = arena.Indices(4);
+            var idxR = new Indices(4, Allocator.Temp);
             int er = Query.whichRows(in A, ref even, ref idxR);
             AssertEqI(er, 2);
             AssertEqI(idxR[0], 0); AssertEqI(idxR[1], 2);
@@ -236,7 +230,7 @@ public class doubleQueryPredicateTests
 
             // Column twin: EvenCol -> cols {0,2}; ColSumAbove(2) -> {c0=6, c1=3} = {0,1}.
             var evenC = new EvenCol();
-            var idxC = arena.Indices(3);
+            var idxC = new Indices(3, Allocator.Temp);
             int ec = Query.whichColumns(in A, ref evenC, ref idxC);
             AssertEqI(ec, 2);
             AssertEqI(idxC[0], 0); AssertEqI(idxC[1], 2);
@@ -247,8 +241,6 @@ public class doubleQueryPredicateTests
             AssertEqI(cc, 2);
             AssertEqI(idxC[0], 0); AssertEqI(idxC[1], 1);
             AssertEqI(Query.countColumns(in A, ref csa), 2);
-
-            arena.Dispose();
         }
 
         // ---------------------------------------------------------------------
@@ -257,15 +249,13 @@ public class doubleQueryPredicateTests
 
         void MaskedNearest()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // Rows as 1D points on x-axis; q=(0,0). SqEuclidean dist^2: r0=1, r1=9, r2=4.
             // Unmasked nearest = r0. RowSumAbove(1.5) REJECTS r0 (sum 1) -> nearest among {r1,r2} = r2.
-            var A = arena.doubleMat(3, 2);
+            var A = new doubleMxN(3, 2, Allocator.Temp);
             A[0, 0] = (double)1; A[0, 1] = (double)0;
             A[1, 0] = (double)3; A[1, 1] = (double)0;
             A[2, 0] = (double)2; A[2, 1] = (double)0;
-            var q = arena.doubleVec(2);
+            var q = new doubleN(2, Allocator.Temp);
             q[0] = (double)0; q[1] = (double)0;
 
             // Oracle sanity: unmasked nearest really is r0.
@@ -278,14 +268,12 @@ public class doubleQueryPredicateTests
 
             // Column twin: columns are the points (M_Rows=2, q length 2).
             //  c0=(1,0) c1=(3,0) c2=(2,0); ColSumAbove(1.5) rejects c0 -> nearest = c2.
-            var B = arena.doubleMat(2, 3);
+            var B = new doubleMxN(2, 3, Allocator.Temp);
             B[0, 0] = (double)1; B[0, 1] = (double)3; B[0, 2] = (double)2;
             B[1, 0] = (double)0; B[1, 1] = (double)0; B[1, 2] = (double)0;
             var cpred = new ColSumAbove { t = (double)1.5 };
             Query.nearestColumnWhere(in B, in q, Metric.SqEuclidean, ref cpred, out int cmi, out double cms);
             AssertEqI(cmi, 2); AssertClose(cms, (double)4, fEps());
-
-            arena.Dispose();
         }
 
         // ---------------------------------------------------------------------
@@ -294,11 +282,9 @@ public class doubleQueryPredicateTests
 
         void AllPassEquivalence()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int M = 6, N = 3;
-            var A = arena.doubleRandomMat(M, N, -3f, 3f, 424242);
-            var q = arena.doubleVec(N);
+            var A = GenerateOP.doubleRandomMat(M, N, -3f, 3f, 424242, allocator: Allocator.Temp);
+            var q = new doubleN(N, Allocator.Temp);
             q[0] = (double)0.5; q[1] = (double)(-1); q[2] = (double)2;
 
             var atr = new AlwaysTrueRow();
@@ -318,8 +304,8 @@ public class doubleQueryPredicateTests
             for (int mm = 0; mm < 2; mm++)
             {
                 Metric m = mm == 0 ? Metric.SqEuclidean : Metric.Dot;
-                var idxU = arena.Indices(k); var scU = arena.doubleVec(k);
-                var idxW = arena.Indices(k); var scW = arena.doubleVec(k);
+                var idxU = new Indices(k, Allocator.Temp); var scU = new doubleN(k, Allocator.Temp);
+                var idxW = new Indices(k, Allocator.Temp); var scW = new doubleN(k, Allocator.Temp);
                 int cU = Query.kNearestRows(in A, in q, k, m, ref idxU, ref scU);
                 int cW = Query.kNearestRowsWhere(in A, in q, k, m, ref atr, ref idxW, ref scW);
                 AssertEqI(cW, cU);
@@ -345,11 +331,9 @@ public class doubleQueryPredicateTests
             AssertEqI(fi4, -1); AssertClose(fs4, double.MinValue, (double)0);
 
             // --- AlwaysFalse k-nearest -> 0. ---
-            var idxF = arena.Indices(k);
-            var scF = arena.doubleVec(k);
+            var idxF = new Indices(k, Allocator.Temp);
+            var scF = new doubleN(k, Allocator.Temp);
             AssertEqI(Query.kNearestRowsWhere(in A, in q, k, Metric.SqEuclidean, ref afr, ref idxF, ref scF), 0);
-
-            arena.Dispose();
         }
 
         // ---------------------------------------------------------------------
@@ -358,33 +342,29 @@ public class doubleQueryPredicateTests
 
         void EmptyAndZeroK()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int M = 4, N = 3;
-            var A = arena.doubleRandomMat(M, N, -2f, 2f, 555);
-            var q = arena.doubleVec(N);
+            var A = GenerateOP.doubleRandomMat(M, N, -2f, 2f, 555, allocator: Allocator.Temp);
+            var q = new doubleN(N, Allocator.Temp);
             q[0] = (double)1; q[1] = (double)0; q[2] = (double)(-1);
 
             var atr = new AlwaysTrueRow();
-            var idx = arena.Indices(3);
-            var sc = arena.doubleVec(3);
+            var idx = new Indices(3, Allocator.Temp);
+            var sc = new doubleN(3, Allocator.Temp);
 
             AssertEqI(Query.kNearestRowsWhere(in A, in q, 0, Metric.SqEuclidean, ref atr, ref idx, ref sc), 0);
             AssertEqI(Query.kNearestRowsWhere(in A, in q, -1, Metric.SqEuclidean, ref atr, ref idx, ref sc), 0);
 
             // 0-row matrix -> 0 (returns before any q / size check).
-            var A0 = arena.doubleMat(0, N);
+            var A0 = new doubleMxN(0, N, Allocator.Temp);
             AssertEqI(Query.kNearestRowsWhere(in A0, in q, 3, Metric.SqEuclidean, ref atr, ref idx, ref sc), 0);
 
             // Column twin: k<=0 and 0-column matrix -> 0.
             var atc = new AlwaysTrueCol();
-            var qc = arena.doubleVec(M);
+            var qc = new doubleN(M, Allocator.Temp);
             for (int i = 0; i < M; i++) qc[i] = (double)(i - 1);
             AssertEqI(Query.kNearestColumnsWhere(in A, in qc, 0, Metric.SqEuclidean, ref atc, ref idx, ref sc), 0);
-            var A0c = arena.doubleMat(M, 0);
+            var A0c = new doubleMxN(M, 0, Allocator.Temp);
             AssertEqI(Query.kNearestColumnsWhere(in A0c, in qc, 3, Metric.SqEuclidean, ref atc, ref idx, ref sc), 0);
-
-            arena.Dispose();
         }
 
         // ---------------------------------------------------------------------
@@ -393,11 +373,9 @@ public class doubleQueryPredicateTests
 
         void GroupDScore()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // Hand matrix: row L2^2 norms 1, 9, 4, 25 (distinct).
             //  c0 = (1,3,2,5) -> L2^2 = 39 ; c1 = (0,0,0,0) -> 0.
-            var H = arena.doubleMat(4, 2);
+            var H = new doubleMxN(4, 2, Allocator.Temp);
             H[0, 0] = (double)1; H[0, 1] = (double)0;
             H[1, 0] = (double)3; H[1, 1] = (double)0;
             H[2, 0] = (double)2; H[2, 1] = (double)0;
@@ -414,8 +392,8 @@ public class doubleQueryPredicateTests
             AssertEqI(mni, 0); AssertClose(mns, (double)1, fEps());
 
             // topKRowsBy k=2 -> best-first {r3=25, r1=9}, descending.
-            var idxT = arena.Indices(2);
-            var scT = arena.doubleVec(2);
+            var idxT = new Indices(2, Allocator.Temp);
+            var scT = new doubleN(2, Allocator.Temp);
             int cT = Query.topKRowsBy(in H, ref rs, 2, ref idxT, ref scT);
             AssertEqI(cT, 2);
             AssertEqI(idxT[0], 3); AssertClose(scT[0], (double)25, fEps());
@@ -429,15 +407,13 @@ public class doubleQueryPredicateTests
             AssertEqI(cmi, Query.argMaxColNorm(in H, Norm.L2));
 
             // Random equivalence: argMaxRowBy == argMaxRowNorm(L2); argMaxColBy == argMaxColNorm(L2).
-            var R = arena.doubleRandomMat(7, 4, -3f, 3f, 909090);
+            var R = GenerateOP.doubleRandomMat(7, 4, -3f, 3f, 909090, allocator: Allocator.Temp);
             var rrs = new RowL2Score();
             Query.argMaxRowBy(in R, ref rrs, out int rmi, out double _);
             AssertEqI(rmi, Query.argMaxRowNorm(in R, Norm.L2));
             var rcs = new ColL2Score();
             Query.argMaxColBy(in R, ref rcs, out int rci, out double _);
             AssertEqI(rci, Query.argMaxColNorm(in R, Norm.L2));
-
-            arena.Dispose();
         }
 
         // ---------------------------------------------------------------------
@@ -446,21 +422,19 @@ public class doubleQueryPredicateTests
 
         void Symmetry()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int M = 5, N = 4;
-            var A = arena.doubleRandomMat(M, N, -3f, 3f, 20240628);
+            var A = GenerateOP.doubleRandomMat(M, N, -3f, 3f, 20240628, allocator: Allocator.Temp);
             var At = Blas.trans(A);   // N x M; column j of A == row j of At.
 
             // Column query length = A.M_Rows = M = At.N_Cols.
-            var q = arena.doubleVec(M);
+            var q = new doubleN(M, Allocator.Temp);
             for (int i = 0; i < M; i++) q[i] = (double)(i - 2) * (double)0.7;
 
             // whichColumns(A) == whichRows(At) for equivalent sum predicates (same threshold).
             var cpred = new ColSumAbove { t = (double)0 };
             var rpred = new RowSumAbove { t = (double)0 };
-            var cIdx = arena.Indices(N);
-            var rIdx = arena.Indices(N);
+            var cIdx = new Indices(N, Allocator.Temp);
+            var rIdx = new Indices(N, Allocator.Temp);
             int cc = Query.whichColumns(in A, ref cpred, ref cIdx);
             int rc = Query.whichRows(in At, ref rpred, ref rIdx);
             AssertEqI(cc, rc);
@@ -480,8 +454,6 @@ public class doubleQueryPredicateTests
             Query.argMaxRowBy(in At, ref rscore, out int ari, out double _);
             AssertEqI(aci, ari);
             AssertEqI(aci, Query.argMaxColNorm(in A, Norm.L2));
-
-            arena.Dispose();
         }
 
         // ---------------------------------------------------------------------
@@ -567,58 +539,54 @@ public class doubleQueryPredicateTests
     [Test]
     public void UndersizedBufferThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.doubleMat(4, 3);              // M_Rows=4, N_Cols=3
-        var q = arena.doubleVec(3);
+        var A = new doubleMxN(4, 3, Allocator.Temp);              // M_Rows=4, N_Cols=3
+        var q = new doubleN(3, Allocator.Temp);
 
         // findAll: idx.N < x.Data.Length.
-        var v = arena.doubleVec(5);
+        var v = new doubleN(5, Allocator.Temp);
         var gt = new GreaterThanScalar { t = (double)0 };
-        var smallFlat = arena.Indices(4);
+        var smallFlat = new Indices(4, Allocator.Temp);
         Assert.Throws<ArgumentException>(() => Query.findAll(in v, ref gt, ref smallFlat));
 
         // whichRows: idx.N < A.M_Rows.
         var even = new EvenRow();
-        var smallRows = arena.Indices(3);
+        var smallRows = new Indices(3, Allocator.Temp);
         Assert.Throws<ArgumentException>(() => Query.whichRows(in A, ref even, ref smallRows));
 
         // whichColumns: idx.N < A.N_Cols.
         var evenC = new EvenCol();
-        var smallCols = arena.Indices(2);
+        var smallCols = new Indices(2, Allocator.Temp);
         Assert.Throws<ArgumentException>(() => Query.whichColumns(in A, ref evenC, ref smallCols));
 
         // kNearestRowsWhere: idx.N < k (q valid, k>0 so it reaches the size guard).
         var atr = new AlwaysTrueRow();
-        var smallK = arena.Indices(1);
-        var scK = arena.doubleVec(3);
+        var smallK = new Indices(1, Allocator.Temp);
+        var scK = new doubleN(3, Allocator.Temp);
         Assert.Throws<ArgumentException>(() =>
             Query.kNearestRowsWhere(in A, in q, 3, Metric.SqEuclidean, ref atr, ref smallK, ref scK));
         // kNearestRowsWhere: scores.N < k.
-        var okK = arena.Indices(3);
-        var smallScores = arena.doubleVec(1);
+        var okK = new Indices(3, Allocator.Temp);
+        var smallScores = new doubleN(1, Allocator.Temp);
         Assert.Throws<ArgumentException>(() =>
             Query.kNearestRowsWhere(in A, in q, 3, Metric.SqEuclidean, ref atr, ref okK, ref smallScores));
 
         // topKRowsBy: idx.N < k.
         var rs = new RowL2Score();
-        var smallT = arena.Indices(1);
-        var scT = arena.doubleVec(3);
+        var smallT = new Indices(1, Allocator.Temp);
+        var scT = new doubleN(3, Allocator.Temp);
         Assert.Throws<ArgumentException>(() =>
             Query.topKRowsBy(in A, ref rs, 3, ref smallT, ref scT));
-
-        arena.Dispose();
     }
 
     [Test]
     public void EmptyMatrixThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var q = arena.doubleVec(3);
+        var q = new doubleN(3, Allocator.Temp);
         var atr = new AlwaysTrueRow();
         var rs = new RowL2Score();
 
         // nearestRowWhere on a 0-row matrix -> InvalidOperationException.
-        var A0 = arena.doubleMat(0, 3);
+        var A0 = new doubleMxN(0, 3, Allocator.Temp);
         Assert.Throws<InvalidOperationException>(() =>
             Query.nearestRowWhere(in A0, in q, Metric.SqEuclidean, ref atr, out int _, out double _));
         // argMaxRowBy on a 0-row matrix -> InvalidOperationException.
@@ -628,37 +596,32 @@ public class doubleQueryPredicateTests
         // Column twins: 0-column matrix.
         var atc = new AlwaysTrueCol();
         var cs = new ColL2Score();
-        var qc = arena.doubleVec(3);
-        var A0c = arena.doubleMat(3, 0);
+        var qc = new doubleN(3, Allocator.Temp);
+        var A0c = new doubleMxN(3, 0, Allocator.Temp);
         Assert.Throws<InvalidOperationException>(() =>
             Query.nearestColumnWhere(in A0c, in qc, Metric.SqEuclidean, ref atc, out int _, out double _));
         Assert.Throws<InvalidOperationException>(() =>
             Query.argMaxColBy(in A0c, ref cs, out int _, out double _));
-
-        arena.Dispose();
     }
 
     [Test]
     public void QueryLengthMismatchThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.doubleMat(3, 4);              // row ops need q.N==4; col ops need q.N==3
+        var A = new doubleMxN(3, 4, Allocator.Temp);              // row ops need q.N==4; col ops need q.N==3
         var atr = new AlwaysTrueRow();
         var atc = new AlwaysTrueCol();
 
-        var qBadRow = arena.doubleVec(3);           // wrong for row ops (need 4)
+        var qBadRow = new doubleN(3, Allocator.Temp);           // wrong for row ops (need 4)
         Assert.Throws<ArgumentException>(() =>
             Query.nearestRowWhere(in A, in qBadRow, Metric.SqEuclidean, ref atr, out int _, out double _));
 
-        var idxK = arena.Indices(2);
-        var scK = arena.doubleVec(2);
+        var idxK = new Indices(2, Allocator.Temp);
+        var scK = new doubleN(2, Allocator.Temp);
         Assert.Throws<ArgumentException>(() =>
             Query.kNearestRowsWhere(in A, in qBadRow, 2, Metric.SqEuclidean, ref atr, ref idxK, ref scK));
 
-        var qBadCol = arena.doubleVec(4);           // wrong for col ops (need 3)
+        var qBadCol = new doubleN(4, Allocator.Temp);           // wrong for col ops (need 3)
         Assert.Throws<ArgumentException>(() =>
             Query.nearestColumnWhere(in A, in qBadCol, Metric.SqEuclidean, ref atc, out int _, out double _));
-
-        arena.Dispose();
     }
 }

@@ -47,15 +47,14 @@ namespace LinearAlgebra.Benchmarks
     {
         public static (string id, uint hash)[] Case_IntFamilyCoreUInt()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2654435761u ^ 0x0019u);
 
             const int n = 48;
             // Non-negative range: this case runs for uint too (unlike the norms/stats job below,
             // which is skipped for uint), and a negative uint literal wraps to a huge value under
             // unsigned arithmetic, which would violate Rand.nextUniformInPlace's min <= max contract.
-            var a = arena.uintVec(n);
-            var b = arena.uintVec(n);
+            var a = new uintN(n, Allocator.Persistent);
+            var b = new uintN(n, Allocator.Persistent);
             // Small range: n=48 values in [0,10) keeps the worst-case dot-product sum (4800) well
             // inside `short`'s range (Blas.dot accumulates in the element's own width, unwidened).
             // Rand.nextUniformInPlace has no uint instantiation (RandomOP.uint.cs does not opt
@@ -68,7 +67,7 @@ namespace LinearAlgebra.Benchmarks
 
             var pivot = new Pivot(8, Allocator.Persistent);
 
-            var randDest = arena.uintVec(n);
+            var randDest = new uintN(n, Allocator.Persistent);
             
             
             for (int i = 0; i < n; i++) randDest[i] = rng.NextUInt(0u, 1000u);
@@ -86,7 +85,7 @@ namespace LinearAlgebra.Benchmarks
             };
             hashOut.Dispose();
             pivot.Dispose();
-            arena.Dispose();
+            a.Dispose(); b.Dispose(); randDest.Dispose();
             return result;
         }
 

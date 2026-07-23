@@ -143,15 +143,14 @@ namespace LinearAlgebra.Benchmarks
             // in LU.fProxy.cs for the same convention).
             const int K = 8;
 
-            var arena = new Arena(Allocator.Persistent);
-            var Src = arena.fProxyMat(n, n);
-            var A = arena.fProxyMat(n, n);
+            var Src = new fProxyMxN(n, n, Allocator.Persistent);
+            var A = new fProxyMxN(n, n, Allocator.Persistent);
             var P = new Pivot(n, Allocator.Persistent);
 
-            var b = arena.fProxyVec(n);
-            var bSrc = arena.fProxyVec(n);
-            var BX = arena.fProxyMat(n, K);
-            var BXsrc = arena.fProxyMat(n, K);
+            var b = new fProxyN(n, Allocator.Persistent);
+            var bSrc = new fProxyN(n, Allocator.Persistent);
+            var BX = new fProxyMxN(n, K, Allocator.Persistent);
+            var BXsrc = new fProxyMxN(n, K, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -176,7 +175,12 @@ namespace LinearAlgebra.Benchmarks
             var kernelTransAVec = Bench.Time(() => new TriSolveKernelTransAVecJobFProxy { A = A, P = P, b = b, bSrc = bSrc }.Run());
 
             P.Dispose();
-            arena.Dispose();
+            Src.Dispose();
+            A.Dispose();
+            b.Dispose();
+            bSrc.Dispose();
+            BX.Dispose();
+            BXsrc.Dispose();
 
             return TriSolveFmt.RowKernel("fProxy", "LU solve fwd (vec)", n, fwdVec)
                  + "\n" + TriSolveFmt.RowKernel("fProxy", "LU solve TransA (vec)", n, transAVec)

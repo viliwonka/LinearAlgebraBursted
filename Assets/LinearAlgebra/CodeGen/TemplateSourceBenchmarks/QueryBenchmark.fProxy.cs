@@ -76,9 +76,9 @@ namespace LinearAlgebra.Benchmarks
 
     public static partial class QueryBenchmark
     {
-        static fProxyMxN FillFProxy(Arena arena, int n)
+        static fProxyMxN FillFProxy(int n)
         {
-            var A = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Persistent);
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
                 for (int c = 0; c < n; c++)
@@ -88,74 +88,68 @@ namespace LinearAlgebra.Benchmarks
 
         static string RowArgMinFProxy(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = FillFProxy(arena, n);
-            var idx = arena.Indices(n);
+            var A = FillFProxy(n);
+            var idx = new Indices(n, Allocator.Persistent);
             var job = new QueryRowArgMinJobFProxy { A = A, Idx = idx };
             var stat = Bench.Time(() => job.Run());
-            arena.Dispose();
+            A.Dispose(); idx.Dispose();
             return Bench.Row("fProxy", n, stat, flops);
         }
 
         static string ColArgMinFProxy(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = FillFProxy(arena, n);
-            var idx = arena.Indices(n);
-            var val = arena.fProxyVec(n);
+            var A = FillFProxy(n);
+            var idx = new Indices(n, Allocator.Persistent);
+            var val = new fProxyN(n, Allocator.Persistent);
             var job = new QueryColArgMinJobFProxy { A = A, Idx = idx, Val = val };
             var stat = Bench.Time(() => job.Run());
-            arena.Dispose();
+            A.Dispose(); idx.Dispose(); val.Dispose();
             return Bench.Row("fProxy", n, stat, flops);
         }
 
         static string ArgMaxRowNormFProxy(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = FillFProxy(arena, n);
+            var A = FillFProxy(n);
             var outv = new NativeArray<int>(1, Allocator.Persistent);
             var job = new QueryArgMaxRowNormJobFProxy { A = A, Out = outv };
             var stat = Bench.Time(() => job.Run());
-            outv.Dispose(); arena.Dispose();
+            outv.Dispose(); A.Dispose();
             return Bench.Row("fProxy", n, stat, flops);
         }
 
         static string ArgMaxColNormFProxy(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = FillFProxy(arena, n);
+            var A = FillFProxy(n);
             var outv = new NativeArray<int>(1, Allocator.Persistent);
             var job = new QueryArgMaxColNormJobFProxy { A = A, Out = outv };
             var stat = Bench.Time(() => job.Run());
-            outv.Dispose(); arena.Dispose();
+            outv.Dispose(); A.Dispose();
             return Bench.Row("fProxy", n, stat, flops);
         }
 
         static string NearestColumnFProxy(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = FillFProxy(arena, n);
-            var q = arena.fProxyVec(n);
+            var A = FillFProxy(n);
+            var q = new fProxyN(n, Allocator.Persistent);
             var rng = new Unity.Mathematics.Random(0x9E3779B9u ^ (uint)n);
             for (int r = 0; r < n; r++) q[r] = rng.NextFProxy(-1f, 1f);
             var outv = new NativeArray<int>(1, Allocator.Persistent);
             var job = new QueryNearestColumnJobFProxy { A = A, Q = q, Out = outv };
             var stat = Bench.Time(() => job.Run());
-            outv.Dispose(); arena.Dispose();
+            outv.Dispose(); A.Dispose(); q.Dispose();
             return Bench.Row("fProxy", n, stat, flops);
         }
 
         static string NearestRowFProxy(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = FillFProxy(arena, n);
-            var q = arena.fProxyVec(n);
+            var A = FillFProxy(n);
+            var q = new fProxyN(n, Allocator.Persistent);
             var rng = new Unity.Mathematics.Random(0x9E3779B9u ^ (uint)n);
             for (int c = 0; c < n; c++) q[c] = rng.NextFProxy(-1f, 1f);
             var outv = new NativeArray<int>(1, Allocator.Persistent);
             var job = new QueryNearestRowJobFProxy { A = A, Q = q, Out = outv };
             var stat = Bench.Time(() => job.Run());
-            outv.Dispose(); arena.Dispose();
+            outv.Dispose(); A.Dispose(); q.Dispose();
             return Bench.Row("fProxy", n, stat, flops);
         }
     }

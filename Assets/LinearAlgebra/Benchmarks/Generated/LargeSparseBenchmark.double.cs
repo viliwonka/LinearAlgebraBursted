@@ -128,25 +128,27 @@ namespace LinearAlgebra.Benchmarks
 
             foreach (int N in Ns)
             {
-                var arena = new Arena(Allocator.Persistent);
                 int nb = N / BR;
-                var A = arena.doubleRandomSparseSPD(nb, BR, density, 0x5A17u);
-                var M = arena.doubleBlockJacobi(in A);
-                var ssor = arena.doubleSSOR(in A);
-                var xKnown = arena.doubleRandomVec(N, 0.5f, 1.5f, 0xB0Bu);
-                var b = arena.doubleVec(N); BSR.spMV(in A, in xKnown, ref b);
+                var A = doubleGallery.doubleRandomSparseSPD(nb, BR, density, 0x5A17u, Allocator.Persistent);
+                var M = new doubleBlockJacobi(in A, Allocator.Persistent);
+                var ssor = new doubleSSOR(in A, Allocator.Persistent);
+                var xKnown = GenerateOP.doubleRandomVec(N, 0.5f, 1.5f, 0xB0Bu, Allocator.Persistent);
+                var b = new doubleN(N, Allocator.Persistent); BSR.spMV(in A, in xKnown, ref b);
                 string sz = N.ToString();
 
-                var x = arena.doubleVec(N);
-                var cgJob = new SpCgJobDouble { A = A, b = b, x = x, r = arena.doubleVec(N), p = arena.doubleVec(N), Ap = arena.doubleVec(N), K = K, outInfo = oi };
+                var x = new doubleN(N, Allocator.Persistent);
+                var cgR = new doubleN(N, Allocator.Persistent); var cgP = new doubleN(N, Allocator.Persistent); var cgAp = new doubleN(N, Allocator.Persistent);
+                var cgJob = new SpCgJobDouble { A = A, b = b, x = x, r = cgR, p = cgP, Ap = cgAp, K = K, outInfo = oi };
                 var cgStat = Bench.Time(() => cgJob.Run());
                 sb.AppendLine(LargeSparseFmt.Row("double", sz, "CG", cgStat, Res(in A, in x, in b), (int)oi[1], (int)oi[0]));
-                var xp = arena.doubleVec(N);
-                var pcgJob = new SpPcgJobDouble { A = A, M = M, b = b, x = xp, r = arena.doubleVec(N), p = arena.doubleVec(N), Ap = arena.doubleVec(N), z = arena.doubleVec(N), K = K, outInfo = oi };
+                var xp = new doubleN(N, Allocator.Persistent);
+                var pcgR = new doubleN(N, Allocator.Persistent); var pcgP = new doubleN(N, Allocator.Persistent); var pcgAp = new doubleN(N, Allocator.Persistent); var pcgZ = new doubleN(N, Allocator.Persistent);
+                var pcgJob = new SpPcgJobDouble { A = A, M = M, b = b, x = xp, r = pcgR, p = pcgP, Ap = pcgAp, z = pcgZ, K = K, outInfo = oi };
                 var pcgStat = Bench.Time(() => pcgJob.Run());
                 sb.AppendLine(LargeSparseFmt.Row("double", sz, "PCG-Jacobi", pcgStat, Res(in A, in xp, in b), (int)oi[1], (int)oi[0]));
-                var xs = arena.doubleVec(N);
-                var ssorJob = new SpPcgSSORJobDouble { A = A, M = ssor, b = b, x = xs, r = arena.doubleVec(N), p = arena.doubleVec(N), Ap = arena.doubleVec(N), z = arena.doubleVec(N), K = K, outInfo = oi };
+                var xs = new doubleN(N, Allocator.Persistent);
+                var ssorR = new doubleN(N, Allocator.Persistent); var ssorP = new doubleN(N, Allocator.Persistent); var ssorAp = new doubleN(N, Allocator.Persistent); var ssorZ = new doubleN(N, Allocator.Persistent);
+                var ssorJob = new SpPcgSSORJobDouble { A = A, M = ssor, b = b, x = xs, r = ssorR, p = ssorP, Ap = ssorAp, z = ssorZ, K = K, outInfo = oi };
                 var ssorStat = Bench.Time(() => ssorJob.Run());
                 sb.AppendLine(LargeSparseFmt.Row("double", sz, "PCG-SSOR", ssorStat, Res(in A, in xs, in b), (int)oi[1], (int)oi[0]));
 
@@ -154,53 +156,82 @@ namespace LinearAlgebra.Benchmarks
                 // (largest N: the trend is visible at one size; budget discipline). This is the
                 // row set where SSOR's iteration-count win is visible; the fixed-K/tol=0 rows
                 // above cannot show it (every solver there runs the full K by construction).
-                if (N == Ns[Ns.Length - 1])
+                doubleN xc1 = default, cgConvR = default, cgConvP = default, cgConvAp = default;
+                doubleN xc2 = default, pcgConvR = default, pcgConvP = default, pcgConvAp = default, pcgConvZ = default;
+                doubleN xc3 = default, ssorConvR = default, ssorConvP = default, ssorConvAp = default, ssorConvZ = default;
+                bool ranConv = N == Ns[Ns.Length - 1];
+                if (ranConv)
                 {
                     double convTol = Consts.doubleSqrtEps;
                     int convMaxIter = 8 * N;
 
-                    var xc1 = arena.doubleVec(N);
-                    var cgConvJob = new SpCgJobDouble { A = A, b = b, x = xc1, r = arena.doubleVec(N), p = arena.doubleVec(N), Ap = arena.doubleVec(N), K = convMaxIter, tol = convTol, outInfo = oi };
+                    xc1 = new doubleN(N, Allocator.Persistent);
+                    cgConvR = new doubleN(N, Allocator.Persistent); cgConvP = new doubleN(N, Allocator.Persistent); cgConvAp = new doubleN(N, Allocator.Persistent);
+                    var cgConvJob = new SpCgJobDouble { A = A, b = b, x = xc1, r = cgConvR, p = cgConvP, Ap = cgConvAp, K = convMaxIter, tol = convTol, outInfo = oi };
                     var cgConvStat = Bench.Time(() => cgConvJob.Run());
                     sb.AppendLine(LargeSparseFmt.Row("double", sz, "CG@tol", cgConvStat, Res(in A, in xc1, in b), (int)oi[1], (int)oi[0]));
 
-                    var xc2 = arena.doubleVec(N);
-                    var pcgConvJob = new SpPcgJobDouble { A = A, M = M, b = b, x = xc2, r = arena.doubleVec(N), p = arena.doubleVec(N), Ap = arena.doubleVec(N), z = arena.doubleVec(N), K = convMaxIter, tol = convTol, outInfo = oi };
+                    xc2 = new doubleN(N, Allocator.Persistent);
+                    pcgConvR = new doubleN(N, Allocator.Persistent); pcgConvP = new doubleN(N, Allocator.Persistent); pcgConvAp = new doubleN(N, Allocator.Persistent); pcgConvZ = new doubleN(N, Allocator.Persistent);
+                    var pcgConvJob = new SpPcgJobDouble { A = A, M = M, b = b, x = xc2, r = pcgConvR, p = pcgConvP, Ap = pcgConvAp, z = pcgConvZ, K = convMaxIter, tol = convTol, outInfo = oi };
                     var pcgConvStat = Bench.Time(() => pcgConvJob.Run());
                     sb.AppendLine(LargeSparseFmt.Row("double", sz, "PCG-Jacobi@tol", pcgConvStat, Res(in A, in xc2, in b), (int)oi[1], (int)oi[0]));
 
-                    var xc3 = arena.doubleVec(N);
-                    var ssorConvJob = new SpPcgSSORJobDouble { A = A, M = ssor, b = b, x = xc3, r = arena.doubleVec(N), p = arena.doubleVec(N), Ap = arena.doubleVec(N), z = arena.doubleVec(N), K = convMaxIter, tol = convTol, outInfo = oi };
+                    xc3 = new doubleN(N, Allocator.Persistent);
+                    ssorConvR = new doubleN(N, Allocator.Persistent); ssorConvP = new doubleN(N, Allocator.Persistent); ssorConvAp = new doubleN(N, Allocator.Persistent); ssorConvZ = new doubleN(N, Allocator.Persistent);
+                    var ssorConvJob = new SpPcgSSORJobDouble { A = A, M = ssor, b = b, x = xc3, r = ssorConvR, p = ssorConvP, Ap = ssorConvAp, z = ssorConvZ, K = convMaxIter, tol = convTol, outInfo = oi };
                     var ssorConvStat = Bench.Time(() => ssorConvJob.Run());
                     sb.AppendLine(LargeSparseFmt.Row("double", sz, "PCG-SSOR@tol", ssorConvStat, Res(in A, in xc3, in b), (int)oi[1], (int)oi[0]));
                 }
 
-                var xm = arena.doubleVec(N);
-                var mrJob = new SpMinresJobDouble { A = A, b = b, x = xm, y = arena.doubleVec(N), r1 = arena.doubleVec(N), r2 = arena.doubleVec(N), v = arena.doubleVec(N), w = arena.doubleVec(N), w1 = arena.doubleVec(N), w2 = arena.doubleVec(N), K = K, outInfo = oi };
+                var xm = new doubleN(N, Allocator.Persistent);
+                var mrY = new doubleN(N, Allocator.Persistent); var mrR1 = new doubleN(N, Allocator.Persistent); var mrR2 = new doubleN(N, Allocator.Persistent);
+                var mrV = new doubleN(N, Allocator.Persistent); var mrW = new doubleN(N, Allocator.Persistent); var mrW1 = new doubleN(N, Allocator.Persistent); var mrW2 = new doubleN(N, Allocator.Persistent);
+                var mrJob = new SpMinresJobDouble { A = A, b = b, x = xm, y = mrY, r1 = mrR1, r2 = mrR2, v = mrV, w = mrW, w1 = mrW1, w2 = mrW2, K = K, outInfo = oi };
                 var mrStat = Bench.Time(() => mrJob.Run());
                 sb.AppendLine(LargeSparseFmt.Row("double", sz, "MINRES", mrStat, Res(in A, in xm, in b), (int)oi[1], (int)oi[0]));
 
-                var An = arena.doubleRandomSparse(nb, nb, BR, density, 0x1234u);
-                var bn = arena.doubleVec(N); BSR.spMV(in An, in xKnown, ref bn);
-                var xn = arena.doubleVec(N);
-                var bicgJob = new SpBicgJobDouble { A = An, b = bn, x = xn, r = arena.doubleVec(N), rHat0 = arena.doubleVec(N), p = arena.doubleVec(N), v = arena.doubleVec(N), t = arena.doubleVec(N), K = K, outInfo = oi };
+                var An = doubleGallery.doubleRandomSparse(nb, nb, BR, density, 0x1234u, Allocator.Persistent);
+                var bn = new doubleN(N, Allocator.Persistent); BSR.spMV(in An, in xKnown, ref bn);
+                var xn = new doubleN(N, Allocator.Persistent);
+                var bicgR = new doubleN(N, Allocator.Persistent); var bicgRHat0 = new doubleN(N, Allocator.Persistent); var bicgP = new doubleN(N, Allocator.Persistent);
+                var bicgV = new doubleN(N, Allocator.Persistent); var bicgT = new doubleN(N, Allocator.Persistent);
+                var bicgJob = new SpBicgJobDouble { A = An, b = bn, x = xn, r = bicgR, rHat0 = bicgRHat0, p = bicgP, v = bicgV, t = bicgT, K = K, outInfo = oi };
                 var bicgStat = Bench.Time(() => bicgJob.Run());
                 sb.AppendLine(LargeSparseFmt.Row("double", sz, "BiCGStab", bicgStat, Res(in An, in xn, in bn), (int)oi[1], (int)oi[0]));
 
                 int mb = 2 * nb, m = mb * BR;
-                var At = arena.doubleRandomSparse(mb, nb, BR, density, 0xC0DEu);
-                var bt = arena.doubleVec(m); BSR.spMV(in At, in xKnown, ref bt);
+                var At = doubleGallery.doubleRandomSparse(mb, nb, BR, density, 0xC0DEu, Allocator.Persistent);
+                var bt = new doubleN(m, Allocator.Persistent); BSR.spMV(in At, in xKnown, ref bt);
                 string rsz = m + "x" + N;
-                var xl = arena.doubleVec(N);
-                var lsqrJob = new SpLsqrJobDouble { A = At, b = bt, x = xl, u = arena.doubleVec(m), v = arena.doubleVec(N), w = arena.doubleVec(N), tmpM = arena.doubleVec(m), tmpN = arena.doubleVec(N), K = K, outInfo = oi };
+                var xl = new doubleN(N, Allocator.Persistent);
+                var lsqrU = new doubleN(m, Allocator.Persistent); var lsqrV = new doubleN(N, Allocator.Persistent); var lsqrW = new doubleN(N, Allocator.Persistent);
+                var lsqrTmpM = new doubleN(m, Allocator.Persistent); var lsqrTmpN = new doubleN(N, Allocator.Persistent);
+                var lsqrJob = new SpLsqrJobDouble { A = At, b = bt, x = xl, u = lsqrU, v = lsqrV, w = lsqrW, tmpM = lsqrTmpM, tmpN = lsqrTmpN, K = K, outInfo = oi };
                 var lsqrStat = Bench.Time(() => lsqrJob.Run());
                 sb.AppendLine(LargeSparseFmt.Row("double", rsz, "LSQR", lsqrStat, Res(in At, in xl, in bt), (int)oi[1], (int)oi[0]));
-                var xr = arena.doubleVec(N);
-                var lsmrJob = new SpLsmrJobDouble { A = At, b = bt, x = xr, u = arena.doubleVec(m), v = arena.doubleVec(N), h = arena.doubleVec(N), hbar = arena.doubleVec(N), tmpM = arena.doubleVec(m), tmpN = arena.doubleVec(N), K = K, outInfo = oi };
+                var xr = new doubleN(N, Allocator.Persistent);
+                var lsmrU = new doubleN(m, Allocator.Persistent); var lsmrV = new doubleN(N, Allocator.Persistent); var lsmrH = new doubleN(N, Allocator.Persistent); var lsmrHbar = new doubleN(N, Allocator.Persistent);
+                var lsmrTmpM = new doubleN(m, Allocator.Persistent); var lsmrTmpN = new doubleN(N, Allocator.Persistent);
+                var lsmrJob = new SpLsmrJobDouble { A = At, b = bt, x = xr, u = lsmrU, v = lsmrV, h = lsmrH, hbar = lsmrHbar, tmpM = lsmrTmpM, tmpN = lsmrTmpN, K = K, outInfo = oi };
                 var lsmrStat = Bench.Time(() => lsmrJob.Run());
                 sb.AppendLine(LargeSparseFmt.Row("double", rsz, "LSMR", lsmrStat, Res(in At, in xr, in bt), (int)oi[1], (int)oi[0]));
 
-                arena.Dispose();
+                A.Dispose(); M.Dispose(); ssor.Dispose(); xKnown.Dispose(); b.Dispose();
+                x.Dispose(); cgR.Dispose(); cgP.Dispose(); cgAp.Dispose();
+                xp.Dispose(); pcgR.Dispose(); pcgP.Dispose(); pcgAp.Dispose(); pcgZ.Dispose();
+                xs.Dispose(); ssorR.Dispose(); ssorP.Dispose(); ssorAp.Dispose(); ssorZ.Dispose();
+                if (ranConv)
+                {
+                    xc1.Dispose(); cgConvR.Dispose(); cgConvP.Dispose(); cgConvAp.Dispose();
+                    xc2.Dispose(); pcgConvR.Dispose(); pcgConvP.Dispose(); pcgConvAp.Dispose(); pcgConvZ.Dispose();
+                    xc3.Dispose(); ssorConvR.Dispose(); ssorConvP.Dispose(); ssorConvAp.Dispose(); ssorConvZ.Dispose();
+                }
+                xm.Dispose(); mrY.Dispose(); mrR1.Dispose(); mrR2.Dispose(); mrV.Dispose(); mrW.Dispose(); mrW1.Dispose(); mrW2.Dispose();
+                An.Dispose(); bn.Dispose(); xn.Dispose(); bicgR.Dispose(); bicgRHat0.Dispose(); bicgP.Dispose(); bicgV.Dispose(); bicgT.Dispose();
+                At.Dispose(); bt.Dispose();
+                xl.Dispose(); lsqrU.Dispose(); lsqrV.Dispose(); lsqrW.Dispose(); lsqrTmpM.Dispose(); lsqrTmpN.Dispose();
+                xr.Dispose(); lsmrU.Dispose(); lsmrV.Dispose(); lsmrH.Dispose(); lsmrHbar.Dispose(); lsmrTmpM.Dispose(); lsmrTmpN.Dispose();
             }
 
             oi.Dispose();
@@ -220,53 +251,74 @@ namespace LinearAlgebra.Benchmarks
 
             foreach (int N in Ns)
             {
-                var arena = new Arena(Allocator.Persistent);
-                var A = arena.doubleLaplacian2D(1, N);
-                var M = arena.doubleBlockJacobi(in A);
-                var ssor = arena.doubleSSOR(in A);
-                var xKnown = arena.doubleRandomVec(N, 0.5f, 1.5f, 0xB0Bu);
-                var b = arena.doubleVec(N); BSR.spMV(in A, in xKnown, ref b);
+                var A = doubleGallery.doubleLaplacian2D(1, N, Allocator.Persistent);
+                var M = new doubleBlockJacobi(in A, Allocator.Persistent);
+                var ssor = new doubleSSOR(in A, Allocator.Persistent);
+                var xKnown = GenerateOP.doubleRandomVec(N, 0.5f, 1.5f, 0xB0Bu, Allocator.Persistent);
+                var b = new doubleN(N, Allocator.Persistent); BSR.spMV(in A, in xKnown, ref b);
                 string sz = N.ToString();
 
-                var x = arena.doubleVec(N);
-                var cgJob = new SpCgJobDouble { A = A, b = b, x = x, r = arena.doubleVec(N), p = arena.doubleVec(N), Ap = arena.doubleVec(N), K = K, outInfo = oi };
+                var x = new doubleN(N, Allocator.Persistent);
+                var cgR = new doubleN(N, Allocator.Persistent); var cgP = new doubleN(N, Allocator.Persistent); var cgAp = new doubleN(N, Allocator.Persistent);
+                var cgJob = new SpCgJobDouble { A = A, b = b, x = x, r = cgR, p = cgP, Ap = cgAp, K = K, outInfo = oi };
                 var cgStat = Bench.Time(() => cgJob.Run());
                 sb.AppendLine(LargeSparseFmt.Row("double", sz, "CG", cgStat, Res(in A, in x, in b), (int)oi[1], (int)oi[0]));
-                var xp = arena.doubleVec(N);
-                var pcgJob = new SpPcgJobDouble { A = A, M = M, b = b, x = xp, r = arena.doubleVec(N), p = arena.doubleVec(N), Ap = arena.doubleVec(N), z = arena.doubleVec(N), K = K, outInfo = oi };
+                var xp = new doubleN(N, Allocator.Persistent);
+                var pcgR = new doubleN(N, Allocator.Persistent); var pcgP = new doubleN(N, Allocator.Persistent); var pcgAp = new doubleN(N, Allocator.Persistent); var pcgZ = new doubleN(N, Allocator.Persistent);
+                var pcgJob = new SpPcgJobDouble { A = A, M = M, b = b, x = xp, r = pcgR, p = pcgP, Ap = pcgAp, z = pcgZ, K = K, outInfo = oi };
                 var pcgStat = Bench.Time(() => pcgJob.Run());
                 sb.AppendLine(LargeSparseFmt.Row("double", sz, "PCG-Jacobi", pcgStat, Res(in A, in xp, in b), (int)oi[1], (int)oi[0]));
-                var xs = arena.doubleVec(N);
-                var ssorJob = new SpPcgSSORJobDouble { A = A, M = ssor, b = b, x = xs, r = arena.doubleVec(N), p = arena.doubleVec(N), Ap = arena.doubleVec(N), z = arena.doubleVec(N), K = K, outInfo = oi };
+                var xs = new doubleN(N, Allocator.Persistent);
+                var ssorR = new doubleN(N, Allocator.Persistent); var ssorP = new doubleN(N, Allocator.Persistent); var ssorAp = new doubleN(N, Allocator.Persistent); var ssorZ = new doubleN(N, Allocator.Persistent);
+                var ssorJob = new SpPcgSSORJobDouble { A = A, M = ssor, b = b, x = xs, r = ssorR, p = ssorP, Ap = ssorAp, z = ssorZ, K = K, outInfo = oi };
                 var ssorStat = Bench.Time(() => ssorJob.Run());
                 sb.AppendLine(LargeSparseFmt.Row("double", sz, "PCG-SSOR", ssorStat, Res(in A, in xs, in b), (int)oi[1], (int)oi[0]));
-                var xm = arena.doubleVec(N);
-                var mrJob = new SpMinresJobDouble { A = A, b = b, x = xm, y = arena.doubleVec(N), r1 = arena.doubleVec(N), r2 = arena.doubleVec(N), v = arena.doubleVec(N), w = arena.doubleVec(N), w1 = arena.doubleVec(N), w2 = arena.doubleVec(N), K = K, outInfo = oi };
+                var xm = new doubleN(N, Allocator.Persistent);
+                var mrY = new doubleN(N, Allocator.Persistent); var mrR1 = new doubleN(N, Allocator.Persistent); var mrR2 = new doubleN(N, Allocator.Persistent);
+                var mrV = new doubleN(N, Allocator.Persistent); var mrW = new doubleN(N, Allocator.Persistent); var mrW1 = new doubleN(N, Allocator.Persistent); var mrW2 = new doubleN(N, Allocator.Persistent);
+                var mrJob = new SpMinresJobDouble { A = A, b = b, x = xm, y = mrY, r1 = mrR1, r2 = mrR2, v = mrV, w = mrW, w1 = mrW1, w2 = mrW2, K = K, outInfo = oi };
                 var mrStat = Bench.Time(() => mrJob.Run());
                 sb.AppendLine(LargeSparseFmt.Row("double", sz, "MINRES", mrStat, Res(in A, in xm, in b), (int)oi[1], (int)oi[0]));
 
-                if (N == Ns[Ns.Length - 1])
+                doubleN xc1 = default, cgConvR = default, cgConvP = default, cgConvAp = default;
+                doubleN xc2 = default, pcgConvR = default, pcgConvP = default, pcgConvAp = default, pcgConvZ = default;
+                doubleN xc3 = default, ssorConvR = default, ssorConvP = default, ssorConvAp = default, ssorConvZ = default;
+                bool ranConv = N == Ns[Ns.Length - 1];
+                if (ranConv)
                 {
                     double convTol = Consts.doubleSqrtEps;
                     int convMaxIter = 8 * N;
 
-                    var xc1 = arena.doubleVec(N);
-                    var cgConvJob = new SpCgJobDouble { A = A, b = b, x = xc1, r = arena.doubleVec(N), p = arena.doubleVec(N), Ap = arena.doubleVec(N), K = convMaxIter, tol = convTol, outInfo = oi };
+                    xc1 = new doubleN(N, Allocator.Persistent);
+                    cgConvR = new doubleN(N, Allocator.Persistent); cgConvP = new doubleN(N, Allocator.Persistent); cgConvAp = new doubleN(N, Allocator.Persistent);
+                    var cgConvJob = new SpCgJobDouble { A = A, b = b, x = xc1, r = cgConvR, p = cgConvP, Ap = cgConvAp, K = convMaxIter, tol = convTol, outInfo = oi };
                     var cgConvStat = Bench.Time(() => cgConvJob.Run());
                     sb.AppendLine(LargeSparseFmt.Row("double", sz, "CG@tol", cgConvStat, Res(in A, in xc1, in b), (int)oi[1], (int)oi[0]));
 
-                    var xc2 = arena.doubleVec(N);
-                    var pcgConvJob = new SpPcgJobDouble { A = A, M = M, b = b, x = xc2, r = arena.doubleVec(N), p = arena.doubleVec(N), Ap = arena.doubleVec(N), z = arena.doubleVec(N), K = convMaxIter, tol = convTol, outInfo = oi };
+                    xc2 = new doubleN(N, Allocator.Persistent);
+                    pcgConvR = new doubleN(N, Allocator.Persistent); pcgConvP = new doubleN(N, Allocator.Persistent); pcgConvAp = new doubleN(N, Allocator.Persistent); pcgConvZ = new doubleN(N, Allocator.Persistent);
+                    var pcgConvJob = new SpPcgJobDouble { A = A, M = M, b = b, x = xc2, r = pcgConvR, p = pcgConvP, Ap = pcgConvAp, z = pcgConvZ, K = convMaxIter, tol = convTol, outInfo = oi };
                     var pcgConvStat = Bench.Time(() => pcgConvJob.Run());
                     sb.AppendLine(LargeSparseFmt.Row("double", sz, "PCG-Jacobi@tol", pcgConvStat, Res(in A, in xc2, in b), (int)oi[1], (int)oi[0]));
 
-                    var xc3 = arena.doubleVec(N);
-                    var ssorConvJob = new SpPcgSSORJobDouble { A = A, M = ssor, b = b, x = xc3, r = arena.doubleVec(N), p = arena.doubleVec(N), Ap = arena.doubleVec(N), z = arena.doubleVec(N), K = convMaxIter, tol = convTol, outInfo = oi };
+                    xc3 = new doubleN(N, Allocator.Persistent);
+                    ssorConvR = new doubleN(N, Allocator.Persistent); ssorConvP = new doubleN(N, Allocator.Persistent); ssorConvAp = new doubleN(N, Allocator.Persistent); ssorConvZ = new doubleN(N, Allocator.Persistent);
+                    var ssorConvJob = new SpPcgSSORJobDouble { A = A, M = ssor, b = b, x = xc3, r = ssorConvR, p = ssorConvP, Ap = ssorConvAp, z = ssorConvZ, K = convMaxIter, tol = convTol, outInfo = oi };
                     var ssorConvStat = Bench.Time(() => ssorConvJob.Run());
                     sb.AppendLine(LargeSparseFmt.Row("double", sz, "PCG-SSOR@tol", ssorConvStat, Res(in A, in xc3, in b), (int)oi[1], (int)oi[0]));
                 }
 
-                arena.Dispose();
+                A.Dispose(); M.Dispose(); ssor.Dispose(); xKnown.Dispose(); b.Dispose();
+                x.Dispose(); cgR.Dispose(); cgP.Dispose(); cgAp.Dispose();
+                xp.Dispose(); pcgR.Dispose(); pcgP.Dispose(); pcgAp.Dispose(); pcgZ.Dispose();
+                xs.Dispose(); ssorR.Dispose(); ssorP.Dispose(); ssorAp.Dispose(); ssorZ.Dispose();
+                xm.Dispose(); mrY.Dispose(); mrR1.Dispose(); mrR2.Dispose(); mrV.Dispose(); mrW.Dispose(); mrW1.Dispose(); mrW2.Dispose();
+                if (ranConv)
+                {
+                    xc1.Dispose(); cgConvR.Dispose(); cgConvP.Dispose(); cgConvAp.Dispose();
+                    xc2.Dispose(); pcgConvR.Dispose(); pcgConvP.Dispose(); pcgConvAp.Dispose(); pcgConvZ.Dispose();
+                    xc3.Dispose(); ssorConvR.Dispose(); ssorConvP.Dispose(); ssorConvAp.Dispose(); ssorConvZ.Dispose();
+                }
             }
 
             oi.Dispose();
@@ -276,20 +328,19 @@ namespace LinearAlgebra.Benchmarks
         {
             foreach (int N in Ns)
             {
-                var arena = new Arena(Allocator.Persistent);
                 int nb = N / BR;
-                var A = arena.doubleRandomSparseSPD(nb, BR, density, 0x5A17u);
+                var A = doubleGallery.doubleRandomSparseSPD(nb, BR, density, 0x5A17u, Allocator.Persistent);
                 string sz = N.ToString();
                 var outInfo = new NativeArray<double>(3, Allocator.Persistent);
 
-                var lws = arena.doubleLanczosCache(N, lanczosSteps);
-                var lvals = arena.doubleVec(lanczosSteps);
+                var lws = new doubleLanczosCache(N, lanczosSteps, Allocator.Persistent);
+                var lvals = new doubleN(lanczosSteps, Allocator.Persistent);
                 var lanJob = new SpLanczosJobDouble { A = A, ws = lws, vals = lvals, steps = lanczosSteps, outInfo = outInfo };
                 var lanStat = Bench.Time(() => lanJob.Run());
                 sb.AppendLine(LargeSparseFmt.EigRow("double", sz, "Lanczos s=" + lanczosSteps, lanStat, new[] { outInfo[0], outInfo[1], outInfo[2] }));
 
                 outInfo.Dispose();
-                arena.Dispose();
+                A.Dispose(); lws.Dispose(); lvals.Dispose();
             }
         }
 
@@ -301,33 +352,37 @@ namespace LinearAlgebra.Benchmarks
         {
             foreach (int g in eigGrids)
             {
-                var arena = new Arena(Allocator.Persistent);
                 int n = g * g;
-                var A = arena.doubleLaplacian2D(g, g);
-                var M = arena.doubleBlockJacobi(in A);
-                var ssor = arena.doubleSSOR(in A);
+                var A = doubleGallery.doubleLaplacian2D(g, g, Allocator.Persistent);
+                var M = new doubleBlockJacobi(in A, Allocator.Persistent);
+                var ssor = new doubleSSOR(in A, Allocator.Persistent);
                 string grid = g + "x" + g + "(" + n + ")";
                 var oi = new NativeArray<double>(5, Allocator.Persistent);
                 double tol = Consts.doubleSqrtEps;
 
-                var noneJob = new SpLobpcgJobDouble { A = A, ws = arena.doubleLOBPCGCache(n, lobpcgK), k = lobpcgK, tol = tol, maxIter = lobpcgMaxIter, outInfo = oi };
+                var noneWs = new doubleLOBPCGCache(n, lobpcgK, Allocator.Persistent);
+                var noneJob = new SpLobpcgJobDouble { A = A, ws = noneWs, k = lobpcgK, tol = tol, maxIter = lobpcgMaxIter, outInfo = oi };
                 var noneStat = Bench.Time(() => noneJob.Run());
                 LargeSparseFmt.LobRow(sb, "double", grid, "none", 0, noneStat, LargeSparseFmt.Snap(oi));
 
-                var jacJob = new SpLobpcgPrecJobDouble { A = A, M = M, ws = arena.doubleLOBPCGCache(n, lobpcgK), k = lobpcgK, tol = tol, maxIter = lobpcgMaxIter, outInfo = oi };
+                var jacWs = new doubleLOBPCGCache(n, lobpcgK, Allocator.Persistent);
+                var jacJob = new SpLobpcgPrecJobDouble { A = A, M = M, ws = jacWs, k = lobpcgK, tol = tol, maxIter = lobpcgMaxIter, outInfo = oi };
                 var jacStat = Bench.Time(() => jacJob.Run());
                 LargeSparseFmt.LobRow(sb, "double", grid, "blockJac", 0, jacStat, LargeSparseFmt.Snap(oi));
 
-                var ssorJob = new SpLobpcgSSORJobDouble { A = A, M = ssor, ws = arena.doubleLOBPCGCache(n, lobpcgK), k = lobpcgK, tol = tol, maxIter = lobpcgMaxIter, outInfo = oi };
+                var ssorWs = new doubleLOBPCGCache(n, lobpcgK, Allocator.Persistent);
+                var ssorJob = new SpLobpcgSSORJobDouble { A = A, M = ssor, ws = ssorWs, k = lobpcgK, tol = tol, maxIter = lobpcgMaxIter, outInfo = oi };
                 var ssorStat = Bench.Time(() => ssorJob.Run());
                 LargeSparseFmt.LobRow(sb, "double", grid, "SSOR", 0, ssorStat, LargeSparseFmt.Snap(oi));
 
-                var jacGuardJob = new SpLobpcgPrecJobDouble { A = A, M = M, ws = arena.doubleLOBPCGCache(n, lobpcgK + lobpcgGuard), k = lobpcgK, tol = tol, maxIter = lobpcgMaxIter, outInfo = oi };
+                var jacGuardWs = new doubleLOBPCGCache(n, lobpcgK + lobpcgGuard, Allocator.Persistent);
+                var jacGuardJob = new SpLobpcgPrecJobDouble { A = A, M = M, ws = jacGuardWs, k = lobpcgK, tol = tol, maxIter = lobpcgMaxIter, outInfo = oi };
                 var jacGuardStat = Bench.Time(() => jacGuardJob.Run());
                 LargeSparseFmt.LobRow(sb, "double", grid, "blockJac", lobpcgGuard, jacGuardStat, LargeSparseFmt.Snap(oi));
 
                 oi.Dispose();
-                arena.Dispose();
+                A.Dispose(); M.Dispose(); ssor.Dispose();
+                noneWs.Dispose(); jacWs.Dispose(); ssorWs.Dispose(); jacGuardWs.Dispose();
             }
         }
     }

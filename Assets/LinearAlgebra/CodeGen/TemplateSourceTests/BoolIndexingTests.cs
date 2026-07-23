@@ -25,41 +25,33 @@ public class BoolIndexingTests
 
         public void Execute()
         {
-            Arena arena = new Arena(Allocator.Temp);
-            try
+            switch (Type)
             {
-                switch (Type)
-                {
-                    case TestType.VectorIndexing:
-                        VectorIndexing(ref arena);
-                        break;
-                    case TestType.MatrixIndexing1D:
-                        MatrixIndexing1D(ref arena);
-                        break;
-                    case TestType.MatrixIndexing2D:
-                        MatrixIndexing2D(ref arena);
-                        break;
-                    case TestType.VectorCopyGuard:
-                        VectorCopyGuard(ref arena);
-                        break;
-                    case TestType.MatrixCopyNullArenaGuard:
-                        MatrixCopyNullArenaGuard(ref arena);
-                        break;
-                    default:
-                        throw new NotImplementedException();
-                }
-            }
-            finally
-            {
-                arena.Dispose();
+                case TestType.VectorIndexing:
+                    VectorIndexing();
+                    break;
+                case TestType.MatrixIndexing1D:
+                    MatrixIndexing1D();
+                    break;
+                case TestType.MatrixIndexing2D:
+                    MatrixIndexing2D();
+                    break;
+                case TestType.VectorCopyGuard:
+                    VectorCopyGuard();
+                    break;
+                case TestType.MatrixCopyNullArenaGuard:
+                    MatrixCopyNullArenaGuard();
+                    break;
+                default:
+                    throw new NotImplementedException();
             }
         }
 
-        void VectorIndexing(ref Arena arena)
+        void VectorIndexing()
         {
             int dim = 17;
 
-            boolN vec = arena.boolVec(dim);
+            boolN vec = new boolN(dim, Allocator.Temp);
 
             // Forward-fill a distinct-enough pattern via the plain int indexer (oracle).
             for (int i = 0; i < dim; i++)
@@ -80,12 +72,12 @@ public class BoolIndexingTests
                 Assert.IsTrue(vec[dim - k] == (k % 2 == 0));
         }
 
-        void MatrixIndexing1D(ref Arena arena)
+        void MatrixIndexing1D()
         {
             int rows = 5;
             int cols = 7;
 
-            boolMxN mat = arena.boolMat(rows, cols);
+            boolMxN mat = new boolMxN(rows, cols, Allocator.Temp);
 
             int len = rows * cols;
 
@@ -105,12 +97,12 @@ public class BoolIndexingTests
                 Assert.IsTrue(mat[len - k] == (k % 2 == 0));
         }
 
-        void MatrixIndexing2D(ref Arena arena)
+        void MatrixIndexing2D()
         {
             int rows = 5;
             int cols = 7;
 
-            boolMxN mat = arena.boolMat(rows, cols);
+            boolMxN mat = new boolMxN(rows, cols, Allocator.Temp);
 
             // Same oracle pattern, via the plain [r, c] indexer; from-end checked per axis below.
             for (int r = 0; r < rows; r++)
@@ -143,14 +135,14 @@ public class BoolIndexingTests
                 Assert.IsTrue(mat[rows - r, cols - c] == ((r + c) % 2 == 0));
         }
 
-        // boolN has no standalone (null-arena) ctor, so exercise the copy-constructor guard's
-        // non-null branch: copying an arena-backed vector with the DEFAULT allocator must resolve
-        // the allocator from the (non-null) arena pointer and produce an equal, independent copy.
-        void VectorCopyGuard(ref Arena arena)
+        // Exercises the copy-constructor guard's null-arena branch: copying a standalone vector with
+        // the DEFAULT allocator must fall back to Allocator.Temp without crashing and produce an
+        // equal, independent copy.
+        void VectorCopyGuard()
         {
             int dim = 16;
 
-            boolN orig = arena.boolVec(dim);
+            boolN orig = new boolN(dim, Allocator.Temp);
             for (int i = 0; i < dim; i++)
                 orig[i] = (i % 2 == 0);
 
@@ -171,7 +163,7 @@ public class BoolIndexingTests
         // boolMxN HAS a standalone (null-arena) ctor, so fully exercise the copy-constructor guard's
         // null branch: copying a standalone matrix with the DEFAULT allocator must fall back to
         // Allocator.Temp without crashing and copy equally.
-        void MatrixCopyNullArenaGuard(ref Arena arena)
+        void MatrixCopyNullArenaGuard()
         {
             int rows = 4;
             int cols = 6;

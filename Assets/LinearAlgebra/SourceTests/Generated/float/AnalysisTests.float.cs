@@ -80,180 +80,146 @@ public class floatAnalysisTests
 
         void isIdentity()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 16;
-            
-            floatMxN A = arena.floatIdentityMat(dim);
+
+            floatMxN A = GenerateOP.floatIdentityMat(dim);
 
             Assert.IsTrue(Analysis.isIdentity(A));
-
-            arena.Dispose();
         }
 
         void IsIdentityEpsilon()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 16;
-            
-            floatMxN A = arena.floatIdentityMat(dim);
+
+            floatMxN A = GenerateOP.floatIdentityMat(dim);
 
             Assert.IsTrue(Analysis.isIdentity(A, 0.0001f));
 
-            A += arena.floatRandomMat(dim, dim, -0.001f, 0.001f);
+            A.addInPlace(GenerateOP.floatRandomMat(dim, dim, -0.001f, 0.001f));
 
             Assert.IsTrue(Analysis.isIdentity(A, 0.002f));
-
-            arena.Dispose();
         }
 
         void isSymmetric()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 8;
-            
-            floatMxN A = arena.floatIdentityMat(dim);
+
+            floatMxN A = GenerateOP.floatIdentityMat(dim);
 
             Assert.IsTrue(Analysis.isSymmetric(A));
 
-            A = arena.floatRandomMat(dim, dim * 2);
+            A = GenerateOP.floatRandomMat(dim, dim * 2);
 
             floatMxN C = Blas.dot(A, A, true);
 
             Assert.IsTrue(Analysis.isSymmetric(C));
-
-            arena.Dispose();
         }
 
         void IsSymmetricEpsilon()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 16;
-            
-            floatMxN A = arena.floatIdentityMat(dim);
+
+            floatMxN A = GenerateOP.floatIdentityMat(dim);
 
             Assert.IsTrue(Analysis.isSymmetric(A, 0.000001f));
 
-            A += arena.floatRandomMat(dim, dim, -0.001f, 0.001f);
+            A.addInPlace(GenerateOP.floatRandomMat(dim, dim, -0.001f, 0.001f));
 
             Assert.IsTrue(Analysis.isSymmetric(A, 0.002f));
 
             floatMxN C = Blas.dot(A, A, true);
 
-            C += arena.floatRandomMat(dim, dim, -0.001f, 0.001f);
+            C.addInPlace(GenerateOP.floatRandomMat(dim, dim, -0.001f, 0.001f));
 
             Assert.IsTrue(Analysis.isSymmetric(C, 0.002f));
-
-            arena.Dispose();
         }
-        
+
         void isDiagonal()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 16;
-            
-            floatMxN A = arena.floatIdentityMat(dim);
+
+            floatMxN A = GenerateOP.floatIdentityMat(dim);
 
             Assert.IsTrue(Analysis.isDiagonal(A));
 
-            A += arena.floatRandomMat(dim, dim, -0.001f, 0.001f);
+            A.addInPlace(GenerateOP.floatRandomMat(dim, dim, -0.001f, 0.001f));
 
             Assert.IsFalse(Analysis.isDiagonal(A));
-
-            arena.Dispose();
         }
 
         void IsDiagonalEpsilon()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 16;
-            
-            floatMxN A = arena.floatIdentityMat(dim);
+
+            floatMxN A = GenerateOP.floatIdentityMat(dim);
 
             Assert.IsTrue(Analysis.isDiagonal(A, 0.000001f));
 
-            A += arena.floatRandomMat(dim, dim, -0.001f, 0.001f);
+            A.addInPlace(GenerateOP.floatRandomMat(dim, dim, -0.001f, 0.001f));
 
             Assert.IsTrue(Analysis.isDiagonal(A, 0.002f));
 
-            A = arena.floatRandomDiagonalMat(dim, -1f, -1f);
+            A = GenerateOP.floatRandomDiagonalMat(dim, -1f, -1f);
 
             Assert.IsTrue(Analysis.isDiagonal(A, 0.000001f));
-
-            arena.Dispose();
         }
 
         void isUpperTriangular()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 16;
-            
-            floatMxN A = arena.floatIdentityMat(dim);
+
+            floatMxN A = GenerateOP.floatIdentityMat(dim);
 
             Assert.IsTrue(Analysis.isUpperTriangular(A));
-            
-            A += arena.floatRandomMat(dim, dim, -0.001f, 0.001f);
+
+            A.addInPlace(GenerateOP.floatRandomMat(dim, dim, -0.001f, 0.001f));
 
             Assert.IsFalse(Analysis.isUpperTriangular(A));
 
-            A = arena.floatIdentityMat(dim);
+            A = GenerateOP.floatIdentityMat(dim);
 
             for (int c = 1; c < dim; c++)
             for (int r = 0; r < c; r++)
                 A[r, c] = 5f;
 
             Assert.IsTrue(Analysis.isUpperTriangular(A));
-
-            arena.Dispose();
         }
 
         void IsUpperTriangularEpsilon()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 16;
-            
-            floatMxN A = arena.floatIdentityMat(dim);
+
+            floatMxN A = GenerateOP.floatIdentityMat(dim);
 
             Assert.IsTrue(Analysis.isUpperTriangular(A, 0.000001f));
 
-            A += arena.floatRandomMat(dim, dim, -0.001f, 0.001f);
+            A.addInPlace(GenerateOP.floatRandomMat(dim, dim, -0.001f, 0.001f));
 
             Assert.IsTrue(Analysis.isUpperTriangular(A, 0.002f));
 
-            A = arena.floatIdentityMat(dim);
+            A = GenerateOP.floatIdentityMat(dim);
 
             for(int c = 1; c < dim; c++)
             for(int r = 0; r < c; r++)
                 A[r, c] = 5f;
 
-            A += arena.floatRandomMat(dim, dim, -0.001f, 0.001f);
+            A.addInPlace(GenerateOP.floatRandomMat(dim, dim, -0.001f, 0.001f));
 
             Assert.IsTrue(Analysis.isUpperTriangular(A, 0.002f));
-                        
-            arena.Dispose();   
         }
 
         void isLowerTriangular()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 16;
 
-            floatMxN A = arena.floatIdentityMat(dim);
+            floatMxN A = GenerateOP.floatIdentityMat(dim);
 
             Assert.IsTrue(Analysis.isLowerTriangular(A));
 
-            A += arena.floatRandomMat(dim, dim, -0.001f, 0.001f);
+            A.addInPlace(GenerateOP.floatRandomMat(dim, dim, -0.001f, 0.001f));
             Assert.IsFalse(Analysis.isLowerTriangular(A));
 
-            A = arena.floatIdentityMat(dim);
+            A = GenerateOP.floatIdentityMat(dim);
 
             // Fill elements below the diagonal with a non-zero value; still lower triangular
             for (int r = 1; r < dim; r++)
@@ -261,63 +227,55 @@ public class floatAnalysisTests
                     A[r, c] = 5f;
 
             Assert.IsTrue(Analysis.isLowerTriangular(A));
-
-            arena.Dispose();
         }
 
         void IsLowerTriangularEpsilon()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 16;
 
-            floatMxN A = arena.floatIdentityMat(dim);
+            floatMxN A = GenerateOP.floatIdentityMat(dim);
 
             Assert.IsTrue(Analysis.isLowerTriangular(A, 0.000001f));
 
-            A += arena.floatRandomMat(dim, dim, -0.001f, 0.001f);
+            A.addInPlace(GenerateOP.floatRandomMat(dim, dim, -0.001f, 0.001f));
             Assert.IsTrue(Analysis.isLowerTriangular(A, 0.002f));
 
-            A = arena.floatIdentityMat(dim);
+            A = GenerateOP.floatIdentityMat(dim);
 
             // Fill elements below the diagonal with a non-zero value
             for (int r = 1; r < dim; r++)
                 for (int c = 0; c < r; c++)
                     A[r, c] = 5f;
 
-            A += arena.floatRandomMat(dim, dim, -0.001f, 0.001f);
+            A.addInPlace(GenerateOP.floatRandomMat(dim, dim, -0.001f, 0.001f));
 
             Assert.IsTrue(Analysis.isLowerTriangular(A, 0.002f));
-
-            arena.Dispose();
         }
 
         void isOrthogonal()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 16;
 
-            floatMxN A = arena.floatIdentityMat(dim);
+            floatMxN A = GenerateOP.floatIdentityMat(dim);
 
             Assert.IsTrue(Analysis.isOrthogonal(A, 0.00001f));
 
-            A = Blas.dot(arena.floatPermutationMat(dim, 5, 13), A);
+            A = Blas.dot(GenerateOP.floatPermutationMat(dim, 5, 13), A);
 
             Assert.IsTrue(Analysis.isOrthogonal(A, 0.00001f));
 
-            A = Blas.dot(arena.floatRotationMat(dim, 3, 15, math.PI/4f ), A);
+            A = Blas.dot(GenerateOP.floatRotationMat(dim, 3, 15, math.PI/4f ), A);
 
             Assert.IsTrue(Analysis.isOrthogonal(A, 0.00001f));
 
-            floatN reflect = arena.floatRandomVec(dim, -1f, 1f);
+            floatN reflect = GenerateOP.floatRandomVec(dim, -1f, 1f);
 
-            A = Blas.dot(arena.floatHouseholderMat(dim, reflect), A);
+            A = Blas.dot(GenerateOP.floatHouseholderMat(dim, reflect), A);
 
             Assert.IsTrue(Analysis.isOrthogonal(A, 0.00001f));
 
-            reflect = arena.floatRandomVec(dim, -1f, 1f, 50301);
-            A = Blas.dot(arena.floatHouseholderMat(dim, reflect), A);
+            reflect = GenerateOP.floatRandomVec(dim, -1f, 1f, 50301);
+            A = Blas.dot(GenerateOP.floatHouseholderMat(dim, reflect), A);
 
             Assert.IsTrue(Analysis.isOrthogonal(A, 0.00001f));
 
@@ -328,18 +286,14 @@ public class floatAnalysisTests
             A = Blas.dot(A, A, true);
 
             Assert.IsTrue(Analysis.isIdentity(A, 0.00001f));
-
-            arena.Dispose();
         }
 
         void Determinant()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // identity -> det = 1 (matrix-in path; A must be left intact, like cond/rank)
             {
                 int dim = 5;
-                floatMxN A = arena.floatIdentityMat(dim);
+                floatMxN A = GenerateOP.floatIdentityMat(dim);
                 Assert.IsTrue(math.abs(Analysis.determinant(in A) - (float)1) < (float)1E-4f);
                 Assert.IsTrue(Analysis.isIdentity(A, 1E-6f));           // A not modified
             }
@@ -347,7 +301,7 @@ public class floatAnalysisTests
             // diagonal [2,-3,0.5,4] -> det = -12
             {
                 int dim = 4;
-                floatMxN A = arena.floatMat(dim, dim);
+                floatMxN A = new floatMxN(dim, dim, Allocator.Temp);
                 A[0, 0] = 2f; A[1, 1] = -3f; A[2, 2] = 0.5f; A[3, 3] = 4f;
                 Assert.IsTrue(math.abs(Analysis.determinant(in A) - (float)(-12f)) < (float)1E-3f);
             }
@@ -355,7 +309,7 @@ public class floatAnalysisTests
             // matrix-in path agrees with the zero-alloc from-factor overload on the same A
             {
                 int dim = 6;
-                floatMxN A = arena.floatRandomMat(dim, dim, -2f, 2f);
+                floatMxN A = GenerateOP.floatRandomMat(dim, dim, -2f, 2f);
                 float viaMatrix = Analysis.determinant(in A);
 
                 floatMxN lu = A.Copy();
@@ -370,24 +324,20 @@ public class floatAnalysisTests
             // singular (row 0 == row 1) -> det = 0
             {
                 int dim = 3;
-                floatMxN A = arena.floatMat(dim, dim);
+                floatMxN A = new floatMxN(dim, dim, Allocator.Temp);
                 A[0, 0] = 1f; A[0, 1] = 2f; A[0, 2] = 3f;
                 A[1, 0] = 1f; A[1, 1] = 2f; A[1, 2] = 3f;
                 A[2, 0] = 4f; A[2, 1] = 5f; A[2, 2] = 7f;
                 Assert.IsTrue(math.abs(Analysis.determinant(in A)) < (float)1E-4f);
             }
-
-            arena.Dispose();
         }
 
         void LogDeterminant()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // identity -> log|det| = 0, sign = +1
             {
                 int dim = 5;
-                floatMxN A = arena.floatIdentityMat(dim);
+                floatMxN A = GenerateOP.floatIdentityMat(dim);
                 float logAbs = Analysis.logDeterminant(in A, out float sign);
                 Assert.IsTrue(math.abs(logAbs) < (float)1E-4f);
                 Assert.IsTrue(math.abs(sign - (float)1) < (float)1E-6f);
@@ -396,7 +346,7 @@ public class floatAnalysisTests
             // diagonal [2,-3,0.5,4] -> det = -12: sign = -1, sign*exp(logAbs) recovers det
             {
                 int dim = 4;
-                floatMxN A = arena.floatMat(dim, dim);
+                floatMxN A = new floatMxN(dim, dim, Allocator.Temp);
                 A[0, 0] = 2f; A[1, 1] = -3f; A[2, 2] = 0.5f; A[3, 3] = 4f;
                 float logAbs = Analysis.logDeterminant(in A, out float sign);
                 Assert.IsTrue(math.abs(sign - (float)(-1f)) < (float)1E-6f);
@@ -407,7 +357,7 @@ public class floatAnalysisTests
             // singular (row 1 == 2*row 0) -> sign = 0, log|det| = -infinity
             {
                 int dim = 3;
-                floatMxN A = arena.floatMat(dim, dim);
+                floatMxN A = new floatMxN(dim, dim, Allocator.Temp);
                 A[0, 0] = 1f; A[0, 1] = 2f; A[0, 2] = 3f;
                 A[1, 0] = 2f; A[1, 1] = 4f; A[1, 2] = 6f;
                 A[2, 0] = 4f; A[2, 1] = 5f; A[2, 2] = 7f;
@@ -420,7 +370,7 @@ public class floatAnalysisTests
             // 10*I at dim 400 -> det = 10^400, past both float (~1e38) and double (~1e308) range.
             {
                 int dim = 400;
-                floatMxN A = arena.floatMat(dim, dim);
+                floatMxN A = new floatMxN(dim, dim, Allocator.Temp);
                 for (int i = 0; i < dim; i++)
                     A[i, i] = (float)10f;
 
@@ -432,8 +382,6 @@ public class floatAnalysisTests
                 Assert.IsTrue(math.abs(logAbs - expected) < (float)0.5f);
                 Assert.IsTrue(math.abs(sign - (float)1) < (float)1E-6f);
             }
-
-            arena.Dispose();
         }
 
     }

@@ -31,30 +31,22 @@ public class shortCompMathTests
 
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
-            try
+            switch (Type)
             {
-                switch (Type)
-                {
-                    case TestType.Abs: AbsTest(ref arena); break;
-                    case TestType.Relu: ReluTest(ref arena); break;
-                    case TestType.MinBuf: MinBufTest(ref arena); break;
-                    case TestType.MaxBuf: MaxBufTest(ref arena); break;
-                    case TestType.Mad: MadTest(ref arena); break;
-                    case TestType.SingleElement: SingleElementTest(ref arena); break;
-                    default: throw new NotImplementedException();
-                }
-            }
-            finally
-            {
-                arena.Dispose();
+                case TestType.Abs: AbsTest(); break;
+                case TestType.Relu: ReluTest(); break;
+                case TestType.MinBuf: MinBufTest(); break;
+                case TestType.MaxBuf: MaxBufTest(); break;
+                case TestType.Mad: MadTest(); break;
+                case TestType.SingleElement: SingleElementTest(); break;
+                default: throw new NotImplementedException();
             }
         }
 
-        private void AbsTest(ref Arena arena)
+        private void AbsTest()
         {
             int n = 11;
-            shortN v = arena.shortVec(n);
+            shortN v = new shortN(n, Allocator.Temp);
             for (int i = 0; i < n; i++)
                 v[i] = (short)(i - 5); // -5 .. 5, includes 0
 
@@ -68,10 +60,10 @@ public class shortCompMathTests
             }
         }
 
-        private void ReluTest(ref Arena arena)
+        private void ReluTest()
         {
             int n = 11;
-            shortN v = arena.shortVec(n);
+            shortN v = new shortN(n, Allocator.Temp);
             for (int i = 0; i < n; i++)
                 v[i] = (short)(i - 5);
 
@@ -85,11 +77,11 @@ public class shortCompMathTests
             }
         }
 
-        private void MinBufTest(ref Arena arena)
+        private void MinBufTest()
         {
             int n = 11;
-            shortN x = arena.shortVec(n);
-            shortN y = arena.shortVec(n);
+            shortN x = new shortN(n, Allocator.Temp);
+            shortN y = new shortN(n, Allocator.Temp);
             for (int i = 0; i < n; i++)
             {
                 x[i] = (short)(i - 5);   // -5 .. 5
@@ -107,11 +99,11 @@ public class shortCompMathTests
             }
         }
 
-        private void MaxBufTest(ref Arena arena)
+        private void MaxBufTest()
         {
             int n = 11;
-            shortN x = arena.shortVec(n);
-            shortN y = arena.shortVec(n);
+            shortN x = new shortN(n, Allocator.Temp);
+            shortN y = new shortN(n, Allocator.Temp);
             for (int i = 0; i < n; i++)
             {
                 x[i] = (short)(i - 5);
@@ -129,12 +121,12 @@ public class shortCompMathTests
             }
         }
 
-        private void MadTest(ref Arena arena)
+        private void MadTest()
         {
             int n = 12;
-            shortN a = arena.shortVec(n);
-            shortN b = arena.shortVec(n);
-            shortN c = arena.shortVec(n);
+            shortN a = new shortN(n, Allocator.Temp);
+            shortN b = new shortN(n, Allocator.Temp);
+            shortN c = new shortN(n, Allocator.Temp);
             for (int i = 0; i < n; i++)
             {
                 a[i] = (short)((i % 3) - 1); // -1,0,1
@@ -155,16 +147,16 @@ public class shortCompMathTests
             }
         }
 
-        private void SingleElementTest(ref Arena arena)
+        private void SingleElementTest()
         {
-            shortN v = arena.shortVec(1);
+            shortN v = new shortN(1, Allocator.Temp);
             v[0] = (short)(-4);
             v.absInPlace();
             Assert.IsTrue(v[0] == (short)4);
 
-            shortN a = arena.shortVec(1, (short)3);
-            shortN b = arena.shortVec(1, (short)5);
-            shortN c = arena.shortVec(1, (short)2);
+            shortN a = GenerateOP.shortVec(1, (short)3);
+            shortN b = GenerateOP.shortVec(1, (short)5);
+            shortN c = GenerateOP.shortVec(1, (short)2);
             a.madInPlace(b, c);
             Assert.IsTrue(a[0] == (short)17); // 3*5 + 2
             Assert.IsTrue(b[0] == (short)5);

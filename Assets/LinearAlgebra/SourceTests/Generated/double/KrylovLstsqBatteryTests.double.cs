@@ -71,9 +71,7 @@ public class doubleKrylovLstsqBatteryTests
         // (damped path) only runs for Overdetermined invokers.
         void CheckDense<TInvoker>(TInvoker inv, GalleryDenseMatrix gm) where TInvoker : struct, IdoubleLstsqSolverInvoker
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = doubleKrylovBatteryGallery.Build(ref arena, gm);
+            var A = doubleKrylovBatteryGallery.Build(gm);
             int m = A.M_Rows, n = A.N_Cols;
             var Aop = new doubleDenseOperator(in A);
             MatrixProfile tags = GalleryProfiles.Of(gm);
@@ -81,12 +79,12 @@ public class doubleKrylovLstsqBatteryTests
             bool overdetermined = (tags & MatrixProfile.Overdetermined) != 0;
             int checkId = overdetermined ? 10 : 11;
 
-            var b = arena.doubleRandomVec(m, (double)(-1), (double)1, 0xD200u + (uint)gm);
+            var b = GenerateOP.doubleRandomVec(m, (double)(-1), (double)1, 0xD200u + (uint)gm);
 
-            inv.Init(ref arena, m, n);
+            inv.Init(m, n);
 
-            var rScratch = arena.doubleVec(m);
-            var sScratch = arena.doubleVec(n);
+            var rScratch = new doubleN(m, Allocator.Temp);
+            var sScratch = new doubleN(n, Allocator.Temp);
 
             // Fixed scale references matching each family's own internal stopping test: ||A^T b||
             // for lsqr/lsmr's normal-equations criterion, ||b|| for craig/craigmr's residual one.
@@ -97,7 +95,7 @@ public class doubleKrylovLstsqBatteryTests
                 ? (double)10 * inv.Tol * math.max(atbNorm, (double)1e-30)
                 : (double)10 * inv.Tol * math.max(bNorm, (double)1e-30);
 
-            var x1 = arena.doubleVec(n);
+            var x1 = new doubleN(n, Allocator.Temp);
             LstsqInfo info1 = inv.Solve(in Aop, in b, ref x1, (double)0);
             bool statusOk1 = info1.status == IterativeSolveStatus.Converged || info1.status == IterativeSolveStatus.MaxIterations;
             Record(statusOk1, (int)gm, checkId, (double)(int)info1.status, (double)0);
@@ -111,7 +109,7 @@ public class doubleKrylovLstsqBatteryTests
                 // plus elementwise agreement with a direct dense QR least-squares solve.
                 Record((double)audit1.Arnorm <= thresh, (int)gm, 10, (double)audit1.Arnorm, thresh);
 
-                var xRef = ReferenceSolveLstsq(ref arena, in A, in b);
+                var xRef = ReferenceSolveLstsq(in A, in b);
                 for (int i = 0; i < n; i++)
                     Record(math.abs(x1[i] - xRef[i]) <= tolBand * ((double)1 + math.abs(xRef[i])), (int)gm, 10, x1[i], xRef[i]);
 
@@ -119,13 +117,13 @@ public class doubleKrylovLstsqBatteryTests
                 // damp>0 drives the damped optimality residual under the same threshold (lsqr/
                 // lsmr's internal stopping test compares the damped residual against this same
                 // fixed ||A^T b|| scale, undiminished by damp).
-                var x12a = arena.doubleVec(n);
+                var x12a = new doubleN(n, Allocator.Temp);
                 LstsqInfo info12a = inv.Solve(in Aop, in b, ref x12a, (double)0);
                 for (int i = 0; i < n; i++)
                     Record(x1[i] == x12a[i], (int)gm, 12, x1[i], x12a[i]);
 
                 double damp = (double)0.1;
-                var x12b = arena.doubleVec(n);
+                var x12b = new doubleN(n, Allocator.Temp);
                 LstsqInfo info12b = inv.Solve(in Aop, in b, ref x12b, damp);
                 bool statusOk12 = info12b.status == IterativeSolveStatus.Converged || info12b.status == IterativeSolveStatus.MaxIterations;
                 Record(statusOk12, (int)gm, 12, (double)(int)info12b.status, (double)0);
@@ -140,24 +138,22 @@ public class doubleKrylovLstsqBatteryTests
                 // (the exact minimum-2-norm solution).
                 Record((double)audit1.rnorm <= thresh, (int)gm, 11, (double)audit1.rnorm, thresh);
 
-                var xRef = arena.doubleVec(n);
+                var xRef = new doubleN(n, Allocator.Temp);
                 LQ.minNormSolve(in A, in b, ref xRef);
                 for (int i = 0; i < n; i++)
                     Record(math.abs(x1[i] - xRef[i]) <= tolBand * ((double)1 + math.abs(xRef[i])), (int)gm, 11, x1[i], xRef[i]);
             }
-
-            arena.Dispose();
         }
 
         // Direct dense least-squares reference via QR (A must have full column rank, M_Rows >=
         // N_Cols) -- the oracle check #10 compares lsqr/lsmr's iterative solution against.
-        doubleN ReferenceSolveLstsq(ref Arena arena, in doubleMxN A, in doubleN b)
+        doubleN ReferenceSolveLstsq(in doubleMxN A, in doubleN b)
         {
-            var Q = arena.doubleMat(A.M_Rows, A.N_Cols);
-            var R = arena.doubleMat(A.N_Cols);
+            var Q = new doubleMxN(A.M_Rows, A.N_Cols, Allocator.Temp);
+            var R = new doubleMxN(A.N_Cols, A.N_Cols, Allocator.Temp);
             QR.decomp(in A, ref Q, ref R);
             doubleN bLocal = b;
-            var xRef = arena.doubleVec(A.N_Cols);
+            var xRef = new doubleN(A.N_Cols, Allocator.Temp);
             QR.decompSolve(ref Q, ref R, ref bLocal, ref xRef);
             return xRef;
         }

@@ -8,7 +8,7 @@ using Unity.Jobs;
 
 // Coverage for the realtime-interop surface:
 //  - fProxyComp.zeroInPlace / fillInPlace (generic over vectors and matrices)
-//  - IsCreated on fProxyN / fProxyMxN (standalone and arena-tracked lifecycles)
+//  - IsCreated on fProxyN / fProxyMxN (standalone lifecycle)
 //  - NativeArray bridge: view constructors + CopyTo/CopyFrom(NativeArray), and the
 //    matrix-level CopyTo/CopyFrom(in fProxyMxN) parity members.
 // The view path is also exercised INSIDE a Burst job (solving straight into a
@@ -49,28 +49,6 @@ public class fProxyBridgeFillTests
         Assert.IsTrue(m.IsCreated);
         m.Dispose();
         Assert.IsFalse(m.IsCreated);
-    }
-
-    [Test]
-    public void IsCreated_ArenaTracked_FalseAfterRecordDispose()
-    {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var v = arena.fProxyVec(3);
-            Assert.IsTrue(v.IsCreated);
-            v.Dispose();   // frees the record slot; the table itself stays alive
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-            Assert.IsFalse(v.IsCreated);
-#endif
-            var m = arena.fProxyMat(2, 2);
-            Assert.IsTrue(m.IsCreated);
-            m.Dispose();
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-            Assert.IsFalse(m.IsCreated);
-#endif
-        }
-        finally { arena.Dispose(); }
     }
 
     [Test]

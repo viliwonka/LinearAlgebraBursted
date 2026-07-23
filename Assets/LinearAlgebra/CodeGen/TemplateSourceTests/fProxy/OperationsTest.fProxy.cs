@@ -13,52 +13,56 @@ public class fProxyOperationsTest {
     {
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int vecLen = 16;
 
             fProxy s = 1f;
-            fProxyN a = arena.fProxyVec(vecLen, 10f);
+            fProxyN a = GenerateOP.fProxyVec(vecLen, 10f, Allocator.Temp);
 
 
-            Assert.AreEqual(vecLen, a.N); 
+            Assert.AreEqual(vecLen, a.N);
 
-            fProxyN b = arena.fProxyVec(vecLen, 10f);
+            fProxyN b = GenerateOP.fProxyVec(vecLen, 10f, Allocator.Temp);
 
             Assert.IsTrue(b[vecLen/2] == a[vecLen/2]);
-            
-            Assert.AreEqual(2, arena.AllocationsCount);
 
             fProxyN result = default;
 
-            result = a + s;
+            result = new fProxyN(in a, Allocator.Temp);
+            fProxyComp.addInPlace(result, s);
 
-            result = s + a;
+            result = new fProxyN(in a, Allocator.Temp);
+            fProxyComp.addInPlace(result, s);
 
-            result = a - s;
-            result = s - a;
+            result = new fProxyN(in a, Allocator.Temp);
+            fProxyComp.addInPlace(result, -s);
+            result = new fProxyN(in a, Allocator.Temp);
+            fProxyComp.subInPlace(s, result);
 
-            Assert.AreEqual(4, arena.TempAllocationsCount);
+            result = new fProxyN(in a, Allocator.Temp);
+            fProxyComp.mulInPlace(result, s);
+            result = new fProxyN(in a, Allocator.Temp);
+            fProxyComp.mulInPlace(result, s);
 
-            arena.ClearTemp();
+            result = new fProxyN(in a, Allocator.Temp);
+            fProxyComp.divInPlace(result, s);
+            result = new fProxyN(in a, Allocator.Temp);
+            fProxyComp.modInPlace(result, s);
+            result = new fProxyN(in a, Allocator.Temp);
+            fProxyComp.divInPlace(s, result);
+            result = new fProxyN(in a, Allocator.Temp);
+            fProxyComp.modInPlace(s, result);
 
-            result = a * s;
-            result = s * a;
-
-            result = a / s;
-            result = a % s;
-            result = s / a;
-            result = s % a;
-
-            result = a + b;
-            result = a - b;
-            result = a * b;
-            result = a / b;
-            result = a % b;
-
-            Assert.AreEqual(11, arena.TempAllocationsCount);
-
-            arena.Dispose();
+            result = new fProxyN(in a, Allocator.Temp);
+            fProxyComp.addInPlace(result, b);
+            result = new fProxyN(in a, Allocator.Temp);
+            fProxyComp.subInPlace(result, b);
+            result = new fProxyN(in a, Allocator.Temp);
+            fProxyComp.mulInPlace(result, b);
+            result = new fProxyN(in a, Allocator.Temp);
+            fProxyComp.divInPlace(result, b);
+            result = new fProxyN(in a, Allocator.Temp);
+            fProxyComp.modInPlace(result, b);
         }
     }
 
@@ -73,7 +77,6 @@ public class fProxyOperationsTest {
     {
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int rows = 8;
             int cols = 8;
@@ -81,34 +84,47 @@ public class fProxyOperationsTest {
             int elements = rows * cols;
 
             fProxy s = 1f;
-            fProxyMxN a = arena.fProxyMat(rows, cols, 10f);
+            fProxyMxN a = GenerateOP.fProxyMat(rows, cols, 10f, Allocator.Temp);
 
-            fProxyMxN b = arena.fProxyMat(rows, cols, 10f);
+            fProxyMxN b = GenerateOP.fProxyMat(rows, cols, 10f, Allocator.Temp);
 
             fProxyMxN result = default;
 
-            result = a + s;
+            result = new fProxyMxN(in a, Allocator.Temp);
+            fProxyComp.addInPlace(result, s);
 
-            result = s + a;
+            result = new fProxyMxN(in a, Allocator.Temp);
+            fProxyComp.addInPlace(result, s);
 
-            result = a - s;
-            result = s - a;
+            result = new fProxyMxN(in a, Allocator.Temp);
+            fProxyComp.addInPlace(result, -s);
+            result = new fProxyMxN(in a, Allocator.Temp);
+            fProxyComp.subInPlace(s, result);
 
-            result = a * s;
-            result = s * a;
+            result = new fProxyMxN(in a, Allocator.Temp);
+            fProxyComp.mulInPlace(result, s);
+            result = new fProxyMxN(in a, Allocator.Temp);
+            fProxyComp.mulInPlace(result, s);
 
-            result = a / s;
-            result = a % s;
-            result = s / a;
-            result = s % a;
+            result = new fProxyMxN(in a, Allocator.Temp);
+            fProxyComp.divInPlace(result, s);
+            result = new fProxyMxN(in a, Allocator.Temp);
+            fProxyComp.modInPlace(result, s);
+            result = new fProxyMxN(in a, Allocator.Temp);
+            fProxyComp.divInPlace(s, result);
+            result = new fProxyMxN(in a, Allocator.Temp);
+            fProxyComp.modInPlace(s, result);
 
-            result = a + b;
-            result = a - b;
-            result = a * b;
-            result = a / b;
-            result = a % b;
-
-            arena.Dispose();
+            result = new fProxyMxN(in a, Allocator.Temp);
+            fProxyComp.addInPlace(result, b);
+            result = new fProxyMxN(in a, Allocator.Temp);
+            fProxyComp.subInPlace(result, b);
+            result = new fProxyMxN(in a, Allocator.Temp);
+            fProxyComp.mulInPlace(result, b);
+            result = new fProxyMxN(in a, Allocator.Temp);
+            fProxyComp.divInPlace(result, b);
+            result = new fProxyMxN(in a, Allocator.Temp);
+            fProxyComp.modInPlace(result, b);
         }
     }
 
@@ -117,7 +133,7 @@ public class fProxyOperationsTest {
     {
         new BasicMatOpTestJob().Run();
     }
-    
+
     [BurstCompile(CompileSynchronously = true)]
     public struct BasicPreciseOPTestJob : IJob
     {
@@ -191,146 +207,136 @@ public class fProxyOperationsTest {
 
         public void SignFlipVec()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int vecLen = 16;
 
-            fProxyN a = arena.fProxyVec(vecLen, 10f);
+            fProxyN a = GenerateOP.fProxyVec(vecLen, 10f, Allocator.Temp);
 
-            a = -a;
+            fProxyComp.signFlipInPlace(a);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == -(fProxy)10f);
-
-            arena.Dispose();
         }
 
         public void AddVec()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int vecLen = 16;
 
-            fProxyN a = arena.fProxyVec(vecLen, 10f);
+            fProxyN a = GenerateOP.fProxyVec(vecLen, 10f, Allocator.Temp);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (fProxy)10d);
 
-            a += 1f;
+            fProxyComp.addInPlace(a, 1f);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (fProxy)11d);
 
-            fProxyN r = arena.fProxyVec(vecLen, 5f);
+            fProxyN r = GenerateOP.fProxyVec(vecLen, 5f, Allocator.Temp);
 
-            a += r;
+            fProxyComp.addInPlace(a, r);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (fProxy)16);
-
-            arena.Dispose();
         }
 
         public void SubVec()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int vecLen = 16;
 
-            fProxyN a = arena.fProxyVec(vecLen, 10f);
+            fProxyN a = GenerateOP.fProxyVec(vecLen, 10f, Allocator.Temp);
 
-            a -= 1f;
+            fProxyComp.addInPlace(a, -1f);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (fProxy)9f);
 
-            fProxyN r = arena.fProxyVec(vecLen, 5f);
+            fProxyN r = GenerateOP.fProxyVec(vecLen, 5f, Allocator.Temp);
 
-            a -= r;
+            fProxyComp.subInPlace(a, r);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (fProxy)4d);
 
-            a = arena.fProxyVec(vecLen, 10f);
+            a = GenerateOP.fProxyVec(vecLen, 10f, Allocator.Temp);
 
-            a = 1f - a;
+            fProxyComp.subInPlace(1f, a);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == -(fProxy)9d);
-
-            arena.Dispose();
         }
 
         public void MulVec()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int vecLen = 16;
 
-            fProxyN a = arena.fProxyVec(vecLen, 1f);
+            fProxyN a = GenerateOP.fProxyVec(vecLen, 1f, Allocator.Temp);
 
-            a *= 1f;
+            fProxyComp.mulInPlace(a, 1f);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (fProxy)1d);
 
-            a *= 2f;
+            fProxyComp.mulInPlace(a, 2f);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (fProxy)2d);
 
-            a = arena.fProxyIndexZeroVec(vecLen);
+            a = GenerateOP.fProxyIndexZeroVec(vecLen);
 
-            a *= 2f;
+            fProxyComp.mulInPlace(a, 2f);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (fProxy)(2d*i));
 
-            a = arena.fProxyIndexZeroVec(vecLen);
-            fProxyN b = arena.fProxyIndexZeroVec(vecLen);
+            a = GenerateOP.fProxyIndexZeroVec(vecLen);
+            fProxyN b = GenerateOP.fProxyIndexZeroVec(vecLen);
 
-            var c = a * b;
+            var c = new fProxyN(in a, Allocator.Temp);
+            fProxyComp.mulInPlace(c, b);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(c[i] == (fProxy)(i * i));
-
-            arena.Dispose();
         }
 
         public void DivVec()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int vecLen = 16;
 
-            fProxyN a = arena.fProxyVec(vecLen, 1f);
+            fProxyN a = GenerateOP.fProxyVec(vecLen, 1f, Allocator.Temp);
 
-            a /= 1f;
+            fProxyComp.divInPlace(a, 1f);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (fProxy)1f);
 
-            a /= 2f;
+            fProxyComp.divInPlace(a, 2f);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (fProxy)0.5f);
 
-            a = arena.fProxyIndexZeroVec(vecLen);
+            a = GenerateOP.fProxyIndexZeroVec(vecLen);
 
-            a /= 2f;
+            fProxyComp.divInPlace(a, 2f);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (fProxy)0.5f * i);
 
-            a = arena.fProxyIndexZeroVec(vecLen);
-            fProxyN b = arena.fProxyIndexZeroVec(vecLen);
+            a = GenerateOP.fProxyIndexZeroVec(vecLen);
+            fProxyN b = GenerateOP.fProxyIndexZeroVec(vecLen);
 
             // add 1 so no division by zero
-            a += 1f;
-            b += 1f;
+            fProxyComp.addInPlace(a, 1f);
+            fProxyComp.addInPlace(b, 1f);
 
-            var c0 = a / b;
-            var c1 = b / a;
+            var c0 = new fProxyN(in a, Allocator.Temp);
+            fProxyComp.divInPlace(c0, b);
+            var c1 = new fProxyN(in b, Allocator.Temp);
+            fProxyComp.divInPlace(c1, a);
 
             for (int i = 0; i < vecLen; i++)
             {
@@ -338,210 +344,191 @@ public class fProxyOperationsTest {
                 Assert.IsTrue(c1[i] == (fProxy)1f);
             }
 
-            a = arena.fProxyVec(vecLen, 2f);
+            a = GenerateOP.fProxyVec(vecLen, 2f, Allocator.Temp);
 
-            a = 2f / a;
+            fProxyComp.divInPlace(2f, a);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (fProxy)1f);
-
-            arena.Dispose();
         }
 
         public void ModVec()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int vecLen = 16;
 
-            fProxyN a = arena.fProxyVec(vecLen, 10f);
+            fProxyN a = GenerateOP.fProxyVec(vecLen, 10f, Allocator.Temp);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (fProxy)10f);
 
-            a %= 2f;
+            fProxyComp.modInPlace(a, 2f);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (fProxy)0f);
 
-            a = arena.fProxyIndexZeroVec(vecLen);
+            a = GenerateOP.fProxyIndexZeroVec(vecLen);
 
-            a %= 2f;
+            fProxyComp.modInPlace(a, 2f);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (fProxy)(i % (fProxy)2d));
 
-            a = arena.fProxyIndexZeroVec(vecLen);
-            fProxyN b = arena.fProxyIndexZeroVec(vecLen);
+            a = GenerateOP.fProxyIndexZeroVec(vecLen);
+            fProxyN b = GenerateOP.fProxyIndexZeroVec(vecLen);
 
             // add 1 so no division by zero
-            a += 1f;
-            b += 1f;
+            fProxyComp.addInPlace(a, 1f);
+            fProxyComp.addInPlace(b, 1f);
 
-            var c0 = a % b;
-            var c1 = b % a;
+            var c0 = new fProxyN(in a, Allocator.Temp);
+            fProxyComp.modInPlace(c0, b);
+            var c1 = new fProxyN(in b, Allocator.Temp);
+            fProxyComp.modInPlace(c1, a);
 
             for (int i = 0; i < vecLen; i++)
             {
                 Assert.IsTrue(c0[i] == (fProxy)0f);
                 Assert.IsTrue(c1[i] == (fProxy)0f);
             }
-
-            arena.Dispose();
         }
 
         public void SignFlipMat()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int vecLen = 16;
             int totalElements = vecLen * vecLen;
-            fProxyMxN a = arena.fProxyMat(vecLen, vecLen, 10f);
+            fProxyMxN a = GenerateOP.fProxyMat(vecLen, vecLen, 10f, Allocator.Temp);
 
-            a = -a;
+            fProxyComp.signFlipInPlace(a);
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == -(fProxy)10f);
-
-            arena.Dispose();
         }
 
         public void AddMat()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int rows = 8;
             int cols = 8;
             int totalElements = rows * cols;
 
-            fProxyMxN a = arena.fProxyMat(rows, cols, 10f);
+            fProxyMxN a = GenerateOP.fProxyMat(rows, cols, 10f, Allocator.Temp);
 
             // Element-wise addition with scalar
-            a += 1f;
+            fProxyComp.addInPlace(a, 1f);
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (fProxy)11f);
-
-            arena.Dispose();
         }
 
         public void SubMat()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int rows = 8;
             int cols = 8;
             int totalElements = rows * cols;
 
-            fProxyMxN a = arena.fProxyMat(rows, cols, 10f);
+            fProxyMxN a = GenerateOP.fProxyMat(rows, cols, 10f, Allocator.Temp);
 
             // Element-wise subtraction with scalar
-            a -= 5f;
+            fProxyComp.addInPlace(a, -5f);
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (fProxy)5f);
-
-            arena.Dispose();
         }
 
         public void MulMat()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int rows = 8;
             int cols = 8;
             int totalElements = rows * cols;
 
-            fProxyMxN a = arena.fProxyMat(rows, cols, 2f);
+            fProxyMxN a = GenerateOP.fProxyMat(rows, cols, 2f, Allocator.Temp);
 
             // Element-wise multiplication with scalar
-            a *= 3f;
+            fProxyComp.mulInPlace(a, 3f);
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (fProxy)6f);
 
-            a = 3f * a;
+            fProxyComp.mulInPlace(a, 3f);
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (fProxy)18f);
 
-            var b = arena.fProxyMat(rows, cols, 0.5f);
+            var b = GenerateOP.fProxyMat(rows, cols, 0.5f, Allocator.Temp);
 
-            a = a * b;
+            fProxyComp.mulInPlace(a, b);
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (fProxy)9f);
-
-            arena.Dispose();
         }
 
         public void DivMat()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int rows = 8;
             int cols = 8;
             int totalElements = rows * cols;
 
-            fProxyMxN a = arena.fProxyMat(rows, cols, 10f);
+            fProxyMxN a = GenerateOP.fProxyMat(rows, cols, 10f, Allocator.Temp);
 
             // Element-wise division with scalar
-            a /= 2f;
+            fProxyComp.divInPlace(a, 2f);
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (fProxy)5f);
 
-            a = 5f / a;
+            fProxyComp.divInPlace(5f, a);
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (fProxy)1f);
 
-            fProxyMxN b = arena.fProxyMat(rows, cols, 0.5f);
+            fProxyMxN b = GenerateOP.fProxyMat(rows, cols, 0.5f, Allocator.Temp);
 
-            var c0 = a / b;
-            var c1 = b / a;
+            var c0 = new fProxyMxN(in a, Allocator.Temp);
+            fProxyComp.divInPlace(c0, b);
+            var c1 = new fProxyMxN(in b, Allocator.Temp);
+            fProxyComp.divInPlace(c1, a);
 
             for (int i = 0; i < totalElements; i++)
             {
                 Assert.IsTrue(c0[i] == (fProxy)2f);
                 Assert.IsTrue(c1[i] == (fProxy)0.5f);
             }
-
-            arena.Dispose();
         }
 
         public void ModMat()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int rows = 8;
             int cols = 8;
             int totalElements = rows * cols;
 
-            fProxyMxN a = arena.fProxyMat(rows, cols, 10f);
+            fProxyMxN a = GenerateOP.fProxyMat(rows, cols, 10f, Allocator.Temp);
 
             // Element-wise modulo with scalar
-            a %= 3f;
+            fProxyComp.modInPlace(a, 3f);
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (fProxy)1f);
 
-            a = arena.fProxyMat(rows, cols, 4f);
+            a = GenerateOP.fProxyMat(rows, cols, 4f, Allocator.Temp);
 
-            a = 4f % a;
+            fProxyComp.modInPlace(4f, a);
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (fProxy)0f);
 
-            a = arena.fProxyMat(rows, cols, 3f);
-            fProxyMxN b = arena.fProxyMat(rows, cols, 2f);
+            a = GenerateOP.fProxyMat(rows, cols, 3f, Allocator.Temp);
+            fProxyMxN b = GenerateOP.fProxyMat(rows, cols, 2f, Allocator.Temp);
 
-            a = a % b;
+            fProxyComp.modInPlace(a, b);
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (fProxy)1f);
-
-            arena.Dispose();
         }
     }
 

@@ -19,8 +19,8 @@ namespace LinearAlgebra.Benchmarks
     //
     // Every job below hashes its own outputs INSIDE Execute() (never after readback) and runs via
     // .Run() from its Case_*Double() builder, which is plain (non-Burst) code that seeds fixed
-    // literal/RNG inputs into arena buffers, executes the job once, and returns (id, hash) pairs in
-    // registration order.
+    // literal/RNG inputs into standalone Allocator.Persistent buffers, executes the job once, and
+    // returns (id, hash) pairs in registration order.
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Strict)]
     public struct DetHashSelfTestJobDouble : IJob
@@ -345,19 +345,17 @@ namespace LinearAlgebra.Benchmarks
     {
         public static (string id, uint hash)[] Case_HashSelfTestDouble()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var vec5 = arena.doubleVec(5);
+            var vec5 = new doubleN(5, Allocator.Persistent);
             vec5[0] = (double)1; vec5[1] = (double)(-2.5); vec5[2] = (double)0;
             vec5[3] = -(double)0; vec5[4] = double.NaN;
 
-            var mat43 = arena.doubleMat(4, 3);
+            var mat43 = new doubleMxN(4, 3, Allocator.Persistent);
             for (int r = 0; r < 4; r++)
                 for (int c = 0; c < 3; c++)
                     mat43[r, c] = (double)(r * 3 + c) - (double)6;
 
-            var rowH = arena.uintVec(4);
-            var colH = arena.uintVec(3);
+            var rowH = new uintN(4, Allocator.Persistent);
+            var colH = new uintN(3, Allocator.Persistent);
             var hashOut = new NativeArray<uint>(3, Allocator.Persistent);
 
             var job = new DetHashSelfTestJobDouble { vec5 = vec5, mat43 = mat43, rowH = rowH, colH = colH, HashOut = hashOut };
@@ -370,34 +368,33 @@ namespace LinearAlgebra.Benchmarks
                 ("hash-selftest/combine-chain.double", hashOut[2]),
             };
             hashOut.Dispose();
-            arena.Dispose();
+            vec5.Dispose(); mat43.Dispose(); rowH.Dispose(); colH.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_BlasDenseDouble()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2654435761u ^ 0x0002u);
 
-            var vecA = arena.doubleVec(64); var vecB = arena.doubleVec(64);
+            var vecA = new doubleN(64, Allocator.Persistent); var vecB = new doubleN(64, Allocator.Persistent);
             for (int i = 0; i < 64; i++) { vecA[i] = rng.NextDouble(-1f, 1f); vecB[i] = rng.NextDouble(-1f, 1f); }
 
-            var P = arena.doubleMat(53, 37);
+            var P = new doubleMxN(53, 37, Allocator.Persistent);
             for (int r = 0; r < 53; r++) for (int c = 0; c < 37; c++) P[r, c] = rng.NextDouble(-1f, 1f);
 
-            var xVec37 = arena.doubleVec(37); for (int i = 0; i < 37; i++) xVec37[i] = rng.NextDouble(-1f, 1f);
-            var yVec53 = arena.doubleVec(53); for (int i = 0; i < 53; i++) yVec53[i] = rng.NextDouble(-1f, 1f);
-            var matvecOut = arena.doubleVec(53);
-            var vecmatOut = arena.doubleVec(37);
+            var xVec37 = new doubleN(37, Allocator.Persistent); for (int i = 0; i < 37; i++) xVec37[i] = rng.NextDouble(-1f, 1f);
+            var yVec53 = new doubleN(53, Allocator.Persistent); for (int i = 0; i < 53; i++) yVec53[i] = rng.NextDouble(-1f, 1f);
+            var matvecOut = new doubleN(53, Allocator.Persistent);
+            var vecmatOut = new doubleN(37, Allocator.Persistent);
 
-            var gA = arena.doubleMat(37, 37); var gB = arena.doubleMat(37, 37); var gC = arena.doubleMat(37, 37);
+            var gA = new doubleMxN(37, 37, Allocator.Persistent); var gB = new doubleMxN(37, 37, Allocator.Persistent); var gC = new doubleMxN(37, 37, Allocator.Persistent);
             for (int r = 0; r < 37; r++) for (int c = 0; c < 37; c++) { gA[r, c] = rng.NextDouble(-1f, 1f); gB[r, c] = rng.NextDouble(-1f, 1f); }
 
-            var dotSymC = arena.doubleMat(37, 37);
-            var outerU = arena.doubleVec(53); for (int i = 0; i < 53; i++) outerU[i] = rng.NextDouble(-1f, 1f);
-            var outerV = arena.doubleVec(37); for (int i = 0; i < 37; i++) outerV[i] = rng.NextDouble(-1f, 1f);
-            var outerC = arena.doubleMat(53, 37);
-            var transT = arena.doubleMat(37, 53);
+            var dotSymC = new doubleMxN(37, 37, Allocator.Persistent);
+            var outerU = new doubleN(53, Allocator.Persistent); for (int i = 0; i < 53; i++) outerU[i] = rng.NextDouble(-1f, 1f);
+            var outerV = new doubleN(37, Allocator.Persistent); for (int i = 0; i < 37; i++) outerV[i] = rng.NextDouble(-1f, 1f);
+            var outerC = new doubleMxN(53, 37, Allocator.Persistent);
+            var transT = new doubleMxN(37, 53, Allocator.Persistent);
 
             var hashOut = new NativeArray<uint>(10, Allocator.Persistent);
             var job = new DetBlasDenseJobDouble
@@ -424,21 +421,22 @@ namespace LinearAlgebra.Benchmarks
                 ("blas-dense/trans.double.53x37", hashOut[9]),
             };
             hashOut.Dispose();
-            arena.Dispose();
+            vecA.Dispose(); vecB.Dispose(); P.Dispose(); xVec37.Dispose(); yVec53.Dispose();
+            matvecOut.Dispose(); vecmatOut.Dispose(); gA.Dispose(); gB.Dispose(); gC.Dispose();
+            dotSymC.Dispose(); outerU.Dispose(); outerV.Dispose(); outerC.Dispose(); transT.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_ElementwiseCoreDouble()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2654435761u ^ 0x0003u);
 
             const int n = 1000;
-            var baseVec = arena.doubleVec(n);
-            var otherVec = arena.doubleVec(n);
-            var otherVec2 = arena.doubleVec(n);
-            var nonNegVec = arena.doubleVec(n);
-            var scratch = arena.doubleVec(n);
+            var baseVec = new doubleN(n, Allocator.Persistent);
+            var otherVec = new doubleN(n, Allocator.Persistent);
+            var otherVec2 = new doubleN(n, Allocator.Persistent);
+            var nonNegVec = new doubleN(n, Allocator.Persistent);
+            var scratch = new doubleN(n, Allocator.Persistent);
 
             for (int i = 0; i < n; i++)
             {
@@ -476,21 +474,20 @@ namespace LinearAlgebra.Benchmarks
                 ("elementwise-core/saturate.double.n1000", hashOut[11]),
             };
             hashOut.Dispose();
-            arena.Dispose();
+            baseVec.Dispose(); otherVec.Dispose(); otherVec2.Dispose(); nonNegVec.Dispose(); scratch.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_NormsDouble()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2654435761u ^ 0x0004u);
 
-            var vecX = arena.doubleVec(37); for (int i = 0; i < 37; i++) vecX[i] = rng.NextDouble(-3f, 3f);
-            var A = arena.doubleMat(53, 37);
+            var vecX = new doubleN(37, Allocator.Persistent); for (int i = 0; i < 37; i++) vecX[i] = rng.NextDouble(-3f, 3f);
+            var A = new doubleMxN(53, 37, Allocator.Persistent);
             for (int r = 0; r < 53; r++) for (int c = 0; c < 37; c++) A[r, c] = rng.NextDouble(-3f, 3f);
 
-            var normalizeVec = arena.doubleVec(37); for (int i = 0; i < 37; i++) normalizeVec[i] = vecX[i];
-            var normColsMat = arena.doubleMat(53, 37);
+            var normalizeVec = new doubleN(37, Allocator.Persistent); for (int i = 0; i < 37; i++) normalizeVec[i] = vecX[i];
+            var normColsMat = new doubleMxN(53, 37, Allocator.Persistent);
             for (int r = 0; r < 53; r++) for (int c = 0; c < 37; c++) normColsMat[r, c] = A[r, c];
 
             var hashOut = new NativeArray<uint>(7, Allocator.Persistent);
@@ -511,41 +508,40 @@ namespace LinearAlgebra.Benchmarks
                 ("norms/normalizeColumns.double.53x37", hashOut[6]),
             };
             hashOut.Dispose();
-            arena.Dispose();
+            vecX.Dispose(); A.Dispose(); normalizeVec.Dispose(); normColsMat.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_QrFamilyDouble()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2654435761u ^ 0x0006u);
 
-            var Atall = arena.doubleMat(53, 37);
+            var Atall = new doubleMxN(53, 37, Allocator.Persistent);
             for (int r = 0; r < 53; r++) for (int c = 0; c < 37; c++) Atall[r, c] = rng.NextDouble(-1f, 1f);
-            var Q1 = arena.doubleMat(53, 37); var R1 = arena.doubleMat(37, 37);
-            var bTall = arena.doubleVec(53); for (int i = 0; i < 53; i++) bTall[i] = rng.NextDouble(-1f, 1f);
-            var xTall1 = arena.doubleVec(37);
+            var Q1 = new doubleMxN(53, 37, Allocator.Persistent); var R1 = new doubleMxN(37, 37, Allocator.Persistent);
+            var bTall = new doubleN(53, Allocator.Persistent); for (int i = 0; i < 53; i++) bTall[i] = rng.NextDouble(-1f, 1f);
+            var xTall1 = new doubleN(37, Allocator.Persistent);
 
-            var Q2 = arena.doubleMat(53, 37); var R2 = arena.doubleMat(37, 37);
+            var Q2 = new doubleMxN(53, 37, Allocator.Persistent); var R2 = new doubleMxN(37, 37, Allocator.Persistent);
             var P1 = new Pivot(37, Allocator.Persistent);
-            var bTall2 = arena.doubleVec(53); for (int i = 0; i < 53; i++) bTall2[i] = rng.NextDouble(-1f, 1f);
-            var xTall2 = arena.doubleVec(37);
+            var bTall2 = new doubleN(53, Allocator.Persistent); for (int i = 0; i < 53; i++) bTall2[i] = rng.NextDouble(-1f, 1f);
+            var xTall2 = new doubleN(37, Allocator.Persistent);
 
-            var AforMinNorm = arena.doubleMat(53, 37);
+            var AforMinNorm = new doubleMxN(53, 37, Allocator.Persistent);
             for (int r = 0; r < 53; r++) for (int c = 0; c < 37; c++) AforMinNorm[r, c] = Atall[r, c];
-            var bTall3 = arena.doubleVec(53); for (int i = 0; i < 53; i++) bTall3[i] = rng.NextDouble(-1f, 1f);
-            var xTall3 = arena.doubleVec(37);
+            var bTall3 = new doubleN(53, Allocator.Persistent); for (int i = 0; i < 53; i++) bTall3[i] = rng.NextDouble(-1f, 1f);
+            var xTall3 = new doubleN(37, Allocator.Persistent);
 
-            var Awide = arena.doubleMat(37, 53);
+            var Awide = new doubleMxN(37, 53, Allocator.Persistent);
             for (int r = 0; r < 37; r++) for (int c = 0; c < 53; c++) Awide[r, c] = rng.NextDouble(-1f, 1f);
-            var L1 = arena.doubleMat(37, 37); var Qw1 = arena.doubleMat(37, 53);
-            var bWide1 = arena.doubleVec(37); for (int i = 0; i < 37; i++) bWide1[i] = rng.NextDouble(-1f, 1f);
-            var xWide1 = arena.doubleVec(53);
+            var L1 = new doubleMxN(37, 37, Allocator.Persistent); var Qw1 = new doubleMxN(37, 53, Allocator.Persistent);
+            var bWide1 = new doubleN(37, Allocator.Persistent); for (int i = 0; i < 37; i++) bWide1[i] = rng.NextDouble(-1f, 1f);
+            var xWide1 = new doubleN(53, Allocator.Persistent);
 
-            var L2 = arena.doubleMat(37, 37); var Qw2 = arena.doubleMat(37, 53);
+            var L2 = new doubleMxN(37, 37, Allocator.Persistent); var Qw2 = new doubleMxN(37, 53, Allocator.Persistent);
             var P2 = new Pivot(37, Allocator.Persistent);
-            var Bwide = arena.doubleMat(37, 1); for (int i = 0; i < 37; i++) Bwide[i, 0] = rng.NextDouble(-1f, 1f);
-            var Xwide = arena.doubleMat(53, 1);
+            var Bwide = new doubleMxN(37, 1, Allocator.Persistent); for (int i = 0; i < 37; i++) Bwide[i, 0] = rng.NextDouble(-1f, 1f);
+            var Xwide = new doubleMxN(53, 1, Allocator.Persistent);
 
             var hashOut = new NativeArray<uint>(9, Allocator.Persistent);
             var job = new DetQrFamilyJobDouble
@@ -573,29 +569,32 @@ namespace LinearAlgebra.Benchmarks
             };
             hashOut.Dispose();
             P1.Dispose(); P2.Dispose();
-            arena.Dispose();
+            Atall.Dispose(); Q1.Dispose(); R1.Dispose(); bTall.Dispose(); xTall1.Dispose();
+            Q2.Dispose(); R2.Dispose(); bTall2.Dispose(); xTall2.Dispose();
+            AforMinNorm.Dispose(); bTall3.Dispose(); xTall3.Dispose();
+            Awide.Dispose(); L1.Dispose(); Qw1.Dispose(); bWide1.Dispose(); xWide1.Dispose();
+            L2.Dispose(); Qw2.Dispose(); Bwide.Dispose(); Xwide.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_LuDouble()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2654435761u ^ 0x0007u);
 
             const int n = 48;
-            var A = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Persistent);
             for (int r = 0; r < n; r++) for (int c = 0; c < n; c++) A[r, c] = rng.NextDouble(-1f, 1f);
             for (int d = 0; d < n; d++) A[d, d] += (double)n;
 
-            var L = arena.doubleMat(n, n); var U = arena.doubleMat(n, n);
+            var L = new doubleMxN(n, n, Allocator.Persistent); var U = new doubleMxN(n, n, Allocator.Persistent);
             var P1 = new Pivot(n, Allocator.Persistent);
 
-            var LUPacked = arena.doubleMat(n, n);
+            var LUPacked = new doubleMxN(n, n, Allocator.Persistent);
             for (int r = 0; r < n; r++) for (int c = 0; c < n; c++) LUPacked[r, c] = A[r, c];
             var P2 = new Pivot(n, Allocator.Persistent);
 
-            var bSolve = arena.doubleVec(n); for (int i = 0; i < n; i++) bSolve[i] = rng.NextDouble(-1f, 1f);
-            var bSolveTransA = arena.doubleVec(n); for (int i = 0; i < n; i++) bSolveTransA[i] = rng.NextDouble(-1f, 1f);
+            var bSolve = new doubleN(n, Allocator.Persistent); for (int i = 0; i < n; i++) bSolve[i] = rng.NextDouble(-1f, 1f);
+            var bSolveTransA = new doubleN(n, Allocator.Persistent); for (int i = 0; i < n; i++) bSolveTransA[i] = rng.NextDouble(-1f, 1f);
 
             var hashOut = new NativeArray<uint>(4, Allocator.Persistent);
             var job = new DetLuJobDouble
@@ -614,17 +613,16 @@ namespace LinearAlgebra.Benchmarks
             };
             hashOut.Dispose();
             P1.Dispose(); P2.Dispose();
-            arena.Dispose();
+            A.Dispose(); L.Dispose(); U.Dispose(); LUPacked.Dispose(); bSolve.Dispose(); bSolveTransA.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_CholeskyDouble()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2654435761u ^ 0x0008u);
 
             const int n = 48;
-            var A = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Persistent);
             for (int i = 0; i < n; i++)
                 for (int j = i; j < n; j++)
                 {
@@ -633,16 +631,16 @@ namespace LinearAlgebra.Benchmarks
                 }
             for (int d = 0; d < n; d++) A[d, d] += (double)n;
 
-            var L = arena.doubleMat(n, n);
-            var bSolve = arena.doubleVec(n); for (int i = 0; i < n; i++) bSolve[i] = rng.NextDouble(-1f, 1f);
+            var L = new doubleMxN(n, n, Allocator.Persistent);
+            var bSolve = new doubleN(n, Allocator.Persistent); for (int i = 0; i < n; i++) bSolve[i] = rng.NextDouble(-1f, 1f);
 
-            var Lp = arena.doubleMat(n, n);
+            var Lp = new doubleMxN(n, n, Allocator.Persistent);
             var P1 = new Pivot(n, Allocator.Persistent);
 
-            var AtoL = arena.doubleMat(n, n);
+            var AtoL = new doubleMxN(n, n, Allocator.Persistent);
             for (int r = 0; r < n; r++) for (int c = 0; c < n; c++) AtoL[r, c] = A[r, c];
             var P2 = new Pivot(n, Allocator.Persistent);
-            var bSolveInPlace = arena.doubleVec(n); for (int i = 0; i < n; i++) bSolveInPlace[i] = rng.NextDouble(-1f, 1f);
+            var bSolveInPlace = new doubleN(n, Allocator.Persistent); for (int i = 0; i < n; i++) bSolveInPlace[i] = rng.NextDouble(-1f, 1f);
 
             var hashOut = new NativeArray<uint>(4, Allocator.Persistent);
             var job = new DetCholeskyJobDouble
@@ -661,7 +659,7 @@ namespace LinearAlgebra.Benchmarks
             };
             hashOut.Dispose();
             P1.Dispose(); P2.Dispose();
-            arena.Dispose();
+            A.Dispose(); L.Dispose(); bSolve.Dispose(); Lp.Dispose(); AtoL.Dispose(); bSolveInPlace.Dispose();
             return result;
         }
     }

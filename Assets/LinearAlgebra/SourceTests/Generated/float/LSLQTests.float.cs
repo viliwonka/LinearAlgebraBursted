@@ -61,9 +61,9 @@ public class floatLSLQTests
         static int MaxIter(in floatMxN A) => 4 * A.N_Cols;
 
         // Full-(column-)rank tall test matrix: random with a +10 diagonal boost -> AᵀA ≈ (100+ε)·I -> κ≈1.
-        static floatMxN BuildA(ref Arena arena, int m, int n, uint seed)
+        static floatMxN BuildA(int m, int n, uint seed)
         {
-            var A = arena.floatRandomMat(m, n, -1f, 1f, seed);
+            var A = GenerateOP.floatRandomMat(m, n, -1f, 1f, seed);
             int d = math.min(m, n);
             for (int i = 0; i < d; i++)
                 A[i, i] += (float)10;
@@ -73,14 +73,14 @@ public class floatLSLQTests
         static float Norm(in floatN v) => math.sqrt(Blas.dot(v, v));
 
         // Direct dense least-squares reference via QR (full column rank, m >= n) -- the exact x*.
-        static floatN ReferenceSolveLstsq(ref Arena arena, in floatMxN A, in floatN b)
+        static floatN ReferenceSolveLstsq(in floatMxN A, in floatN b)
         {
-            var Q = arena.floatMat(A.M_Rows, A.N_Cols);
-            var R = arena.floatMat(A.N_Cols);
+            var Q = new floatMxN(A.M_Rows, A.N_Cols, Allocator.Temp);
+            var R = new floatMxN(A.N_Cols, A.N_Cols, Allocator.Temp);
             QR.decomp(in A, ref Q, ref R);
-            var bLocal = arena.floatVec(A.M_Rows);
+            var bLocal = new floatN(A.M_Rows, Allocator.Temp);
             bLocal.CopyFrom(in b);                       // decompSolve destroys its RHS; keep b intact
-            var xRef = arena.floatVec(A.N_Cols);
+            var xRef = new floatN(A.N_Cols, Allocator.Temp);
             QR.decompSolve(ref Q, ref R, ref bLocal, ref xRef);
             return xRef;
         }
@@ -92,27 +92,29 @@ public class floatLSLQTests
         // small. ----
         void RectangularLeastSquares()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 11, n = 5;
-            var A = BuildA(ref arena, m, n, 71001);
-            var b = arena.floatRandomVec(m, -3f, 3f, 71002);   // generally inconsistent
+            var A = BuildA(m, n, 71001);
+            var b = GenerateOP.floatRandomVec(m, -3f, 3f, 71002);   // generally inconsistent
 
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             var info = Krylov.lslq(in A, in b, ref x, MaxIter(in A), SolveTol());
             Assert.IsTrue(info.Solved);
 
             // (a) THE POINT: x matches the exact least-squares solution from the QR oracle.
-            var xRef = ReferenceSolveLstsq(ref arena, in A, in b);
-            Assert.IsTrue(Analysis.isZero(xRef - x, Tol()));
+            var xRef = ReferenceSolveLstsq(in A, in b);
+            var xRefMinusX = new floatN(in xRef, Allocator.Temp);
+            floatComp.subInPlace(xRefMinusX, x);
+            Assert.IsTrue(Analysis.isZero(xRefMinusX, Tol()));
 
             // (b) Cross-solver oracle: lsqr solves the same LS problem; must agree at convergence.
-            var xLsqr = arena.floatVec(n);
+            var xLsqr = new floatN(n, Allocator.Temp);
             Krylov.lsqr(in A, in b, ref xLsqr, MaxIter(in A), SolveTol());
-            Assert.IsTrue(Analysis.isZero(xLsqr - x, Tol()));
+            var xLsqrMinusX = new floatN(in xLsqr, Allocator.Temp);
+            floatComp.subInPlace(xLsqrMinusX, x);
+            Assert.IsTrue(Analysis.isZero(xLsqrMinusX, Tol()));
 
             // (c) Optimality residual ‖Aᵀ(b-Ax)‖ is small relative to ‖Aᵀb‖ (certified in info).
-            var Atb = arena.floatVec(n);
+            var Atb = new floatN(n, Allocator.Temp);
             Blas.dot(in b, in A, ref Atb);               // Aᵀb = bᵀA
             Assert.IsTrue(info.Arnorm <= (double)(SolveTol() * Norm(in Atb)) * 10.0);
 
@@ -122,61 +124,57 @@ public class floatLSLQTests
 
             // xErrBound is NaN on the plain overloads (no σ_min estimate supplied).
             Assert.IsTrue(double.IsNaN(info.xErrBound));
-
-            arena.Dispose();
         }
 
         // ---- Square full-rank consistent system: UNIQUE solution, so lslq must recover x_true. ----
         void SquareFullRank()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int nn = 7;
-            var A = BuildA(ref arena, nn, nn, 72001);
+            var A = BuildA(nn, nn, 72001);
 
-            var xTrue = arena.floatRandomVec(nn, -5f, 5f, 72002);
-            var b = arena.floatVec(nn);
+            var xTrue = GenerateOP.floatRandomVec(nn, -5f, 5f, 72002);
+            var b = new floatN(nn, Allocator.Temp);
             Blas.dot(in A, in xTrue, ref b);
 
-            var x = arena.floatVec(nn);
+            var x = new floatN(nn, Allocator.Temp);
             var info = Krylov.lslq(in A, in b, ref x, MaxIter(in A), SolveTol());
             Assert.IsTrue(info.Solved);
 
-            var Ax = arena.floatVec(nn);
+            var Ax = new floatN(nn, Allocator.Temp);
             Blas.dot(in A, in x, ref Ax);
-            Assert.IsTrue(Analysis.isZero(b - Ax, Tol()));
+            var bMinusAx = new floatN(in b, Allocator.Temp);
+            floatComp.subInPlace(bMinusAx, Ax);
+            Assert.IsTrue(Analysis.isZero(bMinusAx, Tol()));
 
             // Unique solution: x IS x_true.
-            Assert.IsTrue(Analysis.isZero(xTrue - x, Tol()));
-
-            arena.Dispose();
+            var xTrueMinusX = new floatN(in xTrue, Allocator.Temp);
+            floatComp.subInPlace(xTrueMinusX, x);
+            Assert.IsTrue(Analysis.isZero(xTrueMinusX, Tol()));
         }
 
         // ---- Explicit-scratch overload driven through the IJob struct: exercises the caller-provided
         // u/v/wbar/tmpM/tmpN buffer path (guards against IJob struct-copy resets). ----
         void ExplicitScratchInJob()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 13, n = 6;
-            var A = BuildA(ref arena, m, n, 73001);
-            var b = arena.floatRandomVec(m, -3f, 3f, 73002);
+            var A = BuildA(m, n, 73001);
+            var b = GenerateOP.floatRandomVec(m, -3f, 3f, 73002);
 
             // Caller-provided scratch (lengths: u,tmpM = Rows; v,wbar,tmpN = Cols).
-            var u    = arena.floatVec(m);
-            var v    = arena.floatVec(n);
-            var wbar = arena.floatVec(n);
-            var tmpM = arena.floatVec(m);
-            var tmpN = arena.floatVec(n);
-            var x    = arena.floatVec(n);
+            var u    = new floatN(m, Allocator.Temp);
+            var v    = new floatN(n, Allocator.Temp);
+            var wbar = new floatN(n, Allocator.Temp);
+            var tmpM = new floatN(m, Allocator.Temp);
+            var tmpN = new floatN(n, Allocator.Temp);
+            var x    = new floatN(n, Allocator.Temp);
 
             var info = Krylov.lslq(in A, in b, ref x, ref u, ref v, ref wbar, ref tmpM, ref tmpN, MaxIter(in A), SolveTol());
             Assert.IsTrue(info.Solved);
 
-            var xRef = ReferenceSolveLstsq(ref arena, in A, in b);
-            Assert.IsTrue(Analysis.isZero(xRef - x, Tol()));
-
-            arena.Dispose();
+            var xRef = ReferenceSolveLstsq(in A, in b);
+            var xRefMinusX = new floatN(in xRef, Allocator.Temp);
+            floatComp.subInPlace(xRefMinusX, x);
+            Assert.IsTrue(Analysis.isZero(xRefMinusX, Tol()));
         }
 
         // ---- Zero RHS: least-squares solution is exactly x = 0 on the early-out path with zero
@@ -184,21 +182,17 @@ public class floatLSLQTests
         // seeding garbage. ----
         void ZeroRhs()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 9, n = 5;
-            var A = BuildA(ref arena, m, n, 74001);
-            var b = arena.floatVec(m); // all zeros
+            var A = BuildA(m, n, 74001);
+            var b = new floatN(m, Allocator.Temp); // all zeros
 
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             for (int j = 0; j < n; j++) x[j] = (float)7;
 
             var info = Krylov.lslq(in A, in b, ref x);
             Assert.IsTrue(info.Solved);
             Assert.IsTrue(info.iterations == 0);
             Assert.IsTrue(Analysis.isZero(x, (float)0));
-
-            arena.Dispose();
         }
 
         // ---- Rank-deficient A (a duplicated column) is NOT a failure for LSLQ: the bidiagonalization
@@ -207,16 +201,14 @@ public class floatLSLQTests
         // genuine least-squares point even though it is not unique. ----
         void RankDeficientGraceful()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 10, n = 5;
-            var A = BuildA(ref arena, m, n, 75001);
+            var A = BuildA(m, n, 75001);
             for (int i = 0; i < m; i++)
                 A[i, n - 1] = A[i, 0];        // last column := first column -> rank n-1
 
-            var b = arena.floatRandomVec(m, -3f, 3f, 75002);
+            var b = GenerateOP.floatRandomVec(m, -3f, 3f, 75002);
 
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             var info = Krylov.lslq(in A, in b, ref x, MaxIter(in A), SolveTol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged
@@ -225,11 +217,9 @@ public class floatLSLQTests
             Assert.IsFalse(double.IsNaN(info.Arnorm));
 
             // Certified optimality: ‖Aᵀr‖ small relative to ‖Aᵀb‖ (a least-squares stationary point).
-            var Atb = arena.floatVec(n);
+            var Atb = new floatN(n, Allocator.Temp);
             Blas.dot(in b, in A, ref Atb);               // Aᵀb = bᵀA
             Assert.IsTrue(info.Arnorm <= (double)(Tol() * Norm(in Atb)));
-
-            arena.Dispose();
         }
 
         // ---- HEADLINE: the certified Gauss-Radau forward-error bound |ζ̃| on ‖x^L - x*‖. Checked at a
@@ -240,29 +230,28 @@ public class floatLSLQTests
         // property makes it essentially exact), which a crude ‖r‖/σ_min bound would fail. ----
         void BoundIsUpperBound()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 11, n = 6;
-            var A = BuildA(ref arena, m, n, 76001);
-            var b = arena.floatRandomVec(m, -3f, 3f, 76002);   // inconsistent least-squares
+            var A = BuildA(m, n, 76001);
+            var b = GenerateOP.floatRandomVec(m, -3f, 3f, 76002);   // inconsistent least-squares
 
             // σ_min(A) via SVD of the tall m×n A (n singular values = A's). The 1e-4 underestimate
             // margin must survive the float build's (float)sigmaMinEst cast (~1e-7 rel) AND the float
             // SVD's own error, so it is deliberately far coarser than double eps -- a strict underestimate
             // in BOTH builds (a tighter margin like 1e-10 would round away in float and break the bound).
-            var svals = arena.floatVec(n);
+            var svals = new floatN(n, Allocator.Temp);
             SVD.values(in A, ref svals);
             float smin = svals[0];
             for (int i = 1; i < n; i++) smin = math.min(smin, svals[i]);
             double sigmaEst = (1.0 - 1e-4) * (double)smin;
 
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             var info = Krylov.lslq(in A, in b, ref x, 2, SolveTol(), sigmaEst);
             // 2 iterations cannot reach the 1e-5 optimality tol on a 6-column system: mid-convergence.
             Assert.IsTrue(info.status == IterativeSolveStatus.MaxIterations);
 
-            var xRef = ReferenceSolveLstsq(ref arena, in A, in b);
-            var diff = xRef - x;
+            var xRef = ReferenceSolveLstsq(in A, in b);
+            var diff = new floatN(in xRef, Allocator.Temp);
+            floatComp.subInPlace(diff, x);
             double trueErr = (double)Norm(in diff);
 
             // (a) the reported bound bounds the true error (a wrong recurrence that under-reports fails
@@ -277,13 +266,11 @@ public class floatLSLQTests
             Assert.IsTrue(info.xErrBound <= trueErr * 10.0);
 
             // Estimate gates the machinery: no σ_est (default) -> NaN bound, same solve.
-            var x2 = arena.floatVec(n);
+            var x2 = new floatN(n, Allocator.Temp);
             var info2 = Krylov.lslq(in A, in b, ref x2, 2, SolveTol());
             Assert.IsTrue(double.IsNaN(info2.xErrBound));
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(x[i] == x2[i]);   // bound machinery does not perturb the solve
-
-            arena.Dispose();
         }
     }
 

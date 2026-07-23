@@ -65,11 +65,11 @@ public class fProxyKrylovPMinresTests
         // Dense LU oracle on COPIES (decompInPlace/decompSolve are destructive). Returns A^-1 b.
         static fProxyN DenseSolve(in fProxyMxN A, in fProxyN b)
         {
-            var LUcopy = A.Copy();
+            var LUcopy = new fProxyMxN(in A, Allocator.Temp);
             var pivot = new Pivot(A.M_Rows, Allocator.Temp);
             bool okLU = LU.decompInPlace(ref LUcopy, ref pivot);
             Assert.IsTrue(okLU);
-            var x = b.Copy();
+            var x = new fProxyN(in b, Allocator.Temp);
             LU.decompSolve(ref LUcopy, in pivot, ref x);
             pivot.Dispose();
             return x;
@@ -83,26 +83,22 @@ public class fProxyKrylovPMinresTests
         // SPD operator lands on the LU solution and satisfies A x ~= b.
         void SpdIdentityMatchesLU()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 14;
-            var A = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 97001u);
+            var A = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(n, 97001u);
             var op = new fProxyDenseOperator(in A);
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 97002u);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 97002u);
 
             var xLU = DenseSolve(in A, in b);
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             var info = Krylov.minres(op, new fProxyIdentityPreconditioner(), in b, ref x, 4 * n, Consts.fProxySqrtEps);
             Assert.IsTrue(info.Solved);
 
             fProxyKrylovTestAsserts.AssertVecClose(in x, in xLU, SolveTol());
 
-            var Ax = arena.fProxyVec(n);
+            var Ax = new fProxyN(n, Allocator.Temp);
             Blas.dot(in A, in x, ref Ax);
             fProxyKrylovTestAsserts.AssertVecClose(in Ax, in b, SolveTol());
-
-            arena.Dispose();
         }
 
         // Real Jacobi-style preconditioner: block-Jacobi over a 1x1-block BSR wrapping of the dense
@@ -110,17 +106,15 @@ public class fProxyKrylovPMinresTests
         // minres(in fProxyBSR, in fProxyBlockJacobi, ...) rung end-to-end.
         void SpdBlockJacobiMatchesLU()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 12;
-            var A = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, dim, 97101u);
-            var bsm = fProxyKrylovBatteryOracles.DenseToBSR1x1(ref arena, in A);
-            var M = arena.fProxyBlockJacobi(in bsm);
-            var b = arena.fProxyRandomVec(dim, -1f, 1f, 97102u);
+            var A = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(dim, 97101u);
+            var bsm = fProxyKrylovBatteryOracles.DenseToBSR1x1(in A);
+            var M = new fProxyBlockJacobi(in bsm, Allocator.Temp);
+            var b = GenerateOP.fProxyRandomVec(dim, -1f, 1f, 97102u);
 
             var xLU = DenseSolve(in A, in b);
 
-            var x = arena.fProxyVec(dim);
+            var x = new fProxyN(dim, Allocator.Temp);
             var info = Krylov.minres(in bsm, in M, in b, ref x, 4 * dim, Consts.fProxySqrtEps);
             Assert.IsTrue(info.Solved);
 
@@ -128,8 +122,6 @@ public class fProxyKrylovPMinresTests
 
             var Ax = BSR.spMV(in bsm, in x);
             fProxyKrylovTestAsserts.AssertVecClose(in Ax, in b, SolveTol());
-
-            arena.Dispose();
         }
 
         // ==============================================================================
@@ -141,13 +133,11 @@ public class fProxyKrylovPMinresTests
         // ==============================================================================
         void IndefiniteCgFailsPminresWins()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 6;                                   // even -> {5,3,1,-1,-3,-5}, indefinite, nonsingular
-            var A = arena.fProxyClement(n);
+            var A = fProxyGallery.fProxyClement(n);
 
-            var xTrue = arena.fProxyRandomVec(n, 0.5f, 1.5f, 97201u);
-            var b = arena.fProxyVec(n);
+            var xTrue = GenerateOP.fProxyRandomVec(n, 0.5f, 1.5f, 97201u);
+            var b = new fProxyN(n, Allocator.Temp);
             Blas.dot(in A, in xTrue, ref b);             // consistent RHS b = A xTrue
 
             fProxy tol = Consts.fProxySqrtEps;
@@ -157,18 +147,16 @@ public class fProxyKrylovPMinresTests
             // guard trips (Breakdown) or it stagnates (MaxIterations) -- either way, NOT Solved. (CG's
             // verify-at-exit means a Converged claim would be honest, so a genuinely indefinite A
             // must not report Solved.)
-            var xCg = arena.fProxyVec(n);
+            var xCg = new fProxyN(n, Allocator.Temp);
             var infoCg = Krylov.cg(in A, in b, ref xCg, maxIter, tol);
             Assert.IsTrue(!infoCg.Solved);
 
             // minres (identity preconditioner) DOES converge and recovers xTrue.
-            var xP = arena.fProxyVec(n);
+            var xP = new fProxyN(n, Allocator.Temp);
             var infoP = Krylov.minres(new fProxyDenseOperator(in A), new fProxyIdentityPreconditioner(),
                                        in b, ref xP, maxIter, tol);
             Assert.IsTrue(infoP.Solved);
             fProxyKrylovTestAsserts.AssertVecClose(in xP, in xTrue, IndefTol());
-
-            arena.Dispose();
         }
 
         // ==============================================================================
@@ -179,22 +167,20 @@ public class fProxyKrylovPMinresTests
         // ==============================================================================
         void BlockJacobiBeatsPlainMinres()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.fProxyLaplacian2D(4, 16);      // BR=4 (unrolled path), 64 dof, spread spectrum
+            var A = fProxyGallery.fProxyLaplacian2D(4, 16);      // BR=4 (unrolled path), 64 dof, spread spectrum
             int n = A.M_Rows;
-            var M = arena.fProxyBlockJacobi(in A);
+            var M = new fProxyBlockJacobi(in A, Allocator.Temp);
 
-            var xTrue = arena.fProxyRandomVec(n, 0.5f, 1.5f, 97301u);
+            var xTrue = GenerateOP.fProxyRandomVec(n, 0.5f, 1.5f, 97301u);
             var b = BSR.spMV(in A, in xTrue);
             fProxy tol = Consts.fProxySqrtEps;
             int maxIter = 8 * n;
 
-            var xPlain = arena.fProxyVec(n);
+            var xPlain = new fProxyN(n, Allocator.Temp);
             var infoPlain = Krylov.minres(in A, in b, ref xPlain, maxIter, tol);
             Assert.IsTrue(infoPlain.Solved);
 
-            var xP = arena.fProxyVec(n);
+            var xP = new fProxyN(n, Allocator.Temp);
             var infoP = Krylov.minres(in A, in M, in b, ref xP, maxIter, tol);
             Assert.IsTrue(infoP.Solved);
 
@@ -203,8 +189,6 @@ public class fProxyKrylovPMinresTests
             // both land on the same (true) solution
             fProxyKrylovTestAsserts.AssertVecClose(in xPlain, in xTrue, LooseTol());
             fProxyKrylovTestAsserts.AssertVecClose(in xP, in xTrue, LooseTol());
-
-            arena.Dispose();
         }
 
         // ==============================================================================
@@ -215,33 +199,27 @@ public class fProxyKrylovPMinresTests
         // at 0 iterations, even from a nonzero initial guess.
         void ZeroRhsConvergesAtZeroIters()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 10;
-            var A = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 97501u);
+            var A = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(n, 97501u);
             var op = new fProxyDenseOperator(in A);
-            var b = arena.fProxyVec(n);                  // all zero
-            var x = arena.fProxyRandomVec(n, -1f, 1f, 97502u);   // nonzero seed, must be overwritten
+            var b = new fProxyN(n, Allocator.Temp);                  // all zero
+            var x = GenerateOP.fProxyRandomVec(n, -1f, 1f, 97502u);   // nonzero seed, must be overwritten
 
             var info = Krylov.minres(op, new fProxyIdentityPreconditioner(), in b, ref x, 4 * n, Consts.fProxySqrtEps);
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.AreEqual(0, info.iterations);
             for (int i = 0; i < n; i++) Assert.AreEqual(0.0, (double)x[i]);   // x <- b == 0
-
-            arena.Dispose();
         }
 
         // Already-converged initial guess: seeding x with the exact (LU) solution makes the initial
         // residual b - A x0 already below tolerance -> Converged at 0 iterations (no Lanczos step).
         void AlreadyConvergedX0AtZeroIters()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 12;
-            var A = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 97601u);
+            var A = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(n, 97601u);
             var op = new fProxyDenseOperator(in A);
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 97602u);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 97602u);
 
             var x = DenseSolve(in A, in b);              // seed x = A^-1 b (accurate to ~eps << sqrtEps)
 
@@ -249,8 +227,6 @@ public class fProxyKrylovPMinresTests
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.AreEqual(0, info.iterations);
-
-            arena.Dispose();
         }
     }
 
@@ -293,24 +269,20 @@ public class fProxyKrylovPMinresTests
     [Test]
     public void PminresConvergedRnormIsHonest()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int n = 16;
-        var A = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 98001u);
-        var b = arena.fProxyRandomVec(n, (fProxy)(-1f), (fProxy)1f, 98002u);
+        var A = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(n, 98001u);
+        var b = GenerateOP.fProxyRandomVec(n, (fProxy)(-1f), (fProxy)1f, 98002u);
 
         var op = new fProxyDenseOperator(in A);
-        var x = arena.fProxyVec(n);
+        var x = new fProxyN(n, Allocator.Temp);
         var info = Krylov.minres(op, new fProxyIdentityPreconditioner(), in b, ref x, 4 * n, Consts.fProxySqrtEps);
         Assert.IsTrue(info.Solved, info.ToString());
 
-        var scratch = arena.fProxyVec(n);
+        var scratch = new fProxyN(n, Allocator.Temp);
         fProxy trueRs = TrueResidualSq(in A, in b, in x, ref scratch);
         fProxy threshold = Consts.fProxySqrtEps * Consts.fProxySqrtEps * Blas.dot(b, b);
         Assert.LessOrEqual((double)trueRs, (double)threshold);
         Assert.AreEqual((double)math.sqrt(trueRs), info.rnorm, 1e-6 * (1.0 + info.rnorm));
-
-        arena.Dispose();
     }
 
     // On a MAXITERATIONS exit minres ALSO reports a freshly computed true residual (one extra
@@ -319,104 +291,85 @@ public class fProxyKrylovPMinresTests
     [Test]
     public void PminresMaxIterationsRnormIsTrueResidual()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int n = 12;
-        var A = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 98101u);
-        var b = arena.fProxyRandomVec(n, (fProxy)(-1f), (fProxy)1f, 98102u);
+        var A = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(n, 98101u);
+        var b = GenerateOP.fProxyRandomVec(n, (fProxy)(-1f), (fProxy)1f, 98102u);
 
         var op = new fProxyDenseOperator(in A);
-        var x = arena.fProxyVec(n);
+        var x = new fProxyN(n, Allocator.Temp);
         var info = Krylov.minres(op, new fProxyIdentityPreconditioner(), in b, ref x, 1, (fProxy)1e-30f);
         Assert.IsTrue(info.status == IterativeSolveStatus.MaxIterations, info.ToString());
         Assert.AreEqual(1, info.iterations);
 
-        var scratch = arena.fProxyVec(n);
+        var scratch = new fProxyN(n, Allocator.Temp);
         fProxy trueRs = TrueResidualSq(in A, in b, in x, ref scratch);
         Assert.AreEqual((double)math.sqrt(trueRs), info.rnorm, 1e-6 * (1.0 + info.rnorm));
-
-        arena.Dispose();
     }
 
     // Aliasing guard: two scratch buffers sharing an allocation must be rejected (RequireDistinctBuffers).
     [Test]
     public void AliasedScratchThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            int n = 8;
-            var A = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 98201u);
-            var op = new fProxyDenseOperator(in A);
-            var M = new fProxyIdentityPreconditioner();
-            var b = arena.fProxyRandomVec(n, (fProxy)(-1f), (fProxy)1f, 98202u);
+        int n = 8;
+        var A = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(n, 98201u);
+        var op = new fProxyDenseOperator(in A);
+        var M = new fProxyIdentityPreconditioner();
+        var b = GenerateOP.fProxyRandomVec(n, (fProxy)(-1f), (fProxy)1f, 98202u);
 
-            var x  = arena.fProxyVec(n);
-            var y  = arena.fProxyVec(n);
-            var r1 = arena.fProxyVec(n);
-            var r2 = arena.fProxyVec(n);
-            var v  = arena.fProxyVec(n);
-            var w  = arena.fProxyVec(n);
-            var w1 = arena.fProxyVec(n);
-            var w2 = w1;   // ALIASES w1 (a required buffer) -> distinct-buffer guard must fire
-                           // (z is exempt from the guard under the identity preconditioner)
-            var z  = arena.fProxyVec(n);
+        var x  = new fProxyN(n, Allocator.Temp);
+        var y  = new fProxyN(n, Allocator.Temp);
+        var r1 = new fProxyN(n, Allocator.Temp);
+        var r2 = new fProxyN(n, Allocator.Temp);
+        var v  = new fProxyN(n, Allocator.Temp);
+        var w  = new fProxyN(n, Allocator.Temp);
+        var w1 = new fProxyN(n, Allocator.Temp);
+        var w2 = w1;   // ALIASES w1 (a required buffer) -> distinct-buffer guard must fire
+                       // (z is exempt from the guard under the identity preconditioner)
+        var z  = new fProxyN(n, Allocator.Temp);
 
-            Assert.Throws<ArgumentException>(() =>
-                Krylov.minres(op, M, in b, ref x, ref y, ref r1, ref r2, ref v,
-                               ref w, ref w1, ref w2, ref z, 4 * n, Consts.fProxySqrtEps));
-        }
-        finally { arena.Dispose(); }
+        Assert.Throws<ArgumentException>(() =>
+            Krylov.minres(op, M, in b, ref x, ref y, ref r1, ref r2, ref v,
+                           ref w, ref w1, ref w2, ref z, 4 * n, Consts.fProxySqrtEps));
     }
 
     // Dimension guard: a wrong-length scratch vector must be rejected before any iteration.
     [Test]
     public void WrongLengthScratchThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            int n = 8;
-            var A = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 98301u);
-            var op = new fProxyDenseOperator(in A);
-            var M = new fProxyIdentityPreconditioner();
-            var b = arena.fProxyRandomVec(n, (fProxy)(-1f), (fProxy)1f, 98302u);
+        int n = 8;
+        var A = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(n, 98301u);
+        var op = new fProxyDenseOperator(in A);
+        var M = new fProxyIdentityPreconditioner();
+        var b = GenerateOP.fProxyRandomVec(n, (fProxy)(-1f), (fProxy)1f, 98302u);
 
-            var x  = arena.fProxyVec(n);
-            var y  = arena.fProxyVec(n);
-            var r1 = arena.fProxyVec(n);
-            var r2 = arena.fProxyVec(n);
-            var v  = arena.fProxyVec(n);
-            var w  = arena.fProxyVec(n);
-            var w1 = arena.fProxyVec(n);
-            var w2 = arena.fProxyVec(n + 1);   // wrong length (a required buffer -- always validated;
-                                               // z is exempt under the identity preconditioner)
-            var z  = arena.fProxyVec(n);
+        var x  = new fProxyN(n, Allocator.Temp);
+        var y  = new fProxyN(n, Allocator.Temp);
+        var r1 = new fProxyN(n, Allocator.Temp);
+        var r2 = new fProxyN(n, Allocator.Temp);
+        var v  = new fProxyN(n, Allocator.Temp);
+        var w  = new fProxyN(n, Allocator.Temp);
+        var w1 = new fProxyN(n, Allocator.Temp);
+        var w2 = new fProxyN(n + 1, Allocator.Temp);   // wrong length (a required buffer -- always validated;
+                                           // z is exempt under the identity preconditioner)
+        var z  = new fProxyN(n, Allocator.Temp);
 
-            Assert.Throws<ArgumentException>(() =>
-                Krylov.minres(op, M, in b, ref x, ref y, ref r1, ref r2, ref v,
-                               ref w, ref w1, ref w2, ref z, 4 * n, Consts.fProxySqrtEps));
-        }
-        finally { arena.Dispose(); }
+        Assert.Throws<ArgumentException>(() =>
+            Krylov.minres(op, M, in b, ref x, ref y, ref r1, ref r2, ref v,
+                           ref w, ref w1, ref w2, ref z, 4 * n, Consts.fProxySqrtEps));
     }
 
     // Non-square operator must be rejected up front ("A must be square").
     [Test]
     public void NonSquareOperatorThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            int m = 7, k = 4;
-            var A = arena.fProxyRandomMat(m, k, (fProxy)(-1f), (fProxy)1f, 98401u);   // rectangular
-            var op = new fProxyDenseOperator(in A);                                   // Rows=7 != Cols=4
-            var M = new fProxyIdentityPreconditioner();
-            var b = arena.fProxyVec(m);
-            var x = arena.fProxyVec(m);
+        int m = 7, k = 4;
+        var A = GenerateOP.fProxyRandomMat(m, k, (fProxy)(-1f), (fProxy)1f, 98401u);   // rectangular
+        var op = new fProxyDenseOperator(in A);                                   // Rows=7 != Cols=4
+        var M = new fProxyIdentityPreconditioner();
+        var b = new fProxyN(m, Allocator.Temp);
+        var x = new fProxyN(m, Allocator.Temp);
 
-            Assert.Throws<ArgumentException>(() =>
-                Krylov.minres(op, M, in b, ref x, m, Consts.fProxySqrtEps));
-        }
-        finally { arena.Dispose(); }
+        Assert.Throws<ArgumentException>(() =>
+            Krylov.minres(op, M, in b, ref x, m, Consts.fProxySqrtEps));
     }
 }

@@ -64,19 +64,17 @@ public class iProxyDotOperationTests
 
         public void VecVecDot()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int vecLen = 32;
 
-            iProxyN x = arena.iProxyVec(vecLen, 1);
-            iProxyN y = arena.iProxyVec(vecLen, 1);
+            iProxyN x = GenerateOP.iProxyVec(vecLen, 1);
+            iProxyN y = GenerateOP.iProxyVec(vecLen, 1);
 
             iProxy b = Blas.dot(x, y);
 
             Assert.IsTrue(b == (iProxy)vecLen);
 
-            x = arena.iProxyVec(vecLen);
-            y = arena.iProxyVec(vecLen);
+            x = new iProxyN(vecLen, Allocator.Temp);
+            y = new iProxyN(vecLen, Allocator.Temp);
 
             for(int i = 0; i < vecLen; i++)
             {
@@ -87,20 +85,16 @@ public class iProxyDotOperationTests
             b = Blas.dot(x, y);
 
             Assert.IsTrue(b == (iProxy)0f);
-
-            arena.Dispose();
         }
 
         public void MatVecDot()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int inVecLen = 20;
             int outVecLen = 5;
 
             // A[i,j] = i+1 against an all-ones x: b[i] must be exactly (i+1) * inVecLen.
-            iProxyN x = arena.iProxyVec(inVecLen, 1);
-            iProxyMxN A = arena.iProxyMat(outVecLen, inVecLen);
+            iProxyN x = GenerateOP.iProxyVec(inVecLen, 1);
+            iProxyMxN A = new iProxyMxN(outVecLen, inVecLen, Allocator.Temp);
             for (int i = 0; i < outVecLen; i++)
                 for (int j = 0; j < inVecLen; j++)
                     A[i, j] = (iProxy)(i + 1);
@@ -110,44 +104,36 @@ public class iProxyDotOperationTests
             Assert.AreEqual(outVecLen, b.N);
             for (int i = 0; i < outVecLen; i++)
                 Assert.IsTrue(b[i] == (iProxy)((i + 1) * inVecLen));
-
-            arena.Dispose();
         }
 
         public void VecMatDot()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int vecLen = 20;
 
-            iProxyN x = arena.iProxyIndexOneVec(vecLen);
-            iProxyMxN A = arena.iProxyIdentityMat(vecLen);
+            iProxyN x = GenerateOP.iProxyIndexOneVec(vecLen);
+            iProxyMxN A = GenerateOP.iProxyIdentityMat(vecLen);
 
             iProxyN b = Blas.dot(x, A);
 
             Assert.AreEqual(vecLen, b.N);
-            
+
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(b[i] == x[i]);
 
-            x = arena.iProxyIndexZeroVec(vecLen);
+            x = GenerateOP.iProxyIndexZeroVec(vecLen);
 
             b = Blas.dot(x, A);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(b[i] == (iProxy)i);
-
-            arena.Dispose();
         }
 
         public void MatMatDot()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int matLen = 16;
 
-            iProxyMxN A = arena.iProxyIdentityMat(matLen);
-            iProxyMxN B = arena.iProxyIdentityMat(matLen);
+            iProxyMxN A = GenerateOP.iProxyIdentityMat(matLen);
+            iProxyMxN B = GenerateOP.iProxyIdentityMat(matLen);
 
             iProxyMxN C = Blas.dot(A, B);
 
@@ -160,7 +146,7 @@ public class iProxyDotOperationTests
                     Assert.IsTrue(C[i, j] == (iProxy)0f);
             }
 
-            iProxyMxN R = arena.iProxyRandomMat(matLen, matLen);
+            iProxyMxN R = GenerateOP.iProxyRandomMat(matLen, matLen);
 
             C = Blas.dot(A, R);
 
@@ -170,7 +156,7 @@ public class iProxyDotOperationTests
                 Assert.IsTrue(C[i, j] == R[i, j]);
             }
 
-            C = arena.iProxyIdentityMat(matLen);
+            C = GenerateOP.iProxyIdentityMat(matLen);
 
             iProxyMxN D = Blas.dot(C, C);
 
@@ -182,20 +168,16 @@ public class iProxyDotOperationTests
                 else
                     Assert.IsTrue(D[i, j] == (iProxy)0f);
             }
-
-            arena.Dispose();
         }
 
         public void MatVecDotNonSquare()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int inVecLen = 64;
             int outVecLen = 16;
 
             // A[i,j] = i+1 against an all-ones x: b[i] must be exactly (i+1) * inVecLen.
-            iProxyN x = arena.iProxyVec(inVecLen, 1);
-            iProxyMxN A = arena.iProxyMat(outVecLen, inVecLen);
+            iProxyN x = GenerateOP.iProxyVec(inVecLen, 1);
+            iProxyMxN A = new iProxyMxN(outVecLen, inVecLen, Allocator.Temp);
             for (int i = 0; i < outVecLen; i++)
                 for (int j = 0; j < inVecLen; j++)
                     A[i, j] = (iProxy)(i + 1);
@@ -205,37 +187,29 @@ public class iProxyDotOperationTests
             Assert.AreEqual(outVecLen, b.N);
             for (int i = 0; i < outVecLen; i++)
                 Assert.IsTrue(b[i] == (iProxy)((i + 1) * inVecLen));
-
-            arena.Dispose();
         }
 
         public void VecMatDotNonSquare()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int inVecLen = 64;
             int outVecLen = 16;
 
-            iProxyN x = arena.iProxyVec(inVecLen, 1);
-            iProxyMxN A = arena.iProxyRandomMat(inVecLen, outVecLen, -100, +100);
+            iProxyN x = GenerateOP.iProxyVec(inVecLen, 1);
+            iProxyMxN A = GenerateOP.iProxyRandomMat(inVecLen, outVecLen, -100, +100);
 
             iProxyN b = Blas.dot(x, A);
-            
-            Assert.AreEqual(outVecLen, b.N);
 
-            arena.Dispose();
+            Assert.AreEqual(outVecLen, b.N);
         }
 
         public void MatMatDotNonSquare()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int M = 8;
             int K = 24;
             int N = 16;
 
-            iProxyMxN Id = arena.iProxyIdentityMat(K);
-            iProxyMxN R = arena.iProxyRandomMat(K, N, -100, +100);
+            iProxyMxN Id = GenerateOP.iProxyIdentityMat(K);
+            iProxyMxN R = GenerateOP.iProxyRandomMat(K, N, -100, +100);
 
             iProxyMxN C = Blas.dot(Id, R);
 
@@ -246,7 +220,7 @@ public class iProxyDotOperationTests
             for (int j = 0; j < N; j++)
                 Assert.IsTrue(C[i, j] == R[i, j]);
 
-            iProxyMxN R2 = arena.iProxyRandomMat(M, K, -100, +100);
+            iProxyMxN R2 = GenerateOP.iProxyRandomMat(M, K, -100, +100);
 
             iProxyMxN D = Blas.dot(R2, Id);
 
@@ -256,19 +230,15 @@ public class iProxyDotOperationTests
             for (int i = 0; i < M; i++)
             for (int j = 0; j < K; j++)
                 Assert.IsTrue(D[i, j] == R2[i, j]);
-
-            arena.Dispose();
         }
 
         public void OuterDot()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int vecM = 16;
             int vecN = 32;
 
-            iProxyN x = arena.iProxyVec(vecM, 1);
-            iProxyN y = arena.iProxyVec(vecN, 1);
+            iProxyN x = GenerateOP.iProxyVec(vecM, 1);
+            iProxyN y = GenerateOP.iProxyVec(vecN, 1);
 
             iProxyMxN A = Blas.outerDot(x, y);
 
@@ -286,16 +256,14 @@ public class iProxyDotOperationTests
             for (int i = 0; i < B.Length; i++)
                 Assert.IsTrue(B[i] == (iProxy)1);
 
-            x = arena.iProxyLinVec(vecM, 0, 20);
-            y = arena.iProxyLinVec(vecN, 0, 20);
+            x = GenerateOP.iProxyLinVec(vecM, 0, 20);
+            y = GenerateOP.iProxyLinVec(vecN, 0, 20);
 
             iProxyMxN C = Blas.outerDot(x, y);
 
             for (int i = 0; i < vecM; i++)
                 for (int j = 0; j < vecN; j++)
                     Assert.IsTrue((iProxy)C[i, j] == (iProxy)x[i] * y[j]);
-
-            arena.Dispose();
         }
     }
 

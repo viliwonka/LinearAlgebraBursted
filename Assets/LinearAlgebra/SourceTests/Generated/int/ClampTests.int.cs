@@ -41,8 +41,7 @@ public class intClampTests
 
         void ClampVector()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var v = arena.intVec(6, 0);
+            var v = GenerateOP.intVec(6, 0);
             v[0] = (int)(-5); v[1] = (int)(-2); v[2] = (int)0;
             v[3] = (int)2;    v[4] = (int)7;    v[5] = (int)2;
 
@@ -54,13 +53,11 @@ public class intClampTests
             Assert.IsTrue(v[3] == (int)2);
             Assert.IsTrue(v[4] == (int)5);
             Assert.IsTrue(v[5] == (int)2);
-            arena.Dispose();
         }
 
         void ClampMatrix()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.intMat(2, 2, 0);
+            var A = GenerateOP.intMat(2, 2, 0);
             A[0, 0] = (int)(-10); A[0, 1] = (int)3;
             A[1, 0] = (int)5;     A[1, 1] = (int)20;
 
@@ -70,17 +67,14 @@ public class intClampTests
             Assert.IsTrue(A[0, 1] == (int)3);
             Assert.IsTrue(A[1, 0] == (int)5);
             Assert.IsTrue(A[1, 1] == (int)10);
-            arena.Dispose();
         }
 
         void ClampNoOpInRange()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var v = arena.intVec(4, 3); // all 3, inside [0,5]
+            var v = GenerateOP.intVec(4, 3); // all 3, inside [0,5]
             intComp.clampInPlace(v, (int)0, (int)5);
             for (int i = 0; i < 4; i++)
                 Assert.IsTrue(v[i] == (int)3);
-            arena.Dispose();
         }
     }
 
@@ -96,10 +90,8 @@ public class intClampTests
     [Test]
     public void ClampLoGreaterThanHiThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var v = arena.intVec(3, 0);
+        var v = new intN(3, Allocator.Temp);
         v[0] = (int)(-4); v[1] = (int)0; v[2] = (int)9;
         Assert.Throws<ArgumentException>(() => intComp.clampInPlace(v, (int)6, (int)(-1)));
-        arena.Dispose();
     }
 }

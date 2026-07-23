@@ -237,20 +237,18 @@ public class doubleKrylovBlockBatteryTests
         {
             if (inv.NeedsGeneralDenseOperator)
             {
-                var arena = new Arena(Allocator.Persistent);
-                var A = doubleKrylovBatteryGallery.Build(ref arena, gm);
-                CheckDenseCore(inv, scalarInv, gm, ref arena, in A, new doubleDenseOperatorGeneral(in A), flags);
+                var A = doubleKrylovBatteryGallery.Build(gm);
+                CheckDenseCore(inv, scalarInv, gm, in A, new doubleDenseOperatorGeneral(in A), flags);
             }
             else
             {
-                var arena = new Arena(Allocator.Persistent);
-                var A = doubleKrylovBatteryGallery.Build(ref arena, gm);
-                CheckDenseCore(inv, scalarInv, gm, ref arena, in A, new doubleDenseOperator(in A), flags);
+                var A = doubleKrylovBatteryGallery.Build(gm);
+                CheckDenseCore(inv, scalarInv, gm, in A, new doubleDenseOperator(in A), flags);
             }
         }
 
         void CheckDenseCore<TInvoker, TScalar, TOp>(TInvoker inv, TScalar scalarInv, GalleryDenseMatrix gm,
-                                                     ref Arena arena, in doubleMxN A, in TOp Aop, CheckFlags flags)
+                                                     in doubleMxN A, in TOp Aop, CheckFlags flags)
             where TInvoker : struct, IdoubleBlockSolverInvoker
             where TScalar : struct, IdoubleSquareSolverInvoker
             where TOp : struct, IdoubleLinearOperator
@@ -259,13 +257,13 @@ public class doubleKrylovBlockBatteryTests
             MatrixProfile tags = GalleryProfiles.Of(gm);
             double tolBand = TolBand(tags);
 
-            var B = arena.doubleRandomMat(flags.S, n, (double)(-1), (double)1, 0xD100u + (uint)gm);
+            var B = GenerateOP.doubleRandomMat(flags.S, n, (double)(-1), (double)1, 0xD100u + (uint)gm);
 
-            inv.Init(ref arena, n, flags.S);
-            scalarInv.Init(ref arena, n);
+            inv.Init(n, flags.S);
+            scalarInv.Init(n);
 
             // 1. Converges: Solved or MaxIterations, AND the fresh (recomputed) residual bound holds.
-            var X1 = arena.doubleMat(flags.S, n);
+            var X1 = new doubleMxN(flags.S, n, Allocator.Temp);
             BlockSolveInfo info1 = inv.Solve(in Aop, in B, ref X1);
             bool statusOk1 = info1.status == IterativeSolveStatus.Converged || info1.status == IterativeSolveStatus.MaxIterations;
             Record(statusOk1, (int)gm, 1, (double)(int)info1.status, (double)0);
@@ -276,15 +274,15 @@ public class doubleKrylovBlockBatteryTests
             // 2. Correctness vs. direct-solve reference, per column (same A, B, and the X1 solved in #1).
             for (int j = 0; j < flags.S; j++)
             {
-                var bj = doubleKrylovBatteryOracles.Row(ref arena, in B, j, n);
+                var bj = doubleKrylovBatteryOracles.Row(in B, j, n);
                 var xRefj = ReferenceSolveDense(in A, in bj, tags);
                 for (int c = 0; c < n; c++)
                     Record(math.abs(X1[j, c] - xRefj[c]) <= tolBand * ((double)1 + math.abs(xRefj[c])), (int)gm, 2, X1[j, c], xRefj[c]);
             }
 
             // 3. Determinism: two independent solves from X0=0 on the identical (A, B) match bit-for-bit.
-            var X3a = arena.doubleMat(flags.S, n);
-            var X3b = arena.doubleMat(flags.S, n);
+            var X3a = new doubleMxN(flags.S, n, Allocator.Temp);
+            var X3b = new doubleMxN(flags.S, n, Allocator.Temp);
             BlockSolveInfo info3a = inv.Solve(in Aop, in B, ref X3a);
             BlockSolveInfo info3b = inv.Solve(in Aop, in B, ref X3b);
             for (int j = 0; j < flags.S; j++)
@@ -295,8 +293,8 @@ public class doubleKrylovBlockBatteryTests
             VerifyHonestBlockOp(info3b.status, in Aop, in X3b, in B, flags.S, n, inv.Tol, (int)gm);
 
             // 4. Identity-fold: the unpreconditioned path == the generic path with an explicit identity.
-            var X4a = arena.doubleMat(flags.S, n);
-            var X4b = arena.doubleMat(flags.S, n);
+            var X4a = new doubleMxN(flags.S, n, Allocator.Temp);
+            var X4b = new doubleMxN(flags.S, n, Allocator.Temp);
             BlockSolveInfo info4a = inv.Solve(in Aop, in B, ref X4a);
             BlockSolveInfo info4b = inv.SolveWithPrecond(in Aop, default(doubleIdentityPreconditioner), in B, ref X4b);
             for (int j = 0; j < flags.S; j++)
@@ -315,8 +313,8 @@ public class doubleKrylovBlockBatteryTests
             // Restricted to well-conditioned SPD dense entries so a correct solver converges cleanly.
             if (flags.DensePrecondSPD && (tags & MatrixProfile.SPD) != 0 && (tags & MatrixProfile.IllConditioned) == 0)
             {
-                var M13 = new doubleDenseSpdPreconditioner { Nmat = doubleKrylovBatteryOracles.BuildDenseSpd(ref arena, n, 0xD500u + (uint)gm, (double)(2 * n)) };
-                var X13 = arena.doubleMat(flags.S, n);
+                var M13 = new doubleDenseSpdPreconditioner { Nmat = doubleKrylovBatteryOracles.BuildDenseSpd(n, 0xD500u + (uint)gm, (double)(2 * n)) };
+                var X13 = new doubleMxN(flags.S, n, Allocator.Temp);
                 BlockSolveInfo info13 = inv.SolveWithPrecond(in Aop, in M13, in B, ref X13);
                 bool statusOk13 = info13.status == IterativeSolveStatus.Converged || info13.status == IterativeSolveStatus.MaxIterations;
                 Record(statusOk13, (int)gm, 13, (double)(int)info13.status, (double)0);
@@ -324,7 +322,7 @@ public class doubleKrylovBlockBatteryTests
                 Record(relRes13 <= (double)10 * inv.Tol, (int)gm, 13, relRes13, (double)10 * inv.Tol);
                 for (int j = 0; j < flags.S; j++)
                 {
-                    var bj = doubleKrylovBatteryOracles.Row(ref arena, in B, j, n);
+                    var bj = doubleKrylovBatteryOracles.Row(in B, j, n);
                     var xRefj = ReferenceSolveDense(in A, in bj, tags);
                     for (int c = 0; c < n; c++)
                         Record(math.abs(X13[j, c] - xRefj[c]) <= tolBand * ((double)1 + math.abs(xRefj[c])), (int)gm, 13, X13[j, c], xRefj[c]);
@@ -332,9 +330,7 @@ public class doubleKrylovBlockBatteryTests
                 VerifyHonestBlockOp(info13.status, in Aop, in X13, in B, flags.S, n, inv.Tol, (int)gm);
             }
 
-            CheckBlockAdditions(inv, scalarInv, ref arena, in Aop, n, tags, (int)gm, 0xD800u + (uint)gm, flags);
-
-            arena.Dispose();
+            CheckBlockAdditions(inv, scalarInv, in Aop, n, tags, (int)gm, 0xD800u + (uint)gm, flags);
         }
 
         // Checks #1-5 (adds Sparse-only preconditioned convergence) plus #6-9 on one BSR gallery
@@ -344,21 +340,19 @@ public class doubleKrylovBlockBatteryTests
             where TInvoker : struct, IdoubleBlockSolverInvoker
             where TScalar : struct, IdoubleSquareSolverInvoker
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = doubleKrylovBatteryGallery.Build(ref arena, gm);
+            var A = doubleKrylovBatteryGallery.Build(gm);
             int n = A.M_Rows;
             var Aop = new doubleBSROperator(in A);
             MatrixProfile tags = GalleryProfiles.Of(gm);
             double tolBand = TolBand(tags);
 
-            var B = arena.doubleRandomMat(flags.S, n, (double)(-1), (double)1, 0xB100u + (uint)gm);
+            var B = GenerateOP.doubleRandomMat(flags.S, n, (double)(-1), (double)1, 0xB100u + (uint)gm);
 
-            inv.Init(ref arena, n, flags.S);
-            scalarInv.Init(ref arena, n);
+            inv.Init(n, flags.S);
+            scalarInv.Init(n);
 
             // 1. Converges.
-            var X1 = arena.doubleMat(flags.S, n);
+            var X1 = new doubleMxN(flags.S, n, Allocator.Temp);
             BlockSolveInfo info1 = inv.Solve(in Aop, in B, ref X1);
             bool statusOk1 = info1.status == IterativeSolveStatus.Converged || info1.status == IterativeSolveStatus.MaxIterations;
             Record(statusOk1, (int)gm, 1, (double)(int)info1.status, (double)0);
@@ -367,18 +361,18 @@ public class doubleKrylovBlockBatteryTests
             VerifyHonestBlockOp(info1.status, in Aop, in X1, in B, flags.S, n, inv.Tol, (int)gm);
 
             // 2. Correctness vs. direct-solve reference (densify A -- no direct BSR factorization).
-            var Adense = A.ToDense(ref arena);
+            var Adense = A.ToDense(Allocator.Temp);
             for (int j = 0; j < flags.S; j++)
             {
-                var bj = doubleKrylovBatteryOracles.Row(ref arena, in B, j, n);
+                var bj = doubleKrylovBatteryOracles.Row(in B, j, n);
                 var xRefj = ReferenceSolveDense(in Adense, in bj, tags);
                 for (int c = 0; c < n; c++)
                     Record(math.abs(X1[j, c] - xRefj[c]) <= tolBand * ((double)1 + math.abs(xRefj[c])), (int)gm, 2, X1[j, c], xRefj[c]);
             }
 
             // 3. Determinism.
-            var X3a = arena.doubleMat(flags.S, n);
-            var X3b = arena.doubleMat(flags.S, n);
+            var X3a = new doubleMxN(flags.S, n, Allocator.Temp);
+            var X3b = new doubleMxN(flags.S, n, Allocator.Temp);
             BlockSolveInfo info3a = inv.Solve(in Aop, in B, ref X3a);
             BlockSolveInfo info3b = inv.Solve(in Aop, in B, ref X3b);
             for (int j = 0; j < flags.S; j++)
@@ -389,8 +383,8 @@ public class doubleKrylovBlockBatteryTests
             VerifyHonestBlockOp(info3b.status, in Aop, in X3b, in B, flags.S, n, inv.Tol, (int)gm);
 
             // 4. Identity-fold.
-            var X4a = arena.doubleMat(flags.S, n);
-            var X4b = arena.doubleMat(flags.S, n);
+            var X4a = new doubleMxN(flags.S, n, Allocator.Temp);
+            var X4b = new doubleMxN(flags.S, n, Allocator.Temp);
             BlockSolveInfo info4a = inv.Solve(in Aop, in B, ref X4a);
             BlockSolveInfo info4b = inv.SolveWithPrecond(in Aop, default(doubleIdentityPreconditioner), in B, ref X4b);
             for (int j = 0; j < flags.S; j++)
@@ -404,16 +398,16 @@ public class doubleKrylovBlockBatteryTests
             // == None (bminres) falls through to the plain unpreconditioned solve, same as the
             // square battery's own else branch -- never constructs a real M for a solver whose
             // preconditioned path is gated off.
-            var X5 = arena.doubleMat(flags.S, n);
+            var X5 = new doubleMxN(flags.S, n, Allocator.Temp);
             BlockSolveInfo info5;
             if (inv.PrecondKind == PreconditionerKind.SymmetricBSR)
             {
-                var M = arena.doubleBlockJacobi(in A);
+                var M = new doubleBlockJacobi(in A, Allocator.Temp);
                 info5 = inv.SolveWithPrecond(in Aop, in M, in B, ref X5);
             }
             else if (inv.PrecondKind == PreconditionerKind.NonsymmetricBSR)
             {
-                var M = arena.doubleILU0(in A);
+                var M = new doubleILU0(in A, Allocator.Temp);
                 info5 = inv.SolveWithPrecond(in Aop, in M, in B, ref X5);
             }
             else
@@ -426,9 +420,7 @@ public class doubleKrylovBlockBatteryTests
             Record(relRes5 <= (double)10 * inv.Tol, (int)gm, 5, relRes5, (double)10 * inv.Tol);
             VerifyHonestBlockOp(info5.status, in Aop, in X5, in B, flags.S, n, inv.Tol, (int)gm);
 
-            CheckBlockAdditions(inv, scalarInv, ref arena, in Aop, n, tags, (int)gm, 0xB800u + (uint)gm, flags);
-
-            arena.Dispose();
+            CheckBlockAdditions(inv, scalarInv, in Aop, n, tags, (int)gm, 0xB800u + (uint)gm, flags);
         }
 
         // Block-family additions (shared by CheckDenseCore/CheckBSR, any TOp):
@@ -449,7 +441,7 @@ public class doubleKrylovBlockBatteryTests
         //      (gated by flags.NoBreakdown, same rationale as check #9), every ordinary row still
         //      reaches its true solution, and the zero row's own output stays at (numerically) zero
         //      -- its exact solution, A being nonsingular.
-        void CheckBlockAdditions<TInvoker, TScalar, TOp>(TInvoker inv, TScalar scalarInv, ref Arena arena, in TOp Aop,
+        void CheckBlockAdditions<TInvoker, TScalar, TOp>(TInvoker inv, TScalar scalarInv, in TOp Aop,
                                                            int n, MatrixProfile tags, int gmIdx, uint seedBase, CheckFlags flags)
             where TInvoker : struct, IdoubleBlockSolverInvoker
             where TScalar : struct, IdoubleSquareSolverInvoker
@@ -458,14 +450,14 @@ public class doubleKrylovBlockBatteryTests
             double tolBand = TolBand(tags);
 
             // 6/7.
-            var B6 = arena.doubleRandomMat(flags.S, n, (double)(-1), (double)1, seedBase + 1u);
-            var X6 = arena.doubleMat(flags.S, n);
+            var B6 = GenerateOP.doubleRandomMat(flags.S, n, (double)(-1), (double)1, seedBase + 1u);
+            var X6 = new doubleMxN(flags.S, n, Allocator.Temp);
             BlockSolveInfo info6 = inv.Solve(in Aop, in B6, ref X6);
             int worstScalarIter = 0;
             for (int j = 0; j < flags.S; j++)
             {
-                var bj = doubleKrylovBatteryOracles.Row(ref arena, in B6, j, n);
-                var xj = arena.doubleVec(n);
+                var bj = doubleKrylovBatteryOracles.Row(in B6, j, n);
+                var xj = new doubleN(n, Allocator.Temp);
                 SolveInfo infoScalar = scalarInv.Solve(in Aop, in bj, ref xj);
                 if (infoScalar.iterations > worstScalarIter) worstScalarIter = infoScalar.iterations;
                 for (int c = 0; c < n; c++)
@@ -477,9 +469,9 @@ public class doubleKrylovBlockBatteryTests
 
             // 8/9: force two distinct rows (0 and S-1) bit-identical.
             int dupA = 0, dupB = flags.S - 1;
-            var B8 = arena.doubleRandomMat(flags.S, n, (double)(-1), (double)1, seedBase + 2u);
+            var B8 = GenerateOP.doubleRandomMat(flags.S, n, (double)(-1), (double)1, seedBase + 2u);
             for (int c = 0; c < n; c++) B8[dupB, c] = B8[dupA, c];
-            var X8 = arena.doubleMat(flags.S, n);
+            var X8 = new doubleMxN(flags.S, n, Allocator.Temp);
             BlockSolveInfo info8 = inv.Solve(in Aop, in B8, ref X8);
 
             bool anyBad = false;
@@ -500,10 +492,10 @@ public class doubleKrylovBlockBatteryTests
             VerifyHonestBlockOp(info8.status, in Aop, in X8, in B8, flags.S, n, inv.Tol, gmIdx);
 
             // 10. Warm-start correctness.
-            var Xstar10 = arena.doubleRandomMat(flags.S, n, (double)(-1), (double)1, seedBase + 3u);
-            var Bwarm10 = arena.doubleMat(flags.S, n);
+            var Xstar10 = GenerateOP.doubleRandomMat(flags.S, n, (double)(-1), (double)1, seedBase + 3u);
+            var Bwarm10 = new doubleMxN(flags.S, n, Allocator.Temp);
             Aop.ApplyBlock(in Xstar10, ref Bwarm10, flags.S);
-            var Xwarm10 = arena.doubleRandomMat(flags.S, n, (double)(-1), (double)1, seedBase + 4u);
+            var Xwarm10 = GenerateOP.doubleRandomMat(flags.S, n, (double)(-1), (double)1, seedBase + 4u);
             BlockSolveInfo infoWarm10 = inv.Solve(in Aop, in Bwarm10, ref Xwarm10);
             Record(infoWarm10.status == IterativeSolveStatus.Converged, gmIdx, 10, (double)(int)infoWarm10.status, (double)(int)IterativeSolveStatus.Converged);
             double relResWarm10 = doubleKrylovBatteryOracles.RelResidualBlockOp(in Aop, in Xwarm10, in Bwarm10, flags.S, n);
@@ -512,9 +504,9 @@ public class doubleKrylovBlockBatteryTests
 
             // 11. Degenerate/zero-RHS-row.
             int zeroRow11 = 0;
-            var Bz11 = arena.doubleRandomMat(flags.S, n, (double)(-1), (double)1, seedBase + 5u);
+            var Bz11 = GenerateOP.doubleRandomMat(flags.S, n, (double)(-1), (double)1, seedBase + 5u);
             for (int c = 0; c < n; c++) Bz11[zeroRow11, c] = (double)0;
-            var Xz11 = arena.doubleMat(flags.S, n);
+            var Xz11 = new doubleMxN(flags.S, n, Allocator.Temp);
             BlockSolveInfo infoZ11 = inv.Solve(in Aop, in Bz11, ref Xz11);
 
             if (flags.NoBreakdown)
@@ -525,12 +517,12 @@ public class doubleKrylovBlockBatteryTests
 
             if (infoZ11.status != IterativeSolveStatus.Breakdown)
             {
-                var scratch11 = arena.doubleVec(n);
+                var scratch11 = new doubleN(n, Allocator.Temp);
                 for (int j = 0; j < flags.S; j++)
                 {
                     if (j == zeroRow11) continue;
-                    var bj = doubleKrylovBatteryOracles.Row(ref arena, in Bz11, j, n);
-                    var xj = doubleKrylovBatteryOracles.Row(ref arena, in Xz11, j, n);
+                    var bj = doubleKrylovBatteryOracles.Row(in Bz11, j, n);
+                    var xj = doubleKrylovBatteryOracles.Row(in Xz11, j, n);
                     Aop.Apply(in xj, ref scratch11);
                     double num11 = 0, den11 = 0;
                     for (int c = 0; c < n; c++) { double d = scratch11[c] - bj[c]; num11 += d * d; den11 += bj[c] * bj[c]; }
@@ -558,16 +550,16 @@ public class doubleKrylovBlockBatteryTests
         // SymmetricIndefinite/Nonsymmetric.
         doubleN ReferenceSolveDense(in doubleMxN A, in doubleN b, MatrixProfile tags)
         {
-            var xRef = b.Copy();
+            var xRef = new doubleN(in b, Allocator.Temp);
             if ((tags & MatrixProfile.SPD) != 0)
             {
-                var L = A.Copy();
+                var L = new doubleMxN(in A, Allocator.Temp);
                 CHO.decompInPlace(ref L);
                 CHO.decompSolve(ref L, ref xRef);
             }
             else
             {
-                var LUm = A.Copy();
+                var LUm = new doubleMxN(in A, Allocator.Temp);
                 var P = new Pivot(A.M_Rows, Allocator.Temp);
                 LU.decompInPlace(ref LUm, ref P);
                 LU.decompSolve(ref LUm, in P, ref xRef);

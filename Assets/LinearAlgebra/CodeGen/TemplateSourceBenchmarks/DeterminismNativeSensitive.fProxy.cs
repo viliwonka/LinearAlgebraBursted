@@ -247,10 +247,9 @@ namespace LinearAlgebra.Benchmarks
     {
         public static (string id, uint hash)[] Case_DetMathFProxy()
         {
-            var arena = new Arena(Allocator.Persistent);
             const int n = 16;
-            var grid = arena.fProxyVec(n); var gridPos = arena.fProxyVec(n);
-            var gridUnit = arena.fProxyVec(n); var gridGeOne = arena.fProxyVec(n);
+            var grid = new fProxyN(n, Allocator.Persistent); var gridPos = new fProxyN(n, Allocator.Persistent);
+            var gridUnit = new fProxyN(n, Allocator.Persistent); var gridGeOne = new fProxyN(n, Allocator.Persistent);
             for (int i = 0; i < n; i++)
             {
                 fProxy t = (fProxy)i / (fProxy)(n - 1);           // [0,1]
@@ -260,7 +259,7 @@ namespace LinearAlgebra.Benchmarks
                 gridUnit[i] = g / (fProxy)3.5;                    // (-1,1)
                 gridGeOne[i] = math.abs(g) + (fProxy)1;
             }
-            var outVec = arena.fProxyVec(n); var sinOut = arena.fProxyVec(n); var cosOut = arena.fProxyVec(n);
+            var outVec = new fProxyN(n, Allocator.Persistent); var sinOut = new fProxyN(n, Allocator.Persistent); var cosOut = new fProxyN(n, Allocator.Persistent);
 
             var hashOut = new NativeArray<uint>(20, Allocator.Persistent);
             var job = new DetMathGridJobFProxy
@@ -294,18 +293,18 @@ namespace LinearAlgebra.Benchmarks
                 ("detmath/acosh.fProxy", hashOut[19]),
             };
             hashOut.Dispose();
-            arena.Dispose();
+            grid.Dispose(); gridPos.Dispose(); gridUnit.Dispose(); gridGeOne.Dispose();
+            outVec.Dispose(); sinOut.Dispose(); cosOut.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_ElementwiseTranscendentalFProxy()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2654435761u ^ 0x001Bu);
 
             const int n = 256;
-            var general = arena.fProxyVec(n); var positive = arena.fProxyVec(n);
-            var unit = arena.fProxyVec(n); var geOne = arena.fProxyVec(n);
+            var general = new fProxyN(n, Allocator.Persistent); var positive = new fProxyN(n, Allocator.Persistent);
+            var unit = new fProxyN(n, Allocator.Persistent); var geOne = new fProxyN(n, Allocator.Persistent);
             for (int i = 0; i < n; i++)
             {
                 fProxy g = rng.NextFProxy(-3f, 3f);
@@ -314,7 +313,7 @@ namespace LinearAlgebra.Benchmarks
                 unit[i] = g / (fProxy)3.5;
                 geOne[i] = math.abs(g) + (fProxy)1;
             }
-            var scratch = arena.fProxyVec(n);
+            var scratch = new fProxyN(n, Allocator.Persistent);
 
             var hashOut = new NativeArray<uint>(20, Allocator.Persistent);
             var job = new DetElementwiseTranscendentalJobFProxy
@@ -347,30 +346,29 @@ namespace LinearAlgebra.Benchmarks
                 ("elementwise-transcendental/fmod.fProxy.n256", hashOut[19]),
             };
             hashOut.Dispose();
-            arena.Dispose();
+            general.Dispose(); positive.Dispose(); unit.Dispose(); geOne.Dispose(); scratch.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_RandomSamplersFProxy()
         {
-            var arena = new Arena(Allocator.Persistent);
             const int n = 16;
-            var uGrid = arena.fProxyVec(n);
+            var uGrid = new fProxyN(n, Allocator.Persistent);
             for (int i = 0; i < n; i++) uGrid[i] = (fProxy)(i + 1) / (fProxy)(n + 1); // (0,1), avoid exact 0/1
-            var outVec = arena.fProxyVec(n);
+            var outVec = new fProxyN(n, Allocator.Persistent);
 
             const int dim = 5;
-            var cholL = arena.fProxyMat(dim, dim);
+            var cholL = new fProxyMxN(dim, dim, Allocator.Persistent);
             for (int i = 0; i < dim; i++) cholL[i, i] = (fProxy)1; // identity Cholesky factor
-            var mvnMean = arena.fProxyVec(dim);
-            var mvnDest = arena.fProxyVec(dim);
-            var mvnScratch = arena.fProxyVec(dim);
+            var mvnMean = new fProxyN(dim, Allocator.Persistent);
+            var mvnDest = new fProxyN(dim, Allocator.Persistent);
+            var mvnScratch = new fProxyN(dim, Allocator.Persistent);
 
             const int md = 8;
-            var orthoMat = arena.fProxyMat(md, md);
-            var spdMat = arena.fProxyMat(md, md);
-            var condMat = arena.fProxyMat(md, md);
-            var rankMat = arena.fProxyMat(md, md);
+            var orthoMat = new fProxyMxN(md, md, Allocator.Persistent);
+            var spdMat = new fProxyMxN(md, md, Allocator.Persistent);
+            var condMat = new fProxyMxN(md, md, Allocator.Persistent);
+            var rankMat = new fProxyMxN(md, md, Allocator.Persistent);
 
             var hashOut = new NativeArray<uint>(13, Allocator.Persistent);
             var job = new DetRandomSamplersJobFProxy
@@ -398,19 +396,19 @@ namespace LinearAlgebra.Benchmarks
                 ("random-samplers/withRankInPlace.fProxy.n8", hashOut[12]),
             };
             hashOut.Dispose();
-            arena.Dispose();
+            uGrid.Dispose(); outVec.Dispose(); cholL.Dispose(); mvnMean.Dispose(); mvnDest.Dispose(); mvnScratch.Dispose();
+            orthoMat.Dispose(); spdMat.Dispose(); condMat.Dispose(); rankMat.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_SoftmaxFProxy()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2654435761u ^ 0x001Du);
 
             const int m = 53, n = 37;
-            var A = arena.fProxyMat(m, n);
-            var Arows = arena.fProxyMat(m, n);
-            var Acols = arena.fProxyMat(m, n);
+            var A = new fProxyMxN(m, n, Allocator.Persistent);
+            var Arows = new fProxyMxN(m, n, Allocator.Persistent);
+            var Acols = new fProxyMxN(m, n, Allocator.Persistent);
             for (int r = 0; r < m; r++) for (int c = 0; c < n; c++)
             {
                 fProxy v = rng.NextFProxy(-3f, 3f);
@@ -428,37 +426,36 @@ namespace LinearAlgebra.Benchmarks
                 ("softmax/softmaxColumns.fProxy.53x37", hashOut[2]),
             };
             hashOut.Dispose();
-            arena.Dispose();
+            A.Dispose(); Arows.Dispose(); Acols.Dispose();
             return result;
         }
 
         public static (string id, uint hash)[] Case_DftSignalFProxy()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2654435761u ^ 0x001Eu);
 
             const int n = 32;
-            var dftInRe = arena.fProxyVec(n); var dftInIm = arena.fProxyVec(n);
+            var dftInRe = new fProxyN(n, Allocator.Persistent); var dftInIm = new fProxyN(n, Allocator.Persistent);
             for (int i = 0; i < n; i++) { dftInRe[i] = rng.NextFProxy(-1f, 1f); dftInIm[i] = (fProxy)0; }
-            var dftOutRe = arena.fProxyVec(n); var dftOutIm = arena.fProxyVec(n);
-            var idftOutRe = arena.fProxyVec(n); var idftOutIm = arena.fProxyVec(n);
+            var dftOutRe = new fProxyN(n, Allocator.Persistent); var dftOutIm = new fProxyN(n, Allocator.Persistent);
+            var idftOutRe = new fProxyN(n, Allocator.Persistent); var idftOutIm = new fProxyN(n, Allocator.Persistent);
 
             const int nPhase = 16;
-            var phaseRe = arena.fProxyVec(nPhase); var phaseIm = arena.fProxyVec(nPhase);
+            var phaseRe = new fProxyN(nPhase, Allocator.Persistent); var phaseIm = new fProxyN(nPhase, Allocator.Persistent);
             for (int i = 0; i < nPhase; i++) { phaseRe[i] = rng.NextFProxy(-1f, 1f); phaseIm[i] = rng.NextFProxy(-1f, 1f); }
-            var phaseDest = arena.fProxyVec(nPhase);
+            var phaseDest = new fProxyN(nPhase, Allocator.Persistent);
 
-            var windowDest = arena.fProxyVec(n);
-            var gaussKernel = arena.fProxyVec(15);
-            var gaussKernel2D = arena.fProxyMat(7, 7);
-            var prolate = arena.fProxyProlate(16, (fProxy)0.25);
+            var windowDest = new fProxyN(n, Allocator.Persistent);
+            var gaussKernel = new fProxyN(15, Allocator.Persistent);
+            var gaussKernel2D = new fProxyMxN(7, 7, Allocator.Persistent);
+            var prolate = fProxyGallery.fProxyProlate(16, (fProxy)0.25, Allocator.Persistent);
 
-            var waveDest = arena.fProxyVec(n);
+            var waveDest = new fProxyN(n, Allocator.Persistent);
             var waveFn = new fProxyWave.Sine { Cycles = (fProxy)2, Phase = (fProxy)0 };
 
-            var easingDest1 = arena.fProxyVec(n);
-            var easingDest2 = arena.fProxyVec(n);
-            var easingDest3 = arena.fProxyVec(n);
+            var easingDest1 = new fProxyN(n, Allocator.Persistent);
+            var easingDest2 = new fProxyN(n, Allocator.Persistent);
+            var easingDest3 = new fProxyN(n, Allocator.Persistent);
             var easeSine = new fProxyEasing.EaseInSine();
             var easeExpo = new fProxyEasing.EaseInExpo();
             var easeElastic = new fProxyEasing.EaseInElastic();
@@ -490,7 +487,11 @@ namespace LinearAlgebra.Benchmarks
                 ("dft-signal/easing.sine-expo-elastic.fProxy.n32", hashOut[8]),
             };
             hashOut.Dispose();
-            arena.Dispose();
+            dftInRe.Dispose(); dftInIm.Dispose(); dftOutRe.Dispose(); dftOutIm.Dispose();
+            idftOutRe.Dispose(); idftOutIm.Dispose();
+            phaseRe.Dispose(); phaseIm.Dispose(); phaseDest.Dispose();
+            windowDest.Dispose(); gaussKernel.Dispose(); gaussKernel2D.Dispose(); prolate.Dispose();
+            waveDest.Dispose(); easingDest1.Dispose(); easingDest2.Dispose(); easingDest3.Dispose();
             return result;
         }
     }

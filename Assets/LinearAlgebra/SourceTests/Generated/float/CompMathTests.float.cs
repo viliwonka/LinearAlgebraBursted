@@ -53,54 +53,46 @@ public class floatCompMathTests
 
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
-            try
+            switch (Type)
             {
-                switch (Type)
-                {
-                    // unary ops all share one body
-                    case TestType.Abs: case TestType.Sign: case TestType.Sqrt:
-                    case TestType.Rsqrt: case TestType.Acos: case TestType.Asin:
-                    case TestType.Atan: case TestType.Acosh: case TestType.Ceil:
-                    case TestType.Floor: case TestType.Round: case TestType.Cos:
-                    case TestType.Cosh: case TestType.Sin: case TestType.Sinh:
-                    case TestType.Tan: case TestType.Tanh: case TestType.Exp:
-                    case TestType.Exp2: case TestType.Exp10: case TestType.Log:
-                    case TestType.Log2: case TestType.Log10: case TestType.Saturate:
-                    case TestType.Frac: case TestType.Rcp: case TestType.Relu:
-                        Unary(Type, ref arena);
-                        break;
+                // unary ops all share one body
+                case TestType.Abs: case TestType.Sign: case TestType.Sqrt:
+                case TestType.Rsqrt: case TestType.Acos: case TestType.Asin:
+                case TestType.Atan: case TestType.Acosh: case TestType.Ceil:
+                case TestType.Floor: case TestType.Round: case TestType.Cos:
+                case TestType.Cosh: case TestType.Sin: case TestType.Sinh:
+                case TestType.Tan: case TestType.Tanh: case TestType.Exp:
+                case TestType.Exp2: case TestType.Exp10: case TestType.Log:
+                case TestType.Log2: case TestType.Log10: case TestType.Saturate:
+                case TestType.Frac: case TestType.Rcp: case TestType.Relu:
+                    Unary(Type);
+                    break;
 
-                    case TestType.PowExponents: PowExponents(ref arena); break;
+                case TestType.PowExponents: PowExponents(); break;
 
-                    case TestType.Lerp: LerpTest(ref arena); break;
-                    case TestType.Unlerp: UnlerpTest(ref arena); break;
-                    case TestType.SmoothstepBuffers: SmoothstepBuffersTest(ref arena); break;
-                    case TestType.SmoothstepScalarEdges: SmoothstepScalarEdgesTest(ref arena); break;
-                    case TestType.Step: StepTest(ref arena); break;
-                    case TestType.Mad: MadTest(ref arena); break;
-                    case TestType.Remap: RemapTest(ref arena); break;
-                    case TestType.DegreesRadians: DegreesRadiansTest(ref arena); break;
-                    case TestType.Atan2: Atan2Test(ref arena); break;
-                    case TestType.MinBuf: MinBufTest(ref arena); break;
-                    case TestType.MaxBuf: MaxBufTest(ref arena); break;
-                    case TestType.Sincos: SincosTest(ref arena); break;
-                    case TestType.AbsDiff: AbsDiffTest(ref arena); break;
-                    case TestType.SqrDiff: SqrDiffTest(ref arena); break;
+                case TestType.Lerp: LerpTest(); break;
+                case TestType.Unlerp: UnlerpTest(); break;
+                case TestType.SmoothstepBuffers: SmoothstepBuffersTest(); break;
+                case TestType.SmoothstepScalarEdges: SmoothstepScalarEdgesTest(); break;
+                case TestType.Step: StepTest(); break;
+                case TestType.Mad: MadTest(); break;
+                case TestType.Remap: RemapTest(); break;
+                case TestType.DegreesRadians: DegreesRadiansTest(); break;
+                case TestType.Atan2: Atan2Test(); break;
+                case TestType.MinBuf: MinBufTest(); break;
+                case TestType.MaxBuf: MaxBufTest(); break;
+                case TestType.Sincos: SincosTest(); break;
+                case TestType.AbsDiff: AbsDiffTest(); break;
+                case TestType.SqrDiff: SqrDiffTest(); break;
 
-                    case TestType.MatrixAbs: MatrixAbsTest(ref arena); break;
-                    case TestType.MatrixExp: MatrixExpTest(ref arena); break;
-                    case TestType.MatrixMad: MatrixMadTest(ref arena); break;
+                case TestType.MatrixAbs: MatrixAbsTest(); break;
+                case TestType.MatrixExp: MatrixExpTest(); break;
+                case TestType.MatrixMad: MatrixMadTest(); break;
 
-                    case TestType.SingleElement: SingleElementTest(ref arena); break;
-                    case TestType.EmptyBuffer: EmptyBufferTest(ref arena); break;
+                case TestType.SingleElement: SingleElementTest(); break;
+                case TestType.EmptyBuffer: EmptyBufferTest(); break;
 
-                    default: throw new NotImplementedException();
-                }
-            }
-            finally
-            {
-                arena.Dispose();
+                default: throw new NotImplementedException();
             }
         }
 
@@ -119,7 +111,7 @@ public class floatCompMathTests
 
         // Domain-safe deterministic input per unary op (sqrt/log need x>0, acos/asin need [-1,1],
         // acosh needs x>=1, tan avoids +/-pi/2, exp10 kept small so 10^x doesn't overflow).
-        private floatN MakeUnaryInput(ref Arena arena, TestType k, int n)
+        private floatN MakeUnaryInput(TestType k, int n)
         {
             switch (k)
             {
@@ -127,50 +119,50 @@ public class floatCompMathTests
                 case TestType.Log:
                 case TestType.Log2:
                 case TestType.Log10:
-                    return arena.floatLinVec(n, (float)0.02, (float)9);
+                    return GenerateOP.floatLinVec(n, (float)0.02, (float)9, Allocator.Temp);
 
                 case TestType.Rsqrt:
                 case TestType.Rcp:
-                    return arena.floatLinVec(n, (float)0.05, (float)6);
+                    return GenerateOP.floatLinVec(n, (float)0.05, (float)6, Allocator.Temp);
 
                 case TestType.Acos:
                 case TestType.Asin:
-                    return arena.floatLinVec(n, (float)(-0.95), (float)0.95);
+                    return GenerateOP.floatLinVec(n, (float)(-0.95), (float)0.95, Allocator.Temp);
 
                 case TestType.Acosh:
-                    return arena.floatLinVec(n, (float)1, (float)4);
+                    return GenerateOP.floatLinVec(n, (float)1, (float)4, Allocator.Temp);
 
                 case TestType.Tan:
-                    return arena.floatLinVec(n, (float)(-1.2), (float)1.2);
+                    return GenerateOP.floatLinVec(n, (float)(-1.2), (float)1.2, Allocator.Temp);
 
                 case TestType.Exp10:
-                    return arena.floatLinVec(n, (float)(-2), (float)3);
+                    return GenerateOP.floatLinVec(n, (float)(-2), (float)3, Allocator.Temp);
 
                 case TestType.Exp:
                 case TestType.Exp2:
-                    return arena.floatLinVec(n, (float)(-3), (float)4);
+                    return GenerateOP.floatLinVec(n, (float)(-3), (float)4, Allocator.Temp);
 
                 case TestType.Abs:
                 case TestType.Sign:
                 case TestType.Relu:
                 {
                     // span negatives .. positives and pin an exact zero (sign/relu boundary).
-                    var v = arena.floatLinVec(n, (float)(-3), (float)3);
+                    var v = GenerateOP.floatLinVec(n, (float)(-3), (float)3, Allocator.Temp);
                     v[0] = (float)0;
                     return v;
                 }
 
                 default:
                     // ceil/floor/round/cos/cosh/sin/sinh/tanh/atan/saturate/frac: any real ok.
-                    return arena.floatLinVec(n, (float)(-3.3), (float)3.7);
+                    return GenerateOP.floatLinVec(n, (float)(-3.3), (float)3.7, Allocator.Temp);
             }
         }
 
-        private void Unary(TestType k, ref Arena arena)
+        private void Unary(TestType k)
         {
             int n = 37; // odd, not a SIMD multiple -> exercises the scalar tail
-            floatN x = MakeUnaryInput(ref arena, k, n);
-            floatN orig = x.Copy();
+            floatN x = MakeUnaryInput(k, n);
+            floatN orig = new floatN(in x, Allocator.Temp);
 
             switch (k)
             {
@@ -247,21 +239,21 @@ public class floatCompMathTests
 
         // ---- pow: int exponent (0,1,2,3 and negatives). Positive bases keep math.pow well-defined
         //      for the reciprocal-power (negative-exponent) cases. ----
-        private void PowExponents(ref Arena arena)
+        private void PowExponents()
         {
-            CheckPow(ref arena, 0);
-            CheckPow(ref arena, 1);
-            CheckPow(ref arena, 2);
-            CheckPow(ref arena, 3);
-            CheckPow(ref arena, -1);
-            CheckPow(ref arena, -2);
+            CheckPow(0);
+            CheckPow(1);
+            CheckPow(2);
+            CheckPow(3);
+            CheckPow(-1);
+            CheckPow(-2);
         }
 
-        private void CheckPow(ref Arena arena, int e)
+        private void CheckPow(int e)
         {
             int n = 16;
-            floatN x = arena.floatLinVec(n, (float)0.3, (float)3.5);
-            floatN orig = x.Copy();
+            floatN x = GenerateOP.floatLinVec(n, (float)0.3, (float)3.5, Allocator.Temp);
+            floatN orig = new floatN(in x, Allocator.Temp);
             x.powInPlace(e);
             for (int i = 0; i < n; i++)
                 AssertClose(x[i], math.pow(orig[i], (float)e)); // exponent 0 -> 1, negative -> reciprocal power
@@ -269,13 +261,13 @@ public class floatCompMathTests
 
         // ---- interpolation / edges / fused ----
 
-        private void LerpTest(ref Arena arena)
+        private void LerpTest()
         {
             int n = 24;
-            floatN a = arena.floatLinVec(n, (float)(-2), (float)5);
-            floatN b = arena.floatLinVec(n, (float)3, (float)9);
-            floatN a0 = a.Copy();
-            floatN b0 = b.Copy();
+            floatN a = GenerateOP.floatLinVec(n, (float)(-2), (float)5, Allocator.Temp);
+            floatN b = GenerateOP.floatLinVec(n, (float)3, (float)9, Allocator.Temp);
+            floatN a0 = new floatN(in a, Allocator.Temp);
+            floatN b0 = new floatN(in b, Allocator.Temp);
             float t = (float)0.35;
 
             a.lerpInPlace(b, t); // a[i] = lerp(a[i], b[i], t); a mutated, b untouched
@@ -287,13 +279,13 @@ public class floatCompMathTests
             }
         }
 
-        private void UnlerpTest(ref Arena arena)
+        private void UnlerpTest()
         {
             int n = 24;
-            floatN a = arena.floatLinVec(n, (float)(-2), (float)1);
-            floatN b = arena.floatLinVec(n, (float)6, (float)12); // b != a everywhere (no /0)
-            floatN a0 = a.Copy();
-            floatN b0 = b.Copy();
+            floatN a = GenerateOP.floatLinVec(n, (float)(-2), (float)1, Allocator.Temp);
+            floatN b = GenerateOP.floatLinVec(n, (float)6, (float)12, Allocator.Temp); // b != a everywhere (no /0)
+            floatN a0 = new floatN(in a, Allocator.Temp);
+            floatN b0 = new floatN(in b, Allocator.Temp);
             float t = (float)0.4;
 
             a.unlerpInPlace(b, t);
@@ -305,13 +297,13 @@ public class floatCompMathTests
             }
         }
 
-        private void SmoothstepBuffersTest(ref Arena arena)
+        private void SmoothstepBuffersTest()
         {
             int n = 24;
-            floatN a = arena.floatLinVec(n, (float)(-1), (float)1); // edge0 buffer
-            floatN b = arena.floatLinVec(n, (float)2, (float)4);    // edge1 buffer (> edge0)
-            floatN a0 = a.Copy();
-            floatN b0 = b.Copy();
+            floatN a = GenerateOP.floatLinVec(n, (float)(-1), (float)1, Allocator.Temp); // edge0 buffer
+            floatN b = GenerateOP.floatLinVec(n, (float)2, (float)4, Allocator.Temp);    // edge1 buffer (> edge0)
+            floatN a0 = new floatN(in a, Allocator.Temp);
+            floatN b0 = new floatN(in b, Allocator.Temp);
             float t = (float)0.5;
 
             a.smoothstepInPlace(b, t); // a[i] = smoothstep(a[i], b[i], t)
@@ -323,11 +315,11 @@ public class floatCompMathTests
             }
         }
 
-        private void SmoothstepScalarEdgesTest(ref Arena arena)
+        private void SmoothstepScalarEdgesTest()
         {
             int n = 24;
-            floatN x = arena.floatLinVec(n, (float)(-0.5), (float)1.5); // spans below/above edges
-            floatN x0 = x.Copy();
+            floatN x = GenerateOP.floatLinVec(n, (float)(-0.5), (float)1.5, Allocator.Temp); // spans below/above edges
+            floatN x0 = new floatN(in x, Allocator.Temp);
             float edge0 = (float)0;
             float edge1 = (float)1;
 
@@ -337,11 +329,11 @@ public class floatCompMathTests
                 AssertClose(x[i], math.smoothstep(edge0, edge1, x0[i]));
         }
 
-        private void StepTest(ref Arena arena)
+        private void StepTest()
         {
             int n = 24;
-            floatN x = arena.floatLinVec(n, (float)(-1), (float)2);
-            floatN x0 = x.Copy();
+            floatN x = GenerateOP.floatLinVec(n, (float)(-1), (float)2, Allocator.Temp);
+            floatN x0 = new floatN(in x, Allocator.Temp);
             float edge = (float)0.5;
 
             x.stepInPlace(edge); // x[i] = step(edge, x[i]) == (x >= edge ? 1 : 0)
@@ -350,15 +342,15 @@ public class floatCompMathTests
                 AssertClose(x[i], math.step(edge, x0[i]));
         }
 
-        private void MadTest(ref Arena arena)
+        private void MadTest()
         {
             int n = 24;
-            floatN a = arena.floatLinVec(n, (float)(-2), (float)2);
-            floatN b = arena.floatLinVec(n, (float)1, (float)3);
-            floatN c = arena.floatLinVec(n, (float)(-1), (float)1);
-            floatN a0 = a.Copy();
-            floatN b0 = b.Copy();
-            floatN c0 = c.Copy();
+            floatN a = GenerateOP.floatLinVec(n, (float)(-2), (float)2, Allocator.Temp);
+            floatN b = GenerateOP.floatLinVec(n, (float)1, (float)3, Allocator.Temp);
+            floatN c = GenerateOP.floatLinVec(n, (float)(-1), (float)1, Allocator.Temp);
+            floatN a0 = new floatN(in a, Allocator.Temp);
+            floatN b0 = new floatN(in b, Allocator.Temp);
+            floatN c0 = new floatN(in c, Allocator.Temp);
 
             a.madInPlace(b, c); // a[i] = a*b + c ; ONLY a is mutated
 
@@ -370,11 +362,11 @@ public class floatCompMathTests
             }
         }
 
-        private void RemapTest(ref Arena arena)
+        private void RemapTest()
         {
             int n = 24;
-            floatN x = arena.floatLinVec(n, (float)1, (float)9); // strictly inside [oldMin,oldMax]
-            floatN x0 = x.Copy();
+            floatN x = GenerateOP.floatLinVec(n, (float)1, (float)9, Allocator.Temp); // strictly inside [oldMin,oldMax]
+            floatN x0 = new floatN(in x, Allocator.Temp);
             float oldMin = (float)0, oldMax = (float)10, newMin = (float)(-1), newMax = (float)1;
 
             x.remapInPlace(oldMin, oldMax, newMin, newMax);
@@ -385,14 +377,14 @@ public class floatCompMathTests
                 AssertClose(x[i], math.remap(oldMin, oldMax, newMin, newMax, x0[i]));
         }
 
-        private void DegreesRadiansTest(ref Arena arena)
+        private void DegreesRadiansTest()
         {
             int n = 20;
 
             // degreesInPlace vs math.degrees
-            floatN r = arena.floatLinVec(n, (float)(-3), (float)3);
-            floatN r0 = r.Copy();
-            floatN d = r.Copy();
+            floatN r = GenerateOP.floatLinVec(n, (float)(-3), (float)3, Allocator.Temp);
+            floatN r0 = new floatN(in r, Allocator.Temp);
+            floatN d = new floatN(in r, Allocator.Temp);
             d.degreesInPlace();
             for (int i = 0; i < n; i++)
                 AssertClose(d[i], math.degrees(r0[i]));
@@ -403,21 +395,21 @@ public class floatCompMathTests
                 AssertClose(d[i], r0[i]);
 
             // radiansInPlace vs math.radians on a degree-scale input
-            floatN deg = arena.floatLinVec(n, (float)(-180), (float)180);
-            floatN deg0 = deg.Copy();
+            floatN deg = GenerateOP.floatLinVec(n, (float)(-180), (float)180, Allocator.Temp);
+            floatN deg0 = new floatN(in deg, Allocator.Temp);
             deg.radiansInPlace();
             for (int i = 0; i < n; i++)
                 AssertClose(deg[i], math.radians(deg0[i]));
         }
 
-        private void Atan2Test(ref Arena arena)
+        private void Atan2Test()
         {
             int n = 24;
             // receiver is y (numerator), argument is x (denominator): atan2InPlace(y, x) == atan2(y, x).
-            floatN y = arena.floatLinVec(n, (float)(-3), (float)3);
-            floatN x = arena.floatLinVec(n, (float)0.5, (float)4); // x > 0 (principal branch)
-            floatN y0 = y.Copy();
-            floatN x0 = x.Copy();
+            floatN y = GenerateOP.floatLinVec(n, (float)(-3), (float)3, Allocator.Temp);
+            floatN x = GenerateOP.floatLinVec(n, (float)0.5, (float)4, Allocator.Temp); // x > 0 (principal branch)
+            floatN y0 = new floatN(in y, Allocator.Temp);
+            floatN x0 = new floatN(in x, Allocator.Temp);
 
             y.atan2InPlace(x); // y[i] = atan2(y[i], x[i]) ; x untouched
 
@@ -428,13 +420,13 @@ public class floatCompMathTests
             }
         }
 
-        private void MinBufTest(ref Arena arena)
+        private void MinBufTest()
         {
             int n = 24;
-            floatN x = arena.floatLinVec(n, (float)(-2), (float)5);
-            floatN y = arena.floatLinVec(n, (float)4, (float)(-1)); // crosses x so both branches hit
-            floatN x0 = x.Copy();
-            floatN y0 = y.Copy();
+            floatN x = GenerateOP.floatLinVec(n, (float)(-2), (float)5, Allocator.Temp);
+            floatN y = GenerateOP.floatLinVec(n, (float)4, (float)(-1), Allocator.Temp); // crosses x so both branches hit
+            floatN x0 = new floatN(in x, Allocator.Temp);
+            floatN y0 = new floatN(in y, Allocator.Temp);
 
             x.minInPlace(y); // x[i] = min(x[i], y[i]) ; y untouched
 
@@ -445,13 +437,13 @@ public class floatCompMathTests
             }
         }
 
-        private void MaxBufTest(ref Arena arena)
+        private void MaxBufTest()
         {
             int n = 24;
-            floatN x = arena.floatLinVec(n, (float)(-2), (float)5);
-            floatN y = arena.floatLinVec(n, (float)4, (float)(-1));
-            floatN x0 = x.Copy();
-            floatN y0 = y.Copy();
+            floatN x = GenerateOP.floatLinVec(n, (float)(-2), (float)5, Allocator.Temp);
+            floatN y = GenerateOP.floatLinVec(n, (float)4, (float)(-1), Allocator.Temp);
+            floatN x0 = new floatN(in x, Allocator.Temp);
+            floatN y0 = new floatN(in y, Allocator.Temp);
 
             x.maxInPlace(y); // x[i] = max(x[i], y[i]) ; y untouched
 
@@ -467,13 +459,13 @@ public class floatCompMathTests
         //      not via math.distance/math.distancesq, so the test doesn't just re-assert the kernel's
         //      own implementation. ----
 
-        private void AbsDiffTest(ref Arena arena)
+        private void AbsDiffTest()
         {
             int n = 24;
-            floatN x = arena.floatLinVec(n, (float)(-2), (float)5);
-            floatN y = arena.floatLinVec(n, (float)4, (float)(-1)); // crosses x so sign of (x-y) varies
-            floatN x0 = x.Copy();
-            floatN y0 = y.Copy();
+            floatN x = GenerateOP.floatLinVec(n, (float)(-2), (float)5, Allocator.Temp);
+            floatN y = GenerateOP.floatLinVec(n, (float)4, (float)(-1), Allocator.Temp); // crosses x so sign of (x-y) varies
+            floatN x0 = new floatN(in x, Allocator.Temp);
+            floatN y0 = new floatN(in y, Allocator.Temp);
 
             x.absDiffInPlace(y); // x[i] = |x[i] - y[i]| ; y untouched
 
@@ -484,13 +476,13 @@ public class floatCompMathTests
             }
         }
 
-        private void SqrDiffTest(ref Arena arena)
+        private void SqrDiffTest()
         {
             int n = 24;
-            floatN x = arena.floatLinVec(n, (float)(-2), (float)5);
-            floatN y = arena.floatLinVec(n, (float)4, (float)(-1));
-            floatN x0 = x.Copy();
-            floatN y0 = y.Copy();
+            floatN x = GenerateOP.floatLinVec(n, (float)(-2), (float)5, Allocator.Temp);
+            floatN y = GenerateOP.floatLinVec(n, (float)4, (float)(-1), Allocator.Temp);
+            floatN x0 = new floatN(in x, Allocator.Temp);
+            floatN y0 = new floatN(in y, Allocator.Temp);
 
             x.sqrDiffInPlace(y); // x[i] = (x[i] - y[i])^2 ; y untouched
 
@@ -501,13 +493,13 @@ public class floatCompMathTests
             }
         }
 
-        private void SincosTest(ref Arena arena)
+        private void SincosTest()
         {
             int n = 30;
-            floatN x = arena.floatLinVec(n, (float)(-3), (float)3);
-            floatN x0 = x.Copy();
-            floatN s = arena.floatVec(n);
-            floatN c = arena.floatVec(n);
+            floatN x = GenerateOP.floatLinVec(n, (float)(-3), (float)3, Allocator.Temp);
+            floatN x0 = new floatN(in x, Allocator.Temp);
+            floatN s = new floatN(n, Allocator.Temp);
+            floatN c = new floatN(n, Allocator.Temp);
 
             x.sincos(s, c); // x is NOT mutated; s <- sin(x), c <- cos(x).
 
@@ -522,13 +514,13 @@ public class floatCompMathTests
         // ---- matrix path: proves the generic IUnsafefloatArray constraint covers floatMxN.
         //      Non-square (5x7) so the flat length, not a square dim, drives the loop. ----
 
-        private void MatrixAbsTest(ref Arena arena)
+        private void MatrixAbsTest()
         {
             int rows = 5, cols = 7;
-            floatMxN m = arena.floatMat(rows, cols);
+            floatMxN m = new floatMxN(rows, cols, Allocator.Temp);
             for (int i = 0; i < m.Length; i++)
                 m[i] = (float)(i - 15) * (float)0.5; // negatives and positives
-            floatMxN m0 = m.Copy();
+            floatMxN m0 = new floatMxN(in m, Allocator.Temp);
 
             m.absInPlace();
 
@@ -536,13 +528,13 @@ public class floatCompMathTests
                 AssertClose(m[i], math.abs(m0[i]));
         }
 
-        private void MatrixExpTest(ref Arena arena)
+        private void MatrixExpTest()
         {
             int rows = 5, cols = 7;
-            floatMxN m = arena.floatMat(rows, cols);
+            floatMxN m = new floatMxN(rows, cols, Allocator.Temp);
             for (int i = 0; i < m.Length; i++)
                 m[i] = (float)(i - 15) * (float)0.1;
-            floatMxN m0 = m.Copy();
+            floatMxN m0 = new floatMxN(in m, Allocator.Temp);
 
             m.expInPlace();
 
@@ -550,21 +542,21 @@ public class floatCompMathTests
                 AssertClose(m[i], math.exp(m0[i]));
         }
 
-        private void MatrixMadTest(ref Arena arena)
+        private void MatrixMadTest()
         {
             int rows = 5, cols = 7;
-            floatMxN a = arena.floatMat(rows, cols);
-            floatMxN b = arena.floatMat(rows, cols);
-            floatMxN c = arena.floatMat(rows, cols);
+            floatMxN a = new floatMxN(rows, cols, Allocator.Temp);
+            floatMxN b = new floatMxN(rows, cols, Allocator.Temp);
+            floatMxN c = new floatMxN(rows, cols, Allocator.Temp);
             for (int i = 0; i < a.Length; i++)
             {
                 a[i] = (float)(i - 15) * (float)0.2;
                 b[i] = (float)(i) * (float)0.3 - (float)1;
                 c[i] = (float)2 - (float)i * (float)0.1;
             }
-            floatMxN a0 = a.Copy();
-            floatMxN b0 = b.Copy();
-            floatMxN c0 = c.Copy();
+            floatMxN a0 = new floatMxN(in a, Allocator.Temp);
+            floatMxN b0 = new floatMxN(in b, Allocator.Temp);
+            floatMxN c0 = new floatMxN(in c, Allocator.Temp);
 
             a.madInPlace(b, c); // a = a*b + c ; only a mutated
 
@@ -578,32 +570,32 @@ public class floatCompMathTests
 
         // ---- degenerate shapes ----
 
-        private void SingleElementTest(ref Arena arena)
+        private void SingleElementTest()
         {
-            floatN v = arena.floatVec(1, (float)(-2.5));
+            floatN v = GenerateOP.floatVec(1, (float)(-2.5), Allocator.Temp);
             v.absInPlace();
             AssertClose(v[0], (float)2.5);
 
-            floatN a = arena.floatVec(1, (float)3);
-            floatN b = arena.floatVec(1, (float)4);
-            floatN c = arena.floatVec(1, (float)5);
+            floatN a = GenerateOP.floatVec(1, (float)3, Allocator.Temp);
+            floatN b = GenerateOP.floatVec(1, (float)4, Allocator.Temp);
+            floatN c = GenerateOP.floatVec(1, (float)5, Allocator.Temp);
             a.madInPlace(b, c);
             AssertClose(a[0], (float)17); // 3*4 + 5
 
-            floatN x = arena.floatVec(1, (float)0.7);
-            floatN s = arena.floatVec(1);
-            floatN co = arena.floatVec(1);
+            floatN x = GenerateOP.floatVec(1, (float)0.7, Allocator.Temp);
+            floatN s = new floatN(1, Allocator.Temp);
+            floatN co = new floatN(1, Allocator.Temp);
             x.sincos(s, co);
             AssertClose(x[0], (float)0.7);
             AssertClose(s[0], math.sin((float)0.7));
             AssertClose(co[0], math.cos((float)0.7));
         }
 
-        private void EmptyBufferTest(ref Arena arena)
+        private void EmptyBufferTest()
         {
             // zero-length buffers: kernels loop zero times, must not touch memory / throw.
-            floatN v = arena.floatVec(0);
-            floatN y = arena.floatVec(0);
+            floatN v = new floatN(0, Allocator.Temp);
+            floatN y = new floatN(0, Allocator.Temp);
             v.absInPlace();
             v.sinInPlace();
             v.reluInPlace();

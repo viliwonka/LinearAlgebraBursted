@@ -30,9 +30,9 @@ public class doubleKrylovVerifyAtExitTests
     // ---- shared helpers -------------------------------------------------------------------
 
     // SPD via M^T M + n*I -- same recipe as doubleKrylovRound2Tests.BuildDenseSPD.
-    static doubleMxN BuildDenseSPD(ref Arena arena, int dim, uint seed)
+    static doubleMxN BuildDenseSPD(int dim, uint seed)
     {
-        var M = arena.doubleRandomMat(dim, dim, (double)(-1f), (double)1f, seed);
+        var M = GenerateOP.doubleRandomMat(dim, dim, (double)(-1f), (double)1f, seed);
         var A = Blas.dot(M, M, true);
         for (int d = 0; d < dim; d++) A[d, d] += dim;
         return A;
@@ -40,9 +40,9 @@ public class doubleKrylovVerifyAtExitTests
 
     // Well-conditioned nonsymmetric: random entries + a heavy diagonal (diagonally dominant,
     // nonsingular) -- same recipe as doubleIDRTests/doubleGMRESTests DenseNonsym.
-    static doubleMxN BuildDenseNonsym(ref Arena arena, int dim, uint seed)
+    static doubleMxN BuildDenseNonsym(int dim, uint seed)
     {
-        var A = arena.doubleRandomMat(dim, dim, (double)(-1f), (double)1f, seed);
+        var A = GenerateOP.doubleRandomMat(dim, dim, (double)(-1f), (double)1f, seed);
         for (int i = 0; i < dim; i++) A[i, i] += (double)(2 * dim);
         return A;
     }
@@ -133,29 +133,27 @@ public class doubleKrylovVerifyAtExitTests
     [Test]
     public void VerifyAtExitCatchesOptimisticDriftOnIllConditionedMoler()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         // n/alpha retuned for the doubleW (8-lane) float reduction tree: at (16, -0.13) the
         // unguarded oracle lies (true residual 1.7x above tolerance) AND the guarded solver
         // still recovers to honest convergence. Any future reduction-tree change re-tunes this
         // pair with the same lie-plus-guarded-recovery sweep.
         int n = 16;
-        var Adense = arena.doubleMoler(n, (double)(-0.13f));
+        var Adense = doubleGallery.doubleMoler(n, (double)(-0.13f));
         var op = new doubleDenseOperator(in Adense);
 
-        var b = arena.doubleVec(n);
+        var b = new doubleN(n, Allocator.Temp);
         for (int i = 0; i < n; i++) b[i] = (double)1;
 
         double tol = 1e-6;
         int maxIter = 500;
 
-        var xU = arena.doubleVec(n);
-        var rU = arena.doubleVec(n);
-        var pU = arena.doubleVec(n);
-        var ApU = arena.doubleVec(n);
+        var xU = new doubleN(n, Allocator.Temp);
+        var rU = new doubleN(n, Allocator.Temp);
+        var pU = new doubleN(n, Allocator.Temp);
+        var ApU = new doubleN(n, Allocator.Temp);
         var infoU = UnguardedCg(in op, in b, ref xU, ref rU, ref pU, ref ApU, maxIter, tol);
 
-        var scratchU = arena.doubleVec(n);
+        var scratchU = new doubleN(n, Allocator.Temp);
         double trueRsU = TrueResidualSq(in op, in b, in xU, ref scratchU);
         double threshold = tol * tol * Blas.dot(b, b);
 
@@ -167,13 +165,13 @@ public class doubleKrylovVerifyAtExitTests
                 "unguarded oracle's claimed convergence should be a LIE (true residual still above tolerance)");
         }
 
-        var xG = arena.doubleVec(n);
-        var rG = arena.doubleVec(n);
-        var pG = arena.doubleVec(n);
-        var ApG = arena.doubleVec(n);
+        var xG = new doubleN(n, Allocator.Temp);
+        var rG = new doubleN(n, Allocator.Temp);
+        var pG = new doubleN(n, Allocator.Temp);
+        var ApG = new doubleN(n, Allocator.Temp);
         var infoG = Krylov.cg(in op, in b, ref xG, ref rG, ref pG, ref ApG, maxIter, tol);
 
-        var scratchG = arena.doubleVec(n);
+        var scratchG = new doubleN(n, Allocator.Temp);
         double trueRsG = TrueResidualSq(in op, in b, in xG, ref scratchG);
 
         // The CORE verify-at-exit guarantee, robust to summation-order details: the guarded
@@ -198,8 +196,6 @@ public class doubleKrylovVerifyAtExitTests
             // (verify-at-exit contract).
             Assert.AreEqual((double)math.sqrt(trueRsG), infoG.rnorm, 1e-6 * (1.0 + infoG.rnorm));
         }
-
-        arena.Dispose();
     }
 
     // ==============================================================================
@@ -210,29 +206,27 @@ public class doubleKrylovVerifyAtExitTests
     [Test]
     public void VerifyAtExitAddsExactlyOneApplyAndPreservesSolutionOnHealthySolve()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int n = 20;
-        var Adense = BuildDenseSPD(ref arena, n, 141001);
-        var b = arena.doubleRandomVec(n, (double)(-1f), (double)1f, 141002);
+        var Adense = BuildDenseSPD(n, 141001);
+        var b = GenerateOP.doubleRandomVec(n, (double)(-1f), (double)1f, 141002);
         int maxIter = 4 * n;
         double tol = Consts.doubleSqrtEps;
 
         s_applyCount = 0;
         var opU = new CountingDenseOperator(in Adense);
-        var xU = arena.doubleVec(n);
-        var rU = arena.doubleVec(n);
-        var pU = arena.doubleVec(n);
-        var ApU = arena.doubleVec(n);
+        var xU = new doubleN(n, Allocator.Temp);
+        var rU = new doubleN(n, Allocator.Temp);
+        var pU = new doubleN(n, Allocator.Temp);
+        var ApU = new doubleN(n, Allocator.Temp);
         var infoU = UnguardedCg(in opU, in b, ref xU, ref rU, ref pU, ref ApU, maxIter, tol);
         int countU = s_applyCount;
 
         s_applyCount = 0;
         var opG = new CountingDenseOperator(in Adense);
-        var xG = arena.doubleVec(n);
-        var rG = arena.doubleVec(n);
-        var pG = arena.doubleVec(n);
-        var ApG = arena.doubleVec(n);
+        var xG = new doubleN(n, Allocator.Temp);
+        var rG = new doubleN(n, Allocator.Temp);
+        var pG = new doubleN(n, Allocator.Temp);
+        var ApG = new doubleN(n, Allocator.Temp);
         var infoG = Krylov.cg(in opG, in b, ref xG, ref rG, ref pG, ref ApG, maxIter, tol);
         int countG = s_applyCount;
 
@@ -243,8 +237,6 @@ public class doubleKrylovVerifyAtExitTests
 
         for (int i = 0; i < n; i++)
             Assert.AreEqual((double)xU[i], (double)xG[i]);   // x untouched by the verify block -> bit-identical
-
-        arena.Dispose();
     }
 
     // ==============================================================================
@@ -259,24 +251,20 @@ public class doubleKrylovVerifyAtExitTests
     [Test]
     public void PcgConvergedRnormIsHonest()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int n = 16;
-        var A = BuildDenseSPD(ref arena, n, 142001);
-        var b = arena.doubleRandomVec(n, (double)(-1f), (double)1f, 142002);
+        var A = BuildDenseSPD(n, 142001);
+        var b = GenerateOP.doubleRandomVec(n, (double)(-1f), (double)1f, 142002);
 
         var op = new doubleDenseOperator(in A);
-        var x = arena.doubleVec(n);
+        var x = new doubleN(n, Allocator.Temp);
         var info = Krylov.cg(op, new doubleIdentityPreconditioner(), in b, ref x, 4 * n, Consts.doubleSqrtEps);
         Assert.IsTrue(info.Solved, info.ToString());
 
-        var scratch = arena.doubleVec(n);
+        var scratch = new doubleN(n, Allocator.Temp);
         double trueRs = TrueResidualSq(in op, in b, in x, ref scratch);
         double threshold = Consts.doubleSqrtEps * Consts.doubleSqrtEps * Blas.dot(b, b);
         Assert.LessOrEqual((double)trueRs, (double)threshold);
         Assert.AreEqual((double)math.sqrt(trueRs), info.rnorm, 1e-6 * (1.0 + info.rnorm));
-
-        arena.Dispose();
     }
 
     // ==============================================================================
@@ -298,16 +286,16 @@ public class doubleKrylovVerifyAtExitTests
     // internal Anorm estimate, so anything the solver certifies also passes here, while a
     // false Converged (wrong x on a resolvable system) passes neither.
     static void AssertSolvedImpliesCertified(in doubleMxN A, in doubleN b, in doubleN x,
-                                             SolveInfo info, double tol, ref Arena arena, string what)
+                                             SolveInfo info, double tol, string what)
     {
         if (!info.Solved) return;
         var op = new doubleDenseOperator(in A);
-        var r = arena.doubleVec(b.N);
+        var r = new doubleN(b.N, Allocator.Temp);
         double rnorm = math.sqrt((double)TrueResidualSq(in op, in b, in x, ref r));   // r = b - Ax
         double bnorm = math.sqrt((double)Blas.dot(b, b));
         if (rnorm <= (double)((double)64 * tol) * bnorm)
             return;   // compatible certificate
-        var Ar = arena.doubleVec(b.N);
+        var Ar = new doubleN(b.N, Allocator.Temp);
         op.Apply(in r, ref Ar);
         double arnorm = math.sqrt((double)Blas.dot(Ar, Ar));
         Assert.LessOrEqual(arnorm, (double)((double)64 * tol) * (double)Norms.L2(in A) * rnorm,
@@ -317,46 +305,38 @@ public class doubleKrylovVerifyAtExitTests
     [Test]
     public void MinresQLPNeverFalseConvergesOnRosser()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.doubleRosser();            // 8x8 symmetric, exactly singular, clustered spectrum
+        var A = doubleGallery.doubleRosser();            // 8x8 symmetric, exactly singular, clustered spectrum
         int n = A.M_Rows;
-        var b = arena.doubleRandomVec(n, (double)(-1f), (double)1f, 143003);   // INCOMPATIBLE (null-space component)
+        var b = GenerateOP.doubleRandomVec(n, (double)(-1f), (double)1f, 143003);   // INCOMPATIBLE (null-space component)
 
         double tol = Consts.doubleSqrtEps;
-        var x = arena.doubleVec(n);
+        var x = new doubleN(n, Allocator.Temp);
         var info = Krylov.minresQLP(in A, in b, ref x, 8 * n, tol);
 
         // The LS optimum's raw residual is inherently large here (‖b_null‖ ~ ‖b‖/√n), so a raw
         // small-residual demand would forbid every correct answer; the certificate invariant
         // instead allows a genuine LS optimum and still forbids a false Converged.
-        AssertSolvedImpliesCertified(in A, in b, in x, info, tol, ref arena, "minresQLP Rosser incompatible");
-
-        arena.Dispose();
+        AssertSolvedImpliesCertified(in A, in b, in x, info, tol, "minresQLP Rosser incompatible");
     }
 
     [Test]
     public void MinresQLPNeverFalseConvergesOnCompatibleRosser()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.doubleRosser();
+        var A = doubleGallery.doubleRosser();
         int n = A.M_Rows;
-        var z = arena.doubleRandomVec(n, (double)(-1f), (double)1f, 143005);
-        var b = arena.doubleVec(n);
+        var z = GenerateOP.doubleRandomVec(n, (double)(-1f), (double)1f, 143005);
+        var b = new doubleN(n, Allocator.Temp);
         Blas.dot(in A, in z, ref b);             // b = A z: COMPATIBLE, the #53 false-Converged class
 
         double tol = Consts.doubleSqrtEps;
-        var x = arena.doubleVec(n);
+        var x = new doubleN(n, Allocator.Temp);
         var info = Krylov.minresQLP(in A, in b, ref x, 8 * n, tol);
 
         // Compatible system: r = b - Ax stays in range(A), where Rosser's smallest nonzero
         // |eigenvalue| (~0.098) keeps ‖A·r‖/‖r‖ far above the double LS-certificate bound -- so
         // in double this invariant collapses to the original #53 guard (never Solved with a
         // large raw residual), and in float to the documented rank-cutoff semantics.
-        AssertSolvedImpliesCertified(in A, in b, in x, info, tol, ref arena, "minresQLP Rosser compatible");
-
-        arena.Dispose();
+        AssertSolvedImpliesCertified(in A, in b, in x, info, tol, "minresQLP Rosser compatible");
     }
 
     // Positive LS oracle: A = diag(1,1,0), b = (1,1,1) -- exactly singular, INCOMPATIBLE, with
@@ -366,23 +346,21 @@ public class doubleKrylovVerifyAtExitTests
     [Test]
     public void MinresQLPSolvesSingularDiagLeastSquaresToMinLengthOracle()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int n = 3;
-        var A = arena.doubleMat(n, n);
+        var A = new doubleMxN(n, n, Allocator.Temp);
         for (int i = 0; i < n; i++)
             for (int j = 0; j < n; j++)
                 A[i, j] = (double)0;
         A[0, 0] = (double)1; A[1, 1] = (double)1;   // A[2,2] stays 0
-        var b = arena.doubleVec(n);
+        var b = new doubleN(n, Allocator.Temp);
         for (int i = 0; i < n; i++) b[i] = (double)1;
 
         double tol = Consts.doubleSqrtEps;
-        var x = arena.doubleVec(n);
+        var x = new doubleN(n, Allocator.Temp);
         var info = Krylov.minresQLP(in A, in b, ref x, 50, tol);
 
         var op = new doubleDenseOperator(in A);
-        var r = arena.doubleVec(n);
+        var r = new doubleN(n, Allocator.Temp);
         double rnorm = math.sqrt((double)TrueResidualSq(in op, in b, in x, ref r));
         double bnorm = math.sqrt((double)Blas.dot(b, b));
 
@@ -411,13 +389,11 @@ public class doubleKrylovVerifyAtExitTests
             Assert.AreEqual(1.0, rnorm, xTol, "‖b-Ax‖ must match the oracle residual ‖r*‖ = 1");
             Assert.AreEqual(rnorm, info.rnorm, xTol, "reported rnorm must be the fresh ‖b-Ax‖");
 
-            var Ar = arena.doubleVec(n);
+            var Ar = new doubleN(n, Allocator.Temp);
             op.Apply(in r, ref Ar);
             double arnorm = math.sqrt((double)Blas.dot(Ar, Ar));
             Assert.AreEqual(0.0, arnorm, xTol, "optimality residual ‖A·r‖ must vanish at the LS optimum");
         }
-
-        arena.Dispose();
     }
 
     // Positive LS oracle, non-diagonal: A = Q D Qᵀ with D = diag(3,2,1.5,1,0,0) and Q the
@@ -427,8 +403,6 @@ public class doubleKrylovVerifyAtExitTests
     [Test]
     public void MinresQLPSolvesConjugatedSingularLeastSquaresToMinLengthOracle()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int n = 6;
         var d = new double[] { 3, 2, 1.5, 1, 0, 0 };
         var v = new double[n];
@@ -442,8 +416,8 @@ public class doubleKrylovVerifyAtExitTests
             for (int j = 0; j < n; j++)
                 Q[i, j] = (i == j ? 1.0 : 0.0) - 2.0 * v[i] * v[j] / vv;
 
-        var A = arena.doubleMat(n, n);
-        var b = arena.doubleVec(n);
+        var A = new doubleMxN(n, n, Allocator.Temp);
+        var b = new doubleN(n, Allocator.Temp);
         var xStar = new double[n];
         for (int i = 0; i < n; i++)
         {
@@ -462,11 +436,11 @@ public class doubleKrylovVerifyAtExitTests
         double rStarSq = 2.0;   // Qᵀb = ones -> null-space part (last two coords) has ‖·‖² = 2
 
         double tol = Consts.doubleSqrtEps;
-        var x = arena.doubleVec(n);
+        var x = new doubleN(n, Allocator.Temp);
         var info = Krylov.minresQLP(in A, in b, ref x, 100, tol);
 
         var op = new doubleDenseOperator(in A);
-        var r = arena.doubleVec(n);
+        var r = new doubleN(n, Allocator.Temp);
         double rnorm = math.sqrt((double)TrueResidualSq(in op, in b, in x, ref r));
         double bnorm = math.sqrt((double)Blas.dot(b, b));
 
@@ -490,14 +464,12 @@ public class doubleKrylovVerifyAtExitTests
             Assert.AreEqual(math.sqrt(rStarSq), rnorm, xTol, "‖b-Ax‖ must match the oracle residual √2");
             Assert.AreEqual(rnorm, info.rnorm, xTol, "reported rnorm must be the fresh ‖b-Ax‖");
 
-            var Ar = arena.doubleVec(n);
+            var Ar = new doubleN(n, Allocator.Temp);
             op.Apply(in r, ref Ar);
             double arnorm = math.sqrt((double)Blas.dot(Ar, Ar));
             Assert.LessOrEqual(arnorm, (double)((double)64 * tol) * (double)Norms.L2(in A) * rnorm,
                 "optimality residual ‖A·r‖ must pass the LS certificate at the oracle solution");
         }
-
-        arena.Dispose();
     }
 
     // The maxxnorm slip-through class: a NEAR-singular (sigma_min ~ 1e-9, NOT exactly 0, so no
@@ -514,8 +486,6 @@ public class doubleKrylovVerifyAtExitTests
     [Test]
     public void MinresQLPTruncatesNearNullSlipThroughToMinLengthOracle()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int n = 6;
         var d = new double[] { 3, 2, 1.5, 1, 1, 1e-9 };
         var wts = new double[] { 1, 1, 1, 1, 1, 3e-3 };
@@ -528,8 +498,8 @@ public class doubleKrylovVerifyAtExitTests
             for (int j = 0; j < n; j++)
                 Q[i, j] = (i == j ? 1.0 : 0.0) - 2.0 * v[i] * v[j] / vv;
 
-        var A = arena.doubleMat(n, n);
-        var b = arena.doubleVec(n);
+        var A = new doubleMxN(n, n, Allocator.Temp);
+        var b = new doubleN(n, Allocator.Temp);
         var xStar = new double[n];   // truncation oracle: sigma = 1e-9 treated as null
         for (int i = 0; i < n; i++)
         {
@@ -550,7 +520,7 @@ public class doubleKrylovVerifyAtExitTests
         xStarNorm = math.sqrt(xStarNorm);
 
         double tol = Consts.doubleSqrtEps;
-        var x = arena.doubleVec(n);
+        var x = new doubleN(n, Allocator.Temp);
         var info = Krylov.minresQLP(in A, in b, ref x, 100, tol);
 
         // BOTH dtypes: never a large-norm garbage x -- the old absolute cap's failure mode was a
@@ -558,7 +528,7 @@ public class doubleKrylovVerifyAtExitTests
         double xNorm = math.sqrt((double)Blas.dot(x, x));
         Assert.LessOrEqual(xNorm, 10.0 * xStarNorm,
             "returned ‖x‖ must stay at the min-length scale, not blow up along the near-null direction: " + info);
-        AssertSolvedImpliesCertified(in A, in b, in x, info, tol, ref arena, "minresQLP near-null slip-through");
+        AssertSolvedImpliesCertified(in A, in b, in x, info, tol, "minresQLP near-null slip-through");
 
         // double: the truncation must land on the min-length oracle, reported Solved through the
         // LS certificate (r* = 3e-3 on the near-null direction, ‖A·r*‖ ~ 3e-12).
@@ -573,13 +543,11 @@ public class doubleKrylovVerifyAtExitTests
                 Assert.AreEqual(xStar[i], (double)x[i], xTol, "x[" + i + "] must match the truncation min-length oracle");
 
             var op = new doubleDenseOperator(in A);
-            var r = arena.doubleVec(n);
+            var r = new doubleN(n, Allocator.Temp);
             double rnorm = math.sqrt((double)TrueResidualSq(in op, in b, in x, ref r));
             Assert.AreEqual(3e-3, rnorm, 1e-5, "‖b-Ax‖ must match the oracle residual 3e-3");
             Assert.AreEqual(rnorm, info.rnorm, 1e-5, "reported rnorm must be the fresh ‖b-Ax‖");
         }
-
-        arena.Dispose();
     }
 
     // The over-clamp guard: a well-conditioned SPD system with ‖b‖ ~ 1e6 and a genuinely large
@@ -591,12 +559,10 @@ public class doubleKrylovVerifyAtExitTests
     [Test]
     public void MinresQLPLargeBWellConditionedLargeXIsNotClamped()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int n = 20;
-        var A = BuildDenseSPD(ref arena, n, 147001);   // cond ~ few: eigenvalues in [n, n + ‖M‖²]
-        var xStar = arena.doubleRandomVec(n, (double)(-1e5f), (double)1e5f, 147002);
-        var b = arena.doubleVec(n);
+        var A = BuildDenseSPD(n, 147001);   // cond ~ few: eigenvalues in [n, n + ‖M‖²]
+        var xStar = GenerateOP.doubleRandomVec(n, (double)(-1e5f), (double)1e5f, 147002);
+        var b = new doubleN(n, Allocator.Temp);
         Blas.dot(in A, in xStar, ref b);               // b = A x*: compatible, ‖b‖ ~ 1e6-1e7
 
         double xStarNorm = math.sqrt((double)Blas.dot(xStar, xStar));
@@ -604,7 +570,7 @@ public class doubleKrylovVerifyAtExitTests
         Assert.Greater(math.sqrt((double)Blas.dot(b, b)), 1e5, "instance must have a large ‖b‖ or it does not exercise the b-relative scaling");
 
         double tol = Consts.doubleSqrtEps;
-        var x = arena.doubleVec(n);
+        var x = new doubleN(n, Allocator.Temp);
         var info = Krylov.minresQLP(in A, in b, ref x, 8 * n, tol);
 
         Assert.IsTrue(info.Solved,
@@ -619,33 +585,27 @@ public class doubleKrylovVerifyAtExitTests
         double xRelTol = 1e-6;
         Assert.LessOrEqual(math.sqrt(errSq), xRelTol * xStarNorm,
             "x must match the known solution of the well-conditioned system: " + info);
-
-        arena.Dispose();
     }
 
     [Test]
     public void MinresQLPStillConvergesHonestlyOnWellConditioned()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int n = 20;
-        var A = BuildDenseSPD(ref arena, n, 143001);   // symmetric, well-conditioned
+        var A = BuildDenseSPD(n, 143001);   // symmetric, well-conditioned
         var op = new doubleDenseOperator(in A);
-        var b = arena.doubleRandomVec(n, (double)(-1f), (double)1f, 143002);
+        var b = GenerateOP.doubleRandomVec(n, (double)(-1f), (double)1f, 143002);
 
         double tol = Consts.doubleSqrtEps;
-        var x = arena.doubleVec(n);
+        var x = new doubleN(n, Allocator.Temp);
         var info = Krylov.minresQLP(in A, in b, ref x, 8 * n, tol);
 
         // The honesty guard must NOT reject a genuine convergence.
         Assert.IsTrue(info.Solved, "minresQLP must still converge on a well-conditioned system: " + info);
 
-        var scratch = arena.doubleVec(n);
+        var scratch = new doubleN(n, Allocator.Temp);
         double trueRs = TrueResidualSq(in op, in b, in x, ref scratch);
         double bound = (double)((double)64 * tol) * (double)((double)64 * tol) * (double)Blas.dot(b, b);
         Assert.LessOrEqual((double)trueRs, bound, "minresQLP Converged but true residual exceeds the honesty bound: " + info);
-
-        arena.Dispose();
     }
 
     // ==============================================================================
@@ -658,18 +618,16 @@ public class doubleKrylovVerifyAtExitTests
     [Test]
     public void MinresNeverFalseConvergesOnRosser()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.doubleRosser();            // 8x8 symmetric, clustered near-degenerate spectrum
+        var A = doubleGallery.doubleRosser();            // 8x8 symmetric, clustered near-degenerate spectrum
         int n = A.M_Rows;
         var op = new doubleDenseOperator(in A);
-        var b = arena.doubleRandomVec(n, (double)(-1f), (double)1f, 144003);
+        var b = GenerateOP.doubleRandomVec(n, (double)(-1f), (double)1f, 144003);
 
         double tol = Consts.doubleSqrtEps;
-        var x = arena.doubleVec(n);
+        var x = new doubleN(n, Allocator.Temp);
         var info = Krylov.minres(in A, in b, ref x, 8 * n, tol);
 
-        var scratch = arena.doubleVec(n);
+        var scratch = new doubleN(n, Allocator.Temp);
         double trueRs = TrueResidualSq(in op, in b, in x, ref scratch);
         double honestBoundSq = (double)((double)64 * tol) * (double)((double)64 * tol) * (double)Blas.dot(b, b);
 
@@ -677,33 +635,27 @@ public class doubleKrylovVerifyAtExitTests
         // trusted phibar unconditionally and could report Solved with a large true residual).
         Assert.IsFalse(info.Solved && (double)trueRs > honestBoundSq,
             "minres claimed convergence on Rosser but the true residual is large: " + info);
-
-        arena.Dispose();
     }
 
     [Test]
     public void MinresStillConvergesHonestlyOnWellConditioned()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int n = 20;
-        var A = BuildDenseSPD(ref arena, n, 144001);   // symmetric, well-conditioned
+        var A = BuildDenseSPD(n, 144001);   // symmetric, well-conditioned
         var op = new doubleDenseOperator(in A);
-        var b = arena.doubleRandomVec(n, (double)(-1f), (double)1f, 144002);
+        var b = GenerateOP.doubleRandomVec(n, (double)(-1f), (double)1f, 144002);
 
         double tol = Consts.doubleSqrtEps;
-        var x = arena.doubleVec(n);
+        var x = new doubleN(n, Allocator.Temp);
         var info = Krylov.minres(in A, in b, ref x, 8 * n, tol);
 
         // The verify-at-exit block must NOT over-reject a genuine convergence.
         Assert.IsTrue(info.Solved, "minres must still converge on a well-conditioned system: " + info);
 
-        var scratch = arena.doubleVec(n);
+        var scratch = new doubleN(n, Allocator.Temp);
         double trueRs = TrueResidualSq(in op, in b, in x, ref scratch);
         double bound = (double)((double)64 * tol) * (double)((double)64 * tol) * (double)Blas.dot(b, b);
         Assert.LessOrEqual((double)trueRs, bound, "minres Converged but true residual exceeds the honesty bound: " + info);
-
-        arena.Dispose();
     }
 
     // ==============================================================================
@@ -717,49 +669,41 @@ public class doubleKrylovVerifyAtExitTests
     [Test]
     public void BiCGStabNeverFalseConvergesOnRosser()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.doubleRosser();
+        var A = doubleGallery.doubleRosser();
         int n = A.M_Rows;
         var op = new doubleDenseOperator(in A);
-        var b = arena.doubleRandomVec(n, (double)(-1f), (double)1f, 145003);
+        var b = GenerateOP.doubleRandomVec(n, (double)(-1f), (double)1f, 145003);
 
         double tol = Consts.doubleSqrtEps;
-        var x = arena.doubleVec(n);
+        var x = new doubleN(n, Allocator.Temp);
         var info = Krylov.biCGStab(in A, in b, ref x, 8 * n, tol);
 
-        var scratch = arena.doubleVec(n);
+        var scratch = new doubleN(n, Allocator.Temp);
         double trueRs = TrueResidualSq(in op, in b, in x, ref scratch);
         double honestBoundSq = (double)((double)64 * tol) * (double)((double)64 * tol) * (double)Blas.dot(b, b);
 
         Assert.IsFalse(info.Solved && (double)trueRs > honestBoundSq,
             "biCGStab claimed convergence on Rosser but the true residual is large: " + info);
-
-        arena.Dispose();
     }
 
     [Test]
     public void BiCGStabStillConvergesHonestlyOnWellConditioned()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int n = 20;
-        var A = BuildDenseNonsym(ref arena, n, 145001);   // nonsymmetric, diagonally dominant
+        var A = BuildDenseNonsym(n, 145001);   // nonsymmetric, diagonally dominant
         var op = new doubleDenseOperator(in A);
-        var b = arena.doubleRandomVec(n, (double)(-1f), (double)1f, 145002);
+        var b = GenerateOP.doubleRandomVec(n, (double)(-1f), (double)1f, 145002);
 
         double tol = Consts.doubleSqrtEps;
-        var x = arena.doubleVec(n);
+        var x = new doubleN(n, Allocator.Temp);
         var info = Krylov.biCGStab(in A, in b, ref x, 8 * n, tol);
 
         Assert.IsTrue(info.Solved, "biCGStab must still converge on a well-conditioned system: " + info);
 
-        var scratch = arena.doubleVec(n);
+        var scratch = new doubleN(n, Allocator.Temp);
         double trueRs = TrueResidualSq(in op, in b, in x, ref scratch);
         double bound = (double)((double)64 * tol) * (double)((double)64 * tol) * (double)Blas.dot(b, b);
         Assert.LessOrEqual((double)trueRs, bound, "biCGStab Converged but true residual exceeds the honesty bound: " + info);
-
-        arena.Dispose();
     }
 
     // ==============================================================================
@@ -772,49 +716,41 @@ public class doubleKrylovVerifyAtExitTests
     [Test]
     public void IdrNeverFalseConvergesOnRosser()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var A = arena.doubleRosser();
+        var A = doubleGallery.doubleRosser();
         int n = A.M_Rows;
         var op = new doubleDenseOperator(in A);
-        var b = arena.doubleRandomVec(n, (double)(-1f), (double)1f, 146003);
+        var b = GenerateOP.doubleRandomVec(n, (double)(-1f), (double)1f, 146003);
 
         double tol = Consts.doubleSqrtEps;
-        var x = arena.doubleVec(n);
+        var x = new doubleN(n, Allocator.Temp);
         var info = Krylov.idr(in A, in b, ref x, 4, 20 * n, tol);
 
-        var scratch = arena.doubleVec(n);
+        var scratch = new doubleN(n, Allocator.Temp);
         double trueRs = TrueResidualSq(in op, in b, in x, ref scratch);
         double honestBoundSq = (double)((double)64 * tol) * (double)((double)64 * tol) * (double)Blas.dot(b, b);
 
         Assert.IsFalse(info.Solved && (double)trueRs > honestBoundSq,
             "idr claimed convergence on Rosser but the true residual is large: " + info);
-
-        arena.Dispose();
     }
 
     [Test]
     public void IdrStillConvergesHonestlyOnWellConditioned()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int n = 20;
-        var A = BuildDenseNonsym(ref arena, n, 146001);   // nonsymmetric, diagonally dominant
+        var A = BuildDenseNonsym(n, 146001);   // nonsymmetric, diagonally dominant
         var op = new doubleDenseOperator(in A);
-        var b = arena.doubleRandomVec(n, (double)(-1f), (double)1f, 146002);
+        var b = GenerateOP.doubleRandomVec(n, (double)(-1f), (double)1f, 146002);
 
         double tol = Consts.doubleSqrtEps;
-        var x = arena.doubleVec(n);
+        var x = new doubleN(n, Allocator.Temp);
         var info = Krylov.idr(in A, in b, ref x, 4, 20 * n, tol);
 
         Assert.IsTrue(info.Solved, "idr must still converge on a well-conditioned system: " + info);
 
-        var scratch = arena.doubleVec(n);
+        var scratch = new doubleN(n, Allocator.Temp);
         double trueRs = TrueResidualSq(in op, in b, in x, ref scratch);
         double bound = (double)((double)64 * tol) * (double)((double)64 * tol) * (double)Blas.dot(b, b);
         Assert.LessOrEqual((double)trueRs, bound, "idr Converged but true residual exceeds the honesty bound: " + info);
-
-        arena.Dispose();
     }
 
     // ==============================================================================
@@ -830,21 +766,19 @@ public class doubleKrylovVerifyAtExitTests
     [Test]
     public void BiCGStabVerifyContinueKeepsConvergingOnDrift()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int n = 28;
         // Reduced diagonal dominance (0.5*n) -> worse conditioned than the well-conditioned case
         // above, but still nonsingular and solvable within a generous budget.
-        var A = arena.doubleRandomMat(n, n, (double)(-1f), (double)1f, 145011);
+        var A = GenerateOP.doubleRandomMat(n, n, (double)(-1f), (double)1f, 145011);
         for (int i = 0; i < n; i++) A[i, i] += (double)(0.5f * n);
         var op = new doubleDenseOperator(in A);
 
-        var xStar = arena.doubleRandomVec(n, (double)(-1f), (double)1f, 145012);
-        var b = arena.doubleVec(n);
+        var xStar = GenerateOP.doubleRandomVec(n, (double)(-1f), (double)1f, 145012);
+        var b = new doubleN(n, Allocator.Temp);
         Blas.dot(in A, in xStar, ref b);   // b = A x*
 
         double tol = Consts.doubleSqrtEps;
-        var x = arena.doubleVec(n);
+        var x = new doubleN(n, Allocator.Temp);
         var info = Krylov.biCGStab(in A, in b, ref x, 300 * n, tol);   // generous budget
 
         for (int i = 0; i < n; i++)
@@ -854,13 +788,11 @@ public class doubleKrylovVerifyAtExitTests
         // Reaches an honest solution -- pre-fix, the corrupted p-recurrence could stall to a wrong x.
         Assert.IsTrue(info.Solved, "biCGStab failed to reach an honest solution on the drift-prone system: " + info);
 
-        var scratch = arena.doubleVec(n);
+        var scratch = new doubleN(n, Allocator.Temp);
         double trueRs = TrueResidualSq(in op, in b, in x, ref scratch);
         double bound = (double)((double)64 * tol) * (double)((double)64 * tol) * (double)Blas.dot(b, b);
         Assert.LessOrEqual((double)trueRs, bound,
             "biCGStab converged to a wrong answer (true residual exceeds the honesty bound): " + info);
-
-        arena.Dispose();
     }
 
 }

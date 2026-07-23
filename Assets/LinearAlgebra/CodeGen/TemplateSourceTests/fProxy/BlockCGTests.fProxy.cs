@@ -40,9 +40,9 @@ public class fProxyBlockCGTests
 
         static fProxy Tol() => /*+choose[2e-2f|1e-5]*/2e-2f/*-choose*/;
 
-        static fProxyN Row(ref Arena arena, in fProxyMxN B, int j, int n)
+        static fProxyN Row(in fProxyMxN B, int j, int n)
         {
-            var v = arena.fProxyVec(n);
+            var v = new fProxyN(n, Allocator.Temp);
             for (int c = 0; c < n; c++) v[c] = B[j, c];
             return v;
         }
@@ -51,13 +51,11 @@ public class fProxyBlockCGTests
         // every column reached tolerance.
         void MatchesScalarCgPerColumn()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 20, s = 4;
-            var A = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 71001u);
-            var B = arena.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 71002u);
+            var A = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(n, 71001u);
+            var B = GenerateOP.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 71002u);
 
-            var X = arena.fProxyMat(s, n);                      // zero initial guess
+            var X = new fProxyMxN(s, n, Allocator.Temp);        // zero initial guess
             var info = Krylov.bcg(in A, in B, ref X, 8 * n, Consts.fProxySqrtEps);
 
             Assert.IsTrue(info.Solved);
@@ -66,39 +64,35 @@ public class fProxyBlockCGTests
 
             for (int j = 0; j < s; j++)
             {
-                var bj = Row(ref arena, in B, j, n);
-                var xj = arena.fProxyVec(n);
+                var bj = Row(in B, j, n);
+                var xj = new fProxyN(n, Allocator.Temp);
                 Assert.IsTrue(Krylov.cg(in A, in bj, ref xj, 8 * n, Consts.fProxySqrtEps));
 
                 // Block column j matches the scalar solve (both converged to the same unique solution).
                 for (int c = 0; c < n; c++)
                     Assert.IsTrue(math.abs((double)X[j, c] - (double)xj[c]) <= Tol() * (1.0 + math.abs((double)xj[c])));
             }
-
-            arena.Dispose();
         }
 
         // The block solve converges in <= the worst single-column scalar iteration count (the block
         // advantage: all RHS share the richer block Krylov subspace).
         void BlockAdvantageIterations()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 24, s = 5;
-            var A = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 72001u);
-            var B = arena.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 72002u);
+            var A = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(n, 72001u);
+            var B = GenerateOP.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 72002u);
             fProxy tol = Consts.fProxySqrtEps;
             int budget = 8 * n;
 
-            var X = arena.fProxyMat(s, n);
+            var X = new fProxyMxN(s, n, Allocator.Temp);
             var blockInfo = Krylov.bcg(in A, in B, ref X, budget, tol);
             Assert.IsTrue(blockInfo.Solved);
 
             int worstScalar = 0;
             for (int j = 0; j < s; j++)
             {
-                var bj = Row(ref arena, in B, j, n);
-                var xj = arena.fProxyVec(n);
+                var bj = Row(in B, j, n);
+                var xj = new fProxyN(n, Allocator.Temp);
                 var si = Krylov.cg(in A, in bj, ref xj, budget, tol);
                 Assert.IsTrue(si.Solved);
                 if (si.iterations > worstScalar) worstScalar = si.iterations;
@@ -106,23 +100,19 @@ public class fProxyBlockCGTests
 
             // block iters must be <= the worst single-column scalar iters (the block advantage)
             Assert.IsTrue(blockInfo.iterations <= worstScalar);
-
-            arena.Dispose();
         }
 
         // A rank-deficient RHS block (two identical columns) must NOT NaN or throw -- the ridge-
         // regularized s x s solve deflates the dependent direction and still solves every column.
         void RankDeficientBlockDeflates()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 16, s = 4;
-            var A = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 73001u);
-            var B = arena.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 73002u);
+            var A = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(n, 73001u);
+            var B = GenerateOP.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 73002u);
             // Force columns 1 and 3 identical -> block rank <= 3.
             for (int c = 0; c < n; c++) B[3, c] = B[1, c];
 
-            var X = arena.fProxyMat(s, n);
+            var X = new fProxyMxN(s, n, Allocator.Temp);
             var info = Krylov.bcg(in A, in B, ref X, 8 * n, Consts.fProxySqrtEps);
 
             // Finite, no NaN, and every column solved (system is consistent for each column).
@@ -134,35 +124,29 @@ public class fProxyBlockCGTests
             // The two identical RHS get the same solution.
             for (int c = 0; c < n; c++)
                 Assert.IsTrue(math.abs((double)X[1, c] - (double)X[3, c]) <= Tol() * (1.0 + math.abs((double)X[1, c])));
-
-            arena.Dispose();
         }
 
         // Block-Jacobi-preconditioned block-CG over a BSR SPD system matches per-column scalar pcg.
         void PreconditionedMatchesScalar()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 18, s = 3;
-            var Adense = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 74001u);
-            var A = fProxyKrylovBatteryOracles.DenseToBSR1x1(ref arena, in Adense);
-            var M = arena.fProxyBlockJacobi(in A);
-            var B = arena.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 74002u);
+            var Adense = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(n, 74001u);
+            var A = fProxyKrylovBatteryOracles.DenseToBSR1x1(in Adense);
+            var M = new fProxyBlockJacobi(in A, Allocator.Temp);
+            var B = GenerateOP.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 74002u);
 
-            var X = arena.fProxyMat(s, n);
+            var X = new fProxyMxN(s, n, Allocator.Temp);
             var info = Krylov.bcg(in A, in M, in B, ref X, 8 * n, Consts.fProxySqrtEps);
             Assert.IsTrue(info.Solved);
 
             for (int j = 0; j < s; j++)
             {
-                var bj = Row(ref arena, in B, j, n);
-                var xj = arena.fProxyVec(n);
+                var bj = Row(in B, j, n);
+                var xj = new fProxyN(n, Allocator.Temp);
                 Assert.IsTrue(Krylov.cg(in A, in M, in bj, ref xj, 8 * n, Consts.fProxySqrtEps));
                 for (int c = 0; c < n; c++)
                     Assert.IsTrue(math.abs((double)X[j, c] - (double)xj[c]) <= Tol() * (1.0 + math.abs((double)xj[c])));
             }
-
-            arena.Dispose();
         }
 
         // Independent of the scalar solver: pick a KNOWN block solution Xk, form B = A Xk (via the
@@ -170,24 +154,20 @@ public class fProxyBlockCGTests
         // against a ground-truth solution, not against another solver.
         void KnownSolutionRecovered()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 20, s = 5;
-            var A = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 75001u);
-            var Xk = arena.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 75002u);   // known solution
+            var A = fProxyKrylovBatteryOracles.BuildDenseSpdSystem(n, 75001u);
+            var Xk = GenerateOP.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 75002u);   // known solution
 
-            var B = arena.fProxyMat(s, n);
+            var B = new fProxyMxN(s, n, Allocator.Temp);
             new fProxyDenseOperator(in A).ApplyBlock(in Xk, ref B, s);                 // B[j,:] = A Xk[j,:]
 
-            var X = arena.fProxyMat(s, n);
+            var X = new fProxyMxN(s, n, Allocator.Temp);
             var info = Krylov.bcg(in A, in B, ref X, 8 * n, Consts.fProxySqrtEps);
             Assert.IsTrue(info.Solved);
 
             for (int j = 0; j < s; j++)
                 for (int c = 0; c < n; c++)
                     Assert.IsTrue(math.abs((double)X[j, c] - (double)Xk[j, c]) <= Tol() * (1.0 + math.abs((double)Xk[j, c])));
-
-            arena.Dispose();
         }
     }
 

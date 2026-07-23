@@ -79,20 +79,18 @@ public class doubleKrylovSquareBatteryTests
         // Checks #1-4 (SS5.2) on one dense literature-gallery matrix.
         void CheckDense<TInvoker>(TInvoker inv, GalleryDenseMatrix gm) where TInvoker : struct, IdoubleSquareSolverInvoker
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = doubleKrylovBatteryGallery.Build(ref arena, gm);
+            var A = doubleKrylovBatteryGallery.Build(gm);
             int n = A.M_Rows;
             var Aop = new doubleDenseOperator(in A);
             MatrixProfile tags = GalleryProfiles.Of(gm);
             double tolBand = TolBand(tags);
 
-            var b = arena.doubleRandomVec(n, (double)(-1), (double)1, 0xD000u + (uint)gm);
+            var b = GenerateOP.doubleRandomVec(n, (double)(-1), (double)1, 0xD000u + (uint)gm);
 
-            inv.Init(ref arena, n);
+            inv.Init(n);
 
             // 1. Converges: Solved or MaxIterations, AND the fresh residual bound holds either way.
-            var x1 = arena.doubleVec(n);
+            var x1 = new doubleN(n, Allocator.Temp);
             SolveInfo info1 = inv.Solve(in Aop, in b, ref x1);
             bool statusOk1 = info1.status == IterativeSolveStatus.Converged || info1.status == IterativeSolveStatus.MaxIterations;
             Record(statusOk1, (int)gm, 1, (double)(int)info1.status, (double)0);
@@ -106,8 +104,8 @@ public class doubleKrylovSquareBatteryTests
                 Record(math.abs(x1[i] - xRef[i]) <= tolBand * ((double)1 + math.abs(xRef[i])), (int)gm, 2, x1[i], xRef[i]);
 
             // 3. Determinism: two independent solves from x0=0 on the identical (A, b) match bit-for-bit.
-            var x3a = arena.doubleVec(n);
-            var x3b = arena.doubleVec(n);
+            var x3a = new doubleN(n, Allocator.Temp);
+            var x3b = new doubleN(n, Allocator.Temp);
             SolveInfo info3a = inv.Solve(in Aop, in b, ref x3a);
             SolveInfo info3b = inv.Solve(in Aop, in b, ref x3b);
             for (int i = 0; i < n; i++)
@@ -117,8 +115,8 @@ public class doubleKrylovSquareBatteryTests
             VerifyHonestDense(info3b.status, in A, in x3b, in b, inv.Tol, (int)gm);
 
             // 4. Identity-fold: the unpreconditioned path == the generic path with an explicit identity.
-            var x4a = arena.doubleVec(n);
-            var x4b = arena.doubleVec(n);
+            var x4a = new doubleN(n, Allocator.Temp);
+            var x4b = new doubleN(n, Allocator.Temp);
             SolveInfo info4a = inv.Solve(in Aop, in b, ref x4a);
             SolveInfo info4b = inv.SolveWithPrecond(in Aop, default(doubleIdentityPreconditioner), in b, ref x4b);
             for (int i = 0; i < n; i++)
@@ -130,37 +128,33 @@ public class doubleKrylovSquareBatteryTests
             // 6. Warm-start correctness: a NONZERO initial guess must be carried into the solution
             // (x0 + dx), not silently discarded -- known x*, b = A x*, x seeded to a fixed nonzero
             // vector unrelated to x*. Applies unconditionally: every square solver takes ref x.
-            var xStar6 = arena.doubleRandomVec(n, (double)(-1), (double)1, 0xE000u + (uint)gm);
-            var bWarm6 = arena.doubleVec(n);
+            var xStar6 = GenerateOP.doubleRandomVec(n, (double)(-1), (double)1, 0xE000u + (uint)gm);
+            var bWarm6 = new doubleN(n, Allocator.Temp);
             Blas.dot(in A, in xStar6, ref bWarm6);
-            var xWarm6 = arena.doubleRandomVec(n, (double)(-1), (double)1, 0xE100u + (uint)gm);
+            var xWarm6 = GenerateOP.doubleRandomVec(n, (double)(-1), (double)1, 0xE100u + (uint)gm);
             SolveInfo infoWarm6 = inv.Solve(in Aop, in bWarm6, ref xWarm6);
             Record(infoWarm6.status == IterativeSolveStatus.Converged, (int)gm, 6, (double)(int)infoWarm6.status, (double)(int)IterativeSolveStatus.Converged);
             double relResWarm6 = doubleKrylovBatteryOracles.RelResidualDense(in A, in xWarm6, in bWarm6);
             Record(relResWarm6 <= (double)100 * inv.Tol, (int)gm, 6, relResWarm6, (double)100 * inv.Tol);
             VerifyHonestDense(infoWarm6.status, in A, in xWarm6, in bWarm6, inv.Tol, (int)gm);
-
-            arena.Dispose();
         }
 
         // Checks #1-5 (SS5.2) on one BSR gallery matrix -- #5 (preconditioned convergence) always
         // applies here since every BSR gallery entry carries the Sparse tag.
         void CheckBSR<TInvoker>(TInvoker inv, GalleryBSRMatrix gm) where TInvoker : struct, IdoubleSquareSolverInvoker
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = doubleKrylovBatteryGallery.Build(ref arena, gm);
+            var A = doubleKrylovBatteryGallery.Build(gm);
             int n = A.M_Rows;
             var Aop = new doubleBSROperator(in A);
             MatrixProfile tags = GalleryProfiles.Of(gm);
             double tolBand = TolBand(tags);
 
-            var b = arena.doubleRandomVec(n, (double)(-1), (double)1, 0xB000u + (uint)gm);
+            var b = GenerateOP.doubleRandomVec(n, (double)(-1), (double)1, 0xB000u + (uint)gm);
 
-            inv.Init(ref arena, n);
+            inv.Init(n);
 
             // 1. Converges.
-            var x1 = arena.doubleVec(n);
+            var x1 = new doubleN(n, Allocator.Temp);
             SolveInfo info1 = inv.Solve(in Aop, in b, ref x1);
             bool statusOk1 = info1.status == IterativeSolveStatus.Converged || info1.status == IterativeSolveStatus.MaxIterations;
             Record(statusOk1, (int)gm, 1, (double)(int)info1.status, (double)0);
@@ -169,14 +163,14 @@ public class doubleKrylovSquareBatteryTests
             VerifyHonestBSR(info1.status, in A, in x1, in b, inv.Tol, (int)gm);
 
             // 2. Correctness vs. direct-solve reference (densify A -- no direct BSR factorization).
-            var Adense = A.ToDense(ref arena);
+            var Adense = A.ToDense(Allocator.Temp);
             var xRef = ReferenceSolveDense(in Adense, in b, tags);
             for (int i = 0; i < n; i++)
                 Record(math.abs(x1[i] - xRef[i]) <= tolBand * ((double)1 + math.abs(xRef[i])), (int)gm, 2, x1[i], xRef[i]);
 
             // 3. Determinism.
-            var x3a = arena.doubleVec(n);
-            var x3b = arena.doubleVec(n);
+            var x3a = new doubleN(n, Allocator.Temp);
+            var x3b = new doubleN(n, Allocator.Temp);
             SolveInfo info3a = inv.Solve(in Aop, in b, ref x3a);
             SolveInfo info3b = inv.Solve(in Aop, in b, ref x3b);
             for (int i = 0; i < n; i++)
@@ -186,8 +180,8 @@ public class doubleKrylovSquareBatteryTests
             VerifyHonestBSR(info3b.status, in A, in x3b, in b, inv.Tol, (int)gm);
 
             // 4. Identity-fold.
-            var x4a = arena.doubleVec(n);
-            var x4b = arena.doubleVec(n);
+            var x4a = new doubleN(n, Allocator.Temp);
+            var x4b = new doubleN(n, Allocator.Temp);
             SolveInfo info4a = inv.Solve(in Aop, in b, ref x4a);
             SolveInfo info4b = inv.SolveWithPrecond(in Aop, default(doubleIdentityPreconditioner), in b, ref x4b);
             for (int i = 0; i < n; i++)
@@ -197,16 +191,16 @@ public class doubleKrylovSquareBatteryTests
             VerifyHonestBSR(info4b.status, in A, in x4b, in b, inv.Tol, (int)gm);
 
             // 5. Preconditioned convergence (Sparse-only), M built per inv.PrecondKind.
-            var x5 = arena.doubleVec(n);
+            var x5 = new doubleN(n, Allocator.Temp);
             SolveInfo info5;
             if (inv.PrecondKind == PreconditionerKind.SymmetricBSR)
             {
-                var M = arena.doubleBlockJacobi(in A);
+                var M = new doubleBlockJacobi(in A, Allocator.Temp);
                 info5 = inv.SolveWithPrecond(in Aop, in M, in b, ref x5);
             }
             else if (inv.PrecondKind == PreconditionerKind.NonsymmetricBSR)
             {
-                var M = arena.doubleILU0(in A);
+                var M = new doubleILU0(in A, Allocator.Temp);
                 info5 = inv.SolveWithPrecond(in Aop, in M, in b, ref x5);
             }
             else
@@ -220,32 +214,30 @@ public class doubleKrylovSquareBatteryTests
             VerifyHonestBSR(info5.status, in A, in x5, in b, inv.Tol, (int)gm);
 
             // 6. Warm-start correctness (mirrors CheckDense).
-            var xStar6 = arena.doubleRandomVec(n, (double)(-1), (double)1, 0xE000u + (uint)gm);
+            var xStar6 = GenerateOP.doubleRandomVec(n, (double)(-1), (double)1, 0xE000u + (uint)gm);
             var bWarm6 = BSR.spMV(in A, in xStar6);
-            var xWarm6 = arena.doubleRandomVec(n, (double)(-1), (double)1, 0xE100u + (uint)gm);
+            var xWarm6 = GenerateOP.doubleRandomVec(n, (double)(-1), (double)1, 0xE100u + (uint)gm);
             SolveInfo infoWarm6 = inv.Solve(in Aop, in bWarm6, ref xWarm6);
             Record(infoWarm6.status == IterativeSolveStatus.Converged, (int)gm, 6, (double)(int)infoWarm6.status, (double)(int)IterativeSolveStatus.Converged);
             double relResWarm6 = doubleKrylovBatteryOracles.RelResidualBSR(in A, in xWarm6, in bWarm6);
             Record(relResWarm6 <= (double)100 * inv.Tol, (int)gm, 6, relResWarm6, (double)100 * inv.Tol);
             VerifyHonestBSR(infoWarm6.status, in A, in xWarm6, in bWarm6, inv.Tol, (int)gm);
-
-            arena.Dispose();
         }
 
         // Reference solution via the library's own direct solver for A's KIND: CHO for SPD,
         // LU for SymmetricIndefinite/Nonsymmetric.
         doubleN ReferenceSolveDense(in doubleMxN A, in doubleN b, MatrixProfile tags)
         {
-            var xRef = b.Copy();
+            var xRef = new doubleN(in b, Allocator.Temp);
             if ((tags & MatrixProfile.SPD) != 0)
             {
-                var L = A.Copy();
+                var L = new doubleMxN(in A, Allocator.Temp);
                 CHO.decompInPlace(ref L);
                 CHO.decompSolve(ref L, ref xRef);
             }
             else
             {
-                var LUm = A.Copy();
+                var LUm = new doubleMxN(in A, Allocator.Temp);
                 var P = new Pivot(A.M_Rows, Allocator.Temp);
                 LU.decompInPlace(ref LUm, ref P);
                 LU.decompSolve(ref LUm, in P, ref xRef);

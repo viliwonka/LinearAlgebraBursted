@@ -247,15 +247,14 @@ namespace LinearAlgebra.Benchmarks
             foreach (var n in LPBenchmarkFmt.SolveVarsN)
             {
                 int m = n / 2;
-                var arena = new Arena(Allocator.Persistent);
-                var A = arena.fProxyRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11));      // nonneg -> bounded
-                var x0 = arena.fProxyRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7));
-                var Ax0 = arena.fProxyVec(m);
+                var A = GenerateOP.fProxyRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11), Allocator.Persistent);      // nonneg -> bounded
+                var x0 = GenerateOP.fProxyRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7), Allocator.Persistent);
+                var Ax0 = new fProxyN(m, Allocator.Persistent);
                 new LpRhsMatVecJobFProxy { A = A, x = x0, result = Ax0 }.Run();                // Burst-native, not Mono
-                var b = arena.fProxyVec(m);
+                var b = new fProxyN(m, Allocator.Persistent);
                 var rng = new Random((uint)(n * 1299709 + 3));
                 for (int i = 0; i < m; i++) b[i] = Ax0[i] + rng.NextFProxy((fProxy)0.1, (fProxy)1);  // slack -> x0 feasible
-                var c = arena.fProxyRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5));
+                var c = GenerateOP.fProxyRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5), Allocator.Persistent);
                 var senses = new NativeArray<ConstraintSense>(m, Allocator.Persistent);
                 for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
 
@@ -263,29 +262,30 @@ namespace LinearAlgebra.Benchmarks
                 var itersOut = new NativeArray<int>(1, Allocator.Persistent);
                 var statusOut = new NativeArray<int>(1, Allocator.Persistent);
 
-                var xS = arena.fProxyVec(n);
+                var xS = new fProxyN(n, Allocator.Persistent);
                 var jobS = new LpSolveJobFProxy { A = A, b = b, c = c, senses = senses, x = xS, method = LPMethod.Simplex, maxIter = 0, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statS = Bench.Time(() => jobS.Run());
                 sb.AppendLine(LPBenchmarkFmt.SolveRow("fProxy", n, m, "simplex", statS, itersOut[0], objOut[0]));
 
-                var xI = arena.fProxyVec(n);
+                var xI = new fProxyN(n, Allocator.Persistent);
                 var jobI = new LpSolveJobFProxy { A = A, b = b, c = c, senses = senses, x = xI, method = LPMethod.InteriorPoint, maxIter = 0, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statI = Bench.Time(() => jobI.Run());
                 sb.AppendLine(LPBenchmarkFmt.SolveRow("fProxy", n, m, "interior-point", statI, itersOut[0], objOut[0]));
 
-                var xR = arena.fProxyVec(n);
+                var xR = new fProxyN(n, Allocator.Persistent);
                 var jobR = new LpSolveJobFProxy { A = A, b = b, c = c, senses = senses, x = xR, method = LPMethod.RevisedSimplex, maxIter = 0, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statR = Bench.Time(() => jobR.Run());
                 sb.AppendLine(LPBenchmarkFmt.SolveRow("fProxy", n, m, "revised-primal", statR, itersOut[0], objOut[0]));
 
-                var xD = arena.fProxyVec(n);
+                var xD = new fProxyN(n, Allocator.Persistent);
                 var jobD = new LpSolveJobFProxy { A = A, b = b, c = c, senses = senses, x = xD, method = LPMethod.DualSimplex, maxIter = 0, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statD = Bench.Time(() => jobD.Run());
                 sb.AppendLine(LPBenchmarkFmt.SolveRow("fProxy", n, m, "dual-simplex", statD, itersOut[0], objOut[0]));
 
                 objOut.Dispose(); itersOut.Dispose(); statusOut.Dispose();
                 senses.Dispose();
-                arena.Dispose();
+                A.Dispose(); x0.Dispose(); Ax0.Dispose(); b.Dispose(); c.Dispose();
+                xS.Dispose(); xI.Dispose(); xR.Dispose(); xD.Dispose();
             }
         }
 
@@ -302,15 +302,14 @@ namespace LinearAlgebra.Benchmarks
             foreach (var n in LPBenchmarkFmt.WarmVarsN)
             {
                 int m = n / 2;
-                var arena = new Arena(Allocator.Persistent);
-                var A = arena.fProxyRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11));
-                var x0 = arena.fProxyRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7));
-                var Ax0 = arena.fProxyVec(m);
+                var A = GenerateOP.fProxyRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11), Allocator.Persistent);
+                var x0 = GenerateOP.fProxyRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7), Allocator.Persistent);
+                var Ax0 = new fProxyN(m, Allocator.Persistent);
                 new LpRhsMatVecJobFProxy { A = A, x = x0, result = Ax0 }.Run();
-                var bBase = arena.fProxyVec(m);
+                var bBase = new fProxyN(m, Allocator.Persistent);
                 var rng = new Random((uint)(n * 1299709 + 3));
                 for (int i = 0; i < m; i++) bBase[i] = Ax0[i] + rng.NextFProxy((fProxy)0.1, (fProxy)1);
-                var c = arena.fProxyRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5));
+                var c = GenerateOP.fProxyRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5), Allocator.Persistent);
                 var senses = new NativeArray<ConstraintSense>(m, Allocator.Persistent);
                 for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
 
@@ -318,10 +317,10 @@ namespace LinearAlgebra.Benchmarks
                 var itersOut = new NativeArray<int>(1, Allocator.Persistent);
                 var statusOut = new NativeArray<int>(1, Allocator.Persistent);
 
-                var bScratch = arena.fProxyVec(m);
+                var bScratch = new fProxyN(m, Allocator.Persistent);
                 for (int mode = 0; mode <= 2; mode++)
                 {
-                    var xW = arena.fProxyVec(n);
+                    var xW = new fProxyN(n, Allocator.Persistent);
                     var job = new LpWarmResolveJobFProxy
                     {
                         A = A, bBase = bBase, b = bScratch, c = c, senses = senses, x = xW,
@@ -331,11 +330,12 @@ namespace LinearAlgebra.Benchmarks
                     var stat = Bench.Time(() => job.Run());
                     string label = mode == 0 ? "cold" : (mode == 1 ? "warm-basis" : "warm+cache");
                     sb.AppendLine(LPBenchmarkFmt.WarmRow("fProxy", n, m, label, stat, itersOut[0], objOut[0]));
+                    xW.Dispose();   // per-mode allocation -- must free inside the loop, not once after it
                 }
 
                 objOut.Dispose(); itersOut.Dispose(); statusOut.Dispose();
                 senses.Dispose();
-                arena.Dispose();
+                A.Dispose(); x0.Dispose(); Ax0.Dispose(); bBase.Dispose(); c.Dispose(); bScratch.Dispose();
             }
         }
 
@@ -350,11 +350,10 @@ namespace LinearAlgebra.Benchmarks
             int n = LPBenchmarkFmt.NCoef;
             foreach (var m in LPBenchmarkFmt.LadRowsM)
             {
-                var arena = new Arena(Allocator.Persistent);
-                var A = arena.fProxyRandomMat(m, n, -1f, 1f, (uint)(m * 7919 + 13));
-                var xt = arena.fProxyRandomVec(n, -1f, 1f, (uint)(m * 104729 + 17));
+                var A = GenerateOP.fProxyRandomMat(m, n, -1f, 1f, (uint)(m * 7919 + 13), Allocator.Persistent);
+                var xt = GenerateOP.fProxyRandomVec(n, -1f, 1f, (uint)(m * 104729 + 17), Allocator.Persistent);
                 var Axt = Blas.dot(A, xt);
-                var b = arena.fProxyVec(m);
+                var b = new fProxyN(m, Allocator.Persistent);
                 var rng = new Random((uint)(m * 1299709 + 19));
                 for (int i = 0; i < m; i++)
                 {
@@ -372,44 +371,46 @@ namespace LinearAlgebra.Benchmarks
                 // m=192, double), the way SparseLadDenseCap caps Section 3's dense interior baseline.
                 if (m <= LPBenchmarkFmt.LadSimplexCap)
                 {
-                    var xLs = arena.fProxyVec(n);
+                    var xLs = new fProxyN(n, Allocator.Persistent);
                     var jobLs = new LadJobFProxy { A = A, b = b, x = xLs, method = LPMethod.Simplex, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                     var statLs = Bench.Time(() => jobLs.Run());
                     sb.AppendLine(LPBenchmarkFmt.LadRow("fProxy", m, n, "LP.lad-simplex", statLs, itersOut[0], objOut[0]));
+                    xLs.Dispose();
                 }
 
-                var xLi = arena.fProxyVec(n);
+                var xLi = new fProxyN(n, Allocator.Persistent);
                 var jobLi = new LadJobFProxy { A = A, b = b, x = xLi, method = LPMethod.InteriorPoint, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statLi = Bench.Time(() => jobLi.Run());
                 sb.AppendLine(LPBenchmarkFmt.LadRow("fProxy", m, n, "LP.lad-interior", statLi, itersOut[0], objOut[0]));
 
-                var xLr = arena.fProxyVec(n);
+                var xLr = new fProxyN(n, Allocator.Persistent);
                 var jobLr = new LadJobFProxy { A = A, b = b, x = xLr, method = LPMethod.RevisedSimplex, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statLr = Bench.Time(() => jobLr.Run());
                 sb.AppendLine(LPBenchmarkFmt.LadRow("fProxy", m, n, "LP.lad-revised", statLr, itersOut[0], objOut[0]));
 
-                var xLd = arena.fProxyVec(n);
+                var xLd = new fProxyN(n, Allocator.Persistent);
                 var jobLd = new LadJobFProxy { A = A, b = b, x = xLd, method = LPMethod.DualSimplex, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statLd = Bench.Time(() => jobLd.Run());
                 sb.AppendLine(LPBenchmarkFmt.LadRow("fProxy", m, n, "LP.lad-dual", statLd, itersOut[0], objOut[0]));
 
-                var xLf = arena.fProxyVec(n);
+                var xLf = new fProxyN(n, Allocator.Persistent);
                 var jobLf = new LadFNJobFProxy { A = A, b = b, x = xLf, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statLf = Bench.Time(() => jobLf.Run());
                 sb.AppendLine(LPBenchmarkFmt.LadRow("fProxy", m, n, "LP.ladFN", statLf, itersOut[0], objOut[0]));
 
-                var xBr = arena.fProxyVec(n);
+                var xBr = new fProxyN(n, Allocator.Persistent);
                 var jobBr = new LadBRJobFProxy { A = A, b = b, x = xBr, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statBr = Bench.Time(() => jobBr.Run());
                 sb.AppendLine(LPBenchmarkFmt.LadRow("fProxy", m, n, "LP.ladBR", statBr, itersOut[0], objOut[0]));
 
-                var xIr = arena.fProxyVec(n);
+                var xIr = new fProxyN(n, Allocator.Persistent);
                 var jobIr = new IrlsJobFProxy { A = A, b = b, x = xIr, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statIr = Bench.Time(() => jobIr.Run());
                 sb.AppendLine(LPBenchmarkFmt.LadRow("fProxy", m, n, "ladIRLS", statIr, itersOut[0], objOut[0]));
 
                 objOut.Dispose(); itersOut.Dispose(); statusOut.Dispose();
-                arena.Dispose();
+                A.Dispose(); xt.Dispose(); b.Dispose();
+                xLi.Dispose(); xLr.Dispose(); xLd.Dispose(); xLf.Dispose(); xBr.Dispose(); xIr.Dispose();
             }
 
             // ==== Section 2b: LAD fast-route-only sweep -- extended m range, ladFN/ladBR/IRLS ONLY ====
@@ -437,11 +438,10 @@ namespace LinearAlgebra.Benchmarks
 
             foreach (var m in LPBenchmarkFmt.LadFastRowsM)
             {
-                var arena = new Arena(Allocator.Persistent);
-                var A = arena.fProxyRandomMat(m, n, -1f, 1f, (uint)(m * 7919 + 13));
-                var xt = arena.fProxyRandomVec(n, -1f, 1f, (uint)(m * 104729 + 17));
+                var A = GenerateOP.fProxyRandomMat(m, n, -1f, 1f, (uint)(m * 7919 + 13), Allocator.Persistent);
+                var xt = GenerateOP.fProxyRandomVec(n, -1f, 1f, (uint)(m * 104729 + 17), Allocator.Persistent);
                 var Axt = Blas.dot(A, xt);
-                var b = arena.fProxyVec(m);
+                var b = new fProxyN(m, Allocator.Persistent);
                 var rng = new Random((uint)(m * 1299709 + 19));
                 for (int i = 0; i < m; i++)
                 {
@@ -454,23 +454,24 @@ namespace LinearAlgebra.Benchmarks
                 var itersOut = new NativeArray<int>(1, Allocator.Persistent);
                 var statusOut = new NativeArray<int>(1, Allocator.Persistent);
 
-                var xLf = arena.fProxyVec(n);
+                var xLf = new fProxyN(n, Allocator.Persistent);
                 var jobLf = new LadFNJobFProxy { A = A, b = b, x = xLf, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statLf = Bench.Time(() => jobLf.Run());
                 sb.AppendLine(LPBenchmarkFmt.LadRow("fProxy", m, n, "LP.ladFN", statLf, itersOut[0], objOut[0]));
 
-                var xBr = arena.fProxyVec(n);
+                var xBr = new fProxyN(n, Allocator.Persistent);
                 var jobBr = new LadBRJobFProxy { A = A, b = b, x = xBr, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statBr = Bench.Time(() => jobBr.Run());
                 sb.AppendLine(LPBenchmarkFmt.LadRow("fProxy", m, n, "LP.ladBR", statBr, itersOut[0], objOut[0]));
 
-                var xIr = arena.fProxyVec(n);
+                var xIr = new fProxyN(n, Allocator.Persistent);
                 var jobIr = new IrlsJobFProxy { A = A, b = b, x = xIr, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statIr = Bench.Time(() => jobIr.Run());
                 sb.AppendLine(LPBenchmarkFmt.LadRow("fProxy", m, n, "ladIRLS", statIr, itersOut[0], objOut[0]));
 
                 objOut.Dispose(); itersOut.Dispose(); statusOut.Dispose();
-                arena.Dispose();
+                A.Dispose(); xt.Dispose(); b.Dispose();
+                xLf.Dispose(); xBr.Dispose(); xIr.Dispose();
             }
         }
 
@@ -486,14 +487,13 @@ namespace LinearAlgebra.Benchmarks
             fProxy density = (fProxy)8 / (fProxy)n;       // ~8 nonzeros per row
             foreach (var m in LPBenchmarkFmt.SparseLadRowsM)
             {
-                var arena = new Arena(Allocator.Persistent);
-                var As = arena.fProxyRandomSparse(m, n, 1, density, (uint)(m * 7919 + 23));   // tall, full column rank
+                var As = fProxyGallery.fProxyRandomSparse(m, n, 1, density, (uint)(m * 7919 + 23), Allocator.Persistent);   // tall, full column rank
 
                 // b = A x_true + small noise + a gross outlier every 10th row
-                var xt = arena.fProxyRandomVec(n, -1f, 1f, (uint)(m * 104729 + 29));
-                var bx = arena.fProxyVec(m);
+                var xt = GenerateOP.fProxyRandomVec(n, -1f, 1f, (uint)(m * 104729 + 29), Allocator.Persistent);
+                var bx = new fProxyN(m, Allocator.Persistent);
                 BSR.spMV(in As, in xt, ref bx);
-                var b = arena.fProxyVec(m);
+                var b = new fProxyN(m, Allocator.Persistent);
                 var rng = new Random((uint)(m * 1299709 + 31));
                 for (int i = 0; i < m; i++)
                 {
@@ -511,20 +511,21 @@ namespace LinearAlgebra.Benchmarks
                 //  it is already benchmarked at appropriate sizes in Section 2)
                 if (m <= LPBenchmarkFmt.SparseLadDenseCap)
                 {
-                    var Ad = As.ToDense(ref arena);
-                    var xd = arena.fProxyVec(n);
+                    var Ad = As.ToDense(Allocator.Persistent);
+                    var xd = new fProxyN(n, Allocator.Persistent);
                     var jobD = new LadJobFProxy { A = Ad, b = b, x = xd, method = LPMethod.InteriorPoint, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                     var statD = Bench.Time(() => jobD.Run());
                     sb.AppendLine(LPBenchmarkFmt.LadRow("fProxy", m, n, "dense LP.lad-ip", statD, itersOut[0], objOut[0]));
+                    Ad.Dispose(); xd.Dispose();
                 }
 
-                var xs = arena.fProxyVec(n);
+                var xs = new fProxyN(n, Allocator.Persistent);
                 var jobS = new SparseLadJobFProxy { A = As, b = b, x = xs, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statS = Bench.Time(() => jobS.Run());
                 sb.AppendLine(LPBenchmarkFmt.LadRow("fProxy", m, n, "sparse LP.lad", statS, itersOut[0], objOut[0]));
 
                 objOut.Dispose(); itersOut.Dispose(); statusOut.Dispose();
-                arena.Dispose();
+                As.Dispose(); xt.Dispose(); bx.Dispose(); b.Dispose(); xs.Dispose();
             }
         }
 
@@ -549,16 +550,15 @@ namespace LinearAlgebra.Benchmarks
             foreach (var n in LPBenchmarkFmt.MidVarsN)
             {
                 int m = n;                                        // square covering LP
-                var arena = new Arena(Allocator.Persistent);
                 var rng = new Random((uint)(n * 2654435761u + 43));
 
-                var A = arena.fProxyMat(m, n);
+                var A = new fProxyMxN(m, n, Allocator.Persistent);
                 for (int i = 0; i < m; i++)
                     for (int j = 0; j < n; j++)
                         A[i, j] = (fProxy)0.1 + rng.NextFProxy(0f, 1f) * (fProxy)0.9;   // in (0.1, 1]
-                var b = arena.fProxyVec(m);
+                var b = new fProxyN(m, Allocator.Persistent);
                 for (int i = 0; i < m; i++) b[i] = (fProxy)1 + rng.NextFProxy(0f, 1f);      // demand in [1, 2]
-                var c = arena.fProxyVec(n);
+                var c = new fProxyN(n, Allocator.Persistent);
                 for (int j = 0; j < n; j++) c[j] = (fProxy)0.5 + rng.NextFProxy(0f, 1f);    // cost in [0.5, 1.5]
                 var senses = new NativeArray<ConstraintSense>(m, Allocator.Persistent);
                 for (int i = 0; i < m; i++) senses[i] = ConstraintSense.GreaterEqual;
@@ -567,29 +567,30 @@ namespace LinearAlgebra.Benchmarks
                 var itersOut = new NativeArray<int>(1, Allocator.Persistent);
                 var statusOut = new NativeArray<int>(1, Allocator.Persistent);
 
-                var xS = arena.fProxyVec(n);
+                var xS = new fProxyN(n, Allocator.Persistent);
                 var jobS = new LpSolveJobFProxy { A = A, b = b, c = c, senses = senses, x = xS, method = LPMethod.Simplex, maxIter = 0, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statS = Bench.Time(() => jobS.Run());
                 sb.AppendLine(LPBenchmarkFmt.SolveRow("fProxy", n, m, "simplex", statS, itersOut[0], objOut[0]));
 
-                var xI = arena.fProxyVec(n);
+                var xI = new fProxyN(n, Allocator.Persistent);
                 var jobI = new LpSolveJobFProxy { A = A, b = b, c = c, senses = senses, x = xI, method = LPMethod.InteriorPoint, maxIter = 0, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statI = Bench.Time(() => jobI.Run());
                 sb.AppendLine(LPBenchmarkFmt.SolveRow("fProxy", n, m, "interior-point", statI, itersOut[0], objOut[0]));
 
-                var xR = arena.fProxyVec(n);
+                var xR = new fProxyN(n, Allocator.Persistent);
                 var jobR = new LpSolveJobFProxy { A = A, b = b, c = c, senses = senses, x = xR, method = LPMethod.RevisedSimplex, maxIter = 0, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statR = Bench.Time(() => jobR.Run());
                 sb.AppendLine(LPBenchmarkFmt.SolveRow("fProxy", n, m, "revised-primal", statR, itersOut[0], objOut[0]));
 
-                var xD = arena.fProxyVec(n);
+                var xD = new fProxyN(n, Allocator.Persistent);
                 var jobD = new LpSolveJobFProxy { A = A, b = b, c = c, senses = senses, x = xD, method = LPMethod.DualSimplex, maxIter = 0, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statD = Bench.Time(() => jobD.Run());
                 sb.AppendLine(LPBenchmarkFmt.SolveRow("fProxy", n, m, "dual-simplex", statD, itersOut[0], objOut[0]));
 
                 objOut.Dispose(); itersOut.Dispose(); statusOut.Dispose();
                 senses.Dispose();
-                arena.Dispose();
+                A.Dispose(); b.Dispose(); c.Dispose();
+                xS.Dispose(); xI.Dispose(); xR.Dispose(); xD.Dispose();
             }
         }
 
@@ -612,21 +613,20 @@ namespace LinearAlgebra.Benchmarks
             foreach (var n in LPBenchmarkFmt.MidVarsN)
             {
                 int m = n / 2;
-                var arena = new Arena(Allocator.Persistent);
-                var Abase = arena.fProxyRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11));
-                var x0 = arena.fProxyRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7));
-                var Ax0 = arena.fProxyVec(m);
+                var Abase = GenerateOP.fProxyRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11), Allocator.Persistent);
+                var x0 = GenerateOP.fProxyRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7), Allocator.Persistent);
+                var Ax0 = new fProxyN(m, Allocator.Persistent);
                 new LpRhsMatVecJobFProxy { A = Abase, x = x0, result = Ax0 }.Run();            // Burst-native, not Mono
-                var bbase = arena.fProxyVec(m);
+                var bbase = new fProxyN(m, Allocator.Persistent);
                 var rng = new Random((uint)(n * 1299709 + 3));
                 for (int i = 0; i < m; i++) bbase[i] = Ax0[i] + rng.NextFProxy((fProxy)0.1, (fProxy)1);
-                var c = arena.fProxyRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5));
+                var c = GenerateOP.fProxyRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5), Allocator.Persistent);
 
                 int mAug = m + 1;
-                var A = arena.fProxyMat(mAug, n);
+                var A = new fProxyMxN(mAug, n, Allocator.Persistent);
                 for (int i = 0; i < m; i++) for (int j = 0; j < n; j++) A[i, j] = Abase[i, j];
                 for (int j = 0; j < n; j++) A[m, j] = Abase[0, j];              // duplicate row 0
-                var b = arena.fProxyVec(mAug);
+                var b = new fProxyN(mAug, Allocator.Persistent);
                 for (int i = 0; i < m; i++) b[i] = bbase[i];
                 b[m] = bbase[0] + (fProxy)10;                                    // contradicts row 0 -> infeasible
                 var senses = new NativeArray<ConstraintSense>(mAug, Allocator.Persistent);
@@ -642,29 +642,31 @@ namespace LinearAlgebra.Benchmarks
                 // LPStatus and formats the name there. See InfeasRow's doc comment for why the int
                 // (not the enum, not a template-built string) is what crosses the template/harness
                 // assembly boundary.
-                var xS = arena.fProxyVec(n);
+                var xS = new fProxyN(n, Allocator.Persistent);
                 var jobS = new LpSolveJobFProxy { A = A, b = b, c = c, senses = senses, x = xS, method = LPMethod.Simplex, maxIter = 0, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statS = Bench.Time(() => jobS.Run());
                 sb.AppendLine(LPBenchmarkFmt.InfeasRow("fProxy", n, mAug, "simplex", statS, itersOut[0], statusOut[0]));
 
-                var xI = arena.fProxyVec(n);
+                var xI = new fProxyN(n, Allocator.Persistent);
                 var jobI = new LpSolveJobFProxy { A = A, b = b, c = c, senses = senses, x = xI, method = LPMethod.InteriorPoint, maxIter = 0, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statI = Bench.Time(() => jobI.Run());
                 sb.AppendLine(LPBenchmarkFmt.InfeasRow("fProxy", n, mAug, "interior-point", statI, itersOut[0], statusOut[0]));
 
-                var xR = arena.fProxyVec(n);
+                var xR = new fProxyN(n, Allocator.Persistent);
                 var jobR = new LpSolveJobFProxy { A = A, b = b, c = c, senses = senses, x = xR, method = LPMethod.RevisedSimplex, maxIter = 0, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statR = Bench.Time(() => jobR.Run());
                 sb.AppendLine(LPBenchmarkFmt.InfeasRow("fProxy", n, mAug, "revised-primal", statR, itersOut[0], statusOut[0]));
 
-                var xD = arena.fProxyVec(n);
+                var xD = new fProxyN(n, Allocator.Persistent);
                 var jobD = new LpSolveJobFProxy { A = A, b = b, c = c, senses = senses, x = xD, method = LPMethod.DualSimplex, maxIter = 0, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statD = Bench.Time(() => jobD.Run());
                 sb.AppendLine(LPBenchmarkFmt.InfeasRow("fProxy", n, mAug, "dual-simplex", statD, itersOut[0], statusOut[0]));
 
                 objOut.Dispose(); itersOut.Dispose(); statusOut.Dispose();
                 senses.Dispose();
-                arena.Dispose();
+                Abase.Dispose(); x0.Dispose(); Ax0.Dispose(); bbase.Dispose(); c.Dispose();
+                A.Dispose(); b.Dispose();
+                xS.Dispose(); xI.Dispose(); xR.Dispose(); xD.Dispose();
             }
         }
     }

@@ -67,13 +67,12 @@ namespace LinearAlgebra.Benchmarks
     {
         static string FitFloat(int m, int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(m, n);
-            var Src = arena.floatMat(m, n);
-            var b = arena.floatVec(m);
-            var bSrc = arena.floatVec(m);
-            var xTrue = arena.floatVec(n);
-            var x = arena.floatVec(n);
+            var A = new floatMxN(m, n, Allocator.Persistent);
+            var Src = new floatMxN(m, n, Allocator.Persistent);
+            var b = new floatN(m, Allocator.Persistent);
+            var bSrc = new floatN(m, Allocator.Persistent);
+            var xTrue = new floatN(n, Allocator.Persistent);
+            var x = new floatN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)m ^ ((uint)n << 16));
             for (int j = 0; j < n; j++) xTrue[j] = rng.NextFloat(-1f, 1f);
@@ -105,7 +104,7 @@ namespace LinearAlgebra.Benchmarks
             var irls = new FitIRLSJobFloat { A = A, b = b, x = x };
             var sIRLS = Bench.Time(() => irls.Run());
 
-            arena.Dispose();
+            A.Dispose(); Src.Dispose(); b.Dispose(); bSrc.Dispose(); xTrue.Dispose(); x.Dispose();
             var sb = new StringBuilder();
             sb.AppendLine(FittingFmt.Fmt("float", "QR.solveInPlace L2", m, n, sQR));
             sb.AppendLine(FittingFmt.Fmt("float", "LP.lad exact L1", m, n, sLad));

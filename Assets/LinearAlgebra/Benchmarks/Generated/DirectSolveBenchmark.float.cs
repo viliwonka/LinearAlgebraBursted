@@ -132,12 +132,11 @@ namespace LinearAlgebra.Benchmarks
     {
         static string LuSolveFloat(int N)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var U = arena.floatMat(N, N);
-            var L = arena.floatMat(N, N);
-            var Src = arena.floatMat(N, N);
-            var b = arena.floatVec(N);
-            var bSrc = arena.floatVec(N);
+            var U = new floatMxN(N, N, Allocator.Persistent);
+            var L = new floatMxN(N, N, Allocator.Persistent);
+            var Src = new floatMxN(N, N, Allocator.Persistent);
+            var b = new floatN(N, Allocator.Persistent);
+            var bSrc = new floatN(N, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)N);
             for (int r = 0; r < N; r++)
@@ -150,17 +149,16 @@ namespace LinearAlgebra.Benchmarks
             var job = new LuSolveJobFloat { U = U, L = L, Src = Src, b = b, bSrc = bSrc };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            U.Dispose(); L.Dispose(); Src.Dispose(); b.Dispose(); bSrc.Dispose();
             return Bench.RowTime("LU float", N, stat);
         }
 
         static string LuSolveTransAFloat(int N)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(N, N);
-            var Src = arena.floatMat(N, N);
-            var b = arena.floatVec(N);
-            var bSrc = arena.floatVec(N);
+            var A = new floatMxN(N, N, Allocator.Persistent);
+            var Src = new floatMxN(N, N, Allocator.Persistent);
+            var b = new floatN(N, Allocator.Persistent);
+            var bSrc = new floatN(N, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)N);
             for (int r = 0; r < N; r++)
@@ -173,17 +171,16 @@ namespace LinearAlgebra.Benchmarks
             var job = new LuSolveTransAJobFloat { A = A, Src = Src, b = b, bSrc = bSrc };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); Src.Dispose(); b.Dispose(); bSrc.Dispose();
             return Bench.RowTime("LU float (TransA)", N, stat);
         }
 
         static string CholSolveFloat(int N)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(N, N);
-            var L = arena.floatMat(N, N);
-            var b = arena.floatVec(N);
-            var bSrc = arena.floatVec(N);
+            var A = new floatMxN(N, N, Allocator.Persistent);
+            var L = new floatMxN(N, N, Allocator.Persistent);
+            var b = new floatN(N, Allocator.Persistent);
+            var bSrc = new floatN(N, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)N);
             for (int i = 0; i < N; i++)
@@ -199,18 +196,17 @@ namespace LinearAlgebra.Benchmarks
             var job = new CholSolveJobFloat { A = A, L = L, b = b, bSrc = bSrc };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); L.Dispose(); b.Dispose(); bSrc.Dispose();
             return Bench.RowTime("Cholesky float", N, stat);
         }
 
         static string QrSolveFloat(int N)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(N, N);
-            var Src = arena.floatMat(N, N);
-            var b = arena.floatVec(N);
-            var bSrc = arena.floatVec(N);
-            var x = arena.floatVec(N);
+            var A = new floatMxN(N, N, Allocator.Persistent);
+            var Src = new floatMxN(N, N, Allocator.Persistent);
+            var b = new floatN(N, Allocator.Persistent);
+            var bSrc = new floatN(N, Allocator.Persistent);
+            var x = new floatN(N, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)N);
             for (int r = 0; r < N; r++)
@@ -222,19 +218,18 @@ namespace LinearAlgebra.Benchmarks
             var job = new QrSquareSolveJobFloat { A = A, Src = Src, b = b, bSrc = bSrc, x = x };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); Src.Dispose(); b.Dispose(); bSrc.Dispose(); x.Dispose();
             return Bench.RowTime("QR float", N, stat);
         }
 
         static string QrSolveCacheFloat(int N)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(N, N);
-            var Src = arena.floatMat(N, N);
-            var b = arena.floatVec(N);
-            var bSrc = arena.floatVec(N);
-            var x = arena.floatVec(N);
-            var cache = arena.floatQRCache(N, N);
+            var A = new floatMxN(N, N, Allocator.Persistent);
+            var Src = new floatMxN(N, N, Allocator.Persistent);
+            var b = new floatN(N, Allocator.Persistent);
+            var bSrc = new floatN(N, Allocator.Persistent);
+            var x = new floatN(N, Allocator.Persistent);
+            var cache = new floatQRCache(N, N, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)N);
             for (int r = 0; r < N; r++)
@@ -246,7 +241,7 @@ namespace LinearAlgebra.Benchmarks
             var job = new QrSquareSolveCacheJobFloat { A = A, Src = Src, b = b, bSrc = bSrc, x = x, Cache = cache };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); Src.Dispose(); b.Dispose(); bSrc.Dispose(); x.Dispose(); cache.Dispose();
             return Bench.RowTime("QR float (cache)", N, stat);
         }
     }

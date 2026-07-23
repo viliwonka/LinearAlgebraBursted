@@ -121,10 +121,9 @@ namespace LinearAlgebra.Benchmarks
     {
         static string QRCPDouble(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var Q = arena.doubleMat(n, n);
-            var R = arena.doubleMat(n, n);
-            var Src = arena.doubleMat(n, n);
+            var Q = new doubleMxN(n, n, Allocator.Persistent);
+            var R = new doubleMxN(n, n, Allocator.Persistent);
+            var Src = new doubleMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -136,18 +135,17 @@ namespace LinearAlgebra.Benchmarks
             var job = new QRCPJobDouble { Q = Q, R = R, Src = Src };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            Q.Dispose(); R.Dispose(); Src.Dispose();
             return Bench.Row("double", n, stat, flops);
         }
 
         static string SolveDouble(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(n, n);
-            var Src = arena.doubleMat(n, n);
-            var b = arena.doubleVec(n);
-            var bSrc = arena.doubleVec(n);
-            var x = arena.doubleVec(n);
+            var A = new doubleMxN(n, n, Allocator.Persistent);
+            var Src = new doubleMxN(n, n, Allocator.Persistent);
+            var b = new doubleN(n, Allocator.Persistent);
+            var bSrc = new doubleN(n, Allocator.Persistent);
+            var x = new doubleN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -162,20 +160,19 @@ namespace LinearAlgebra.Benchmarks
             var job = new QRSolveJobDouble { A = A, Src = Src, b = b, bSrc = bSrc, x = x };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); Src.Dispose(); b.Dispose(); bSrc.Dispose(); x.Dispose();
             return Bench.Row("double", n, stat, flops);
         }
 
         static string QRCPSolveDouble(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(n, n);
-            var Src = arena.doubleMat(n, n);
-            var b = arena.doubleVec(n);
-            var bSrc = arena.doubleVec(n);
-            var x = arena.doubleVec(n);
-            var R = arena.doubleMat(n, n);
-            var u = arena.doubleVec(n);
+            var A = new doubleMxN(n, n, Allocator.Persistent);
+            var Src = new doubleMxN(n, n, Allocator.Persistent);
+            var b = new doubleN(n, Allocator.Persistent);
+            var bSrc = new doubleN(n, Allocator.Persistent);
+            var x = new doubleN(n, Allocator.Persistent);
+            var R = new doubleMxN(n, n, Allocator.Persistent);
+            var u = new doubleN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -190,7 +187,7 @@ namespace LinearAlgebra.Benchmarks
             var job = new QRCPSolveJobDouble { A = A, Src = Src, b = b, bSrc = bSrc, x = x, R = R, u = u };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); Src.Dispose(); b.Dispose(); bSrc.Dispose(); x.Dispose(); R.Dispose(); u.Dispose();
             return Bench.Row("double", n, stat, flops);
         }
 
@@ -199,14 +196,13 @@ namespace LinearAlgebra.Benchmarks
         static string QRCPRankDefDouble(int n, double flops)
         {
             int rank = (3 * n) / 4;
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(n, n);
-            var Src = arena.doubleMat(n, n);
-            var b = arena.doubleVec(n);
-            var bSrc = arena.doubleVec(n);
-            var x = arena.doubleVec(n);
-            var R = arena.doubleMat(n, n);
-            var u = arena.doubleVec(n);
+            var A = new doubleMxN(n, n, Allocator.Persistent);
+            var Src = new doubleMxN(n, n, Allocator.Persistent);
+            var b = new doubleN(n, Allocator.Persistent);
+            var bSrc = new doubleN(n, Allocator.Persistent);
+            var x = new doubleN(n, Allocator.Persistent);
+            var R = new doubleMxN(n, n, Allocator.Persistent);
+            var u = new doubleN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -224,19 +220,18 @@ namespace LinearAlgebra.Benchmarks
             var cod = new QRCPMinNormJobDouble { A = A, Src = Src, b = b, bSrc = bSrc, x = x, R = R, u = u };
             var sC = Bench.Time(() => cod.Run());
 
-            arena.Dispose();
+            A.Dispose(); Src.Dispose(); b.Dispose(); bSrc.Dispose(); x.Dispose(); R.Dispose(); u.Dispose();
             return QRVariantsFmt.RowKernel("double", "basic solveInPlace", n, sB, flops)
                  + "\n" + QRVariantsFmt.RowKernel("double", "COD minNormSolveInPlace", n, sC, flops);
         }
 
         static string SolveTallDouble(int m, int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(m, n);
-            var Src = arena.doubleMat(m, n);
-            var b = arena.doubleVec(m);
-            var bSrc = arena.doubleVec(m);
-            var x = arena.doubleVec(n);
+            var A = new doubleMxN(m, n, Allocator.Persistent);
+            var Src = new doubleMxN(m, n, Allocator.Persistent);
+            var b = new doubleN(m, Allocator.Persistent);
+            var bSrc = new doubleN(m, Allocator.Persistent);
+            var x = new doubleN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)(m * 31 + n));
             for (int r = 0; r < m; r++)
@@ -251,20 +246,19 @@ namespace LinearAlgebra.Benchmarks
             var job = new QRSolveJobDouble { A = A, Src = Src, b = b, bSrc = bSrc, x = x };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); Src.Dispose(); b.Dispose(); bSrc.Dispose(); x.Dispose();
             return QRVariantsFmt.RowTall("double", "QR.solveInPlace", m, n, stat, flops);
         }
 
         static string QRCPSolveTallDouble(int m, int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(m, n);
-            var Src = arena.doubleMat(m, n);
-            var b = arena.doubleVec(m);
-            var bSrc = arena.doubleVec(m);
-            var x = arena.doubleVec(n);
-            var R = arena.doubleMat(n, n);
-            var u = arena.doubleVec(m);
+            var A = new doubleMxN(m, n, Allocator.Persistent);
+            var Src = new doubleMxN(m, n, Allocator.Persistent);
+            var b = new doubleN(m, Allocator.Persistent);
+            var bSrc = new doubleN(m, Allocator.Persistent);
+            var x = new doubleN(n, Allocator.Persistent);
+            var R = new doubleMxN(n, n, Allocator.Persistent);
+            var u = new doubleN(m, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)(m * 31 + n));
             for (int r = 0; r < m; r++)
@@ -279,7 +273,7 @@ namespace LinearAlgebra.Benchmarks
             var job = new QRCPSolveJobDouble { A = A, Src = Src, b = b, bSrc = bSrc, x = x, R = R, u = u };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); Src.Dispose(); b.Dispose(); bSrc.Dispose(); x.Dispose(); R.Dispose(); u.Dispose();
             return QRVariantsFmt.RowTall("double", "QRCP.solveInPlace", m, n, stat, flops);
         }
     }

@@ -132,12 +132,11 @@ namespace LinearAlgebra.Benchmarks
     {
         static string LuSolveDouble(int N)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var U = arena.doubleMat(N, N);
-            var L = arena.doubleMat(N, N);
-            var Src = arena.doubleMat(N, N);
-            var b = arena.doubleVec(N);
-            var bSrc = arena.doubleVec(N);
+            var U = new doubleMxN(N, N, Allocator.Persistent);
+            var L = new doubleMxN(N, N, Allocator.Persistent);
+            var Src = new doubleMxN(N, N, Allocator.Persistent);
+            var b = new doubleN(N, Allocator.Persistent);
+            var bSrc = new doubleN(N, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)N);
             for (int r = 0; r < N; r++)
@@ -150,17 +149,16 @@ namespace LinearAlgebra.Benchmarks
             var job = new LuSolveJobDouble { U = U, L = L, Src = Src, b = b, bSrc = bSrc };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            U.Dispose(); L.Dispose(); Src.Dispose(); b.Dispose(); bSrc.Dispose();
             return Bench.RowTime("LU double", N, stat);
         }
 
         static string LuSolveTransADouble(int N)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(N, N);
-            var Src = arena.doubleMat(N, N);
-            var b = arena.doubleVec(N);
-            var bSrc = arena.doubleVec(N);
+            var A = new doubleMxN(N, N, Allocator.Persistent);
+            var Src = new doubleMxN(N, N, Allocator.Persistent);
+            var b = new doubleN(N, Allocator.Persistent);
+            var bSrc = new doubleN(N, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)N);
             for (int r = 0; r < N; r++)
@@ -173,17 +171,16 @@ namespace LinearAlgebra.Benchmarks
             var job = new LuSolveTransAJobDouble { A = A, Src = Src, b = b, bSrc = bSrc };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); Src.Dispose(); b.Dispose(); bSrc.Dispose();
             return Bench.RowTime("LU double (TransA)", N, stat);
         }
 
         static string CholSolveDouble(int N)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(N, N);
-            var L = arena.doubleMat(N, N);
-            var b = arena.doubleVec(N);
-            var bSrc = arena.doubleVec(N);
+            var A = new doubleMxN(N, N, Allocator.Persistent);
+            var L = new doubleMxN(N, N, Allocator.Persistent);
+            var b = new doubleN(N, Allocator.Persistent);
+            var bSrc = new doubleN(N, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)N);
             for (int i = 0; i < N; i++)
@@ -199,18 +196,17 @@ namespace LinearAlgebra.Benchmarks
             var job = new CholSolveJobDouble { A = A, L = L, b = b, bSrc = bSrc };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); L.Dispose(); b.Dispose(); bSrc.Dispose();
             return Bench.RowTime("Cholesky double", N, stat);
         }
 
         static string QrSolveDouble(int N)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(N, N);
-            var Src = arena.doubleMat(N, N);
-            var b = arena.doubleVec(N);
-            var bSrc = arena.doubleVec(N);
-            var x = arena.doubleVec(N);
+            var A = new doubleMxN(N, N, Allocator.Persistent);
+            var Src = new doubleMxN(N, N, Allocator.Persistent);
+            var b = new doubleN(N, Allocator.Persistent);
+            var bSrc = new doubleN(N, Allocator.Persistent);
+            var x = new doubleN(N, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)N);
             for (int r = 0; r < N; r++)
@@ -222,19 +218,18 @@ namespace LinearAlgebra.Benchmarks
             var job = new QrSquareSolveJobDouble { A = A, Src = Src, b = b, bSrc = bSrc, x = x };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); Src.Dispose(); b.Dispose(); bSrc.Dispose(); x.Dispose();
             return Bench.RowTime("QR double", N, stat);
         }
 
         static string QrSolveCacheDouble(int N)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(N, N);
-            var Src = arena.doubleMat(N, N);
-            var b = arena.doubleVec(N);
-            var bSrc = arena.doubleVec(N);
-            var x = arena.doubleVec(N);
-            var cache = arena.doubleQRCache(N, N);
+            var A = new doubleMxN(N, N, Allocator.Persistent);
+            var Src = new doubleMxN(N, N, Allocator.Persistent);
+            var b = new doubleN(N, Allocator.Persistent);
+            var bSrc = new doubleN(N, Allocator.Persistent);
+            var x = new doubleN(N, Allocator.Persistent);
+            var cache = new doubleQRCache(N, N, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)N);
             for (int r = 0; r < N; r++)
@@ -246,7 +241,7 @@ namespace LinearAlgebra.Benchmarks
             var job = new QrSquareSolveCacheJobDouble { A = A, Src = Src, b = b, bSrc = bSrc, x = x, Cache = cache };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); Src.Dispose(); b.Dispose(); bSrc.Dispose(); x.Dispose(); cache.Dispose();
             return Bench.RowTime("QR double (cache)", N, stat);
         }
     }

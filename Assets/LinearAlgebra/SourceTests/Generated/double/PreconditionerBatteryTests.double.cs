@@ -52,17 +52,17 @@ public class doublePreconditionerBatteryTests
 
         // A spread of SPD BSR matrices every preconditioner handles: scalar 2D Poisson (BR=1),
         // the block-tridiagonal gallery Laplacian, and a diagonally-dominant random-sparse SPD (BR=2).
-        static doubleBSR Matrix(ref Arena arena, int which)
+        static doubleBSR Matrix(int which)
         {
-            if (which == 0) return Poisson2D(ref arena, 20, 20);
-            if (which == 1) return arena.doubleLaplacian2D(16, 16);
-            return arena.doubleRandomSparseSPD(120, 2, (double)0.2, 0x5EED0u);
+            if (which == 0) return Poisson2D(20, 20);
+            if (which == 1) return doubleGallery.doubleLaplacian2D(16, 16);
+            return doubleGallery.doubleRandomSparseSPD(120, 2, (double)0.2, 0x5EED0u);
         }
 
-        static doubleBSR Poisson2D(ref Arena arena, int gx, int gy)
+        static doubleBSR Poisson2D(int gx, int gy)
         {
             int n = gx * gy;
-            var b = arena.doubleBSRBuilder(n, n, 1, 1, 5 * n);
+            var b = new doubleBSRBuilder(n, n, 1, 1, Allocator.Temp, 5 * n);
             for (int y = 0; y < gy; y++)
                 for (int x = 0; x < gx; x++)
                 {
@@ -73,7 +73,7 @@ public class doublePreconditionerBatteryTests
                     if (y > 0) b.AddValue(i, i - gx, (double)(-1));
                     if (y < gy - 1) b.AddValue(i, i + gx, (double)(-1));
                 }
-            return b.ToBSR(ref arena);
+            return b.ToBSR(Allocator.Temp);
         }
 
         static double VecNorm(in doubleN v)
@@ -130,13 +130,11 @@ public class doublePreconditionerBatteryTests
         {
             for (int mi = 0; mi < NumMatrices; mi++)
             {
-                var arena = new Arena(Allocator.Persistent);
-                var A = Matrix(ref arena, mi); int n = A.M_Rows;
-                var b = arena.doubleRandomVec(n, -1f, 1f, 0xB0u + (uint)mi);
-                var M = arena.doubleBlockJacobi(in A);
-                var x = arena.doubleVec(n); for (int i = 0; i < n; i++) x[i] = (double)0;
+                var A = Matrix(mi); int n = A.M_Rows;
+                var b = GenerateOP.doubleRandomVec(n, -1f, 1f, 0xB0u + (uint)mi);
+                var M = new doubleBlockJacobi(in A, Allocator.Temp);
+                var x = new doubleN(n, Allocator.Temp); for (int i = 0; i < n; i++) x[i] = (double)0;
                 CheckSolve(in A, in x, in b, Krylov.cg(in A, in M, in b, ref x, 8 * n, Tol()), mi);
-                arena.Dispose();
             }
         }
 
@@ -144,13 +142,11 @@ public class doublePreconditionerBatteryTests
         {
             for (int mi = 0; mi < NumMatrices; mi++)
             {
-                var arena = new Arena(Allocator.Persistent);
-                var A = Matrix(ref arena, mi); int n = A.M_Rows;
-                var b = arena.doubleRandomVec(n, -1f, 1f, 0xB1u + (uint)mi);
-                var M = arena.doubleSSOR(in A);
-                var x = arena.doubleVec(n); for (int i = 0; i < n; i++) x[i] = (double)0;
+                var A = Matrix(mi); int n = A.M_Rows;
+                var b = GenerateOP.doubleRandomVec(n, -1f, 1f, 0xB1u + (uint)mi);
+                var M = new doubleSSOR(in A, Allocator.Temp);
+                var x = new doubleN(n, Allocator.Temp); for (int i = 0; i < n; i++) x[i] = (double)0;
                 CheckSolve(in A, in x, in b, Krylov.cg(in A, in M, in b, ref x, 8 * n, Tol()), mi);
-                arena.Dispose();
             }
         }
 
@@ -158,13 +154,11 @@ public class doublePreconditionerBatteryTests
         {
             for (int mi = 0; mi < NumMatrices; mi++)
             {
-                var arena = new Arena(Allocator.Persistent);
-                var A = Matrix(ref arena, mi); int n = A.M_Rows;
-                var b = arena.doubleRandomVec(n, -1f, 1f, 0xB2u + (uint)mi);
-                var M = arena.doubleIC0(in A);
-                var x = arena.doubleVec(n); for (int i = 0; i < n; i++) x[i] = (double)0;
+                var A = Matrix(mi); int n = A.M_Rows;
+                var b = GenerateOP.doubleRandomVec(n, -1f, 1f, 0xB2u + (uint)mi);
+                var M = new doubleIC0(in A, Allocator.Temp);
+                var x = new doubleN(n, Allocator.Temp); for (int i = 0; i < n; i++) x[i] = (double)0;
                 CheckSolve(in A, in x, in b, Krylov.cg(in A, in M, in b, ref x, 8 * n, Tol()), mi);
-                arena.Dispose();
             }
         }
 
@@ -172,13 +166,11 @@ public class doublePreconditionerBatteryTests
         {
             for (int mi = 0; mi < NumMatrices; mi++)
             {
-                var arena = new Arena(Allocator.Persistent);
-                var A = Matrix(ref arena, mi); int n = A.M_Rows;
-                var b = arena.doubleRandomVec(n, -1f, 1f, 0xB3u + (uint)mi);
-                var M = arena.doubleChebyshev(in A);
-                var x = arena.doubleVec(n); for (int i = 0; i < n; i++) x[i] = (double)0;
+                var A = Matrix(mi); int n = A.M_Rows;
+                var b = GenerateOP.doubleRandomVec(n, -1f, 1f, 0xB3u + (uint)mi);
+                var M = new doubleChebyshev(in A, Allocator.Temp);
+                var x = new doubleN(n, Allocator.Temp); for (int i = 0; i < n; i++) x[i] = (double)0;
                 CheckSolve(in A, in x, in b, Krylov.cg(in A, in M, in b, ref x, 8 * n, Tol()), mi);
-                arena.Dispose();
             }
         }
 
@@ -186,13 +178,11 @@ public class doublePreconditionerBatteryTests
         {
             for (int mi = 0; mi < NumMatrices; mi++)
             {
-                var arena = new Arena(Allocator.Persistent);
-                var A = Matrix(ref arena, mi); int n = A.M_Rows;
-                var b = arena.doubleRandomVec(n, -1f, 1f, 0xB4u + (uint)mi);
-                var M = arena.doubleFSAI(in A);
-                var x = arena.doubleVec(n); for (int i = 0; i < n; i++) x[i] = (double)0;
+                var A = Matrix(mi); int n = A.M_Rows;
+                var b = GenerateOP.doubleRandomVec(n, -1f, 1f, 0xB4u + (uint)mi);
+                var M = new doubleFSAI(in A, Allocator.Temp);
+                var x = new doubleN(n, Allocator.Temp); for (int i = 0; i < n; i++) x[i] = (double)0;
                 CheckSolve(in A, in x, in b, Krylov.cg(in A, in M, in b, ref x, 8 * n, Tol()), mi);
-                arena.Dispose();
             }
         }
 
@@ -200,13 +190,11 @@ public class doublePreconditionerBatteryTests
         {
             for (int mi = 0; mi < NumMatrices; mi++)
             {
-                var arena = new Arena(Allocator.Persistent);
-                var A = Matrix(ref arena, mi); int n = A.M_Rows;
-                var b = arena.doubleRandomVec(n, -1f, 1f, 0xB5u + (uint)mi);
-                var M = arena.doubleAdditiveSchwarz(in A);
-                var x = arena.doubleVec(n); for (int i = 0; i < n; i++) x[i] = (double)0;
+                var A = Matrix(mi); int n = A.M_Rows;
+                var b = GenerateOP.doubleRandomVec(n, -1f, 1f, 0xB5u + (uint)mi);
+                var M = new doubleAdditiveSchwarz(in A, Allocator.Temp);
+                var x = new doubleN(n, Allocator.Temp); for (int i = 0; i < n; i++) x[i] = (double)0;
                 CheckSolve(in A, in x, in b, Krylov.cg(in A, in M, in b, ref x, 8 * n, Tol()), mi);
-                arena.Dispose();
             }
         }
 
@@ -214,16 +202,13 @@ public class doublePreconditionerBatteryTests
         {
             for (int mi = 0; mi < NumMatrices; mi++)
             {
-                var arena = new Arena(Allocator.Persistent);
-                var A = Matrix(ref arena, mi); int n = A.M_Rows;
-                var b = arena.doubleRandomVec(n, -1f, 1f, 0xB6u + (uint)mi);
-                var amg = arena.doubleAMG(in A, out var info);
+                var A = Matrix(mi); int n = A.M_Rows;
+                var b = GenerateOP.doubleRandomVec(n, -1f, 1f, 0xB6u + (uint)mi);
+                var amg = new doubleAMG(in A, out var info, Allocator.Temp);
                 Record(info.Solved, mi, (double)0, (double)2);
                 var M = new doubleAMGPreconditioner(in amg);
-                var x = arena.doubleVec(n); for (int i = 0; i < n; i++) x[i] = (double)0;
+                var x = new doubleN(n, Allocator.Temp); for (int i = 0; i < n; i++) x[i] = (double)0;
                 CheckSolve(in A, in x, in b, Krylov.cg(in A, in M, in b, ref x, 8 * n, Tol()), mi);
-                amg.Dispose();
-                arena.Dispose();
             }
         }
 
@@ -233,13 +218,11 @@ public class doublePreconditionerBatteryTests
         {
             for (int mi = 0; mi < NumMatrices; mi++)
             {
-                var arena = new Arena(Allocator.Persistent);
-                var A = Matrix(ref arena, mi); int n = A.M_Rows;
-                var b = arena.doubleRandomVec(n, -1f, 1f, 0xB7u + (uint)mi);
-                var M = arena.doubleILU0(in A);
-                var x = arena.doubleVec(n); for (int i = 0; i < n; i++) x[i] = (double)0;
+                var A = Matrix(mi); int n = A.M_Rows;
+                var b = GenerateOP.doubleRandomVec(n, -1f, 1f, 0xB7u + (uint)mi);
+                var M = new doubleILU0(in A, Allocator.Temp);
+                var x = new doubleN(n, Allocator.Temp); for (int i = 0; i < n; i++) x[i] = (double)0;
                 CheckSolve(in A, in x, in b, Krylov.biCGStab(in A, in M, in b, ref x, 8 * n, Tol()), mi);
-                arena.Dispose();
             }
         }
 
@@ -247,13 +230,11 @@ public class doublePreconditionerBatteryTests
         {
             for (int mi = 0; mi < NumMatrices; mi++)
             {
-                var arena = new Arena(Allocator.Persistent);
-                var A = Matrix(ref arena, mi); int n = A.M_Rows;
-                var b = arena.doubleRandomVec(n, -1f, 1f, 0xB8u + (uint)mi);
-                var M = arena.doubleSPAI(in A);
-                var x = arena.doubleVec(n); for (int i = 0; i < n; i++) x[i] = (double)0;
+                var A = Matrix(mi); int n = A.M_Rows;
+                var b = GenerateOP.doubleRandomVec(n, -1f, 1f, 0xB8u + (uint)mi);
+                var M = new doubleSPAI(in A, Allocator.Temp);
+                var x = new doubleN(n, Allocator.Temp); for (int i = 0; i < n; i++) x[i] = (double)0;
                 CheckSolve(in A, in x, in b, Krylov.biCGStab(in A, in M, in b, ref x, 8 * n, Tol()), mi);
-                arena.Dispose();
             }
         }
 
@@ -261,13 +242,11 @@ public class doublePreconditionerBatteryTests
         {
             for (int mi = 0; mi < NumMatrices; mi++)
             {
-                var arena = new Arena(Allocator.Persistent);
-                var A = Matrix(ref arena, mi); int n = A.M_Rows;
-                var b = arena.doubleRandomVec(n, -1f, 1f, 0xB9u + (uint)mi);
-                var M = arena.doubleRestrictedSchwarz(in A);
-                var x = arena.doubleVec(n); for (int i = 0; i < n; i++) x[i] = (double)0;
+                var A = Matrix(mi); int n = A.M_Rows;
+                var b = GenerateOP.doubleRandomVec(n, -1f, 1f, 0xB9u + (uint)mi);
+                var M = new doubleRestrictedSchwarz(in A, Allocator.Temp);
+                var x = new doubleN(n, Allocator.Temp); for (int i = 0; i < n; i++) x[i] = (double)0;
                 CheckSolve(in A, in x, in b, Krylov.biCGStab(in A, in M, in b, ref x, 8 * n, Tol()), mi);
-                arena.Dispose();
             }
         }
     }

@@ -60,35 +60,35 @@ namespace LinearAlgebra.Benchmarks
 
         // MIPLIB "stein9" -- SAME literal instance data as MIPTests.fProxy.cs's BuildStein9 (Fulkerson,
         // Nemhauser & Trotter 1974; MIPLIB 3), not re-derived. 9 binaries, minimize count, proven optimum 5.
-        static void BuildStein9FProxy(in Arena arena, out fProxyMxN A, out fProxyN b, out fProxyN c,
+        static void BuildStein9FProxy(Allocator allocator, out fProxyMxN A, out fProxyN b, out fProxyN c,
                                       out NativeArray<ConstraintSense> senses, out fProxyN xl, out fProxyN xu,
                                       out NativeArray<byte> integ)
         {
             const int n = 9, m = 13;
-            A = arena.fProxyMat(m, n);   // zero-initialized
+            A = new fProxyMxN(m, n, allocator);   // zero-initialized
             SetTripleFProxy(A, 0, 1, 2, 3); SetTripleFProxy(A, 1, 0, 2, 4); SetTripleFProxy(A, 2, 0, 1, 5); SetTripleFProxy(A, 3, 4, 5, 6);
             SetTripleFProxy(A, 4, 3, 5, 7); SetTripleFProxy(A, 5, 3, 4, 8); SetTripleFProxy(A, 6, 0, 7, 8); SetTripleFProxy(A, 7, 1, 6, 8);
             SetTripleFProxy(A, 8, 2, 6, 7); SetTripleFProxy(A, 9, 0, 3, 6); SetTripleFProxy(A, 10, 1, 4, 7); SetTripleFProxy(A, 11, 2, 5, 8);
             for (int j = 0; j < n; j++) A[12, j] = (fProxy)1;   // the OB2 "at least 4 of 9" cut
 
-            b = arena.fProxyVec(m); for (int i = 0; i < 12; i++) b[i] = (fProxy)1; b[12] = (fProxy)4;
+            b = new fProxyN(m, allocator); for (int i = 0; i < 12; i++) b[i] = (fProxy)1; b[12] = (fProxy)4;
             senses = new NativeArray<ConstraintSense>(m, Allocator.Persistent);
             for (int i = 0; i < m; i++) senses[i] = ConstraintSense.GreaterEqual;
-            c = arena.fProxyVec(n); for (int j = 0; j < n; j++) c[j] = (fProxy)1;
-            xl = arena.fProxyVec(n);
-            xu = arena.fProxyVec(n); for (int j = 0; j < n; j++) xu[j] = (fProxy)1;
+            c = new fProxyN(n, allocator); for (int j = 0; j < n; j++) c[j] = (fProxy)1;
+            xl = new fProxyN(n, allocator);
+            xu = new fProxyN(n, allocator); for (int j = 0; j < n; j++) xu[j] = (fProxy)1;
             integ = new NativeArray<byte>(n, Allocator.Persistent); for (int j = 0; j < n; j++) integ[j] = 1;
         }
 
         // MIPLIB "stein15" -- SAME literal instance data as MIPTests.fProxy.cs's Stein15, not re-derived.
         // 15 binaries, minimize count, proven optimum 9 (double: ~275 nodes / ~4307 LP iterations per the
         // test file's own measured baseline).
-        static void BuildStein15FProxy(in Arena arena, out fProxyMxN A, out fProxyN b, out fProxyN c,
+        static void BuildStein15FProxy(Allocator allocator, out fProxyMxN A, out fProxyN b, out fProxyN c,
                                        out NativeArray<ConstraintSense> senses, out fProxyN xl, out fProxyN xu,
                                        out NativeArray<byte> integ)
         {
             const int n = 15, m = 36;
-            A = arena.fProxyMat(m, n);   // zero-initialized
+            A = new fProxyMxN(m, n, allocator);   // zero-initialized
             SetTripleFProxy(A, 0, 2, 3, 5);   SetTripleFProxy(A, 1, 3, 4, 6);   SetTripleFProxy(A, 2, 0, 4, 7);   SetTripleFProxy(A, 3, 0, 1, 8);   SetTripleFProxy(A, 4, 1, 2, 9);
             SetTripleFProxy(A, 5, 1, 4, 5);   SetTripleFProxy(A, 6, 0, 2, 6);   SetTripleFProxy(A, 7, 1, 3, 7);   SetTripleFProxy(A, 8, 2, 4, 8);   SetTripleFProxy(A, 9, 0, 3, 9);
             SetTripleFProxy(A, 10, 7, 8, 10); SetTripleFProxy(A, 11, 8, 9, 11); SetTripleFProxy(A, 12, 5, 9, 12); SetTripleFProxy(A, 13, 5, 6, 13); SetTripleFProxy(A, 14, 6, 7, 14);
@@ -98,24 +98,24 @@ namespace LinearAlgebra.Benchmarks
             SetTripleFProxy(A, 30, 0, 5, 10); SetTripleFProxy(A, 31, 1, 6, 11); SetTripleFProxy(A, 32, 2, 7, 12); SetTripleFProxy(A, 33, 3, 8, 13); SetTripleFProxy(A, 34, 4, 9, 14);
             for (int j = 0; j < n; j++) A[35, j] = (fProxy)1;   // the "at least 7 of 15" cut
 
-            b = arena.fProxyVec(m); for (int i = 0; i < 35; i++) b[i] = (fProxy)1; b[35] = (fProxy)7;
+            b = new fProxyN(m, allocator); for (int i = 0; i < 35; i++) b[i] = (fProxy)1; b[35] = (fProxy)7;
             senses = new NativeArray<ConstraintSense>(m, Allocator.Persistent);
             for (int i = 0; i < m; i++) senses[i] = ConstraintSense.GreaterEqual;
-            c = arena.fProxyVec(n); for (int j = 0; j < n; j++) c[j] = (fProxy)1;
-            xl = arena.fProxyVec(n);
-            xu = arena.fProxyVec(n); for (int j = 0; j < n; j++) xu[j] = (fProxy)1;
+            c = new fProxyN(n, allocator); for (int j = 0; j < n; j++) c[j] = (fProxy)1;
+            xl = new fProxyN(n, allocator);
+            xu = new fProxyN(n, allocator); for (int j = 0; j < n; j++) xu[j] = (fProxy)1;
             integ = new NativeArray<byte>(n, Allocator.Persistent); for (int j = 0; j < n; j++) integ[j] = 1;
         }
 
         // MIPLIB "p0033" -- SAME literal instance data as MIPTests.fProxy.cs's P0033 (Crowder, Johnson &
         // Padberg 1983), not re-derived. 33 binaries, 15 LessEqual rows, proven optimum 3089.
-        static void BuildP0033FProxy(in Arena arena, out fProxyMxN A, out fProxyN b, out fProxyN c,
+        static void BuildP0033FProxy(Allocator allocator, out fProxyMxN A, out fProxyN b, out fProxyN c,
                                      out NativeArray<ConstraintSense> senses, out fProxyN xl, out fProxyN xu,
                                      out NativeArray<byte> integ)
         {
             const int n = 33, m = 15;
-            A = arena.fProxyMat(m, n);   // zero-initialized
-            c = arena.fProxyVec(n);
+            A = new fProxyMxN(m, n, allocator);   // zero-initialized
+            c = new fProxyN(n, allocator);
             c[0] = (fProxy)171; c[1] = (fProxy)171; c[2] = (fProxy)171; c[3] = (fProxy)171; c[4] = (fProxy)163;
             c[5] = (fProxy)162; c[6] = (fProxy)163; c[7] = (fProxy)69; c[8] = (fProxy)69; c[9] = (fProxy)183;
             c[10] = (fProxy)183; c[11] = (fProxy)183; c[12] = (fProxy)183; c[13] = (fProxy)49; c[14] = (fProxy)183;
@@ -150,15 +150,15 @@ namespace LinearAlgebra.Benchmarks
             A[13, 20] = (fProxy)(-400);
             A[14, 6] = (fProxy)(-285); A[14, 31] = (fProxy)(-200); A[14, 32] = (fProxy)(-400);
 
-            b = arena.fProxyVec(m);
+            b = new fProxyN(m, allocator);
             b[0] = (fProxy)1; b[1] = (fProxy)1; b[2] = (fProxy)1; b[3] = (fProxy)1; b[4] = (fProxy)(-5);
             b[5] = (fProxy)2700; b[6] = (fProxy)(-2600); b[7] = (fProxy)(-100); b[8] = (fProxy)(-900);
             b[9] = (fProxy)(-1656); b[10] = (fProxy)(-335); b[11] = (fProxy)(-1026); b[12] = (fProxy)(-5);
             b[13] = (fProxy)(-500); b[14] = (fProxy)(-270);
             senses = new NativeArray<ConstraintSense>(m, Allocator.Persistent);
             for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
-            xl = arena.fProxyVec(n);
-            xu = arena.fProxyVec(n); for (int j = 0; j < n; j++) xu[j] = (fProxy)1;
+            xl = new fProxyN(n, allocator);
+            xu = new fProxyN(n, allocator); for (int j = 0; j < n; j++) xu[j] = (fProxy)1;
             integ = new NativeArray<byte>(n, Allocator.Persistent); for (int j = 0; j < n; j++) integ[j] = 1;
         }
 
@@ -166,12 +166,12 @@ namespace LinearAlgebra.Benchmarks
         // generalized to any (n, m, seed): integer A/b/c built around a random feasible integer point x*
         // (guarantees feasible + bounded), box [0,3]^n, every variable integer. n=12 with seed 424242
         // exactly reproduces the test suite's own Branchy12 instance.
-        static void BuildBranchyFProxy(int n, int m, uint seed, in Arena arena, out fProxyMxN A, out fProxyN b, out fProxyN c,
+        static void BuildBranchyFProxy(int n, int m, uint seed, Allocator allocator, out fProxyMxN A, out fProxyN b, out fProxyN c,
                                        out NativeArray<ConstraintSense> senses, out fProxyN xl, out fProxyN xu,
                                        out NativeArray<byte> integ)
         {
             var rng = new Random(seed);
-            A = arena.fProxyMat(m, n);
+            A = new fProxyMxN(m, n, allocator);
             for (int i = 0; i < m; i++)
                 for (int j = 0; j < n; j++)
                     A[i, j] = (fProxy)rng.NextInt(-2, 3);
@@ -179,7 +179,7 @@ namespace LinearAlgebra.Benchmarks
             var xstar = new NativeArray<int>(n, Allocator.Temp);
             for (int j = 0; j < n; j++) xstar[j] = rng.NextInt(0, 4);
 
-            b = arena.fProxyVec(m);
+            b = new fProxyN(m, allocator);
             senses = new NativeArray<ConstraintSense>(m, Allocator.Persistent);
             for (int i = 0; i < m; i++)
             {
@@ -192,10 +192,10 @@ namespace LinearAlgebra.Benchmarks
                 else { senses[i] = ConstraintSense.Equal; b[i] = (fProxy)act; }
             }
 
-            c = arena.fProxyVec(n);
+            c = new fProxyN(n, allocator);
             for (int j = 0; j < n; j++) c[j] = (fProxy)rng.NextInt(-3, 4);
-            xl = arena.fProxyVec(n);
-            xu = arena.fProxyVec(n); for (int j = 0; j < n; j++) xu[j] = (fProxy)3;
+            xl = new fProxyN(n, allocator);
+            xu = new fProxyN(n, allocator); for (int j = 0; j < n; j++) xu[j] = (fProxy)3;
             integ = new NativeArray<byte>(n, Allocator.Persistent); for (int j = 0; j < n; j++) integ[j] = 1;
 
             xstar.Dispose();
@@ -210,9 +210,8 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine(MIPBenchmarkFmt.Header());
 
             {
-                var arena = new Arena(Allocator.Persistent);
-                BuildStein9FProxy(in arena, out var A, out var b, out var c, out var senses, out var xl, out var xu, out var integ);
-                var x = arena.fProxyVec(9);
+                BuildStein9FProxy(Allocator.Persistent, out var A, out var b, out var c, out var senses, out var xl, out var xu, out var integ);
+                var x = new fProxyN(9, Allocator.Persistent);
 
                 var objOut = new NativeArray<double>(1, Allocator.Persistent);
                 var nodesOut = new NativeArray<int>(1, Allocator.Persistent);
@@ -231,7 +230,8 @@ namespace LinearAlgebra.Benchmarks
                 sb.AppendLine(MIPBenchmarkFmt.Row("fProxy", "stein9", 9, 13, stat, nodesOut[0], itersOut[0], statusOut[0], objOut[0]));
 
                 objOut.Dispose(); nodesOut.Dispose(); itersOut.Dispose(); statusOut.Dispose(); dualBoundOut.Dispose(); gapOut.Dispose();
-                senses.Dispose(); integ.Dispose(); arena.Dispose();
+                senses.Dispose(); integ.Dispose();
+                A.Dispose(); b.Dispose(); c.Dispose(); xl.Dispose(); xu.Dispose(); x.Dispose();
             }
 
             // stein15 / p0033: double only (float known not to converge / not to prove optimality within a
@@ -239,9 +239,8 @@ namespace LinearAlgebra.Benchmarks
             int cases = /*+choose[0|1]*/0/*-choose*/;
             for (int s = 0; s < cases; s++)
             {
-                var arena = new Arena(Allocator.Persistent);
-                BuildStein15FProxy(in arena, out var A, out var b, out var c, out var senses, out var xl, out var xu, out var integ);
-                var x = arena.fProxyVec(15);
+                BuildStein15FProxy(Allocator.Persistent, out var A, out var b, out var c, out var senses, out var xl, out var xu, out var integ);
+                var x = new fProxyN(15, Allocator.Persistent);
 
                 var objOut = new NativeArray<double>(1, Allocator.Persistent);
                 var nodesOut = new NativeArray<int>(1, Allocator.Persistent);
@@ -260,13 +259,13 @@ namespace LinearAlgebra.Benchmarks
                 sb.AppendLine(MIPBenchmarkFmt.Row("fProxy", "stein15", 15, 36, stat, nodesOut[0], itersOut[0], statusOut[0], objOut[0]));
 
                 objOut.Dispose(); nodesOut.Dispose(); itersOut.Dispose(); statusOut.Dispose(); dualBoundOut.Dispose(); gapOut.Dispose();
-                senses.Dispose(); integ.Dispose(); arena.Dispose();
+                senses.Dispose(); integ.Dispose();
+                A.Dispose(); b.Dispose(); c.Dispose(); xl.Dispose(); xu.Dispose(); x.Dispose();
             }
             for (int s = 0; s < cases; s++)
             {
-                var arena = new Arena(Allocator.Persistent);
-                BuildP0033FProxy(in arena, out var A, out var b, out var c, out var senses, out var xl, out var xu, out var integ);
-                var x = arena.fProxyVec(33);
+                BuildP0033FProxy(Allocator.Persistent, out var A, out var b, out var c, out var senses, out var xl, out var xu, out var integ);
+                var x = new fProxyN(33, Allocator.Persistent);
 
                 var objOut = new NativeArray<double>(1, Allocator.Persistent);
                 var nodesOut = new NativeArray<int>(1, Allocator.Persistent);
@@ -285,7 +284,8 @@ namespace LinearAlgebra.Benchmarks
                 sb.AppendLine(MIPBenchmarkFmt.Row("fProxy", "p0033", 33, 15, stat, nodesOut[0], itersOut[0], statusOut[0], objOut[0]));
 
                 objOut.Dispose(); nodesOut.Dispose(); itersOut.Dispose(); statusOut.Dispose(); dualBoundOut.Dispose(); gapOut.Dispose();
-                senses.Dispose(); integ.Dispose(); arena.Dispose();
+                senses.Dispose(); integ.Dispose();
+                A.Dispose(); b.Dispose(); c.Dispose(); xl.Dispose(); xu.Dispose(); x.Dispose();
             }
         }
 
@@ -308,9 +308,8 @@ namespace LinearAlgebra.Benchmarks
                 int m = n / 2;
                 uint seed = MIPBenchmarkFmt.ScalingSeed[idx];
 
-                var arena = new Arena(Allocator.Persistent);
-                BuildBranchyFProxy(n, m, seed, in arena, out var A, out var b, out var c, out var senses, out var xl, out var xu, out var integ);
-                var x = arena.fProxyVec(n);
+                BuildBranchyFProxy(n, m, seed, Allocator.Persistent, out var A, out var b, out var c, out var senses, out var xl, out var xu, out var integ);
+                var x = new fProxyN(n, Allocator.Persistent);
 
                 var objOut = new NativeArray<double>(1, Allocator.Persistent);
                 var nodesOut = new NativeArray<int>(1, Allocator.Persistent);
@@ -329,7 +328,8 @@ namespace LinearAlgebra.Benchmarks
                 sb.AppendLine(MIPBenchmarkFmt.Row("fProxy", "branchy" + n, n, m, stat, nodesOut[0], itersOut[0], statusOut[0], objOut[0]));
 
                 objOut.Dispose(); nodesOut.Dispose(); itersOut.Dispose(); statusOut.Dispose(); dualBoundOut.Dispose(); gapOut.Dispose();
-                senses.Dispose(); integ.Dispose(); arena.Dispose();
+                senses.Dispose(); integ.Dispose();
+                A.Dispose(); b.Dispose(); c.Dispose(); xl.Dispose(); xu.Dispose(); x.Dispose();
             }
         }
 
@@ -349,9 +349,8 @@ namespace LinearAlgebra.Benchmarks
 
                 foreach (var relGap in MIPBenchmarkFmt.GapRelGaps)
                 {
-                    var arena = new Arena(Allocator.Persistent);
-                    BuildP0033FProxy(in arena, out var A, out var b, out var c, out var senses, out var xl, out var xu, out var integ);
-                    var x = arena.fProxyVec(33);
+                    BuildP0033FProxy(Allocator.Persistent, out var A, out var b, out var c, out var senses, out var xl, out var xu, out var integ);
+                    var x = new fProxyN(33, Allocator.Persistent);
 
                     var objOut = new NativeArray<double>(1, Allocator.Persistent);
                     var nodesOut = new NativeArray<int>(1, Allocator.Persistent);
@@ -370,7 +369,8 @@ namespace LinearAlgebra.Benchmarks
                     sb.AppendLine(MIPBenchmarkFmt.GapRow("fProxy", "p0033", relGap, stat, nodesOut[0], itersOut[0], statusOut[0], objOut[0], gapOut[0]));
 
                     objOut.Dispose(); nodesOut.Dispose(); itersOut.Dispose(); statusOut.Dispose(); dualBoundOut.Dispose(); gapOut.Dispose();
-                    senses.Dispose(); integ.Dispose(); arena.Dispose();
+                    senses.Dispose(); integ.Dispose();
+                    A.Dispose(); b.Dispose(); c.Dispose(); xl.Dispose(); xu.Dispose(); x.Dispose();
                 }
             }
         }
@@ -390,9 +390,8 @@ namespace LinearAlgebra.Benchmarks
                               "average simplex pivots per warm-started node re-solve [fProxy] ---");
                 sb.AppendLine(MIPBenchmarkFmt.Header());
 
-                var arena = new Arena(Allocator.Persistent);
-                BuildStein15FProxy(in arena, out var A, out var b, out var c, out var senses, out var xl, out var xu, out var integ);
-                var x = arena.fProxyVec(15);
+                BuildStein15FProxy(Allocator.Persistent, out var A, out var b, out var c, out var senses, out var xl, out var xu, out var integ);
+                var x = new fProxyN(15, Allocator.Persistent);
 
                 var objOut = new NativeArray<double>(1, Allocator.Persistent);
                 var nodesOut = new NativeArray<int>(1, Allocator.Persistent);
@@ -412,7 +411,8 @@ namespace LinearAlgebra.Benchmarks
                 sb.AppendLine(MIPBenchmarkFmt.RatioLine("fProxy", itersOut[0], nodesOut[0]));
 
                 objOut.Dispose(); nodesOut.Dispose(); itersOut.Dispose(); statusOut.Dispose(); dualBoundOut.Dispose(); gapOut.Dispose();
-                senses.Dispose(); integ.Dispose(); arena.Dispose();
+                senses.Dispose(); integ.Dispose();
+                A.Dispose(); b.Dispose(); c.Dispose(); xl.Dispose(); xu.Dispose(); x.Dispose();
             }
         }
     }

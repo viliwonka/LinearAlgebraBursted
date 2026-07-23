@@ -102,17 +102,17 @@ public class doubleConvergenceBudgetTests
             Out[3] = info.converged;
         }
 
-        static doubleN GradedSpectrum(ref Arena arena, int n, double ratio)
+        static doubleN GradedSpectrum(int n, double ratio)
         {
-            var s = arena.doubleVec(n);
+            var s = new doubleN(n, Allocator.Temp);
             double v = (double)100;
             for (int i = 0; i < n; i++) { s[i] = v; v *= ratio; }
             return s;
         }
 
-        static doubleN ClusteredSpectrum(ref Arena arena, int n)
+        static doubleN ClusteredSpectrum(int n)
         {
-            var s = arena.doubleVec(n);
+            var s = new doubleN(n, Allocator.Temp);
             for (int i = 0; i < n; i++)
             {
                 int cluster = i % 5;
@@ -129,10 +129,10 @@ public class doubleConvergenceBudgetTests
             return s;
         }
 
-        static doubleN RandomSpectrum(ref Arena arena, int n, uint seed)
+        static doubleN RandomSpectrum(int n, uint seed)
         {
             var rng = new Random(seed);
-            var s = arena.doubleVec(n);
+            var s = new doubleN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) s[i] = (double)(0.01 + rng.NextDouble() * 99.99);
             for (int j = 0; j < n; j++)
             {
@@ -144,18 +144,18 @@ public class doubleConvergenceBudgetTests
         }
 
         // A = G * diag(sigma) * V^T, G/V independent Haar-orthogonal -> known singular values.
-        static doubleMxN BuildGeneral(ref Arena arena, int n, in doubleN sigma, uint seed)
+        static doubleMxN BuildGeneral(int n, in doubleN sigma, uint seed)
         {
             var rng = new Random(seed);
-            var G = arena.doubleMat(n, n);
-            var Rm = arena.doubleMat(n, n);
+            var G = new doubleMxN(n, n, Allocator.Temp);
+            var Rm = new doubleMxN(n, n, Allocator.Temp);
             var gauss = new doubleGaussian((double)0, (double)1);
             Rand.randomInPlace(ref rng, ref G, ref gauss);
             QR.decompInPlace(ref G, ref Rm);
-            var V = arena.doubleMat(n, n);
+            var V = new doubleMxN(n, n, Allocator.Temp);
             Rand.orthogonalInPlace(ref rng, ref V);
 
-            var A = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Temp);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
                 {
@@ -168,13 +168,13 @@ public class doubleConvergenceBudgetTests
         }
 
         // A = Q * diag(sigma) * Q^T, Q Haar-orthogonal -> known SYMMETRIC eigenvalues.
-        static doubleMxN BuildSymmetric(ref Arena arena, int n, in doubleN sigma, uint seed)
+        static doubleMxN BuildSymmetric(int n, in doubleN sigma, uint seed)
         {
             var rng = new Random(seed);
-            var Q = arena.doubleMat(n, n);
+            var Q = new doubleMxN(n, n, Allocator.Temp);
             Rand.orthogonalInPlace(ref rng, ref Q);
 
-            var A = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Temp);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
                 {
@@ -189,143 +189,123 @@ public class doubleConvergenceBudgetTests
         public void Graded95Thin()
         {
             int n = N;
-            var arena = new Arena(Allocator.Persistent);
-            var sigma = GradedSpectrum(ref arena, n, (double)0.95f);
-            var A = BuildGeneral(ref arena, n, in sigma, 0xC0FFEEu + (uint)n);
-            var U = arena.doubleMat(n, n);
-            var S = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var sigma = GradedSpectrum(n, (double)0.95f);
+            var A = BuildGeneral(n, in sigma, 0xC0FFEEu + (uint)n);
+            var U = new doubleMxN(n, n, Allocator.Temp);
+            var S = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
             int budget = Consts.sweepBudget(n);
             var info = SVD.thin(in A, ref U, ref S, ref V, budget);
             Store(in info, budget);
-            arena.Dispose();
         }
 
         public void Graded95Values()
         {
             int n = N;
-            var arena = new Arena(Allocator.Persistent);
-            var sigma = GradedSpectrum(ref arena, n, (double)0.95f);
-            var A = BuildGeneral(ref arena, n, in sigma, 0xBADC0DEu + (uint)n);
-            var S = arena.doubleVec(n);
+            var sigma = GradedSpectrum(n, (double)0.95f);
+            var A = BuildGeneral(n, in sigma, 0xBADC0DEu + (uint)n);
+            var S = new doubleN(n, Allocator.Temp);
             int budget = Consts.sweepBudget(n);
             var info = SVD.values(in A, ref S, budget, Consts.doubleZeroThreshold);
             Store(in info, budget);
-            arena.Dispose();
         }
 
         public void Graded95ValuesSymmetric()
         {
             int n = N;
-            var arena = new Arena(Allocator.Persistent);
-            var sigma = GradedSpectrum(ref arena, n, (double)0.95f);
-            var A = BuildSymmetric(ref arena, n, in sigma, 0x5EED0001u + (uint)n);
-            var eig = arena.doubleVec(n);
+            var sigma = GradedSpectrum(n, (double)0.95f);
+            var A = BuildSymmetric(n, in sigma, 0x5EED0001u + (uint)n);
+            var eig = new doubleN(n, Allocator.Temp);
             int budget = Consts.sweepBudget(n);
             var info = Eigen.valuesSymmetricInPlace(ref A, ref eig, budget, Consts.doubleZeroThreshold);
             Store(in info, budget);
-            arena.Dispose();
         }
 
         public void Graded95Symmetric()
         {
             int n = N;
-            var arena = new Arena(Allocator.Persistent);
-            var sigma = GradedSpectrum(ref arena, n, (double)0.95f);
-            var A = BuildSymmetric(ref arena, n, in sigma, 0x5EED0002u + (uint)n);
-            var eig = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var sigma = GradedSpectrum(n, (double)0.95f);
+            var A = BuildSymmetric(n, in sigma, 0x5EED0002u + (uint)n);
+            var eig = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
             int budget = Consts.sweepBudget(n);
             var info = Eigen.symmetricInPlace(ref A, ref eig, ref V, budget, Consts.doubleZeroThreshold);
             Store(in info, budget);
-            arena.Dispose();
         }
 
         public void Graded99Thin()
         {
             int n = N;
-            var arena = new Arena(Allocator.Persistent);
-            var sigma = GradedSpectrum(ref arena, n, (double)0.99f);
-            var A = BuildGeneral(ref arena, n, in sigma, 0x99000001u);
-            var U = arena.doubleMat(n, n);
-            var S = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var sigma = GradedSpectrum(n, (double)0.99f);
+            var A = BuildGeneral(n, in sigma, 0x99000001u);
+            var U = new doubleMxN(n, n, Allocator.Temp);
+            var S = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
             int budget = Consts.sweepBudget(n);
             var info = SVD.thin(in A, ref U, ref S, ref V, budget);
             Store(in info, budget);
-            arena.Dispose();
         }
 
         public void Graded99Symmetric()
         {
             int n = N;
-            var arena = new Arena(Allocator.Persistent);
-            var sigma = GradedSpectrum(ref arena, n, (double)0.99f);
-            var A = BuildSymmetric(ref arena, n, in sigma, 0x99000002u);
-            var eig = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var sigma = GradedSpectrum(n, (double)0.99f);
+            var A = BuildSymmetric(n, in sigma, 0x99000002u);
+            var eig = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
             int budget = Consts.sweepBudget(n);
             var info = Eigen.symmetricInPlace(ref A, ref eig, ref V, budget, Consts.doubleZeroThreshold);
             Store(in info, budget);
-            arena.Dispose();
         }
 
         public void ClusteredThin()
         {
             int n = N;
-            var arena = new Arena(Allocator.Persistent);
-            var sigma = ClusteredSpectrum(ref arena, n);
-            var A = BuildGeneral(ref arena, n, in sigma, 0xC1000001u);
-            var U = arena.doubleMat(n, n);
-            var S = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var sigma = ClusteredSpectrum(n);
+            var A = BuildGeneral(n, in sigma, 0xC1000001u);
+            var U = new doubleMxN(n, n, Allocator.Temp);
+            var S = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
             int budget = Consts.sweepBudget(n);
             var info = SVD.thin(in A, ref U, ref S, ref V, budget);
             Store(in info, budget);
-            arena.Dispose();
         }
 
         public void ClusteredSymmetric()
         {
             int n = N;
-            var arena = new Arena(Allocator.Persistent);
-            var sigma = ClusteredSpectrum(ref arena, n);
-            var A = BuildSymmetric(ref arena, n, in sigma, 0xC1000002u);
-            var eig = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var sigma = ClusteredSpectrum(n);
+            var A = BuildSymmetric(n, in sigma, 0xC1000002u);
+            var eig = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
             int budget = Consts.sweepBudget(n);
             var info = Eigen.symmetricInPlace(ref A, ref eig, ref V, budget, Consts.doubleZeroThreshold);
             Store(in info, budget);
-            arena.Dispose();
         }
 
         public void RandomThin()
         {
             int n = N;
-            var arena = new Arena(Allocator.Persistent);
-            var sigma = RandomSpectrum(ref arena, n, 0xF00D0001u);
-            var A = BuildGeneral(ref arena, n, in sigma, 0xF00D0011u);
-            var U = arena.doubleMat(n, n);
-            var S = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var sigma = RandomSpectrum(n, 0xF00D0001u);
+            var A = BuildGeneral(n, in sigma, 0xF00D0011u);
+            var U = new doubleMxN(n, n, Allocator.Temp);
+            var S = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
             int budget = Consts.sweepBudget(n);
             var info = SVD.thin(in A, ref U, ref S, ref V, budget);
             Store(in info, budget);
-            arena.Dispose();
         }
 
         public void RandomSymmetric()
         {
             int n = N;
-            var arena = new Arena(Allocator.Persistent);
-            var sigma = RandomSpectrum(ref arena, n, 0xF00D0002u);
-            var A = BuildSymmetric(ref arena, n, in sigma, 0xF00D0022u);
-            var eig = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var sigma = RandomSpectrum(n, 0xF00D0002u);
+            var A = BuildSymmetric(n, in sigma, 0xF00D0022u);
+            var eig = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
             int budget = Consts.sweepBudget(n);
             var info = Eigen.symmetricInPlace(ref A, ref eig, ref V, budget, Consts.doubleZeroThreshold);
             Store(in info, budget);
-            arena.Dispose();
         }
     }
 

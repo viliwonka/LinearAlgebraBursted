@@ -233,20 +233,18 @@ public class fProxyKrylovBlockBatteryTests
         {
             if (inv.NeedsGeneralDenseOperator)
             {
-                var arena = new Arena(Allocator.Persistent);
-                var A = fProxyKrylovBatteryGallery.Build(ref arena, gm);
-                CheckDenseCore(inv, scalarInv, gm, ref arena, in A, new fProxyDenseOperatorGeneral(in A), flags);
+                var A = fProxyKrylovBatteryGallery.Build(gm);
+                CheckDenseCore(inv, scalarInv, gm, in A, new fProxyDenseOperatorGeneral(in A), flags);
             }
             else
             {
-                var arena = new Arena(Allocator.Persistent);
-                var A = fProxyKrylovBatteryGallery.Build(ref arena, gm);
-                CheckDenseCore(inv, scalarInv, gm, ref arena, in A, new fProxyDenseOperator(in A), flags);
+                var A = fProxyKrylovBatteryGallery.Build(gm);
+                CheckDenseCore(inv, scalarInv, gm, in A, new fProxyDenseOperator(in A), flags);
             }
         }
 
         void CheckDenseCore<TInvoker, TScalar, TOp>(TInvoker inv, TScalar scalarInv, GalleryDenseMatrix gm,
-                                                     ref Arena arena, in fProxyMxN A, in TOp Aop, CheckFlags flags)
+                                                     in fProxyMxN A, in TOp Aop, CheckFlags flags)
             where TInvoker : struct, IfProxyBlockSolverInvoker
             where TScalar : struct, IfProxySquareSolverInvoker
             where TOp : struct, IfProxyLinearOperator
@@ -255,13 +253,13 @@ public class fProxyKrylovBlockBatteryTests
             MatrixProfile tags = GalleryProfiles.Of(gm);
             fProxy tolBand = TolBand(tags);
 
-            var B = arena.fProxyRandomMat(flags.S, n, (fProxy)(-1), (fProxy)1, 0xD100u + (uint)gm);
+            var B = GenerateOP.fProxyRandomMat(flags.S, n, (fProxy)(-1), (fProxy)1, 0xD100u + (uint)gm);
 
-            inv.Init(ref arena, n, flags.S);
-            scalarInv.Init(ref arena, n);
+            inv.Init(n, flags.S);
+            scalarInv.Init(n);
 
             // 1. Converges: Solved or MaxIterations, AND the fresh (recomputed) residual bound holds.
-            var X1 = arena.fProxyMat(flags.S, n);
+            var X1 = new fProxyMxN(flags.S, n, Allocator.Temp);
             BlockSolveInfo info1 = inv.Solve(in Aop, in B, ref X1);
             bool statusOk1 = info1.status == IterativeSolveStatus.Converged || info1.status == IterativeSolveStatus.MaxIterations;
             Record(statusOk1, (int)gm, 1, (fProxy)(int)info1.status, (fProxy)0);
@@ -272,15 +270,15 @@ public class fProxyKrylovBlockBatteryTests
             // 2. Correctness vs. direct-solve reference, per column (same A, B, and the X1 solved in #1).
             for (int j = 0; j < flags.S; j++)
             {
-                var bj = fProxyKrylovBatteryOracles.Row(ref arena, in B, j, n);
+                var bj = fProxyKrylovBatteryOracles.Row(in B, j, n);
                 var xRefj = ReferenceSolveDense(in A, in bj, tags);
                 for (int c = 0; c < n; c++)
                     Record(math.abs(X1[j, c] - xRefj[c]) <= tolBand * ((fProxy)1 + math.abs(xRefj[c])), (int)gm, 2, X1[j, c], xRefj[c]);
             }
 
             // 3. Determinism: two independent solves from X0=0 on the identical (A, B) match bit-for-bit.
-            var X3a = arena.fProxyMat(flags.S, n);
-            var X3b = arena.fProxyMat(flags.S, n);
+            var X3a = new fProxyMxN(flags.S, n, Allocator.Temp);
+            var X3b = new fProxyMxN(flags.S, n, Allocator.Temp);
             BlockSolveInfo info3a = inv.Solve(in Aop, in B, ref X3a);
             BlockSolveInfo info3b = inv.Solve(in Aop, in B, ref X3b);
             for (int j = 0; j < flags.S; j++)
@@ -291,8 +289,8 @@ public class fProxyKrylovBlockBatteryTests
             VerifyHonestBlockOp(info3b.status, in Aop, in X3b, in B, flags.S, n, inv.Tol, (int)gm);
 
             // 4. Identity-fold: the unpreconditioned path == the generic path with an explicit identity.
-            var X4a = arena.fProxyMat(flags.S, n);
-            var X4b = arena.fProxyMat(flags.S, n);
+            var X4a = new fProxyMxN(flags.S, n, Allocator.Temp);
+            var X4b = new fProxyMxN(flags.S, n, Allocator.Temp);
             BlockSolveInfo info4a = inv.Solve(in Aop, in B, ref X4a);
             BlockSolveInfo info4b = inv.SolveWithPrecond(in Aop, default(fProxyIdentityPreconditioner), in B, ref X4b);
             for (int j = 0; j < flags.S; j++)
@@ -311,8 +309,8 @@ public class fProxyKrylovBlockBatteryTests
             // Restricted to well-conditioned SPD dense entries so a correct solver converges cleanly.
             if (flags.DensePrecondSPD && (tags & MatrixProfile.SPD) != 0 && (tags & MatrixProfile.IllConditioned) == 0)
             {
-                var M13 = new fProxyDenseSpdPreconditioner { Nmat = fProxyKrylovBatteryOracles.BuildDenseSpd(ref arena, n, 0xD500u + (uint)gm, (fProxy)(2 * n)) };
-                var X13 = arena.fProxyMat(flags.S, n);
+                var M13 = new fProxyDenseSpdPreconditioner { Nmat = fProxyKrylovBatteryOracles.BuildDenseSpd(n, 0xD500u + (uint)gm, (fProxy)(2 * n)) };
+                var X13 = new fProxyMxN(flags.S, n, Allocator.Temp);
                 BlockSolveInfo info13 = inv.SolveWithPrecond(in Aop, in M13, in B, ref X13);
                 bool statusOk13 = info13.status == IterativeSolveStatus.Converged || info13.status == IterativeSolveStatus.MaxIterations;
                 Record(statusOk13, (int)gm, 13, (fProxy)(int)info13.status, (fProxy)0);
@@ -320,7 +318,7 @@ public class fProxyKrylovBlockBatteryTests
                 Record(relRes13 <= (fProxy)10 * inv.Tol, (int)gm, 13, relRes13, (fProxy)10 * inv.Tol);
                 for (int j = 0; j < flags.S; j++)
                 {
-                    var bj = fProxyKrylovBatteryOracles.Row(ref arena, in B, j, n);
+                    var bj = fProxyKrylovBatteryOracles.Row(in B, j, n);
                     var xRefj = ReferenceSolveDense(in A, in bj, tags);
                     for (int c = 0; c < n; c++)
                         Record(math.abs(X13[j, c] - xRefj[c]) <= tolBand * ((fProxy)1 + math.abs(xRefj[c])), (int)gm, 13, X13[j, c], xRefj[c]);
@@ -328,9 +326,7 @@ public class fProxyKrylovBlockBatteryTests
                 VerifyHonestBlockOp(info13.status, in Aop, in X13, in B, flags.S, n, inv.Tol, (int)gm);
             }
 
-            CheckBlockAdditions(inv, scalarInv, ref arena, in Aop, n, tags, (int)gm, 0xD800u + (uint)gm, flags);
-
-            arena.Dispose();
+            CheckBlockAdditions(inv, scalarInv, in Aop, n, tags, (int)gm, 0xD800u + (uint)gm, flags);
         }
 
         // Checks #1-5 (adds Sparse-only preconditioned convergence) plus #6-9 on one BSR gallery
@@ -340,21 +336,19 @@ public class fProxyKrylovBlockBatteryTests
             where TInvoker : struct, IfProxyBlockSolverInvoker
             where TScalar : struct, IfProxySquareSolverInvoker
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = fProxyKrylovBatteryGallery.Build(ref arena, gm);
+            var A = fProxyKrylovBatteryGallery.Build(gm);
             int n = A.M_Rows;
             var Aop = new fProxyBSROperator(in A);
             MatrixProfile tags = GalleryProfiles.Of(gm);
             fProxy tolBand = TolBand(tags);
 
-            var B = arena.fProxyRandomMat(flags.S, n, (fProxy)(-1), (fProxy)1, 0xB100u + (uint)gm);
+            var B = GenerateOP.fProxyRandomMat(flags.S, n, (fProxy)(-1), (fProxy)1, 0xB100u + (uint)gm);
 
-            inv.Init(ref arena, n, flags.S);
-            scalarInv.Init(ref arena, n);
+            inv.Init(n, flags.S);
+            scalarInv.Init(n);
 
             // 1. Converges.
-            var X1 = arena.fProxyMat(flags.S, n);
+            var X1 = new fProxyMxN(flags.S, n, Allocator.Temp);
             BlockSolveInfo info1 = inv.Solve(in Aop, in B, ref X1);
             bool statusOk1 = info1.status == IterativeSolveStatus.Converged || info1.status == IterativeSolveStatus.MaxIterations;
             Record(statusOk1, (int)gm, 1, (fProxy)(int)info1.status, (fProxy)0);
@@ -363,18 +357,18 @@ public class fProxyKrylovBlockBatteryTests
             VerifyHonestBlockOp(info1.status, in Aop, in X1, in B, flags.S, n, inv.Tol, (int)gm);
 
             // 2. Correctness vs. direct-solve reference (densify A -- no direct BSR factorization).
-            var Adense = A.ToDense(ref arena);
+            var Adense = A.ToDense(Allocator.Temp);
             for (int j = 0; j < flags.S; j++)
             {
-                var bj = fProxyKrylovBatteryOracles.Row(ref arena, in B, j, n);
+                var bj = fProxyKrylovBatteryOracles.Row(in B, j, n);
                 var xRefj = ReferenceSolveDense(in Adense, in bj, tags);
                 for (int c = 0; c < n; c++)
                     Record(math.abs(X1[j, c] - xRefj[c]) <= tolBand * ((fProxy)1 + math.abs(xRefj[c])), (int)gm, 2, X1[j, c], xRefj[c]);
             }
 
             // 3. Determinism.
-            var X3a = arena.fProxyMat(flags.S, n);
-            var X3b = arena.fProxyMat(flags.S, n);
+            var X3a = new fProxyMxN(flags.S, n, Allocator.Temp);
+            var X3b = new fProxyMxN(flags.S, n, Allocator.Temp);
             BlockSolveInfo info3a = inv.Solve(in Aop, in B, ref X3a);
             BlockSolveInfo info3b = inv.Solve(in Aop, in B, ref X3b);
             for (int j = 0; j < flags.S; j++)
@@ -385,8 +379,8 @@ public class fProxyKrylovBlockBatteryTests
             VerifyHonestBlockOp(info3b.status, in Aop, in X3b, in B, flags.S, n, inv.Tol, (int)gm);
 
             // 4. Identity-fold.
-            var X4a = arena.fProxyMat(flags.S, n);
-            var X4b = arena.fProxyMat(flags.S, n);
+            var X4a = new fProxyMxN(flags.S, n, Allocator.Temp);
+            var X4b = new fProxyMxN(flags.S, n, Allocator.Temp);
             BlockSolveInfo info4a = inv.Solve(in Aop, in B, ref X4a);
             BlockSolveInfo info4b = inv.SolveWithPrecond(in Aop, default(fProxyIdentityPreconditioner), in B, ref X4b);
             for (int j = 0; j < flags.S; j++)
@@ -400,16 +394,16 @@ public class fProxyKrylovBlockBatteryTests
             // == None (bminres) falls through to the plain unpreconditioned solve, same as the
             // square battery's own else branch -- never constructs a real M for a solver whose
             // preconditioned path is gated off.
-            var X5 = arena.fProxyMat(flags.S, n);
+            var X5 = new fProxyMxN(flags.S, n, Allocator.Temp);
             BlockSolveInfo info5;
             if (inv.PrecondKind == PreconditionerKind.SymmetricBSR)
             {
-                var M = arena.fProxyBlockJacobi(in A);
+                var M = new fProxyBlockJacobi(in A, Allocator.Temp);
                 info5 = inv.SolveWithPrecond(in Aop, in M, in B, ref X5);
             }
             else if (inv.PrecondKind == PreconditionerKind.NonsymmetricBSR)
             {
-                var M = arena.fProxyILU0(in A);
+                var M = new fProxyILU0(in A, Allocator.Temp);
                 info5 = inv.SolveWithPrecond(in Aop, in M, in B, ref X5);
             }
             else
@@ -422,9 +416,7 @@ public class fProxyKrylovBlockBatteryTests
             Record(relRes5 <= (fProxy)10 * inv.Tol, (int)gm, 5, relRes5, (fProxy)10 * inv.Tol);
             VerifyHonestBlockOp(info5.status, in Aop, in X5, in B, flags.S, n, inv.Tol, (int)gm);
 
-            CheckBlockAdditions(inv, scalarInv, ref arena, in Aop, n, tags, (int)gm, 0xB800u + (uint)gm, flags);
-
-            arena.Dispose();
+            CheckBlockAdditions(inv, scalarInv, in Aop, n, tags, (int)gm, 0xB800u + (uint)gm, flags);
         }
 
         // Block-family additions (shared by CheckDenseCore/CheckBSR, any TOp):
@@ -445,7 +437,7 @@ public class fProxyKrylovBlockBatteryTests
         //      (gated by flags.NoBreakdown, same rationale as check #9), every ordinary row still
         //      reaches its true solution, and the zero row's own output stays at (numerically) zero
         //      -- its exact solution, A being nonsingular.
-        void CheckBlockAdditions<TInvoker, TScalar, TOp>(TInvoker inv, TScalar scalarInv, ref Arena arena, in TOp Aop,
+        void CheckBlockAdditions<TInvoker, TScalar, TOp>(TInvoker inv, TScalar scalarInv, in TOp Aop,
                                                            int n, MatrixProfile tags, int gmIdx, uint seedBase, CheckFlags flags)
             where TInvoker : struct, IfProxyBlockSolverInvoker
             where TScalar : struct, IfProxySquareSolverInvoker
@@ -454,14 +446,14 @@ public class fProxyKrylovBlockBatteryTests
             fProxy tolBand = TolBand(tags);
 
             // 6/7.
-            var B6 = arena.fProxyRandomMat(flags.S, n, (fProxy)(-1), (fProxy)1, seedBase + 1u);
-            var X6 = arena.fProxyMat(flags.S, n);
+            var B6 = GenerateOP.fProxyRandomMat(flags.S, n, (fProxy)(-1), (fProxy)1, seedBase + 1u);
+            var X6 = new fProxyMxN(flags.S, n, Allocator.Temp);
             BlockSolveInfo info6 = inv.Solve(in Aop, in B6, ref X6);
             int worstScalarIter = 0;
             for (int j = 0; j < flags.S; j++)
             {
-                var bj = fProxyKrylovBatteryOracles.Row(ref arena, in B6, j, n);
-                var xj = arena.fProxyVec(n);
+                var bj = fProxyKrylovBatteryOracles.Row(in B6, j, n);
+                var xj = new fProxyN(n, Allocator.Temp);
                 SolveInfo infoScalar = scalarInv.Solve(in Aop, in bj, ref xj);
                 if (infoScalar.iterations > worstScalarIter) worstScalarIter = infoScalar.iterations;
                 for (int c = 0; c < n; c++)
@@ -473,9 +465,9 @@ public class fProxyKrylovBlockBatteryTests
 
             // 8/9: force two distinct rows (0 and S-1) bit-identical.
             int dupA = 0, dupB = flags.S - 1;
-            var B8 = arena.fProxyRandomMat(flags.S, n, (fProxy)(-1), (fProxy)1, seedBase + 2u);
+            var B8 = GenerateOP.fProxyRandomMat(flags.S, n, (fProxy)(-1), (fProxy)1, seedBase + 2u);
             for (int c = 0; c < n; c++) B8[dupB, c] = B8[dupA, c];
-            var X8 = arena.fProxyMat(flags.S, n);
+            var X8 = new fProxyMxN(flags.S, n, Allocator.Temp);
             BlockSolveInfo info8 = inv.Solve(in Aop, in B8, ref X8);
 
             bool anyBad = false;
@@ -496,10 +488,10 @@ public class fProxyKrylovBlockBatteryTests
             VerifyHonestBlockOp(info8.status, in Aop, in X8, in B8, flags.S, n, inv.Tol, gmIdx);
 
             // 10. Warm-start correctness.
-            var Xstar10 = arena.fProxyRandomMat(flags.S, n, (fProxy)(-1), (fProxy)1, seedBase + 3u);
-            var Bwarm10 = arena.fProxyMat(flags.S, n);
+            var Xstar10 = GenerateOP.fProxyRandomMat(flags.S, n, (fProxy)(-1), (fProxy)1, seedBase + 3u);
+            var Bwarm10 = new fProxyMxN(flags.S, n, Allocator.Temp);
             Aop.ApplyBlock(in Xstar10, ref Bwarm10, flags.S);
-            var Xwarm10 = arena.fProxyRandomMat(flags.S, n, (fProxy)(-1), (fProxy)1, seedBase + 4u);
+            var Xwarm10 = GenerateOP.fProxyRandomMat(flags.S, n, (fProxy)(-1), (fProxy)1, seedBase + 4u);
             BlockSolveInfo infoWarm10 = inv.Solve(in Aop, in Bwarm10, ref Xwarm10);
             Record(infoWarm10.status == IterativeSolveStatus.Converged, gmIdx, 10, (fProxy)(int)infoWarm10.status, (fProxy)(int)IterativeSolveStatus.Converged);
             fProxy relResWarm10 = fProxyKrylovBatteryOracles.RelResidualBlockOp(in Aop, in Xwarm10, in Bwarm10, flags.S, n);
@@ -508,9 +500,9 @@ public class fProxyKrylovBlockBatteryTests
 
             // 11. Degenerate/zero-RHS-row.
             int zeroRow11 = 0;
-            var Bz11 = arena.fProxyRandomMat(flags.S, n, (fProxy)(-1), (fProxy)1, seedBase + 5u);
+            var Bz11 = GenerateOP.fProxyRandomMat(flags.S, n, (fProxy)(-1), (fProxy)1, seedBase + 5u);
             for (int c = 0; c < n; c++) Bz11[zeroRow11, c] = (fProxy)0;
-            var Xz11 = arena.fProxyMat(flags.S, n);
+            var Xz11 = new fProxyMxN(flags.S, n, Allocator.Temp);
             BlockSolveInfo infoZ11 = inv.Solve(in Aop, in Bz11, ref Xz11);
 
             if (flags.NoBreakdown)
@@ -521,12 +513,12 @@ public class fProxyKrylovBlockBatteryTests
 
             if (infoZ11.status != IterativeSolveStatus.Breakdown)
             {
-                var scratch11 = arena.fProxyVec(n);
+                var scratch11 = new fProxyN(n, Allocator.Temp);
                 for (int j = 0; j < flags.S; j++)
                 {
                     if (j == zeroRow11) continue;
-                    var bj = fProxyKrylovBatteryOracles.Row(ref arena, in Bz11, j, n);
-                    var xj = fProxyKrylovBatteryOracles.Row(ref arena, in Xz11, j, n);
+                    var bj = fProxyKrylovBatteryOracles.Row(in Bz11, j, n);
+                    var xj = fProxyKrylovBatteryOracles.Row(in Xz11, j, n);
                     Aop.Apply(in xj, ref scratch11);
                     fProxy num11 = 0, den11 = 0;
                     for (int c = 0; c < n; c++) { fProxy d = scratch11[c] - bj[c]; num11 += d * d; den11 += bj[c] * bj[c]; }
@@ -554,16 +546,16 @@ public class fProxyKrylovBlockBatteryTests
         // SymmetricIndefinite/Nonsymmetric.
         fProxyN ReferenceSolveDense(in fProxyMxN A, in fProxyN b, MatrixProfile tags)
         {
-            var xRef = b.Copy();
+            var xRef = new fProxyN(in b, Allocator.Temp);
             if ((tags & MatrixProfile.SPD) != 0)
             {
-                var L = A.Copy();
+                var L = new fProxyMxN(in A, Allocator.Temp);
                 CHO.decompInPlace(ref L);
                 CHO.decompSolve(ref L, ref xRef);
             }
             else
             {
-                var LUm = A.Copy();
+                var LUm = new fProxyMxN(in A, Allocator.Temp);
                 var P = new Pivot(A.M_Rows, Allocator.Temp);
                 LU.decompInPlace(ref LUm, ref P);
                 LU.decompSolve(ref LUm, in P, ref xRef);

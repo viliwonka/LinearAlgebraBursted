@@ -286,33 +286,32 @@ namespace LinearAlgebra.Benchmarks
         // Diagonal-dominant, contractive dynamics (diag in [0.8,1.0), off-diagonal 0.1/n) -- bounded
         // state/covariance over any step count regardless of size. H = [I_m | 0] (selects the first m
         // state components), always full row rank so every update is well-posed regardless of seed.
-        static void BuildKFInstanceFloat(int n, int m, uint seed, in Arena arena,
+        static void BuildKFInstanceFloat(int n, int m, uint seed, Allocator allocator,
                                           out floatMxN A, out floatMxN H, out floatMxN Q, out floatMxN R)
         {
             var rng = new Unity.Mathematics.Random(seed);
             float off = (float)(0.1 / n);
 
-            A = arena.floatMat(n, n);
+            A = new floatMxN(n, n, allocator);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
                     A[i, j] = (i == j) ? rng.NextFloat(0.8f, 1.0f) : rng.NextFloat(-1f, 1f) * off;
 
-            H = arena.floatMat(m, n);
+            H = new floatMxN(m, n, allocator);
             for (int i = 0; i < m; i++) H[i, i] = (float)1;
 
-            Q = arena.floatMat(n, n);
+            Q = new floatMxN(n, n, allocator);
             for (int i = 0; i < n; i++) Q[i, i] = (float)1e-3;
 
-            R = arena.floatMat(m, m);
+            R = new floatMxN(m, m, allocator);
             for (int i = 0; i < m; i++) R[i, i] = (float)1e-2;
         }
 
         // ==== Section 1: linear predict+update, full covariance path ====
         static string KfCycleFloat(int n, int m, int steps, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildKFInstanceFloat(n, m, seed, in arena, out var A, out var H, out var Q, out var R);
-            var z = arena.floatVec(m);   // zero measurement -- timing only, not a tracking-accuracy check
+            BuildKFInstanceFloat(n, m, seed, Allocator.Persistent, out var A, out var H, out var Q, out var R);
+            var z = new floatN(m, Allocator.Persistent);   // zero measurement -- timing only, not a tracking-accuracy check
 
             var s = new floatKFState(n, m, Allocator.Persistent);
             var xOut = new NativeArray<double>(1, Allocator.Persistent);
@@ -321,20 +320,20 @@ namespace LinearAlgebra.Benchmarks
             var stat = Bench.Time(() => job.Run());
             string row = KalmanBenchmarkFmt.Row("float", "full", n, m, steps, stat, statusOut[0]);
 
-            s.Dispose(); xOut.Dispose(); statusOut.Dispose(); arena.Dispose();
+            s.Dispose(); xOut.Dispose(); statusOut.Dispose();
+            A.Dispose(); H.Dispose(); Q.Dispose(); R.Dispose(); z.Dispose();
             return row;
         }
 
         // ==== Section 2: predictFixed+updateFixed (steady-state gain, no covariance math) ====
         static string KfFixedFloat(int n, int m, int steps, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildKFInstanceFloat(n, m, seed, in arena, out var A, out var H, out var Q, out var R);
-            var z = arena.floatVec(m);
+            BuildKFInstanceFloat(n, m, seed, Allocator.Persistent, out var A, out var H, out var Q, out var R);
+            var z = new floatN(m, Allocator.Persistent);
 
             // Untimed: steady-state gain from the SAME (A,H,Q,R) KfCycleFloat builds at this (n,m), so
             // the two rows are a direct full-covariance-vs-fixed-gain comparison.
-            var Kss = arena.floatMat(n, m);
+            var Kss = new floatMxN(n, m, Allocator.Persistent);
             Kalman.steadyStateGain(in A, in H, in Q, in R, ref Kss);
 
             var s = new floatKFState(n, m, Allocator.Persistent);
@@ -344,16 +343,16 @@ namespace LinearAlgebra.Benchmarks
             // status: n/a -- predictFixed/updateFixed return no KFInfo (no covariance solve to fail).
             string row = KalmanBenchmarkFmt.Row("float", "fixed-gain", n, m, steps, stat, -1);
 
-            s.Dispose(); xOut.Dispose(); arena.Dispose();
+            s.Dispose(); xOut.Dispose();
+            A.Dispose(); H.Dispose(); Q.Dispose(); R.Dispose(); z.Dispose(); Kss.Dispose();
             return row;
         }
 
         // ==== Section 3: steadyStateGain one-shot cost ====
         static string SteadyStateGainFloat(int n, int m, int reps, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildKFInstanceFloat(n, m, seed, in arena, out var A, out var H, out var Q, out var R);
-            var Kss = arena.floatMat(n, m);
+            BuildKFInstanceFloat(n, m, seed, Allocator.Persistent, out var A, out var H, out var Q, out var R);
+            var Kss = new floatMxN(n, m, Allocator.Persistent);
 
             var itersOut = new NativeArray<int>(1, Allocator.Persistent);
             var statusOut = new NativeArray<int>(1, Allocator.Persistent);
@@ -362,7 +361,8 @@ namespace LinearAlgebra.Benchmarks
             // RiccatiInfo is the same info type LQR.lqr reports -- reuse LQRBenchmarkFmt's own formatter.
             string row = LQRBenchmarkFmt.Row("float", "steadyStateGain", n, m, reps, stat, itersOut[0], statusOut[0]);
 
-            itersOut.Dispose(); statusOut.Dispose(); arena.Dispose();
+            itersOut.Dispose(); statusOut.Dispose();
+            A.Dispose(); H.Dispose(); Q.Dispose(); R.Dispose(); Kss.Dispose();
             return row;
         }
 

@@ -39,33 +39,25 @@ public class uintAnalysisTests
 
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
-            try
+            switch (Type)
             {
-                switch (Type)
-                {
-                    case TestType.ZeroVector: ZeroVector(ref arena); break;
-                    case TestType.ZeroMatrix: ZeroMatrix(ref arena); break;
-                    case TestType.Identity: Identity(ref arena); break;
-                    case TestType.IdentityNegatives: IdentityNegatives(ref arena); break;
-                    case TestType.Symmetric: Symmetric(ref arena); break;
-                    case TestType.Diagonal: Diagonal(ref arena); break;
-                    case TestType.UpperTriangular: UpperTriangular(ref arena); break;
-                    case TestType.LowerTriangular: LowerTriangular(ref arena); break;
-                    case TestType.NonSquare: NonSquare(ref arena); break;
-                    default: throw new NotImplementedException();
-                }
-            }
-            finally
-            {
-                arena.Dispose();
+                case TestType.ZeroVector: ZeroVector(); break;
+                case TestType.ZeroMatrix: ZeroMatrix(); break;
+                case TestType.Identity: Identity(); break;
+                case TestType.IdentityNegatives: IdentityNegatives(); break;
+                case TestType.Symmetric: Symmetric(); break;
+                case TestType.Diagonal: Diagonal(); break;
+                case TestType.UpperTriangular: UpperTriangular(); break;
+                case TestType.LowerTriangular: LowerTriangular(); break;
+                case TestType.NonSquare: NonSquare(); break;
+                default: throw new NotImplementedException();
             }
         }
 
         // All-zero vector -> isZero true; a single nonzero entry -> false.
-        void ZeroVector(ref Arena arena)
+        void ZeroVector()
         {
-            var v = arena.uintVec(5, (uint)0);
+            var v = GenerateOP.uintVec(5, (uint)0);
             Assert.IsTrue(Analysis.isZero(in v));
 
             v[3] = (uint)7;
@@ -73,9 +65,9 @@ public class uintAnalysisTests
         }
 
         // All-zero matrix -> isZero true; a single nonzero entry -> false (and it is NOT identity).
-        void ZeroMatrix(ref Arena arena)
+        void ZeroMatrix()
         {
-            var A = arena.uintMat(3, 3, (uint)0);
+            var A = GenerateOP.uintMat(3, 3, (uint)0);
             Assert.IsTrue(Analysis.isZero(in A));
             Assert.IsFalse(Analysis.isIdentity(in A)); // all-zero is not identity
 
@@ -85,9 +77,9 @@ public class uintAnalysisTests
         }
 
         // Genuine identity -> isIdentity, isSymmetric, isDiagonal all true; also not zero.
-        void Identity(ref Arena arena)
+        void Identity()
         {
-            var A = arena.uintIdentityMat(4);
+            var A = GenerateOP.uintIdentityMat(4);
             Assert.IsTrue(Analysis.isIdentity(in A));
             Assert.IsTrue(Analysis.isSymmetric(in A));
             Assert.IsTrue(Analysis.isDiagonal(in A));
@@ -96,15 +88,15 @@ public class uintAnalysisTests
 
         // Negative cases against identity: ONE off-diagonal nonzero breaks isIdentity (and isDiagonal),
         // and a changed diagonal value breaks isIdentity while STILL being diagonal + symmetric.
-        void IdentityNegatives(ref Arena arena)
+        void IdentityNegatives()
         {
-            var A = arena.uintIdentityMat(4);
+            var A = GenerateOP.uintIdentityMat(4);
             A[0, 1] = (uint)1; // exactly one off-diagonal entry
             Assert.IsFalse(Analysis.isIdentity(in A));
             Assert.IsFalse(Analysis.isDiagonal(in A));
             Assert.IsFalse(Analysis.isSymmetric(in A)); // A[0,1]=1 but A[1,0]=0
 
-            var B = arena.uintIdentityMat(4);
+            var B = GenerateOP.uintIdentityMat(4);
             B[2, 2] = (uint)5; // diagonal value != 1
             Assert.IsFalse(Analysis.isIdentity(in B));
             Assert.IsTrue(Analysis.isDiagonal(in B));   // still diagonal
@@ -112,9 +104,9 @@ public class uintAnalysisTests
         }
 
         // Symmetric 3x3 {{1,2,3},{2,4,5},{3,5,6}} -> isSymmetric true; break one entry -> false.
-        void Symmetric(ref Arena arena)
+        void Symmetric()
         {
-            var A = arena.uintMat(3, 3);
+            var A = new uintMxN(3, 3, Allocator.Temp);
             A[0, 0] = (uint)1; A[0, 1] = (uint)2; A[0, 2] = (uint)3;
             A[1, 0] = (uint)2; A[1, 1] = (uint)4; A[1, 2] = (uint)5;
             A[2, 0] = (uint)3; A[2, 1] = (uint)5; A[2, 2] = (uint)6;
@@ -129,9 +121,9 @@ public class uintAnalysisTests
 
         // Diagonal 3x3 (values 1,2,3) -> isDiagonal true, isSymmetric true, isIdentity false;
         // one off-diagonal nonzero -> isDiagonal false.
-        void Diagonal(ref Arena arena)
+        void Diagonal()
         {
-            var A = arena.uintMat(3, 3, (uint)0);
+            var A = GenerateOP.uintMat(3, 3, (uint)0);
             A[0, 0] = (uint)1; A[1, 1] = (uint)2; A[2, 2] = (uint)3;
 
             Assert.IsTrue(Analysis.isDiagonal(in A));
@@ -145,9 +137,9 @@ public class uintAnalysisTests
         // Upper triangular 3x3 {{1,2,3},{0,4,5},{0,0,6}} -> isUpperTriangular true (and NOT
         // lower/diagonal/identity, since it has above-diagonal nonzeros); one below-diagonal
         // nonzero entry breaks it.
-        void UpperTriangular(ref Arena arena)
+        void UpperTriangular()
         {
-            var A = arena.uintMat(3, 3, (uint)0);
+            var A = GenerateOP.uintMat(3, 3, (uint)0);
             A[0, 0] = (uint)1; A[0, 1] = (uint)2; A[0, 2] = (uint)3;
             A[1, 1] = (uint)4; A[1, 2] = (uint)5;
             A[2, 2] = (uint)6;
@@ -163,9 +155,9 @@ public class uintAnalysisTests
         // Lower triangular 3x3 {{1,0,0},{2,3,0},{4,5,6}} -> isLowerTriangular true (and NOT
         // upper/diagonal/identity, since it has below-diagonal nonzeros); one above-diagonal
         // nonzero entry breaks it.
-        void LowerTriangular(ref Arena arena)
+        void LowerTriangular()
         {
-            var A = arena.uintMat(3, 3, (uint)0);
+            var A = GenerateOP.uintMat(3, 3, (uint)0);
             A[0, 0] = (uint)1;
             A[1, 0] = (uint)2; A[1, 1] = (uint)3;
             A[2, 0] = (uint)4; A[2, 1] = (uint)5; A[2, 2] = (uint)6;
@@ -180,9 +172,9 @@ public class uintAnalysisTests
 
         // Non-square matrices: every square-only predicate must return false (not throw), even when
         // the leading square block looks identity-like/triangular-like.
-        void NonSquare(ref Arena arena)
+        void NonSquare()
         {
-            var A = arena.uintMat(2, 3, (uint)0);
+            var A = GenerateOP.uintMat(2, 3, (uint)0);
             A[0, 0] = (uint)1; A[1, 1] = (uint)1; // identity-looking leading block
 
             Assert.IsFalse(Analysis.isIdentity(in A));
@@ -192,7 +184,7 @@ public class uintAnalysisTests
             Assert.IsFalse(Analysis.isLowerTriangular(in A));
 
             // isZero still works dimension-agnostically on the flat data.
-            var Z = arena.uintMat(2, 3, (uint)0);
+            var Z = GenerateOP.uintMat(2, 3, (uint)0);
             Assert.IsTrue(Analysis.isZero(in Z));
         }
     }

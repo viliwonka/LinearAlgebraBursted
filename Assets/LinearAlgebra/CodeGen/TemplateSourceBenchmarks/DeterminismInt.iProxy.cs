@@ -66,15 +66,14 @@ namespace LinearAlgebra.Benchmarks
     {
         public static (string id, uint hash)[] Case_IntFamilyCoreIProxy()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2654435761u ^ 0x0019u);
 
             const int n = 48;
             // Non-negative range: this case runs for uint too (unlike the norms/stats job below,
             // which is skipped for uint), and a negative iProxy literal wraps to a huge value under
             // unsigned arithmetic, which would violate Rand.nextUniformInPlace's min <= max contract.
-            var a = arena.iProxyVec(n);
-            var b = arena.iProxyVec(n);
+            var a = new iProxyN(n, Allocator.Persistent);
+            var b = new iProxyN(n, Allocator.Persistent);
             // Small range: n=48 values in [0,10) keeps the worst-case dot-product sum (4800) well
             // inside `short`'s range (Blas.dot accumulates in the element's own width, unwidened).
             // Rand.nextUniformInPlace has no uint instantiation (RandomOP.iProxy.cs does not opt
@@ -90,7 +89,7 @@ namespace LinearAlgebra.Benchmarks
 
             var pivot = new Pivot(8, Allocator.Persistent);
 
-            var randDest = arena.iProxyVec(n);
+            var randDest = new iProxyN(n, Allocator.Persistent);
             //+skipFor[u]
             Rand.nextUniformInPlace(ref rng, ref randDest, (iProxy)0, (iProxy)1000);
             //-skipFor
@@ -110,18 +109,17 @@ namespace LinearAlgebra.Benchmarks
             };
             hashOut.Dispose();
             pivot.Dispose();
-            arena.Dispose();
+            a.Dispose(); b.Dispose(); randDest.Dispose();
             return result;
         }
 
         //+skipFor[u]
         public static (string id, uint hash)[] Case_IntFamilyNormsStatsIProxy()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2654435761u ^ 0x001Au);
 
             const int n = 48;
-            var vec = arena.iProxyVec(n);
+            var vec = new iProxyN(n, Allocator.Persistent);
             Rand.nextUniformInPlace(ref rng, ref vec, (iProxy)(-50), (iProxy)50);
 
             var hashOut = new NativeArray<uint>(1, Allocator.Persistent);
@@ -130,7 +128,7 @@ namespace LinearAlgebra.Benchmarks
 
             var result = new[] { ("int-family/norms-stats.iProxy.n48", hashOut[0]) };
             hashOut.Dispose();
-            arena.Dispose();
+            vec.Dispose();
             return result;
         }
         //-skipFor

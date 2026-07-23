@@ -15,67 +15,67 @@ namespace LinearAlgebra
     /// </summary>
     internal static class fProxyKrylovBatteryGallery
     {
-        public static fProxyMxN Build(ref Arena arena, GalleryDenseMatrix m)
+        public static fProxyMxN Build(GalleryDenseMatrix m)
         {
             switch (m)
             {
-                case GalleryDenseMatrix.Laplacian1D_8: return arena.fProxyLaplacian1D(8);
-                case GalleryDenseMatrix.MinIJ_5:        return arena.fProxyMinIJ(5);
-                case GalleryDenseMatrix.Pei5_2:          return arena.fProxyPei(5, (fProxy)2);
-                case GalleryDenseMatrix.Hilbert4:        return arena.fProxyHilbert(4);
-                case GalleryDenseMatrix.Pascal5:         return arena.fProxyPascal(5);
-                case GalleryDenseMatrix.Lehmer5:         return arena.fProxyLehmer(5);
+                case GalleryDenseMatrix.Laplacian1D_8: return fProxyGallery.fProxyLaplacian1D(8);
+                case GalleryDenseMatrix.MinIJ_5:        return fProxyGallery.fProxyMinIJ(5);
+                case GalleryDenseMatrix.Pei5_2:          return fProxyGallery.fProxyPei(5, (fProxy)2);
+                case GalleryDenseMatrix.Hilbert4:        return fProxyGallery.fProxyHilbert(4);
+                case GalleryDenseMatrix.Pascal5:         return fProxyGallery.fProxyPascal(5);
+                case GalleryDenseMatrix.Lehmer5:         return fProxyGallery.fProxyLehmer(5);
 
-                case GalleryDenseMatrix.Fiedler5:  return arena.fProxyFiedler(5);
-                case GalleryDenseMatrix.Clement4:  return arena.fProxyClement(4);
-                case GalleryDenseMatrix.Rosser8:   return arena.fProxyRosser();
+                case GalleryDenseMatrix.Fiedler5:  return fProxyGallery.fProxyFiedler(5);
+                case GalleryDenseMatrix.Clement4:  return fProxyGallery.fProxyClement(4);
+                case GalleryDenseMatrix.Rosser8:   return fProxyGallery.fProxyRosser();
 
-                case GalleryDenseMatrix.DenseNonsym20:   return DenseNonsym(ref arena, 20, 0x51D01u);
-                case GalleryDenseMatrix.ConvDiffDense40: return ConvDiffDense(ref arena, 40);
-                case GalleryDenseMatrix.Grcar8:          return arena.fProxyGrcar(8);
+                case GalleryDenseMatrix.DenseNonsym20:   return DenseNonsym(20, 0x51D01u);
+                case GalleryDenseMatrix.ConvDiffDense40: return ConvDiffDense(40);
+                case GalleryDenseMatrix.Grcar8:          return fProxyGallery.fProxyGrcar(8);
 
-                case GalleryDenseMatrix.Lauchli3_05:  return arena.fProxyLauchli(3, (fProxy)0.5);
-                case GalleryDenseMatrix.Lauchli3_1e3: return arena.fProxyLauchli(3, (fProxy)1E-3);
+                case GalleryDenseMatrix.Lauchli3_05:  return fProxyGallery.fProxyLauchli(3, (fProxy)0.5);
+                case GalleryDenseMatrix.Lauchli3_1e3: return fProxyGallery.fProxyLauchli(3, (fProxy)1E-3);
 
-                case GalleryDenseMatrix.WideRandom10x30: return WideRandom(ref arena, 10, 30, 10, 0x5EED2u);
+                case GalleryDenseMatrix.WideRandom10x30: return WideRandom(10, 30, 10, 0x5EED2u);
 
-                case GalleryDenseMatrix.RankDeficient20x10_Rank5: return WideRandom(ref arena, 20, 10, 5, 0x5EED3u);
+                case GalleryDenseMatrix.RankDeficient20x10_Rank5: return WideRandom(20, 10, 5, 0x5EED3u);
 
-                case GalleryDenseMatrix.RandSPDWellCond20: return RandSPD(ref arena, 20, (fProxy)1, (fProxy)10, 0x5EED4u);
-                case GalleryDenseMatrix.RandSPDIllCond20:  return RandSPD(ref arena, 20, (fProxy)1E-3, (fProxy)1, 0x5EED5u);
+                case GalleryDenseMatrix.RandSPDWellCond20: return RandSPD(20, (fProxy)1, (fProxy)10, 0x5EED4u);
+                case GalleryDenseMatrix.RandSPDIllCond20:  return RandSPD(20, (fProxy)1E-3, (fProxy)1, 0x5EED5u);
 
-                case GalleryDenseMatrix.TallRandom24x8: return arena.fProxyRandomMat(24, 8, (fProxy)(-1), (fProxy)1, 0x5EED6u);
+                case GalleryDenseMatrix.TallRandom24x8: return GenerateOP.fProxyRandomMat(24, 8, (fProxy)(-1), (fProxy)1, 0x5EED6u);
 
                 default: throw new System.ArgumentException("fProxyKrylovBatteryGallery.Build: unhandled GalleryDenseMatrix");
             }
         }
 
-        public static fProxyBSR Build(ref Arena arena, GalleryBSRMatrix m)
+        public static fProxyBSR Build(GalleryBSRMatrix m)
         {
             switch (m)
             {
-                case GalleryBSRMatrix.Poisson2D_20x20:       return Poisson2D(ref arena, 20, 20);
-                case GalleryBSRMatrix.Laplacian2D_16x16:     return arena.fProxyLaplacian2D(16, 16);
-                case GalleryBSRMatrix.RandomSparseSPD_120_2: return arena.fProxyRandomSparseSPD(120, 2, (fProxy)0.2, 0x5EED0u);
-                case GalleryBSRMatrix.RandomSparseNonsym_80: return arena.fProxyRandomSparse(80, 80, 1, (fProxy)0.1, 0x5EED1u);
+                case GalleryBSRMatrix.Poisson2D_20x20:       return Poisson2D(20, 20);
+                case GalleryBSRMatrix.Laplacian2D_16x16:     return fProxyGallery.fProxyLaplacian2D(16, 16);
+                case GalleryBSRMatrix.RandomSparseSPD_120_2: return fProxyGallery.fProxyRandomSparseSPD(120, 2, (fProxy)0.2, 0x5EED0u);
+                case GalleryBSRMatrix.RandomSparseNonsym_80: return fProxyGallery.fProxyRandomSparse(80, 80, 1, (fProxy)0.1, 0x5EED1u);
                 default: throw new System.ArgumentException("fProxyKrylovBatteryGallery.Build: unhandled GalleryBSRMatrix");
             }
         }
 
         // Dense nonsymmetric, diagonally dominant (well-conditioned, nonsingular): random entries
         // plus a heavy diagonal. Not symmetric (random off-diagonals differ across the diagonal).
-        static fProxyMxN DenseNonsym(ref Arena arena, int n, uint seed)
+        static fProxyMxN DenseNonsym(int n, uint seed)
         {
-            var A = arena.fProxyRandomMat(n, n, (fProxy)(-1), (fProxy)1, seed);
+            var A = GenerateOP.fProxyRandomMat(n, n, (fProxy)(-1), (fProxy)1, seed);
             for (int i = 0; i < n; i++) A[i, i] += (fProxy)(2 * n);
             return A;
         }
 
         // Dense 1D convection-diffusion: diagonal 6, super -1, sub -3 -- nonsymmetric,
         // diagonally dominant. Dense counterpart of the ConvDiff1D BSR generator used elsewhere.
-        static fProxyMxN ConvDiffDense(ref Arena arena, int n)
+        static fProxyMxN ConvDiffDense(int n)
         {
-            var A = arena.fProxyMat(n, n);   // zero-initialized
+            var A = new fProxyMxN(n, n, Allocator.Temp);   // zero-initialized
             for (int i = 0; i < n; i++)
             {
                 A[i, i] = (fProxy)6;
@@ -86,28 +86,28 @@ namespace LinearAlgebra
         }
 
         // m x n matrix of numerical rank `rank` (Rand.withRankInPlace).
-        static fProxyMxN WideRandom(ref Arena arena, int m, int n, int rank, uint seed)
+        static fProxyMxN WideRandom(int m, int n, int rank, uint seed)
         {
-            var A = arena.fProxyMat(m, n);
+            var A = new fProxyMxN(m, n, Allocator.Temp);
             var rng = new Random(seed == 0 ? 1u : seed);
             Rand.withRankInPlace(ref rng, ref A, rank);
             return A;
         }
 
         // n x n SPD matrix with eigenvalues in [minEig, maxEig] (Rand.spdInPlace).
-        static fProxyMxN RandSPD(ref Arena arena, int n, fProxy minEig, fProxy maxEig, uint seed)
+        static fProxyMxN RandSPD(int n, fProxy minEig, fProxy maxEig, uint seed)
         {
-            var A = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Temp);
             var rng = new Random(seed == 0 ? 1u : seed);
             Rand.spdInPlace(ref rng, ref A, minEig, maxEig);
             return A;
         }
 
         // Scalar (BR=1) 2D 5-point Poisson stencil on a gx x gy grid.
-        static fProxyBSR Poisson2D(ref Arena arena, int gx, int gy)
+        static fProxyBSR Poisson2D(int gx, int gy)
         {
             int n = gx * gy;
-            var b = arena.fProxyBSRBuilder(n, n, 1, 1, 5 * n);
+            var b = new fProxyBSRBuilder(n, n, 1, 1, Allocator.Temp, 5 * n);
             for (int y = 0; y < gy; y++)
                 for (int x = 0; x < gx; x++)
                 {
@@ -118,7 +118,7 @@ namespace LinearAlgebra
                     if (y > 0) b.AddValue(i, i - gx, (fProxy)(-1));
                     if (y < gy - 1) b.AddValue(i, i + gx, (fProxy)(-1));
                 }
-            return b.ToBSR(ref arena);
+            return b.ToBSR(Allocator.Temp);
         }
     }
 
@@ -148,10 +148,10 @@ namespace LinearAlgebra
         // Non-diagonal SPD preconditioner matrix N = I + W^T W / invScale (W random n x n). Bit-
         // exactly symmetric (the (i,j) and (j,i) sums run the same k order), eigenvalues >= 1;
         // invScale tunes the eigenvalue spread / condition number.
-        public static fProxyMxN BuildDenseSpd(ref Arena arena, int n, uint seed, fProxy invScale)
+        public static fProxyMxN BuildDenseSpd(int n, uint seed, fProxy invScale)
         {
-            var W = arena.fProxyRandomMat(n, n, (fProxy)(-1), (fProxy)1, seed);
-            var Nmat = arena.fProxyMat(n);
+            var W = GenerateOP.fProxyRandomMat(n, n, (fProxy)(-1), (fProxy)1, seed);
+            var Nmat = new fProxyMxN(n, n, Allocator.Temp);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
                 {
@@ -164,23 +164,23 @@ namespace LinearAlgebra
 
         // SPD SYSTEM matrix A = M^T M + n*I (M random n x n) -- NOT a preconditioner (see
         // BuildDenseSpd above for that). Symmetric, well-conditioned by the diagonal boost.
-        public static fProxyMxN BuildDenseSpdSystem(ref Arena arena, int n, uint seed)
+        public static fProxyMxN BuildDenseSpdSystem(int n, uint seed)
         {
-            var M = arena.fProxyRandomMat(n, n, (fProxy)(-1f), (fProxy)1f, seed);
+            var M = GenerateOP.fProxyRandomMat(n, n, (fProxy)(-1f), (fProxy)1f, seed);
             var A = Blas.dot(M, M, true);                       // M^T M
             for (int d = 0; d < n; d++) A[d, d] += n;           // diagonally boost -> SPD, well-conditioned
             return A;
         }
 
         // Dense n x n -> 1x1-block BSR scalar copy. nnz capacity hint inferred from A's own shape.
-        public static fProxyBSR DenseToBSR1x1(ref Arena arena, in fProxyMxN A)
+        public static fProxyBSR DenseToBSR1x1(in fProxyMxN A)
         {
-            var builder = arena.fProxyBSRBuilder(A.M_Rows, A.N_Cols, 1, 1, math.max(A.M_Rows * A.N_Cols, 1));
+            var builder = new fProxyBSRBuilder(A.M_Rows, A.N_Cols, 1, 1, Allocator.Temp, math.max(A.M_Rows * A.N_Cols, 1));
             for (int r = 0; r < A.M_Rows; r++)
                 for (int c = 0; c < A.N_Cols; c++)
                     if (A[r, c] != (fProxy)0)
                         builder.AddValue(r, c, A[r, c]);
-            return builder.ToBSR(ref arena);
+            return builder.ToBSR(Allocator.Temp);
         }
 
         public static fProxy RelResidualDense(in fProxyMxN A, in fProxyN x, in fProxyN b)
@@ -250,9 +250,9 @@ namespace LinearAlgebra
 
         // Row j of B (length n) as an independent fProxyN -- the per-column extraction every
         // block-battery check that compares against a scalar solve needs.
-        public static fProxyN Row(ref Arena arena, in fProxyMxN B, int j, int n)
+        public static fProxyN Row(in fProxyMxN B, int j, int n)
         {
-            var v = arena.fProxyVec(n);
+            var v = new fProxyN(n, Allocator.Temp);
             for (int c = 0; c < n; c++) v[c] = B[j, c];
             return v;
         }

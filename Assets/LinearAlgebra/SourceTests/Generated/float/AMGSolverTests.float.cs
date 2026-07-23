@@ -46,10 +46,10 @@ public class floatAMGSolverTests
         static float SymTol() => 1e-3f;
 
         // Scalar 5-point 2D Poisson on a gx*gy grid (BR=1, full storage): SPD, diagonally dominant.
-        static floatBSR Poisson2D(ref Arena arena, int gx, int gy)
+        static floatBSR Poisson2D(int gx, int gy, Allocator allocator)
         {
             int n = gx * gy;
-            var b = arena.floatBSRBuilder(n, n, 1, 1, 5 * n);
+            var b = new floatBSRBuilder(n, n, 1, 1, allocator, 5 * n);
             for (int y = 0; y < gy; y++)
                 for (int x = 0; x < gx; x++)
                 {
@@ -60,7 +60,7 @@ public class floatAMGSolverTests
                     if (y > 0) b.AddValue(i, i - gx, (float)(-1));
                     if (y < gy - 1) b.AddValue(i, i + gx, (float)(-1));
                 }
-            return b.ToBSR(ref arena);
+            return b.ToBSR(allocator);
         }
 
         public void Execute()
@@ -92,53 +92,44 @@ public class floatAMGSolverTests
 
         void VCycleSolves()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = Poisson2D(ref arena, 16, 16);
+            var A = Poisson2D(16, 16, Allocator.Temp);
             int n = A.M_Rows;
-            var b = arena.floatRandomVec(n, -1f, 1f, 0xA31u);
-            var amg = arena.floatAMG(in A, out var info);
+            var b = GenerateOP.floatRandomVec(n, -1f, 1f, 0xA31u);
+            var amg = new floatAMG(in A, out var info, Allocator.Temp);
             Assert.IsTrue(info.Solved);
 
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (float)0;
             var si = MG.solve(in amg, in b, ref x, 100, Tol());
 
             Assert.IsTrue(si.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(floatKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
-
-            amg.Dispose();
-            arena.Dispose();
         }
 
         void MultiLevelBuilt()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = Poisson2D(ref arena, 32, 32);          // n = 1024 -> several levels
-            var amg = arena.floatAMG(in A, out var info);
+            var A = Poisson2D(32, 32, Allocator.Temp);          // n = 1024 -> several levels
+            var amg = new floatAMG(in A, out var info, Allocator.Temp);
 
             Assert.IsTrue(info.Solved);
             Assert.IsTrue(info.levels >= 3);
             Assert.IsTrue(info.coarseRows <= AMGOptions.Default.coarseMax);
-
-            amg.Dispose();
-            arena.Dispose();
         }
 
         void PcgAmgBeatsPlainCg()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = Poisson2D(ref arena, 24, 24);
+            var A = Poisson2D(24, 24, Allocator.Temp);
             int n = A.M_Rows;
-            var b = arena.floatRandomVec(n, -1f, 1f, 0xB42u);
+            var b = GenerateOP.floatRandomVec(n, -1f, 1f, 0xB42u);
             float tol = Tol();
 
-            var xCg = arena.floatVec(n);
+            var xCg = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) xCg[i] = (float)0;
             var cgInfo = Krylov.cg(in A, in b, ref xCg, 8 * n, tol);
 
-            var amg = arena.floatAMG(in A, out _);
+            var amg = new floatAMG(in A, out _, Allocator.Temp);
             var M = new floatAMGPreconditioner(in amg);
-            var xPc = arena.floatVec(n);
+            var xPc = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) xPc[i] = (float)0;
             var pcInfo = Krylov.cg(in A, in M, in b, ref xPc, 8 * n, tol);
 
@@ -148,97 +139,78 @@ public class floatAMGSolverTests
             Assert.IsTrue(floatKrylovBatteryOracles.RelResidualBSR(in A, in xPc, in b) <= tol);
             // AMG preconditioning must cut the iteration count.
             Assert.IsTrue(pcInfo.iterations < cgInfo.iterations);
-
-            amg.Dispose();
-            arena.Dispose();
         }
 
         void Deterministic()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = Poisson2D(ref arena, 20, 20);
+            var A = Poisson2D(20, 20, Allocator.Temp);
             int n = A.M_Rows;
-            var b = arena.floatRandomVec(n, -1f, 1f, 0xC53u);
-            var amg = arena.floatAMG(in A, out _);
+            var b = GenerateOP.floatRandomVec(n, -1f, 1f, 0xC53u);
+            var amg = new floatAMG(in A, out _, Allocator.Temp);
 
-            var x1 = arena.floatVec(n); var x2 = arena.floatVec(n);
+            var x1 = new floatN(n, Allocator.Temp); var x2 = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) { x1[i] = (float)0; x2[i] = (float)0; }
             MG.solve(in amg, in b, ref x1, 50, Tol());
             MG.solve(in amg, in b, ref x2, 50, Tol());
 
             for (int i = 0; i < n; i++) Assert.IsTrue(x1[i] == x2[i]);
-
-            amg.Dispose();
-            arena.Dispose();
         }
 
         // cg validity: the symmetric V-cycle (pre==post) must give <M r1, r2> == <r1, M r2>.
         void PreconditionerSymmetric()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = Poisson2D(ref arena, 16, 16);
+            var A = Poisson2D(16, 16, Allocator.Temp);
             int n = A.M_Rows;
-            var amg = arena.floatAMG(in A, out _);
+            var amg = new floatAMG(in A, out _, Allocator.Temp);
 
             var M = new floatAMGPreconditioner(in amg);
-            var r1 = arena.floatRandomVec(n, -1f, 1f, 0x111u);
-            var r2 = arena.floatRandomVec(n, -1f, 1f, 0x222u);
-            var z1 = arena.floatVec(n); var z2 = arena.floatVec(n);
+            var r1 = GenerateOP.floatRandomVec(n, -1f, 1f, 0x111u);
+            var r2 = GenerateOP.floatRandomVec(n, -1f, 1f, 0x222u);
+            var z1 = new floatN(n, Allocator.Temp); var z2 = new floatN(n, Allocator.Temp);
             M.Apply(in r1, ref z1);
             M.Apply(in r2, ref z2);
 
             float a = Blas.dot(z1, r2);   // <M r1, r2>
             float b2 = Blas.dot(r1, z2);  // <r1, M r2>
             Assert.IsTrue(math.abs(a - b2) <= SymTol() * ((float)1 + math.abs(a)));
-
-            amg.Dispose();
-            arena.Dispose();
         }
 
         // A system already <= coarseMax is a single-level hierarchy: the V-cycle is a pure dense
         // Cholesky solve (down/up loops empty), converging in one cycle.
         void SingleLevelHierarchy()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = Poisson2D(ref arena, 4, 4);            // n = 16 <= coarseMax(48)
+            var A = Poisson2D(4, 4, Allocator.Temp);            // n = 16 <= coarseMax(48)
             int n = A.M_Rows;
-            var amg = arena.floatAMG(in A, out var info);
+            var amg = new floatAMG(in A, out var info, Allocator.Temp);
             Assert.IsTrue(info.Solved);
             Assert.IsTrue(info.levels == 1);
             Assert.IsTrue(info.coarseRows == n);
 
-            var b = arena.floatRandomVec(n, -1f, 1f, 0x5171u);
-            var x = arena.floatVec(n);
+            var b = GenerateOP.floatRandomVec(n, -1f, 1f, 0x5171u);
+            var x = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (float)0;
             var si = MG.solve(in amg, in b, ref x, 10, Tol());
             Assert.IsTrue(si.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(si.iterations == 1);
             Assert.IsTrue(floatKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
-
-            amg.Dispose();
-            arena.Dispose();
         }
 
         // Exercises the explicit-options overload with non-default theta/pre/post/coarseMax/maxLevels.
         void ExplicitOptions()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = Poisson2D(ref arena, 32, 32);
+            var A = Poisson2D(32, 32, Allocator.Temp);
             int n = A.M_Rows;
             var opts = new AMGOptions { theta = 0.1, pre = 2, post = 2, coarseMax = 16, maxLevels = 5 };
-            var amg = arena.floatAMG(in A, in opts, out var info);
+            var amg = new floatAMG(in A, in opts, out var info, Allocator.Temp);
             Assert.IsTrue(info.Solved);
             Assert.IsTrue(info.levels <= 5);
 
-            var b = arena.floatRandomVec(n, -1f, 1f, 0xE0F5u);
-            var x = arena.floatVec(n);
+            var b = GenerateOP.floatRandomVec(n, -1f, 1f, 0xE0F5u);
+            var x = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (float)0;
             var si = MG.solve(in amg, in b, ref x, 100, Tol());
             Assert.IsTrue(si.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(floatKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
-
-            amg.Dispose();
-            arena.Dispose();
         }
 
         // Indefinite input (negative diagonal) is single-level, so no smoother is built and the
@@ -246,36 +218,31 @@ public class floatAMGSolverTests
         // safely disposable (rather than silently poisoning a solve with NaN).
         void NotPositiveDefiniteFailsCleanly()
         {
-            var arena = new Arena(Allocator.Persistent);
             int nb = 4;
-            var bld = arena.floatBSRBuilder(nb, nb, 1, 1, 3 * nb);
+            var bld = new floatBSRBuilder(nb, nb, 1, 1, Allocator.Temp, 3 * nb);
             for (int i = 0; i < nb; i++)
             {
                 bld.AddValue(i, i, i == 2 ? (float)(-3) : (float)2);   // symmetric indefinite chain
                 if (i > 0) bld.AddValue(i, i - 1, (float)(-1));
                 if (i < nb - 1) bld.AddValue(i, i + 1, (float)(-1));
             }
-            var A = bld.ToBSR(ref arena);
+            var A = bld.ToBSR(Allocator.Temp);
 
-            var amg = arena.floatAMG(in A, out var info);
+            var amg = new floatAMG(in A, out var info, Allocator.Temp);
             Assert.IsTrue(!info.Solved);
             Assert.IsTrue(info.status == DirectSolveStatus.NotPositiveDefinite);
-
-            amg.Dispose();
-            arena.Dispose();
         }
 
         // One hierarchy, two different right-hand sides: internal scratch must reset between solves.
         void ReuseAcrossRhs()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = Poisson2D(ref arena, 16, 16);
+            var A = Poisson2D(16, 16, Allocator.Temp);
             int n = A.M_Rows;
-            var amg = arena.floatAMG(in A, out _);
+            var amg = new floatAMG(in A, out _, Allocator.Temp);
 
-            var b1 = arena.floatRandomVec(n, -1f, 1f, 0x1111u);
-            var b2 = arena.floatRandomVec(n, -1f, 1f, 0x2222u);
-            var x = arena.floatVec(n);
+            var b1 = GenerateOP.floatRandomVec(n, -1f, 1f, 0x1111u);
+            var b2 = GenerateOP.floatRandomVec(n, -1f, 1f, 0x2222u);
+            var x = new floatN(n, Allocator.Temp);
 
             for (int i = 0; i < n; i++) x[i] = (float)0;
             var s1 = MG.solve(in amg, in b1, ref x, 100, Tol());
@@ -286,129 +253,105 @@ public class floatAMGSolverTests
             var s2 = MG.solve(in amg, in b2, ref x, 100, Tol());
             Assert.IsTrue(s2.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(floatKrylovBatteryOracles.RelResidualBSR(in A, in x, in b2) <= Tol());
-
-            amg.Dispose();
-            arena.Dispose();
         }
 
         void ZeroRhs()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = Poisson2D(ref arena, 8, 8);
+            var A = Poisson2D(8, 8, Allocator.Temp);
             int n = A.M_Rows;
-            var amg = arena.floatAMG(in A, out _);
+            var amg = new floatAMG(in A, out _, Allocator.Temp);
 
-            var b = arena.floatVec(n);
+            var b = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) b[i] = (float)0;
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (float)7;
 
             var si = MG.solve(in amg, in b, ref x, 50, Tol());
             Assert.IsTrue(si.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(si.iterations == 0);
             for (int i = 0; i < n; i++) Assert.IsTrue(x[i] == (float)0);
-
-            amg.Dispose();
-            arena.Dispose();
         }
 
         // A warm start at (near) the solution converges in no more cycles than a cold start.
         void WarmStart()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = Poisson2D(ref arena, 24, 24);
+            var A = Poisson2D(24, 24, Allocator.Temp);
             int n = A.M_Rows;
-            var b = arena.floatRandomVec(n, -1f, 1f, 0x99A1u);
-            var amg = arena.floatAMG(in A, out _);
+            var b = GenerateOP.floatRandomVec(n, -1f, 1f, 0x99A1u);
+            var amg = new floatAMG(in A, out _, Allocator.Temp);
 
-            var xCold = arena.floatVec(n);
+            var xCold = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) xCold[i] = (float)0;
             var cold = MG.solve(in amg, in b, ref xCold, 100, Tol());
             Assert.IsTrue(cold.status == IterativeSolveStatus.Converged);
 
-            var xWarm = arena.floatVec(n);
+            var xWarm = new floatN(n, Allocator.Temp);
             xWarm.Data.CopyFrom(xCold.Data);          // seed at the solution
             var warm = MG.solve(in amg, in b, ref xWarm, 100, Tol());
             Assert.IsTrue(warm.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(warm.iterations <= cold.iterations);
-
-            amg.Dispose();
-            arena.Dispose();
         }
 
         // maxIter exhausted before an unreachable tolerance -> MaxIterations status.
         void MaxIterationsExit()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = Poisson2D(ref arena, 32, 32);
+            var A = Poisson2D(32, 32, Allocator.Temp);
             int n = A.M_Rows;
-            var b = arena.floatRandomVec(n, -1f, 1f, 0xF1A1u);
-            var amg = arena.floatAMG(in A, out _);
+            var b = GenerateOP.floatRandomVec(n, -1f, 1f, 0xF1A1u);
+            var amg = new floatAMG(in A, out _, Allocator.Temp);
 
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (float)0;
             var si = MG.solve(in amg, in b, ref x, 1, (float)1e-15);   // one cycle can't reach 1e-15
             Assert.IsTrue(si.status == IterativeSolveStatus.MaxIterations);
             Assert.IsTrue(si.iterations == 1);
-
-            amg.Dispose();
-            arena.Dispose();
         }
 
         // The IsCycleSymmetric flag (the cg-validity gate) reflects pre == post.
         void CycleSymmetryFlag()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = Poisson2D(ref arena, 8, 8);
+            var A = Poisson2D(8, 8, Allocator.Temp);
 
-            var sym = arena.floatAMG(in A, new AMGOptions { theta = 0, pre = 1, post = 1, coarseMax = 48, maxLevels = 20 }, out _);
+            var sym = new floatAMG(in A, new AMGOptions { theta = 0, pre = 1, post = 1, coarseMax = 48, maxLevels = 20 }, out _, Allocator.Temp);
             Assert.IsTrue(sym.IsCycleSymmetric);
 
-            var asym = arena.floatAMG(in A, new AMGOptions { theta = 0, pre = 2, post = 0, coarseMax = 48, maxLevels = 20 }, out _);
+            var asym = new floatAMG(in A, new AMGOptions { theta = 0, pre = 2, post = 0, coarseMax = 48, maxLevels = 20 }, out _, Allocator.Temp);
             Assert.IsTrue(!asym.IsCycleSymmetric);
-
-            sym.Dispose();
-            asym.Dispose();
-            arena.Dispose();
         }
 
         // A K-cycle hierarchy solves standalone (MG.solve iterates the K-cycle).
         void KCycleSolves()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = Poisson2D(ref arena, 24, 24);
+            var A = Poisson2D(24, 24, Allocator.Temp);
             int n = A.M_Rows;
-            var b = arena.floatRandomVec(n, -1f, 1f, 0x4B01u);
-            var amg = arena.floatAMG(in A, KOpts(), out var info);
+            var b = GenerateOP.floatRandomVec(n, -1f, 1f, 0x4B01u);
+            var amg = new floatAMG(in A, KOpts(), out var info, Allocator.Temp);
             Assert.IsTrue(info.Solved);
             Assert.IsTrue(amg.IsKCycle);
             Assert.IsTrue(!amg.IsCycleSymmetric);       // K-cycle is never cg-valid
 
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (float)0;
             var si = MG.solve(in amg, in b, ref x, 100, Tol());
             Assert.IsTrue(si.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(floatKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
-
-            amg.Dispose();
-            arena.Dispose();
         }
 
         // The K-cycle's per-level Krylov acceleration is never worse than the V-cycle: it converges
-        // in no more outer cycles (usually fewer) on the same system.
+        // in no more outer cycles (usually fewer) on the same system. n = 48*48 = 2304 >= 2048 ->
+        // Allocator.Persistent with explicit Dispose (large-buffer policy).
         void KCycleTighterThanV()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = Poisson2D(ref arena, 48, 48);
+            var A = Poisson2D(48, 48, Allocator.Persistent);
             int n = A.M_Rows;
-            var b = arena.floatRandomVec(n, -1f, 1f, 0x4B02u);
+            var b = GenerateOP.floatRandomVec(n, -1f, 1f, 0x4B02u, Allocator.Persistent);
 
-            var vAmg = arena.floatAMG(in A, out _);           // default V-cycle
-            var xv = arena.floatVec(n); for (int i = 0; i < n; i++) xv[i] = (float)0;
+            var vAmg = new floatAMG(in A, out _, Allocator.Persistent);           // default V-cycle
+            var xv = new floatN(n, Allocator.Persistent); for (int i = 0; i < n; i++) xv[i] = (float)0;
             var vInfo = MG.solve(in vAmg, in b, ref xv, 200, Tol());
 
-            var kAmg = arena.floatAMG(in A, KOpts(), out _);
-            var xk = arena.floatVec(n); for (int i = 0; i < n; i++) xk[i] = (float)0;
+            var kAmg = new floatAMG(in A, KOpts(), out _, Allocator.Persistent);
+            var xk = new floatN(n, Allocator.Persistent); for (int i = 0; i < n; i++) xk[i] = (float)0;
             var kInfo = MG.solve(in kAmg, in b, ref xk, 200, Tol());
 
             Assert.IsTrue(vInfo.status == IterativeSolveStatus.Converged);
@@ -416,32 +359,31 @@ public class floatAMGSolverTests
             Assert.IsTrue(floatKrylovBatteryOracles.RelResidualBSR(in A, in xk, in b) <= Tol());
             Assert.IsTrue(kInfo.iterations <= vInfo.iterations);
 
+            A.Dispose();
+            b.Dispose();
             vAmg.Dispose();
+            xv.Dispose();
             kAmg.Dispose();
-            arena.Dispose();
+            xk.Dispose();
         }
 
         // The explicit-near-nullspace overload with B = ones (m=1) reproduces the scalar default.
         void NearNullspaceOnesMatchesDefault()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = Poisson2D(ref arena, 16, 16);
+            var A = Poisson2D(16, 16, Allocator.Temp);
             int n = A.M_Rows;
-            var b = arena.floatRandomVec(n, -1f, 1f, 0x4E01u);
+            var b = GenerateOP.floatRandomVec(n, -1f, 1f, 0x4E01u);
 
-            var B = arena.floatMat(n, 1);
+            var B = new floatMxN(n, 1, Allocator.Temp);
             for (int i = 0; i < n; i++) B[i, 0] = (float)1;
-            var amg = arena.floatAMG(in A, in B, out var info);
+            var amg = new floatAMG(in A, in B, out var info, Allocator.Temp);
             Assert.IsTrue(info.Solved);
 
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (float)0;
             var si = MG.solve(in amg, in b, ref x, 100, Tol());
             Assert.IsTrue(si.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(floatKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
-
-            amg.Dispose();
-            arena.Dispose();
         }
 
         // A vector problem: two decoupled 1D Laplacians stacked into BR=2 blocks. The near-nullspace
@@ -449,10 +391,9 @@ public class floatAMGSolverTests
         // block size becomes m=2.
         void BlockNearNullspaceSolves()
         {
-            var arena = new Arena(Allocator.Persistent);
             int nb = 40, BR = 2, m = 2, n = nb * BR;
-            var bld = arena.floatBSRBuilder(nb, nb, BR, BR, 3 * nb);
-            var diag = arena.floatMat(BR, BR); var off = arena.floatMat(BR, BR);
+            var bld = new floatBSRBuilder(nb, nb, BR, BR, Allocator.Temp, 3 * nb);
+            var diag = new floatMxN(BR, BR, Allocator.Temp); var off = new floatMxN(BR, BR, Allocator.Temp);
             for (int r = 0; r < BR; r++)
                 for (int c = 0; c < BR; c++)
                 { diag[r, c] = r == c ? (float)2 : (float)0; off[r, c] = r == c ? (float)(-1) : (float)0; }
@@ -462,46 +403,39 @@ public class floatAMGSolverTests
                 if (i > 0) bld.AddBlock(i, i - 1, in off);
                 if (i < nb - 1) bld.AddBlock(i, i + 1, in off);
             }
-            var A = bld.ToBSR(ref arena);
+            var A = bld.ToBSR(Allocator.Temp);
 
             // Near-nullspace: column c is the constant of component c (1 at rows ≡ c mod BR).
-            var B = arena.floatMat(n, m);
+            var B = new floatMxN(n, m, Allocator.Temp);
             for (int r = 0; r < n; r++)
                 for (int c = 0; c < m; c++) B[r, c] = (r % BR) == c ? (float)1 : (float)0;
 
-            var amg = arena.floatAMG(in A, in B, out var info);
+            var amg = new floatAMG(in A, in B, out var info, Allocator.Temp);
             Assert.IsTrue(info.Solved);
             Assert.IsTrue(info.levels >= 2);
 
-            var b = arena.floatRandomVec(n, -1f, 1f, 0x4E11u);
-            var x = arena.floatVec(n);
+            var b = GenerateOP.floatRandomVec(n, -1f, 1f, 0x4E11u);
+            var x = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (float)0;
             var si = MG.solve(in amg, in b, ref x, 200, Tol());
             Assert.IsTrue(si.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(floatKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
-
-            amg.Dispose();
-            arena.Dispose();
         }
 
         // A K-cycle preconditioner (variable operator) drives Flexible CG to convergence.
         void FcgKCycleConverges()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = Poisson2D(ref arena, 24, 24);
+            var A = Poisson2D(24, 24, Allocator.Temp);
             int n = A.M_Rows;
-            var b = arena.floatRandomVec(n, -1f, 1f, 0x4B03u);
-            var amg = arena.floatAMG(in A, KOpts(), out _);
+            var b = GenerateOP.floatRandomVec(n, -1f, 1f, 0x4B03u);
+            var amg = new floatAMG(in A, KOpts(), out _, Allocator.Temp);
             var M = new floatAMGPreconditioner(in amg);
 
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (float)0;
             var info = Krylov.fcg(in A, in M, in b, ref x, 4 * n, Tol());
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(floatKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
-
-            amg.Dispose();
-            arena.Dispose();
         }
     }
 
@@ -530,9 +464,8 @@ public class floatAMGSolverTests
     [Test]
     public void AsymmetricCyclePcgRejected()
     {
-        var arena = new Arena(Allocator.Persistent);
         int gx = 3, gy = 3, n = gx * gy;
-        var bld = arena.floatBSRBuilder(n, n, 1, 1, 5 * n);
+        var bld = new floatBSRBuilder(n, n, 1, 1, Allocator.Temp, 5 * n);
         for (int y = 0; y < gy; y++)
             for (int x = 0; x < gx; x++)
             {
@@ -543,16 +476,13 @@ public class floatAMGSolverTests
                 if (y > 0) bld.AddValue(i, i - gx, (float)(-1));
                 if (y < gy - 1) bld.AddValue(i, i + gx, (float)(-1));
             }
-        var A = bld.ToBSR(ref arena);
+        var A = bld.ToBSR(Allocator.Temp);
 
-        var amg = arena.floatAMG(in A, new AMGOptions { theta = 0, pre = 2, post = 0, coarseMax = 48, maxLevels = 20 }, out var info);
+        var amg = new floatAMG(in A, new AMGOptions { theta = 0, pre = 2, post = 0, coarseMax = 48, maxLevels = 20 }, out var info, Allocator.Temp);
         Assert.IsTrue(info.Solved);
         var M = new floatAMGPreconditioner(in amg);          // constructing is fine
-        var rhs = arena.floatRandomVec(n, -1f, 1f, 0x321u);
-        var sol = arena.floatVec(n);
+        var rhs = GenerateOP.floatRandomVec(n, -1f, 1f, 0x321u);
+        var sol = new floatN(n, Allocator.Temp);
         Assert.Throws<ArgumentException>(() => { Krylov.cg(in A, in M, in rhs, ref sol); });
-
-        amg.Dispose();
-        arena.Dispose();
     }
 }

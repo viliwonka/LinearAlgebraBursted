@@ -52,9 +52,9 @@ public class fProxyGCRODRTests
 
         // Dense nonsymmetric, diagonally dominant (well-conditioned, nonsingular): random entries + a
         // heavy diagonal. Not symmetric. Same construction GMRESTests/FGMRESTests use.
-        static fProxyMxN DenseNonsym(ref Arena arena, int n, uint seed)
+        static fProxyMxN DenseNonsym(int n, uint seed)
         {
-            var A = arena.fProxyRandomMat(n, n, -1f, 1f, seed);
+            var A = GenerateOP.fProxyRandomMat(n, n, -1f, 1f, seed);
             for (int i = 0; i < n; i++) A[i, i] += (fProxy)(2 * n);
             return A;
         }
@@ -65,9 +65,9 @@ public class fProxyGCRODRTests
         // This is the textbook GCRO-DR win: restarted gmres(m) stalls on the isolated small
         // eigenvalues (degree-m residual polynomial cannot resolve them AND the cluster each cycle),
         // while gcrodr recycles their harmonic-Ritz vectors and deflates them permanently.
-        static fProxyMxN SmallIsolatedEig(ref Arena arena, int n, uint seed)
+        static fProxyMxN SmallIsolatedEig(int n, uint seed)
         {
-            var A = arena.fProxyMat(n, n);   // zero
+            var A = new fProxyMxN(n, n, Allocator.Temp);   // zero
             A[0, 0] = (fProxy)0.01;
             A[1, 1] = (fProxy)0.03;
             A[2, 2] = (fProxy)0.06;
@@ -100,19 +100,18 @@ public class fProxyGCRODRTests
         // spectrum. Same system, same restart, same tol, same maxIter budget for both solvers. ----
         void RecyclingBeatsGmres()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 60;
             int m = 12, k = 3;               // recycle exactly the 3 isolated small eigenvalues
             fProxy tol = TightTol();
             int maxIter = 60 * n;
 
-            var A = SmallIsolatedEig(ref arena, n, 0x6C0Du);
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0x6C0Eu);   // excites all eigen-components
+            var A = SmallIsolatedEig(n, 0x6C0Du);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x6C0Eu);   // excites all eigen-components
 
-            var xG = arena.fProxyVec(n);     // plain gmres(m)
+            var xG = new fProxyN(n, Allocator.Temp);     // plain gmres(m)
             var giG = Krylov.gmres(in A, in b, ref xG, m, maxIter, tol);
 
-            var xR = arena.fProxyVec(n);     // gcrodr(m, recycle=k)
+            var xR = new fProxyN(n, Allocator.Temp);     // gcrodr(m, recycle=k)
             var giR = Krylov.gcrodr(in A, in b, ref xR, m, k, maxIter, tol);
 
             // gcrodr must actually solve it.
@@ -125,29 +124,25 @@ public class fProxyGCRODRTests
 
             // THE POINT: deflation reaches the tolerance in strictly fewer total inner iterations.
             Assert.IsTrue(giR.iterations < giG.iterations);
-
-            arena.Dispose();
         }
 
         // ---- Agreement with a direct LU solve on an ordinary well-conditioned nonsym system. ----
         void MatchesLUOracle()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 32;
-            var A = DenseNonsym(ref arena, n, 0x6C11u);
-            var xTrue = arena.fProxyRandomVec(n, -1f, 1f, 0x6C12u);
+            var A = DenseNonsym(n, 0x6C11u);
+            var xTrue = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x6C12u);
             var b = Blas.dot(A, xTrue);
 
             // Dense LU oracle on copies (decompInPlace/decompSolve are destructive).
-            var LUcopy = A.Copy();
+            var LUcopy = new fProxyMxN(in A, Allocator.Temp);
             var pivot = new Pivot(n, Allocator.Temp);
             bool okLU = LU.decompInPlace(ref LUcopy, ref pivot);
             Assert.IsTrue(okLU);
-            var xLU = b.Copy();
+            var xLU = new fProxyN(in b, Allocator.Temp);
             LU.decompSolve(ref LUcopy, in pivot, ref xLU);
-            pivot.Dispose();
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             var info = Krylov.gcrodr(in A, in b, ref x, 16, 4, 8 * n, Tol());
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(fProxyKrylovBatteryOracles.RelResidualDense(in A, in x, in b) <= Tol());
@@ -158,8 +153,6 @@ public class fProxyGCRODRTests
                 Assert.IsTrue(math.abs(x[i] - xLU[i]) <= Tol() * ((fProxy)1 + math.abs(xLU[i])));
                 Assert.IsTrue(math.abs(x[i] - xTrue[i]) <= Tol() * ((fProxy)1 + math.abs(xTrue[i])));
             }
-
-            arena.Dispose();
         }
 
         // ---- Identity fold, recycle > 0: the no-preconditioner entry point and the explicit
@@ -167,111 +160,96 @@ public class fProxyGCRODRTests
         // count and rnorm must be bit-for-bit identical (== on floats, not a tolerance). ----
         void IdentityFoldBitExact()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 40;
             int m = 12, k = 4;
-            var A = DenseNonsym(ref arena, n, 0x6C21u);
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0x6C22u);
+            var A = DenseNonsym(n, 0x6C21u);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x6C22u);
             var op = new fProxyDenseOperator(in A);
 
-            var xImplicit = arena.fProxyVec(n);
+            var xImplicit = new fProxyN(n, Allocator.Temp);
             var i0 = Krylov.gcrodr(in op, in b, ref xImplicit, m, k, 8 * n, Tol());
 
-            var xExplicit = arena.fProxyVec(n);
+            var xExplicit = new fProxyN(n, Allocator.Temp);
             var i1 = Krylov.gcrodr(in op, default(fProxyIdentityPreconditioner), in b, ref xExplicit, m, k, 8 * n, Tol());
 
             Assert.IsTrue(i0.status == IterativeSolveStatus.Converged);
             Assert.AreEqual(i0.iterations, i1.iterations);
             Assert.AreEqual(i0.rnorm, i1.rnorm);
             for (int i = 0; i < n; i++) Assert.IsTrue(xImplicit[i] == xExplicit[i]);
-
-            arena.Dispose();
         }
 
         // ---- recycle = 0 disables the whole recycling code path -> must equal plain gmres(m)
         // bit-for-bit (same restart, same everything). Strong internal-consistency check. ----
         void RecycleZeroMatchesGmres()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 40;
             int m = 12;
-            var A = DenseNonsym(ref arena, n, 0x6C31u);
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0x6C32u);
+            var A = DenseNonsym(n, 0x6C31u);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x6C32u);
 
-            var xR = arena.fProxyVec(n);
+            var xR = new fProxyN(n, Allocator.Temp);
             var iR = Krylov.gcrodr(in A, in b, ref xR, m, 0, 8 * n, Tol());
 
-            var xG = arena.fProxyVec(n);
+            var xG = new fProxyN(n, Allocator.Temp);
             var iG = Krylov.gmres(in A, in b, ref xG, m, 8 * n, Tol());
 
             Assert.IsTrue(iR.status == IterativeSolveStatus.Converged);
             Assert.AreEqual(iG.iterations, iR.iterations);
             Assert.AreEqual(iG.rnorm, iR.rnorm);
             for (int i = 0; i < n; i++) Assert.IsTrue(xR[i] == xG[i]);
-
-            arena.Dispose();
         }
 
         // ---- Determinism: two runs from x0 = 0 on identical (A, b) with recycle > 0 give bit-identical
         // solution, iteration count and rnorm (the recycling deflation path included). ----
         void Deterministic()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 44;
             int m = 12, k = 3;
-            var A = SmallIsolatedEig(ref arena, n, 0x6C41u);
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0x6C42u);
+            var A = SmallIsolatedEig(n, 0x6C41u);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x6C42u);
 
-            var x1 = arena.fProxyVec(n);
+            var x1 = new fProxyN(n, Allocator.Temp);
             var i1 = Krylov.gcrodr(in A, in b, ref x1, m, k, 40 * n, Tol());
 
-            var x2 = arena.fProxyVec(n);
+            var x2 = new fProxyN(n, Allocator.Temp);
             var i2 = Krylov.gcrodr(in A, in b, ref x2, m, k, 40 * n, Tol());
 
             Assert.IsTrue(i1.status == IterativeSolveStatus.Converged);
             Assert.AreEqual(i1.iterations, i2.iterations);
             Assert.AreEqual(i1.rnorm, i2.rnorm);
             for (int i = 0; i < n; i++) Assert.IsTrue(x1[i] == x2[i]);
-
-            arena.Dispose();
         }
 
         // ---- Zero RHS: exact early-out. x = b = 0, Converged, zero iterations, EXACT (not approx). ----
         void ZeroRhs()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 30;
-            var A = DenseNonsym(ref arena, n, 0x6C51u);
-            var b = arena.fProxyVec(n);   // all zeros
+            var A = DenseNonsym(n, 0x6C51u);
+            var b = new fProxyN(n, Allocator.Temp);   // all zeros
 
             // Seed x with garbage to prove gcrodr overwrites it with b on the early-out path.
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (fProxy)7;
 
             var info = Krylov.gcrodr(in A, in b, ref x, 10, 3, 4 * n, Tol());
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(info.iterations == 0);
             for (int i = 0; i < n; i++) Assert.IsTrue(x[i] == (fProxy)0);
-
-            arena.Dispose();
         }
 
         // ---- Singular operator (all-zero A): 0 x = b has NO solution for b != 0, so the Hessenberg
         // pivot collapses -> honest Breakdown, never a false Converged, never a NaN. ----
         void SingularBreakdown()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 8;
-            var A = arena.fProxyMat(n, n);   // all zeros -> singular, A x == 0 for every x
-            var b = arena.fProxyRandomVec(n, 1f, 2f, 0x6C61u);   // nonzero, not in range(A)
+            var A = new fProxyMxN(n, n, Allocator.Temp);   // all zeros -> singular, A x == 0 for every x
+            var b = GenerateOP.fProxyRandomVec(n, 1f, 2f, 0x6C61u);   // nonzero, not in range(A)
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             var info = Krylov.gcrodr(in A, in b, ref x, 5, 2, 4 * n, Tol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Breakdown);
             Assert.IsFalse(double.IsNaN((double)info.rnorm));
-
-            arena.Dispose();
         }
 
         // ---- pivotGuard must scale with ||A||, not ||b||: a well-conditioned but uniformly tiny-
@@ -280,23 +258,20 @@ public class fProxyGCRODRTests
         // a spurious Breakdown with x left untouched. ----
         void SmallScaleWellConditioned()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 8;
             fProxy c = /*+choose[1e-6f|1e-30]*/1e-6f/*-choose*/;
-            var A = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Temp);
             for (int i = 0; i < n; i++) A[i, i] = c;
-            var b = arena.fProxyVec(n);
+            var b = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) b[i] = (fProxy)1;
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             var info = Krylov.gcrodr(in A, in b, ref x, 5, 2, 4 * n, Tol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             fProxy expected = (fProxy)1 / c;
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(math.abs(x[i] - expected) <= Tol() * expected);
-
-            arena.Dispose();
         }
     }
 

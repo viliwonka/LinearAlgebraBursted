@@ -84,11 +84,10 @@ public class fProxyFFTTests
         // FFT of a constant signal x=[1,1,1,1] -> X[0]=N (DC), all other bins 0.
         void FftConstantDC()
         {
-            var arena = new Arena(Allocator.Persistent);
             int N = 4;
-            var ws = arena.fProxyFFTCache(N);
-            var re = arena.fProxyVec(N, 1f);     // all ones
-            var im = arena.fProxyVec(N);         // zeros
+            var ws = new fProxyFFTCache(N, Allocator.Temp);
+            var re = GenerateOP.fProxyVec(N, 1f);     // all ones
+            var im = new fProxyN(N, Allocator.Temp);         // zeros
 
             FFT.fft(ref re, ref im, in ws);
 
@@ -99,24 +98,22 @@ public class fProxyFFTTests
                 AssertClose(re[k], (fProxy)0f, 1E-4f);
                 AssertClose(im[k], (fProxy)0f, 1E-4f);
             }
-            arena.Dispose();
         }
 
         // x[n]=cos(2πn/N) -> magnitude peaks N/2 at bins 1 and N-1, ~0 elsewhere.
         void FftSingleSinusoid()
         {
-            var arena = new Arena(Allocator.Persistent);
             int N = 8;
-            var ws = arena.fProxyFFTCache(N);
-            var re = arena.fProxyVec(N);
-            var im = arena.fProxyVec(N);
+            var ws = new fProxyFFTCache(N, Allocator.Temp);
+            var re = new fProxyN(N, Allocator.Temp);
+            var im = new fProxyN(N, Allocator.Temp);
             fProxy w = (fProxy)(2.0 * System.Math.PI) / (fProxy)N;
             for (int n = 0; n < N; n++)
                 re[n] = math.cos(w * n);
 
             FFT.fft(ref re, ref im, in ws);
 
-            var mag = arena.fProxyVec(N);
+            var mag = new fProxyN(N, Allocator.Temp);
             FFT.magnitude(in re, in im, ref mag);
 
             fProxy half = (fProxy)N * (fProxy)0.5;
@@ -126,26 +123,24 @@ public class fProxyFFTTests
             for (int k = 0; k < N; k++)
                 if (k != 1 && k != N - 1)
                     AssertClose(mag[k], (fProxy)0f, 1E-3f);
-            arena.Dispose();
         }
 
         // Radix-2 fft must agree bin-for-bin with the direct dft on the same length-8 signal.
         void FftMatchesDft()
         {
-            var arena = new Arena(Allocator.Persistent);
             int N = 8;
-            var ws = arena.fProxyFFTCache(N);
-            var sigRe = arena.fProxyRandomVec(N, -2f, 2f, 9911);
-            var sigIm = arena.fProxyRandomVec(N, -2f, 2f, 2244);
+            var ws = new fProxyFFTCache(N, Allocator.Temp);
+            var sigRe = GenerateOP.fProxyRandomVec(N, -2f, 2f, 9911);
+            var sigIm = GenerateOP.fProxyRandomVec(N, -2f, 2f, 2244);
 
             // fft path (in-place on copies)
-            var fRe = sigRe.Copy();
-            var fIm = sigIm.Copy();
+            var fRe = new fProxyN(in sigRe, Allocator.Temp);
+            var fIm = new fProxyN(in sigIm, Allocator.Temp);
             FFT.fft(ref fRe, ref fIm, in ws);
 
             // dft path
-            var dRe = arena.fProxyVec(N);
-            var dIm = arena.fProxyVec(N);
+            var dRe = new fProxyN(N, Allocator.Temp);
+            var dIm = new fProxyN(N, Allocator.Temp);
             FFT.dft(in sigRe, in sigIm, ref dRe, ref dIm);
 
             for (int k = 0; k < N; k++)
@@ -153,20 +148,18 @@ public class fProxyFFTTests
                 AssertClose(fRe[k], dRe[k], 1E-3f);
                 AssertClose(fIm[k], dIm[k], 1E-3f);
             }
-            arena.Dispose();
         }
 
         // ifft(fft(x)) == x for a complex signal (power-of-two length).
         void FftRoundTrip()
         {
-            var arena = new Arena(Allocator.Persistent);
             int N = 16;
-            var ws = arena.fProxyFFTCache(N);
-            var re0 = arena.fProxyRandomVec(N, -3f, 3f, 5150);
-            var im0 = arena.fProxyRandomVec(N, -3f, 3f, 6160);
+            var ws = new fProxyFFTCache(N, Allocator.Temp);
+            var re0 = GenerateOP.fProxyRandomVec(N, -3f, 3f, 5150);
+            var im0 = GenerateOP.fProxyRandomVec(N, -3f, 3f, 6160);
 
-            var re = re0.Copy();
-            var im = im0.Copy();
+            var re = new fProxyN(in re0, Allocator.Temp);
+            var im = new fProxyN(in im0, Allocator.Temp);
             FFT.fft(ref re, ref im, in ws);
             FFT.ifft(ref re, ref im, in ws);
 
@@ -175,23 +168,21 @@ public class fProxyFFTTests
                 AssertClose(re[i], re0[i], 1E-3f);
                 AssertClose(im[i], im0[i], 1E-3f);
             }
-            arena.Dispose();
         }
 
         // idft(dft(x)) == x for an arbitrary (non power-of-two) length.
         void DftRoundTripOddN()
         {
-            var arena = new Arena(Allocator.Persistent);
             int N = 5;
-            var re0 = arena.fProxyRandomVec(N, -3f, 3f, 7007);
-            var im0 = arena.fProxyRandomVec(N, -3f, 3f, 8008);
+            var re0 = GenerateOP.fProxyRandomVec(N, -3f, 3f, 7007);
+            var im0 = GenerateOP.fProxyRandomVec(N, -3f, 3f, 8008);
 
-            var fRe = arena.fProxyVec(N);
-            var fIm = arena.fProxyVec(N);
+            var fRe = new fProxyN(N, Allocator.Temp);
+            var fIm = new fProxyN(N, Allocator.Temp);
             FFT.dft(in re0, in im0, ref fRe, ref fIm);
 
-            var bRe = arena.fProxyVec(N);
-            var bIm = arena.fProxyVec(N);
+            var bRe = new fProxyN(N, Allocator.Temp);
+            var bIm = new fProxyN(N, Allocator.Temp);
             FFT.idft(in fRe, in fIm, ref bRe, ref bIm);
 
             for (int i = 0; i < N; i++)
@@ -199,7 +190,6 @@ public class fProxyFFTTests
                 AssertClose(bRe[i], re0[i], 1E-3f);
                 AssertClose(bIm[i], im0[i], 1E-3f);
             }
-            arena.Dispose();
         }
 
         // rfft now returns N/2+1 unique bins. Verify each bin matches the corresponding bin of the
@@ -207,20 +197,19 @@ public class fProxyFFTTests
         // small rounding, so allow a tight but non-zero tolerance.
         void RfftEqualsFft()
         {
-            var arena = new Arena(Allocator.Persistent);
             int N = 8;
             int halfSpec = (N >> 1) + 1; // 5
-            var ws = arena.fProxyFFTCache(N);
-            var real = arena.fProxyRandomVec(N, -2f, 2f, 1234);
+            var ws = new fProxyFFTCache(N, Allocator.Temp);
+            var real = GenerateOP.fProxyRandomVec(N, -2f, 2f, 1234);
 
             // half-spectrum output
-            var rRe = arena.fProxyVec(halfSpec);
-            var rIm = arena.fProxyVec(halfSpec);
+            var rRe = new fProxyN(halfSpec, Allocator.Temp);
+            var rIm = new fProxyN(halfSpec, Allocator.Temp);
             FFT.rfft(in real, ref rRe, ref rIm, in ws);
 
             // full N-point FFT oracle
-            var fRe = real.Copy();
-            var fIm = arena.fProxyVec(N); // zeros (real input)
+            var fRe = new fProxyN(in real, Allocator.Temp);
+            var fIm = new fProxyN(N, Allocator.Temp); // zeros (real input)
             FFT.fft(ref fRe, ref fIm, in ws);
 
             // Compare only the N/2+1 non-redundant bins (0..N/2).
@@ -232,23 +221,21 @@ public class fProxyFFTTests
             // DC and Nyquist imaginaries are always exactly zero for a real signal.
             AssertClose(rIm[0],     (fProxy)0, 0f);
             AssertClose(rIm[N / 2], (fProxy)0, 0f);
-            arena.Dispose();
         }
 
         // magnitude / powerSpectrum / phase known values; power == magnitude².
         void SpectrumReductions()
         {
-            var arena = new Arena(Allocator.Persistent);
             int N = 3;
-            var re = arena.fProxyVec(N);
-            var im = arena.fProxyVec(N);
+            var re = new fProxyN(N, Allocator.Temp);
+            var im = new fProxyN(N, Allocator.Temp);
             re[0] = 3f;  im[0] = 4f;   // mag 5
             re[1] = -1f; im[1] = 0f;   // mag 1, phase π
             re[2] = 0f;  im[2] = 2f;   // mag 2, phase π/2
 
-            var mag = arena.fProxyVec(N);
-            var pow = arena.fProxyVec(N);
-            var ph = arena.fProxyVec(N);
+            var mag = new fProxyN(N, Allocator.Temp);
+            var pow = new fProxyN(N, Allocator.Temp);
+            var ph = new fProxyN(N, Allocator.Temp);
             FFT.magnitude(in re, in im, ref mag);
             FFT.powerSpectrum(in re, in im, ref pow);
             FFT.phase(in re, in im, ref ph);
@@ -269,10 +256,10 @@ public class fProxyFFTTests
             AssertClose(ph[1], (fProxy)System.Math.PI, 1E-5f);
             AssertClose(ph[2], (fProxy)(System.Math.PI * 0.5), 1E-5f);
 
-            // arena wrappers must equal the ref-dest reductions
-            var magW = arena.fProxyMagnitude(in re, in im);
-            var powW = arena.fProxyPowerSpectrum(in re, in im);
-            var phW = arena.fProxyPhase(in re, in im);
+            // FFT allocating overloads must equal the ref-dest reductions
+            var magW = FFT.fProxyMagnitude(in re, in im);
+            var powW = FFT.fProxyPowerSpectrum(in re, in im);
+            var phW = FFT.fProxyPhase(in re, in im);
             for (int i = 0; i < N; i++)
             {
                 AssertClose(magW[i], mag[i], 0f);
@@ -280,18 +267,16 @@ public class fProxyFFTTests
                 AssertClose(phW[i], ph[i], 0f);
             }
 
-            arena.Dispose();
         }
 
         // dft DC bin of a constant length-3 (non pow2) signal: X[0] = sum = 3.
         void DftConstantOddN()
         {
-            var arena = new Arena(Allocator.Persistent);
             int N = 3;
-            var re = arena.fProxyVec(N, 1f);
-            var im = arena.fProxyVec(N);
-            var oRe = arena.fProxyVec(N);
-            var oIm = arena.fProxyVec(N);
+            var re = GenerateOP.fProxyVec(N, 1f);
+            var im = new fProxyN(N, Allocator.Temp);
+            var oRe = new fProxyN(N, Allocator.Temp);
+            var oIm = new fProxyN(N, Allocator.Temp);
 
             FFT.dft(in re, in im, ref oRe, ref oIm);
 
@@ -301,7 +286,6 @@ public class fProxyFFTTests
             AssertClose(oRe[2], (fProxy)0f, 1E-4f);
             AssertClose(oIm[1], (fProxy)0f, 1E-4f); // imag must also vanish (catches a sign-conv bug)
             AssertClose(oIm[2], (fProxy)0f, 1E-4f);
-            arena.Dispose();
         }
 
         // Independent ifft oracle (NOT a forward+inverse round-trip, so it can't hide complementary
@@ -309,11 +293,10 @@ public class fProxyFFTTests
         // bit-reversal permutation is non-trivial.
         void IfftKnownValue()
         {
-            var arena = new Arena(Allocator.Persistent);
             int N = 8;
-            var ws = arena.fProxyFFTCache(N);
-            var re = arena.fProxyVec(N);
-            var im = arena.fProxyVec(N);
+            var ws = new fProxyFFTCache(N, Allocator.Temp);
+            var re = new fProxyN(N, Allocator.Temp);
+            var im = new fProxyN(N, Allocator.Temp);
             re[0] = (fProxy)N; // X = [8, 0, 0, ...]
 
             FFT.ifft(ref re, ref im, in ws);
@@ -323,19 +306,17 @@ public class fProxyFFTTests
                 AssertClose(re[n], (fProxy)1f, 1E-4f);
                 AssertClose(im[n], (fProxy)0f, 1E-4f);
             }
-            arena.Dispose();
         }
 
         // Independent idft oracle: idft of a DC spectrum X=[N,0,0] is the constant x=[1,1,1] (any N).
         void IdftKnownValue()
         {
-            var arena = new Arena(Allocator.Persistent);
             int N = 3;
-            var re = arena.fProxyVec(N);
-            var im = arena.fProxyVec(N);
+            var re = new fProxyN(N, Allocator.Temp);
+            var im = new fProxyN(N, Allocator.Temp);
             re[0] = (fProxy)N; // X = [3, 0, 0]
-            var oRe = arena.fProxyVec(N);
-            var oIm = arena.fProxyVec(N);
+            var oRe = new fProxyN(N, Allocator.Temp);
+            var oIm = new fProxyN(N, Allocator.Temp);
 
             FFT.idft(in re, in im, ref oRe, ref oIm);
 
@@ -344,20 +325,18 @@ public class fProxyFFTTests
                 AssertClose(oRe[n], (fProxy)1f, 1E-4f);
                 AssertClose(oIm[n], (fProxy)0f, 1E-4f);
             }
-            arena.Dispose();
         }
 
         // Edge size: N=2 is the smallest real butterfly, fft([1,0]) = [1,1] (re), [0,0] (im).
-        // fft requires a workspace, and Arena.fProxyFFTCache only accepts n>=2 (see
+        // fft requires a workspace, and fProxyFFTCache's ctor only accepts n>=2 (see
         // FftWorkspaceFactoryNonPow2Throws), so N=1 is not a constructible fft input.
         void FftSmallSizes()
         {
-            var arena = new Arena(Allocator.Persistent);
             int N = 2;
-            var ws = arena.fProxyFFTCache(N);
+            var ws = new fProxyFFTCache(N, Allocator.Temp);
 
-            var re2 = arena.fProxyVec(2);
-            var im2 = arena.fProxyVec(2);
+            var re2 = new fProxyN(2, Allocator.Temp);
+            var im2 = new fProxyN(2, Allocator.Temp);
             re2[0] = (fProxy)1; re2[1] = (fProxy)0;
             FFT.fft(ref re2, ref im2, in ws);
             AssertClose(re2[0], (fProxy)1f, 1E-5f);   // X0 = x0+x1
@@ -365,23 +344,21 @@ public class fProxyFFTTests
             AssertClose(im2[0], (fProxy)0f, 1E-5f);
             AssertClose(im2[1], (fProxy)0f, 1E-5f);
 
-            arena.Dispose();
         }
 
         // irfft(rfft(x, ws), ws) == x to floating-point precision, at several power-of-two lengths.
         void RfftRoundTrip()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             // N=8
             {
                 int N = 8;
                 int halfSpec = (N >> 1) + 1;
-                var ws = arena.fProxyFFTCache(N);
-                var real0 = arena.fProxyRandomVec(N, -3f, 3f, 5555);
-                var rRe = arena.fProxyVec(halfSpec);
-                var rIm = arena.fProxyVec(halfSpec);
-                var real2 = arena.fProxyVec(N);
+                var ws = new fProxyFFTCache(N, Allocator.Temp);
+                var real0 = GenerateOP.fProxyRandomVec(N, -3f, 3f, 5555);
+                var rRe = new fProxyN(halfSpec, Allocator.Temp);
+                var rIm = new fProxyN(halfSpec, Allocator.Temp);
+                var real2 = new fProxyN(N, Allocator.Temp);
                 FFT.rfft(in real0, ref rRe, ref rIm, in ws);
                 FFT.irfft(in rRe, in rIm, ref real2, in ws);
                 for (int i = 0; i < N; i++)
@@ -392,11 +369,11 @@ public class fProxyFFTTests
             {
                 int N = 16;
                 int halfSpec = (N >> 1) + 1;
-                var ws = arena.fProxyFFTCache(N);
-                var real0 = arena.fProxyRandomVec(N, -3f, 3f, 6666);
-                var rRe = arena.fProxyVec(halfSpec);
-                var rIm = arena.fProxyVec(halfSpec);
-                var real2 = arena.fProxyVec(N);
+                var ws = new fProxyFFTCache(N, Allocator.Temp);
+                var real0 = GenerateOP.fProxyRandomVec(N, -3f, 3f, 6666);
+                var rRe = new fProxyN(halfSpec, Allocator.Temp);
+                var rIm = new fProxyN(halfSpec, Allocator.Temp);
+                var real2 = new fProxyN(N, Allocator.Temp);
                 FFT.rfft(in real0, ref rRe, ref rIm, in ws);
                 FFT.irfft(in rRe, in rIm, ref real2, in ws);
                 for (int i = 0; i < N; i++)
@@ -407,34 +384,32 @@ public class fProxyFFTTests
             {
                 int N = 64;
                 int halfSpec = (N >> 1) + 1;
-                var ws = arena.fProxyFFTCache(N);
-                var real0 = arena.fProxyRandomVec(N, -3f, 3f, 7777);
-                var rRe = arena.fProxyVec(halfSpec);
-                var rIm = arena.fProxyVec(halfSpec);
-                var real2 = arena.fProxyVec(N);
+                var ws = new fProxyFFTCache(N, Allocator.Temp);
+                var real0 = GenerateOP.fProxyRandomVec(N, -3f, 3f, 7777);
+                var rRe = new fProxyN(halfSpec, Allocator.Temp);
+                var rIm = new fProxyN(halfSpec, Allocator.Temp);
+                var real2 = new fProxyN(N, Allocator.Temp);
                 FFT.rfft(in real0, ref rRe, ref rIm, in ws);
                 FFT.irfft(in rRe, in rIm, ref real2, in ws);
                 for (int i = 0; i < N; i++)
                     AssertClose(real2[i], real0[i], (fProxy)1E-4f);
             }
 
-            arena.Dispose();
         }
 
         // Known-signal oracle tests for rfft (human-readable, catch convention/scale bugs).
         void RfftKnownSignals()
         {
-            var arena = new Arena(Allocator.Persistent);
             int N = 8;
             int halfSpec = (N >> 1) + 1; // 5
-            var ws = arena.fProxyFFTCache(N);
+            var ws = new fProxyFFTCache(N, Allocator.Temp);
 
             // --- DC: x[n]=1 for all n ---
             // X[0]=N, all other bins 0; im all 0.
             {
-                var dc = arena.fProxyVec(N, 1f);
-                var dcRe = arena.fProxyVec(halfSpec);
-                var dcIm = arena.fProxyVec(halfSpec);
+                var dc = GenerateOP.fProxyVec(N, 1f);
+                var dcRe = new fProxyN(halfSpec, Allocator.Temp);
+                var dcIm = new fProxyN(halfSpec, Allocator.Temp);
                 FFT.rfft(in dc, ref dcRe, ref dcIm, in ws);
                 AssertClose(dcRe[0], (fProxy)N, (fProxy)1E-4f);
                 AssertClose(dcIm[0], (fProxy)0, 0f);
@@ -450,13 +425,13 @@ public class fProxyFFTTests
             // re[f]=N/2, im[f]≈0; all other half-spectrum bins ≈0.
             {
                 int f = 2;
-                var cosX = arena.fProxyVec(N);
+                var cosX = new fProxyN(N, Allocator.Temp);
                 fProxy wf = (fProxy)(2.0 * System.Math.PI * f) / (fProxy)N;
                 for (int n = 0; n < N; n++)
                     cosX[n] = math.cos(wf * (fProxy)n);
 
-                var cosRe = arena.fProxyVec(halfSpec);
-                var cosIm = arena.fProxyVec(halfSpec);
+                var cosRe = new fProxyN(halfSpec, Allocator.Temp);
+                var cosIm = new fProxyN(halfSpec, Allocator.Temp);
                 FFT.rfft(in cosX, ref cosRe, ref cosIm, in ws);
 
                 AssertClose(cosRe[f], (fProxy)(N / 2), (fProxy)1E-4f);
@@ -472,12 +447,12 @@ public class fProxyFFTTests
             // --- Nyquist: x[n] = (-1)^n ---
             // X[N/2]=N, all other bins 0; im all 0.
             {
-                var nyq = arena.fProxyVec(N);
+                var nyq = new fProxyN(N, Allocator.Temp);
                 for (int n = 0; n < N; n++)
                     nyq[n] = (n % 2 == 0) ? (fProxy)1 : (fProxy)(-1);
 
-                var nyqRe = arena.fProxyVec(halfSpec);
-                var nyqIm = arena.fProxyVec(halfSpec);
+                var nyqRe = new fProxyN(halfSpec, Allocator.Temp);
+                var nyqIm = new fProxyN(halfSpec, Allocator.Temp);
                 FFT.rfft(in nyq, ref nyqRe, ref nyqIm, in ws);
 
                 AssertClose(nyqRe[N / 2], (fProxy)N, (fProxy)1E-4f);
@@ -491,11 +466,11 @@ public class fProxyFFTTests
 
             // --- N=2 edge case: x=[a,b] -> re=[a+b, a-b], im=[0,0] ---
             {
-                var ws2 = arena.fProxyFFTCache(2);
-                var x2 = arena.fProxyVec(2);
+                var ws2 = new fProxyFFTCache(2, Allocator.Temp);
+                var x2 = new fProxyN(2, Allocator.Temp);
                 x2[0] = (fProxy)3; x2[1] = (fProxy)7;
-                var r2 = arena.fProxyVec(2);
-                var i2 = arena.fProxyVec(2);
+                var r2 = new fProxyN(2, Allocator.Temp);
+                var i2 = new fProxyN(2, Allocator.Temp);
                 FFT.rfft(in x2, ref r2, ref i2, in ws2);
                 AssertClose(r2[0], (fProxy)10, (fProxy)1E-5f);
                 AssertClose(r2[1], (fProxy)(-4), (fProxy)1E-5f);
@@ -503,7 +478,6 @@ public class fProxyFFTTests
                 AssertClose(i2[1], (fProxy)0, 0f);
             }
 
-            arena.Dispose();
         }
 
         // ---- twiddle-table workspace tests ----
@@ -511,14 +485,13 @@ public class fProxyFFTTests
         // ifft(fft(x, ws), ws) == x with a workspace.
         void TableFftRoundTrip()
         {
-            var arena = new Arena(Allocator.Persistent);
             int N = 64;
-            var ws = arena.fProxyFFTCache(N);
+            var ws = new fProxyFFTCache(N, Allocator.Temp);
 
-            var re0 = arena.fProxyRandomVec(N, -3f, 3f, 6543u);
-            var im0 = arena.fProxyRandomVec(N, -3f, 3f, 7654u);
+            var re0 = GenerateOP.fProxyRandomVec(N, -3f, 3f, 6543u);
+            var im0 = GenerateOP.fProxyRandomVec(N, -3f, 3f, 7654u);
 
-            var re = re0.Copy(); var im = im0.Copy();
+            var re = new fProxyN(in re0, Allocator.Temp); var im = new fProxyN(in im0, Allocator.Temp);
             FFT.fft(ref re, ref im, in ws);
             FFT.ifft(ref re, ref im, in ws);
 
@@ -528,28 +501,32 @@ public class fProxyFFTTests
                 AssertClose(re[i], re0[i], tol);
                 AssertClose(im[i], im0[i], tol);
             }
-            arena.Dispose();
         }
 
         // Helper: irfft(rfft(x, ws), ws) == x for one size.
+        // N ranges up to 8192 (>= 2048): Persistent allocations, explicitly disposed below.
         void TableRfftRoundTripOneSize(int N, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
             int halfSpec = (N >> 1) + 1;
-            var ws = arena.fProxyFFTCache(N);
-            var real0 = arena.fProxyRandomVec(N, -3f, 3f, seed);
+            var ws = new fProxyFFTCache(N, Allocator.Persistent);
+            var real0 = GenerateOP.fProxyRandomVec(N, -3f, 3f, seed, Allocator.Persistent);
 
-            var rRe = arena.fProxyVec(halfSpec);
-            var rIm = arena.fProxyVec(halfSpec);
+            var rRe = new fProxyN(halfSpec, Allocator.Persistent);
+            var rIm = new fProxyN(halfSpec, Allocator.Persistent);
             FFT.rfft(in real0, ref rRe, ref rIm, in ws);
 
-            var real2 = arena.fProxyVec(N);
+            var real2 = new fProxyN(N, Allocator.Persistent);
             FFT.irfft(in rRe, in rIm, ref real2, in ws);
 
             fProxy tol = (fProxy)1E-3f;
             for (int i = 0; i < N; i++)
                 AssertClose(real2[i], real0[i], tol);
-            arena.Dispose();
+
+            ws.Dispose();
+            real0.Dispose();
+            rRe.Dispose();
+            rIm.Dispose();
+            real2.Dispose();
         }
 
         // irfft(rfft(x, ws), ws) == x with a workspace — full size range 2..8192, both inner-M paths.
@@ -586,21 +563,21 @@ public class fProxyFFTTests
         //     grows with N); the round-trip (forward + inverse errors cancel to machine precision)
         //     is the correct large-N correctness test. Radix4RoundTrip also covers these sizes with
         //     different seeds.
+        // N ranges up to 32768 (>= 2048): Persistent allocations, explicitly disposed below.
         void Radix4VsOracleOneSize(int N, uint seedRe, uint seedIm)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var ws    = arena.fProxyFFTCache(N);
+            var ws    = new fProxyFFTCache(N, Allocator.Persistent);
 
-            var re0 = arena.fProxyRandomVec(N, -2f, 2f, seedRe);
-            var im0 = arena.fProxyRandomVec(N, -2f, 2f, seedIm);
+            var re0 = GenerateOP.fProxyRandomVec(N, -2f, 2f, seedRe, Allocator.Persistent);
+            var im0 = GenerateOP.fProxyRandomVec(N, -2f, 2f, seedIm, Allocator.Persistent);
 
             if (N <= 2048)
             {
                 // Independent oracle: FFT.dft (O(N²) ground truth) vs auto-dispatch fft(ws).
-                var dRe = arena.fProxyVec(N); var dIm = arena.fProxyVec(N);
+                var dRe = new fProxyN(N, Allocator.Persistent); var dIm = new fProxyN(N, Allocator.Persistent);
                 FFT.dft(in re0, in im0, ref dRe, ref dIm);
 
-                var reW = re0.Copy(); var imW = im0.Copy();
+                var reW = new fProxyN(in re0, Allocator.Persistent); var imW = new fProxyN(in im0, Allocator.Persistent);
                 FFT.fft(ref reW, ref imW, in ws);
 
                 fProxy relTol = (fProxy)1E-3f + (fProxy)1E-4f * math.sqrt((fProxy)N);
@@ -611,11 +588,13 @@ public class fProxyFFTTests
                     AssertClose(reW[k], dRe[k], absTolRe);
                     AssertClose(imW[k], dIm[k], absTolIm);
                 }
+
+                dRe.Dispose(); dIm.Dispose(); reW.Dispose(); imW.Dispose();
             }
             else
             {
                 // Round-trip: ifft(fft(x,ws),ws) == x — errors cancel, tight 1E-3.
-                var re = re0.Copy(); var im = im0.Copy();
+                var re = new fProxyN(in re0, Allocator.Persistent); var im = new fProxyN(in im0, Allocator.Persistent);
                 FFT.fft(ref re, ref im, in ws);
                 FFT.ifft(ref re, ref im, in ws);
 
@@ -625,9 +604,13 @@ public class fProxyFFTTests
                     AssertClose(re[i], re0[i], tol);
                     AssertClose(im[i], im0[i], tol);
                 }
+
+                re.Dispose(); im.Dispose();
             }
 
-            arena.Dispose();
+            ws.Dispose();
+            re0.Dispose();
+            im0.Dispose();
         }
 
         // Validate fft(ws) auto-dispatch at all sizes in {2,4,8,...,32768}.
@@ -652,15 +635,15 @@ public class fProxyFFTTests
         }
 
         // Helper: ifft(fft(x, ws), ws) == x for one size (auto-dispatch round-trip).
+        // N ranges up to 8192 (>= 2048): Persistent allocations, explicitly disposed below.
         void Radix4RoundTripOneSize(int N, uint seedRe, uint seedIm)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var ws    = arena.fProxyFFTCache(N);
+            var ws    = new fProxyFFTCache(N, Allocator.Persistent);
 
-            var re0 = arena.fProxyRandomVec(N, -3f, 3f, seedRe);
-            var im0 = arena.fProxyRandomVec(N, -3f, 3f, seedIm);
+            var re0 = GenerateOP.fProxyRandomVec(N, -3f, 3f, seedRe, Allocator.Persistent);
+            var im0 = GenerateOP.fProxyRandomVec(N, -3f, 3f, seedIm, Allocator.Persistent);
 
-            var re = re0.Copy(); var im = im0.Copy();
+            var re = new fProxyN(in re0, Allocator.Persistent); var im = new fProxyN(in im0, Allocator.Persistent);
             FFT.fft(ref re, ref im, in ws);
             FFT.ifft(ref re, ref im, in ws);
 
@@ -671,7 +654,11 @@ public class fProxyFFTTests
                 AssertClose(im[i], im0[i], tol);
             }
 
-            arena.Dispose();
+            ws.Dispose();
+            re0.Dispose();
+            im0.Dispose();
+            re.Dispose();
+            im.Dispose();
         }
 
         // Round-trip at power-of-4 sizes and mixed-radix (2·4^k) sizes.
@@ -717,16 +704,15 @@ public class fProxyFFTTests
         // (8,32) dispatch classes.
         void FftVsDftOneSize(int N, uint seedRe, uint seedIm)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var ws = arena.fProxyFFTCache(N);
-            var re0 = arena.fProxyRandomVec(N, -2f, 2f, seedRe);
-            var im0 = arena.fProxyRandomVec(N, -2f, 2f, seedIm);
+            var ws = new fProxyFFTCache(N, Allocator.Temp);
+            var re0 = GenerateOP.fProxyRandomVec(N, -2f, 2f, seedRe);
+            var im0 = GenerateOP.fProxyRandomVec(N, -2f, 2f, seedIm);
 
-            var dRe = arena.fProxyVec(N);
-            var dIm = arena.fProxyVec(N);
+            var dRe = new fProxyN(N, Allocator.Temp);
+            var dIm = new fProxyN(N, Allocator.Temp);
             FFT.dft(in re0, in im0, ref dRe, ref dIm);
 
-            var wRe = re0.Copy(); var wIm = im0.Copy();
+            var wRe = new fProxyN(in re0, Allocator.Temp); var wIm = new fProxyN(in im0, Allocator.Temp);
             FFT.fft(ref wRe, ref wIm, in ws);
 
             fProxy relTol = (fProxy)1E-3f;
@@ -735,7 +721,6 @@ public class fProxyFFTTests
                 AssertCloseRel(wRe[k], dRe[k], relTol);
                 AssertCloseRel(wIm[k], dIm[k], relTol);
             }
-            arena.Dispose();
         }
 
         void FftVsDftCrossCheck()
@@ -751,52 +736,54 @@ public class fProxyFFTTests
         // Σ|x|² == (1/N)·Σ|X|². Checked as a RELATIVE error on the single total-energy scalar
         // (robust to per-bin twiddle noise). Includes large N (4096, 16384) for fft, dft only to
         // 512 (O(N²)), plus the rfft half-spectrum energy identity.
+        // N ranges up to 16384 (>= 2048): Persistent allocations, explicitly disposed below.
         void ParsevalFftOneSize(int N, uint seedRe, uint seedIm)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var ws = arena.fProxyFFTCache(N);
-            var re0 = arena.fProxyRandomVec(N, -2f, 2f, seedRe);
-            var im0 = arena.fProxyRandomVec(N, -2f, 2f, seedIm);
+            var ws = new fProxyFFTCache(N, Allocator.Persistent);
+            var re0 = GenerateOP.fProxyRandomVec(N, -2f, 2f, seedRe, Allocator.Persistent);
+            var im0 = GenerateOP.fProxyRandomVec(N, -2f, 2f, seedIm, Allocator.Persistent);
 
             fProxy timeE = Energy(in re0, in im0);
             fProxy relTol = (fProxy)1E-2f;   // robust scalar-energy bound (float summation at large N)
 
-            var wRe = re0.Copy(); var wIm = im0.Copy();
+            var wRe = new fProxyN(in re0, Allocator.Persistent); var wIm = new fProxyN(in im0, Allocator.Persistent);
             FFT.fft(ref wRe, ref wIm, in ws);
             AssertCloseRel(Energy(in wRe, in wIm) / (fProxy)N, timeE, relTol);
 
-            arena.Dispose();
+            ws.Dispose();
+            re0.Dispose();
+            im0.Dispose();
+            wRe.Dispose();
+            wIm.Dispose();
         }
 
         void ParsevalDftOneSize(int N, uint seedRe, uint seedIm)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var re0 = arena.fProxyRandomVec(N, -2f, 2f, seedRe);
-            var im0 = arena.fProxyRandomVec(N, -2f, 2f, seedIm);
+            var re0 = GenerateOP.fProxyRandomVec(N, -2f, 2f, seedRe);
+            var im0 = GenerateOP.fProxyRandomVec(N, -2f, 2f, seedIm);
 
             fProxy timeE = Energy(in re0, in im0);
-            var dRe = arena.fProxyVec(N);
-            var dIm = arena.fProxyVec(N);
+            var dRe = new fProxyN(N, Allocator.Temp);
+            var dIm = new fProxyN(N, Allocator.Temp);
             FFT.dft(in re0, in im0, ref dRe, ref dIm);
             AssertCloseRel(Energy(in dRe, in dIm) / (fProxy)N, timeE, (fProxy)5E-3f);
-            arena.Dispose();
         }
 
         // rfft Parseval: real-signal energy Σx² equals (1/N)·full-spectrum energy reconstructed from
         // the half spectrum: |X[0]|² + |X[N/2]|² + 2·Σ_{k=1}^{N/2-1}|X[k]|².
+        // N ranges up to 16384 (>= 2048): Persistent allocations, explicitly disposed below.
         void ParsevalRfftOneSize(int N, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var ws = arena.fProxyFFTCache(N);
+            var ws = new fProxyFFTCache(N, Allocator.Persistent);
             int halfSpec = (N >> 1) + 1;
             int M = N >> 1;
-            var real = arena.fProxyRandomVec(N, -2f, 2f, seed);
+            var real = GenerateOP.fProxyRandomVec(N, -2f, 2f, seed, Allocator.Persistent);
 
             fProxy timeE = (fProxy)0;
             for (int i = 0; i < N; i++) timeE += real[i] * real[i];
 
-            var rRe = arena.fProxyVec(halfSpec);
-            var rIm = arena.fProxyVec(halfSpec);
+            var rRe = new fProxyN(halfSpec, Allocator.Persistent);
+            var rIm = new fProxyN(halfSpec, Allocator.Persistent);
             FFT.rfft(in real, ref rRe, ref rIm, in ws);
 
             fProxy specE = rRe[0] * rRe[0] + rIm[0] * rIm[0]
@@ -805,7 +792,11 @@ public class fProxyFFTTests
                 specE += (fProxy)2 * (rRe[k] * rRe[k] + rIm[k] * rIm[k]);
 
             AssertCloseRel(specE / (fProxy)N, timeE, (fProxy)1E-2f);
-            arena.Dispose();
+
+            ws.Dispose();
+            real.Dispose();
+            rRe.Dispose();
+            rIm.Dispose();
         }
 
         void ParsevalEnergy()
@@ -832,20 +823,19 @@ public class fProxyFFTTests
         // Validated for fft(ws) and dft. Per-bin relative tolerance.
         void FftLinearityOneSize(int N, uint sx, uint sy)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var ws = arena.fProxyFFTCache(N);
+            var ws = new fProxyFFTCache(N, Allocator.Temp);
 
-            var xr = arena.fProxyRandomVec(N, -2f, 2f, sx);
-            var xi = arena.fProxyRandomVec(N, -2f, 2f, sx + 17u);
-            var yr = arena.fProxyRandomVec(N, -2f, 2f, sy);
-            var yi = arena.fProxyRandomVec(N, -2f, 2f, sy + 17u);
+            var xr = GenerateOP.fProxyRandomVec(N, -2f, 2f, sx);
+            var xi = GenerateOP.fProxyRandomVec(N, -2f, 2f, sx + 17u);
+            var yr = GenerateOP.fProxyRandomVec(N, -2f, 2f, sy);
+            var yi = GenerateOP.fProxyRandomVec(N, -2f, 2f, sy + 17u);
 
             fProxy aRe = (fProxy)1.5f, aIm = (fProxy)(-0.5f);
             fProxy bRe = (fProxy)(-2.0f), bIm = (fProxy)0.75f;
 
             // z = a·x + b·y (complex, per sample).
-            var zr = arena.fProxyVec(N);
-            var zi = arena.fProxyVec(N);
+            var zr = new fProxyN(N, Allocator.Temp);
+            var zi = new fProxyN(N, Allocator.Temp);
             for (int n = 0; n < N; n++)
             {
                 fProxy axr = aRe * xr[n] - aIm * xi[n];
@@ -857,14 +847,14 @@ public class fProxyFFTTests
             }
 
             // Forward transforms of x and y for the RHS combination (dft ground truth).
-            var Xr = arena.fProxyVec(N); var Xi = arena.fProxyVec(N);
-            var Yr = arena.fProxyVec(N); var Yi = arena.fProxyVec(N);
+            var Xr = new fProxyN(N, Allocator.Temp); var Xi = new fProxyN(N, Allocator.Temp);
+            var Yr = new fProxyN(N, Allocator.Temp); var Yi = new fProxyN(N, Allocator.Temp);
             FFT.dft(in xr, in xi, ref Xr, ref Xi);
             FFT.dft(in yr, in yi, ref Yr, ref Yi);
 
             // LHS via two transforms (workspace fft and dft).
-            var Zws_r = zr.Copy(); var Zws_i = zi.Copy(); FFT.fft(ref Zws_r, ref Zws_i, in ws);
-            var Zdf_r = arena.fProxyVec(N); var Zdf_i = arena.fProxyVec(N);
+            var Zws_r = new fProxyN(in zr, Allocator.Temp); var Zws_i = new fProxyN(in zi, Allocator.Temp); FFT.fft(ref Zws_r, ref Zws_i, in ws);
+            var Zdf_r = new fProxyN(N, Allocator.Temp); var Zdf_i = new fProxyN(N, Allocator.Temp);
             FFT.dft(in zr, in zi, ref Zdf_r, ref Zdf_i);
 
             fProxy relTol = (fProxy)1E-3f;
@@ -878,7 +868,6 @@ public class fProxyFFTTests
                 AssertCloseRel(Zdf_r[k], rhsRe, relTol);
                 AssertCloseRel(Zdf_i[k], rhsIm, relTol);
             }
-            arena.Dispose();
         }
 
         void FftLinearity()
@@ -899,7 +888,7 @@ public class fProxyFFTTests
                           in fProxyN inRe, in fProxyN inIm,
                           in fProxyN expRe, in fProxyN expIm, fProxy relTol)
         {
-            var fr = inRe.Copy(); var fi = inIm.Copy();
+            var fr = new fProxyN(in inRe, Allocator.Temp); var fi = new fProxyN(in inIm, Allocator.Temp);
             FFT.fft(ref fr, ref fi, in ws);
             for (int k = 0; k < N; k++)
             {
@@ -910,19 +899,18 @@ public class fProxyFFTTests
 
         void KnownAnalytics()
         {
-            var arena = new Arena(Allocator.Persistent);
             int N = 16;
-            var ws = arena.fProxyFFTCache(N);
+            var ws = new fProxyFFTCache(N, Allocator.Temp);
             fProxy twoPi = (fProxy)(2.0 * System.Math.PI);
             fProxy relTol = (fProxy)2E-3f;
 
             // --- impulse δ[0] -> flat spectrum (all ones) ---
             {
-                var inRe = arena.fProxyVec(N); var inIm = arena.fProxyVec(N);
+                var inRe = new fProxyN(N, Allocator.Temp); var inIm = new fProxyN(N, Allocator.Temp);
                 inRe[0] = (fProxy)1;
-                var expRe = arena.fProxyVec(N, 1f); var expIm = arena.fProxyVec(N);
+                var expRe = GenerateOP.fProxyVec(N, 1f); var expIm = new fProxyN(N, Allocator.Temp);
 
-                var dRe = arena.fProxyVec(N); var dIm = arena.fProxyVec(N);
+                var dRe = new fProxyN(N, Allocator.Temp); var dIm = new fProxyN(N, Allocator.Temp);
                 FFT.dft(in inRe, in inIm, ref dRe, ref dIm);
                 for (int k = 0; k < N; k++)
                 {
@@ -935,16 +923,16 @@ public class fProxyFFTTests
             // --- shifted impulse δ[m], m=3 -> X[k] = cos(2πkm/N) - i·sin(2πkm/N) ---
             {
                 int m = 3;
-                var inRe = arena.fProxyVec(N); var inIm = arena.fProxyVec(N);
+                var inRe = new fProxyN(N, Allocator.Temp); var inIm = new fProxyN(N, Allocator.Temp);
                 inRe[m] = (fProxy)1;
-                var expRe = arena.fProxyVec(N); var expIm = arena.fProxyVec(N);
+                var expRe = new fProxyN(N, Allocator.Temp); var expIm = new fProxyN(N, Allocator.Temp);
                 for (int k = 0; k < N; k++)
                 {
                     fProxy ang = twoPi * (fProxy)(k * m) / (fProxy)N;
                     expRe[k] = math.cos(ang);
                     expIm[k] = -math.sin(ang);
                 }
-                var dRe = arena.fProxyVec(N); var dIm = arena.fProxyVec(N);
+                var dRe = new fProxyN(N, Allocator.Temp); var dIm = new fProxyN(N, Allocator.Temp);
                 FFT.dft(in inRe, in inIm, ref dRe, ref dIm);
                 for (int k = 0; k < N; k++)
                 {
@@ -957,11 +945,11 @@ public class fProxyFFTTests
             // --- constant c -> DC spike X[0] = c·N ---
             {
                 fProxy c = (fProxy)2.5f;
-                var inRe = arena.fProxyVec(N, 2.5f); var inIm = arena.fProxyVec(N);
-                var expRe = arena.fProxyVec(N); var expIm = arena.fProxyVec(N);
+                var inRe = GenerateOP.fProxyVec(N, 2.5f); var inIm = new fProxyN(N, Allocator.Temp);
+                var expRe = new fProxyN(N, Allocator.Temp); var expIm = new fProxyN(N, Allocator.Temp);
                 expRe[0] = c * (fProxy)N;
 
-                var dRe = arena.fProxyVec(N); var dIm = arena.fProxyVec(N);
+                var dRe = new fProxyN(N, Allocator.Temp); var dIm = new fProxyN(N, Allocator.Temp);
                 FFT.dft(in inRe, in inIm, ref dRe, ref dIm);
                 for (int k = 0; k < N; k++)
                 {
@@ -974,17 +962,17 @@ public class fProxyFFTTests
             // --- pure exponential exp(+2πi·k0·n/N), k0=3 -> single bin X[k0] = N ---
             {
                 int k0 = 3;
-                var inRe = arena.fProxyVec(N); var inIm = arena.fProxyVec(N);
+                var inRe = new fProxyN(N, Allocator.Temp); var inIm = new fProxyN(N, Allocator.Temp);
                 fProxy w = twoPi * (fProxy)k0 / (fProxy)N;
                 for (int n = 0; n < N; n++)
                 {
                     inRe[n] = math.cos(w * (fProxy)n);
                     inIm[n] = math.sin(w * (fProxy)n);
                 }
-                var expRe = arena.fProxyVec(N); var expIm = arena.fProxyVec(N);
+                var expRe = new fProxyN(N, Allocator.Temp); var expIm = new fProxyN(N, Allocator.Temp);
                 expRe[k0] = (fProxy)N;
 
-                var dRe = arena.fProxyVec(N); var dIm = arena.fProxyVec(N);
+                var dRe = new fProxyN(N, Allocator.Temp); var dIm = new fProxyN(N, Allocator.Temp);
                 FFT.dft(in inRe, in inIm, ref dRe, ref dIm);
                 for (int k = 0; k < N; k++)
                 {
@@ -994,21 +982,20 @@ public class fProxyFFTTests
                 KnownRunBoth(in ws, N, in inRe, in inIm, in expRe, in expIm, relTol);
             }
 
-            arena.Dispose();
         }
 
         // ---- 6. Round-trip accuracy at large N ------------------------------------------------
         // ifft(fft(x,ws),ws)==x and irfft(rfft(x,ws),ws)==x up to N=16384; idft(dft(x))==x to ~512
         // (incl. non-power-of-two). Forward+inverse errors cancel, so a tight absolute/relative
         // bound holds (float ~1e-3, double far tighter).
+        // N ranges up to 16384 (>= 2048): Persistent allocations, explicitly disposed below.
         void RoundTripFftWsOneSize(int N, uint seedRe, uint seedIm)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var ws = arena.fProxyFFTCache(N);
-            var re0 = arena.fProxyRandomVec(N, -3f, 3f, seedRe);
-            var im0 = arena.fProxyRandomVec(N, -3f, 3f, seedIm);
+            var ws = new fProxyFFTCache(N, Allocator.Persistent);
+            var re0 = GenerateOP.fProxyRandomVec(N, -3f, 3f, seedRe, Allocator.Persistent);
+            var im0 = GenerateOP.fProxyRandomVec(N, -3f, 3f, seedIm, Allocator.Persistent);
 
-            var re = re0.Copy(); var im = im0.Copy();
+            var re = new fProxyN(in re0, Allocator.Persistent); var im = new fProxyN(in im0, Allocator.Persistent);
             FFT.fft(ref re, ref im, in ws);
             FFT.ifft(ref re, ref im, in ws);
 
@@ -1018,38 +1005,47 @@ public class fProxyFFTTests
                 AssertClose(re[i], re0[i], tol);
                 AssertClose(im[i], im0[i], tol);
             }
-            arena.Dispose();
+
+            ws.Dispose();
+            re0.Dispose();
+            im0.Dispose();
+            re.Dispose();
+            im.Dispose();
         }
 
+        // N ranges up to 16384 (>= 2048): Persistent allocations, explicitly disposed below.
         void RoundTripRfftWsOneSize(int N, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var ws = arena.fProxyFFTCache(N);
+            var ws = new fProxyFFTCache(N, Allocator.Persistent);
             int halfSpec = (N >> 1) + 1;
-            var real0 = arena.fProxyRandomVec(N, -3f, 3f, seed);
+            var real0 = GenerateOP.fProxyRandomVec(N, -3f, 3f, seed, Allocator.Persistent);
 
-            var rRe = arena.fProxyVec(halfSpec);
-            var rIm = arena.fProxyVec(halfSpec);
+            var rRe = new fProxyN(halfSpec, Allocator.Persistent);
+            var rIm = new fProxyN(halfSpec, Allocator.Persistent);
             FFT.rfft(in real0, ref rRe, ref rIm, in ws);
 
-            var real2 = arena.fProxyVec(N);
+            var real2 = new fProxyN(N, Allocator.Persistent);
             FFT.irfft(in rRe, in rIm, ref real2, in ws);
 
             fProxy tol = (fProxy)1E-3f;
             for (int i = 0; i < N; i++)
                 AssertClose(real2[i], real0[i], tol);
-            arena.Dispose();
+
+            ws.Dispose();
+            real0.Dispose();
+            rRe.Dispose();
+            rIm.Dispose();
+            real2.Dispose();
         }
 
         void RoundTripDftOneSize(int N, uint seedRe, uint seedIm)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var re0 = arena.fProxyRandomVec(N, -3f, 3f, seedRe);
-            var im0 = arena.fProxyRandomVec(N, -3f, 3f, seedIm);
+            var re0 = GenerateOP.fProxyRandomVec(N, -3f, 3f, seedRe);
+            var im0 = GenerateOP.fProxyRandomVec(N, -3f, 3f, seedIm);
 
-            var fRe = arena.fProxyVec(N); var fIm = arena.fProxyVec(N);
+            var fRe = new fProxyN(N, Allocator.Temp); var fIm = new fProxyN(N, Allocator.Temp);
             FFT.dft(in re0, in im0, ref fRe, ref fIm);
-            var bRe = arena.fProxyVec(N); var bIm = arena.fProxyVec(N);
+            var bRe = new fProxyN(N, Allocator.Temp); var bIm = new fProxyN(N, Allocator.Temp);
             FFT.idft(in fRe, in fIm, ref bRe, ref bIm);
 
             fProxy relTol = (fProxy)5E-3f;
@@ -1058,7 +1054,6 @@ public class fProxyFFTTests
                 AssertCloseRel(bRe[i], re0[i], relTol);
                 AssertCloseRel(bIm[i], im0[i], relTol);
             }
-            arena.Dispose();
         }
 
         void RoundTripLargeN()
@@ -1080,17 +1075,16 @@ public class fProxyFFTTests
         // (the recent zero-alloc change). Covers power-of-4 and mixed sizes (and their inner-M dual).
         void WorkspaceReuseOneSize(int N, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var ws = arena.fProxyFFTCache(N);
+            var ws = new fProxyFFTCache(N, Allocator.Temp);
             int halfSpec = (N >> 1) + 1;
 
-            var re0 = arena.fProxyRandomVec(N, -2f, 2f, seed);
-            var im0 = arena.fProxyRandomVec(N, -2f, 2f, seed + 1u);
+            var re0 = GenerateOP.fProxyRandomVec(N, -2f, 2f, seed);
+            var im0 = GenerateOP.fProxyRandomVec(N, -2f, 2f, seed + 1u);
 
             // (a) fft(ws) on the fresh workspace, validated against dft.
-            var dRe = arena.fProxyVec(N); var dIm = arena.fProxyVec(N);
+            var dRe = new fProxyN(N, Allocator.Temp); var dIm = new fProxyN(N, Allocator.Temp);
             FFT.dft(in re0, in im0, ref dRe, ref dIm);
-            var fRe = re0.Copy(); var fIm = im0.Copy();
+            var fRe = new fProxyN(in re0, Allocator.Temp); var fIm = new fProxyN(in im0, Allocator.Temp);
             FFT.fft(ref fRe, ref fIm, in ws);
             fProxy relTol = (fProxy)1E-3f;
             for (int k = 0; k < N; k++)
@@ -1101,11 +1095,11 @@ public class fProxyFFTTests
 
             // (b) rfft(ws) on the SAME workspace (touches cz/sz/visited) — compare to the dft oracle
             // (real signal, im=0; dft's half-spectrum bins are the rfft ground truth).
-            var real = arena.fProxyRandomVec(N, -2f, 2f, seed + 2u);
-            var rRe = arena.fProxyVec(halfSpec); var rIm = arena.fProxyVec(halfSpec);
+            var real = GenerateOP.fProxyRandomVec(N, -2f, 2f, seed + 2u);
+            var rRe = new fProxyN(halfSpec, Allocator.Temp); var rIm = new fProxyN(halfSpec, Allocator.Temp);
             FFT.rfft(in real, ref rRe, ref rIm, in ws);
-            var zeroIm = arena.fProxyVec(N);
-            var oDftRe = arena.fProxyVec(N); var oDftIm = arena.fProxyVec(N);
+            var zeroIm = new fProxyN(N, Allocator.Temp);
+            var oDftRe = new fProxyN(N, Allocator.Temp); var oDftIm = new fProxyN(N, Allocator.Temp);
             FFT.dft(in real, in zeroIm, ref oDftRe, ref oDftIm);
             for (int k = 0; k <= N / 2; k++)
             {
@@ -1122,7 +1116,6 @@ public class fProxyFFTTests
                 AssertClose(fIm[i], im0[i], (fProxy)1E-3f);
             }
 
-            arena.Dispose();
         }
 
         void WorkspaceReuse()
@@ -1141,10 +1134,10 @@ public class fProxyFFTTests
             TwiddleTableAccuracyOneSize(65536);
         }
 
+        // nn ranges up to 65536 (>= 2048): Persistent allocation, explicitly disposed below.
         void TwiddleTableAccuracyOneSize(int nn)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var ws = arena.fProxyFFTCache(nn);
+            var ws = new fProxyFFTCache(nn, Allocator.Persistent);
             // float table is float-precision (~1 ulp of the cast); double table is ~machine
             // precision (O(log n) mults deep). Pin each to its achievable accuracy.
             fProxy tol = (fProxy)/*+choose[1E-6f|1E-12]*/1E-6f/*-choose*/;
@@ -1164,7 +1157,8 @@ public class fProxyFFTTests
                 AssertClose(wr, (fProxy)math.cos(ang), tol);   // Re(W^m)
                 AssertClose(wi, (fProxy)math.sin(ang), tol);   // Im(W^m)
             }
-            arena.Dispose();
+
+            ws.Dispose();
         }
 
         // Mirror of FFT.WQ / FFT.CosQ (quarter-table reconstruction) for the accuracy test:
@@ -1255,11 +1249,10 @@ public class fProxyFFTTests
     [Test]
     public void DftAliasOutputThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var re = arena.fProxyVec(4);
-        var im = arena.fProxyVec(4);
-        var oRe = arena.fProxyVec(4);
-        var oIm = arena.fProxyVec(4);
+        var re = new fProxyN(4, Allocator.Temp);
+        var im = new fProxyN(4, Allocator.Temp);
+        var oRe = new fProxyN(4, Allocator.Temp);
+        var oIm = new fProxyN(4, Allocator.Temp);
         // every one of the four out-vs-in pointer collisions must throw (each output bin reads all inputs)
         Assert.Throws<ArgumentException>(() => FFT.dft(in re, in im, ref re, ref oIm));   // outRe==inRe
         Assert.Throws<ArgumentException>(() => FFT.dft(in re, in im, ref im, ref oIm));   // outRe==inIm
@@ -1267,37 +1260,33 @@ public class fProxyFFTTests
         Assert.Throws<ArgumentException>(() => FFT.dft(in re, in im, ref oRe, ref im));   // outIm==inIm
         // idft shares the guard via DftCore
         Assert.Throws<ArgumentException>(() => FFT.idft(in re, in im, ref re, ref oIm));
-        arena.Dispose();
     }
 
     [Test]
     public void DftMismatchedLengthThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var inRe = arena.fProxyVec(4);
-        var inIm = arena.fProxyVec(4);
-        var inImShort = arena.fProxyVec(3);
-        var outRe = arena.fProxyVec(4);
-        var outIm = arena.fProxyVec(4);
-        var outShort = arena.fProxyVec(3);
+        var inRe = new fProxyN(4, Allocator.Temp);
+        var inIm = new fProxyN(4, Allocator.Temp);
+        var inImShort = new fProxyN(3, Allocator.Temp);
+        var outRe = new fProxyN(4, Allocator.Temp);
+        var outIm = new fProxyN(4, Allocator.Temp);
+        var outShort = new fProxyN(3, Allocator.Temp);
         // inRe.N != inIm.N
         Assert.Throws<ArgumentException>(() => FFT.dft(in inRe, in inImShort, ref outRe, ref outIm));
         // output length != input length
         Assert.Throws<ArgumentException>(() => FFT.dft(in inRe, in inIm, ref outRe, ref outShort));
-        arena.Dispose();
     }
 
     [Test]
     public void RfftLengthAndAliasThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var ws = arena.fProxyFFTCache(8);
-        var real = arena.fProxyVec(8);
+        var ws = new fProxyFFTCache(8, Allocator.Temp);
+        var real = new fProxyN(8, Allocator.Temp);
         // For N=8, the correct half-spectrum length is N/2+1 = 5.
-        var re5  = arena.fProxyVec(5);  // correct
-        var im5  = arena.fProxyVec(5);  // correct
-        var re8  = arena.fProxyVec(8);  // wrong (full-N, not N/2+1)
-        var im4  = arena.fProxyVec(4);  // wrong
+        var re5  = new fProxyN(5, Allocator.Temp);  // correct
+        var im5  = new fProxyN(5, Allocator.Temp);  // correct
+        var re8  = new fProxyN(8, Allocator.Temp);  // wrong (full-N, not N/2+1)
+        var im4  = new fProxyN(4, Allocator.Temp);  // wrong
 
         // wrong re length
         Assert.Throws<ArgumentException>(() => FFT.rfft(in real, ref re8, ref im5, in ws));
@@ -1305,65 +1294,60 @@ public class fProxyFFTTests
         Assert.Throws<ArgumentException>(() => FFT.rfft(in real, ref re5, ref im4, in ws));
         // non-power-of-two real length: no matching workspace can exist (fProxyFFTCache itself
         // requires a power of two), so this necessarily throws via the workspace-size guard.
-        var real7 = arena.fProxyVec(7);
-        var re4   = arena.fProxyVec(4);
-        var im4b  = arena.fProxyVec(4);
+        var real7 = new fProxyN(7, Allocator.Temp);
+        var re4   = new fProxyN(4, Allocator.Temp);
+        var im4b  = new fProxyN(4, Allocator.Temp);
         Assert.Throws<ArgumentException>(() => FFT.rfft(in real7, ref re4, ref im4b, in ws));
         // im aliasing real must throw
         Assert.Throws<ArgumentException>(() => FFT.rfft(in real, ref re5, ref real, in ws));
-        arena.Dispose();
     }
 
     [Test]
     public void IrfftGuards()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var ws = arena.fProxyFFTCache(8);
+        var ws = new fProxyFFTCache(8, Allocator.Temp);
         // For N=8, half-spectrum has length N/2+1=5.
-        var re5   = arena.fProxyVec(5);
-        var im5   = arena.fProxyVec(5);
-        var real8 = arena.fProxyVec(8);
+        var re5   = new fProxyN(5, Allocator.Temp);
+        var im5   = new fProxyN(5, Allocator.Temp);
+        var real8 = new fProxyN(8, Allocator.Temp);
 
         // im.N != re.N (throws before the workspace is consulted)
-        var im4 = arena.fProxyVec(4);
+        var im4 = new fProxyN(4, Allocator.Temp);
         Assert.Throws<ArgumentException>(() => FFT.irfft(in re5, in im4, ref real8, in ws));
 
         // halfSpec < 2 (re.N=1 means N=0; minimum is N=2)
-        var re1  = arena.fProxyVec(1);
-        var im1  = arena.fProxyVec(1);
+        var re1  = new fProxyN(1, Allocator.Temp);
+        var im1  = new fProxyN(1, Allocator.Temp);
         Assert.Throws<ArgumentException>(() => FFT.irfft(in re1, in im1, ref real8, in ws));
 
         // wrong real output length (real.N=7 but N=8)
-        var real7 = arena.fProxyVec(7);
+        var real7 = new fProxyN(7, Allocator.Temp);
         Assert.Throws<ArgumentException>(() => FFT.irfft(in re5, in im5, ref real7, in ws));
 
         // Alias tests: use N=2 (halfSpec=2, real.N=2) so all length guards pass and the alias
         // check is reached. re2.N=2 = N, so real.N matches and the ptr check fires. Needs its
         // own workspace (sized for N=2) since the alias check runs after the workspace guard.
-        var ws2   = arena.fProxyFFTCache(2);
-        var re2  = arena.fProxyVec(2);
-        var im2  = arena.fProxyVec(2);
-        var real2 = arena.fProxyVec(2);
+        var ws2   = new fProxyFFTCache(2, Allocator.Temp);
+        var re2  = new fProxyN(2, Allocator.Temp);
+        var im2  = new fProxyN(2, Allocator.Temp);
+        var real2 = new fProxyN(2, Allocator.Temp);
 
         // real aliasing re (correct lengths: halfSpec=2, N=2)
         Assert.Throws<ArgumentException>(() => FFT.irfft(in re2, in im2, ref re2, in ws2));
         // real aliasing im (correct lengths)
         Assert.Throws<ArgumentException>(() => FFT.irfft(in re2, in im2, ref im2, in ws2));
 
-        arena.Dispose();
     }
 
     [Test]
     public void ReductionMismatchedLengthThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var re = arena.fProxyVec(4);
-        var im = arena.fProxyVec(4);
-        var shortDest = arena.fProxyVec(3);
+        var re = new fProxyN(4, Allocator.Temp);
+        var im = new fProxyN(4, Allocator.Temp);
+        var shortDest = new fProxyN(3, Allocator.Temp);
         Assert.Throws<ArgumentException>(() => FFT.magnitude(in re, in im, ref shortDest));
         Assert.Throws<ArgumentException>(() => FFT.powerSpectrum(in re, in im, ref shortDest));
         Assert.Throws<ArgumentException>(() => FFT.phase(in re, in im, ref shortDest));
-        arena.Dispose();
     }
 
     // ---- workspace guard tests ----
@@ -1371,67 +1355,59 @@ public class fProxyFFTTests
     [Test]
     public void FftWorkspaceFactoryNonPow2Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        Assert.Throws<ArgumentException>(() => arena.fProxyFFTCache(0));
-        Assert.Throws<ArgumentException>(() => arena.fProxyFFTCache(1));
-        Assert.Throws<ArgumentException>(() => arena.fProxyFFTCache(3));
-        Assert.Throws<ArgumentException>(() => arena.fProxyFFTCache(5));
-        Assert.Throws<ArgumentException>(() => arena.fProxyFFTCache(6));
-        arena.Dispose();
+        Assert.Throws<ArgumentException>(() => new fProxyFFTCache(0, Allocator.Temp));
+        Assert.Throws<ArgumentException>(() => new fProxyFFTCache(1, Allocator.Temp));
+        Assert.Throws<ArgumentException>(() => new fProxyFFTCache(3, Allocator.Temp));
+        Assert.Throws<ArgumentException>(() => new fProxyFFTCache(5, Allocator.Temp));
+        Assert.Throws<ArgumentException>(() => new fProxyFFTCache(6, Allocator.Temp));
     }
 
     [Test]
     public void FftTableWrongWorkspaceSizeThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var re8  = arena.fProxyVec(8);
-        var im8  = arena.fProxyVec(8);
-        var ws16 = arena.fProxyFFTCache(16);   // sized for 16, not 8
+        var re8  = new fProxyN(8, Allocator.Temp);
+        var im8  = new fProxyN(8, Allocator.Temp);
+        var ws16 = new fProxyFFTCache(16, Allocator.Temp);   // sized for 16, not 8
 
         // fft and ifft with mismatched workspace
         Assert.Throws<ArgumentException>(() => FFT.fft(ref re8, ref im8, in ws16));
         Assert.Throws<ArgumentException>(() => FFT.ifft(ref re8, ref im8, in ws16));
 
         // rfft: real.N=8 but ws.n=16
-        var real8  = arena.fProxyVec(8);
-        var reHalf = arena.fProxyVec(5);   // 8/2+1=5
-        var imHalf = arena.fProxyVec(5);
+        var real8  = new fProxyN(8, Allocator.Temp);
+        var reHalf = new fProxyN(5, Allocator.Temp);   // 8/2+1=5
+        var imHalf = new fProxyN(5, Allocator.Temp);
         Assert.Throws<ArgumentException>(() => FFT.rfft(in real8, ref reHalf, ref imHalf, in ws16));
 
         // irfft: re.N=5 -> N=8, but ws.n=16
         Assert.Throws<ArgumentException>(() => FFT.irfft(in reHalf, in imHalf, ref real8, in ws16));
 
-        arena.Dispose();
     }
 
     // fft/ifft require re and im to have the same length (would otherwise index im out of bounds).
     [Test]
     public void FftMismatchedLengthThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var re8 = arena.fProxyVec(8);
-        var im4 = arena.fProxyVec(4);          // wrong: im shorter than re
-        var ws8 = arena.fProxyFFTCache(8);     // correctly sized for re.N=8
+        var re8 = new fProxyN(8, Allocator.Temp);
+        var im4 = new fProxyN(4, Allocator.Temp);          // wrong: im shorter than re
+        var ws8 = new fProxyFFTCache(8, Allocator.Temp);     // correctly sized for re.N=8
 
         Assert.Throws<ArgumentException>(() => FFT.fft(ref re8, ref im4, in ws8));
         Assert.Throws<ArgumentException>(() => FFT.ifft(ref re8, ref im4, in ws8));
 
-        arena.Dispose();
     }
 
     [Test]
     public void RfftTableWrongOutputLengthThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var ws = arena.fProxyFFTCache(8);
-        var real = arena.fProxyVec(8);
-        var re5  = arena.fProxyVec(5);    // correct N/2+1
-        var im5  = arena.fProxyVec(5);    // correct
-        var re4  = arena.fProxyVec(4);    // wrong
-        var im4  = arena.fProxyVec(4);    // wrong
+        var ws = new fProxyFFTCache(8, Allocator.Temp);
+        var real = new fProxyN(8, Allocator.Temp);
+        var re5  = new fProxyN(5, Allocator.Temp);    // correct N/2+1
+        var im5  = new fProxyN(5, Allocator.Temp);    // correct
+        var re4  = new fProxyN(4, Allocator.Temp);    // wrong
+        var im4  = new fProxyN(4, Allocator.Temp);    // wrong
 
         Assert.Throws<ArgumentException>(() => FFT.rfft(in real, ref re4, ref im5, in ws));
         Assert.Throws<ArgumentException>(() => FFT.rfft(in real, ref re5, ref im4, in ws));
-        arena.Dispose();
     }
 }

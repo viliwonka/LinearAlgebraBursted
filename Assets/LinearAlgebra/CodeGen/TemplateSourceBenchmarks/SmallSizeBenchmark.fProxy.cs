@@ -72,10 +72,9 @@ namespace LinearAlgebra.Benchmarks
         // ---- QR (square + tall share one path; sized by m x n, m >= n) ----
         static Bench.Stat QRFProxy(int m, int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var Q = arena.fProxyMat(m, n);
-            var R = arena.fProxyMat(n, n);
-            var Src = arena.fProxyMat(m, n);
+            var Q = new fProxyMxN(m, n, Allocator.Persistent);
+            var R = new fProxyMxN(n, n, Allocator.Persistent);
+            var Src = new fProxyMxN(m, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)(m * 1000003 + n));
             for (int r = 0; r < m; r++)
@@ -87,17 +86,16 @@ namespace LinearAlgebra.Benchmarks
             var job = new SmallQRJobFProxy { Q = Q, R = R, Src = Src };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            Q.Dispose(); R.Dispose(); Src.Dispose();
             return stat;
         }
 
         // ---- LQ (square + wide share one path; sized by m x n, m <= n) ----
         static Bench.Stat LQFProxy(int m, int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyMat(m, n);
-            var L = arena.fProxyMat(m, m);
-            var Q = arena.fProxyMat(m, n);
+            var A = new fProxyMxN(m, n, Allocator.Persistent);
+            var L = new fProxyMxN(m, m, Allocator.Persistent);
+            var Q = new fProxyMxN(m, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)(m * 1000003 + n));
             for (int r = 0; r < m; r++)
@@ -109,16 +107,15 @@ namespace LinearAlgebra.Benchmarks
             var job = new SmallLQJobFProxy { A = A, L = L, Q = Q };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); L.Dispose(); Q.Dispose();
             return stat;
         }
 
         // ---- Cholesky (square SPD only) ----
         static Bench.Stat CholFProxy(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyMat(n, n);
-            var L = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Persistent);
+            var L = new fProxyMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -134,17 +131,16 @@ namespace LinearAlgebra.Benchmarks
             var job = new SmallCholJobFProxy { A = A, L = L };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); L.Dispose();
             return stat;
         }
 
         // ---- LU (square, partial pivoting) ----
         static Bench.Stat LUFProxy(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var U = arena.fProxyMat(n, n);
-            var L = arena.fProxyMat(n, n);
-            var Src = arena.fProxyMat(n, n);
+            var U = new fProxyMxN(n, n, Allocator.Persistent);
+            var L = new fProxyMxN(n, n, Allocator.Persistent);
+            var Src = new fProxyMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -156,7 +152,7 @@ namespace LinearAlgebra.Benchmarks
             var job = new SmallLUJobFProxy { U = U, L = L, Src = Src };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            U.Dispose(); L.Dispose(); Src.Dispose();
             return stat;
         }
     }

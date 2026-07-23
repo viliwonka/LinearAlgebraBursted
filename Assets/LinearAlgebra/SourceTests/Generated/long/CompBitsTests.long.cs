@@ -30,23 +30,15 @@ public class longCompBitsTests
 
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
-            try
+            switch (Type)
             {
-                switch (Type)
-                {
-                    case TestType.BitPatterns: BitPatternsTest(ref arena); break;
-                    case TestType.Reversebits: ReversebitsTest(ref arena); break;
-                    case TestType.Ceilpow2: Ceilpow2Test(ref arena); break;
-                    case TestType.RolRorRoundTrip: RolRorRoundTripTest(ref arena); break;
-                    case TestType.RolRorKnownValues: RolRorKnownValuesTest(ref arena); break;
-                    case TestType.ScalarShiftedByVector: ScalarShiftedByVectorTest(ref arena); break;
-                    default: throw new NotImplementedException();
-                }
-            }
-            finally
-            {
-                arena.Dispose();
+                case TestType.BitPatterns: BitPatternsTest(); break;
+                case TestType.Reversebits: ReversebitsTest(); break;
+                case TestType.Ceilpow2: Ceilpow2Test(); break;
+                case TestType.RolRorRoundTrip: RolRorRoundTripTest(); break;
+                case TestType.RolRorKnownValues: RolRorKnownValuesTest(); break;
+                case TestType.ScalarShiftedByVector: ScalarShiftedByVectorTest(); break;
+                default: throw new NotImplementedException();
             }
         }
 
@@ -69,7 +61,7 @@ public class longCompBitsTests
         // uint).
         private long AllOnes => -1L;
 
-        private void BitPatternsTest(ref Arena arena)
+        private void BitPatternsTest()
         {
             int width = Width;
             long msb = Msb;
@@ -77,7 +69,7 @@ public class longCompBitsTests
             long allOnes = AllOnes;
 
             int n = 5;
-            longN v = arena.longVec(n);
+            longN v = new longN(n, Allocator.Temp);
             v[0] = 0;
             v[1] = 1;
             v[2] = msb;
@@ -116,13 +108,13 @@ public class longCompBitsTests
             Assert.IsTrue(l[4] == (long)0);
         }
 
-        private void ReversebitsTest(ref Arena arena)
+        private void ReversebitsTest()
         {
             long msb = Msb;
             long allOnes = AllOnes;
 
             int n = 5;
-            longN v = arena.longVec(n);
+            longN v = new longN(n, Allocator.Temp);
             v[0] = 0;
             v[1] = 1;
             v[2] = msb;
@@ -145,13 +137,13 @@ public class longCompBitsTests
                 Assert.IsTrue(r2[i] == v[i]);
         }
 
-        private void Ceilpow2Test(ref Arena arena)
+        private void Ceilpow2Test()
         {
             // Small values only - safe across int/short/long/uint with no overflow, and the short
             // width-corrected formula (see UnsafeBitsOP.long.cs) is exercised the same as the
             // others since these all fit comfortably within 16 bits.
             int n = 11;
-            longN v = arena.longVec(n);
+            longN v = new longN(n, Allocator.Temp);
             v[0] = 0; v[1] = 1; v[2] = 2; v[3] = 3; v[4] = 4; v[5] = 5;
             v[6] = 6; v[7] = 7; v[8] = 8; v[9] = 9; v[10] = 17;
 
@@ -178,7 +170,7 @@ public class longCompBitsTests
             // out at 32767 - this genuinely overflows and wraps to short.MinValue (the sign bit
             // alone), hence the per-type expected literal below.
             int n2 = 2;
-            longN v2 = arena.longVec(n2);
+            longN v2 = new longN(n2, Allocator.Temp);
             v2[0] = 0x4000;
             v2[1] = 0x4001;
 
@@ -194,7 +186,7 @@ public class longCompBitsTests
             // lzcnt-based equivalent reduce ANY non-positive input down to 0, generalizing the
             // ceilpow2(0) == 0 quirk already exercised above. -7 is small and unremarkable - chosen
             // only to be unambiguously negative, not close to any type's own overflow boundary.
-            longN v3 = arena.longVec(1);
+            longN v3 = new longN(1, Allocator.Temp);
             v3[0] = -7;
             longN c3 = v3.Copy();
             c3.ceilpow2InPlace();
@@ -202,12 +194,12 @@ public class longCompBitsTests
             
         }
 
-        private void RolRorRoundTripTest(ref Arena arena)
+        private void RolRorRoundTripTest()
         {
             int width = Width;
 
             int n = 4;
-            longN v = arena.longVec(n);
+            longN v = new longN(n, Allocator.Temp);
             v[0] = 1;
             v[1] = Msb;
             v[2] = Alt;
@@ -234,12 +226,12 @@ public class longCompBitsTests
                 Assert.IsTrue(rotated[i] == v[i]);
         }
 
-        private void RolRorKnownValuesTest(ref Arena arena)
+        private void RolRorKnownValuesTest()
         {
             long msb = Msb;
 
             int n = 2;
-            longN v = arena.longVec(n);
+            longN v = new longN(n, Allocator.Temp);
             v[0] = 1;
             v[1] = msb;
 
@@ -253,14 +245,14 @@ public class longCompBitsTests
             Assert.IsTrue(s[0] == msb); // ror(1, 1) wraps around to the MSB-only pattern
         }
 
-        private void ScalarShiftedByVectorTest(ref Arena arena)
+        private void ScalarShiftedByVectorTest()
         {
             // bitwiseLeftShiftInPlace(value, vec) computes vec[i] = value << vec[i] at the TYPE'S
             // OWN width. Width-2 is the regression case: for long that is a shift of 62, which a
             // 32-bit evaluation (count masked mod 32, result truncated) gets silently wrong.
             int width = Width;
 
-            longN v = arena.longVec(2);
+            longN v = new longN(2, Allocator.Temp);
             v[0] = 1;
             v[1] = (long)(width - 2);
 
@@ -271,7 +263,7 @@ public class longCompBitsTests
 
             // Right shift of the MSB-only pattern: arithmetic (sign-filling) for signed types,
             // logical for uint - both at the type's own width.
-            longN w = arena.longVec(2);
+            longN w = new longN(2, Allocator.Temp);
             w[0] = 1;
             w[1] = (long)(width - 2);
 

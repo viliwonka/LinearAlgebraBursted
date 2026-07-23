@@ -46,19 +46,18 @@ public class fProxyQRLeastSquaresResidualTests
         // Known closed-form answer: x = [5, -3], residual r = [1, -2, 1], Aᵀr = 0.
         void StrangBestFitLine()
         {
-            var arena = new Arena(Allocator.Persistent);
 
-            var A = arena.fProxyMat(3, 2);
+            var A = new fProxyMxN(3, 2, Allocator.Temp);
             A[0, 0] = 1f; A[0, 1] = 0f;
             A[1, 0] = 1f; A[1, 1] = 1f;
             A[2, 0] = 1f; A[2, 1] = 2f;
 
-            var b = arena.fProxyVec(3);
+            var b = new fProxyN(3, Allocator.Temp);
             b[0] = 6f; b[1] = 0f; b[2] = 0f;
 
-            var Awork = A.Copy();   // solveInPlace destroys A and b
-            var bwork = b.Copy();
-            var x = arena.fProxyVec(2);
+            var Awork = new fProxyMxN(in A, Allocator.Temp);   // solveInPlace destroys A and b
+            var bwork = new fProxyN(in b, Allocator.Temp);
+            var x = new fProxyN(2, Allocator.Temp);
 
             QR.solveInPlace(ref Awork, ref bwork, ref x);
 
@@ -68,7 +67,8 @@ public class fProxyQRLeastSquaresResidualTests
             RecordBound(math.abs(x[0] - (fProxy)5f), (fProxy)1E-4f);
             RecordBound(math.abs(x[1] - (fProxy)(-3f)), (fProxy)1E-4f);
 
-            fProxyN r = b - Blas.dot(A, x);
+            fProxyN r = new fProxyN(in b, Allocator.Temp);
+            fProxyComp.subInPlace(r, Blas.dot(A, x));
             RecordBound(math.abs(r[0] - (fProxy)1f), (fProxy)1E-4f);
             RecordBound(math.abs(r[1] - (fProxy)(-2f)), (fProxy)1E-4f);
             RecordBound(math.abs(r[2] - (fProxy)1f), (fProxy)1E-4f);
@@ -76,33 +76,31 @@ public class fProxyQRLeastSquaresResidualTests
             // normal equations: Aᵀr == 0
             fProxyN AtR = Blas.dot(r, A);
             RecordBound(Analysis.MaxZeroError(AtR), (fProxy)1E-4f);
-
-            arena.Dispose();
         }
 
         // For random inconsistent tall systems, the QR least-squares solution must make the residual
         // orthogonal to every column of A (normal equations), to within conditioning.
         void RandomOverdeterminedNormalEquations()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             for (uint t = 0; t < 24; t++)
             {
                 int m = 24, n = 6;
-                var A = arena.fProxyRandomMat(m, n, -2f, 2f, 5500 + t * 17);
+                var A = GenerateOP.fProxyRandomMat(m, n, -2f, 2f, 5500 + t * 17);
                 // b is independent random — generically NOT in the column space => non-zero residual.
-                var b = arena.fProxyRandomVec(m, -2f, 2f, 99000 + t * 23);
+                var b = GenerateOP.fProxyRandomVec(m, -2f, 2f, 99000 + t * 23);
 
-                var Awork = A.Copy();
-                var bwork = b.Copy();
-                var x = arena.fProxyVec(n);
+                var Awork = new fProxyMxN(in A, Allocator.Temp);
+                var bwork = new fProxyN(in b, Allocator.Temp);
+                var x = new fProxyN(n, Allocator.Temp);
 
                 QR.solveInPlace(ref Awork, ref bwork, ref x);
 
                 if (Analysis.isAnyNan(in x))
                     throw new System.Exception("TestJob: NaN detected");
 
-                fProxyN r = b - Blas.dot(A, x);
+                fProxyN r = new fProxyN(in b, Allocator.Temp);
+                fProxyComp.subInPlace(r, Blas.dot(A, x));
                 fProxyN AtR = Blas.dot(r, A);
 
                 // scale-relative: ||Aᵀr||_inf small vs ||Aᵀb||_inf (the un-projected scale).
@@ -119,35 +117,32 @@ public class fProxyQRLeastSquaresResidualTests
                     Fail[2] = (fProxy)1E-2f;
                     Fail[3] = rNorm;
                 }
-
-                arena.Clear();
             }
-
-            arena.Dispose();
         }
 
         // The LS solution is the minimizer: perturbing x in any coordinate must not reduce the
         // residual sum of squares.
         void RandomOverdeterminedOptimality()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             for (uint t = 0; t < 12; t++)
             {
                 int m = 16, n = 4;
-                var A = arena.fProxyRandomMat(m, n, -2f, 2f, 1200 + t * 11);
-                var b = arena.fProxyRandomVec(m, -2f, 2f, 64000 + t * 29);
+                var A = GenerateOP.fProxyRandomMat(m, n, -2f, 2f, 1200 + t * 11);
+                var b = GenerateOP.fProxyRandomVec(m, -2f, 2f, 64000 + t * 29);
 
-                var Awork = A.Copy();
-                var bwork = b.Copy();
-                var x = arena.fProxyVec(n);
+                var Awork = new fProxyMxN(in A, Allocator.Temp);
+                var bwork = new fProxyN(in b, Allocator.Temp);
+                var x = new fProxyN(n, Allocator.Temp);
 
                 QR.solveInPlace(ref Awork, ref bwork, ref x);
 
                 if (Analysis.isAnyNan(in x))
                     throw new System.Exception("TestJob: NaN detected");
 
-                fProxy r0 = SumSq(b - Blas.dot(A, x));
+                var resid0 = new fProxyN(in b, Allocator.Temp);
+                fProxyComp.subInPlace(resid0, Blas.dot(A, x));
+                fProxy r0 = SumSq(resid0);
 
                 fProxy delta = (fProxy)0.05f;
                 for (int k = 0; k < n; k++)
@@ -155,9 +150,13 @@ public class fProxyQRLeastSquaresResidualTests
                     fProxy saved = x[k];
 
                     x[k] = saved + delta;
-                    fProxy rp = SumSq(b - Blas.dot(A, x));
+                    var residP = new fProxyN(in b, Allocator.Temp);
+                    fProxyComp.subInPlace(residP, Blas.dot(A, x));
+                    fProxy rp = SumSq(residP);
                     x[k] = saved - delta;
-                    fProxy rm = SumSq(b - Blas.dot(A, x));
+                    var residM = new fProxyN(in b, Allocator.Temp);
+                    fProxyComp.subInPlace(residM, Blas.dot(A, x));
+                    fProxy rm = SumSq(residM);
                     x[k] = saved;
 
                     // both perturbations must be >= the optimum (minus tiny float slack).
@@ -170,11 +169,7 @@ public class fProxyQRLeastSquaresResidualTests
                         Fail[3] = math.min(rp, rm) - r0;
                     }
                 }
-
-                arena.Clear();
             }
-
-            arena.Dispose();
         }
 
         static fProxy SumSq(in fProxyN v)

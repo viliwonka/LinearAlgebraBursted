@@ -122,9 +122,9 @@ public class doubleKrylovRound2Tests
 
         // SPD b x b block D = M^T M + b*I: symmetric, well-conditioned -> LU-invertible, and
         // D_i z_i == r_i holds tightly.
-        static doubleMxN SpdBlock(ref Arena arena, int b, uint seed)
+        static doubleMxN SpdBlock(int b, uint seed)
         {
-            var M = arena.doubleRandomMat(b, b, -1f, 1f, seed);
+            var M = GenerateOP.doubleRandomMat(b, b, -1f, 1f, seed);
             var D = Blas.dot(M, M, true);   // M^T M (symmetric, PSD)
             for (int d = 0; d < b; d++) D[d, d] += (double)b;
             return D;
@@ -137,14 +137,14 @@ public class doubleKrylovRound2Tests
         //     takes Blas.dot(x, y2). Same kernel + same 2-arg dot fold => exact.
         // ==============================================================================
 
-        static void CheckApplyDotExact<TOp>(in TOp op, in doubleN x, ref Arena arena)
+        static void CheckApplyDotExact<TOp>(in TOp op, in doubleN x)
             where TOp : struct, IdoubleLinearOperator
         {
             int rows = op.Rows;
-            var y1 = arena.doubleVec(rows);
+            var y1 = new doubleN(rows, Allocator.Temp);
             double d1 = op.ApplyDot(in x, ref y1);
 
-            var y2 = arena.doubleVec(rows);
+            var y2 = new doubleN(rows, Allocator.Temp);
             op.Apply(in x, ref y2);
             double d2 = Blas.dot(x, y2);
 
@@ -154,89 +154,77 @@ public class doubleKrylovRound2Tests
 
         void ApplyDotDenseExact()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 11;
-            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 70001);      // square so dot(x, A x) is well-formed
-            var x = arena.doubleRandomVec(n, -1f, 1f, 70002);
-            CheckApplyDotExact(new doubleDenseOperator(in A), in x, ref arena);
-            arena.Dispose();
+            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(n, 70001);      // square so dot(x, A x) is well-formed
+            var x = GenerateOP.doubleRandomVec(n, -1f, 1f, 70002);
+            CheckApplyDotExact(new doubleDenseOperator(in A), in x);
         }
 
         void ApplyDotBSRFullExact()
         {
-            var arena = new Arena(Allocator.Persistent);
             // Square 3x3-block BSR (full storage), several scattered blocks.
             const int b = 3, nb = 4;
             int dim = b * nb;
-            var builder = arena.doubleBSRBuilder(nb, nb, b, b, 8);
-            builder.AddBlock(0, 0, arena.doubleRandomMat(b, b, -1f, 1f, 70101));
-            builder.AddBlock(0, 2, arena.doubleRandomMat(b, b, -1f, 1f, 70102));
-            builder.AddBlock(1, 1, arena.doubleRandomMat(b, b, -1f, 1f, 70103));
-            builder.AddBlock(1, 3, arena.doubleRandomMat(b, b, -1f, 1f, 70104));
-            builder.AddBlock(2, 0, arena.doubleRandomMat(b, b, -1f, 1f, 70105));
-            builder.AddBlock(3, 3, arena.doubleRandomMat(b, b, -1f, 1f, 70106));
-            var A = builder.ToBSR(ref arena);
-            var x = arena.doubleRandomVec(dim, -1f, 1f, 70110);
-            CheckApplyDotExact(new doubleBSROperator(in A), in x, ref arena);
-            arena.Dispose();
+            var builder = new doubleBSRBuilder(nb, nb, b, b, Allocator.Temp, 8);
+            builder.AddBlock(0, 0, GenerateOP.doubleRandomMat(b, b, -1f, 1f, 70101));
+            builder.AddBlock(0, 2, GenerateOP.doubleRandomMat(b, b, -1f, 1f, 70102));
+            builder.AddBlock(1, 1, GenerateOP.doubleRandomMat(b, b, -1f, 1f, 70103));
+            builder.AddBlock(1, 3, GenerateOP.doubleRandomMat(b, b, -1f, 1f, 70104));
+            builder.AddBlock(2, 0, GenerateOP.doubleRandomMat(b, b, -1f, 1f, 70105));
+            builder.AddBlock(3, 3, GenerateOP.doubleRandomMat(b, b, -1f, 1f, 70106));
+            var A = builder.ToBSR(Allocator.Temp);
+            var x = GenerateOP.doubleRandomVec(dim, -1f, 1f, 70110);
+            CheckApplyDotExact(new doubleBSROperator(in A), in x);
         }
 
         void ApplyDotBSRSymExact()
         {
-            var arena = new Arena(Allocator.Persistent);
             const int b = 3, nb = 4;
             int dim = b * nb;
-            var builder = arena.doubleBSRBuilder(nb, nb, b, b, 8);
-            builder.AddBlock(0, 0, SpdBlock(ref arena, b, 70201));   // symmetric diagonal blocks
-            builder.AddBlock(1, 1, SpdBlock(ref arena, b, 70202));
-            builder.AddBlock(2, 2, SpdBlock(ref arena, b, 70203));
-            builder.AddBlock(3, 3, SpdBlock(ref arena, b, 70204));
-            builder.AddBlock(1, 0, arena.doubleRandomMat(b, b, -1f, 1f, 70205));  // lower off-diagonals
-            builder.AddBlock(3, 1, arena.doubleRandomMat(b, b, -1f, 1f, 70206));
-            var A = builder.ToBSRSymmetric(ref arena);
-            var x = arena.doubleRandomVec(dim, -1f, 1f, 70210);
-            CheckApplyDotExact(new doubleBSROperator(in A), in x, ref arena);
-            arena.Dispose();
+            var builder = new doubleBSRBuilder(nb, nb, b, b, Allocator.Temp, 8);
+            builder.AddBlock(0, 0, SpdBlock(b, 70201));   // symmetric diagonal blocks
+            builder.AddBlock(1, 1, SpdBlock(b, 70202));
+            builder.AddBlock(2, 2, SpdBlock(b, 70203));
+            builder.AddBlock(3, 3, SpdBlock(b, 70204));
+            builder.AddBlock(1, 0, GenerateOP.doubleRandomMat(b, b, -1f, 1f, 70205));  // lower off-diagonals
+            builder.AddBlock(3, 1, GenerateOP.doubleRandomMat(b, b, -1f, 1f, 70206));
+            var A = builder.ToBSRSymmetric(Allocator.Temp);
+            var x = GenerateOP.doubleRandomVec(dim, -1f, 1f, 70210);
+            CheckApplyDotExact(new doubleBSROperator(in A), in x);
         }
 
         void ApplyDotIdentityExact()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 9;
-            var x = arena.doubleRandomVec(n, -1f, 1f, 70301);
-            CheckApplyDotExact(new doubleIdentityOperator(n), in x, ref arena);
-            arena.Dispose();
+            var x = GenerateOP.doubleRandomVec(n, -1f, 1f, 70301);
+            CheckApplyDotExact(new doubleIdentityOperator(n), in x);
         }
 
         void ApplyDotColScaledSquareExact()
         {
-            var arena = new Arena(Allocator.Persistent);
             // SQUARE inner so x and y share a length and dot(x, y) is well-formed (the rectangular
             // case's dimension throw is the managed test below).
             int n = 8;
-            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 70401);
-            var d = arena.doubleRandomVec(n, (double)0.5f, (double)2f, 70402);   // nonzero scale
-            var scratch = arena.doubleVec(n);
+            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(n, 70401);
+            var d = GenerateOP.doubleRandomVec(n, (double)0.5f, (double)2f, 70402);   // nonzero scale
+            var scratch = new doubleN(n, Allocator.Temp);
             var op = new doubleColScaledOperator<doubleDenseOperator>(new doubleDenseOperator(in A), d, scratch);
-            var x = arena.doubleRandomVec(n, -1f, 1f, 70403);
-            CheckApplyDotExact(in op, in x, ref arena);
-            arena.Dispose();
+            var x = GenerateOP.doubleRandomVec(n, -1f, 1f, 70403);
+            CheckApplyDotExact(in op, in x);
         }
 
         void ApplyDotNormalOperatorExact()
         {
-            var arena = new Arena(Allocator.Persistent);
             // LP normal operator M = As D As^T + reg*I over a rectangular BSR inner (m x n).
             int m = 6, n = 4;
-            var Adense = arena.doubleRandomMat(m, n, -1f, 1f, 70501);
-            var bsm = doubleKrylovBatteryOracles.DenseToBSR1x1(ref arena, in Adense);
+            var Adense = GenerateOP.doubleRandomMat(m, n, -1f, 1f, 70501);
+            var bsm = doubleKrylovBatteryOracles.DenseToBSR1x1(in Adense);
             var inner = new doubleBSROperator(in bsm);
-            var d = arena.doubleRandomVec(n, (double)0.25f, (double)1.5f, 70502);  // length As.Cols
-            var scratch = arena.doubleVec(n);
+            var d = GenerateOP.doubleRandomVec(n, (double)0.25f, (double)1.5f, 70502);  // length As.Cols
+            var scratch = new doubleN(n, Allocator.Temp);
             var op = new doubleNormalOperator<doubleBSROperator>(in inner, in d, in scratch, (double)0.3f);
-            var x = arena.doubleRandomVec(m, -1f, 1f, 70503);   // M is m x m -> x length m
-            CheckApplyDotExact(in op, in x, ref arena);
-            arena.Dispose();
+            var x = GenerateOP.doubleRandomVec(m, -1f, 1f, 70503);   // M is m x m -> x length m
+            CheckApplyDotExact(in op, in x);
         }
 
         // ==============================================================================
@@ -245,25 +233,23 @@ public class doubleKrylovRound2Tests
         // ==============================================================================
 
         // Block-diagonal BSR (only diagonal blocks -> ToDense is exactly blockdiag(D_i)).
-        static doubleBSR BuildBlockDiagBSR(ref Arena arena, int nb, int b, uint seed)
+        static doubleBSR BuildBlockDiagBSR(int nb, int b, uint seed)
         {
-            var builder = arena.doubleBSRBuilder(nb, nb, b, b, nb);
+            var builder = new doubleBSRBuilder(nb, nb, b, b, Allocator.Temp, nb);
             for (int i = 0; i < nb; i++)
-                builder.AddBlock(i, i, SpdBlock(ref arena, b, seed + (uint)i + 1u));
-            return builder.ToBSR(ref arena);
+                builder.AddBlock(i, i, SpdBlock(b, seed + (uint)i + 1u));
+            return builder.ToBSR(Allocator.Temp);
         }
 
         void CheckBlockJacobi(int b, uint seed, bool checkFold)
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int nb = 4;
             int dim = nb * b;
-            var A = BuildBlockDiagBSR(ref arena, nb, b, seed);
-            var M = arena.doubleBlockJacobi(in A);
+            var A = BuildBlockDiagBSR(nb, b, seed);
+            var M = new doubleBlockJacobi(in A, Allocator.Temp);
 
-            var r = arena.doubleRandomVec(dim, -1f, 1f, seed + 500u);
-            var z = arena.doubleVec(dim);
+            var r = GenerateOP.doubleRandomVec(dim, -1f, 1f, seed + 500u);
+            var z = new doubleN(dim, Allocator.Temp);
             M.Apply(in r, ref z);                       // dispatches to unroll (b in {1,2,3,4,6}) or general loop
 
             if (checkFold)
@@ -273,7 +259,7 @@ public class doubleKrylovRound2Tests
                 // left-to-right fold order => the unrolled result must be bit-identical.
                 var dinv = M.DInv;
                 int blockLen = b * b;
-                var zRef = arena.doubleVec(dim);
+                var zRef = new doubleN(dim, Allocator.Temp);
                 for (int i = 0; i < nb; i++)
                 {
                     int rowBase = i * b;
@@ -292,7 +278,7 @@ public class doubleKrylovRound2Tests
             // Independent correctness (also the "hand-computed dense reference" for the b=5/7
             // fallback): z = M^-1 r <=> D_i z_i == r_i for every diagonal block. D_i is read from
             // the dense expansion, NOT from DInv -> genuinely independent of the applied inverse.
-            var dense = A.ToDense(ref arena);
+            var dense = A.ToDense(Allocator.Temp);
             for (int i = 0; i < nb; i++)
             {
                 int rowBase = i * b;
@@ -304,8 +290,6 @@ public class doubleKrylovRound2Tests
                     doubleKrylovTestAsserts.AssertClose(prod, r[rowBase + lr], BjTol());
                 }
             }
-
-            arena.Dispose();
         }
 
         // ==============================================================================
@@ -316,20 +300,20 @@ public class doubleKrylovRound2Tests
         // ==============================================================================
 
         // Non-symmetric 5x5-block grid: rows with 4, 3, 2, 1, 0 stored blocks.
-        static doubleBSR BuildFullMultiBlock(ref Arena arena, int b, uint seed)
+        static doubleBSR BuildFullMultiBlock(int b, uint seed)
         {
-            var builder = arena.doubleBSRBuilder(5, 5, b, b, 16);
-            builder.AddBlock(0, 0, arena.doubleRandomMat(b, b, -1f, 1f, seed + 1u));   // row0: 4 (even)
-            builder.AddBlock(0, 1, arena.doubleRandomMat(b, b, -1f, 1f, seed + 2u));
-            builder.AddBlock(0, 2, arena.doubleRandomMat(b, b, -1f, 1f, seed + 3u));
-            builder.AddBlock(0, 3, arena.doubleRandomMat(b, b, -1f, 1f, seed + 4u));
-            builder.AddBlock(1, 0, arena.doubleRandomMat(b, b, -1f, 1f, seed + 5u));   // row1: 3 (odd)
-            builder.AddBlock(1, 2, arena.doubleRandomMat(b, b, -1f, 1f, seed + 6u));
-            builder.AddBlock(1, 4, arena.doubleRandomMat(b, b, -1f, 1f, seed + 7u));
-            builder.AddBlock(2, 1, arena.doubleRandomMat(b, b, -1f, 1f, seed + 8u));   // row2: 2 (even)
-            builder.AddBlock(2, 3, arena.doubleRandomMat(b, b, -1f, 1f, seed + 9u));
-            builder.AddBlock(3, 3, arena.doubleRandomMat(b, b, -1f, 1f, seed + 10u));  // row3: 1 (odd)
-            return builder.ToBSR(ref arena);                                          // row4: empty
+            var builder = new doubleBSRBuilder(5, 5, b, b, Allocator.Temp, 16);
+            builder.AddBlock(0, 0, GenerateOP.doubleRandomMat(b, b, -1f, 1f, seed + 1u));   // row0: 4 (even)
+            builder.AddBlock(0, 1, GenerateOP.doubleRandomMat(b, b, -1f, 1f, seed + 2u));
+            builder.AddBlock(0, 2, GenerateOP.doubleRandomMat(b, b, -1f, 1f, seed + 3u));
+            builder.AddBlock(0, 3, GenerateOP.doubleRandomMat(b, b, -1f, 1f, seed + 4u));
+            builder.AddBlock(1, 0, GenerateOP.doubleRandomMat(b, b, -1f, 1f, seed + 5u));   // row1: 3 (odd)
+            builder.AddBlock(1, 2, GenerateOP.doubleRandomMat(b, b, -1f, 1f, seed + 6u));
+            builder.AddBlock(1, 4, GenerateOP.doubleRandomMat(b, b, -1f, 1f, seed + 7u));
+            builder.AddBlock(2, 1, GenerateOP.doubleRandomMat(b, b, -1f, 1f, seed + 8u));   // row2: 2 (even)
+            builder.AddBlock(2, 3, GenerateOP.doubleRandomMat(b, b, -1f, 1f, seed + 9u));
+            builder.AddBlock(3, 3, GenerateOP.doubleRandomMat(b, b, -1f, 1f, seed + 10u));  // row3: 1 (odd)
+            return builder.ToBSR(Allocator.Temp);                                          // row4: empty
         }
 
         // Symmetric (lower-triangle) 5x5-block grid: SPD diagonal at every block-row plus lower
@@ -337,76 +321,70 @@ public class doubleKrylovRound2Tests
         // anti-diagonal (row',col') = (4-col, 4-row) relative to the pre-flip upper-canonical
         // layout, so the row-degree profile (4,3,2 stored blocks) is preserved, just on rows
         // (4,3,2) instead of (0,1,2).
-        static doubleBSR BuildSymMultiBlock(ref Arena arena, int b, uint seed)
+        static doubleBSR BuildSymMultiBlock(int b, uint seed)
         {
-            var builder = arena.doubleBSRBuilder(5, 5, b, b, 16);
+            var builder = new doubleBSRBuilder(5, 5, b, b, Allocator.Temp, 16);
             for (int i = 0; i < 5; i++)
-                builder.AddBlock(i, i, SpdBlock(ref arena, b, seed + (uint)i + 1u));
-            builder.AddBlock(4, 3, arena.doubleRandomMat(b, b, -1f, 1f, seed + 11u));  // row4: diag + 3
-            builder.AddBlock(4, 2, arena.doubleRandomMat(b, b, -1f, 1f, seed + 12u));
-            builder.AddBlock(4, 0, arena.doubleRandomMat(b, b, -1f, 1f, seed + 13u));
-            builder.AddBlock(3, 1, arena.doubleRandomMat(b, b, -1f, 1f, seed + 14u));  // row3: diag + 2
-            builder.AddBlock(3, 0, arena.doubleRandomMat(b, b, -1f, 1f, seed + 15u));
-            builder.AddBlock(2, 1, arena.doubleRandomMat(b, b, -1f, 1f, seed + 16u));  // row2: diag + 1
-            return builder.ToBSRSymmetric(ref arena);
+                builder.AddBlock(i, i, SpdBlock(b, seed + (uint)i + 1u));
+            builder.AddBlock(4, 3, GenerateOP.doubleRandomMat(b, b, -1f, 1f, seed + 11u));  // row4: diag + 3
+            builder.AddBlock(4, 2, GenerateOP.doubleRandomMat(b, b, -1f, 1f, seed + 12u));
+            builder.AddBlock(4, 0, GenerateOP.doubleRandomMat(b, b, -1f, 1f, seed + 13u));
+            builder.AddBlock(3, 1, GenerateOP.doubleRandomMat(b, b, -1f, 1f, seed + 14u));  // row3: diag + 2
+            builder.AddBlock(3, 0, GenerateOP.doubleRandomMat(b, b, -1f, 1f, seed + 15u));
+            builder.AddBlock(2, 1, GenerateOP.doubleRandomMat(b, b, -1f, 1f, seed + 16u));  // row2: diag + 1
+            return builder.ToBSRSymmetric(Allocator.Temp);
         }
 
         void PairedSpMVFull()
         {
-            var arena = new Arena(Allocator.Persistent);
             for (int t = 0; t < PairedBs.Length; t++)
             {
                 int b = PairedBs[t];
-                var A = BuildFullMultiBlock(ref arena, b, (uint)(91000 + b * 100));
-                var dense = A.ToDense(ref arena);
-                var x = arena.doubleRandomVec(A.N_Cols, -1f, 1f, (uint)(91500 + b));
-                var y = arena.doubleVec(A.M_Rows);
+                var A = BuildFullMultiBlock(b, (uint)(91000 + b * 100));
+                var dense = A.ToDense(Allocator.Temp);
+                var x = GenerateOP.doubleRandomVec(A.N_Cols, -1f, 1f, (uint)(91500 + b));
+                var y = new doubleN(A.M_Rows, Allocator.Temp);
                 BSR.spMV(in A, in x, ref y);
                 doubleKrylovTestAsserts.AssertVecClose(in y, Blas.dot(dense, x), SpTol());
             }
-            arena.Dispose();
         }
 
         void PairedSpMVT()
         {
-            var arena = new Arena(Allocator.Persistent);
             for (int t = 0; t < PairedBs.Length; t++)
             {
                 int b = PairedBs[t];
-                var A = BuildFullMultiBlock(ref arena, b, (uint)(92000 + b * 100));
-                var dense = A.ToDense(ref arena);
-                var xt = arena.doubleRandomVec(A.M_Rows, -1f, 1f, (uint)(92500 + b));
-                var yt = arena.doubleVec(A.N_Cols);
+                var A = BuildFullMultiBlock(b, (uint)(92000 + b * 100));
+                var dense = A.ToDense(Allocator.Temp);
+                var xt = GenerateOP.doubleRandomVec(A.M_Rows, -1f, 1f, (uint)(92500 + b));
+                var yt = new doubleN(A.N_Cols, Allocator.Temp);
                 BSR.spMVT(in A, in xt, ref yt);
-                var ytRef = arena.doubleVec(A.N_Cols);
+                var ytRef = new doubleN(A.N_Cols, Allocator.Temp);
                 DenseTransMatVec(in dense, in xt, ref ytRef);
                 doubleKrylovTestAsserts.AssertVecClose(in yt, in ytRef, SpTol());
             }
-            arena.Dispose();
         }
 
         void PairedSpMVSym()
         {
-            var arena = new Arena(Allocator.Persistent);
             for (int t = 0; t < PairedBs.Length; t++)
             {
                 int b = PairedBs[t];
-                var A = BuildSymMultiBlock(ref arena, b, (uint)(93000 + b * 100));
-                var dense = A.ToDense(ref arena);
-                var x = arena.doubleRandomVec(A.N_Cols, -1f, 1f, (uint)(93500 + b));
+                var A = BuildSymMultiBlock(b, (uint)(93000 + b * 100));
+                var dense = A.ToDense(Allocator.Temp);
+                var x = GenerateOP.doubleRandomVec(A.N_Cols, -1f, 1f, (uint)(93500 + b));
 
-                var y = arena.doubleVec(A.M_Rows);
+                var y = new doubleN(A.M_Rows, Allocator.Temp);
                 BSR.spMV(in A, in x, ref y);
                 doubleKrylovTestAsserts.AssertVecClose(in y, Blas.dot(dense, x), SpTol());
 
                 // A == A^T: spMVT compared to an independent dense transpose-matvec.
-                var ytRef = arena.doubleVec(A.N_Cols);
+                var ytRef = new doubleN(A.N_Cols, Allocator.Temp);
                 DenseTransMatVec(in dense, in x, ref ytRef);
-                var yt = arena.doubleVec(A.N_Cols);
+                var yt = new doubleN(A.N_Cols, Allocator.Temp);
                 BSR.spMVT(in A, in x, ref yt);
                 doubleKrylovTestAsserts.AssertVecClose(in yt, in ytRef, SpTol());
             }
-            arena.Dispose();
         }
 
         // ==============================================================================
@@ -416,60 +394,52 @@ public class doubleKrylovRound2Tests
 
         void CgBsrMatchesLUOracle()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 12;
-            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, dim, 94001);
-            var bsm = doubleKrylovBatteryOracles.DenseToBSR1x1(ref arena, in A);
-            var b = arena.doubleRandomVec(dim, -1f, 1f, 94002);
+            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(dim, 94001);
+            var bsm = doubleKrylovBatteryOracles.DenseToBSR1x1(in A);
+            var b = GenerateOP.doubleRandomVec(dim, -1f, 1f, 94002);
 
             // Dense LU oracle on COPIES (decompInPlace/decompSolve are destructive).
-            var LUcopy = A.Copy();
+            var LUcopy = new doubleMxN(in A, Allocator.Temp);
             var pivot = new Pivot(dim, Allocator.Temp);
             bool okLU = LU.decompInPlace(ref LUcopy, ref pivot);
             Assert.IsTrue(okLU);
-            var xLU = b.Copy();
+            var xLU = new doubleN(in b, Allocator.Temp);
             LU.decompSolve(ref LUcopy, in pivot, ref xLU);
             pivot.Dispose();
 
-            var xCg = arena.doubleVec(dim);
+            var xCg = new doubleN(dim, Allocator.Temp);
             bool okCg = Krylov.cg(in bsm, in b, ref xCg, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okCg);
             doubleKrylovTestAsserts.AssertVecClose(in xCg, in xLU, SolveTol());
 
             var Ax = BSR.spMV(in bsm, in xCg);
             doubleKrylovTestAsserts.AssertVecClose(in Ax, in b, SolveTol());
-
-            arena.Dispose();
         }
 
         void PcgBsrMatchesLUOracle()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 12;
-            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, dim, 95001);
-            var bsm = doubleKrylovBatteryOracles.DenseToBSR1x1(ref arena, in A);
-            var M = arena.doubleBlockJacobi(in bsm);
-            var b = arena.doubleRandomVec(dim, -1f, 1f, 95002);
+            var A = doubleKrylovBatteryOracles.BuildDenseSpdSystem(dim, 95001);
+            var bsm = doubleKrylovBatteryOracles.DenseToBSR1x1(in A);
+            var M = new doubleBlockJacobi(in bsm, Allocator.Temp);
+            var b = GenerateOP.doubleRandomVec(dim, -1f, 1f, 95002);
 
-            var LUcopy = A.Copy();
+            var LUcopy = new doubleMxN(in A, Allocator.Temp);
             var pivot = new Pivot(dim, Allocator.Temp);
             bool okLU = LU.decompInPlace(ref LUcopy, ref pivot);
             Assert.IsTrue(okLU);
-            var xLU = b.Copy();
+            var xLU = new doubleN(in b, Allocator.Temp);
             LU.decompSolve(ref LUcopy, in pivot, ref xLU);
             pivot.Dispose();
 
-            var xPcg = arena.doubleVec(dim);
+            var xPcg = new doubleN(dim, Allocator.Temp);
             bool okPcg = Krylov.cg(in bsm, in M, in b, ref xPcg, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okPcg);
             doubleKrylovTestAsserts.AssertVecClose(in xPcg, in xLU, SolveTol());
 
             var Ax = BSR.spMV(in bsm, in xPcg);
             doubleKrylovTestAsserts.AssertVecClose(in Ax, in b, SolveTol());
-
-            arena.Dispose();
         }
     }
 
@@ -526,19 +496,15 @@ public class doubleKrylovRound2Tests
     [Test]
     public void ColScaledRectangularApplyDotThrowsOnDimensionMismatch()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int m = 7, n = 4;                                   // rectangular inner -> Rows != Cols
-        var A = arena.doubleRandomMat(m, n, -1f, 1f, 96001);
-        var d = arena.doubleRandomVec(n, (double)0.5f, (double)2f, 96002);
-        var scratch = arena.doubleVec(n);
+        var A = GenerateOP.doubleRandomMat(m, n, -1f, 1f, 96001);
+        var d = GenerateOP.doubleRandomVec(n, (double)0.5f, (double)2f, 96002);
+        var scratch = new doubleN(n, Allocator.Temp);
         var op = new doubleColScaledOperator<doubleDenseOperator>(new doubleDenseOperator(in A), d, scratch);
 
-        var x = arena.doubleRandomVec(n, -1f, 1f, 96003);   // length Cols = n
-        var y = arena.doubleVec(m);                         // length Rows = m
+        var x = GenerateOP.doubleRandomVec(n, -1f, 1f, 96003);   // length Cols = n
+        var y = new doubleN(m, Allocator.Temp);                  // length Rows = m
 
         Assert.Catch<ArgumentException>(() => op.ApplyDot(in x, ref y));
-
-        arena.Dispose();
     }
 }

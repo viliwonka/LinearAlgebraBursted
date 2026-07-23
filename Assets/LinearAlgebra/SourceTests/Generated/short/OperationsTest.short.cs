@@ -17,44 +17,36 @@ public class shortOperationsTest {
     {
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int vecLen = 16;
 
             short s = 1;
-            shortN a = arena.shortVec(vecLen, 10);
+            shortN a = GenerateOP.shortVec(vecLen, 10);
 
 
-            Assert.AreEqual(vecLen, a.N); 
+            Assert.AreEqual(vecLen, a.N);
 
-            shortN b = arena.shortVec(vecLen, 10);
+            shortN b = GenerateOP.shortVec(vecLen, 10);
 
             Assert.IsTrue(b[vecLen/2] == a[vecLen/2]);
-            
-            Assert.AreEqual(2, arena.AllocationsCount);
 
             shortN result = default;
 
-            result = a + s;
+            result = new shortN(in a, Allocator.Temp); shortComp.addInPlace(result, s);   // a + s
 
-            result = s + a;
+            result = new shortN(in a, Allocator.Temp); shortComp.addInPlace(result, s);   // s + a
 
-            result = a - s;
-            result = s - a;
-
-            Assert.AreEqual(4, arena.TempAllocationsCount);
+            result = new shortN(in a, Allocator.Temp); shortComp.subInPlace(result, s);   // a - s
+            result = new shortN(in a, Allocator.Temp); shortComp.subInPlace(s, result);   // s - a
 
             result = ~a;
 
-            arena.ClearTemp();
+            result = new shortN(in a, Allocator.Temp); shortComp.mulInPlace(result, s);   // a * s
+            result = new shortN(in a, Allocator.Temp); shortComp.mulInPlace(result, s);   // s * a
 
-            result = a * s;
-            result = s * a;
-
-            result = a / s;
-            result = a % s;
-            result = s / a;
-            result = s % a;
+            result = new shortN(in a, Allocator.Temp); shortComp.divInPlace(result, s);   // a / s
+            result = new shortN(in a, Allocator.Temp); shortComp.modInPlace(result, s);   // a % s
+            result = new shortN(in a, Allocator.Temp); shortComp.divInPlace(s, result);   // s / a
+            result = new shortN(in a, Allocator.Temp); shortComp.modInPlace(s, result);   // s % a
 
             result = a | s;
             result = s | a;
@@ -68,17 +60,15 @@ public class shortOperationsTest {
             result = result << 5;
             result = result >> 5;
 
-            result = a + b;
-            result = a - b;
-            result = a * b;
-            result = a / b;
-            result = a % b;
+            result = new shortN(in a, Allocator.Temp); shortComp.addInPlace(result, b);   // a + b
+            result = new shortN(in a, Allocator.Temp); shortComp.subInPlace(result, b);   // a - b
+            result = new shortN(in a, Allocator.Temp); shortComp.mulInPlace(result, b);   // a * b
+            result = new shortN(in a, Allocator.Temp); shortComp.divInPlace(result, b);   // a / b
+            result = new shortN(in a, Allocator.Temp); shortComp.modInPlace(result, b);   // a % b
 
             result = a | b;
             result = a & b;
             result = a ^ b;
-
-            arena.Dispose();
         }
     }
 
@@ -93,42 +83,38 @@ public class shortOperationsTest {
     {
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int rows = 8;
             int cols = 8;
 
             int elements = rows * cols;
 
             short s = 1;
-            shortMxN a = arena.shortMat(rows, cols, 10);
+            shortMxN a = GenerateOP.shortMat(rows, cols, 10);
 
-            shortMxN b = arena.shortMat(rows, cols, 10);
+            shortMxN b = GenerateOP.shortMat(rows, cols, 10);
 
             shortMxN result = default;
 
-            result = a + s;
+            result = new shortMxN(in a, Allocator.Temp); shortComp.addInPlace(result, s);   // a + s
 
-            result = s + a;
+            result = new shortMxN(in a, Allocator.Temp); shortComp.addInPlace(result, s);   // s + a
 
-            result = a - s;
-            result = s - a;
+            result = new shortMxN(in a, Allocator.Temp); shortComp.subInPlace(result, s);   // a - s
+            result = new shortMxN(in a, Allocator.Temp); shortComp.subInPlace(s, result);   // s - a
 
-            result = a * s;
-            result = s * a;
+            result = new shortMxN(in a, Allocator.Temp); shortComp.mulInPlace(result, s);   // a * s
+            result = new shortMxN(in a, Allocator.Temp); shortComp.mulInPlace(result, s);   // s * a
 
-            result = a / s;
-            result = a % s;
-            result = s / a;
-            result = s % a;
+            result = new shortMxN(in a, Allocator.Temp); shortComp.divInPlace(result, s);   // a / s
+            result = new shortMxN(in a, Allocator.Temp); shortComp.modInPlace(result, s);   // a % s
+            result = new shortMxN(in a, Allocator.Temp); shortComp.divInPlace(s, result);   // s / a
+            result = new shortMxN(in a, Allocator.Temp); shortComp.modInPlace(s, result);   // s % a
 
-            result = a + b;
-            result = a - b;
-            result = a * b;
-            result = a / b;
-            result = a % b;
-
-            arena.Dispose();
+            result = new shortMxN(in a, Allocator.Temp); shortComp.addInPlace(result, b);   // a + b
+            result = new shortMxN(in a, Allocator.Temp); shortComp.subInPlace(result, b);   // a - b
+            result = new shortMxN(in a, Allocator.Temp); shortComp.mulInPlace(result, b);   // a * b
+            result = new shortMxN(in a, Allocator.Temp); shortComp.divInPlace(result, b);   // a / b
+            result = new shortMxN(in a, Allocator.Temp); shortComp.modInPlace(result, b);   // a % b
         }
     }
 
@@ -137,7 +123,7 @@ public class shortOperationsTest {
     {
         new BasicMatOpTestJob().Run();
     }
-    
+
     [BurstCompile(CompileSynchronously = true)]
     public struct BasicPreciseOPTestJob : IJob
     {
@@ -210,146 +196,128 @@ public class shortOperationsTest {
 
         public void SignFlipVec()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int vecLen = 16;
 
-            shortN a = arena.shortVec(vecLen, 10);
+            shortN a = GenerateOP.shortVec(vecLen, 10);
 
-            a = -a;
+            shortComp.signFlipInPlace(a); // a = -a
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == -(short)10f);
-
-            arena.Dispose();
         }
 
         public void AddVec()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int vecLen = 16;
 
-            shortN a = arena.shortVec(vecLen, 10);
+            shortN a = GenerateOP.shortVec(vecLen, 10);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (short)10d);
 
-            a += 1;
+            shortComp.addInPlace(a, 1); // a += 1
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (short)11d);
 
-            shortN r = arena.shortVec(vecLen, 5);
+            shortN r = GenerateOP.shortVec(vecLen, 5);
 
-            a += r;
+            shortComp.addInPlace(a, r); // a += r
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (short)16);
-
-            arena.Dispose();
         }
 
         public void SubVec()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int vecLen = 16;
 
-            shortN a = arena.shortVec(vecLen, 10);
+            shortN a = GenerateOP.shortVec(vecLen, 10);
 
-            a -= 1;
+            shortComp.subInPlace(a, 1); // a -= 1
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (short)9f);
 
-            shortN r = arena.shortVec(vecLen, 5);
+            shortN r = GenerateOP.shortVec(vecLen, 5);
 
-            a -= r;
+            shortComp.subInPlace(a, r); // a -= r
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (short)4d);
 
-            a = arena.shortVec(vecLen, 10);
+            a = GenerateOP.shortVec(vecLen, 10);
 
-            a = 1 - a;
+            shortComp.subInPlace(1, a); // a = 1 - a
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == -(short)9d);
-
-            arena.Dispose();
         }
 
         public void MulVec()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int vecLen = 16;
 
-            shortN a = arena.shortVec(vecLen, 1);
+            shortN a = GenerateOP.shortVec(vecLen, 1);
 
-            a *= 1;
+            shortComp.mulInPlace(a, 1); // a *= 1
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (short)1d);
 
-            a *= 2;
+            shortComp.mulInPlace(a, 2); // a *= 2
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (short)2d);
 
-            a = arena.shortIndexZeroVec(vecLen);
+            a = GenerateOP.shortIndexZeroVec(vecLen);
 
-            a *= 2;
+            shortComp.mulInPlace(a, 2); // a *= 2
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (short)(2d*i));
 
-            a = arena.shortIndexZeroVec(vecLen);
-            shortN b = arena.shortIndexZeroVec(vecLen);
+            a = GenerateOP.shortIndexZeroVec(vecLen);
+            shortN b = GenerateOP.shortIndexZeroVec(vecLen);
 
-            var c = a * b;
+            var c = new shortN(in a, Allocator.Temp); shortComp.mulInPlace(c, b); // c = a * b
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(c[i] == (short)(i * i));
-
-            arena.Dispose();
         }
 
         public void DivVec()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int vecLen = 16;
 
-            shortN a = arena.shortVec(vecLen, 2);
+            shortN a = GenerateOP.shortVec(vecLen, 2);
 
-            a /= 2;
-
-            for (int i = 0; i < vecLen; i++)
-                Assert.IsTrue(a[i] == (short)1);
-
-            a /= 1;
+            shortComp.divInPlace(a, 2); // a /= 2
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (short)1);
 
-            a = arena.shortIndexZeroVec(vecLen);
+            shortComp.divInPlace(a, 1); // a /= 1
 
-            a /= 2;
+            for (int i = 0; i < vecLen; i++)
+                Assert.IsTrue(a[i] == (short)1);
+
+            a = GenerateOP.shortIndexZeroVec(vecLen);
+
+            shortComp.divInPlace(a, 2); // a /= 2
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (short)(0.5 * i));
 
-            a = arena.shortIndexZeroVec(vecLen);
-            shortN b = arena.shortIndexZeroVec(vecLen);
+            a = GenerateOP.shortIndexZeroVec(vecLen);
+            shortN b = GenerateOP.shortIndexZeroVec(vecLen);
 
             // add 1 so no division by zero
-            a += 1;
-            b += 1;
+            shortComp.addInPlace(a, 1);
+            shortComp.addInPlace(b, 1);
 
-            var c0 = a / b;
-            var c1 = b / a;
+            var c0 = new shortN(in a, Allocator.Temp); shortComp.divInPlace(c0, b); // c0 = a / b
+            var c1 = new shortN(in b, Allocator.Temp); shortComp.divInPlace(c1, a); // c1 = b / a
 
             for (int i = 0; i < vecLen; i++)
             {
@@ -357,186 +325,156 @@ public class shortOperationsTest {
                 Assert.IsTrue(c1[i] == (short)1);
             }
 
-            a = arena.shortVec(vecLen, 2);
+            a = GenerateOP.shortVec(vecLen, 2);
 
-            a = 2 / a;
+            shortComp.divInPlace(2, a); // a = 2 / a
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (short)1);
-
-            arena.Dispose();
         }
 
         public void ModVec()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int vecLen = 16;
 
-            shortN a = arena.shortVec(vecLen, 10);
+            shortN a = GenerateOP.shortVec(vecLen, 10);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (short)10);
 
-            a %= 2;
+            shortComp.modInPlace(a, 2); // a %= 2
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (short)0);
 
-            a = arena.shortIndexZeroVec(vecLen);
+            a = GenerateOP.shortIndexZeroVec(vecLen);
 
-            a %= 2;
+            shortComp.modInPlace(a, 2); // a %= 2
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (short)(i % (short)2));
 
-            a = arena.shortIndexZeroVec(vecLen);
-            shortN b = arena.shortIndexZeroVec(vecLen);
+            a = GenerateOP.shortIndexZeroVec(vecLen);
+            shortN b = GenerateOP.shortIndexZeroVec(vecLen);
 
-            a += 1;
-            b += 1;
+            shortComp.addInPlace(a, 1);
+            shortComp.addInPlace(b, 1);
 
-            var c0 = a % b;
-            var c1 = b % a;
+            var c0 = new shortN(in a, Allocator.Temp); shortComp.modInPlace(c0, b); // c0 = a % b
+            var c1 = new shortN(in b, Allocator.Temp); shortComp.modInPlace(c1, a); // c1 = b % a
 
             for (int i = 0; i < vecLen; i++)
             {
                 Assert.IsTrue(c0[i] == (short)0);
                 Assert.IsTrue(c1[i] == (short)0);
             }
-
-            arena.Dispose();
         }
 
         public void SignFlipMat()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int vecLen = 16;
             int totalElements = vecLen * vecLen;
-            shortMxN a = arena.shortMat(vecLen, vecLen, 10);
+            shortMxN a = GenerateOP.shortMat(vecLen, vecLen, 10);
 
-            a = -a;
+            shortComp.signFlipInPlace(a); // a = -a
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == -(short)10f);
-
-            arena.Dispose();
         }
 
         public void AddMat()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int rows = 8;
             int cols = 8;
             int totalElements = rows * cols;
 
-            shortMxN a = arena.shortMat(rows, cols, 10);
+            shortMxN a = GenerateOP.shortMat(rows, cols, 10);
 
-            a += 1;
+            shortComp.addInPlace(a, 1); // a += 1
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (short)11f);
-
-            arena.Dispose();
         }
 
         public void SubMat()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int rows = 8;
             int cols = 8;
             int totalElements = rows * cols;
 
-            shortMxN a = arena.shortMat(rows, cols, 10);
+            shortMxN a = GenerateOP.shortMat(rows, cols, 10);
 
-            a -= 5;
+            shortComp.subInPlace(a, 5); // a -= 5
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (short)5f);
-
-            arena.Dispose();
         }
 
         public void MulMat()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int rows = 8;
             int cols = 8;
             int totalElements = rows * cols;
 
-            shortMxN a = arena.shortMat(rows, cols, 2);
+            shortMxN a = GenerateOP.shortMat(rows, cols, 2);
 
-            a *= 3;
+            shortComp.mulInPlace(a, 3); // a *= 3
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (short)6f);
 
-            a = 3 * a;
+            shortComp.mulInPlace(a, 3); // a = 3 * a
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (short)18f);
-
-            arena.Dispose();
         }
 
         public void DivMat()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int rows = 8;
             int cols = 8;
             int totalElements = rows * cols;
 
-            shortMxN a = arena.shortMat(rows, cols, 10);
+            shortMxN a = GenerateOP.shortMat(rows, cols, 10);
 
-            a /= 2;
+            shortComp.divInPlace(a, 2); // a /= 2
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (short)5);
 
-            a = 5 / a;
+            shortComp.divInPlace(5, a); // a = 5 / a
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (short)1);
-
-            arena.Dispose();
         }
 
         public void ModMat()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int rows = 8;
             int cols = 8;
             int totalElements = rows * cols;
 
-            shortMxN a = arena.shortMat(rows, cols, 10);
+            shortMxN a = GenerateOP.shortMat(rows, cols, 10);
 
-            a %= 3;
+            shortComp.modInPlace(a, 3); // a %= 3
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (short)1f);
 
-            a = arena.shortMat(rows, cols, 4);
+            a = GenerateOP.shortMat(rows, cols, 4);
 
-            a = 4 % a;
+            shortComp.modInPlace(4, a); // a = 4 % a
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (short)0f);
 
-            a = arena.shortMat(rows, cols, 3);
-            shortMxN b = arena.shortMat(rows, cols, 2);
+            a = GenerateOP.shortMat(rows, cols, 3);
+            shortMxN b = GenerateOP.shortMat(rows, cols, 2);
 
-            a = a % b;
+            shortComp.modInPlace(a, b); // a = a % b
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (short)1f);
-
-            arena.Dispose();
         }
     }
 

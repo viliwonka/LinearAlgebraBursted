@@ -421,14 +421,13 @@ namespace LinearAlgebra.Benchmarks
     {
         static string SinCosRowFloat(int variant, bool single, string label, int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var src = arena.floatVec(n);
-            var dst = arena.floatVec(n);
+            var src = new floatN(n, Allocator.Persistent);
+            var dst = new floatN(n, Allocator.Persistent);
             var rng = new Unity.Mathematics.Random(0x51C0u ^ (uint)variant);
             for (int i = 0; i < n; i++) src[i] = rng.NextFloat(-10f, 10f);
             var job = new SinCosCompareJobFloat { src = src, dst = dst, variant = variant, single = single ? 1 : 0 };
             var stat = Bench.Time(() => job.Run());
-            arena.Dispose();
+            src.Dispose(); dst.Dispose();
             return string.Format(CultureInfo.InvariantCulture,
                 "{0,-20} {1,-10} {2,11:F4} {3,11:F4} {4,11:F4}", label, n, stat.Min, stat.Median, stat.Mean);
         }
@@ -437,9 +436,8 @@ namespace LinearAlgebra.Benchmarks
         // the hand-written harness attaches the names.
         static double[] DerivedVerifyFloat()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 100000;
-            var src = arena.floatVec(n);
+            var src = new floatN(n, Allocator.Persistent);
             var rng = new Unity.Mathematics.Random(0xDE71u);
             for (int i = 0; i < n; i++) src[i] = rng.NextFloat(0.2f, 0.9f);
             var maxUlp = new NativeArray<double>(11, Allocator.Persistent);
@@ -447,7 +445,7 @@ namespace LinearAlgebra.Benchmarks
             var result = new double[11];
             for (int k = 0; k < 11; k++) result[k] = maxUlp[k];
             maxUlp.Dispose();
-            arena.Dispose();
+            src.Dispose();
             return result;
         }
     }
@@ -614,9 +612,8 @@ namespace LinearAlgebra.Benchmarks
     {
         static string AtanRowFloat(int variant, bool single, string label, int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var src = arena.floatVec(n);
-            var dst = arena.floatVec(n);
+            var src = new floatN(n, Allocator.Persistent);
+            var dst = new floatN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(0xA7A11u ^ (uint)variant);
             for (int i = 0; i < n; i++) src[i] = rng.NextFloat(-20f, 20f);   // exercises both folds
@@ -634,7 +631,7 @@ namespace LinearAlgebra.Benchmarks
                     if (err > maxAbs) maxAbs = err;
                 }
             }
-            arena.Dispose();
+            src.Dispose(); dst.Dispose();
 
             double eps = 1.1920929e-7;
             string errStr = single ? "(chain)" : maxAbs.ToString("E3", CultureInfo.InvariantCulture);
@@ -646,9 +643,8 @@ namespace LinearAlgebra.Benchmarks
 
         static string LogRowFloat(int variant, bool single, string label, int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var src = arena.floatVec(n);
-            var dst = arena.floatVec(n);
+            var src = new floatN(n, Allocator.Persistent);
+            var dst = new floatN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(0x106106u ^ (uint)variant);
             for (int i = 0; i < n; i++) src[i] = rng.NextFloat(0.1f, 10f);   // x > 0
@@ -666,7 +662,7 @@ namespace LinearAlgebra.Benchmarks
                     if (err > maxAbs) maxAbs = err;
                 }
             }
-            arena.Dispose();
+            src.Dispose(); dst.Dispose();
 
             double eps = 1.1920929e-7;
             string errStr = single ? "(chain)" : maxAbs.ToString("E3", CultureInfo.InvariantCulture);
@@ -678,9 +674,8 @@ namespace LinearAlgebra.Benchmarks
 
         static string TrigRowFloat(int variant, bool single, string label, int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var src = arena.floatVec(n);
-            var dst = arena.floatVec(n);
+            var src = new floatN(n, Allocator.Persistent);
+            var dst = new floatN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(0x5EED1234u ^ (uint)variant);
             for (int i = 0; i < n; i++) src[i] = rng.NextFloat(-10f, 10f);
@@ -699,7 +694,7 @@ namespace LinearAlgebra.Benchmarks
                     if (err > maxAbs) maxAbs = err;
                 }
             }
-            arena.Dispose();
+            src.Dispose(); dst.Dispose();
 
             double eps = 1.1920929e-7;
             string errStr = single ? "(chain)" : maxAbs.ToString("E3", CultureInfo.InvariantCulture);
@@ -711,9 +706,8 @@ namespace LinearAlgebra.Benchmarks
 
         static string MathThroughputFloat(int func, string label, int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var src = arena.floatVec(n);
-            var dst = arena.floatVec(n);
+            var src = new floatN(n, Allocator.Persistent);
+            var dst = new floatN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)func ^ 0x9E3779B9u);
             for (int i = 0; i < n; i++) src[i] = rng.NextFloat(0.5f, 3f);
@@ -721,15 +715,14 @@ namespace LinearAlgebra.Benchmarks
             var job = new MathFuncThroughputJobFloat { src = src, dst = dst, func = func };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            src.Dispose(); dst.Dispose();
             return Bench.RowTime(label, n, stat);
         }
 
         static string ExpRowFloat(int variant, bool single, string label, int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var src = arena.floatVec(n);
-            var dst = arena.floatVec(n);
+            var src = new floatN(n, Allocator.Persistent);
+            var dst = new floatN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(0xB16B00B5u ^ (uint)variant);
             for (int i = 0; i < n; i++) src[i] = rng.NextFloat(-10f, 10f);
@@ -750,7 +743,7 @@ namespace LinearAlgebra.Benchmarks
                     if (rel > maxRel) maxRel = rel;
                 }
             }
-            arena.Dispose();
+            src.Dispose(); dst.Dispose();
 
             double eps = 1.1920929e-7;
             string relStr = single ? "(chain)" : maxRel.ToString("E3", CultureInfo.InvariantCulture);

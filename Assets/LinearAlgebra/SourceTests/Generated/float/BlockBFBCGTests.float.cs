@@ -51,21 +51,23 @@ public class floatBlockBFBCGTests
 
         // A = M^T M with M's columns geometrically scaled across [1, condSpan] -- stretches A's singular
         // spectrum (cond(A) ~ condSpan^2) without a Hilbert matrix's extreme growth.
-        static floatMxN BuildStretchedSPD(ref Arena arena, int dim, uint seed, float condSpan)
+        static floatMxN BuildStretchedSPD(int dim, uint seed, float condSpan)
         {
-            var M = arena.floatRandomMat(dim, dim, (float)(-1f), (float)1f, seed);
+            var M = GenerateOP.floatRandomMat(dim, dim, (float)(-1f), (float)1f, seed);
             for (int j = 0; j < dim; j++)
             {
                 float t = dim > 1 ? (float)j / (float)(dim - 1) : (float)0;
                 float scale = math.pow(condSpan, t);
                 for (int i = 0; i < dim; i++) M[i, j] *= scale;
             }
-            return Blas.dot(M, M, true);                        // M^T M, SPD
+            var MtM = new floatMxN(dim, dim, Allocator.Temp);
+            Blas.dot(in M, in M, ref MtM, true);                // M^T M, SPD
+            return MtM;
         }
 
-        static floatN Row(ref Arena arena, in floatMxN B, int j, int n)
+        static floatN Row(in floatMxN B, int j, int n)
         {
-            var v = arena.floatVec(n);
+            var v = new floatN(n, Allocator.Temp);
             for (int c = 0; c < n; c++) v[c] = B[j, c];
             return v;
         }
@@ -92,13 +94,11 @@ public class floatBlockBFBCGTests
         // column, and every column reached tolerance.
         void MatchesScalarCgPerColumn()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 20, s = 4;
-            var A = floatKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 88001u);
-            var B = arena.floatRandomMat(s, n, (float)(-1f), (float)1f, 88002u);
+            var A = floatKrylovBatteryOracles.BuildDenseSpdSystem(n, 88001u);
+            var B = GenerateOP.floatRandomMat(s, n, (float)(-1f), (float)1f, 88002u);
 
-            var X = arena.floatMat(s, n);                      // zero initial guess
+            var X = new floatMxN(s, n, Allocator.Temp);        // zero initial guess
             var info = Krylov.bfbcg(in A, in B, ref X, 8 * n, Consts.floatSqrtEps);
 
             Assert.IsTrue(info.Solved);
@@ -107,70 +107,60 @@ public class floatBlockBFBCGTests
 
             for (int j = 0; j < s; j++)
             {
-                var bj = Row(ref arena, in B, j, n);
-                var xj = arena.floatVec(n);
+                var bj = Row(in B, j, n);
+                var xj = new floatN(n, Allocator.Temp);
                 Assert.IsTrue(Krylov.cg(in A, in bj, ref xj, 8 * n, Consts.floatSqrtEps));
 
                 for (int c = 0; c < n; c++)
                     Assert.IsTrue(math.abs((double)X[j, c] - (double)xj[c]) <= Tol() * (1.0 + math.abs((double)xj[c])));
             }
-
-            arena.Dispose();
         }
 
         // Independent of the scalar solver: pick a KNOWN block solution Xk, form B = A Xk (via the
         // operator's own ApplyBlock), solve with bfbcg, and recover Xk.
         void KnownSolutionRecovered()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 20, s = 5;
-            var A = floatKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 88011u);
-            var Xk = arena.floatRandomMat(s, n, (float)(-1f), (float)1f, 88012u);   // known solution
+            var A = floatKrylovBatteryOracles.BuildDenseSpdSystem(n, 88011u);
+            var Xk = GenerateOP.floatRandomMat(s, n, (float)(-1f), (float)1f, 88012u);   // known solution
 
-            var B = arena.floatMat(s, n);
+            var B = new floatMxN(s, n, Allocator.Temp);
             new floatDenseOperator(in A).ApplyBlock(in Xk, ref B, s);                 // B[j,:] = A Xk[j,:]
 
-            var X = arena.floatMat(s, n);
+            var X = new floatMxN(s, n, Allocator.Temp);
             var info = Krylov.bfbcg(in A, in B, ref X, 8 * n, Consts.floatSqrtEps);
             Assert.IsTrue(info.Solved);
 
             for (int j = 0; j < s; j++)
                 for (int c = 0; c < n; c++)
                     Assert.IsTrue(math.abs((double)X[j, c] - (double)Xk[j, c]) <= Tol() * (1.0 + math.abs((double)Xk[j, c])));
-
-            arena.Dispose();
         }
 
         // The block solve converges in <= the worst single-column scalar cg iteration count over the
         // same budget/tol (the block advantage: all RHS share the richer block Krylov subspace).
         void BlockAdvantageIterations()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 24, s = 5;
-            var A = floatKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 88021u);
-            var B = arena.floatRandomMat(s, n, (float)(-1f), (float)1f, 88022u);
+            var A = floatKrylovBatteryOracles.BuildDenseSpdSystem(n, 88021u);
+            var B = GenerateOP.floatRandomMat(s, n, (float)(-1f), (float)1f, 88022u);
             float tol = Consts.floatSqrtEps;
             int budget = 8 * n;
 
-            var X = arena.floatMat(s, n);
+            var X = new floatMxN(s, n, Allocator.Temp);
             var blockInfo = Krylov.bfbcg(in A, in B, ref X, budget, tol);
             Assert.IsTrue(blockInfo.Solved);
 
             int worstScalar = 0;
             for (int j = 0; j < s; j++)
             {
-                var bj = Row(ref arena, in B, j, n);
-                var xj = arena.floatVec(n);
+                var bj = Row(in B, j, n);
+                var xj = new floatN(n, Allocator.Temp);
                 var si = Krylov.cg(in A, in bj, ref xj, budget, tol);
                 Assert.IsTrue(si.Solved);
                 if (si.iterations > worstScalar) worstScalar = si.iterations;
             }
 
             Assert.IsTrue(blockInfo.iterations <= worstScalar);
-
-            arena.Dispose();
         }
 
         // THE key oracle: a rank-1-in-the-solution RHS block. Perturb the KNOWN Xk (row 2 = 10x row 0)
@@ -179,18 +169,16 @@ public class floatBlockBFBCGTests
         // recover Xk (incl. the dependent pair), and REPORT the deflation via minActive < rhs.
         void RankDeficientDeflates()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 16, s = 4;
-            var A = floatKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 88031u);
-            var Xk = arena.floatRandomMat(s, n, (float)(-1f), (float)1f, 88032u);
+            var A = floatKrylovBatteryOracles.BuildDenseSpdSystem(n, 88031u);
+            var Xk = GenerateOP.floatRandomMat(s, n, (float)(-1f), (float)1f, 88032u);
             // Make the KNOWN solution's row 2 a scalar multiple of row 0 -> B[2,:] = 10 B[0,:].
             for (int c = 0; c < n; c++) Xk[2, c] = (float)10 * Xk[0, c];
 
-            var B = arena.floatMat(s, n);
+            var B = new floatMxN(s, n, Allocator.Temp);
             new floatDenseOperator(in A).ApplyBlock(in Xk, ref B, s);
 
-            var X = arena.floatMat(s, n);
+            var X = new floatMxN(s, n, Allocator.Temp);
             var info = Krylov.bfbcg(in A, in B, ref X, 8 * n, Consts.floatSqrtEps);
 
             for (int j = 0; j < s; j++)
@@ -204,35 +192,29 @@ public class floatBlockBFBCGTests
                     Assert.IsTrue(math.abs((double)X[j, c] - (double)Xk[j, c]) <= Tol() * (1.0 + math.abs((double)Xk[j, c])));
 
             Assert.IsTrue(info.minActive < info.rhs);
-
-            arena.Dispose();
         }
 
         // Block-Jacobi-preconditioned bfbcg over a BSR SPD system matches per-column scalar pcg.
         void PreconditionedMatchesScalar()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 18, s = 3;
-            var Adense = floatKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 88041u);
-            var A = floatKrylovBatteryOracles.DenseToBSR1x1(ref arena, in Adense);
-            var M = arena.floatBlockJacobi(in A);
-            var B = arena.floatRandomMat(s, n, (float)(-1f), (float)1f, 88042u);
+            var Adense = floatKrylovBatteryOracles.BuildDenseSpdSystem(n, 88041u);
+            var A = floatKrylovBatteryOracles.DenseToBSR1x1(in Adense);
+            var M = new floatBlockJacobi(in A, Allocator.Temp);
+            var B = GenerateOP.floatRandomMat(s, n, (float)(-1f), (float)1f, 88042u);
 
-            var X = arena.floatMat(s, n);
+            var X = new floatMxN(s, n, Allocator.Temp);
             var info = Krylov.bfbcg(in A, in M, in B, ref X, 8 * n, Consts.floatSqrtEps);
             Assert.IsTrue(info.Solved);
 
             for (int j = 0; j < s; j++)
             {
-                var bj = Row(ref arena, in B, j, n);
-                var xj = arena.floatVec(n);
+                var bj = Row(in B, j, n);
+                var xj = new floatN(n, Allocator.Temp);
                 Assert.IsTrue(Krylov.cg(in A, in M, in bj, ref xj, 8 * n, Consts.floatSqrtEps));
                 for (int c = 0; c < n; c++)
                     Assert.IsTrue(math.abs((double)X[j, c] - (double)xj[c]) <= Tol() * (1.0 + math.abs((double)xj[c])));
             }
-
-            arena.Dispose();
         }
 
         // The identity preconditioner fold must be bit-identical to the unpreconditioned rung: same
@@ -241,25 +223,23 @@ public class floatBlockBFBCGTests
         // iterations and status -- no tolerance.
         void IdentityFoldMatchesUnpreconditioned()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 16, s = 4;
-            var A = floatKrylovBatteryOracles.BuildDenseSpdSystem(ref arena, n, 88051u);
-            var B = arena.floatRandomMat(s, n, (float)(-1f), (float)1f, 88052u);
+            var A = floatKrylovBatteryOracles.BuildDenseSpdSystem(n, 88051u);
+            var B = GenerateOP.floatRandomMat(s, n, (float)(-1f), (float)1f, 88052u);
             int maxIter = 8 * n;
             float tol = Consts.floatSqrtEps;
             var op = new floatDenseOperator(in A);
 
             // Unpreconditioned rung (identity folds out at compile time).
-            var Xplain = arena.floatMat(s, n);
-            var Rp = arena.floatMat(s, n); var Pp = arena.floatMat(s, n);
-            var APp = arena.floatMat(s, n); var Pap = arena.floatMat(s, n);
+            var Xplain = new floatMxN(s, n, Allocator.Temp);
+            var Rp = new floatMxN(s, n, Allocator.Temp); var Pp = new floatMxN(s, n, Allocator.Temp);
+            var APp = new floatMxN(s, n, Allocator.Temp); var Pap = new floatMxN(s, n, Allocator.Temp);
             var infoPlain = Krylov.bfbcg(in op, in B, ref Xplain, ref Rp, ref Pp, ref APp, ref Pap, maxIter, tol);
 
             // Explicit identity preconditioner through the merged core; Z = default (unused when identity).
-            var Xmerged = arena.floatMat(s, n);
-            var Rm = arena.floatMat(s, n); var Pm = arena.floatMat(s, n);
-            var APm = arena.floatMat(s, n); var Pam = arena.floatMat(s, n);
+            var Xmerged = new floatMxN(s, n, Allocator.Temp);
+            var Rm = new floatMxN(s, n, Allocator.Temp); var Pm = new floatMxN(s, n, Allocator.Temp);
+            var APm = new floatMxN(s, n, Allocator.Temp); var Pam = new floatMxN(s, n, Allocator.Temp);
             floatMxN Zm = default;
             var id = new floatIdentityPreconditioner();
             var infoMerged = Krylov.bfbcg(in op, in id, in B, ref Xmerged, ref Rm, ref Pm, ref APm, ref Pam, ref Zm, maxIter, tol);
@@ -270,8 +250,6 @@ public class floatBlockBFBCGTests
 
             Assert.AreEqual(infoPlain.iterations, infoMerged.iterations);
             Assert.AreEqual((int)infoPlain.status, (int)infoMerged.status);
-
-            arena.Dispose();
         }
 
         // On an ill-conditioned SPD system (stretched singular spectrum), bfbcg must be NO WORSE than
@@ -284,36 +262,32 @@ public class floatBlockBFBCGTests
 
         void NeverWorseThanRidge()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // Seeds shared with bcgrq's analogous IllConditionedSPDNeverWorseThanRidge: a proven-benign
             // convergence pattern for this exact BuildStretchedSPD(condSpan=8, n=20, s=4) + row-locking
             // construction, where all columns converge together (no early per-column lock that would let
             // non-locking ridge bcg refine its easy columns far past their threshold and skew maxRnorm).
             int n = 20, s = 4;
             float condSpan = (float)8;
-            var A = BuildStretchedSPD(ref arena, n, 86001u, condSpan);
-            var Xk = arena.floatRandomMat(s, n, (float)(-1f), (float)1f, 86002u);
+            var A = BuildStretchedSPD(n, 86001u, condSpan);
+            var Xk = GenerateOP.floatRandomMat(s, n, (float)(-1f), (float)1f, 86002u);
 
-            var B = arena.floatMat(s, n);
+            var B = new floatMxN(s, n, Allocator.Temp);
             new floatDenseOperator(in A).ApplyBlock(in Xk, ref B, s);
 
             int maxIter = 3000;
             float tol = Consts.floatSqrtEps;
 
-            var Xridge = arena.floatMat(s, n);
+            var Xridge = new floatMxN(s, n, Allocator.Temp);
             var ridgeInfo = Krylov.bcg(in A, in B, ref Xridge, maxIter, tol);
             float ridgeFwdErr = MaxForwardError(in Xridge, in Xk, s, n);
 
-            var Xbf = arena.floatMat(s, n);
+            var Xbf = new floatMxN(s, n, Allocator.Temp);
             var bfInfo = Krylov.bfbcg(in A, in B, ref Xbf, maxIter, tol);
             float bfFwdErr = MaxForwardError(in Xbf, in Xk, s, n);
 
             Assert.IsTrue(bfInfo.maxRnorm <= ridgeInfo.maxRnorm * ResidualSlack());
             Assert.IsTrue((double)bfFwdErr <= (double)ridgeFwdErr * ResidualSlack());
             Assert.IsTrue(bfInfo.iterations <= ridgeInfo.iterations * 2 + 2);
-
-            arena.Dispose();
         }
     }
 

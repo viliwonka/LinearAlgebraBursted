@@ -118,16 +118,19 @@ namespace LinearAlgebra.Sparse
 
             _ownsA = a.Symmetric;
             A = a.MirrorToFull(allocator);
+            // try/finally with a success flag, NOT try/catch -- Burst rejects `catch` (BC1006).
+            // On the managed path this still disposes the fresh mirror if Jacobi construction
+            // throws (no caller handle exists yet); under Burst the guard degrades to a no-op on
+            // the throw path, same as Arena's ctor guard.
+            bool ok = false;
             try
             {
                 Jacobi = new floatBlockJacobi(in A, allocator);
+                ok = true;
             }
-            catch
+            finally
             {
-                // A is otherwise unreachable once this ctor unwinds (no caller handle yet) --
-                // dispose it here so a singular/missing diagonal block doesn't leak the mirror.
-                if (_ownsA) A.Dispose();
-                throw;
+                if (!ok && _ownsA) A.Dispose();
             }
             Omega = omega;
 

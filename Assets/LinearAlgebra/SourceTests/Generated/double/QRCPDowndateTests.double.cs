@@ -114,7 +114,6 @@ public class doubleQRCPDowndateTests
         //    no-permutation pin below is scoped to n=16, where it is a genuine, stable invariant.
         void KahanSweep()
         {
-            var arena = new Arena(Allocator.Persistent);
             try
             {
                 for (int ni = 0; ni < 3; ni++)
@@ -127,11 +126,11 @@ public class doubleQRCPDowndateTests
                              : ti == 2 ? (double)0.54030231f
                              :           (double)0.36235775f;
 
-                    var A0 = arena.doubleKahan(dim, c);
-                    var Q = A0.Copy();
-                    var R = arena.doubleMat(dim);
+                    var A0 = doubleGallery.doubleKahan(dim, c);
+                    var Q = new doubleMxN(in A0, Allocator.Temp);
+                    var R = new doubleMxN(dim, dim, Allocator.Temp);
                     var P = new Pivot(dim, Allocator.Temp);
-                    var u = arena.doubleVec(dim);
+                    var u = new doubleN(dim, Allocator.Temp);
 
                     QRCP.decompInPlace(ref Q, ref R, ref P, ref u);
                     TierP(in A0, in Q, in R, in P);
@@ -144,10 +143,9 @@ public class doubleQRCPDowndateTests
                             RecordEq(P[d], d);
 
                     P.Dispose();
-                    arena.Clear();
                 }
             }
-            finally { arena.Dispose(); }
+            finally { }
         }
 
         // ── Case 1 (rank cross-check): on a genuinely WELL-CONDITIONED, full-rank Kahan instance
@@ -160,19 +158,18 @@ public class doubleQRCPDowndateTests
         //    of the algorithm, not a downdating bug.
         void KahanRankCrossCheck()
         {
-            var arena = new Arena(Allocator.Persistent);
             try
             {
                 int dim = 16;
-                var A0 = arena.doubleKahan(dim, (double)0.36235775f);
+                var A0 = doubleGallery.doubleKahan(dim, (double)0.36235775f);
 
                 int svdRank = Analysis.rank(in A0);   // SVD-based numerical rank (auto tol)
                 RecordEq(svdRank, dim);               // sanity: this instance is genuinely full rank
 
-                var Q = A0.Copy();
-                var R = arena.doubleMat(dim);
+                var Q = new doubleMxN(in A0, Allocator.Temp);
+                var R = new doubleMxN(dim, dim, Allocator.Temp);
                 var P = new Pivot(dim, Allocator.Temp);
-                var u = arena.doubleVec(dim);
+                var u = new doubleN(dim, Allocator.Temp);
                 QRCP.decompInPlace(ref Q, ref R, ref P, ref u);
                 TierP(in A0, in Q, in R, in P);
 
@@ -181,7 +178,7 @@ public class doubleQRCPDowndateTests
 
                 P.Dispose();
             }
-            finally { arena.Dispose(); }
+            finally { }
         }
 
         // ── Case 2: norm-collapse ladder. A = [B | B·X + eps·noise] — k independent columns plus k
@@ -191,7 +188,6 @@ public class doubleQRCPDowndateTests
         //    threshold for BOTH float and double (a single template, both types must hold).
         void NormCollapseLadder()
         {
-            var arena = new Arena(Allocator.Persistent);
             try
             {
                 int m = 20, k = 4, n = 2 * k;
@@ -209,12 +205,12 @@ public class doubleQRCPDowndateTests
                                :          (double)1e-3f * zt; // clearly below -> rank k
                     int pinAbs = e == 0 ? 2 * k : (e == 3 ? k : -1);
 
-                    var B     = arena.doubleRandomMat(m, k, -1f, 1f, 424200u + (uint)e);
-                    var X     = arena.doubleRandomMat(k, k, -1f, 1f, 990000u + (uint)e);
-                    var noise = arena.doubleRandomMat(m, k, -1f, 1f, 133700u + (uint)e);
+                    var B     = GenerateOP.doubleRandomMat(m, k, -1f, 1f, 424200u + (uint)e);
+                    var X     = GenerateOP.doubleRandomMat(k, k, -1f, 1f, 990000u + (uint)e);
+                    var noise = GenerateOP.doubleRandomMat(m, k, -1f, 1f, 133700u + (uint)e);
                     var D     = Blas.dot(B, X); // m×k dependent block (exactly in span(B))
 
-                    var A0 = arena.doubleMat(m, n);
+                    var A0 = new doubleMxN(m, n, Allocator.Temp);
                     for (int r = 0; r < m; r++)
                     {
                         for (int c = 0; c < k; c++) A0[r, c]     = B[r, c];
@@ -223,10 +219,10 @@ public class doubleQRCPDowndateTests
 
                     int svdRank = Analysis.rank(in A0);
 
-                    var Q = A0.Copy();
-                    var R = arena.doubleMat(n);
+                    var Q = new doubleMxN(in A0, Allocator.Temp);
+                    var R = new doubleMxN(n, n, Allocator.Temp);
                     var P = new Pivot(n, Allocator.Temp);
-                    var u = arena.doubleVec(m);
+                    var u = new doubleN(m, Allocator.Temp);
                     QRCP.decompInPlace(ref Q, ref R, ref P, ref u);
                     TierP(in A0, in Q, in R, in P);
 
@@ -248,10 +244,9 @@ public class doubleQRCPDowndateTests
                     }
 
                     P.Dispose();
-                    arena.Clear();
                 }
             }
-            finally { arena.Dispose(); }
+            finally { }
         }
 
         // ── Case 3: mass-cancellation. Every column ≈ a scalar multiple of ONE pivot direction plus a
@@ -259,21 +254,20 @@ public class doubleQRCPDowndateTests
         //    must fire repeatedly. Tier P + detected rank == 1 at the AUTO relTol (default overload).
         void MassCancellation()
         {
-            var arena = new Arena(Allocator.Persistent);
             try
             {
                 int m = 20, n = 8;
                 var rng = new Unity.Mathematics.Random(0x3A55u);
 
                 // Pivot direction v (m-vector), O(1) entries.
-                var v = arena.doubleVec(m);
+                var v = new doubleN(m, Allocator.Temp);
                 for (int r = 0; r < m; r++) v[r] = (double)(rng.NextFloat(-1f, 1f));
 
                 // Noise floor scaled off the type zero-threshold so it stays BELOW the auto rank
                 // tolerance for BOTH float and double (0.01·zeroThreshold ≪ max(m,n)·zeroThreshold).
                 double noiseScale = (double)0.01f * Consts.doubleZeroThreshold;
 
-                var A0 = arena.doubleMat(m, n);
+                var A0 = new doubleMxN(m, n, Allocator.Temp);
                 for (int c = 0; c < n; c++)
                 {
                     double alpha = (double)(rng.NextFloat(0.25f, 4f)); // distinct scalar per column
@@ -281,26 +275,26 @@ public class doubleQRCPDowndateTests
                         A0[r, c] = alpha * v[r] + noiseScale * (double)(rng.NextFloat(-1f, 1f));
                 }
 
-                var Q = A0.Copy();
-                var R = arena.doubleMat(n);
+                var Q = new doubleMxN(in A0, Allocator.Temp);
+                var R = new doubleMxN(n, n, Allocator.Temp);
                 var P = new Pivot(n, Allocator.Temp);
-                var u = arena.doubleVec(m);
+                var u = new doubleN(m, Allocator.Temp);
                 QRCP.decompInPlace(ref Q, ref R, ref P, ref u);
                 TierP(in A0, in Q, in R, in P);
 
                 RecordEq(RankFromR(in R, m, n), 1);
 
                 // Also via the AUTO-tol solve path (independent rank consumer, default overload).
-                var As = A0.Copy();
-                var b  = arena.doubleVec(m);
+                var As = new doubleMxN(in A0, Allocator.Temp);
+                var b  = new doubleN(m, Allocator.Temp);
                 for (int r = 0; r < m; r++) b[r] = (double)(rng.NextFloat(-1f, 1f));
-                var x  = arena.doubleVec(n);
+                var x  = new doubleN(n, Allocator.Temp);
                 int solveRank = QRCP.solveInPlace(ref As, ref b, ref x).rank;
                 RecordEq(solveRank, 1);
 
                 P.Dispose();
             }
-            finally { arena.Dispose(); }
+            finally { }
         }
 
         // ── Case 4: gradual-decay attack. A random matrix with a slowly-decaying geometric singular
@@ -328,7 +322,6 @@ public class doubleQRCPDowndateTests
         //    transcription. A dedicated Tier-E regression test for this ONE guard remains open coverage.
         void GradualDecay()
         {
-            var arena = new Arena(Allocator.Persistent);
             try
             {
                 int m = 160, n = 128, k = n; // min(m,n) = 128
@@ -336,7 +329,7 @@ public class doubleQRCPDowndateTests
                 // ratio = cond^(-1/(k-1)) = 0.95  =>  cond = 0.95^-(k-1).
                 double cond = math.pow((double)0.95f, (double)(-(k - 1)));
 
-                var A0  = arena.doubleMat(m, n);
+                var A0  = new doubleMxN(m, n, Allocator.Temp);
                 var rng = new Unity.Mathematics.Random(0x9DEC0095u);
                 Rand.conditionedInPlace(ref rng, ref A0, cond);
 
@@ -344,16 +337,16 @@ public class doubleQRCPDowndateTests
                 // construction genuinely stresses cumulative decay — guards against a mis-set cond.
                 RecordBound((double)500, cond);
 
-                var Q = A0.Copy();
-                var R = arena.doubleMat(n);
+                var Q = new doubleMxN(in A0, Allocator.Temp);
+                var R = new doubleMxN(n, n, Allocator.Temp);
                 var P = new Pivot(n, Allocator.Temp);
-                var u = arena.doubleVec(m);
+                var u = new doubleN(m, Allocator.Temp);
                 QRCP.decompInPlace(ref Q, ref R, ref P, ref u);
                 TierP(in A0, in Q, in R, in P);
 
                 P.Dispose();
             }
-            finally { arena.Dispose(); }
+            finally { }
         }
 
         // ── Case 5: ties. Exact-duplicate columns AND a 1-ulp-apart-norm column. Tier P (which tie
@@ -361,11 +354,10 @@ public class doubleQRCPDowndateTests
         //    twice must yield bit-identical P, Q, R.
         void Ties()
         {
-            var arena = new Arena(Allocator.Persistent);
             try
             {
                 int m = 8, n = 5;
-                var A0 = arena.doubleRandomMat(m, n, -2f, 2f, 0x71E5u);
+                var A0 = GenerateOP.doubleRandomMat(m, n, -2f, 2f, 0x71E5u);
                 // column 2 := exact duplicate of column 0.
                 for (int r = 0; r < m; r++) A0[r, 2] = A0[r, 0];
                 // column 4 := column 1 scaled by (1 + 2·eps): a ~1-ulp-apart NORM tie (no math.nextafter
@@ -374,18 +366,18 @@ public class doubleQRCPDowndateTests
                 for (int r = 0; r < m; r++) A0[r, 4] = A0[r, 1] * ulpish;
 
                 // Run 1.
-                var Q1 = A0.Copy();
-                var R1 = arena.doubleMat(n);
+                var Q1 = new doubleMxN(in A0, Allocator.Temp);
+                var R1 = new doubleMxN(n, n, Allocator.Temp);
                 var P1 = new Pivot(n, Allocator.Temp);
-                var u1 = arena.doubleVec(m);
+                var u1 = new doubleN(m, Allocator.Temp);
                 QRCP.decompInPlace(ref Q1, ref R1, ref P1, ref u1);
                 TierP(in A0, in Q1, in R1, in P1);
 
                 // Run 2 (independent copy, identical overload).
-                var Q2 = A0.Copy();
-                var R2 = arena.doubleMat(n);
+                var Q2 = new doubleMxN(in A0, Allocator.Temp);
+                var R2 = new doubleMxN(n, n, Allocator.Temp);
                 var P2 = new Pivot(n, Allocator.Temp);
-                var u2 = arena.doubleVec(m);
+                var u2 = new doubleN(m, Allocator.Temp);
                 QRCP.decompInPlace(ref Q2, ref R2, ref P2, ref u2);
 
                 for (int j = 0; j < n; j++) RecordEq(P1[j], P2[j]);
@@ -394,18 +386,17 @@ public class doubleQRCPDowndateTests
 
                 P1.Dispose(); P2.Dispose();
             }
-            finally { arena.Dispose(); }
+            finally { }
         }
 
         // ── Case 6a: scale extremes. Column 2-norms spanning many orders of magnitude within ONE
         //    matrix. Tier P: no NaN/Inf, reconstruction holds (relative), monotone diagonal.
         void ScaleExtremes()
         {
-            var arena = new Arena(Allocator.Persistent);
             try
             {
                 int m = 10, n = 6;
-                var A0 = arena.doubleRandomMat(m, n, -1f, 1f, 0x5CA1E5u);
+                var A0 = GenerateOP.doubleRandomMat(m, n, -1f, 1f, 0x5CA1E5u);
                 // per-column scale factors from ~1e-6 to ~1e6 (12 orders of dynamic range — safe for
                 // float, and equally exercised for double).
                 for (int c = 0; c < n; c++)
@@ -420,16 +411,16 @@ public class doubleQRCPDowndateTests
                         A0[r, c] *= scale;
                 }
 
-                var Q = A0.Copy();
-                var R = arena.doubleMat(n);
+                var Q = new doubleMxN(in A0, Allocator.Temp);
+                var R = new doubleMxN(n, n, Allocator.Temp);
                 var P = new Pivot(n, Allocator.Temp);
-                var u = arena.doubleVec(m);
+                var u = new doubleN(m, Allocator.Temp);
                 QRCP.decompInPlace(ref Q, ref R, ref P, ref u);
                 TierP(in A0, in Q, in R, in P);
 
                 P.Dispose();
             }
-            finally { arena.Dispose(); }
+            finally { }
         }
 
         // ── Case 6b: degenerate shapes. Fully-zero matrix (rank 0), zero columns mixed in (rank ==
@@ -437,21 +428,19 @@ public class doubleQRCPDowndateTests
         //    zero cases. No NaN anywhere.
         void ZeroAndTinySizes()
         {
-            var arena = new Arena(Allocator.Persistent);
             try
             {
                 // (a) fully zero 5×3 -> rank 0.
                 {
-                    var A0 = arena.doubleMat(5, 3);
-                    var Q = A0.Copy();
-                    var R = arena.doubleMat(3);
+                    var A0 = new doubleMxN(5, 3, Allocator.Temp);
+                    var Q = new doubleMxN(in A0, Allocator.Temp);
+                    var R = new doubleMxN(3, 3, Allocator.Temp);
                     var P = new Pivot(3, Allocator.Temp);
-                    var u = arena.doubleVec(5);
+                    var u = new doubleN(5, Allocator.Temp);
                     QRCP.decompInPlace(ref Q, ref R, ref P, ref u);
                     TierP(in A0, in Q, in R, in P);
                     RecordEq(RankFromR(in R, 5, 3), 0);
                     P.Dispose();
-                    arena.Clear();
                 }
 
                 // (b) zero columns mixed in: cols 0,3 nonzero AND linearly independent (col0 varies
@@ -460,18 +449,17 @@ public class doubleQRCPDowndateTests
                 //     i.e. parallel -> rank 1; hence col0/col3 must be non-parallel.)
                 {
                     int m = 6, n = 5;
-                    var A0 = arena.doubleMat(m, n);
+                    var A0 = new doubleMxN(m, n, Allocator.Temp);
                     for (int r = 0; r < m; r++) A0[r, 0] = (double)(r + 1); // (1,2,3,4,5,6)
                     A0[0, 3] = (double)2f; A0[3, 3] = (double)2f;           // supported on rows 0,3 only
-                    var Q = A0.Copy();
-                    var R = arena.doubleMat(n);
+                    var Q = new doubleMxN(in A0, Allocator.Temp);
+                    var R = new doubleMxN(n, n, Allocator.Temp);
                     var P = new Pivot(n, Allocator.Temp);
-                    var u = arena.doubleVec(m);
+                    var u = new doubleN(m, Allocator.Temp);
                     QRCP.decompInPlace(ref Q, ref R, ref P, ref u);
                     TierP(in A0, in Q, in R, in P);
                     RecordEq(RankFromR(in R, m, n), 2);
                     P.Dispose();
-                    arena.Clear();
                 }
 
                 // (c) single-column tall (n=1), a few different m.
@@ -479,18 +467,17 @@ public class doubleQRCPDowndateTests
                     for (int mi = 0; mi < 3; mi++)
                     {
                         int m = mi == 0 ? 1 : (mi == 1 ? 4 : 9);
-                        var A0 = arena.doubleMat(m, 1);
+                        var A0 = new doubleMxN(m, 1, Allocator.Temp);
                         for (int r = 0; r < m; r++) A0[r, 0] = (double)(r + 1);
-                        var Q = A0.Copy();
-                        var R = arena.doubleMat(1);
+                        var Q = new doubleMxN(in A0, Allocator.Temp);
+                        var R = new doubleMxN(1, 1, Allocator.Temp);
                         var P = new Pivot(1, Allocator.Temp);
-                        var u = arena.doubleVec(m);
+                        var u = new doubleN(m, Allocator.Temp);
                         QRCP.decompInPlace(ref Q, ref R, ref P, ref u);
                         TierP(in A0, in Q, in R, in P);
                         RecordEq(P[0], 0);
                         RecordEq(RankFromR(in R, m, 1), 1);
                         P.Dispose();
-                        arena.Clear();
                     }
                 }
 
@@ -500,21 +487,20 @@ public class doubleQRCPDowndateTests
                     for (int mi = 0; mi < 2; mi++)
                     {
                         int m = mi == 0 ? n : n + 2;
-                        var A0 = arena.doubleRandomMat(m, n, -3f, 3f, 0x717Au + (uint)(n * 7 + mi));
+                        var A0 = GenerateOP.doubleRandomMat(m, n, -3f, 3f, 0x717Au + (uint)(n * 7 + mi));
                         for (int d = 0; d < n; d++) A0[d, d] += (double)6f; // ensure full rank
-                        var Q = A0.Copy();
-                        var R = arena.doubleMat(n);
+                        var Q = new doubleMxN(in A0, Allocator.Temp);
+                        var R = new doubleMxN(n, n, Allocator.Temp);
                         var P = new Pivot(n, Allocator.Temp);
-                        var u = arena.doubleVec(m);
+                        var u = new doubleN(m, Allocator.Temp);
                         QRCP.decompInPlace(ref Q, ref R, ref P, ref u);
                         TierP(in A0, in Q, in R, in P);
                         RecordEq(RankFromR(in R, m, n), n);
                         P.Dispose();
-                        arena.Clear();
                     }
                 }
             }
-            finally { arena.Dispose(); }
+            finally { }
         }
 
         // ── Tier E demonstrator: a construction ENGINEERED to be well-separated at every step (random
@@ -526,11 +512,10 @@ public class doubleQRCPDowndateTests
         //    factors match to the last bit.
         void TierEDistinctMagnitudes()
         {
-            var arena = new Arena(Allocator.Persistent);
             try
             {
                 int m = 10, n = 5;
-                var A0 = arena.doubleRandomMat(m, n, -1f, 1f, 0x7E5700u);
+                var A0 = GenerateOP.doubleRandomMat(m, n, -1f, 1f, 0x7E5700u);
                 double sc = (double)1;
                 for (int c = 0; c < n; c++)
                 {
@@ -538,10 +523,10 @@ public class doubleQRCPDowndateTests
                     sc *= (double)8; // 1, 8, 64, 512, 4096 -> hugely staggered column norms
                 }
 
-                bool sep = ProdAndOracle(ref arena, in A0, out int _);
+                bool sep = ProdAndOracle(in A0, out int _);
                 RecordEq(sep ? 1 : 0, 1); // MUST be Tier-E-eligible or the demonstrator is not demonstrating
             }
-            finally { arena.Dispose(); }
+            finally { }
         }
 
         // ── Cache-overload equivalence: the zero-alloc cache overloads (Arena.doubleQRCPCache) must be
@@ -549,21 +534,20 @@ public class doubleQRCPDowndateTests
         //    for both decompInPlace and solveInPlace (P/Q/R/x/rank), full-rank AND rank-deficient.
         void CacheEquivalence(int m, int n, uint seed, bool rankDeficient)
         {
-            var arena = new Arena(Allocator.Persistent);
             try
             {
-                var A0 = arena.doubleRandomMat(m, n, -3f, 3f, seed);
+                var A0 = GenerateOP.doubleRandomMat(m, n, -3f, 3f, seed);
                 for (int d = 0; d < n; d++) A0[d, d] += (double)6f;
                 if (rankDeficient)
                     for (int r = 0; r < m; r++)
                         A0[r, n - 1] = A0[r, 0] + A0[r, 1]; // exact dependency -> rank n-1
 
                 // decompInPlace: non-cache vs cache.
-                var Anc = A0.Copy(); var Rnc = arena.doubleMat(n); var Pnc = new Pivot(n, Allocator.Temp); var unc = arena.doubleVec(m);
+                var Anc = new doubleMxN(in A0, Allocator.Temp); var Rnc = new doubleMxN(n, n, Allocator.Temp); var Pnc = new Pivot(n, Allocator.Temp); var unc = new doubleN(m, Allocator.Temp);
                 QRCP.decompInPlace(ref Anc, ref Rnc, ref Pnc, ref unc);
 
-                var Ac = A0.Copy(); var Rc = arena.doubleMat(n); var Pc = new Pivot(n, Allocator.Temp); var uc = arena.doubleVec(m);
-                var cache = arena.doubleQRCPCache(n);
+                var Ac = new doubleMxN(in A0, Allocator.Temp); var Rc = new doubleMxN(n, n, Allocator.Temp); var Pc = new Pivot(n, Allocator.Temp); var uc = new doubleN(m, Allocator.Temp);
+                var cache = new doubleQRCPCache(n, Allocator.Temp);
                 QRCP.decompInPlace(ref Ac, ref Rc, ref Pc, ref uc, ref cache);
 
                 for (int j = 0; j < n; j++) RecordEq(Pnc[j], Pc[j]);
@@ -572,13 +556,13 @@ public class doubleQRCPDowndateTests
 
                 // solveInPlace: non-cache vs cache (default relTol both). solveInPlace destroys b
                 // (fused), so each call gets its own copy of the identical RHS.
-                var b0 = arena.doubleRandomVec(m, -3f, 3f, seed + 1u);
+                var b0 = GenerateOP.doubleRandomVec(m, -3f, 3f, seed + 1u);
 
-                var As1 = A0.Copy(); var b1 = b0.Copy(); var Rs1 = arena.doubleMat(n); var Ps1 = new Pivot(n, Allocator.Temp); var us1 = arena.doubleVec(m); var x1 = arena.doubleVec(n);
+                var As1 = new doubleMxN(in A0, Allocator.Temp); var b1 = new doubleN(in b0, Allocator.Temp); var Rs1 = new doubleMxN(n, n, Allocator.Temp); var Ps1 = new Pivot(n, Allocator.Temp); var us1 = new doubleN(m, Allocator.Temp); var x1 = new doubleN(n, Allocator.Temp);
                 RankInfo info1 = QRCP.solveInPlace(ref As1, ref b1, ref x1, ref Rs1, ref Ps1, ref us1);
 
-                var As2 = A0.Copy(); var b2 = b0.Copy(); var Rs2 = arena.doubleMat(n); var Ps2 = new Pivot(n, Allocator.Temp); var us2 = arena.doubleVec(m); var x2 = arena.doubleVec(n);
-                var cache2 = arena.doubleQRCPCache(n);
+                var As2 = new doubleMxN(in A0, Allocator.Temp); var b2 = new doubleN(in b0, Allocator.Temp); var Rs2 = new doubleMxN(n, n, Allocator.Temp); var Ps2 = new Pivot(n, Allocator.Temp); var us2 = new doubleN(m, Allocator.Temp); var x2 = new doubleN(n, Allocator.Temp);
+                var cache2 = new doubleQRCPCache(n, Allocator.Temp);
                 RankInfo info2 = QRCP.solveInPlace(ref As2, ref b2, ref x2, ref Rs2, ref Ps2, ref us2, ref cache2);
 
                 RecordEq((int)info1.status, (int)info2.status);
@@ -589,7 +573,7 @@ public class doubleQRCPDowndateTests
 
                 Pnc.Dispose(); Pc.Dispose(); Ps1.Dispose(); Ps2.Dispose();
             }
-            finally { arena.Dispose(); }
+            finally { }
         }
 
         // ── Blocked (level-3 dlaqps panel) core. Everything above tops out at n = 128 in ONE case
@@ -611,7 +595,6 @@ public class doubleQRCPDowndateTests
         //        re-sum branch that the unblocked core does NOT have. Rank must collapse to 1 (auto tol).
         void BlockedPanels()
         {
-            var arena = new Arena(Allocator.Persistent);
             try
             {
                 // (a) panel-boundary shapes, staggered well-separated norms. n = 64 (2*NB), 65 (2*NB+1),
@@ -622,7 +605,7 @@ public class doubleQRCPDowndateTests
                 {
                     int n = s == 0 ? 64 : s == 1 ? 65 : s == 2 ? 96 : s == 3 ? 96 : s == 4 ? 128 : 128;
                     int m = s == 0 ? 64 : s == 1 ? 65 : s == 2 ? 96 : s == 3 ? 140 : s == 4 ? 128 : 200;
-                    var A0 = arena.doubleRandomMat(m, n, -1f, 1f, 0xB10C0000u + (uint)s);
+                    var A0 = GenerateOP.doubleRandomMat(m, n, -1f, 1f, 0xB10C0000u + (uint)s);
                     // Scale column c to a geometric norm target 1 .. 1e3 (ratio 1e3^(1/(n-1)) between
                     // neighbours — above the Tier-E separation margin, yet a modest enough total range
                     // that the scale-relative zero-column threshold (1e-6·LInf ≈ 1e-3 here) stays well
@@ -636,8 +619,7 @@ public class doubleQRCPDowndateTests
                         double scale = math.pow((double)1e3f, t);
                         for (int r = 0; r < m; r++) A0[r, c] *= scale;
                     }
-                    if (ProdVsOracleTol(ref arena, in A0, (double)1e-3f)) eligible++;
-                    arena.Clear();
+                    if (ProdVsOracleTol(in A0, (double)1e-3f)) eligible++;
                 }
                 // The staggered construction is engineered to be Tier-E-eligible; require the tight
                 // pivot/Q/R check to have actually run at least once (else it is not testing the
@@ -648,11 +630,11 @@ public class doubleQRCPDowndateTests
                 {
                     int m = 100, n = 80;
                     var rng = new Unity.Mathematics.Random(0x6C07u);
-                    var v = arena.doubleVec(m);
+                    var v = new doubleN(m, Allocator.Temp);
                     for (int r = 0; r < m; r++) v[r] = (double)(rng.NextFloat(-1f, 1f));
                     double noiseScale = (double)0.01f * Consts.doubleZeroThreshold;
 
-                    var A0 = arena.doubleMat(m, n);
+                    var A0 = new doubleMxN(m, n, Allocator.Temp);
                     for (int c = 0; c < n; c++)
                     {
                         double alpha = (double)(rng.NextFloat(0.25f, 4f));
@@ -660,17 +642,17 @@ public class doubleQRCPDowndateTests
                             A0[r, c] = alpha * v[r] + noiseScale * (double)(rng.NextFloat(-1f, 1f));
                     }
 
-                    var Q = A0.Copy();
-                    var R = arena.doubleMat(n);
+                    var Q = new doubleMxN(in A0, Allocator.Temp);
+                    var R = new doubleMxN(n, n, Allocator.Temp);
                     var P = new Pivot(n, Allocator.Temp);
-                    var u = arena.doubleVec(m);
+                    var u = new doubleN(m, Allocator.Temp);
                     QRCP.decompInPlace(ref Q, ref R, ref P, ref u);   // blocked (n = 80 >= 64)
                     TierP(in A0, in Q, in R, in P);
                     RecordEq(RankFromR(in R, m, n), 1);
                     P.Dispose();
                 }
             }
-            finally { arena.Dispose(); }
+            finally { }
         }
 
         // Blocked-vs-oracle for a Tier-E-eligible input: production decompInPlace (BLOCKED at these
@@ -679,16 +661,16 @@ public class doubleQRCPDowndateTests
         // oracle's separation flag; the tight asserts only fire when it certifies eligibility. This is
         // the toleranced sibling of ProdAndOracle (which demands bit-identity — valid only for the
         // unblocked path, whose summation order matches the oracle's).
-        bool ProdVsOracleTol(ref Arena arena, in doubleMxN A0, double relTol)
+        bool ProdVsOracleTol(in doubleMxN A0, double relTol)
         {
             int m = A0.M_Rows;
             int n = A0.N_Cols;
 
-            var Qp = A0.Copy(); var Rp = arena.doubleMat(n); var Pp = new Pivot(n, Allocator.Temp); var up = arena.doubleVec(m);
+            var Qp = new doubleMxN(in A0, Allocator.Temp); var Rp = new doubleMxN(n, n, Allocator.Temp); var Pp = new Pivot(n, Allocator.Temp); var up = new doubleN(m, Allocator.Temp);
             QRCP.decompInPlace(ref Qp, ref Rp, ref Pp, ref up);
             TierP(in A0, in Qp, in Rp, in Pp);
 
-            var Qo = A0.Copy(); var Ro = arena.doubleMat(n); var Po = new Pivot(n, Allocator.Temp); var uo = arena.doubleVec(m);
+            var Qo = new doubleMxN(in A0, Allocator.Temp); var Ro = new doubleMxN(n, n, Allocator.Temp); var Po = new Pivot(n, Allocator.Temp); var uo = new doubleN(m, Allocator.Temp);
             bool sep = OracleDecompInPlace(ref Qo, ref Ro, ref Po, ref uo);
 
             if (sep)
@@ -740,12 +722,13 @@ public class doubleQRCPDowndateTests
             double scale = Norms.LInf(in A0) + (double)1;
 
             // reconstruction: A permuted by P == Q·R.
-            var Aperm = A0.Copy();
+            var Aperm = new doubleMxN(in A0, Allocator.Temp);
             for (int r = 0; r < m; r++)
                 for (int j = 0; j < n; j++)
                     Aperm[r, j] = A0[r, P[j]];
 
-            doubleMxN diff = Aperm - Blas.dot(Q, R);
+            doubleMxN diff = new doubleMxN(in Aperm, Allocator.Temp);
+            doubleComp.subInPlace(diff, Blas.dot(Q, R));
             if (Analysis.isAnyNan(in diff))
                 throw new System.Exception("QRCPDowndateTests: NaN detected in reconstruction");
             RecordBound(Analysis.MaxZeroError(diff), tol * scale);
@@ -803,17 +786,17 @@ public class doubleQRCPDowndateTests
         // well-separated), additionally asserts the pivot sequence AND Q AND R are bit-identical.
         // Returns the separation flag (and, out, the detected rank from production's R). PUBLIC so the
         // fuzz job can drive it with a shared Fail array.
-        public bool ProdAndOracle(ref Arena arena, in doubleMxN A0, out int prodRank)
+        public bool ProdAndOracle(in doubleMxN A0, out int prodRank)
         {
             int m = A0.M_Rows;
             int n = A0.N_Cols;
 
-            var Qp = A0.Copy(); var Rp = arena.doubleMat(n); var Pp = new Pivot(n, Allocator.Temp); var up = arena.doubleVec(m);
+            var Qp = new doubleMxN(in A0, Allocator.Temp); var Rp = new doubleMxN(n, n, Allocator.Temp); var Pp = new Pivot(n, Allocator.Temp); var up = new doubleN(m, Allocator.Temp);
             QRCP.decompInPlace(ref Qp, ref Rp, ref Pp, ref up);
             TierP(in A0, in Qp, in Rp, in Pp);
             prodRank = RankFromR(in Rp, m, n);
 
-            var Qo = A0.Copy(); var Ro = arena.doubleMat(n); var Po = new Pivot(n, Allocator.Temp); var uo = arena.doubleVec(m);
+            var Qo = new doubleMxN(in A0, Allocator.Temp); var Ro = new doubleMxN(n, n, Allocator.Temp); var Po = new Pivot(n, Allocator.Temp); var uo = new doubleN(m, Allocator.Temp);
             bool sep = OracleDecompInPlace(ref Qo, ref Ro, ref Po, ref uo);
 
             if (sep)
@@ -1047,7 +1030,6 @@ public class doubleQRCPDowndateTests
         public void Execute()
         {
             var job = new TestJob { Fail = Fail };
-            var arena = new Arena(Allocator.Persistent);
             try
             {
                 int total = 72;
@@ -1062,7 +1044,7 @@ public class doubleQRCPDowndateTests
                     int m = n + (t % 25);        // square..moderately tall
                     if (t % 9 == 0) m = n + 120; // occasional very tall
 
-                    var A0 = arena.doubleRandomMat(m, n, -3f, 3f, seed);
+                    var A0 = GenerateOP.doubleRandomMat(m, n, -3f, 3f, seed);
 
                     // Inject rank deficiency on ~1/3 of seeds (mix exact and near-exact).
                     int mode = t % 3;
@@ -1079,21 +1061,19 @@ public class doubleQRCPDowndateTests
                                          + near * (double)((r % 5) - 2); // near-exact dependency
                     }
 
-                    bool sep = job.ProdAndOracle(ref arena, in A0, out int _);
+                    bool sep = job.ProdAndOracle(in A0, out int _);
                     if (sep)
                     {
                         eligible++;
                         if (Fail[0] == (double)0) tierEpass++; // no bit-mismatch recorded so far
                     }
-
-                    arena.Clear();
                 }
 
                 Counts[0] = eligible;
                 Counts[1] = total;
                 Counts[2] = tierEpass;
             }
-            finally { arena.Dispose(); }
+            finally { }
         }
     }
 
@@ -1123,14 +1103,12 @@ public class doubleQRCPDowndateTests
     [Test]
     public void QrcpCacheThrowsOnWrongSize()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.doubleRandomMat(5, 3, -1f, 1f, 12345u);
-        var R = arena.doubleMat(3);
+        var A = GenerateOP.doubleRandomMat(5, 3, -1f, 1f, 12345u);
+        var R = new doubleMxN(3, 3, Allocator.Temp);
         var P = new Pivot(3, Allocator.Persistent);
-        var u = arena.doubleVec(5);
-        var cache = arena.doubleQRCPCache(2); // wrong: must be sized for n == 3
+        var u = new doubleN(5, Allocator.Temp);
+        var cache = new doubleQRCPCache(2, Allocator.Temp); // wrong: must be sized for n == 3
         Assert.Catch<ArgumentException>(() => QRCP.decompInPlace(ref A, ref R, ref P, ref u, ref cache));
         P.Dispose();
-        arena.Dispose();
     }
 }

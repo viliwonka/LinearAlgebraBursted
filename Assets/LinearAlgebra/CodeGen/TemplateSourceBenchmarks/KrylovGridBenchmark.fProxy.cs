@@ -223,10 +223,10 @@ namespace LinearAlgebra.Benchmarks
         // Scalar (BR=1) 2D 5-point UPWIND convection-diffusion stencil on a gx x gy grid, Peclet
         // number pe. Nonsymmetric (west coefficient != east); diagonally dominant M-matrix
         // (Dirichlet boundaries make it nonsingular).
-        static fProxyBSR ConvDiff2DFProxy(ref Arena arena, int gx, int gy, fProxy pe)
+        static fProxyBSR ConvDiff2DFProxy(int gx, int gy, fProxy pe)
         {
             int n = gx * gy;
-            var b = arena.fProxyBSRBuilder(n, n, 1, 1, 5 * n);
+            var b = new fProxyBSRBuilder(n, n, 1, 1, Allocator.Persistent, 5 * n);
             for (int y = 0; y < gy; y++)
                 for (int x = 0; x < gx; x++)
                 {
@@ -237,17 +237,18 @@ namespace LinearAlgebra.Benchmarks
                     if (y > 0) b.AddValue(i, i - gx, (fProxy)(-1));
                     if (y < gy - 1) b.AddValue(i, i + gx, (fProxy)(-1));
                 }
-            return b.ToBSR(ref arena);
+            var result = b.ToBSR(Allocator.Persistent);
+            b.Dispose();
+            return result;
         }
 
         // Every square solver applies on an SPD gallery -- times all nine.
         static string BenchSpdFProxy(int restart, int s, int recycle, int k)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyLaplacian2D(64, 64);   // 64x64 scalar Laplacian grid (N=4096); benchmark-local size, not a gallery enum
+            var A = fProxyGallery.fProxyLaplacian2D(64, 64, Allocator.Persistent);   // 64x64 scalar Laplacian grid (N=4096); benchmark-local size, not a gallery enum
             int n = A.M_Rows;
-            var b = arena.fProxyRandomVec(n, (fProxy)(-1), (fProxy)1, 0xD100u);
-            var x = arena.fProxyVec(n);
+            var b = GenerateOP.fProxyRandomVec(n, (fProxy)(-1), (fProxy)1, 0xD100u, Allocator.Persistent);
+            var x = new fProxyN(n, Allocator.Persistent);
             var o = new NativeArray<int>(2, Allocator.Persistent);   // required construction; unread in fixed-K
             var sb = new StringBuilder();
 
@@ -279,7 +280,9 @@ namespace LinearAlgebra.Benchmarks
             sb.Append(RowFProxy("SPD", "gcrodr", n, Bench.Time(() => gcrodrJob.Run()), ResidualFProxy(in A, in x, in b)));
 
             o.Dispose();
-            arena.Dispose();
+            A.Dispose();
+            b.Dispose();
+            x.Dispose();
             return sb.ToString();
         }
 
@@ -287,11 +290,10 @@ namespace LinearAlgebra.Benchmarks
         // require/forbid symmetry -- see MatrixProfile.Nonsymmetric in KrylovBatteryProfile.cs).
         static string BenchNonsymFProxy(int restart, int s, int recycle, int k)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyRandomSparse(80, 80, 1, (fProxy)0.1, 0x5EED1u);   // same construction as GalleryBSRMatrix.RandomSparseNonsym_80
+            var A = fProxyGallery.fProxyRandomSparse(80, 80, 1, (fProxy)0.1, 0x5EED1u, Allocator.Persistent);   // same construction as GalleryBSRMatrix.RandomSparseNonsym_80
             int n = A.M_Rows;
-            var b = arena.fProxyRandomVec(n, (fProxy)(-1), (fProxy)1, 0xD101u);
-            var x = arena.fProxyVec(n);
+            var b = GenerateOP.fProxyRandomVec(n, (fProxy)(-1), (fProxy)1, 0xD101u, Allocator.Persistent);
+            var x = new fProxyN(n, Allocator.Persistent);
             var o = new NativeArray<int>(2, Allocator.Persistent);   // required construction; unread in fixed-K
             var sb = new StringBuilder();
 
@@ -314,7 +316,9 @@ namespace LinearAlgebra.Benchmarks
             sb.Append(RowFProxy("Nonsym", "gcrodr", n, Bench.Time(() => gcrodrJob.Run()), ResidualFProxy(in A, in x, in b)));
 
             o.Dispose();
-            arena.Dispose();
+            A.Dispose();
+            b.Dispose();
+            x.Dispose();
             return sb.ToString();
         }
 
@@ -322,13 +326,12 @@ namespace LinearAlgebra.Benchmarks
         // generous cap) and report iterations + status + time-to-solution.
         static string BenchSpdConvergeFProxy(int restart, int s, int recycle)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyLaplacian2D(64, 64);   // 64x64 scalar Laplacian grid (N=4096); benchmark-local size, not a gallery enum
+            var A = fProxyGallery.fProxyLaplacian2D(64, 64, Allocator.Persistent);   // 64x64 scalar Laplacian grid (N=4096); benchmark-local size, not a gallery enum
             int n = A.M_Rows;
             fProxy tol = Consts.fProxySqrtEps;
             int maxIter = 4 * n;
-            var b = arena.fProxyRandomVec(n, (fProxy)(-1), (fProxy)1, 0xD100u);
-            var x = arena.fProxyVec(n);
+            var b = GenerateOP.fProxyRandomVec(n, (fProxy)(-1), (fProxy)1, 0xD100u, Allocator.Persistent);
+            var x = new fProxyN(n, Allocator.Persistent);
             var o = new NativeArray<int>(2, Allocator.Persistent);
             var sb = new StringBuilder();
 
@@ -369,20 +372,21 @@ namespace LinearAlgebra.Benchmarks
             sb.Append(RowConvFProxy("SPD", "gcrodr", n, o[0], StatusNameFProxy(o[1]), st, ResidualFProxy(in A, in x, in b)));
 
             o.Dispose();
-            arena.Dispose();
+            A.Dispose();
+            b.Dispose();
+            x.Dispose();
             return sb.ToString();
         }
 
         // CONVERGE regime, nonsymmetric gallery: only the general-square solvers apply.
         static string BenchNonsymConvergeFProxy(int restart, int s, int recycle)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyRandomSparse(80, 80, 1, (fProxy)0.1, 0x5EED1u);
+            var A = fProxyGallery.fProxyRandomSparse(80, 80, 1, (fProxy)0.1, 0x5EED1u, Allocator.Persistent);
             int n = A.M_Rows;
             fProxy tol = Consts.fProxySqrtEps;
             int maxIter = 4 * n;
-            var b = arena.fProxyRandomVec(n, (fProxy)(-1), (fProxy)1, 0xD101u);
-            var x = arena.fProxyVec(n);
+            var b = GenerateOP.fProxyRandomVec(n, (fProxy)(-1), (fProxy)1, 0xD101u, Allocator.Persistent);
+            var x = new fProxyN(n, Allocator.Persistent);
             var o = new NativeArray<int>(2, Allocator.Persistent);
             var sb = new StringBuilder();
 
@@ -411,7 +415,9 @@ namespace LinearAlgebra.Benchmarks
             sb.Append(RowConvFProxy("Nonsym", "gcrodr", n, o[0], StatusNameFProxy(o[1]), st, ResidualFProxy(in A, in x, in b)));
 
             o.Dispose();
-            arena.Dispose();
+            A.Dispose();
+            b.Dispose();
+            x.Dispose();
             return sb.ToString();
         }
 
@@ -421,13 +427,12 @@ namespace LinearAlgebra.Benchmarks
         // recycled subspace deflation is meant to show.
         static string BenchHardConvergeFProxy(int restart, int s, int recycle)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = ConvDiff2DFProxy(ref arena, 64, 64, (fProxy)8);
+            var A = ConvDiff2DFProxy(64, 64, (fProxy)8);
             int n = A.M_Rows;
             fProxy tol = Consts.fProxySqrtEps;
             int maxIter = 4 * n;
-            var b = arena.fProxyRandomVec(n, (fProxy)(-1), (fProxy)1, 0xD102u);
-            var x = arena.fProxyVec(n);
+            var b = GenerateOP.fProxyRandomVec(n, (fProxy)(-1), (fProxy)1, 0xD102u, Allocator.Persistent);
+            var x = new fProxyN(n, Allocator.Persistent);
             var o = new NativeArray<int>(2, Allocator.Persistent);
             var sb = new StringBuilder();
 
@@ -456,7 +461,9 @@ namespace LinearAlgebra.Benchmarks
             sb.Append(RowConvFProxy("ConvDiff", "gcrodr", n, o[0], StatusNameFProxy(o[1]), st, ResidualFProxy(in A, in x, in b)));
 
             o.Dispose();
-            arena.Dispose();
+            A.Dispose();
+            b.Dispose();
+            x.Dispose();
             return sb.ToString();
         }
     }

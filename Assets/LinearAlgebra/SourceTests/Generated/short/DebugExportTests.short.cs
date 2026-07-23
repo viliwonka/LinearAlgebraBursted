@@ -20,59 +20,46 @@ public class shortDebugExportTests
     [Test]
     public void IntToCsvMatrixIsRowPerLineCommaSeparated()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var m = arena.shortMat(2, 2);
+        var m = new shortMxN(2, 2, Allocator.Temp);
         m[0, 0] = (short)1; m[0, 1] = (short)2;
         m[1, 0] = (short)3; m[1, 1] = (short)4;
 
         Assert.AreEqual("1,2\n3,4\n", Print.ToCsv(in m));
-
-        arena.Dispose();
     }
 
     [Test]
     public void IntToTextMatrixIsRowPerLineSpaceSeparated()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var m = arena.shortMat(2, 2);
+        var m = new shortMxN(2, 2, Allocator.Temp);
         m[0, 0] = (short)1; m[0, 1] = (short)2;
         m[1, 0] = (short)3; m[1, 1] = (short)4;
 
         Assert.AreEqual("1 2\n3 4\n", Print.ToText(in m));
-
-        arena.Dispose();
     }
 
     [Test]
     public void IntToCsvVectorIsOneValuePerLineIncludingNegatives()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var v = arena.shortVec(4);
+        var v = new shortN(4, Allocator.Temp);
         v[0] = (short)(-2); v[1] = (short)0; v[2] = (short)7; v[3] = (short)13;
 
         Assert.AreEqual("-2\n0\n7\n13\n", Print.ToCsv(in v));
-
-        arena.Dispose();
     }
 
     [Test]
     public void IntToTextVectorHasNoTrailingNewline()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var v = arena.shortVec(3);
+        var v = new shortN(3, Allocator.Temp);
         v[0] = (short)1; v[1] = (short)2; v[2] = (short)3;
 
         // vector ToText joins with '\n' between entries and does NOT add a trailing newline.
         Assert.AreEqual("1\n2\n3", Print.ToText(in v));
-
-        arena.Dispose();
     }
 
     [Test]
     public void IntSaveCsvRoundTrips()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var m = arena.shortMat(2, 3);
+        var m = new shortMxN(2, 3, Allocator.Temp);
         m[0, 0] = (short)1; m[0, 1] = (short)2; m[0, 2] = (short)3;
         m[1, 0] = (short)4; m[1, 1] = (short)5; m[1, 2] = (short)6;
 
@@ -83,25 +70,19 @@ public class shortDebugExportTests
             Assert.AreEqual(Print.ToCsv(in m), File.ReadAllText(path));
         }
         finally { File.Delete(path); }
-
-        arena.Dispose();
     }
 
     // int Print.Log smoke (Burst-void log-only) -- matches DebugExportTests.IntLogDoesNotThrow.
     [Test]
     public void IntLogDoesNotThrow()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var v = arena.shortVec(3);
+        var v = new shortN(3, Allocator.Temp);
         v[0] = (short)(-2); v[1] = (short)0; v[2] = (short)7;
         Assert.DoesNotThrow(() => Print.Log(in v));
 
-        var m = arena.shortMat(2, 2);
+        var m = new shortMxN(2, 2, Allocator.Temp);
         m[0, 0] = (short)1; m[0, 1] = (short)2;
         m[1, 0] = (short)3; m[1, 1] = (short)4;
         Assert.DoesNotThrow(() => Print.Log(in m));
-
-        arena.Dispose();
     }
 }

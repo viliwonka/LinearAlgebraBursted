@@ -65,15 +65,14 @@ namespace LinearAlgebra.Benchmarks
 
         // Builds the workspace from scratch (the cos/sin table build, Burst-compiled) then runs one
         // transform — the true one-shot cost of the table path, vs the reuse rows that build once.
-        // The in-job Persistent arena is deliberate: its alloc/free is part of the one-shot cost
+        // The in-job Persistent allocation is deliberate: its alloc/free is part of the one-shot cost
         // this row measures.
         public void Execute()
         {
-            var a = new Arena(Allocator.Persistent);
-            var ws = a.floatFFTCache(n);
+            var ws = new floatFFTCache(n, Allocator.Persistent);
             for (int i = 0; i < n; i++) { re[i] = srcRe[i]; im[i] = srcIm[i]; }
             FFT.fft(ref re, ref im, in ws);
-            a.Dispose();
+            ws.Dispose();
         }
     }
 
@@ -118,12 +117,11 @@ namespace LinearAlgebra.Benchmarks
         // ---- table FFT helpers ----
         static string FftTableFloat(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var re    = arena.floatVec(n);
-            var im    = arena.floatVec(n);
-            var srcRe = arena.floatVec(n);
-            var srcIm = arena.floatVec(n);
-            var ws    = arena.floatFFTCache(n);   // built ONCE outside the timed loop
+            var re    = new floatN(n, Allocator.Persistent);
+            var im    = new floatN(n, Allocator.Persistent);
+            var srcRe = new floatN(n, Allocator.Persistent);
+            var srcIm = new floatN(n, Allocator.Persistent);
+            var ws    = new floatFFTCache(n, Allocator.Persistent);   // built ONCE outside the timed loop
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -135,19 +133,18 @@ namespace LinearAlgebra.Benchmarks
             var job = new FftTableJobFloat { re = re, im = im, srcRe = srcRe, srcIm = srcIm, ws = ws };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            re.Dispose(); im.Dispose(); srcRe.Dispose(); srcIm.Dispose(); ws.Dispose();
             return Bench.RowTime("float(ws)", n, stat);
         }
 
         // ---- table complex inverse FFT helpers ----
         static string IfftTableFloat(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var re    = arena.floatVec(n);
-            var im    = arena.floatVec(n);
-            var srcRe = arena.floatVec(n);
-            var srcIm = arena.floatVec(n);
-            var ws    = arena.floatFFTCache(n);   // built ONCE outside the timed loop
+            var re    = new floatN(n, Allocator.Persistent);
+            var im    = new floatN(n, Allocator.Persistent);
+            var srcRe = new floatN(n, Allocator.Persistent);
+            var srcIm = new floatN(n, Allocator.Persistent);
+            var ws    = new floatFFTCache(n, Allocator.Persistent);   // built ONCE outside the timed loop
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -159,18 +156,17 @@ namespace LinearAlgebra.Benchmarks
             var job = new IfftTableJobFloat { re = re, im = im, srcRe = srcRe, srcIm = srcIm, ws = ws };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            re.Dispose(); im.Dispose(); srcRe.Dispose(); srcIm.Dispose(); ws.Dispose();
             return Bench.RowTime("float(ws)", n, stat);
         }
 
         // ---- table FFT WITH build included (one-shot, build clocked in Burst) ----
         static string FftTableBuiltFloat(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var re    = arena.floatVec(n);
-            var im    = arena.floatVec(n);
-            var srcRe = arena.floatVec(n);
-            var srcIm = arena.floatVec(n);
+            var re    = new floatN(n, Allocator.Persistent);
+            var im    = new floatN(n, Allocator.Persistent);
+            var srcRe = new floatN(n, Allocator.Persistent);
+            var srcIm = new floatN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -182,18 +178,17 @@ namespace LinearAlgebra.Benchmarks
             var job = new FftBuildRunJobFloat { re = re, im = im, srcRe = srcRe, srcIm = srcIm, n = n };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            re.Dispose(); im.Dispose(); srcRe.Dispose(); srcIm.Dispose();
             return Bench.RowTime("float(ws+build)", n, stat);
         }
 
         // ---- table rfft helpers ----
         static string RfftTableFloat(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var real  = arena.floatVec(n);
-            var re    = arena.floatVec(n / 2 + 1);
-            var im    = arena.floatVec(n / 2 + 1);
-            var ws    = arena.floatFFTCache(n);   // built ONCE outside the timed loop
+            var real  = new floatN(n, Allocator.Persistent);
+            var re    = new floatN(n / 2 + 1, Allocator.Persistent);
+            var im    = new floatN(n / 2 + 1, Allocator.Persistent);
+            var ws    = new floatFFTCache(n, Allocator.Persistent);   // built ONCE outside the timed loop
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n ^ 0xDEADBEEFu);
             for (int i = 0; i < n; i++)
@@ -202,19 +197,18 @@ namespace LinearAlgebra.Benchmarks
             var job = new RfftTableJobFloat { real = real, re = re, im = im, ws = ws };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            real.Dispose(); re.Dispose(); im.Dispose(); ws.Dispose();
             return Bench.RowTime("float(ws)", n, stat);
         }
 
         // ---- table real inverse irfft helpers ----
         static string IrfftTableFloat(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
             int h     = n / 2 + 1;
-            var re    = arena.floatVec(h);
-            var im    = arena.floatVec(h);
-            var real  = arena.floatVec(n);
-            var ws    = arena.floatFFTCache(n);   // built ONCE outside the timed loop
+            var re    = new floatN(h, Allocator.Persistent);
+            var im    = new floatN(h, Allocator.Persistent);
+            var real  = new floatN(n, Allocator.Persistent);
+            var ws    = new floatFFTCache(n, Allocator.Persistent);   // built ONCE outside the timed loop
 
             // Arbitrary half-spectrum input (exact Hermitian validity is irrelevant to timing).
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n ^ 0xB16B00B5u);
@@ -227,18 +221,17 @@ namespace LinearAlgebra.Benchmarks
             var job = new IrfftTableJobFloat { re = re, im = im, real = real, ws = ws };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            re.Dispose(); im.Dispose(); real.Dispose(); ws.Dispose();
             return Bench.RowTime("float(ws)", n, stat);
         }
 
         // ---- DFT helpers ----
         static string DftFloat(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var inRe  = arena.floatVec(n);
-            var inIm  = arena.floatVec(n);
-            var outRe = arena.floatVec(n);
-            var outIm = arena.floatVec(n);
+            var inRe  = new floatN(n, Allocator.Persistent);
+            var inIm  = new floatN(n, Allocator.Persistent);
+            var outRe = new floatN(n, Allocator.Persistent);
+            var outIm = new floatN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -250,7 +243,7 @@ namespace LinearAlgebra.Benchmarks
             var job = new DftJobFloat { inRe = inRe, inIm = inIm, outRe = outRe, outIm = outIm };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            inRe.Dispose(); inIm.Dispose(); outRe.Dispose(); outIm.Dispose();
             return Bench.RowTime("float", n, stat);
         }
     }

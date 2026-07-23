@@ -27,30 +27,22 @@ public class iProxyCompMathTests
 
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
-            try
+            switch (Type)
             {
-                switch (Type)
-                {
-                    case TestType.Abs: AbsTest(ref arena); break;
-                    case TestType.Relu: ReluTest(ref arena); break;
-                    case TestType.MinBuf: MinBufTest(ref arena); break;
-                    case TestType.MaxBuf: MaxBufTest(ref arena); break;
-                    case TestType.Mad: MadTest(ref arena); break;
-                    case TestType.SingleElement: SingleElementTest(ref arena); break;
-                    default: throw new NotImplementedException();
-                }
-            }
-            finally
-            {
-                arena.Dispose();
+                case TestType.Abs: AbsTest(); break;
+                case TestType.Relu: ReluTest(); break;
+                case TestType.MinBuf: MinBufTest(); break;
+                case TestType.MaxBuf: MaxBufTest(); break;
+                case TestType.Mad: MadTest(); break;
+                case TestType.SingleElement: SingleElementTest(); break;
+                default: throw new NotImplementedException();
             }
         }
 
-        private void AbsTest(ref Arena arena)
+        private void AbsTest()
         {
             int n = 11;
-            iProxyN v = arena.iProxyVec(n);
+            iProxyN v = new iProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++)
                 v[i] = (iProxy)(i - 5); // -5 .. 5, includes 0
 
@@ -64,10 +56,10 @@ public class iProxyCompMathTests
             }
         }
 
-        private void ReluTest(ref Arena arena)
+        private void ReluTest()
         {
             int n = 11;
-            iProxyN v = arena.iProxyVec(n);
+            iProxyN v = new iProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++)
                 v[i] = (iProxy)(i - 5);
 
@@ -81,11 +73,11 @@ public class iProxyCompMathTests
             }
         }
 
-        private void MinBufTest(ref Arena arena)
+        private void MinBufTest()
         {
             int n = 11;
-            iProxyN x = arena.iProxyVec(n);
-            iProxyN y = arena.iProxyVec(n);
+            iProxyN x = new iProxyN(n, Allocator.Temp);
+            iProxyN y = new iProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++)
             {
                 x[i] = (iProxy)(i - 5);   // -5 .. 5
@@ -103,11 +95,11 @@ public class iProxyCompMathTests
             }
         }
 
-        private void MaxBufTest(ref Arena arena)
+        private void MaxBufTest()
         {
             int n = 11;
-            iProxyN x = arena.iProxyVec(n);
-            iProxyN y = arena.iProxyVec(n);
+            iProxyN x = new iProxyN(n, Allocator.Temp);
+            iProxyN y = new iProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++)
             {
                 x[i] = (iProxy)(i - 5);
@@ -125,12 +117,12 @@ public class iProxyCompMathTests
             }
         }
 
-        private void MadTest(ref Arena arena)
+        private void MadTest()
         {
             int n = 12;
-            iProxyN a = arena.iProxyVec(n);
-            iProxyN b = arena.iProxyVec(n);
-            iProxyN c = arena.iProxyVec(n);
+            iProxyN a = new iProxyN(n, Allocator.Temp);
+            iProxyN b = new iProxyN(n, Allocator.Temp);
+            iProxyN c = new iProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++)
             {
                 a[i] = (iProxy)((i % 3) - 1); // -1,0,1
@@ -151,16 +143,16 @@ public class iProxyCompMathTests
             }
         }
 
-        private void SingleElementTest(ref Arena arena)
+        private void SingleElementTest()
         {
-            iProxyN v = arena.iProxyVec(1);
+            iProxyN v = new iProxyN(1, Allocator.Temp);
             v[0] = (iProxy)(-4);
             v.absInPlace();
             Assert.IsTrue(v[0] == (iProxy)4);
 
-            iProxyN a = arena.iProxyVec(1, (iProxy)3);
-            iProxyN b = arena.iProxyVec(1, (iProxy)5);
-            iProxyN c = arena.iProxyVec(1, (iProxy)2);
+            iProxyN a = GenerateOP.iProxyVec(1, (iProxy)3);
+            iProxyN b = GenerateOP.iProxyVec(1, (iProxy)5);
+            iProxyN c = GenerateOP.iProxyVec(1, (iProxy)2);
             a.madInPlace(b, c);
             Assert.IsTrue(a[0] == (iProxy)17); // 3*5 + 2
             Assert.IsTrue(b[0] == (iProxy)5);

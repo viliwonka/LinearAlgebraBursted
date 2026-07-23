@@ -75,11 +75,11 @@ public class doubleSchwarzPreconditionerTests
         // ---- helpers ---------------------------------------------------------------------
 
         // SPD block-tridiagonal chain (fill-free), full or symmetric (lower) storage.
-        static doubleBSR BuildBlockTridiag(ref Arena arena, int nb, int BR, bool symmetric)
+        static doubleBSR BuildBlockTridiag(int nb, int BR, bool symmetric)
         {
-            var builder = arena.doubleBSRBuilder(nb, nb, BR, BR);
-            var diag = arena.doubleMat(BR, BR);
-            var off = arena.doubleMat(BR, BR);
+            var builder = new doubleBSRBuilder(nb, nb, BR, BR, Allocator.Temp);
+            var diag = new doubleMxN(BR, BR, Allocator.Temp);
+            var off = new doubleMxN(BR, BR, Allocator.Temp);
             for (int r = 0; r < BR; r++)
                 for (int c = 0; c < BR; c++)
                 {
@@ -96,14 +96,14 @@ public class doubleSchwarzPreconditionerTests
                     if (!symmetric) builder.AddBlock(i, i + 1, in off);
                 }
             }
-            return symmetric ? builder.ToBSRSymmetric(ref arena) : builder.ToBSR(ref arena);
+            return symmetric ? builder.ToBSRSymmetric(Allocator.Temp) : builder.ToBSR(Allocator.Temp);
         }
 
-        static void AssertVecMatchesInverse(in doubleN got, in doubleMxN Adense, in doubleN r, ref Arena arena, double tol)
+        static void AssertVecMatchesInverse(in doubleN got, in doubleMxN Adense, in doubleN r, double tol)
         {
             int n = r.N;
             var D = Adense.Copy();
-            var zRef = arena.doubleVec(n);
+            var zRef = new doubleN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) zRef[i] = r[i];
             var info = CHO.solveInPlace(ref D, ref zRef);
             Assert.IsTrue(info.Solved);
@@ -111,11 +111,11 @@ public class doubleSchwarzPreconditionerTests
                 Assert.IsTrue(math.abs(got[i] - zRef[i]) < tol * ((double)1 + math.abs(zRef[i])));
         }
 
-        static double Asymmetry(in doubleBSR A, in doubleN r1, in doubleN r2, in doubleAdditiveSchwarz M, ref Arena arena)
+        static double Asymmetry(in doubleBSR A, in doubleN r1, in doubleN r2, in doubleAdditiveSchwarz M)
         {
             int n = A.M_Rows;
-            var Mr1 = arena.doubleVec(n);
-            var Mr2 = arena.doubleVec(n);
+            var Mr1 = new doubleN(n, Allocator.Temp);
+            var Mr2 = new doubleN(n, Allocator.Temp);
             M.Apply(in r1, ref Mr1);
             M.Apply(in r2, ref Mr2);
             double a = Blas.dot(r1, Mr2);
@@ -129,32 +129,28 @@ public class doubleSchwarzPreconditionerTests
 
         void ExactWholeMatrix()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.doubleRandomSparseSPD(10, 2, (double)0.5, 950001u);
+            var A = doubleGallery.doubleRandomSparseSPD(10, 2, (double)0.5, 950001u, allocator: Allocator.Temp);
             int n = A.M_Rows;
 
             // subdomainSize >= N -> a single subdomain covering the whole matrix; overlap 0.
             var opts = new SchwarzOptions { subdomainSize = n + 8, overlap = 0 };
-            var M = arena.doubleAdditiveSchwarz(in A, in opts);
+            var M = new doubleAdditiveSchwarz(in A, Allocator.Temp, in opts);
             Assert.IsTrue(M.K == 1);
             Assert.IsTrue(M.Shift == (double)0);
 
-            var r = arena.doubleRandomVec(n, -1f, 1f, 950002u);
-            var z = arena.doubleVec(n);
+            var r = GenerateOP.doubleRandomVec(n, -1f, 1f, 950002u, allocator: Allocator.Temp);
+            var z = new doubleN(n, Allocator.Temp);
             M.Apply(in r, ref z);
-            var Adense = A.ToDense(ref arena);
-            AssertVecMatchesInverse(in z, in Adense, in r, ref arena, Tol());
+            var Adense = A.ToDense(Allocator.Temp);
+            AssertVecMatchesInverse(in z, in Adense, in r, Tol());
 
             // Exact preconditioner -> cg converges in one step.
-            var xTrue = arena.doubleRandomVec(n, 0.5f, 1.5f, 950003u);
+            var xTrue = GenerateOP.doubleRandomVec(n, 0.5f, 1.5f, 950003u, allocator: Allocator.Temp);
             var b = BSR.spMV(in A, in xTrue);
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
             var info = Krylov.cg(in A, in M, in b, ref x, 4 * n, Consts.doubleSqrtEps);
             Assert.IsTrue(info.Solved);
             Assert.IsTrue(info.iterations <= 1);
-
-            arena.Dispose();
         }
 
         // ================================================================================
@@ -168,10 +164,8 @@ public class doubleSchwarzPreconditionerTests
 
         void AsSymmetry()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var lap = arena.doubleLaplacian2D(8, 8);         // 64 dof, BR=1
-            var pen = arena.doublePenalizedGrid3D(3, 3, 3, (double)1, (double)10);   // 27 blocks, BR=3
+            var lap = doubleGallery.doubleLaplacian2D(8, 8, allocator: Allocator.Temp);         // 64 dof, BR=1
+            var pen = doubleGallery.doublePenalizedGrid3D(3, 3, 3, (double)1, (double)10, allocator: Allocator.Temp);   // 27 blocks, BR=3
 
             // (subdomainSize, overlap) combos: some force ragged last subdomains (nb not a multiple).
             for (int si = 0; si < AsSizes.Length; si++)
@@ -180,23 +174,21 @@ public class doubleSchwarzPreconditionerTests
                 {
                     var opts = new SchwarzOptions { subdomainSize = AsSizes[si], overlap = AsOverlaps[oi] };
 
-                    CheckSym(in lap, in opts, ref arena, 951000u + (uint)(si * 10 + oi));
-                    CheckSym(in pen, in opts, ref arena, 952000u + (uint)(si * 10 + oi));
+                    CheckSym(in lap, in opts, 951000u + (uint)(si * 10 + oi));
+                    CheckSym(in pen, in opts, 952000u + (uint)(si * 10 + oi));
                 }
             }
-
-            arena.Dispose();
         }
 
-        void CheckSym(in doubleBSR A, in SchwarzOptions opts, ref Arena arena, uint seed)
+        void CheckSym(in doubleBSR A, in SchwarzOptions opts, uint seed)
         {
-            var M = arena.doubleAdditiveSchwarz(in A, in opts);
+            var M = new doubleAdditiveSchwarz(in A, Allocator.Temp, in opts);
             int n = A.M_Rows;
             for (int t = 0; t < 3; t++)
             {
-                var r1 = arena.doubleRandomVec(n, -1f, 1f, seed + (uint)t);
-                var r2 = arena.doubleRandomVec(n, -1f, 1f, seed + 100u + (uint)t);
-                Assert.IsTrue(Asymmetry(in A, in r1, in r2, in M, ref arena) < Tol());
+                var r1 = GenerateOP.doubleRandomVec(n, -1f, 1f, seed + (uint)t, allocator: Allocator.Temp);
+                var r2 = GenerateOP.doubleRandomVec(n, -1f, 1f, seed + 100u + (uint)t, allocator: Allocator.Temp);
+                Assert.IsTrue(Asymmetry(in A, in r1, in r2, in M) < Tol());
             }
         }
 
@@ -206,32 +198,28 @@ public class doubleSchwarzPreconditionerTests
 
         void RasSolves()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var gen = arena.doubleRandomSparse(16, 16, 2, (double)0.4, 953001u);   // nonsymmetric diag-dominant
-            var spd = arena.doubleRandomSparseSPD(16, 2, (double)0.4, 953101u);
+            var gen = doubleGallery.doubleRandomSparse(16, 16, 2, (double)0.4, 953001u, allocator: Allocator.Temp);   // nonsymmetric diag-dominant
+            var spd = doubleGallery.doubleRandomSparseSPD(16, 2, (double)0.4, 953101u, allocator: Allocator.Temp);
             var opts = new SchwarzOptions { subdomainSize = 12, overlap = 1 };     // multiple subdomains
 
-            RasResidualOk(in gen, in opts, ref arena, 953201u);
-            RasResidualOk(in spd, in opts, ref arena, 953301u);
-
-            arena.Dispose();
+            RasResidualOk(in gen, in opts, 953201u);
+            RasResidualOk(in spd, in opts, 953301u);
         }
 
-        void RasResidualOk(in doubleBSR A, in SchwarzOptions opts, ref Arena arena, uint seed)
+        void RasResidualOk(in doubleBSR A, in SchwarzOptions opts, uint seed)
         {
-            var M = arena.doubleRestrictedSchwarz(in A, in opts);
+            var M = new doubleRestrictedSchwarz(in A, Allocator.Temp, in opts);
             int n = A.M_Rows;
 
-            var xTrue = arena.doubleRandomVec(n, 0.5f, 1.5f, seed);
+            var xTrue = GenerateOP.doubleRandomVec(n, 0.5f, 1.5f, seed, allocator: Allocator.Temp);
             var b = BSR.spMV(in A, in xTrue);
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
             var info = Krylov.biCGStab(in A, in M, in b, ref x, 20 * n, Consts.doubleSqrtEps);
             Assert.IsTrue(info.Solved);
 
-            var Ax = arena.doubleVec(n);
+            var Ax = new doubleN(n, Allocator.Temp);
             BSR.spMV(in A, in x, ref Ax);
-            var resid = arena.doubleVec(n);
+            var resid = new doubleN(n, Allocator.Temp);
             resid.Data.CopyFrom(b.Data);
             resid.addScaledInPlace((double)(-1), Ax);
             double resNormSq = Blas.dot(resid, resid);
@@ -247,32 +235,29 @@ public class doubleSchwarzPreconditionerTests
 
         void SymmetricStorageMatchesFull()
         {
-            var arena = new Arena(Allocator.Persistent);
             const int nb = 9, BR = 2;
-            var full = BuildBlockTridiag(ref arena, nb, BR, false);
-            var sym = BuildBlockTridiag(ref arena, nb, BR, true);
+            var full = BuildBlockTridiag(nb, BR, false);
+            var sym = BuildBlockTridiag(nb, BR, true);
             int n = full.M_Rows;
             var opts = new SchwarzOptions { subdomainSize = 6, overlap = 1 };
 
-            var mFull = arena.doubleAdditiveSchwarz(in full, in opts);
-            var mSym = arena.doubleAdditiveSchwarz(in sym, in opts);
-            var rFull = arena.doubleRestrictedSchwarz(in full, in opts);
-            var rSym = arena.doubleRestrictedSchwarz(in sym, in opts);
+            var mFull = new doubleAdditiveSchwarz(in full, Allocator.Temp, in opts);
+            var mSym = new doubleAdditiveSchwarz(in sym, Allocator.Temp, in opts);
+            var rFull = new doubleRestrictedSchwarz(in full, Allocator.Temp, in opts);
+            var rSym = new doubleRestrictedSchwarz(in sym, Allocator.Temp, in opts);
 
-            var r = arena.doubleRandomVec(n, -1f, 1f, 954001u);
-            var za = arena.doubleVec(n);
-            var zb = arena.doubleVec(n);
+            var r = GenerateOP.doubleRandomVec(n, -1f, 1f, 954001u, allocator: Allocator.Temp);
+            var za = new doubleN(n, Allocator.Temp);
+            var zb = new doubleN(n, Allocator.Temp);
             mFull.Apply(in r, ref za);
             mSym.Apply(in r, ref zb);
             for (int i = 0; i < n; i++) Assert.IsTrue(za[i] == zb[i]);
 
-            var zc = arena.doubleVec(n);
-            var zd = arena.doubleVec(n);
+            var zc = new doubleN(n, Allocator.Temp);
+            var zd = new doubleN(n, Allocator.Temp);
             rFull.Apply(in r, ref zc);
             rSym.Apply(in r, ref zd);
             for (int i = 0; i < n; i++) Assert.IsTrue(zc[i] == zd[i]);
-
-            arena.Dispose();
         }
 
         // ================================================================================
@@ -281,31 +266,28 @@ public class doubleSchwarzPreconditionerTests
 
         void DeterministicBuild()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleRandomSparseSPD(20, 2, (double)0.35, 955001u);
-            var Ag = arena.doubleRandomSparse(20, 20, 2, (double)0.35, 955101u);
+            var A = doubleGallery.doubleRandomSparseSPD(20, 2, (double)0.35, 955001u, allocator: Allocator.Temp);
+            var Ag = doubleGallery.doubleRandomSparse(20, 20, 2, (double)0.35, 955101u, allocator: Allocator.Temp);
             int n = A.M_Rows;
             var opts = new SchwarzOptions { subdomainSize = 10, overlap = 1 };
 
-            var r = arena.doubleRandomVec(n, -1f, 1f, 955002u);
+            var r = GenerateOP.doubleRandomVec(n, -1f, 1f, 955002u, allocator: Allocator.Temp);
 
-            var m1 = arena.doubleAdditiveSchwarz(in A, in opts);
-            var m2 = arena.doubleAdditiveSchwarz(in A, in opts);
-            var z1 = arena.doubleVec(n);
-            var z2 = arena.doubleVec(n);
+            var m1 = new doubleAdditiveSchwarz(in A, Allocator.Temp, in opts);
+            var m2 = new doubleAdditiveSchwarz(in A, Allocator.Temp, in opts);
+            var z1 = new doubleN(n, Allocator.Temp);
+            var z2 = new doubleN(n, Allocator.Temp);
             m1.Apply(in r, ref z1);
             m2.Apply(in r, ref z2);
             for (int i = 0; i < n; i++) Assert.IsTrue(z1[i] == z2[i]);
 
-            var g1 = arena.doubleRestrictedSchwarz(in Ag, in opts);
-            var g2 = arena.doubleRestrictedSchwarz(in Ag, in opts);
-            var w1 = arena.doubleVec(n);
-            var w2 = arena.doubleVec(n);
+            var g1 = new doubleRestrictedSchwarz(in Ag, Allocator.Temp, in opts);
+            var g2 = new doubleRestrictedSchwarz(in Ag, Allocator.Temp, in opts);
+            var w1 = new doubleN(n, Allocator.Temp);
+            var w2 = new doubleN(n, Allocator.Temp);
             g1.Apply(in r, ref w1);
             g2.Apply(in r, ref w2);
             for (int i = 0; i < n; i++) Assert.IsTrue(w1[i] == w2[i]);
-
-            arena.Dispose();
         }
 
         // ================================================================================
@@ -314,29 +296,26 @@ public class doubleSchwarzPreconditionerTests
 
         void PminresConverges()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleLaplacian2D(6, 6);   // 36 dof SPD
+            var A = doubleGallery.doubleLaplacian2D(6, 6, allocator: Allocator.Temp);   // 36 dof SPD
             int n = A.M_Rows;
             var opts = new SchwarzOptions { subdomainSize = 12, overlap = 1 };
-            var M = arena.doubleAdditiveSchwarz(in A, in opts);
+            var M = new doubleAdditiveSchwarz(in A, Allocator.Temp, in opts);
 
-            var xTrue = arena.doubleRandomVec(n, 0.5f, 1.5f, 956001u);
+            var xTrue = GenerateOP.doubleRandomVec(n, 0.5f, 1.5f, 956001u, allocator: Allocator.Temp);
             var b = BSR.spMV(in A, in xTrue);
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
             var info = Krylov.minres(in A, in M, in b, ref x, 8 * n, Consts.doubleSqrtEps);
             Assert.IsTrue(info.Solved);
 
-            var Ax = arena.doubleVec(n);
+            var Ax = new doubleN(n, Allocator.Temp);
             BSR.spMV(in A, in x, ref Ax);
-            var resid = arena.doubleVec(n);
+            var resid = new doubleN(n, Allocator.Temp);
             resid.Data.CopyFrom(b.Data);
             resid.addScaledInPlace((double)(-1), Ax);
             double resNormSq = Blas.dot(resid, resid);
             double bNormSq = Blas.dot(b, b);
             double tol = Consts.doubleSqrtEps;
             Assert.IsTrue(resNormSq <= (double)64 * tol * tol * bNormSq);
-
-            arena.Dispose();
         }
     }
 
@@ -362,15 +341,13 @@ public class doubleSchwarzPreconditionerTests
 
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             doubleBSR A = mode == Mode.Laplacian
-                ? arena.doubleLaplacian2D(16, 16)
-                : arena.doublePenalizedGrid3D(4, 4, 4, (double)1, (double)10);
+                ? doubleGallery.doubleLaplacian2D(16, 16, allocator: Allocator.Temp)
+                : doubleGallery.doublePenalizedGrid3D(4, 4, 4, (double)1, (double)10, allocator: Allocator.Temp);
 
-            var bJ = arena.doubleBlockJacobi(in A);
+            var bJ = new doubleBlockJacobi(in A, Allocator.Temp);
             var opts = new SchwarzOptions { subdomainSize = subdomainSize, overlap = overlap };
-            var asM = arena.doubleAdditiveSchwarz(in A, in opts, out PreconditionerInfo info);
+            var asM = new doubleAdditiveSchwarz(in A, Allocator.Temp, in opts, out PreconditionerInfo info);
             int n = A.M_Rows;
 
             asInfo[0] = info.attempts;
@@ -381,24 +358,22 @@ public class doubleSchwarzPreconditionerTests
             double tol = Consts.doubleSqrtEps;
             int maxIter = 20 * n;
 
-            RunTrial(arena, in A, in bJ, in asM, n, maxIter, tol, 0, 957001u, (double)0.5, (double)1.5);
-            RunTrial(arena, in A, in bJ, in asM, n, maxIter, tol, 1, 957011u, (double)(-1), (double)1);
-            RunTrial(arena, in A, in bJ, in asM, n, maxIter, tol, 2, 957021u, (double)(-3), (double)3);
-
-            arena.Dispose();
+            RunTrial(in A, in bJ, in asM, n, maxIter, tol, 0, 957001u, (double)0.5, (double)1.5);
+            RunTrial(in A, in bJ, in asM, n, maxIter, tol, 1, 957011u, (double)(-1), (double)1);
+            RunTrial(in A, in bJ, in asM, n, maxIter, tol, 2, 957021u, (double)(-3), (double)3);
         }
 
-        void RunTrial(Arena arena, in doubleBSR A, in doubleBlockJacobi bJ, in doubleAdditiveSchwarz asM,
+        void RunTrial(in doubleBSR A, in doubleBlockJacobi bJ, in doubleAdditiveSchwarz asM,
                       int n, int maxIter, double tol, int trial, uint seed, double lo, double hi)
         {
-            var xTrue = arena.doubleRandomVec(n, lo, hi, seed);
+            var xTrue = GenerateOP.doubleRandomVec(n, lo, hi, seed, allocator: Allocator.Temp);
             var b = BSR.spMV(in A, in xTrue);
 
-            var xCG = arena.doubleVec(n);
+            var xCG = new doubleN(n, Allocator.Temp);
             var infoCG = Krylov.cg(in A, in b, ref xCG, maxIter, tol);
-            var xJ = arena.doubleVec(n);
+            var xJ = new doubleN(n, Allocator.Temp);
             var infoJ = Krylov.cg(in A, in bJ, in b, ref xJ, maxIter, tol);
-            var xA = arena.doubleVec(n);
+            var xA = new doubleN(n, Allocator.Temp);
             var infoA = Krylov.cg(in A, in asM, in b, ref xA, maxIter, tol);
 
             iters[trial * 3 + 0] = infoCG.iterations;
@@ -408,9 +383,9 @@ public class doubleSchwarzPreconditionerTests
             solved[trial * 3 + 1] = infoJ.Solved ? 1 : 0;
             solved[trial * 3 + 2] = infoA.Solved ? 1 : 0;
 
-            var AxA = arena.doubleVec(n);
+            var AxA = new doubleN(n, Allocator.Temp);
             BSR.spMV(in A, in xA, ref AxA);
-            var resid = arena.doubleVec(n);
+            var resid = new doubleN(n, Allocator.Temp);
             resid.Data.CopyFrom(b.Data);
             resid.addScaledInPlace((double)(-1), AxA);
             double resNormSq = Blas.dot(resid, resid);
@@ -428,7 +403,7 @@ public class doubleSchwarzPreconditionerTests
         public doubleBSR A;
         public doubleAdditiveSchwarz M;
         public doubleN b;
-        public doubleN x;                 // output (arena-backed; written through its pointer)
+        public doubleN x;                 // output (written through its pointer)
         public NativeArray<int> iters;    // length 1
         public int maxIter;
         public double tol;
@@ -513,19 +488,18 @@ public class doubleSchwarzPreconditionerTests
     [Test]
     public void ThroughIJobDeterminismTest()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.doubleLaplacian2D(8, 8);   // 64 dof SPD
+        var A = doubleGallery.doubleLaplacian2D(8, 8, allocator: Allocator.Temp);   // 64 dof SPD
         int n = A.M_Rows;
         var opts = new SchwarzOptions { subdomainSize = 16, overlap = 1 };
-        var M = arena.doubleAdditiveSchwarz(in A, in opts);
+        var M = new doubleAdditiveSchwarz(in A, Allocator.Temp, in opts);
 
-        var xTrue = arena.doubleRandomVec(n, 0.5f, 1.5f, 958001u);
+        var xTrue = GenerateOP.doubleRandomVec(n, 0.5f, 1.5f, 958001u, allocator: Allocator.Temp);
         var b = BSR.spMV(in A, in xTrue);
         double tol = Consts.doubleSqrtEps;
         int maxIter = 8 * n;
 
-        var x1 = arena.doubleVec(n);
-        var x2 = arena.doubleVec(n);
+        var x1 = new doubleN(n, Allocator.Temp);
+        var x2 = new doubleN(n, Allocator.Temp);
         var it1 = new NativeArray<int>(1, Allocator.Persistent);
         var it2 = new NativeArray<int>(1, Allocator.Persistent);
 
@@ -537,7 +511,7 @@ public class doubleSchwarzPreconditionerTests
             Assert.IsTrue(x1[i] == x2[i]);
 
         // Managed (non-Burst) path: consistent to tolerance (SIMD reassociation may differ).
-        var x3 = arena.doubleVec(n);
+        var x3 = new doubleN(n, Allocator.Temp);
         var infoM = Krylov.cg(in A, in M, in b, ref x3, maxIter, tol);
         Assert.IsTrue(infoM.Solved);
         double consistencyTol = 1e-9;
@@ -546,7 +520,6 @@ public class doubleSchwarzPreconditionerTests
 
         it1.Dispose();
         it2.Dispose();
-        arena.Dispose();
     }
 
     // ---- (8) breakdown: non-throwing twin vs throwing ctor -------------------------------
@@ -554,49 +527,39 @@ public class doubleSchwarzPreconditionerTests
     [Test]
     public void AsIndefiniteBreaksDown()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            // Symmetric INDEFINITE 2x2 (BR=1): [[1,20],[20,1]] has eigenvalues 21, -19. diagMax=1,
-            // so no diagonal shift up to 10*diagMax rescues the local Cholesky -> build fails.
-            var builder = arena.doubleBSRBuilder(2, 2, 1, 1, 4);
-            builder.AddValue(0, 0, (double)1);
-            builder.AddValue(0, 1, (double)20);
-            builder.AddValue(1, 0, (double)20);
-            builder.AddValue(1, 1, (double)1);
-            var A = builder.ToBSR(ref arena);
+        // Symmetric INDEFINITE 2x2 (BR=1): [[1,20],[20,1]] has eigenvalues 21, -19. diagMax=1,
+        // so no diagonal shift up to 10*diagMax rescues the local Cholesky -> build fails.
+        var builder = new doubleBSRBuilder(2, 2, 1, 1, Allocator.Temp, 4);
+        builder.AddValue(0, 0, (double)1);
+        builder.AddValue(0, 1, (double)20);
+        builder.AddValue(1, 0, (double)20);
+        builder.AddValue(1, 1, (double)1);
+        var A = builder.ToBSR(Allocator.Temp);
 
-            var opts = new SchwarzOptions { subdomainSize = 8, overlap = 0 };
-            var M = arena.doubleAdditiveSchwarz(in A, in opts, out PreconditionerInfo info);
-            Assert.IsFalse(info.Solved);
-            Assert.IsTrue(info.status == DirectSolveStatus.NotPositiveDefinite);
+        var opts = new SchwarzOptions { subdomainSize = 8, overlap = 0 };
+        var M = new doubleAdditiveSchwarz(in A, Allocator.Temp, in opts, out PreconditionerInfo info);
+        Assert.IsFalse(info.Solved);
+        Assert.IsTrue(info.status == DirectSolveStatus.NotPositiveDefinite);
 
-            Assert.Throws<ArgumentException>(() => { var m2 = arena.doubleAdditiveSchwarz(in A, in opts); });
-        }
-        finally { arena.Dispose(); }
+        Assert.Throws<ArgumentException>(() => { var m2 = new doubleAdditiveSchwarz(in A, Allocator.Temp, in opts); });
     }
 
     [Test]
     public void RasSingularBreaksDown()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            // Structurally singular 2x2 (BR=1): column 1 is entirely zero -> local LU hits a zero
-            // pivot -> Singular (RAS does not shift-retry).
-            var builder = arena.doubleBSRBuilder(2, 2, 1, 1, 4);
-            builder.AddValue(0, 0, (double)1);
-            builder.AddValue(1, 0, (double)2);
-            var A = builder.ToBSR(ref arena);
+        // Structurally singular 2x2 (BR=1): column 1 is entirely zero -> local LU hits a zero
+        // pivot -> Singular (RAS does not shift-retry).
+        var builder = new doubleBSRBuilder(2, 2, 1, 1, Allocator.Temp, 4);
+        builder.AddValue(0, 0, (double)1);
+        builder.AddValue(1, 0, (double)2);
+        var A = builder.ToBSR(Allocator.Temp);
 
-            var opts = new SchwarzOptions { subdomainSize = 8, overlap = 0 };
-            var M = arena.doubleRestrictedSchwarz(in A, in opts, out PreconditionerInfo info);
-            Assert.IsFalse(info.Solved);
-            Assert.IsTrue(info.status == DirectSolveStatus.Singular);
+        var opts = new SchwarzOptions { subdomainSize = 8, overlap = 0 };
+        var M = new doubleRestrictedSchwarz(in A, Allocator.Temp, in opts, out PreconditionerInfo info);
+        Assert.IsFalse(info.Solved);
+        Assert.IsTrue(info.status == DirectSolveStatus.Singular);
 
-            Assert.Throws<ArgumentException>(() => { var m2 = arena.doubleRestrictedSchwarz(in A, in opts); });
-        }
-        finally { arena.Dispose(); }
+        Assert.Throws<ArgumentException>(() => { var m2 = new doubleRestrictedSchwarz(in A, Allocator.Temp, in opts); });
     }
 
     // ---- guard cases (managed thread) ----------------------------------------------------
@@ -604,48 +567,38 @@ public class doubleSchwarzPreconditionerTests
     [Test]
     public void NonSquareThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var builder = arena.doubleBSRBuilder(2, 3, 2, 2);
-            var block = arena.doubleMat(2, 2, (double)1);
-            builder.AddBlock(0, 0, in block);
-            var A = builder.ToBSR(ref arena);
-            Assert.Throws<ArgumentException>(() => { var m = arena.doubleAdditiveSchwarz(in A); });
-            Assert.Throws<ArgumentException>(() => { var m = arena.doubleRestrictedSchwarz(in A); });
-        }
-        finally { arena.Dispose(); }
+        var builder = new doubleBSRBuilder(2, 3, 2, 2, Allocator.Temp);
+        var block = GenerateOP.doubleMat(2, 2, (double)1, allocator: Allocator.Temp);
+        builder.AddBlock(0, 0, in block);
+        var A = builder.ToBSR(Allocator.Temp);
+        Assert.Throws<ArgumentException>(() => { var m = new doubleAdditiveSchwarz(in A, Allocator.Temp); });
+        Assert.Throws<ArgumentException>(() => { var m = new doubleRestrictedSchwarz(in A, Allocator.Temp); });
     }
 
     [Test]
     public void ApplyAliasingThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = arena.doubleRandomSparseSPD(8, 2, (double)0.5, 959001u);
-            int n = A.M_Rows;
-            var opts = new SchwarzOptions { subdomainSize = 6, overlap = 1 };
-            var M = arena.doubleAdditiveSchwarz(in A, in opts);
-            var R = arena.doubleRestrictedSchwarz(in A, in opts);
+        var A = doubleGallery.doubleRandomSparseSPD(8, 2, (double)0.5, 959001u, allocator: Allocator.Temp);
+        int n = A.M_Rows;
+        var opts = new SchwarzOptions { subdomainSize = 6, overlap = 1 };
+        var M = new doubleAdditiveSchwarz(in A, Allocator.Temp, in opts);
+        var R = new doubleRestrictedSchwarz(in A, Allocator.Temp, in opts);
 
-            var r = arena.doubleVec(n, (double)1);
-            var z = arena.doubleVec(n);
+        var r = GenerateOP.doubleVec(n, (double)1, allocator: Allocator.Temp);
+        var z = new doubleN(n, Allocator.Temp);
 
-            // AS: z aliases r, z aliases Scratch, r aliases Scratch.
-            Assert.Throws<ArgumentException>(() => M.Apply(in r, ref r));
-            var asScratch = M.Scratch;
-            Assert.Throws<ArgumentException>(() => M.Apply(in r, ref asScratch));
-            Assert.Throws<ArgumentException>(() => M.Apply(in asScratch, ref z));
+        // AS: z aliases r, z aliases Scratch, r aliases Scratch.
+        Assert.Throws<ArgumentException>(() => M.Apply(in r, ref r));
+        var asScratch = M.Scratch;
+        Assert.Throws<ArgumentException>(() => M.Apply(in r, ref asScratch));
+        Assert.Throws<ArgumentException>(() => M.Apply(in asScratch, ref z));
 
-            // RAS: z aliases r, z aliases a scratch, r aliases a scratch.
-            Assert.Throws<ArgumentException>(() => R.Apply(in r, ref r));
-            var rScratch = R.Scratch;
-            var rScratch2 = R.Scratch2;
-            Assert.Throws<ArgumentException>(() => R.Apply(in r, ref rScratch));
-            Assert.Throws<ArgumentException>(() => R.Apply(in r, ref rScratch2));
-            Assert.Throws<ArgumentException>(() => R.Apply(in rScratch, ref z));
-        }
-        finally { arena.Dispose(); }
+        // RAS: z aliases r, z aliases a scratch, r aliases a scratch.
+        Assert.Throws<ArgumentException>(() => R.Apply(in r, ref r));
+        var rScratch = R.Scratch;
+        var rScratch2 = R.Scratch2;
+        Assert.Throws<ArgumentException>(() => R.Apply(in r, ref rScratch));
+        Assert.Throws<ArgumentException>(() => R.Apply(in r, ref rScratch2));
+        Assert.Throws<ArgumentException>(() => R.Apply(in rScratch, ref z));
     }
 }

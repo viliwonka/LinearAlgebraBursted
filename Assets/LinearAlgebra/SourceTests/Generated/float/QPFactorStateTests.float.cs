@@ -221,17 +221,16 @@ public class floatQPFactorStateTests
         public void Execute()
         {
             const int n = 12;
-            var arena = new Arena(Allocator.Persistent);
 
-            var Q = arena.floatMat(n, n);
+            var Q = new floatMxN(n, n, Allocator.Temp);
             for (int i = 0; i < n; i++) Q[i, i] = 1f;
-            var c = arena.floatVec(n, (float)(-2));
-            var A = arena.floatMat(0, n);
-            var b = arena.floatVec(0);
+            var c = GenerateOP.floatVec(n, (float)(-2), Allocator.Temp);
+            var A = new floatMxN(0, n, Allocator.Temp);
+            var b = new floatN(0, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(0, Allocator.Temp);
-            var xl = arena.floatVec(n);                  // 0
-            var xu = arena.floatVec(n, (float)10);
-            var x = arena.floatVec(n);                   // x0 = 0: every lower bound tight
+            var xl = new floatN(n, Allocator.Temp);                  // 0
+            var xu = GenerateOP.floatVec(n, (float)10, Allocator.Temp);
+            var x = new floatN(n, Allocator.Temp);                   // x0 = 0: every lower bound tight
 
             var info = QP.qpActiveSetCore(in Q, in c, in A, in b, senses, in xl, in xu, ref x, out double obj, 0);
 
@@ -243,7 +242,6 @@ public class floatQPFactorStateTests
             H.AssertLE(Fail, 4, math.abs(obj - (-2.0 * n)), tol * n);
 
             senses.Dispose();
-            arena.Dispose();
         }
     }
 

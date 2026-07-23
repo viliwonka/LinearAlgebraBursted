@@ -147,20 +147,16 @@ namespace LinearAlgebra
             Data = data;
         }
 
+        /// <summary>Arena-backed: allocates from the owner arena. Standalone: returns a standalone Allocator.Temp copy.</summary>
         public unsafe iProxyN Copy()
         {
-            if (_rec == null)
-                throw new System.InvalidOperationException("Copy()/TempCopy() require an arena-backed matrix/vector; use new <T>(in this, allocator) for a standalone copy.");
-
-            return OwnerArena.iProxyVec(in this);
+            return _rec != null ? OwnerArena.iProxyVec(in this) : new iProxyN(in this, Allocator.Temp);
         }
 
+        /// <summary>Arena-backed: allocates from the owner arena's temp pool. Standalone: returns a standalone Allocator.Temp copy.</summary>
         public unsafe iProxyN TempCopy()
         {
-            if (_rec == null)
-                throw new System.InvalidOperationException("Copy()/TempCopy() require an arena-backed matrix/vector; use new <T>(in this, allocator) for a standalone copy.");
-
-            return OwnerArena.iProxyTempVec(in this);   // temp pool
+            return _rec != null ? OwnerArena.iProxyTempVec(in this) : new iProxyN(in this, Allocator.Temp);   // temp pool
         }
 
         /// <summary>Copies every component into <paramref name="vec"/> (lengths must match). Fixed-size: never resizes <paramref name="vec"/>.</summary>

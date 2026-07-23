@@ -40,18 +40,17 @@ public class floatQRSolveTests {
 
         public void QRSolve()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int dim = 8;
 
-            var Q = arena.floatIdentityMat(dim);
-            var R = arena.floatMat(dim);
+            var Q = GenerateOP.floatIdentityMat(dim);
+            var R = new floatMxN(dim, dim, Allocator.Temp);
 
-            var A = Q.Copy();
+            var A = new floatMxN(in Q, Allocator.Temp);
 
             QR.decompInPlace(ref Q, ref R);
 
-            var b = arena.floatRandomVec(dim, -1f, 1f);
+            var b = GenerateOP.floatRandomVec(dim, -1f, 1f);
 
             var y = Blas.dot(b, Q);
 
@@ -59,9 +58,9 @@ public class floatQRSolveTests {
 
             var Ax = Blas.dot(A, y);
 
-            Assert.IsTrue(Analysis.isZero(b - Ax, 1E-6f));
-
-            arena.Dispose();
+            var resid = new floatN(in b, Allocator.Temp);
+            floatComp.subInPlace(resid, Ax);
+            Assert.IsTrue(Analysis.isZero(resid, 1E-6f));
         }
 
     }

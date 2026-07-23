@@ -156,10 +156,9 @@ namespace LinearAlgebra.Benchmarks
         static string TallQRFloat(int k, double flops)
         {
             int m = 2 * k, n = k;
-            var arena = new Arena(Allocator.Persistent);
-            var Q = arena.floatMat(m, n);
-            var R = arena.floatMat(n, n);
-            var Src = arena.floatMat(m, n);
+            var Q = new floatMxN(m, n, Allocator.Persistent);
+            var R = new floatMxN(n, n, Allocator.Persistent);
+            var Src = new floatMxN(m, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)k);
             for (int r = 0; r < m; r++)
@@ -171,7 +170,7 @@ namespace LinearAlgebra.Benchmarks
             var job = new TallQRJobFloat { Q = Q, R = R, Src = Src };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            Q.Dispose(); R.Dispose(); Src.Dispose();
             return Bench.Row("float", k, stat, flops);
         }
 
@@ -179,12 +178,11 @@ namespace LinearAlgebra.Benchmarks
         static string TallLSFloat(int k, double flops)
         {
             int m = 2 * k, n = k;
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(m, n);
-            var Src = arena.floatMat(m, n);
-            var b = arena.floatVec(m);
-            var bSrc = arena.floatVec(m);
-            var x = arena.floatVec(n);
+            var A = new floatMxN(m, n, Allocator.Persistent);
+            var Src = new floatMxN(m, n, Allocator.Persistent);
+            var b = new floatN(m, Allocator.Persistent);
+            var bSrc = new floatN(m, Allocator.Persistent);
+            var x = new floatN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)k);
             for (int r = 0; r < m; r++)
@@ -199,7 +197,7 @@ namespace LinearAlgebra.Benchmarks
             var job = new TallLSJobFloat { A = A, Src = Src, b = b, bSrc = bSrc, x = x };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); Src.Dispose(); b.Dispose(); bSrc.Dispose(); x.Dispose();
             return Bench.Row("float", k, stat, flops);
         }
 
@@ -207,10 +205,9 @@ namespace LinearAlgebra.Benchmarks
         static string WideLQFloat(int k, double flops)
         {
             int m = k, n = 2 * k;
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(m, n);
-            var L = arena.floatMat(m, m);
-            var Q = arena.floatMat(m, n);
+            var A = new floatMxN(m, n, Allocator.Persistent);
+            var L = new floatMxN(m, m, Allocator.Persistent);
+            var Q = new floatMxN(m, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)k);
             for (int r = 0; r < m; r++)
@@ -222,7 +219,7 @@ namespace LinearAlgebra.Benchmarks
             var job = new WideLQJobFloat { A = A, L = L, Q = Q };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); L.Dispose(); Q.Dispose();
             return Bench.Row("float", k, stat, flops);
         }
 
@@ -230,10 +227,9 @@ namespace LinearAlgebra.Benchmarks
         static string WideMinNormFloat(int k, double flops)
         {
             int m = k, n = 2 * k;
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(m, n);
-            var b = arena.floatVec(m);
-            var x = arena.floatVec(n);
+            var A = new floatMxN(m, n, Allocator.Persistent);
+            var b = new floatN(m, Allocator.Persistent);
+            var x = new floatN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)k);
             for (int r = 0; r < m; r++)
@@ -248,7 +244,7 @@ namespace LinearAlgebra.Benchmarks
             var job = new WideMinNormJobFloat { A = A, b = b, x = x };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); b.Dispose(); x.Dispose();
             return Bench.Row("float", k, stat, flops);
         }
 
@@ -256,11 +252,10 @@ namespace LinearAlgebra.Benchmarks
         //      LQRP (rank-revealing COD); both DESTROY A and return the minimum-2-norm solution ----
         static string WideMinNormMNFloat(int m, int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(m, n);
-            var Src = arena.floatMat(m, n);
-            var b = arena.floatVec(m);
-            var x = arena.floatVec(n);
+            var A = new floatMxN(m, n, Allocator.Persistent);
+            var Src = new floatMxN(m, n, Allocator.Persistent);
+            var b = new floatN(m, Allocator.Persistent);
+            var x = new floatN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < m; r++)
@@ -275,17 +270,16 @@ namespace LinearAlgebra.Benchmarks
             var job = new WideMinNormInPlaceJobFloat { A = A, Src = Src, b = b, x = x };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); Src.Dispose(); b.Dispose(); x.Dispose();
             return TallWideFmt.RowKernel("float", "LQ.minNormSolveInPlace", m, stat, 0);
         }
 
         static string WideLQRPMinNormMNFloat(int m, int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(m, n);
-            var Src = arena.floatMat(m, n);
-            var b = arena.floatVec(m);
-            var x = arena.floatVec(n);
+            var A = new floatMxN(m, n, Allocator.Persistent);
+            var Src = new floatMxN(m, n, Allocator.Persistent);
+            var b = new floatN(m, Allocator.Persistent);
+            var x = new floatN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < m; r++)
@@ -300,7 +294,7 @@ namespace LinearAlgebra.Benchmarks
             var job = new WideLQRPMinNormJobFloat { A = A, Src = Src, b = b, x = x };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); Src.Dispose(); b.Dispose(); x.Dispose();
             return TallWideFmt.RowKernel("float", "LQRP.minNormSolveInPlace", m, stat, 0);
         }
 
@@ -308,10 +302,9 @@ namespace LinearAlgebra.Benchmarks
         static string WideLQRPDecompFloat(int k, double flops)
         {
             int m = k, n = 2 * k;
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(m, n);
-            var L = arena.floatMat(m, m);
-            var Q = arena.floatMat(m, n);
+            var A = new floatMxN(m, n, Allocator.Persistent);
+            var L = new floatMxN(m, m, Allocator.Persistent);
+            var Q = new floatMxN(m, n, Allocator.Persistent);
             var P = new Pivot(m, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)k);
@@ -325,7 +318,7 @@ namespace LinearAlgebra.Benchmarks
             var stat = Bench.Time(() => job.Run());
 
             P.Dispose();
-            arena.Dispose();
+            A.Dispose(); L.Dispose(); Q.Dispose();
             return Bench.Row("float", k, stat, flops);
         }
 
@@ -333,11 +326,10 @@ namespace LinearAlgebra.Benchmarks
         static string WideLQRPSolveFloat(int k, double flops)
         {
             int m = k, n = 2 * k;
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(m, n);
-            var Src = arena.floatMat(m, n);
-            var b = arena.floatVec(m);
-            var x = arena.floatVec(n);
+            var A = new floatMxN(m, n, Allocator.Persistent);
+            var Src = new floatMxN(m, n, Allocator.Persistent);
+            var b = new floatN(m, Allocator.Persistent);
+            var x = new floatN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)k);
             for (int r = 0; r < m; r++)
@@ -352,7 +344,7 @@ namespace LinearAlgebra.Benchmarks
             var job = new WideLQRPSolveJobFloat { A = A, Src = Src, b = b, x = x };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); Src.Dispose(); b.Dispose(); x.Dispose();
             return Bench.Row("float", k, stat, flops);
         }
 
@@ -361,11 +353,10 @@ namespace LinearAlgebra.Benchmarks
         static string WideLQRPRankDefFloat(int k, double flops)
         {
             int m = k, n = 2 * k, rank = (3 * k) / 4;
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatMat(m, n);
-            var Src = arena.floatMat(m, n);
-            var b = arena.floatVec(m);
-            var x = arena.floatVec(n);
+            var A = new floatMxN(m, n, Allocator.Persistent);
+            var Src = new floatMxN(m, n, Allocator.Persistent);
+            var b = new floatN(m, Allocator.Persistent);
+            var x = new floatN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)k);
             for (int r = 0; r < rank; r++)
@@ -382,7 +373,7 @@ namespace LinearAlgebra.Benchmarks
             var cod = new WideLQRPMinNormJobFloat { A = A, Src = Src, b = b, x = x };
             var sC = Bench.Time(() => cod.Run());
 
-            arena.Dispose();
+            A.Dispose(); Src.Dispose(); b.Dispose(); x.Dispose();
             return TallWideFmt.RowKernel("float", "basic solveInPlace", k, sB, flops)
                  + "\n" + TallWideFmt.RowKernel("float", "COD minNormSolveInPlace", k, sC, flops);
         }

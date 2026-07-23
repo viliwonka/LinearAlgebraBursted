@@ -81,9 +81,9 @@ public class fProxyConjugateGradientTests
         // Build an SPD matrix reliably as A = MᵀM + n·I.
         // MᵀM is symmetric positive-semidefinite; adding n·I (n = dim) makes it
         // strictly positive-definite and diagonally dominant, so CG must converge.
-        static fProxyMxN BuildSPD(ref Arena arena, int dim, uint seed)
+        static fProxyMxN BuildSPD(int dim, uint seed)
         {
-            var M = arena.fProxyRandomMat(dim, dim, -1f, 1f, seed);
+            var M = GenerateOP.fProxyRandomMat(dim, dim, -1f, 1f, seed, Allocator.Temp);
 
             // dot(M, M, transposeA:true) == Mᵀ·M
             var A = Blas.dot(M, M, true);
@@ -99,16 +99,14 @@ public class fProxyConjugateGradientTests
         // y += a * x : each element must become y0 + a*x0.
         void AddScaledInPlace()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 16;
 
-            var y = arena.fProxyRandomVec(n, -1f, 1f, 11111);
-            var x = arena.fProxyRandomVec(n, -1f, 1f, 22222);
+            var y = GenerateOP.fProxyRandomVec(n, -1f, 1f, 11111, Allocator.Temp);
+            var x = GenerateOP.fProxyRandomVec(n, -1f, 1f, 22222, Allocator.Temp);
             fProxy a = (fProxy)(-0.75f);
 
             // Snapshot of the original y before the in-place update.
-            var y0 = y.Copy();
+            var y0 = new fProxyN(in y, Allocator.Temp);
 
             y.addScaledInPlace(a, x);
 
@@ -118,22 +116,18 @@ public class fProxyConjugateGradientTests
                 fProxy expected = y0[i] + a * x[i];
                 Assert.IsTrue(math.abs(y[i] - expected) < tol);
             }
-
-            arena.Dispose();
         }
 
         // y = a * y + x : each element must become a*y0 + x0.
         void ScaleAddInPlace()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 16;
 
-            var y = arena.fProxyRandomVec(n, -1f, 1f, 33333);
-            var x = arena.fProxyRandomVec(n, -1f, 1f, 44444);
+            var y = GenerateOP.fProxyRandomVec(n, -1f, 1f, 33333, Allocator.Temp);
+            var x = GenerateOP.fProxyRandomVec(n, -1f, 1f, 44444, Allocator.Temp);
             fProxy a = (fProxy)1.5f;
 
-            var y0 = y.Copy();
+            var y0 = new fProxyN(in y, Allocator.Temp);
 
             y.scaleAddInPlace(a, x);
 
@@ -143,8 +137,6 @@ public class fProxyConjugateGradientTests
                 fProxy expected = a * y0[i] + x[i];
                 Assert.IsTrue(math.abs(y[i] - expected) < tol);
             }
-
-            arena.Dispose();
         }
 
         // ---- Solver -----------------------------------------------------------------
@@ -152,125 +144,113 @@ public class fProxyConjugateGradientTests
         // Defaults overload: SPD A, random b, x = 0 -> A·x ≈ b and converged.
         void SolveDefaults()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 12;
 
-            var A = BuildSPD(ref arena, dim, 90125);
-            var b = arena.fProxyRandomVec(dim, -1f, 1f, 4242);
+            var A = BuildSPD(dim, 90125);
+            var b = GenerateOP.fProxyRandomVec(dim, -1f, 1f, 4242, Allocator.Temp);
 
-            var x = arena.fProxyVec(dim); // zero initial guess
+            var x = new fProxyN(dim, Allocator.Temp); // zero initial guess
 
             bool ok = Krylov.cg(in A, in b, ref x);
             Assert.IsTrue(ok);
 
             var Ax = Blas.dot(A, x);
-            Assert.IsTrue(Analysis.isZero(b - Ax, Tol()));
-
-            arena.Dispose();
+            var bMinusAx = new fProxyN(in b, Allocator.Temp);
+            fProxyComp.subInPlace(bMinusAx, Ax);
+            Assert.IsTrue(Analysis.isZero(bMinusAx, Tol()));
         }
 
         // CG solution must match the Cholesky solution on the same SPD system.
         void CrossCheckCholesky()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 11;
 
-            var A = BuildSPD(ref arena, dim, 707070);
-            var b = arena.fProxyRandomVec(dim, -1f, 1f, 8181);
+            var A = BuildSPD(dim, 707070);
+            var b = GenerateOP.fProxyRandomVec(dim, -1f, 1f, 8181, Allocator.Temp);
 
             // CG solve
-            var xCG = arena.fProxyVec(dim);
+            var xCG = new fProxyN(dim, Allocator.Temp);
             bool ok = Krylov.cg(in A, in b, ref xCG);
             Assert.IsTrue(ok);
 
             // Cholesky solve on the same system (b overwritten with x), as the explicit two-call
             // composition.
-            var bChol = b.Copy();
-            var L = arena.fProxyMat(dim, dim);
+            var bChol = new fProxyN(in b, Allocator.Temp);
+            var L = new fProxyMxN(dim, dim, Allocator.Temp);
             DirectSolveInfo cholInfo = CHO.decomp(in A, ref L);
             if (cholInfo.Solved) cholInfo = CHO.decompSolve(ref L, ref bChol);
             bool cholOk = cholInfo.Solved;
             Assert.IsTrue(cholOk);
 
-            Assert.IsTrue(Analysis.isZero(xCG - bChol, Tol()));
-
-            arena.Dispose();
+            var xCGMinusBChol = new fProxyN(in xCG, Allocator.Temp);
+            fProxyComp.subInPlace(xCGMinusBChol, bChol);
+            Assert.IsTrue(Analysis.isZero(xCGMinusBChol, Tol()));
         }
 
         // The caller-scratch primitive and the explicit maxIter/tol
         // overload must produce the same solution as the defaults overload.
         void OverloadsAgree()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 10;
 
-            var A = BuildSPD(ref arena, dim, 271828);
-            var b = arena.fProxyRandomVec(dim, -1f, 1f, 5151);
+            var A = BuildSPD(dim, 271828);
+            var b = GenerateOP.fProxyRandomVec(dim, -1f, 1f, 5151, Allocator.Temp);
 
             // Reference: defaults overload.
-            var xDef = arena.fProxyVec(dim);
+            var xDef = new fProxyN(dim, Allocator.Temp);
             bool okDef = Krylov.cg(in A, in b, ref xDef);
             Assert.IsTrue(okDef);
 
             // Explicit maxIter/tol overload.
-            var xExpl = arena.fProxyVec(dim);
+            var xExpl = new fProxyN(dim, Allocator.Temp);
             bool okExpl = Krylov.cg(in A, in b, ref xExpl, dim, Consts.fProxySqrtEps);
             Assert.IsTrue(okExpl);
-            Assert.IsTrue(Analysis.isZero(xDef - xExpl, Tol()));
+            var xDefMinusXExpl = new fProxyN(in xDef, Allocator.Temp);
+            fProxyComp.subInPlace(xDefMinusXExpl, xExpl);
+            Assert.IsTrue(Analysis.isZero(xDefMinusXExpl, Tol()));
 
             // Zero-alloc primitive with caller-provided scratch r, p, Ap.
-            var xPrim = arena.fProxyVec(dim);
-            var r = arena.fProxyVec(dim);
-            var p = arena.fProxyVec(dim);
-            var Ap = arena.fProxyVec(dim);
+            var xPrim = new fProxyN(dim, Allocator.Temp);
+            var r = new fProxyN(dim, Allocator.Temp);
+            var p = new fProxyN(dim, Allocator.Temp);
+            var Ap = new fProxyN(dim, Allocator.Temp);
             bool okPrim = Krylov.cg(in A, in b, ref xPrim,
                                                     ref r, ref p, ref Ap,
                                                     dim, Consts.fProxySqrtEps);
             Assert.IsTrue(okPrim);
-            Assert.IsTrue(Analysis.isZero(xDef - xPrim, Tol()));
-
-            arena.Dispose();
+            var xDefMinusXPrim = new fProxyN(in xDef, Allocator.Temp);
+            fProxyComp.subInPlace(xDefMinusXPrim, xPrim);
+            Assert.IsTrue(Analysis.isZero(xDefMinusXPrim, Tol()));
         }
 
         // b = 0 -> returns true and x is all zeros.
         void ZeroRhs()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 7;
 
-            var A = BuildSPD(ref arena, dim, 424242);
-            var b = arena.fProxyVec(dim); // zero vector
+            var A = BuildSPD(dim, 424242);
+            var b = new fProxyN(dim, Allocator.Temp); // zero vector
 
             // Non-zero initial guess must still be driven to zero.
-            var x = arena.fProxyRandomVec(dim, -1f, 1f, 9999);
+            var x = GenerateOP.fProxyRandomVec(dim, -1f, 1f, 9999, Allocator.Temp);
 
             bool ok = Krylov.cg(in A, in b, ref x);
             Assert.IsTrue(ok);
             Assert.IsTrue(Analysis.isZero(in x, Tol()));
-
-            arena.Dispose();
         }
 
         // Indefinite symmetric matrix [[1,2],[2,1]] (eigenvalues 3, -1) -> returns false.
         void NotSPD()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.fProxyMat(2, 2);
+            var A = new fProxyMxN(2, 2, Allocator.Temp);
             A[0, 0] = 1f; A[0, 1] = 2f;
             A[1, 0] = 2f; A[1, 1] = 1f;
 
-            var b = arena.fProxyRandomVec(2, -1f, 1f, 13);
-            var x = arena.fProxyVec(2);
+            var b = GenerateOP.fProxyRandomVec(2, -1f, 1f, 13, Allocator.Temp);
+            var x = new fProxyN(2, Allocator.Temp);
 
             bool ok = Krylov.cg(in A, in b, ref x);
             Assert.IsFalse(ok);
-
-            arena.Dispose();
         }
 
         // Singular but CONSISTENT SPD-semidefinite system: A = [[1,1],[1,1]] (rank 1, eigenvalues
@@ -280,16 +260,14 @@ public class fProxyConjugateGradientTests
         // the residual is annihilated and it converges to a valid solution.)
         void SingularConsistent()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.fProxyMat(2, 2);
+            var A = new fProxyMxN(2, 2, Allocator.Temp);
             A[0, 0] = 1f; A[0, 1] = 1f;
             A[1, 0] = 1f; A[1, 1] = 1f;
 
-            var b = arena.fProxyVec(2);
+            var b = new fProxyN(2, Allocator.Temp);
             b[0] = 2f; b[1] = 2f;
 
-            var x = arena.fProxyVec(2);
+            var x = new fProxyN(2, Allocator.Temp);
             bool ok = Krylov.cg(in A, in b, ref x);
 
             // never produces NaN/Inf on the rank-deficient input...
@@ -298,60 +276,58 @@ public class fProxyConjugateGradientTests
             if (ok)
             {
                 var Ax = Blas.dot(A, x);
-                Assert.IsTrue(Analysis.isZero(b - Ax, Tol()));
+                var bMinusAx = new fProxyN(in b, Allocator.Temp);
+                fProxyComp.subInPlace(bMinusAx, Ax);
+                Assert.IsTrue(Analysis.isZero(bMinusAx, Tol()));
             }
-
-            arena.Dispose();
         }
 
         // Initial guess already correct: feed the converged solution back -> returns
         // true immediately and x is unchanged.
         void AlreadyConverged()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 9;
 
-            var A = BuildSPD(ref arena, dim, 31337);
-            var b = arena.fProxyRandomVec(dim, -1f, 1f, 6363);
+            var A = BuildSPD(dim, 31337);
+            var b = GenerateOP.fProxyRandomVec(dim, -1f, 1f, 6363, Allocator.Temp);
 
             // First solve from zero.
-            var x = arena.fProxyVec(dim);
+            var x = new fProxyN(dim, Allocator.Temp);
             bool ok = Krylov.cg(in A, in b, ref x);
             Assert.IsTrue(ok);
 
             // Feed the solution back as the initial guess.
-            var xWarm = x.Copy();
+            var xWarm = new fProxyN(in x, Allocator.Temp);
             bool ok2 = Krylov.cg(in A, in b, ref xWarm);
             Assert.IsTrue(ok2);
 
             // x must be unchanged (still solves the system).
-            Assert.IsTrue(Analysis.isZero(x - xWarm, Tol()));
+            var xMinusXWarm = new fProxyN(in x, Allocator.Temp);
+            fProxyComp.subInPlace(xMinusXWarm, xWarm);
+            Assert.IsTrue(Analysis.isZero(xMinusXWarm, Tol()));
 
             var Ax = Blas.dot(A, xWarm);
-            Assert.IsTrue(Analysis.isZero(b - Ax, Tol()));
-
-            arena.Dispose();
+            var bMinusAx = new fProxyN(in b, Allocator.Temp);
+            fProxyComp.subInPlace(bMinusAx, Ax);
+            Assert.IsTrue(Analysis.isZero(bMinusAx, Tol()));
         }
 
         // 1x1 degenerate path: A = [[k]] (k > 0) -> single-variable solve k·x = b.
         void Tiny()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.fProxyMat(1, 1);
+            var A = new fProxyMxN(1, 1, Allocator.Temp);
             A[0, 0] = 4f;
 
-            var b = arena.fProxyRandomVec(1, -1f, 1f, 77);
-            var x = arena.fProxyVec(1);
+            var b = GenerateOP.fProxyRandomVec(1, -1f, 1f, 77, Allocator.Temp);
+            var x = new fProxyN(1, Allocator.Temp);
 
             bool ok = Krylov.cg(in A, in b, ref x);
             Assert.IsTrue(ok);
 
             var Ax = Blas.dot(A, x);
-            Assert.IsTrue(Analysis.isZero(b - Ax, Tol()));
-
-            arena.Dispose();
+            var bMinusAx = new fProxyN(in b, Allocator.Temp);
+            fProxyComp.subInPlace(bMinusAx, Ax);
+            Assert.IsTrue(Analysis.isZero(bMinusAx, Tol()));
         }
 
         // GALLERY KNOWN-ANSWER (Gallery.SPD): the n×n 1D Laplacian (tridiagonal 2,-1) is SPD — the
@@ -359,44 +335,40 @@ public class fProxyConjugateGradientTests
         // 4n to cover the conditioning (cond ≈ (2(n+1)/π)²) plus float round-off.
         void GalleryLaplacian1D()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 16;
 
-            var A = arena.fProxyLaplacian1D(dim);
-            var b = arena.fProxyRandomVec(dim, -1f, 1f, 4242);
+            var A = fProxyGallery.fProxyLaplacian1D(dim, Allocator.Temp);
+            var b = GenerateOP.fProxyRandomVec(dim, -1f, 1f, 4242, Allocator.Temp);
 
-            var x = arena.fProxyVec(dim);
+            var x = new fProxyN(dim, Allocator.Temp);
 
             bool ok = Krylov.cg(in A, in b, ref x, 4 * dim, Consts.fProxySqrtEps);
             Assert.IsTrue(ok);
 
             var Ax = Blas.dot(A, x);
-            Assert.IsTrue(Analysis.isZero(b - Ax, Tol()));
-
-            arena.Dispose();
+            var bMinusAx = new fProxyN(in b, Allocator.Temp);
+            fProxyComp.subInPlace(bMinusAx, Ax);
+            Assert.IsTrue(Analysis.isZero(bMinusAx, Tol()));
         }
 
         // GALLERY KNOWN-ANSWER (Gallery.Phase2): the n×n MinIJ matrix A[i,j]=min(i,j)+1 is SPD, so
         // CG must solve A·x = b accurately. Iterations capped at 4n for conditioning + round-off.
         void GalleryMinIJ()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 10;
 
-            var A = arena.fProxyMinIJ(dim);
-            var b = arena.fProxyRandomVec(dim, -1f, 1f, 8181);
+            var A = fProxyGallery.fProxyMinIJ(dim, Allocator.Temp);
+            var b = GenerateOP.fProxyRandomVec(dim, -1f, 1f, 8181, Allocator.Temp);
 
-            var x = arena.fProxyVec(dim);
+            var x = new fProxyN(dim, Allocator.Temp);
 
             bool ok = Krylov.cg(in A, in b, ref x, 4 * dim, Consts.fProxySqrtEps);
             Assert.IsTrue(ok);
 
             var Ax = Blas.dot(A, x);
-            Assert.IsTrue(Analysis.isZero(b - Ax, Tol()));
-
-            arena.Dispose();
+            var bMinusAx = new fProxyN(in b, Allocator.Temp);
+            fProxyComp.subInPlace(bMinusAx, Ax);
+            Assert.IsTrue(Analysis.isZero(bMinusAx, Tol()));
         }
     }
 

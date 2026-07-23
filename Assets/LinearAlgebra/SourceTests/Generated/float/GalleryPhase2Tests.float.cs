@@ -6,7 +6,7 @@ using System;
 #pragma warning disable 618 // intentionally exercises the deprecated cyclic-Jacobi Eigen.decompInPlace (kept for reference)
 
 using LinearAlgebra;
-using LinearAlgebra.Gallery;   // opt-in: arena.floatCauchy(x,y), arena.floatMagic(n), ...
+using LinearAlgebra.Gallery;   // opt-in: floatGallery.floatCauchy(x,y), floatGallery.floatMagic(n), ...
 
 using NUnit.Framework;
 using Unity.Burst;
@@ -77,20 +77,16 @@ public class floatGalleryPhase2Tests
         // which is exactly the Hilbert matrix entrywise.
         void CauchyHilbertCrossCheck()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 3;
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             x[0] = (float)0.5; x[1] = (float)1.5; x[2] = (float)2.5;
 
-            var C = arena.floatCauchy(in x, in x);
-            var H = arena.floatHilbert(n);
+            var C = floatGallery.floatCauchy(in x, in x);
+            var H = floatGallery.floatHilbert(n);
 
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
                     AssertClose(C[i, j], H[i, j], (float)1E-5);
-
-            arena.Dispose();
         }
 
         // det via LU equals the Cauchy determinant formula
@@ -98,15 +94,13 @@ public class floatGalleryPhase2Tests
         // for x = {1,2,3}, y = {0.5,1.5,2.5}. Reference is computed with plain scalar loops.
         void CauchyDet()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 3;
-            var x = arena.floatVec(n);
-            var y = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
+            var y = new floatN(n, Allocator.Temp);
             x[0] = (float)1;   x[1] = (float)2;   x[2] = (float)3;
             y[0] = (float)0.5; y[1] = (float)1.5; y[2] = (float)2.5;
 
-            var C = arena.floatCauchy(in x, in y);
+            var C = floatGallery.floatCauchy(in x, in y);
 
             // reference Cauchy determinant via scalar loops
             float num = (float)1;
@@ -122,8 +116,6 @@ public class floatGalleryPhase2Tests
             // det is tiny (~9e-5); use a relative band with a small absolute floor.
             float tol = math.abs(expected) * (float)0.05 + (float)1E-9;
             AssertClose(Determinant(in C), expected, tol);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -133,37 +125,31 @@ public class floatGalleryPhase2Tests
         // Symmetric; SPD (Cholesky succeeds); det = ∏_{k=1}^n φ(k). n=4 ⇒ 4, n=5 ⇒ 16.
         void GCDProps()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // n = 4: det = φ(1)φ(2)φ(3)φ(4) = 1·1·2·2 = 4
-            var A4 = arena.floatGCD(4);
+            var A4 = floatGallery.floatGCD(4);
             AssertSymmetric(in A4, (float)1E-5);
-            AssertCholeskyOk(ref arena, in A4);
+            AssertCholeskyOk(in A4);
             AssertClose(Determinant(in A4), (float)TotientProduct(4), (float)200 * Consts.floatSqrtEps);
 
             // n = 5: det = ·φ(5) = 4·4 = 16
-            var A5 = arena.floatGCD(5);
+            var A5 = floatGallery.floatGCD(5);
             AssertSymmetric(in A5, (float)1E-5);
-            AssertCholeskyOk(ref arena, in A5);
+            AssertCholeskyOk(in A5);
             AssertClose(Determinant(in A5), (float)TotientProduct(5), (float)2000 * Consts.floatSqrtEps);
-
-            arena.Dispose();
         }
 
         // Algorithm-exercise: GCD is SPD ⇒ CG solves A·x = b accurately. n = 5.
         void GCDSolve()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
-            var A = arena.floatGCD(n);
+            var A = floatGallery.floatGCD(n);
 
-            var xTrue = arena.floatVec(n);
+            var xTrue = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) xTrue[i] = (float)(i + 1);
 
             var b = Blas.dot(A, xTrue);   // consistent RHS
 
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             bool conv = Krylov.cg(in A, in b, ref x, 500, Consts.floatSqrtEps);
             AssertTrue(conv);
 
@@ -171,8 +157,6 @@ public class floatGalleryPhase2Tests
             float tol = (float)2000 * Consts.floatSqrtEps;
             for (int i = 0; i < n; i++)
                 AssertClose(x[i], xTrue[i], tol);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -182,21 +166,17 @@ public class floatGalleryPhase2Tests
         // M(1..5) = 1, 0, −1, −1, −2.
         void RedhefferDet()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            // Mertens M(n) for n = 1..5 (Burst: no managed array, use an arena vec).
-            var mertens = arena.floatVec(5);
+            // Mertens M(n) for n = 1..5 (Burst: no managed array, use a plain vec).
+            var mertens = new floatN(5, Allocator.Temp);
             mertens[0] = (float)1; mertens[1] = (float)0; mertens[2] = (float)(-1);
             mertens[3] = (float)(-1); mertens[4] = (float)(-2);
 
             for (int n = 1; n <= 5; n++)
             {
-                var R = arena.floatRedheffer(n);
+                var R = floatGallery.floatRedheffer(n);
                 // integer-valued small determinants; modest precision-scaled band.
                 AssertClose(Determinant(in R), mertens[n - 1], (float)200 * Consts.floatSqrtEps);
             }
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -206,10 +186,8 @@ public class floatGalleryPhase2Tests
         // n=3 equals [[8,1,6],[3,5,7],[4,9,2]] exactly; n=5 every row/col/both-diagonal sum == 65.
         void MagicProps()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // n = 3 exact entries [[8,1,6],[3,5,7],[4,9,2]] (inline literals; Burst has no managed arrays)
-            var M3 = arena.floatMagic(3);
+            var M3 = floatGallery.floatMagic(3);
             AssertClose(M3[0, 0], (float)8, (float)1E-5); AssertClose(M3[0, 1], (float)1, (float)1E-5); AssertClose(M3[0, 2], (float)6, (float)1E-5);
             AssertClose(M3[1, 0], (float)3, (float)1E-5); AssertClose(M3[1, 1], (float)5, (float)1E-5); AssertClose(M3[1, 2], (float)7, (float)1E-5);
             AssertClose(M3[2, 0], (float)4, (float)1E-5); AssertClose(M3[2, 1], (float)9, (float)1E-5); AssertClose(M3[2, 2], (float)2, (float)1E-5);
@@ -217,7 +195,7 @@ public class floatGalleryPhase2Tests
             // n = 5 magic constant = n(n²+1)/2 = 65
             int n = 5;
             float magic = (float)(n * (n * n + 1) / 2);
-            var M5 = arena.floatMagic(n);
+            var M5 = floatGallery.floatMagic(n);
 
             // rows
             for (int i = 0; i < n; i++)
@@ -238,8 +216,6 @@ public class floatGalleryPhase2Tests
             for (int i = 0; i < n; i++) { d += M5[i, i]; ad += M5[i, n - 1 - i]; }
             AssertClose(d, magic, (float)1E-4);
             AssertClose(ad, magic, (float)1E-4);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -250,9 +226,7 @@ public class floatGalleryPhase2Tests
         // (tight for double, generous for float — the near-pairs near 0, 1000, 1020 are hard in float).
         void RosserProps()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.floatRosser();
+            var A = floatGallery.floatRosser();
             AssertSymmetric(in A, (float)1E-4);
 
             // trace = 4040 (exact integer diagonal)
@@ -261,7 +235,7 @@ public class floatGalleryPhase2Tests
             AssertClose(tr, (float)4040, (float)1E-3);
 
             // documented spectrum, DESCENDING (Eigen.decompInPlace returns descending)
-            var expected = arena.floatVec(8);
+            var expected = new floatN(8, Allocator.Temp);
             expected[0] = (float)1020.4202;
             expected[1] = (float)1019.9936;
             expected[2] = (float)1019.5244;
@@ -271,9 +245,9 @@ public class floatGalleryPhase2Tests
             expected[6] = (float)(-0.1705);
             expected[7] = (float)(-1020.0532);
 
-            var Ac = A.Copy();
-            var eig = arena.floatVec(8);
-            var V = arena.floatMat(8, 8);
+            var Ac = new floatMxN(in A, Allocator.Temp);
+            var eig = new floatN(8, Allocator.Temp);
+            var V = new floatMxN(8, 8, Allocator.Temp);
             AssertTrue(Eigen.decompInPlace(ref Ac, ref eig, ref V));
 
             // sum of eigenvalues equals trace regardless of precision (robust invariant).
@@ -285,8 +259,6 @@ public class floatGalleryPhase2Tests
             float band = IsDouble() ? (float)0.5 : (float)3.0;
             for (int i = 0; i < 8; i++)
                 AssertClose(eig[i], expected[i], band);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -296,15 +268,13 @@ public class floatGalleryPhase2Tests
         // nonsymmetric; singular values cluster near π, all < π. n = 8.
         void ParterProps()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 8;
-            var A = arena.floatParter(n);
+            var A = floatGallery.floatParter(n);
 
             // nonsymmetric: A[0,1] != A[1,0]
             AssertTrue(math.abs(A[0, 1] - A[1, 0]) > (float)1E-3);
 
-            var S = arena.floatVec(n);   // length min(m,n) = n, descending
+            var S = new floatN(n, Allocator.Temp);   // length min(m,n) = n, descending
             SVD.singularValues(in A, ref S);
 
             float pi = (float)math.PI_DBL;
@@ -315,8 +285,6 @@ public class floatGalleryPhase2Tests
 
             // largest clusters near π
             AssertTrue(S[0] > pi - (float)0.5);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -327,15 +295,13 @@ public class floatGalleryPhase2Tests
         // can dip slightly negative in float). n = 8, w = 0.25.
         void ProlateProps()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 8;
-            var A = arena.floatProlate(n, (float)0.25);
+            var A = floatGallery.floatProlate(n, (float)0.25);
             AssertSymmetric(in A, (float)1E-5);
 
-            var Ac = A.Copy();
-            var eig = arena.floatVec(n);
-            var V = arena.floatMat(n, n);
+            var Ac = new floatMxN(in A, Allocator.Temp);
+            var eig = new floatN(n, Allocator.Temp);
+            var V = new floatMxN(n, n, Allocator.Temp);
             AssertTrue(Eigen.decompInPlace(ref Ac, ref eig, ref V));
 
             // documented (0,1): allow a precision-gated margin on both ends.
@@ -346,8 +312,6 @@ public class floatGalleryPhase2Tests
                 AssertTrue(eig[i] >= -lo);
                 AssertTrue(eig[i] <= (float)1 + hi);
             }
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -358,12 +322,8 @@ public class floatGalleryPhase2Tests
         // nonsymmetric. Tested for default k=3 and k=2.
         void GrcarStructure()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            CheckGrcar(arena.floatGrcar(8), 8, 3);        // default k = 3
-            CheckGrcar(arena.floatGrcar(8, 2), 8, 2);     // k = 2
-
-            arena.Dispose();
+            CheckGrcar(floatGallery.floatGrcar(8), 8, 3);        // default k = 3
+            CheckGrcar(floatGallery.floatGrcar(8, 2), 8, 2);     // k = 2
         }
 
         void CheckGrcar(floatMxN A, int n, int k)
@@ -394,10 +354,8 @@ public class floatGalleryPhase2Tests
         // row 0 all ones; rows i≥1 equal the Hilbert pattern 1/(i+j+1); nonsymmetric.
         void LotkinStructure()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
-            var A = arena.floatLotkin(n);
+            var A = floatGallery.floatLotkin(n);
 
             // row 0 all ones
             for (int j = 0; j < n; j++)
@@ -410,8 +368,6 @@ public class floatGalleryPhase2Tests
 
             // nonsymmetric: A[0,1] = 1, A[1,0] = 1/2
             AssertTrue(math.abs(A[0, 1] - A[1, 0]) > (float)1E-3);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -445,7 +401,7 @@ public class floatGalleryPhase2Tests
         float Determinant(in floatMxN M)
         {
             int n = M.M_Rows;
-            var LUmat = M.Copy();
+            var LUmat = new floatMxN(in M, Allocator.Temp);
             var pivot = new Pivot(n, Allocator.Temp);
             LU.decompInPlace(ref LUmat, ref pivot);
             float det = Analysis.determinant(in LUmat, in pivot);
@@ -461,9 +417,9 @@ public class floatGalleryPhase2Tests
                     AssertClose(A[r, c], A[c, r], tol);
         }
 
-        void AssertCholeskyOk(ref Arena arena, in floatMxN A)
+        void AssertCholeskyOk(in floatMxN A)
         {
-            var L = arena.floatMat(A.M_Rows, A.N_Cols);
+            var L = new floatMxN(A.M_Rows, A.N_Cols, Allocator.Temp);
             AssertTrue(CHO.decomp(in A, ref L));
         }
 
@@ -514,48 +470,33 @@ public class floatGalleryPhase2Tests
     [Test]
     public void CauchyInvalidArgsThrow()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            // x.N != y.N
-            var x2 = arena.floatVec(2);
-            var y3 = arena.floatVec(3);
-            Assert.Throws<ArgumentException>(() => arena.floatCauchy(in x2, in y3));
+        // x.N != y.N
+        var x2 = new floatN(2, Allocator.Temp);
+        var y3 = new floatN(3, Allocator.Temp);
+        Assert.Throws<ArgumentException>(() => floatGallery.floatCauchy(in x2, in y3));
 
-            // zero denominator: x[0] + y[0] = 1 + (−1) = 0
-            var x1 = arena.floatVec(1);
-            var y1 = arena.floatVec(1);
-            x1[0] = (float)1; y1[0] = (float)(-1);
-            Assert.Throws<ArgumentException>(() => arena.floatCauchy(in x1, in y1));
-        }
-        finally { arena.Dispose(); }
+        // zero denominator: x[0] + y[0] = 1 + (−1) = 0
+        var x1 = new floatN(1, Allocator.Temp);
+        var y1 = new floatN(1, Allocator.Temp);
+        x1[0] = (float)1; y1[0] = (float)(-1);
+        Assert.Throws<ArgumentException>(() => floatGallery.floatCauchy(in x1, in y1));
     }
 
     // Magic requires a positive ODD n (even n throws).
     [Test]
     public void MagicEvenNThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            Assert.Throws<ArgumentException>(() => arena.floatMagic(4));
-            Assert.Throws<ArgumentException>(() => arena.floatMagic(2));
-        }
-        finally { arena.Dispose(); }
+        Assert.Throws<ArgumentException>(() => floatGallery.floatMagic(4));
+        Assert.Throws<ArgumentException>(() => floatGallery.floatMagic(2));
     }
 
     // Prolate requires 0 < w < 0.5.
     [Test]
     public void ProlateInvalidWThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            Assert.Throws<ArgumentException>(() => arena.floatProlate(4, (float)0));      // w <= 0
-            Assert.Throws<ArgumentException>(() => arena.floatProlate(4, (float)(-0.1))); // w < 0
-            Assert.Throws<ArgumentException>(() => arena.floatProlate(4, (float)0.5));    // w >= 0.5
-            Assert.Throws<ArgumentException>(() => arena.floatProlate(4, (float)0.6));    // w > 0.5
-        }
-        finally { arena.Dispose(); }
+        Assert.Throws<ArgumentException>(() => floatGallery.floatProlate(4, (float)0));      // w <= 0
+        Assert.Throws<ArgumentException>(() => floatGallery.floatProlate(4, (float)(-0.1))); // w < 0
+        Assert.Throws<ArgumentException>(() => floatGallery.floatProlate(4, (float)0.5));    // w >= 0.5
+        Assert.Throws<ArgumentException>(() => floatGallery.floatProlate(4, (float)0.6));    // w > 0.5
     }
 }

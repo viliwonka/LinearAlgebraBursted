@@ -40,9 +40,9 @@ public class doubleLQMinNormInPlaceTests
         static double Tol() => 1e-12;
 
         // Wide full-row-rank test matrix: random with a diagonal boost.
-        static doubleMxN BuildA(ref Arena arena, int m, int n, uint seed)
+        static doubleMxN BuildA(int m, int n, uint seed)
         {
-            var A = arena.doubleRandomMat(m, n, -1f, 1f, seed);
+            var A = GenerateOP.doubleRandomMat(m, n, -1f, 1f, seed);
             for (int d = 0; d < m; d++)
                 A[d, d] += (double)10;
             return A;
@@ -50,69 +50,57 @@ public class doubleLQMinNormInPlaceTests
 
         void VectorEquivalence()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 6, n = 12;
-            var A = BuildA(ref arena, m, n, 91001);
-            var b = arena.doubleRandomVec(m, -5f, 5f, 91002);
+            var A = BuildA(m, n, 91001);
+            var b = GenerateOP.doubleRandomVec(m, -5f, 5f, 91002);
 
-            var xRef = arena.doubleVec(n);
+            var xRef = new doubleN(n, Allocator.Temp);
             LQ.minNormSolve(in A, in b, ref xRef);
 
-            var Ainp = A.Copy();
-            var x = arena.doubleVec(n);
+            var Ainp = new doubleMxN(in A, Allocator.Temp);
+            var x = new doubleN(n, Allocator.Temp);
             LQ.minNormSolveInPlace(ref Ainp, in b, ref x);
 
             Assert.IsTrue(Analysis.isZero(xRef - x, Tol()));
             // b untouched by the in-place solve.
-            var b2 = arena.doubleRandomVec(m, -5f, 5f, 91002);
+            var b2 = GenerateOP.doubleRandomVec(m, -5f, 5f, 91002);
             Assert.IsTrue(Analysis.isZero(b - b2, (double)0));
-
-            arena.Dispose();
         }
 
         void WorkspaceEquivalence()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 6, n = 12;
-            var A = BuildA(ref arena, m, n, 92001);
-            var b = arena.doubleRandomVec(m, -5f, 5f, 92002);
+            var A = BuildA(m, n, 92001);
+            var b = GenerateOP.doubleRandomVec(m, -5f, 5f, 92002);
 
-            var xRef = arena.doubleVec(n);
+            var xRef = new doubleN(n, Allocator.Temp);
             LQ.minNormSolve(in A, in b, ref xRef);
 
-            var Ainp = A.Copy();
-            var x = arena.doubleVec(n);
-            var ws = arena.doubleLQMinNormCache(m, n);
+            var Ainp = new doubleMxN(in A, Allocator.Temp);
+            var x = new doubleN(n, Allocator.Temp);
+            var ws = new doubleLQMinNormCache(m, n, Allocator.Temp);
             LQ.minNormSolveInPlace(ref Ainp, in b, ref x, ref ws);
 
             Assert.IsTrue(Analysis.isZero(xRef - x, Tol()));
-
-            arena.Dispose();
         }
 
         void MultiRhsEquivalence()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 5, n = 9, k = 3;
-            var A = BuildA(ref arena, m, n, 93001);
-            var B = arena.doubleRandomMat(m, k, -3f, 3f, 93002);
+            var A = BuildA(m, n, 93001);
+            var B = GenerateOP.doubleRandomMat(m, k, -3f, 3f, 93002);
 
-            var XRef = arena.doubleMat(n, k);
+            var XRef = new doubleMxN(n, k, Allocator.Temp);
             LQ.minNormSolve(in A, in B, ref XRef);
 
-            var Ainp = A.Copy();
-            var X = arena.doubleMat(n, k);
+            var Ainp = new doubleMxN(in A, Allocator.Temp);
+            var X = new doubleMxN(n, k, Allocator.Temp);
             LQ.minNormSolveInPlace(ref Ainp, in B, ref X);
 
             Assert.IsTrue(Analysis.isZero(XRef - X, Tol()));
             // B untouched by the in-place solve.
-            var B2 = arena.doubleRandomMat(m, k, -3f, 3f, 93002);
+            var B2 = GenerateOP.doubleRandomMat(m, k, -3f, 3f, 93002);
             Assert.IsTrue(Analysis.isZero(B - B2, (double)0));
-
-            arena.Dispose();
         }
     }
 

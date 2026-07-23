@@ -27,11 +27,11 @@ public class fProxyAMGGalerkinTests
 
         static fProxy Tol() => /*+choose[1e-3f|1e-9]*/1e-3f/*-choose*/;
 
-        static fProxyBSR BlockChain(ref Arena arena, int nb, int BR)
+        static fProxyBSR BlockChain(int nb, int BR)
         {
-            var b = arena.fProxyBSRBuilder(nb, nb, BR, BR, 3 * nb);
-            var diag = arena.fProxyMat(BR, BR);
-            var off = arena.fProxyMat(BR, BR);
+            var b = new fProxyBSRBuilder(nb, nb, BR, BR, Allocator.Temp, 3 * nb);
+            var diag = new fProxyMxN(BR, BR, Allocator.Temp);
+            var off = new fProxyMxN(BR, BR, Allocator.Temp);
             for (int r = 0; r < BR; r++)
                 for (int c = 0; c < BR; c++)
                 { diag[r, c] = r == c ? (fProxy)2 : (fProxy)0; off[r, c] = r == c ? (fProxy)(-1) : (fProxy)0; }
@@ -41,14 +41,14 @@ public class fProxyAMGGalerkinTests
                 if (i > 0) b.AddBlock(i, i - 1, in off);
                 if (i < nb - 1) b.AddBlock(i, i + 1, in off);
             }
-            return b.ToBSR(ref arena);
+            return b.ToBSR(Allocator.Temp);
         }
 
         // <v, A_c u> vs <T v, A (T u)>: must agree for A_c = TᵀAT.
-        void CheckIdentity(ref Arena arena, in fProxyBSR A, in fProxyBSR T, in fProxyBSR Ac, int ncoarse, uint seed)
+        void CheckIdentity(in fProxyBSR A, in fProxyBSR T, in fProxyBSR Ac, int ncoarse, uint seed)
         {
-            var u = arena.fProxyRandomVec(ncoarse, -1f, 1f, seed);
-            var v = arena.fProxyRandomVec(ncoarse, -1f, 1f, seed ^ 0x9E3779B9u);
+            var u = GenerateOP.fProxyRandomVec(ncoarse, -1f, 1f, seed);
+            var v = GenerateOP.fProxyRandomVec(ncoarse, -1f, 1f, seed ^ 0x9E3779B9u);
 
             var Tu = BSR.spMV(in T, in u);
             var Tv = BSR.spMV(in T, in v);
@@ -74,83 +74,71 @@ public class fProxyAMGGalerkinTests
 
         void IdentityScalar()
         {
-            var arena = new Arena(Allocator.Persistent);
             int nb = 16;
-            var A = BlockChain(ref arena, nb, 1);
-            var aggId = arena.Indices(nb);
+            var A = BlockChain(nb, 1);
+            var aggId = new Indices(nb, Allocator.Temp);
             AMG.aggregate(in A, (fProxy)0, ref aggId, out int numAgg);
-            var T = AMG.tentativeProlongator(in A, in aggId, numAgg, ref arena, out _);
-            var Ac = AMG.galerkinRAP(in A, in T, in aggId, numAgg, ref arena);
+            var T = AMG.tentativeProlongator(in A, in aggId, numAgg, out _);
+            var Ac = AMG.galerkinRAP(in A, in T, in aggId, numAgg);
 
             Assert.IsTrue(Ac.BlockRows == numAgg && Ac.BR == 1);
-            CheckIdentity(ref arena, in A, in T, in Ac, numAgg * 1, 0x5A1Du);
-
-            arena.Dispose();
+            CheckIdentity(in A, in T, in Ac, numAgg * 1, 0x5A1Du);
         }
 
         void IdentityBlock()
         {
-            var arena = new Arena(Allocator.Persistent);
             int nb = 12, BR = 2, m = 2;
-            var A = BlockChain(ref arena, nb, BR);
+            var A = BlockChain(nb, BR);
             int n = nb * BR;
-            var B = arena.fProxyRandomMat(n, m, -1f, 1f, 0x77A1u);
-            var aggId = arena.Indices(nb);
+            var B = GenerateOP.fProxyRandomMat(n, m, -1f, 1f, 0x77A1u);
+            var aggId = new Indices(nb, Allocator.Temp);
             AMG.aggregate(in A, (fProxy)0, ref aggId, out int numAgg);
-            var T = AMG.tentativeProlongator(in A, in aggId, numAgg, in B, ref arena, out _);
-            var Ac = AMG.galerkinRAP(in A, in T, in aggId, numAgg, ref arena);
+            var T = AMG.tentativeProlongator(in A, in aggId, numAgg, in B, out _);
+            var Ac = AMG.galerkinRAP(in A, in T, in aggId, numAgg);
 
             Assert.IsTrue(Ac.BlockRows == numAgg && Ac.BR == m);
-            CheckIdentity(ref arena, in A, in T, in Ac, numAgg * m, 0x1234u);
-
-            arena.Dispose();
+            CheckIdentity(in A, in T, in Ac, numAgg * m, 0x1234u);
         }
 
         // A_c symmetric (A SPD -> TᵀAT SPD): <v, A_c u> == <u, A_c v>.
         void CoarseIsSymmetric()
         {
-            var arena = new Arena(Allocator.Persistent);
             int nb = 12, BR = 2, m = 2;
-            var A = BlockChain(ref arena, nb, BR);
+            var A = BlockChain(nb, BR);
             int n = nb * BR;
-            var B = arena.fProxyRandomMat(n, m, -1f, 1f, 0x9001u);
-            var aggId = arena.Indices(nb);
+            var B = GenerateOP.fProxyRandomMat(n, m, -1f, 1f, 0x9001u);
+            var aggId = new Indices(nb, Allocator.Temp);
             AMG.aggregate(in A, (fProxy)0, ref aggId, out int numAgg);
-            var T = AMG.tentativeProlongator(in A, in aggId, numAgg, in B, ref arena, out _);
-            var Ac = AMG.galerkinRAP(in A, in T, in aggId, numAgg, ref arena);
+            var T = AMG.tentativeProlongator(in A, in aggId, numAgg, in B, out _);
+            var Ac = AMG.galerkinRAP(in A, in T, in aggId, numAgg);
 
             int ncoarse = numAgg * m;
-            var u = arena.fProxyRandomVec(ncoarse, -1f, 1f, 0xAAu);
-            var v = arena.fProxyRandomVec(ncoarse, -1f, 1f, 0xBBu);
+            var u = GenerateOP.fProxyRandomVec(ncoarse, -1f, 1f, 0xAAu);
+            var v = GenerateOP.fProxyRandomVec(ncoarse, -1f, 1f, 0xBBu);
             var Acu = BSR.spMV(in Ac, in u);
             var Acv = BSR.spMV(in Ac, in v);
             fProxy a = Blas.dot(v, Acu);
             fProxy b2 = Blas.dot(u, Acv);
             Assert.IsTrue(math.abs(a - b2) <= Tol() * ((fProxy)1 + math.abs(a)));
-
-            arena.Dispose();
         }
 
         void Deterministic()
         {
-            var arena = new Arena(Allocator.Persistent);
             int nb = 14, BR = 2, m = 2;
-            var A = BlockChain(ref arena, nb, BR);
+            var A = BlockChain(nb, BR);
             int n = nb * BR;
-            var B = arena.fProxyRandomMat(n, m, -1f, 1f, 0xDEEDu);
-            var aggId = arena.Indices(nb);
+            var B = GenerateOP.fProxyRandomMat(n, m, -1f, 1f, 0xDEEDu);
+            var aggId = new Indices(nb, Allocator.Temp);
             AMG.aggregate(in A, (fProxy)0, ref aggId, out int numAgg);
-            var T = AMG.tentativeProlongator(in A, in aggId, numAgg, in B, ref arena, out _);
+            var T = AMG.tentativeProlongator(in A, in aggId, numAgg, in B, out _);
 
-            var Ac1 = AMG.galerkinRAP(in A, in T, in aggId, numAgg, ref arena);
-            var Ac2 = AMG.galerkinRAP(in A, in T, in aggId, numAgg, ref arena);
+            var Ac1 = AMG.galerkinRAP(in A, in T, in aggId, numAgg);
+            var Ac2 = AMG.galerkinRAP(in A, in T, in aggId, numAgg);
 
             Assert.IsTrue(Ac1.Nnzb == Ac2.Nnzb);
             int blockLen = m * m;
             for (int k = 0; k < Ac1.Nnzb; k++) Assert.IsTrue(Ac1.ColInd[k] == Ac2.ColInd[k]);
             for (int k = 0; k < Ac1.Nnzb * blockLen; k++) Assert.IsTrue(Ac1.Values[k] == Ac2.Values[k]);
-
-            arena.Dispose();
         }
     }
 

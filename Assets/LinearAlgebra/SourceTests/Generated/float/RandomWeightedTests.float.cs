@@ -59,21 +59,18 @@ public class floatRandomWeightedTests
         // Single-element weights => always index 0.
         void SingleElementAlwaysZero()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(1234567u);
-            var w = arena.floatVec(1);
+            var w = new floatN(1, Allocator.Temp);
             w[0] = (float)5;
             for (int i = 0; i < 200; i++)
                 AssertTrue(Rand.weightedPick(in w, ref rng) == 0);
-            arena.Dispose();
         }
 
         // weights {1,0,1}: index 1 (zero weight) is NEVER returned; 0 and 2 ~ equally likely.
         void ZeroWeightNeverPicked()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2468013u);
-            var w = arena.floatVec(3);
+            var w = new floatN(3, Allocator.Temp);
             w[0] = (float)1; w[1] = (float)0; w[2] = (float)1;
 
             int c0 = 0, c1 = 0, c2 = 0;
@@ -86,15 +83,13 @@ public class floatRandomWeightedTests
             AssertTrue(c1 == 0);
             float frac0 = (float)c0 / (float)(c0 + c2);
             AssertClose(frac0, (float)0.5, (float)0.05);        // 0 and 2 ~ equal
-            arena.Dispose();
         }
 
         // weights {1,3}: index 1 chosen ~3x as often as index 0.
         void Proportionality()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(13572468u);
-            var w = arena.floatVec(2);
+            var w = new floatN(2, Allocator.Temp);
             w[0] = (float)1; w[1] = (float)3;
 
             int c0 = 0, c1 = 0;
@@ -106,19 +101,17 @@ public class floatRandomWeightedTests
             AssertTrue(c0 > 0);
             float ratio = (float)c1 / (float)c0;
             AssertClose(ratio, (float)3, (float)0.35);          // 3:1, loose
-            arena.Dispose();
         }
 
         // weightedPickInPlace fills dest.N picks, all valid indices; zero-weight index excluded.
         void InPlaceFillsInRange()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(97531864u);
-            var w = arena.floatVec(4);
+            var w = new floatN(4, Allocator.Temp);
             w[0] = (float)2; w[1] = (float)0; w[2] = (float)1; w[3] = (float)1;
 
             int k = 256;
-            var dest = arena.Indices(k);
+            var dest = new Indices(k, Allocator.Temp);
             Rand.weightedPickInPlace(in w, ref dest, ref rng);
             AssertTrue(dest.N == k);
             for (int i = 0; i < k; i++)
@@ -126,7 +119,6 @@ public class floatRandomWeightedTests
                 AssertTrue(dest[i] >= 0 && dest[i] < 4);
                 AssertTrue(dest[i] != 1);
             }
-            arena.Dispose();
         }
 
         // ---------------- helpers ----------------
@@ -188,54 +180,48 @@ public class floatRandomWeightedTests
     [Test]
     public void WeightedPickValidationThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
         Random rng = new Random(1u);
 
         // Empty weights.
-        var empty = arena.floatVec(0);
+        var empty = new floatN(0, Allocator.Temp);
         Assert.Throws<ArgumentException>(() => Rand.weightedPick(in empty, ref rng));
 
         // Any negative weight.
-        var neg = arena.floatVec(3);
+        var neg = new floatN(3, Allocator.Temp);
         neg[0] = (float)1; neg[1] = (float)(-2); neg[2] = (float)1;
         Assert.Throws<ArgumentException>(() => Rand.weightedPick(in neg, ref rng));
 
         // NaN weight (0/0 at runtime; not a compile-time constant).
-        var nan = arena.floatVec(2);
+        var nan = new floatN(2, Allocator.Temp);
         nan[0] = (float)1; nan[1] = (float)0 / (float)0;
         Assert.Throws<ArgumentException>(() => Rand.weightedPick(in nan, ref rng));
 
         // +Inf weight (1/0 at runtime).
-        var inf = arena.floatVec(2);
+        var inf = new floatN(2, Allocator.Temp);
         inf[0] = (float)1; inf[1] = (float)1 / (float)0;
         Assert.Throws<ArgumentException>(() => Rand.weightedPick(in inf, ref rng));
 
         // All-zero total.
-        var zero = arena.floatVec(3);
+        var zero = new floatN(3, Allocator.Temp);
         zero[0] = (float)0; zero[1] = (float)0; zero[2] = (float)0;
         Assert.Throws<ArgumentException>(() => Rand.weightedPick(in zero, ref rng));
-
-        arena.Dispose();
     }
 
     [Test]
     public void WeightedPickInPlaceValidatesUpFrontEvenWhenDestEmpty()
     {
-        var arena = new Arena(Allocator.Persistent);
         Random rng = new Random(1u);
 
         // Invalid (negative) weights must throw even though dest.N == 0 (validation runs first).
-        var bad = arena.floatVec(3);
+        var bad = new floatN(3, Allocator.Temp);
         bad[0] = (float)1; bad[1] = (float)(-1); bad[2] = (float)1;
-        var emptyDest = arena.Indices(0);
+        var emptyDest = new Indices(0, Allocator.Temp);
         Assert.Throws<ArgumentException>(() => Rand.weightedPickInPlace(in bad, ref emptyDest, ref rng));
 
         // All-zero total likewise throws with an empty destination.
-        var zero = arena.floatVec(2);
+        var zero = new floatN(2, Allocator.Temp);
         zero[0] = (float)0; zero[1] = (float)0;
-        var emptyDest2 = arena.Indices(0);
+        var emptyDest2 = new Indices(0, Allocator.Temp);
         Assert.Throws<ArgumentException>(() => Rand.weightedPickInPlace(in zero, ref emptyDest2, ref rng));
-
-        arena.Dispose();
     }
 }

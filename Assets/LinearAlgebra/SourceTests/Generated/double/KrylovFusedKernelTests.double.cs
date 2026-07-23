@@ -70,12 +70,11 @@ public class doubleKrylovFusedKernelTests
         // ---- axpyNormSq: y += a*x ; return dot(y,y) -- vs axpy(y,x,a,n) then Blas.dot(y,y) ----
         void AxpyNormSqBitIdentical()
         {
-            var arena = new Arena(Allocator.Persistent);
             foreach (int n in Sizes)
             {
-                var x = arena.doubleRandomVec(n, -3f, 3f, (uint)(1000 + n));
-                var yFused = arena.doubleRandomVec(n, -2f, 2f, (uint)(2000 + n));
-                var yRef = arena.doubleVec(n); yRef.Data.CopyFrom(yFused.Data);
+                var x = GenerateOP.doubleRandomVec(n, -3f, 3f, (uint)(1000 + n));
+                var yFused = GenerateOP.doubleRandomVec(n, -2f, 2f, (uint)(2000 + n));
+                var yRef = new doubleN(n, Allocator.Temp); yRef.Data.CopyFrom(yFused.Data);
                 double a = (double)0.37f;
 
                 double fusedNormSq = Blas.axpyNormSq(a, x, ref yFused);
@@ -86,18 +85,16 @@ public class doubleKrylovFusedKernelTests
                 AssertExact(in yFused, in yRef);
                 Assert.AreEqual((double)refNormSq, (double)fusedNormSq);
             }
-            arena.Dispose();
         }
 
         // ---- xpayNormSq: y = a*y + x ; return dot(y,y) -- vs aypx(y,x,a,n) then Blas.dot(y,y) ----
         void XpayNormSqBitIdentical()
         {
-            var arena = new Arena(Allocator.Persistent);
             foreach (int n in Sizes)
             {
-                var x = arena.doubleRandomVec(n, -3f, 3f, (uint)(3000 + n));
-                var yFused = arena.doubleRandomVec(n, -2f, 2f, (uint)(4000 + n));
-                var yRef = arena.doubleVec(n); yRef.Data.CopyFrom(yFused.Data);
+                var x = GenerateOP.doubleRandomVec(n, -3f, 3f, (uint)(3000 + n));
+                var yFused = GenerateOP.doubleRandomVec(n, -2f, 2f, (uint)(4000 + n));
+                var yRef = new doubleN(n, Allocator.Temp); yRef.Data.CopyFrom(yFused.Data);
                 double a = (double)(-0.61f);
 
                 double fusedNormSq = Blas.xpayNormSq(a, x, ref yFused);
@@ -108,21 +105,19 @@ public class doubleKrylovFusedKernelTests
                 AssertExact(in yFused, in yRef);
                 Assert.AreEqual((double)refNormSq, (double)fusedNormSq);
             }
-            arena.Dispose();
         }
 
         // ---- updateXR, square case (cg): x += a*p ; r -= a*q ; return dot(r,r) ----
         void UpdateXRBitIdenticalSquare()
         {
-            var arena = new Arena(Allocator.Persistent);
             foreach (int n in Sizes)
             {
-                var p = arena.doubleRandomVec(n, -1f, 1f, (uint)(5000 + n));
-                var q = arena.doubleRandomVec(n, -1f, 1f, (uint)(6000 + n));
-                var xFused = arena.doubleRandomVec(n, -1f, 1f, (uint)(7000 + n));
-                var rFused = arena.doubleRandomVec(n, -1f, 1f, (uint)(8000 + n));
-                var xRef = arena.doubleVec(n); xRef.Data.CopyFrom(xFused.Data);
-                var rRef = arena.doubleVec(n); rRef.Data.CopyFrom(rFused.Data);
+                var p = GenerateOP.doubleRandomVec(n, -1f, 1f, (uint)(5000 + n));
+                var q = GenerateOP.doubleRandomVec(n, -1f, 1f, (uint)(6000 + n));
+                var xFused = GenerateOP.doubleRandomVec(n, -1f, 1f, (uint)(7000 + n));
+                var rFused = GenerateOP.doubleRandomVec(n, -1f, 1f, (uint)(8000 + n));
+                var xRef = new doubleN(n, Allocator.Temp); xRef.Data.CopyFrom(xFused.Data);
+                var rRef = new doubleN(n, Allocator.Temp); rRef.Data.CopyFrom(rFused.Data);
                 double a = (double)0.83f;
 
                 double fusedNormSq = Blas.updateXR(a, p, ref xFused, q, ref rFused);
@@ -135,23 +130,21 @@ public class doubleKrylovFusedKernelTests
                 AssertExact(in rFused, in rRef);
                 Assert.AreEqual((double)refNormSq, (double)fusedNormSq);
             }
-            arena.Dispose();
         }
 
         // ---- updateXR, RECTANGULAR case (lsqr): x/p length != r/q length. Regression guard:
         // x/p and r/q must use INDEPENDENT lengths, not a shared loop bound. ----
         void UpdateXRBitIdenticalRectangular()
         {
-            var arena = new Arena(Allocator.Persistent);
             for (int shape = 0; shape < ShapesNx.Length; shape++)
             {
                 int nx = ShapesNx[shape], nr = ShapesNr[shape];
-                var p = arena.doubleRandomVec(nx, -1f, 1f, (uint)(9000 + nx * 31 + nr));
-                var q = arena.doubleRandomVec(nr, -1f, 1f, (uint)(9500 + nx * 31 + nr));
-                var xFused = arena.doubleRandomVec(nx, -1f, 1f, (uint)(10000 + nx * 31 + nr));
-                var rFused = arena.doubleRandomVec(nr, -1f, 1f, (uint)(10500 + nx * 31 + nr));
-                var xRef = arena.doubleVec(nx); xRef.Data.CopyFrom(xFused.Data);
-                var rRef = arena.doubleVec(nr); rRef.Data.CopyFrom(rFused.Data);
+                var p = GenerateOP.doubleRandomVec(nx, -1f, 1f, (uint)(9000 + nx * 31 + nr));
+                var q = GenerateOP.doubleRandomVec(nr, -1f, 1f, (uint)(9500 + nx * 31 + nr));
+                var xFused = GenerateOP.doubleRandomVec(nx, -1f, 1f, (uint)(10000 + nx * 31 + nr));
+                var rFused = GenerateOP.doubleRandomVec(nr, -1f, 1f, (uint)(10500 + nx * 31 + nr));
+                var xRef = new doubleN(nx, Allocator.Temp); xRef.Data.CopyFrom(xFused.Data);
+                var rRef = new doubleN(nr, Allocator.Temp); rRef.Data.CopyFrom(rFused.Data);
                 double a = (double)0.44f;
 
                 double fusedNormSq = Blas.updateXR(a, p, ref xFused, q, ref rFused);
@@ -164,45 +157,41 @@ public class doubleKrylovFusedKernelTests
                 AssertExact(in rFused, in rRef);
                 Assert.AreEqual((double)refNormSq, (double)fusedNormSq);
             }
-            arena.Dispose();
         }
 
         // ---- scaledCopy: y = a*x, a = 1/s precomputed -- vs CopyFrom + divInPlace(s) (MINRES's v update) ----
         void ScaledCopyCloseToDivide()
         {
-            var arena = new Arena(Allocator.Persistent);
             foreach (int n in Sizes)
             {
-                var x = arena.doubleRandomVec(n, -5f, 5f, (uint)(11000 + n));
+                var x = GenerateOP.doubleRandomVec(n, -5f, 5f, (uint)(11000 + n));
                 double s = (double)2.75f;
 
-                var yFused = arena.doubleVec(n);
+                var yFused = new doubleN(n, Allocator.Temp);
                 Blas.scaledCopy(1 / s, x, ref yFused);
 
-                var yRef = arena.doubleVec(n);
+                var yRef = new doubleN(n, Allocator.Temp);
                 yRef.Data.CopyFrom(x.Data);
                 yRef.divInPlace(s);
 
                 doubleKrylovTestAsserts.AssertVecClose(in yFused, in yRef, RoundingTol());
             }
-            arena.Dispose();
         }
 
         // ---- combine3: w = s*(v + a*w1 + b*w2), s = 1/gamma -- vs copy+axpy+axpy+divInPlace (MINRES's w update) ----
         void Combine3CloseToUnfusedChain()
         {
-            var arena = new Arena(Allocator.Persistent);
             foreach (int n in Sizes)
             {
-                var v = arena.doubleRandomVec(n, -1f, 1f, (uint)(12000 + n));
-                var w1 = arena.doubleRandomVec(n, -1f, 1f, (uint)(13000 + n));
-                var w2 = arena.doubleRandomVec(n, -1f, 1f, (uint)(14000 + n));
+                var v = GenerateOP.doubleRandomVec(n, -1f, 1f, (uint)(12000 + n));
+                var w1 = GenerateOP.doubleRandomVec(n, -1f, 1f, (uint)(13000 + n));
+                var w2 = GenerateOP.doubleRandomVec(n, -1f, 1f, (uint)(14000 + n));
                 double a = (double)(-0.29f), b = (double)(-0.53f), gamma = (double)1.9f;
 
-                var wFused = arena.doubleVec(n);
+                var wFused = new doubleN(n, Allocator.Temp);
                 Blas.combine3(ref wFused, v, a, w1, b, w2, 1 / gamma);
 
-                var wRef = arena.doubleVec(n);
+                var wRef = new doubleN(n, Allocator.Temp);
                 wRef.Data.CopyFrom(v.Data);
                 wRef.addScaledInPlace(a, w1);
                 wRef.addScaledInPlace(b, w2);
@@ -210,7 +199,6 @@ public class doubleKrylovFusedKernelTests
 
                 doubleKrylovTestAsserts.AssertVecClose(in wFused, in wRef, RoundingTol());
             }
-            arena.Dispose();
         }
     }
 

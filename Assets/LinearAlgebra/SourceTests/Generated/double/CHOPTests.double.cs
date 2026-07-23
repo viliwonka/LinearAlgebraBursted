@@ -85,16 +85,14 @@ public class doubleCHOPTests
 
         void FullRankSPD()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             for (uint t = 0; t < 12; t++)
             {
                 int n = 8;
-                var B = arena.doubleRandomMat(n, n, -1f, 1f, 6100 + t * 13);
-                var A = Gram(in arena, in B);
+                var B = GenerateOP.doubleRandomMat(n, n, -1f, 1f, 6100 + t * 13, Allocator.Temp);
+                var A = Gram(in B);
                 for (int d = 0; d < n; d++) A[d, d] += (double)n; // diagonal boost: well-conditioned SPD
 
-                var L = arena.doubleMat(n);
+                var L = new doubleMxN(n, n, Allocator.Temp);
                 var P = new Pivot(n, Allocator.Persistent);
 
                 var pivInfo = CHOP.decomp(in A, ref L, ref P);
@@ -109,7 +107,7 @@ public class doubleCHOPTests
                 RecordEq(P[0], argmaxDiag);
 
                 // exact solve: b = A xOrig => x == xOrig.
-                var xOrig = arena.doubleRandomVec(n, -3f, 3f, 71000 + t * 7);
+                var xOrig = GenerateOP.doubleRandomVec(n, -3f, 3f, 71000 + t * 7, Allocator.Temp);
                 var b = Blas.dot(A, xOrig);
                 var Pc = new Pivot(n, Allocator.Persistent);
                 CHOP.solveInPlace(ref A, ref Pc, ref b); // destructive: A -> its own factor; b <- x
@@ -118,22 +116,17 @@ public class doubleCHOPTests
 
                 Pc.Dispose();
                 P.Dispose();
-                arena.Clear();
             }
-
-            arena.Dispose();
         }
 
         // diag(4,0,9,0,1): pivot picks 9,4,1 (indices 2,0,4); numerical rank 3.
         void DiagonalRankReveal()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
-            var A = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Temp);
             A[0, 0] = 4f; A[2, 2] = 9f; A[4, 4] = 1f; // others zero
 
-            var L = arena.doubleMat(n);
+            var L = new doubleMxN(n, n, Allocator.Temp);
             var P = new Pivot(n, Allocator.Persistent);
 
             var pivInfo = CHOP.decomp(in A, ref L, ref P);
@@ -146,22 +139,19 @@ public class doubleCHOPTests
             AssertReconstruct(in A, in L, in P, rank, (double)1E-5f);
 
             P.Dispose();
-            arena.Dispose();
         }
 
         // A = B Bᵀ with B (n x r), r < n => PSD of exact rank r. Reconstruction + exact min-norm
         // recovery when b ∈ range(A) (take xRange = A·w, then b = A·xRange => x == xRange).
         void RankDeficientReconstructAndSolve()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             for (uint t = 0; t < 12; t++)
             {
                 int n = 7, r = 4;
-                var B = arena.doubleRandomMat(n, r, -1f, 1f, 8200 + t * 11);
-                var A = Gram(in arena, in B);
+                var B = GenerateOP.doubleRandomMat(n, r, -1f, 1f, 8200 + t * 11, Allocator.Temp);
+                var A = Gram(in B);
 
-                var L = arena.doubleMat(n);
+                var L = new doubleMxN(n, n, Allocator.Temp);
                 var P = new Pivot(n, Allocator.Persistent);
 
                 var pivInfo = CHOP.decomp(in A, ref L, ref P);
@@ -171,7 +161,7 @@ public class doubleCHOPTests
                 AssertReconstruct(in A, in L, in P, rank, (double)1E-4f);
 
                 // xRange = A·w ∈ range(A); b = A·xRange => min-norm solution == xRange.
-                var w = arena.doubleRandomVec(n, -2f, 2f, 51000 + t * 5);
+                var w = GenerateOP.doubleRandomVec(n, -2f, 2f, 51000 + t * 5, Allocator.Temp);
                 var xRange = Blas.dot(A, w);
                 var b = Blas.dot(A, xRange);
 
@@ -180,41 +170,36 @@ public class doubleCHOPTests
 
                 // A·x ≈ A·xRange (consistency) and x ≈ xRange (exact recovery, scaled by ‖xRange‖).
                 double scale = Norms.L2(in xRange) + (double)1f;
-                var diff = arena.doubleVec(n);
+                var diff = new doubleN(n, Allocator.Temp);
                 for (int i = 0; i < n; i++) diff[i] = b[i] - xRange[i];
                 RecordBound(Norms.L2(in diff) / scale, (double)1E-2f);
 
                 Ps.Dispose();
                 P.Dispose();
-                arena.Clear();
             }
-
-            arena.Dispose();
         }
 
         // For b = A·xOrig (xOrig arbitrary => b ∈ range(A)), the min-norm solution x satisfies
         // A·x ≈ b and ‖x‖ ≤ ‖xOrig‖ (xOrig is *a* solution, so the minimum-norm one is no larger).
         void MinNormCertificate()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             for (uint t = 0; t < 12; t++)
             {
                 int n = 7, r = 3;
-                var B = arena.doubleRandomMat(n, r, -1f, 1f, 3300 + t * 17);
-                var A = Gram(in arena, in B);
+                var B = GenerateOP.doubleRandomMat(n, r, -1f, 1f, 3300 + t * 17, Allocator.Temp);
+                var A = Gram(in B);
 
-                var xOrig = arena.doubleRandomVec(n, -2f, 2f, 42000 + t * 9);
+                var xOrig = GenerateOP.doubleRandomVec(n, -2f, 2f, 42000 + t * 9, Allocator.Temp);
                 var b = Blas.dot(A, xOrig);     // b ∈ range(A)
-                var bForResidual = b.Copy();
+                var bForResidual = new doubleN(in b, Allocator.Temp);
 
                 var P = new Pivot(n, Allocator.Persistent);
-                var Awork = A.Copy(); // solveInPlace is destructive; A is still needed below
+                var Awork = new doubleMxN(in A, Allocator.Temp); // solveInPlace is destructive; A is still needed below
                 CHOP.solveInPlace(ref Awork, ref P, ref b); // b <- x
 
                 // consistency: A·x ≈ bForResidual.
                 var Ax = Blas.dot(A, b);
-                var resid = arena.doubleVec(n);
+                var resid = new doubleN(n, Allocator.Temp);
                 for (int i = 0; i < n; i++) resid[i] = Ax[i] - bForResidual[i];
                 double bScale = Norms.L2(in bForResidual) + (double)1f;
                 RecordBound(Norms.L2(in resid) / bScale, (double)1E-2f);
@@ -231,50 +216,41 @@ public class doubleCHOPTests
                 }
 
                 P.Dispose();
-                arena.Clear();
             }
-
-            arena.Dispose();
         }
 
         void Indefinite2x2()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 2;
-            var A = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Temp);
             A[0, 0] = 1f; A[0, 1] = 2f; A[1, 0] = 2f; A[1, 1] = 1f; // eigenvalues 3, -1
 
-            var L = arena.doubleMat(n);
+            var L = new doubleMxN(n, n, Allocator.Temp);
             var P = new Pivot(n, Allocator.Persistent);
 
             bool ok = CHOP.decomp(in A, ref L, ref P);
             RecordEq(ok ? 1 : 0, 0); // indefinite => false
 
             P.Dispose();
-            arena.Dispose();
         }
 
         void Indefinite3x3()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 3;
-            var A = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Temp);
             // PSD-looking 2x2 block plus a negative eigenvalue contribution.
             A[0, 0] = 2f; A[1, 1] = 2f; A[2, 2] = 2f;
             A[0, 1] = 0f; A[1, 0] = 0f;
             A[0, 2] = 3f; A[2, 0] = 3f; // big off-diagonal => negative eigenvalue
             A[1, 2] = 0f; A[2, 1] = 0f;
 
-            var L = arena.doubleMat(n);
+            var L = new doubleMxN(n, n, Allocator.Temp);
             var P = new Pivot(n, Allocator.Persistent);
 
             bool ok = CHOP.decomp(in A, ref L, ref P);
             RecordEq(ok ? 1 : 0, 0);
 
             P.Dispose();
-            arena.Dispose();
         }
 
         // Direct-solve-status coverage: an indefinite matrix must report
@@ -282,13 +258,11 @@ public class doubleCHOPTests
         // CHOP.decomp, and RankInfo.Solved must be false.
         void IndefiniteStatus()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 2;
-            var A = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Temp);
             A[0, 0] = 1f; A[0, 1] = 2f; A[1, 0] = 2f; A[1, 1] = 1f; // eigenvalues 3, -1
 
-            var L = arena.doubleMat(n);
+            var L = new doubleMxN(n, n, Allocator.Temp);
             var P = new Pivot(n, Allocator.Persistent);
 
             RankInfo info = CHOP.decomp(in A, ref L, ref P);
@@ -297,16 +271,13 @@ public class doubleCHOPTests
             RecordEq(info ? 1 : 0, 0);
 
             P.Dispose();
-            arena.Dispose();
         }
 
         void ZeroMatrix()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 4;
-            var A = arena.doubleMat(n, n); // zero
-            var L = arena.doubleMat(n);
+            var A = new doubleMxN(n, n, Allocator.Temp); // zero
+            var L = new doubleMxN(n, n, Allocator.Temp);
             var P = new Pivot(n, Allocator.Persistent);
 
             var pivInfo = CHOP.decomp(in A, ref L, ref P);
@@ -315,28 +286,25 @@ public class doubleCHOPTests
             RecordEq(rank, 0);
 
             // solve: x = 0 for any b.
-            var b = arena.doubleRandomVec(n, -1f, 1f, 999);
+            var b = GenerateOP.doubleRandomVec(n, -1f, 1f, 999, Allocator.Temp);
             CHOP.decompSolve(ref L, in P, rank, ref b);
             RecordBound(Norms.L2(in b), (double)1E-6f);
 
             P.Dispose();
-            arena.Dispose();
         }
 
         void Rank1Outer()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 4;
-            var v = arena.doubleVec(n);
+            var v = new doubleN(n, Allocator.Temp);
             v[0] = 1f; v[1] = 2f; v[2] = 3f; v[3] = 0.5f;
 
-            var A = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Temp);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
                     A[i, j] = v[i] * v[j]; // rank-1 PSD
 
-            var L = arena.doubleMat(n);
+            var L = new doubleMxN(n, n, Allocator.Temp);
             var P = new Pivot(n, Allocator.Persistent);
 
             var pivInfo = CHOP.decomp(in A, ref L, ref P);
@@ -346,7 +314,6 @@ public class doubleCHOPTests
             AssertReconstruct(in A, in L, in P, rank, (double)1E-4f);
 
             P.Dispose();
-            arena.Dispose();
         }
 
         // Zero diagonal but nonzero off-diagonal => genuinely indefinite (eigenvalues +/-1), must NOT
@@ -354,32 +321,27 @@ public class doubleCHOPTests
         // hole: with the all-entries scale + trailing-block residual check, this returns false.
         void ZeroDiagonalIndefinite()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 2;
-            var A = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Temp);
             A[0, 1] = 1f; A[1, 0] = 1f; // diagonal stays zero
 
-            var L = arena.doubleMat(n);
+            var L = new doubleMxN(n, n, Allocator.Temp);
             var P = new Pivot(n, Allocator.Persistent);
 
             bool ok = CHOP.decomp(in A, ref L, ref P);
             RecordEq(ok ? 1 : 0, 0); // indefinite => false
 
             P.Dispose();
-            arena.Dispose();
         }
 
         // 1x1 SPD: A=[[4]], b=[8] => x=[2]; rank 1, reconstruction trivial.
         void SingleElement()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 1;
-            var A = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Temp);
             A[0, 0] = 4f;
 
-            var L = arena.doubleMat(n);
+            var L = new doubleMxN(n, n, Allocator.Temp);
             var P = new Pivot(n, Allocator.Persistent);
 
             var pivInfo = CHOP.decomp(in A, ref L, ref P);
@@ -388,13 +350,12 @@ public class doubleCHOPTests
             RecordEq(rank, 1);
             AssertReconstruct(in A, in L, in P, rank, (double)1E-5f);
 
-            var b = arena.doubleVec(n);
+            var b = new doubleN(n, Allocator.Temp);
             b[0] = 8f;
             CHOP.decompSolve(ref L, in P, rank, ref b);
             RecordBound(math.abs(b[0] - (double)2f), (double)1E-5f);
 
             P.Dispose();
-            arena.Dispose();
         }
 
         // Genuine least-squares: b has a component OUTSIDE range(A). The min-norm pseudoinverse must
@@ -403,19 +364,17 @@ public class doubleCHOPTests
         // NOT for an arbitrary solve). This is the only case where the (MᵀM)⁻² double-inverse matters.
         void OutOfRangeLeastSquares()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             for (uint t = 0; t < 12; t++)
             {
                 int n = 7, r = 3;
-                var B = arena.doubleRandomMat(n, r, -1f, 1f, 2600 + t * 19);
-                var A = Gram(in arena, in B);
+                var B = GenerateOP.doubleRandomMat(n, r, -1f, 1f, 2600 + t * 19, Allocator.Temp);
+                var A = Gram(in B);
 
                 // arbitrary b, generically NOT in range(A) since rank r < n.
-                var b = arena.doubleRandomVec(n, -2f, 2f, 77000 + t * 13);
+                var b = GenerateOP.doubleRandomVec(n, -2f, 2f, 77000 + t * 13, Allocator.Temp);
 
                 var P = new Pivot(n, Allocator.Persistent);
-                var Awork = A.Copy(); // solveInPlace is destructive; A is still needed below
+                var Awork = new doubleMxN(in A, Allocator.Temp); // solveInPlace is destructive; A is still needed below
                 bool ok = CHOP.solveInPlace(ref Awork, ref P, ref b); // b <- x
                 RecordEq(ok ? 1 : 0, 1);
 
@@ -423,19 +382,16 @@ public class doubleCHOPTests
                 var Ax = Blas.dot(A, b);
                 var AAx = Blas.dot(A, Ax);
                 // recompute A b — b now holds x, so rebuild b from the same seed.
-                var bOrig = arena.doubleRandomVec(n, -2f, 2f, 77000 + t * 13);
+                var bOrig = GenerateOP.doubleRandomVec(n, -2f, 2f, 77000 + t * 13, Allocator.Temp);
                 var Ab = Blas.dot(A, bOrig);
 
                 double scale = Norms.L2(in Ab) + (double)1f;
-                var diff = arena.doubleVec(n);
+                var diff = new doubleN(n, Allocator.Temp);
                 for (int i = 0; i < n; i++) diff[i] = AAx[i] - Ab[i];
                 RecordBound(Norms.L2(in diff) / scale, (double)1E-2f);
 
                 P.Dispose();
-                arena.Clear();
             }
-
-            arena.Dispose();
         }
 
         // CHOP.solveInPlace's exit (A_to_L, P) must be a valid
@@ -450,35 +406,33 @@ public class doubleCHOPTests
 
         void SolveInPlaceExitIsUsableFactorCase(int n, int r, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var B = arena.doubleRandomMat(n, r, -1f, 1f, seed);
-            var A = Gram(in arena, in B);
+            var B = GenerateOP.doubleRandomMat(n, r, -1f, 1f, seed, Allocator.Temp);
+            var A = Gram(in B);
             if (r >= n)
                 for (int d = 0; d < n; d++) A[d, d] += (double)n; // diagonal boost -> well-conditioned full rank
 
-            var b1 = arena.doubleRandomVec(n, -2f, 2f, seed + 1u);
-            var b2 = arena.doubleRandomVec(n, -2f, 2f, seed + 2u);
+            var b1 = GenerateOP.doubleRandomVec(n, -2f, 2f, seed + 1u, Allocator.Temp);
+            var b2 = GenerateOP.doubleRandomVec(n, -2f, 2f, seed + 2u, Allocator.Temp);
 
             // path under test: solveInPlace (first RHS) on a copy of A, then decompSolve (second
             // RHS) off its exit.
-            var Afused = A.Copy();
+            var Afused = new doubleMxN(in A, Allocator.Temp);
             var Pfused = new Pivot(n, Allocator.Persistent);
-            var x1 = b1.Copy();
+            var x1 = new doubleN(in b1, Allocator.Temp);
             var info = CHOP.solveInPlace(ref Afused, ref Pfused, ref x1);
             Assert.IsTrue(info.Solved);
 
-            var x2 = b2.Copy();
+            var x2 = new doubleN(in b2, Allocator.Temp);
             CHOP.decompSolve(ref Afused, in Pfused, info.rank, ref x2);
 
             // oracle: fresh decomp + decompSolve on an independent copy, same second RHS and rank.
-            var L = arena.doubleMat(n, n);
+            var L = new doubleMxN(n, n, Allocator.Temp);
             var Pref = new Pivot(n, Allocator.Persistent);
             var infoRef = CHOP.decomp(in A, ref L, ref Pref);
             Assert.IsTrue(infoRef.Solved);
             RecordEq(infoRef.rank, info.rank);
 
-            var x2ref = b2.Copy();
+            var x2ref = new doubleN(in b2, Allocator.Temp);
             CHOP.decompSolve(ref L, in Pref, infoRef.rank, ref x2ref);
 
             for (int i = 0; i < n; i++)
@@ -486,7 +440,6 @@ public class doubleCHOPTests
 
             Pfused.Dispose();
             Pref.Dispose();
-            arena.Dispose();
         }
 
         // Driver short-circuit purity: CHOP.solveInPlace on an INDEFINITE matrix
@@ -495,14 +448,12 @@ public class doubleCHOPTests
         // without it, decompSolve would run on a garbage/partial factor and corrupt b.
         void SolveInPlaceShortCircuitPurity()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 2;
-            var A = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Temp);
             A[0, 0] = 1f; A[0, 1] = 2f; A[1, 0] = 2f; A[1, 1] = 1f; // indefinite (eig 3, -1)
 
-            var b = arena.doubleRandomVec(n, -1f, 1f, 24680);
-            var bSnapshot = b.Copy(); // capture BEFORE the call
+            var b = GenerateOP.doubleRandomVec(n, -1f, 1f, 24680, Allocator.Temp);
+            var bSnapshot = new doubleN(in b, Allocator.Temp); // capture BEFORE the call
 
             var P = new Pivot(n, Allocator.Persistent);
             RankInfo info = CHOP.solveInPlace(ref A, ref P, ref b);
@@ -515,7 +466,6 @@ public class doubleCHOPTests
                 RecordEqExact(b[i], bSnapshot[i]);
 
             P.Dispose();
-            arena.Dispose();
         }
 
         // ================================================================================
@@ -535,13 +485,11 @@ public class doubleCHOPTests
 
         void BlockedFullRankSPDCase(int n, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var B = arena.doubleRandomMat(n, n, -1f, 1f, seed);
-            var A = Gram(in arena, in B);
+            var B = GenerateOP.doubleRandomMat(n, n, -1f, 1f, seed, Allocator.Temp);
+            var A = Gram(in B);
             for (int d = 0; d < n; d++) A[d, d] += (double)n; // diagonal boost: well-conditioned, smallest eig >= n
 
-            var L = arena.doubleMat(n);
+            var L = new doubleMxN(n, n, Allocator.Temp);
             var P = new Pivot(n, Allocator.Persistent);
 
             var info = CHOP.decomp(in A, ref L, ref P);
@@ -557,7 +505,6 @@ public class doubleCHOPTests
             RecordEq(P[0], argmaxDiag);
 
             P.Dispose();
-            arena.Dispose();
         }
 
         // (b) rank-deficient PSD (A = B Bᵀ, r < n) whose numerical rank falls STRICTLY INSIDE a block
@@ -568,12 +515,11 @@ public class doubleCHOPTests
         void BlockedRankDeficientMidBlock()
         {
             int n = 544, r = 110;   // r=110 lands in block [96,128): fjb = 110-96 = 14 finished columns to flush
-            var arena = new Arena(Allocator.Persistent);
 
-            var B = arena.doubleRandomMat(n, r, -1f, 1f, 701333u);
-            var A = Gram(in arena, in B);           // exact rank r; n-r zero eigenvalues are exactly zero
+            var B = GenerateOP.doubleRandomMat(n, r, -1f, 1f, 701333u, Allocator.Temp);
+            var A = Gram(in B);           // exact rank r; n-r zero eigenvalues are exactly zero
 
-            var L = arena.doubleMat(n);
+            var L = new doubleMxN(n, n, Allocator.Temp);
             var P = new Pivot(n, Allocator.Persistent);
 
             var info = CHOP.decomp(in A, ref L, ref P);
@@ -585,7 +531,6 @@ public class doubleCHOPTests
             AssertReconstruct(in A, in L, in P, info.rank, ReconstructPrecision(in A));
 
             P.Dispose();
-            arena.Dispose();
         }
 
         // (c) indefinite matrix whose negative curvature emerges DEEP in the trailing range. A strongly
@@ -598,10 +543,9 @@ public class doubleCHOPTests
         void BlockedIndefiniteDeep()
         {
             int n = 544;
-            var arena = new Arena(Allocator.Persistent);
 
-            var R = arena.doubleRandomMat(n, n, -1f, 1f, 701444u);
-            var A = arena.doubleMat(n, n); // zero
+            var R = GenerateOP.doubleRandomMat(n, n, -1f, 1f, 701444u, Allocator.Temp);
+            var A = new doubleMxN(n, n, Allocator.Temp); // zero
 
             // SPD background on [0, n-2): distinct ascending diagonals (base+i) dominate tiny symmetric
             // off-diagonals -> strictly diagonally dominant (SPD), all Schur diagonals stay positive.
@@ -619,7 +563,7 @@ public class doubleCHOPTests
             A[p, p] = (double)1; A[p + 1, p + 1] = (double)1;
             A[p, p + 1] = (double)2; A[p + 1, p] = (double)2; // eigenvalues 3, -1
 
-            var L = arena.doubleMat(n);
+            var L = new doubleMxN(n, n, Allocator.Temp);
             var P = new Pivot(n, Allocator.Persistent);
 
             var info = CHOP.decomp(in A, ref L, ref P);
@@ -627,7 +571,6 @@ public class doubleCHOPTests
             RecordEq(info.Solved ? 1 : 0, 0);
 
             P.Dispose();
-            arena.Dispose();
         }
 
         // (d) first pivot pulled from FAR beyond the first panel. A well-conditioned SPD (Gram + boost)
@@ -637,14 +580,13 @@ public class doubleCHOPTests
         void BlockedFirstPivotDeep()
         {
             int n = 544, deep = 500; // 500 is well past the first panel [0,32)
-            var arena = new Arena(Allocator.Persistent);
 
-            var B = arena.doubleRandomMat(n, n, -1f, 1f, 701555u);
-            var A = Gram(in arena, in B);
+            var B = GenerateOP.doubleRandomMat(n, n, -1f, 1f, 701555u, Allocator.Temp);
+            var A = Gram(in B);
             for (int d = 0; d < n; d++) A[d, d] += (double)n;   // well-conditioned full-rank SPD
             A[deep, deep] += (double)10000f;                    // dominant diagonal => forced first pivot
 
-            var L = arena.doubleMat(n);
+            var L = new doubleMxN(n, n, Allocator.Temp);
             var P = new Pivot(n, Allocator.Persistent);
 
             var info = CHOP.decomp(in A, ref L, ref P);
@@ -656,7 +598,6 @@ public class doubleCHOPTests
             AssertReconstruct(in A, in L, in P, info.rank, ReconstructPrecision(in A));
 
             P.Dispose();
-            arena.Dispose();
         }
 
         // SECONDARY: literal pivot-sequence + factor equivalence between the blocked path and an
@@ -670,10 +611,9 @@ public class doubleCHOPTests
         void BlockedVsUnblockedReference()
         {
             int n = 545; // ragged last panel, above the gate
-            var arena = new Arena(Allocator.Persistent);
 
-            var R = arena.doubleRandomMat(n, n, -1f, 1f, 701666u);
-            var A = arena.doubleMat(n, n);
+            var R = GenerateOP.doubleRandomMat(n, n, -1f, 1f, 701666u, Allocator.Temp);
+            var A = new doubleMxN(n, n, Allocator.Temp);
             for (int i = 0; i < n; i++) A[i, i] = (double)(10 + i); // ascending => reversal pivot order
             for (int i = 0; i < n; i++)
                 for (int j = i + 1; j < n; j++)
@@ -683,16 +623,16 @@ public class doubleCHOPTests
                 }
 
             // blocked path (public API, n > gate)
-            var Lb = arena.doubleMat(n);
+            var Lb = new doubleMxN(n, n, Allocator.Temp);
             var Pb = new Pivot(n, Allocator.Persistent);
             var infoB = CHOP.decomp(in A, ref Lb, ref Pb);
             RecordEq(infoB.Solved ? 1 : 0, 1);
             RecordEq(infoB.rank, n);
 
             // oracle: transcribed unblocked sweep on an independent copy
-            var Lr = arena.doubleMat(n);
+            var Lr = new doubleMxN(n, n, Allocator.Temp);
             var Pr = new Pivot(n, Allocator.Persistent);
-            int rankR = ReferenceUnblockedDecomp(ref arena, in A, ref Lr, ref Pr);
+            int rankR = ReferenceUnblockedDecomp(in A, ref Lr, ref Pr);
             RecordEq(infoB.rank, rankR);
 
             // (1) pivot sequences identical -- exact int equality, the primary equivalence assertion.
@@ -709,7 +649,6 @@ public class doubleCHOPTests
 
             Pb.Dispose();
             Pr.Dispose();
-            arena.Dispose();
         }
 
         // Self-contained transcription of CHOP.decomp's ORIGINAL unblocked per-column right-looking
@@ -717,13 +656,13 @@ public class doubleCHOPTests
         // symmetric swap, rank-1 Schur update). Returns the numerical rank; fills L (lower) and P.
         // Deliberately mirrors the template's small-matrix branch shape so it is an INDEPENDENT oracle,
         // not a call back into the code under test.
-        int ReferenceUnblockedDecomp(ref Arena arena, in doubleMxN A, ref doubleMxN L, ref Pivot P)
+        int ReferenceUnblockedDecomp(in doubleMxN A, ref doubleMxN L, ref Pivot P)
         {
             int n = A.M_Rows;
             P.Reset();
             int rank = n;
 
-            var W = arena.doubleMat(n, n);
+            var W = new doubleMxN(n, n, Allocator.Temp);
             for (int i = 0; i < n; i++)
                 for (int j = i; j < n; j++)
                     W[i, j] = A[j, i];
@@ -740,7 +679,7 @@ public class doubleCHOPTests
                 }
             double stopTol = (double)n * Consts.doubleEpsilon * absScale;
 
-            var urow = arena.doubleVec(n);
+            var urow = new doubleN(n, Allocator.Temp);
 
             for (int k = 0; k < n; k++)
             {
@@ -877,10 +816,10 @@ public class doubleCHOPTests
                     }
         }
 
-        static doubleMxN Gram(in Arena arena, in doubleMxN B)
+        static doubleMxN Gram(in doubleMxN B)
         {
             int n = B.M_Rows, r = B.N_Cols;
-            var A = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Temp);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
                 {

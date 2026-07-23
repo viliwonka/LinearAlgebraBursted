@@ -39,11 +39,9 @@ public class doubleTransposeTests
 
         public void TransSquare()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 16;
-            
-            doubleMxN A = arena.doubleRandomMat(dim, dim);
+
+            doubleMxN A = GenerateOP.doubleRandomMat(dim, dim);
 
             doubleMxN B = Blas.trans(A);
 
@@ -53,18 +51,14 @@ public class doubleTransposeTests
             for (int r = 0; r < dim; r++)
             for (int c = 0; c < dim; c++)
                 Assert.IsTrue(B[c, r] == A[r, c]);
-
-            arena.Dispose();
         }
 
         public void TransNonSquare()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            int rows = 8; 
+            int rows = 8;
             int cols = 32;
 
-            doubleMxN A = arena.doubleRandomMat(rows, cols);
+            doubleMxN A = GenerateOP.doubleRandomMat(rows, cols);
 
             doubleMxN B = Blas.trans(A);
 
@@ -74,8 +68,6 @@ public class doubleTransposeTests
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
                 Assert.IsTrue(B[c, r] == A[r, c]);
-
-            arena.Dispose();
         }
     }
 

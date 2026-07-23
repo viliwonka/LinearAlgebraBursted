@@ -40,17 +40,15 @@ public class iProxyIndexingTests {
                     break;
                 case TestType.RandomCalc:
                     RandomCalc();
-                break; 
+                break;
             }
         }
 
         public void VectorIndexing()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 16;
 
-            iProxyN vec = arena.iProxyVec(dim);
+            iProxyN vec = new iProxyN(dim, Allocator.Temp);
 
             // Forward-fill DISTINCT ground-truth values via the plain int indexer (oracle).
             for (int i = 0; i < dim; i++)
@@ -73,19 +71,15 @@ public class iProxyIndexingTests {
 
             for (int k = 1; k <= dim; k++)
                 Assert.IsTrue(vec[dim - k] == (iProxy)(1000 + k));
-
-            arena.Dispose();
         }
 
         // Same invariants as VectorIndexing (forward-fill oracle, from-end == Length-k, ^1 is
         // last, write-through-then-readback), on the flat 1D matrix indexer.
         public void MatrixIndexing1D()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int dim = 16;
 
-            iProxyMxN mat = arena.iProxyMat(dim, dim);
+            iProxyMxN mat = new iProxyMxN(dim, dim, Allocator.Temp);
 
             int len = dim * dim;
 
@@ -105,18 +99,14 @@ public class iProxyIndexingTests {
 
             for (int k = 1; k <= len; k++)
                 Assert.IsTrue(mat[len - k] == (iProxy)(1000 + k));
-
-            arena.Dispose();
         }
 
         public void MatrixIndexing2D()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int rows = 8;
             int cols = 16;
 
-            iProxyMxN mat = arena.iProxyMat(rows, cols);
+            iProxyMxN mat = new iProxyMxN(rows, cols, Allocator.Temp);
 
             // Forward-fill DISTINCT ground-truth values via the plain [r, c] oracle.
             for (int r = 0; r < rows; r++)
@@ -153,18 +143,14 @@ public class iProxyIndexingTests {
             for (int r = 1; r <= rows; r++)
             for (int c = 1; c <= cols; c++)
                 Assert.IsTrue(mat[rows - r, cols - c] == (iProxy)(1000 + r * cols + c));
-
-            arena.Dispose();
         }
 
         public void RandomCalc()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int rows = 8;
             int cols = 16;
 
-            iProxyMxN mat = arena.iProxyMat(rows, cols);
+            iProxyMxN mat = new iProxyMxN(rows, cols, Allocator.Temp);
 
             for(int r = 0; r < rows; r++)
             for(int c = 0; c < cols; c++)
@@ -177,8 +163,6 @@ public class iProxyIndexingTests {
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
                 Assert.IsTrue(mat[r, c] == (iProxy)(r * c * 2));
-
-            arena.Dispose();
         }
     }
 
@@ -194,7 +178,7 @@ public class iProxyIndexingTests {
     {
         new IndexingTestJob() { TestType = TestType.TestMatrix1D }.Run();
     }
-    
+
     [Test]
     public void MatrixIndexing2DTest()
     {

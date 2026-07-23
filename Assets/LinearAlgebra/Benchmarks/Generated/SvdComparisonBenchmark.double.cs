@@ -109,69 +109,73 @@ namespace LinearAlgebra.Benchmarks
         // ---- full k-sweep for one size ----
         static void BenchSizeDouble(StringBuilder sb, int m, int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A         = arena.doubleMat(m, n);
-            var sigmaTrue = arena.doubleVec(n);
+            var A         = new doubleMxN(m, n, Allocator.Persistent);
+            var sigmaTrue = new doubleN(n, Allocator.Persistent);
 
             new SvdCmpBuildJobDouble { A = A, SigmaTrue = sigmaTrue, seed = SvdCmpFmt.BuildSeed }.Run();
             double normA = FNormDouble(A);
 
             // thin — k = n (full decomposition)
             {
-                var U = arena.doubleMat(m, n);
-                var S = arena.doubleVec(n);
-                var V = arena.doubleMat(n, n);
+                var U = new doubleMxN(m, n, Allocator.Persistent);
+                var S = new doubleN(n, Allocator.Persistent);
+                var V = new doubleMxN(n, n, Allocator.Persistent);
                 var job  = new SvdCmpThinJobDouble { A = A, U = U, S = S, V = V };
                 var stat = Bench.Time(() => job.Run());
                 double sigErr   = SigErrDouble(S, sigmaTrue, n);
                 double reconErr = ReconErrDouble(A, U, S, V, n, normA);
                 double eyOpt    = EYOptDouble(sigmaTrue, n, normA);
                 sb.AppendLine(SvdCmpFmt.CmpRow("double", "thin", m, n, n, stat, sigErr, reconErr, eyOpt));
+                U.Dispose(); S.Dispose(); V.Dispose();
             }
 
             foreach (int k in SvdCmpFmt.KVals(n))
             {
-                var Uk = arena.doubleMat(m, k);
-                var Sk = arena.doubleVec(k);
-                var Vk = arena.doubleMat(n, k);
+                var Uk = new doubleMxN(m, k, Allocator.Persistent);
+                var Sk = new doubleN(k, Allocator.Persistent);
+                var Vk = new doubleMxN(n, k, Allocator.Persistent);
 
                 // truncated (GKL)
                 {
-                    var ws   = arena.doubleSVDTruncatedCache(m, n, k);
+                    var ws   = new doubleSVDTruncatedCache(m, n, k, Allocator.Persistent);
                     var job  = new SvdCmpTruncJobDouble { A = A, Uk = Uk, Sk = Sk, Vk = Vk, k = k, ws = ws };
                     var stat = Bench.Time(() => job.Run());
                     double sigErr   = SigErrDouble(Sk, sigmaTrue, k);
                     double reconErr = ReconErrDouble(A, Uk, Sk, Vk, k, normA);
                     double eyOpt    = EYOptDouble(sigmaTrue, k, normA);
                     sb.AppendLine(SvdCmpFmt.CmpRow("double", "svdTrunc", m, n, k, stat, sigErr, reconErr, eyOpt));
+                    ws.Dispose();
                 }
 
                 // randomized (HMT, oversample=10 matches workspace default)
                 {
-                    var ws   = arena.doubleSVDRandomizedCache(m, n, k);
+                    var ws   = new doubleSVDRandomizedCache(m, n, k, Allocator.Persistent);
                     var job  = new SvdCmpRandJobDouble { A = A, Uk = Uk, Sk = Sk, Vk = Vk, k = k, ws = ws };
                     var stat = Bench.Time(() => job.Run());
                     double sigErr   = SigErrDouble(Sk, sigmaTrue, k);
                     double reconErr = ReconErrDouble(A, Uk, Sk, Vk, k, normA);
                     double eyOpt    = EYOptDouble(sigmaTrue, k, normA);
                     sb.AppendLine(SvdCmpFmt.CmpRow("double", "svdRand", m, n, k, stat, sigErr, reconErr, eyOpt));
+                    ws.Dispose();
                 }
+
+                Uk.Dispose(); Sk.Dispose(); Vk.Dispose();
             }
 
-            arena.Dispose();
+            A.Dispose();
+            sigmaTrue.Dispose();
         }
 
         static void BenchThinDedicatedDouble(StringBuilder sb, int m, int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A         = arena.doubleMat(m, n);
-            var sigmaTrue = arena.doubleVec(n);
+            var A         = new doubleMxN(m, n, Allocator.Persistent);
+            var sigmaTrue = new doubleN(n, Allocator.Persistent);
             new SvdCmpBuildJobDouble { A = A, SigmaTrue = sigmaTrue, seed = SvdCmpFmt.BuildSeed }.Run();
             double normA = FNormDouble(A);
 
-            var U = arena.doubleMat(m, n);
-            var S = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var U = new doubleMxN(m, n, Allocator.Persistent);
+            var S = new doubleN(n, Allocator.Persistent);
+            var V = new doubleMxN(n, n, Allocator.Persistent);
             var job  = new SvdCmpThinJobDouble { A = A, U = U, S = S, V = V };
             var stat = Bench.Time(() => job.Run());
             double sigErr   = SigErrDouble(S, sigmaTrue, n);
@@ -179,21 +183,21 @@ namespace LinearAlgebra.Benchmarks
             double eyOpt    = EYOptDouble(sigmaTrue, n, normA);
             sb.AppendLine(SvdCmpFmt.CmpRow("double", "svdThin", m, n, n, stat, sigErr, reconErr, eyOpt));
 
-            arena.Dispose();
+            A.Dispose(); sigmaTrue.Dispose();
+            U.Dispose(); S.Dispose(); V.Dispose();
         }
 
         static void BenchRandDedicatedDouble(StringBuilder sb, int m, int n, int k)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A         = arena.doubleMat(m, n);
-            var sigmaTrue = arena.doubleVec(n);
+            var A         = new doubleMxN(m, n, Allocator.Persistent);
+            var sigmaTrue = new doubleN(n, Allocator.Persistent);
             new SvdCmpBuildJobDouble { A = A, SigmaTrue = sigmaTrue, seed = SvdCmpFmt.BuildSeed }.Run();
             double normA = FNormDouble(A);
 
-            var Uk = arena.doubleMat(m, k);
-            var Sk = arena.doubleVec(k);
-            var Vk = arena.doubleMat(n, k);
-            var ws   = arena.doubleSVDRandomizedCache(m, n, k);
+            var Uk = new doubleMxN(m, k, Allocator.Persistent);
+            var Sk = new doubleN(k, Allocator.Persistent);
+            var Vk = new doubleMxN(n, k, Allocator.Persistent);
+            var ws   = new doubleSVDRandomizedCache(m, n, k, Allocator.Persistent);
             var job  = new SvdCmpRandJobDouble { A = A, Uk = Uk, Sk = Sk, Vk = Vk, k = k, ws = ws };
             var stat = Bench.Time(() => job.Run());
             double sigErr   = SigErrDouble(Sk, sigmaTrue, k);
@@ -201,21 +205,21 @@ namespace LinearAlgebra.Benchmarks
             double eyOpt    = EYOptDouble(sigmaTrue, k, normA);
             sb.AppendLine(SvdCmpFmt.CmpRow("double", "svdRand", m, n, k, stat, sigErr, reconErr, eyOpt));
 
-            arena.Dispose();
+            A.Dispose(); sigmaTrue.Dispose();
+            Uk.Dispose(); Sk.Dispose(); Vk.Dispose(); ws.Dispose();
         }
 
         static void BenchTrunc1024Double(StringBuilder sb, int m, int n, int k)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A         = arena.doubleMat(m, n);
-            var sigmaTrue = arena.doubleVec(n);
+            var A         = new doubleMxN(m, n, Allocator.Persistent);
+            var sigmaTrue = new doubleN(n, Allocator.Persistent);
             new SvdCmpBuildJobDouble { A = A, SigmaTrue = sigmaTrue, seed = SvdCmpFmt.BuildSeed }.Run();
             double normA = FNormDouble(A);
 
-            var Uk = arena.doubleMat(m, k);
-            var Sk = arena.doubleVec(k);
-            var Vk = arena.doubleMat(n, k);
-            var ws   = arena.doubleSVDTruncatedCache(m, n, k);
+            var Uk = new doubleMxN(m, k, Allocator.Persistent);
+            var Sk = new doubleN(k, Allocator.Persistent);
+            var Vk = new doubleMxN(n, k, Allocator.Persistent);
+            var ws   = new doubleSVDTruncatedCache(m, n, k, Allocator.Persistent);
             var job  = new SvdCmpTruncJobDouble { A = A, Uk = Uk, Sk = Sk, Vk = Vk, k = k, ws = ws };
             var stat = Bench.Time(() => job.Run());
             double sigErr   = SigErrDouble(Sk, sigmaTrue, k);
@@ -223,7 +227,8 @@ namespace LinearAlgebra.Benchmarks
             double eyOpt    = EYOptDouble(sigmaTrue, k, normA);
             sb.AppendLine(SvdCmpFmt.CmpRow("double", "svdTrunc", m, n, k, stat, sigErr, reconErr, eyOpt));
 
-            arena.Dispose();
+            A.Dispose(); sigmaTrue.Dispose();
+            Uk.Dispose(); Sk.Dispose(); Vk.Dispose(); ws.Dispose();
         }
 
         // ---- accuracy helpers (managed, not Burst) ----

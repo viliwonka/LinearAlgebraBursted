@@ -42,10 +42,10 @@ public class fProxyAMGSolverTests
         static fProxy SymTol() => /*+choose[1e-3f|1e-8]*/1e-3f/*-choose*/;
 
         // Scalar 5-point 2D Poisson on a gx*gy grid (BR=1, full storage): SPD, diagonally dominant.
-        static fProxyBSR Poisson2D(ref Arena arena, int gx, int gy)
+        static fProxyBSR Poisson2D(int gx, int gy, Allocator allocator)
         {
             int n = gx * gy;
-            var b = arena.fProxyBSRBuilder(n, n, 1, 1, 5 * n);
+            var b = new fProxyBSRBuilder(n, n, 1, 1, allocator, 5 * n);
             for (int y = 0; y < gy; y++)
                 for (int x = 0; x < gx; x++)
                 {
@@ -56,7 +56,7 @@ public class fProxyAMGSolverTests
                     if (y > 0) b.AddValue(i, i - gx, (fProxy)(-1));
                     if (y < gy - 1) b.AddValue(i, i + gx, (fProxy)(-1));
                 }
-            return b.ToBSR(ref arena);
+            return b.ToBSR(allocator);
         }
 
         public void Execute()
@@ -88,53 +88,44 @@ public class fProxyAMGSolverTests
 
         void VCycleSolves()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = Poisson2D(ref arena, 16, 16);
+            var A = Poisson2D(16, 16, Allocator.Temp);
             int n = A.M_Rows;
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0xA31u);
-            var amg = arena.fProxyAMG(in A, out var info);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0xA31u);
+            var amg = new fProxyAMG(in A, out var info, Allocator.Temp);
             Assert.IsTrue(info.Solved);
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (fProxy)0;
             var si = MG.solve(in amg, in b, ref x, 100, Tol());
 
             Assert.IsTrue(si.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(fProxyKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
-
-            amg.Dispose();
-            arena.Dispose();
         }
 
         void MultiLevelBuilt()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = Poisson2D(ref arena, 32, 32);          // n = 1024 -> several levels
-            var amg = arena.fProxyAMG(in A, out var info);
+            var A = Poisson2D(32, 32, Allocator.Temp);          // n = 1024 -> several levels
+            var amg = new fProxyAMG(in A, out var info, Allocator.Temp);
 
             Assert.IsTrue(info.Solved);
             Assert.IsTrue(info.levels >= 3);
             Assert.IsTrue(info.coarseRows <= AMGOptions.Default.coarseMax);
-
-            amg.Dispose();
-            arena.Dispose();
         }
 
         void PcgAmgBeatsPlainCg()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = Poisson2D(ref arena, 24, 24);
+            var A = Poisson2D(24, 24, Allocator.Temp);
             int n = A.M_Rows;
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0xB42u);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0xB42u);
             fProxy tol = Tol();
 
-            var xCg = arena.fProxyVec(n);
+            var xCg = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) xCg[i] = (fProxy)0;
             var cgInfo = Krylov.cg(in A, in b, ref xCg, 8 * n, tol);
 
-            var amg = arena.fProxyAMG(in A, out _);
+            var amg = new fProxyAMG(in A, out _, Allocator.Temp);
             var M = new fProxyAMGPreconditioner(in amg);
-            var xPc = arena.fProxyVec(n);
+            var xPc = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) xPc[i] = (fProxy)0;
             var pcInfo = Krylov.cg(in A, in M, in b, ref xPc, 8 * n, tol);
 
@@ -144,97 +135,78 @@ public class fProxyAMGSolverTests
             Assert.IsTrue(fProxyKrylovBatteryOracles.RelResidualBSR(in A, in xPc, in b) <= tol);
             // AMG preconditioning must cut the iteration count.
             Assert.IsTrue(pcInfo.iterations < cgInfo.iterations);
-
-            amg.Dispose();
-            arena.Dispose();
         }
 
         void Deterministic()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = Poisson2D(ref arena, 20, 20);
+            var A = Poisson2D(20, 20, Allocator.Temp);
             int n = A.M_Rows;
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0xC53u);
-            var amg = arena.fProxyAMG(in A, out _);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0xC53u);
+            var amg = new fProxyAMG(in A, out _, Allocator.Temp);
 
-            var x1 = arena.fProxyVec(n); var x2 = arena.fProxyVec(n);
+            var x1 = new fProxyN(n, Allocator.Temp); var x2 = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) { x1[i] = (fProxy)0; x2[i] = (fProxy)0; }
             MG.solve(in amg, in b, ref x1, 50, Tol());
             MG.solve(in amg, in b, ref x2, 50, Tol());
 
             for (int i = 0; i < n; i++) Assert.IsTrue(x1[i] == x2[i]);
-
-            amg.Dispose();
-            arena.Dispose();
         }
 
         // cg validity: the symmetric V-cycle (pre==post) must give <M r1, r2> == <r1, M r2>.
         void PreconditionerSymmetric()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = Poisson2D(ref arena, 16, 16);
+            var A = Poisson2D(16, 16, Allocator.Temp);
             int n = A.M_Rows;
-            var amg = arena.fProxyAMG(in A, out _);
+            var amg = new fProxyAMG(in A, out _, Allocator.Temp);
 
             var M = new fProxyAMGPreconditioner(in amg);
-            var r1 = arena.fProxyRandomVec(n, -1f, 1f, 0x111u);
-            var r2 = arena.fProxyRandomVec(n, -1f, 1f, 0x222u);
-            var z1 = arena.fProxyVec(n); var z2 = arena.fProxyVec(n);
+            var r1 = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x111u);
+            var r2 = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x222u);
+            var z1 = new fProxyN(n, Allocator.Temp); var z2 = new fProxyN(n, Allocator.Temp);
             M.Apply(in r1, ref z1);
             M.Apply(in r2, ref z2);
 
             fProxy a = Blas.dot(z1, r2);   // <M r1, r2>
             fProxy b2 = Blas.dot(r1, z2);  // <r1, M r2>
             Assert.IsTrue(math.abs(a - b2) <= SymTol() * ((fProxy)1 + math.abs(a)));
-
-            amg.Dispose();
-            arena.Dispose();
         }
 
         // A system already <= coarseMax is a single-level hierarchy: the V-cycle is a pure dense
         // Cholesky solve (down/up loops empty), converging in one cycle.
         void SingleLevelHierarchy()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = Poisson2D(ref arena, 4, 4);            // n = 16 <= coarseMax(48)
+            var A = Poisson2D(4, 4, Allocator.Temp);            // n = 16 <= coarseMax(48)
             int n = A.M_Rows;
-            var amg = arena.fProxyAMG(in A, out var info);
+            var amg = new fProxyAMG(in A, out var info, Allocator.Temp);
             Assert.IsTrue(info.Solved);
             Assert.IsTrue(info.levels == 1);
             Assert.IsTrue(info.coarseRows == n);
 
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0x5171u);
-            var x = arena.fProxyVec(n);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x5171u);
+            var x = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (fProxy)0;
             var si = MG.solve(in amg, in b, ref x, 10, Tol());
             Assert.IsTrue(si.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(si.iterations == 1);
             Assert.IsTrue(fProxyKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
-
-            amg.Dispose();
-            arena.Dispose();
         }
 
         // Exercises the explicit-options overload with non-default theta/pre/post/coarseMax/maxLevels.
         void ExplicitOptions()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = Poisson2D(ref arena, 32, 32);
+            var A = Poisson2D(32, 32, Allocator.Temp);
             int n = A.M_Rows;
             var opts = new AMGOptions { theta = 0.1, pre = 2, post = 2, coarseMax = 16, maxLevels = 5 };
-            var amg = arena.fProxyAMG(in A, in opts, out var info);
+            var amg = new fProxyAMG(in A, in opts, out var info, Allocator.Temp);
             Assert.IsTrue(info.Solved);
             Assert.IsTrue(info.levels <= 5);
 
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0xE0F5u);
-            var x = arena.fProxyVec(n);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0xE0F5u);
+            var x = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (fProxy)0;
             var si = MG.solve(in amg, in b, ref x, 100, Tol());
             Assert.IsTrue(si.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(fProxyKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
-
-            amg.Dispose();
-            arena.Dispose();
         }
 
         // Indefinite input (negative diagonal) is single-level, so no smoother is built and the
@@ -242,36 +214,31 @@ public class fProxyAMGSolverTests
         // safely disposable (rather than silently poisoning a solve with NaN).
         void NotPositiveDefiniteFailsCleanly()
         {
-            var arena = new Arena(Allocator.Persistent);
             int nb = 4;
-            var bld = arena.fProxyBSRBuilder(nb, nb, 1, 1, 3 * nb);
+            var bld = new fProxyBSRBuilder(nb, nb, 1, 1, Allocator.Temp, 3 * nb);
             for (int i = 0; i < nb; i++)
             {
                 bld.AddValue(i, i, i == 2 ? (fProxy)(-3) : (fProxy)2);   // symmetric indefinite chain
                 if (i > 0) bld.AddValue(i, i - 1, (fProxy)(-1));
                 if (i < nb - 1) bld.AddValue(i, i + 1, (fProxy)(-1));
             }
-            var A = bld.ToBSR(ref arena);
+            var A = bld.ToBSR(Allocator.Temp);
 
-            var amg = arena.fProxyAMG(in A, out var info);
+            var amg = new fProxyAMG(in A, out var info, Allocator.Temp);
             Assert.IsTrue(!info.Solved);
             Assert.IsTrue(info.status == DirectSolveStatus.NotPositiveDefinite);
-
-            amg.Dispose();
-            arena.Dispose();
         }
 
         // One hierarchy, two different right-hand sides: internal scratch must reset between solves.
         void ReuseAcrossRhs()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = Poisson2D(ref arena, 16, 16);
+            var A = Poisson2D(16, 16, Allocator.Temp);
             int n = A.M_Rows;
-            var amg = arena.fProxyAMG(in A, out _);
+            var amg = new fProxyAMG(in A, out _, Allocator.Temp);
 
-            var b1 = arena.fProxyRandomVec(n, -1f, 1f, 0x1111u);
-            var b2 = arena.fProxyRandomVec(n, -1f, 1f, 0x2222u);
-            var x = arena.fProxyVec(n);
+            var b1 = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x1111u);
+            var b2 = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x2222u);
+            var x = new fProxyN(n, Allocator.Temp);
 
             for (int i = 0; i < n; i++) x[i] = (fProxy)0;
             var s1 = MG.solve(in amg, in b1, ref x, 100, Tol());
@@ -282,129 +249,105 @@ public class fProxyAMGSolverTests
             var s2 = MG.solve(in amg, in b2, ref x, 100, Tol());
             Assert.IsTrue(s2.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(fProxyKrylovBatteryOracles.RelResidualBSR(in A, in x, in b2) <= Tol());
-
-            amg.Dispose();
-            arena.Dispose();
         }
 
         void ZeroRhs()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = Poisson2D(ref arena, 8, 8);
+            var A = Poisson2D(8, 8, Allocator.Temp);
             int n = A.M_Rows;
-            var amg = arena.fProxyAMG(in A, out _);
+            var amg = new fProxyAMG(in A, out _, Allocator.Temp);
 
-            var b = arena.fProxyVec(n);
+            var b = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) b[i] = (fProxy)0;
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (fProxy)7;
 
             var si = MG.solve(in amg, in b, ref x, 50, Tol());
             Assert.IsTrue(si.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(si.iterations == 0);
             for (int i = 0; i < n; i++) Assert.IsTrue(x[i] == (fProxy)0);
-
-            amg.Dispose();
-            arena.Dispose();
         }
 
         // A warm start at (near) the solution converges in no more cycles than a cold start.
         void WarmStart()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = Poisson2D(ref arena, 24, 24);
+            var A = Poisson2D(24, 24, Allocator.Temp);
             int n = A.M_Rows;
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0x99A1u);
-            var amg = arena.fProxyAMG(in A, out _);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x99A1u);
+            var amg = new fProxyAMG(in A, out _, Allocator.Temp);
 
-            var xCold = arena.fProxyVec(n);
+            var xCold = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) xCold[i] = (fProxy)0;
             var cold = MG.solve(in amg, in b, ref xCold, 100, Tol());
             Assert.IsTrue(cold.status == IterativeSolveStatus.Converged);
 
-            var xWarm = arena.fProxyVec(n);
+            var xWarm = new fProxyN(n, Allocator.Temp);
             xWarm.Data.CopyFrom(xCold.Data);          // seed at the solution
             var warm = MG.solve(in amg, in b, ref xWarm, 100, Tol());
             Assert.IsTrue(warm.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(warm.iterations <= cold.iterations);
-
-            amg.Dispose();
-            arena.Dispose();
         }
 
         // maxIter exhausted before an unreachable tolerance -> MaxIterations status.
         void MaxIterationsExit()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = Poisson2D(ref arena, 32, 32);
+            var A = Poisson2D(32, 32, Allocator.Temp);
             int n = A.M_Rows;
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0xF1A1u);
-            var amg = arena.fProxyAMG(in A, out _);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0xF1A1u);
+            var amg = new fProxyAMG(in A, out _, Allocator.Temp);
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (fProxy)0;
             var si = MG.solve(in amg, in b, ref x, 1, (fProxy)1e-15);   // one cycle can't reach 1e-15
             Assert.IsTrue(si.status == IterativeSolveStatus.MaxIterations);
             Assert.IsTrue(si.iterations == 1);
-
-            amg.Dispose();
-            arena.Dispose();
         }
 
         // The IsCycleSymmetric flag (the cg-validity gate) reflects pre == post.
         void CycleSymmetryFlag()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = Poisson2D(ref arena, 8, 8);
+            var A = Poisson2D(8, 8, Allocator.Temp);
 
-            var sym = arena.fProxyAMG(in A, new AMGOptions { theta = 0, pre = 1, post = 1, coarseMax = 48, maxLevels = 20 }, out _);
+            var sym = new fProxyAMG(in A, new AMGOptions { theta = 0, pre = 1, post = 1, coarseMax = 48, maxLevels = 20 }, out _, Allocator.Temp);
             Assert.IsTrue(sym.IsCycleSymmetric);
 
-            var asym = arena.fProxyAMG(in A, new AMGOptions { theta = 0, pre = 2, post = 0, coarseMax = 48, maxLevels = 20 }, out _);
+            var asym = new fProxyAMG(in A, new AMGOptions { theta = 0, pre = 2, post = 0, coarseMax = 48, maxLevels = 20 }, out _, Allocator.Temp);
             Assert.IsTrue(!asym.IsCycleSymmetric);
-
-            sym.Dispose();
-            asym.Dispose();
-            arena.Dispose();
         }
 
         // A K-cycle hierarchy solves standalone (MG.solve iterates the K-cycle).
         void KCycleSolves()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = Poisson2D(ref arena, 24, 24);
+            var A = Poisson2D(24, 24, Allocator.Temp);
             int n = A.M_Rows;
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0x4B01u);
-            var amg = arena.fProxyAMG(in A, KOpts(), out var info);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x4B01u);
+            var amg = new fProxyAMG(in A, KOpts(), out var info, Allocator.Temp);
             Assert.IsTrue(info.Solved);
             Assert.IsTrue(amg.IsKCycle);
             Assert.IsTrue(!amg.IsCycleSymmetric);       // K-cycle is never cg-valid
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (fProxy)0;
             var si = MG.solve(in amg, in b, ref x, 100, Tol());
             Assert.IsTrue(si.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(fProxyKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
-
-            amg.Dispose();
-            arena.Dispose();
         }
 
         // The K-cycle's per-level Krylov acceleration is never worse than the V-cycle: it converges
-        // in no more outer cycles (usually fewer) on the same system.
+        // in no more outer cycles (usually fewer) on the same system. n = 48*48 = 2304 >= 2048 ->
+        // Allocator.Persistent with explicit Dispose (large-buffer policy).
         void KCycleTighterThanV()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = Poisson2D(ref arena, 48, 48);
+            var A = Poisson2D(48, 48, Allocator.Persistent);
             int n = A.M_Rows;
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0x4B02u);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x4B02u, Allocator.Persistent);
 
-            var vAmg = arena.fProxyAMG(in A, out _);           // default V-cycle
-            var xv = arena.fProxyVec(n); for (int i = 0; i < n; i++) xv[i] = (fProxy)0;
+            var vAmg = new fProxyAMG(in A, out _, Allocator.Persistent);           // default V-cycle
+            var xv = new fProxyN(n, Allocator.Persistent); for (int i = 0; i < n; i++) xv[i] = (fProxy)0;
             var vInfo = MG.solve(in vAmg, in b, ref xv, 200, Tol());
 
-            var kAmg = arena.fProxyAMG(in A, KOpts(), out _);
-            var xk = arena.fProxyVec(n); for (int i = 0; i < n; i++) xk[i] = (fProxy)0;
+            var kAmg = new fProxyAMG(in A, KOpts(), out _, Allocator.Persistent);
+            var xk = new fProxyN(n, Allocator.Persistent); for (int i = 0; i < n; i++) xk[i] = (fProxy)0;
             var kInfo = MG.solve(in kAmg, in b, ref xk, 200, Tol());
 
             Assert.IsTrue(vInfo.status == IterativeSolveStatus.Converged);
@@ -412,32 +355,31 @@ public class fProxyAMGSolverTests
             Assert.IsTrue(fProxyKrylovBatteryOracles.RelResidualBSR(in A, in xk, in b) <= Tol());
             Assert.IsTrue(kInfo.iterations <= vInfo.iterations);
 
+            A.Dispose();
+            b.Dispose();
             vAmg.Dispose();
+            xv.Dispose();
             kAmg.Dispose();
-            arena.Dispose();
+            xk.Dispose();
         }
 
         // The explicit-near-nullspace overload with B = ones (m=1) reproduces the scalar default.
         void NearNullspaceOnesMatchesDefault()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = Poisson2D(ref arena, 16, 16);
+            var A = Poisson2D(16, 16, Allocator.Temp);
             int n = A.M_Rows;
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0x4E01u);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x4E01u);
 
-            var B = arena.fProxyMat(n, 1);
+            var B = new fProxyMxN(n, 1, Allocator.Temp);
             for (int i = 0; i < n; i++) B[i, 0] = (fProxy)1;
-            var amg = arena.fProxyAMG(in A, in B, out var info);
+            var amg = new fProxyAMG(in A, in B, out var info, Allocator.Temp);
             Assert.IsTrue(info.Solved);
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (fProxy)0;
             var si = MG.solve(in amg, in b, ref x, 100, Tol());
             Assert.IsTrue(si.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(fProxyKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
-
-            amg.Dispose();
-            arena.Dispose();
         }
 
         // A vector problem: two decoupled 1D Laplacians stacked into BR=2 blocks. The near-nullspace
@@ -445,10 +387,9 @@ public class fProxyAMGSolverTests
         // block size becomes m=2.
         void BlockNearNullspaceSolves()
         {
-            var arena = new Arena(Allocator.Persistent);
             int nb = 40, BR = 2, m = 2, n = nb * BR;
-            var bld = arena.fProxyBSRBuilder(nb, nb, BR, BR, 3 * nb);
-            var diag = arena.fProxyMat(BR, BR); var off = arena.fProxyMat(BR, BR);
+            var bld = new fProxyBSRBuilder(nb, nb, BR, BR, Allocator.Temp, 3 * nb);
+            var diag = new fProxyMxN(BR, BR, Allocator.Temp); var off = new fProxyMxN(BR, BR, Allocator.Temp);
             for (int r = 0; r < BR; r++)
                 for (int c = 0; c < BR; c++)
                 { diag[r, c] = r == c ? (fProxy)2 : (fProxy)0; off[r, c] = r == c ? (fProxy)(-1) : (fProxy)0; }
@@ -458,46 +399,39 @@ public class fProxyAMGSolverTests
                 if (i > 0) bld.AddBlock(i, i - 1, in off);
                 if (i < nb - 1) bld.AddBlock(i, i + 1, in off);
             }
-            var A = bld.ToBSR(ref arena);
+            var A = bld.ToBSR(Allocator.Temp);
 
             // Near-nullspace: column c is the constant of component c (1 at rows ≡ c mod BR).
-            var B = arena.fProxyMat(n, m);
+            var B = new fProxyMxN(n, m, Allocator.Temp);
             for (int r = 0; r < n; r++)
                 for (int c = 0; c < m; c++) B[r, c] = (r % BR) == c ? (fProxy)1 : (fProxy)0;
 
-            var amg = arena.fProxyAMG(in A, in B, out var info);
+            var amg = new fProxyAMG(in A, in B, out var info, Allocator.Temp);
             Assert.IsTrue(info.Solved);
             Assert.IsTrue(info.levels >= 2);
 
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0x4E11u);
-            var x = arena.fProxyVec(n);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x4E11u);
+            var x = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (fProxy)0;
             var si = MG.solve(in amg, in b, ref x, 200, Tol());
             Assert.IsTrue(si.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(fProxyKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
-
-            amg.Dispose();
-            arena.Dispose();
         }
 
         // A K-cycle preconditioner (variable operator) drives Flexible CG to convergence.
         void FcgKCycleConverges()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = Poisson2D(ref arena, 24, 24);
+            var A = Poisson2D(24, 24, Allocator.Temp);
             int n = A.M_Rows;
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0x4B03u);
-            var amg = arena.fProxyAMG(in A, KOpts(), out _);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x4B03u);
+            var amg = new fProxyAMG(in A, KOpts(), out _, Allocator.Temp);
             var M = new fProxyAMGPreconditioner(in amg);
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (fProxy)0;
             var info = Krylov.fcg(in A, in M, in b, ref x, 4 * n, Tol());
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(fProxyKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
-
-            amg.Dispose();
-            arena.Dispose();
         }
     }
 
@@ -526,9 +460,8 @@ public class fProxyAMGSolverTests
     [Test]
     public void AsymmetricCyclePcgRejected()
     {
-        var arena = new Arena(Allocator.Persistent);
         int gx = 3, gy = 3, n = gx * gy;
-        var bld = arena.fProxyBSRBuilder(n, n, 1, 1, 5 * n);
+        var bld = new fProxyBSRBuilder(n, n, 1, 1, Allocator.Temp, 5 * n);
         for (int y = 0; y < gy; y++)
             for (int x = 0; x < gx; x++)
             {
@@ -539,16 +472,13 @@ public class fProxyAMGSolverTests
                 if (y > 0) bld.AddValue(i, i - gx, (fProxy)(-1));
                 if (y < gy - 1) bld.AddValue(i, i + gx, (fProxy)(-1));
             }
-        var A = bld.ToBSR(ref arena);
+        var A = bld.ToBSR(Allocator.Temp);
 
-        var amg = arena.fProxyAMG(in A, new AMGOptions { theta = 0, pre = 2, post = 0, coarseMax = 48, maxLevels = 20 }, out var info);
+        var amg = new fProxyAMG(in A, new AMGOptions { theta = 0, pre = 2, post = 0, coarseMax = 48, maxLevels = 20 }, out var info, Allocator.Temp);
         Assert.IsTrue(info.Solved);
         var M = new fProxyAMGPreconditioner(in amg);          // constructing is fine
-        var rhs = arena.fProxyRandomVec(n, -1f, 1f, 0x321u);
-        var sol = arena.fProxyVec(n);
+        var rhs = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x321u);
+        var sol = new fProxyN(n, Allocator.Temp);
         Assert.Throws<ArgumentException>(() => { Krylov.cg(in A, in M, in rhs, ref sol); });
-
-        amg.Dispose();
-        arena.Dispose();
     }
 }

@@ -58,12 +58,11 @@ namespace LinearAlgebra.Benchmarks
         static string SvdRandFProxy(int n)
         {
             const int k = 16;
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyMat(n, n);
-            var Uk = arena.fProxyMat(n, k);
-            var Sk = arena.fProxyVec(k);
-            var Vk = arena.fProxyMat(n, k);
-            var ws = arena.fProxySVDRandomizedCache(n, n, k);
+            var A = new fProxyMxN(n, n, Allocator.Persistent);
+            var Uk = new fProxyMxN(n, k, Allocator.Persistent);
+            var Sk = new fProxyN(k, Allocator.Persistent);
+            var Vk = new fProxyMxN(n, k, Allocator.Persistent);
+            var ws = new fProxySVDRandomizedCache(n, n, k, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -73,18 +72,17 @@ namespace LinearAlgebra.Benchmarks
             var job = new SvdRandomizedJobFProxy { A = A, Uk = Uk, Sk = Sk, Vk = Vk, ws = ws };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); Uk.Dispose(); Sk.Dispose(); Vk.Dispose(); ws.Dispose();
             return Bench.RowTime("fProxy", n, stat);
         }
 
         // ---- pinvSolve ----
         static string PinvFProxy(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyMat(n, n);
-            var b = arena.fProxyVec(n);
-            var x = arena.fProxyVec(n);
-            var ws = arena.fProxySVDCache(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Persistent);
+            var b = new fProxyN(n, Allocator.Persistent);
+            var x = new fProxyN(n, Allocator.Persistent);
+            var ws = new fProxySVDCache(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -98,17 +96,16 @@ namespace LinearAlgebra.Benchmarks
             var job = new PinvSolveJobFProxy { A = A, b = b, x = x, ws = ws };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); b.Dispose(); x.Dispose(); ws.Dispose();
             return Bench.RowTime("fProxy", n, stat);
         }
 
         // ---- pseudoInverse ----
         static string PseudoInvFProxy(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyMat(n, n);
-            var Aplus = arena.fProxyMat(n, n);
-            var ws = arena.fProxySVDCache(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Persistent);
+            var Aplus = new fProxyMxN(n, n, Allocator.Persistent);
+            var ws = new fProxySVDCache(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -120,7 +117,7 @@ namespace LinearAlgebra.Benchmarks
             var job = new PseudoInverseJobFProxy { A = A, Aplus = Aplus, ws = ws };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); Aplus.Dispose(); ws.Dispose();
             return Bench.RowTime("fProxy", n, stat);
         }
     }

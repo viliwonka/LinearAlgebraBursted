@@ -46,25 +46,25 @@ public class fProxyTFQMRTests
 
         // Dense nonsymmetric, diagonally dominant (well-conditioned, nonsingular): random entries +
         // a heavy diagonal. Not symmetric (random off-diagonals differ across the diagonal).
-        static fProxyMxN DenseNonsym(ref Arena arena, int n, uint seed)
+        static fProxyMxN DenseNonsym(int n, uint seed)
         {
-            var A = arena.fProxyRandomMat(n, n, -1f, 1f, seed);
+            var A = GenerateOP.fProxyRandomMat(n, n, -1f, 1f, seed);
             for (int i = 0; i < n; i++) A[i, i] += (fProxy)(2 * n);
             return A;
         }
 
         // Scalar 1D convection-diffusion: diagonal 6, super -1, sub -3 — nonsymmetric, diagonally
         // dominant. Full storage.
-        static fProxyBSR ConvDiff1D(ref Arena arena, int n)
+        static fProxyBSR ConvDiff1D(int n)
         {
-            var b = arena.fProxyBSRBuilder(n, n, 1, 1, 3 * n);
+            var b = new fProxyBSRBuilder(n, n, 1, 1, Allocator.Temp, 3 * n);
             for (int i = 0; i < n; i++)
             {
                 b.AddValue(i, i, (fProxy)6);
                 if (i > 0) b.AddValue(i, i - 1, (fProxy)(-3));
                 if (i < n - 1) b.AddValue(i, i + 1, (fProxy)(-1));
             }
-            return b.ToBSR(ref arena);
+            return b.ToBSR(Allocator.Temp);
         }
 
         static fProxy RelResidualDense(in fProxyMxN A, in fProxyN x, in fProxyN b)
@@ -101,51 +101,44 @@ public class fProxyTFQMRTests
         // Basic convergence on a nonsymmetric dense square system + fresh residual check.
         void SolvesDenseNonsym()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 40;
-            var A = DenseNonsym(ref arena, n, 0x7F01u);
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0x7F02u);
+            var A = DenseNonsym(n, 0x7F01u);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x7F02u);
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (fProxy)0;
             var info = Krylov.tfqmr(in A, in b, ref x, MaxIter(n), Tol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(info.Solved);
             Assert.IsTrue(RelResidualDense(in A, in x, in b) <= Tol());
-
-            arena.Dispose();
         }
 
         // Required #1: known-solution recovery. b = A*xTrue -> recovered x ~ xTrue elementwise.
         void KnownSolution()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 32;
-            var A = DenseNonsym(ref arena, n, 0x7F11u);
-            var xTrue = arena.fProxyRandomVec(n, -1f, 1f, 0x7F12u);
+            var A = DenseNonsym(n, 0x7F11u);
+            var xTrue = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x7F12u);
             var b = Blas.dot(A, xTrue);
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (fProxy)0;
             var info = Krylov.tfqmr(in A, in b, ref x, MaxIter(n), Tol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(math.abs(x[i] - xTrue[i]) <= SolTol() * ((fProxy)1 + math.abs(xTrue[i])));
-
-            arena.Dispose();
         }
 
         // Required #2: agreement with an independent direct LU solve on the SAME random (A, b).
         void MatchesDirectSolve()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 30;
-            var A = DenseNonsym(ref arena, n, 0x7F21u);
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0x7F22u);
+            var A = DenseNonsym(n, 0x7F21u);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x7F22u);
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (fProxy)0;
             var info = Krylov.tfqmr(in A, in b, ref x, MaxIter(n), Tol());
 
@@ -161,45 +154,37 @@ public class fProxyTFQMRTests
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(math.abs(x[i] - xRef[i]) <= MatchTol() * ((fProxy)1 + math.abs(xRef[i])));
-
-            arena.Dispose();
         }
 
         // BSR nonsymmetric convergence + fresh residual check.
         void SolvesBSRNonsym()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 120;
-            var A = ConvDiff1D(ref arena, n);
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0x7F32u);
+            var A = ConvDiff1D(n);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x7F32u);
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (fProxy)0;
             var info = Krylov.tfqmr(in A, in b, ref x, MaxIter(n), Tol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(RelResidualBSR(in A, in x, in b) <= Tol());
-
-            arena.Dispose();
         }
 
         // ILU(0)-right-preconditioned BSR converges.
         void PreconditionedILU0()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 150;
-            var A = ConvDiff1D(ref arena, n);
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0x7F42u);
-            var M = arena.fProxyILU0(in A);
+            var A = ConvDiff1D(n);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x7F42u);
+            var M = new fProxyILU0(in A, Allocator.Temp);
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (fProxy)0;
             var info = Krylov.tfqmr(in A, in M, in b, ref x, MaxIter(n), Tol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(RelResidualBSR(in A, in x, in b) <= Tol());
-
-            arena.Dispose();
         }
 
         // Required #3: identity-fold BIT-IDENTICAL. The unpreconditioned generic entry point and the
@@ -208,44 +193,41 @@ public class fProxyTFQMRTests
         // is allocated but never read/written under the identity fold.
         void IdentityFold()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 36;
-            var A = DenseNonsym(ref arena, n, 0x7F51u);
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0x7F52u);
+            var A = DenseNonsym(n, 0x7F51u);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x7F52u);
             var Aop = new fProxyDenseOperator(in A);
             int maxIter = MaxIter(n);
             fProxy tol = Tol();
 
             // Path A: unpreconditioned generic entry (six buffers, no uHat).
-            var xa = arena.fProxyVec(n);
+            var xa = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) xa[i] = (fProxy)0;
-            var rHat0a = arena.fProxyVec(n);
-            var ua = arena.fProxyVec(n);
-            var wa = arena.fProxyVec(n);
-            var va = arena.fProxyVec(n);
-            var aua = arena.fProxyVec(n);
-            var da = arena.fProxyVec(n);
+            var rHat0a = new fProxyN(n, Allocator.Temp);
+            var ua = new fProxyN(n, Allocator.Temp);
+            var wa = new fProxyN(n, Allocator.Temp);
+            var va = new fProxyN(n, Allocator.Temp);
+            var aua = new fProxyN(n, Allocator.Temp);
+            var da = new fProxyN(n, Allocator.Temp);
             var infoA = Krylov.tfqmr(in Aop, in b, ref xa,
                 ref rHat0a, ref ua, ref wa, ref va, ref aua, ref da, maxIter, tol);
 
             // Path B: merged generic entry with an explicit identity preconditioner (+ uHat, unused).
-            var xb = arena.fProxyVec(n);
+            var xb = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) xb[i] = (fProxy)0;
-            var rHat0b = arena.fProxyVec(n);
-            var ub = arena.fProxyVec(n);
-            var wb = arena.fProxyVec(n);
-            var vb = arena.fProxyVec(n);
-            var aub = arena.fProxyVec(n);
-            var db = arena.fProxyVec(n);
-            var uHat = arena.fProxyVec(n);
+            var rHat0b = new fProxyN(n, Allocator.Temp);
+            var ub = new fProxyN(n, Allocator.Temp);
+            var wb = new fProxyN(n, Allocator.Temp);
+            var vb = new fProxyN(n, Allocator.Temp);
+            var aub = new fProxyN(n, Allocator.Temp);
+            var db = new fProxyN(n, Allocator.Temp);
+            var uHat = new fProxyN(n, Allocator.Temp);
             var infoB = Krylov.tfqmr(in Aop, default(fProxyIdentityPreconditioner), in b, ref xb,
                 ref rHat0b, ref ub, ref wb, ref vb, ref aub, ref db, ref uHat, maxIter, tol);
 
             Assert.IsTrue(infoA.iterations == infoB.iterations);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(xa[i] == xb[i]);   // EXACT, bit-identical
-
-            arena.Dispose();
         }
 
         // Required #4: job-struct-copy safety / no hidden state between calls. Two independent solves
@@ -253,16 +235,15 @@ public class fProxyTFQMRTests
         // identical iteration counts (TFQMR keeps all state in caller-supplied buffers).
         void Determinism()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 60;
-            var A = ConvDiff1D(ref arena, n);
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0x7F62u);
+            var A = ConvDiff1D(n);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x7F62u);
 
-            var x1 = arena.fProxyVec(n);
+            var x1 = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x1[i] = (fProxy)0;
             var i1 = Krylov.tfqmr(in A, in b, ref x1, MaxIter(n), Tol());
 
-            var x2 = arena.fProxyVec(n);
+            var x2 = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x2[i] = (fProxy)0;
             var i2 = Krylov.tfqmr(in A, in b, ref x2, MaxIter(n), Tol());
 
@@ -271,28 +252,23 @@ public class fProxyTFQMRTests
             Assert.IsTrue(i1.iterations == i2.iterations);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(x1[i] == x2[i]);   // EXACT, bit-identical
-
-            arena.Dispose();
         }
 
         // Edge: zero rhs -> immediate converged, x set to zero, no iterations.
         void ZeroRhs()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 30;
-            var A = ConvDiff1D(ref arena, n);
-            var b = arena.fProxyVec(n);
+            var A = ConvDiff1D(n);
+            var b = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) b[i] = (fProxy)0;
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (fProxy)5;
             var info = Krylov.tfqmr(in A, in b, ref x, MaxIter(n), Tol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(info.iterations == 0);
             for (int i = 0; i < n; i++) Assert.IsTrue(x[i] == (fProxy)0);
-
-            arena.Dispose();
         }
     }
 

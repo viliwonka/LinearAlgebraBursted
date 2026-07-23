@@ -80,9 +80,9 @@ namespace LinearAlgebra.Benchmarks
 
     public static partial class QueryBenchmark
     {
-        static floatMxN FillFloat(Arena arena, int n)
+        static floatMxN FillFloat(int n)
         {
-            var A = arena.floatMat(n, n);
+            var A = new floatMxN(n, n, Allocator.Persistent);
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
                 for (int c = 0; c < n; c++)
@@ -92,74 +92,68 @@ namespace LinearAlgebra.Benchmarks
 
         static string RowArgMinFloat(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = FillFloat(arena, n);
-            var idx = arena.Indices(n);
+            var A = FillFloat(n);
+            var idx = new Indices(n, Allocator.Persistent);
             var job = new QueryRowArgMinJobFloat { A = A, Idx = idx };
             var stat = Bench.Time(() => job.Run());
-            arena.Dispose();
+            A.Dispose(); idx.Dispose();
             return Bench.Row("float", n, stat, flops);
         }
 
         static string ColArgMinFloat(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = FillFloat(arena, n);
-            var idx = arena.Indices(n);
-            var val = arena.floatVec(n);
+            var A = FillFloat(n);
+            var idx = new Indices(n, Allocator.Persistent);
+            var val = new floatN(n, Allocator.Persistent);
             var job = new QueryColArgMinJobFloat { A = A, Idx = idx, Val = val };
             var stat = Bench.Time(() => job.Run());
-            arena.Dispose();
+            A.Dispose(); idx.Dispose(); val.Dispose();
             return Bench.Row("float", n, stat, flops);
         }
 
         static string ArgMaxRowNormFloat(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = FillFloat(arena, n);
+            var A = FillFloat(n);
             var outv = new NativeArray<int>(1, Allocator.Persistent);
             var job = new QueryArgMaxRowNormJobFloat { A = A, Out = outv };
             var stat = Bench.Time(() => job.Run());
-            outv.Dispose(); arena.Dispose();
+            outv.Dispose(); A.Dispose();
             return Bench.Row("float", n, stat, flops);
         }
 
         static string ArgMaxColNormFloat(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = FillFloat(arena, n);
+            var A = FillFloat(n);
             var outv = new NativeArray<int>(1, Allocator.Persistent);
             var job = new QueryArgMaxColNormJobFloat { A = A, Out = outv };
             var stat = Bench.Time(() => job.Run());
-            outv.Dispose(); arena.Dispose();
+            outv.Dispose(); A.Dispose();
             return Bench.Row("float", n, stat, flops);
         }
 
         static string NearestColumnFloat(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = FillFloat(arena, n);
-            var q = arena.floatVec(n);
+            var A = FillFloat(n);
+            var q = new floatN(n, Allocator.Persistent);
             var rng = new Unity.Mathematics.Random(0x9E3779B9u ^ (uint)n);
             for (int r = 0; r < n; r++) q[r] = rng.NextFloat(-1f, 1f);
             var outv = new NativeArray<int>(1, Allocator.Persistent);
             var job = new QueryNearestColumnJobFloat { A = A, Q = q, Out = outv };
             var stat = Bench.Time(() => job.Run());
-            outv.Dispose(); arena.Dispose();
+            outv.Dispose(); A.Dispose(); q.Dispose();
             return Bench.Row("float", n, stat, flops);
         }
 
         static string NearestRowFloat(int n, double flops)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = FillFloat(arena, n);
-            var q = arena.floatVec(n);
+            var A = FillFloat(n);
+            var q = new floatN(n, Allocator.Persistent);
             var rng = new Unity.Mathematics.Random(0x9E3779B9u ^ (uint)n);
             for (int c = 0; c < n; c++) q[c] = rng.NextFloat(-1f, 1f);
             var outv = new NativeArray<int>(1, Allocator.Persistent);
             var job = new QueryNearestRowJobFloat { A = A, Q = q, Out = outv };
             var stat = Bench.Time(() => job.Run());
-            outv.Dispose(); arena.Dispose();
+            outv.Dispose(); A.Dispose(); q.Dispose();
             return Bench.Row("float", n, stat, flops);
         }
     }

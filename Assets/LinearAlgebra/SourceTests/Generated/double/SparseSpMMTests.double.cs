@@ -70,48 +70,48 @@ public class doubleSparseSpMMTests
         // ---- helpers (mirrors doubleSparseUnrollTests' BuildRandomSquare/BuildRandomSymmetric
         // recipe -- same 4x4 block grid shape, distinct seed range) ----------------------------
 
-        static doubleBSR BuildRandomSquare(ref Arena arena, int b, uint seedBase)
+        static doubleBSR BuildRandomSquare(int b, uint seedBase)
         {
-            var builder = arena.doubleBSRBuilder(4, 4, b, b);
-            builder.AddBlock(0, 0, arena.doubleRandomMat(b, b, (double)(-1f), (double)1f, seedBase + 1u));
-            builder.AddBlock(0, 2, arena.doubleRandomMat(b, b, (double)(-1f), (double)1f, seedBase + 2u));
-            builder.AddBlock(1, 1, arena.doubleRandomMat(b, b, (double)(-1f), (double)1f, seedBase + 3u));
-            builder.AddBlock(1, 3, arena.doubleRandomMat(b, b, (double)(-1f), (double)1f, seedBase + 4u));
-            builder.AddBlock(2, 0, arena.doubleRandomMat(b, b, (double)(-1f), (double)1f, seedBase + 5u));
-            builder.AddBlock(3, 3, arena.doubleRandomMat(b, b, (double)(-1f), (double)1f, seedBase + 6u));
-            return builder.ToBSR(ref arena);
+            var builder = new doubleBSRBuilder(4, 4, b, b, Allocator.Temp);
+            builder.AddBlock(0, 0, GenerateOP.doubleRandomMat(b, b, (double)(-1f), (double)1f, seedBase + 1u));
+            builder.AddBlock(0, 2, GenerateOP.doubleRandomMat(b, b, (double)(-1f), (double)1f, seedBase + 2u));
+            builder.AddBlock(1, 1, GenerateOP.doubleRandomMat(b, b, (double)(-1f), (double)1f, seedBase + 3u));
+            builder.AddBlock(1, 3, GenerateOP.doubleRandomMat(b, b, (double)(-1f), (double)1f, seedBase + 4u));
+            builder.AddBlock(2, 0, GenerateOP.doubleRandomMat(b, b, (double)(-1f), (double)1f, seedBase + 5u));
+            builder.AddBlock(3, 3, GenerateOP.doubleRandomMat(b, b, (double)(-1f), (double)1f, seedBase + 6u));
+            return builder.ToBSR(Allocator.Temp);
         }
 
-        static doubleMxN SymDiagBlock(ref Arena arena, int b, uint seed)
+        static doubleMxN SymDiagBlock(int b, uint seed)
         {
-            var M = arena.doubleRandomMat(b, b, (double)(-1f), (double)1f, seed);
+            var M = GenerateOP.doubleRandomMat(b, b, (double)(-1f), (double)1f, seed);
             return Blas.dot(M, M, true);   // M^T M -- symmetric by construction
         }
 
         // Off-diagonal blocks stored LOWER (blockCol <= blockRow), as ToBSRSymmetric now requires;
         // dense is derived via A.ToDense (side-agnostic), so only the stored position matters.
-        static doubleBSR BuildRandomSymmetric(ref Arena arena, int b, uint seedBase)
+        static doubleBSR BuildRandomSymmetric(int b, uint seedBase)
         {
-            var builder = arena.doubleBSRBuilder(4, 4, b, b);
-            builder.AddBlock(0, 0, SymDiagBlock(ref arena, b, seedBase + 1u));
-            builder.AddBlock(1, 1, SymDiagBlock(ref arena, b, seedBase + 2u));
-            builder.AddBlock(2, 2, SymDiagBlock(ref arena, b, seedBase + 3u));
-            builder.AddBlock(3, 3, SymDiagBlock(ref arena, b, seedBase + 4u));
-            builder.AddBlock(1, 0, arena.doubleRandomMat(b, b, (double)(-1f), (double)1f, seedBase + 5u));
-            builder.AddBlock(3, 1, arena.doubleRandomMat(b, b, (double)(-1f), (double)1f, seedBase + 6u));
-            builder.AddBlock(3, 0, arena.doubleRandomMat(b, b, (double)(-1f), (double)1f, seedBase + 7u));
-            return builder.ToBSRSymmetric(ref arena);
+            var builder = new doubleBSRBuilder(4, 4, b, b, Allocator.Temp);
+            builder.AddBlock(0, 0, SymDiagBlock(b, seedBase + 1u));
+            builder.AddBlock(1, 1, SymDiagBlock(b, seedBase + 2u));
+            builder.AddBlock(2, 2, SymDiagBlock(b, seedBase + 3u));
+            builder.AddBlock(3, 3, SymDiagBlock(b, seedBase + 4u));
+            builder.AddBlock(1, 0, GenerateOP.doubleRandomMat(b, b, (double)(-1f), (double)1f, seedBase + 5u));
+            builder.AddBlock(3, 1, GenerateOP.doubleRandomMat(b, b, (double)(-1f), (double)1f, seedBase + 6u));
+            builder.AddBlock(3, 0, GenerateOP.doubleRandomMat(b, b, (double)(-1f), (double)1f, seedBase + 7u));
+            return builder.ToBSRSymmetric(Allocator.Temp);
         }
 
         // AV[r,:] must equal BSR.spMV(A, V[r,:]) EXACTLY for every r in [0, rows).
-        static void CheckSpMMAgainstSpMV(ref Arena arena, in doubleBSR A, int rows, uint seed)
+        static void CheckSpMMAgainstSpMV(in doubleBSR A, int rows, uint seed)
         {
-            var V = arena.doubleRandomMat(rows, A.N_Cols, (double)(-1f), (double)1f, seed);
-            var AV = arena.doubleMat(rows, A.M_Rows);
+            var V = GenerateOP.doubleRandomMat(rows, A.N_Cols, (double)(-1f), (double)1f, seed);
+            var AV = new doubleMxN(rows, A.M_Rows, Allocator.Temp);
             BSR.spMM(in A, in V, ref AV, rows);
 
-            var rowIn = arena.doubleVec(A.N_Cols);
-            var rowOut = arena.doubleVec(A.M_Rows);
+            var rowIn = new doubleN(A.N_Cols, Allocator.Temp);
+            var rowOut = new doubleN(A.M_Rows, Allocator.Temp);
             for (int r = 0; r < rows; r++)
             {
                 for (int c = 0; c < A.N_Cols; c++) rowIn[c] = V[r, c];
@@ -123,11 +123,9 @@ public class doubleSparseSpMMTests
 
         void CheckSpMM(int b, uint seedBase, bool symmetric)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = symmetric ? BuildRandomSymmetric(ref arena, b, seedBase) : BuildRandomSquare(ref arena, b, seedBase);
+            var A = symmetric ? BuildRandomSymmetric(b, seedBase) : BuildRandomSquare(b, seedBase);
             for (int t = 0; t < Ks.Length; t++)
-                CheckSpMMAgainstSpMV(ref arena, in A, Ks[t], seedBase + 800u + (uint)(t * 10));
-            arena.Dispose();
+                CheckSpMMAgainstSpMV(in A, Ks[t], seedBase + 800u + (uint)(t * 10));
         }
 
         // Rectangular blocks (BR != BC) always route through the general bsrMatMat fallback,
@@ -135,40 +133,35 @@ public class doubleSparseSpMMTests
         // doubleSparseUnrollTests.CheckRectangularSpMV's boundary case.
         void CheckRectangular()
         {
-            var arena = new Arena(Allocator.Persistent);
             const int BR = 2, BC = 3;
-            var builder = arena.doubleBSRBuilder(3, 3, BR, BC);
-            builder.AddBlock(0, 0, arena.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 121001));
-            builder.AddBlock(0, 2, arena.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 121002));
-            builder.AddBlock(1, 1, arena.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 121003));
-            builder.AddBlock(2, 0, arena.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 121004));
-            var A = builder.ToBSR(ref arena);
+            var builder = new doubleBSRBuilder(3, 3, BR, BC, Allocator.Temp);
+            builder.AddBlock(0, 0, GenerateOP.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 121001));
+            builder.AddBlock(0, 2, GenerateOP.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 121002));
+            builder.AddBlock(1, 1, GenerateOP.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 121003));
+            builder.AddBlock(2, 0, GenerateOP.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 121004));
+            var A = builder.ToBSR(Allocator.Temp);
             for (int t = 0; t < Ks.Length; t++)
-                CheckSpMMAgainstSpMV(ref arena, in A, Ks[t], (uint)(121100 + t * 10));
-            arena.Dispose();
+                CheckSpMMAgainstSpMV(in A, Ks[t], (uint)(121100 + t * 10));
         }
 
         // doubleBSROperator.ApplyBlock is a one-line forward to BSR.spMM -- proves the wiring, not
         // just the kernel in isolation.
         void CheckApplyBlockForwards()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = BuildRandomSquare(ref arena, 3, 131000u);
+            var A = BuildRandomSquare(3, 131000u);
             var op = new doubleBSROperator(in A);
 
             int rows = 4;
-            var V = arena.doubleRandomMat(rows, A.N_Cols, (double)(-1f), (double)1f, 131900u);
-            var AVdirect = arena.doubleMat(rows, A.M_Rows);
+            var V = GenerateOP.doubleRandomMat(rows, A.N_Cols, (double)(-1f), (double)1f, 131900u);
+            var AVdirect = new doubleMxN(rows, A.M_Rows, Allocator.Temp);
             BSR.spMM(in A, in V, ref AVdirect, rows);
 
-            var AVop = arena.doubleMat(rows, A.M_Rows);
+            var AVop = new doubleMxN(rows, A.M_Rows, Allocator.Temp);
             op.ApplyBlock(in V, ref AVop, rows);
 
             for (int r = 0; r < rows; r++)
                 for (int c = 0; c < A.M_Rows; c++)
                     Assert.AreEqual((double)AVdirect[r, c], (double)AVop[r, c]);
-
-            arena.Dispose();
         }
     }
 
@@ -232,17 +225,15 @@ public class doubleSparseSpMMTests
     [Test]
     public void LOBPCGResultsUnchangedBySpMMKernelChange()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int g = 6;
         int n = g * g;
-        var A = arena.doubleLaplacian2D(g, g);
+        var A = doubleGallery.doubleLaplacian2D(g, g);
         int k = 3;
 
-        var wsOld = arena.doubleLOBPCGCache(n, k);
+        var wsOld = new doubleLOBPCGCache(n, k, Allocator.Temp);
         var infoOld = Eigen.lobpcg(new OldStyleBSROperatorDouble(in A), ref wsOld, k, Consts.doubleSqrtEps, 1000);
 
-        var wsNew = arena.doubleLOBPCGCache(n, k);
+        var wsNew = new doubleLOBPCGCache(n, k, Allocator.Temp);
         var infoNew = Eigen.lobpcg(in A, ref wsNew, k, Consts.doubleSqrtEps, 1000);
 
         Assert.IsTrue(infoOld.Solved, infoOld.ToString());
@@ -256,7 +247,5 @@ public class doubleSparseSpMMTests
             for (int c = 0; c < n; c++)
                 Assert.AreEqual((double)wsOld.X[i, c], (double)wsNew.X[i, c]);
         }
-
-        arena.Dispose();
     }
 }

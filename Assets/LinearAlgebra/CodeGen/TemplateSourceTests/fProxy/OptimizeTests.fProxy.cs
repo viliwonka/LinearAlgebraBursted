@@ -242,12 +242,11 @@ public class fProxyOptimizeTests
         // Gradient descent on the 4-D bowl from x = 0: converges to targets (1,2,3,4).
         public void GradientDescentBowl()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int n = 4;
 
-            var x = arena.fProxyVec(n);
-            var g = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
+            var g = new fProxyN(n, Allocator.Temp);
 
             var fn = new Bowl();
 
@@ -263,19 +262,16 @@ public class fProxyOptimizeTests
                 AssertFinite(x[i]);
                 AssertClose(x[i], fn.Target(i), 1E-3f);
             }
-
-            arena.Dispose();
         }
 
         // Starting exactly at the minimum: gradient already below tolerance -> 0 iterations.
         public void GradientDescentAtMinimum()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int n = 4;
 
-            var x = arena.fProxyVec(n);
-            var g = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
+            var g = new fProxyN(n, Allocator.Temp);
 
             var fn = new Bowl();
             for (int i = 0; i < n; i++)
@@ -293,8 +289,6 @@ public class fProxyOptimizeTests
                 AssertFinite(x[i]);
                 AssertClose(x[i], fn.Target(i), 1E-6f);
             }
-
-            arena.Dispose();
         }
 
         private void AssertFinite(fProxy v)
@@ -355,18 +349,15 @@ public class fProxyOptimizeTests
     [Test]
     public void GradientDescentThrowsOnMismatchedScratch()
     {
-        var arena = new Arena(Allocator.Persistent);
 
-        var x = arena.fProxyVec(4);
-        var g = arena.fProxyVec(3);
+        var x = new fProxyN(4, Allocator.Temp);
+        var g = new fProxyN(3, Allocator.Temp);
 
         var fn = new Bowl();
 
         Assert.Catch<ArgumentException>(() =>
             Optimize.gradientDescent(ref fn, ref x, ref g,
                                      (fProxy)0.1f, (fProxy)1E-4f, 100, out int iterations));
-
-        arena.Dispose();
     }
 
 }

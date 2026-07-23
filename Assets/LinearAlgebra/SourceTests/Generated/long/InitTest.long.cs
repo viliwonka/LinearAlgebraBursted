@@ -16,20 +16,11 @@ public class longInitTest
     {
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            Assert.AreEqual(0, arena.AllocationsCount);
-
             int vecLen = 7;
 
-            longN vec = arena.longVec(vecLen);
+            longN vec = new longN(vecLen, Allocator.Temp);
 
             Assert.AreEqual(vecLen, vec.N);
-            Assert.AreEqual(1, arena.AllocationsCount);
-            
-            arena.Clear();
-
-            Assert.AreEqual(0, arena.AllocationsCount);
         }
     }
 
@@ -44,20 +35,12 @@ public class longInitTest
     {
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int lenRows = 7;
             int lenColumns = 7;
 
-            longMxN vec = arena.longMat(lenRows, lenColumns);
+            longMxN vec = new longMxN(lenRows, lenColumns, Allocator.Temp);
 
             Assert.AreEqual(lenRows * lenColumns, vec.Length);
-            Assert.AreEqual(1, arena.AllocationsCount);
-
-            arena.Dispose();
-
-            Assert.AreEqual(0, arena.AllocationsCount);
-
         }
     }
 
@@ -72,28 +55,23 @@ public class longInitTest
     {
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
-            try
-            {
-                // Small exact ramp: (end-start) divisible by (N-1), so every element is exact.
-                longN v = arena.longLinVec(5, 0, 8);
-                for (int i = 0; i < 5; i++)
-                    Assert.IsTrue(v[i] == (long)(2 * i));
+            // Small exact ramp: (end-start) divisible by (N-1), so every element is exact.
+            longN v = GenerateOP.longLinVec(5, 0, 8);
+            for (int i = 0; i < 5; i++)
+                Assert.IsTrue(v[i] == (long)(2 * i));
 
-                // Large-endpoint ramp: interior values need more mantissa bits than float has
-                // (regression: interpolating in float corrupted interior values; the long variant
-                // was off by up to ~2^38). Endpoint chosen per type so end/4 is exact.
-                long bigEnd = (1L << 40) + 4;
-                longN w = arena.longLinVec(5, 0, bigEnd);
-                long step = (long)bigEnd / 4;
-                for (int i = 0; i < 5; i++)
-                    Assert.IsTrue((long)w[i] == i * step);
+            // Large-endpoint ramp: interior values need more mantissa bits than float has
+            // (regression: interpolating in float corrupted interior values; the long variant
+            // was off by up to ~2^38). Endpoint chosen per type so end/4 is exact.
+            long bigEnd = (1L << 40) + 4;
+            longN w = GenerateOP.longLinVec(5, 0, bigEnd);
+            long step = (long)bigEnd / 4;
+            for (int i = 0; i < 5; i++)
+                Assert.IsTrue((long)w[i] == i * step);
 
-                // Single-sample convention: returns {start}.
-                longN s = arena.longLinVec(1, 3, 9);
-                Assert.IsTrue(s[0] == (long)3);
-            }
-            finally { arena.Dispose(); }
+            // Single-sample convention: returns {start}.
+            longN s = GenerateOP.longLinVec(1, 3, 9);
+            Assert.IsTrue(s[0] == (long)3);
         }
     }
 

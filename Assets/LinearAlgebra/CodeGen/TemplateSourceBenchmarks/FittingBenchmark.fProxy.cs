@@ -63,13 +63,12 @@ namespace LinearAlgebra.Benchmarks
     {
         static string FitFProxy(int m, int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyMat(m, n);
-            var Src = arena.fProxyMat(m, n);
-            var b = arena.fProxyVec(m);
-            var bSrc = arena.fProxyVec(m);
-            var xTrue = arena.fProxyVec(n);
-            var x = arena.fProxyVec(n);
+            var A = new fProxyMxN(m, n, Allocator.Persistent);
+            var Src = new fProxyMxN(m, n, Allocator.Persistent);
+            var b = new fProxyN(m, Allocator.Persistent);
+            var bSrc = new fProxyN(m, Allocator.Persistent);
+            var xTrue = new fProxyN(n, Allocator.Persistent);
+            var x = new fProxyN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)m ^ ((uint)n << 16));
             for (int j = 0; j < n; j++) xTrue[j] = rng.NextFProxy(-1f, 1f);
@@ -101,7 +100,7 @@ namespace LinearAlgebra.Benchmarks
             var irls = new FitIRLSJobFProxy { A = A, b = b, x = x };
             var sIRLS = Bench.Time(() => irls.Run());
 
-            arena.Dispose();
+            A.Dispose(); Src.Dispose(); b.Dispose(); bSrc.Dispose(); xTrue.Dispose(); x.Dispose();
             var sb = new StringBuilder();
             sb.AppendLine(FittingFmt.Fmt("fProxy", "QR.solveInPlace L2", m, n, sQR));
             sb.AppendLine(FittingFmt.Fmt("fProxy", "LP.lad exact L1", m, n, sLad));

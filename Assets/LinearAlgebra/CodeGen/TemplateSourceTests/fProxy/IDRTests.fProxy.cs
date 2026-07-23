@@ -40,25 +40,25 @@ public class fProxyIDRTests
 
         // Dense nonsymmetric, diagonally dominant (well-conditioned, nonsingular): random entries +
         // a heavy diagonal. Not symmetric (random off-diagonals differ across the diagonal).
-        static fProxyMxN DenseNonsym(ref Arena arena, int n, uint seed)
+        static fProxyMxN DenseNonsym(int n, uint seed)
         {
-            var A = arena.fProxyRandomMat(n, n, -1f, 1f, seed);
+            var A = GenerateOP.fProxyRandomMat(n, n, -1f, 1f, seed);
             for (int i = 0; i < n; i++) A[i, i] += (fProxy)(2 * n);
             return A;
         }
 
         // Scalar 1D convection-diffusion (BR=1): diagonal 6, super -1, sub -3 — nonsymmetric,
         // diagonally dominant. Full storage.
-        static fProxyBSR ConvDiff1D(ref Arena arena, int n)
+        static fProxyBSR ConvDiff1D(int n)
         {
-            var b = arena.fProxyBSRBuilder(n, n, 1, 1, 3 * n);
+            var b = new fProxyBSRBuilder(n, n, 1, 1, Allocator.Temp, 3 * n);
             for (int i = 0; i < n; i++)
             {
                 b.AddValue(i, i, (fProxy)6);
                 if (i > 0) b.AddValue(i, i - 1, (fProxy)(-3));
                 if (i < n - 1) b.AddValue(i, i + 1, (fProxy)(-1));
             }
-            return b.ToBSR(ref arena);
+            return b.ToBSR(Allocator.Temp);
         }
 
         public void Execute()
@@ -82,55 +82,48 @@ public class fProxyIDRTests
         // (1) Basic convergence on a nonsymmetric square system.
         void SolvesDenseNonsym()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 40;
-            var A = DenseNonsym(ref arena, n, 0x1D01u);
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0x1D02u);
+            var A = DenseNonsym(n, 0x1D01u);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x1D02u);
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (fProxy)0;
             var info = Krylov.idr(in A, in b, ref x, 4, 20 * n, Tol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(info.Solved);
             Assert.IsTrue(fProxyKrylovBatteryOracles.RelResidualDense(in A, in x, in b) <= Tol());
-
-            arena.Dispose();
         }
 
         // (2) Known-solution recovery: b = A*xTrue -> recovered x ~ xTrue.
         void KnownSolution()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 32;
-            var A = DenseNonsym(ref arena, n, 0x1D11u);
-            var xTrue = arena.fProxyRandomVec(n, -1f, 1f, 0x1D12u);
+            var A = DenseNonsym(n, 0x1D11u);
+            var xTrue = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x1D12u);
             var b = Blas.dot(A, xTrue);
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (fProxy)0;
             var info = Krylov.idr(in A, in b, ref x, 4, 20 * n, Tol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(math.abs(x[i] - xTrue[i]) <= SolTol() * ((fProxy)1 + math.abs(xTrue[i])));
-
-            arena.Dispose();
         }
 
         // (1, cont.) Cross-check the IDR solution against a gmres reference on the SAME system.
         void MatchesGmres()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 100;
-            var A = ConvDiff1D(ref arena, n);
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0x1D22u);
+            var A = ConvDiff1D(n);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x1D22u);
 
-            var xI = arena.fProxyVec(n);
+            var xI = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) xI[i] = (fProxy)0;
             var ii = Krylov.idr(in A, in b, ref xI, 4, 20 * n, Tol());
 
-            var xG = arena.fProxyVec(n);
+            var xG = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) xG[i] = (fProxy)0;
             var gi = Krylov.gmres(in A, in b, ref xG, n, 4 * n, Tol());
 
@@ -139,99 +132,84 @@ public class fProxyIDRTests
             // Both solve the same well-conditioned system -> solutions agree.
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(math.abs(xI[i] - xG[i]) <= MatchTol() * ((fProxy)1 + math.abs(xG[i])));
-
-            arena.Dispose();
         }
 
         // (5) Identity-fold (unpreconditioned) dense rung.
         void IdentityFoldDense()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 36;
-            var A = DenseNonsym(ref arena, n, 0x1D31u);
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0x1D32u);
+            var A = DenseNonsym(n, 0x1D31u);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x1D32u);
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (fProxy)0;
             var info = Krylov.idr(in A, in b, ref x, 4, 20 * n, Tol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(fProxyKrylovBatteryOracles.RelResidualDense(in A, in x, in b) <= Tol());
-
-            arena.Dispose();
         }
 
         // (5) Identity-fold (unpreconditioned) BSR rung.
         void IdentityFoldBSR()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 120;
-            var A = ConvDiff1D(ref arena, n);
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0x1D42u);
+            var A = ConvDiff1D(n);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x1D42u);
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (fProxy)0;
             var info = Krylov.idr(in A, in b, ref x, 4, 20 * n, Tol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(fProxyKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
-
-            arena.Dispose();
         }
 
         // (6) ILU0-right-preconditioned BSR converges.
         void PreconditionedILU0()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 150;
-            var A = ConvDiff1D(ref arena, n);
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0x1D52u);
-            var M = arena.fProxyILU0(in A);
+            var A = ConvDiff1D(n);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x1D52u);
+            var M = new fProxyILU0(in A, Allocator.Temp);
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (fProxy)0;
             var info = Krylov.idr(in A, in M, in b, ref x, 4, 20 * n, Tol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(fProxyKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
-
-            arena.Dispose();
         }
 
         // (6) BlockJacobi-right-preconditioned BSR converges.
         void PreconditionedBlockJacobi()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 150;
-            var A = ConvDiff1D(ref arena, n);
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0x1D62u);
-            var M = arena.fProxyBlockJacobi(in A);
+            var A = ConvDiff1D(n);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x1D62u);
+            var M = new fProxyBlockJacobi(in A, Allocator.Temp);
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (fProxy)0;
             var info = Krylov.idr(in A, in M, in b, ref x, 4, 20 * n, Tol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(fProxyKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
-
-            arena.Dispose();
         }
 
         // (3) Determinism with an explicit seed: two independent solves from the same initial x
         // must produce a BIT-IDENTICAL x (the seeded shadow space is the only randomness).
         void DeterminismExplicitSeed()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 60;
-            var A = ConvDiff1D(ref arena, n);
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0x1D72u);
+            var A = ConvDiff1D(n);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x1D72u);
             uint seed = 0x1234ABCDu;
 
-            var x1 = arena.fProxyVec(n);
+            var x1 = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x1[i] = (fProxy)0;
             var i1 = Krylov.idr(in A, in b, ref x1, 4, 20 * n, Tol(), seed);
 
-            var x2 = arena.fProxyVec(n);
+            var x2 = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x2[i] = (fProxy)0;
             var i2 = Krylov.idr(in A, in b, ref x2, 4, 20 * n, Tol(), seed);
 
@@ -240,69 +218,58 @@ public class fProxyIDRTests
             Assert.IsTrue(i1.iterations == i2.iterations);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(x1[i] == x2[i]);   // EXACT, bit-identical
-
-            arena.Dispose();
         }
 
         // (3) Determinism with the DEFAULT seed (omitted): two independent solves must still
         // produce a bit-identical x, via the zero-arg convenience overload.
         void DeterminismDefaultSeed()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 60;
-            var A = ConvDiff1D(ref arena, n);
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0x1D82u);
+            var A = ConvDiff1D(n);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x1D82u);
 
-            var x1 = arena.fProxyVec(n);
+            var x1 = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x1[i] = (fProxy)0;
             Krylov.idr(in A, in b, ref x1);
 
-            var x2 = arena.fProxyVec(n);
+            var x2 = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x2[i] = (fProxy)0;
             Krylov.idr(in A, in b, ref x2);
 
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(x1[i] == x2[i]);   // EXACT, bit-identical
-
-            arena.Dispose();
         }
 
         // Edge: s = 1 (legal degenerate shadow-space dimension) still solves.
         void SEqualsOne()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 48;
-            var A = DenseNonsym(ref arena, n, 0x1D91u);
-            var b = arena.fProxyRandomVec(n, -1f, 1f, 0x1D92u);
+            var A = DenseNonsym(n, 0x1D91u);
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x1D92u);
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (fProxy)0;
             var info = Krylov.idr(in A, in b, ref x, 1, 40 * n, Tol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(fProxyKrylovBatteryOracles.RelResidualDense(in A, in x, in b) <= Tol());
-
-            arena.Dispose();
         }
 
         // Edge: zero rhs -> immediate converged, x set to zero, no iterations.
         void ZeroRhs()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 30;
-            var A = ConvDiff1D(ref arena, n);
-            var b = arena.fProxyVec(n);
+            var A = ConvDiff1D(n);
+            var b = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) b[i] = (fProxy)0;
 
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x[i] = (fProxy)5;
             var info = Krylov.idr(in A, in b, ref x, 4, 20 * n, Tol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(info.iterations == 0);
             for (int i = 0; i < n; i++) Assert.IsTrue(x[i] == (fProxy)0);
-
-            arena.Dispose();
         }
     }
 

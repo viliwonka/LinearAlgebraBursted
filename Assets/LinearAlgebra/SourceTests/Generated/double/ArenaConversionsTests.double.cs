@@ -12,7 +12,7 @@ using Unity.Mathematics;
 
 
 
-// Guards for arena.Convert(in doubleN -> double2): the source vector must have length >= 2,
+// Guards for ConvertOP.Convert(in doubleN -> double2): the source vector must have length >= 2,
 // otherwise reading [1] would be out of bounds. These are managed [Test]s (main thread) because
 // they assert exception behavior; the positive path is a plain element-equality check.
 public class doubleArenaConversionsTests
@@ -21,47 +21,35 @@ public class doubleArenaConversionsTests
     [Test]
     public void ConvertToVec2TooShortThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var v = arena.doubleVec(1);
+        var v = new doubleN(1, Allocator.Temp);
         v[0] = 7f;
 
-        Assert.Throws<ArgumentException>(() => arena.Convert(in v));
-
-        arena.Dispose();
+        Assert.Throws<ArgumentException>(() => ConvertOP.Convert(in v));
     }
 
     // Length == 2 converts; .x/.y mirror v[0]/v[1] exactly.
     [Test]
     public void ConvertToVec2ExactLengthMatches()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var v = arena.doubleVec(2);
+        var v = new doubleN(2, Allocator.Temp);
         v[0] = 3f; v[1] = -5f;
 
-        double2 r = arena.Convert(in v);
+        double2 r = ConvertOP.Convert(in v);
 
         Assert.IsTrue(r.x == v[0]);
         Assert.IsTrue(r.y == v[1]);
-
-        arena.Dispose();
     }
 
     // Length > 2 also converts, taking only the first two components.
     [Test]
     public void ConvertToVec2LongerVectorTakesFirstTwo()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var v = arena.doubleVec(4);
+        var v = new doubleN(4, Allocator.Temp);
         v[0] = 1f; v[1] = 2f; v[2] = 3f; v[3] = 4f;
 
-        double2 r = arena.Convert(in v);
+        double2 r = ConvertOP.Convert(in v);
 
         Assert.IsTrue(r.x == v[0]);
         Assert.IsTrue(r.y == v[1]);
-
-        arena.Dispose();
     }
 }

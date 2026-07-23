@@ -177,20 +177,16 @@ namespace LinearAlgebra
         }
 #endif
 
+        /// <summary>Arena-backed: allocates from the owner arena. Standalone: returns a standalone Allocator.Temp copy.</summary>
         public unsafe longMxN Copy()
         {
-            if (_rec == null)
-                throw new System.InvalidOperationException("Copy()/TempCopy() require an arena-backed matrix/vector; use new <T>(in this, allocator) for a standalone copy.");
-
-            return OwnerArena.longMat(in this);
+            return _rec != null ? OwnerArena.longMat(in this) : new longMxN(in this, Allocator.Temp);
         }
 
+        /// <summary>Arena-backed: allocates from the owner arena's temp pool. Standalone: returns a standalone Allocator.Temp copy.</summary>
         public unsafe longMxN TempCopy()
         {
-            if (_rec == null)
-                throw new System.InvalidOperationException("Copy()/TempCopy() require an arena-backed matrix/vector; use new <T>(in this, allocator) for a standalone copy.");
-
-            return OwnerArena.longTempMat(in this);
+            return _rec != null ? OwnerArena.longTempMat(in this) : new longMxN(in this, Allocator.Temp);
         }
 
         /// <summary>Copies every element into <paramref name="mat"/> (dimensions must match). Fixed-size: never resizes <paramref name="mat"/>.</summary>

@@ -100,7 +100,7 @@ namespace LinearAlgebra.Benchmarks
         // Trivially stabilizable random instance (already stable, so any n/m/seed combination is a
         // valid LQR instance without needing a controllability check): diagonal in [0.2,0.4), off-
         // diagonal magnitude scaled 0.2/n so the Gershgorin bound stays under ~0.6 at EVERY n. Q=I, R=I.
-        static void BuildInstanceDouble(int n, int m, uint seed, bool nearMarginal, in Arena arena,
+        static void BuildInstanceDouble(int n, int m, uint seed, bool nearMarginal,
                                         out doubleMxN A, out doubleMxN B, out doubleMxN Q, out doubleMxN R)
         {
             var rng = new Unity.Mathematics.Random(seed);
@@ -109,30 +109,29 @@ namespace LinearAlgebra.Benchmarks
             // convergence is supposed to earn its keep. Off-diagonal shrunk with it to stay stable.
             double off = (double)((nearMarginal ? 0.02 : 0.2) / n);
 
-            A = arena.doubleMat(n, n);
+            A = new doubleMxN(n, n, Allocator.Persistent);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
                     A[i, j] = (i == j)
                         ? (nearMarginal ? rng.NextDouble(0.90f, 0.98f) : rng.NextDouble(0.2f, 0.4f))
                         : rng.NextDouble(-1f, 1f) * off;
 
-            B = arena.doubleMat(n, m);
+            B = new doubleMxN(n, m, Allocator.Persistent);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < m; j++)
                     B[i, j] = rng.NextDouble(-1f, 1f);
 
-            Q = arena.doubleMat(n, n);
+            Q = new doubleMxN(n, n, Allocator.Persistent);
             for (int i = 0; i < n; i++) Q[i, i] = (double)1;
 
-            R = arena.doubleMat(m, m);
+            R = new doubleMxN(m, m, Allocator.Persistent);
             for (int i = 0; i < m; i++) R[i, i] = (double)1;
         }
 
         static string ColdSdaDouble(int n, int m, int reps, uint seed, bool nearMarginal = false)
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildInstanceDouble(n, m, seed, nearMarginal, in arena, out var A, out var B, out var Q, out var R);
-            var K = arena.doubleMat(m, n);
+            BuildInstanceDouble(n, m, seed, nearMarginal, out var A, out var B, out var Q, out var R);
+            var K = new doubleMxN(m, n, Allocator.Persistent);
 
             var itersOut = new NativeArray<int>(1, Allocator.Persistent);
             var statusOut = new NativeArray<int>(1, Allocator.Persistent);
@@ -140,15 +139,15 @@ namespace LinearAlgebra.Benchmarks
             var stat = Bench.Time(() => job.Run());
             string row = LQRBenchmarkFmt.Row("double", nearMarginal ? "cold-SDA(marg)" : "cold-SDA", n, m, reps, stat, itersOut[0], statusOut[0]);
 
-            itersOut.Dispose(); statusOut.Dispose(); arena.Dispose();
+            itersOut.Dispose(); statusOut.Dispose();
+            A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); K.Dispose();
             return row;
         }
 
         static string ColdRecursionDouble(int n, int m, int reps, uint seed, bool nearMarginal = false)
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildInstanceDouble(n, m, seed, nearMarginal, in arena, out var A, out var B, out var Q, out var R);
-            var K = arena.doubleMat(m, n);
+            BuildInstanceDouble(n, m, seed, nearMarginal, out var A, out var B, out var Q, out var R);
+            var K = new doubleMxN(m, n, Allocator.Persistent);
 
             var itersOut = new NativeArray<int>(1, Allocator.Persistent);
             var statusOut = new NativeArray<int>(1, Allocator.Persistent);
@@ -156,27 +155,27 @@ namespace LinearAlgebra.Benchmarks
             var stat = Bench.Time(() => job.Run());
             string row = LQRBenchmarkFmt.Row("double", nearMarginal ? "cold-rec(marg)" : "cold-recursion", n, m, reps, stat, itersOut[0], statusOut[0]);
 
-            itersOut.Dispose(); statusOut.Dispose(); arena.Dispose();
+            itersOut.Dispose(); statusOut.Dispose();
+            A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); K.Dispose();
             return row;
         }
 
         static string WarmDouble(int n, int m, int reps, uint seed, bool nearMarginal = false)
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildInstanceDouble(n, m, seed, nearMarginal, in arena, out var A, out var B, out var Q, out var R);
-            var K = arena.doubleMat(m, n);
+            BuildInstanceDouble(n, m, seed, nearMarginal, out var A, out var B, out var Q, out var R);
+            var K = new doubleMxN(m, n, Allocator.Persistent);
 
             // untimed setup (managed thread -- LQR.lqr is plain Burst-compatible code, just not
             // Burst-JITted here; only the warm re-solve below is measured): cold-solve the unperturbed
             // system for its converged S, then perturb A by ~1e-3 relative per entry.
             var coldState = new doubleLQRState(n, Allocator.Persistent);
             LQR.lqr(in A, in B, in Q, in R, ref K, ref coldState);
-            var Sprev = arena.doubleMat(n, n);
+            var Sprev = new doubleMxN(n, n, Allocator.Persistent);
             Sprev.Data.CopyFrom(coldState.S.Data);
             coldState.Dispose();
 
             var rng = new Unity.Mathematics.Random(seed ^ 0x9E3779B9u);
-            var Aperturbed = arena.doubleMat(n, n);
+            var Aperturbed = new doubleMxN(n, n, Allocator.Persistent);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
                 {
@@ -191,7 +190,9 @@ namespace LinearAlgebra.Benchmarks
             var stat = Bench.Time(() => job.Run());
             string row = LQRBenchmarkFmt.Row("double", nearMarginal ? "warm(marg)" : "warm(1e-3 pert)", n, m, reps, stat, itersOut[0], statusOut[0]);
 
-            itersOut.Dispose(); statusOut.Dispose(); arena.Dispose();
+            itersOut.Dispose(); statusOut.Dispose();
+            A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); K.Dispose();
+            Sprev.Dispose(); Aperturbed.Dispose();
             return row;
         }
     }

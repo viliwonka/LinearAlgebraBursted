@@ -55,16 +55,16 @@ public class floatBlockGmresTests
 
         // Diagonally dominant (so nonsingular) but NOT symmetrized -> genuinely non-symmetric. Do NOT form
         // M^T M (that would make it symmetric, defeating the point of a GMRES test).
-        static floatMxN BuildDenseNonsymmetric(ref Arena arena, int dim, uint seed)
+        static floatMxN BuildDenseNonsymmetric(int dim, uint seed)
         {
-            var A = arena.floatRandomMat(dim, dim, (float)(-1f), (float)1f, seed);
+            var A = GenerateOP.floatRandomMat(dim, dim, (float)(-1f), (float)1f, seed, Allocator.Temp);
             for (int d = 0; d < dim; d++) A[d, d] += dim;   // diagonally dominant -> nonsingular, nonsymmetric
             return A;
         }
 
-        static floatN Row(ref Arena arena, in floatMxN B, int j, int n)
+        static floatN Row(in floatMxN B, int j, int n)
         {
-            var v = arena.floatVec(n);
+            var v = new floatN(n, Allocator.Temp);
             for (int c = 0; c < n; c++) v[c] = B[j, c];
             return v;
         }
@@ -73,17 +73,15 @@ public class floatBlockGmresTests
         // every column reached tolerance.
         void MatchesScalarGmresPerColumn()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 20, s = 4;
-            var A = BuildDenseNonsymmetric(ref arena, n, 71001u);
-            var B = arena.floatRandomMat(s, n, (float)(-1f), (float)1f, 71002u);
+            var A = BuildDenseNonsymmetric(n, 71001u);
+            var B = GenerateOP.floatRandomMat(s, n, (float)(-1f), (float)1f, 71002u, Allocator.Temp);
 
             int restart = n;             // full block subspace -> converges within one cycle
             int maxIter = 4 * n;
             float tol = Consts.floatSqrtEps;
 
-            var X = arena.floatMat(s, n);   // zero initial guess
+            var X = new floatMxN(s, n, Allocator.Temp);   // zero initial guess
             var info = Krylov.bgmres(in A, in B, ref X, restart, maxIter, tol);
 
             Assert.IsTrue(info.Solved);
@@ -92,16 +90,14 @@ public class floatBlockGmresTests
 
             for (int j = 0; j < s; j++)
             {
-                var bj = Row(ref arena, in B, j, n);
-                var xj = arena.floatVec(n);
+                var bj = Row(in B, j, n);
+                var xj = new floatN(n, Allocator.Temp);
                 Assert.IsTrue(Krylov.gmres(in A, in bj, ref xj, restart, maxIter, tol).Solved);
 
                 // Block column j matches the scalar solve (both converged to the same unique solution).
                 for (int c = 0; c < n; c++)
                     Assert.IsTrue(math.abs((double)X[j, c] - (double)xj[c]) <= Tol() * (1.0 + math.abs((double)xj[c])));
             }
-
-            arena.Dispose();
         }
 
         // Independent of any other solver: pick a KNOWN block solution Xk, form B = A Xk via the GENERAL
@@ -109,24 +105,20 @@ public class floatBlockGmresTests
         // non-symmetric A and would build the WRONG B here), solve, and recover Xk.
         void KnownSolutionRecovered()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 20, s = 5;
-            var A = BuildDenseNonsymmetric(ref arena, n, 72001u);
-            var Xk = arena.floatRandomMat(s, n, (float)(-1f), (float)1f, 72002u);   // known solution
+            var A = BuildDenseNonsymmetric(n, 72001u);
+            var Xk = GenerateOP.floatRandomMat(s, n, (float)(-1f), (float)1f, 72002u, Allocator.Temp);   // known solution
 
-            var B = arena.floatMat(s, n);
+            var B = new floatMxN(s, n, Allocator.Temp);
             new floatDenseOperatorGeneral(in A).ApplyBlock(in Xk, ref B, s);          // B[j,:] = A Xk[j,:]
 
-            var X = arena.floatMat(s, n);
+            var X = new floatMxN(s, n, Allocator.Temp);
             var info = Krylov.bgmres(in A, in B, ref X, n, 4 * n, Consts.floatSqrtEps);
             Assert.IsTrue(info.Solved);
 
             for (int j = 0; j < s; j++)
                 for (int c = 0; c < n; c++)
                     Assert.IsTrue(math.abs((double)X[j, c] - (double)Xk[j, c]) <= Tol() * (1.0 + math.abs((double)Xk[j, c])));
-
-            arena.Dispose();
         }
 
         // A restart well below the number of block steps this system needs forces multiple restart cycles:
@@ -138,23 +130,19 @@ public class floatBlockGmresTests
         // for every generated type, not a per-type knife's edge.
         void RestartCorrectness()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 40, s = 3;
-            var A = BuildDenseNonsymmetric(ref arena, n, 73001u);
-            var B = arena.floatRandomMat(s, n, (float)(-1f), (float)1f, 73002u);
+            var A = BuildDenseNonsymmetric(n, 73001u);
+            var B = GenerateOP.floatRandomMat(s, n, (float)(-1f), (float)1f, 73002u, Allocator.Temp);
 
             int restart = 2;             // << the block steps this system needs -> forces >=2 cycles for both types
             int maxIter = 10 * n;        // generous -> several restart cycles can finish converging
             float tol = Consts.floatSqrtEps;
 
-            var X = arena.floatMat(s, n);
+            var X = new floatMxN(s, n, Allocator.Temp);
             var info = Krylov.bgmres(in A, in B, ref X, restart, maxIter, tol);
 
             Assert.IsTrue(info.Solved);
             Assert.IsTrue(info.iterations > restart);   // at least one restart actually happened
-
-            arena.Dispose();
         }
 
         // The explicit-identity-preconditioner generic core must fold to EXACTLY the unpreconditioned
@@ -162,22 +150,20 @@ public class floatBlockGmresTests
         // (Allocator.Temp), so there are no ref scratch params to pass, unlike bbiCGStab.
         void IdentityFoldBitIdentical()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 16, s = 3;
-            var A = BuildDenseNonsymmetric(ref arena, n, 74001u);
-            var B = arena.floatRandomMat(s, n, (float)(-1f), (float)1f, 74002u);
+            var A = BuildDenseNonsymmetric(n, 74001u);
+            var B = GenerateOP.floatRandomMat(s, n, (float)(-1f), (float)1f, 74002u, Allocator.Temp);
             int restart = 8;             // < n -> exercises restarts, still bit-identical across both paths
             int maxIter = 4 * n;
             float tol = Consts.floatSqrtEps;
 
             var opA = new floatDenseOperatorGeneral(in A);   // readonly struct -- construct once, reuse the value
 
-            var X1 = arena.floatMat(s, n);
+            var X1 = new floatMxN(s, n, Allocator.Temp);
             var info1 = Krylov.bgmres<floatDenseOperatorGeneral, floatIdentityPreconditioner>(
                 in opA, default(floatIdentityPreconditioner), in B, ref X1, restart, maxIter, tol);
 
-            var X2 = arena.floatMat(s, n);
+            var X2 = new floatMxN(s, n, Allocator.Temp);
             var info2 = Krylov.bgmres<floatDenseOperatorGeneral>(in opA, in B, ref X2, restart, maxIter, tol);
 
             Assert.AreEqual(info1.iterations, info2.iterations);
@@ -187,8 +173,6 @@ public class floatBlockGmresTests
             for (int i = 0; i < s; i++)
                 for (int c = 0; c < n; c++)
                     Assert.IsTrue(X1[i, c] == X2[i, c]);
-
-            arena.Dispose();
         }
 
         // A rank-deficient RHS block (two identical ROWS) makes R0 (= initial residual B, since X0 = 0)
@@ -198,15 +182,13 @@ public class floatBlockGmresTests
         // triggered), the two duplicate-RHS solution rows agree, and every entry of X is finite.
         void DeflatesRankDeficientRHSBlock()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 20, s = 4;
-            var A = BuildDenseNonsymmetric(ref arena, n, 75001u);
-            var B = arena.floatRandomMat(s, n, (float)(-1f), (float)1f, 75002u);
+            var A = BuildDenseNonsymmetric(n, 75001u);
+            var B = GenerateOP.floatRandomMat(s, n, (float)(-1f), (float)1f, 75002u, Allocator.Temp);
             // Force row 2 identical to row 0 -> block RHS rank <= s-1 -> LQRP reveals w[0] < s on cycle 1.
             for (int c = 0; c < n; c++) B[2, c] = B[0, c];
 
-            var X = arena.floatMat(s, n);
+            var X = new floatMxN(s, n, Allocator.Temp);
             var info = Krylov.bgmres(in A, in B, ref X, n, 4 * n, Consts.floatSqrtEps);
 
             // Converges (deflation is graceful, not a breakdown).
@@ -220,41 +202,35 @@ public class floatBlockGmresTests
             // Identical RHS rows -> identical recovered solution rows.
             for (int c = 0; c < n; c++)
                 Assert.IsTrue(math.abs((double)X[0, c] - (double)X[2, c]) <= Tol() * (1.0 + math.abs((double)X[0, c])));
-
-            arena.Dispose();
         }
 
         // BSR non-symmetric diagonally-dominant A + ILU(0) preconditioner (build ONE M, reuse it for the
         // block and every scalar call). The block solve matches per-column scalar ILU(0)-preconditioned gmres.
         void PreconditionedMatchesScalar()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.floatRandomSparse(16, 16, 2, (float)0.4, 76001u);   // 32 dof, nonsymmetric diag-dominant
+            var A = floatGallery.floatRandomSparse(16, 16, 2, (float)0.4, 76001u, Allocator.Temp);   // 32 dof, nonsymmetric diag-dominant
             int n = A.M_Rows;
             int s = 3;
-            var M = arena.floatILU0(in A);
-            var B = arena.floatRandomMat(s, n, (float)(-1f), (float)1f, 76002u);
+            var M = new floatILU0(in A, Allocator.Temp);
+            var B = GenerateOP.floatRandomMat(s, n, (float)(-1f), (float)1f, 76002u, Allocator.Temp);
 
             int restart = n;
             int maxIter = 4 * n;
             float tol = Consts.floatSqrtEps;
 
-            var X = arena.floatMat(s, n);
+            var X = new floatMxN(s, n, Allocator.Temp);
             var info = Krylov.bgmres(in A, in M, in B, ref X, restart, maxIter, tol);
             Assert.IsTrue(info.Solved);
             Assert.AreEqual(s, info.converged);
 
             for (int j = 0; j < s; j++)
             {
-                var bj = Row(ref arena, in B, j, n);
-                var xj = arena.floatVec(n);
+                var bj = Row(in B, j, n);
+                var xj = new floatN(n, Allocator.Temp);
                 Assert.IsTrue(Krylov.gmres(in A, in M, in bj, ref xj, restart, maxIter, tol).Solved);
                 for (int c = 0; c < n; c++)
                     Assert.IsTrue(math.abs((double)X[j, c] - (double)xj[c]) <= Tol() * (1.0 + math.abs((double)xj[c])));
             }
-
-            arena.Dispose();
         }
     }
 

@@ -26,10 +26,10 @@ using Random = Unity.Mathematics.Random;
 // only inside the job, first failure recorded into a Fail[] array read back managed-side. The ONE
 // exception is the validation-throw tests (Q asymmetry / dimension mismatch / xl>xu), which are plain
 // [Test] methods calling QP.solve directly from managed code -- Assert.Throws must catch the
-// ArgumentException on the managed side, and Arena / floatMxN are usable from the main thread outside
-// a job (the arena authoring tier). Those three are double-only in this suite (the validation logic
-// they exercise does not depend on numeric precision) -- preserved as double-only here via a
-// skipFor(float) gate rather than adding new float coverage.
+// ArgumentException on the managed side, and floatMxN/floatN are usable from the main thread outside
+// a job. Those three are double-only in this suite (the validation logic they exercise does not
+// depend on numeric precision) -- preserved as double-only here via a skipFor(float) gate rather than
+// adding new float coverage.
 //
 // ---- Acceptance oracles ----
 //
@@ -95,15 +95,14 @@ public class floatQPSolveTests
         public NativeArray<double> Fail;
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var Q = arena.floatMat(2, 2); Q[0, 0] = 0.02f; Q[1, 1] = 2f;
-            var c = arena.floatVec(2);
-            var A = arena.floatMat(1, 2); A[0, 0] = 10f; A[0, 1] = -1f;
-            var b = arena.floatVec(1); b[0] = 10f;
+            var Q = new floatMxN(2, 2, Allocator.Temp); Q[0, 0] = 0.02f; Q[1, 1] = 2f;
+            var c = new floatN(2, Allocator.Temp);
+            var A = new floatMxN(1, 2, Allocator.Temp); A[0, 0] = 10f; A[0, 1] = -1f;
+            var b = new floatN(1, Allocator.Temp); b[0] = 10f;
             var senses = new NativeArray<ConstraintSense>(1, Allocator.Temp); senses[0] = ConstraintSense.GreaterEqual;
-            var xl = arena.floatVec(2); xl[0] = 2f; xl[1] = -50f;
-            var xu = arena.floatVec(2); xu[0] = 50f; xu[1] = 50f;
-            var x = arena.floatVec(2); x[0] = -999f; x[1] = 777f;   // garbage: facade must ignore it
+            var xl = new floatN(2, Allocator.Temp); xl[0] = 2f; xl[1] = -50f;
+            var xu = new floatN(2, Allocator.Temp); xu[0] = 50f; xu[1] = 50f;
+            var x = new floatN(2, Allocator.Temp); x[0] = -999f; x[1] = 777f;   // garbage: facade must ignore it
 
             var info = QP.solve(in Q, in c, in A, in b, in senses, in xl, in xu, ref x, out double obj, 0);
 
@@ -112,7 +111,7 @@ public class floatQPSolveTests
             H.AssertLE(Fail, 3, math.abs((double)x[0] - 2.0), 5e-3);
             H.AssertLE(Fail, 4, math.abs((double)x[1] - 0.0), 5e-3);
 
-            senses.Dispose(); arena.Dispose();
+            senses.Dispose();
         }
     }
 
@@ -122,18 +121,17 @@ public class floatQPSolveTests
         public NativeArray<double> Fail;
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var Q = arena.floatMat(3, 3);
+            var Q = new floatMxN(3, 3, Allocator.Temp);
             Q[0, 0] = 4f; Q[0, 1] = 2f; Q[0, 2] = 2f;
             Q[1, 0] = 2f; Q[1, 1] = 4f; Q[1, 2] = 0f;
             Q[2, 0] = 2f; Q[2, 1] = 0f; Q[2, 2] = 2f;
-            var c = arena.floatVec(3); c[0] = -8f; c[1] = -6f; c[2] = -4f;
-            var A = arena.floatMat(1, 3); A[0, 0] = 1f; A[0, 1] = 1f; A[0, 2] = 2f;
-            var b = arena.floatVec(1); b[0] = 3f;
+            var c = new floatN(3, Allocator.Temp); c[0] = -8f; c[1] = -6f; c[2] = -4f;
+            var A = new floatMxN(1, 3, Allocator.Temp); A[0, 0] = 1f; A[0, 1] = 1f; A[0, 2] = 2f;
+            var b = new floatN(1, Allocator.Temp); b[0] = 3f;
             var senses = new NativeArray<ConstraintSense>(1, Allocator.Temp); senses[0] = ConstraintSense.LessEqual;
-            var xl = arena.floatVec(3);
-            var xu = arena.floatVec(3); xu[0] = 1e30f; xu[1] = 1e30f; xu[2] = 1e30f;
-            var x = arena.floatVec(3); x[0] = -5f; x[1] = 42f; x[2] = -1f;   // garbage
+            var xl = new floatN(3, Allocator.Temp);
+            var xu = new floatN(3, Allocator.Temp); xu[0] = 1e30f; xu[1] = 1e30f; xu[2] = 1e30f;
+            var x = new floatN(3, Allocator.Temp); x[0] = -5f; x[1] = 42f; x[2] = -1f;   // garbage
 
             var info = QP.solve(in Q, in c, in A, in b, in senses, in xl, in xu, ref x, out double obj, 0);
             double expected = 1.0 / 9.0 - 9.0;
@@ -144,7 +142,7 @@ public class floatQPSolveTests
             H.AssertLE(Fail, 4, math.abs((double)x[1] - 7.0 / 9.0), 5e-3);
             H.AssertLE(Fail, 5, math.abs((double)x[2] - 4.0 / 9.0), 5e-3);
 
-            senses.Dispose(); arena.Dispose();
+            senses.Dispose();
         }
     }
 
@@ -154,24 +152,23 @@ public class floatQPSolveTests
         public NativeArray<double> Fail;
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var Q = arena.floatMat(5, 5);
+            var Q = new floatMxN(5, 5, Allocator.Temp);
             Q[0, 0] = 32f; Q[0, 1] = -8f;
             Q[1, 0] = -8f; Q[1, 1] = 4f; Q[1, 2] = 2f;
             Q[2, 1] = 2f; Q[2, 2] = 2f;
             Q[3, 3] = 2f;
             Q[4, 4] = 2f;
-            var c = arena.floatVec(5); c[1] = -4f; c[2] = -4f; c[3] = -2f; c[4] = -2f;
-            var A = arena.floatMat(3, 5);
+            var c = new floatN(5, Allocator.Temp); c[1] = -4f; c[2] = -4f; c[3] = -2f; c[4] = -2f;
+            var A = new floatMxN(3, 5, Allocator.Temp);
             A[0, 0] = 1f; A[0, 1] = 3f;
             A[1, 2] = 1f; A[1, 3] = 1f; A[1, 4] = -2f;
             A[2, 1] = 1f; A[2, 4] = -1f;
-            var b = arena.floatVec(3);
+            var b = new floatN(3, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(3, Allocator.Temp);
             senses[0] = ConstraintSense.Equal; senses[1] = ConstraintSense.Equal; senses[2] = ConstraintSense.Equal;
-            var xl = arena.floatVec(5); for (int i = 0; i < 5; i++) xl[i] = -1e30f;
-            var xu = arena.floatVec(5); for (int i = 0; i < 5; i++) xu[i] = 1e30f;
-            var x = arena.floatVec(5); for (int i = 0; i < 5; i++) x[i] = 13f;   // garbage (violates all 3 equalities)
+            var xl = new floatN(5, Allocator.Temp); for (int i = 0; i < 5; i++) xl[i] = -1e30f;
+            var xu = new floatN(5, Allocator.Temp); for (int i = 0; i < 5; i++) xu[i] = 1e30f;
+            var x = new floatN(5, Allocator.Temp); for (int i = 0; i < 5; i++) x[i] = 13f;   // garbage (violates all 3 equalities)
 
             var info = QP.solve(in Q, in c, in A, in b, in senses, in xl, in xu, ref x, out double obj, 0);
             double expected = 1859.0 / 349.0 - 6.0;
@@ -179,7 +176,7 @@ public class floatQPSolveTests
             H.AssertTrue(Fail, 1, info.status == QPStatus.Optimal);
             H.AssertLE(Fail, 2, math.abs(obj - expected), 5e-4);
 
-            senses.Dispose(); arena.Dispose();
+            senses.Dispose();
         }
     }
 
@@ -189,23 +186,22 @@ public class floatQPSolveTests
         public NativeArray<double> Fail;
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var Q = arena.floatMat(4, 4);
+            var Q = new floatMxN(4, 4, Allocator.Temp);
             Q[0, 0] = 2f; Q[0, 2] = -1f;
             Q[1, 1] = 1f;
             Q[2, 0] = -1f; Q[2, 2] = 2f; Q[2, 3] = 1f;
             Q[3, 2] = 1f; Q[3, 3] = 1f;
-            var c = arena.floatVec(4); c[0] = -1f; c[1] = -3f; c[2] = 1f; c[3] = -1f;
-            var A = arena.floatMat(3, 4);
+            var c = new floatN(4, Allocator.Temp); c[0] = -1f; c[1] = -3f; c[2] = 1f; c[3] = -1f;
+            var A = new floatMxN(3, 4, Allocator.Temp);
             A[0, 0] = 1f; A[0, 1] = 2f; A[0, 2] = 1f; A[0, 3] = 1f;
             A[1, 0] = 3f; A[1, 1] = 1f; A[1, 2] = 2f; A[1, 3] = -1f;
             A[2, 1] = 1f; A[2, 2] = 4f;
-            var b = arena.floatVec(3); b[0] = 5f; b[1] = 4f; b[2] = 1.5f;
+            var b = new floatN(3, Allocator.Temp); b[0] = 5f; b[1] = 4f; b[2] = 1.5f;
             var senses = new NativeArray<ConstraintSense>(3, Allocator.Temp);
             senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.LessEqual; senses[2] = ConstraintSense.GreaterEqual;
-            var xl = arena.floatVec(4);
-            var xu = arena.floatVec(4); for (int i = 0; i < 4; i++) xu[i] = 1e30f;
-            var x = arena.floatVec(4); for (int i = 0; i < 4; i++) x[i] = -100f;   // garbage (violates x>=0)
+            var xl = new floatN(4, Allocator.Temp);
+            var xu = new floatN(4, Allocator.Temp); for (int i = 0; i < 4; i++) xu[i] = 1e30f;
+            var x = new floatN(4, Allocator.Temp); for (int i = 0; i < 4; i++) x[i] = -100f;   // garbage (violates x>=0)
 
             var info = QP.solve(in Q, in c, in A, in b, in senses, in xl, in xu, ref x, out double obj, 0);
             double expected = -103.0 / 22.0;
@@ -217,7 +213,7 @@ public class floatQPSolveTests
             H.AssertLE(Fail, 5, math.abs((double)x[2] - 0.0), 5e-3);
             H.AssertLE(Fail, 6, math.abs((double)x[3] - 6.0 / 11.0), 5e-3);
 
-            senses.Dispose(); arena.Dispose();
+            senses.Dispose();
         }
     }
 
@@ -235,18 +231,17 @@ public class floatQPSolveTests
         public NativeArray<double> Fail;
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 3;
-            var Q = arena.floatMat(n, n); for (int i = 0; i < n; i++) Q[i, i] = 1f;
-            var c = arena.floatVec(n);
-            var A = arena.floatMat(2, n);
+            var Q = new floatMxN(n, n, Allocator.Temp); for (int i = 0; i < n; i++) Q[i, i] = 1f;
+            var c = new floatN(n, Allocator.Temp);
+            var A = new floatMxN(2, n, Allocator.Temp);
             for (int j = 0; j < n; j++) { A[0, j] = 1f; A[1, j] = 1f; }
-            var b = arena.floatVec(2); b[0] = 1f; b[1] = 11f;
+            var b = new floatN(2, Allocator.Temp); b[0] = 1f; b[1] = 11f;
             var senses = new NativeArray<ConstraintSense>(2, Allocator.Temp);
             senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.GreaterEqual;
-            var xl = arena.floatVec(n);                          // 0
-            var xu = arena.floatVec(n); for (int j = 0; j < n; j++) xu[j] = 10f;
-            var x = arena.floatVec(n); for (int j = 0; j < n; j++) x[j] = 3f;
+            var xl = new floatN(n, Allocator.Temp);                          // 0
+            var xu = new floatN(n, Allocator.Temp); for (int j = 0; j < n; j++) xu[j] = 10f;
+            var x = new floatN(n, Allocator.Temp); for (int j = 0; j < n; j++) x[j] = 3f;
 
             var info = QP.solve(in Q, in c, in A, in b, in senses, in xl, in xu, ref x, out double obj, 0);
 
@@ -254,7 +249,7 @@ public class floatQPSolveTests
             H.AssertLE(Fail, 2, math.abs(obj), 0.0);
             for (int j = 0; j < n; j++) H.AssertLE(Fail, 3, math.abs((double)x[j]), 0.0);   // x zeroed
 
-            senses.Dispose(); arena.Dispose();
+            senses.Dispose();
         }
     }
 
@@ -269,13 +264,12 @@ public class floatQPSolveTests
         public NativeArray<double> Fail;
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var Q = arena.floatMat(2, 2); Q[0, 0] = 2f; Q[1, 1] = 2f;
-            var c = arena.floatVec(2); c[0] = -2f; c[1] = -4f;
-            var A = arena.floatMat(0, 2);
-            var b = arena.floatVec(0);
+            var Q = new floatMxN(2, 2, Allocator.Temp); Q[0, 0] = 2f; Q[1, 1] = 2f;
+            var c = new floatN(2, Allocator.Temp); c[0] = -2f; c[1] = -4f;
+            var A = new floatMxN(0, 2, Allocator.Temp);
+            var b = new floatN(0, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(0, Allocator.Temp);
-            var x = arena.floatVec(2); x[0] = 55f; x[1] = -9f;   // garbage
+            var x = new floatN(2, Allocator.Temp); x[0] = 55f; x[1] = -9f;   // garbage
 
             var info = QP.solve(in Q, in c, in A, in b, in senses, ref x, out double obj, 0);
 
@@ -284,7 +278,7 @@ public class floatQPSolveTests
             H.AssertLE(Fail, 3, math.abs((double)x[0] - 1.0), 5e-4);
             H.AssertLE(Fail, 4, math.abs((double)x[1] - 2.0), 5e-4);
 
-            senses.Dispose(); arena.Dispose();
+            senses.Dispose();
         }
     }
 
@@ -311,30 +305,29 @@ public class floatQPSolveTests
         public NativeArray<double> Fail;
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = N, m = n / 2;
             var rng = new Random((uint)Seed | 1u);
 
-            var Q = arena.floatMat(n, n);
+            var Q = new floatMxN(n, n, Allocator.Temp);
             Rand.spdInPlace(ref rng, ref Q, 1f, (float)MaxEig);
-            var c = arena.floatVec(n);
+            var c = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) c[i] = rng.NextFloat(-1f, 1f);
 
-            var A = arena.floatMat(m, n);
+            var A = new floatMxN(m, n, Allocator.Temp);
             for (int i = 0; i < m; i++) for (int j = 0; j < n; j++) A[i, j] = rng.NextFloat(0f, 1f);
-            var x0 = arena.floatVec(n);
+            var x0 = new floatN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) x0[i] = rng.NextFloat(0.2f, 0.8f);
-            var Ax0 = arena.floatVec(m);
+            var Ax0 = new floatN(m, Allocator.Temp);
             Blas.dot(in A, in x0, ref Ax0);
-            var b = arena.floatVec(m);
+            var b = new floatN(m, Allocator.Temp);
             for (int i = 0; i < m; i++) b[i] = Ax0[i] + rng.NextFloat(0.1f, 1f);   // x0 strictly feasible
             var senses = new NativeArray<ConstraintSense>(m, Allocator.Temp);
             for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
 
-            var xl = arena.floatVec(n);                                   // 0 (x0 in [0.2,0.8] > 0)
-            var xu = arena.floatVec(n); for (int i = 0; i < n; i++) xu[i] = n;   // wide box holds x0
+            var xl = new floatN(n, Allocator.Temp);                                   // 0 (x0 in [0.2,0.8] > 0)
+            var xu = new floatN(n, Allocator.Temp); for (int i = 0; i < n; i++) xu[i] = n;   // wide box holds x0
 
-            var x = arena.floatVec(n); for (int i = 0; i < n; i++) x[i] = -321f;   // garbage; facade ignores it
+            var x = new floatN(n, Allocator.Temp); for (int i = 0; i < n; i++) x[i] = -321f;   // garbage; facade ignores it
 
             var info = QP.solve(in Q, in c, in A, in b, in senses, in xl, in xu, ref x, out double _, 0);
 
@@ -346,7 +339,7 @@ public class floatQPSolveTests
             H.AssertLE(Fail, 2, info.feasibilityResidual, 1e-3);
             H.AssertLE(Fail, 3, info.stationarityResidual, 1e-2 * MaxEig);
 
-            senses.Dispose(); arena.Dispose();
+            senses.Dispose();
         }
     }
 
@@ -374,15 +367,14 @@ public class floatQPSolveTests
         public NativeArray<double> Fail;
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 8, half = 4, K = 40, m = 2 * K;
-            var Q = arena.floatMat(n, n); for (int i = 0; i < n; i++) Q[i, i] = 1f;
-            var c = arena.floatVec(n); for (int i = 0; i < n; i++) c[i] = -1.5f;   // c = -Q x0 - r1 - r2
+            var Q = new floatMxN(n, n, Allocator.Temp); for (int i = 0; i < n; i++) Q[i, i] = 1f;
+            var c = new floatN(n, Allocator.Temp); for (int i = 0; i < n; i++) c[i] = -1.5f;   // c = -Q x0 - r1 - r2
 
             // Rows: first K copies of r1 = indicator(first half); next K copies of r2 = indicator(last half).
             // Both LessEqual with b = r.x0 = 2 (x0 = all 0.5). All 2K rows tight at x0.
-            var A = arena.floatMat(m, n);
-            var b = arena.floatVec(m);
+            var A = new floatMxN(m, n, Allocator.Temp);
+            var b = new floatN(m, Allocator.Temp);
             var senses = new NativeArray<ConstraintSense>(m, Allocator.Temp);
             for (int r = 0; r < K; r++)
             {
@@ -394,9 +386,9 @@ public class floatQPSolveTests
                 for (int j = half; j < n; j++) A[K + r, j] = 1f;
                 b[K + r] = 2f; senses[K + r] = ConstraintSense.LessEqual;
             }
-            var xl = arena.floatVec(n); for (int j = 0; j < n; j++) xl[j] = -1f;
-            var xu = arena.floatVec(n); for (int j = 0; j < n; j++) xu[j] = 1f;   // x0 = 0.5 interior, bounds inactive
-            var x = arena.floatVec(n);   // origin: r1.0 = 0 <= 2, r2.0 = 0 <= 2, in box -> feasible, NOT optimal
+            var xl = new floatN(n, Allocator.Temp); for (int j = 0; j < n; j++) xl[j] = -1f;
+            var xu = new floatN(n, Allocator.Temp); for (int j = 0; j < n; j++) xu[j] = 1f;   // x0 = 0.5 interior, bounds inactive
+            var x = new floatN(n, Allocator.Temp);   // origin: r1.0 = 0 <= 2, r2.0 = 0 <= 2, in box -> feasible, NOT optimal
 
             var info = QP.qpActiveSetCore(in Q, in c, in A, in b, senses, in xl, in xu, ref x, out double obj, 1000);
 
@@ -406,7 +398,7 @@ public class floatQPSolveTests
             H.AssertLE(Fail, 4, info.feasibilityResidual, 5e-4);
             H.AssertLE(Fail, 5, info.iterations, 300);                // far under the 1000 budget
 
-            senses.Dispose(); arena.Dispose();
+            senses.Dispose();
         }
     }
 

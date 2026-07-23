@@ -202,94 +202,89 @@ public class floatRandomTests
         const int StatN = 8192;
 
         // Uniform[a,b]: mean=(a+b)/2, var=(b-a)^2/12.
+        // StatN=8192 is a real buffer dimension -> Persistent + explicit Dispose.
         void UniformMoments()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(1234567u);
             var s = new floatUniform((float)(-2), (float)4);
-            var v = arena.floatVec(StatN);
+            var v = new floatN(StatN, Allocator.Persistent);
             Rand.randomInPlace(ref rng, ref v, ref s);
 
             float mean = Mean(in v);
             float var = Variance(in v, mean);
             AssertClose(mean, (float)1, (float)0.1);             // (a+b)/2 = 1
             AssertClose(var, (float)3, (float)0.3);              // (b-a)^2/12 = 3
-            arena.Dispose();
+            v.Dispose();
         }
 
         // Exponential(λ): mean=1/λ, var=1/λ^2.
         void ExponentialMoments()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(2468013u);
             float lambda = (float)2;
             var s = new floatExponential(lambda);
-            var v = arena.floatVec(StatN);
+            var v = new floatN(StatN, Allocator.Persistent);
             Rand.randomInPlace(ref rng, ref v, ref s);
 
             float mean = Mean(in v);
             float var = Variance(in v, mean);
             AssertClose(mean, (float)1 / lambda, (float)0.05);          // 0.5
             AssertClose(var, (float)1 / (lambda * lambda), (float)0.08); // 0.25
-            arena.Dispose();
+            v.Dispose();
         }
 
         // Gaussian(μ,σ): mean≈μ, var≈σ^2.
         void GaussianMoments()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(13572468u);
             float mu = (float)1.5, sd = (float)2;
             var s = new floatGaussian(mu, sd);
-            var v = arena.floatVec(StatN);
+            var v = new floatN(StatN, Allocator.Persistent);
             Rand.randomInPlace(ref rng, ref v, ref s);
 
             float mean = Mean(in v);
             float var = Variance(in v, mean);
             AssertClose(mean, mu, (float)0.12);
             AssertClose(var, sd * sd, (float)0.4);     // σ^2 = 4
-            arena.Dispose();
+            v.Dispose();
         }
 
         // Rayleigh(σ): mean=σ·sqrt(π/2).
         void RayleighMoments()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(97531864u);
             float sigma = (float)1.5;
             var s = new floatRayleigh(sigma);
-            var v = arena.floatVec(StatN);
+            var v = new floatN(StatN, Allocator.Persistent);
             Rand.randomInPlace(ref rng, ref v, ref s);
 
             float mean = Mean(in v);
             float expected = sigma * math.sqrt((float)(System.Math.PI / 2.0));
             AssertClose(mean, expected, (float)0.08);
-            arena.Dispose();
+            v.Dispose();
         }
 
         // Cauchy: no finite mean/var. Median = x0 => ~50% of draws below x0.
         void CauchyMedian()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(192837465u);
             float x0 = (float)5, gamma = (float)2;
             var s = new floatCauchy(x0, gamma);
-            var v = arena.floatVec(StatN);
+            var v = new floatN(StatN, Allocator.Persistent);
             Rand.randomInPlace(ref rng, ref v, ref s);
 
             float frac = FractionBelow(in v, x0);
             AssertClose(frac, (float)0.5, (float)0.04);
-            arena.Dispose();
+            v.Dispose();
         }
 
         // Pareto α=1.5: variance diverges (α<2). Median = xm·2^(1/α) => ~50% below.
         void ParetoMedian()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(564738291u);
             float xm = (float)2, alpha = (float)1.5;
             var s = new floatPareto(xm, alpha);
-            var v = arena.floatVec(StatN);
+            var v = new floatN(StatN, Allocator.Persistent);
             Rand.randomInPlace(ref rng, ref v, ref s);
 
             float median = xm * math.pow((float)2, (float)1 / alpha);
@@ -299,38 +294,38 @@ public class floatRandomTests
             // Support: every Pareto draw >= xm.
             for (int i = 0; i < v.N; i++)
                 AssertTrue(v[i] >= xm);
-            arena.Dispose();
+            v.Dispose();
         }
 
         // Range / support guarantees per distribution.
+        // n=2048 is a real buffer dimension -> Persistent + explicit Dispose.
         void RangeSupport()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(424242u);
             int n = 2048;
 
             // Uniform[a,b): a <= x < b.
             float a = (float)(-2), b = (float)4;
             var su = new floatUniform(a, b);
-            var vu = arena.floatVec(n);
+            var vu = new floatN(n, Allocator.Persistent);
             Rand.randomInPlace(ref rng, ref vu, ref su);
             for (int i = 0; i < n; i++)
                 AssertTrue(vu[i] >= a && vu[i] < b);
 
             var se = new floatExponential((float)2);
-            var ve = arena.floatVec(n);
+            var ve = new floatN(n, Allocator.Persistent);
             Rand.randomInPlace(ref rng, ref ve, ref se);
             for (int i = 0; i < n; i++)
                 AssertTrue(ve[i] >= (float)0);
 
             var sr = new floatRayleigh((float)1.5);
-            var vr = arena.floatVec(n);
+            var vr = new floatN(n, Allocator.Persistent);
             Rand.randomInPlace(ref rng, ref vr, ref sr);
             for (int i = 0; i < n; i++)
                 AssertTrue(vr[i] >= (float)0);
 
             var sw = new floatWeibull((float)1.5, (float)2);
-            var vw = arena.floatVec(n);
+            var vw = new floatN(n, Allocator.Persistent);
             Rand.randomInPlace(ref rng, ref vw, ref sw);
             for (int i = 0; i < n; i++)
                 AssertTrue(vw[i] >= (float)0);
@@ -338,12 +333,16 @@ public class floatRandomTests
             // Triangular in [low,high].
             float low = (float)(-1), high = (float)5;
             var st = new floatTriangular(low, (float)2, high);
-            var vt = arena.floatVec(n);
+            var vt = new floatN(n, Allocator.Persistent);
             Rand.randomInPlace(ref rng, ref vt, ref st);
             for (int i = 0; i < n; i++)
                 AssertTrue(vt[i] >= low && vt[i] <= high);
 
-            arena.Dispose();
+            vu.Dispose();
+            ve.Dispose();
+            vr.Dispose();
+            vw.Dispose();
+            vt.Dispose();
         }
 
         // ---------------- C. Mechanics ----------------
@@ -351,35 +350,31 @@ public class floatRandomTests
         // Same seed + same sampler => identical fill, element-wise exact.
         void Determinism()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 256;
 
             var r1 = new Random(55u);
             var s1 = new floatExponential((float)1.7);
-            var v1 = arena.floatVec(n);
+            var v1 = new floatN(n, Allocator.Temp);
             Rand.randomInPlace(ref r1, ref v1, ref s1);
 
             var r2 = new Random(55u);
             var s2 = new floatExponential((float)1.7);
-            var v2 = arena.floatVec(n);
+            var v2 = new floatN(n, Allocator.Temp);
             Rand.randomInPlace(ref r2, ref v2, ref s2);
 
             for (int i = 0; i < n; i++)
                 AssertClose(v1[i], v2[i], (float)0);   // bit-identical
-
-            arena.Dispose();
         }
 
         // Two nextUniformInPlace calls over the SAME rng advance the stream: buffers differ.
         void StreamAdvance()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 256;
             var rng = new Random(7777u);
 
-            var v1 = arena.floatVec(n);
+            var v1 = new floatN(n, Allocator.Temp);
             Rand.nextUniformInPlace(ref rng, ref v1);
-            var v2 = arena.floatVec(n);
+            var v2 = new floatN(n, Allocator.Temp);
             Rand.nextUniformInPlace(ref rng, ref v2);
 
             bool anyDiff = false;
@@ -389,12 +384,10 @@ public class floatRandomTests
 
             // Re-seeding resets the stream: a fresh rng reproduces the first buffer.
             var rng3 = new Random(7777u);
-            var v3 = arena.floatVec(n);
+            var v3 = new floatN(n, Allocator.Temp);
             Rand.nextUniformInPlace(ref rng3, ref v3);
             for (int i = 0; i < n; i++)
                 AssertClose(v1[i], v3[i], (float)0);
-
-            arena.Dispose();
         }
 
         // Box-Muller spare: the 2nd of a pair is returned without advancing the rng.
@@ -418,13 +411,12 @@ public class floatRandomTests
         // Over an N-element Gaussian fill the rng advances ceil(N/2)*2 NextFloat steps.
         void GaussianAdvanceCount()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 5;                       // odd: exercises the +1 (discarded spare) draw
             uint seed = 99887766u;
 
             var rngFill = new Random(seed);
             var g = new floatGaussian((float)0, (float)1);
-            var v = arena.floatVec(n);
+            var v = new floatN(n, Allocator.Temp);
             Rand.randomInPlace(ref rngFill, ref v, ref g);
             uint stateFill = rngFill.state;
 
@@ -441,26 +433,23 @@ public class floatRandomTests
             int nEven = 6;
             var rngFill2 = new Random(seed);
             var g2 = new floatGaussian((float)0, (float)1);
-            var v2 = arena.floatVec(nEven);
+            var v2 = new floatN(nEven, Allocator.Temp);
             Rand.randomInPlace(ref rngFill2, ref v2, ref g2);
 
             var rngRef2 = new Random(seed);
             for (int i = 0; i < nEven; i++)
                 rngRef2.NextFloat();
             AssertTrue(rngFill2.state == rngRef2.state);
-
-            arena.Dispose();
         }
 
         // Matrix overloads fill all M*N flat elements, all in range.
         void MatrixOverloads()
         {
-            var arena = new Arena(Allocator.Persistent);
             var rng = new Random(20240626u);
 
             // nextUniformInPlace(min,max) over a 4x5 matrix: poison first, then assert all in [min,max).
             float mn = (float)(-1), mx = (float)2;
-            var M = arena.floatMat(4, 5);
+            var M = new floatMxN(4, 5, Allocator.Temp);
             for (int i = 0; i < M.Length; i++) M[i] = (float)999;
             Rand.nextUniformInPlace(ref rng, ref M, mn, mx);
             AssertTrue(M.Length == 20);
@@ -468,7 +457,7 @@ public class floatRandomTests
                 AssertTrue(M[i] >= mn && M[i] < mx);
 
             // nextUniformInPlace [0,1) over a 3x7 matrix.
-            var M01 = arena.floatMat(3, 7);
+            var M01 = new floatMxN(3, 7, Allocator.Temp);
             for (int i = 0; i < M01.Length; i++) M01[i] = (float)999;
             Rand.nextUniformInPlace(ref rng, ref M01);
             for (int i = 0; i < M01.Length; i++)
@@ -476,14 +465,12 @@ public class floatRandomTests
 
             // randomInPlace<S> over a 3x7 matrix with Exponential: all >= 0, all written.
             var g = new floatExponential((float)2);
-            var ME = arena.floatMat(3, 7);
+            var ME = new floatMxN(3, 7, Allocator.Temp);
             for (int i = 0; i < ME.Length; i++) ME[i] = (float)(-999);
             Rand.randomInPlace(ref rng, ref ME, ref g);
             AssertTrue(ME.Length == 21);
             for (int i = 0; i < ME.Length; i++)
                 AssertTrue(ME[i] >= (float)0);
-
-            arena.Dispose();
         }
 
         // ---------------- helpers ----------------
@@ -625,15 +612,11 @@ public class floatRandomTests
     [Test]
     public void NextUniformInPlaceMinGreaterMaxThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var v = arena.floatVec(8);
+        var v = new floatN(8, Allocator.Temp);
         Random rng = new Random(1u);
         Assert.Throws<ArgumentException>(() => Rand.nextUniformInPlace(ref rng, ref v, (float)5, (float)1));
 
-        var M = arena.floatMat(3, 3);
+        var M = new floatMxN(3, 3, Allocator.Temp);
         Assert.Throws<ArgumentException>(() => Rand.nextUniformInPlace(ref rng, ref M, (float)5, (float)1));
-
-        arena.Dispose();
     }
 }

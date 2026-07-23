@@ -67,13 +67,12 @@ namespace LinearAlgebra.Benchmarks
     {
         static string FitDouble(int m, int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(m, n);
-            var Src = arena.doubleMat(m, n);
-            var b = arena.doubleVec(m);
-            var bSrc = arena.doubleVec(m);
-            var xTrue = arena.doubleVec(n);
-            var x = arena.doubleVec(n);
+            var A = new doubleMxN(m, n, Allocator.Persistent);
+            var Src = new doubleMxN(m, n, Allocator.Persistent);
+            var b = new doubleN(m, Allocator.Persistent);
+            var bSrc = new doubleN(m, Allocator.Persistent);
+            var xTrue = new doubleN(n, Allocator.Persistent);
+            var x = new doubleN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)m ^ ((uint)n << 16));
             for (int j = 0; j < n; j++) xTrue[j] = rng.NextDouble(-1f, 1f);
@@ -105,7 +104,7 @@ namespace LinearAlgebra.Benchmarks
             var irls = new FitIRLSJobDouble { A = A, b = b, x = x };
             var sIRLS = Bench.Time(() => irls.Run());
 
-            arena.Dispose();
+            A.Dispose(); Src.Dispose(); b.Dispose(); bSrc.Dispose(); xTrue.Dispose(); x.Dispose();
             var sb = new StringBuilder();
             sb.AppendLine(FittingFmt.Fmt("double", "QR.solveInPlace L2", m, n, sQR));
             sb.AppendLine(FittingFmt.Fmt("double", "LP.lad exact L1", m, n, sLad));

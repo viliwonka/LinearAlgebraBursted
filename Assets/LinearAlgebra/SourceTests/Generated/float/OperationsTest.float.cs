@@ -17,52 +17,56 @@ public class floatOperationsTest {
     {
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int vecLen = 16;
 
             float s = 1f;
-            floatN a = arena.floatVec(vecLen, 10f);
+            floatN a = GenerateOP.floatVec(vecLen, 10f, Allocator.Temp);
 
 
-            Assert.AreEqual(vecLen, a.N); 
+            Assert.AreEqual(vecLen, a.N);
 
-            floatN b = arena.floatVec(vecLen, 10f);
+            floatN b = GenerateOP.floatVec(vecLen, 10f, Allocator.Temp);
 
             Assert.IsTrue(b[vecLen/2] == a[vecLen/2]);
-            
-            Assert.AreEqual(2, arena.AllocationsCount);
 
             floatN result = default;
 
-            result = a + s;
+            result = new floatN(in a, Allocator.Temp);
+            floatComp.addInPlace(result, s);
 
-            result = s + a;
+            result = new floatN(in a, Allocator.Temp);
+            floatComp.addInPlace(result, s);
 
-            result = a - s;
-            result = s - a;
+            result = new floatN(in a, Allocator.Temp);
+            floatComp.addInPlace(result, -s);
+            result = new floatN(in a, Allocator.Temp);
+            floatComp.subInPlace(s, result);
 
-            Assert.AreEqual(4, arena.TempAllocationsCount);
+            result = new floatN(in a, Allocator.Temp);
+            floatComp.mulInPlace(result, s);
+            result = new floatN(in a, Allocator.Temp);
+            floatComp.mulInPlace(result, s);
 
-            arena.ClearTemp();
+            result = new floatN(in a, Allocator.Temp);
+            floatComp.divInPlace(result, s);
+            result = new floatN(in a, Allocator.Temp);
+            floatComp.modInPlace(result, s);
+            result = new floatN(in a, Allocator.Temp);
+            floatComp.divInPlace(s, result);
+            result = new floatN(in a, Allocator.Temp);
+            floatComp.modInPlace(s, result);
 
-            result = a * s;
-            result = s * a;
-
-            result = a / s;
-            result = a % s;
-            result = s / a;
-            result = s % a;
-
-            result = a + b;
-            result = a - b;
-            result = a * b;
-            result = a / b;
-            result = a % b;
-
-            Assert.AreEqual(11, arena.TempAllocationsCount);
-
-            arena.Dispose();
+            result = new floatN(in a, Allocator.Temp);
+            floatComp.addInPlace(result, b);
+            result = new floatN(in a, Allocator.Temp);
+            floatComp.subInPlace(result, b);
+            result = new floatN(in a, Allocator.Temp);
+            floatComp.mulInPlace(result, b);
+            result = new floatN(in a, Allocator.Temp);
+            floatComp.divInPlace(result, b);
+            result = new floatN(in a, Allocator.Temp);
+            floatComp.modInPlace(result, b);
         }
     }
 
@@ -77,7 +81,6 @@ public class floatOperationsTest {
     {
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int rows = 8;
             int cols = 8;
@@ -85,34 +88,47 @@ public class floatOperationsTest {
             int elements = rows * cols;
 
             float s = 1f;
-            floatMxN a = arena.floatMat(rows, cols, 10f);
+            floatMxN a = GenerateOP.floatMat(rows, cols, 10f, Allocator.Temp);
 
-            floatMxN b = arena.floatMat(rows, cols, 10f);
+            floatMxN b = GenerateOP.floatMat(rows, cols, 10f, Allocator.Temp);
 
             floatMxN result = default;
 
-            result = a + s;
+            result = new floatMxN(in a, Allocator.Temp);
+            floatComp.addInPlace(result, s);
 
-            result = s + a;
+            result = new floatMxN(in a, Allocator.Temp);
+            floatComp.addInPlace(result, s);
 
-            result = a - s;
-            result = s - a;
+            result = new floatMxN(in a, Allocator.Temp);
+            floatComp.addInPlace(result, -s);
+            result = new floatMxN(in a, Allocator.Temp);
+            floatComp.subInPlace(s, result);
 
-            result = a * s;
-            result = s * a;
+            result = new floatMxN(in a, Allocator.Temp);
+            floatComp.mulInPlace(result, s);
+            result = new floatMxN(in a, Allocator.Temp);
+            floatComp.mulInPlace(result, s);
 
-            result = a / s;
-            result = a % s;
-            result = s / a;
-            result = s % a;
+            result = new floatMxN(in a, Allocator.Temp);
+            floatComp.divInPlace(result, s);
+            result = new floatMxN(in a, Allocator.Temp);
+            floatComp.modInPlace(result, s);
+            result = new floatMxN(in a, Allocator.Temp);
+            floatComp.divInPlace(s, result);
+            result = new floatMxN(in a, Allocator.Temp);
+            floatComp.modInPlace(s, result);
 
-            result = a + b;
-            result = a - b;
-            result = a * b;
-            result = a / b;
-            result = a % b;
-
-            arena.Dispose();
+            result = new floatMxN(in a, Allocator.Temp);
+            floatComp.addInPlace(result, b);
+            result = new floatMxN(in a, Allocator.Temp);
+            floatComp.subInPlace(result, b);
+            result = new floatMxN(in a, Allocator.Temp);
+            floatComp.mulInPlace(result, b);
+            result = new floatMxN(in a, Allocator.Temp);
+            floatComp.divInPlace(result, b);
+            result = new floatMxN(in a, Allocator.Temp);
+            floatComp.modInPlace(result, b);
         }
     }
 
@@ -121,7 +137,7 @@ public class floatOperationsTest {
     {
         new BasicMatOpTestJob().Run();
     }
-    
+
     [BurstCompile(CompileSynchronously = true)]
     public struct BasicPreciseOPTestJob : IJob
     {
@@ -195,146 +211,136 @@ public class floatOperationsTest {
 
         public void SignFlipVec()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int vecLen = 16;
 
-            floatN a = arena.floatVec(vecLen, 10f);
+            floatN a = GenerateOP.floatVec(vecLen, 10f, Allocator.Temp);
 
-            a = -a;
+            floatComp.signFlipInPlace(a);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == -(float)10f);
-
-            arena.Dispose();
         }
 
         public void AddVec()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int vecLen = 16;
 
-            floatN a = arena.floatVec(vecLen, 10f);
+            floatN a = GenerateOP.floatVec(vecLen, 10f, Allocator.Temp);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (float)10d);
 
-            a += 1f;
+            floatComp.addInPlace(a, 1f);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (float)11d);
 
-            floatN r = arena.floatVec(vecLen, 5f);
+            floatN r = GenerateOP.floatVec(vecLen, 5f, Allocator.Temp);
 
-            a += r;
+            floatComp.addInPlace(a, r);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (float)16);
-
-            arena.Dispose();
         }
 
         public void SubVec()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int vecLen = 16;
 
-            floatN a = arena.floatVec(vecLen, 10f);
+            floatN a = GenerateOP.floatVec(vecLen, 10f, Allocator.Temp);
 
-            a -= 1f;
+            floatComp.addInPlace(a, -1f);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (float)9f);
 
-            floatN r = arena.floatVec(vecLen, 5f);
+            floatN r = GenerateOP.floatVec(vecLen, 5f, Allocator.Temp);
 
-            a -= r;
+            floatComp.subInPlace(a, r);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (float)4d);
 
-            a = arena.floatVec(vecLen, 10f);
+            a = GenerateOP.floatVec(vecLen, 10f, Allocator.Temp);
 
-            a = 1f - a;
+            floatComp.subInPlace(1f, a);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == -(float)9d);
-
-            arena.Dispose();
         }
 
         public void MulVec()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int vecLen = 16;
 
-            floatN a = arena.floatVec(vecLen, 1f);
+            floatN a = GenerateOP.floatVec(vecLen, 1f, Allocator.Temp);
 
-            a *= 1f;
+            floatComp.mulInPlace(a, 1f);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (float)1d);
 
-            a *= 2f;
+            floatComp.mulInPlace(a, 2f);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (float)2d);
 
-            a = arena.floatIndexZeroVec(vecLen);
+            a = GenerateOP.floatIndexZeroVec(vecLen);
 
-            a *= 2f;
+            floatComp.mulInPlace(a, 2f);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (float)(2d*i));
 
-            a = arena.floatIndexZeroVec(vecLen);
-            floatN b = arena.floatIndexZeroVec(vecLen);
+            a = GenerateOP.floatIndexZeroVec(vecLen);
+            floatN b = GenerateOP.floatIndexZeroVec(vecLen);
 
-            var c = a * b;
+            var c = new floatN(in a, Allocator.Temp);
+            floatComp.mulInPlace(c, b);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(c[i] == (float)(i * i));
-
-            arena.Dispose();
         }
 
         public void DivVec()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int vecLen = 16;
 
-            floatN a = arena.floatVec(vecLen, 1f);
+            floatN a = GenerateOP.floatVec(vecLen, 1f, Allocator.Temp);
 
-            a /= 1f;
+            floatComp.divInPlace(a, 1f);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (float)1f);
 
-            a /= 2f;
+            floatComp.divInPlace(a, 2f);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (float)0.5f);
 
-            a = arena.floatIndexZeroVec(vecLen);
+            a = GenerateOP.floatIndexZeroVec(vecLen);
 
-            a /= 2f;
+            floatComp.divInPlace(a, 2f);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (float)0.5f * i);
 
-            a = arena.floatIndexZeroVec(vecLen);
-            floatN b = arena.floatIndexZeroVec(vecLen);
+            a = GenerateOP.floatIndexZeroVec(vecLen);
+            floatN b = GenerateOP.floatIndexZeroVec(vecLen);
 
             // add 1 so no division by zero
-            a += 1f;
-            b += 1f;
+            floatComp.addInPlace(a, 1f);
+            floatComp.addInPlace(b, 1f);
 
-            var c0 = a / b;
-            var c1 = b / a;
+            var c0 = new floatN(in a, Allocator.Temp);
+            floatComp.divInPlace(c0, b);
+            var c1 = new floatN(in b, Allocator.Temp);
+            floatComp.divInPlace(c1, a);
 
             for (int i = 0; i < vecLen; i++)
             {
@@ -342,210 +348,191 @@ public class floatOperationsTest {
                 Assert.IsTrue(c1[i] == (float)1f);
             }
 
-            a = arena.floatVec(vecLen, 2f);
+            a = GenerateOP.floatVec(vecLen, 2f, Allocator.Temp);
 
-            a = 2f / a;
+            floatComp.divInPlace(2f, a);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (float)1f);
-
-            arena.Dispose();
         }
 
         public void ModVec()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int vecLen = 16;
 
-            floatN a = arena.floatVec(vecLen, 10f);
+            floatN a = GenerateOP.floatVec(vecLen, 10f, Allocator.Temp);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (float)10f);
 
-            a %= 2f;
+            floatComp.modInPlace(a, 2f);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (float)0f);
 
-            a = arena.floatIndexZeroVec(vecLen);
+            a = GenerateOP.floatIndexZeroVec(vecLen);
 
-            a %= 2f;
+            floatComp.modInPlace(a, 2f);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (float)(i % (float)2d));
 
-            a = arena.floatIndexZeroVec(vecLen);
-            floatN b = arena.floatIndexZeroVec(vecLen);
+            a = GenerateOP.floatIndexZeroVec(vecLen);
+            floatN b = GenerateOP.floatIndexZeroVec(vecLen);
 
             // add 1 so no division by zero
-            a += 1f;
-            b += 1f;
+            floatComp.addInPlace(a, 1f);
+            floatComp.addInPlace(b, 1f);
 
-            var c0 = a % b;
-            var c1 = b % a;
+            var c0 = new floatN(in a, Allocator.Temp);
+            floatComp.modInPlace(c0, b);
+            var c1 = new floatN(in b, Allocator.Temp);
+            floatComp.modInPlace(c1, a);
 
             for (int i = 0; i < vecLen; i++)
             {
                 Assert.IsTrue(c0[i] == (float)0f);
                 Assert.IsTrue(c1[i] == (float)0f);
             }
-
-            arena.Dispose();
         }
 
         public void SignFlipMat()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int vecLen = 16;
             int totalElements = vecLen * vecLen;
-            floatMxN a = arena.floatMat(vecLen, vecLen, 10f);
+            floatMxN a = GenerateOP.floatMat(vecLen, vecLen, 10f, Allocator.Temp);
 
-            a = -a;
+            floatComp.signFlipInPlace(a);
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == -(float)10f);
-
-            arena.Dispose();
         }
 
         public void AddMat()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int rows = 8;
             int cols = 8;
             int totalElements = rows * cols;
 
-            floatMxN a = arena.floatMat(rows, cols, 10f);
+            floatMxN a = GenerateOP.floatMat(rows, cols, 10f, Allocator.Temp);
 
             // Element-wise addition with scalar
-            a += 1f;
+            floatComp.addInPlace(a, 1f);
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (float)11f);
-
-            arena.Dispose();
         }
 
         public void SubMat()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int rows = 8;
             int cols = 8;
             int totalElements = rows * cols;
 
-            floatMxN a = arena.floatMat(rows, cols, 10f);
+            floatMxN a = GenerateOP.floatMat(rows, cols, 10f, Allocator.Temp);
 
             // Element-wise subtraction with scalar
-            a -= 5f;
+            floatComp.addInPlace(a, -5f);
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (float)5f);
-
-            arena.Dispose();
         }
 
         public void MulMat()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int rows = 8;
             int cols = 8;
             int totalElements = rows * cols;
 
-            floatMxN a = arena.floatMat(rows, cols, 2f);
+            floatMxN a = GenerateOP.floatMat(rows, cols, 2f, Allocator.Temp);
 
             // Element-wise multiplication with scalar
-            a *= 3f;
+            floatComp.mulInPlace(a, 3f);
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (float)6f);
 
-            a = 3f * a;
+            floatComp.mulInPlace(a, 3f);
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (float)18f);
 
-            var b = arena.floatMat(rows, cols, 0.5f);
+            var b = GenerateOP.floatMat(rows, cols, 0.5f, Allocator.Temp);
 
-            a = a * b;
+            floatComp.mulInPlace(a, b);
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (float)9f);
-
-            arena.Dispose();
         }
 
         public void DivMat()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int rows = 8;
             int cols = 8;
             int totalElements = rows * cols;
 
-            floatMxN a = arena.floatMat(rows, cols, 10f);
+            floatMxN a = GenerateOP.floatMat(rows, cols, 10f, Allocator.Temp);
 
             // Element-wise division with scalar
-            a /= 2f;
+            floatComp.divInPlace(a, 2f);
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (float)5f);
 
-            a = 5f / a;
+            floatComp.divInPlace(5f, a);
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (float)1f);
 
-            floatMxN b = arena.floatMat(rows, cols, 0.5f);
+            floatMxN b = GenerateOP.floatMat(rows, cols, 0.5f, Allocator.Temp);
 
-            var c0 = a / b;
-            var c1 = b / a;
+            var c0 = new floatMxN(in a, Allocator.Temp);
+            floatComp.divInPlace(c0, b);
+            var c1 = new floatMxN(in b, Allocator.Temp);
+            floatComp.divInPlace(c1, a);
 
             for (int i = 0; i < totalElements; i++)
             {
                 Assert.IsTrue(c0[i] == (float)2f);
                 Assert.IsTrue(c1[i] == (float)0.5f);
             }
-
-            arena.Dispose();
         }
 
         public void ModMat()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int rows = 8;
             int cols = 8;
             int totalElements = rows * cols;
 
-            floatMxN a = arena.floatMat(rows, cols, 10f);
+            floatMxN a = GenerateOP.floatMat(rows, cols, 10f, Allocator.Temp);
 
             // Element-wise modulo with scalar
-            a %= 3f;
+            floatComp.modInPlace(a, 3f);
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (float)1f);
 
-            a = arena.floatMat(rows, cols, 4f);
+            a = GenerateOP.floatMat(rows, cols, 4f, Allocator.Temp);
 
-            a = 4f % a;
+            floatComp.modInPlace(4f, a);
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (float)0f);
 
-            a = arena.floatMat(rows, cols, 3f);
-            floatMxN b = arena.floatMat(rows, cols, 2f);
+            a = GenerateOP.floatMat(rows, cols, 3f, Allocator.Temp);
+            floatMxN b = GenerateOP.floatMat(rows, cols, 2f, Allocator.Temp);
 
-            a = a % b;
+            floatComp.modInPlace(a, b);
 
             for (int i = 0; i < totalElements; i++)
                 Assert.IsTrue(a[i] == (float)1f);
-
-            arena.Dispose();
         }
     }
 

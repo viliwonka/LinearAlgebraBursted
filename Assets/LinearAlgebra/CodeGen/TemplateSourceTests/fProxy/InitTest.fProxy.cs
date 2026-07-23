@@ -12,22 +12,11 @@ public class fProxyInitTest
     {
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            Assert.AreEqual(0, arena.AllocationsCount);
-
             int vecLen = 7;
 
-            fProxyN vec = arena.fProxyVec(vecLen);
+            fProxyN vec = new fProxyN(vecLen, Allocator.Temp);
 
             Assert.AreEqual(vecLen, vec.N);
-            Assert.AreEqual(1, arena.AllocationsCount);
-            
-            arena.Clear();
-
-            Assert.AreEqual(0, arena.AllocationsCount);
-
-            arena.Dispose();
         }
     }
 
@@ -42,20 +31,12 @@ public class fProxyInitTest
     {
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int lenRows = 7;
             int lenColumns = 7;
 
-            fProxyMxN vec = arena.fProxyMat(lenRows, lenColumns);
+            fProxyMxN vec = new fProxyMxN(lenRows, lenColumns, Allocator.Temp);
 
             Assert.AreEqual(lenRows * lenColumns, vec.Length);
-            Assert.AreEqual(1, arena.AllocationsCount);
-
-            arena.Dispose();
-
-            Assert.AreEqual(0, arena.AllocationsCount);
-
         }
     }
 

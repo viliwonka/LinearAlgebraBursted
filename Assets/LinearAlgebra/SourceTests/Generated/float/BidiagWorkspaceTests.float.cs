@@ -11,7 +11,7 @@ using Unity.Collections;
 using Unity.Jobs;
 
 // Workspace-overload tests for Bidiag.decomp / values and their shared workspace
-// floatBidiagCache (Arena.floatBidiagCache(m, n)).
+// floatBidiagCache (new floatBidiagCache(m, n, Allocator)).
 //
 // The ws overload is the real body (caller-owned W/leftU/uVec/vVec/wScratch); the allocating overload
 // delegates with Temp scratch, so for identical inputs the outputs are bit-identical. Tests:
@@ -50,73 +50,74 @@ public class floatBidiagWorkspaceTests
 
         void BidiagEquiv(int m, int n, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatRandomMat(m, n, (float)(-3f), (float)3f, seed);
+            var A = GenerateOP.floatRandomMat(m, n, (float)(-3f), (float)3f, seed);
 
-            var Ua = arena.floatMat(m, n); var Ba = arena.floatMat(n, n); var Va = arena.floatMat(n, n);
+            var Ua = new floatMxN(m, n, Allocator.Temp); var Ba = new floatMxN(n, n, Allocator.Temp); var Va = new floatMxN(n, n, Allocator.Temp);
             Bidiag.decomp(in A, ref Ua, ref Ba, ref Va);
 
-            var ws = arena.floatBidiagCache(m, n);
-            var Uw = arena.floatMat(m, n); var Bw = arena.floatMat(n, n); var Vw = arena.floatMat(n, n);
+            var ws = new floatBidiagCache(m, n, Allocator.Temp);
+            var Uw = new floatMxN(m, n, Allocator.Temp); var Bw = new floatMxN(n, n, Allocator.Temp); var Vw = new floatMxN(n, n, Allocator.Temp);
             Bidiag.decomp(in A, ref Uw, ref Bw, ref Vw, ref ws);
 
-            Assert.IsTrue(Analysis.isZero(Ua - Uw, Tol()));
-            Assert.IsTrue(Analysis.isZero(Ba - Bw, Tol()));
-            Assert.IsTrue(Analysis.isZero(Va - Vw, Tol()));
-
-            arena.Dispose();
+            var dU = new floatMxN(in Ua, Allocator.Temp); floatComp.subInPlace(dU, Uw);
+            var dB = new floatMxN(in Ba, Allocator.Temp); floatComp.subInPlace(dB, Bw);
+            var dV = new floatMxN(in Va, Allocator.Temp); floatComp.subInPlace(dV, Vw);
+            Assert.IsTrue(Analysis.isZero(dU, Tol()));
+            Assert.IsTrue(Analysis.isZero(dB, Tol()));
+            Assert.IsTrue(Analysis.isZero(dV, Tol()));
         }
 
         void ValuesEquiv(int m, int n, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatRandomMat(m, n, (float)(-3f), (float)3f, seed);
+            var A = GenerateOP.floatRandomMat(m, n, (float)(-3f), (float)3f, seed);
 
-            var da = arena.floatVec(n); var ea = arena.floatVec(n);
+            var da = new floatN(n, Allocator.Temp); var ea = new floatN(n, Allocator.Temp);
             Bidiag.values(in A, ref da, ref ea);
 
-            var ws = arena.floatBidiagCache(m, n);
-            var dw = arena.floatVec(n); var ew = arena.floatVec(n);
+            var ws = new floatBidiagCache(m, n, Allocator.Temp);
+            var dw = new floatN(n, Allocator.Temp); var ew = new floatN(n, Allocator.Temp);
             Bidiag.values(in A, ref dw, ref ew, ref ws);
 
-            Assert.IsTrue(Analysis.isZero(da - dw, Tol()));
-            Assert.IsTrue(Analysis.isZero(ea - ew, Tol()));
-
-            arena.Dispose();
+            var dd = new floatN(in da, Allocator.Temp); floatComp.subInPlace(dd, dw);
+            var de = new floatN(in ea, Allocator.Temp); floatComp.subInPlace(de, ew);
+            Assert.IsTrue(Analysis.isZero(dd, Tol()));
+            Assert.IsTrue(Analysis.isZero(de, Tol()));
         }
 
         void ReuseBoth()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 8, n = 5;
 
-            var A1 = arena.floatRandomMat(m, n, (float)(-3f), (float)3f, 4004);
-            var A2 = arena.floatRandomMat(m, n, (float)(-2f), (float)2f, 5005);
+            var A1 = GenerateOP.floatRandomMat(m, n, (float)(-3f), (float)3f, 4004);
+            var A2 = GenerateOP.floatRandomMat(m, n, (float)(-2f), (float)2f, 5005);
 
-            var ws = arena.floatBidiagCache(m, n);   // allocated ONCE
+            var ws = new floatBidiagCache(m, n, Allocator.Temp);   // allocated ONCE
 
             // full bidiagonalize: warm on A1, reuse on A2, compare to fresh allocating on A2.
-            var U1 = arena.floatMat(m, n); var B1 = arena.floatMat(n, n); var V1 = arena.floatMat(n, n);
+            var U1 = new floatMxN(m, n, Allocator.Temp); var B1 = new floatMxN(n, n, Allocator.Temp); var V1 = new floatMxN(n, n, Allocator.Temp);
             Bidiag.decomp(in A1, ref U1, ref B1, ref V1, ref ws);
-            var Uw = arena.floatMat(m, n); var Bw = arena.floatMat(n, n); var Vw = arena.floatMat(n, n);
+            var Uw = new floatMxN(m, n, Allocator.Temp); var Bw = new floatMxN(n, n, Allocator.Temp); var Vw = new floatMxN(n, n, Allocator.Temp);
             Bidiag.decomp(in A2, ref Uw, ref Bw, ref Vw, ref ws);
-            var Ua = arena.floatMat(m, n); var Ba = arena.floatMat(n, n); var Va = arena.floatMat(n, n);
+            var Ua = new floatMxN(m, n, Allocator.Temp); var Ba = new floatMxN(n, n, Allocator.Temp); var Va = new floatMxN(n, n, Allocator.Temp);
             Bidiag.decomp(in A2, ref Ua, ref Ba, ref Va);
-            Assert.IsTrue(Analysis.isZero(Uw - Ua, Tol()));
-            Assert.IsTrue(Analysis.isZero(Bw - Ba, Tol()));
-            Assert.IsTrue(Analysis.isZero(Vw - Va, Tol()));
+            var dU = new floatMxN(in Uw, Allocator.Temp); floatComp.subInPlace(dU, Ua);
+            var dB = new floatMxN(in Bw, Allocator.Temp); floatComp.subInPlace(dB, Ba);
+            var dV = new floatMxN(in Vw, Allocator.Temp); floatComp.subInPlace(dV, Va);
+            Assert.IsTrue(Analysis.isZero(dU, Tol()));
+            Assert.IsTrue(Analysis.isZero(dB, Tol()));
+            Assert.IsTrue(Analysis.isZero(dV, Tol()));
 
             // values: same reused workspace.
-            var d1 = arena.floatVec(n); var e1 = arena.floatVec(n);
+            var d1 = new floatN(n, Allocator.Temp); var e1 = new floatN(n, Allocator.Temp);
             Bidiag.values(in A1, ref d1, ref e1, ref ws);
-            var dw = arena.floatVec(n); var ew = arena.floatVec(n);
+            var dw = new floatN(n, Allocator.Temp); var ew = new floatN(n, Allocator.Temp);
             Bidiag.values(in A2, ref dw, ref ew, ref ws);
-            var da = arena.floatVec(n); var ea = arena.floatVec(n);
+            var da = new floatN(n, Allocator.Temp); var ea = new floatN(n, Allocator.Temp);
             Bidiag.values(in A2, ref da, ref ea);
-            Assert.IsTrue(Analysis.isZero(dw - da, Tol()));
-            Assert.IsTrue(Analysis.isZero(ew - ea, Tol()));
-
-            arena.Dispose();
+            var dd = new floatN(in dw, Allocator.Temp); floatComp.subInPlace(dd, da);
+            var de = new floatN(in ew, Allocator.Temp); floatComp.subInPlace(de, ea);
+            Assert.IsTrue(Analysis.isZero(dd, Tol()));
+            Assert.IsTrue(Analysis.isZero(de, Tol()));
         }
     }
 
@@ -133,33 +134,23 @@ public class floatBidiagWorkspaceTests
     [Test]
     public void Bidiagonalize_BadWorkspace_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            int m = 6, n = 4;
-            var A = arena.floatMat(m, n);
-            var U = arena.floatMat(m, n); var B = arena.floatMat(n, n); var V = arena.floatMat(n, n);
-            var ws = arena.floatBidiagCache(m + 1, n);   // wrong m
-            Assert.Throws<ArgumentException>(
-                () => Bidiag.decomp(in A, ref U, ref B, ref V, ref ws));
-        }
-        finally { arena.Dispose(); }
+        int m = 6, n = 4;
+        var A = new floatMxN(m, n, Allocator.Temp);
+        var U = new floatMxN(m, n, Allocator.Temp); var B = new floatMxN(n, n, Allocator.Temp); var V = new floatMxN(n, n, Allocator.Temp);
+        var ws = new floatBidiagCache(m + 1, n, Allocator.Temp);   // wrong m
+        Assert.Throws<ArgumentException>(
+            () => Bidiag.decomp(in A, ref U, ref B, ref V, ref ws));
     }
 
     [Test]
     public void BidiagonalizeValues_BadWorkspace_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            int m = 6, n = 4;
-            var A = arena.floatMat(m, n);
-            var d = arena.floatVec(n); var e = arena.floatVec(n);
-            var ws = arena.floatBidiagCache(m, n + 1);   // wrong n (W/vVec/wScratch all wrong)
-            Assert.Throws<ArgumentException>(
-                () => Bidiag.values(in A, ref d, ref e, ref ws));
-        }
-        finally { arena.Dispose(); }
+        int m = 6, n = 4;
+        var A = new floatMxN(m, n, Allocator.Temp);
+        var d = new floatN(n, Allocator.Temp); var e = new floatN(n, Allocator.Temp);
+        var ws = new floatBidiagCache(m, n + 1, Allocator.Temp);   // wrong n (W/vVec/wScratch all wrong)
+        Assert.Throws<ArgumentException>(
+            () => Bidiag.values(in A, ref d, ref e, ref ws));
     }
 
     // needLeftU subtlety: Bidiag.values never touches leftU, so a leftU-less workspace (common
@@ -168,46 +159,36 @@ public class floatBidiagWorkspaceTests
     [Test]
     public void Values_LeftULessWorkspace_DoesNotThrow_ButBidiagonalizeDoes()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
+        int m = 6, n = 4;
+        var A = GenerateOP.floatRandomMat(m, n, (float)(-2f), (float)2f, 6006);
+
+        var ws = new floatBidiagCache
         {
-            int m = 6, n = 4;
-            var A = arena.floatRandomMat(m, n, (float)(-2f), (float)2f, 6006);
+            W = new floatMxN(m, n, Allocator.Temp),
+            leftU = default,                 // intentionally absent
+            uVec = new floatN(m, Allocator.Temp),
+            vVec = new floatN(n, Allocator.Temp),
+            wScratch = new floatN(n, Allocator.Temp)
+        };
 
-            var ws = new floatBidiagCache
-            {
-                W = arena.floatMat(m, n),
-                leftU = default,                 // intentionally absent
-                uVec = arena.floatVec(m),
-                vVec = arena.floatVec(n),
-                wScratch = arena.floatVec(n)
-            };
+        var d = new floatN(n, Allocator.Temp); var e = new floatN(n, Allocator.Temp);
+        Assert.DoesNotThrow(() => Bidiag.values(in A, ref d, ref e, ref ws));
 
-            var d = arena.floatVec(n); var e = arena.floatVec(n);
-            Assert.DoesNotThrow(() => Bidiag.values(in A, ref d, ref e, ref ws));
-
-            // same workspace fails the full bidiagonalize (needs leftU).
-            var U = arena.floatMat(m, n); var B = arena.floatMat(n, n); var V = arena.floatMat(n, n);
-            Assert.Throws<ArgumentException>(
-                () => Bidiag.decomp(in A, ref U, ref B, ref V, ref ws));
-        }
-        finally { arena.Dispose(); }
+        // same workspace fails the full bidiagonalize (needs leftU).
+        var U = new floatMxN(m, n, Allocator.Temp); var B = new floatMxN(n, n, Allocator.Temp); var V = new floatMxN(n, n, Allocator.Temp);
+        Assert.Throws<ArgumentException>(
+            () => Bidiag.decomp(in A, ref U, ref B, ref V, ref ws));
     }
 
-    // Arena.floatBidiagCache(m, n): W (m x n), leftU (m x n), uVec (m), vVec (n), wScratch (n).
+    // floatBidiagCache(m, n, Allocator): W (m x n), leftU (m x n), uVec (m), vVec (n), wScratch (n).
     [Test]
     public void BidiagWorkspace_Factory_SizesCorrectly()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var ws = arena.floatBidiagCache(9, 4);
-            Assert.AreEqual(9, ws.W.M_Rows);     Assert.AreEqual(4, ws.W.N_Cols);
-            Assert.AreEqual(9, ws.leftU.M_Rows); Assert.AreEqual(4, ws.leftU.N_Cols);
-            Assert.AreEqual(9, ws.uVec.N);
-            Assert.AreEqual(4, ws.vVec.N);
-            Assert.AreEqual(4, ws.wScratch.N);
-        }
-        finally { arena.Dispose(); }
+        var ws = new floatBidiagCache(9, 4, Allocator.Temp);
+        Assert.AreEqual(9, ws.W.M_Rows);     Assert.AreEqual(4, ws.W.N_Cols);
+        Assert.AreEqual(9, ws.leftU.M_Rows); Assert.AreEqual(4, ws.leftU.N_Cols);
+        Assert.AreEqual(9, ws.uVec.N);
+        Assert.AreEqual(4, ws.vVec.N);
+        Assert.AreEqual(4, ws.wScratch.N);
     }
 }

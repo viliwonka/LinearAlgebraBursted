@@ -11,7 +11,7 @@ using Unity.Collections;
 using Unity.Jobs;
 
 // Workspace-overload tests for Bidiag.decomp / values and their shared workspace
-// doubleBidiagCache (Arena.doubleBidiagCache(m, n)).
+// doubleBidiagCache (new doubleBidiagCache(m, n, Allocator)).
 //
 // The ws overload is the real body (caller-owned W/leftU/uVec/vVec/wScratch); the allocating overload
 // delegates with Temp scratch, so for identical inputs the outputs are bit-identical. Tests:
@@ -50,73 +50,74 @@ public class doubleBidiagWorkspaceTests
 
         void BidiagEquiv(int m, int n, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleRandomMat(m, n, (double)(-3f), (double)3f, seed);
+            var A = GenerateOP.doubleRandomMat(m, n, (double)(-3f), (double)3f, seed);
 
-            var Ua = arena.doubleMat(m, n); var Ba = arena.doubleMat(n, n); var Va = arena.doubleMat(n, n);
+            var Ua = new doubleMxN(m, n, Allocator.Temp); var Ba = new doubleMxN(n, n, Allocator.Temp); var Va = new doubleMxN(n, n, Allocator.Temp);
             Bidiag.decomp(in A, ref Ua, ref Ba, ref Va);
 
-            var ws = arena.doubleBidiagCache(m, n);
-            var Uw = arena.doubleMat(m, n); var Bw = arena.doubleMat(n, n); var Vw = arena.doubleMat(n, n);
+            var ws = new doubleBidiagCache(m, n, Allocator.Temp);
+            var Uw = new doubleMxN(m, n, Allocator.Temp); var Bw = new doubleMxN(n, n, Allocator.Temp); var Vw = new doubleMxN(n, n, Allocator.Temp);
             Bidiag.decomp(in A, ref Uw, ref Bw, ref Vw, ref ws);
 
-            Assert.IsTrue(Analysis.isZero(Ua - Uw, Tol()));
-            Assert.IsTrue(Analysis.isZero(Ba - Bw, Tol()));
-            Assert.IsTrue(Analysis.isZero(Va - Vw, Tol()));
-
-            arena.Dispose();
+            var dU = new doubleMxN(in Ua, Allocator.Temp); doubleComp.subInPlace(dU, Uw);
+            var dB = new doubleMxN(in Ba, Allocator.Temp); doubleComp.subInPlace(dB, Bw);
+            var dV = new doubleMxN(in Va, Allocator.Temp); doubleComp.subInPlace(dV, Vw);
+            Assert.IsTrue(Analysis.isZero(dU, Tol()));
+            Assert.IsTrue(Analysis.isZero(dB, Tol()));
+            Assert.IsTrue(Analysis.isZero(dV, Tol()));
         }
 
         void ValuesEquiv(int m, int n, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleRandomMat(m, n, (double)(-3f), (double)3f, seed);
+            var A = GenerateOP.doubleRandomMat(m, n, (double)(-3f), (double)3f, seed);
 
-            var da = arena.doubleVec(n); var ea = arena.doubleVec(n);
+            var da = new doubleN(n, Allocator.Temp); var ea = new doubleN(n, Allocator.Temp);
             Bidiag.values(in A, ref da, ref ea);
 
-            var ws = arena.doubleBidiagCache(m, n);
-            var dw = arena.doubleVec(n); var ew = arena.doubleVec(n);
+            var ws = new doubleBidiagCache(m, n, Allocator.Temp);
+            var dw = new doubleN(n, Allocator.Temp); var ew = new doubleN(n, Allocator.Temp);
             Bidiag.values(in A, ref dw, ref ew, ref ws);
 
-            Assert.IsTrue(Analysis.isZero(da - dw, Tol()));
-            Assert.IsTrue(Analysis.isZero(ea - ew, Tol()));
-
-            arena.Dispose();
+            var dd = new doubleN(in da, Allocator.Temp); doubleComp.subInPlace(dd, dw);
+            var de = new doubleN(in ea, Allocator.Temp); doubleComp.subInPlace(de, ew);
+            Assert.IsTrue(Analysis.isZero(dd, Tol()));
+            Assert.IsTrue(Analysis.isZero(de, Tol()));
         }
 
         void ReuseBoth()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 8, n = 5;
 
-            var A1 = arena.doubleRandomMat(m, n, (double)(-3f), (double)3f, 4004);
-            var A2 = arena.doubleRandomMat(m, n, (double)(-2f), (double)2f, 5005);
+            var A1 = GenerateOP.doubleRandomMat(m, n, (double)(-3f), (double)3f, 4004);
+            var A2 = GenerateOP.doubleRandomMat(m, n, (double)(-2f), (double)2f, 5005);
 
-            var ws = arena.doubleBidiagCache(m, n);   // allocated ONCE
+            var ws = new doubleBidiagCache(m, n, Allocator.Temp);   // allocated ONCE
 
             // full bidiagonalize: warm on A1, reuse on A2, compare to fresh allocating on A2.
-            var U1 = arena.doubleMat(m, n); var B1 = arena.doubleMat(n, n); var V1 = arena.doubleMat(n, n);
+            var U1 = new doubleMxN(m, n, Allocator.Temp); var B1 = new doubleMxN(n, n, Allocator.Temp); var V1 = new doubleMxN(n, n, Allocator.Temp);
             Bidiag.decomp(in A1, ref U1, ref B1, ref V1, ref ws);
-            var Uw = arena.doubleMat(m, n); var Bw = arena.doubleMat(n, n); var Vw = arena.doubleMat(n, n);
+            var Uw = new doubleMxN(m, n, Allocator.Temp); var Bw = new doubleMxN(n, n, Allocator.Temp); var Vw = new doubleMxN(n, n, Allocator.Temp);
             Bidiag.decomp(in A2, ref Uw, ref Bw, ref Vw, ref ws);
-            var Ua = arena.doubleMat(m, n); var Ba = arena.doubleMat(n, n); var Va = arena.doubleMat(n, n);
+            var Ua = new doubleMxN(m, n, Allocator.Temp); var Ba = new doubleMxN(n, n, Allocator.Temp); var Va = new doubleMxN(n, n, Allocator.Temp);
             Bidiag.decomp(in A2, ref Ua, ref Ba, ref Va);
-            Assert.IsTrue(Analysis.isZero(Uw - Ua, Tol()));
-            Assert.IsTrue(Analysis.isZero(Bw - Ba, Tol()));
-            Assert.IsTrue(Analysis.isZero(Vw - Va, Tol()));
+            var dU = new doubleMxN(in Uw, Allocator.Temp); doubleComp.subInPlace(dU, Ua);
+            var dB = new doubleMxN(in Bw, Allocator.Temp); doubleComp.subInPlace(dB, Ba);
+            var dV = new doubleMxN(in Vw, Allocator.Temp); doubleComp.subInPlace(dV, Va);
+            Assert.IsTrue(Analysis.isZero(dU, Tol()));
+            Assert.IsTrue(Analysis.isZero(dB, Tol()));
+            Assert.IsTrue(Analysis.isZero(dV, Tol()));
 
             // values: same reused workspace.
-            var d1 = arena.doubleVec(n); var e1 = arena.doubleVec(n);
+            var d1 = new doubleN(n, Allocator.Temp); var e1 = new doubleN(n, Allocator.Temp);
             Bidiag.values(in A1, ref d1, ref e1, ref ws);
-            var dw = arena.doubleVec(n); var ew = arena.doubleVec(n);
+            var dw = new doubleN(n, Allocator.Temp); var ew = new doubleN(n, Allocator.Temp);
             Bidiag.values(in A2, ref dw, ref ew, ref ws);
-            var da = arena.doubleVec(n); var ea = arena.doubleVec(n);
+            var da = new doubleN(n, Allocator.Temp); var ea = new doubleN(n, Allocator.Temp);
             Bidiag.values(in A2, ref da, ref ea);
-            Assert.IsTrue(Analysis.isZero(dw - da, Tol()));
-            Assert.IsTrue(Analysis.isZero(ew - ea, Tol()));
-
-            arena.Dispose();
+            var dd = new doubleN(in dw, Allocator.Temp); doubleComp.subInPlace(dd, da);
+            var de = new doubleN(in ew, Allocator.Temp); doubleComp.subInPlace(de, ea);
+            Assert.IsTrue(Analysis.isZero(dd, Tol()));
+            Assert.IsTrue(Analysis.isZero(de, Tol()));
         }
     }
 
@@ -133,33 +134,23 @@ public class doubleBidiagWorkspaceTests
     [Test]
     public void Bidiagonalize_BadWorkspace_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            int m = 6, n = 4;
-            var A = arena.doubleMat(m, n);
-            var U = arena.doubleMat(m, n); var B = arena.doubleMat(n, n); var V = arena.doubleMat(n, n);
-            var ws = arena.doubleBidiagCache(m + 1, n);   // wrong m
-            Assert.Throws<ArgumentException>(
-                () => Bidiag.decomp(in A, ref U, ref B, ref V, ref ws));
-        }
-        finally { arena.Dispose(); }
+        int m = 6, n = 4;
+        var A = new doubleMxN(m, n, Allocator.Temp);
+        var U = new doubleMxN(m, n, Allocator.Temp); var B = new doubleMxN(n, n, Allocator.Temp); var V = new doubleMxN(n, n, Allocator.Temp);
+        var ws = new doubleBidiagCache(m + 1, n, Allocator.Temp);   // wrong m
+        Assert.Throws<ArgumentException>(
+            () => Bidiag.decomp(in A, ref U, ref B, ref V, ref ws));
     }
 
     [Test]
     public void BidiagonalizeValues_BadWorkspace_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            int m = 6, n = 4;
-            var A = arena.doubleMat(m, n);
-            var d = arena.doubleVec(n); var e = arena.doubleVec(n);
-            var ws = arena.doubleBidiagCache(m, n + 1);   // wrong n (W/vVec/wScratch all wrong)
-            Assert.Throws<ArgumentException>(
-                () => Bidiag.values(in A, ref d, ref e, ref ws));
-        }
-        finally { arena.Dispose(); }
+        int m = 6, n = 4;
+        var A = new doubleMxN(m, n, Allocator.Temp);
+        var d = new doubleN(n, Allocator.Temp); var e = new doubleN(n, Allocator.Temp);
+        var ws = new doubleBidiagCache(m, n + 1, Allocator.Temp);   // wrong n (W/vVec/wScratch all wrong)
+        Assert.Throws<ArgumentException>(
+            () => Bidiag.values(in A, ref d, ref e, ref ws));
     }
 
     // needLeftU subtlety: Bidiag.values never touches leftU, so a leftU-less workspace (common
@@ -168,46 +159,36 @@ public class doubleBidiagWorkspaceTests
     [Test]
     public void Values_LeftULessWorkspace_DoesNotThrow_ButBidiagonalizeDoes()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
+        int m = 6, n = 4;
+        var A = GenerateOP.doubleRandomMat(m, n, (double)(-2f), (double)2f, 6006);
+
+        var ws = new doubleBidiagCache
         {
-            int m = 6, n = 4;
-            var A = arena.doubleRandomMat(m, n, (double)(-2f), (double)2f, 6006);
+            W = new doubleMxN(m, n, Allocator.Temp),
+            leftU = default,                 // intentionally absent
+            uVec = new doubleN(m, Allocator.Temp),
+            vVec = new doubleN(n, Allocator.Temp),
+            wScratch = new doubleN(n, Allocator.Temp)
+        };
 
-            var ws = new doubleBidiagCache
-            {
-                W = arena.doubleMat(m, n),
-                leftU = default,                 // intentionally absent
-                uVec = arena.doubleVec(m),
-                vVec = arena.doubleVec(n),
-                wScratch = arena.doubleVec(n)
-            };
+        var d = new doubleN(n, Allocator.Temp); var e = new doubleN(n, Allocator.Temp);
+        Assert.DoesNotThrow(() => Bidiag.values(in A, ref d, ref e, ref ws));
 
-            var d = arena.doubleVec(n); var e = arena.doubleVec(n);
-            Assert.DoesNotThrow(() => Bidiag.values(in A, ref d, ref e, ref ws));
-
-            // same workspace fails the full bidiagonalize (needs leftU).
-            var U = arena.doubleMat(m, n); var B = arena.doubleMat(n, n); var V = arena.doubleMat(n, n);
-            Assert.Throws<ArgumentException>(
-                () => Bidiag.decomp(in A, ref U, ref B, ref V, ref ws));
-        }
-        finally { arena.Dispose(); }
+        // same workspace fails the full bidiagonalize (needs leftU).
+        var U = new doubleMxN(m, n, Allocator.Temp); var B = new doubleMxN(n, n, Allocator.Temp); var V = new doubleMxN(n, n, Allocator.Temp);
+        Assert.Throws<ArgumentException>(
+            () => Bidiag.decomp(in A, ref U, ref B, ref V, ref ws));
     }
 
-    // Arena.doubleBidiagCache(m, n): W (m x n), leftU (m x n), uVec (m), vVec (n), wScratch (n).
+    // doubleBidiagCache(m, n, Allocator): W (m x n), leftU (m x n), uVec (m), vVec (n), wScratch (n).
     [Test]
     public void BidiagWorkspace_Factory_SizesCorrectly()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var ws = arena.doubleBidiagCache(9, 4);
-            Assert.AreEqual(9, ws.W.M_Rows);     Assert.AreEqual(4, ws.W.N_Cols);
-            Assert.AreEqual(9, ws.leftU.M_Rows); Assert.AreEqual(4, ws.leftU.N_Cols);
-            Assert.AreEqual(9, ws.uVec.N);
-            Assert.AreEqual(4, ws.vVec.N);
-            Assert.AreEqual(4, ws.wScratch.N);
-        }
-        finally { arena.Dispose(); }
+        var ws = new doubleBidiagCache(9, 4, Allocator.Temp);
+        Assert.AreEqual(9, ws.W.M_Rows);     Assert.AreEqual(4, ws.W.N_Cols);
+        Assert.AreEqual(9, ws.leftU.M_Rows); Assert.AreEqual(4, ws.leftU.N_Cols);
+        Assert.AreEqual(9, ws.uVec.N);
+        Assert.AreEqual(4, ws.vVec.N);
+        Assert.AreEqual(4, ws.wScratch.N);
     }
 }

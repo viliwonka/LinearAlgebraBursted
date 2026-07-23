@@ -90,14 +90,12 @@ public class fProxyRandomMatrixTests
 
         void CheckOrthogonal(int n, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
-
             var rng = new Random(seed);
-            var Q = arena.fProxyMat(n, n);
+            var Q = new fProxyMxN(n, n, Allocator.Temp);
             Rand.orthogonalInPlace(ref rng, ref Q);
 
             // QᵀQ
-            var QtQ = arena.fProxyMat(n, n);
+            var QtQ = new fProxyMxN(n, n, Allocator.Temp);
             Blas.dot(in Q, in Q, ref QtQ, transposeA: true);
 
             // off-diagonal orthonormality error scales with n; this bound is loose for float,
@@ -109,28 +107,23 @@ public class fProxyRandomMatrixTests
                     fProxy expected = (r == c) ? (fProxy)1 : (fProxy)0;
                     AssertClose(QtQ[r, c], expected, tol);
                 }
-
-            arena.Dispose();
         }
 
         // Same seed => identical orthogonal matrix, bit-for-bit.
         void OrthogonalDeterminism()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 5;
 
             var r1 = new Random(424242u);
-            var Q1 = arena.fProxyMat(n, n);
+            var Q1 = new fProxyMxN(n, n, Allocator.Temp);
             Rand.orthogonalInPlace(ref r1, ref Q1);
 
             var r2 = new Random(424242u);
-            var Q2 = arena.fProxyMat(n, n);
+            var Q2 = new fProxyMxN(n, n, Allocator.Temp);
             Rand.orthogonalInPlace(ref r2, ref Q2);
 
             for (int i = 0; i < Q1.Length; i++)
                 AssertClose(Q1[i], Q2[i], (fProxy)0);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -141,15 +134,13 @@ public class fProxyRandomMatrixTests
         //     via symmetric-Jacobi Eigen, plus trace ∈ [n·minEig, n·maxEig].
         void SpdProperties()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             fProxy minEig = (fProxy)0.5, maxEig = (fProxy)8;
 
             for (uint t = 0; t < 6; t++)
             {
                 int n = 4 + (int)t;             // 4..9
                 var rng = new Random(5000u + t * 37u);
-                var A = arena.fProxyMat(n, n);
+                var A = new fProxyMxN(n, n, Allocator.Temp);
                 Rand.spdInPlace(ref rng, ref A, minEig, maxEig);
 
                 // (a) symmetry — implementation symmetrises exactly, so this is tight.
@@ -159,13 +150,13 @@ public class fProxyRandomMatrixTests
                         AssertClose(A[r, c], A[c, r], symTol);
 
                 // (b) positive-definite: Cholesky must succeed.
-                var L = arena.fProxyMat(n, n);
+                var L = new fProxyMxN(n, n, Allocator.Temp);
                 AssertTrue(CHO.decomp(in A, ref L));
 
                 // (c) eigenvalues ∈ [minEig, maxEig] (Jacobi destroys its input -> copy).
-                var Acopy = arena.fProxyMat(in A);
-                var evals = arena.fProxyVec(n);
-                var V = arena.fProxyMat(n, n);
+                var Acopy = new fProxyMxN(in A, Allocator.Temp);
+                var evals = new fProxyN(n, Allocator.Temp);
+                var V = new fProxyMxN(n, n, Allocator.Temp);
                 AssertTrue(Eigen.decompInPlace(ref Acopy, ref evals, ref V));
 
                 fProxy eigTol = (fProxy)200 * Consts.fProxySqrtEps * maxEig;
@@ -182,30 +173,23 @@ public class fProxyRandomMatrixTests
                 AssertTrue(traceA >= (fProxy)n * minEig - eigTol);
                 AssertTrue(traceA <= (fProxy)n * maxEig + eigTol);
                 AssertClose(traceA, traceLam, (fProxy)10 * Consts.fProxySqrtEps * maxEig * (fProxy)n);
-
-                arena.Clear();
             }
-
-            arena.Dispose();
         }
 
         void SpdDeterminism()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 5;
 
             var r1 = new Random(96321u);
-            var A1 = arena.fProxyMat(n, n);
+            var A1 = new fProxyMxN(n, n, Allocator.Temp);
             Rand.spdInPlace(ref r1, ref A1, (fProxy)1, (fProxy)10);
 
             var r2 = new Random(96321u);
-            var A2 = arena.fProxyMat(n, n);
+            var A2 = new fProxyMxN(n, n, Allocator.Temp);
             Rand.spdInPlace(ref r2, ref A2, (fProxy)1, (fProxy)10);
 
             for (int i = 0; i < A1.Length; i++)
                 AssertClose(A1[i], A2[i], (fProxy)0);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -218,14 +202,12 @@ public class fProxyRandomMatrixTests
         // σ_max/σ_min ≈ cond, verified through SVD.singularValues (descending order).
         void CheckCondition(int m, int n, fProxy cond, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
-
             var rng = new Random(seed);
-            var A = arena.fProxyMat(m, n);
+            var A = new fProxyMxN(m, n, Allocator.Temp);
             Rand.conditionedInPlace(ref rng, ref A, cond);
 
             int k = math.min(m, n);
-            var S = arena.fProxyVec(k);
+            var S = new fProxyN(k, Allocator.Temp);
             SVD.singularValues(in A, ref S);
 
             fProxy got = S[0] / S[k - 1];
@@ -233,27 +215,21 @@ public class fProxyRandomMatrixTests
             // Generous relative tolerance (float SVD on a reconstructed UΣVᵀ); auto-tightens for double.
             fProxy relTol = (fProxy)60 * Consts.fProxySqrtEps;   // float ≈ 2.1e-2, double ≈ 8.9e-7
             AssertClose(got / cond, (fProxy)1, relTol);
-
-            arena.Dispose();
         }
 
         // k = 1 (1x4) is the documented trivial case: a single singular value => cond = 1.
         void ConditionRankOne()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             var rng = new Random(6003u);
-            var A = arena.fProxyMat(1, 4);
+            var A = new fProxyMxN(1, 4, Allocator.Temp);
             Rand.conditionedInPlace(ref rng, ref A, (fProxy)50);
 
-            var S = arena.fProxyVec(1);    // k = min(1,4) = 1
+            var S = new fProxyN(1, Allocator.Temp);    // k = min(1,4) = 1
             SVD.singularValues(in A, ref S);
 
             // single sv => σ_max/σ_min = S[0]/S[0] = 1 exactly; assert the sv equals the σ₀ the
             // algorithm sets for k==1, which is 1.
             AssertClose(S[0], (fProxy)1, (fProxy)50 * Consts.fProxySqrtEps);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -263,8 +239,6 @@ public class fProxyRandomMatrixTests
         // numerical rank == requested rank for every rank in [1, min(m,n)], over several seeds.
         void RankExact()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 6, n = 4;            // min = 4
             int k = math.min(m, n);
 
@@ -273,43 +247,35 @@ public class fProxyRandomMatrixTests
                 for (uint t = 0; t < 4; t++)
                 {
                     var rng = new Random(7000u + (uint)rank * 101u + t * 13u);
-                    var A = arena.fProxyMat(m, n);
+                    var A = new fProxyMxN(m, n, Allocator.Temp);
                     Rand.withRankInPlace(ref rng, ref A, rank);
 
-                    int got = NumericalRank(in arena, in A);
+                    int got = NumericalRank(in A);
                     RecordEq(got, rank);
-
-                    arena.Clear();
                 }
             }
-
-            arena.Dispose();
         }
 
         // rank 0 => exact zero matrix; rank == min(m,n) => full numerical rank.
         void RankZeroAndFull()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 5, n = 3;
             int k = math.min(m, n);
 
             // rank 0: every entry exactly 0.
             var rng0 = new Random(8001u);
-            var A0 = arena.fProxyMat(m, n);
+            var A0 = new fProxyMxN(m, n, Allocator.Temp);
             for (int i = 0; i < A0.Length; i++) A0[i] = (fProxy)999;   // poison
             Rand.withRankInPlace(ref rng0, ref A0, 0);
             for (int i = 0; i < A0.Length; i++)
                 AssertClose(A0[i], (fProxy)0, (fProxy)0);    // exact
-            RecordEq(NumericalRank(in arena, in A0), 0);
+            RecordEq(NumericalRank(in A0), 0);
 
             // full rank.
             var rngF = new Random(8002u);
-            var AF = arena.fProxyMat(m, n);
+            var AF = new fProxyMxN(m, n, Allocator.Temp);
             Rand.withRankInPlace(ref rngF, ref AF, k);
-            RecordEq(NumericalRank(in arena, in AF), k);
-
-            arena.Dispose();
+            RecordEq(NumericalRank(in AF), k);
         }
 
         // count singular values above S[0]·thr. thr sits just above the machine-zero floor:
@@ -317,10 +283,10 @@ public class fProxyRandomMatrixTests
         // numerical-zero singular values of a rank-deficient product yet BELOW the genuine (≳1e-3·S[0])
         // singular values — including the smallest one of a full-rank random Gaussian product, which a
         // larger sqrt(eps)-scaled threshold would wrongly reject in float.
-        int NumericalRank(in Arena arena, in fProxyMxN A)
+        int NumericalRank(in fProxyMxN A)
         {
             int k = math.min(A.M_Rows, A.N_Cols);
-            var S = arena.fProxyVec(k);
+            var S = new fProxyN(k, Allocator.Temp);
             SVD.singularValues(in A, ref S);
 
             fProxy thr = S[0] * (fProxy)64 * Consts.fProxyEpsilon;
@@ -344,10 +310,8 @@ public class fProxyRandomMatrixTests
 
         void CheckStochastic(int m, int n, uint seed)
         {
-            var arena = new Arena(Allocator.Persistent);
-
             var rng = new Random(seed);
-            var A = arena.fProxyMat(m, n);
+            var A = new fProxyMxN(m, n, Allocator.Temp);
             Rand.stochasticInPlace(ref rng, ref A);
 
             fProxy sumTol = (fProxy)20 * Consts.fProxySqrtEps;
@@ -363,8 +327,6 @@ public class fProxyRandomMatrixTests
                 }
                 AssertClose(rowSum, (fProxy)1, sumTol);
             }
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -375,21 +337,20 @@ public class fProxyRandomMatrixTests
         // Exercises both single-sample overloads (5-param scratch and 4-param Temp).
         void MvnIdentityMean(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
             const int samples = 8000;
 
-            var I = arena.fProxyMat(n, n);
+            var I = new fProxyMxN(n, n, Allocator.Temp);
             for (int i = 0; i < n; i++) I[i, i] = (fProxy)1;
 
-            var mean = arena.fProxyVec(n);
+            var mean = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) mean[i] = (fProxy)(i + 1);   // 1,2,3,...
 
             // --- 5-param overload (explicit z scratch) ---
             var rng = new Random(11000u + (uint)n);
-            var acc = arena.fProxyVec(n);
+            var acc = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) acc[i] = (fProxy)0;
-            var dest = arena.fProxyVec(n);
-            var z = arena.fProxyVec(n);
+            var dest = new fProxyN(n, Allocator.Temp);
+            var z = new fProxyN(n, Allocator.Temp);
             for (int s = 0; s < samples; s++)
             {
                 Rand.multivariateNormalInPlace(ref rng, in I, in mean, ref dest, ref z);
@@ -409,20 +370,18 @@ public class fProxyRandomMatrixTests
             }
             for (int i = 0; i < n; i++)
                 AssertClose(acc[i] / (fProxy)samples, mean[i], meanTol);
-
-            arena.Dispose();
         }
 
         // Known 2x2 cholL => Σ = L·Lᵀ known. Over many rows, empirical column means ≈ mean and
         // empirical covariance ≈ Σ within a loose Monte-Carlo tolerance.
+        // rows=8000 is a real buffer dimension (dest is rows x n) -> Persistent + explicit Dispose.
         void MvnCovariance()
         {
-            var arena = new Arena(Allocator.Persistent);
             const int rows = 8000;
             int n = 2;
 
             // L = [[1,0],[0.5,0.8]]  =>  Σ = L Lᵀ = [[1,0.5],[0.5,0.89]]
-            var L = arena.fProxyMat(n, n);
+            var L = new fProxyMxN(n, n, Allocator.Persistent);
             L[0, 0] = (fProxy)1;   L[0, 1] = (fProxy)0;
             L[1, 0] = (fProxy)0.5; L[1, 1] = (fProxy)0.8;
 
@@ -430,11 +389,11 @@ public class fProxyRandomMatrixTests
             fProxy s01 = (fProxy)0.5;
             fProxy s11 = (fProxy)0.89;
 
-            var mean = arena.fProxyVec(n);
+            var mean = new fProxyN(n, Allocator.Persistent);
             mean[0] = (fProxy)(-2); mean[1] = (fProxy)3;
 
             var rng = new Random(13000u);
-            var dest = arena.fProxyMat(rows, n);
+            var dest = new fProxyMxN(rows, n, Allocator.Persistent);
             Rand.multivariateNormalRowsInPlace(ref rng, in L, in mean, ref dest);
 
             // empirical column means
@@ -460,34 +419,33 @@ public class fProxyRandomMatrixTests
             AssertClose(c01, s01, covTol);
             AssertClose(c11, s11, covTol);
 
-            arena.Dispose();
+            L.Dispose();
+            mean.Dispose();
+            dest.Dispose();
         }
 
         // Fixed seed => identical rows, bit-for-bit (single deterministic float stream).
         void MvnDeterminism()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 3, rows = 64;
 
-            var L = arena.fProxyMat(n, n);
+            var L = new fProxyMxN(n, n, Allocator.Temp);
             L[0, 0] = (fProxy)1.2; L[1, 0] = (fProxy)(-0.3); L[1, 1] = (fProxy)0.7;
             L[2, 0] = (fProxy)0.1; L[2, 1] = (fProxy)0.4;    L[2, 2] = (fProxy)0.9;
 
-            var mean = arena.fProxyVec(n);
+            var mean = new fProxyN(n, Allocator.Temp);
             mean[0] = (fProxy)1; mean[1] = (fProxy)2; mean[2] = (fProxy)3;
 
             var r1 = new Random(55667788u);
-            var D1 = arena.fProxyMat(rows, n);
+            var D1 = new fProxyMxN(rows, n, Allocator.Temp);
             Rand.multivariateNormalRowsInPlace(ref r1, in L, in mean, ref D1);
 
             var r2 = new Random(55667788u);
-            var D2 = arena.fProxyMat(rows, n);
+            var D2 = new fProxyMxN(rows, n, Allocator.Temp);
             Rand.multivariateNormalRowsInPlace(ref r2, in L, in mean, ref D2);
 
             for (int i = 0; i < D1.Length; i++)
                 AssertClose(D1[i], D2[i], (fProxy)0);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -561,132 +519,107 @@ public class fProxyRandomMatrixTests
     [Test]
     public void OrthogonalNonSquareThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var rng = new Random(1u);
-            var dest = arena.fProxyMat(3, 4);
-            Assert.Throws<ArgumentException>(
-                () => Rand.orthogonalInPlace(ref rng, ref dest));
-        }
-        finally { arena.Dispose(); }
+        var rng = new Random(1u);
+        var dest = new fProxyMxN(3, 4, Allocator.Temp);
+        Assert.Throws<ArgumentException>(
+            () => Rand.orthogonalInPlace(ref rng, ref dest));
     }
 
     [Test]
     public void SpdValidationThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var rng = new Random(1u);
+        var rng = new Random(1u);
 
-            var nonSquare = arena.fProxyMat(3, 4);
-            Assert.Throws<ArgumentException>(
-                () => Rand.spdInPlace(ref rng, ref nonSquare, (fProxy)1, (fProxy)2));
+        var nonSquare = new fProxyMxN(3, 4, Allocator.Temp);
+        Assert.Throws<ArgumentException>(
+            () => Rand.spdInPlace(ref rng, ref nonSquare, (fProxy)1, (fProxy)2));
 
-            var A = arena.fProxyMat(3, 3);
-            // minEig <= 0
-            Assert.Throws<ArgumentException>(
-                () => Rand.spdInPlace(ref rng, ref A, (fProxy)0, (fProxy)2));
-            Assert.Throws<ArgumentException>(
-                () => Rand.spdInPlace(ref rng, ref A, (fProxy)(-1), (fProxy)2));
-            // minEig > maxEig
-            Assert.Throws<ArgumentException>(
-                () => Rand.spdInPlace(ref rng, ref A, (fProxy)5, (fProxy)2));
-            // non-finite bounds
-            Assert.Throws<ArgumentException>(
-                () => Rand.spdInPlace(ref rng, ref A, (fProxy)fProxy.PositiveInfinity, (fProxy)2));
-            Assert.Throws<ArgumentException>(
-                () => Rand.spdInPlace(ref rng, ref A, (fProxy)1, (fProxy)float.NaN));
-        }
-        finally { arena.Dispose(); }
+        var A = new fProxyMxN(3, 3, Allocator.Temp);
+        // minEig <= 0
+        Assert.Throws<ArgumentException>(
+            () => Rand.spdInPlace(ref rng, ref A, (fProxy)0, (fProxy)2));
+        Assert.Throws<ArgumentException>(
+            () => Rand.spdInPlace(ref rng, ref A, (fProxy)(-1), (fProxy)2));
+        // minEig > maxEig
+        Assert.Throws<ArgumentException>(
+            () => Rand.spdInPlace(ref rng, ref A, (fProxy)5, (fProxy)2));
+        // non-finite bounds
+        Assert.Throws<ArgumentException>(
+            () => Rand.spdInPlace(ref rng, ref A, (fProxy)fProxy.PositiveInfinity, (fProxy)2));
+        Assert.Throws<ArgumentException>(
+            () => Rand.spdInPlace(ref rng, ref A, (fProxy)1, (fProxy)float.NaN));
     }
 
     [Test]
     public void ConditionValidationThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var rng = new Random(1u);
-            var A = arena.fProxyMat(4, 4);
+        var rng = new Random(1u);
+        var A = new fProxyMxN(4, 4, Allocator.Temp);
 
-            // cond < 1
-            Assert.Throws<ArgumentException>(
-                () => Rand.conditionedInPlace(ref rng, ref A, (fProxy)0.5));
-            // non-finite cond
-            Assert.Throws<ArgumentException>(
-                () => Rand.conditionedInPlace(ref rng, ref A, (fProxy)fProxy.PositiveInfinity));
-            Assert.Throws<ArgumentException>(
-                () => Rand.conditionedInPlace(ref rng, ref A, (fProxy)float.NaN));
-        }
-        finally { arena.Dispose(); }
+        // cond < 1
+        Assert.Throws<ArgumentException>(
+            () => Rand.conditionedInPlace(ref rng, ref A, (fProxy)0.5));
+        // non-finite cond
+        Assert.Throws<ArgumentException>(
+            () => Rand.conditionedInPlace(ref rng, ref A, (fProxy)fProxy.PositiveInfinity));
+        Assert.Throws<ArgumentException>(
+            () => Rand.conditionedInPlace(ref rng, ref A, (fProxy)float.NaN));
     }
 
     [Test]
     public void RankValidationThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var rng = new Random(1u);
-            var A = arena.fProxyMat(5, 3);   // min(m,n) = 3
+        var rng = new Random(1u);
+        var A = new fProxyMxN(5, 3, Allocator.Temp);   // min(m,n) = 3
 
-            Assert.Throws<ArgumentException>(
-                () => Rand.withRankInPlace(ref rng, ref A, -1));
-            Assert.Throws<ArgumentException>(
-                () => Rand.withRankInPlace(ref rng, ref A, 4)); // > min(m,n)
-        }
-        finally { arena.Dispose(); }
+        Assert.Throws<ArgumentException>(
+            () => Rand.withRankInPlace(ref rng, ref A, -1));
+        Assert.Throws<ArgumentException>(
+            () => Rand.withRankInPlace(ref rng, ref A, 4)); // > min(m,n)
     }
 
     [Test]
     public void MultivariateNormalDimensionMismatchThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var rng = new Random(1u);
+        var rng = new Random(1u);
 
-            // cholL not square
-            var nonSquare = arena.fProxyMat(3, 2);
-            var mean3 = arena.fProxyVec(3);
-            var dest3 = arena.fProxyVec(3);
-            var z3 = arena.fProxyVec(3);
-            Assert.Throws<ArgumentException>(
-                () => Rand.multivariateNormalInPlace(ref rng, in nonSquare, in mean3, ref dest3, ref z3));
-            Assert.Throws<ArgumentException>(
-                () => Rand.multivariateNormalInPlace(ref rng, in nonSquare, in mean3, ref dest3));
+        // cholL not square
+        var nonSquare = new fProxyMxN(3, 2, Allocator.Temp);
+        var mean3 = new fProxyN(3, Allocator.Temp);
+        var dest3 = new fProxyN(3, Allocator.Temp);
+        var z3 = new fProxyN(3, Allocator.Temp);
+        Assert.Throws<ArgumentException>(
+            () => Rand.multivariateNormalInPlace(ref rng, in nonSquare, in mean3, ref dest3, ref z3));
+        Assert.Throws<ArgumentException>(
+            () => Rand.multivariateNormalInPlace(ref rng, in nonSquare, in mean3, ref dest3));
 
-            var L = arena.fProxyMat(3, 3);
+        var L = new fProxyMxN(3, 3, Allocator.Temp);
 
-            // mean.N mismatch
-            var meanBad = arena.fProxyVec(2);
-            Assert.Throws<ArgumentException>(
-                () => Rand.multivariateNormalInPlace(ref rng, in L, in meanBad, ref dest3, ref z3));
+        // mean.N mismatch
+        var meanBad = new fProxyN(2, Allocator.Temp);
+        Assert.Throws<ArgumentException>(
+            () => Rand.multivariateNormalInPlace(ref rng, in L, in meanBad, ref dest3, ref z3));
 
-            // dest.N mismatch
-            var destBad = arena.fProxyVec(4);
-            Assert.Throws<ArgumentException>(
-                () => Rand.multivariateNormalInPlace(ref rng, in L, in mean3, ref destBad, ref z3));
+        // dest.N mismatch
+        var destBad = new fProxyN(4, Allocator.Temp);
+        Assert.Throws<ArgumentException>(
+            () => Rand.multivariateNormalInPlace(ref rng, in L, in mean3, ref destBad, ref z3));
 
-            // zScratch.N mismatch
-            var zBad = arena.fProxyVec(5);
-            Assert.Throws<ArgumentException>(
-                () => Rand.multivariateNormalInPlace(ref rng, in L, in mean3, ref dest3, ref zBad));
+        // zScratch.N mismatch
+        var zBad = new fProxyN(5, Allocator.Temp);
+        Assert.Throws<ArgumentException>(
+            () => Rand.multivariateNormalInPlace(ref rng, in L, in mean3, ref dest3, ref zBad));
 
-            // rows overload: cholL not square
-            var destRows = arena.fProxyMat(8, 3);
-            Assert.Throws<ArgumentException>(
-                () => Rand.multivariateNormalRowsInPlace(ref rng, in nonSquare, in mean3, ref destRows));
-            // rows overload: mean.N mismatch
-            Assert.Throws<ArgumentException>(
-                () => Rand.multivariateNormalRowsInPlace(ref rng, in L, in meanBad, ref destRows));
-            // rows overload: destRows.N_Cols mismatch
-            var destRowsBad = arena.fProxyMat(8, 4);
-            Assert.Throws<ArgumentException>(
-                () => Rand.multivariateNormalRowsInPlace(ref rng, in L, in mean3, ref destRowsBad));
-        }
-        finally { arena.Dispose(); }
+        // rows overload: cholL not square
+        var destRows = new fProxyMxN(8, 3, Allocator.Temp);
+        Assert.Throws<ArgumentException>(
+            () => Rand.multivariateNormalRowsInPlace(ref rng, in nonSquare, in mean3, ref destRows));
+        // rows overload: mean.N mismatch
+        Assert.Throws<ArgumentException>(
+            () => Rand.multivariateNormalRowsInPlace(ref rng, in L, in meanBad, ref destRows));
+        // rows overload: destRows.N_Cols mismatch
+        var destRowsBad = new fProxyMxN(8, 4, Allocator.Temp);
+        Assert.Throws<ArgumentException>(
+            () => Rand.multivariateNormalRowsInPlace(ref rng, in L, in mean3, ref destRowsBad));
     }
 }

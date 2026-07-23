@@ -21,21 +21,18 @@ public class intScalarMatrixOpTests
 
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // 5 - [[1,2],[3,4]] must be [[4,3],[2,1]] (NOT [[-4,-3],[-2,-1]]).
-            var A = arena.intMat(2, 2);
+            var A = new intMxN(2, 2, Allocator.Temp);
             A[0, 0] = (int)1; A[0, 1] = (int)2;
             A[1, 0] = (int)3; A[1, 1] = (int)4;
 
-            intMxN R = (int)5 - A;
+            intMxN R = new intMxN(in A, Allocator.Temp);
+            intComp.subInPlace((int)5, R);
 
             AssertEqual(R[0, 0], (int)4);
             AssertEqual(R[0, 1], (int)3);
             AssertEqual(R[1, 0], (int)2);
             AssertEqual(R[1, 1], (int)1);
-
-            arena.Dispose();
         }
 
         void AssertEqual(int got, int expected)

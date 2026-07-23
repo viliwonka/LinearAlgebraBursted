@@ -76,10 +76,9 @@ namespace LinearAlgebra.Benchmarks
         // ---- QR (square + tall share one path; sized by m x n, m >= n) ----
         static Bench.Stat QRDouble(int m, int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var Q = arena.doubleMat(m, n);
-            var R = arena.doubleMat(n, n);
-            var Src = arena.doubleMat(m, n);
+            var Q = new doubleMxN(m, n, Allocator.Persistent);
+            var R = new doubleMxN(n, n, Allocator.Persistent);
+            var Src = new doubleMxN(m, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)(m * 1000003 + n));
             for (int r = 0; r < m; r++)
@@ -91,17 +90,16 @@ namespace LinearAlgebra.Benchmarks
             var job = new SmallQRJobDouble { Q = Q, R = R, Src = Src };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            Q.Dispose(); R.Dispose(); Src.Dispose();
             return stat;
         }
 
         // ---- LQ (square + wide share one path; sized by m x n, m <= n) ----
         static Bench.Stat LQDouble(int m, int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(m, n);
-            var L = arena.doubleMat(m, m);
-            var Q = arena.doubleMat(m, n);
+            var A = new doubleMxN(m, n, Allocator.Persistent);
+            var L = new doubleMxN(m, m, Allocator.Persistent);
+            var Q = new doubleMxN(m, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)(m * 1000003 + n));
             for (int r = 0; r < m; r++)
@@ -113,16 +111,15 @@ namespace LinearAlgebra.Benchmarks
             var job = new SmallLQJobDouble { A = A, L = L, Q = Q };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); L.Dispose(); Q.Dispose();
             return stat;
         }
 
         // ---- Cholesky (square SPD only) ----
         static Bench.Stat CholDouble(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(n, n);
-            var L = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Persistent);
+            var L = new doubleMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -138,17 +135,16 @@ namespace LinearAlgebra.Benchmarks
             var job = new SmallCholJobDouble { A = A, L = L };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); L.Dispose();
             return stat;
         }
 
         // ---- LU (square, partial pivoting) ----
         static Bench.Stat LUDouble(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var U = arena.doubleMat(n, n);
-            var L = arena.doubleMat(n, n);
-            var Src = arena.doubleMat(n, n);
+            var U = new doubleMxN(n, n, Allocator.Persistent);
+            var L = new doubleMxN(n, n, Allocator.Persistent);
+            var Src = new doubleMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -160,7 +156,7 @@ namespace LinearAlgebra.Benchmarks
             var job = new SmallLUJobDouble { U = U, L = L, Src = Src };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            U.Dispose(); L.Dispose(); Src.Dispose();
             return stat;
         }
     }

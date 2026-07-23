@@ -94,11 +94,10 @@ namespace LinearAlgebra.Benchmarks
     {
         static string SvdGKDouble(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(n, n);
-            var U = arena.doubleMat(n, n);
-            var S = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Persistent);
+            var U = new doubleMxN(n, n, Allocator.Persistent);
+            var S = new doubleN(n, Allocator.Persistent);
+            var V = new doubleMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -108,15 +107,14 @@ namespace LinearAlgebra.Benchmarks
             var job = new SvdGKJobDouble { A = A, U = U, S = S, V = V };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); U.Dispose(); S.Dispose(); V.Dispose();
             return Bench.RowTime("double", n, stat);
         }
 
         static string SvdValsDouble(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(n, n);
-            var S = arena.doubleVec(n);
+            var A = new doubleMxN(n, n, Allocator.Persistent);
+            var S = new doubleN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -126,16 +124,15 @@ namespace LinearAlgebra.Benchmarks
             var job = new SvdValuesJobDouble { A = A, S = S };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); S.Dispose();
             return Bench.RowTime("double", n, stat);
         }
 
         static string EigSymDouble(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(n, n);
-            var Src = arena.doubleMat(n, n);
-            var E = arena.doubleVec(n);
+            var A = new doubleMxN(n, n, Allocator.Persistent);
+            var Src = new doubleMxN(n, n, Allocator.Persistent);
+            var E = new doubleN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -149,17 +146,16 @@ namespace LinearAlgebra.Benchmarks
             var job = new EigSymJobDouble { A = A, Src = Src, E = E };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); Src.Dispose(); E.Dispose();
             return Bench.RowTime("double", n, stat);
         }
 
         static string EigSymVecDouble(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(n, n);
-            var Src = arena.doubleMat(n, n);
-            var E = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var A = new doubleMxN(n, n, Allocator.Persistent);
+            var Src = new doubleMxN(n, n, Allocator.Persistent);
+            var E = new doubleN(n, Allocator.Persistent);
+            var V = new doubleMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -173,17 +169,16 @@ namespace LinearAlgebra.Benchmarks
             var job = new EigSymVecJobDouble { A = A, Src = Src, E = E, V = V };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); Src.Dispose(); E.Dispose(); V.Dispose();
             return Bench.RowTime("double", n, stat);
         }
 
         static string EigQRDouble(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleMat(n, n);
-            var Src = arena.doubleMat(n, n);
-            var Re = arena.doubleVec(n);
-            var Im = arena.doubleVec(n);
+            var A = new doubleMxN(n, n, Allocator.Persistent);
+            var Src = new doubleMxN(n, n, Allocator.Persistent);
+            var Re = new doubleN(n, Allocator.Persistent);
+            var Im = new doubleN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -193,7 +188,7 @@ namespace LinearAlgebra.Benchmarks
             var job = new EigQRJobDouble { A = A, Src = Src, Re = Re, Im = Im };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); Src.Dispose(); Re.Dispose(); Im.Dispose();
             return Bench.RowTime("double", n, stat);
         }
     }

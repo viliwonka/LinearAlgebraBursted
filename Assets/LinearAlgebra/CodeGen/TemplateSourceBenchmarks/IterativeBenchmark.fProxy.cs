@@ -35,14 +35,13 @@ namespace LinearAlgebra.Benchmarks
     {
         static string BenchFProxy(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var M   = arena.fProxyMat(n, n);    // scratch to build MᵀM
-            var A   = arena.fProxyMat(n, n);    // SPD A = MᵀM + I
-            var b   = arena.fProxyVec(n);
-            var x   = arena.fProxyVec(n);
-            var r   = arena.fProxyVec(n);
-            var p   = arena.fProxyVec(n);
-            var Ap  = arena.fProxyVec(n);
+            var M   = new fProxyMxN(n, n, Allocator.Persistent);    // scratch to build MᵀM
+            var A   = new fProxyMxN(n, n, Allocator.Persistent);    // SPD A = MᵀM + I
+            var b   = new fProxyN(n, Allocator.Persistent);
+            var x   = new fProxyN(n, Allocator.Persistent);
+            var r   = new fProxyN(n, Allocator.Persistent);
+            var p   = new fProxyN(n, Allocator.Persistent);
+            var Ap  = new fProxyN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int row = 0; row < n; row++)
@@ -60,7 +59,7 @@ namespace LinearAlgebra.Benchmarks
             var job = new CGJobFProxy { A = A, b = b, x = x, r = r, p = p, Ap = Ap };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            M.Dispose(); A.Dispose(); b.Dispose(); x.Dispose(); r.Dispose(); p.Dispose(); Ap.Dispose();
             return Bench.RowTime("fProxy", n, stat);
         }
     }

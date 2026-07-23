@@ -35,8 +35,8 @@ public class floatLSQRDampedArnormTests
             }
         }
 
-        static floatMxN BuildOverdetermined(ref Arena arena, int m, int n, uint seed)
-            => arena.floatRandomMat(m, n, (float)(-1f), (float)1f, seed);
+        static floatMxN BuildOverdetermined(int m, int n, uint seed)
+            => GenerateOP.floatRandomMat(m, n, (float)(-1f), (float)1f, seed);
 
         // Deterministic sign-flip construction: with damp != 0, rhobar after the k=0 iteration is
         // -c_0*alpha_2 (c_0, alpha_2 > 0 for a generic system) -- strictly negative. That negative
@@ -46,14 +46,13 @@ public class floatLSQRDampedArnormTests
         // a norm must never be negative regardless of solve status (Converged/Breakdown/MaxIterations).
         void DampedArnormNeverNegative()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int m = 30, n = 10;
-            var A = BuildOverdetermined(ref arena, m, n, 71001u);
-            var b = arena.floatRandomVec(m, (float)(-1f), (float)1f, 71002u);
+            var A = BuildOverdetermined(m, n, 71001u);
+            var b = GenerateOP.floatRandomVec(m, (float)(-1f), (float)1f, 71002u);
 
             float damp = (float)0.5;
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Temp);
             // maxIter = 2 forces exactly the k=0/k=1 iterations described above; tol tight enough
             // that a random ill-conditioned-by-construction overdetermined system will not
             // legitimately converge within 2 steps (status is not itself under test here).
@@ -61,8 +60,6 @@ public class floatLSQRDampedArnormTests
 
             Assert.IsFalse(double.IsNaN(info.Arnorm));
             Assert.IsTrue(info.Arnorm >= 0.0);
-
-            arena.Dispose();
         }
 
         // damp == 0 must stay BIT-IDENTICAL to the pre-fix formula: phibar is provably >= 0 for the
@@ -70,21 +67,18 @@ public class floatLSQRDampedArnormTests
         // 0), so abs(phibar) == phibar exactly, every iteration.
         void UndampedArnormBitIdenticalToAbsPath()
         {
-            var arena = new Arena(Allocator.Persistent);
 
             int m = 24, n = 8;
-            var A = BuildOverdetermined(ref arena, m, n, 72001u);
-            var b = arena.floatRandomVec(m, (float)(-1f), (float)1f, 72002u);
+            var A = BuildOverdetermined(m, n, 72001u);
+            var b = GenerateOP.floatRandomVec(m, (float)(-1f), (float)1f, 72002u);
 
             for (int maxIter = 1; maxIter <= n; maxIter++)
             {
-                var x = arena.floatVec(n);
+                var x = new floatN(n, Allocator.Temp);
                 var info = Krylov.lsqr(in A, in b, ref x, maxIter, Consts.floatSqrtEps);
                 Assert.IsFalse(double.IsNaN(info.Arnorm));
                 Assert.IsTrue(info.Arnorm >= 0.0);
             }
-
-            arena.Dispose();
         }
     }
 

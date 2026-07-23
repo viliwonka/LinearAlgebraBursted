@@ -6,7 +6,7 @@ using System;
 #pragma warning disable 618 // intentionally exercises the deprecated cyclic-Jacobi Eigen.decompInPlace (kept for reference)
 
 using LinearAlgebra;
-using LinearAlgebra.Gallery;   // opt-in: arena.doublePascal(n), arena.doubleFrank(n), ...
+using LinearAlgebra.Gallery;   // opt-in: doubleGallery.doublePascal(n), doubleGallery.doubleFrank(n), ...
 
 using NUnit.Framework;
 using Unity.Burst;
@@ -96,74 +96,60 @@ public class doubleGalleryTests
         // Pascal: symmetric, det = 1 (exact integer), SPD (Cholesky succeeds). n = 5.
         void PascalProps()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
-            var P = arena.doublePascal(n);
+            var P = doubleGallery.doublePascal(n);
 
             AssertSymmetric(in P, (double)1E-5);
-            AssertCholeskyOk(ref arena, in P);
+            AssertCholeskyOk(in P);
 
             // det = 1; Pascal(5) cond ≈ 8.5e3, so float det error ≈ a few e-3.
             AssertClose(Determinant(in P), (double)1, (double)150 * Consts.doubleSqrtEps);
-
-            arena.Dispose();
         }
 
         // MinIJ A[i,j]=min(i,j)+1: symmetric, det = 1, SPD. n = 5.
         void MinIJProps()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
-            var A = arena.doubleMinIJ(n);
+            var A = doubleGallery.doubleMinIJ(n);
 
             AssertSymmetric(in A, (double)1E-5);
-            AssertCholeskyOk(ref arena, in A);
+            AssertCholeskyOk(in A);
             AssertClose(Determinant(in A), (double)1, (double)50 * Consts.doubleSqrtEps);
-
-            arena.Dispose();
         }
 
         // Moler = UᵀU (U = triw 1-diag, α-super): SPD and det = 1 for ALL α.
         // α = −1 (mild, n = 5) for the det assert; α = 2 (n = 4) just for SPD + det with a looser band.
         void MolerProps()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // α = −1 (default overload), n = 5
-            var M1 = arena.doubleMoler(5);
+            var M1 = doubleGallery.doubleMoler(5);
             AssertSymmetric(in M1, (double)1E-5);
-            AssertCholeskyOk(ref arena, in M1);
+            AssertCholeskyOk(in M1);
             AssertClose(Determinant(in M1), (double)1, (double)150 * Consts.doubleSqrtEps);
 
             // α = 2, n = 4 — still SPD with det = 1 (more ill-conditioned ⇒ looser det band)
-            var M2 = arena.doubleMoler(4, (double)2);
+            var M2 = doubleGallery.doubleMoler(4, (double)2);
             AssertSymmetric(in M2, (double)1E-5);
-            AssertCholeskyOk(ref arena, in M2);
+            AssertCholeskyOk(in M2);
             AssertClose(Determinant(in M2), (double)1, (double)300 * Consts.doubleSqrtEps);
-
-            arena.Dispose();
         }
 
         // Laplacian1D (Strang 2nd-difference): SPD, det = n+1, eigenvalues 2−2cos(kπ/(n+1)). n = 6.
         void Laplacian1DProps()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 6;
-            var T = arena.doubleLaplacian1D(n);
+            var T = doubleGallery.doubleLaplacian1D(n);
 
             AssertSymmetric(in T, (double)1E-5);
-            AssertCholeskyOk(ref arena, in T);
+            AssertCholeskyOk(in T);
 
             // det = n + 1 = 7 (read-only path destroys a copy inside Determinant)
             AssertClose(Determinant(in T), (double)(n + 1), (double)0.05);
 
             // eigenvalues (descending) eig[i] = 2 − 2cos((n−i)π/(n+1))
-            var Tc = T.Copy();
-            var eig = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var Tc = new doubleMxN(in T, Allocator.Temp);
+            var eig = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
             AssertTrue(Eigen.decompInPlace(ref Tc, ref eig, ref V));
 
             double pi = (double)math.PI_DBL;
@@ -172,76 +158,62 @@ public class doubleGalleryTests
                 double expected = (double)2 - (double)2 * math.cos((double)(n - i) * pi / (double)(n + 1));
                 AssertClose(eig[i], expected, (double)50 * Consts.doubleSqrtEps);
             }
-
-            arena.Dispose();
         }
 
         // KMS A[i,j]=ρ^|i−j|: det = (1−ρ²)^(n−1) for ρ = 0.5 (SPD); and the integer-power path produces
         // sign-correct negative entries for ρ = −0.5.
         void KMSProps()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // ρ = 0.5, n = 5: det = (1 − 0.25)^4 = 0.31640625; SPD ⇒ Cholesky succeeds.
             int n = 5;
-            var A = arena.doubleKMS(n, (double)0.5);
+            var A = doubleGallery.doubleKMS(n, (double)0.5);
             AssertSymmetric(in A, (double)1E-5);
-            AssertCholeskyOk(ref arena, in A);
+            AssertCholeskyOk(in A);
 
             double expDet = (double)1;
             for (int k = 0; k < n - 1; k++) expDet *= (double)0.75;   // (1 − ρ²)^(n−1)
             AssertClose(Determinant(in A), expDet, (double)50 * Consts.doubleSqrtEps);
 
             // ρ = −0.5, n = 3: K[0,1] = ρ^1 = −0.5, K[0,2] = ρ^2 = +0.25 (post-fix integer power).
-            var B = arena.doubleKMS(3, (double)(-0.5));
+            var B = doubleGallery.doubleKMS(3, (double)(-0.5));
             AssertClose(B[0, 1], (double)(-0.5), (double)1E-5);
             AssertClose(B[0, 2], (double)0.25, (double)1E-5);
             AssertClose(B[1, 2], (double)(-0.5), (double)1E-5);
-
-            arena.Dispose();
         }
 
         // Pei = αI + J: eigenvalues {α+n (×1), α (×n−1)}; det = αⁿ⁻¹(α+n). α = 2, n = 5 ⇒ {7,2,2,2,2}, det 112.
         void PeiProps()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
             double alpha = (double)2;
-            var A = arena.doublePei(n, alpha);
+            var A = doubleGallery.doublePei(n, alpha);
 
             AssertSymmetric(in A, (double)1E-5);
 
             // det = α^(n−1)·(α+n) = 16·7 = 112
             AssertClose(Determinant(in A), (double)112, (double)0.5);
 
-            var Ac = A.Copy();
-            var eig = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var Ac = new doubleMxN(in A, Allocator.Temp);
+            var eig = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
             AssertTrue(Eigen.decompInPlace(ref Ac, ref eig, ref V));
 
             double tol = (double)50 * Consts.doubleSqrtEps;
             AssertClose(eig[0], alpha + (double)n, tol);   // α + n = 7
             for (int i = 1; i < n; i++)
                 AssertClose(eig[i], alpha, tol);           // α = 2
-
-            arena.Dispose();
         }
 
         // Lehmer and Hilbert: both SPD at small n ⇒ symmetric and Cholesky succeeds.
         void LehmerHilbertSpd()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var L = arena.doubleLehmer(5);
+            var L = doubleGallery.doubleLehmer(5);
             AssertSymmetric(in L, (double)1E-5);
-            AssertCholeskyOk(ref arena, in L);
+            AssertCholeskyOk(in L);
 
-            var H = arena.doubleHilbert(4);
+            var H = doubleGallery.doubleHilbert(4);
             AssertSymmetric(in H, (double)1E-5);
-            AssertCholeskyOk(ref arena, in H);
-
-            arena.Dispose();
+            AssertCholeskyOk(in H);
         }
 
         // =====================================================================
@@ -252,10 +224,8 @@ public class doubleGalleryTests
         // n = 4 ⇒ {3,1,−1,−3}.
         void ClementEig()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 4;
-            var C = arena.doubleClement(n);
+            var C = doubleGallery.doubleClement(n);
 
             AssertSymmetric(in C, (double)1E-5);
 
@@ -264,9 +234,9 @@ public class doubleGalleryTests
             for (int i = 0; i < n; i++) tr += C[i, i];
             AssertClose(tr, (double)0, (double)1E-5);
 
-            var Cc = C.Copy();
-            var eig = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var Cc = new doubleMxN(in C, Allocator.Temp);
+            var eig = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
             AssertTrue(Eigen.decompInPlace(ref Cc, ref eig, ref V));
 
             double tol = (double)50 * Consts.doubleSqrtEps;
@@ -274,25 +244,21 @@ public class doubleGalleryTests
             AssertClose(eig[1], (double)1, tol);
             AssertClose(eig[2], (double)(-1), tol);
             AssertClose(eig[3], (double)(-3), tol);
-
-            arena.Dispose();
         }
 
         // Fiedler F[i,j]=|i−j|: symmetric; exactly one positive eigenvalue, n−1 negative;
         // det = (−1)^(n−1)(n−1)2^(n−2). n = 5 ⇒ 1 positive / 4 negative, det = 4·8 = 32.
         void FiedlerProps()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
-            var F = arena.doubleFiedler(n);
+            var F = doubleGallery.doubleFiedler(n);
 
             AssertSymmetric(in F, (double)1E-5);
             AssertClose(Determinant(in F), (double)32, (double)0.5);
 
-            var Fc = F.Copy();
-            var eig = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var Fc = new doubleMxN(in F, Allocator.Temp);
+            var eig = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
             AssertTrue(Eigen.decompInPlace(ref Fc, ref eig, ref V));
 
             // eigenvalues are bounded away from 0 (smallest |λ| ≈ 0.56), so a small gate is safe.
@@ -305,23 +271,19 @@ public class doubleGalleryTests
             }
             RecordEq(pos, 1);
             RecordEq(neg, n - 1);
-
-            arena.Dispose();
         }
 
         // DingDong: symmetric Hankel; all eigenvalues in (−π/2, π/2), clustering near ±π/2.
         // The extreme eigenvalues sit ~1e-7 from ±π/2, so bound by π/2 + tol (numerical) rather than strictly.
         void DingDongEig()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 6;
-            var D = arena.doubleDingDong(n);
+            var D = doubleGallery.doubleDingDong(n);
             AssertSymmetric(in D, (double)1E-5);
 
-            var Dc = D.Copy();
-            var eig = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var Dc = new doubleMxN(in D, Allocator.Temp);
+            var eig = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
             AssertTrue(Eigen.decompInPlace(ref Dc, ref eig, ref V));
 
             double halfPi = (double)(math.PI_DBL * 0.5);
@@ -334,73 +296,61 @@ public class doubleGalleryTests
             // clustering near ±π/2: the extreme eigenvalues are within 0.1 of ±π/2
             AssertTrue(eig[0] > halfPi - (double)0.1);
             AssertTrue(eig[n - 1] < -halfPi + (double)0.1);
-
-            arena.Dispose();
         }
 
         // Frank: upper Hessenberg, det = 1, eigenvalues real + positive. n=3 entries exact; det at n=4;
         // Eigen.valuesQRInPlace at n=4 returns all-real all-positive.
         void FrankProps()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             // n = 3 exact matrix [[3,2,1],[2,2,1],[0,1,1]]
-            var F3 = arena.doubleFrank(3);
+            var F3 = doubleGallery.doubleFrank(3);
             AssertClose(F3[0, 0], (double)3, (double)1E-5); AssertClose(F3[0, 1], (double)2, (double)1E-5); AssertClose(F3[0, 2], (double)1, (double)1E-5);
             AssertClose(F3[1, 0], (double)2, (double)1E-5); AssertClose(F3[1, 1], (double)2, (double)1E-5); AssertClose(F3[1, 2], (double)1, (double)1E-5);
             AssertClose(F3[2, 0], (double)0, (double)1E-5); AssertClose(F3[2, 1], (double)1, (double)1E-5); AssertClose(F3[2, 2], (double)1, (double)1E-5);
 
             // det = 1 at n = 4
-            var F4 = arena.doubleFrank(4);
+            var F4 = doubleGallery.doubleFrank(4);
             AssertClose(Determinant(in F4), (double)1, (double)0.05);
 
             // Eigen.valuesQRInPlace: all real (imag ≈ 0) and positive (Frank4 ≈ {7.31, 2.07, 0.48, 0.137})
-            var Fc = F4.Copy();
-            var re = arena.doubleVec(4);
-            var im = arena.doubleVec(4);
+            var Fc = new doubleMxN(in F4, Allocator.Temp);
+            var re = new doubleN(4, Allocator.Temp);
+            var im = new doubleN(4, Allocator.Temp);
             AssertTrue(Eigen.valuesQRInPlace(ref Fc, ref re, ref im));
             for (int i = 0; i < 4; i++)
             {
                 AssertClose(im[i], (double)0, (double)1E-2);   // real spectrum
                 AssertTrue(re[i] > (double)0);                 // positive
             }
-
-            arena.Dispose();
         }
 
         // Vandermonde: det = ∏_{i<j}(nodes[j]−nodes[i]). nodes {1,2,3,4} ⇒ 12.
         // A node = 0 still yields an all-ones column 0 (the 0⁰ = 1 path).
         void VandermondeDet()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var nodes = arena.doubleVec(4);
+            var nodes = new doubleN(4, Allocator.Temp);
             nodes[0] = (double)1; nodes[1] = (double)2; nodes[2] = (double)3; nodes[3] = (double)4;
-            var V = arena.doubleVandermonde(in nodes);
+            var V = doubleGallery.doubleVandermonde(in nodes);
             AssertClose(Determinant(in V), (double)12, (double)0.2);
 
             // node 0 ⇒ column 0 is all ones (0^0 = 1)
-            var nodes0 = arena.doubleVec(3);
+            var nodes0 = new doubleN(3, Allocator.Temp);
             nodes0[0] = (double)0; nodes0[1] = (double)1; nodes0[2] = (double)2;
-            var V0 = arena.doubleVandermonde(in nodes0);
+            var V0 = doubleGallery.doubleVandermonde(in nodes0);
             for (int i = 0; i < 3; i++)
                 AssertClose(V0[i, 0], (double)1, (double)1E-6);
-
-            arena.Dispose();
         }
 
         // Companion of (x−1)(x−2)(x−3) = x³ − 6x² + 11x − 6 ⇒ coeffs {−6, 11, −6} (coeffs[k] = coeff of xᵏ).
         // Eigen.valuesQRInPlace returns the roots {3,2,1} (descending, real).
         void CompanionEig()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var coeffs = arena.doubleVec(3);
+            var coeffs = new doubleN(3, Allocator.Temp);
             coeffs[0] = (double)(-6); coeffs[1] = (double)11; coeffs[2] = (double)(-6);
-            var C = arena.doubleCompanion(in coeffs);
+            var C = doubleGallery.doubleCompanion(in coeffs);
 
-            var re = arena.doubleVec(3);
-            var im = arena.doubleVec(3);
+            var re = new doubleN(3, Allocator.Temp);
+            var im = new doubleN(3, Allocator.Temp);
             AssertTrue(Eigen.valuesQRInPlace(ref C, ref re, ref im));
 
             double tol = (double)1E-2;
@@ -408,8 +358,6 @@ public class doubleGalleryTests
             AssertClose(re[1], (double)2, tol);
             AssertClose(re[2], (double)1, tol);
             for (int i = 0; i < 3; i++) AssertClose(im[i], (double)0, tol);
-
-            arena.Dispose();
         }
 
         // Hadamard: HᵀH = n·I exactly (entries ±1, exact in float for n ≤ 8). n = 4 and n = 8.
@@ -421,12 +369,10 @@ public class doubleGalleryTests
 
         void CheckHadamard(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var H = arena.doubleHadamard(n);
+            var H = doubleGallery.doubleHadamard(n);
 
             // HᵀH
-            var HtH = arena.doubleMat(n, n);
+            var HtH = new doubleMxN(n, n, Allocator.Temp);
             Blas.dot(in H, in H, ref HtH, transposeA: true);
 
             double tol = (double)1E-4;   // exact arithmetic; tiny tolerance
@@ -436,8 +382,6 @@ public class doubleGalleryTests
                     double expected = (r == c) ? (double)n : (double)0;
                     AssertClose(HtH[r, c], expected, tol);
                 }
-
-            arena.Dispose();
         }
 
         // Circulant ↔ FFT cross-check. Using a SYMMETRIC first row (c[k]=c[n−k]) makes the spectrum REAL,
@@ -445,14 +389,12 @@ public class doubleGalleryTests
         // Also: every row sum equals sum(c).
         void CirculantFFT()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 4;
-            var c = arena.doubleVec(n);
+            var c = new doubleN(n, Allocator.Temp);
             c[0] = (double)2; c[1] = (double)0.5; c[2] = (double)(-0.3); c[3] = (double)0.5;   // symmetric: c[1]==c[3]
             double csum = (double)2 + (double)0.5 - (double)0.3 + (double)0.5;                  // 2.7
 
-            var C = arena.doubleCirculant(in c);
+            var C = doubleGallery.doubleCirculant(in c);
 
             // every row sums to sum(c)
             for (int i = 0; i < n; i++)
@@ -463,15 +405,15 @@ public class doubleGalleryTests
             }
 
             // eigenvalues via QR (matrix destroyed ⇒ copy)
-            var Cc = C.Copy();
-            var evRe = arena.doubleVec(n);
-            var evIm = arena.doubleVec(n);
+            var Cc = new doubleMxN(in C, Allocator.Temp);
+            var evRe = new doubleN(n, Allocator.Temp);
+            var evIm = new doubleN(n, Allocator.Temp);
             AssertTrue(Eigen.valuesQRInPlace(ref Cc, ref evRe, ref evIm));
 
             // DFT of c via the library FFT (in place ⇒ copy the real part, zero imag)
-            var fRe = c.Copy();
-            var fIm = arena.doubleVec(n);
-            var fftWs = arena.doubleFFTCache(n);
+            var fRe = new doubleN(in c, Allocator.Temp);
+            var fIm = new doubleN(n, Allocator.Temp);
+            var fftWs = new doubleFFTCache(n, Allocator.Temp);
             FFT.fft(ref fRe, ref fIm, in fftWs);
 
             double spectralTol = (double)100 * Consts.doubleSqrtEps;
@@ -488,48 +430,40 @@ public class doubleGalleryTests
             SortDescending(ref fRe);
             for (int i = 0; i < n; i++)
                 AssertClose(evRe[i], fRe[i], spectralTol);
-
-            arena.Dispose();
         }
 
         // Triw: upper-triangular, 1-diagonal, α super. det = 1; all eigenvalues = 1. n = 5, α = −2.
         void TriwProps()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 5;
-            var T = arena.doubleTriw(n, (double)(-2));
+            var T = doubleGallery.doubleTriw(n, (double)(-2));
 
             // det = product of unit diagonal = 1 (triangular ⇒ exact)
             AssertClose(Determinant(in T), (double)1, (double)1E-3);
 
             // eigenvalues: matrix is already upper-triangular (real Schur form) ⇒ diagonal = all 1
-            var Tc = T.Copy();
-            var re = arena.doubleVec(n);
-            var im = arena.doubleVec(n);
+            var Tc = new doubleMxN(in T, Allocator.Temp);
+            var re = new doubleN(n, Allocator.Temp);
+            var im = new doubleN(n, Allocator.Temp);
             AssertTrue(Eigen.valuesQRInPlace(ref Tc, ref re, ref im));
             for (int i = 0; i < n; i++)
             {
                 AssertClose(re[i], (double)1, (double)1E-3);
                 AssertClose(im[i], (double)0, (double)1E-3);
             }
-
-            arena.Dispose();
         }
 
         // WilkinsonPlus (n odd ≥ 3): the two largest eigenvalues form a near-pair. n = 7:
         // reference eig ≈ {3.7616, 3.7321, 2.3633, …} ⇒ top gap ≈ 0.0295, next gap ≈ 1.37.
         void WilkinsonNearPair()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 7;
-            var W = arena.doubleWilkinsonPlus(n);
+            var W = doubleGallery.doubleWilkinsonPlus(n);
             AssertSymmetric(in W, (double)1E-5);
 
-            var Wc = W.Copy();
-            var eig = arena.doubleVec(n);
-            var V = arena.doubleMat(n, n);
+            var Wc = new doubleMxN(in W, Allocator.Temp);
+            var eig = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
             AssertTrue(Eigen.decompInPlace(ref Wc, ref eig, ref V));
 
             // near-pair: the top two are far closer to each other than to the third eigenvalue.
@@ -537,18 +471,14 @@ public class doubleGalleryTests
             double nextGap = eig[1] - eig[2];
             AssertTrue(topGap < (double)0.05);
             AssertTrue(nextGap > (double)1);
-
-            arena.Dispose();
         }
 
         // Läuchli is rectangular (n+1)×n with row 0 ones and rows 1..n = ε·I.
         void LauchliDims()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 3;
             double eps = (double)1E-3;
-            var A = arena.doubleLauchli(n, eps);
+            var A = doubleGallery.doubleLauchli(n, eps);
 
             RecordEq(A.M_Rows, n + 1);
             RecordEq(A.N_Cols, n);
@@ -559,8 +489,6 @@ public class doubleGalleryTests
             for (int r = 1; r <= n; r++)
                 for (int j = 0; j < n; j++)
                     AssertClose(A[r, j], (r - 1 == j) ? eps : (double)0, (double)1E-6);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -570,25 +498,21 @@ public class doubleGalleryTests
         // CG solves Laplacian1D·x = b accurately (SPD, well-conditioned at n = 8).
         void CGLaplacian()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 8;
-            var A = arena.doubleLaplacian1D(n);
+            var A = doubleGallery.doubleLaplacian1D(n);
 
-            var xTrue = arena.doubleVec(n);
+            var xTrue = new doubleN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) xTrue[i] = (double)(i + 1);   // 1,2,...,n
 
             var b = Blas.dot(A, xTrue);   // consistent RHS
 
-            var x = arena.doubleVec(n);
+            var x = new doubleN(n, Allocator.Temp);
             bool conv = Krylov.cg(in A, in b, ref x, 200, Consts.doubleSqrtEps);
             AssertTrue(conv);
 
             double tol = (double)100 * Consts.doubleSqrtEps;
             for (int i = 0; i < n; i++)
                 AssertClose(x[i], xTrue[i], tol);
-
-            arena.Dispose();
         }
 
         // =====================================================================
@@ -599,7 +523,7 @@ public class doubleGalleryTests
         double Determinant(in doubleMxN M)
         {
             int n = M.M_Rows;
-            var LUmat = M.Copy();
+            var LUmat = new doubleMxN(in M, Allocator.Temp);
             var pivot = new Pivot(n, Allocator.Temp);
             LU.decompInPlace(ref LUmat, ref pivot);
             double det = Analysis.determinant(in LUmat, in pivot);
@@ -615,9 +539,9 @@ public class doubleGalleryTests
                     AssertClose(A[r, c], A[c, r], tol);
         }
 
-        void AssertCholeskyOk(ref Arena arena, in doubleMxN A)
+        void AssertCholeskyOk(in doubleMxN A)
         {
-            var L = arena.doubleMat(A.M_Rows, A.N_Cols);
+            var L = new doubleMxN(A.M_Rows, A.N_Cols, Allocator.Temp);
             AssertTrue(CHO.decomp(in A, ref L));
         }
 
@@ -693,27 +617,17 @@ public class doubleGalleryTests
     [Test]
     public void HadamardNonPowerOfTwoThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            Assert.Throws<ArgumentException>(() => arena.doubleHadamard(3));
-            Assert.Throws<ArgumentException>(() => arena.doubleHadamard(0));
-            Assert.Throws<ArgumentException>(() => arena.doubleHadamard(6));
-        }
-        finally { arena.Dispose(); }
+        Assert.Throws<ArgumentException>(() => doubleGallery.doubleHadamard(3));
+        Assert.Throws<ArgumentException>(() => doubleGallery.doubleHadamard(0));
+        Assert.Throws<ArgumentException>(() => doubleGallery.doubleHadamard(6));
     }
 
     // WilkinsonPlus requires n odd and >= 3.
     [Test]
     public void WilkinsonPlusInvalidNThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            Assert.Throws<ArgumentException>(() => arena.doubleWilkinsonPlus(1));  // < 3
-            Assert.Throws<ArgumentException>(() => arena.doubleWilkinsonPlus(2));  // even
-            Assert.Throws<ArgumentException>(() => arena.doubleWilkinsonPlus(4));  // even
-        }
-        finally { arena.Dispose(); }
+        Assert.Throws<ArgumentException>(() => doubleGallery.doubleWilkinsonPlus(1));  // < 3
+        Assert.Throws<ArgumentException>(() => doubleGallery.doubleWilkinsonPlus(2));  // even
+        Assert.Throws<ArgumentException>(() => doubleGallery.doubleWilkinsonPlus(4));  // even
     }
 }

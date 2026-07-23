@@ -48,17 +48,17 @@ public class fProxyPreconditionerBatteryTests
 
         // A spread of SPD BSR matrices every preconditioner handles: scalar 2D Poisson (BR=1),
         // the block-tridiagonal gallery Laplacian, and a diagonally-dominant random-sparse SPD (BR=2).
-        static fProxyBSR Matrix(ref Arena arena, int which)
+        static fProxyBSR Matrix(int which)
         {
-            if (which == 0) return Poisson2D(ref arena, 20, 20);
-            if (which == 1) return arena.fProxyLaplacian2D(16, 16);
-            return arena.fProxyRandomSparseSPD(120, 2, (fProxy)0.2, 0x5EED0u);
+            if (which == 0) return Poisson2D(20, 20);
+            if (which == 1) return fProxyGallery.fProxyLaplacian2D(16, 16);
+            return fProxyGallery.fProxyRandomSparseSPD(120, 2, (fProxy)0.2, 0x5EED0u);
         }
 
-        static fProxyBSR Poisson2D(ref Arena arena, int gx, int gy)
+        static fProxyBSR Poisson2D(int gx, int gy)
         {
             int n = gx * gy;
-            var b = arena.fProxyBSRBuilder(n, n, 1, 1, 5 * n);
+            var b = new fProxyBSRBuilder(n, n, 1, 1, Allocator.Temp, 5 * n);
             for (int y = 0; y < gy; y++)
                 for (int x = 0; x < gx; x++)
                 {
@@ -69,7 +69,7 @@ public class fProxyPreconditionerBatteryTests
                     if (y > 0) b.AddValue(i, i - gx, (fProxy)(-1));
                     if (y < gy - 1) b.AddValue(i, i + gx, (fProxy)(-1));
                 }
-            return b.ToBSR(ref arena);
+            return b.ToBSR(Allocator.Temp);
         }
 
         static fProxy VecNorm(in fProxyN v)
@@ -126,13 +126,11 @@ public class fProxyPreconditionerBatteryTests
         {
             for (int mi = 0; mi < NumMatrices; mi++)
             {
-                var arena = new Arena(Allocator.Persistent);
-                var A = Matrix(ref arena, mi); int n = A.M_Rows;
-                var b = arena.fProxyRandomVec(n, -1f, 1f, 0xB0u + (uint)mi);
-                var M = arena.fProxyBlockJacobi(in A);
-                var x = arena.fProxyVec(n); for (int i = 0; i < n; i++) x[i] = (fProxy)0;
+                var A = Matrix(mi); int n = A.M_Rows;
+                var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0xB0u + (uint)mi);
+                var M = new fProxyBlockJacobi(in A, Allocator.Temp);
+                var x = new fProxyN(n, Allocator.Temp); for (int i = 0; i < n; i++) x[i] = (fProxy)0;
                 CheckSolve(in A, in x, in b, Krylov.cg(in A, in M, in b, ref x, 8 * n, Tol()), mi);
-                arena.Dispose();
             }
         }
 
@@ -140,13 +138,11 @@ public class fProxyPreconditionerBatteryTests
         {
             for (int mi = 0; mi < NumMatrices; mi++)
             {
-                var arena = new Arena(Allocator.Persistent);
-                var A = Matrix(ref arena, mi); int n = A.M_Rows;
-                var b = arena.fProxyRandomVec(n, -1f, 1f, 0xB1u + (uint)mi);
-                var M = arena.fProxySSOR(in A);
-                var x = arena.fProxyVec(n); for (int i = 0; i < n; i++) x[i] = (fProxy)0;
+                var A = Matrix(mi); int n = A.M_Rows;
+                var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0xB1u + (uint)mi);
+                var M = new fProxySSOR(in A, Allocator.Temp);
+                var x = new fProxyN(n, Allocator.Temp); for (int i = 0; i < n; i++) x[i] = (fProxy)0;
                 CheckSolve(in A, in x, in b, Krylov.cg(in A, in M, in b, ref x, 8 * n, Tol()), mi);
-                arena.Dispose();
             }
         }
 
@@ -154,13 +150,11 @@ public class fProxyPreconditionerBatteryTests
         {
             for (int mi = 0; mi < NumMatrices; mi++)
             {
-                var arena = new Arena(Allocator.Persistent);
-                var A = Matrix(ref arena, mi); int n = A.M_Rows;
-                var b = arena.fProxyRandomVec(n, -1f, 1f, 0xB2u + (uint)mi);
-                var M = arena.fProxyIC0(in A);
-                var x = arena.fProxyVec(n); for (int i = 0; i < n; i++) x[i] = (fProxy)0;
+                var A = Matrix(mi); int n = A.M_Rows;
+                var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0xB2u + (uint)mi);
+                var M = new fProxyIC0(in A, Allocator.Temp);
+                var x = new fProxyN(n, Allocator.Temp); for (int i = 0; i < n; i++) x[i] = (fProxy)0;
                 CheckSolve(in A, in x, in b, Krylov.cg(in A, in M, in b, ref x, 8 * n, Tol()), mi);
-                arena.Dispose();
             }
         }
 
@@ -168,13 +162,11 @@ public class fProxyPreconditionerBatteryTests
         {
             for (int mi = 0; mi < NumMatrices; mi++)
             {
-                var arena = new Arena(Allocator.Persistent);
-                var A = Matrix(ref arena, mi); int n = A.M_Rows;
-                var b = arena.fProxyRandomVec(n, -1f, 1f, 0xB3u + (uint)mi);
-                var M = arena.fProxyChebyshev(in A);
-                var x = arena.fProxyVec(n); for (int i = 0; i < n; i++) x[i] = (fProxy)0;
+                var A = Matrix(mi); int n = A.M_Rows;
+                var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0xB3u + (uint)mi);
+                var M = new fProxyChebyshev(in A, Allocator.Temp);
+                var x = new fProxyN(n, Allocator.Temp); for (int i = 0; i < n; i++) x[i] = (fProxy)0;
                 CheckSolve(in A, in x, in b, Krylov.cg(in A, in M, in b, ref x, 8 * n, Tol()), mi);
-                arena.Dispose();
             }
         }
 
@@ -182,13 +174,11 @@ public class fProxyPreconditionerBatteryTests
         {
             for (int mi = 0; mi < NumMatrices; mi++)
             {
-                var arena = new Arena(Allocator.Persistent);
-                var A = Matrix(ref arena, mi); int n = A.M_Rows;
-                var b = arena.fProxyRandomVec(n, -1f, 1f, 0xB4u + (uint)mi);
-                var M = arena.fProxyFSAI(in A);
-                var x = arena.fProxyVec(n); for (int i = 0; i < n; i++) x[i] = (fProxy)0;
+                var A = Matrix(mi); int n = A.M_Rows;
+                var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0xB4u + (uint)mi);
+                var M = new fProxyFSAI(in A, Allocator.Temp);
+                var x = new fProxyN(n, Allocator.Temp); for (int i = 0; i < n; i++) x[i] = (fProxy)0;
                 CheckSolve(in A, in x, in b, Krylov.cg(in A, in M, in b, ref x, 8 * n, Tol()), mi);
-                arena.Dispose();
             }
         }
 
@@ -196,13 +186,11 @@ public class fProxyPreconditionerBatteryTests
         {
             for (int mi = 0; mi < NumMatrices; mi++)
             {
-                var arena = new Arena(Allocator.Persistent);
-                var A = Matrix(ref arena, mi); int n = A.M_Rows;
-                var b = arena.fProxyRandomVec(n, -1f, 1f, 0xB5u + (uint)mi);
-                var M = arena.fProxyAdditiveSchwarz(in A);
-                var x = arena.fProxyVec(n); for (int i = 0; i < n; i++) x[i] = (fProxy)0;
+                var A = Matrix(mi); int n = A.M_Rows;
+                var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0xB5u + (uint)mi);
+                var M = new fProxyAdditiveSchwarz(in A, Allocator.Temp);
+                var x = new fProxyN(n, Allocator.Temp); for (int i = 0; i < n; i++) x[i] = (fProxy)0;
                 CheckSolve(in A, in x, in b, Krylov.cg(in A, in M, in b, ref x, 8 * n, Tol()), mi);
-                arena.Dispose();
             }
         }
 
@@ -210,16 +198,13 @@ public class fProxyPreconditionerBatteryTests
         {
             for (int mi = 0; mi < NumMatrices; mi++)
             {
-                var arena = new Arena(Allocator.Persistent);
-                var A = Matrix(ref arena, mi); int n = A.M_Rows;
-                var b = arena.fProxyRandomVec(n, -1f, 1f, 0xB6u + (uint)mi);
-                var amg = arena.fProxyAMG(in A, out var info);
+                var A = Matrix(mi); int n = A.M_Rows;
+                var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0xB6u + (uint)mi);
+                var amg = new fProxyAMG(in A, out var info, Allocator.Temp);
                 Record(info.Solved, mi, (fProxy)0, (fProxy)2);
                 var M = new fProxyAMGPreconditioner(in amg);
-                var x = arena.fProxyVec(n); for (int i = 0; i < n; i++) x[i] = (fProxy)0;
+                var x = new fProxyN(n, Allocator.Temp); for (int i = 0; i < n; i++) x[i] = (fProxy)0;
                 CheckSolve(in A, in x, in b, Krylov.cg(in A, in M, in b, ref x, 8 * n, Tol()), mi);
-                amg.Dispose();
-                arena.Dispose();
             }
         }
 
@@ -229,13 +214,11 @@ public class fProxyPreconditionerBatteryTests
         {
             for (int mi = 0; mi < NumMatrices; mi++)
             {
-                var arena = new Arena(Allocator.Persistent);
-                var A = Matrix(ref arena, mi); int n = A.M_Rows;
-                var b = arena.fProxyRandomVec(n, -1f, 1f, 0xB7u + (uint)mi);
-                var M = arena.fProxyILU0(in A);
-                var x = arena.fProxyVec(n); for (int i = 0; i < n; i++) x[i] = (fProxy)0;
+                var A = Matrix(mi); int n = A.M_Rows;
+                var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0xB7u + (uint)mi);
+                var M = new fProxyILU0(in A, Allocator.Temp);
+                var x = new fProxyN(n, Allocator.Temp); for (int i = 0; i < n; i++) x[i] = (fProxy)0;
                 CheckSolve(in A, in x, in b, Krylov.biCGStab(in A, in M, in b, ref x, 8 * n, Tol()), mi);
-                arena.Dispose();
             }
         }
 
@@ -243,13 +226,11 @@ public class fProxyPreconditionerBatteryTests
         {
             for (int mi = 0; mi < NumMatrices; mi++)
             {
-                var arena = new Arena(Allocator.Persistent);
-                var A = Matrix(ref arena, mi); int n = A.M_Rows;
-                var b = arena.fProxyRandomVec(n, -1f, 1f, 0xB8u + (uint)mi);
-                var M = arena.fProxySPAI(in A);
-                var x = arena.fProxyVec(n); for (int i = 0; i < n; i++) x[i] = (fProxy)0;
+                var A = Matrix(mi); int n = A.M_Rows;
+                var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0xB8u + (uint)mi);
+                var M = new fProxySPAI(in A, Allocator.Temp);
+                var x = new fProxyN(n, Allocator.Temp); for (int i = 0; i < n; i++) x[i] = (fProxy)0;
                 CheckSolve(in A, in x, in b, Krylov.biCGStab(in A, in M, in b, ref x, 8 * n, Tol()), mi);
-                arena.Dispose();
             }
         }
 
@@ -257,13 +238,11 @@ public class fProxyPreconditionerBatteryTests
         {
             for (int mi = 0; mi < NumMatrices; mi++)
             {
-                var arena = new Arena(Allocator.Persistent);
-                var A = Matrix(ref arena, mi); int n = A.M_Rows;
-                var b = arena.fProxyRandomVec(n, -1f, 1f, 0xB9u + (uint)mi);
-                var M = arena.fProxyRestrictedSchwarz(in A);
-                var x = arena.fProxyVec(n); for (int i = 0; i < n; i++) x[i] = (fProxy)0;
+                var A = Matrix(mi); int n = A.M_Rows;
+                var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0xB9u + (uint)mi);
+                var M = new fProxyRestrictedSchwarz(in A, Allocator.Temp);
+                var x = new fProxyN(n, Allocator.Temp); for (int i = 0; i < n; i++) x[i] = (fProxy)0;
                 CheckSolve(in A, in x, in b, Krylov.biCGStab(in A, in M, in b, ref x, 8 * n, Tol()), mi);
-                arena.Dispose();
             }
         }
     }

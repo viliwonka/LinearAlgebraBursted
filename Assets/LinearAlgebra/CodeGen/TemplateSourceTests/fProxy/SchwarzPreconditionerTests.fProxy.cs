@@ -71,11 +71,11 @@ public class fProxySchwarzPreconditionerTests
         // ---- helpers ---------------------------------------------------------------------
 
         // SPD block-tridiagonal chain (fill-free), full or symmetric (lower) storage.
-        static fProxyBSR BuildBlockTridiag(ref Arena arena, int nb, int BR, bool symmetric)
+        static fProxyBSR BuildBlockTridiag(int nb, int BR, bool symmetric)
         {
-            var builder = arena.fProxyBSRBuilder(nb, nb, BR, BR);
-            var diag = arena.fProxyMat(BR, BR);
-            var off = arena.fProxyMat(BR, BR);
+            var builder = new fProxyBSRBuilder(nb, nb, BR, BR, Allocator.Temp);
+            var diag = new fProxyMxN(BR, BR, Allocator.Temp);
+            var off = new fProxyMxN(BR, BR, Allocator.Temp);
             for (int r = 0; r < BR; r++)
                 for (int c = 0; c < BR; c++)
                 {
@@ -92,14 +92,14 @@ public class fProxySchwarzPreconditionerTests
                     if (!symmetric) builder.AddBlock(i, i + 1, in off);
                 }
             }
-            return symmetric ? builder.ToBSRSymmetric(ref arena) : builder.ToBSR(ref arena);
+            return symmetric ? builder.ToBSRSymmetric(Allocator.Temp) : builder.ToBSR(Allocator.Temp);
         }
 
-        static void AssertVecMatchesInverse(in fProxyN got, in fProxyMxN Adense, in fProxyN r, ref Arena arena, fProxy tol)
+        static void AssertVecMatchesInverse(in fProxyN got, in fProxyMxN Adense, in fProxyN r, fProxy tol)
         {
             int n = r.N;
             var D = Adense.Copy();
-            var zRef = arena.fProxyVec(n);
+            var zRef = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) zRef[i] = r[i];
             var info = CHO.solveInPlace(ref D, ref zRef);
             Assert.IsTrue(info.Solved);
@@ -107,11 +107,11 @@ public class fProxySchwarzPreconditionerTests
                 Assert.IsTrue(math.abs(got[i] - zRef[i]) < tol * ((fProxy)1 + math.abs(zRef[i])));
         }
 
-        static fProxy Asymmetry(in fProxyBSR A, in fProxyN r1, in fProxyN r2, in fProxyAdditiveSchwarz M, ref Arena arena)
+        static fProxy Asymmetry(in fProxyBSR A, in fProxyN r1, in fProxyN r2, in fProxyAdditiveSchwarz M)
         {
             int n = A.M_Rows;
-            var Mr1 = arena.fProxyVec(n);
-            var Mr2 = arena.fProxyVec(n);
+            var Mr1 = new fProxyN(n, Allocator.Temp);
+            var Mr2 = new fProxyN(n, Allocator.Temp);
             M.Apply(in r1, ref Mr1);
             M.Apply(in r2, ref Mr2);
             fProxy a = Blas.dot(r1, Mr2);
@@ -125,32 +125,28 @@ public class fProxySchwarzPreconditionerTests
 
         void ExactWholeMatrix()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var A = arena.fProxyRandomSparseSPD(10, 2, (fProxy)0.5, 950001u);
+            var A = fProxyGallery.fProxyRandomSparseSPD(10, 2, (fProxy)0.5, 950001u, allocator: Allocator.Temp);
             int n = A.M_Rows;
 
             // subdomainSize >= N -> a single subdomain covering the whole matrix; overlap 0.
             var opts = new SchwarzOptions { subdomainSize = n + 8, overlap = 0 };
-            var M = arena.fProxyAdditiveSchwarz(in A, in opts);
+            var M = new fProxyAdditiveSchwarz(in A, Allocator.Temp, in opts);
             Assert.IsTrue(M.K == 1);
             Assert.IsTrue(M.Shift == (fProxy)0);
 
-            var r = arena.fProxyRandomVec(n, -1f, 1f, 950002u);
-            var z = arena.fProxyVec(n);
+            var r = GenerateOP.fProxyRandomVec(n, -1f, 1f, 950002u, allocator: Allocator.Temp);
+            var z = new fProxyN(n, Allocator.Temp);
             M.Apply(in r, ref z);
-            var Adense = A.ToDense(ref arena);
-            AssertVecMatchesInverse(in z, in Adense, in r, ref arena, Tol());
+            var Adense = A.ToDense(Allocator.Temp);
+            AssertVecMatchesInverse(in z, in Adense, in r, Tol());
 
             // Exact preconditioner -> cg converges in one step.
-            var xTrue = arena.fProxyRandomVec(n, 0.5f, 1.5f, 950003u);
+            var xTrue = GenerateOP.fProxyRandomVec(n, 0.5f, 1.5f, 950003u, allocator: Allocator.Temp);
             var b = BSR.spMV(in A, in xTrue);
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             var info = Krylov.cg(in A, in M, in b, ref x, 4 * n, Consts.fProxySqrtEps);
             Assert.IsTrue(info.Solved);
             Assert.IsTrue(info.iterations <= 1);
-
-            arena.Dispose();
         }
 
         // ================================================================================
@@ -164,10 +160,8 @@ public class fProxySchwarzPreconditionerTests
 
         void AsSymmetry()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var lap = arena.fProxyLaplacian2D(8, 8);         // 64 dof, BR=1
-            var pen = arena.fProxyPenalizedGrid3D(3, 3, 3, (fProxy)1, (fProxy)10);   // 27 blocks, BR=3
+            var lap = fProxyGallery.fProxyLaplacian2D(8, 8, allocator: Allocator.Temp);         // 64 dof, BR=1
+            var pen = fProxyGallery.fProxyPenalizedGrid3D(3, 3, 3, (fProxy)1, (fProxy)10, allocator: Allocator.Temp);   // 27 blocks, BR=3
 
             // (subdomainSize, overlap) combos: some force ragged last subdomains (nb not a multiple).
             for (int si = 0; si < AsSizes.Length; si++)
@@ -176,23 +170,21 @@ public class fProxySchwarzPreconditionerTests
                 {
                     var opts = new SchwarzOptions { subdomainSize = AsSizes[si], overlap = AsOverlaps[oi] };
 
-                    CheckSym(in lap, in opts, ref arena, 951000u + (uint)(si * 10 + oi));
-                    CheckSym(in pen, in opts, ref arena, 952000u + (uint)(si * 10 + oi));
+                    CheckSym(in lap, in opts, 951000u + (uint)(si * 10 + oi));
+                    CheckSym(in pen, in opts, 952000u + (uint)(si * 10 + oi));
                 }
             }
-
-            arena.Dispose();
         }
 
-        void CheckSym(in fProxyBSR A, in SchwarzOptions opts, ref Arena arena, uint seed)
+        void CheckSym(in fProxyBSR A, in SchwarzOptions opts, uint seed)
         {
-            var M = arena.fProxyAdditiveSchwarz(in A, in opts);
+            var M = new fProxyAdditiveSchwarz(in A, Allocator.Temp, in opts);
             int n = A.M_Rows;
             for (int t = 0; t < 3; t++)
             {
-                var r1 = arena.fProxyRandomVec(n, -1f, 1f, seed + (uint)t);
-                var r2 = arena.fProxyRandomVec(n, -1f, 1f, seed + 100u + (uint)t);
-                Assert.IsTrue(Asymmetry(in A, in r1, in r2, in M, ref arena) < Tol());
+                var r1 = GenerateOP.fProxyRandomVec(n, -1f, 1f, seed + (uint)t, allocator: Allocator.Temp);
+                var r2 = GenerateOP.fProxyRandomVec(n, -1f, 1f, seed + 100u + (uint)t, allocator: Allocator.Temp);
+                Assert.IsTrue(Asymmetry(in A, in r1, in r2, in M) < Tol());
             }
         }
 
@@ -202,32 +194,28 @@ public class fProxySchwarzPreconditionerTests
 
         void RasSolves()
         {
-            var arena = new Arena(Allocator.Persistent);
-
-            var gen = arena.fProxyRandomSparse(16, 16, 2, (fProxy)0.4, 953001u);   // nonsymmetric diag-dominant
-            var spd = arena.fProxyRandomSparseSPD(16, 2, (fProxy)0.4, 953101u);
+            var gen = fProxyGallery.fProxyRandomSparse(16, 16, 2, (fProxy)0.4, 953001u, allocator: Allocator.Temp);   // nonsymmetric diag-dominant
+            var spd = fProxyGallery.fProxyRandomSparseSPD(16, 2, (fProxy)0.4, 953101u, allocator: Allocator.Temp);
             var opts = new SchwarzOptions { subdomainSize = 12, overlap = 1 };     // multiple subdomains
 
-            RasResidualOk(in gen, in opts, ref arena, 953201u);
-            RasResidualOk(in spd, in opts, ref arena, 953301u);
-
-            arena.Dispose();
+            RasResidualOk(in gen, in opts, 953201u);
+            RasResidualOk(in spd, in opts, 953301u);
         }
 
-        void RasResidualOk(in fProxyBSR A, in SchwarzOptions opts, ref Arena arena, uint seed)
+        void RasResidualOk(in fProxyBSR A, in SchwarzOptions opts, uint seed)
         {
-            var M = arena.fProxyRestrictedSchwarz(in A, in opts);
+            var M = new fProxyRestrictedSchwarz(in A, Allocator.Temp, in opts);
             int n = A.M_Rows;
 
-            var xTrue = arena.fProxyRandomVec(n, 0.5f, 1.5f, seed);
+            var xTrue = GenerateOP.fProxyRandomVec(n, 0.5f, 1.5f, seed, allocator: Allocator.Temp);
             var b = BSR.spMV(in A, in xTrue);
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             var info = Krylov.biCGStab(in A, in M, in b, ref x, 20 * n, Consts.fProxySqrtEps);
             Assert.IsTrue(info.Solved);
 
-            var Ax = arena.fProxyVec(n);
+            var Ax = new fProxyN(n, Allocator.Temp);
             BSR.spMV(in A, in x, ref Ax);
-            var resid = arena.fProxyVec(n);
+            var resid = new fProxyN(n, Allocator.Temp);
             resid.Data.CopyFrom(b.Data);
             resid.addScaledInPlace((fProxy)(-1), Ax);
             fProxy resNormSq = Blas.dot(resid, resid);
@@ -243,32 +231,29 @@ public class fProxySchwarzPreconditionerTests
 
         void SymmetricStorageMatchesFull()
         {
-            var arena = new Arena(Allocator.Persistent);
             const int nb = 9, BR = 2;
-            var full = BuildBlockTridiag(ref arena, nb, BR, false);
-            var sym = BuildBlockTridiag(ref arena, nb, BR, true);
+            var full = BuildBlockTridiag(nb, BR, false);
+            var sym = BuildBlockTridiag(nb, BR, true);
             int n = full.M_Rows;
             var opts = new SchwarzOptions { subdomainSize = 6, overlap = 1 };
 
-            var mFull = arena.fProxyAdditiveSchwarz(in full, in opts);
-            var mSym = arena.fProxyAdditiveSchwarz(in sym, in opts);
-            var rFull = arena.fProxyRestrictedSchwarz(in full, in opts);
-            var rSym = arena.fProxyRestrictedSchwarz(in sym, in opts);
+            var mFull = new fProxyAdditiveSchwarz(in full, Allocator.Temp, in opts);
+            var mSym = new fProxyAdditiveSchwarz(in sym, Allocator.Temp, in opts);
+            var rFull = new fProxyRestrictedSchwarz(in full, Allocator.Temp, in opts);
+            var rSym = new fProxyRestrictedSchwarz(in sym, Allocator.Temp, in opts);
 
-            var r = arena.fProxyRandomVec(n, -1f, 1f, 954001u);
-            var za = arena.fProxyVec(n);
-            var zb = arena.fProxyVec(n);
+            var r = GenerateOP.fProxyRandomVec(n, -1f, 1f, 954001u, allocator: Allocator.Temp);
+            var za = new fProxyN(n, Allocator.Temp);
+            var zb = new fProxyN(n, Allocator.Temp);
             mFull.Apply(in r, ref za);
             mSym.Apply(in r, ref zb);
             for (int i = 0; i < n; i++) Assert.IsTrue(za[i] == zb[i]);
 
-            var zc = arena.fProxyVec(n);
-            var zd = arena.fProxyVec(n);
+            var zc = new fProxyN(n, Allocator.Temp);
+            var zd = new fProxyN(n, Allocator.Temp);
             rFull.Apply(in r, ref zc);
             rSym.Apply(in r, ref zd);
             for (int i = 0; i < n; i++) Assert.IsTrue(zc[i] == zd[i]);
-
-            arena.Dispose();
         }
 
         // ================================================================================
@@ -277,31 +262,28 @@ public class fProxySchwarzPreconditionerTests
 
         void DeterministicBuild()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyRandomSparseSPD(20, 2, (fProxy)0.35, 955001u);
-            var Ag = arena.fProxyRandomSparse(20, 20, 2, (fProxy)0.35, 955101u);
+            var A = fProxyGallery.fProxyRandomSparseSPD(20, 2, (fProxy)0.35, 955001u, allocator: Allocator.Temp);
+            var Ag = fProxyGallery.fProxyRandomSparse(20, 20, 2, (fProxy)0.35, 955101u, allocator: Allocator.Temp);
             int n = A.M_Rows;
             var opts = new SchwarzOptions { subdomainSize = 10, overlap = 1 };
 
-            var r = arena.fProxyRandomVec(n, -1f, 1f, 955002u);
+            var r = GenerateOP.fProxyRandomVec(n, -1f, 1f, 955002u, allocator: Allocator.Temp);
 
-            var m1 = arena.fProxyAdditiveSchwarz(in A, in opts);
-            var m2 = arena.fProxyAdditiveSchwarz(in A, in opts);
-            var z1 = arena.fProxyVec(n);
-            var z2 = arena.fProxyVec(n);
+            var m1 = new fProxyAdditiveSchwarz(in A, Allocator.Temp, in opts);
+            var m2 = new fProxyAdditiveSchwarz(in A, Allocator.Temp, in opts);
+            var z1 = new fProxyN(n, Allocator.Temp);
+            var z2 = new fProxyN(n, Allocator.Temp);
             m1.Apply(in r, ref z1);
             m2.Apply(in r, ref z2);
             for (int i = 0; i < n; i++) Assert.IsTrue(z1[i] == z2[i]);
 
-            var g1 = arena.fProxyRestrictedSchwarz(in Ag, in opts);
-            var g2 = arena.fProxyRestrictedSchwarz(in Ag, in opts);
-            var w1 = arena.fProxyVec(n);
-            var w2 = arena.fProxyVec(n);
+            var g1 = new fProxyRestrictedSchwarz(in Ag, Allocator.Temp, in opts);
+            var g2 = new fProxyRestrictedSchwarz(in Ag, Allocator.Temp, in opts);
+            var w1 = new fProxyN(n, Allocator.Temp);
+            var w2 = new fProxyN(n, Allocator.Temp);
             g1.Apply(in r, ref w1);
             g2.Apply(in r, ref w2);
             for (int i = 0; i < n; i++) Assert.IsTrue(w1[i] == w2[i]);
-
-            arena.Dispose();
         }
 
         // ================================================================================
@@ -310,29 +292,26 @@ public class fProxySchwarzPreconditionerTests
 
         void PminresConverges()
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyLaplacian2D(6, 6);   // 36 dof SPD
+            var A = fProxyGallery.fProxyLaplacian2D(6, 6, allocator: Allocator.Temp);   // 36 dof SPD
             int n = A.M_Rows;
             var opts = new SchwarzOptions { subdomainSize = 12, overlap = 1 };
-            var M = arena.fProxyAdditiveSchwarz(in A, in opts);
+            var M = new fProxyAdditiveSchwarz(in A, Allocator.Temp, in opts);
 
-            var xTrue = arena.fProxyRandomVec(n, 0.5f, 1.5f, 956001u);
+            var xTrue = GenerateOP.fProxyRandomVec(n, 0.5f, 1.5f, 956001u, allocator: Allocator.Temp);
             var b = BSR.spMV(in A, in xTrue);
-            var x = arena.fProxyVec(n);
+            var x = new fProxyN(n, Allocator.Temp);
             var info = Krylov.minres(in A, in M, in b, ref x, 8 * n, Consts.fProxySqrtEps);
             Assert.IsTrue(info.Solved);
 
-            var Ax = arena.fProxyVec(n);
+            var Ax = new fProxyN(n, Allocator.Temp);
             BSR.spMV(in A, in x, ref Ax);
-            var resid = arena.fProxyVec(n);
+            var resid = new fProxyN(n, Allocator.Temp);
             resid.Data.CopyFrom(b.Data);
             resid.addScaledInPlace((fProxy)(-1), Ax);
             fProxy resNormSq = Blas.dot(resid, resid);
             fProxy bNormSq = Blas.dot(b, b);
             fProxy tol = Consts.fProxySqrtEps;
             Assert.IsTrue(resNormSq <= (fProxy)64 * tol * tol * bNormSq);
-
-            arena.Dispose();
         }
     }
 
@@ -358,15 +337,13 @@ public class fProxySchwarzPreconditionerTests
 
         public void Execute()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             fProxyBSR A = mode == Mode.Laplacian
-                ? arena.fProxyLaplacian2D(16, 16)
-                : arena.fProxyPenalizedGrid3D(4, 4, 4, (fProxy)1, (fProxy)10);
+                ? fProxyGallery.fProxyLaplacian2D(16, 16, allocator: Allocator.Temp)
+                : fProxyGallery.fProxyPenalizedGrid3D(4, 4, 4, (fProxy)1, (fProxy)10, allocator: Allocator.Temp);
 
-            var bJ = arena.fProxyBlockJacobi(in A);
+            var bJ = new fProxyBlockJacobi(in A, Allocator.Temp);
             var opts = new SchwarzOptions { subdomainSize = subdomainSize, overlap = overlap };
-            var asM = arena.fProxyAdditiveSchwarz(in A, in opts, out PreconditionerInfo info);
+            var asM = new fProxyAdditiveSchwarz(in A, Allocator.Temp, in opts, out PreconditionerInfo info);
             int n = A.M_Rows;
 
             asInfo[0] = info.attempts;
@@ -377,24 +354,22 @@ public class fProxySchwarzPreconditionerTests
             fProxy tol = Consts.fProxySqrtEps;
             int maxIter = 20 * n;
 
-            RunTrial(arena, in A, in bJ, in asM, n, maxIter, tol, 0, 957001u, (fProxy)0.5, (fProxy)1.5);
-            RunTrial(arena, in A, in bJ, in asM, n, maxIter, tol, 1, 957011u, (fProxy)(-1), (fProxy)1);
-            RunTrial(arena, in A, in bJ, in asM, n, maxIter, tol, 2, 957021u, (fProxy)(-3), (fProxy)3);
-
-            arena.Dispose();
+            RunTrial(in A, in bJ, in asM, n, maxIter, tol, 0, 957001u, (fProxy)0.5, (fProxy)1.5);
+            RunTrial(in A, in bJ, in asM, n, maxIter, tol, 1, 957011u, (fProxy)(-1), (fProxy)1);
+            RunTrial(in A, in bJ, in asM, n, maxIter, tol, 2, 957021u, (fProxy)(-3), (fProxy)3);
         }
 
-        void RunTrial(Arena arena, in fProxyBSR A, in fProxyBlockJacobi bJ, in fProxyAdditiveSchwarz asM,
+        void RunTrial(in fProxyBSR A, in fProxyBlockJacobi bJ, in fProxyAdditiveSchwarz asM,
                       int n, int maxIter, fProxy tol, int trial, uint seed, fProxy lo, fProxy hi)
         {
-            var xTrue = arena.fProxyRandomVec(n, lo, hi, seed);
+            var xTrue = GenerateOP.fProxyRandomVec(n, lo, hi, seed, allocator: Allocator.Temp);
             var b = BSR.spMV(in A, in xTrue);
 
-            var xCG = arena.fProxyVec(n);
+            var xCG = new fProxyN(n, Allocator.Temp);
             var infoCG = Krylov.cg(in A, in b, ref xCG, maxIter, tol);
-            var xJ = arena.fProxyVec(n);
+            var xJ = new fProxyN(n, Allocator.Temp);
             var infoJ = Krylov.cg(in A, in bJ, in b, ref xJ, maxIter, tol);
-            var xA = arena.fProxyVec(n);
+            var xA = new fProxyN(n, Allocator.Temp);
             var infoA = Krylov.cg(in A, in asM, in b, ref xA, maxIter, tol);
 
             iters[trial * 3 + 0] = infoCG.iterations;
@@ -404,9 +379,9 @@ public class fProxySchwarzPreconditionerTests
             solved[trial * 3 + 1] = infoJ.Solved ? 1 : 0;
             solved[trial * 3 + 2] = infoA.Solved ? 1 : 0;
 
-            var AxA = arena.fProxyVec(n);
+            var AxA = new fProxyN(n, Allocator.Temp);
             BSR.spMV(in A, in xA, ref AxA);
-            var resid = arena.fProxyVec(n);
+            var resid = new fProxyN(n, Allocator.Temp);
             resid.Data.CopyFrom(b.Data);
             resid.addScaledInPlace((fProxy)(-1), AxA);
             fProxy resNormSq = Blas.dot(resid, resid);
@@ -424,7 +399,7 @@ public class fProxySchwarzPreconditionerTests
         public fProxyBSR A;
         public fProxyAdditiveSchwarz M;
         public fProxyN b;
-        public fProxyN x;                 // output (arena-backed; written through its pointer)
+        public fProxyN x;                 // output (written through its pointer)
         public NativeArray<int> iters;    // length 1
         public int maxIter;
         public fProxy tol;
@@ -509,19 +484,18 @@ public class fProxySchwarzPreconditionerTests
     [Test]
     public void ThroughIJobDeterminismTest()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var A = arena.fProxyLaplacian2D(8, 8);   // 64 dof SPD
+        var A = fProxyGallery.fProxyLaplacian2D(8, 8, allocator: Allocator.Temp);   // 64 dof SPD
         int n = A.M_Rows;
         var opts = new SchwarzOptions { subdomainSize = 16, overlap = 1 };
-        var M = arena.fProxyAdditiveSchwarz(in A, in opts);
+        var M = new fProxyAdditiveSchwarz(in A, Allocator.Temp, in opts);
 
-        var xTrue = arena.fProxyRandomVec(n, 0.5f, 1.5f, 958001u);
+        var xTrue = GenerateOP.fProxyRandomVec(n, 0.5f, 1.5f, 958001u, allocator: Allocator.Temp);
         var b = BSR.spMV(in A, in xTrue);
         fProxy tol = Consts.fProxySqrtEps;
         int maxIter = 8 * n;
 
-        var x1 = arena.fProxyVec(n);
-        var x2 = arena.fProxyVec(n);
+        var x1 = new fProxyN(n, Allocator.Temp);
+        var x2 = new fProxyN(n, Allocator.Temp);
         var it1 = new NativeArray<int>(1, Allocator.Persistent);
         var it2 = new NativeArray<int>(1, Allocator.Persistent);
 
@@ -533,7 +507,7 @@ public class fProxySchwarzPreconditionerTests
             Assert.IsTrue(x1[i] == x2[i]);
 
         // Managed (non-Burst) path: consistent to tolerance (SIMD reassociation may differ).
-        var x3 = arena.fProxyVec(n);
+        var x3 = new fProxyN(n, Allocator.Temp);
         var infoM = Krylov.cg(in A, in M, in b, ref x3, maxIter, tol);
         Assert.IsTrue(infoM.Solved);
         fProxy consistencyTol = /*+choose[1e-3f|1e-9]*/1e-3f/*-choose*/;
@@ -542,7 +516,6 @@ public class fProxySchwarzPreconditionerTests
 
         it1.Dispose();
         it2.Dispose();
-        arena.Dispose();
     }
 
     // ---- (8) breakdown: non-throwing twin vs throwing ctor -------------------------------
@@ -550,49 +523,39 @@ public class fProxySchwarzPreconditionerTests
     [Test]
     public void AsIndefiniteBreaksDown()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            // Symmetric INDEFINITE 2x2 (BR=1): [[1,20],[20,1]] has eigenvalues 21, -19. diagMax=1,
-            // so no diagonal shift up to 10*diagMax rescues the local Cholesky -> build fails.
-            var builder = arena.fProxyBSRBuilder(2, 2, 1, 1, 4);
-            builder.AddValue(0, 0, (fProxy)1);
-            builder.AddValue(0, 1, (fProxy)20);
-            builder.AddValue(1, 0, (fProxy)20);
-            builder.AddValue(1, 1, (fProxy)1);
-            var A = builder.ToBSR(ref arena);
+        // Symmetric INDEFINITE 2x2 (BR=1): [[1,20],[20,1]] has eigenvalues 21, -19. diagMax=1,
+        // so no diagonal shift up to 10*diagMax rescues the local Cholesky -> build fails.
+        var builder = new fProxyBSRBuilder(2, 2, 1, 1, Allocator.Temp, 4);
+        builder.AddValue(0, 0, (fProxy)1);
+        builder.AddValue(0, 1, (fProxy)20);
+        builder.AddValue(1, 0, (fProxy)20);
+        builder.AddValue(1, 1, (fProxy)1);
+        var A = builder.ToBSR(Allocator.Temp);
 
-            var opts = new SchwarzOptions { subdomainSize = 8, overlap = 0 };
-            var M = arena.fProxyAdditiveSchwarz(in A, in opts, out PreconditionerInfo info);
-            Assert.IsFalse(info.Solved);
-            Assert.IsTrue(info.status == DirectSolveStatus.NotPositiveDefinite);
+        var opts = new SchwarzOptions { subdomainSize = 8, overlap = 0 };
+        var M = new fProxyAdditiveSchwarz(in A, Allocator.Temp, in opts, out PreconditionerInfo info);
+        Assert.IsFalse(info.Solved);
+        Assert.IsTrue(info.status == DirectSolveStatus.NotPositiveDefinite);
 
-            Assert.Throws<ArgumentException>(() => { var m2 = arena.fProxyAdditiveSchwarz(in A, in opts); });
-        }
-        finally { arena.Dispose(); }
+        Assert.Throws<ArgumentException>(() => { var m2 = new fProxyAdditiveSchwarz(in A, Allocator.Temp, in opts); });
     }
 
     [Test]
     public void RasSingularBreaksDown()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            // Structurally singular 2x2 (BR=1): column 1 is entirely zero -> local LU hits a zero
-            // pivot -> Singular (RAS does not shift-retry).
-            var builder = arena.fProxyBSRBuilder(2, 2, 1, 1, 4);
-            builder.AddValue(0, 0, (fProxy)1);
-            builder.AddValue(1, 0, (fProxy)2);
-            var A = builder.ToBSR(ref arena);
+        // Structurally singular 2x2 (BR=1): column 1 is entirely zero -> local LU hits a zero
+        // pivot -> Singular (RAS does not shift-retry).
+        var builder = new fProxyBSRBuilder(2, 2, 1, 1, Allocator.Temp, 4);
+        builder.AddValue(0, 0, (fProxy)1);
+        builder.AddValue(1, 0, (fProxy)2);
+        var A = builder.ToBSR(Allocator.Temp);
 
-            var opts = new SchwarzOptions { subdomainSize = 8, overlap = 0 };
-            var M = arena.fProxyRestrictedSchwarz(in A, in opts, out PreconditionerInfo info);
-            Assert.IsFalse(info.Solved);
-            Assert.IsTrue(info.status == DirectSolveStatus.Singular);
+        var opts = new SchwarzOptions { subdomainSize = 8, overlap = 0 };
+        var M = new fProxyRestrictedSchwarz(in A, Allocator.Temp, in opts, out PreconditionerInfo info);
+        Assert.IsFalse(info.Solved);
+        Assert.IsTrue(info.status == DirectSolveStatus.Singular);
 
-            Assert.Throws<ArgumentException>(() => { var m2 = arena.fProxyRestrictedSchwarz(in A, in opts); });
-        }
-        finally { arena.Dispose(); }
+        Assert.Throws<ArgumentException>(() => { var m2 = new fProxyRestrictedSchwarz(in A, Allocator.Temp, in opts); });
     }
 
     // ---- guard cases (managed thread) ----------------------------------------------------
@@ -600,48 +563,38 @@ public class fProxySchwarzPreconditionerTests
     [Test]
     public void NonSquareThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var builder = arena.fProxyBSRBuilder(2, 3, 2, 2);
-            var block = arena.fProxyMat(2, 2, (fProxy)1);
-            builder.AddBlock(0, 0, in block);
-            var A = builder.ToBSR(ref arena);
-            Assert.Throws<ArgumentException>(() => { var m = arena.fProxyAdditiveSchwarz(in A); });
-            Assert.Throws<ArgumentException>(() => { var m = arena.fProxyRestrictedSchwarz(in A); });
-        }
-        finally { arena.Dispose(); }
+        var builder = new fProxyBSRBuilder(2, 3, 2, 2, Allocator.Temp);
+        var block = GenerateOP.fProxyMat(2, 2, (fProxy)1, allocator: Allocator.Temp);
+        builder.AddBlock(0, 0, in block);
+        var A = builder.ToBSR(Allocator.Temp);
+        Assert.Throws<ArgumentException>(() => { var m = new fProxyAdditiveSchwarz(in A, Allocator.Temp); });
+        Assert.Throws<ArgumentException>(() => { var m = new fProxyRestrictedSchwarz(in A, Allocator.Temp); });
     }
 
     [Test]
     public void ApplyAliasingThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var A = arena.fProxyRandomSparseSPD(8, 2, (fProxy)0.5, 959001u);
-            int n = A.M_Rows;
-            var opts = new SchwarzOptions { subdomainSize = 6, overlap = 1 };
-            var M = arena.fProxyAdditiveSchwarz(in A, in opts);
-            var R = arena.fProxyRestrictedSchwarz(in A, in opts);
+        var A = fProxyGallery.fProxyRandomSparseSPD(8, 2, (fProxy)0.5, 959001u, allocator: Allocator.Temp);
+        int n = A.M_Rows;
+        var opts = new SchwarzOptions { subdomainSize = 6, overlap = 1 };
+        var M = new fProxyAdditiveSchwarz(in A, Allocator.Temp, in opts);
+        var R = new fProxyRestrictedSchwarz(in A, Allocator.Temp, in opts);
 
-            var r = arena.fProxyVec(n, (fProxy)1);
-            var z = arena.fProxyVec(n);
+        var r = GenerateOP.fProxyVec(n, (fProxy)1, allocator: Allocator.Temp);
+        var z = new fProxyN(n, Allocator.Temp);
 
-            // AS: z aliases r, z aliases Scratch, r aliases Scratch.
-            Assert.Throws<ArgumentException>(() => M.Apply(in r, ref r));
-            var asScratch = M.Scratch;
-            Assert.Throws<ArgumentException>(() => M.Apply(in r, ref asScratch));
-            Assert.Throws<ArgumentException>(() => M.Apply(in asScratch, ref z));
+        // AS: z aliases r, z aliases Scratch, r aliases Scratch.
+        Assert.Throws<ArgumentException>(() => M.Apply(in r, ref r));
+        var asScratch = M.Scratch;
+        Assert.Throws<ArgumentException>(() => M.Apply(in r, ref asScratch));
+        Assert.Throws<ArgumentException>(() => M.Apply(in asScratch, ref z));
 
-            // RAS: z aliases r, z aliases a scratch, r aliases a scratch.
-            Assert.Throws<ArgumentException>(() => R.Apply(in r, ref r));
-            var rScratch = R.Scratch;
-            var rScratch2 = R.Scratch2;
-            Assert.Throws<ArgumentException>(() => R.Apply(in r, ref rScratch));
-            Assert.Throws<ArgumentException>(() => R.Apply(in r, ref rScratch2));
-            Assert.Throws<ArgumentException>(() => R.Apply(in rScratch, ref z));
-        }
-        finally { arena.Dispose(); }
+        // RAS: z aliases r, z aliases a scratch, r aliases a scratch.
+        Assert.Throws<ArgumentException>(() => R.Apply(in r, ref r));
+        var rScratch = R.Scratch;
+        var rScratch2 = R.Scratch2;
+        Assert.Throws<ArgumentException>(() => R.Apply(in r, ref rScratch));
+        Assert.Throws<ArgumentException>(() => R.Apply(in r, ref rScratch2));
+        Assert.Throws<ArgumentException>(() => R.Apply(in rScratch, ref z));
     }
 }

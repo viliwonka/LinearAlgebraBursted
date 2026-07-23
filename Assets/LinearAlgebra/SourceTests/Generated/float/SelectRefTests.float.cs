@@ -63,118 +63,100 @@ public class floatSelectRefTests
         // elementwise select(a, b, c): dest[i] = c[i] ? b[i] : a[i] (vector, boolN cond)
         void VecCond()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int N = 17;
 
-            var a = arena.floatRandomVec(N, -1f, 1f, 11111);
-            var b = arena.floatRandomVec(N, -1f, 1f, 22222);
-            var c = arena.boolRandomVec(N, 33333);
+            var a = GenerateOP.floatRandomVec(N, -1f, 1f, 11111, allocator: Allocator.Temp);
+            var b = GenerateOP.floatRandomVec(N, -1f, 1f, 22222, allocator: Allocator.Temp);
+            var c = GenerateOP.boolRandomVec(N, 33333, allocator: Allocator.Temp);
 
             // allocating reference
             var R = Select.select(a, b, c);
 
             // ref-dest into a preallocated destination
-            var D = arena.floatVec(N);
+            var D = new floatN(N, Allocator.Temp);
             Select.select(in a, in b, in c, ref D);
 
-            Assert.IsTrue(Analysis.isZero(R - D, Tol()));
-
-            arena.Dispose();
+            var diff = new floatN(in R, Allocator.Temp); diff.subInPlace(D);
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
         }
 
         // Same select(a,b,c) formula as VecCond, for boolMxN cond (matrix).
         void MatCond()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int M = 6;
             int N = 9;
 
-            var a = arena.floatRandomMat(M, N, -1f, 1f, 44444);
-            var b = arena.floatRandomMat(M, N, -1f, 1f, 55555);
-            var c = arena.boolRandomMat(M, N, 66666);
+            var a = GenerateOP.floatRandomMat(M, N, -1f, 1f, 44444, allocator: Allocator.Temp);
+            var b = GenerateOP.floatRandomMat(M, N, -1f, 1f, 55555, allocator: Allocator.Temp);
+            var c = GenerateOP.boolRandomMat(M, N, 66666, allocator: Allocator.Temp);
 
             var R = Select.select(a, b, c);
 
-            var D = arena.floatMat(M, N);
+            var D = new floatMxN(M, N, Allocator.Temp);
             Select.select(in a, in b, in c, ref D);
 
-            Assert.IsTrue(Analysis.isZero(R - D, Tol()));
-
-            arena.Dispose();
+            var diff = new floatMxN(in R, Allocator.Temp); diff.subInPlace(D);
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
         }
 
         // ---- scalar-bool condition: c=true -> dest must equal b; c=false -> dest must equal a
         //      (vector then matrix) ----
         void VecScalarTrue()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int N = 13;
 
-            var a = arena.floatRandomVec(N, -1f, 1f, 77777);
-            var b = arena.floatRandomVec(N, -1f, 1f, 88888);
+            var a = GenerateOP.floatRandomVec(N, -1f, 1f, 77777, allocator: Allocator.Temp);
+            var b = GenerateOP.floatRandomVec(N, -1f, 1f, 88888, allocator: Allocator.Temp);
 
-            var D = arena.floatVec(N);
+            var D = new floatN(N, Allocator.Temp);
             Select.select(in a, in b, true, ref D);
 
-            Assert.IsTrue(Analysis.isZero(b - D, Tol()));
-
-            arena.Dispose();
+            var diff = new floatN(in b, Allocator.Temp); diff.subInPlace(D);
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
         }
 
         void VecScalarFalse()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int N = 13;
 
-            var a = arena.floatRandomVec(N, -1f, 1f, 99999);
-            var b = arena.floatRandomVec(N, -1f, 1f, 10101);
+            var a = GenerateOP.floatRandomVec(N, -1f, 1f, 99999, allocator: Allocator.Temp);
+            var b = GenerateOP.floatRandomVec(N, -1f, 1f, 10101, allocator: Allocator.Temp);
 
-            var D = arena.floatVec(N);
+            var D = new floatN(N, Allocator.Temp);
             Select.select(in a, in b, false, ref D);
 
-            Assert.IsTrue(Analysis.isZero(a - D, Tol()));
-
-            arena.Dispose();
+            var diff = new floatN(in a, Allocator.Temp); diff.subInPlace(D);
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
         }
 
         void MatScalarTrue()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int M = 5;
             int N = 7;
 
-            var a = arena.floatRandomMat(M, N, -1f, 1f, 20202);
-            var b = arena.floatRandomMat(M, N, -1f, 1f, 30303);
+            var a = GenerateOP.floatRandomMat(M, N, -1f, 1f, 20202, allocator: Allocator.Temp);
+            var b = GenerateOP.floatRandomMat(M, N, -1f, 1f, 30303, allocator: Allocator.Temp);
 
-            var D = arena.floatMat(M, N);
+            var D = new floatMxN(M, N, Allocator.Temp);
             Select.select(in a, in b, true, ref D);
 
-            Assert.IsTrue(Analysis.isZero(b - D, Tol()));
-
-            arena.Dispose();
+            var diff = new floatMxN(in b, Allocator.Temp); diff.subInPlace(D);
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
         }
 
         void MatScalarFalse()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int M = 5;
             int N = 7;
 
-            var a = arena.floatRandomMat(M, N, -1f, 1f, 40404);
-            var b = arena.floatRandomMat(M, N, -1f, 1f, 50505);
+            var a = GenerateOP.floatRandomMat(M, N, -1f, 1f, 40404, allocator: Allocator.Temp);
+            var b = GenerateOP.floatRandomMat(M, N, -1f, 1f, 50505, allocator: Allocator.Temp);
 
-            var D = arena.floatMat(M, N);
+            var D = new floatMxN(M, N, Allocator.Temp);
             Select.select(in a, in b, false, ref D);
 
-            Assert.IsTrue(Analysis.isZero(a - D, Tol()));
-
-            arena.Dispose();
+            var diff = new floatMxN(in a, Allocator.Temp); diff.subInPlace(D);
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
         }
 
         // Elementwise aliasing IS allowed (no guard): select(a, b, c, ref a) must match the
@@ -182,24 +164,21 @@ public class floatSelectRefTests
         // overwrites a) and confirm aliasing does not corrupt the result.
         void VecAliasDest()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int N = 21;
 
-            var a = arena.floatRandomVec(N, -1f, 1f, 60606);
-            var b = arena.floatRandomVec(N, -1f, 1f, 70707);
-            var c = arena.boolRandomVec(N, 80808);
+            var a = GenerateOP.floatRandomVec(N, -1f, 1f, 60606, allocator: Allocator.Temp);
+            var b = GenerateOP.floatRandomVec(N, -1f, 1f, 70707, allocator: Allocator.Temp);
+            var c = GenerateOP.boolRandomVec(N, 80808, allocator: Allocator.Temp);
 
             // Reference into a SEPARATE buffer before a is overwritten.
-            var R = arena.floatVec(N);
+            var R = new floatN(N, Allocator.Temp);
             Select.select(in a, in b, in c, ref R);
 
             // Now alias the destination onto input a.
             Select.select(in a, in b, in c, ref a);
 
-            Assert.IsTrue(Analysis.isZero(R - a, Tol()));
-
-            arena.Dispose();
+            var diff = new floatN(in R, Allocator.Temp); diff.subInPlace(a);
+            Assert.IsTrue(Analysis.isZero(diff, Tol()));
         }
     }
 

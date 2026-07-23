@@ -123,13 +123,12 @@ namespace LinearAlgebra.Benchmarks
         static string BenchSparsePrecondFProxy(bool laplacian, int p1, int p2, float density, uint seed, int k)
         {
             const string fmt = "{0,-7} {1,-6} {2,-12} {3,11:F4} {4,11:F4} {5,7} {6,10} {7,14:E3}";
-            var arena = new Arena(Allocator.Persistent);
-            var A = laplacian ? arena.fProxyLaplacian2D(p1, p2)
-                              : arena.fProxyRandomSparseSPD(p1, p2, (fProxy)density, seed);
+            var A = laplacian ? fProxyGallery.fProxyLaplacian2D(p1, p2, Allocator.Persistent)
+                              : fProxyGallery.fProxyRandomSparseSPD(p1, p2, (fProxy)density, seed, Allocator.Persistent);
             int n = A.M_Rows;
             fProxy tol = Consts.fProxySqrtEps;
             int maxIter = 500;
-            var ws = arena.fProxyLOBPCGCache(n, k);
+            var ws = new fProxyLOBPCGCache(n, k, Allocator.Persistent);
             var infoOut = new NativeArray<LOBPCGInfo>(1, Allocator.Persistent);
             var sb = new StringBuilder();
 
@@ -139,21 +138,21 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                 "fProxy", n, "none", sN.Median, sN.Min, iN.iterations, iN.converged, iN.maxResidual));
 
-            var mJ = arena.fProxyBlockJacobi(in A);
+            var mJ = new fProxyBlockJacobi(in A, Allocator.Persistent);
             var jJ = new LobpcgBsrJacobiJobFProxy { A = A, M = mJ, ws = ws, k = k, maxIter = maxIter, tol = tol, infoOut = infoOut };
             var sJ = Bench.Time(() => jJ.Run());
             var iJ = infoOut[0];
             sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                 "fProxy", n, "Jacobi", sJ.Median, sJ.Min, iJ.iterations, iJ.converged, iJ.maxResidual));
 
-            var mS = arena.fProxySSOR(in A);
+            var mS = new fProxySSOR(in A, Allocator.Persistent);
             var jS = new LobpcgBsrSsorJobFProxy { A = A, M = mS, ws = ws, k = k, maxIter = maxIter, tol = tol, infoOut = infoOut };
             var sS = Bench.Time(() => jS.Run());
             var iS = infoOut[0];
             sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
                 "fProxy", n, "SSOR", sS.Median, sS.Min, iS.iterations, iS.converged, iS.maxResidual));
 
-            var mI = arena.fProxyIC0(in A);
+            var mI = new fProxyIC0(in A, Allocator.Persistent);
             var jI = new LobpcgBsrIc0JobFProxy { A = A, M = mI, ws = ws, k = k, maxIter = maxIter, tol = tol, infoOut = infoOut };
             var sI = Bench.Time(() => jI.Run());
             var iI = infoOut[0];
@@ -161,15 +160,14 @@ namespace LinearAlgebra.Benchmarks
                 "fProxy", n, "IC0", sI.Median, sI.Min, iI.iterations, iI.converged, iI.maxResidual));
 
             infoOut.Dispose();
-            arena.Dispose();
+            A.Dispose(); ws.Dispose(); mJ.Dispose(); mS.Dispose(); mI.Dispose();
             return sb.ToString();
         }
 
         static string BenchFProxy(int N, int K, int maxIter)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var M = arena.fProxyMat(N, N);
-            var A = arena.fProxyMat(N, N);
+            var M = new fProxyMxN(N, N, Allocator.Persistent);
+            var A = new fProxyMxN(N, N, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)N);
             for (int r = 0; r < N; r++)
@@ -178,7 +176,7 @@ namespace LinearAlgebra.Benchmarks
             Blas.dot(in M, in M, ref A, true);
             for (int d = 0; d < N; d++) A[d, d] += (fProxy)1;
 
-            var ws = arena.fProxyLOBPCGCache(N, K);
+            var ws = new fProxyLOBPCGCache(N, K, Allocator.Persistent);
             var infoOut = new NativeArray<LOBPCGInfo>(1, Allocator.Persistent);
             var job = new LobpcgJobFProxy { A = A, ws = ws, k = K, maxIter = maxIter, tol = (fProxy)1e-20, infoOut = infoOut };
             var stat = Bench.Time(() => job.Run());
@@ -189,7 +187,7 @@ namespace LinearAlgebra.Benchmarks
                 "fProxy", N, stat.Min, stat.Median, info.iterations, info.converged, info.maxResidual);
 
             infoOut.Dispose();
-            arena.Dispose();
+            M.Dispose(); A.Dispose(); ws.Dispose();
             return row;
         }
     }

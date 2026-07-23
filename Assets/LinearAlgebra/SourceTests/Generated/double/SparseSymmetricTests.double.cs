@@ -84,7 +84,9 @@ public class doubleSparseSymmetricTests
 
         static void AssertVecEq(in doubleN a, in doubleN b, double tol)
         {
-            Assert.IsTrue(Analysis.isZero(a - b, tol));
+            var diff = new doubleN(in a, Allocator.Temp);
+            doubleComp.subInPlace(diff, b);
+            Assert.IsTrue(Analysis.isZero(diff, tol));
         }
 
         static void AssertMatEq(in doubleMxN a, in doubleMxN b, double tol)
@@ -109,10 +111,10 @@ public class doubleSparseSymmetricTests
         // BOTH the full and symmetric builders (identical block) and scattered into the dense
         // reference. Builders are passed by value: AddBlock mutates through the builder's shared
         // heap _state pointer, so growth/appends are visible to the caller's copy too.
-        static void AddDiag(ref Arena arena, int i, int BR, double strong, uint seed,
+        static void AddDiag(int i, int BR, double strong, uint seed,
                             doubleBSRBuilder full, doubleBSRBuilder sym, ref doubleMxN dense)
         {
-            var Mi = arena.doubleRandomMat(BR, BR, (double)(-1f), (double)1f, seed);
+            var Mi = GenerateOP.doubleRandomMat(BR, BR, (double)(-1f), (double)1f, seed);
             var Di = Blas.dot(Mi, Mi, true);   // M_i^T M_i, symmetric PSD
             for (int d = 0; d < BR; d++)
                 Di[d, d] += strong;
@@ -131,14 +133,14 @@ public class doubleSparseSymmetricTests
         //   - symmetric storage: AddBlock(bj,bi,K^T) ONLY (mirror is implicit; lower triangle stored)
         //   - dense reference: both dense[bi,bj]=K and dense[bj,bi]=K^T so it stays truly symmetric
         // offScale is kept small so the assembled matrix stays SPD by diagonal dominance.
-        static void AddOffDiag(ref Arena arena, int bi, int bj, int BR, uint seed,
+        static void AddOffDiag(int bi, int bj, int BR, uint seed,
                                doubleBSRBuilder full, doubleBSRBuilder sym, ref doubleMxN dense)
         {
-            var block = arena.doubleRandomMat(BR, BR, (double)(-0.2f), (double)0.2f, seed);
+            var block = GenerateOP.doubleRandomMat(BR, BR, (double)(-0.2f), (double)0.2f, seed);
 
             full.AddBlock(bi, bj, in block);
 
-            var blockT = arena.doubleMat(BR, BR);
+            var blockT = new doubleMxN(BR, BR, Allocator.Temp);
             for (int r = 0; r < BR; r++)
                 for (int c = 0; c < BR; c++)
                     blockT[r, c] = block[c, r];
@@ -157,7 +159,7 @@ public class doubleSparseSymmetricTests
 
         // The shared A1 assertion battery: given the SAME matrix as a symmetric BSR, a full BSR, and
         // a dense reference, prove every access path agrees.
-        static void CrossCheck(ref Arena arena, in doubleBSR sym, in doubleBSR full,
+        static void CrossCheck(in doubleBSR sym, in doubleBSR full,
                                in doubleMxN dense, uint seedBase)
         {
             // Storage-mode flags.
@@ -170,7 +172,7 @@ public class doubleSparseSymmetricTests
             int n = sym.N_Cols;
 
             // ---- spMV direction ----
-            var x = arena.doubleRandomVec(n, (double)(-1f), (double)1f, seedBase);
+            var x = GenerateOP.doubleRandomVec(n, (double)(-1f), (double)1f, seedBase);
 
             var ySym  = BSR.spMV(in sym, in x);
             var yFull = BSR.spMV(in full, in x);
@@ -182,15 +184,15 @@ public class doubleSparseSymmetricTests
             AssertVecEq(in yFullT, in yFull, Tol());
 
             // ---- spMVT direction (separate random x) ----
-            var xt = arena.doubleRandomVec(n, (double)(-1f), (double)1f, seedBase + 1u);
+            var xt = GenerateOP.doubleRandomVec(n, (double)(-1f), (double)1f, seedBase + 1u);
 
             var ySymT  = BSR.spMVT(in sym, in xt);   // sym's spMVT forwards to spMV (A==A^T)
             var yFullT2 = BSR.spMVT(in full, in xt);  // full's genuine transpose traversal
             AssertVecEq(in ySymT, in yFullT2, Tol());
 
             // ---- ToDense ----
-            var dSym  = sym.ToDense(ref arena);   // mirrors lower blocks into the upper triangle
-            var dFull = full.ToDense(ref arena);
+            var dSym  = sym.ToDense(Allocator.Temp);   // mirrors lower blocks into the upper triangle
+            var dFull = full.ToDense(Allocator.Temp);
             AssertMatEq(in dSym, in dFull, Tol());
             AssertMatEq(in dSym, in dense, Tol());   // both agree with the tracked reference
             AssertSymmetric(in dSym, Tol());         // and the shared dense result is symmetric
@@ -199,112 +201,112 @@ public class doubleSparseSymmetricTests
         // Assemble the SAME SPD matrix as (symmetric BSR, full BSR, dense reference). The off-diagonal
         // sparsity pattern is written as a straight-line sequence of AddOffDiag calls (NOT a loop over
         // a collection) so the whole method is Burst-compatible.
-        static void BuildSpdPair_BR1_Sparse(ref Arena arena, out doubleBSR sym, out doubleBSR full, out doubleMxN dense)
+        static void BuildSpdPair_BR1_Sparse(out doubleBSR sym, out doubleBSR full, out doubleMxN dense)
         {
             const int BR = 1, nb = 5;
             int dim = BR * nb;
             double strong = (double)dim;
-            dense = arena.doubleMat(dim, dim);
+            dense = new doubleMxN(dim, dim, Allocator.Temp);
 
-            var f = arena.doubleBSRBuilder(nb, nb, BR, BR, nb + 2 * 2);
-            var s = arena.doubleBSRBuilder(nb, nb, BR, BR, nb + 2);
+            var f = new doubleBSRBuilder(nb, nb, BR, BR, Allocator.Temp, nb + 2 * 2);
+            var s = new doubleBSRBuilder(nb, nb, BR, BR, Allocator.Temp, nb + 2);
 
-            AddDiag(ref arena, 0, BR, strong, 10000u, f, s, ref dense);
-            AddDiag(ref arena, 1, BR, strong, 10001u, f, s, ref dense);
-            AddDiag(ref arena, 2, BR, strong, 10002u, f, s, ref dense);
-            AddDiag(ref arena, 3, BR, strong, 10003u, f, s, ref dense);
-            AddDiag(ref arena, 4, BR, strong, 10004u, f, s, ref dense);
+            AddDiag(0, BR, strong, 10000u, f, s, ref dense);
+            AddDiag(1, BR, strong, 10001u, f, s, ref dense);
+            AddDiag(2, BR, strong, 10002u, f, s, ref dense);
+            AddDiag(3, BR, strong, 10003u, f, s, ref dense);
+            AddDiag(4, BR, strong, 10004u, f, s, ref dense);
 
             // sparse-ish: two off-diagonal pairs only
-            AddOffDiag(ref arena, 0, 1, BR, 11000u, f, s, ref dense);
-            AddOffDiag(ref arena, 1, 3, BR, 11001u, f, s, ref dense);
+            AddOffDiag(0, 1, BR, 11000u, f, s, ref dense);
+            AddOffDiag(1, 3, BR, 11001u, f, s, ref dense);
 
-            sym  = s.ToBSRSymmetric(ref arena);
-            full = f.ToBSR(ref arena);
+            sym  = s.ToBSRSymmetric(Allocator.Temp);
+            full = f.ToBSR(Allocator.Temp);
         }
 
-        static void BuildSpdPair_BR1_Dense(ref Arena arena, out doubleBSR sym, out doubleBSR full, out doubleMxN dense)
+        static void BuildSpdPair_BR1_Dense(out doubleBSR sym, out doubleBSR full, out doubleMxN dense)
         {
             const int BR = 1, nb = 5;
             int dim = BR * nb;
             double strong = (double)dim;
-            dense = arena.doubleMat(dim, dim);
+            dense = new doubleMxN(dim, dim, Allocator.Temp);
 
-            var f = arena.doubleBSRBuilder(nb, nb, BR, BR, nb + 2 * 10);
-            var s = arena.doubleBSRBuilder(nb, nb, BR, BR, nb + 10);
+            var f = new doubleBSRBuilder(nb, nb, BR, BR, Allocator.Temp, nb + 2 * 10);
+            var s = new doubleBSRBuilder(nb, nb, BR, BR, Allocator.Temp, nb + 10);
 
-            AddDiag(ref arena, 0, BR, strong, 12000u, f, s, ref dense);
-            AddDiag(ref arena, 1, BR, strong, 12001u, f, s, ref dense);
-            AddDiag(ref arena, 2, BR, strong, 12002u, f, s, ref dense);
-            AddDiag(ref arena, 3, BR, strong, 12003u, f, s, ref dense);
-            AddDiag(ref arena, 4, BR, strong, 12004u, f, s, ref dense);
+            AddDiag(0, BR, strong, 12000u, f, s, ref dense);
+            AddDiag(1, BR, strong, 12001u, f, s, ref dense);
+            AddDiag(2, BR, strong, 12002u, f, s, ref dense);
+            AddDiag(3, BR, strong, 12003u, f, s, ref dense);
+            AddDiag(4, BR, strong, 12004u, f, s, ref dense);
 
             // denser: every upper off-diagonal pair on the 5x5 block grid
-            AddOffDiag(ref arena, 0, 1, BR, 13000u, f, s, ref dense);
-            AddOffDiag(ref arena, 0, 2, BR, 13001u, f, s, ref dense);
-            AddOffDiag(ref arena, 0, 3, BR, 13002u, f, s, ref dense);
-            AddOffDiag(ref arena, 0, 4, BR, 13003u, f, s, ref dense);
-            AddOffDiag(ref arena, 1, 2, BR, 13004u, f, s, ref dense);
-            AddOffDiag(ref arena, 1, 3, BR, 13005u, f, s, ref dense);
-            AddOffDiag(ref arena, 1, 4, BR, 13006u, f, s, ref dense);
-            AddOffDiag(ref arena, 2, 3, BR, 13007u, f, s, ref dense);
-            AddOffDiag(ref arena, 2, 4, BR, 13008u, f, s, ref dense);
-            AddOffDiag(ref arena, 3, 4, BR, 13009u, f, s, ref dense);
+            AddOffDiag(0, 1, BR, 13000u, f, s, ref dense);
+            AddOffDiag(0, 2, BR, 13001u, f, s, ref dense);
+            AddOffDiag(0, 3, BR, 13002u, f, s, ref dense);
+            AddOffDiag(0, 4, BR, 13003u, f, s, ref dense);
+            AddOffDiag(1, 2, BR, 13004u, f, s, ref dense);
+            AddOffDiag(1, 3, BR, 13005u, f, s, ref dense);
+            AddOffDiag(1, 4, BR, 13006u, f, s, ref dense);
+            AddOffDiag(2, 3, BR, 13007u, f, s, ref dense);
+            AddOffDiag(2, 4, BR, 13008u, f, s, ref dense);
+            AddOffDiag(3, 4, BR, 13009u, f, s, ref dense);
 
-            sym  = s.ToBSRSymmetric(ref arena);
-            full = f.ToBSR(ref arena);
+            sym  = s.ToBSRSymmetric(Allocator.Temp);
+            full = f.ToBSR(Allocator.Temp);
         }
 
         // BR=3 exercises genuine block interior transposes in bsrMatVecSym (the K^T * x_i mirror).
-        static void BuildSpdPair_BR3_Sparse(ref Arena arena, out doubleBSR sym, out doubleBSR full, out doubleMxN dense)
+        static void BuildSpdPair_BR3_Sparse(out doubleBSR sym, out doubleBSR full, out doubleMxN dense)
         {
             const int BR = 3, nb = 4;
             int dim = BR * nb;
             double strong = (double)dim;
-            dense = arena.doubleMat(dim, dim);
+            dense = new doubleMxN(dim, dim, Allocator.Temp);
 
-            var f = arena.doubleBSRBuilder(nb, nb, BR, BR, nb + 2 * 3);
-            var s = arena.doubleBSRBuilder(nb, nb, BR, BR, nb + 3);
+            var f = new doubleBSRBuilder(nb, nb, BR, BR, Allocator.Temp, nb + 2 * 3);
+            var s = new doubleBSRBuilder(nb, nb, BR, BR, Allocator.Temp, nb + 3);
 
-            AddDiag(ref arena, 0, BR, strong, 20000u, f, s, ref dense);
-            AddDiag(ref arena, 1, BR, strong, 20001u, f, s, ref dense);
-            AddDiag(ref arena, 2, BR, strong, 20002u, f, s, ref dense);
-            AddDiag(ref arena, 3, BR, strong, 20003u, f, s, ref dense);
+            AddDiag(0, BR, strong, 20000u, f, s, ref dense);
+            AddDiag(1, BR, strong, 20001u, f, s, ref dense);
+            AddDiag(2, BR, strong, 20002u, f, s, ref dense);
+            AddDiag(3, BR, strong, 20003u, f, s, ref dense);
 
             // sparse-ish: block-tridiagonal off-diagonal pattern
-            AddOffDiag(ref arena, 0, 1, BR, 21000u, f, s, ref dense);
-            AddOffDiag(ref arena, 1, 2, BR, 21001u, f, s, ref dense);
-            AddOffDiag(ref arena, 2, 3, BR, 21002u, f, s, ref dense);
+            AddOffDiag(0, 1, BR, 21000u, f, s, ref dense);
+            AddOffDiag(1, 2, BR, 21001u, f, s, ref dense);
+            AddOffDiag(2, 3, BR, 21002u, f, s, ref dense);
 
-            sym  = s.ToBSRSymmetric(ref arena);
-            full = f.ToBSR(ref arena);
+            sym  = s.ToBSRSymmetric(Allocator.Temp);
+            full = f.ToBSR(Allocator.Temp);
         }
 
-        static void BuildSpdPair_BR3_Dense(ref Arena arena, out doubleBSR sym, out doubleBSR full, out doubleMxN dense)
+        static void BuildSpdPair_BR3_Dense(out doubleBSR sym, out doubleBSR full, out doubleMxN dense)
         {
             const int BR = 3, nb = 4;
             int dim = BR * nb;
             double strong = (double)dim;
-            dense = arena.doubleMat(dim, dim);
+            dense = new doubleMxN(dim, dim, Allocator.Temp);
 
-            var f = arena.doubleBSRBuilder(nb, nb, BR, BR, nb + 2 * 6);
-            var s = arena.doubleBSRBuilder(nb, nb, BR, BR, nb + 6);
+            var f = new doubleBSRBuilder(nb, nb, BR, BR, Allocator.Temp, nb + 2 * 6);
+            var s = new doubleBSRBuilder(nb, nb, BR, BR, Allocator.Temp, nb + 6);
 
-            AddDiag(ref arena, 0, BR, strong, 22000u, f, s, ref dense);
-            AddDiag(ref arena, 1, BR, strong, 22001u, f, s, ref dense);
-            AddDiag(ref arena, 2, BR, strong, 22002u, f, s, ref dense);
-            AddDiag(ref arena, 3, BR, strong, 22003u, f, s, ref dense);
+            AddDiag(0, BR, strong, 22000u, f, s, ref dense);
+            AddDiag(1, BR, strong, 22001u, f, s, ref dense);
+            AddDiag(2, BR, strong, 22002u, f, s, ref dense);
+            AddDiag(3, BR, strong, 22003u, f, s, ref dense);
 
             // denser: every upper off-diagonal pair on the 4x4 block grid
-            AddOffDiag(ref arena, 0, 1, BR, 23000u, f, s, ref dense);
-            AddOffDiag(ref arena, 0, 2, BR, 23001u, f, s, ref dense);
-            AddOffDiag(ref arena, 0, 3, BR, 23002u, f, s, ref dense);
-            AddOffDiag(ref arena, 1, 2, BR, 23003u, f, s, ref dense);
-            AddOffDiag(ref arena, 1, 3, BR, 23004u, f, s, ref dense);
-            AddOffDiag(ref arena, 2, 3, BR, 23005u, f, s, ref dense);
+            AddOffDiag(0, 1, BR, 23000u, f, s, ref dense);
+            AddOffDiag(0, 2, BR, 23001u, f, s, ref dense);
+            AddOffDiag(0, 3, BR, 23002u, f, s, ref dense);
+            AddOffDiag(1, 2, BR, 23003u, f, s, ref dense);
+            AddOffDiag(1, 3, BR, 23004u, f, s, ref dense);
+            AddOffDiag(2, 3, BR, 23005u, f, s, ref dense);
 
-            sym  = s.ToBSRSymmetric(ref arena);
-            full = f.ToBSR(ref arena);
+            sym  = s.ToBSRSymmetric(Allocator.Temp);
+            full = f.ToBSR(Allocator.Temp);
         }
 
         // ================================================================================
@@ -313,39 +315,31 @@ public class doubleSparseSymmetricTests
 
         void CrossCheck_BR1_Sparse()
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildSpdPair_BR1_Sparse(ref arena, out var sym, out var full, out var dense);
+            BuildSpdPair_BR1_Sparse(out var sym, out var full, out var dense);
             // off-diagonals present -> symmetric storage strictly smaller.
             Assert.IsTrue(sym.Nnzb < full.Nnzb);
-            CrossCheck(ref arena, in sym, in full, in dense, 14000u);
-            arena.Dispose();
+            CrossCheck(in sym, in full, in dense, 14000u);
         }
 
         void CrossCheck_BR1_Dense()
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildSpdPair_BR1_Dense(ref arena, out var sym, out var full, out var dense);
+            BuildSpdPair_BR1_Dense(out var sym, out var full, out var dense);
             Assert.IsTrue(sym.Nnzb < full.Nnzb);
-            CrossCheck(ref arena, in sym, in full, in dense, 14100u);
-            arena.Dispose();
+            CrossCheck(in sym, in full, in dense, 14100u);
         }
 
         void CrossCheck_BR3_Sparse()
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildSpdPair_BR3_Sparse(ref arena, out var sym, out var full, out var dense);
+            BuildSpdPair_BR3_Sparse(out var sym, out var full, out var dense);
             Assert.IsTrue(sym.Nnzb < full.Nnzb);
-            CrossCheck(ref arena, in sym, in full, in dense, 24000u);
-            arena.Dispose();
+            CrossCheck(in sym, in full, in dense, 24000u);
         }
 
         void CrossCheck_BR3_Dense()
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildSpdPair_BR3_Dense(ref arena, out var sym, out var full, out var dense);
+            BuildSpdPair_BR3_Dense(out var sym, out var full, out var dense);
             Assert.IsTrue(sym.Nnzb < full.Nnzb);
-            CrossCheck(ref arena, in sym, in full, in dense, 24100u);
-            arena.Dispose();
+            CrossCheck(in sym, in full, in dense, 24100u);
         }
 
         // ---- edge: diagonal-only symmetric BSR ----
@@ -356,29 +350,25 @@ public class doubleSparseSymmetricTests
         // are structurally identical here (no lower triangle to omit), so Nnzb is equal.
         void CrossCheck_DiagonalOnly()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             const int BR = 3, nb = 3;
             int dim = BR * nb;
             double strong = (double)dim;
-            var dense = arena.doubleMat(dim, dim);
+            var dense = new doubleMxN(dim, dim, Allocator.Temp);
 
-            var f = arena.doubleBSRBuilder(nb, nb, BR, BR, nb);
-            var s = arena.doubleBSRBuilder(nb, nb, BR, BR, nb);
+            var f = new doubleBSRBuilder(nb, nb, BR, BR, Allocator.Temp, nb);
+            var s = new doubleBSRBuilder(nb, nb, BR, BR, Allocator.Temp, nb);
 
-            AddDiag(ref arena, 0, BR, strong, 30000u, f, s, ref dense);
-            AddDiag(ref arena, 1, BR, strong, 30001u, f, s, ref dense);
-            AddDiag(ref arena, 2, BR, strong, 30002u, f, s, ref dense);
+            AddDiag(0, BR, strong, 30000u, f, s, ref dense);
+            AddDiag(1, BR, strong, 30001u, f, s, ref dense);
+            AddDiag(2, BR, strong, 30002u, f, s, ref dense);
 
-            var sym  = s.ToBSRSymmetric(ref arena);
-            var full = f.ToBSR(ref arena);
+            var sym  = s.ToBSRSymmetric(Allocator.Temp);
+            var full = f.ToBSR(Allocator.Temp);
 
             Assert.IsTrue(sym.Nnzb == nb);          // exactly the diagonal blocks
             Assert.IsTrue(sym.Nnzb == full.Nnzb);   // no lower triangle to omit
 
-            CrossCheck(ref arena, in sym, in full, in dense, 31000u);
-
-            arena.Dispose();
+            CrossCheck(in sym, in full, in dense, 31000u);
         }
 
         // ---- edge: single 1x1 block grid ----
@@ -387,27 +377,23 @@ public class doubleSparseSymmetricTests
         // A genuine 3x3 diagonal block (D = M^T M + strong*I is symmetric) keeps the case non-degenerate.
         void CrossCheck_SingleBlock()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             const int BR = 3, nb = 1;
             int dim = BR * nb;
             double strong = (double)dim;
-            var dense = arena.doubleMat(dim, dim);
+            var dense = new doubleMxN(dim, dim, Allocator.Temp);
 
-            var f = arena.doubleBSRBuilder(nb, nb, BR, BR, nb);
-            var s = arena.doubleBSRBuilder(nb, nb, BR, BR, nb);
+            var f = new doubleBSRBuilder(nb, nb, BR, BR, Allocator.Temp, nb);
+            var s = new doubleBSRBuilder(nb, nb, BR, BR, Allocator.Temp, nb);
 
-            AddDiag(ref arena, 0, BR, strong, 40000u, f, s, ref dense);
+            AddDiag(0, BR, strong, 40000u, f, s, ref dense);
 
-            var sym  = s.ToBSRSymmetric(ref arena);
-            var full = f.ToBSR(ref arena);
+            var sym  = s.ToBSRSymmetric(Allocator.Temp);
+            var full = f.ToBSR(Allocator.Temp);
 
             Assert.IsTrue(sym.Nnzb == 1);
             Assert.IsTrue(sym.Nnzb == full.Nnzb);
 
-            CrossCheck(ref arena, in sym, in full, in dense, 41000u);
-
-            arena.Dispose();
+            CrossCheck(in sym, in full, in dense, 41000u);
         }
 
         // ---- edge: empty (zero-triplet) symmetric BSR ----
@@ -422,12 +408,10 @@ public class doubleSparseSymmetricTests
         // an empty matrix (distinct from the full BSR's own empty-transpose loop).
         void CrossCheck_Empty()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             const int BR = 2, nb = 3;                 // 3x3 block grid of 2x2 blocks -> 6x6 dense
             int dim = BR * nb;
-            var builder = arena.doubleBSRBuilder(nb, nb, BR, BR); // never AddBlock/AddValue
-            var sym = builder.ToBSRSymmetric(ref arena);
+            var builder = new doubleBSRBuilder(nb, nb, BR, BR, Allocator.Temp); // never AddBlock/AddValue
+            var sym = builder.ToBSRSymmetric(Allocator.Temp);
 
             Assert.IsTrue(sym.Symmetric);
             Assert.IsTrue(sym.Nnzb == 0);
@@ -435,21 +419,19 @@ public class doubleSparseSymmetricTests
             Assert.IsTrue(sym.N_Cols == dim);
 
             // ToDense of an empty symmetric BSR == the all-zero matrix of the right dims.
-            var dense = sym.ToDense(ref arena);
-            var zero = arena.doubleMat(dim, dim);
+            var dense = sym.ToDense(Allocator.Temp);
+            var zero = new doubleMxN(dim, dim, Allocator.Temp);
             AssertMatEq(in dense, in zero, Tol());
 
             // spMV of an empty BSR == the zero vector, for a random nonzero x.
-            var x = arena.doubleRandomVec(dim, (double)(-1f), (double)1f, 42000u);
+            var x = GenerateOP.doubleRandomVec(dim, (double)(-1f), (double)1f, 42000u);
             var y = BSR.spMV(in sym, in x);
             Assert.IsTrue(Analysis.isZero(y, Tol()));
 
             // spMVT too -- exercises the Symmetric spMVT->spMV forwarding on an empty matrix.
-            var xt = arena.doubleRandomVec(dim, (double)(-1f), (double)1f, 42001u);
+            var xt = GenerateOP.doubleRandomVec(dim, (double)(-1f), (double)1f, 42001u);
             var yt = BSR.spMVT(in sym, in xt);
             Assert.IsTrue(Analysis.isZero(yt, Tol()));
-
-            arena.Dispose();
         }
 
         // ================================================================================
@@ -462,20 +444,19 @@ public class doubleSparseSymmetricTests
 
         void CgSymMatchesFull()
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildSpdPair_BR3_Dense(ref arena, out var sym, out var full, out var dense);
+            BuildSpdPair_BR3_Dense(out var sym, out var full, out var dense);
             int dim = sym.M_Rows;
-            var b = arena.doubleRandomVec(dim, (double)(-1f), (double)1f, 50000u);
+            var b = GenerateOP.doubleRandomVec(dim, (double)(-1f), (double)1f, 50000u);
 
-            var xSym = arena.doubleVec(dim);
+            var xSym = new doubleN(dim, Allocator.Temp);
             bool okSym = Krylov.cg(in sym, in b, ref xSym, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okSym);
 
-            var xFull = arena.doubleVec(dim);
+            var xFull = new doubleN(dim, Allocator.Temp);
             bool okFull = Krylov.cg(in full, in b, ref xFull, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okFull);
 
-            var xDense = arena.doubleVec(dim);
+            var xDense = new doubleN(dim, Allocator.Temp);
             bool okDense = Krylov.cg(in dense, in b, ref xDense, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okDense);
 
@@ -485,33 +466,28 @@ public class doubleSparseSymmetricTests
             // A*x ~= b for the symmetric solve too.
             var Ax = BSR.spMV(in sym, in xSym);
             AssertVecEq(in Ax, in b, LooseTol());
-
-            arena.Dispose();
         }
 
         void MinresSymMatchesFull()
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildSpdPair_BR3_Dense(ref arena, out var sym, out var full, out var dense);
+            BuildSpdPair_BR3_Dense(out var sym, out var full, out var dense);
             int dim = sym.M_Rows;
-            var b = arena.doubleRandomVec(dim, (double)(-1f), (double)1f, 51000u);
+            var b = GenerateOP.doubleRandomVec(dim, (double)(-1f), (double)1f, 51000u);
 
-            var xSym = arena.doubleVec(dim);
+            var xSym = new doubleN(dim, Allocator.Temp);
             bool okSym = Krylov.minres(in sym, in b, ref xSym, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okSym);
 
-            var xFull = arena.doubleVec(dim);
+            var xFull = new doubleN(dim, Allocator.Temp);
             bool okFull = Krylov.minres(in full, in b, ref xFull, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okFull);
 
-            var xDense = arena.doubleVec(dim);
+            var xDense = new doubleN(dim, Allocator.Temp);
             bool okDense = Krylov.cg(in dense, in b, ref xDense, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okDense);
 
             AssertVecEq(in xSym, in xFull, LooseTol());
             AssertVecEq(in xSym, in xDense, LooseTol());
-
-            arena.Dispose();
         }
 
         // Block-Jacobi on a symmetric BSR: the diagonal block (col==row) is the LAST stored entry
@@ -520,21 +496,20 @@ public class doubleSparseSymmetricTests
         // specific "not broken by symmetric storage" claim Milestone A asked to verify.
         void PcgBlockJacobiSymMatchesFull()
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildSpdPair_BR3_Dense(ref arena, out var sym, out var full, out var dense);
+            BuildSpdPair_BR3_Dense(out var sym, out var full, out var dense);
             int dim = sym.M_Rows;
-            var b = arena.doubleRandomVec(dim, (double)(-1f), (double)1f, 52000u);
+            var b = GenerateOP.doubleRandomVec(dim, (double)(-1f), (double)1f, 52000u);
 
             // Both preconditioners must construct without throwing (diagonal blocks ARE present in
             // symmetric lower storage).
-            var mSym  = arena.doubleBlockJacobi(in sym);
-            var mFull = arena.doubleBlockJacobi(in full);
+            var mSym  = new doubleBlockJacobi(in sym, Allocator.Temp);
+            var mFull = new doubleBlockJacobi(in full, Allocator.Temp);
 
-            var xPcgSym = arena.doubleVec(dim);
+            var xPcgSym = new doubleN(dim, Allocator.Temp);
             bool okSym = Krylov.cg(in sym, in mSym, in b, ref xPcgSym, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okSym);
 
-            var xPcgFull = arena.doubleVec(dim);
+            var xPcgFull = new doubleN(dim, Allocator.Temp);
             bool okFull = Krylov.cg(in full, in mFull, in b, ref xPcgFull, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okFull);
 
@@ -543,8 +518,6 @@ public class doubleSparseSymmetricTests
             // And the preconditioned solve satisfies A*x ~= b.
             var Ax = BSR.spMV(in sym, in xPcgSym);
             AssertVecEq(in Ax, in b, LooseTol());
-
-            arena.Dispose();
         }
     }
 
@@ -606,15 +579,10 @@ public class doubleSparseSymmetricTests
     [Test]
     public void ToBSRSymmetric_UpperTriangleTriplet_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            const int BR = 2;
-            var builder = arena.doubleBSRBuilder(2, 2, BR, BR, 1);
-            builder.AddBlock(0, 1, arena.doubleRandomMat(BR, BR, (double)(-1f), (double)1f, 60001)); // bc > br
-            Assert.Throws<ArgumentException>(() => builder.ToBSRSymmetric(ref arena));
-        }
-        finally { arena.Dispose(); }
+        const int BR = 2;
+        var builder = new doubleBSRBuilder(2, 2, BR, BR, Allocator.Temp, 1);
+        builder.AddBlock(0, 1, GenerateOP.doubleRandomMat(BR, BR, (double)(-1f), (double)1f, 60001)); // bc > br
+        Assert.Throws<ArgumentException>(() => builder.ToBSRSymmetric(Allocator.Temp));
     }
 
     // ToBSRSymmetric rejects a NON-SYMMETRIC diagonal block: lower-block storage represents the
@@ -626,18 +594,13 @@ public class doubleSparseSymmetricTests
     [Test]
     public void ToBSRSymmetric_NonSymmetricDiagonalBlock_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            const int BR = 2;
-            var blk = arena.doubleMat(BR, BR);
-            blk[0, 0] = (double)1; blk[0, 1] = (double)2;
-            blk[1, 0] = (double)3; blk[1, 1] = (double)4;   // blk[0,1]=2 != blk[1,0]=3 -> not symmetric
-            var builder = arena.doubleBSRBuilder(1, 1, BR, BR, 1);
-            builder.AddBlock(0, 0, in blk);
-            Assert.Throws<ArgumentException>(() => builder.ToBSRSymmetric(ref arena));
-        }
-        finally { arena.Dispose(); }
+        const int BR = 2;
+        var blk = new doubleMxN(BR, BR, Allocator.Temp);
+        blk[0, 0] = (double)1; blk[0, 1] = (double)2;
+        blk[1, 0] = (double)3; blk[1, 1] = (double)4;   // blk[0,1]=2 != blk[1,0]=3 -> not symmetric
+        var builder = new doubleBSRBuilder(1, 1, BR, BR, Allocator.Temp, 1);
+        builder.AddBlock(0, 0, in blk);
+        Assert.Throws<ArgumentException>(() => builder.ToBSRSymmetric(Allocator.Temp));
     }
 
     // A SYMMETRIC diagonal block is accepted (the guard's tolerance does not false-positive on a
@@ -645,19 +608,14 @@ public class doubleSparseSymmetricTests
     [Test]
     public void ToBSRSymmetric_SymmetricDiagonalBlock_Accepted()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            const int BR = 2;
-            var blk = arena.doubleMat(BR, BR);
-            blk[0, 0] = (double)1; blk[0, 1] = (double)2;
-            blk[1, 0] = (double)2; blk[1, 1] = (double)4;   // symmetric (2 == 2)
-            var builder = arena.doubleBSRBuilder(1, 1, BR, BR, 1);
-            builder.AddBlock(0, 0, in blk);
-            var sym = builder.ToBSRSymmetric(ref arena);    // must NOT throw
-            Assert.IsTrue(sym.Symmetric);
-        }
-        finally { arena.Dispose(); }
+        const int BR = 2;
+        var blk = new doubleMxN(BR, BR, Allocator.Temp);
+        blk[0, 0] = (double)1; blk[0, 1] = (double)2;
+        blk[1, 0] = (double)2; blk[1, 1] = (double)4;   // symmetric (2 == 2)
+        var builder = new doubleBSRBuilder(1, 1, BR, BR, Allocator.Temp, 1);
+        builder.AddBlock(0, 0, in blk);
+        var sym = builder.ToBSRSymmetric(Allocator.Temp);    // must NOT throw
+        Assert.IsTrue(sym.Symmetric);
     }
 
     // ToBSRSymmetric rejects rectangular blocks (BR != BC) -- this guard fires BEFORE the triplet
@@ -665,26 +623,16 @@ public class doubleSparseSymmetricTests
     [Test]
     public void ToBSRSymmetric_NonSquareBlock_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var builder = arena.doubleBSRBuilder(2, 2, 3, 2); // BR=3 != BC=2, but square block grid
-            Assert.Throws<ArgumentException>(() => builder.ToBSRSymmetric(ref arena));
-        }
-        finally { arena.Dispose(); }
+        var builder = new doubleBSRBuilder(2, 2, 3, 2, Allocator.Temp); // BR=3 != BC=2, but square block grid
+        Assert.Throws<ArgumentException>(() => builder.ToBSRSymmetric(Allocator.Temp));
     }
 
     // ToBSRSymmetric rejects a non-square block grid (BlockRows != BlockCols) even with BR == BC.
     [Test]
     public void ToBSRSymmetric_NonSquareGrid_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var builder = arena.doubleBSRBuilder(2, 3, 3, 3); // BlockRows=2 != BlockCols=3, BR==BC
-            Assert.Throws<ArgumentException>(() => builder.ToBSRSymmetric(ref arena));
-        }
-        finally { arena.Dispose(); }
+        var builder = new doubleBSRBuilder(2, 3, 3, 3, Allocator.Temp); // BlockRows=2 != BlockCols=3, BR==BC
+        Assert.Throws<ArgumentException>(() => builder.ToBSRSymmetric(Allocator.Temp));
     }
 
     // The doubleBSR CONSTRUCTOR's OWN symmetric guard (a different code path than the builder's):
@@ -692,13 +640,8 @@ public class doubleSparseSymmetricTests
     [Test]
     public void Ctor_SymmetricNonSquareBlock_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            // 2x2 block grid, BR=3 != BC=2 -> symmetric storage forbidden.
-            Assert.Throws<ArgumentException>(() => arena.doubleBSR(2, 2, 3, 2, 1, symmetric: true));
-        }
-        finally { arena.Dispose(); }
+        // 2x2 block grid, BR=3 != BC=2 -> symmetric storage forbidden.
+        Assert.Throws<ArgumentException>(() => new doubleBSR(2, 2, 3, 2, 1, Allocator.Temp, symmetric: true));
     }
 
     // Same constructor guard: a non-square block grid (BlockRows != BlockCols) is rejected even with
@@ -706,12 +649,7 @@ public class doubleSparseSymmetricTests
     [Test]
     public void Ctor_SymmetricNonSquareGrid_Throws()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            // 2x3 block grid, BR==BC==3 -> symmetric storage forbidden (grid not square).
-            Assert.Throws<ArgumentException>(() => arena.doubleBSR(2, 3, 3, 3, 1, symmetric: true));
-        }
-        finally { arena.Dispose(); }
+        // 2x3 block grid, BR==BC==3 -> symmetric storage forbidden (grid not square).
+        Assert.Throws<ArgumentException>(() => new doubleBSR(2, 3, 3, 3, 1, Allocator.Temp, symmetric: true));
     }
 }

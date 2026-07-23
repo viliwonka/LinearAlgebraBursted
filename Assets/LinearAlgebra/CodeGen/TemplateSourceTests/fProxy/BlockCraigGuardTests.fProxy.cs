@@ -36,9 +36,9 @@ public class fProxyBlockCraigGuardTests
             }
         }
 
-        static fProxyMxN BuildWideFullRowRank(ref Arena arena, int m, int n, uint seed)
+        static fProxyMxN BuildWideFullRowRank(int m, int n, uint seed)
         {
-            var A = arena.fProxyRandomMat(m, n, (fProxy)(-1f), (fProxy)1f, seed);
+            var A = GenerateOP.fProxyRandomMat(m, n, (fProxy)(-1f), (fProxy)1f, seed, Allocator.Temp);
             for (int d = 0; d < m; d++) A[d, d] += (fProxy)10;
             return A;
         }
@@ -46,32 +46,24 @@ public class fProxyBlockCraigGuardTests
         // Normal distinct-buffer path is unaffected by the added guard.
         void BcraigDistinctXBSolves()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 4, n = 8, s = 2;
-            var A = BuildWideFullRowRank(ref arena, m, n, 88101u);
-            var B = arena.fProxyRandomMat(s, m, (fProxy)(-1f), (fProxy)1f, 88102u);
-            var X = arena.fProxyMat(s, n);
+            var A = BuildWideFullRowRank(m, n, 88101u);
+            var B = GenerateOP.fProxyRandomMat(s, m, (fProxy)(-1f), (fProxy)1f, 88102u, Allocator.Temp);
+            var X = new fProxyMxN(s, n, Allocator.Temp);
 
             var info = Krylov.bcraig(in A, in B, ref X);
             Assert.IsTrue(info.Solved);
-
-            arena.Dispose();
         }
 
         void BcraigmrDistinctXBSolves()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int m = 4, n = 8, s = 2;
-            var A = BuildWideFullRowRank(ref arena, m, n, 89101u);
-            var B = arena.fProxyRandomMat(s, m, (fProxy)(-1f), (fProxy)1f, 89102u);
-            var X = arena.fProxyMat(s, n);
+            var A = BuildWideFullRowRank(m, n, 89101u);
+            var B = GenerateOP.fProxyRandomMat(s, m, (fProxy)(-1f), (fProxy)1f, 89102u, Allocator.Temp);
+            var X = new fProxyMxN(s, n, Allocator.Temp);
 
             var info = Krylov.bcraigmr(in A, in B, ref X);
             Assert.IsTrue(info.Solved);
-
-            arena.Dispose();
         }
     }
 
@@ -87,9 +79,9 @@ public class fProxyBlockCraigGuardTests
     // Managed [Test]s: aliasing guard throws.
     // ==============================================================================
 
-    static fProxyMxN BuildSquareFullRank(ref Arena arena, int nn, uint seed)
+    static fProxyMxN BuildSquareFullRank(int nn, uint seed)
     {
-        var A = arena.fProxyRandomMat(nn, nn, (fProxy)(-1f), (fProxy)1f, seed);
+        var A = GenerateOP.fProxyRandomMat(nn, nn, (fProxy)(-1f), (fProxy)1f, seed, Allocator.Temp);
         for (int d = 0; d < nn; d++) A[d, d] += (fProxy)10;
         return A;
     }
@@ -101,32 +93,22 @@ public class fProxyBlockCraigGuardTests
     [Test]
     public void BcraigAliasedXBThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            int nn = 8, s = 2;
-            var A = BuildSquareFullRank(ref arena, nn, 88001u);
-            var B = arena.fProxyRandomMat(s, nn, (fProxy)(-1f), (fProxy)1f, 88002u);
-            var X = B;   // ALIASES B -> distinct-buffer guard must fire
+        int nn = 8, s = 2;
+        var A = BuildSquareFullRank(nn, 88001u);
+        var B = GenerateOP.fProxyRandomMat(s, nn, (fProxy)(-1f), (fProxy)1f, 88002u, Allocator.Temp);
+        var X = B;   // ALIASES B -> distinct-buffer guard must fire
 
-            Assert.Throws<System.ArgumentException>(() => Krylov.bcraig(in A, in B, ref X));
-        }
-        finally { arena.Dispose(); }
+        Assert.Throws<System.ArgumentException>(() => Krylov.bcraig(in A, in B, ref X));
     }
 
     [Test]
     public void BcraigmrAliasedXBThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            int nn = 8, s = 2;
-            var A = BuildSquareFullRank(ref arena, nn, 89001u);
-            var B = arena.fProxyRandomMat(s, nn, (fProxy)(-1f), (fProxy)1f, 89002u);
-            var X = B;   // ALIASES B -> distinct-buffer guard must fire
+        int nn = 8, s = 2;
+        var A = BuildSquareFullRank(nn, 89001u);
+        var B = GenerateOP.fProxyRandomMat(s, nn, (fProxy)(-1f), (fProxy)1f, 89002u, Allocator.Temp);
+        var X = B;   // ALIASES B -> distinct-buffer guard must fire
 
-            Assert.Throws<System.ArgumentException>(() => Krylov.bcraigmr(in A, in B, ref X));
-        }
-        finally { arena.Dispose(); }
+        Assert.Throws<System.ArgumentException>(() => Krylov.bcraigmr(in A, in B, ref X));
     }
 }

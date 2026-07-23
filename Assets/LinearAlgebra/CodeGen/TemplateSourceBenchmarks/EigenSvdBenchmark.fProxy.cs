@@ -90,11 +90,10 @@ namespace LinearAlgebra.Benchmarks
     {
         static string SvdGKFProxy(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyMat(n, n);
-            var U = arena.fProxyMat(n, n);
-            var S = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Persistent);
+            var U = new fProxyMxN(n, n, Allocator.Persistent);
+            var S = new fProxyN(n, Allocator.Persistent);
+            var V = new fProxyMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -104,15 +103,14 @@ namespace LinearAlgebra.Benchmarks
             var job = new SvdGKJobFProxy { A = A, U = U, S = S, V = V };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); U.Dispose(); S.Dispose(); V.Dispose();
             return Bench.RowTime("fProxy", n, stat);
         }
 
         static string SvdValsFProxy(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyMat(n, n);
-            var S = arena.fProxyVec(n);
+            var A = new fProxyMxN(n, n, Allocator.Persistent);
+            var S = new fProxyN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -122,16 +120,15 @@ namespace LinearAlgebra.Benchmarks
             var job = new SvdValuesJobFProxy { A = A, S = S };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); S.Dispose();
             return Bench.RowTime("fProxy", n, stat);
         }
 
         static string EigSymFProxy(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyMat(n, n);
-            var Src = arena.fProxyMat(n, n);
-            var E = arena.fProxyVec(n);
+            var A = new fProxyMxN(n, n, Allocator.Persistent);
+            var Src = new fProxyMxN(n, n, Allocator.Persistent);
+            var E = new fProxyN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -145,17 +142,16 @@ namespace LinearAlgebra.Benchmarks
             var job = new EigSymJobFProxy { A = A, Src = Src, E = E };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); Src.Dispose(); E.Dispose();
             return Bench.RowTime("fProxy", n, stat);
         }
 
         static string EigSymVecFProxy(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyMat(n, n);
-            var Src = arena.fProxyMat(n, n);
-            var E = arena.fProxyVec(n);
-            var V = arena.fProxyMat(n, n);
+            var A = new fProxyMxN(n, n, Allocator.Persistent);
+            var Src = new fProxyMxN(n, n, Allocator.Persistent);
+            var E = new fProxyN(n, Allocator.Persistent);
+            var V = new fProxyMxN(n, n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -169,17 +165,16 @@ namespace LinearAlgebra.Benchmarks
             var job = new EigSymVecJobFProxy { A = A, Src = Src, E = E, V = V };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); Src.Dispose(); E.Dispose(); V.Dispose();
             return Bench.RowTime("fProxy", n, stat);
         }
 
         static string EigQRFProxy(int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyMat(n, n);
-            var Src = arena.fProxyMat(n, n);
-            var Re = arena.fProxyVec(n);
-            var Im = arena.fProxyVec(n);
+            var A = new fProxyMxN(n, n, Allocator.Persistent);
+            var Src = new fProxyMxN(n, n, Allocator.Persistent);
+            var Re = new fProxyN(n, Allocator.Persistent);
+            var Im = new fProxyN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -189,7 +184,7 @@ namespace LinearAlgebra.Benchmarks
             var job = new EigQRJobFProxy { A = A, Src = Src, Re = Re, Im = Im };
             var stat = Bench.Time(() => job.Run());
 
-            arena.Dispose();
+            A.Dispose(); Src.Dispose(); Re.Dispose(); Im.Dispose();
             return Bench.RowTime("fProxy", n, stat);
         }
     }

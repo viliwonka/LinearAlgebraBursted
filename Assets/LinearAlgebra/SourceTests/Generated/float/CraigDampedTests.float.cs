@@ -13,40 +13,38 @@ using Unity.Mathematics;
 // via Cholesky (same as the damped-CGNE test). Managed [Test]s.
 public class floatCraigDampedTests
 {
-    static floatMxN BuildWide(ref Arena arena, int m, int n, uint seed)
+    static floatMxN BuildWide(int m, int n, uint seed)
     {
-        var A = arena.floatRandomMat(m, n, (float)(-1f), (float)1f, seed);
+        var A = GenerateOP.floatRandomMat(m, n, (float)(-1f), (float)1f, seed, Allocator.Temp);
         for (int d = 0; d < m; d++) A[d, d] += (float)10;   // full row rank, well-conditioned AAᵀ
         return A;
     }
 
-    static void DampedOracle(ref Arena arena, in floatMxN A, in floatN b, float damp, ref floatN xOut)
+    static void DampedOracle(in floatMxN A, in floatN b, float damp, ref floatN xOut)
     {
         int m = A.M_Rows;
-        var G = new floatMxN(m, m, Allocator.Persistent, false);
+        var G = new floatMxN(m, m, Allocator.Temp, false);
         Blas.dot(in A, in A, ref G, false, true);          // G = A Aᵀ
         float lam2 = damp * damp;
         for (int d = 0; d < m; d++) G[d, d] += lam2;        // + damp²·I
-        var y = arena.floatVec(m); y.CopyFrom(in b);
+        var y = new floatN(m, Allocator.Temp); y.CopyFrom(in b);
         CHO.solveInPlace(ref G, ref y);                    // y = G⁻¹ b
         new floatDenseOperator(in A).ApplyT(in y, ref xOut); // x = Aᵀ y
-        G.Dispose();
     }
 
     [Test]
     public void DampedMatchesDenseOracle()
     {
-        var arena = new Arena(Allocator.Persistent);
         int m = 6, n = 10;
-        var A = BuildWide(ref arena, m, n, 0xC7A16u);
-        var b = arena.floatRandomVec(m, (float)(-2f), (float)2f, 0x0Bu);
+        var A = BuildWide(m, n, 0xC7A16u);
+        var b = GenerateOP.floatRandomVec(m, (float)(-2f), (float)2f, 0x0Bu, Allocator.Temp);
         float damp = (float)0.5;
 
-        var x = arena.floatVec(n);
+        var x = new floatN(n, Allocator.Temp);
         var info = Krylov.craig(in A, in b, ref x, 8 * (m + n), Consts.floatSqrtEps, damp);
 
-        var xOracle = arena.floatVec(n);
-        DampedOracle(ref arena, in A, in b, damp, ref xOracle);
+        var xOracle = new floatN(n, Allocator.Temp);
+        DampedOracle(in A, in b, damp, ref xOracle);
 
         float num = (float)0, den = (float)0;
         for (int i = 0; i < n; i++) { float d = x[i] - xOracle[i]; num += d * d; den += xOracle[i] * xOracle[i]; }
@@ -55,96 +53,82 @@ public class floatCraigDampedTests
         Assert.LessOrEqual(rel, 1e-3, "damped craig must match Aᵀ(AAᵀ+damp²I)⁻¹b");
         // Arnorm = Tikhonov gradient ‖Aᵀr-damp²x‖ → 0 (the real cert); rnorm = ‖b-Ax‖ stays O(‖b‖).
         Assert.Less((double)info.Arnorm, 0.1 * (1.0 + (double)info.rnorm), "damped craig Arnorm must →0");
-
-        arena.Dispose();
     }
 
     // Rank-deficient A: undamped craig would break down, but AAᵀ+damp²I is SPD -> well-posed.
     [Test]
     public void DampedHandlesRankDeficient()
     {
-        var arena = new Arena(Allocator.Persistent);
         int m = 6, n = 10;
-        var A = BuildWide(ref arena, m, n, 0x4A11u);
+        var A = BuildWide(m, n, 0x4A11u);
         for (int j = 0; j < n; j++) A[1, j] = A[0, j];   // row 1 := row 0 -> AAᵀ singular
-        var b = arena.floatRandomVec(m, (float)(-2f), (float)2f, 0x55u);
+        var b = GenerateOP.floatRandomVec(m, (float)(-2f), (float)2f, 0x55u, Allocator.Temp);
         float damp = (float)0.5;
 
-        var x = arena.floatVec(n);
+        var x = new floatN(n, Allocator.Temp);
         var info = Krylov.craig(in A, in b, ref x, 8 * (m + n), Consts.floatSqrtEps, damp);
 
-        var xOracle = arena.floatVec(n);
-        DampedOracle(ref arena, in A, in b, damp, ref xOracle);
+        var xOracle = new floatN(n, Allocator.Temp);
+        DampedOracle(in A, in b, damp, ref xOracle);
         float num = (float)0, den = (float)0;
         for (int i = 0; i < n; i++) { float d = x[i] - xOracle[i]; num += d * d; den += xOracle[i] * xOracle[i]; }
         double rel = math.sqrt((double)num / math.max((double)den, 1e-300));
         Assert.IsTrue(info.status == IterativeSolveStatus.Converged, "damped craig must converge on rank-deficient A");
         Assert.LessOrEqual(rel, 1e-3, "damped craig on rank-deficient A must match the dense oracle");
-
-        arena.Dispose();
     }
 
     // damp == 0 delegates to plain craig: bit-identical.
     [Test]
     public void ZeroDampMatchesUndamped()
     {
-        var arena = new Arena(Allocator.Persistent);
         int m = 6, n = 10;
-        var A = BuildWide(ref arena, m, n, 0x1C0u);
-        var b = arena.floatRandomVec(m, (float)(-2f), (float)2f, 0x33u);
+        var A = BuildWide(m, n, 0x1C0u);
+        var b = GenerateOP.floatRandomVec(m, (float)(-2f), (float)2f, 0x33u, Allocator.Temp);
 
-        var xUn = arena.floatVec(n);
-        var xZero = arena.floatVec(n);
+        var xUn = new floatN(n, Allocator.Temp);
+        var xZero = new floatN(n, Allocator.Temp);
         Krylov.craig(in A, in b, ref xUn, 4 * (m + n), Consts.floatSqrtEps);
         Krylov.craig(in A, in b, ref xZero, 4 * (m + n), Consts.floatSqrtEps, (float)0);
 
         for (int i = 0; i < n; i++)
             Assert.AreEqual((double)xUn[i], (double)xZero[i], "damp==0 must be bit-identical to undamped craig");
-
-        arena.Dispose();
     }
 
     // craigmr damped: same augmented-operator route, monotonic-residual variant.
     [Test]
     public void CraigmrDampedMatchesDenseOracle()
     {
-        var arena = new Arena(Allocator.Persistent);
         int m = 6, n = 10;
-        var A = BuildWide(ref arena, m, n, 0xC7A16u);
-        var b = arena.floatRandomVec(m, (float)(-2f), (float)2f, 0x0Bu);
+        var A = BuildWide(m, n, 0xC7A16u);
+        var b = GenerateOP.floatRandomVec(m, (float)(-2f), (float)2f, 0x0Bu, Allocator.Temp);
         float damp = (float)0.5;
 
-        var x = arena.floatVec(n);
+        var x = new floatN(n, Allocator.Temp);
         var info = Krylov.craigmr(in A, in b, ref x, 8 * (m + n), Consts.floatSqrtEps, damp);
 
-        var xOracle = arena.floatVec(n);
-        DampedOracle(ref arena, in A, in b, damp, ref xOracle);
+        var xOracle = new floatN(n, Allocator.Temp);
+        DampedOracle(in A, in b, damp, ref xOracle);
         float num = (float)0, den = (float)0;
         for (int i = 0; i < n; i++) { float d = x[i] - xOracle[i]; num += d * d; den += xOracle[i] * xOracle[i]; }
         double rel = math.sqrt((double)num / math.max((double)den, 1e-300));
         Assert.IsTrue(info.status == IterativeSolveStatus.Converged, "damped craigmr should converge");
         Assert.LessOrEqual(rel, 1e-3, "damped craigmr must match Aᵀ(AAᵀ+damp²I)⁻¹b");
         Assert.Less((double)info.Arnorm, 0.1 * (1.0 + (double)info.rnorm), "damped craigmr Arnorm must →0");
-
-        arena.Dispose();
     }
 
     [Test]
     public void CraigmrZeroDampMatchesUndamped()
     {
-        var arena = new Arena(Allocator.Persistent);
         int m = 6, n = 10;
-        var A = BuildWide(ref arena, m, n, 0x1C0u);
-        var b = arena.floatRandomVec(m, (float)(-2f), (float)2f, 0x33u);
+        var A = BuildWide(m, n, 0x1C0u);
+        var b = GenerateOP.floatRandomVec(m, (float)(-2f), (float)2f, 0x33u, Allocator.Temp);
 
-        var xUn = arena.floatVec(n);
-        var xZero = arena.floatVec(n);
+        var xUn = new floatN(n, Allocator.Temp);
+        var xZero = new floatN(n, Allocator.Temp);
         Krylov.craigmr(in A, in b, ref xUn, 4 * (m + n), Consts.floatSqrtEps);
         Krylov.craigmr(in A, in b, ref xZero, 4 * (m + n), Consts.floatSqrtEps, (float)0);
 
         for (int i = 0; i < n; i++)
             Assert.AreEqual((double)xUn[i], (double)xZero[i], "damp==0 must be bit-identical to undamped craigmr");
-
-        arena.Dispose();
     }
 }

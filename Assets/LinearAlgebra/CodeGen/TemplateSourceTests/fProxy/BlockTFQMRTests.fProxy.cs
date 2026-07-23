@@ -47,37 +47,37 @@ public class fProxyBlockTFQMRTests
 
         // Diagonally dominant (so nonsingular) but NOT symmetrized -> genuinely non-symmetric. Do NOT
         // form M^T M (that would defeat the point of a transpose-free-nonsymmetric test).
-        static fProxyMxN DenseNonsym(ref Arena arena, int n, uint seed)
+        static fProxyMxN DenseNonsym(int n, uint seed)
         {
-            var A = arena.fProxyRandomMat(n, n, (fProxy)(-1f), (fProxy)1f, seed);
+            var A = GenerateOP.fProxyRandomMat(n, n, (fProxy)(-1f), (fProxy)1f, seed, Allocator.Temp);
             for (int i = 0; i < n; i++) A[i, i] += (fProxy)(2 * n);
             return A;
         }
 
         // Scalar 1D convection-diffusion: diagonal 6, super -1, sub -3 -- nonsymmetric, diagonally
         // dominant. Full storage BSR.
-        static fProxyBSR ConvDiff1D(ref Arena arena, int n)
+        static fProxyBSR ConvDiff1D(int n)
         {
-            var b = arena.fProxyBSRBuilder(n, n, 1, 1, 3 * n);
+            var b = new fProxyBSRBuilder(n, n, 1, 1, Allocator.Temp, 3 * n);
             for (int i = 0; i < n; i++)
             {
                 b.AddValue(i, i, (fProxy)6);
                 if (i > 0) b.AddValue(i, i - 1, (fProxy)(-3));
                 if (i < n - 1) b.AddValue(i, i + 1, (fProxy)(-1));
             }
-            return b.ToBSR(ref arena);
+            return b.ToBSR(Allocator.Temp);
         }
 
-        static fProxyN Row(ref Arena arena, in fProxyMxN B, int j, int n)
+        static fProxyN Row(in fProxyMxN B, int j, int n)
         {
-            var v = arena.fProxyVec(n);
+            var v = new fProxyN(n, Allocator.Temp);
             for (int c = 0; c < n; c++) v[c] = B[j, c];
             return v;
         }
 
-        static bool BlockResidualDenseOK(ref Arena arena, in fProxyMxN A, in fProxyMxN X, in fProxyMxN B, int s, int n, fProxy tol)
+        static bool BlockResidualDenseOK(in fProxyMxN A, in fProxyMxN X, in fProxyMxN B, int s, int n, fProxy tol)
         {
-            var AX = arena.fProxyMat(s, n);
+            var AX = new fProxyMxN(s, n, Allocator.Temp);
             new fProxyDenseOperatorGeneral(in A).ApplyBlock(in X, ref AX, s);
             for (int j = 0; j < s; j++)
             {
@@ -88,9 +88,9 @@ public class fProxyBlockTFQMRTests
             return true;
         }
 
-        static bool BlockResidualBSROK(ref Arena arena, in fProxyBSR A, in fProxyMxN X, in fProxyMxN B, int s, int n, fProxy tol)
+        static bool BlockResidualBSROK(in fProxyBSR A, in fProxyMxN X, in fProxyMxN B, int s, int n, fProxy tol)
         {
-            var AX = arena.fProxyMat(s, n);
+            var AX = new fProxyMxN(s, n, Allocator.Temp);
             new fProxyBSROperator(in A).ApplyBlock(in X, ref AX, s);
             for (int j = 0; j < s; j++)
             {
@@ -120,58 +120,48 @@ public class fProxyBlockTFQMRTests
         // Basic convergence of the block solve on a dense nonsymmetric square system.
         void SolvesDenseNonsym()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 30, s = 4;
-            var A = DenseNonsym(ref arena, n, 0x1F01u);
-            var B = arena.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 0x1F02u);
+            var A = DenseNonsym(n, 0x1F01u);
+            var B = GenerateOP.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 0x1F02u, Allocator.Temp);
 
-            var X = arena.fProxyMat(s, n);                   // zero initial guess
+            var X = new fProxyMxN(s, n, Allocator.Temp);                   // zero initial guess
             var info = Krylov.btfqmr(in A, in B, ref X, 40 * n, ResTol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(info.Solved);
             Assert.AreEqual(s, info.converged);
             Assert.AreEqual(s, info.rhs);
-            Assert.IsTrue(BlockResidualDenseOK(ref arena, in A, in X, in B, s, n, ResTol()));
-
-            arena.Dispose();
+            Assert.IsTrue(BlockResidualDenseOK(in A, in X, in B, s, n, ResTol()));
         }
 
         // Basic convergence of the block solve over a BSR nonsymmetric A.
         void SolvesBSRNonsym()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 80, s = 3;
-            var A = ConvDiff1D(ref arena, n);
-            var B = arena.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 0x1F12u);
+            var A = ConvDiff1D(n);
+            var B = GenerateOP.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 0x1F12u, Allocator.Temp);
 
-            var X = arena.fProxyMat(s, n);
+            var X = new fProxyMxN(s, n, Allocator.Temp);
             var info = Krylov.btfqmr(in A, in B, ref X, 40 * n, ResTol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(info.Solved);
             Assert.AreEqual(s, info.converged);
-            Assert.IsTrue(BlockResidualBSROK(ref arena, in A, in X, in B, s, n, ResTol()));
-
-            arena.Dispose();
+            Assert.IsTrue(BlockResidualBSROK(in A, in X, in B, s, n, ResTol()));
         }
 
         // Each column of the block solution matches an independent scalar tfqmr solve of that column,
         // and every column reached tolerance.
         void MatchesScalarTfqmrPerColumn()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 24, s = 4;
-            var A = DenseNonsym(ref arena, n, 0x1F21u);
-            var B = arena.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 0x1F22u);
+            var A = DenseNonsym(n, 0x1F21u);
+            var B = GenerateOP.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 0x1F22u, Allocator.Temp);
 
             int maxIter = 40 * n;
             fProxy tol = ResTol();
 
-            var X = arena.fProxyMat(s, n);                   // zero initial guess
+            var X = new fProxyMxN(s, n, Allocator.Temp);                   // zero initial guess
             var info = Krylov.btfqmr(in A, in B, ref X, maxIter, tol);
 
             Assert.IsTrue(info.Solved);
@@ -180,16 +170,14 @@ public class fProxyBlockTFQMRTests
 
             for (int j = 0; j < s; j++)
             {
-                var bj = Row(ref arena, in B, j, n);
-                var xj = arena.fProxyVec(n);
+                var bj = Row(in B, j, n);
+                var xj = new fProxyN(n, Allocator.Temp);
                 for (int c = 0; c < n; c++) xj[c] = (fProxy)0;
                 Assert.IsTrue(Krylov.tfqmr(in A, in bj, ref xj, maxIter, tol).Solved);
 
                 for (int c = 0; c < n; c++)
                     Assert.IsTrue(math.abs((double)X[j, c] - (double)xj[c]) <= Tol() * (1.0 + math.abs((double)xj[c])));
             }
-
-            arena.Dispose();
         }
 
         // Independent of any other solver: pick a KNOWN block solution Xk, form B = A Xk via the GENERAL
@@ -197,59 +185,53 @@ public class fProxyBlockTFQMRTests
         // non-symmetric A and would build the WRONG B here), solve, and recover Xk.
         void KnownSolutionRecovered()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 24, s = 5;
-            var A = DenseNonsym(ref arena, n, 0x1F31u);
-            var Xk = arena.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 0x1F32u);   // known solution
+            var A = DenseNonsym(n, 0x1F31u);
+            var Xk = GenerateOP.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 0x1F32u, Allocator.Temp);   // known solution
 
-            var B = arena.fProxyMat(s, n);
+            var B = new fProxyMxN(s, n, Allocator.Temp);
             new fProxyDenseOperatorGeneral(in A).ApplyBlock(in Xk, ref B, s);           // B[j,:] = A Xk[j,:]
 
-            var X = arena.fProxyMat(s, n);
+            var X = new fProxyMxN(s, n, Allocator.Temp);
             var info = Krylov.btfqmr(in A, in B, ref X, 40 * n, ResTol());
             Assert.IsTrue(info.Solved);
 
             for (int j = 0; j < s; j++)
                 for (int c = 0; c < n; c++)
                     Assert.IsTrue(math.abs((double)X[j, c] - (double)Xk[j, c]) <= Tol() * (1.0 + math.abs((double)Xk[j, c])));
-
-            arena.Dispose();
         }
 
         // The explicit-identity-preconditioner generic core must fold to EXACTLY the unpreconditioned
         // overload -- bit-identical X, iterations, status.
         void IdentityFoldBitIdentical()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 20, s = 3;
-            var A = DenseNonsym(ref arena, n, 0x1F41u);
-            var B = arena.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 0x1F42u);
+            var A = DenseNonsym(n, 0x1F41u);
+            var B = GenerateOP.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 0x1F42u, Allocator.Temp);
             int maxIter = 30 * n;
             fProxy tol = ResTol();
 
             var opA = new fProxyDenseOperatorGeneral(in A);   // readonly struct -- construct once, reuse
 
-            var X1     = arena.fProxyMat(s, n);
-            var Rhat01 = arena.fProxyMat(s, n);
-            var U1     = arena.fProxyMat(s, n);
-            var W1     = arena.fProxyMat(s, n);
-            var V1     = arena.fProxyMat(s, n);
-            var AU1    = arena.fProxyMat(s, n);
-            var D1     = arena.fProxyMat(s, n);
-            var UHat1  = arena.fProxyMat(s, n);
+            var X1     = new fProxyMxN(s, n, Allocator.Temp);
+            var Rhat01 = new fProxyMxN(s, n, Allocator.Temp);
+            var U1     = new fProxyMxN(s, n, Allocator.Temp);
+            var W1     = new fProxyMxN(s, n, Allocator.Temp);
+            var V1     = new fProxyMxN(s, n, Allocator.Temp);
+            var AU1    = new fProxyMxN(s, n, Allocator.Temp);
+            var D1     = new fProxyMxN(s, n, Allocator.Temp);
+            var UHat1  = new fProxyMxN(s, n, Allocator.Temp);
             var info1 = Krylov.btfqmr<fProxyDenseOperatorGeneral, fProxyIdentityPreconditioner>(
                 in opA, default(fProxyIdentityPreconditioner), in B, ref X1,
                 ref Rhat01, ref U1, ref W1, ref V1, ref AU1, ref D1, ref UHat1, maxIter, tol);
 
-            var X2     = arena.fProxyMat(s, n);
-            var Rhat02 = arena.fProxyMat(s, n);
-            var U2     = arena.fProxyMat(s, n);
-            var W2     = arena.fProxyMat(s, n);
-            var V2     = arena.fProxyMat(s, n);
-            var AU2    = arena.fProxyMat(s, n);
-            var D2     = arena.fProxyMat(s, n);
+            var X2     = new fProxyMxN(s, n, Allocator.Temp);
+            var Rhat02 = new fProxyMxN(s, n, Allocator.Temp);
+            var U2     = new fProxyMxN(s, n, Allocator.Temp);
+            var W2     = new fProxyMxN(s, n, Allocator.Temp);
+            var V2     = new fProxyMxN(s, n, Allocator.Temp);
+            var AU2    = new fProxyMxN(s, n, Allocator.Temp);
+            var D2     = new fProxyMxN(s, n, Allocator.Temp);
             var info2 = Krylov.btfqmr<fProxyDenseOperatorGeneral>(
                 in opA, in B, ref X2, ref Rhat02, ref U2, ref W2, ref V2, ref AU2, ref D2, maxIter, tol);
 
@@ -258,8 +240,6 @@ public class fProxyBlockTFQMRTests
             for (int i = 0; i < s; i++)
                 for (int c = 0; c < n; c++)
                     Assert.IsTrue(X1[i, c] == X2[i, c]);
-
-            arena.Dispose();
         }
 
         // Rows never mix (no shared s x s coefficient -- see OP/DEVLOG.md "Krylov.Block.TFQMR"), so two
@@ -268,14 +248,12 @@ public class fProxyBlockTFQMRTests
         // where a duplicate row singularizes the shared coefficient and trips Breakdown instead.
         void DuplicateRHSRowsBitIdentical()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 16, s = 5;
-            var A = DenseNonsym(ref arena, n, 0x1F51u);
-            var B = arena.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 0x1F52u);
+            var A = DenseNonsym(n, 0x1F51u);
+            var B = GenerateOP.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 0x1F52u, Allocator.Temp);
             for (int c = 0; c < n; c++) { B[2, c] = B[0, c]; B[4, c] = B[0, c]; }   // rows 0,2,4 identical
 
-            var X = arena.fProxyMat(s, n);
+            var X = new fProxyMxN(s, n, Allocator.Temp);
             var info = Krylov.btfqmr(in A, in B, ref X, 40 * n, ResTol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
@@ -284,8 +262,6 @@ public class fProxyBlockTFQMRTests
                 Assert.IsTrue(X[0, c] == X[2, c]);
                 Assert.IsTrue(X[0, c] == X[4, c]);
             }
-
-            arena.Dispose();
         }
 
         // A tiny iteration budget on a system that genuinely needs more must report an HONEST
@@ -293,13 +269,11 @@ public class fProxyBlockTFQMRTests
         // finite -- no throw.
         void MaxIterBudgetHonestStatus()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 32, s = 4;
-            var A = DenseNonsym(ref arena, n, 0x1F61u);
-            var B = arena.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 0x1F62u);
+            var A = DenseNonsym(n, 0x1F61u);
+            var B = GenerateOP.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 0x1F62u, Allocator.Temp);
 
-            var X = arena.fProxyMat(s, n);
+            var X = new fProxyMxN(s, n, Allocator.Temp);
             var info = Krylov.btfqmr(in A, in B, ref X, 1, Consts.fProxySqrtEps);   // deliberately tiny budget
 
             Assert.IsTrue(info.status == IterativeSolveStatus.MaxIterations);
@@ -308,43 +282,35 @@ public class fProxyBlockTFQMRTests
             for (int j = 0; j < s; j++)
                 for (int c = 0; c < n; c++)
                     Assert.IsFalse(double.IsNaN((double)X[j, c]) || double.IsInfinity((double)X[j, c]));
-
-            arena.Dispose();
         }
 
         // ILU0-right-preconditioned BSR block solve converges.
         void PreconditionedILU0()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 120, s = 3;
-            var A = ConvDiff1D(ref arena, n);
-            var B = arena.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 0x1F82u);
-            var M = arena.fProxyILU0(in A);
+            var A = ConvDiff1D(n);
+            var B = GenerateOP.fProxyRandomMat(s, n, (fProxy)(-1f), (fProxy)1f, 0x1F82u, Allocator.Temp);
+            var M = new fProxyILU0(in A, Allocator.Temp);
 
-            var X = arena.fProxyMat(s, n);
+            var X = new fProxyMxN(s, n, Allocator.Temp);
             var info = Krylov.btfqmr(in A, in M, in B, ref X, 40 * n, ResTol());
 
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.AreEqual(s, info.converged);
-            Assert.IsTrue(BlockResidualBSROK(ref arena, in A, in X, in B, s, n, ResTol()));
-
-            arena.Dispose();
+            Assert.IsTrue(BlockResidualBSROK(in A, in X, in B, s, n, ResTol()));
         }
 
         // Edge: all-zero B (with a non-zero initial X) -> immediate Converged, iterations == 0, X reset
         // to exactly zero (bit-identical).
         void ZeroRhs()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 20, s = 3;
-            var A = ConvDiff1D(ref arena, n);
-            var B = arena.fProxyMat(s, n);
+            var A = ConvDiff1D(n);
+            var B = new fProxyMxN(s, n, Allocator.Temp);
             for (int i = 0; i < s; i++)
                 for (int c = 0; c < n; c++) B[i, c] = (fProxy)0;
 
-            var X = arena.fProxyMat(s, n);
+            var X = new fProxyMxN(s, n, Allocator.Temp);
             for (int i = 0; i < s; i++)
                 for (int c = 0; c < n; c++) X[i, c] = (fProxy)5;
 
@@ -355,8 +321,6 @@ public class fProxyBlockTFQMRTests
             for (int i = 0; i < s; i++)
                 for (int c = 0; c < n; c++)
                     Assert.IsTrue(X[i, c] == (fProxy)0);
-
-            arena.Dispose();
         }
 
     }

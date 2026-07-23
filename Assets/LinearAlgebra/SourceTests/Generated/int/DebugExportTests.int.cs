@@ -20,59 +20,46 @@ public class intDebugExportTests
     [Test]
     public void IntToCsvMatrixIsRowPerLineCommaSeparated()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var m = arena.intMat(2, 2);
+        var m = new intMxN(2, 2, Allocator.Temp);
         m[0, 0] = (int)1; m[0, 1] = (int)2;
         m[1, 0] = (int)3; m[1, 1] = (int)4;
 
         Assert.AreEqual("1,2\n3,4\n", Print.ToCsv(in m));
-
-        arena.Dispose();
     }
 
     [Test]
     public void IntToTextMatrixIsRowPerLineSpaceSeparated()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var m = arena.intMat(2, 2);
+        var m = new intMxN(2, 2, Allocator.Temp);
         m[0, 0] = (int)1; m[0, 1] = (int)2;
         m[1, 0] = (int)3; m[1, 1] = (int)4;
 
         Assert.AreEqual("1 2\n3 4\n", Print.ToText(in m));
-
-        arena.Dispose();
     }
 
     [Test]
     public void IntToCsvVectorIsOneValuePerLineIncludingNegatives()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var v = arena.intVec(4);
+        var v = new intN(4, Allocator.Temp);
         v[0] = (int)(-2); v[1] = (int)0; v[2] = (int)7; v[3] = (int)13;
 
         Assert.AreEqual("-2\n0\n7\n13\n", Print.ToCsv(in v));
-
-        arena.Dispose();
     }
 
     [Test]
     public void IntToTextVectorHasNoTrailingNewline()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var v = arena.intVec(3);
+        var v = new intN(3, Allocator.Temp);
         v[0] = (int)1; v[1] = (int)2; v[2] = (int)3;
 
         // vector ToText joins with '\n' between entries and does NOT add a trailing newline.
         Assert.AreEqual("1\n2\n3", Print.ToText(in v));
-
-        arena.Dispose();
     }
 
     [Test]
     public void IntSaveCsvRoundTrips()
     {
-        var arena = new Arena(Allocator.Persistent);
-        var m = arena.intMat(2, 3);
+        var m = new intMxN(2, 3, Allocator.Temp);
         m[0, 0] = (int)1; m[0, 1] = (int)2; m[0, 2] = (int)3;
         m[1, 0] = (int)4; m[1, 1] = (int)5; m[1, 2] = (int)6;
 
@@ -83,25 +70,19 @@ public class intDebugExportTests
             Assert.AreEqual(Print.ToCsv(in m), File.ReadAllText(path));
         }
         finally { File.Delete(path); }
-
-        arena.Dispose();
     }
 
     // int Print.Log smoke (Burst-void log-only) -- matches DebugExportTests.IntLogDoesNotThrow.
     [Test]
     public void IntLogDoesNotThrow()
     {
-        var arena = new Arena(Allocator.Persistent);
-
-        var v = arena.intVec(3);
+        var v = new intN(3, Allocator.Temp);
         v[0] = (int)(-2); v[1] = (int)0; v[2] = (int)7;
         Assert.DoesNotThrow(() => Print.Log(in v));
 
-        var m = arena.intMat(2, 2);
+        var m = new intMxN(2, 2, Allocator.Temp);
         m[0, 0] = (int)1; m[0, 1] = (int)2;
         m[1, 0] = (int)3; m[1, 1] = (int)4;
         Assert.DoesNotThrow(() => Print.Log(in m));
-
-        arena.Dispose();
     }
 }

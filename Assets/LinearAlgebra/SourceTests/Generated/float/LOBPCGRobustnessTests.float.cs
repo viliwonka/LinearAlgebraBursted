@@ -27,12 +27,12 @@ public class floatLOBPCGRobustnessTests
 
     // Smallest k eigenvalues (ascending) of dense symmetric A via Eigen.symmetricInPlace (which
     // sorts DESCENDING -- the smallest k are its last k entries).
-    static double[] DenseSmallestAscending(ref Arena arena, in floatMxN A, int k)
+    static double[] DenseSmallestAscending(in floatMxN A, int k)
     {
         int n = A.M_Rows;
-        var Acopy = A.Copy();
-        var eigAll = arena.floatVec(n);
-        var Vall = arena.floatMat(n, n);
+        var Acopy = new floatMxN(in A, Allocator.Temp);
+        var eigAll = new floatN(n, Allocator.Temp);
+        var Vall = new floatMxN(n, n, Allocator.Temp);
         Assert.IsTrue(Eigen.symmetricInPlace(ref Acopy, ref eigAll, ref Vall));
 
         var dense = new double[k];
@@ -124,15 +124,13 @@ public class floatLOBPCGRobustnessTests
     [Test]
     public void PenalizedFramePathologicalGuardConfigNoFalseCertificate()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int k = 4, guard = 4;
-        var A = arena.floatPenalizedGrid3D(1, 1, 1, (float)8, (float)1e3);
+        var A = floatGallery.floatPenalizedGrid3D(1, 1, 1, (float)8, (float)1e3);
         int n = A.M_Rows;
         Assert.AreEqual(24, n);
 
-        var D = A.ToDense(ref arena);
-        var dense = DenseSmallestAscending(ref arena, in D, k);
+        var D = A.ToDense(Allocator.Temp);
+        var dense = DenseSmallestAscending(in D, k);
         Assert.Greater(dense[0], 0.0);   // the assembled truss is SPD
 
         // Calls the SAME primitive the allocating guard overload forwards into, but keeps ws
@@ -141,7 +139,7 @@ public class floatLOBPCGRobustnessTests
         // status, not just the fully-Solved case.
         float tol = Consts.floatSqrtEps;
         float normFloor = (float)0.25;    // must match Eigen.lobpcg's own certification floor
-        var ws = arena.floatLOBPCGCache(n, k + guard);
+        var ws = new floatLOBPCGCache(n, k + guard, Allocator.Temp);
         var info = Eigen.lobpcg(in A, ref ws, k, tol, 300);
 
         AssertNoFalseCertificate(in info, in ws.lambda, in ws.X, k, n, dense, TolFactor());
@@ -152,8 +150,6 @@ public class floatLOBPCGRobustnessTests
         // matrix, so a non-Solved status is expected and always acceptable -- but ANY pair the
         // solver's own bookkeeping counts toward info.converged, Solved or not, must be genuine.
         AssertConvergedPairsGenuine(in A, in ws, k, n, tol, normFloor, dense, TolFactor(), in info);
-
-        arena.Dispose();
     }
 
     // Same repro in the sane configuration (no guards, 3*kWork = 12 < n = 24): still ill
@@ -161,24 +157,20 @@ public class floatLOBPCGRobustnessTests
     [Test]
     public void PenalizedFrameSaneConfigNoFalseCertificate()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int k = 4;
-        var A = arena.floatPenalizedGrid3D(1, 1, 1, (float)8, (float)1e3);
+        var A = floatGallery.floatPenalizedGrid3D(1, 1, 1, (float)8, (float)1e3);
         int n = A.M_Rows;
 
-        var D = A.ToDense(ref arena);
-        var dense = DenseSmallestAscending(ref arena, in D, k);
+        var D = A.ToDense(Allocator.Temp);
+        var dense = DenseSmallestAscending(in D, k);
 
         float tol = Consts.floatSqrtEps;
         float normFloor = (float)0.25;    // must match Eigen.lobpcg's own certification floor
-        var ws = arena.floatLOBPCGCache(n, k);
+        var ws = new floatLOBPCGCache(n, k, Allocator.Temp);
         var info = Eigen.lobpcg(in A, ref ws, k, tol, 500);
 
         AssertNoFalseCertificate(in info, in ws.lambda, in ws.X, k, n, dense, TolFactor());
         AssertConvergedPairsGenuine(in A, in ws, k, n, tol, normFloor, dense, TolFactor(), in info);
-
-        arena.Dispose();
     }
 
     // Rank-deficient B (diag(1,...,1,0)) violates the B-SPD contract. With an SPD A the finite
@@ -188,15 +180,13 @@ public class floatLOBPCGRobustnessTests
     [Test]
     public void RankDeficientBPencilSPDANoFalseCertificate()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int n = 8, k = 2;
-        var A = arena.floatLaplacian1D(n);
-        var B = arena.floatMat(n, n);
+        var A = floatGallery.floatLaplacian1D(n);
+        var B = new floatMxN(n, n, Allocator.Temp);
         for (int i = 0; i < n - 1; i++) B[i, i] = (float)1;
         B[n - 1, n - 1] = (float)0;
 
-        var ws = arena.floatLOBPCGCache(n, k);
+        var ws = new floatLOBPCGCache(n, k, Allocator.Temp);
         var info = Eigen.lobpcg(in A, in B, ref ws, k, Consts.floatSqrtEps, 300);
 
         if (info.Solved)
@@ -220,8 +210,6 @@ public class floatLOBPCGRobustnessTests
                     $"Solved but mode {i} is not a genuine pencil eigenpair ({info.ToString()})");
             }
         }
-
-        arena.Dispose();
     }
 
     // Rank-deficient B whose null direction carries NEGATIVE A-energy (x^T A x < 0 with
@@ -233,22 +221,18 @@ public class floatLOBPCGRobustnessTests
     [Test]
     public void RankDeficientBPencilIndefiniteANeverReportsConverged()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int n = 8, k = 2;
-        var A = arena.floatMat(n, n);
+        var A = new floatMxN(n, n, Allocator.Temp);
         for (int i = 0; i < n - 1; i++) A[i, i] = (float)(i + 1);
         A[n - 1, n - 1] = (float)(-1);
-        var B = arena.floatMat(n, n);
+        var B = new floatMxN(n, n, Allocator.Temp);
         for (int i = 0; i < n - 1; i++) B[i, i] = (float)1;
         B[n - 1, n - 1] = (float)0;
 
-        var ws = arena.floatLOBPCGCache(n, k);
+        var ws = new floatLOBPCGCache(n, k, Allocator.Temp);
         var info = Eigen.lobpcg(in A, in B, ref ws, k, Consts.floatSqrtEps, 300);
 
         Assert.AreNotEqual(IterativeSolveStatus.Converged, info.status, info.ToString());
-
-        arena.Dispose();
     }
 
     // Adversarial warm start: k-1 exact eigenvectors plus one all-zero row. The zero row must not
@@ -257,20 +241,18 @@ public class floatLOBPCGRobustnessTests
     [Test]
     public void ZeroRowWarmStartNoFalseCertificate()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int n = 12, k = 3;
-        var A = arena.floatLaplacian1D(n);
+        var A = floatGallery.floatLaplacian1D(n);
 
-        var Acopy = A.Copy();
-        var eigAll = arena.floatVec(n);
-        var Vall = arena.floatMat(n, n);
+        var Acopy = new floatMxN(in A, Allocator.Temp);
+        var eigAll = new floatN(n, Allocator.Temp);
+        var Vall = new floatMxN(n, n, Allocator.Temp);
         Assert.IsTrue(Eigen.symmetricInPlace(ref Acopy, ref eigAll, ref Vall));
 
         var dense = new double[k];
         for (int j = 0; j < k; j++) dense[j] = (double)eigAll[n - 1 - j];
 
-        var ws = arena.floatLOBPCGCache(n, k);
+        var ws = new floatLOBPCGCache(n, k, Allocator.Temp);
 
         // rows 0..k-2: the exact eigenvectors of the k-1 smallest eigenvalues (columns of Vall,
         // descending order -> column n-1-r); row k-1: exact zeros.
@@ -301,8 +283,6 @@ public class floatLOBPCGRobustnessTests
                 Assert.LessOrEqual(Math.Sqrt(rn2), 0.05 * Math.Max(1.0, Math.Sqrt(norm2)),
                     $"Solved but mode {i} residual is not small relative to its norm");
         }
-
-        arena.Dispose();
     }
 
     // Case 2 (spec "Test vectors to add"): penalized 1-D Laplacian EA*Laplacian1D(16) +
@@ -312,28 +292,24 @@ public class floatLOBPCGRobustnessTests
     [Test]
     public void PenalizedLaplacian1DNoFalseCertificate()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int n = 16, k = 3;
-        var A = arena.floatLaplacian1D(n);
+        var A = floatGallery.floatLaplacian1D(n);
         for (int i = 0; i < n; i++)
             for (int j = 0; j < n; j++)
                 A[i, j] = A[i, j] * (float)2;               // EA = 2
         A[0, 0] = A[0, 0] + (float)1e4;
         A[n - 1, n - 1] = A[n - 1, n - 1] + (float)1e4;
 
-        var dense = DenseSmallestAscending(ref arena, in A, k);
+        var dense = DenseSmallestAscending(in A, k);
         Assert.Greater(dense[0], 0.0);                       // penalized stiffness is SPD
 
-        var eigG = Eigen.lobpcg(ref arena, in A, k, 4, out var vecsG, out var infoG,
+        var eigG = Eigen.lobpcg(in A, k, 4, out var vecsG, out var infoG,
                                 Consts.floatSqrtEps, 500);
         AssertNoFalseCertificate(in infoG, in eigG, in vecsG, k, n, dense, TolFactor());
 
-        var eigP = Eigen.lobpcg(ref arena, in A, k, out var vecsP, out var infoP,
+        var eigP = Eigen.lobpcg(in A, k, out var vecsP, out var infoP,
                                 Consts.floatSqrtEps, 500);
         AssertNoFalseCertificate(in infoP, in eigP, in vecsP, k, n, dense, TolFactor());
-
-        arena.Dispose();
     }
 
     // Case 5 (spec "Test vectors to add"): A = L^T L for the (n+1)-by-n Lauchli matrix with
@@ -344,13 +320,11 @@ public class floatLOBPCGRobustnessTests
     [Test]
     public void LauchliGramSmallestNonNegativeOrHonest()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int n = 6, k = 2;
         float eps = (float)math.sqrt(1.1920929e-7f);       // sqrt(FLT_EPSILON), fixed for both types
-        var L = arena.floatLauchli(n, eps);
+        var L = floatGallery.floatLauchli(n, eps);
 
-        var A = arena.floatMat(n, n);
+        var A = new floatMxN(n, n, Allocator.Temp);
         for (int i = 0; i < n; i++)
             for (int j = 0; j < n; j++)
             {
@@ -359,9 +333,9 @@ public class floatLOBPCGRobustnessTests
                 A[i, j] = s;
             }
 
-        var dense = DenseSmallestAscending(ref arena, in A, k);
+        var dense = DenseSmallestAscending(in A, k);
 
-        var eig = Eigen.lobpcg(ref arena, in A, k, out var vecs, out var info,
+        var eig = Eigen.lobpcg(in A, k, out var vecs, out var info,
                                Consts.floatSqrtEps, 500);
 
         if (info.Solved)
@@ -371,8 +345,6 @@ public class floatLOBPCGRobustnessTests
                     $"Solved but returned a significantly negative eigenvalue at {j} ({info.ToString()})");
             AssertNoFalseCertificate(in info, in eig, in vecs, k, n, dense, TolFactor());
         }
-
-        arena.Dispose();
     }
 
     // Case 6 (spec "Test vectors to add"): rank-deficient B = diag(1,...,1,0) with an SPD,
@@ -384,20 +356,16 @@ public class floatLOBPCGRobustnessTests
     [Test]
     public void RankDeficientBFewerFiniteEigenpairsThanKNeverReportsConverged()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int n = 4, k = n;
-        var A = arena.floatLaplacian1D(n);
-        var B = arena.floatMat(n, n);
+        var A = floatGallery.floatLaplacian1D(n);
+        var B = new floatMxN(n, n, Allocator.Temp);
         for (int i = 0; i < n - 1; i++) B[i, i] = (float)1;
         B[n - 1, n - 1] = (float)0;
 
-        var ws = arena.floatLOBPCGCache(n, k);
+        var ws = new floatLOBPCGCache(n, k, Allocator.Temp);
         var info = Eigen.lobpcg(in A, in B, ref ws, k, Consts.floatSqrtEps, 300);
 
         Assert.AreNotEqual(IterativeSolveStatus.Converged, info.status, info.ToString());
-
-        arena.Dispose();
     }
 
     // Case 7(a) (spec "Test vectors to add"): warm-start X with the exact k smallest eigenvectors of
@@ -407,17 +375,15 @@ public class floatLOBPCGRobustnessTests
     [Test]
     public void ExactEigenvectorWarmStartCertifiesImmediately()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int n = 12, k = 3;
-        var A = arena.floatLaplacian1D(n);
+        var A = floatGallery.floatLaplacian1D(n);
 
-        var Acopy = A.Copy();
-        var eigAll = arena.floatVec(n);
-        var Vall = arena.floatMat(n, n);
+        var Acopy = new floatMxN(in A, Allocator.Temp);
+        var eigAll = new floatN(n, Allocator.Temp);
+        var Vall = new floatMxN(n, n, Allocator.Temp);
         Assert.IsTrue(Eigen.symmetricInPlace(ref Acopy, ref eigAll, ref Vall));
 
-        var ws = arena.floatLOBPCGCache(n, k);
+        var ws = new floatLOBPCGCache(n, k, Allocator.Temp);
         // smallest k eigenvectors = last k columns of Vall (symmetricInPlace sorts descending)
         for (int r = 0; r < k; r++)
             for (int c = 0; c < n; c++)
@@ -433,8 +399,6 @@ public class floatLOBPCGRobustnessTests
             Assert.AreEqual((double)eigAll[n - 1 - j], (double)ws.lambda[j],
                 TolFactor() * Math.Max(1.0, Math.Abs((double)eigAll[n - 1 - j])),
                 $"warm-started eigenvalue {j} does not match the dense oracle ({info.ToString()})");
-
-        arena.Dispose();
     }
 
     // ======================================================================================
@@ -469,16 +433,14 @@ public class floatLOBPCGRobustnessTests
     [Test]
     public void JobbedPenalizedFrameNoFalseCertificate()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int k = 4, guard = 4;
-        var A = arena.floatPenalizedGrid3D(1, 1, 1, (float)8, (float)1e3);
+        var A = floatGallery.floatPenalizedGrid3D(1, 1, 1, (float)8, (float)1e3);
         int n = A.M_Rows;
 
-        var D = A.ToDense(ref arena);
-        var dense = DenseSmallestAscending(ref arena, in D, k);
+        var D = A.ToDense(Allocator.Temp);
+        var dense = DenseSmallestAscending(in D, k);
 
-        var ws = arena.floatLOBPCGCache(n, k + guard);
+        var ws = new floatLOBPCGCache(n, k + guard, Allocator.Temp);
         var outp = new NativeArray<int>(3, Allocator.TempJob);
 
         var job = new JobbedLobpcgBSR { A = A, Cache = ws, K = k, Tol = Consts.floatSqrtEps, MaxIter = 300, Out = outp };
@@ -496,7 +458,6 @@ public class floatLOBPCGRobustnessTests
             Assert.AreEqual(k, info.converged, info.ToString());
 
         outp.Dispose();
-        arena.Dispose();
     }
 
     // Case 8, warm-start variant: exact k smallest eigenvectors of a well-conditioned block
@@ -506,10 +467,8 @@ public class floatLOBPCGRobustnessTests
     [Test]
     public void JobbedExactWarmStartCertifiesInCache()
     {
-        var arena = new Arena(Allocator.Persistent);
-
         int blocks = 4, br = 2, n = blocks * br, k = 2;
-        var builder = arena.floatBSRBuilder(blocks, blocks, br, br);
+        var builder = new floatBSRBuilder(blocks, blocks, br, br, Allocator.Temp);
         for (int b = 0; b < blocks; b++)
         {
             var diag = new floatMxN(br, br, Allocator.Temp);
@@ -530,15 +489,15 @@ public class floatLOBPCGRobustnessTests
                 off.Dispose();
             }
         }
-        var A = builder.ToBSR(ref arena);
+        var A = builder.ToBSR(Allocator.Temp);
 
-        var D = A.ToDense(ref arena);
-        var Dcopy = D.Copy();
-        var eigAll = arena.floatVec(n);
-        var Vall = arena.floatMat(n, n);
+        var D = A.ToDense(Allocator.Temp);
+        var Dcopy = new floatMxN(in D, Allocator.Temp);
+        var eigAll = new floatN(n, Allocator.Temp);
+        var Vall = new floatMxN(n, n, Allocator.Temp);
         Assert.IsTrue(Eigen.symmetricInPlace(ref Dcopy, ref eigAll, ref Vall));
 
-        var ws = arena.floatLOBPCGCache(n, k);
+        var ws = new floatLOBPCGCache(n, k, Allocator.Temp);
         for (int r = 0; r < k; r++)
             for (int c = 0; c < n; c++)
                 ws.X[r, c] = Vall[c, n - 1 - r];
@@ -575,6 +534,5 @@ public class floatLOBPCGRobustnessTests
         phi.Dispose(); Aphi.Dispose();
 
         outp.Dispose();
-        arena.Dispose();
     }
 }

@@ -117,26 +117,26 @@ namespace LinearAlgebra.Benchmarks
         // Trivially stabilizable random plant (diagonal in [0.2,0.4), off-diagonal scaled 0.2/n) -- the
         // SAME recipe LQRBenchmark.float.cs's own BuildInstanceFloat uses, so the terminal DARE
         // floatMPCState's constructor solves is guaranteed to converge at every size below. Q=I, R=I.
-        static void BuildPlantFloat(int n, int m, uint seed, in Arena arena,
+        static void BuildPlantFloat(int n, int m, uint seed,
                                      out floatMxN A, out floatMxN B, out floatMxN Q, out floatMxN R)
         {
             var rng = new Unity.Mathematics.Random(seed);
             float off = (float)(0.2 / n);
 
-            A = arena.floatMat(n, n);
+            A = new floatMxN(n, n, Allocator.Persistent);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
                     A[i, j] = (i == j) ? rng.NextFloat(0.2f, 0.4f) : rng.NextFloat(-1f, 1f) * off;
 
-            B = arena.floatMat(n, m);
+            B = new floatMxN(n, m, Allocator.Persistent);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < m; j++)
                     B[i, j] = rng.NextFloat(-1f, 1f);
 
-            Q = arena.floatMat(n, n);
+            Q = new floatMxN(n, n, Allocator.Persistent);
             for (int i = 0; i < n; i++) Q[i, i] = (float)1;
 
-            R = arena.floatMat(m, m);
+            R = new floatMxN(m, m, Allocator.Persistent);
             for (int i = 0; i < m; i++) R[i, i] = (float)1;
         }
 
@@ -147,32 +147,33 @@ namespace LinearAlgebra.Benchmarks
         // it near the origin.
         static floatMPCState BuildStateFloat(int n, int m, int N, in floatMxN A, in floatMxN B,
                                                in floatMxN Q, in floatMxN R, in floatN uLo, in floatN uHi,
-                                               in Arena arena, bool softWall)
+                                               bool softWall)
         {
             if (!softWall)
                 return new floatMPCState(n, m, N, Allocator.Persistent, in A, in B, in Q, in R, in uLo, in uHi);
 
-            var C = arena.floatMat(1, n);
+            var C = new floatMxN(1, n, Allocator.Persistent);
             C[0, 0] = (float)1;
-            var d = arena.floatVec(1, (float)2);
-            return new floatMPCState(n, m, N, Allocator.Persistent, in A, in B, in Q, in R, in uLo, in uHi, in C, in d);
+            var d = GenerateOP.floatVec(1, (float)2, Allocator.Persistent);
+            var s = new floatMPCState(n, m, N, Allocator.Persistent, in A, in B, in Q, in R, in uLo, in uHi, in C, in d);
+            C.Dispose(); d.Dispose();
+            return s;
         }
 
         // ==== Section 1: warm steady-state per-frame cost (the headline) ====
         static string WarmFrameFloat(int N, int n, int m, uint seed, bool softWall)
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildPlantFloat(n, m, seed, in arena, out var A, out var B, out var Q, out var R);
-            var uLo = arena.floatVec(m, (float)(-1));
-            var uHi = arena.floatVec(m, (float)1);
-            var s = BuildStateFloat(n, m, N, in A, in B, in Q, in R, in uLo, in uHi, in arena, softWall);
+            BuildPlantFloat(n, m, seed, out var A, out var B, out var Q, out var R);
+            var uLo = GenerateOP.floatVec(m, (float)(-1), Allocator.Persistent);
+            var uHi = GenerateOP.floatVec(m, (float)1, Allocator.Persistent);
+            var s = BuildStateFloat(n, m, N, in A, in B, in Q, in R, in uLo, in uHi, softWall);
 
-            var x = arena.floatVec(n);
+            var x = new floatN(n, Allocator.Persistent);
             x[0] = (float)4;
-            var reference = arena.floatVec(n);   // zero -- track to the origin
-            var u0 = arena.floatVec(m, true);
-            var xNext = arena.floatVec(n, true);
-            var Bu = arena.floatVec(n, true);
+            var reference = new floatN(n, Allocator.Persistent);   // zero -- track to the origin
+            var u0 = new floatN(m, Allocator.Persistent, true);
+            var xNext = new floatN(n, Allocator.Persistent, true);
+            var Bu = new floatN(n, Allocator.Persistent, true);
 
             var itersOut = new NativeArray<int>(1, Allocator.Persistent);
             var changesOut = new NativeArray<int>(1, Allocator.Persistent);
@@ -191,23 +192,24 @@ namespace LinearAlgebra.Benchmarks
                                              itersOut[0], changesOut[0], statusOut[0]);
 
             itersOut.Dispose(); changesOut.Dispose(); statusOut.Dispose();
-            s.Dispose(); arena.Dispose();
+            s.Dispose();
+            A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); uLo.Dispose(); uHi.Dispose();
+            x.Dispose(); reference.Dispose(); u0.Dispose(); xNext.Dispose(); Bu.Dispose();
             return row;
         }
 
         // ==== Section 2: cold solve cost (fresh warm-start carry every call) ====
         static string ColdSolveFloat(int N, int n, int m, uint seed, int reps, bool softWall)
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildPlantFloat(n, m, seed, in arena, out var A, out var B, out var Q, out var R);
-            var uLo = arena.floatVec(m, (float)(-1));
-            var uHi = arena.floatVec(m, (float)1);
-            var s = BuildStateFloat(n, m, N, in A, in B, in Q, in R, in uLo, in uHi, in arena, softWall);
+            BuildPlantFloat(n, m, seed, out var A, out var B, out var Q, out var R);
+            var uLo = GenerateOP.floatVec(m, (float)(-1), Allocator.Persistent);
+            var uHi = GenerateOP.floatVec(m, (float)1, Allocator.Persistent);
+            var s = BuildStateFloat(n, m, N, in A, in B, in Q, in R, in uLo, in uHi, softWall);
 
-            var x0 = arena.floatVec(n);
+            var x0 = new floatN(n, Allocator.Persistent);
             x0[0] = (float)4;
-            var reference = arena.floatVec(n);
-            var u0 = arena.floatVec(m, true);
+            var reference = new floatN(n, Allocator.Persistent);
+            var u0 = new floatN(m, Allocator.Persistent, true);
 
             var itersOut = new NativeArray<int>(1, Allocator.Persistent);
             var changesOut = new NativeArray<int>(1, Allocator.Persistent);
@@ -222,24 +224,26 @@ namespace LinearAlgebra.Benchmarks
                                              itersOut[0], changesOut[0], statusOut[0]);
 
             itersOut.Dispose(); changesOut.Dispose(); statusOut.Dispose();
-            s.Dispose(); arena.Dispose();
+            s.Dispose();
+            A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); uLo.Dispose(); uHi.Dispose();
+            x0.Dispose(); reference.Dispose(); u0.Dispose();
             return row;
         }
 
         // ==== Section 3: floatMPCState construction cost (one-shot) ====
         static string ConstructFloat(int N, int n, int m, uint seed, int reps)
         {
-            var arena = new Arena(Allocator.Persistent);
-            BuildPlantFloat(n, m, seed, in arena, out var A, out var B, out var Q, out var R);
-            var uLo = arena.floatVec(m, (float)(-1));
-            var uHi = arena.floatVec(m, (float)1);
+            BuildPlantFloat(n, m, seed, out var A, out var B, out var Q, out var R);
+            var uLo = GenerateOP.floatVec(m, (float)(-1), Allocator.Persistent);
+            var uHi = GenerateOP.floatVec(m, (float)1, Allocator.Persistent);
 
             var checksumOut = new NativeArray<double>(1, Allocator.Persistent);
             var job = new MpcConstructJobFloat { A = A, B = B, Q = Q, R = R, uLo = uLo, uHi = uHi, N = N, reps = reps, checksumOut = checksumOut };
             var stat = Bench.Time(() => job.Run());
             string row = MPCBenchmarkFmt.ConstructionRow("float", N, n, m, reps, stat);
 
-            checksumOut.Dispose(); arena.Dispose();
+            checksumOut.Dispose();
+            A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); uLo.Dispose(); uHi.Dispose();
             return row;
         }
     }

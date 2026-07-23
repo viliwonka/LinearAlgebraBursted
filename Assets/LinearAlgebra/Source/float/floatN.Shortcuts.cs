@@ -6,6 +6,7 @@
 // Shortcuts for creating new vectors and matrices
 using System.Runtime.CompilerServices;
 
+using Unity.Collections;
 using LinearAlgebra;
 using LinearAlgebra.Sparse;
 
@@ -15,68 +16,69 @@ namespace LinearAlgebra {
     {
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe floatN floatVec(int N, bool uninit = false) => OwnerArena.floatVec(N, uninit);
+        public unsafe floatN floatVec(int N, bool uninit = false) => _rec != null ? OwnerArena.floatVec(N, uninit) : new floatN(N, Allocator.Temp, uninit);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe floatN floatTempVec(int N, bool uninit = false) => OwnerArena.floatTempVec(N, uninit);
+        public unsafe floatN floatTempVec(int N, bool uninit = false) => _rec != null ? OwnerArena.floatTempVec(N, uninit) : new floatN(N, Allocator.Temp, uninit);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe floatMxN floatMat(int M_rows, int N_cols, bool uninit = false) => OwnerArena.floatMat(M_rows, N_cols, uninit);
+        public unsafe floatMxN floatMat(int M_rows, int N_cols, bool uninit = false) => _rec != null ? OwnerArena.floatMat(M_rows, N_cols, uninit) : new floatMxN(M_rows, N_cols, Allocator.Temp, uninit);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe floatMxN floatTempMat(int M_rows, int N_cols, bool uninit = false) => OwnerArena.floatTempMat(M_rows, N_cols, uninit);
+        public unsafe floatMxN floatTempMat(int M_rows, int N_cols, bool uninit = false) => _rec != null ? OwnerArena.floatTempMat(M_rows, N_cols, uninit) : new floatMxN(M_rows, N_cols, Allocator.Temp, uninit);
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe doubleN doubleVec(int N, bool uninit = false) => OwnerArena.doubleVec(N, uninit);
+        public unsafe doubleN doubleVec(int N, bool uninit = false) => _rec != null ? OwnerArena.doubleVec(N, uninit) : new doubleN(N, Allocator.Temp, uninit);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe doubleN doubleTempVec(int N, bool uninit = false) => OwnerArena.doubleTempVec(N, uninit);
+        public unsafe doubleN doubleTempVec(int N, bool uninit = false) => _rec != null ? OwnerArena.doubleTempVec(N, uninit) : new doubleN(N, Allocator.Temp, uninit);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe doubleMxN doubleMat(int M_rows, int N_cols, bool uninit = false) => OwnerArena.doubleMat(M_rows, N_cols, uninit);
+        public unsafe doubleMxN doubleMat(int M_rows, int N_cols, bool uninit = false) => _rec != null ? OwnerArena.doubleMat(M_rows, N_cols, uninit) : new doubleMxN(M_rows, N_cols, Allocator.Temp, uninit);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe doubleMxN doubleTempMat(int M_rows, int N_cols, bool uninit = false) => OwnerArena.doubleTempMat(M_rows, N_cols, uninit);
+        public unsafe doubleMxN doubleTempMat(int M_rows, int N_cols, bool uninit = false) => _rec != null ? OwnerArena.doubleTempMat(M_rows, N_cols, uninit) : new doubleMxN(M_rows, N_cols, Allocator.Temp, uninit);
         
 
         // Not in copyReplace: no iProxy BSR equivalent. Forwards to the arena's BSR transpose for
-        // solvers needing A^T.
+        // solvers needing A^T. Standalone: floatBSR.Transpose has the identical Symmetric-aliasing
+        // contract as the arena path.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe floatBSR floatBSRTranspose(in floatBSR A) => OwnerArena.floatBSRTranspose(in A);
+        public unsafe floatBSR floatBSRTranspose(in floatBSR A) => _rec != null ? OwnerArena.floatBSRTranspose(in A) : A.Transpose(Allocator.Temp);
 
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe intN intVec(int N, bool uninit = false) => OwnerArena.intVec(N, uninit);
+        public unsafe intN intVec(int N, bool uninit = false) => _rec != null ? OwnerArena.intVec(N, uninit) : new intN(N, Allocator.Temp, uninit);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe intN intTempVec(int N, bool uninit = false) => OwnerArena.intTempVec(N, uninit);
+        public unsafe intN intTempVec(int N, bool uninit = false) => _rec != null ? OwnerArena.intTempVec(N, uninit) : new intN(N, Allocator.Temp, uninit);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe intMxN intMat(int M_rows, int N_cols, bool uninit = false) => OwnerArena.intMat(M_rows, N_cols, uninit);
+        public unsafe intMxN intMat(int M_rows, int N_cols, bool uninit = false) => _rec != null ? OwnerArena.intMat(M_rows, N_cols, uninit) : new intMxN(M_rows, N_cols, Allocator.Temp, uninit);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe intMxN intTempMat(int M_rows, int N_cols, bool uninit = false) => OwnerArena.intTempMat(M_rows, N_cols, uninit);
+        public unsafe intMxN intTempMat(int M_rows, int N_cols, bool uninit = false) => _rec != null ? OwnerArena.intTempMat(M_rows, N_cols, uninit) : new intMxN(M_rows, N_cols, Allocator.Temp, uninit);
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe shortN shortVec(int N, bool uninit = false) => OwnerArena.shortVec(N, uninit);
+        public unsafe shortN shortVec(int N, bool uninit = false) => _rec != null ? OwnerArena.shortVec(N, uninit) : new shortN(N, Allocator.Temp, uninit);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe shortN shortTempVec(int N, bool uninit = false) => OwnerArena.shortTempVec(N, uninit);
+        public unsafe shortN shortTempVec(int N, bool uninit = false) => _rec != null ? OwnerArena.shortTempVec(N, uninit) : new shortN(N, Allocator.Temp, uninit);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe shortMxN shortMat(int M_rows, int N_cols, bool uninit = false) => OwnerArena.shortMat(M_rows, N_cols, uninit);
+        public unsafe shortMxN shortMat(int M_rows, int N_cols, bool uninit = false) => _rec != null ? OwnerArena.shortMat(M_rows, N_cols, uninit) : new shortMxN(M_rows, N_cols, Allocator.Temp, uninit);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe shortMxN shortTempMat(int M_rows, int N_cols, bool uninit = false) => OwnerArena.shortTempMat(M_rows, N_cols, uninit);
+        public unsafe shortMxN shortTempMat(int M_rows, int N_cols, bool uninit = false) => _rec != null ? OwnerArena.shortTempMat(M_rows, N_cols, uninit) : new shortMxN(M_rows, N_cols, Allocator.Temp, uninit);
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe longN longVec(int N, bool uninit = false) => OwnerArena.longVec(N, uninit);
+        public unsafe longN longVec(int N, bool uninit = false) => _rec != null ? OwnerArena.longVec(N, uninit) : new longN(N, Allocator.Temp, uninit);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe longN longTempVec(int N, bool uninit = false) => OwnerArena.longTempVec(N, uninit);
+        public unsafe longN longTempVec(int N, bool uninit = false) => _rec != null ? OwnerArena.longTempVec(N, uninit) : new longN(N, Allocator.Temp, uninit);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe longMxN longMat(int M_rows, int N_cols, bool uninit = false) => OwnerArena.longMat(M_rows, N_cols, uninit);
+        public unsafe longMxN longMat(int M_rows, int N_cols, bool uninit = false) => _rec != null ? OwnerArena.longMat(M_rows, N_cols, uninit) : new longMxN(M_rows, N_cols, Allocator.Temp, uninit);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe longMxN longTempMat(int M_rows, int N_cols, bool uninit = false) => OwnerArena.longTempMat(M_rows, N_cols, uninit);
+        public unsafe longMxN longTempMat(int M_rows, int N_cols, bool uninit = false) => _rec != null ? OwnerArena.longTempMat(M_rows, N_cols, uninit) : new longMxN(M_rows, N_cols, Allocator.Temp, uninit);
         
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe boolN boolVec(int n, bool uninit = false) => OwnerArena.boolVec(n, uninit);
+        public unsafe boolN boolVec(int n, bool uninit = false) => _rec != null ? OwnerArena.boolVec(n, uninit) : new boolN(n, Allocator.Temp, uninit);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe boolN boolTempVec(int n, bool uninit = false) => OwnerArena.boolTempVec(n, uninit);
+        public unsafe boolN boolTempVec(int n, bool uninit = false) => _rec != null ? OwnerArena.boolTempVec(n, uninit) : new boolN(n, Allocator.Temp, uninit);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe boolMxN boolMat(int M_rows, int N_cols, bool uninit = false) => OwnerArena.boolMat(M_rows, N_cols, uninit);
+        public unsafe boolMxN boolMat(int M_rows, int N_cols, bool uninit = false) => _rec != null ? OwnerArena.boolMat(M_rows, N_cols, uninit) : new boolMxN(M_rows, N_cols, Allocator.Temp, uninit);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe boolMxN boolTempMat(int M_rows, int N_cols, bool uninit = false) => OwnerArena.boolTempMat(M_rows, N_cols, uninit);
+        public unsafe boolMxN boolTempMat(int M_rows, int N_cols, bool uninit = false) => _rec != null ? OwnerArena.boolTempMat(M_rows, N_cols, uninit) : new boolMxN(M_rows, N_cols, Allocator.Temp, uninit);
     }
 }

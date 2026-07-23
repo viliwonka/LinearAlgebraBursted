@@ -19,67 +19,67 @@ namespace LinearAlgebra
     /// </summary>
     internal static class floatKrylovBatteryGallery
     {
-        public static floatMxN Build(ref Arena arena, GalleryDenseMatrix m)
+        public static floatMxN Build(GalleryDenseMatrix m)
         {
             switch (m)
             {
-                case GalleryDenseMatrix.Laplacian1D_8: return arena.floatLaplacian1D(8);
-                case GalleryDenseMatrix.MinIJ_5:        return arena.floatMinIJ(5);
-                case GalleryDenseMatrix.Pei5_2:          return arena.floatPei(5, (float)2);
-                case GalleryDenseMatrix.Hilbert4:        return arena.floatHilbert(4);
-                case GalleryDenseMatrix.Pascal5:         return arena.floatPascal(5);
-                case GalleryDenseMatrix.Lehmer5:         return arena.floatLehmer(5);
+                case GalleryDenseMatrix.Laplacian1D_8: return floatGallery.floatLaplacian1D(8);
+                case GalleryDenseMatrix.MinIJ_5:        return floatGallery.floatMinIJ(5);
+                case GalleryDenseMatrix.Pei5_2:          return floatGallery.floatPei(5, (float)2);
+                case GalleryDenseMatrix.Hilbert4:        return floatGallery.floatHilbert(4);
+                case GalleryDenseMatrix.Pascal5:         return floatGallery.floatPascal(5);
+                case GalleryDenseMatrix.Lehmer5:         return floatGallery.floatLehmer(5);
 
-                case GalleryDenseMatrix.Fiedler5:  return arena.floatFiedler(5);
-                case GalleryDenseMatrix.Clement4:  return arena.floatClement(4);
-                case GalleryDenseMatrix.Rosser8:   return arena.floatRosser();
+                case GalleryDenseMatrix.Fiedler5:  return floatGallery.floatFiedler(5);
+                case GalleryDenseMatrix.Clement4:  return floatGallery.floatClement(4);
+                case GalleryDenseMatrix.Rosser8:   return floatGallery.floatRosser();
 
-                case GalleryDenseMatrix.DenseNonsym20:   return DenseNonsym(ref arena, 20, 0x51D01u);
-                case GalleryDenseMatrix.ConvDiffDense40: return ConvDiffDense(ref arena, 40);
-                case GalleryDenseMatrix.Grcar8:          return arena.floatGrcar(8);
+                case GalleryDenseMatrix.DenseNonsym20:   return DenseNonsym(20, 0x51D01u);
+                case GalleryDenseMatrix.ConvDiffDense40: return ConvDiffDense(40);
+                case GalleryDenseMatrix.Grcar8:          return floatGallery.floatGrcar(8);
 
-                case GalleryDenseMatrix.Lauchli3_05:  return arena.floatLauchli(3, (float)0.5);
-                case GalleryDenseMatrix.Lauchli3_1e3: return arena.floatLauchli(3, (float)1E-3);
+                case GalleryDenseMatrix.Lauchli3_05:  return floatGallery.floatLauchli(3, (float)0.5);
+                case GalleryDenseMatrix.Lauchli3_1e3: return floatGallery.floatLauchli(3, (float)1E-3);
 
-                case GalleryDenseMatrix.WideRandom10x30: return WideRandom(ref arena, 10, 30, 10, 0x5EED2u);
+                case GalleryDenseMatrix.WideRandom10x30: return WideRandom(10, 30, 10, 0x5EED2u);
 
-                case GalleryDenseMatrix.RankDeficient20x10_Rank5: return WideRandom(ref arena, 20, 10, 5, 0x5EED3u);
+                case GalleryDenseMatrix.RankDeficient20x10_Rank5: return WideRandom(20, 10, 5, 0x5EED3u);
 
-                case GalleryDenseMatrix.RandSPDWellCond20: return RandSPD(ref arena, 20, (float)1, (float)10, 0x5EED4u);
-                case GalleryDenseMatrix.RandSPDIllCond20:  return RandSPD(ref arena, 20, (float)1E-3, (float)1, 0x5EED5u);
+                case GalleryDenseMatrix.RandSPDWellCond20: return RandSPD(20, (float)1, (float)10, 0x5EED4u);
+                case GalleryDenseMatrix.RandSPDIllCond20:  return RandSPD(20, (float)1E-3, (float)1, 0x5EED5u);
 
-                case GalleryDenseMatrix.TallRandom24x8: return arena.floatRandomMat(24, 8, (float)(-1), (float)1, 0x5EED6u);
+                case GalleryDenseMatrix.TallRandom24x8: return GenerateOP.floatRandomMat(24, 8, (float)(-1), (float)1, 0x5EED6u);
 
                 default: throw new System.ArgumentException("floatKrylovBatteryGallery.Build: unhandled GalleryDenseMatrix");
             }
         }
 
-        public static floatBSR Build(ref Arena arena, GalleryBSRMatrix m)
+        public static floatBSR Build(GalleryBSRMatrix m)
         {
             switch (m)
             {
-                case GalleryBSRMatrix.Poisson2D_20x20:       return Poisson2D(ref arena, 20, 20);
-                case GalleryBSRMatrix.Laplacian2D_16x16:     return arena.floatLaplacian2D(16, 16);
-                case GalleryBSRMatrix.RandomSparseSPD_120_2: return arena.floatRandomSparseSPD(120, 2, (float)0.2, 0x5EED0u);
-                case GalleryBSRMatrix.RandomSparseNonsym_80: return arena.floatRandomSparse(80, 80, 1, (float)0.1, 0x5EED1u);
+                case GalleryBSRMatrix.Poisson2D_20x20:       return Poisson2D(20, 20);
+                case GalleryBSRMatrix.Laplacian2D_16x16:     return floatGallery.floatLaplacian2D(16, 16);
+                case GalleryBSRMatrix.RandomSparseSPD_120_2: return floatGallery.floatRandomSparseSPD(120, 2, (float)0.2, 0x5EED0u);
+                case GalleryBSRMatrix.RandomSparseNonsym_80: return floatGallery.floatRandomSparse(80, 80, 1, (float)0.1, 0x5EED1u);
                 default: throw new System.ArgumentException("floatKrylovBatteryGallery.Build: unhandled GalleryBSRMatrix");
             }
         }
 
         // Dense nonsymmetric, diagonally dominant (well-conditioned, nonsingular): random entries
         // plus a heavy diagonal. Not symmetric (random off-diagonals differ across the diagonal).
-        static floatMxN DenseNonsym(ref Arena arena, int n, uint seed)
+        static floatMxN DenseNonsym(int n, uint seed)
         {
-            var A = arena.floatRandomMat(n, n, (float)(-1), (float)1, seed);
+            var A = GenerateOP.floatRandomMat(n, n, (float)(-1), (float)1, seed);
             for (int i = 0; i < n; i++) A[i, i] += (float)(2 * n);
             return A;
         }
 
         // Dense 1D convection-diffusion: diagonal 6, super -1, sub -3 -- nonsymmetric,
         // diagonally dominant. Dense counterpart of the ConvDiff1D BSR generator used elsewhere.
-        static floatMxN ConvDiffDense(ref Arena arena, int n)
+        static floatMxN ConvDiffDense(int n)
         {
-            var A = arena.floatMat(n, n);   // zero-initialized
+            var A = new floatMxN(n, n, Allocator.Temp);   // zero-initialized
             for (int i = 0; i < n; i++)
             {
                 A[i, i] = (float)6;
@@ -90,28 +90,28 @@ namespace LinearAlgebra
         }
 
         // m x n matrix of numerical rank `rank` (Rand.withRankInPlace).
-        static floatMxN WideRandom(ref Arena arena, int m, int n, int rank, uint seed)
+        static floatMxN WideRandom(int m, int n, int rank, uint seed)
         {
-            var A = arena.floatMat(m, n);
+            var A = new floatMxN(m, n, Allocator.Temp);
             var rng = new Random(seed == 0 ? 1u : seed);
             Rand.withRankInPlace(ref rng, ref A, rank);
             return A;
         }
 
         // n x n SPD matrix with eigenvalues in [minEig, maxEig] (Rand.spdInPlace).
-        static floatMxN RandSPD(ref Arena arena, int n, float minEig, float maxEig, uint seed)
+        static floatMxN RandSPD(int n, float minEig, float maxEig, uint seed)
         {
-            var A = arena.floatMat(n, n);
+            var A = new floatMxN(n, n, Allocator.Temp);
             var rng = new Random(seed == 0 ? 1u : seed);
             Rand.spdInPlace(ref rng, ref A, minEig, maxEig);
             return A;
         }
 
         // Scalar (BR=1) 2D 5-point Poisson stencil on a gx x gy grid.
-        static floatBSR Poisson2D(ref Arena arena, int gx, int gy)
+        static floatBSR Poisson2D(int gx, int gy)
         {
             int n = gx * gy;
-            var b = arena.floatBSRBuilder(n, n, 1, 1, 5 * n);
+            var b = new floatBSRBuilder(n, n, 1, 1, Allocator.Temp, 5 * n);
             for (int y = 0; y < gy; y++)
                 for (int x = 0; x < gx; x++)
                 {
@@ -122,7 +122,7 @@ namespace LinearAlgebra
                     if (y > 0) b.AddValue(i, i - gx, (float)(-1));
                     if (y < gy - 1) b.AddValue(i, i + gx, (float)(-1));
                 }
-            return b.ToBSR(ref arena);
+            return b.ToBSR(Allocator.Temp);
         }
     }
 
@@ -152,10 +152,10 @@ namespace LinearAlgebra
         // Non-diagonal SPD preconditioner matrix N = I + W^T W / invScale (W random n x n). Bit-
         // exactly symmetric (the (i,j) and (j,i) sums run the same k order), eigenvalues >= 1;
         // invScale tunes the eigenvalue spread / condition number.
-        public static floatMxN BuildDenseSpd(ref Arena arena, int n, uint seed, float invScale)
+        public static floatMxN BuildDenseSpd(int n, uint seed, float invScale)
         {
-            var W = arena.floatRandomMat(n, n, (float)(-1), (float)1, seed);
-            var Nmat = arena.floatMat(n);
+            var W = GenerateOP.floatRandomMat(n, n, (float)(-1), (float)1, seed);
+            var Nmat = new floatMxN(n, n, Allocator.Temp);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
                 {
@@ -168,23 +168,23 @@ namespace LinearAlgebra
 
         // SPD SYSTEM matrix A = M^T M + n*I (M random n x n) -- NOT a preconditioner (see
         // BuildDenseSpd above for that). Symmetric, well-conditioned by the diagonal boost.
-        public static floatMxN BuildDenseSpdSystem(ref Arena arena, int n, uint seed)
+        public static floatMxN BuildDenseSpdSystem(int n, uint seed)
         {
-            var M = arena.floatRandomMat(n, n, (float)(-1f), (float)1f, seed);
+            var M = GenerateOP.floatRandomMat(n, n, (float)(-1f), (float)1f, seed);
             var A = Blas.dot(M, M, true);                       // M^T M
             for (int d = 0; d < n; d++) A[d, d] += n;           // diagonally boost -> SPD, well-conditioned
             return A;
         }
 
         // Dense n x n -> 1x1-block BSR scalar copy. nnz capacity hint inferred from A's own shape.
-        public static floatBSR DenseToBSR1x1(ref Arena arena, in floatMxN A)
+        public static floatBSR DenseToBSR1x1(in floatMxN A)
         {
-            var builder = arena.floatBSRBuilder(A.M_Rows, A.N_Cols, 1, 1, math.max(A.M_Rows * A.N_Cols, 1));
+            var builder = new floatBSRBuilder(A.M_Rows, A.N_Cols, 1, 1, Allocator.Temp, math.max(A.M_Rows * A.N_Cols, 1));
             for (int r = 0; r < A.M_Rows; r++)
                 for (int c = 0; c < A.N_Cols; c++)
                     if (A[r, c] != (float)0)
                         builder.AddValue(r, c, A[r, c]);
-            return builder.ToBSR(ref arena);
+            return builder.ToBSR(Allocator.Temp);
         }
 
         public static float RelResidualDense(in floatMxN A, in floatN x, in floatN b)
@@ -254,9 +254,9 @@ namespace LinearAlgebra
 
         // Row j of B (length n) as an independent floatN -- the per-column extraction every
         // block-battery check that compares against a scalar solve needs.
-        public static floatN Row(ref Arena arena, in floatMxN B, int j, int n)
+        public static floatN Row(in floatMxN B, int j, int n)
         {
-            var v = arena.floatVec(n);
+            var v = new floatN(n, Allocator.Temp);
             for (int c = 0; c < n; c++) v[c] = B[j, c];
             return v;
         }
