@@ -77,3 +77,5 @@ crashlytics-build.properties
 
 # Local reference source stash (BSD/open pseudocode) — not part of the package
 /reference/
+
+.scratch/
