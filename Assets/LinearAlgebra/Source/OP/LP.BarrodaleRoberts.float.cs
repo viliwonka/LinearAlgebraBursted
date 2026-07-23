@@ -30,7 +30,7 @@ namespace LinearAlgebra
         // tau-path continuation are not ported (unreachable in LP.ladBR's fixed-tau, CIs-off mode).
         //
         // Deviations from the literal reference: (1) uses this library's own simplex ratio/pivot
-        // tolerance (LP.float.cs's RatioTest) instead of rqbr's tighter toler=eps^(2/3); (2) on
+        // tolerance (pivTol below) instead of rqbr's tighter toler=eps^(2/3); (2) on
         // "premature end" (ift=2), extracts the last-vertex structural solution instead of leaving x
         // untouched, matching LPStatus.Unbounded's own contract; (3) the "solution may be nonunique"
         // warning (ift=1) is not surfaced, since LPStatus has no such state; (4) diagnostic-only

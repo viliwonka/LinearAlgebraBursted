@@ -235,16 +235,15 @@ namespace LinearAlgebra.Benchmarks
 
     public static partial class LPBenchmark
     {
-        // ==== Section 1: LP.solve, random dense feasible LP -- all FOUR backends on the SAME problem ====
-        // (tableau simplex, Mehrotra interior point, bounded-variable revised primal simplex, bounded-
-        // variable dual revised simplex). Same A/b/c/senses instance for every method each n, so the
-        // objective column is a direct four-way agreement check
-        // and the iters column is directly comparable pivot-for-pivot (revised/dual) or iteration-for-
-        // iteration (interior point) against the tableau baseline.
+        // ==== Section 1: LP.solve, random dense feasible LP -- all THREE backends on the SAME problem ====
+        // (Mehrotra interior point, bounded-variable revised primal simplex, bounded-variable dual
+        // revised simplex). Same A/b/c/senses instance for every method each n, so the objective column
+        // is a direct three-way agreement check and the iters column is directly comparable pivot-for-
+        // pivot (revised/dual) or iteration-for-iteration (interior point).
         static void SectionSolveFloat(StringBuilder sb)
         {
             sb.AppendLine();
-            sb.AppendLine("--- 1. LP.solve: random dense feasible LP (m = n/2, A>=0, Ax<=b), simplex vs interior point " +
+            sb.AppendLine("--- 1. LP.solve: random dense feasible LP (m = n/2, A>=0, Ax<=b), interior point " +
                           "vs revised primal vs dual simplex [float] ---");
             sb.AppendLine(LPBenchmarkFmt.SolveHeader());
 
@@ -266,11 +265,6 @@ namespace LinearAlgebra.Benchmarks
                 var itersOut = new NativeArray<int>(1, Allocator.Persistent);
                 var statusOut = new NativeArray<int>(1, Allocator.Persistent);
 
-                var xS = new floatN(n, Allocator.Persistent);
-                var jobS = new LpSolveJobFloat { A = A, b = b, c = c, senses = senses, x = xS, method = LPMethod.Simplex, maxIter = 0, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
-                var statS = Bench.Time(() => jobS.Run());
-                sb.AppendLine(LPBenchmarkFmt.SolveRow("float", n, m, "simplex", statS, itersOut[0], objOut[0]));
-
                 var xI = new floatN(n, Allocator.Persistent);
                 var jobI = new LpSolveJobFloat { A = A, b = b, c = c, senses = senses, x = xI, method = LPMethod.InteriorPoint, maxIter = 0, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statI = Bench.Time(() => jobI.Run());
@@ -289,7 +283,7 @@ namespace LinearAlgebra.Benchmarks
                 objOut.Dispose(); itersOut.Dispose(); statusOut.Dispose();
                 senses.Dispose();
                 A.Dispose(); x0.Dispose(); Ax0.Dispose(); b.Dispose(); c.Dispose();
-                xS.Dispose(); xI.Dispose(); xR.Dispose(); xD.Dispose();
+                xI.Dispose(); xR.Dispose(); xD.Dispose();
             }
         }
 
@@ -343,11 +337,11 @@ namespace LinearAlgebra.Benchmarks
             }
         }
 
-        // ==== Section 2: LAD (L1) regression with outliers -- exact LP (all four backends) vs fast IRLS ====
+        // ==== Section 2: LAD (L1) regression with outliers -- exact LP (all three backends) vs fast IRLS ====
         static void SectionLadFloat(StringBuilder sb)
         {
             sb.AppendLine();
-            sb.AppendLine("--- 2. LAD (L1) regression, gross outliers: exact LP.lad (simplex/interior/revised/dual) " +
+            sb.AppendLine("--- 2. LAD (L1) regression, gross outliers: exact LP.lad (interior/revised/dual) " +
                           "vs fast ladIRLS [float] ---");
             sb.AppendLine(LPBenchmarkFmt.LadHeader());
 
@@ -369,18 +363,6 @@ namespace LinearAlgebra.Benchmarks
                 var objOut = new NativeArray<double>(1, Allocator.Persistent);
                 var itersOut = new NativeArray<int>(1, Allocator.Persistent);
                 var statusOut = new NativeArray<int>(1, Allocator.Persistent);
-
-                // Tableau-simplex LAD row only up to LadSimplexCap -- its O(m*nCols) per-pivot tableau
-                // update makes it the slow tail of this section past there (measured ~101ms already at
-                // m=192, double), the way SparseLadDenseCap caps Section 3's dense interior baseline.
-                if (m <= LPBenchmarkFmt.LadSimplexCap)
-                {
-                    var xLs = new floatN(n, Allocator.Persistent);
-                    var jobLs = new LadJobFloat { A = A, b = b, x = xLs, method = LPMethod.Simplex, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
-                    var statLs = Bench.Time(() => jobLs.Run());
-                    sb.AppendLine(LPBenchmarkFmt.LadRow("float", m, n, "LP.lad-simplex", statLs, itersOut[0], objOut[0]));
-                    xLs.Dispose();
-                }
 
                 var xLi = new floatN(n, Allocator.Persistent);
                 var jobLi = new LadJobFloat { A = A, b = b, x = xLi, method = LPMethod.InteriorPoint, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
@@ -418,9 +400,9 @@ namespace LinearAlgebra.Benchmarks
             }
 
             // ==== Section 2b: LAD fast-route-only sweep -- extended m range, ladFN/ladBR/IRLS ONLY ====
-            // The LP-reformulation backends above (simplex/interior/revised/dual, all via LadJobFloat)
-            // build an O(m) tableau or an O(m x m)-scaled normal/basis structure, so they are both far
-            // over budget at m>=1024 and uninteresting at m=8 (too small to show any asymptotic trend).
+            // The LP-reformulation backends above (interior/revised/dual, all via LadJobFloat) build an
+            // O(m x m)-scaled normal/basis structure, so they are far over budget at m>=1024 and
+            // uninteresting at m=8 (too small to show any asymptotic trend).
             // This second sweep exists purely to bracket the Barrodale-Roberts vs Frisch-Newton
             // crossover the literature (Portnoy & Koenker 1997) predicts around m in [1e3,1e4] --
             // LadRowsM above tops out at 384, where ladBR was still winning every row; LadFastRowsM
@@ -483,7 +465,7 @@ namespace LinearAlgebra.Benchmarks
         static void SectionSparseLadFloat(StringBuilder sb)
         {
             sb.AppendLine();
-            sb.AppendLine("--- 3. LAD over a tall BSR design (m x n, ~8 nnz/row): dense LP.lad (simplex vs interior) " +
+            sb.AppendLine("--- 3. LAD over a tall BSR design (m x n, ~8 nnz/row): dense LP.lad (interior point) " +
                           "vs sparse matrix-free interior point; dense runs only where the m x m normal matrix fits [float] ---");
             sb.AppendLine(LPBenchmarkFmt.LadHeader());
 
@@ -511,8 +493,6 @@ namespace LinearAlgebra.Benchmarks
                 var statusOut = new NativeArray<int>(1, Allocator.Persistent);
 
                 // dense interior-point baseline only where the m x m normal matrix is still practical
-                // (dense simplex omitted here -- Bland's-rule LAD simplex at m=512 is the slow tail;
-                //  it is already benchmarked at appropriate sizes in Section 2)
                 if (m <= LPBenchmarkFmt.SparseLadDenseCap)
                 {
                     var Ad = As.ToDense(Allocator.Persistent);
@@ -539,15 +519,15 @@ namespace LinearAlgebra.Benchmarks
         // Section 1: at the all-logical start every structural cost is already >= 0, so d_j = c_j >= 0
         // for every nonbasic -> dual-feasible immediately, no artificial-bounds phase 1 needed at all --
         // while every row is a >= constraint with rhs > 0, so x=0 (the all-logical basis's primal state)
-        // violates EVERY row at once, forcing a real primal phase 1 on the tableau and revised-primal
-        // backends. This is the fairness counterpoint to Section 1 (which is comparatively primal-
-        // friendly) for the primal-vs-dual default question -- objectives must still agree across all
-        // four backends on the same instance.
+        // violates EVERY row at once, forcing a real primal phase 1 on the revised-primal backend.
+        // This is the fairness counterpoint to Section 1 (which is comparatively primal-friendly) for
+        // the primal-vs-dual default question -- objectives must still agree across all three backends
+        // on the same instance.
         static void SectionDenseCoveringFloat(StringBuilder sb)
         {
             sb.AppendLine();
             sb.AppendLine("--- 4. DENSE covering LP (min cx s.t. Ax>=b, x>=0; A,b,c>=0, m=n) -- dual-favorable " +
-                          "(dual-feasible at start, primal needs a real phase 1): simplex vs interior point vs " +
+                          "(dual-feasible at start, primal needs a real phase 1): interior point vs " +
                           "revised primal vs dual simplex [float] ---");
             sb.AppendLine(LPBenchmarkFmt.SolveHeader());
 
@@ -571,11 +551,6 @@ namespace LinearAlgebra.Benchmarks
                 var itersOut = new NativeArray<int>(1, Allocator.Persistent);
                 var statusOut = new NativeArray<int>(1, Allocator.Persistent);
 
-                var xS = new floatN(n, Allocator.Persistent);
-                var jobS = new LpSolveJobFloat { A = A, b = b, c = c, senses = senses, x = xS, method = LPMethod.Simplex, maxIter = 0, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
-                var statS = Bench.Time(() => jobS.Run());
-                sb.AppendLine(LPBenchmarkFmt.SolveRow("float", n, m, "simplex", statS, itersOut[0], objOut[0]));
-
                 var xI = new floatN(n, Allocator.Persistent);
                 var jobI = new LpSolveJobFloat { A = A, b = b, c = c, senses = senses, x = xI, method = LPMethod.InteriorPoint, maxIter = 0, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statI = Bench.Time(() => jobI.Run());
@@ -594,7 +569,7 @@ namespace LinearAlgebra.Benchmarks
                 objOut.Dispose(); itersOut.Dispose(); statusOut.Dispose();
                 senses.Dispose();
                 A.Dispose(); b.Dispose(); c.Dispose();
-                xS.Dispose(); xI.Dispose(); xR.Dispose(); xD.Dispose();
+                xI.Dispose(); xR.Dispose(); xD.Dispose();
             }
         }
 
@@ -603,14 +578,14 @@ namespace LinearAlgebra.Benchmarks
         // appends ONE extra row: a duplicate of row 0 with sense >= and rhs b0+10. Row 0 demands
         // A0.x <= b0; the new row demands A0.x >= b0+10 -- those two can never hold simultaneously
         // regardless of every other row/variable, so the augmented LP is infeasible by construction with
-        // no subtler failure mode to get wrong. All four backends attempt the SAME augmented instance;
+        // no subtler failure mode to get wrong. All three backends attempt the SAME augmented instance;
         // the STATUS column (not objective -- see InfeasRow's doc comment) shows which ones actually
         // certify Infeasible.
         static void SectionInfeasibleFloat(StringBuilder sb)
         {
             sb.AppendLine();
             sb.AppendLine("--- 5. Infeasibility detection: Section-1-style dense LP + one contradictory duplicated " +
-                          "row (row 0 as both <= b0 and >= b0+10) -- simplex vs interior point vs revised primal " +
+                          "row (row 0 as both <= b0 and >= b0+10) -- interior point vs revised primal " +
                           "vs dual simplex [float] ---");
             sb.AppendLine(LPBenchmarkFmt.InfeasHeader());
 
@@ -646,11 +621,6 @@ namespace LinearAlgebra.Benchmarks
                 // LPStatus and formats the name there. See InfeasRow's doc comment for why the int
                 // (not the enum, not a template-built string) is what crosses the template/harness
                 // assembly boundary.
-                var xS = new floatN(n, Allocator.Persistent);
-                var jobS = new LpSolveJobFloat { A = A, b = b, c = c, senses = senses, x = xS, method = LPMethod.Simplex, maxIter = 0, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
-                var statS = Bench.Time(() => jobS.Run());
-                sb.AppendLine(LPBenchmarkFmt.InfeasRow("float", n, mAug, "simplex", statS, itersOut[0], statusOut[0]));
-
                 var xI = new floatN(n, Allocator.Persistent);
                 var jobI = new LpSolveJobFloat { A = A, b = b, c = c, senses = senses, x = xI, method = LPMethod.InteriorPoint, maxIter = 0, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statI = Bench.Time(() => jobI.Run());
@@ -670,7 +640,7 @@ namespace LinearAlgebra.Benchmarks
                 senses.Dispose();
                 Abase.Dispose(); x0.Dispose(); Ax0.Dispose(); bbase.Dispose(); c.Dispose();
                 A.Dispose(); b.Dispose();
-                xS.Dispose(); xI.Dispose(); xR.Dispose(); xD.Dispose();
+                xI.Dispose(); xR.Dispose(); xD.Dispose();
             }
         }
     }

@@ -293,8 +293,8 @@ namespace LinearAlgebra
             fProxy realINF = (fProxy)1e30;
 
             // Artificial-bounds dual phase 1 uses a box scaled to the PROBLEM's own data magnitude
-            // (matching simplexCore's bScale convention) rather than HiGHS's fixed [0, 1e7] (tuned for
-            // HiGHS's internally-SCALED problem data): a literal 1e7 against O(1) problem data induces
+            // rather than HiGHS's fixed [0, 1e7] (tuned for HiGHS's internally-SCALED problem data):
+            // a literal 1e7 against O(1) problem data induces
             // an xB magnitude whose float rounding error can swamp feasTol. 100x the largest |cost|/
             // |rhs| entry is still far beyond where any genuine optimum would sit for a well-posed LP,
             // while keeping the induced rounding well under feasTol.

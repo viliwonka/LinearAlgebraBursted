@@ -24,7 +24,8 @@ namespace LinearAlgebra
         //
         // Detects only Optimal vs MaxIterations: unlike the simplex backend it does not emit exact
         // infeasibility / unboundedness certificates (that needs a homogeneous self-dual embedding).
-        // For those certificates, or for exact vertex solutions, use LPMethod.Simplex.
+        // For those certificates, or for exact vertex solutions, use LPMethod.RevisedSimplex or
+        // LPMethod.DualSimplex.
         //
         // Job-safe: all scratch is Allocator.Temp and disposed before returning.
         // ============================================================================================

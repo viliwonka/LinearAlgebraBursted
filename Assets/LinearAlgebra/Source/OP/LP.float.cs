@@ -20,8 +20,7 @@ namespace LinearAlgebra
     //     subject to  Aᵢ·x  {≤, =, ≥}  bᵢ    (per-row sense in `senses`)
     //                 x ≥ 0
     //
-    // All four backends reach the same optimal vertex on a bounded, feasible problem (see LPMethod):
-    //   * Simplex        -- two-phase dense tableau, Bland's anti-cycling rule (this file).
+    // All three backends reach the same optimal vertex on a bounded, feasible problem (see LPMethod):
     //   * InteriorPoint  -- Mehrotra predictor-corrector (LP.InteriorPoint.float.cs).
     //   * RevisedSimplex -- bounded-variable primal revised simplex (LP.RevisedSimplex.float.cs).
     //   * DualSimplex    -- bounded-variable dual revised simplex (LP.DualSimplex.float.cs).
@@ -51,8 +50,7 @@ namespace LinearAlgebra
         /// <param name="method">Backend (default RevisedSimplex — fastest exact backend at every
         /// benchmarked size on cold solves and the fastest infeasibility certifier (1-2 pivots);
         /// pick <see cref="LPMethod.DualSimplex"/> explicitly for re-solves from a near-dual-feasible
-        /// state, <see cref="LPMethod.InteriorPoint"/> for very ill-conditioned vertices, and
-        /// <see cref="LPMethod.Simplex"/> (dense tableau) as the reference implementation.</param>
+        /// state, <see cref="LPMethod.InteriorPoint"/> for very ill-conditioned vertices.</param>
         /// <param name="maxIter">Pivot/iteration budget; ≤0 picks a size-based default.</param>
         public static LPInfo solve(in floatMxN A, in floatN b, in floatN c,
                                    in NativeArray<ConstraintSense> senses,
@@ -66,8 +64,6 @@ namespace LinearAlgebra
             if (senses.Length != m) throw new ArgumentException("LP.solve: senses.Length must equal A.M_Rows");
             if (x.N != n) throw new ArgumentException("LP.solve: x.N must equal A.N_Cols");
 
-            if (method == LPMethod.Simplex)
-                return simplexCore(in A, in b, in c, in senses, ref x, out objective, maxIter);
             if (method == LPMethod.RevisedSimplex)
                 return revisedSimplexCore(in A, in b, in c, in senses, ref x, out objective, maxIter);
             if (method == LPMethod.DualSimplex)
@@ -378,9 +374,7 @@ namespace LinearAlgebra
             for (int i = 0; i < 2 * m; i++) clad[2 * n + i] = (float)1;   // cost 1 on every u, v
 
             LPInfo info;
-            if (method == LPMethod.Simplex)
-                info = simplexCore(in Alad, in blad, in clad, in senses, ref xstd, out objective, maxIter);
-            else if (method == LPMethod.RevisedSimplex)
+            if (method == LPMethod.RevisedSimplex)
                 info = revisedSimplexCore(in Alad, in blad, in clad, in senses, ref xstd, out objective, maxIter);
             else if (method == LPMethod.DualSimplex)
                 info = dualSimplexCore(in Alad, in blad, in clad, in senses, ref xstd, out objective, maxIter);
@@ -393,242 +387,5 @@ namespace LinearAlgebra
             return info;
         }
 
-        // ============================================================================================
-        // Two-phase dense tableau simplex.
-        //
-        // Builds standard form  min cᵀx  s.t.  M x = r, x ≥ 0  by (per row) normalizing rhs ≥ 0,
-        // then adding one slack/surplus per inequality and one artificial per row that lacks a natural
-        // unit-column basis (every = row, and every ≥ row / negated ≤ row). Column layout:
-        //     [ structural (n) | slack (nSlack) | artificial (nArt) ]
-        // Phase 1 minimizes Σ artificials to a feasible vertex (empty feasible region ⇒ Infeasible).
-        // Phase 2 minimizes cᵀx from that vertex (no limiting ratio on an improving column ⇒ Unbounded).
-        // Both reduced-cost rows are carried through every pivot, so phase 2 starts already priced-out
-        // against phase 1's terminal basis. Bland's rule (entering = smallest index with negative
-        // reduced cost; leaving = min-ratio, ties → smallest basic-variable index) precludes cycling.
-        // ============================================================================================
-        static LPInfo simplexCore(in floatMxN A, in floatN b, in floatN c,
-                                  in NativeArray<ConstraintSense> senses,
-                                  ref floatN xStruct, out double objective, int maxIter)
-        {
-            int m = A.M_Rows, n = A.N_Cols;
-
-            // --- pass 1: normalize each row to rhs ≥ 0, decide slack sign & who needs an artificial ---
-            var rowNeg = new NativeArray<bool>(m, Allocator.Temp);
-            var slackSign = new NativeArray<int>(m, Allocator.Temp);   // +1, −1, or 0 (equality: no slack)
-            var needsArt = new NativeArray<bool>(m, Allocator.Temp);
-            int nSlack = 0, nArt = 0;
-            double bScale = 0;
-
-            for (int i = 0; i < m; i++)
-            {
-                bool neg = b[i] < (float)0;
-                rowNeg[i] = neg;
-                bScale = math.max(bScale, math.abs((double)b[i]));
-
-                // Sense as seen AFTER a potential row negation (negation flips ≤ ↔ ≥, leaves = alone).
-                ConstraintSense s = senses[i];
-                int dir = (int)s;                       // −1 ≤, 0 =, +1 ≥
-                if (neg) dir = -dir;
-
-                if (dir == 0) { slackSign[i] = 0; needsArt[i] = true; }        // equality
-                else { nSlack++; if (dir < 0) { slackSign[i] = 1; needsArt[i] = false; }   // ≤ : +slack, natural basis
-                                 else { slackSign[i] = -1; needsArt[i] = true; } }          // ≥ : −surplus, needs artificial
-                if (needsArt[i]) nArt++;
-            }
-
-            int nCols = n + nSlack + nArt;
-
-            // --- build tableau T (m × nCols), rhs, both reduced-cost rows, basis, artificial mask -----
-            var T = new floatMxN(m, nCols, Allocator.Temp);      // zero-initialized
-            var rhs = new floatN(m, Allocator.Temp);
-            var cost1 = new floatN(nCols, Allocator.Temp);       // phase-1 reduced costs (Σ artificials)
-            var cost2 = new floatN(nCols, Allocator.Temp);       // phase-2 reduced costs (cᵀx)
-            var basis = new NativeArray<int>(m, Allocator.Temp);
-            var isArt = new NativeArray<bool>(nCols, Allocator.Temp);
-
-            int slackCol = n, artCol = n + nSlack;
-            for (int i = 0; i < m; i++)
-            {
-                float sgn = rowNeg[i] ? (float)(-1) : (float)1;
-                for (int j = 0; j < n; j++) T[i, j] = sgn * A[i, j];
-                rhs[i] = sgn * b[i];
-
-                int myBasis;
-                if (slackSign[i] != 0)
-                {
-                    T[i, slackCol] = (float)slackSign[i];
-                    myBasis = slackSign[i] > 0 ? slackCol : -1;   // −surplus is not a basis column
-                    slackCol++;
-                }
-                else myBasis = -1;
-
-                if (needsArt[i])
-                {
-                    T[i, artCol] = (float)1;
-                    isArt[artCol] = true;
-                    myBasis = artCol;      // artificial is the basic variable for this row
-                    artCol++;
-                }
-                basis[i] = myBasis;
-            }
-
-            // Original costs: phase 1 = 1 on artificials; phase 2 = c on structural, 0 elsewhere.
-            // Price both rows out against the initial basis (reduced cost = origCost − c_B·T).
-            for (int j = 0; j < n; j++) cost2[j] = c[j];
-            for (int j = 0; j < nCols; j++) if (isArt[j]) cost1[j] = (float)1;
-            unsafe
-            {
-                float* tp = T.Data.Ptr; float* c1p = cost1.Data.Ptr; float* c2p = cost2.Data.Ptr;
-                for (int i = 0; i < m; i++)
-                {
-                    int bcol = basis[i];
-                    if (bcol < 0) continue;
-                    float c1b = isArt[bcol] ? (float)1 : (float)0;
-                    float c2b = bcol < n ? c[bcol] : (float)0;
-                    float* rowI = tp + (long)i * nCols;
-                    if (c1b != (float)0) UnsafeOP.axpy(c1p, rowI, -c1b, nCols);
-                    if (c2b != (float)0) UnsafeOP.axpy(c2p, rowI, -c2b, nCols);
-                }
-            }
-
-            // Simplex needs a tolerance LOOSER than machine precision: near-zero reduced costs and
-            // near-zero pivot elements are noise, not signal. Consts.floatZeroThreshold is 1e-6
-            // (float) but 1e-14 (double) -- the latter is machine-tight and makes the double solve
-            // over-sensitive to roundoff on larger, degenerate problems (near-zero pivots amplify,
-            // phase-1 leaves a spurious residual). Floor both tolerances so double stays sane while
-            // float is unchanged (its 1e-6 / sqrt-eps values already dominate the floors).
-            float pivTol = math.max(Consts.floatZeroThreshold, (float)1e-9);
-            double feasTol = math.max(math.sqrt((double)Consts.floatEpsilon), 1e-7) * (1.0 + bScale);
-            int budget = maxIter > 0 ? maxIter : 50 * (m + nCols) + 200;
-
-            LPStatus status = LPStatus.Optimal;
-            int iters = 0;
-
-            // ---- phase 1: drive artificials to zero ----
-            if (nArt > 0)
-            {
-                while (true)
-                {
-                    if (iters >= budget) { status = LPStatus.MaxIterations; break; }
-                    int enter = -1;
-                    for (int j = 0; j < nCols; j++) if (cost1[j] < -pivTol) { enter = j; break; }
-                    if (enter < 0) break;                                   // phase-1 optimal
-                    int leave = RatioTest(T, rhs, basis, m, enter, pivTol);
-                    if (leave < 0) break;                                   // Σ artificials is bounded below by 0
-                    Pivot(T, rhs, cost1, cost2, basis, m, nCols, leave, enter);
-                    iters++;
-                }
-
-                if (status == LPStatus.Optimal)
-                {
-                    double infeas = 0;
-                    for (int i = 0; i < m; i++) if (basis[i] >= 0 && isArt[basis[i]]) infeas += (double)rhs[i];
-                    if (infeas > feasTol) status = LPStatus.Infeasible;
-                    else
-                    {
-                        // Pivot any still-basic artificial out of the basis onto a real column so
-                        // phase 2 never has to reason about it (redundant rows keep a zero-valued
-                        // artificial basic -- harmless, it is excluded from entering below).
-                        for (int i = 0; i < m; i++)
-                        {
-                            if (basis[i] < 0 || !isArt[basis[i]]) continue;
-                            int piv = -1;
-                            for (int j = 0; j < nCols; j++)
-                                if (!isArt[j] && math.abs(T[i, j]) > pivTol) { piv = j; break; }
-                            if (piv >= 0) Pivot(T, rhs, cost1, cost2, basis, m, nCols, i, piv);
-                        }
-                    }
-                }
-            }
-
-            // ---- phase 2: minimize cᵀx (artificials forbidden to re-enter) ----
-            if (status == LPStatus.Optimal)
-            {
-                while (true)
-                {
-                    if (iters >= budget) { status = LPStatus.MaxIterations; break; }
-                    int enter = -1;
-                    for (int j = 0; j < nCols; j++) if (!isArt[j] && cost2[j] < -pivTol) { enter = j; break; }
-                    if (enter < 0) break;                                   // optimal
-                    int leave = RatioTest(T, rhs, basis, m, enter, pivTol);
-                    if (leave < 0) { status = LPStatus.Unbounded; break; }
-                    Pivot(T, rhs, cost1, cost2, basis, m, nCols, leave, enter);
-                    iters++;
-                }
-            }
-
-            // ---- extract structural solution & objective ----
-            for (int j = 0; j < n; j++) xStruct[j] = (float)0;
-            for (int i = 0; i < m; i++)
-            {
-                int col = basis[i];
-                if (col >= 0 && col < n) xStruct[col] = rhs[i] > (float)0 ? rhs[i] : (float)0;
-            }
-            double obj = 0;
-            for (int j = 0; j < n; j++) obj += (double)c[j] * (double)xStruct[j];
-            objective = obj;
-
-            rowNeg.Dispose(); slackSign.Dispose(); needsArt.Dispose();
-            T.Dispose(); rhs.Dispose(); cost1.Dispose(); cost2.Dispose(); basis.Dispose(); isArt.Dispose();
-
-            return new LPInfo { status = status, iterations = iters, objective = obj };
-        }
-
-        // Bland ratio test: leaving row = min rhs/T[·,enter] over positive entries, ties broken by the
-        // smallest basic-variable index. Returns −1 when the column has no positive entry (unbounded).
-        static int RatioTest(floatMxN T, floatN rhs, NativeArray<int> basis, int m, int enter, float pivTol)
-        {
-            int leave = -1;
-            float best = (float)0;
-            for (int i = 0; i < m; i++)
-            {
-                float a = T[i, enter];
-                if (a > pivTol)
-                {
-                    float ratio = rhs[i] / a;
-                    if (leave < 0 || ratio < best - pivTol) { best = ratio; leave = i; }
-                    else if (ratio <= best + pivTol && basis[i] < basis[leave]) { leave = i; }
-                }
-            }
-            return leave;
-        }
-
-        // Gauss-Jordan pivot on (prow, pcol): normalize the pivot row, eliminate the pivot column from
-        // every other constraint row AND both reduced-cost rows, then record the new basic variable.
-        static void Pivot(floatMxN T, floatN rhs, floatN cost1, floatN cost2,
-                          NativeArray<int> basis, int m, int nCols, int prow, int pcol)
-        {
-            unsafe
-            {
-                float* tp = T.Data.Ptr;
-                float* rowP = tp + (long)prow * nCols;
-
-                // The pivot-row normalize and every eliminate `row -= f * pivotRow` is an elementwise
-                // axpy over unit-stride columns: normalize into the prow pointer, and route each
-                // eliminate (constraint rows i != prow, and the two reduced-cost rows, all distinct
-                // buffers from the pivot row) through UnsafeOP.axpy ([NoAlias]). Bitwise identical to
-                // the scalar form: (-f)*rowP[j] added to row[j] equals row[j] - f*rowP[j] in IEEE.
-                float inv = (float)1 / rowP[pcol];
-                for (int j = 0; j < nCols; j++) rowP[j] *= inv;
-                rhs[prow] *= inv;
-
-                for (int i = 0; i < m; i++)
-                {
-                    if (i == prow) continue;
-                    float* rowI = tp + (long)i * nCols;
-                    float f = rowI[pcol];
-                    if (f == (float)0) continue;
-                    UnsafeOP.axpy(rowI, rowP, -f, nCols);
-                    rhs[i] -= f * rhs[prow];
-                }
-
-                float f1 = cost1[pcol];
-                if (f1 != (float)0) UnsafeOP.axpy(cost1.Data.Ptr, rowP, -f1, nCols);
-                float f2 = cost2[pcol];
-                if (f2 != (float)0) UnsafeOP.axpy(cost2.Data.Ptr, rowP, -f2, nCols);
-            }
-
-            basis[prow] = pcol;
-        }
     }
 }

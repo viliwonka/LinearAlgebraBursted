@@ -14,9 +14,9 @@ namespace LinearAlgebra
 {
     // ================================================================================================
     // Bounded-variable PRIMAL revised simplex -- the LPMethod.RevisedSimplex backend, stage 1 of the
-    // HiGHS-style dense revised-simplex port. Instead of updating a full m x (n+m) tableau every pivot
-    // (simplexCore, LP.double.cs -- left untouched), this keeps the ORIGINAL constraint matrix and an
-    // LU-factored basis, reconstructing whatever a pivot needs via triangular solves (FTRAN/BTRAN)
+    // HiGHS-style dense revised-simplex port. Instead of updating a full m x (n+m) tableau every pivot,
+    // this keeps the ORIGINAL constraint matrix and an LU-factored basis, reconstructing whatever a
+    // pivot needs via triangular solves (FTRAN/BTRAN)
     // against a Product-Form-of-the-Inverse (PFI) eta file. Bounded variables are native (no
     // slack row-doubling for ranges) and periodic refactorization bounds error growth instead of
     // letting it accumulate in a tableau.
@@ -62,9 +62,10 @@ namespace LinearAlgebra
 
             for (int j = 0; j < n; j++) x[j] = xFull[j];
 
-            // Fresh recompute from the caller's ORIGINAL c -- matches simplexCore's "report objective
-            // from fresh recompute cᵀx" convention. Accumulated in double for reporting precision
-            // regardless of solve dtype (a pure local, never fed back into any array -- see file header).
+            // Fresh recompute from the caller's ORIGINAL c -- report objective as cᵀx recomputed, not
+            // whatever the solve's internal bookkeeping carried. Accumulated in double for reporting
+            // precision regardless of solve dtype (a pure local, never fed back into any array -- see
+            // file header).
             double obj = 0;
             for (int j = 0; j < n; j++) obj += (double)c[j] * (double)xFull[j];
             objective = obj;
@@ -241,8 +242,7 @@ namespace LinearAlgebra
         }
 
         // Sum of basic-variable bound violations (the phase-1 composite objective's value). 0 exactly
-        // at a primal-feasible basis. A pure-local double accumulator (see file header), matching
-        // simplexCore's own phase-1 infeasibility sum.
+        // at a primal-feasible basis. A pure-local double accumulator (see file header).
         internal static double InfeasibilitySum(doubleN xB, NativeArray<int> basis, doubleN lower, doubleN upper, int m, double feasTol)
         {
             double s = 0;
@@ -454,10 +454,9 @@ namespace LinearAlgebra
                                                  int maxIter, doubleN xFull,
                                                  NativeArray<int> basis, NativeArray<byte> status)
         {
-            // Per-dtype tolerances, derived from the SAME Consts the tableau simplex (simplexCore)
-            // already uses. pivTol: absolute pivot-rejection floor. feasTol/dualTol: feasibility/dual
-            // tolerance shared by the ratio test and entering-column pricing. Computed inline, not via
-            // a shared helper -- see file header.
+            // Per-dtype tolerances, derived from Consts. pivTol: absolute pivot-rejection floor.
+            // feasTol/dualTol: feasibility/dual tolerance shared by the ratio test and entering-column
+            // pricing. Computed inline, not via a shared helper -- see file header.
             double pivTol = math.max(Consts.doubleZeroThreshold, (double)1e-9);
             double feasTol = (double)math.max(math.sqrt((double)Consts.doubleEpsilon), 1e-7);
             double dualTol = feasTol;

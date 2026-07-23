@@ -43,21 +43,21 @@ public class doubleLPTests
             SparseWyndorGlass,  // sparse (BSR) LP.solve, Wyndor Glass        -> (2,6), Z 36
             SparseVsDenseLp,    // sparse LP.solve == dense LP.solve (mixed <=/>= senses)
             RevisedWyndorGlass, // revised simplex, Wyndor Glass              -> (2,6), Z 36
-            RevisedRandomN24,   // revised vs tableau simplex, random feasible LP n=24
-            RevisedRandomN48,   // revised vs tableau simplex, random feasible LP n=48
+            RevisedRandomN24,   // revised vs dual simplex, random feasible LP n=24
+            RevisedRandomN48,   // revised vs dual simplex, random feasible LP n=48
             RevisedMixedSense,  // revised simplex, mixed <=/>=/<= senses (phase 1) -> (1,3), obj -7
-            RevisedLad,         // revised-simplex LP.lad == tableau-simplex LP.lad (outlier set)
+            RevisedLad,         // revised-simplex LP.lad == dual-simplex LP.lad (outlier set)
 
             // ==== LPMethod.DualSimplex ====
             DualWyndorGlass,    // dual simplex, Wyndor Glass                 -> (2,6), Z 36
-            DualRandomN24,      // dual vs tableau simplex, random feasible LP n=24
-            DualRandomN48,      // dual vs tableau simplex, random feasible LP n=48
+            DualRandomN24,      // dual vs revised simplex, random feasible LP n=24
+            DualRandomN48,      // dual vs revised simplex, random feasible LP n=48
             DualMixedSense,     // dual simplex, mixed <=/>=/<= senses (dual phase 1) -> (1,3), obj -7
-            DualBoxedFlips,     // dual simplex, all-negative-cost LP -> artificial bounds + BFRT vs tableau
+            DualBoxedFlips,     // dual simplex, all-negative-cost LP -> artificial bounds + BFRT vs revised
             DegenerateDuplicatedRows, // duplicated-row LP: revised AND dual simplex reach the right objective
-            DualLad,            // dual-simplex LP.lad == tableau-simplex LP.lad (outlier set)
-            RevisedAndDualRandomN96, // n=96 (>64 pivots): both revised backends vs tableau, 3 seeds
-            RevisedDenseCovering, // revised simplex, dense covering LP (Ax>=b, x>=0, A,b,c>0) vs tableau
+            DualLad,            // dual-simplex LP.lad == revised-simplex LP.lad (outlier set)
+            RevisedAndDualRandomN96, // n=96 (>64 pivots): both revised backends vs interior-point, 3 seeds
+            RevisedDenseCovering, // revised simplex, dense covering LP (Ax>=b, x>=0, A,b,c>0) vs dual
 
             // ==== LPBasis warm-start -- job-safe via the
             // created-but-unpopulated `new LPBasis(n,m,Allocator.Temp)` cold-seed path (LP.solve seeds the
@@ -691,7 +691,7 @@ public class doubleLPTests
             for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
 
             var xS = new doubleN(n, Allocator.Temp);
-            var infoS = LP.solve(in A, in b, in c, in senses, ref xS, out double objS, LPMethod.Simplex);
+            var infoS = LP.solve(in A, in b, in c, in senses, ref xS, out double objS, LPMethod.DualSimplex);
             var xR = new doubleN(n, Allocator.Temp);
             var infoR = LP.solve(in A, in b, in c, in senses, ref xR, out double objR, LPMethod.RevisedSimplex);
 
@@ -730,7 +730,7 @@ public class doubleLPTests
             senses.Dispose();
         }
 
-        // LP.lad via the revised-simplex backend must reach the SAME L1 residual as the tableau-simplex
+        // LP.lad via the revised-simplex backend must reach the SAME L1 residual as the dual-simplex
         // backend on the same outlier-laden data (BuildLine's outlier set: 4 collinear points + 1 gross
         // outlier -> line b=t, L1 residual |10-2| = 8).
         void RevisedLad()
@@ -739,7 +739,7 @@ public class doubleLPTests
             var xS = new doubleN(2, Allocator.Temp);
             var xR = new doubleN(2, Allocator.Temp);
 
-            var infoS = LP.lad(in A, in b, ref xS, out double objS, LPMethod.Simplex);
+            var infoS = LP.lad(in A, in b, ref xS, out double objS, LPMethod.DualSimplex);
             var infoR = LP.lad(in A, in b, ref xR, out double objR, LPMethod.RevisedSimplex);
 
             AssertTrue(infoS.status == LPStatus.Optimal);
@@ -751,7 +751,7 @@ public class doubleLPTests
 
         // ==== LPMethod.DualSimplex (bounded-variable dual revised simplex) -- dual steepest edge +
         // long-step Harris/BFRT ratio test + artificial-bounds dual phase 1, validated against the
-        // tableau simplex baseline ====
+        // revised-simplex baseline ====
 
         // Wyndor Glass known-answer vertex, via the dual-simplex backend.
         void DualWyndorGlass()
@@ -794,7 +794,7 @@ public class doubleLPTests
             for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
 
             var xS = new doubleN(n, Allocator.Temp);
-            var infoS = LP.solve(in A, in b, in c, in senses, ref xS, out double objS, LPMethod.Simplex);
+            var infoS = LP.solve(in A, in b, in c, in senses, ref xS, out double objS, LPMethod.RevisedSimplex);
             var xD = new doubleN(n, Allocator.Temp);
             var infoD = LP.solve(in A, in b, in c, in senses, ref xD, out double objD, LPMethod.DualSimplex);
 
@@ -841,7 +841,7 @@ public class doubleLPTests
         // simultaneously-boxed candidates competing for 2 rows, the dual ratio test's long-step walk has
         // to pass several breakpoints per leaving row, so a wrong BFRT accumulation (not just a wrong
         // single pivot) would very likely surface as a wrong objective here. Correctness is checked
-        // against the tableau simplex baseline (hand-deriving this 6-variable optimum is error-prone;
+        // against the revised-simplex baseline (hand-deriving this 6-variable optimum is error-prone;
         // cross-validation is the established pattern throughout this test suite).
         void DualBoxedFlips()
         {
@@ -856,7 +856,7 @@ public class doubleLPTests
             senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.LessEqual;
 
             var xS = new doubleN(6, Allocator.Temp);
-            var infoS = LP.solve(in A, in b, in c, in senses, ref xS, out double objS, LPMethod.Simplex);
+            var infoS = LP.solve(in A, in b, in c, in senses, ref xS, out double objS, LPMethod.RevisedSimplex);
             var xD = new doubleN(6, Allocator.Temp);
             var infoD = LP.solve(in A, in b, in c, in senses, ref xD, out double objD, LPMethod.DualSimplex);
 
@@ -903,7 +903,7 @@ public class doubleLPTests
             senses.Dispose();
         }
 
-        // LP.lad via the dual-simplex backend must reach the SAME L1 residual as the tableau-simplex
+        // LP.lad via the dual-simplex backend must reach the SAME L1 residual as the revised-simplex
         // backend on the same outlier-laden data (BuildLine's outlier set: 4 collinear points + 1 gross
         // outlier -> line b=t, L1 residual |10-2| = 8).
         void DualLad()
@@ -912,7 +912,7 @@ public class doubleLPTests
             var xS = new doubleN(2, Allocator.Temp);
             var xD = new doubleN(2, Allocator.Temp);
 
-            var infoS = LP.lad(in A, in b, ref xS, out double objS, LPMethod.Simplex);
+            var infoS = LP.lad(in A, in b, ref xS, out double objS, LPMethod.RevisedSimplex);
             var infoD = LP.lad(in A, in b, ref xD, out double objD, LPMethod.DualSimplex);
 
             AssertTrue(infoS.status == LPStatus.Optimal);
@@ -950,7 +950,7 @@ public class doubleLPTests
                 for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
 
                 var xS = new doubleN(n, Allocator.Temp);
-                var infoS = LP.solve(in A, in b, in c, in senses, ref xS, out double objS, LPMethod.Simplex);
+                var infoS = LP.solve(in A, in b, in c, in senses, ref xS, out double objS, LPMethod.InteriorPoint);
                 var xR = new doubleN(n, Allocator.Temp);
                 var infoR = LP.solve(in A, in b, in c, in senses, ref xR, out double objR, LPMethod.RevisedSimplex);
                 var xD = new doubleN(n, Allocator.Temp);
@@ -960,8 +960,8 @@ public class doubleLPTests
                 AssertTrue(infoR.status == LPStatus.Optimal);
                 AssertTrue(infoD.status == LPStatus.Optimal);
 
-                // n=96 compounds roundoff differently across the three very different pivoting schemes
-                // (tableau Gauss-Jordan vs LU-factored revised primal vs LU-factored dual) more than
+                // n=96 compounds roundoff differently across the three very different algorithms
+                // (interior-point barrier vs LU-factored revised primal vs LU-factored dual) more than
                 // n=24/48 do; float needed loosening to 1e-2 rel here (double stays at the n=24/48 1e-6).
                 double relTol = 1e-6;
                 AssertCloseD(objR, objS, relTol * (1.0 + math.abs(objS)));
@@ -975,9 +975,9 @@ public class doubleLPTests
         // benchmark's Section 6 (dense covering LP, dual-favorable): EVERY row starts primal-infeasible
         // at the all-logical basis (xB=b>0 but the >= logicals' bounds are (-INF,0]), simultaneously, all
         // in the SAME direction. Regression guard: RevisedSimplex must not return Optimal with 0
-        // iterations and objective 0 on this shape -- tableau/interior/dual all agree on the true
+        // iterations and objective 0 on this shape -- revised/interior/dual all agree on the true
         // optimum, so a silent phase-1 bail is wrong, not a precision issue. Cross-checks the
-        // objective against LPMethod.Simplex (the trusted baseline) rather than a hand-derived value,
+        // objective against LPMethod.DualSimplex rather than a hand-derived value,
         // since the random construction doesn't have a closed-form optimum.
         void RevisedDenseCovering()
         {
@@ -996,7 +996,7 @@ public class doubleLPTests
             for (int i = 0; i < m; i++) senses[i] = ConstraintSense.GreaterEqual;
 
             var xS = new doubleN(n, Allocator.Temp);
-            var infoS = LP.solve(in A, in b, in c, in senses, ref xS, out double objS, LPMethod.Simplex);
+            var infoS = LP.solve(in A, in b, in c, in senses, ref xS, out double objS, LPMethod.DualSimplex);
             var xR = new doubleN(n, Allocator.Temp);
             var infoR = LP.solve(in A, in b, in c, in senses, ref xR, out double objR, LPMethod.RevisedSimplex);
 
@@ -1816,10 +1816,11 @@ public class doubleLPTests
         }
     }
 
-    // Simplex and interior point must agree on the objective of a feasible bounded LP (they reach the
-    // same optimal face). Run on the managed thread so a divergence surfaces with a clear message.
+    // Revised simplex and interior point must agree on the objective of a feasible bounded LP (they
+    // reach the same optimal face). Run on the managed thread so a divergence surfaces with a clear
+    // message.
     [Test]
-    public void SimplexAndInteriorPointAgree()
+    public void RevisedSimplexAndInteriorPointAgree()
     {
         var A = new doubleMxN(2, 2, Allocator.Temp);
         A[0, 0] = (double)1; A[0, 1] = (double)1;
@@ -1831,7 +1832,7 @@ public class doubleLPTests
         var senses = new NativeArray<ConstraintSense>(2, Allocator.Temp);
         senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.LessEqual;
 
-        var si = LP.solve(in A, in b, in c, in senses, ref xs, out double objS, LPMethod.Simplex);
+        var si = LP.solve(in A, in b, in c, in senses, ref xs, out double objS, LPMethod.RevisedSimplex);
         var ii = LP.solve(in A, in b, in c, in senses, ref xi, out double objI, LPMethod.InteriorPoint);
 
         Assert.IsTrue(si.status == LPStatus.Optimal);

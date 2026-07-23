@@ -31,18 +31,14 @@ namespace LinearAlgebra
     /// <see cref="ConstraintSense"/>.</summary>
     public enum LPMethod
     {
-        /// <summary>Two-phase dense tableau simplex with Bland's anti-cycling rule. Exact vertex
-        /// solution, fully deterministic, robust at modest dense sizes.</summary>
-        Simplex = 0,
-
         /// <summary>Mehrotra primal-dual interior point. Polynomial, scales to larger/denser LPs,
         /// reuses the Cholesky normal-equation stack; converges to an interior optimum.</summary>
         InteriorPoint = 1,
 
         /// <summary>Bounded-variable PRIMAL revised simplex over an LU-factored basis (HiGHS-lineage):
-        /// FTRAN/BTRAN + a product-form-of-the-inverse eta file replace the tableau's O(mn) per-pivot
-        /// update. Exact vertex solution like <see cref="Simplex"/>, with native bounded variables and
-        /// periodic refactorization instead of tableau error accumulation. Default.</summary>
+        /// FTRAN/BTRAN + a product-form-of-the-inverse eta file replace a dense tableau's O(mn)
+        /// per-pivot update. Exact vertex solution, with native bounded variables and periodic
+        /// refactorization instead of tableau error accumulation. Default.</summary>
         RevisedSimplex = 2,
 
         /// <summary>Bounded-variable DUAL revised simplex (HiGHS-lineage): dual steepest-edge pricing

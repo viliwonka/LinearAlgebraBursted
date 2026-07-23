@@ -60,8 +60,8 @@ namespace LinearAlgebra
         //     from that LP maps straight to QPStatus.Infeasible.
         //
         // Neither piece touches qpActiveSetCore's own contract or tolerances -- the facade is purely an
-        // outer layer, exactly like LP.solve is an outer layer over simplexCore/revisedSimplexCore/
-        // dualSimplexCore/interiorCore.
+        // outer layer, exactly like LP.solve is an outer layer over revisedSimplexCore/dualSimplexCore/
+        // interiorCore.
         // ============================================================================================
 
         /// <summary>
