@@ -16,7 +16,7 @@ namespace LinearAlgebra
     /// copy) and Refactorize (O(m^3) LU).
     ///
     /// LIFECYCLE: standalone, user-allocated -- mirrors <see cref="LPBasis"/> (needs to persist across
-    /// separate solve calls, not arena-scoped). <c>new floatLPCache(n, m, allocator)</c> +
+    /// separate solve calls). <c>new floatLPCache(n, m, allocator)</c> +
     /// <see cref="Dispose"/>. <c>default</c> (or any not-yet-<see cref="IsCreated"/> instance) means "no
     /// cache": <see cref="LP.solve"/>'s cache-taking overload then behaves byte-identically to the plain
     /// <c>ref LPBasis</c> overload.

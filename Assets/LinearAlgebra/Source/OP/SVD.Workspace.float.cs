@@ -36,7 +36,7 @@ namespace LinearAlgebra
             At = (m < n) ? new floatMxN(n, m, allocator) : default;
         }
 
-        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        /// <summary>Dispose when done.</summary>
         public void Dispose()
         {
             S.Dispose();

@@ -16,7 +16,7 @@ namespace LinearAlgebra
         /// N_Cols): output only; prior contents ignored; safe to allocate with uninit: true.
         /// relTol &lt; 0 selects auto tolerance: relTol = max(m, n) * Consts.fProxyZeroThreshold.
         /// Singular values S[j] &lt;= relTol * S[0] are treated as zero.
-        /// Allocates temporaries from A's arena via fProxyTempVec/fProxyTempMat (not an InPlace op).
+        /// Allocates temporaries from Allocator.Temp via fProxyTempVec/fProxyTempMat (not an InPlace op).
         /// Returns a <see cref="RankInfo"/>: <c>rank</c> is the numerical rank used (0 on a hard
         /// failure); <c>status</c> is <see cref="DirectSolveStatus.Success"/> (full rank),
         /// <see cref="DirectSolveStatus.RankDeficient"/> (still-usable, rank &lt; min(m,n)), or
@@ -147,7 +147,7 @@ namespace LinearAlgebra
 
         /// <summary>
         /// pinvSolve allocating wrapper: allocates the SVD scratch (S, k x k singular-vector matrix,
-        /// and A^T for the wide case) from A's arena and delegates to the zero-alloc primitive.
+        /// and A^T for the wide case) from Allocator.Temp and delegates to the zero-alloc primitive.
         /// </summary>
         public static RankInfo pinvSolve(ref fProxyMxN A, in fProxyN b, ref fProxyN x,
                                     fProxy relTol, int maxSweeps)
@@ -168,7 +168,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// pinvSolve using a reusable workspace (Arena.fProxySVDCache(m, n)) — zero-alloc.
+        /// pinvSolve using a reusable workspace (the fProxySVDCache(m, n, allocator) ctor) — zero-alloc.
         /// The workspace must be sized for A's shape (k = min(A.M_Rows, A.N_Cols)); the guards in
         /// the underlying scratch primitive enforce this.
         /// </summary>
@@ -319,7 +319,7 @@ namespace LinearAlgebra
 
         /// <summary>
         /// pseudoInverse allocating wrapper: allocates the SVD scratch (S, k x k singular-vector
-        /// matrix, and A^T for the wide case) from A's arena and delegates to the zero-alloc primitive.
+        /// matrix, and A^T for the wide case) from Allocator.Temp and delegates to the zero-alloc primitive.
         /// </summary>
         public static RankInfo pseudoInverse(ref fProxyMxN A, ref fProxyMxN Aplus,
                                         fProxy relTol, int maxSweeps)
@@ -340,7 +340,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// pseudoInverse using a reusable workspace (Arena.fProxySVDCache(m, n)) — zero-alloc.
+        /// pseudoInverse using a reusable workspace (the fProxySVDCache(m, n, allocator) ctor) — zero-alloc.
         /// The workspace must be sized for A's shape (k = min(A.M_Rows, A.N_Cols)).
         /// </summary>
         public static RankInfo pseudoInverse(ref fProxyMxN A, ref fProxyMxN Aplus,
@@ -498,7 +498,7 @@ namespace LinearAlgebra
             }
         }
 
-        /// <summary>pinvSolve (multi-RHS) allocating wrapper: allocates the SVD scratch from A's arena.</summary>
+        /// <summary>pinvSolve (multi-RHS) allocating wrapper: allocates the SVD scratch from Allocator.Temp.</summary>
         public static RankInfo pinvSolve(ref fProxyMxN A, in fProxyMxN B, ref fProxyMxN X,
                                     fProxy relTol, int maxSweeps)
         {
@@ -517,7 +517,7 @@ namespace LinearAlgebra
             return pinvSolve(ref A, in B, ref X, relTol, maxSweeps, ref S, ref M, ref U, ref At);
         }
 
-        /// <summary>pinvSolve (multi-RHS) using a reusable workspace (Arena.fProxySVDCache(m, n)) — zero-alloc.</summary>
+        /// <summary>pinvSolve (multi-RHS) using a reusable workspace (the fProxySVDCache(m, n, allocator) ctor) — zero-alloc.</summary>
         public static RankInfo pinvSolve(ref fProxyMxN A, in fProxyMxN B, ref fProxyMxN X,
                                     ref fProxySVDCache ws, fProxy relTol, int maxSweeps)
             => pinvSolve(ref A, in B, ref X, relTol, maxSweeps, ref ws.S, ref ws.M, ref ws.U, ref ws.At);

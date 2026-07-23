@@ -8,8 +8,8 @@ divides by N, so `ifft(fft(x)) == x`.
 
 - **`fft(ref re, ref im, in ws)` / `ifft(...)`** — in-place power-of-two transform (throws otherwise —
   use `dft` for arbitrary N). Dispatches to table-indexed radix-4 or mixed-radix (one radix-2 stage +
-  two radix-4 sub-FFTs), covering every power-of-two. Needs a workspace (`arena.floatFFTCache(n)`),
-  built once and reused.
+  two radix-4 sub-FFTs), covering every power-of-two. Needs a workspace
+  (`new floatFFTCache(n, Allocator.Persistent)`), built once and reused.
 - **`rfft(in real, ref re, ref im[, in ws])` / `irfft(...)`** — real input, packs N samples into an
   N/2-point complex FFT and unpacks the half spectrum (`re`/`im` length **N/2+1**; `im[0]`/`im[N/2]`
   always zero).
@@ -18,8 +18,8 @@ divides by N, so `ifft(fft(x)) == x`.
 - `magnitude`/`powerSpectrum`/`phase(in re, in im, ref dest)` — spectrum post-processing.
 
 Workspace `floatFFTCache` (twiddle tables + rfft/mixed-radix scratch) is built once via
-`arena.floatFFTCache(n)`, persistent, disposed with the arena; single-use-at-a-time (one per thread
-for parallel transforms, FFTW "plan" semantics).
+`new floatFFTCache(n, Allocator.Persistent)`, disposed via `.Dispose()`; single-use-at-a-time (one
+per thread for parallel transforms, FFTW "plan" semantics).
 
 ## Usage
 
@@ -28,7 +28,7 @@ once (its twiddle-table build amortizes after ~1–3 transforms) and reuse it fo
 that size:
 
 ```csharp
-var ws = arena.floatFFTCache(1024);   // builds the twiddle table on creation
+var ws = new floatFFTCache(1024, Allocator.Persistent);   // builds the twiddle table on creation
 for (int f = 0; f < frames; f++)
     FFT.fft(ref re, ref im, in ws);   // zero-alloc, reuses the plan
 ```

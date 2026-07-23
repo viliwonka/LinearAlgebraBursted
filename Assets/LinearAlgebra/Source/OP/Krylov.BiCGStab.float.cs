@@ -232,7 +232,7 @@ namespace LinearAlgebra
             return biCGStab(new floatDenseOperator(in A), in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, maxIter, tol);
         }
 
-        /// <summary>BiCGSTAB over a dense matrix -- allocates five scratch vectors from the arena.</summary>
+        /// <summary>BiCGSTAB over a dense matrix -- allocates five scratch vectors from Allocator.Temp.</summary>
         public static SolveInfo biCGStab(in floatMxN A, in floatN b, ref floatN x, int maxIter, float tol)
         {
             floatN r     = b.floatTempVec(A.M_Rows);
@@ -260,7 +260,7 @@ namespace LinearAlgebra
             return biCGStab(new floatBSROperator(in A), in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, maxIter, tol);
         }
 
-        /// <summary>BiCGSTAB over a BSR matrix -- allocates five scratch vectors from the arena.</summary>
+        /// <summary>BiCGSTAB over a BSR matrix -- allocates five scratch vectors from Allocator.Temp.</summary>
         public static SolveInfo biCGStab(in floatBSR A, in floatN b, ref floatN x, int maxIter, float tol)
         {
             floatN r     = b.floatTempVec(A.M_Rows);

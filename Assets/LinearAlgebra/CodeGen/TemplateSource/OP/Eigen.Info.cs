@@ -151,7 +151,7 @@ namespace LinearAlgebra
     /// Implicitly converts to <c>bool</c> (== <see cref="Solved"/>) for use in <c>if (...)</c>:
     /// <code>
     ///   if (Eigen.lanczos(in A, ref ws, ref eigenvalues, steps)) { ... }
-    ///   var eig = Eigen.lanczos(ref arena, in A, steps, out LanczosInfo info);
+    ///   var eig = Eigen.lanczos(in A, steps, out LanczosInfo info);
     ///   if (info.Solved) Debug.Log(info.produced);
     /// </code>
     ///

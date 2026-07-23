@@ -70,7 +70,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>Allocating wrapper: same as the ref-dest <c>rowHashes</c> overload, but returns a
-        /// fresh arena-backed uint buffer (a uintN) instead of writing into a caller-provided one.</summary>
+        /// fresh uint buffer (a uintN, from Allocator.Temp) instead of writing into a caller-provided one.</summary>
         public static uintN rowHashes(in doubleMxN A, uint seed = 0)
         {
             var dest = A.uintVec(A.M_Rows);
@@ -82,7 +82,7 @@ namespace LinearAlgebra
         /// Writes one xxHash32 value per column of <paramref name="A"/> into <paramref name="dest"/> -
         /// dest[c] equals Hash.hash of column c extracted as a standalone vector, given the same
         /// seed. Columns are STRIDED (not contiguous, under row-major storage), so each column is
-        /// first gathered into a reused scratch vector (drawn once from A's arena Temp pool, refilled
+        /// first gathered into a reused scratch vector (drawn once from Allocator.Temp, refilled
         /// per column) before hashing - this makes colHashes slower than rowHashes (an O(M) gather per
         /// column vs. a direct pointer slice per row), but it is required for correctness: streaming
         /// the strided bytes through xxHash32's block algorithm in column order would NOT produce the
@@ -111,7 +111,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>Allocating wrapper: same as the ref-dest <c>colHashes</c> overload, but returns a
-        /// fresh arena-backed uint buffer (a uintN) instead of writing into a caller-provided one.</summary>
+        /// fresh uint buffer (a uintN, from Allocator.Temp) instead of writing into a caller-provided one.</summary>
         public static uintN colHashes(in doubleMxN A, uint seed = 0)
         {
             var dest = A.uintVec(A.N_Cols);

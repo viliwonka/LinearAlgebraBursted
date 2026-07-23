@@ -256,7 +256,7 @@ namespace LinearAlgebra
 
         /// <summary>Block-BiCGSTAB over a dense NON-symmetric <see cref="fProxyMxN"/> A (n x n) with an
         /// s x n block B, via <see cref="fProxyDenseOperatorGeneral"/> (general block apply). Allocates
-        /// block scratch from the arena.</summary>
+        /// block scratch from Allocator.Temp.</summary>
         public static BlockSolveInfo bbiCGStab(in fProxyMxN A, in fProxyMxN B, ref fProxyMxN X, int maxIter, fProxy tol)
         {
             int s = B.M_Rows, n = A.M_Rows;
@@ -283,7 +283,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>Block-BiCGSTAB over a block-sparse (BSR) non-symmetric A with an s x n block B.
-        /// Allocates block scratch from the arena.</summary>
+        /// Allocates block scratch from Allocator.Temp.</summary>
         public static BlockSolveInfo bbiCGStab(in fProxyBSR A, in fProxyMxN B, ref fProxyMxN X, int maxIter, fProxy tol)
         {
             int s = B.M_Rows, n = A.M_Rows;

@@ -219,7 +219,7 @@ namespace LinearAlgebra
             return tfqmr(new doubleDenseOperator(in A), in b, ref x, ref rHat0, ref u, ref w, ref v, ref au, ref d, maxIter, tol);
         }
 
-        /// <summary>TFQMR over a dense matrix -- allocates six scratch vectors from the arena.</summary>
+        /// <summary>TFQMR over a dense matrix -- allocates six scratch vectors from Allocator.Temp.</summary>
         public static SolveInfo tfqmr(in doubleMxN A, in doubleN b, ref doubleN x, int maxIter, double tol)
         {
             doubleN rHat0 = b.doubleTempVec(A.M_Rows);
@@ -249,7 +249,7 @@ namespace LinearAlgebra
             return tfqmr(new doubleBSROperator(in A), in b, ref x, ref rHat0, ref u, ref w, ref v, ref au, ref d, maxIter, tol);
         }
 
-        /// <summary>TFQMR over a BSR matrix -- allocates six scratch vectors from the arena.</summary>
+        /// <summary>TFQMR over a BSR matrix -- allocates six scratch vectors from Allocator.Temp.</summary>
         public static SolveInfo tfqmr(in doubleBSR A, in doubleN b, ref doubleN x, int maxIter, double tol)
         {
             doubleN rHat0 = b.doubleTempVec(A.M_Rows);

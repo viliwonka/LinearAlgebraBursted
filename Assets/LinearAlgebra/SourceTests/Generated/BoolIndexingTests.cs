@@ -139,9 +139,9 @@ public class BoolIndexingTests
                 Assert.IsTrue(mat[rows - r, cols - c] == ((r + c) % 2 == 0));
         }
 
-        // Exercises the copy-constructor guard's null-arena branch: copying a standalone vector with
-        // the DEFAULT allocator must fall back to Allocator.Temp without crashing and produce an
-        // equal, independent copy.
+        // Exercises the copy-constructor guard: copying a vector without specifying an allocator
+        // (Allocator.Invalid sentinel) must fall back to Allocator.Temp without crashing and produce
+        // an equal, independent copy.
         void VectorCopyGuard()
         {
             int dim = 16;
@@ -150,7 +150,7 @@ public class BoolIndexingTests
             for (int i = 0; i < dim; i++)
                 orig[i] = (i % 2 == 0);
 
-            // Default allocator -> guard takes the non-null branch (arena allocator). Must not crash.
+            // No allocator specified -> guard falls back to Allocator.Temp. Must not crash.
             boolN copy = new boolN(in orig);
 
             Assert.IsTrue(copy.N == orig.N);
@@ -164,20 +164,20 @@ public class BoolIndexingTests
             copy.Dispose();
         }
 
-        // boolMxN HAS a standalone (null-arena) ctor, so fully exercise the copy-constructor guard's
-        // null branch: copying a standalone matrix with the DEFAULT allocator must fall back to
-        // Allocator.Temp without crashing and copy equally.
+        // Exercises the copy-constructor guard on boolMxN: copying a matrix without specifying an
+        // allocator (Allocator.Invalid sentinel) must fall back to Allocator.Temp without crashing
+        // and copy equally.
         void MatrixCopyNullArenaGuard()
         {
             int rows = 4;
             int cols = 6;
 
-            // Standalone matrix: the non-arena ctor leaves _arena as default (HasCore == false).
+            // Plain sized ctor, not the copy ctor under test.
             boolMxN standalone = new boolMxN(rows, cols, Allocator.Temp);
             for (int i = 0; i < standalone.Length; i++)
                 standalone[i] = (i % 2 == 0);
 
-            // Default allocator -> guard MUST hit the null-arena branch (fallback Allocator.Temp).
+            // No allocator specified -> guard MUST fall back to Allocator.Temp.
             boolMxN copy = new boolMxN(standalone);
 
             Assert.IsTrue(copy.M_Rows == standalone.M_Rows);

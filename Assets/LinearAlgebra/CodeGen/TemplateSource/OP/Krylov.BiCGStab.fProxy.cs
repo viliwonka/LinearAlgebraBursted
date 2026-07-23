@@ -228,7 +228,7 @@ namespace LinearAlgebra
             return biCGStab(new fProxyDenseOperator(in A), in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, maxIter, tol);
         }
 
-        /// <summary>BiCGSTAB over a dense matrix -- allocates five scratch vectors from the arena.</summary>
+        /// <summary>BiCGSTAB over a dense matrix -- allocates five scratch vectors from Allocator.Temp.</summary>
         public static SolveInfo biCGStab(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol)
         {
             fProxyN r     = b.fProxyTempVec(A.M_Rows);
@@ -256,7 +256,7 @@ namespace LinearAlgebra
             return biCGStab(new fProxyBSROperator(in A), in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, maxIter, tol);
         }
 
-        /// <summary>BiCGSTAB over a BSR matrix -- allocates five scratch vectors from the arena.</summary>
+        /// <summary>BiCGSTAB over a BSR matrix -- allocates five scratch vectors from Allocator.Temp.</summary>
         public static SolveInfo biCGStab(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol)
         {
             fProxyN r     = b.fProxyTempVec(A.M_Rows);

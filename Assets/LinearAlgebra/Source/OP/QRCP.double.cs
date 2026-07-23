@@ -75,7 +75,7 @@ namespace LinearAlgebra
         /// <summary>
         /// Zero-alloc cache overload: routes through the SAME downdating core as every other overload
         /// (see decompInPlaceCore), using caller-owned <see cref="doubleQRCPCache"/> scratch (vn1/vn2)
-        /// instead of a per-call Allocator.Temp pair — bit-identical results, see Arena.doubleQRCPCache.
+        /// instead of a per-call Allocator.Temp pair — bit-identical results, see the doubleQRCPCache(n, allocator) ctor.
         /// u is still caller-provided separately (not folded into the cache — see the class remarks).
         /// </summary>
         /// <remarks>R must not alias A_to_Q (unchecked) — see the 4-arg overload.</remarks>
@@ -842,7 +842,7 @@ namespace LinearAlgebra
         /// <param name="R">Scratch: n x n (receives upper-triangular factor; consumed).</param>
         /// <param name="P">Scratch: column Pivot of size n (reset internally).</param>
         /// <param name="u">Scratch: length EXACTLY m.</param>
-        /// <param name="cache">Caller-owned vn1/vn2 scratch — see Arena.doubleQRCPCache.</param>
+        /// <param name="cache">Caller-owned vn1/vn2 scratch — see the doubleQRCPCache(n, allocator) ctor.</param>
         /// <param name="relTol">Rank threshold ratio; tol = relTol * |R[0,0]|. Negative = auto default.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static RankInfo solveInPlace(ref doubleMxN A_to_Q, ref doubleN b, ref doubleN x,

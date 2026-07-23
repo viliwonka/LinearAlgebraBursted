@@ -49,7 +49,7 @@ namespace LinearAlgebra
     /// (QR_BLOCK*QR_BLOCK), Wbuf (QR_BLOCK*n), tcolBuf (QR_BLOCK) and VfullBuf (m*n) are the level-3
     /// (compact-WY) blocked-factorization buffers — see qrDecompositionBlockedCore. decomp/decompInPlace
     /// engage them once N_Cols &gt;= 2*QR_BLOCK (the same gate, and the same kernel, as the fully
-    /// allocating overload — so the cache overload is bit-identical to it, just fed from arena-owned
+    /// allocating overload — so the cache overload is bit-identical to it, just fed from caller-owned
     /// buffers instead of Allocator.Temp). solveInPlace's fused kernel never forms Q, so it only ever
     /// touches u/w — the blocked buffers sit unused for that call, exactly as CHOP's rank-Gram buffers
     /// or Bidiag's leftU sit unused for calls that don't need them.
@@ -79,7 +79,7 @@ namespace LinearAlgebra
             VfullBuf = new floatN(m * n, allocator);
         }
 
-        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        /// <summary>Dispose when done.</summary>
         public void Dispose()
         {
             u.Dispose();

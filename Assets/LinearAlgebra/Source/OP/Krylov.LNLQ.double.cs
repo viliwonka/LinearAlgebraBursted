@@ -196,7 +196,7 @@ namespace LinearAlgebra
             return lnlq(new doubleDenseOperator(in A), in b, ref x, ref u, ref v, ref tmpM, ref tmpN, maxIter, tol, sigmaMinEst);
         }
 
-        /// <summary>LNLQ over a dense matrix -- allocates four scratch vectors from the arena.</summary>
+        /// <summary>LNLQ over a dense matrix -- allocates four scratch vectors from Allocator.Temp.</summary>
         public static LnlqInfo lnlq(in doubleMxN A, in doubleN b, ref doubleN x, int maxIter, double tol, double sigmaMinEst = 0)
         {
             doubleN u    = b.doubleTempVec(A.M_Rows);

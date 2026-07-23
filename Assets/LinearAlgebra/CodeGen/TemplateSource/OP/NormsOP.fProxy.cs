@@ -218,7 +218,7 @@ namespace LinearAlgebra
         }
 
         // Induced 2-norm (spectral norm) ‖A‖₂ = σ_max(A), the largest singular value. Runs a
-        // values-only SVD on a copy (A is not modified); allocates SVD scratch from A's arena.
+        // values-only SVD on a copy (A is not modified); allocates SVD scratch from Allocator.Temp.
         // Returns NaN when the SVD fails to converge.
         public static fProxy matrixL2(in fProxyMxN A)
         {

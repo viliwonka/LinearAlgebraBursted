@@ -49,7 +49,7 @@ namespace LinearAlgebra
         /// (MaxIterations -&gt; outputs undefined). A is NOT modified.
         ///
         /// <paramref name="ws"/> holds all scratch; size it with
-        /// Arena.doubleSVDRandomizedCache(m, n, k, oversample) using the SAME k and oversample.
+        /// the doubleSVDRandomizedCache(m, n, k, oversample, allocator) ctor using the SAME k and oversample.
         /// </summary>
         public static SVDInfo randomized(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
                                          int k, int oversample, int powerIters, uint seed, int maxIter,
@@ -112,7 +112,7 @@ namespace LinearAlgebra
             => randomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0x9E3779B1u, Consts.sweepBudget(math.min(k + 10, A.N_Cols)), ref ws);
 
         /// <summary>
-        /// randomized allocating all scratch (O(mℓ + nℓ)) from A's arena. See the ref-workspace
+        /// randomized allocating all scratch (O(mℓ + nℓ)) from Allocator.Temp. See the ref-workspace
         /// overload for semantics.
         /// </summary>
         public static SVDInfo randomized(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,

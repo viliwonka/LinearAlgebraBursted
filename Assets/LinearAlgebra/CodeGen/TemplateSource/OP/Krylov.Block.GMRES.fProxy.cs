@@ -253,7 +253,7 @@ namespace LinearAlgebra
             => bgmres(new fProxyDenseOperatorGeneral(in A), in B, ref X, math.min(30, A.M_Rows), A.M_Rows, Consts.fProxySqrtEps);
 
         /// <summary>Block GMRES(m) over a block-sparse (BSR) non-symmetric A. Allocates block scratch
-        /// from the arena.</summary>
+        /// from Allocator.Temp.</summary>
         public static BlockSolveInfo bgmres(in fProxyBSR A, in fProxyMxN B, ref fProxyMxN X,
                                         int restart, int maxIter, fProxy tol)
             => bgmres(new fProxyBSROperator(in A), in B, ref X, restart, maxIter, tol);

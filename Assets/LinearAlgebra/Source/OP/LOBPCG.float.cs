@@ -1027,10 +1027,10 @@ namespace LinearAlgebra
         // direction the block cannot support to working precision is DROPPED rather than folded in:
         // returns the number of rows kept (0..rows), written into the LEADING rows of V/AV/BV --
         // rows [kept, rows) are left stale and must not be read by the caller. `Gram`/`Z` are 3k x 3k
-        // arena scratch views (only the leading rows x rows block is used; both fully overwritten).
-        // `scratch` is a k x n (or larger) arena buffer borrowed as row-combination scratch (its
-        // OWN prior contents are irrelevant and fully overwritten); the caller must not read it
-        // meaningfully until it repopulates it for its own purpose.
+        // caller-owned scratch views (only the leading rows x rows block is used; both fully
+        // overwritten). `scratch` is a k x n (or larger) caller-owned buffer borrowed as
+        // row-combination scratch (its OWN prior contents are irrelevant and fully overwritten);
+        // the caller must not read it meaningfully until it repopulates it for its own purpose.
         static int OrthonormalizeBlockB(ref floatMxN V, ref floatMxN AV, ref floatMxN BV, int rows, int n,
                                          ref floatMxN Gram, ref floatMxN Z, ref floatMxN scratch)
         {

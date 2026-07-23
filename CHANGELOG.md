@@ -47,7 +47,7 @@ between minor versions.
 - **Nonlinear least squares (`Optimize.nlsSolve` / `Optimize.curveFit`)**: Levenberg-Marquardt
   with Nielsen damping and optional robust losses (Huber, Cauchy, Tukey).
 - Non-throwing preconditioner builds: `BlockJacobi`/`ILU0`/`IC0` gain `out PreconditionerInfo`
-  overloads (status + rescuing diagonal shift + attempts); failed arena builds release their slot.
+  overloads (status + rescuing diagonal shift + attempts); failed builds release their buffers.
 - `Equals`/`GetHashCode` (buffer-handle identity) on every vector/matrix type, removing the
   CS0660/CS0661 warning pair for consumers of the `==`/`!=` element-wise operators.
 - `Blas.dot(a, b, ref c, transposeA, transposeB)`: `A·Bᵀ` (and `Aᵀ·Bᵀ`) without materializing
@@ -122,11 +122,22 @@ between minor versions.
 
 ### Removed
 
+- **Breaking — the `Arena` allocator is gone.** Every vector/matrix/workspace/preconditioner is
+  now standalone: construct with an explicit `Allocator` (`new floatN(n, Allocator.Temp)`,
+  `new floatQRCache(m, n, allocator)`, `new floatIC0(in A, allocator)`, …) and `Dispose()` what
+  outlives its scope; `Allocator.Temp` allocations are freed automatically at end of frame/job.
+  The arena's factory conveniences moved to static classes with the same names and arguments:
+  `GenerateOP` (constructors/random/kernels), `floatGallery` (test matrices), `Query`, `FFT`,
+  `ConvertOP`. `Copy()`/`TempCopy()` now return `Allocator.Temp` copies.
+- **Breaking — allocating operators removed**: `+ - * / %` on vectors/matrices (and bitwise
+  `~ & | ^ << >>` on integer types, logical `! & | ^` on bool types). Use the in-place kernels
+  (`floatComp.addInPlace(dst, src)`, `intComp.bitwiseOrInPlace(...)`, `boolComp.notInPlace(...)`).
+  Comparators (`== != < <= > >=`) remain.
 - **Breaking**: the no-workspace FFT overloads `FFT.fft(ref re, ref im)`, `FFT.ifft(...)`,
   `FFT.rfft(in real, ref re, ref im)`, and `FFT.irfft(...)` (the `sin`/`cos`-recurrence path).
   They were slower than building a workspace and running one transform, and not deterministic across
-  architectures. Use the workspace overloads: build `arena.floatFFTCache(n)` once and pass it (`in ws`).
-  `dft`/`idft` still cover arbitrary (non-power-of-two) N.
+  architectures. Use the workspace overloads: build a `floatFFTCache(n, allocator)` once and pass it
+  (`in ws`). `dft`/`idft` still cover arbitrary (non-power-of-two) N.
 
 ## [0.1.0] — 2026-07-03
 

@@ -23,7 +23,7 @@ using Unity.Mathematics;
 //       for each Metric; the similarity direction flip (Cosine/Dot -> nearest=MAX) is the key check.
 //   4 — Value/mask: findValue, nonzero/countNonzero, Analysis.whichTrue/countTrue.
 //   Symmetry — a column op on A equals the row op on transpose(A).
-//   Arena wrappers — each allocating wrapper matches the zero-alloc primitive.
+//   Allocating wrappers — each allocating wrapper matches the zero-alloc primitive.
 //
 // Burst-compatible computational tests live in TestJob; managed-throw guards and the
 // Indices out-of-range indexer test are plain [Test] methods on the main thread.
@@ -779,7 +779,7 @@ public class floatQueryTests
         }
 
         // ---------------------------------------------------------------------
-        // ARENA WRAPPERS — each allocating wrapper matches the zero-alloc primitive.
+        // ALLOCATING WRAPPERS — each allocating wrapper matches the zero-alloc primitive.
         // ---------------------------------------------------------------------
 
         void ArenaWrappers()

@@ -404,7 +404,7 @@ public class doubleQRCacheWorkspaceTests
         finally { }
     }
 
-    // Arena.doubleQRCache(m, n) must size every field: u=m, w=n, Vpanel=m*32, Tbuf=32*32,
+    // The doubleQRCache(m, n, allocator) ctor must size every field: u=m, w=n, Vpanel=m*32, Tbuf=32*32,
     // Wbuf=32*n, tcolBuf=32, VfullBuf=m*n.
     [Test]
     public void QRCacheWorkspace_Factory_SizesCorrectly()

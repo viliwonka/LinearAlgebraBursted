@@ -257,7 +257,7 @@ namespace LinearAlgebra
             => bgmres(new doubleDenseOperatorGeneral(in A), in B, ref X, math.min(30, A.M_Rows), A.M_Rows, Consts.doubleSqrtEps);
 
         /// <summary>Block GMRES(m) over a block-sparse (BSR) non-symmetric A. Allocates block scratch
-        /// from the arena.</summary>
+        /// from Allocator.Temp.</summary>
         public static BlockSolveInfo bgmres(in doubleBSR A, in doubleMxN B, ref doubleMxN X,
                                         int restart, int maxIter, double tol)
             => bgmres(new doubleBSROperator(in A), in B, ref X, restart, maxIter, tol);

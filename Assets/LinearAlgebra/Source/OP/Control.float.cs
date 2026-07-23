@@ -363,8 +363,8 @@ namespace LinearAlgebra.Control
     /// <summary>
     /// Buffer-carrying warm-start state for <see cref="LQR.lqr(in floatMxN, in floatMxN, in floatMxN, in floatMxN, ref floatMxN, ref floatLQRState, int)"/>:
     /// carries the n x n Riccati solution S across separate top-level calls, for LQR's per-frame
-    /// re-linearization use case. Standalone, user-allocated (no arena requirement), since it must
-    /// persist across separate solve calls. MUST be constructed via <c>(n, Allocator)</c> before being
+    /// re-linearization use case. Standalone, user-allocated, since it must persist across separate
+    /// solve calls. MUST be constructed via <c>(n, Allocator)</c> before being
     /// passed to the warm <c>lqr</c> overload -- an uncreated instance is a caller error and <c>lqr</c>
     /// throws rather than silently falling back to a cold solve.
     /// </summary>

@@ -192,7 +192,7 @@ namespace LinearAlgebra
             return lnlq(new fProxyDenseOperator(in A), in b, ref x, ref u, ref v, ref tmpM, ref tmpN, maxIter, tol, sigmaMinEst);
         }
 
-        /// <summary>LNLQ over a dense matrix -- allocates four scratch vectors from the arena.</summary>
+        /// <summary>LNLQ over a dense matrix -- allocates four scratch vectors from Allocator.Temp.</summary>
         public static LnlqInfo lnlq(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol, double sigmaMinEst = 0)
         {
             fProxyN u    = b.fProxyTempVec(A.M_Rows);

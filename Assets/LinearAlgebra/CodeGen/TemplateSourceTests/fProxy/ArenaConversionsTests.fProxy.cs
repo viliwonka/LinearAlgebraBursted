@@ -7,7 +7,7 @@ using Unity.Collections;
 using Unity.Mathematics;
 
 //+deleteThis
-// TEMPLATE-ONLY alias, mirrors ArenaConversions.fProxy.cs: fProxy2 -> float2/double2 (real
+// TEMPLATE-ONLY alias, mirrors ConvertOP.fProxy.cs: fProxy2 -> float2/double2 (real
 // Unity.Mathematics type), so ConvertOP.Convert(in fProxyN) below binds to the same type its
 // return value uses in generated code.
 using fProxy2 = Unity.Mathematics.float2;

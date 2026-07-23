@@ -24,7 +24,7 @@ using Unity.Mathematics;
 //   (c) doubleSSOR converges in FEWER iterations than doubleBlockJacobi (>=10% margin) on both
 //       doubleLaplacian2D and doubleRandomSparseSPD instances.
 //   (d) SSOR built from a Symmetric-storage BSR equals SSOR built from its full-storage twin
-//       (the one-time mirror path, Arena.doubleBSRMirrorToFull).
+//       (the one-time mirror path, doubleBSR.MirrorToFull).
 //   (e) doubleSSOR drops into Eigen.lobpcg<TOp,TPre>'s TPre slot with no new overloads.
 //
 // Value cases run inside a [BurstCompile] IJob (matches every other sparse suite). Guard-throw

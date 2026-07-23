@@ -1,6 +1,22 @@
 # DEVLOG — fProxy
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## fProxyN/fProxyMxN — Data must be field-forwarding, not an auto-property (Arena removal)
+- 2026-07-23 | When the `_rec` dual path was collapsed, `Data` was deliberately kept as a
+  trivial property forwarding to a private `_data` field (NOT converted to an auto-property or
+  public field returning a copy pattern change): `UnsafeList<T>.Dispose()` mutates `this` in
+  place (`Ptr = null; m_length = 0`), so `Dispose()` must run against the backing field —
+  through a getter that returns a struct copy, the native memory would be freed but the field's
+  `IsCreated` would still read true. Same reasoning for BSR's RowPtr/ColInd/Values and
+  BlockJacobi's DInv.
+
+## Struct copy semantics (post-Arena, the one rule)
+- 2026-07-23 | Structs copy by value into jobs but share the data pointer: element writes
+  persist, struct-field reassignment/Dispose inside a job affects only the job's copy. Any
+  algorithm state that must survive a struct copy (ping-pong "current buffer" flags, warm-state
+  counters) must live INSIDE a buffer (e.g. 1-element array slot), never in struct fields — the
+  LOBPCG RestoreBufferIdentity / MPC qpMeta pattern.
+
 Note: the arena-tracking doc comments covered below (`_rec`, `AssertRecordAlive`/
 `AssertRecordValid`, `_gen`, `Dispose()`, `OwnerArena`, the MxN `StructLayout` rationale, and the
 standalone-source allocator guard) were near-identical clones across all six parallel type-family

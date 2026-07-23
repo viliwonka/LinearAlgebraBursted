@@ -266,7 +266,7 @@ namespace LinearAlgebra
             => bfgmres(new doubleDenseOperatorGeneral(in A), in B, ref X, math.min(30, A.M_Rows), A.M_Rows, Consts.doubleSqrtEps);
 
         /// <summary>Block flexible GMRES(m) over a block-sparse (BSR) non-symmetric A. Allocates block
-        /// scratch from the arena.</summary>
+        /// scratch from Allocator.Temp.</summary>
         public static BlockSolveInfo bfgmres(in doubleBSR A, in doubleMxN B, ref doubleMxN X,
                                         int restart, int maxIter, double tol)
             => bfgmres(new doubleBSROperator(in A), in B, ref X, restart, maxIter, tol);

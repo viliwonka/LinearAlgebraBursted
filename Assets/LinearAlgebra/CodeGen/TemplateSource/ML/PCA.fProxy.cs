@@ -10,7 +10,7 @@ namespace LinearAlgebra.ML
     /// (full, accurate, requires n&gt;=p), <see cref="fitSvdTruncated"/> (partial top-k, exact GKL SVD,
     /// requires n&gt;=p), <see cref="fitRandomized"/> (partial top-k, fast-approximate, requires n&gt;=p) --
     /// see each method's own doc for its specific contract. Every fit returns/fills a
-    /// <see cref="fProxyPCAModel"/> (arena-owned buffers) for <see cref="transform"/> or reading
+    /// <see cref="fProxyPCAModel"/> (caller-owned buffers) for <see cref="transform"/> or reading
     /// axes/variances. fitCov and fitSvd agree on explainedVariance via a shared SAMPLE (n-1)
     /// denominator convention (not StatsOP's population (n) one).
     /// </summary>

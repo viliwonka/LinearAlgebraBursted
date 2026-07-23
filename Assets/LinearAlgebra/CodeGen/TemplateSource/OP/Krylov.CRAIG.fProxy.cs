@@ -143,7 +143,7 @@ namespace LinearAlgebra
             return craig(new fProxyDenseOperator(in A), in b, ref x, ref u, ref v, ref tmpM, ref tmpN, maxIter, tol);
         }
 
-        /// <summary>CRAIG over a dense matrix -- allocates four scratch vectors from the arena.</summary>
+        /// <summary>CRAIG over a dense matrix -- allocates four scratch vectors from Allocator.Temp.</summary>
         public static LstsqInfo craig(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol)
         {
             fProxyN u    = b.fProxyTempVec(A.M_Rows);

@@ -10,7 +10,7 @@ subject to  Aᵢ·x {≤, =, ≥} bᵢ   (per-row sense)
 
 and, on the same machinery, exact least-absolute-deviation (L1) regression and quantile regression.
 Every entry point is job-safe — scratch is `Allocator.Temp`, disposed before return, so the whole
-thing runs inside a `[BurstCompile] IJob` with no arena required.
+thing runs inside a `[BurstCompile] IJob`.
 
 ## `LP.solve` — general linear programs
 

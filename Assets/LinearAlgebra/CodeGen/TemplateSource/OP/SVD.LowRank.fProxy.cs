@@ -55,7 +55,7 @@ namespace LinearAlgebra
         /// tolerance, the status is MaxIterations too. sweeps/converged reflect the inner p×p
         /// bidiagonal QR's own counters (see <see cref="SVDInfo"/>).
         /// <paramref name="ws"/> is the GKL scratch; size it with
-        /// Arena.fProxySVDTruncatedCache(m, n, k, oversample) using the SAME k and oversample.
+        /// the fProxySVDTruncatedCache(m, n, k, oversample, allocator) ctor using the SAME k and oversample.
         /// </summary>
         public static SVDInfo truncated(in fProxyMxN A, ref fProxyMxN Uk, ref fProxyN Sk, ref fProxyMxN Vk,
                                         int k, int oversample, uint seed, int maxIter,
@@ -538,7 +538,7 @@ namespace LinearAlgebra
         /// <summary>
         /// truncated (ref workspace) with generous default Krylov width p = min(n, max(2k, k+12)),
         /// default maxIter (Consts.sweepBudget(p)) and partialReorth=true.
-        /// Pass a workspace from Arena.fProxySVDTruncatedCache(m, n, k) (no oversample overload)
+        /// Pass a workspace from the fProxySVDTruncatedCache(m, n, k, allocator) ctor (no oversample overload)
         /// which uses the same generous formula.
         /// </summary>
         public static SVDInfo truncated(in fProxyMxN A, ref fProxyMxN Uk, ref fProxyN Sk, ref fProxyMxN Vk,
@@ -547,7 +547,7 @@ namespace LinearAlgebra
                          Consts.sweepBudget(math.min(A.N_Cols, math.max(2 * k, k + 12))), true, ref ws);
 
         /// <summary>
-        /// truncated allocating all scratch from A's arena (explicit oversample/seed/maxIter/partialReorth).
+        /// truncated allocating all scratch from Allocator.Temp (explicit oversample/seed/maxIter/partialReorth).
         /// See the ref-workspace overload for semantics.
         /// </summary>
         public static SVDInfo truncated(in fProxyMxN A, ref fProxyMxN Uk, ref fProxyN Sk, ref fProxyMxN Vk,
@@ -583,7 +583,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// truncated allocating all scratch from A's arena (explicit oversample/seed/maxIter),
+        /// truncated allocating all scratch from Allocator.Temp (explicit oversample/seed/maxIter),
         /// with default partialReorth=true.
         /// See the ref-workspace overload for semantics.
         /// </summary>
@@ -664,7 +664,7 @@ namespace LinearAlgebra
         /// A is NOT modified. Returns the inner SVD's <see cref="SVDInfo"/> (implicit-bool ==
         /// Converged); on MaxIterations Ak is zeroed but NOT a valid approximation.
         /// <paramref name="ws"/> is full-SVD scratch reused across calls; size it with
-        /// Arena.fProxySVDFullCache(m, n).
+        /// the fProxySVDFullCache(m, n, allocator) ctor.
         /// </summary>
         public static SVDInfo lowRankApprox(in fProxyMxN A, ref fProxyMxN Ak, int k,
                                          ref fProxySVDFullCache ws, int maxIter)
@@ -715,7 +715,7 @@ namespace LinearAlgebra
             => lowRankApprox(in A, ref Ak, k, ref ws, Consts.sweepBudget(A.N_Cols));
 
         /// <summary>
-        /// lowRankApprox allocating its full-SVD scratch from A's arena.
+        /// lowRankApprox allocating its full-SVD scratch from Allocator.Temp.
         /// See the ref-workspace overload for semantics.
         /// </summary>
         public static SVDInfo lowRankApprox(in fProxyMxN A, ref fProxyMxN Ak, int k, int maxIter)

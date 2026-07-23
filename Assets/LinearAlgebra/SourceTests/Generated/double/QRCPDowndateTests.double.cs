@@ -529,7 +529,7 @@ public class doubleQRCPDowndateTests
             finally { }
         }
 
-        // ── Cache-overload equivalence: the zero-alloc cache overloads (Arena.doubleQRCPCache) must be
+        // ── Cache-overload equivalence: the zero-alloc cache overloads (doubleQRCPCache) must be
         //    BIT-IDENTICAL to the internally-Temp-allocating non-cache overloads on identical input,
         //    for both decompInPlace and solveInPlace (P/Q/R/x/rank), full-rank AND rank-deficient.
         void CacheEquivalence(int m, int n, uint seed, bool rankDeficient)

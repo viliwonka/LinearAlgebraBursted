@@ -39,9 +39,8 @@ namespace LinearAlgebra.Sparse
         public readonly fProxyN Scratch2;           // length Rows; Apply's diagonal-scaled result u
 
         // True when A was freshly mirrored to full storage by the Allocator ctor (owned, must be
-        // disposed); false when A aliases the caller's input matrix -- either the arena path (never
-        // disposed at all) or an already-full-storage input on the Allocator path. Consulted only
-        // by Dispose().
+        // disposed); false when A aliases the caller's already-full-storage input matrix (never
+        // disposed). Consulted only by Dispose().
         private readonly bool _ownsA;
 
         public int Rows => A.M_Rows;

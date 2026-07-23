@@ -48,7 +48,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Conjugate Gradient solver — allocates three scratch vectors from the arena and calls
+        /// Conjugate Gradient solver — allocates three scratch vectors from Allocator.Temp and calls
         /// the zero-alloc primitive. x is overwritten with the solution on convergence.
         /// </summary>
         public static SolveInfo cg(in floatMxN A, in floatN b, ref floatN x,
@@ -83,7 +83,7 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Conjugate Gradient solver over a block-sparse (BSR) SPD matrix — allocates three
-        /// scratch vectors from the arena and calls the zero-alloc primitive.
+        /// scratch vectors from Allocator.Temp and calls the zero-alloc primitive.
         /// </summary>
         public static SolveInfo cg(in floatBSR A, in floatN b, ref floatN x,
                                              int maxIter, float tol)
@@ -241,7 +241,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Preconditioned Conjugate Gradient — allocates four scratch vectors from the arena and
+        /// Preconditioned Conjugate Gradient — allocates four scratch vectors from Allocator.Temp and
         /// calls the merged zero-alloc <see cref="cg{TOp, TPre}(in TOp, in TPre, in floatN, ref floatN, ref floatN, ref floatN, ref floatN, ref floatN, int, float)"/>.
         /// </summary>
         public static SolveInfo cg<TOp, TPre>(in TOp A, in TPre M, in floatN b, ref floatN x,
@@ -283,7 +283,7 @@ namespace LinearAlgebra
         /// <summary>
         /// Preconditioned Conjugate Gradient over a BSR SPD matrix with ANY
         /// <see cref="IfloatPreconditioner"/> (block-Jacobi/SSOR/IC0/FSAI/Chebyshev/additive-Schwarz)
-        /// -- allocates four scratch vectors from the arena and calls the zero-alloc primitive.
+        /// -- allocates four scratch vectors from Allocator.Temp and calls the zero-alloc primitive.
         /// </summary>
         public static SolveInfo cg<TPre>(in floatBSR A, in TPre M, in floatN b, ref floatN x,
                                int maxIter, float tol)

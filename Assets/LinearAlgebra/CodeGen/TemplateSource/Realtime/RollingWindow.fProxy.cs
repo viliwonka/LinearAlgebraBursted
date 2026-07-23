@@ -61,7 +61,7 @@ namespace LinearAlgebra.Realtime
             _count = 0;
         }
 
-        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        /// <summary>Dispose when done.</summary>
         public void Dispose()
         {
             _buffer.Dispose();
@@ -144,8 +144,8 @@ namespace LinearAlgebra.Realtime
         }
 
         /// <summary>
-        /// Allocating AsMatrix: returns a fresh Count×Features time-ordered matrix from the arena's
-        /// TEMP pool (reclaimed by ClearTemp), so per-frame use leaks nothing.
+        /// Allocating AsMatrix: returns a fresh Count×Features time-ordered matrix from Allocator.Temp,
+        /// so per-frame use leaks nothing.
         /// </summary>
         public fProxyMxN AsMatrix()
         {
@@ -178,7 +178,7 @@ namespace LinearAlgebra.Realtime
                 dest[c] /= (fProxy)_count;
         }
 
-        /// <summary>Allocating moving average — a fresh Features vector from the arena TEMP pool.</summary>
+        /// <summary>Allocating moving average — a fresh Features vector from Allocator.Temp.</summary>
         public fProxyN Mean()
         {
             var v = _buffer.fProxyTempVec(_features);
@@ -204,7 +204,7 @@ namespace LinearAlgebra.Realtime
             Stats.covarianceInto(in m, ref dest);
         }
 
-        /// <summary>Allocating covariance — a fresh Features×Features matrix from the arena TEMP pool.</summary>
+        /// <summary>Allocating covariance — a fresh Features×Features matrix from Allocator.Temp.</summary>
         public fProxyMxN Covariance()
         {
             var c = _buffer.fProxyTempMat(_features, _features);

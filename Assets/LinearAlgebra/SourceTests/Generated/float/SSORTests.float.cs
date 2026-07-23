@@ -24,7 +24,7 @@ using Unity.Mathematics;
 //   (c) floatSSOR converges in FEWER iterations than floatBlockJacobi (>=10% margin) on both
 //       floatLaplacian2D and floatRandomSparseSPD instances.
 //   (d) SSOR built from a Symmetric-storage BSR equals SSOR built from its full-storage twin
-//       (the one-time mirror path, Arena.floatBSRMirrorToFull).
+//       (the one-time mirror path, floatBSR.MirrorToFull).
 //   (e) floatSSOR drops into Eigen.lobpcg<TOp,TPre>'s TPre slot with no new overloads.
 //
 // Value cases run inside a [BurstCompile] IJob (matches every other sparse suite). Guard-throw

@@ -195,7 +195,7 @@ namespace LinearAlgebra
             C = new doubleMxN(cap, cap, allocator);
         }
 
-        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        /// <summary>Dispose when done.</summary>
         public void Dispose()
         {
             X.Dispose(); AX.Dispose(); W.Dispose(); AW.Dispose(); P.Dispose(); AP.Dispose();

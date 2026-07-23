@@ -1,6 +1,24 @@
 # DEVLOG — Sparse
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## fProxySSOR / fProxyAMG — Burst BC1006 (try/catch) landmine
+- 2026-07-23 | During the Arena removal, the first Allocator ctors for fProxySSOR and
+  fProxyAMG's builder used try/catch for exception-safe cleanup of the freshly-mirrored A /
+  partially-built level. Burst rejects `catch` (BC1006) — and the failure mode is NOT a compile
+  error in the suite: the whole test assembly silently falls back to Mono, turning a ~330s suite
+  into a >900s hang-guard kill with no failing test named. Pattern to use instead: try/finally
+  with a success flag (`bool ok = false; try { ...; ok = true; } finally { if (!ok) cleanup; }`)
+  — managed path still cleans up, Burst path degrades to a no-op on throw. Same pattern the old
+  Arena ctor documented. If the suite ever runs 3x slower with zero failures, grep the Unity log
+  for "Burst error BC" first.
+
+## Sparse preconditioners — standalone ownership model (Arena removal)
+- 2026-07-23 | All preconditioners construct via `(in A, ..., Allocator)` ctors and own their
+  buffers (Dispose required for non-Temp). One aliasing case: SSOR persists a possibly-mirrored,
+  possibly-aliased A — `_ownsA` (set iff the input was Symmetric-storage and thus freshly
+  mirrored) gates whether Dispose frees it. BSR.Transpose(Allocator) returns `this` unchanged
+  (buffer-aliased) for Symmetric input — dispose only one of the two handles.
+
 ## fProxyBlockJacobi
 - 2026-07-18 | `InvertBlock` (BR<=16 fast-path Gauss-Jordan) accepted any pivot `best > 0`,
   including denormals -- a ~1e-38 diagonal inverts to Inf and the build falsely reported Success.

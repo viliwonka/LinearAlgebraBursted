@@ -257,7 +257,7 @@ namespace LinearAlgebra
             => bgmres(new floatDenseOperatorGeneral(in A), in B, ref X, math.min(30, A.M_Rows), A.M_Rows, Consts.floatSqrtEps);
 
         /// <summary>Block GMRES(m) over a block-sparse (BSR) non-symmetric A. Allocates block scratch
-        /// from the arena.</summary>
+        /// from Allocator.Temp.</summary>
         public static BlockSolveInfo bgmres(in floatBSR A, in floatMxN B, ref floatMxN X,
                                         int restart, int maxIter, float tol)
             => bgmres(new floatBSROperator(in A), in B, ref X, restart, maxIter, tol);

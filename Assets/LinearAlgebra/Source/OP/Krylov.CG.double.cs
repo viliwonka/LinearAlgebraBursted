@@ -48,7 +48,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Conjugate Gradient solver — allocates three scratch vectors from the arena and calls
+        /// Conjugate Gradient solver — allocates three scratch vectors from Allocator.Temp and calls
         /// the zero-alloc primitive. x is overwritten with the solution on convergence.
         /// </summary>
         public static SolveInfo cg(in doubleMxN A, in doubleN b, ref doubleN x,
@@ -83,7 +83,7 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Conjugate Gradient solver over a block-sparse (BSR) SPD matrix — allocates three
-        /// scratch vectors from the arena and calls the zero-alloc primitive.
+        /// scratch vectors from Allocator.Temp and calls the zero-alloc primitive.
         /// </summary>
         public static SolveInfo cg(in doubleBSR A, in doubleN b, ref doubleN x,
                                              int maxIter, double tol)
@@ -241,7 +241,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Preconditioned Conjugate Gradient — allocates four scratch vectors from the arena and
+        /// Preconditioned Conjugate Gradient — allocates four scratch vectors from Allocator.Temp and
         /// calls the merged zero-alloc <see cref="cg{TOp, TPre}(in TOp, in TPre, in doubleN, ref doubleN, ref doubleN, ref doubleN, ref doubleN, ref doubleN, int, double)"/>.
         /// </summary>
         public static SolveInfo cg<TOp, TPre>(in TOp A, in TPre M, in doubleN b, ref doubleN x,
@@ -283,7 +283,7 @@ namespace LinearAlgebra
         /// <summary>
         /// Preconditioned Conjugate Gradient over a BSR SPD matrix with ANY
         /// <see cref="IdoublePreconditioner"/> (block-Jacobi/SSOR/IC0/FSAI/Chebyshev/additive-Schwarz)
-        /// -- allocates four scratch vectors from the arena and calls the zero-alloc primitive.
+        /// -- allocates four scratch vectors from Allocator.Temp and calls the zero-alloc primitive.
         /// </summary>
         public static SolveInfo cg<TPre>(in doubleBSR A, in TPre M, in doubleN b, ref doubleN x,
                                int maxIter, double tol)

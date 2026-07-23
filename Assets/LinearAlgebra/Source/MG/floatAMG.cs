@@ -26,7 +26,7 @@ namespace LinearAlgebra.Sparse
     public struct floatAMG : IDisposable
     {
         // Level handle containers (allocator-owned; freed by Dispose). The referenced BSR/vector/
-        // smoother storage is arena-owned and freed with the arena.
+        // smoother storage is owned by this instance and freed by Dispose too (see _standalone below).
         UnsafeList<floatBSR> _A;        // [Levels]   operators, A[0] = fine
         UnsafeList<floatBSR> _P;        // [Levels-1] P[l]: level l+1 -> l
         UnsafeList<floatChebyshev> _S;  // [Levels-1] smoother for level l
@@ -45,9 +45,9 @@ namespace LinearAlgebra.Sparse
         bool _usable;                   // false when the coarsest Cholesky failed (do not solve)
         Allocator _alloc;
 
-        // Standalone-build bookkeeping (unused/false for an arena-built instance): _standalone gates
-        // the deep per-level free in Dispose(); _ownsLevel0 tells Dispose() whether _A[0] is a fresh
-        // MirrorToFull copy (owned) or an alias of the caller's own input BSR (never disposed).
+        // Standalone-build bookkeeping: _standalone gates the deep per-level free in Dispose();
+        // _ownsLevel0 tells Dispose() whether _A[0] is a fresh MirrorToFull copy (owned) or an alias
+        // of the caller's own input BSR (never disposed).
         bool _standalone;
         bool _ownsLevel0;
 
@@ -93,11 +93,10 @@ namespace LinearAlgebra.Sparse
         }
 
         /// <summary>
-        /// Frees the per-level handle containers. For an arena-built hierarchy the level DATA
-        /// (operators, prolongators, smoothers, vectors) is arena-owned and left untouched here. For a
-        /// standalone (Allocator-built) hierarchy this ALSO frees every level's own buffers first --
-        /// _A[0] is skipped when it aliases the caller's input BSR (see <see cref="_ownsLevel0"/>).
-        /// Only call Dispose on a standalone-built instance; an arena-built instance is arena-owned.
+        /// Frees the per-level handle containers, and every level's own buffers (operators,
+        /// prolongators, smoothers, vectors) too -- _A[0] is skipped when it aliases the caller's
+        /// input BSR (see <see cref="_ownsLevel0"/>). Always Dispose an instance built by one of the
+        /// public constructors.
         /// </summary>
         public void Dispose()
         {
@@ -399,7 +398,7 @@ namespace LinearAlgebra.Sparse
             }
 
             // Coarsest: dense Cholesky solve. chol/crhs are local handle copies (a readonly method
-            // cannot pass a field of `this` by ref); they alias the same arena buffers.
+            // cannot pass a field of `this` by ref); they alias the same underlying buffers.
             {
                 int lc = L - 1;
                 floatN bc = _B[lc], xc = _X[lc];

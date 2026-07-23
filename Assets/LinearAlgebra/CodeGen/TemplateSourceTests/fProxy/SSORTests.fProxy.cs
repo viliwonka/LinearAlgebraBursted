@@ -20,7 +20,7 @@ using Unity.Mathematics;
 //   (c) fProxySSOR converges in FEWER iterations than fProxyBlockJacobi (>=10% margin) on both
 //       fProxyLaplacian2D and fProxyRandomSparseSPD instances.
 //   (d) SSOR built from a Symmetric-storage BSR equals SSOR built from its full-storage twin
-//       (the one-time mirror path, Arena.fProxyBSRMirrorToFull).
+//       (the one-time mirror path, fProxyBSR.MirrorToFull).
 //   (e) fProxySSOR drops into Eigen.lobpcg<TOp,TPre>'s TPre slot with no new overloads.
 //
 // Value cases run inside a [BurstCompile] IJob (matches every other sparse suite). Guard-throw

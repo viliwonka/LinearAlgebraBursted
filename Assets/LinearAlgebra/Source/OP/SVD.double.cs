@@ -84,7 +84,7 @@ namespace LinearAlgebra
             => values(in A, ref S, Consts.sweepBudget(A.N_Cols), Consts.doubleZeroThreshold);
 
         /// <summary>
-        /// values using a reusable workspace (Arena.doubleSVDValuesCache(m, n)) — zero-alloc.
+        /// values using a reusable workspace (the doubleSVDValuesCache(m, n, allocator) ctor) — zero-alloc.
         /// Semantics identical to the allocating overload; see that one for full documentation.
         /// </summary>
         public static SVDInfo values(in doubleMxN A, ref doubleN S, ref doubleSVDValuesCache ws,
@@ -272,7 +272,7 @@ namespace LinearAlgebra
             => thin(in A, ref U, ref S, ref V, Consts.sweepBudget(A.N_Cols), Consts.doubleZeroThreshold);
 
         /// <summary>
-        /// thin using a reusable workspace (Arena.doubleSVDThinCache(m, n)) — zero-alloc (including
+        /// thin using a reusable workspace (the doubleSVDThinCache(m, n, allocator) ctor) — zero-alloc (including
         /// the inner Bidiag.decomp call, via the workspace's nested BidiagWs). Semantics
         /// identical to the allocating overload; see that one for full documentation.
         /// </summary>

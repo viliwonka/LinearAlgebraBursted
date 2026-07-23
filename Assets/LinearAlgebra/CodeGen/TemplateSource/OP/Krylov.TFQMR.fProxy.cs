@@ -215,7 +215,7 @@ namespace LinearAlgebra
             return tfqmr(new fProxyDenseOperator(in A), in b, ref x, ref rHat0, ref u, ref w, ref v, ref au, ref d, maxIter, tol);
         }
 
-        /// <summary>TFQMR over a dense matrix -- allocates six scratch vectors from the arena.</summary>
+        /// <summary>TFQMR over a dense matrix -- allocates six scratch vectors from Allocator.Temp.</summary>
         public static SolveInfo tfqmr(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol)
         {
             fProxyN rHat0 = b.fProxyTempVec(A.M_Rows);
@@ -245,7 +245,7 @@ namespace LinearAlgebra
             return tfqmr(new fProxyBSROperator(in A), in b, ref x, ref rHat0, ref u, ref w, ref v, ref au, ref d, maxIter, tol);
         }
 
-        /// <summary>TFQMR over a BSR matrix -- allocates six scratch vectors from the arena.</summary>
+        /// <summary>TFQMR over a BSR matrix -- allocates six scratch vectors from Allocator.Temp.</summary>
         public static SolveInfo tfqmr(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol)
         {
             fProxyN rHat0 = b.fProxyTempVec(A.M_Rows);

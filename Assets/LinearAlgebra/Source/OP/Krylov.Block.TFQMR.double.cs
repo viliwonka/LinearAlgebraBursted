@@ -343,8 +343,8 @@ namespace LinearAlgebra
             return btfqmr(new doubleDenseOperatorGeneral(in A), in B, ref X, ref Rhat0, ref U, ref W, ref V, ref AU, ref D, maxIter, tol);
         }
 
-        /// <summary>Pseudo-block TFQMR over a dense non-symmetric A -- allocates block scratch from the
-        /// arena.</summary>
+        /// <summary>Pseudo-block TFQMR over a dense non-symmetric A -- allocates block scratch from
+        /// Allocator.Temp.</summary>
         public static BlockSolveInfo btfqmr(in doubleMxN A, in doubleMxN B, ref doubleMxN X, int maxIter, double tol)
         {
             int s = B.M_Rows, n = A.M_Rows;
@@ -368,8 +368,8 @@ namespace LinearAlgebra
             return btfqmr(new doubleBSROperator(in A), in B, ref X, ref Rhat0, ref U, ref W, ref V, ref AU, ref D, maxIter, tol);
         }
 
-        /// <summary>Pseudo-block TFQMR over a BSR non-symmetric A -- allocates block scratch from the
-        /// arena.</summary>
+        /// <summary>Pseudo-block TFQMR over a BSR non-symmetric A -- allocates block scratch from
+        /// Allocator.Temp.</summary>
         public static BlockSolveInfo btfqmr(in doubleBSR A, in doubleMxN B, ref doubleMxN X, int maxIter, double tol)
         {
             int s = B.M_Rows, n = A.M_Rows;

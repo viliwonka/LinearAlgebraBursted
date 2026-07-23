@@ -415,9 +415,8 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Inverse power iteration over a dense SPD matrix -- allocates the inner-solve scratch
-        /// (y, r, p, Ap; all length A.M_Rows) from the arena that <paramref name="v"/> carries and
-        /// calls the zero-alloc primitive. Use the ref-scratch overload in hot loops to avoid the
-        /// allocation.
+        /// (y, r, p, Ap; all length A.M_Rows) from Allocator.Temp and calls the zero-alloc primitive.
+        /// Use the ref-scratch overload in hot loops to avoid the allocation.
         /// </summary>
         public static EigenSolveInfo inversePowerIteration(in doubleMxN A, ref doubleN v, out double lambda,
                                                  double tol, int maxIter, int cgMaxIterations, double cgTolerance)
@@ -463,7 +462,7 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Inverse power iteration over a BSR SPD matrix -- allocates the inner-solve scratch from
-        /// the arena that <paramref name="v"/> carries and calls the zero-alloc primitive.
+        /// Allocator.Temp and calls the zero-alloc primitive.
         /// </summary>
         public static EigenSolveInfo inversePowerIteration(in doubleBSR A, ref doubleN v, out double lambda,
                                                  double tol, int maxIter, int cgMaxIterations, double cgTolerance)
@@ -813,8 +812,8 @@ namespace LinearAlgebra
 
             // Rows [produced, steps) belong to the decoupled/padded eigenpairs and carry no
             // meaning. Zero them so an accidental read of ritz[i >= produced] fails LOUD (a zero
-            // vector trips any unit-norm / residual check) instead of returning plausible arena
-            // garbage that happens to look like an eigenvector.
+            // vector trips any unit-norm / residual check) instead of returning plausible-looking
+            // uninitialized garbage that happens to look like an eigenvector.
             for (int i = produced; i < steps; i++)
                 for (int col = 0; col < n; col++)
                     ritz[i, col] = (double)0;

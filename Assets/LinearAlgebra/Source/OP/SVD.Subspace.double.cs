@@ -18,8 +18,8 @@ namespace LinearAlgebra
         // wide m < n case needs the orthogonal complement of a thin factor and is left for later.
         //
         // Each op needs one full Golub-Kahan SVD (U m x n, S n, V n x n) of scratch. The allocating
-        // overloads take that from A's temp pool; the ref-workspace overloads reuse a caller-provided
-        // doubleSVDFullCache (Arena.doubleSVDFullCache(m, n)) for zero-alloc repeated calls.
+        // overloads take that from Allocator.Temp; the ref-workspace overloads reuse a caller-provided
+        // doubleSVDFullCache (the (m, n, allocator) ctor) for zero-alloc repeated calls.
 
         /// <summary>
         /// Orthonormal basis for the NULLSPACE (kernel) of A (m x n, m >= n): the set of x with Ax = 0.
@@ -36,7 +36,7 @@ namespace LinearAlgebra
         /// depending on whether A has full column rank; <c>rank</c> is A's detected numerical rank
         /// (dim = n - rank).
         /// <paramref name="ws"/> is full-SVD scratch (m x n + n + n x n) reused across calls; size it
-        /// with Arena.doubleSVDFullCache(m, n).
+        /// with its (m, n, allocator) ctor.
         /// </summary>
         public static RankInfo nullspaceBasis(in doubleMxN A, ref doubleMxN basis, ref doubleSVDFullCache ws,
                                          double relTol, int maxIter)
@@ -89,7 +89,7 @@ namespace LinearAlgebra
             => nullspaceBasis(in A, ref basis, ref ws, (double)(-1), Consts.sweepBudget(A.N_Cols));
 
         /// <summary>
-        /// nullspaceBasis allocating its full-SVD scratch (m x n + n x n + n) from A's arena.
+        /// nullspaceBasis allocating its full-SVD scratch (m x n + n x n + n) from Allocator.Temp.
         /// See the ref-workspace overload for semantics.
         /// </summary>
         public static RankInfo nullspaceBasis(in doubleMxN A, ref doubleMxN basis,
@@ -123,7 +123,7 @@ namespace LinearAlgebra
         ///
         /// Same tolerance / convergence semantics as <see cref="nullspaceBasis"/> — returns a
         /// <see cref="RankInfo"/> (implicit-bool == Solved). <paramref name="ws"/>
-        /// is full-SVD scratch reused across calls; size it with Arena.doubleSVDFullCache(m, n).
+        /// is full-SVD scratch reused across calls; size it with its (m, n, allocator) ctor.
         /// </summary>
         public static RankInfo rangeBasis(in doubleMxN A, ref doubleMxN basis, ref doubleSVDFullCache ws,
                                      double relTol, int maxIter)
@@ -175,7 +175,7 @@ namespace LinearAlgebra
             => rangeBasis(in A, ref basis, ref ws, (double)(-1), Consts.sweepBudget(A.N_Cols));
 
         /// <summary>
-        /// rangeBasis allocating its full-SVD scratch (m x n + n x n + n) from A's arena.
+        /// rangeBasis allocating its full-SVD scratch (m x n + n x n + n) from Allocator.Temp.
         /// See the ref-workspace overload for semantics.
         /// </summary>
         public static RankInfo rangeBasis(in doubleMxN A, ref doubleMxN basis,

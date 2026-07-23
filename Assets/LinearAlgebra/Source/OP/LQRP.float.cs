@@ -284,7 +284,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// decomp using a reusable workspace (Arena.floatLQRPCache(m, n)) — zero-alloc.
+        /// decomp using a reusable workspace (the floatLQRPCache(m, n, Allocator) ctor) — zero-alloc.
         /// Semantics identical to the allocating overload; see that one for full documentation.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -369,7 +369,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// decompInPlace using a reusable workspace (Arena.floatLQRPCache(m, n)) — the internal scratch
+        /// decompInPlace using a reusable workspace (the floatLQRPCache(m, n, Allocator) ctor) — the internal scratch
         /// copy (ws.W) and Householder vector (ws.v) come from the cache (no per-call Allocator.Temp).
         /// Semantics identical to the explicit-scratch overload; see it for full documentation.
         /// </summary>

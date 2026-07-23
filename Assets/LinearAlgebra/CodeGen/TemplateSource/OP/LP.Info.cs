@@ -180,8 +180,8 @@ namespace LinearAlgebra
     /// <c>LP.solve(..., ref basis, ref fProxyLPCache cache)</c> for that.
     ///
     /// LIFECYCLE: user-allocated, mirroring <see cref="Pivot"/>'s own <c>(size, Allocator)</c> +
-    /// <see cref="Dispose"/> pattern -- no arena requirement, since this needs to persist ACROSS
-    /// separate top-level solve calls. Three ways to arrive at <c>LP.solve(..., ref basis)</c>:
+    /// <see cref="Dispose"/> pattern -- this needs to persist ACROSS separate top-level solve calls.
+    /// Three ways to arrive at <c>LP.solve(..., ref basis)</c>:
     ///   * <c>default(LPBasis)</c> (not <see cref="IsCreated"/>): cold solve, ALLOCATES this struct
     ///     itself (<c>Allocator.Persistent</c>, MANAGED-THREAD ONLY -- a Burst job cannot make this
     ///     allocation) before writing the terminal basis into it. Caller must <see cref="Dispose"/>.

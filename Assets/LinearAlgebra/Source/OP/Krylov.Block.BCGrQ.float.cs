@@ -197,7 +197,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>bcgrq over a dense SPD <see cref="floatMxN"/> A (n x n) with an s x n block B.
-        /// Allocates block scratch from the arena.</summary>
+        /// Allocates block scratch from Allocator.Temp.</summary>
         public static BlockSolveInfo bcgrq(in floatMxN A, in floatMxN B, ref floatMxN X, int maxIter, float tol)
         {
             int s = B.M_Rows, n = A.M_Rows;
@@ -221,7 +221,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>bcgrq over a block-sparse (BSR) SPD A with an s x n block B. Allocates block
-        /// scratch from the arena.</summary>
+        /// scratch from Allocator.Temp.</summary>
         public static BlockSolveInfo bcgrq(in floatBSR A, in floatMxN B, ref floatMxN X, int maxIter, float tol)
         {
             int s = B.M_Rows, n = A.M_Rows;

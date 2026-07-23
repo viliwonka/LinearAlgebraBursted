@@ -250,7 +250,7 @@ namespace LinearAlgebra
             return minres(new doubleDenseOperator(in A), in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, maxIter, tol);
         }
 
-        /// <summary>MINRES over a dense matrix -- allocates seven scratch vectors from the arena.</summary>
+        /// <summary>MINRES over a dense matrix -- allocates seven scratch vectors from Allocator.Temp.</summary>
         public static SolveInfo minres(in doubleMxN A, in doubleN b, ref doubleN x, int maxIter, double tol)
         {
             doubleN y  = b.doubleTempVec(A.M_Rows);
@@ -281,7 +281,7 @@ namespace LinearAlgebra
             return minres(new doubleBSROperator(in A), in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, maxIter, tol);
         }
 
-        /// <summary>MINRES over a BSR matrix -- allocates seven scratch vectors from the arena.</summary>
+        /// <summary>MINRES over a BSR matrix -- allocates seven scratch vectors from Allocator.Temp.</summary>
         public static SolveInfo minres(in doubleBSR A, in doubleN b, ref doubleN x, int maxIter, double tol)
         {
             doubleN y  = b.doubleTempVec(A.M_Rows);
@@ -301,7 +301,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Preconditioned MINRES solver -- allocates eight scratch vectors from the arena and
+        /// Preconditioned MINRES solver -- allocates eight scratch vectors from Allocator.Temp and
         /// calls the zero-alloc primitive.
         /// </summary>
         public static SolveInfo minres<TOp, TPre>(in TOp A, in TPre M, in doubleN b, ref doubleN x,
@@ -348,7 +348,7 @@ namespace LinearAlgebra
         /// <summary>
         /// Preconditioned MINRES over a BSR matrix with ANY <see cref="IdoublePreconditioner"/>
         /// (block-Jacobi/SSOR/IC0/FSAI/Chebyshev/additive-Schwarz) -- allocates eight scratch
-        /// vectors from the arena and calls the zero-alloc primitive.
+        /// vectors from Allocator.Temp and calls the zero-alloc primitive.
         /// </summary>
         public static SolveInfo minres<TPre>(in doubleBSR A, in TPre M, in doubleN b, ref doubleN x,
                                int maxIter, double tol)

@@ -45,7 +45,7 @@ namespace LinearAlgebra
             vn2 = new doubleN(n, allocator);
         }
 
-        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        /// <summary>Dispose when done.</summary>
         public void Dispose()
         {
             vn1.Dispose();

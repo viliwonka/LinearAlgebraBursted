@@ -444,10 +444,10 @@ namespace LinearAlgebra
             return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }
 
-        // Cache overload: zero-alloc (caller-owned fProxyQRCache, see Arena.fProxyQRCache) AND
+        // Cache overload: zero-alloc (caller-owned fProxyQRCache, see its (m, n, allocator) ctor) AND
         // BLOCKED once N_Cols >= 2*QR_BLOCK — the same gate, and the same qrDecompositionBlockedCore
         // call, as the fully-allocating overload above, so results are bit-identical to it; only the
-        // scratch's allocation source differs (arena-owned buffers vs Allocator.Temp). Below the gate,
+        // scratch's allocation source differs (caller-owned buffers vs Allocator.Temp). Below the gate,
         // falls back to the unblocked ref-u,w kernel using cache.u/cache.w — again bit-identical to
         // the allocating overload's own small-N fallback.
         /// <param name="A_to_Q">On entry A; on exit the orthogonal factor Q.</param>
@@ -575,8 +575,9 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// decompSolve convenience: allocates the solution vector x (length Q.N_Cols) from the arena
-        /// and returns it. Use the ref-destination overload in hot loops to avoid the allocation.
+        /// decompSolve convenience: allocates the solution vector x (length Q.N_Cols) from
+        /// Allocator.Temp and returns it. Use the ref-destination overload in hot loops to avoid the
+        /// allocation.
         /// </summary>
         public static fProxyN decompSolve(ref fProxyMxN Q, ref fProxyMxN R, ref fProxyN b) {
             fProxyN x = b.fProxyTempVec(Q.N_Cols);
@@ -676,7 +677,7 @@ namespace LinearAlgebra
             return info;
         }
 
-        // Cache overload: zero-alloc (caller-owned fProxyQRCache, see Arena.fProxyQRCache) — routes
+        // Cache overload: zero-alloc (caller-owned fProxyQRCache, see its (m, n, allocator) ctor) — routes
         // to the SAME fused, never-forms-Q kernel as the (ref u) / (ref u, ref w) overloads (using
         // cache.u/cache.w in place of caller- or Temp-provided scratch), so results are bit-identical
         // to the allocating overload above. Does NOT engage the level-3 blocked kernel: solveInPlace

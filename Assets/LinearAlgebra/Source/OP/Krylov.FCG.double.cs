@@ -137,7 +137,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Flexible CG — allocates five scratch vectors from the arena and calls the zero-alloc
+        /// Flexible CG — allocates five scratch vectors from Allocator.Temp and calls the zero-alloc
         /// primitive. Use when the preconditioner varies between iterations (K-cycle multigrid,
         /// inner-iterative M); prefer <see cref="cg{TOp,TPre}(in TOp, in TPre, in doubleN, ref doubleN, int, double)"/>
         /// for a fixed SPD preconditioner.

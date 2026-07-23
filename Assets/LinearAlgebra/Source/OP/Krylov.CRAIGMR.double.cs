@@ -175,7 +175,7 @@ namespace LinearAlgebra
             return craigmr(new doubleDenseOperator(in A), in b, ref x, ref u, ref v, ref d, ref tmpM, ref tmpN, maxIter, tol);
         }
 
-        /// <summary>CRAIGMR over a dense matrix -- allocates five scratch vectors from the arena.</summary>
+        /// <summary>CRAIGMR over a dense matrix -- allocates five scratch vectors from Allocator.Temp.</summary>
         public static LstsqInfo craigmr(in doubleMxN A, in doubleN b, ref doubleN x, int maxIter, double tol)
         {
             doubleN u    = b.doubleTempVec(A.M_Rows);

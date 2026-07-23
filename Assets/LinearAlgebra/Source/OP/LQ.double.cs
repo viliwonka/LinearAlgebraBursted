@@ -401,7 +401,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// decomp using a reusable workspace (Arena.doubleLQCache(m, n)) — zero-alloc.
+        /// decomp using a reusable workspace (the doubleLQCache(m, n, Allocator) ctor) — zero-alloc.
         /// Semantics identical to the allocating overload; see that one for full documentation.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -554,7 +554,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// minNormSolve using a reusable workspace (Arena.doubleLQMinNormCache(m, n)) —
+        /// minNormSolve using a reusable workspace (the doubleLQMinNormCache(m, n, Allocator) ctor) —
         /// zero-alloc end to end (including the nested decomp call).
         /// Semantics identical to the allocating overload; see that one for full documentation.
         /// </summary>
@@ -645,8 +645,8 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// minNormSolveInPlace using a reusable workspace (Arena.doubleLQMinNormCache(m, n)) —
-        /// zero-alloc end to end. Semantics identical to the allocating in-place overload
+        /// minNormSolveInPlace using a reusable workspace (the doubleLQMinNormCache(m, n, Allocator)
+        /// ctor) — zero-alloc end to end. Semantics identical to the allocating in-place overload
         /// (A DESTROYED; the cache's W buffer is unused on this path).
         /// </summary>
         public static DirectSolveInfo minNormSolveInPlace(ref doubleMxN A, in doubleN b, ref doubleN x, ref doubleLQMinNormCache ws)

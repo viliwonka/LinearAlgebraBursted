@@ -20,10 +20,10 @@ sign-fixed),
 - `k`, 
 - `converged` (also exposed as `.Solved` and an implicit `bool` conversion). 
 
-All buffers are arena-owned — allocated via `arena.floatPCAModel(p, k)`, disposed with the arena, no separate `Dispose()` call needed.
+Buffers are allocated via `new floatPCAModel(p, k, Allocator.Temp)` (or `Persistent` + `Dispose()`
+for a long-lived model).
 
-Four fit routes, all `bool fit<Route>(in X, ref model, ...) : converged` (+ an allocating `ref Arena`
-overload).
+Four fit routes, all `bool fit<Route>(in X, ref model, ...) : converged`.
 
 PCA fit methods:
 - **`PCA.fitCov`** - eigendecomposes the p×p covariance/correlation matrix. The only route that

@@ -20,7 +20,7 @@
 - `Print.ToText(in floatMxN|floatN) : string` — `G7`, human-readable preview.
 - `Print.ToCsv(in floatMxN|floatN) : string` — `G9`, round-trip-exact.
 - `Print.SaveCsv(in floatMxN|floatN, string path)` — writes via `File.WriteAllText`.
-- Sparse: `Print.ToText(in floatBSR m)` (densifies via a throwaway internal `Arena`, then reuses the
+- Sparse: `Print.ToText(in floatBSR m)` (densifies via `ToDense(Allocator.Temp)`, then reuses the
   dense path), `Print.ToCsv(in floatBSR m)` (block-triplet CSV — `blockRow,blockCol,v0..v(BR·BC-1)`,
   no densification needed), `Print.SaveCsv(in floatBSR m, path)`.
 

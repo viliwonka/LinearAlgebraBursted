@@ -80,9 +80,9 @@ namespace LinearAlgebra.Gallery
                 }
             }
 
-            // Blas.dot(Mi, Mi, true) (the allocating convenience overload) requires an arena-tracked
-            // Mi, which a standalone (Allocator-built) Mi is not -- use the ref-dest primitive with a
-            // manually preallocated Di instead. Identical kernel (matAtA), identical arithmetic.
+            // Uses the ref-dest primitive with Di preallocated once outside the loop, instead of the
+            // allocating convenience overload Blas.dot(Mi, Mi, true) (which would allocate a fresh
+            // matrix every iteration). Identical kernel (matAtA), identical arithmetic.
             var Mi = new doubleMxN(BR, BR, Allocator.Temp);
             var Di = new doubleMxN(BR, BR, Allocator.Temp, true);
             for (int i = 0; i < blockRows; i++)

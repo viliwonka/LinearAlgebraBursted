@@ -11,7 +11,7 @@ namespace LinearAlgebra
         /// Computes the singular values of any-shape A into S (length k = min(M_Rows, N_Cols)),
         /// sorted in descending order. A is NOT modified — for wide A its transpose is decomposed,
         /// since A and Aᵀ share the same singular values. Uses the fast values-only Golub-Kahan path
-        /// (values), which needs no orthogonal factors. Allocates SVD scratch from A's arena.
+        /// (values), which needs no orthogonal factors. Allocates SVD scratch from Allocator.Temp.
         /// Returns the inner bidiagonal QR's <see cref="SVDInfo"/> (implicit bool == Converged);
         /// on MaxIterations S is unwritten. Shared by matrixL2 / cond / rank.
         /// </summary>

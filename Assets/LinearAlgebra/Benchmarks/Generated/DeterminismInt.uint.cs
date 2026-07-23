@@ -58,8 +58,8 @@ namespace LinearAlgebra.Benchmarks
             // Small range: n=48 values in [0,10) keeps the worst-case dot-product sum (4800) well
             // inside `short`'s range (Blas.dot accumulates in the element's own width, unwidened).
             // Rand.nextUniformInPlace has no uint instantiation (RandomOP.uint.cs does not opt
-            // into //alsoExpand[uint]//) -- fall back to Unity.Mathematics.Random.NextUInt directly
-            // for that one slot.
+            // into the uint alsoExpand widening) -- fall back to Unity.Mathematics.Random.NextUInt
+            // directly for that one slot.
             
             
             for (int i = 0; i < n; i++) { a[i] = rng.NextUInt(0u, 10u); b[i] = rng.NextUInt(0u, 10u); }

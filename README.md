@@ -36,7 +36,7 @@ work on the library itself (templates + codegen), open the repo directly in Unit
 
 ## Features
 
-- [**Types**](docs/features/dense-types.md): vectors, matrices, the `Arena` allocator
+- [**Types**](docs/features/dense-types.md): vectors, matrices, allocation & lifetime
 - [**Element-wise ops**](docs/features/comp-elementwise.md): Per component arithmetic, math functions, clamp, integer bit ops, bool logic
 - [**LA primitives**](docs/features/la-primitives.md): `Blas`/`Norms`/`Analysis`: dot, GEMM, transpose, outer product, norms, matrix metrics
 - [**Decompositions & direct solvers**](docs/features/decompositions.md): LU, CHO/CHOP, QR/QRCP, LQ/LQRP, Bidiag; direct solve (tri/LU/CHO/QR)
@@ -62,37 +62,33 @@ work on the library itself (templates + codegen), open the repo directly in Unit
 ## Example code
 
 ```csharp
-// Arena owns every allocation below.
-var arena = new Arena(Allocator.Persistent);
-
+// Allocation is explicit: pick an Allocator, dispose what outlives its scope.
+// Allocator.Temp is auto-freed at end of frame / job — no Dispose needed.
 int dim = 128;
-floatN vecA = arena.floatVec(dim);          // zero vector
-floatN vecB = arena.floatVec(dim, 1f);      // filled with 1
-floatN vecAdd = vecA + vecB;                // per-component, allocates a temp
+floatN vecA = new floatN(dim, Allocator.Temp);        // zero vector
+floatN vecB = GenerateOP.floatVec(dim, 1f);           // filled with 1
+floatN vecAdd = new floatN(in vecA, Allocator.Temp);  // copy…
+floatComp.addInPlace(vecAdd, vecB);                   // …then add in place
 
-floatMxN matI = arena.floatIdentityMat(16);
-floatMxN matRand = arena.floatRandomMat(16, 16);
-floatMxN sum = matI + matRand;              // allocates
-floatComp.addInPlace(sum, 1f);              // in place, allocates nothing
-floatComp.mulInPlace(sum, matRand);         // in place, allocates nothing
+floatMxN matI = GenerateOP.floatIdentityMat(16);
+floatMxN matRand = GenerateOP.floatRandomMat(16, 16);
+floatComp.addInPlace(matI, matRand);                  // in place, allocates nothing
+floatComp.mulInPlace(matI, matRand);                  // in place, allocates nothing
 
-floatMxN A = arena.floatRandomDiagonalMat(dim, -3f, 3f);
-floatMxN B = arena.floatRandomDiagonalMat(dim, -3f, 3f);
-floatMxN C = Blas.dot(A, B);                // matrix multiply, allocates
+floatMxN A = GenerateOP.floatRandomDiagonalMat(dim, -3f, 3f);
+floatMxN B = GenerateOP.floatRandomDiagonalMat(dim, -3f, 3f);
+floatMxN C = Blas.dot(A, B);                          // matrix multiply, allocates Temp
 C[0, 0] += 5f;
 
-floatN b = arena.floatVec(dim, 1f);
-floatN x = arena.floatVec(dim);
+floatN b = GenerateOP.floatVec(dim, 1f);
+floatN x = new floatN(dim, Allocator.Temp);
 // Solve Ax = b via QR; fastest path, but modifies A and b (both become scratch).
 DirectSolveInfo info = QR.solveInPlace(ref A, ref b, ref x);
-Print.Log(info);                            // "DirectSolveInfo(Success)"
+Print.Log(info);                                      // "DirectSolveInfo(Success)"
 float norm = Norms.L1(x);
 
-boolMxN cmp = C > A;                        // element-wise compare, allocates
-cmp = !cmp;                                 // negate, allocates
-
-arena.ClearTemp();                          // free the temporaries above
-arena.Dispose();                            // free everything, dispose the arena
+boolMxN cmp = C > A;                                  // element-wise compare, allocates Temp
+boolComp.notInPlace(cmp);                             // negate in place
 ```
 
 

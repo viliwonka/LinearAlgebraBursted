@@ -33,7 +33,7 @@ namespace LinearAlgebra.ML
             D2Weights      = new fProxyN(N, allocator);
         }
 
-        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        /// <summary>Dispose when done.</summary>
         public void Dispose()
         {
             Gram.Dispose();

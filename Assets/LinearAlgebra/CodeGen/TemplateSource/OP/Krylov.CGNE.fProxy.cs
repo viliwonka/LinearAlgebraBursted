@@ -245,7 +245,7 @@ namespace LinearAlgebra
             return cgne(new fProxyDenseOperator(in A), in b, ref x, ref r, ref p, ref Ap, ref tmpN, maxIter, tol);
         }
 
-        /// <summary>CGNE over a dense matrix -- allocates four scratch vectors from the arena.</summary>
+        /// <summary>CGNE over a dense matrix -- allocates four scratch vectors from Allocator.Temp.</summary>
         public static LstsqInfo cgne(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol)
         {
             fProxyN r    = b.fProxyTempVec(A.M_Rows);
@@ -316,11 +316,11 @@ namespace LinearAlgebra
             return cgne(in A, in b, ref x, A.M_Rows, Consts.fProxySqrtEps);
         }
 
-        // ===== Tikhonov-damped overloads: x = Aᵀ(A Aᵀ + damp²·I)⁻¹ b (arena-allocated) =====
+        // ===== Tikhonov-damped overloads: x = Aᵀ(A Aᵀ + damp²·I)⁻¹ b (allocating) =====
 
         /// <summary>
-        /// Damped CGNE over a dense matrix (Rows ≤ Cols) -- allocates six scratch vectors from the
-        /// arena. damp == 0 falls through to the undamped path. See the damped primitive for the
+        /// Damped CGNE over a dense matrix (Rows ≤ Cols) -- allocates six scratch vectors from
+        /// Allocator.Temp. damp == 0 falls through to the undamped path. See the damped primitive for the
         /// regularized-least-norm semantics and the nonzero-rnorm-at-convergence contract.
         /// </summary>
         public static LstsqInfo cgne(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol, fProxy damp)

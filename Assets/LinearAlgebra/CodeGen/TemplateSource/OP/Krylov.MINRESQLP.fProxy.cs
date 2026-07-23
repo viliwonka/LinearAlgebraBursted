@@ -530,7 +530,7 @@ namespace LinearAlgebra
             return minresQLP(new fProxyDenseOperator(in A), in b, ref x, ref v, ref r1, ref r2, ref r3, ref w, ref wl, ref wl2, ref xl2, ref t1, maxIter, tol);
         }
 
-        /// <summary>MINRES-QLP over a dense matrix -- allocates nine scratch vectors from the arena.</summary>
+        /// <summary>MINRES-QLP over a dense matrix -- allocates nine scratch vectors from Allocator.Temp.</summary>
         public static SolveInfo minresQLP(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol)
         {
             fProxyN v   = b.fProxyTempVec(A.M_Rows);
@@ -563,7 +563,7 @@ namespace LinearAlgebra
             return minresQLP(new fProxyBSROperator(in A), in b, ref x, ref v, ref r1, ref r2, ref r3, ref w, ref wl, ref wl2, ref xl2, ref t1, maxIter, tol);
         }
 
-        /// <summary>MINRES-QLP over a BSR matrix -- allocates nine scratch vectors from the arena.</summary>
+        /// <summary>MINRES-QLP over a BSR matrix -- allocates nine scratch vectors from Allocator.Temp.</summary>
         public static SolveInfo minresQLP(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol)
         {
             fProxyN v   = b.fProxyTempVec(A.M_Rows);
@@ -585,7 +585,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Preconditioned MINRES-QLP solver -- allocates nine scratch vectors from the arena and
+        /// Preconditioned MINRES-QLP solver -- allocates nine scratch vectors from Allocator.Temp and
         /// calls the zero-alloc primitive.
         /// </summary>
         public static SolveInfo minresQLP<TOp, TPre>(in TOp A, in TPre M, in fProxyN b, ref fProxyN x,
@@ -632,7 +632,7 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Preconditioned MINRES-QLP over a BSR matrix with ANY <see cref="IfProxyPreconditioner"/>
-        /// (block-Jacobi) -- allocates nine scratch vectors from the arena and calls the zero-alloc
+        /// (block-Jacobi) -- allocates nine scratch vectors from Allocator.Temp and calls the zero-alloc
         /// primitive.
         /// </summary>
         public static SolveInfo minresQLP<TPre>(in fProxyBSR A, in TPre M, in fProxyN b, ref fProxyN x,
@@ -661,11 +661,11 @@ namespace LinearAlgebra
             return minresQLP(in A, in M, in b, ref x, A.M_Rows, Consts.fProxySqrtEps);
         }
 
-        // ===== eigenvalue-shifted overloads: solve (A - shift*I) x = b (arena-allocated) =====
+        // ===== eigenvalue-shifted overloads: solve (A - shift*I) x = b (allocating) =====
 
         /// <summary>
         /// Preconditioned MINRES-QLP for the shifted system (A - shift*I) x = b -- allocates nine
-        /// scratch vectors from the arena. See the primitive for shift semantics.
+        /// scratch vectors from Allocator.Temp. See the primitive for shift semantics.
         /// </summary>
         public static SolveInfo minresQLP<TOp, TPre>(in TOp A, in TPre M, in fProxyN b, ref fProxyN x,
                                           int maxIter, fProxy tol, fProxy shift)
@@ -686,7 +686,7 @@ namespace LinearAlgebra
 
         /// <summary>
         /// MINRES-QLP over a dense matrix for the shifted system (A - shift*I) x = b -- allocates
-        /// nine scratch vectors from the arena.
+        /// nine scratch vectors from Allocator.Temp.
         /// </summary>
         public static SolveInfo minresQLP(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol, fProxy shift)
         {
@@ -695,7 +695,7 @@ namespace LinearAlgebra
 
         /// <summary>
         /// MINRES-QLP over a BSR matrix for the shifted system (A - shift*I) x = b -- allocates nine
-        /// scratch vectors from the arena.
+        /// scratch vectors from Allocator.Temp.
         /// </summary>
         public static SolveInfo minresQLP(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol, fProxy shift)
         {

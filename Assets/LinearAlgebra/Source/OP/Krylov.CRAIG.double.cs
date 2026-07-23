@@ -147,7 +147,7 @@ namespace LinearAlgebra
             return craig(new doubleDenseOperator(in A), in b, ref x, ref u, ref v, ref tmpM, ref tmpN, maxIter, tol);
         }
 
-        /// <summary>CRAIG over a dense matrix -- allocates four scratch vectors from the arena.</summary>
+        /// <summary>CRAIG over a dense matrix -- allocates four scratch vectors from Allocator.Temp.</summary>
         public static LstsqInfo craig(in doubleMxN A, in doubleN b, ref doubleN x, int maxIter, double tol)
         {
             doubleN u    = b.doubleTempVec(A.M_Rows);

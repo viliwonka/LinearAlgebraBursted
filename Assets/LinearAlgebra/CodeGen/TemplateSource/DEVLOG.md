@@ -1,6 +1,24 @@
 # DEVLOG — TemplateSource
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Arena removal (library-wide)
+- 2026-07-23 | The Arena allocator was removed entirely (Arena/ folder, ArenaCore,
+  ChunkedRecordTable, per-type record tables, Arena.Sparse, the `_rec` dual path in every struct,
+  and all `ref Arena` factory/solver rungs), together with the allocating operators
+  (`+ - * / %`, integer bitwise, bool logical; comparators kept). Rationale: the operators were
+  the only thing that structurally required the arena (result allocator had to ride inside the
+  operands); everywhere else it was a scoped-dispose convenience that Allocator.Temp already
+  provides, at the cost of a second copy-semantics model (the source of the IJob struct-copy bug
+  class), a hidden single-threaded contract (`a + b` in a job = silent race), a per-read liveness
+  branch, and a 3x solver overload ladder. Replacements: `GenerateOP` (factories/kernels),
+  `fProxyGallery` standalone overloads, `ConvertOP`, `Query`/`FFT` allocating statics, Allocator
+  ctors + Dispose on all workspaces/caches/preconditioners/AMG, `Copy()`/`TempCopy()` =
+  standalone Temp copies. Removal ran in 4 suite-green stages (standalone surface -> migrate
+  216 test/benchmark templates + demos -> delete operators/convenience surface -> delete core +
+  collapse structs); net about -37k lines, suite runtime dropped ~330s -> ~245s. If operator
+  sugar is ever wanted again, it needs an allocator source that does not live inside the operand
+  structs — do not resurrect the arena for it.
+
 ## BurstProbe.cs
 - 2026-07-21 | New singular (non-fProxy) file, `internal` so it's reachable from
   `BurstLinearAlgebra.Tests`/`BurstLinearAlgebra.Benchmarks` via the `InternalsVisibleTo` grants in

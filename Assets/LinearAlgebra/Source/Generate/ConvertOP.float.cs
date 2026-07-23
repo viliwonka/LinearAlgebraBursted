@@ -9,10 +9,9 @@ using Unity.Collections;
 
 namespace LinearAlgebra
 {
-    // Standalone (non-arena) conversions between fixed-size Unity.Mathematics types and dynamic
-    // vectors/matrices. Same semantics as ArenaConversions.float.cs: forward converters allocate
-    // a fresh floatN/floatMxN via allocator; reverse converters read into a fixed-size value and
-    // allocate nothing.
+    // Conversions between fixed-size Unity.Mathematics types and dynamic vectors/matrices. Forward
+    // converters allocate a fresh floatN/floatMxN via allocator; reverse converters read into a
+    // fixed-size value and allocate nothing.
     public static partial class ConvertOP
     {
         #region CONVERSIONS_FROM_MATH

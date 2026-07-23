@@ -1,66 +1,44 @@
-# Dense types & the Arena allocator
+# Dense types, allocation & lifetime
 
 `floatN`/`floatMxN` and their `double`/`int`/`short`/`long`/`uint`/`bool` counterparts are the
 library's vector and matrix types. Matrices are row-major (`Data[r*N_Cols+c]`) — the opposite of
 `Unity.Mathematics`' column-major layout, so any conversion between the two is a transpose, not a
 reinterpret-cast.
 
-## Arena
+## Allocation
 
-`Arena` is a cheap-to-copy handle (a pointer to a heap-allocated core) to a bump/tracking allocator.
-All copies of an `Arena` share one core, so passing it by value is safe — but **disposing two copies
-of the same handle double-frees**; treat an `Arena` like a single owned resource.
+Every type is a plain unmanaged struct over an `UnsafeList`. Allocation is explicit — you pick the
+`Allocator`, you own the lifetime:
 
-- `new Arena(Allocator allocator)` — `Allocator.Persistent` for long-lived state, `Allocator.Temp`
-  for a single frame/job.
-- `arena.floatVec(int N, bool uninit = false)` / `arena.floatVec(int N, float s)` — vector factories
-  (zeroed, or filled with `s`). `arena.floatMat(int rows, int cols, ...)` — matrix factories, plus a
-  square `floatMat(int dim)` overload.
-- `ArenaExtensions` adds everything else as `this ref Arena` extensions: `floatIdentityMat`,
-  `floatRandomMat`, `floatRandomDiagonalMat`, `floatBasisVec`, `floatLinVec`, `floatHouseholderMat`,
-  `floatHilbertMat`, and per-feature workspace factories (`floatSVDThinCache`, `floatFFTCache`, …).
-- `arena.ClearTemp()` — disposes only the **temp** pool (the scratch every allocating op/operator
-  produces); call it once per frame/loop iteration to keep temp allocations from accumulating.
-- `arena.Dispose()` — disposes everything (persistent + temp) and frees the core itself.
-
-**Threading contract (from the type's own doc comment):** an `Arena` is single-threaded by contract
-— like Unity's native containers, a single instance must not be mutated (allocated from, cleared, or
-disposed) from more than one thread/job concurrently. Concretely:
-
-- **Allocate before you schedule.** Do an arena's persistent allocations (and any `Pivot`/`Indices`
-  buffers a factorization needs) on the scheduling thread before handing data derived from it to a
-  job. A job's `Execute()` can itself call arena factories/`Clear`/`ClearTemp` (they're
-  Burst-compilable), but only if no other thread is touching the same arena at the same time.
-- **One arena per concurrently-running job/thread.** If two jobs may run at the same time (no
-  dependency between them), give each its own `Arena`. Sharing one arena across concurrent jobs
-  races the record tables' chunk-directory/free-list bookkeeping — silently, with no exception, just
-  wrong answers or a crash later.
-- **Complete jobs before `Clear()`/`ClearTemp()`/`Dispose()`.** Wait on a job's `JobHandle` before
-  tearing down (or clearing) an arena it might still touch.
-
-### Concurrency guards
-
-Don't share one `Arena` across concurrently-running jobs/threads — under
-`ENABLE_UNITY_COLLECTIONS_CHECKS`, a violation throws instead of corrupting memory; in a player
-build without checks it's silent corruption, so the contract above still needs to be followed by
-construction (one arena per concurrent job).
+- `new floatN(int n, Allocator allocator = Allocator.Temp, bool uninit = false)` — zeroed (or
+  uninitialized) vector. `new floatMxN(int rows, int cols, Allocator allocator, bool uninit = false)`
+  — matrix.
+- `Allocator.Temp` is freed automatically at end of frame (main thread) or end of job — no
+  `Dispose()` needed. Use it for scratch and one-shot work.
+- `Allocator.Persistent` (and `TempJob`) must be `Dispose()`d. Use it for state that lives across
+  frames.
+- `GenerateOP` holds the filled/structured factories, same names and arguments library-wide:
+  `GenerateOP.floatVec(n, s)` (fill with `s`), `floatIdentityMat`, `floatRandomMat`,
+  `floatRandomDiagonalMat`, `floatBasisVec`, `floatLinVec`, `floatHouseholderMat`, `floatLinspace`,
+  kernels/windows, and integer/bool counterparts. Each takes a trailing
+  `Allocator allocator = Allocator.Temp`.
+- Test matrices live on `floatGallery` (`floatGallery.floatHilbert(n)`, …); conversions to/from
+  `Unity.Mathematics` fixed-size types on `ConvertOP`.
+- Workspaces/caches construct directly: `new floatQRCache(m, n, allocator)`,
+  `new floatFFTCache(n, allocator)`, `new floatLOBPCGCache(n, k, allocator)`, … each has a matching
+  `Dispose()`.
 
 ## Vectors & matrices
-
-Both types carry either an arena-tracked record or a standalone `UnsafeList` (for `new floatN(n,
-Allocator.Temp)`-style construction outside an arena) behind one indexer surface:
 
 - Indexers: linear `this[int]` / `this[System.Index]` (from-end supported), and for matrices
   `this[int r, int c]` (bounds-checked only under `ENABLE_UNITY_COLLECTIONS_CHECKS`).
 - Fields: `floatMxN.M_Rows`, `.N_Cols`, `.Length`, `.IsSquare`. Both vectors and matrices expose
   `.IsCreated` (false for `default` and after `Dispose()`, like any native container).
-- Operators: `+ - * / %` (unary, scalar, and component-wise) and comparators (`< > <= >= == !=`,
-  returning `boolN`/`boolMxN`) are all **allocating** — each is sugar over a `TempCopy()` plus the
-  matching `Comp`/`UnsafeBoolOP` kernel. For a hot loop, call the `*InPlace` methods directly on a
-  buffer you own instead (see [comp-elementwise](comp-elementwise.md)).
-- `Copy()`/`TempCopy()`/`Dispose()` — only valid on arena-tracked instances (standalone instances
-  dispose their own `UnsafeList` directly). For a job-safe standalone copy use the copy constructor:
-  `new floatMxN(in orig, Allocator.Temp)` / `new floatN(in orig, Allocator.Temp)`.
+- Comparators: `< > <= >= == !=` return a freshly allocated `boolN`/`boolMxN`. All arithmetic is
+  explicit — the `Comp` in-place kernels (`floatComp.addInPlace(dst, src)`, …) mutate a buffer you
+  own and allocate nothing (see [comp-elementwise](comp-elementwise.md)).
+- `Copy()`/`TempCopy()` return an independent `Allocator.Temp` copy. For a copy on a specific
+  allocator use the copy constructor: `new floatMxN(in orig, allocator)`.
 - `CopyTo`/`CopyFrom` — into/from a same-shape vector or matrix, or a `NativeArray<float>`
   (row-major for matrices, lengths must match).
 - **NativeArray views** — `new floatN(array)` and `new floatMxN(rows, cols, array)` wrap an existing
@@ -70,35 +48,21 @@ Allocator.Temp)`-style construction outside an arena) behind one indexer surface
   This is the zero-copy bridge for keeping game state in `NativeArray`s while solving in place
   through library types.
 
-## The two-tier model: authoring vs compute
+## Jobs
 
-The API is really two tiers, and the threading contract falls out of which tier you're in:
+The structs copy by value into a job, but the copy shares the same native memory — element writes
+inside `Execute()` persist and are visible to the caller after the job completes. Two rules:
 
-- **Authoring tier (main thread): the arena.** Operators (`a + b`), `Copy()`/`TempCopy()`, the
-  cross-type shortcuts, and the temp pool. Easy arithmetic structurally *requires* the arena: a C#
-  operator receives only its operands, so the result's allocator must ride inside them — that is
-  what the struct's internal owner reference is for. This tier is for setup, orchestration, and
-  gameplay-level math on the scheduling thread.
-- **Compute tier (jobs, any thread): pre-allocated buffers + in-place APIs.** `Comp.xxxInPlace`,
-  `Blas.dot(..., ref dest)`, solver workspace forms — plus standalone `new floatN(n, Allocator.Temp)`
-  scratch, which is thread-local and job-legal. Every kernel in the library itself lives in this
-  tier.
-
-The trap to know: **the arena rides invisibly inside every arena-tracked struct**, so an
-innocent-looking `var c = a + b;` inside a job is an arena mutation from a worker thread — exactly
-the race the contract forbids, reached without ever "passing the arena" anywhere. Inside jobs, use
-the in-place APIs on buffers allocated before scheduling; leave the operators to the authoring tier.
-(Under `ENABLE_UNITY_COLLECTIONS_CHECKS` the tripwire above turns an actual collision into a thrown
-exception; in player builds it is silent corruption.)
-
-## Temp pool & threading in practice
-
-The temp pool is a convenience, not a hard requirement — every allocating op has a `ref`-destination
-primitive that writes into a buffer you already own and allocates nothing. Reach for the temp pool in
-one-shot/setup code and the zero-alloc primitives inside per-frame loops.
+- **Write through a matrix, never reassign it.** Reassigning the struct field itself
+  (`A = other;`) or calling `Dispose()` inside a job only affects the job's private copy of the
+  handle — the caller's copy still points at the old (possibly freed) memory.
+- **`Allocator.Temp` inside a job is thread-local and job-legal** — allocate scratch freely; it is
+  freed when the job ends. For buffers a job returns to the caller, allocate them before
+  scheduling (or use `Persistent` and dispose on the main thread after the job completes).
 
 ## Performance
 
-The record indirection (`Data.Ptr` resolved once per op, not per element) is free in hot loops —
-GEMM, factorizations, and sparse spMV/CG all run at the same throughput whether allocated standalone
-or arena-tracked.
+Allocation-free hot loops: every allocating op has a `ref`-destination primitive
+(`Blas.dot(..., ref dest)`, `Comp.xxxInPlace`, solver workspace forms) that writes into a buffer you
+already own. Reach for the allocating conveniences in one-shot/setup code and the zero-alloc
+primitives inside per-frame loops.

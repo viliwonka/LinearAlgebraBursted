@@ -27,7 +27,7 @@ namespace LinearAlgebra
     // approximate iteratively-reweighted-least-squares alternative lives in Optimize.ladIRLS.
     //
     // Job-safe: the cores allocate their (problem-size-dependent) scratch from Allocator.Temp and
-    // dispose it before returning, so the whole thing runs inside a [BurstCompile] IJob with no arena.
+    // dispose it before returning, so the whole thing runs inside a [BurstCompile] IJob.
     // ================================================================================================
     public static partial class LP
     {

@@ -247,7 +247,7 @@ namespace LinearAlgebra
         // --- Every row*/col* reduction below comes in two forms: a zero-alloc ref-DESTINATION
         //     primitive `(in A, ref floatN dest)` that writes into a caller-provided vector
         //     (length A.M_Rows for row* ops, A.N_Cols for col* ops), and an allocating wrapper
-        //     `(in A)` that returns a fresh arena vector. Use the ref form in per-frame / realtime
+        //     `(in A)` that returns a fresh vector (from Allocator.Temp). Use the ref form in per-frame / realtime
         //     loops (e.g. over a rolling window) to avoid allocating a result vector every call.
         //     The col* accumulating ops (colSum / colVariance / colNorm*) clear dest first, so dest
         //     may hold garbage on entry. ---
@@ -478,8 +478,8 @@ namespace LinearAlgebra
 
         // population variance along cols (÷M_Rows), dest length N_Cols. Two-pass; needs one N_Cols
         // scratch vector for the column means. The scratch is a function-local Allocator.Temp
-        // allocation disposed before return — it does NOT persist in the arena temp pool, so calling
-        // this every frame leaks nothing (unlike a floatTempVec, which lives until ClearTemp).
+        // allocation disposed before return, so calling this every frame leaks nothing (unlike a
+        // floatTempVec, which is never explicitly disposed).
         public static void colVariance(in floatMxN A, ref floatN dest)
         {
             if (A.M_Rows == 0 || A.N_Cols == 0)
@@ -671,7 +671,7 @@ namespace LinearAlgebra
 
         // Core covariance computation: fills caller-provided N×N matrix C (already allocated).
         // M_Rows < 2 → zero-fills C and returns gracefully (no NaN). Uses temp vectors/matrix
-        // for column means and centered data (both reclaimed by ClearTemp). Fills all N×N cells
+        // for column means and centered data (both from Allocator.Temp). Fills all N×N cells
         // via Gram formulation (centeredᵀ·centered ÷ (M−1)), which is exactly symmetric.
         // Public so zero-alloc callers (e.g. the realtime rolling window) can reuse it with a
         // preallocated C instead of going through the allocating covariance(in A) wrapper.
@@ -695,11 +695,11 @@ namespace LinearAlgebra
                 return;
             }
 
-            // Temp vector for column means (reclaimed by ClearTemp, not persistent).
+            // Temp vector for column means (from Allocator.Temp).
             var means = A.floatTempVec(N);
 
             // First pass: accumulate column sums (row-major), then divide to get means.
-            // Second pass: build centered M×N matrix in one row-major sweep (reclaimed by ClearTemp).
+            // Second pass: build centered M×N matrix in one row-major sweep (from Allocator.Temp).
             // centered[r, c] = A[r, c] − mean[c]
             var centered = A.floatTempMat(M, N);
             unsafe
@@ -749,7 +749,7 @@ namespace LinearAlgebra
 
             int N = A.N_Cols;
 
-            // Allocate output covariance matrix (persistent arena allocation).
+            // Allocate output covariance matrix (from Allocator.Temp; returned to the caller).
             var C = A.floatMat(N, N);
             covarianceInto(in A, ref C);
             return C;
@@ -769,16 +769,16 @@ namespace LinearAlgebra
 
             int N = A.N_Cols;
 
-            // Compute covariance into a temp matrix (reclaimed by ClearTemp, not persistent).
+            // Compute covariance into a temp matrix (from Allocator.Temp).
             var C = A.floatTempMat(N, N);
             covarianceInto(in A, ref C);
 
-            // Precompute all N standard deviations into a temp vector (reclaimed by ClearTemp).
+            // Precompute all N standard deviations into a temp vector (from Allocator.Temp).
             var s = A.floatTempVec(N);
             for (int i = 0; i < N; i++)
                 s[i] = math.sqrt(C[i, i]);
 
-            // Allocate output correlation matrix (persistent arena allocation).
+            // Allocate output correlation matrix (from Allocator.Temp; returned to the caller).
             var R = A.floatMat(N, N);
 
             // Fill correlation matrix (upper triangle mirrored for symmetry).
@@ -811,7 +811,8 @@ namespace LinearAlgebra
         //   *Columns  — per column of a floatMxN (strided).
         //
         // Matrix variants use function-local Allocator.Temp scratch vectors disposed before
-        // return — callers on per-frame paths leak nothing (unlike floatTempVec / arena temp).
+        // return — callers on per-frame paths leak nothing (unlike floatTempVec, which is never
+        // explicitly disposed).
         //
         // Zero/constant-axis guards use !(x > 0) which is NaN-safe (catches 0 AND NaN).
 

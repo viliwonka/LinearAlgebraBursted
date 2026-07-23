@@ -514,7 +514,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>Block-MINRES over a dense symmetric (possibly indefinite) <see cref="doubleMxN"/> A
-        /// (n x n) with an s x n block B. Allocates block scratch from the arena.</summary>
+        /// (n x n) with an s x n block B. Allocates block scratch from Allocator.Temp.</summary>
         public static BlockSolveInfo bminres(in doubleMxN A, in doubleMxN B, ref doubleMxN X, int maxIter, double tol)
         {
             int s = B.M_Rows, n = A.M_Rows;
@@ -539,7 +539,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>Block-MINRES over a block-sparse (BSR) symmetric A with an s x n block B. Allocates
-        /// block scratch from the arena.</summary>
+        /// block scratch from Allocator.Temp.</summary>
         public static BlockSolveInfo bminres(in doubleBSR A, in doubleMxN B, ref doubleMxN X, int maxIter, double tol)
         {
             int s = B.M_Rows, n = A.M_Rows;

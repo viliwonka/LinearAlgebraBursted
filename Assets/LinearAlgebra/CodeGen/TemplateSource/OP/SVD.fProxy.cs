@@ -80,7 +80,7 @@ namespace LinearAlgebra
             => values(in A, ref S, Consts.sweepBudget(A.N_Cols), Consts.fProxyZeroThreshold);
 
         /// <summary>
-        /// values using a reusable workspace (Arena.fProxySVDValuesCache(m, n)) — zero-alloc.
+        /// values using a reusable workspace (the fProxySVDValuesCache(m, n, allocator) ctor) — zero-alloc.
         /// Semantics identical to the allocating overload; see that one for full documentation.
         /// </summary>
         public static SVDInfo values(in fProxyMxN A, ref fProxyN S, ref fProxySVDValuesCache ws,
@@ -268,7 +268,7 @@ namespace LinearAlgebra
             => thin(in A, ref U, ref S, ref V, Consts.sweepBudget(A.N_Cols), Consts.fProxyZeroThreshold);
 
         /// <summary>
-        /// thin using a reusable workspace (Arena.fProxySVDThinCache(m, n)) — zero-alloc (including
+        /// thin using a reusable workspace (the fProxySVDThinCache(m, n, allocator) ctor) — zero-alloc (including
         /// the inner Bidiag.decomp call, via the workspace's nested BidiagWs). Semantics
         /// identical to the allocating overload; see that one for full documentation.
         /// </summary>

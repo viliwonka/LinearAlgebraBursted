@@ -50,7 +50,7 @@ namespace LinearAlgebra
     /// loss among the left/right Lanczos bases (used by the partial-reorth path; inert otherwise).
     ///
     /// truncated is FULLY zero-alloc on workspace reuse: the inner bidiagonal SVD runs entirely
-    /// in dB/eB/UtB/VtB + BsvdWs (all persistent arena memory), with no Allocator.Temp usage.
+    /// in dB/eB/UtB/VtB + BsvdWs (all persistent workspace-owned memory), with no Allocator.Temp usage.
     /// </summary>
     public struct doubleSVDTruncatedCache : IDisposable
     {
@@ -106,7 +106,7 @@ namespace LinearAlgebra
             nu    = new doubleN(p + 1, allocator);
         }
 
-        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        /// <summary>Dispose when done.</summary>
         public void Dispose()
         {
             UL.Dispose();

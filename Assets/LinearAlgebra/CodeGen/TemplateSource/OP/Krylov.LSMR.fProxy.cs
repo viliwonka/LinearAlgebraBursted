@@ -229,7 +229,7 @@ namespace LinearAlgebra
             return lsmr(new fProxyDenseOperator(in A), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIter, tol);
         }
 
-        /// <summary>LSMR over a dense matrix -- allocates six scratch vectors from the arena.</summary>
+        /// <summary>LSMR over a dense matrix -- allocates six scratch vectors from Allocator.Temp.</summary>
         public static LstsqInfo lsmr(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol)
         {
             fProxyN u    = b.fProxyTempVec(A.M_Rows);
@@ -243,7 +243,7 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Damped (Tikhonov) LSMR over a dense matrix -- minimizes ‖Ax-b‖² + damp²‖x‖². Allocates
-        /// six scratch vectors from the arena. damp == 0 reproduces the plain least-squares solve.
+        /// six scratch vectors from Allocator.Temp. damp == 0 reproduces the plain least-squares solve.
         /// </summary>
         public static LstsqInfo lsmr(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIter, fProxy tol, fProxy damp)
         {

@@ -42,8 +42,9 @@ Not all methods/functions are written here. Many of the mentioned are inplace wi
   - `remap(oldMin,oldMax,newMin,newMax)`,
   - `atan2(y,x)`, `min`/`max`, 
 
-Allocating sugar for all of the above lives on the operator overloads (`+ - * / %`) on `floatN`/
-`floatMxN` — see [dense-types](dense-types.md).
+All of the above are in-place kernels over buffers you own — allocate first (see
+[dense-types](dense-types.md)), then mutate. To keep an operand, copy it
+(`new floatN(in a, Allocator.Temp)`) and mutate the copy.
 
 ## bool
 

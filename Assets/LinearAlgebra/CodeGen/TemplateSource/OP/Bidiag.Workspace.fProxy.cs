@@ -52,7 +52,7 @@ namespace LinearAlgebra
             wScratch = new fProxyN(n, allocator);
         }
 
-        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        /// <summary>Dispose when done.</summary>
         public void Dispose()
         {
             W.Dispose();

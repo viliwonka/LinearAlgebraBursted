@@ -38,7 +38,8 @@ Generic `<TOp> where TOp : struct, IfloatLinearOperator`, with thin dense (`floa
   (preconditioned) forwarders all share this one body — the same pattern as the rest of this section.
   **Results are ascending** (index 0 = smallest) — the one `Eigen`-family method that isn't
   descending, since "the k smallest" is the entire point. Zero-alloc at the O(n) scale via
-  `floatLOBPCGCache` (`arena.floatLOBPCGCache(n, k)`, reusable/warm-startable across calls); the
+  `floatLOBPCGCache` (`new floatLOBPCGCache(n, k, Allocator.Persistent)`, reusable/warm-startable
+  across calls); the
   O(k)-scale Rayleigh-Ritz sub-solve still allocates a few small, bounded Temp vectors internally —
   the same exception `lanczosVectors` already has. Returns `LOBPCGInfo`.
 

@@ -6,16 +6,16 @@ stored block-CSR. Vectors stay dense — no sparse vector type.
 ## Storage & assembly
 
 - **`floatBSR`** — `RowPtr`/`ColInd`/`Values` (flat, row-major per block). `Symmetric = true` stores
-  only the lower block-triangle (requires square blocks and grid) — halves memory. `ToDense(ref
-  arena)` materializes it (mirroring implicit upper blocks when symmetric).
+  only the lower block-triangle (requires square blocks and grid) — halves memory. `ToDense(Allocator
+  allocator = Allocator.Temp)` materializes it (mirroring implicit upper blocks when symmetric).
 - **`floatBSRBuilder`** — COO-of-blocks assembly: `AddBlock(br, bc, block)` / `AddValue(row, col, v)`,
-  then `ToBSR(ref arena)` / `ToBSRSymmetric(ref arena)`. **Duplicate triplets at the same
+  then `ToBSR(allocator)` / `ToBSRSymmetric(allocator)`. **Duplicate triplets at the same
   (blockRow, blockCol) are summed on compression** — the standard sparse-assembly contract, so you
   can add contributions from multiple sources without pre-merging them yourself.
 - **`floatBSROperator`** — implements `IfloatLinearOperator` (`Apply`/`ApplyT`), so it's a drop-in
   `TOp` for every solver/eigensolver in the library. The two-argument constructor
   `floatBSROperator(in A, in AT)` takes a precomputed transpose so `ApplyT` runs as a cache-friendly
-  forward `spMV` over `AT` instead of an on-the-fly scatter; `arena.floatBSRTranspose(in A)` builds it
+  forward `spMV` over `AT` instead of an on-the-fly scatter; `A.Transpose(Allocator.Temp)` builds it
   (a no-op returning `A` itself when `A.Symmetric`).
 - **`floatBlockJacobi`** — block-diagonal preconditioner (`BR == 1` degenerates to point-Jacobi),
   built via a per-block LU factorization.

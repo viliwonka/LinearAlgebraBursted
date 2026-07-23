@@ -233,7 +233,7 @@ namespace LinearAlgebra
             return lslq(new floatDenseOperator(in A), in b, ref x, ref u, ref v, ref wbar, ref tmpM, ref tmpN, maxIter, tol, sigmaMinEst);
         }
 
-        /// <summary>LSLQ over a dense matrix -- allocates five scratch vectors from the arena.</summary>
+        /// <summary>LSLQ over a dense matrix -- allocates five scratch vectors from Allocator.Temp.</summary>
         public static LslqInfo lslq(in floatMxN A, in floatN b, ref floatN x, int maxIter, float tol, double sigmaMinEst = 0)
         {
             floatN u    = b.floatTempVec(A.M_Rows);
