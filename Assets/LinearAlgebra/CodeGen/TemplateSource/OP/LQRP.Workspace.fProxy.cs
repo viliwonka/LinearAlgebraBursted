@@ -7,7 +7,7 @@ namespace LinearAlgebra
     {
         /// <summary>
         /// Throws if <paramref name="ws"/> is not sized for an m x n LQRP decomposition (W m x n,
-        /// v length n) — the layout produced by Arena.fProxyLQRPCache(m, n).
+        /// v length n) — the layout produced by the fProxyLQRPCache(m, n, allocator) constructor.
         /// </summary>
         static void RequireLQRPWorkspace(in fProxyLQRPCache ws, int m, int n)
         {
@@ -16,13 +16,13 @@ namespace LinearAlgebra
                 ws.v.N == n;
 
             if (!ok)
-                throw new ArgumentException("LQRP: workspace must be sized for m x n (use Arena.fProxyLQRPCache(m, n))");
+                throw new ArgumentException("LQRP: workspace must be sized for m x n (use new fProxyLQRPCache(m, n, allocator))");
         }
     }
 
     /// <summary>
     /// Reusable scratch for LQRP.decomp. Allocate ONCE (sized for the matrix shape) via
-    /// Arena.fProxyLQRPCache(m, n) and reuse it across many same-shape calls to avoid the per-call
+    /// the Allocator ctor and reuse it across many same-shape calls to avoid the per-call
     /// Allocator.Temp allocations decomp's allocating overload makes internally.
     ///
     /// W (m x n) holds the working copy of A, reduced to [L | reflectors] in place during the forward
@@ -36,7 +36,7 @@ namespace LinearAlgebra
         public fProxyMxN W;
         public fProxyN v;
 
-        /// <summary>Standalone allocation sized identically to <c>Arena.fProxyLQRPCache(m, n)</c>. Pair with <see cref="Dispose"/>.</summary>
+        /// <summary>Allocates an LQRP-decomposition workspace sized for an m x n (m &lt;= n) system. Pair with <see cref="Dispose"/>.</summary>
         public fProxyLQRPCache(int m, int n, Allocator allocator)
         {
             W = new fProxyMxN(m, n, allocator);
@@ -48,22 +48,6 @@ namespace LinearAlgebra
         {
             W.Dispose();
             v.Dispose();
-        }
-    }
-
-    public static partial class ArenaExtensions
-    {
-        /// <summary>
-        /// Allocates an LQRP-decomposition workspace sized for an m x n (m &lt;= n) system. See
-        /// <see cref="fProxyLQRPCache"/> for reuse guidance.
-        /// </summary>
-        public static fProxyLQRPCache fProxyLQRPCache(this ref Arena arena, int m, int n)
-        {
-            return new fProxyLQRPCache
-            {
-                W = arena.fProxyMat(m, n),
-                v = arena.fProxyVec(n)
-            };
         }
     }
 }

@@ -15,7 +15,7 @@ namespace LinearAlgebra
         /// buffers (Vpanel, Tbuf, Wbuf, tcolBuf, VfullBuf) are needed only when the caller is about to
         /// engage the level-3 blocked kernel (decomp/decompInPlace once N_Cols &gt;= 2*QR_BLOCK) — NOT
         /// by solveInPlace, whose fused kernel never forms Q and so has no use for them. Matches
-        /// Arena.floatQRCache(m, n).
+        /// the floatQRCache(m, n, allocator) constructor.
         /// </summary>
         static void RequireQRWorkspace(in floatQRCache ws, int m, int n, bool needBlocked)
         {
@@ -35,13 +35,13 @@ namespace LinearAlgebra
                   ws.VfullBuf.N == m * n));
 
             if (!ok)
-                throw new ArgumentException("QR: workspace must be sized for m x n (use Arena.floatQRCache(m, n))");
+                throw new ArgumentException("QR: workspace must be sized for m x n (use new floatQRCache(m, n, allocator))");
         }
     }
 
     /// <summary>
     /// Reusable scratch for QR's cache overloads (decomp / decompInPlace / solveInPlace). Allocate
-    /// ONCE via Arena.floatQRCache(m, n) and reuse across same-shape calls to avoid the per-call
+    /// ONCE via the Allocator ctor and reuse across same-shape calls to avoid the per-call
     /// Allocator.Temp allocations the allocating overloads make internally.
     ///
     /// u (length m) and w (length n) are the Householder-reflector scratch shared by every overload
@@ -64,7 +64,7 @@ namespace LinearAlgebra
         public floatN tcolBuf;
         public floatN VfullBuf;
 
-        /// <summary>Standalone allocation sized identically to <c>Arena.floatQRCache(m, n)</c>. Pair with <see cref="Dispose"/>.</summary>
+        /// <summary>Allocates a QR workspace for an m x n (m &gt;= n) system. Pair with <see cref="Dispose"/>.</summary>
         public floatQRCache(int m, int n, Allocator allocator)
         {
             // See qrDecompositionBlockedCore for why this is a method-local const, not a class field.
@@ -89,30 +89,6 @@ namespace LinearAlgebra
             Wbuf.Dispose();
             tcolBuf.Dispose();
             VfullBuf.Dispose();
-        }
-    }
-
-    public static partial class ArenaExtensions
-    {
-        /// <summary>
-        /// Allocates a QR workspace for an m x n (m &gt;= n) system. See <see cref="floatQRCache"/>
-        /// for reuse guidance and per-field purpose.
-        /// </summary>
-        public static floatQRCache floatQRCache(this ref Arena arena, int m, int n)
-        {
-            // See qrDecompositionBlockedCore for why this is a method-local const, not a class field.
-            const int QR_BLOCK = 32;
-
-            return new floatQRCache
-            {
-                u = arena.floatVec(m),
-                w = arena.floatVec(n),
-                Vpanel = arena.floatVec(m * QR_BLOCK),
-                Tbuf = arena.floatVec(QR_BLOCK * QR_BLOCK),
-                Wbuf = arena.floatVec(QR_BLOCK * n),
-                tcolBuf = arena.floatVec(QR_BLOCK),
-                VfullBuf = arena.floatVec(m * n)
-            };
         }
     }
 }

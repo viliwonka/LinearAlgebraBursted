@@ -24,4 +24,50 @@ public class doubleVectorCopyTests
         for (int i = 0; i < 4; i++)
             Assert.AreEqual((double)(i + 1), (double)c[i], 1e-5);
     }
+
+    // STANDALONE Copy()/TempCopy() contract: both return an independent copy (content-equal;
+    // writes to the copy never reach the source).
+    [Test]
+    public void StandaloneVector_CopyAndTempCopy_ReturnIndependentCopies()
+    {
+        var v = new doubleN(4, Allocator.Temp);
+        try
+        {
+            v[1] = 2f;
+            var c = v.Copy();
+            var t = v.TempCopy();
+            Assert.IsTrue(c.N == 4);
+            Assert.IsTrue(t.N == 4);
+            Assert.IsTrue(c[1] == 2f);
+            Assert.IsTrue(t[1] == 2f);
+            c[1] = 5f;
+            t[1] = 7f;
+            Assert.IsTrue(v[1] == 2f);
+            c.Dispose();
+            t.Dispose();
+        }
+        finally { v.Dispose(); }
+    }
+
+    [Test]
+    public void StandaloneMatrix_CopyAndTempCopy_ReturnIndependentCopies()
+    {
+        var m = new doubleMxN(3, 3, Allocator.Temp);
+        try
+        {
+            m[1, 2] = 3f;
+            var c = m.Copy();
+            var t = m.TempCopy();
+            Assert.IsTrue(c.M_Rows == 3 && c.N_Cols == 3);
+            Assert.IsTrue(t.M_Rows == 3 && t.N_Cols == 3);
+            Assert.IsTrue(c[1, 2] == 3f);
+            Assert.IsTrue(t[1, 2] == 3f);
+            c[1, 2] = 5f;
+            t[1, 2] = 7f;
+            Assert.IsTrue(m[1, 2] == 3f);
+            c.Dispose();
+            t.Dispose();
+        }
+        finally { m.Dispose(); }
+    }
 }

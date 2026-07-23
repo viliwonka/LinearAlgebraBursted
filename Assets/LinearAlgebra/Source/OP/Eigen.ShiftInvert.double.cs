@@ -64,78 +64,14 @@ namespace LinearAlgebra
         /// |lambda - shift| and the k nearest returned.
         ///
         /// <paramref name="steps"/> Lanczos steps must exceed k for the extreme Ritz values to
-        /// converge (a few extra is usually enough for well-separated interior modes). Allocates
-        /// eigenvalues (length min(k, produced)) and eigenvectors (min(k, produced) x A.Rows, row i =
-        /// eigenvector i) from the arena. innerTol / innerMaxIter bound the inner MINRES-QLP solve.
-        /// Returns the underlying <see cref="LanczosInfo"/> (its `produced` bounds how many pairs are
-        /// meaningful; status reflects the tridiagonal QL convergence). A must be symmetric.
-        /// </summary>
-        public static LanczosInfo eigNearShift<TOp>(ref Arena arena, in TOp A, double shift, int k, int steps,
-                                                    out doubleN eigenvalues, out doubleMxN eigenvectors,
-                                                    double innerTol, int innerMaxIter)
-            where TOp : struct, IdoubleLinearOperator
-        {
-            if (A.Rows != A.Cols) throw new ArgumentException("eigNearShift: A must be square");
-            if (k < 1) throw new ArgumentException("eigNearShift: k must be >= 1");
-            if (steps < k) throw new ArgumentException("eigNearShift: steps must be >= k");
-            if (steps > A.Rows) steps = A.Rows;
-
-            int n = A.Rows;
-
-            var siOp = new doubleShiftInvertOperator<TOp>(in A, shift, innerMaxIter, innerTol);
-
-            var cache = arena.doubleLanczosCache(n, steps);
-            var Yt = arena.doubleMat(steps, steps);
-            var theta = arena.doubleVec(steps);      // Ritz values of the shift-invert operator (unused after recovery)
-            var ritz = arena.doubleMat(steps, n);    // ritz row j = Ritz vector j
-
-            var info = lanczosVectors(in siOp, ref cache, ref Yt, ref theta, ref ritz, steps, Consts.doubleEpsilon);
-            int produced = info.produced;
-            int outK = math.min(k, produced);
-
-            // Rayleigh quotient lambda_j = (v_jᵀ A v_j)/(v_jᵀ v_j) against the ORIGINAL A, per produced
-            // Ritz vector -- accurate λ recovery even from an inexact inner solve. The SELECTION key is
-            // NOT |lambda - shift| (an UNconverged Ritz vector can have a Rayleigh quotient that lands
-            // near shift by accident, poisoning the result); it is |theta_j| = |Ritz value of
-            // (A-shift I)⁻¹| = 1/|lambda_j - shift|, which is LARGE exactly for the modes nearest shift
-            // AND is the extreme end of T's spectrum that Lanczos actually converges first. sel[j]
-            // = -|theta_j| so "smallest sel" = "largest |theta|" = nearest+converged.
-            var lam = arena.doubleVec(produced);
-            var sel = arena.doubleVec(produced);
-            var v = arena.doubleVec(n);
-            var Av = arena.doubleVec(n);
-            for (int j = 0; j < produced; j++)
-            {
-                for (int i = 0; i < n; i++) v[i] = ritz[j, i];
-                A.Apply(in v, ref Av);
-                double vv = Blas.dot(v, v);
-                double vAv = Blas.dot(v, Av);
-                lam[j] = vv > (double)0 ? vAv / vv : shift;
-                sel[j] = -math.abs(theta[j]);
-            }
-
-            eigenvalues = arena.doubleVec(outK);
-            eigenvectors = arena.doubleMat(outK, n);
-
-            // Emit the outK modes with largest |theta| (nearest shift, best-converged), nearest first.
-            for (int slot = 0; slot < outK; slot++)
-            {
-                int best = 0;
-                for (int j = 1; j < produced; j++) if (sel[j] < sel[best]) best = j;
-                eigenvalues[slot] = lam[best];
-                for (int i = 0; i < n; i++) eigenvectors[slot, i] = ritz[best, i];
-                sel[best] = double.MaxValue;
-            }
-
-            return info;
-        }
-
-        /// <summary>
-        /// Shift-and-invert eigensolver, standalone twin of the arena overload above: all internal
+        /// converge (a few extra is usually enough for well-separated interior modes). All internal
         /// scratch (Lanczos workspace, T's eigenvector scratch, per-candidate Rayleigh-quotient
-        /// buffers) is Allocator.Temp; only <paramref name="eigenvalues"/>/<paramref
-        /// name="eigenvectors"/> are allocated via <paramref name="allocator"/> (default Temp;
-        /// caller owns disposal). See the arena overload's doc comment for the full contract.
+        /// buffers) is Allocator.Temp; only <paramref name="eigenvalues"/> (length min(k, produced))
+        /// and <paramref name="eigenvectors"/> (min(k, produced) x A.Rows, row i = eigenvector i) are
+        /// allocated via <paramref name="allocator"/> (default Temp; caller owns disposal). innerTol /
+        /// innerMaxIter bound the inner MINRES-QLP solve. Returns the underlying
+        /// <see cref="LanczosInfo"/> (its `produced` bounds how many pairs are meaningful; status
+        /// reflects the tridiagonal QL convergence). A must be symmetric.
         /// </summary>
         public static LanczosInfo eigNearShift<TOp>(in TOp A, double shift, int k, int steps,
                                                     out doubleN eigenvalues, out doubleMxN eigenvectors,
@@ -193,20 +129,8 @@ namespace LinearAlgebra
         /// <summary>
         /// Shift-and-invert eigensolver over a dense symmetric <see cref="doubleMxN"/> -- forwards via
         /// <see cref="doubleDenseOperator"/>. steps defaults to min(A.Rows, 2*k + 20); inner solve
-        /// tol = sqrtEps, maxIter = A.Rows.
-        /// </summary>
-        public static LanczosInfo eigNearShift(ref Arena arena, in doubleMxN A, double shift, int k,
-                                               out doubleN eigenvalues, out doubleMxN eigenvectors)
-        {
-            int steps = math.min(A.M_Rows, 2 * k + 20);
-            return eigNearShift(ref arena, new doubleDenseOperator(in A), shift, k, steps,
-                                out eigenvalues, out eigenvectors, Consts.doubleSqrtEps, A.M_Rows);
-        }
-
-        /// <summary>
-        /// Shift-and-invert eigensolver over a dense symmetric <see cref="doubleMxN"/>, standalone
-        /// twin via <paramref name="allocator"/> (default Temp). See the generic Allocator
-        /// overload's doc comment for the buffer-ownership contract.
+        /// tol = sqrtEps, maxIter = A.Rows. Allocates via <paramref name="allocator"/> (default Temp).
+        /// See the generic Allocator overload's doc comment for the buffer-ownership contract.
         /// </summary>
         public static LanczosInfo eigNearShift(in doubleMxN A, double shift, int k,
                                                out doubleN eigenvalues, out doubleMxN eigenvectors, Allocator allocator = Allocator.Temp)
@@ -219,20 +143,8 @@ namespace LinearAlgebra
         /// <summary>
         /// Shift-and-invert eigensolver over a symmetric block-sparse (BSR) matrix -- forwards via
         /// <see cref="doubleBSROperator"/>. steps defaults to min(A.Rows, 2*k + 20); inner solve
-        /// tol = sqrtEps, maxIter = A.Rows.
-        /// </summary>
-        public static LanczosInfo eigNearShift(ref Arena arena, in doubleBSR A, double shift, int k,
-                                               out doubleN eigenvalues, out doubleMxN eigenvectors)
-        {
-            int steps = math.min(A.M_Rows, 2 * k + 20);
-            return eigNearShift(ref arena, new doubleBSROperator(in A), shift, k, steps,
-                                out eigenvalues, out eigenvectors, Consts.doubleSqrtEps, A.M_Rows);
-        }
-
-        /// <summary>
-        /// Shift-and-invert eigensolver over a symmetric block-sparse (BSR) matrix, standalone twin
-        /// via <paramref name="allocator"/> (default Temp). See the generic Allocator overload's
-        /// doc comment for the buffer-ownership contract.
+        /// tol = sqrtEps, maxIter = A.Rows. Allocates via <paramref name="allocator"/> (default Temp).
+        /// See the generic Allocator overload's doc comment for the buffer-ownership contract.
         /// </summary>
         public static LanczosInfo eigNearShift(in doubleBSR A, double shift, int k,
                                                out doubleN eigenvalues, out doubleMxN eigenvectors, Allocator allocator = Allocator.Temp)

@@ -10,7 +10,7 @@ namespace LinearAlgebra
     /// <summary>
     /// Reusable scratch storage for the zero-alloc SVD solvers (SVD.pinvSolve / SVD.pseudoInverse).
     /// Allocate ONCE (sized for the matrix shape) and reuse it across many same-shape solves to
-    /// avoid per-call allocations — create via Arena.doubleSVDCache(m, n).
+    /// avoid per-call allocations — create via the Allocator ctor.
     ///
     /// Layout: with k = min(m, n), S is length k, M is k x k (the singular-vector matrix — V for a
     /// tall/square system, W for a wide one), U is the left-factor scratch max(m,n) x k (receives the
@@ -25,7 +25,7 @@ namespace LinearAlgebra
         public doubleMxN U;
         public doubleMxN At;
 
-        /// <summary>Standalone allocation sized identically to <c>Arena.doubleSVDCache(m, n)</c>. Pair with <see cref="Dispose"/>.</summary>
+        /// <summary>Allocates an SVD-solver workspace sized for an m x n system. Pair with <see cref="Dispose"/>.</summary>
         public doubleSVDCache(int m, int n, Allocator allocator)
         {
             int k   = m < n ? m : n;
@@ -43,23 +43,6 @@ namespace LinearAlgebra
             M.Dispose();
             U.Dispose();
             if (At.IsCreated) At.Dispose();
-        }
-    }
-
-    public static partial class ArenaExtensions
-    {
-        /// <summary>Allocates an SVD-solver workspace sized for an m x n system — see <see cref="doubleSVDCache"/> for layout. Persistent in this arena; create once outside a hot loop.</summary>
-        public static doubleSVDCache doubleSVDCache(this ref Arena arena, int m, int n)
-        {
-            int k   = m < n ? m : n;
-            int big = m < n ? n : m;
-            return new doubleSVDCache
-            {
-                S  = arena.doubleVec(k),
-                M  = arena.doubleMat(k, k),
-                U  = arena.doubleMat(big, k),
-                At = (m < n) ? arena.doubleMat(n, m) : default
-            };
         }
     }
 }

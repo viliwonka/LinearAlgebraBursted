@@ -192,8 +192,6 @@ namespace LinearAlgebraDemos.Tests
             const int K = 2;
             int n = nodes.Length * 2;
 
-            var arena = new Arena(Allocator.Temp);
-
             // assemble twice: symmetric lower-block storage AND full storage, same matrix
             var symBuilder = new floatBSRBuilder(nodes.Length, nodes.Length, 2, 2, Allocator.Temp, 32);
             var fullBuilder = new floatBSRBuilder(nodes.Length, nodes.Length, 2, 2, Allocator.Temp, 32);
@@ -226,9 +224,9 @@ namespace LinearAlgebraDemos.Tests
                 fullBuilder.AddValue(2 + d, 2 + d, 1e3f);
             }
 
-            var A = symBuilder.ToBSRSymmetric(ref arena);
+            var A = symBuilder.ToBSRSymmetric(Allocator.Temp);
             symBuilder.Dispose();
-            var Afull = fullBuilder.ToBSR(ref arena);
+            var Afull = fullBuilder.ToBSR(Allocator.Temp);
             fullBuilder.Dispose();
 
             // diagnostic: symmetric-storage spMV must match full-storage spMV
@@ -242,8 +240,8 @@ namespace LinearAlgebraDemos.Tests
                 Assert.IsTrue(math.abs(ySym[i] - yFull[i]) < 1e-2f * math.max(1f, math.abs(yFull[i])),
                     $"sym vs full spMV mismatch at {i}: {ySym[i]} vs {yFull[i]}");
 
-            var precond = arena.floatBlockJacobi(in A);
-            var cache = arena.floatLOBPCGCache(n, K);
+            var precond = new floatBlockJacobi(in A, Allocator.Temp);
+            var cache = new floatLOBPCGCache(n, K, Allocator.Temp);
             var outStats = new NativeArray<float>(2, Allocator.TempJob);
 
             var job = new TrussEigenJob
@@ -257,8 +255,8 @@ namespace LinearAlgebraDemos.Tests
             var lambda = job.Cache.lambda;
 
             // reference: same solve over full storage
-            var precondFull = arena.floatBlockJacobi(in Afull);
-            var cacheFull = arena.floatLOBPCGCache(n, K);
+            var precondFull = new floatBlockJacobi(in Afull, Allocator.Temp);
+            var cacheFull = new floatLOBPCGCache(n, K, Allocator.Temp);
             var outFull = new NativeArray<float>(2, Allocator.TempJob);
             var jobFull = new TrussEigenJob
             {
@@ -273,7 +271,6 @@ namespace LinearAlgebraDemos.Tests
             Assert.IsTrue(lambda[0] <= lambda[1], "eigenvalues not ascending");
 
             outStats.Dispose(); outFull.Dispose();
-            arena.Dispose();
         }
 
         [Test]
@@ -404,7 +401,6 @@ namespace LinearAlgebraDemos.Tests
             // sags millimetres — the first version of this test failed on physics,
             // not on the solver)
             const float h = 1f / 60f, stiffness = 60f, nodeMass = 0.1f;
-            var arena = new Arena(Allocator.Temp);
             float h2k = h * h * stiffness;
             var builder = new floatBSRBuilder(n, n, 3, 3, Allocator.Temp, edgeCount * 2 + n);
             var degree = new NativeArray<float>(n, Allocator.Temp);
@@ -422,9 +418,9 @@ namespace LinearAlgebraDemos.Tests
                     builder.AddValue(3 * i + d, 3 * i + d, mi + degree[i]);
             }
             degree.Dispose();
-            var A = builder.ToBSRSymmetric(ref arena);
+            var A = builder.ToBSRSymmetric(Allocator.Temp);
             builder.Dispose();
-            var precond = arena.floatIC0(in A);   // zero-copy from symmetric-lower storage
+            var precond = new floatIC0(in A, Allocator.Temp);   // zero-copy from symmetric-lower storage
 
             var job = new SpringStepJob
             {
@@ -444,7 +440,6 @@ namespace LinearAlgebraDemos.Tests
 
             pos.Dispose(); vel.Dispose(); pinned.Dispose(); outStats.Dispose();
             edges.Dispose(); restLen.Dispose();
-            arena.Dispose();
         }
 
         [Test]
@@ -455,7 +450,6 @@ namespace LinearAlgebraDemos.Tests
             const float h = 1f / 60f, resistance = 1f, capacitance = 0.05f;
             int srcNode = 0, gndNode = n - 1;
 
-            var arena = new Arena(Allocator.Temp);
             float g = 1f / resistance, ch = capacitance / h;
             var builder = new floatBSRBuilder(nu, nu, 1, 1, Allocator.Temp, n * 6);
             for (int i = 0; i < nu; i++) builder.AddValue(i, i, 0f);
@@ -475,9 +469,9 @@ namespace LinearAlgebraDemos.Tests
             builder.AddValue(srcNode, n, 1f); builder.AddValue(n, srcNode, 1f);
             builder.AddValue(gndNode, n + 1, 1f); builder.AddValue(n + 1, gndNode, 1f);
 
-            var A = builder.ToBSR(ref arena);
+            var A = builder.ToBSR(Allocator.Temp);
             builder.Dispose();
-            var precond = arena.floatILU0(in A);
+            var precond = new floatILU0(in A, Allocator.Temp);
 
             var voltages = new NativeArray<float>(nu, Allocator.TempJob);
             var outStats = new NativeArray<float>(4, Allocator.TempJob);
@@ -498,7 +492,6 @@ namespace LinearAlgebraDemos.Tests
                 "voltage did not decay with distance from the source");
 
             voltages.Dispose(); outStats.Dispose();
-            arena.Dispose();
         }
     }
 }

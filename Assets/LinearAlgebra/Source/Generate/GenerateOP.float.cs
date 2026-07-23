@@ -8,8 +8,7 @@ using LinearAlgebra.Internal;
 
 namespace LinearAlgebra
 {
-    // Standalone (non-arena) vector/matrix generators. Same semantics as ArenaExtensions.float
-    // but allocate their own buffer via allocator instead of drawing from an arena.
+    // Standalone vector/matrix generators: allocate their own buffer via allocator.
     public static partial class GenerateOP {
 
         #region VECTOR

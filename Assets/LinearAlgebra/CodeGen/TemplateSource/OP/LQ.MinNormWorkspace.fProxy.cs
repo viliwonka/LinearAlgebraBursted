@@ -8,7 +8,7 @@ namespace LinearAlgebra
         /// <summary>
         /// Throws if <paramref name="ws"/> is not sized for an m x n LQ min-norm solve (L m x m,
         /// y length m, plus the nested LQ workspace whose W doubles as the factor-only working
-        /// buffer) — the layout produced by Arena.fProxyLQMinNormCache(m, n).
+        /// buffer) — the layout produced by the fProxyLQMinNormCache(m, n, allocator) constructor.
         /// </summary>
         static void RequireLQMinNormSolveWorkspace(in fProxyLQMinNormCache ws, int m, int n)
         {
@@ -17,14 +17,14 @@ namespace LinearAlgebra
                 ws.y.N == m;
 
             if (!ok)
-                throw new ArgumentException("LQ: workspace must be sized for m x n (use Arena.fProxyLQMinNormCache(m, n))");
+                throw new ArgumentException("LQ: workspace must be sized for m x n (use new fProxyLQMinNormCache(m, n, allocator))");
             RequireLQWorkspace(in ws.LQWs, m, n);
         }
     }
 
     /// <summary>
     /// Reusable scratch for LQ.minNormSolve. Allocate ONCE (sized for the matrix shape) via
-    /// Arena.fProxyLQMinNormCache(m, n) and reuse it across many same-shape calls to avoid the
+    /// the Allocator ctor and reuse it across many same-shape calls to avoid the
     /// per-call Allocator.Temp allocations minNormSolve's allocating overload makes internally.
     ///
     /// LQWs is the nested LQ workspace (see fProxyLQCache): its W (m x n) is the factor-only working
@@ -39,7 +39,7 @@ namespace LinearAlgebra
         public fProxyMxN L;
         public fProxyN y;
 
-        /// <summary>Standalone allocation sized identically to <c>Arena.fProxyLQMinNormCache(m, n)</c>. Pair with <see cref="Dispose"/>.</summary>
+        /// <summary>Allocates an LQ-min-norm-solve workspace sized for an m x n (m &lt;= n) system. Pair with <see cref="Dispose"/>.</summary>
         public fProxyLQMinNormCache(int m, int n, Allocator allocator)
         {
             LQWs = new fProxyLQCache(m, n, allocator);
@@ -53,23 +53,6 @@ namespace LinearAlgebra
             LQWs.Dispose();
             L.Dispose();
             y.Dispose();
-        }
-    }
-
-    public static partial class ArenaExtensions
-    {
-        /// <summary>
-        /// Allocates an LQ-min-norm-solve workspace sized for an m x n (m &lt;= n) system. See
-        /// <see cref="fProxyLQMinNormCache"/> for reuse guidance.
-        /// </summary>
-        public static fProxyLQMinNormCache fProxyLQMinNormCache(this ref Arena arena, int m, int n)
-        {
-            return new fProxyLQMinNormCache
-            {
-                LQWs = arena.fProxyLQCache(m, n),
-                L = arena.fProxyMat(m, m),
-                y = arena.fProxyVec(m)
-            };
         }
     }
 }

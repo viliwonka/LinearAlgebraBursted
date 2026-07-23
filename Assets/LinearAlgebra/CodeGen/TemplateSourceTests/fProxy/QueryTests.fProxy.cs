@@ -786,7 +786,7 @@ public class fProxyQueryTests
             for (int i = 0; i < N; i++) q[i] = (fProxy)(i) * (fProxy)0.3 - (fProxy)0.5;
 
             // --- fProxyDistancesToRow / Column wrappers vs primitive ---
-            var dr = ArenaExtensions.fProxyDistancesToRow(in A, in q, Metric.SqEuclidean);
+            var dr = Query.fProxyDistancesToRow(in A, in q, Metric.SqEuclidean);
             var drRef = new fProxyN(M, Allocator.Temp);
             Query.distancesToRow(in A, in q, Metric.SqEuclidean, ref drRef);
             AssertEqI(dr.N, M);
@@ -794,7 +794,7 @@ public class fProxyQueryTests
 
             var qc = new fProxyN(M, Allocator.Temp);
             for (int i = 0; i < M; i++) qc[i] = (fProxy)(i) * (fProxy)0.2;
-            var dcol = ArenaExtensions.fProxyDistancesToColumn(in A, in qc, Metric.SqEuclidean);
+            var dcol = Query.fProxyDistancesToColumn(in A, in qc, Metric.SqEuclidean);
             var dcolRef = new fProxyN(N, Allocator.Temp);
             Query.distancesToColumn(in A, in qc, Metric.SqEuclidean, ref dcolRef);
             AssertEqI(dcol.N, N);

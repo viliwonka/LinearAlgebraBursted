@@ -8,8 +8,8 @@ namespace LinearAlgebra.ML
 {
     /// <summary>
     /// Reusable scratch storage for zero-alloc Lloyd k-means.
-    /// Allocate ONCE (sized for the data shape) via <c>Arena.fProxyKMeansCache(N, D, k)</c>
-    /// and reuse across same-shape calls. All buffers are arena-owned and disposed with the arena.
+    /// Allocate ONCE (sized for the data shape) via the Allocator ctor
+    /// and reuse across same-shape calls.
     /// </summary>
     public struct fProxyKMeansCache : IDisposable
     {
@@ -21,7 +21,7 @@ namespace LinearAlgebra.ML
         public Indices   ClusterCounts;  // k      per-cluster point count (zeroed each iteration)
         public fProxyN   D2Weights;      // N      D^2 distances for k-means++ seeding only
 
-        /// <summary>Standalone allocation sized identically to <c>Arena.fProxyKMeansCache(N, D, k)</c>. Pair with <see cref="Dispose"/>.</summary>
+        /// <summary>Allocates a k-means workspace sized for N points, D features, and k clusters. Pair with <see cref="Dispose"/>.</summary>
         public fProxyKMeansCache(int N, int D, int k, Allocator allocator)
         {
             Gram           = new fProxyMxN(N, k, allocator);
@@ -43,32 +43,6 @@ namespace LinearAlgebra.ML
             NewCentroids.Dispose();
             ClusterCounts.Dispose();
             D2Weights.Dispose();
-        }
-    }
-}
-
-namespace LinearAlgebra
-{
-    public static partial class ArenaExtensions
-    {
-        /// <summary>
-        /// Allocates a k-means workspace sized for <paramref name="N"/> points,
-        /// <paramref name="D"/> features, and <paramref name="k"/> clusters.
-        /// All buffers are persistent in this arena (disposed with it).
-        /// Create once outside hot loops and reuse for same-shape calls.
-        /// </summary>
-        public static LinearAlgebra.ML.fProxyKMeansCache fProxyKMeansCache(this ref Arena arena, int N, int D, int k)
-        {
-            return new LinearAlgebra.ML.fProxyKMeansCache
-            {
-                Gram           = arena.fProxyMat(N, k),
-                PointNormSq    = arena.fProxyVec(N),
-                CentNormSq     = arena.fProxyVec(k),
-                PrevAssignment = arena.Indices(N),
-                NewCentroids   = arena.fProxyMat(k, D),
-                ClusterCounts  = arena.Indices(k),
-                D2Weights      = arena.fProxyVec(N)
-            };
         }
     }
 }

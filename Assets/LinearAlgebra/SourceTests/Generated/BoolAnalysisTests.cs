@@ -89,7 +89,7 @@ public class BoolAnalysisTests
 
             Assert.IsFalse(Analysis.IsAllSame(v));
 
-            v &= false;
+            boolComp.andInPlace(v, false);
 
             Assert.IsTrue(Analysis.IsAllSame(v));
         }
@@ -102,7 +102,7 @@ public class BoolAnalysisTests
             Assert.IsFalse(Analysis.IsAllEqualTo(v, true));
             Assert.IsFalse(Analysis.IsAllEqualTo(v, false));
 
-            v |= true;
+            boolComp.orInPlace(v, true);
 
             Assert.IsTrue(Analysis.IsAllEqualTo(v, true));
         }
@@ -134,7 +134,7 @@ public class BoolAnalysisTests
 
             // all-true
             boolN allTrue = new boolN(dim, Allocator.Temp);
-            allTrue |= true;
+            boolComp.orInPlace(allTrue, true);
             Assert.IsTrue(Analysis.any(allTrue));
 
             // mixed (single true element among falses)
@@ -189,7 +189,7 @@ public class BoolAnalysisTests
             // --- vectors ---
             // all-true
             boolN allTrue = new boolN(dim, Allocator.Temp);
-            allTrue |= true;
+            boolComp.orInPlace(allTrue, true);
             Assert.IsTrue(Analysis.all(allTrue));
 
             // all-false
@@ -198,7 +198,7 @@ public class BoolAnalysisTests
 
             // mixed (all true except one) -> false
             boolN mixed = new boolN(dim, Allocator.Temp);
-            mixed |= true;
+            boolComp.orInPlace(mixed, true);
             mixed[dim - 1] = false;
             Assert.IsFalse(Analysis.all(mixed));
 

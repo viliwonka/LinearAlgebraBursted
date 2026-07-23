@@ -49,12 +49,11 @@ namespace LinearAlgebraDemos
         const int K = 4;
         int N => Nodes.Length * 2;
 
-        Arena arena;
         floatBSR A;
         floatBlockJacobi precond;
         floatLOBPCGCache cache;
-        floatN lambda;      // arena-owned view of cache.lambda after solve
-        floatMxN modes;     // arena-owned view of cache.X (k × n)
+        floatN lambda;      // view of cache.lambda after solve
+        floatMxN modes;     // view of cache.X (k × n)
         bool built;
         float builtEA;
         bool[] builtBraces;
@@ -72,14 +71,13 @@ namespace LinearAlgebraDemos
 
         void OnDisable()
         {
-            if (built) { arena.Dispose(); built = false; }
+            if (built) { A.Dispose(); precond.Dispose(); cache.Dispose(); built = false; }
             if (outStats.IsCreated) outStats.Dispose();
         }
 
         void Build()
         {
-            if (built) arena.Dispose();
-            arena = new Arena(Allocator.Persistent);
+            if (built) { A.Dispose(); precond.Dispose(); cache.Dispose(); }
 
             int nb = Nodes.Length;
             var builder = new floatBSRBuilder(nb, nb, 2, 2, Allocator.Temp, 64);
@@ -116,10 +114,10 @@ namespace LinearAlgebraDemos
                 builder.AddValue(6 + d, 6 + d, 1e3f);   // node 3 → dof 6,7
             }
 
-            A = builder.ToBSRSymmetric(ref arena);
+            A = builder.ToBSRSymmetric(Allocator.Persistent);
             builder.Dispose();
-            precond = arena.floatBlockJacobi(in A);
-            cache = arena.floatLOBPCGCache(N, K);
+            precond = new floatBlockJacobi(in A, Allocator.Persistent);
+            cache = new floatLOBPCGCache(N, K, Allocator.Persistent);
 
             built = true;
             builtEA = stiffnessEA;

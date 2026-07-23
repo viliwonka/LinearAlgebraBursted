@@ -49,7 +49,6 @@ namespace LinearAlgebraDemos.Tests
             const int K = 3;
             int n = nodes.Length * 3;
 
-            var arena = new Arena(Allocator.Temp);
             var builder = new floatBSRBuilder(nodes.Length, nodes.Length, 3, 3, Allocator.Temp, bars.Count * 27);
 
             foreach (var bar in bars)
@@ -72,11 +71,11 @@ namespace LinearAlgebraDemos.Tests
                 for (int d = 0; d < 3; d++)
                     builder.AddValue(3 * c + d, 3 * c + d, 1e3f);
 
-            var A = builder.ToBSRSymmetric(ref arena);
+            var A = builder.ToBSRSymmetric(Allocator.Temp);
             builder.Dispose();
 
-            var precond = arena.floatIC0(in A);
-            var cache = arena.floatLOBPCGCache(n, K);
+            var precond = new floatIC0(in A, Allocator.Temp);
+            var cache = new floatLOBPCGCache(n, K, Allocator.Temp);
             var outStats = new NativeArray<float>(2, Allocator.TempJob);
 
             var job = new TrussEigenJobIC0
@@ -122,7 +121,6 @@ namespace LinearAlgebraDemos.Tests
 
             // no native leaks
             outStats.Dispose();
-            arena.Dispose();
         }
     }
 }

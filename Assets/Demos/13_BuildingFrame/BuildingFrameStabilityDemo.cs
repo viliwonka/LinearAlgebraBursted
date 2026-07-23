@@ -63,15 +63,14 @@ namespace LinearAlgebraDemos
         int NodeIdx(int i, int j, int l) => (l * ND + j) * NW + i;
         int N => Nodes.Length * 3;
 
-        Arena arena;
         floatBSR A;
         floatBlockJacobi mJacobi;   // only the field matching builtPrecond is live each Build()
         floatIC0 mIC0;
         floatSSOR mSSOR;
         floatLOBPCGCache cache;
-        floatN lambda;      // arena-owned view of cache.lambda after solve
-        floatMxN modes;     // arena-owned view of cache.X (K x N)
-        floatN residX, residAx;   // scratch for per-mode residuals (arena-owned)
+        floatN lambda;      // view of cache.lambda after solve
+        floatMxN modes;     // view of cache.X (K x N)
+        floatN residX, residAx;   // scratch for per-mode residuals
         float softestResidual;    // ||A x0 - lambda0 x0|| / ||A x0|| of the current softest mode
         float shownModeResidual;  // same, for the currently displayed mode
         bool built;
@@ -96,8 +95,20 @@ namespace LinearAlgebraDemos
 
         void OnDisable()
         {
-            if (built) { arena.Dispose(); built = false; }
+            if (built) { A.Dispose(); DisposePrecond(); cache.Dispose(); residX.Dispose(); residAx.Dispose(); built = false; }
             if (outStats.IsCreated) outStats.Dispose();
+        }
+
+        // Only the field matching builtPrecond (the preconditioner live from the last Build()) was
+        // ever constructed -- dispose that one field only.
+        void DisposePrecond()
+        {
+            switch (builtPrecond)
+            {
+                case Preconditioner.BlockJacobi: mJacobi.Dispose(); break;
+                case Preconditioner.SSOR:        mSSOR.Dispose(); break;
+                default:                         mIC0.Dispose(); break;
+            }
         }
 
         static bool[] NewBraceArray(int n, bool[] old)
@@ -172,8 +183,7 @@ namespace LinearAlgebraDemos
 
         void Build()
         {
-            if (built) arena.Dispose();
-            arena = new Arena(Allocator.Persistent);
+            if (built) { A.Dispose(); DisposePrecond(); cache.Dispose(); residX.Dispose(); residAx.Dispose(); }
 
             BuildGeometry();
 
@@ -217,18 +227,18 @@ namespace LinearAlgebraDemos
                         builder.AddValue(3 * node + d, 3 * node + d, 1e3f);
                 }
 
-            A = builder.ToBSRSymmetric(ref arena);
+            A = builder.ToBSRSymmetric(Allocator.Persistent);
             builder.Dispose();
 
             switch (preconditioner)
             {
-                case Preconditioner.BlockJacobi: mJacobi = arena.floatBlockJacobi(in A); break;
-                case Preconditioner.SSOR:        mSSOR = new floatSSOR(in A, ref arena); break;
-                default:                         mIC0 = arena.floatIC0(in A); break;
+                case Preconditioner.BlockJacobi: mJacobi = new floatBlockJacobi(in A, Allocator.Persistent); break;
+                case Preconditioner.SSOR:        mSSOR = new floatSSOR(in A, Allocator.Persistent); break;
+                default:                         mIC0 = new floatIC0(in A, Allocator.Persistent); break;
             }
-            cache = arena.floatLOBPCGCache(N, K + Guard);
-            residX = arena.floatVec(N);
-            residAx = arena.floatVec(N);
+            cache = new floatLOBPCGCache(N, K + Guard, Allocator.Persistent);
+            residX = new floatN(N, Allocator.Persistent);
+            residAx = new floatN(N, Allocator.Persistent);
 
             built = true;
             justBuilt = true;

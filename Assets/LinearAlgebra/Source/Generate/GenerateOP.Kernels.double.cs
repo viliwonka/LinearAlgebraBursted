@@ -7,9 +7,7 @@ using Unity.Collections;
 namespace LinearAlgebra
 {
     // Standalone (non-arena) wrappers for the Generate generators — each allocates a fresh
-    // vector/matrix via allocator and delegates to the zero-alloc ref-dest primitive. Same
-    // semantics as ArenaExtensions.Generators.double but allocate their own buffer via allocator
-    // instead of drawing from an arena.
+    // vector/matrix via allocator and delegates to the zero-alloc ref-dest primitive.
     public static partial class GenerateOP
     {
         #region AXIS / SAMPLE

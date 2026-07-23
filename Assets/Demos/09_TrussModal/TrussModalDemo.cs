@@ -49,13 +49,12 @@ namespace LinearAlgebraDemos
 
         int N => Nodes.Length * 2;
 
-        Arena arena;
         floatBSR A;      // stiffness
         floatBSR B;      // lumped mass
         floatBlockJacobi precond;
         floatLOBPCGCache cache;
-        floatN lambda;      // arena-owned view of cache.lambda after solve
-        floatMxN modes;     // arena-owned view of cache.X (ModeCount x N)
+        floatN lambda;      // view of cache.lambda after solve
+        floatMxN modes;     // view of cache.X (ModeCount x N)
         bool built;
         bool solved;
         float builtEA;
@@ -71,14 +70,13 @@ namespace LinearAlgebraDemos
 
         void OnDestroy()
         {
-            if (built) { arena.Dispose(); built = false; }
+            if (built) { A.Dispose(); B.Dispose(); precond.Dispose(); cache.Dispose(); built = false; }
             if (outStats.IsCreated) outStats.Dispose();
         }
 
         void Build()
         {
-            if (built) arena.Dispose();
-            arena = new Arena(Allocator.Persistent);
+            if (built) { A.Dispose(); B.Dispose(); precond.Dispose(); cache.Dispose(); }
 
             int nb = Nodes.Length;
             var kBuilder = new floatBSRBuilder(nb, nb, 2, 2, Allocator.Temp, 64);
@@ -120,13 +118,13 @@ namespace LinearAlgebraDemos
                 for (int d = 0; d < 2; d++)
                     mBuilder.AddValue(2 * i + d, 2 * i + d, nodeMass);
 
-            A = kBuilder.ToBSRSymmetric(ref arena);
+            A = kBuilder.ToBSRSymmetric(Allocator.Persistent);
             kBuilder.Dispose();
-            B = mBuilder.ToBSRSymmetric(ref arena);
+            B = mBuilder.ToBSRSymmetric(Allocator.Persistent);
             mBuilder.Dispose();
 
-            precond = arena.floatBlockJacobi(in A);
-            cache = arena.floatLOBPCGCache(N, ModeCount);
+            precond = new floatBlockJacobi(in A, Allocator.Persistent);
+            cache = new floatLOBPCGCache(N, ModeCount, Allocator.Persistent);
 
             built = true;
             builtEA = stiffnessEA;

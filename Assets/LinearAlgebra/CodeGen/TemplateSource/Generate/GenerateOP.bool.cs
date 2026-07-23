@@ -3,8 +3,7 @@ using Unity.Mathematics;
 
 namespace LinearAlgebra
 {
-    // Standalone (non-arena) vector/matrix generators. Same semantics as ArenaExtensions.cs's
-    // bool factories but allocate their own buffer via allocator instead of drawing from an arena.
+    // Standalone bool vector/matrix generators: allocate their own buffer via allocator.
     public static partial class GenerateOP {
 
         #region VECTOR

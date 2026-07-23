@@ -26,13 +26,13 @@ namespace LinearAlgebra
             if (!ok)
                 throw new ArgumentException(
                     who + ": workspace must be sized for this (m, n, k, oversample) — use " +
-                    "Arena.fProxySVDTruncatedCache(m, n, k, oversample) with the SAME k and oversample");
+                    "new fProxySVDTruncatedCache(m, n, k, oversample, allocator) with the SAME k and oversample");
         }
     }
 
     /// <summary>
     /// Reusable scratch storage for truncated (Golub-Kahan-Lanczos). Allocate ONCE via
-    /// Arena.fProxySVDTruncatedCache(m, n, k, oversample) and reuse across same-shape calls.
+    /// the Allocator ctor and reuse across same-shape calls.
     ///
     /// Layout (p = min(k+oversample, n)): UL (p x m) holds the left Lanczos basis u_1..u_p as
     /// ROWS (each u_j is a contiguous row of length m, enabling cache-coherent GEMV); VL ((p+1) x n)
@@ -64,7 +64,7 @@ namespace LinearAlgebra
         public fProxyN mu;   // length p+1: μ estimates ⟨û_j, û_i⟩ for partial reorth ω-recurrence
         public fProxyN nu;   // length p+1: ν estimates ⟨v̂_j, v̂_i⟩ for partial reorth ω-recurrence
 
-        /// <summary>Standalone allocation sized identically to <c>Arena.fProxySVDTruncatedCache(m, n, k, oversample)</c>. Pair with <see cref="Dispose"/>.</summary>
+        /// <summary>Allocates a GKL-truncated-SVD workspace for an m x n (m >= n) matrix, target rank k, and oversampling p_extra (p = min(k + oversample, n)). Pair with <see cref="Dispose"/>.</summary>
         public fProxySVDTruncatedCache(int m, int n, int k, int oversample, Allocator allocator)
         {
             int p = math.min(k + oversample, n);
@@ -83,7 +83,7 @@ namespace LinearAlgebra
             nu    = new fProxyN(p + 1, allocator);
         }
 
-        /// <summary>Standalone allocation sized identically to <c>Arena.fProxySVDTruncatedCache(m, n, k)</c> (default oversample p = min(n, max(2k, k+12))). Pair with <see cref="Dispose"/>.</summary>
+        /// <summary>Allocates a GKL-truncated-SVD workspace with the generous default Krylov width p = min(n, max(2*k, k+12)). Pair with <see cref="Dispose"/>.</summary>
         public fProxySVDTruncatedCache(int m, int n, int k, Allocator allocator)
         {
             int p = math.min(n, math.max(2 * k, k + 12));
@@ -118,71 +118,6 @@ namespace LinearAlgebra
             beta.Dispose();
             mu.Dispose();
             nu.Dispose();
-        }
-    }
-
-    public static partial class ArenaExtensions
-    {
-        /// <summary>
-        /// Allocates a GKL-truncated-SVD workspace for an m x n (m >= n) matrix, target rank k, and
-        /// oversampling p_extra (p = min(k + oversample, n)) — see <see cref="fProxySVDTruncatedCache"/>
-        /// for layout. Pass the SAME k and oversample to truncated's ref-workspace overload.
-        /// </summary>
-        public static fProxySVDTruncatedCache fProxySVDTruncatedCache(this ref Arena arena, int m, int n, int k, int oversample)
-        {
-            int p = math.min(k + oversample, n);
-            return new fProxySVDTruncatedCache
-            {
-                UL     = arena.fProxyMat(p, m),
-                VL     = arena.fProxyMat(p + 1, n),
-                dB     = arena.fProxyVec(p),
-                eB     = arena.fProxyVec(p),
-                UtB    = arena.fProxyMat(p, p),
-                VtB    = arena.fProxyMat(p, p),
-                BsvdWs = new fProxySVDFullCache
-                {
-                    U = arena.fProxyMat(p, p),
-                    S = arena.fProxyVec(p),
-                    V = arena.fProxyMat(p, p)
-                },
-                uBuf  = arena.fProxyVec(m),
-                vBuf  = arena.fProxyVec(n),
-                alpha = arena.fProxyVec(p),
-                beta  = arena.fProxyVec(p),
-                mu    = arena.fProxyVec(p + 1),
-                nu    = arena.fProxyVec(p + 1)
-            };
-        }
-
-        /// <summary>
-        /// Allocates a GKL-truncated-SVD workspace with the generous default Krylov width
-        /// p = min(n, max(2*k, k+12)) — matches the truncated convenience overloads that do
-        /// not take an explicit oversample. For k in [1,12], p >= k+12; for k > 12, p >= 2*k.
-        /// </summary>
-        public static fProxySVDTruncatedCache fProxySVDTruncatedCache(this ref Arena arena, int m, int n, int k)
-        {
-            int p = math.min(n, math.max(2 * k, k + 12));
-            return new fProxySVDTruncatedCache
-            {
-                UL     = arena.fProxyMat(p, m),
-                VL     = arena.fProxyMat(p + 1, n),
-                dB     = arena.fProxyVec(p),
-                eB     = arena.fProxyVec(p),
-                UtB    = arena.fProxyMat(p, p),
-                VtB    = arena.fProxyMat(p, p),
-                BsvdWs = new fProxySVDFullCache
-                {
-                    U = arena.fProxyMat(p, p),
-                    S = arena.fProxyVec(p),
-                    V = arena.fProxyMat(p, p)
-                },
-                uBuf  = arena.fProxyVec(m),
-                vBuf  = arena.fProxyVec(n),
-                alpha = arena.fProxyVec(p),
-                beta  = arena.fProxyVec(p),
-                mu    = arena.fProxyVec(p + 1),
-                nu    = arena.fProxyVec(p + 1)
-            };
         }
     }
 }

@@ -30,13 +30,13 @@ namespace LinearAlgebra
             if (!ok)
                 throw new ArgumentException(
                     who + ": workspace must be sized for this (m, n, k, oversample) — use " +
-                    "Arena.floatSVDTruncatedCache(m, n, k, oversample) with the SAME k and oversample");
+                    "new floatSVDTruncatedCache(m, n, k, oversample, allocator) with the SAME k and oversample");
         }
     }
 
     /// <summary>
     /// Reusable scratch storage for truncated (Golub-Kahan-Lanczos). Allocate ONCE via
-    /// Arena.floatSVDTruncatedCache(m, n, k, oversample) and reuse across same-shape calls.
+    /// the Allocator ctor and reuse across same-shape calls.
     ///
     /// Layout (p = min(k+oversample, n)): UL (p x m) holds the left Lanczos basis u_1..u_p as
     /// ROWS (each u_j is a contiguous row of length m, enabling cache-coherent GEMV); VL ((p+1) x n)
@@ -68,7 +68,7 @@ namespace LinearAlgebra
         public floatN mu;   // length p+1: μ estimates ⟨û_j, û_i⟩ for partial reorth ω-recurrence
         public floatN nu;   // length p+1: ν estimates ⟨v̂_j, v̂_i⟩ for partial reorth ω-recurrence
 
-        /// <summary>Standalone allocation sized identically to <c>Arena.floatSVDTruncatedCache(m, n, k, oversample)</c>. Pair with <see cref="Dispose"/>.</summary>
+        /// <summary>Allocates a GKL-truncated-SVD workspace for an m x n (m >= n) matrix, target rank k, and oversampling p_extra (p = min(k + oversample, n)). Pair with <see cref="Dispose"/>.</summary>
         public floatSVDTruncatedCache(int m, int n, int k, int oversample, Allocator allocator)
         {
             int p = math.min(k + oversample, n);
@@ -87,7 +87,7 @@ namespace LinearAlgebra
             nu    = new floatN(p + 1, allocator);
         }
 
-        /// <summary>Standalone allocation sized identically to <c>Arena.floatSVDTruncatedCache(m, n, k)</c> (default oversample p = min(n, max(2k, k+12))). Pair with <see cref="Dispose"/>.</summary>
+        /// <summary>Allocates a GKL-truncated-SVD workspace with the generous default Krylov width p = min(n, max(2*k, k+12)). Pair with <see cref="Dispose"/>.</summary>
         public floatSVDTruncatedCache(int m, int n, int k, Allocator allocator)
         {
             int p = math.min(n, math.max(2 * k, k + 12));
@@ -122,71 +122,6 @@ namespace LinearAlgebra
             beta.Dispose();
             mu.Dispose();
             nu.Dispose();
-        }
-    }
-
-    public static partial class ArenaExtensions
-    {
-        /// <summary>
-        /// Allocates a GKL-truncated-SVD workspace for an m x n (m >= n) matrix, target rank k, and
-        /// oversampling p_extra (p = min(k + oversample, n)) — see <see cref="floatSVDTruncatedCache"/>
-        /// for layout. Pass the SAME k and oversample to truncated's ref-workspace overload.
-        /// </summary>
-        public static floatSVDTruncatedCache floatSVDTruncatedCache(this ref Arena arena, int m, int n, int k, int oversample)
-        {
-            int p = math.min(k + oversample, n);
-            return new floatSVDTruncatedCache
-            {
-                UL     = arena.floatMat(p, m),
-                VL     = arena.floatMat(p + 1, n),
-                dB     = arena.floatVec(p),
-                eB     = arena.floatVec(p),
-                UtB    = arena.floatMat(p, p),
-                VtB    = arena.floatMat(p, p),
-                BsvdWs = new floatSVDFullCache
-                {
-                    U = arena.floatMat(p, p),
-                    S = arena.floatVec(p),
-                    V = arena.floatMat(p, p)
-                },
-                uBuf  = arena.floatVec(m),
-                vBuf  = arena.floatVec(n),
-                alpha = arena.floatVec(p),
-                beta  = arena.floatVec(p),
-                mu    = arena.floatVec(p + 1),
-                nu    = arena.floatVec(p + 1)
-            };
-        }
-
-        /// <summary>
-        /// Allocates a GKL-truncated-SVD workspace with the generous default Krylov width
-        /// p = min(n, max(2*k, k+12)) — matches the truncated convenience overloads that do
-        /// not take an explicit oversample. For k in [1,12], p >= k+12; for k > 12, p >= 2*k.
-        /// </summary>
-        public static floatSVDTruncatedCache floatSVDTruncatedCache(this ref Arena arena, int m, int n, int k)
-        {
-            int p = math.min(n, math.max(2 * k, k + 12));
-            return new floatSVDTruncatedCache
-            {
-                UL     = arena.floatMat(p, m),
-                VL     = arena.floatMat(p + 1, n),
-                dB     = arena.floatVec(p),
-                eB     = arena.floatVec(p),
-                UtB    = arena.floatMat(p, p),
-                VtB    = arena.floatMat(p, p),
-                BsvdWs = new floatSVDFullCache
-                {
-                    U = arena.floatMat(p, p),
-                    S = arena.floatVec(p),
-                    V = arena.floatMat(p, p)
-                },
-                uBuf  = arena.floatVec(m),
-                vBuf  = arena.floatVec(n),
-                alpha = arena.floatVec(p),
-                beta  = arena.floatVec(p),
-                mu    = arena.floatVec(p + 1),
-                nu    = arena.floatVec(p + 1)
-            };
         }
     }
 }

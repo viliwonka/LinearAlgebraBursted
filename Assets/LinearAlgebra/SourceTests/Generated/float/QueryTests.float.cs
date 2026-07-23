@@ -790,7 +790,7 @@ public class floatQueryTests
             for (int i = 0; i < N; i++) q[i] = (float)(i) * (float)0.3 - (float)0.5;
 
             // --- floatDistancesToRow / Column wrappers vs primitive ---
-            var dr = ArenaExtensions.floatDistancesToRow(in A, in q, Metric.SqEuclidean);
+            var dr = Query.floatDistancesToRow(in A, in q, Metric.SqEuclidean);
             var drRef = new floatN(M, Allocator.Temp);
             Query.distancesToRow(in A, in q, Metric.SqEuclidean, ref drRef);
             AssertEqI(dr.N, M);
@@ -798,7 +798,7 @@ public class floatQueryTests
 
             var qc = new floatN(M, Allocator.Temp);
             for (int i = 0; i < M; i++) qc[i] = (float)(i) * (float)0.2;
-            var dcol = ArenaExtensions.floatDistancesToColumn(in A, in qc, Metric.SqEuclidean);
+            var dcol = Query.floatDistancesToColumn(in A, in qc, Metric.SqEuclidean);
             var dcolRef = new floatN(N, Allocator.Temp);
             Query.distancesToColumn(in A, in qc, Metric.SqEuclidean, ref dcolRef);
             AssertEqI(dcol.N, N);

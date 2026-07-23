@@ -32,7 +32,7 @@ namespace LinearAlgebra
                 throw new ArgumentException("randomized: maxIter must be >= 1");
         }
 
-        /// <summary>Throws unless <paramref name="ws"/> matches Arena.fProxySVDRandomizedCache(m, n, k, oversample) sizing (sketch width l = min(k+oversample, n)).</summary>
+        /// <summary>Throws unless <paramref name="ws"/> matches the fProxySVDRandomizedCache(m, n, k, oversample, allocator) constructor sizing (sketch width l = min(k+oversample, n)).</summary>
         static void RequireSvdRandomizedWorkspace(in fProxySVDRandomizedCache ws, int m, int n, int l)
         {
             bool ok =
@@ -52,14 +52,14 @@ namespace LinearAlgebra
             if (!ok)
                 throw new ArgumentException(
                     "randomized: workspace must be sized for this (m, n, k, oversample) — use " +
-                    "Arena.fProxySVDRandomizedCache(m, n, k, oversample) with the SAME k and oversample");
+                    "new fProxySVDRandomizedCache(m, n, k, oversample, allocator) with the SAME k and oversample");
         }
     }
 
     /// <summary>
     /// Reusable scratch storage for randomized (Halko-Martinsson-Tropp). The randomized SVD
     /// allocates a dozen intermediate buffers per call; allocate this ONCE via
-    /// Arena.fProxySVDRandomizedCache(m, n, k, oversample) and reuse it across same-shape calls
+    /// the Allocator ctor and reuse it across same-shape calls
     /// (SAME k and oversample) to make repeated randomized SVDs zero-alloc.
     ///
     /// All buffers are sized by the sketch width l = min(k + oversample, n): Omega (n x l), Y (m x l,
@@ -85,7 +85,7 @@ namespace LinearAlgebra
         public fProxyMxN Vp;
         public fProxyMxN UA;
 
-        /// <summary>Standalone allocation sized identically to <c>Arena.fProxySVDRandomizedCache(m, n, k, oversample)</c>. Pair with <see cref="Dispose"/>.</summary>
+        /// <summary>Allocates a randomized-SVD workspace for an m x n (m >= n) matrix, target rank k, and oversampling p (sketch width l = min(k + oversample, n)). Pair with <see cref="Dispose"/>.</summary>
         public fProxySVDRandomizedCache(int m, int n, int k, int oversample, Allocator allocator)
         {
             int l = math.min(k + oversample, n);
@@ -103,7 +103,7 @@ namespace LinearAlgebra
             UA = new fProxyMxN(m, l, allocator);
         }
 
-        /// <summary>Standalone allocation sized identically to <c>Arena.fProxySVDRandomizedCache(m, n, k)</c> (default oversample 10). Pair with <see cref="Dispose"/>.</summary>
+        /// <summary>Allocates a randomized-SVD workspace with the default oversample (10). Pair with <see cref="Dispose"/>.</summary>
         public fProxySVDRandomizedCache(int m, int n, int k, Allocator allocator)
             : this(m, n, k, 10, allocator)
         {
@@ -125,42 +125,5 @@ namespace LinearAlgebra
             Vp.Dispose();
             UA.Dispose();
         }
-    }
-
-    public static partial class ArenaExtensions
-    {
-        /// <summary>
-        /// Allocates a randomized-SVD workspace for an m x n (m >= n) matrix, target rank k, and
-        /// oversampling p (sketch width l = min(k + oversample, n)) — see
-        /// <see cref="fProxySVDRandomizedCache"/> for layout. Pass the SAME k/oversample to
-        /// randomized's ref-workspace overload.
-        /// </summary>
-        public static fProxySVDRandomizedCache fProxySVDRandomizedCache(this ref Arena arena, int m, int n, int k, int oversample)
-        {
-            int l = math.min(k + oversample, n);
-            return new fProxySVDRandomizedCache
-            {
-                Omega = arena.fProxyMat(n, l),
-                Y = arena.fProxyMat(m, l),
-                R = arena.fProxyMat(l, l),
-                qu = arena.fProxyVec(m),
-                qw = arena.fProxyVec(l),
-                Z = arena.fProxyMat(n, l),
-                B = arena.fProxyMat(l, n),
-                Bt = arena.fProxyMat(n, l),
-                Up = arena.fProxyMat(n, l),
-                Sb = arena.fProxyVec(l),
-                Vp = arena.fProxyMat(l, l),
-                UA = arena.fProxyMat(m, l)
-            };
-        }
-
-        /// <summary>
-        /// Allocates a randomized-SVD workspace with the default oversample (10) — matches the
-        /// randomized convenience overloads (oversample 10, powerIters 2, maxIter
-        /// Consts.sweepBudget(l)).
-        /// </summary>
-        public static fProxySVDRandomizedCache fProxySVDRandomizedCache(this ref Arena arena, int m, int n, int k)
-            => arena.fProxySVDRandomizedCache(m, n, k, 10);
     }
 }

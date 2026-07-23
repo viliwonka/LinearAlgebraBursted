@@ -108,7 +108,8 @@ public class BoolOperationsTest
 
             boolN a = GenerateOP.boolRandomVec(vecLen);
 
-            boolN b = !a;
+            boolN b = a.TempCopy();
+            boolComp.notInPlace(b);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] != b[i]);
@@ -121,7 +122,8 @@ public class BoolOperationsTest
 
             boolMxN a = GenerateOP.boolRandomMat(rows, cols);
 
-            boolMxN b = !a;
+            boolMxN b = a.TempCopy();
+            boolComp.notInPlace(b);
 
             for (int i = 0; i < rows; i++)
                 for (int j = 0; j < cols; j++)
@@ -157,13 +159,15 @@ public class BoolOperationsTest
             int vecLen = 16;
 
             boolN a = GenerateOP.boolRandomVec(vecLen);
-            
-            boolN b = a & true;
-            
+
+            boolN b = a.TempCopy();
+            boolComp.andInPlace(b, true);
+
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(b[i] == a[i]);
 
-            b = a & false;
+            b = a.TempCopy();
+            boolComp.andInPlace(b, false);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(b[i] == false);
@@ -174,13 +178,15 @@ public class BoolOperationsTest
             int vecLen = 16;
 
             boolN a = GenerateOP.boolRandomVec(vecLen);
-            
-            boolN b = a | true;
-            
+
+            boolN b = a.TempCopy();
+            boolComp.orInPlace(b, true);
+
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(b[i] == true);
 
-            b = a | false;
+            b = a.TempCopy();
+            boolComp.orInPlace(b, false);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(b[i] == a[i]);
@@ -191,13 +197,15 @@ public class BoolOperationsTest
             int vecLen = 16;
 
             boolN a = GenerateOP.boolRandomVec(vecLen);
-            
-            boolN b = a ^ true;
-            
+
+            boolN b = a.TempCopy();
+            boolComp.xorInPlace(b, true);
+
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(b[i] == !a[i]);
 
-            b = a ^ false;
+            b = a.TempCopy();
+            boolComp.xorInPlace(b, false);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(b[i] == a[i]);
@@ -237,14 +245,16 @@ public class BoolOperationsTest
             int cols = 16;
 
             boolMxN a = GenerateOP.boolRandomMat(rows, cols);
-            
-            boolMxN b = a & true;
-            
+
+            boolMxN b = a.TempCopy();
+            boolComp.andInPlace(b, true);
+
             for (int i = 0; i < rows; i++)
                 for(int j = 0; j < cols; j++)
                     Assert.IsTrue(b[i, j] == a[i, j]);
 
-            b = a & false;
+            b = a.TempCopy();
+            boolComp.andInPlace(b, false);
 
             for (int i = 0; i < rows; i++)
                 for(int j = 0; j < cols; j++)
@@ -257,14 +267,16 @@ public class BoolOperationsTest
             int cols = 16;
 
             boolMxN a = GenerateOP.boolRandomMat(rows, cols);
-            
-            boolMxN b = a | true;
-            
+
+            boolMxN b = a.TempCopy();
+            boolComp.orInPlace(b, true);
+
             for (int i = 0; i < rows; i++)
                 for(int j = 0; j < cols; j++)
                     Assert.IsTrue(b[i, j] == true);
 
-            b = a | false;
+            b = a.TempCopy();
+            boolComp.orInPlace(b, false);
 
             for (int i = 0; i < rows; i++)
                 for(int j = 0; j < cols; j++)
@@ -277,14 +289,16 @@ public class BoolOperationsTest
             int cols = 16;
 
             boolMxN a = GenerateOP.boolRandomMat(rows, cols);
-            
-            boolMxN b = a ^ true;
-            
+
+            boolMxN b = a.TempCopy();
+            boolComp.xorInPlace(b, true);
+
             for (int i = 0; i < rows; i++)
                 for(int j = 0; j < cols; j++)
                     Assert.IsTrue(b[i, j] == !a[i, j]);
 
-            b = a ^ false;
+            b = a.TempCopy();
+            boolComp.xorInPlace(b, false);
 
             for (int i = 0; i < rows; i++)
                 for(int j = 0; j < cols; j++)
@@ -322,7 +336,8 @@ public class BoolOperationsTest
 
             boolN a = GenerateOP.boolRandomVec(vecLen);
             boolN b = GenerateOP.boolRandomVec(vecLen);
-            boolN c = a & b;
+            boolN c = a.TempCopy();
+            boolComp.andInPlace(c, b);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue((a[i] & b[i]) == c[i]);
@@ -334,7 +349,8 @@ public class BoolOperationsTest
 
             boolN a = GenerateOP.boolRandomVec(vecLen);
             boolN b = GenerateOP.boolRandomVec(vecLen);
-            boolN c = a | b;
+            boolN c = a.TempCopy();
+            boolComp.orInPlace(c, b);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue((a[i] | b[i]) == c[i]);
@@ -346,7 +362,8 @@ public class BoolOperationsTest
 
             boolN a = GenerateOP.boolRandomVec(vecLen);
             boolN b = GenerateOP.boolRandomVec(vecLen);
-            boolN c = a ^ b;
+            boolN c = a.TempCopy();
+            boolComp.xorInPlace(c, b);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue((a[i] ^ b[i]) == c[i]);
@@ -362,6 +379,52 @@ public class BoolOperationsTest
     public void TestCases(TestsJob.OPType type)
     {
         new TestsJob() { Type = type }.Run();
+    }
+
+    // STANDALONE Copy()/TempCopy() contract: both return an independent copy (content-equal;
+    // writes to the copy never reach the source).
+    [Test]
+    public void StandaloneVector_CopyAndTempCopy_ReturnIndependentCopies()
+    {
+        var v = new boolN(4, Allocator.Temp);
+        try
+        {
+            v[1] = true;
+            var c = v.Copy();
+            var t = v.TempCopy();
+            Assert.IsTrue(c.N == 4);
+            Assert.IsTrue(t.N == 4);
+            Assert.IsTrue(c[1]);
+            Assert.IsTrue(t[1]);
+            c[1] = false;
+            t[1] = false;
+            Assert.IsTrue(v[1]);
+            c.Dispose();
+            t.Dispose();
+        }
+        finally { v.Dispose(); }
+    }
+
+    [Test]
+    public void StandaloneMatrix_CopyAndTempCopy_ReturnIndependentCopies()
+    {
+        var m = new boolMxN(3, 3, Allocator.Temp);
+        try
+        {
+            m[1, 2] = true;
+            var c = m.Copy();
+            var t = m.TempCopy();
+            Assert.IsTrue(c.M_Rows == 3 && c.N_Cols == 3);
+            Assert.IsTrue(t.M_Rows == 3 && t.N_Cols == 3);
+            Assert.IsTrue(c[1, 2]);
+            Assert.IsTrue(t[1, 2]);
+            c[1, 2] = false;
+            t[1, 2] = false;
+            Assert.IsTrue(m[1, 2]);
+            c.Dispose();
+            t.Dispose();
+        }
+        finally { m.Dispose(); }
     }
 
 }

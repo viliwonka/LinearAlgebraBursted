@@ -38,7 +38,7 @@ public class intOperationsTest {
             result = new intN(in a, Allocator.Temp); intComp.subInPlace(result, s);   // a - s
             result = new intN(in a, Allocator.Temp); intComp.subInPlace(s, result);   // s - a
 
-            result = ~a;
+            result = new intN(in a, Allocator.Temp); intComp.bitwiseComplementInPlace(result);   // ~a
 
             result = new intN(in a, Allocator.Temp); intComp.mulInPlace(result, s);   // a * s
             result = new intN(in a, Allocator.Temp); intComp.mulInPlace(result, s);   // s * a
@@ -48,17 +48,17 @@ public class intOperationsTest {
             result = new intN(in a, Allocator.Temp); intComp.divInPlace(s, result);   // s / a
             result = new intN(in a, Allocator.Temp); intComp.modInPlace(s, result);   // s % a
 
-            result = a | s;
-            result = s | a;
+            result = new intN(in a, Allocator.Temp); intComp.bitwiseOrInPlace(result, s);    // a | s
+            result = new intN(in a, Allocator.Temp); intComp.bitwiseOrInPlace(result, s);    // s | a
 
-            result = a & s;
-            result = s & a;
+            result = new intN(in a, Allocator.Temp); intComp.bitwiseAndInPlace(result, s);   // a & s
+            result = new intN(in a, Allocator.Temp); intComp.bitwiseAndInPlace(result, s);   // s & a
 
-            result = a ^ s;
-            result = s ^ a;
+            result = new intN(in a, Allocator.Temp); intComp.bitwiseXorInPlace(result, s);   // a ^ s
+            result = new intN(in a, Allocator.Temp); intComp.bitwiseXorInPlace(result, s);   // s ^ a
 
-            result = result << 5;
-            result = result >> 5;
+            intComp.bitwiseLeftShiftInPlace(result, 5);    // result <<= 5
+            intComp.bitwiseRightShiftInPlace(result, 5);   // result >>= 5
 
             result = new intN(in a, Allocator.Temp); intComp.addInPlace(result, b);   // a + b
             result = new intN(in a, Allocator.Temp); intComp.subInPlace(result, b);   // a - b
@@ -66,9 +66,9 @@ public class intOperationsTest {
             result = new intN(in a, Allocator.Temp); intComp.divInPlace(result, b);   // a / b
             result = new intN(in a, Allocator.Temp); intComp.modInPlace(result, b);   // a % b
 
-            result = a | b;
-            result = a & b;
-            result = a ^ b;
+            result = new intN(in a, Allocator.Temp); intComp.bitwiseOrInPlace(result, b);    // a | b
+            result = new intN(in a, Allocator.Temp); intComp.bitwiseAndInPlace(result, b);   // a & b
+            result = new intN(in a, Allocator.Temp); intComp.bitwiseXorInPlace(result, b);   // a ^ b
         }
     }
 
@@ -487,6 +487,52 @@ public class intOperationsTest {
     public void TestCases(BasicPreciseOPTestJob.TestType type)
     {
         new BasicPreciseOPTestJob() { Type = type }.Run();
+    }
+
+    // STANDALONE Copy()/TempCopy() contract: both return an independent copy (content-equal;
+    // writes to the copy never reach the source).
+    [Test]
+    public void StandaloneVector_CopyAndTempCopy_ReturnIndependentCopies()
+    {
+        var v = new intN(4, Allocator.Temp);
+        try
+        {
+            v[1] = 2;
+            var c = v.Copy();
+            var t = v.TempCopy();
+            Assert.IsTrue(c.N == 4);
+            Assert.IsTrue(t.N == 4);
+            Assert.IsTrue(c[1] == 2);
+            Assert.IsTrue(t[1] == 2);
+            c[1] = 5;
+            t[1] = 7;
+            Assert.IsTrue(v[1] == 2);
+            c.Dispose();
+            t.Dispose();
+        }
+        finally { v.Dispose(); }
+    }
+
+    [Test]
+    public void StandaloneMatrix_CopyAndTempCopy_ReturnIndependentCopies()
+    {
+        var m = new intMxN(3, 3, Allocator.Temp);
+        try
+        {
+            m[1, 2] = 3;
+            var c = m.Copy();
+            var t = m.TempCopy();
+            Assert.IsTrue(c.M_Rows == 3 && c.N_Cols == 3);
+            Assert.IsTrue(t.M_Rows == 3 && t.N_Cols == 3);
+            Assert.IsTrue(c[1, 2] == 3);
+            Assert.IsTrue(t[1, 2] == 3);
+            c[1, 2] = 5;
+            t[1, 2] = 7;
+            Assert.IsTrue(m[1, 2] == 3);
+            c.Dispose();
+            t.Dispose();
+        }
+        finally { m.Dispose(); }
     }
 
 }

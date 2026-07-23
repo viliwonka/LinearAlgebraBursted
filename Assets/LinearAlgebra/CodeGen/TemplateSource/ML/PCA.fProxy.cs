@@ -286,22 +286,6 @@ namespace LinearAlgebra.ML
         public static bool fitCov(in fProxyMxN X, ref fProxyPCAModel model)
             => fitCov(in X, ref model, PCAScaling.Covariance, out _);
 
-        /// <summary>Validates inputs, allocates the model (p x p) from <paramref name="arena"/>, then delegates to the ref-model overload. Guards fire before any arena allocation.</summary>
-        public static fProxyPCAModel fitCov(ref Arena arena, in fProxyMxN X, PCAScaling scaling)
-        {
-            const string method = "PCA.fitCov";
-            RequireBasicShape(in X, method);
-
-            int p = X.N_Cols;
-            var model = arena.fProxyPCAModel(p, p);
-            fitCov(in X, ref model, scaling, out _);
-            return model;
-        }
-
-        /// <summary>fitCov (allocating) with scaling = PCAScaling.Covariance.</summary>
-        public static fProxyPCAModel fitCov(ref Arena arena, in fProxyMxN X)
-            => fitCov(ref arena, in X, PCAScaling.Covariance);
-
         /// <summary>Validates inputs, allocates the model (p x p) standalone via <paramref
         /// name="allocator"/> (default Temp; caller owns disposal), then delegates to the
         /// ref-model overload. Guards fire before any allocation.</summary>
@@ -378,23 +362,6 @@ namespace LinearAlgebra.ML
         /// <summary>fitSvd with scaling = PCAScaling.Covariance and maxIter = Consts.sweepBudget(X.N_Cols), discarding the SVDInfo diagnostics.</summary>
         public static bool fitSvd(in fProxyMxN X, ref fProxyPCAModel model)
             => fitSvd(in X, ref model, PCAScaling.Covariance, Consts.sweepBudget(X.N_Cols), out _);
-
-        /// <summary>Validates inputs, allocates the model (p x p) from <paramref name="arena"/>, then delegates to the ref-model overload. Guards fire before any arena allocation.</summary>
-        public static fProxyPCAModel fitSvd(ref Arena arena, in fProxyMxN X, PCAScaling scaling)
-        {
-            const string method = "PCA.fitSvd";
-            RequireBasicShape(in X, method);
-            RequireTallShape(in X, method);
-
-            int p = X.N_Cols;
-            var model = arena.fProxyPCAModel(p, p);
-            fitSvd(in X, ref model, scaling, Consts.sweepBudget(X.N_Cols), out _);
-            return model;
-        }
-
-        /// <summary>fitSvd (allocating) with scaling = PCAScaling.Covariance.</summary>
-        public static fProxyPCAModel fitSvd(ref Arena arena, in fProxyMxN X)
-            => fitSvd(ref arena, in X, PCAScaling.Covariance);
 
         /// <summary>Validates inputs, allocates the model (p x p) standalone via <paramref
         /// name="allocator"/> (default Temp; caller owns disposal), then delegates to the
@@ -492,26 +459,6 @@ namespace LinearAlgebra.ML
         public static bool fitSvdTruncated(in fProxyMxN X, ref fProxyPCAModel model, int k)
             => fitSvdTruncated(in X, ref model, k, PCAScaling.Covariance, out _);
 
-        /// <summary>Validates inputs, allocates the model (p x k) from <paramref name="arena"/>, then delegates to the ref-model overload. Guards fire before any arena allocation.</summary>
-        public static fProxyPCAModel fitSvdTruncated(ref Arena arena, in fProxyMxN X, int k, PCAScaling scaling)
-        {
-            const string method = "PCA.fitSvdTruncated";
-            RequireBasicShape(in X, method);
-            RequireTallShape(in X, method);
-
-            int n = X.M_Rows;
-            int p = X.N_Cols;
-            RequireTopK(k, n, p, method);
-
-            var model = arena.fProxyPCAModel(p, k);
-            fitSvdTruncated(in X, ref model, k, scaling, out _);
-            return model;
-        }
-
-        /// <summary>fitSvdTruncated (allocating) with scaling = PCAScaling.Covariance.</summary>
-        public static fProxyPCAModel fitSvdTruncated(ref Arena arena, in fProxyMxN X, int k)
-            => fitSvdTruncated(ref arena, in X, k, PCAScaling.Covariance);
-
         /// <summary>Validates inputs, allocates the model (p x k) standalone via <paramref
         /// name="allocator"/> (default Temp; caller owns disposal), then delegates to the
         /// ref-model overload. Guards fire before any allocation.</summary>
@@ -600,26 +547,6 @@ namespace LinearAlgebra.ML
         public static bool fitRandomized(in fProxyMxN X, ref fProxyPCAModel model, int k)
             => fitRandomized(in X, ref model, k, PCAScaling.Covariance, out _);
 
-        /// <summary>Validates inputs, allocates the model (p x k) from <paramref name="arena"/>, then delegates to the ref-model overload. Guards fire before any arena allocation.</summary>
-        public static fProxyPCAModel fitRandomized(ref Arena arena, in fProxyMxN X, int k, PCAScaling scaling)
-        {
-            const string method = "PCA.fitRandomized";
-            RequireBasicShape(in X, method);
-            RequireTallShape(in X, method);
-
-            int n = X.M_Rows;
-            int p = X.N_Cols;
-            RequireTopK(k, n, p, method);
-
-            var model = arena.fProxyPCAModel(p, k);
-            fitRandomized(in X, ref model, k, scaling, out _);
-            return model;
-        }
-
-        /// <summary>fitRandomized (allocating) with scaling = PCAScaling.Covariance.</summary>
-        public static fProxyPCAModel fitRandomized(ref Arena arena, in fProxyMxN X, int k)
-            => fitRandomized(ref arena, in X, k, PCAScaling.Covariance);
-
         /// <summary>Validates inputs, allocates the model (p x k) standalone via <paramref
         /// name="allocator"/> (default Temp; caller owns disposal), then delegates to the
         /// ref-model overload. Guards fire before any allocation.</summary>
@@ -672,22 +599,6 @@ namespace LinearAlgebra.ML
                     Xs[r, c] = (X[r, c] - model.mean[c]) / model.scale[c];
 
             Blas.dot(in Xs, in model.components, ref scores);
-        }
-
-        /// <summary>Allocating transform: allocates and returns a fresh X.M_Rows x model.k scores matrix.</summary>
-        public static fProxyMxN transform(ref Arena arena, in fProxyMxN X, in fProxyPCAModel model)
-        {
-            const string method = "PCA.transform";
-            int p = X.N_Cols;
-
-            if (model.mean.N != p || model.scale.N != p || model.components.M_Rows != p)
-                throw new ArgumentException(method + ": model.mean/scale/components must match X.N_Cols (p)");
-            if (model.k != model.components.N_Cols)
-                throw new ArgumentException(method + ": model.k must equal model.components.N_Cols (stale model)");
-
-            var scores = arena.fProxyMat(X.M_Rows, model.k);
-            transform(in X, in model, ref scores);
-            return scores;
         }
 
         /// <summary>Allocating transform (Allocator): allocates and returns a fresh X.M_Rows x

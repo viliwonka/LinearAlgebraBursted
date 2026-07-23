@@ -142,10 +142,8 @@ public class UIntTypeTests
 
         void VecConstructIndex()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int n = 16;
-            uintN a = arena.uintVec(n, 10u);
+            uintN a = GenerateOP.uintVec(n, 10u);
 
             Assert.AreEqual(n, a.N);
 
@@ -158,24 +156,20 @@ public class UIntTypeTests
             Assert.IsTrue(a[0] == 7u);
             Assert.IsTrue(a[n - 1] == UMAX);
 
-            uintN z = arena.uintVec(n); // default (zero-filled)
+            uintN z = new uintN(n, Allocator.Temp); // default (zero-filled)
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(z[i] == 0u);
 
             // 1x1 degenerate vector
-            uintN one = arena.uintVec(1, 42u);
+            uintN one = GenerateOP.uintVec(1, 42u);
             Assert.AreEqual(1, one.N);
             Assert.IsTrue(one[0] == 42u);
-
-            arena.Dispose();
         }
 
         void MatConstructIndex()
         {
-            var arena = new Arena(Allocator.Persistent);
-
             int rows = 3, cols = 4;
-            uintMxN a = arena.uintMat(rows, cols, 5u);
+            uintMxN a = GenerateOP.uintMat(rows, cols, 5u);
 
             Assert.AreEqual(rows, a.M_Rows);
             Assert.AreEqual(cols, a.N_Cols);
@@ -188,180 +182,163 @@ public class UIntTypeTests
             Assert.IsTrue(a[1, 2] == 99u);
             Assert.IsTrue(a[1 * cols + 2] == 99u); // row-major flat index agrees with [r,c]
 
-            uintMxN id = arena.uintIdentityMat(cols);
+            uintMxN id = GenerateOP.uintIdentityMat(cols);
             for (int i = 0; i < cols; i++)
                 for (int j = 0; j < cols; j++)
                     Assert.IsTrue(id[i, j] == (i == j ? 1u : 0u));
-
-            arena.Dispose();
         }
 
         // ---- arithmetic + wraparound ----------------------------------------------------------
 
         void AddWrapVec()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 16;
 
             // MaxValue + 1 wraps to 0.
-            uintN a = arena.uintVec(n, UMAX);
-            a += 1u;
+            uintN a = GenerateOP.uintVec(n, UMAX);
+            uintComp.addInPlace(a, 1u);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(a[i] == 0u);
 
             // MaxValue + 5 == 4  (4294967295 + 5 = 4294967300; - 2^32 (4294967296) = 4).
-            a = arena.uintVec(n, UMAX);
-            a += 5u;
+            a = GenerateOP.uintVec(n, UMAX);
+            uintComp.addInPlace(a, 5u);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(a[i] == 4u);
 
             // component-wise wrap: MaxValue + 1 == 0
-            a = arena.uintVec(n, UMAX);
-            uintN ones = arena.uintVec(n, 1u);
-            uintN r = a + ones;
+            a = GenerateOP.uintVec(n, UMAX);
+            uintN ones = GenerateOP.uintVec(n, 1u);
+            uintN r = new uintN(in a, Allocator.Temp);
+            uintComp.addInPlace(r, ones);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(r[i] == 0u);
-
-            arena.Dispose();
         }
 
         void SubWrapVec()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 16;
 
             // 0 - 1 underflows to MaxValue.
-            uintN a = arena.uintVec(n, 0u);
-            a -= 1u;
+            uintN a = GenerateOP.uintVec(n, 0u);
+            uintComp.subInPlace(a, 1u);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(a[i] == UMAX);
 
             // 3 - 10 == 4294967289  (-7 mod 2^32 == 4294967296 - 7).
-            a = arena.uintVec(n, 3u);
-            a -= 10u;
+            a = GenerateOP.uintVec(n, 3u);
+            uintComp.subInPlace(a, 10u);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(a[i] == 4294967289u);
 
             // component-wise underflow: 0 - 1 == MaxValue
-            a = arena.uintVec(n, 0u);
-            uintN ones = arena.uintVec(n, 1u);
-            uintN r = a - ones;
+            a = GenerateOP.uintVec(n, 0u);
+            uintN ones = GenerateOP.uintVec(n, 1u);
+            uintN r = new uintN(in a, Allocator.Temp);
+            uintComp.subInPlace(r, ones);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(r[i] == UMAX);
-
-            arena.Dispose();
         }
 
         void MulWrapVec()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 16;
 
             // 2^16 * 2^16 = 2^32 ≡ 0 (mod 2^32).
-            uintN a = arena.uintVec(n, 65536u);
-            a *= 65536u;
+            uintN a = GenerateOP.uintVec(n, 65536u);
+            uintComp.mulInPlace(a, 65536u);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(a[i] == 0u);
 
             // 2^31 * 2 = 2^32 ≡ 0.
-            a = arena.uintVec(n, 2147483648u);
-            a *= 2u;
+            a = GenerateOP.uintVec(n, 2147483648u);
+            uintComp.mulInPlace(a, 2u);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(a[i] == 0u);
 
             // 3000000000 * 2 = 6000000000; - 2^32 = 1705032704.
-            a = arena.uintVec(n, 3000000000u);
-            a *= 2u;
+            a = GenerateOP.uintVec(n, 3000000000u);
+            uintComp.mulInPlace(a, 2u);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(a[i] == 1705032704u);
-
-            arena.Dispose();
         }
 
         void DivUnsignedVec()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 16;
 
             // Unsigned division: MaxValue / 2 == 2147483647 (as SIGNED, -1/2 would be 0).
-            uintN a = arena.uintVec(n, UMAX);
-            a /= 2u;
+            uintN a = GenerateOP.uintVec(n, UMAX);
+            uintComp.divInPlace(a, 2u);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(a[i] == 2147483647u);
 
             // 10 / 3 == 3 (integer truncation)
-            a = arena.uintVec(n, 10u);
-            a /= 3u;
+            a = GenerateOP.uintVec(n, 10u);
+            uintComp.divInPlace(a, 3u);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(a[i] == 3u);
 
             // scalar / vec form
-            a = arena.uintVec(n, 3u);
-            uintN r = 10u / a;
+            a = GenerateOP.uintVec(n, 3u);
+            uintN r = new uintN(in a, Allocator.Temp);
+            uintComp.divInPlace(10u, r);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(r[i] == 3u);
-
-            arena.Dispose();
         }
 
         void ModUnsignedVec()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 16;
 
             // Unsigned modulo: MaxValue % 2 == 1 (MaxValue is odd). Signed -1 % 2 would be -1.
-            uintN a = arena.uintVec(n, UMAX);
-            a %= 2u;
+            uintN a = GenerateOP.uintVec(n, UMAX);
+            uintComp.modInPlace(a, 2u);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(a[i] == 1u);
 
-            a = arena.uintVec(n, 10u);
-            a %= 3u;
+            a = GenerateOP.uintVec(n, 10u);
+            uintComp.modInPlace(a, 3u);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(a[i] == 1u);
-
-            arena.Dispose();
         }
 
         void ScalarMinusVecWrap()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 16;
 
             // s - a with s < a underflows: 3 - 5 == 4294967294 (-2 mod 2^32).
-            uintN a = arena.uintVec(n, 5u);
-            uintN r = 3u - a;
+            uintN a = GenerateOP.uintVec(n, 5u);
+            uintN r = new uintN(in a, Allocator.Temp);
+            uintComp.subInPlace(3u, r);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(r[i] == 4294967294u);
-
-            arena.Dispose();
         }
 
         void AddWrapMat()
         {
-            var arena = new Arena(Allocator.Persistent);
             int rows = 8, cols = 8;
 
-            uintMxN a = arena.uintMat(rows, cols, UMAX);
-            a += 2u; // MaxValue + 2 == 1
+            uintMxN a = GenerateOP.uintMat(rows, cols, UMAX);
+            uintComp.addInPlace(a, 2u); // MaxValue + 2 == 1
             for (int i = 0; i < a.Length; i++)
                 Assert.IsTrue(a[i] == 1u);
-
-            arena.Dispose();
         }
 
         // ---- bitwise + shifts -----------------------------------------------------------------
 
         void BitwiseVec()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 16;
 
-            uintN a = arena.uintVec(n, 0xF0F0F0F0u);
+            uintN a = GenerateOP.uintVec(n, 0xF0F0F0F0u);
 
-            uintN andR = a & 0x0F0F0F0Fu; // disjoint bits -> 0
-            uintN orR = a | 0x0F0F0F0Fu;  // union -> all ones
-            uintN xorR = a ^ 0xFFFFFFFFu; // flip -> 0x0F0F0F0F
+            uintN andR = new uintN(in a, Allocator.Temp);
+            uintComp.bitwiseAndInPlace(andR, 0x0F0F0F0Fu); // disjoint bits -> 0
+            uintN orR = new uintN(in a, Allocator.Temp);
+            uintComp.bitwiseOrInPlace(orR, 0x0F0F0F0Fu);   // union -> all ones
+            uintN xorR = new uintN(in a, Allocator.Temp);
+            uintComp.bitwiseXorInPlace(xorR, 0xFFFFFFFFu); // flip -> 0x0F0F0F0F
 
             for (int i = 0; i < n; i++)
             {
@@ -371,90 +348,88 @@ public class UIntTypeTests
             }
 
             // component-wise bitwise
-            uintN b = arena.uintVec(n, 0x0F0F0F0Fu);
-            uintN andC = a & b;
-            uintN orC = a | b;
-            uintN xorC = a ^ b;
+            uintN b = GenerateOP.uintVec(n, 0x0F0F0F0Fu);
+            uintN andC = new uintN(in a, Allocator.Temp);
+            uintComp.bitwiseAndInPlace(andC, b);
+            uintN orC = new uintN(in a, Allocator.Temp);
+            uintComp.bitwiseOrInPlace(orC, b);
+            uintN xorC = new uintN(in a, Allocator.Temp);
+            uintComp.bitwiseXorInPlace(xorC, b);
             for (int i = 0; i < n; i++)
             {
                 Assert.IsTrue(andC[i] == 0u);
                 Assert.IsTrue(orC[i] == 0xFFFFFFFFu);
                 Assert.IsTrue(xorC[i] == 0xFFFFFFFFu);
             }
-
-            arena.Dispose();
         }
 
         void ComplementVec()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 16;
 
-            uintN a = arena.uintVec(n, 0u);
-            uintN c = ~a; // ~0 == 0xFFFFFFFF == MaxValue
+            uintN a = GenerateOP.uintVec(n, 0u);
+            uintN c = new uintN(in a, Allocator.Temp);
+            uintComp.bitwiseComplementInPlace(c); // ~0 == 0xFFFFFFFF == MaxValue
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(c[i] == UMAX);
 
-            a = arena.uintVec(n, UMAX);
-            c = ~a; // ~MaxValue == 0
+            a = GenerateOP.uintVec(n, UMAX);
+            c = new uintN(in a, Allocator.Temp);
+            uintComp.bitwiseComplementInPlace(c); // ~MaxValue == 0
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(c[i] == 0u);
-
-            arena.Dispose();
         }
 
         void LeftShiftVec()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 16;
 
             // 1 << 31 lands the bit in the high position: 0x80000000 == 2147483648.
-            uintN a = arena.uintVec(n, 1u);
-            uintN r = a << 31;
+            uintN a = GenerateOP.uintVec(n, 1u);
+            uintN r = new uintN(in a, Allocator.Temp);
+            uintComp.bitwiseLeftShiftInPlace(r, 31);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(r[i] == 2147483648u);
 
             // 0xFFFFFFFF << 4: low 4 bits zero-filled, top 4 bits dropped -> 0xFFFFFFF0.
-            a = arena.uintVec(n, 0xFFFFFFFFu);
-            r = a << 4;
+            a = GenerateOP.uintVec(n, 0xFFFFFFFFu);
+            r = new uintN(in a, Allocator.Temp);
+            uintComp.bitwiseLeftShiftInPlace(r, 4);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(r[i] == 0xFFFFFFF0u); // 4294967280
-
-            arena.Dispose();
         }
 
         void RightShiftLogicalVec()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 16;
 
             // High bit set, shifted right by 1: LOGICAL shift fills a ZERO in the top bit.
             // 0x80000000 >> 1 == 0x40000000 (== 1073741824), NOT 0xC0000000.
-            uintN a = arena.uintVec(n, 0x80000000u);
-            uintN r = a >> 1;
+            uintN a = GenerateOP.uintVec(n, 0x80000000u);
+            uintN r = new uintN(in a, Allocator.Temp);
+            uintComp.bitwiseRightShiftInPlace(r, 1);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(r[i] == 0x40000000u);
 
             // 0xFFFFFFFF >> 28 == 0xF (== 15): zeros shifted into the top. A signed -1 >> 28 would
             // stay -1 (arithmetic).
-            a = arena.uintVec(n, 0xFFFFFFFFu);
-            r = a >> 28;
+            a = GenerateOP.uintVec(n, 0xFFFFFFFFu);
+            r = new uintN(in a, Allocator.Temp);
+            uintComp.bitwiseRightShiftInPlace(r, 28);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(r[i] == 0xFu);
-
-            arena.Dispose();
         }
 
         void ShiftLogicalVsArithmetic()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 8;
 
             // Same 32-bit pattern (0x80000000), interpreted two ways:
             //   - as uint, >> 1 is LOGICAL:   0x80000000 >> 1 == 0x40000000
             //   - as int,  >> 1 is ARITHMETIC: (int)0x80000000 >> 1 == 0xC0000000 (sign-extended)
-            uintN a = arena.uintVec(n, 0x80000000u);
-            uintN logical = a >> 1;
+            uintN a = GenerateOP.uintVec(n, 0x80000000u);
+            uintN logical = new uintN(in a, Allocator.Temp);
+            uintComp.bitwiseRightShiftInPlace(logical, 1);
 
             int signedPattern = unchecked((int)0x80000000u); // == int.MinValue
             uint arithmeticAsBits = unchecked((uint)(signedPattern >> 1)); // 0xC0000000 == 3221225472
@@ -466,18 +441,15 @@ public class UIntTypeTests
                 Assert.IsTrue(logical[i] == 0x40000000u);         // uint result is logical
                 Assert.IsTrue(logical[i] != arithmeticAsBits);     // and differs from arithmetic
             }
-
-            arena.Dispose();
         }
 
         // ---- comparators -> boolN / boolMxN ---------------------------------------------------
 
         void CompareScalarVec()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 16;
 
-            uintN v = arena.uintVec(n, 5u);
+            uintN v = GenerateOP.uintVec(n, 5u);
 
             Assert.IsTrue(Analysis.IsAllEqualTo(v < 10u, true));
             Assert.IsTrue(Analysis.IsAllEqualTo(v < 5u, false));
@@ -489,38 +461,32 @@ public class UIntTypeTests
             Assert.IsTrue(Analysis.IsAllEqualTo(v == 6u, false));
             Assert.IsTrue(Analysis.IsAllEqualTo(v != 6u, true));
             Assert.IsTrue(Analysis.IsAllEqualTo(v != 5u, false));
-
-            arena.Dispose();
         }
 
         void CompareUnsignedOrderingVec()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 16;
 
             // The decisive unsigned-vs-signed test: MaxValue (all bits set) must compare as the
             // LARGEST value, not as -1. Under signed ordering (MaxValue >  0) would be false.
-            uintN big = arena.uintVec(n, UMAX);
+            uintN big = GenerateOP.uintVec(n, UMAX);
             Assert.IsTrue(Analysis.IsAllEqualTo(big > 0u, true));
             Assert.IsTrue(Analysis.IsAllEqualTo(big >= 0u, true));
             Assert.IsTrue(Analysis.IsAllEqualTo(big < 0u, false));
             Assert.IsTrue(Analysis.IsAllEqualTo(0u < big, true));
 
             // 0 is the smallest; (0 < MaxValue) is true.
-            uintN zero = arena.uintVec(n, 0u);
+            uintN zero = GenerateOP.uintVec(n, 0u);
             Assert.IsTrue(Analysis.IsAllEqualTo(zero < UMAX, true));
             Assert.IsTrue(Analysis.IsAllEqualTo(zero > UMAX, false));
-
-            arena.Dispose();
         }
 
         void CompareComponentVec()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 16;
 
-            uintN a = arena.uintVec(n, 3u);
-            uintN b = arena.uintVec(n, 7u);
+            uintN a = GenerateOP.uintVec(n, 3u);
+            uintN b = GenerateOP.uintVec(n, 7u);
 
             Assert.IsTrue(Analysis.IsAllEqualTo(a < b, true));
             Assert.IsTrue(Analysis.IsAllEqualTo(a > b, false));
@@ -531,16 +497,13 @@ public class UIntTypeTests
 
             a = b; // alias same buffer contents -> equal
             Assert.IsTrue(Analysis.IsAllEqualTo(a == b, true));
-
-            arena.Dispose();
         }
 
         void CompareScalarMat()
         {
-            var arena = new Arena(Allocator.Persistent);
             int dim = 8;
 
-            uintMxN m = arena.uintMat(dim, dim, 4u);
+            uintMxN m = GenerateOP.uintMat(dim, dim, 4u);
             boolMxN bm = m == 4u;
             Assert.IsTrue(Analysis.IsAllEqualTo(bm, true));
 
@@ -548,58 +511,49 @@ public class UIntTypeTests
             Assert.IsTrue(Analysis.IsAllEqualTo(m > 4u, false));
 
             // identity matrix: diagonal ones, off-diagonal zeros -> (m == 1) is exactly diagonal
-            uintMxN id = arena.uintIdentityMat(dim);
+            uintMxN id = GenerateOP.uintIdentityMat(dim);
             boolMxN diag = id == 1u;
             Assert.IsTrue(Analysis.isDiagonal(diag));
             Assert.IsFalse(Analysis.IsAllEqualTo(diag, true));
-
-            arena.Dispose();
         }
 
         void CompareComponentMat()
         {
-            var arena = new Arena(Allocator.Persistent);
             int dim = 8;
 
-            uintMxN a = arena.uintMat(dim, dim, 2u);
-            uintMxN b = arena.uintMat(dim, dim, 9u);
+            uintMxN a = GenerateOP.uintMat(dim, dim, 2u);
+            uintMxN b = GenerateOP.uintMat(dim, dim, 9u);
 
             Assert.IsTrue(Analysis.IsAllEqualTo(a < b, true));
             Assert.IsTrue(Analysis.IsAllEqualTo(a >= b, false));
             Assert.IsTrue(Analysis.IsAllEqualTo(a != b, true));
-
-            arena.Dispose();
         }
 
         // ---- Blas -----------------------------------------------------------------------------
 
         void DotVecVec()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 32;
 
-            uintN x = arena.uintVec(n, 1u);
-            uintN y = arena.uintVec(n, 1u);
+            uintN x = GenerateOP.uintVec(n, 1u);
+            uintN y = GenerateOP.uintVec(n, 1u);
             uint d = Blas.dot(x, y);
             Assert.IsTrue(d == (uint)n); // sum of n ones
 
             // 2 . 3 over n elements == 6n
-            x = arena.uintVec(n, 2u);
-            y = arena.uintVec(n, 3u);
+            x = GenerateOP.uintVec(n, 2u);
+            y = GenerateOP.uintVec(n, 3u);
             d = Blas.dot(x, y);
             Assert.IsTrue(d == (uint)(6 * n));
-
-            arena.Dispose();
         }
 
         void DotMatVec()
         {
-            var arena = new Arena(Allocator.Persistent);
             int dim = 12;
 
             // I * x == x
-            uintMxN A = arena.uintIdentityMat(dim);
-            uintN x = arena.uintVec(dim, 7u);
+            uintMxN A = GenerateOP.uintIdentityMat(dim);
+            uintN x = GenerateOP.uintVec(dim, 7u);
             uintN b = Blas.dot(A, x);
             Assert.AreEqual(dim, b.N);
             for (int i = 0; i < dim; i++)
@@ -607,38 +561,32 @@ public class UIntTypeTests
 
             // non-square: (out x in) * (in) -> out
             int inLen = 20, outLen = 5;
-            uintMxN R = arena.uintMat(outLen, inLen, 2u);
-            uintN xin = arena.uintVec(inLen, 3u);
+            uintMxN R = GenerateOP.uintMat(outLen, inLen, 2u);
+            uintN xin = GenerateOP.uintVec(inLen, 3u);
             uintN bout = Blas.dot(R, xin);
             Assert.AreEqual(outLen, bout.N);
             for (int i = 0; i < outLen; i++)
                 Assert.IsTrue(bout[i] == (uint)(2 * 3 * inLen)); // each row: sum of inLen*(2*3)
-
-            arena.Dispose();
         }
 
         void DotVecMat()
         {
-            var arena = new Arena(Allocator.Persistent);
             int dim = 16;
 
-            uintMxN A = arena.uintIdentityMat(dim);
-            uintN x = arena.uintIndexOneVec(dim); // [1,2,...,dim]
+            uintMxN A = GenerateOP.uintIdentityMat(dim);
+            uintN x = GenerateOP.uintIndexOneVec(dim); // [1,2,...,dim]
             uintN b = Blas.dot(x, A);
             Assert.AreEqual(dim, b.N);
             for (int i = 0; i < dim; i++)
                 Assert.IsTrue(b[i] == x[i]); // x * I == x
-
-            arena.Dispose();
         }
 
         void DotMatMat()
         {
-            var arena = new Arena(Allocator.Persistent);
             int dim = 16;
 
-            uintMxN A = arena.uintIdentityMat(dim);
-            uintMxN R = arena.uintRandomMat(dim, dim, 0u, 50u);
+            uintMxN A = GenerateOP.uintIdentityMat(dim);
+            uintMxN R = GenerateOP.uintRandomMat(dim, dim, 0u, 50u);
 
             // I * R == R
             uintMxN C = Blas.dot(A, R);
@@ -651,17 +599,14 @@ public class UIntTypeTests
             for (int i = 0; i < dim; i++)
                 for (int j = 0; j < dim; j++)
                     Assert.IsTrue(D[i, j] == (i == j ? 1u : 0u));
-
-            arena.Dispose();
         }
 
         void OuterDot()
         {
-            var arena = new Arena(Allocator.Persistent);
             int m = 6, k = 9;
 
-            uintN x = arena.uintVec(m, 1u);
-            uintN y = arena.uintVec(k, 1u);
+            uintN x = GenerateOP.uintVec(m, 1u);
+            uintN y = GenerateOP.uintVec(k, 1u);
 
             uintMxN A = Blas.outerDot(x, y);
             Assert.AreEqual(m, A.M_Rows);
@@ -670,22 +615,19 @@ public class UIntTypeTests
                 Assert.IsTrue(A[i] == 1u); // 1 * 1 everywhere
 
             // outer product values: (i+1)*(j+1)
-            uintN xi = arena.uintIndexOneVec(m);
-            uintN yj = arena.uintIndexOneVec(k);
+            uintN xi = GenerateOP.uintIndexOneVec(m);
+            uintN yj = GenerateOP.uintIndexOneVec(k);
             uintMxN B = Blas.outerDot(xi, yj);
             for (int i = 0; i < m; i++)
                 for (int j = 0; j < k; j++)
                     Assert.IsTrue(B[i, j] == xi[i] * yj[j]);
-
-            arena.Dispose();
         }
 
         void Transpose()
         {
-            var arena = new Arena(Allocator.Persistent);
             int rows = 5, cols = 8;
 
-            uintMxN A = arena.uintMat(rows, cols, 0u);
+            uintMxN A = GenerateOP.uintMat(rows, cols, 0u);
             for (int i = 0; i < rows; i++)
                 for (int j = 0; j < cols; j++)
                     A[i, j] = (uint)(i * cols + j + 1);
@@ -704,18 +646,15 @@ public class UIntTypeTests
             for (int i = 0; i < rows; i++)
                 for (int j = 0; j < cols; j++)
                     Assert.IsTrue(TT[i, j] == A[i, j]);
-
-            arena.Dispose();
         }
 
         // ---- uintComp in-place ----------------------------------------------------------------
 
         void InPlaceScalar()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 16;
 
-            uintN v = arena.uintVec(n, 10u);
+            uintN v = GenerateOP.uintVec(n, 10u);
 
             uintComp.addInPlace(v, 5u);   // 15
             for (int i = 0; i < n; i++) Assert.IsTrue(v[i] == 15u);
@@ -731,17 +670,14 @@ public class UIntTypeTests
 
             uintComp.modInPlace(v, 4u);   // 2
             for (int i = 0; i < n; i++) Assert.IsTrue(v[i] == 2u);
-
-            arena.Dispose();
         }
 
         void InPlaceComponent()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 16;
 
-            uintN a = arena.uintVec(n, 10u);
-            uintN b = arena.uintVec(n, 4u);
+            uintN a = GenerateOP.uintVec(n, 10u);
+            uintN b = GenerateOP.uintVec(n, 4u);
 
             uintComp.addInPlace(a, b); // a += b -> 14, b unchanged
             for (int i = 0; i < n; i++)
@@ -760,63 +696,54 @@ public class UIntTypeTests
                 Assert.IsTrue(a[i] == 40u);
                 Assert.IsTrue(b[i] == 4u);
             }
-
-            arena.Dispose();
         }
 
         void InPlaceWrap()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 16;
 
             // In-place addition wraps the same way the operator does.
-            uintN v = arena.uintVec(n, UMAX);
+            uintN v = GenerateOP.uintVec(n, UMAX);
             uintComp.addInPlace(v, 1u);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(v[i] == 0u);
 
-            v = arena.uintVec(n, 0u);
+            v = GenerateOP.uintVec(n, 0u);
             uintComp.subInPlace(v, 1u); // 0 - 1 -> MaxValue
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(v[i] == UMAX);
-
-            arena.Dispose();
         }
 
         void InPlaceBitwise()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 16;
 
-            uintN v = arena.uintVec(n, 0xFF00FF00u);
+            uintN v = GenerateOP.uintVec(n, 0xFF00FF00u);
             uintComp.bitwiseComplementInPlace(v); // -> 0x00FF00FF
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(v[i] == 0x00FF00FFu);
 
-            v = arena.uintVec(n, 0xFFFFFFFFu);
+            v = GenerateOP.uintVec(n, 0xFFFFFFFFu);
             uintComp.bitwiseAndInPlace(v, 0x0000FFFFu);
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(v[i] == 0x0000FFFFu);
 
-            v = arena.uintVec(n, 0x80000000u);
+            v = GenerateOP.uintVec(n, 0x80000000u);
             uintComp.bitwiseRightShiftInPlace(v, 1); // logical -> 0x40000000
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(v[i] == 0x40000000u);
 
-            v = arena.uintVec(n, 1u);
+            v = GenerateOP.uintVec(n, 1u);
             uintComp.bitwiseLeftShiftInPlace(v, 31); // -> 0x80000000
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(v[i] == 0x80000000u);
-
-            arena.Dispose();
         }
 
         void ClampInPlace()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 16;
 
-            uintN v = arena.uintIndexZeroVec(n); // [0,1,...,n-1]
+            uintN v = GenerateOP.uintIndexZeroVec(n); // [0,1,...,n-1]
             uintComp.clampInPlace(v, 3u, 8u);
             for (int i = 0; i < n; i++)
             {
@@ -825,8 +752,6 @@ public class UIntTypeTests
                 if (expected > 8u) expected = 8u;
                 Assert.IsTrue(v[i] == expected);
             }
-
-            arena.Dispose();
         }
 
         // uintComp elementwise math: min/max/mad ARE generated for uint (unsigned-clean), and their
@@ -837,11 +762,10 @@ public class UIntTypeTests
         // contract; we simply never call them (a compile-level, not runtime, guarantee).
         void MinMaxInPlace()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 16;
 
-            uintN x = arena.uintIndexZeroVec(n);          // [0,1,...,n-1]
-            uintN y = arena.uintVec(n, 5u);               // constant 5
+            uintN x = GenerateOP.uintIndexZeroVec(n);          // [0,1,...,n-1]
+            uintN y = GenerateOP.uintVec(n, 5u);               // constant 5
             uintN y0 = y.Copy();
 
             uintComp.minInPlace(x, y); // x = min(x, y); y untouched
@@ -852,8 +776,8 @@ public class UIntTypeTests
                 Assert.IsTrue(y[i] == y0[i]);
             }
 
-            uintN a = arena.uintIndexZeroVec(n);          // [0,1,...,n-1]
-            uintN b = arena.uintVec(n, 5u);
+            uintN a = GenerateOP.uintIndexZeroVec(n);          // [0,1,...,n-1]
+            uintN b = GenerateOP.uintVec(n, 5u);
             uintN b0 = b.Copy();
 
             uintComp.maxInPlace(a, b); // a = max(a, b); b untouched
@@ -865,30 +789,27 @@ public class UIntTypeTests
             }
 
             // unsigned ordering: MaxValue is the LARGEST (not -1), so max picks it, min rejects it.
-            uintN big = arena.uintVec(n, UMAX);
-            uintN small = arena.uintVec(n, 1u);
+            uintN big = GenerateOP.uintVec(n, UMAX);
+            uintN small = GenerateOP.uintVec(n, 1u);
             uintN small0 = small.Copy();
             uintComp.maxInPlace(big, small);
             for (int i = 0; i < n; i++) Assert.IsTrue(big[i] == UMAX);
-            big = arena.uintVec(n, UMAX);
+            big = GenerateOP.uintVec(n, UMAX);
             uintComp.minInPlace(big, small);
             for (int i = 0; i < n; i++)
             {
                 Assert.IsTrue(big[i] == 1u);
                 Assert.IsTrue(small[i] == small0[i]);
             }
-
-            arena.Dispose();
         }
 
         void MadInPlace()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 16;
 
-            uintN a = arena.uintVec(n, 3u);
-            uintN b = arena.uintVec(n, 4u);
-            uintN c = arena.uintVec(n, 2u);
+            uintN a = GenerateOP.uintVec(n, 3u);
+            uintN b = GenerateOP.uintVec(n, 4u);
+            uintN c = GenerateOP.uintVec(n, 2u);
             uintN b0 = b.Copy();
             uintN c0 = c.Copy();
 
@@ -902,13 +823,11 @@ public class UIntTypeTests
 
             // modular wraparound flows through mad the same as bare arithmetic:
             // MaxValue * 1 + 1 == 0 (mod 2^32).
-            uintN wa = arena.uintVec(n, UMAX);
-            uintN wb = arena.uintVec(n, 1u);
-            uintN wc = arena.uintVec(n, 1u);
+            uintN wa = GenerateOP.uintVec(n, UMAX);
+            uintN wb = GenerateOP.uintVec(n, 1u);
+            uintN wc = GenerateOP.uintVec(n, 1u);
             uintComp.madInPlace(wa, wb, wc);
             for (int i = 0; i < n; i++) Assert.IsTrue(wa[i] == 0u);
-
-            arena.Dispose();
         }
 
         // ---- Select (LinearAlgebra.Select) -----------------------------------------------------
@@ -919,29 +838,25 @@ public class UIntTypeTests
 
         void SelectVecMask()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 8;
 
-            uintN a = arena.uintVec(n, 1u);
-            uintN b = arena.uintVec(n, UMAX);
-            boolN c = arena.boolVec(n); // zero-filled (all false)
+            uintN a = GenerateOP.uintVec(n, 1u);
+            uintN b = GenerateOP.uintVec(n, UMAX);
+            boolN c = new boolN(n, Allocator.Temp); // zero-filled (all false)
             for (int i = 0; i < n; i++)
                 c[i] = (i % 2) == 0; // alternate false/true
 
             uintN r = Select.select(a, b, c); // dest[i] = c[i] ? b[i] : a[i]
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(r[i] == (c[i] ? UMAX : 1u));
-
-            arena.Dispose();
         }
 
         void SelectMatScalarCond()
         {
-            var arena = new Arena(Allocator.Persistent);
             int rows = 3, cols = 4;
 
-            uintMxN a = arena.uintMat(rows, cols, 2u);
-            uintMxN b = arena.uintMat(rows, cols, UMAX);
+            uintMxN a = GenerateOP.uintMat(rows, cols, 2u);
+            uintMxN b = GenerateOP.uintMat(rows, cols, UMAX);
 
             uintMxN rTrue = Select.select(a, b, true); // c=true -> b
             for (int i = 0; i < rTrue.Length; i++)
@@ -950,8 +865,6 @@ public class UIntTypeTests
             uintMxN rFalse = Select.select(a, b, false); // c=false -> a
             for (int i = 0; i < rFalse.Length; i++)
                 Assert.IsTrue(rFalse[i] == 2u);
-
-            arena.Dispose();
         }
 
         // ---- bit ops: sign-vs-unsigned interpretation contrast (Piece 4) --------------------------
@@ -967,21 +880,17 @@ public class UIntTypeTests
 
         void IsPow2HighBitUnsignedTrue()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 8;
 
             // 0x80000000u == 2^31: a valid power of two under the UNSIGNED interpretation, even
             // though the identical bit pattern read as a signed int (int.MinValue) is negative.
-            uintN v = arena.uintVec(n, 0x80000000u);
+            uintN v = GenerateOP.uintVec(n, 0x80000000u);
             boolN b = v.ispow2();
             Assert.IsTrue(Analysis.IsAllEqualTo(b, true));
-
-            arena.Dispose();
         }
 
         void IsPow2HighBitNonPow2()
         {
-            var arena = new Arena(Allocator.Persistent);
             int n = 8;
 
             // 0xC0000000u has TWO bits set (0x80000000 | 0x40000000) - not a power of two under
@@ -990,7 +899,7 @@ public class UIntTypeTests
             // reject it as "negative" and could coincidentally still return false for the wrong
             // reason. Cross-checked against countbits (also sign-agnostic, so shares no failure mode)
             // to confirm the pattern really is "two bits set", not a typo in the test's own literal.
-            uintN v = arena.uintVec(n, 0xC0000000u);
+            uintN v = GenerateOP.uintVec(n, 0xC0000000u);
             boolN b = v.ispow2();
             Assert.IsTrue(Analysis.IsAllEqualTo(b, false));
 
@@ -998,8 +907,6 @@ public class UIntTypeTests
             c.countbitsInPlace();
             for (int i = 0; i < n; i++)
                 Assert.IsTrue(c[i] == 2u);
-
-            arena.Dispose();
         }
     }
 
@@ -1019,13 +926,7 @@ public class UIntTypeTests
     [Test]
     public void UIntVec_AllocationTracking()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            uintN v = arena.uintVec(8, 1u);
-            Assert.AreEqual(8, v.N);
-            Assert.AreEqual(1, arena.AllocationsCount);
-        }
-        finally { arena.Dispose(); }
+        uintN v = GenerateOP.uintVec(8, 1u);
+        Assert.AreEqual(8, v.N);
     }
 }

@@ -17,101 +17,71 @@ public class DebugExportTests
     [Test]
     public void FloatToCsvVectorIsOneValuePerLine()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var v = arena.floatVec(3);
-            v[0] = 1; v[1] = 2; v[2] = 3;
+        var v = new floatN(3, Allocator.Temp);
+        v[0] = 1; v[1] = 2; v[2] = 3;
 
-            Assert.AreEqual("1\n2\n3\n", Print.ToCsv(in v));
-        }
-        finally { arena.Dispose(); }
+        Assert.AreEqual("1\n2\n3\n", Print.ToCsv(in v));
     }
 
     [Test]
     public void FloatToCsvMatrixIsRowPerLineCommaSeparated()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var m = arena.floatMat(2, 2);
-            m[0, 0] = 1; m[0, 1] = 2;
-            m[1, 0] = 3; m[1, 1] = 4;
+        var m = new floatMxN(2, 2, Allocator.Temp);
+        m[0, 0] = 1; m[0, 1] = 2;
+        m[1, 0] = 3; m[1, 1] = 4;
 
-            Assert.AreEqual("1,2\n3,4\n", Print.ToCsv(in m));
-        }
-        finally { arena.Dispose(); }
+        Assert.AreEqual("1,2\n3,4\n", Print.ToCsv(in m));
     }
 
     [Test]
     public void FloatToCsvUsesInvariantDecimalPoint()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var v = arena.floatVec(1);
-            v[0] = 1.5f;
+        var v = new floatN(1, Allocator.Temp);
+        v[0] = 1.5f;
 
-            Assert.AreEqual("1.5\n", Print.ToCsv(in v));
-        }
-        finally { arena.Dispose(); }
+        Assert.AreEqual("1.5\n", Print.ToCsv(in v));
     }
 
     [Test]
     public void FloatToTextDoesNotTruncateLargeMatrix()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var m = arena.floatMat(100, 100);
-            for (int r = 0; r < 100; r++)
-                for (int c = 0; c < 100; c++)
-                    m[r, c] = r * 100 + c;
+        var m = new floatMxN(100, 100, Allocator.Temp);
+        for (int r = 0; r < 100; r++)
+            for (int c = 0; c < 100; c++)
+                m[r, c] = r * 100 + c;
 
-            string text = Print.ToText(in m);
+        string text = Print.ToText(in m);
 
-            Assert.Greater(text.Length, 4096);                 // Burst Print.Log would have capped at 4 KB
-            Assert.AreEqual(100, text.Split('\n').Length - 1); // 100 rows, trailing newline
-        }
-        finally { arena.Dispose(); }
+        Assert.Greater(text.Length, 4096);                 // Burst Print.Log would have capped at 4 KB
+        Assert.AreEqual(100, text.Split('\n').Length - 1); // 100 rows, trailing newline
     }
 
     [Test]
     public void FloatSaveCsvRoundTrips()
     {
-        var arena = new Arena(Allocator.Persistent);
+        var m = new floatMxN(2, 3, Allocator.Temp);
+        m[0, 0] = 1; m[0, 1] = 2; m[0, 2] = 3;
+        m[1, 0] = 4; m[1, 1] = 5; m[1, 2] = 6;
+
+        string path = Path.GetTempFileName();
         try
         {
-            var m = arena.floatMat(2, 3);
-            m[0, 0] = 1; m[0, 1] = 2; m[0, 2] = 3;
-            m[1, 0] = 4; m[1, 1] = 5; m[1, 2] = 6;
-
-            string path = Path.GetTempFileName();
-            try
-            {
-                Print.SaveCsv(in m, path);
-                Assert.AreEqual(Print.ToCsv(in m), File.ReadAllText(path));
-            }
-            finally { File.Delete(path); }
+            Print.SaveCsv(in m, path);
+            Assert.AreEqual(Print.ToCsv(in m), File.ReadAllText(path));
         }
-        finally { arena.Dispose(); }
+        finally { File.Delete(path); }
     }
 
     [Test]
     public void FloatHistogramDoesNotThrow()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var v = arena.floatVec(64);
-            for (int i = 0; i < 64; i++) v[i] = i;
-            Assert.DoesNotThrow(() => Print.Histogram(in v, 8, 20));
+        var v = new floatN(64, Allocator.Temp);
+        for (int i = 0; i < 64; i++) v[i] = i;
+        Assert.DoesNotThrow(() => Print.Histogram(in v, 8, 20));
 
-            var flat = arena.floatVec(10);          // all identical -> range 0 branch
-            for (int i = 0; i < 10; i++) flat[i] = 5;
-            Assert.DoesNotThrow(() => Print.Histogram(in flat, 8, 20));
-        }
-        finally { arena.Dispose(); }
+        var flat = new floatN(10, Allocator.Temp);          // all identical -> range 0 branch
+        for (int i = 0; i < 10; i++) flat[i] = 5;
+        Assert.DoesNotThrow(() => Print.Histogram(in flat, 8, 20));
     }
 
     // ---------------- double ----------------
@@ -119,64 +89,44 @@ public class DebugExportTests
     [Test]
     public void DoubleToCsvVectorIsOneValuePerLine()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var v = arena.doubleVec(3);
-            v[0] = 1; v[1] = 2; v[2] = 3;
+        var v = new doubleN(3, Allocator.Temp);
+        v[0] = 1; v[1] = 2; v[2] = 3;
 
-            Assert.AreEqual("1\n2\n3\n", Print.ToCsv(in v));
-        }
-        finally { arena.Dispose(); }
+        Assert.AreEqual("1\n2\n3\n", Print.ToCsv(in v));
     }
 
     [Test]
     public void DoubleToCsvMatrixIsRowPerLineCommaSeparated()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var m = arena.doubleMat(2, 2);
-            m[0, 0] = 1; m[0, 1] = 2;
-            m[1, 0] = 3; m[1, 1] = 4;
+        var m = new doubleMxN(2, 2, Allocator.Temp);
+        m[0, 0] = 1; m[0, 1] = 2;
+        m[1, 0] = 3; m[1, 1] = 4;
 
-            Assert.AreEqual("1,2\n3,4\n", Print.ToCsv(in m));
-        }
-        finally { arena.Dispose(); }
+        Assert.AreEqual("1,2\n3,4\n", Print.ToCsv(in m));
     }
 
     [Test]
     public void DoubleToCsvUsesInvariantDecimalPoint()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var v = arena.doubleVec(1);
-            v[0] = 1.5;
+        var v = new doubleN(1, Allocator.Temp);
+        v[0] = 1.5;
 
-            Assert.AreEqual("1.5\n", Print.ToCsv(in v));
-        }
-        finally { arena.Dispose(); }
+        Assert.AreEqual("1.5\n", Print.ToCsv(in v));
     }
 
     [Test]
     public void DoubleSaveCsvRoundTrips()
     {
-        var arena = new Arena(Allocator.Persistent);
+        var v = new doubleN(4, Allocator.Temp);
+        v[0] = 1; v[1] = 2; v[2] = 3; v[3] = 4;
+
+        string path = Path.GetTempFileName();
         try
         {
-            var v = arena.doubleVec(4);
-            v[0] = 1; v[1] = 2; v[2] = 3; v[3] = 4;
-
-            string path = Path.GetTempFileName();
-            try
-            {
-                Print.SaveCsv(in v, path);
-                Assert.AreEqual(Print.ToCsv(in v), File.ReadAllText(path));
-            }
-            finally { File.Delete(path); }
+            Print.SaveCsv(in v, path);
+            Assert.AreEqual(Print.ToCsv(in v), File.ReadAllText(path));
         }
-        finally { arena.Dispose(); }
+        finally { File.Delete(path); }
     }
 
     // ---------------- int (new Log overloads) ----------------
@@ -184,18 +134,13 @@ public class DebugExportTests
     [Test]
     public void IntLogDoesNotThrow()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            var v = arena.intVec(4);
-            v[0] = -2; v[1] = 0; v[2] = 7; v[3] = 13;
-            Assert.DoesNotThrow(() => Print.Log(in v));
+        var v = new intN(4, Allocator.Temp);
+        v[0] = -2; v[1] = 0; v[2] = 7; v[3] = 13;
+        Assert.DoesNotThrow(() => Print.Log(in v));
 
-            var m = arena.intMat(2, 2);
-            m[0, 0] = 1; m[0, 1] = 2;
-            m[1, 0] = 3; m[1, 1] = 4;
-            Assert.DoesNotThrow(() => Print.Log(in m));
-        }
-        finally { arena.Dispose(); }
+        var m = new intMxN(2, 2, Allocator.Temp);
+        m[0, 0] = 1; m[0, 1] = 2;
+        m[1, 0] = 3; m[1, 1] = 4;
+        Assert.DoesNotThrow(() => Print.Log(in m));
     }
 }

@@ -33,8 +33,6 @@ namespace LinearAlgebraDemos.Tests
             const float nodeMass = 1f;
             int n = nodes.Length * 2;
 
-            var arena = new Arena(Allocator.Temp);
-
             var kBuilder = new floatBSRBuilder(nodes.Length, nodes.Length, 2, 2, Allocator.Temp, 32);
             var mBuilder = new floatBSRBuilder(nodes.Length, nodes.Length, 2, 2, Allocator.Temp, nodes.Length);
             foreach (var bar in bars)
@@ -62,13 +60,13 @@ namespace LinearAlgebraDemos.Tests
                 for (int d = 0; d < 2; d++)
                     mBuilder.AddValue(2 * i + d, 2 * i + d, nodeMass);
 
-            var A = kBuilder.ToBSRSymmetric(ref arena);
+            var A = kBuilder.ToBSRSymmetric(Allocator.Temp);
             kBuilder.Dispose();
-            var B = mBuilder.ToBSRSymmetric(ref arena);
+            var B = mBuilder.ToBSRSymmetric(Allocator.Temp);
             mBuilder.Dispose();
 
-            var precond = arena.floatBlockJacobi(in A);
-            var cache = arena.floatLOBPCGCache(n, modeCount);
+            var precond = new floatBlockJacobi(in A, Allocator.Temp);
+            var cache = new floatLOBPCGCache(n, modeCount, Allocator.Temp);
             var outStats = new NativeArray<float>(3, Allocator.TempJob);
 
             var job = new TrussModalJob
@@ -117,7 +115,6 @@ namespace LinearAlgebraDemos.Tests
 
             // (d) no native leaks
             outStats.Dispose();
-            arena.Dispose();
         }
     }
 }

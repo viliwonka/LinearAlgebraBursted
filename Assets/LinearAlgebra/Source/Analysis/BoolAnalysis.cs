@@ -175,38 +175,4 @@ namespace LinearAlgebra
             return idx;
         }
     }
-
-    public static partial class ArenaExtensions
-    {
-        // ---- whichTrue (bool → Indices) ----
-
-        /// <summary>
-        /// Count-pass + exact-alloc: fills exact-sized Indices with indices of true elements in mask.
-        /// </summary>
-        public static Indices WhichTrue(this ref Arena arena, in boolN mask)
-        {
-            int count = Analysis.countTrue(in mask);
-            if (count == 0) return arena.Indices(0);
-            var idx = arena.Indices(count);
-            int written = 0;
-            for (int i = 0; i < mask.N; i++)
-                if (mask.Data[i]) idx[written++] = i;
-            return idx;
-        }
-
-        /// <summary>
-        /// Matrix overload: count-pass + exact-alloc Indices of true element flat indices.
-        /// </summary>
-        public static Indices WhichTrue(this ref Arena arena, in boolMxN mask)
-        {
-            int count = Analysis.countTrue(in mask);
-            if (count == 0) return arena.Indices(0);
-            int total = mask.M_Rows * mask.N_Cols;
-            var idx = arena.Indices(count);
-            int written = 0;
-            for (int i = 0; i < total; i++)
-                if (mask.Data[i]) idx[written++] = i;
-            return idx;
-        }
-    }
 }

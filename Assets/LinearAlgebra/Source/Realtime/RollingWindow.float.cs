@@ -23,8 +23,8 @@ namespace LinearAlgebra.Realtime
     /// Count×Features matrix so it can feed any existing kernel (covariance → eigendecomposition = PCA;
     /// AsMatrix + QR.solveInPlace = least-squares trajectory fit; <see cref="Mean"/> = moving average).
     ///
-    /// Create with <c>arena.floatRollingWindow(capacity, features)</c>; the backing buffer is a
-    /// persistent arena allocation that lives until the arena is disposed. float-only.
+    /// Create with the Allocator ctor; the backing buffer lives until the window is disposed.
+    /// float-only.
     /// </summary>
     public struct floatRollingWindow : IDisposable
     {
@@ -40,7 +40,7 @@ namespace LinearAlgebra.Realtime
         public bool IsFull => _count == _capacity;
         public bool IsEmpty => _count == 0;
 
-        /// <summary>Internal — use <c>arena.floatRollingWindow(capacity, features)</c>.</summary>
+        /// <summary>Internal — use the Allocator ctor.</summary>
         internal floatRollingWindow(in floatMxN buffer, int capacity, int features)
         {
             _buffer = buffer;
@@ -50,7 +50,7 @@ namespace LinearAlgebra.Realtime
             _count = 0;
         }
 
-        /// <summary>Standalone allocation sized identically to <c>Arena.floatRollingWindow(capacity, features)</c>. Pair with <see cref="Dispose"/>.</summary>
+        /// <summary>Allocates a rolling window holding up to capacity samples of features features each. Pair with <see cref="Dispose"/>.</summary>
         public floatRollingWindow(int capacity, int features, Allocator allocator)
         {
             if (capacity < 1)
@@ -214,26 +214,6 @@ namespace LinearAlgebra.Realtime
             var c = _buffer.floatTempMat(_features, _features);
             Covariance(ref c);
             return c;
-        }
-    }
-
-    /// <summary>Arena factory for <see cref="floatRollingWindow"/>.</summary>
-    public static partial class ArenaExtensions
-    {
-        /// <summary>
-        /// Allocates a rolling window holding up to <paramref name="capacity"/> samples of
-        /// <paramref name="features"/> features each. The backing buffer is a persistent arena
-        /// allocation (lives until the arena is disposed); the window starts empty.
-        /// </summary>
-        public static floatRollingWindow floatRollingWindow(this ref Arena arena, int capacity, int features)
-        {
-            if (capacity < 1)
-                throw new ArgumentException("floatRollingWindow: capacity must be >= 1");
-            if (features < 1)
-                throw new ArgumentException("floatRollingWindow: features must be >= 1");
-
-            var buffer = arena.floatMat(capacity, features);
-            return new floatRollingWindow(in buffer, capacity, features);
         }
     }
 }

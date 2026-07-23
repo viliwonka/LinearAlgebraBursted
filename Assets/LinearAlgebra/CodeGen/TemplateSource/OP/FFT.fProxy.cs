@@ -9,8 +9,8 @@ namespace LinearAlgebra
     /// the real and imaginary parts in two parallel <c>fProxyN</c> arrays.
     ///
     /// The fast power-of-two transforms <see cref="fft"/>/<see cref="ifft"/>/<see cref="rfft"/>/<see cref="irfft"/>
-    /// require a twiddle-table workspace (built once via <c>arena.fProxyFFTCache(n)</c>); see the workspace
-    /// overloads. This file holds the direct O(N²) <see cref="dft"/>/<see cref="idft"/> for arbitrary N and the
+    /// require a twiddle-table workspace (built once via <c>new fProxyFFTCache(n, allocator)</c>); see the
+    /// workspace overloads. This file holds the direct O(N²) <see cref="dft"/>/<see cref="idft"/> for arbitrary N and the
     /// spectrum reductions <see cref="magnitude"/>/<see cref="phase"/>/<see cref="powerSpectrum"/> that reduce a
     /// (re, im) pair to a single real vector. Forward sign convention: X[k] = Σ x[n]·exp(-2πi·kn/N); the inverse
     /// divides by N. Typical DSP pipeline: window (Hann) → rfft → powerSpectrum. fProxy-only.

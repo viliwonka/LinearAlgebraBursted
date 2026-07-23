@@ -9,19 +9,19 @@ namespace LinearAlgebra
 {
     public static partial class SVD
     {
-        /// <summary>Throws unless <paramref name="ws"/> matches Arena.floatSVDValuesCache(m, n) sizing.</summary>
+        /// <summary>Throws unless <paramref name="ws"/> matches the floatSVDValuesCache(m, n, allocator) constructor sizing.</summary>
         static void RequireSvdValuesWorkspace(in floatSVDValuesCache ws, int n)
         {
             bool ok = ws.dVec.N == n && ws.eVec.N == n;
 
             if (!ok)
-                throw new ArgumentException("SVD: workspace must be sized for m x n (use Arena.floatSVDValuesCache(m, n))");
+                throw new ArgumentException("SVD: workspace must be sized for m x n (use new floatSVDValuesCache(m, n, allocator))");
         }
     }
 
     /// <summary>
     /// Reusable scratch for SVD.values (Golub-Kahan bidiagonalization, values-only + implicit-shift
-    /// bidiagonal QR, values-only). Allocate ONCE via Arena.floatSVDValuesCache(m, n) and reuse it across
+    /// bidiagonal QR, values-only). Allocate ONCE via the Allocator ctor and reuse it across
     /// many same-shape calls to avoid the per-call Allocator.Temp allocations values's allocating
     /// overload makes internally.
     ///
@@ -34,7 +34,7 @@ namespace LinearAlgebra
         public floatN dVec;
         public floatN eVec;
 
-        /// <summary>Standalone allocation sized identically to <c>Arena.floatSVDValuesCache(m, n)</c>. Pair with <see cref="Dispose"/>.</summary>
+        /// <summary>Allocates a values workspace for an m x n (m >= n) system. Pair with <see cref="Dispose"/>.</summary>
         public floatSVDValuesCache(int m, int n, Allocator allocator)
         {
             BidiagWs = new floatBidiagCache(m, n, allocator);
@@ -48,24 +48,6 @@ namespace LinearAlgebra
             BidiagWs.Dispose();
             dVec.Dispose();
             eVec.Dispose();
-        }
-    }
-
-    public static partial class ArenaExtensions
-    {
-        /// <summary>
-        /// Allocates an values workspace for an m x n (m >= n) system — see
-        /// <see cref="floatSVDValuesCache"/> for layout. Persistent in this arena; create once outside a
-        /// hot loop and pass to values's ref-workspace overload.
-        /// </summary>
-        public static floatSVDValuesCache floatSVDValuesCache(this ref Arena arena, int m, int n)
-        {
-            return new floatSVDValuesCache
-            {
-                BidiagWs = arena.floatBidiagCache(m, n),
-                dVec = arena.floatVec(n),
-                eVec = arena.floatVec(n)
-            };
         }
     }
 }

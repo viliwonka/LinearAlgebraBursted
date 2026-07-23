@@ -18,26 +18,25 @@ namespace LinearAlgebra
     public static partial class Print
     {
         /// <summary>
-        /// Dense-ish preview: densifies via doubleBSR.ToDense into a scratch Arena (allocated and
-        /// disposed internally -- the caller does not need one of their own) and reuses the
-        /// existing dense Print.ToText(in doubleMxN). For a preview of the STORAGE itself (not the
-        /// expanded dense matrix), see ToCsv(in doubleBSR)/SaveCsv, which write a block-level
+        /// Dense-ish preview: densifies via doubleBSR.ToDense into scratch Temp memory (allocated and
+        /// disposed internally -- the caller does not need to manage it) and reuses the existing
+        /// dense Print.ToText(in doubleMxN). For a preview of the STORAGE itself (not the expanded
+        /// dense matrix), see ToCsv(in doubleBSR)/SaveCsv, which write a block-level
         /// coordinate/triplet list instead.
         /// </summary>
         public static string ToText(in doubleBSR m)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var dense = m.ToDense(ref arena);
+            var dense = m.ToDense(Allocator.Temp);
             string text = ToText(in dense);
-            arena.Dispose();
+            dense.Dispose();
             return text;
         }
 
         /// <summary>
         /// Block-level coordinate/triplet CSV: one row per STORED block, "blockRow,blockCol,v0,v1,
         /// ...,v(BR*BC-1)" with the block's values flattened row-major (matching Values' own
-        /// layout -- see doubleBSR.cs). Avoids needing an Arena (unlike ToText's ToDense route) by
-        /// reading RowPtr/ColInd/Values directly. For Symmetric matrices this reflects exactly
+        /// layout -- see doubleBSR.cs). Avoids needing scratch memory (unlike ToText's ToDense route)
+        /// by reading RowPtr/ColInd/Values directly. For Symmetric matrices this reflects exactly
         /// what is stored (the lower block-triangle only), not a mirrored dense expansion.
         /// </summary>
         public static string ToCsv(in doubleBSR m)

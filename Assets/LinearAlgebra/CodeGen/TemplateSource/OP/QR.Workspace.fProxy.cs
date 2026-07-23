@@ -11,7 +11,7 @@ namespace LinearAlgebra
         /// buffers (Vpanel, Tbuf, Wbuf, tcolBuf, VfullBuf) are needed only when the caller is about to
         /// engage the level-3 blocked kernel (decomp/decompInPlace once N_Cols &gt;= 2*QR_BLOCK) — NOT
         /// by solveInPlace, whose fused kernel never forms Q and so has no use for them. Matches
-        /// Arena.fProxyQRCache(m, n).
+        /// the fProxyQRCache(m, n, allocator) constructor.
         /// </summary>
         static void RequireQRWorkspace(in fProxyQRCache ws, int m, int n, bool needBlocked)
         {
@@ -31,13 +31,13 @@ namespace LinearAlgebra
                   ws.VfullBuf.N == m * n));
 
             if (!ok)
-                throw new ArgumentException("QR: workspace must be sized for m x n (use Arena.fProxyQRCache(m, n))");
+                throw new ArgumentException("QR: workspace must be sized for m x n (use new fProxyQRCache(m, n, allocator))");
         }
     }
 
     /// <summary>
     /// Reusable scratch for QR's cache overloads (decomp / decompInPlace / solveInPlace). Allocate
-    /// ONCE via Arena.fProxyQRCache(m, n) and reuse across same-shape calls to avoid the per-call
+    /// ONCE via the Allocator ctor and reuse across same-shape calls to avoid the per-call
     /// Allocator.Temp allocations the allocating overloads make internally.
     ///
     /// u (length m) and w (length n) are the Householder-reflector scratch shared by every overload
@@ -60,7 +60,7 @@ namespace LinearAlgebra
         public fProxyN tcolBuf;
         public fProxyN VfullBuf;
 
-        /// <summary>Standalone allocation sized identically to <c>Arena.fProxyQRCache(m, n)</c>. Pair with <see cref="Dispose"/>.</summary>
+        /// <summary>Allocates a QR workspace for an m x n (m &gt;= n) system. Pair with <see cref="Dispose"/>.</summary>
         public fProxyQRCache(int m, int n, Allocator allocator)
         {
             // See qrDecompositionBlockedCore for why this is a method-local const, not a class field.
@@ -85,30 +85,6 @@ namespace LinearAlgebra
             Wbuf.Dispose();
             tcolBuf.Dispose();
             VfullBuf.Dispose();
-        }
-    }
-
-    public static partial class ArenaExtensions
-    {
-        /// <summary>
-        /// Allocates a QR workspace for an m x n (m &gt;= n) system. See <see cref="fProxyQRCache"/>
-        /// for reuse guidance and per-field purpose.
-        /// </summary>
-        public static fProxyQRCache fProxyQRCache(this ref Arena arena, int m, int n)
-        {
-            // See qrDecompositionBlockedCore for why this is a method-local const, not a class field.
-            const int QR_BLOCK = 32;
-
-            return new fProxyQRCache
-            {
-                u = arena.fProxyVec(m),
-                w = arena.fProxyVec(n),
-                Vpanel = arena.fProxyVec(m * QR_BLOCK),
-                Tbuf = arena.fProxyVec(QR_BLOCK * QR_BLOCK),
-                Wbuf = arena.fProxyVec(QR_BLOCK * n),
-                tcolBuf = arena.fProxyVec(QR_BLOCK),
-                VfullBuf = arena.fProxyVec(m * n)
-            };
         }
     }
 }

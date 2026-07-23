@@ -465,8 +465,8 @@ namespace LinearAlgebra
         // -------------------------------------------------------------------------
 
         // ---- Metric score kernels -----------------------------------------------
-        // Internal: exposed so ArenaExtensions.Query.fProxy.cs can do two-pass alloc
-        // without duplicating metric kernels. Row variant (contiguous); Col variant (strided).
+        // Internal: exposed so QueryOP.Alloc.fProxy.cs can do two-pass alloc without duplicating
+        // metric kernels. Row variant (contiguous); Col variant (strided).
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static fProxy RowScore(in fProxyMxN A, int r, in fProxyN q, Metric m)

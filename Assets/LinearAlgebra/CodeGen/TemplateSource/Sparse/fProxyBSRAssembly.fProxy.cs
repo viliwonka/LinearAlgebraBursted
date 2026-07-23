@@ -11,7 +11,6 @@ namespace LinearAlgebra.Sparse
     /// <see cref="fProxyBSRBuilder.BuildAssemblyCache"/>; every later frame:
     /// builder.Clear(), re-Add the SAME blocks in the SAME order with new values, then
     /// <see cref="fProxyBSRBuilder.Refill"/> — no sorting, no allocation, O(nnz) scatter-add.
-    /// Buffers are arena-owned (disposed with the arena).
     /// </summary>
     public struct fProxyBSRAssemblyCache
     {
@@ -27,53 +26,9 @@ namespace LinearAlgebra.Sparse
         /// <summary>
         /// Builds the triplet-to-slot map for the CURRENT triplet set (same sort + duplicate
         /// merge as ToBSR). Pair it with the fProxyBSR that the same triplet set produced.
+        /// Allocates the map's Indices buffers from <paramref name="allocator"/> (default Temp);
+        /// caller owns disposing the returned cache's buffers.
         /// </summary>
-        public unsafe fProxyBSRAssemblyCache BuildAssemblyCache(ref Arena arena)
-        {
-            int n = TripletCount;
-            if (n == 0)
-                return new fProxyBSRAssemblyCache { nnzb = 0, tripletCount = 0 };
-
-            SortTriplets(out var order, out var rowStart);
-
-            var cache = new fProxyBSRAssemblyCache
-            {
-                slotOfTriplet = arena.Indices(n),
-                tripletRow    = arena.Indices(n),
-                tripletCol    = arena.Indices(n),
-                tripletCount  = n,
-            };
-
-            int slot = -1;
-            for (int row = 0; row < BlockRows; row++)
-            {
-                int s = rowStart[row];
-                int e = rowStart[row + 1];
-                int prevCol = -1;
-                for (int i = s; i < e; i++)
-                {
-                    int t = order[i];
-                    int col = _state->triBlockCol[t];
-                    if (col != prevCol) { slot++; prevCol = col; }
-                    cache.slotOfTriplet[t] = slot;
-                }
-            }
-            cache.nnzb = slot + 1;
-
-            for (int t = 0; t < n; t++)
-            {
-                cache.tripletRow[t] = _state->triBlockRow[t];
-                cache.tripletCol[t] = _state->triBlockCol[t];
-            }
-
-            order.Dispose();
-            rowStart.Dispose();
-            return cache;
-        }
-
-        /// <summary>Standalone twin of <see cref="BuildAssemblyCache(ref Arena)"/>: allocates the
-        /// map's Indices buffers from <paramref name="allocator"/> instead of an arena (default
-        /// Temp); caller owns disposing the returned cache's buffers.</summary>
         public unsafe fProxyBSRAssemblyCache BuildAssemblyCache(Allocator allocator = Allocator.Temp)
         {
             int n = TripletCount;

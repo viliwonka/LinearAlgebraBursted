@@ -11,8 +11,9 @@ namespace LinearAlgebra
 {
     /// <summary>
     /// Zero-alloc random-fill operations for existing vectors and matrices. Complements the
-    /// allocating helpers in <c>ArenaExtensions.double</c> (which create a new buffer with a
-    /// fresh internal seed). Use these <em>InPlace</em> forms in per-frame / realtime loops where
+    /// allocating helpers in <c>GenerateOP</c> (e.g. <c>doubleRandomVec</c>/<c>doubleRandomMat</c>,
+    /// which create a new buffer with a fresh internal seed). Use these <em>InPlace</em> forms in
+    /// per-frame / realtime loops where
     /// the buffer already exists and the caller manages the <see cref="Unity.Mathematics.Random"/>
     /// stream for reproducibility and correlation control.
     ///

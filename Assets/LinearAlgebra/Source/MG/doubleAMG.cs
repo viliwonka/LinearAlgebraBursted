@@ -12,20 +12,16 @@ namespace LinearAlgebra.Sparse
 {
     /// <summary>
     /// Unsmoothed nodal-aggregation algebraic multigrid hierarchy over a square SPD BSR. Built once on
-    /// the main thread (<see cref="Arena.doubleAMG(in doubleBSR, in AMGOptions, out AMGSetupInfo)"/> or,
-    /// standalone, the <c>Allocator</c> constructors below); each level carries its operator A_l,
+    /// the main thread via the <c>Allocator</c> constructors below; each level carries its operator A_l,
     /// tentative prolongator P_l (level l+1 -> l), a Chebyshev smoother, and scratch vectors, with the
     /// coarsest level solved by a dense Cholesky. Applies a symmetric V-cycle as a standalone solver
     /// (<see cref="MG.solve(in doubleAMG, in doubleN, ref doubleN, int, double)"/>) or as an SPD
     /// preconditioner (<see cref="doubleAMGPreconditioner"/>).
     ///
-    /// Built via an <c>arena.doubleAMG(...)</c> factory, the level DATA (operators, prolongators,
-    /// smoothers, vectors) is arena-owned; only the small per-level handle CONTAINERS are held
-    /// directly and released by <see cref="Dispose"/> -- do not call Dispose() to free the level data
-    /// itself, the arena does that. Built via an <c>Allocator</c> constructor, this instance owns the
-    /// level data standalone and <see cref="Dispose"/> frees every level's buffers too; never call
-    /// Dispose() on an arena-built instance and never skip it on a standalone-built one. No mutable
-    /// scalar fields — all cycle state lives in the vector buffers, so an IJob struct copy is safe.
+    /// Built via an <c>Allocator</c> constructor, this instance owns the level data standalone and
+    /// <see cref="Dispose"/> frees every level's buffers too; always Dispose an instance built this way.
+    /// No mutable scalar fields — all cycle state lives in the vector buffers, so an IJob struct copy
+    /// is safe.
     /// </summary>
     public struct doubleAMG : IDisposable
     {
@@ -138,19 +134,17 @@ namespace LinearAlgebra.Sparse
         }
 
         /// <summary>
-        /// Standalone twin of <see cref="Arena.doubleAMGBuild"/> / the near-nullspace
-        /// <c>arena.doubleAMG</c> overload: builds the hierarchy from <paramref name="allocator"/>
-        /// instead of an arena, with the SAME coarsening/aggregation/Galerkin/Chebyshev-smoother/
-        /// coarsest-Cholesky construction. Every owned buffer -- operators (levels 1+), tentative
-        /// prolongators, smoothers, per-level solution/rhs/residual/correction vectors, the K-cycle
-        /// scratch (if any), and the coarsest dense Cholesky factor -- is allocated from
+        /// Builds the hierarchy from <paramref name="allocator"/>: coarsens by unsmoothed nodal
+        /// aggregation, forms the Galerkin coarse operator, and builds a Chebyshev smoother per level,
+        /// down to a dense-Cholesky-factored coarsest level. Every owned buffer -- operators (levels
+        /// 1+), tentative prolongators, smoothers, per-level solution/rhs/residual/correction vectors,
+        /// the K-cycle scratch (if any), and the coarsest dense Cholesky factor -- is allocated from
         /// <paramref name="allocator"/>. Level 0's operator is the caller's own <paramref name="A"/>
         /// UNCHANGED (aliased, not owned) when it is already full storage, or a fresh full-storage
         /// mirror (owned) when <paramref name="A"/> is Symmetric storage. info.status is Success, or
-        /// NotPositiveDefinite when the coarsest Cholesky fails. Throws under the same conditions as
-        /// the arena build (A not square, B0 malformed, opts out of range); on a thrown exception,
-        /// every level fully built so far is freed before the exception propagates. The result must be
-        /// Disposed -- only call Dispose on an instance built via an Allocator ctor.
+        /// NotPositiveDefinite when the coarsest Cholesky fails. Throws if A is not square, B0 is
+        /// malformed, or opts is out of range; on a thrown exception, every level fully built so far is
+        /// freed before the exception propagates. The result must be Disposed.
         /// </summary>
         static doubleAMG BuildStandalone(in doubleBSR A, in doubleMxN B0, in AMGOptions opts, out AMGSetupInfo info, Allocator allocator)
         {
@@ -331,9 +325,8 @@ namespace LinearAlgebra.Sparse
 
         /// <summary>
         /// Builds an AMG hierarchy with the SCALAR default near-nullspace (B = the constant vector,
-        /// m = 1) from <paramref name="allocator"/> instead of an arena -- standalone twin of
-        /// <see cref="Arena.doubleAMG(in doubleBSR, in AMGOptions, out AMGSetupInfo)"/>. See
-        /// <see cref="BuildStandalone"/> for the full construction/ownership/throw contract.
+        /// m = 1) from <paramref name="allocator"/>. See <see cref="BuildStandalone"/> for the full
+        /// construction/ownership/throw contract.
         /// </summary>
         public doubleAMG(in doubleBSR A, in AMGOptions opts, out AMGSetupInfo info, Allocator allocator)
         {
@@ -344,8 +337,7 @@ namespace LinearAlgebra.Sparse
             ones.Dispose();
         }
 
-        /// <summary>Standalone twin of <see cref="Arena.doubleAMG(in doubleBSR, out AMGSetupInfo)"/>:
-        /// scalar-default near-nullspace AMG with <see cref="AMGOptions.Default"/>.</summary>
+        /// <summary>Scalar-default near-nullspace AMG with <see cref="AMGOptions.Default"/>.</summary>
         public doubleAMG(in doubleBSR A, out AMGSetupInfo info, Allocator allocator)
         {
             this = new doubleAMG(in A, AMGOptions.Default, out info, allocator);
@@ -353,17 +345,15 @@ namespace LinearAlgebra.Sparse
 
         /// <summary>
         /// Builds an AMG hierarchy with a user-supplied near-nullspace <paramref name="Bnear"/> from
-        /// <paramref name="allocator"/> instead of an arena -- standalone twin of
-        /// <see cref="Arena.doubleAMG(in doubleBSR, in doubleMxN, in AMGOptions, out AMGSetupInfo)"/>.
-        /// See <see cref="BuildStandalone"/> for the full construction/ownership/throw contract.
+        /// <paramref name="allocator"/>. See <see cref="BuildStandalone"/> for the full
+        /// construction/ownership/throw contract.
         /// </summary>
         public doubleAMG(in doubleBSR A, in doubleMxN Bnear, in AMGOptions opts, out AMGSetupInfo info, Allocator allocator)
         {
             this = BuildStandalone(in A, in Bnear, in opts, out info, allocator);
         }
 
-        /// <summary>Standalone twin of <see cref="Arena.doubleAMG(in doubleBSR, in doubleMxN, out AMGSetupInfo)"/>:
-        /// near-nullspace AMG with <see cref="AMGOptions.Default"/>.</summary>
+        /// <summary>Near-nullspace AMG with <see cref="AMGOptions.Default"/>.</summary>
         public doubleAMG(in doubleBSR A, in doubleMxN Bnear, out AMGSetupInfo info, Allocator allocator)
         {
             this = new doubleAMG(in A, in Bnear, AMGOptions.Default, out info, allocator);
@@ -570,189 +560,5 @@ namespace LinearAlgebra.Sparse
             x.CopyFrom(in x0);
             return new SolveInfo { rnorm = math.sqrt(rr), iterations = maxIter, status = IterativeSolveStatus.MaxIterations };
         }
-    }
-}
-
-namespace LinearAlgebra
-{
-    public unsafe partial struct Arena
-    {
-        /// <summary>
-        /// Builds an <see cref="doubleAMG"/> hierarchy from a square SPD BSR with the scalar constant
-        /// near-nullspace (m=1). Coarsens by unsmoothed nodal aggregation until a level has &lt;=
-        /// opts.coarseMax scalar unknowns, aggregation stops reducing, or opts.maxLevels is reached;
-        /// the coarsest operator is factored by dense Cholesky. info.status is Success, or
-        /// NotPositiveDefinite when the coarsest Cholesky fails. A Symmetric-storage A is mirrored to
-        /// full transiently. Throws if A is not square. The returned hierarchy must be Disposed.
-        /// </summary>
-        internal doubleAMG doubleAMGBuild(in doubleBSR A, in doubleMxN B0, in AMGOptions opts, out AMGSetupInfo info)
-        {
-            if (A.BlockRows != A.BlockCols || A.BR != A.BC)
-                throw new ArgumentException("Arena.doubleAMG: A must be square (BlockRows==BlockCols, BR==BC)");
-            if (B0.M_Rows != A.M_Rows || B0.N_Cols < 1)
-                throw new ArgumentException("Arena.doubleAMG: near-nullspace B must be A.M_Rows x m with m >= 1");
-            if (opts.pre < 0 || opts.post < 0)
-                throw new ArgumentException("Arena.doubleAMG: pre/post must be >= 0");
-            if (opts.coarseMax < 1 || opts.maxLevels < 1)
-                throw new ArgumentException("Arena.doubleAMG: coarseMax/maxLevels must be >= 1");
-
-            var self = this;
-            var alloc = self.Allocator;
-
-            // Declared up front so the finally can free them if a level build (aggregation /
-            // prolongator / Galerkin / Chebyshev) throws before the hierarchy is constructed —
-            // the containers are allocator-owned, not arena-tracked, so they would otherwise leak.
-            var levA = default(UnsafeList<doubleBSR>);
-            var levP = default(UnsafeList<doubleBSR>);
-            var levS = default(UnsafeList<doubleChebyshev>);
-            var levX = default(UnsafeList<doubleN>);
-            var levB = default(UnsafeList<doubleN>);
-            var levR = default(UnsafeList<doubleN>);
-            var levZ = default(UnsafeList<doubleN>);
-            var kRc = default(UnsafeList<doubleN>);
-            var kC1 = default(UnsafeList<doubleN>);
-            var kC2 = default(UnsafeList<doubleN>);
-            var kV1 = default(UnsafeList<doubleN>);
-            var kV2 = default(UnsafeList<doubleN>);
-            var kE = default(UnsafeList<doubleN>);
-            bool ok = false;
-            try
-            {
-                levA = new UnsafeList<doubleBSR>(4, alloc);
-                levP = new UnsafeList<doubleBSR>(4, alloc);
-                levS = new UnsafeList<doubleChebyshev>(4, alloc);
-
-                doubleBSR A0 = A.Symmetric ? self.doubleBSRMirrorToFull(in A) : A;
-                levA.Add(A0);
-
-                doubleMxN Bcur = B0;                     // level-0 near-nullspace (m = B0.N_Cols)
-
-                while (levA[levA.Length - 1].M_Rows > opts.coarseMax && levA.Length < opts.maxLevels)
-                {
-                    doubleBSR cur = levA[levA.Length - 1];
-                    var aggId = self.Indices(cur.BlockRows);
-                    AMG.aggregate(in cur, (double)opts.theta, ref aggId, out int numAgg);
-                    if (numAgg >= cur.BlockRows) break;      // aggregation did not coarsen -> stop
-
-                    var T = AMG.tentativeProlongator(in cur, in aggId, numAgg, in Bcur, ref self, out var Bc);
-                    var Ac = AMG.galerkinRAP(in cur, in T, in aggId, numAgg, ref self);
-                    var sm = new doubleChebyshev(in cur, ref self);   // smoother for the CURRENT level
-
-                    levP.Add(T);
-                    levS.Add(sm);
-                    levA.Add(Ac);
-                    Bcur = Bc;
-                }
-
-                int L = levA.Length;
-                doubleBSR coarse = levA[L - 1];
-                doubleMxN chol = coarse.ToDense(ref self);
-                var cinfo = CHO.decompInPlace(ref chol);
-
-                levX = new UnsafeList<doubleN>(L, alloc);
-                levB = new UnsafeList<doubleN>(L, alloc);
-                levR = new UnsafeList<doubleN>(L, alloc);
-                levZ = new UnsafeList<doubleN>(L, alloc);
-                for (int l = 0; l < L; l++)
-                {
-                    int nl = levA[l].M_Rows;
-                    levX.Add(self.doubleVec(nl));
-                    levB.Add(self.doubleVec(nl));
-                    levR.Add(self.doubleVec(nl));
-                    levZ.Add(self.doubleVec(nl));
-                }
-                var coarseRhs = self.doubleVec(coarse.M_Rows);
-
-                int cycle = opts.cycle == MGCycle.K ? 1 : 0;
-                if (cycle == 1)
-                {
-                    // Per-level 2-step-FCG scratch (level 0's slot is unused but kept for indexing).
-                    kRc = new UnsafeList<doubleN>(L, alloc);
-                    kC1 = new UnsafeList<doubleN>(L, alloc);
-                    kC2 = new UnsafeList<doubleN>(L, alloc);
-                    kV1 = new UnsafeList<doubleN>(L, alloc);
-                    kV2 = new UnsafeList<doubleN>(L, alloc);
-                    kE = new UnsafeList<doubleN>(L, alloc);
-                    for (int l = 0; l < L; l++)
-                    {
-                        int nl = levA[l].M_Rows;
-                        kRc.Add(self.doubleVec(nl));
-                        kC1.Add(self.doubleVec(nl));
-                        kC2.Add(self.doubleVec(nl));
-                        kV1.Add(self.doubleVec(nl));
-                        kV2.Add(self.doubleVec(nl));
-                        kE.Add(self.doubleVec(nl));
-                    }
-                }
-
-                info = new AMGSetupInfo
-                {
-                    levels = L,
-                    coarseRows = coarse.M_Rows,
-                    status = cinfo.Solved ? DirectSolveStatus.Success : DirectSolveStatus.NotPositiveDefinite,
-                };
-
-                var result = new doubleAMG(levA, levP, levS, levX, levB, levR, levZ,
-                    kRc, kC1, kC2, kV1, kV2, kE, chol, coarseRhs,
-                    L, opts.pre, opts.post, cycle, cinfo.Solved, alloc);
-                ok = true;
-                return result;
-            }
-            finally
-            {
-                if (!ok)
-                {
-                    if (levA.IsCreated) levA.Dispose();
-                    if (levP.IsCreated) levP.Dispose();
-                    if (levS.IsCreated) levS.Dispose();
-                    if (levX.IsCreated) levX.Dispose();
-                    if (levB.IsCreated) levB.Dispose();
-                    if (levR.IsCreated) levR.Dispose();
-                    if (levZ.IsCreated) levZ.Dispose();
-                    if (kRc.IsCreated) kRc.Dispose();
-                    if (kC1.IsCreated) kC1.Dispose();
-                    if (kC2.IsCreated) kC2.Dispose();
-                    if (kV1.IsCreated) kV1.Dispose();
-                    if (kV2.IsCreated) kV2.Dispose();
-                    if (kE.IsCreated) kE.Dispose();
-                }
-            }
-        }
-
-        /// <summary>
-        /// Builds an AMG hierarchy with the SCALAR default near-nullspace (B = the constant vector,
-        /// m = 1) — correct for scalar PDEs (Poisson, diffusion). For a vector problem (elasticity /
-        /// structures) pass the rigid-body modes via the <c>Bnear</c> overload instead. See that
-        /// overload for the coarsening/failure/dispose contract.
-        /// </summary>
-        public doubleAMG doubleAMG(in doubleBSR A, in AMGOptions opts, out AMGSetupInfo info)
-        {
-            int n = A.M_Rows;
-            var ones = doubleMat(n, 1);
-            for (int i = 0; i < n; i++) ones[i, 0] = (double)1;
-            return doubleAMGBuild(in A, in ones, in opts, out info);
-        }
-
-        /// <summary>Scalar-default AMG with <see cref="AMGOptions.Default"/>.</summary>
-        public doubleAMG doubleAMG(in doubleBSR A, out AMGSetupInfo info)
-            => doubleAMG(in A, AMGOptions.Default, out info);
-
-        /// <summary>
-        /// Builds an AMG hierarchy with a user-supplied near-nullspace <paramref name="Bnear"/>
-        /// (A.M_Rows x m, row-major) — the low-energy modes the coarse grid must represent. Scalar
-        /// problems use m = 1 (the constant, i.e. the overload without Bnear); a vector problem passes
-        /// its rigid-body modes (e.g. 3D elasticity: the 3 rigid translations, m = 3, or 6 with
-        /// rotations). The coarse block size becomes m. Coarsens by unsmoothed nodal aggregation until
-        /// a level has &lt;= opts.coarseMax scalar unknowns / aggregation stops / opts.maxLevels; the
-        /// coarsest is factored by dense Cholesky. info.status is Success or NotPositiveDefinite. A
-        /// Symmetric-storage A is mirrored to full transiently. Throws if A is not square or Bnear is
-        /// not A.M_Rows x (m &gt;= 1). The returned hierarchy must be Disposed.
-        /// </summary>
-        public doubleAMG doubleAMG(in doubleBSR A, in doubleMxN Bnear, in AMGOptions opts, out AMGSetupInfo info)
-            => doubleAMGBuild(in A, in Bnear, in opts, out info);
-
-        /// <summary>Near-nullspace AMG with <see cref="AMGOptions.Default"/>.</summary>
-        public doubleAMG doubleAMG(in doubleBSR A, in doubleMxN Bnear, out AMGSetupInfo info)
-            => doubleAMG(in A, in Bnear, AMGOptions.Default, out info);
     }
 }

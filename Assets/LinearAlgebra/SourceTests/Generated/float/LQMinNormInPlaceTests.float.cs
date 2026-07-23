@@ -61,10 +61,13 @@ public class floatLQMinNormInPlaceTests
             var x = new floatN(n, Allocator.Temp);
             LQ.minNormSolveInPlace(ref Ainp, in b, ref x);
 
-            Assert.IsTrue(Analysis.isZero(xRef - x, Tol()));
+            var dx = new floatN(in xRef, Allocator.Temp);
+            floatComp.subInPlace(dx, x);
+            Assert.IsTrue(Analysis.isZero(dx, Tol()));
             // b untouched by the in-place solve.
             var b2 = GenerateOP.floatRandomVec(m, -5f, 5f, 91002);
-            Assert.IsTrue(Analysis.isZero(b - b2, (float)0));
+            floatComp.subInPlace(b2, b);
+            Assert.IsTrue(Analysis.isZero(b2, (float)0));
         }
 
         void WorkspaceEquivalence()
@@ -81,7 +84,9 @@ public class floatLQMinNormInPlaceTests
             var ws = new floatLQMinNormCache(m, n, Allocator.Temp);
             LQ.minNormSolveInPlace(ref Ainp, in b, ref x, ref ws);
 
-            Assert.IsTrue(Analysis.isZero(xRef - x, Tol()));
+            var dx = new floatN(in xRef, Allocator.Temp);
+            floatComp.subInPlace(dx, x);
+            Assert.IsTrue(Analysis.isZero(dx, Tol()));
         }
 
         void MultiRhsEquivalence()
@@ -97,10 +102,13 @@ public class floatLQMinNormInPlaceTests
             var X = new floatMxN(n, k, Allocator.Temp);
             LQ.minNormSolveInPlace(ref Ainp, in B, ref X);
 
-            Assert.IsTrue(Analysis.isZero(XRef - X, Tol()));
+            var dX = new floatMxN(in XRef, Allocator.Temp);
+            floatComp.subInPlace(dX, X);
+            Assert.IsTrue(Analysis.isZero(dX, Tol()));
             // B untouched by the in-place solve.
             var B2 = GenerateOP.floatRandomMat(m, k, -3f, 3f, 93002);
-            Assert.IsTrue(Analysis.isZero(B - B2, (float)0));
+            floatComp.subInPlace(B2, B);
+            Assert.IsTrue(Analysis.isZero(B2, (float)0));
         }
     }
 

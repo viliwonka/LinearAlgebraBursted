@@ -235,48 +235,6 @@ namespace LinearAlgebra.Sparse
         }
 
         /// <summary>
-        /// Expands this BSR to a dense M_Rows x N_Cols matrix: zero-filled, then every stored
-        /// block scattered into place. Used by tests and as a general-purpose densify helper.
-        /// Kept as `ref Arena` for API stability, though `in Arena` would work equally well now
-        /// that Arena is a thin handle to a heap-allocated ArenaCore (see Arena.cs).
-        /// </summary>
-        public floatMxN ToDense(ref Arena arena)
-        {
-            var dense = arena.floatMat(M_Rows, N_Cols); // zero-initialized
-
-            for (int br = 0; br < BlockRows; br++)
-            {
-                int rowStart = RowPtr[br];
-                int rowEnd = RowPtr[br + 1];
-                int baseRow = br * BR;
-
-                for (int k = rowStart; k < rowEnd; k++)
-                {
-                    int bc = ColInd[k];
-                    int baseCol = bc * BC;
-                    int blockOffset = k * BR * BC;
-
-                    for (int r = 0; r < BR; r++)
-                    {
-                        for (int c = 0; c < BC; c++)
-                        {
-                            dense[baseRow + r, baseCol + c] = Values[blockOffset + r * BC + c];
-                        }
-                    }
-
-                    if (Symmetric && bc != br)
-                    {
-                        for (int r = 0; r < BR; r++)
-                            for (int c = 0; c < BC; c++)
-                                dense[baseCol + c, baseRow + r] = Values[blockOffset + r * BC + c];
-                    }
-                }
-            }
-
-            return dense;
-        }
-
-        /// <summary>
         /// Expands this BSR to a dense M_Rows x N_Cols matrix backed by
         /// <paramref name="allocator"/>: zero-filled, then every stored block scattered into place.
         /// Caller owns disposal for non-Temp allocators.

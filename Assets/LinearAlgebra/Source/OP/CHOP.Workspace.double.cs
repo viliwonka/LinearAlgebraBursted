@@ -12,21 +12,21 @@ namespace LinearAlgebra
         /// <summary>
         /// Throws if <paramref name="ws"/> is not sized for an n x n pivoted-Cholesky problem. W (n x n,
         /// the symmetric working copy) is needed by decomp; bt (n, the permuted RHS)
-        /// by decompSolve. Matches Arena.doubleCHOPCache(n).
+        /// by decompSolve. Matches the doubleCHOPCache(n, allocator) constructor.
         /// </summary>
         static void RequireCholeskyPivotWorkspace(in doubleCHOPCache ws, int n,
                                                   bool needW, bool needBt)
         {
             if (needW && (ws.W.M_Rows != n || ws.W.N_Cols != n))
-                throw new ArgumentException("CHOP: workspace W must be n x n (use Arena.doubleCHOPCache(n))");
+                throw new ArgumentException("CHOP: workspace W must be n x n (use new doubleCHOPCache(n, allocator))");
             if (needBt && ws.bt.N != n)
-                throw new ArgumentException("CHOP: workspace bt must have length n (use Arena.doubleCHOPCache(n))");
+                throw new ArgumentException("CHOP: workspace bt must have length n (use new doubleCHOPCache(n, allocator))");
         }
     }
 
     /// <summary>
     /// Reusable scratch for pivoted (rank-revealing) Cholesky (CHOP.decomp /
-    /// decompSolve). Allocate ONCE via Arena.doubleCHOPCache(n) and reuse it across
+    /// decompSolve). Allocate ONCE via the Allocator ctor and reuse it across
     /// same-size calls. W (n x n) is the destroyable symmetric working copy the decomposition pivots
     /// on; bt (n) is the permuted right-hand side the solve gathers into.
     ///
@@ -40,7 +40,7 @@ namespace LinearAlgebra
         public doubleMxN W;
         public doubleN bt;
 
-        /// <summary>Standalone allocation sized identically to <c>Arena.doubleCHOPCache(n)</c>. Pair with <see cref="Dispose"/>.</summary>
+        /// <summary>Allocates a pivoted-Cholesky workspace for an n x n matrix. Pair with <see cref="Dispose"/>.</summary>
         public doubleCHOPCache(int n, Allocator allocator)
         {
             W = new doubleMxN(n, n, allocator);
@@ -52,22 +52,6 @@ namespace LinearAlgebra
         {
             W.Dispose();
             bt.Dispose();
-        }
-    }
-
-    public static partial class ArenaExtensions
-    {
-        /// <summary>
-        /// Allocates a pivoted-Cholesky workspace for an n x n matrix. See
-        /// <see cref="doubleCHOPCache"/> for reuse guidance.
-        /// </summary>
-        public static doubleCHOPCache doubleCHOPCache(this ref Arena arena, int n)
-        {
-            return new doubleCHOPCache
-            {
-                W = arena.doubleMat(n, n),
-                bt = arena.doubleVec(n)
-            };
         }
     }
 }

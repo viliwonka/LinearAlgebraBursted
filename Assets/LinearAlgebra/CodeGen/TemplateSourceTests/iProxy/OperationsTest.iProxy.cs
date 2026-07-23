@@ -34,7 +34,7 @@ public class iProxyOperationsTest {
             result = new iProxyN(in a, Allocator.Temp); iProxyComp.subInPlace(result, s);   // a - s
             result = new iProxyN(in a, Allocator.Temp); iProxyComp.subInPlace(s, result);   // s - a
 
-            result = ~a;
+            result = new iProxyN(in a, Allocator.Temp); iProxyComp.bitwiseComplementInPlace(result);   // ~a
 
             result = new iProxyN(in a, Allocator.Temp); iProxyComp.mulInPlace(result, s);   // a * s
             result = new iProxyN(in a, Allocator.Temp); iProxyComp.mulInPlace(result, s);   // s * a
@@ -44,17 +44,17 @@ public class iProxyOperationsTest {
             result = new iProxyN(in a, Allocator.Temp); iProxyComp.divInPlace(s, result);   // s / a
             result = new iProxyN(in a, Allocator.Temp); iProxyComp.modInPlace(s, result);   // s % a
 
-            result = a | s;
-            result = s | a;
+            result = new iProxyN(in a, Allocator.Temp); iProxyComp.bitwiseOrInPlace(result, s);    // a | s
+            result = new iProxyN(in a, Allocator.Temp); iProxyComp.bitwiseOrInPlace(result, s);    // s | a
 
-            result = a & s;
-            result = s & a;
+            result = new iProxyN(in a, Allocator.Temp); iProxyComp.bitwiseAndInPlace(result, s);   // a & s
+            result = new iProxyN(in a, Allocator.Temp); iProxyComp.bitwiseAndInPlace(result, s);   // s & a
 
-            result = a ^ s;
-            result = s ^ a;
+            result = new iProxyN(in a, Allocator.Temp); iProxyComp.bitwiseXorInPlace(result, s);   // a ^ s
+            result = new iProxyN(in a, Allocator.Temp); iProxyComp.bitwiseXorInPlace(result, s);   // s ^ a
 
-            result = result << 5;
-            result = result >> 5;
+            iProxyComp.bitwiseLeftShiftInPlace(result, 5);    // result <<= 5
+            iProxyComp.bitwiseRightShiftInPlace(result, 5);   // result >>= 5
 
             result = new iProxyN(in a, Allocator.Temp); iProxyComp.addInPlace(result, b);   // a + b
             result = new iProxyN(in a, Allocator.Temp); iProxyComp.subInPlace(result, b);   // a - b
@@ -62,9 +62,9 @@ public class iProxyOperationsTest {
             result = new iProxyN(in a, Allocator.Temp); iProxyComp.divInPlace(result, b);   // a / b
             result = new iProxyN(in a, Allocator.Temp); iProxyComp.modInPlace(result, b);   // a % b
 
-            result = a | b;
-            result = a & b;
-            result = a ^ b;
+            result = new iProxyN(in a, Allocator.Temp); iProxyComp.bitwiseOrInPlace(result, b);    // a | b
+            result = new iProxyN(in a, Allocator.Temp); iProxyComp.bitwiseAndInPlace(result, b);   // a & b
+            result = new iProxyN(in a, Allocator.Temp); iProxyComp.bitwiseXorInPlace(result, b);   // a ^ b
         }
     }
 
@@ -483,6 +483,52 @@ public class iProxyOperationsTest {
     public void TestCases(BasicPreciseOPTestJob.TestType type)
     {
         new BasicPreciseOPTestJob() { Type = type }.Run();
+    }
+
+    // STANDALONE Copy()/TempCopy() contract: both return an independent copy (content-equal;
+    // writes to the copy never reach the source).
+    [Test]
+    public void StandaloneVector_CopyAndTempCopy_ReturnIndependentCopies()
+    {
+        var v = new iProxyN(4, Allocator.Temp);
+        try
+        {
+            v[1] = 2;
+            var c = v.Copy();
+            var t = v.TempCopy();
+            Assert.IsTrue(c.N == 4);
+            Assert.IsTrue(t.N == 4);
+            Assert.IsTrue(c[1] == 2);
+            Assert.IsTrue(t[1] == 2);
+            c[1] = 5;
+            t[1] = 7;
+            Assert.IsTrue(v[1] == 2);
+            c.Dispose();
+            t.Dispose();
+        }
+        finally { v.Dispose(); }
+    }
+
+    [Test]
+    public void StandaloneMatrix_CopyAndTempCopy_ReturnIndependentCopies()
+    {
+        var m = new iProxyMxN(3, 3, Allocator.Temp);
+        try
+        {
+            m[1, 2] = 3;
+            var c = m.Copy();
+            var t = m.TempCopy();
+            Assert.IsTrue(c.M_Rows == 3 && c.N_Cols == 3);
+            Assert.IsTrue(t.M_Rows == 3 && t.N_Cols == 3);
+            Assert.IsTrue(c[1, 2] == 3);
+            Assert.IsTrue(t[1, 2] == 3);
+            c[1, 2] = 5;
+            t[1, 2] = 7;
+            Assert.IsTrue(m[1, 2] == 3);
+            c.Dispose();
+            t.Dispose();
+        }
+        finally { m.Dispose(); }
     }
 
 }

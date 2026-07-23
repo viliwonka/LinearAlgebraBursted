@@ -36,70 +36,6 @@ namespace LinearAlgebra.Gallery
         /// <param name="BR">Square block size (2–6 hit the unrolled spMV kernels).</param>
         /// <param name="density">Target fraction of the block grid that is nonzero (e.g. 0.01–0.02).</param>
         /// <param name="seed">RNG seed (0 is remapped to 1; Unity.Mathematics.Random needs nonzero).</param>
-        public static fProxyBSR fProxyRandomSparseSPD(this ref Arena arena, int blockRows, int BR, fProxy density, uint seed)
-        {
-            if (blockRows < 1) throw new ArgumentException("fProxyRandomSparseSPD: blockRows must be >= 1");
-            if (BR < 1) throw new ArgumentException("fProxyRandomSparseSPD: BR must be >= 1");
-
-            var rng = new Unity.Mathematics.Random(seed == 0 ? 1u : seed);
-            int deg = (int)math.round((double)density * blockRows) - 1; // off-diagonals per row (diag is the +1)
-            if (deg < 0) deg = 0;
-            if (deg > blockRows - 1) deg = blockRows - 1;
-
-            // Upper bound on each block-row's off-diagonal scalar-row L1, accumulated exactly as blocks
-            // are added (incoming mirrors included), so the diagonal shift below is provably dominant.
-            var offBound = arena.fProxyVec(blockRows);
-            for (int i = 0; i < blockRows; i++) offBound[i] = (fProxy)0;
-
-            int nnzbEstimate = blockRows + blockRows * deg * 2;
-            var builder = arena.fProxyBSRBuilder(blockRows, blockRows, BR, BR, nnzbEstimate);
-
-            var blk  = arena.fProxyMat(BR, BR);
-            var blkT = arena.fProxyMat(BR, BR);
-            fProxy blockRowBound = (fProxy)fProxySparseOffScale * BR; // max scalar-row L1 of one off-diag block
-
-            // Pass 1: symmetric off-diagonal block pairs.
-            for (int i = 0; i < blockRows; i++)
-            {
-                for (int d = 0; d < deg; d++)
-                {
-                    int j = rng.NextInt(0, blockRows);
-                    if (j == i) continue;                 // skip self (diagonal handled in pass 2)
-                    for (int r = 0; r < BR; r++)
-                        for (int c = 0; c < BR; c++)
-                        {
-                            fProxy v = (fProxy)/*+choose[rng.NextFloat(-fProxySparseOffScale, fProxySparseOffScale)|rng.NextDouble(-fProxySparseOffScale, fProxySparseOffScale)]*/rng.NextFloat(-fProxySparseOffScale, fProxySparseOffScale)/*-choose*/;
-                            blk[r, c]  = v;
-                            blkT[c, r] = v;
-                        }
-                    builder.AddBlock(i, j, in blk);
-                    builder.AddBlock(j, i, in blkT);
-                    offBound[i] += blockRowBound;
-                    offBound[j] += blockRowBound;
-                }
-            }
-
-            // Pass 2: diagonal blocks Di = MᵀM + ρ_i·I, ρ_i > (MᵀM within-block off-diag L1 bound BR²) +
-            // (off-diagonal block L1 bound offBound[i]) => strict diagonal dominance => SPD.
-            var Mi = arena.fProxyMat(BR, BR);
-            for (int i = 0; i < blockRows; i++)
-            {
-                for (int r = 0; r < BR; r++)
-                    for (int c = 0; c < BR; c++)
-                        Mi[r, c] = (fProxy)rng.NextFloat(-1f, 1f);
-
-                var Di = Blas.dot(Mi, Mi, true);          // MᵀM (SPD, symmetric)
-                fProxy rho = (fProxy)(BR * BR) + offBound[i] + (fProxy)1;
-                for (int d = 0; d < BR; d++) Di[d, d] += rho;
-                builder.AddBlock(i, i, in Di);
-            }
-
-            return builder.ToBSR(ref arena);
-        }
-
-        /// <summary>Standalone twin of <see cref="fProxyRandomSparseSPD(ref Arena, int, int, fProxy, uint)"/>:
-        /// builds entirely from Temp scratch and returns a result allocated from
-        /// <paramref name="allocator"/> -- no arena needed. Same generation logic/RNG draws.</summary>
         public static fProxyBSR fProxyRandomSparseSPD(int blockRows, int BR, fProxy density, uint seed, Allocator allocator = Allocator.Temp)
         {
             if (blockRows < 1) throw new ArgumentException("fProxyRandomSparseSPD: blockRows must be >= 1");
@@ -140,10 +76,9 @@ namespace LinearAlgebra.Gallery
                 }
             }
 
-            // Blas.dot(Mi, Mi, true) (the convenience overload used by the arena twin) allocates its
-            // result via Mi.OwnerArena, which a standalone (non-arena) Mi does not have -- use the
-            // ref-dest primitive with a manually preallocated Di instead. Identical kernel (matAtA),
-            // identical arithmetic.
+            // Blas.dot(Mi, Mi, true) (the allocating convenience overload) requires an arena-tracked
+            // Mi, which a standalone (Allocator-built) Mi is not -- use the ref-dest primitive with a
+            // manually preallocated Di instead. Identical kernel (matAtA), identical arithmetic.
             var Mi = new fProxyMxN(BR, BR, Allocator.Temp);
             var Di = new fProxyMxN(BR, BR, Allocator.Temp, true);
             for (int i = 0; i < blockRows; i++)
@@ -182,63 +117,6 @@ namespace LinearAlgebra.Gallery
         /// <param name="BR">Square block size (BC == BR).</param>
         /// <param name="density">Target fraction of the block grid that is nonzero.</param>
         /// <param name="seed">RNG seed (0 → 1).</param>
-        public static fProxyBSR fProxyRandomSparse(this ref Arena arena, int blockRows, int blockCols, int BR, fProxy density, uint seed)
-        {
-            if (blockRows < 1 || blockCols < 1) throw new ArgumentException("fProxyRandomSparse: block dims must be >= 1");
-            if (blockRows < blockCols) throw new ArgumentException("fProxyRandomSparse: only square or tall (blockRows >= blockCols) is supported");
-            if (BR < 1) throw new ArgumentException("fProxyRandomSparse: BR must be >= 1");
-
-            var rng = new Unity.Mathematics.Random(seed == 0 ? 1u : seed);
-            int diagCount = math.min(blockRows, blockCols);
-            int deg = (int)math.round((double)density * blockCols) - 1;
-            if (deg < 0) deg = 0;
-            if (deg > blockCols - 1) deg = blockCols - 1;
-
-            var offBound = arena.fProxyVec(blockRows);
-            for (int i = 0; i < blockRows; i++) offBound[i] = (fProxy)0;
-
-            int nnzbEstimate = diagCount + blockRows * (deg + 1);
-            var builder = arena.fProxyBSRBuilder(blockRows, blockCols, BR, BR, nnzbEstimate);
-
-            var blk = arena.fProxyMat(BR, BR);
-            fProxy blockRowBound = (fProxy)fProxySparseOffScale * BR;
-
-            // Off-diagonal blocks (NOT mirrored → non-symmetric). Columns range over the full block-col
-            // grid so tall rows below the diagonal are populated too.
-            for (int i = 0; i < blockRows; i++)
-            {
-                for (int d = 0; d < deg; d++)
-                {
-                    int j = rng.NextInt(0, blockCols);
-                    if (j == i && i < diagCount) continue; // diagonal handled below
-                    for (int r = 0; r < BR; r++)
-                        for (int c = 0; c < BR; c++)
-                            blk[r, c] = (fProxy)/*+choose[rng.NextFloat(-fProxySparseOffScale, fProxySparseOffScale)|rng.NextDouble(-fProxySparseOffScale, fProxySparseOffScale)]*/rng.NextFloat(-fProxySparseOffScale, fProxySparseOffScale)/*-choose*/;
-                    builder.AddBlock(i, j, in blk);
-                    offBound[i] += blockRowBound;
-                }
-            }
-
-            // Dominant diagonal on the (square) top block: Di = MᵀM + ρ_i·I, ρ_i > BR² + offBound[i].
-            var Mi = arena.fProxyMat(BR, BR);
-            for (int i = 0; i < diagCount; i++)
-            {
-                for (int r = 0; r < BR; r++)
-                    for (int c = 0; c < BR; c++)
-                        Mi[r, c] = (fProxy)rng.NextFloat(-1f, 1f);
-
-                var Di = Blas.dot(Mi, Mi, true);
-                fProxy rho = (fProxy)(BR * BR) + offBound[i] + (fProxy)1;
-                for (int dd = 0; dd < BR; dd++) Di[dd, dd] += rho;
-                builder.AddBlock(i, i, in Di);
-            }
-
-            return builder.ToBSR(ref arena);
-        }
-
-        /// <summary>Standalone twin of <see cref="fProxyRandomSparse(ref Arena, int, int, int, fProxy, uint)"/>:
-        /// builds entirely from Temp scratch and returns a result allocated from
-        /// <paramref name="allocator"/> -- no arena needed. Same generation logic/RNG draws.</summary>
         public static fProxyBSR fProxyRandomSparse(int blockRows, int blockCols, int BR, fProxy density, uint seed, Allocator allocator = Allocator.Temp)
         {
             if (blockRows < 1 || blockCols < 1) throw new ArgumentException("fProxyRandomSparse: block dims must be >= 1");
@@ -318,46 +196,6 @@ namespace LinearAlgebra.Gallery
         /// </summary>
         /// <param name="gridX">Grid extent in x = the BSR block size BR (2–6 hit the unrolled spMV kernels).</param>
         /// <param name="gridY">Grid extent in y = the number of block rows.</param>
-        public static fProxyBSR fProxyLaplacian2D(this ref Arena arena, int gridX, int gridY)
-        {
-            if (gridX < 1 || gridY < 1) throw new ArgumentException("fProxyLaplacian2D: grid dims must be >= 1");
-
-            int BR = gridX, nb = gridY;
-            int nnzbEstimate = nb + 2 * (nb - 1);
-            if (nnzbEstimate < 1) nnzbEstimate = 1;
-            var builder = arena.fProxyBSRBuilder(nb, nb, BR, BR, nnzbEstimate);
-
-            // Diagonal block: tridiag(-1, 4, -1) (x-neighbor coupling + the full 2D degree 4).
-            var D = arena.fProxyMat(BR, BR);
-            for (int r = 0; r < BR; r++)
-                for (int c = 0; c < BR; c++)
-                    D[r, c] = (fProxy)0;
-            for (int r = 0; r < BR; r++)
-            {
-                D[r, r] = (fProxy)4;
-                if (r > 0)      D[r, r - 1] = (fProxy)(-1);
-                if (r < BR - 1) D[r, r + 1] = (fProxy)(-1);
-            }
-
-            // Between-block-row coupling: -I (y-neighbor coupling).
-            var C = arena.fProxyMat(BR, BR);
-            for (int r = 0; r < BR; r++)
-                for (int c = 0; c < BR; c++)
-                    C[r, c] = (fProxy)(r == c ? -1 : 0);
-
-            for (int i = 0; i < nb; i++)
-            {
-                builder.AddBlock(i, i, in D);
-                if (i > 0)      builder.AddBlock(i, i - 1, in C);
-                if (i < nb - 1) builder.AddBlock(i, i + 1, in C);
-            }
-
-            return builder.ToBSR(ref arena);
-        }
-
-        /// <summary>Standalone twin of <see cref="fProxyLaplacian2D(ref Arena, int, int)"/>: builds
-        /// entirely from Temp scratch and returns a result allocated from <paramref name="allocator"/>
-        /// -- no arena needed. Same generation logic.</summary>
         public static fProxyBSR fProxyLaplacian2D(int gridX, int gridY, Allocator allocator = Allocator.Temp)
         {
             if (gridX < 1 || gridY < 1) throw new ArgumentException("fProxyLaplacian2D: grid dims must be >= 1");
@@ -416,98 +254,6 @@ namespace LinearAlgebra.Gallery
         /// <param name="nz">Stories (vertical bays). Must be ≥ 1.</param>
         /// <param name="EA">Axial bar stiffness (bar constant is EA/L). Must be &gt; 0.</param>
         /// <param name="penalty">Diagonal penalty pinning the base nodes. Must be &gt; 0.</param>
-        public static fProxyBSR fProxyPenalizedGrid3D(this ref Arena arena, int nx, int ny, int nz, fProxy EA, fProxy penalty)
-        {
-            if (nx < 1 || ny < 1 || nz < 1)
-                throw new ArgumentException("fProxyPenalizedGrid3D: nx/ny/nz must be >= 1");
-            if (!(EA > (fProxy)0))
-                throw new ArgumentException("fProxyPenalizedGrid3D: EA must be > 0");
-            if (!(penalty > (fProxy)0))
-                throw new ArgumentException("fProxyPenalizedGrid3D: penalty must be > 0");
-
-            int NWx = nx + 1, NWy = ny + 1, levels = nz + 1;
-            int nb = NWx * NWy * levels;
-
-            int barCount = NWx * NWy * nz                      // columns
-                         + nz * (nx * NWy + ny * NWx + nx * ny) // beams + floor diagonals
-                         + nz * (2 * nx + 2 * ny);              // wall braces
-            var builder = arena.fProxyBSRBuilder(nb, nb, 3, 3, nb + 3 * barCount);
-
-            int Node(int i, int j, int l) => (l * NWy + j) * NWx + i;
-
-            void AddBar(int a, int b)
-            {
-                int ai = a % NWx, aj = (a / NWx) % NWy, al = a / (NWx * NWy);
-                int bi = b % NWx, bj = (b / NWx) % NWy, bl = b / (NWx * NWy);
-                fProxy dx = (fProxy)(bi - ai), dy = (fProxy)(bj - aj), dz = (fProxy)(bl - al);
-                fProxy L = math.sqrt(dx * dx + dy * dy + dz * dz);
-                fProxy ux = dx / L, uy = dy / L, uz = dz / L;
-                fProxy kBar = EA / L;
-                int lo = math.min(a, b), hi = math.max(a, b);
-                for (int r = 0; r < 3; r++)
-                {
-                    fProxy ur = r == 0 ? ux : (r == 1 ? uy : uz);
-                    for (int c = 0; c < 3; c++)
-                    {
-                        fProxy uc = c == 0 ? ux : (c == 1 ? uy : uz);
-                        fProxy v = kBar * ur * uc;
-                        builder.AddValue(3 * a + r, 3 * a + c, v);
-                        builder.AddValue(3 * b + r, 3 * b + c, v);
-                        builder.AddValue(3 * hi + r, 3 * lo + c, -v);
-                    }
-                }
-            }
-
-            // vertical columns on every grid line
-            for (int l = 0; l < nz; l++)
-                for (int j = 0; j < NWy; j++)
-                    for (int i = 0; i < NWx; i++)
-                        AddBar(Node(i, j, l), Node(i, j, l + 1));
-
-            // X/Y beams + one floor diagonal per panel, at every level >= 1
-            for (int l = 1; l <= nz; l++)
-            {
-                for (int j = 0; j < NWy; j++)
-                    for (int i = 0; i < nx; i++)
-                        AddBar(Node(i, j, l), Node(i + 1, j, l));
-                for (int j = 0; j < ny; j++)
-                    for (int i = 0; i < NWx; i++)
-                        AddBar(Node(i, j, l), Node(i, j + 1, l));
-                for (int j = 0; j < ny; j++)
-                    for (int i = 0; i < nx; i++)
-                        AddBar(Node(i, j, l), Node(i + 1, j + 1, l));
-            }
-
-            // one brace per perimeter wall panel per story (all rising one story across one bay)
-            for (int s = 0; s < nz; s++)
-            {
-                for (int i = 0; i < nx; i++)
-                {
-                    AddBar(Node(i, 0, s), Node(i + 1, 0, s + 1));
-                    AddBar(Node(i, ny, s), Node(i + 1, ny, s + 1));
-                }
-                for (int j = 0; j < ny; j++)
-                {
-                    AddBar(Node(0, j, s), Node(0, j + 1, s + 1));
-                    AddBar(Node(nx, j, s), Node(nx, j + 1, s + 1));
-                }
-            }
-
-            // penalty pins: every base (level-0) node's three diagonal entries
-            for (int j = 0; j < NWy; j++)
-                for (int i = 0; i < NWx; i++)
-                {
-                    int node = Node(i, j, 0);
-                    for (int d = 0; d < 3; d++)
-                        builder.AddValue(3 * node + d, 3 * node + d, penalty);
-                }
-
-            return builder.ToBSRSymmetric(ref arena);
-        }
-
-        /// <summary>Standalone twin of <see cref="fProxyPenalizedGrid3D(ref Arena, int, int, int, fProxy, fProxy)"/>:
-        /// builds entirely from Temp scratch and returns a result allocated from
-        /// <paramref name="allocator"/> -- no arena needed. Same generation logic.</summary>
         public static fProxyBSR fProxyPenalizedGrid3D(int nx, int ny, int nz, fProxy EA, fProxy penalty, Allocator allocator = Allocator.Temp)
         {
             if (nx < 1 || ny < 1 || nz < 1)

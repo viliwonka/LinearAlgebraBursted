@@ -24,128 +24,10 @@ namespace LinearAlgebra.Sparse
         /// under MGS, e.g. more near-nullspace modes than the aggregate can represent) drops to a zero
         /// Q column with R = 0 -- an honest loss of that coarse dof rather than a divide-by-zero.
         /// Deterministic: ascending aggregate and member order, fixed MGS loop order.
-        /// aggId.N must equal A.BlockRows and B.M_Rows must equal A.M_Rows.
+        /// aggId.N must equal A.BlockRows and B.M_Rows must equal A.M_Rows. Allocates <paramref
+        /// name="Bcoarse"/> and the returned T from <paramref name="allocator"/> (default Temp;
+        /// caller owns disposal); all other assembly scratch is Allocator.Temp.
         /// </summary>
-        public static floatBSR tentativeProlongator(in floatBSR A, in Indices aggId, int numAgg,
-            in floatMxN B, ref Arena arena, out floatMxN Bcoarse)
-        {
-            int nb = A.BlockRows;
-            int BR = A.BR;
-            int m = B.N_Cols;
-
-            if (aggId.N != nb)
-                throw new ArgumentException("AMG.tentativeProlongator: aggId.N must equal A.BlockRows");
-            if (B.M_Rows != nb * BR)
-                throw new ArgumentException("AMG.tentativeProlongator: B.M_Rows must equal A.M_Rows");
-            if (numAgg < 1)
-                throw new ArgumentException("AMG.tentativeProlongator: numAgg must be >= 1");
-
-            // Group block-rows by aggregate (counting sort); members stay ascending within each
-            // aggregate because block-rows are scanned in ascending order.
-            var aggPtr = new NativeArray<int>(numAgg + 1, Allocator.Temp, NativeArrayOptions.ClearMemory);
-            for (int i = 0; i < nb; i++) aggPtr[aggId[i] + 1]++;
-            for (int a = 0; a < numAgg; a++) aggPtr[a + 1] += aggPtr[a];
-            var aggMembers = new NativeArray<int>(nb, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
-            var cursor = new NativeArray<int>(numAgg, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
-            for (int a = 0; a < numAgg; a++) cursor[a] = aggPtr[a];
-            for (int i = 0; i < nb; i++) { int a = aggId[i]; aggMembers[cursor[a]] = i; cursor[a]++; }
-            cursor.Dispose();
-
-            Bcoarse = arena.floatMat(numAgg * m, m);   // arena.floatMat clears (uninit=false)
-
-            var builder = arena.floatBSRBuilder(nb, numAgg, BR, m, math.max(1, nb));
-
-            float relTol = Consts.floatSqrtEps;
-
-            for (int a = 0; a < numAgg; a++)
-            {
-                int s = aggPtr[a], e = aggPtr[a + 1];
-                int k = e - s;                 // block-rows in this aggregate
-                int rows = k * BR;
-
-                // Local near-nullspace L = B restricted to this aggregate's rows (rows x m).
-                var L = new floatMxN(rows, m, Allocator.Temp, true);
-                for (int l = 0; l < k; l++)
-                {
-                    int gi = aggMembers[s + l];
-                    for (int r = 0; r < BR; r++)
-                        for (int c = 0; c < m; c++)
-                            L[l * BR + r, c] = B[gi * BR + r, c];
-                }
-
-                // uninit=false: R is UPPER-triangular, its lower triangle is never written but is
-                // copied into Bcoarse, so it must start zeroed (the ctor's bool is `uninit`, not
-                // `clear`).
-                var R = new floatMxN(m, m, Allocator.Temp, false);
-
-                // Modified Gram–Schmidt: L (in place) -> Q (orthonormal columns), R upper m x m,
-                // L_original = Q R.
-                for (int j = 0; j < m; j++)
-                {
-                    float initNorm = 0;
-                    for (int row = 0; row < rows; row++) initNorm += L[row, j] * L[row, j];
-                    initNorm = math.sqrt(initNorm);
-
-                    for (int i = 0; i < j; i++)
-                    {
-                        float dot = 0;
-                        for (int row = 0; row < rows; row++) dot += L[row, i] * L[row, j];
-                        R[i, j] = dot;
-                        for (int row = 0; row < rows; row++) L[row, j] -= dot * L[row, i];
-                    }
-
-                    float nrm = 0;
-                    for (int row = 0; row < rows; row++) nrm += L[row, j] * L[row, j];
-                    nrm = math.sqrt(nrm);
-
-                    // Relative gate against the column's own initial norm, plus an absolute floor so
-                    // a machine-tiny initNorm (whose relTol*initNorm underflows to ~0) cannot let an
-                    // FP-noise residual survive as a spurious coarse dof.
-                    if (nrm > relTol * initNorm && nrm > Consts.floatEpsilon)
-                    {
-                        R[j, j] = nrm;
-                        float inv = (float)1 / nrm;
-                        for (int row = 0; row < rows; row++) L[row, j] *= inv;
-                    }
-                    else
-                    {
-                        R[j, j] = 0;
-                        for (int row = 0; row < rows; row++) L[row, j] = (float)0;
-                    }
-                }
-
-                // Scatter Q into T (one BR x m block per member row) and R into the coarse
-                // near-nullspace block for aggregate a.
-                var blk = new floatMxN(BR, m, Allocator.Temp, true);
-                for (int l = 0; l < k; l++)
-                {
-                    int gi = aggMembers[s + l];
-                    for (int r = 0; r < BR; r++)
-                        for (int c = 0; c < m; c++)
-                            blk[r, c] = L[l * BR + r, c];
-                    builder.AddBlock(gi, a, in blk);
-                }
-                blk.Dispose();
-
-                for (int r = 0; r < m; r++)
-                    for (int c = 0; c < m; c++)
-                        Bcoarse[a * m + r, c] = R[r, c];
-
-                R.Dispose();
-                L.Dispose();
-            }
-
-            aggMembers.Dispose();
-            aggPtr.Dispose();
-
-            return builder.ToBSR(ref arena);
-        }
-
-        /// <summary>Standalone twin of <see cref="tentativeProlongator(in floatBSR, in Indices, int, in floatMxN, ref Arena, out floatMxN)"/>:
-        /// allocates <paramref name="Bcoarse"/> and the returned T from <paramref name="allocator"/>
-        /// instead of an arena (default Temp; caller owns disposal); all other assembly scratch is
-        /// Allocator.Temp, exactly as in the arena overload. See its doc comment for the full
-        /// algorithm contract.</summary>
         public static floatBSR tentativeProlongator(in floatBSR A, in Indices aggId, int numAgg,
             in floatMxN B, out floatMxN Bcoarse, Allocator allocator = Allocator.Temp)
         {
@@ -265,19 +147,9 @@ namespace LinearAlgebra.Sparse
 
         /// <summary>
         /// Tentative prolongator for the scalar default near-nullspace B = 1 (m = 1): each aggregate's
-        /// block-column is the normalized constant vector. Bcoarse is numAgg x 1.
+        /// block-column is the normalized constant vector. Bcoarse is numAgg x 1. Allocates via
+        /// <paramref name="allocator"/> (default Temp).
         /// </summary>
-        public static floatBSR tentativeProlongator(in floatBSR A, in Indices aggId, int numAgg,
-            ref Arena arena, out floatMxN Bcoarse)
-        {
-            int n = A.M_Rows;
-            var ones = arena.floatMat(n, 1);
-            for (int i = 0; i < n; i++) ones[i, 0] = (float)1;
-            return tentativeProlongator(in A, in aggId, numAgg, in ones, ref arena, out Bcoarse);
-        }
-
-        /// <summary>Standalone twin of the scalar default-near-nullspace overload above: allocates
-        /// via <paramref name="allocator"/> (default Temp) instead of an arena.</summary>
         public static floatBSR tentativeProlongator(in floatBSR A, in Indices aggId, int numAgg,
             out floatMxN Bcoarse, Allocator allocator = Allocator.Temp)
         {

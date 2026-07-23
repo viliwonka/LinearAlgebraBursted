@@ -36,7 +36,7 @@ namespace LinearAlgebra
                 throw new ArgumentException("randomized: maxIter must be >= 1");
         }
 
-        /// <summary>Throws unless <paramref name="ws"/> matches Arena.doubleSVDRandomizedCache(m, n, k, oversample) sizing (sketch width l = min(k+oversample, n)).</summary>
+        /// <summary>Throws unless <paramref name="ws"/> matches the doubleSVDRandomizedCache(m, n, k, oversample, allocator) constructor sizing (sketch width l = min(k+oversample, n)).</summary>
         static void RequireSvdRandomizedWorkspace(in doubleSVDRandomizedCache ws, int m, int n, int l)
         {
             bool ok =
@@ -56,14 +56,14 @@ namespace LinearAlgebra
             if (!ok)
                 throw new ArgumentException(
                     "randomized: workspace must be sized for this (m, n, k, oversample) — use " +
-                    "Arena.doubleSVDRandomizedCache(m, n, k, oversample) with the SAME k and oversample");
+                    "new doubleSVDRandomizedCache(m, n, k, oversample, allocator) with the SAME k and oversample");
         }
     }
 
     /// <summary>
     /// Reusable scratch storage for randomized (Halko-Martinsson-Tropp). The randomized SVD
     /// allocates a dozen intermediate buffers per call; allocate this ONCE via
-    /// Arena.doubleSVDRandomizedCache(m, n, k, oversample) and reuse it across same-shape calls
+    /// the Allocator ctor and reuse it across same-shape calls
     /// (SAME k and oversample) to make repeated randomized SVDs zero-alloc.
     ///
     /// All buffers are sized by the sketch width l = min(k + oversample, n): Omega (n x l), Y (m x l,
@@ -89,7 +89,7 @@ namespace LinearAlgebra
         public doubleMxN Vp;
         public doubleMxN UA;
 
-        /// <summary>Standalone allocation sized identically to <c>Arena.doubleSVDRandomizedCache(m, n, k, oversample)</c>. Pair with <see cref="Dispose"/>.</summary>
+        /// <summary>Allocates a randomized-SVD workspace for an m x n (m >= n) matrix, target rank k, and oversampling p (sketch width l = min(k + oversample, n)). Pair with <see cref="Dispose"/>.</summary>
         public doubleSVDRandomizedCache(int m, int n, int k, int oversample, Allocator allocator)
         {
             int l = math.min(k + oversample, n);
@@ -107,7 +107,7 @@ namespace LinearAlgebra
             UA = new doubleMxN(m, l, allocator);
         }
 
-        /// <summary>Standalone allocation sized identically to <c>Arena.doubleSVDRandomizedCache(m, n, k)</c> (default oversample 10). Pair with <see cref="Dispose"/>.</summary>
+        /// <summary>Allocates a randomized-SVD workspace with the default oversample (10). Pair with <see cref="Dispose"/>.</summary>
         public doubleSVDRandomizedCache(int m, int n, int k, Allocator allocator)
             : this(m, n, k, 10, allocator)
         {
@@ -129,42 +129,5 @@ namespace LinearAlgebra
             Vp.Dispose();
             UA.Dispose();
         }
-    }
-
-    public static partial class ArenaExtensions
-    {
-        /// <summary>
-        /// Allocates a randomized-SVD workspace for an m x n (m >= n) matrix, target rank k, and
-        /// oversampling p (sketch width l = min(k + oversample, n)) — see
-        /// <see cref="doubleSVDRandomizedCache"/> for layout. Pass the SAME k/oversample to
-        /// randomized's ref-workspace overload.
-        /// </summary>
-        public static doubleSVDRandomizedCache doubleSVDRandomizedCache(this ref Arena arena, int m, int n, int k, int oversample)
-        {
-            int l = math.min(k + oversample, n);
-            return new doubleSVDRandomizedCache
-            {
-                Omega = arena.doubleMat(n, l),
-                Y = arena.doubleMat(m, l),
-                R = arena.doubleMat(l, l),
-                qu = arena.doubleVec(m),
-                qw = arena.doubleVec(l),
-                Z = arena.doubleMat(n, l),
-                B = arena.doubleMat(l, n),
-                Bt = arena.doubleMat(n, l),
-                Up = arena.doubleMat(n, l),
-                Sb = arena.doubleVec(l),
-                Vp = arena.doubleMat(l, l),
-                UA = arena.doubleMat(m, l)
-            };
-        }
-
-        /// <summary>
-        /// Allocates a randomized-SVD workspace with the default oversample (10) — matches the
-        /// randomized convenience overloads (oversample 10, powerIters 2, maxIter
-        /// Consts.sweepBudget(l)).
-        /// </summary>
-        public static doubleSVDRandomizedCache doubleSVDRandomizedCache(this ref Arena arena, int m, int n, int k)
-            => arena.doubleSVDRandomizedCache(m, n, k, 10);
     }
 }

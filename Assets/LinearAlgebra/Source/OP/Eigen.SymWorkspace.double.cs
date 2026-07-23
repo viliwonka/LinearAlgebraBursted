@@ -11,19 +11,19 @@ namespace LinearAlgebra
     {
         /// <summary>
         /// Throws if <paramref name="ws"/> is not sized for an n x n symmetric eigenvalue problem
-        /// (three length-n vectors) — the layout produced by Arena.doubleEigenSymCache(n).
+        /// (three length-n vectors) — the layout produced by the doubleEigenSymCache(n, allocator) constructor.
         /// </summary>
         static void RequireEigenSymWorkspace(in doubleEigenSymCache ws, int n)
         {
             if (ws.eVec.N != n || ws.vVec.N != n || ws.pVec.N != n)
-                throw new ArgumentException("Eigen.valuesSymmetricInPlace: workspace must be sized for n (use Arena.doubleEigenSymCache(n))");
+                throw new ArgumentException("Eigen.valuesSymmetricInPlace: workspace must be sized for n (use new doubleEigenSymCache(n, allocator))");
         }
     }
 
     /// <summary>
     /// Reusable scratch for Eigen.valuesSymmetricInPlace (Householder tridiagonalization + implicit-shift
     /// QL). The op needs three length-n vectors (the off-diagonal e, the Householder vector v, and the
-    /// rank-2-update vector p). Allocate ONCE via Arena.doubleEigenSymCache(n) and reuse it across
+    /// rank-2-update vector p). Allocate ONCE via the Allocator ctor and reuse it across
     /// same-size calls so repeated symmetric eigenvalue solves are zero-alloc.
     /// </summary>
     public struct doubleEigenSymCache : IDisposable
@@ -32,7 +32,7 @@ namespace LinearAlgebra
         public doubleN vVec;
         public doubleN pVec;
 
-        /// <summary>Standalone allocation sized identically to <c>Arena.doubleEigenSymCache(n)</c>. Pair with <see cref="Dispose"/>.</summary>
+        /// <summary>Allocates a symmetric-eigenvalue workspace for an n x n matrix. Pair with <see cref="Dispose"/>.</summary>
         public doubleEigenSymCache(int n, Allocator allocator)
         {
             eVec = new doubleN(n, allocator);
@@ -49,12 +49,12 @@ namespace LinearAlgebra
         }
     }
 
+    // Kept: doubleChebyshev's ref-Arena constructor (Sparse/doubleChebyshev.cs) builds an
+    // doubleLanczosCache for its interior-eigenvalue-bound Lanczos run, which in turn needs this
+    // arena-tracked symWs factory. Not a general convenience overload -- do not add more callers.
     public static partial class ArenaExtensions
     {
-        /// <summary>
-        /// Allocates a symmetric-eigenvalue workspace for an n x n matrix. See
-        /// <see cref="doubleEigenSymCache"/> for reuse guidance.
-        /// </summary>
+        /// <summary>Allocates a symmetric-eigenvalue workspace for an n x n matrix, arena-tracked.</summary>
         public static doubleEigenSymCache doubleEigenSymCache(this ref Arena arena, int n)
         {
             return new doubleEigenSymCache

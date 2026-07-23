@@ -8,21 +8,21 @@ namespace LinearAlgebra
         /// <summary>
         /// Throws if <paramref name="ws"/> is not sized for an n x n pivoted-Cholesky problem. W (n x n,
         /// the symmetric working copy) is needed by decomp; bt (n, the permuted RHS)
-        /// by decompSolve. Matches Arena.fProxyCHOPCache(n).
+        /// by decompSolve. Matches the fProxyCHOPCache(n, allocator) constructor.
         /// </summary>
         static void RequireCholeskyPivotWorkspace(in fProxyCHOPCache ws, int n,
                                                   bool needW, bool needBt)
         {
             if (needW && (ws.W.M_Rows != n || ws.W.N_Cols != n))
-                throw new ArgumentException("CHOP: workspace W must be n x n (use Arena.fProxyCHOPCache(n))");
+                throw new ArgumentException("CHOP: workspace W must be n x n (use new fProxyCHOPCache(n, allocator))");
             if (needBt && ws.bt.N != n)
-                throw new ArgumentException("CHOP: workspace bt must have length n (use Arena.fProxyCHOPCache(n))");
+                throw new ArgumentException("CHOP: workspace bt must have length n (use new fProxyCHOPCache(n, allocator))");
         }
     }
 
     /// <summary>
     /// Reusable scratch for pivoted (rank-revealing) Cholesky (CHOP.decomp /
-    /// decompSolve). Allocate ONCE via Arena.fProxyCHOPCache(n) and reuse it across
+    /// decompSolve). Allocate ONCE via the Allocator ctor and reuse it across
     /// same-size calls. W (n x n) is the destroyable symmetric working copy the decomposition pivots
     /// on; bt (n) is the permuted right-hand side the solve gathers into.
     ///
@@ -36,7 +36,7 @@ namespace LinearAlgebra
         public fProxyMxN W;
         public fProxyN bt;
 
-        /// <summary>Standalone allocation sized identically to <c>Arena.fProxyCHOPCache(n)</c>. Pair with <see cref="Dispose"/>.</summary>
+        /// <summary>Allocates a pivoted-Cholesky workspace for an n x n matrix. Pair with <see cref="Dispose"/>.</summary>
         public fProxyCHOPCache(int n, Allocator allocator)
         {
             W = new fProxyMxN(n, n, allocator);
@@ -48,22 +48,6 @@ namespace LinearAlgebra
         {
             W.Dispose();
             bt.Dispose();
-        }
-    }
-
-    public static partial class ArenaExtensions
-    {
-        /// <summary>
-        /// Allocates a pivoted-Cholesky workspace for an n x n matrix. See
-        /// <see cref="fProxyCHOPCache"/> for reuse guidance.
-        /// </summary>
-        public static fProxyCHOPCache fProxyCHOPCache(this ref Arena arena, int n)
-        {
-            return new fProxyCHOPCache
-            {
-                W = arena.fProxyMat(n, n),
-                bt = arena.fProxyVec(n)
-            };
         }
     }
 }

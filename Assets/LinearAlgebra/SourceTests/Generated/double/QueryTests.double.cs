@@ -790,7 +790,7 @@ public class doubleQueryTests
             for (int i = 0; i < N; i++) q[i] = (double)(i) * (double)0.3 - (double)0.5;
 
             // --- doubleDistancesToRow / Column wrappers vs primitive ---
-            var dr = ArenaExtensions.doubleDistancesToRow(in A, in q, Metric.SqEuclidean);
+            var dr = Query.doubleDistancesToRow(in A, in q, Metric.SqEuclidean);
             var drRef = new doubleN(M, Allocator.Temp);
             Query.distancesToRow(in A, in q, Metric.SqEuclidean, ref drRef);
             AssertEqI(dr.N, M);
@@ -798,7 +798,7 @@ public class doubleQueryTests
 
             var qc = new doubleN(M, Allocator.Temp);
             for (int i = 0; i < M; i++) qc[i] = (double)(i) * (double)0.2;
-            var dcol = ArenaExtensions.doubleDistancesToColumn(in A, in qc, Metric.SqEuclidean);
+            var dcol = Query.doubleDistancesToColumn(in A, in qc, Metric.SqEuclidean);
             var dcolRef = new doubleN(N, Allocator.Temp);
             Query.distancesToColumn(in A, in qc, Metric.SqEuclidean, ref dcolRef);
             AssertEqI(dcol.N, N);

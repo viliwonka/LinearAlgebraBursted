@@ -13,7 +13,7 @@ namespace LinearAlgebra
         /// Throws if <paramref name="ws"/> is not sized for an m x n bidiagonalization. The common
         /// buffers (W m x n, uVec m, vVec n, wScratch n) are always required; leftU (m x n) is required
         /// only by the full <see cref="decomp"/> (which reconstructs U), not by
-        /// <see cref="values"/>. Matches Arena.doubleBidiagCache(m, n).
+        /// <see cref="values"/>. Matches the doubleBidiagCache(m, n, allocator) constructor.
         /// </summary>
         static void RequireBidiagWorkspace(in doubleBidiagCache ws, int m, int n, bool needLeftU)
         {
@@ -25,13 +25,13 @@ namespace LinearAlgebra
                 (!needLeftU || (ws.leftU.M_Rows == m && ws.leftU.N_Cols == n));
 
             if (!ok)
-                throw new ArgumentException("Bidiag: workspace must be sized for m x n (use Arena.doubleBidiagCache(m, n))");
+                throw new ArgumentException("Bidiag: workspace must be sized for m x n (use new doubleBidiagCache(m, n, allocator))");
         }
     }
 
     /// <summary>
     /// Reusable scratch for Golub-Kahan-Householder bidiagonalization (Bidiag.decomp /
-    /// values). Allocate ONCE via Arena.doubleBidiagCache(m, n) and reuse it across
+    /// values). Allocate ONCE via the Allocator ctor and reuse it across
     /// same-shape calls so repeated bidiagonalizations are zero-alloc.
     ///
     /// W (m x n) is the working copy of A reduced in place; leftU (m x n) stores the left reflectors
@@ -46,7 +46,7 @@ namespace LinearAlgebra
         public doubleN vVec;
         public doubleN wScratch;
 
-        /// <summary>Standalone allocation sized identically to <c>Arena.doubleBidiagCache(m, n)</c>. Pair with <see cref="Dispose"/>.</summary>
+        /// <summary>Allocates a bidiagonalization workspace for an m x n (m >= n) matrix. Pair with <see cref="Dispose"/>.</summary>
         public doubleBidiagCache(int m, int n, Allocator allocator)
         {
             W = new doubleMxN(m, n, allocator);
@@ -64,25 +64,6 @@ namespace LinearAlgebra
             uVec.Dispose();
             vVec.Dispose();
             wScratch.Dispose();
-        }
-    }
-
-    public static partial class ArenaExtensions
-    {
-        /// <summary>
-        /// Allocates a bidiagonalization workspace for an m x n (m >= n) matrix. See
-        /// <see cref="doubleBidiagCache"/> for reuse guidance.
-        /// </summary>
-        public static doubleBidiagCache doubleBidiagCache(this ref Arena arena, int m, int n)
-        {
-            return new doubleBidiagCache
-            {
-                W = arena.doubleMat(m, n),
-                leftU = arena.doubleMat(m, n),
-                uVec = arena.doubleVec(m),
-                vVec = arena.doubleVec(n),
-                wScratch = arena.doubleVec(n)
-            };
         }
     }
 }

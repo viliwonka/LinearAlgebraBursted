@@ -11,7 +11,7 @@ namespace LinearAlgebra
     {
         /// <summary>
         /// Throws if <paramref name="ws"/> is not sized for an m x n LQRP decomposition (W m x n,
-        /// v length n) — the layout produced by Arena.floatLQRPCache(m, n).
+        /// v length n) — the layout produced by the floatLQRPCache(m, n, allocator) constructor.
         /// </summary>
         static void RequireLQRPWorkspace(in floatLQRPCache ws, int m, int n)
         {
@@ -20,13 +20,13 @@ namespace LinearAlgebra
                 ws.v.N == n;
 
             if (!ok)
-                throw new ArgumentException("LQRP: workspace must be sized for m x n (use Arena.floatLQRPCache(m, n))");
+                throw new ArgumentException("LQRP: workspace must be sized for m x n (use new floatLQRPCache(m, n, allocator))");
         }
     }
 
     /// <summary>
     /// Reusable scratch for LQRP.decomp. Allocate ONCE (sized for the matrix shape) via
-    /// Arena.floatLQRPCache(m, n) and reuse it across many same-shape calls to avoid the per-call
+    /// the Allocator ctor and reuse it across many same-shape calls to avoid the per-call
     /// Allocator.Temp allocations decomp's allocating overload makes internally.
     ///
     /// W (m x n) holds the working copy of A, reduced to [L | reflectors] in place during the forward
@@ -40,7 +40,7 @@ namespace LinearAlgebra
         public floatMxN W;
         public floatN v;
 
-        /// <summary>Standalone allocation sized identically to <c>Arena.floatLQRPCache(m, n)</c>. Pair with <see cref="Dispose"/>.</summary>
+        /// <summary>Allocates an LQRP-decomposition workspace sized for an m x n (m &lt;= n) system. Pair with <see cref="Dispose"/>.</summary>
         public floatLQRPCache(int m, int n, Allocator allocator)
         {
             W = new floatMxN(m, n, allocator);
@@ -52,22 +52,6 @@ namespace LinearAlgebra
         {
             W.Dispose();
             v.Dispose();
-        }
-    }
-
-    public static partial class ArenaExtensions
-    {
-        /// <summary>
-        /// Allocates an LQRP-decomposition workspace sized for an m x n (m &lt;= n) system. See
-        /// <see cref="floatLQRPCache"/> for reuse guidance.
-        /// </summary>
-        public static floatLQRPCache floatLQRPCache(this ref Arena arena, int m, int n)
-        {
-            return new floatLQRPCache
-            {
-                W = arena.floatMat(m, n),
-                v = arena.floatVec(n)
-            };
         }
     }
 }

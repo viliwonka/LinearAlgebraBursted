@@ -1583,7 +1583,8 @@ public class doubleLUTests
         private void AssertLU(in doubleMxN A, in doubleMxN L, in doubleMxN U, bool pivoted) => AssertLU(in A, in L, in U, pivoted, 1E-6f);
         private void AssertLU(in doubleMxN A, in doubleMxN L, in doubleMxN U, bool pivoted, double precision)
         {
-            doubleMxN shouldBeZero = A - Blas.dot(L, U);
+            doubleMxN shouldBeZero = new doubleMxN(in A, Allocator.Temp);
+            doubleComp.subInPlace(shouldBeZero, Blas.dot(L, U));
 
             if (Analysis.isAnyNan(in shouldBeZero))
                 throw new System.Exception("TestJob: NaN detected");

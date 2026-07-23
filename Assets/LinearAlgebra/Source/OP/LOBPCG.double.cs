@@ -35,14 +35,14 @@ namespace LinearAlgebra
     /// <see cref="IterativeSolveStatus.Breakdown"/>.
     ///
     /// <b>Guard vectors:</b> the working block size comes from the cache (<c>ws.X.M_Rows</c>), not
-    /// from <c>k</c>. Allocating <c>Arena.doubleLOBPCGCache(n, k + guard)</c> and calling with wanted
-    /// count <c>k</c> makes the extra <c>guard</c> rows full participants in every step, but only the
-    /// <c>k</c> smallest pairs gate convergence and are returned -- gives the wanted pairs spectral
+    /// from <c>k</c>. Allocating <c>new doubleLOBPCGCache(n, k + guard, allocator)</c> and calling with
+    /// wanted count <c>k</c> makes the extra <c>guard</c> rows full participants in every step, but only
+    /// the <c>k</c> smallest pairs gate convergence and are returned -- gives the wanted pairs spectral
     /// separation room for clustered/near-degenerate spectra (e.g. a grid Laplacian's exact
     /// multiplicities). A cache sized exactly <c>k</c> has no guard rows.
     ///
     /// <b>Zero-alloc scope:</b> all O(n)-scale buffers live in <see cref="doubleLOBPCGCache"/>,
-    /// allocated once via <c>Arena.doubleLOBPCGCache(n, k)</c> and reused across calls.
+    /// allocated once via the Allocator ctor and reused across calls.
     ///
     /// <b>Convergence:</b> per-pair scale-invariant residual test ||A x_i - lambda_i B x_i|| &lt;=
     /// tol · scale_i with scale_i = min(normAEst·||x_i|| + |lambda_i|·normBEst·||x_i||_B,
@@ -656,30 +656,9 @@ namespace LinearAlgebra
             => lobpcg(in A, in B, ref ws, k, Consts.doubleSqrtEps, 1000);
 
         /// <summary>
-        /// LOBPCG over a dense SYMMETRIC matrix -- allocates the workspace from <paramref
-        /// name="arena"/> and calls the zero-alloc primitive. Returns the eigenvalues (length k,
-        /// ASCENDING); <paramref name="eigenvectors"/> is k x n (row i = eigenvector i). Both
-        /// buffers are the workspace's OWN X/lambda (no extra copy) -- the rest of the workspace
-        /// stays allocated in the arena, unused after this call, exactly like every other
-        /// arena-convenience wrapper in this library (e.g. <see cref="Eigen.lanczosVectors{TOp}"/>).
-        /// </summary>
-        public static doubleN lobpcg(ref Arena arena, in doubleMxN A, int k, out doubleMxN eigenvectors,
-                                      out LOBPCGInfo info, double tol, int maxIter)
-        {
-            var ws = arena.doubleLOBPCGCache(A.M_Rows, k);
-            info = lobpcg(in A, ref ws, k, tol, maxIter);
-            eigenvectors = ws.X;
-            return ws.lambda;
-        }
-
-        /// <summary>lobpcg (allocating) over a dense matrix with default tol/maxIter.</summary>
-        public static doubleN lobpcg(ref Arena arena, in doubleMxN A, int k, out doubleMxN eigenvectors, out LOBPCGInfo info)
-            => lobpcg(ref arena, in A, k, out eigenvectors, out info, Consts.doubleSqrtEps, 1000);
-
-        /// <summary>
-        /// LOBPCG over a dense SYMMETRIC matrix -- standalone twin of the arena overload above:
-        /// allocates the workspace via <paramref name="allocator"/> (default Temp) instead of an
-        /// arena. Returns the eigenvalues (length k, ASCENDING); <paramref name="eigenvectors"/> is
+        /// LOBPCG over a dense SYMMETRIC matrix -- allocates the workspace via <paramref
+        /// name="allocator"/> (default Temp) and calls the zero-alloc primitive. Returns the
+        /// eigenvalues (length k, ASCENDING); <paramref name="eigenvectors"/> is
         /// k x n (row i = eigenvector i). Both buffers are the workspace's OWN X/lambda (no extra
         /// copy) -- the caller owns disposing them.
         /// </summary>
@@ -704,29 +683,8 @@ namespace LinearAlgebra
         /// rescues -- convergence. A typical guard is a small handful (e.g. 3-8); <paramref name="guard"/>
         /// = 0 reproduces the guard-free overload exactly. <paramref name="eigenvectors"/> is the leading
         /// k x n block (ascending-sorted); the returned values are a fresh length-k vector.
-        /// </summary>
-        public static doubleN lobpcg(ref Arena arena, in doubleMxN A, int k, int guard, out doubleMxN eigenvectors,
-                                      out LOBPCGInfo info, double tol, int maxIter)
-        {
-            if (guard < 0) throw new ArgumentException("LOBPCG: guard must be >= 0");
-            var ws = arena.doubleLOBPCGCache(A.M_Rows, k + guard);
-            info = lobpcg(in A, ref ws, k, tol, maxIter);
-            eigenvectors = ws.X;
-            eigenvectors.M_Rows = k;                       // leading k rows are the k smallest (SortAscending ran)
-            var vals = arena.doubleVec(k);
-            for (int i = 0; i < k; i++) vals[i] = ws.lambda[i];
-            return vals;
-        }
-
-        /// <summary>lobpcg (allocating, guard vectors) over a dense matrix with default tol/maxIter.</summary>
-        public static doubleN lobpcg(ref Arena arena, in doubleMxN A, int k, int guard, out doubleMxN eigenvectors, out LOBPCGInfo info)
-            => lobpcg(ref arena, in A, k, guard, out eigenvectors, out info, Consts.doubleSqrtEps, 1000);
-
-        /// <summary>
-        /// LOBPCG over a dense symmetric matrix with <paramref name="guard"/> GUARD ("ghost")
-        /// vectors -- standalone twin of the arena guard overload above via <paramref
-        /// name="allocator"/> (default Temp). <paramref name="eigenvectors"/> and the returned
-        /// eigenvalues are both owned by the caller.
+        /// Allocates via <paramref name="allocator"/> (default Temp); <paramref name="eigenvectors"/>
+        /// and the returned eigenvalues are both owned by the caller.
         /// </summary>
         public static doubleN lobpcg(in doubleMxN A, int k, int guard, out doubleMxN eigenvectors,
                                       out LOBPCGInfo info, double tol, int maxIter, Allocator allocator = Allocator.Temp)
@@ -746,24 +704,7 @@ namespace LinearAlgebra
             => lobpcg(in A, k, guard, out eigenvectors, out info, Consts.doubleSqrtEps, 1000, allocator);
 
         /// <summary>
-        /// LOBPCG over a dense pencil (A, B) -- GENERALIZED eigenproblem, allocating. See the
-        /// standard dense overload's doc comment for the buffer-ownership contract.
-        /// </summary>
-        public static doubleN lobpcg(ref Arena arena, in doubleMxN A, in doubleMxN B, int k, out doubleMxN eigenvectors,
-                                      out LOBPCGInfo info, double tol, int maxIter)
-        {
-            var ws = arena.doubleLOBPCGCache(A.M_Rows, k);
-            info = lobpcg(in A, in B, ref ws, k, tol, maxIter);
-            eigenvectors = ws.X;
-            return ws.lambda;
-        }
-
-        /// <summary>lobpcg (allocating, generalized) over a dense pencil with default tol/maxIter.</summary>
-        public static doubleN lobpcg(ref Arena arena, in doubleMxN A, in doubleMxN B, int k, out doubleMxN eigenvectors, out LOBPCGInfo info)
-            => lobpcg(ref arena, in A, in B, k, out eigenvectors, out info, Consts.doubleSqrtEps, 1000);
-
-        /// <summary>
-        /// LOBPCG over a dense pencil (A, B) -- GENERALIZED eigenproblem, standalone twin via
+        /// LOBPCG over a dense pencil (A, B) -- GENERALIZED eigenproblem, allocating via
         /// <paramref name="allocator"/> (default Temp). See the standard dense Allocator
         /// overload's doc comment for the buffer-ownership contract.
         /// </summary>
@@ -814,20 +755,6 @@ namespace LinearAlgebra
         public static LOBPCGInfo lobpcg(in doubleBSR A, in doubleBSR B, ref doubleLOBPCGCache ws, int k)
             => lobpcg(in A, in B, ref ws, k, Consts.doubleSqrtEps, 1000);
 
-        /// <summary>lobpcg (allocating) over a BSR matrix. See the dense overload's doc comment.</summary>
-        public static doubleN lobpcg(ref Arena arena, in doubleBSR A, int k, out doubleMxN eigenvectors,
-                                      out LOBPCGInfo info, double tol, int maxIter)
-        {
-            var ws = arena.doubleLOBPCGCache(A.M_Rows, k);
-            info = lobpcg(in A, ref ws, k, tol, maxIter);
-            eigenvectors = ws.X;
-            return ws.lambda;
-        }
-
-        /// <summary>lobpcg (allocating) over a BSR matrix with default tol/maxIter.</summary>
-        public static doubleN lobpcg(ref Arena arena, in doubleBSR A, int k, out doubleMxN eigenvectors, out LOBPCGInfo info)
-            => lobpcg(ref arena, in A, k, out eigenvectors, out info, Consts.doubleSqrtEps, 1000);
-
         /// <summary>lobpcg (allocating, Allocator) over a BSR matrix. See the dense Allocator overload's doc comment.</summary>
         public static doubleN lobpcg(in doubleBSR A, int k, out doubleMxN eigenvectors,
                                       out LOBPCGInfo info, double tol, int maxIter, Allocator allocator = Allocator.Temp)
@@ -844,30 +771,11 @@ namespace LinearAlgebra
 
         /// <summary>
         /// LOBPCG over a block-sparse (BSR) matrix with <paramref name="guard"/> GUARD ("ghost") vectors
-        /// -- allocating. See the dense guard overload's doc comment: iterates on k + guard vectors,
-        /// returns the k smallest. This is the recommended entry point for the smallest eigenpairs of a
-        /// large sparse operator whose bottom spectrum is clustered/near-degenerate (e.g. a grid
-        /// Laplacian -- see <c>doubleGallery.doubleLaplacian2D</c>).
+        /// -- allocating via <paramref name="allocator"/> (default Temp). See the dense guard overload's
+        /// doc comment: iterates on k + guard vectors, returns the k smallest. This is the recommended
+        /// entry point for the smallest eigenpairs of a large sparse operator whose bottom spectrum is
+        /// clustered/near-degenerate (e.g. a grid Laplacian -- see <c>doubleGallery.doubleLaplacian2D</c>).
         /// </summary>
-        public static doubleN lobpcg(ref Arena arena, in doubleBSR A, int k, int guard, out doubleMxN eigenvectors,
-                                      out LOBPCGInfo info, double tol, int maxIter)
-        {
-            if (guard < 0) throw new ArgumentException("LOBPCG: guard must be >= 0");
-            var ws = arena.doubleLOBPCGCache(A.M_Rows, k + guard);
-            info = lobpcg(in A, ref ws, k, tol, maxIter);
-            eigenvectors = ws.X;
-            eigenvectors.M_Rows = k;
-            var vals = arena.doubleVec(k);
-            for (int i = 0; i < k; i++) vals[i] = ws.lambda[i];
-            return vals;
-        }
-
-        /// <summary>lobpcg (allocating, guard vectors) over a BSR matrix with default tol/maxIter.</summary>
-        public static doubleN lobpcg(ref Arena arena, in doubleBSR A, int k, int guard, out doubleMxN eigenvectors, out LOBPCGInfo info)
-            => lobpcg(ref arena, in A, k, guard, out eigenvectors, out info, Consts.doubleSqrtEps, 1000);
-
-        /// <summary>lobpcg (allocating, Allocator, guard vectors) over a BSR matrix. See the dense
-        /// Allocator guard overload's doc comment.</summary>
         public static doubleN lobpcg(in doubleBSR A, int k, int guard, out doubleMxN eigenvectors,
                                       out LOBPCGInfo info, double tol, int maxIter, Allocator allocator = Allocator.Temp)
         {
@@ -884,23 +792,6 @@ namespace LinearAlgebra
         /// <summary>lobpcg (allocating, Allocator, guard vectors) over a BSR matrix with default tol/maxIter.</summary>
         public static doubleN lobpcg(in doubleBSR A, int k, int guard, out doubleMxN eigenvectors, out LOBPCGInfo info, Allocator allocator = Allocator.Temp)
             => lobpcg(in A, k, guard, out eigenvectors, out info, Consts.doubleSqrtEps, 1000, allocator);
-
-        /// <summary>
-        /// LOBPCG over a block-sparse pencil (A, B) -- GENERALIZED eigenproblem, allocating. See
-        /// the standard BSR overload's doc comment for the buffer-ownership contract.
-        /// </summary>
-        public static doubleN lobpcg(ref Arena arena, in doubleBSR A, in doubleBSR B, int k, out doubleMxN eigenvectors,
-                                      out LOBPCGInfo info, double tol, int maxIter)
-        {
-            var ws = arena.doubleLOBPCGCache(A.M_Rows, k);
-            info = lobpcg(in A, in B, ref ws, k, tol, maxIter);
-            eigenvectors = ws.X;
-            return ws.lambda;
-        }
-
-        /// <summary>lobpcg (allocating, generalized) over a BSR pencil with default tol/maxIter.</summary>
-        public static doubleN lobpcg(ref Arena arena, in doubleBSR A, in doubleBSR B, int k, out doubleMxN eigenvectors, out LOBPCGInfo info)
-            => lobpcg(ref arena, in A, in B, k, out eigenvectors, out info, Consts.doubleSqrtEps, 1000);
 
         /// <summary>lobpcg (allocating, Allocator, generalized) over a BSR pencil. See the standard
         /// BSR Allocator overload's doc comment for the buffer-ownership contract.</summary>
@@ -963,25 +854,6 @@ namespace LinearAlgebra
             where TPre : struct, IdoublePreconditioner
             => lobpcg(in A, in B, in M, ref ws, k, Consts.doubleSqrtEps, 1000);
 
-        /// <summary>lobpcg (allocating) over a BSR matrix with ANY <see cref="IdoublePreconditioner"/>
-        /// (block-Jacobi). See the dense overload's doc comment.</summary>
-        public static doubleN lobpcg<TPre>(ref Arena arena, in doubleBSR A, in TPre M, int k,
-                                      out doubleMxN eigenvectors, out LOBPCGInfo info, double tol, int maxIter)
-            where TPre : struct, IdoublePreconditioner
-        {
-            var ws = arena.doubleLOBPCGCache(A.M_Rows, k);
-            info = lobpcg(in A, in M, ref ws, k, tol, maxIter);
-            eigenvectors = ws.X;
-            return ws.lambda;
-        }
-
-        /// <summary>lobpcg (allocating) over a BSR matrix with ANY <see cref="IdoublePreconditioner"/>
-        /// (block-Jacobi) and default tol/maxIter.</summary>
-        public static doubleN lobpcg<TPre>(ref Arena arena, in doubleBSR A, in TPre M, int k,
-                                      out doubleMxN eigenvectors, out LOBPCGInfo info)
-            where TPre : struct, IdoublePreconditioner
-            => lobpcg(ref arena, in A, in M, k, out eigenvectors, out info, Consts.doubleSqrtEps, 1000);
-
         /// <summary>lobpcg (allocating, Allocator) over a BSR matrix with ANY <see cref="IdoublePreconditioner"/>
         /// (block-Jacobi). See the dense Allocator overload's doc comment.</summary>
         public static doubleN lobpcg<TPre>(in doubleBSR A, in TPre M, int k,
@@ -1000,28 +872,6 @@ namespace LinearAlgebra
                                       out doubleMxN eigenvectors, out LOBPCGInfo info, Allocator allocator = Allocator.Temp)
             where TPre : struct, IdoublePreconditioner
             => lobpcg(in A, in M, k, out eigenvectors, out info, Consts.doubleSqrtEps, 1000, allocator);
-
-        /// <summary>
-        /// LOBPCG over a block-sparse pencil (A, B) with ANY <see cref="IdoublePreconditioner"/>
-        /// (block-Jacobi) -- GENERALIZED eigenproblem, allocating. See the standard
-        /// BSR+preconditioner overload's doc comment.
-        /// </summary>
-        public static doubleN lobpcg<TPre>(ref Arena arena, in doubleBSR A, in doubleBSR B, in TPre M, int k,
-                                      out doubleMxN eigenvectors, out LOBPCGInfo info, double tol, int maxIter)
-            where TPre : struct, IdoublePreconditioner
-        {
-            var ws = arena.doubleLOBPCGCache(A.M_Rows, k);
-            info = lobpcg(in A, in B, in M, ref ws, k, tol, maxIter);
-            eigenvectors = ws.X;
-            return ws.lambda;
-        }
-
-        /// <summary>lobpcg (allocating, generalized) over a BSR pencil with ANY
-        /// <see cref="IdoublePreconditioner"/> (block-Jacobi) and default tol/maxIter.</summary>
-        public static doubleN lobpcg<TPre>(ref Arena arena, in doubleBSR A, in doubleBSR B, in TPre M, int k,
-                                      out doubleMxN eigenvectors, out LOBPCGInfo info)
-            where TPre : struct, IdoublePreconditioner
-            => lobpcg(ref arena, in A, in B, in M, k, out eigenvectors, out info, Consts.doubleSqrtEps, 1000);
 
         /// <summary>lobpcg (allocating, Allocator, generalized) over a BSR pencil with ANY
         /// <see cref="IdoublePreconditioner"/> (block-Jacobi). See the standard BSR+preconditioner
@@ -1089,7 +939,7 @@ namespace LinearAlgebra
             for (int i = 0; i < count; i++)
                 for (int j = i + 1; j < count; j++)
                     if (ptrs[i] == ptrs[j])
-                        throw new ArgumentException("LOBPCG: workspace buffers must be distinct (use Arena.doubleLOBPCGCache(n, k))");
+                        throw new ArgumentException("LOBPCG: workspace buffers must be distinct (use new doubleLOBPCGCache(n, k, allocator))");
         }
 
         // Real VIEW (Data.Length/Length == m*m) over the leading m*m elements of the SAME (larger,

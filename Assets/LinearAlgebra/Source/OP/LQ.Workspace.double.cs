@@ -11,7 +11,7 @@ namespace LinearAlgebra
     {
         /// <summary>
         /// Throws if <paramref name="ws"/> is not sized for an m x n LQ decomposition (W m x n,
-        /// v length n) — the layout produced by Arena.doubleLQCache(m, n).
+        /// v length n) — the layout produced by the doubleLQCache(m, n, allocator) constructor.
         /// </summary>
         static void RequireLQWorkspace(in doubleLQCache ws, int m, int n)
         {
@@ -20,13 +20,13 @@ namespace LinearAlgebra
                 ws.v.N == n;
 
             if (!ok)
-                throw new ArgumentException("LQ: workspace must be sized for m x n (use Arena.doubleLQCache(m, n))");
+                throw new ArgumentException("LQ: workspace must be sized for m x n (use new doubleLQCache(m, n, allocator))");
         }
     }
 
     /// <summary>
     /// Reusable scratch for LQ.decomp. Allocate ONCE (sized for the matrix shape) via
-    /// Arena.doubleLQCache(m, n) and reuse it across many same-shape calls to avoid the per-call
+    /// the Allocator ctor and reuse it across many same-shape calls to avoid the per-call
     /// Allocator.Temp allocations decomp's allocating overload makes internally.
     ///
     /// W (m x n) holds the working copy of A, reduced to [L | 0] in place during the forward sweep
@@ -39,7 +39,7 @@ namespace LinearAlgebra
         public doubleMxN W;
         public doubleN v;
 
-        /// <summary>Standalone allocation sized identically to <c>Arena.doubleLQCache(m, n)</c>. Pair with <see cref="Dispose"/>.</summary>
+        /// <summary>Allocates an LQ-decomposition workspace sized for an m x n (m &lt;= n) system. Pair with <see cref="Dispose"/>.</summary>
         public doubleLQCache(int m, int n, Allocator allocator)
         {
             W = new doubleMxN(m, n, allocator);
@@ -51,22 +51,6 @@ namespace LinearAlgebra
         {
             W.Dispose();
             v.Dispose();
-        }
-    }
-
-    public static partial class ArenaExtensions
-    {
-        /// <summary>
-        /// Allocates an LQ-decomposition workspace sized for an m x n (m &lt;= n) system. See
-        /// <see cref="doubleLQCache"/> for reuse guidance.
-        /// </summary>
-        public static doubleLQCache doubleLQCache(this ref Arena arena, int m, int n)
-        {
-            return new doubleLQCache
-            {
-                W = arena.doubleMat(m, n),
-                v = arena.doubleVec(n)
-            };
         }
     }
 }

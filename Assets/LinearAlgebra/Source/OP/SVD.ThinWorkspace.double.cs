@@ -9,7 +9,7 @@ namespace LinearAlgebra
 {
     public static partial class SVD
     {
-        /// <summary>Throws unless <paramref name="ws"/> matches Arena.doubleSVDThinCache(m, n) sizing (BidiagWs is validated separately, by Bidiag.decomp itself).</summary>
+        /// <summary>Throws unless <paramref name="ws"/> matches the doubleSVDThinCache(m, n, allocator) constructor sizing (BidiagWs is validated separately, by Bidiag.decomp itself).</summary>
         static void RequireSvdThinWorkspace(in doubleSVDThinCache ws, int m, int n)
         {
             bool ok =
@@ -19,13 +19,13 @@ namespace LinearAlgebra
                 ws.Vt.M_Rows == n && ws.Vt.N_Cols == n;
 
             if (!ok)
-                throw new ArgumentException("SVD: workspace must be sized for m x n (use Arena.doubleSVDThinCache(m, n))");
+                throw new ArgumentException("SVD: workspace must be sized for m x n (use new doubleSVDThinCache(m, n, allocator))");
         }
     }
 
     /// <summary>
     /// Reusable scratch for SVD.thin (Golub-Kahan bidiagonalization + implicit-shift bidiagonal QR).
-    /// Allocate ONCE (sized for the matrix shape) via Arena.doubleSVDThinCache(m, n) and reuse it across
+    /// Allocate ONCE (sized for the matrix shape) via the Allocator ctor and reuse it across
     /// many same-shape calls to avoid the per-call Allocator.Temp allocations thin's allocating
     /// overload makes internally.
     ///
@@ -43,7 +43,7 @@ namespace LinearAlgebra
         public doubleMxN Ut;
         public doubleMxN Vt;
 
-        /// <summary>Standalone allocation sized identically to <c>Arena.doubleSVDThinCache(m, n)</c>. Pair with <see cref="Dispose"/>.</summary>
+        /// <summary>Allocates a thin workspace for an m x n (m >= n) system. Pair with <see cref="Dispose"/>.</summary>
         public doubleSVDThinCache(int m, int n, Allocator allocator)
         {
             BidiagWs = new doubleBidiagCache(m, n, allocator);
@@ -63,27 +63,6 @@ namespace LinearAlgebra
             eVec.Dispose();
             Ut.Dispose();
             Vt.Dispose();
-        }
-    }
-
-    public static partial class ArenaExtensions
-    {
-        /// <summary>
-        /// Allocates an thin workspace for an m x n (m >= n) system — see
-        /// <see cref="doubleSVDThinCache"/> for layout. Persistent in this arena; create once outside a
-        /// hot loop and pass to thin's ref-workspace overload.
-        /// </summary>
-        public static doubleSVDThinCache doubleSVDThinCache(this ref Arena arena, int m, int n)
-        {
-            return new doubleSVDThinCache
-            {
-                BidiagWs = arena.doubleBidiagCache(m, n),
-                B = arena.doubleMat(n, n),
-                dVec = arena.doubleVec(n),
-                eVec = arena.doubleVec(n),
-                Ut = arena.doubleMat(n, m),
-                Vt = arena.doubleMat(n, n)
-            };
         }
     }
 }

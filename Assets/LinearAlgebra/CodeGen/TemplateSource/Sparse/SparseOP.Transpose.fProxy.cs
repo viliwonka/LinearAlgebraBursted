@@ -10,18 +10,10 @@ namespace LinearAlgebra.Sparse
         /// Materialized transpose: allocates and returns Aᵀ (block grid and per-block dimensions
         /// swapped, each stored block transposed). For SYMMETRIC storage A == Aᵀ, so this returns
         /// a plain deep copy. O(nnzb·BR·BC + BlockCols). For repeated (per-frame) transposes of a
-        /// fixed-topology matrix, use the destination-reuse overload instead.
+        /// fixed-topology matrix, use the destination-reuse overload instead. Allocates from
+        /// <paramref name="allocator"/> (default Temp); caller owns disposing the returned
+        /// <see cref="fProxyBSR"/>.
         /// </summary>
-        public static fProxyBSR transpose(in fProxyBSR A, ref Arena arena)
-        {
-            var At = arena.fProxyBSR(A.BlockCols, A.BlockRows, A.BC, A.BR, A.Nnzb, true, A.Symmetric);
-            transpose(in A, ref At);
-            return At;
-        }
-
-        /// <summary>Standalone twin of <see cref="transpose(in fProxyBSR, ref Arena)"/>: allocates
-        /// the transposed matrix from <paramref name="allocator"/> instead of an arena (default
-        /// Temp); caller owns disposing the returned <see cref="fProxyBSR"/>.</summary>
         public static fProxyBSR transpose(in fProxyBSR A, Allocator allocator = Allocator.Temp)
         {
             var At = new fProxyBSR(A.BlockCols, A.BlockRows, A.BC, A.BR, A.Nnzb, allocator, true, A.Symmetric);

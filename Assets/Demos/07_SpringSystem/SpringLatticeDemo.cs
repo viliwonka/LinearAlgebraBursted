@@ -28,7 +28,6 @@ namespace LinearAlgebraDemos
         const float Spacing = 0.25f;
         const float H = 1f / 60f;
 
-        Arena arena;
         floatBSR A;
         floatIC0 precond;
         bool built;
@@ -51,7 +50,7 @@ namespace LinearAlgebraDemos
 
         void TearDown()
         {
-            if (built) { arena.Dispose(); built = false; }
+            if (built) { A.Dispose(); precond.Dispose(); built = false; }
             if (pos.IsCreated) pos.Dispose();
             if (vel.IsCreated) vel.Dispose();
             if (edges.IsCreated) edges.Dispose();
@@ -99,7 +98,6 @@ namespace LinearAlgebraDemos
                 }
 
             // assemble A = M + h²·k·L once, symmetric LOWER-block storage
-            arena = new Arena(Allocator.Persistent);
             float h2k = H * H * stiffness;
             var builder = new floatBSRBuilder(n, n, 3, 3, Allocator.Temp, edgeCount * 2 + n);
             var degree = new NativeArray<float>(n, Allocator.Temp);
@@ -118,9 +116,9 @@ namespace LinearAlgebraDemos
             }
             degree.Dispose();
 
-            A = builder.ToBSRSymmetric(ref arena);
+            A = builder.ToBSRSymmetric(Allocator.Persistent);
             builder.Dispose();
-            precond = arena.floatIC0(in A);
+            precond = new floatIC0(in A, Allocator.Persistent);
 
             built = true;
             builtStiffness = stiffness; builtMass = nodeMass;

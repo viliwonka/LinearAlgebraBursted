@@ -67,7 +67,6 @@ namespace LinearAlgebraDemos.Tests
             const int K = 3;
             int n = nodes.Length * 3;
 
-            var arena = new Arena(Allocator.Temp);
             var builder = new floatBSRBuilder(nodes.Length, nodes.Length, 3, 3, Allocator.Temp, bars.Count * 27);
 
             foreach (var bar in bars)
@@ -93,13 +92,13 @@ namespace LinearAlgebraDemos.Tests
                         builder.AddValue(3 * node + ddof, 3 * node + ddof, 1e3f);
                 }
 
-            var A = builder.ToBSRSymmetric(ref arena);
+            var A = builder.ToBSRSymmetric(Allocator.Temp);
             builder.Dispose();
 
-            var precond = arena.floatIC0(in A);
+            var precond = new floatIC0(in A, Allocator.Temp);
             // guard vectors: the doubly-symmetric frame has a near-degenerate soft cluster, so
             // iterate on K+4 vectors and return the K smallest (see BuildingFrameStabilityDemo).
-            var cache = arena.floatLOBPCGCache(n, K + 4);
+            var cache = new floatLOBPCGCache(n, K + 4, Allocator.Temp);
             var outStats = new NativeArray<float>(2, Allocator.TempJob);
 
             var job = new TrussEigenJobIC0
@@ -144,7 +143,6 @@ namespace LinearAlgebraDemos.Tests
 
             phi.Dispose(); Aphi.Dispose();
             outStats.Dispose();
-            arena.Dispose();
         }
     }
 }

@@ -2,9 +2,8 @@ using Unity.Collections;
 
 namespace LinearAlgebra
 {
-    // Standalone (non-arena) allocating overloads for the single-output FFT spectrum reductions.
-    // Same semantics as ArenaExtensions.FFT.fProxy.cs but allocate their own output buffer via
-    // allocator instead of drawing from an arena.
+    // Standalone allocating overloads for the single-output FFT spectrum reductions: allocate
+    // their own output buffer via allocator.
     public static partial class FFT
     {
         /// <summary>Per-bin magnitude sqrt(re² + im²) as a fresh vector.</summary>

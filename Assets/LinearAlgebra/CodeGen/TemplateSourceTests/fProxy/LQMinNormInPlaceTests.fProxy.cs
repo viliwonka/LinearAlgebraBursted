@@ -57,10 +57,13 @@ public class fProxyLQMinNormInPlaceTests
             var x = new fProxyN(n, Allocator.Temp);
             LQ.minNormSolveInPlace(ref Ainp, in b, ref x);
 
-            Assert.IsTrue(Analysis.isZero(xRef - x, Tol()));
+            var dx = new fProxyN(in xRef, Allocator.Temp);
+            fProxyComp.subInPlace(dx, x);
+            Assert.IsTrue(Analysis.isZero(dx, Tol()));
             // b untouched by the in-place solve.
             var b2 = GenerateOP.fProxyRandomVec(m, -5f, 5f, 91002);
-            Assert.IsTrue(Analysis.isZero(b - b2, (fProxy)0));
+            fProxyComp.subInPlace(b2, b);
+            Assert.IsTrue(Analysis.isZero(b2, (fProxy)0));
         }
 
         void WorkspaceEquivalence()
@@ -77,7 +80,9 @@ public class fProxyLQMinNormInPlaceTests
             var ws = new fProxyLQMinNormCache(m, n, Allocator.Temp);
             LQ.minNormSolveInPlace(ref Ainp, in b, ref x, ref ws);
 
-            Assert.IsTrue(Analysis.isZero(xRef - x, Tol()));
+            var dx = new fProxyN(in xRef, Allocator.Temp);
+            fProxyComp.subInPlace(dx, x);
+            Assert.IsTrue(Analysis.isZero(dx, Tol()));
         }
 
         void MultiRhsEquivalence()
@@ -93,10 +98,13 @@ public class fProxyLQMinNormInPlaceTests
             var X = new fProxyMxN(n, k, Allocator.Temp);
             LQ.minNormSolveInPlace(ref Ainp, in B, ref X);
 
-            Assert.IsTrue(Analysis.isZero(XRef - X, Tol()));
+            var dX = new fProxyMxN(in XRef, Allocator.Temp);
+            fProxyComp.subInPlace(dX, X);
+            Assert.IsTrue(Analysis.isZero(dX, Tol()));
             // B untouched by the in-place solve.
             var B2 = GenerateOP.fProxyRandomMat(m, k, -3f, 3f, 93002);
-            Assert.IsTrue(Analysis.isZero(B - B2, (fProxy)0));
+            fProxyComp.subInPlace(B2, B);
+            Assert.IsTrue(Analysis.isZero(B2, (fProxy)0));
         }
     }
 

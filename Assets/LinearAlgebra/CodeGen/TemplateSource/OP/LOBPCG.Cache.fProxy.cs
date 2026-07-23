@@ -8,61 +8,61 @@ namespace LinearAlgebra
         /// <summary>
         /// Throws if <paramref name="ws"/> is not sized for an n-dimensional symmetric operator
         /// run for a <paramref name="k"/>-eigenpair LOBPCG solve -- the layout produced by
-        /// <c>Arena.fProxyLOBPCGCache(n, k)</c>.
+        /// the fProxyLOBPCGCache(n, k, allocator) constructor.
         /// </summary>
         static void RequireLOBPCGWorkspace(in fProxyLOBPCGCache ws, int n, int k)
         {
             if (ws.X.M_Rows != k || ws.X.N_Cols != n)
-                throw new ArgumentException("LOBPCG: workspace X must be k x n (use Arena.fProxyLOBPCGCache(n, k))");
+                throw new ArgumentException("LOBPCG: workspace X must be k x n (use new fProxyLOBPCGCache(n, k, allocator))");
             if (ws.AX.M_Rows != k || ws.AX.N_Cols != n)
-                throw new ArgumentException("LOBPCG: workspace AX must be k x n (use Arena.fProxyLOBPCGCache(n, k))");
+                throw new ArgumentException("LOBPCG: workspace AX must be k x n (use new fProxyLOBPCGCache(n, k, allocator))");
             if (ws.W.M_Rows != k || ws.W.N_Cols != n)
-                throw new ArgumentException("LOBPCG: workspace W must be k x n (use Arena.fProxyLOBPCGCache(n, k))");
+                throw new ArgumentException("LOBPCG: workspace W must be k x n (use new fProxyLOBPCGCache(n, k, allocator))");
             if (ws.AW.M_Rows != k || ws.AW.N_Cols != n)
-                throw new ArgumentException("LOBPCG: workspace AW must be k x n (use Arena.fProxyLOBPCGCache(n, k))");
+                throw new ArgumentException("LOBPCG: workspace AW must be k x n (use new fProxyLOBPCGCache(n, k, allocator))");
             if (ws.P.M_Rows != k || ws.P.N_Cols != n)
-                throw new ArgumentException("LOBPCG: workspace P must be k x n (use Arena.fProxyLOBPCGCache(n, k))");
+                throw new ArgumentException("LOBPCG: workspace P must be k x n (use new fProxyLOBPCGCache(n, k, allocator))");
             if (ws.AP.M_Rows != k || ws.AP.N_Cols != n)
-                throw new ArgumentException("LOBPCG: workspace AP must be k x n (use Arena.fProxyLOBPCGCache(n, k))");
+                throw new ArgumentException("LOBPCG: workspace AP must be k x n (use new fProxyLOBPCGCache(n, k, allocator))");
             if (ws.R.M_Rows != k || ws.R.N_Cols != n)
-                throw new ArgumentException("LOBPCG: workspace R must be k x n (use Arena.fProxyLOBPCGCache(n, k))");
+                throw new ArgumentException("LOBPCG: workspace R must be k x n (use new fProxyLOBPCGCache(n, k, allocator))");
             if (ws.Xnext.M_Rows != k || ws.Xnext.N_Cols != n)
-                throw new ArgumentException("LOBPCG: workspace Xnext must be k x n (use Arena.fProxyLOBPCGCache(n, k))");
+                throw new ArgumentException("LOBPCG: workspace Xnext must be k x n (use new fProxyLOBPCGCache(n, k, allocator))");
             if (ws.Pnext.M_Rows != k || ws.Pnext.N_Cols != n)
-                throw new ArgumentException("LOBPCG: workspace Pnext must be k x n (use Arena.fProxyLOBPCGCache(n, k))");
+                throw new ArgumentException("LOBPCG: workspace Pnext must be k x n (use new fProxyLOBPCGCache(n, k, allocator))");
 
             if (ws.BX.M_Rows != k || ws.BX.N_Cols != n)
-                throw new ArgumentException("LOBPCG: workspace BX must be k x n (use Arena.fProxyLOBPCGCache(n, k))");
+                throw new ArgumentException("LOBPCG: workspace BX must be k x n (use new fProxyLOBPCGCache(n, k, allocator))");
             if (ws.BW.M_Rows != k || ws.BW.N_Cols != n)
-                throw new ArgumentException("LOBPCG: workspace BW must be k x n (use Arena.fProxyLOBPCGCache(n, k))");
+                throw new ArgumentException("LOBPCG: workspace BW must be k x n (use new fProxyLOBPCGCache(n, k, allocator))");
             if (ws.BP.M_Rows != k || ws.BP.N_Cols != n)
-                throw new ArgumentException("LOBPCG: workspace BP must be k x n (use Arena.fProxyLOBPCGCache(n, k))");
+                throw new ArgumentException("LOBPCG: workspace BP must be k x n (use new fProxyLOBPCGCache(n, k, allocator))");
 
             if (ws.lambda.N != k)
-                throw new ArgumentException("LOBPCG: workspace lambda must have length k (use Arena.fProxyLOBPCGCache(n, k))");
+                throw new ArgumentException("LOBPCG: workspace lambda must have length k (use new fProxyLOBPCGCache(n, k, allocator))");
             if (ws.residual.N != k)
-                throw new ArgumentException("LOBPCG: workspace residual must have length k (use Arena.fProxyLOBPCGCache(n, k))");
+                throw new ArgumentException("LOBPCG: workspace residual must have length k (use new fProxyLOBPCGCache(n, k, allocator))");
             if (ws.resScale.N != k)
-                throw new ArgumentException("LOBPCG: workspace resScale must have length k (use Arena.fProxyLOBPCGCache(n, k))");
+                throw new ArgumentException("LOBPCG: workspace resScale must have length k (use new fProxyLOBPCGCache(n, k, allocator))");
             if (ws.xBnorm.N != k)
-                throw new ArgumentException("LOBPCG: workspace xBnorm must have length k (use Arena.fProxyLOBPCGCache(n, k))");
+                throw new ArgumentException("LOBPCG: workspace xBnorm must have length k (use new fProxyLOBPCGCache(n, k, allocator))");
 
             if (ws.rowIn.N != n || ws.rowOut.N != n)
-                throw new ArgumentException("LOBPCG: workspace rowIn/rowOut must have length n (use Arena.fProxyLOBPCGCache(n, k))");
+                throw new ArgumentException("LOBPCG: workspace rowIn/rowOut must have length n (use new fProxyLOBPCGCache(n, k, allocator))");
 
             int cap = 3 * k;
             if (!ws.Gram.IsSquare || ws.Gram.M_Rows != cap)
-                throw new ArgumentException("LOBPCG: workspace Gram must be 3k x 3k (use Arena.fProxyLOBPCGCache(n, k))");
+                throw new ArgumentException("LOBPCG: workspace Gram must be 3k x 3k (use new fProxyLOBPCGCache(n, k, allocator))");
             if (!ws.H.IsSquare || ws.H.M_Rows != cap)
-                throw new ArgumentException("LOBPCG: workspace H must be 3k x 3k (use Arena.fProxyLOBPCGCache(n, k))");
+                throw new ArgumentException("LOBPCG: workspace H must be 3k x 3k (use new fProxyLOBPCGCache(n, k, allocator))");
             if (!ws.L.IsSquare || ws.L.M_Rows != cap)
-                throw new ArgumentException("LOBPCG: workspace L must be 3k x 3k (use Arena.fProxyLOBPCGCache(n, k))");
+                throw new ArgumentException("LOBPCG: workspace L must be 3k x 3k (use new fProxyLOBPCGCache(n, k, allocator))");
             if (!ws.Atrans.IsSquare || ws.Atrans.M_Rows != cap)
-                throw new ArgumentException("LOBPCG: workspace Atrans must be 3k x 3k (use Arena.fProxyLOBPCGCache(n, k))");
+                throw new ArgumentException("LOBPCG: workspace Atrans must be 3k x 3k (use new fProxyLOBPCGCache(n, k, allocator))");
             if (!ws.Y.IsSquare || ws.Y.M_Rows != cap)
-                throw new ArgumentException("LOBPCG: workspace Y must be 3k x 3k (use Arena.fProxyLOBPCGCache(n, k))");
+                throw new ArgumentException("LOBPCG: workspace Y must be 3k x 3k (use new fProxyLOBPCGCache(n, k, allocator))");
             if (!ws.C.IsSquare || ws.C.M_Rows != cap)
-                throw new ArgumentException("LOBPCG: workspace C must be 3k x 3k (use Arena.fProxyLOBPCGCache(n, k))");
+                throw new ArgumentException("LOBPCG: workspace C must be 3k x 3k (use new fProxyLOBPCGCache(n, k, allocator))");
         }
     }
 
@@ -71,7 +71,7 @@ namespace LinearAlgebra
     /// smallest eigenpairs of an n-dimensional symmetric operator, or the k smallest of the
     /// GENERALIZED pencil (A, B) -- the SAME cache and its SAME shape serve both, see
     /// <see cref="BX"/>/<see cref="BW"/>/<see cref="BP"/>). Sized for k eigenpairs over an
-    /// n-dimensional operator. Allocate ONCE via <c>Arena.fProxyLOBPCGCache(n, k)</c> and reuse it
+    /// n-dimensional operator. Allocate ONCE via the Allocator ctor and reuse it
     /// across same-shape calls so repeated solves are zero-alloc at the O(n) scale (see the
     /// class doc comment on <see cref="LOBPCG"/> for the one exception: the tiny O(k)-sized
     /// Rayleigh-Ritz eigensolve still uses a few small, bounded <c>Allocator.Temp</c> scratch
@@ -161,7 +161,7 @@ namespace LinearAlgebra
         /// LOGICAL view (see <c>Eigen.View</c>) -- never a fresh allocation.</summary>
         public fProxyMxN Gram, H, L, Atrans, Y, C;
 
-        /// <summary>Standalone allocation sized identically to <c>Arena.fProxyLOBPCGCache(n, k)</c>. Pair with <see cref="Dispose"/>.</summary>
+        /// <summary>Allocates an LOBPCG workspace for a k-eigenpair solve over an n-dimensional symmetric operator. Pair with <see cref="Dispose"/>.</summary>
         public fProxyLOBPCGCache(int n, int k, Allocator allocator)
         {
             int cap = 3 * k;
@@ -200,47 +200,6 @@ namespace LinearAlgebra
             lambda.Dispose(); residual.Dispose(); resScale.Dispose(); xBnorm.Dispose();
             rowIn.Dispose(); rowOut.Dispose();
             Gram.Dispose(); H.Dispose(); L.Dispose(); Atrans.Dispose(); Y.Dispose(); C.Dispose();
-        }
-    }
-
-    public static partial class ArenaExtensions
-    {
-        /// <summary>
-        /// Allocates an LOBPCG workspace for a k-eigenpair solve over an n-dimensional symmetric
-        /// operator (standard B=I or generalized pencil (A, B) -- the SAME layout serves both, see
-        /// <see cref="fProxyLOBPCGCache"/>'s BX/BW/BP fields). See <see cref="fProxyLOBPCGCache"/>
-        /// for reuse guidance.
-        /// </summary>
-        public static fProxyLOBPCGCache fProxyLOBPCGCache(this ref Arena arena, int n, int k)
-        {
-            int cap = 3 * k;
-            return new fProxyLOBPCGCache
-            {
-                X = arena.fProxyMat(k, n),
-                AX = arena.fProxyMat(k, n),
-                W = arena.fProxyMat(k, n),
-                AW = arena.fProxyMat(k, n),
-                P = arena.fProxyMat(k, n),
-                AP = arena.fProxyMat(k, n),
-                R = arena.fProxyMat(k, n),
-                Xnext = arena.fProxyMat(k, n),
-                Pnext = arena.fProxyMat(k, n),
-                BX = arena.fProxyMat(k, n),
-                BW = arena.fProxyMat(k, n),
-                BP = arena.fProxyMat(k, n),
-                lambda = arena.fProxyVec(k),
-                residual = arena.fProxyVec(k),
-                resScale = arena.fProxyVec(k),
-                xBnorm = arena.fProxyVec(k),
-                rowIn = arena.fProxyVec(n),
-                rowOut = arena.fProxyVec(n),
-                Gram = arena.fProxyMat(cap, cap),
-                H = arena.fProxyMat(cap, cap),
-                L = arena.fProxyMat(cap, cap),
-                Atrans = arena.fProxyMat(cap, cap),
-                Y = arena.fProxyMat(cap, cap),
-                C = arena.fProxyMat(cap, cap),
-            };
         }
     }
 }

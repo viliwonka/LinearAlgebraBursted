@@ -32,7 +32,6 @@ namespace LinearAlgebraDemos
         int SrcNode => 0;
         int GndNode => NodeCount - 1;
 
-        Arena arena;
         floatBSR A;
         floatILU0 precond;
         bool built;
@@ -52,15 +51,14 @@ namespace LinearAlgebraDemos
 
         void OnDisable()
         {
-            if (built) { arena.Dispose(); built = false; }
+            if (built) { A.Dispose(); precond.Dispose(); built = false; }
             if (voltages.IsCreated) voltages.Dispose();
             if (outStats.IsCreated) outStats.Dispose();
         }
 
         void Build()
         {
-            if (built) arena.Dispose();
-            arena = new Arena(Allocator.Persistent);
+            if (built) { A.Dispose(); precond.Dispose(); }
 
             int n = NodeCount, nu = Unknowns;
             float g = 1f / resistance;
@@ -85,9 +83,9 @@ namespace LinearAlgebraDemos
             builder.AddValue(SrcNode, rSrc, 1f); builder.AddValue(rSrc, SrcNode, 1f);
             builder.AddValue(GndNode, rGnd, 1f); builder.AddValue(rGnd, GndNode, 1f);
 
-            A = builder.ToBSR(ref arena);   // full storage: BiCGStab path, no symmetry claim
+            A = builder.ToBSR(Allocator.Persistent);   // full storage: BiCGStab path, no symmetry claim
             builder.Dispose();
-            precond = arena.floatILU0(in A);
+            precond = new floatILU0(in A, Allocator.Persistent);
 
             built = true; builtR = resistance; builtC = capacitance;
         }

@@ -37,7 +37,7 @@ namespace LinearAlgebra.ML
         /// <paramref name="assignment"/> N output cluster labels in [0, k); always consistent with returned centroids.
         /// <paramref name="inertia"/>    Final total SSE; always consistent with returned centroids and assignment.
         /// <paramref name="iters"/>      Actual iteration count in [1, maxIter].
-        /// <paramref name="ws"/>         Pre-allocated workspace — Arena.doubleKMeansCache(N, D, k).
+        /// <paramref name="ws"/>         Pre-allocated workspace — new doubleKMeansCache(N, D, k, allocator).
         /// </summary>
         public static void fit(
             in doubleMxN X,
@@ -322,66 +322,6 @@ namespace LinearAlgebra.ML
         // =========================================================================
         // ALLOCATING CONVENIENCE WRAPPER — explicit init
         // =========================================================================
-
-        /// <summary>
-        /// Validates inputs, then allocates centroids (k×D), assignment (N), and workspace
-        /// from <paramref name="arena"/> and delegates to the workspace overload.
-        /// All outputs are arena-owned. Guards fire before any arena allocation so that
-        /// no memory is orphaned on invalid input.
-        ///
-        /// For multiple restarts: call the workspace overload directly so scratch can be
-        /// reused across calls. Compare <paramref name="inertia"/> values and keep the best.
-        /// </summary>
-        public static void fit(
-            ref Arena arena,
-            in doubleMxN X,
-            int k,
-            uint seed,
-            int maxIter,
-            KMeansInit init,
-            out doubleMxN centroids,
-            out Indices assignment,
-            out double inertia,
-            out int iters)
-        {
-            // Validate before allocating so invalid args cannot orphan arena memory.
-            if (X.M_Rows == 0 || X.N_Cols == 0)
-                throw new InvalidOperationException("KMeans.fit: X is empty");
-            if (k <= 0)
-                throw new ArgumentException("KMeans.fit: k must be >= 1");
-            if (maxIter < 1)
-                throw new ArgumentException("KMeans.fit: maxIter must be >= 1");
-
-            int N = X.M_Rows;
-            int D = X.N_Cols;
-            int kk = math.min(k, N);  // match the primary overload's clamp
-            centroids  = arena.doubleMat(kk, D);
-            assignment = arena.Indices(N);
-            var ws     = arena.doubleKMeansCache(N, D, kk);
-            fit(in X, k, seed, maxIter, init, ref centroids, ref assignment,
-                   out inertia, out iters, ref ws);
-        }
-
-        // =========================================================================
-        // ALLOCATING CONVENIENCE WRAPPER — defaults to KMeansPlusPlus
-        // =========================================================================
-
-        /// <summary>
-        /// Calls <see cref="fit(ref Arena,in doubleMxN,int,uint,int,KMeansInit,out doubleMxN,out Indices,out double,out int)"/>
-        /// with <c>init = KMeansInit.KMeansPlusPlus</c>.
-        /// </summary>
-        public static void fit(
-            ref Arena arena,
-            in doubleMxN X,
-            int k,
-            uint seed,
-            int maxIter,
-            out doubleMxN centroids,
-            out Indices assignment,
-            out double inertia,
-            out int iters)
-            => fit(ref arena, in X, k, seed, maxIter, KMeansInit.KMeansPlusPlus,
-                      out centroids, out assignment, out inertia, out iters);
 
         // =========================================================================
         // ALLOCATING CONVENIENCE WRAPPER (Allocator) — explicit init

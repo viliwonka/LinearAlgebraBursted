@@ -13,7 +13,7 @@ namespace LinearAlgebra
     /// mixed-radix (2·4^k = two radix-4 sub-FFTs + one radix-2 combine) dispatch for any power-of-two
     /// length ≤ n, eliminating per-element cos/sin from the hot loop. The butterfly reads its
     /// per-stage W^1 from sw1 and the radix-2 combine reads cw1 — both materialized from this quarter
-    /// table via CosQ at build time. Build once via Arena.fProxyFFTCache(n) and reuse across many
+    /// table via CosQ at build time. Build once via the Allocator ctor and reuse across many
     /// transforms of the same size.
     ///
     /// The table is computed at double precision and cast to the element type (float or double),
@@ -59,8 +59,8 @@ namespace LinearAlgebra
         public fProxyN cw1re, cw1im;
 
         /// <summary>
-        /// Standalone allocation sized and populated identically to <c>Arena.fProxyFFTCache(n)</c>
-        /// (same twiddle-table construction, on standalone buffers). Pair with <see cref="Dispose"/>.
+        /// Allocates a twiddle-table FFT workspace for an n-point transform (n must be a power of
+        /// two, n &gt;= 2). Pair with <see cref="Dispose"/>.
         /// </summary>
         public unsafe fProxyFFTCache(int n, Allocator allocator)
         {
@@ -158,153 +158,20 @@ namespace LinearAlgebra
         }
     }
 
-    public static partial class ArenaExtensions
-    {
-        /// <summary>
-        /// Allocates a twiddle-table FFT workspace for an n-point transform (n must be a power of two,
-        /// n ≥ 2). Entries are computed at double precision from sqrt-based roots of unity (no sin/cos,
-        /// no recurrence drift); see <see cref="fProxyFFTCache"/> for the quarter-circle table layout.
-        ///
-        /// The buffers are persistent in this arena (disposed with it), so create the workspace once
-        /// outside a hot loop and pass it to the table overloads. One table serves fft/ifft of length
-        /// exactly n and rfft/irfft of real signal length exactly n.
-        /// </summary>
-        public static unsafe fProxyFFTCache fProxyFFTCache(this ref Arena arena, int n)
-        {
-            if (n < 2 || (n & (n - 1)) != 0)
-                throw new ArgumentException("fProxyFFTCache: n must be a power of two and >= 2");
-
-            int half = n >> 1;
-            int Q    = n >> 2;                        // n/4 = quarter-circle span
-            var twQuarter = arena.fProxyVec(Q + 1);   // cos(2π·j/n), j = 0..Q
-
-            // Twiddle table = Nth roots of unity W_N^m = exp(-2πi·m/n), generated at double precision
-            // with only +,-,*,sqrt (cross-arch deterministic under FloatMode.Strict; no sin/cos). The
-            // binary generator roots B_k = exp(-2πi·2^k/n) come from stable unit-circle half-angle
-            // square roots; each W_N^m is the product of B_k over m's set bits, then cast to fProxy.
-            int P = 0;
-            for (int t = n; t > 1; t >>= 1) P++;   // log2(n)
-            double* bkr = stackalloc double[32];
-            double* bki = stackalloc double[32];
-            bkr[P - 1] = -1.0; bki[P - 1] = 0.0;                    // B_{P-1} = exp(-πi)
-            if (P >= 2) { bkr[P - 2] = 0.0; bki[P - 2] = -1.0; }    // B_{P-2} = exp(-πi/2)
-            for (int k = P - 3; k >= 0; k--)
-            {
-                double a = bkr[k + 1];                    // cos(angle_{k+1})
-                double c = math.sqrt((1.0 + a) * 0.5);    // cos(angle_k), angle_k = angle_{k+1}/2
-                bkr[k] = c;
-                bki[k] = bki[k + 1] / (2.0 * c);          // -sin(angle_k), cancellation-free
-            }
-            // Recursive-doubling fill: W^0 = 1, then for each bit k, W^(2^k + j) = W^j · B_k for
-            // j < 2^k. One complex-mult per entry; each entry is <= log2(n) mults deep in the
-            // dependency chain, so error stays O(log n · ε). Kept in a double scratch and cast to
-            // fProxy once. Only the first QUADRANT [0, n/4) is built (doubling stops two stages early,
-            // at k = P-3); every reader reconstructs the rest via CosQ (quadrant reflection + π/2
-            // shift), so the scratch is only n/4 doubles.
-            int Qalloc = Q > 0 ? Q : 1;
-            var dre = (double*)UnsafeUtility.Malloc((long)Qalloc * sizeof(double), 16, Allocator.Persistent);
-            var dim = (double*)UnsafeUtility.Malloc((long)Qalloc * sizeof(double), 16, Allocator.Persistent);
-            dre[0] = 1.0; dim[0] = 0.0;
-            for (int k = 0; k < P - 2; k++)
-            {
-                int block = 1 << k;
-                double br = bkr[k], bi = bki[k];
-                for (int j = 0; j < block; j++)
-                {
-                    double ar = dre[j], ai = dim[j];
-                    dre[block + j] = ar * br - ai * bi;
-                    dim[block + j] = ar * bi + ai * br;
-                }
-            }
-            for (int m = 0; m < Q; m++)
-                twQuarter[m] = (fProxy)dre[m];
-            twQuarter[Q] = (Q >= 1) ? (fProxy)0 : (fProxy)1;   // cos(π/2)=0 (n>=4); cos(0)=1 (n=2)
-            UnsafeUtility.Free(dre, Allocator.Persistent);
-            UnsafeUtility.Free(dim, Allocator.Persistent);
-
-            // Scratch buffers — persistent in this arena (disposed with the arena).
-            // cz/sz are the two-for-one packing temporaries for rfft/irfft (length n/2 = M).
-            // visited is the cycle-following scratch for FftCoreRadix4Mixed (length n; [0,M) used
-            // when called from the rfft/irfft inner M-point sub-FFT, still within bounds).
-            var cz      = arena.fProxyVec(half, uninit: true);
-            var sz      = arena.fProxyVec(half, uninit: true);
-            var visited = arena.fProxyVec(n,    uninit: true);
-
-            // Per-stage W^1 twiddle table for the radix-4 butterfly. Every stage (both the wide
-            // fProxyW stages and the small scalar stages) gets its W^1 = (Re,Im)(W^(j·step)),
-            // step = n/(4·qq), materialized here from the quarter table via WQ; the butterfly then
-            // derives W^2/W^3 in-register and never reconstructs at runtime. Contiguous in stage order
-            // (qq = 1, 4, 16, …, n/4), so a size-M sub-transform reads the length-log4(M) prefix. The
-            // scalar stages add only 1+4 = 5 entries, so swLen stays ≈ n/3. Serves the top-level path
-            // AND the pow-4 sub-transforms of the mixed / rfft / irfft paths (same tableN).
-            fProxy* cq = twQuarter.Data.Ptr;
-            int swLen = 0;
-            for (int qq = 1; 4 * qq <= n; qq <<= 2)
-                swLen += qq;
-            int swAlloc = swLen > 0 ? swLen : 1;
-            var sw1re = arena.fProxyVec(swAlloc, uninit: true);
-            var sw1im = arena.fProxyVec(swAlloc, uninit: true);
-            {
-                int off = 0;
-                for (int qq = 1; 4 * qq <= n; qq <<= 2)
-                {
-                    int len  = qq << 2;
-                    int step = n / len;
-                    for (int j = 0; j < qq; j++)
-                    {
-                        int t1 = j * step;
-                        FFT.WQ(cq, t1, n, out fProxy wr, out fProxy wi);
-                        sw1re[off + j] = wr; sw1im[off + j] = wi;
-                    }
-                    off += qq;
-                }
-            }
-
-            // Combine-twiddle table for the mixed-radix radix-2 combine (Step 3). This n triggers the
-            // mixed path at exactly one size/step:
-            //   n = 2·4^k (P odd)  → fft/ifft mixed at size = n,   combineStep = 1
-            //   n = 4^k    (P even) → rfft/irfft inner mixed at size = n/2, combineStep = 2
-            // Both are materialized from CosQ (the quarter table cannot be aliased by a contiguous
-            // wide load). Combine twiddle W_size^k = W^(k·combineStep): step 2 gathers even indices
-            // 2k (P even, length n/4); step 1 gathers k (P odd, length n/2).
-            int cwLen = (P & 1) == 0 ? (n >> 2) : half;
-            int cwStep = (P & 1) == 0 ? 2 : 1;
-            var cw1re = arena.fProxyVec(cwLen, uninit: true);
-            var cw1im = arena.fProxyVec(cwLen, uninit: true);
-            for (int k = 0; k < cwLen; k++)
-            {
-                FFT.WQ(cq, k * cwStep, n, out fProxy wr, out fProxy wi);
-                cw1re[k] = wr; cw1im[k] = wi;
-            }
-
-            return new fProxyFFTCache
-            {
-                twQuarter = twQuarter,
-                n        = n,
-                cz       = cz,
-                sz       = sz,
-                visited  = visited,
-                sw1re = sw1re, sw1im = sw1im,
-                swLen = swLen,
-                cw1re = cw1re, cw1im = cw1im,
-            };
-        }
-    }
-
     public static partial class FFT
     {
         // ---- workspace guard ----
 
         /// <summary>
         /// Throws if <paramref name="ws"/> is not sized for an n-point FFT. Matches the layout
-        /// produced by Arena.fProxyFFTCache(n): ws.n == n and table lengths == n/2.
+        /// produced by the fProxyFFTCache(n, allocator) constructor: ws.n == n and table lengths == n/2.
         /// </summary>
         static void RequireFftWorkspace(in fProxyFFTCache ws, int n, string who)
         {
             if (ws.n != n ||
                 ws.cz.N != n >> 1 || ws.sz.N != n >> 1 || ws.visited.N != n)
                 throw new ArgumentException(
-                    who + ": workspace must be sized for an n-point FFT (use Arena.fProxyFFTCache(n))");
+                    who + ": workspace must be sized for an n-point FFT (use new fProxyFFTCache(n, allocator))");
         }
 
         /// <summary>
@@ -316,7 +183,7 @@ namespace LinearAlgebra
             RequireFftWorkspace(in ws, n, who);
             if (ws.twQuarter.N != (n >> 2) + 1)
                 throw new ArgumentException(
-                    who + ": workspace must have quarter-circle twiddle table (use Arena.fProxyFFTCache(n))");
+                    who + ": workspace must have quarter-circle twiddle table (use new fProxyFFTCache(n, allocator))");
         }
 
         // ---- quarter-table twiddle reconstruction ----
@@ -352,7 +219,7 @@ namespace LinearAlgebra
         /// <summary>
         /// In-place forward FFT for any power-of-two length, using a precomputed twiddle table;
         /// throws for a non-power-of-two length (use dft for arbitrary N). ws must be sized for re.N
-        /// (build via Arena.fProxyFFTCache(N)); it must contain the quarter-circle twiddle table required
+        /// (build via new fProxyFFTCache(N, allocator)); it must contain the quarter-circle twiddle table required
         /// by the radix-4 dispatch. Both arrays must have the same length, which must be a power of two.
         /// </summary>
         public static void fft(ref fProxyN re, ref fProxyN im, in fProxyFFTCache ws)

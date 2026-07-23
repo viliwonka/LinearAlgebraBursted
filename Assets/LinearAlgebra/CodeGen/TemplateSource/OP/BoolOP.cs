@@ -7,8 +7,8 @@ namespace LinearAlgebra
 {
     /// <summary>
     /// In-place boolean-buffer logic ops (notInPlace/orInPlace/andInPlace/xorInPlace/equalsInPlace/
-    /// notEqualsInPlace), buffer×buffer and buffer×scalar. The pure counterparts are the operator
-    /// overloads (!, |, &amp;, ^, ==, !=), which allocate a new result.
+    /// notEqualsInPlace), buffer×buffer and buffer×scalar. The == and != operator overloads are the
+    /// only allocating counterparts left; !, |, ^ and &amp; have none -- call these directly.
     /// </summary>
     public static partial class boolComp {
 

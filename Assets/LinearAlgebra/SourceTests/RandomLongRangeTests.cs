@@ -22,39 +22,29 @@ public class RandomLongRangeTests
     [Test]
     public void MinBelowIntRangeThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            Random rng = new Random(1u);
+        Random rng = new Random(1u);
 
-            long badMin = (long)int.MinValue - 1;   // just below int range
+        long badMin = (long)int.MinValue - 1;   // just below int range
 
-            var v = arena.longVec(8);
-            Assert.Throws<ArgumentException>(() => Rand.nextUniformInPlace(ref rng, ref v, badMin, 0L));
+        var v = new longN(8, Allocator.Temp);
+        Assert.Throws<ArgumentException>(() => Rand.nextUniformInPlace(ref rng, ref v, badMin, 0L));
 
-            var M = arena.longMat(3, 3);
-            Assert.Throws<ArgumentException>(() => Rand.nextUniformInPlace(ref rng, ref M, badMin, 0L));
-        }
-        finally { arena.Dispose(); }
+        var M = new longMxN(3, 3, Allocator.Temp);
+        Assert.Throws<ArgumentException>(() => Rand.nextUniformInPlace(ref rng, ref M, badMin, 0L));
     }
 
     [Test]
     public void MaxAboveIntRangeThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            Random rng = new Random(1u);
+        Random rng = new Random(1u);
 
-            long badMax = (long)int.MaxValue + 1;   // just above int range
+        long badMax = (long)int.MaxValue + 1;   // just above int range
 
-            var v = arena.longVec(8);
-            Assert.Throws<ArgumentException>(() => Rand.nextUniformInPlace(ref rng, ref v, 0L, badMax));
+        var v = new longN(8, Allocator.Temp);
+        Assert.Throws<ArgumentException>(() => Rand.nextUniformInPlace(ref rng, ref v, 0L, badMax));
 
-            var M = arena.longMat(3, 3);
-            Assert.Throws<ArgumentException>(() => Rand.nextUniformInPlace(ref rng, ref M, 0L, badMax));
-        }
-        finally { arena.Dispose(); }
+        var M = new longMxN(3, 3, Allocator.Temp);
+        Assert.Throws<ArgumentException>(() => Rand.nextUniformInPlace(ref rng, ref M, 0L, badMax));
     }
 
     // Positive control: bounds within int range actually exercise the long fill path (no throw,
@@ -62,38 +52,28 @@ public class RandomLongRangeTests
     [Test]
     public void InIntRangeFillsAndDoesNotThrow()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            Random rng = new Random(20240626u);
+        Random rng = new Random(20240626u);
 
-            long min = -5L, max = 10L;
-            var v = arena.longVec(4096);
-            for (int i = 0; i < v.N; i++) v[i] = 999L;   // poison
-            Rand.nextUniformInPlace(ref rng, ref v, min, max);
-            for (int i = 0; i < v.N; i++)
-                Assert.IsTrue(v[i] >= min && v[i] < max, $"v[{i}]={v[i]} out of [{min},{max})");
+        long min = -5L, max = 10L;
+        var v = new longN(4096, Allocator.Temp);
+        for (int i = 0; i < v.N; i++) v[i] = 999L;   // poison
+        Rand.nextUniformInPlace(ref rng, ref v, min, max);
+        for (int i = 0; i < v.N; i++)
+            Assert.IsTrue(v[i] >= min && v[i] < max, $"v[{i}]={v[i]} out of [{min},{max})");
 
-            // min == max constant-fill on the long path.
-            var c = arena.longVec(32);
-            Rand.nextUniformInPlace(ref rng, ref c, 7L, 7L);
-            for (int i = 0; i < c.N; i++)
-                Assert.AreEqual(7L, c[i]);
-        }
-        finally { arena.Dispose(); }
+        // min == max constant-fill on the long path.
+        var c = new longN(32, Allocator.Temp);
+        Rand.nextUniformInPlace(ref rng, ref c, 7L, 7L);
+        for (int i = 0; i < c.N; i++)
+            Assert.AreEqual(7L, c[i]);
     }
 
     [Test]
     public void MinGreaterThanMaxStillThrows()
     {
-        var arena = new Arena(Allocator.Persistent);
-        try
-        {
-            Random rng = new Random(1u);
+        Random rng = new Random(1u);
 
-            var v = arena.longVec(8);
-            Assert.Throws<ArgumentException>(() => Rand.nextUniformInPlace(ref rng, ref v, 5L, 1L));
-        }
-        finally { arena.Dispose(); }
+        var v = new longN(8, Allocator.Temp);
+        Assert.Throws<ArgumentException>(() => Rand.nextUniformInPlace(ref rng, ref v, 5L, 1L));
     }
 }

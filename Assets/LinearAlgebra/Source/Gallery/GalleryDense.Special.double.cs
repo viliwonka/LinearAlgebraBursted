@@ -426,6 +426,13 @@ namespace LinearAlgebra.Gallery
             return A;
         }
 
+        /// <summary>Euclidean GCD helper used by <see cref="doubleGCD"/>.</summary>
+        private static int gcd(int a, int b)
+        {
+            while (b != 0) { int t = b; b = a % b; a = t; }
+            return a;
+        }
+
         // =========================================================================
         // 15. Redheffer — R[i,j] = 1 if j==0 or (i+1)|(j+1), else 0
         // =========================================================================

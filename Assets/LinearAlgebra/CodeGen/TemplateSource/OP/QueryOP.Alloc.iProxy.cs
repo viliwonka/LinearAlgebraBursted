@@ -3,9 +3,8 @@ using Unity.Collections;
 
 namespace LinearAlgebra
 {
-    // Standalone (non-arena) allocating wrappers for Query search operations over integer types.
-    // Same semantics as ArenaExtensions.Query.iProxy.cs but allocate their own buffers via
-    // allocator instead of drawing from a matrix's arena.
+    // Standalone allocating wrappers for Query search operations over integer types: allocate
+    // their own buffers via allocator.
     //
     // Supported integer-exact metrics: Manhattan, Chebyshev, SqEuclidean, Dot.
     // Euclidean and Cosine throw ArgumentException (float-only).

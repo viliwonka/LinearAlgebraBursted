@@ -1579,7 +1579,8 @@ public class fProxyLUTests
         private void AssertLU(in fProxyMxN A, in fProxyMxN L, in fProxyMxN U, bool pivoted) => AssertLU(in A, in L, in U, pivoted, 1E-6f);
         private void AssertLU(in fProxyMxN A, in fProxyMxN L, in fProxyMxN U, bool pivoted, fProxy precision)
         {
-            fProxyMxN shouldBeZero = A - Blas.dot(L, U);
+            fProxyMxN shouldBeZero = new fProxyMxN(in A, Allocator.Temp);
+            fProxyComp.subInPlace(shouldBeZero, Blas.dot(L, U));
 
             if (Analysis.isAnyNan(in shouldBeZero))
                 throw new System.Exception("TestJob: NaN detected");

@@ -9,10 +9,8 @@ namespace LinearAlgebra.ML
     /// <summary>
     /// A fitted PCA model: the axes/variances needed to project new data (<see cref="PCA.transform"/>)
     /// or to read off variances for a reduction decision. Every <c>PCA</c> fit route (fitCov /
-    /// fitSvd / fitSvdTruncated / fitRandomized) fills one of these. Allocate via
-    /// <c>Arena.fProxyPCAModel(p, k)</c> (p = X.N_Cols features, k = number of components) and reuse across
-    /// same-shape fits (realtime pattern: fit each frame into the same model, <c>ClearTemp()</c> reclaims the
-    /// internal scratch each fit allocates from the arena's temp pool).
+    /// fitSvd / fitSvdTruncated / fitRandomized) fills one of these. Allocate via the Allocator
+    /// ctor (p = X.N_Cols features, k = number of components) and reuse across same-shape fits.
     /// </summary>
     public struct fProxyPCAModel : IDisposable
     {
@@ -76,7 +74,7 @@ namespace LinearAlgebra.ML
         /// <summary>Managed wrapper -- do not call from inside a [BurstCompile] job.</summary>
         public override string ToString() => ToFixedString().ToString();
 
-        /// <summary>Standalone allocation sized identically to <c>Arena.fProxyPCAModel(p, k)</c>. Pair with <see cref="Dispose"/>.</summary>
+        /// <summary>Allocates a PCA model sized for p features and k components. Pair with <see cref="Dispose"/>.</summary>
         public fProxyPCAModel(int p, int k, Allocator allocator)
         {
             components             = new fProxyMxN(p, k, allocator);
@@ -96,30 +94,6 @@ namespace LinearAlgebra.ML
             explainedVarianceRatio.Dispose();
             mean.Dispose();
             scale.Dispose();
-        }
-    }
-}
-
-namespace LinearAlgebra
-{
-    public static partial class ArenaExtensions
-    {
-        /// <summary>
-        /// Allocates a PCA model sized for <paramref name="p"/> features and <paramref name="k"/>
-        /// components. All buffers are persistent in this arena (disposed with it).
-        /// </summary>
-        public static LinearAlgebra.ML.fProxyPCAModel fProxyPCAModel(this ref Arena arena, int p, int k)
-        {
-            return new LinearAlgebra.ML.fProxyPCAModel
-            {
-                components             = arena.fProxyMat(p, k),
-                explainedVariance       = arena.fProxyVec(k),
-                explainedVarianceRatio  = arena.fProxyVec(k),
-                mean                    = arena.fProxyVec(p),
-                scale                   = arena.fProxyVec(p),
-                k                       = k,
-                converged               = false
-            };
         }
     }
 }

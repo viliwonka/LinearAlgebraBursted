@@ -63,8 +63,12 @@ public class doubleLQWorkspaceTests
             var ws = new doubleLQCache(m, n, Allocator.Temp);
             LQ.decomp(in Ab, ref Lb, ref Qb, ref ws);
 
-            Assert.IsTrue(Analysis.isZero(La - Lb, Tol()));
-            Assert.IsTrue(Analysis.isZero(Qa - Qb, Tol()));
+            var dL = new doubleMxN(in La, Allocator.Temp);
+            doubleComp.subInPlace(dL, Lb);
+            Assert.IsTrue(Analysis.isZero(dL, Tol()));
+            var dQ = new doubleMxN(in Qa, Allocator.Temp);
+            doubleComp.subInPlace(dQ, Qb);
+            Assert.IsTrue(Analysis.isZero(dQ, Tol()));
         }
 
         void LqMinNormSolveEquiv(int m, int n)
@@ -84,7 +88,9 @@ public class doubleLQWorkspaceTests
             var ws = new doubleLQMinNormCache(m, n, Allocator.Temp);
             LQ.minNormSolve(in Ab, in b, ref xb, ref ws);
 
-            Assert.IsTrue(Analysis.isZero(xa - xb, Tol()));
+            var dx = new doubleN(in xa, Allocator.Temp);
+            doubleComp.subInPlace(dx, xb);
+            Assert.IsTrue(Analysis.isZero(dx, Tol()));
         }
 
         // Reuse ONE workspace (of each kind) across several consecutive solves: each solve must
@@ -113,8 +119,12 @@ public class doubleLQWorkspaceTests
                 var Qw = new doubleMxN(m, n, Allocator.Temp);
                 LQ.decomp(in Aw, ref Lw, ref Qw, ref lqWs);
 
-                Assert.IsTrue(Analysis.isZero(La - Lw, Tol()));
-                Assert.IsTrue(Analysis.isZero(Qa - Qw, Tol()));
+                var dL = new doubleMxN(in La, Allocator.Temp);
+                doubleComp.subInPlace(dL, Lw);
+                Assert.IsTrue(Analysis.isZero(dL, Tol()));
+                var dQ = new doubleMxN(in Qa, Allocator.Temp);
+                doubleComp.subInPlace(dQ, Qw);
+                Assert.IsTrue(Analysis.isZero(dQ, Tol()));
 
                 // LQ.minNormSolve: allocating reference vs reused workspace
                 var b = GenerateOP.doubleRandomVec(m, -5f, 5f, (uint)(4000 + t * 17));
@@ -127,7 +137,9 @@ public class doubleLQWorkspaceTests
                 var xw = new doubleN(n, Allocator.Temp);
                 LQ.minNormSolve(in Asw, in b, ref xw, ref solveWs);
 
-                Assert.IsTrue(Analysis.isZero(xa - xw, Tol()));
+                var dx = new doubleN(in xa, Allocator.Temp);
+                doubleComp.subInPlace(dx, xw);
+                Assert.IsTrue(Analysis.isZero(dx, Tol()));
             }
         }
     }

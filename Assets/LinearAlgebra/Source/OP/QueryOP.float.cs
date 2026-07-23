@@ -463,8 +463,8 @@ namespace LinearAlgebra
         // -------------------------------------------------------------------------
 
         // ---- Metric score kernels -----------------------------------------------
-        // Internal: exposed so ArenaExtensions.Query.float.cs can do two-pass alloc
-        // without duplicating metric kernels. Row variant (contiguous); Col variant (strided).
+        // Internal: exposed so QueryOP.Alloc.float.cs can do two-pass alloc without duplicating
+        // metric kernels. Row variant (contiguous); Col variant (strided).
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static float RowScore(in floatMxN A, int r, in floatN q, Metric m)

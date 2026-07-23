@@ -12,22 +12,23 @@ namespace LinearAlgebra
         /// <summary>
         /// Throws if <paramref name="ws"/> is not sized for an n-dimensional operator run for
         /// <paramref name="steps"/> Lanczos iterations — the layout produced by
-        /// <c>Arena.doubleLanczosCache(n, steps)</c>. Also validates the nested symmetric-eigenvalue
-        /// workspace (sized to <paramref name="steps"/>, since the tridiagonal T is steps x steps).
+        /// the doubleLanczosCache(n, steps, allocator) constructor. Also validates the nested
+        /// symmetric-eigenvalue workspace (sized to <paramref name="steps"/>, since the tridiagonal
+        /// T is steps x steps).
         /// </summary>
         static void RequireLanczosWorkspace(in doubleLanczosCache ws, int n, int steps)
         {
             if (ws.V.M_Rows != steps || ws.V.N_Cols != n)
-                throw new ArgumentException("Eigen.lanczos: workspace V must be steps x n (use Arena.doubleLanczosCache(n, steps))");
+                throw new ArgumentException("Eigen.lanczos: workspace V must be steps x n (use new doubleLanczosCache(n, steps, allocator))");
 
             if (ws.vCur.N != n || ws.w.N != n)
-                throw new ArgumentException("Eigen.lanczos: workspace vCur/w must have length n (use Arena.doubleLanczosCache(n, steps))");
+                throw new ArgumentException("Eigen.lanczos: workspace vCur/w must have length n (use new doubleLanczosCache(n, steps, allocator))");
 
             if (ws.alpha.N != steps || ws.beta.N != steps)
-                throw new ArgumentException("Eigen.lanczos: workspace alpha/beta must have length steps (use Arena.doubleLanczosCache(n, steps))");
+                throw new ArgumentException("Eigen.lanczos: workspace alpha/beta must have length steps (use new doubleLanczosCache(n, steps, allocator))");
 
             if (!ws.T.IsSquare || ws.T.M_Rows != steps)
-                throw new ArgumentException("Eigen.lanczos: workspace T must be steps x steps (use Arena.doubleLanczosCache(n, steps))");
+                throw new ArgumentException("Eigen.lanczos: workspace T must be steps x steps (use new doubleLanczosCache(n, steps, allocator))");
 
             RequireEigenSymWorkspace(in ws.symWs, steps);
         }
@@ -38,7 +39,7 @@ namespace LinearAlgebra
     /// symmetric operator, with full reorthogonalization, followed by
     /// <see cref="Eigen.valuesSymmetricInPlace(ref doubleMxN, ref doubleN, ref doubleEigenSymCache)"/>
     /// on the resulting small tridiagonal). Sized for an n-dimensional operator run for
-    /// <c>steps</c> Lanczos iterations. Allocate ONCE via <c>Arena.doubleLanczosCache(n, steps)</c>
+    /// <c>steps</c> Lanczos iterations. Allocate ONCE via the Allocator ctor
     /// and reuse it across same-shape calls so repeated Lanczos runs are zero-alloc.
     /// </summary>
     public struct doubleLanczosCache : IDisposable
@@ -73,7 +74,7 @@ namespace LinearAlgebra
         /// sized to `steps` (T is always steps x steps regardless of early breakdown).</summary>
         public doubleEigenSymCache symWs;
 
-        /// <summary>Standalone allocation sized identically to <c>Arena.doubleLanczosCache(n, steps)</c>. Pair with <see cref="Dispose"/>.</summary>
+        /// <summary>Allocates a Lanczos workspace for an n-dimensional symmetric operator run for `steps` iterations. Pair with <see cref="Dispose"/>.</summary>
         public doubleLanczosCache(int n, int steps, Allocator allocator)
         {
             V = new doubleMxN(steps, n, allocator);
@@ -98,12 +99,12 @@ namespace LinearAlgebra
         }
     }
 
+    // Kept: doubleChebyshev's ref-Arena constructor (Sparse/doubleChebyshev.cs) needs an
+    // arena-tracked Lanczos workspace for its interior-eigenvalue-bound estimate. Not a general
+    // convenience overload -- do not add more callers.
     public static partial class ArenaExtensions
     {
-        /// <summary>
-        /// Allocates a Lanczos workspace for an n-dimensional symmetric operator run for `steps`
-        /// iterations. See <see cref="doubleLanczosCache"/> for reuse guidance.
-        /// </summary>
+        /// <summary>Allocates a Lanczos workspace for an n-dimensional symmetric operator run for `steps` iterations, arena-tracked.</summary>
         public static doubleLanczosCache doubleLanczosCache(this ref Arena arena, int n, int steps)
         {
             return new doubleLanczosCache
