@@ -20,15 +20,29 @@ namespace LinearAlgebra.Realtime
     /// AsMatrix + QR.solveInPlace = least-squares trajectory fit; <see cref="Mean"/> = moving average).
     ///
     /// Create with the Allocator ctor; the backing buffer lives until the window is disposed.
-    /// fProxy-only.
+    /// Ring state (head/count) is native-backed, so the window may be held as a job field and survive
+    /// separate Run()/Schedule() calls. fProxy-only.
     /// </summary>
     public struct fProxyRollingWindow : IDisposable
     {
         private fProxyMxN _buffer;   // Capacity rows × Features cols, ring storage
         private int _capacity;
         private int _features;
-        private int _head;           // row the NEXT Push writes (0..Capacity-1)
-        private int _count;          // number of valid samples (0..Capacity)
+        // ring[0] = row the NEXT Push writes (0..Capacity-1), ring[1] = number of valid samples
+        // (0..Capacity). Native-backed (a plain field would not survive an IJob by-value copy).
+        private NativeArray<int> _ring;
+
+        private int _head
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)] get => _ring[0];
+            [MethodImpl(MethodImplOptions.AggressiveInlining)] set => _ring[0] = value;
+        }
+
+        private int _count
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)] get => _ring[1];
+            [MethodImpl(MethodImplOptions.AggressiveInlining)] set => _ring[1] = value;
+        }
 
         public int Capacity => _capacity;
         public int Features => _features;
@@ -37,13 +51,12 @@ namespace LinearAlgebra.Realtime
         public bool IsEmpty => _count == 0;
 
         /// <summary>Internal — use the Allocator ctor.</summary>
-        internal fProxyRollingWindow(in fProxyMxN buffer, int capacity, int features)
+        internal fProxyRollingWindow(in fProxyMxN buffer, int capacity, int features, Allocator allocator)
         {
             _buffer = buffer;
             _capacity = capacity;
             _features = features;
-            _head = 0;
-            _count = 0;
+            _ring = new NativeArray<int>(2, allocator);   // zero-initialised => head=0, count=0
         }
 
         /// <summary>Allocates a rolling window holding up to capacity samples of features features each. Pair with <see cref="Dispose"/>.</summary>
@@ -57,14 +70,14 @@ namespace LinearAlgebra.Realtime
             _buffer = new fProxyMxN(capacity, features, allocator);
             _capacity = capacity;
             _features = features;
-            _head = 0;
-            _count = 0;
+            _ring = new NativeArray<int>(2, allocator);   // zero-initialised => head=0, count=0
         }
 
         /// <summary>Dispose when done.</summary>
         public void Dispose()
         {
             _buffer.Dispose();
+            if (_ring.IsCreated) _ring.Dispose();
         }
 
         // Row of the ring holding the oldest retained sample. Before the buffer fills, samples sit in

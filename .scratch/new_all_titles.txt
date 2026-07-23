@@ -1,0 +1,134 @@
+=== LinearAlgebra kernel benchmarks ===
+=== Primitive BLAS kernels (Level-1 & Level-2) ===
+--- L1 reduction: vecDot (vector length N, REPS=512) ---
+--- L1 reduction: L1 (vector length N, REPS=512) ---
+--- L1 reduction: L2 (vector length N, REPS=512) ---
+--- L1 reduction: LInf (vector length N, REPS=512) ---
+--- L1 reduction: sum (vector length N, REPS=512) ---
+--- L1 reduction: max (vector length N, REPS=512) ---
+--- L1 reduction: min (vector length N, REPS=512) ---
+--- L1 axpy: y += a*x (vector length N, REPS=512) ---
+--- L2 GEMV: y = A*x (matVecDot, NxN, REPS=64) ---
+--- L2 vecMat: y = Aᵀx (vecMatDot, NxN, REPS=64) ---
+=== GEMM: dense C = A * B ===
+=== GEMM-scalar-tile: matMatDotUnpacked direct (same-run control for the wide tile) ===
+=== GEMM-large: dense C = A * B, beyond-L2 sizes (packed route) ===
+=== GEMM-packed-direct: matMatDotPacked, gate bypassed ===
+=== GEMM-TransA: dense C = A^T * B (covariance / compact-WY shape) ===
+=== GEMM-AtA: dense C = A^T * A (matAtA single-input kernel) ===
+=== GEMM-TransB: dense C = A * B^T (Kalman P*H^T / KMeans X*C^T shape) ===
+=== GEMM-TransB-viaTrans: C = A * trans(B) (the Blas.trans + dot route TransB replaces) ===
+=== GEMM-AAt: dense C = A * A^T (matAAt single-input kernel) ===
+=== Trans: T = A^T (element throughput; last column is Gelem/s) ===
+=== LU factorization with partial pivoting (time = LU.decomp, copies Src internally) ===
+=== LU factorization, no pivoting (time = LU.decompNoPivot, copies Src internally) ===
+=== Cholesky factorization A = L L^T (SPD input) ===
+=== Pivoted (rank-revealing) Cholesky P^T A P = L L^T (full-rank SPD input) ===
+=== Face-off: CHO vs CHOP vs LU (decompInPlace, SPD input, N=256/512/1024) ===
+--- CHO.decompInPlace ---
+--- CHOP.decomp (in-place, L aliases A) ---
+--- LU.decompInPlace ---
+=== QR Householder factorization (time = copy-in + decompInPlace, forms Q) ===
+=== QRCP (column-pivoted, rank-revealing QR; forms Q) ===
+=== QR.solveInPlace (Householder least-squares solve; no Q reconstruction) ===
+=== QRCP.solveInPlace (QRCP rank-safe LS solve; zero-alloc primitive) ===
+=== QRCP rank-deficient (n x n, rank = 3n/4): basic solveInPlace vs COD minNormSolveInPlace ===
+=== TALL overdetermined least squares (m x n, m > n): QR.solveInPlace vs QRCP.solveInPlace ===
+=== Tall QR factorization (decompInPlace, A is 2k x k; forms thin Q); N column = k ===
+=== Overdetermined least squares (solveInPlace, A is 2k x k; no Q reconstruction); N column = k ===
+=== Wide LQ factorization (decomp, A is k x 2k); N column = k ===
+=== Underdetermined minimum-norm (minNormSolve, A is k x 2k); N column = k ===
+=== Wide LQRP row-pivoted factorization (decomp, A is k x 2k; forms L,Q,P; UNBLOCKED); N column = k ===
+=== Underdetermined rank-safe basic solve (LQRP.solveInPlace, A is k x 2k; no Q); N column = k ===
+=== Underdetermined min-norm wide showcase (A is 512 x 2048): LQ.minNormSolveInPlace vs LQRP.minNormSolveInPlace ===
+=== LQRP rank-deficient (k x 2k, rank = 3k/4): basic solveInPlace vs COD minNormSolveInPlace; N column = k ===
+=== Direct solve Ax=b, square N=1024 (factor + triangular solve, ms) ===
+=== Triangular solve ONLY (LU factored ONCE outside the timed region), forward vs TransA ===
+=== Multi-RHS solveInPlace AX=B, END TO END, square N=512, float ===
+=== Small square QR (QR.decompInPlace, time = copy-in + factor; blocked path kicks in only at N>=64) ===
+=== Tall QR (QR.decompInPlace, m x n, m > n; forms thin Q; spans the N_Cols>=64 gate - n=32 unblocked, n=64 already blocked) ===
+=== Small square LQ (LQ.decomp; blocked path kicks in only at M_Rows>=512) ===
+=== Wide LQ (LQ.decomp, m x n, n > m; all far below the M_Rows>=512 gate) ===
+=== Small square Cholesky (CHO.decomp, SPD input; blocked path kicks in only at N>=256) ===
+=== Small square LU (LU.decomp, partial pivoting; blocked path kicks in only at N>=256) ===
+=== Golub-Kahan full SVD (thin; bidiag + implicit-shift QR, ms) ===
+=== SVD singular values only (values, Golub-Kahan bidiagonal; ms) ===
+=== Householder symmetric eigenvalues (valuesSymmetric; values only, ms) ===
+=== Householder symmetric eigen + vectors (symmetric; ms) ===
+=== General eigenvalues, QR iteration (valuesQR; iterative, ms only) ===
+=== randomized (Halko-Martinsson-Tropp, top-k singular triplets, k=16; ms) ===
+=== pinvSolve (Moore-Penrose minimum-norm LS solve via Golub-Kahan SVD; ms) ===
+=== pseudoInverse (Moore-Penrose pseudo-inverse matrix via Golub-Kahan SVD; ms) ===
+=== Eigen.lobpcg, dense SPD (A = M^T M + I), k=4 smallest, maxIter=50 (ms) ===
+=== lobpcg preconditioner face-off, sparse BSR, k=4 smallest, solve to tol=sqrt(eps) ===
+=== Conjugate Gradient (dense SPD A = MᵀM + I; 100 iterations, tol=0; ms) ===
+=== Dense vs Sparse (BSR) iterative solvers: timing + numerical cross-check ===
+--- 0. Operator matvec throughput (b=3): dense GEMV vs sparse spMV, REPS=64 [float] ---
+--- 0. Operator matvec throughput (b=3): dense GEMV vs sparse spMV, REPS=64 [double] ---
+--- 0b. Symmetric-storage spMV vs full-storage spMV, SAME SPD matrix (b=3), REPS=64 [float] ---
+--- 0b. Symmetric-storage spMV vs full-storage spMV, SAME SPD matrix (b=3), REPS=64 [double] ---
+--- 1. SPD block-sparse (b=3): cg & minres, K=40, tol=0 [float] ---
+--- 1. SPD block-sparse (b=3): cg & minres, K=40, tol=0 [double] ---
+--- 1x. SPD block-sparse (b=4, N=1024): cg, K=40, tol=0 [float] ---
+--- 1x. SPD block-sparse (b=4, N=1024): cg, K=40, tol=0 [double] ---
+--- 2. Non-symmetric block-sparse (b=3): biCGStab, K=40, tol=0 [float] ---
+--- 2. Non-symmetric block-sparse (b=3): biCGStab, K=40, tol=0 [double] ---
+--- 3. Rectangular block-sparse (b=3): lsqr, K=24, tol=0 [float] ---
+--- 3. Rectangular block-sparse (b=3): lsqr, K=24, tol=0 [double] ---
+--- 4. Zero-cost-abstraction probe (dense SPD, K=40, tol=0) [float] ---
+--- 4. Zero-cost-abstraction probe (dense SPD, K=40, tol=0) [double] ---
+=== Block-Jacobi PCG vs plain CG, block-tridiagonal SPD BSR (b=3, nb=256, K=40, tol=0) ===
+=== Preconditioner face-off, SQUARE 2D Laplacian BSR, solve to tol=sqrt(eps) ===
+=== Preconditioner face-off, random sparse SPD BSR (genuine fill; IC(0) incomplete), tol=sqrt(eps) ===
+=== Preconditioner face-off, SCALAR 5-point 2D Poisson (BR=1; IC0 genuinely incomplete), tol=sqrt(eps) ===
+=== BlockJacobi build cost (ctor only, block-tridiagonal SPD) ===
+=== Krylov solver per-iteration cost, BSR galleries (fixed K=100, tol=0) ===
+=== Krylov solver convergence, BSR galleries (run to tol=sqrt(eps), cap 4N iters) ===
+=== LARGE sparse solvers (BSR, ~1.5% block fill, b=4), N up to 10240 -- no dense form ===
+=== b=1 stencil (scalar BSR, fProxyLaplacian2D(1,N): tridiag SPD, nnz~=3N) -- vector-op fusion visibility ===
+=== LOBPCG smallest-8 eigenpairs, square 2D grid Laplacian (spread spectrum) ===
+=== k-means (N points, D=64 features, k=16 clusters, maxIter=10, Uniform init; ms) ===
+=== FFT, twiddle-table workspace — auto radix-4/mixed/radix-2 (FFT.fft(ws) / FFT.fft(ws); ms) ===
+=== Complex inverse FFT, twiddle-table workspace (FFT.ifft(ws) / FFT.ifft(ws); ms) ===
+=== FFT, table workspace WITH BUILD INCLUDED (one-shot: build + single transform; build in Burst; ms) ===
+=== Real-input FFT, twiddle-table workspace (FFT.rfft(ws) / FFT.rfft(ws); ms) ===
+=== Real inverse FFT, twiddle-table workspace (FFT.irfft(ws) / FFT.irfft(ws); ms) ===
+=== Direct DFT (FFT.dft / FFT.dft; O(N^2); ms) ===
+=== Linear programming (simplex vs interior point vs revised/dual simplex) + least absolute deviation ===
+--- 1. LP.solve: random dense feasible LP (m = n/2, A>=0, Ax<=b), simplex vs interior point vs revised primal vs dual simplex [float] ---
+--- 1. LP.solve: random dense feasible LP (m = n/2, A>=0, Ax<=b), simplex vs interior point vs revised primal vs dual simplex [double] ---
+--- 2. LAD (L1) regression, gross outliers: exact LP.lad (simplex/interior/revised/dual) vs fast ladIRLS [float] ---
+--- 2b. LAD fast routes only (LP.ladFN / LP.ladBR / ladIRLS), extended m range for the Barrodale-Roberts vs Frisch-Newton crossover [float] ---
+--- 2. LAD (L1) regression, gross outliers: exact LP.lad (simplex/interior/revised/dual) vs fast ladIRLS [double] ---
+--- 2b. LAD fast routes only (LP.ladFN / LP.ladBR / ladIRLS), extended m range for the Barrodale-Roberts vs Frisch-Newton crossover [double] ---
+--- 3. LAD over a tall BSR design (m x n, ~8 nnz/row): dense LP.lad (simplex vs interior) vs sparse matrix-free interior point; dense runs only where the m x m normal matrix fits [float] ---
+--- 3. LAD over a tall BSR design (m x n, ~8 nnz/row): dense LP.lad (simplex vs interior) vs sparse matrix-free interior point; dense runs only where the m x m normal matrix fits [double] ---
+--- 4. DENSE covering LP (min cx s.t. Ax>=b, x>=0; A,b,c>=0, m=n) -- dual-favorable (dual-feasible at start, primal needs a real phase 1): simplex vs interior point vs revised primal vs dual simplex [float] ---
+--- 4. DENSE covering LP (min cx s.t. Ax>=b, x>=0; A,b,c>=0, m=n) -- dual-favorable (dual-feasible at start, primal needs a real phase 1): simplex vs interior point vs revised primal vs dual simplex [double] ---
+--- 5. Infeasibility detection: Section-1-style dense LP + one contradictory duplicated row (row 0 as both <= b0 and >= b0+10) -- simplex vs interior point vs revised primal vs dual simplex [float] ---
+--- 5. Infeasibility detection: Section-1-style dense LP + one contradictory duplicated row (row 0 as both <= b0 and >= b0+10) -- simplex vs interior point vs revised primal vs dual simplex [double] ---
+--- 6. Warm re-solve chain: 1 cold seed + K=16 rhs-perturbed re-solves (Section-1-style instance; identical perturbation sequence per mode) [float] ---
+--- 6. Warm re-solve chain: 1 cold seed + K=16 rhs-perturbed re-solves (Section-1-style instance; identical perturbation sequence per mode) [double] ---
+=== Regression fitting (m obs x n coeffs, 5% gross outliers): L2 QR vs exact L1 LP.lad vs approx L1 ladIRLS ===
+=== Convex quadratic programming (QP.solve: dense HiGHS-style primal null-space active set) ===
+--- 1. QP.solve: random SPD QP (m = n/2, A>=0, Ax<=b, box [0,3]), public facade, no supplied start [float] ---
+--- 1. QP.solve: random SPD QP (m = n/2, A>=0, Ax<=b, box [0,3]), public facade, no supplied start [double] ---
+--- 2. qpActiveSetCore loop only (no phase 1), feasible x0 supplied, incremental vs from-scratch reduced space [float] ---
+--- 2. qpActiveSetCore loop only (no phase 1), feasible x0 supplied, incremental vs from-scratch reduced space [double] ---
+=== Mixed-integer programming (MIP.solve: B&B over the warm-started dual simplex) ===
+--- 1. MIPLIB oracles: stein9 (both dtypes); stein15 + p0033 (double only -- float cannot prove optimality within a sane node budget, see MIPTests.float.cs's Stein15/P0033) [float] ---
+--- 1. MIPLIB oracles: stein9 (both dtypes); stein15 + p0033 (double only -- float cannot prove optimality within a sane node budget, see MIPTests.double.cs's Stein15/P0033) [double] ---
+--- 2. Synthetic scaling: random branchy integer-box MIPs (n=8,12,16; fixed seeds; n=12's seed reproduces MIPTests.float.cs's Branchy12), both dtypes, maxNodes safety cap -- a diverging cell reports its status honestly (e.g. NodeLimit) rather than burning the wall-clock budget [float] ---
+--- 2. Synthetic scaling: random branchy integer-box MIPs (n=8,12,16; fixed seeds; n=12's seed reproduces MIPTests.double.cs's Branchy12), both dtypes, maxNodes safety cap -- a diverging cell reports its status honestly (e.g. NodeLimit) rather than burning the wall-clock budget [double] ---
+--- 3. Gap-limit economics: p0033 (double only) at relGap = 0 / 0.01 / 0.05 -- the rounding heuristic finds the optimum (3089) early, the gap PROOF is what costs [double] ---
+--- 4. Warm-start accounting: stein15 (double only, mid-size), lpIterations/nodes -- average simplex pivots per warm-started node re-solve [double] ---
+=== Discrete-time LQR (LQR.lqr): cold SDA vs cold plain-recursion vs warm ===
+=== Kalman filter family (predict/update, fixed-gain, steadyStateGain, EKF vs UKF) ===
+--- 1. Linear predict+update, full covariance path ---
+--- 2. predictFixed+updateFixed (steady-state gain, no covariance math) ---
+--- 3. steadyStateGain: one-shot cost ---
+--- 4. EKF vs UKF: pendulum (n=2,m=1) and a synthetic ring model (n=12,m=6, drone-scale) ---
+=== Linear MPC (MPC.solve / fProxyMPCState) ===
+--- 1. Warm steady-state per-frame cost ---
+--- 2. Cold solve cost (fresh warm-start carry every call) ---
+--- 3. fProxyMPCState construction cost (one-shot) ---

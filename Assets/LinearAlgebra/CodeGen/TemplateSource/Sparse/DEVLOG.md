@@ -5,8 +5,10 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
 - 2026-07-23 | During the Arena removal, the first Allocator ctors for fProxySSOR and
   fProxyAMG's builder used try/catch for exception-safe cleanup of the freshly-mirrored A /
   partially-built level. Burst rejects `catch` (BC1006) — and the failure mode is NOT a compile
-  error in the suite: the whole test assembly silently falls back to Mono, turning a ~330s suite
-  into a >900s hang-guard kill with no failing test named. Pattern to use instead: try/finally
+  error in the suite: every [BurstCompile] job whose CALL GRAPH reaches the `catch` silently falls
+  back to Mono (per entry point, not assembly-wide). These ctors sit under the numerous
+  preconditioner/AMG test jobs, so the ~330s suite became a >900s hang-guard kill with no failing
+  test named. Pattern to use instead: try/finally
   with a success flag (`bool ok = false; try { ...; ok = true; } finally { if (!ok) cleanup; }`)
   — managed path still cleans up, Burst path degrades to a no-op on throw. Same pattern the old
   Arena ctor documented. If the suite ever runs 3x slower with zero failures, grep the Unity log

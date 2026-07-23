@@ -78,9 +78,18 @@ namespace LinearAlgebra.Control
         public bool hasSoftRows;
         /// <summary>True if prestabilization (<see cref="Kstab"/>) is configured.</summary>
         public bool hasPrestab;
+        NativeReference<int> _populated;
+
         /// <summary>False until the first solve that reaches the condensed QP (<see cref="MPCStatus.Optimal"/>
-        /// or <see cref="MPCStatus.MaxIterations"/>) completes -- mirrors <see cref="fProxyLQRState.populated"/>.</summary>
-        public bool populated;
+        /// or <see cref="MPCStatus.MaxIterations"/>) completes. Native-backed exactly like
+        /// <see cref="fProxyLQRState.populated"/> -- a plain field would not survive an <c>IJob</c>
+        /// by-value copy (silently forcing every warm call back onto the cold path), so this lives
+        /// behind a shared handle that writes persist through.</summary>
+        public bool populated
+        {
+            get => _populated.IsCreated && _populated.Value != 0;
+            set => _populated.Value = value ? 1 : 0;
+        }
 
         // ---- condensed prediction matrices (fixed at construction) ----
 
@@ -262,6 +271,7 @@ namespace LinearAlgebra.Control
             if (qpFactor.V.Data.IsCreated) qpFactor.Dispose();
             if (qpReduced.Z.Data.IsCreated) qpReduced.Dispose();
             if (qpMeta.IsCreated) qpMeta.Dispose();
+            if (_populated.IsCreated) _populated.Dispose();
         }
 
         // ================================================================================================
@@ -344,7 +354,7 @@ namespace LinearAlgebra.Control
             int nPrestabRows = hasPrestab ? 2 * N * m : 0;
             nGeneral = N * nSoftPerStage + nPrestabRows;
             this.hasDeltaU = hasDeltaU; this.hasSoftRows = hasSoftRows; this.hasPrestab = hasPrestab;
-            populated = false;
+            _populated = new NativeReference<int>(allocator);   // zero-initialised => not populated
 
             this.A = new fProxyMxN(in A, allocator);
             this.B = new fProxyMxN(in B, allocator);
@@ -370,6 +380,7 @@ namespace LinearAlgebra.Control
                 if (hasDeltaU) this.S.Dispose();
                 if (hasSoftRows) { this.C.Dispose(); this.d.Dispose(); }
                 if (hasPrestab) this.Kstab.Dispose();
+                _populated.Dispose();
                 throw new ArgumentException("fProxyMPCState: terminal DARE did not converge -- (A,B) must be stabilizable");
             }
             fProxyMxN Pterm = hasP ? P : lqrState.S;

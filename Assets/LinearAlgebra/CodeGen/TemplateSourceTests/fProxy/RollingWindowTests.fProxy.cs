@@ -257,6 +257,24 @@ public class fProxyRollingWindowTests
         }
     }
 
+    // ---- Job-struct-copy regression: the window held as an OUTER job field, pushed once per
+    // SEPARATE managed .Run() call. Every test above pushes several samples inside ONE Execute(),
+    // which cannot see the by-value-copy bug class (LOBPCG/LQR/LP precedent -- see
+    // DemoSmokeTests.cs's LqrWarmState_SurvivesRunByValueCopy): a single Execute() operates on one
+    // self-consistent copy throughout, so even plain int _head/_count fields behave correctly
+    // there. The gap only shows up across separate .Run() invocations of the same job variable.
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct CrossRunPushJob : IJob
+    {
+        public fProxyRollingWindow W;
+        public fProxyN Sample;
+
+        public void Execute()
+        {
+            W.Push(in Sample);
+        }
+    }
+
     void RunJob(TestJob.TestType type)
     {
         var fail = new NativeArray<fProxy>(4, Allocator.TempJob);
@@ -286,6 +304,89 @@ public class fProxyRollingWindowTests
     [Test] public void GetSampleAndIndexerTest() => RunJob(TestJob.TestType.GetSampleAndIndexer);
     [Test] public void ClearResetsTest() => RunJob(TestJob.TestType.ClearResets);
     [Test] public void IndexerFeatureBoundsTest() => RunJob(TestJob.TestType.IndexerFeatureBounds);
+
+    // ---- Cross-run struct-copy regression (job-field persistence across separate .Run() calls) ----
+    //
+    // CrossRunPushJob holds the window as an OUTER job field and does exactly ONE Push per Execute().
+    // The test drives THREE separate managed .Run() calls on the same `job` local, mutating `sample`
+    // (shared native storage with job.Sample) between calls, then reads the window back through `w`
+    // -- the ORIGINAL local that was value-copied INTO job.W at construction and never touched
+    // directly again. `w` can only see the pushes if the ring state (_head/_count) lives behind
+    // native (pointer-shared) storage rather than as plain int fields copied by value into whatever
+    // Execute() actually ran on. Plain-field pre-fix code fails here (Count wrong and/or Mean()
+    // reflecting only the last push, since a reset _head keeps landing pushes on row 0 -- or
+    // Mean() throwing on a window that still reads empty); the fixed native-backed ring passes.
+    [Test]
+    public void CrossRunPushPersistsAcrossSeparateRunCalls()
+    {
+        var w = new fProxyRollingWindow(4, 2, Allocator.Persistent);
+        var sample = new fProxyN(2, Allocator.Persistent);
+        var job = new CrossRunPushJob { W = w, Sample = sample };
+
+        for (int k = 0; k < 3; k++)
+        {
+            sample[0] = (fProxy)(k + 1);
+            sample[1] = (fProxy)(k + 1);
+            job.Run();   // plain .Run() -> Execute runs on a by-value copy of `job`
+        }
+
+        Assert.AreEqual(3, w.Count,
+            "RollingWindow.Count did not survive 3 separate .Run() calls -- plain int _head/_count fields are lost on each by-value copy.");
+        Assert.IsFalse(w.IsFull);
+
+        // Mean() over the 3 distinct pushes (1,1),(2,2),(3,3) discriminates against the bug: the
+        // pre-fix symptom keeps landing every push on row 0 (head resets each call), so Mean() would
+        // read back (3,3) -- the last push only -- never the true (2,2) average across all three.
+        var mean = w.Mean();
+        AssertCloseManaged(mean[0], (fProxy)2, (fProxy)1E-5f);
+        AssertCloseManaged(mean[1], (fProxy)2, (fProxy)1E-5f);
+
+        AssertCloseManaged(w[0, 0], (fProxy)1, (fProxy)1E-6f); AssertCloseManaged(w[0, 1], (fProxy)1, (fProxy)1E-6f); // oldest
+        AssertCloseManaged(w[1, 0], (fProxy)2, (fProxy)1E-6f); AssertCloseManaged(w[1, 1], (fProxy)2, (fProxy)1E-6f);
+        AssertCloseManaged(w[2, 0], (fProxy)3, (fProxy)1E-6f); AssertCloseManaged(w[2, 1], (fProxy)3, (fProxy)1E-6f); // newest
+
+        w.Dispose();
+        sample.Dispose();
+    }
+
+    // Wrap-around counterpart: capacity 4, 5 separate .Run() pushes -> the window must be full and
+    // have evicted the oldest sample (value 1), leaving {2,3,4,5}. Same discriminator shape as above
+    // but also exercises IsFull flipping true and the eviction path across job-field persistence.
+    [Test]
+    public void CrossRunPushWrapAroundAcrossSeparateRunCalls()
+    {
+        var w = new fProxyRollingWindow(4, 2, Allocator.Persistent);
+        var sample = new fProxyN(2, Allocator.Persistent);
+        var job = new CrossRunPushJob { W = w, Sample = sample };
+
+        for (int k = 0; k < 5; k++)
+        {
+            sample[0] = (fProxy)(k + 1);
+            sample[1] = (fProxy)(k + 1);
+            job.Run();
+        }
+
+        Assert.AreEqual(4, w.Count,
+            "RollingWindow.Count did not survive 5 separate .Run() calls (expected wrap to a full window of 4).");
+        Assert.IsTrue(w.IsFull);
+
+        AssertCloseManaged(w[0, 0], (fProxy)2, (fProxy)1E-6f); AssertCloseManaged(w[0, 1], (fProxy)2, (fProxy)1E-6f); // oldest retained (1 evicted)
+        AssertCloseManaged(w[3, 0], (fProxy)5, (fProxy)1E-6f); AssertCloseManaged(w[3, 1], (fProxy)5, (fProxy)1E-6f); // newest
+
+        var mean = w.Mean();
+        AssertCloseManaged(mean[0], (fProxy)3.5f, (fProxy)1E-5f);
+        AssertCloseManaged(mean[1], (fProxy)3.5f, (fProxy)1E-5f);
+
+        w.Dispose();
+        sample.Dispose();
+    }
+
+    // Managed-side (non-Burst) epsilon compare for the cross-run tests above.
+    static void AssertCloseManaged(fProxy a, fProxy b, fProxy precision)
+    {
+        fProxy diff = math.abs(a - b);
+        Assert.IsTrue(diff <= precision, $"got {a}, expected {b}, diff {diff}");
+    }
 
     // ---- Managed throw tests (guard paths) ----
 

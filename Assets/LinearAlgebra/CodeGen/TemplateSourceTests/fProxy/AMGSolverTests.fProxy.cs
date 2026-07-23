@@ -56,7 +56,9 @@ public class fProxyAMGSolverTests
                     if (y > 0) b.AddValue(i, i - gx, (fProxy)(-1));
                     if (y < gy - 1) b.AddValue(i, i + gx, (fProxy)(-1));
                 }
-            return b.ToBSR(allocator);
+            var A = b.ToBSR(allocator);
+            b.Dispose();
+            return A;
         }
 
         public void Execute()

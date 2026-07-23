@@ -563,4 +563,60 @@ public class doubleMPCTests
 
         A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); uLo.Dispose(); uHi.Dispose();
     }
+
+    // ---- Job-struct-copy regression: doubleMPCState.populated must survive a plain .Run() by-value
+    // copy -- same bug class as doubleLQRState.populated / LPBasis.populated (see DemoSmokeTests.cs's
+    // LqrWarmState_SurvivesRunByValueCopy, the established pattern this mirrors). `mpc` is the state
+    // held as a field on PopulatedRunJob; the assertion below reads it back through `mpc` itself --
+    // the ORIGINAL local that was value-copied INTO job.S at construction and never written to
+    // directly again -- so a pass can only be explained by populated living behind native
+    // (pointer-shared) storage, not by any incidental round-trip of the job struct as a whole.
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct PopulatedRunJob : IJob
+    {
+        public doubleMPCState S;
+        public doubleN X0;
+        public doubleN Reference;
+        public doubleN U0;
+        public NativeArray<int> Out;   // [0] = 1 if the solve reached Optimal/MaxIterations
+
+        public void Execute()
+        {
+            var info = MPC.solve(ref S, in X0, in Reference, ref U0);
+            Out[0] = (info.status == MPCStatus.Optimal || info.status == MPCStatus.MaxIterations) ? 1 : 0;
+        }
+    }
+
+    // Smallest valid MPC problem already used by this file's own managed throw tests above
+    // (SolveThrowsOnMismatchedX0 / ConstructorThrowsOnUnstabilizablePair / DisposeIsIdempotent):
+    // n=2, m=1, N=4, double integrator, input bound [-1,1].
+    [Test]
+    public void MPCState_Populated_SurvivesRunByValueCopy()
+    {
+        var A = new doubleMxN(2, 2, Allocator.TempJob); A[0, 0] = 1; A[0, 1] = 1; A[1, 1] = 1;
+        var B = new doubleMxN(2, 1, Allocator.TempJob); B[1, 0] = 1;
+        var Q = new doubleMxN(2, 2, Allocator.TempJob); Q[0, 0] = 1; Q[1, 1] = 1;
+        var R = new doubleMxN(1, 1, Allocator.TempJob); R[0, 0] = 1;
+        var uLo = new doubleN(1, Allocator.TempJob, true); uLo[0] = (double)(-1);
+        var uHi = new doubleN(1, Allocator.TempJob, true); uHi[0] = (double)1;
+        var mpc = new doubleMPCState(2, 1, 4, Allocator.TempJob, in A, in B, in Q, in R, in uLo, in uHi);
+
+        var x0 = new doubleN(2, Allocator.TempJob, true);
+        var reference = new doubleN(2, Allocator.TempJob);   // zero-initialized: track to the origin
+        var u0 = new doubleN(1, Allocator.TempJob, true);
+        var outFlag = new NativeArray<int>(1, Allocator.TempJob);
+
+        var job = new PopulatedRunJob { S = mpc, X0 = x0, Reference = reference, U0 = u0, Out = outFlag };
+
+        Assert.IsFalse(mpc.populated, "fresh MPC state should not be populated");
+        job.Run();   // plain .Run() -> Execute runs on a by-value copy of `job`
+
+        Assert.IsTrue(outFlag[0] == 1, "cold MPC solve did not reach Optimal/MaxIterations");
+        Assert.IsTrue(mpc.populated,
+            "doubleMPCState.populated did not survive the .Run() by-value copy -- a native-backed flag is what makes this pass; a plain bool would be lost");
+
+        x0.Dispose(); reference.Dispose(); u0.Dispose(); outFlag.Dispose();
+        mpc.Dispose();
+        A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); uLo.Dispose(); uHi.Dispose();
+    }
 }

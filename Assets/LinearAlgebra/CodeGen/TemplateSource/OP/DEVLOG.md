@@ -1,6 +1,17 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## fProxyMPCState.populated: native-backed, closing the gap with fProxyLQRState
+- 2026-07-23 | `fProxyMPCState.populated` was a plain bool whose own doc comment claimed it "mirrors
+  fProxyLQRState.populated" without actually doing so -- a job that ran `MPC.solve` via `IJob.Run()`
+  (e.g. a receding-horizon frame job holding the state as a struct field) lost the flag on every call,
+  forcing every warm tick back onto the cold QP path. Fixed by moving it behind a `NativeReference<int>`
+  and re-exposing it as a `bool` property, the exact `fProxyLQRState.populated` idiom -- allocated in the
+  main constructor (replacing the old `populated = false;` field-reset line), disposed in `Dispose()` and
+  on the constructor's terminal-DARE-non-convergence early-throw path. All call sites (`s.populated =
+  true` in MPC.fProxy.cs, `s.populated = false` in MPCBenchmark.fProxy.cs) are unchanged since a property
+  assignment has the same syntax as a field assignment. See [[job-struct-copy-warmstate-audit]].
+
 ## Krylov.craig / craigmr — Tikhonov damping via the augmented operator
 - 2026-07-23 | New Krylov.LeastNormDamped.fProxy.cs. Damped craig/craigmr = ridge least-norm
   x = Aᵀ(AAᵀ+damp²·I)⁻¹b. KEY: instead of the "materially more complex" generalized Golub-Kahan
