@@ -136,6 +136,126 @@ namespace LinearAlgebra.Sparse
             return A;
         }
 
+        /// <summary>
+        /// Standalone twin of <see cref="BuildTopology(in fProxyBSR, ref Arena, in SchwarzOptions, out Indices, out Indices, out Indices, out Indices, out int, out int)"/>:
+        /// allocates SubStart/SubBlocks/OwnedLo/OwnedHi from <paramref name="allocator"/> instead of
+        /// an arena; a Symmetric-storage input's mirror-to-full copy is Temp-allocated. Because the
+        /// mirror (when made) is still used by the caller after this returns (to gather subdomain
+        /// values), disposal is the CALLER's responsibility: <paramref name="ownsA"/> reports whether
+        /// the returned matrix must be disposed once the caller is done reading it (true = freshly
+        /// mirrored, false = aliases the caller's own input matrix `a`).
+        /// </summary>
+        internal static fProxyBSR BuildTopology(in fProxyBSR a, Allocator allocator, in SchwarzOptions opts,
+            out Indices subStart, out Indices subBlocks, out Indices ownedLo, out Indices ownedHi,
+            out int K, out int maxBlocks, out bool ownsA)
+        {
+            if (a.BlockRows != a.BlockCols || a.BR != a.BC)
+                throw new ArgumentException("fProxySchwarz: A must be square (BlockRows==BlockCols, BR==BC)");
+
+            ownsA = a.Symmetric;
+            fProxyBSR A = ownsA ? a.MirrorToFull(Allocator.Temp) : a;
+
+            int nb = A.BlockRows;
+            int BR = A.BR;
+
+            int blocksPerSub = math.max(1, opts.subdomainSize / BR);
+            K = (nb + blocksPerSub - 1) / blocksPerSub;
+            int delta = math.max(0, opts.overlap);
+
+            ownedLo = new Indices(K, allocator);
+            ownedHi = new Indices(K, allocator);
+            subStart = new Indices(K + 1, allocator);
+            for (int i = 0; i < K; i++)
+            {
+                int lo = i * blocksPerSub;
+                int hi = math.min((i + 1) * blocksPerSub, nb);
+                ownedLo[i] = lo;
+                ownedHi[i] = hi;
+            }
+
+            var tPtr = new NativeArray<int>(nb + 1, Allocator.Temp, NativeArrayOptions.ClearMemory);
+            int nnzb = A.Nnzb;
+            var tIdx = new NativeArray<int>(nnzb, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+            {
+                var aRowPtr = A.RowPtr; var aColInd = A.ColInd;
+                for (int k = 0; k < nnzb; k++) tPtr[aColInd[k] + 1]++;
+                for (int c = 0; c < nb; c++) tPtr[c + 1] += tPtr[c];
+                var fill = new NativeArray<int>(nb, Allocator.Temp, NativeArrayOptions.ClearMemory);
+                for (int r = 0; r < nb; r++)
+                {
+                    int s = aRowPtr[r], e = aRowPtr[r + 1];
+                    for (int k = s; k < e; k++)
+                    {
+                        int c = aColInd[k];
+                        tIdx[tPtr[c] + fill[c]] = r;
+                        fill[c]++;
+                    }
+                }
+                fill.Dispose();
+            }
+
+            var mark = new NativeArray<int>(nb, Allocator.Temp, NativeArrayOptions.ClearMemory);
+            var dist = new NativeArray<int>(nb, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+            var queue = new UnsafeList<int>(math.max(1, blocksPerSub), Allocator.Temp);
+            var allMembers = new UnsafeList<int>(math.max(1, nb), Allocator.Temp);
+
+            var aRp = A.RowPtr; var aCi = A.ColInd;
+            maxBlocks = 0;
+            subStart[0] = 0;
+            for (int i = 0; i < K; i++)
+            {
+                int stamp = i + 1;
+                queue.Clear();
+                int lo = ownedLo[i], hi = ownedHi[i];
+                for (int g = lo; g < hi; g++)
+                {
+                    mark[g] = stamp;
+                    dist[g] = 0;
+                    queue.Add(g);
+                }
+
+                int head = 0;
+                while (head < queue.Length)
+                {
+                    int r = queue[head++];
+                    int d = dist[r];
+                    if (d >= delta) continue;
+
+                    int s = aRp[r], e = aRp[r + 1];
+                    for (int k = s; k < e; k++)
+                    {
+                        int j = aCi[k];
+                        if (mark[j] != stamp) { mark[j] = stamp; dist[j] = d + 1; queue.Add(j); }
+                    }
+                    int ts = tPtr[r], te = tPtr[r + 1];
+                    for (int k = ts; k < te; k++)
+                    {
+                        int j = tIdx[k];
+                        if (mark[j] != stamp) { mark[j] = stamp; dist[j] = d + 1; queue.Add(j); }
+                    }
+                }
+
+                int count = 0;
+                for (int g = 0; g < nb; g++)
+                    if (mark[g] == stamp) { allMembers.Add(g); count++; }
+
+                subStart[i + 1] = subStart[i] + count;
+                if (count > maxBlocks) maxBlocks = count;
+            }
+
+            subBlocks = new Indices(allMembers.Length, allocator);
+            for (int t = 0; t < allMembers.Length; t++) subBlocks[t] = allMembers[t];
+
+            allMembers.Dispose();
+            queue.Dispose();
+            dist.Dispose();
+            mark.Dispose();
+            tIdx.Dispose();
+            tPtr.Dispose();
+
+            return A;
+        }
+
         /// <summary>Gathers A's (gr,gc) BR x BR block into the dense local matrix M at
         /// (rowOff,colOff), zero-filled when the block is not stored; adds diagShift to the block's
         /// own scalar diagonal when gr==gc. A must be full storage (ascending ColInd per row).</summary>
@@ -210,10 +330,13 @@ namespace LinearAlgebra.Sparse
     /// (1e-3*diagMax, x10, up to 6 attempts); the worst shift used is in <see cref="Shift"/>.
     /// Cached-factor memory is O(N * overlapFactor^2 * subdomainSize) -- see
     /// <see cref="SchwarzOptions"/>. Symmetric-storage A is mirrored to full transiently at setup
-    /// (A is read only at setup, never at Apply). Arena-composed -- no record table of its own, no
-    /// Dispose(). A single instance is not safe for concurrent Apply (the local scratch is shared).
+    /// (A is read only at setup, never at Apply). Built via a ref Arena ctor, every owned buffer is
+    /// arena-tracked and the arena owns disposal -- do not call Dispose() on that instance. Built
+    /// via an Allocator ctor, this instance owns those buffers standalone and Dispose() must be
+    /// called when done. A single instance is not safe for concurrent Apply (the local scratch is
+    /// shared).
     /// </summary>
-    public readonly struct fProxyAdditiveSchwarz : IfProxyPreconditioner
+    public readonly struct fProxyAdditiveSchwarz : IfProxyPreconditioner, IDisposable
     {
         /// <summary>Prefix offsets into <see cref="SubBlocks"/> (CSR-of-subdomains), length K+1.</summary>
         public readonly Indices SubStart;
@@ -361,6 +484,148 @@ namespace LinearAlgebra.Sparse
             };
         }
 
+        /// <summary>Standalone twin of <see cref="fProxyAdditiveSchwarz(in fProxyBSR, ref Arena)"/>,
+        /// allocated from <paramref name="allocator"/>. Dispose the result with
+        /// <see cref="Dispose"/> -- only call Dispose on an instance built via an Allocator ctor.</summary>
+        public unsafe fProxyAdditiveSchwarz(in fProxyBSR a, Allocator allocator)
+        {
+            this = new fProxyAdditiveSchwarz(in a, allocator, out PreconditionerInfo info);
+            if (!info.Solved)
+            {
+                Dispose();
+                throw new ArgumentException("fProxyAdditiveSchwarz: a local factor broke down at every diagonal shift — is A symmetric positive definite?");
+            }
+        }
+
+        /// <summary>Standalone twin of <see cref="fProxyAdditiveSchwarz(in fProxyBSR, ref Arena, out PreconditionerInfo)"/>.</summary>
+        public unsafe fProxyAdditiveSchwarz(in fProxyBSR a, Allocator allocator, out PreconditionerInfo info)
+        {
+            this = new fProxyAdditiveSchwarz(in a, allocator, SchwarzOptions.Default, out info);
+        }
+
+        /// <summary>Standalone twin of <see cref="fProxyAdditiveSchwarz(in fProxyBSR, ref Arena, in SchwarzOptions)"/>.</summary>
+        public unsafe fProxyAdditiveSchwarz(in fProxyBSR a, Allocator allocator, in SchwarzOptions opts)
+        {
+            this = new fProxyAdditiveSchwarz(in a, allocator, in opts, out PreconditionerInfo info);
+            if (!info.Solved)
+            {
+                Dispose();
+                throw new ArgumentException("fProxyAdditiveSchwarz: a local factor broke down at every diagonal shift — is A symmetric positive definite?");
+            }
+        }
+
+        /// <summary>
+        /// Standalone twin of <see cref="fProxyAdditiveSchwarz(in fProxyBSR, ref Arena, in SchwarzOptions, out PreconditionerInfo)"/>:
+        /// allocates every owned buffer from <paramref name="allocator"/> instead of an arena. Same
+        /// throw contract (buffers are allocated and left populated with the failed factorization
+        /// even on breakdown -- Dispose is still valid). Only call Dispose on an instance built via
+        /// an Allocator ctor, never on one built via a ref Arena ctor (that instance is arena-owned).
+        /// </summary>
+        public unsafe fProxyAdditiveSchwarz(in fProxyBSR a, Allocator allocator, in SchwarzOptions opts, out PreconditionerInfo info)
+        {
+            fProxyBSR A = fProxySchwarzShared.BuildTopology(in a, allocator, in opts,
+                out Indices subStart, out Indices subBlocks, out Indices ownedLo, out Indices ownedHi,
+                out int k, out int maxBlocks, out bool ownsA);
+
+            int br = A.BR;
+            int maxLocalN = maxBlocks * br;
+
+            var factorStart = new Indices(k + 1, allocator);
+            factorStart[0] = 0;
+            for (int i = 0; i < k; i++)
+            {
+                int nn = (subStart[i + 1] - subStart[i]) * br;
+                factorStart[i + 1] = factorStart[i] + nn * nn;
+            }
+            var factors = new fProxyN(factorStart[k], allocator);
+            var scratch = new fProxyN(math.max(1, maxLocalN), allocator, true);
+
+            fProxy diagMax = fProxySchwarzShared.DiagMax(in A);
+
+            fProxy worstShift = 0;
+            int worstAttempts = 1;
+            bool ok = true;
+
+            for (int i = 0; i < k; i++)
+            {
+                int start = subStart[i];
+                int count = subStart[i + 1] - start;
+                int n = count * br;
+                int fbase = factorStart[i];
+
+                var M = new fProxyMxN(n, n, Allocator.Temp, true);
+                fProxy shift = 0;
+                bool subOk = false;
+                int subAttempts = 0;
+
+                for (int attempt = 0; attempt < 6; attempt++)
+                {
+                    subAttempts = attempt + 1;
+                    for (int aI = 0; aI < count; aI++)
+                    {
+                        int gr = subBlocks[start + aI];
+                        for (int bI = 0; bI <= aI; bI++)
+                        {
+                            int gc = subBlocks[start + bI];
+                            fProxySchwarzShared.GatherBlock(in A, gr, gc, ref M, aI * br, bI * br, aI == bI ? shift : (fProxy)0, br);
+                        }
+                    }
+
+                    var chInfo = CHO.decompInPlace(ref M);
+                    if (chInfo.Solved)
+                    {
+                        var md = M.Data;
+                        for (int t = 0; t < n * n; t++) factors[fbase + t] = md[t];
+                        subOk = true;
+                        break;
+                    }
+                    shift = shift == (fProxy)0 ? (fProxy)1e-3 * diagMax : shift * (fProxy)10;
+                }
+
+                M.Dispose();
+
+                if (subAttempts > worstAttempts) worstAttempts = subAttempts;
+                if (shift > worstShift) worstShift = shift;
+                if (!subOk) { ok = false; break; }
+            }
+
+            SubStart = subStart;
+            SubBlocks = subBlocks;
+            OwnedLo = ownedLo;
+            OwnedHi = ownedHi;
+            FactorStart = factorStart;
+            Factors = factors;
+            Scratch = scratch;
+            Shift = worstShift;
+            BlockRows = A.BlockRows;
+            BR = br;
+            K = k;
+            MaxLocalN = maxLocalN;
+
+            if (ownsA) A.Dispose();
+
+            info = new PreconditionerInfo
+            {
+                status = ok ? DirectSolveStatus.Success : DirectSolveStatus.NotPositiveDefinite,
+                shift = (double)worstShift,
+                attempts = worstAttempts,
+            };
+        }
+
+        /// <summary>Disposes SubStart/SubBlocks/OwnedLo/OwnedHi/FactorStart/Factors/Scratch. Only
+        /// call on an instance built via an Allocator ctor -- an instance built via a ref Arena ctor
+        /// is arena-owned and must not be disposed directly.</summary>
+        public unsafe void Dispose()
+        {
+            SubStart.Dispose();
+            SubBlocks.Dispose();
+            OwnedLo.Dispose();
+            OwnedHi.Dispose();
+            FactorStart.Dispose();
+            Factors.Dispose();
+            Scratch.Dispose();
+        }
+
         /// <summary>z = M^-1 r = sum_i R_i^T A_i^-1 R_i r: zero z, then for each subdomain gather r,
         /// solve against the cached Cholesky factor, and add the local solution back into z over the
         /// overlapped block set. z must not alias r or Scratch.</summary>
@@ -443,10 +708,12 @@ namespace LinearAlgebra.Sparse
     /// general square A) and reused by every Apply. A numerically singular local block reports
     /// Singular via the out-info twin (no diagonal-shift retry -- RAS targets general A). Cached-
     /// factor memory is O(N * overlapFactor^2 * subdomainSize) -- see <see cref="SchwarzOptions"/>.
-    /// Symmetric-storage A is mirrored to full transiently at setup. Arena-composed -- no record
-    /// table of its own, no Dispose(). A single instance is not safe for concurrent Apply.
+    /// Symmetric-storage A is mirrored to full transiently at setup. Built via a ref Arena ctor,
+    /// every owned buffer is arena-tracked and the arena owns disposal -- do not call Dispose() on
+    /// that instance. Built via an Allocator ctor, this instance owns those buffers standalone and
+    /// Dispose() must be called when done. A single instance is not safe for concurrent Apply.
     /// </summary>
-    public readonly struct fProxyRestrictedSchwarz : IfProxyPreconditioner
+    public readonly struct fProxyRestrictedSchwarz : IfProxyPreconditioner, IDisposable
     {
         /// <summary>Prefix offsets into <see cref="SubBlocks"/> (CSR-of-subdomains), length K+1.</summary>
         public readonly Indices SubStart;
@@ -589,6 +856,143 @@ namespace LinearAlgebra.Sparse
                 shift = 0,
                 attempts = 1,
             };
+        }
+
+        /// <summary>Standalone twin of <see cref="fProxyRestrictedSchwarz(in fProxyBSR, ref Arena)"/>,
+        /// allocated from <paramref name="allocator"/>. Dispose the result with
+        /// <see cref="Dispose"/> -- only call Dispose on an instance built via an Allocator ctor.</summary>
+        public unsafe fProxyRestrictedSchwarz(in fProxyBSR a, Allocator allocator)
+        {
+            this = new fProxyRestrictedSchwarz(in a, allocator, out PreconditionerInfo info);
+            if (!info.Solved)
+            {
+                Dispose();
+                throw new ArgumentException("fProxyRestrictedSchwarz: a local LU factor is numerically singular");
+            }
+        }
+
+        /// <summary>Standalone twin of <see cref="fProxyRestrictedSchwarz(in fProxyBSR, ref Arena, out PreconditionerInfo)"/>.</summary>
+        public unsafe fProxyRestrictedSchwarz(in fProxyBSR a, Allocator allocator, out PreconditionerInfo info)
+        {
+            this = new fProxyRestrictedSchwarz(in a, allocator, SchwarzOptions.Default, out info);
+        }
+
+        /// <summary>Standalone twin of <see cref="fProxyRestrictedSchwarz(in fProxyBSR, ref Arena, in SchwarzOptions)"/>.</summary>
+        public unsafe fProxyRestrictedSchwarz(in fProxyBSR a, Allocator allocator, in SchwarzOptions opts)
+        {
+            this = new fProxyRestrictedSchwarz(in a, allocator, in opts, out PreconditionerInfo info);
+            if (!info.Solved)
+            {
+                Dispose();
+                throw new ArgumentException("fProxyRestrictedSchwarz: a local LU factor is numerically singular");
+            }
+        }
+
+        /// <summary>
+        /// Standalone twin of <see cref="fProxyRestrictedSchwarz(in fProxyBSR, ref Arena, in SchwarzOptions, out PreconditionerInfo)"/>:
+        /// allocates every owned buffer from <paramref name="allocator"/> instead of an arena. Same
+        /// throw contract (buffers are allocated and left populated with the failed factorization
+        /// even on breakdown -- Dispose is still valid). Only call Dispose on an instance built via
+        /// an Allocator ctor, never on one built via a ref Arena ctor (that instance is arena-owned).
+        /// </summary>
+        public unsafe fProxyRestrictedSchwarz(in fProxyBSR a, Allocator allocator, in SchwarzOptions opts, out PreconditionerInfo info)
+        {
+            fProxyBSR A = fProxySchwarzShared.BuildTopology(in a, allocator, in opts,
+                out Indices subStart, out Indices subBlocks, out Indices ownedLo, out Indices ownedHi,
+                out int k, out int maxBlocks, out bool ownsA);
+
+            int br = A.BR;
+            int maxLocalN = maxBlocks * br;
+
+            var factorStart = new Indices(k + 1, allocator);
+            factorStart[0] = 0;
+            for (int i = 0; i < k; i++)
+            {
+                int nn = (subStart[i + 1] - subStart[i]) * br;
+                factorStart[i + 1] = factorStart[i] + nn * nn;
+            }
+            var factors = new fProxyN(factorStart[k], allocator);
+            var piv = new Indices(subStart[k] * br, allocator);
+            var scratch = new fProxyN(math.max(1, maxLocalN), allocator, true);
+            var scratch2 = new fProxyN(math.max(1, maxLocalN), allocator, true);
+
+            bool ok = true;
+            for (int i = 0; i < k; i++)
+            {
+                int start = subStart[i];
+                int count = subStart[i + 1] - start;
+                int n = count * br;
+                int fbase = factorStart[i];
+                int pbase = start * br;
+
+                var M = new fProxyMxN(n, n, Allocator.Temp, true);
+                for (int aI = 0; aI < count; aI++)
+                {
+                    int gr = subBlocks[start + aI];
+                    for (int bI = 0; bI < count; bI++)
+                    {
+                        int gc = subBlocks[start + bI];
+                        fProxySchwarzShared.GatherBlock(in A, gr, gc, ref M, aI * br, bI * br, (fProxy)0, br);
+                    }
+                }
+
+                var P = new Pivot(n, Allocator.Temp);
+                var luInfo = LU.decompInPlace(ref M, ref P);
+                if (luInfo.Solved)
+                {
+                    for (int rr = 0; rr < n; rr++)
+                    {
+                        int pr = P[rr];
+                        piv[pbase + rr] = pr;
+                        int dst = fbase + rr * n;
+                        for (int c = 0; c < n; c++) factors[dst + c] = M[pr, c];
+                    }
+                }
+                else ok = false;
+
+                P.Dispose();
+                M.Dispose();
+                if (!ok) break;
+            }
+
+            SubStart = subStart;
+            SubBlocks = subBlocks;
+            OwnedLo = ownedLo;
+            OwnedHi = ownedHi;
+            FactorStart = factorStart;
+            Factors = factors;
+            Piv = piv;
+            Scratch = scratch;
+            Scratch2 = scratch2;
+            BlockRows = A.BlockRows;
+            BR = br;
+            K = k;
+            MaxLocalN = maxLocalN;
+
+            if (ownsA) A.Dispose();
+
+            info = new PreconditionerInfo
+            {
+                status = ok ? DirectSolveStatus.Success : DirectSolveStatus.Singular,
+                shift = 0,
+                attempts = 1,
+            };
+        }
+
+        /// <summary>Disposes SubStart/SubBlocks/OwnedLo/OwnedHi/FactorStart/Factors/Piv/Scratch/
+        /// Scratch2. Only call on an instance built via an Allocator ctor -- an instance built via a
+        /// ref Arena ctor is arena-owned and must not be disposed directly.</summary>
+        public unsafe void Dispose()
+        {
+            SubStart.Dispose();
+            SubBlocks.Dispose();
+            OwnedLo.Dispose();
+            OwnedHi.Dispose();
+            FactorStart.Dispose();
+            Factors.Dispose();
+            Piv.Dispose();
+            Scratch.Dispose();
+            Scratch2.Dispose();
         }
 
         /// <summary>z = M^-1 r = sum_i R~_i^T A_i^-1 R_i r: for each subdomain gather r, solve against

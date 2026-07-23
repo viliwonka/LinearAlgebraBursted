@@ -1,4 +1,5 @@
 using System;
+using Unity.Collections;
 
 namespace LinearAlgebra
 {
@@ -29,10 +30,24 @@ namespace LinearAlgebra
     /// for the backward Q-reconstruction pass); v (length n) is the reflector scratch vector shared
     /// by both passes.
     /// </summary>
-    public struct fProxyLQCache
+    public struct fProxyLQCache : IDisposable
     {
         public fProxyMxN W;
         public fProxyN v;
+
+        /// <summary>Standalone allocation sized identically to <c>Arena.fProxyLQCache(m, n)</c>. Pair with <see cref="Dispose"/>.</summary>
+        public fProxyLQCache(int m, int n, Allocator allocator)
+        {
+            W = new fProxyMxN(m, n, allocator);
+            v = new fProxyN(n, allocator);
+        }
+
+        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        public void Dispose()
+        {
+            W.Dispose();
+            v.Dispose();
+        }
     }
 
     public static partial class ArenaExtensions

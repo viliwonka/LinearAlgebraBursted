@@ -3,6 +3,7 @@
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
 using System;
+using Unity.Collections;
 
 namespace LinearAlgebra
 {
@@ -36,11 +37,27 @@ namespace LinearAlgebra
     /// scratch (starts as a copy of b). No dense-Q buffer is carried — the fused solve applies Qᵀ
     /// straight from W's reflectors (see LQ.applyQtFromReflectors).
     /// </summary>
-    public struct doubleLQMinNormCache
+    public struct doubleLQMinNormCache : IDisposable
     {
         public doubleLQCache LQWs;
         public doubleMxN L;
         public doubleN y;
+
+        /// <summary>Standalone allocation sized identically to <c>Arena.doubleLQMinNormCache(m, n)</c>. Pair with <see cref="Dispose"/>.</summary>
+        public doubleLQMinNormCache(int m, int n, Allocator allocator)
+        {
+            LQWs = new doubleLQCache(m, n, allocator);
+            L = new doubleMxN(m, m, allocator);
+            y = new doubleN(m, allocator);
+        }
+
+        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        public void Dispose()
+        {
+            LQWs.Dispose();
+            L.Dispose();
+            y.Dispose();
+        }
     }
 
     public static partial class ArenaExtensions

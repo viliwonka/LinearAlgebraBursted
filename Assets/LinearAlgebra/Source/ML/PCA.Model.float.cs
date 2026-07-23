@@ -2,6 +2,8 @@
 //   Generated from Assets/LinearAlgebra/CodeGen/TemplateSource/ML/PCA.Model.fProxy.cs
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
+using System;
+
 using Unity.Collections;
 
 using LinearAlgebra.ML;
@@ -16,7 +18,7 @@ namespace LinearAlgebra.ML
     /// same-shape fits (realtime pattern: fit each frame into the same model, <c>ClearTemp()</c> reclaims the
     /// internal scratch each fit allocates from the arena's temp pool).
     /// </summary>
-    public struct floatPCAModel
+    public struct floatPCAModel : IDisposable
     {
         /// <summary>p x k. Column i is the i-th principal axis (unit-norm, sign-fixed — see
         /// <see cref="PCA"/>'s sign convention). Undefined if <see cref="converged"/> is false.</summary>
@@ -77,6 +79,28 @@ namespace LinearAlgebra.ML
 
         /// <summary>Managed wrapper -- do not call from inside a [BurstCompile] job.</summary>
         public override string ToString() => ToFixedString().ToString();
+
+        /// <summary>Standalone allocation sized identically to <c>Arena.floatPCAModel(p, k)</c>. Pair with <see cref="Dispose"/>.</summary>
+        public floatPCAModel(int p, int k, Allocator allocator)
+        {
+            components             = new floatMxN(p, k, allocator);
+            explainedVariance      = new floatN(k, allocator);
+            explainedVarianceRatio = new floatN(k, allocator);
+            mean                   = new floatN(p, allocator);
+            scale                  = new floatN(p, allocator);
+            this.k                 = k;
+            converged              = false;
+        }
+
+        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        public void Dispose()
+        {
+            components.Dispose();
+            explainedVariance.Dispose();
+            explainedVarianceRatio.Dispose();
+            mean.Dispose();
+            scale.Dispose();
+        }
     }
 }
 

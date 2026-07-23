@@ -4,6 +4,7 @@
 // </auto-generated>
 using System;
 
+using Unity.Collections;
 using Unity.Mathematics;
 
 namespace LinearAlgebra
@@ -73,7 +74,7 @@ namespace LinearAlgebra
     /// thin on the small Bt still uses a little Allocator.Temp scratch of its own, so the op
     /// is low-alloc rather than strictly zero-alloc.
     /// </summary>
-    public struct doubleSVDRandomizedCache
+    public struct doubleSVDRandomizedCache : IDisposable
     {
         public doubleMxN Omega;
         public doubleMxN Y;
@@ -87,6 +88,47 @@ namespace LinearAlgebra
         public doubleN Sb;
         public doubleMxN Vp;
         public doubleMxN UA;
+
+        /// <summary>Standalone allocation sized identically to <c>Arena.doubleSVDRandomizedCache(m, n, k, oversample)</c>. Pair with <see cref="Dispose"/>.</summary>
+        public doubleSVDRandomizedCache(int m, int n, int k, int oversample, Allocator allocator)
+        {
+            int l = math.min(k + oversample, n);
+            Omega = new doubleMxN(n, l, allocator);
+            Y = new doubleMxN(m, l, allocator);
+            R = new doubleMxN(l, l, allocator);
+            qu = new doubleN(m, allocator);
+            qw = new doubleN(l, allocator);
+            Z = new doubleMxN(n, l, allocator);
+            B = new doubleMxN(l, n, allocator);
+            Bt = new doubleMxN(n, l, allocator);
+            Up = new doubleMxN(n, l, allocator);
+            Sb = new doubleN(l, allocator);
+            Vp = new doubleMxN(l, l, allocator);
+            UA = new doubleMxN(m, l, allocator);
+        }
+
+        /// <summary>Standalone allocation sized identically to <c>Arena.doubleSVDRandomizedCache(m, n, k)</c> (default oversample 10). Pair with <see cref="Dispose"/>.</summary>
+        public doubleSVDRandomizedCache(int m, int n, int k, Allocator allocator)
+            : this(m, n, k, 10, allocator)
+        {
+        }
+
+        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        public void Dispose()
+        {
+            Omega.Dispose();
+            Y.Dispose();
+            R.Dispose();
+            qu.Dispose();
+            qw.Dispose();
+            Z.Dispose();
+            B.Dispose();
+            Bt.Dispose();
+            Up.Dispose();
+            Sb.Dispose();
+            Vp.Dispose();
+            UA.Dispose();
+        }
     }
 
     public static partial class ArenaExtensions

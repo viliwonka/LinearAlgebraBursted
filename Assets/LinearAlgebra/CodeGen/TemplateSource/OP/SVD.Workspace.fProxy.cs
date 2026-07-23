@@ -1,3 +1,6 @@
+using System;
+using Unity.Collections;
+
 namespace LinearAlgebra
 {
     /// <summary>
@@ -11,12 +14,32 @@ namespace LinearAlgebra
     /// is wide (m &lt; n); for m &gt;= n At is left as default (unused). This is exactly the (S, M, U, At)
     /// tuple the scratch-primitive overloads expect, bundled so callers don't size them by hand.
     /// </summary>
-    public struct fProxySVDCache
+    public struct fProxySVDCache : IDisposable
     {
         public fProxyN S;
         public fProxyMxN M;
         public fProxyMxN U;
         public fProxyMxN At;
+
+        /// <summary>Standalone allocation sized identically to <c>Arena.fProxySVDCache(m, n)</c>. Pair with <see cref="Dispose"/>.</summary>
+        public fProxySVDCache(int m, int n, Allocator allocator)
+        {
+            int k   = m < n ? m : n;
+            int big = m < n ? n : m;
+            S  = new fProxyN(k, allocator);
+            M  = new fProxyMxN(k, k, allocator);
+            U  = new fProxyMxN(big, k, allocator);
+            At = (m < n) ? new fProxyMxN(n, m, allocator) : default;
+        }
+
+        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        public void Dispose()
+        {
+            S.Dispose();
+            M.Dispose();
+            U.Dispose();
+            if (At.IsCreated) At.Dispose();
+        }
     }
 
     public static partial class ArenaExtensions

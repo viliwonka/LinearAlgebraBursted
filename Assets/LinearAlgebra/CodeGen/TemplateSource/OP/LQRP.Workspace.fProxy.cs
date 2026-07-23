@@ -1,4 +1,5 @@
 using System;
+using Unity.Collections;
 
 namespace LinearAlgebra
 {
@@ -30,10 +31,24 @@ namespace LinearAlgebra
     /// shared by both passes. The row Pivot P is caller-owned (its size carries the row count), not
     /// folded in here — mirroring how QRCP keeps its column Pivot separate from fProxyQRCPCache.
     /// </summary>
-    public struct fProxyLQRPCache
+    public struct fProxyLQRPCache : IDisposable
     {
         public fProxyMxN W;
         public fProxyN v;
+
+        /// <summary>Standalone allocation sized identically to <c>Arena.fProxyLQRPCache(m, n)</c>. Pair with <see cref="Dispose"/>.</summary>
+        public fProxyLQRPCache(int m, int n, Allocator allocator)
+        {
+            W = new fProxyMxN(m, n, allocator);
+            v = new fProxyN(n, allocator);
+        }
+
+        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        public void Dispose()
+        {
+            W.Dispose();
+            v.Dispose();
+        }
     }
 
     public static partial class ArenaExtensions

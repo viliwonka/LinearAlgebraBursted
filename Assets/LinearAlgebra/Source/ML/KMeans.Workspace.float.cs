@@ -2,6 +2,10 @@
 //   Generated from Assets/LinearAlgebra/CodeGen/TemplateSource/ML/KMeans.Workspace.fProxy.cs
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
+using System;
+
+using Unity.Collections;
+
 using LinearAlgebra.ML;
 
 namespace LinearAlgebra.ML
@@ -11,7 +15,7 @@ namespace LinearAlgebra.ML
     /// Allocate ONCE (sized for the data shape) via <c>Arena.floatKMeansCache(N, D, k)</c>
     /// and reuse across same-shape calls. All buffers are arena-owned and disposed with the arena.
     /// </summary>
-    public struct floatKMeansCache
+    public struct floatKMeansCache : IDisposable
     {
         public floatMxN Gram;           // N x k  GEMM output X*C^T, patched to scores in-place
         public floatN   PointNormSq;    // N      ||x_n||^2 constant (computed once before loop)
@@ -20,6 +24,30 @@ namespace LinearAlgebra.ML
         public floatMxN NewCentroids;   // k x D  centroid accumulator (zeroed each iteration)
         public Indices   ClusterCounts;  // k      per-cluster point count (zeroed each iteration)
         public floatN   D2Weights;      // N      D^2 distances for k-means++ seeding only
+
+        /// <summary>Standalone allocation sized identically to <c>Arena.floatKMeansCache(N, D, k)</c>. Pair with <see cref="Dispose"/>.</summary>
+        public floatKMeansCache(int N, int D, int k, Allocator allocator)
+        {
+            Gram           = new floatMxN(N, k, allocator);
+            PointNormSq    = new floatN(N, allocator);
+            CentNormSq     = new floatN(k, allocator);
+            PrevAssignment = new Indices(N, allocator);
+            NewCentroids   = new floatMxN(k, D, allocator);
+            ClusterCounts  = new Indices(k, allocator);
+            D2Weights      = new floatN(N, allocator);
+        }
+
+        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        public void Dispose()
+        {
+            Gram.Dispose();
+            PointNormSq.Dispose();
+            CentNormSq.Dispose();
+            PrevAssignment.Dispose();
+            NewCentroids.Dispose();
+            ClusterCounts.Dispose();
+            D2Weights.Dispose();
+        }
     }
 }
 

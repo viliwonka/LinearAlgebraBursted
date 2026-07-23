@@ -3,6 +3,7 @@
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
 using System;
+using Unity.Collections;
 
 namespace LinearAlgebra
 {
@@ -37,13 +38,33 @@ namespace LinearAlgebra
     /// for the U backward pass (used only by decomp, not values); uVec (m),
     /// vVec (n) are the Householder vectors and wScratch (n) is the apply-reflector scratch.
     /// </summary>
-    public struct floatBidiagCache
+    public struct floatBidiagCache : IDisposable
     {
         public floatMxN W;
         public floatMxN leftU;
         public floatN uVec;
         public floatN vVec;
         public floatN wScratch;
+
+        /// <summary>Standalone allocation sized identically to <c>Arena.floatBidiagCache(m, n)</c>. Pair with <see cref="Dispose"/>.</summary>
+        public floatBidiagCache(int m, int n, Allocator allocator)
+        {
+            W = new floatMxN(m, n, allocator);
+            leftU = new floatMxN(m, n, allocator);
+            uVec = new floatN(m, allocator);
+            vVec = new floatN(n, allocator);
+            wScratch = new floatN(n, allocator);
+        }
+
+        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        public void Dispose()
+        {
+            W.Dispose();
+            leftU.Dispose();
+            uVec.Dispose();
+            vVec.Dispose();
+            wScratch.Dispose();
+        }
     }
 
     public static partial class ArenaExtensions

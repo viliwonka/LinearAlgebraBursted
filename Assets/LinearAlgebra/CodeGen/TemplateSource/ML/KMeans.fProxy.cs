@@ -1,4 +1,5 @@
 using System;
+using Unity.Collections;
 using Unity.Mathematics;
 using Random = Unity.Mathematics.Random;
 
@@ -377,6 +378,70 @@ namespace LinearAlgebra.ML
             out int iters)
             => fit(ref arena, in X, k, seed, maxIter, KMeansInit.KMeansPlusPlus,
                       out centroids, out assignment, out inertia, out iters);
+
+        // =========================================================================
+        // ALLOCATING CONVENIENCE WRAPPER (Allocator) — explicit init
+        // =========================================================================
+
+        /// <summary>
+        /// Validates inputs, then allocates centroids (k×D) and assignment (N) via <paramref
+        /// name="allocator"/> (default Temp; caller owns disposal) and delegates to the workspace
+        /// overload. The internal workspace scratch is always Allocator.Temp and is not returned.
+        /// Guards fire before any allocation so that no memory is orphaned on invalid input.
+        ///
+        /// For multiple restarts: call the workspace overload directly so scratch can be
+        /// reused across calls. Compare <paramref name="inertia"/> values and keep the best.
+        /// </summary>
+        public static void fit(
+            in fProxyMxN X,
+            int k,
+            uint seed,
+            int maxIter,
+            KMeansInit init,
+            out fProxyMxN centroids,
+            out Indices assignment,
+            out fProxy inertia,
+            out int iters,
+            Allocator allocator = Allocator.Temp)
+        {
+            // Validate before allocating so invalid args cannot orphan memory.
+            if (X.M_Rows == 0 || X.N_Cols == 0)
+                throw new InvalidOperationException("KMeans.fit: X is empty");
+            if (k <= 0)
+                throw new ArgumentException("KMeans.fit: k must be >= 1");
+            if (maxIter < 1)
+                throw new ArgumentException("KMeans.fit: maxIter must be >= 1");
+
+            int N = X.M_Rows;
+            int D = X.N_Cols;
+            int kk = math.min(k, N);  // match the primary overload's clamp
+            centroids  = new fProxyMxN(kk, D, allocator);
+            assignment = new Indices(N, allocator);
+            var ws     = new fProxyKMeansCache(N, D, kk, Allocator.Temp);
+            fit(in X, k, seed, maxIter, init, ref centroids, ref assignment,
+                   out inertia, out iters, ref ws);
+        }
+
+        // =========================================================================
+        // ALLOCATING CONVENIENCE WRAPPER (Allocator) — defaults to KMeansPlusPlus
+        // =========================================================================
+
+        /// <summary>
+        /// Calls <see cref="fit(in fProxyMxN,int,uint,int,KMeansInit,out fProxyMxN,out Indices,out fProxy,out int,Allocator)"/>
+        /// with <c>init = KMeansInit.KMeansPlusPlus</c>.
+        /// </summary>
+        public static void fit(
+            in fProxyMxN X,
+            int k,
+            uint seed,
+            int maxIter,
+            out fProxyMxN centroids,
+            out Indices assignment,
+            out fProxy inertia,
+            out int iters,
+            Allocator allocator = Allocator.Temp)
+            => fit(in X, k, seed, maxIter, KMeansInit.KMeansPlusPlus,
+                      out centroids, out assignment, out inertia, out iters, allocator);
 
         // =========================================================================
         // PRIVATE — seeding helpers

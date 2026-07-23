@@ -3,6 +3,7 @@
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
 using System;
+using Unity.Collections;
 
 namespace LinearAlgebra
 {
@@ -53,7 +54,7 @@ namespace LinearAlgebra
     /// touches u/w — the blocked buffers sit unused for that call, exactly as CHOP's rank-Gram buffers
     /// or Bidiag's leftU sit unused for calls that don't need them.
     /// </summary>
-    public struct doubleQRCache
+    public struct doubleQRCache : IDisposable
     {
         public doubleN u;
         public doubleN w;
@@ -62,6 +63,33 @@ namespace LinearAlgebra
         public doubleN Wbuf;
         public doubleN tcolBuf;
         public doubleN VfullBuf;
+
+        /// <summary>Standalone allocation sized identically to <c>Arena.doubleQRCache(m, n)</c>. Pair with <see cref="Dispose"/>.</summary>
+        public doubleQRCache(int m, int n, Allocator allocator)
+        {
+            // See qrDecompositionBlockedCore for why this is a method-local const, not a class field.
+            const int QR_BLOCK = 32;
+
+            u = new doubleN(m, allocator);
+            w = new doubleN(n, allocator);
+            Vpanel = new doubleN(m * QR_BLOCK, allocator);
+            Tbuf = new doubleN(QR_BLOCK * QR_BLOCK, allocator);
+            Wbuf = new doubleN(QR_BLOCK * n, allocator);
+            tcolBuf = new doubleN(QR_BLOCK, allocator);
+            VfullBuf = new doubleN(m * n, allocator);
+        }
+
+        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        public void Dispose()
+        {
+            u.Dispose();
+            w.Dispose();
+            Vpanel.Dispose();
+            Tbuf.Dispose();
+            Wbuf.Dispose();
+            tcolBuf.Dispose();
+            VfullBuf.Dispose();
+        }
     }
 
     public static partial class ArenaExtensions

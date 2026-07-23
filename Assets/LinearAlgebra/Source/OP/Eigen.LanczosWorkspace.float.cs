@@ -3,6 +3,7 @@
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
 using System;
+using Unity.Collections;
 
 namespace LinearAlgebra
 {
@@ -40,7 +41,7 @@ namespace LinearAlgebra
     /// <c>steps</c> Lanczos iterations. Allocate ONCE via <c>Arena.floatLanczosCache(n, steps)</c>
     /// and reuse it across same-shape calls so repeated Lanczos runs are zero-alloc.
     /// </summary>
-    public struct floatLanczosCache
+    public struct floatLanczosCache : IDisposable
     {
         /// <summary>steps x n Krylov basis: row j (0-indexed) holds the unit vector v_(j+1).</summary>
         public floatMxN V;
@@ -71,6 +72,30 @@ namespace LinearAlgebra
         /// <summary>Nested workspace for valuesSymmetricInPlace's Householder+QL reduction of T,
         /// sized to `steps` (T is always steps x steps regardless of early breakdown).</summary>
         public floatEigenSymCache symWs;
+
+        /// <summary>Standalone allocation sized identically to <c>Arena.floatLanczosCache(n, steps)</c>. Pair with <see cref="Dispose"/>.</summary>
+        public floatLanczosCache(int n, int steps, Allocator allocator)
+        {
+            V = new floatMxN(steps, n, allocator);
+            vCur = new floatN(n, allocator);
+            w = new floatN(n, allocator);
+            alpha = new floatN(steps, allocator);
+            beta = new floatN(steps, allocator);
+            T = new floatMxN(steps, steps, allocator);
+            symWs = new floatEigenSymCache(steps, allocator);
+        }
+
+        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        public void Dispose()
+        {
+            V.Dispose();
+            vCur.Dispose();
+            w.Dispose();
+            alpha.Dispose();
+            beta.Dispose();
+            T.Dispose();
+            symWs.Dispose();
+        }
     }
 
     public static partial class ArenaExtensions

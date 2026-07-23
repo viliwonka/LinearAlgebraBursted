@@ -25,10 +25,11 @@ namespace LinearAlgebra.Sparse
     /// a single BSR spMV.
     ///
     /// Symmetric-storage A pays a one-time mirror-to-full copy (SPAI needs full rows), same as
-    /// ILU0. A must store every diagonal block. Arena-composed -- no record table of its own, no
-    /// Dispose().
+    /// ILU0. A must store every diagonal block. Built via a ref Arena ctor, M is arena-tracked and
+    /// the arena owns disposal -- do not call Dispose() on that instance. Built via an Allocator
+    /// ctor, this instance owns M standalone and Dispose() must be called when done.
     /// </summary>
-    public readonly struct doubleSPAI : IdoublePreconditioner
+    public readonly struct doubleSPAI : IdoublePreconditioner, IDisposable
     {
         /// <summary>M's storage: A's own full block pattern (MVP default).</summary>
         public readonly doubleBSR M;
@@ -264,6 +265,224 @@ namespace LinearAlgebra.Sparse
                 attempts = worstAttempts,
             };
         }
+
+        /// <summary>Standalone twin of <see cref="doubleSPAI(in doubleBSR, ref Arena)"/>, allocated
+        /// from <paramref name="allocator"/>. Dispose the result with <see cref="Dispose"/> -- only
+        /// call Dispose on an instance built via an Allocator ctor.</summary>
+        public unsafe doubleSPAI(in doubleBSR a, Allocator allocator)
+        {
+            this = new doubleSPAI(in a, allocator, out PreconditionerInfo info);
+            if (!info.Solved)
+            {
+                Dispose();
+                throw new ArgumentException("doubleSPAI: a row's local least-squares solve broke down at every Tikhonov shift");
+            }
+        }
+
+        /// <summary>Standalone twin of <see cref="doubleSPAI(in doubleBSR, ref Arena, out PreconditionerInfo)"/>.</summary>
+        public unsafe doubleSPAI(in doubleBSR a, Allocator allocator, out PreconditionerInfo info)
+        {
+            this = new doubleSPAI(in a, allocator, SaiOptions.Default, out info);
+        }
+
+        /// <summary>Standalone twin of <see cref="doubleSPAI(in doubleBSR, ref Arena, in SaiOptions)"/>.</summary>
+        public unsafe doubleSPAI(in doubleBSR a, Allocator allocator, in SaiOptions opts)
+        {
+            this = new doubleSPAI(in a, allocator, in opts, out PreconditionerInfo info);
+            if (!info.Solved)
+            {
+                Dispose();
+                throw new ArgumentException("doubleSPAI: a row's local least-squares solve broke down at every Tikhonov shift");
+            }
+        }
+
+        /// <summary>
+        /// Standalone twin of <see cref="doubleSPAI(in doubleBSR, ref Arena, in SaiOptions, out PreconditionerInfo)"/>:
+        /// allocates M from <paramref name="allocator"/> instead of an arena (a Symmetric-storage
+        /// input's mirror-to-full copy is Temp-allocated and disposed before returning -- it is
+        /// setup-only, M holds its own independent copy of the pattern/values). Same throw contract
+        /// (M is allocated and left populated with the failed solve even on breakdown -- Dispose is
+        /// still valid). Only call Dispose on an instance built via an Allocator ctor, never on one
+        /// built via a ref Arena ctor (that instance is arena-owned).
+        /// </summary>
+        public unsafe doubleSPAI(in doubleBSR a, Allocator allocator, in SaiOptions opts, out PreconditionerInfo info)
+        {
+            if (a.BlockRows != a.BlockCols || a.BR != a.BC)
+                throw new ArgumentException("doubleSPAI: A must be square (BlockRows==BlockCols, BR==BC)");
+            if (opts.patternPower != 1)
+                throw new ArgumentException("doubleSPAI: opts.patternPower must be 1 (pattern(A^2) is not implemented yet)");
+
+            bool ownsMirror = a.Symmetric;
+            var A = ownsMirror ? a.MirrorToFull(Allocator.Temp) : a;
+
+            int nb = A.BlockRows;
+            int BR = A.BR;
+            int blockLen = BR * BR;
+
+            double diagMax = 0;
+            for (int i = 0; i < nb; i++)
+            {
+                int s = A.RowPtr[i], e = A.RowPtr[i + 1];
+                bool hasDiag = false;
+                for (int k = s; k < e; k++)
+                {
+                    if (A.ColInd[k] != i) continue;
+                    hasDiag = true;
+                    int off = k * blockLen;
+                    for (int r = 0; r < BR; r++)
+                    {
+                        double av = math.abs(A.Values[off + r * BR + r]);
+                        if (av > diagMax) diagMax = av;
+                    }
+                    break;
+                }
+                if (!hasDiag)
+                {
+                    if (ownsMirror) A.Dispose();
+                    throw new ArgumentException("doubleSPAI: missing diagonal block in A");
+                }
+            }
+            if (diagMax <= (double)0) diagMax = (double)1;
+
+            var Mm = new doubleBSR(nb, nb, BR, BR, A.Nnzb, allocator, true);
+            var mRowPtr = Mm.RowPtr; var mColInd = Mm.ColInd; var mValues = Mm.Values;
+            {
+                for (int i = 0; i <= nb; i++) mRowPtr[i] = A.RowPtr[i];
+                for (int k = 0; k < A.Nnzb; k++) mColInd[k] = A.ColInd[k];
+            }
+
+            double worstShift = 0;
+            int worstAttempts = 1;
+            bool ok = true;
+
+            var shadow = new NativeArray<int>(nb, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+
+            for (int i = 0; i < nb; i++)
+            {
+                int jS = A.RowPtr[i], jE = A.RowPtr[i + 1];
+                int m = jE - jS;
+
+                int shadowCount = 0;
+                for (int aI = 0; aI < m; aI++)
+                {
+                    int j = A.ColInd[jS + aI];
+                    int rs = A.RowPtr[j], re = A.RowPtr[j + 1];
+                    for (int k = rs; k < re; k++)
+                    {
+                        int col = A.ColInd[k];
+                        int p = shadowCount - 1;
+                        while (p >= 0 && shadow[p] > col) p--;
+                        bool dup = p >= 0 && shadow[p] == col;
+                        if (!dup)
+                        {
+                            for (int q = shadowCount; q > p + 1; q--) shadow[q] = shadow[q - 1];
+                            shadow[p + 1] = col;
+                            shadowCount++;
+                        }
+                    }
+                }
+                int kCount = shadowCount;
+                int nJ = m * BR, nI = kCount * BR;
+
+                int iLocal = -1;
+                for (int p = 0; p < kCount; p++) if (shadow[p] == i) { iLocal = p; break; }
+
+                var Ahat = new doubleMxN(nJ, nI, Allocator.Temp, true);
+                for (int aI = 0; aI < m; aI++)
+                {
+                    int ga = A.ColInd[jS + aI];
+                    for (int bI = 0; bI < kCount; bI++)
+                    {
+                        int gb = shadow[bI];
+                        doubleFSAI.GatherBlockInto(in A, ga, gb, ref Ahat, aI * BR, bI * BR, (double)0);
+                    }
+                }
+
+                int nAug = nI + nJ;
+
+                var Bt = new doubleMxN(nI, nJ, Allocator.Temp, true);
+                for (int r = 0; r < nJ; r++)
+                    for (int c = 0; c < nI; c++)
+                        Bt[c, r] = Ahat[r, c];
+
+                var Bwork = new doubleMxN(nAug, nJ, Allocator.Temp, true);
+                var Cwork = new doubleMxN(nAug, BR, Allocator.Temp, true);
+                var Xwork = new doubleMxN(nJ, BR, Allocator.Temp, true);
+
+                double shift = 0;
+                bool rowOk = false;
+                int rowAttempts = 0;
+
+                for (int attempt = 0; attempt < 6; attempt++)
+                {
+                    rowAttempts = attempt + 1;
+
+                    for (int r = 0; r < nI; r++)
+                        for (int c = 0; c < nJ; c++)
+                            Bwork[r, c] = Bt[r, c];
+                    double sq = math.sqrt(shift);
+                    for (int r = 0; r < nJ; r++)
+                        for (int c = 0; c < nJ; c++)
+                            Bwork[nI + r, c] = (r == c) ? sq : (double)0;
+
+                    for (int r = 0; r < nAug; r++)
+                        for (int c = 0; c < BR; c++)
+                            Cwork[r, c] = (double)0;
+                    for (int c = 0; c < BR; c++)
+                        Cwork[iLocal * BR + c, c] = (double)1;
+
+                    QR.solveInPlace(ref Bwork, ref Cwork, ref Xwork);
+
+                    bool finite = true;
+                    for (int r = 0; r < nJ && finite; r++)
+                        for (int c = 0; c < BR; c++)
+                            if (!math.isfinite(Xwork[r, c])) { finite = false; break; }
+
+                    if (finite)
+                    {
+                        for (int aI = 0; aI < m; aI++)
+                        {
+                            int dstOff = (jS + aI) * blockLen;
+                            for (int q = 0; q < BR; q++)
+                                for (int p = 0; p < BR; p++)
+                                    mValues[dstOff + q * BR + p] = Xwork[aI * BR + p, q];
+                        }
+
+                        rowOk = true;
+                        break;
+                    }
+
+                    shift = shift == (double)0 ? (double)1e-3 * diagMax : shift * (double)10;
+                }
+
+                Xwork.Dispose();
+                Cwork.Dispose();
+                Bwork.Dispose();
+                Bt.Dispose();
+                Ahat.Dispose();
+
+                if (rowAttempts > worstAttempts) worstAttempts = rowAttempts;
+                if (shift > worstShift) worstShift = shift;
+                if (!rowOk) { ok = false; break; }
+            }
+
+            shadow.Dispose();
+            if (ownsMirror) A.Dispose();
+
+            M = Mm;
+            Shift = worstShift;
+
+            info = new PreconditionerInfo
+            {
+                status = ok ? DirectSolveStatus.Success : DirectSolveStatus.Singular,
+                shift = (double)worstShift,
+                attempts = worstAttempts,
+            };
+        }
+
+        /// <summary>Disposes M. Only call on an instance built via an Allocator ctor -- an instance
+        /// built via a ref Arena ctor is arena-owned and must not be disposed directly.</summary>
+        public unsafe void Dispose() => M.Dispose();
 
         /// <summary>z = M r: one BSR spMV. z must not alias r.</summary>
         public bool IsIdentity => false;

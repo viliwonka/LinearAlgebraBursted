@@ -1,4 +1,5 @@
 using System;
+using Unity.Collections;
 
 namespace LinearAlgebra
 {
@@ -30,10 +31,24 @@ namespace LinearAlgebra
     /// has no matrix-view type to slice an n x n buffer to a rank x rank stride) and remain per-call
     /// Allocator.Temp; only the full-rank path is fully zero-alloc with this workspace.
     /// </summary>
-    public struct fProxyCHOPCache
+    public struct fProxyCHOPCache : IDisposable
     {
         public fProxyMxN W;
         public fProxyN bt;
+
+        /// <summary>Standalone allocation sized identically to <c>Arena.fProxyCHOPCache(n)</c>. Pair with <see cref="Dispose"/>.</summary>
+        public fProxyCHOPCache(int n, Allocator allocator)
+        {
+            W = new fProxyMxN(n, n, allocator);
+            bt = new fProxyN(n, allocator);
+        }
+
+        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        public void Dispose()
+        {
+            W.Dispose();
+            bt.Dispose();
+        }
     }
 
     public static partial class ArenaExtensions

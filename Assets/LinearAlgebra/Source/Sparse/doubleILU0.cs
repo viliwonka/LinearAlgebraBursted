@@ -5,6 +5,7 @@
 using System;
 using LinearAlgebra;
 using Unity.Mathematics;
+using Unity.Collections;
 
 namespace LinearAlgebra.Sparse
 {
@@ -20,9 +21,11 @@ namespace LinearAlgebra.Sparse
     /// Apply multiplies instead of solving). Breakdown (a numerically singular pivot block) retries
     /// with an escalating diagonal shift, recorded in <see cref="Shift"/>; throws if the largest
     /// shift still fails. Symmetric-storage A pays a one-time mirror-to-full copy. A must store
-    /// every diagonal block. Arena-owned; no Dispose().
+    /// every diagonal block. Built via a ref Arena ctor, F is arena-tracked and the arena owns
+    /// disposal -- do not call Dispose() on that instance. Built via an Allocator ctor, this
+    /// instance owns F standalone and Dispose() must be called when done.
     /// </summary>
-    public readonly struct doubleILU0 : IdoublePreconditioner
+    public readonly struct doubleILU0 : IdoublePreconditioner, IDisposable
     {
         public readonly doubleBSR F;      // A's full pattern: L (strict lower), U_ii^{-1} (diag), U (upper)
         public readonly double Shift;
@@ -108,6 +111,99 @@ namespace LinearAlgebra.Sparse
                 attempts = attempts,
             };
         }
+
+        /// <summary>
+        /// Standalone twin of <see cref="doubleILU0(in doubleBSR, ref Arena)"/>: allocates F from
+        /// <paramref name="allocator"/> instead of an arena (a Symmetric-storage input's mirror-to-
+        /// full copy is Temp-allocated and disposed before returning -- it is setup-only, F holds
+        /// its own independent copy of the values). Same throw contract. Dispose the result with
+        /// <see cref="Dispose"/> -- only call Dispose on an instance built via an Allocator ctor,
+        /// never on one built via a ref Arena ctor (that instance is arena-owned).
+        /// </summary>
+        public unsafe doubleILU0(in doubleBSR a, Allocator allocator)
+        {
+            this = new doubleILU0(in a, allocator, out PreconditionerInfo info);
+            if (!info.Solved)
+            {
+                Dispose();
+                throw new ArgumentException("doubleILU0: factorization broke down at every diagonal shift — pivot blocks numerically singular");
+            }
+        }
+
+        /// <summary>Standalone twin of <see cref="doubleILU0(in doubleBSR, ref Arena, out PreconditionerInfo)"/>.
+        /// info carries the build outcome exactly as the ref Arena overload does (F is allocated and
+        /// left populated with the failed factorization even on breakdown -- Dispose is still valid).</summary>
+        public unsafe doubleILU0(in doubleBSR a, Allocator allocator, out PreconditionerInfo info)
+        {
+            if (a.BlockRows != a.BlockCols || a.BR != a.BC)
+                throw new ArgumentException("doubleILU0: A must be square (BlockRows==BlockCols, BR==BC)");
+            if (a.BR > 16)
+                throw new ArgumentException("doubleILU0: BR must be <= 16 (fixed-size pivot scratch)");
+
+            bool ownsMirror = a.Symmetric;
+            var A = ownsMirror ? a.MirrorToFull(Allocator.Temp) : a;
+
+            int nb = A.BlockRows;
+            int BR = A.BR;
+            int blockLen = BR * BR;
+
+            double diagMax = 0;
+            for (int i = 0; i < nb; i++)
+            {
+                int s = A.RowPtr[i], e = A.RowPtr[i + 1];
+                bool hasDiag = false;
+                for (int k = s; k < e; k++)
+                {
+                    if (A.ColInd[k] != i) continue;
+                    hasDiag = true;
+                    int off = k * blockLen;
+                    for (int r = 0; r < BR; r++)
+                    {
+                        double av = math.abs(A.Values[off + r * BR + r]);
+                        if (av > diagMax) diagMax = av;
+                    }
+                    break;
+                }
+                if (!hasDiag)
+                {
+                    if (ownsMirror) A.Dispose();
+                    throw new ArgumentException("doubleILU0: missing diagonal block in A");
+                }
+            }
+            if (diagMax <= (double)0) diagMax = (double)1;
+
+            var Fm = new doubleBSR(nb, nb, BR, BR, A.Nnzb, allocator, true);
+            {
+                var fRowPtr = Fm.RowPtr; var fColInd = Fm.ColInd;
+                for (int i = 0; i <= nb; i++) fRowPtr[i] = A.RowPtr[i];
+                for (int k = 0; k < A.Nnzb; k++) fColInd[k] = A.ColInd[k];
+            }
+
+            double shift = 0;
+            bool ok = false;
+            int attempts = 0;
+            for (int attempt = 0; attempt < 6; attempt++)
+            {
+                attempts = attempt + 1;
+                CopyValues(in A, in Fm, shift);
+                if (FactorizeInPlace(in Fm, diagMax)) { ok = true; break; }
+                shift = shift == (double)0 ? (double)1e-3 * diagMax : shift * (double)10;
+            }
+            F = Fm;
+            Shift = shift;
+            info = new PreconditionerInfo
+            {
+                status = ok ? DirectSolveStatus.Success : DirectSolveStatus.Singular,
+                shift = (double)shift,
+                attempts = attempts,
+            };
+
+            if (ownsMirror) A.Dispose();
+        }
+
+        /// <summary>Disposes F. Only call on an instance built via an Allocator ctor -- an instance
+        /// built via a ref Arena ctor is arena-owned and must not be disposed directly.</summary>
+        public unsafe void Dispose() => F.Dispose();
 
         static void CopyValues(in doubleBSR A, in doubleBSR Fm, double shift)
         {

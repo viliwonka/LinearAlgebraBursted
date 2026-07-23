@@ -3,6 +3,7 @@
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
 using System;
+using Unity.Collections;
 using Unity.Mathematics;
 
 namespace LinearAlgebra
@@ -51,7 +52,7 @@ namespace LinearAlgebra
     /// truncated is FULLY zero-alloc on workspace reuse: the inner bidiagonal SVD runs entirely
     /// in dB/eB/UtB/VtB + BsvdWs (all persistent arena memory), with no Allocator.Temp usage.
     /// </summary>
-    public struct floatSVDTruncatedCache
+    public struct floatSVDTruncatedCache : IDisposable
     {
         public floatMxN UL;
         public floatMxN VL;
@@ -66,6 +67,62 @@ namespace LinearAlgebra
         public floatN beta;
         public floatN mu;   // length p+1: μ estimates ⟨û_j, û_i⟩ for partial reorth ω-recurrence
         public floatN nu;   // length p+1: ν estimates ⟨v̂_j, v̂_i⟩ for partial reorth ω-recurrence
+
+        /// <summary>Standalone allocation sized identically to <c>Arena.floatSVDTruncatedCache(m, n, k, oversample)</c>. Pair with <see cref="Dispose"/>.</summary>
+        public floatSVDTruncatedCache(int m, int n, int k, int oversample, Allocator allocator)
+        {
+            int p = math.min(k + oversample, n);
+            UL     = new floatMxN(p, m, allocator);
+            VL     = new floatMxN(p + 1, n, allocator);
+            dB     = new floatN(p, allocator);
+            eB     = new floatN(p, allocator);
+            UtB    = new floatMxN(p, p, allocator);
+            VtB    = new floatMxN(p, p, allocator);
+            BsvdWs = new floatSVDFullCache(p, p, allocator);
+            uBuf  = new floatN(m, allocator);
+            vBuf  = new floatN(n, allocator);
+            alpha = new floatN(p, allocator);
+            beta  = new floatN(p, allocator);
+            mu    = new floatN(p + 1, allocator);
+            nu    = new floatN(p + 1, allocator);
+        }
+
+        /// <summary>Standalone allocation sized identically to <c>Arena.floatSVDTruncatedCache(m, n, k)</c> (default oversample p = min(n, max(2k, k+12))). Pair with <see cref="Dispose"/>.</summary>
+        public floatSVDTruncatedCache(int m, int n, int k, Allocator allocator)
+        {
+            int p = math.min(n, math.max(2 * k, k + 12));
+            UL     = new floatMxN(p, m, allocator);
+            VL     = new floatMxN(p + 1, n, allocator);
+            dB     = new floatN(p, allocator);
+            eB     = new floatN(p, allocator);
+            UtB    = new floatMxN(p, p, allocator);
+            VtB    = new floatMxN(p, p, allocator);
+            BsvdWs = new floatSVDFullCache(p, p, allocator);
+            uBuf  = new floatN(m, allocator);
+            vBuf  = new floatN(n, allocator);
+            alpha = new floatN(p, allocator);
+            beta  = new floatN(p, allocator);
+            mu    = new floatN(p + 1, allocator);
+            nu    = new floatN(p + 1, allocator);
+        }
+
+        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        public void Dispose()
+        {
+            UL.Dispose();
+            VL.Dispose();
+            dB.Dispose();
+            eB.Dispose();
+            UtB.Dispose();
+            VtB.Dispose();
+            BsvdWs.Dispose();
+            uBuf.Dispose();
+            vBuf.Dispose();
+            alpha.Dispose();
+            beta.Dispose();
+            mu.Dispose();
+            nu.Dispose();
+        }
     }
 
     public static partial class ArenaExtensions

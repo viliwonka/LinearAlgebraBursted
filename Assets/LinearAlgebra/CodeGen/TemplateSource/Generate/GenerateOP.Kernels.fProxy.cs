@@ -1,0 +1,114 @@
+using Unity.Collections;
+
+namespace LinearAlgebra
+{
+    // Standalone (non-arena) wrappers for the Generate generators — each allocates a fresh
+    // vector/matrix via allocator and delegates to the zero-alloc ref-dest primitive. Same
+    // semantics as ArenaExtensions.Generators.fProxy but allocate their own buffer via allocator
+    // instead of drawing from an arena.
+    public static partial class GenerateOP
+    {
+        #region AXIS / SAMPLE
+
+        /// <summary>N evenly spaced values over [a, b] inclusive (linspace). N==1 yields {a}.</summary>
+        public static fProxyN fProxyLinspace(fProxy a, fProxy b, int N, Allocator allocator = Allocator.Temp)
+        {
+            var vec = new fProxyN(N, allocator);
+            Generate.linspace(ref vec, a, b);
+            return vec;
+        }
+
+        /// <summary>N-element arithmetic ramp: vec[i] = start + i*step.</summary>
+        public static fProxyN fProxyArange(fProxy start, fProxy step, int N, Allocator allocator = Allocator.Temp)
+        {
+            var vec = new fProxyN(N, allocator);
+            Generate.arange(ref vec, start, step);
+            return vec;
+        }
+
+        /// <summary>Samples the functor f at N points over [t0, t1] (linspace piped through f).</summary>
+        public static fProxyN fProxySample<F>(ref F f, int N, fProxy t0, fProxy t1, Allocator allocator = Allocator.Temp)
+            where F : struct, IfProxyScalarFunction
+        {
+            var vec = new fProxyN(N, allocator);
+            Generate.sample(ref f, ref vec, t0, t1);
+            return vec;
+        }
+
+        /// <summary>Samples the functor f at N points over the default domain [0, 1].</summary>
+        public static fProxyN fProxySample<F>(ref F f, int N, Allocator allocator = Allocator.Temp)
+            where F : struct, IfProxyScalarFunction
+            => fProxySample(ref f, N, (fProxy)0, (fProxy)1, allocator);
+
+        /// <summary>Bakes an easing curve into an N-entry LUT over [0, 1] (== fProxySample on [0,1]).</summary>
+        public static fProxyN fProxyEasingLUT<F>(ref F ease, int N, Allocator allocator = Allocator.Temp)
+            where F : struct, IfProxyScalarFunction
+            => fProxySample(ref ease, N, (fProxy)0, (fProxy)1, allocator);
+
+        #endregion
+
+        #region KERNELS / WINDOWS
+
+        /// <summary>1D normalized Gaussian kernel (sum 1). sigma must be &gt; 0.</summary>
+        public static fProxyN fProxyGaussianKernel(int N, fProxy sigma, Allocator allocator = Allocator.Temp)
+        {
+            var vec = new fProxyN(N, allocator);
+            Generate.gaussianKernel(ref vec, sigma);
+            return vec;
+        }
+
+        /// <summary>1D uniform (box) kernel: every weight 1/N.</summary>
+        public static fProxyN fProxyBoxKernel(int N, Allocator allocator = Allocator.Temp)
+        {
+            var vec = new fProxyN(N, allocator);
+            Generate.boxKernel(ref vec);
+            return vec;
+        }
+
+        /// <summary>1D triangular (tent) kernel, normalized to sum 1.</summary>
+        public static fProxyN fProxyTentKernel(int N, Allocator allocator = Allocator.Temp)
+        {
+            var vec = new fProxyN(N, allocator);
+            Generate.tentKernel(ref vec);
+            return vec;
+        }
+
+        /// <summary>N×N separable Gaussian kernel = outer(g, g) of the 1D Gaussian (sum 1). sigma &gt; 0.</summary>
+        public static fProxyMxN fProxyGaussianKernel2D(int N, fProxy sigma, Allocator allocator = Allocator.Temp)
+        {
+            var mat = new fProxyMxN(N, N, allocator);
+            Generate.gaussianKernel2D(ref mat, sigma);
+            return mat;
+        }
+
+        /// <summary>DSP window of length N (Box/Hann/Hamming/Blackman).</summary>
+        public static fProxyN fProxyWindow(int N, WindowType type, Allocator allocator = Allocator.Temp)
+        {
+            var vec = new fProxyN(N, allocator);
+            Generate.window(ref vec, type);
+            return vec;
+        }
+
+        #endregion
+
+        #region RANK-1 (1D × 1D) MATRICES
+
+        /// <summary>Outer product matrix M[i,j] = u[i]*v[j] (u.N × v.N).</summary>
+        public static fProxyMxN fProxyOuter(in fProxyN u, in fProxyN v, Allocator allocator = Allocator.Temp)
+        {
+            var mat = new fProxyMxN(u.N, v.N, allocator);
+            Generate.outer(in u, in v, ref mat);
+            return mat;
+        }
+
+        /// <summary>Additive outer "sum" M[i,j] = u[i]+v[j] (u.N × v.N).</summary>
+        public static fProxyMxN fProxyOuterSum(in fProxyN u, in fProxyN v, Allocator allocator = Allocator.Temp)
+        {
+            var mat = new fProxyMxN(u.N, v.N, allocator);
+            Generate.outerSum(in u, in v, ref mat);
+            return mat;
+        }
+
+        #endregion
+    }
+}

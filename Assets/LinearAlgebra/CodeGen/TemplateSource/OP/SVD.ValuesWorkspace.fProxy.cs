@@ -1,4 +1,5 @@
 using System;
+using Unity.Collections;
 
 namespace LinearAlgebra
 {
@@ -23,11 +24,27 @@ namespace LinearAlgebra
     /// BidiagWs is the nested workspace Bidiag.values needs (see fProxyBidiagCache); dVec/eVec
     /// (length n) are the diagonal/superdiagonal the values-only bidiagonal QR diagonalizes in place.
     /// </summary>
-    public struct fProxySVDValuesCache
+    public struct fProxySVDValuesCache : IDisposable
     {
         public fProxyBidiagCache BidiagWs;
         public fProxyN dVec;
         public fProxyN eVec;
+
+        /// <summary>Standalone allocation sized identically to <c>Arena.fProxySVDValuesCache(m, n)</c>. Pair with <see cref="Dispose"/>.</summary>
+        public fProxySVDValuesCache(int m, int n, Allocator allocator)
+        {
+            BidiagWs = new fProxyBidiagCache(m, n, allocator);
+            dVec = new fProxyN(n, allocator);
+            eVec = new fProxyN(n, allocator);
+        }
+
+        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        public void Dispose()
+        {
+            BidiagWs.Dispose();
+            dVec.Dispose();
+            eVec.Dispose();
+        }
     }
 
     public static partial class ArenaExtensions

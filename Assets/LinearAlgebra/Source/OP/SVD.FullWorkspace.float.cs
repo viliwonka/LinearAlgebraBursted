@@ -3,6 +3,7 @@
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
 using System;
+using Unity.Collections;
 
 namespace LinearAlgebra
 {
@@ -28,11 +29,27 @@ namespace LinearAlgebra
     /// NOTE: removes the per-call U/S/V temp-pool allocations; the inner Golub-Kahan SVD still uses a
     /// little Allocator.Temp scratch of its own, so this is low-alloc rather than strictly zero-alloc.
     /// </summary>
-    public struct floatSVDFullCache
+    public struct floatSVDFullCache : IDisposable
     {
         public floatMxN U;
         public floatN S;
         public floatMxN V;
+
+        /// <summary>Standalone allocation sized identically to <c>Arena.floatSVDFullCache(m, n)</c>. Pair with <see cref="Dispose"/>.</summary>
+        public floatSVDFullCache(int m, int n, Allocator allocator)
+        {
+            U = new floatMxN(m, n, allocator);
+            S = new floatN(n, allocator);
+            V = new floatMxN(n, n, allocator);
+        }
+
+        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        public void Dispose()
+        {
+            U.Dispose();
+            S.Dispose();
+            V.Dispose();
+        }
     }
 
     public static partial class ArenaExtensions

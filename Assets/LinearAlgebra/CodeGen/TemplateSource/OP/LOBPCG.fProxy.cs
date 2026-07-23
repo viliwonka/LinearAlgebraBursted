@@ -673,6 +673,26 @@ namespace LinearAlgebra
             => lobpcg(ref arena, in A, k, out eigenvectors, out info, Consts.fProxySqrtEps, 1000);
 
         /// <summary>
+        /// LOBPCG over a dense SYMMETRIC matrix -- standalone twin of the arena overload above:
+        /// allocates the workspace via <paramref name="allocator"/> (default Temp) instead of an
+        /// arena. Returns the eigenvalues (length k, ASCENDING); <paramref name="eigenvectors"/> is
+        /// k x n (row i = eigenvector i). Both buffers are the workspace's OWN X/lambda (no extra
+        /// copy) -- the caller owns disposing them.
+        /// </summary>
+        public static fProxyN lobpcg(in fProxyMxN A, int k, out fProxyMxN eigenvectors,
+                                      out LOBPCGInfo info, fProxy tol, int maxIter, Allocator allocator = Allocator.Temp)
+        {
+            var ws = new fProxyLOBPCGCache(A.M_Rows, k, allocator);
+            info = lobpcg(in A, ref ws, k, tol, maxIter);
+            eigenvectors = ws.X;
+            return ws.lambda;
+        }
+
+        /// <summary>lobpcg (allocating, Allocator) over a dense matrix with default tol/maxIter.</summary>
+        public static fProxyN lobpcg(in fProxyMxN A, int k, out fProxyMxN eigenvectors, out LOBPCGInfo info, Allocator allocator = Allocator.Temp)
+            => lobpcg(in A, k, out eigenvectors, out info, Consts.fProxySqrtEps, 1000, allocator);
+
+        /// <summary>
         /// LOBPCG over a dense symmetric matrix with <paramref name="guard"/> GUARD ("ghost") vectors --
         /// allocating. Iterates on a block of k + guard vectors but converges and RETURNS only the k
         /// smallest pairs; the guards are full participants in the iteration and give the wanted pairs
@@ -699,6 +719,29 @@ namespace LinearAlgebra
             => lobpcg(ref arena, in A, k, guard, out eigenvectors, out info, Consts.fProxySqrtEps, 1000);
 
         /// <summary>
+        /// LOBPCG over a dense symmetric matrix with <paramref name="guard"/> GUARD ("ghost")
+        /// vectors -- standalone twin of the arena guard overload above via <paramref
+        /// name="allocator"/> (default Temp). <paramref name="eigenvectors"/> and the returned
+        /// eigenvalues are both owned by the caller.
+        /// </summary>
+        public static fProxyN lobpcg(in fProxyMxN A, int k, int guard, out fProxyMxN eigenvectors,
+                                      out LOBPCGInfo info, fProxy tol, int maxIter, Allocator allocator = Allocator.Temp)
+        {
+            if (guard < 0) throw new ArgumentException("LOBPCG: guard must be >= 0");
+            var ws = new fProxyLOBPCGCache(A.M_Rows, k + guard, allocator);
+            info = lobpcg(in A, ref ws, k, tol, maxIter);
+            eigenvectors = ws.X;
+            eigenvectors.M_Rows = k;                       // leading k rows are the k smallest (SortAscending ran)
+            var vals = new fProxyN(k, allocator);
+            for (int i = 0; i < k; i++) vals[i] = ws.lambda[i];
+            return vals;
+        }
+
+        /// <summary>lobpcg (allocating, Allocator, guard vectors) over a dense matrix with default tol/maxIter.</summary>
+        public static fProxyN lobpcg(in fProxyMxN A, int k, int guard, out fProxyMxN eigenvectors, out LOBPCGInfo info, Allocator allocator = Allocator.Temp)
+            => lobpcg(in A, k, guard, out eigenvectors, out info, Consts.fProxySqrtEps, 1000, allocator);
+
+        /// <summary>
         /// LOBPCG over a dense pencil (A, B) -- GENERALIZED eigenproblem, allocating. See the
         /// standard dense overload's doc comment for the buffer-ownership contract.
         /// </summary>
@@ -714,6 +757,24 @@ namespace LinearAlgebra
         /// <summary>lobpcg (allocating, generalized) over a dense pencil with default tol/maxIter.</summary>
         public static fProxyN lobpcg(ref Arena arena, in fProxyMxN A, in fProxyMxN B, int k, out fProxyMxN eigenvectors, out LOBPCGInfo info)
             => lobpcg(ref arena, in A, in B, k, out eigenvectors, out info, Consts.fProxySqrtEps, 1000);
+
+        /// <summary>
+        /// LOBPCG over a dense pencil (A, B) -- GENERALIZED eigenproblem, standalone twin via
+        /// <paramref name="allocator"/> (default Temp). See the standard dense Allocator
+        /// overload's doc comment for the buffer-ownership contract.
+        /// </summary>
+        public static fProxyN lobpcg(in fProxyMxN A, in fProxyMxN B, int k, out fProxyMxN eigenvectors,
+                                      out LOBPCGInfo info, fProxy tol, int maxIter, Allocator allocator = Allocator.Temp)
+        {
+            var ws = new fProxyLOBPCGCache(A.M_Rows, k, allocator);
+            info = lobpcg(in A, in B, ref ws, k, tol, maxIter);
+            eigenvectors = ws.X;
+            return ws.lambda;
+        }
+
+        /// <summary>lobpcg (allocating, Allocator, generalized) over a dense pencil with default tol/maxIter.</summary>
+        public static fProxyN lobpcg(in fProxyMxN A, in fProxyMxN B, int k, out fProxyMxN eigenvectors, out LOBPCGInfo info, Allocator allocator = Allocator.Temp)
+            => lobpcg(in A, in B, k, out eigenvectors, out info, Consts.fProxySqrtEps, 1000, allocator);
 
         /// <summary>
         /// LOBPCG over a block-sparse (BSR) matrix -- zero-alloc primitive, unpreconditioned.
@@ -763,6 +824,20 @@ namespace LinearAlgebra
         public static fProxyN lobpcg(ref Arena arena, in fProxyBSR A, int k, out fProxyMxN eigenvectors, out LOBPCGInfo info)
             => lobpcg(ref arena, in A, k, out eigenvectors, out info, Consts.fProxySqrtEps, 1000);
 
+        /// <summary>lobpcg (allocating, Allocator) over a BSR matrix. See the dense Allocator overload's doc comment.</summary>
+        public static fProxyN lobpcg(in fProxyBSR A, int k, out fProxyMxN eigenvectors,
+                                      out LOBPCGInfo info, fProxy tol, int maxIter, Allocator allocator = Allocator.Temp)
+        {
+            var ws = new fProxyLOBPCGCache(A.M_Rows, k, allocator);
+            info = lobpcg(in A, ref ws, k, tol, maxIter);
+            eigenvectors = ws.X;
+            return ws.lambda;
+        }
+
+        /// <summary>lobpcg (allocating, Allocator) over a BSR matrix with default tol/maxIter.</summary>
+        public static fProxyN lobpcg(in fProxyBSR A, int k, out fProxyMxN eigenvectors, out LOBPCGInfo info, Allocator allocator = Allocator.Temp)
+            => lobpcg(in A, k, out eigenvectors, out info, Consts.fProxySqrtEps, 1000, allocator);
+
         /// <summary>
         /// LOBPCG over a block-sparse (BSR) matrix with <paramref name="guard"/> GUARD ("ghost") vectors
         /// -- allocating. See the dense guard overload's doc comment: iterates on k + guard vectors,
@@ -787,6 +862,25 @@ namespace LinearAlgebra
         public static fProxyN lobpcg(ref Arena arena, in fProxyBSR A, int k, int guard, out fProxyMxN eigenvectors, out LOBPCGInfo info)
             => lobpcg(ref arena, in A, k, guard, out eigenvectors, out info, Consts.fProxySqrtEps, 1000);
 
+        /// <summary>lobpcg (allocating, Allocator, guard vectors) over a BSR matrix. See the dense
+        /// Allocator guard overload's doc comment.</summary>
+        public static fProxyN lobpcg(in fProxyBSR A, int k, int guard, out fProxyMxN eigenvectors,
+                                      out LOBPCGInfo info, fProxy tol, int maxIter, Allocator allocator = Allocator.Temp)
+        {
+            if (guard < 0) throw new ArgumentException("LOBPCG: guard must be >= 0");
+            var ws = new fProxyLOBPCGCache(A.M_Rows, k + guard, allocator);
+            info = lobpcg(in A, ref ws, k, tol, maxIter);
+            eigenvectors = ws.X;
+            eigenvectors.M_Rows = k;
+            var vals = new fProxyN(k, allocator);
+            for (int i = 0; i < k; i++) vals[i] = ws.lambda[i];
+            return vals;
+        }
+
+        /// <summary>lobpcg (allocating, Allocator, guard vectors) over a BSR matrix with default tol/maxIter.</summary>
+        public static fProxyN lobpcg(in fProxyBSR A, int k, int guard, out fProxyMxN eigenvectors, out LOBPCGInfo info, Allocator allocator = Allocator.Temp)
+            => lobpcg(in A, k, guard, out eigenvectors, out info, Consts.fProxySqrtEps, 1000, allocator);
+
         /// <summary>
         /// LOBPCG over a block-sparse pencil (A, B) -- GENERALIZED eigenproblem, allocating. See
         /// the standard BSR overload's doc comment for the buffer-ownership contract.
@@ -803,6 +897,21 @@ namespace LinearAlgebra
         /// <summary>lobpcg (allocating, generalized) over a BSR pencil with default tol/maxIter.</summary>
         public static fProxyN lobpcg(ref Arena arena, in fProxyBSR A, in fProxyBSR B, int k, out fProxyMxN eigenvectors, out LOBPCGInfo info)
             => lobpcg(ref arena, in A, in B, k, out eigenvectors, out info, Consts.fProxySqrtEps, 1000);
+
+        /// <summary>lobpcg (allocating, Allocator, generalized) over a BSR pencil. See the standard
+        /// BSR Allocator overload's doc comment for the buffer-ownership contract.</summary>
+        public static fProxyN lobpcg(in fProxyBSR A, in fProxyBSR B, int k, out fProxyMxN eigenvectors,
+                                      out LOBPCGInfo info, fProxy tol, int maxIter, Allocator allocator = Allocator.Temp)
+        {
+            var ws = new fProxyLOBPCGCache(A.M_Rows, k, allocator);
+            info = lobpcg(in A, in B, ref ws, k, tol, maxIter);
+            eigenvectors = ws.X;
+            return ws.lambda;
+        }
+
+        /// <summary>lobpcg (allocating, Allocator, generalized) over a BSR pencil with default tol/maxIter.</summary>
+        public static fProxyN lobpcg(in fProxyBSR A, in fProxyBSR B, int k, out fProxyMxN eigenvectors, out LOBPCGInfo info, Allocator allocator = Allocator.Temp)
+            => lobpcg(in A, in B, k, out eigenvectors, out info, Consts.fProxySqrtEps, 1000, allocator);
 
         /// <summary>
         /// LOBPCG over a block-sparse (BSR) matrix with ANY <see cref="IfProxyPreconditioner"/>
@@ -869,6 +978,25 @@ namespace LinearAlgebra
             where TPre : struct, IfProxyPreconditioner
             => lobpcg(ref arena, in A, in M, k, out eigenvectors, out info, Consts.fProxySqrtEps, 1000);
 
+        /// <summary>lobpcg (allocating, Allocator) over a BSR matrix with ANY <see cref="IfProxyPreconditioner"/>
+        /// (block-Jacobi). See the dense Allocator overload's doc comment.</summary>
+        public static fProxyN lobpcg<TPre>(in fProxyBSR A, in TPre M, int k,
+                                      out fProxyMxN eigenvectors, out LOBPCGInfo info, fProxy tol, int maxIter, Allocator allocator = Allocator.Temp)
+            where TPre : struct, IfProxyPreconditioner
+        {
+            var ws = new fProxyLOBPCGCache(A.M_Rows, k, allocator);
+            info = lobpcg(in A, in M, ref ws, k, tol, maxIter);
+            eigenvectors = ws.X;
+            return ws.lambda;
+        }
+
+        /// <summary>lobpcg (allocating, Allocator) over a BSR matrix with ANY <see cref="IfProxyPreconditioner"/>
+        /// (block-Jacobi) and default tol/maxIter.</summary>
+        public static fProxyN lobpcg<TPre>(in fProxyBSR A, in TPre M, int k,
+                                      out fProxyMxN eigenvectors, out LOBPCGInfo info, Allocator allocator = Allocator.Temp)
+            where TPre : struct, IfProxyPreconditioner
+            => lobpcg(in A, in M, k, out eigenvectors, out info, Consts.fProxySqrtEps, 1000, allocator);
+
         /// <summary>
         /// LOBPCG over a block-sparse pencil (A, B) with ANY <see cref="IfProxyPreconditioner"/>
         /// (block-Jacobi) -- GENERALIZED eigenproblem, allocating. See the standard
@@ -890,6 +1018,26 @@ namespace LinearAlgebra
                                       out fProxyMxN eigenvectors, out LOBPCGInfo info)
             where TPre : struct, IfProxyPreconditioner
             => lobpcg(ref arena, in A, in B, in M, k, out eigenvectors, out info, Consts.fProxySqrtEps, 1000);
+
+        /// <summary>lobpcg (allocating, Allocator, generalized) over a BSR pencil with ANY
+        /// <see cref="IfProxyPreconditioner"/> (block-Jacobi). See the standard BSR+preconditioner
+        /// Allocator overload's doc comment.</summary>
+        public static fProxyN lobpcg<TPre>(in fProxyBSR A, in fProxyBSR B, in TPre M, int k,
+                                      out fProxyMxN eigenvectors, out LOBPCGInfo info, fProxy tol, int maxIter, Allocator allocator = Allocator.Temp)
+            where TPre : struct, IfProxyPreconditioner
+        {
+            var ws = new fProxyLOBPCGCache(A.M_Rows, k, allocator);
+            info = lobpcg(in A, in B, in M, ref ws, k, tol, maxIter);
+            eigenvectors = ws.X;
+            return ws.lambda;
+        }
+
+        /// <summary>lobpcg (allocating, Allocator, generalized) over a BSR pencil with ANY
+        /// <see cref="IfProxyPreconditioner"/> (block-Jacobi) and default tol/maxIter.</summary>
+        public static fProxyN lobpcg<TPre>(in fProxyBSR A, in fProxyBSR B, in TPre M, int k,
+                                      out fProxyMxN eigenvectors, out LOBPCGInfo info, Allocator allocator = Allocator.Temp)
+            where TPre : struct, IfProxyPreconditioner
+            => lobpcg(in A, in B, in M, k, out eigenvectors, out info, Consts.fProxySqrtEps, 1000, allocator);
 
         // ==================================================================================
         // Private helpers

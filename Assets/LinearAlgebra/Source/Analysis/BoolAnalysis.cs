@@ -3,6 +3,7 @@
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
 using Unity.Burst;
+using Unity.Collections;
 using System.Runtime.CompilerServices;
 namespace LinearAlgebra
 {
@@ -139,6 +140,39 @@ namespace LinearAlgebra
             for (int i = 0; i < total; i++)
                 if (mask.Data[i]) count++;
             return count;
+        }
+
+        // ---- whichTrue (bool -> Indices), standalone (Allocator) ----
+
+        /// <summary>
+        /// Count-pass + exact-alloc: allocates and returns exact-sized Indices of true elements in
+        /// mask, standalone via <paramref name="allocator"/> (default Temp; caller owns disposal).
+        /// </summary>
+        public static Indices WhichTrue(in boolN mask, Allocator allocator = Allocator.Temp)
+        {
+            int count = countTrue(in mask);
+            if (count == 0) return new Indices(0, allocator);
+            var idx = new Indices(count, allocator);
+            int written = 0;
+            for (int i = 0; i < mask.N; i++)
+                if (mask.Data[i]) idx[written++] = i;
+            return idx;
+        }
+
+        /// <summary>
+        /// Matrix overload: count-pass + exact-alloc Indices of true element flat indices,
+        /// standalone via <paramref name="allocator"/> (default Temp; caller owns disposal).
+        /// </summary>
+        public static Indices WhichTrue(in boolMxN mask, Allocator allocator = Allocator.Temp)
+        {
+            int count = countTrue(in mask);
+            if (count == 0) return new Indices(0, allocator);
+            int total = mask.M_Rows * mask.N_Cols;
+            var idx = new Indices(count, allocator);
+            int written = 0;
+            for (int i = 0; i < total; i++)
+                if (mask.Data[i]) idx[written++] = i;
+            return idx;
         }
     }
 

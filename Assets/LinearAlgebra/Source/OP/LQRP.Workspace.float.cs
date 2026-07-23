@@ -3,6 +3,7 @@
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
 using System;
+using Unity.Collections;
 
 namespace LinearAlgebra
 {
@@ -34,10 +35,24 @@ namespace LinearAlgebra
     /// shared by both passes. The row Pivot P is caller-owned (its size carries the row count), not
     /// folded in here — mirroring how QRCP keeps its column Pivot separate from floatQRCPCache.
     /// </summary>
-    public struct floatLQRPCache
+    public struct floatLQRPCache : IDisposable
     {
         public floatMxN W;
         public floatN v;
+
+        /// <summary>Standalone allocation sized identically to <c>Arena.floatLQRPCache(m, n)</c>. Pair with <see cref="Dispose"/>.</summary>
+        public floatLQRPCache(int m, int n, Allocator allocator)
+        {
+            W = new floatMxN(m, n, allocator);
+            v = new floatN(n, allocator);
+        }
+
+        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        public void Dispose()
+        {
+            W.Dispose();
+            v.Dispose();
+        }
     }
 
     public static partial class ArenaExtensions

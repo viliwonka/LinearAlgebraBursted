@@ -5,6 +5,7 @@
 using System;
 using System.Runtime.CompilerServices;
 
+using Unity.Collections;
 using Unity.Mathematics;
 
 using LinearAlgebra;
@@ -25,7 +26,7 @@ namespace LinearAlgebra.Realtime
     /// Create with <c>arena.doubleRollingWindow(capacity, features)</c>; the backing buffer is a
     /// persistent arena allocation that lives until the arena is disposed. double-only.
     /// </summary>
-    public struct doubleRollingWindow
+    public struct doubleRollingWindow : IDisposable
     {
         private doubleMxN _buffer;   // Capacity rows × Features cols, ring storage
         private int _capacity;
@@ -47,6 +48,27 @@ namespace LinearAlgebra.Realtime
             _features = features;
             _head = 0;
             _count = 0;
+        }
+
+        /// <summary>Standalone allocation sized identically to <c>Arena.doubleRollingWindow(capacity, features)</c>. Pair with <see cref="Dispose"/>.</summary>
+        public doubleRollingWindow(int capacity, int features, Allocator allocator)
+        {
+            if (capacity < 1)
+                throw new ArgumentException("doubleRollingWindow: capacity must be >= 1");
+            if (features < 1)
+                throw new ArgumentException("doubleRollingWindow: features must be >= 1");
+
+            _buffer = new doubleMxN(capacity, features, allocator);
+            _capacity = capacity;
+            _features = features;
+            _head = 0;
+            _count = 0;
+        }
+
+        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        public void Dispose()
+        {
+            _buffer.Dispose();
         }
 
         // Row of the ring holding the oldest retained sample. Before the buffer fills, samples sit in

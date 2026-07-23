@@ -1,4 +1,5 @@
 using System;
+using Unity.Collections;
 
 namespace LinearAlgebra
 {
@@ -33,13 +34,33 @@ namespace LinearAlgebra
     /// for the U backward pass (used only by decomp, not values); uVec (m),
     /// vVec (n) are the Householder vectors and wScratch (n) is the apply-reflector scratch.
     /// </summary>
-    public struct fProxyBidiagCache
+    public struct fProxyBidiagCache : IDisposable
     {
         public fProxyMxN W;
         public fProxyMxN leftU;
         public fProxyN uVec;
         public fProxyN vVec;
         public fProxyN wScratch;
+
+        /// <summary>Standalone allocation sized identically to <c>Arena.fProxyBidiagCache(m, n)</c>. Pair with <see cref="Dispose"/>.</summary>
+        public fProxyBidiagCache(int m, int n, Allocator allocator)
+        {
+            W = new fProxyMxN(m, n, allocator);
+            leftU = new fProxyMxN(m, n, allocator);
+            uVec = new fProxyN(m, allocator);
+            vVec = new fProxyN(n, allocator);
+            wScratch = new fProxyN(n, allocator);
+        }
+
+        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        public void Dispose()
+        {
+            W.Dispose();
+            leftU.Dispose();
+            uVec.Dispose();
+            vVec.Dispose();
+            wScratch.Dispose();
+        }
     }
 
     public static partial class ArenaExtensions

@@ -3,6 +3,7 @@
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
 using System;
+using Unity.Collections;
 
 namespace LinearAlgebra
 {
@@ -33,7 +34,7 @@ namespace LinearAlgebra
     /// diagonalizes; Ut (n x m) / Vt (n x n) are the transposed accumulators the QR sweep rotates
     /// (unit-stride rows, same trick as Eigen.symmetricInPlace).
     /// </summary>
-    public struct doubleSVDThinCache
+    public struct doubleSVDThinCache : IDisposable
     {
         public doubleBidiagCache BidiagWs;
         public doubleMxN B;
@@ -41,6 +42,28 @@ namespace LinearAlgebra
         public doubleN eVec;
         public doubleMxN Ut;
         public doubleMxN Vt;
+
+        /// <summary>Standalone allocation sized identically to <c>Arena.doubleSVDThinCache(m, n)</c>. Pair with <see cref="Dispose"/>.</summary>
+        public doubleSVDThinCache(int m, int n, Allocator allocator)
+        {
+            BidiagWs = new doubleBidiagCache(m, n, allocator);
+            B = new doubleMxN(n, n, allocator);
+            dVec = new doubleN(n, allocator);
+            eVec = new doubleN(n, allocator);
+            Ut = new doubleMxN(n, m, allocator);
+            Vt = new doubleMxN(n, n, allocator);
+        }
+
+        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        public void Dispose()
+        {
+            BidiagWs.Dispose();
+            B.Dispose();
+            dVec.Dispose();
+            eVec.Dispose();
+            Ut.Dispose();
+            Vt.Dispose();
+        }
     }
 
     public static partial class ArenaExtensions

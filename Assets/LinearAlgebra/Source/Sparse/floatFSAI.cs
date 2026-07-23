@@ -27,9 +27,11 @@ namespace LinearAlgebra.Sparse
     ///
     /// Symmetric-storage A needs no mirror (consumed zero-copy, same as IC0); full-storage A is
     /// accepted too (only its lower blocks feed the pattern). A must store every diagonal block.
-    /// Arena-composed -- no record table of its own, no Dispose().
+    /// Built via a ref Arena ctor, G/Gt/Scratch are arena-tracked and the arena owns disposal --
+    /// do not call Dispose() on that instance. Built via an Allocator ctor, this instance owns
+    /// those buffers standalone and Dispose() must be called when done.
     /// </summary>
-    public readonly struct floatFSAI : IfloatPreconditioner
+    public readonly struct floatFSAI : IfloatPreconditioner, IDisposable
     {
         /// <summary>Block-lower-triangular factor G over the static pattern S.</summary>
         public readonly floatBSR G;
@@ -240,6 +242,207 @@ namespace LinearAlgebra.Sparse
                 shift = (double)worstShift,
                 attempts = worstAttempts,
             };
+        }
+
+        /// <summary>Standalone twin of <see cref="floatFSAI(in floatBSR, ref Arena)"/>, allocated
+        /// from <paramref name="allocator"/>. Dispose the result with <see cref="Dispose"/> -- only
+        /// call Dispose on an instance built via an Allocator ctor.</summary>
+        public unsafe floatFSAI(in floatBSR a, Allocator allocator)
+        {
+            this = new floatFSAI(in a, allocator, out PreconditionerInfo info);
+            if (!info.Solved)
+            {
+                Dispose();
+                throw new ArgumentException("floatFSAI: a row's local solve broke down at every diagonal shift — is A symmetric positive definite?");
+            }
+        }
+
+        /// <summary>Standalone twin of <see cref="floatFSAI(in floatBSR, ref Arena, out PreconditionerInfo)"/>.</summary>
+        public unsafe floatFSAI(in floatBSR a, Allocator allocator, out PreconditionerInfo info)
+        {
+            this = new floatFSAI(in a, allocator, SaiOptions.Default, out info);
+        }
+
+        /// <summary>Standalone twin of <see cref="floatFSAI(in floatBSR, ref Arena, in SaiOptions)"/>.</summary>
+        public unsafe floatFSAI(in floatBSR a, Allocator allocator, in SaiOptions opts)
+        {
+            this = new floatFSAI(in a, allocator, in opts, out PreconditionerInfo info);
+            if (!info.Solved)
+            {
+                Dispose();
+                throw new ArgumentException("floatFSAI: a row's local solve broke down at every diagonal shift — is A symmetric positive definite?");
+            }
+        }
+
+        /// <summary>
+        /// Standalone twin of <see cref="floatFSAI(in floatBSR, ref Arena, in SaiOptions, out PreconditionerInfo)"/>:
+        /// allocates G/Gt/Scratch from <paramref name="allocator"/> instead of an arena. Same throw
+        /// contract (G/Gt are allocated and left populated with the failed factorization even on
+        /// breakdown -- Dispose is still valid). Only call Dispose on an instance built via an
+        /// Allocator ctor, never on one built via a ref Arena ctor (that instance is arena-owned).
+        /// </summary>
+        public unsafe floatFSAI(in floatBSR a, Allocator allocator, in SaiOptions opts, out PreconditionerInfo info)
+        {
+            if (a.BlockRows != a.BlockCols || a.BR != a.BC)
+                throw new ArgumentException("floatFSAI: A must be square (BlockRows==BlockCols, BR==BC)");
+            if (opts.patternPower != 1)
+                throw new ArgumentException("floatFSAI: opts.patternPower must be 1 (pattern(A^2) is not implemented yet)");
+
+            var A = a;
+
+            int nb = A.BlockRows;
+            int BR = A.BR;
+            int blockLen = BR * BR;
+            float dropTol = (float)opts.dropTol;
+
+            var diagNormF = new NativeArray<float>(nb, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+            float diagMax = 0;
+            for (int i = 0; i < nb; i++)
+            {
+                int s = A.RowPtr[i], e = A.RowPtr[i + 1];
+                bool hasDiag = false;
+                for (int k = s; k < e; k++)
+                {
+                    if (A.ColInd[k] != i) continue;
+                    hasDiag = true;
+                    int off = k * blockLen;
+                    float normSq = 0;
+                    for (int t = 0; t < blockLen; t++)
+                    {
+                        float v = A.Values[off + t];
+                        normSq += v * v;
+                    }
+                    diagNormF[i] = math.sqrt(normSq);
+                    for (int r = 0; r < BR; r++)
+                    {
+                        float av = math.abs(A.Values[off + r * BR + r]);
+                        if (av > diagMax) diagMax = av;
+                    }
+                    break;
+                }
+                if (!hasDiag)
+                {
+                    diagNormF.Dispose();
+                    throw new ArgumentException("floatFSAI: missing diagonal block in A");
+                }
+            }
+            if (diagMax <= (float)0) diagMax = (float)1;
+
+            int nnzbG = 0;
+            for (int i = 0; i < nb; i++)
+            {
+                int s = A.RowPtr[i], e = A.RowPtr[i + 1];
+                for (int k = s; k < e; k++)
+                {
+                    int col = A.ColInd[k];
+                    if (col > i) break;
+                    if (col != i && dropTol > (float)0 && BelowDropTol(in A, k, blockLen, diagNormF[i], diagNormF[col], dropTol))
+                        continue;
+                    nnzbG++;
+                }
+            }
+
+            var Gm = new floatBSR(nb, nb, BR, BR, nnzbG, allocator, true);
+            var gRowPtr = Gm.RowPtr; var gColInd = Gm.ColInd; var gValues = Gm.Values;
+            {
+                int outIdx = 0;
+                for (int i = 0; i < nb; i++)
+                {
+                    gRowPtr[i] = outIdx;
+                    int s = A.RowPtr[i], e = A.RowPtr[i + 1];
+                    for (int k = s; k < e; k++)
+                    {
+                        int col = A.ColInd[k];
+                        if (col > i) break;
+                        if (col != i && dropTol > (float)0 && BelowDropTol(in A, k, blockLen, diagNormF[i], diagNormF[col], dropTol))
+                            continue;
+                        gColInd[outIdx] = col;
+                        outIdx++;
+                    }
+                }
+                gRowPtr[nb] = outIdx;
+            }
+            diagNormF.Dispose();
+
+            float worstShift = 0;
+            int worstAttempts = 1;
+            bool ok = true;
+
+            for (int i = 0; i < nb; i++)
+            {
+                int rowStart = gRowPtr[i], rowEnd = gRowPtr[i + 1];
+                int m = rowEnd - rowStart;
+                int n = m * BR;
+
+                var Ahat = new floatMxN(n, n, Allocator.Temp, true);
+                var X = new floatMxN(n, BR, Allocator.Temp, true);
+
+                float shift = 0;
+                bool rowOk = false;
+                int rowAttempts = 0;
+
+                for (int attempt = 0; attempt < 6; attempt++)
+                {
+                    rowAttempts = attempt + 1;
+
+                    FillLowerGather(in A, in Gm, rowStart, m, BR, shift, ref Ahat);
+                    FillIdentityLastBlock(ref X, m, BR);
+
+                    var chInfo = CHO.decompInPlace(ref Ahat);
+                    if (chInfo.Solved)
+                    {
+                        CHO.decompSolve(ref Ahat, ref X);
+
+                        var D = new floatMxN(BR, BR, Allocator.Temp, true);
+                        CopyLastBlock(in X, m, BR, ref D);
+
+                        var dInfo = CHO.decompInPlace(ref D);
+                        if (dInfo.Solved)
+                        {
+                            var Xt = new floatMxN(BR, n, Allocator.Temp, true);
+                            TransposeInto(in X, ref Xt);
+                            Blas.triLower(ref D, ref Xt);
+                            ScatterRow(in Xt, m, BR, gValues, rowStart);
+                            Xt.Dispose();
+                            D.Dispose();
+                            rowOk = true;
+                            break;
+                        }
+                        D.Dispose();
+                    }
+
+                    shift = shift == (float)0 ? (float)1e-3 * diagMax : shift * (float)10;
+                }
+
+                X.Dispose();
+                Ahat.Dispose();
+
+                if (rowAttempts > worstAttempts) worstAttempts = rowAttempts;
+                if (shift > worstShift) worstShift = shift;
+                if (!rowOk) { ok = false; break; }
+            }
+
+            G = Gm;
+            Gt = Gm.Transpose(allocator);
+            Scratch = new floatN(nb * BR, allocator, true);
+            Shift = worstShift;
+
+            info = new PreconditionerInfo
+            {
+                status = ok ? DirectSolveStatus.Success : DirectSolveStatus.NotPositiveDefinite,
+                shift = (double)worstShift,
+                attempts = worstAttempts,
+            };
+        }
+
+        /// <summary>Disposes G, Gt, and Scratch. Only call on an instance built via an Allocator
+        /// ctor -- an instance built via a ref Arena ctor is arena-owned and must not be disposed
+        /// directly.</summary>
+        public unsafe void Dispose()
+        {
+            G.Dispose();
+            Gt.Dispose();
+            Scratch.Dispose();
         }
 
         // True when off-diagonal block A[row(k),col(k)] is small enough (relative to its diagonal

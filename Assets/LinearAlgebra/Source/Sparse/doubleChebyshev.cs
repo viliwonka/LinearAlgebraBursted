@@ -5,6 +5,7 @@
 using System;
 using LinearAlgebra;
 using Unity.Mathematics;
+using Unity.Collections;
 
 namespace LinearAlgebra.Sparse
 {
@@ -107,10 +108,12 @@ namespace LinearAlgebra.Sparse
     /// Accepts either Symmetric (lower-block-only) or full storage -- <see cref="BSR.spMV"/>
     /// handles both natively, so unlike <see cref="doubleSSOR"/> no mirror-to-full copy is needed.
     ///
-    /// Composed entirely of arena-tracked pieces -- no record table of its own, no Dispose(). All
-    /// fields are readonly, set once at construction: IJob-struct-copy-safe.
+    /// Built via a ref Arena ctor, InvDiag/Scratch1-3 are arena-tracked and the arena owns disposal
+    /// -- do not call Dispose() on that instance. Built via an Allocator ctor, this instance owns
+    /// those buffers standalone and Dispose() must be called when done (A itself is never owned --
+    /// see Dispose()'s own doc). All fields are readonly, set once at construction: IJob-struct-copy-safe.
     /// </summary>
-    public readonly struct doubleChebyshev : IdoublePreconditioner
+    public readonly struct doubleChebyshev : IdoublePreconditioner, IDisposable
     {
         public readonly doubleBSR A;
 
@@ -229,6 +232,157 @@ namespace LinearAlgebra.Sparse
 
         /// <summary>doubleChebyshev with doubleChebyshevOptions.Default (degree=3, kappa=30, eigSteps=10, safety=1.1).</summary>
         public doubleChebyshev(in doubleBSR a, ref Arena arena) : this(in a, doubleChebyshevOptions.Default, ref arena) { }
+
+        /// <summary>
+        /// Standalone twin of <see cref="doubleChebyshev(in doubleBSR, in doubleChebyshevOptions, ref Arena)"/>:
+        /// allocates InvDiag/Scratch1-3 from <paramref name="allocator"/> instead of an arena; the
+        /// Lanczos eigen-estimate's own workspace is Temp-allocated and disposed before returning
+        /// (it is setup-only, not part of the built preconditioner). Same validation/throw contract.
+        /// Dispose the result with <see cref="Dispose"/> -- only call Dispose on an instance built
+        /// via this ctor, never on one built via the ref Arena ctor (that instance is arena-owned).
+        /// </summary>
+        public unsafe doubleChebyshev(in doubleBSR a, in doubleChebyshevOptions opt, Allocator allocator)
+        {
+            if (a.BlockRows != a.BlockCols || a.BR != a.BC)
+                throw new ArgumentException("doubleChebyshev: A must be square (BlockRows==BlockCols, BR==BC)");
+            if (opt.degree < 1)
+                throw new ArgumentException("doubleChebyshev: opt.degree must be >= 1");
+            if (!(opt.kappa > (double)1))
+                throw new ArgumentException("doubleChebyshev: opt.kappa must be > 1");
+            if (opt.eigSteps < 1)
+                throw new ArgumentException("doubleChebyshev: opt.eigSteps must be >= 1");
+            if (!(opt.safety >= (double)1))
+                throw new ArgumentException("doubleChebyshev: opt.safety must be >= 1");
+
+            A = a;
+            int n = a.M_Rows;
+            int BR = a.BR;
+            int blockLen = BR * BR;
+
+            // ---- InvDiag: 1 / A[i,i], same block-row scan as the ref Arena ctor. ----
+            var invDiag = new doubleN(n, allocator);
+            for (int i = 0; i < a.BlockRows; i++)
+            {
+                int s = a.RowPtr[i], e = a.RowPtr[i + 1];
+                int found = -1;
+                for (int k = s; k < e; k++)
+                {
+                    int col = a.ColInd[k];
+                    if (col == i) { found = k; break; }
+                    if (col > i) break;
+                }
+                if (found < 0)
+                {
+                    invDiag.Dispose();
+                    throw new ArgumentException("doubleChebyshev: missing diagonal block in A");
+                }
+
+                int off = found * blockLen;
+                int rowBase = i * BR;
+                for (int r = 0; r < BR; r++)
+                {
+                    double dv = a.Values[off + r * BR + r];
+                    if (!(dv > (double)0))
+                    {
+                        invDiag.Dispose();
+                        throw new ArgumentException("doubleChebyshev: A has a non-positive diagonal entry -- is A symmetric positive definite?");
+                    }
+                    invDiag[rowBase + r] = (double)1 / dv;
+                }
+            }
+            InvDiag = invDiag;
+
+            // ---- Hi/Lo: safety * lambdaMax(D^-1 A) via a pinned Lanczos run on S.A.S. All of this
+            // section's buffers are setup-only scratch (Temp-allocated, disposed below); none of
+            // them are struct fields. ----
+            var invSqrtD = new doubleN(n, Allocator.Temp);
+            for (int i = 0; i < n; i++)
+                invSqrtD[i] = math.sqrt(invDiag[i]);
+            var scaledScratch = new doubleN(n, Allocator.Temp);
+            var scaledOp = new doubleJacobiScaledBSROperator(in A, in invSqrtD, in scaledScratch);
+
+            int eigSteps = math.min(opt.eigSteps, n);
+            var ws = new doubleLanczosCache
+            {
+                V = new doubleMxN(eigSteps, n, Allocator.Temp),
+                vCur = new doubleN(n, Allocator.Temp),
+                w = new doubleN(n, Allocator.Temp),
+                alpha = new doubleN(eigSteps, Allocator.Temp),
+                beta = new doubleN(eigSteps, Allocator.Temp),
+                T = new doubleMxN(eigSteps, eigSteps, Allocator.Temp),
+                symWs = new doubleEigenSymCache
+                {
+                    eVec = new doubleN(eigSteps, Allocator.Temp),
+                    vVec = new doubleN(eigSteps, Allocator.Temp),
+                    pVec = new doubleN(eigSteps, Allocator.Temp),
+                },
+            };
+            var ritz = new doubleN(eigSteps, Allocator.Temp);
+            var lInfo = Eigen.lanczos(in scaledOp, ref ws, ref ritz, eigSteps);
+
+            double lambdaMax = ritz[0];
+            for (int i = 1; i < lInfo.produced; i++)
+                if (ritz[i] > lambdaMax) lambdaMax = ritz[i];
+
+            bool lanczosOk = lInfo.status == IterativeSolveStatus.Converged && lambdaMax > (double)0;
+            double hi = default, lo = default;
+            if (lanczosOk)
+            {
+                hi = opt.safety * lambdaMax;
+                lo = hi / opt.kappa;
+            }
+
+            ritz.Dispose();
+            ws.symWs.pVec.Dispose();
+            ws.symWs.vVec.Dispose();
+            ws.symWs.eVec.Dispose();
+            ws.T.Dispose();
+            ws.beta.Dispose();
+            ws.alpha.Dispose();
+            ws.w.Dispose();
+            ws.vCur.Dispose();
+            ws.V.Dispose();
+            scaledScratch.Dispose();
+            invSqrtD.Dispose();
+
+            // A failed eigen-estimate (non-converged Lanczos, or a non-positive largest eigenvalue)
+            // makes Hi/Sigma garbage and the induced M^-1 indefinite/NaN -- signal a bad SPD build.
+            if (!lanczosOk)
+            {
+                invDiag.Dispose();
+                throw new ArgumentException("doubleChebyshev: Lanczos produced no positive largest-eigenvalue estimate for D^-1 A -- is A symmetric positive definite? (raise opt.eigSteps or check A)");
+            }
+
+            Hi = hi;
+            Lo = lo;
+
+            Theta = (hi + lo) / (double)2;
+            Delta = (hi - lo) / (double)2;
+            Sigma = Theta / Delta;
+
+            Degree = opt.degree;
+
+            Scratch1 = new doubleN(n, allocator);
+            Scratch2 = new doubleN(n, allocator);
+            Scratch3 = new doubleN(n, allocator);
+        }
+
+        /// <summary>doubleChebyshev with doubleChebyshevOptions.Default, allocated from <paramref name="allocator"/>.</summary>
+        public unsafe doubleChebyshev(in doubleBSR a, Allocator allocator) : this(in a, doubleChebyshevOptions.Default, allocator) { }
+
+        /// <summary>
+        /// Disposes InvDiag and the Apply scratch (Scratch1/2/3). A is never disposed -- Chebyshev
+        /// never copies A, it always aliases the caller's own matrix. Only call on an instance built
+        /// via the Allocator ctor -- an instance built via the ref Arena ctor is arena-owned and must
+        /// not be disposed directly.
+        /// </summary>
+        public unsafe void Dispose()
+        {
+            InvDiag.Dispose();
+            Scratch1.Dispose();
+            Scratch2.Dispose();
+            Scratch3.Dispose();
+        }
 
         /// <summary>z = q(D⁻¹A)·D⁻¹r via the degree-Degree Chebyshev recurrence
         /// (<see cref="BSR.chebyApply"/>) over the struct's owned scratch. z must not alias r.</summary>

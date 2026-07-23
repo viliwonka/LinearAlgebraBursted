@@ -2,6 +2,9 @@
 //   Generated from Assets/LinearAlgebra/CodeGen/TemplateSource/OP/SVD.Workspace.fProxy.cs
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
+using System;
+using Unity.Collections;
+
 namespace LinearAlgebra
 {
     /// <summary>
@@ -15,12 +18,32 @@ namespace LinearAlgebra
     /// is wide (m &lt; n); for m &gt;= n At is left as default (unused). This is exactly the (S, M, U, At)
     /// tuple the scratch-primitive overloads expect, bundled so callers don't size them by hand.
     /// </summary>
-    public struct doubleSVDCache
+    public struct doubleSVDCache : IDisposable
     {
         public doubleN S;
         public doubleMxN M;
         public doubleMxN U;
         public doubleMxN At;
+
+        /// <summary>Standalone allocation sized identically to <c>Arena.doubleSVDCache(m, n)</c>. Pair with <see cref="Dispose"/>.</summary>
+        public doubleSVDCache(int m, int n, Allocator allocator)
+        {
+            int k   = m < n ? m : n;
+            int big = m < n ? n : m;
+            S  = new doubleN(k, allocator);
+            M  = new doubleMxN(k, k, allocator);
+            U  = new doubleMxN(big, k, allocator);
+            At = (m < n) ? new doubleMxN(n, m, allocator) : default;
+        }
+
+        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        public void Dispose()
+        {
+            S.Dispose();
+            M.Dispose();
+            U.Dispose();
+            if (At.IsCreated) At.Dispose();
+        }
     }
 
     public static partial class ArenaExtensions

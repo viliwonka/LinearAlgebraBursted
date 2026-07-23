@@ -3,6 +3,7 @@
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
 using System;
+using Unity.Collections;
 
 namespace LinearAlgebra
 {
@@ -81,7 +82,7 @@ namespace LinearAlgebra
     /// vectors internally, exactly like <see cref="Eigen.symmetricInPlace(ref doubleMxN, ref doubleN, ref doubleMxN)"/>
     /// already does for its own callers).
     /// </summary>
-    public struct doubleLOBPCGCache
+    public struct doubleLOBPCGCache : IDisposable
     {
         /// <summary>k x n. Current eigenvector estimates (rows), ascending-sorted only at the
         /// final return -- during iteration rows [0, numActive) are the still-iterating pairs and
@@ -163,6 +164,47 @@ namespace LinearAlgebra
         /// iteration (m = 2*numActive or 3*numActive &lt;= 3k) via a same-buffer, smaller-shaped
         /// LOGICAL view (see <c>Eigen.View</c>) -- never a fresh allocation.</summary>
         public doubleMxN Gram, H, L, Atrans, Y, C;
+
+        /// <summary>Standalone allocation sized identically to <c>Arena.doubleLOBPCGCache(n, k)</c>. Pair with <see cref="Dispose"/>.</summary>
+        public doubleLOBPCGCache(int n, int k, Allocator allocator)
+        {
+            int cap = 3 * k;
+            X = new doubleMxN(k, n, allocator);
+            AX = new doubleMxN(k, n, allocator);
+            W = new doubleMxN(k, n, allocator);
+            AW = new doubleMxN(k, n, allocator);
+            P = new doubleMxN(k, n, allocator);
+            AP = new doubleMxN(k, n, allocator);
+            R = new doubleMxN(k, n, allocator);
+            Xnext = new doubleMxN(k, n, allocator);
+            Pnext = new doubleMxN(k, n, allocator);
+            BX = new doubleMxN(k, n, allocator);
+            BW = new doubleMxN(k, n, allocator);
+            BP = new doubleMxN(k, n, allocator);
+            lambda = new doubleN(k, allocator);
+            residual = new doubleN(k, allocator);
+            resScale = new doubleN(k, allocator);
+            xBnorm = new doubleN(k, allocator);
+            rowIn = new doubleN(n, allocator);
+            rowOut = new doubleN(n, allocator);
+            Gram = new doubleMxN(cap, cap, allocator);
+            H = new doubleMxN(cap, cap, allocator);
+            L = new doubleMxN(cap, cap, allocator);
+            Atrans = new doubleMxN(cap, cap, allocator);
+            Y = new doubleMxN(cap, cap, allocator);
+            C = new doubleMxN(cap, cap, allocator);
+        }
+
+        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        public void Dispose()
+        {
+            X.Dispose(); AX.Dispose(); W.Dispose(); AW.Dispose(); P.Dispose(); AP.Dispose();
+            R.Dispose(); Xnext.Dispose(); Pnext.Dispose();
+            BX.Dispose(); BW.Dispose(); BP.Dispose();
+            lambda.Dispose(); residual.Dispose(); resScale.Dispose(); xBnorm.Dispose();
+            rowIn.Dispose(); rowOut.Dispose();
+            Gram.Dispose(); H.Dispose(); L.Dispose(); Atrans.Dispose(); Y.Dispose(); C.Dispose();
+        }
     }
 
     public static partial class ArenaExtensions

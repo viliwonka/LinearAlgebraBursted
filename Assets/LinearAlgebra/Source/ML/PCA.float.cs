@@ -3,6 +3,7 @@
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
 using System;
+using Unity.Collections;
 using Unity.Mathematics;
 
 namespace LinearAlgebra.ML
@@ -305,6 +306,24 @@ namespace LinearAlgebra.ML
         public static floatPCAModel fitCov(ref Arena arena, in floatMxN X)
             => fitCov(ref arena, in X, PCAScaling.Covariance);
 
+        /// <summary>Validates inputs, allocates the model (p x p) standalone via <paramref
+        /// name="allocator"/> (default Temp; caller owns disposal), then delegates to the
+        /// ref-model overload. Guards fire before any allocation.</summary>
+        public static floatPCAModel fitCov(in floatMxN X, PCAScaling scaling, Allocator allocator = Allocator.Temp)
+        {
+            const string method = "PCA.fitCov";
+            RequireBasicShape(in X, method);
+
+            int p = X.N_Cols;
+            var model = new floatPCAModel(p, p, allocator);
+            fitCov(in X, ref model, scaling, out _);
+            return model;
+        }
+
+        /// <summary>fitCov (allocating, Allocator) with scaling = PCAScaling.Covariance.</summary>
+        public static floatPCAModel fitCov(in floatMxN X, Allocator allocator = Allocator.Temp)
+            => fitCov(in X, PCAScaling.Covariance, allocator);
+
         // =====================================================================================
         // 2. fitSvd — full, accurate (SVD.thin on a centered/standardized copy; requires n >= p)
         // =====================================================================================
@@ -380,6 +399,25 @@ namespace LinearAlgebra.ML
         /// <summary>fitSvd (allocating) with scaling = PCAScaling.Covariance.</summary>
         public static floatPCAModel fitSvd(ref Arena arena, in floatMxN X)
             => fitSvd(ref arena, in X, PCAScaling.Covariance);
+
+        /// <summary>Validates inputs, allocates the model (p x p) standalone via <paramref
+        /// name="allocator"/> (default Temp; caller owns disposal), then delegates to the
+        /// ref-model overload. Guards fire before any allocation.</summary>
+        public static floatPCAModel fitSvd(in floatMxN X, PCAScaling scaling, Allocator allocator = Allocator.Temp)
+        {
+            const string method = "PCA.fitSvd";
+            RequireBasicShape(in X, method);
+            RequireTallShape(in X, method);
+
+            int p = X.N_Cols;
+            var model = new floatPCAModel(p, p, allocator);
+            fitSvd(in X, ref model, scaling, Consts.sweepBudget(X.N_Cols), out _);
+            return model;
+        }
+
+        /// <summary>fitSvd (allocating, Allocator) with scaling = PCAScaling.Covariance.</summary>
+        public static floatPCAModel fitSvd(in floatMxN X, Allocator allocator = Allocator.Temp)
+            => fitSvd(in X, PCAScaling.Covariance, allocator);
 
         // =====================================================================================
         // 3. fitSvdTruncated — exact top-k (Golub-Kahan-Lanczos)
@@ -478,6 +516,28 @@ namespace LinearAlgebra.ML
         public static floatPCAModel fitSvdTruncated(ref Arena arena, in floatMxN X, int k)
             => fitSvdTruncated(ref arena, in X, k, PCAScaling.Covariance);
 
+        /// <summary>Validates inputs, allocates the model (p x k) standalone via <paramref
+        /// name="allocator"/> (default Temp; caller owns disposal), then delegates to the
+        /// ref-model overload. Guards fire before any allocation.</summary>
+        public static floatPCAModel fitSvdTruncated(in floatMxN X, int k, PCAScaling scaling, Allocator allocator = Allocator.Temp)
+        {
+            const string method = "PCA.fitSvdTruncated";
+            RequireBasicShape(in X, method);
+            RequireTallShape(in X, method);
+
+            int n = X.M_Rows;
+            int p = X.N_Cols;
+            RequireTopK(k, n, p, method);
+
+            var model = new floatPCAModel(p, k, allocator);
+            fitSvdTruncated(in X, ref model, k, scaling, out _);
+            return model;
+        }
+
+        /// <summary>fitSvdTruncated (allocating, Allocator) with scaling = PCAScaling.Covariance.</summary>
+        public static floatPCAModel fitSvdTruncated(in floatMxN X, int k, Allocator allocator = Allocator.Temp)
+            => fitSvdTruncated(in X, k, PCAScaling.Covariance, allocator);
+
         // =====================================================================================
         // 4. fitRandomized — approximate top-k (Halko-Martinsson-Tropp; requires n >= p)
         // =====================================================================================
@@ -564,6 +624,28 @@ namespace LinearAlgebra.ML
         public static floatPCAModel fitRandomized(ref Arena arena, in floatMxN X, int k)
             => fitRandomized(ref arena, in X, k, PCAScaling.Covariance);
 
+        /// <summary>Validates inputs, allocates the model (p x k) standalone via <paramref
+        /// name="allocator"/> (default Temp; caller owns disposal), then delegates to the
+        /// ref-model overload. Guards fire before any allocation.</summary>
+        public static floatPCAModel fitRandomized(in floatMxN X, int k, PCAScaling scaling, Allocator allocator = Allocator.Temp)
+        {
+            const string method = "PCA.fitRandomized";
+            RequireBasicShape(in X, method);
+            RequireTallShape(in X, method);
+
+            int n = X.M_Rows;
+            int p = X.N_Cols;
+            RequireTopK(k, n, p, method);
+
+            var model = new floatPCAModel(p, k, allocator);
+            fitRandomized(in X, ref model, k, scaling, out _);
+            return model;
+        }
+
+        /// <summary>fitRandomized (allocating, Allocator) with scaling = PCAScaling.Covariance.</summary>
+        public static floatPCAModel fitRandomized(in floatMxN X, int k, Allocator allocator = Allocator.Temp)
+            => fitRandomized(in X, k, PCAScaling.Covariance, allocator);
+
         // =====================================================================================
         // Projection
         // =====================================================================================
@@ -608,6 +690,24 @@ namespace LinearAlgebra.ML
                 throw new ArgumentException(method + ": model.k must equal model.components.N_Cols (stale model)");
 
             var scores = arena.floatMat(X.M_Rows, model.k);
+            transform(in X, in model, ref scores);
+            return scores;
+        }
+
+        /// <summary>Allocating transform (Allocator): allocates and returns a fresh X.M_Rows x
+        /// model.k scores matrix via <paramref name="allocator"/> (default Temp; caller owns
+        /// disposal).</summary>
+        public static floatMxN transform(in floatMxN X, in floatPCAModel model, Allocator allocator = Allocator.Temp)
+        {
+            const string method = "PCA.transform";
+            int p = X.N_Cols;
+
+            if (model.mean.N != p || model.scale.N != p || model.components.M_Rows != p)
+                throw new ArgumentException(method + ": model.mean/scale/components must match X.N_Cols (p)");
+            if (model.k != model.components.N_Cols)
+                throw new ArgumentException(method + ": model.k must equal model.components.N_Cols (stale model)");
+
+            var scores = new floatMxN(X.M_Rows, model.k, allocator);
             transform(in X, in model, ref scores);
             return scores;
         }

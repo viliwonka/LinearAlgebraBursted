@@ -3,6 +3,7 @@
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
 using System;
+using Unity.Collections;
 
 namespace LinearAlgebra
 {
@@ -81,7 +82,7 @@ namespace LinearAlgebra
     /// vectors internally, exactly like <see cref="Eigen.symmetricInPlace(ref floatMxN, ref floatN, ref floatMxN)"/>
     /// already does for its own callers).
     /// </summary>
-    public struct floatLOBPCGCache
+    public struct floatLOBPCGCache : IDisposable
     {
         /// <summary>k x n. Current eigenvector estimates (rows), ascending-sorted only at the
         /// final return -- during iteration rows [0, numActive) are the still-iterating pairs and
@@ -163,6 +164,47 @@ namespace LinearAlgebra
         /// iteration (m = 2*numActive or 3*numActive &lt;= 3k) via a same-buffer, smaller-shaped
         /// LOGICAL view (see <c>Eigen.View</c>) -- never a fresh allocation.</summary>
         public floatMxN Gram, H, L, Atrans, Y, C;
+
+        /// <summary>Standalone allocation sized identically to <c>Arena.floatLOBPCGCache(n, k)</c>. Pair with <see cref="Dispose"/>.</summary>
+        public floatLOBPCGCache(int n, int k, Allocator allocator)
+        {
+            int cap = 3 * k;
+            X = new floatMxN(k, n, allocator);
+            AX = new floatMxN(k, n, allocator);
+            W = new floatMxN(k, n, allocator);
+            AW = new floatMxN(k, n, allocator);
+            P = new floatMxN(k, n, allocator);
+            AP = new floatMxN(k, n, allocator);
+            R = new floatMxN(k, n, allocator);
+            Xnext = new floatMxN(k, n, allocator);
+            Pnext = new floatMxN(k, n, allocator);
+            BX = new floatMxN(k, n, allocator);
+            BW = new floatMxN(k, n, allocator);
+            BP = new floatMxN(k, n, allocator);
+            lambda = new floatN(k, allocator);
+            residual = new floatN(k, allocator);
+            resScale = new floatN(k, allocator);
+            xBnorm = new floatN(k, allocator);
+            rowIn = new floatN(n, allocator);
+            rowOut = new floatN(n, allocator);
+            Gram = new floatMxN(cap, cap, allocator);
+            H = new floatMxN(cap, cap, allocator);
+            L = new floatMxN(cap, cap, allocator);
+            Atrans = new floatMxN(cap, cap, allocator);
+            Y = new floatMxN(cap, cap, allocator);
+            C = new floatMxN(cap, cap, allocator);
+        }
+
+        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        public void Dispose()
+        {
+            X.Dispose(); AX.Dispose(); W.Dispose(); AW.Dispose(); P.Dispose(); AP.Dispose();
+            R.Dispose(); Xnext.Dispose(); Pnext.Dispose();
+            BX.Dispose(); BW.Dispose(); BP.Dispose();
+            lambda.Dispose(); residual.Dispose(); resScale.Dispose(); xBnorm.Dispose();
+            rowIn.Dispose(); rowOut.Dispose();
+            Gram.Dispose(); H.Dispose(); L.Dispose(); Atrans.Dispose(); Y.Dispose(); C.Dispose();
+        }
     }
 
     public static partial class ArenaExtensions

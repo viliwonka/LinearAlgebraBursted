@@ -237,6 +237,117 @@ namespace LinearAlgebra.Sparse
             return bsm;
         }
 
+        /// <summary>Standalone twin of <see cref="ToBSR(ref Arena)"/>: allocates the compressed
+        /// result from <paramref name="allocator"/> instead of an arena.</summary>
+        public unsafe floatBSR ToBSR(Allocator allocator) => ToBSRCore(allocator, symmetric: false);
+
+        /// <summary>Standalone twin of <see cref="ToBSRSymmetric(ref Arena)"/>: same validation and
+        /// SYMMETRIC lower-block-triangle build, allocating the result from
+        /// <paramref name="allocator"/> instead of an arena.</summary>
+        public unsafe floatBSR ToBSRSymmetric(Allocator allocator)
+        {
+            if (BR != BC || BlockRows != BlockCols)
+                throw new ArgumentException("ToBSRSymmetric: requires BR==BC and BlockRows==BlockCols (square blocks on a square block grid)");
+
+            int n = TripletCount;
+            for (int t = 0; t < n; t++)
+                if (_state->triBlockCol[t] > _state->triBlockRow[t])
+                    throw new ArgumentException("ToBSRSymmetric: found an upper-triangle triplet (blockCol > blockRow); symmetric build only accepts blocks with blockCol <= blockRow (lower triangle + diagonal). Add the block at its transpose position (blockRow<->blockCol swapped) instead, or use ToBSR() for full storage.");
+
+            var bsm = ToBSRCore(allocator, symmetric: true);
+
+            // Validate diagonal-block symmetry on the compressed (duplicate-summed) blocks -- same
+            // check as ToBSRSymmetric(ref Arena).
+            int blockLen = BR * BC;
+            for (int row = 0; row < BlockRows; row++)
+            {
+                int rs = bsm.RowPtr[row], re = bsm.RowPtr[row + 1];
+                for (int k = rs; k < re; k++)
+                {
+                    if (bsm.ColInd[k] != row) continue;   // diagonal blocks only
+                    int off = k * blockLen;
+                    for (int r = 0; r < BR; r++)
+                        for (int c = r + 1; c < BC; c++)
+                        {
+                            float a = bsm.Values[off + r * BC + c];
+                            float b = bsm.Values[off + c * BC + r];
+                            float tolAbs = (float)8 * Consts.floatZeroThreshold * ((float)1 + math.abs(a) + math.abs(b));
+                            if (math.abs(a - b) > tolAbs)
+                                throw new ArgumentException("ToBSRSymmetric: a diagonal block is not symmetric (block[r,c] != block[c,r]). Symmetric lower-block storage stores the upper triangle implicitly as the transpose, so diagonal blocks must be symmetric; symmetrize the block (e.g. (K+K^T)/2), or use ToBSR() for full storage.");
+                        }
+                }
+            }
+
+            return bsm;
+        }
+
+        // Standalone twin of ToBSRCore(ref Arena, bool): identical sort/compress/sum logic, only
+        // the final floatBSR allocation source differs (allocator instead of an arena record).
+        private unsafe floatBSR ToBSRCore(Allocator allocator, bool symmetric)
+        {
+            int n = TripletCount;
+            int blockLen = BR * BC;
+
+            SortTriplets(out var order, out var rowStart);
+
+            int nnzb = 0;
+            for (int row = 0; row < BlockRows; row++)
+            {
+                int s = rowStart[row];
+                int e = rowStart[row + 1];
+                int prevCol = -1;
+                for (int i = s; i < e; i++)
+                {
+                    int col = _state->triBlockCol[order[i]];
+                    if (col != prevCol) { nnzb++; prevCol = col; }
+                }
+            }
+
+            var bsm = new floatBSR(BlockRows, BlockCols, BR, BC, nnzb, allocator, true, symmetric);
+
+            var rowPtr = bsm.RowPtr;
+            var colInd = bsm.ColInd;
+            var values = bsm.Values;
+
+            int outIdx = 0;
+            for (int row = 0; row < BlockRows; row++)
+            {
+                rowPtr[row] = outIdx;
+                int s = rowStart[row];
+                int e = rowStart[row + 1];
+                int prevCol = -1;
+
+                for (int i = s; i < e; i++)
+                {
+                    int t = order[i];
+                    int col = _state->triBlockCol[t];
+                    int srcOff = t * blockLen;
+
+                    if (col != prevCol)
+                    {
+                        colInd[outIdx] = col;
+                        int dstOff = outIdx * blockLen;
+                        for (int k = 0; k < blockLen; k++)
+                            values[dstOff + k] = _state->triValues[srcOff + k];
+                        prevCol = col;
+                        outIdx++;
+                    }
+                    else
+                    {
+                        int dstOff = (outIdx - 1) * blockLen;
+                        for (int k = 0; k < blockLen; k++)
+                            values[dstOff + k] += _state->triValues[srcOff + k];
+                    }
+                }
+            }
+            rowPtr[BlockRows] = outIdx;
+
+            order.Dispose();
+            rowStart.Dispose();
+
+            return bsm;
+        }
+
         // Sorts triplet indices by (blockRow, blockCol): counting-sort into per-block-row buckets
         // (rowStart[i] = bucket boundary, à la CSR-from-COO), then insertion-sort each bucket by
         // blockCol (row degree is small in practice). Shared by ToBSRCore and BuildAssemblyCache.

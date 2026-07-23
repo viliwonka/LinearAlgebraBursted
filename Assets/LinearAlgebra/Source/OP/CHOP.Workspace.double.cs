@@ -3,6 +3,7 @@
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
 using System;
+using Unity.Collections;
 
 namespace LinearAlgebra
 {
@@ -34,10 +35,24 @@ namespace LinearAlgebra
     /// has no matrix-view type to slice an n x n buffer to a rank x rank stride) and remain per-call
     /// Allocator.Temp; only the full-rank path is fully zero-alloc with this workspace.
     /// </summary>
-    public struct doubleCHOPCache
+    public struct doubleCHOPCache : IDisposable
     {
         public doubleMxN W;
         public doubleN bt;
+
+        /// <summary>Standalone allocation sized identically to <c>Arena.doubleCHOPCache(n)</c>. Pair with <see cref="Dispose"/>.</summary>
+        public doubleCHOPCache(int n, Allocator allocator)
+        {
+            W = new doubleMxN(n, n, allocator);
+            bt = new doubleN(n, allocator);
+        }
+
+        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        public void Dispose()
+        {
+            W.Dispose();
+            bt.Dispose();
+        }
     }
 
     public static partial class ArenaExtensions

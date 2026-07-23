@@ -1,6 +1,7 @@
 using System;
 using LinearAlgebra;
 using LinearAlgebra.Internal;
+using Unity.Collections;
 
 namespace LinearAlgebra.Sparse
 {
@@ -23,13 +24,15 @@ namespace LinearAlgebra.Sparse
     /// <see cref="ScaledD"/> so Apply pays for it once, not every iteration.
     ///
     /// FULL-storage BSR only: a Symmetric-storage A pays a one-time mirror-to-full copy at
-    /// construction (<see cref="Arena.fProxyBSRMirrorToFull"/>) -- the sweeps need row-ordered
-    /// access to BOTH triangles, which lower-only storage cannot give without a column-order
-    /// scatter. Composed entirely of already arena-tracked pieces (A, Jacobi, and the
-    /// ScaledD/scratch vectors below are all fProxyN/fProxyBSR/fProxyBlockJacobi) -- no record
-    /// table of its own, no Dispose(): the arena that built it owns every buffer.
+    /// construction (<see cref="Arena.fProxyBSRMirrorToFull"/> / <see cref="fProxyBSR.MirrorToFull"/>)
+    /// -- the sweeps need row-ordered access to BOTH triangles, which lower-only storage cannot give
+    /// without a column-order scatter. No record table of its own: built via a ref Arena ctor, every
+    /// piece (A, Jacobi, ScaledD, Scratch1/2) is arena-tracked and the arena owns disposal -- do not
+    /// call Dispose() on that instance. Built via the Allocator ctor, this instance owns those same
+    /// pieces standalone and Dispose() must be called when done (see Dispose()'s own doc for the A
+    /// aliasing caveat).
     /// </summary>
-    public readonly struct fProxySSOR : IfProxyPreconditioner
+    public readonly struct fProxySSOR : IfProxyPreconditioner, IDisposable
     {
         public readonly fProxyBSR A;               // full-storage (mirrored once if the input was symmetric-storage)
         public readonly fProxyBlockJacobi Jacobi;   // A's diagonal block INVERSES -- block-Jacobi's own setup, reused unchanged
@@ -37,6 +40,12 @@ namespace LinearAlgebra.Sparse
         public readonly fProxy Omega;
         public readonly fProxyN Scratch1;           // length Rows; Apply's forward-sweep result v
         public readonly fProxyN Scratch2;           // length Rows; Apply's diagonal-scaled result u
+
+        // True when A was freshly mirrored to full storage by the Allocator ctor (owned, must be
+        // disposed); false when A aliases the caller's input matrix -- either the arena path (never
+        // disposed at all) or an already-full-storage input on the Allocator path. Consulted only
+        // by Dispose().
+        private readonly bool _ownsA;
 
         public int Rows => A.M_Rows;
 
@@ -51,6 +60,7 @@ namespace LinearAlgebra.Sparse
             if (!(omega > (fProxy)0 && omega < (fProxy)2))
                 throw new ArgumentException("fProxySSOR: omega must be in (0, 2) for M to be SPD");
 
+            _ownsA = false; // arena-tracked path: Dispose() is never called on this path, value unused
             A = arena.fProxyBSRMirrorToFull(in a);
             Jacobi = arena.fProxyBlockJacobi(in A);
             Omega = omega;
@@ -88,6 +98,79 @@ namespace LinearAlgebra.Sparse
 
         /// <summary>fProxySSOR with omega=1 (symmetric Gauss-Seidel).</summary>
         public fProxySSOR(in fProxyBSR a, ref Arena arena) : this(in a, (fProxy)1, ref arena) { }
+
+        /// <summary>
+        /// Standalone twin of <see cref="fProxySSOR(in fProxyBSR, fProxy, ref Arena)"/>: allocates
+        /// every owned buffer from <paramref name="allocator"/> instead of an arena. Dispose the
+        /// result with <see cref="Dispose"/> when done -- only call Dispose on an instance built via
+        /// this ctor, never on one built via the ref Arena ctor (that instance is arena-owned).
+        /// </summary>
+        public unsafe fProxySSOR(in fProxyBSR a, fProxy omega, Allocator allocator)
+        {
+            if (a.BlockRows != a.BlockCols || a.BR != a.BC)
+                throw new ArgumentException("fProxySSOR: A must be square (BlockRows==BlockCols, BR==BC)");
+            if (!(omega > (fProxy)0 && omega < (fProxy)2))
+                throw new ArgumentException("fProxySSOR: omega must be in (0, 2) for M to be SPD");
+
+            _ownsA = a.Symmetric;
+            A = a.MirrorToFull(allocator);
+            try
+            {
+                Jacobi = new fProxyBlockJacobi(in A, allocator);
+            }
+            catch
+            {
+                // A is otherwise unreachable once this ctor unwinds (no caller handle yet) --
+                // dispose it here so a singular/missing diagonal block doesn't leak the mirror.
+                if (_ownsA) A.Dispose();
+                throw;
+            }
+            Omega = omega;
+
+            int blockLen = A.BR * A.BR;
+            var scaledD = new fProxyN(A.BlockRows * blockLen, allocator);
+            fProxy c = ((fProxy)2 - omega) / omega;
+
+            for (int i = 0; i < A.BlockRows; i++)
+            {
+                int s = A.RowPtr[i], e = A.RowPtr[i + 1];
+                int found = -1;
+                for (int k = s; k < e; k++)
+                {
+                    int col = A.ColInd[k];
+                    if (col == i) { found = k; break; }
+                    if (col > i) break;
+                }
+                if (found < 0)
+                    throw new ArgumentException("fProxySSOR: missing diagonal block in A");
+
+                int srcOff = found * blockLen, dstOff = i * blockLen;
+                for (int t = 0; t < blockLen; t++)
+                    scaledD[dstOff + t] = A.Values[srcOff + t] * c;
+            }
+            ScaledD = scaledD;
+
+            Scratch1 = new fProxyN(A.M_Rows, allocator);
+            Scratch2 = new fProxyN(A.M_Rows, allocator);
+        }
+
+        /// <summary>fProxySSOR with omega=1 (symmetric Gauss-Seidel), allocated from <paramref name="allocator"/>.</summary>
+        public unsafe fProxySSOR(in fProxyBSR a, Allocator allocator) : this(in a, (fProxy)1, allocator) { }
+
+        /// <summary>
+        /// Disposes every buffer this instance owns: A only if it was freshly mirrored to full
+        /// storage (not when it aliases the input matrix), plus Jacobi/ScaledD/Scratch1/Scratch2.
+        /// Only call on an instance built via the Allocator ctor -- an instance built via the ref
+        /// Arena ctor is arena-owned and must not be disposed directly.
+        /// </summary>
+        public unsafe void Dispose()
+        {
+            if (_ownsA) A.Dispose();
+            Jacobi.Dispose();
+            ScaledD.Dispose();
+            Scratch1.Dispose();
+            Scratch2.Dispose();
+        }
 
         /// <summary>z = M⁻¹ r -- see the type doc comment for the three-step derivation. z must not alias r.</summary>
         public bool IsIdentity => false;

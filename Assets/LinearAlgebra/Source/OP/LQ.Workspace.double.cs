@@ -3,6 +3,7 @@
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
 using System;
+using Unity.Collections;
 
 namespace LinearAlgebra
 {
@@ -33,10 +34,24 @@ namespace LinearAlgebra
     /// for the backward Q-reconstruction pass); v (length n) is the reflector scratch vector shared
     /// by both passes.
     /// </summary>
-    public struct doubleLQCache
+    public struct doubleLQCache : IDisposable
     {
         public doubleMxN W;
         public doubleN v;
+
+        /// <summary>Standalone allocation sized identically to <c>Arena.doubleLQCache(m, n)</c>. Pair with <see cref="Dispose"/>.</summary>
+        public doubleLQCache(int m, int n, Allocator allocator)
+        {
+            W = new doubleMxN(m, n, allocator);
+            v = new doubleN(n, allocator);
+        }
+
+        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        public void Dispose()
+        {
+            W.Dispose();
+            v.Dispose();
+        }
     }
 
     public static partial class ArenaExtensions

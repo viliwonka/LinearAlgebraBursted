@@ -78,6 +78,24 @@ namespace LinearAlgebra
         }
 
         /// <summary>
+        /// Creates a new standalone (non-arena) vector with its own allocation.
+        /// </summary>
+        public unsafe boolN(int n, Allocator allocator = Allocator.Invalid, bool uninit = false)
+        {
+            _rec = null;
+            _inlineData = default;
+
+            // standalone (non-arena) vector — fall back to Temp instead of dereferencing a null core.
+            if (allocator == Allocator.Invalid)
+                allocator = Allocator.Temp;
+
+            var data = new UnsafeList<bool>(n, allocator, NativeArrayOptions.UninitializedMemory);
+            data.Resize(n, uninit ? NativeArrayOptions.UninitializedMemory : NativeArrayOptions.ClearMemory);
+
+            Data = data;
+        }
+
+        /// <summary>
         /// Creates a copy of vector with new allocation
         /// </summary>
         /// <param name="orig"></param>

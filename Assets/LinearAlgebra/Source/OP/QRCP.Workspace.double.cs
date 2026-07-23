@@ -3,6 +3,7 @@
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
 using System;
+using Unity.Collections;
 
 namespace LinearAlgebra
 {
@@ -31,10 +32,24 @@ namespace LinearAlgebra
     /// across same-shape calls to avoid the per-call Allocator.Temp allocations the non-cache overloads
     /// make.
     /// </summary>
-    public struct doubleQRCPCache
+    public struct doubleQRCPCache : IDisposable
     {
         public doubleN vn1;
         public doubleN vn2;
+
+        /// <summary>Standalone allocation sized identically to <c>Arena.doubleQRCPCache(n)</c>. Pair with <see cref="Dispose"/>.</summary>
+        public doubleQRCPCache(int n, Allocator allocator)
+        {
+            vn1 = new doubleN(n, allocator);
+            vn2 = new doubleN(n, allocator);
+        }
+
+        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        public void Dispose()
+        {
+            vn1.Dispose();
+            vn2.Dispose();
+        }
     }
 
     public static partial class ArenaExtensions

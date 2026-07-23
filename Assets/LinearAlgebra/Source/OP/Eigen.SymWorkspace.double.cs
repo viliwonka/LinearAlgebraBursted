@@ -3,6 +3,7 @@
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
 using System;
+using Unity.Collections;
 
 namespace LinearAlgebra
 {
@@ -25,11 +26,27 @@ namespace LinearAlgebra
     /// rank-2-update vector p). Allocate ONCE via Arena.doubleEigenSymCache(n) and reuse it across
     /// same-size calls so repeated symmetric eigenvalue solves are zero-alloc.
     /// </summary>
-    public struct doubleEigenSymCache
+    public struct doubleEigenSymCache : IDisposable
     {
         public doubleN eVec;
         public doubleN vVec;
         public doubleN pVec;
+
+        /// <summary>Standalone allocation sized identically to <c>Arena.doubleEigenSymCache(n)</c>. Pair with <see cref="Dispose"/>.</summary>
+        public doubleEigenSymCache(int n, Allocator allocator)
+        {
+            eVec = new doubleN(n, allocator);
+            vVec = new doubleN(n, allocator);
+            pVec = new doubleN(n, allocator);
+        }
+
+        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        public void Dispose()
+        {
+            eVec.Dispose();
+            vVec.Dispose();
+            pVec.Dispose();
+        }
     }
 
     public static partial class ArenaExtensions

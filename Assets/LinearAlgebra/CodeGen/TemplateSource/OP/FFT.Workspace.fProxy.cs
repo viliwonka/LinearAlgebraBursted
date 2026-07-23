@@ -28,7 +28,7 @@ namespace LinearAlgebra
     /// so the wide-butterfly and combine hot loops still read contiguous tables; only the scalar
     /// butterfly and the rfft/irfft unpack call CosQ per element.
     /// </summary>
-    public struct fProxyFFTCache
+    public struct fProxyFFTCache : IDisposable
     {
         public fProxyN twQuarter;  // length n/4+1: cos(2π·j/n), j = 0..n/4  (first quadrant, incl. 0)
         public int n;              // the FFT size this table is built for (must be a power of two, >= 2)
@@ -57,6 +57,105 @@ namespace LinearAlgebra
         // Both are materialized from CosQ at build time (a quarter table cannot be aliased by the
         // combine's contiguous wide load, so there is no combineStep==1 alias fast-path anymore).
         public fProxyN cw1re, cw1im;
+
+        /// <summary>
+        /// Standalone allocation sized and populated identically to <c>Arena.fProxyFFTCache(n)</c>
+        /// (same twiddle-table construction, on standalone buffers). Pair with <see cref="Dispose"/>.
+        /// </summary>
+        public unsafe fProxyFFTCache(int n, Allocator allocator)
+        {
+            if (n < 2 || (n & (n - 1)) != 0)
+                throw new ArgumentException("fProxyFFTCache: n must be a power of two and >= 2");
+
+            this.n = n;
+            int half = n >> 1;
+            int Q    = n >> 2;
+            twQuarter = new fProxyN(Q + 1, allocator);
+
+            int P = 0;
+            for (int t = n; t > 1; t >>= 1) P++;
+            double* bkr = stackalloc double[32];
+            double* bki = stackalloc double[32];
+            bkr[P - 1] = -1.0; bki[P - 1] = 0.0;
+            if (P >= 2) { bkr[P - 2] = 0.0; bki[P - 2] = -1.0; }
+            for (int k = P - 3; k >= 0; k--)
+            {
+                double a = bkr[k + 1];
+                double c = math.sqrt((1.0 + a) * 0.5);
+                bkr[k] = c;
+                bki[k] = bki[k + 1] / (2.0 * c);
+            }
+            int Qalloc = Q > 0 ? Q : 1;
+            var dre = (double*)UnsafeUtility.Malloc((long)Qalloc * sizeof(double), 16, Allocator.Persistent);
+            var dim = (double*)UnsafeUtility.Malloc((long)Qalloc * sizeof(double), 16, Allocator.Persistent);
+            dre[0] = 1.0; dim[0] = 0.0;
+            for (int k = 0; k < P - 2; k++)
+            {
+                int block = 1 << k;
+                double br = bkr[k], bi = bki[k];
+                for (int j = 0; j < block; j++)
+                {
+                    double ar = dre[j], ai = dim[j];
+                    dre[block + j] = ar * br - ai * bi;
+                    dim[block + j] = ar * bi + ai * br;
+                }
+            }
+            for (int m = 0; m < Q; m++)
+                twQuarter[m] = (fProxy)dre[m];
+            twQuarter[Q] = (Q >= 1) ? (fProxy)0 : (fProxy)1;
+            UnsafeUtility.Free(dre, Allocator.Persistent);
+            UnsafeUtility.Free(dim, Allocator.Persistent);
+
+            cz      = new fProxyN(half, allocator, uninit: true);
+            sz      = new fProxyN(half, allocator, uninit: true);
+            visited = new fProxyN(n,    allocator, uninit: true);
+
+            fProxy* cq = twQuarter.Data.Ptr;
+            swLen = 0;
+            for (int qq = 1; 4 * qq <= n; qq <<= 2)
+                swLen += qq;
+            int swAlloc = swLen > 0 ? swLen : 1;
+            sw1re = new fProxyN(swAlloc, allocator, uninit: true);
+            sw1im = new fProxyN(swAlloc, allocator, uninit: true);
+            {
+                int off = 0;
+                for (int qq = 1; 4 * qq <= n; qq <<= 2)
+                {
+                    int len  = qq << 2;
+                    int step = n / len;
+                    for (int j = 0; j < qq; j++)
+                    {
+                        int t1 = j * step;
+                        FFT.WQ(cq, t1, n, out fProxy wr, out fProxy wi);
+                        sw1re[off + j] = wr; sw1im[off + j] = wi;
+                    }
+                    off += qq;
+                }
+            }
+
+            int cwLen = (P & 1) == 0 ? (n >> 2) : half;
+            int cwStep = (P & 1) == 0 ? 2 : 1;
+            cw1re = new fProxyN(cwLen, allocator, uninit: true);
+            cw1im = new fProxyN(cwLen, allocator, uninit: true);
+            for (int k = 0; k < cwLen; k++)
+            {
+                FFT.WQ(cq, k * cwStep, n, out fProxy wr, out fProxy wi);
+                cw1re[k] = wr; cw1im[k] = wi;
+            }
+        }
+
+        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        public void Dispose()
+        {
+            twQuarter.Dispose();
+            cz.Dispose();
+            sz.Dispose();
+            visited.Dispose();
+            sw1re.Dispose();
+            sw1im.Dispose();
+            cw1re.Dispose();
+            cw1im.Dispose();
+        }
     }
 
     public static partial class ArenaExtensions

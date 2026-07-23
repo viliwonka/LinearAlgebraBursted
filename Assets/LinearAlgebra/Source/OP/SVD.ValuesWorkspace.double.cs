@@ -3,6 +3,7 @@
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
 using System;
+using Unity.Collections;
 
 namespace LinearAlgebra
 {
@@ -27,11 +28,27 @@ namespace LinearAlgebra
     /// BidiagWs is the nested workspace Bidiag.values needs (see doubleBidiagCache); dVec/eVec
     /// (length n) are the diagonal/superdiagonal the values-only bidiagonal QR diagonalizes in place.
     /// </summary>
-    public struct doubleSVDValuesCache
+    public struct doubleSVDValuesCache : IDisposable
     {
         public doubleBidiagCache BidiagWs;
         public doubleN dVec;
         public doubleN eVec;
+
+        /// <summary>Standalone allocation sized identically to <c>Arena.doubleSVDValuesCache(m, n)</c>. Pair with <see cref="Dispose"/>.</summary>
+        public doubleSVDValuesCache(int m, int n, Allocator allocator)
+        {
+            BidiagWs = new doubleBidiagCache(m, n, allocator);
+            dVec = new doubleN(n, allocator);
+            eVec = new doubleN(n, allocator);
+        }
+
+        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        public void Dispose()
+        {
+            BidiagWs.Dispose();
+            dVec.Dispose();
+            eVec.Dispose();
+        }
     }
 
     public static partial class ArenaExtensions

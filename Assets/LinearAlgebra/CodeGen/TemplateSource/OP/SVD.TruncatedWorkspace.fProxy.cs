@@ -1,4 +1,5 @@
 using System;
+using Unity.Collections;
 using Unity.Mathematics;
 
 namespace LinearAlgebra
@@ -47,7 +48,7 @@ namespace LinearAlgebra
     /// truncated is FULLY zero-alloc on workspace reuse: the inner bidiagonal SVD runs entirely
     /// in dB/eB/UtB/VtB + BsvdWs (all persistent arena memory), with no Allocator.Temp usage.
     /// </summary>
-    public struct fProxySVDTruncatedCache
+    public struct fProxySVDTruncatedCache : IDisposable
     {
         public fProxyMxN UL;
         public fProxyMxN VL;
@@ -62,6 +63,62 @@ namespace LinearAlgebra
         public fProxyN beta;
         public fProxyN mu;   // length p+1: μ estimates ⟨û_j, û_i⟩ for partial reorth ω-recurrence
         public fProxyN nu;   // length p+1: ν estimates ⟨v̂_j, v̂_i⟩ for partial reorth ω-recurrence
+
+        /// <summary>Standalone allocation sized identically to <c>Arena.fProxySVDTruncatedCache(m, n, k, oversample)</c>. Pair with <see cref="Dispose"/>.</summary>
+        public fProxySVDTruncatedCache(int m, int n, int k, int oversample, Allocator allocator)
+        {
+            int p = math.min(k + oversample, n);
+            UL     = new fProxyMxN(p, m, allocator);
+            VL     = new fProxyMxN(p + 1, n, allocator);
+            dB     = new fProxyN(p, allocator);
+            eB     = new fProxyN(p, allocator);
+            UtB    = new fProxyMxN(p, p, allocator);
+            VtB    = new fProxyMxN(p, p, allocator);
+            BsvdWs = new fProxySVDFullCache(p, p, allocator);
+            uBuf  = new fProxyN(m, allocator);
+            vBuf  = new fProxyN(n, allocator);
+            alpha = new fProxyN(p, allocator);
+            beta  = new fProxyN(p, allocator);
+            mu    = new fProxyN(p + 1, allocator);
+            nu    = new fProxyN(p + 1, allocator);
+        }
+
+        /// <summary>Standalone allocation sized identically to <c>Arena.fProxySVDTruncatedCache(m, n, k)</c> (default oversample p = min(n, max(2k, k+12))). Pair with <see cref="Dispose"/>.</summary>
+        public fProxySVDTruncatedCache(int m, int n, int k, Allocator allocator)
+        {
+            int p = math.min(n, math.max(2 * k, k + 12));
+            UL     = new fProxyMxN(p, m, allocator);
+            VL     = new fProxyMxN(p + 1, n, allocator);
+            dB     = new fProxyN(p, allocator);
+            eB     = new fProxyN(p, allocator);
+            UtB    = new fProxyMxN(p, p, allocator);
+            VtB    = new fProxyMxN(p, p, allocator);
+            BsvdWs = new fProxySVDFullCache(p, p, allocator);
+            uBuf  = new fProxyN(m, allocator);
+            vBuf  = new fProxyN(n, allocator);
+            alpha = new fProxyN(p, allocator);
+            beta  = new fProxyN(p, allocator);
+            mu    = new fProxyN(p + 1, allocator);
+            nu    = new fProxyN(p + 1, allocator);
+        }
+
+        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        public void Dispose()
+        {
+            UL.Dispose();
+            VL.Dispose();
+            dB.Dispose();
+            eB.Dispose();
+            UtB.Dispose();
+            VtB.Dispose();
+            BsvdWs.Dispose();
+            uBuf.Dispose();
+            vBuf.Dispose();
+            alpha.Dispose();
+            beta.Dispose();
+            mu.Dispose();
+            nu.Dispose();
+        }
     }
 
     public static partial class ArenaExtensions

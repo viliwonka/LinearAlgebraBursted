@@ -19,6 +19,16 @@ namespace LinearAlgebra.Sparse
             return At;
         }
 
+        /// <summary>Standalone twin of <see cref="transpose(in fProxyBSR, ref Arena)"/>: allocates
+        /// the transposed matrix from <paramref name="allocator"/> instead of an arena (default
+        /// Temp); caller owns disposing the returned <see cref="fProxyBSR"/>.</summary>
+        public static fProxyBSR transpose(in fProxyBSR A, Allocator allocator = Allocator.Temp)
+        {
+            var At = new fProxyBSR(A.BlockCols, A.BlockRows, A.BC, A.BR, A.Nnzb, allocator, true, A.Symmetric);
+            transpose(in A, ref At);
+            return At;
+        }
+
         /// <summary>
         /// Transpose into a preallocated destination (zero-alloc reuse path): At must have the
         /// swapped block grid (BlockRows/BlockCols and BR/BC exchanged), At.Nnzb == A.Nnzb, and

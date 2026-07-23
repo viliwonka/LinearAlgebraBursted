@@ -723,6 +723,28 @@ namespace LinearAlgebra
             => lanczos(ref arena, in A, steps, out info, Consts.floatZeroThreshold);
 
         /// <summary>
+        /// Lanczos over a dense SYMMETRIC matrix -- standalone twin of the arena overload above:
+        /// allocates the workspace (see <see cref="floatLanczosCache"/>) as Temp scratch (disposed
+        /// before returning) and the output eigenvalues buffer (length steps) via <paramref
+        /// name="allocator"/> (default Temp; caller owns disposal). Returns the Ritz values; only
+        /// the first <c>info.produced</c> entries are meaningful (see <see cref="lanczos{TOp}"/>'s
+        /// doc comment). Use the ref-workspace overload in hot loops to avoid the allocation.
+        /// </summary>
+        public static floatN lanczos(in floatMxN A, int steps, out LanczosInfo info,
+                                      float breakdownTol, Allocator allocator = Allocator.Temp)
+        {
+            var ws = new floatLanczosCache(A.M_Rows, steps, Allocator.Temp);
+            var eigenvalues = new floatN(steps, allocator);
+            info = lanczos(in A, ref ws, ref eigenvalues, steps, breakdownTol);
+            ws.Dispose();
+            return eigenvalues;
+        }
+
+        /// <summary>lanczos (allocating, Allocator) over a dense matrix with default breakdownTol (Consts.floatZeroThreshold).</summary>
+        public static floatN lanczos(in floatMxN A, int steps, out LanczosInfo info, Allocator allocator = Allocator.Temp)
+            => lanczos(in A, steps, out info, Consts.floatZeroThreshold, allocator);
+
+        /// <summary>
         /// Lanczos tridiagonalization of a SYMMETRIC block-sparse (BSR) matrix. Same semantics as
         /// the dense overload -- see
         /// <see cref="lanczos(in floatMxN, ref floatLanczosCache, ref floatN, int, float)"/>.
@@ -756,6 +778,26 @@ namespace LinearAlgebra
         /// <summary>lanczos (allocating) over a BSR matrix with default breakdownTol (Consts.floatZeroThreshold).</summary>
         public static floatN lanczos(ref Arena arena, in floatBSR A, int steps, out LanczosInfo info)
             => lanczos(ref arena, in A, steps, out info, Consts.floatZeroThreshold);
+
+        /// <summary>
+        /// Lanczos over a BSR SYMMETRIC matrix -- standalone twin of the arena overload above: the
+        /// workspace is Temp scratch (disposed before returning) and the output eigenvalues buffer
+        /// (length steps) is allocated via <paramref name="allocator"/> (default Temp; caller owns
+        /// disposal). See the dense overload's doc comment for the return-value convention.
+        /// </summary>
+        public static floatN lanczos(in floatBSR A, int steps, out LanczosInfo info,
+                                      float breakdownTol, Allocator allocator = Allocator.Temp)
+        {
+            var ws = new floatLanczosCache(A.M_Rows, steps, Allocator.Temp);
+            var eigenvalues = new floatN(steps, allocator);
+            info = lanczos(in A, ref ws, ref eigenvalues, steps, breakdownTol);
+            ws.Dispose();
+            return eigenvalues;
+        }
+
+        /// <summary>lanczos (allocating, Allocator) over a BSR matrix with default breakdownTol (Consts.floatZeroThreshold).</summary>
+        public static floatN lanczos(in floatBSR A, int steps, out LanczosInfo info, Allocator allocator = Allocator.Temp)
+            => lanczos(in A, steps, out info, Consts.floatZeroThreshold, allocator);
 
         /// <summary>
         /// Lanczos with RITZ VECTORS: same twice-reorthogonalized tridiagonalization as
@@ -850,6 +892,33 @@ namespace LinearAlgebra
             => lanczosVectors(ref arena, in A, steps, out ritz, out info, Consts.floatZeroThreshold);
 
         /// <summary>
+        /// Lanczos with Ritz vectors over a dense SYMMETRIC matrix -- standalone twin of the arena
+        /// overload above. The workspace and T's eigenvector scratch (Yt) are Temp (disposed before
+        /// returning); the eigenvalues buffer (length steps) and the Ritz-vector matrix (steps x
+        /// A.Rows) are allocated via <paramref name="allocator"/> (default Temp; caller owns
+        /// disposal). Returns the eigenvalues; Ritz vectors are written to <paramref name="ritz"/>
+        /// (row i = approximate eigenvector i). Only the first <c>info.produced</c> entries/rows are
+        /// meaningful. See <see cref="lanczosVectors{TOp}"/>.
+        /// </summary>
+        public static floatN lanczosVectors(in floatMxN A, int steps,
+                                             out floatMxN ritz, out LanczosInfo info,
+                                             float breakdownTol, Allocator allocator = Allocator.Temp)
+        {
+            var ws = new floatLanczosCache(A.M_Rows, steps, Allocator.Temp);
+            var Yt = new floatMxN(steps, steps, Allocator.Temp);
+            var eigenvalues = new floatN(steps, allocator);
+            ritz = new floatMxN(steps, A.M_Rows, allocator);
+            info = lanczosVectors(new floatDenseOperator(in A), ref ws, ref Yt, ref eigenvalues, ref ritz, steps, breakdownTol);
+            ws.Dispose();
+            Yt.Dispose();
+            return eigenvalues;
+        }
+
+        /// <summary>lanczosVectors (allocating, Allocator) over a dense matrix with default breakdownTol.</summary>
+        public static floatN lanczosVectors(in floatMxN A, int steps, out floatMxN ritz, out LanczosInfo info, Allocator allocator = Allocator.Temp)
+            => lanczosVectors(in A, steps, out ritz, out info, Consts.floatZeroThreshold, allocator);
+
+        /// <summary>
         /// Lanczos with Ritz vectors over a BSR SYMMETRIC matrix -- allocates workspace/scratch and
         /// the eigenvalues + Ritz-vector outputs from <paramref name="arena"/>. See the dense overload.
         /// </summary>
@@ -868,6 +937,30 @@ namespace LinearAlgebra
         /// <summary>lanczosVectors (allocating) over a BSR matrix with default breakdownTol.</summary>
         public static floatN lanczosVectors(ref Arena arena, in floatBSR A, int steps, out floatMxN ritz, out LanczosInfo info)
             => lanczosVectors(ref arena, in A, steps, out ritz, out info, Consts.floatZeroThreshold);
+
+        /// <summary>
+        /// Lanczos with Ritz vectors over a BSR SYMMETRIC matrix -- standalone twin of the arena
+        /// overload above; workspace/Yt are Temp scratch (disposed before returning), eigenvalues +
+        /// Ritz-vector outputs are allocated via <paramref name="allocator"/> (default Temp; caller
+        /// owns disposal). See the dense overload.
+        /// </summary>
+        public static floatN lanczosVectors(in floatBSR A, int steps,
+                                             out floatMxN ritz, out LanczosInfo info,
+                                             float breakdownTol, Allocator allocator = Allocator.Temp)
+        {
+            var ws = new floatLanczosCache(A.M_Rows, steps, Allocator.Temp);
+            var Yt = new floatMxN(steps, steps, Allocator.Temp);
+            var eigenvalues = new floatN(steps, allocator);
+            ritz = new floatMxN(steps, A.M_Rows, allocator);
+            info = lanczosVectors(new floatBSROperator(in A), ref ws, ref Yt, ref eigenvalues, ref ritz, steps, breakdownTol);
+            ws.Dispose();
+            Yt.Dispose();
+            return eigenvalues;
+        }
+
+        /// <summary>lanczosVectors (allocating, Allocator) over a BSR matrix with default breakdownTol.</summary>
+        public static floatN lanczosVectors(in floatBSR A, int steps, out floatMxN ritz, out LanczosInfo info, Allocator allocator = Allocator.Temp)
+            => lanczosVectors(in A, steps, out ritz, out info, Consts.floatZeroThreshold, allocator);
 
         /// <summary>
         /// Full symmetric eigendecomposition via classical two-sided (cyclic) Jacobi iteration.

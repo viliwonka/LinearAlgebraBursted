@@ -1,6 +1,7 @@
 using System;
 using LinearAlgebra;
 using Unity.Mathematics;
+using Unity.Collections;
 
 namespace LinearAlgebra.Sparse
 {
@@ -19,10 +20,11 @@ namespace LinearAlgebra.Sparse
     /// Symmetric-storage A needs NO mirror: its stored lower-block pattern (diagonal included) IS
     /// exactly the pattern IC(0) factorizes, so a symmetric-storage A is consumed directly,
     /// zero-copy. Full-storage A is accepted too (only its lower blocks are read). A must store
-    /// every diagonal block. Composed entirely of arena-tracked pieces — no record table of its
-    /// own, no Dispose().
+    /// every diagonal block. Built via a ref Arena ctor, L is arena-tracked and the arena owns
+    /// disposal -- do not call Dispose() on that instance. Built via an Allocator ctor, this
+    /// instance owns L standalone and Dispose() must be called when done.
     /// </summary>
-    public readonly struct fProxyIC0 : IfProxyPreconditioner
+    public readonly struct fProxyIC0 : IfProxyPreconditioner, IDisposable
     {
         /// <summary>Lower block pattern of A (diagonal included). Diagonal blocks hold their lower
         /// Cholesky factor (upper halves zeroed); off-diagonal blocks the IC(0) L values.</summary>
@@ -142,6 +144,113 @@ namespace LinearAlgebra.Sparse
                 attempts = attempts,
             };
         }
+
+        /// <summary>
+        /// Standalone twin of <see cref="fProxyIC0(in fProxyBSR, ref Arena)"/>: allocates L from
+        /// <paramref name="allocator"/> instead of an arena. Same throw contract. Dispose the result
+        /// with <see cref="Dispose"/> -- only call Dispose on an instance built via an Allocator
+        /// ctor, never on one built via a ref Arena ctor (that instance is arena-owned).
+        /// </summary>
+        public unsafe fProxyIC0(in fProxyBSR a, Allocator allocator)
+        {
+            this = new fProxyIC0(in a, allocator, out PreconditionerInfo info);
+            if (!info.Solved)
+            {
+                Dispose();
+                throw new ArgumentException("fProxyIC0: factorization broke down at every diagonal shift — is A symmetric positive definite?");
+            }
+        }
+
+        /// <summary>Standalone twin of <see cref="fProxyIC0(in fProxyBSR, ref Arena, out PreconditionerInfo)"/>.
+        /// info carries the build outcome exactly as the ref Arena overload does (L is allocated and
+        /// left populated with the failed factorization even on breakdown -- Dispose is still valid).</summary>
+        public unsafe fProxyIC0(in fProxyBSR a, Allocator allocator, out PreconditionerInfo info)
+        {
+            if (a.BlockRows != a.BlockCols || a.BR != a.BC)
+                throw new ArgumentException("fProxyIC0: A must be square (BlockRows==BlockCols, BR==BC)");
+
+            var A = a;
+
+            int nb = A.BlockRows;
+            int BR = A.BR;
+            int blockLen = BR * BR;
+
+            int nnzbL = 0;
+            for (int i = 0; i < nb; i++)
+            {
+                int s = A.RowPtr[i], e = A.RowPtr[i + 1];
+                bool hasDiag = false;
+                for (int k = s; k < e; k++)
+                {
+                    int col = A.ColInd[k];
+                    if (col > i) break;
+                    nnzbL++;
+                    if (col == i) hasDiag = true;
+                }
+                if (!hasDiag)
+                    throw new ArgumentException("fProxyIC0: missing diagonal block in A");
+            }
+
+            var Lm = new fProxyBSR(nb, nb, BR, BR, nnzbL, allocator, true);
+            var lRowPtr = Lm.RowPtr; var lColInd = Lm.ColInd;
+            {
+                int outIdx = 0;
+                for (int i = 0; i < nb; i++)
+                {
+                    lRowPtr[i] = outIdx;
+                    int s = A.RowPtr[i], e = A.RowPtr[i + 1];
+                    for (int k = s; k < e; k++)
+                    {
+                        int col = A.ColInd[k];
+                        if (col > i) break;
+                        lColInd[outIdx] = col;
+                        outIdx++;
+                    }
+                }
+                lRowPtr[nb] = outIdx;
+            }
+
+            fProxy diagMax = 0;
+            for (int i = 0; i < nb; i++)
+            {
+                int s = A.RowPtr[i], e = A.RowPtr[i + 1];
+                for (int k = s; k < e; k++)
+                {
+                    if (A.ColInd[k] != i) continue;
+                    int off = k * blockLen;
+                    for (int r = 0; r < BR; r++)
+                    {
+                        fProxy av = math.abs(A.Values[off + r * BR + r]);
+                        if (av > diagMax) diagMax = av;
+                    }
+                    break;
+                }
+            }
+            if (diagMax <= (fProxy)0) diagMax = (fProxy)1;
+
+            fProxy shift = 0;
+            bool ok = false;
+            int attempts = 0;
+            for (int attempt = 0; attempt < 6; attempt++)
+            {
+                attempts = attempt + 1;
+                CopyLowerFromA(in A, in Lm, shift);
+                if (FactorizeInPlace(in Lm, diagMax)) { ok = true; break; }
+                shift = shift == (fProxy)0 ? (fProxy)1e-3 * diagMax : shift * (fProxy)10;
+            }
+            L = Lm;
+            Shift = shift;
+            info = new PreconditionerInfo
+            {
+                status = ok ? DirectSolveStatus.Success : DirectSolveStatus.NotPositiveDefinite,
+                shift = (double)shift,
+                attempts = attempts,
+            };
+        }
+
+        /// <summary>Disposes L. Only call on an instance built via an Allocator ctor -- an instance
+        /// built via a ref Arena ctor is arena-owned and must not be disposed directly.</summary>
+        public unsafe void Dispose() => L.Dispose();
 
         // Refills L's values from A's lower blocks, adding `shift` to the diagonal entries.
         static void CopyLowerFromA(in fProxyBSR A, in fProxyBSR Lm, fProxy shift)

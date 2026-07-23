@@ -1,5 +1,6 @@
 using System;
 
+using Unity.Collections;
 using Unity.Mathematics;
 
 namespace LinearAlgebra
@@ -69,7 +70,7 @@ namespace LinearAlgebra
     /// thin on the small Bt still uses a little Allocator.Temp scratch of its own, so the op
     /// is low-alloc rather than strictly zero-alloc.
     /// </summary>
-    public struct fProxySVDRandomizedCache
+    public struct fProxySVDRandomizedCache : IDisposable
     {
         public fProxyMxN Omega;
         public fProxyMxN Y;
@@ -83,6 +84,47 @@ namespace LinearAlgebra
         public fProxyN Sb;
         public fProxyMxN Vp;
         public fProxyMxN UA;
+
+        /// <summary>Standalone allocation sized identically to <c>Arena.fProxySVDRandomizedCache(m, n, k, oversample)</c>. Pair with <see cref="Dispose"/>.</summary>
+        public fProxySVDRandomizedCache(int m, int n, int k, int oversample, Allocator allocator)
+        {
+            int l = math.min(k + oversample, n);
+            Omega = new fProxyMxN(n, l, allocator);
+            Y = new fProxyMxN(m, l, allocator);
+            R = new fProxyMxN(l, l, allocator);
+            qu = new fProxyN(m, allocator);
+            qw = new fProxyN(l, allocator);
+            Z = new fProxyMxN(n, l, allocator);
+            B = new fProxyMxN(l, n, allocator);
+            Bt = new fProxyMxN(n, l, allocator);
+            Up = new fProxyMxN(n, l, allocator);
+            Sb = new fProxyN(l, allocator);
+            Vp = new fProxyMxN(l, l, allocator);
+            UA = new fProxyMxN(m, l, allocator);
+        }
+
+        /// <summary>Standalone allocation sized identically to <c>Arena.fProxySVDRandomizedCache(m, n, k)</c> (default oversample 10). Pair with <see cref="Dispose"/>.</summary>
+        public fProxySVDRandomizedCache(int m, int n, int k, Allocator allocator)
+            : this(m, n, k, 10, allocator)
+        {
+        }
+
+        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        public void Dispose()
+        {
+            Omega.Dispose();
+            Y.Dispose();
+            R.Dispose();
+            qu.Dispose();
+            qw.Dispose();
+            Z.Dispose();
+            B.Dispose();
+            Bt.Dispose();
+            Up.Dispose();
+            Sb.Dispose();
+            Vp.Dispose();
+            UA.Dispose();
+        }
     }
 
     public static partial class ArenaExtensions

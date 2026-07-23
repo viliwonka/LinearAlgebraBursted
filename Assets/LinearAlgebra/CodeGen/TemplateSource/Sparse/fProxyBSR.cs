@@ -271,5 +271,130 @@ namespace LinearAlgebra.Sparse
 
             return dense;
         }
+
+        /// <summary>
+        /// Expands this BSR to a dense M_Rows x N_Cols matrix backed by
+        /// <paramref name="allocator"/>: zero-filled, then every stored block scattered into place.
+        /// Caller owns disposal for non-Temp allocators.
+        /// </summary>
+        public fProxyMxN ToDense(Allocator allocator = Allocator.Temp)
+        {
+            var dense = new fProxyMxN(M_Rows, N_Cols, allocator); // zero-initialized
+
+            for (int br = 0; br < BlockRows; br++)
+            {
+                int rowStart = RowPtr[br];
+                int rowEnd = RowPtr[br + 1];
+                int baseRow = br * BR;
+
+                for (int k = rowStart; k < rowEnd; k++)
+                {
+                    int bc = ColInd[k];
+                    int baseCol = bc * BC;
+                    int blockOffset = k * BR * BC;
+
+                    for (int r = 0; r < BR; r++)
+                    {
+                        for (int c = 0; c < BC; c++)
+                        {
+                            dense[baseRow + r, baseCol + c] = Values[blockOffset + r * BC + c];
+                        }
+                    }
+
+                    if (Symmetric && bc != br)
+                    {
+                        for (int r = 0; r < BR; r++)
+                            for (int c = 0; c < BC; c++)
+                                dense[baseCol + c, baseRow + r] = Values[blockOffset + r * BC + c];
+                    }
+                }
+            }
+
+            return dense;
+        }
+
+        /// <summary>
+        /// Standalone twin of <see cref="Sparse.Arena.fProxyBSRTranspose"/>: materializes Aᵀ (block
+        /// grid and per-block dimensions swapped, each stored block transposed) through a fresh
+        /// <paramref name="allocator"/>-backed builder. If Symmetric, returns this matrix unchanged
+        /// (transposing symmetric lower-block storage is a no-op) -- the result then ALIASES this
+        /// matrix's own buffers; Dispose only one of them.
+        /// </summary>
+        public unsafe fProxyBSR Transpose(Allocator allocator)
+        {
+            if (Symmetric)
+                return this;
+
+            var builder = new fProxyBSRBuilder(BlockCols, BlockRows, BC, BR, allocator, Nnzb);
+
+            int blockLen = BR * BC;
+            fProxy* blockT = stackalloc fProxy[blockLen];
+
+            for (int bi = 0; bi < BlockRows; bi++)
+            {
+                int rowStart = RowPtr[bi];
+                int rowEnd = RowPtr[bi + 1];
+
+                for (int k = rowStart; k < rowEnd; k++)
+                {
+                    int bj = ColInd[k];
+                    fProxy* block = Values.Ptr + k * blockLen;
+
+                    for (int r = 0; r < BR; r++)
+                        for (int c = 0; c < BC; c++)
+                            blockT[c * BR + r] = block[r * BC + c];
+
+                    builder.AddBlock(bj, bi, blockT);
+                }
+            }
+
+            var result = builder.ToBSR(allocator);
+            builder.Dispose();
+            return result;
+        }
+
+        /// <summary>
+        /// Standalone twin of <see cref="Sparse.Arena.fProxyBSRMirrorToFull"/>: mirrors a SYMMETRIC-
+        /// storage (lower-block-triangle-only) matrix into full storage through a fresh
+        /// <paramref name="allocator"/>-backed builder. If not Symmetric, returns this matrix
+        /// unchanged (no copy) -- the result then ALIASES this matrix's own buffers; Dispose only
+        /// one of them.
+        /// </summary>
+        public unsafe fProxyBSR MirrorToFull(Allocator allocator)
+        {
+            if (!Symmetric)
+                return this;
+
+            var builder = new fProxyBSRBuilder(BlockRows, BlockCols, BR, BC, allocator, Nnzb * 2);
+
+            int blockLen = BR * BC;
+            fProxy* blockT = stackalloc fProxy[blockLen];
+
+            for (int bi = 0; bi < BlockRows; bi++)
+            {
+                int rowStart = RowPtr[bi];
+                int rowEnd = RowPtr[bi + 1];
+
+                for (int k = rowStart; k < rowEnd; k++)
+                {
+                    int bj = ColInd[k];
+                    fProxy* block = Values.Ptr + k * blockLen;
+
+                    builder.AddBlock(bi, bj, block);
+
+                    if (bi != bj)
+                    {
+                        for (int r = 0; r < BR; r++)
+                            for (int c = 0; c < BC; c++)
+                                blockT[c * BR + r] = block[r * BC + c];
+                        builder.AddBlock(bj, bi, blockT);
+                    }
+                }
+            }
+
+            var result = builder.ToBSR(allocator);
+            builder.Dispose();
+            return result;
+        }
     }
 }

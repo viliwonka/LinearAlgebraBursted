@@ -1,4 +1,5 @@
 using System;
+using Unity.Collections;
 
 namespace LinearAlgebra
 {
@@ -21,11 +22,27 @@ namespace LinearAlgebra
     /// rank-2-update vector p). Allocate ONCE via Arena.fProxyEigenSymCache(n) and reuse it across
     /// same-size calls so repeated symmetric eigenvalue solves are zero-alloc.
     /// </summary>
-    public struct fProxyEigenSymCache
+    public struct fProxyEigenSymCache : IDisposable
     {
         public fProxyN eVec;
         public fProxyN vVec;
         public fProxyN pVec;
+
+        /// <summary>Standalone allocation sized identically to <c>Arena.fProxyEigenSymCache(n)</c>. Pair with <see cref="Dispose"/>.</summary>
+        public fProxyEigenSymCache(int n, Allocator allocator)
+        {
+            eVec = new fProxyN(n, allocator);
+            vVec = new fProxyN(n, allocator);
+            pVec = new fProxyN(n, allocator);
+        }
+
+        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        public void Dispose()
+        {
+            eVec.Dispose();
+            vVec.Dispose();
+            pVec.Dispose();
+        }
     }
 
     public static partial class ArenaExtensions
