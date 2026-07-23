@@ -12,7 +12,7 @@ namespace LinearAlgebra.Sparse
 {
     /// <summary>
     /// COO-of-blocks assembly builder for floatBSR. Accumulates (blockRow, blockCol, BR x BC
-    /// block) triplets in growable allocator-backed lists; call ToBSR(arena) to sort and
+    /// block) triplets in growable allocator-backed lists; call ToBSR(allocator) to sort and
     /// compress into block-CSR. Duplicate triplets at the same (blockRow, blockCol) are summed
     /// on compression -- this is the "sparse matrix is a graph" editable phase (add/remove a
     /// node = add/remove triplets).
@@ -23,15 +23,13 @@ namespace LinearAlgebra.Sparse
     ///
     /// The growable triplet state lives behind a single heap-allocated State* shared by every
     /// value-copy of this struct (Malloc'd once in the constructor, Free'd once in Dispose), so
-    /// UnsafeList growth from AddBlock/AddValue is visible to every copy -- including the arena's
-    /// own tracked copy -- instead of diverging.
+    /// UnsafeList growth from AddBlock/AddValue is visible to every copy instead of diverging.
     /// </summary>
     public partial struct floatBSRBuilder : IDisposable
     {
         // Heap-owned, single-identity mutable state -- see the type doc above. Every
-        // floatBSRBuilder value-copy (this instance, the arena's tracked copy, the caller's
-        // copy, ...) shares the SAME pointee, so UnsafeList growth from AddBlock/AddValue is
-        // visible everywhere, including to the arena's own bookkeeping copy.
+        // floatBSRBuilder value-copy (this instance, the caller's copy, ...) shares the SAME
+        // pointee, so UnsafeList growth from AddBlock/AddValue is visible everywhere.
         private struct State
         {
             public int BlockRows;  // mb: number of block-rows
@@ -77,32 +75,8 @@ namespace LinearAlgebra.Sparse
             _state->triValues.Clear();
         }
 
-        // Value handle to the shared ArenaCore, not a raw pointer (see Arena.cs); copies stay live.
-        // Unrelated to the _state indirection above.
-        private Arena _arena;
-
         public unsafe floatBSRBuilder(int blockRows, int blockCols, int BR, int BC, Allocator allocator, int capacityHint = 8)
         {
-            _arena = default;
-
-            _state = (State*)UnsafeUtility.Malloc(UnsafeUtility.SizeOf<State>(), UnsafeUtility.AlignOf<State>(), allocator);
-            _state->BlockRows = blockRows;
-            _state->BlockCols = blockCols;
-            _state->BR = BR;
-            _state->BC = BC;
-            _state->Allocator = allocator;
-
-            _state->triBlockRow = new UnsafeList<int>(capacityHint, allocator);
-            _state->triBlockCol = new UnsafeList<int>(capacityHint, allocator);
-            _state->triValues = new UnsafeList<float>(capacityHint * BR * BC, allocator);
-        }
-
-        public unsafe floatBSRBuilder(int blockRows, int blockCols, int BR, int BC, in Arena arena, int capacityHint = 8)
-        {
-            _arena = arena;
-
-            var allocator = arena.Allocator;
-
             _state = (State*)UnsafeUtility.Malloc(UnsafeUtility.SizeOf<State>(), UnsafeUtility.AlignOf<State>(), allocator);
             _state->BlockRows = blockRows;
             _state->BlockCols = blockCols;
@@ -179,7 +153,8 @@ namespace LinearAlgebra.Sparse
         /// O(nnz + sum of row-degree^2) -- fine for the one-time assembly-to-compressed
         /// transition this represents.
         /// </summary>
-        public unsafe floatBSR ToBSR(ref Arena arena) => ToBSRCore(ref arena, symmetric: false);
+        /// <summary>Allocates the compressed result from <paramref name="allocator"/>.</summary>
+        public unsafe floatBSR ToBSR(Allocator allocator) => ToBSRCore(allocator, symmetric: false);
 
         /// <summary>
         /// Same as ToBSR, but builds SYMMETRIC lower-block storage (see floatBSR.Symmetric / spec
@@ -197,9 +172,10 @@ namespace LinearAlgebra.Sparse
         /// a non-symmetric diagonal block would silently make spMVT return A*x, not A^T*x. A
         /// non-symmetric diagonal block therefore throws (same "don't mask caller bugs" stance as the
         /// upper-triangle guard). The check is on the duplicate-SUMMED diagonal block, so a symmetric
-        /// block assembled from several AddBlock/AddValue contributions is accepted.
+        /// block assembled from several AddBlock/AddValue contributions is accepted. Allocates the
+        /// result from <paramref name="allocator"/>.
         /// </summary>
-        public unsafe floatBSR ToBSRSymmetric(ref Arena arena)
+        public unsafe floatBSR ToBSRSymmetric(Allocator allocator)
         {
             if (BR != BC || BlockRows != BlockCols)
                 throw new ArgumentException("ToBSRSymmetric: requires BR==BC and BlockRows==BlockCols (square blocks on a square block grid)");
@@ -209,7 +185,7 @@ namespace LinearAlgebra.Sparse
                 if (_state->triBlockCol[t] > _state->triBlockRow[t])
                     throw new ArgumentException("ToBSRSymmetric: found an upper-triangle triplet (blockCol > blockRow); symmetric build only accepts blocks with blockCol <= blockRow (lower triangle + diagonal). Add the block at its transpose position (blockRow<->blockCol swapped) instead, or use ToBSR() for full storage.");
 
-            var bsm = ToBSRCore(ref arena, symmetric: true);
+            var bsm = ToBSRCore(allocator, symmetric: true);
 
             // Validate diagonal-block symmetry on the compressed (duplicate-summed) blocks. A
             // relative tolerance absorbs assembly roundoff while still catching a genuinely
@@ -237,52 +213,6 @@ namespace LinearAlgebra.Sparse
             return bsm;
         }
 
-        /// <summary>Standalone twin of <see cref="ToBSR(ref Arena)"/>: allocates the compressed
-        /// result from <paramref name="allocator"/> instead of an arena.</summary>
-        public unsafe floatBSR ToBSR(Allocator allocator) => ToBSRCore(allocator, symmetric: false);
-
-        /// <summary>Standalone twin of <see cref="ToBSRSymmetric(ref Arena)"/>: same validation and
-        /// SYMMETRIC lower-block-triangle build, allocating the result from
-        /// <paramref name="allocator"/> instead of an arena.</summary>
-        public unsafe floatBSR ToBSRSymmetric(Allocator allocator)
-        {
-            if (BR != BC || BlockRows != BlockCols)
-                throw new ArgumentException("ToBSRSymmetric: requires BR==BC and BlockRows==BlockCols (square blocks on a square block grid)");
-
-            int n = TripletCount;
-            for (int t = 0; t < n; t++)
-                if (_state->triBlockCol[t] > _state->triBlockRow[t])
-                    throw new ArgumentException("ToBSRSymmetric: found an upper-triangle triplet (blockCol > blockRow); symmetric build only accepts blocks with blockCol <= blockRow (lower triangle + diagonal). Add the block at its transpose position (blockRow<->blockCol swapped) instead, or use ToBSR() for full storage.");
-
-            var bsm = ToBSRCore(allocator, symmetric: true);
-
-            // Validate diagonal-block symmetry on the compressed (duplicate-summed) blocks -- same
-            // check as ToBSRSymmetric(ref Arena).
-            int blockLen = BR * BC;
-            for (int row = 0; row < BlockRows; row++)
-            {
-                int rs = bsm.RowPtr[row], re = bsm.RowPtr[row + 1];
-                for (int k = rs; k < re; k++)
-                {
-                    if (bsm.ColInd[k] != row) continue;   // diagonal blocks only
-                    int off = k * blockLen;
-                    for (int r = 0; r < BR; r++)
-                        for (int c = r + 1; c < BC; c++)
-                        {
-                            float a = bsm.Values[off + r * BC + c];
-                            float b = bsm.Values[off + c * BC + r];
-                            float tolAbs = (float)8 * Consts.floatZeroThreshold * ((float)1 + math.abs(a) + math.abs(b));
-                            if (math.abs(a - b) > tolAbs)
-                                throw new ArgumentException("ToBSRSymmetric: a diagonal block is not symmetric (block[r,c] != block[c,r]). Symmetric lower-block storage stores the upper triangle implicitly as the transpose, so diagonal blocks must be symmetric; symmetrize the block (e.g. (K+K^T)/2), or use ToBSR() for full storage.");
-                        }
-                }
-            }
-
-            return bsm;
-        }
-
-        // Standalone twin of ToBSRCore(ref Arena, bool): identical sort/compress/sum logic, only
-        // the final floatBSR allocation source differs (allocator instead of an arena record).
         private unsafe floatBSR ToBSRCore(Allocator allocator, bool symmetric)
         {
             int n = TripletCount;
@@ -392,82 +322,9 @@ namespace LinearAlgebra.Sparse
             }
         }
 
-        private unsafe floatBSR ToBSRCore(ref Arena arena, bool symmetric)
-        {
-            int n = TripletCount;
-            int blockLen = BR * BC;
-
-            SortTriplets(out var order, out var rowStart);
-
-            // 3. Count distinct stored blocks (nnzb) after de-duplication.
-            int nnzb = 0;
-            for (int row = 0; row < BlockRows; row++)
-            {
-                int s = rowStart[row];
-                int e = rowStart[row + 1];
-                int prevCol = -1;
-                for (int i = s; i < e; i++)
-                {
-                    int col = _state->triBlockCol[order[i]];
-                    if (col != prevCol) { nnzb++; prevCol = col; }
-                }
-            }
-
-            var bsm = arena.floatBSR(BlockRows, BlockCols, BR, BC, nnzb, true, symmetric);
-
-            // Cache the three lists into local variables ONCE: RowPtr/ColInd/Values are dual-mode
-            // properties (floatBSR.cs), and a local UnsafeList<T> copy is addressable and shares
-            // the SAME underlying native buffer, so indexing through these locals still mutates
-            // bsm's real storage -- and it's cheaper too (no repeated property dispatch inside the
-            // loop below).
-            var rowPtr = bsm.RowPtr;
-            var colInd = bsm.ColInd;
-            var values = bsm.Values;
-
-            // 4. Fill RowPtr/ColInd/Values, summing consecutive same-column entries.
-            int outIdx = 0;
-            for (int row = 0; row < BlockRows; row++)
-            {
-                rowPtr[row] = outIdx;
-                int s = rowStart[row];
-                int e = rowStart[row + 1];
-                int prevCol = -1;
-
-                for (int i = s; i < e; i++)
-                {
-                    int t = order[i];
-                    int col = _state->triBlockCol[t];
-                    int srcOff = t * blockLen;
-
-                    if (col != prevCol)
-                    {
-                        colInd[outIdx] = col;
-                        int dstOff = outIdx * blockLen;
-                        for (int k = 0; k < blockLen; k++)
-                            values[dstOff + k] = _state->triValues[srcOff + k];
-                        prevCol = col;
-                        outIdx++;
-                    }
-                    else
-                    {
-                        int dstOff = (outIdx - 1) * blockLen;
-                        for (int k = 0; k < blockLen; k++)
-                            values[dstOff + k] += _state->triValues[srcOff + k];
-                    }
-                }
-            }
-            rowPtr[BlockRows] = outIdx;
-
-            order.Dispose();
-            rowStart.Dispose();
-
-            return bsm;
-        }
-
         /// <summary>
         /// Frees the shared triplet state and the State block itself. Idempotent on the same
-        /// struct copy. The owning arena disposes builders it created; callers are not expected
-        /// to dispose the value returned by arena.floatBSRBuilder(...) themselves.
+        /// struct copy.
         /// </summary>
         public unsafe void Dispose()
         {

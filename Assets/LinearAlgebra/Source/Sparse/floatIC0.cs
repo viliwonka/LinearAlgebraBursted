@@ -24,9 +24,7 @@ namespace LinearAlgebra.Sparse
     /// Symmetric-storage A needs NO mirror: its stored lower-block pattern (diagonal included) IS
     /// exactly the pattern IC(0) factorizes, so a symmetric-storage A is consumed directly,
     /// zero-copy. Full-storage A is accepted too (only its lower blocks are read). A must store
-    /// every diagonal block. Built via a ref Arena ctor, L is arena-tracked and the arena owns
-    /// disposal -- do not call Dispose() on that instance. Built via an Allocator ctor, this
-    /// instance owns L standalone and Dispose() must be called when done.
+    /// every diagonal block. This instance owns L standalone and Dispose() must be called when done.
     /// </summary>
     public readonly struct floatIC0 : IfloatPreconditioner, IDisposable
     {
@@ -40,120 +38,12 @@ namespace LinearAlgebra.Sparse
         public int Rows => L.M_Rows;
 
         /// <summary>
-        /// Factorizes A's lower block pattern in place of the copy it allocates from the arena.
-        /// Throws if A is not square (BlockRows==BlockCols, BR==BC), if a diagonal block is
-        /// absent, or if the factorization still breaks down at the largest diagonal shift.
-        /// Use the out-info overload to receive the outcome as a <see cref="PreconditionerInfo"/>
-        /// instead of an exception.
-        /// </summary>
-        public floatIC0(in floatBSR a, ref Arena arena)
-        {
-            this = new floatIC0(in a, ref arena, out PreconditionerInfo info);
-            if (!info.Solved)
-                throw new ArgumentException("floatIC0: factorization broke down at every diagonal shift — is A symmetric positive definite?");
-        }
-
-        /// <summary>
-        /// Non-throwing build: info.status is Success, or NotPositiveDefinite when the
-        /// factorization broke down at every diagonal shift (the preconditioner is then unusable —
-        /// do not Apply); info also carries the rescuing shift and the attempts consumed.
-        /// Caller-contract violations (non-square, missing diagonal block) still throw.
-        /// </summary>
-        public floatIC0(in floatBSR a, ref Arena arena, out PreconditionerInfo info)
-        {
-            if (a.BlockRows != a.BlockCols || a.BR != a.BC)
-                throw new ArgumentException("floatIC0: A must be square (BlockRows==BlockCols, BR==BC)");
-
-            // No mirror needed either way: full-storage A's lower blocks are read directly below,
-            // and symmetric-storage A already stores exactly the lower-block pattern (diagonal
-            // included) -- the same filter (col <= i) below passes every stored block of either.
-            var A = a;
-
-            int nb = A.BlockRows;
-            int BR = A.BR;
-            int blockLen = BR * BR;
-
-            // ---- build L's pattern: A's blocks with col <= row, diagonal required ----
-            int nnzbL = 0;
-            for (int i = 0; i < nb; i++)
-            {
-                int s = A.RowPtr[i], e = A.RowPtr[i + 1];
-                bool hasDiag = false;
-                for (int k = s; k < e; k++)
-                {
-                    int col = A.ColInd[k];
-                    if (col > i) break;
-                    nnzbL++;
-                    if (col == i) hasDiag = true;
-                }
-                if (!hasDiag)
-                    throw new ArgumentException("floatIC0: missing diagonal block in A");
-            }
-
-            var Lm = arena.floatBSR(nb, nb, BR, BR, nnzbL, true);
-            var lRowPtr = Lm.RowPtr; var lColInd = Lm.ColInd; var lValues = Lm.Values;
-            {
-                int outIdx = 0;
-                for (int i = 0; i < nb; i++)
-                {
-                    lRowPtr[i] = outIdx;
-                    int s = A.RowPtr[i], e = A.RowPtr[i + 1];
-                    for (int k = s; k < e; k++)
-                    {
-                        int col = A.ColInd[k];
-                        if (col > i) break;
-                        lColInd[outIdx] = col;
-                        outIdx++;
-                    }
-                }
-                lRowPtr[nb] = outIdx;
-            }
-
-            // Shift scale: the largest |diagonal entry| of A.
-            float diagMax = 0;
-            for (int i = 0; i < nb; i++)
-            {
-                int s = A.RowPtr[i], e = A.RowPtr[i + 1];
-                for (int k = s; k < e; k++)
-                {
-                    if (A.ColInd[k] != i) continue;
-                    int off = k * blockLen;
-                    for (int r = 0; r < BR; r++)
-                    {
-                        float av = math.abs(A.Values[off + r * BR + r]);
-                        if (av > diagMax) diagMax = av;
-                    }
-                    break;
-                }
-            }
-            if (diagMax <= (float)0) diagMax = (float)1;
-
-            // ---- factorize, escalating the diagonal shift on breakdown ----
-            float shift = 0;
-            bool ok = false;
-            int attempts = 0;
-            for (int attempt = 0; attempt < 6; attempt++)
-            {
-                attempts = attempt + 1;
-                CopyLowerFromA(in A, in Lm, shift);
-                if (FactorizeInPlace(in Lm, diagMax)) { ok = true; break; }
-                shift = shift == (float)0 ? (float)1e-3 * diagMax : shift * (float)10;
-            }
-            L = Lm;
-            Shift = shift;
-            info = new PreconditionerInfo
-            {
-                status = ok ? DirectSolveStatus.Success : DirectSolveStatus.NotPositiveDefinite,
-                shift = (double)shift,
-                attempts = attempts,
-            };
-        }
-
-        /// <summary>
-        /// Standalone twin of <see cref="floatIC0(in floatBSR, ref Arena)"/>: allocates L from
-        /// <paramref name="allocator"/> instead of an arena. Same throw contract. Dispose the result
-        /// with <see cref="Dispose"/> -- only call Dispose on an instance built via an Allocator
-        /// ctor, never on one built via a ref Arena ctor (that instance is arena-owned).
+        /// Factorizes A's lower block pattern in place of the copy it allocates from
+        /// <paramref name="allocator"/>. Throws if A is not square (BlockRows==BlockCols,
+        /// BR==BC), if a diagonal block is absent, or if the factorization still breaks down at
+        /// the largest diagonal shift. Use the out-info overload to receive the outcome as a
+        /// <see cref="PreconditionerInfo"/> instead of an exception. Dispose the result with
+        /// <see cref="Dispose"/>.
         /// </summary>
         public unsafe floatIC0(in floatBSR a, Allocator allocator)
         {
@@ -165,9 +55,8 @@ namespace LinearAlgebra.Sparse
             }
         }
 
-        /// <summary>Standalone twin of <see cref="floatIC0(in floatBSR, ref Arena, out PreconditionerInfo)"/>.
-        /// info carries the build outcome exactly as the ref Arena overload does (L is allocated and
-        /// left populated with the failed factorization even on breakdown -- Dispose is still valid).</summary>
+        /// <summary>Non-throwing build: info carries the outcome (L is allocated and left populated
+        /// with the failed factorization even on breakdown -- Dispose is still valid).</summary>
         public unsafe floatIC0(in floatBSR a, Allocator allocator, out PreconditionerInfo info)
         {
             if (a.BlockRows != a.BlockCols || a.BR != a.BC)
@@ -252,8 +141,7 @@ namespace LinearAlgebra.Sparse
             };
         }
 
-        /// <summary>Disposes L. Only call on an instance built via an Allocator ctor -- an instance
-        /// built via a ref Arena ctor is arena-owned and must not be disposed directly.</summary>
+        /// <summary>Disposes L.</summary>
         public unsafe void Dispose() => L.Dispose();
 
         // Refills L's values from A's lower blocks, adding `shift` to the diagonal entries.

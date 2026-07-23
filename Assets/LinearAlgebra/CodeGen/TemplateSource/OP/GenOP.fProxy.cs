@@ -11,9 +11,8 @@ namespace LinearAlgebra
     /// IfProxyScalarFunction functor), convolution kernels, DSP windows, and rank-1 (1D×1D)
     /// matrix builders (outer / outerSum).
     ///
-    /// Every fill comes in two forms — a zero-alloc ref-DESTINATION primitive here
-    /// (`Generate.xxx(ref dest, …)`, length taken from dest) and an allocating Arena wrapper
-    /// (`arena.fProxyXxx(n, …)`). Use the ref form in per-frame / realtime loops.
+    /// Every fill is a zero-alloc ref-DESTINATION primitive (`Generate.xxx(ref dest, …)`, length
+    /// taken from dest) — safe to call from per-frame / realtime loops.
     /// fProxy-only. Kernels are normalized to sum 1; easings map t∈[0,1].
     /// </summary>
     public static partial class Generate

@@ -10,7 +10,7 @@ namespace LinearAlgebra
     // Debug/Export.fProxy.cs. Lives in namespace LinearAlgebra (not LinearAlgebra.Sparse) so it
     // merges into the same `Print` partial class as the dense exporters and the Sparse Debug
     // overloads -- fProxyBSR is brought in via the `using LinearAlgebra.Sparse;` above (same
-    // pattern as Sparse/Debug.Sparse.fProxy.cs and Sparse/Arena.Sparse.fProxy.cs).
+    // pattern as Sparse/Debug.Sparse.fProxy.cs).
     public static partial class Print
     {
         /// <summary>

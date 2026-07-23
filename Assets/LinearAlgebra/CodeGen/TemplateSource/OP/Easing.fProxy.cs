@@ -6,7 +6,7 @@ namespace LinearAlgebra
     /// Easing curves as tiny Burst struct-functors (each : IfProxyScalarFunction). Map t∈[0,1]→[0,1]
     /// (the Back/Elastic variants overshoot outside [0,1]). Use standalone
     /// (<c>new fProxyEasing.SmoothStep().Eval((fProxy)0.3)</c>) or bake a LUT via
-    /// <c>Generate.sample</c> / <c>arena.fProxyEasingLUT</c>. fProxy-only.
+    /// <c>Generate.sample</c>. fProxy-only.
     /// </summary>
     public static partial class fProxyEasing
     {

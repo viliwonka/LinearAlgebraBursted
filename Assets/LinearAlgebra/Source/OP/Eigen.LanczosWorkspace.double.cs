@@ -86,7 +86,7 @@ namespace LinearAlgebra
             symWs = new doubleEigenSymCache(steps, allocator);
         }
 
-        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        /// <summary>Disposes the workspace.</summary>
         public void Dispose()
         {
             V.Dispose();
@@ -96,27 +96,6 @@ namespace LinearAlgebra
             beta.Dispose();
             T.Dispose();
             symWs.Dispose();
-        }
-    }
-
-    // Kept: doubleChebyshev's ref-Arena constructor (Sparse/doubleChebyshev.cs) needs an
-    // arena-tracked Lanczos workspace for its interior-eigenvalue-bound estimate. Not a general
-    // convenience overload -- do not add more callers.
-    public static partial class ArenaExtensions
-    {
-        /// <summary>Allocates a Lanczos workspace for an n-dimensional symmetric operator run for `steps` iterations, arena-tracked.</summary>
-        public static doubleLanczosCache doubleLanczosCache(this ref Arena arena, int n, int steps)
-        {
-            return new doubleLanczosCache
-            {
-                V = arena.doubleMat(steps, n),
-                vCur = arena.doubleVec(n),
-                w = arena.doubleVec(n),
-                alpha = arena.doubleVec(steps),
-                beta = arena.doubleVec(steps),
-                T = arena.doubleMat(steps, steps),
-                symWs = arena.doubleEigenSymCache(steps)
-            };
         }
     }
 }

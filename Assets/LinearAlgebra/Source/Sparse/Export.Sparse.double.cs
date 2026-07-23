@@ -14,7 +14,7 @@ namespace LinearAlgebra
     // Debug/Export.double.cs. Lives in namespace LinearAlgebra (not LinearAlgebra.Sparse) so it
     // merges into the same `Print` partial class as the dense exporters and the Sparse Debug
     // overloads -- doubleBSR is brought in via the `using LinearAlgebra.Sparse;` above (same
-    // pattern as Sparse/Debug.Sparse.double.cs and Sparse/Arena.Sparse.double.cs).
+    // pattern as Sparse/Debug.Sparse.double.cs).
     public static partial class Print
     {
         /// <summary>

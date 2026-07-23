@@ -82,7 +82,7 @@ namespace LinearAlgebra
             symWs = new fProxyEigenSymCache(steps, allocator);
         }
 
-        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        /// <summary>Disposes the workspace.</summary>
         public void Dispose()
         {
             V.Dispose();
@@ -92,27 +92,6 @@ namespace LinearAlgebra
             beta.Dispose();
             T.Dispose();
             symWs.Dispose();
-        }
-    }
-
-    // Kept: fProxyChebyshev's ref-Arena constructor (Sparse/fProxyChebyshev.cs) needs an
-    // arena-tracked Lanczos workspace for its interior-eigenvalue-bound estimate. Not a general
-    // convenience overload -- do not add more callers.
-    public static partial class ArenaExtensions
-    {
-        /// <summary>Allocates a Lanczos workspace for an n-dimensional symmetric operator run for `steps` iterations, arena-tracked.</summary>
-        public static fProxyLanczosCache fProxyLanczosCache(this ref Arena arena, int n, int steps)
-        {
-            return new fProxyLanczosCache
-            {
-                V = arena.fProxyMat(steps, n),
-                vCur = arena.fProxyVec(n),
-                w = arena.fProxyVec(n),
-                alpha = arena.fProxyVec(steps),
-                beta = arena.fProxyVec(steps),
-                T = arena.fProxyMat(steps, steps),
-                symWs = arena.fProxyEigenSymCache(steps)
-            };
         }
     }
 }

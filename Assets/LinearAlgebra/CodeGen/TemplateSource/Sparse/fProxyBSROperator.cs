@@ -7,7 +7,7 @@ namespace LinearAlgebra.Sparse
     /// Forwards Apply straight to <see cref="BSR.spMV"/>. ApplyT forwards either to the
     /// on-the-fly, scatter-traversal <see cref="BSR.spMVT"/> (one-arg ctor, the default --
     /// no transpose materialized) or to a cache-friendly FORWARD <see cref="BSR.spMV"/>
-    /// over a precomputed transpose AT (two-arg ctor -- see <see cref="Arena.fProxyBSRTranspose"/>),
+    /// over a precomputed transpose AT (two-arg ctor -- see <see cref="fProxyBSR.Transpose(Unity.Collections.Allocator)"/>),
     /// depending on which constructor built this operator.
     /// Lets the generic Krylov solvers (<c>Krylov.cg&lt;TOp&gt;</c>,
     /// <c>Krylov.cg&lt;TOp,TPre&gt;</c>) run over a BSR matrix.
@@ -20,7 +20,7 @@ namespace LinearAlgebra.Sparse
         public readonly fProxyBSR A;
 
         /// <summary>
-        /// Optional precomputed transpose of A (see <see cref="Arena.fProxyBSRTranspose"/>).
+        /// Optional precomputed transpose of A (see <see cref="fProxyBSR.Transpose(Unity.Collections.Allocator)"/>).
         /// Default/unset (one-arg ctor) when <see cref="_hasT"/> is false -- ApplyT then falls
         /// back to the on-the-fly <see cref="BSR.spMVT"/>.
         /// </summary>
@@ -40,7 +40,7 @@ namespace LinearAlgebra.Sparse
         }
 
         /// <summary>
-        /// Carries a precomputed transpose aT (typically <c>arena.fProxyBSRTranspose(in a)</c>,
+        /// Carries a precomputed transpose aT (typically <c>a.Transpose(allocator)</c>,
         /// built ONCE per solve). ApplyT then forwards to <see cref="BSR.spMV(in fProxyBSR,
         /// in fProxyN, ref fProxyN)"/> over aT -- a forward, cache-friendly block-CSR traversal --
         /// instead of the scatter-heavy <see cref="BSR.spMVT"/> over a. The one-time O(nnz)

@@ -30,55 +30,11 @@ namespace LinearAlgebra.Sparse
 
         public int Rows => BlockRows * BR;
 
-        // Arena-tracked path: a stable pointer into the arena's
-        // ChunkedRecordTable<doubleBlockJacobiRecord>. null for a standalone (non-arena)
-        // preconditioner, in which case DInv resolves to the inline field below instead.
-        // Readonly (this struct is `readonly partial struct`): assigned once per constructor,
-        // never reassigned afterward -- see Dispose()'s comment for what that costs.
-        [NativeDisableUnsafePtrRestriction] private readonly unsafe doubleBlockJacobiRecord* _rec;
-
-        // Standalone-path backing store -- stays default(UnsafeList<double>) whenever _rec != null.
-        private readonly UnsafeList<double> _inlineDInv;
+        private readonly UnsafeList<double> _dInv;
 
         /// <summary>Inverted diagonal blocks, flat row-major per block: DInv[i*BR*BR + r*BR + c]
-        /// holds (A_ii⁻¹)[r,c]. Length nb*BR*BR. Dual-mode, mirrors doubleBSR.RowPtr/ColInd/Values:
-        /// get-only (no setter is possible on a readonly struct) -- both constructors below write
-        /// the computed inverse directly to whichever backing field is live instead of going
-        /// through a property setter.</summary>
-        public unsafe UnsafeList<double> DInv
-        {
-            get
-            {
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-                AssertRecordAlive();
-#endif
-                return _rec != null ? _rec->DInv : _inlineDInv;
-            }
-        }
-
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-        // Editor/test-only guard (ENABLE_UNITY_COLLECTIONS_CHECKS is defined automatically by the
-        // Unity Editor, including every test run, and compiles out of player builds entirely --
-        // struct size is identical in both configs either way, since this adds no field).
-        // doubleBlockJacobi has no spare bits to pack a
-        // generation stamp into (40B = 4 BlockRows + 4 BR + 8 _rec + 24 UnsafeList<double>, exactly),
-        // so this only checks Alive: it catches a read after Dispose() on THIS record, but not a
-        // stale handle into a slot that has since been recycled by a fresh Allocate() (that needs a
-        // generation stamp, which doubleBSR itself carries in its own padding hole). Readonly
-        // struct: this method doesn't (and, being readonly, couldn't) mutate any field.
-        //
-        // Uses ChunkedRecordTable's IsAliveFast(TRecord*) -- a direct pointer cast, no index, no
-        // chunk-scan lookup -- rather than the index-based IsAlive(int) (i.e. NOT _rec->Table->
-        // IsAlive(_rec->SelfIndex)): Apply() reads DInv every PCG iteration (i.e. per element in
-        // the sense that matters here), so the index-based path's chunk scan would be a real
-        // per-call cost. See IsAliveFast's own doc comment (ChunkedRecordTable.cs) for the
-        // container-of rationale.
-        private unsafe void AssertRecordAlive()
-        {
-            if (_rec != null && !ChunkedRecordTable<doubleBlockJacobiRecord>.IsAliveFast(_rec))
-                throw new InvalidOperationException("doubleBlockJacobi.DInv: use of disposed/cleared arena allocation");
-        }
-#endif
+        /// holds (A_ii⁻¹)[r,c]. Length nb*BR*BR.</summary>
+        public unsafe UnsafeList<double> DInv => _dInv;
 
         /// <summary>
         /// Builds the preconditioner from A's diagonal blocks. A must be square
@@ -102,8 +58,7 @@ namespace LinearAlgebra.Sparse
         /// </summary>
         public unsafe doubleBlockJacobi(in doubleBSR A, Allocator allocator, out PreconditionerInfo info)
         {
-            _rec = null;
-            _inlineDInv = default;
+            _dInv = default;
 
             if (A.BlockRows != A.BlockCols || A.BR != A.BC)
                 throw new ArgumentException("doubleBlockJacobi: A must be square (BlockRows==BlockCols, BR==BC)");
@@ -198,7 +153,7 @@ namespace LinearAlgebra.Sparse
                 Dcopy.Dispose();
             }
 
-            _inlineDInv = dinv;
+            _dInv = dinv;
             info = new PreconditionerInfo { status = DirectSolveStatus.Success, shift = 0, attempts = 1 };
         }
 
@@ -266,34 +221,6 @@ namespace LinearAlgebra.Sparse
         }
 
         /// <summary>
-        /// Arena-tracked constructor. <paramref name="rec"/> is a slot already carved from the
-        /// arena's record table by the caller (Arena.doubleBlockJacobi) -- same pre-allocated-
-        /// record contract as doubleBSR's arena-tracked ctor. Chains into the Allocator ctor above
-        /// to reuse its diagonal-block LU-inversion loop unchanged (readonly fields may be
-        /// assigned in ANY instance constructor of the declaring type, including one reached via
-        /// `: this(...)` -- so re-assigning `_rec`/adopting the computed list here, after the
-        /// chained-to ctor already ran, is legal), then adopts the freshly-built list into the
-        /// record instead of leaving it on the standalone path.
-        /// </summary>
-        internal unsafe doubleBlockJacobi(in doubleBSR A, doubleBlockJacobiRecord* rec, Allocator allocator) : this(in A, allocator)
-        {
-            rec->DInv = _inlineDInv;
-            _inlineDInv = default;
-            _rec = rec;
-        }
-
-        /// <summary>Arena-tracked twin of the non-throwing build. On failure the struct stays
-        /// standalone-default and the record is NOT adopted — the caller frees the slot.</summary>
-        internal unsafe doubleBlockJacobi(in doubleBSR A, doubleBlockJacobiRecord* rec, Allocator allocator, out PreconditionerInfo info) : this(in A, allocator, out info)
-        {
-            if (!info.Solved)
-                return;
-            rec->DInv = _inlineDInv;
-            _inlineDInv = default;
-            _rec = rec;
-        }
-
-        /// <summary>
         /// z = M⁻¹ r, applied block-wise: z_i = A_ii⁻¹ · r_i. z must not alias r (each z_i read
         /// draws on the full r_i block; overwriting r in place mid-block would corrupt later
         /// rows of the same block's product). For BR in {1,2,3,4,6}, dispatches to a fully
@@ -346,22 +273,10 @@ namespace LinearAlgebra.Sparse
             }
         }
 
-        /// <summary>
-        /// Disposes the DInv buffer. Double-dispose throws (the record table's double-Free guard);
-        /// do not call twice on the same or an aliased copy.
-        /// </summary>
+        /// <summary>Disposes the DInv buffer.</summary>
         public unsafe void Dispose()
         {
-            if (_rec != null)
-            {
-                var dinv = _rec->DInv;
-                _rec->Table->Free(_rec->SelfIndex);
-                dinv.Dispose();
-            }
-            else
-            {
-                _inlineDInv.Dispose();
-            }
+            _dInv.Dispose();
         }
     }
 }

@@ -10,7 +10,7 @@ namespace LinearAlgebra
     /// Easing curves as tiny Burst struct-functors (each : IfloatScalarFunction). Map t∈[0,1]→[0,1]
     /// (the Back/Elastic variants overshoot outside [0,1]). Use standalone
     /// (<c>new floatEasing.SmoothStep().Eval((float)0.3)</c>) or bake a LUT via
-    /// <c>Generate.sample</c> / <c>arena.floatEasingLUT</c>. float-only.
+    /// <c>Generate.sample</c>. float-only.
     /// </summary>
     public static partial class floatEasing
     {

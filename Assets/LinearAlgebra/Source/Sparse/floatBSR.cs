@@ -24,12 +24,9 @@ namespace LinearAlgebra.Sparse
     /// storage (halves memory and single-threaded matvec FLOPs for symmetric matrices) --
     /// requires BR==BC and a square block grid (BlockRows==BlockCols).
     ///
-    /// Lifecycle: build via floatBSRBuilder.ToBSR(arena). This type is the compressed,
-    /// matvec-ready form -- there is no cheap incremental pattern edit after compression; go
-    /// back through the builder to add/remove blocks.
-    ///
-    /// [StructLayout(Sequential)]: pins field order/packing explicitly, which guarantees the
-    /// internal padding hole after Symmetric that _gen occupies (see its own doc comment).
+    /// Lifecycle: build via floatBSRBuilder.ToBSR. This type is the compressed, matvec-ready
+    /// form -- there is no cheap incremental pattern edit after compression; go back through
+    /// the builder to add/remove blocks.
     /// </summary>
     [StructLayout(LayoutKind.Sequential)]
     public partial struct floatBSR : IDisposable
@@ -41,93 +38,33 @@ namespace LinearAlgebra.Sparse
 
         public bool Symmetric;  // true => only the lower block-triangle (ColInd <= blockRow) is stored
 
-        // Generation stamp captured from the record's slot at construction time (0/unused on the
-        // standalone path); packed into existing struct padding, so struct size is unchanged.
-        // Only meaningful when _rec != null: AssertRecordValid() compares it against the table's
-        // CURRENT GetGeneration(SelfIndex) to detect a stale handle into a since-recycled slot.
-        private readonly int _gen;
-
         public int M_Rows => BlockRows * BR;
         public int N_Cols => BlockCols * BC;
 
         /// <summary>Number of stored (nonzero) blocks.</summary>
         public int Nnzb => ColInd.Length;
 
-        // Arena-tracked path: a stable pointer into the arena's ChunkedRecordTable<floatBSRRecord>.
-        // null for a standalone (non-arena) matrix, in which case RowPtr/ColInd/Values resolve to
-        // the inline fields below instead -- see those properties. The record's own `Owner`
-        // back-pointer is where a future Copy()/cross-type shortcut would resolve through.
-        [NativeDisableUnsafePtrRestriction] private unsafe floatBSRRecord* _rec;
+        private UnsafeList<int> _rowPtr;
+        private UnsafeList<int> _colInd;
+        private UnsafeList<float> _values;
 
-        // Standalone-path backing store -- the ONLY thing that changes for a non-arena matrix.
-        // Stay default(UnsafeList<...>) whenever _rec != null (arena-tracked).
-        private UnsafeList<int> _inlineRowPtr;
-        private UnsafeList<int> _inlineColInd;
-        private UnsafeList<float> _inlineValues;
-
-        // CSR-of-blocks index structure. Dual-mode: arena-tracked resolves through the record,
-        // standalone keeps the inline field untouched -- mirrors floatN.Data (Arena/floatN.cs).
-        // Indexed reads/writes (e.g. RowPtr[i] = ...) still mutate the underlying native buffer
-        // through the returned UnsafeList's own internal pointer even though this getter returns a
-        // header copy -- only a WHOLE-FIELD reassignment from outside this file would be unsafe,
-        // and there is none (grepped repo-wide).
         public unsafe UnsafeList<int> RowPtr
         {
-            get
-            {
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-                AssertRecordValid();
-#endif
-                return _rec != null ? _rec->RowPtr : _inlineRowPtr;
-            }
-            private set { if (_rec != null) _rec->RowPtr = value; else _inlineRowPtr = value; }
+            get => _rowPtr;
+            private set => _rowPtr = value;
         }
 
         public unsafe UnsafeList<int> ColInd
         {
-            get
-            {
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-                AssertRecordValid();
-#endif
-                return _rec != null ? _rec->ColInd : _inlineColInd;
-            }
-            private set { if (_rec != null) _rec->ColInd = value; else _inlineColInd = value; }
+            get => _colInd;
+            private set => _colInd = value;
         }
 
         public unsafe UnsafeList<float> Values
         {
-            get
-            {
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-                AssertRecordValid();
-#endif
-                return _rec != null ? _rec->Values : _inlineValues;
-            }
-            private set { if (_rec != null) _rec->Values = value; else _inlineValues = value; }
+            get => _values;
+            private set => _values = value;
         }
-
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-        // Editor/test-only guard (ENABLE_UNITY_COLLECTIONS_CHECKS is defined automatically by the
-        // Unity Editor, including every test run, and compiles out of player builds). floatBSR has
-        // a free generation stamp (_gen, see its doc comment) alongside Alive, so this catches BOTH
-        // bug classes: a read after Dispose() on THIS record (Alive fails), and a stale handle into
-        // a slot that was freed and later recycled by a fresh Allocate() for a DIFFERENT allocation
-        // (Alive is true again, but the generation moved on). Shared by all three properties
-        // (RowPtr/ColInd/Values) since they all resolve through the same _rec/_gen.
-        //
-        // Uses ChunkedRecordTable's IsAliveFast/GenerationFast(TRecord*) -- direct pointer casts,
-        // no index, no chunk-scan lookup -- rather than the index-based IsAlive(int)/
-        // GetGeneration(int) (i.e. NOT _rec->Table->IsAlive(_rec->SelfIndex) etc.): these getters
-        // run on EVERY read (i.e. per element, since spMV/etc. index through RowPtr/ColInd/Values),
-        // so the index-based path's chunk scan would be a real per-element cost. See IsAliveFast's
-        // own doc comment (ChunkedRecordTable.cs) for the container-of rationale.
-        private unsafe void AssertRecordValid()
-        {
-            if (_rec != null && (!ChunkedRecordTable<floatBSRRecord>.IsAliveFast(_rec) || ChunkedRecordTable<floatBSRRecord>.GenerationFast(_rec) != _gen))
-                throw new InvalidOperationException("floatBSR: use of disposed/cleared arena allocation");
-        }
-#endif
 
         /// <summary>
         /// Allocates a compressed BSR matrix with the given block-grid shape and a fixed
@@ -136,50 +73,9 @@ namespace LinearAlgebra.Sparse
         /// </summary>
         public unsafe floatBSR(int blockRows, int blockCols, int BR, int BC, int nnzb, Allocator allocator, bool uninit = false, bool symmetric = false)
         {
-            _rec = null;
-            _inlineRowPtr = default;
-            _inlineColInd = default;
-            _inlineValues = default;
-            _gen = 0; // standalone (non-arena): never read (AssertRecordValid short-circuits on _rec == null)
-
-            BlockRows = blockRows;
-            BlockCols = blockCols;
-            this.BR = BR;
-            this.BC = BC;
-
-            if (symmetric && (BR != BC || blockRows != blockCols))
-                throw new ArgumentException("floatBSR: symmetric storage requires BR==BC and blockRows==blockCols");
-            Symmetric = symmetric;
-
-            var options = uninit ? NativeArrayOptions.UninitializedMemory : NativeArrayOptions.ClearMemory;
-
-            var rowPtr = new UnsafeList<int>(blockRows + 1, allocator, options);
-            rowPtr.Resize(blockRows + 1, options);
-            RowPtr = rowPtr;
-
-            var colInd = new UnsafeList<int>(nnzb, allocator, options);
-            colInd.Resize(nnzb, options);
-            ColInd = colInd;
-
-            int valuesLen = nnzb * BR * BC;
-            var values = new UnsafeList<float>(valuesLen, allocator, options);
-            values.Resize(valuesLen, options);
-            Values = values;
-        }
-
-        /// <summary>
-        /// Arena-tracked constructor. <paramref name="rec"/> is a slot already carved from the
-        /// arena's record table by the caller (Arena.floatBSR) -- this ctor only fills in the
-        /// record's RowPtr/ColInd/Values, it does not allocate or own the slot itself. Same
-        /// pre-allocated-record contract as floatN's arena-tracked ctor (Arena/floatN.cs).
-        /// </summary>
-        internal unsafe floatBSR(int blockRows, int blockCols, int BR, int BC, int nnzb, floatBSRRecord* rec, Allocator allocator, bool uninit = false, bool symmetric = false)
-        {
-            _rec = rec;
-            _inlineRowPtr = default;
-            _inlineColInd = default;
-            _inlineValues = default;
-            _gen = rec->Table->GetGeneration(rec->SelfIndex); // stamp this fresh allocation's generation
+            _rowPtr = default;
+            _colInd = default;
+            _values = default;
 
             BlockRows = blockRows;
             BlockCols = blockCols;
@@ -208,30 +104,9 @@ namespace LinearAlgebra.Sparse
 
         public unsafe void Dispose()
         {
-            if (_rec != null)
-            {
-                // Cache the lists BEFORE Free(): Free() marks the slot dead and does not itself
-                // clear the record's payload -- read them into locals first rather than reading
-                // _rec-> again after the slot is dead. Free() runs BEFORE the native Dispose()
-                // calls: an ALIASED double-dispose (a different struct copy sharing this SAME
-                // record) throws HERE, from the table's own double-Free guard, before any native
-                // memory would be touched a second time -- see floatN.Dispose() (Arena/floatN.cs)
-                // for the full ordering rationale, which this mirrors exactly.
-                var rowPtr = _rec->RowPtr;
-                var colInd = _rec->ColInd;
-                var values = _rec->Values;
-                _rec->Table->Free(_rec->SelfIndex);
-                rowPtr.Dispose();
-                colInd.Dispose();
-                values.Dispose();
-                _rec = null;
-            }
-            else
-            {
-                _inlineRowPtr.Dispose();
-                _inlineColInd.Dispose();
-                _inlineValues.Dispose();
-            }
+            _rowPtr.Dispose();
+            _colInd.Dispose();
+            _values.Dispose();
         }
 
         /// <summary>
@@ -276,11 +151,10 @@ namespace LinearAlgebra.Sparse
         }
 
         /// <summary>
-        /// Standalone twin of <see cref="Sparse.Arena.floatBSRTranspose"/>: materializes Aᵀ (block
-        /// grid and per-block dimensions swapped, each stored block transposed) through a fresh
-        /// <paramref name="allocator"/>-backed builder. If Symmetric, returns this matrix unchanged
-        /// (transposing symmetric lower-block storage is a no-op) -- the result then ALIASES this
-        /// matrix's own buffers; Dispose only one of them.
+        /// Materializes Aᵀ (block grid and per-block dimensions swapped, each stored block
+        /// transposed) through a fresh <paramref name="allocator"/>-backed builder. If Symmetric,
+        /// returns this matrix unchanged (transposing symmetric lower-block storage is a no-op) --
+        /// the result then ALIASES this matrix's own buffers; Dispose only one of them.
         /// </summary>
         public unsafe floatBSR Transpose(Allocator allocator)
         {
@@ -316,11 +190,10 @@ namespace LinearAlgebra.Sparse
         }
 
         /// <summary>
-        /// Standalone twin of <see cref="Sparse.Arena.floatBSRMirrorToFull"/>: mirrors a SYMMETRIC-
-        /// storage (lower-block-triangle-only) matrix into full storage through a fresh
-        /// <paramref name="allocator"/>-backed builder. If not Symmetric, returns this matrix
-        /// unchanged (no copy) -- the result then ALIASES this matrix's own buffers; Dispose only
-        /// one of them.
+        /// Mirrors a SYMMETRIC-storage (lower-block-triangle-only) matrix into full storage
+        /// through a fresh <paramref name="allocator"/>-backed builder. If not Symmetric, returns
+        /// this matrix unchanged (no copy) -- the result then ALIASES this matrix's own buffers;
+        /// Dispose only one of them.
         /// </summary>
         public unsafe floatBSR MirrorToFull(Allocator allocator)
         {

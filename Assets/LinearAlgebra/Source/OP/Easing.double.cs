@@ -10,7 +10,7 @@ namespace LinearAlgebra
     /// Easing curves as tiny Burst struct-functors (each : IdoubleScalarFunction). Map t∈[0,1]→[0,1]
     /// (the Back/Elastic variants overshoot outside [0,1]). Use standalone
     /// (<c>new doubleEasing.SmoothStep().Eval((double)0.3)</c>) or bake a LUT via
-    /// <c>Generate.sample</c> / <c>arena.doubleEasingLUT</c>. double-only.
+    /// <c>Generate.sample</c>. double-only.
     /// </summary>
     public static partial class doubleEasing
     {

@@ -88,9 +88,8 @@ namespace LinearAlgebra.Benchmarks
 
         static unsafe string ExpWideRowFloat(string label, int n)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var src = arena.floatVec(n);
-            var dst = arena.floatVec(n);
+            var src = new floatN(n, Allocator.Persistent);
+            var dst = new floatN(n, Allocator.Persistent);
 
             var rng = new Unity.Mathematics.Random(0xE7E7u);
             for (int i = 0; i < n; i++) src[i] = rng.NextFloat(-10f, 10f);
@@ -116,7 +115,8 @@ namespace LinearAlgebra.Benchmarks
                 double rel  = System.Math.Abs((double)dst[i] - refv) / System.Math.Abs(refv);
                 if (rel > maxRel) maxRel = rel;
             }
-            arena.Dispose();
+            src.Dispose();
+            dst.Dispose();
 
             return string.Format(CultureInfo.InvariantCulture,
                 "{0,-26} {1,-10} {2,11:F4} {3,11:F4} {4,11:F4} {5,13}",

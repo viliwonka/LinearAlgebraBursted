@@ -8,70 +8,28 @@ namespace LinearAlgebra
     [StructLayout(LayoutKind.Sequential)]
     public partial struct fProxyN : IDisposable, IUnsafefProxyArray {
 
-        // Arena-tracked path: a stable pointer into the arena's ChunkedRecordTable<fProxyVecRecord>.
-        // null for a standalone (non-arena) vector, in which case Data resolves to the inline
-        // _inlineData field below instead -- see the Data property.
-        [NativeDisableUnsafePtrRestriction] private unsafe fProxyVecRecord* _rec;
-
-        // Standalone-path backing store -- the ONLY thing that changes for a non-arena vector.
-        // Stays default(UnsafeList<fProxy>) whenever _rec != null (arena-tracked).
-        private UnsafeList<fProxy> _inlineData;
+        private UnsafeList<fProxy> _data;
 
         public int N => Data.Length;
 
         public unsafe UnsafeList<fProxy> Data
         {
-            get
-            {
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-                AssertRecordAlive();
-#endif
-                return _rec != null ? _rec->Data : _inlineData;
-            }
-            private set { if (_rec != null) _rec->Data = value; else _inlineData = value; }
+            get => _data;
+            private set => _data = value;
         }
 
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-        // Debug-only liveness check (compiles out of player builds). Throws on a read after
-        // Dispose()/Clear()/ClearTemp() on this record. Does not catch a stale handle into a
-        // since-recycled slot -- this struct has no generation stamp to check that (see the MxN
-        // family's AssertRecordValid, which does). Uses the direct pointer-cast IsAliveFast to
-        // avoid a per-element chunk-scan cost, since this getter runs on every read.
-        private unsafe void AssertRecordAlive()
-        {
-            if (_rec != null && !ChunkedRecordTable<fProxyVecRecord>.IsAliveFast(_rec))
-                throw new InvalidOperationException("fProxyN.Data: use of disposed/cleared arena allocation");
-        }
-#endif
-
-        // Reconstructs a live Arena handle from this record's owner core; used by Copy()/
-        // TempCopy() and the cross-type allocation shortcuts. Only meaningful when _rec != null --
-        // callers must only call this on an arena-backed instance.
-        private unsafe Arena OwnerArena => new Arena(_rec->Owner);
-
-        /// <summary>True while this vector has a live allocation (arena-tracked or standalone,
-        /// including views); false for default(fProxyN) and after Dispose().</summary>
-        public unsafe bool IsCreated
-        {
-            get
-            {
-                if (_rec == null) return _inlineData.IsCreated;
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-                if (!ChunkedRecordTable<fProxyVecRecord>.IsAliveFast(_rec)) return false;
-#endif
-                return _rec->Data.IsCreated;
-            }
-        }
+        /// <summary>True while this vector has a live allocation, including views; false for
+        /// default(fProxyN) and after Dispose().</summary>
+        public unsafe bool IsCreated => _data.IsCreated;
 
         /// <summary>
-        /// Creates a new standalone (non-arena) vector with its own allocation.
+        /// Creates a new vector with its own allocation.
         /// </summary>
         public unsafe fProxyN(int n, Allocator allocator = Allocator.Invalid, bool uninit = false)
         {
-            _rec = null;
-            _inlineData = default;
+            _data = default;
 
-            // standalone (non-arena) vector — fall back to Temp instead of dereferencing a null core.
+            // fall back to Temp when no allocator is given.
             if (allocator == Allocator.Invalid)
                 allocator = Allocator.Temp;
 
@@ -82,7 +40,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Creates a standalone VIEW over <paramref name="viewOf"/>'s memory -- no copy, no
+        /// Creates a VIEW over <paramref name="viewOf"/>'s memory -- no copy, no
         /// ownership. Element reads/writes go straight to the array. Valid only while the source
         /// array is alive; Dispose() releases nothing (the array keeps ownership). The view is
         /// outside the job-safety system: it does not carry the array's safety handle, so the
@@ -90,23 +48,19 @@ namespace LinearAlgebra
         /// </summary>
         public unsafe fProxyN(NativeArray<fProxy> viewOf)
         {
-            _rec = null;
-            _inlineData = new UnsafeList<fProxy>((fProxy*)viewOf.GetUnsafePtr(), viewOf.Length);
+            _data = new UnsafeList<fProxy>((fProxy*)viewOf.GetUnsafePtr(), viewOf.Length);
         }
 
         /// <summary>
-        /// Creates a standalone copy of the vector with a new allocation. If <paramref name="orig"/>
-        /// is arena-backed and no allocator is given, falls back to that arena's allocator (matching
-        /// the historical behavior) -- the COPY itself is always standalone (untracked).
+        /// Creates a copy of the vector with a new allocation.
         /// </summary>
         public unsafe fProxyN(in fProxyN orig, Allocator allocator = Allocator.Invalid) {
 
-            _rec = null;
-            _inlineData = default;
+            _data = default;
 
-            // guard a standalone (null-record) source: fall back to Temp if no allocator is given
+            // fall back to Temp when no allocator is given.
             if(allocator == Allocator.Invalid)
-                allocator = orig._rec != null ? orig._rec->Owner->Allocator : Allocator.Temp;
+                allocator = Allocator.Temp;
 
             var data = new UnsafeList<fProxy>(orig.N, allocator, NativeArrayOptions.UninitializedMemory);
             data.Resize(orig.N, NativeArrayOptions.UninitializedMemory);
@@ -115,45 +69,16 @@ namespace LinearAlgebra
             Data = data;
         }
 
-        /// <summary>
-        /// Arena-tracked constructor. <paramref name="rec"/> is a slot already carved from the
-        /// arena's record table by the caller (Arena.fProxyVec/fProxyTempVec) -- this ctor only
-        /// fills in the record's Data, it does not allocate or own the slot itself.
-        /// </summary>
-        internal unsafe fProxyN(int n, fProxyVecRecord* rec, Allocator allocator, bool uninit = false) {
-
-            _rec = rec;
-            _inlineData = default;
-
-            var data = new UnsafeList<fProxy>(n, allocator, NativeArrayOptions.UninitializedMemory);
-            data.Resize(n, uninit ? NativeArrayOptions.UninitializedMemory : NativeArrayOptions.ClearMemory);
-
-            Data = data;
-        }
-
-        /// <summary>Arena-tracked copy constructor -- same pre-allocated-record contract as above.</summary>
-        internal unsafe fProxyN(in fProxyN orig, fProxyVecRecord* rec, Allocator allocator) {
-
-            _rec = rec;
-            _inlineData = default;
-
-            var data = new UnsafeList<fProxy>(orig.N, allocator, NativeArrayOptions.UninitializedMemory);
-            data.Resize(orig.N, NativeArrayOptions.UninitializedMemory);
-            data.CopyFrom(orig.Data);
-
-            Data = data;
-        }
-
-        /// <summary>Arena-backed: allocates from the owner arena. Standalone: returns a standalone Allocator.Temp copy.</summary>
+        /// <summary>Returns an Allocator.Temp copy.</summary>
         public unsafe fProxyN Copy()
         {
-            return _rec != null ? OwnerArena.fProxyVec(in this) : new fProxyN(in this, Allocator.Temp);
+            return new fProxyN(in this, Allocator.Temp);
         }
 
-        /// <summary>Arena-backed: allocates from the owner arena's temp pool. Standalone: returns a standalone Allocator.Temp copy.</summary>
+        /// <summary>Returns an Allocator.Temp copy.</summary>
         public unsafe fProxyN TempCopy()
         {
-            return _rec != null ? OwnerArena.fProxyTempVec(in this) : new fProxyN(in this, Allocator.Temp);   // temp pool
+            return new fProxyN(in this, Allocator.Temp);
         }
 
         /// <summary>Copies every component into <paramref name="vec"/> (lengths must match). Fixed-size: never resizes <paramref name="vec"/>.</summary>
@@ -193,23 +118,7 @@ namespace LinearAlgebra
         }
 
         public unsafe void Dispose() {
-            if (_rec != null)
-            {
-                // Cache Data before Free(): Free() marks the slot dead without clearing the
-                // payload. Free() runs before the native Dispose() call, so an aliased
-                // double-dispose (a different struct copy sharing this record) throws here, via
-                // the table's double-Free guard, before any native memory is touched a second
-                // time. Disposing the SAME variable twice is a safe no-op: this call nulls _rec,
-                // so a second call takes the standalone branch instead.
-                var data = _rec->Data;
-                _rec->Table->Free(_rec->SelfIndex);
-                data.Dispose();
-                _rec = null;
-            }
-            else
-            {
-                _inlineData.Dispose();
-            }
+            _data.Dispose();
         }
 
         public override string ToString()

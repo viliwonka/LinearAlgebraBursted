@@ -13,7 +13,7 @@ namespace LinearAlgebra
     /// Used as the output buffer for QueryOP index-returning operations
     /// (rowArgMin/Max, kNearestRows, rowsWithinRadius, nonzero, whichTrue, etc.)
     /// so that float-in/int-out operations can live in fProxy templates.
-    /// Arena-lifetime: allocate via arena.Indices(n) and the arena owns disposal.
+    /// Allocate via the constructor and Dispose when done.
     /// </summary>
     public struct Indices
     {

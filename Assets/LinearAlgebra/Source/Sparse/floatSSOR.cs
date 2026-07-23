@@ -28,13 +28,10 @@ namespace LinearAlgebra.Sparse
     /// <see cref="ScaledD"/> so Apply pays for it once, not every iteration.
     ///
     /// FULL-storage BSR only: a Symmetric-storage A pays a one-time mirror-to-full copy at
-    /// construction (<see cref="Arena.floatBSRMirrorToFull"/> / <see cref="floatBSR.MirrorToFull"/>)
-    /// -- the sweeps need row-ordered access to BOTH triangles, which lower-only storage cannot give
-    /// without a column-order scatter. No record table of its own: built via a ref Arena ctor, every
-    /// piece (A, Jacobi, ScaledD, Scratch1/2) is arena-tracked and the arena owns disposal -- do not
-    /// call Dispose() on that instance. Built via the Allocator ctor, this instance owns those same
-    /// pieces standalone and Dispose() must be called when done (see Dispose()'s own doc for the A
-    /// aliasing caveat).
+    /// construction (<see cref="floatBSR.MirrorToFull"/>) -- the sweeps need row-ordered access to
+    /// BOTH triangles, which lower-only storage cannot give without a column-order scatter. This
+    /// instance owns A (when freshly mirrored), Jacobi, ScaledD, Scratch1/2 standalone and
+    /// Dispose() must be called when done (see Dispose()'s own doc for the A aliasing caveat).
     /// </summary>
     public readonly struct floatSSOR : IfloatPreconditioner, IDisposable
     {
@@ -55,59 +52,9 @@ namespace LinearAlgebra.Sparse
 
         /// <summary>
         /// Builds the preconditioner from A's diagonal blocks and (if A is Symmetric-storage) a
-        /// one-time mirror to full storage. Throws if A is not square, or omega is not in (0, 2).
-        /// </summary>
-        public floatSSOR(in floatBSR a, float omega, ref Arena arena)
-        {
-            if (a.BlockRows != a.BlockCols || a.BR != a.BC)
-                throw new ArgumentException("floatSSOR: A must be square (BlockRows==BlockCols, BR==BC)");
-            if (!(omega > (float)0 && omega < (float)2))
-                throw new ArgumentException("floatSSOR: omega must be in (0, 2) for M to be SPD");
-
-            _ownsA = false; // arena-tracked path: Dispose() is never called on this path, value unused
-            A = arena.floatBSRMirrorToFull(in a);
-            Jacobi = arena.floatBlockJacobi(in A);
-            Omega = omega;
-
-            int blockLen = A.BR * A.BR;
-            var scaledD = arena.floatVec(A.BlockRows * blockLen);
-            float c = ((float)2 - omega) / omega;
-
-            for (int i = 0; i < A.BlockRows; i++)
-            {
-                // Blocks within a block-row are stored in ascending ColInd (BSR invariant) --
-                // scan forward and stop as soon as we pass column i. Same scan floatBlockJacobi's
-                // own constructor uses to find the diagonal block; NOT an inversion (just a copy),
-                // so this does not duplicate floatBlockJacobi's LU-inversion code.
-                int s = A.RowPtr[i], e = A.RowPtr[i + 1];
-                int found = -1;
-                for (int k = s; k < e; k++)
-                {
-                    int col = A.ColInd[k];
-                    if (col == i) { found = k; break; }
-                    if (col > i) break;
-                }
-                if (found < 0)
-                    throw new ArgumentException("floatSSOR: missing diagonal block in A");
-
-                int srcOff = found * blockLen, dstOff = i * blockLen;
-                for (int t = 0; t < blockLen; t++)
-                    scaledD[dstOff + t] = A.Values[srcOff + t] * c;
-            }
-            ScaledD = scaledD;
-
-            Scratch1 = arena.floatVec(A.M_Rows);
-            Scratch2 = arena.floatVec(A.M_Rows);
-        }
-
-        /// <summary>floatSSOR with omega=1 (symmetric Gauss-Seidel).</summary>
-        public floatSSOR(in floatBSR a, ref Arena arena) : this(in a, (float)1, ref arena) { }
-
-        /// <summary>
-        /// Standalone twin of <see cref="floatSSOR(in floatBSR, float, ref Arena)"/>: allocates
-        /// every owned buffer from <paramref name="allocator"/> instead of an arena. Dispose the
-        /// result with <see cref="Dispose"/> when done -- only call Dispose on an instance built via
-        /// this ctor, never on one built via the ref Arena ctor (that instance is arena-owned).
+        /// one-time mirror to full storage, allocating every owned buffer from
+        /// <paramref name="allocator"/>. Throws if A is not square, or omega is not in (0, 2).
+        /// Dispose the result with <see cref="Dispose"/> when done.
         /// </summary>
         public unsafe floatSSOR(in floatBSR a, float omega, Allocator allocator)
         {
@@ -121,7 +68,7 @@ namespace LinearAlgebra.Sparse
             // try/finally with a success flag, NOT try/catch -- Burst rejects `catch` (BC1006).
             // On the managed path this still disposes the fresh mirror if Jacobi construction
             // throws (no caller handle exists yet); under Burst the guard degrades to a no-op on
-            // the throw path, same as Arena's ctor guard.
+            // the throw path.
             bool ok = false;
             try
             {
@@ -167,8 +114,6 @@ namespace LinearAlgebra.Sparse
         /// <summary>
         /// Disposes every buffer this instance owns: A only if it was freshly mirrored to full
         /// storage (not when it aliases the input matrix), plus Jacobi/ScaledD/Scratch1/Scratch2.
-        /// Only call on an instance built via the Allocator ctor -- an instance built via the ref
-        /// Arena ctor is arena-owned and must not be disposed directly.
         /// </summary>
         public unsafe void Dispose()
         {

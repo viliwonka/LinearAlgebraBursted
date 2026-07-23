@@ -278,7 +278,7 @@ namespace LinearAlgebra
 
         /// <summary>
         /// LSMR over a (possibly rectangular) BSR matrix -- zero-alloc primitive that takes a
-        /// CALLER-PROVIDED precomputed transpose AT (e.g. <c>arena.fProxyBSRTranspose(in A)</c>
+        /// CALLER-PROVIDED precomputed transpose AT (e.g. <c>A.Transpose(allocator)</c>
         /// built once outside a hot loop) and routes every ApplyT through the cache-friendly
         /// forward spMV(AT, x) instead of on-the-fly spMVT(A, x) -- see
         /// <see cref="fProxyBSROperator"/>'s two-arg ctor. Caller is responsible for AT being A's
@@ -294,7 +294,7 @@ namespace LinearAlgebra
 
         /// <summary>
         /// LSMR over a BSR matrix -- allocates six scratch vectors AND materializes A^T ONCE via
-        /// <c>arena.fProxyBSRTranspose</c>, then drives LSMR with the two-arg
+        /// <c>A.Transpose(allocator)</c>, then drives LSMR with the two-arg
         /// <see cref="fProxyBSROperator"/> so every ApplyT routes through a cache-friendly forward
         /// spMV(A^T, x). For a build-free zero-alloc path, build A^T yourself once and call the
         /// zero-alloc AT overload above with your own scratch vectors.

@@ -14,66 +14,30 @@ namespace LinearAlgebra
     // A m x n matrix
     // m = rows
     // n = cols
-    //
-    // Sequential layout pins the trailing padding hole `_gen` (below) relies on.
     [StructLayout(LayoutKind.Sequential)]
     public partial struct shortMxN : IDisposable, IUnsafeshortArray {
 
         public int M_Rows;
         public int N_Cols;
 
-        // Arena-tracked path: a stable pointer into the arena's ChunkedRecordTable<shortMatRecord>.
-        // null for a standalone (non-arena) matrix, in which case Data resolves to _inlineData
-        // instead -- see the Data property.
-        [NativeDisableUnsafePtrRestriction] private unsafe shortMatRecord* _rec;
-
-        // Standalone-path backing store. Stays default(UnsafeList<short>) whenever _rec != null.
-        private UnsafeList<short> _inlineData;
+        private UnsafeList<short> _data;
 
         public unsafe UnsafeList<short> Data
         {
-            get
-            {
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-                AssertRecordValid();
-#endif
-                return _rec != null ? _rec->Data : _inlineData;
-            }
-            private set { if (_rec != null) _rec->Data = value; else _inlineData = value; }
+            get => _data;
+            private set => _data = value;
         }
-
-        // Reconstructs a live Arena handle from this record's owner core; used by Copy()/
-        // TempCopy() and the cross-type allocation shortcuts. Only meaningful when _rec != null --
-        // callers must only call this on an arena-backed instance.
-        private unsafe Arena OwnerArena => new Arena(_rec->Owner);
 
         public readonly int Length;
 
-        // Generation stamp (packed into existing struct padding) for detecting a stale handle into
-        // a since-recycled slot; 0/unused on the standalone path. AssertRecordValid() compares it
-        // against the table's current GetGeneration(SelfIndex) -- Alive alone cannot tell "still
-        // the same allocation" from "a new one that reused this slot number".
-        private readonly int _gen;
-
         public bool IsSquare => M_Rows == N_Cols;
 
-        /// <summary>True while this matrix has a live allocation (arena-tracked or standalone,
-        /// including views); false for default(shortMxN) and after Dispose().</summary>
-        public unsafe bool IsCreated
-        {
-            get
-            {
-                if (_rec == null) return _inlineData.IsCreated;
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-                if (!ChunkedRecordTable<shortMatRecord>.IsAliveFast(_rec) || ChunkedRecordTable<shortMatRecord>.GenerationFast(_rec) != _gen)
-                    return false;
-#endif
-                return _rec->Data.IsCreated;
-            }
-        }
+        /// <summary>True while this matrix has a live allocation, including views; false for
+        /// default(shortMxN) and after Dispose().</summary>
+        public unsafe bool IsCreated => _data.IsCreated;
 
         /// <summary>
-        /// Creates a standalone VIEW over <paramref name="viewOf"/>'s memory as a row-major
+        /// Creates a VIEW over <paramref name="viewOf"/>'s memory as a row-major
         /// M_rows x N_cols matrix (viewOf.Length must equal M_rows*N_cols) -- no copy, no
         /// ownership. Element reads/writes go straight to the array. Valid only while the source
         /// array is alive; Dispose() releases nothing (the array keeps ownership). The view is
@@ -85,19 +49,15 @@ namespace LinearAlgebra
             if (M_rows * N_cols != viewOf.Length)
                 throw new ArgumentException("shortMxN view: viewOf.Length must equal M_rows * N_cols");
 
-            _rec = null;
-            _gen = 0; // standalone (non-arena): never read (AssertRecordValid short-circuits on _rec == null)
             M_Rows = M_rows;
             N_Cols = N_cols;
             Length = viewOf.Length;
-            _inlineData = new UnsafeList<short>((short*)viewOf.GetUnsafePtr(), viewOf.Length);
+            _data = new UnsafeList<short>((short*)viewOf.GetUnsafePtr(), viewOf.Length);
         }
 
         public unsafe shortMxN(int M_rows, int N_cols, Allocator allocator, bool uninit = false)
         {
-            _rec = null;
-            _inlineData = default;
-            _gen = 0; // standalone (non-arena): never read (AssertRecordValid short-circuits on _rec == null)
+            _data = default;
             M_Rows = M_rows;
             N_Cols = N_cols;
             Length = M_Rows * N_Cols;
@@ -107,36 +67,15 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Arena-tracked constructor. <paramref name="rec"/> is a slot already carved from the
-        /// arena's record table by the caller (Arena.shortMat/shortTempMat) -- this ctor only
-        /// fills in the record's Data, it does not allocate or own the slot itself.
-        /// </summary>
-        internal unsafe shortMxN(int M_rows, int N_cols, shortMatRecord* rec, Allocator allocator, bool uninit = false)
-        {
-            _rec = rec;
-            _inlineData = default;
-            _gen = rec->Table->GetGeneration(rec->SelfIndex); // stamp this fresh allocation's generation
-
-            M_Rows = M_rows;
-            N_Cols = N_cols;
-            Length = M_Rows * N_Cols;
-            var data = new UnsafeList<short>(Length, allocator, uninit? NativeArrayOptions.UninitializedMemory : NativeArrayOptions.ClearMemory );
-            data.Resize(Length, NativeArrayOptions.UninitializedMemory);
-            Data = data;
-        }
-
-        /// <summary>
-        /// Creates a standalone copy of the matrix with a new allocation.
+        /// Creates a copy of the matrix with a new allocation.
         /// </summary>
         public unsafe shortMxN(in shortMxN orig, Allocator allocator = Allocator.Invalid)
         {
-            _rec = null;
-            _inlineData = default;
-            _gen = 0; // standalone (non-arena): never read (AssertRecordValid short-circuits on _rec == null)
+            _data = default;
 
-            // guard a standalone (null-record) source: fall back to Temp if no allocator is given
+            // fall back to Temp when no allocator is given.
             if (allocator == Allocator.Invalid)
-                allocator = orig._rec != null ? orig._rec->Owner->Allocator : Allocator.Temp;
+                allocator = Allocator.Temp;
 
             M_Rows = orig.M_Rows;
             N_Cols = orig.N_Cols;
@@ -147,46 +86,16 @@ namespace LinearAlgebra
             Data = data;
         }
 
-        /// <summary>Arena-tracked copy constructor -- same pre-allocated-record contract as above.</summary>
-        internal unsafe shortMxN(in shortMxN orig, shortMatRecord* rec, Allocator allocator)
-        {
-            _rec = rec;
-            _inlineData = default;
-            _gen = rec->Table->GetGeneration(rec->SelfIndex); // stamp this fresh allocation's generation (NOT orig's)
-
-            M_Rows = orig.M_Rows;
-            N_Cols = orig.N_Cols;
-            Length = orig.Length;
-            var data = new UnsafeList<short>(Length, allocator, NativeArrayOptions.UninitializedMemory);
-            data.Resize(Length, NativeArrayOptions.UninitializedMemory);
-            data.CopyFrom(orig.Data);
-            Data = data;
-        }
-
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-        // Debug-only liveness+generation check (compiles out of player builds). Throws on a read
-        // after Dispose()/Clear()/ClearTemp() on this record, and also on a stale handle into a
-        // slot that was freed and later recycled by a fresh Allocate() for a different allocation
-        // (Alive is true again, but the generation moved on). Uses the direct pointer-cast
-        // IsAliveFast/GenerationFast to avoid a per-element chunk-scan cost, since this getter runs
-        // on every read.
-        private unsafe void AssertRecordValid()
-        {
-            if (_rec != null && (!ChunkedRecordTable<shortMatRecord>.IsAliveFast(_rec) || ChunkedRecordTable<shortMatRecord>.GenerationFast(_rec) != _gen))
-                throw new InvalidOperationException("shortMxN.Data: use of disposed/cleared arena allocation");
-        }
-#endif
-
-        /// <summary>Arena-backed: allocates from the owner arena. Standalone: returns a standalone Allocator.Temp copy.</summary>
+        /// <summary>Returns an Allocator.Temp copy.</summary>
         public unsafe shortMxN Copy()
         {
-            return _rec != null ? OwnerArena.shortMat(in this) : new shortMxN(in this, Allocator.Temp);
+            return new shortMxN(in this, Allocator.Temp);
         }
 
-        /// <summary>Arena-backed: allocates from the owner arena's temp pool. Standalone: returns a standalone Allocator.Temp copy.</summary>
+        /// <summary>Returns an Allocator.Temp copy.</summary>
         public unsafe shortMxN TempCopy()
         {
-            return _rec != null ? OwnerArena.shortTempMat(in this) : new shortMxN(in this, Allocator.Temp);
+            return new shortMxN(in this, Allocator.Temp);
         }
 
         /// <summary>Copies every element into <paramref name="mat"/> (dimensions must match). Fixed-size: never resizes <paramref name="mat"/>.</summary>
@@ -226,24 +135,7 @@ namespace LinearAlgebra
         }
 
         public unsafe void Dispose() {
-
-            if (_rec != null)
-            {
-                // Cache Data before Free(): Free() marks the slot dead without clearing the
-                // payload. Free() runs before the native Dispose() call, so an aliased
-                // double-dispose (a different struct copy sharing this record) throws here, via
-                // the table's double-Free guard, before any native memory is touched a second
-                // time. Disposing the SAME variable twice is a safe no-op: this call nulls _rec,
-                // so a second call takes the standalone branch instead.
-                var data = _rec->Data;
-                _rec->Table->Free(_rec->SelfIndex);
-                data.Dispose();
-                _rec = null;
-            }
-            else
-            {
-                _inlineData.Dispose();
-            }
+            _data.Dispose();
         }
 
         public override string ToString()

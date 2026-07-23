@@ -25,9 +25,8 @@ namespace LinearAlgebra.Sparse
     /// a single BSR spMV.
     ///
     /// Symmetric-storage A pays a one-time mirror-to-full copy (SPAI needs full rows), same as
-    /// ILU0. A must store every diagonal block. Built via a ref Arena ctor, M is arena-tracked and
-    /// the arena owns disposal -- do not call Dispose() on that instance. Built via an Allocator
-    /// ctor, this instance owns M standalone and Dispose() must be called when done.
+    /// ILU0. A must store every diagonal block. This instance owns M standalone and Dispose() must
+    /// be called when done.
     /// </summary>
     public readonly struct floatSPAI : IfloatPreconditioner, IDisposable
     {
@@ -39,234 +38,7 @@ namespace LinearAlgebra.Sparse
 
         public int Rows => M.M_Rows;
 
-        /// <summary>
-        /// Builds SPAI with <see cref="SaiOptions.Default"/>. Throws if A is not square
-        /// (BlockRows==BlockCols, BR==BC), if a diagonal block is absent, or if a row's local
-        /// least-squares solve still breaks down at the largest Tikhonov shift. Use the out-info
-        /// overload for a non-throwing build.
-        /// </summary>
-        public floatSPAI(in floatBSR a, ref Arena arena)
-        {
-            this = new floatSPAI(in a, ref arena, out PreconditionerInfo info);
-            if (!info.Solved)
-                throw new ArgumentException("floatSPAI: a row's local least-squares solve broke down at every Tikhonov shift");
-        }
-
-        /// <summary>Non-throwing build with <see cref="SaiOptions.Default"/>; see the out-info +
-        /// SaiOptions overload for the full contract.</summary>
-        public floatSPAI(in floatBSR a, ref Arena arena, out PreconditionerInfo info)
-        {
-            this = new floatSPAI(in a, ref arena, SaiOptions.Default, out info);
-        }
-
-        /// <summary>Builds SPAI with the given <see cref="SaiOptions"/>. Same throw contract as the
-        /// options-less overload.</summary>
-        public floatSPAI(in floatBSR a, ref Arena arena, in SaiOptions opts)
-        {
-            this = new floatSPAI(in a, ref arena, in opts, out PreconditionerInfo info);
-            if (!info.Solved)
-                throw new ArgumentException("floatSPAI: a row's local least-squares solve broke down at every Tikhonov shift");
-        }
-
-        /// <summary>
-        /// Non-throwing build: info.status is Success, or Singular when some row's local
-        /// least-squares solve broke down at every Tikhonov shift (the preconditioner is then
-        /// unusable -- do not Apply); info also carries the worst rescuing shift and the worst
-        /// attempts consumed by any single row. Caller-contract violations (non-square, missing
-        /// diagonal block, opts.patternPower != 1) still throw.
-        /// </summary>
-        public floatSPAI(in floatBSR a, ref Arena arena, in SaiOptions opts, out PreconditionerInfo info)
-        {
-            if (a.BlockRows != a.BlockCols || a.BR != a.BC)
-                throw new ArgumentException("floatSPAI: A must be square (BlockRows==BlockCols, BR==BC)");
-            if (opts.patternPower != 1)
-                throw new ArgumentException("floatSPAI: opts.patternPower must be 1 (pattern(A^2) is not implemented yet)");
-
-            var A = a.Symmetric ? arena.floatBSRMirrorToFull(in a) : a;
-
-            int nb = A.BlockRows;
-            int BR = A.BR;
-            int blockLen = BR * BR;
-
-            // Every diagonal block must exist (required in J_i, and it locates i within I_i).
-            // Shift scale mirrors IC0/ILU0's: the largest |diagonal entry| of A.
-            float diagMax = 0;
-            for (int i = 0; i < nb; i++)
-            {
-                int s = A.RowPtr[i], e = A.RowPtr[i + 1];
-                bool hasDiag = false;
-                for (int k = s; k < e; k++)
-                {
-                    if (A.ColInd[k] != i) continue;
-                    hasDiag = true;
-                    int off = k * blockLen;
-                    for (int r = 0; r < BR; r++)
-                    {
-                        float av = math.abs(A.Values[off + r * BR + r]);
-                        if (av > diagMax) diagMax = av;
-                    }
-                    break;
-                }
-                if (!hasDiag)
-                    throw new ArgumentException("floatSPAI: missing diagonal block in A");
-            }
-            if (diagMax <= (float)0) diagMax = (float)1;
-
-            // M's pattern = A's own full pattern (MVP default).
-            var Mm = arena.floatBSR(nb, nb, BR, BR, A.Nnzb, true);
-            var mRowPtr = Mm.RowPtr; var mColInd = Mm.ColInd; var mValues = Mm.Values;
-            {
-                for (int i = 0; i <= nb; i++) mRowPtr[i] = A.RowPtr[i];
-                for (int k = 0; k < A.Nnzb; k++) mColInd[k] = A.ColInd[k];
-            }
-
-            float worstShift = 0;
-            int worstAttempts = 1;
-            bool ok = true;
-
-            // Widest possible shadow pattern I_i is every block-column of A (nb) -- one fixed-size
-            // Temp buffer reused (overwritten) across every row's union-merge below.
-            var shadow = new NativeArray<int>(nb, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
-
-            for (int i = 0; i < nb; i++)
-            {
-                int jS = A.RowPtr[i], jE = A.RowPtr[i + 1];
-                int m = jE - jS;   // |J_i|
-
-                // Shadow pattern I_i: sorted, deduplicated union of the row patterns of every
-                // j in J_i. Ascending insertion into the running sorted prefix shadow[0:shadowCount)
-                // -- deterministic regardless of insertion order (converges to the unique sorted set).
-                int shadowCount = 0;
-                for (int aI = 0; aI < m; aI++)
-                {
-                    int j = A.ColInd[jS + aI];
-                    int rs = A.RowPtr[j], re = A.RowPtr[j + 1];
-                    for (int k = rs; k < re; k++)
-                    {
-                        int col = A.ColInd[k];
-                        int p = shadowCount - 1;
-                        while (p >= 0 && shadow[p] > col) p--;
-                        bool dup = p >= 0 && shadow[p] == col;
-                        if (!dup)
-                        {
-                            for (int q = shadowCount; q > p + 1; q--) shadow[q] = shadow[q - 1];
-                            shadow[p + 1] = col;
-                            shadowCount++;
-                        }
-                    }
-                }
-                int kCount = shadowCount;   // |I_i|
-                int nJ = m * BR, nI = kCount * BR;
-
-                int iLocal = -1;
-                for (int p = 0; p < kCount; p++) if (shadow[p] == i) { iLocal = p; break; }
-                // i in J_i (diagonal required) -> row i's own pattern was unioned in -> iLocal >= 0.
-
-                var Ahat = new floatMxN(nJ, nI, Allocator.Temp, true);
-                for (int aI = 0; aI < m; aI++)
-                {
-                    int ga = A.ColInd[jS + aI];
-                    for (int bI = 0; bI < kCount; bI++)
-                    {
-                        int gb = shadow[bI];
-                        floatFSAI.GatherBlockInto(in A, ga, gb, ref Ahat, aI * BR, bI * BR, (float)0);
-                    }
-                }
-
-                // Local least-squares problem: min ‖A_hat^T . g − e_iLocal‖ (A_hat^T is nI x nJ, TALL
-                // since nI >= nJ). Solved directly by tall QR least-squares (avoids the κ² squaring of
-                // the A_hat . A_hat^T normal equations). Tikhonov robustness ladder: attempt 0 solves
-                // the plain problem; a rank-deficient A_hat^T gives QR a zero R diagonal (non-finite g,
-                // unguarded), which is detected and retried with an appended √shift·I row block --
-                // min ‖A_hat^T g − c‖² + shift‖g‖², whose normal equations are exactly the shifted
-                // (A_hat A_hat^T + shift I) g = A_hat c. shift > 0 guarantees full column rank.
-                // Bt = A_hat^T (nI x nJ) built once; the augmented buffers (nI+nJ rows) are refilled
-                // per attempt because QR.solveInPlace destroys its matrix and RHS inputs.
-                int nAug = nI + nJ;
-
-                var Bt = new floatMxN(nI, nJ, Allocator.Temp, true);
-                for (int r = 0; r < nJ; r++)
-                    for (int c = 0; c < nI; c++)
-                        Bt[c, r] = Ahat[r, c];
-
-                var Bwork = new floatMxN(nAug, nJ, Allocator.Temp, true);
-                var Cwork = new floatMxN(nAug, BR, Allocator.Temp, true);
-                var Xwork = new floatMxN(nJ, BR, Allocator.Temp, true);
-
-                float shift = 0;
-                bool rowOk = false;
-                int rowAttempts = 0;
-
-                for (int attempt = 0; attempt < 6; attempt++)
-                {
-                    rowAttempts = attempt + 1;
-
-                    // Bwork = [ A_hat^T ; √shift·I ]  (nAug x nJ).
-                    for (int r = 0; r < nI; r++)
-                        for (int c = 0; c < nJ; c++)
-                            Bwork[r, c] = Bt[r, c];
-                    float sq = math.sqrt(shift);
-                    for (int r = 0; r < nJ; r++)
-                        for (int c = 0; c < nJ; c++)
-                            Bwork[nI + r, c] = (r == c) ? sq : (float)0;
-
-                    // Cwork = [ e_iLocal ; 0 ]  (nAug x BR): an I_BR block at block-row iLocal, else 0.
-                    for (int r = 0; r < nAug; r++)
-                        for (int c = 0; c < BR; c++)
-                            Cwork[r, c] = (float)0;
-                    for (int c = 0; c < BR; c++)
-                        Cwork[iLocal * BR + c, c] = (float)1;
-
-                    // Xwork := g (nJ x BR) == this row of M^T restricted to J_i. Destroys Bwork, Cwork.
-                    QR.solveInPlace(ref Bwork, ref Cwork, ref Xwork);
-
-                    bool finite = true;
-                    for (int r = 0; r < nJ && finite; r++)
-                        for (int c = 0; c < BR; c++)
-                            if (!math.isfinite(Xwork[r, c])) { finite = false; break; }
-
-                    if (finite)
-                    {
-                        for (int aI = 0; aI < m; aI++)
-                        {
-                            int dstOff = (jS + aI) * blockLen;   // M's row-i slots share A's RowPtr layout 1:1
-                            for (int q = 0; q < BR; q++)
-                                for (int p = 0; p < BR; p++)
-                                    mValues[dstOff + q * BR + p] = Xwork[aI * BR + p, q];
-                        }
-
-                        rowOk = true;
-                        break;
-                    }
-
-                    shift = shift == (float)0 ? (float)1e-3 * diagMax : shift * (float)10;
-                }
-
-                Xwork.Dispose();
-                Cwork.Dispose();
-                Bwork.Dispose();
-                Bt.Dispose();
-                Ahat.Dispose();
-
-                if (rowAttempts > worstAttempts) worstAttempts = rowAttempts;
-                if (shift > worstShift) worstShift = shift;
-                if (!rowOk) { ok = false; break; }
-            }
-
-            shadow.Dispose();
-
-            M = Mm;
-            Shift = worstShift;
-
-            info = new PreconditionerInfo
-            {
-                status = ok ? DirectSolveStatus.Success : DirectSolveStatus.Singular,
-                shift = (double)worstShift,
-                attempts = worstAttempts,
-            };
-        }
-
-        /// <summary>Standalone twin of <see cref="floatSPAI(in floatBSR, ref Arena)"/>, allocated
+        /// <summary>Builds SPAI with <see cref="SaiOptions.Default"/>, allocated
         /// from <paramref name="allocator"/>. Dispose the result with <see cref="Dispose"/> -- only
         /// call Dispose on an instance built via an Allocator ctor.</summary>
         public unsafe floatSPAI(in floatBSR a, Allocator allocator)
@@ -279,13 +51,15 @@ namespace LinearAlgebra.Sparse
             }
         }
 
-        /// <summary>Standalone twin of <see cref="floatSPAI(in floatBSR, ref Arena, out PreconditionerInfo)"/>.</summary>
+        /// <summary>Non-throwing build with <see cref="SaiOptions.Default"/>; see the out-info +
+        /// SaiOptions overload for the full contract.</summary>
         public unsafe floatSPAI(in floatBSR a, Allocator allocator, out PreconditionerInfo info)
         {
             this = new floatSPAI(in a, allocator, SaiOptions.Default, out info);
         }
 
-        /// <summary>Standalone twin of <see cref="floatSPAI(in floatBSR, ref Arena, in SaiOptions)"/>.</summary>
+        /// <summary>Builds SPAI with the given <see cref="SaiOptions"/>. Same throw contract as the
+        /// options-less overload.</summary>
         public unsafe floatSPAI(in floatBSR a, Allocator allocator, in SaiOptions opts)
         {
             this = new floatSPAI(in a, allocator, in opts, out PreconditionerInfo info);
@@ -297,13 +71,15 @@ namespace LinearAlgebra.Sparse
         }
 
         /// <summary>
-        /// Standalone twin of <see cref="floatSPAI(in floatBSR, ref Arena, in SaiOptions, out PreconditionerInfo)"/>:
-        /// allocates M from <paramref name="allocator"/> instead of an arena (a Symmetric-storage
-        /// input's mirror-to-full copy is Temp-allocated and disposed before returning -- it is
-        /// setup-only, M holds its own independent copy of the pattern/values). Same throw contract
-        /// (M is allocated and left populated with the failed solve even on breakdown -- Dispose is
-        /// still valid). Only call Dispose on an instance built via an Allocator ctor, never on one
-        /// built via a ref Arena ctor (that instance is arena-owned).
+        /// Non-throwing build: info.status is Success, or Singular when some row's local
+        /// least-squares solve broke down at every Tikhonov shift (the preconditioner is then
+        /// unusable -- do not Apply); info also carries the worst rescuing shift and the worst
+        /// attempts consumed by any single row. Caller-contract violations (non-square, missing
+        /// diagonal block, opts.patternPower != 1) still throw. Allocates M from
+        /// <paramref name="allocator"/> (a Symmetric-storage input's mirror-to-full copy is
+        /// Temp-allocated and disposed before returning -- it is setup-only, M holds its own
+        /// independent copy of the pattern/values); M is allocated and left populated with the
+        /// failed solve even on breakdown -- Dispose is still valid.
         /// </summary>
         public unsafe floatSPAI(in floatBSR a, Allocator allocator, in SaiOptions opts, out PreconditionerInfo info)
         {
@@ -480,8 +256,7 @@ namespace LinearAlgebra.Sparse
             };
         }
 
-        /// <summary>Disposes M. Only call on an instance built via an Allocator ctor -- an instance
-        /// built via a ref Arena ctor is arena-owned and must not be disposed directly.</summary>
+        /// <summary>Disposes M.</summary>
         public unsafe void Dispose() => M.Dispose();
 
         /// <summary>z = M r: one BSR spMV. z must not alias r.</summary>

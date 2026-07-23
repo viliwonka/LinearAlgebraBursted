@@ -152,8 +152,8 @@ namespace LinearAlgebra.Gallery
                 }
             }
 
-            // See fProxyRandomSparseSPD's standalone twin for why the ref-dest Blas.dot primitive
-            // (manually preallocated Di) replaces the OwnerArena-based convenience overload here.
+            // See fProxyRandomSparseSPD for why the ref-dest Blas.dot primitive (manually
+            // preallocated Di) is used here instead of the allocating convenience overload.
             var Mi = new fProxyMxN(BR, BR, Allocator.Temp);
             var Di = new fProxyMxN(BR, BR, Allocator.Temp, true);
             for (int i = 0; i < diagCount; i++)

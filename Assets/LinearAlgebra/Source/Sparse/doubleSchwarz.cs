@@ -19,135 +19,16 @@ namespace LinearAlgebra.Sparse
     internal static class doubleSchwarzShared
     {
         /// <summary>
-        /// Builds the subdomain topology into fresh arena buffers. Partitions block-rows
-        /// 0..BlockRows-1 into K contiguous ranges of blocksPerSub = max(1, subdomainSize/BR) blocks,
-        /// then extends each by opts.overlap adjacency layers. Returns the effective full-storage A
-        /// to gather values from (a transient arena mirror for Symmetric-storage input, else A
-        /// itself). Throws if A is not square (BlockRows==BlockCols, BR==BC).
-        /// </summary>
-        internal static doubleBSR BuildTopology(in doubleBSR a, ref Arena arena, in SchwarzOptions opts,
-            out Indices subStart, out Indices subBlocks, out Indices ownedLo, out Indices ownedHi,
-            out int K, out int maxBlocks)
-        {
-            if (a.BlockRows != a.BlockCols || a.BR != a.BC)
-                throw new ArgumentException("doubleSchwarz: A must be square (BlockRows==BlockCols, BR==BC)");
-
-            doubleBSR A = a.Symmetric ? arena.doubleBSRMirrorToFull(in a) : a;
-
-            int nb = A.BlockRows;
-            int BR = A.BR;
-
-            int blocksPerSub = math.max(1, opts.subdomainSize / BR);
-            K = (nb + blocksPerSub - 1) / blocksPerSub;
-            int delta = math.max(0, opts.overlap);
-
-            ownedLo = arena.Indices(K);
-            ownedHi = arena.Indices(K);
-            subStart = arena.Indices(K + 1);
-            for (int i = 0; i < K; i++)
-            {
-                int lo = i * blocksPerSub;
-                int hi = math.min((i + 1) * blocksPerSub, nb);
-                ownedLo[i] = lo;
-                ownedHi[i] = hi;
-            }
-
-            // Transient symmetrized adjacency: A's own block pattern (out-neighbors) plus its
-            // transpose (in-neighbors). Duplicate edges are harmless -- the BFS mark dedups.
-            var tPtr = new NativeArray<int>(nb + 1, Allocator.Temp, NativeArrayOptions.ClearMemory);
-            int nnzb = A.Nnzb;
-            var tIdx = new NativeArray<int>(nnzb, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
-            {
-                var aRowPtr = A.RowPtr; var aColInd = A.ColInd;
-                for (int k = 0; k < nnzb; k++) tPtr[aColInd[k] + 1]++;
-                for (int c = 0; c < nb; c++) tPtr[c + 1] += tPtr[c];
-                var fill = new NativeArray<int>(nb, Allocator.Temp, NativeArrayOptions.ClearMemory);
-                for (int r = 0; r < nb; r++)
-                {
-                    int s = aRowPtr[r], e = aRowPtr[r + 1];
-                    for (int k = s; k < e; k++)
-                    {
-                        int c = aColInd[k];
-                        tIdx[tPtr[c] + fill[c]] = r;
-                        fill[c]++;
-                    }
-                }
-                fill.Dispose();
-            }
-
-            // Multi-source BFS per subdomain, bounded to delta layers. mark[g]==stamp marks members;
-            // dist[g] the layer (trusted only when mark[g]==stamp).
-            var mark = new NativeArray<int>(nb, Allocator.Temp, NativeArrayOptions.ClearMemory);
-            var dist = new NativeArray<int>(nb, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
-            var queue = new UnsafeList<int>(math.max(1, blocksPerSub), Allocator.Temp);
-            var allMembers = new UnsafeList<int>(math.max(1, nb), Allocator.Temp);
-
-            var aRp = A.RowPtr; var aCi = A.ColInd;
-            maxBlocks = 0;
-            subStart[0] = 0;
-            for (int i = 0; i < K; i++)
-            {
-                int stamp = i + 1;
-                queue.Clear();
-                int lo = ownedLo[i], hi = ownedHi[i];
-                for (int g = lo; g < hi; g++)
-                {
-                    mark[g] = stamp;
-                    dist[g] = 0;
-                    queue.Add(g);
-                }
-
-                int head = 0;
-                while (head < queue.Length)
-                {
-                    int r = queue[head++];
-                    int d = dist[r];
-                    if (d >= delta) continue;
-
-                    int s = aRp[r], e = aRp[r + 1];
-                    for (int k = s; k < e; k++)
-                    {
-                        int j = aCi[k];
-                        if (mark[j] != stamp) { mark[j] = stamp; dist[j] = d + 1; queue.Add(j); }
-                    }
-                    int ts = tPtr[r], te = tPtr[r + 1];
-                    for (int k = ts; k < te; k++)
-                    {
-                        int j = tIdx[k];
-                        if (mark[j] != stamp) { mark[j] = stamp; dist[j] = d + 1; queue.Add(j); }
-                    }
-                }
-
-                // Collect members ascending (canonical local order) by scanning the whole index space.
-                int count = 0;
-                for (int g = 0; g < nb; g++)
-                    if (mark[g] == stamp) { allMembers.Add(g); count++; }
-
-                subStart[i + 1] = subStart[i] + count;
-                if (count > maxBlocks) maxBlocks = count;
-            }
-
-            subBlocks = arena.Indices(allMembers.Length);
-            for (int t = 0; t < allMembers.Length; t++) subBlocks[t] = allMembers[t];
-
-            allMembers.Dispose();
-            queue.Dispose();
-            dist.Dispose();
-            mark.Dispose();
-            tIdx.Dispose();
-            tPtr.Dispose();
-
-            return A;
-        }
-
-        /// <summary>
-        /// Standalone twin of <see cref="BuildTopology(in doubleBSR, ref Arena, in SchwarzOptions, out Indices, out Indices, out Indices, out Indices, out int, out int)"/>:
-        /// allocates SubStart/SubBlocks/OwnedLo/OwnedHi from <paramref name="allocator"/> instead of
-        /// an arena; a Symmetric-storage input's mirror-to-full copy is Temp-allocated. Because the
-        /// mirror (when made) is still used by the caller after this returns (to gather subdomain
-        /// values), disposal is the CALLER's responsibility: <paramref name="ownsA"/> reports whether
-        /// the returned matrix must be disposed once the caller is done reading it (true = freshly
-        /// mirrored, false = aliases the caller's own input matrix `a`).
+        /// Builds the subdomain topology, allocating SubStart/SubBlocks/OwnedLo/OwnedHi from
+        /// <paramref name="allocator"/>. Partitions block-rows 0..BlockRows-1 into K contiguous
+        /// ranges of blocksPerSub = max(1, subdomainSize/BR) blocks, then extends each by
+        /// opts.overlap adjacency layers. Returns the effective full-storage A to gather values
+        /// from (a transient Temp-allocated mirror for Symmetric-storage input, else A itself).
+        /// Because the mirror (when made) is still used by the caller after this returns (to
+        /// gather subdomain values), disposal is the CALLER's responsibility: <paramref name="ownsA"/>
+        /// reports whether the returned matrix must be disposed once the caller is done reading it
+        /// (true = freshly mirrored, false = aliases the caller's own input matrix `a`). Throws if
+        /// A is not square (BlockRows==BlockCols, BR==BC).
         /// </summary>
         internal static doubleBSR BuildTopology(in doubleBSR a, Allocator allocator, in SchwarzOptions opts,
             out Indices subStart, out Indices subBlocks, out Indices ownedLo, out Indices ownedHi,
@@ -334,11 +215,9 @@ namespace LinearAlgebra.Sparse
     /// (1e-3*diagMax, x10, up to 6 attempts); the worst shift used is in <see cref="Shift"/>.
     /// Cached-factor memory is O(N * overlapFactor^2 * subdomainSize) -- see
     /// <see cref="SchwarzOptions"/>. Symmetric-storage A is mirrored to full transiently at setup
-    /// (A is read only at setup, never at Apply). Built via a ref Arena ctor, every owned buffer is
-    /// arena-tracked and the arena owns disposal -- do not call Dispose() on that instance. Built
-    /// via an Allocator ctor, this instance owns those buffers standalone and Dispose() must be
-    /// called when done. A single instance is not safe for concurrent Apply (the local scratch is
-    /// shared).
+    /// (A is read only at setup, never at Apply). This instance owns every buffer standalone and
+    /// Dispose() must be called when done. A single instance is not safe for concurrent Apply (the
+    /// local scratch is shared).
     /// </summary>
     public readonly struct doubleAdditiveSchwarz : IdoublePreconditioner, IDisposable
     {
@@ -366,131 +245,10 @@ namespace LinearAlgebra.Sparse
 
         public int Rows => BlockRows * BR;
 
-        /// <summary>Builds AS with <see cref="SchwarzOptions.Default"/>. Throws if A is not square or
-        /// if a local factor breaks down at every diagonal shift; use the out-info overload for a
-        /// non-throwing build.</summary>
-        public doubleAdditiveSchwarz(in doubleBSR a, ref Arena arena)
-        {
-            this = new doubleAdditiveSchwarz(in a, ref arena, out PreconditionerInfo info);
-            if (!info.Solved)
-                throw new ArgumentException("doubleAdditiveSchwarz: a local factor broke down at every diagonal shift — is A symmetric positive definite?");
-        }
-
-        /// <summary>Non-throwing build with <see cref="SchwarzOptions.Default"/>.</summary>
-        public doubleAdditiveSchwarz(in doubleBSR a, ref Arena arena, out PreconditionerInfo info)
-        {
-            this = new doubleAdditiveSchwarz(in a, ref arena, SchwarzOptions.Default, out info);
-        }
-
-        /// <summary>Builds AS with the given options. Same throw contract as the options-less
-        /// overload.</summary>
-        public doubleAdditiveSchwarz(in doubleBSR a, ref Arena arena, in SchwarzOptions opts)
-        {
-            this = new doubleAdditiveSchwarz(in a, ref arena, in opts, out PreconditionerInfo info);
-            if (!info.Solved)
-                throw new ArgumentException("doubleAdditiveSchwarz: a local factor broke down at every diagonal shift — is A symmetric positive definite?");
-        }
-
-        /// <summary>
-        /// Non-throwing build: info.status is Success, or NotPositiveDefinite when some subdomain's
-        /// local Cholesky broke down at every diagonal shift (the preconditioner is then unusable --
-        /// do not Apply); info also carries the worst rescuing shift and the worst attempts across
-        /// subdomains. A non-square A still throws.
-        /// </summary>
-        public doubleAdditiveSchwarz(in doubleBSR a, ref Arena arena, in SchwarzOptions opts, out PreconditionerInfo info)
-        {
-            // Everything computed into locals; all readonly fields assigned once at the end (avoids
-            // reading a not-yet-fully-assigned `this` in the struct ctor).
-            doubleBSR A = doubleSchwarzShared.BuildTopology(in a, ref arena, in opts,
-                out Indices subStart, out Indices subBlocks, out Indices ownedLo, out Indices ownedHi,
-                out int k, out int maxBlocks);
-
-            int br = A.BR;
-            int maxLocalN = maxBlocks * br;
-
-            var factorStart = arena.Indices(k + 1);
-            factorStart[0] = 0;
-            for (int i = 0; i < k; i++)
-            {
-                int nn = (subStart[i + 1] - subStart[i]) * br;
-                factorStart[i + 1] = factorStart[i] + nn * nn;
-            }
-            var factors = arena.doubleVec(factorStart[k]);
-            var scratch = arena.doubleVec(math.max(1, maxLocalN), true);
-
-            double diagMax = doubleSchwarzShared.DiagMax(in A);
-
-            double worstShift = 0;
-            int worstAttempts = 1;
-            bool ok = true;
-
-            for (int i = 0; i < k; i++)
-            {
-                int start = subStart[i];
-                int count = subStart[i + 1] - start;
-                int n = count * br;
-                int fbase = factorStart[i];
-
-                var M = new doubleMxN(n, n, Allocator.Temp, true);
-                double shift = 0;
-                bool subOk = false;
-                int subAttempts = 0;
-
-                for (int attempt = 0; attempt < 6; attempt++)
-                {
-                    subAttempts = attempt + 1;
-                    for (int aI = 0; aI < count; aI++)
-                    {
-                        int gr = subBlocks[start + aI];
-                        for (int bI = 0; bI <= aI; bI++)
-                        {
-                            int gc = subBlocks[start + bI];
-                            doubleSchwarzShared.GatherBlock(in A, gr, gc, ref M, aI * br, bI * br, aI == bI ? shift : (double)0, br);
-                        }
-                    }
-
-                    var chInfo = CHO.decompInPlace(ref M);
-                    if (chInfo.Solved)
-                    {
-                        var md = M.Data;
-                        for (int t = 0; t < n * n; t++) factors[fbase + t] = md[t];
-                        subOk = true;
-                        break;
-                    }
-                    shift = shift == (double)0 ? (double)1e-3 * diagMax : shift * (double)10;
-                }
-
-                M.Dispose();
-
-                if (subAttempts > worstAttempts) worstAttempts = subAttempts;
-                if (shift > worstShift) worstShift = shift;
-                if (!subOk) { ok = false; break; }
-            }
-
-            SubStart = subStart;
-            SubBlocks = subBlocks;
-            OwnedLo = ownedLo;
-            OwnedHi = ownedHi;
-            FactorStart = factorStart;
-            Factors = factors;
-            Scratch = scratch;
-            Shift = worstShift;
-            BlockRows = A.BlockRows;
-            BR = br;
-            K = k;
-            MaxLocalN = maxLocalN;
-
-            info = new PreconditionerInfo
-            {
-                status = ok ? DirectSolveStatus.Success : DirectSolveStatus.NotPositiveDefinite,
-                shift = (double)worstShift,
-                attempts = worstAttempts,
-            };
-        }
-
-        /// <summary>Standalone twin of <see cref="doubleAdditiveSchwarz(in doubleBSR, ref Arena)"/>,
-        /// allocated from <paramref name="allocator"/>. Dispose the result with
-        /// <see cref="Dispose"/> -- only call Dispose on an instance built via an Allocator ctor.</summary>
+        /// <summary>Builds AS with <see cref="SchwarzOptions.Default"/>, allocated from
+        /// <paramref name="allocator"/>. Throws if A is not square or if a local factor breaks down
+        /// at every diagonal shift; use the out-info overload for a non-throwing build. Dispose the
+        /// result with <see cref="Dispose"/>.</summary>
         public unsafe doubleAdditiveSchwarz(in doubleBSR a, Allocator allocator)
         {
             this = new doubleAdditiveSchwarz(in a, allocator, out PreconditionerInfo info);
@@ -501,13 +259,14 @@ namespace LinearAlgebra.Sparse
             }
         }
 
-        /// <summary>Standalone twin of <see cref="doubleAdditiveSchwarz(in doubleBSR, ref Arena, out PreconditionerInfo)"/>.</summary>
+        /// <summary>Non-throwing build with <see cref="SchwarzOptions.Default"/>.</summary>
         public unsafe doubleAdditiveSchwarz(in doubleBSR a, Allocator allocator, out PreconditionerInfo info)
         {
             this = new doubleAdditiveSchwarz(in a, allocator, SchwarzOptions.Default, out info);
         }
 
-        /// <summary>Standalone twin of <see cref="doubleAdditiveSchwarz(in doubleBSR, ref Arena, in SchwarzOptions)"/>.</summary>
+        /// <summary>Builds AS with the given options. Same throw contract as the options-less
+        /// overload.</summary>
         public unsafe doubleAdditiveSchwarz(in doubleBSR a, Allocator allocator, in SchwarzOptions opts)
         {
             this = new doubleAdditiveSchwarz(in a, allocator, in opts, out PreconditionerInfo info);
@@ -519,11 +278,12 @@ namespace LinearAlgebra.Sparse
         }
 
         /// <summary>
-        /// Standalone twin of <see cref="doubleAdditiveSchwarz(in doubleBSR, ref Arena, in SchwarzOptions, out PreconditionerInfo)"/>:
-        /// allocates every owned buffer from <paramref name="allocator"/> instead of an arena. Same
-        /// throw contract (buffers are allocated and left populated with the failed factorization
-        /// even on breakdown -- Dispose is still valid). Only call Dispose on an instance built via
-        /// an Allocator ctor, never on one built via a ref Arena ctor (that instance is arena-owned).
+        /// Non-throwing build: info.status is Success, or NotPositiveDefinite when some subdomain's
+        /// local Cholesky broke down at every diagonal shift (the preconditioner is then unusable --
+        /// do not Apply); info also carries the worst rescuing shift and the worst attempts across
+        /// subdomains. A non-square A still throws. Allocates every owned buffer from
+        /// <paramref name="allocator"/> (buffers are allocated and left populated with the failed
+        /// factorization even on breakdown -- Dispose is still valid).
         /// </summary>
         public unsafe doubleAdditiveSchwarz(in doubleBSR a, Allocator allocator, in SchwarzOptions opts, out PreconditionerInfo info)
         {
@@ -616,9 +376,7 @@ namespace LinearAlgebra.Sparse
             };
         }
 
-        /// <summary>Disposes SubStart/SubBlocks/OwnedLo/OwnedHi/FactorStart/Factors/Scratch. Only
-        /// call on an instance built via an Allocator ctor -- an instance built via a ref Arena ctor
-        /// is arena-owned and must not be disposed directly.</summary>
+        /// <summary>Disposes SubStart/SubBlocks/OwnedLo/OwnedHi/FactorStart/Factors/Scratch.</summary>
         public unsafe void Dispose()
         {
             SubStart.Dispose();
@@ -712,10 +470,9 @@ namespace LinearAlgebra.Sparse
     /// general square A) and reused by every Apply. A numerically singular local block reports
     /// Singular via the out-info twin (no diagonal-shift retry -- RAS targets general A). Cached-
     /// factor memory is O(N * overlapFactor^2 * subdomainSize) -- see <see cref="SchwarzOptions"/>.
-    /// Symmetric-storage A is mirrored to full transiently at setup. Built via a ref Arena ctor,
-    /// every owned buffer is arena-tracked and the arena owns disposal -- do not call Dispose() on
-    /// that instance. Built via an Allocator ctor, this instance owns those buffers standalone and
-    /// Dispose() must be called when done. A single instance is not safe for concurrent Apply.
+    /// Symmetric-storage A is mirrored to full transiently at setup. This instance owns every
+    /// buffer standalone and Dispose() must be called when done. A single instance is not safe for
+    /// concurrent Apply.
     /// </summary>
     public readonly struct doubleRestrictedSchwarz : IdoublePreconditioner, IDisposable
     {
@@ -747,58 +504,66 @@ namespace LinearAlgebra.Sparse
 
         public int Rows => BlockRows * BR;
 
-        /// <summary>Builds RAS with <see cref="SchwarzOptions.Default"/>. Throws if A is not square or
-        /// if a local LU is singular; use the out-info overload for a non-throwing build.</summary>
-        public doubleRestrictedSchwarz(in doubleBSR a, ref Arena arena)
+        /// <summary>Builds RAS with <see cref="SchwarzOptions.Default"/>, allocated from
+        /// <paramref name="allocator"/>. Throws if A is not square or if a local LU is singular;
+        /// use the out-info overload for a non-throwing build. Dispose the result with
+        /// <see cref="Dispose"/>.</summary>
+        public unsafe doubleRestrictedSchwarz(in doubleBSR a, Allocator allocator)
         {
-            this = new doubleRestrictedSchwarz(in a, ref arena, out PreconditionerInfo info);
+            this = new doubleRestrictedSchwarz(in a, allocator, out PreconditionerInfo info);
             if (!info.Solved)
+            {
+                Dispose();
                 throw new ArgumentException("doubleRestrictedSchwarz: a local LU factor is numerically singular");
+            }
         }
 
         /// <summary>Non-throwing build with <see cref="SchwarzOptions.Default"/>.</summary>
-        public doubleRestrictedSchwarz(in doubleBSR a, ref Arena arena, out PreconditionerInfo info)
+        public unsafe doubleRestrictedSchwarz(in doubleBSR a, Allocator allocator, out PreconditionerInfo info)
         {
-            this = new doubleRestrictedSchwarz(in a, ref arena, SchwarzOptions.Default, out info);
+            this = new doubleRestrictedSchwarz(in a, allocator, SchwarzOptions.Default, out info);
         }
 
         /// <summary>Builds RAS with the given options. Same throw contract as the options-less
         /// overload.</summary>
-        public doubleRestrictedSchwarz(in doubleBSR a, ref Arena arena, in SchwarzOptions opts)
+        public unsafe doubleRestrictedSchwarz(in doubleBSR a, Allocator allocator, in SchwarzOptions opts)
         {
-            this = new doubleRestrictedSchwarz(in a, ref arena, in opts, out PreconditionerInfo info);
+            this = new doubleRestrictedSchwarz(in a, allocator, in opts, out PreconditionerInfo info);
             if (!info.Solved)
+            {
+                Dispose();
                 throw new ArgumentException("doubleRestrictedSchwarz: a local LU factor is numerically singular");
+            }
         }
 
         /// <summary>
         /// Non-throwing build: info.status is Success, or Singular when some subdomain's local LU
         /// hits a zero pivot (the preconditioner is then unusable -- do not Apply). shift is always 0
         /// and attempts always 1 (RAS does not retry with a diagonal shift). A non-square A still
-        /// throws.
+        /// throws. Allocates every owned buffer from <paramref name="allocator"/> (buffers are
+        /// allocated and left populated with the failed factorization even on breakdown -- Dispose
+        /// is still valid).
         /// </summary>
-        public doubleRestrictedSchwarz(in doubleBSR a, ref Arena arena, in SchwarzOptions opts, out PreconditionerInfo info)
+        public unsafe doubleRestrictedSchwarz(in doubleBSR a, Allocator allocator, in SchwarzOptions opts, out PreconditionerInfo info)
         {
-            // Everything computed into locals; all readonly fields assigned once at the end (avoids
-            // reading a not-yet-fully-assigned `this` in the struct ctor).
-            doubleBSR A = doubleSchwarzShared.BuildTopology(in a, ref arena, in opts,
+            doubleBSR A = doubleSchwarzShared.BuildTopology(in a, allocator, in opts,
                 out Indices subStart, out Indices subBlocks, out Indices ownedLo, out Indices ownedHi,
-                out int k, out int maxBlocks);
+                out int k, out int maxBlocks, out bool ownsA);
 
             int br = A.BR;
             int maxLocalN = maxBlocks * br;
 
-            var factorStart = arena.Indices(k + 1);
+            var factorStart = new Indices(k + 1, allocator);
             factorStart[0] = 0;
             for (int i = 0; i < k; i++)
             {
                 int nn = (subStart[i + 1] - subStart[i]) * br;
                 factorStart[i + 1] = factorStart[i] + nn * nn;
             }
-            var factors = arena.doubleVec(factorStart[k]);
-            var piv = arena.Indices(subStart[k] * br);
-            var scratch = arena.doubleVec(math.max(1, maxLocalN), true);
-            var scratch2 = arena.doubleVec(math.max(1, maxLocalN), true);
+            var factors = new doubleN(factorStart[k], allocator);
+            var piv = new Indices(subStart[k] * br, allocator);
+            var scratch = new doubleN(math.max(1, maxLocalN), allocator, true);
+            var scratch2 = new doubleN(math.max(1, maxLocalN), allocator, true);
 
             bool ok = true;
             for (int i = 0; i < k; i++)
@@ -854,125 +619,6 @@ namespace LinearAlgebra.Sparse
             K = k;
             MaxLocalN = maxLocalN;
 
-            info = new PreconditionerInfo
-            {
-                status = ok ? DirectSolveStatus.Success : DirectSolveStatus.Singular,
-                shift = 0,
-                attempts = 1,
-            };
-        }
-
-        /// <summary>Standalone twin of <see cref="doubleRestrictedSchwarz(in doubleBSR, ref Arena)"/>,
-        /// allocated from <paramref name="allocator"/>. Dispose the result with
-        /// <see cref="Dispose"/> -- only call Dispose on an instance built via an Allocator ctor.</summary>
-        public unsafe doubleRestrictedSchwarz(in doubleBSR a, Allocator allocator)
-        {
-            this = new doubleRestrictedSchwarz(in a, allocator, out PreconditionerInfo info);
-            if (!info.Solved)
-            {
-                Dispose();
-                throw new ArgumentException("doubleRestrictedSchwarz: a local LU factor is numerically singular");
-            }
-        }
-
-        /// <summary>Standalone twin of <see cref="doubleRestrictedSchwarz(in doubleBSR, ref Arena, out PreconditionerInfo)"/>.</summary>
-        public unsafe doubleRestrictedSchwarz(in doubleBSR a, Allocator allocator, out PreconditionerInfo info)
-        {
-            this = new doubleRestrictedSchwarz(in a, allocator, SchwarzOptions.Default, out info);
-        }
-
-        /// <summary>Standalone twin of <see cref="doubleRestrictedSchwarz(in doubleBSR, ref Arena, in SchwarzOptions)"/>.</summary>
-        public unsafe doubleRestrictedSchwarz(in doubleBSR a, Allocator allocator, in SchwarzOptions opts)
-        {
-            this = new doubleRestrictedSchwarz(in a, allocator, in opts, out PreconditionerInfo info);
-            if (!info.Solved)
-            {
-                Dispose();
-                throw new ArgumentException("doubleRestrictedSchwarz: a local LU factor is numerically singular");
-            }
-        }
-
-        /// <summary>
-        /// Standalone twin of <see cref="doubleRestrictedSchwarz(in doubleBSR, ref Arena, in SchwarzOptions, out PreconditionerInfo)"/>:
-        /// allocates every owned buffer from <paramref name="allocator"/> instead of an arena. Same
-        /// throw contract (buffers are allocated and left populated with the failed factorization
-        /// even on breakdown -- Dispose is still valid). Only call Dispose on an instance built via
-        /// an Allocator ctor, never on one built via a ref Arena ctor (that instance is arena-owned).
-        /// </summary>
-        public unsafe doubleRestrictedSchwarz(in doubleBSR a, Allocator allocator, in SchwarzOptions opts, out PreconditionerInfo info)
-        {
-            doubleBSR A = doubleSchwarzShared.BuildTopology(in a, allocator, in opts,
-                out Indices subStart, out Indices subBlocks, out Indices ownedLo, out Indices ownedHi,
-                out int k, out int maxBlocks, out bool ownsA);
-
-            int br = A.BR;
-            int maxLocalN = maxBlocks * br;
-
-            var factorStart = new Indices(k + 1, allocator);
-            factorStart[0] = 0;
-            for (int i = 0; i < k; i++)
-            {
-                int nn = (subStart[i + 1] - subStart[i]) * br;
-                factorStart[i + 1] = factorStart[i] + nn * nn;
-            }
-            var factors = new doubleN(factorStart[k], allocator);
-            var piv = new Indices(subStart[k] * br, allocator);
-            var scratch = new doubleN(math.max(1, maxLocalN), allocator, true);
-            var scratch2 = new doubleN(math.max(1, maxLocalN), allocator, true);
-
-            bool ok = true;
-            for (int i = 0; i < k; i++)
-            {
-                int start = subStart[i];
-                int count = subStart[i + 1] - start;
-                int n = count * br;
-                int fbase = factorStart[i];
-                int pbase = start * br;
-
-                var M = new doubleMxN(n, n, Allocator.Temp, true);
-                for (int aI = 0; aI < count; aI++)
-                {
-                    int gr = subBlocks[start + aI];
-                    for (int bI = 0; bI < count; bI++)
-                    {
-                        int gc = subBlocks[start + bI];
-                        doubleSchwarzShared.GatherBlock(in A, gr, gc, ref M, aI * br, bI * br, (double)0, br);
-                    }
-                }
-
-                var P = new Pivot(n, Allocator.Temp);
-                var luInfo = LU.decompInPlace(ref M, ref P);
-                if (luInfo.Solved)
-                {
-                    for (int rr = 0; rr < n; rr++)
-                    {
-                        int pr = P[rr];
-                        piv[pbase + rr] = pr;
-                        int dst = fbase + rr * n;
-                        for (int c = 0; c < n; c++) factors[dst + c] = M[pr, c];
-                    }
-                }
-                else ok = false;
-
-                P.Dispose();
-                M.Dispose();
-                if (!ok) break;
-            }
-
-            SubStart = subStart;
-            SubBlocks = subBlocks;
-            OwnedLo = ownedLo;
-            OwnedHi = ownedHi;
-            FactorStart = factorStart;
-            Factors = factors;
-            Piv = piv;
-            Scratch = scratch;
-            Scratch2 = scratch2;
-            BlockRows = A.BlockRows;
-            BR = br;
-            K = k;
-            MaxLocalN = maxLocalN;
-
             if (ownsA) A.Dispose();
 
             info = new PreconditionerInfo
@@ -984,8 +630,7 @@ namespace LinearAlgebra.Sparse
         }
 
         /// <summary>Disposes SubStart/SubBlocks/OwnedLo/OwnedHi/FactorStart/Factors/Piv/Scratch/
-        /// Scratch2. Only call on an instance built via an Allocator ctor -- an instance built via a
-        /// ref Arena ctor is arena-owned and must not be disposed directly.</summary>
+        /// Scratch2.</summary>
         public unsafe void Dispose()
         {
             SubStart.Dispose();

@@ -9,8 +9,8 @@ namespace LinearAlgebra
     /// <summary>
     /// Periodic wave functors (each : IdoubleScalarFunction) for building wavetables / LFOs. Eval(t)
     /// treats t∈[0,1] as <c>Cycles</c> full periods (Phase shifts the start). Output range is [-1,1].
-    /// Bake a table with <c>var w = new doubleWave.Sine{Cycles=1}; Generate.sample(ref w, ref dest);</c>
-    /// or <c>arena.doubleSample(ref w, n)</c>. double-only.
+    /// Bake a table with <c>var w = new doubleWave.Sine{Cycles=1}; Generate.sample(ref w, ref dest);</c>.
+    /// double-only.
     ///
     /// Default-construction convenience: a <c>Cycles</c> of 0 is treated as 1 (and Square's <c>Duty</c>
     /// of 0 as 0.5) so that <c>new doubleWave.Sine()</c> is a usable 1-cycle wave rather than a flat

@@ -104,10 +104,9 @@ namespace LinearAlgebra.Sparse
     /// Accepts either Symmetric (lower-block-only) or full storage -- <see cref="BSR.spMV"/>
     /// handles both natively, so unlike <see cref="fProxySSOR"/> no mirror-to-full copy is needed.
     ///
-    /// Built via a ref Arena ctor, InvDiag/Scratch1-3 are arena-tracked and the arena owns disposal
-    /// -- do not call Dispose() on that instance. Built via an Allocator ctor, this instance owns
-    /// those buffers standalone and Dispose() must be called when done (A itself is never owned --
-    /// see Dispose()'s own doc). All fields are readonly, set once at construction: IJob-struct-copy-safe.
+    /// This instance owns InvDiag/Scratch1-3 standalone and Dispose() must be called when done (A
+    /// itself is never owned -- see Dispose()'s own doc). All fields are readonly, set once at
+    /// construction: IJob-struct-copy-safe.
     /// </summary>
     public readonly struct fProxyChebyshev : IfProxyPreconditioner, IDisposable
     {
@@ -134,108 +133,14 @@ namespace LinearAlgebra.Sparse
         /// <summary>
         /// Builds InvDiag, then Hi/Lo from a Lanczos run on the symmetrically-scaled operator (the
         /// step count is clamped to A.Rows, so a system smaller than opt.eigSteps builds fine), then
-        /// the Chebyshev recurrence coefficients. Throws ArgumentException if A is not square
-        /// (BlockRows==BlockCols, BR==BC), a diagonal block is missing, any scalar diagonal entry
-        /// A[i,i] &lt;= 0, the Lanczos eigen-estimate fails to converge or yields a non-positive
-        /// largest eigenvalue ("is A symmetric positive definite?"), opt.degree &lt; 1, opt.kappa
-        /// &lt;= 1, opt.eigSteps &lt; 1, or opt.safety &lt; 1.
-        /// </summary>
-        public fProxyChebyshev(in fProxyBSR a, in fProxyChebyshevOptions opt, ref Arena arena)
-        {
-            if (a.BlockRows != a.BlockCols || a.BR != a.BC)
-                throw new ArgumentException("fProxyChebyshev: A must be square (BlockRows==BlockCols, BR==BC)");
-            if (opt.degree < 1)
-                throw new ArgumentException("fProxyChebyshev: opt.degree must be >= 1");
-            if (!(opt.kappa > (fProxy)1))
-                throw new ArgumentException("fProxyChebyshev: opt.kappa must be > 1");
-            if (opt.eigSteps < 1)
-                throw new ArgumentException("fProxyChebyshev: opt.eigSteps must be >= 1");
-            if (!(opt.safety >= (fProxy)1))
-                throw new ArgumentException("fProxyChebyshev: opt.safety must be >= 1");
-
-            A = a;
-            int n = a.M_Rows;
-            int BR = a.BR;
-            int blockLen = BR * BR;
-
-            // ---- InvDiag: 1 / A[i,i] over the stored scalar diagonal (both storage modes store
-            // the diagonal block) -- same block-row scan fProxySSOR's ctor uses to find it. ----
-            var invDiag = arena.fProxyVec(n);
-            for (int i = 0; i < a.BlockRows; i++)
-            {
-                int s = a.RowPtr[i], e = a.RowPtr[i + 1];
-                int found = -1;
-                for (int k = s; k < e; k++)
-                {
-                    int col = a.ColInd[k];
-                    if (col == i) { found = k; break; }
-                    if (col > i) break;
-                }
-                if (found < 0)
-                    throw new ArgumentException("fProxyChebyshev: missing diagonal block in A");
-
-                int off = found * blockLen;
-                int rowBase = i * BR;
-                for (int r = 0; r < BR; r++)
-                {
-                    fProxy dv = a.Values[off + r * BR + r];
-                    if (!(dv > (fProxy)0))
-                        throw new ArgumentException("fProxyChebyshev: A has a non-positive diagonal entry -- is A symmetric positive definite?");
-                    invDiag[rowBase + r] = (fProxy)1 / dv;
-                }
-            }
-            InvDiag = invDiag;
-
-            // ---- Hi/Lo: safety * lambdaMax(D^-1 A), via a pinned Lanczos run on the
-            // symmetrically-scaled S.A.S, S = D^(-1/2) (same spectrum as D^-1 A, symmetric). ----
-            var invSqrtD = arena.fProxyVec(n);
-            for (int i = 0; i < n; i++)
-                invSqrtD[i] = math.sqrt(invDiag[i]);
-            var scaledScratch = arena.fProxyVec(n);
-            var scaledOp = new fProxyJacobiScaledBSROperator(in A, in invSqrtD, in scaledScratch);
-
-            // Lanczos needs steps in [1, n]; clamp so a system smaller than opt.eigSteps still
-            // builds (fewer steps only coarsens the estimate, never invalidates it).
-            int eigSteps = math.min(opt.eigSteps, n);
-            var ws = arena.fProxyLanczosCache(n, eigSteps);
-            var ritz = arena.fProxyVec(eigSteps);
-            var lInfo = Eigen.lanczos(in scaledOp, ref ws, ref ritz, eigSteps);
-
-            fProxy lambdaMax = ritz[0];
-            for (int i = 1; i < lInfo.produced; i++)
-                if (ritz[i] > lambdaMax) lambdaMax = ritz[i];
-
-            // A failed eigen-estimate (non-converged Lanczos, or a non-positive largest eigenvalue)
-            // makes Hi/Sigma garbage and the induced M^-1 indefinite/NaN -- signal a bad SPD build.
-            if (!(lInfo.status == IterativeSolveStatus.Converged) || !(lambdaMax > (fProxy)0))
-                throw new ArgumentException("fProxyChebyshev: Lanczos produced no positive largest-eigenvalue estimate for D^-1 A -- is A symmetric positive definite? (raise opt.eigSteps or check A)");
-
-            fProxy hi = opt.safety * lambdaMax;
-            fProxy lo = hi / opt.kappa;
-            Hi = hi;
-            Lo = lo;
-
-            Theta = (hi + lo) / (fProxy)2;
-            Delta = (hi - lo) / (fProxy)2;
-            Sigma = Theta / Delta;
-
-            Degree = opt.degree;
-
-            Scratch1 = arena.fProxyVec(n);
-            Scratch2 = arena.fProxyVec(n);
-            Scratch3 = arena.fProxyVec(n);
-        }
-
-        /// <summary>fProxyChebyshev with fProxyChebyshevOptions.Default (degree=3, kappa=30, eigSteps=10, safety=1.1).</summary>
-        public fProxyChebyshev(in fProxyBSR a, ref Arena arena) : this(in a, fProxyChebyshevOptions.Default, ref arena) { }
-
-        /// <summary>
-        /// Standalone twin of <see cref="fProxyChebyshev(in fProxyBSR, in fProxyChebyshevOptions, ref Arena)"/>:
-        /// allocates InvDiag/Scratch1-3 from <paramref name="allocator"/> instead of an arena; the
-        /// Lanczos eigen-estimate's own workspace is Temp-allocated and disposed before returning
-        /// (it is setup-only, not part of the built preconditioner). Same validation/throw contract.
-        /// Dispose the result with <see cref="Dispose"/> -- only call Dispose on an instance built
-        /// via this ctor, never on one built via the ref Arena ctor (that instance is arena-owned).
+        /// the Chebyshev recurrence coefficients; allocates InvDiag/Scratch1-3 from
+        /// <paramref name="allocator"/>. The Lanczos eigen-estimate's own workspace is
+        /// Temp-allocated and disposed before returning (it is setup-only, not part of the built
+        /// preconditioner). Throws ArgumentException if A is not square (BlockRows==BlockCols,
+        /// BR==BC), a diagonal block is missing, any scalar diagonal entry A[i,i] &lt;= 0, the
+        /// Lanczos eigen-estimate fails to converge or yields a non-positive largest eigenvalue
+        /// ("is A symmetric positive definite?"), opt.degree &lt; 1, opt.kappa &lt;= 1, opt.eigSteps
+        /// &lt; 1, or opt.safety &lt; 1. Dispose the result with <see cref="Dispose"/>.
         /// </summary>
         public unsafe fProxyChebyshev(in fProxyBSR a, in fProxyChebyshevOptions opt, Allocator allocator)
         {
@@ -255,7 +160,8 @@ namespace LinearAlgebra.Sparse
             int BR = a.BR;
             int blockLen = BR * BR;
 
-            // ---- InvDiag: 1 / A[i,i], same block-row scan as the ref Arena ctor. ----
+            // ---- InvDiag: 1 / A[i,i] over the stored scalar diagonal (both storage modes store
+            // the diagonal block) -- same block-row scan fProxySSOR's ctor uses to find it. ----
             var invDiag = new fProxyN(n, allocator);
             for (int i = 0; i < a.BlockRows; i++)
             {
@@ -368,9 +274,7 @@ namespace LinearAlgebra.Sparse
 
         /// <summary>
         /// Disposes InvDiag and the Apply scratch (Scratch1/2/3). A is never disposed -- Chebyshev
-        /// never copies A, it always aliases the caller's own matrix. Only call on an instance built
-        /// via the Allocator ctor -- an instance built via the ref Arena ctor is arena-owned and must
-        /// not be disposed directly.
+        /// never copies A, it always aliases the caller's own matrix.
         /// </summary>
         public unsafe void Dispose()
         {

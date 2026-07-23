@@ -156,8 +156,8 @@ namespace LinearAlgebra.Gallery
                 }
             }
 
-            // See floatRandomSparseSPD's standalone twin for why the ref-dest Blas.dot primitive
-            // (manually preallocated Di) replaces the OwnerArena-based convenience overload here.
+            // See floatRandomSparseSPD for why the ref-dest Blas.dot primitive (manually
+            // preallocated Di) is used here instead of the allocating convenience overload.
             var Mi = new floatMxN(BR, BR, Allocator.Temp);
             var Di = new floatMxN(BR, BR, Allocator.Temp, true);
             for (int i = 0; i < diagCount; i++)

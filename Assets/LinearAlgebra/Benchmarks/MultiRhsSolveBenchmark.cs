@@ -161,73 +161,69 @@ namespace LinearAlgebra.Benchmarks
 
         static string RunLU(int k)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var Src = arena.floatMat(N, N); FillGen(Src, N, 2654435761u ^ (uint)N);
-            var A = arena.floatMat(N, N);
+            var Src = new floatMxN(N, N, Allocator.Persistent); FillGen(Src, N, 2654435761u ^ (uint)N);
+            var A = new floatMxN(N, N, Allocator.Persistent);
             var P = new Pivot(N, Allocator.Persistent);
-            var BXsrc = arena.floatMat(N, k); FillRhs(BXsrc, N, k, 40503u ^ (uint)k);
-            var BX = arena.floatMat(N, k);
-            var col = arena.floatVec(N);
+            var BXsrc = new floatMxN(N, k, Allocator.Persistent); FillRhs(BXsrc, N, k, 40503u ^ (uint)k);
+            var BX = new floatMxN(N, k, Allocator.Persistent);
+            var col = new floatN(N, Allocator.Persistent);
 
             var loop = Bench.Time(() => new LuIpLoop { A = A, Src = Src, P = P, BXsrc = BXsrc, col = col, K = k }.Run());
             var block = Bench.Time(() => new LuIpBlock { A = A, Src = Src, P = P, BX = BX, BXsrc = BXsrc }.Run());
 
-            P.Dispose(); arena.Dispose();
+            P.Dispose(); Src.Dispose(); A.Dispose(); BXsrc.Dispose(); BX.Dispose(); col.Dispose();
             return Row("LU", k, loop, block);
         }
 
         static string RunCHO(int k)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var Src = arena.floatMat(N, N); FillSpd(Src, N, 2654435761u ^ (uint)N);
-            var A = arena.floatMat(N, N);
-            var BXsrc = arena.floatMat(N, k); FillRhs(BXsrc, N, k, 40503u ^ (uint)k);
-            var BX = arena.floatMat(N, k);
-            var col = arena.floatVec(N);
+            var Src = new floatMxN(N, N, Allocator.Persistent); FillSpd(Src, N, 2654435761u ^ (uint)N);
+            var A = new floatMxN(N, N, Allocator.Persistent);
+            var BXsrc = new floatMxN(N, k, Allocator.Persistent); FillRhs(BXsrc, N, k, 40503u ^ (uint)k);
+            var BX = new floatMxN(N, k, Allocator.Persistent);
+            var col = new floatN(N, Allocator.Persistent);
 
             var loop = Bench.Time(() => new ChoIpLoop { A = A, Src = Src, col = col, BXsrc = BXsrc, K = k }.Run());
             var block = Bench.Time(() => new ChoIpBlock { A = A, Src = Src, BX = BX, BXsrc = BXsrc }.Run());
 
-            arena.Dispose();
+            Src.Dispose(); A.Dispose(); BXsrc.Dispose(); BX.Dispose(); col.Dispose();
             return Row("Cholesky", k, loop, block);
         }
 
         static string RunQR(int k)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var Src = arena.floatMat(N, N); FillGen(Src, N, 2654435761u ^ (uint)N);
-            var A = arena.floatMat(N, N);
-            var Bsrc = arena.floatMat(N, k); FillRhs(Bsrc, N, k, 40503u ^ (uint)k);
-            var B = arena.floatMat(N, k);
-            var X = arena.floatMat(N, k);
-            var bcol = arena.floatVec(N);
-            var xcol = arena.floatVec(N);
+            var Src = new floatMxN(N, N, Allocator.Persistent); FillGen(Src, N, 2654435761u ^ (uint)N);
+            var A = new floatMxN(N, N, Allocator.Persistent);
+            var Bsrc = new floatMxN(N, k, Allocator.Persistent); FillRhs(Bsrc, N, k, 40503u ^ (uint)k);
+            var B = new floatMxN(N, k, Allocator.Persistent);
+            var X = new floatMxN(N, k, Allocator.Persistent);
+            var bcol = new floatN(N, Allocator.Persistent);
+            var xcol = new floatN(N, Allocator.Persistent);
 
             var loop = Bench.Time(() => new QrIpLoop { A = A, Src = Src, Bsrc = Bsrc, bcol = bcol, xcol = xcol, K = k }.Run());
             var block = Bench.Time(() => new QrIpBlock { A = A, Src = Src, B = B, Bsrc = Bsrc, X = X }.Run());
 
-            arena.Dispose();
+            Src.Dispose(); A.Dispose(); Bsrc.Dispose(); B.Dispose(); X.Dispose(); bcol.Dispose(); xcol.Dispose();
             return Row("QR", k, loop, block);
         }
 
         static string RunQRCP(int k)
         {
-            var arena = new Arena(Allocator.Persistent);
-            var Src = arena.floatMat(N, N); FillGen(Src, N, 2654435761u ^ (uint)N);
-            var A = arena.floatMat(N, N);
-            var R = arena.floatMat(N, N);
+            var Src = new floatMxN(N, N, Allocator.Persistent); FillGen(Src, N, 2654435761u ^ (uint)N);
+            var A = new floatMxN(N, N, Allocator.Persistent);
+            var R = new floatMxN(N, N, Allocator.Persistent);
             var P = new Pivot(N, Allocator.Persistent);
-            var u = arena.floatVec(N);
-            var Bsrc = arena.floatMat(N, k); FillRhs(Bsrc, N, k, 40503u ^ (uint)k);
-            var B = arena.floatMat(N, k);
-            var X = arena.floatMat(N, k);
-            var bcol = arena.floatVec(N);
-            var xcol = arena.floatVec(N);
+            var u = new floatN(N, Allocator.Persistent);
+            var Bsrc = new floatMxN(N, k, Allocator.Persistent); FillRhs(Bsrc, N, k, 40503u ^ (uint)k);
+            var B = new floatMxN(N, k, Allocator.Persistent);
+            var X = new floatMxN(N, k, Allocator.Persistent);
+            var bcol = new floatN(N, Allocator.Persistent);
+            var xcol = new floatN(N, Allocator.Persistent);
 
             var loop = Bench.Time(() => new QrcpIpLoop { A = A, Src = Src, R = R, P = P, u = u, Bsrc = Bsrc, bcol = bcol, xcol = xcol, K = k }.Run());
             var block = Bench.Time(() => new QrcpIpBlock { A = A, Src = Src, R = R, P = P, u = u, B = B, Bsrc = Bsrc, X = X }.Run());
 
-            P.Dispose(); arena.Dispose();
+            P.Dispose(); Src.Dispose(); A.Dispose(); R.Dispose(); u.Dispose(); Bsrc.Dispose(); B.Dispose(); X.Dispose(); bcol.Dispose(); xcol.Dispose();
             return Row("QRCP", k, loop, block);
         }
     }

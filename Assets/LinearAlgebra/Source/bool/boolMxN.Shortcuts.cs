@@ -13,64 +13,64 @@ namespace LinearAlgebra {
     public partial struct boolMxN : IArenaShortcuts
     {
         
-        public unsafe floatN floatVec(int N, bool uninit = false) => _rec != null ? OwnerArena.floatVec(N, uninit) : new floatN(N, Allocator.Temp, uninit);
+        public unsafe floatN floatVec(int N, bool uninit = false) => new floatN(N, Allocator.Temp, uninit);
 
-        public unsafe floatN floatTempVec(int N, bool uninit = false) => _rec != null ? OwnerArena.floatTempVec(N, uninit) : new floatN(N, Allocator.Temp, uninit);
+        public unsafe floatN floatTempVec(int N, bool uninit = false) => new floatN(N, Allocator.Temp, uninit);
 
-        public unsafe floatMxN floatMat(int M_rows, int N_cols, bool uninit = false) => _rec != null ? OwnerArena.floatMat(M_rows, N_cols, uninit) : new floatMxN(M_rows, N_cols, Allocator.Temp, uninit);
+        public unsafe floatMxN floatMat(int M_rows, int N_cols, bool uninit = false) => new floatMxN(M_rows, N_cols, Allocator.Temp, uninit);
 
-        public unsafe floatMxN floatTempMat(int M_rows, int N_cols, bool uninit = false) => _rec != null ? OwnerArena.floatTempMat(M_rows, N_cols, uninit) : new floatMxN(M_rows, N_cols, Allocator.Temp, uninit);
+        public unsafe floatMxN floatTempMat(int M_rows, int N_cols, bool uninit = false) => new floatMxN(M_rows, N_cols, Allocator.Temp, uninit);
         
-        public unsafe doubleN doubleVec(int N, bool uninit = false) => _rec != null ? OwnerArena.doubleVec(N, uninit) : new doubleN(N, Allocator.Temp, uninit);
+        public unsafe doubleN doubleVec(int N, bool uninit = false) => new doubleN(N, Allocator.Temp, uninit);
 
-        public unsafe doubleN doubleTempVec(int N, bool uninit = false) => _rec != null ? OwnerArena.doubleTempVec(N, uninit) : new doubleN(N, Allocator.Temp, uninit);
+        public unsafe doubleN doubleTempVec(int N, bool uninit = false) => new doubleN(N, Allocator.Temp, uninit);
 
-        public unsafe doubleMxN doubleMat(int M_rows, int N_cols, bool uninit = false) => _rec != null ? OwnerArena.doubleMat(M_rows, N_cols, uninit) : new doubleMxN(M_rows, N_cols, Allocator.Temp, uninit);
+        public unsafe doubleMxN doubleMat(int M_rows, int N_cols, bool uninit = false) => new doubleMxN(M_rows, N_cols, Allocator.Temp, uninit);
 
-        public unsafe doubleMxN doubleTempMat(int M_rows, int N_cols, bool uninit = false) => _rec != null ? OwnerArena.doubleTempMat(M_rows, N_cols, uninit) : new doubleMxN(M_rows, N_cols, Allocator.Temp, uninit);
-        
-
-        
-        public unsafe intN intVec(int N, bool uninit = false) => _rec != null ? OwnerArena.intVec(N, uninit) : new intN(N, Allocator.Temp, uninit);
-
-        public unsafe intN intTempVec(int N, bool uninit = false) => _rec != null ? OwnerArena.intTempVec(N, uninit) : new intN(N, Allocator.Temp, uninit);
-
-        public unsafe intMxN intMat(int M_rows, int N_cols, bool uninit = false) => _rec != null ? OwnerArena.intMat(M_rows, N_cols, uninit) : new intMxN(M_rows, N_cols, Allocator.Temp, uninit);
-
-        public unsafe intMxN intTempMat(int M_rows, int N_cols, bool uninit = false) => _rec != null ? OwnerArena.intTempMat(M_rows, N_cols, uninit) : new intMxN(M_rows, N_cols, Allocator.Temp, uninit);
-        
-        public unsafe shortN shortVec(int N, bool uninit = false) => _rec != null ? OwnerArena.shortVec(N, uninit) : new shortN(N, Allocator.Temp, uninit);
-
-        public unsafe shortN shortTempVec(int N, bool uninit = false) => _rec != null ? OwnerArena.shortTempVec(N, uninit) : new shortN(N, Allocator.Temp, uninit);
-
-        public unsafe shortMxN shortMat(int M_rows, int N_cols, bool uninit = false) => _rec != null ? OwnerArena.shortMat(M_rows, N_cols, uninit) : new shortMxN(M_rows, N_cols, Allocator.Temp, uninit);
-
-        public unsafe shortMxN shortTempMat(int M_rows, int N_cols, bool uninit = false) => _rec != null ? OwnerArena.shortTempMat(M_rows, N_cols, uninit) : new shortMxN(M_rows, N_cols, Allocator.Temp, uninit);
-        
-        public unsafe longN longVec(int N, bool uninit = false) => _rec != null ? OwnerArena.longVec(N, uninit) : new longN(N, Allocator.Temp, uninit);
-
-        public unsafe longN longTempVec(int N, bool uninit = false) => _rec != null ? OwnerArena.longTempVec(N, uninit) : new longN(N, Allocator.Temp, uninit);
-
-        public unsafe longMxN longMat(int M_rows, int N_cols, bool uninit = false) => _rec != null ? OwnerArena.longMat(M_rows, N_cols, uninit) : new longMxN(M_rows, N_cols, Allocator.Temp, uninit);
-
-        public unsafe longMxN longTempMat(int M_rows, int N_cols, bool uninit = false) => _rec != null ? OwnerArena.longTempMat(M_rows, N_cols, uninit) : new longMxN(M_rows, N_cols, Allocator.Temp, uninit);
-        
-        public unsafe uintN uintVec(int N, bool uninit = false) => _rec != null ? OwnerArena.uintVec(N, uninit) : new uintN(N, Allocator.Temp, uninit);
-
-        public unsafe uintN uintTempVec(int N, bool uninit = false) => _rec != null ? OwnerArena.uintTempVec(N, uninit) : new uintN(N, Allocator.Temp, uninit);
-
-        public unsafe uintMxN uintMat(int M_rows, int N_cols, bool uninit = false) => _rec != null ? OwnerArena.uintMat(M_rows, N_cols, uninit) : new uintMxN(M_rows, N_cols, Allocator.Temp, uninit);
-
-        public unsafe uintMxN uintTempMat(int M_rows, int N_cols, bool uninit = false) => _rec != null ? OwnerArena.uintTempMat(M_rows, N_cols, uninit) : new uintMxN(M_rows, N_cols, Allocator.Temp, uninit);
+        public unsafe doubleMxN doubleTempMat(int M_rows, int N_cols, bool uninit = false) => new doubleMxN(M_rows, N_cols, Allocator.Temp, uninit);
         
 
+        
+        public unsafe intN intVec(int N, bool uninit = false) => new intN(N, Allocator.Temp, uninit);
 
-        public unsafe boolN boolVec(int n, bool uninit = false) => _rec != null ? OwnerArena.boolVec(n, uninit) : new boolN(n, Allocator.Temp, uninit);
+        public unsafe intN intTempVec(int N, bool uninit = false) => new intN(N, Allocator.Temp, uninit);
 
-        public unsafe boolN boolTempVec(int n, bool uninit = false) => _rec != null ? OwnerArena.boolTempVec(n, uninit) : new boolN(n, Allocator.Temp, uninit);
+        public unsafe intMxN intMat(int M_rows, int N_cols, bool uninit = false) => new intMxN(M_rows, N_cols, Allocator.Temp, uninit);
 
-        public unsafe boolMxN boolMat(int M_rows, int N_cols, bool uninit = false) => _rec != null ? OwnerArena.boolMat(M_rows, N_cols, uninit) : new boolMxN(M_rows, N_cols, Allocator.Temp, uninit);
+        public unsafe intMxN intTempMat(int M_rows, int N_cols, bool uninit = false) => new intMxN(M_rows, N_cols, Allocator.Temp, uninit);
+        
+        public unsafe shortN shortVec(int N, bool uninit = false) => new shortN(N, Allocator.Temp, uninit);
 
-        public unsafe boolMxN boolTempMat(int M_rows, int N_cols, bool uninit = false) => _rec != null ? OwnerArena.boolTempMat(M_rows, N_cols, uninit) : new boolMxN(M_rows, N_cols, Allocator.Temp, uninit);
+        public unsafe shortN shortTempVec(int N, bool uninit = false) => new shortN(N, Allocator.Temp, uninit);
+
+        public unsafe shortMxN shortMat(int M_rows, int N_cols, bool uninit = false) => new shortMxN(M_rows, N_cols, Allocator.Temp, uninit);
+
+        public unsafe shortMxN shortTempMat(int M_rows, int N_cols, bool uninit = false) => new shortMxN(M_rows, N_cols, Allocator.Temp, uninit);
+        
+        public unsafe longN longVec(int N, bool uninit = false) => new longN(N, Allocator.Temp, uninit);
+
+        public unsafe longN longTempVec(int N, bool uninit = false) => new longN(N, Allocator.Temp, uninit);
+
+        public unsafe longMxN longMat(int M_rows, int N_cols, bool uninit = false) => new longMxN(M_rows, N_cols, Allocator.Temp, uninit);
+
+        public unsafe longMxN longTempMat(int M_rows, int N_cols, bool uninit = false) => new longMxN(M_rows, N_cols, Allocator.Temp, uninit);
+        
+        public unsafe uintN uintVec(int N, bool uninit = false) => new uintN(N, Allocator.Temp, uninit);
+
+        public unsafe uintN uintTempVec(int N, bool uninit = false) => new uintN(N, Allocator.Temp, uninit);
+
+        public unsafe uintMxN uintMat(int M_rows, int N_cols, bool uninit = false) => new uintMxN(M_rows, N_cols, Allocator.Temp, uninit);
+
+        public unsafe uintMxN uintTempMat(int M_rows, int N_cols, bool uninit = false) => new uintMxN(M_rows, N_cols, Allocator.Temp, uninit);
+        
+
+
+        public unsafe boolN boolVec(int n, bool uninit = false) => new boolN(n, Allocator.Temp, uninit);
+
+        public unsafe boolN boolTempVec(int n, bool uninit = false) => new boolN(n, Allocator.Temp, uninit);
+
+        public unsafe boolMxN boolMat(int M_rows, int N_cols, bool uninit = false) => new boolMxN(M_rows, N_cols, Allocator.Temp, uninit);
+
+        public unsafe boolMxN boolTempMat(int M_rows, int N_cols, bool uninit = false) => new boolMxN(M_rows, N_cols, Allocator.Temp, uninit);
     }
 }

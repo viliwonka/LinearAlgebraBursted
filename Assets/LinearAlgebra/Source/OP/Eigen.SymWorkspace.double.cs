@@ -40,29 +40,12 @@ namespace LinearAlgebra
             pVec = new doubleN(n, allocator);
         }
 
-        /// <summary>Dispose only instances built with the Allocator ctor; arena-built instances are arena-owned.</summary>
+        /// <summary>Disposes the workspace.</summary>
         public void Dispose()
         {
             eVec.Dispose();
             vVec.Dispose();
             pVec.Dispose();
-        }
-    }
-
-    // Kept: doubleChebyshev's ref-Arena constructor (Sparse/doubleChebyshev.cs) builds an
-    // doubleLanczosCache for its interior-eigenvalue-bound Lanczos run, which in turn needs this
-    // arena-tracked symWs factory. Not a general convenience overload -- do not add more callers.
-    public static partial class ArenaExtensions
-    {
-        /// <summary>Allocates a symmetric-eigenvalue workspace for an n x n matrix, arena-tracked.</summary>
-        public static doubleEigenSymCache doubleEigenSymCache(this ref Arena arena, int n)
-        {
-            return new doubleEigenSymCache
-            {
-                eVec = arena.doubleVec(n),
-                vVec = arena.doubleVec(n),
-                pVec = arena.doubleVec(n)
-            };
         }
     }
 }

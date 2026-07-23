@@ -289,7 +289,7 @@ namespace LinearAlgebra.Sparse
         /// against already-solved earlier rows, the diagonal solve is Jacobi's explicit block
         /// inverse (no per-row factorization). FULL-storage BSR only (Q4 ruling) -- throws on
         /// Symmetric (lower-block-triangle-only) storage; mirror it first via
-        /// <see cref="Arena.doubleBSRMirrorToFull"/>. diagScale=1 is the plain (unscaled)
+        /// <see cref="doubleBSR.MirrorToFull"/>. diagScale=1 is the plain (unscaled)
         /// Gauss-Seidel forward sweep; <see cref="doubleSSOR"/> drives this with diagScale=Omega.
         /// y must not alias r (same "read the full row before any row's write" reasoning as
         /// <see cref="doubleBlockJacobi.Apply"/>).
@@ -299,7 +299,7 @@ namespace LinearAlgebra.Sparse
             if (A.BlockRows != A.BlockCols || A.BR != A.BC)
                 throw new ArgumentException("sweepLower: A must be square (BlockRows==BlockCols, BR==BC)");
             if (A.Symmetric)
-                throw new ArgumentException("sweepLower: A must be full-storage BSR (Symmetric lower-block-triangle storage is not supported here -- mirror it first via Arena.doubleBSRMirrorToFull)");
+                throw new ArgumentException("sweepLower: A must be full-storage BSR (Symmetric lower-block-triangle storage is not supported here -- mirror it first via doubleBSR.MirrorToFull)");
             if (Jacobi.BlockRows != A.BlockRows || Jacobi.BR != A.BR)
                 throw new ArgumentException("sweepLower: Jacobi must be built from A (BlockRows/BR mismatch)");
             if (r.N != A.M_Rows)
@@ -345,7 +345,7 @@ namespace LinearAlgebra.Sparse
             if (A.BlockRows != A.BlockCols || A.BR != A.BC)
                 throw new ArgumentException("sweepUpper: A must be square (BlockRows==BlockCols, BR==BC)");
             if (A.Symmetric)
-                throw new ArgumentException("sweepUpper: A must be full-storage BSR (Symmetric lower-block-triangle storage is not supported here -- mirror it first via Arena.doubleBSRMirrorToFull)");
+                throw new ArgumentException("sweepUpper: A must be full-storage BSR (Symmetric lower-block-triangle storage is not supported here -- mirror it first via doubleBSR.MirrorToFull)");
             if (Jacobi.BlockRows != A.BlockRows || Jacobi.BR != A.BR)
                 throw new ArgumentException("sweepUpper: Jacobi must be built from A (BlockRows/BR mismatch)");
             if (r.N != A.M_Rows)

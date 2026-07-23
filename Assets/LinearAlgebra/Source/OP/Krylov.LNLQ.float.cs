@@ -229,7 +229,7 @@ namespace LinearAlgebra
 
         /// <summary>
         /// LNLQ over a BSR matrix -- zero-alloc primitive taking a CALLER-PROVIDED precomputed
-        /// transpose AT (e.g. <c>arena.floatBSRTranspose(in A)</c> built once outside a hot loop) so
+        /// transpose AT (e.g. <c>A.Transpose(allocator)</c> built once outside a hot loop) so
         /// every ApplyT routes through the cache-friendly forward spMV(AT, x). Caller owns AT actually
         /// being A's transpose; this overload does not verify it.
         /// </summary>
@@ -243,7 +243,7 @@ namespace LinearAlgebra
 
         /// <summary>
         /// LNLQ over a BSR matrix -- allocates four scratch vectors AND materializes Aᵀ ONCE via
-        /// <c>arena.floatBSRTranspose</c>, then drives LNLQ with the two-arg <c>floatBSROperator</c>.
+        /// <c>A.Transpose(allocator)</c>, then drives LNLQ with the two-arg <c>floatBSROperator</c>.
         /// For a build-free zero-alloc path, build Aᵀ yourself once and call the zero-alloc AT overload.
         /// </summary>
         public static LnlqInfo lnlq(in floatBSR A, in floatN b, ref floatN x, int maxIter, float tol, double sigmaMinEst = 0)
