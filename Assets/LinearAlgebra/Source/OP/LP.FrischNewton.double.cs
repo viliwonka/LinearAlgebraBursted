@@ -16,15 +16,17 @@ namespace LinearAlgebra
     public static partial class LP
     {
         // ============================================================================================
-        // LICENSE: code pending permission -- the original (`rq_fnm`/`lp_fnm`, R quantreg lineage) is
-        // GPL (>= 2); relicensing permission has been requested from the authors. Do not redistribute
-        // this file until resolved. See "Third Party Notices.md" in the package root.
+        // LICENSE: ported from `rq_fnm`/`lp_fnm` (R quantreg lineage, GPL >= 2); distributed here
+        // under this package's MIT license with the original author's permission. See
+        // "Third Party Notices.md" in the package root.
         //
         // Frisch-Newton exact LAD / quantile-regression solver (Portnoy & Koenker 1997, "The Gaussian
         // Hare and the Laplacian Tortoise"). Port of Daniel Morillo & Roger Koenker's `rq_fnm` /
         // `lp_fnm`. A structure-exploiting primal-dual interior point on the LAD DUAL, working
         // directly on the original m x n design A -- no LP reformulation, no m x m matrix: every
-        // Newton step is an n x n weighted normal solve built by ONE pass over A.
+        // Newton step is an n x n weighted normal solve built by ONE pass over A. The Mehrotra
+        // corrector follows the FORTRAN reference (quantreg `rqfnb.f`/`lpfnb.f`): the second-order
+        // terms enter divided by the iterate (dadz/a, dsdw/s); `lp_fnm.m` omits those divisions.
         //
         // SIGN CONVENTION (get this wrong and every other formula is moot): lp_fnm's OUTPUT variable
         // is literally named "y" -- the equality multipliers of Ãv=b̃ -- and the caller negates it:
@@ -37,14 +39,21 @@ namespace LinearAlgebra
         // becomes numerically near-semidefinite exactly in the endgame, in float. Plain CHO hard-fails
         // the instant a pivot goes non-positive; CHOP instead reports a (possibly reduced) numerical
         // rank and CHOP.decompSolve's rank-deficient branch still returns a well-defined minimum-norm
-        // direction. One CHOP.decomp per iteration, reused for both the affine-predictor and the
-        // centering-corrector solve via CHOP.decompSolve. The one-time least-squares INIT stays on
+        // direction. M is Jacobi-equilibrated (M̂ = D·M·D, D = diag(1/sqrt(M_jj)), unit diagonal)
+        // before CHOP, so the rank tolerance measures genuine near-dependence, not raw column-scale
+        // disparity of the design. One CHOP.decomp per iteration, reused for both the affine-predictor
+        // and the centering-corrector solve via CHOP.decompSolve. The one-time least-squares INIT stays on
         // plain CHO: it runs once, outside the loop, on the UNWEIGHTED normal matrix AᵀA, which has
         // none of the endgame's polarization problem.
         //
+        // Convergence measure: the COMPLEMENTARITY gap Σ z·a + w·s, as in the Fortran reference, not
+        // `lp_fnm.m`'s algebraically-equal but cancellation-prone signed duality gap. It is a sum of
+        // products of strictly positive quantities, so it cannot go negative -- which matters because
+        // a negative gap would satisfy the tolerance test at ANY tolerance and win the yBest update.
+        //
         // Best-iterate safeguard: mirrors LP.InteriorPoint -- yBest tracks the multiplier vector at
-        // the smallest duality gap seen (a NaN/Inf blow-up or an unrecoverable Indefinite
-        // factorization stops the loop but never corrupts the returned x).
+        // the smallest gap seen (a NaN/Inf blow-up or an unrecoverable Indefinite factorization stops
+        // the loop but never corrupts the returned x).
         //
         // Job-safe: all scratch is Allocator.Temp, disposed on every return path.
         // ============================================================================================
@@ -155,7 +164,7 @@ namespace LinearAlgebra
             var M = new doubleMxN(n, n, Allocator.Temp);
             var L = new doubleMxN(n, n, Allocator.Temp);
             var yBest = new doubleN(n, Allocator.Temp);
-            var bLP = new doubleN(n, Allocator.Temp);         // Aᵀ((1-tau)·1), the dual LP's constraint RHS
+            var dscale = new doubleN(n, Allocator.Temp);      // Jacobi equilibration of M, d_j = 1/sqrt(M_jj)
             var Linit = new doubleMxN(n, n, Allocator.Temp);  // plain-CHO factor, LS init only
 
             var P = new Pivot(n, Allocator.Temp);
@@ -167,7 +176,6 @@ namespace LinearAlgebra
             double zwFloor = Consts.doubleZeroThreshold;
 
             for (int i = 0; i < m; i++) { a[i] = oneMinusTau; s[i] = tauC; }
-            ATmul(A, a, bLP, m, n);
 
             double bNorm = 0;
             for (int i = 0; i < m; i++) bNorm += (double)b[i] * (double)b[i];
@@ -206,7 +214,7 @@ namespace LinearAlgebra
                 }
             }
 
-            double gap = DualityGap(b, a, y, bLP, w, m, n);
+            double gap = ComplementarityGap(z, a, w, s, m);
             double gapTol = (double)Consts.doubleSqrtEps * (1.0 + bNorm);
 
             int budget = maxIter > 0 ? maxIter : 50;
@@ -223,8 +231,21 @@ namespace LinearAlgebra
                 // BuildFNWeights.
                 unsafe { BuildFNWeights(z.Data.Ptr, a.Data.Ptr, w.Data.Ptr, s.Data.Ptr, q.Data.Ptr, zw.Data.Ptr, m); }
 
-                // 2. the kernel: M = AᵀQA (one row-streaming pass over A), pivoted-Cholesky factor.
+                // 2. the kernel: M = AᵀQA (one row-streaming pass over A), Jacobi-equilibrated
+                // (M̂ = D·M·D, D = diag(1/sqrt(M_jj)), unit diagonal), pivoted-Cholesky factor.
+                // Both solves below scale their RHS by D going in and the solution by D coming out
+                // (M dy = r  ⟺  M̂ (D⁻¹dy) = D r). The equilibration makes CHOP's scale-relative
+                // rank tolerance see genuine near-dependence rather than raw column-scale disparity,
+                // and makes the diagonal bump below a RELATIVE perturbation of the unit diagonal.
                 BuildATQA(A, q, M, m, n, reg);
+                for (int j = 0; j < n; j++)
+                {
+                    double dj = M[j, j];
+                    dscale[j] = dj > (double)0 ? (double)1 / math.sqrt(dj) : (double)1;
+                }
+                for (int r = 0; r < n; r++)
+                    for (int c = 0; c < n; c++)
+                        M[r, c] *= dscale[r] * dscale[c];
                 RankInfo rinfo = CHOP.decomp(in M, ref L, ref P, ref ws);
                 double bump = reg;
                 for (int t = 0; rinfo.status == DirectSolveStatus.Indefinite && t < 4; t++)
@@ -239,9 +260,9 @@ namespace LinearAlgebra
                 // 3a. affine-predictor solve: rhs = Aᵀ(q .* zw); dyAff = M⁻¹ rhs
                 for (int i = 0; i < m; i++) Av[i] = q[i] * zw[i];
                 ATmul(A, Av, rhs, m, n);
-                for (int j = 0; j < n; j++) tmpN[j] = rhs[j];
+                for (int j = 0; j < n; j++) tmpN[j] = rhs[j] * dscale[j];
                 CHOP.decompSolve(ref L, in P, rank, ref tmpN, ref ws);
-                for (int j = 0; j < n; j++) dyAff[j] = tmpN[j];
+                for (int j = 0; j < n; j++) dyAff[j] = tmpN[j] * dscale[j];
 
                 Amul(A, dyAff, Av, m, n);
                 for (int i = 0; i < m; i++)
@@ -273,16 +294,16 @@ namespace LinearAlgebra
 
                     for (int i = 0; i < m; i++)
                     {
-                        dadz[i] = daAff[i] * dzAff[i];
-                        dsdw[i] = dsAff[i] * dwAff[i];
+                        dadz[i] = daAff[i] * dzAff[i] / a[i];
+                        dsdw[i] = dsAff[i] * dwAff[i] / s[i];
                         xi[i] = (double)(muTarget * (1.0 / (double)a[i] - 1.0 / (double)s[i]));
                         qCorr[i] = q[i] * (dadz[i] - dsdw[i] - xi[i]);
                     }
                     ATmul(A, qCorr, tmpN, m, n);
                     for (int j = 0; j < n; j++) rhs2[j] = rhs[j] + tmpN[j];
-                    for (int j = 0; j < n; j++) tmpN[j] = rhs2[j];
+                    for (int j = 0; j < n; j++) tmpN[j] = rhs2[j] * dscale[j];
                     CHOP.decompSolve(ref L, in P, rank, ref tmpN, ref ws);
-                    for (int j = 0; j < n; j++) dy[j] = tmpN[j];
+                    for (int j = 0; j < n; j++) dy[j] = tmpN[j] * dscale[j];
 
                     Amul(A, dy, Av, m, n);
                     for (int i = 0; i < m; i++)
@@ -309,7 +330,7 @@ namespace LinearAlgebra
                 for (int j = 0; j < n; j++) y[j] += fd * dy[j];
                 for (int i = 0; i < m; i++) { w[i] += fd * dw[i]; z[i] += fd * dz[i]; }
 
-                gap = DualityGap(b, a, y, bLP, w, m, n);
+                gap = ComplementarityGap(z, a, w, s, m);
                 iters++;
 
                 if (!(gap < 1e300)) break;                              // NaN/Inf blow-up -> keep yBest
@@ -332,7 +353,7 @@ namespace LinearAlgebra
             dyAff.Dispose(); daAff.Dispose(); dsAff.Dispose(); dzAff.Dispose(); dwAff.Dispose();
             dy.Dispose(); da.Dispose(); ds.Dispose(); dz.Dispose(); dw.Dispose();
             dadz.Dispose(); dsdw.Dispose(); xi.Dispose(); qCorr.Dispose();
-            M.Dispose(); L.Dispose(); Linit.Dispose(); yBest.Dispose(); bLP.Dispose();
+            M.Dispose(); L.Dispose(); Linit.Dispose(); yBest.Dispose(); dscale.Dispose();
             P.Dispose(); ws.W.Dispose(); ws.bt.Dispose();
 
             return new LPInfo { status = status, iterations = iters, objective = obj };
@@ -391,19 +412,17 @@ namespace LinearAlgebra
             }
         }
 
-        // Duality gap of the bounded dual LP (rq_fnm's own `gap = c*x - y*b + w*u`, u=1): here
-        // c=-b, x=a (the dual weight, NOT the returned coefficients), and b (rq_fnm's constraint RHS)
-        // is bLP -- see the file header's sign map. A pure-local double accumulator (diagnostic sum),
-        // matching every other IPM core's convention in this library.
-        static double DualityGap(doubleN b, doubleN a, doubleN y, doubleN bLP, doubleN w, int m, int n)
+        // Complementarity gap Σ z_i·a_i + w_i·s_i -- the FORTRAN reference `lpfnb.f`'s own measure.
+        // Equals the duality gap (c·a - y·bLP + w·u) at a primal/dual-feasible pair, which the Newton
+        // step maintains, but is a sum of products of strictly POSITIVE quantities, so it cannot go
+        // negative through cancellation the way `lp_fnm.m`'s signed form can. A negative gap would
+        // otherwise satisfy `gap <= gapTol` for any tolerance AND win the yBest update. A pure-local
+        // double accumulator, matching every other IPM core's convention in this library.
+        static double ComplementarityGap(doubleN z, doubleN a, doubleN w, doubleN s, int m)
         {
-            double cx = 0;
-            for (int i = 0; i < m; i++) cx -= (double)b[i] * (double)a[i];
-            double yb = 0;
-            for (int j = 0; j < n; j++) yb += (double)y[j] * (double)bLP[j];
-            double wu = 0;
-            for (int i = 0; i < m; i++) wu += (double)w[i];
-            return cx - yb + wu;
+            double g = 0;
+            for (int i = 0; i < m; i++) g += (double)z[i] * (double)a[i] + (double)w[i] * (double)s[i];
+            return g;
         }
     }
 }

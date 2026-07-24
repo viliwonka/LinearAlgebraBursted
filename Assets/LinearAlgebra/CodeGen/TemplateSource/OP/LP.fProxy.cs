@@ -318,7 +318,7 @@ namespace LinearAlgebra
         public static LPInfo lad(in fProxyMxN A, in fProxyN b, ref fProxyN x, out double objective,
                                  int maxIter = 0)
             // Measured, per-dtype crossover; re-tune if either engine's per-iteration cost changes.
-            => A.M_Rows <= /*+choose[512|4096]*/512/*-choose*/
+            => A.M_Rows <= /*+choose[512|512]*/512/*-choose*/
                 ? ladBR(in A, in b, ref x, out objective, maxIter)
                 : ladFN(in A, in b, ref x, out objective, maxIter);
 

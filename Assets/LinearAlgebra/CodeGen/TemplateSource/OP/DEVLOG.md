@@ -1,6 +1,98 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## LP.FrischNewton — complementarity gap (rqfnb.f) replaces the cancellation-prone duality gap
+- 2026-07-24 | Closes the "LATENT" item in the entry below at the ROOT rather than guarding the
+  symptom. THIRD MATLAB-vs-Fortran divergence found in this port: the convergence measure itself.
+  `lpfnb.f:52,139` uses `gap = ddot(z,x) + ddot(w,s)` — the COMPLEMENTARITY gap, a sum of products of
+  strictly positive quantities. `lp_fnm.m:22,93` uses `gap = c*x - y*b + w*u` — the signed DUALITY gap.
+  The two are algebraically equal at a primal/dual-feasible pair (substitute `Aᵀy+z-w = c`, `s = u-x`),
+  and the Newton step maintains both feasibilities exactly (`Aᵀda = 0` since `dy = M⁻¹rhs`;
+  `dz - dw = -A dy` by construction), so they agree in exact arithmetic. They do NOT agree in float:
+  the MATLAB form subtracts terms of magnitude ~500 (stack-loss) to land on a quantity ~0.03, so
+  cancellation can invert its SIGN, whereas the Fortran form cannot go negative by construction.
+  That sign inversion was the mechanism behind BOTH latent hazards: a negative gap satisfies
+  `gap <= gapTol` for ANY tolerance (which is also why tightening float gapTol 10x and 333x during the
+  investigation moved nothing — a dead end that cost real time) AND beats every legitimate positive gap
+  in the `gap <= bestGap` yBest update, so the blow-up captures the very safeguard meant to survive it.
+  Switched `DualityGap` -> `ComplementarityGap(z, a, w, s, m)`. This also retires `bLP` entirely (it
+  existed only to feed the duality-gap form): one fewer n-buffer and one fewer setup-time ATmul.
+  No `gap >= 0`/`abs(gap)` guard needed — the quantity is now non-negative by construction, which is
+  strictly better than guarding a corrupt number, and it is what the reference does. NOTE the earlier
+  suggestion to guard with `gap >= 0` was wrong anyway: near true convergence the gap approaches 0 and
+  rounding can make it slightly negative on a GOOD iterate, so a hard sign guard would reject it;
+  `abs(gap)` would have been the correct guard had one been needed. Measured: performance-neutral —
+  iteration counts and timings identical to the pre-change run at every size, both dtypes
+  (float 10 iters/6.84ms @16384, double 14/9.35ms @16384), L1 residuals unchanged. Suite 7101/7101.
+
+## LP.lad — hybrid BR/FN routing threshold re-tuned for double
+- 2026-07-24 | `lad`'s crossover literal was `/*+choose[512|4096]*/`. The double 4096 was STALE — and
+  already stale BEFORE the Frisch-Newton corrector work (baseline m=1024: FN 0.372ms vs BR 0.689ms),
+  so double m in [1024, 4096] was routing to the engine ~2x SLOWER. After the corrector + equilibration
+  the measured crossover is ~512-1024 for BOTH dtypes: double m=384 BR 0.087ms vs FN 0.142ms (BR wins),
+  m=1024 BR 0.692ms vs FN 0.313ms (FN wins 2.2x); float m=384 BR 0.078 vs FN 0.083, m=1024 BR 0.623 vs
+  FN 0.299. Set to `/*+choose[512|512]*/`. Kept as a choose (not a plain literal) so the per-dtype axis
+  survives for the next re-tune. Section 2b has no m=512 sample, so 512 is interpolated between the
+  384 and 1024 brackets; the penalty for being off near the crossover is bounded by how close the two
+  engines are there (<=1.5x), unlike the 4096 error which cost ~2x across a whole octave.
+
+## LP.FrischNewton — exact Mehrotra corrector (rqfnb.f), ~20% faster, SHIPPED with Jacobi-equilibrated normal solve
+- 2026-07-24 | UNBLOCKED, shipped. The entry below's "exiting via the `!rinfo.Solved` CHOP break /
+  AᵀQA goes indefinite / bump retry fails" mechanism was an unmeasured inference and is WRONG on all
+  three counts — per-iteration instrumentation of the float `LadFNStackloss` run showed: CHOP never
+  reports Indefinite (bump retry never fires, 0 retries all iterations); it reports RankDeficient
+  rank=3 from it=1 (!) and every iteration from it=4 on; the loop exits via `gap <= gapTol` — but with
+  a numerically CORRUPT NEGATIVE gap (-8.36 at it=14, after a/s/z/w mins collapse geometrically to
+  ~1e-32), which also poisons the `gap <= bestGap` yBest update. Root cause: stack-loss columns have
+  ~80x scale disparity (1 vs ~60/~25/~90 → AᵀQA diagonal spread ~8100x on top of IPM weight
+  polarization), so CHOP's scale-RELATIVE rank tolerance in float sees rank 3; decompSolve's rank-3
+  min-norm direction has no component along the dropped direction, y freezes 2.71e-2 suboptimal
+  (objY stalls at 42.108242 from it=8), and the collapsed iterates then fabricate the negative-gap
+  exit. Decisive control: the OLD (MATLAB-corrector, green) float run had the SAME pathology —
+  rank 3 at it=1/4/5, exit at it=5 on a corrupt gap of -0.023, objY 42.0878 (6.6e-3 suboptimal),
+  intercept 39.727 — it passed the 5e-2 test by luck. The exact corrector didn't break a healthy
+  algorithm; it moved an already-broken float endgame's freeze point outside the tolerance.
+  FIX: Jacobi (symmetric diagonal) equilibration of M = AᵀQA before CHOP — M̂ = D·M·D,
+  D = diag(1/sqrt(M_jj)); both solves scale RHS by D in and solution by D out. Unit diagonal makes
+  CHOP's rank tolerance see genuine near-dependence instead of column scale, and makes the bump
+  retry a RELATIVE perturbation for free. Result: float runs rank=4 EVERY iteration, tracks the
+  double trajectory almost value-for-value, converges in 5 iters with a genuinely positive gap
+  (0.0128 < tol 0.0322), intercept 39.7073 / objY excess 2.8e-3 — closer to the optimum than the old
+  green baseline ever was. Suite 7101/7101. Speedup intact and iteration counts unchanged vs the
+  corrector-fix-only measurement (equilibration is O(n²)/iter, negligible vs O(mn²) BuildATQA):
+  float 10 iters @16384 (6.83ms), double 14 @16384 (9.29ms), 12 @4096 (1.67ms); L1 residuals match
+  ladBR/oracle at all sizes, both dtypes. LATENT (driver removed, not hardened): a large-negative
+  corrupt gap still both terminates as "Optimal" and wins the yBest update — the exit condition
+  itself is reference-faithful (lpfnb.f's loop is `gap > eps` too), but if a float endgame ever
+  collapses again, consider guarding the yBest update with `gap >= 0` or tracking the honest
+  recomputed objective instead of the gap.
+- 2026-07-24 | (superseded by the entry above — kept for the measurement record) Koenker's suggestion to port ladFN from quantreg's `rqfnb.f`/`lpfnb.f` (Fortran) rather
+  than the `lp_fnm.m` (MATLAB) lineage was re-examined against both sources. Substantive finding: the
+  MATLAB corrector is NOT the textbook Mehrotra corrector — the second-order terms are missing their
+  `/x` and `/s` divisions. Deriving `Z dx + X dz = mu e - XZe - dX dZ e` gives
+  `dz = mu/x - z - (z/x)dx - dxdz/x`; `lpfnb.f:115` has the `/x(i)`, `lp_fnm.m:71` does not. Same for
+  `dw`, for `dx`, and for the corrector RHS term. MATLAB is self-consistent (it effectively solves with
+  `X·dXdZ`), so it converges — but it under-weights the corrector by a factor `x`, exactly where
+  `x -> 0`. Our port inherited the MATLAB form. The fix is 2 lines: `dadz = daAff*dzAff/a`,
+  `dsdw = dsAff*dwAff/s` — all four downstream uses (qCorr, da, dz, dw) then match `lpfnb.f` exactly.
+  MEASURED (LPBenchmark, m=8..16384, n=4): iterations drop at EVERY size, both dtypes, L1 residuals
+  identical to 5 s.f. float 13->10 iters @16384 (9.23->7.09ms, -23%); double 17->14 @16384
+  (11.60->9.42ms, -19%), 16->12 @4096 (2.19->1.67ms). So Koenker's "bound to be faster" is real, but
+  the cause is the corrector, not compiled-vs-interpreted (our port is Burst-compiled already).
+  BLOCKER — REVERTED, suite kept green: float `LadFNStackloss` regresses, intercept -39.690 -> -40.188
+  (tol 5e-2). Not a lucky-test artifact and not a tolerance artifact: the published vector is the unique
+  LAD optimum (confirmed vs scipy/HiGHS, L1 42.081160, 4 exact-zero residuals), and the best L1
+  reachable with our intercept is 42.108241 — a genuine 2.71e-2 objective excess, which sits just inside
+  float's own `gapTol = sqrtEps*(1+||b||) = 3.22e-2`. Tightening float gapTol 10x AND 333x changed the
+  answer not at all, which rules out early termination: the loop is exiting via the `!rinfo.Solved`
+  CHOP break. Mechanism: the exact corrector reaches the polarized-weights endgame faster/harder, AᵀQA
+  goes numerically indefinite in float, the 4-step bump retry cannot recover, and yBest is returned
+  0.027 suboptimal. Also tried, did not help: computing `dadz`/`dsdw` in double (no change beyond 7 s.f.
+  — rules out plain rounding in that term); adding `lpfnb.f`'s primal-residual re-injection
+  `rhs += bLP - Aᵀa` (changed the answer, made it WORSE: -38.140). To unblock, the float CHOP endgame
+  needs work first (cf. [[lobpcg-structural-stability]]'s SVQB-style robustness pass); the double-only
+  win is real but an algorithm that differs by dtype is a user call, not a default.
+
 ## fProxyMPCState.populated: native-backed, closing the gap with fProxyLQRState
 - 2026-07-23 | `fProxyMPCState.populated` was a plain bool whose own doc comment claimed it "mirrors
   fProxyLQRState.populated" without actually doing so -- a job that ran `MPC.solve` via `IJob.Run()`
@@ -3340,13 +3432,17 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
 - 2026-07-11 | UpdateActiveBlock deliberately does not mirror-combine AX/AP (or BX/BP) the way an earlier version did: the caller always immediately recomputes them via a fresh Apply right after the call returns, so the mirror-combine's result was always discarded — pure wasted work (extra O(3k^2 n) multiply-adds per iteration). Don't reintroduce it. (was LOBPCG.fProxy.cs:1163-1169 pre-edit)
 
 ## LP.BarrodaleRoberts
-- 2026-07-12 | LICENSE: this file (and LP.FrischNewton) is a port of GPL(>=2) quantreg code
-  (rqbr.f); owner is requesting relicensing permission from Koenker et al. (see the pending-
-  permission section in Source/Third Party Notices.md — package must not be redistributed until
-  resolved). A complete, suite-green CLEAN-ROOM replacement pair (papers/pyfixest-MIT provenance)
-  exists at commit bdfd9ec (reverted by 101f8c9): correct at every test/benchmark size, but first-cut
-  1.1-3x slower (BR float m>=4096: anti-cycling misfire, 115 iters) — restore + run the planned
-  optimization round (Sherman-Morrison basis updates, pointer/fused loops) if permission is denied.
+- 2026-07-24 | LICENSE RESOLVED: Roger Koenker granted relicensing permission by email for both
+  this file's rqbr.f port and LP.FrischNewton's rq_fnm/lp_fnm port — MIT, no further permissions
+  needed (he authored both algorithms). See Source/Third Party Notices.md. Koenker also suggested
+  ladFN would be faster ported from quantreg's own rqfnb.f (Fortran) instead of the current
+  MATLAB (rq_fnm/lp_fnm) lineage — optional future perf idea, not required.
+- 2026-07-12 | LICENSE (historical, see resolution above): this file (and LP.FrischNewton) is a
+  port of GPL(>=2) quantreg code (rqbr.f); owner requested relicensing permission from Koenker et
+  al. A complete, suite-green CLEAN-ROOM replacement pair (papers/pyfixest-MIT provenance) exists
+  at commit bdfd9ec (reverted by 101f8c9): correct at every test/benchmark size, but first-cut
+  1.1-3x slower (BR float m>=4096: anti-cycling misfire, 115 iters) — kept only as a fallback
+  reference now that permission is granted, not expected to be needed.
 - 2026-07-12 | Ratio-test candidate collection pass (column-strided T[i,enter] read) left as-is
   deliberately: it costs O(m) per entering-column choice, so O(m*iters) total, asymptotically
   dominated by the O(m*n^2) BRPivot elimination sweep for any n > 1. A from-scratch column-major
