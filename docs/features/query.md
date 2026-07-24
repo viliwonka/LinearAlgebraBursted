@@ -1,7 +1,6 @@
 # Query
 
-`Query` (bare, de-genericized class). Search and selection over the rows/columns of a matrix, or
-flat over a vector.
+`Query` class for search and selection over matrix rows/columns or flat over vectors.
 
 - **Enums** — `Metric{Manhattan, Euclidean, SqEuclidean, Chebyshev, Cosine, Dot}` (Cosine/Dot are
   similarities — higher is nearer; the rest are distances — lower is nearer); `Norm{L1, L2, Linf}`.

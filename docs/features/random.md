@@ -30,6 +30,5 @@ scratch): `Rand.orthogonalInPlace` (Haar-uniform, Mezzadri sign-fixed QR),
 
 ## Performance
 
-Setup/low-frequency generation, not a hot-loop kernel. Box-Muller Gaussian sampling calls `math.sin`
-and `math.cos` separately rather than `math.sincos`, which roughly doubles its trig cost; every other
-sampler is unaffected.
+Box-Muller Gaussian sampling calls `math.sin` and `math.cos` separately rather than `math.sincos`,
+which roughly doubles its trig cost; every other sampler is unaffected.

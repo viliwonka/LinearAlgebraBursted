@@ -1,8 +1,7 @@
 # Stats
 
-`Stats` (float/double family) + a narrower `int`/`short`/`long` family (`uint` excluded — the doc
-comment calls its stats "unsigned-hostile", e.g. an unsigned range has no signed-overflow-safe
-`range` reduction).
+`Stats` with float/double and a narrower `int`/`short`/`long` family. `uint` is excluded: an
+unsigned type has no signed-overflow-safe `range` reduction.
 
 ## Whole-array & per-axis reductions
 
@@ -17,10 +16,10 @@ Per-axis, each with a `ref floatN dest` zero-alloc form and an allocating form: 
 
 ## Covariance & correlation
 
-`covarianceInto(in A, ref C)` / `covariance(in A)` / `correlation(in A)` — computed via the Gram
-formulation (center once into a scratch, then `centeredᵀ · centered` through
-[`Blas`](la-primitives.md)'s `matMatDotTransA`), not the naive O(N²) column-pair loop. Degrades to a zero
-matrix (not NaN) when `M < 2` for the `ref`-dest primitive; the allocating wrappers still throw.
+`covarianceInto(in A, ref C)` / `covariance(in A)` / `correlation(in A)` — computed via Gram
+formulation (center once, then `centeredᵀ · centered` through [`Blas`](la-primitives.md)'s
+`matMatDotTransA`). Degrades to a zero matrix (not NaN) when `M < 2` for the `ref`-dest primitive;
+allocating wrappers throw.
 
 ## Transforms
 
@@ -41,11 +40,11 @@ Whole-array only — no per-axis reductions, covariance, or in-place transforms 
 
 Two smaller features that live alongside Stats:
 
-- **`Histogram`** — `histogramInto(in data, lo, hi, ref Indices counts)` (+ an auto-range overload
-  that finds finite min/max in one pass), `densityInto`, `cdfInto` (monotone, last bin pinned to
-  exactly 1.0), `histogram2DInto`. **Out-of-range and NaN samples are always dropped, never thrown**
-  (the closed upper edge `x == hi` lands in the last bin, not dropped). `ref`-dest only, no allocating
-  wrapper.
+- **`Histogram`** — `histogramInto(in data, lo, hi, ref Indices counts)` (+ auto-range overload),
+  `densityInto`, `cdfInto` (monotone, last bin pinned to 1.0), `histogram2DInto`. Out-of-range and
+  NaN samples are always dropped, never thrown (the closed upper edge `x == hi` lands in the last
+  bin, not dropped). `ref`-dest only, no
+  allocating wrapper.
 - **`Resample`** — `sampleAt(in data, float pos, Interp, EdgeMode) : float` (continuous-position
   evaluation: `Nearest`/`Linear`/`Cubic` Catmull-Rom over 4 taps), `resampleInto` (1D endpoint-
   preserving resize, point-resampling, no anti-alias prefilter), `resample2DInto` (separable 2-pass).

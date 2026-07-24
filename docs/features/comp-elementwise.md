@@ -10,8 +10,6 @@ Per component operations for vectors/matrices of next types:
 
 All mutating methods have suffix `InPlace`.
 
-Not all methods/functions are written here. Many of the mentioned are inplace with `InPlace` suffix, without writing it.
-
 ## float/double
 
 

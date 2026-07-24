@@ -14,6 +14,4 @@
   `Clear()`.
 
 Kalman filtering (linear KF, EKF, UKF) is implemented separately on `Kalman` — see
-[control.md](control.md). The rest of the "realtime" design surface — frame-amortized solvers,
-resumable iterative state (CG/PCG stepping across frames), online covariance/PCA — is still
-unsettled design, not implemented.
+[control.md](control.md). Frame-amortized solvers, resumable iterative state (CG/PCG stepping across frames), and online covariance/PCA are not yet implemented.

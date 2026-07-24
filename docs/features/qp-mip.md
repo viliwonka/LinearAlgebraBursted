@@ -11,12 +11,11 @@ subject to  Aᵢ·x {≤, =, ≥} bᵢ,   xl ≤ x ≤ xu
 ```
 
 `QP.solve(in Q, in c, in A, in b, senses, in xl, in xu, ref x, out double objective[, maxIter])` —
-`Q` must be symmetric (checked) and positive semidefinite (v1 contract, not checked — a genuinely
-indefinite `Q` is out of scope). Finds its own feasible starting point internally via a zero-cost LP
-over the same constraints, so `x` is output-only. A box-free convenience overload drops `xl`/`xu`
-(every variable unbounded both directions). Dense null-space active-set method (Nocedal & Wright
-ch. 16): one exact Newton step per equality-constrained sub-solve, with an add/drop loop over the
-inequality/bound rows.
+`Q` must be symmetric (checked) and positive semidefinite (v1 contract, not checked — indefinite `Q`
+is out of scope). Finds its own feasible starting point via an auxiliary LP, so `x` is output-only.
+A box-free convenience overload drops `xl`/`xu` (unbounded variables). Dense null-space active-set
+method (Nocedal & Wright ch. 16): one exact Newton step per equality-constrained sub-solve, with
+add/drop logic over inequality/bound rows.
 
 Returns `QPInfo`: `objective`, `iterations`, `status : QPStatus`
 (`Optimal`/`Infeasible`/`Unbounded`/`MaxIterations`), plus `stationarityResidual`/

@@ -1,6 +1,6 @@
 # Generate
 
-Procedural vector/matrix builders. Each has a zero-alloc `ref dest` primitive (`Generate.xxx`) and an ergonomic allocating `GenerateOP.floatXxx(...)`
+Procedural vector/matrix builders. Each has a zero-alloc `ref dest` primitive (`Generate.xxx`) and an allocating `GenerateOP.floatXxx(...)`
 wrapper. 
 
 - **Linear**:

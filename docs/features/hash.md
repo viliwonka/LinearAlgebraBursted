@@ -1,7 +1,6 @@
 # Hash
 
-`Hash` - xxHash32 chosen over ad-hoc mixing for a well-specified,
-avalanche-vetted, Burst-friendly reference implementation. All hashes return `uint`.
+`Hash` - xxHash32 provides a well-specified, avalanche-vetted hashing function. All hashes return `uint`.
 
 - `hash(in floatN v..)`,
 - `hash(in floatMxN A..)`,

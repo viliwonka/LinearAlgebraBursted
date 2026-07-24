@@ -139,8 +139,7 @@ public class BoolIndexingTests
                 Assert.IsTrue(mat[rows - r, cols - c] == ((r + c) % 2 == 0));
         }
 
-        // Exercises the copy-constructor guard: copying a vector without specifying an allocator
-        // (Allocator.Invalid sentinel) must fall back to Allocator.Temp without crashing and produce
+        // Copying a vector without specifying an allocator defaults to Allocator.Temp and produces
         // an equal, independent copy.
         void VectorCopyGuard()
         {
@@ -150,7 +149,6 @@ public class BoolIndexingTests
             for (int i = 0; i < dim; i++)
                 orig[i] = (i % 2 == 0);
 
-            // No allocator specified -> guard falls back to Allocator.Temp. Must not crash.
             boolN copy = new boolN(in orig);
 
             Assert.IsTrue(copy.N == orig.N);
@@ -164,9 +162,8 @@ public class BoolIndexingTests
             copy.Dispose();
         }
 
-        // Exercises the copy-constructor guard on boolMxN: copying a matrix without specifying an
-        // allocator (Allocator.Invalid sentinel) must fall back to Allocator.Temp without crashing
-        // and copy equally.
+        // Copying a matrix without specifying an allocator defaults to Allocator.Temp and copies
+        // equally.
         void MatrixCopyNullArenaGuard()
         {
             int rows = 4;
@@ -177,7 +174,6 @@ public class BoolIndexingTests
             for (int i = 0; i < standalone.Length; i++)
                 standalone[i] = (i % 2 == 0);
 
-            // No allocator specified -> guard MUST fall back to Allocator.Temp.
             boolMxN copy = new boolMxN(standalone);
 
             Assert.IsTrue(copy.M_Rows == standalone.M_Rows);

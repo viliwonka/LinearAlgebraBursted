@@ -1,6 +1,6 @@
 # Linear programming & LAD (`LP`)
 
-`LP`. Solves the canonical primal form
+Solves linear programs in canonical primal form
 
 ```
 minimize    cᵀx
@@ -44,10 +44,8 @@ or use `LP.lad` below, which already does that for L1 regression.
   handles very ill-conditioned vertices; converges to an interior point rounded onto a vertex rather
   than an exact one, and only reports `Optimal`/`MaxIterations` (no infeasibility/unboundedness
   certificate — that needs a homogeneous self-dual embedding).
-- **`Simplex`** — classic two-phase dense tableau simplex with Bland's anti-cycling rule. Exact
-  vertex solution, fully deterministic; kept as the reference implementation.
 
-All four reach the same optimal vertex on a bounded, feasible problem; `maxIter <= 0` picks a
+All three reach the same optimal vertex on a bounded, feasible problem; `maxIter <= 0` picks a
 size-based default for every backend.
 
 ## Warm-started re-solve
@@ -98,12 +96,12 @@ not. Two reformulation-free exact engines, both working directly on the original
 LPInfo info = LP.lad(in A, in b, ref x, out double l1Residual);
 ```
 
-**`LP.lad(in A, in b, ref x, out objective[, maxIter])`** is a size-routed hybrid that dispatches
-between `ladBR` and `ladFN` by `A.M_Rows` (the measured, per-dtype BR/FN crossover — see
-Performance below); call `ladBR`/`ladFN` directly to bypass the routing and force one engine. An
-explicit-backend overload, **`LP.lad(in A, in b, ref x, out objective, LPMethod method[, maxIter])`**,
-instead reformulates LAD as a general LP (`x = x⁺ − x⁻`, split residuals) and routes it through any
-`LPMethod` above — exact, but far slower; kept mainly as an independent cross-check.
+**`LP.lad(in A, in b, ref x, out objective[, maxIter])`** dispatches between `ladBR` and `ladFN` by `A.M_Rows`
+(the measured crossover; see Performance below). Call `ladBR`/`ladFN` directly to force one engine.
+
+An explicit-backend overload, **`LP.lad(in A, in b, ref x, out objective, LPMethod method[, maxIter])`**,
+reformulates LAD as a general LP (`x = x⁺ − x⁻`) and routes it through any `LPMethod` — exact but slower;
+kept mainly as an independent cross-check.
 
 ### Quantile regression
 
@@ -117,13 +115,10 @@ For a fast *approximate* alternative (iteratively-reweighted least squares, no L
 
 ## Sparse (matrix-free over BSR)
 
-`LP.solve`/`LP.lad` also take a `floatBSR`/`doubleBSR` in place of the dense matrix — a matrix-free
-Mehrotra interior point over a [block-sparse](sparse-bsr.md) constraint matrix. Every normal-equation solve
-each iteration runs through `Krylov.cg` against a matrix-free operator (Jacobi-preconditioned; the
-normal matrix is never formed), so nothing scales with a dense `N²` — the regime where a dense LP
-isn't an option. Interior point only (no simplex for sparse), so it reports `Optimal`/
-`MaxIterations` only; use the dense simplex backends for exact infeasibility/unboundedness
-certificates.
+`LP.solve`/`LP.lad` accept `floatBSR`/`doubleBSR` matrices — a matrix-free Mehrotra interior point over
+[block-sparse](sparse-bsr.md) constraints. Each normal-equation solve runs through `Krylov.cg` against
+a matrix-free operator (Jacobi-preconditioned), so cost does not scale with `N²`. Interior point only
+(no simplex), reporting `Optimal`/`MaxIterations`; use dense simplex backends for exact infeasibility/unboundedness certificates.
 
 ## Diagnostics
 
@@ -134,11 +129,9 @@ Every entry point returns `LPInfo` by value: `objective` (`cᵀx`, or the L1 res
 
 ## Performance
 
-`RevisedSimplex` is the fastest exact backend at every benchmarked size on cold solves and the
-fastest infeasibility certifier (1-2 pivots); `DualSimplex` wins on warm re-solves specifically.
+`RevisedSimplex` is fastest on cold solves and fastest at infeasibility (1-2 pivots); `DualSimplex` wins on
+warm re-solves.
 
-`LP.lad`'s hybrid default routes on `A.M_Rows` at a measured, per-dtype, re-tunable crossover
-(`Benchmarks/LPBenchmark.cs` Section 2b): in **double**, `ladBR` wins through `m=4096` (2.49ms vs
-`ladFN`'s 2.71ms) and only loses ~11% by `m=16384`, so the default threshold sits at 4096; in
-**float**, SIMD gains moved `ladFN`'s win boundary down to `m=1024` (0.47ms vs `ladBR`'s 0.62ms)
-while `ladBR` still wins at `m=384`, so the default threshold sits at 512.
+`LP.lad` hybrid default routes on `A.M_Rows` per dtype (`Benchmarks/LPBenchmark.cs` Section 2b):
+- **double**: `ladBR` wins through `m=4096` (2.49ms vs 2.71ms), default threshold 4096
+- **float**: `ladBR` wins through `m=384`, `ladFN` through `m=1024` (0.47ms vs 0.62ms), default threshold 512

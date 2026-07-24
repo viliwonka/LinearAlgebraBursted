@@ -57,5 +57,5 @@ crossover — the gain caps out around 1.3–1.4× (bounded by `matMatDot`'s own
 
 All dense factorizations are level-3 blocked: compact-WY for QR and LQ, right-looking POTRF/GETRF for
 Cholesky and LU, with trailing-matrix updates routed through the register-tiled GEMM (~70–90 GFLOP/s,
-see [la-primitives.md](la-primitives.md)). Representative solve timings are in [solvers.md](solvers.md) and the
+see [la-primitives.md](la-primitives.md)). Solve timings are in [solvers.md](solvers.md) and the
 [README](../../README.md) benchmark table.

@@ -17,9 +17,9 @@ between minor versions.
 - `IsCreated` on every vector/matrix type (false for `default` and after `Dispose()`).
 - `zeroInPlace()` / `fillInPlace(s)` component ops for vectors AND matrices, float through
   integer dtypes.
-- **Linear programming (`LP`)**: dense simplex, a bounded-variable revised simplex (default) and
-  dual simplex over an LU-factored basis, Mehrotra primal-dual interior point, and a matrix-free
-  interior-point variant over a sparse (BSR) constraint matrix.
+- **Linear programming (`LP`)**: a bounded-variable revised simplex (default) and dual simplex over
+  an LU-factored basis, Mehrotra primal-dual interior point, and a matrix-free interior-point
+  variant over a sparse (BSR) constraint matrix.
 - **Least-absolute-deviation / quantile regression (`LP.lad`)**: two reformulation-free exact
   engines — Barrodale-Roberts specialized simplex and Frisch-Newton interior point — behind a
   size-routed hybrid default, plus a matrix-free sparse route. Both engines also fit an arbitrary
@@ -141,8 +141,7 @@ between minor versions.
 
 ## [0.1.0] — 2026-07-03
 
-First public preview. The library is feature-complete for its core scope and heavily
-tested; the surface is still being finalized ahead of a `1.0`.
+First public preview. Feature-complete for its core scope and heavily tested.
 
 ### Core
 
@@ -191,4 +190,4 @@ tested; the surface is still being finalized ahead of a `1.0`.
 - Burst-safe `Print.Log` / `Print.Spy` (including block-sparse spy) and managed
   `Print.ToText` / `ToCsv` / `SaveCsv` export for every matrix type.
 
-[0.1.0]: https://github.com/viliwonka/LinearAlgebraBursted/releases/tag/v0.1.0
+[0.1.0]: https://github.com/viliwonka/BULA/releases/tag/v0.1.0

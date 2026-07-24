@@ -72,8 +72,6 @@ SPD system, b=3, nb=256, N=768, K=40 fixed iterations, tol=0):
 | double | CG | 0.080 | 2.15×10⁻¹⁶ |
 | double | PCG (block-Jacobi) | 0.122 | 2.07×10⁻¹⁶ |
 
-On this well-conditioned, already-diagonally-strong test system the block-Jacobi preconditioner adds
-~50% per-iteration overhead (one extra `Apply` for `M`) without buying back enough iterations to pay
-for itself — expected, since Jacobi preconditioning's real win shows up on ill-conditioned systems
-(see `least-squares.md`'s AᵀA-Jacobi preconditioner, measured on a purpose-built ill-conditioned case)
-not on a benchmark's synthetic well-conditioned one.
+On this well-conditioned system, block-Jacobi adds ~50% per-iteration overhead (one extra `Apply` for
+`M`) without buying back enough iterations to justify the cost — preconditioning's real payoff shows
+up on ill-conditioned systems (see [least-squares.md](least-squares.md)'s AᵀA-Jacobi example), not here.

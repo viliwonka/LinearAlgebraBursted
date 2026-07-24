@@ -4,9 +4,9 @@
   "displayName": "Burst Linear Algebra",
   "description": "A Burst-compiled linear algebra library for Unity: dense & block-sparse matrices, factorizations (LU/Cholesky/QR/SVD), direct/least-squares/iterative solvers, eigensolvers, FFT, statistics, ML (PCA, k-means) and generators. A natural extension of Unity.Mathematics for larger-than-4x4 problems. Getting ready for production.",
   "unity": "6000.3",
-  "documentationUrl": "https://github.com/viliwonka/LinearAlgebraBursted",
-  "changelogUrl": "https://github.com/viliwonka/LinearAlgebraBursted/blob/main/CHANGELOG.md",
-  "licensesUrl": "https://github.com/viliwonka/LinearAlgebraBursted/blob/main/LICENSE",
+  "documentationUrl": "https://github.com/viliwonka/BULA",
+  "changelogUrl": "https://github.com/viliwonka/BULA/blob/main/CHANGELOG.md",
+  "licensesUrl": "https://github.com/viliwonka/BULA/blob/main/LICENSE",
   "dependencies": {
     "com.unity.collections": "2.6.2"
   },

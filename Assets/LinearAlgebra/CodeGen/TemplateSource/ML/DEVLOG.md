@@ -1,6 +1,16 @@
 # DEVLOG — ML
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## PCA.Fit.fProxy.cs
+- 2026-07-24 | Added game-facing fitLine/fitPlane point-cloud helpers as PCA overloads (new partial
+  file) rather than a new class/namespace, since they're thin wrappers over PCA.fitCov with no new
+  numerics -- same "fit + noun" verb pattern as fitCov/fitSvd. Always PCAScaling.Covariance (never
+  Correlation: per-axis rescaling would break the perpendicular-distance meaning of a geometric fit).
+  NativeArray<fProxy2/3/4> point clouds are zero-copy: reinterpreted as flat NativeArray<fProxy> and
+  viewed as fProxyMxN, since AoS point-cloud layout already IS row-major (no transpose needed, unlike
+  ConvertOP's fixed-size-matrix converters). fitLine got a float4 overload (trivial generalization,
+  largest component); fitPlane stayed 3D-only (a 4D "hyperplane" is a different, out-of-scope concept).
+
 ## KMeans.fProxy.cs — raw-pointer hoist (spec-raw-pointer-hoist-pass batch 4)
 - 2026-07-17 | The O(N·D) / O(k·D) per-iteration loops (PointNormSq, CentNormSq, Gram-patch,
   zero-accumulators, accumulate-points, divide-to-centroids, and the two seeding distance loops) were on

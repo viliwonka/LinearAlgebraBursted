@@ -53,7 +53,7 @@ namespace LinearAlgebra
             _data = new UnsafeList<bool>((bool*)viewOf.GetUnsafePtr(), viewOf.Length);
         }
 
-        public unsafe boolMxN(int M_rows, int N_cols, Allocator allocator, bool uninit = false)
+        public unsafe boolMxN(int M_rows, int N_cols, Allocator allocator = Allocator.Temp, bool uninit = false)
         {
             _data = default;
             M_Rows = M_rows;
@@ -64,13 +64,9 @@ namespace LinearAlgebra
             Data = data;
         }
 
-        public unsafe boolMxN(in boolMxN orig, Allocator allocator = Allocator.Invalid)
+        public unsafe boolMxN(in boolMxN orig, Allocator allocator = Allocator.Temp)
         {
             _data = default;
-
-            // fall back to Temp when no allocator is given.
-            if (allocator == Allocator.Invalid)
-                allocator = Allocator.Temp;
 
             M_Rows = orig.M_Rows;
             N_Cols = orig.N_Cols;

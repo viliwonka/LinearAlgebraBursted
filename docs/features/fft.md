@@ -23,9 +23,8 @@ per thread for parallel transforms, FFTW "plan" semantics).
 
 ## Usage
 
-All FFT/IFFT/rfft lengths must be a **power of two** — use `dft` for arbitrary N. Build a workspace
-once (its twiddle-table build amortizes after ~1–3 transforms) and reuse it for every transform of
-that size:
+Build a workspace once (its twiddle-table build amortizes after ~1–3 transforms) and reuse it for every
+transform of that size:
 
 ```csharp
 var ws = new floatFFTCache(1024, Allocator.Persistent);   // builds the twiddle table on creation

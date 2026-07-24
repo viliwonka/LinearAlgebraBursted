@@ -12,5 +12,4 @@ operand wholesale. Both a zero-alloc `ref`-dest primitive and an allocating form
 
 ## Performance
 
-Not benchmarked — these are thin per-element forwarders to `Unity.Mathematics.math` intrinsics with
-no dedicated hot-path optimization work done.
+These are thin forwarders to Unity.Mathematics intrinsics; not benchmarked or separately optimized.

@@ -1,7 +1,5 @@
 # Print & export
 
-`Print` — split into a Burst-callable inspection surface and a managed unbounded export surface.
-
 ## Burst `Log`/`Spy` (bounded, callable from inside a job)
 
 - `Print.Log(in floatN a, int start = 0, int end = -1)` / `Log(in floatMxN m)` — uses
@@ -27,10 +25,5 @@
 ## Histogram quick-look
 
 `Print.Histogram(in floatN data, int bins = 16, int width = 40)` — auto min/max range, a horizontal
-ASCII bar chart via `UnityEngine.Debug.Log`. Distinct from (and simpler than) the
-[`Histogram`](stats.md) class's binning API, which is meant for computing counts/density/CDF, not
-just eyeballing a distribution.
-
-## Performance
-
-Not applicable — this is inspection/export tooling, not a hot-path feature.
+ASCII bar chart via `UnityEngine.Debug.Log`. Distinct from the [`Histogram`](stats.md) class's
+binning API, which is for computing counts/density/CDF.

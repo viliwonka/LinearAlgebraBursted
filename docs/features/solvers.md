@@ -1,13 +1,9 @@
 # Direct solvers & the diagnostics-struct convention
 
-The direct (non-iterative) solve entry points live on the factorization classes themselves — each of
-the decompositions in [decompositions.md](decompositions.md) exposes its own
-`decompSolve`/`solveInPlace`, following the shared `decomp`/`decompInPlace`/`decompSolve`/`solveInPlace`
-token grid. They are built on the triangular-solve
-primitives, which live on [`Blas`](la-primitives.md) as the substitution counterpart to its GEMM/GEMV kernels.
-Iterative and least-squares solvers live on `Krylov` and are covered in
-[least-squares.md](least-squares.md); this page is the direct (non-iterative) family plus the
-diagnostics-struct convention shared by every solver in the library.
+Direct (non-iterative) solve entry points live on the factorization classes themselves, following the shared
+`decomp`/`decompInPlace`/`decompSolve`/`solveInPlace` token grid. They build on triangular-solve primitives
+in [`Blas`](la-primitives.md). Iterative and least-squares solvers live on `Krylov` (see [least-squares.md](least-squares.md));
+this page covers the direct family and the diagnostics-struct convention shared by all solvers in the library.
 
 ## Direct solve family
 
@@ -47,15 +43,12 @@ destructive/preserving contracts — the argument type (`fProxyN` → `fProxyMxN
   factorization and never reconstructs `Q` (the ~⅓-runtime saving), so `A` and `B` are both destroyed.
 - `LQ.minNormSolve(A, B, X)` (underdetermined min-norm) and `SVD.pinvSolve(A, B, X)` (any shape/rank).
 
-This is the level-2 → level-3 jump: each substitution step is a contiguous axpy across the `k`
-right-hand sides, so each factor entry is loaded once and reused across all of them, and `QᵀB` / `UᵀB`
-become GEMMs. Results match the column-by-column vector solve to summation-order rounding.
+Block solves reuse each factor entry across all `k` right-hand sides: each substitution step is a contiguous
+axpy across the block, and `QᵀB` / `UᵀB` become GEMMs (level-3 BLAS). Results match the column-by-column
+vector solve to summation-order rounding.
 
-**End-to-end speedup, the fused `solveInPlace` path** (`Benchmarks/MultiRhsSolveBenchmark.cs`, whole
-`AX=B`, square N=512, float, Ryzen 9 9950X3D single-thread Burst). `solveInPlace` fuses factor+solve
-into one destructive call, so there is no "factor once then loop" with it — calling it per RHS
-re-factorizes every time. The block adds the k-column solve onto a *single* factorization, so its
-total is nearly flat in `k`, while looping the one-call API is `k · (factor + solve)`:
+**Speedup: fused `solveInPlace` vs. looping per-RHS** (`Benchmarks/MultiRhsSolveBenchmark.cs`, N=512 square, float, Ryzen 9 9950X3D, Burst single-thread).
+The fused `solveInPlace` factors once and solves all `k` RHS together (cost ≈ factor + `k` · solve). Looping the one-call API re-factors each time (cost = `k` · (factor + solve)):
 
 | solver | 1-RHS `solveInPlace` (ms) | block, k=16 | block, k=64 | block, k=256 | speedup @ k=256 |
 |---|---|---|---|---|---|
@@ -64,14 +57,12 @@ total is nearly flat in `k`, while looping the one-call API is `k · (factor + s
 | QR | 4.7 | 5.86 | 5.49 | 7.46 | 160× |
 | QRCP | 7.0 | 8.47 | 8.05 | 10.22 | 175× |
 
-One block call for *any* `k` costs about the same as a *single* `solveInPlace`; the speedup ≈ `k`
-because it eliminates the `k`-fold refactorization, not because the block solve itself is faster. The
-fused QR/QRCP block also confirms the no-Q saving: QR's block (~7.5ms) undercuts the form-Q
-`decompInPlace` route because `QᵀB` is streamed during factorization and `Q` is never reconstructed.
+One block call is almost as cheap as a single-RHS `solveInPlace` — the speedup comes from eliminating the
+`k`-fold refactorization. QR's block also shows the benefit of not forming Q: `QᵀB` is streamed during
+factorization, so `Q` is never reconstructed.
 
-If you already hold a factorization and only want the marginal cost of more right-hand sides, use the
-`decompSolve` block overload instead (`B` preserved): that isolates the level-2 → level-3 TRSM gain
-(each factor entry loaded once, reused across all `k` columns) without re-paying the factorization.
+If you already hold a factorization, use `decompSolve` block overload instead (preserves `B`): it pays only
+the triangular-solve cost, reusing the factor across all `k` columns, without refactoring.
 
 ## Diagnostics-struct convention
 

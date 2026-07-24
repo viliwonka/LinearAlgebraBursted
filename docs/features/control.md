@@ -18,9 +18,9 @@ algebraic Riccati equation (DARE).
   backward Riccati recursion from a terminal cost `Qf` over `N` steps. `Kschedule` is `(N·m)×n`; the
   gain for step `k` lives in rows `[k·m, (k+1)·m)`.
 
-`Q`/`R` are assumed symmetric PSD (not numerically validated); the `(R + BᵀSB)` solve always routes
+`Q`/`R` are assumed symmetric PSD (not numerically validated); the `(R + BᵀSB)` solve routes
 through the rank-revealing `CHOP`, so a semidefinite `R` degrades to a usable minimum-norm `K`
-instead of failing outright — surfaced via `LQRInfo.rankDeficient` rather than hidden.
+instead of failing. This is surfaced via `LQRInfo.rankDeficient`.
 
 Returns `RiccatiInfo`: `iterations`, `residual` (relative Frobenius change at the last step),
 `status : RiccatiStatus` (`Converged`/`MaxIterations`/`Diverged`), `rankDeficient`. Implicit

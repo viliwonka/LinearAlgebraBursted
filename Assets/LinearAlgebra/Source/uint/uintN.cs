@@ -43,13 +43,9 @@ namespace LinearAlgebra
         /// <summary>
         /// Creates a new vector with its own allocation.
         /// </summary>
-        public unsafe uintN(int n, Allocator allocator = Allocator.Invalid, bool uninit = false)
+        public unsafe uintN(int n, Allocator allocator = Allocator.Temp, bool uninit = false)
         {
             _data = default;
-
-            // fall back to Temp when no allocator is given.
-            if (allocator == Allocator.Invalid)
-                allocator = Allocator.Temp;
 
             var data = new UnsafeList<uint>(n, allocator, NativeArrayOptions.UninitializedMemory);
             data.Resize(n, uninit? NativeArrayOptions.UninitializedMemory : NativeArrayOptions.ClearMemory);
@@ -60,13 +56,9 @@ namespace LinearAlgebra
         /// <summary>
         /// Creates a copy of the vector with a new allocation.
         /// </summary>
-        public unsafe uintN(in uintN orig, Allocator allocator = Allocator.Invalid) {
+        public unsafe uintN(in uintN orig, Allocator allocator = Allocator.Temp) {
 
             _data = default;
-
-            // fall back to Temp when no allocator is given.
-            if(allocator == Allocator.Invalid)
-                allocator = Allocator.Temp;
 
             var data = new UnsafeList<uint>(orig.N, allocator, NativeArrayOptions.UninitializedMemory);
             data.Resize(orig.N, NativeArrayOptions.UninitializedMemory);

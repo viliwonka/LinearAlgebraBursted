@@ -1,7 +1,5 @@
 # Blas, Norms & Analysis — core LA primitives
 
-Three merged (bare-name) classes covering the primitives everything else is built from.
-
 ## Blas — dot, transpose, outer product, GEMM
 
 Every op has a zero-alloc `ref`-destination primitive (the `ref` result must be distinct from the

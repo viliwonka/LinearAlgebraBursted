@@ -1,6 +1,17 @@
 # DEVLOG — fProxy
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## N/MxN allocating ctors — `Allocator.Invalid` sentinel removed (all six files)
+- 2026-07-24 | The sized and copy constructors on fProxyN/fProxyMxN/iProxyN/iProxyMxN/boolN/
+  boolMxN defaulted `allocator` to `Allocator.Invalid` and mapped it to `Allocator.Temp` at
+  runtime, a relic from the pre-removal Arena system where the sentinel distinguished "no
+  allocator, no arena either" from a real one (see the arena-tracking note below). With Arena
+  gone there's no longer a sibling arena-backed overload to distinguish from, so the indirection
+  was dead weight — collapsed to a plain `Allocator allocator = Allocator.Temp` default,
+  matching every `GenerateOP`/`ConvertOP` factory (which never used the sentinel). Also added
+  the same default to the MxN sized ctor, which previously required an explicit `Allocator` with
+  no default at all (asymmetric with the N sized ctor, which already defaulted).
+
 ## fProxyN/fProxyMxN — Data must be field-forwarding, not an auto-property (Arena removal)
 - 2026-07-23 | When the `_rec` dual path was collapsed, `Data` was deliberately kept as a
   trivial property forwarding to a private `_data` field (NOT converted to an auto-property or

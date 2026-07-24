@@ -74,7 +74,7 @@ namespace LinearAlgebra
             _data = new UnsafeList<fProxy>(source.Data.Ptr, Length);
         }
 
-        public unsafe fProxyMxN(int M_rows, int N_cols, Allocator allocator, bool uninit = false)
+        public unsafe fProxyMxN(int M_rows, int N_cols, Allocator allocator = Allocator.Temp, bool uninit = false)
         {
             _data = default;
             M_Rows = M_rows;
@@ -88,13 +88,9 @@ namespace LinearAlgebra
         /// <summary>
         /// Creates a copy of the matrix with a new allocation.
         /// </summary>
-        public unsafe fProxyMxN(in fProxyMxN orig, Allocator allocator = Allocator.Invalid)
+        public unsafe fProxyMxN(in fProxyMxN orig, Allocator allocator = Allocator.Temp)
         {
             _data = default;
-
-            // fall back to Temp when no allocator is given.
-            if (allocator == Allocator.Invalid)
-                allocator = Allocator.Temp;
 
             M_Rows = orig.M_Rows;
             N_Cols = orig.N_Cols;

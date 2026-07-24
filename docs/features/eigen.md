@@ -9,9 +9,8 @@
   tridiagonalization (with orthogonal accumulation) + implicit-shift QL, all eigenpairs, descending
   order, `A` destroyed. **`Eigen.valuesSymmetricInPlace(ref A, ref eigenvalues, ...)`** — values-only, skips
   the eigenvector accumulation entirely, faster still.
-- `Eigen.decompInPlace` (cyclic two-sided Jacobi) is `[Obsolete]` — Jacobi's column-oriented rotations
-  resist SIMD; kept only because it has superior relative accuracy on graded spectra, and as a
-  cross-check oracle for the Householder path.
+- `Eigen.decompInPlace` (cyclic two-sided Jacobi) is `[Obsolete]` — kept for cross-validation and
+  superior accuracy on graded spectra, but column-oriented rotations resist SIMD.
 - **`Eigen.valuesQRInPlace(ref A, ref eigenvaluesReal, ref eigenvaluesImag, ...)`** — non-symmetric,
   Francis double-shift QR on an upper-Hessenberg reduction (elmhes+hqr). Values only; `A` destroyed;
   complex-conjugate pairs are represented as real/imag arrays (no complex type), via 2×2 Schur blocks.
@@ -35,17 +34,15 @@ Generic `<TOp> where TOp : struct, IfloatLinearOperator`, with thin dense (`floa
   subspace) and a small dense Rayleigh-Ritz sub-problem solved with `Eigen.symmetricInPlace` (a 3-block
   `[X,W,P]` reduction that falls back to 2-block `[X,W]` if the 3-block Cholesky is too
   ill-conditioned). Dense (`floatMxN`), [BSR](sparse-bsr.md), and BSR+`floatBlockJacobi`
-  (preconditioned) forwarders all share this one body — the same pattern as the rest of this section.
-  **Results are ascending** (index 0 = smallest) — the one `Eigen`-family method that isn't
-  descending, since "the k smallest" is the entire point. Zero-alloc at the O(n) scale via
+  (preconditioned) overloads share this implementation.
+  **Results are ascending** (index 0 = smallest), unlike other `Eigen` methods. Zero-alloc at the O(n) scale via
   `floatLOBPCGCache` (`new floatLOBPCGCache(n, k, Allocator.Persistent)`, reusable/warm-startable
   across calls); the
   O(k)-scale Rayleigh-Ritz sub-solve still allocates a few small, bounded Temp vectors internally —
   the same exception `lanczosVectors` already has. Returns `LOBPCGInfo`.
 
-This is the intended tool for sparse smallest-eigenpair problems (structural-stability / buckling /
-modal-analysis use cases, the Fiedler vector) that `lanczos`/`inversePowerIteration` aren't the best
-fit for; the dense small-scale case is still better served by `Eigen.symmetricInPlace`.
+Use for sparse smallest-eigenpair problems (structural-stability, buckling, modal-analysis, Fiedler
+vector). For dense small-scale, prefer `Eigen.symmetricInPlace`.
 
 **Generalized pencil form** — `lobpcg` also solves `A·x = λ·B·x` with B SPD: every overload has a
 `+B` twin (generic operator, dense, BSR, BSR+block-Jacobi) that B-orthonormalizes the basis and
