@@ -1,6 +1,31 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## LP.FrischNewton — tau != 0.5 oracle + rank-deficient coverage (closes the audit's test gaps)
+- 2026-07-25 | Closes both open test gaps from the port-fidelity cross-check below; no behaviour
+  change, the solver was already correct on both.
+  ORACLE: quantile regression is an LP, so an optimum sits at a basic solution whose fitted
+  hyperplane interpolates n observations exactly. At n=2 that is a line through a PAIR of points, so
+  enumerating all C(m,2) pairs and taking the smallest check loss is the EXACT optimum. Plain double
+  arithmetic over the raw data, sharing nothing with the solver — unlike the pre-existing tau=0.5
+  test, which only compares ladFN against the core it forwards to, and the tau=0.25 sign-fraction
+  test, which is a wide statistical envelope. Assertion is one-sided (the solver cannot beat the
+  exact optimum, only fall short).
+  ⚠️ CHOOSING tau MATTERS: on this 9-point data the optimum is piecewise-constant in tau and the
+  MEDIAN line is exactly optimal across tau in [0.25, 0.4] — the originally-drafted {0.1, 0.25, 0.75,
+  0.9} therefore included a value at which a completely tau-BLIND solver would pass. Measured excess
+  of the median line over each tau's own optimum: 0.05→189%, 0.1→71%, 0.15→32%, 0.2→12%, 0.25-0.4→0%,
+  0.6→4%, 0.75→24%, 0.9→221%, 0.95→571%. Settled on {0.1, 0.2, 0.75, 0.9}. `BruteForceOracle
+  DiscriminatesTau` now pins that property OF THE TEST DATA (median line must be >10% worse at every
+  tau exercised), so the same trap cannot be reintroduced by editing the data or the tau list.
+  RANK-DEFICIENT: duplicated-column and zero-column designs (`LadFrischNewtonRankDeficientTests`).
+  Coefficients are not identifiable but the optimal OBJECTIVE is, and equals the full-rank two-column
+  problem's — that is the assertable invariant. Note the fallback these exercise is dtype-dependent:
+  the LS init still passes an absolute `reg` to BuildATQA (deliberately — with q=1 that matrix is
+  AᵀA, which depends only on A, so it is already scale-invariant in b), and in FLOAT `reg` = 1e-6 is
+  below one ulp of AᵀA's entries at this size, so the plain-CHO init genuinely fails and the y=0
+  fallback fires; in double it does not. Both dtypes must reach the same objective either way.
+
 ## LP.FrischNewton — scale equivariance: one data-scaled tolerance + relative regularization
 - 2026-07-25 | The L1 fit is exactly equivariant under `b -> c*b`; the solver was not. New
   `LadFrischNewtonScaleTests.ResponseScaleEquivariance` measures all four scales before asserting (one

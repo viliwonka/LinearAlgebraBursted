@@ -79,4 +79,105 @@ public class doubleLadFrischNewtonQuantileTests
         Assert.That(neg, Is.EqualTo(target).Within(0.20 * m),
             $"tau=0.25: {neg}/{m} residuals negative, expected ~{target} (+/-{0.20 * m})");
     }
+
+    // ---- Independent optimality oracle for tau != 0.5.
+    //
+    // Quantile regression minimizes the check loss sum rho_tau(b_i - A_i x), rho_tau(u) = u(tau -
+    // 1[u<0]). It is a linear program, so an optimum sits at a basic solution: the fitted hyperplane
+    // interpolates n of the observations exactly. With n = 2 that means the optimum is one of the
+    // lines through a PAIR of data points, so enumerating all C(m,2) pairs and taking the smallest
+    // check loss gives the exact optimum. This oracle is plain double arithmetic over the raw data --
+    // it shares no code path with the solver, unlike the tau=0.5 test above which compares ladFN
+    // against the core it forwards to.
+
+    static double CheckLoss(double[] t, double[] bb, double tau, double icept, double slope)
+    {
+        double loss = 0;
+        for (int k = 0; k < t.Length; k++)
+        {
+            double u = bb[k] - (icept + slope * t[k]);
+            loss += u * (tau - (u < 0.0 ? 1.0 : 0.0));
+        }
+        return loss;
+    }
+
+    static double BruteForceOptimum(double[] t, double[] bb, double tau, out double bestI, out double bestS)
+    {
+        double best = double.MaxValue; bestI = 0; bestS = 0;
+        for (int i = 0; i < t.Length; i++)
+            for (int j = i + 1; j < t.Length; j++)
+            {
+                if (t[j] == t[i]) continue;
+                double slope = (bb[j] - bb[i]) / (t[j] - t[i]);
+                double icept = bb[i] - slope * t[i];
+                double loss = CheckLoss(t, bb, tau, icept, slope);
+                if (loss < best) { best = loss; bestI = icept; bestS = slope; }
+            }
+        return best;
+    }
+
+    [Test]
+    public void QuantileFitMatchesBruteForceOptimum()
+    {
+        // Scattered, non-collinear, no repeated t: a unique basic optimum at every tau below.
+        double[] t = { 0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0 };
+        double[] bb = { 1.0, 2.5, 2.0, 6.0, 4.5, 5.0, 9.0, 7.5, 8.0 };
+        // These four are chosen because the MEDIAN line is measurably suboptimal at each (71%, 12%,
+        // 24%, 221% above the respective optimum) -- see BruteForceOracleDiscriminatesTau. On this
+        // data the optimum is piecewise-constant in tau and the median line happens to be optimal
+        // across tau in [0.25, 0.4], so those values would let a tau-blind solver pass.
+        double[] taus = { 0.1, 0.2, 0.75, 0.9 };
+        int m = t.Length;
+        double relTol = 1e-7;
+
+        var bad = new System.Text.StringBuilder();
+        for (int q = 0; q < taus.Length; q++)
+        {
+            double tau = taus[q];
+            var A = new doubleMxN(m, 2, Allocator.Temp);
+            var b = new doubleN(m, Allocator.Temp);
+            for (int i = 0; i < m; i++) { A[i, 0] = (double)1; A[i, 1] = (double)t[i]; b[i] = (double)bb[i]; }
+            var x = new doubleN(2, Allocator.Temp);
+
+            LP.ladFrischNewtonCore(in A, in b, tau, ref x, out double _, 0);
+
+            double solved = CheckLoss(t, bb, tau, (double)x[0], (double)x[1]);
+            double optimal = BruteForceOptimum(t, bb, tau, out double oi, out double os);
+
+            // One-sided: the solver cannot beat the exact optimum, it can only fall short of it.
+            if (solved > optimal * (1.0 + relTol) + relTol)
+                bad.AppendLine($"  tau={tau}: solver check loss {solved} exceeds optimum {optimal} " +
+                               $"(solver line {(double)x[0]} + {(double)x[1]}t, oracle {oi} + {os}t)");
+
+            A.Dispose(); b.Dispose(); x.Dispose();
+        }
+        Assert.That(bad.ToString(), Is.Empty, "quantile fit is not optimal:\n" + bad);
+    }
+
+    // Guard on the TEST DATA, not on the solver: at each tau exercised above, the median (tau=0.5)
+    // line must be measurably worse than that tau's own optimum. Without this, a solver that ignored
+    // tau entirely could pass QuantileFitMatchesBruteForceOptimum and the oracle would look sound.
+    [Test]
+    public void BruteForceOracleDiscriminatesTau()
+    {
+        double[] t = { 0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0 };
+        double[] bb = { 1.0, 2.5, 2.0, 6.0, 4.5, 5.0, 9.0, 7.5, 8.0 };
+        double[] taus = { 0.1, 0.2, 0.75, 0.9 };
+
+        BruteForceOptimum(t, bb, 0.5, out double medI, out double medS);
+
+        for (int q = 0; q < taus.Length; q++)
+        {
+            double tau = taus[q];
+            double optimal = BruteForceOptimum(t, bb, tau, out _, out _);
+            double atMedian = CheckLoss(t, bb, tau, medI, medS);
+
+            Assert.That(optimal, Is.GreaterThan(0.0),
+                $"tau={tau}: check loss must be positive on non-collinear data");
+            // 10% margin: comfortably above the 0.5% tolerance the solver is held to.
+            Assert.That(atMedian, Is.GreaterThan(optimal * 1.10),
+                $"tau={tau}: the median line is not clearly suboptimal ({atMedian} vs {optimal}), " +
+                "so this tau cannot detect a tau-blind solver -- pick a different one");
+        }
+    }
 }
