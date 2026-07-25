@@ -312,6 +312,32 @@ public class floatLOBPCGRobustnessTests
         AssertNoFalseCertificate(in infoP, in eigP, in vecsP, k, n, dense, TolFactor());
     }
 
+    // Case 3 (spec "Test vectors to add"): Wilkinson W- -- symmetric INDEFINITE and exactly
+    // SINGULAR. W- is orthogonally similar to -W- through a signed reversal permutation, so its
+    // spectrum is symmetric about zero, and n odd forces one eigenvalue to be exactly 0. The k
+    // smallest wanted here are the most negative, so an exact zero sits in the interior of the
+    // spectrum rather than at the end being converged toward -- distinct from every other case in
+    // this file, which are SPD or PSD. Solved => every returned pair matches the dense oracle and
+    // has a healthy norm; a non-Converged status is always acceptable (spec rule: forbid false
+    // certificates, never require convergence on a hard case).
+    [Test]
+    public void WilkinsonMinusIndefiniteSingularNoFalseCertificate()
+    {
+        int n = 21, k = 2;
+        var A = floatGallery.floatWilkinsonMinus(n);
+
+        var dense = DenseSmallestAscending(in A, k);
+        Assert.Less(dense[0], 0.0, "W- must be indefinite: its smallest eigenvalue is negative");
+
+        var eigG = Eigen.lobpcg(in A, k, 2, out var vecsG, out var infoG,
+                                Consts.floatSqrtEps, 500);
+        AssertNoFalseCertificate(in infoG, in eigG, in vecsG, k, n, dense, TolFactor());
+
+        var eigP = Eigen.lobpcg(in A, k, out var vecsP, out var infoP,
+                                Consts.floatSqrtEps, 500);
+        AssertNoFalseCertificate(in infoP, in eigP, in vecsP, k, n, dense, TolFactor());
+    }
+
     // Case 5 (spec "Test vectors to add"): A = L^T L for the (n+1)-by-n Lauchli matrix with
     // eps = sqrt(float eps) (fixed across the float/double expansions). Closed form
     // A = ones(n,n) + eps^2*I: SPD, smallest eigenvalue eps^2 ~ 1.2e-7 with multiplicity n-1 -- a

@@ -82,6 +82,38 @@ namespace BULA.Gallery
             return mat;
         }
 
+        /// <summary>
+        /// Allocates the n×n Wilkinson W− matrix (n must be odd): symmetric tridiagonal with
+        /// diagonal entries m − i where m = (n−1)/2, and all sub/super-diagonal entries = 1.
+        /// Known property: W− is orthogonally similar to −W− (via a signed reversal permutation),
+        /// so its spectrum is symmetric about zero; n being odd, one eigenvalue is exactly 0.
+        /// Symmetric INDEFINITE and exactly singular — the sign-symmetric counterpart to
+        /// <see cref="fProxyWilkinsonPlus"/>. At n = 3 the spectrum is {−√3, 0, √3}.
+        /// </summary>
+        public static fProxyMxN fProxyWilkinsonMinus(int n, Allocator allocator = Allocator.Temp)
+        {
+            if (n < 3 || (n & 1) == 0)
+                throw new ArgumentException("fProxyWilkinsonMinus: n must be an odd integer >= 3");
+
+            int m = (n - 1) / 2;
+            var mat = new fProxyMxN(n, n, allocator, true);
+
+            for (int i = 0; i < n; i++)
+            {
+                for (int j = 0; j < n; j++)
+                {
+                    if (j == i)
+                        mat[i, j] = (fProxy)(m - i);
+                    else if (j == i + 1 || j == i - 1)
+                        mat[i, j] = (fProxy)1;
+                    else
+                        mat[i, j] = (fProxy)0;
+                }
+            }
+
+            return mat;
+        }
+
         // =========================================================================
         // 3. Fiedler — |i − j| distance matrix
         // =========================================================================

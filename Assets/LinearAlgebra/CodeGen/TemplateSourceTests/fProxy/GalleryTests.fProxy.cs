@@ -49,6 +49,7 @@ public class fProxyGalleryTests
             CirculantFFT,
             TriwProps,
             WilkinsonNearPair,
+            WilkinsonMinusSignSymmetric,
             LauchliDims,
             // Algorithm-exercise
             CGLaplacian,
@@ -80,6 +81,7 @@ public class fProxyGalleryTests
                 case TestType.CirculantFFT:       CirculantFFT();       break;
                 case TestType.TriwProps:          TriwProps();          break;
                 case TestType.WilkinsonNearPair:  WilkinsonNearPair();  break;
+                case TestType.WilkinsonMinusSignSymmetric: WilkinsonMinusSignSymmetric(); break;
                 case TestType.LauchliDims:        LauchliDims();        break;
                 case TestType.CGLaplacian:        CGLaplacian();        break;
             }
@@ -469,6 +471,37 @@ public class fProxyGalleryTests
             AssertTrue(nextGap > (fProxy)1);
         }
 
+        // WilkinsonMinus (n odd ≥ 3): spectrum symmetric about zero with an exact zero eigenvalue.
+        // Pinned two ways -- the closed form at n = 3 ({−√3, 0, √3}), and the ± pairing at n = 7.
+        void WilkinsonMinusSignSymmetric()
+        {
+            var W3 = fProxyGallery.fProxyWilkinsonMinus(3);
+            AssertSymmetric(in W3, (fProxy)1E-5);
+
+            var W3c = new fProxyMxN(in W3, Allocator.Temp);
+            var eig3 = new fProxyN(3, Allocator.Temp);
+            var V3 = new fProxyMxN(3, 3, Allocator.Temp);
+            AssertTrue(Eigen.decompInPlace(ref W3c, ref eig3, ref V3));   // DESCENDING
+
+            fProxy root3 = (fProxy)math.sqrt(3.0);
+            AssertClose(eig3[0], root3, (fProxy)1E-4);
+            AssertClose(eig3[1], (fProxy)0, (fProxy)1E-4);
+            AssertClose(eig3[2], -root3, (fProxy)1E-4);
+
+            // n = 7: eigenvalue j pairs with eigenvalue (n-1-j) under negation, and the middle one
+            // is the exact zero forced by odd n.
+            int n = 7;
+            var W = fProxyGallery.fProxyWilkinsonMinus(n);
+            var Wc = new fProxyMxN(in W, Allocator.Temp);
+            var eig = new fProxyN(n, Allocator.Temp);
+            var V = new fProxyMxN(n, n, Allocator.Temp);
+            AssertTrue(Eigen.decompInPlace(ref Wc, ref eig, ref V));
+
+            for (int j = 0; j < n / 2; j++)
+                AssertClose(eig[j], -eig[n - 1 - j], (fProxy)1E-3);
+            AssertClose(eig[n / 2], (fProxy)0, (fProxy)1E-3);
+        }
+
         // Läuchli is rectangular (n+1)×n with row 0 ones and rows 1..n = ε·I.
         void LauchliDims()
         {
@@ -625,5 +658,14 @@ public class fProxyGalleryTests
         Assert.Throws<ArgumentException>(() => fProxyGallery.fProxyWilkinsonPlus(1));  // < 3
         Assert.Throws<ArgumentException>(() => fProxyGallery.fProxyWilkinsonPlus(2));  // even
         Assert.Throws<ArgumentException>(() => fProxyGallery.fProxyWilkinsonPlus(4));  // even
+    }
+
+    // WilkinsonMinus requires n odd and >= 3.
+    [Test]
+    public void WilkinsonMinusInvalidNThrows()
+    {
+        Assert.Throws<ArgumentException>(() => fProxyGallery.fProxyWilkinsonMinus(1));  // < 3
+        Assert.Throws<ArgumentException>(() => fProxyGallery.fProxyWilkinsonMinus(2));  // even
+        Assert.Throws<ArgumentException>(() => fProxyGallery.fProxyWilkinsonMinus(4));  // even
     }
 }

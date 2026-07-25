@@ -53,6 +53,7 @@ public class doubleGalleryTests
             CirculantFFT,
             TriwProps,
             WilkinsonNearPair,
+            WilkinsonMinusSignSymmetric,
             LauchliDims,
             // Algorithm-exercise
             CGLaplacian,
@@ -84,6 +85,7 @@ public class doubleGalleryTests
                 case TestType.CirculantFFT:       CirculantFFT();       break;
                 case TestType.TriwProps:          TriwProps();          break;
                 case TestType.WilkinsonNearPair:  WilkinsonNearPair();  break;
+                case TestType.WilkinsonMinusSignSymmetric: WilkinsonMinusSignSymmetric(); break;
                 case TestType.LauchliDims:        LauchliDims();        break;
                 case TestType.CGLaplacian:        CGLaplacian();        break;
             }
@@ -473,6 +475,37 @@ public class doubleGalleryTests
             AssertTrue(nextGap > (double)1);
         }
 
+        // WilkinsonMinus (n odd ≥ 3): spectrum symmetric about zero with an exact zero eigenvalue.
+        // Pinned two ways -- the closed form at n = 3 ({−√3, 0, √3}), and the ± pairing at n = 7.
+        void WilkinsonMinusSignSymmetric()
+        {
+            var W3 = doubleGallery.doubleWilkinsonMinus(3);
+            AssertSymmetric(in W3, (double)1E-5);
+
+            var W3c = new doubleMxN(in W3, Allocator.Temp);
+            var eig3 = new doubleN(3, Allocator.Temp);
+            var V3 = new doubleMxN(3, 3, Allocator.Temp);
+            AssertTrue(Eigen.decompInPlace(ref W3c, ref eig3, ref V3));   // DESCENDING
+
+            double root3 = (double)math.sqrt(3.0);
+            AssertClose(eig3[0], root3, (double)1E-4);
+            AssertClose(eig3[1], (double)0, (double)1E-4);
+            AssertClose(eig3[2], -root3, (double)1E-4);
+
+            // n = 7: eigenvalue j pairs with eigenvalue (n-1-j) under negation, and the middle one
+            // is the exact zero forced by odd n.
+            int n = 7;
+            var W = doubleGallery.doubleWilkinsonMinus(n);
+            var Wc = new doubleMxN(in W, Allocator.Temp);
+            var eig = new doubleN(n, Allocator.Temp);
+            var V = new doubleMxN(n, n, Allocator.Temp);
+            AssertTrue(Eigen.decompInPlace(ref Wc, ref eig, ref V));
+
+            for (int j = 0; j < n / 2; j++)
+                AssertClose(eig[j], -eig[n - 1 - j], (double)1E-3);
+            AssertClose(eig[n / 2], (double)0, (double)1E-3);
+        }
+
         // Läuchli is rectangular (n+1)×n with row 0 ones and rows 1..n = ε·I.
         void LauchliDims()
         {
@@ -629,5 +662,14 @@ public class doubleGalleryTests
         Assert.Throws<ArgumentException>(() => doubleGallery.doubleWilkinsonPlus(1));  // < 3
         Assert.Throws<ArgumentException>(() => doubleGallery.doubleWilkinsonPlus(2));  // even
         Assert.Throws<ArgumentException>(() => doubleGallery.doubleWilkinsonPlus(4));  // even
+    }
+
+    // WilkinsonMinus requires n odd and >= 3.
+    [Test]
+    public void WilkinsonMinusInvalidNThrows()
+    {
+        Assert.Throws<ArgumentException>(() => doubleGallery.doubleWilkinsonMinus(1));  // < 3
+        Assert.Throws<ArgumentException>(() => doubleGallery.doubleWilkinsonMinus(2));  // even
+        Assert.Throws<ArgumentException>(() => doubleGallery.doubleWilkinsonMinus(4));  // even
     }
 }

@@ -18,12 +18,14 @@ between minor versions.
 - `zeroInPlace()` / `fillInPlace(s)` component ops for vectors AND matrices, float through
   integer dtypes.
 - **Linear programming (`LP`)**: a bounded-variable revised simplex (default) and dual simplex over
-  an LU-factored basis, Mehrotra primal-dual interior point, and a matrix-free interior-point
-  variant over a sparse (BSR) constraint matrix.
+  an LU-factored basis, plus a Mehrotra primal-dual interior point. Dense constraint matrices only —
+  large-scale sparse LP is out of scope.
 - **Least-absolute-deviation / quantile regression (`LP.lad`)**: two reformulation-free exact
   engines — Barrodale-Roberts specialized simplex and Frisch-Newton interior point — behind a
-  size-routed hybrid default, plus a matrix-free sparse route. Both engines also fit an arbitrary
-  quantile (`tau` overloads), not just the median.
+  size-routed hybrid default. Both work directly on the original design matrix, with no
+  split-variable LP reformulation, and both fit an arbitrary quantile (`tau` overloads), not just
+  the median. Frisch-Newton additionally accepts a sparse (BSR) design, streaming the stored blocks
+  into an n×n normal solve per step, so the constraint count never enters the factorization.
 - **Warm-started LP re-solve**: `LPBasis` persists the terminal basis across re-solves of a
   perturbed problem; an optional per-dtype cache additionally persists the basis factorization and
   pricing weights so a re-solve skips the fixed per-call rebuild/refactorization cost.
@@ -57,6 +59,11 @@ between minor versions.
 
 ### Changed
 
+- **Breaking — the root namespace is now `BULA`** (was `LinearAlgebra`). Update `using LinearAlgebra;`
+  → `using BULA;`, and the sub-namespaces likewise (`BULA.Sparse`, `BULA.Control`, `BULA.ML`,
+  `BULA.Internal`). Assembly names (`BurstLinearAlgebra.*`), type names, folder layout, and asmdef
+  references are unchanged, so this is a find-and-replace on `using` directives and any
+  fully-qualified type references.
 - **Breaking — short tuning-parameter names**: `maxIterations` → `maxIter`, `tolerance` → `tol`,
   `relativeTolerance` → `relTol` on every public API.
 - **Breaking**: `Eigen.valuesQR` → `Eigen.valuesQRInPlace` (it destroys `A`; the suffix now says so).
