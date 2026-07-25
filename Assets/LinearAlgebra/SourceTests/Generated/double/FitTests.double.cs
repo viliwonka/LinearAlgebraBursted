@@ -1263,6 +1263,155 @@ public class doubleFitTests
         pts.Dispose();
     }
 
+    // --------------------------------------- robust conic / quadric (Sampson)
+
+    // Robust ellipse fit: points on a known ellipse plus one off-curve point. The algebraic fit is
+    // pulled toward the outlier; reweighting by Sampson distance rejects it.
+    [Test]
+    public void ConicRobustBeatsAlgebraicUnderOutlier()
+    {
+        const double a = 5.0, b = 2.0;
+        const int n = 17;
+        var pts = new NativeArray<double2>(n, Allocator.Temp);
+        for (int i = 0; i < 16; i++)
+        {
+            double t = 2.0 * math.PI_DBL * i / 16.0;
+            pts[i] = new double2((double)(a * math.cos(t)), (double)(b * math.sin(t)));
+        }
+        // MODERATE, per this file's standing rule. At 3x the semi-minor axis the algebraic seed is
+        // already wrecked, and IRLS reweighting from a wrecked ellipse converges somewhere worse --
+        // that is the RANSAC regime, not the loss regime, and testing it here would pin behaviour
+        // nobody should rely on.
+        pts[16] = new double2((double)0, (double)3.2);
+
+        // Geometry recovered through the plain (algebraic) route.
+        Assert.IsTrue(Fit.ellipse(pts, out _, out double2 radA, out _), "algebraic ellipse fit failed");
+        double errA = math.abs(math.max((double)radA.x, (double)radA.y) - a)
+                    + math.abs(math.min((double)radA.x, (double)radA.y) - b);
+
+        // Same data, robust conic, then decomposed the same way ellipse() does.
+        var c = new doubleN(6, Allocator.Temp);
+        var huber = new doubleHuberLoss((double)0.3);
+        Assert.IsTrue(Fit.conic(pts, in huber, ref c), "robust conic fit failed");
+        Assert.Greater(4.0 * (double)c[0] * (double)c[2] - (double)c[1] * (double)c[1], 0.0,
+            "the robust fit must still satisfy the ellipse constraint");
+
+        Assert.IsTrue(EllipseRadiiFromConic(in c, out double r0, out double r1), "conic was not a real ellipse");
+        double errH = math.abs(math.max(r0, r1) - a) + math.abs(math.min(r0, r1) - b);
+
+        Assert.Less(errH, errA, $"Sampson-robust semi-axis err ({errH}) should beat algebraic ({errA})");
+
+        pts.Dispose(); c.Dispose();
+    }
+
+    // L2 through the Sampson route is NOT a no-op: it swaps the algebraic residual for a geometric
+    // one, which removes most of the plain fit's bias on unevenly-sampled data. Sampling a SHORT ARC
+    // is what exposes that bias -- a full sweep is nearly unbiased either way.
+    [Test]
+    public void QuadricSampsonL2ReducesAlgebraicBias()
+    {
+        const double a = 3.0, b = 2.0, cc = 1.5;
+        var pts = new NativeArray<double3>(70, Allocator.Temp);
+        int k = 0;
+        for (int i = 0; i < 7; i++)
+            for (int j = 0; j < 10; j++)
+            {
+                double u = math.PI_DBL * (0.15 + 0.30 * i / 6.0);    // a band, not the whole sphere
+                double v = 2.0 * math.PI_DBL * j / 10.0;
+                pts[k++] = new double3((double)(a * math.sin(u) * math.cos(v)),
+                                       (double)(b * math.sin(u) * math.sin(v)),
+                                       (double)(cc * math.cos(u)));
+            }
+
+        double ia = 1.0 / (a * a), ib = 1.0 / (b * b), ic = 1.0 / (cc * cc);
+        var want = new double[10] { ia, ib, ic, 0, 0, 0, 0, 0, 0, -1.0 };
+        Normalize(want);
+
+        var plain = new doubleN(10, Allocator.Temp);
+        Assert.IsTrue(Fit.quadric(pts, ref plain), "plain quadric fit failed");
+
+        var l2 = new doubleL2Loss();
+        var samp = new doubleN(10, Allocator.Temp);
+        Assert.IsTrue(Fit.quadric(pts, in l2, ref samp), "Sampson quadric fit failed");
+
+        Assert.LessOrEqual(CoeffError(samp, want), CoeffError(plain, want) + 1e-9,
+            "reweighting by Sampson distance must not be worse than the raw algebraic fit");
+
+        pts.Dispose(); plain.Dispose(); samp.Dispose();
+    }
+
+    // Quadric with a robust loss against gross outliers.
+    [Test]
+    public void QuadricRobustBeatsAlgebraicUnderOutliers()
+    {
+        const double a = 3.0, b = 2.0, cc = 1.5;
+        var pts = new NativeArray<double3>(102, Allocator.Temp);
+        int k = 0;
+        for (int i = 0; i < 8; i++)
+            for (int j = 0; j < 12; j++)
+            {
+                double u = math.PI_DBL * (i + 0.5) / 8.0, v = 2.0 * math.PI_DBL * j / 12.0;
+                pts[k++] = new double3((double)(a * math.sin(u) * math.cos(v)),
+                                       (double)(b * math.sin(u) * math.sin(v)),
+                                       (double)(cc * math.cos(u)));
+            }
+        for (int i = 0; i < 6; i++)                                  // off-surface junk
+            pts[k++] = new double3((double)(6.0 * math.cos(i)), (double)(6.0 * math.sin(i)), (double)i);
+
+        double ia = 1.0 / (a * a), ib = 1.0 / (b * b), ic = 1.0 / (cc * cc);
+        var want = new double[10] { ia, ib, ic, 0, 0, 0, 0, 0, 0, -1.0 };
+        Normalize(want);
+
+        var plain = new doubleN(10, Allocator.Temp);
+        Assert.IsTrue(Fit.quadric(pts, ref plain), "plain quadric fit failed");
+
+        var huber = new doubleHuberLoss((double)0.2);
+        var rob = new doubleN(10, Allocator.Temp);
+        Assert.IsTrue(Fit.quadric(pts, in huber, ref rob), "robust quadric fit failed");
+
+        Assert.Less(CoeffError(rob, want), CoeffError(plain, want),
+            "the robust quadric must recover the true surface better than the algebraic one");
+
+        pts.Dispose(); plain.Dispose(); rob.Dispose();
+    }
+
+    static double CoeffError(doubleN got, double[] want)
+    {
+        var g = new double[10];
+        for (int i = 0; i < 10; i++) g[i] = (double)got[i];
+        Normalize(g);
+        AlignSign(g, want);
+        double e = 0;
+        for (int i = 0; i < 10; i++) e += math.abs(g[i] - want[i]);
+        return e;
+    }
+
+    // Centre + semi-axes from conic coefficients, the same decomposition Fit.ellipse performs.
+    static bool EllipseRadiiFromConic(in doubleN c, out double r0, out double r1)
+    {
+        r0 = r1 = 0;
+        double A = (double)c[0], B = (double)c[1], C = (double)c[2];
+        double D = (double)c[3], E = (double)c[4], F = (double)c[5];
+
+        double det = 4.0 * A * C - B * B;
+        if (math.abs(det) < 1e-12) return false;
+
+        double cx = (2.0 * C * (-D) - B * (-E)) / det;
+        double cy = (2.0 * A * (-E) - B * (-D)) / det;
+        double Fc = F + 0.5 * (D * cx + E * cy);
+
+        // Eigenvalues of [[A, B/2],[B/2, C]].
+        double tr = A + C, dd = math.sqrt(math.max((A - C) * (A - C) + B * B, 0.0));
+        double l0 = 0.5 * (tr + dd), l1 = 0.5 * (tr - dd);
+        if (math.abs(l0) < 1e-12 || math.abs(l1) < 1e-12) return false;
+
+        double s0 = -Fc / l0, s1 = -Fc / l1;
+        if (s0 <= 0 || s1 <= 0) return false;
+
+        r0 = math.sqrt(s0); r1 = math.sqrt(s1);
+        return true;
+    }
+
     // ------------------------------------------------- remaining overloads
     //
     // Coverage completion. Each entry point below is a distinct generic instantiation, so exercising

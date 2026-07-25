@@ -38,10 +38,62 @@ namespace BULA
         /// degenerate cloud (all points collinear).
         /// </summary>
         public static bool conic(NativeArray<double2> points, ref doubleN coeffs)
+            => ConicWeighted(points, default(doubleN), ref coeffs);
+
+        /// <summary>
+        /// Ellipse fit under <paramref name="loss"/>, by IRLS on the SAMPSON distance -- the
+        /// first-order approximation |F(p)| / ‖∇F(p)‖ to true geometric distance. Reweighting by the
+        /// raw algebraic residual instead would be wrong in a way that matters: that residual scales
+        /// with the local gradient, so it is larger in high-curvature regions for the SAME true
+        /// distance, and a loss keyed on it would reject points partly for where they sit on the curve
+        /// rather than for being outliers.
+        ///
+        /// Because of that, passing <see cref="doubleL2Loss"/> here is NOT a no-op: it still trades
+        /// the algebraic residual for a geometric one and removes most of the plain fit's bias, the
+        /// same way <see cref="sphere{TLoss}(NativeArray{double2}, in TLoss, out double2, out double, int)"/>
+        /// does. Requires points.Length &gt;= 5.
+        /// </summary>
+        public static bool conic<TLoss>(NativeArray<double2> points, in TLoss loss, ref doubleN coeffs,
+                                        int maxIter = 0)
+            where TLoss : struct, IdoubleRobustLoss
+        {
+            int n = points.Length;
+            if (maxIter <= 0) maxIter = DefaultIrlsIter;
+            if (!conic(points, ref coeffs)) return false;
+
+            var w = new doubleN(n, Allocator.Temp);
+            for (int i = 0; i < n; i++) w[i] = (double)1;
+
+            bool ok = true;
+            for (int it = 0; it < maxIter; it++)
+            {
+                double maxDelta = (double)0, sw = (double)0;
+                for (int i = 0; i < n; i++)
+                {
+                    double d = SampsonConic(in coeffs, points[i]);
+                    double wNew = loss.RhoPrime(d * d);
+                    maxDelta = math.max(maxDelta, math.abs(wNew - w[i]));
+                    w[i] = wNew;
+                    sw += wNew;
+                }
+
+                if (!(sw > (double)0)) { ok = false; break; }   // redescending loss rejected everything
+                if (maxDelta <= Consts.doubleSqrtEps) break;
+
+                ok = ConicWeighted(points, in w, ref coeffs);
+                if (!ok) break;
+            }
+
+            w.Dispose();
+            return ok;
+        }
+
+        static bool ConicWeighted(NativeArray<double2> points, in doubleN w, ref doubleN coeffs)
         {
             int n = points.Length;
             if (n < 5) throw new ArgumentException("Fit.conic: points.Length must be >= 5");
             if (coeffs.N != 6) throw new ArgumentException("Fit.conic: coeffs.N must be 6");
+            bool weighted = w.IsCreated;
 
             // Halir-Flusser splits the design into the quadratic part D1 = [x², xy, y²] and the linear
             // part D2 = [x, y, 1], so the 3x3 blocks below stay well scaled where the raw 6x6 scatter
@@ -60,13 +112,14 @@ namespace BULA
                 q[0] = x * x; q[1] = x * y; q[2] = y * y;
                 l[0] = x;     l[1] = y;     l[2] = (double)1;
 
+                double wi = weighted ? math.max(w[i], (double)0) : (double)1;
                 for (int a = 0; a < 3; a++)
                 {
                     for (int b = 0; b < 3; b++)
                     {
-                        S1[a, b] += q[a] * q[b];
-                        S2[a, b] += q[a] * l[b];
-                        S3[a, b] += l[a] * l[b];
+                        S1[a, b] += wi * q[a] * q[b];
+                        S2[a, b] += wi * q[a] * l[b];
+                        S3[a, b] += wi * l[a] * l[b];
                     }
                 }
             }
@@ -172,19 +225,65 @@ namespace BULA
         /// &gt;= 9. False means the SVD did not converge.
         /// </summary>
         public static bool quadric(NativeArray<double3> points, ref doubleN coeffs)
+            => QuadricWeighted(points, default(doubleN), ref coeffs);
+
+        /// <summary>
+        /// Quadric fit under <paramref name="loss"/>, by IRLS on the SAMPSON distance
+        /// |F(p)| / ‖∇F(p)‖. See <see cref="conic{TLoss}"/> for why the raw algebraic residual is the
+        /// wrong thing to reweight by, and why <see cref="doubleL2Loss"/> is not a no-op here.
+        /// Requires points.Length &gt;= 9.
+        /// </summary>
+        public static bool quadric<TLoss>(NativeArray<double3> points, in TLoss loss, ref doubleN coeffs,
+                                          int maxIter = 0)
+            where TLoss : struct, IdoubleRobustLoss
+        {
+            int n = points.Length;
+            if (maxIter <= 0) maxIter = DefaultIrlsIter;
+            if (!quadric(points, ref coeffs)) return false;
+
+            var w = new doubleN(n, Allocator.Temp);
+            for (int i = 0; i < n; i++) w[i] = (double)1;
+
+            bool ok = true;
+            for (int it = 0; it < maxIter; it++)
+            {
+                double maxDelta = (double)0, sw = (double)0;
+                for (int i = 0; i < n; i++)
+                {
+                    double d = SampsonQuadric(in coeffs, points[i]);
+                    double wNew = loss.RhoPrime(d * d);
+                    maxDelta = math.max(maxDelta, math.abs(wNew - w[i]));
+                    w[i] = wNew;
+                    sw += wNew;
+                }
+
+                if (!(sw > (double)0)) { ok = false; break; }   // redescending loss rejected everything
+                if (maxDelta <= Consts.doubleSqrtEps) break;
+
+                ok = QuadricWeighted(points, in w, ref coeffs);
+                if (!ok) break;
+            }
+
+            w.Dispose();
+            return ok;
+        }
+
+        static bool QuadricWeighted(NativeArray<double3> points, in doubleN w, ref doubleN coeffs)
         {
             int n = points.Length;
             if (n < 9) throw new ArgumentException("Fit.quadric: points.Length must be >= 9");
             if (coeffs.N != 10) throw new ArgumentException("Fit.quadric: coeffs.N must be 10");
+            bool weighted = w.IsCreated;
 
             var Dm = new doubleMxN(n, 10, Allocator.Temp);
             for (int i = 0; i < n; i++)
             {
                 double x = points[i].x, y = points[i].y, z = points[i].z;
-                Dm[i, 0] = x * x; Dm[i, 1] = y * y; Dm[i, 2] = z * z;
-                Dm[i, 3] = x * y; Dm[i, 4] = x * z; Dm[i, 5] = y * z;
-                Dm[i, 6] = x;     Dm[i, 7] = y;     Dm[i, 8] = z;
-                Dm[i, 9] = (double)1;
+                double s = weighted ? math.sqrt(math.max(w[i], (double)0)) : (double)1;
+                Dm[i, 0] = s * x * x; Dm[i, 1] = s * y * y; Dm[i, 2] = s * z * z;
+                Dm[i, 3] = s * x * y; Dm[i, 4] = s * x * z; Dm[i, 5] = s * y * z;
+                Dm[i, 6] = s * x;     Dm[i, 7] = s * y;     Dm[i, 8] = s * z;
+                Dm[i, 9] = s;
             }
 
             var U = new doubleMxN(n, 10, Allocator.Temp);
@@ -241,6 +340,49 @@ namespace BULA
 
             Q.Dispose(); ev.Dispose(); V.Dispose();
             return kind;
+        }
+
+        // ---- Sampson distance ----------------------------------------------------------------------
+        //
+        // |F(p)| / ‖∇F(p)‖ -- the algebraic residual divided by how fast F changes there, which is a
+        // first-order estimate of the true orthogonal distance to the surface. Exact for a plane,
+        // and accurate wherever the point is close relative to the local curvature. The gradient is
+        // linear in the point for both families, so this costs a handful of multiplies.
+        //
+        // The guard matters: ∇F vanishes at a quadric's centre (and along a degenerate one's axis),
+        // where no first-order distance exists. Returning the raw |F| there keeps the weight finite
+        // and errs toward KEEPING the point, which is the safe direction -- discarding points because
+        // the model happens to be singular near them would let a bad fit defend itself.
+
+        static double SampsonConic(in doubleN c, double2 p)
+        {
+            double A = c[0], B = c[1], C = c[2], D = c[3], E = c[4], F = c[5];
+            double x = p.x, y = p.y;
+
+            double val = A * x * x + B * x * y + C * y * y + D * x + E * y + F;
+            double gx = (double)2 * A * x + B * y + D;
+            double gy = B * x + (double)2 * C * y + E;
+
+            double g = math.sqrt(gx * gx + gy * gy);
+            return g > Consts.doubleSqrtEps ? math.abs(val) / g : math.abs(val);
+        }
+
+        static double SampsonQuadric(in doubleN c, double3 p)
+        {
+            double A = c[0], B = c[1], C = c[2], D = c[3], E = c[4], F = c[5];
+            double G = c[6], H = c[7], I = c[8], J = c[9];
+            double x = p.x, y = p.y, z = p.z;
+
+            double val = A * x * x + B * y * y + C * z * z
+                       + D * x * y + E * x * z + F * y * z
+                       + G * x + H * y + I * z + J;
+
+            double gx = (double)2 * A * x + D * y + E * z + G;
+            double gy = (double)2 * B * y + D * x + F * z + H;
+            double gz = (double)2 * C * z + E * x + F * y + I;
+
+            double g = math.sqrt(gx * gx + gy * gy + gz * gz);
+            return g > Consts.doubleSqrtEps ? math.abs(val) / g : math.abs(val);
         }
 
         // T = -S3^-1 S2^T, by solving S3 T = -S2^T column by column.
