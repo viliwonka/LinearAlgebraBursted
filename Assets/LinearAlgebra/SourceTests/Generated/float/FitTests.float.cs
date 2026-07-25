@@ -1091,6 +1091,108 @@ public class floatFitTests
         c[0] = (float)a; c[1] = (float)b; c[2] = (float)cc;
     }
 
+    // ------------------------------------------------- remaining overloads
+    //
+    // Coverage completion. Each entry point below is a distinct generic instantiation, so exercising
+    // the 2D form proves nothing about the 3D or 4D one -- codegen emits them separately and the
+    // dimension-dependent index arithmetic is written out per arity.
+
+    // 3D robust line: same discrimination as the 2D case, different instantiation.
+    [Test]
+    public void Line3DRobustBeatsL2UnderOutlier()
+    {
+        const int n = 21;
+        var pts = new NativeArray<float3>(n, Allocator.Temp);
+        for (int i = 0; i < 20; i++) pts[i] = new float3((float)i, (float)i, (float)i);
+        pts[20] = new float3((float)10, (float)26, (float)10);
+
+        var want = math.normalize(new float3((float)1, (float)1, (float)1));
+
+        Assert.IsTrue(Fit.line(pts, out _, out float3 dL2), "3D line fit failed");
+        double errL2 = AngleError(dL2, want);
+
+        var huber = new floatHuberLoss((float)1);
+        Assert.IsTrue(Fit.line(pts, in huber, out _, out float3 dH), "3D robust line fit failed");
+        double errH = AngleError(dH, want);
+
+        Assert.Less(errH, errL2, $"3D Huber ({errH}) should beat L2 ({errL2})");
+
+        pts.Dispose();
+    }
+
+    // 4D line, plain and robust -- the only arity with no other coverage at all.
+    [Test]
+    public void Line4DPlainAndRobust()
+    {
+        const int n = 16;
+        var pts = new NativeArray<float4>(n, Allocator.Temp);
+        for (int i = 0; i < 15; i++)
+            pts[i] = new float4((float)i, (float)i, (float)i, (float)i);
+        pts[15] = new float4((float)7, (float)20, (float)7, (float)7);
+
+        var want = math.normalize(new float4((float)1, (float)1, (float)1, (float)1));
+
+        Assert.IsTrue(Fit.line(pts, out float4 c, out float4 dL2), "4D line fit failed");
+        double cosL2 = math.abs(math.dot(math.normalize(dL2), want));
+        double errL2 = math.acos(math.min(cosL2, 1.0));
+        Assert.IsFalse(double.IsNaN((double)c.w), "4D centroid must be finite in every component");
+
+        var huber = new floatHuberLoss((float)1);
+        Assert.IsTrue(Fit.line(pts, in huber, out _, out float4 dH), "4D robust line fit failed");
+        double cosH = math.abs(math.dot(math.normalize(dH), want));
+        double errH = math.acos(math.min(cosH, 1.0));
+
+        Assert.Less(errH, errL2, $"4D Huber ({errH}) should beat L2 ({errL2})");
+
+        pts.Dispose();
+    }
+
+    // 3D robust sphere: the 2D circle case covers a different instantiation.
+    [Test]
+    public void Sphere3DRobustBeatsAlgebraicUnderOutlier()
+    {
+        const int n = 43;
+        var pts = new NativeArray<float3>(n, Allocator.Temp);
+        int k = 0;
+        for (int i = 0; i < 6; i++)
+            for (int j = 0; j < 7; j++)
+            {
+                double u = math.PI_DBL * (i + 0.5) / 6.0, v = 2.0 * math.PI_DBL * j / 7.0;
+                pts[k++] = new float3((float)(4.0 * math.sin(u) * math.cos(v)),
+                                       (float)(4.0 * math.sin(u) * math.sin(v)),
+                                       (float)(4.0 * math.cos(u)));
+            }
+        pts[k++] = new float3((float)7, (float)0, (float)0);     // off the surface
+
+        Assert.IsTrue(Fit.sphere(pts, out _, out float rA), "3D algebraic sphere fit failed");
+
+        var huber = new floatHuberLoss((float)0.5);
+        Assert.IsTrue(Fit.sphere(pts, in huber, out _, out float rH), "3D robust sphere fit failed");
+
+        double errA = math.abs((double)rA - 4.0);
+        double errH = math.abs((double)rH - 4.0);
+        Assert.Less(errH, errA, $"3D robust radius err ({errH}) should beat algebraic ({errA})");
+
+        pts.Dispose();
+    }
+
+    // An EXPLICIT maxIter disables the adaptive rule, so the driver must run exactly that many draws --
+    // the branch the adaptive tests never take.
+    [Test]
+    public void RansacExplicitBudgetRunsEveryDraw()
+    {
+        var pts = ContaminatedPlane(40, 20, 123u);
+        var model = new Fit.floatPlaneModel();
+
+        var info = Fit.ransac(pts, ref model, (float)0.15, 25, 77u);
+
+        Assert.IsTrue(info, $"fixed-budget RANSAC found no consensus ({info.ToString()})");
+        Assert.AreEqual(25, info.iterations,
+            "an explicit maxIter must be spent in full, not cut short by the adaptive rule");
+
+        pts.Dispose();
+    }
+
     // ---------------------------------------------------------------- guards
 
     [Test]
