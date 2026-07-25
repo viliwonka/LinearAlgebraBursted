@@ -1091,6 +1091,76 @@ public class floatFitTests
         c[0] = (float)a; c[1] = (float)b; c[2] = (float)cc;
     }
 
+    // Ground truth for Fit.quadric. The classification test above only checks WHICH FAMILY the fit
+    // landed in -- a completely different ellipsoid would pass it. This compares the recovered
+    // coefficients against the ones that generated the points.
+    //
+    // Quadric coefficients are defined only up to overall SCALE (the fit returns them unit-norm) and
+    // therefore up to SIGN, so both vectors are normalized and sign-aligned on their largest component
+    // before comparison. The ellipsoid is placed OFF-CENTRE so the linear terms G/H/I are genuinely
+    // non-zero; the cross terms D/E/F must come back at zero, which is its own assertion -- a fit that
+    // invented spurious cross terms would fail here.
+    [Test]
+    public void QuadricCoefficientsMatchTheGeneratingEllipsoid()
+    {
+        // (x-cx)²/a² + (y-cy)²/b² + (z-cz)²/cc² = 1
+        const double a = 3.0, b = 2.0, cc = 1.5;
+        const double cx = 1.0, cy = -2.0, cz = 0.5;
+
+        var pts = new NativeArray<float3>(96, Allocator.Temp);
+        int k = 0;
+        for (int i = 0; i < 8; i++)
+            for (int j = 0; j < 12; j++)
+            {
+                double u = math.PI_DBL * (i + 0.5) / 8.0, v = 2.0 * math.PI_DBL * j / 12.0;
+                pts[k++] = new float3((float)(cx + a * math.sin(u) * math.cos(v)),
+                                       (float)(cy + b * math.sin(u) * math.sin(v)),
+                                       (float)(cz + cc * math.cos(u)));
+            }
+
+        var got = new floatN(10, Allocator.Temp);
+        Assert.IsTrue(Fit.quadric(pts, ref got), "quadric fit failed");
+
+        // Expand the generating equation into the same (A..J) ordering the fit reports.
+        double ia = 1.0 / (a * a), ib = 1.0 / (b * b), ic = 1.0 / (cc * cc);
+        var want = new double[10]
+        {
+            ia, ib, ic,
+            0, 0, 0,
+            -2.0 * cx * ia, -2.0 * cy * ib, -2.0 * cz * ic,
+            cx * cx * ia + cy * cy * ib + cz * cz * ic - 1.0,
+        };
+
+        Normalize(want);
+        var g = new double[10];
+        for (int i = 0; i < 10; i++) g[i] = (double)got[i];
+        Normalize(g);
+        AlignSign(g, want);
+
+        for (int i = 0; i < 10; i++)
+            Assert.That(g[i], Is.EqualTo(want[i]).Within(QuadTol), $"coefficient {i}");
+
+        pts.Dispose(); got.Dispose();
+    }
+
+    static double QuadTol => 5e-3;
+
+    static void Normalize(double[] v)
+    {
+        double s = 0;
+        for (int i = 0; i < v.Length; i++) s += v[i] * v[i];
+        s = math.sqrt(s);
+        if (s > 0) for (int i = 0; i < v.Length; i++) v[i] /= s;
+    }
+
+    // Coefficients are defined up to sign; flip `g` to match `want` on their largest shared component.
+    static void AlignSign(double[] g, double[] want)
+    {
+        int big = 0;
+        for (int i = 1; i < want.Length; i++) if (math.abs(want[i]) > math.abs(want[big])) big = i;
+        if (g[big] * want[big] < 0) for (int i = 0; i < g.Length; i++) g[i] = -g[i];
+    }
+
     // ------------------------------------------------- remaining overloads
     //
     // Coverage completion. Each entry point below is a distinct generic instantiation, so exercising
