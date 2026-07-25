@@ -301,6 +301,99 @@ public class doubleFitTests
         A.Dispose(); b.Dispose(); x.Dispose();
     }
 
+    // ---------------------------------------------------------------- conic / quadric
+
+    // Points placed exactly on a known axis-aligned ellipse (centre (3,-2), semi-axes 5 and 2): the
+    // recovered geometry must match. Axis-aligned so the angle is 0 or +-pi/2 and the radii pairing
+    // is unambiguous -- a rotated case would need the angle and radii checked jointly.
+    [Test]
+    public void EllipseExactRecoversGeometry()
+    {
+        const int n = 16;
+        var pts = new NativeArray<double2>(n, Allocator.Temp);
+        for (int i = 0; i < n; i++)
+        {
+            double t = 2.0 * math.PI_DBL * i / n;
+            pts[i] = new double2((double)(3.0 + 5.0 * math.cos(t)), (double)(-2.0 + 2.0 * math.sin(t)));
+        }
+
+        Assert.IsTrue(Fit.ellipse(pts, out double2 c, out double2 r, out double ang), "ellipse fit failed");
+
+        Assert.That((double)c.x, Is.EqualTo(3.0).Within(Tol), "centre x");
+        Assert.That((double)c.y, Is.EqualTo(-2.0).Within(Tol), "centre y");
+
+        // Radii come out ordered by the eigensolve, not by size: compare as a set.
+        double big = math.max((double)r.x, (double)r.y);
+        double small = math.min((double)r.x, (double)r.y);
+        Assert.That(big, Is.EqualTo(5.0).Within(Tol), "major semi-axis");
+        Assert.That(small, Is.EqualTo(2.0).Within(Tol), "minor semi-axis");
+
+        pts.Dispose();
+    }
+
+    // The ellipse CONSTRAINT is the point of using Halir-Flusser over a plain algebraic conic fit:
+    // 4AC - B^2 > 0 must hold for the returned coefficients, so the answer can never be a hyperbola.
+    [Test]
+    public void ConicIsAlwaysAnEllipse()
+    {
+        // A short, shallow arc -- the classic case where an unconstrained conic fit escapes to a
+        // hyperbola because the data does not pin the far side of the curve.
+        const int n = 12;
+        var pts = new NativeArray<double2>(n, Allocator.Temp);
+        for (int i = 0; i < n; i++)
+        {
+            double t = 0.35 * math.PI_DBL * i / (n - 1);        // under a quarter turn
+            pts[i] = new double2((double)(10.0 * math.cos(t)), (double)(4.0 * math.sin(t)));
+        }
+
+        var c = new doubleN(6, Allocator.Temp);
+        Assert.IsTrue(Fit.conic(pts, ref c), "conic fit failed on a short arc");
+
+        double disc = 4.0 * (double)c[0] * (double)c[2] - (double)c[1] * (double)c[1];
+        Assert.Greater(disc, 0.0, "4AC - B^2 must be positive: the fit is constrained to an ellipse");
+
+        pts.Dispose(); c.Dispose();
+    }
+
+    // A quadric fitted to points sampled from a true ellipsoid must classify as one; points sampled
+    // from a one-sheet hyperboloid must not. Classification is the whole reason `quadric` is one
+    // entry point rather than a solver per shape, so it gets both a positive and a negative case.
+    [Test]
+    public void QuadricClassifiesEllipsoidAndHyperboloid()
+    {
+        var ell = new NativeArray<double3>(60, Allocator.Temp);
+        int k = 0;
+        for (int i = 0; i < 6; i++)
+            for (int j = 0; j < 10; j++)
+            {
+                double u = math.PI_DBL * (i + 0.5) / 6.0, v = 2.0 * math.PI_DBL * j / 10.0;
+                ell[k++] = new double3((double)(3.0 * math.sin(u) * math.cos(v)),
+                                       (double)(2.0 * math.sin(u) * math.sin(v)),
+                                       (double)(1.5 * math.cos(u)));
+            }
+
+        var ce = new doubleN(10, Allocator.Temp);
+        Assert.IsTrue(Fit.quadric(ell, ref ce), "ellipsoid quadric fit failed");
+        Assert.AreEqual(QuadricKind.Ellipsoid, Fit.classify(in ce), "should classify as an ellipsoid");
+
+        // x²/4 + y²/4 - z² = 1, a one-sheet hyperboloid: mixed signature.
+        var hyp = new NativeArray<double3>(60, Allocator.Temp);
+        k = 0;
+        for (int i = 0; i < 6; i++)
+            for (int j = 0; j < 10; j++)
+            {
+                double zz = -1.0 + 2.0 * i / 5.0, v = 2.0 * math.PI_DBL * j / 10.0;
+                double rr = 2.0 * math.sqrt(1.0 + zz * zz);
+                hyp[k++] = new double3((double)(rr * math.cos(v)), (double)(rr * math.sin(v)), (double)zz);
+            }
+
+        var ch = new doubleN(10, Allocator.Temp);
+        Assert.IsTrue(Fit.quadric(hyp, ref ch), "hyperboloid quadric fit failed");
+        Assert.AreEqual(QuadricKind.HyperboloidOrCone, Fit.classify(in ch), "should classify as hyperboloid/cone");
+
+        ell.Dispose(); hyp.Dispose(); ce.Dispose(); ch.Dispose();
+    }
+
     // ---------------------------------------------------------------- guards
 
     [Test]
