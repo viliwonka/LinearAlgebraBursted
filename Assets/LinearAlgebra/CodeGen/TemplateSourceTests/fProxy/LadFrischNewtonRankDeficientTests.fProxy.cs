@@ -2,11 +2,11 @@ using LinearAlgebra;
 using NUnit.Framework;
 using Unity.Collections;
 
-// Rank-deficient designs routed through the Frisch-Newton LAD solver. The solver seeds itself from
-// an ordinary least-squares fit computed with plain CHO on A^T A; on a rank-deficient design that
-// factorization has no unique solution. The reference implementation aborts with no fit in that
-// case, this port falls back to y = 0 (a valid strictly-interior start) and proceeds -- so the
-// contract under test is that a rank-deficient design still produces the correct optimum.
+// Rank-deficient and ill-conditioned designs routed through the Frisch-Newton LAD solver. The
+// solver seeds itself from an ordinary least-squares fit computed with plain CHO on A^T A; on a
+// rank-deficient design that factorization has no unique solution. The reference implementation
+// aborts with no fit in that case, this port falls back to y = 0 (a valid strictly-interior start)
+// and proceeds -- so the contract under test is that such designs still produce the correct optimum.
 public class fProxyLadFrischNewtonRankDeficientTests
 {
     // Column 2 duplicates column 1, so A^T A is singular. The coefficients are NOT identifiable --
@@ -67,5 +67,40 @@ public class fProxyLadFrischNewtonRankDeficientTests
             "L1 residual with a zero column must match the full-rank equivalent");
 
         A.Dispose(); b.Dispose(); x.Dispose();
+    }
+
+    // Degree-4 Vandermonde: classically ill-conditioned, so the Newton normal matrix is where the
+    // regularization, the Jacobi equilibration and CHOP's rank truncation all perturb the arithmetic.
+    // That perturbation is exactly what the affine RHS's primal-residual term (bLP - A^T a) corrects
+    // -- it is zero in exact arithmetic, so it only earns its keep here. Oracle is ladBR, an
+    // independent exact-vertex engine. Measured float relative error on THIS instance: 8.2e-5 with
+    // the term, 4.6e-3 without (56x worse). The tolerance sits between the two, so it is a real
+    // regression guard, not a formality. Double is unaffected (<= 1e-10 either way).
+    [Test]
+    public void IllConditionedVandermondeMatchesExactEngine()
+    {
+        int m = 40, n = 5;
+        var A = new fProxyMxN(m, n, Allocator.Temp);
+        var b = new fProxyN(m, Allocator.Temp);
+        var rng = new Unity.Mathematics.Random(12345u);
+        for (int i = 0; i < m; i++)
+        {
+            double t = 0.1 + 1.9 * i / (m - 1.0);
+            double p = 1;
+            for (int j = 0; j < n; j++) { A[i, j] = (fProxy)p; p *= t; }
+            b[i] = (fProxy)(1.0 + 0.5 * t + rng.NextFProxy(-0.2f, 0.2f));
+        }
+        b[7] = (fProxy)(b[7] + 20f);   // one gross outlier, so the L1 and L2 fits differ
+
+        var xFN = new fProxyN(n, Allocator.Temp);
+        var xBR = new fProxyN(n, Allocator.Temp);
+        LP.ladFN(in A, in b, ref xFN, out double objFN);
+        LP.ladBR(in A, in b, ref xBR, out double objBR);
+
+        double rel = (objFN - objBR) / objBR;
+        Assert.That(rel, Is.LessThan(/*+choose[3e-4|1e-9]*/3e-4/*-choose*/),
+            $"FN L1 residual {objFN} exceeds the exact ladBR optimum {objBR} by {rel} relative");
+
+        A.Dispose(); b.Dispose(); xFN.Dispose(); xBR.Dispose();
     }
 }

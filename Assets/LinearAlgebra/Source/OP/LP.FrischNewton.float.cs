@@ -70,10 +70,6 @@ namespace LinearAlgebra
         // (2) A failed least-squares init is not fatal. Where the reference aborts with no fit if the
         //     one-time plain-CHO factorization of AᵀA fails, here y starts at 0 -- still a valid
         //     strictly-interior point -- and the solve proceeds.
-        // (3) The primal residual is not re-injected. The reference rebuilds the affine RHS as
-        //     (bLP - Aᵀa) + Aᵀ(q·(z-w)) each iteration; here it is Aᵀ(q·(z-w)) alone. The dropped term
-        //     is zero in exact arithmetic: the start satisfies Aᵀa = bLP and the Newton step preserves
-        //     Aᵀda = 0.
         //
         // Job-safe: all scratch is Allocator.Temp, disposed on every return path.
         // ============================================================================================
@@ -184,6 +180,7 @@ namespace LinearAlgebra
             var M = new floatMxN(n, n, Allocator.Temp);
             var L = new floatMxN(n, n, Allocator.Temp);
             var yBest = new floatN(n, Allocator.Temp);
+            var bLP = new floatN(n, Allocator.Temp);         // dual equality RHS, Aᵀa at the initial a
             var dscale = new floatN(n, Allocator.Temp);      // Jacobi equilibration of M, d_j = 1/sqrt(M_jj)
             var Linit = new floatMxN(n, n, Allocator.Temp);  // plain-CHO factor, LS init only
 
@@ -195,6 +192,10 @@ namespace LinearAlgebra
             float beta = (float)0.9995;
 
             for (int i = 0; i < m; i++) { a[i] = oneMinusTau; s[i] = tauC; }
+
+            // Dual equality RHS: the constraint maintained throughout is Aᵀa = bLP, and the start
+            // satisfies it by construction, so bLP is just Aᵀa evaluated at the initial a = 1 - tau.
+            ATmul(A, a, bLP, m, n);
 
             double bNorm = 0;
             for (int i = 0; i < m; i++) bNorm += (double)b[i] * (double)b[i];
@@ -288,9 +289,15 @@ namespace LinearAlgebra
                 if (!rinfo.Solved) break;   // unrecoverable -> stop, keep yBest (status stays MaxIterations)
                 int rank = rinfo.rank;
 
-                // 3a. affine-predictor solve: rhs = Aᵀ(q .* zw); dyAff = M⁻¹ rhs
+                // 3a. affine-predictor solve: rhs = (bLP - Aᵀa) + Aᵀ(q .* zw); dyAff = M⁻¹ rhs.
+                // The primal-residual term bLP - Aᵀa is zero in exact arithmetic (the start satisfies
+                // Aᵀa = bLP and every Newton step preserves Aᵀda = 0), so it is a re-injection of the
+                // drift that reg, the equilibration and CHOP's rank truncation introduce. The
+                // corrector reuses this same rhs below, so it is carried into both solves.
                 for (int i = 0; i < m; i++) Av[i] = q[i] * zw[i];
                 ATmul(A, Av, rhs, m, n);
+                ATmul(A, a, tmpN, m, n);
+                for (int j = 0; j < n; j++) rhs[j] += bLP[j] - tmpN[j];
                 for (int j = 0; j < n; j++) tmpN[j] = rhs[j] * dscale[j];
                 CHOP.decompSolve(ref L, in P, rank, ref tmpN, ref ws);
                 for (int j = 0; j < n; j++) dyAff[j] = tmpN[j] * dscale[j];
@@ -384,7 +391,7 @@ namespace LinearAlgebra
             dyAff.Dispose(); daAff.Dispose(); dsAff.Dispose(); dzAff.Dispose(); dwAff.Dispose();
             dy.Dispose(); da.Dispose(); ds.Dispose(); dz.Dispose(); dw.Dispose();
             dadz.Dispose(); dsdw.Dispose(); xi.Dispose(); qCorr.Dispose();
-            M.Dispose(); L.Dispose(); Linit.Dispose(); yBest.Dispose(); dscale.Dispose();
+            M.Dispose(); L.Dispose(); Linit.Dispose(); yBest.Dispose(); dscale.Dispose(); bLP.Dispose();
             P.Dispose(); ws.W.Dispose(); ws.bt.Dispose();
 
             return new LPInfo { status = status, iterations = iters, objective = obj };

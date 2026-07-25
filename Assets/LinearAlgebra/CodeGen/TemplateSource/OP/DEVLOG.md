@@ -1,6 +1,52 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## LP.FrischNewton — primal-residual re-injection ADOPTED (the "measured worse" verdict was stale)
+- 2026-07-25 | The affine RHS is now the reference's `(bLP - Aᵀa) + Aᵀ(q·(z-w))`, closing the last
+  of the three documented deviations. `bLP` is recovered exactly as `Aᵀa` at the initial
+  `a = 1 - tau` (the constraint maintained throughout is `Aᵀa = bLP`, and the start satisfies it by
+  construction), so it costs one setup ATmul plus one n-buffer, and one ATmul per iteration.
+  The corrector needed NO change: it already reuses the saved affine `rhs` and adds `Aᵀ(qCorr)`,
+  which is exactly Fortran's `dswap(rhs,dy)` + `dgemv(a,dr)` — so the term propagates to both solves
+  from the single predictor-side edit.
+  WHY IT WAS RE-OPENED: the earlier "measured worse (stackloss float -38.140)" verdict was taken
+  BEFORE the Jacobi equilibration landed, i.e. while the rank-3 endgame freeze was still corrupting
+  the solve. Measuring under conditions that no longer exist is not a verdict. Re-measured on top of
+  equilibration: `LadFNStackloss` (published Brownlee coefficients, 5e-2 band = 0.13% relative on the
+  -39.690 intercept) PASSES, so -38.140 is gone by a wide margin.
+  ⚠️ MEASURED ON THE WRONG DATA FIRST. The LPBenchmark A/B (sections 2 + 2b, m = 8..16384) showed
+  IDENTICAL iteration counts in every cell, both dtypes, and identical L1 residuals — from which the
+  first conclusion drawn was "numerically equivalent, adopt on fidelity grounds alone". That was a
+  measurement error of the same shape as the one being corrected: the benchmark's designs are
+  WELL-CONDITIONED, and this term is zero in exact arithmetic, so it can ONLY show up where `reg`,
+  the equilibration or CHOP's rank truncation perturbs that cancellation. Well-conditioned data
+  cannot discriminate, by construction.
+  RE-MEASURED on ill-conditioned/degenerate designs vs `ladBR` (independent exact-vertex engine),
+  relative error in the L1 objective, FLOAT:
+    vandermonde deg4    3.682e-4 without  ->  1.412e-5 with   (26x better)
+    colScale 1:1e4      3.292e-5           ->  3.292e-5        tie
+    nearCollinear 1e-5  8.721e-3           ->  8.721e-3        tie
+    duplicateCol        6.110e-6           ->  6.116e-6        tie
+    tiny b + colScale   9.590e-5           ->  9.461e-5        tie
+  DOUBLE is a wash everywhere (all cases <= 1e-10 both ways). So the term earns its keep in float on
+  genuinely ill-conditioned normal matrices, which is precisely what the theory predicted and what the
+  benchmark could never have shown. Pinned by `IllConditionedVandermondeMatchesExactEngine`, whose own
+  (differently-seeded) instance measures 8.2e-5 with the term vs 4.6e-3 without — 56x — with the
+  tolerance at 3e-4, between the two.
+  ⚠️ The first cut of that test reused the diagnostic's tolerance (8e-5) even though the diagnostic's
+  rng had been consumed by three earlier probes, making it a DIFFERENT problem instance. It failed at
+  8.2e-5 on a bound set from data that did not describe it. Numbers from a scratch harness do not
+  transfer to a permanent test unless the instance is identical — re-measure in place.
+  Separately noted, NOT caused by this change: float `nearCollinear 1e-5` sits at 8.7e-3 relative in
+  both arms — a standing float accuracy limit of FN on near-collinear columns; ladBR is the better
+  engine there. Worth its own investigation, not folded into this one.
+  TIMING NOT MEASURED. The extra ATmul is O(mn) against BuildATQA's O(mn²/2), so it should be small
+  at n >> 1 and material at LAD's typical n=4 — but the only A/B taken ran while the machine was in
+  use (browser + music), and this repo's own history records that swinging single runs 20-40%. The
+  numbers seen (float within noise, double ~3-4% slower at large m) are NOT trustworthy and are
+  recorded here only so nobody mistakes them for a baseline. Re-measure on an idle machine before
+  quoting a cost.
+
 ## LP.FrischNewton — tau != 0.5 oracle + rank-deficient coverage (closes the audit's test gaps)
 - 2026-07-25 | Closes both open test gaps from the port-fidelity cross-check below; no behaviour
   change, the solver was already correct on both.
