@@ -44,10 +44,24 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   machine load, not CHO. What survives is contradictory (double m=4096 CHO 6.7% SLOWER, m=16384 1.9%
   FASTER, both with a stable control) = noise with a sign. Only float m=8/16 hint at ~10%, on 4-6 us
   absolute, in a range where `lad` routes to ladBR anyway.
-  So the flop argument holds empirically: a 4x4 factorization against BuildATQA's ~164k flops at
-  m=16384 is invisible. CHOP is FREE. That inverts the "is this over-defended?" reading — CHOP is not
-  a cost worth removing, it is an unexercised safety net that costs nothing. The open question is no
-  longer "should we drop it" but "can a case be built where it wins", and it stays until one is.
+  PROFILED DIRECTLY afterwards (per-call, rep-looped inside one job so IJob.Run overhead cannot
+  swamp a sub-100ns operation; SmallSizeBenchmark starts at n=16 and never times CHOP, so this shape
+  was previously unmeasured):
+    n        float CHO / CHOP        double CHO / CHOP
+    4        79.5 / 107.3 ns         73.3 /  83.1 ns
+    8       153.0 / 252.2 ns        162.5 / 253.3 ns
+    32     3297.9 / 4385.0 ns      2146.1 / 4076.9 ns
+  FN does ONE factorization per iteration, so at n=4 CHOP costs +28 ns/iter (float) over CHO. Against
+  measured per-iteration cost that is 2.9% at m=8, 2.6% at m=16, 0.09% at m=1024 and 0.004% at
+  m=16384 — i.e. under a tenth of a percent anywhere FN is the ROUTED engine (m > 512), and the few
+  percent only at sizes where `lad` picks ladBR anyway. Also explains why the A/B could not resolve
+  it: a 28 ns/iter effect against a 43% noise floor.
+  ⚠️ NON-OBVIOUS: at n=4 both are OVERHEAD-bound, not flop-bound (79.5 ns for ~30 flops is
+  ~0.4 GFLOP/s), which is why CHOP is only 1.13-1.35x there instead of the ~2x its per-column pivot
+  search costs at n=32. Do not extrapolate the large-N CHOP/CHO ratio down to solver-inner shapes.
+  So CHOP is effectively FREE. That inverts the "is this over-defended?" reading — it is not a cost
+  worth removing, it is an unexercised safety net that costs nothing. The open question is no longer
+  "should we drop it" but "can a case be built where it wins", and it stays until one is.
   CONCLUSION: rank truncation is NOT the near-collinear mechanism. The limit is the CONDITION
   SQUARING inherent to forming AᵀQA — cond ~1e12 against float's ~1e-7 leaves no digits in the
   degenerate direction, and no Cholesky variant can recover information the normal matrix already
