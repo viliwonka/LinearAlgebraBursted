@@ -1,6 +1,67 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## LP.FrischNewton — scale equivariance: one data-scaled tolerance + relative regularization
+- 2026-07-25 | The L1 fit is exactly equivariant under `b -> c*b`; the solver was not. New
+  `LadFrischNewtonScaleTests.ResponseScaleEquivariance` measures all four scales before asserting (one
+  bad scale must not hide the others) on a 5-point line whose LAD fit (0,1) and least-squares fit
+  (1.6,1) are far apart, so a solve that stops at its own starting point is unmistakable. Measured
+  BEFORE the fix: float broken at 3 of 4 scales (c=1e-8 returned L1 residual 12.8 = exactly the
+  least-squares value; c=1e-3 off 3%; c=1e6 off 15% with slope 0.802), double broken at c=1e-16.
+  TWO independent absolute-vs-data-scaled comparisons, both fixed:
+  (a) `zwFloor` was `Consts.fProxyZeroThreshold` (1e-6 float / 1e-14 double) compared against the
+      residual `r = -b - Ay`, which carries the data's scale. On small-magnitude data every residual
+      falls under the floor, so z/w initialize to the floor alone (no data content) and the resulting
+      gap is already under `gapTol` — the loop never runs and `x = -yBest` returns the plain
+      least-squares initialization. Now ONE `eps = sqrtEps*‖b‖₂` drives both the floor and the gap
+      test: the reference's own single-tolerance structure (`lpfnb.f` uses its caller `eps` for both),
+      with the constant replaced by a data-proportional value.
+      `sqrtEps*(1 + ‖b‖₂)` — gapTol's previous shape — is NOT a fix: the additive 1 is an absolute
+      floor that dominates when ‖b‖ << 1, leaving the tolerance ~4000x the objective at c=1e-8.
+  (b) `reg` was added to M's diagonal INSIDE BuildATQA, before the Jacobi equilibration. The weights
+      `q = 1/(z/a + w/s)` scale like 1/‖b‖ (z,w residual-scaled; a,s in [0,1]), so M scales like
+      1/‖b‖ and on large-magnitude data an absolute bump swamps the real matrix and degenerates the
+      Newton direction — this is the 15% at c=1e6. BuildATQA is now called with 0 and `reg` is added
+      AFTER equilibration onto the unit diagonal, where it is a genuine relative perturbation (which
+      the pre-existing comment already claimed — that claim only ever held for the Indefinite-retry
+      bump). Suite 7104/7104.
+  Float c=1e6 was NOT a regression from (a): baselined against the pre-fix solver it was already
+  broken. LESSON: an assertion loop that throws on the first failure hides the shape of the bug and
+  invites mis-attributing a newly EXPOSED failure to the change that exposed it — measure every case,
+  then assert once.
+
+## LP.FrischNewton — independent port-fidelity cross-check vs rqfnb.f: CLEAN
+- 2026-07-25 | Independent statement-by-statement audit of `ladFrischNewtonCore` against
+  `lpfnb.f`/`stepy` at commit `7c2feec6`, algebra re-derived by hand rather than taken from the
+  earlier passes. NO bugs found beyond the three already-resolved divergences. Confirmed correct,
+  all previously unverified: the strict `< 0` test in the ratio test matches Fortran; `mu*(g/mu)³/(2n)`
+  uses n = OBSERVATIONS (our m), not coefficients; the full-step ELSE branch does NOT reset fa/fd to 1,
+  matching Fortran's fall-through (a classic bug spot — resetting there would silently discard the
+  affine step lengths); `lpfnb.f:107`'s reuse of `u` as scratch has no analogue hazard here since we
+  use a dedicated `Av`; all 33 Allocator.Temp buffers are disposed exactly once with both in-loop
+  `break`s falling through to the same block; `[NoAlias]` on BuildFNWeights is truthful; generated
+  float/double are exact codegen expansions. Also confirmed the corrector fix is NOT a double-division
+  (the precomputed `dadz = daAff*dzAff/a` is the same divided quantity reused at both use sites), and
+  that `ATmul` lacking `Amul`'s `MemClear` is SAFE because `UnsafeOP.vecMatDot` self-clears its output
+  before accumulating (`UnsafeOP.fProxy.cs:413`).
+  The audit surfaced two UNDOCUMENTED deviations from the reference — now written into the file
+  header's "Deviations from the literal Fortran reference" list: the tolerance SPLIT (reference drives
+  both the z/w init floor and the convergence test off one caller `eps`; we scaled gapTol by ‖b‖ but
+  left zwFloor an unscaled constant), and the non-fatal LS-init failure (reference aborts with no fit when the plain-CHO factorization of AᵀA
+  fails; we fall back to y=0, a valid strictly-interior start, and proceed). The omitted primal-residual
+  re-injection was added to that list too, since it is the item most likely to be "helpfully restored"
+  by a future reader diffing against the Fortran — re-adding it was measured WORSE (see the entry
+  below); do not restore without re-measuring.
+  ⚠️ The tolerance-split item was NOT merely a documentation gap: it was a live scale-dependence bug,
+  fixed the same day — see the scale-equivariance entry above. The audit's "behaviour is correct, only
+  the docs are missing" reading of it was wrong.
+  Residual risk noted, not a demonstrated bug: the dropped primal-residual term is provably zero in
+  exact arithmetic, so it can only bite where `reg`, the Jacobi equilibration, or CHOP rank-truncation
+  perturbs that exact cancellation — i.e. precisely the near-singular endgame CHOP exists for.
+  Open test gap (NOT closed): tau != 0.5 quantile regression has no independent oracle — only tau=0.5
+  against ladFN's own forwarding plus a wide statistical sign-fraction check at tau=0.25 — and no
+  rank-deficient or degenerate-size design is routed through the core.
+
 ## LP.FrischNewton — complementarity gap (rqfnb.f) replaces the cancellation-prone duality gap
 - 2026-07-24 | Closes the "LATENT" item in the entry below at the ROOT rather than guarding the
   symptom. THIRD MATLAB-vs-Fortran divergence found in this port: the convergence measure itself.

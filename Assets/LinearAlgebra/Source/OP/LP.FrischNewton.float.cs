@@ -55,6 +55,26 @@ namespace LinearAlgebra
         // the smallest gap seen (a NaN/Inf blow-up or an unrecoverable Indefinite factorization stops
         // the loop but never corrupts the returned x).
         //
+        // Scale equivariance: the L1 fit satisfies argmin‖Ax − c·b‖₁ = c·argmin‖Ax − b‖₁ exactly, so
+        // every tolerance here is proportional to ‖b‖₂ and the diagonal regularization is relative to
+        // the equilibrated (unit) diagonal. No absolute constant is compared against a data-scaled
+        // quantity anywhere in the solve.
+        //
+        // Deviations from the literal Fortran reference:
+        // (1) The single tolerance is data-scaled. `lpfnb.f` drives both the z/w initialization floor
+        //     and the convergence test from one caller-supplied eps, and so does this port -- but that
+        //     eps is sqrtEps·‖b‖₂ rather than a caller constant. A fixed constant makes the solve
+        //     scale-DEPENDENT (the reference's own behavior): on small-magnitude data the floor
+        //     dominates the starting point and the gap test passes immediately, returning the
+        //     least-squares initialization instead of the L1 fit.
+        // (2) A failed least-squares init is not fatal. Where the reference aborts with no fit if the
+        //     one-time plain-CHO factorization of AᵀA fails, here y starts at 0 -- still a valid
+        //     strictly-interior point -- and the solve proceeds.
+        // (3) The primal residual is not re-injected. The reference rebuilds the affine RHS as
+        //     (bLP - Aᵀa) + Aᵀ(q·(z-w)) each iteration; here it is Aᵀ(q·(z-w)) alone. The dropped term
+        //     is zero in exact arithmetic: the start satisfies Aᵀa = bLP and the Newton step preserves
+        //     Aᵀda = 0.
+        //
         // Job-safe: all scratch is Allocator.Temp, disposed on every return path.
         // ============================================================================================
 
@@ -173,13 +193,19 @@ namespace LinearAlgebra
             float reg = Consts.floatZeroThreshold;
             float BIG = (float)1e30;
             float beta = (float)0.9995;
-            float zwFloor = Consts.floatZeroThreshold;
 
             for (int i = 0; i < m; i++) { a[i] = oneMinusTau; s[i] = tauC; }
 
             double bNorm = 0;
             for (int i = 0; i < m; i++) bNorm += (double)b[i] * (double)b[i];
             bNorm = math.sqrt(bNorm);
+
+            // One tolerance drives both the z/w initialization floor and the convergence test, as in
+            // the Fortran reference. It is PROPORTIONAL to the response norm, so scaling b by c scales
+            // the floor, the gap and the fit alike: the solve is equivariant under b -> c*b. b = 0 has
+            // the trivial fit x = 0 at gap 0; the fallback only keeps the tolerance positive.
+            double eps = (double)Consts.floatSqrtEps * (bNorm > 0 ? bNorm : 1.0);
+            float zwFloor = (float)eps;
 
             // ---- init: y from an ORDINARY LEAST-SQUARES fit (plain CHO on the unweighted normal
             // equations AᵀA w = Aᵀb; q=1 uniformly here -- no endgame polarization at this one-time,
@@ -215,7 +241,7 @@ namespace LinearAlgebra
             }
 
             double gap = ComplementarityGap(z, a, w, s, m);
-            double gapTol = (double)Consts.floatSqrtEps * (1.0 + bNorm);
+            double gapTol = eps;
 
             int budget = maxIter > 0 ? maxIter : 50;
             LPStatus status = gap <= gapTol ? LPStatus.Optimal : LPStatus.MaxIterations;
@@ -237,7 +263,11 @@ namespace LinearAlgebra
                 // (M dy = r  ⟺  M̂ (D⁻¹dy) = D r). The equilibration makes CHOP's scale-relative
                 // rank tolerance see genuine near-dependence rather than raw column-scale disparity,
                 // and makes the diagonal bump below a RELATIVE perturbation of the unit diagonal.
-                BuildATQA(A, q, M, m, n, reg);
+                // The regularization is applied AFTER equilibration for the same reason: the weights
+                // q = 1/(z/a + w/s) scale like 1/‖b‖ (z, w are residual-scaled; a, s live in [0,1]),
+                // so M scales like 1/‖b‖ and an absolute bump added to the raw M would swamp it on
+                // large-magnitude data. On the unit diagonal it is a fixed relative perturbation.
+                BuildATQA(A, q, M, m, n, (float)0);
                 for (int j = 0; j < n; j++)
                 {
                     float dj = M[j, j];
@@ -246,6 +276,7 @@ namespace LinearAlgebra
                 for (int r = 0; r < n; r++)
                     for (int c = 0; c < n; c++)
                         M[r, c] *= dscale[r] * dscale[c];
+                for (int j = 0; j < n; j++) M[j, j] += reg;
                 RankInfo rinfo = CHOP.decomp(in M, ref L, ref P, ref ws);
                 float bump = reg;
                 for (int t = 0; rinfo.status == DirectSolveStatus.Indefinite && t < 4; t++)
