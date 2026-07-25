@@ -1,0 +1,401 @@
+using System;
+
+using Unity.Collections;
+using Unity.Mathematics;
+
+//+deleteThis
+// TEMPLATE-ONLY alias: codegen rewrites each fProxy* token -> float*/double* (real Unity.Mathematics
+// types), so the field access below (.x/.y/.z) and constructors resolve natively.
+using fProxy3 = Unity.Mathematics.float3;
+//-deleteThis
+
+namespace BULA
+{
+    // ================================================================================================
+    // Cylinder, cone, torus and capsule -- the shapes whose GEOMETRIC residual is genuinely nonlinear,
+    // so each is a Levenberg-Marquardt solve (Optimize.nlsSolve) over a residual functor, seeded from
+    // a closed-form guess built out of the linear fits in this same facade.
+    //
+    // Unlike Fit.quadric these minimize TRUE ORTHOGONAL DISTANCE to the surface, not an algebraic
+    // residual, so the answer is unbiased with respect to how the points are distributed over the
+    // shape. The cost is that they iterate and can find a local minimum.
+    //
+    // WARM START, on every entry point: a nonzero incoming axis/direction is used as the starting
+    // guess and the closed-form seed is skipped. This is the same convention as Fit.linear's robust
+    // overload, and it matters for the same reason plus one more -- these solves are local, so a
+    // previous frame's answer is both faster AND more likely to find the right minimum than a fresh
+    // seed. Pass a zeroed direction to auto-seed.
+    //
+    // GAUGE FREEDOM: each parameterization carries redundancy (the axis direction's length, and for a
+    // cylinder the position along its own axis). Those leave a flat manifold of equivalent minima
+    // rather than a unique parameter vector; LM's damping handles it, and the returned SHAPE is
+    // well-determined even though the parameters that describe it are not unique.
+    //
+    // Job-safe: scratch is Allocator.Temp, disposed before returning.
+    // ================================================================================================
+    public static partial class Fit
+    {
+        // ---- residual functors ---------------------------------------------------------------------
+
+        /// <summary>Orthogonal-distance residual to an infinite cylinder: p = (q, d, radius), 7 params.</summary>
+        public struct fProxyCylinderResidual : IfProxyResidualFunction
+        {
+            public NativeArray<fProxy3> Points;
+
+            public void Residuals(in fProxyN p, ref fProxyN r)
+            {
+                var q = new fProxy3(p[0], p[1], p[2]);
+                var d = math.normalize(new fProxy3(p[3], p[4], p[5]));
+                fProxy rad = p[6];
+
+                for (int i = 0; i < Points.Length; i++)
+                {
+                    fProxy3 v = Points[i] - q;
+                    fProxy ax = math.dot(v, d);
+                    r[i] = math.length(v - ax * d) - rad;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Orthogonal-distance residual to a cone SURFACE: p = (apex, d, halfAngle), 7 params. The
+        /// residual radial·cos(a) − axial·sin(a) is the exact distance to the generating line, signed
+        /// so points inside the cone come out negative.
+        /// </summary>
+        public struct fProxyConeResidual : IfProxyResidualFunction
+        {
+            public NativeArray<fProxy3> Points;
+
+            public void Residuals(in fProxyN p, ref fProxyN r)
+            {
+                var apex = new fProxy3(p[0], p[1], p[2]);
+                var d = math.normalize(new fProxy3(p[3], p[4], p[5]));
+                fProxy ca = math.cos(p[6]), sa = math.sin(p[6]);
+
+                for (int i = 0; i < Points.Length; i++)
+                {
+                    fProxy3 v = Points[i] - apex;
+                    fProxy ax = math.dot(v, d);
+                    fProxy rad = math.length(v - ax * d);
+                    r[i] = rad * ca - ax * sa;
+                }
+            }
+        }
+
+        /// <summary>Orthogonal-distance residual to a torus: p = (centre, d, R, r), 8 params.</summary>
+        public struct fProxyTorusResidual : IfProxyResidualFunction
+        {
+            public NativeArray<fProxy3> Points;
+
+            public void Residuals(in fProxyN p, ref fProxyN res)
+            {
+                var c = new fProxy3(p[0], p[1], p[2]);
+                var d = math.normalize(new fProxy3(p[3], p[4], p[5]));
+                fProxy R = p[6], r = p[7];
+
+                for (int i = 0; i < Points.Length; i++)
+                {
+                    fProxy3 v = Points[i] - c;
+                    fProxy ax = math.dot(v, d);
+                    fProxy rad = math.length(v - ax * d);
+                    fProxy dr = rad - R;
+                    res[i] = math.sqrt(dr * dr + ax * ax) - r;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Orthogonal-distance residual to a capsule (a segment swept by a sphere): p = (a, b, radius),
+        /// 7 params. The distance-to-SEGMENT is piecewise -- it is C¹ but not C² where the barrel meets
+        /// each cap -- so Gauss-Newton curvature is discontinuous for points sitting exactly on that
+        /// seam. In practice LM's damping absorbs it; a fit whose points cluster on the seam is the one
+        /// case to warm-start.
+        /// </summary>
+        public struct fProxyCapsuleResidual : IfProxyResidualFunction
+        {
+            public NativeArray<fProxy3> Points;
+
+            public void Residuals(in fProxyN p, ref fProxyN r)
+            {
+                var a = new fProxy3(p[0], p[1], p[2]);
+                var b = new fProxy3(p[3], p[4], p[5]);
+                fProxy rad = p[6];
+
+                fProxy3 seg = b - a;
+                fProxy len2 = math.dot(seg, seg);
+
+                for (int i = 0; i < Points.Length; i++)
+                {
+                    fProxy3 v = Points[i] - a;
+                    fProxy t = len2 > (fProxy)0 ? math.saturate(math.dot(v, seg) / len2) : (fProxy)0;
+                    r[i] = math.length(v - t * seg) - rad;
+                }
+            }
+        }
+
+        // ---- entry points --------------------------------------------------------------------------
+
+        /// <summary>
+        /// Fits an infinite cylinder by orthogonal distance. <paramref name="axisDir"/> is the warm
+        /// start: nonzero means "use this as the initial axis", zero means seed from the dominant
+        /// principal direction. On return it is unit length. <paramref name="axisPoint"/> is A point on
+        /// the axis, not a canonical one -- the position along the axis is a gauge freedom.
+        /// Requires points.Length &gt;= 7. False means LM did not converge.
+        /// </summary>
+        public static bool cylinder(NativeArray<fProxy3> points, ref fProxy3 axisPoint,
+                                    ref fProxy3 axisDir, ref fProxy radius, int maxIter = 0)
+        {
+            var l2 = new fProxyL2Loss();
+            return cylinder(points, ref axisPoint, ref axisDir, ref radius, in l2, maxIter);
+        }
+
+        /// <summary>Cylinder fit under a robust loss. See the plain overload.</summary>
+        public static bool cylinder<TLoss>(NativeArray<fProxy3> points, ref fProxy3 axisPoint,
+                                           ref fProxy3 axisDir, ref fProxy radius,
+                                           in TLoss loss, int maxIter = 0)
+            where TLoss : struct, IfProxyRobustLoss
+        {
+            if (points.Length < 7) throw new ArgumentException("Fit.cylinder: points.Length must be >= 7");
+
+            if (math.lengthsq(axisDir) <= (fProxy)0)
+                SeedAxis(points, out axisPoint, out axisDir, out radius);
+
+            var p = new fProxyN(7, Allocator.Temp);
+            p[0] = axisPoint.x; p[1] = axisPoint.y; p[2] = axisPoint.z;
+            p[3] = axisDir.x;   p[4] = axisDir.y;   p[5] = axisDir.z;
+            p[6] = radius;
+
+            var f = new fProxyCylinderResidual { Points = points };
+            var info = Optimize.nlsSolve(ref f, ref p, points.Length, in loss);
+
+            axisPoint = new fProxy3(p[0], p[1], p[2]);
+            axisDir = math.normalize(new fProxy3(p[3], p[4], p[5]));
+            radius = math.abs(p[6]);
+
+            p.Dispose();
+            return info;
+        }
+
+        /// <summary>
+        /// Fits a cone SURFACE by orthogonal distance, reporting apex, unit axis and half-angle in
+        /// radians. <paramref name="axisDir"/> is the warm start (zero = auto-seed). The seed recovers
+        /// the apex in closed form: along the principal axis a cone's radius grows linearly with axial
+        /// position, so a straight line fit of radius against position gives tan(halfAngle) as its
+        /// slope and the apex as its root. Requires points.Length &gt;= 7.
+        /// </summary>
+        public static bool cone(NativeArray<fProxy3> points, ref fProxy3 apex,
+                                ref fProxy3 axisDir, ref fProxy halfAngle, int maxIter = 0)
+        {
+            var l2 = new fProxyL2Loss();
+            return cone(points, ref apex, ref axisDir, ref halfAngle, in l2, maxIter);
+        }
+
+        /// <summary>Cone fit under a robust loss. See the plain overload.</summary>
+        public static bool cone<TLoss>(NativeArray<fProxy3> points, ref fProxy3 apex,
+                                       ref fProxy3 axisDir, ref fProxy halfAngle,
+                                       in TLoss loss, int maxIter = 0)
+            where TLoss : struct, IfProxyRobustLoss
+        {
+            if (points.Length < 7) throw new ArgumentException("Fit.cone: points.Length must be >= 7");
+
+            if (math.lengthsq(axisDir) <= (fProxy)0)
+                SeedCone(points, out apex, out axisDir, out halfAngle);
+
+            var p = new fProxyN(7, Allocator.Temp);
+            p[0] = apex.x;    p[1] = apex.y;    p[2] = apex.z;
+            p[3] = axisDir.x; p[4] = axisDir.y; p[5] = axisDir.z;
+            p[6] = halfAngle;
+
+            var f = new fProxyConeResidual { Points = points };
+            var info = Optimize.nlsSolve(ref f, ref p, points.Length, in loss);
+
+            apex = new fProxy3(p[0], p[1], p[2]);
+            axisDir = math.normalize(new fProxy3(p[3], p[4], p[5]));
+            halfAngle = math.abs(p[6]);
+
+            p.Dispose();
+            return info;
+        }
+
+        /// <summary>
+        /// Fits a torus by orthogonal distance. <paramref name="axisDir"/> is the warm start (zero =
+        /// auto-seed from the least-variance principal direction, which is the ring's own axis).
+        /// Requires points.Length &gt;= 8.
+        /// </summary>
+        public static bool torus(NativeArray<fProxy3> points, ref fProxy3 center, ref fProxy3 axisDir,
+                                 ref fProxy majorRadius, ref fProxy minorRadius, int maxIter = 0)
+        {
+            var l2 = new fProxyL2Loss();
+            return torus(points, ref center, ref axisDir, ref majorRadius, ref minorRadius, in l2, maxIter);
+        }
+
+        /// <summary>Torus fit under a robust loss. See the plain overload.</summary>
+        public static bool torus<TLoss>(NativeArray<fProxy3> points, ref fProxy3 center,
+                                        ref fProxy3 axisDir, ref fProxy majorRadius,
+                                        ref fProxy minorRadius, in TLoss loss, int maxIter = 0)
+            where TLoss : struct, IfProxyRobustLoss
+        {
+            if (points.Length < 8) throw new ArgumentException("Fit.torus: points.Length must be >= 8");
+
+            if (math.lengthsq(axisDir) <= (fProxy)0)
+                SeedTorus(points, out center, out axisDir, out majorRadius, out minorRadius);
+
+            var p = new fProxyN(8, Allocator.Temp);
+            p[0] = center.x;  p[1] = center.y;  p[2] = center.z;
+            p[3] = axisDir.x; p[4] = axisDir.y; p[5] = axisDir.z;
+            p[6] = majorRadius; p[7] = minorRadius;
+
+            var f = new fProxyTorusResidual { Points = points };
+            var info = Optimize.nlsSolve(ref f, ref p, points.Length, in loss);
+
+            center = new fProxy3(p[0], p[1], p[2]);
+            axisDir = math.normalize(new fProxy3(p[3], p[4], p[5]));
+            majorRadius = math.abs(p[6]);
+            minorRadius = math.abs(p[7]);
+
+            p.Dispose();
+            return info;
+        }
+
+        /// <summary>
+        /// Fits a capsule (segment swept by a sphere) by orthogonal distance. A nonzero
+        /// <paramref name="b"/> − <paramref name="a"/> is the warm start; a degenerate one auto-seeds
+        /// from the extremes along the dominant principal direction. Requires points.Length &gt;= 7.
+        /// </summary>
+        public static bool capsule(NativeArray<fProxy3> points, ref fProxy3 a, ref fProxy3 b,
+                                   ref fProxy radius, int maxIter = 0)
+        {
+            var l2 = new fProxyL2Loss();
+            return capsule(points, ref a, ref b, ref radius, in l2, maxIter);
+        }
+
+        /// <summary>Capsule fit under a robust loss. See the plain overload.</summary>
+        public static bool capsule<TLoss>(NativeArray<fProxy3> points, ref fProxy3 a, ref fProxy3 b,
+                                          ref fProxy radius, in TLoss loss, int maxIter = 0)
+            where TLoss : struct, IfProxyRobustLoss
+        {
+            if (points.Length < 7) throw new ArgumentException("Fit.capsule: points.Length must be >= 7");
+
+            if (math.lengthsq(b - a) <= (fProxy)0)
+                SeedCapsule(points, out a, out b, out radius);
+
+            var p = new fProxyN(7, Allocator.Temp);
+            p[0] = a.x; p[1] = a.y; p[2] = a.z;
+            p[3] = b.x; p[4] = b.y; p[5] = b.z;
+            p[6] = radius;
+
+            var f = new fProxyCapsuleResidual { Points = points };
+            var info = Optimize.nlsSolve(ref f, ref p, points.Length, in loss);
+
+            a = new fProxy3(p[0], p[1], p[2]);
+            b = new fProxy3(p[3], p[4], p[5]);
+            radius = math.abs(p[6]);
+
+            p.Dispose();
+            return info;
+        }
+
+        // ---- closed-form seeds ---------------------------------------------------------------------
+
+        // Dominant principal direction + centroid + mean radial distance. Right for a cylinder sampled
+        // over a length exceeding its diameter; a squat cylinder's dominant direction is a RADIAL one
+        // instead, which is exactly the case to warm-start rather than auto-seed.
+        static void SeedAxis(NativeArray<fProxy3> points, out fProxy3 q, out fProxy3 d, out fProxy radius)
+        {
+            line(points, out q, out d);
+            if (math.lengthsq(d) <= (fProxy)0) d = new fProxy3((fProxy)0, (fProxy)0, (fProxy)1);
+            d = math.normalize(d);
+
+            fProxy acc = (fProxy)0;
+            for (int i = 0; i < points.Length; i++)
+            {
+                fProxy3 v = points[i] - q;
+                acc += math.length(v - math.dot(v, d) * d);
+            }
+            radius = acc / (fProxy)points.Length;
+        }
+
+        // Along the axis a cone's radius is linear in axial position, so a straight-line fit of radius
+        // against position yields tan(halfAngle) as slope and the apex as the root.
+        static void SeedCone(NativeArray<fProxy3> points, out fProxy3 apex, out fProxy3 d, out fProxy halfAngle)
+        {
+            line(points, out fProxy3 c, out d);
+            if (math.lengthsq(d) <= (fProxy)0) d = new fProxy3((fProxy)0, (fProxy)0, (fProxy)1);
+            d = math.normalize(d);
+
+            int n = points.Length;
+            var A = new fProxyMxN(n, 2, Allocator.Temp);
+            var rhs = new fProxyN(n, Allocator.Temp);
+            var sol = new fProxyN(2, Allocator.Temp);
+
+            for (int i = 0; i < n; i++)
+            {
+                fProxy3 v = points[i] - c;
+                fProxy ax = math.dot(v, d);
+                A[i, 0] = ax; A[i, 1] = (fProxy)1;
+                rhs[i] = math.length(v - ax * d);
+            }
+
+            fProxy slope = (fProxy)0, intercept = (fProxy)0;
+            if (linear(in A, in rhs, ref sol)) { slope = sol[0]; intercept = sol[1]; }
+
+            halfAngle = math.atan(math.abs(slope));
+            // radius vanishes at the apex: ax* = -intercept/slope along d from c.
+            fProxy t = math.abs(slope) > Consts.fProxySqrtEps ? -intercept / slope : (fProxy)0;
+            apex = c + t * d;
+
+            A.Dispose(); rhs.Dispose(); sol.Dispose();
+        }
+
+        // A torus's points spread within the plane perpendicular to its axis, so the ring axis is the
+        // LEAST-variance principal direction -- the same quantity a plane fit reports as its normal.
+        static void SeedTorus(NativeArray<fProxy3> points, out fProxy3 c, out fProxy3 d,
+                              out fProxy R, out fProxy r)
+        {
+            plane(points, out c, out d);
+            if (math.lengthsq(d) <= (fProxy)0) d = new fProxy3((fProxy)0, (fProxy)0, (fProxy)1);
+            d = math.normalize(d);
+
+            int n = points.Length;
+            fProxy accR = (fProxy)0;
+            for (int i = 0; i < n; i++)
+            {
+                fProxy3 v = points[i] - c;
+                accR += math.length(v - math.dot(v, d) * d);
+            }
+            R = accR / (fProxy)n;
+
+            fProxy accr = (fProxy)0;
+            for (int i = 0; i < n; i++)
+            {
+                fProxy3 v = points[i] - c;
+                fProxy ax = math.dot(v, d);
+                fProxy dr = math.length(v - ax * d) - R;
+                accr += math.sqrt(dr * dr + ax * ax);
+            }
+            r = accr / (fProxy)n;
+        }
+
+        // Endpoints are the extreme projections onto the dominant principal direction, pulled in by the
+        // mean perpendicular distance so the caps start near the point cloud's own ends rather than
+        // beyond them.
+        static void SeedCapsule(NativeArray<fProxy3> points, out fProxy3 a, out fProxy3 b, out fProxy radius)
+        {
+            SeedAxis(points, out fProxy3 c, out fProxy3 d, out radius);
+
+            fProxy lo = (fProxy)0, hi = (fProxy)0;
+            for (int i = 0; i < points.Length; i++)
+            {
+                fProxy t = math.dot(points[i] - c, d);
+                if (i == 0 || t < lo) lo = t;
+                if (i == 0 || t > hi) hi = t;
+            }
+
+            lo += radius; hi -= radius;
+            if (hi < lo) { fProxy mid = (fProxy)0.5 * (lo + hi); lo = mid; hi = mid; }
+
+            a = c + lo * d;
+            b = c + hi * d;
+        }
+    }
+}

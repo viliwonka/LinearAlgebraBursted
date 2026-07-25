@@ -553,6 +553,175 @@ public class doubleFitTests
         pts.Dispose(); c.Dispose();
     }
 
+    // ------------------------------------------------------- nonlinear solids
+    //
+    // Each shape is generated EXACTLY in canonical position, then rigidly transformed, so the fit has
+    // a known right answer and the transform exercises the same rotation handling the equivariance
+    // tests pin for the linear fits. Points lie exactly on the surface, so a converged fit should
+    // reproduce the generating parameters -- these are recovery tests, not noise-tolerance tests.
+
+    static double SolidTol => 1e-6;
+
+    // Rotation used by every solid case below.
+    static double3 SolidRot(double3 v) =>
+        Rot3(v, (double)math.cos(0.5), (double)math.sin(0.5), (double)math.cos(-0.35), (double)math.sin(-0.35));
+
+    static double3 SolidShift => new double3((double)1.5, (double)(-3), (double)0.75);
+
+    static double3 Place(double3 canonical) => SolidRot(canonical) + SolidShift;
+
+    [Test]
+    public void CylinderRecoversAxisAndRadius()
+    {
+        const double rad = 2.0;
+        var pts = new NativeArray<double3>(48, Allocator.Temp);
+        int k = 0;
+        for (int i = 0; i < 6; i++)
+            for (int j = 0; j < 8; j++)
+            {
+                double z = -3.0 + 6.0 * i / 5.0, th = 2.0 * math.PI_DBL * j / 8.0;
+                pts[k++] = Place(new double3((double)(rad * math.cos(th)), (double)(rad * math.sin(th)), (double)z));
+            }
+
+        double3 q = default, d = default; double r = default;
+        Assert.IsTrue(Fit.cylinder(pts, ref q, ref d, ref r), "cylinder fit did not converge");
+
+        var wantDir = SolidRot(new double3((double)0, (double)0, (double)1));
+        Assert.That(AngleError(d, wantDir), Is.EqualTo(0.0).Within(SolidTol), "axis direction");
+        Assert.That((double)r, Is.EqualTo(rad).Within(SolidTol), "radius");
+
+        // axisPoint is gauge-free ALONG the axis, so pin the LINE: its distance to the true axis.
+        double3 v = q - SolidShift;
+        double offAxis = math.length(v - math.dot(v, wantDir) * wantDir);
+        Assert.That(offAxis, Is.EqualTo(0.0).Within(SolidTol), "axis point must lie on the true axis");
+
+        pts.Dispose();
+    }
+
+    [Test]
+    public void ConeRecoversApexAxisAndAngle()
+    {
+        const double half = 0.4;
+        double tanA = math.tan(half);
+        var pts = new NativeArray<double3>(48, Allocator.Temp);
+        int k = 0;
+        for (int i = 0; i < 6; i++)
+            for (int j = 0; j < 8; j++)
+            {
+                double t = 1.0 + 4.0 * i / 5.0, th = 2.0 * math.PI_DBL * j / 8.0;
+                double rr = t * tanA;
+                pts[k++] = Place(new double3((double)(rr * math.cos(th)), (double)(rr * math.sin(th)), (double)t));
+            }
+
+        double3 apex = default, d = default; double ang = default;
+        Assert.IsTrue(Fit.cone(pts, ref apex, ref d, ref ang), "cone fit did not converge");
+
+        var wantDir = SolidRot(new double3((double)0, (double)0, (double)1));
+        Assert.That(AngleError(d, wantDir), Is.EqualTo(0.0).Within(SolidTol), "axis direction");
+        Assert.That((double)ang, Is.EqualTo(half).Within(SolidTol), "half angle");
+
+        var wantApex = Place(new double3((double)0, (double)0, (double)0));
+        Assert.That((double)math.length(apex - wantApex), Is.EqualTo(0.0).Within(SolidTol), "apex position");
+
+        pts.Dispose();
+    }
+
+    [Test]
+    public void TorusRecoversRadiiAndAxis()
+    {
+        const double R = 3.0, r0 = 1.0;
+        var pts = new NativeArray<double3>(96, Allocator.Temp);
+        int k = 0;
+        for (int i = 0; i < 12; i++)
+            for (int j = 0; j < 8; j++)
+            {
+                double th = 2.0 * math.PI_DBL * i / 12.0, ph = 2.0 * math.PI_DBL * j / 8.0;
+                double rr = R + r0 * math.cos(ph);
+                pts[k++] = Place(new double3((double)(rr * math.cos(th)), (double)(rr * math.sin(th)),
+                                             (double)(r0 * math.sin(ph))));
+            }
+
+        double3 c = default, d = default; double R1 = default, r1 = default;
+        Assert.IsTrue(Fit.torus(pts, ref c, ref d, ref R1, ref r1), "torus fit did not converge");
+
+        var wantDir = SolidRot(new double3((double)0, (double)0, (double)1));
+        Assert.That(AngleError(d, wantDir), Is.EqualTo(0.0).Within(SolidTol), "ring axis");
+        Assert.That((double)R1, Is.EqualTo(R).Within(SolidTol), "major radius");
+        Assert.That((double)r1, Is.EqualTo(r0).Within(SolidTol), "minor radius");
+        Assert.That((double)math.length(c - SolidShift), Is.EqualTo(0.0).Within(SolidTol), "centre");
+
+        pts.Dispose();
+    }
+
+    [Test]
+    public void CapsuleRecoversEndpointsAndRadius()
+    {
+        const double halfLen = 2.0, rad = 1.0;
+        var pts = new NativeArray<double3>(72, Allocator.Temp);
+        int k = 0;
+
+        // Barrel.
+        for (int i = 0; i < 6; i++)
+            for (int j = 0; j < 8; j++)
+            {
+                double z = -halfLen + 2.0 * halfLen * i / 5.0, th = 2.0 * math.PI_DBL * j / 8.0;
+                pts[k++] = Place(new double3((double)(rad * math.cos(th)), (double)(rad * math.sin(th)), (double)z));
+            }
+        // Caps -- without these the fit cannot tell a capsule from a longer cylinder.
+        for (int i = 0; i < 3; i++)
+            for (int j = 0; j < 4; j++)
+            {
+                double u = math.PI_DBL * 0.5 * (i + 1) / 3.0, th = 2.0 * math.PI_DBL * j / 4.0;
+                double rr = rad * math.sin(u), dz = rad * math.cos(u);
+                pts[k++] = Place(new double3((double)(rr * math.cos(th)), (double)(rr * math.sin(th)),
+                                             (double)(halfLen + dz)));
+                pts[k++] = Place(new double3((double)(rr * math.cos(th)), (double)(rr * math.sin(th)),
+                                             (double)(-halfLen - dz)));
+            }
+
+        double3 a = default, b = default; double r = default;
+        Assert.IsTrue(Fit.capsule(pts, ref a, ref b, ref r), "capsule fit did not converge");
+
+        Assert.That((double)r, Is.EqualTo(rad).Within(SolidTol), "radius");
+
+        // Endpoints may come back in either order: compare as a set.
+        var e0 = Place(new double3((double)0, (double)0, (double)(-halfLen)));
+        var e1 = Place(new double3((double)0, (double)0, (double)halfLen));
+        double straight = math.length(a - e0) + math.length(b - e1);
+        double swapped = math.length(a - e1) + math.length(b - e0);
+        Assert.That(math.min(straight, swapped), Is.EqualTo(0.0).Within(2.0 * SolidTol), "segment endpoints");
+
+        pts.Dispose();
+    }
+
+    // Warm start: handing the solver the exact answer must converge immediately and leave it there.
+    // This is the path a per-frame tracker takes, and it also proves the ref-parameter convention --
+    // a nonzero incoming direction is USED, not overwritten by the seed.
+    [Test]
+    public void CylinderWarmStartFromExactAnswerHolds()
+    {
+        const double rad = 2.0;
+        var pts = new NativeArray<double3>(48, Allocator.Temp);
+        int k = 0;
+        for (int i = 0; i < 6; i++)
+            for (int j = 0; j < 8; j++)
+            {
+                double z = -3.0 + 6.0 * i / 5.0, th = 2.0 * math.PI_DBL * j / 8.0;
+                pts[k++] = Place(new double3((double)(rad * math.cos(th)), (double)(rad * math.sin(th)), (double)z));
+            }
+
+        double3 q = SolidShift;
+        double3 d = SolidRot(new double3((double)0, (double)0, (double)1));
+        double r = (double)rad;
+
+        Assert.IsTrue(Fit.cylinder(pts, ref q, ref d, ref r), "warm-started cylinder fit failed");
+        Assert.That((double)r, Is.EqualTo(rad).Within(SolidTol), "radius must stay put");
+        Assert.That(AngleError(d, SolidRot(new double3((double)0, (double)0, (double)1))),
+            Is.EqualTo(0.0).Within(SolidTol), "axis must stay put");
+
+        pts.Dispose();
+    }
+
     // ---------------------------------------------------------------- guards
 
     [Test]
