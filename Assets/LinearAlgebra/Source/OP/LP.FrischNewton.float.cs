@@ -10,6 +10,7 @@ using Unity.Collections;
 using Unity.Mathematics;
 
 using LinearAlgebra.Internal;
+using LinearAlgebra.Sparse;
 
 namespace LinearAlgebra
 {
@@ -159,8 +160,54 @@ namespace LinearAlgebra
         // objective -- irrelevant here since `objective` is always the honest recomputed L1 residual).
         internal static LPInfo ladFrischNewtonCore(in floatMxN A, in floatN b, double tau,
                                                    ref floatN x, out double objective, int maxIter)
+            => ladFrischNewtonCore(new floatDenseLadDesign(in A), in b, tau, ref x, out objective, maxIter);
+
+        /// <summary>
+        /// Exact least-absolute-deviation (L1) regression over a block-sparse
+        /// <see cref="floatBSR"/> design, by the same Frisch-Newton interior point as the dense
+        /// <see cref="ladFN(in floatMxN, in floatN, ref floatN, out double, int)"/>. Every iteration
+        /// is one streaming pass over the stored blocks plus two block spMVs -- the normal matrix is
+        /// n×n in the COEFFICIENT count, never m×m, so a tall design costs O(nnz) per iteration and the
+        /// iteration count stays flat in m.
+        /// </summary>
+        /// <param name="A">Design matrix, m×n block-sparse. n (coefficients) should stay modest --
+        /// the n×n weighted Gram is dense and is factorized directly.</param>
+        /// <param name="b">Observations, length A.M_Rows.</param>
+        /// <param name="x">Output coefficients, length A.N_Cols (overwritten).</param>
+        /// <param name="objective">Output L1 residual ‖A x − b‖₁.</param>
+        /// <param name="maxIter">Iteration budget; ≤0 picks the default (50).</param>
+        public static LPInfo ladFN(in floatBSR A, in floatN b, ref floatN x, out double objective,
+                                   int maxIter = 0)
         {
-            int m = A.M_Rows, n = A.N_Cols;
+            if (b.N != A.M_Rows) throw new ArgumentException("LP.ladFN(BSR): b.N must equal A.M_Rows");
+            if (x.N != A.N_Cols) throw new ArgumentException("LP.ladFN(BSR): x.N must equal A.N_Cols");
+
+            return ladFrischNewtonCore(new floatBsrLadDesign(in A), in b, 0.5, ref x, out objective, maxIter);
+        }
+
+        /// <summary>
+        /// Quantile regression over a block-sparse <see cref="floatBSR"/> design -- the sparse twin of
+        /// <see cref="ladFN(in floatMxN, in floatN, double, ref floatN, out double, int)"/>.
+        /// τ = 0.5 is median regression.
+        /// </summary>
+        /// <param name="tau">Quantile level, strictly inside (0, 1).</param>
+        public static LPInfo ladFN(in floatBSR A, in floatN b, double tau, ref floatN x,
+                                   out double objective, int maxIter = 0)
+        {
+            if (b.N != A.M_Rows) throw new ArgumentException("LP.ladFN(BSR): b.N must equal A.M_Rows");
+            if (x.N != A.N_Cols) throw new ArgumentException("LP.ladFN(BSR): x.N must equal A.N_Cols");
+            if (!(tau > 0.0 && tau < 1.0)) throw new ArgumentException("LP.ladFN(BSR): tau must be strictly inside (0, 1)");
+
+            return ladFrischNewtonCore(new floatBsrLadDesign(in A), in b, tau, ref x, out objective, maxIter);
+        }
+
+        // Design-generic core. TDesign supplies A x, Aa y and the weighted Gram; nothing else here
+        // touches the design matrix, so dense and block-sparse share one body.
+        internal static LPInfo ladFrischNewtonCore<TDesign>(in TDesign design, in floatN b, double tau,
+                                                            ref floatN x, out double objective, int maxIter)
+            where TDesign : struct, IfloatLadDesign
+        {
+            int m = design.Rows, n = design.Cols;
 
             // Strict-interior guard: a=(1-tau) and s=tau are the fixed starting values below, and
             // q = 1/(z/a + w/s) divides by both -- keep tau (hence a, s) safely away from the [0,1]
@@ -211,7 +258,7 @@ namespace LinearAlgebra
 
             // Dual equality RHS: the constraint maintained throughout is Aᵀa = bLP, and the start
             // satisfies it by construction, so bLP is just Aᵀa evaluated at the initial a = 1 - tau.
-            ATmul(A, a, bLP, m, n);
+            design.ApplyT(in a, ref bLP);
 
             double bNorm = 0;
             for (int i = 0; i < m; i++) bNorm += (double)b[i] * (double)b[i];
@@ -229,11 +276,12 @@ namespace LinearAlgebra
             // outside-the-loop solve, so plain CHO is the right (cleanest) tool, per spec), then
             // y = -w (rq_fnm's sign convention -- see file header). ----
             for (int i = 0; i < m; i++) q[i] = (float)1;
-            BuildATQA(A, q, M, m, n, reg);
+            design.WeightedGram(in q, ref M);
+            for (int j = 0; j < n; j++) M[j, j] += reg;
             bool okInit = CHO.decomp(in M, ref Linit);
             if (okInit)
             {
-                ATmul(A, b, tmpN, m, n);
+                design.ApplyT(in b, ref tmpN);
                 CHO.decompSolve(ref Linit, ref tmpN);
                 for (int j = 0; j < n; j++) y[j] = -tmpN[j];
             }
@@ -241,7 +289,7 @@ namespace LinearAlgebra
                 for (int j = 0; j < n; j++) y[j] = (float)0;
 
             // r = c - yᵀÃ = -b - Ay  (c = -b; see file header's Ã=Aᵀ, c=-b dual construction)
-            Amul(A, y, Av, m, n);
+            design.Apply(in y, ref Av);
             for (int i = 0; i < m; i++)
             {
                 float r = -b[i] - Av[i];
@@ -284,7 +332,7 @@ namespace LinearAlgebra
                 // q = 1/(z/a + w/s) scale like 1/‖b‖ (z, w are residual-scaled; a, s live in [0,1]),
                 // so M scales like 1/‖b‖ and an absolute bump added to the raw M would swamp it on
                 // large-magnitude data. On the unit diagonal it is a fixed relative perturbation.
-                BuildATQA(A, q, M, m, n, (float)0);
+                design.WeightedGram(in q, ref M);
                 for (int j = 0; j < n; j++)
                 {
                     float dj = M[j, j];
@@ -311,14 +359,14 @@ namespace LinearAlgebra
                 // drift that reg, the equilibration and CHOP's rank truncation introduce. The
                 // corrector reuses this same rhs below, so it is carried into both solves.
                 for (int i = 0; i < m; i++) Av[i] = q[i] * zw[i];
-                ATmul(A, Av, rhs, m, n);
-                ATmul(A, a, tmpN, m, n);
+                design.ApplyT(in Av, ref rhs);
+                design.ApplyT(in a, ref tmpN);
                 for (int j = 0; j < n; j++) rhs[j] += bLP[j] - tmpN[j];
                 for (int j = 0; j < n; j++) tmpN[j] = rhs[j] * dscale[j];
                 CHOP.decompSolve(ref L, in P, rank, ref tmpN, ref ws);
                 for (int j = 0; j < n; j++) dyAff[j] = tmpN[j] * dscale[j];
 
-                Amul(A, dyAff, Av, m, n);
+                design.Apply(in dyAff, ref Av);
                 for (int i = 0; i < m; i++)
                 {
                     daAff[i] = q[i] * (Av[i] - zw[i]);
@@ -353,13 +401,13 @@ namespace LinearAlgebra
                         xi[i] = (float)(muTarget * (1.0 / (double)a[i] - 1.0 / (double)s[i]));
                         qCorr[i] = q[i] * (dadz[i] - dsdw[i] - xi[i]);
                     }
-                    ATmul(A, qCorr, tmpN, m, n);
+                    design.ApplyT(in qCorr, ref tmpN);
                     for (int j = 0; j < n; j++) rhs2[j] = rhs[j] + tmpN[j];
                     for (int j = 0; j < n; j++) tmpN[j] = rhs2[j] * dscale[j];
                     CHOP.decompSolve(ref L, in P, rank, ref tmpN, ref ws);
                     for (int j = 0; j < n; j++) dy[j] = tmpN[j] * dscale[j];
 
-                    Amul(A, dy, Av, m, n);
+                    design.Apply(in dy, ref Av);
                     for (int i = 0; i < m; i++)
                     {
                         da[i] = q[i] * (Av[i] + xi[i] - zw[i] - dadz[i] + dsdw[i]);
@@ -393,13 +441,9 @@ namespace LinearAlgebra
             }
 
             for (int j = 0; j < n; j++) x[j] = -yBest[j];
+            design.Apply(in x, ref Av);
             double obj = 0;
-            for (int i = 0; i < m; i++)
-            {
-                double rowDot = 0;
-                for (int j = 0; j < n; j++) rowDot += (double)A[i, j] * (double)x[j];
-                obj += math.abs(rowDot - (double)b[i]);
-            }
+            for (int i = 0; i < m; i++) obj += math.abs((double)Av[i] - (double)b[i]);
             objective = obj;
 
             a.Dispose(); s.Dispose(); y.Dispose(); z.Dispose(); w.Dispose(); q.Dispose(); zw.Dispose();
@@ -411,43 +455,6 @@ namespace LinearAlgebra
             P.Dispose(); ws.W.Dispose(); ws.bt.Dispose();
 
             return new LPInfo { status = status, iterations = iters, objective = obj };
-        }
-
-        // M (n x n) = Aᵀ diag(q) A + reg·I, built as ONE cache-friendly pass over A's ROWS: each row i
-        // contributes q_i · A[i,:] ⊗ A[i,:] (an outer product) to M's upper triangle, then mirrored.
-        // Row-major storage (the library's row-major matrix convention) makes reading A[i,:] unit-
-        // stride, which a column-contracted loop order (fixed column, varying row) would not be -- the
-        // same row-streaming rationale as LP.InteriorPoint's BuildNormal, just contracting over the
-        // opposite axis (m/rows here vs nv/columns there) to land on this n x n shape.
-        //
-        // The inner "M[r,c] += v*A[i,c]" sweep over c in [r,n) is an AXPY (M's row r += v * A's row i,
-        // both read/written unit-stride in this row-major layout), routed through UnsafeOP.axpy.
-        static unsafe void BuildATQA(floatMxN A, floatN q, floatMxN M, int m, int n, float reg)
-        {
-            for (int r = 0; r < n; r++)
-                for (int c = r; c < n; c++)
-                    M[r, c] = (float)0;
-
-            float* Ap = A.Data.Ptr;
-            float* Mp = M.Data.Ptr;
-            for (int i = 0; i < m; i++)
-            {
-                float qi = q[i];
-                float* Arow = Ap + (long)i * n;
-                for (int r = 0; r < n; r++)
-                {
-                    float v = qi * Arow[r];
-                    if (v == (float)0) continue;
-                    UnsafeOP.axpy(Mp + (long)r * n + r, Arow + r, v, n - r);
-                }
-            }
-
-            for (int r = 0; r < n; r++)
-            {
-                M[r, r] += reg;
-                for (int c = r + 1; c < n; c++)
-                    M[c, r] = M[r, c];
-            }
         }
 
         // q[i] = 1/(z[i]/a[i] + w[i]/s[i]);  zw[i] = z[i]-w[i] -- FN's per-iteration IPM barrier weight

@@ -11,15 +11,20 @@ namespace LinearAlgebra
         // SPARSE linear programming & least absolute deviation over a block-sparse (BSR) constraint
         // matrix, solved by a MATRIX-FREE Mehrotra predictor-corrector interior point.
         //
-        // Both entry points reduce to the same standard form  min cᵀz  s.t.  Aₛ z = b,  z ≥ 0, and share
-        // one generic interior-point loop (standardFormInterior). The per-iteration normal equations
+        // LP.solve reduces to standard form  min cᵀz  s.t. Aₛ z = b,  z ≥ 0 through
+        // fProxySlackAugmentedOperator (Aₛ = [A | ±slack cols], one per inequality row) and runs the
+        // generic interior-point loop standardFormInterior. The per-iteration normal equations
         // M Δy = rhs (M = Aₛ D Aₛᵀ, SPD) are solved with the library's Krylov.cg over a
         // fProxyNormalOperator (M is never formed) preconditioned by a fProxyNormalJacobi (diagonal of M,
-        // computed matrix-free). Only the standard-form constraint operator Aₛ differs:
-        //   * LP.lad  -> fProxyLadOperator            Aₛ = [A | −A | −I | I]   (LAD is all-equality)
-        //   * LP.solve -> fProxySlackAugmentedOperator Aₛ = [A | ±slack cols]  (one per inequality row)
-        // Every Aₛ only ever calls spMV/spMVT on the sparse A, so nothing scales with a dense N². This is
-        // the regime where a dense LP is not an option.
+        // computed matrix-free). Aₛ only ever calls spMV/spMVT on the sparse A, so nothing scales with a
+        // dense N². This is the regime where a dense LP is not an option.
+        //
+        // LP.lad does NOT come through here: an L1 regression forwards to LP.ladFN, whose Frisch-Newton
+        // dual works on the ORIGINAL m×n design and solves an n×n system directly. Reformulating it into
+        // this standard form would split every coefficient and residual into 2n+2m variables and turn
+        // that n×n direct solve into an m×m iterative one -- strictly worse in both cost and
+        // conditioning for a regression. fProxyLadOperator (Aₛ = [A | −A | −I | I]) remains as the
+        // standard-form encoding of LAD, still exercised directly by the operator tests.
         //
         // Interior point reports Optimal / MaxIterations only (no exact infeasibility/unboundedness
         // certificate -- that needs a homogeneous self-dual embedding; use the dense simplex for small
@@ -28,42 +33,16 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Sparse least absolute deviation: minimize ‖A x − b‖₁ over a free x ∈ ℝⁿ, with A a block-sparse
-        /// <see cref="fProxyBSR"/>. Matrix-free interior point (see the file header). <paramref name="x"/>
-        /// (length A.N_Cols) is overwritten with the coefficients; <paramref name="objective"/> returns
-        /// the L1 residual ‖A x − b‖₁. For small dense problems use the dense <see cref="lad(in fProxyMxN,
-        /// in fProxyN, ref fProxyN, out double, LPMethod, int)"/> instead.
+        /// <see cref="fProxyBSR"/>. Forwards to <see cref="ladFN(in fProxyBSR, in fProxyN, ref fProxyN,
+        /// out double, int)"/> -- the Frisch-Newton interior point works on the ORIGINAL m×n design, so
+        /// its per-iteration solve is n×n in the coefficient count. The general-LP route below would
+        /// instead split every coefficient and residual into a (2n+2m)-variable standard form whose
+        /// normal equations are m×m and have to be solved iteratively; for a regression that is strictly
+        /// worse in both cost and conditioning. <paramref name="x"/> (length A.N_Cols) is overwritten;
+        /// <paramref name="objective"/> returns the L1 residual ‖A x − b‖₁.
         /// </summary>
         public static LPInfo lad(in fProxyBSR A, in fProxyN b, ref fProxyN x, out double objective, int maxIter = 0)
-        {
-            int m = A.M_Rows, n = A.N_Cols;
-            if (b.N != m) throw new System.ArgumentException("LP.lad(BSR): b.N must equal A.M_Rows");
-            if (x.N != n) throw new System.ArgumentException("LP.lad(BSR): x.N must equal A.N_Cols");
-
-            int nv = 2 * n + 2 * m;
-
-            var ladSp = new fProxyN(n, Allocator.Temp); var ladTm = new fProxyN(m, Allocator.Temp);
-            var ladAtr = new fProxyN(n, Allocator.Temp);
-            var cvec = new fProxyN(nv, Allocator.Temp);
-            var zBest = new fProxyN(nv, Allocator.Temp, false);
-            var tmpM = new fProxyN(m, Allocator.Temp);
-
-            for (int i = 0; i < 2 * m; i++) cvec[2 * n + i] = (fProxy)1;   // cost 1 on every u, v
-
-            var lad = new fProxyLadOperator(in A, in ladSp, in ladTm, in ladAtr);
-            var info = standardFormInterior(in lad, in b, in cvec, ref zBest, maxIter);
-
-            // extract x = x⁺ − x⁻ (from the best-scoring iterate) and report the true L1 residual ‖A x − b‖₁
-            for (int j = 0; j < n; j++) x[j] = zBest[j] - zBest[n + j];
-            BSR.spMV(in A, in x, ref tmpM);
-            double l1 = 0;
-            for (int i = 0; i < m; i++) l1 += math.abs((double)tmpM[i] - (double)b[i]);
-            objective = l1;
-            info.objective = l1;
-
-            ladSp.Dispose(); ladTm.Dispose(); ladAtr.Dispose();
-            cvec.Dispose(); zBest.Dispose(); tmpM.Dispose();
-            return info;
-        }
+            => ladFN(in A, in b, ref x, out objective, maxIter);
 
         /// <summary>
         /// General sparse linear program: minimize cᵀx s.t. A x {≤,=,≥} b (per-row

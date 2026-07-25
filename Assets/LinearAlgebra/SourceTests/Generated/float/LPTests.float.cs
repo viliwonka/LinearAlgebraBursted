@@ -578,19 +578,11 @@ public class floatLPTests
 
             AssertTrue(infoD.status == LPStatus.Optimal);
 
-            // The float sparse IPM stalls at MaxIterations on this unscaled real dataset with a
-            // rounding-dependent objective (measured 2%..117% above the optimum across float
-            // summation-tree variants), so the tight closeness contract is double-only; float
-            // asserts a wide sanity envelope: never below the true optimum (L1 objective bound),
-            // never catastrophically above it.
-            bool strictObj = false;
-            if (strictObj)
-                AssertCloseD(objS, objD, 0.08 * (1.0 + objD));
-            else
-            {
-                AssertTrue(objS >= objD - 0.5);
-                AssertTrue(objS <= 3.0 * objD);
-            }
+            // Both dtypes hold the tight contract. This was float-exempt while sparse LAD went
+            // through the general-LP reformulation and its iterative normal-equations solve, which
+            // stalled at MaxIterations on this unscaled real dataset; sparse LAD now runs the same
+            // Frisch-Newton engine as dense, on the original design, with a direct n x n solve.
+            AssertCloseD(objS, objD, 0.08 * (1.0 + objD));
         }
 
         // ==== sparse (BSR) matrix-free interior-point general LP.solve (slack-augmented operator) ====
