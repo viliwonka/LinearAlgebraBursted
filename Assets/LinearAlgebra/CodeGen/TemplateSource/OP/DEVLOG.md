@@ -1,6 +1,29 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## LP.lad — quantreg's own published coefficients imported as a real-data oracle (barro, 3 taus)
+- 2026-07-25 | `quantreg/tests/rq.R` asserts rq() coefficients on the Barro growth data at tol 1e-5
+  for tau = 0.5 (`y.net ~ lgdp2+fse2+gedy2`) and tau = 0.75 / 0.25 (`+ Iy2 + gcony2`). Imported as
+  `LadBarroReferenceTests` (161 obs x 6 cols inlined; `barro.rda` is R binary, so the data was
+  extracted with `write.csv`). This is the first REAL-DATA non-median vector in the tree — the
+  brute-force C(m,2) oracle proves optimality of our own objective, this proves agreement with the
+  reference implementation. Comparison reproduces R's `all.equal` semantics exactly: mean(|t-c|) /
+  mean(|t|), NOT element-wise, which matters because the fse2 coefficient is ~500x smaller than the
+  intercept and an element-wise relative test would be dominated by it.
+  MEASURED mean relative difference, worst of the three fits:
+                 double        float
+    ladBR        9.8e-9        1.1e-6
+    ladFN        1.7e-8        2.6e-3
+  Both engines beat quantreg's own 1e-5 bar in DOUBLE by ~3 orders. In FLOAT the two separate by
+  2000x, and it is structural, not a tuning artifact: BR pivots on the ORIGINAL m x n design and
+  stays near-exact, FN forms AᵀQA and pays the SQUARED condition number. Same limit documented in
+  LP.FrischNewton's header, now confirmed on real data instead of a synthetic near-collinear probe.
+  Tolerances are therefore PER-ENGINE (float BR 5e-6, float FN 5e-3, double 1e-6 both) so neither
+  hides behind the other and a BR regression cannot pass on FN's looser bound. Note the default
+  `lad` routing sends m=161 to BR, so the accurate engine is the one users get here.
+  METHOD NOTE: tolerances were set by first running with tol = 0 to force every measurement to
+  print, then bounding from the numbers — not by loosening until green.
+
 ## LP.FrischNewton — plain CHO instead of CHOP: TRIED, NO EFFECT, REVERTED. Don't retry.
 - 2026-07-25 | Hypothesis (user's, and I agreed it was newly plausible): CHOP's rank truncation is
   what stalls FN on near-collinear designs, deleting the near-degenerate direction that plain CHO
