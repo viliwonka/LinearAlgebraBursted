@@ -23,14 +23,10 @@ namespace BULA
     /// The table is computed at double precision and cast to the element type (float or double),
     /// so accuracy is maximized regardless of the transform element type.
     ///
-    /// Only a QUARTER of the cosine circle (twQuarter, length n/4+1) is stored: twQuarter[j] =
-    /// cos(2π·j/n) for j = 0..n/4. Both real and imaginary parts of any W^m = exp(-2πi·m/n) are
-    /// reconstructed from it by quadrant reflection and a π/2 index shift (see CosQ): Re(W^m) =
-    /// CosQ(m), Im(W^m) = CosQ(m + n/4). The reconstruction is ~1 ULP accurate (not bit-exact vs a
-    /// full table): reflected entries are independently-built cos values, so a fold's sign flip is
-    /// not an exact negation of the direct entry. sw1/cw1 are materialized from CosQ at build time,
-    /// so the wide-butterfly and combine hot loops still read contiguous tables; only the scalar
-    /// butterfly and the rfft/irfft unpack call CosQ per element.
+    /// Only a QUARTER of the cosine circle (twQuarter, length n/4+1) is stored; the rest is
+    /// reconstructed by quadrant reflection (see CosQ). That reconstruction is ~1 ULP accurate, NOT
+    /// bit-exact against a full table -- reflected entries are independently-built cos values, so a
+    /// fold's sign flip is not an exact negation of the direct entry.
     /// </summary>
     public struct floatFFTCache : IDisposable
     {

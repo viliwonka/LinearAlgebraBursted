@@ -44,12 +44,9 @@ namespace BULA
         // so the same "collapse to the mean" degeneracy falls out for those columns with no special
         // casing here.
         //
-        // Called FRESH at the start of BOTH ukfPredict and ukfUpdate (not cached across the two calls
-        // the way FilterPy's UnscentedKalmanFilter reuses predict's propagated sigmas in update) --
-        // this keeps ukfUpdate self-contained and safe to call more than once per ukfPredict (the
-        // same multi-sensor-fusion pattern Kalman.update already supports), at the cost of one extra
-        // Cholesky per ukfUpdate call. Mathematically identical to FilterPy's own result whenever
-        // update immediately follows predict with nothing else in between (the common case).
+        // Called FRESH at the start of BOTH ukfPredict and ukfUpdate, so ukfUpdate is safe to call
+        // more than once per ukfPredict (the multi-sensor-fusion pattern Kalman.update supports), at
+        // the cost of one extra Cholesky per call.
         static void GenerateSigmaPoints(in floatN x, in floatMxN P, ref floatUKFCache cache)
         {
             int n = cache.N;

@@ -13,8 +13,7 @@ namespace BULA
     ///   if (info.Solved) Debug.Log(info.converged);
     /// </code>
     ///
-    /// Reuses <see cref="IterativeSolveStatus"/> (the same enum every other Krylov/eigen solver in
-    /// this library uses) rather than a dedicated LOBPCG enum: Converged means all k pairs locked
+    /// Uses the shared <see cref="IterativeSolveStatus"/>: Converged means all k pairs locked
     /// within tolerance; MaxIterations means the iteration budget ran out with some pairs still active;
     /// Degenerate means at least one requested pair was numerically degenerate at exit (its B-norm
     /// below the certification floor -- a collapsed Rayleigh-Ritz basis), so the returned pairs are

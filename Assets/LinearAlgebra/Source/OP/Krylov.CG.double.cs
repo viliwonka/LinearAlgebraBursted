@@ -12,11 +12,9 @@ namespace BULA
 
         /// <summary>
         /// Zero-alloc Conjugate Gradient solver for symmetric positive-definite (SPD) systems A x = b,
-        /// generic over any <see cref="IdoubleLinearOperator"/>. This is the single implementation of
-        /// the CG loop — the concrete dense (<c>cg(in doubleMxN, ...)</c>) and BSR
-        /// (<c>cg(in doubleBSR, ...)</c>) overloads below are thin forwarders that
-        /// wrap their matrix in <see cref="doubleDenseOperator"/> / <c>doubleBSROperator</c> and
-        /// call this method.
+        /// generic over any <see cref="IdoubleLinearOperator"/>. The SINGLE body behind the concrete
+        /// dense (<c>cg(in doubleMxN, ...)</c>) and BSR (<c>cg(in doubleBSR, ...)</c>) overloads
+        /// below, so all three are bit-identical.
         ///
         /// Caller provides x (initial guess, overwritten with solution — WARM-STARTABLE: seed x
         /// with a previous solution to resume/refine) and three scratch vectors r, p, Ap (all

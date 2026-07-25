@@ -77,13 +77,8 @@ namespace BULA
     ///   if (info.Solved) Debug.Log(info.sweeps);
     /// </code>
     ///
-    /// Reuses <see cref="IterativeSolveStatus"/> (the same enum every other iterative solver in
-    /// this library uses) rather than a dedicated Eigen enum: the tridiagonal QL / Hessenberg QR /
-    /// cyclic Jacobi iteration either fully converges (Converged) or exhausts its budget
-    /// (MaxIterations) -- there is no breakdown mode of its own.
-    ///
-    /// <see cref="sweeps"/> and <see cref="converged"/> are filled from counters the QL/QR/Jacobi
-    /// iteration already tracks while it runs -- never a separate pass. There is no residual field.
+    /// Uses the shared <see cref="IterativeSolveStatus"/>; these solvers have no Breakdown mode, so
+    /// the outcome is Converged or MaxIterations. There is no residual field.
     ///
     /// On a MaxIterations return the outputs are NOT usable: eigenvalues/eigenvectors are
     /// unwritten or partial -- always check the returned status before reading them.

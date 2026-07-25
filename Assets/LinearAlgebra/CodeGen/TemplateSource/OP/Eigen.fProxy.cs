@@ -875,12 +875,8 @@ namespace BULA
         /// converged is n on Converged, 0 on MaxIterations -- this solver does not resolve individual
         /// eigenvalues independently the way the QR/QL-based solvers do).
         ///
-        /// Notes:
-        ///   - Works for any real symmetric matrix including indefinite ones; eigenvalues
-        ///     are always real.
-        ///   - For positive semi-definite matrices the result matches SVD up to column
-        ///     sign differences.
-        ///   - Does not allocate.
+        /// Indefinite A is fine. For positive semi-definite A the result matches SVD up to column
+        /// sign differences. Does not allocate.
         /// </summary>
         /// <param name="A">On entry A (must be symmetric); destroyed; contents undefined after
         /// return (driven to approximately diagonal internally, but that is not a documented
@@ -1065,9 +1061,7 @@ namespace BULA
         /// <summary>
         /// All eigenVALUES of a SYMMETRIC real matrix, via Householder tridiagonalization followed by
         /// the implicit-shift QL iteration (EISPACK tred1 + tql1, GVL Alg. 8.3.1). Much faster than the
-        /// cyclic-Jacobi decompInPlace: the O(n^3) reduction is a sequence of gemv + symmetric
-        /// rank-2 updates (the rank-2 update is axpy → vectorises), and the QL sweep that follows is
-        /// only O(n^2). No eigenvectors (use decompInPlace if you need them).
+        /// cyclic-Jacobi decompInPlace. No eigenvectors (use decompInPlace if you need them).
         ///
         /// A must be symmetric (checked within relative tolerance) and is DESTROYED. On output
         /// eigenvalues[i] holds the i-th eigenvalue, sorted DESCENDING. Returns an
@@ -1306,9 +1300,7 @@ namespace BULA
         /// <summary>
         /// Full eigenDECOMPOSITION of a SYMMETRIC real matrix via Householder tridiagonalization with
         /// orthogonal accumulation (tred2) + implicit-shift QL with eigenvector accumulation (tql2).
-        /// Same result as the cyclic-Jacobi decompInPlace but far faster: the O(n^3)
-        /// tridiagonalization is gemv + rank-2 axpy updates (vectorises) and runs ONCE, where Jacobi
-        /// does several full sweeps of strided column rotations.
+        /// Same result as the cyclic-Jacobi decompInPlace, but far faster.
         ///
         /// A must be symmetric (checked within tolerance) and is DESTROYED. On output eigenvalues[i] is the
         /// i-th eigenvalue (sorted DESCENDING) and column i of V is its unit eigenvector, so

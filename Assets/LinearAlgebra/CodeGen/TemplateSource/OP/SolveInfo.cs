@@ -291,13 +291,11 @@ namespace BULA
     ///   if (info.Solved) Debug.Log(info.sweeps);
     /// </code>
     ///
-    /// Reuses <see cref="IterativeSolveStatus"/> (the same enum every other iterative solver in
-    /// this library uses) rather than a dedicated SVD enum: the bidiagonal QR either fully
-    /// diagonalizes (Converged) or exhausts its per-value budget on some singular value
-    /// (MaxIterations) -- there is no breakdown mode of its own.
+    /// Uses the shared <see cref="IterativeSolveStatus"/>; the bidiagonal QR has no breakdown mode,
+    /// so the outcome is Converged or MaxIterations (budget exhausted on some singular value).
     ///
-    /// <see cref="sweeps"/> and <see cref="converged"/> are filled from counters the bidiagonal QR
-    /// already tracks per singular value while it runs -- never a separate pass. NO residual field
+    /// <see cref="sweeps"/> and <see cref="converged"/> come from counters the bidiagonal QR already
+    /// tracks per singular value. NO residual field
     /// (that is what the test oracles are for, not this struct).
     ///
     /// On a MaxIterations return the outputs are NOT usable: S/U/V are unwritten or partial --
