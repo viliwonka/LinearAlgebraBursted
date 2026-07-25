@@ -20,15 +20,9 @@ namespace BULA
     /// further matvec/preconditioner/Rayleigh-Ritz) and deflated out of the active subspace. Locked
     /// pairs stay in the output X.
     ///
-    /// <b>Robustness:</b> the seed X is B-renormalized once before the first Rayleigh-Ritz, then
-    /// every active X row is B-renormalized again each iteration (a row whose B-norm^2 is at/below
-    /// <c>Consts.fProxyEpsilon</c> is reseeded first). W and P are B-orthonormalized
-    /// with dropping: a direction the block cannot support to working precision is dropped (that
-    /// block's width shrinks) rather than folded in via a Tikhonov ridge. The combined
-    /// Rayleigh-Ritz Gram's Cholesky is gated on a cubed pivot-ratio threshold; on failure the
-    /// iteration drops P and retries with just [X, W], and failing that stalls (X/lambda unchanged)
-    /// rather than producing NaN. A non-finite residual aborts with
-    /// <see cref="IterativeSolveStatus.Breakdown"/>.
+    /// <b>Robustness:</b> rank-deficient search directions are dropped rather than ridged, and a
+    /// failed Rayleigh-Ritz retries without P, then stalls with X/lambda unchanged -- never NaN.
+    /// A non-finite residual aborts with <see cref="IterativeSolveStatus.Breakdown"/>.
     ///
     /// <b>Guard vectors:</b> the working block size comes from the cache (<c>ws.X.M_Rows</c>), not
     /// from <c>k</c>. Allocating <c>new fProxyLOBPCGCache(n, k + guard, allocator)</c> and calling with
@@ -40,14 +34,9 @@ namespace BULA
     /// <b>Zero-alloc scope:</b> all O(n)-scale buffers live in <see cref="fProxyLOBPCGCache"/>,
     /// allocated once via the Allocator ctor and reused across calls.
     ///
-    /// <b>Convergence:</b> per-pair scale-invariant residual test ||A x_i - lambda_i B x_i|| &lt;=
-    /// tol · scale_i with scale_i = min(normAEst·||x_i|| + |lambda_i|·normBEst·||x_i||_B,
-    /// max(|lambda_i|, 1)·||x_i||_B), where normAEst/normBEst are Frobenius operator-norm
-    /// estimates of A and B taken from the orthonormalized seed block (normBEst is 1 for B=I,
-    /// making the two norms coincide). Explicit norms make the test immune to a
-    /// shrinking/collapsed iterate self-certifying; the lambda terms scale with ||x_i||_B (not
-    /// ||x_i||) so an iterate blowing up inside a singular B's null space cannot self-certify
-    /// either. Returns a <see cref="LOBPCGInfo"/>
+    /// <b>Convergence:</b> per-pair scale-invariant residual test -- ||A x_i - lambda_i B x_i||
+    /// against tol times an operator-norm-based scale, so tol is relative and neither a collapsed
+    /// nor a blown-up iterate can self-certify. Returns a <see cref="LOBPCGInfo"/>
     /// (Converged/MaxIterations/Degenerate/Breakdown).
     ///
     /// <b>Degenerate pairs:</b> a pair whose B-norm ||x_i||_B drops below 0.25 is degenerate: it

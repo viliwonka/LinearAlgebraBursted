@@ -67,9 +67,8 @@ namespace BULA
         /// but seeds (and returns) the terminal basis through <paramref name="basis"/> instead of always
         /// starting from the all-logical vertex -- see <see cref="LPBasis"/>'s own doc comment for the
         /// re-solve use case and lifecycle contract. Always routes through
-        /// <see cref="LPMethod.DualSimplex"/>: the bound-flip dual-feasibility repair and cost-
-        /// perturbation degeneracy defence a warm start needs are dual-simplex-specific machinery, so
-        /// this overload has no <see cref="LPMethod"/> parameter.
+        /// <see cref="LPMethod.DualSimplex"/> -- the warm-start machinery is dual-simplex-specific --
+        /// so this overload has no <see cref="LPMethod"/> parameter.
         ///
         /// Three-way lifecycle for <paramref name="basis"/>:
         /// <list type="bullet">

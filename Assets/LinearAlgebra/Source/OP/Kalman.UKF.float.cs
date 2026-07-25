@@ -14,27 +14,14 @@ namespace BULA
     // the SAME IfloatKFModel/IfloatKFMeasurement functors ekfPredict/ekfUpdate use -- but calling
     // ONLY F/H (JacobianF/JacobianH are never read; no linearization at all is the whole point).
     //
-    // Algorithm reference: FilterPy (rlabbe/filterpy, MIT) -- MerweScaledSigmaPoints (lambda =
-    // alpha^2(n+kappa)-n; point 0 = mean; points 1..n = mean + sqrt(n+lambda)*col_k(chol(P)); points
-    // n+1..2n = mean - same; Wm[0]=lambda/(n+lambda), Wc[0]=Wm[0]+(1-alpha^2+beta), every other
-    // weight = 1/(2(n+lambda))) and UnscentedKalmanFilter's predict/update recombination (weighted
-    // mean, weighted-outer-product covariance, cross-covariance Pxz, K = Pxz*Pzz^-1, x += Ky,
-    // P -= K*Pzz*Kᵀ).
-    //
-    // TWO deliberate deviations from FilterPy, both documented at their call site:
-    //   1. Sigma points are regenerated FRESH at the start of BOTH ukfPredict and ukfUpdate (FilterPy
-    //      reuses predict's propagated sigmas directly in update, a documented perf shortcut) -- see
-    //      GenerateSigmaPoints's own doc comment for why.
-    //   2. Default alpha=1 (not the classic ~1e-3) -- see floatUKFCache's own doc comment for the
-    //      float32 cancellation evidence.
+    // Algorithm reference: FilterPy (rlabbe/filterpy, MIT) -- MerweScaledSigmaPoints and
+    // UnscentedKalmanFilter's predict/update recombination. Two deliberate deviations from it:
+    // sigma points are regenerated FRESH at the start of BOTH ukfPredict and ukfUpdate (see
+    // GenerateSigmaPoints), and alpha defaults to 1, not the classic ~1e-3 (see floatUKFCache).
     //
     // The sigma-point spread uses CHOP (rank-revealing pivoted Cholesky), not a plain Cholesky: a
-    // rank-deficient P degrades to a DEGENERATE (duplicated-at-the-mean) sigma spread along the null
-    // directions instead of FilterPy's hard failure, and an Indefinite P (numerically broken) falls
-    // back to the same all-degenerate spread rather than reading an undefined factor.
-    //
-    // K is NEVER formed via an explicit Pzz inverse: ukfUpdate solves the TRANSPOSED system
-    // Pzz·Kᵀ = Pxzᵀ via CHOP, exactly like the linear/EKF UpdateCore.
+    // rank-deficient or Indefinite P degrades to a DEGENERATE (duplicated-at-the-mean) sigma spread
+    // along the null directions instead of FilterPy's hard failure.
     //
     // Wc[0] can be NEGATIVE (alpha < 1) -- the classic scaled-UKF pitfall, since the recombined
     // covariance is a WEIGHTED SUM of outer products, not a Joseph-form product guaranteed PSD

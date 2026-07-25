@@ -425,17 +425,14 @@ namespace BULA
         /// max(m,n) · Consts.fProxyZeroThreshold (matching SVD.pinvSolve / Analysis.rank). A
         /// negative relTol is an "auto" sentinel that selects that same default.
         ///
-        /// The reduced system L w = P·b is forward-solved on its leading r×r block (divide-safe by
-        /// construction: every used L diagonal exceeds tol); the remaining (m-r) dependent equations are
-        /// dropped (w[r..] = 0), then x = Qᵀ w. This is the BASIC solution: it satisfies the r independent
-        /// equations. When b is CONSISTENT it is also the minimum-norm solution (the dropped equations are
-        /// automatically satisfied); when b is INCONSISTENT (a genuine least-squares problem) it is NOT —
-        /// the below-diagonal L21 block couples the leading variables into the dropped equations, so use
-        /// minNormSolveInPlace (COD) for x = A⁺b there. At full row rank (r == m) the result is identical
-        /// to LQ.minNormSolve (which IS min-norm).
+        /// The (m-r) dependent equations are dropped. This is the BASIC solution: it satisfies the r
+        /// independent equations. When b is CONSISTENT it is also the minimum-norm solution; when b is
+        /// INCONSISTENT (a genuine least-squares problem) it is NOT — the below-diagonal L21 block
+        /// couples the leading variables into the dropped equations, so use minNormSolveInPlace (COD)
+        /// for x = A⁺b there. At full row rank (r == m) the result is identical to LQ.minNormSolve
+        /// (which IS min-norm).
         ///
-        /// DESTRUCTIVE FAST PATH (like QR/QRCP.solveInPlace): factors A's own buffer in place (no memcpy,
-        /// no separate Q) and applies Qᵀ straight from the stored reflectors, never forming Q. On return
+        /// DESTRUCTIVE FAST PATH (like QR/QRCP.solveInPlace): Q is never formed. On return
         /// A is DESTROYED (stored reflectors + L's sub-diagonal, contents undefined); b is NOT modified.
         /// Need the factors? Use LQRP.decomp instead, which preserves A and reconstructs Q.
         /// </summary>

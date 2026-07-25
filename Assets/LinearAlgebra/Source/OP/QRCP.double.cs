@@ -762,19 +762,16 @@ namespace BULA
         /// max(m,n) * Consts.doubleZeroThreshold (matching SVD.pinvSolve / Analysis.rank). A
         /// negative relTol is an "auto" sentinel that selects that same default.
         ///
-        /// Only the leading r×r block of R is back-substituted (divide-safe by construction: every
-        /// used R diagonal exceeds tol); the remaining (n-r) free variables are set to zero in the
-        /// permuted ordering, then P is un-applied to recover x. This is the BASIC (truncated)
-        /// solution: it minimizes the residual ‖Ax - b‖ but is NOT the minimum-norm solution — use
+        /// The (n-r) free variables are set to zero. This is the BASIC (truncated) solution: it
+        /// minimizes the residual ‖Ax - b‖ but is NOT the minimum-norm solution — use
         /// <see cref="minNormSolveInPlace(ref doubleMxN, ref doubleN, ref doubleN, ref doubleMxN, ref Pivot, ref doubleN, double)"/>
         /// (complete orthogonal decomposition, direct-factorization cost) or SVD.pinvSolve (iterative)
         /// for that. When A has full column rank (r == n) the result is identical to ordinary QR
         /// least-squares (and to minNormSolveInPlace, which then coincides with it).
         ///
-        /// DESTRUCTIVE FAST PATH (mirrors QR.solveInPlace): factors A_to_Q's own buffer in place (no
-        /// memcpy, no separate Q scratch) and applies Qᵀ to b as the reflectors are generated, so it
-        /// never forms or reconstructs Q. On return A_to_Q is DESTROYED (stored reflectors + partial R, contents undefined) and b is
-        /// DESTROYED (overwritten with Qᵀb). Need the orthogonal factor Q? Use QRCP.decompInPlace /
+        /// DESTRUCTIVE FAST PATH (mirrors QR.solveInPlace): Q is never formed. On return A_to_Q is
+        /// DESTROYED (stored reflectors + partial R, contents undefined) and b is DESTROYED
+        /// (overwritten with Qᵀb). Need the orthogonal factor Q? Use QRCP.decompInPlace /
         /// QRCP.decomp instead, which reconstruct it.
         /// </summary>
         /// <param name="A_to_Q">On entry A (m x n, m >= n); DESTROYED on exit (NOT the orthogonal factor — use decompInPlace for Q).</param>

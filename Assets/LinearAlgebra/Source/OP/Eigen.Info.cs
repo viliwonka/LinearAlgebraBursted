@@ -19,21 +19,11 @@ namespace BULA
     ///   if (info.Solved) Debug.Log(info.iterations);
     /// </code>
     ///
-    /// Reuses <see cref="IterativeSolveStatus"/> (the same enum the Krylov solvers use) rather than
-    /// a dedicated eigensolver enum -- the three outcomes (Converged / MaxIterations / Breakdown)
-    /// mean exactly the same thing here.
+    /// Uses the shared <see cref="IterativeSolveStatus"/> (Converged / MaxIterations / Breakdown).
     ///
-    /// <see cref="residual"/> is reported as <c>double</c> regardless of the solve's precision (a
-    /// float solve widens its float residual), matching <c>SolveInfo</c>/<c>LstsqInfo</c>. It is
-    /// filled from values the solver already tracks (or, for inversePowerIteration, a single extra
-    /// O(n) pass over the A*v it already holds from its last step) -- never a fresh matvec beyond
-    /// what the algorithm already performs:
-    /// <list type="bullet">
-    /// <item>powerIteration -- the infinity-norm residual ‖Av-λv‖ the loop already computes every
-    ///       iteration to test convergence.</item>
-    /// <item>inversePowerIteration -- ‖Av-λv‖∞ computed once at the return site from the A*v the
-    ///       last outer iteration's Rayleigh-quotient step already produced (Ap).</item>
-    /// </list>
+    /// <see cref="residual"/> is ‖Av-λv‖∞, reported as <c>double</c> regardless of the solve's
+    /// precision (a float solve widens its float residual), matching <c>SolveInfo</c>/
+    /// <c>LstsqInfo</c>. It costs no matvec beyond what the algorithm already performs.
     ///
     /// On a Converged OR MaxIterations return, (lambda, v) is the last iterate and residual
     /// describes it (so on MaxIterations you can inspect how close it got). On a Breakdown return

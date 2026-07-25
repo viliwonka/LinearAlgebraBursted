@@ -195,13 +195,9 @@ namespace BULA
         /// <summary>
         /// Inverse power iteration for the SMALLEST eigenpair (lambda_min, v) of a symmetric
         /// positive-definite (SPD) operator A (A.Rows == A.Cols), generic over any
-        /// <see cref="IfloatLinearOperator"/>. Useful for e.g. the Fiedler vector of a graph
-        /// Laplacian, or the lowest vibration mode of a stiffness matrix.
-        ///
-        /// A^-1 amplifies the SMALLEST-magnitude eigencomponent of A, so ordinary power iteration on
-        /// A^-1 converges to the eigenvector of A's smallest eigenvalue. Rather than forming/factoring
-        /// A^-1, each outer iteration solves A y = v with the zero-alloc generic
-        /// <see cref="Krylov.cg{TOp}"/>, then normalizes y into v.
+        /// <see cref="IfloatLinearOperator"/>. Each outer iteration solves A y = v with the
+        /// zero-alloc generic <see cref="Krylov.cg{TOp}"/>, so <c>cgTolerance</c> bounds the
+        /// achievable accuracy -- see the GOTCHA below.
         ///
         /// PRECONDITION (caller responsibility, not verified at runtime): A is symmetric
         /// positive-definite and nonsingular (lambda_min &gt; 0).
@@ -209,8 +205,7 @@ namespace BULA
         /// Scratch layout: v (length A.Rows) is the eigenvector estimate, in/out -- WARM-STARTABLE,
         /// deterministically seeded as v[i] = 1 + (i &amp; 3) then normalized if the caller supplies the
         /// zero vector. y is the inner solve's solution scratch (A y = v). r, p, Ap are
-        /// <see cref="Krylov.cg{TOp}"/>'s own scratch, reused across every outer iteration -- zero-alloc
-        /// overall; Ap doubles as the A*v scratch for the Rayleigh-quotient recompute once CG returns.
+        /// <see cref="Krylov.cg{TOp}"/>'s own scratch, reused across every outer iteration.
         ///
         /// On output: v is the unit eigenvector estimate for A's smallest eigenvalue; lambda is the
         /// Rayleigh quotient v^T A v / v^T v (recomputed via A.Apply, not carried over from CG).
@@ -487,39 +482,26 @@ namespace BULA
         /// Lanczos tridiagonalization of a SYMMETRIC operator A (A.Rows == A.Cols), generic over
         /// any <see cref="IfloatLinearOperator"/>.
         ///
-        /// Builds an orthonormal Krylov basis v_1..v_m (m = <paramref name="steps"/>) via the
-        /// classical 3-term Lanczos recurrence and the corresponding symmetric tridiagonal T (diag
-        /// alpha_1..alpha_m, off-diag beta_2..beta_m), then reuses
-        /// <see cref="valuesSymmetricInPlace(ref floatMxN, ref floatN, ref floatEigenSymCache)"/> on
-        /// T to obtain the Ritz values -- approximate eigenvalues of A. The EXTREMAL Ritz values
-        /// (largest and smallest) converge fastest and are already accurate for m &lt;&lt; A.Rows;
-        /// with m == A.Rows and full reorthogonalization, T is orthogonally similar to A and the
-        /// Ritz values reproduce A's ENTIRE spectrum.
+        /// Returns Ritz values -- approximate eigenvalues of A -- from an m-step Krylov basis
+        /// (m = <paramref name="steps"/>). The EXTREMAL ones (largest and smallest) converge fastest
+        /// and are already accurate for m &lt;&lt; A.Rows; with m == A.Rows they reproduce A's ENTIRE
+        /// spectrum.
         ///
         /// PRECONDITION (caller responsibility, not verified at runtime): A is symmetric. Lanczos is
-        /// undefined for a non-symmetric operator (the 3-term recurrence assumes it).
+        /// undefined for a non-symmetric operator.
         ///
-        /// FULL REORTHOGONALIZATION (against every previously computed v_1..v_j) is performed TWICE
-        /// per iteration to keep the Krylov basis numerically orthogonal and avoid spurious "ghost"
-        /// duplicate eigenvalues in T; the second pass is cheap insurance next to the O(m^2*n) the
-        /// first pass already costs.
+        /// Fully reorthogonalized, so no spurious "ghost" duplicate eigenvalues; costs O(m^2*n).
         ///
-        /// Workspace (see <see cref="floatLanczosCache"/>, allocate via
-        /// <c>new floatLanczosCache(A.Rows, steps, allocator)</c>): <c>ws.V</c> (steps x n) accumulates the
-        /// Krylov basis (row j = v_(j+1)); <c>ws.vCur</c>/<c>ws.w</c> (length n) are the current
-        /// Krylov vector and the work vector; <c>ws.alpha</c>/<c>ws.beta</c> (length steps) are T's
-        /// diagonal/off-diagonal; <c>ws.T</c> (steps x steps) and <c>ws.symWs</c> back the
-        /// valuesSymmetricInPlace call. On input, row 0 of <c>ws.V</c> is the seed for v_1: if it has
-        /// zero 2-norm it is seeded deterministically as V[0,i] = 1 + (i &amp; 3), then normalized
-        /// either way.
+        /// Workspace: <c>new floatLanczosCache(A.Rows, steps, allocator)</c>. On input, row 0 of
+        /// <c>ws.V</c> is the seed for v_1: if it has zero 2-norm it is seeded deterministically as
+        /// V[0,i] = 1 + (i &amp; 3), then normalized either way.
         ///
         /// EARLY BREAKDOWN: if at some iteration j &lt; steps the residual norm beta_(j+1) falls to
         /// <paramref name="breakdownTol"/> or below, an invariant subspace of A has been found and
         /// the process truncates there; <see cref="LanczosInfo.produced"/> reports how many of the
         /// m = <paramref name="steps"/> requested vectors were actually produced (produced &lt;=
-        /// steps). The unused rows/columns of T are padded (see the padding block in the
-        /// implementation) so the same fixed-shape workspace serves every call regardless of whether
-        /// breakdown occurs.
+        /// steps). The unused rows/columns of T are padded, so the same fixed-shape workspace serves
+        /// every call regardless of whether breakdown occurs.
         ///
         /// On output: <paramref name="eigenvalues"/> (length steps, caller-allocated) holds the
         /// Ritz values sorted DESCENDING in its first <c>produced</c> entries -- eigenvalues[0] is

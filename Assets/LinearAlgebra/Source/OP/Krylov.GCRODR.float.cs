@@ -20,17 +20,6 @@ namespace BULA
         /// (<see cref="IfloatPreconditioner"/>) -- the SINGLE body behind the plain and the
         /// right-preconditioned entry points.
         ///
-        /// Each cycle: project the recycled subspace out of the residual and fold its correction into
-        /// x, run an m-step Arnoldi (projected against the recycled C so the Krylov directions stay
-        /// recycle-orthogonal) with the SAME Hessenberg/Givens least-squares machinery as
-        /// <see cref="gmres{TOp,TPre}"/>, then rebuild the k recycled vectors from a small dense
-        /// harmonic-Ritz eigenproblem over the combined (old-recycle + this-cycle-Krylov) subspace.
-        /// The harmonic Ritz VALUES come from <see cref="Eigen.valuesQRInPlace"/> (general nonsymmetric
-        /// eigenvalues); each selected value's REFINED vector (the minimizer of ‖(A-θI)v‖ over the
-        /// combined subspace) comes from <see cref="Eigen.symmetricInPlace"/> on a small symmetric
-        /// matrix -- this library has no general nonsymmetric eigenVECTOR solver, so the refined-vector
-        /// route reuses the two eigensolvers that exist instead of hand-rolling a new one.
-        ///
         /// With <see cref="floatIdentityPreconditioner"/> the IsIdentity fold matches
         /// <see cref="gmres{TOp,TPre}"/>'s: no M⁻¹ apply, no separate preconditioned-basis storage.
         /// recycle = 0 disables recycling entirely and is bit-identical to <see cref="gmres{TOp,TPre}"/>.

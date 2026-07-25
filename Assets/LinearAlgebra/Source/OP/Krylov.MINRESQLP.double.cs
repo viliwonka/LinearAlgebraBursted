@@ -15,29 +15,19 @@ namespace BULA
         /// MINRES-QLP (Choi, Paige &amp; Saunders 2011) for symmetric (possibly indefinite,
         /// singular, or ill-conditioned) systems A x = b, generic over BOTH the operator
         /// (<see cref="IdoubleLinearOperator"/>) and the preconditioner (<see
-        /// cref="IdoublePreconditioner"/>). Structural sibling of <see cref="minres{TOp,TPre}"/>:
-        /// same symmetric-Lanczos base and left-Givens (MINRES) reflection, plus a second,
-        /// right-Givens (QLP) reflection that regularizes the near-singular tail of the
-        /// tridiagonal system. Where plain MINRES can diverge or stall on a singular/rank-deficient
-        /// A, this returns the MINIMUM-LENGTH solution of the compatible system, or of the
-        /// associated least-squares problem when A x = b is incompatible.
+        /// cref="IdoublePreconditioner"/>). Pick this over <see cref="minres{TOp,TPre}"/> when A may
+        /// be singular or rank-deficient, where plain MINRES can diverge or stall: this returns the
+        /// MINIMUM-LENGTH solution of the compatible system, or of the associated least-squares
+        /// problem when A x = b is incompatible.
         ///
         /// A MUST be symmetric; a real preconditioner M MUST be SPD (caller precondition, not
         /// verified beyond the NaN-safe breakdown guards). x is a warm-startable initial guess,
-        /// overwritten with the solution. shift applies an eigenvalue shift, solving
-        /// (A - shift*I) x = b: the Lanczos recurrence stays exact because the -shift*v term in the
-        /// shifted matvec cancels against +shift in the diagonal alfa, so the shift costs one extra
-        /// axpy per iteration when shift != 0; when shift == 0 each `if (shift != 0)` guard skips its
-        /// axpy at runtime (shift is a runtime parameter here, not a compile-time constant, so this
-        /// is a branch-skip, not a Burst fold), leaving zero-shift callers bit-identical. This is an
-        /// eigenvalue (lambda) shift on the operator, distinct from the singular-value damp of
-        /// lsqr/lsmr; A - shift*I stays symmetric, so the QLP min-length machinery is unchanged.
-        /// tol is the relative-residual tolerance (reference's
-        /// RTOL); maxIter bounds the Lanczos step count. tol also sets the min-length
-        /// regularization scale: solution growth past ~beta1/(64*tol*‖A‖est) -- contributions from
-        /// directions with sigma below ~64*tol*‖A‖est, which can never be certified at tol -- is
-        /// truncated toward the minimum-length solution (the reference's MAXXNORM knob, made
-        /// problem-relative instead of its absolute 1e7 default).
+        /// overwritten with the solution. shift solves (A - shift*I) x = b; zero-shift callers are
+        /// bit-identical to the unshifted path. This is an eigenvalue (lambda) shift on the
+        /// operator, distinct from the singular-value damp of lsqr/lsmr. tol is the
+        /// relative-residual tolerance, and also sets the min-length regularization scale:
+        /// contributions from directions that can never be certified at tol are truncated toward the
+        /// minimum-length solution. maxIter bounds the Lanczos step count.
         ///
         /// Caller provides x and nine scratch vectors (v, r1, r2, r3, w, wl, wl2, xl2, t1; all
         /// length A.Rows) -- see the folder DEVLOG for the buffer-reuse/aliasing plan. Returns a

@@ -1,6 +1,48 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Header blocks trimmed to contract + traps
+- 2026-07-25 | User ruling: "what code does can be derived from code anyway" — mechanism narration
+  cut from the long header blocks, contracts/traps/invariants kept. Formulas and derivations that
+  were load-bearing for a MAINTAINER (rather than a caller) are recorded here.
+  **LOBPCG convergence test** (was LOBPCG.fProxy.cs:43). Per-pair, scale-invariant:
+  `‖A x_i − λ_i B x_i‖ <= tol · scale_i`, `scale_i = min(normAEst·‖x_i‖ + |λ_i|·normBEst·‖x_i‖_B,
+  max(|λ_i|,1)·‖x_i‖_B)`, where normAEst/normBEst are Frobenius operator-norm estimates taken from
+  the orthonormalized seed block (normBEst = 1 for B = I, making the two norms coincide). Explicit
+  norms stop a shrinking/collapsed iterate self-certifying; the λ terms scale with `‖x_i‖_B` (not
+  `‖x_i‖`) so an iterate blowing up inside a singular B's null space cannot self-certify either.
+  Do not "simplify" this to a plain relative residual — see [[solver-termination-measure-safety]].
+  **MPC prestabilization block-index trap** (was MPC.State.fProxy.cs:41). The affine map
+  `u_k = M_row_k @ V + c_k` uses `c_k = -KPhiPre_row_k @ x0`, built at construction from Phi/Gamma
+  BLOCK (k−1) — that block's own convention is `x_{(k-1)+1} = x_k`, i.e. stage k's state, NOT block
+  k, which is `x_{k+1}`. k = 0 uses `x_0 = x0` exactly, with no V-coupling. Item 2's expansion:
+  `u_k^T R u_k` becomes `M^T Rbar M` added to H_UU plus a per-call gradient correction
+  (`Rcross @ x0`, `Rcross = -2 M^T Rbar KPhiPre`, fixed at construction). Row assembly and cost
+  correction consume the SAME M/KPhiPre built once, so they cannot drift apart under a future edit.
+  **MINRES-QLP shift exactness** (was Krylov.MINRESQLP.fProxy.cs:23). The Lanczos recurrence stays
+  exact because the `-shift*v` term in the shifted matvec cancels against `+shift` in the diagonal
+  alfa; the shift costs one extra axpy per iteration when nonzero. `shift` is a runtime parameter,
+  not a compile-time constant, so a zero shift is a branch-skip rather than a Burst fold — which is
+  why zero-shift callers stay bit-identical. `A - shift*I` stays symmetric, so the QLP min-length
+  machinery is unchanged. The tol-driven regularization is the reference's MAXXNORM knob made
+  problem-relative (growth past ~`beta1/(64·tol·‖A‖est)`) instead of its absolute 1e7 default.
+  **GCRO-DR harmonic-Ritz vector route** (was Krylov.GCRODR.fProxy.cs:19). Each cycle projects the
+  recycled subspace out of the residual, runs an m-step Arnoldi projected against the recycled C,
+  then rebuilds the k recycled vectors from a small dense harmonic-Ritz eigenproblem over the
+  combined (old-recycle + this-cycle-Krylov) subspace. Harmonic Ritz VALUES come from
+  `Eigen.valuesQRInPlace`; each selected value's REFINED vector (minimizer of `‖(A−θI)v‖` over the
+  combined subspace) comes from `Eigen.symmetricInPlace` on a small symmetric matrix. DESIGN
+  CONSTRAINT: this library has no general nonsymmetric eigenVECTOR solver, so the refined-vector
+  route deliberately reuses the two eigensolvers that exist rather than hand-rolling one. If a
+  nonsymmetric eigenvector solver ever lands, this is the call site to revisit.
+  **UKF Merwe scaled sigma points** (was Kalman.UKF.fProxy.cs:13). `lambda = alpha²(n+kappa) − n`;
+  point 0 = mean; points 1..n = `mean + sqrt(n+lambda)·col_k(chol(P))`; points n+1..2n = the same
+  subtracted. `Wm[0] = lambda/(n+lambda)`, `Wc[0] = Wm[0] + (1 − alpha² + beta)`, every other weight
+  `= 1/(2(n+lambda))`. Recombination is a weighted mean, weighted-outer-product covariance,
+  cross-covariance Pxz, `K = Pxz·Pzz⁻¹`, `x += Ky`, `P −= K·Pzz·Kᵀ` — with K solved as the
+  TRANSPOSED system `Pzz·Kᵀ = Pxzᵀ` via CHOP, never an explicit inverse (same as linear/EKF
+  UpdateCore).
+
 ## LP.ladFN — deviations from the literal Fortran reference (`rqfnb.f`/`lpfnb.f`)
 - 2026-07-25 | Relocated from the file header (was LP.FrischNewton.fProxy.cs:69). The port is
   fidelity-first; these are the three documented departures, per the port-fidelity rule.

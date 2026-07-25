@@ -38,19 +38,13 @@ namespace BULA.Control
     // plant with N large enough that A^N would already be enormous). Prestabilization is a PURE change of
     // coordinates -- the physical solution (u_0..u_{N-1}, the predicted trajectory) is IDENTICAL to
     // solving the same (A,B,Q,R,uLo,uHi) problem without it; only the QP's own decision vector and
-    // conditioning differ. Getting this equivalence exactly right requires two things, both handled
-    // uniformly via the affine map u_k = M_row_k @ V + c_k (c_k = -KPhiPre_row_k @ x0, built once at
-    // construction from Phi/Gamma BLOCK (k-1) -- that block's own convention is x_{(k-1)+1} = x_k, i.e.
-    // stage k's state, NOT block k which is x_{k+1}; k=0 uses x_0 = x0 exactly, no V-coupling at all):
-    //   1. Hard input bounds become GENERAL rows (lo/hi on u_k, expressed via M/KPhiPre) rather than a
-    //      box on z directly, since u_k depends on the predicted state, which depends on V.
-    //   2. The u_k^T R u_k cost term is NOT simply Rbar-on-v (that silently drops the -Kstab*x_k cross-
-    //      coupling) -- it expands to M^T Rbar M added to H_UU, plus a per-call gradient correction
-    //      (Rcross @ x0, Rcross = -2 M^T Rbar KPhiPre, fixed at construction).
-    // Both consume the SAME M/KPhiPre built once here, so the row assembly and the cost correction can
-    // never drift apart under a future edit. Combining prestabilization with the deltaU penalty is NOT
-    // supported in v1 (both couple u_k to the state/previous input in ways that would otherwise have to
-    // be composed together; throws at construction).
+    // conditioning differ. Two consequences, both routed through the same affine map
+    // u_k = M_row_k @ V + c_k built once here (its Phi/Gamma block index is off by one -- see DEVLOG):
+    //   1. Hard input bounds become GENERAL rows, not a box on z, since u_k depends on the predicted
+    //      state, which depends on V.
+    //   2. The u_k^T R u_k term is NOT Rbar-on-v -- that silently drops the -Kstab*x_k cross-coupling.
+    // Combining prestabilization with the deltaU penalty is NOT supported in v1 (throws at
+    // construction).
     // ================================================================================================
     public partial struct fProxyMPCState
     {

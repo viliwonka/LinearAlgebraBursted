@@ -67,9 +67,7 @@ namespace BULA
         /// <summary>
         /// Solve the mixed-integer program min cᵀx s.t. A x {≤,=,≥} b (per-row <paramref name="senses"/>),
         /// xl ≤ x ≤ xu, x_j ∈ ℤ for every flagged <paramref name="integrality"/>[j]. Branch &amp; bound
-        /// over the dense dual simplex, using pseudocost + reliability branching, a best-bound node
-        /// queue with plunging, activity-based domain propagation at every node, and a rounding
-        /// heuristic.
+        /// over the dense dual simplex.
         ///
         /// Every INTEGER variable needs a finite <paramref name="xl"/>[j] (throws
         /// <see cref="ArgumentException"/> otherwise). Continuous variables support the full general
