@@ -1412,6 +1412,33 @@ public class fProxyFitTests
         return true;
     }
 
+    // Collapse guard for the SPHERE IRLS loop -- the copy that shipped without one. A redescending
+    // loss whose scale rejects every point must not report success with NaN.
+    [Test]
+    public void SphereRedescendingCollapseNeverReportsNaNSuccess()
+    {
+        var pts = new NativeArray<fProxy2>(12, Allocator.Temp);
+        for (int i = 0; i < 12; i++)
+        {
+            double t = 2.0 * math.PI_DBL * i / 12.0;
+            pts[i] = new fProxy2((fProxy)(5.0 * math.cos(t)), (fProxy)(5.0 * math.sin(t)));
+        }
+        pts[0] = new fProxy2((fProxy)500, (fProxy)500);               // wrecks the algebraic seed
+
+        var tukey = new fProxyTukeyLoss((fProxy)1e-4);                // rejects essentially everything
+        bool ok = Fit.sphere(pts, in tukey, out fProxy2 c, out fProxy r);
+
+        if (ok)
+        {
+            Assert.IsFalse(double.IsNaN((double)r) || double.IsInfinity((double)r),
+                "reported success with a non-finite radius");
+            Assert.IsFalse(double.IsNaN((double)c.x) || double.IsNaN((double)c.y),
+                "reported success with a non-finite centre");
+        }
+
+        pts.Dispose();
+    }
+
     // ------------------------------------------------- remaining overloads
     //
     // Coverage completion. Each entry point below is a distinct generic instantiation, so exercising

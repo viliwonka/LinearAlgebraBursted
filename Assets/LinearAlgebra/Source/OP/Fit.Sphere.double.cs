@@ -148,7 +148,7 @@ namespace BULA
             bool ok = true;
             for (int it = 0; it < maxIter; it++)
             {
-                double maxDelta = (double)0;
+                double maxDelta = (double)0, sw = (double)0;
                 for (int i = 0; i < n; i++)
                 {
                     double dist2 = (double)0;
@@ -161,8 +161,13 @@ namespace BULA
                     double wNew = loss.RhoPrime(res * res);
                     maxDelta = math.max(maxDelta, math.abs(wNew - w[i]));
                     w[i] = wNew;
+                    sw += wNew;
                 }
 
+                // A redescending loss can zero every weight, leaving an all-zero design whose solve
+                // returns NaN. Reporting that as success would be a false certificate -- the same
+                // collapse the other IRLS loops guard, which this one was missing.
+                if (!(sw > (double)0)) { ok = false; break; }
                 if (maxDelta <= Consts.doubleSqrtEps) break;
 
                 ok = SphereAlgebraic(flat, n, d, in w, ref center, out radius);
