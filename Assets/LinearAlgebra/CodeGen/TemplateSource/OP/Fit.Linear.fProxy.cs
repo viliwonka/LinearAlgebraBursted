@@ -1,0 +1,176 @@
+using System;
+
+using Unity.Collections;
+using Unity.Mathematics;
+
+namespace BULA
+{
+    // ================================================================================================
+    // Fitting a LINEAR MODEL A x ~ b, split by which residual is minimized.
+    //
+    //   linear -- VERTICAL residual: error is attributed to b alone, A is taken as exact.
+    //   total  -- ORTHOGONAL residual: error is attributed to A AND b (errors-in-variables). Solves
+    //             min ‖[dA | db]‖_F subject to (A + dA) x = b + db.
+    //
+    // Pick `total` when the independent variables are measured rather than controlled -- a vertical
+    // fit is biased toward zero slope when A carries noise, and no choice of loss function corrects
+    // that, because it is a question of which residual is being measured, not how it is weighted.
+    //
+    // Job-safe: scratch is Allocator.Temp, disposed before returning.
+    // ================================================================================================
+    public static partial class Fit
+    {
+        /// <summary>
+        /// Least-squares fit of A x ~ b minimizing the vertical residual ‖A x − b‖₂, via Householder
+        /// QR. A (m x n, m &gt;= n) and b are READ-ONLY (worked on internal copies). x is overwritten,
+        /// length n. Requires full column rank; for a rank-deficient A use
+        /// <see cref="QRCP.solveInPlace(ref fProxyMxN, ref fProxyN, ref fProxyN, ref fProxyMxN, ref Pivot, ref fProxyN, fProxy)"/>
+        /// or <see cref="SVD.pinvSolve"/>. False means the solve failed.
+        /// </summary>
+        public static bool linear(in fProxyMxN A, in fProxyN b, ref fProxyN x)
+        {
+            int m = A.M_Rows, n = A.N_Cols;
+            if (b.N != m) throw new ArgumentException("Fit.linear: b.N must equal A.M_Rows");
+            if (x.N != n) throw new ArgumentException("Fit.linear: x.N must equal A.N_Cols");
+            if (m < n) throw new ArgumentException("Fit.linear: requires A.M_Rows >= A.N_Cols");
+
+            var Ac = new fProxyMxN(m, n, Allocator.Temp);
+            var bc = new fProxyN(m, Allocator.Temp);
+            for (int i = 0; i < m; i++)
+            {
+                for (int j = 0; j < n; j++) Ac[i, j] = A[i, j];
+                bc[i] = b[i];
+            }
+
+            bool ok = QR.solveInPlace(ref Ac, ref bc, ref x);
+            Ac.Dispose(); bc.Dispose();
+            return ok;
+        }
+
+        /// <summary>
+        /// Least-squares fit of A x ~ b under <paramref name="loss"/>, by IRLS on the vertical
+        /// residual. A and b are READ-ONLY; x is overwritten and is also the STARTING point when
+        /// non-zero (warm-startable). <paramref name="maxIter"/> &lt;= 0 picks a default budget.
+        ///
+        /// This is IRLS-approximate. For an EXACT L1 fit prefer
+        /// <see cref="LP.lad(in fProxyMxN, in fProxyN, ref fProxyN, out double, int)"/> -- a finite
+        /// algorithm that reaches the true optimum rather than converging toward it.
+        /// </summary>
+        public static bool linear<TLoss>(in fProxyMxN A, in fProxyN b, ref fProxyN x,
+                                         in TLoss loss, int maxIter = 0)
+            where TLoss : struct, IfProxyRobustLoss
+        {
+            int m = A.M_Rows, n = A.N_Cols;
+            if (b.N != m) throw new ArgumentException("Fit.linear: b.N must equal A.M_Rows");
+            if (x.N != n) throw new ArgumentException("Fit.linear: x.N must equal A.N_Cols");
+            if (m < n) throw new ArgumentException("Fit.linear: requires A.M_Rows >= A.N_Cols");
+            if (maxIter <= 0) maxIter = DefaultIrlsIter;
+
+            var w = new fProxyN(m, Allocator.Temp);
+            var Ac = new fProxyMxN(m, n, Allocator.Temp);
+            var bc = new fProxyN(m, Allocator.Temp);
+
+            // WARM START: a nonzero incoming x seeds the weights from ITS residuals, so the first
+            // solve is already reweighted. A zero x starts from unit weights, i.e. an ordinary
+            // least-squares first pass. This matters beyond convenience -- IRLS is only locally
+            // convergent, so on data where the L2 fit is badly wrong (a gross outlier dominating the
+            // fit) the unit-weight start can converge to the wrong stationary point, and seeding from
+            // a known-good x is the way out.
+            bool warm = false;
+            for (int j = 0; j < n && !warm; j++) warm = x[j] != (fProxy)0;
+
+            if (warm)
+            {
+                for (int i = 0; i < m; i++)
+                {
+                    fProxy r = (fProxy)0;
+                    for (int j = 0; j < n; j++) r += A[i, j] * x[j];
+                    r -= b[i];
+                    w[i] = loss.RhoPrime(r * r);
+                }
+            }
+            else for (int i = 0; i < m; i++) w[i] = (fProxy)1;
+
+            bool ok = false;
+            for (int it = 0; it < maxIter; it++)
+            {
+                for (int i = 0; i < m; i++)
+                {
+                    fProxy s = math.sqrt(math.max(w[i], (fProxy)0));
+                    for (int j = 0; j < n; j++) Ac[i, j] = s * A[i, j];
+                    bc[i] = s * b[i];
+                }
+
+                ok = QR.solveInPlace(ref Ac, ref bc, ref x);   // DESTROYS Ac/bc; rebuilt each pass
+                if (!ok) break;
+
+                fProxy maxDelta = (fProxy)0;
+                for (int i = 0; i < m; i++)
+                {
+                    fProxy r = (fProxy)0;
+                    for (int j = 0; j < n; j++) r += A[i, j] * x[j];
+                    r -= b[i];
+
+                    fProxy wNew = loss.RhoPrime(r * r);
+                    maxDelta = math.max(maxDelta, math.abs(wNew - w[i]));
+                    w[i] = wNew;
+                }
+
+                if (maxDelta <= Consts.fProxySqrtEps) break;
+            }
+
+            w.Dispose(); Ac.Dispose(); bc.Dispose();
+            return ok;
+        }
+
+        /// <summary>
+        /// TOTAL least squares (orthogonal regression / errors-in-variables) for A x ~ b: minimizes
+        /// ‖[dA | db]‖_F subject to (A + dA) x = b + db, via the SVD of the augmented [A | b]. A and b
+        /// are READ-ONLY; x is overwritten, length n. Requires A.M_Rows &gt;= A.N_Cols + 1 (the
+        /// augmented matrix must still be tall).
+        ///
+        /// Returns false when the SVD does not converge, or when the problem is NONGENERIC -- the
+        /// smallest right singular vector has a (near-)zero entry in its b component, meaning no
+        /// finite x satisfies the TLS conditions. That is a real property of the data, not a solver
+        /// failure: it says b is (nearly) orthogonal to the perturbed column space. x is undefined in
+        /// both cases.
+        /// </summary>
+        public static bool total(in fProxyMxN A, in fProxyN b, ref fProxyN x)
+        {
+            int m = A.M_Rows, n = A.N_Cols;
+            if (b.N != m) throw new ArgumentException("Fit.total: b.N must equal A.M_Rows");
+            if (x.N != n) throw new ArgumentException("Fit.total: x.N must equal A.N_Cols");
+            if (m < n + 1) throw new ArgumentException("Fit.total: requires A.M_Rows >= A.N_Cols + 1");
+
+            int nc = n + 1;
+            var C = new fProxyMxN(m, nc, Allocator.Temp);
+            for (int i = 0; i < m; i++)
+            {
+                for (int j = 0; j < n; j++) C[i, j] = A[i, j];
+                C[i, n] = b[i];
+            }
+
+            var U = new fProxyMxN(m, nc, Allocator.Temp);
+            var S = new fProxyN(nc, Allocator.Temp);
+            var V = new fProxyMxN(nc, nc, Allocator.Temp);
+
+            bool ok = SVD.thin(in C, ref U, ref S, ref V);
+            if (ok)
+            {
+                // Singular values descend, so the last COLUMN of V spans the approximate null space of
+                // [A | b] -- the direction the augmented data is least sensitive to, i.e. the TLS
+                // correction. Scaling it so its b component is -1 reads off x directly.
+                fProxy vb = V[n, nc - 1];
+                fProxy scale = math.max(math.abs(S[0]), (fProxy)1) * Consts.fProxySqrtEps;
+                if (math.abs(vb) > scale)
+                {
+                    for (int j = 0; j < n; j++) x[j] = -V[j, nc - 1] / vb;
+                }
+                else ok = false;                              // nongeneric TLS: no finite solution
+            }
+
+            C.Dispose(); U.Dispose(); S.Dispose(); V.Dispose();
+            return ok;
+        }
+    }
+}

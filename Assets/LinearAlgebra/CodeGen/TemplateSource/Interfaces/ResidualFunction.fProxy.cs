@@ -52,6 +52,44 @@ namespace BULA
     }
 
     /// <summary>
+    /// L1 (least-absolute-deviation) loss: rho(s) = sqrt(s), so the objective is 0.5·Σ|r_i|.
+    /// <see cref="Floor"/> is the residual magnitude below which the weight stops growing --
+    /// RhoPrime is 1/(2·|r|), unbounded as |r| → 0, so a floor is REQUIRED for a finite weight; a
+    /// zero-initialized instance (<c>default</c> / <c>new fProxyL1Loss()</c>) uses
+    /// <see cref="Consts.fProxySqrtEps"/>. Set it to the noise floor of your data when you have one.
+    ///
+    /// This is IRLS-approximate L1, not exact. For an exact L1 fit of a LINEAR model use
+    /// <see cref="LP.lad(in fProxyMxN, in fProxyN, ref fProxyN, out double, int)"/>, which is a
+    /// finite algorithm reaching the true optimum; this loss exists so the same metric can be
+    /// applied to fits that have no exact combinatorial solver (orthogonal / geometric fits).
+    /// </summary>
+    public readonly struct fProxyL1Loss : IfProxyRobustLoss
+    {
+        public readonly fProxy Floor;
+
+        /// <param name="floor">Residual magnitude below which the IRLS weight saturates; must be
+        /// positive.</param>
+        public fProxyL1Loss(fProxy floor)
+        {
+            if (!(floor > (fProxy)0))
+                throw new ArgumentException("fProxyL1Loss: floor must be positive");
+            Floor = floor;
+        }
+
+        fProxy FloorSq => Floor > (fProxy)0 ? Floor * Floor : Consts.fProxySqrtEps * Consts.fProxySqrtEps;
+
+        public fProxy Rho(fProxy s) => math.sqrt(math.max(s, FloorSq));
+
+        public fProxy RhoPrime(fProxy s) => (fProxy)0.5 / math.sqrt(math.max(s, FloorSq));
+
+        public fProxy RhoPrime2(fProxy s)
+        {
+            fProxy t = math.max(s, FloorSq);
+            return (fProxy)(-0.25) / (t * math.sqrt(t));
+        }
+    }
+
+    /// <summary>
     /// Huber loss: quadratic (rho(s) = s) for |r| &lt;= <see cref="Scale"/>, linear beyond it.
     /// <see cref="Scale"/> is the transition residual magnitude (the classic Huber "delta").
     /// </summary>
