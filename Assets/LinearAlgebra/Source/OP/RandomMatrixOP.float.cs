@@ -7,7 +7,7 @@ using Unity.Collections;
 using Unity.Mathematics;
 using Random = Unity.Mathematics.Random;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Random structured-matrix generators: multivariate normal, Haar-uniform random orthogonal,

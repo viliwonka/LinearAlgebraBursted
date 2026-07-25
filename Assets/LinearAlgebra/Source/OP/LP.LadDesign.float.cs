@@ -9,10 +9,10 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 
-using LinearAlgebra.Internal;
-using LinearAlgebra.Sparse;
+using BULA.Internal;
+using BULA.Sparse;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// The design matrix A of an L1 / quantile regression, behind the three operations the

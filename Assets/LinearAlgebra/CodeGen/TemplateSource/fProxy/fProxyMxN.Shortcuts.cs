@@ -3,11 +3,11 @@
 using System.Runtime.CompilerServices;
 
 using Unity.Collections;
-using LinearAlgebra;
+using BULA;
 
 //alsoExpand[uint]// adds uint shortcuts (used by row/col hashing) alongside int/short/long.
 
-namespace LinearAlgebra {
+namespace BULA {
 
     public partial struct fProxyMxN : IArenaShortcuts
     {

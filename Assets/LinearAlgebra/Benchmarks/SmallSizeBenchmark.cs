@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // Small-size + non-square regression coverage. The blocked (level-3) kernels gate BELOW their
     // crossover onto the ORIGINAL unblocked path: QR blocks at N_Cols >= 64 (QR_BLOCK=32, gate =

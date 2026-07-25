@@ -1,9 +1,9 @@
 using System.Runtime.CompilerServices;
-using LinearAlgebra.Internal;
+using BULA.Internal;
 
 //alsoExpand[uint]// comparators are unsigned-clean (relational ops only, no negation).
 
-namespace LinearAlgebra
+namespace BULA
 {
 
     public partial struct iProxyMxN

@@ -1,7 +1,7 @@
 using System;
-using LinearAlgebra.Sparse;
+using BULA.Sparse;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Augmented operator [A | damp·I] (Rows × (Cols+Rows)) behind the Tikhonov-DAMPED least-norm

@@ -1,5 +1,5 @@
 //singularFile//
-namespace LinearAlgebra.Sparse
+namespace BULA.Sparse
 {
     /// <summary>
     /// Build options for the one-level Schwarz preconditioners (<see cref="fProxyAdditiveSchwarz"/>

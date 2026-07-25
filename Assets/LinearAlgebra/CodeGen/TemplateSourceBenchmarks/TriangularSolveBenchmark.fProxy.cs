@@ -5,9 +5,9 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-using LinearAlgebra;
+using BULA;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // GENERATED per-dtype half of TriangularSolveBenchmark (timed IJobs + build+measure method). The
     // dtype-agnostic harness (Sizes, Run, Section) and the shared row formatter (TriSolveFmt) are

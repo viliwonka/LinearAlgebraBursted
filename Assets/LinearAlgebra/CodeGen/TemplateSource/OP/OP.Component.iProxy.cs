@@ -3,13 +3,13 @@ using System.Runtime.CompilerServices;
 
 using Unity.Burst;
 using Unity.Collections.LowLevel.Unsafe;
-using LinearAlgebra.Internal;
+using BULA.Internal;
 
 //alsoExpand[uint]// component-wise arithmetic/bitwise ops. Unary negation (and anything relying
 //on it) is signed-only - see the skipFor-marked blocks below (do not write that marker's literal
 //token here - the codegen parser is content-sensitive, not comment-aware).
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// </summary>

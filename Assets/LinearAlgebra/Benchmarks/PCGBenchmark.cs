@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // Block-Jacobi preconditioned Conjugate Gradient (Krylov.cg with a preconditioner) over a
     // representative BSR system — the one square iterative solver SparseSolverBenchmark.cs doesn't

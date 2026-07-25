@@ -1,9 +1,9 @@
 using System;
-using LinearAlgebra;
-using LinearAlgebra.Internal;
+using BULA;
+using BULA.Internal;
 using Unity.Collections;
 
-namespace LinearAlgebra.Sparse
+namespace BULA.Sparse
 {
     /// <summary>
     /// Symmetric-SOR preconditioner over a square BSR (BlockRows==BlockCols, BR==BC):

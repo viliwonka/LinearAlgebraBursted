@@ -6,14 +6,14 @@ using System.Globalization;
 using System.IO;
 using System.Text;
 using Unity.Collections;
-using LinearAlgebra.Sparse;
+using BULA.Sparse;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Managed (allocating, NON-Burst) text / CSV export for the block-sparse doubleBSR, mirroring
-    // Debug/Export.double.cs. Lives in namespace LinearAlgebra (not LinearAlgebra.Sparse) so it
+    // Debug/Export.double.cs. Lives in namespace BULA (not BULA.Sparse) so it
     // merges into the same `Print` partial class as the dense exporters and the Sparse Debug
-    // overloads -- doubleBSR is brought in via the `using LinearAlgebra.Sparse;` above (same
+    // overloads -- doubleBSR is brought in via the `using BULA.Sparse;` above (same
     // pattern as Sparse/Debug.Sparse.double.cs).
     public static partial class Print
     {

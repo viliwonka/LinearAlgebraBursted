@@ -2,7 +2,7 @@
 //   Generated from Assets/LinearAlgebra/CodeGen/TemplateSource/Interfaces/KalmanModel.fProxy.cs
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Nonlinear state-transition model for the Extended Kalman Filter

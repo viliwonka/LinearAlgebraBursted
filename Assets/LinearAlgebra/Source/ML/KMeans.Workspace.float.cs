@@ -6,9 +6,9 @@ using System;
 
 using Unity.Collections;
 
-using LinearAlgebra.ML;
+using BULA.ML;
 
-namespace LinearAlgebra.ML
+namespace BULA.ML
 {
     /// <summary>
     /// Reusable scratch storage for zero-alloc Lloyd k-means.

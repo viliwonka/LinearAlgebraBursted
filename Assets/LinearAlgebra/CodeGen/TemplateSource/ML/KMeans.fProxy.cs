@@ -3,7 +3,7 @@ using Unity.Collections;
 using Unity.Mathematics;
 using Random = Unity.Mathematics.Random;
 
-namespace LinearAlgebra.ML
+namespace BULA.ML
 {
     /// <summary>
     /// Lloyd k-means clustering (squared Euclidean distance only), with GEMM-accelerated

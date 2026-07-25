@@ -1,6 +1,6 @@
 using Unity.Collections;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Van der Merwe scaled sigma-point workspace for <see cref="Kalman.ukfPredict{TModel}"/> /

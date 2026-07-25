@@ -4,7 +4,7 @@
 // </auto-generated>
 using Unity.Mathematics;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// A sampler draws one random value per call, advancing the caller-owned RNG stream.

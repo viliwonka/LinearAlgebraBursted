@@ -1,5 +1,5 @@
 //singularFile//
-namespace LinearAlgebra.Sparse
+namespace BULA.Sparse
 {
     /// <summary>
     /// Shared build options for <see cref="fProxyFSAI"/> and <see cref="fProxySPAI"/> (both

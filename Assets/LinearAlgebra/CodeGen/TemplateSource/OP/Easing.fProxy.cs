@@ -1,6 +1,6 @@
 using Unity.Mathematics;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Easing curves as tiny Burst struct-functors (each : IfProxyScalarFunction). Map t∈[0,1]→[0,1]

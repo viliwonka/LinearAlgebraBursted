@@ -3,7 +3,7 @@
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
 //singularFile//
-namespace LinearAlgebra
+namespace BULA
 {
     // Norm selector for Query.argMaxRowNorm / argMaxColNorm.
     // L1 = sum of absolute values (Manhattan magnitude).

@@ -1,4 +1,4 @@
-using LinearAlgebra;
+using BULA;
 using NUnit.Framework;
 using Unity.Collections;
 using Unity.Mathematics;

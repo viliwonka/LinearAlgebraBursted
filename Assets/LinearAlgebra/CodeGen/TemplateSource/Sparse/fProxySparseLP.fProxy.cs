@@ -3,10 +3,10 @@ using System;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 
-using LinearAlgebra;
-using LinearAlgebra.Sparse;
+using BULA;
+using BULA.Sparse;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// A standard-form LP constraint operator Aₛ (the interior point works on min cᵀz s.t. Aₛ z = b,
@@ -94,7 +94,7 @@ namespace LinearAlgebra
 
 }
 
-namespace LinearAlgebra.Sparse
+namespace BULA.Sparse
 {
     /// <summary>
     /// Matrix-free constraint operator for the least-absolute-deviation LP standard form. Given a sparse

@@ -6,7 +6,7 @@ using System;
 using System.Runtime.CompilerServices;
 
 
-namespace LinearAlgebra
+namespace BULA
 {
     public static partial class Hash
     {

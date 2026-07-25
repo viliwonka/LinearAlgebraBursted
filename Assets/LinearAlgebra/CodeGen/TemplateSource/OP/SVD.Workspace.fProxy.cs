@@ -1,7 +1,7 @@
 using System;
 using Unity.Collections;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Reusable scratch storage for the zero-alloc SVD solvers (SVD.pinvSolve / SVD.pseudoInverse).

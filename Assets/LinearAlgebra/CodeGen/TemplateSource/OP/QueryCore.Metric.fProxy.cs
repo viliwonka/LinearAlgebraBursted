@@ -1,6 +1,6 @@
 using System.Runtime.CompilerServices;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Metric-direction helpers for Query's nearest/farthest/k-selection kernels. They take no
     // fProxy parameter (or return fProxy), so hosting them on the merged float+double `Query`

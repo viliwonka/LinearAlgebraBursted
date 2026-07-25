@@ -5,9 +5,9 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-using LinearAlgebra;
+using BULA;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // GENERATED per-dtype half of SvdSolversBenchmark (timed IJobs + build+measure methods). The
     // dtype-agnostic harness (Run, Section) is hand-written in

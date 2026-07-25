@@ -2,7 +2,7 @@
 //   Generated from Assets/LinearAlgebra/CodeGen/TemplateSource/Interfaces/PredicateQuery.fProxy.cs
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Row predicate for struct-functor predicate queries. Reads A[row, 0..N_Cols-1]

@@ -4,8 +4,8 @@
 // </auto-generated>
 using System;
 
-using LinearAlgebra;
-using LinearAlgebra.Gallery;
+using BULA;
+using BULA.Gallery;
 
 using NUnit.Framework;
 using Unity.Burst;
@@ -14,7 +14,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using UnityEngine;
 using UnityEngine.TestTools;
-using LinearAlgebra.Internal;
+using BULA.Internal;
 
 public class floatLUTests
 {
@@ -1604,7 +1604,7 @@ public class floatLUTests
 
             if(pivoted)
             unsafe {
-                var maxAbs = LinearAlgebra.Internal.UnsafeOP.maxAbs(L.Data.Ptr, L.Length);
+                var maxAbs = BULA.Internal.UnsafeOP.maxAbs(L.Data.Ptr, L.Length);
 
                 if(maxAbs > 1f)
                     throw new System.Exception("TestJob: L has values greater than 1f");

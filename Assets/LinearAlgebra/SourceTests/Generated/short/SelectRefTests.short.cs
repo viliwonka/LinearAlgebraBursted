@@ -2,7 +2,7 @@
 //   Generated from Assets/LinearAlgebra/CodeGen/TemplateSourceTests/iProxy/SelectRefTests.iProxy.cs
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
-using LinearAlgebra;
+using BULA;
 using NUnit.Framework;
 using Unity.Burst;
 using Unity.Collections;

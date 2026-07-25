@@ -5,10 +5,10 @@
 using System;
 using Unity.Burst;
 using Unity.Mathematics;
-using LinearAlgebra.Internal;
+using BULA.Internal;
 
 
-namespace LinearAlgebra
+namespace BULA
 {
 
     // Class summary lives on the fProxy partial (SelectOP.fProxy.cs). Integer-family select
@@ -100,7 +100,7 @@ namespace LinearAlgebra
     }
 }
 
-namespace LinearAlgebra.Internal
+namespace BULA.Internal
 {
     public static unsafe partial class UnsafeSelectOP
     {

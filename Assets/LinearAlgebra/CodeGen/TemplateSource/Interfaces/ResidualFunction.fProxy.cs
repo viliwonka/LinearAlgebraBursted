@@ -1,7 +1,7 @@
 using System;
 using Unity.Mathematics;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// A vector-valued residual r(p) (length m) of a parameter vector p (length n), the nonlinear

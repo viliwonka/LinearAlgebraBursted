@@ -1,5 +1,5 @@
 
-namespace LinearAlgebra
+namespace BULA
 {
 
     public partial struct boolMxN {

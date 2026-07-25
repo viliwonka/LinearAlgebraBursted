@@ -5,9 +5,9 @@
 // Generated
 // Shortcuts for creating new vectors and matrices
 using Unity.Collections;
-using LinearAlgebra;
+using BULA;
 
-namespace LinearAlgebra {
+namespace BULA {
 
     public partial struct boolN : IArenaShortcuts
     {

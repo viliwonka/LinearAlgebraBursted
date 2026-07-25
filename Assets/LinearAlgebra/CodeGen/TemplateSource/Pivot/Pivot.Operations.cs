@@ -6,9 +6,9 @@ using Unity.Collections.LowLevel.Unsafe;
 using System.Runtime.CompilerServices;
 
 using UnityEngine;
-using LinearAlgebra.Internal;
+using BULA.Internal;
 
-namespace LinearAlgebra {
+namespace BULA {
 
     // Pivot is a more efficient replacement for permutation matrix,
     // for easier use in algorithms like LU decomposition

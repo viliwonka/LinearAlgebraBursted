@@ -3,9 +3,9 @@
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
 using System;
-using LinearAlgebra.Sparse;
+using BULA.Sparse;
 
-namespace LinearAlgebra
+namespace BULA
 {
     public static partial class Analysis
     {

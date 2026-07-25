@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // Ridge block-CG (bcg), deflating block-CG (bcgrq), and breakdown-free block-CG (bfbcg) vs the
     // scalar loop of s independent cg solves, over a BSR 2D-Poisson operator (5-point stencil, ~5

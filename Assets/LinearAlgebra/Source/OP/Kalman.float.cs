@@ -7,7 +7,7 @@ using System;
 using Unity.Collections;
 using Unity.Mathematics;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // ================================================================================================
     // Discrete-time Kalman filter (predict/update), its steady-state fixed-gain fast path, and the

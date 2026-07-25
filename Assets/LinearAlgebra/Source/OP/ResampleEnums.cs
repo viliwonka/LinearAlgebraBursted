@@ -3,7 +3,7 @@
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
 //singularFile//
-namespace LinearAlgebra
+namespace BULA
 {
     // Interpolation mode for ResampleOP.
     // Nearest = round pos to nearest integer index (no cross-sample blending).

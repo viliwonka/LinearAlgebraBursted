@@ -4,9 +4,9 @@ using System.Runtime.CompilerServices;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
-using LinearAlgebra.Internal;
+using BULA.Internal;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Row-pivoted (rank-revealing) LQ — the transpose-dual of <see cref="QRCP"/>. Factorizes

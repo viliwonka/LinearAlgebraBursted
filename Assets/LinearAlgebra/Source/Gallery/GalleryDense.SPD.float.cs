@@ -5,14 +5,14 @@
 using System;
 using Unity.Collections;
 using Unity.Mathematics;
-using LinearAlgebra;
+using BULA;
 
-namespace LinearAlgebra.Gallery
+namespace BULA.Gallery
 {
     /// <summary>
     /// Batch A — SPD / symmetric family. Standalone allocation overloads that construct famous
     /// test matrices with known closed-form properties (eigenvalues, determinant, condition
-    /// number, inverse, definiteness). Opt in with <c>using LinearAlgebra.Gallery;</c>.
+    /// number, inverse, definiteness). Opt in with <c>using BULA.Gallery;</c>.
     /// </summary>
     public static partial class floatGallery
     {

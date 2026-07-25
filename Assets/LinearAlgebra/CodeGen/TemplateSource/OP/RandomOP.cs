@@ -5,7 +5,7 @@ using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 using Random = Unity.Mathematics.Random;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Type-agnostic random permutation and shuffle operations over <see cref="Pivot"/> and

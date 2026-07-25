@@ -6,7 +6,7 @@ using Unity.Collections;
 using Unity.Mathematics;
 
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Integer vector / matrix console dumps, mirroring the fProxy Print.Log overloads (which only
     // covered the float types). Burst-callable, capped at a 4 KB FixedString like the rest of Print;

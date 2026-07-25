@@ -1,7 +1,7 @@
 using System;
 
-using LinearAlgebra;
-using LinearAlgebra.ML;        // PCA, fProxyPCAModel, PCAScaling
+using BULA;
+using BULA.ML;        // PCA, fProxyPCAModel, PCAScaling
 
 using NUnit.Framework;
 using Unity.Burst;
@@ -9,7 +9,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// PCA (LinearAlgebra.ML.PCA) — the four fit routes (pcaCovariance / pcaSVD /
+// PCA (BULA.ML.PCA) — the four fit routes (pcaCovariance / pcaSVD /
 // pcaSVDTruncated / pcaRandomized), the fProxyPCAModel, PCAScaling, and pcaTransform. Tests mirror
 // the KMeans / SVDRandomized idiom: a [BurstCompile(FloatPrecision.High)] IJob carries a TestType
 // enum, a Fail NativeArray diagnostic channel, and a [TestCaseSource] driver; the managed-throw

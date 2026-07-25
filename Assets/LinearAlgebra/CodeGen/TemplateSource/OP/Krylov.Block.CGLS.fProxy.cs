@@ -2,7 +2,7 @@ using System;
 using Unity.Collections;
 using Unity.Mathematics;
 
-namespace LinearAlgebra
+namespace BULA
 {
     public static partial class Krylov {
 

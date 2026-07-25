@@ -2,9 +2,9 @@ using System;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
-using LinearAlgebra.Sparse;
+using BULA.Sparse;
 
-namespace LinearAlgebra
+namespace BULA
 {
     public static partial class Krylov
     {

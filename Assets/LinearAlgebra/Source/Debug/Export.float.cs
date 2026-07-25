@@ -6,7 +6,7 @@ using System.Globalization;
 using System.IO;
 using System.Text;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Managed (allocating, NON-Burst) text / CSV exporters for float/double matrices and vectors.
     // Values are cast to the generated float/double type before formatting (the raw float proxy

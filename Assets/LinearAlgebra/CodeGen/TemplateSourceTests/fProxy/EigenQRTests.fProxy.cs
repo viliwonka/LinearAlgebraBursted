@@ -1,8 +1,8 @@
 using System;
 #pragma warning disable 618 // intentionally exercises the deprecated cyclic-Jacobi decompInPlace (kept for reference)
 
-using LinearAlgebra;
-using LinearAlgebra.Gallery;
+using BULA;
+using BULA.Gallery;
 using NUnit.Framework;
 using Unity.Burst;
 using Unity.Collections;

@@ -1,7 +1,7 @@
 //singularFile//
 using Unity.Collections;
 
-namespace LinearAlgebra.Sparse
+namespace BULA.Sparse
 {
     /// <summary>
     /// Result of building a sparse preconditioner (BlockJacobi / ILU0 / IC0 / FSAI / SPAI, any

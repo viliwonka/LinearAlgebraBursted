@@ -4,8 +4,8 @@
 // </auto-generated>
 using System;
 
-using LinearAlgebra;
-using LinearAlgebra.ML;        // opt-in: KMeans.fit, KMeansInit, doubleKMeansCache
+using BULA;
+using BULA.ML;        // opt-in: KMeans.fit, KMeansInit, doubleKMeansCache
 
 using NUnit.Framework;
 using Unity.Burst;
@@ -13,7 +13,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// K-means (LinearAlgebra.ML.KMeans.fit) — squared-Euclidean Lloyd with GEMM assignment
+// K-means (BULA.ML.KMeans.fit) — squared-Euclidean Lloyd with GEMM assignment
 // and k-means++ / Uniform seeding. Tests mirror the SolverBattery / RollingWindow idiom: a Burst
 // [BurstCompile(FloatPrecision.High)] IJob carries a TestType enum, a Fail NativeArray diagnostic
 // channel, and a [TestCaseSource] driver; the managed-throw guard paths run as plain [Test]s on the

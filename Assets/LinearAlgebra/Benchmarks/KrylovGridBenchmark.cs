@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // Two views of every single-RHS square Krylov solver that has a clean unpreconditioned BSR entry
     // point, over two BSR galleries (an SPD gallery where all nine apply, a nonsymmetric gallery where

@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // Transcendental benchmark: native Unity.Mathematics math.* vs prototype in-house DetMath exp.
     //

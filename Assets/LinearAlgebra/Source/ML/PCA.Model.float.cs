@@ -6,9 +6,9 @@ using System;
 
 using Unity.Collections;
 
-using LinearAlgebra.ML;
+using BULA.ML;
 
-namespace LinearAlgebra.ML
+namespace BULA.ML
 {
     /// <summary>
     /// A fitted PCA model: the axes/variances needed to project new data (<see cref="PCA.transform"/>)

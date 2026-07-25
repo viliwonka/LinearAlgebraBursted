@@ -9,10 +9,10 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-using LinearAlgebra;
-using LinearAlgebra.ML;
+using BULA;
+using BULA.ML;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // GENERATED per-dtype half of KMeansBenchmark (timed IJob + build+measure method). The
     // dtype-agnostic harness (D/K constants, Run, Section) is hand-written in

@@ -1,6 +1,6 @@
 using Unity.Burst;
 
-namespace LinearAlgebra
+namespace BULA
 {
     public struct fProxyMeanMinMaxRangeStats
     {

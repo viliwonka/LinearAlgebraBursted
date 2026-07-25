@@ -1,5 +1,5 @@
 //singularFile//
-namespace LinearAlgebra
+namespace BULA
 {
     // DSP window functions for tapering a sampled signal (pre-FFT, smoothing).
     // Shared across float/double — this is a precision-independent enum, so it lives in a

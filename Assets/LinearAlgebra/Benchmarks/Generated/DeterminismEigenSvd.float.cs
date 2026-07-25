@@ -7,10 +7,10 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-using LinearAlgebra;
-using LinearAlgebra.Gallery;
+using BULA;
+using BULA.Gallery;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // GENERATED per-dtype half of the determinism conformance harness's eigen/SVD/LOBPCG groups
     // (eigen-sym, eigen-nonsym, svd, lobpcg). See DeterminismDirect.float.cs's header for the shared

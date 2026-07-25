@@ -6,7 +6,7 @@ using System.Globalization;
 using System.IO;
 using System.Text;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Managed (allocating, NON-Burst) text / CSV exporters for int/short/long matrices and
     // vectors, mirroring Debug/Export.fProxy.cs. Integers have no round-trip precision concerns

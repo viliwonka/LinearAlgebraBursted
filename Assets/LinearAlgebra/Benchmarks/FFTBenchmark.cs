@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // 1D FFT and DFT benchmarks. Own size arrays (not Bench.Sizes — which is for square matrices):
     //   FFT: twiddle-table workspace, lengths must be power of two, O(N log N).

@@ -3,7 +3,7 @@ using System;
 using Unity.Collections;
 using Unity.Mathematics;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // ================================================================================================
     // Unscented Kalman Filter (UKF): Van der Merwe scaled sigma points + the unscented transform, over

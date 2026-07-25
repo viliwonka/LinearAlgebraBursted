@@ -11,10 +11,10 @@ using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-using LinearAlgebra;
+using BULA;
 
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // GENERATED per-dtype half of RooflineBenchmark (timed IJobs + build+measure methods). The
     // dtype-agnostic harness (Section, size list) is hand-written in

@@ -5,7 +5,7 @@
 //singularFile//
 using Unity.Collections;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Burst-safe Print.Log overloads for the small, non-templated info/result structs
     // (OP/SolveInfo.cs, OP/Eigen.Info.cs) and the Pivot/Indices permutation types. Mirrors the

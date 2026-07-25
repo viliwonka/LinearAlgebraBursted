@@ -4,7 +4,7 @@ using Unity.Mathematics;
 //alsoExpand[uint]// int-family console dumps; widening to `long` below is a lossless implicit
 //conversion for uint too (as it already is for int/short), so no signed-only ops here.
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Integer vector / matrix console dumps, mirroring the fProxy Print.Log overloads (which only
     // covered the float types). Burst-callable, capped at a 4 KB FixedString like the rest of Print;

@@ -6,7 +6,7 @@ using System;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 
-namespace LinearAlgebra.Sparse
+namespace BULA.Sparse
 {
     public static partial class BSR
     {

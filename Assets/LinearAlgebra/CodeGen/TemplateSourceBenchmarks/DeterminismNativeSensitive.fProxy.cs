@@ -3,11 +3,11 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-using LinearAlgebra;
-using LinearAlgebra.Gallery;
-using LinearAlgebra.Internal;
+using BULA;
+using BULA.Gallery;
+using BULA.Internal;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // GENERATED per-dtype half of the determinism conformance harness's SECTION B groups (detmath,
     // elementwise-transcendental, random-samplers, softmax, dft-signal) -- native-math-sensitive: in

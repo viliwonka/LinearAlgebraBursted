@@ -2,7 +2,7 @@
 //   Generated from Assets/LinearAlgebra/CodeGen/TemplateSource/OP/QueryCore.Predicate.fProxy.cs
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
-namespace LinearAlgebra
+namespace BULA
 {
     // Internal generic bodies for Query's Group-A flat/scalar predicate ops (findFirst, count,
     // any, all, findAll). The public Query surface exposes these as concrete-shape overloads

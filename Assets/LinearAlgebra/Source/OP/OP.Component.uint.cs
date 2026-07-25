@@ -7,10 +7,10 @@ using System.Runtime.CompilerServices;
 
 using Unity.Burst;
 using Unity.Collections.LowLevel.Unsafe;
-using LinearAlgebra.Internal;
+using BULA.Internal;
 
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// </summary>

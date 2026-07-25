@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // Shared, dtype-agnostic config + table formatters for LPBenchmark. Public so the code-generated
     // per-dtype build methods (in a separate template assembly) can reach the sizes and row writers.

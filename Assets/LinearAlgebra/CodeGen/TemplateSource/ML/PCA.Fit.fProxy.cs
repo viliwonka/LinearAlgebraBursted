@@ -11,7 +11,7 @@ using fProxy3 = Unity.Mathematics.float3;
 using fProxy4 = Unity.Mathematics.float4;
 //-deleteThis
 
-namespace LinearAlgebra.ML
+namespace BULA.ML
 {
     // Game-facing convenience wrappers over PCA.fitCov: fit a line/plane through a small point cloud
     // without assembling a fProxyPCAModel yourself. Always uses PCAScaling.Covariance (never

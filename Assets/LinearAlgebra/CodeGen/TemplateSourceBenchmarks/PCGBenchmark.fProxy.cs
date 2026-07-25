@@ -5,11 +5,11 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-using LinearAlgebra;
-using LinearAlgebra.Gallery;
-using LinearAlgebra.Sparse;
+using BULA;
+using BULA.Gallery;
+using BULA.Sparse;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // GENERATED per-dtype half of PCGBenchmark (timed IJobs + system builder + residual + measure).
     // The dtype-agnostic harness (BR/NB/K constants, Run, Section) is hand-written in

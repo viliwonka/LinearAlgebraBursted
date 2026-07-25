@@ -3,7 +3,7 @@ using System;
 using Unity.Collections;
 using Unity.Mathematics;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // ================================================================================================
     // Nonlinear least squares via Levenberg-Marquardt with Nielsen damping. Algorithm reference:

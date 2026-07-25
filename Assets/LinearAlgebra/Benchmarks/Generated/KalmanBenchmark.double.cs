@@ -9,9 +9,9 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-using LinearAlgebra;
+using BULA;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // GENERATED per-dtype half of KalmanBenchmark (the timed IJobs + the instance builder + build+measure
     // methods). The dtype-agnostic harness (sizes/seeds, row formatter, Run, Section) is hand-written in

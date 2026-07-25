@@ -1,9 +1,9 @@
 using System;
 using Unity.Collections;
 using Unity.Mathematics;
-using LinearAlgebra.Sparse;
+using BULA.Sparse;
 
-namespace LinearAlgebra.Sparse
+namespace BULA.Sparse
 {
     public static partial class AMG
     {

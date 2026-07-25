@@ -6,9 +6,9 @@ using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-using LinearAlgebra;
+using BULA;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // Vectorization experiment (benchmark-only, float). The same 10M-element exp, timed through the
     // floatN[i] indexer vs a hoisted raw float*. Finding: the raw pointer is the whole difference —

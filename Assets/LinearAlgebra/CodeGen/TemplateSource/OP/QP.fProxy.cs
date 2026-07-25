@@ -3,9 +3,9 @@ using System;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
-using LinearAlgebra.Internal;
+using BULA.Internal;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // ================================================================================================
     // Convex quadratic programming: a HiGHS-style dense primal null-space active-set method, ported per

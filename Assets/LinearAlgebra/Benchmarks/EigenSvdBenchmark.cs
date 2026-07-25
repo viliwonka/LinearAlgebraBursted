@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // Production spectral algorithms: Golub-Kahan SVD (full + values-only), Householder symmetric
     // eigen (values + vectors), and the general-matrix QR-iteration eigenvalues (elmhes + Francis hqr).

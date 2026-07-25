@@ -9,9 +9,9 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-using LinearAlgebra;
+using BULA;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // GENERATED per-dtype half of FittingBenchmark (timed IJobs + build+measure method). The
     // dtype-agnostic harness (Run, Section, formatter) is hand-written in

@@ -2,7 +2,7 @@
 //   Generated from Assets/LinearAlgebra/CodeGen/TemplateSource/Interfaces/LinearOperator.fProxy.cs
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// A linear operator y = A x, abstracted behind a generic struct constraint: solvers are
@@ -10,7 +10,7 @@ namespace LinearAlgebra
     /// call (no virtual dispatch). Lets Krylov solvers (CG, PCG, MINRES, BiCGSTAB, LSQR, LSMR --
     /// see <c>Krylov</c>) be written ONCE and reused over both dense
     /// (<see cref="floatDenseOperator"/>) and block-sparse
-    /// (<c>LinearAlgebra.Sparse.floatBSROperator</c>) matrices without duplicating the solver
+    /// (<c>BULA.Sparse.floatBSROperator</c>) matrices without duplicating the solver
     /// loop.
     /// Implement on a small, ideally-readonly struct holding only blittable fields (a value
     /// copy of the wrapped matrix/BSR struct) -- same struct-functor contract as

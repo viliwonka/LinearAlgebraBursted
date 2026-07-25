@@ -5,11 +5,11 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-using LinearAlgebra;
-using LinearAlgebra.Sparse;
-using LinearAlgebra.Gallery;
+using BULA;
+using BULA.Sparse;
+using BULA.Gallery;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // GENERATED per-dtype half of LPBenchmark (timed IJobs + the per-section build+measure methods).
     // The dtype-agnostic harness (config sizes, row formatters, Run, Section) is hand-written in

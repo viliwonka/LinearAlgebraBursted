@@ -8,9 +8,9 @@ using Unity.Collections.LowLevel.Unsafe;
 using System;
 using System.Runtime.CompilerServices;
 
-using LinearAlgebra.Internal;
+using BULA.Internal;
 
-namespace LinearAlgebra
+namespace BULA
 {
 
     internal static partial class floatStatsCore {

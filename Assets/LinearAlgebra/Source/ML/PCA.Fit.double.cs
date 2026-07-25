@@ -8,7 +8,7 @@ using Unity.Mathematics;
 
 
 
-namespace LinearAlgebra.ML
+namespace BULA.ML
 {
     // Game-facing convenience wrappers over PCA.fitCov: fit a line/plane through a small point cloud
     // without assembling a doublePCAModel yourself. Always uses PCAScaling.Covariance (never

@@ -1,7 +1,7 @@
 using System.Runtime.CompilerServices;
 using Unity.Mathematics;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Type-agnostic helpers shared by the FFT / Resample templates. A merged
     // partial class (float+double emit the same `FFT`/`Resample`) cannot hold the same int-only

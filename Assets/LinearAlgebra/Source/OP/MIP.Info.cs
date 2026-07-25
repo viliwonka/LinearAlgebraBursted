@@ -5,7 +5,7 @@
 //singularFile//
 using Unity.Collections;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Terminal state of a <see cref="MIP.solve"/> branch-and-bound search, carried by

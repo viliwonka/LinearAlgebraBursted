@@ -1,6 +1,6 @@
 using System.Diagnostics;
-using LinearAlgebra;
-using LinearAlgebra.Control;
+using BULA;
+using BULA.Control;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;

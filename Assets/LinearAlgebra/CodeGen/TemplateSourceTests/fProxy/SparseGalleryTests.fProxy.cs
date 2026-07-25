@@ -1,6 +1,6 @@
-using LinearAlgebra;
-using LinearAlgebra.Gallery;
-using LinearAlgebra.Sparse;
+using BULA;
+using BULA.Gallery;
+using BULA.Sparse;
 using NUnit.Framework;
 using Unity.Burst;
 using Unity.Collections;

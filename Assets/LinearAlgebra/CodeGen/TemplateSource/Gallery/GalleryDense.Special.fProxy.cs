@@ -1,9 +1,9 @@
 using System;
 using Unity.Collections;
 using Unity.Mathematics;
-using LinearAlgebra;
+using BULA;
 
-namespace LinearAlgebra.Gallery
+namespace BULA.Gallery
 {
     /// <summary>
     /// Gallery of famous test matrices — eigenvalue / nonsymmetric / structured / rank family,
@@ -11,7 +11,7 @@ namespace LinearAlgebra.Gallery
     /// Magic, Rosser, Parter, Prolate, Grcar, Lotkin — sections 13-21 below).
     /// Standalone allocation overloads of Batch B of the Literature Gallery.
     /// Targets: Eigen.decompInPlace, Eigen.valuesQRInPlace, SVD, QR/QRCP, least-squares, FFT cross-check, det.
-    /// Opt in via <c>using LinearAlgebra.Gallery;</c> then call e.g. <c>fProxyGallery.fProxyFrank(n)</c>.
+    /// Opt in via <c>using BULA.Gallery;</c> then call e.g. <c>fProxyGallery.fProxyFrank(n)</c>.
     /// </summary>
     public static partial class fProxyGallery
     {

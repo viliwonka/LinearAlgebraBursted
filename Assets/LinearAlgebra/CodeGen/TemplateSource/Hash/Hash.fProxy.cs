@@ -1,7 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Deterministic, non-cryptographic hashing over LinearAlgebra vectors/matrices, for every

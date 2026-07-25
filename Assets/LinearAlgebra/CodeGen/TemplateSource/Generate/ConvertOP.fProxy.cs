@@ -13,7 +13,7 @@ using fProxy3x3 = Unity.Mathematics.float3x3;
 using fProxy4x4 = Unity.Mathematics.float4x4;
 //-deleteThis
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Conversions between fixed-size Unity.Mathematics types and dynamic vectors/matrices. Forward
     // converters allocate a fresh fProxyN/fProxyMxN via allocator; reverse converters read into a

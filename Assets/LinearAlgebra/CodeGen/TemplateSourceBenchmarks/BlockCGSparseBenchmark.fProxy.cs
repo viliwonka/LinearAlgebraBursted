@@ -5,11 +5,11 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-using LinearAlgebra;
-using LinearAlgebra.Gallery;
-using LinearAlgebra.Sparse;
+using BULA;
+using BULA.Gallery;
+using BULA.Sparse;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // GENERATED per-dtype half of BlockCGSparseBenchmark: block-CG over a BSR 2D-Poisson operator vs the
     // scalar loop of s independent cg solves, plus a matvec-only probe (block spMM vs s x scalar spMV)

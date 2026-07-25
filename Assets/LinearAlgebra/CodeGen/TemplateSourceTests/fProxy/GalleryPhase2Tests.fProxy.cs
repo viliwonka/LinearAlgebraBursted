@@ -1,8 +1,8 @@
 using System;
 #pragma warning disable 618 // intentionally exercises the deprecated cyclic-Jacobi Eigen.decompInPlace (kept for reference)
 
-using LinearAlgebra;
-using LinearAlgebra.Gallery;   // opt-in: fProxyGallery.fProxyCauchy(x,y), fProxyGallery.fProxyMagic(n), ...
+using BULA;
+using BULA.Gallery;   // opt-in: fProxyGallery.fProxyCauchy(x,y), fProxyGallery.fProxyMagic(n), ...
 
 using NUnit.Framework;
 using Unity.Burst;

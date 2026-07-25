@@ -8,7 +8,7 @@ using Unity.Burst;
 using Unity.Mathematics;
 using System;
 
-namespace LinearAlgebra.Sparse
+namespace BULA.Sparse
 {
     /// <summary>
     /// COO-of-blocks assembly builder for doubleBSR. Accumulates (blockRow, blockCol, BR x BC

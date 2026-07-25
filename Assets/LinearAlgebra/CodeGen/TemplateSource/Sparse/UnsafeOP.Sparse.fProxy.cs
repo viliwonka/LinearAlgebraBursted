@@ -1,7 +1,7 @@
 using System.Runtime.CompilerServices;
 using Unity.Burst;
 
-namespace LinearAlgebra.Internal
+namespace BULA.Internal
 {
     public static unsafe partial class UnsafeOP
     {
@@ -1180,8 +1180,8 @@ namespace LinearAlgebra.Internal
         //     with ColInd > row (strictly upper); `continue`s past the diagonal/lower entries
         //     (still ascending order, so no break is available at the START of a row).
         // diagScale=1 is the plain (unscaled) forward/backward Gauss-Seidel triangular solve --
-        // <see cref="LinearAlgebra.Sparse.BSR.sweepLower(in LinearAlgebra.Sparse.fProxyBSR, in
-        // LinearAlgebra.Sparse.fProxyBlockJacobi, in fProxyN, ref fProxyN)"/>'s 4-arg overload
+        // <see cref="BULA.Sparse.BSR.sweepLower(in BULA.Sparse.fProxyBSR, in
+        // BULA.Sparse.fProxyBlockJacobi, in fProxyN, ref fProxyN)"/>'s 4-arg overload
         // forwards here with diagScale=1. fProxySSOR.Apply drives both with diagScale=Omega (the
         // (D/omega+L) / (D/omega+U) systems SSOR's derivation needs -- see that struct's own doc
         // comment for the omega algebra).

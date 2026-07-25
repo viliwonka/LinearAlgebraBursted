@@ -1,6 +1,6 @@
 using System.Runtime.CompilerServices;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Integer metric-direction + validation helpers for Query's nearest/farthest/k-selection
     // kernels. Type-agnostic (or return-type-only) signatures would collide on the merged

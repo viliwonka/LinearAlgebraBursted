@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // Cholesky factorization A = L L^T of a symmetric positive-definite matrix. A is taken `in`
     // (never mutated) and L is overwritten each run, so the SPD input is built once and every timed

@@ -9,11 +9,11 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-using LinearAlgebra;
-using LinearAlgebra.Gallery;
-using LinearAlgebra.Sparse;
+using BULA;
+using BULA.Gallery;
+using BULA.Sparse;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // GENERATED per-dtype half of KrylovGridBenchmark (timed IJobs + build+measure methods). The
     // dtype-agnostic harness (gallery/solver constants, Run, Section) is hand-written in

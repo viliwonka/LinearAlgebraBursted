@@ -10,10 +10,10 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-using LinearAlgebra;
-using LinearAlgebra.Sparse;
+using BULA;
+using BULA.Sparse;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // GENERATED per-dtype half of SparseSolverBenchmark (timed IJobs + residual/build helpers + the
     // Section0..4 build+measure methods). The dtype-agnostic harness (config constants, seed helper, row

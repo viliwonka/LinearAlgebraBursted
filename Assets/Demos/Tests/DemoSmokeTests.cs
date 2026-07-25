@@ -1,11 +1,11 @@
-using LinearAlgebra;
-using LinearAlgebra.Control;
-using LinearAlgebra.Sparse;
+using BULA;
+using BULA.Control;
+using BULA.Sparse;
 using NUnit.Framework;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
-using Unity.Mathematics;
+using Unity.Mathematics; 
 
 namespace LinearAlgebraDemos.Tests
 {

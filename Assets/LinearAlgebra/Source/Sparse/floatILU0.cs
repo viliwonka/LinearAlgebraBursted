@@ -3,17 +3,17 @@
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
 using System;
-using LinearAlgebra;
+using BULA;
 using Unity.Mathematics;
 using Unity.Collections;
 
-namespace LinearAlgebra.Sparse
+namespace BULA.Sparse
 {
     /// <summary>
     /// Block incomplete-LU ILU(0) preconditioner over a square BSR: A ≈ L·U constrained to A's
     /// full block pattern — all fill is discarded (Saad ch. 10.3). L is unit-lower (its diagonal
     /// blocks implicit), U upper; the nonsymmetric sibling of <see cref="floatIC0"/>, intended
-    /// for <see cref="LinearAlgebra.Krylov"/>.biCGStab. On a fill-free pattern (block-tridiagonal)
+    /// for <see cref="BULA.Krylov"/>.biCGStab. On a fill-free pattern (block-tridiagonal)
     /// ILU(0) is the exact LU factorization.
     ///
     /// Storage: one full-pattern copy of A — strictly-lower slots hold L blocks, upper slots hold

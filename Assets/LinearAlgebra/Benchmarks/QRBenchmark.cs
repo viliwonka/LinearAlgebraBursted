@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // QR Householder factorization (also forms Q explicitly). Each Execute copies a pristine source
     // into the working matrix and factors it, so every timed sample does identical work

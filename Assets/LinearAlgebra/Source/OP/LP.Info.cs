@@ -5,7 +5,7 @@
 //singularFile//
 using Unity.Collections;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Sense of a single linear-program constraint row: the relation between the row's dot product

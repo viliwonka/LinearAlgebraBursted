@@ -1,4 +1,4 @@
-namespace LinearAlgebra
+namespace BULA
 {
 
     public partial struct boolN {

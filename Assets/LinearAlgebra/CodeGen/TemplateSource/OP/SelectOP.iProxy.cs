@@ -1,13 +1,13 @@
 using System;
 using Unity.Burst;
 using Unity.Mathematics;
-using LinearAlgebra.Internal;
+using BULA.Internal;
 
 //alsoExpand[uint]// select is pure data movement (dst[i] = c[i] ? b[i] : a[i]) - no comparison,
 //sign flip, or overflow-sensitive arithmetic is involved, so it is fully unsigned-safe with no
 //skipFor-marked exclusions needed.
 
-namespace LinearAlgebra
+namespace BULA
 {
 
     // Class summary lives on the fProxy partial (SelectOP.fProxy.cs). Integer-family select
@@ -99,7 +99,7 @@ namespace LinearAlgebra
     }
 }
 
-namespace LinearAlgebra.Internal
+namespace BULA.Internal
 {
     public static unsafe partial class UnsafeSelectOP
     {

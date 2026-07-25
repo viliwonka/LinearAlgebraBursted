@@ -6,7 +6,7 @@ using System;
 
 using Unity.Collections;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Warm-solve factor/weight persistence cache for <see cref="LP.solve(in floatMxN, in floatN, in floatN, in NativeArray{ConstraintSense}, ref floatN, out double, ref LPBasis, ref floatLPCache, int)"/>.

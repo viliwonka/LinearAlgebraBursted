@@ -7,7 +7,7 @@ using System.Runtime.CompilerServices;
 
 using UnityEngine;
 
-namespace LinearAlgebra {
+namespace BULA {
 
     /// <summary>
     /// Pivot is a more efficient replacement for permutation matrix.

@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // Eigen.lobpcg (k smallest eigenpairs of a symmetric operator) — not covered by
     // EigenSvdBenchmark.cs (that file predates LOBPCG's generalization). Dense SPD input

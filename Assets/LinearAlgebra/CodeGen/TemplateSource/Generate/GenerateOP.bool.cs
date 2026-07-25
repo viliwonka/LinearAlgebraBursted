@@ -1,7 +1,7 @@
 using Unity.Collections;
 using Unity.Mathematics;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Standalone bool vector/matrix generators: allocate their own buffer via allocator.
     public static partial class GenerateOP {

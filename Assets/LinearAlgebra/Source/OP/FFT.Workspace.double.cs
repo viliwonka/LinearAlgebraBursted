@@ -8,9 +8,9 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
-using LinearAlgebra.Internal;   // doubleW (8-lane AVX helper) for the wide radix-4 butterfly
+using BULA.Internal;   // doubleW (8-lane AVX helper) for the wide radix-4 butterfly
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Precomputed twiddle table for FFT. One size-n workspace drives the radix-4 (4^k) and

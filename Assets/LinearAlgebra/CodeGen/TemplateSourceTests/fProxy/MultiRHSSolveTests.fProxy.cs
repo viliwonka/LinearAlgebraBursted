@@ -1,7 +1,7 @@
 using System;
 
-using LinearAlgebra;
-using LinearAlgebra.Gallery;   // opt-in: fProxyGallery.fProxyLaplacian1D(n), fProxyGallery.fProxyLauchli(n,eps), ...
+using BULA;
+using BULA.Gallery;   // opt-in: fProxyGallery.fProxyLaplacian1D(n), fProxyGallery.fProxyLauchli(n,eps), ...
 
 using NUnit.Framework;
 using Unity.Burst;

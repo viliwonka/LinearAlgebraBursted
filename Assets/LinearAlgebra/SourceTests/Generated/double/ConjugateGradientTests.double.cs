@@ -2,8 +2,8 @@
 //   Generated from Assets/LinearAlgebra/CodeGen/TemplateSourceTests/fProxy/ConjugateGradientTests.fProxy.cs
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
-using LinearAlgebra;
-using LinearAlgebra.Gallery;
+using BULA;
+using BULA.Gallery;
 using NUnit.Framework;
 using Unity.Burst;
 using Unity.Collections;

@@ -1,6 +1,6 @@
 using Unity.Collections;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Warm, buffer-carrying state for the <see cref="Kalman"/> predict/update family: the carried

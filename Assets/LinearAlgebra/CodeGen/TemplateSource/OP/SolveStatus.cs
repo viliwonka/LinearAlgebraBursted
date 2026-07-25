@@ -1,7 +1,7 @@
 //singularFile//
 using Unity.Collections;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Outcome of an ITERATIVE solver call, carried by the result structs (<c>SolveInfo</c> /

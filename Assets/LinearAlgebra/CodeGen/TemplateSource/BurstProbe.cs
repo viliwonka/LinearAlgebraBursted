@@ -1,6 +1,6 @@
 using Unity.Burst;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Throw-based Burst-execution guard: call RequireBursted() near the top of a [BurstCompile]
     // IJob.Execute() that must never silently fall back to Mono. FailIfMono is [BurstDiscard]'d, so

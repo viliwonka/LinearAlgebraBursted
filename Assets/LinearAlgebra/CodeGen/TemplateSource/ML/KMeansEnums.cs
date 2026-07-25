@@ -1,5 +1,5 @@
 //singularFile//
-namespace LinearAlgebra.ML
+namespace BULA.ML
 {
     // Seeding strategy for KMeans.fit.
     // KMeansPlusPlus = D²-weighted seeding (Arthur & Vassilvitskii 2007); O(k·N·D);

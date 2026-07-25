@@ -1,7 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Type-agnostic Query helper shared by the per-type QueryOP templates. decodeIndex takes
     // only ints, so the merged float+double `Query` partial cannot hold it twice -- it lives in this

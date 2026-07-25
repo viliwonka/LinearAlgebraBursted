@@ -6,9 +6,9 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-using LinearAlgebra;
+using BULA;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // Multi-RHS solveInPlace (the fused, in-place one-call solvers), END TO END. Given A (n x n) and B
     // (n x k), produce X. Compares the two ways to use the SAME solveInPlace API:

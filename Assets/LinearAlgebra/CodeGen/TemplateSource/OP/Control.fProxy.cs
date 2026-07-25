@@ -3,7 +3,7 @@ using System;
 using Unity.Collections;
 using Unity.Mathematics;
 
-namespace LinearAlgebra.Control
+namespace BULA.Control
 {
     // ================================================================================================
     // Discrete-time LQR. x_{k+1} = A x_k + B u_k, cost Σ(xᵀQx + uᵀRu), optimal feedback u = -Kx via the

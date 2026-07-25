@@ -8,9 +8,9 @@ using System.Runtime.CompilerServices;
 using Unity.Collections;
 using Unity.Mathematics;
 
-using LinearAlgebra;
+using BULA;
 
-namespace LinearAlgebra.Realtime
+namespace BULA.Realtime
 {
     /// <summary>
     /// Fixed-capacity sliding window of feature vectors — the realtime front-end that makes the

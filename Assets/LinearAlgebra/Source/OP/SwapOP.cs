@@ -5,10 +5,10 @@
 using System;
 using Unity.Collections.LowLevel.Unsafe;
 using System.Runtime.CompilerServices;
-using LinearAlgebra.Internal;
+using BULA.Internal;
 //singularFile//
 
-namespace LinearAlgebra
+namespace BULA
 {
     public static partial class Swap {
 

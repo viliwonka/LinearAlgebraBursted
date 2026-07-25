@@ -4,7 +4,7 @@
 // </auto-generated>
 using System.Runtime.CompilerServices;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Histogram: count-based distribution estimation over float/double data.
     // Bin layout, drop policy, closed-upper-edge rule, and per-method contracts are documented on

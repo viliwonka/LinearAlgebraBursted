@@ -1,6 +1,6 @@
 using Unity.Collections;
 using Unity.Mathematics;
-using LinearAlgebra.Internal;
+using BULA.Internal;
 
 //alsoExpand[uint]// standalone construction convenience methods. The default-range RandomMat overload
 //hardcodes a signed [-1, 1] range that has no unsigned equivalent - see the skipFor-marked block
@@ -8,7 +8,7 @@ using LinearAlgebra.Internal;
 //not comment-aware, and would treat this doc comment as a real marker); everything else here takes
 //its range as explicit params, so it's unsigned-clean.
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Standalone vector/matrix generators: allocate their own buffer via allocator.
     public static partial class GenerateOP {

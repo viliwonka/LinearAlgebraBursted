@@ -6,7 +6,7 @@ using System;
 using System.Runtime.CompilerServices;
 using Unity.Burst;
 
-namespace LinearAlgebra.Internal
+namespace BULA.Internal
 {
     
     public static unsafe partial class UnsafeBoolOP

@@ -5,7 +5,7 @@ using Unity.Mathematics;
 
 using Random = Unity.Mathematics.Random;
 
-namespace LinearAlgebra
+namespace BULA
 {
     public static partial class SVD {
 

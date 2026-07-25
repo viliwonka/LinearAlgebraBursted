@@ -1,7 +1,7 @@
 using System.Runtime.CompilerServices;
 using Unity.Mathematics;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Public Norms surface for the SIGNED integer family (int/short/long; uint is deliberately
     // excluded). Merges into the SAME bare partial class as NormsOP.fProxy.cs's `Norms`,

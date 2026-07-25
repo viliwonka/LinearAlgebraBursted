@@ -3,11 +3,11 @@
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
 using System;
-using LinearAlgebra;
+using BULA;
 using Unity.Mathematics;
 using Unity.Collections;
 
-namespace LinearAlgebra.Sparse
+namespace BULA.Sparse
 {
     /// <summary>
     /// Block incomplete-Cholesky IC(0) preconditioner over a square SPD BSR: A ≈ L·Lᵀ where L is

@@ -4,7 +4,7 @@
 // </auto-generated>
 using System.Runtime.CompilerServices;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Public statistics surface for the SIGNED integer family (int/short/long -- uint is
     // deliberately excluded: difference/accumulation code is the unsigned-hostile category).

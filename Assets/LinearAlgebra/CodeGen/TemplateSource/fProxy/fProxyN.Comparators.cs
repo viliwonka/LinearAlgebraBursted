@@ -1,7 +1,7 @@
 using System.Runtime.CompilerServices;
-using LinearAlgebra.Internal;
+using BULA.Internal;
 
-namespace LinearAlgebra
+namespace BULA
 {
 
     public partial struct fProxyN {

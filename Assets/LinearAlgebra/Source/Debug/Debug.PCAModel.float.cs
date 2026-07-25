@@ -4,9 +4,9 @@
 // </auto-generated>
 using Unity.Collections;
 
-using LinearAlgebra.ML;
+using BULA.ML;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Burst-safe Print.Log for the PCA model buffer struct (ML/PCA.Model.float.cs). Mirrors the
     // rest of Print.Log's style (Debug/Debug.float.cs): FixedString + UnityEngine.Debug.Log.
@@ -14,7 +14,7 @@ namespace LinearAlgebra
     // dims/k/converged summary only -- never the (unbounded) components matrix.
     public static partial class Print
     {
-        public static void Log(in LinearAlgebra.ML.floatPCAModel model)
+        public static void Log(in BULA.ML.floatPCAModel model)
         {
             FixedString128Bytes str = model.ToFixedString();
             UnityEngine.Debug.Log($"{str}");

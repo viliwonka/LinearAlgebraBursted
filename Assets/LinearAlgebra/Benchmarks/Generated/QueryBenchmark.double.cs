@@ -9,9 +9,9 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-using LinearAlgebra;
+using BULA;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // GENERATED per-dtype half of QueryBenchmark. A few common Query ops on big N x N matrices:
     // rowArgMin (per-row argmin, the k-means assignment primitive), argMaxRowNorm (row reduction ->

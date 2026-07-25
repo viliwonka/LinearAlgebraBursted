@@ -3,7 +3,7 @@
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
 //singularFile//
-namespace LinearAlgebra.Sparse
+namespace BULA.Sparse
 {
     /// <summary>
     /// Shared build options for <see cref="fProxyFSAI"/> and <see cref="fProxySPAI"/> (both

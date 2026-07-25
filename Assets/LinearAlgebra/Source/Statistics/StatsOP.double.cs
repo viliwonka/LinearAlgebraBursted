@@ -4,7 +4,7 @@
 // </auto-generated>
 using System.Runtime.CompilerServices;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Public statistics surface. The whole-array reductions/transforms accept a vector (doubleN)
     // or a matrix (doubleMxN, whole-matrix scope) and forward, inlined, to the generic bodies in

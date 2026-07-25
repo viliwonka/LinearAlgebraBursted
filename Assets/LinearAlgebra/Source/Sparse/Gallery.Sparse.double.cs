@@ -5,17 +5,17 @@
 using System;
 using Unity.Mathematics;
 using Unity.Collections;
-using LinearAlgebra;
-using LinearAlgebra.Sparse;
+using BULA;
+using BULA.Sparse;
 
-namespace LinearAlgebra.Gallery
+namespace BULA.Gallery
 {
     /// <summary>
     /// Sparse (BSR) test-matrix generators — the block-sparse counterpart to the dense gallery.
     /// Unlike the dense generators these return a <see cref="doubleBSR"/> and, crucially, never
     /// materialize a dense form, so they are usable at N ≈ 10⁴ and beyond at low fill (a dense
     /// 10000×10000 matrix is ~800 MB in float; the sparse encoding stores only the nonzero blocks).
-    /// Opt in with <c>using LinearAlgebra.Gallery;</c>.
+    /// Opt in with <c>using BULA.Gallery;</c>.
     ///
     /// Fill is at the BLOCK level: <c>density</c> is the target fraction of the blockRows×blockCols
     /// block grid that is nonzero (the diagonal blocks are always present). Actual DOF size is

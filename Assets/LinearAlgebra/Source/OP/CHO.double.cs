@@ -6,9 +6,9 @@ using System;
 
 using Unity.Collections;
 using Unity.Mathematics;
-using LinearAlgebra.Internal;
+using BULA.Internal;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Cholesky factorization A = L * Lᵀ for symmetric positive-definite (SPD) matrices.

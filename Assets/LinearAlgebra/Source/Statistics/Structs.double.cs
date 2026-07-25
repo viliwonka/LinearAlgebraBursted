@@ -4,7 +4,7 @@
 // </auto-generated>
 using Unity.Burst;
 
-namespace LinearAlgebra
+namespace BULA
 {
     public struct doubleMeanMinMaxRangeStats
     {

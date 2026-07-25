@@ -8,7 +8,7 @@ using Unity.Burst;
 using Unity.Mathematics;
 
 
-namespace LinearAlgebra.Internal
+namespace BULA.Internal
 {
 
     public static unsafe partial class UnsafeMathOP

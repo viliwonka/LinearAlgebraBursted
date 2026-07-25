@@ -1,11 +1,11 @@
 //singularFile//
-using LinearAlgebra;
+using BULA;
 
-namespace LinearAlgebra.Sparse
+namespace BULA.Sparse
 {
     /// <summary>Multigrid cycle shape. V is a fixed linear operator (valid for cg); K adds a 2-step
     /// Flexible-CG acceleration at every level (recovers grid-independence for unsmoothed aggregation)
-    /// but is a VARIABLE operator — drive it with <see cref="LinearAlgebra.Krylov"/>.fcg, not cg.</summary>
+    /// but is a VARIABLE operator — drive it with <see cref="BULA.Krylov"/>.fcg, not cg.</summary>
     public enum MGCycle { V = 0, K = 1 }
 
     /// <summary>

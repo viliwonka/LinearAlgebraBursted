@@ -5,11 +5,11 @@ using System.Text;
 
 using Unity.Burst;
 
-using LinearAlgebra;
+using BULA;
 
 using Debug = UnityEngine.Debug;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // Shared timing + reporting infrastructure for the kernel benchmarks.
     //

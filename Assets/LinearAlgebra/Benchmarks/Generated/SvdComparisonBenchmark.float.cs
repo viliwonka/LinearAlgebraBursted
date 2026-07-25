@@ -11,11 +11,11 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-using LinearAlgebra;
+using BULA;
 
 using Random = Unity.Mathematics.Random;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // GENERATED per-dtype half of SvdComparisonBenchmark (setup + timing IJobs, per-size measure
     // methods, and managed accuracy helpers). The dtype-agnostic harness (sizes, Run, Section, the

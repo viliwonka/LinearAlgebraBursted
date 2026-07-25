@@ -5,7 +5,7 @@
 //singularFile//
 using Unity.Collections;
 
-namespace LinearAlgebra.Control
+namespace BULA.Control
 {
     /// <summary>
     /// Result of <see cref="LQR.lqg"/>: the two independent DARE solves it runs, one per gain.

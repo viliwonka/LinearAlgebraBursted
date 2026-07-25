@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // Row-major matrix-stats reduction/transform family on N x N matrices. Exists to give the
     // raw-pointer hoist pass an A/B measurement (these methods were on the struct indexer).

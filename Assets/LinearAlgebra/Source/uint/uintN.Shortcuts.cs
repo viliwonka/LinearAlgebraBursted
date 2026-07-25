@@ -7,10 +7,10 @@
 using System.Runtime.CompilerServices;
 
 using Unity.Collections;
-using LinearAlgebra;
+using BULA;
 
 
-namespace LinearAlgebra {
+namespace BULA {
 
     public partial struct uintN : IArenaShortcuts
     {

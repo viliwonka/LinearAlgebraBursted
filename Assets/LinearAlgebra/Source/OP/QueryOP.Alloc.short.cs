@@ -5,7 +5,7 @@
 using Unity.Mathematics;
 using Unity.Collections;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Standalone allocating wrappers for Query search operations over integer types: allocate
     // their own buffers via allocator.

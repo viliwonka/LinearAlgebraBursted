@@ -1,5 +1,5 @@
-using LinearAlgebra;
-using LinearAlgebra.Gallery;
+using BULA;
+using BULA.Gallery;
 using NUnit.Framework;
 using Unity.Burst;
 using Unity.Collections;

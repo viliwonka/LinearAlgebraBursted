@@ -1,7 +1,7 @@
 using System;
 using Unity.Collections;
 
-namespace LinearAlgebra
+namespace BULA
 {
     public static partial class LQRP
     {

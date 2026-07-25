@@ -2,7 +2,7 @@
 
 using System;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Type-agnostic Krylov helpers (singular partial -- not float/double multiplied).
     public static partial class Krylov

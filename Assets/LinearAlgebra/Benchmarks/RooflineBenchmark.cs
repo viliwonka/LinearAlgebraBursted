@@ -6,7 +6,7 @@ using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // Machine roofline probe — NOT a library-kernel benchmark. Two ceilings every kernel number
     // in the other sections should be read against:

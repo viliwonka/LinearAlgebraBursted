@@ -7,7 +7,7 @@ using Unity.Collections;
 
 
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Conversions between fixed-size Unity.Mathematics types and dynamic vectors/matrices. Forward
     // converters allocate a fresh floatN/floatMxN via allocator; reverse converters read into a

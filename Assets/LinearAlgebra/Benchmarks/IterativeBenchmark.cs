@@ -3,7 +3,7 @@ using System.Text;
 // NOTE: PCG (preconditioned Conjugate Gradient) is not yet implemented in the library;
 // only plain CG is benchmarked here.
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // Conjugate Gradient solver for dense SPD systems. The cost per iteration is one dense GEMV
     // (A·p) plus vector ops — all O(n²). With maxIter = 100 and tol = 0 every timed

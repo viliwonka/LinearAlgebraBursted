@@ -6,7 +6,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 //singularFile//
-namespace LinearAlgebra {
+namespace BULA {
 
     public static class Consts {
 

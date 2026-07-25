@@ -4,7 +4,7 @@
 // </auto-generated>
 using Unity.Collections;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Allocating wrappers for the Generate generators — each allocates a fresh
     // vector/matrix via allocator and delegates to the zero-alloc ref-dest primitive.

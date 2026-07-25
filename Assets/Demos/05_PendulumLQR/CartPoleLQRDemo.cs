@@ -1,13 +1,13 @@
 using System.Diagnostics;
-using LinearAlgebra;
-using LinearAlgebra.Control;
+using BULA;
+using BULA.Control;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
 
-namespace LinearAlgebraDemos
+namespace LinearAlgebraDemos 
 {
     /// <summary>
     /// Inverted pendulum on a cart, stabilized by discrete LQR (LQR.lqr).

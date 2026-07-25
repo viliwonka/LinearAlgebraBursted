@@ -6,9 +6,9 @@ using System;
 
 using Unity.Collections;
 using Unity.Mathematics;
-using LinearAlgebra.Internal;
+using BULA.Internal;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Pivoted (rank-revealing) Cholesky for symmetric positive-SEMI-definite matrices. Split out of

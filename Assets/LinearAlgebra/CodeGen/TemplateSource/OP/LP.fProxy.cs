@@ -3,9 +3,9 @@ using System;
 using Unity.Collections;
 using Unity.Mathematics;
 
-using LinearAlgebra.Internal;
+using BULA.Internal;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // ================================================================================================
     // Linear programming + L1 (least-absolute-deviation) optimization.

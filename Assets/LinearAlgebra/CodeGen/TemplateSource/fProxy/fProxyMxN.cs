@@ -3,7 +3,7 @@ using Unity.Collections.LowLevel.Unsafe;
 using System;
 using System.Runtime.InteropServices;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // A m x n matrix
     // m = rows

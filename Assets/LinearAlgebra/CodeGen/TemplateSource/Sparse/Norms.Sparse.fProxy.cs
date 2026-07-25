@@ -1,8 +1,8 @@
 using System;
-using LinearAlgebra.Internal;
-using LinearAlgebra.Sparse;
+using BULA.Internal;
+using BULA.Sparse;
 
-namespace LinearAlgebra
+namespace BULA
 {
     public static partial class Norms
     {

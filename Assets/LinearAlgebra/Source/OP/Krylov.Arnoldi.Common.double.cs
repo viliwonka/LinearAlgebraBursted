@@ -6,7 +6,7 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 
-namespace LinearAlgebra
+namespace BULA
 {
     public static partial class Krylov {
 

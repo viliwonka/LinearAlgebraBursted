@@ -7,10 +7,10 @@ using System.Runtime.CompilerServices;
 
 using Unity.Collections;
 using Unity.Mathematics;
-using LinearAlgebra.Sparse;
-using LinearAlgebra.Internal;
+using BULA.Sparse;
+using BULA.Internal;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Blocked Locally Optimal Block Preconditioned Conjugate Gradient (LOBPCG): the k SMALLEST

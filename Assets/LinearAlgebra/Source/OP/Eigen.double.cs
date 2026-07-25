@@ -8,11 +8,11 @@ using System.Runtime.CompilerServices;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
-using LinearAlgebra.Internal;
-using LinearAlgebra.Sparse;
-using static LinearAlgebra.Internal.Helpers;
+using BULA.Internal;
+using BULA.Sparse;
+using static BULA.Internal.Helpers;
 
-namespace LinearAlgebra
+namespace BULA
 {
     public static partial class Eigen {
 

@@ -2,7 +2,7 @@ using Unity.Mathematics;
 using Unity.Burst;
 using System.Runtime.CompilerServices;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Query: integer-exact search & selection inside integer vectors / matrices.
     // Only the metrics/norms that are exact for integer types are implemented: Manhattan,

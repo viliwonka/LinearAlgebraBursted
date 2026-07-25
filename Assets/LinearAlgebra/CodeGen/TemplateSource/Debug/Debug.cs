@@ -2,7 +2,7 @@ using Unity.Collections;
 using Unity.Mathematics;
 using Unity.Burst;
 
-namespace LinearAlgebra
+namespace BULA
 {
     [BurstCompile]
     public static partial class Print {

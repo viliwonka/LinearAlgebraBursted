@@ -3,12 +3,12 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-using LinearAlgebra;
-using LinearAlgebra.Gallery;
-using LinearAlgebra.ML;
-using LinearAlgebra.Sparse;
+using BULA;
+using BULA.Gallery;
+using BULA.ML;
+using BULA.Sparse;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // GENERATED per-dtype half of the determinism conformance harness's stats/FFT/ML/query/gallery
     // groups (stats-core, fft, ml, histogram-resample-query, gallery-analysis). See

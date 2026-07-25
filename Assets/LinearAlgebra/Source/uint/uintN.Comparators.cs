@@ -3,10 +3,10 @@
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
 using System.Runtime.CompilerServices;
-using LinearAlgebra.Internal;
+using BULA.Internal;
 
 
-namespace LinearAlgebra
+namespace BULA
 {
 
     public partial struct uintN {

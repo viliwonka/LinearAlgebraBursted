@@ -6,10 +6,10 @@ using System.Runtime.CompilerServices;
 using System;
 
 using Unity.Collections.LowLevel.Unsafe;
-using LinearAlgebra.Internal;
+using BULA.Internal;
 
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Dot products, outer product, matrix multiply, and transpose (integer proxy types).

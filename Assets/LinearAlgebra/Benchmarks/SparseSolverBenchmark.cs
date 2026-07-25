@@ -4,7 +4,7 @@ using System.Text;
 
 using Unity.Mathematics;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // Small position record used by the block-pattern choosers (avoids depending on ValueTuple support
     // one way or the other). Public so the code-generated per-dtype builders (in a separate template

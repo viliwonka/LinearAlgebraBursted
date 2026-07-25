@@ -1,6 +1,6 @@
 //alsoExpand[uint]// exact-equality predicates only -- nothing signed-dependent here.
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Structural predicates for the integer family (int/short/long/uint).
     // Exact-equality integer predicates: integer

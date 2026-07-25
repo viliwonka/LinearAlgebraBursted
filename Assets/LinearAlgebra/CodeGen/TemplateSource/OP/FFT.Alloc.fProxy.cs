@@ -1,6 +1,6 @@
 using Unity.Collections;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Standalone allocating overloads for the single-output FFT spectrum reductions: allocate
     // their own output buffer via allocator.

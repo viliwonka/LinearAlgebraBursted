@@ -3,7 +3,7 @@
 using System.Runtime.CompilerServices;
 
 using Unity.Collections;
-using LinearAlgebra;
+using BULA;
 
 //alsoExpand[uint]// gives uintN an IArenaShortcuts implementation (float/double/bool cross-type
 //shortcuts below, unaffected by this file's own outer-type opt-in). The inner iProxy-family
@@ -12,7 +12,7 @@ using LinearAlgebra;
 //(including uintN itself) a uintVec/uintTempVec/uintMat/uintTempMat cross-shortcut, which
 //Blas/OP.Dot.iProxy.cs's a.iProxyTempMat(...)/x.iProxyTempVec(...) calls need to resolve for uint.
 
-namespace LinearAlgebra {
+namespace BULA {
 
     public partial struct iProxyN : IArenaShortcuts
     {

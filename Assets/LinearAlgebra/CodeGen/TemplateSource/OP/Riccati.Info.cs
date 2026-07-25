@@ -1,7 +1,7 @@
 //singularFile//
 using Unity.Collections;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Terminal state of a <see cref="Riccati.dare"/> solve (also carried by every LQR/Kalman result

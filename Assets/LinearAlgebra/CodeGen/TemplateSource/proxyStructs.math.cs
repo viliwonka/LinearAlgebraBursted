@@ -4,7 +4,7 @@ using NUnit.Framework.Constraints;
 
 using Unity.Mathematics;
 
-namespace LinearAlgebra.mathProxies
+namespace BULA.mathProxies
 {
     public struct fProxy2 {
 

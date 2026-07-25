@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
-using LinearAlgebra;
-using LinearAlgebra.Sparse;
+using BULA;
+using BULA.Sparse;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;

@@ -5,8 +5,8 @@
 using System;
 #pragma warning disable 618 // intentionally exercises the deprecated cyclic-Jacobi Eigen.decompInPlace (kept for reference)
 
-using LinearAlgebra;
-using LinearAlgebra.Gallery;   // opt-in: floatGallery.floatHilbert(n), floatGallery.floatKahan(n,θ), ...
+using BULA;
+using BULA.Gallery;   // opt-in: floatGallery.floatHilbert(n), floatGallery.floatKahan(n,θ), ...
 
 using NUnit.Framework;
 using Unity.Burst;

@@ -7,10 +7,10 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-using LinearAlgebra;
-using LinearAlgebra.Control;
+using BULA;
+using BULA.Control;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // GENERATED per-dtype half of the determinism conformance harness's optimization/control groups
     // (lp-lad, qp, mip, control, nls-optimize). See DeterminismDirect.double.cs's header for the

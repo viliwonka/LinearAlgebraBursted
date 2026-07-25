@@ -1,4 +1,4 @@
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Scalar predicate for integer flat data (<see cref="IUnsafeiProxyArray"/>).

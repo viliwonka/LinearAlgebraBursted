@@ -8,10 +8,10 @@ using System.Runtime.CompilerServices;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
-using LinearAlgebra.Internal;
-using static LinearAlgebra.Internal.Helpers;
+using BULA.Internal;
+using static BULA.Internal.Helpers;
 
-namespace LinearAlgebra
+namespace BULA
 {
     public static partial class SVD {
 

@@ -3,7 +3,7 @@ using Unity.Mathematics;
 using Unity.Burst;
 using System.Runtime.CompilerServices;
 
-namespace LinearAlgebra
+namespace BULA
 {
     public static partial class Print {
 

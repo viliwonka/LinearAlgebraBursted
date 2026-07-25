@@ -2,9 +2,9 @@ using System;
 using Unity.Mathematics;
 using Unity.Burst;
 using System.Runtime.CompilerServices;
-using LinearAlgebra.Internal;
+using BULA.Internal;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Public surface. The vector/flat norms accept either a vector (fProxyN) or a matrix
     // (fProxyMxN, treated as a flat array). Each is a thin, inlined forwarder to the generic

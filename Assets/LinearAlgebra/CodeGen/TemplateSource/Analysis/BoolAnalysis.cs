@@ -1,7 +1,7 @@
 using Unity.Burst;
 using Unity.Collections;
 using System.Runtime.CompilerServices;
-namespace LinearAlgebra
+namespace BULA
 {
 
     [BurstCompile]

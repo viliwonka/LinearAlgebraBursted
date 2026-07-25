@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // Block-CG (multi-RHS) vs the scalar loop of s independent cg solves, on the SAME dense SPD system
     // (A = MᵀM + nI, condition grows with n) and the SAME s right-hand sides, solved to the same

@@ -3,9 +3,9 @@
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
 using Unity.Mathematics;
-using LinearAlgebra.Sparse;
+using BULA.Sparse;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Multigrid solvers. <see cref="solve(in floatAMG, in floatN, ref floatN, int, float)"/> runs

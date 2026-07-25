@@ -3,16 +3,16 @@
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
 using Unity.Collections;
-using LinearAlgebra.Sparse;
+using BULA.Sparse;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Burst-safe block-structure printing for floatBSR (block-CSR sparse matrix), mirroring
     // Print.Spy/Print.Log for dense matrices (Debug.float.cs) but at BLOCK granularity: one char
     // per BR x BC block instead of per scalar. See Sparse/floatBSR.cs for the RowPtr/ColInd/Values
     // (CSR-of-blocks, row-major block interior) layout this reads. Lives in namespace LinearAlgebra
-    // (not LinearAlgebra.Sparse) so it merges into the same `Print` partial class as the dense
-    // overloads -- floatBSR is brought in via the `using LinearAlgebra.Sparse;` above.
+    // (not BULA.Sparse) so it merges into the same `Print` partial class as the dense
+    // overloads -- floatBSR is brought in via the `using BULA.Sparse;` above.
     public static partial class Print
     {
         // Scans ColInd[RowPtr[row]..RowPtr[row+1)) for `col`. ColInd is ascending within a row

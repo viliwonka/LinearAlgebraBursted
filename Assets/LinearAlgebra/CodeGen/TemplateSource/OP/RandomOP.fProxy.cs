@@ -3,7 +3,7 @@ using System.Runtime.CompilerServices;
 using Unity.Mathematics;
 using Random = Unity.Mathematics.Random;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Zero-alloc random-fill operations for existing vectors and matrices. Complements the

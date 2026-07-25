@@ -1,5 +1,5 @@
-using LinearAlgebra;
-using LinearAlgebra.Sparse;
+using BULA;
+using BULA.Sparse;
 using NUnit.Framework;
 using Unity.Collections;
 using Unity.Mathematics;

@@ -3,10 +3,10 @@
 using System.Runtime.CompilerServices;
 
 using Unity.Collections;
-using LinearAlgebra;
-using LinearAlgebra.Sparse;
+using BULA;
+using BULA.Sparse;
 
-namespace LinearAlgebra {
+namespace BULA {
 
     public partial struct fProxyN : IArenaShortcuts
     {

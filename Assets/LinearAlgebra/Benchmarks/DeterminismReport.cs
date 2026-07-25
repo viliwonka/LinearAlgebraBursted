@@ -6,11 +6,11 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 
-using LinearAlgebra;
+using BULA;
 
 using Debug = UnityEngine.Debug;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // Hand-written, dtype-agnostic half of the determinism conformance harness: group registry,
     // op/group/root hash folding, and report writing. The per-op Burst jobs and input builders are

@@ -3,11 +3,11 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-using LinearAlgebra;
-using LinearAlgebra.Gallery;
-using LinearAlgebra.Sparse;
+using BULA;
+using BULA.Gallery;
+using BULA.Sparse;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // GENERATED per-dtype half of the determinism conformance harness's iterative/sparse groups
     // (krylov-dense, sparse-bsr, krylov-sparse-precond). See DeterminismDirect.fProxy.cs's header

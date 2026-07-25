@@ -2,7 +2,7 @@
 //   Generated from Assets/LinearAlgebra/CodeGen/TemplateSourceTests/fProxy/ChooseMarkerTests.fProxy.cs
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
-using LinearAlgebra;
+using BULA;
 using NUnit.Framework;
 
 // Verifies the //+choose[...] codegen marker (see GenUtils.cs) resolves to the correct per-type

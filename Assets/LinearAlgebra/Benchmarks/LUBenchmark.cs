@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // LU with partial pivoting. Each Execute factors a pristine Src into U/L via the safe LU.decomp
     // (which copies Src into U internally) and allocates a fresh Pivot in Temp (O(N), negligible vs

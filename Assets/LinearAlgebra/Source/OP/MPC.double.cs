@@ -7,7 +7,7 @@ using System;
 using Unity.Collections;
 using Unity.Mathematics;
 
-namespace LinearAlgebra.Control
+namespace BULA.Control
 {
     // ================================================================================================
     // Linear model predictive control: MPC.solve re-solves the condensed QP doubleMPCState precomputed

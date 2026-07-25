@@ -9,9 +9,9 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-using LinearAlgebra;
+using BULA;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // GENERATED per-dtype half of GemmBenchmark (timed IJob + build+measure method). The
     // dtype-agnostic harness (Flops, Run, Section) is hand-written in
@@ -100,7 +100,7 @@ namespace LinearAlgebra.Benchmarks
         {
             Unity.Collections.LowLevel.Unsafe.UnsafeUtility.MemClear(
                 C.Data.Ptr, (long)C.Data.Length * Unity.Collections.LowLevel.Unsafe.UnsafeUtility.SizeOf<float>());
-            LinearAlgebra.Internal.UnsafeOP.matMatDotUnpacked(A.Data.Ptr, B.Data.Ptr, C.Data.Ptr, A.M_Rows, A.N_Cols, B.N_Cols);
+            BULA.Internal.UnsafeOP.matMatDotUnpacked(A.Data.Ptr, B.Data.Ptr, C.Data.Ptr, A.M_Rows, A.N_Cols, B.N_Cols);
         }
     }
 
@@ -117,7 +117,7 @@ namespace LinearAlgebra.Benchmarks
         {
             Unity.Collections.LowLevel.Unsafe.UnsafeUtility.MemClear(
                 C.Data.Ptr, (long)C.Data.Length * Unity.Collections.LowLevel.Unsafe.UnsafeUtility.SizeOf<float>());
-            LinearAlgebra.Internal.UnsafeOP.matMatDotPacked(A.Data.Ptr, B.Data.Ptr, C.Data.Ptr, A.M_Rows, A.N_Cols, B.N_Cols);
+            BULA.Internal.UnsafeOP.matMatDotPacked(A.Data.Ptr, B.Data.Ptr, C.Data.Ptr, A.M_Rows, A.N_Cols, B.N_Cols);
         }
     }
 

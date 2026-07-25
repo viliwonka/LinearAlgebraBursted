@@ -2,9 +2,9 @@
 //   Generated from Assets/LinearAlgebra/CodeGen/TemplateSource/Sparse/fProxyBSROperator.cs
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
-using LinearAlgebra;
+using BULA;
 
-namespace LinearAlgebra.Sparse
+namespace BULA.Sparse
 {
     /// <summary>
     /// Thin <see cref="IfloatLinearOperator"/> wrapper over a compressed <see cref="floatBSR"/>.

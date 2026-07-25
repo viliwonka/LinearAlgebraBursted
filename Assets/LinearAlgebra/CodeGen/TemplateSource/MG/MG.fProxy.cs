@@ -1,7 +1,7 @@
 using Unity.Mathematics;
-using LinearAlgebra.Sparse;
+using BULA.Sparse;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Multigrid solvers. <see cref="solve(in fProxyAMG, in fProxyN, ref fProxyN, int, fProxy)"/> runs

@@ -4,7 +4,7 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Mixed-integer programming: branch & bound over the dense dual simplex. Pseudocost + reliability
     // branching (MIP.Pseudocost.fProxy.cs) picks the branching variable; search order is best-bound-

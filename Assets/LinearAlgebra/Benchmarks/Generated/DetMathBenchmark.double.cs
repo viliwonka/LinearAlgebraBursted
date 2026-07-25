@@ -10,9 +10,9 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-using LinearAlgebra;
+using BULA;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // GENERATED per-dtype half of DetMathBenchmark (prototype exp + timed IJobs + row builders). The
     // dtype-agnostic harness (size, section, headers) is hand-written in

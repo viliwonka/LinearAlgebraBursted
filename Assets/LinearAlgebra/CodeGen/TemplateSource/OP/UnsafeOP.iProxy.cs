@@ -9,7 +9,7 @@ using Unity.Collections.LowLevel.Unsafe;
 //not write that marker's literal token in prose here - the codegen parser is content-sensitive, not
 //comment-aware).
 
-namespace LinearAlgebra.Internal
+namespace BULA.Internal
 {
     public static unsafe partial class UnsafeOP {
 

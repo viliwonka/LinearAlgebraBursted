@@ -1,4 +1,4 @@
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Tags a Krylov battery gallery matrix (what it structurally IS) and, on the solver side,

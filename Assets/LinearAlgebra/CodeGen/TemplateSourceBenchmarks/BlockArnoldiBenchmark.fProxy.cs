@@ -4,9 +4,9 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 
-using LinearAlgebra;
+using BULA;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // GENERATED per-dtype half of BlockArnoldiBenchmark: bgmres + bgcrodr timed IJobs (task #70 --
     // measures the block-Arnoldi step's row-orthonormalization cost, the sole consumer LQRP.decomp +

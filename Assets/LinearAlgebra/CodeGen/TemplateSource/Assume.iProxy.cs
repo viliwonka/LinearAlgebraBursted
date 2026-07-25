@@ -4,7 +4,7 @@ using System;
 //alsoExpand[uint]// dimension checks only, no signed-only ops here. Required for uintN/uintMxN's
 //Operators/Comparators (Assume.SameDim) to compile.
 
-namespace LinearAlgebra
+namespace BULA
 {
     internal static partial class Assume
     {

@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // Shared, dtype-agnostic row formatter for TriangularSolveBenchmark. Public so the code-generated
     // per-dtype build method (in a separate template assembly) can call it. Time-only (no GFLOP/s):

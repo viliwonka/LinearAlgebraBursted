@@ -3,7 +3,7 @@ using System.Runtime.CompilerServices;
 using Unity.Burst;
 using Unity.Mathematics;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Deterministic transcendental functions. Every routine uses only + - * / , math.floor,
     // math.sqrt, math.select and integer/bit reinterpretation — all IEEE correctly-rounded and

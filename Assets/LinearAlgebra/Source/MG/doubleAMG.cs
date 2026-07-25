@@ -6,9 +6,9 @@ using System;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
-using LinearAlgebra.Sparse;
+using BULA.Sparse;
 
-namespace LinearAlgebra.Sparse
+namespace BULA.Sparse
 {
     /// <summary>
     /// Unsmoothed nodal-aggregation algebraic multigrid hierarchy over a square SPD BSR. Built once on
@@ -61,7 +61,7 @@ namespace LinearAlgebra.Sparse
         /// hierarchy would emit NaN — the entry points throw instead.</summary>
         public bool Usable => _usable;
         /// <summary>True for a K-cycle hierarchy: the cycle is a VARIABLE operator, so it must be
-        /// driven by <see cref="LinearAlgebra.Krylov"/>.fcg (not cg / not a fixed-M cg precond).</summary>
+        /// driven by <see cref="BULA.Krylov"/>.fcg (not cg / not a fixed-M cg precond).</summary>
         public bool IsKCycle => _cycle == 1;
         /// <summary>True iff the cycle's smoothing pass is symmetric (Pre == Post sweeps) -- combined
         /// with Galerkin coarsening and the symmetric Chebyshev smoother, this is the SYMMETRY half of

@@ -10,7 +10,7 @@ using Unity.Mathematics;
 //the codegen parser is content-sensitive, not comment-aware). Everything else (min/max/clamp/mod/
 //mad/dot) is unsigned-clean as-is.
 
-namespace LinearAlgebra.Internal
+namespace BULA.Internal
 {
 
     public static unsafe partial class UnsafeMathOP

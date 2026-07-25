@@ -5,7 +5,7 @@
 using System.Runtime.CompilerServices;
 using Unity.Mathematics;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Query.Predicate: predicate-filtered and score-based query operators.
     // Extends Query (partial class). Reuses RowScore/ColScore,

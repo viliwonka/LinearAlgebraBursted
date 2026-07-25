@@ -1,9 +1,9 @@
 using System;
 using Unity.Burst;
 using Unity.Mathematics;
-using LinearAlgebra.Internal;
+using BULA.Internal;
 
-namespace LinearAlgebra
+namespace BULA
 {
 
     /// <summary>
@@ -97,7 +97,7 @@ namespace LinearAlgebra
     }
 }
 
-namespace LinearAlgebra.Internal
+namespace BULA.Internal
 {
     public static unsafe partial class UnsafeSelectOP
     {

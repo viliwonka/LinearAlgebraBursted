@@ -8,9 +8,9 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-using LinearAlgebra;
+using BULA;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // GENERATED per-dtype half of the determinism conformance harness's int-family group (row 25):
     // integer-state xorshift + `* /` only, so this whole group is bit-exact by construction (no

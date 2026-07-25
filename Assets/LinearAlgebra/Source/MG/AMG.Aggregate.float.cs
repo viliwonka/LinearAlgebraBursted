@@ -5,9 +5,9 @@
 using System;
 using Unity.Collections;
 using Unity.Mathematics;
-using LinearAlgebra.Sparse;
+using BULA.Sparse;
 
-namespace LinearAlgebra.Sparse
+namespace BULA.Sparse
 {
     /// <summary>
     /// Algebraic-multigrid setup primitives over BSR — aggregation (here), tentative prolongation,

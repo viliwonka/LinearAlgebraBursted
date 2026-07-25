@@ -1,7 +1,7 @@
 using System;
 
-using LinearAlgebra;
-using LinearAlgebra.Gallery;
+using BULA;
+using BULA.Gallery;
 using NUnit.Framework;
 using Unity.Burst;
 using Unity.Collections;
@@ -39,7 +39,7 @@ using Unity.Mathematics;
 // runtime under the SAME FloatMode/FloatPrecision, so a Tier E bit-mismatch can only mean a real
 // downdate-vs-exact pivot divergence — exactly the signal Tier E exists to isolate. The oracle is
 // throwaway test scaffolding: its reflector step delegates to the SAME public vectorised kernel
-// production uses (LinearAlgebra.Internal.UnsafeOP.axpy) and its reflector-vector build calls the
+// production uses (BULA.Internal.UnsafeOP.axpy) and its reflector-vector build calls the
 // SAME public Norms.L2Range, mirroring QR.genHouseholder / QR.applyReflectorRight bit-for-bit (see
 // OracleGenHouseholder / OracleApplyReflectorRight — those QR kernels are `internal`, reachable here
 // via the InternalsVisibleTo grants on both BurstLinearAlgebra.Tests and
@@ -902,7 +902,7 @@ public class fProxyQRCPDowndateTests
         // (TemplateSource/AssemblyInfo.cs), but a replica is used anyway so the oracle stays independent
         // of the kernel under test. Bit-identity is preserved by
         // NOT reimplementing the numeric core: the reflector-apply delegates to the SAME public
-        // vectorised kernel production uses (LinearAlgebra.Internal.UnsafeOP.axpy), and the
+        // vectorised kernel production uses (BULA.Internal.UnsafeOP.axpy), and the
         // reflector-vector build calls the SAME public Norms.L2Range and mirrors the exact scalar
         // arithmetic and evaluation order of QR.genHouseholder — so on a matching pivot sequence the
         // factors reproduce production's to the last bit. (Only the trivial one-line `sign` — internal
@@ -949,11 +949,11 @@ public class fProxyQRCPDowndateTests
             // pass 1: w[0..L) = Σ_{r=d}^{M-1} u[r]·Q[r, d..N)  — same UnsafeOP.axpy as production.
             UnsafeUtility.MemClear(wp, (long)L * UnsafeUtility.SizeOf<fProxy>());
             for (int r = d; r < M; r++)
-                LinearAlgebra.Internal.UnsafeOP.axpy(wp, qp + (long)r * N + d, up[r], L);
+                BULA.Internal.UnsafeOP.axpy(wp, qp + (long)r * N + d, up[r], L);
 
             // pass 2: Q[r, d..N) -= u[r]·w.
             for (int r = d; r < M; r++)
-                LinearAlgebra.Internal.UnsafeOP.axpy(qp + (long)r * N + d, wp, -up[r], L);
+                BULA.Internal.UnsafeOP.axpy(qp + (long)r * N + d, wp, -up[r], L);
         }
 
         void AssertBitIdentical(fProxy a, fProxy b)

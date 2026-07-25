@@ -9,9 +9,9 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-using LinearAlgebra;
+using BULA;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // GENERATED per-dtype half of QPBenchmark (the timed IJob + the per-section build+measure method).
     // The dtype-agnostic harness (config sizes, row formatter, Run, Section) is hand-written in

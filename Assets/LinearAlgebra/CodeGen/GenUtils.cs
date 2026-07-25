@@ -2,7 +2,7 @@ using System.IO;
 using UnityCodeGen;
 using UnityEngine;
 using System.Numerics;
-namespace LinearAlgebra.CodeGen
+namespace BULA.CodeGen
 {
     /*
         Template source code is also compilable, but it's not meant to be used directly.
@@ -44,8 +44,8 @@ namespace LinearAlgebra.CodeGen
     */
     public static class GenUtils
     {
-        public const string fProxy = nameof(LinearAlgebra.fProxy);
-        public const string iProxy = nameof(LinearAlgebra.iProxy);
+        public const string fProxy = nameof(BULA.fProxy);
+        public const string iProxy = nameof(BULA.iProxy);
 
         public const string cFProxy = "FProxy";
         public const string cIProxy = "IProxy";

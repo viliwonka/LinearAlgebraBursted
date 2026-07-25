@@ -1,4 +1,4 @@
-using LinearAlgebra;
+using BULA;
 using NUnit.Framework;
 
 // Verifies the //+choose[...] codegen marker (see GenUtils.cs) resolves to the correct per-type

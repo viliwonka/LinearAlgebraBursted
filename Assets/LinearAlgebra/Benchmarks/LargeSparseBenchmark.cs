@@ -3,7 +3,7 @@ using System.Text;
 using Unity.Collections;
 using Unity.Mathematics;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // Shared, dtype-agnostic table formatters for LargeSparseBenchmark. Public so the code-generated
     // per-dtype build methods (in a separate template assembly) can call them.

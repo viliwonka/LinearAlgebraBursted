@@ -1,6 +1,6 @@
 using System;
-using LinearAlgebra;
-using LinearAlgebra.Gallery;
+using BULA;
+using BULA.Gallery;
 using NUnit.Framework;
 using Unity.Collections;
 using Unity.Mathematics;

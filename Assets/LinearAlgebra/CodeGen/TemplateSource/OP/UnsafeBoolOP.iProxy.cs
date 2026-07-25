@@ -4,7 +4,7 @@ using Unity.Mathematics;
 
 //alsoExpand[uint]// relational comparators (+ the ispow2 predicate below) - no signed-only ops here.
 
-namespace LinearAlgebra.Internal
+namespace BULA.Internal
 {
     public static unsafe partial class UnsafeBoolOP
     {

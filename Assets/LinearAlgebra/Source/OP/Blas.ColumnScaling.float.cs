@@ -6,7 +6,7 @@ using System;
 
 using Unity.Mathematics;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Blas column-norm / column-scaling kernels: the ingredients for an AᵀA-Jacobi
     // (column-equilibration) least-squares preconditioner. These are computational primitives

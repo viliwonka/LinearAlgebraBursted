@@ -2,11 +2,11 @@ using System.Runtime.CompilerServices;
 using System;
 
 using Unity.Collections.LowLevel.Unsafe;
-using LinearAlgebra.Internal;
+using BULA.Internal;
 
 //alsoExpand[uint]// dot/outer/matmul/transpose: pure multiply-accumulate, no signed-only ops here.
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Dot products, outer product, matrix multiply, and transpose (integer proxy types).

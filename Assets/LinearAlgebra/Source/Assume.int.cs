@@ -6,7 +6,7 @@ using Unity.Mathematics;
 using System;
 
 
-namespace LinearAlgebra
+namespace BULA
 {
     internal static partial class Assume
     {

@@ -4,9 +4,9 @@
 // </auto-generated>
 using Unity.Mathematics;
 
-using LinearAlgebra;
+using BULA;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // Dtype-agnostic (no fProxy/long token) scalar-folding helpers for the determinism conformance
     // harness's generated per-dtype job Execute() bodies (see Determinism*.fProxy.cs/.long.cs and

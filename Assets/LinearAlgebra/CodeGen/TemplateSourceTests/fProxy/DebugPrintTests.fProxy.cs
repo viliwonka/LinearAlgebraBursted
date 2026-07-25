@@ -1,8 +1,8 @@
 using System.IO;
 
-using LinearAlgebra;
-using LinearAlgebra.ML;
-using LinearAlgebra.Sparse;
+using BULA;
+using BULA.ML;
+using BULA.Sparse;
 
 using NUnit.Framework;
 using Unity.Collections;

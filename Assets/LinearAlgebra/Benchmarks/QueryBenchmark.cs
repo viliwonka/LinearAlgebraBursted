@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // A few common Query ops on N x N matrices. argMaxRowNorm is a row reduction (routed to the SIMD
     // kernels); argMaxColNorm is a column reduction restructured into a row-major per-column accumulate

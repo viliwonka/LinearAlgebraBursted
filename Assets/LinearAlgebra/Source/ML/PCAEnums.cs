@@ -3,7 +3,7 @@
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
 //singularFile//
-namespace LinearAlgebra.ML
+namespace BULA.ML
 {
     // Scaling mode for the PCA fit routes (fitCov / fitSvd / fitSvdTruncated / fitRandomized).
     // Default (via the forwarding overloads) is Covariance (= sklearn's center-only default).

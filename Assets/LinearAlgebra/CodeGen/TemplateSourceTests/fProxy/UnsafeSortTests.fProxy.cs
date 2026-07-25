@@ -1,7 +1,7 @@
 using System;
 
-using LinearAlgebra;
-using LinearAlgebra.Internal;
+using BULA;
+using BULA.Internal;
 
 using NUnit.Framework;
 using Unity.Burst;
@@ -11,16 +11,16 @@ using Unity.Jobs;
 using Unity.Mathematics;
 
 // Direct kernel tests for UnsafeOP.sortByKeyAscending (in-place ASCENDING heapsort of parallel
-// key/value arrays -- LinearAlgebra.Internal.UnsafeOP, UnsafeOP.fProxy.cs). New Blas/UnsafeOP kernels
+// key/value arrays -- BULA.Internal.UnsafeOP, UnsafeOP.fProxy.cs). New Blas/UnsafeOP kernels
 // get DIRECT tests against a plain scalar reference implementation, not just indirect coverage
 // through callers. This kernel powers LP.ladBR's large-candidate fast path
 // (LP.BarrodaleRoberts.fProxy.cs, gated by BR_CAND_SORT_THRESHOLD = 256), so before this file the
 // kernel had ZERO direct coverage.
 //
 // TEMPLATE (not hand-written) test: UnsafeOP and sortByKeyAscending are both `public` (the class only
-// lives in the LinearAlgebra.Internal namespace), and template tests already reach it directly with
+// lives in the BULA.Internal namespace), and template tests already reach it directly with
 // raw pointers inside Burst jobs -- see QRCPDowndateTests.fProxy.cs / LUTests.fProxy.cs calling
-// LinearAlgebra.Internal.UnsafeOP.axpy/maxAbs. There is no InternalsVisibleTo barrier here (that only
+// BULA.Internal.UnsafeOP.axpy/maxAbs. There is no InternalsVisibleTo barrier here (that only
 // forces the hand-written SourceTests route for genuinely `internal` members such as
 // ladFrischNewtonCore), so a template test is used to get automatic float+double coverage.
 //

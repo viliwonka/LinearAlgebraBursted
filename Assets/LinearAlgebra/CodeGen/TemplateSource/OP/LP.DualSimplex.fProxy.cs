@@ -3,7 +3,7 @@ using System;
 using Unity.Collections;
 using Unity.Mathematics;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // ================================================================================================
     // Bounded-variable DUAL revised simplex -- the LPMethod.DualSimplex backend, the dual half of

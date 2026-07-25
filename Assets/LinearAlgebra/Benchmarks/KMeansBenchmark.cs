@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // Lloyd k-means clustering with GEMM-accelerated assignment.
     // Fixed D = 64 features, k = 16 clusters, maxIter = 10, Uniform init, seed = 12345u.

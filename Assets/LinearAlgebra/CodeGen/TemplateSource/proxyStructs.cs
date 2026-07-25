@@ -2,7 +2,7 @@ using System;
 
 using Unity.Burst;
 
-namespace LinearAlgebra
+namespace BULA
 {
     public struct fProxy : IComparable<fProxy>
     {

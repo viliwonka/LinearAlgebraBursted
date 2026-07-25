@@ -1,10 +1,10 @@
 using NUnit.Framework;
 using Unity.Collections;
 using Unity.Mathematics;
-using LinearAlgebra.Gallery;
-using LinearAlgebra.Sparse;
+using BULA.Gallery;
+using BULA.Sparse;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Constructs the tagged gallery matrices the Krylov battery drives every solver invoker

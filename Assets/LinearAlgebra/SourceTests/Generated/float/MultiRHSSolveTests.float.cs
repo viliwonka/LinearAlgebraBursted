@@ -4,8 +4,8 @@
 // </auto-generated>
 using System;
 
-using LinearAlgebra;
-using LinearAlgebra.Gallery;   // opt-in: floatGallery.floatLaplacian1D(n), floatGallery.floatLauchli(n,eps), ...
+using BULA;
+using BULA.Gallery;   // opt-in: floatGallery.floatLaplacian1D(n), floatGallery.floatLauchli(n,eps), ...
 
 using NUnit.Framework;
 using Unity.Burst;

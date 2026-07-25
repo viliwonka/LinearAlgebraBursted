@@ -2,15 +2,15 @@
 //   Generated from Assets/LinearAlgebra/CodeGen/TemplateSource/MG/fProxyAMGPreconditioner.fProxy.cs
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
-using LinearAlgebra.Sparse;
+using BULA.Sparse;
 
-namespace LinearAlgebra.Sparse
+namespace BULA.Sparse
 {
     /// <summary>
     /// An <see cref="doubleAMG"/> hierarchy used as a preconditioner: Apply(r, z) runs exactly one
     /// cycle solving A z = r from a zero initial guess. A symmetric V-cycle (pre == post) is a fixed
-    /// SPD operator — pair it with <see cref="LinearAlgebra.Krylov"/>.cg. A K-cycle is a VARIABLE
-    /// operator (inner Krylov acceleration) — pair it with <see cref="LinearAlgebra.Krylov"/>.fcg; cg
+    /// SPD operator — pair it with <see cref="BULA.Krylov"/>.cg. A K-cycle is a VARIABLE
+    /// operator (inner Krylov acceleration) — pair it with <see cref="BULA.Krylov"/>.fcg; cg
     /// is invalid for it (and the cg overloads reject it). The wrapped hierarchy must outlive the
     /// preconditioner; its buffers are shared (not copied), so a single instance is not safe for
     /// concurrent Apply.
@@ -38,7 +38,7 @@ namespace LinearAlgebra.Sparse
     }
 }
 
-namespace LinearAlgebra
+namespace BULA
 {
     public static partial class Krylov
     {

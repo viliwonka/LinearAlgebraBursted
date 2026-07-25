@@ -5,7 +5,7 @@
 using System.Runtime.CompilerServices;
 using Unity.Burst;
 
-namespace LinearAlgebra.Internal
+namespace BULA.Internal
 {
     public static unsafe partial class UnsafeOP
     {
@@ -1184,8 +1184,8 @@ namespace LinearAlgebra.Internal
         //     with ColInd > row (strictly upper); `continue`s past the diagonal/lower entries
         //     (still ascending order, so no break is available at the START of a row).
         // diagScale=1 is the plain (unscaled) forward/backward Gauss-Seidel triangular solve --
-        // <see cref="LinearAlgebra.Sparse.BSR.sweepLower(in LinearAlgebra.Sparse.doubleBSR, in
-        // LinearAlgebra.Sparse.doubleBlockJacobi, in doubleN, ref doubleN)"/>'s 4-arg overload
+        // <see cref="BULA.Sparse.BSR.sweepLower(in BULA.Sparse.doubleBSR, in
+        // BULA.Sparse.doubleBlockJacobi, in doubleN, ref doubleN)"/>'s 4-arg overload
         // forwards here with diagScale=1. doubleSSOR.Apply drives both with diagScale=Omega (the
         // (D/omega+L) / (D/omega+U) systems SSOR's derivation needs -- see that struct's own doc
         // comment for the omega algebra).

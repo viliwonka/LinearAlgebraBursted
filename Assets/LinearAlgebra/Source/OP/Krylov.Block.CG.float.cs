@@ -4,9 +4,9 @@
 // </auto-generated>
 using System;
 using Unity.Collections;
-using LinearAlgebra.Sparse;
+using BULA.Sparse;
 
-namespace LinearAlgebra
+namespace BULA
 {
     public static partial class Krylov {
 

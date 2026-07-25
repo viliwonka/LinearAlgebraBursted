@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // Dense matrix-matrix product C = A * B (the GEMM that most higher-level ops bottom out on, and
     // the cleanest signal for whether the inner kernel vectorises: a SIMD float path should run

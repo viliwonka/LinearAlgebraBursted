@@ -1,7 +1,7 @@
 // Generated
 // Shortcuts for creating new vectors and matrices
 using Unity.Collections;
-using LinearAlgebra;
+using BULA;
 
 //alsoExpand[uint]// widens the iProxy-family copy-replace block below to a 4th (uint) copy, giving
 //boolMxN an int/short/long/uint cross-shortcut set (intVec/shortVec/longVec/uintVec, and the
@@ -10,7 +10,7 @@ using LinearAlgebra;
 //rowHashes/colHashes allocating wrappers need boolMxN.uintVec() specifically, to allocate their
 //uintN result without direct access to boolMxN's private backing field.
 
-namespace LinearAlgebra {
+namespace BULA {
 
     public partial struct boolMxN : IArenaShortcuts
     {

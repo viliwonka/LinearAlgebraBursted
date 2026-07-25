@@ -1,5 +1,5 @@
 //singularFile//
-namespace LinearAlgebra
+namespace BULA
 {
     // Norm selector for Query.argMaxRowNorm / argMaxColNorm.
     // L1 = sum of absolute values (Manhattan magnitude).

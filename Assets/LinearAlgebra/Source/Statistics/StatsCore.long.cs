@@ -8,7 +8,7 @@ using Unity.Collections.LowLevel.Unsafe;
 using System;
 using System.Runtime.CompilerServices;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Generic reduction bodies for the signed integer family (int/short/long), forwarded to by
     // the bare `Stats` facade in Stats.long.cs. Kept SPLIT (intStatsCore/shortStatsCore/

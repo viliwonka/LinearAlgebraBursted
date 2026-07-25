@@ -1,6 +1,6 @@
 using Unity.Mathematics;
 
-namespace LinearAlgebra
+namespace BULA
 {
     public static partial class Krylov {
 

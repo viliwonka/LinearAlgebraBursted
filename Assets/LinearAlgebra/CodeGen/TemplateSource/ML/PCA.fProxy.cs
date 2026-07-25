@@ -2,7 +2,7 @@ using System;
 using Unity.Collections;
 using Unity.Mathematics;
 
-namespace LinearAlgebra.ML
+namespace BULA.ML
 {
     /// <summary>
     /// Principal Component Analysis over a data matrix X (rows = samples n, columns = features p).

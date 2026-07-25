@@ -1,8 +1,8 @@
 using System;
 using Unity.Mathematics;
-using LinearAlgebra.Internal;
+using BULA.Internal;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Triangular-solve primitives (forward/back substitution) — the innermost kernels the direct
     // factorization solvers (LU/CHO/QR/LQ) call once they hold a triangular factor. They live on

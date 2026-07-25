@@ -6,7 +6,7 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Bound-change undo stack for MIP's search (MIP.float.cs's SearchCore): push a tightening, undo
     // back to a marker. Used for the current plunge's dive step, throwaway strong-branch trials

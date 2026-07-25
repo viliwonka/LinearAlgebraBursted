@@ -10,7 +10,7 @@ using Unity.Collections;
 using fProxy4 = Unity.Mathematics.float4;
 //-deleteThis
 
-namespace LinearAlgebra.Internal
+namespace BULA.Internal
 {
     public static unsafe partial class UnsafeOP {
 

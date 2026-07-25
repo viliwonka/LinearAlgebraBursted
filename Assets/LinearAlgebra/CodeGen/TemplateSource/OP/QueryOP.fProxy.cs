@@ -3,7 +3,7 @@ using Unity.Burst;
 using Unity.Collections;
 using System.Runtime.CompilerServices;
 
-using LinearAlgebra.Internal;
+using BULA.Internal;
 //+deleteThis
 // TEMPLATE-ONLY alias: codegen rewrites the fProxy4 token -> float4 / double4 (both real
 // Unity.Mathematics types), so their native operators AND math.* (select/min/abs/...) resolve
@@ -12,7 +12,7 @@ using LinearAlgebra.Internal;
 using fProxy4 = Unity.Mathematics.float4;
 //-deleteThis
 
-namespace LinearAlgebra
+namespace BULA
 {
     // QueryOP: search & selection inside vectors / matrices.
     // Rows are contiguous; columns are strided (stride = N_Cols) — column ops loop with stride.

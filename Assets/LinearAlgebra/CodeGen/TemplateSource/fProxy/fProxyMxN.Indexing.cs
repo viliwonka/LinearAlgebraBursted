@@ -2,7 +2,7 @@ using Unity.Mathematics;
 using System;
 using System.Runtime.CompilerServices;
 
-namespace LinearAlgebra
+namespace BULA
 {
 
     public partial struct fProxyMxN : IDisposable, IUnsafefProxyArray {

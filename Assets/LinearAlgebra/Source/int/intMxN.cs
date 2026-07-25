@@ -8,7 +8,7 @@ using System;
 using System.Runtime.InteropServices;
 
 
-namespace LinearAlgebra
+namespace BULA
 {
 
     // A m x n matrix

@@ -1,7 +1,7 @@
 //singularFile//
 using Unity.Collections;
 
-namespace LinearAlgebra.Control
+namespace BULA.Control
 {
     /// <summary>
     /// Terminal state of an <see cref="MPC.solve"/> call, carried by <see cref="MPCInfo"/>.

@@ -1,7 +1,7 @@
 //singularFile//
 using Unity.Collections;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Finite-difference strategy for <see cref="Optimize.nlsSolve{TF}(ref TF, ref fProxyN, int, fProxy, fProxy, int, NLSJacobianMode, fProxy)"/>'s

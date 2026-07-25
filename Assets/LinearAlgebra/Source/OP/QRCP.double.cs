@@ -8,9 +8,9 @@ using System.Runtime.CompilerServices;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
-using LinearAlgebra.Internal;
+using BULA.Internal;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Column-pivoted (rank-revealing) QR — Businger-Golub. Split out of <see cref="QR"/> because

@@ -1,4 +1,4 @@
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Row predicate for struct-functor predicate queries. Reads A[row, 0..N_Cols-1]

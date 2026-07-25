@@ -1,9 +1,9 @@
 using System;
 using Unity.Collections.LowLevel.Unsafe;
-using LinearAlgebra.Internal;
-using LinearAlgebra.Sparse;
+using BULA.Internal;
+using BULA.Sparse;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Componentwise ops on a BSR matrix's stored entries. Only ops with f(0) = 0 belong here —
     // they leave the implicit zero blocks untouched, so the result equals the dense op applied
@@ -32,7 +32,7 @@ namespace LinearAlgebra
         /// <summary>
         /// y += a * x over the stored entries. Requires x and y to share an IDENTICAL sparsity
         /// pattern (same block grid and same block placements — see
-        /// <see cref="LinearAlgebra.Sparse.BSR.samePattern"/>); throws otherwise. The typical use
+        /// <see cref="BULA.Sparse.BSR.samePattern"/>); throws otherwise. The typical use
         /// is perturbing a matrix (A' = A + eps*B) ahead of a warm re-solve.
         /// </summary>
         public static void addScaledInPlace(this in fProxyBSR y, fProxy a, in fProxyBSR x)
@@ -45,7 +45,7 @@ namespace LinearAlgebra
     }
 }
 
-namespace LinearAlgebra.Sparse
+namespace BULA.Sparse
 {
     public static partial class BSR
     {

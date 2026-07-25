@@ -1,7 +1,7 @@
 using System;
-using LinearAlgebra.Sparse;
+using BULA.Sparse;
 
-namespace LinearAlgebra
+namespace BULA
 {
     public static partial class Analysis
     {

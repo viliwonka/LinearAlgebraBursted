@@ -5,7 +5,7 @@
 using System.IO;
 using System.Text;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Managed (allocating, NON-Burst) text / CSV exporters for bool matrices and vectors,
     // mirroring the sibling float/double and int/short/long exporters next to this file. bool has

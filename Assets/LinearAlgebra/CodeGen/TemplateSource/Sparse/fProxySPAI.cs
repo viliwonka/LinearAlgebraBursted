@@ -1,16 +1,16 @@
 using System;
-using LinearAlgebra;
+using BULA;
 using Unity.Collections;
 using Unity.Mathematics;
 
-namespace LinearAlgebra.Sparse
+namespace BULA.Sparse
 {
     /// <summary>
     /// Row-oriented sparse approximate inverse (SPAI) over a square BSR: builds M ≈ A⁻¹ directly
     /// (no factorization) by minimizing ‖M A − I‖_F row by row over a STATIC pattern (default:
     /// A's own row pattern) -- the nonsymmetric sibling of <see cref="fProxyIC0"/>/<see
     /// cref="fProxyFSAI"/>'s counterpart <see cref="fProxyILU0"/>, intended for
-    /// <see cref="LinearAlgebra.Krylov"/>.biCGStab. M is NOT symmetric even for symmetric A --
+    /// <see cref="BULA.Krylov"/>.biCGStab. M is NOT symmetric even for symmetric A --
     /// it is NOT a valid CG/MINRES preconditioner.
     ///
     /// Each row is an independent small least-squares problem (row i's support J_i, shadow column

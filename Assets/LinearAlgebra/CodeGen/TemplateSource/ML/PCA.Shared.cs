@@ -1,7 +1,7 @@
 using System;
 using Unity.Mathematics;
 
-namespace LinearAlgebra.ML
+namespace BULA.ML
 {
     // Type-agnostic guard factored out of the per-type PCA template so the merged partial
     // class (float+double emit the same `PCA`) holds this int-only signature exactly once.

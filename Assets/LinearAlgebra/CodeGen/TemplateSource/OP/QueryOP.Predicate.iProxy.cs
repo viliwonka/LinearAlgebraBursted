@@ -1,7 +1,7 @@
 using System.Runtime.CompilerServices;
 using Unity.Mathematics;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Query Group A for integer types: flat / scalar predicate ops (findFirst, count, any, all,
     // findAll). Concrete-shape overloads (iProxyN / iProxyMxN) forward to the generic bodies in

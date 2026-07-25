@@ -4,9 +4,9 @@
 // </auto-generated>
 using System;
 
-using LinearAlgebra.Internal;
+using BULA.Internal;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Fused vector kernels for Krylov solvers: each wrapper
     // folds an in-place update with its trailing reduction, or two sibling updates plus a

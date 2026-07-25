@@ -7,9 +7,9 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-using LinearAlgebra;
+using BULA;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // GENERATED per-dtype half of the determinism conformance harness's "direct" groups (dense
     // linear algebra: hash-selftest, blas-dense, elementwise-core, norms, qr-family, lu, cholesky).

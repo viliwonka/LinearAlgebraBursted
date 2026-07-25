@@ -5,10 +5,10 @@ using Unity.Burst.Intrinsics;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 //+deleteThis
-using LinearAlgebra.mathProxies; // TEMPLATE-ONLY: fProxy4 stub (-> float4/double4)
+using BULA.mathProxies; // TEMPLATE-ONLY: fProxy4 stub (-> float4/double4)
 //-deleteThis
 
-namespace LinearAlgebra.Internal
+namespace BULA.Internal
 {
     // Widest per-dtype SIMD vector for level-1 kernels: 8 float lanes (one AVX ymm register)
     // or 4 double lanes (double4 — 256 bits is already double's full AVX2 width). Kernels

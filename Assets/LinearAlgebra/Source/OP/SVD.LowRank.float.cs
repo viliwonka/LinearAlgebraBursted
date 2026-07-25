@@ -7,12 +7,12 @@ using System;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
-using LinearAlgebra.Internal;
+using BULA.Internal;
 
 using Random = Unity.Mathematics.Random;
-using static LinearAlgebra.Internal.Helpers;
+using static BULA.Internal.Helpers;
 
-namespace LinearAlgebra
+namespace BULA
 {
     public static partial class SVD {
 

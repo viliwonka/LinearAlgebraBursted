@@ -2,7 +2,7 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using System.Runtime.CompilerServices;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// A zero-alloc index buffer backed by an UnsafeList&lt;int&gt;.

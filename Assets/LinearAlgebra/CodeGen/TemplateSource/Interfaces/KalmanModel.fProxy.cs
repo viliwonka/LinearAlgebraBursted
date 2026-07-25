@@ -1,4 +1,4 @@
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Nonlinear state-transition model for the Extended Kalman Filter

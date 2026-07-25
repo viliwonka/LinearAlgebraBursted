@@ -7,9 +7,9 @@ using System;
 
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
-using LinearAlgebra.Internal;
+using BULA.Internal;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Dot products, outer product, matrix multiply, transpose, and in-place Householder reflection.

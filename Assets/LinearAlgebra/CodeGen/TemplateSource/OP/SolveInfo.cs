@@ -1,7 +1,7 @@
 //singularFile//
 using Unity.Collections;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Result of a least-squares Krylov solve (<c>lsqr</c> / <c>lsmr</c>). Every LS

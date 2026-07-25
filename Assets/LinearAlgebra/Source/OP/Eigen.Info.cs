@@ -5,7 +5,7 @@
 //singularFile//
 using Unity.Collections;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Result of an iterative dominant/extremal-eigenpair solve (<c>Eigen.powerIteration</c> /

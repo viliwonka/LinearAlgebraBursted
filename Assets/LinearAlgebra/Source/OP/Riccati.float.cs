@@ -7,7 +7,7 @@ using System;
 using Unity.Collections;
 using Unity.Mathematics;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // ================================================================================================
     // Discrete algebraic Riccati equation (DARE) solver, shared by control (LQR) and estimation

@@ -1,6 +1,6 @@
 using Unity.Mathematics;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Periodic wave functors (each : IfProxyScalarFunction) for building wavetables / LFOs. Eval(t)

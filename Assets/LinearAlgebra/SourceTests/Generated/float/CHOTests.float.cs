@@ -2,8 +2,8 @@
 //   Generated from Assets/LinearAlgebra/CodeGen/TemplateSourceTests/fProxy/CHOTests.fProxy.cs
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
-using LinearAlgebra;
-using LinearAlgebra.Gallery;
+using BULA;
+using BULA.Gallery;
 using NUnit.Framework;
 using Unity.Burst;
 using Unity.Collections;
@@ -400,11 +400,11 @@ public class floatCHOTests
             // LU solve on the same system (in-place LU with pivot).
             var lu = new floatMxN(in A, Allocator.Temp);
             var pivot = new Pivot(dim, Allocator.Temp);
-            bool luOk = LinearAlgebra.LU.decompInPlace(ref lu, ref pivot);
+            bool luOk = BULA.LU.decompInPlace(ref lu, ref pivot);
             Assert.IsTrue(luOk);
 
             var bLU = new floatN(in b, Allocator.Temp);
-            LinearAlgebra.LU.decompSolve(ref lu, in pivot, ref bLU);
+            BULA.LU.decompSolve(ref lu, in pivot, ref bLU);
             pivot.Dispose();
 
             // The two solutions must agree.

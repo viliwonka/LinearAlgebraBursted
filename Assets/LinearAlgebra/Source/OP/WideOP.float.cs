@@ -10,7 +10,7 @@ using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 
 
-namespace LinearAlgebra.Internal
+namespace BULA.Internal
 {
     // Widest per-dtype SIMD vector for level-1 kernels: 8 float lanes (one AVX ymm register)
     // or 4 double lanes (double4 — 256 bits is already double's full AVX2 width). Kernels

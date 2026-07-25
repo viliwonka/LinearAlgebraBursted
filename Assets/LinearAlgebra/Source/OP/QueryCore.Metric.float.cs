@@ -4,7 +4,7 @@
 // </auto-generated>
 using System.Runtime.CompilerServices;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Metric-direction helpers for Query's nearest/farthest/k-selection kernels. They take no
     // float parameter (or return float), so hosting them on the merged float+double `Query`

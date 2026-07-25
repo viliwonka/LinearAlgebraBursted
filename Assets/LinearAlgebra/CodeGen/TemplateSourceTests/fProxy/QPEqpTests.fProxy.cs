@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-using LinearAlgebra;
+using BULA;
 using NUnit.Framework;
 using Unity.Burst;
 using Unity.Collections;

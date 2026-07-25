@@ -1,6 +1,6 @@
 using Unity.Collections;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Struct-functor entry point the Krylov battery drives a square (single-RHS) solver family

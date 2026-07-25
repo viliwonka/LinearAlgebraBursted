@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // Primitive Level-1 / Level-2 BLAS kernels in isolation -- the layer every solver bottoms out on,
     // measured directly so a reduction-vectorisation change (e.g. the 4-accumulator matVecDot rework)

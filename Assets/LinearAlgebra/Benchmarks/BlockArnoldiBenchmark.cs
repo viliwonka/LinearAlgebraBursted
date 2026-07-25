@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // Block-Arnoldi (bgmres / bgcrodr) timing over dense nonsymmetric diagonally-dominant systems
     // (A = randMat(-1,1) + 2n*I), at three (n, s) points chosen to span the block-Arnoldi step's cost

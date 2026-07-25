@@ -7,7 +7,7 @@ using Unity.Collections.LowLevel.Unsafe;
 using System;
 using System.Runtime.InteropServices;
 
-namespace LinearAlgebra.Sparse
+namespace BULA.Sparse
 {
     /// <summary>
     /// Block-CSR (BSR) sparse matrix: a uniform grid of BlockRows x BlockCols dense blocks,

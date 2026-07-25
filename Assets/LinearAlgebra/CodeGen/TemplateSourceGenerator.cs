@@ -5,7 +5,7 @@ using System.Linq;
 using UnityCodeGen;
 using UnityEngine;
 
-namespace LinearAlgebra.CodeGen
+namespace BULA.CodeGen
 {
     [Generator]
     public class TemplateSourceGenerator : ICodeGenerator // Inherits ICodeGenerator

@@ -6,7 +6,7 @@ using System;
 
 using Unity.Mathematics;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// 1D discrete Fourier transform. Like <c>Eigen.valuesQRInPlace</c>, this avoids a complex TYPE by storing

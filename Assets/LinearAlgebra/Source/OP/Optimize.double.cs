@@ -8,9 +8,9 @@ using System.Runtime.CompilerServices;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
-using LinearAlgebra.Internal;
+using BULA.Internal;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // IdoubleScalarFunction (the shared Burst "lambda" functor used by optimizers AND generators)
     // lives in Interfaces/ScalarFunction.double.cs; the derivative/gradient interfaces below are optimizer-specific.

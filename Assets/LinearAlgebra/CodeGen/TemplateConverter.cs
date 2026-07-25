@@ -8,7 +8,7 @@ using UnityCodeGen;
 
 using UnityEngine;
 
-namespace LinearAlgebra.CodeGen { 
+namespace BULA.CodeGen { 
 
     public class TemplateConverter {
 

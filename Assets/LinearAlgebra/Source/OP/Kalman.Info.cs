@@ -5,7 +5,7 @@
 //singularFile//
 using Unity.Collections;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Terminal state of a <see cref="Kalman.update"/> / <see cref="Kalman.ekfUpdate{TMeas}"/> call,

@@ -2,7 +2,7 @@
 //   Generated from Assets/LinearAlgebra/CodeGen/TemplateSource/ChooseMarkerDemo.iProxy.cs
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
-namespace LinearAlgebra
+namespace BULA
 {
     // Exercises the //+choose[...] codegen marker on the int/short/long side, where literal suffix
     // rules differ per type. Internal: exists only for ChooseMarkerTests, not part of the library API.

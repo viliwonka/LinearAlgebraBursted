@@ -1,7 +1,7 @@
 using System.Runtime.CompilerServices;
 using Unity.Mathematics;
 
-namespace LinearAlgebra.Internal
+namespace BULA.Internal
 {
     // Scalar helpers shared by the Householder/QL/bidiagonal kernels (QR, LQ, Bidiag, SVD, Eigen).
     internal static partial class Helpers

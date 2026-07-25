@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // Shared, dtype-agnostic row formatter. Public so the code-generated per-dtype build methods
     // (in a separate template assembly) can call it — same pattern as TallWideFmt.

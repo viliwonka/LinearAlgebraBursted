@@ -2,7 +2,7 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Pseudocost + reliability branching, cross-checked against
     // HiGHS's mip/HighsPseudocost.h and mip/HighsSearch.cpp (selectBranchingCandidate /

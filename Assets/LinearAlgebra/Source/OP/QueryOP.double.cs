@@ -7,10 +7,10 @@ using Unity.Burst;
 using Unity.Collections;
 using System.Runtime.CompilerServices;
 
-using LinearAlgebra.Internal;
+using BULA.Internal;
 
 
-namespace LinearAlgebra
+namespace BULA
 {
     // QueryOP: search & selection inside vectors / matrices.
     // Rows are contiguous; columns are strided (stride = N_Cols) — column ops loop with stride.

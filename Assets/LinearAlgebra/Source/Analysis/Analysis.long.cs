@@ -3,7 +3,7 @@
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Structural predicates for the integer family (int/short/long/uint).
     // Exact-equality integer predicates: integer

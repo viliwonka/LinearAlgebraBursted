@@ -16,10 +16,10 @@
 .PARAMETER Method
   Fully-qualified static entry point. Defaults to the combined kernel suite
   (GEMM, LU, Cholesky, QR). Pass a single kernel, e.g.
-  LinearAlgebra.Benchmarks.QRBenchmark.Run, to run just one.
+  BULA.Benchmarks.QRBenchmark.Run, to run just one.
 #>
 param(
-  [string]$Method = "LinearAlgebra.Benchmarks.AllBenchmarks.Run",
+  [string]$Method = "BULA.Benchmarks.AllBenchmarks.Run",
   # Pin the benchmark to the FREQUENCY CCD (the non-V-Cache die) so single-thread
   # timings are repeatable on a dual-CCD X3D chip (e.g. 9950X3D). By default we
   # pin to the UPPER half of logical processors, which on the standard enumeration

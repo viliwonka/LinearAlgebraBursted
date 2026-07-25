@@ -2,7 +2,7 @@ using System;
 using System.Globalization;
 using System.Text;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // Shared, dtype-agnostic table formatting + config for SvdComparisonBenchmark. Public so the
     // code-generated per-dtype measure methods (in a separate template assembly) can reach them.

@@ -136,7 +136,7 @@ if (-not $NoRegen) {
 }
 
 $root   = Get-ProjectRoot
-$Method = "LinearAlgebra.Benchmarks.DeterminismReport.Run"
+$Method = "BULA.Benchmarks.DeterminismReport.Run"
 $Log    = Join-Path $root "TestResults\determinism.log"
 
 Write-Host "Running determinism report ($Method)..."

@@ -6,7 +6,7 @@ using System;
 using Unity.Collections;
 using Unity.Mathematics;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Scalar matrix characterizations (trace / condition number / numerical rank / determinant).
     // These summarize a matrix as a single number, so they live on Analysis alongside the structural

@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // The end-to-end "solve Ax=b" entry points, as opposed to decompositions.md's factorization-only
     // benchmarks: LU.decompSolve, LU.decompInPlace+decompSolveTransA, CHO.decomp+decompSolve,

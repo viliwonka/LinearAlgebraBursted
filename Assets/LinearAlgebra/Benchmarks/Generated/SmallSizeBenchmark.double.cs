@@ -10,9 +10,9 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-using LinearAlgebra;
+using BULA;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // GENERATED per-dtype half of SmallSizeBenchmark (timed IJobs + build+measure methods returning
     // Bench.Stat). The dtype-agnostic harness (size lists, shape formatters, Run, Section) is

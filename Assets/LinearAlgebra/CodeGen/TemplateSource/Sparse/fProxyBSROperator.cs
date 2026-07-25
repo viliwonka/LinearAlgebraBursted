@@ -1,6 +1,6 @@
-using LinearAlgebra;
+using BULA;
 
-namespace LinearAlgebra.Sparse
+namespace BULA.Sparse
 {
     /// <summary>
     /// Thin <see cref="IfProxyLinearOperator"/> wrapper over a compressed <see cref="fProxyBSR"/>.

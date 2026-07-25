@@ -7,14 +7,14 @@ using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-using LinearAlgebra;
+using BULA;
 //+deleteThis
 // TEMPLATE-ONLY alias: codegen rewrites the fProxy4 token -> float4 / double4 (real Unity.Mathematics
 // types), so its native operators + field access resolve directly. See docs/dev/spec-alias-simd-proxies.md.
 using fProxy4 = Unity.Mathematics.float4;
 //-deleteThis
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // GENERATED per-dtype half of RooflineBenchmark (timed IJobs + build+measure methods). The
     // dtype-agnostic harness (Section, size list) is hand-written in

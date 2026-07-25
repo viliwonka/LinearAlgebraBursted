@@ -1,4 +1,4 @@
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // Default -executeMethod entry point (see Tools/benchmark.ps1). Runs every throughput kernel
     // section into one combined report (TestResults/benchmark-all.txt). For an A/B run of a single

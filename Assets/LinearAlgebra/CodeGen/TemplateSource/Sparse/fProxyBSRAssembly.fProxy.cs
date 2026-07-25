@@ -1,9 +1,9 @@
 using System;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
-using LinearAlgebra;
+using BULA;
 
-namespace LinearAlgebra.Sparse
+namespace BULA.Sparse
 {
     /// <summary>
     /// Precomputed triplet-to-slot mapping for per-frame reassembly of a FIXED-topology BSR

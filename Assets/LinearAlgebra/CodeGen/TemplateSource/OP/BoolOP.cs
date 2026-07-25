@@ -1,9 +1,9 @@
 using System;
 using System.Runtime.CompilerServices;
 using Unity.Burst;
-using LinearAlgebra.Internal;
+using BULA.Internal;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// In-place boolean-buffer logic ops (notInPlace/orInPlace/andInPlace/xorInPlace/equalsInPlace/

@@ -1,9 +1,9 @@
 using System;
 using Unity.Collections;
 using Unity.Mathematics;
-using LinearAlgebra.Sparse;
+using BULA.Sparse;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Shift-invert operator: Apply(x) = (A - shift*I)⁻¹ x, computed by an inner MINRES-QLP solve

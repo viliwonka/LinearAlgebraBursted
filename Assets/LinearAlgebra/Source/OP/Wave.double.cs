@@ -4,7 +4,7 @@
 // </auto-generated>
 using Unity.Mathematics;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Periodic wave functors (each : IdoubleScalarFunction) for building wavetables / LFOs. Eval(t)

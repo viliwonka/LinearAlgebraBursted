@@ -3,7 +3,7 @@
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
 //singularFile//
-namespace LinearAlgebra.ML
+namespace BULA.ML
 {
     // Seeding strategy for KMeans.fit.
     // KMeansPlusPlus = D²-weighted seeding (Arthur & Vassilvitskii 2007); O(k·N·D);

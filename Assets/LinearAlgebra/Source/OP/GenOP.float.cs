@@ -8,7 +8,7 @@ using System.Runtime.CompilerServices;
 using Unity.Collections;
 using Unity.Mathematics;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Procedural generators: axes (linspace/arange), curve sampling (sample over any

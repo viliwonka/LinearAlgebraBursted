@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 
-using LinearAlgebra.CodeGen;
+using BULA.CodeGen;
 using UnityCodeGen;
 
 namespace CodegenBootstrap

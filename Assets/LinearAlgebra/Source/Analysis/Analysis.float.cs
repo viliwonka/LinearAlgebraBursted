@@ -4,8 +4,8 @@
 // </auto-generated>
 using Unity.Mathematics;
 using Unity.Burst;
-using LinearAlgebra.Internal;
-namespace LinearAlgebra
+using BULA.Internal;
+namespace BULA
 {
 
     public static partial class Analysis {

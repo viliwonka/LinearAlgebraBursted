@@ -5,10 +5,10 @@
 using System;
 using System.Runtime.CompilerServices;
 using Unity.Collections.LowLevel.Unsafe;
-using LinearAlgebra;
-using LinearAlgebra.Internal;
+using BULA;
+using BULA.Internal;
 
-namespace LinearAlgebra.Sparse
+namespace BULA.Sparse
 {
     /// <summary>
     /// Sparse matvec kernels over doubleBSR (block-CSR). The shape mirrors Blas.dot's

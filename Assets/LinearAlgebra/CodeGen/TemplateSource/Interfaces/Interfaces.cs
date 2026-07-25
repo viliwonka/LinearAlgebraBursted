@@ -9,7 +9,7 @@ using Unity.Collections.LowLevel.Unsafe;
 Useful for per-element operations which can happen on both vector or matrix types.
 */
 
-namespace LinearAlgebra
+namespace BULA
 {
     //+copyReplace
     public interface IUnsafefProxyArray

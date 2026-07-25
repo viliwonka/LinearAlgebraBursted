@@ -1,4 +1,4 @@
-namespace LinearAlgebra
+namespace BULA
 {
     // Internal generic bodies for Query's integer Group-A predicate ops. The public Query surface
     // exposes concrete-shape overloads (iProxyN / iProxyMxN) that forward here with the array type T

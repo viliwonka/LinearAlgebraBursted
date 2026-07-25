@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // Randomized SVD (top-k, k=16) and the two pseudo-inverse solvers that ride the Golub-Kahan SVD.
     // All three are time-only: the cost is dominated by iterative convergence, so GFLOP/s would be

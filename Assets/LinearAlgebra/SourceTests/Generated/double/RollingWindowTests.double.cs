@@ -4,8 +4,8 @@
 // </auto-generated>
 using System;
 
-using LinearAlgebra;
-using LinearAlgebra.Realtime;
+using BULA;
+using BULA.Realtime;
 
 using NUnit.Framework;
 using Unity.Burst;

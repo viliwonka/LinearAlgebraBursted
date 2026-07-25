@@ -1,9 +1,9 @@
 using System;
-using LinearAlgebra;
+using BULA;
 using Unity.Mathematics;
 using Unity.Collections;
 
-namespace LinearAlgebra.Sparse
+namespace BULA.Sparse
 {
     /// <summary>Setup/Apply knobs for <see cref="fProxyChebyshev"/>.</summary>
     public struct fProxyChebyshevOptions

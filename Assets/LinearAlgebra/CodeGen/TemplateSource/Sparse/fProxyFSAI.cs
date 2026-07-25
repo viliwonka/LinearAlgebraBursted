@@ -1,10 +1,10 @@
 using System;
-using LinearAlgebra;
+using BULA;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 
-namespace LinearAlgebra.Sparse
+namespace BULA.Sparse
 {
     /// <summary>
     /// Factored sparse approximate inverse (FSAI, Kolotilina-Yeremin/Kaporin) over a square SPD
@@ -14,7 +14,7 @@ namespace LinearAlgebra.Sparse
     /// factorization dependency, unlike IC0) -- setup has no global breakdown cascade, and Apply
     /// is two plain BSR spMVs (no triangular solve). M is symmetric by construction and SPD
     /// whenever G is nonsingular (guaranteed by the Cholesky-scaled construction below), so FSAI
-    /// is a valid <see cref="LinearAlgebra.Krylov"/>.cg/minres preconditioner.
+    /// is a valid <see cref="BULA.Krylov"/>.cg/minres preconditioner.
     ///
     /// A local system that is not SPD retries with an escalating diagonal shift on JUST that row
     /// (rows are independent, so no global refactorization is needed); the worst shift used across

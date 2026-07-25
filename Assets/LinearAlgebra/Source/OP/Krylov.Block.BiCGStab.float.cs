@@ -5,9 +5,9 @@
 using System;
 using Unity.Collections;
 using Unity.Mathematics;
-using LinearAlgebra.Sparse;
+using BULA.Sparse;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// General (non-symmetric-safe) dense block operator. Unlike <see cref="floatDenseOperator"/>'s

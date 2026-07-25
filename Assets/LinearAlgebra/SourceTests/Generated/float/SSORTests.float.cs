@@ -3,9 +3,9 @@
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
 using System;
-using LinearAlgebra;
-using LinearAlgebra.Sparse;
-using LinearAlgebra.Gallery;
+using BULA;
+using BULA.Sparse;
+using BULA.Gallery;
 using NUnit.Framework;
 using Unity.Burst;
 using Unity.Collections;

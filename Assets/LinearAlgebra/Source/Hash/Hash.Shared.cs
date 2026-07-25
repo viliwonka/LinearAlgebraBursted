@@ -4,7 +4,7 @@
 // </auto-generated>
 using System.Runtime.CompilerServices;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // Type-agnostic byte-stream hash kernel shared by every element-type family (float/double/
     // int/short/long/uint/bool). A single, non-templated file: the per-type wrapper files all

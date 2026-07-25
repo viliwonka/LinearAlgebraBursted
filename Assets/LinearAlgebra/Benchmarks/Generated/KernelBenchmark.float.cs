@@ -9,10 +9,10 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-using LinearAlgebra;
-using LinearAlgebra.Internal;
+using BULA;
+using BULA.Internal;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // GENERATED per-dtype half of KernelBenchmark (timed IJobs + build+measure methods). The
     // dtype-agnostic harness (Kern selectors, Reductions table, REPS constants, Run, Section) is

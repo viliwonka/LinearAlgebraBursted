@@ -2,7 +2,7 @@
 //   Generated from Assets/LinearAlgebra/CodeGen/TemplateSourceTests/KrylovBatteryProfile.cs
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Tags a Krylov battery gallery matrix (what it structurally IS) and, on the solver side,

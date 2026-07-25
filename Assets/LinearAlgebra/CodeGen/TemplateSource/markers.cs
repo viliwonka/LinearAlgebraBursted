@@ -1,4 +1,4 @@
-namespace LinearAlgebra
+namespace BULA
 {
 
     public static class Marker

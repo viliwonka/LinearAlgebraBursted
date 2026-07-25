@@ -8,7 +8,7 @@ using Unity.Burst;
 using Unity.Collections.LowLevel.Unsafe;
 
 
-namespace LinearAlgebra.Internal
+namespace BULA.Internal
 {
     public static unsafe partial class UnsafeOP {
 

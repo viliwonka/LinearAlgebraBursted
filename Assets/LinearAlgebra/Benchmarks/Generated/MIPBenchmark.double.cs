@@ -9,9 +9,9 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-using LinearAlgebra;
+using BULA;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // GENERATED per-dtype half of MIPBenchmark (the timed IJob + the per-section instance-builders +
     // build+measure methods). The dtype-agnostic harness (sizes/seeds, row formatters, Run, Section) is

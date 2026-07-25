@@ -5,7 +5,7 @@ using System.Runtime.CompilerServices;
 //uint vector/matrix hash/rowHashes/colHashes support alongside int/short/long, exactly like uint
 //already rides along on Blas/OP.Dot.iProxy.cs and the Shortcuts.cs cross-type allocators.
 
-namespace LinearAlgebra
+namespace BULA
 {
     public static partial class Hash
     {

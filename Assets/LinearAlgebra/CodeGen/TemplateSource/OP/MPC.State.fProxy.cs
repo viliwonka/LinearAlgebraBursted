@@ -2,9 +2,9 @@ using System;
 
 using Unity.Collections;
 using Unity.Mathematics;
-using LinearAlgebra.Internal;
+using BULA.Internal;
 
-namespace LinearAlgebra.Control
+namespace BULA.Control
 {
     // ================================================================================================
     // Buffer-carrying state for MPC.solve: a linear time-invariant model x_{k+1} = A x_k + B u_k is

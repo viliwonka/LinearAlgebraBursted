@@ -9,9 +9,9 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-using LinearAlgebra;
+using BULA;
 
-namespace LinearAlgebra.Benchmarks
+namespace BULA.Benchmarks
 {
     // GENERATED per-dtype half of BlockCGBenchmark: two timed IJobs (block-CG over s RHS at once, vs
     // the scalar loop of s independent cg solves) + the build+measure method. The dtype-agnostic

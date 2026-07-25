@@ -1,7 +1,7 @@
 //singularFile//
 using Unity.Collections;
 
-namespace LinearAlgebra
+namespace BULA
 {
     /// <summary>
     /// Result of a blocked LOBPCG solve (<c>Eigen.lobpcg</c>). Every overload RETURNS this by

@@ -4,9 +4,9 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 
-using LinearAlgebra.Internal;
+using BULA.Internal;
 
-namespace LinearAlgebra
+namespace BULA
 {
     // ================================================================================================
     // Bounded-variable PRIMAL revised simplex -- the LPMethod.RevisedSimplex backend, stage 1 of the

@@ -3,9 +3,9 @@
 //   DO NOT EDIT BY HAND - edit the template and run Tools/regen.ps1.
 // </auto-generated>
 using Unity.Burst;
-using LinearAlgebra.Internal;
+using BULA.Internal;
 
-namespace LinearAlgebra
+namespace BULA
 {
 
     // Class summary lives on the fProxy partial (SelectOP.fProxy.cs). Bool-buffer select overloads.
@@ -57,7 +57,7 @@ namespace LinearAlgebra
     }
 }
 
-namespace LinearAlgebra.Internal
+namespace BULA.Internal
 {
     public static unsafe partial class UnsafeSelectOP
     {

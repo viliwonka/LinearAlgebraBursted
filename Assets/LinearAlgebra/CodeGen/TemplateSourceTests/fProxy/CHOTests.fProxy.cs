@@ -1,5 +1,5 @@
-using LinearAlgebra;
-using LinearAlgebra.Gallery;
+using BULA;
+using BULA.Gallery;
 using NUnit.Framework;
 using Unity.Burst;
 using Unity.Collections;
@@ -396,11 +396,11 @@ public class fProxyCHOTests
             // LU solve on the same system (in-place LU with pivot).
             var lu = new fProxyMxN(in A, Allocator.Temp);
             var pivot = new Pivot(dim, Allocator.Temp);
-            bool luOk = LinearAlgebra.LU.decompInPlace(ref lu, ref pivot);
+            bool luOk = BULA.LU.decompInPlace(ref lu, ref pivot);
             Assert.IsTrue(luOk);
 
             var bLU = new fProxyN(in b, Allocator.Temp);
-            LinearAlgebra.LU.decompSolve(ref lu, in pivot, ref bLU);
+            BULA.LU.decompSolve(ref lu, in pivot, ref bLU);
             pivot.Dispose();
 
             // The two solutions must agree.
