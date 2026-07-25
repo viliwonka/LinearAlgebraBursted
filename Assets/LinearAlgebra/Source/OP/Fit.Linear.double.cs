@@ -98,6 +98,15 @@ namespace BULA
             bool ok = false;
             for (int it = 0; it < maxIter; it++)
             {
+                // A REDESCENDING loss (doubleTukeyLoss) drives the weight to exactly zero past its
+                // scale, so a starting fit far from every point can zero the whole design. Solving
+                // that yields NaN, and returning it as success would be a false certificate -- the
+                // caller cannot tell a converged fit from a collapsed one. Stop honestly instead.
+                // doubleSubspaceIrls guards the same way for the geometric fits.
+                double sw = (double)0;
+                for (int i = 0; i < m; i++) sw += w[i];
+                if (!(sw > (double)0)) { ok = false; break; }
+
                 for (int i = 0; i < m; i++)
                 {
                     double s = math.sqrt(math.max(w[i], (double)0));

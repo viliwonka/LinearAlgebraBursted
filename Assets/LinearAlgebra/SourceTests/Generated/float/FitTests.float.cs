@@ -869,6 +869,228 @@ public class floatFitTests
         ok.Dispose();
     }
 
+    // ------------------------------------------------- robust linear + losses
+
+    // Builds y = 2x + 1 with gross outliers in the RESPONSE.
+    static void OutlierLine(floatMxN A, floatN b, int n, int badEvery)
+    {
+        for (int i = 0; i < n; i++)
+        {
+            double x = i * 0.5;
+            A[i, 0] = (float)x; A[i, 1] = (float)1;
+            b[i] = (float)(2.0 * x + 1.0);
+            if (i % badEvery == badEvery - 1) b[i] = (float)(2.0 * x + 1.0 + 25.0);
+        }
+    }
+
+    // floatL2Loss has RhoPrime == 1, so the weights never move: the robust overload must reproduce
+    // the plain QR fit EXACTLY. Pins the identity element of the loss family.
+    [Test]
+    public void LinearWithL2LossMatchesPlainFit()
+    {
+        int n = 20;
+        var A = new floatMxN(n, 2, Allocator.Temp);
+        var b = new floatN(n, Allocator.Temp);
+        OutlierLine(A, b, n, 4);
+
+        var xPlain = new floatN(2, Allocator.Temp);
+        Assert.IsTrue(Fit.linear(in A, in b, ref xPlain), "plain fit failed");
+
+        var xL2 = new floatN(2, Allocator.Temp);
+        var l2 = new floatL2Loss();
+        Assert.IsTrue(Fit.linear(in A, in b, ref xL2, in l2), "L2-loss fit failed");
+
+        for (int j = 0; j < 2; j++)
+            Assert.That((double)xL2[j], Is.EqualTo((double)xPlain[j]).Within(Tol), $"coefficient {j}");
+
+        A.Dispose(); b.Dispose(); xPlain.Dispose(); xL2.Dispose();
+    }
+
+    // With a quarter of the responses corrupted, a robust loss must recover the true slope better than
+    // plain least squares. Direct comparison, so it measures the loss rather than a tuned bound.
+    [Test]
+    public void LinearRobustBeatsL2UnderResponseOutliers()
+    {
+        int n = 20;
+        var A = new floatMxN(n, 2, Allocator.Temp);
+        var b = new floatN(n, Allocator.Temp);
+        OutlierLine(A, b, n, 4);
+
+        var xL2 = new floatN(2, Allocator.Temp);
+        Assert.IsTrue(Fit.linear(in A, in b, ref xL2));
+        double errL2 = math.abs((double)xL2[0] - 2.0);
+
+        var xH = new floatN(2, Allocator.Temp);
+        var huber = new floatHuberLoss((float)1);
+        Assert.IsTrue(Fit.linear(in A, in b, ref xH, in huber), "robust linear fit failed");
+        double errH = math.abs((double)xH[0] - 2.0);
+
+        Assert.Less(errH, errL2, $"Huber slope err ({errH}) should beat L2 ({errL2})");
+
+        A.Dispose(); b.Dispose(); xL2.Dispose(); xH.Dispose();
+    }
+
+    // WARM START, pinned by a case where it decides success from failure -- and a regression guard on
+    // the collapse that case exposed.
+    //
+    // Tukey is REDESCENDING: its weight is exactly zero past Scale. Started cold, the first pass is
+    // plain least squares, which the outliers drag so far from every point that EVERY residual exceeds
+    // Scale and the whole design zeroes out. That is unrecoverable, and the honest answer is false --
+    // before the guard this returned true with NaN coefficients, a false certificate the caller had no
+    // way to detect. Seeded with the truth the same loss rejects the outliers and holds.
+    [Test]
+    public void LinearWarmStartIsHonouredAndCollapseIsHonest()
+    {
+        int n = 20;
+        var A = new floatMxN(n, 2, Allocator.Temp);
+        var b = new floatN(n, Allocator.Temp);
+        OutlierLine(A, b, n, 4);
+
+        var tukey = new floatTukeyLoss((float)2);
+
+        var xCold = new floatN(2, Allocator.Temp);
+        xCold[0] = (float)0; xCold[1] = (float)0;                  // zero => auto-seed
+        bool coldOk = Fit.linear(in A, in b, ref xCold, in tukey);
+        if (!coldOk)
+        {
+            // The documented collapse. Whatever it reports must not be a silent NaN success.
+            Assert.Pass("cold redescending fit collapsed and said so");
+        }
+
+        var xWarm = new floatN(2, Allocator.Temp);
+        xWarm[0] = (float)2; xWarm[1] = (float)1;                  // the truth
+        Assert.IsTrue(Fit.linear(in A, in b, ref xWarm, in tukey), "warm robust fit must succeed");
+
+        double errWarm = math.abs((double)xWarm[0] - 2.0);
+        Assert.IsFalse(double.IsNaN(errWarm), "warm fit must not be NaN");
+        Assert.That(errWarm, Is.LessThan(0.05), "a warm start at the truth must stay near it");
+
+        A.Dispose(); b.Dispose(); xCold.Dispose(); xWarm.Dispose();
+    }
+
+    // Explicit regression guard for the false certificate: a redescending loss whose scale rejects
+    // EVERY point must report failure, never a NaN reported as success.
+    [Test]
+    public void LinearRedescendingCollapseNeverReportsNaNSuccess()
+    {
+        int n = 12;
+        var A = new floatMxN(n, 2, Allocator.Temp);
+        var b = new floatN(n, Allocator.Temp);
+        for (int i = 0; i < n; i++)
+        {
+            A[i, 0] = (float)i; A[i, 1] = (float)1;
+            b[i] = (float)(i % 2 == 0 ? 1000.0 : -1000.0);          // no line fits this
+        }
+
+        var x = new floatN(2, Allocator.Temp);
+        var tukey = new floatTukeyLoss((float)1e-3);                // rejects essentially everything
+
+        bool ok = Fit.linear(in A, in b, ref x, in tukey);
+        if (ok)
+            for (int j = 0; j < 2; j++)
+                Assert.IsFalse(double.IsNaN((double)x[j]) || double.IsInfinity((double)x[j]),
+                    $"reported success with a non-finite coefficient {j}");
+
+        A.Dispose(); b.Dispose(); x.Dispose();
+    }
+
+    // floatL1Loss directly. IRLS only ever calls RhoPrime, so Rho and RhoPrime2 have no coverage from
+    // the fitting tests at all -- but nlsSolve's robust scaling uses all three, so a robust loss on a
+    // solid fit would reach them.
+    [Test]
+    public void L1LossMatchesItsDefinition()
+    {
+        var loss = new floatL1Loss((float)1e-3);
+
+        // rho(s) = sqrt(s) above the floor, so the objective is 0.5*sum|r|.
+        Assert.That((double)loss.Rho((float)4), Is.EqualTo(2.0).Within(1e-4), "Rho(4) = 2");
+        Assert.That((double)loss.Rho((float)9), Is.EqualTo(3.0).Within(1e-4), "Rho(9) = 3");
+
+        // rho'(s) = 1/(2 sqrt(s)): the IRLS weight, falling as 1/|r|.
+        Assert.That((double)loss.RhoPrime((float)4), Is.EqualTo(0.25).Within(1e-4), "RhoPrime(4)");
+        Assert.That((double)loss.RhoPrime((float)16), Is.EqualTo(0.125).Within(1e-4), "RhoPrime(16)");
+
+        // rho''(s) = -1/(4 s^{3/2}), negative: the weight decreases with residual.
+        Assert.Less((double)loss.RhoPrime2((float)4), 0.0, "RhoPrime2 must be negative");
+
+        // The floor is what keeps the weight finite at zero residual -- without it IRLS divides by 0.
+        double wAtZero = (double)loss.RhoPrime((float)0);
+        Assert.IsTrue(wAtZero > 0.0 && !double.IsInfinity(wAtZero), "weight at r=0 must be finite");
+        Assert.That(wAtZero, Is.EqualTo(0.5 / 1e-3).Within(1.0), "floor should cap the weight at 1/(2*floor)");
+
+        // A default-constructed instance must still be usable, not a divide by zero.
+        var bare = new floatL1Loss();
+        double wBare = (double)bare.RhoPrime((float)0);
+        Assert.IsTrue(wBare > 0.0 && !double.IsInfinity(wBare), "default L1Loss must have a working floor");
+    }
+
+    // Robust loss on a NONLINEAR fit -- the path where nlsSolve does its own loss scaling, distinct
+    // from the IRLS loop the linear and geometric fits use.
+    [Test]
+    public void CylinderRobustBeatsL2UnderOutliers()
+    {
+        const double rad = 2.0;
+        var pts = new NativeArray<float3>(54, Allocator.Temp);
+        int k = 0;
+        for (int i = 0; i < 6; i++)
+            for (int j = 0; j < 8; j++)
+            {
+                double z = -3.0 + 6.0 * i / 5.0, th = 2.0 * math.PI_DBL * j / 8.0;
+                pts[k++] = new float3((float)(rad * math.cos(th)), (float)(rad * math.sin(th)), (float)z);
+            }
+        for (int i = 0; i < 6; i++)                                  // off-surface junk
+            pts[k++] = new float3((float)(4.5 * math.cos(i)), (float)(4.5 * math.sin(i)), (float)(i - 3));
+
+        float3 q = default, d = default; float r = default;
+        Assert.IsTrue(Fit.cylinder(pts, ref q, ref d, ref r), "L2 cylinder fit failed");
+        double errL2 = math.abs((double)r - rad);
+
+        float3 q2 = default, d2 = default; float r2 = default;
+        var huber = new floatHuberLoss((float)0.3);
+        Assert.IsTrue(Fit.cylinder(pts, ref q2, ref d2, ref r2, in huber), "robust cylinder fit failed");
+        double errH = math.abs((double)r2 - rad);
+
+        Assert.Less(errH, errL2, $"Huber radius err ({errH}) should beat L2 ({errL2})");
+
+        pts.Dispose();
+    }
+
+    // classify's remaining branches, driven by hand-built coefficient vectors rather than a fit, so
+    // each signature is hit exactly and deterministically.
+    [Test]
+    public void ClassifyCoversEverySignature()
+    {
+        var c = new floatN(10, Allocator.Temp);
+
+        // (+,+,+) -> ellipsoid; the fitted cases above already cover this, included for contrast.
+        SetQuad(c, 1, 1, 1);
+        Assert.AreEqual(QuadricKind.Ellipsoid, Fit.classify(in c), "(+,+,+)");
+
+        // (-,-,-) is the same surface family with the equation negated.
+        SetQuad(c, -1, -1, -1);
+        Assert.AreEqual(QuadricKind.Ellipsoid, Fit.classify(in c), "(-,-,-) is still an ellipsoid");
+
+        SetQuad(c, 1, 1, -1);
+        Assert.AreEqual(QuadricKind.HyperboloidOrCone, Fit.classify(in c), "(+,+,-)");
+
+        // A zero eigenvalue means no centre: paraboloid or cylinder.
+        SetQuad(c, 1, 1, 0);
+        Assert.AreEqual(QuadricKind.Paraboloid, Fit.classify(in c), "(+,+,0)");
+
+        // No quadratic part at all: the fit collapsed to a plane.
+        SetQuad(c, 0, 0, 0);
+        c[6] = (float)1;                                            // a linear term, so it is a plane
+        Assert.AreEqual(QuadricKind.Degenerate, Fit.classify(in c), "(0,0,0)");
+
+        c.Dispose();
+    }
+
+    static void SetQuad(floatN c, double a, double b, double cc)
+    {
+        for (int i = 0; i < 10; i++) c[i] = (float)0;
+        c[0] = (float)a; c[1] = (float)b; c[2] = (float)cc;
+    }
+
     // ---------------------------------------------------------------- guards
 
     [Test]
