@@ -34,9 +34,20 @@ Code comments state contracts only; history lives here (see CLAUDE.md).
   MEASURED (float, relative L1 error vs ladBR, same probes both arms): nearCollinear 8.721e-3 with
   CHOP vs 8.721e-3 with CHO; colScale 3.292e-5 vs 3.292e-5; duplicateCol 6.116e-6 vs 6.117e-6;
   vandermonde 1.412e-5 vs 1.460e-5. Iteration counts identical. Double identical everywhere. The
-  full LAD filter passes 100/100 under CHO, so CHOP is not load-bearing for anything the suite
-  currently covers — but there is NO measured gain either, so the swap was reverted rather than
-  churn a deliberate robustness choice for nothing.
+  FULL suite passes 7125/7125 under CHO (incl. the quantreg barro vectors), so CHOP is not
+  load-bearing for anything we currently test — but there is NO measured gain either, so the swap was
+  reverted rather than churn a deliberate robustness choice for nothing.
+  BENCHMARKED TOO (back-to-back LPBenchmark arms, CCD-pinned): no consistent timing difference.
+  METHOD NOTE worth reusing — `ladBR` is UNCHANGED code in both arms, so its column is a free
+  CONTROL for run-to-run noise, and it moved up to +43% (m=192 float 0.0300 -> 0.0429) between the
+  two runs. Every apparent ladFN delta at m=192/384 was smaller than the control's own movement, i.e.
+  machine load, not CHO. What survives is contradictory (double m=4096 CHO 6.7% SLOWER, m=16384 1.9%
+  FASTER, both with a stable control) = noise with a sign. Only float m=8/16 hint at ~10%, on 4-6 us
+  absolute, in a range where `lad` routes to ladBR anyway.
+  So the flop argument holds empirically: a 4x4 factorization against BuildATQA's ~164k flops at
+  m=16384 is invisible. CHOP is FREE. That inverts the "is this over-defended?" reading — CHOP is not
+  a cost worth removing, it is an unexercised safety net that costs nothing. The open question is no
+  longer "should we drop it" but "can a case be built where it wins", and it stays until one is.
   CONCLUSION: rank truncation is NOT the near-collinear mechanism. The limit is the CONDITION
   SQUARING inherent to forming AᵀQA — cond ~1e12 against float's ~1e-7 leaves no digits in the
   degenerate direction, and no Cholesky variant can recover information the normal matrix already
