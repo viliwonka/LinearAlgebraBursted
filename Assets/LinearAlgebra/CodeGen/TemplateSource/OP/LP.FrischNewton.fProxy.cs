@@ -68,10 +68,12 @@ namespace LinearAlgebra
         // Deviations from the literal Fortran reference:
         // (1) The single tolerance is data-scaled. `lpfnb.f` drives both the z/w initialization floor
         //     and the convergence test from one caller-supplied eps, and so does this port -- but that
-        //     eps is sqrtEps·‖b‖₂ rather than a caller constant. A fixed constant makes the solve
-        //     scale-DEPENDENT (the reference's own behavior): on small-magnitude data the floor
-        //     dominates the starting point and the gap test passes immediately, returning the
-        //     least-squares initialization instead of the L1 fit.
+        //     eps is sqrtEps·‖b‖₂ rather than a caller constant, so the convergence criterion means
+        //     the same thing at every data scale. Note the reference's single constant is not itself
+        //     unsafe: when the floor fires on every observation the gap is about m·eps, which still
+        //     exceeds the tolerance eps for any m > 1, so the solve proceeds. It is SPLITTING the two
+        //     that is unsafe -- a scaled gap test beside an unscaled floor lets the floor-dominated
+        //     gap fall under the tolerance, and the solve returns its least-squares starting point.
         // (2) A failed least-squares init is not fatal. Where the reference aborts with no fit if the
         //     one-time plain-CHO factorization of AᵀA fails, here y starts at 0 -- still a valid
         //     strictly-interior point -- and the solve proceeds.
