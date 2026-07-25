@@ -1161,6 +1161,108 @@ public class floatFitTests
         if (g[big] * want[big] < 0) for (int i = 0; i < g.Length; i++) g[i] = -g[i];
     }
 
+    // ------------------------------------------------------------- L1 paths
+    //
+    // The library reaches the L1 objective two completely independent ways: LP.lad solves it EXACTLY
+    // by a finite combinatorial algorithm, and Fit.linear with floatL1Loss approaches it by iterative
+    // reweighting. floatL1Loss's own doc points callers at LP.lad for exactness -- these tests are
+    // what make that claim checkable, and they cross-validate both implementations at once.
+
+    // Same objective, two engines, one answer. A disagreement here means one of them is wrong; nothing
+    // else in the suite compares them.
+    [Test]
+    public void IrlsL1AgreesWithTheExactLadSolver()
+    {
+        int n = 15;
+        var A = new floatMxN(n, 2, Allocator.Temp);
+        var b = new floatN(n, Allocator.Temp);
+        for (int i = 0; i < n; i++)
+        {
+            double x = i * 0.5;
+            A[i, 0] = (float)x; A[i, 1] = (float)1;
+            b[i] = (float)(2.0 * x + 1.0);
+        }
+        b[3] = (float)40; b[9] = (float)(-30); b[12] = (float)55;    // gross, and asymmetric
+
+        var xExact = new floatN(2, Allocator.Temp);
+        Assert.IsTrue(LP.lad(in A, in b, ref xExact, out double objExact), "exact LAD failed");
+
+        // The L1 optimum interpolates data points exactly, so IRLS weights would diverge as those
+        // residuals reach zero. The floor is what bounds them -- set here to the data's own noise
+        // scale rather than left at the default epsilon.
+        var l1 = new floatL1Loss((float)1e-2);
+        var xIrls = new floatN(2, Allocator.Temp);
+        Assert.IsTrue(Fit.linear(in A, in b, ref xIrls, in l1, 200), "IRLS L1 failed");
+
+        // Compare on the OBJECTIVE, not the coefficients: the L1 optimum can be non-unique (any line
+        // through the same two interpolated points scores identically), so equal coefficients is a
+        // stronger claim than the problem actually makes.
+        double objIrls = 0;
+        for (int i = 0; i < n; i++)
+        {
+            double r = (double)A[i, 0] * (double)xIrls[0] + (double)A[i, 1] * (double)xIrls[1] - (double)b[i];
+            objIrls += math.abs(r);
+        }
+
+        Assert.That(objIrls, Is.EqualTo(objExact).Within(0.05 * objExact),
+            $"IRLS L1 objective {objIrls} should approach the exact optimum {objExact}");
+        Assert.GreaterOrEqual(objIrls, objExact - 1e-6,
+            "nothing may beat the exact optimum: that would mean LP.lad is not optimal");
+
+        A.Dispose(); b.Dispose(); xExact.Dispose(); xIrls.Dispose();
+    }
+
+    // L1 is a robust metric, so it must resist response outliers where L2 cannot -- the same
+    // discrimination the Huber case makes, for the loss a caller is most likely to reach for.
+    [Test]
+    public void LinearL1BeatsL2UnderResponseOutliers()
+    {
+        int n = 20;
+        var A = new floatMxN(n, 2, Allocator.Temp);
+        var b = new floatN(n, Allocator.Temp);
+        OutlierLine(A, b, n, 4);
+
+        var xL2 = new floatN(2, Allocator.Temp);
+        Assert.IsTrue(Fit.linear(in A, in b, ref xL2));
+        double errL2 = math.abs((double)xL2[0] - 2.0);
+
+        var l1 = new floatL1Loss((float)1e-2);
+        var xL1 = new floatN(2, Allocator.Temp);
+        Assert.IsTrue(Fit.linear(in A, in b, ref xL1, in l1, 200), "IRLS L1 failed");
+        double errL1 = math.abs((double)xL1[0] - 2.0);
+
+        Assert.Less(errL1, errL2, $"L1 slope err ({errL1}) should beat L2 ({errL2})");
+
+        A.Dispose(); b.Dispose(); xL2.Dispose(); xL1.Dispose();
+    }
+
+    // L1 on a GEOMETRIC fit, where no exact solver exists to compare against -- so the assertion is
+    // the robustness property itself, on the 3D plane normal.
+    [Test]
+    public void PlaneL1BeatsL2UnderOutlier()
+    {
+        const int n = 17;
+        var pts = new NativeArray<float3>(n, Allocator.Temp);
+        int k = 0;
+        for (int i = 0; i < 4; i++)
+            for (int j = 0; j < 4; j++)
+                pts[k++] = new float3((float)i, (float)j, (float)0);
+        pts[16] = new float3((float)3, (float)3, (float)4);
+
+        var want = new float3((float)0, (float)0, (float)1);
+
+        Assert.IsTrue(Fit.plane(pts, out _, out float3 nL2));
+        double errL2 = AngleError(nL2, want);
+
+        var l1 = new floatL1Loss((float)1e-2);
+        Assert.IsTrue(Fit.plane(pts, in l1, out _, out float3 nL1), "L1 plane fit failed");
+        double errL1 = AngleError(nL1, want);
+
+        Assert.Less(errL1, errL2, $"L1 normal ({errL1}) should beat L2 ({errL2})");
+
+        pts.Dispose();
+    }
+
     // ------------------------------------------------- remaining overloads
     //
     // Coverage completion. Each entry point below is a distinct generic instantiation, so exercising
