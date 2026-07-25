@@ -19,10 +19,8 @@ namespace BULA
     //     (A_W: k x n, k <= n, rows independent -- "the working set")
     //
     // Q is symmetric PSD (v1 contract): a singular reduced Hessian is regularized (δ·‖Q‖∞·I retry)
-    // rather than handled via negative-curvature machinery. Indefinite Q is out of scope (NP-hard in
-    // general). One null-space Newton step is exact for this problem (Nocedal & Wright eq.
-    // 16.16-16.19): substituting x = x0 + Zy for an orthonormal null(A_W) basis Z reduces it to an
-    // unconstrained quadratic in y, which Newton's method solves in one step from any start.
+    // rather than handled via negative-curvature machinery. Indefinite Q is out of scope. One
+    // null-space Newton step is exact here, so there is no iteration loop (N&W eq. 16.16-16.19).
     //
     // The dense n x k QR factor Q1 is never materialized -- the null-space machinery drives QR's own
     // per-step primitives directly instead of calling QR.decompInPlace's public API. Z (n x (n-k)) IS
@@ -626,12 +624,6 @@ namespace BULA
         // than through eqpSolve/eqpNullSpaceStep (which batch-factor per call), since the ratio test
         // must see the step p BEFORE it is applied, to know how far it is safe to go (and possibly not
         // apply it at all).
-        //
-        // Problem solved:
-        //
-        //     minimize    1/2 xᵀQx + cᵀx
-        //     subject to  A x {<=,=,>=} b     (per-row senses, LP.solve's ConstraintSense)
-        //                 xl <= x <= xu
         //
         // Unified row/bound representation: every constraint -- general row AND variable bound alike --
         // is one range L_t <= (row t).x <= U_t over T = m + n rows (t < m: general row t; t >= m:

@@ -6,9 +6,7 @@ using Unity.Mathematics;
 namespace BULA.Control
 {
     // ================================================================================================
-    // Discrete-time LQR. x_{k+1} = A x_k + B u_k, cost Σ(xᵀQx + uᵀRu), optimal feedback u = -Kx via the
-    // discrete algebraic Riccati equation (DARE)
-    //     S = Q + AᵀSA - AᵀSB(R+BᵀSB)⁻¹BᵀSA,   K = (R+BᵀSB)⁻¹BᵀSA.
+    // Discrete-time LQR: optimal feedback u = -Kx from the discrete algebraic Riccati equation (DARE).
     //
     // The DARE itself (the cold infinite-horizon S) is solved by Riccati.dare (structure-preserving
     // doubling); this file is the control facade on top of it. One shared Riccati-step kernel

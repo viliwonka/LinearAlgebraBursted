@@ -5,11 +5,6 @@ LP alone can't express: a quadratic objective, or integer variables.
 
 ## `QP` — convex quadratic programs
 
-```
-minimize    ½xᵀQx + cᵀx
-subject to  Aᵢ·x {≤, =, ≥} bᵢ,   xl ≤ x ≤ xu
-```
-
 `QP.solve(in Q, in c, in A, in b, senses, in xl, in xu, ref x, out double objective[, maxIter])` —
 `Q` must be symmetric (checked) and positive semidefinite (v1 contract, not checked — indefinite `Q`
 is out of scope). Finds its own feasible starting point via an auxiliary LP, so `x` is output-only.
@@ -23,11 +18,6 @@ Returns `QPInfo`: `objective`, `iterations`, `status : QPStatus`
 pass.
 
 ## `MIP` — mixed-integer programs
-
-```
-minimize    cᵀx
-subject to  Aᵢ·x {≤, =, ≥} bᵢ,   xl ≤ x ≤ xu,   xⱼ ∈ ℤ for flagged j
-```
 
 `MIP.solve(in A, in b, in c, senses, in xl, in xu, in integrality, ref x, out double objective[,
 maxNodes, maxIter, absGap, relGap])` — `integrality[j]` is `0` (continuous) or `1` (integer; a

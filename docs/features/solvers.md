@@ -15,9 +15,8 @@ this page covers the direct family and the diagnostics-struct convention shared 
   `LU.solveInPlace(ref A_to_LU, ref Pivot P, ref b_to_x)` fuses `decompInPlace`+`decompSolve` into one
   driver; `A_to_LU` exits as a usable factor (valid input to a further `decompSolve`).
 - `CHO.decompSolve(ref L, ref b_to_x)` — solve from a factor, read-only. `CHO.solveInPlace(ref
-  A_to_L, ref b_to_x)` fuses `decompInPlace`+`decompSolve`; `A_to_L` exits as a usable factor. (The
-  old `choleskySolve(in A, ref L, ref b)` two-line composition-in-disguise was deleted — write the
-  explicit `CHO.decomp` + `CHO.decompSolve` composition if `A` must survive.)
+  A_to_L, ref b_to_x)` fuses `decompInPlace`+`decompSolve`; `A_to_L` exits as a usable factor. Write
+  the explicit `CHO.decomp` + `CHO.decompSolve` composition if `A` must survive.
 - `QR.decompSolve(ref Q, ref R, ref b, ref x)` — solve from a precomputed QR factorization, reusable
   across multiple `b` (`b` preserved). `QR.solveInPlace(ref A, ref b, ref x[, ref u])` — precondition:
   full column rank (unguarded divide on a rank-deficient diagonal); fused kernel that streams `Qᵀb`

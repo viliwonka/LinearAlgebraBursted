@@ -51,8 +51,8 @@ namespace BULA.Benchmarks
     // ================================================================================================
     // Convex quadratic programming benchmark (docs/draft-spec-qp.md stage 3).
     //
-    //   Section 1 (QP.solve, random SPD QP): random dense feasible+bounded convex QPs (min 1/2 xQx + cx
-    //     s.t. A x <= b, xl <= x <= xu; Q symmetric PSD via Rand.spdInPlace with a modest condition
+    //   Section 1 (QP.solve, random SPD QP): random dense feasible+bounded convex QPs
+    //     (Q symmetric PSD via Rand.spdInPlace with a modest condition
     //     number ~10, A >= 0, b = A x0 + slack so a comfortably-feasible region exists, x boxed in
     //     [0, 3]) solved through the FULL PUBLIC facade -- QP.solve, no caller-supplied starting point,
     //     so every row exercises phase 1 (the LP-powered feasible start, draft-spec-qp.md step 1) as

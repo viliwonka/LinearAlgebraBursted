@@ -98,8 +98,8 @@ namespace BULA.Benchmarks
     // ================================================================================================
     // Linear programming + least-absolute-deviation benchmark.
     //
-    //   Section 1 (LP.solve): random dense feasible+bounded LPs (min cᵀx s.t. A x <= b, x >= 0, A >= 0,
-    //     b = A x0 + slack so x0 is feasible). THREE backends compared head to head -- Mehrotra interior
+    //   Section 1 (LP.solve): random dense feasible+bounded LPs (A >= 0, b = A x0 + slack so x0 is
+    //     feasible). THREE backends compared head to head -- Mehrotra interior
     //     point, and (docs/spec-revised-simplex.md) the bounded-variable revised primal simplex and dual
     //     revised simplex -- on the IDENTICAL problem; the objective column shows all three agree, the
     //     iters column is directly comparable pivot-for-pivot.
@@ -128,7 +128,7 @@ namespace BULA.Benchmarks
     //     matrix-free Frisch-Newton (streams the stored blocks; its normal matrix is n x n in the
     //     coefficient count, never m x m), vs the dense LP.lad baseline where it still fits.
     //
-    //   Section 4 (dense covering LP): min cᵀx s.t. A x >= b, x >= 0 with A,b,c >= 0 by construction --
+    //   Section 4 (dense covering LP): A,b,c >= 0 by construction --
     //     deliberately DUAL-FAVORABLE: every nonneg cost column is already dual-feasible at the
     //     all-logical start (y=0 -> d_j=c_j>=0), so dual simplex needs no phase 1 at all, while every row
     //     starts primal-INFEASIBLE (0 doesn't satisfy Ax>=b), forcing a real phase 1 on the revised

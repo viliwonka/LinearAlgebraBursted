@@ -16,7 +16,7 @@ namespace BULA.Benchmarks
 
     // Linear regression fit comparison: L2 (QR least squares) vs exact L1 (LP.lad) vs approximate L1
     // (Optimize.ladIRLS), same design matrix + 5%-gross-outlier response. Response-residual fitting,
-    // NOT total least squares / total least deviation (those minimize orthogonal distance).
+    // NOT total least squares / total least deviation.
     //
     // Hand-written harness half. The timed IJobs and build+measure method (FitFloat/FitDouble) are
     // code-generated per dtype from CodeGen/TemplateSourceBenchmarks/FittingBenchmark.fProxy.cs.

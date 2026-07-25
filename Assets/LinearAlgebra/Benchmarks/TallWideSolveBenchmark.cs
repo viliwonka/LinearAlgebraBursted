@@ -17,10 +17,9 @@ namespace BULA.Benchmarks
 
     // Non-square solve paths: the rectangular problems the square LU/Cholesky benchmarks never touch.
     //
-    //   TALL  (m = 2n): the OVERDETERMINED least-squares problem min ||A x - b|| via Householder QR
-    //         (decompInPlace forms the thin Q; solveInPlace does the direct no-Q solve).
-    //   WIDE  (n = 2m): the UNDERDETERMINED minimum-norm problem min ||x|| s.t. A x = b via LQ
-    //         (decomp A = L Q; minNormSolve x = Qᵀ L⁻¹ b), plus the row-pivoted rank-revealing LQRP.
+    //   TALL  (m = 2n): Householder QR -- decompInPlace forms the thin Q, solveInPlace does the direct
+    //         no-Q solve.
+    //   WIDE  (n = 2m): LQ decomp + minNormSolve, plus the row-pivoted rank-revealing LQRP.
     //
     // Sized by the SMALLER dimension k (the N column), fixed 2:1 aspect. All share the same leading-term
     // flop count — QrFlops(2k, k) = (10/3) k^3 — so GFLOP/s is directly comparable across sections.

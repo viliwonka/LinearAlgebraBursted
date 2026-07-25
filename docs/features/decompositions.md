@@ -31,7 +31,7 @@ crossover — the gain caps out around 1.3–1.4× (bounded by `matMatDot`'s own
   not usable factors. **`QRCP.decomp(in A, ref Q, ref R, ref Pivot P[, ref u])`** (Businger-Golub) —
   exact (not downdated) column-norm recompute each step; `QRCP.decompInPlace` factors A_to_Q in place;
   `QRCP.solveInPlace(ref A_to_Q, ref b, ref x, ref R, ref Pivot P, ref u[, relTol])` factors A's own
-  buffer directly (no Q scratch, no memcpy — strictly faster than the old copying form) and leaves
+  buffer directly (no Q scratch, no memcpy) and leaves
   A_to_Q as a *usable* orthogonal factor, unlike QR's solveInPlace.
   - **QR's three scratch tiers** (all producing bit-identical results, cheapest to richest): (1) the
     fully-allocating overload — convenience, `Allocator.Temp` scratch, gets the blocked path; (2) the

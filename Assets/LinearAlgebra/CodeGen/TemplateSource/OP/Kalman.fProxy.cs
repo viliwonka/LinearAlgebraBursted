@@ -18,12 +18,9 @@ namespace BULA
     // S·Kᵀ = (PHᵀ)ᵀ = HP via CHOP (pivoted Cholesky), so a rank-deficient S degrades to a usable
     // minimum-norm K instead of hard-failing.
     //
-    // steadyStateGain reuses Control's own SDA (structure-preserving doubling) DARE engine under the
-    // LQR/KF DARE DUALITY: the filter's predicted-covariance DARE
-    //     Σ = AΣAᵀ + Q - AΣHᵀ(HΣHᵀ+R)⁻¹HΣAᵀ
-    // is exactly Control's LQR DARE S = Q + ÃᵀSÃ - ÃᵀSB̃(R+B̃ᵀSB̃)⁻¹B̃ᵀSÃ under Ã=Aᵀ, B̃=Hᵀ (S↔Σ) --
-    // i.e. Riccati.dare(Aᵀ, Hᵀ, Q, R, ...) IS this filter's steady-state Riccati solve. No second
-    // Riccati implementation exists in this file.
+    // steadyStateGain reuses Control's SDA (structure-preserving doubling) DARE engine through the
+    // LQR/KF duality -- Riccati.dare(Aᵀ, Hᵀ, Q, R, ...) IS this filter's steady-state Riccati solve.
+    // No second Riccati implementation exists in this file.
     // ================================================================================================
     public static partial class Kalman
     {

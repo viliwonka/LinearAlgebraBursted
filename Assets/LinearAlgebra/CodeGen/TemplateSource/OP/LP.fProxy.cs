@@ -10,20 +10,12 @@ namespace BULA
     // ================================================================================================
     // Linear programming + L1 (least-absolute-deviation) optimization.
     //
-    // Canonical primal form solved by the public entry points:
-    //
-    //     minimize    cᵀx
-    //     subject to  Aᵢ·x  {≤, =, ≥}  bᵢ    (per-row sense in `senses`)
-    //                 x ≥ 0
-    //
     // All three backends reach the same optimal vertex on a bounded, feasible problem (see LPMethod):
     //   * InteriorPoint  -- Mehrotra predictor-corrector (LP.InteriorPoint.fProxy.cs).
     //   * RevisedSimplex -- bounded-variable primal revised simplex (LP.RevisedSimplex.fProxy.cs).
     //   * DualSimplex    -- bounded-variable dual revised simplex (LP.DualSimplex.fProxy.cs).
     //
-    // L1 regression (least absolute deviation) is the flagship application: minimize ‖Ax − b‖₁ over a
-    // FREE x is exactly an LP once each residual is split into a +/− pair (see `lad`). A fast,
-    // approximate iteratively-reweighted-least-squares alternative lives in Optimize.ladIRLS.
+    // L1 regression is available via `lad`; Optimize.ladIRLS is an approximate alternative.
     //
     // Job-safe: the cores allocate their (problem-size-dependent) scratch from Allocator.Temp and
     // dispose it before returning, so the whole thing runs inside a [BurstCompile] IJob.
@@ -43,10 +35,9 @@ namespace BULA
         /// <param name="senses">Per-row constraint sense, length m.</param>
         /// <param name="x">Output solution, length n (overwritten).</param>
         /// <param name="objective">Output cᵀx at the returned x.</param>
-        /// <param name="method">Backend (default RevisedSimplex — fastest exact backend at every
-        /// benchmarked size on cold solves and the fastest infeasibility certifier (1-2 pivots);
-        /// pick <see cref="LPMethod.DualSimplex"/> explicitly for re-solves from a near-dual-feasible
-        /// state, <see cref="LPMethod.InteriorPoint"/> for very ill-conditioned vertices.</param>
+        /// <param name="method">Backend. Default RevisedSimplex; pick
+        /// <see cref="LPMethod.DualSimplex"/> for re-solves from a near-dual-feasible state,
+        /// <see cref="LPMethod.InteriorPoint"/> for very ill-conditioned vertices.</param>
         /// <param name="maxIter">Pivot/iteration budget; ≤0 picks a size-based default.</param>
         public static LPInfo solve(in fProxyMxN A, in fProxyN b, in fProxyN c,
                                    in NativeArray<ConstraintSense> senses,
@@ -291,23 +282,15 @@ namespace BULA
 #endif
 
         /// <summary>
-        /// Least absolute deviation (L1 regression): minimize ‖A x − b‖₁ over a FREE x ∈ ℝⁿ. Robust to
-        /// outliers where ordinary least squares (which minimizes the L2 norm) is not. This overload
-        /// is a HYBRID: it picks between this library's two reformulation-free exact engines by problem
-        /// size (m = A.M_Rows) --
+        /// Least absolute deviation (L1 regression): minimize ‖A x − b‖₁ over a FREE x ∈ ℝⁿ. This
+        /// overload is a HYBRID: it routes by problem size (m = A.M_Rows) to
         /// <see cref="ladBR(in fProxyMxN, in fProxyN, ref fProxyN, out double, int)"/> (Barrodale-
-        /// Roberts specialized simplex) at or below the per-dtype threshold in the dispatch below,
+        /// Roberts specialized simplex) at or below the per-dtype threshold in the dispatch below, and
         /// <see cref="ladFN(in fProxyMxN, in fProxyN, ref fProxyN, out double, int)"/> (Frisch-Newton
-        /// interior point) above it. BR's weighted-median long step wins at small-to-moderate m (near-
-        /// constant, few-microsecond latency -- the common low-observation-count case); FN's fixed
-        /// ~10-iteration n×n normal solve wins once m grows large enough that BR's per-pivot sweep over
-        /// m rows dominates. The crossover is a measured, re-tunable, PER-DTYPE value (see the comment
-        /// on the dispatch expression below), not a fixed property of either algorithm. Call
-        /// <see cref="ladBR"/> / <see cref="ladFN"/> directly
-        /// to bypass this routing and force one engine regardless of size. Use the <see cref="LPMethod"/>
-        /// overload to route through the general LP backends instead (the classic split-variable
-        /// reformulation; exact but far slower than either hybrid route -- retained mainly as
-        /// independent cross-checks). For the approximate iteratively-reweighted alternative, see
+        /// interior point) above it. Call <see cref="ladBR"/> / <see cref="ladFN"/> directly to bypass
+        /// this routing and force one engine regardless of size. Use the <see cref="LPMethod"/>
+        /// overload to route through the general LP backends instead (exact, but far slower than
+        /// either hybrid route). For the approximate iteratively-reweighted alternative, see
         /// <see cref="Optimize.ladIRLS"/>.
         /// </summary>
         /// <param name="A">Design matrix, m×n (m observations, n coefficients). m ≥ n typical.</param>

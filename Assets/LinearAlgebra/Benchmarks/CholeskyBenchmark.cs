@@ -2,11 +2,11 @@ using System.Text;
 
 namespace BULA.Benchmarks
 {
-    // Cholesky factorization A = L L^T of a symmetric positive-definite matrix. A is taken `in`
-    // (never mutated) and L is overwritten each run, so the SPD input is built once and every timed
-    // sample does identical work. The input is symmetric + diagonally dominant, which guarantees SPD.
+    // A is taken `in` (never mutated) and L is overwritten each run, so the SPD input is built once and
+    // every timed sample does identical work. The input is symmetric + diagonally dominant, which
+    // guarantees SPD.
     //
-    // The pivoted (rank-revealing) variant P^T A P = L L^T does the same (1/3)N^3 factor work plus
+    // The pivoted (rank-revealing) variant does the same (1/3)N^3 factor work plus
     // rank-revealing bookkeeping (largest-diagonal pivot search, symmetric row/col swaps, and the
     // Schur update's symmetric mirror), so its GFLOP/s is below the plain factorization by design.
     // The n x n working copy is a pre-built workspace; the O(n) Pivot is the only per-Execute alloc.
