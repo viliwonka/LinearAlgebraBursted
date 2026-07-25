@@ -1,4 +1,4 @@
-# LinearAlgebraBursted
+# BUrsted Linear Algebra
 
 A linear algebra library for Unity, supported entirely by [Burst](https://docs.unity3d.com/Packages/com.unity.burst@latest).
 It extends `Unity.Mathematics` past its fixed 4×4 ceiling: arbitrary-size vectors and matrices for
