@@ -722,6 +722,153 @@ public class doubleFitTests
         pts.Dispose();
     }
 
+    // ---------------------------------------------------------------- RANSAC
+
+    // Builds a cloud that is 40% plane and 60% uniform junk -- the regime robust losses cannot reach.
+    static NativeArray<double3> ContaminatedPlane(int inliers, int outliers, uint seed)
+    {
+        var pts = new NativeArray<double3>(inliers + outliers, Allocator.Temp);
+        var rng = new Unity.Mathematics.Random(seed);
+
+        for (int i = 0; i < inliers; i++)
+            pts[i] = new double3((double)rng.NextDouble(-5.0, 5.0), (double)rng.NextDouble(-5.0, 5.0), (double)0);
+        for (int i = 0; i < outliers; i++)
+            pts[inliers + i] = new double3((double)rng.NextDouble(-5.0, 5.0),
+                                           (double)rng.NextDouble(-5.0, 5.0),
+                                           (double)rng.NextDouble(-5.0, 5.0));
+        return pts;
+    }
+
+    // THE case that justifies RANSAC over a robust loss. At 60% contamination the L2 plane fit is
+    // dominated by the junk, and IRLS can only walk downhill from there -- so Huber inherits the wrong
+    // answer. RANSAC never starts from a contaminated fit, so it recovers the plane. Asserted as a
+    // direct comparison, not an absolute bound, so it measures the METHOD rather than a tuned number.
+    [Test]
+    public void RansacBeatsRobustLossUnderGrossContamination()
+    {
+        var pts = ContaminatedPlane(40, 60, 991u);
+        var want = new double3((double)0, (double)0, (double)1);
+
+        Assert.IsTrue(Fit.plane(pts, out _, out double3 nL2));
+        double errL2 = AngleError(nL2, want);
+
+        var huber = new doubleHuberLoss((double)0.2);
+        Assert.IsTrue(Fit.plane(pts, in huber, out _, out double3 nH));
+        double errHuber = AngleError(nH, want);
+
+        var model = new Fit.doublePlaneModel();
+        var info = Fit.ransac(pts, ref model, (double)0.15, 0, 12345u);
+        Assert.IsTrue(info, $"RANSAC found no consensus ({info.ToString()})");
+        double errRansac = AngleError(model.Normal, want);
+
+        Assert.That(errRansac, Is.LessThan(0.05), $"RANSAC should recover the plane ({info.ToString()})");
+        Assert.Less(errRansac, errHuber, $"RANSAC ({errRansac}) must beat Huber ({errHuber}) at 60% junk");
+        Assert.Less(errRansac, errL2, $"RANSAC ({errRansac}) must beat L2 ({errL2}) at 60% junk");
+
+        // The consensus set should be the planar points, give or take junk that lands near the plane.
+        Assert.That(info.inliers, Is.GreaterThanOrEqualTo(35), "should recover most of the plane points");
+
+        pts.Dispose();
+    }
+
+    // Same points and seed must give the same answer, always -- the determinism contract.
+    [Test]
+    public void RansacIsDeterministicForAGivenSeed()
+    {
+        var pts = ContaminatedPlane(30, 30, 55u);
+
+        var m1 = new Fit.doublePlaneModel();
+        var i1 = Fit.ransac(pts, ref m1, (double)0.15, 0, 4242u);
+        var m2 = new Fit.doublePlaneModel();
+        var i2 = Fit.ransac(pts, ref m2, (double)0.15, 0, 4242u);
+
+        Assert.IsTrue(i1 && i2, "both runs should find a consensus");
+        Assert.AreEqual(i1.inliers, i2.inliers, "inlier count must match");
+        Assert.AreEqual(i1.iterations, i2.iterations, "iteration count must match");
+        Assert.That((double)math.length(m1.Normal - m2.Normal), Is.EqualTo(0.0).Within(0.0),
+            "same seed must give a bit-identical normal");
+
+        pts.Dispose();
+    }
+
+    // Clean data lets the adaptive rule stop almost immediately: with a ~100% inlier ratio, one draw
+    // already gives the requested confidence. This pins the adaptive budget as real, not decorative.
+    [Test]
+    public void RansacAdaptiveStopsEarlyOnCleanData()
+    {
+        var pts = ContaminatedPlane(60, 0, 7u);
+
+        var model = new Fit.doublePlaneModel();
+        var info = Fit.ransac(pts, ref model, (double)0.05, 0, 99u);
+
+        Assert.IsTrue(info, "clean data should find a consensus");
+        Assert.AreEqual(60, info.inliers, "every point is an inlier on clean data");
+        Assert.That(info.iterations, Is.LessThan(50),
+            $"adaptive stopping should end far short of the {Fit.DefaultRansacIter} cap ({info.ToString()})");
+
+        pts.Dispose();
+    }
+
+    // The sphere and line models: same driver, different minimal sample size and distance function.
+    [Test]
+    public void RansacSphereAndLineModels()
+    {
+        var rng = new Unity.Mathematics.Random(31u);
+
+        var sp = new NativeArray<double3>(70, Allocator.Temp);
+        for (int i = 0; i < 45; i++)
+        {
+            double u = math.PI_DBL * rng.NextDouble(), v = 2.0 * math.PI_DBL * rng.NextDouble();
+            sp[i] = new double3((double)(2.0 + 3.0 * math.sin(u) * math.cos(v)),
+                                (double)(-1.0 + 3.0 * math.sin(u) * math.sin(v)),
+                                (double)(0.5 + 3.0 * math.cos(u)));
+        }
+        for (int i = 45; i < 70; i++)
+            sp[i] = new double3((double)rng.NextDouble(-8.0, 8.0), (double)rng.NextDouble(-8.0, 8.0),
+                                (double)rng.NextDouble(-8.0, 8.0));
+
+        var sm = new Fit.doubleSphereModel();
+        var si = Fit.ransac(sp, ref sm, (double)0.1, 0, 808u);
+        Assert.IsTrue(si, $"sphere RANSAC failed ({si.ToString()})");
+        Assert.That((double)sm.Radius, Is.EqualTo(3.0).Within(0.1), "sphere radius");
+        Assert.That((double)math.length(sm.Center - new double3((double)2, (double)(-1), (double)0.5)),
+            Is.EqualTo(0.0).Within(0.1), "sphere centre");
+
+        var ln = new NativeArray<double3>(60, Allocator.Temp);
+        for (int i = 0; i < 40; i++)
+        {
+            double t = rng.NextDouble(-5.0, 5.0);
+            ln[i] = new double3((double)t, (double)(2.0 * t + 1.0), (double)(-t));
+        }
+        for (int i = 40; i < 60; i++)
+            ln[i] = new double3((double)rng.NextDouble(-8.0, 8.0), (double)rng.NextDouble(-8.0, 8.0),
+                                (double)rng.NextDouble(-8.0, 8.0));
+
+        var lm = new Fit.doubleLine3Model();
+        var li = Fit.ransac(ln, ref lm, (double)0.1, 0, 606u);
+        Assert.IsTrue(li, $"line RANSAC failed ({li.ToString()})");
+        var wantDir = math.normalize(new double3((double)1, (double)2, (double)(-1)));
+        Assert.That(AngleError(lm.Direction, wantDir), Is.EqualTo(0.0).Within(0.05), "line direction");
+
+        sp.Dispose(); ln.Dispose();
+    }
+
+    [Test]
+    public void RansacGuardsThrow()
+    {
+        var pts = new NativeArray<double3>(2, Allocator.Temp);
+        var model = new Fit.doublePlaneModel();
+
+        // Fewer points than the model's minimal sample.
+        Assert.Throws<ArgumentException>(() => { var m = model; Fit.ransac(pts, ref m, (double)0.1); });
+        pts.Dispose();
+
+        var ok = ContaminatedPlane(10, 0, 3u);
+        Assert.Throws<ArgumentException>(() => { var m = model; Fit.ransac(ok, ref m, (double)0); });
+        Assert.Throws<ArgumentException>(() => { var m = model; Fit.ransac(ok, ref m, (double)(-1)); });
+        ok.Dispose();
+    }
+
     // ---------------------------------------------------------------- guards
 
     [Test]
