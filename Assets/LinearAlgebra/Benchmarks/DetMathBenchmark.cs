@@ -7,7 +7,7 @@ namespace BULA.Benchmarks
     // Purpose (exploration, not shipping): measure the cost of the platform transcendentals and how a
     // deterministic-by-construction (+ - * / and bit ops only) polynomial exp compares — on BOTH
     // throughput (batch, vectorizable) and per-call latency (single, dependent chain), for float and
-    // double, plus the accuracy the prototype actually achieves. See docs/dev/spec-detmath.md.
+    // double, plus the accuracy the prototype actually achieves.
     //
     // The prototype exp and the timed IJobs are code-generated per dtype from
     // Assets/LinearAlgebra/CodeGen/TemplateSourceBenchmarks/DetMathBenchmark.fProxy.cs.

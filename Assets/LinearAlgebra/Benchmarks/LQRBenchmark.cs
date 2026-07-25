@@ -8,7 +8,7 @@ namespace BULA.Benchmarks
     // per-dtype build methods (in a separate template assembly) can reach the sizes/seeds and row writer.
     public static class LQRBenchmarkFmt
     {
-        // n in {4, 12} x m in {2, 4} per docs/spec-lqr.md, REPEATED 100x inside the timed job (one
+        // n in {4, 12} x m in {2, 4}, REPEATED 100x inside the timed job (one
         // solve is ~2-50us -- single-invocation samples sit in timer-noise territory; med(ms)/min(ms)
         // columns report PER-SOLVE time = job time / reps). Plus n in {64, 128} single-shot rows to
         // locate the SDA-vs-recursion wall-clock crossover the spec's small-n finding left open.
@@ -44,7 +44,7 @@ namespace BULA.Benchmarks
     }
 
     // ================================================================================================
-    // Discrete-time LQR (LQR.lqr / LQR.lqrSchedule -- docs/spec-lqr.md). Three variants at each
+    // Discrete-time LQR (LQR.lqr / LQR.lqrSchedule). Three variants at each
     // (n, m):
     //   - cold-SDA: structure-preserving doubling from scratch (the plain LQR.lqr overload).
     //   - cold-recursion: the plain fixed-point Riccati recursion, ALSO cold-started (S seeded at zero)

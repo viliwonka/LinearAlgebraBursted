@@ -72,7 +72,7 @@ namespace BULA.Benchmarks
     // ================================================================================================
     // Mixed-integer programming benchmark (MIP.solve: branch & bound over the warm-started dual simplex
     // with pseudocost/reliability branching, best-bound+plunging, domain propagation, a rounding
-    // heuristic, and absGap/relGap gap limits -- docs/draft-spec-mip.md).
+    // heuristic, and absGap/relGap gap limits).
     //
     //   Section 1 (MIPLIB oracles): the standard tiny known-answer set (stein9/stein15/p0033, same literal
     //     instance data as MIPTests.fProxy.cs, not re-derived). stein9 runs in both dtypes; stein15 and

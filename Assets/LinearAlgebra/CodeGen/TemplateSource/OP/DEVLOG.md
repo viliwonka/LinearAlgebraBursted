@@ -1,6 +1,28 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## LP.ladFN — deviations from the literal Fortran reference (`rqfnb.f`/`lpfnb.f`)
+- 2026-07-25 | Relocated from the file header (was LP.FrischNewton.fProxy.cs:69). The port is
+  fidelity-first; these are the three documented departures, per the port-fidelity rule.
+  **(1) The single tolerance is data-scaled.** `lpfnb.f` drives both the z/w initialization floor and
+  the convergence test from one caller-supplied eps, and so does this port — but that eps is
+  `sqrtEps·‖b‖₂` rather than a caller constant, so the convergence criterion means the same thing at
+  every data scale. The reference's single constant is not itself unsafe: when the floor fires on
+  every observation the gap is about `m·eps`, which still exceeds the tolerance eps for any m > 1, so
+  the solve proceeds. It is SPLITTING the two that is unsafe — a scaled gap test beside an unscaled
+  floor lets the floor-dominated gap fall under the tolerance, and the solve returns its
+  least-squares starting point. That was a live bug here, fixed 2026-07-25; float was broken at 3 of
+  4 data scales and c=1e-8 returned the least-squares fit.
+  **(2) A failed least-squares init is not fatal.** Where the reference aborts with no fit if the
+  one-time plain-CHO factorization of AᵀA fails, here y starts at 0 — still a valid strictly-interior
+  point — and the solve proceeds.
+  **(3) The Newton solve is defended for float.** `lpfnb.f`'s `stepy` accumulates AᵀQA with `dsyr`
+  and calls `dposv` — plain Cholesky, no pivoting, no regularization, no equilibration — because it
+  is double-only and never needs more. The pivoted CHOP, the diagonal `reg` and the Jacobi
+  equilibration all exist to make the float instantiation survive the polarized-weight endgame. They
+  are additions to the reference, not corrections of it. (The surviving "Factorization:" paragraph in
+  the file header states this as a contract; only the reference comparison moved here.)
+
 ## LP.solve(BSR) REMOVED — general sparse LP is out of scope
 - 2026-07-25 | User ruling: the implementation was not good enough to keep. Removed `LP.solve(in
   fProxyBSR …)`, the `standardFormInterior` Mehrotra loop it was the last caller of,

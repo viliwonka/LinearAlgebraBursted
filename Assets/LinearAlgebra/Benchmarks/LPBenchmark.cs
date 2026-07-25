@@ -8,7 +8,7 @@ namespace BULA.Benchmarks
     public static class LPBenchmarkFmt
     {
         // LP.solve sizes: n variables, m = n/2 inequality constraints (a wide, interior feasible region).
-        // 384 exercises the revised/dual backends (docs/spec-revised-simplex.md) at a size where the
+        // 384 exercises the revised/dual backends at a size where the
         // interior point and both revised-simplex engines all stay well within budget.
         public static readonly int[] SolveVarsN = { 24, 48, 96, 192, 384 };
 
@@ -100,16 +100,16 @@ namespace BULA.Benchmarks
     //
     //   Section 1 (LP.solve): random dense feasible+bounded LPs (A >= 0, b = A x0 + slack so x0 is
     //     feasible). THREE backends compared head to head -- Mehrotra interior
-    //     point, and (docs/spec-revised-simplex.md) the bounded-variable revised primal simplex and dual
+    //     point, the bounded-variable revised primal simplex, and the dual
     //     revised simplex -- on the IDENTICAL problem; the objective column shows all three agree, the
     //     iters column is directly comparable pivot-for-pivot.
     //
     //   Section 2 (LAD): random overdetermined regression b = A x_true + noise with periodic gross
     //     outliers. Exact L1 fit via all THREE LP.lad/LP.solve backends, PLUS the two reformulation-free
     //     exact engines -- LP.ladFN (matrix-free Frisch-Newton dual interior point over the raw m x n
-    //     design, docs/spec-lad-frisch-newton.md -- no LP reformulation, no m x m matrix, an n x n
+    //     design -- no LP reformulation, no m x m matrix, an n x n
     //     weighted normal solve per Newton step) and LP.ladBR (Barrodale-Roberts specialized simplex
-    //     over the same raw design, docs/spec-lad-barrodale-roberts.md -- an exact VERTEX solution,
+    //     over the same raw design -- an exact VERTEX solution,
     //     ~O(n) iterations regardless of m via its weighted-median long step) -- vs the fast approximate
     //     IRLS (Optimize.ladIRLS). LP.lad's own default backend is RevisedSimplex, since LAD's standard
     //     form is exactly the bounded-variable shape revised simplex targets. The
@@ -144,7 +144,7 @@ namespace BULA.Benchmarks
     //     exhaust MaxIterations instead -- the table reports that honestly rather than masking it.
     //
     //   Section 6 (warm re-solve chain): 1 cold seed + K=16 rhs-perturbed re-solves on the same
-    //     instance (docs/spec-lpbasis-persistence.md) -- cold every time vs ref LPBasis vs ref
+    //     instance -- cold every time vs ref LPBasis vs ref
     //     LPBasis + LP cache (factor/weight persistence); identical perturbation sequence per mode,
     //     so warmIters and objective are directly comparable.
     //
@@ -182,7 +182,7 @@ namespace BULA.Benchmarks
             sb.AppendLine("contradictory row, all three backends; a STATUS column (not objective) shows which backends");
             sb.AppendLine("actually detect Infeasible vs exhaust MaxIterations (interior point has no exact");
             sb.AppendLine("infeasibility certificate, so MaxIterations there is expected, not a bug).");
-            sb.AppendLine("Section 6: warm re-solve chain (docs/spec-lpbasis-persistence.md) -- 1 cold seed +");
+            sb.AppendLine("Section 6: warm re-solve chain -- 1 cold seed +");
             sb.AppendLine("K=16 rhs-perturbed re-solves on the same instance: cold every time vs ref LPBasis vs");
             sb.AppendLine("ref LPBasis + fProxyLPCache (factor/weight persistence); identical perturbation");
             sb.AppendLine("sequence per mode, so warmIters and objective are directly comparable.");

@@ -4,7 +4,7 @@ using Unity.Collections;
 //+deleteThis
 // TEMPLATE-ONLY alias: codegen rewrites each fProxy* token -> float*/double* (real Unity.Mathematics
 // types), so the field access below (.x/.y/.z/.w, .c0/.c1/.c2/.c3) resolves natively -- no proxy-struct
-// shim needed. See proxyStructs.math.cs / docs/dev/spec-alias-simd-proxies.md.
+// shim needed. See proxyStructs.math.cs.
 using fProxy2 = Unity.Mathematics.float2;
 using fProxy3 = Unity.Mathematics.float3;
 using fProxy4 = Unity.Mathematics.float4;

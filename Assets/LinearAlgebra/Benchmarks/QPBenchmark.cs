@@ -11,8 +11,8 @@ namespace BULA.Benchmarks
         // LPBenchmarkFmt.SolveVarsN's "wide, comfortably feasible" construction. Three sizes, capped at
         // 192 (T = m+n = 288 rows in the unified working-set system), so the whole section -- six solves
         // total (three sizes x two dtypes), each through the FULL public QP.solve facade (validation +
-        // phase-1 LP + active-set core) -- stays well under a minute; draft-spec-qp.md's own
-        // "Per-iteration cost" note (one QR of nxk + one Cholesky + GEMMs, O(n^3) worst case) puts even
+        // phase-1 LP + active-set core) -- stays well under a minute. The per-iteration cost
+        // (one QR of nxk + one Cholesky + GEMMs, O(n^3) worst case) puts even
         // the n=192 row's worst-case iteration cost at a few million flops, and a well-conditioned random
         // SPD Q with a comfortably-feasible polytope converges in a handful to a few dozen iterations
         // (consistent with the HS/BruteForce oracle tests, all under 20-30 iterations at far smaller n).
@@ -49,13 +49,13 @@ namespace BULA.Benchmarks
     }
 
     // ================================================================================================
-    // Convex quadratic programming benchmark (docs/draft-spec-qp.md stage 3).
+    // Convex quadratic programming benchmark.
     //
     //   Section 1 (QP.solve, random SPD QP): random dense feasible+bounded convex QPs
     //     (Q symmetric PSD via Rand.spdInPlace with a modest condition
     //     number ~10, A >= 0, b = A x0 + slack so a comfortably-feasible region exists, x boxed in
     //     [0, 3]) solved through the FULL PUBLIC facade -- QP.solve, no caller-supplied starting point,
-    //     so every row exercises phase 1 (the LP-powered feasible start, draft-spec-qp.md step 1) as
+    //     so every row exercises phase 1 (the LP-powered feasible start) as
     //     well as the active-set loop. The KKT-residual column is recomputed FRESH from the returned x
     //     inside the timed job using only PUBLIC data (Q, c, A, b, senses, xl, xu, x) -- see
     //     QpSolveJobFProxy's own comment for exactly what it captures: full primal feasibility (general

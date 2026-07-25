@@ -24,7 +24,7 @@ namespace BULA.Benchmarks
         // timed sample of the same job is deterministic, so any one of them is representative).
         // Exposes the benchmark-hygiene case a wall-clock-only column hides: a solver that exits via
         // a breakdown guard partway through K iterations looks "fast" for having done LESS work, not
-        // more of it -- see docs/draft-spec-krylov-optimization.md's benchmark hygiene note.
+        // more of it.
         public static string Row(string dtype, string size, string solver, Bench.Stat st, double residual, int iters, int status) =>
             string.Format(System.Globalization.CultureInfo.InvariantCulture,
                 "{0,-7} {1,-12} {2,-12} {3,11:F4} {4,11:F4} {5,14:E3} {6,6} {7,12}", dtype, size, solver, st.Median, st.Min, residual, iters, StatusName(status));

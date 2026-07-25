@@ -10,7 +10,7 @@ using Unity.Mathematics;
 using BULA;
 //+deleteThis
 // TEMPLATE-ONLY alias: codegen rewrites the fProxy4 token -> float4 / double4 (real Unity.Mathematics
-// types), so its native operators + field access resolve directly. See docs/dev/spec-alias-simd-proxies.md.
+// types), so its native operators + field access resolve directly.
 using fProxy4 = Unity.Mathematics.float4;
 //-deleteThis
 
