@@ -103,4 +103,38 @@ public class fProxyLadFrischNewtonRankDeficientTests
 
         A.Dispose(); b.Dispose(); xFN.Dispose(); xBR.Dispose();
     }
+
+    // Near-collinear columns are FN's documented weak spot in float: the normal equations square the
+    // condition number, and two columns separated by ~1e-6 relative put cond(A^T Q A) past what float
+    // can resolve. This is a REGRESSION GUARD on a known limit, not an endorsement of the accuracy --
+    // the measured gap is ~8.7e-3 relative in float (double reaches ~1e-10). Prefer ladBR here; lad's
+    // own routing already does below the crossover. If this test starts failing, FN got WORSE.
+    [Test]
+    public void NearCollinearColumnsStayWithinKnownBound()
+    {
+        int m = 40, n = 3;
+        var A = new fProxyMxN(m, n, Allocator.Temp);
+        var b = new fProxyN(m, Allocator.Temp);
+        var rng = new Unity.Mathematics.Random(4242u);
+        for (int i = 0; i < m; i++)
+        {
+            fProxy t = rng.NextFProxy(0f, 10f);
+            A[i, 0] = (fProxy)1; A[i, 1] = t;
+            A[i, 2] = (fProxy)(t + 1e-5f * rng.NextFProxy(-1f, 1f));   // ~1e-6 relative separation
+            b[i] = (fProxy)(3f + 2f * t + rng.NextFProxy(-1f, 1f));
+        }
+        b[7] = (fProxy)(b[7] + 50f);
+
+        var xFN = new fProxyN(n, Allocator.Temp);
+        var xBR = new fProxyN(n, Allocator.Temp);
+        LP.ladFN(in A, in b, ref xFN, out double objFN);
+        LP.ladBR(in A, in b, ref xBR, out double objBR);
+
+        double rel = (objFN - objBR) / objBR;
+        Assert.That(rel, Is.LessThan(/*+choose[2e-2|1e-8]*/2e-2/*-choose*/),
+            $"FN L1 residual {objFN} exceeds the exact ladBR optimum {objBR} by {rel} relative -- " +
+            "worse than the known near-collinear bound");
+
+        A.Dispose(); b.Dispose(); xFN.Dispose(); xBR.Dispose();
+    }
 }

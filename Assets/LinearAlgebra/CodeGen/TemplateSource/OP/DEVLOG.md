@@ -1,6 +1,33 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## LP.FrischNewton — plain CHO instead of CHOP: TRIED, NO EFFECT, REVERTED. Don't retry.
+- 2026-07-25 | Hypothesis (user's, and I agreed it was newly plausible): CHOP's rank truncation is
+  what stalls FN on near-collinear designs, deleting the near-degenerate direction that plain CHO
+  would keep, damped by `reg`. It looked newly testable because the same-day scale fix moved `reg`
+  to AFTER equilibration, so the smallest eigenvalue finally has a guaranteed RELATIVE floor (1e-6
+  of a unit diagonal) — before that, `reg` was absolute against an M whose scale drifts like 1/‖b‖,
+  so CHO had no reliable floor and the header's "CHO hard-fails on a non-positive pivot" stood.
+  MEASURED (float, relative L1 error vs ladBR, same probes both arms): nearCollinear 8.721e-3 with
+  CHOP vs 8.721e-3 with CHO; colScale 3.292e-5 vs 3.292e-5; duplicateCol 6.116e-6 vs 6.117e-6;
+  vandermonde 1.412e-5 vs 1.460e-5. Iteration counts identical. Double identical everywhere. The
+  full LAD filter passes 100/100 under CHO, so CHOP is not load-bearing for anything the suite
+  currently covers — but there is NO measured gain either, so the swap was reverted rather than
+  churn a deliberate robustness choice for nothing.
+  CONCLUSION: rank truncation is NOT the near-collinear mechanism. The limit is the CONDITION
+  SQUARING inherent to forming AᵀQA — cond ~1e12 against float's ~1e-7 leaves no digits in the
+  degenerate direction, and no Cholesky variant can recover information the normal matrix already
+  destroyed. Equilibration cannot help either: it normalizes the DIAGONAL (column scale), while
+  near-collinearity is an OFF-DIAGONAL correlation (~0.9999999 after equilibration).
+  The only real fix is to stop forming the normal matrix: QR of the row-scaled √Q·A, whose R gives
+  the same solve at cond(W) instead of cond(W)². NOT DONE, and not obviously worth it — Householder
+  QR is ~2mn² against BuildATQA's ~mn²/2, so roughly 4x the dominant per-iteration cost, plus an
+  m×n materialized buffer, to fix a float-only weakness in a regime where `lad` already routes to
+  ladBR (m <= 512) and where ladBR is the better engine anyway. Revisit only if a real caller hits
+  near-collinear columns at large m in float.
+  Pinned by `NearCollinearColumnsStayWithinKnownBound` (2e-2 float) as a regression guard on the
+  known limit — it does not endorse the accuracy, it catches FN getting worse.
+
 ## LP.FrischNewton — primal-residual re-injection ADOPTED (the "measured worse" verdict was stale)
 - 2026-07-25 | The affine RHS is now the reference's `(bLP - Aᵀa) + Aᵀ(q·(z-w))`, closing the last
   of the three documented deviations. `bLP` is recovered exactly as `Aᵀa` at the initial

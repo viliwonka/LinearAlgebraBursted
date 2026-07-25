@@ -51,6 +51,15 @@ namespace LinearAlgebra
         // the smallest gap seen (a NaN/Inf blow-up or an unrecoverable Indefinite factorization stops
         // the loop but never corrupts the returned x).
         //
+        // KNOWN LIMIT -- near-collinear columns in float. Each step solves the NORMAL equations, which
+        // squares the condition number: two columns separated by ~1e-6 relative give cond(AᵀQA) ~ 1e12,
+        // past what float's ~1e-7 precision can resolve, and the fit lands short of the optimum (~1e-2
+        // relative on the L1 objective; double is unaffected). This is inherent to the normal-equations
+        // form that makes each step one streaming pass over A -- it is not a tolerance or factorization
+        // choice, and neither the equilibration (which fixes column SCALE, not correlation) nor the
+        // rank-revealing factorization changes it. Use ladBR, which works on the original A and never
+        // squares the condition number; lad's own routing already prefers it at m <= the crossover.
+        //
         // Scale equivariance: the L1 fit satisfies argmin‖Ax − c·b‖₁ = c·argmin‖Ax − b‖₁ exactly, so
         // every tolerance here is proportional to ‖b‖₂ and the diagonal regularization is relative to
         // the equilibrated (unit) diagonal. No absolute constant is compared against a data-scaled
@@ -66,6 +75,11 @@ namespace LinearAlgebra
         // (2) A failed least-squares init is not fatal. Where the reference aborts with no fit if the
         //     one-time plain-CHO factorization of AᵀA fails, here y starts at 0 -- still a valid
         //     strictly-interior point -- and the solve proceeds.
+        // (3) The Newton solve is defended for float. `lpfnb.f`'s `stepy` accumulates AᵀQA with `dsyr`
+        //     and calls `dposv` -- plain Cholesky, no pivoting, no regularization, no equilibration --
+        //     because it is double-only and never needs more. The pivoted CHOP, the diagonal `reg` and
+        //     the Jacobi equilibration here all exist to make the float instantiation survive the
+        //     polarized-weight endgame. They are additions to the reference, not corrections of it.
         //
         // Job-safe: all scratch is Allocator.Temp, disposed on every return path.
         // ============================================================================================
