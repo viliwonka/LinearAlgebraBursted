@@ -37,6 +37,15 @@ public class doubleFitTests
     // `(double)` written inside it is stripped from the generated code.
     static double Tol => 1e-9;
 
+
+    // Wrap to (-pi/2, pi/2]: an ellipse axis is a direction, not a ray.
+    static double AngleModPi(double a)
+    {
+        while (a > math.PI_DBL / 2.0) a -= math.PI_DBL;
+        while (a <= -math.PI_DBL / 2.0) a += math.PI_DBL;
+        return a;
+    }
+
     // ---------------------------------------------------------------- line
 
     // Points placed exactly on y = 0.5x + 1: the fitted direction must be parallel to (1, 0.5) and
@@ -392,6 +401,156 @@ public class doubleFitTests
         Assert.AreEqual(QuadricKind.HyperboloidOrCone, Fit.classify(in ch), "should classify as hyperboloid/cone");
 
         ell.Dispose(); hyp.Dispose(); ce.Dispose(); ch.Dispose();
+    }
+
+    // ------------------------------------------------- transform equivariance
+    //
+    // Generate a shape in canonical position, apply a KNOWN rigid transform, fit the transformed
+    // points, and require the recovered shape to be the transform of the canonical answer. This is
+    // strictly stronger than the axis-aligned cases above: those leave rotation-carrying outputs
+    // (the ellipse angle, the plane normal's tilt) at their trivial values, so a wrong rotation
+    // convention would pass unnoticed.
+
+    // Rotation by (c, s) about the origin.
+    static double2 Rot2(double2 v, double c, double s) => new double2(c * v.x - s * v.y, s * v.x + c * v.y);
+
+    // Rz(alpha) then Rx(beta). Written out in double arithmetic rather than via quaternion, which
+    // Unity.Mathematics provides for float only and so would not survive the double expansion.
+    static double3 Rot3(double3 v, double ca, double sa, double cb, double sb)
+    {
+        double x1 = ca * v.x - sa * v.y, y1 = sa * v.x + ca * v.y, z1 = v.z;
+        return new double3(x1, cb * y1 - sb * z1, sb * y1 + cb * z1);
+    }
+
+    // THE test the axis-aligned ellipse case cannot do: a rotated ellipse pins the angle AND its
+    // pairing with the radii. Fit.ellipse documents radii.x as the semi-axis lying along `angle`, so
+    // whichever radius is the major one determines which direction should equal the true major axis.
+    // Getting the pairing backwards (reporting the minor axis's direction with the major radius) is
+    // a real and easy mistake that only a rotated case exposes.
+    [Test]
+    public void EllipseRotatedRecoversAxesAndAngle()
+    {
+        const double theta = 0.6, aMaj = 5.0, bMin = 2.0, cx = 3.0, cy = -2.0;
+        double ct = (double)math.cos(theta), st = (double)math.sin(theta);
+
+        const int n = 24;
+        var pts = new NativeArray<double2>(n, Allocator.Temp);
+        for (int i = 0; i < n; i++)
+        {
+            double t = 2.0 * math.PI_DBL * i / n;
+            var canon = new double2((double)(aMaj * math.cos(t)), (double)(bMin * math.sin(t)));
+            var r = Rot2(canon, ct, st);
+            pts[i] = new double2(r.x + (double)cx, r.y + (double)cy);
+        }
+
+        Assert.IsTrue(Fit.ellipse(pts, out double2 c, out double2 rad, out double ang), "ellipse fit failed");
+
+        Assert.That((double)c.x, Is.EqualTo(cx).Within(Tol), "centre x");
+        Assert.That((double)c.y, Is.EqualTo(cy).Within(Tol), "centre y");
+
+        double big = math.max((double)rad.x, (double)rad.y);
+        double small = math.min((double)rad.x, (double)rad.y);
+        Assert.That(big, Is.EqualTo(aMaj).Within(Tol), "major semi-axis");
+        Assert.That(small, Is.EqualTo(bMin).Within(Tol), "minor semi-axis");
+
+        // radii.x lies along `ang`; the major axis direction is therefore ang, or ang + pi/2 when the
+        // larger radius came out in y. An ellipse axis is a direction, not a ray, so compare mod pi.
+        double angMajor = (double)rad.x >= (double)rad.y ? (double)ang : (double)ang + math.PI_DBL / 2.0;
+        Assert.That(AngleModPi(angMajor - theta), Is.EqualTo(0.0).Within(Tol),
+            "major-axis direction must match the applied rotation (angle/radius pairing)");
+
+        pts.Dispose();
+    }
+
+    // A plane's normal must rotate with the data. Canonical normal is +z; after Rz(a)Rx(b) it is the
+    // transform of +z, up to sign (the fit does not fix a side).
+    [Test]
+    public void PlaneNormalIsRigidEquivariant()
+    {
+        double ca = (double)math.cos(0.7), sa = (double)math.sin(0.7);
+        double cb = (double)math.cos(-0.4), sb = (double)math.sin(-0.4);
+        var shift = new double3((double)2, (double)(-5), (double)1.25);
+
+        var pts = new NativeArray<double3>(25, Allocator.Temp);
+        int k = 0;
+        for (int i = 0; i < 5; i++)
+            for (int j = 0; j < 5; j++)
+            {
+                var canon = new double3((double)(i - 2), (double)(j - 2), (double)0);
+                var r = Rot3(canon, ca, sa, cb, sb);
+                pts[k++] = new double3(r.x + shift.x, r.y + shift.y, r.z + shift.z);
+            }
+
+        Assert.IsTrue(Fit.plane(pts, out double3 c, out double3 nrm), "plane fit failed");
+
+        var wantN = Rot3(new double3((double)0, (double)0, (double)1), ca, sa, cb, sb);
+        Assert.That(AngleError(nrm, wantN), Is.EqualTo(0.0).Within(Tol), "normal did not follow the rotation");
+        Assert.That((double)c.x, Is.EqualTo((double)shift.x).Within(Tol), "centroid x");
+        Assert.That((double)c.z, Is.EqualTo((double)shift.z).Within(Tol), "centroid z");
+
+        pts.Dispose();
+    }
+
+    // A sphere's centre must follow a rigid transform while its radius is invariant to it, and must
+    // scale exactly with a uniform scaling. Two different equivariances on one fit.
+    [Test]
+    public void SphereIsRigidEquivariantAndScaleCovariant()
+    {
+        double ca = (double)math.cos(0.9), sa = (double)math.sin(0.9);
+        double cb = (double)math.cos(0.3), sb = (double)math.sin(0.3);
+        var shift = new double3((double)(-4), (double)7, (double)2);
+        const double scale = 3.0, r0 = 1.5;
+
+        var pts = new NativeArray<double3>(42, Allocator.Temp);
+        int k = 0;
+        for (int i = 0; i < 6; i++)
+            for (int j = 0; j < 7; j++)
+            {
+                double u = math.PI_DBL * (i + 0.5) / 6.0, v = 2.0 * math.PI_DBL * j / 7.0;
+                var canon = new double3((double)(scale * r0 * math.sin(u) * math.cos(v)),
+                                        (double)(scale * r0 * math.sin(u) * math.sin(v)),
+                                        (double)(scale * r0 * math.cos(u)));
+                var r = Rot3(canon, ca, sa, cb, sb);
+                pts[k++] = new double3(r.x + shift.x, r.y + shift.y, r.z + shift.z);
+            }
+
+        Assert.IsTrue(Fit.sphere(pts, out double3 c, out double rad), "sphere fit failed");
+
+        Assert.That((double)c.x, Is.EqualTo((double)shift.x).Within(Tol), "centre x follows the shift");
+        Assert.That((double)c.y, Is.EqualTo((double)shift.y).Within(Tol), "centre y follows the shift");
+        Assert.That((double)c.z, Is.EqualTo((double)shift.z).Within(Tol), "centre z follows the shift");
+        Assert.That((double)rad, Is.EqualTo(scale * r0).Within(Tol), "radius scales, and rotation leaves it alone");
+
+        pts.Dispose();
+    }
+
+    // A rotation is a similarity transform of the quadratic form, so it preserves the eigenvalue
+    // signature exactly -- classification must be rotation-invariant. This pins the classifier
+    // against an implementation that accidentally depends on axis alignment.
+    [Test]
+    public void QuadricClassificationIsRotationInvariant()
+    {
+        double ca = (double)math.cos(0.55), sa = (double)math.sin(0.55);
+        double cb = (double)math.cos(0.8), sb = (double)math.sin(0.8);
+
+        var pts = new NativeArray<double3>(60, Allocator.Temp);
+        int k = 0;
+        for (int i = 0; i < 6; i++)
+            for (int j = 0; j < 10; j++)
+            {
+                double u = math.PI_DBL * (i + 0.5) / 6.0, v = 2.0 * math.PI_DBL * j / 10.0;
+                var canon = new double3((double)(3.0 * math.sin(u) * math.cos(v)),
+                                        (double)(2.0 * math.sin(u) * math.sin(v)),
+                                        (double)(1.5 * math.cos(u)));
+                pts[k++] = Rot3(canon, ca, sa, cb, sb);
+            }
+
+        var c = new doubleN(10, Allocator.Temp);
+        Assert.IsTrue(Fit.quadric(pts, ref c), "rotated ellipsoid quadric fit failed");
+        Assert.AreEqual(QuadricKind.Ellipsoid, Fit.classify(in c),
+            "a rotated ellipsoid is still an ellipsoid: the signature is rotation-invariant");
+
+        pts.Dispose(); c.Dispose();
     }
 
     // ---------------------------------------------------------------- guards
