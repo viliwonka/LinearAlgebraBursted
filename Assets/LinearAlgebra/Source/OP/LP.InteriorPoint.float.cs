@@ -167,7 +167,7 @@ namespace LinearAlgebra
             LPStatus status = LPStatus.MaxIterations;
             int iters = 0;
 
-            // Best-iterate safeguard (mirrors the sparse standardFormInterior): a failed late
+            // Best-iterate safeguard: a failed late
             // factorization or a float blow-up must not poison the answer -- keep the best-scoring
             // iterate seen and extract x from it, not from whatever z the loop stopped on.
             for (int j = 0; j < nv; j++) zBest[j] = z[j];

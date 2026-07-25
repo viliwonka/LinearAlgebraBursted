@@ -1,6 +1,27 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## LP.solve(BSR) REMOVED — general sparse LP is out of scope
+- 2026-07-25 | User ruling: the implementation was not good enough to keep. Removed `LP.solve(in
+  fProxyBSR …)`, the `standardFormInterior` Mehrotra loop it was the last caller of,
+  `fProxySlackAugmentedOperator`, and `fProxyNormalJacobi` (redundant with the existing
+  `fProxyDiagonalPreconditioner`). `LP.Sparse.fProxy.cs` is gone entirely; the surviving `LP.lad(BSR)`
+  forwarder moved next to `ladFN(BSR)` in LP.FrischNewton. Tests `SparseWyndorGlass` /
+  `SparseVsDenseLp` deleted with it.
+  KEPT: `fProxyLadOperator` and `fProxyNormalOperator` — the latter is documented as a general
+  "AᵀDA / A D Aᵀ" operator and both are pinned by a direct operator test that checks Aₛ D Aₛᵀ against
+  a hand-computed AAᵀ. `IfProxyStandardFormOperator` stays as their shared contract, now with no
+  in-library solver consuming it (noted in its own doc).
+  WHY, beyond the measured defects (inert absolute `reg` 21 orders under a 1e13 diagonal; Jacobi
+  preconditioner inert because diag(M)'s range is 1.87; CG at its cap every iteration): the AUDIENCE.
+  Large sparse LP is a logistics/scheduling workload at 1e5-1e6 variables where users reach for HiGHS
+  or Gurobi directly; the LP-shaped problems games actually pose are small and dense, already served
+  by the dense revised/dual simplex and MIP. Porting HiGHS's sparse route was considered and declined:
+  its dual simplex needs a Markowitz/Suhl-Suhl sparse LU, and its IPM (IPX, Schork-Gondzio) needs a
+  BASIS preconditioner built on that same sparse LU — the subsystem already declined in July as
+  CHOLMOD-class. Precedent: PDLP was removed on the same reasoning (−2764 lines).
+  Sparse LAD is unaffected and is the one sparse LP-family capability with a real use case; it now
+  runs Frisch-Newton on the original design (entry above).
 ## LP.lad — quantreg's own published coefficients imported as a real-data oracle (barro, 3 taus)
 - 2026-07-25 | `quantreg/tests/rq.R` asserts rq() coefficients on the Barro growth data at tol 1e-5
   for tau = 0.5 (`y.net ~ lgdp2+fse2+gedy2`) and tau = 0.75 / 0.25 (`+ Iy2 + gcony2`). Imported as

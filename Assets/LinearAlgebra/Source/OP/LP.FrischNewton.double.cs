@@ -201,6 +201,19 @@ namespace LinearAlgebra
             return ladFrischNewtonCore(new doubleBsrLadDesign(in A), in b, tau, ref x, out objective, maxIter);
         }
 
+        /// <summary>
+        /// Sparse least absolute deviation: minimize ‖A x − b‖₁ over a free x ∈ ℝⁿ, with A a
+        /// block-sparse <see cref="doubleBSR"/>. The sparse counterpart of the dense
+        /// <see cref="lad(in doubleMxN, in doubleN, ref doubleN, out double, int)"/>; forwards to
+        /// <see cref="ladFN(in doubleBSR, in doubleN, ref doubleN, out double, int)"/>. There is no
+        /// engine choice here -- the dense hybrid picks Barrodale-Roberts below its crossover because
+        /// BR's per-pivot sweep is cheap at small m, but BR works on a dense tableau, so Frisch-Newton
+        /// is the only sparse route.
+        /// </summary>
+        public static LPInfo lad(in doubleBSR A, in doubleN b, ref doubleN x, out double objective,
+                                 int maxIter = 0)
+            => ladFN(in A, in b, ref x, out objective, maxIter);
+
         // Design-generic core. TDesign supplies A x, Aa y and the weighted Gram; nothing else here
         // touches the design matrix, so dense and block-sparse share one body.
         internal static LPInfo ladFrischNewtonCore<TDesign>(in TDesign design, in doubleN b, double tau,

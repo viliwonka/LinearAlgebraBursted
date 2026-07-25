@@ -125,8 +125,8 @@ namespace LinearAlgebra.Benchmarks
     //     m in [1e3,1e4].
     //
     //   Section 3 (sparse LAD): the same L1 fit over a tall block-sparse (BSR) design, solved by the
-    //     matrix-free interior point (never forms the m x m normal matrix), vs the dense LP.lad
-    //     baseline where it still fits. Same core drives sparse LP.solve, so it is representative.
+    //     matrix-free Frisch-Newton (streams the stored blocks; its normal matrix is n x n in the
+    //     coefficient count, never m x m), vs the dense LP.lad baseline where it still fits.
     //
     //   Section 4 (dense covering LP): min cᵀx s.t. A x >= b, x >= 0 with A,b,c >= 0 by construction --
     //     deliberately DUAL-FAVORABLE: every nonneg cost column is already dual-feasible at the

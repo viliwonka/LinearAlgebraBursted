@@ -15,11 +15,11 @@ namespace LinearAlgebra
     /// <summary>
     /// A standard-form LP constraint operator Aₛ (the interior point works on min cᵀz s.t. Aₛ z = b,
     /// z ≥ 0) that, on top of the usual <see cref="IfloatLinearOperator"/> Apply/ApplyT, can report the
-    /// diagonal of its interior-point normal matrix diag(Aₛ diag(D) Aₛᵀ) matrix-free. That extra hook is
-    /// all the sparse Mehrotra core (<c>LP.standardFormInterior</c>) needs beyond a plain linear operator
-    /// to build its <see cref="floatNormalJacobi"/> preconditioner, so a single generic interior-point
-    /// loop serves every standard form -- LAD (<see cref="Sparse.floatLadOperator"/>) and slack-augmented
-    /// general LP (<see cref="Sparse.floatSlackAugmentedOperator"/>) alike.
+    /// diagonal of its interior-point normal matrix diag(Aₛ diag(D) Aₛᵀ) matrix-free -- the hook a
+    /// diagonally-preconditioned normal-equations solve needs beyond a plain linear operator.
+    /// <see cref="Sparse.floatLadOperator"/> (Aₛ = [A | -A | -I | I]) is the standard-form encoding of
+    /// an L1 regression. NOTE no solver in the library currently consumes this: LP.lad over a sparse
+    /// design goes to LP.ladFN, which works on the ORIGINAL m x n matrix instead of reformulating.
     /// </summary>
     public interface IfloatStandardFormOperator : IfloatLinearOperator
     {
@@ -96,36 +96,6 @@ namespace LinearAlgebra
         }
     }
 
-    /// <summary>
-    /// Diagonal Jacobi preconditioner z = diag(M)⁻¹ r for the interior-point normal equations
-    /// M = Aₛ D Aₛᵀ. diag(M) is computed matrix-free once per iteration (see
-    /// <c>floatLadOperator.NormalDiagonal</c> / <see cref="Sparse.BSR.rowSquaredWeighted"/>) and this
-    /// preconditioner just stores its reciprocal. Cheap, and the natural first preconditioner for the
-    /// PCG inner solve (M ill-conditions as the interior point approaches the boundary). Holds the
-    /// <c>InvDiag</c> handle (length m); the caller rewrites its contents each iteration.
-    /// </summary>
-    public readonly struct floatNormalJacobi : IfloatPreconditioner
-    {
-        public readonly floatN InvDiag;   // length m; 1 / diag(M)
-
-        public floatNormalJacobi(in floatN invDiag) { InvDiag = invDiag; }
-
-        public bool IsIdentity => false;
-        /// <summary>Symmetric by construction (diag), and SPD assuming a positive diag(M) -- M = Aₛ D
-        /// Aₛᵀ is SPD by construction for D &gt; 0, the caller's contract. Consumed only by
-        /// <see cref="LinearAlgebra.Krylov"/>.cg, which requires exactly this.</summary>
-        public bool IsSpd => true;
-        /// <summary>Fixed for the duration of one <see cref="LinearAlgebra.Krylov"/>.cg call (the
-        /// caller rebuilds InvDiag once per outer interior-point iteration, not per CG iteration).</summary>
-        public bool IsConstant => true;
-
-        public void Apply(in floatN r, ref floatN z)
-        {
-            if (z.N != r.N || InvDiag.N != r.N)
-                throw new ArgumentException("floatNormalJacobi.Apply: r, z and InvDiag lengths must match");
-            for (int i = 0; i < r.N; i++) z[i] = r[i] * InvDiag[i];
-        }
-    }
 }
 
 namespace LinearAlgebra.Sparse
@@ -197,93 +167,6 @@ namespace LinearAlgebra.Sparse
             for (int j = 0; j < N; j++) sp[j] = D[j] + D[N + j];   // w = d⁺ + d⁻
             BSR.rowSquaredWeighted(in A, in sp, ref diag);        // diag[i] = Σ_j A[i,j]² w[j]
             for (int i = 0; i < M; i++) diag[i] += D[2 * N + i] + D[2 * N + M + i];
-        }
-
-        public void ApplyBlock(in floatMxN Vrows, ref floatMxN AVrows, int rows)
-        {
-            var rin = new floatN(Cols, Allocator.Temp, false);
-            var rout = new floatN(Rows, Allocator.Temp, false);
-            for (int i = 0; i < rows; i++)
-            {
-                for (int c = 0; c < Cols; c++) rin[c] = Vrows[i, c];
-                Apply(in rin, ref rout);
-                for (int c = 0; c < Rows; c++) AVrows[i, c] = rout[c];
-            }
-            rout.Dispose();
-            rin.Dispose();
-        }
-    }
-
-    /// <summary>
-    /// Matrix-free slack-augmented constraint operator for a general sparse LP standard form. Given a
-    /// sparse design matrix A (m×n, BSR) and one non-negative slack/surplus column per inequality row,
-    /// presents Aₛ = [A | S] (m × (n + nSlack)) over z = [x(n) | slack(nSlack)]:
-    ///   Apply(z)  = A x  +  Σ_k sign_k · slack_k  (added to that slack's row)      (length m)
-    ///   ApplyT(r) = [Aᵀr ; sign_k · r[row_k]]                                       (length n+nSlack)
-    /// S has exactly one ±1 entry per column: <c>sign_k = +1</c> for a ≤ row (Ax + slack = b) and
-    /// <c>−1</c> for a ≥ row (Ax − surplus = b); equality rows get no column. This is the matrix-free
-    /// analogue of the dense interior point's materialized <c>[A | ±1 slack columns]</c>, so it never
-    /// builds the awkward mixed BR×BC-block / 1×1-identity BSR. The (row, sign) of each slack column are
-    /// supplied as two length-nSlack arrays. Holds A, those two arrays, and two owned scratch vectors
-    /// (Sp length n for the x slice, Atr length n for Aᵀr).
-    ///
-    /// Also computes the interior-point Jacobi diagonal diag(Aₛ D Aₛᵀ) via <see cref="NormalDiagonal"/>.
-    /// </summary>
-    public readonly struct floatSlackAugmentedOperator : IfloatStandardFormOperator
-    {
-        public readonly floatBSR A;
-        public readonly int M, N, NSlack;
-        public readonly NativeArray<int> SlackRow;      // length NSlack: the row each slack column sits in
-        public readonly NativeArray<float> SlackSign;  // length NSlack: +1 (≤) or −1 (≥)
-        public readonly floatN Sp;    // length N scratch (x slice)
-        public readonly floatN Atr;   // length N scratch (Aᵀr)
-
-        public floatSlackAugmentedOperator(in floatBSR a, int nSlack, in NativeArray<int> slackRow,
-                                            in NativeArray<float> slackSign, in floatN sp, in floatN atr)
-        {
-            A = a; M = a.M_Rows; N = a.N_Cols; NSlack = nSlack;
-            if (slackRow.Length != nSlack) throw new ArgumentException("floatSlackAugmentedOperator: slackRow.Length must equal nSlack");
-            if (slackSign.Length != nSlack) throw new ArgumentException("floatSlackAugmentedOperator: slackSign.Length must equal nSlack");
-            if (sp.N != N) throw new ArgumentException("floatSlackAugmentedOperator: sp.N must equal A.N_Cols");
-            if (atr.N != N) throw new ArgumentException("floatSlackAugmentedOperator: atr.N must equal A.N_Cols");
-            SlackRow = slackRow; SlackSign = slackSign; Sp = sp; Atr = atr;
-        }
-
-        public int Rows => M;
-        public int Cols => N + NSlack;
-
-        public void Apply(in floatN z, ref floatN y)
-        {
-            var sp = Sp;
-            for (int j = 0; j < N; j++) sp[j] = z[j];
-            BSR.spMV(in A, in sp, ref y);                          // y = A x
-            for (int k = 0; k < NSlack; k++) y[SlackRow[k]] += SlackSign[k] * z[N + k];
-        }
-
-        public void ApplyT(in floatN r, ref floatN outv)
-        {
-            var atr = Atr;
-            BSR.spMVT(in A, in r, ref atr);                        // atr = Aᵀ r
-            for (int j = 0; j < N; j++) outv[j] = atr[j];
-            for (int k = 0; k < NSlack; k++) outv[N + k] = SlackSign[k] * r[SlackRow[k]];
-        }
-
-        // Rectangular (Rows = M, Cols = N+NSlack): satisfies the interface, but no solver calls
-        // ApplyDot on this operator directly (only floatNormalOperator wraps it for PCG, and
-        // that wrapper has its own ApplyDot). Composes: Apply, then a plain dot pass.
-        public float ApplyDot(in floatN z, ref floatN y)
-        {
-            Apply(in z, ref y);
-            return Blas.dot(z, y);
-        }
-
-        // diag(Aₛ diag(D) Aₛᵀ)_i = Σ_j A[i,j]²·D[j]  +  Σ_{slack k in row i} D[N+k]  (sign² = 1).
-        public void NormalDiagonal(in floatN D, ref floatN diag)
-        {
-            var sp = Sp;
-            for (int j = 0; j < N; j++) sp[j] = D[j];
-            BSR.rowSquaredWeighted(in A, in sp, ref diag);        // diag[i] = Σ_j A[i,j]² D[j]
-            for (int k = 0; k < NSlack; k++) diag[SlackRow[k]] += D[N + k];
         }
 
         public void ApplyBlock(in floatMxN Vrows, ref floatMxN AVrows, int rows)
