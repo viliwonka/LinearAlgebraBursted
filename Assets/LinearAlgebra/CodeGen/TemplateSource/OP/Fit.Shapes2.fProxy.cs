@@ -3,6 +3,8 @@ using System;
 using Unity.Collections;
 using Unity.Mathematics;
 
+using Random = Unity.Mathematics.Random;   // this file imports System, which has its own Random
+
 //+deleteThis
 using fProxy2 = Unity.Mathematics.float2;
 //-deleteThis
@@ -67,7 +69,7 @@ namespace BULA
         }
 
         /// <summary>Circle of <see cref="Radius"/> about <see cref="Center"/>.</summary>
-        public struct fProxyCircle : IfProxyWeighted2
+        public struct fProxyCircle : IfProxyWeighted2, IfProxySampleable2
         {
             public fProxy2 Center;
             public fProxy Radius;
@@ -75,6 +77,12 @@ namespace BULA
             public int MinimalSamples => 3;
 
             public fProxy Distance(in fProxy2 p) => math.abs(math.length(p - Center) - Radius);
+
+            public fProxy2 Sample(ref Random rng)
+            {
+                fProxy t = rng.NextFProxy((fProxy)0, (fProxy)(2.0 * math.PI_DBL));
+                return Center + Radius * new fProxy2(math.cos(t), math.sin(t));
+            }
 
             public bool Estimate(NativeArray<fProxy2> sample)
             {
@@ -90,6 +98,60 @@ namespace BULA
                                           in w, ref c, out fProxy r);
                 if (ok) { Center = new fProxy2(c[0], c[1]); Radius = r; }
                 c.Dispose();
+                return ok;
+            }
+        }
+
+        /// <summary>
+        /// Ellipse with semi-axes <see cref="Radii"/> about <see cref="Center"/>, the .x axis rotated
+        /// <see cref="Angle"/> radians from +x. Fitting it is CONSTRAINED to an ellipse (see
+        /// <see cref="conic"/>), so a noisy near-parabolic cloud cannot come back a hyperbola.
+        ///
+        /// <see cref="Distance"/> is APPROXIMATE, by bracketed Newton -- see
+        /// <see cref="fProxyEllipse3"/> for where and by how much.
+        /// </summary>
+        public struct fProxyEllipse2 : IfProxyWeighted2, IfProxySampleable2
+        {
+            public fProxy2 Center;
+            public fProxy2 Radii;
+            public fProxy Angle;
+
+            public int MinimalSamples => 5;      // a conic has 5 degrees of freedom
+
+            public fProxy2 Sample(ref Random rng)
+            {
+                fProxy t = EllipseAngle(ref rng, Radii.x, Radii.y);
+                fProxy cs = math.cos(Angle), sn = math.sin(Angle);
+                fProxy x = Radii.x * math.cos(t), y = Radii.y * math.sin(t);
+                return Center + new fProxy2(x * cs - y * sn, x * sn + y * cs);
+            }
+
+            public fProxy Distance(in fProxy2 p)
+            {
+                fProxy cs = math.cos(Angle), sn = math.sin(Angle);
+                fProxy2 v = p - Center;
+                return EllipseDistance2D(math.abs(v.x * cs + v.y * sn),
+                                         math.abs(-v.x * sn + v.y * cs), Radii.x, Radii.y);
+            }
+
+            public bool Estimate(NativeArray<fProxy2> sample)
+            {
+                bool ok = ellipse(sample, out fProxy2 c, out fProxy2 r, out fProxy a);
+                if (ok) { Center = c; Radii = r; Angle = a; }
+                return ok;
+            }
+
+            public bool Refit(NativeArray<fProxy2> points, in fProxyN w)
+            {
+                var coeffs = new fProxyN(6, Allocator.Temp);
+                fProxy2 c = default, r = default;
+                fProxy a = default;
+
+                bool ok = ConicWeighted(points, in w, ref coeffs);
+                if (ok) ok = EllipseFromConic(in coeffs, out c, out r, out a);
+                if (ok) { Center = c; Radii = r; Angle = a; }
+
+                coeffs.Dispose();
                 return ok;
             }
         }

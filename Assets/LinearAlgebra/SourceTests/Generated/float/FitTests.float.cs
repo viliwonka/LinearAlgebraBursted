@@ -9,6 +9,8 @@ using NUnit.Framework;
 using Unity.Collections;
 using Unity.Mathematics;
 
+using Random = Unity.Mathematics.Random;   // this file imports System, which has its own Random
+
 
 
 // Acceptance tests for the Fit facade (OP/Fit.*.float.cs): geometric fits (line/plane/sphere) with a
@@ -1541,6 +1543,472 @@ public class floatFitTests
         pts.Dispose();
     }
 
+    // ------------------------------------------------------- ellipsoid / ellipse2
+    //
+    // Fit.ellipsoid is the CONSTRAINED counterpart of Fit.quadric, and the shapes are what let a
+    // metric reach either family at all -- an ellipse or ellipsoid has a real distance function,
+    // where a general quadric only has Sampson.
+
+    // Accuracy of the bracketed root solve behind floatEllipsoid/floatEllipse2's Distance is set by
+    // its coordinate floor, max(radius) * sqrtEps -- far coarser than Tol in double, so assertions on
+    // a DISTANCE use this instead of Tol.
+    static double DistTol => 5e-3;
+
+    // Fit.ellipsoid's accuracy floor. Li & Griffiths needs the SCATTER matrix for its generalized
+    // eigenproblem, and forming it squares the condition number, so the constrained fit lands at
+    // normal-equations accuracy rather than the direct-factorization accuracy Fit.quadric reaches.
+    // Asserting Tol here would be asserting something the method does not claim.
+    static double AlgTol => 2e-3;
+
+    // Spherical grid over the ellipsoid (a, b, cc) centred at o. The half-step in u keeps samples off
+    // the poles, where the grid would otherwise pile up.
+    static NativeArray<float3> SampleEllipsoid(double a, double b, double cc, float3 o,
+                                                int nu, int nv, int extra = 0)
+    {
+        var pts = new NativeArray<float3>(nu * nv + extra, Allocator.Temp);
+        int k = 0;
+        for (int i = 0; i < nu; i++)
+            for (int j = 0; j < nv; j++)
+            {
+                double u = math.PI_DBL * (i + 0.5) / nu, v = 2.0 * math.PI_DBL * j / nv;
+                pts[k++] = o + new float3((float)(a * math.sin(u) * math.cos(v)),
+                                           (float)(b * math.sin(u) * math.sin(v)),
+                                           (float)(cc * math.cos(u)));
+            }
+        return pts;
+    }
+
+    // Points placed exactly on a known axis-aligned ellipsoid. The eigensolve reports axes in its own
+    // order, so the radii are compared as a SET.
+    [Test]
+    public void EllipsoidExactRecoversGeometry()
+    {
+        var o = new float3((float)1.0, (float)(-2.0), (float)0.5);
+        var pts = SampleEllipsoid(3.0, 2.0, 1.5, o, 8, 12);
+
+        Assert.IsTrue(Fit.ellipsoid(pts, out float3 ctr, out float3 rad, out _, out _),
+            "ellipsoid fit failed");
+
+        Assert.That((double)ctr.x, Is.EqualTo(1.0).Within(AlgTol), "centre x");
+        Assert.That((double)ctr.y, Is.EqualTo(-2.0).Within(AlgTol), "centre y");
+        Assert.That((double)ctr.z, Is.EqualTo(0.5).Within(AlgTol), "centre z");
+
+        var got = new double[] { (double)rad.x, (double)rad.y, (double)rad.z };
+        Array.Sort(got);
+        Assert.That(got[0], Is.EqualTo(1.5).Within(AlgTol), "smallest semi-axis");
+        Assert.That(got[1], Is.EqualTo(2.0).Within(AlgTol), "middle semi-axis");
+        Assert.That(got[2], Is.EqualTo(3.0).Within(AlgTol), "largest semi-axis");
+
+        pts.Dispose();
+    }
+
+    // THE reason Fit.ellipsoid exists alongside Fit.quadric. The same one-sheet hyperboloid data that
+    // sends the UNCONSTRAINED fit to a hyperboloid must still come back an ellipsoid here, because
+    // Li & Griffiths' constraint admits nothing else. Asserting the precondition too keeps this test
+    // honest: if `quadric` ever stopped going astray on this cloud, the guarantee would be untested
+    // rather than silently trivial.
+    [Test]
+    public void EllipsoidConstraintHoldsOnHyperboloidData()
+    {
+        // x²/4 + y²/4 - z² = 1.
+        var pts = new NativeArray<float3>(60, Allocator.Temp);
+        int k = 0;
+        for (int i = 0; i < 6; i++)
+            for (int j = 0; j < 10; j++)
+            {
+                double zz = -1.0 + 2.0 * i / 5.0, v = 2.0 * math.PI_DBL * j / 10.0;
+                double rr = 2.0 * math.sqrt(1.0 + zz * zz);
+                pts[k++] = new float3((float)(rr * math.cos(v)), (float)(rr * math.sin(v)), (float)zz);
+            }
+
+        var q = new floatN(10, Allocator.Temp);
+        Assert.IsTrue(Fit.quadric(pts, ref q), "quadric fit failed");
+        Assert.AreEqual(QuadricKind.HyperboloidOrCone, Fit.classify(in q),
+            "precondition: the unconstrained fit must go astray on this data");
+
+        var e = new floatN(10, Allocator.Temp);
+        Assert.IsTrue(Fit.ellipsoid(pts, ref e), "ellipsoid fit failed");
+        Assert.AreEqual(QuadricKind.Ellipsoid, Fit.classify(in e),
+            "the constrained fit must be an ellipsoid whatever the data says");
+
+        pts.Dispose(); q.Dispose(); e.Dispose();
+    }
+
+    // A rotated ellipsoid pins the axes AND their pairing with the radii. An axis-aligned case cannot:
+    // it would pass a fit that returned the right three lengths against the wrong three directions.
+    [Test]
+    public void EllipsoidRotatedRecoversAxesAndRadii()
+    {
+        const double alpha = 0.7, beta = 0.4;
+        const double ra = 3.0, rb = 2.0, rc = 1.2;
+        float ca = (float)math.cos(alpha), sa = (float)math.sin(alpha);
+        float cb = (float)math.cos(beta), sb = (float)math.sin(beta);
+
+        var pts = new NativeArray<float3>(96, Allocator.Temp);
+        int k = 0;
+        for (int i = 0; i < 8; i++)
+            for (int j = 0; j < 12; j++)
+            {
+                double u = math.PI_DBL * (i + 0.5) / 8.0, v = 2.0 * math.PI_DBL * j / 12.0;
+                var canon = new float3((float)(ra * math.sin(u) * math.cos(v)),
+                                        (float)(rb * math.sin(u) * math.sin(v)),
+                                        (float)(rc * math.cos(u)));
+                pts[k++] = Rot3(canon, ca, sa, cb, sb);
+            }
+
+        Assert.IsTrue(Fit.ellipsoid(pts, out float3 ctr, out float3 rad,
+                                    out float3 axA, out float3 axB), "ellipsoid fit failed");
+
+        Assert.Less(math.length(ctr), (float)AlgTol, "centre must stay at the origin");
+
+        var axes = new float3[] { axA, axB, math.cross(axA, axB) };
+        var radii = new double[] { (double)rad.x, (double)rad.y, (double)rad.z };
+
+        // Each TRUE axis, rotated into place, must be matched by the recovered axis carrying its
+        // radius -- which is the pairing an axis-aligned fit leaves untested.
+        var truthAxis = new float3[]
+        {
+            Rot3(new float3((float)1, (float)0, (float)0), ca, sa, cb, sb),
+            Rot3(new float3((float)0, (float)1, (float)0), ca, sa, cb, sb),
+            Rot3(new float3((float)0, (float)0, (float)1), ca, sa, cb, sb),
+        };
+        var truthRadius = new double[] { ra, rb, rc };
+
+        for (int t = 0; t < 3; t++)
+        {
+            int best = 0;
+            double bestDot = -1.0;
+            for (int g = 0; g < 3; g++)
+            {
+                double d = math.abs(math.dot(math.normalize(axes[g]), truthAxis[t]));
+                if (d > bestDot) { bestDot = d; best = g; }
+            }
+
+            Assert.That(bestDot, Is.EqualTo(1.0).Within(AlgTol), $"axis {t} direction");
+            Assert.That(radii[best], Is.EqualTo(truthRadius[t]).Within(AlgTol),
+                $"axis {t} must carry its own semi-axis length");
+        }
+
+        pts.Dispose();
+    }
+
+    // The distance function's own oracle: zero on the surface, min(radii) at the centre. The centre is
+    // the case the bracketed root solve gets wrong without a coordinate floor -- every term of F
+    // vanishes there, the search runs to the bracket floor, and the answer comes back 0, which would
+    // score a dead-centre outlier as a perfect inlier.
+    [Test]
+    public void EllipsoidDistanceIsZeroOnSurfaceAndMinRadiusAtCentre()
+    {
+        var e = new Fit.floatEllipsoid
+        {
+            Center = new float3((float)1, (float)(-1), (float)2),
+            AxisA = new float3((float)1, (float)0, (float)0),
+            AxisB = new float3((float)0, (float)1, (float)0),
+            Radii = new float3((float)3, (float)2, (float)1.5),
+        };
+
+        for (int i = 0; i < 6; i++)
+            for (int j = 0; j < 8; j++)
+            {
+                double u = math.PI_DBL * (i + 0.5) / 6.0, v = 2.0 * math.PI_DBL * (j + 0.5) / 8.0;
+                var p = e.Center + new float3((float)(3.0 * math.sin(u) * math.cos(v)),
+                                               (float)(2.0 * math.sin(u) * math.sin(v)),
+                                               (float)(1.5 * math.cos(u)));
+                Assert.That((double)e.Distance(p), Is.EqualTo(0.0).Within(DistTol), "on the surface");
+            }
+
+        Assert.That((double)e.Distance(e.Center), Is.EqualTo(1.5).Within(DistTol),
+            "the centre is min(radii) from the surface, not on it");
+
+        // A point on an axis, outside: the answer is exact along that axis.
+        var onAxis = e.Center + new float3((float)5, (float)0, (float)0);
+        Assert.That((double)e.Distance(onAxis), Is.EqualTo(2.0).Within(DistTol), "on the +x axis");
+    }
+
+    // Same regression in 2D, which is where the missing floor actually shipped: EllipseDistance2D is
+    // shared by floatEllipse2 and the flat 3D ellipse.
+    [Test]
+    public void Ellipse2DistanceIsZeroOnCurveAndMinRadiusAtCentre()
+    {
+        var e = new Fit.floatEllipse2
+        {
+            Center = new float2((float)2, (float)(-1)),
+            Radii = new float2((float)4, (float)2),
+            Angle = (float)0,
+        };
+
+        for (int i = 0; i < 16; i++)
+        {
+            double t = 2.0 * math.PI_DBL * (i + 0.5) / 16.0;
+            var p = e.Center + new float2((float)(4.0 * math.cos(t)), (float)(2.0 * math.sin(t)));
+            Assert.That((double)e.Distance(p), Is.EqualTo(0.0).Within(DistTol), "on the curve");
+        }
+
+        Assert.That((double)e.Distance(e.Center), Is.EqualTo(2.0).Within(DistTol),
+            "the centre is min(radii) from the curve, not on it");
+    }
+
+    // floatEllipse2 through the 2D IRLS driver. The shape exists so a metric can reach an ellipse at
+    // all; the oracle is the defining property -- a robust loss must recover the true semi-axes better
+    // than plain least squares once the cloud carries an outlier.
+    [Test]
+    public void Ellipse2IrlsRobustBeatsL2UnderOutlier()
+    {
+        const double aMaj = 5.0, bMin = 2.0;
+        const int n = 32;
+        var pts = new NativeArray<float2>(n + 1, Allocator.Temp);
+        for (int i = 0; i < n; i++)
+        {
+            double t = 2.0 * math.PI_DBL * i / n;
+            pts[i] = new float2((float)(aMaj * math.cos(t)), (float)(bMin * math.sin(t)));
+        }
+        pts[n] = new float2((float)0.0, (float)4.0);          // off-curve, off both axes' truth
+
+        var l2 = new floatL2Loss();
+        var plain = new Fit.floatEllipse2();
+        Assert.IsTrue(Fit.irls(pts, ref plain, in l2), "L2 ellipse IRLS failed");
+
+        var huber = new floatHuberLoss((float)0.3);
+        var rob = new Fit.floatEllipse2();
+        Assert.IsTrue(Fit.irls(pts, ref rob, in huber), "robust ellipse IRLS failed");
+
+        Assert.Less(RadiiError(rob.Radii, aMaj, bMin), RadiiError(plain.Radii, aMaj, bMin),
+            "the robust fit must recover the true semi-axes better than L2");
+
+        pts.Dispose();
+    }
+
+    static double RadiiError(float2 got, double a, double b)
+    {
+        double big = math.max((double)got.x, (double)got.y);
+        double small = math.min((double)got.x, (double)got.y);
+        return math.abs(big - a) + math.abs(small - b);
+    }
+
+    // floatEllipsoid through the 3D IRLS driver -- the hole this shape closes. Before it, an
+    // ellipsoid could only be fitted through Fit.quadric, which has no distance function, so NO loss
+    // could reach the family geometrically.
+    [Test]
+    public void EllipsoidIrlsRobustBeatsL2UnderOutliers()
+    {
+        var o = new float3((float)0, (float)0, (float)0);
+        var pts = SampleEllipsoid(3.0, 2.0, 1.5, o, 8, 12, extra: 6);
+        for (int i = 0; i < 6; i++)                                  // off-surface junk
+            pts[96 + i] = new float3((float)(5.0 * math.cos(i)), (float)(5.0 * math.sin(i)),
+                                      (float)(0.5 * i));
+
+        var l2 = new floatL2Loss();
+        var plain = new Fit.floatEllipsoid();
+        Assert.IsTrue(Fit.irls(pts, ref plain, in l2), "L2 ellipsoid IRLS failed");
+
+        var huber = new floatHuberLoss((float)0.25);
+        var rob = new Fit.floatEllipsoid();
+        Assert.IsTrue(Fit.irls(pts, ref rob, in huber), "robust ellipsoid IRLS failed");
+
+        Assert.Less(RadiiError(rob.Radii, 3.0, 2.0, 1.5), RadiiError(plain.Radii, 3.0, 2.0, 1.5),
+            "the robust fit must recover the true semi-axes better than L2");
+
+        pts.Dispose();
+    }
+
+    static double RadiiError(float3 got, double a, double b, double c)
+    {
+        var g = new double[] { (double)got.x, (double)got.y, (double)got.z };
+        var want = new double[] { a, b, c };
+        Array.Sort(g); Array.Sort(want);
+        return math.abs(g[0] - want[0]) + math.abs(g[1] - want[1]) + math.abs(g[2] - want[2]);
+    }
+
+    // The ellipsoid also satisfies IfloatEstimable3, so the consensus driver takes it. Nine points is
+    // a large minimal sample, which is a property of the algebraic estimator and is why MinimalSamples
+    // reports 9 rather than the surface's 9 dof by coincidence -- RANSAC's cost scales as w^-m.
+    [Test]
+    public void EllipsoidRansacRejectsOutliers()
+    {
+        var o = new float3((float)0, (float)0, (float)0);
+        var pts = SampleEllipsoid(3.0, 2.0, 1.5, o, 8, 12, extra: 12);
+        for (int i = 0; i < 12; i++)
+            pts[96 + i] = new float3((float)(6.0 + 0.3 * i), (float)(1.0 * i), (float)(-2.0 + i));
+
+        var model = new Fit.floatEllipsoid();
+        var info = Fit.ransac(pts, ref model, (float)0.1, maxIter: 400, seed: 7u);
+
+        Assert.IsTrue(info.found, "RANSAC found no ellipsoid consensus");
+        Assert.GreaterOrEqual(info.inliers, 90, "the 96 on-surface points should dominate the consensus");
+        Assert.LessOrEqual(info.inliers, 100, "the 12 planted outliers must not all be inliers");
+
+        pts.Dispose();
+    }
+
+    // ----------------------------------------------------------------- sampling
+    //
+    // Fitting's inverse. The primary oracle is a cross-check between two independent pieces of
+    // geometry: a point drawn from a shape must measure zero distance to that same shape. A sampler
+    // written against a different parameterization than Distance assumes would fail it immediately.
+
+    static void AssertSamplesOnSurface<TModel>(TModel shape, uint seed, string name)
+        where TModel : struct, IfloatSampleable3
+    {
+        var rng = new Random(seed);
+        var pts = new NativeArray<float3>(200, Allocator.Temp);
+        Fit.sample(in shape, ref rng, pts);
+
+        for (int i = 0; i < pts.Length; i++)
+            Assert.That((double)shape.Distance(pts[i]), Is.EqualTo(0.0).Within(DistTol),
+                $"{name}: sample {i} must lie on the shape that produced it");
+
+        pts.Dispose();
+    }
+
+    static void AssertSamplesOnCurve<TModel>(TModel shape, uint seed, string name)
+        where TModel : struct, IfloatSampleable2
+    {
+        var rng = new Random(seed);
+        var pts = new NativeArray<float2>(200, Allocator.Temp);
+        Fit.sample(in shape, ref rng, pts);
+
+        for (int i = 0; i < pts.Length; i++)
+            Assert.That((double)shape.Distance(pts[i]), Is.EqualTo(0.0).Within(DistTol),
+                $"{name}: sample {i} must lie on the shape that produced it");
+
+        pts.Dispose();
+    }
+
+    [Test]
+    public void EverySampleLandsOnItsOwnShape()
+    {
+        var tilt = math.normalize(new float3((float)1, (float)2, (float)2));
+
+        AssertSamplesOnSurface(new Fit.floatSphere3
+        {
+            Center = new float3((float)1, (float)(-2), (float)0.5), Radius = (float)2,
+        }, 11u, "sphere");
+
+        AssertSamplesOnSurface(new Fit.floatTorus
+        {
+            Center = new float3((float)(-1), (float)0, (float)3), Axis = tilt,
+            MajorRadius = (float)3, MinorRadius = (float)0.8,
+        }, 12u, "torus");
+
+        AssertSamplesOnSurface(new Fit.floatCapsule
+        {
+            A = new float3((float)(-2), (float)1, (float)0),
+            B = new float3((float)3, (float)1, (float)2), Radius = (float)0.7,
+        }, 13u, "capsule");
+
+        AssertSamplesOnSurface(new Fit.floatCircle3
+        {
+            Center = new float3((float)0, (float)1, (float)(-1)), Normal = tilt,
+            Radius = (float)2.5,
+        }, 14u, "circle3");
+
+        AssertSamplesOnSurface(new Fit.floatEllipse3
+        {
+            Center = new float3((float)1, (float)1, (float)1), Normal = tilt,
+            AxisA = math.normalize(math.cross(tilt, new float3((float)0, (float)0, (float)1))),
+            RadiusA = (float)3, RadiusB = (float)1.5,
+        }, 15u, "ellipse3");
+
+        AssertSamplesOnSurface(new Fit.floatEllipsoid
+        {
+            Center = new float3((float)2, (float)0, (float)(-1)),
+            AxisA = math.normalize(new float3((float)1, (float)1, (float)0)),
+            AxisB = math.normalize(new float3((float)(-1), (float)1, (float)0)),
+            Radii = new float3((float)3, (float)2, (float)1.5),
+        }, 16u, "ellipsoid");
+
+        AssertSamplesOnCurve(new Fit.floatCircle
+        {
+            Center = new float2((float)2, (float)(-3)), Radius = (float)4,
+        }, 17u, "circle2");
+
+        AssertSamplesOnCurve(new Fit.floatEllipse2
+        {
+            Center = new float2((float)1, (float)2),
+            Radii = new float2((float)4, (float)2), Angle = (float)0.6,
+        }, 18u, "ellipse2");
+    }
+
+    // Uniform by AREA, not by angle. A torus's area element is (R + r·cos theta), so its outer rim
+    // carries more surface than the inner one: the outer half must take 1/2 + r/(pi·R) of the samples,
+    // where a sampler that just stepped theta uniformly would give exactly 1/2. Measuring that gap is
+    // what makes this a test of uniformity rather than of mere membership.
+    [Test]
+    public void TorusSamplingIsUniformByAreaNotByAngle()
+    {
+        var t = new Fit.floatTorus
+        {
+            Axis = new float3((float)0, (float)0, (float)1),
+            MajorRadius = (float)3, MinorRadius = (float)1,
+        };
+
+        const int n = 20000;
+        var rng = new Random(12345u);
+        var pts = new NativeArray<float3>(n, Allocator.Temp);
+        Fit.sample(in t, ref rng, pts);
+
+        int outer = 0;
+        for (int i = 0; i < n; i++)
+            if (math.length(new float2(pts[i].x, pts[i].y)) > (float)3) outer++;   // cos(theta) > 0
+
+        double want = 0.5 + 1.0 / (math.PI_DBL * 3.0);          // ~0.6061
+        Assert.That(outer / (double)n, Is.EqualTo(want).Within(0.02),
+            "the outer rim must take its share by AREA, not the 0.5 a uniform-angle sampler gives");
+
+        pts.Dispose();
+    }
+
+    // Uniform by ARC LENGTH, not by angle. The arc element sqrt(a² sin²t + b² cos²t) is SMALLEST at
+    // the major axis's vertices, so stepping t uniformly crowds the pointed ends. For this 5:1 ellipse
+    // the share of arc within 45 degrees of those vertices is about 0.32, against the exactly 0.5 a
+    // uniform-angle sampler would produce -- a gap no tolerance choice can blur.
+    [Test]
+    public void EllipseSamplingIsUniformByArcLengthNotByAngle()
+    {
+        var e = new Fit.floatEllipse2 { Radii = new float2((float)5, (float)1), Angle = (float)0 };
+
+        const int n = 20000;
+        var rng = new Random(999u);
+        var pts = new NativeArray<float2>(n, Allocator.Temp);
+        Fit.sample(in e, ref rng, pts);
+
+        int nearVertex = 0;
+        for (int i = 0; i < n; i++)
+            if (math.abs((double)pts[i].x) > 5.0 / math.SQRT2) nearVertex++;         // |cos t| > 1/sqrt(2)
+
+        double frac = nearVertex / (double)n;
+        Assert.Less(frac, 0.40, "uniform ANGLE would give 0.5; arc length must crowd the flat sides");
+        Assert.Greater(frac, 0.25, "...without abandoning the vertices altogether");
+
+        pts.Dispose();
+    }
+
+    // What having both directions buys: generate from a known shape, fit it back, compare -- with no
+    // hand-rolled parameterization in the test at all.
+    [Test]
+    public void SampledEllipsoidFitsBackToItself()
+    {
+        var truth = new Fit.floatEllipsoid
+        {
+            Center = new float3((float)1, (float)(-2), (float)0.5),
+            AxisA = math.normalize(new float3((float)1, (float)1, (float)0)),
+            AxisB = math.normalize(new float3((float)(-1), (float)1, (float)0)),
+            Radii = new float3((float)3, (float)2, (float)1.5),
+        };
+
+        var rng = new Random(4242u);
+        var pts = new NativeArray<float3>(400, Allocator.Temp);
+        Fit.sample(in truth, ref rng, pts);
+
+        var got = new Fit.floatEllipsoid();
+        Assert.IsTrue(got.Estimate(pts), "fit of the sampled points failed");
+
+        Assert.Less(math.length(got.Center - truth.Center), (float)(3.0 * AlgTol), "centre");
+        Assert.Less(RadiiError(got.Radii, 3.0, 2.0, 1.5), 3.0 * AlgTol, "semi-axes");
+
+        pts.Dispose();
+    }
+
     // ---------------------------------------------------------------- guards
 
     [Test]
@@ -1554,6 +2022,11 @@ public class floatFitTests
         var p2 = new NativeArray<float3>(2, Allocator.Temp);
         Assert.Throws<ArgumentException>(() => Fit.plane(p2, out _, out _));
         p2.Dispose();
+
+        // An ellipsoid needs 9 points: 10 coefficients less the one constraint.
+        var p8 = new NativeArray<float3>(8, Allocator.Temp);
+        Assert.Throws<ArgumentException>(() => Fit.ellipsoid(p8, out _, out _, out _, out _));
+        p8.Dispose();
 
         // Fit.total needs the AUGMENTED matrix to stay tall: m >= n + 1.
         var A = new floatMxN(2, 2, Allocator.Temp);

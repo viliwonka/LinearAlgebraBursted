@@ -1,6 +1,45 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Fit.Ellipsoid / Fit.Sample
+- 2026-07-26 | Ellipsoid added as the CONSTRAINED counterpart to `quadric`, via Li & Griffiths (2004)
+  `4J - I² = 1`. `k = 4` is fixed rather than exposed: any `k > 3` forces an ellipsoid, but a caller
+  passing `k <= 3` would silently lose the guarantee the routine exists to provide. C1's inverse is
+  written in closed form (`[[0,.5,.5],[.5,0,.5],[.5,.5,0]]` over the squares, `-0.25 I` over the
+  cross terms) so no solve is needed for it.
+- 2026-07-26 | The rotated-ellipsoid fit FAILED outright in float before data normalization was
+  added. The design entries are fourth powers of the coordinates, so a cloud a few units off the
+  origin conditions the 10x10 scatter badly enough that the 6x6 eigenproblem finds no
+  constraint-satisfying root at all. Hartley-style centre+RMS-scale normalization fixed it; the
+  quadratic block is untouched by the inverse map, so the ellipsoid constraint survives it and the
+  un-transform needs no divisions (multiplying through by scale² clears them, and coefficients are
+  only defined up to scale anyway).
+- 2026-07-26 | Accuracy floor is ~1e-8 relative in double, NOT machine precision, because
+  Li & Griffiths needs the scatter blocks for its generalized eigenproblem and forming DᵀD squares
+  the condition number. `quadric` factors the n x 10 design directly and does better. Getting the
+  same accuracy here would mean carrying an n x 10 matrix (O(10n) memory against the current O(1))
+  to buy precision far below any measured cloud's noise — rejected, and `AlgTol` in the tests is
+  sized to the method rather than to `Tol`.
+- 2026-07-26 | Point-to-ellipse/ellipsoid root solve REWRITTEN from the classic `t` parameterization
+  to `s = t + min(r)²`. Two independent bugs, both fixed by the shift: (1) every divisor is
+  `(t + r_i²)`, a difference of nearly-equal numbers, so in `t` they lose most of their significant
+  digits near the shape's own centre; (2) the convergence test was scaled by `max(|t|, 1)`, which
+  near the centre is orders of magnitude looser than the root needs — a point at the centre of a
+  (4, 2) ellipse measured 2.186 against a true 2.0. In `s` both are exact. Don't "simplify" back.
+- 2026-07-26 | The same routine reported distance ZERO at an ellipse's centre before the coordinate
+  floor was added: every term of F vanishes there, so the search runs to the bracket floor and the
+  closest point comes back as the centre itself. A dead-centre outlier scored as a perfect inlier.
+  Shipped that way in the flat-ellipse work; found by the ellipsoid's own centre test.
+- 2026-07-26 | `UniformDirection` reports through an OUT parameter, not a return value. `Fit` carries
+  no per-type token, so the float and double files merge into one class and a returned `fProxy3`
+  would leave the two differing only in return type — CS0111, not an overload. `EllipseAngle` is
+  safe as a return because its fProxy PARAMETERS already discriminate.
+- 2026-07-26 | Sampling is opt-in per shape for the same reason fitting is: plane, line, cylinder and
+  cone are unbounded, so they have no uniform distribution to draw from — the same missing extent
+  that stops least squares fitting it. Triangle/simplex/solid-box surface fits were considered and
+  rejected in the same discussion: a shape that can CONTAIN points makes every containing candidate
+  score zero, which is a min-enclosing problem, not a least-squares one.
+
 ## Header blocks trimmed to contract + traps
 - 2026-07-25 | User ruling: "what code does can be derived from code anyway" — mechanism narration
   cut from the long header blocks, contracts/traps/invariants kept. Formulas and derivations that

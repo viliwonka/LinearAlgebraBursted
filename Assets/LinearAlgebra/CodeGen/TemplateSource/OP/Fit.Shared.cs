@@ -18,6 +18,12 @@ namespace BULA
         /// <summary>Cap on RANSAC draws, and the budget used when the adaptive rule cannot bound itself.</summary>
         public const int DefaultRansacIter = 2000;
 
+        // Attempt cap for the rejection samplers. Their bounds are tight enough that acceptance is a
+        // healthy constant fraction, so this is not reachable on a well-formed shape; it exists so a
+        // degenerate one (a torus whose MinorRadius swallows its MajorRadius, an ellipsoid with a
+        // collapsed axis) cannot spin forever inside a job.
+        internal const int SampleTries = 64;
+
         // Draws m DISTINCT indices in [0, n). Rejection sampling: m is tiny (2-4) next to n in every
         // real use, so collisions are rare; the bounded retry keeps a pathological draw from spinning.
         internal static bool DrawDistinct(ref Random rng, int n, int m, ref NativeArray<int> idx)

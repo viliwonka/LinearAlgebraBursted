@@ -1,0 +1,477 @@
+using System;
+
+using Unity.Collections;
+using Unity.Mathematics;
+
+using Random = Unity.Mathematics.Random;   // this file imports System, which has its own Random
+
+//+deleteThis
+using fProxy3 = Unity.Mathematics.float3;
+//-deleteThis
+
+namespace BULA
+{
+    // ================================================================================================
+    // Ellipsoid fitting -- the 3D counterpart of the ellipse-constrained conic fit.
+    //
+    // Fit.quadric is unconstrained as to type, so a noisy or one-sided cloud can come back a
+    // hyperboloid or a paraboloid. This route applies the Li & Griffiths (2004) constraint
+    // 4J - I² = 1 on the quadratic form's invariants, which an ellipsoid is the only surface to
+    // satisfy, so the answer is always the shape that was asked for.
+    //
+    // Job-safe: scratch is Allocator.Temp, disposed before returning.
+    // ================================================================================================
+    public static partial class Fit
+    {
+        /// <summary>
+        /// Ellipsoid of <see cref="Radii"/> about <see cref="Center"/>, with semi-axis
+        /// <see cref="Radii"/>.x along unit <see cref="AxisA"/>, .y along unit <see cref="AxisB"/>,
+        /// and .z along their cross product.
+        ///
+        /// <see cref="Distance"/> is APPROXIMATE, for the same reason as the flat ellipse's: the exact
+        /// point-to-ellipsoid distance is the root of a sextic, so it is found by bracketed Newton.
+        /// It is tight everywhere except for points lying almost exactly ON an axis inside the
+        /// evolute, where the true closest point is off-axis and the answer errs by roughly the
+        /// coordinate floor.
+        /// </summary>
+        public struct fProxyEllipsoid : IfProxyWeighted3, IfProxyParametric3, IfProxySampleable3
+        {
+            public fProxy3 Center;
+            public fProxy3 AxisA;
+            public fProxy3 AxisB;
+            public fProxy3 Radii;
+
+            public int MinimalSamples => 9;      // the algebraic fit's need: 10 coefficients, 1 constraint
+            public int ParamCount => 12;
+
+            // Scaling a uniform sphere direction by the radii lands ON the ellipsoid but NOT uniformly:
+            // the map stretches area by |M^-1 n| per unit sphere area, which for radii (a,b,c) is
+            // sqrt((bc·n.x)² + (ca·n.y)² + (ab·n.z)²). Rejecting against that factor's maximum, which
+            // is the largest of the three products, restores uniformity.
+            public fProxy3 Sample(ref Random rng)
+            {
+                fProxy3 cross = new fProxy3(Radii.y * Radii.z, Radii.z * Radii.x, Radii.x * Radii.y);
+                fProxy bound = math.cmax(cross);
+
+                UniformDirection(ref rng, out fProxy3 n);
+                for (int i = 0; i < SampleTries; i++)
+                {
+                    UniformDirection(ref rng, out n);
+                    if (rng.NextFProxy() * bound <= math.length(cross * n)) break;
+                }
+
+                return Center + Radii.x * n.x * AxisA + Radii.y * n.y * AxisB
+                              + Radii.z * n.z * math.cross(AxisA, AxisB);
+            }
+
+            public fProxy Distance(in fProxy3 p)
+            {
+                fProxy3 axisC = math.cross(AxisA, AxisB);
+                fProxy3 v = p - Center;
+
+                // Absolute values put the query in the first octant, where the root solve is posed.
+                // This is also what makes AxisA/AxisB handedness irrelevant.
+                fProxy3 q = new fProxy3(math.abs(math.dot(v, AxisA)),
+                                        math.abs(math.dot(v, AxisB)),
+                                        math.abs(math.dot(v, axisC)));
+                return EllipsoidDistance3D(q, Radii);
+            }
+
+            public bool Estimate(NativeArray<fProxy3> sample) => FitFrom(sample, default(fProxyN));
+
+            public bool Refit(NativeArray<fProxy3> points, in fProxyN w) => FitFrom(points, in w);
+
+            bool FitFrom(NativeArray<fProxy3> points, in fProxyN w)
+            {
+                var c = new fProxyN(10, Allocator.Temp);
+                fProxy3 ctr = default, rad = default, a = default, b = default;
+
+                bool ok = EllipsoidWeighted(points, in w, ref c);
+                if (ok) ok = EllipsoidFromQuadric(in c, out ctr, out rad, out a, out b);
+                if (ok) { Center = ctr; Radii = rad; AxisA = a; AxisB = b; }
+
+                c.Dispose();
+                return ok;
+            }
+
+            public void Pack(ref fProxyN p)
+            {
+                p[0] = Center.x; p[1] = Center.y; p[2] = Center.z;
+                p[3] = AxisA.x;  p[4] = AxisA.y;  p[5] = AxisA.z;
+                p[6] = AxisB.x;  p[7] = AxisB.y;  p[8] = AxisB.z;
+                p[9] = Radii.x;  p[10] = Radii.y; p[11] = Radii.z;
+            }
+
+            public void Unpack(in fProxyN p)
+            {
+                Center = new fProxy3(p[0], p[1], p[2]);
+
+                AxisA = math.normalizesafe(new fProxy3(p[3], p[4], p[5]),
+                                           new fProxy3((fProxy)1, (fProxy)0, (fProxy)0));
+
+                // Gram-Schmidt AxisB against AxisA so the frame stays orthonormal whatever the solver
+                // proposed; a component along AxisA would otherwise skew every radius.
+                fProxy3 b = new fProxy3(p[6], p[7], p[8]);
+                b -= math.dot(b, AxisA) * AxisA;
+                if (math.lengthsq(b) <= Consts.fProxyEpsilon) OrthoBasis(AxisA, out b, out _);
+                AxisB = math.normalizesafe(b);
+
+                Radii = math.abs(new fProxy3(p[9], p[10], p[11]));
+            }
+        }
+
+        /// <summary>
+        /// Fits an ellipsoid to a 3D point cloud, reporting the same 10 coefficients as
+        /// <see cref="quadric"/> (A·x² + B·y² + C·z² + D·xy + E·xz + F·yz + G·x + H·y + I·z + J = 0)
+        /// but CONSTRAINED so that only an ellipsoid can come back -- <see cref="classify"/> on the
+        /// result always says <see cref="QuadricKind.Ellipsoid"/>.
+        ///
+        /// Requires points.Length &gt;= 9. False means the factorization failed or no
+        /// constraint-satisfying solution exists, typically a degenerate cloud (all points coplanar).
+        ///
+        /// The constraint costs accuracy: this route needs the SCATTER matrix for its generalized
+        /// eigenproblem, and forming it squares the condition number, so the floor is that of a
+        /// normal-equations method -- around 1e-8 relative in double, where <see cref="quadric"/>
+        /// factors the design directly and does better. Far below the noise of any measured cloud,
+        /// but not interchangeable at machine precision.
+        /// </summary>
+        public static bool ellipsoid(NativeArray<fProxy3> points, ref fProxyN coeffs)
+            => EllipsoidWeighted(points, default(fProxyN), ref coeffs);
+
+        /// <summary>
+        /// Fits an ellipsoid and reports it geometrically: <paramref name="center"/>,
+        /// <paramref name="radii"/> (semi-axis lengths) and the unit axes those lengths belong to --
+        /// <paramref name="axisA"/> for radii.x, <paramref name="axisB"/> for radii.y, their cross
+        /// product for radii.z. Requires points.Length &gt;= 9.
+        /// </summary>
+        public static bool ellipsoid(NativeArray<fProxy3> points, out fProxy3 center, out fProxy3 radii,
+                                     out fProxy3 axisA, out fProxy3 axisB)
+        {
+            center = default; radii = default; axisA = default; axisB = default;
+
+            var c = new fProxyN(10, Allocator.Temp);
+            bool ok = ellipsoid(points, ref c)
+                   && EllipsoidFromQuadric(in c, out center, out radii, out axisA, out axisB);
+            c.Dispose();
+            return ok;
+        }
+
+        /// <summary>
+        /// Ellipsoid fit under <paramref name="loss"/>, by IRLS on the SAMPSON distance. See
+        /// <see cref="conic{TLoss}"/> for why the raw algebraic residual is the wrong thing to
+        /// reweight by, and why <see cref="fProxyL2Loss"/> is not a no-op here. Requires
+        /// points.Length &gt;= 9.
+        /// </summary>
+        public static bool ellipsoid<TLoss>(NativeArray<fProxy3> points, in TLoss loss,
+                                            ref fProxyN coeffs, int maxIter = 0)
+            where TLoss : struct, IfProxyRobustLoss
+            => QuadricIrls(points, in loss, ref coeffs, maxIter, ellipsoidOnly: true);
+
+        /// <summary>
+        /// Geometry of the ellipsoid described by quadric coefficients (A..J): centre, semi-axes, and
+        /// the unit axes the first two lengths belong to. False when they do not describe a real
+        /// ellipsoid. Shared by <see cref="ellipsoid"/> and the shape's fit.
+        /// </summary>
+        internal static bool EllipsoidFromQuadric(in fProxyN c, out fProxy3 center, out fProxy3 radii,
+                                                  out fProxy3 axisA, out fProxy3 axisB)
+        {
+            center = default; radii = default; axisA = default; axisB = default;
+
+            var Q = new fProxyMxN(3, 3, Allocator.Temp);
+            var ev = new fProxyN(3, Allocator.Temp);
+            var V = new fProxyMxN(3, 3, Allocator.Temp);
+            var rhs = new fProxyN(3, Allocator.Temp);
+            var sol = new fProxyN(3, Allocator.Temp);
+            var Lu = new fProxyMxN(3, 3, Allocator.Temp);
+
+            Q[0, 0] = c[0];                    Q[1, 1] = c[1];                    Q[2, 2] = c[2];
+            Q[0, 1] = (fProxy)0.5 * c[3];      Q[1, 0] = Q[0, 1];
+            Q[0, 2] = (fProxy)0.5 * c[4];      Q[2, 0] = Q[0, 2];
+            Q[1, 2] = (fProxy)0.5 * c[5];      Q[2, 1] = Q[1, 2];
+
+            // Centre: the stationary point of the form, 2Q·centre = -(G, H, I).
+            for (int a = 0; a < 3; a++)
+            {
+                for (int b = 0; b < 3; b++) Lu[a, b] = (fProxy)2 * Q[a, b];
+                rhs[a] = -c[6 + a];
+            }
+
+            bool ok = QR.solveInPlace(ref Lu, ref rhs, ref sol);
+            if (ok)
+            {
+                center = new fProxy3(sol[0], sol[1], sol[2]);
+
+                // Constant term after translating to the centre. Since Q·centre = -g/2, the linear
+                // part contributes exactly half of what it would at the origin.
+                fProxy Jc = c[9] + (fProxy)0.5 * (c[6] * sol[0] + c[7] * sol[1] + c[8] * sol[2]);
+
+                ok = Eigen.symmetricInPlace(ref Q, ref ev, ref V);
+                if (ok)
+                {
+                    fProxy3 r2 = new fProxy3(-Jc / ev[0], -Jc / ev[1], -Jc / ev[2]);
+                    if (math.cmin(r2) > (fProxy)0)
+                    {
+                        radii = math.sqrt(r2);
+                        axisA = new fProxy3(V[0, 0], V[1, 0], V[2, 0]);
+                        axisB = new fProxy3(V[0, 1], V[1, 1], V[2, 1]);
+                    }
+                    else ok = false;
+                }
+            }
+
+            Q.Dispose(); ev.Dispose(); V.Dispose(); rhs.Dispose(); sol.Dispose(); Lu.Dispose();
+            return ok;
+        }
+
+        // Li & Griffiths ellipsoid-specific fit.
+        //
+        // The design vector is u = (x², y², z², 2yz, 2xz, 2xy, 2x, 2y, 2z, 1) and the constraint is
+        // 4J - I² = 1 on the invariants I = a+b+c and J = ab+bc+ca - f²-g²-h² of the quadratic form.
+        // Expanded that is a quadratic form v1ᵀC1 v1 in the six quadratic coefficients alone, so the
+        // problem splits the same way Halir-Flusser splits the conic: eliminate the four linear
+        // coefficients through the S22 block, then one 6x6 eigenproblem decides the rest.
+        //
+        // Any k > 3 in kJ - I² forces an ellipsoid; k = 4 is Li & Griffiths' choice and is fixed here
+        // rather than exposed, because a caller passing k <= 3 would silently lose the guarantee that
+        // is this routine's entire reason to exist.
+        static bool EllipsoidWeighted(NativeArray<fProxy3> points, in fProxyN w, ref fProxyN coeffs)
+        {
+            int n = points.Length;
+            if (n < 9) throw new ArgumentException("Fit.ellipsoid: points.Length must be >= 9");
+            if (coeffs.N != 10) throw new ArgumentException("Fit.ellipsoid: coeffs.N must be 10");
+            bool weighted = w.IsCreated;
+
+            // Hartley-style normalization: fit on points translated to the centroid and scaled to unit
+            // RMS radius, then map the coefficients back. The design entries are FOURTH powers of the
+            // coordinates, so a cloud sitting even a few units off the origin conditions the 10x10
+            // scatter badly enough that the 6x6 eigenproblem misses the constrained root outright in
+            // float. The quadratic coefficients are untouched by the map, so the ellipsoid constraint
+            // survives it unchanged.
+            fProxy3 org = default;
+            for (int i = 0; i < n; i++) org += points[i];
+            org /= (fProxy)n;
+
+            fProxy acc = (fProxy)0;
+            for (int i = 0; i < n; i++) acc += math.lengthsq(points[i] - org);
+            fProxy scale = math.sqrt(acc / (fProxy)n);
+            if (!(scale > (fProxy)0)) return false;              // every point identical
+            fProxy invScale = (fProxy)1 / scale;
+
+            var S = new fProxyMxN(10, 10, Allocator.Temp);
+            for (int a = 0; a < 10; a++)
+                for (int b = 0; b < 10; b++) S[a, b] = (fProxy)0;
+
+            var u = new fProxyN(10, Allocator.Temp);
+            for (int i = 0; i < n; i++)
+            {
+                fProxy3 p = (points[i] - org) * invScale;
+                fProxy x = p.x, y = p.y, z = p.z;
+                u[0] = x * x; u[1] = y * y; u[2] = z * z;
+                u[3] = (fProxy)2 * y * z; u[4] = (fProxy)2 * x * z; u[5] = (fProxy)2 * x * y;
+                u[6] = (fProxy)2 * x; u[7] = (fProxy)2 * y; u[8] = (fProxy)2 * z;
+                u[9] = (fProxy)1;
+
+                fProxy wi = weighted ? math.max(w[i], (fProxy)0) : (fProxy)1;
+                for (int a = 0; a < 10; a++)
+                    for (int b = 0; b < 10; b++) S[a, b] += wi * u[a] * u[b];
+            }
+
+            // X = S22^-1 S12ᵀ, so that M0 = S11 - S12 X is the Schur complement.
+            var X = new fProxyMxN(4, 6, Allocator.Temp);
+            bool ok = SolveS22(in S, ref X);
+
+            var M = new fProxyMxN(6, 6, Allocator.Temp);
+            if (ok)
+            {
+                var M0 = new fProxyMxN(6, 6, Allocator.Temp);
+                for (int a = 0; a < 6; a++)
+                    for (int b = 0; b < 6; b++)
+                    {
+                        fProxy s = S[a, b];
+                        for (int k = 0; k < 4; k++) s -= S[a, 6 + k] * X[k, b];
+                        M0[a, b] = s;
+                    }
+
+                // Premultiply by C1^-1. For k = 4 the constraint block is
+                // [[-1,1,1],[1,-1,1],[1,1,-1]] over the squares and -4I over the cross terms, whose
+                // inverses are [[0,.5,.5],[.5,0,.5],[.5,.5,0]] and -0.25I -- closed form, no solve.
+                for (int b = 0; b < 6; b++)
+                {
+                    M[0, b] = (fProxy)0.5 * (M0[1, b] + M0[2, b]);
+                    M[1, b] = (fProxy)0.5 * (M0[0, b] + M0[2, b]);
+                    M[2, b] = (fProxy)0.5 * (M0[0, b] + M0[1, b]);
+                    M[3, b] = (fProxy)(-0.25) * M0[3, b];
+                    M[4, b] = (fProxy)(-0.25) * M0[4, b];
+                    M[5, b] = (fProxy)(-0.25) * M0[5, b];
+                }
+
+                M0.Dispose();
+                ok = EllipsoidEigenvector(in M, in X, ref coeffs);
+                if (ok) Denormalize(ref coeffs, org, scale);
+            }
+
+            S.Dispose(); u.Dispose(); X.Dispose(); M.Dispose();
+            return ok;
+        }
+
+        // Undoes the fit's x' = (x - org) / scale substitution on the coefficients. Multiplying the
+        // whole surface through by scale² clears every denominator, and coefficients are defined only
+        // up to overall scale, so the map needs no divisions at all. The quadratic block comes through
+        // unchanged, which is why the ellipsoid constraint is preserved by it.
+        static void Denormalize(ref fProxyN c, fProxy3 org, fProxy scale)
+        {
+            fProxy A = c[0], B = c[1], C = c[2], D = c[3], E = c[4], F = c[5];
+            fProxy tx = org.x, ty = org.y, tz = org.z;
+
+            // Q·org, with Q carrying the halved cross terms.
+            fProxy qx = A * tx + (fProxy)0.5 * D * ty + (fProxy)0.5 * E * tz;
+            fProxy qy = (fProxy)0.5 * D * tx + B * ty + (fProxy)0.5 * F * tz;
+            fProxy qz = (fProxy)0.5 * E * tx + (fProxy)0.5 * F * ty + C * tz;
+            fProxy orgQorg = tx * qx + ty * qy + tz * qz;
+
+            fProxy gt = c[6] * tx + c[7] * ty + c[8] * tz;
+
+            c[6] = (fProxy)(-2) * qx + scale * c[6];
+            c[7] = (fProxy)(-2) * qy + scale * c[7];
+            c[8] = (fProxy)(-2) * qz + scale * c[8];
+            c[9] = orgQorg - scale * gt + scale * scale * c[9];
+        }
+
+        // X = S22^-1 S12ᵀ, by solving the 4x4 system once per right-hand side.
+        static bool SolveS22(in fProxyMxN S, ref fProxyMxN X)
+        {
+            var Lu = new fProxyMxN(4, 4, Allocator.Temp);
+            var rhs = new fProxyN(4, Allocator.Temp);
+            var sol = new fProxyN(4, Allocator.Temp);
+
+            bool ok = true;
+            for (int col = 0; col < 6 && ok; col++)
+            {
+                for (int a = 0; a < 4; a++)
+                {
+                    for (int b = 0; b < 4; b++) Lu[a, b] = S[6 + a, 6 + b];
+                    rhs[a] = S[col, 6 + a];              // row `col` of S12 is column `col` of S12ᵀ
+                }
+
+                ok = QR.solveInPlace(ref Lu, ref rhs, ref sol);
+                if (ok) for (int a = 0; a < 4; a++) X[a, col] = sol[a];
+            }
+
+            Lu.Dispose(); rhs.Dispose(); sol.Dispose();
+            return ok;
+        }
+
+        // Picks the eigenvector of the 6x6 (NON-SYMMETRIC) M that satisfies the ellipsoid constraint
+        // 4J - I² > 0, preferring the largest eigenvalue among those that do, and expands it to the
+        // full 10 coefficients via v2 = -X v1.
+        //
+        // As in ConicEigenvector, this library has no general nonsymmetric eigenVECTOR solver, so each
+        // eigenvector is recovered as the null space of (M - lambda·I) -- its smallest right singular
+        // vector. The shift makes that matrix singular by construction, which is exactly the case an
+        // inverse-iteration solve would need guarding against.
+        static bool EllipsoidEigenvector(in fProxyMxN M, in fProxyMxN X, ref fProxyN coeffs)
+        {
+            var work = new fProxyMxN(6, 6, Allocator.Temp);
+            var re = new fProxyN(6, Allocator.Temp);
+            var im = new fProxyN(6, Allocator.Temp);
+
+            for (int a = 0; a < 6; a++)
+                for (int b = 0; b < 6; b++) work[a, b] = M[a, b];
+
+            bool ok = Eigen.valuesQRInPlace(ref work, ref re, ref im);
+
+            var shifted = new fProxyMxN(6, 6, Allocator.Temp);
+            var U = new fProxyMxN(6, 6, Allocator.Temp);
+            var Sv = new fProxyN(6, Allocator.Temp);
+            var V = new fProxyMxN(6, 6, Allocator.Temp);
+            var best = new fProxyN(6, Allocator.Temp);
+
+            bool found = false;
+            fProxy bestEv = (fProxy)0;
+            if (ok)
+            {
+                for (int e = 0; e < 6; e++)
+                {
+                    if (math.abs(im[e]) > Consts.fProxySqrtEps) continue;      // complex pair: not our root
+                    if (found && !(re[e] > bestEv)) continue;
+
+                    for (int a = 0; a < 6; a++)
+                        for (int b = 0; b < 6; b++)
+                            shifted[a, b] = M[a, b] - (a == b ? re[e] : (fProxy)0);
+
+                    if (!SVD.thin(in shifted, ref U, ref Sv, ref V)) continue;
+
+                    fProxy a1 = V[0, 5], b1 = V[1, 5], c1 = V[2, 5];
+                    fProxy f = V[3, 5], g = V[4, 5], h = V[5, 5];
+
+                    fProxy I1 = a1 + b1 + c1;
+                    fProxy J2 = a1 * b1 + b1 * c1 + c1 * a1 - f * f - g * g - h * h;
+                    if (!((fProxy)4 * J2 - I1 * I1 > (fProxy)0)) continue;     // not an ellipsoid
+
+                    for (int a = 0; a < 6; a++) best[a] = V[a, 5];
+                    bestEv = re[e];
+                    found = true;
+                }
+            }
+
+            if (found)
+            {
+                // Li & Griffiths order the quadratic part (a, b, c, f, g, h) against 2yz, 2xz, 2xy;
+                // this library's coefficients multiply the bare cross terms, hence the doubling.
+                coeffs[0] = best[0]; coeffs[1] = best[1]; coeffs[2] = best[2];
+                coeffs[3] = (fProxy)2 * best[5];        // D·xy  <- 2h·xy
+                coeffs[4] = (fProxy)2 * best[4];        // E·xz  <- 2g·xz
+                coeffs[5] = (fProxy)2 * best[3];        // F·yz  <- 2f·yz
+
+                for (int r = 0; r < 4; r++)
+                {
+                    fProxy s = (fProxy)0;
+                    for (int a = 0; a < 6; a++) s -= X[r, a] * best[a];
+                    coeffs[6 + r] = r < 3 ? (fProxy)2 * s : s;   // 2p·x, 2q·y, 2r·z, then the constant
+                }
+            }
+
+            work.Dispose(); re.Dispose(); im.Dispose();
+            shifted.Dispose(); U.Dispose(); Sv.Dispose(); V.Dispose(); best.Dispose();
+            return found;
+        }
+
+        // Distance from q, all components non-negative, to the axis-aligned ellipsoid with semi-axes r.
+        // The 3D twin of EllipseDistance2D, one term per axis -- see there for why the search runs on
+        // s = t + min(r)² rather than the classic t, and why each coordinate carries a floor.
+        static fProxy EllipsoidDistance3D(fProxy3 q, fProxy3 r)
+        {
+            if (!(math.cmin(r) > (fProxy)0)) return math.length(q);
+
+            fProxy3 r2 = r * r;
+            fProxy small = math.cmin(r2), big = math.cmax(r);
+
+            fProxy floor = big * Consts.fProxySqrtEps;
+            q = math.max(q, new fProxy3(floor));
+
+            fProxy3 d = r2 - small;
+            fProxy lo = (fProxy)0;                                    // F -> +infinity
+            fProxy hi = big * math.length(q) + big * big;             // F(hi) < 0
+            fProxy s = (fProxy)0.5 * hi;
+
+            for (int i = 0; i < 40; i++)
+            {
+                fProxy3 sd = s + d;
+                fProxy3 fi = r * q / sd;
+                fProxy f = math.csum(fi * fi) - (fProxy)1;
+
+                if (f > (fProxy)0) lo = s; else hi = s;
+
+                fProxy df = (fProxy)(-2) * math.csum(fi * fi / sd);
+                fProxy next = math.abs(df) > Consts.fProxyEpsilon ? s - f / df : (fProxy)0.5 * (lo + hi);
+                if (!(next > lo) || !(next < hi)) next = (fProxy)0.5 * (lo + hi);
+
+                fProxy step = math.abs(next - s);
+                s = next;
+                if (step <= Consts.fProxySqrtEps * s) break;
+            }
+
+            return math.length(q - r2 * q / (s + d));
+        }
+    }
+}

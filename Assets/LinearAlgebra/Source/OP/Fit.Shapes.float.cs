@@ -7,6 +7,8 @@ using System;
 using Unity.Collections;
 using Unity.Mathematics;
 
+using Random = Unity.Mathematics.Random;   // this file imports System, which has its own Random
+
 
 
 namespace BULA
@@ -129,7 +131,7 @@ namespace BULA
         // ---- sphere --------------------------------------------------------------------------------
 
         /// <summary>Sphere of <see cref="Radius"/> about <see cref="Center"/>.</summary>
-        public struct floatSphere3 : IfloatWeighted3
+        public struct floatSphere3 : IfloatWeighted3, IfloatSampleable3
         {
             public float3 Center;
             public float Radius;
@@ -137,6 +139,12 @@ namespace BULA
             public int MinimalSamples => 4;
 
             public float Distance(in float3 p) => math.abs(math.length(p - Center) - Radius);
+
+            public float3 Sample(ref Random rng)
+            {
+                UniformDirection(ref rng, out float3 d);
+                return Center + Radius * d;
+            }
 
             public bool Estimate(NativeArray<float3> sample)
             {
@@ -247,7 +255,7 @@ namespace BULA
         // ---- torus ---------------------------------------------------------------------------------
 
         /// <summary>Torus about unit <see cref="Axis"/> through <see cref="Center"/>.</summary>
-        public struct floatTorus : IfloatEstimable3, IfloatParametric3
+        public struct floatTorus : IfloatEstimable3, IfloatParametric3, IfloatSampleable3
         {
             public float3 Center;
             public float3 Axis;
@@ -273,6 +281,27 @@ namespace BULA
                 return ok;
             }
 
+            // The area element is (MajorRadius + MinorRadius·cos theta), so the OUTER rim carries more
+            // area than the inner one and a uniform theta would oversample the hole. Rejection against
+            // the element's maximum corrects it; the azimuth is uniform as it stands.
+            public float3 Sample(ref Random rng)
+            {
+                OrthoBasis(Axis, out float3 u, out float3 v);
+
+                float theta = (float)0;
+                float bound = MajorRadius + MinorRadius;
+                for (int i = 0; i < SampleTries; i++)
+                {
+                    theta = rng.NextFloat((float)0, (float)(2.0 * math.PI_DBL));
+                    if (rng.NextFloat() * bound <= MajorRadius + MinorRadius * math.cos(theta)) break;
+                }
+
+                float phi = rng.NextFloat((float)0, (float)(2.0 * math.PI_DBL));
+                float3 radial = math.cos(phi) * u + math.sin(phi) * v;
+                return Center + (MajorRadius + MinorRadius * math.cos(theta)) * radial
+                              + MinorRadius * math.sin(theta) * Axis;
+            }
+
             public void Pack(ref floatN p)
             {
                 p[0] = Center.x; p[1] = Center.y; p[2] = Center.z;
@@ -292,7 +321,7 @@ namespace BULA
         // ---- capsule -------------------------------------------------------------------------------
 
         /// <summary>Capsule: the segment <see cref="A"/>..<see cref="B"/> swept by <see cref="Radius"/>.</summary>
-        public struct floatCapsule : IfloatEstimable3, IfloatParametric3
+        public struct floatCapsule : IfloatEstimable3, IfloatParametric3, IfloatSampleable3
         {
             public float3 A;
             public float3 B;
@@ -315,6 +344,30 @@ namespace BULA
                 bool ok = capsule(sample, ref a, ref b, ref r);
                 if (ok) { A = a; B = b; Radius = r; }
                 return ok;
+            }
+
+            // Two pieces of constant density -- the tube (2·pi·r·L) and the two caps, which together
+            // are one whole sphere (4·pi·r²) -- so picking between them by area and then sampling each
+            // uniformly needs no rejection. A zero-length capsule degenerates to that sphere on its own.
+            public float3 Sample(ref Random rng)
+            {
+                float3 seg = B - A;
+                float len = math.length(seg);
+                float tube = (float)2 * len, caps = (float)4 * Radius;   // 2·pi·r dropped from both
+
+                if (rng.NextFloat() * (tube + caps) < tube)
+                {
+                    float3 axis = seg / len;
+                    OrthoBasis(axis, out float3 u, out float3 v);
+                    float phi = rng.NextFloat((float)0, (float)(2.0 * math.PI_DBL));
+                    return A + rng.NextFloat() * seg
+                             + Radius * (math.cos(phi) * u + math.sin(phi) * v);
+                }
+
+                // Which cap a direction belongs to is decided by the direction itself, so the two
+                // hemispheres together consume one uniform sphere sample.
+                UniformDirection(ref rng, out float3 n);
+                return (math.dot(n, seg) >= (float)0 ? B : A) + Radius * n;
             }
 
             public void Pack(ref floatN p)

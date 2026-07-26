@@ -3,6 +3,8 @@ using System;
 using Unity.Collections;
 using Unity.Mathematics;
 
+using Random = Unity.Mathematics.Random;   // this file imports System, which has its own Random
+
 //+deleteThis
 // TEMPLATE-ONLY alias: codegen rewrites each fProxy* token -> float*/double* (real Unity.Mathematics
 // types), so the field access below (.x/.y/.z) and constructors resolve natively.
@@ -129,7 +131,7 @@ namespace BULA
         // ---- sphere --------------------------------------------------------------------------------
 
         /// <summary>Sphere of <see cref="Radius"/> about <see cref="Center"/>.</summary>
-        public struct fProxySphere3 : IfProxyWeighted3
+        public struct fProxySphere3 : IfProxyWeighted3, IfProxySampleable3
         {
             public fProxy3 Center;
             public fProxy Radius;
@@ -137,6 +139,12 @@ namespace BULA
             public int MinimalSamples => 4;
 
             public fProxy Distance(in fProxy3 p) => math.abs(math.length(p - Center) - Radius);
+
+            public fProxy3 Sample(ref Random rng)
+            {
+                UniformDirection(ref rng, out fProxy3 d);
+                return Center + Radius * d;
+            }
 
             public bool Estimate(NativeArray<fProxy3> sample)
             {
@@ -247,7 +255,7 @@ namespace BULA
         // ---- torus ---------------------------------------------------------------------------------
 
         /// <summary>Torus about unit <see cref="Axis"/> through <see cref="Center"/>.</summary>
-        public struct fProxyTorus : IfProxyEstimable3, IfProxyParametric3
+        public struct fProxyTorus : IfProxyEstimable3, IfProxyParametric3, IfProxySampleable3
         {
             public fProxy3 Center;
             public fProxy3 Axis;
@@ -273,6 +281,27 @@ namespace BULA
                 return ok;
             }
 
+            // The area element is (MajorRadius + MinorRadius·cos theta), so the OUTER rim carries more
+            // area than the inner one and a uniform theta would oversample the hole. Rejection against
+            // the element's maximum corrects it; the azimuth is uniform as it stands.
+            public fProxy3 Sample(ref Random rng)
+            {
+                OrthoBasis(Axis, out fProxy3 u, out fProxy3 v);
+
+                fProxy theta = (fProxy)0;
+                fProxy bound = MajorRadius + MinorRadius;
+                for (int i = 0; i < SampleTries; i++)
+                {
+                    theta = rng.NextFProxy((fProxy)0, (fProxy)(2.0 * math.PI_DBL));
+                    if (rng.NextFProxy() * bound <= MajorRadius + MinorRadius * math.cos(theta)) break;
+                }
+
+                fProxy phi = rng.NextFProxy((fProxy)0, (fProxy)(2.0 * math.PI_DBL));
+                fProxy3 radial = math.cos(phi) * u + math.sin(phi) * v;
+                return Center + (MajorRadius + MinorRadius * math.cos(theta)) * radial
+                              + MinorRadius * math.sin(theta) * Axis;
+            }
+
             public void Pack(ref fProxyN p)
             {
                 p[0] = Center.x; p[1] = Center.y; p[2] = Center.z;
@@ -292,7 +321,7 @@ namespace BULA
         // ---- capsule -------------------------------------------------------------------------------
 
         /// <summary>Capsule: the segment <see cref="A"/>..<see cref="B"/> swept by <see cref="Radius"/>.</summary>
-        public struct fProxyCapsule : IfProxyEstimable3, IfProxyParametric3
+        public struct fProxyCapsule : IfProxyEstimable3, IfProxyParametric3, IfProxySampleable3
         {
             public fProxy3 A;
             public fProxy3 B;
@@ -315,6 +344,30 @@ namespace BULA
                 bool ok = capsule(sample, ref a, ref b, ref r);
                 if (ok) { A = a; B = b; Radius = r; }
                 return ok;
+            }
+
+            // Two pieces of constant density -- the tube (2·pi·r·L) and the two caps, which together
+            // are one whole sphere (4·pi·r²) -- so picking between them by area and then sampling each
+            // uniformly needs no rejection. A zero-length capsule degenerates to that sphere on its own.
+            public fProxy3 Sample(ref Random rng)
+            {
+                fProxy3 seg = B - A;
+                fProxy len = math.length(seg);
+                fProxy tube = (fProxy)2 * len, caps = (fProxy)4 * Radius;   // 2·pi·r dropped from both
+
+                if (rng.NextFProxy() * (tube + caps) < tube)
+                {
+                    fProxy3 axis = seg / len;
+                    OrthoBasis(axis, out fProxy3 u, out fProxy3 v);
+                    fProxy phi = rng.NextFProxy((fProxy)0, (fProxy)(2.0 * math.PI_DBL));
+                    return A + rng.NextFProxy() * seg
+                             + Radius * (math.cos(phi) * u + math.sin(phi) * v);
+                }
+
+                // Which cap a direction belongs to is decided by the direction itself, so the two
+                // hemispheres together consume one uniform sphere sample.
+                UniformDirection(ref rng, out fProxy3 n);
+                return (math.dot(n, seg) >= (fProxy)0 ? B : A) + Radius * n;
             }
 
             public void Pack(ref fProxyN p)

@@ -7,6 +7,8 @@ using System;
 using Unity.Collections;
 using Unity.Mathematics;
 
+using Random = Unity.Mathematics.Random;   // this file imports System, which has its own Random
+
 
 
 namespace BULA
@@ -69,7 +71,7 @@ namespace BULA
         }
 
         /// <summary>Circle of <see cref="Radius"/> about <see cref="Center"/>.</summary>
-        public struct doubleCircle : IdoubleWeighted2
+        public struct doubleCircle : IdoubleWeighted2, IdoubleSampleable2
         {
             public double2 Center;
             public double Radius;
@@ -77,6 +79,12 @@ namespace BULA
             public int MinimalSamples => 3;
 
             public double Distance(in double2 p) => math.abs(math.length(p - Center) - Radius);
+
+            public double2 Sample(ref Random rng)
+            {
+                double t = rng.NextDouble((double)0, (double)(2.0 * math.PI_DBL));
+                return Center + Radius * new double2(math.cos(t), math.sin(t));
+            }
 
             public bool Estimate(NativeArray<double2> sample)
             {
@@ -92,6 +100,60 @@ namespace BULA
                                           in w, ref c, out double r);
                 if (ok) { Center = new double2(c[0], c[1]); Radius = r; }
                 c.Dispose();
+                return ok;
+            }
+        }
+
+        /// <summary>
+        /// Ellipse with semi-axes <see cref="Radii"/> about <see cref="Center"/>, the .x axis rotated
+        /// <see cref="Angle"/> radians from +x. Fitting it is CONSTRAINED to an ellipse (see
+        /// <see cref="conic"/>), so a noisy near-parabolic cloud cannot come back a hyperbola.
+        ///
+        /// <see cref="Distance"/> is APPROXIMATE, by bracketed Newton -- see
+        /// <see cref="doubleEllipse3"/> for where and by how much.
+        /// </summary>
+        public struct doubleEllipse2 : IdoubleWeighted2, IdoubleSampleable2
+        {
+            public double2 Center;
+            public double2 Radii;
+            public double Angle;
+
+            public int MinimalSamples => 5;      // a conic has 5 degrees of freedom
+
+            public double2 Sample(ref Random rng)
+            {
+                double t = EllipseAngle(ref rng, Radii.x, Radii.y);
+                double cs = math.cos(Angle), sn = math.sin(Angle);
+                double x = Radii.x * math.cos(t), y = Radii.y * math.sin(t);
+                return Center + new double2(x * cs - y * sn, x * sn + y * cs);
+            }
+
+            public double Distance(in double2 p)
+            {
+                double cs = math.cos(Angle), sn = math.sin(Angle);
+                double2 v = p - Center;
+                return EllipseDistance2D(math.abs(v.x * cs + v.y * sn),
+                                         math.abs(-v.x * sn + v.y * cs), Radii.x, Radii.y);
+            }
+
+            public bool Estimate(NativeArray<double2> sample)
+            {
+                bool ok = ellipse(sample, out double2 c, out double2 r, out double a);
+                if (ok) { Center = c; Radii = r; Angle = a; }
+                return ok;
+            }
+
+            public bool Refit(NativeArray<double2> points, in doubleN w)
+            {
+                var coeffs = new doubleN(6, Allocator.Temp);
+                double2 c = default, r = default;
+                double a = default;
+
+                bool ok = ConicWeighted(points, in w, ref coeffs);
+                if (ok) ok = EllipseFromConic(in coeffs, out c, out r, out a);
+                if (ok) { Center = c; Radii = r; Angle = a; }
+
+                coeffs.Dispose();
                 return ok;
             }
         }

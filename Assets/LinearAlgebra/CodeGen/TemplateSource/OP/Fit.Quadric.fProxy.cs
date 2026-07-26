@@ -240,10 +240,21 @@ namespace BULA
         public static bool quadric<TLoss>(NativeArray<fProxy3> points, in TLoss loss, ref fProxyN coeffs,
                                           int maxIter = 0)
             where TLoss : struct, IfProxyRobustLoss
+            => QuadricIrls(points, in loss, ref coeffs, maxIter, ellipsoidOnly: false);
+
+        // Sampson IRLS over the 3D coefficient families, shared by `quadric` and `ellipsoid`: their
+        // coefficients and their Sampson distance are the same, only the weighted fit underneath
+        // differs. Keeping ONE loop keeps the collapse guard in one place -- that invariant was
+        // duplicated per shape once before, and the missing copy was a real bug.
+        static bool QuadricIrls<TLoss>(NativeArray<fProxy3> points, in TLoss loss, ref fProxyN coeffs,
+                                       int maxIter, bool ellipsoidOnly)
+            where TLoss : struct, IfProxyRobustLoss
         {
             int n = points.Length;
             if (maxIter <= 0) maxIter = DefaultIrlsIter;
-            if (!quadric(points, ref coeffs)) return false;
+
+            bool seeded = ellipsoidOnly ? ellipsoid(points, ref coeffs) : quadric(points, ref coeffs);
+            if (!seeded) return false;
 
             var w = new fProxyN(n, Allocator.Temp);
             for (int i = 0; i < n; i++) w[i] = (fProxy)1;
@@ -264,7 +275,8 @@ namespace BULA
                 if (!(sw > (fProxy)0)) { ok = false; break; }   // redescending loss rejected everything
                 if (maxDelta <= Consts.fProxySqrtEps) break;
 
-                ok = QuadricWeighted(points, in w, ref coeffs);
+                ok = ellipsoidOnly ? EllipsoidWeighted(points, in w, ref coeffs)
+                                   : QuadricWeighted(points, in w, ref coeffs);
                 if (!ok) break;
             }
 

@@ -3,6 +3,8 @@ using System;
 using Unity.Collections;
 using Unity.Mathematics;
 
+using Random = Unity.Mathematics.Random;   // this file imports System, which has its own Random
+
 //+deleteThis
 using fProxy2 = Unity.Mathematics.float2;
 using fProxy3 = Unity.Mathematics.float3;
@@ -26,7 +28,7 @@ namespace BULA
         /// <see cref="Normal"/>. Distance combines the out-of-plane and in-plane errors, so a point
         /// off the plane is penalized even when its in-plane radius is right.
         /// </summary>
-        public struct fProxyCircle3 : IfProxyWeighted3, IfProxyParametric3
+        public struct fProxyCircle3 : IfProxyWeighted3, IfProxyParametric3, IfProxySampleable3
         {
             public fProxy3 Center;
             public fProxy3 Normal;
@@ -34,6 +36,15 @@ namespace BULA
 
             public int MinimalSamples => 3;      // three points fix the plane and the circumcircle
             public int ParamCount => 7;
+
+            // A circle's arc length is proportional to its angle, so a uniform angle is already
+            // uniform arc length -- the one curve here that needs no rejection.
+            public fProxy3 Sample(ref Random rng)
+            {
+                OrthoBasis(Normal, out fProxy3 u, out fProxy3 v);
+                fProxy t = rng.NextFProxy((fProxy)0, (fProxy)(2.0 * math.PI_DBL));
+                return Center + Radius * (math.cos(t) * u + math.sin(t) * v);
+            }
 
             public fProxy Distance(in fProxy3 p)
             {
@@ -102,11 +113,12 @@ namespace BULA
         /// along Normal x AxisA.
         ///
         /// <see cref="Distance"/> is APPROXIMATE in the plane: the exact point-to-ellipse distance has
-        /// no closed form (it needs the root of a quartic), so the in-plane part is Newton-refined from
-        /// the radial guess. A few iterations converge tightly except very near the centre, where the
-        /// closest point is genuinely ambiguous.
+        /// no closed form (it needs the root of a quartic), so the in-plane part is found by bracketed
+        /// Newton. It is tight everywhere except for points lying almost exactly ON an axis inside the
+        /// evolute, where the true closest point is off-axis and the answer errs by roughly the
+        /// coordinate floor.
         /// </summary>
-        public struct fProxyEllipse3 : IfProxyWeighted3, IfProxyParametric3
+        public struct fProxyEllipse3 : IfProxyWeighted3, IfProxyParametric3, IfProxySampleable3
         {
             public fProxy3 Center;
             public fProxy3 Normal;
@@ -115,6 +127,13 @@ namespace BULA
             public fProxy RadiusB;
 
             public int MinimalSamples => 5;      // a conic has 5 dof once the plane is fixed
+
+            public fProxy3 Sample(ref Random rng)
+            {
+                fProxy t = EllipseAngle(ref rng, RadiusA, RadiusB);
+                fProxy3 b = math.cross(Normal, AxisA);
+                return Center + RadiusA * math.cos(t) * AxisA + RadiusB * math.sin(t) * b;
+            }
 
             public fProxy Distance(in fProxy3 p)
             {
@@ -223,42 +242,56 @@ namespace BULA
 
         // Distance from (x, y), both non-negative, to the axis-aligned ellipse (a, b).
         //
-        // The closest point satisfies (a²x/(t+a²), b²y/(t+b²)) for the root of
-        // F(t) = (ax/(t+a²))² + (by/(t+b²))² - 1. F is strictly decreasing on t > -min(a,b)², from
-        // +infinity down to -1, so the root is unique and bracketable.
+        // The closest point is (a²x/(s+da), b²y/(s+db)) for the root of
+        // F(s) = (a·x/(s+da))² + (b·y/(s+db))² - 1, where d_i = r_i² - min(a,b)². F falls strictly
+        // from +infinity to -1 on s > 0, so the root is unique and bracketable.
         //
-        // BRACKETED Newton, not plain Newton: from a seed above the root, an unguarded step can jump
-        // below -min(a,b)² where F is not even defined. Keeping the bracket and bisecting whenever a
-        // step leaves it makes that impossible, at the cost of a few more iterations.
+        // The classic form of this solve searches t = s - min(a,b)², and the shift is NOT cosmetic:
+        // every quantity that matters is (t + min²), a difference of two nearly-equal numbers, so in
+        // t the divisors lose most of their significant digits near the ellipse's own centre AND a
+        // convergence test scaled by |t| is orders of magnitude looser than the root needs. Searching
+        // s directly makes both the divisors and the relative tolerance exact.
+        //
+        // BRACKETED Newton, not plain Newton: an unguarded step can leave the bracket entirely, so
+        // one that does is replaced by a bisection.
         static fProxy EllipseDistance2D(fProxy x, fProxy y, fProxy a, fProxy b)
         {
             if (!(a > (fProxy)0) || !(b > (fProxy)0)) return math.sqrt(x * x + y * y);
 
             fProxy a2 = a * a, b2 = b * b;
-            fProxy small = math.min(a2, b2);
+            fProxy small = math.min(a2, b2), big = math.max(a, b);
 
-            fProxy lo = -small + math.max(small, (fProxy)1) * Consts.fProxySqrtEps;   // F(lo) > 0
-            fProxy hi = math.max(a, b) * math.sqrt(x * x + y * y) + math.max(a2, b2); // F(hi) < 0
-            fProxy t = (fProxy)0.5 * (lo + hi);
+            // A coordinate of exactly zero kills its term, and with it the +infinity end of the
+            // bracket: the search would then run to s = 0 and report the CENTRE as lying ON the
+            // ellipse -- distance zero, so a dead-centre outlier would score as a perfect inlier.
+            // Flooring each coordinate keeps the root real, at a cost of about the floor for points
+            // sitting on an axis.
+            fProxy floor = big * Consts.fProxySqrtEps;
+            x = math.max(x, floor); y = math.max(y, floor);
+
+            fProxy da = a2 - small, db = b2 - small;
+            fProxy lo = (fProxy)0;                                    // F -> +infinity
+            fProxy hi = big * math.sqrt(x * x + y * y) + big * big;   // F(hi) < 0
+            fProxy s = (fProxy)0.5 * hi;
 
             for (int i = 0; i < 40; i++)
             {
-                fProxy ta = t + a2, tb = t + b2;
-                fProxy fa = a * x / ta, fb = b * y / tb;
+                fProxy sa = s + da, sb = s + db;
+                fProxy fa = a * x / sa, fb = b * y / sb;
                 fProxy f = fa * fa + fb * fb - (fProxy)1;
 
-                if (f > (fProxy)0) lo = t; else hi = t;
+                if (f > (fProxy)0) lo = s; else hi = s;
 
-                fProxy df = (fProxy)(-2) * (fa * fa / ta + fb * fb / tb);
-                fProxy next = math.abs(df) > Consts.fProxyEpsilon ? t - f / df : (fProxy)0.5 * (lo + hi);
+                fProxy df = (fProxy)(-2) * (fa * fa / sa + fb * fb / sb);
+                fProxy next = math.abs(df) > Consts.fProxyEpsilon ? s - f / df : (fProxy)0.5 * (lo + hi);
                 if (!(next > lo) || !(next < hi)) next = (fProxy)0.5 * (lo + hi);
 
-                fProxy step = math.abs(next - t);
-                t = next;
-                if (step <= Consts.fProxySqrtEps * math.max(math.abs(t), (fProxy)1)) break;
+                fProxy step = math.abs(next - s);
+                s = next;
+                if (step <= Consts.fProxySqrtEps * s) break;
             }
 
-            fProxy cx = a2 * x / (t + a2), cy = b2 * y / (t + b2);
+            fProxy cx = a2 * x / (s + da), cy = b2 * y / (s + db);
             return math.sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy));
         }
 
